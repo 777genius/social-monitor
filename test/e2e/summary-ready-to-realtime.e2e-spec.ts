@@ -34,9 +34,9 @@ describe('Summary ready realtime fanout (e2e)', () => {
   it('projects summary.ready into realtime summary status replay', async () => {
     const tenant = tenantId('tenant-summary-realtime-e2e');
     const workspace = workspaceId('workspace-summary-realtime-e2e');
-    const topicId = 'topic-summary-realtime-e2e';
+    const interestId = 'topic-summary-realtime-e2e';
     const requested = await request(app.getHttpServer())
-      .post(`/topics/${topicId}/summary-requests`)
+      .post(`/interests/${interestId}/summary-requests`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'member')
@@ -66,7 +66,7 @@ describe('Summary ready realtime fanout (e2e)', () => {
           summaryId: summaryReadyEvent.payload.summaryId as string,
           tenantId: tenant,
           workspaceId: workspace,
-          topicId,
+          interestId,
           status: 'no_signal',
         },
       },
@@ -74,7 +74,7 @@ describe('Summary ready realtime fanout (e2e)', () => {
 
     expect(projected.ok).toBe(true);
 
-    const channel = `topic:${topicId}:summary-status`;
+    const channel = `interest:${interestId}:summary-status`;
     const replay = await request(app.getHttpServer())
       .get(`/realtime/events?channel=${encodeURIComponent(channel)}`)
       .set('x-tenant-id', tenant)
@@ -94,7 +94,7 @@ describe('Summary ready realtime fanout (e2e)', () => {
             summaryId: executed.value.summaryId,
             tenantId: tenant,
             workspaceId: workspace,
-            topicId,
+            interestId,
             status: 'no_signal',
           },
         }),

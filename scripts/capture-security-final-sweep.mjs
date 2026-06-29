@@ -50,7 +50,7 @@ const exportsBySurface = {
         tenantId: 'tenant-alpha-1',
         workspaceId: 'workspace-alpha-1',
         service: 'api-gateway',
-        operation: 'create-topic',
+        operation: 'create-interest',
         status: 'ok',
       },
       {

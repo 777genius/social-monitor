@@ -36,8 +36,8 @@ export const firstSentence = (value: string): string | undefined => {
   return match?.[1] ?? trimmed;
 };
 
-export const topicTitle = (topicId: string): string =>
-  topicId
+export const interestTitle = (interestId: string): string =>
+  interestId
     .split(/[-_:\s]+/)
     .filter((part) => part.length > 0)
     .map((part) => part[0]?.toUpperCase() + part.slice(1))

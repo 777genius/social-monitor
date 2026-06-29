@@ -19,7 +19,7 @@ export type TopRead = {
   readonly providerName: string;
   readonly primaryActionKind: TopReadPrimaryActionKind;
   readonly reason: string;
-  readonly matchedTopicIds: readonly string[];
+  readonly matchedInterestIds: readonly string[];
   readonly matchedRules: readonly string[];
   readonly signalScore: SignalScore;
   readonly confidence: TopReadConfidence;
@@ -35,13 +35,13 @@ export type TopReadCandidate = {
   readonly storyClusterId: string;
   readonly title: string;
   readonly summary: string;
-  readonly topicIds: readonly string[];
+  readonly interestIds: readonly string[];
   readonly providerKeys: readonly string[];
   readonly citationIds: readonly string[];
 };
 
-export type TopicHighlight = {
-  readonly topicId: string;
+export type InterestHighlight = {
+  readonly interestId: string;
   readonly title: string;
   readonly summary: string;
   readonly citationIds: readonly string[];
@@ -50,7 +50,7 @@ export type TopicHighlight = {
 export type RepeatedSignal = {
   readonly storyClusterId: string;
   readonly title: string;
-  readonly topicIds: readonly string[];
+  readonly interestIds: readonly string[];
   readonly citationIds: readonly string[];
 };
 
@@ -64,8 +64,8 @@ export type ReaderSummaryRisk = {
     | "provider_outage";
 };
 
-export type ReaderTopicSection = {
-  readonly topicId?: string;
+export type ReaderInterestSection = {
+  readonly interestId?: string;
   readonly title: string;
   readonly insight: string;
   readonly items: readonly TopRead[];

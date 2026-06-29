@@ -40,8 +40,8 @@ String _primaryTheme(ReaderSummaryContent content) {
       return title;
     }
   }
-  if (content.topicSections.isNotEmpty) {
-    final title = content.topicSections.first.title.trim();
+  if (content.interestSections.isNotEmpty) {
+    final title = content.interestSections.first.title.trim();
     if (title.isNotEmpty) {
       return '$title is becoming practical infrastructure, not just a demo';
     }

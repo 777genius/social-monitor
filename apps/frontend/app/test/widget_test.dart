@@ -75,7 +75,7 @@ void main() {
     expect(controller.runtime.session.isRestoring, isFalse);
     expect(controller.runtime.workspace.scope, workspace.scope);
     expect(
-      controller.runtime.capabilities.capability('topics').isEnabled,
+      controller.runtime.capabilities.capability('interests').isEnabled,
       isTrue,
     );
   });
@@ -87,15 +87,15 @@ void main() {
     final auth = composition.features.firstWhere(
       (feature) => feature.id == 'auth',
     );
-    final topics = composition.features.firstWhere(
-      (feature) => feature.id == 'topics',
+    final interests = composition.features.firstWhere(
+      (feature) => feature.id == 'interests',
     );
     final settings = composition.features.firstWhere(
       (feature) => feature.id == 'settings',
     );
 
     expect(auth.status, 'Runtime not configured');
-    expect(topics.status, 'Workspace required');
+    expect(interests.status, 'Workspace required');
     expect(settings.status, 'Workspace required');
 
     const workspace = AppWorkspaceSnapshot(
@@ -115,7 +115,7 @@ void main() {
     );
 
     expect(auth.status, 'Runtime');
-    expect(topics.status, 'API');
+    expect(interests.status, 'API');
     expect(settings.status, 'Runtime');
   });
 
@@ -128,7 +128,7 @@ void main() {
     expect(find.byType(SelectionArea), findsOneWidget);
     expect(find.text('Monitoring command center'), findsOneWidget);
     expect(find.text('Workspace required'), findsWidgets);
-    expect(find.text('Topics'), findsWidgets);
+    expect(find.text('Interests'), findsWidgets);
     expect(find.text('Sources'), findsWidgets);
   });
 
@@ -183,11 +183,27 @@ void main() {
     expect(find.text('Monitoring command center'), findsNothing);
   });
 
+  testWidgets('honors interest sources initial route for visual e2e', (
+    tester,
+  ) async {
+    final composition = AppCompositionRoot.demo(
+      initialLocation:
+          '/sources?interestId=interest-market-risk&interestTitle=Market%20risk',
+    );
+    await tester.pumpWidget(SocialMonitorApp(composition: composition));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Sources for Market risk'), findsOneWidget);
+    expect(find.text('Recommended sources'), findsOneWidget);
+    expect(find.text('For Market risk'), findsOneWidget);
+    expect(find.text('Loading sources'), findsNothing);
+  });
+
   testWidgets('navigates the MVP frontend critical path', (tester) async {
     final composition = AppCompositionRoot.demo();
     await tester.pumpWidget(SocialMonitorApp(composition: composition));
 
-    composition.router.go('/topics');
+    composition.router.go('/interests');
     await tester.pumpAndSettle();
     expect(find.text('Market risk'), findsWidgets);
 
@@ -221,7 +237,7 @@ void main() {
     await tester.pumpAndSettle();
 
     for (final route in const [
-      '/topics',
+      '/interests',
       '/sources',
       '/feed',
       '/summaries',
@@ -247,7 +263,7 @@ void main() {
 
     expect(find.text('Monitoring command center'), findsOneWidget);
 
-    composition.router.go('/topics');
+    composition.router.go('/interests');
     await tester.pump();
 
     expect(find.text('Monitoring command center'), findsNothing);
@@ -306,23 +322,23 @@ void main() {
 
     expect(find.text('Acme alerts'), findsOneWidget);
 
-    composition.router.go('/topics');
+    composition.router.go('/interests');
     await tester.pumpAndSettle();
-    await _tapText(tester, 'Create topic');
+    await _tapText(tester, 'Create interest');
     await tester.scrollUntilVisible(
-      find.byKey(const ValueKey('topic-name-field')),
+      find.byKey(const ValueKey('interest-name-field')),
       240,
       scrollable: find.byType(Scrollable).first,
     );
     await tester.enterText(
-      find.byKey(const ValueKey('topic-name-field')),
+      find.byKey(const ValueKey('interest-name-field')),
       'Competitor watch',
     );
     await tester.enterText(
-      find.byKey(const ValueKey('topic-query-field')),
+      find.byKey(const ValueKey('interest-query-field')),
       'pricing OR launch',
     );
-    await _tapText(tester, 'Save topic');
+    await _tapText(tester, 'Save interest');
     expect(find.text('Competitor watch'), findsWidgets);
 
     composition.router.go('/sources');
@@ -330,12 +346,12 @@ void main() {
     expect(find.text('Source profiles'), findsOneWidget);
     expect(find.text('GitHub'), findsWidgets);
 
-    composition.router.go('/topics');
+    composition.router.go('/interests');
     await tester.pumpAndSettle();
     await tester.tap(find.text('Market risk').first);
     await tester.pumpAndSettle();
     await _tapText(tester, 'Sources');
-    expect(find.text('Topic sources'), findsWidgets);
+    expect(find.text('Interest sources'), findsWidgets);
     expect(find.text('Reddit - Listing'), findsWidgets);
     expect(find.text('Uses platform Reddit app credential'), findsOneWidget);
     expect(find.text('Scan policy'), findsOneWidget);

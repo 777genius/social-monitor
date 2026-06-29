@@ -2,7 +2,7 @@ import type { SummaryPolicy } from '../../domain';
 
 export type SummaryPolicyView = {
   readonly summaryPolicyId: string;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly language: string;
   readonly format: string;
   readonly tone: string;
@@ -20,7 +20,7 @@ export const presentSummaryPolicy = (policy: SummaryPolicy): SummaryPolicyView =
 
   return {
     summaryPolicyId: snapshot.id,
-    topicId: snapshot.topicId,
+    interestId: snapshot.interestId,
     language: snapshot.language,
     format: snapshot.format,
     tone: snapshot.tone,

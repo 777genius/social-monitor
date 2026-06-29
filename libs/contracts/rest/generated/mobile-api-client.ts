@@ -278,7 +278,7 @@ export const mobileApiOperations = [
     "tags": [
       "delivery"
     ],
-    "summary": "Create a periodic digest schedule for one recipient and topic set.",
+    "summary": "Create a periodic digest schedule for one recipient and interest set.",
     "pathParameters": [],
     "queryParameters": [],
     "requiredHeaders": [
@@ -524,13 +524,13 @@ export const mobileApiOperations = [
     "pathParameters": [],
     "queryParameters": [
       "cursor",
+      "interestId",
       "limit",
       "providerKey",
       "q",
       "repositoryLanguage",
       "repositoryTopic",
-      "repositoryTrendWindow",
-      "topicId"
+      "repositoryTrendWindow"
     ],
     "requiredHeaders": [
       "x-tenant-id",
@@ -746,6 +746,499 @@ export const mobileApiOperations = [
     "successResponseSchemaRefs": []
   },
   {
+    "operationId": "InterestController_list",
+    "clientName": "InterestController_list",
+    "method": "GET",
+    "path": "/interests",
+    "tags": [
+      "interests"
+    ],
+    "summary": "List interests inside the current tenant/workspace.",
+    "pathParameters": [],
+    "queryParameters": [
+      "cursor",
+      "limit"
+    ],
+    "requiredHeaders": [
+      "x-tenant-id",
+      "x-workspace-id"
+    ],
+    "optionalHeaders": [
+      "authorization",
+      "x-workspace-role"
+    ],
+    "requiresTenantWorkspace": true,
+    "supportsBearerApiKey": true,
+    "usesDevOnlyWorkspaceRoleHeader": true,
+    "devOnlyWorkspaceRoleRequired": false,
+    "requestBodySchemaRef": null,
+    "successResponseSchemaRefs": [
+      "#/components/schemas/ListInterestsResponseDto"
+    ]
+  },
+  {
+    "operationId": "InterestController_create",
+    "clientName": "InterestController_create",
+    "method": "POST",
+    "path": "/interests",
+    "tags": [
+      "interests"
+    ],
+    "summary": "Create an interest inside the current tenant/workspace.",
+    "pathParameters": [],
+    "queryParameters": [],
+    "requiredHeaders": [
+      "idempotency-key",
+      "x-tenant-id",
+      "x-workspace-id"
+    ],
+    "optionalHeaders": [
+      "authorization",
+      "x-workspace-role"
+    ],
+    "requiresTenantWorkspace": true,
+    "supportsBearerApiKey": true,
+    "usesDevOnlyWorkspaceRoleHeader": true,
+    "devOnlyWorkspaceRoleRequired": false,
+    "requestBodySchemaRef": "#/components/schemas/CreateInterestRequestDto",
+    "successResponseSchemaRefs": [
+      "#/components/schemas/CreateInterestResponseDto"
+    ]
+  },
+  {
+    "operationId": "InterestController_archive",
+    "clientName": "InterestController_archive",
+    "method": "DELETE",
+    "path": "/interests/{interestId}",
+    "tags": [
+      "interests"
+    ],
+    "summary": "Archive an interest inside the current tenant/workspace.",
+    "pathParameters": [
+      "interestId"
+    ],
+    "queryParameters": [],
+    "requiredHeaders": [
+      "x-tenant-id",
+      "x-workspace-id"
+    ],
+    "optionalHeaders": [
+      "authorization",
+      "x-workspace-role"
+    ],
+    "requiresTenantWorkspace": true,
+    "supportsBearerApiKey": true,
+    "usesDevOnlyWorkspaceRoleHeader": true,
+    "devOnlyWorkspaceRoleRequired": false,
+    "requestBodySchemaRef": null,
+    "successResponseSchemaRefs": [
+      "#/components/schemas/InterestResponseDto"
+    ]
+  },
+  {
+    "operationId": "InterestController_update",
+    "clientName": "InterestController_update",
+    "method": "PATCH",
+    "path": "/interests/{interestId}",
+    "tags": [
+      "interests"
+    ],
+    "summary": "Update an interest inside the current tenant/workspace.",
+    "pathParameters": [
+      "interestId"
+    ],
+    "queryParameters": [],
+    "requiredHeaders": [
+      "x-tenant-id",
+      "x-workspace-id"
+    ],
+    "optionalHeaders": [
+      "authorization",
+      "x-workspace-role"
+    ],
+    "requiresTenantWorkspace": true,
+    "supportsBearerApiKey": true,
+    "usesDevOnlyWorkspaceRoleHeader": true,
+    "devOnlyWorkspaceRoleRequired": false,
+    "requestBodySchemaRef": "#/components/schemas/UpdateInterestRequestDto",
+    "successResponseSchemaRefs": [
+      "#/components/schemas/InterestResponseDto"
+    ]
+  },
+  {
+    "operationId": "InterestCoveragePlanController_plan",
+    "clientName": "InterestCoveragePlanController_plan",
+    "method": "POST",
+    "path": "/interests/{interestId}/coverage-plan",
+    "tags": [
+      "interest-coverage-plans"
+    ],
+    "summary": "Plan production-safe source bindings for an interest.",
+    "pathParameters": [
+      "interestId"
+    ],
+    "queryParameters": [],
+    "requiredHeaders": [
+      "x-tenant-id",
+      "x-workspace-id"
+    ],
+    "optionalHeaders": [
+      "authorization",
+      "x-workspace-role"
+    ],
+    "requiresTenantWorkspace": true,
+    "supportsBearerApiKey": true,
+    "usesDevOnlyWorkspaceRoleHeader": true,
+    "devOnlyWorkspaceRoleRequired": false,
+    "requestBodySchemaRef": "#/components/schemas/PlanInterestCoverageRequestDto",
+    "successResponseSchemaRefs": [
+      "#/components/schemas/PlanInterestCoverageResponseDto"
+    ]
+  },
+  {
+    "operationId": "SourceBindingController_list",
+    "clientName": "SourceBindingController_list",
+    "method": "GET",
+    "path": "/interests/{interestId}/source-bindings",
+    "tags": [
+      "source-bindings"
+    ],
+    "summary": "List source bindings for an interest.",
+    "pathParameters": [
+      "interestId"
+    ],
+    "queryParameters": [
+      "cursor",
+      "limit",
+      "providerKey",
+      "status"
+    ],
+    "requiredHeaders": [
+      "x-tenant-id",
+      "x-workspace-id"
+    ],
+    "optionalHeaders": [
+      "authorization",
+      "x-workspace-role"
+    ],
+    "requiresTenantWorkspace": true,
+    "supportsBearerApiKey": true,
+    "usesDevOnlyWorkspaceRoleHeader": true,
+    "devOnlyWorkspaceRoleRequired": false,
+    "requestBodySchemaRef": null,
+    "successResponseSchemaRefs": [
+      "#/components/schemas/ListSourceBindingsResponseDto"
+    ]
+  },
+  {
+    "operationId": "SourceBindingController_create",
+    "clientName": "SourceBindingController_create",
+    "method": "POST",
+    "path": "/interests/{interestId}/source-bindings",
+    "tags": [
+      "source-bindings"
+    ],
+    "summary": "Bind a production-safe source provider to an interest.",
+    "pathParameters": [
+      "interestId"
+    ],
+    "queryParameters": [],
+    "requiredHeaders": [
+      "idempotency-key",
+      "x-tenant-id",
+      "x-workspace-id"
+    ],
+    "optionalHeaders": [
+      "authorization",
+      "x-workspace-role"
+    ],
+    "requiresTenantWorkspace": true,
+    "supportsBearerApiKey": true,
+    "usesDevOnlyWorkspaceRoleHeader": true,
+    "devOnlyWorkspaceRoleRequired": false,
+    "requestBodySchemaRef": "#/components/schemas/BindSourceRequestDto",
+    "successResponseSchemaRefs": [
+      "#/components/schemas/BindSourceResponseDto"
+    ]
+  },
+  {
+    "operationId": "SourceBindingController_health",
+    "clientName": "SourceBindingController_health",
+    "method": "GET",
+    "path": "/interests/{interestId}/source-bindings/{sourceBindingId}/health",
+    "tags": [
+      "source-bindings"
+    ],
+    "summary": "Get source binding operational health.",
+    "pathParameters": [
+      "interestId",
+      "sourceBindingId"
+    ],
+    "queryParameters": [],
+    "requiredHeaders": [
+      "x-tenant-id",
+      "x-workspace-id"
+    ],
+    "optionalHeaders": [
+      "authorization",
+      "x-workspace-role"
+    ],
+    "requiresTenantWorkspace": true,
+    "supportsBearerApiKey": true,
+    "usesDevOnlyWorkspaceRoleHeader": true,
+    "devOnlyWorkspaceRoleRequired": false,
+    "requestBodySchemaRef": null,
+    "successResponseSchemaRefs": [
+      "#/components/schemas/SourceBindingHealthResponseDto"
+    ]
+  },
+  {
+    "operationId": "SourceBindingController_updateStatus",
+    "clientName": "SourceBindingController_updateStatus",
+    "method": "PATCH",
+    "path": "/interests/{interestId}/source-bindings/{sourceBindingId}/status",
+    "tags": [
+      "source-bindings"
+    ],
+    "summary": "Pause or resume a source binding.",
+    "pathParameters": [
+      "interestId",
+      "sourceBindingId"
+    ],
+    "queryParameters": [],
+    "requiredHeaders": [
+      "idempotency-key",
+      "x-tenant-id",
+      "x-workspace-id"
+    ],
+    "optionalHeaders": [
+      "authorization",
+      "x-workspace-role"
+    ],
+    "requiresTenantWorkspace": true,
+    "supportsBearerApiKey": true,
+    "usesDevOnlyWorkspaceRoleHeader": true,
+    "devOnlyWorkspaceRoleRequired": false,
+    "requestBodySchemaRef": "#/components/schemas/ChangeSourceBindingStatusRequestDto",
+    "successResponseSchemaRefs": [
+      "#/components/schemas/ChangeSourceBindingStatusResponseDto"
+    ]
+  },
+  {
+    "operationId": "SourceBindingController_dailyHistory",
+    "clientName": "SourceBindingController_dailyHistory",
+    "method": "GET",
+    "path": "/interests/{interestId}/source-bindings/daily-history",
+    "tags": [
+      "source-bindings"
+    ],
+    "summary": "List daily source scan history for an interest grouped by provider.",
+    "pathParameters": [
+      "interestId"
+    ],
+    "queryParameters": [
+      "days",
+      "providerKey"
+    ],
+    "requiredHeaders": [
+      "x-tenant-id",
+      "x-workspace-id"
+    ],
+    "optionalHeaders": [
+      "authorization",
+      "x-workspace-role"
+    ],
+    "requiresTenantWorkspace": true,
+    "supportsBearerApiKey": true,
+    "usesDevOnlyWorkspaceRoleHeader": true,
+    "devOnlyWorkspaceRoleRequired": false,
+    "requestBodySchemaRef": null,
+    "successResponseSchemaRefs": [
+      "#/components/schemas/ListInterestSourceDailyHistoryResponseDto"
+    ]
+  },
+  {
+    "operationId": "SourceBindingController_overview",
+    "clientName": "SourceBindingController_overview",
+    "method": "GET",
+    "path": "/interests/{interestId}/source-bindings/overview",
+    "tags": [
+      "source-bindings"
+    ],
+    "summary": "List source bindings with operational health for an interest.",
+    "pathParameters": [
+      "interestId"
+    ],
+    "queryParameters": [
+      "cursor",
+      "limit",
+      "providerKey",
+      "status"
+    ],
+    "requiredHeaders": [
+      "x-tenant-id",
+      "x-workspace-id"
+    ],
+    "optionalHeaders": [
+      "authorization",
+      "x-workspace-role"
+    ],
+    "requiresTenantWorkspace": true,
+    "supportsBearerApiKey": true,
+    "usesDevOnlyWorkspaceRoleHeader": true,
+    "devOnlyWorkspaceRoleRequired": false,
+    "requestBodySchemaRef": null,
+    "successResponseSchemaRefs": [
+      "#/components/schemas/ListSourceBindingOverviewResponseDto"
+    ]
+  },
+  {
+    "operationId": "SummaryPolicyController_get",
+    "clientName": "SummaryPolicyController_get",
+    "method": "GET",
+    "path": "/interests/{interestId}/summary-policy",
+    "tags": [
+      "summary-policies"
+    ],
+    "summary": "Get summary policy for an interest.",
+    "pathParameters": [
+      "interestId"
+    ],
+    "queryParameters": [],
+    "requiredHeaders": [
+      "x-tenant-id",
+      "x-workspace-id"
+    ],
+    "optionalHeaders": [
+      "authorization",
+      "x-workspace-role"
+    ],
+    "requiresTenantWorkspace": true,
+    "supportsBearerApiKey": true,
+    "usesDevOnlyWorkspaceRoleHeader": true,
+    "devOnlyWorkspaceRoleRequired": false,
+    "requestBodySchemaRef": null,
+    "successResponseSchemaRefs": []
+  },
+  {
+    "operationId": "SummaryPolicyController_upsert",
+    "clientName": "SummaryPolicyController_upsert",
+    "method": "PUT",
+    "path": "/interests/{interestId}/summary-policy",
+    "tags": [
+      "summary-policies"
+    ],
+    "summary": "Create or update summary policy for an interest.",
+    "pathParameters": [
+      "interestId"
+    ],
+    "queryParameters": [],
+    "requiredHeaders": [
+      "x-tenant-id",
+      "x-workspace-id"
+    ],
+    "optionalHeaders": [
+      "authorization",
+      "x-workspace-role"
+    ],
+    "requiresTenantWorkspace": true,
+    "supportsBearerApiKey": true,
+    "usesDevOnlyWorkspaceRoleHeader": true,
+    "devOnlyWorkspaceRoleRequired": false,
+    "requestBodySchemaRef": "#/components/schemas/UpsertSummaryPolicyRequestDto",
+    "successResponseSchemaRefs": []
+  },
+  {
+    "operationId": "SummaryRequestController_create",
+    "clientName": "SummaryRequestController_create",
+    "method": "POST",
+    "path": "/interests/{interestId}/summary-requests",
+    "tags": [
+      "summaries"
+    ],
+    "summary": "Request a summary for an interest.",
+    "pathParameters": [
+      "interestId"
+    ],
+    "queryParameters": [],
+    "requiredHeaders": [
+      "idempotency-key",
+      "x-tenant-id",
+      "x-workspace-id"
+    ],
+    "optionalHeaders": [
+      "authorization",
+      "x-workspace-role"
+    ],
+    "requiresTenantWorkspace": true,
+    "supportsBearerApiKey": true,
+    "usesDevOnlyWorkspaceRoleHeader": true,
+    "devOnlyWorkspaceRoleRequired": false,
+    "requestBodySchemaRef": null,
+    "successResponseSchemaRefs": [
+      "#/components/schemas/RequestSummaryResponseDto"
+    ]
+  },
+  {
+    "operationId": "UserSummaryPreferencesController_getEffectiveInterestSummaryPreference",
+    "clientName": "UserSummaryPreferencesController_getEffectiveInterestSummaryPreference",
+    "method": "GET",
+    "path": "/interests/{interestId}/user-summary-preference",
+    "tags": [
+      "user-summary-preferences"
+    ],
+    "summary": "Read the effective interest summary preference overlay for one user.",
+    "pathParameters": [
+      "interestId"
+    ],
+    "queryParameters": [
+      "subscriptionId",
+      "userId"
+    ],
+    "requiredHeaders": [
+      "x-tenant-id",
+      "x-workspace-id"
+    ],
+    "optionalHeaders": [
+      "authorization",
+      "x-workspace-role"
+    ],
+    "requiresTenantWorkspace": true,
+    "supportsBearerApiKey": true,
+    "usesDevOnlyWorkspaceRoleHeader": true,
+    "devOnlyWorkspaceRoleRequired": false,
+    "requestBodySchemaRef": null,
+    "successResponseSchemaRefs": []
+  },
+  {
+    "operationId": "UserSummaryPreferencesController_upsertInterestSummaryPreference",
+    "clientName": "UserSummaryPreferencesController_upsertInterestSummaryPreference",
+    "method": "PUT",
+    "path": "/interests/{interestId}/user-summary-preference",
+    "tags": [
+      "user-summary-preferences"
+    ],
+    "summary": "Create or update the interest-level summary preference overlay for one user.",
+    "pathParameters": [
+      "interestId"
+    ],
+    "queryParameters": [],
+    "requiredHeaders": [
+      "x-tenant-id",
+      "x-workspace-id"
+    ],
+    "optionalHeaders": [
+      "authorization",
+      "x-workspace-role"
+    ],
+    "requiresTenantWorkspace": true,
+    "supportsBearerApiKey": true,
+    "usesDevOnlyWorkspaceRoleHeader": true,
+    "devOnlyWorkspaceRoleRequired": false,
+    "requestBodySchemaRef": "#/components/schemas/UpsertInterestUserSummaryPreferenceRequestDto",
+    "successResponseSchemaRefs": []
+  },
+  {
     "operationId": "ReaderSummaryController_list",
     "clientName": "ReaderSummaryController_list",
     "method": "GET",
@@ -759,6 +1252,7 @@ export const mobileApiOperations = [
       "cadence",
       "cursor",
       "freshnessStatus",
+      "interestId",
       "limit",
       "memoryGuidanceApplied",
       "periodEndedAt",
@@ -767,7 +1261,6 @@ export const mobileApiOperations = [
       "scopeType",
       "subscriptionId",
       "timezone",
-      "topicId",
       "userId"
     ],
     "requiredHeaders": [
@@ -855,7 +1348,7 @@ export const mobileApiOperations = [
     "tags": [
       "reader-summaries"
     ],
-    "summary": "Request a readerSummary for a workspace or topic scope.",
+    "summary": "Request a readerSummary for a workspace or interest scope.",
     "pathParameters": [],
     "queryParameters": [],
     "requiredHeaders": [
@@ -939,8 +1432,8 @@ export const mobileApiOperations = [
       "userId"
     ],
     "queryParameters": [
+      "interestIds",
       "limit",
-      "topicIds",
       "windowEndedAt",
       "windowStartedAt"
     ],
@@ -974,9 +1467,9 @@ export const mobileApiOperations = [
       "userId"
     ],
     "queryParameters": [
+      "interestId",
       "limit",
-      "observedAfter",
-      "topicId"
+      "observedAfter"
     ],
     "requiredHeaders": [
       "x-tenant-id",
@@ -1398,8 +1891,8 @@ export const mobileApiOperations = [
     "pathParameters": [],
     "queryParameters": [
       "cursor",
-      "limit",
-      "topicId"
+      "interestId",
+      "limit"
     ],
     "requiredHeaders": [
       "x-tenant-id",
@@ -1575,469 +2068,6 @@ export const mobileApiOperations = [
     ]
   },
   {
-    "operationId": "TopicController_list",
-    "clientName": "TopicController_list",
-    "method": "GET",
-    "path": "/topics",
-    "tags": [
-      "topics"
-    ],
-    "summary": "List topics inside the current tenant/workspace.",
-    "pathParameters": [],
-    "queryParameters": [
-      "cursor",
-      "limit"
-    ],
-    "requiredHeaders": [
-      "x-tenant-id",
-      "x-workspace-id"
-    ],
-    "optionalHeaders": [
-      "authorization",
-      "x-workspace-role"
-    ],
-    "requiresTenantWorkspace": true,
-    "supportsBearerApiKey": true,
-    "usesDevOnlyWorkspaceRoleHeader": true,
-    "devOnlyWorkspaceRoleRequired": false,
-    "requestBodySchemaRef": null,
-    "successResponseSchemaRefs": [
-      "#/components/schemas/ListTopicsResponseDto"
-    ]
-  },
-  {
-    "operationId": "TopicController_create",
-    "clientName": "TopicController_create",
-    "method": "POST",
-    "path": "/topics",
-    "tags": [
-      "topics"
-    ],
-    "summary": "Create a topic inside the current tenant/workspace.",
-    "pathParameters": [],
-    "queryParameters": [],
-    "requiredHeaders": [
-      "idempotency-key",
-      "x-tenant-id",
-      "x-workspace-id"
-    ],
-    "optionalHeaders": [
-      "authorization",
-      "x-workspace-role"
-    ],
-    "requiresTenantWorkspace": true,
-    "supportsBearerApiKey": true,
-    "usesDevOnlyWorkspaceRoleHeader": true,
-    "devOnlyWorkspaceRoleRequired": false,
-    "requestBodySchemaRef": "#/components/schemas/CreateTopicRequestDto",
-    "successResponseSchemaRefs": [
-      "#/components/schemas/CreateTopicResponseDto"
-    ]
-  },
-  {
-    "operationId": "TopicController_archive",
-    "clientName": "TopicController_archive",
-    "method": "DELETE",
-    "path": "/topics/{topicId}",
-    "tags": [
-      "topics"
-    ],
-    "summary": "Archive a topic inside the current tenant/workspace.",
-    "pathParameters": [
-      "topicId"
-    ],
-    "queryParameters": [],
-    "requiredHeaders": [
-      "x-tenant-id",
-      "x-workspace-id"
-    ],
-    "optionalHeaders": [
-      "authorization",
-      "x-workspace-role"
-    ],
-    "requiresTenantWorkspace": true,
-    "supportsBearerApiKey": true,
-    "usesDevOnlyWorkspaceRoleHeader": true,
-    "devOnlyWorkspaceRoleRequired": false,
-    "requestBodySchemaRef": null,
-    "successResponseSchemaRefs": [
-      "#/components/schemas/TopicResponseDto"
-    ]
-  },
-  {
-    "operationId": "TopicController_update",
-    "clientName": "TopicController_update",
-    "method": "PATCH",
-    "path": "/topics/{topicId}",
-    "tags": [
-      "topics"
-    ],
-    "summary": "Update a topic inside the current tenant/workspace.",
-    "pathParameters": [
-      "topicId"
-    ],
-    "queryParameters": [],
-    "requiredHeaders": [
-      "x-tenant-id",
-      "x-workspace-id"
-    ],
-    "optionalHeaders": [
-      "authorization",
-      "x-workspace-role"
-    ],
-    "requiresTenantWorkspace": true,
-    "supportsBearerApiKey": true,
-    "usesDevOnlyWorkspaceRoleHeader": true,
-    "devOnlyWorkspaceRoleRequired": false,
-    "requestBodySchemaRef": "#/components/schemas/UpdateTopicRequestDto",
-    "successResponseSchemaRefs": [
-      "#/components/schemas/TopicResponseDto"
-    ]
-  },
-  {
-    "operationId": "SourceBindingController_list",
-    "clientName": "SourceBindingController_list",
-    "method": "GET",
-    "path": "/topics/{topicId}/source-bindings",
-    "tags": [
-      "source-bindings"
-    ],
-    "summary": "List source bindings for a topic.",
-    "pathParameters": [
-      "topicId"
-    ],
-    "queryParameters": [
-      "cursor",
-      "limit",
-      "providerKey",
-      "status"
-    ],
-    "requiredHeaders": [
-      "x-tenant-id",
-      "x-workspace-id"
-    ],
-    "optionalHeaders": [
-      "authorization",
-      "x-workspace-role"
-    ],
-    "requiresTenantWorkspace": true,
-    "supportsBearerApiKey": true,
-    "usesDevOnlyWorkspaceRoleHeader": true,
-    "devOnlyWorkspaceRoleRequired": false,
-    "requestBodySchemaRef": null,
-    "successResponseSchemaRefs": [
-      "#/components/schemas/ListSourceBindingsResponseDto"
-    ]
-  },
-  {
-    "operationId": "SourceBindingController_create",
-    "clientName": "SourceBindingController_create",
-    "method": "POST",
-    "path": "/topics/{topicId}/source-bindings",
-    "tags": [
-      "source-bindings"
-    ],
-    "summary": "Bind a production-safe source provider to a topic.",
-    "pathParameters": [
-      "topicId"
-    ],
-    "queryParameters": [],
-    "requiredHeaders": [
-      "idempotency-key",
-      "x-tenant-id",
-      "x-workspace-id"
-    ],
-    "optionalHeaders": [
-      "authorization",
-      "x-workspace-role"
-    ],
-    "requiresTenantWorkspace": true,
-    "supportsBearerApiKey": true,
-    "usesDevOnlyWorkspaceRoleHeader": true,
-    "devOnlyWorkspaceRoleRequired": false,
-    "requestBodySchemaRef": "#/components/schemas/BindSourceRequestDto",
-    "successResponseSchemaRefs": [
-      "#/components/schemas/BindSourceResponseDto"
-    ]
-  },
-  {
-    "operationId": "SourceBindingController_health",
-    "clientName": "SourceBindingController_health",
-    "method": "GET",
-    "path": "/topics/{topicId}/source-bindings/{sourceBindingId}/health",
-    "tags": [
-      "source-bindings"
-    ],
-    "summary": "Get source binding operational health.",
-    "pathParameters": [
-      "sourceBindingId",
-      "topicId"
-    ],
-    "queryParameters": [],
-    "requiredHeaders": [
-      "x-tenant-id",
-      "x-workspace-id"
-    ],
-    "optionalHeaders": [
-      "authorization",
-      "x-workspace-role"
-    ],
-    "requiresTenantWorkspace": true,
-    "supportsBearerApiKey": true,
-    "usesDevOnlyWorkspaceRoleHeader": true,
-    "devOnlyWorkspaceRoleRequired": false,
-    "requestBodySchemaRef": null,
-    "successResponseSchemaRefs": [
-      "#/components/schemas/SourceBindingHealthResponseDto"
-    ]
-  },
-  {
-    "operationId": "SourceBindingController_updateStatus",
-    "clientName": "SourceBindingController_updateStatus",
-    "method": "PATCH",
-    "path": "/topics/{topicId}/source-bindings/{sourceBindingId}/status",
-    "tags": [
-      "source-bindings"
-    ],
-    "summary": "Pause or resume a source binding.",
-    "pathParameters": [
-      "sourceBindingId",
-      "topicId"
-    ],
-    "queryParameters": [],
-    "requiredHeaders": [
-      "idempotency-key",
-      "x-tenant-id",
-      "x-workspace-id"
-    ],
-    "optionalHeaders": [
-      "authorization",
-      "x-workspace-role"
-    ],
-    "requiresTenantWorkspace": true,
-    "supportsBearerApiKey": true,
-    "usesDevOnlyWorkspaceRoleHeader": true,
-    "devOnlyWorkspaceRoleRequired": false,
-    "requestBodySchemaRef": "#/components/schemas/ChangeSourceBindingStatusRequestDto",
-    "successResponseSchemaRefs": [
-      "#/components/schemas/ChangeSourceBindingStatusResponseDto"
-    ]
-  },
-  {
-    "operationId": "SourceBindingController_dailyHistory",
-    "clientName": "SourceBindingController_dailyHistory",
-    "method": "GET",
-    "path": "/topics/{topicId}/source-bindings/daily-history",
-    "tags": [
-      "source-bindings"
-    ],
-    "summary": "List daily source scan history for a topic grouped by provider.",
-    "pathParameters": [
-      "topicId"
-    ],
-    "queryParameters": [
-      "days",
-      "providerKey"
-    ],
-    "requiredHeaders": [
-      "x-tenant-id",
-      "x-workspace-id"
-    ],
-    "optionalHeaders": [
-      "authorization",
-      "x-workspace-role"
-    ],
-    "requiresTenantWorkspace": true,
-    "supportsBearerApiKey": true,
-    "usesDevOnlyWorkspaceRoleHeader": true,
-    "devOnlyWorkspaceRoleRequired": false,
-    "requestBodySchemaRef": null,
-    "successResponseSchemaRefs": [
-      "#/components/schemas/ListTopicSourceDailyHistoryResponseDto"
-    ]
-  },
-  {
-    "operationId": "SourceBindingController_overview",
-    "clientName": "SourceBindingController_overview",
-    "method": "GET",
-    "path": "/topics/{topicId}/source-bindings/overview",
-    "tags": [
-      "source-bindings"
-    ],
-    "summary": "List source bindings with operational health for a topic.",
-    "pathParameters": [
-      "topicId"
-    ],
-    "queryParameters": [
-      "cursor",
-      "limit",
-      "providerKey",
-      "status"
-    ],
-    "requiredHeaders": [
-      "x-tenant-id",
-      "x-workspace-id"
-    ],
-    "optionalHeaders": [
-      "authorization",
-      "x-workspace-role"
-    ],
-    "requiresTenantWorkspace": true,
-    "supportsBearerApiKey": true,
-    "usesDevOnlyWorkspaceRoleHeader": true,
-    "devOnlyWorkspaceRoleRequired": false,
-    "requestBodySchemaRef": null,
-    "successResponseSchemaRefs": [
-      "#/components/schemas/ListSourceBindingOverviewResponseDto"
-    ]
-  },
-  {
-    "operationId": "SummaryPolicyController_get",
-    "clientName": "SummaryPolicyController_get",
-    "method": "GET",
-    "path": "/topics/{topicId}/summary-policy",
-    "tags": [
-      "summary-policies"
-    ],
-    "summary": "Get summary policy for a topic.",
-    "pathParameters": [
-      "topicId"
-    ],
-    "queryParameters": [],
-    "requiredHeaders": [
-      "x-tenant-id",
-      "x-workspace-id"
-    ],
-    "optionalHeaders": [
-      "authorization",
-      "x-workspace-role"
-    ],
-    "requiresTenantWorkspace": true,
-    "supportsBearerApiKey": true,
-    "usesDevOnlyWorkspaceRoleHeader": true,
-    "devOnlyWorkspaceRoleRequired": false,
-    "requestBodySchemaRef": null,
-    "successResponseSchemaRefs": []
-  },
-  {
-    "operationId": "SummaryPolicyController_upsert",
-    "clientName": "SummaryPolicyController_upsert",
-    "method": "PUT",
-    "path": "/topics/{topicId}/summary-policy",
-    "tags": [
-      "summary-policies"
-    ],
-    "summary": "Create or update summary policy for a topic.",
-    "pathParameters": [
-      "topicId"
-    ],
-    "queryParameters": [],
-    "requiredHeaders": [
-      "x-tenant-id",
-      "x-workspace-id"
-    ],
-    "optionalHeaders": [
-      "authorization",
-      "x-workspace-role"
-    ],
-    "requiresTenantWorkspace": true,
-    "supportsBearerApiKey": true,
-    "usesDevOnlyWorkspaceRoleHeader": true,
-    "devOnlyWorkspaceRoleRequired": false,
-    "requestBodySchemaRef": "#/components/schemas/UpsertSummaryPolicyRequestDto",
-    "successResponseSchemaRefs": []
-  },
-  {
-    "operationId": "SummaryRequestController_create",
-    "clientName": "SummaryRequestController_create",
-    "method": "POST",
-    "path": "/topics/{topicId}/summary-requests",
-    "tags": [
-      "summaries"
-    ],
-    "summary": "Request a summary for a topic.",
-    "pathParameters": [
-      "topicId"
-    ],
-    "queryParameters": [],
-    "requiredHeaders": [
-      "idempotency-key",
-      "x-tenant-id",
-      "x-workspace-id"
-    ],
-    "optionalHeaders": [
-      "authorization",
-      "x-workspace-role"
-    ],
-    "requiresTenantWorkspace": true,
-    "supportsBearerApiKey": true,
-    "usesDevOnlyWorkspaceRoleHeader": true,
-    "devOnlyWorkspaceRoleRequired": false,
-    "requestBodySchemaRef": null,
-    "successResponseSchemaRefs": [
-      "#/components/schemas/RequestSummaryResponseDto"
-    ]
-  },
-  {
-    "operationId": "UserSummaryPreferencesController_getEffectiveTopicSummaryPreference",
-    "clientName": "UserSummaryPreferencesController_getEffectiveTopicSummaryPreference",
-    "method": "GET",
-    "path": "/topics/{topicId}/user-summary-preference",
-    "tags": [
-      "user-summary-preferences"
-    ],
-    "summary": "Read the effective topic summary preference overlay for one user.",
-    "pathParameters": [
-      "topicId"
-    ],
-    "queryParameters": [
-      "subscriptionId",
-      "userId"
-    ],
-    "requiredHeaders": [
-      "x-tenant-id",
-      "x-workspace-id"
-    ],
-    "optionalHeaders": [
-      "authorization",
-      "x-workspace-role"
-    ],
-    "requiresTenantWorkspace": true,
-    "supportsBearerApiKey": true,
-    "usesDevOnlyWorkspaceRoleHeader": true,
-    "devOnlyWorkspaceRoleRequired": false,
-    "requestBodySchemaRef": null,
-    "successResponseSchemaRefs": []
-  },
-  {
-    "operationId": "UserSummaryPreferencesController_upsertTopicSummaryPreference",
-    "clientName": "UserSummaryPreferencesController_upsertTopicSummaryPreference",
-    "method": "PUT",
-    "path": "/topics/{topicId}/user-summary-preference",
-    "tags": [
-      "user-summary-preferences"
-    ],
-    "summary": "Create or update the topic-level summary preference overlay for one user.",
-    "pathParameters": [
-      "topicId"
-    ],
-    "queryParameters": [],
-    "requiredHeaders": [
-      "x-tenant-id",
-      "x-workspace-id"
-    ],
-    "optionalHeaders": [
-      "authorization",
-      "x-workspace-role"
-    ],
-    "requiresTenantWorkspace": true,
-    "supportsBearerApiKey": true,
-    "usesDevOnlyWorkspaceRoleHeader": true,
-    "devOnlyWorkspaceRoleRequired": false,
-    "requestBodySchemaRef": "#/components/schemas/UpsertTopicUserSummaryPreferenceRequestDto",
-    "successResponseSchemaRefs": []
-  },
-  {
     "operationId": "PublicApiAuditEventsController_list",
     "clientName": "PublicApiAuditEventsController_list",
     "method": "GET",
@@ -2178,7 +2208,7 @@ export const mobileApiOperations = [
     "supportsBearerApiKey": true,
     "usesDevOnlyWorkspaceRoleHeader": true,
     "devOnlyWorkspaceRoleRequired": false,
-    "requestBodySchemaRef": "#/components/schemas/ActivateTopicSourceRequestDto",
+    "requestBodySchemaRef": "#/components/schemas/ActivateInterestSourceRequestDto",
     "successResponseSchemaRefs": []
   },
   {

@@ -10,7 +10,8 @@ openapi_generator:
   unknown_enum_value: true
   include_tags:
     - auth
-    - topics
+    - interests
+    - interest-coverage-plans
     - sources
     - source-bindings
     - source-credentials

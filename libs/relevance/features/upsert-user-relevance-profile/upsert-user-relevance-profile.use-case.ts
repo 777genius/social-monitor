@@ -45,7 +45,7 @@ export class UpsertUserRelevanceProfileUseCase {
         userId,
         createdAt: now,
       })).update({
-        topicWeights: command.topicWeights,
+        interestWeights: command.interestWeights,
         sourceWeights: command.sourceWeights,
         keywordWeights: command.keywordWeights,
         mutedKeywords: command.mutedKeywords,

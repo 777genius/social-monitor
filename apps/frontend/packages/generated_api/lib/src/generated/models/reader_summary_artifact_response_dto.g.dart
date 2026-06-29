@@ -28,6 +28,13 @@ ReaderSummaryArtifactResponseDto _$ReaderSummaryArtifactResponseDtoFromJson(
     json['freshness'] as Map<String, dynamic>,
   ),
   headline: json['headline'] as String,
+  interestHighlights: (json['interestHighlights'] as List<dynamic>)
+      .map(
+        (e) => ReaderSummaryInterestHighlightDto.fromJson(
+          e as Map<String, dynamic>,
+        ),
+      )
+      .toList(),
   lineage: ReaderSummaryLineageDto.fromJson(
     json['lineage'] as Map<String, dynamic>,
   ),
@@ -66,12 +73,6 @@ ReaderSummaryArtifactResponseDto _$ReaderSummaryArtifactResponseDtoFromJson(
       )
       .toList(),
   tenantId: json['tenantId'] as String,
-  topicHighlights: (json['topicHighlights'] as List<dynamic>)
-      .map(
-        (e) =>
-            ReaderSummaryTopicHighlightDto.fromJson(e as Map<String, dynamic>),
-      )
-      .toList(),
   topStories: (json['topStories'] as List<dynamic>)
       .map((e) => ReaderSummaryTopStoryDto.fromJson(e as Map<String, dynamic>))
       .toList(),
@@ -102,6 +103,7 @@ Map<String, dynamic> _$ReaderSummaryArtifactResponseDtoToJson(
   'executiveSummary': instance.executiveSummary,
   'freshness': instance.freshness,
   'headline': instance.headline,
+  'interestHighlights': instance.interestHighlights,
   'lineage': instance.lineage,
   'noSignalReason': instance.noSignalReason,
   'period': instance.period,
@@ -117,7 +119,6 @@ Map<String, dynamic> _$ReaderSummaryArtifactResponseDtoToJson(
   'storyClusters': instance.storyClusters,
   'subscriptionId': instance.subscriptionId,
   'tenantId': instance.tenantId,
-  'topicHighlights': instance.topicHighlights,
   'topStories': instance.topStories,
   'usage': instance.usage,
   'userId': instance.userId,

@@ -12,7 +12,7 @@ export type FeedSignalView = FeedSignal;
 
 type BaselineCandidate = {
   readonly strength: number;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly providerKey: string;
   readonly sourceKey: string;
   readonly contentType: string;
@@ -136,7 +136,7 @@ const toSignalCandidate = (
       id: snapshot.id,
       metrics,
       strength: feedProviderMetricStrength(metrics),
-      topicId: snapshot.topicId,
+      interestId: snapshot.interestId,
       providerKey: metrics.providerKey,
       sourceKey: metrics.sourceKey,
       contentType: metrics.contentType,
@@ -151,7 +151,7 @@ const toBaselineCandidate = (
   now: Date,
 ): BaselineCandidate => ({
   strength: sample.strength,
-  topicId: sample.topicId,
+  interestId: sample.interestId,
   providerKey: sample.providerKey,
   sourceKey: sample.sourceKey,
   contentType: sample.contentType,
@@ -326,7 +326,7 @@ const exactKey = (
   cohortKey([
     "exact",
     baselineWindow,
-    candidate.topicId,
+    candidate.interestId,
     candidate.providerKey,
     candidate.sourceKey,
     candidate.contentType,
@@ -340,7 +340,7 @@ const sourceKey = (
   cohortKey([
     "source",
     baselineWindow,
-    candidate.topicId,
+    candidate.interestId,
     candidate.providerKey,
     candidate.sourceKey,
     candidate.contentType,
@@ -353,7 +353,7 @@ const providerAgeKey = (
   cohortKey([
     "provider_age",
     baselineWindow,
-    candidate.topicId,
+    candidate.interestId,
     candidate.providerKey,
     candidate.contentType,
     candidate.ageBucket,
@@ -366,7 +366,7 @@ const providerKey = (
   cohortKey([
     "provider",
     baselineWindow,
-    candidate.topicId,
+    candidate.interestId,
     candidate.providerKey,
     candidate.contentType,
   ]);

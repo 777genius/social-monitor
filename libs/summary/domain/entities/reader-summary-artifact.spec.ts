@@ -35,14 +35,14 @@ const baseArtifact = (
       storyKey: "url:example.com/a",
       representativeFeedItemId: "feed-1",
       duplicateFeedItemIds: ["feed-2"],
-      topicIds: ["topic-ai", "topic-github"],
+      interestIds: ["interest-ai", "interest-github"],
       providerKeys: ["reddit", "github"],
       score: 2.4,
       observedAtRange: {
         startedAt: new Date("2026-06-23T08:10:00.000Z"),
         endedAt: new Date("2026-06-23T08:30:00.000Z"),
       },
-      whyImportant: ["Repeated across monitored topics"],
+      whyImportant: ["Repeated across monitored interests"],
     },
   ],
   contextArtifacts: [],
@@ -53,18 +53,18 @@ const baseArtifact = (
     {
       storyClusterId: "story:one",
       title: "AI tooling is trending",
-      summary: "One story is repeated across multiple topics.",
-      topicIds: ["topic-ai", "topic-github"],
+      summary: "One story is repeated across multiple interests.",
+      interestIds: ["interest-ai", "interest-github"],
       providerKeys: ["reddit", "github"],
       citationIds: ["citation-1"],
     },
   ],
-  topicHighlights: [],
+  interestHighlights: [],
   repeatedSignals: [
     {
       storyClusterId: "story:one",
-      title: "Repeated across AI and GitHub topics",
-      topicIds: ["topic-ai", "topic-github"],
+      title: "Repeated across AI and GitHub interests",
+      interestIds: ["interest-ai", "interest-github"],
       citationIds: ["citation-1"],
     },
   ],
@@ -82,7 +82,7 @@ const baseArtifact = (
   confidence: {
     level: "medium",
     score: 0.64,
-    rationale: "Direct source item citation with repeated topic coverage.",
+    rationale: "Direct source item citation with repeated interest coverage.",
   },
   lineage: {
     promptVersion: "reader-summary.prompt.v1",
@@ -109,8 +109,8 @@ const readerTopRead = (
   providerKey: "reddit",
   providerName: "Reddit",
   primaryActionKind: "read_source",
-  reason: "Repeated across monitored topics.",
-  matchedTopicIds: ["topic-ai"],
+  reason: "Repeated across monitored interests.",
+  matchedInterestIds: ["interest-ai"],
   matchedRules: ["developer-tools"],
   signalScore: 0.91,
   confidence: {
@@ -120,7 +120,7 @@ const readerTopRead = (
   },
   confirmedProviderKeys: ["reddit"],
   providerMetrics: [],
-  whyImportant: ["Repeated across monitored topics"],
+  whyImportant: ["Repeated across monitored interests"],
   whyNow: "It appeared in the current monitoring window.",
   canonicalUrl: "https://reddit.com/r/OpenAI/comments/example",
   citationIds: ["citation-1"],
@@ -139,7 +139,7 @@ const readerContent = (
     warnings: [],
     isSingleSource: false,
   },
-  topicSections: [],
+  interestSections: [],
   sourceMix: [
     {
       providerKey: "reddit",
@@ -148,7 +148,7 @@ const readerContent = (
       storyClusterCount: 1,
       crossSourceClusterCount: 1,
       singleSourceOnly: false,
-      topicIds: ["topic-ai"],
+      interestIds: ["interest-ai"],
     },
   ],
   topReads: [readerTopRead()],
@@ -204,7 +204,7 @@ describe("ReaderSummaryArtifact", () => {
               storyClusterId: "story:one",
               title: "Untrusted story",
               summary: "This cites a missing source.",
-              topicIds: ["topic-ai"],
+              interestIds: ["interest-ai"],
               providerKeys: ["reddit"],
               citationIds: ["missing-citation"],
             },
@@ -248,7 +248,7 @@ describe("ReaderSummaryArtifact", () => {
                 storyClusterCount: 0,
                 crossSourceClusterCount: 0,
                 singleSourceOnly: true,
-                topicIds: ["topic-ai"],
+                interestIds: ["interest-ai"],
               },
             ],
           }),
@@ -271,7 +271,7 @@ describe("ReaderSummaryArtifact", () => {
                 storyClusterCount: 1,
                 crossSourceClusterCount: 1,
                 singleSourceOnly: false,
-                topicIds: ["topic-ai"],
+                interestIds: ["interest-ai"],
               },
             ],
           }),
@@ -369,7 +369,7 @@ describe("ReaderSummaryArtifact", () => {
                 storyClusterCount: 1,
                 crossSourceClusterCount: 1,
                 singleSourceOnly: false,
-                topicIds: ["topic-ai"],
+                interestIds: ["interest-ai"],
               },
             ],
             topReads: [
@@ -396,7 +396,7 @@ describe("ReaderSummaryArtifact", () => {
     ).toThrow("Reader summary top reads must not repeat the same reader item");
   });
 
-  it("rejects repeated reader content topic section items", () => {
+  it("rejects repeated reader content interest section items", () => {
     const repeatedItem = readerTopRead({
       title: "openai/codex",
       canonicalUrl: "https://github.com/openai/codex",
@@ -406,23 +406,23 @@ describe("ReaderSummaryArtifact", () => {
       ReaderSummaryArtifact.create(
         baseArtifact({
           content: readerContent({
-            topicSections: [
+            interestSections: [
               {
-                topicId: "topic-ai",
+                interestId: "interest-ai",
                 title: "AI tooling",
                 insight: "Codex is the strongest AI tooling read.",
                 items: [repeatedItem],
                 citationIds: ["citation-1"],
               },
               {
-                topicId: "topic-devtools",
+                interestId: "interest-devtools",
                 title: "Developer tooling",
                 insight: "The same repo must not be repeated as a new card.",
                 items: [
                   {
                     ...repeatedItem,
                     canonicalUrl:
-                      "https://github.com/OpenAI/Codex?ref=topic-section",
+                      "https://github.com/OpenAI/Codex?ref=interest-section",
                   },
                 ],
                 citationIds: ["citation-1"],
@@ -432,11 +432,11 @@ describe("ReaderSummaryArtifact", () => {
         }),
       ),
     ).toThrow(
-      "Reader summary topic sections must not repeat the same reader item",
+      "Reader summary interest sections must not repeat the same reader item",
     );
   });
 
-  it("rejects repeated reader content across top reads and topic sections", () => {
+  it("rejects repeated reader content across top reads and interest sections", () => {
     expect(() =>
       ReaderSummaryArtifact.create(
         baseArtifact({
@@ -447,16 +447,16 @@ describe("ReaderSummaryArtifact", () => {
                 canonicalUrl: "https://github.com/openai/codex",
               }),
             ],
-            topicSections: [
+            interestSections: [
               {
-                topicId: "topic-ai",
+                interestId: "interest-ai",
                 title: "AI tooling",
                 insight: "Codex is the strongest AI tooling read.",
                 items: [
                   readerTopRead({
                     title: "OpenAI Codex repo",
                     canonicalUrl:
-                      "https://github.com/OpenAI/Codex?utm_source=topic",
+                      "https://github.com/OpenAI/Codex?utm_source=interest",
                   }),
                 ],
                 citationIds: ["citation-1"],
@@ -482,7 +482,7 @@ describe("ReaderSummaryArtifact", () => {
             },
           ],
           topStories: [],
-          topicHighlights: [],
+          interestHighlights: [],
           repeatedSignals: [],
           risksAndUnknowns: [],
         },

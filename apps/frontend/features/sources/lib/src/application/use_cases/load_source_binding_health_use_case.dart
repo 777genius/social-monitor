@@ -13,12 +13,12 @@ final class LoadSourceBindingHealthUseCase {
     LoadSourceBindingHealthQuery query,
   ) {
     if (!query.scope.isValid ||
-        !query.topicId.isValid ||
+        !query.interestId.isValid ||
         !query.sourceBindingId.isValid) {
       return Future.value(
         const Result.failure(
           ValidationFailure(
-            message: 'Workspace scope, topic and binding are required',
+            message: 'Workspace scope, interest and binding are required',
             code: 'source_bindings.health_request_invalid',
           ),
         ),

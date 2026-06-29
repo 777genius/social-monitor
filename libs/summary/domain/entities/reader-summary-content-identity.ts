@@ -41,15 +41,15 @@ export const assertUniqueReaderSummaryItems = (
 export const assertUniqueReaderSummaryContentItems = (
   content: {
     readonly topReads: readonly TopRead[];
-    readonly topicSections: readonly {
+    readonly interestSections: readonly {
       readonly items: readonly TopRead[];
     }[];
   },
   citationById: ReadonlyMap<string, ReaderSummaryCitation>,
 ): void => {
   assertUniqueReaderSummaryItems(
-    content.topicSections.flatMap((section) => section.items),
-    "Reader summary topic sections",
+    content.interestSections.flatMap((section) => section.items),
+    "Reader summary interest sections",
     citationById,
   );
   assertUniqueReaderSummaryItems(
@@ -60,7 +60,7 @@ export const assertUniqueReaderSummaryContentItems = (
   assertUniqueReaderSummaryItems(
     [
       ...content.topReads,
-      ...content.topicSections.flatMap((section) => section.items),
+      ...content.interestSections.flatMap((section) => section.items),
     ],
     "Reader summary content",
     citationById,

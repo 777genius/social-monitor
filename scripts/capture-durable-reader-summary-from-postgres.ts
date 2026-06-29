@@ -99,7 +99,7 @@ async function main(): Promise<void> {
         tone: "analytical",
         maxStories,
         includeRisks: true,
-        includeTopicHighlights: true,
+        includeInterestHighlights: true,
         includeRepeatedSignals: true,
         dedupeStrategy: "canonical_url_then_title",
         customInstructions:

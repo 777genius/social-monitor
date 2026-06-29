@@ -38,7 +38,7 @@ export class ScheduleDueDigestsUseCase {
         workspaceId: snapshot.workspaceId,
         recipientKey: snapshot.recipientKey,
         channel: snapshot.channel,
-        topicIds: snapshot.topicIds,
+        interestIds: snapshot.interestIds,
         windowStartedAt,
         windowEndedAt,
         includeNoSignal: snapshot.includeNoSignal,

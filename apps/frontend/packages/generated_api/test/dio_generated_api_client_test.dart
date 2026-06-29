@@ -56,7 +56,7 @@ void main() {
   });
 
   test('maps dio problem details responses to typed failures', () async {
-    final requestOptions = RequestOptions(path: '/topics');
+    final requestOptions = RequestOptions(path: '/interests');
 
     final result = await client.send<String>(validRequest, () async {
       throw DioException(
@@ -81,7 +81,7 @@ void main() {
   });
 
   test('maps dio transport failures to network failures', () async {
-    final requestOptions = RequestOptions(path: '/topics');
+    final requestOptions = RequestOptions(path: '/interests');
 
     final result = await client.send<String>(validRequest, () async {
       throw DioException(

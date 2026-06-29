@@ -42,7 +42,7 @@ abstract class ReaderSummariesClient {
     @Query('periodEndedAt') String? periodEndedAt,
     @Query('periodStartedAt') String? periodStartedAt,
     @Query('cadence') Cadence? cadence,
-    @Query('topicId') String? topicId,
+    @Query('interestId') String? interestId,
     @Query('scopeType') ScopeType? scopeType,
     @Header('authorization') String? authorization,
     @Header('x-workspace-role') String? xWorkspaceRole,
@@ -77,7 +77,7 @@ abstract class ReaderSummariesClient {
     @Header('x-workspace-role') String? xWorkspaceRole,
   });
 
-  /// Request a readerSummary for a workspace or topic scope.
+  /// Request a readerSummary for a workspace or interest scope.
   ///
   /// [authorization] - Optional Bearer API key. Requires write:summaries. If supplied, x-workspace-role is not required.
   ///

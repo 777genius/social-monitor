@@ -20,12 +20,54 @@ class _SummariesClient implements SummariesClient {
   final ParseErrorLogger? errorLogger;
 
   @override
+  Future<RequestSummaryResponseDto> summaryRequestControllerCreate({
+    required String interestId,
+    required String idempotencyKey,
+    required String xWorkspaceId,
+    required String xTenantId,
+    String? authorization,
+    String? xWorkspaceRole,
+  }) async {
+    final _extra = <String, dynamic>{};
+    final queryParameters = <String, dynamic>{};
+    queryParameters.removeWhere((k, v) => v == null);
+    final _headers = <String, dynamic>{
+      r'idempotency-key': idempotencyKey,
+      r'x-workspace-id': xWorkspaceId,
+      r'x-tenant-id': xTenantId,
+      r'authorization': authorization,
+      r'x-workspace-role': xWorkspaceRole,
+    };
+    _headers.removeWhere((k, v) => v == null);
+    const Map<String, dynamic>? _data = null;
+    final _options = _setStreamType<RequestSummaryResponseDto>(
+      Options(method: 'POST', headers: _headers, extra: _extra)
+          .compose(
+            _dio.options,
+            '/interests/${interestId}/summary-requests',
+            queryParameters: queryParameters,
+            data: _data,
+          )
+          .copyWith(baseUrl: _combineBaseUrls(_dio.options.baseUrl, baseUrl)),
+    );
+    final _result = await _dio.fetch<Map<String, Object?>>(_options);
+    late RequestSummaryResponseDto _value;
+    try {
+      _value = RequestSummaryResponseDto.fromJson(_result.data!);
+    } on Object catch (e, s) {
+      errorLogger?.logError(e, s, _options, response: _result);
+      rethrow;
+    }
+    return _value;
+  }
+
+  @override
   Future<ListSummariesResponseDto> summaryControllerList({
     required String xWorkspaceId,
     required String xTenantId,
     String? cursor,
     num? limit,
-    String? topicId,
+    String? interestId,
     String? authorization,
     String? xWorkspaceRole,
   }) async {
@@ -33,7 +75,7 @@ class _SummariesClient implements SummariesClient {
     final queryParameters = <String, dynamic>{
       r'cursor': cursor,
       r'limit': limit,
-      r'topicId': topicId,
+      r'interestId': interestId,
     };
     queryParameters.removeWhere((k, v) => v == null);
     final _headers = <String, dynamic>{
@@ -271,48 +313,6 @@ class _SummariesClient implements SummariesClient {
     late SummaryJobStatusResponseDto _value;
     try {
       _value = SummaryJobStatusResponseDto.fromJson(_result.data!);
-    } on Object catch (e, s) {
-      errorLogger?.logError(e, s, _options, response: _result);
-      rethrow;
-    }
-    return _value;
-  }
-
-  @override
-  Future<RequestSummaryResponseDto> summaryRequestControllerCreate({
-    required String topicId,
-    required String idempotencyKey,
-    required String xWorkspaceId,
-    required String xTenantId,
-    String? authorization,
-    String? xWorkspaceRole,
-  }) async {
-    final _extra = <String, dynamic>{};
-    final queryParameters = <String, dynamic>{};
-    queryParameters.removeWhere((k, v) => v == null);
-    final _headers = <String, dynamic>{
-      r'idempotency-key': idempotencyKey,
-      r'x-workspace-id': xWorkspaceId,
-      r'x-tenant-id': xTenantId,
-      r'authorization': authorization,
-      r'x-workspace-role': xWorkspaceRole,
-    };
-    _headers.removeWhere((k, v) => v == null);
-    const Map<String, dynamic>? _data = null;
-    final _options = _setStreamType<RequestSummaryResponseDto>(
-      Options(method: 'POST', headers: _headers, extra: _extra)
-          .compose(
-            _dio.options,
-            '/topics/${topicId}/summary-requests',
-            queryParameters: queryParameters,
-            data: _data,
-          )
-          .copyWith(baseUrl: _combineBaseUrls(_dio.options.baseUrl, baseUrl)),
-    );
-    final _result = await _dio.fetch<Map<String, Object?>>(_options);
-    late RequestSummaryResponseDto _value;
-    try {
-      _value = RequestSummaryResponseDto.fromJson(_result.data!);
     } on Object catch (e, s) {
       errorLogger?.logError(e, s, _options, response: _result);
       rethrow;

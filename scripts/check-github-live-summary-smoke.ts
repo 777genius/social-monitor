@@ -115,7 +115,7 @@ const assert: (condition: unknown, message: string) => asserts condition = (cond
 const main = async (): Promise<void> => {
   const tenant = tenantId('tenant-github-live-summary-smoke');
   const workspace = workspaceId('workspace-github-live-summary-smoke');
-  const topicId = 'topic-github-live-summary-smoke';
+  const interestId = 'topic-github-live-summary-smoke';
   const sourceBindingId = 'github-live-summary-binding';
   const metrics = new InMemoryMetricsRecorder();
   const feedItems = new InMemoryFeedItemReadRepository();
@@ -148,7 +148,7 @@ const main = async (): Promise<void> => {
       tenantId: tenant,
       workspaceId: workspace,
       scanJobId: 'scan-github-live-summary-smoke',
-      topicId,
+      interestId,
       sourceBindingId,
       scanPolicyId: 'github-live-summary-policy',
       providerKey: GITHUB_ISSUES_PROVIDER_KEY,
@@ -169,7 +169,7 @@ const main = async (): Promise<void> => {
   const feed = await feedItems.list({
     tenantId: tenant,
     workspaceId: workspace,
-    topicId,
+    interestId,
     limit: 10,
   });
   assert(feed.items.length > 0, 'live GitHub scan must produce feed items for summary evidence');
@@ -190,7 +190,7 @@ const main = async (): Promise<void> => {
     await requestSummary.execute({
       tenantId: tenant,
       workspaceId: workspace,
-      topicId,
+      interestId,
       idempotencyKey: 'github-live-summary-idempotency-key',
       correlationId: 'corr-github-live-summary-smoke',
     }),

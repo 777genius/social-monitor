@@ -3,7 +3,7 @@ import type { UserSummaryPreferenceRepositoryPort } from '../../ports';
 
 export class InMemoryUserSummaryPreferenceRepository implements UserSummaryPreferenceRepositoryPort {
   private readonly preferencesBySubscription = new Map<string, UserSummaryPreference>();
-  private readonly preferencesByTopic = new Map<string, UserSummaryPreference>();
+  private readonly preferencesByInterest = new Map<string, UserSummaryPreference>();
 
   async save(preference: UserSummaryPreference): Promise<void> {
     const snapshot = preference.toSnapshot();
@@ -15,9 +15,9 @@ export class InMemoryUserSummaryPreferenceRepository implements UserSummaryPrefe
       );
     }
 
-    if (snapshot.topicId !== undefined) {
-      this.preferencesByTopic.set(
-        `${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.userId}:${snapshot.topicId}`,
+    if (snapshot.interestId !== undefined) {
+      this.preferencesByInterest.set(
+        `${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.userId}:${snapshot.interestId}`,
         preference,
       );
     }
@@ -31,11 +31,11 @@ export class InMemoryUserSummaryPreferenceRepository implements UserSummaryPrefe
     ) ?? null;
   }
 
-  async findByTopic(
-    params: Parameters<UserSummaryPreferenceRepositoryPort['findByTopic']>[0],
+  async findByInterest(
+    params: Parameters<UserSummaryPreferenceRepositoryPort['findByInterest']>[0],
   ): Promise<UserSummaryPreference | null> {
-    return this.preferencesByTopic.get(
-      `${params.tenantId}:${params.workspaceId}:${params.userId}:${params.topicId}`,
+    return this.preferencesByInterest.get(
+      `${params.tenantId}:${params.workspaceId}:${params.userId}:${params.interestId}`,
     ) ?? null;
   }
 
@@ -55,11 +55,11 @@ export class InMemoryUserSummaryPreferenceRepository implements UserSummaryPrefe
       }
     }
 
-    return this.findByTopic({
+    return this.findByInterest({
       tenantId: params.tenantId,
       workspaceId: params.workspaceId,
       userId: params.userId,
-      topicId: params.topicId,
+      interestId: params.interestId,
     });
   }
 }

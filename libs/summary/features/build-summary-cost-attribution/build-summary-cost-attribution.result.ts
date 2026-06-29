@@ -12,7 +12,7 @@ export type SummaryCostAttributionRow = {
   readonly datasetVersion: string;
   readonly tenantId: string;
   readonly workspaceId: string;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly sourceWindowId: string;
   readonly provider: string;
   readonly model: string;
@@ -22,10 +22,10 @@ export type SummaryCostAttributionRow = {
   readonly maxFixtureCostUsd: number;
 };
 
-export type SummaryCostAttributionTopicAggregate = {
+export type SummaryCostAttributionInterestAggregate = {
   readonly tenantId: string;
   readonly workspaceId: string;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly fixtureCount: number;
   readonly usage: SummaryCostAttributionUsage;
 };
@@ -52,7 +52,7 @@ export type SummaryCostAttributionReport = {
   };
   readonly rows: readonly SummaryCostAttributionRow[];
   readonly aggregates: {
-    readonly byTenantWorkspaceTopic: readonly SummaryCostAttributionTopicAggregate[];
+    readonly byTenantWorkspaceInterest: readonly SummaryCostAttributionInterestAggregate[];
     readonly byProviderModel: readonly SummaryCostAttributionModelAggregate[];
   };
   readonly violations: readonly string[];

@@ -9,6 +9,7 @@ import 'reader_summary_confidence_dto.dart';
 import 'reader_summary_context_artifact_dto.dart';
 import 'reader_summary_coverage_summary_dto.dart';
 import 'reader_summary_freshness_dto.dart';
+import 'reader_summary_interest_highlight_dto.dart';
 import 'reader_summary_lineage_dto.dart';
 import 'reader_summary_period_dto.dart';
 import 'reader_summary_personalization_dto.dart';
@@ -20,7 +21,6 @@ import 'reader_summary_scope_dto.dart';
 import 'reader_summary_source_window_dto.dart';
 import 'reader_summary_story_cluster_dto.dart';
 import 'reader_summary_top_story_dto.dart';
-import 'reader_summary_topic_highlight_dto.dart';
 import 'reader_summary_usage_dto.dart';
 
 part 'reader_summary_response_dto.g.dart';
@@ -34,6 +34,7 @@ class ReaderSummaryResponseDto {
     required this.executiveSummary,
     required this.freshness,
     required this.headline,
+    required this.interestHighlights,
     required this.lineage,
     required this.period,
     required this.qualityFlags,
@@ -46,7 +47,6 @@ class ReaderSummaryResponseDto {
     required this.sourceWindow,
     required this.storyClusters,
     required this.tenantId,
-    required this.topicHighlights,
     required this.topStories,
     required this.usage,
     required this.workspaceId,
@@ -67,6 +67,7 @@ class ReaderSummaryResponseDto {
   final String executiveSummary;
   final ReaderSummaryFreshnessDto freshness;
   final String headline;
+  final List<ReaderSummaryInterestHighlightDto> interestHighlights;
   final ReaderSummaryLineageDto lineage;
   final String? noSignalReason;
   final ReaderSummaryPeriodDto period;
@@ -82,7 +83,6 @@ class ReaderSummaryResponseDto {
   final List<ReaderSummaryStoryClusterDto> storyClusters;
   final String? subscriptionId;
   final String tenantId;
-  final List<ReaderSummaryTopicHighlightDto> topicHighlights;
   final List<ReaderSummaryTopStoryDto> topStories;
   final ReaderSummaryUsageDto usage;
   final String? userId;

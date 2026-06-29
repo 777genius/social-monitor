@@ -71,13 +71,13 @@ export type ReaderSummaryCoverageView = {
   readonly topReadCount: number;
   readonly citationCount: number;
   readonly providerCount: number;
-  readonly topicCount: number;
+  readonly interestCount: number;
   readonly duplicateFeedItemCount: number;
   readonly crossSourceClusterCount: number;
   readonly hasCrossProviderEvidence: boolean;
   readonly isSingleSource: boolean;
   readonly topProviderKeys: readonly string[];
-  readonly topTopicIds: readonly string[];
+  readonly topInterestIds: readonly string[];
   readonly windowStartedAt: string;
   readonly windowEndedAt: string;
   readonly freshnessStatus: ReaderSummaryFreshnessView["status"];
@@ -94,7 +94,7 @@ export type ReaderSummaryFreshnessView =
       readonly staleMarkedAt: string;
       readonly reason:
         | "new_evidence_after_window"
-        | "topic_bindings_changed"
+        | "interest_bindings_changed"
         | "reader_summary_policy_changed"
         | "ranking_policy_changed";
       readonly newestFeedItemId?: string;
@@ -112,7 +112,7 @@ export const presentReaderSummaryArtifact = (
       headline: snapshot.headline,
       executiveSummary: snapshot.executiveSummary,
       topStories: snapshot.topStories,
-      topicHighlights: snapshot.topicHighlights,
+      interestHighlights: snapshot.interestHighlights,
       repeatedSignals: snapshot.repeatedSignals,
       risksAndUnknowns: snapshot.risksAndUnknowns,
       citationMap: snapshot.citationMap,
@@ -172,8 +172,8 @@ const buildCoverageView = (
   content: ReaderSummaryContent,
   freshness: ReaderSummaryFreshnessView,
 ): ReaderSummaryCoverageView => {
-  const topicIds = countBy(
-    snapshot.storyClusters.flatMap((cluster) => cluster.topicIds),
+  const interestIds = countBy(
+    snapshot.storyClusters.flatMap((cluster) => cluster.interestIds),
   );
   const topProviderKeys = content.sourceMix
     .filter(
@@ -209,7 +209,7 @@ const buildCoverageView = (
     topReadCount: content.topReads.length,
     citationCount: snapshot.citationMap.length,
     providerCount: content.sourceMix.length,
-    topicCount: topicIds.size,
+    interestCount: interestIds.size,
     duplicateFeedItemCount: snapshot.storyClusters.reduce(
       (total, cluster) => total + cluster.duplicateFeedItemIds.length,
       0,
@@ -224,13 +224,13 @@ const buildCoverageView = (
       content.sourceMix.length <= 1 ||
       content.sourceMix.every((source) => source.singleSourceOnly),
     topProviderKeys,
-    topTopicIds: [...topicIds.entries()]
+    topInterestIds: [...interestIds.entries()]
       .sort((left, right) => {
         const countDiff = right[1] - left[1];
         return countDiff === 0 ? left[0].localeCompare(right[0]) : countDiff;
       })
       .slice(0, 5)
-      .map(([topicId]) => topicId),
+      .map(([interestId]) => interestId),
     windowStartedAt: snapshot.sourceWindow.startedAt.toISOString(),
     windowEndedAt: snapshot.sourceWindow.endedAt.toISOString(),
     freshnessStatus: freshness.status,

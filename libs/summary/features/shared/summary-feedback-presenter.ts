@@ -5,7 +5,7 @@ export type SummaryFeedbackView = {
   readonly tenantId: string;
   readonly workspaceId: string;
   readonly summaryId: string;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly submittedBy: string;
   readonly rating: number;
   readonly category: string;
@@ -24,14 +24,14 @@ export const presentSummaryFeedback = (feedback: SummaryFeedback): SummaryFeedba
     tenantId: snapshot.tenantId,
     workspaceId: snapshot.workspaceId,
     summaryId: snapshot.summaryId,
-    topicId: snapshot.topicId,
+    interestId: snapshot.interestId,
     submittedBy: snapshot.submittedBy,
     rating: snapshot.rating,
     category: snapshot.category,
     comment: snapshot.comment,
     evidence: {
       summaryId: snapshot.evidence.summaryId,
-      topicId: snapshot.evidence.topicId,
+      interestId: snapshot.evidence.interestId,
       citationId: snapshot.evidence.citationId,
       feedItemId: snapshot.evidence.feedItemId,
       sourceItemId: snapshot.evidence.sourceItemId,

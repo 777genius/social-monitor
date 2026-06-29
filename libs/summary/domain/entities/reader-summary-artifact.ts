@@ -6,12 +6,12 @@ import type { ReaderSummarySnapshot } from "./reader-summary-snapshot";
 import type { SourceMixEntry } from "./source-mix-entry";
 import type {
   ReaderSummaryRisk,
-  ReaderTopicSection,
+  ReaderInterestSection,
   ReaderTrendDelta,
   RepeatedSignal,
   TopRead,
   TopReadCandidate,
-  TopicHighlight,
+  InterestHighlight,
 } from "./top-read";
 import type { ReaderSummaryScope } from "../value-objects/reader-summary-scope";
 import type { ReaderSummaryPeriod } from "../value-objects/reader-summary-period";
@@ -32,11 +32,11 @@ export { assertReaderSummaryCitationsAgainstEvidence };
 
 export type ReaderSummaryProviderMetric = ProviderMetric;
 export type ReaderSummaryTopStory = TopReadCandidate;
-export type ReaderSummaryTopicHighlight = TopicHighlight;
+export type ReaderSummaryInterestHighlight = InterestHighlight;
 export type ReaderSummaryRepeatedSignal = RepeatedSignal;
 export type ReaderSummaryItemConfidence = TopRead["confidence"];
 export type ReaderSummaryItem = TopRead;
-export type ReaderSummaryTopicSection = ReaderTopicSection;
+export type ReaderSummaryInterestSection = ReaderInterestSection;
 export type ReaderSummarySourceMixEntry = SourceMixEntry;
 export type ReaderSummaryTrendDelta = ReaderTrendDelta;
 export type ReaderSummaryNextAction = ReaderAction;
@@ -91,7 +91,7 @@ export type ReaderSummaryArtifactProps = {
   readonly executiveSummary: string;
   readonly content?: ReaderSummaryContent;
   readonly topStories: readonly ReaderSummaryTopStory[];
-  readonly topicHighlights: readonly ReaderSummaryTopicHighlight[];
+  readonly interestHighlights: readonly ReaderSummaryInterestHighlight[];
   readonly repeatedSignals: readonly ReaderSummaryRepeatedSignal[];
   readonly risksAndUnknowns: readonly ReaderSummaryRisk[];
   readonly citationMap: readonly ReaderSummaryCitation[];

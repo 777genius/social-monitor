@@ -98,7 +98,7 @@ class ReaderSummaryView extends StatelessWidget {
   bool _hasEvidenceAndQuality(ReaderSummaryContent content, bool isDegraded) {
     return _hasQualitySignal(content.qualityState, isDegraded) ||
         content.sourceMix.isNotEmpty ||
-        content.topicSections.isNotEmpty ||
+        content.interestSections.isNotEmpty ||
         _hasTrendDelta(content.trendDelta) ||
         content.openQuestions.isNotEmpty ||
         content.risks.isNotEmpty;
@@ -126,7 +126,7 @@ class _EvidenceAndQualityDisclosure extends StatelessWidget {
           tilePadding: EdgeInsets.zero,
           childrenPadding: EdgeInsets.zero,
           title: Text(
-            'Review source mix, topic context and reliability checks',
+            'Review source mix, interest context and reliability checks',
             style: Theme.of(context).textTheme.labelMedium?.copyWith(
               fontWeight: FontWeight.w800,
               letterSpacing: 0,
@@ -144,9 +144,9 @@ class _EvidenceAndQualityDisclosure extends StatelessWidget {
               ReaderSummaryCoverageSummary(entries: content.sourceMix),
               const SizedBox(height: AppSpacing.md),
             ],
-            if (content.topicSections.isNotEmpty) ...[
-              ReaderSummaryTopicSections(
-                sections: content.topicSections.take(3).toList(),
+            if (content.interestSections.isNotEmpty) ...[
+              ReaderSummaryInterestSections(
+                sections: content.interestSections.take(3).toList(),
               ),
               const SizedBox(height: AppSpacing.md),
             ],

@@ -87,7 +87,7 @@ class FakeSummaryPolicies implements SummaryPolicyRepositoryPort {
     void policy;
   }
 
-  async findByTopic(): Promise<SummaryPolicy | null> {
+  async findByInterest(): Promise<SummaryPolicy | null> {
     return null;
   }
 }
@@ -102,7 +102,7 @@ class EmptyEvidenceSelector implements SummaryEvidenceSelectorPort {
   async select(params: Parameters<SummaryEvidenceSelectorPort['select']>[0]): Promise<SummaryEvidenceSelection> {
     return {
       sourceWindow: {
-        windowId: `${params.topicId}:empty`,
+        windowId: `${params.interestId}:empty`,
         startedAt: new Date('2026-06-06T00:00:00.000Z'),
         endedAt: new Date('2026-06-06T00:00:01.000Z'),
         selectedFeedItemIds: [],
@@ -118,7 +118,7 @@ class SelectedEvidenceSelector implements SummaryEvidenceSelectorPort {
 
     return {
       sourceWindow: {
-        windowId: 'topic-1:selected',
+        windowId: 'interest-1:selected',
         startedAt: new Date('2026-06-06T00:00:00.000Z'),
         endedAt: new Date('2026-06-06T00:00:01.000Z'),
         selectedFeedItemIds: ['feed-1'],
@@ -171,7 +171,7 @@ class NoSignalSummaryModel implements SummaryModelPort {
       route,
       draft: {
         headline: 'No reliable signal yet',
-        executiveSummary: 'No eligible evidence items were available for this topic window.',
+        executiveSummary: 'No eligible evidence items were available for this interest window.',
         keyPoints: [],
         risksAndUnknowns: [
           {
@@ -185,7 +185,7 @@ class NoSignalSummaryModel implements SummaryModelPort {
         confidence: {
           level: 'none',
           score: 0,
-          rationale: 'No evidence was selected for this topic window.',
+          rationale: 'No evidence was selected for this interest window.',
         },
         lineage: {
           promptVersion: route.promptVersion,
@@ -200,7 +200,7 @@ class NoSignalSummaryModel implements SummaryModelPort {
           outputTokens: 0,
           estimatedCostUsd: 0,
         },
-        noSignalReason: 'No eligible evidence items selected for this topic.',
+        noSignalReason: 'No eligible evidence items selected for this interest.',
       },
     };
   }
@@ -377,7 +377,7 @@ describe('ExecuteSummaryJobUseCase', () => {
         id: 'summary-job-1',
         tenantId: tenant,
         workspaceId: workspace,
-        topicId: 'topic-1',
+        interestId: 'interest-1',
         idempotencyKey: 'summary-request-1',
         requestedAt: new Date('2026-06-06T00:00:00.000Z'),
       }),
@@ -444,7 +444,7 @@ describe('ExecuteSummaryJobUseCase', () => {
         id: 'summary-job-invalid-citation',
         tenantId: tenant,
         workspaceId: workspace,
-        topicId: 'topic-1',
+        interestId: 'interest-1',
         idempotencyKey: 'summary-request-invalid-citation',
         requestedAt: new Date('2026-06-06T00:00:00.000Z'),
       }),
@@ -519,7 +519,7 @@ describe('ExecuteSummaryJobUseCase', () => {
         id: 'summary-job-memory',
         tenantId: tenant,
         workspaceId: workspace,
-        topicId: 'topic-1',
+        interestId: 'interest-1',
         idempotencyKey: 'summary-request-memory',
         requestedAt: new Date('2026-06-06T00:00:00.000Z'),
         userId: 'user-1',
@@ -550,7 +550,7 @@ describe('ExecuteSummaryJobUseCase', () => {
     expect(memory.buildQueries[0]).toMatchObject({
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       userId: 'user-1',
       subscriptionId: 'subscription-1',
     });
@@ -578,7 +578,7 @@ describe('ExecuteSummaryJobUseCase', () => {
         id: 'summary-job-memory-failure',
         tenantId: tenant,
         workspaceId: workspace,
-        topicId: 'topic-1',
+        interestId: 'interest-1',
         idempotencyKey: 'summary-request-memory-failure',
         requestedAt: new Date('2026-06-06T00:00:00.000Z'),
         userId: 'user-1',
@@ -633,7 +633,7 @@ describe('ExecuteSummaryJobUseCase', () => {
         id: 'summary-job-invalid-provider-schema',
         tenantId: tenant,
         workspaceId: workspace,
-        topicId: 'topic-1',
+        interestId: 'interest-1',
         idempotencyKey: 'summary-request-invalid-provider-schema',
         requestedAt: new Date('2026-06-06T00:00:00.000Z'),
       }),
@@ -695,7 +695,7 @@ describe('ExecuteSummaryJobUseCase', () => {
         id: 'summary-job-transient',
         tenantId: tenant,
         workspaceId: workspace,
-        topicId: 'topic-1',
+        interestId: 'interest-1',
         idempotencyKey: 'summary-request-transient',
         requestedAt: new Date('2026-06-06T00:00:00.000Z'),
       }),

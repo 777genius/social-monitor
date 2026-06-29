@@ -33,7 +33,7 @@ describe("readerSummaryArtifactViewFromReaderSummaryView", () => {
           storyKey: "url:github.com/openai/codex",
           representativeFeedItemId: "feed-1",
           duplicateFeedItemIds: [],
-          topicIds: ["ai-tools"],
+          interestIds: ["ai-tools"],
           providerKeys: ["github-repo-radar"],
           score: 0.9,
           observedAtRange: {
@@ -60,12 +60,12 @@ describe("readerSummaryArtifactViewFromReaderSummaryView", () => {
           storyClusterId: "cluster-1",
           title: "openai/codex leads repo radar",
           summary: "The repository gained attention in the selected window.",
-          topicIds: ["ai-tools"],
+          interestIds: ["ai-tools"],
           providerKeys: ["github-repo-radar"],
           citationIds: ["citation-1"],
         },
       ],
-      topicHighlights: [],
+      interestHighlights: [],
       repeatedSignals: [],
       risksAndUnknowns: [],
       citationMap: [

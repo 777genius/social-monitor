@@ -15,13 +15,13 @@ class FeedFeatureRoute extends StatelessWidget {
     super.key,
     required Object generatedApiRuntime,
     required WorkspaceScope scope,
-    String? topicId,
-    String? topicTitle,
+    String? interestId,
+    String? interestTitle,
   }) : _module = FeedFeatureModule.generatedApi(
          generatedApiRuntime: generatedApiRuntime,
          scope: scope,
-         initialTopicId: topicId,
-         initialTopicTitle: topicTitle,
+         initialInterestId: interestId,
+         initialInterestTitle: interestTitle,
        );
 
   final FeedFeatureModule _module;

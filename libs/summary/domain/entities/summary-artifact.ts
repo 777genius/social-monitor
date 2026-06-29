@@ -59,7 +59,7 @@ export type SummaryArtifactProps = {
   readonly summaryId: string;
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly userId?: string;
   readonly subscriptionId?: string;
   readonly sourceWindow: SummarySourceWindow;
@@ -100,8 +100,8 @@ export class SummaryArtifact {
       throw new Error('Unsupported summary schema version');
     }
 
-    if (props.topicId.trim().length === 0) {
-      throw new Error('Summary topic id must be non-empty');
+    if (props.interestId.trim().length === 0) {
+      throw new Error('Summary interest id must be non-empty');
     }
 
     if ((props.userId ?? '').trim().length === 0 && props.subscriptionId !== undefined) {

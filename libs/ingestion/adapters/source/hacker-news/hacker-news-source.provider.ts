@@ -15,6 +15,13 @@ import type {
   HackerNewsListing,
   HackerNewsStory,
 } from "./hacker-news-client.port";
+import {
+  compactUnique,
+  formatHackerNewsScanPassWarning,
+  readScanPasses,
+  sourceKeyForPass,
+  type HackerNewsScanPass,
+} from "./hacker-news-scan-pass-support";
 
 const capabilityProfile: SourceCapabilityProfile = {
   providerKey: "hacker-news",
@@ -87,7 +94,11 @@ export class HackerNewsSourceProvider implements SourceProviderPort {
     plan: SourceProviderScanPlan,
     context: SourceProviderScanContext,
   ): Promise<SourceProviderScanResult> {
-    void context;
+    const scanPasses = readScanPasses(context.config);
+
+    if (scanPasses.length > 0) {
+      return this.scanPasses(plan, scanPasses);
+    }
 
     const stories =
       plan.query.mode === "listing"
@@ -112,6 +123,59 @@ export class HackerNewsSourceProvider implements SourceProviderPort {
       items,
       nextCursor: encodeTimeCursor(items, plan.cursor),
       warnings: hackerNewsWarnings(stories),
+    };
+  }
+
+  private async scanPasses(
+    plan: SourceProviderScanPlan,
+    passes: readonly HackerNewsScanPass[],
+  ): Promise<SourceProviderScanResult> {
+    const perPassFallbackLimit = Math.max(1, Math.ceil(plan.maxItems / passes.length));
+    const itemsByExternalId = new Map<string, ReturnType<typeof normalizeStory>[number]>();
+    const warnings: string[] = [];
+    let failedPasses = 0;
+    let firstFailure: unknown;
+
+    for (const pass of passes) {
+      const limit = pass.maxItems ?? perPassFallbackLimit;
+      let stories: readonly HackerNewsStory[];
+
+      try {
+        if (pass.mode === "listing") {
+          stories = await this.client.listStories(pass.listing, limit);
+        } else if (pass.target === "comment") {
+          stories = await this.client.searchComments(pass.query, limit);
+        } else {
+          stories = await this.client.searchStories(pass.query, limit);
+        }
+      } catch (error) {
+        firstFailure ??= error;
+        failedPasses += 1;
+        warnings.push(formatHackerNewsScanPassWarning(pass, error));
+        continue;
+      }
+
+      const sourceKey = sourceKeyForPass(pass);
+      const searchQuery = pass.mode === "search" ? pass.query : undefined;
+
+      for (const item of stories.flatMap((story) => normalizeStory(story, sourceKey, searchQuery))) {
+        if (!itemsByExternalId.has(item.externalId)) {
+          itemsByExternalId.set(item.externalId, item);
+        }
+      }
+
+      warnings.push(...hackerNewsWarnings(stories));
+    }
+
+    if (failedPasses === passes.length && firstFailure !== undefined) {
+      throw firstFailure;
+    }
+
+    return {
+      items: [...itemsByExternalId.values()]
+        .sort((left, right) => right.publishedAt.getTime() - left.publishedAt.getTime())
+        .slice(0, plan.maxItems),
+      warnings: compactUnique(warnings),
     };
   }
 
@@ -175,6 +239,10 @@ const normalizeStory = (
   sourceKey: string,
   searchQuery: string | undefined,
 ) => {
+  if (story.kind === "comment") {
+    return normalizeComment(story, sourceKey, searchQuery);
+  }
+
   if (story.deleted || story.dead || story.title === undefined) {
     return [];
   }
@@ -200,15 +268,43 @@ const normalizeStory = (
   ];
 };
 
+const normalizeComment = (
+  story: HackerNewsStory,
+  sourceKey: string,
+  searchQuery: string | undefined,
+) => {
+  if (story.deleted || story.dead || story.text === undefined) {
+    return [];
+  }
+
+  const publishedAt = publishedAtForStory(story);
+
+  if (publishedAt === undefined) {
+    return [];
+  }
+
+  return [
+    {
+      externalId: `hn:${story.id}`,
+      canonicalUrl: `https://news.ycombinator.com/item?id=${story.id}`,
+      title: story.storyTitle ?? "Hacker News comment",
+      body: story.text,
+      authorHandle: story.by,
+      publishedAt,
+      metadata: hackerNewsCommentMetadata(story, sourceKey, searchQuery),
+    },
+  ];
+};
+
 const hackerNewsWarnings = (
   stories: readonly HackerNewsStory[],
 ): readonly string[] => [
   ...(stories.some((story) => story.deleted || story.dead)
-    ? ["Some Hacker News stories were deleted/dead and skipped."]
+    ? ["Some Hacker News items were deleted/dead and skipped."]
     : []),
   ...(stories.some(isTimestampMissingCandidate)
     ? [
-        "Some Hacker News stories had no valid time timestamp; they were skipped.",
+        "Some Hacker News items had no valid time timestamp; they were skipped.",
       ]
     : []),
 ];
@@ -216,7 +312,7 @@ const hackerNewsWarnings = (
 const isTimestampMissingCandidate = (story: HackerNewsStory): boolean =>
   !story.deleted &&
   !story.dead &&
-  story.title !== undefined &&
+  (story.kind === "comment" ? story.text !== undefined : story.title !== undefined) &&
   publishedAtForStory(story) === undefined;
 
 const publishedAtForStory = (story: HackerNewsStory): Date | undefined => {
@@ -244,6 +340,19 @@ const hackerNewsStoryMetadata = (
   ...(story.url === undefined ? {} : { externalUrl: story.url }),
   ...(story.score === undefined ? {} : { points: story.score }),
   ...(story.comments === undefined ? {} : { comments: story.comments }),
+});
+
+const hackerNewsCommentMetadata = (
+  story: HackerNewsStory,
+  sourceKey: string,
+  searchQuery: string | undefined,
+) => ({
+  kind: "hacker_news_comment",
+  source: sourceKey,
+  ...(searchQuery === undefined ? {} : { searchQuery }),
+  ...(story.storyId === undefined ? {} : { storyId: story.storyId }),
+  ...(story.parentId === undefined ? {} : { parentId: story.parentId }),
+  ...(story.storyTitle === undefined ? {} : { storyTitle: story.storyTitle }),
 });
 
 const readPositiveInteger = (

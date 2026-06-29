@@ -22,7 +22,7 @@ export class InMemorySummaryArtifactRepository implements SummaryArtifactReposit
         return (
           snapshot.tenantId === query.tenantId &&
           snapshot.workspaceId === query.workspaceId &&
-          (query.topicId === undefined || snapshot.topicId === query.topicId)
+          (query.interestId === undefined || snapshot.interestId === query.interestId)
         );
       })
       .sort(compareSummaryArtifacts);

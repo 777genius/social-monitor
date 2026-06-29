@@ -52,11 +52,11 @@ import { ListScanDeadLettersUseCase } from "@social-monitor/ingestion/features/l
 import { ListSourceProfilesUseCase } from "@social-monitor/ingestion/features/list-source-profiles/list-source-profiles.use-case";
 import { GetBetaLaunchSupportUseCase } from "@social-monitor/launch/features/get-beta-launch-support/get-beta-launch-support.use-case";
 import { BetaLaunchSupportController } from "@social-monitor/launch/interfaces/rest/beta-launch-support.controller";
-import { ArchiveTopicUseCase } from "@social-monitor/monitoring/features/archive-topic/archive-topic.use-case";
+import { ArchiveInterestUseCase } from "@social-monitor/monitoring/features/archive-interest/archive-interest.use-case";
 import { BindSourceUseCase } from "@social-monitor/monitoring/features/bind-source/bind-source.use-case";
 import { ChangeSourceBindingStatusUseCase } from "@social-monitor/monitoring/features/change-source-binding-status/change-source-binding-status.use-case";
 import { CreateSourceCredentialUseCase } from "@social-monitor/monitoring/features/create-source-credential/create-source-credential.use-case";
-import { CreateTopicUseCase } from "@social-monitor/monitoring/features/create-topic/create-topic.use-case";
+import { CreateInterestUseCase } from "@social-monitor/monitoring/features/create-interest/create-interest.use-case";
 import { GetScanPolicyUseCase } from "@social-monitor/monitoring/features/get-scan-policy/get-scan-policy.use-case";
 import { GetScanStatusUseCase } from "@social-monitor/monitoring/features/get-scan-status/get-scan-status.use-case";
 import { GetSourceBindingHealthUseCase } from "@social-monitor/monitoring/features/get-source-binding-health/get-source-binding-health.use-case";
@@ -65,19 +65,21 @@ import { ListSourceBindingDailyHistoryUseCase } from "@social-monitor/monitoring
 import { ListSourceBindingOverviewUseCase } from "@social-monitor/monitoring/features/list-source-binding-overview/list-source-binding-overview.use-case";
 import { ListSourceBindingScansUseCase } from "@social-monitor/monitoring/features/list-source-binding-scans/list-source-binding-scans.use-case";
 import { ListSourceBindingsUseCase } from "@social-monitor/monitoring/features/list-source-bindings/list-source-bindings.use-case";
-import { ListTopicSourceDailyHistoryUseCase } from "@social-monitor/monitoring/features/list-topic-source-daily-history/list-topic-source-daily-history.use-case";
-import { ListTopicsUseCase } from "@social-monitor/monitoring/features/list-topics/list-topics.use-case";
+import { ListInterestSourceDailyHistoryUseCase } from "@social-monitor/monitoring/features/list-interest-source-daily-history/list-interest-source-daily-history.use-case";
+import { ListInterestsUseCase } from "@social-monitor/monitoring/features/list-interests/list-interests.use-case";
+import { PlanInterestCoverageUseCase } from "@social-monitor/monitoring/features/plan-interest-coverage/plan-interest-coverage.use-case";
 import { RequestScanUseCase } from "@social-monitor/monitoring/features/request-scan/request-scan.use-case";
 import { RevokeSourceCredentialUseCase } from "@social-monitor/monitoring/features/revoke-source-credential/revoke-source-credential.use-case";
 import { RotateSourceCredentialUseCase } from "@social-monitor/monitoring/features/rotate-source-credential/rotate-source-credential.use-case";
 import { SetScanPolicyUseCase } from "@social-monitor/monitoring/features/set-scan-policy/set-scan-policy.use-case";
-import { UpdateTopicUseCase } from "@social-monitor/monitoring/features/update-topic/update-topic.use-case";
+import { UpdateInterestUseCase } from "@social-monitor/monitoring/features/update-interest/update-interest.use-case";
 import { ScanPolicyController } from "@social-monitor/monitoring/interfaces/rest/scan-policy.controller";
 import { ScanRequestController } from "@social-monitor/monitoring/interfaces/rest/scan-request.controller";
 import { ScanStatusController } from "@social-monitor/monitoring/interfaces/rest/scan-status.controller";
 import { SourceBindingController } from "@social-monitor/monitoring/interfaces/rest/source-binding.controller";
 import { SourceCredentialController } from "@social-monitor/monitoring/interfaces/rest/source-credential.controller";
-import { TopicController } from "@social-monitor/monitoring/interfaces/rest/topic.controller";
+import { InterestController } from "@social-monitor/monitoring/interfaces/rest/interest.controller";
+import { InterestCoveragePlanController } from "@social-monitor/monitoring/interfaces/rest/interest-coverage-plan.controller";
 import { BuildPersonalizedDigestUseCase } from "@social-monitor/relevance/features/build-personalized-digest/build-personalized-digest.use-case";
 import { RankFeedItemsUseCase } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.use-case";
 import { RecordRelevanceFeedbackUseCase } from "@social-monitor/relevance/features/record-relevance-feedback/record-relevance-feedback.use-case";
@@ -105,7 +107,7 @@ import { SummaryPolicyController } from "@social-monitor/summary/interfaces/rest
 import { SummaryRequestController } from "@social-monitor/summary/interfaces/rest/summary-request.controller";
 import { SummaryController } from "@social-monitor/summary/interfaces/rest/summary.controller";
 import { CreateUserSubscriptionUseCase } from "@social-monitor/subscriptions/features/create-user-subscription/create-user-subscription.use-case";
-import { ActivateTopicSourceUseCase } from "@social-monitor/subscriptions/features/activate-topic-source/activate-topic-source.use-case";
+import { ActivateInterestSourceUseCase } from "@social-monitor/subscriptions/features/activate-interest-source/activate-interest-source.use-case";
 import { GetEffectiveUserSummaryPreferenceUseCase } from "@social-monitor/subscriptions/features/get-effective-user-summary-preference/get-effective-user-summary-preference.use-case";
 import { ListUserSubscriptionsUseCase } from "@social-monitor/subscriptions/features/list-user-subscriptions/list-user-subscriptions.use-case";
 import { UpsertUserSummaryPreferenceUseCase } from "@social-monitor/subscriptions/features/upsert-user-summary-preference/upsert-user-summary-preference.use-case";
@@ -195,7 +197,7 @@ const useCaseProviders = [
   CreateApiKeyUseCase,
   CreateDigestScheduleUseCase,
   CreateSourceCredentialUseCase,
-  CreateTopicUseCase,
+  CreateInterestUseCase,
   CreateWebhookEndpointUseCase,
   DisableWebhookEndpointUseCase,
   GetDeliveryAttemptUseCase,
@@ -227,16 +229,17 @@ const useCaseProviders = [
   ListSourceBindingDailyHistoryUseCase,
   ListSourceBindingOverviewUseCase,
   ListSourceBindingScansUseCase,
-  ListTopicSourceDailyHistoryUseCase,
+  ListInterestSourceDailyHistoryUseCase,
   ListSourceProfilesUseCase,
   ListSummariesUseCase,
   ListSummaryFeedbackUseCase,
   ListReaderSummariesUseCase,
-  ListTopicsUseCase,
+  ListInterestsUseCase,
   ListWebhookEndpointsUseCase,
+  PlanInterestCoverageUseCase,
   BuildPersonalizedDigestUseCase,
-  ActivateTopicSourceUseCase,
-  ArchiveTopicUseCase,
+  ActivateInterestSourceUseCase,
+  ArchiveInterestUseCase,
   CreateUserSubscriptionUseCase,
   GetEffectiveUserSummaryPreferenceUseCase,
   RankFeedItemsUseCase,
@@ -258,7 +261,7 @@ const useCaseProviders = [
   ListUserSubscriptionsUseCase,
   UpsertUserRelevanceProfileUseCase,
   UpsertSummaryPolicyUseCase,
-  UpdateTopicUseCase,
+  UpdateInterestUseCase,
   UpsertUserSummaryPreferenceUseCase,
 ].map((provider) => ({
   provide: provider,
@@ -268,7 +271,8 @@ const useCaseProviders = [
 @Module({
   controllers: [
     HealthController,
-    TopicController,
+    InterestController,
+    InterestCoveragePlanController,
     SourceBindingController,
     SourceCredentialController,
     ScanRequestController,
@@ -417,7 +421,7 @@ function assertFrontendReadyRequestSchemas(document: OpenAPIObject): void {
     "schedule",
     "summaryPreference",
   ]);
-  assertSchemaHasProperties(document, "ActivateTopicSourceRequestDto", [
+  assertSchemaHasProperties(document, "ActivateInterestSourceRequestDto", [
     "userId",
     "providerKey",
     "targetKind",
@@ -434,7 +438,7 @@ function assertFrontendReadyRequestSchemas(document: OpenAPIObject): void {
     "includeNoSignal",
     "nextRunAt",
   ]);
-  assertSchemaHasProperties(document, "ActivateTopicSourceScanPolicyRequestDto", [
+  assertSchemaHasProperties(document, "ActivateInterestSourceScanPolicyRequestDto", [
     "intervalSeconds",
     "freshnessSeconds",
     "retryBudget",
@@ -446,7 +450,7 @@ function assertFrontendReadyRequestSchemas(document: OpenAPIObject): void {
   assertSchemaHasProperties(document, "CreateDigestScheduleRequestDto", [
     "recipientKey",
     "channel",
-    "topicIds",
+    "interestIds",
     "intervalSeconds",
     "includeNoSignal",
     "nextRunAt",

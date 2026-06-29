@@ -24,13 +24,13 @@ export class RequestSummaryUseCase {
   ) {}
 
   async execute(command: RequestSummaryCommand): Promise<Result<RequestSummaryResult, RequestSummaryFailure>> {
-    const topicId = command.topicId.trim();
+    const interestId = command.interestId.trim();
     const userId = normalizeOptionalText(command.userId);
     const subscriptionId = normalizeOptionalText(command.subscriptionId);
     const idempotencyKey = command.idempotencyKey.trim();
 
-    if (topicId.length === 0) {
-      return err(new DomainError('validation.failed', 'Summary topic id must be non-empty'));
+    if (interestId.length === 0) {
+      return err(new DomainError('validation.failed', 'Summary interest id must be non-empty'));
     }
 
     if (idempotencyKey.length === 0) {
@@ -50,7 +50,7 @@ export class RequestSummaryUseCase {
     if (existing !== null) {
       const snapshot = existing.toSnapshot();
 
-      if (!isSameIdempotentSummaryRequest(snapshot, { topicId, userId, subscriptionId })) {
+      if (!isSameIdempotentSummaryRequest(snapshot, { interestId, userId, subscriptionId })) {
         return err(new DomainError(
           'operation.conflict',
           'Summary idempotency key was already used for a different request scope',
@@ -75,14 +75,14 @@ export class RequestSummaryUseCase {
     };
     if (!(await this.summaryJobQueue.canAccept(queueCommand))) {
       return err(new DomainError('operation.backpressure', 'Summary job queue backpressure limit reached', {
-        topicId,
+        interestId,
       }));
     }
 
     const quota = await this.summaryQuota.reserveSummaryJob({
       tenantId: command.tenantId,
       workspaceId: command.workspaceId,
-      topicId,
+      interestId,
       operation: 'summary.request',
     });
     if (!quota.ok) {
@@ -93,7 +93,7 @@ export class RequestSummaryUseCase {
       id: summaryJobId,
       tenantId: command.tenantId,
       workspaceId: command.workspaceId,
-      topicId,
+      interestId,
       userId,
       subscriptionId,
       idempotencyKey,
@@ -120,11 +120,11 @@ const normalizeOptionalText = (value: string | undefined): string | undefined =>
 const isSameIdempotentSummaryRequest = (
   snapshot: SummaryJobProps,
   request: {
-    readonly topicId: string;
+    readonly interestId: string;
     readonly userId?: string;
     readonly subscriptionId?: string;
   },
 ): boolean =>
-  snapshot.topicId === request.topicId &&
+  snapshot.interestId === request.interestId &&
   snapshot.userId === request.userId &&
   snapshot.subscriptionId === request.subscriptionId;

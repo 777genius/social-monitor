@@ -67,8 +67,63 @@ describe("HackerNewsSourceProvider", () => {
       },
     ]);
     expect(result.warnings).toEqual([
-      "Some Hacker News stories were deleted/dead and skipped.",
+      "Some Hacker News items were deleted/dead and skipped.",
     ]);
+  });
+
+  it("supports story and comment search scan passes in one binding", async () => {
+    const provider = new HackerNewsSourceProvider(
+      new FixtureHackerNewsClient(),
+    );
+    const context = {
+      tenantId: tenantId("tenant-1"),
+      workspaceId: workspaceId("workspace-1"),
+      sourceBindingId: "hn-binding-1",
+      scanJobId: "scan-job-1",
+      correlationId: "correlation-1",
+      config: {
+        maxItems: 4,
+        scanPasses: [
+          {
+            mode: "search",
+            target: "story",
+            query: "monitoring",
+            maxItems: 2,
+          },
+          {
+            mode: "search",
+            target: "comment",
+            query: "monitoring",
+            maxItems: 2,
+          },
+        ],
+      },
+    };
+    const query = { mode: "search" as const, query: "monitoring" };
+
+    const result = await provider.scan(
+      provider.planScan(query, context),
+      context,
+    );
+
+    expect(result.items.map((item) => item.externalId)).toEqual([
+      "hn:2002",
+      "hn:2001",
+      "hn:1002",
+      "hn:1001",
+    ]);
+    expect(result.items[0]).toMatchObject({
+      externalId: "hn:2002",
+      title: "Ask HN: Reliable RSS and API ingestion",
+      body: "The hard part is comment-level evidence and deduping by source.",
+      metadata: {
+        kind: "hacker_news_comment",
+        source: "comment_search",
+        searchQuery: "monitoring",
+        storyId: 1002,
+        parentId: 1002,
+      },
+    });
   });
 
   it("supports live listing mode through the client port without changing normalized output", async () => {
@@ -141,6 +196,9 @@ describe("HackerNewsSourceProvider", () => {
           },
         ];
       },
+      async searchComments() {
+        return [];
+      },
       async listStories() {
         return [];
       },
@@ -165,7 +223,7 @@ describe("HackerNewsSourceProvider", () => {
       new Date(1_780_000_180 * 1000),
     );
     expect(result.warnings).toEqual([
-      "Some Hacker News stories had no valid time timestamp; they were skipped.",
+      "Some Hacker News items had no valid time timestamp; they were skipped.",
     ]);
   });
 

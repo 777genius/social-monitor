@@ -25,7 +25,7 @@ export class InMemoryFeedProjectionAdapter implements FeedProjectionPort {
           id: `feed:${snapshot.sourceBindingId}:${snapshot.externalId}`,
           tenantId: command.tenantId,
           workspaceId: command.workspaceId,
-          topicId: command.topicId,
+          interestId: command.interestId,
           sourceItemId: `${snapshot.sourceBindingId}:${snapshot.externalId}`,
           sourceBindingId: command.sourceBindingId,
           providerKey: command.providerKey,

@@ -11,7 +11,7 @@ describe('BuildPersonalizedDigestUseCase', () => {
   it('builds a high-signal daily digest candidate set from ranked interests', async () => {
     const tenant = tenantId('tenant-personalized-digest');
     const workspace = workspaceId('workspace-personalized-digest');
-    const topicId = 'topic-ai-platforms';
+    const interestId = 'topic-ai-platforms';
     const feedItems = new FakeFeedItemReadRepository();
     const profiles = new FakeUserRelevanceProfileRepository();
     const now = new Date('2026-06-22T10:00:00.000Z');
@@ -21,7 +21,7 @@ describe('BuildPersonalizedDigestUseCase', () => {
       tenantId: tenant,
       workspaceId: workspace,
       userId: 'user-digest',
-      topicWeights: [{ key: topicId, weight: 1 }],
+      interestWeights: [{ key: interestId, weight: 1 }],
       sourceWeights: [{ key: 'github', weight: 1 }],
       keywordWeights: [{ key: 'agents', weight: 1 }],
       mutedKeywords: [],
@@ -33,7 +33,7 @@ describe('BuildPersonalizedDigestUseCase', () => {
       id: 'feed-digest-1',
       tenantId: tenant,
       workspaceId: workspace,
-      topicId,
+      interestId,
       sourceItemId: 'source-digest-1',
       sourceBindingId: 'github-binding',
       providerKey: 'github',
@@ -50,7 +50,7 @@ describe('BuildPersonalizedDigestUseCase', () => {
       tenantId: tenant,
       workspaceId: workspace,
       userId: 'user-digest',
-      topicIds: [topicId],
+      interestIds: [interestId],
       windowStartedAt: new Date('2026-06-22T00:00:00.000Z'),
       windowEndedAt: new Date('2026-06-23T00:00:00.000Z'),
       limit: 5,

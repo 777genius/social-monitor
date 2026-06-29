@@ -3,20 +3,20 @@ import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 
 import '../../domain/aggregates/reader_summary.dart';
 
-class ReaderSummaryTopicSections extends StatelessWidget {
-  const ReaderSummaryTopicSections({super.key, required this.sections});
+class ReaderSummaryInterestSections extends StatelessWidget {
+  const ReaderSummaryInterestSections({super.key, required this.sections});
 
-  final List<ReaderTopicSection> sections;
+  final List<ReaderInterestSection> sections;
 
   @override
   Widget build(BuildContext context) {
     return ReaderSummarySection(
-      title: 'By topic',
+      title: 'By interest',
       icon: Icons.topic_outlined,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: sections
-            .map((section) => _TopicSectionRow(section: section))
+            .map((section) => _InterestSectionRow(section: section))
             .toList(growable: false),
       ),
     );
@@ -123,10 +123,10 @@ class ReaderSummarySection extends StatelessWidget {
   }
 }
 
-class _TopicSectionRow extends StatelessWidget {
-  const _TopicSectionRow({required this.section});
+class _InterestSectionRow extends StatelessWidget {
+  const _InterestSectionRow({required this.section});
 
-  final ReaderTopicSection section;
+  final ReaderInterestSection section;
 
   @override
   Widget build(BuildContext context) {

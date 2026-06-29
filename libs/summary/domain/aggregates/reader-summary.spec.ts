@@ -20,12 +20,12 @@ describe("buildReaderSummary", () => {
             "OpenAI ties Anthropic after alleged GPT-5.6 preview benchmark",
           summary:
             "A single Reddit post discussed an unverified GPT-5.6 benchmark claim.",
-          topicIds: ["ai-models"],
+          interestIds: ["ai-models"],
           providerKeys: ["reddit"],
           citationIds: ["citation-1"],
         },
       ],
-      topicHighlights: [],
+      interestHighlights: [],
       repeatedSignals: [],
       risksAndUnknowns: [],
       citationMap: [
@@ -44,7 +44,7 @@ describe("buildReaderSummary", () => {
           storyKey: "reddit:openai-gpt-5-6",
           representativeFeedItemId: "feed-1",
           duplicateFeedItemIds: [],
-          topicIds: ["ai-models"],
+          interestIds: ["ai-models"],
           providerKeys: ["reddit"],
           score: 2.4,
           observedAtRange: {
@@ -59,7 +59,7 @@ describe("buildReaderSummary", () => {
           feedItemId: "feed-1",
           sourceItemId: "source-1",
           sourceBindingId: "binding-reddit",
-          topicId: "ai-models",
+          interestId: "ai-models",
           providerKey: "reddit",
           providerName: "Reddit",
           canonicalUrl: "https://reddit.example/r/OpenAI/comments/1",
@@ -104,7 +104,7 @@ describe("buildReaderSummary", () => {
           title: "Why are AI labs building their own chips?",
           summary:
             "AI infrastructure discussion around custom chips is getting practical.",
-          topicIds: ["ai-infrastructure"],
+          interestIds: ["ai-infrastructure"],
           providerKeys: ["reddit"],
           citationIds: ["citation-reddit"],
         },
@@ -112,7 +112,7 @@ describe("buildReaderSummary", () => {
           storyClusterId: "cluster-x",
           title: "OpenAI Devs rollout chatter",
           summary: "Developer rollout chatter is drawing X/Twitter engagement.",
-          topicIds: ["ai-developer-tools"],
+          interestIds: ["ai-developer-tools"],
           providerKeys: ["x-twitter"],
           citationIds: ["citation-x"],
         },
@@ -120,12 +120,12 @@ describe("buildReaderSummary", () => {
           storyClusterId: "cluster-hn",
           title: "AI-assisted Alzheimer drug story",
           summary: "Biomedical AI research is drawing Hacker News discussion.",
-          topicIds: ["ai-healthcare"],
+          interestIds: ["ai-healthcare"],
           providerKeys: ["hacker-news"],
           citationIds: ["citation-hn"],
         },
       ],
-      topicHighlights: [],
+      interestHighlights: [],
       repeatedSignals: [],
       risksAndUnknowns: [],
       citationMap: [
@@ -158,19 +158,19 @@ describe("buildReaderSummary", () => {
         socialStoryCluster("cluster-reddit", "feed-reddit", "reddit", [
           "Story signal score 2.275",
           "Strong source engagement signal",
-          "Passes source quality and topic relevance gate",
+          "Passes source quality and interest relevance gate",
           "Fresh item in the current monitoring window",
         ]),
         socialStoryCluster("cluster-x", "feed-x", "x-twitter", [
           "Story signal score 2.211",
           "Strong source engagement signal",
-          "Passes source quality and topic relevance gate",
+          "Passes source quality and interest relevance gate",
           "Fresh item in the current monitoring window",
         ]),
         socialStoryCluster("cluster-hn", "feed-hn", "hacker-news", [
           "Story signal score 2.163",
           "Strong source engagement signal",
-          "Passes source quality and topic relevance gate",
+          "Passes source quality and interest relevance gate",
           "Fresh item in the current monitoring window",
         ]),
       ],
@@ -179,7 +179,7 @@ describe("buildReaderSummary", () => {
           feedItemId: "feed-reddit",
           sourceItemId: "source-reddit",
           sourceBindingId: "binding-reddit",
-          topicId: "ai-infrastructure",
+          interestId: "ai-infrastructure",
           providerKey: "reddit",
           providerName: "Reddit",
           title: "Why are AI labs building their own chips?",
@@ -193,7 +193,7 @@ describe("buildReaderSummary", () => {
           feedItemId: "feed-x",
           sourceItemId: "source-x",
           sourceBindingId: "binding-x",
-          topicId: "ai-developer-tools",
+          interestId: "ai-developer-tools",
           providerKey: "x-twitter",
           providerName: "X/Twitter",
           title: "OpenAI Devs rollout chatter",
@@ -207,7 +207,7 @@ describe("buildReaderSummary", () => {
           feedItemId: "feed-hn",
           sourceItemId: "source-hn",
           sourceBindingId: "binding-hn",
-          topicId: "ai-healthcare",
+          interestId: "ai-healthcare",
           providerKey: "hacker-news",
           providerName: "Hacker News",
           title: "AI-assisted Alzheimer drug story",
@@ -252,7 +252,7 @@ describe("buildReaderSummary", () => {
             "HN and RSS amplify cybersecurity discussion around a post-mythos framing",
           summary:
             "A cybersecurity article is drawing HN and RSS discussion.",
-          topicIds: ["cybersecurity"],
+          interestIds: ["cybersecurity"],
           providerKeys: ["hacker-news", "rss"],
           citationIds: ["citation-hn", "citation-rss"],
         },
@@ -261,7 +261,7 @@ describe("buildReaderSummary", () => {
           title: "X chatter about Claude Code skills routing across coding tools",
           summary:
             "Claude Code skills routing is the strongest concrete X signal.",
-          topicIds: ["ai-developer-tools"],
+          interestIds: ["ai-developer-tools"],
           providerKeys: ["x-twitter"],
           citationIds: ["citation-x"],
         },
@@ -269,12 +269,12 @@ describe("buildReaderSummary", () => {
           storyClusterId: "cluster-reddit",
           title: "Reddit reports DFlash support merged into llama.cpp",
           summary: "Local model users are tracking a concrete runtime win.",
-          topicIds: ["local-models"],
+          interestIds: ["local-models"],
           providerKeys: ["reddit"],
           citationIds: ["citation-reddit"],
         },
       ],
-      topicHighlights: [],
+      interestHighlights: [],
       repeatedSignals: [],
       risksAndUnknowns: [],
       citationMap: [
@@ -331,7 +331,7 @@ describe("buildReaderSummary", () => {
           feedItemId: "feed-hn",
           sourceItemId: "source-hn",
           sourceBindingId: "binding-hn",
-          topicId: "cybersecurity",
+          interestId: "cybersecurity",
           providerKey: "hacker-news",
           providerName: "Hacker News",
           title:
@@ -343,7 +343,7 @@ describe("buildReaderSummary", () => {
           feedItemId: "feed-rss",
           sourceItemId: "source-rss",
           sourceBindingId: "binding-rss",
-          topicId: "cybersecurity",
+          interestId: "cybersecurity",
           providerKey: "rss",
           providerName: "RSS",
           title: "RSS repeats cybersecurity discussion",
@@ -354,7 +354,7 @@ describe("buildReaderSummary", () => {
           feedItemId: "feed-x",
           sourceItemId: "source-x",
           sourceBindingId: "binding-x",
-          topicId: "ai-developer-tools",
+          interestId: "ai-developer-tools",
           providerKey: "x-twitter",
           providerName: "X/Twitter",
           title: "X chatter about Claude Code skills routing across coding tools",
@@ -365,7 +365,7 @@ describe("buildReaderSummary", () => {
           feedItemId: "feed-reddit",
           sourceItemId: "source-reddit",
           sourceBindingId: "binding-reddit",
-          topicId: "local-models",
+          interestId: "local-models",
           providerKey: "reddit",
           providerName: "Reddit",
           title: "Reddit reports DFlash support merged into llama.cpp",
@@ -394,7 +394,7 @@ describe("buildReaderSummary", () => {
           storyClusterId: "cluster-1",
           title: "openai/codex",
           summary: "Fast-growing AI coding agent repository.",
-          topicIds: ["ai-developer-tools"],
+          interestIds: ["ai-developer-tools"],
           providerKeys: ["github-repo-radar"],
           citationIds: ["citation-1"],
         },
@@ -402,12 +402,12 @@ describe("buildReaderSummary", () => {
           storyClusterId: "cluster-2",
           title: "firecrawl/firecrawl",
           summary: "Web data infrastructure is gaining developer attention.",
-          topicIds: ["ai-developer-tools"],
+          interestIds: ["ai-developer-tools"],
           providerKeys: ["github-repo-radar"],
           citationIds: ["citation-2"],
         },
       ],
-      topicHighlights: [],
+      interestHighlights: [],
       repeatedSignals: [],
       risksAndUnknowns: [],
       citationMap: [
@@ -434,7 +434,7 @@ describe("buildReaderSummary", () => {
           storyKey: "github:openai/codex",
           representativeFeedItemId: "feed-1",
           duplicateFeedItemIds: [],
-          topicIds: ["ai-developer-tools"],
+          interestIds: ["ai-developer-tools"],
           providerKeys: ["github-repo-radar"],
           score: 1,
           observedAtRange: {
@@ -449,7 +449,7 @@ describe("buildReaderSummary", () => {
           feedItemId: "feed-1",
           sourceItemId: "source-1",
           sourceBindingId: "binding-1",
-          topicId: "ai-developer-tools",
+          interestId: "ai-developer-tools",
           providerKey: "github-repo-radar",
           providerName: "Repo Radar",
           canonicalUrl: "https://github.com/openai/codex",
@@ -483,7 +483,7 @@ describe("buildReaderSummary", () => {
           feedItemId: "feed-2",
           sourceItemId: "source-2",
           sourceBindingId: "binding-1",
-          topicId: "ai-developer-tools",
+          interestId: "ai-developer-tools",
           providerKey: "github-repo-radar",
           providerName: "Repo Radar",
           canonicalUrl: "https://github.com/firecrawl/firecrawl",
@@ -508,7 +508,7 @@ describe("buildReaderSummary", () => {
         storyClusterCount: 1,
         crossSourceClusterCount: 0,
         singleSourceOnly: true,
-        topicIds: ["ai-developer-tools"],
+        interestIds: ["ai-developer-tools"],
       },
     ]);
     expect(readerSummary.qualityState).toMatchObject({
@@ -530,9 +530,9 @@ describe("buildReaderSummary", () => {
     );
     expect(readerSummary.topReads[0]).toMatchObject({
       title: "openai/codex",
-      matchedTopicIds: ["ai-developer-tools"],
+      matchedInterestIds: ["ai-developer-tools"],
       matchedRules: [
-        "topic:ai-developer-tools",
+        "interest:ai-developer-tools",
         "source-binding:binding-1",
         "provider:github-repo-radar",
       ],
@@ -566,7 +566,7 @@ describe("buildReaderSummary", () => {
       "watch_repository",
       "watch_repository",
       "request_deeper_scan",
-      "add_topic_rule",
+      "add_interest_rule",
       "mark_relevant",
       "mark_not_relevant",
     ]);
@@ -768,7 +768,7 @@ describe("buildReaderSummary", () => {
     expect(readerSummary.topReads.map((item) => item.title)).not.toContain(
       "repo-radar/project-1 repeated model output",
     );
-    expect(readerSummary.topicSections[0]?.items).toEqual([]);
+    expect(readerSummary.interestSections[0]?.items).toEqual([]);
   });
 
   it("deduplicates top reads by normalized canonical repository URLs", () => {
@@ -819,19 +819,19 @@ describe("buildReaderSummary", () => {
     ]);
   });
 
-  it("keeps topic sections citation-only so top reads are not repeated", () => {
+  it("keeps interest sections citation-only so top reads are not repeated", () => {
     const input = readerTopReadFixture(3);
     const readerSummary = buildReaderSummary({
       ...input,
-      topicHighlights: [
+      interestHighlights: [
         {
-          topicId: "ai-developer-tools",
+          interestId: "ai-developer-tools",
           title: "AI developer tools",
           summary: "Two repo radar links are the strongest first reads.",
           citationIds: ["citation-1", "citation-2"],
         },
         {
-          topicId: "repo-radar",
+          interestId: "repo-radar",
           title: "Repo radar",
           summary:
             "The second section shares one citation but should show the next unique read.",
@@ -841,12 +841,12 @@ describe("buildReaderSummary", () => {
     });
 
     expect(
-      readerSummary.topicSections.map((section) =>
+      readerSummary.interestSections.map((section) =>
         section.items.map((item) => item.title),
       ),
     ).toEqual([[], []]);
     expect(
-      readerSummary.topicSections.map((section) => section.citationIds),
+      readerSummary.interestSections.map((section) => section.citationIds),
     ).toEqual([
       ["citation-1", "citation-2"],
       ["citation-1", "citation-3"],
@@ -864,12 +864,12 @@ describe("buildReaderSummary", () => {
           title: "calesthio/OpenMontage",
           summary:
             "Agentic video production repository is leading GitHub Trending today.",
-          topicIds: ["ai-developer-tools"],
+          interestIds: ["ai-developer-tools"],
           providerKeys: ["github-trending-page"],
           citationIds: ["citation-1"],
         },
       ],
-      topicHighlights: [],
+      interestHighlights: [],
       repeatedSignals: [],
       risksAndUnknowns: [],
       citationMap: [
@@ -888,7 +888,7 @@ describe("buildReaderSummary", () => {
           storyKey: "github-trending:calesthio/OpenMontage",
           representativeFeedItemId: "feed-1",
           duplicateFeedItemIds: [],
-          topicIds: ["ai-developer-tools"],
+          interestIds: ["ai-developer-tools"],
           providerKeys: ["github-trending-page"],
           score: 1.5,
           observedAtRange: {
@@ -905,7 +905,7 @@ describe("buildReaderSummary", () => {
           feedItemId: "feed-1",
           sourceItemId: "source-1",
           sourceBindingId: "binding-trending",
-          topicId: "ai-developer-tools",
+          interestId: "ai-developer-tools",
           providerKey: "github-trending-page",
           providerName: "GitHub Trending",
           canonicalUrl: "https://github.com/calesthio/OpenMontage",
@@ -977,12 +977,12 @@ describe("buildReaderSummary", () => {
           storyClusterId: "cluster-1",
           title: "openai/codex discussion expands",
           summary: "GitHub growth is backed by Reddit discussion.",
-          topicIds: ["ai-agents"],
+          interestIds: ["ai-agents"],
           providerKeys: ["github-repo-radar", "reddit"],
           citationIds: ["citation-1"],
         },
       ],
-      topicHighlights: [],
+      interestHighlights: [],
       repeatedSignals: [],
       risksAndUnknowns: [],
       citationMap: [
@@ -1009,7 +1009,7 @@ describe("buildReaderSummary", () => {
           storyKey: "github-repo:openai/codex",
           representativeFeedItemId: "feed-github",
           duplicateFeedItemIds: ["feed-reddit"],
-          topicIds: ["ai-agents"],
+          interestIds: ["ai-agents"],
           providerKeys: ["github-repo-radar", "reddit"],
           score: 2.4,
           signalBreakdown: {
@@ -1017,7 +1017,7 @@ describe("buildReaderSummary", () => {
             crossProviderSupport: 0.25,
             sameProviderSupport: 0,
             providerDiversityBoost: 0.25,
-            topicDiversityBoost: 0,
+            interestDiversityBoost: 0,
             freshnessBoost: 0.1,
             totalScore: 2.4,
           },
@@ -1035,7 +1035,7 @@ describe("buildReaderSummary", () => {
           feedItemId: "feed-github",
           sourceItemId: "source-github",
           sourceBindingId: "binding-github",
-          topicId: "ai-agents",
+          interestId: "ai-agents",
           providerKey: "github-repo-radar",
           providerName: "Repo Radar",
           canonicalUrl: "https://github.com/openai/codex",
@@ -1049,7 +1049,7 @@ describe("buildReaderSummary", () => {
           feedItemId: "feed-reddit",
           sourceItemId: "source-reddit",
           sourceBindingId: "binding-reddit",
-          topicId: "ai-agents",
+          interestId: "ai-agents",
           providerKey: "reddit",
           providerName: "Reddit",
           canonicalUrl: "https://github.com/openai/codex",
@@ -1072,7 +1072,7 @@ describe("buildReaderSummary", () => {
         storyClusterCount: 1,
         crossSourceClusterCount: 1,
         singleSourceOnly: false,
-        topicIds: ["ai-agents"],
+        interestIds: ["ai-agents"],
       },
       {
         providerKey: "github-repo-radar",
@@ -1081,7 +1081,7 @@ describe("buildReaderSummary", () => {
         storyClusterCount: 1,
         crossSourceClusterCount: 1,
         singleSourceOnly: false,
-        topicIds: ["ai-agents"],
+        interestIds: ["ai-agents"],
       },
     ]);
     expect(readerSummary.trendDelta.newSignals).toEqual([
@@ -1111,12 +1111,12 @@ const readerTopReadFixture = (count: number) => {
           storyClusterId: `cluster-${index}`,
           title: `repo-radar/project-${index}`,
           summary: `Repository ${index} is gaining attention.`,
-          topicIds: ["ai-developer-tools"],
+          interestIds: ["ai-developer-tools"],
           providerKeys: ["github-repo-radar"],
           citationIds: [`citation-${index}`],
         }) satisfies TopReadCandidate,
     ),
-    topicHighlights: [],
+    interestHighlights: [],
     repeatedSignals: [],
     risksAndUnknowns: [],
     citationMap: indexes.map(
@@ -1137,7 +1137,7 @@ const readerTopReadFixture = (count: number) => {
           storyKey: `github:repo-radar/project-${index}`,
           representativeFeedItemId: `feed-${index}`,
           duplicateFeedItemIds: [],
-          topicIds: ["ai-developer-tools"],
+          interestIds: ["ai-developer-tools"],
           providerKeys: ["github-repo-radar"],
           score: 1 - index / 100,
           observedAtRange: {
@@ -1153,7 +1153,7 @@ const readerTopReadFixture = (count: number) => {
           feedItemId: `feed-${index}`,
           sourceItemId: `source-${index}`,
           sourceBindingId: "binding-repo-radar",
-          topicId: "ai-developer-tools",
+          interestId: "ai-developer-tools",
           providerKey: "github-repo-radar",
           providerName: "Repo Radar",
           canonicalUrl: `https://github.com/repo-radar/project-${index}`,
@@ -1180,7 +1180,7 @@ const socialStoryCluster = (
     storyKey: `${providerKey}:${representativeFeedItemId}`,
     representativeFeedItemId,
     duplicateFeedItemIds: [],
-    topicIds: ["ai"],
+    interestIds: ["ai"],
     providerKeys: [providerKey],
     score: 2.1,
     observedAtRange: {

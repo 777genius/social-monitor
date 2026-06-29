@@ -9,7 +9,7 @@ class FakeUserSummaryPreferences implements UserSummaryPreferenceRepositoryPort 
 
   async save(preference: UserSummaryPreference): Promise<void> {
     const snapshot = preference.toSnapshot();
-    this.preferences.set(snapshot.subscriptionId ?? snapshot.topicId ?? snapshot.id, preference);
+    this.preferences.set(snapshot.subscriptionId ?? snapshot.interestId ?? snapshot.id, preference);
   }
 
   async findBySubscription(
@@ -18,10 +18,10 @@ class FakeUserSummaryPreferences implements UserSummaryPreferenceRepositoryPort 
     return this.preferences.get(params.subscriptionId) ?? null;
   }
 
-  async findByTopic(
-    params: Parameters<UserSummaryPreferenceRepositoryPort['findByTopic']>[0],
+  async findByInterest(
+    params: Parameters<UserSummaryPreferenceRepositoryPort['findByInterest']>[0],
   ): Promise<UserSummaryPreference | null> {
-    return this.preferences.get(params.topicId) ?? null;
+    return this.preferences.get(params.interestId) ?? null;
   }
 
   async findEffective(
@@ -40,11 +40,11 @@ class FakeUserSummaryPreferences implements UserSummaryPreferenceRepositoryPort 
       }
     }
 
-    return this.findByTopic({
+    return this.findByInterest({
       tenantId: params.tenantId,
       workspaceId: params.workspaceId,
       userId: params.userId,
-      topicId: params.topicId,
+      interestId: params.interestId,
     });
   }
 }
@@ -54,14 +54,14 @@ const workspace = workspaceId('workspace-1');
 const now = new Date('2026-06-21T10:00:00.000Z');
 
 describe('GetEffectiveUserSummaryPreferenceUseCase', () => {
-  it('prefers subscription-level preferences over topic-level preferences', async () => {
+  it('prefers subscription-level preferences over interest-level preferences', async () => {
     const preferences = new FakeUserSummaryPreferences();
     await preferences.save(UserSummaryPreference.create({
-      id: 'topic-preference',
+      id: 'interest-preference',
       tenantId: tenant,
       workspaceId: workspace,
       userId: 'user-1',
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       language: 'en',
       format: 'executive_brief',
       tone: 'neutral',
@@ -85,7 +85,7 @@ describe('GetEffectiveUserSummaryPreferenceUseCase', () => {
       tenantId: tenant,
       workspaceId: workspace,
       userId: 'user-1',
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       subscriptionId: 'subscription-1',
     });
 
@@ -100,14 +100,14 @@ describe('GetEffectiveUserSummaryPreferenceUseCase', () => {
     });
   });
 
-  it('falls back to topic-level preferences when a subscription overlay does not exist', async () => {
+  it('falls back to interest-level preferences when a subscription overlay does not exist', async () => {
     const preferences = new FakeUserSummaryPreferences();
     await preferences.save(UserSummaryPreference.create({
-      id: 'topic-preference',
+      id: 'interest-preference',
       tenantId: tenant,
       workspaceId: workspace,
       userId: 'user-1',
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       language: 'ru',
       format: 'risk_brief',
       tone: 'analytical',
@@ -119,16 +119,16 @@ describe('GetEffectiveUserSummaryPreferenceUseCase', () => {
       tenantId: tenant,
       workspaceId: workspace,
       userId: 'user-1',
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       subscriptionId: 'subscription-missing',
     });
 
     expect(result.ok).toBe(true);
     expect(result.ok && result.value).toEqual({
-      source: 'topic',
+      source: 'interest',
       summaryPreference: expect.objectContaining({
-        id: 'topic-preference',
-        topicId: 'topic-1',
+        id: 'interest-preference',
+        interestId: 'interest-1',
         language: 'ru',
       }),
     });
@@ -139,32 +139,32 @@ describe('GetEffectiveUserSummaryPreferenceUseCase', () => {
       tenantId: tenant,
       workspaceId: workspace,
       userId: 'user-1',
-      topicId: 'topic-1',
+      interestId: 'interest-1',
     });
 
     expect(result.ok).toBe(true);
     expect(result.ok && result.value).toEqual({ source: 'none' });
   });
 
-  it('rejects empty user or topic identifiers', async () => {
+  it('rejects empty user or interest identifiers', async () => {
     const useCase = new GetEffectiveUserSummaryPreferenceUseCase(new FakeUserSummaryPreferences());
 
     const emptyUser = await useCase.execute({
       tenantId: tenant,
       workspaceId: workspace,
       userId: ' ',
-      topicId: 'topic-1',
+      interestId: 'interest-1',
     });
-    const emptyTopic = await useCase.execute({
+    const emptyInterest = await useCase.execute({
       tenantId: tenant,
       workspaceId: workspace,
       userId: 'user-1',
-      topicId: ' ',
+      interestId: ' ',
     });
 
     expect(emptyUser.ok).toBe(false);
     expect(emptyUser.ok || emptyUser.error.code).toBe('validation.failed');
-    expect(emptyTopic.ok).toBe(false);
-    expect(emptyTopic.ok || emptyTopic.error.code).toBe('validation.failed');
+    expect(emptyInterest.ok).toBe(false);
+    expect(emptyInterest.ok || emptyInterest.error.code).toBe('validation.failed');
   });
 });

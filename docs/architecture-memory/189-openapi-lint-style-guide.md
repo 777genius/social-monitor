@@ -16,7 +16,7 @@ OpenAPI contracts must pass lint/style checks before merge. API consistency is e
 
 ## Style Rules
 
-- Paths use plural resources: `/v1/topics`.
+- Paths use plural resources: `/v1/interests`.
 - Use stable operation ids: `TopicsController_createTopic`.
 - Every operation has tags, summary, response schemas and error responses.
 - All errors use shared Problem Details schema.

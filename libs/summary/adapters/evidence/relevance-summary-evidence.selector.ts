@@ -17,7 +17,7 @@ export class RelevanceSummaryEvidenceSelector implements SummaryEvidenceSelector
       tenantId: params.tenantId,
       workspaceId: params.workspaceId,
       userId: params.userId,
-      topicId: params.topicId,
+      interestId: params.interestId,
       limit: params.maxItems,
       observedAfter: inclusiveObservedAfter(evidenceWindow.startedAt),
       observedBefore: inclusiveObservedBefore(evidenceWindow.endedAt),
@@ -79,7 +79,7 @@ const buildSourceWindow = (
 ) => {
   if (items.length === 0) {
     return {
-      windowId: `${params.tenantId}:${params.workspaceId}:${params.topicId}:personalized-empty`,
+      windowId: `${params.tenantId}:${params.workspaceId}:${params.interestId}:personalized-empty`,
       startedAt: evidenceWindow.startedAt,
       endedAt: evidenceWindow.endedAt,
       selectedFeedItemIds: [],
@@ -94,7 +94,7 @@ const buildSourceWindow = (
   const userSegment = params.userId === undefined ? 'workspace' : `user:${params.userId}`;
 
   return {
-    windowId: `${params.tenantId}:${params.workspaceId}:${params.topicId}:${userSegment}:${startedAt.toISOString()}:${endedAt.toISOString()}`,
+    windowId: `${params.tenantId}:${params.workspaceId}:${params.interestId}:${userSegment}:${startedAt.toISOString()}:${endedAt.toISOString()}`,
     startedAt,
     endedAt,
     selectedFeedItemIds: items.map((item) => item.feedItemId),

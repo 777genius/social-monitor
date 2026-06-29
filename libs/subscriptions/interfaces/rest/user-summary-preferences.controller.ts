@@ -19,12 +19,12 @@ import { GetEffectiveUserSummaryPreferenceUseCase } from '../../features/get-eff
 import { UpsertUserSummaryPreferenceUseCase } from '../../features/upsert-user-summary-preference/upsert-user-summary-preference.use-case';
 import {
   type GetEffectiveUserSummaryPreferenceResponseDto,
-  UpsertTopicUserSummaryPreferenceRequestDto,
+  UpsertInterestUserSummaryPreferenceRequestDto,
   type UpsertUserSummaryPreferenceResponseDto,
 } from './user-subscriptions.dto';
 
 @ApiTags('user-summary-preferences')
-@Controller('topics/:topicId/user-summary-preference')
+@Controller('interests/:interestId/user-summary-preference')
 export class UserSummaryPreferencesController {
   constructor(
     private readonly getEffectiveUserSummaryPreference: GetEffectiveUserSummaryPreferenceUseCase,
@@ -36,7 +36,7 @@ export class UserSummaryPreferencesController {
   ) {}
 
   @Get()
-  @ApiOperation({ summary: 'Read the effective topic summary preference overlay for one user.' })
+  @ApiOperation({ summary: 'Read the effective interest summary preference overlay for one user.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
   @ApiQuery({ name: 'userId', required: true, type: String })
@@ -45,8 +45,8 @@ export class UserSummaryPreferencesController {
     apiKeyScope: 'read:summaries',
     workspaceRoleDescription: 'Comma-separated workspace roles. User summary preference reads allow owner, admin, member or viewer.',
   })
-  async getEffectiveTopicSummaryPreference(
-    @Param('topicId') topicId: string,
+  async getEffectiveInterestSummaryPreference(
+    @Param('interestId') interestId: string,
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
@@ -74,7 +74,7 @@ export class UserSummaryPreferencesController {
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
       userId: targetUserId,
-      topicId,
+      interestId,
       subscriptionId,
     });
 
@@ -86,20 +86,20 @@ export class UserSummaryPreferencesController {
   }
 
   @Put()
-  @ApiOperation({ summary: 'Create or update the topic-level summary preference overlay for one user.' })
+  @ApiOperation({ summary: 'Create or update the interest-level summary preference overlay for one user.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
   @ApiKeyOrWorkspaceRoleAuth({
     apiKeyScope: 'write:summaries',
     workspaceRoleDescription: 'Comma-separated workspace roles. User summary preference writes allow owner, admin or member.',
   })
-  async upsertTopicSummaryPreference(
-    @Param('topicId') topicId: string,
+  async upsertInterestSummaryPreference(
+    @Param('interestId') interestId: string,
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
     @Headers('authorization') authorizationHeader: string | undefined,
-    @Body() body: UpsertTopicUserSummaryPreferenceRequestDto,
+    @Body() body: UpsertInterestUserSummaryPreferenceRequestDto,
   ): Promise<UpsertUserSummaryPreferenceResponseDto> {
     const scope = requireTenantScope({
       tenantIdHeader: tenantHeader,
@@ -121,7 +121,7 @@ export class UserSummaryPreferencesController {
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
       userId: targetUserId,
-      topicId,
+      interestId,
       language: body.language,
       format: body.format,
       tone: body.tone,

@@ -9,7 +9,7 @@ describe('DeterministicSummaryModelAdapter', () => {
     const input = {
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       requestedAt: new Date('2026-06-06T00:00:00.000Z'),
       policy: defaultSummaryGenerationPolicy(),
       evidence: {
@@ -40,7 +40,7 @@ describe('DeterministicSummaryModelAdapter', () => {
 
     expect(attempt.draft.qualityFlags).toContain('no_signal');
     expect(attempt.draft.keyPoints).toEqual([]);
-    expect(attempt.draft.noSignalReason).toEqual('No eligible evidence items selected for this topic.');
+    expect(attempt.draft.noSignalReason).toEqual('No eligible evidence items selected for this interest.');
     expect(adapter.validateRawProviderResponse(attempt)).toEqual({ ok: true });
   });
 
@@ -49,7 +49,7 @@ describe('DeterministicSummaryModelAdapter', () => {
     const input = {
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       requestedAt: new Date('2026-06-06T00:00:00.000Z'),
       policy: defaultSummaryGenerationPolicy(),
       evidence: {
@@ -100,7 +100,7 @@ describe('DeterministicSummaryModelAdapter', () => {
 
     const attempt = await adapter.summarize(input, route);
 
-    expect(attempt.draft.headline).toBe('Topic summary: 1 item across 1 source (GitHub)');
+    expect(attempt.draft.headline).toBe('Interest summary: 1 item across 1 source (GitHub)');
     expect(attempt.draft.headline).not.toBe('Agents runtime improves orchestration');
     expect(attempt.draft.sourceHighlights[0]).toContain('Matches memory preference');
     expect(attempt.draft.sourceHighlights[0]).toContain('Strong source engagement signal');

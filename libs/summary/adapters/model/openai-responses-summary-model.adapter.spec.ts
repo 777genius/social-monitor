@@ -220,7 +220,7 @@ describe('OpenAiResponsesSummaryModelAdapter', () => {
 
     expect(attempt.draft.qualityFlags).toContain('no_signal');
     expect(attempt.draft.noSignalReason).toBe(
-      'No eligible evidence items selected for this topic.',
+      'No eligible evidence items selected for this interest.',
     );
     expect(adapter.validateRawProviderResponse(attempt)).toEqual({ ok: true });
   });
@@ -246,7 +246,7 @@ describe('OpenAiResponsesSummaryModelAdapter', () => {
 
     expect(fetchFn).not.toHaveBeenCalled();
     expect(attempt.draft.qualityFlags).toContain('no_signal');
-    expect(attempt.draft.noSignalReason).toBe('No eligible evidence items selected for this topic.');
+    expect(attempt.draft.noSignalReason).toBe('No eligible evidence items selected for this interest.');
     expect(adapter.validateRawProviderResponse(attempt)).toEqual({ ok: true });
   });
 
@@ -484,7 +484,7 @@ const buildInput = (params: {
   return {
     tenantId: tenantId('tenant-openai-summary-adapter'),
     workspaceId: workspaceId('workspace-openai-summary-adapter'),
-    topicId: 'topic-backend-mvp',
+    interestId: 'interest-backend-mvp',
     evidence: {
       sourceWindow: {
         windowId: 'summary-window-1',

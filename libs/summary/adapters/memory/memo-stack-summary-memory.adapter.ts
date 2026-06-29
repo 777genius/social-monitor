@@ -87,7 +87,7 @@ export class MemoStackSummaryMemoryAdapter implements SummaryMemoryPort {
   }
 
   private async buildScopeFallbackContext(query: BuildSummaryMemoryContextQuery): Promise<SummaryMemoryContext> {
-    const scopes = [...providerQualityScopes(query), topicFeedbackScope(query.topicId)];
+    const scopes = [...providerQualityScopes(query), interestFeedbackScope(query.interestId)];
     const contexts: SummaryMemoryContext[] = [];
     for (const scope of scopes) {
       const response = await this.client.context.buildContext(this.contextRequest(query, {
@@ -129,10 +129,10 @@ export class MemoStackSummaryMemoryAdapter implements SummaryMemoryPort {
     const memoryText = feedbackMemoryText(command, mapping, providerQuality);
     const providerScope = providerQuality === undefined || command.providerKey === undefined
       ? undefined
-      : providerQualityScope(command.topicId, command.providerKey);
+      : providerQualityScope(command.interestId, command.providerKey);
     const response = await this.client.workflows.recordFeedback({
       spaceSlug: spaceSlug(command.tenantId, command.workspaceId),
-      memoryScopeExternalRef: topicFeedbackScope(command.topicId),
+      memoryScopeExternalRef: interestFeedbackScope(command.interestId),
       sourceAgent: 'social-monitor.summary-feedback',
       text: memoryText,
       idempotencyKey,
@@ -144,7 +144,7 @@ export class MemoStackSummaryMemoryAdapter implements SummaryMemoryPort {
       occurredAt: command.createdAt.toISOString(),
       metadata: withoutUndefined({
         summary_id: command.summaryId,
-        topic_id: command.topicId,
+        interest_id: command.interestId,
         rating: command.rating,
         category: command.category,
         provider_key: command.providerKey,
@@ -160,7 +160,7 @@ export class MemoStackSummaryMemoryAdapter implements SummaryMemoryPort {
       factCategory: memoStackUserPreferenceFactCategory,
       factTags: feedbackTags(command, mapping),
       factTtlPolicy: 'durable',
-      factMemoryScopeExternalRef: topicFeedbackScope(command.topicId),
+      factMemoryScopeExternalRef: interestFeedbackScope(command.interestId),
     });
     const providerQualityResponse = providerQuality === undefined || command.providerKey === undefined
       ? undefined
@@ -176,8 +176,8 @@ export class MemoStackSummaryMemoryAdapter implements SummaryMemoryPort {
         workflow: 'recordFeedback',
         captureId: nestedString(response.capture, ['data', 'id']),
         factId: nestedString(response.fact, ['data', 'id']),
-        memoryScopeExternalRef: topicFeedbackScope(command.topicId),
-        factMemoryScopeExternalRef: topicFeedbackScope(command.topicId),
+        memoryScopeExternalRef: interestFeedbackScope(command.interestId),
+        factMemoryScopeExternalRef: interestFeedbackScope(command.interestId),
         providerQualityCaptureId: nestedString(providerQualityResponse?.capture, ['data', 'id']),
         providerQualityFactId: nestedString(providerQualityResponse?.fact, ['data', 'id']),
         providerQualityScopeExternalRef: providerScope,
@@ -194,7 +194,7 @@ export class MemoStackSummaryMemoryAdapter implements SummaryMemoryPort {
     providerQuality: NonNullable<ReturnType<typeof providerQualitySignal>>,
     memoryText: string,
   ): Promise<Awaited<ReturnType<MemoStackSummaryMemoryClient['workflows']['recordFeedback']>>> {
-    const providerScope = providerQualityScope(command.topicId, command.providerKey ?? 'unknown');
+    const providerScope = providerQualityScope(command.interestId, command.providerKey ?? 'unknown');
 
     return this.client.workflows.recordFeedback({
       spaceSlug: spaceSlug(command.tenantId, command.workspaceId),
@@ -217,7 +217,7 @@ export class MemoStackSummaryMemoryAdapter implements SummaryMemoryPort {
       metadata: withoutUndefined({
         parent_feedback_id: command.feedbackId,
         summary_id: command.summaryId,
-        topic_id: command.topicId,
+        interest_id: command.interestId,
         rating: command.rating,
         category: command.category,
         provider_key: command.providerKey,
@@ -265,7 +265,7 @@ export class MemoStackSummaryMemoryAdapter implements SummaryMemoryPort {
       metadata: withoutUndefined({
         parent_feedback_id: command.feedbackId,
         summary_id: command.summaryId,
-        topic_id: command.topicId,
+        interest_id: command.interestId,
         rating: command.rating,
         category: command.category,
         provider_key: command.providerKey,
@@ -313,12 +313,12 @@ export const resolveMemoStackSummaryMemoryOptions = (
 export const spaceSlug = (tenantId: string, workspaceId: string): string =>
   `social-monitor:${tenantId}:${workspaceId}`;
 
-export const topicFeedbackScope = (topicId: string): string => `topic:${topicId}:feedback`;
+export const interestFeedbackScope = (interestId: string): string => `interest:${interestId}:feedback`;
 
-export const providerQualityScope = (topicId: string, providerKey: string): string =>
-  `topic:${topicId}:provider:${providerKey}:quality`;
+export const providerQualityScope = (interestId: string, providerKey: string): string =>
+  `interest:${interestId}:provider:${providerKey}:quality`;
 
-export const topicPreferenceScope = (topicId: string): string => `topic:${topicId}:preferences`;
+export const interestPreferenceScope = (interestId: string): string => `interest:${interestId}:preferences`;
 
 export const userPreferenceScope = (userId: string): string => `user:${userId}:preferences`;
 
@@ -335,10 +335,10 @@ export {
 const readMemoryScopes = (query: BuildSummaryMemoryContextQuery): readonly string[] => [
   ...(query.subscriptionId === undefined ? [] : [subscriptionPreferenceScope(query.subscriptionId)]),
   ...(query.userId === undefined ? [] : [userPreferenceScope(query.userId)]),
-  topicPreferenceScope(query.topicId),
+  interestPreferenceScope(query.interestId),
   'workspace-global',
   ...providerQualityScopes(query),
-  topicFeedbackScope(query.topicId),
+  interestFeedbackScope(query.interestId),
 ];
 
 const providerQualityScopes = (query: BuildSummaryMemoryContextQuery): readonly string[] =>
@@ -346,7 +346,7 @@ const providerQualityScopes = (query: BuildSummaryMemoryContextQuery): readonly 
     .map((item) => item.providerKey.trim())
     .filter((providerKey) => providerKey.length > 0)
     .sort((left, right) => left.localeCompare(right))
-    .map((providerKey) => providerQualityScope(query.topicId, providerKey)))];
+    .map((providerKey) => providerQualityScope(query.interestId, providerKey)))];
 
 const contextQuery = (query: BuildSummaryMemoryContextQuery): string => {
   const evidenceTitles = query.evidence.items
@@ -364,7 +364,7 @@ const contextQuery = (query: BuildSummaryMemoryContextQuery): string => {
   const userPart = query.userId === undefined ? '' : ` user:${query.userId}`;
 
   return redactSensitiveText([
-    `summary guidance topic:${query.topicId}${userPart}`,
+    `summary guidance interest:${query.interestId}${userPart}`,
     providerDistribution.length === 0 ? '' : `provider distribution: ${providerDistribution}`,
     evidenceTitles.length === 0 ? '' : `evidence: ${evidenceTitles}`,
   ].filter((part) => part.length > 0).join(' '));

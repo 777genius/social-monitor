@@ -69,7 +69,7 @@ export class ExecuteScanUseCase {
       createSourceBinding({
         tenantId: command.tenantId,
         workspaceId: command.workspaceId,
-        topicId: command.topicId,
+        interestId: command.interestId,
         sourceBindingId: command.sourceBindingId,
         providerKey: command.providerKey,
       }),
@@ -169,7 +169,7 @@ export class ExecuteScanUseCase {
       const projectionResult = await this.feedProjection.project({
         tenantId: command.tenantId,
         workspaceId: command.workspaceId,
-        topicId: sourceBinding.topicId,
+        interestId: sourceBinding.interestId,
         sourceBindingId: sourceBinding.sourceBindingId,
         providerKey: sourceBinding.providerKey,
         sourceItems: items,
@@ -177,7 +177,7 @@ export class ExecuteScanUseCase {
       await this.sourceItemMetadataProjection.project({
         tenantId: command.tenantId,
         workspaceId: command.workspaceId,
-        topicId: sourceBinding.topicId,
+        interestId: sourceBinding.interestId,
         sourceBindingId: sourceBinding.sourceBindingId,
         scanJobId: command.scanJobId,
         providerKey: sourceBinding.providerKey,
@@ -234,7 +234,7 @@ export class ExecuteScanUseCase {
         tenantId: command.tenantId,
         workspaceId: command.workspaceId,
         scanJobId: command.scanJobId,
-        topicId: sourceBinding.topicId,
+        interestId: sourceBinding.interestId,
         sourceBindingId: sourceBinding.sourceBindingId,
         scanPolicyId: scanPolicy.scanPolicyId,
         providerKey: sourceBinding.providerKey,

@@ -7,7 +7,7 @@ const baseArtifact = (overrides: Partial<SummaryArtifactProps> = {}): SummaryArt
   summaryId: 'summary-1',
   tenantId: tenantId('tenant-1'),
   workspaceId: workspaceId('workspace-1'),
-  topicId: 'topic-1',
+  interestId: 'interest-1',
   sourceWindow: {
     windowId: 'window-1',
     startedAt: new Date('2026-06-06T00:00:00.000Z'),
@@ -118,7 +118,7 @@ describe('SummaryArtifact', () => {
       confidence: {
         level: 'none',
         score: 0,
-        rationale: 'No evidence was selected for this topic window.',
+        rationale: 'No evidence was selected for this interest window.',
       },
       noSignalReason: 'No relevant items in the selected window.',
     })).toSnapshot()).toMatchObject({

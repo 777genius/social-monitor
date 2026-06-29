@@ -76,7 +76,7 @@ describe('User JWT auth boundary (e2e)', () => {
     });
 
     const created = await request(app.getHttpServer())
-      .post('/topics')
+      .post('/interests')
       .set(jwtHeaders(adminToken))
       .set('x-request-id', 'user-jwt-topic-create-admin')
       .set('idempotency-key', 'user-jwt-topic-create-admin')
@@ -87,27 +87,27 @@ describe('User JWT auth boundary (e2e)', () => {
       .expect(201);
 
     expect(created.body).toEqual({
-      topicId: expect.any(String),
+      interestId: expect.any(String),
       created: true,
     });
 
     const viewerRead = await request(app.getHttpServer())
-      .get('/topics')
+      .get('/interests')
       .set(jwtHeaders(viewerToken))
       .query({ limit: 10 })
       .expect(200);
 
-    expect(viewerRead.body.topics).toEqual(
+    expect(viewerRead.body.interests).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          id: created.body.topicId,
+          id: created.body.interestId,
           name: 'JWT admin topic',
         }),
       ]),
     );
 
     const viewerWrite = await request(app.getHttpServer())
-      .post('/topics')
+      .post('/interests')
       .set(jwtHeaders(viewerToken))
       .set('x-request-id', 'user-jwt-topic-create-viewer')
       .set('idempotency-key', 'user-jwt-topic-create-viewer')
@@ -121,13 +121,13 @@ describe('User JWT auth boundary (e2e)', () => {
       code: 'authorization.denied',
       detail: 'Workspace role is not allowed for this action',
       details: {
-        action: 'topics.create',
+        action: 'interests.create',
         requiredRoles: ['owner', 'admin'],
       },
     });
 
     const tenantMismatch = await request(app.getHttpServer())
-      .get('/topics')
+      .get('/interests')
       .set(jwtHeaders(otherTenantToken))
       .expect(403);
 
@@ -137,7 +137,7 @@ describe('User JWT auth boundary (e2e)', () => {
     });
 
     const workspaceMismatch = await request(app.getHttpServer())
-      .get('/topics')
+      .get('/interests')
       .set(jwtHeaders(otherWorkspaceToken))
       .expect(403);
 
@@ -147,7 +147,7 @@ describe('User JWT auth boundary (e2e)', () => {
     });
 
     const expired = await request(app.getHttpServer())
-      .get('/topics')
+      .get('/interests')
       .set(jwtHeaders(expiredToken))
       .expect(403);
 
@@ -171,11 +171,11 @@ describe('User JWT auth boundary (e2e)', () => {
         expect.objectContaining({
           actorType: 'user',
           actorId: 'admin-user',
-          action: 'topics.create',
+          action: 'interests.create',
           outcome: 'succeeded',
           metadata: expect.objectContaining({
             authType: 'oidc_jwt',
-            requiredScope: 'write:topics',
+            requiredScope: 'write:interests',
             roles: ['admin'],
             claimedRoles: ['admin'],
             membershipSource: 'token_claim',
@@ -184,7 +184,7 @@ describe('User JWT auth boundary (e2e)', () => {
         expect.objectContaining({
           actorType: 'user',
           actorId: 'viewer-user',
-          action: 'topics.create',
+          action: 'interests.create',
           outcome: 'denied',
           reasonCode: 'authorization.denied',
         }),
@@ -196,7 +196,7 @@ describe('User JWT auth boundary (e2e)', () => {
     const memberToken = tokenFor({ subject: 'personalization-user', roles: ['member'] });
 
     await request(app.getHttpServer())
-      .put('/topics/topic-jwt-user-preference/user-summary-preference')
+      .put('/interests/topic-jwt-user-preference/user-summary-preference')
       .set(jwtHeaders(memberToken))
       .send({
         userId: 'another-user',
@@ -213,7 +213,7 @@ describe('User JWT auth boundary (e2e)', () => {
       });
 
     const preference = await request(app.getHttpServer())
-      .put('/topics/topic-jwt-user-preference/user-summary-preference')
+      .put('/interests/topic-jwt-user-preference/user-summary-preference')
       .set(jwtHeaders(memberToken))
       .send({
         userId: 'personalization-user',
@@ -227,7 +227,7 @@ describe('User JWT auth boundary (e2e)', () => {
       created: true,
       summaryPreference: expect.objectContaining({
         userId: 'personalization-user',
-        topicId: 'topic-jwt-user-preference',
+        interestId: 'topic-jwt-user-preference',
         language: 'ru',
         tone: 'concise',
         customInstructions: 'Prioritize concise security updates.',
@@ -235,7 +235,7 @@ describe('User JWT auth boundary (e2e)', () => {
     });
 
     await request(app.getHttpServer())
-      .get('/topics/topic-jwt-user-preference/user-summary-preference')
+      .get('/interests/topic-jwt-user-preference/user-summary-preference')
       .query({ userId: 'another-user' })
       .set(jwtHeaders(memberToken))
       .expect(403)
@@ -247,16 +247,16 @@ describe('User JWT auth boundary (e2e)', () => {
       });
 
     const effectivePreference = await request(app.getHttpServer())
-      .get('/topics/topic-jwt-user-preference/user-summary-preference')
+      .get('/interests/topic-jwt-user-preference/user-summary-preference')
       .query({ userId: 'personalization-user' })
       .set(jwtHeaders(memberToken))
       .expect(200);
 
     expect(effectivePreference.body).toEqual({
-      source: 'topic',
+      source: 'interest',
       summaryPreference: expect.objectContaining({
         userId: 'personalization-user',
-        topicId: 'topic-jwt-user-preference',
+        interestId: 'topic-jwt-user-preference',
         language: 'ru',
         tone: 'concise',
       }),
@@ -422,7 +422,7 @@ describe('User JWT auth boundary (e2e)', () => {
         userId: 'activation-user',
       }),
       activation: {
-        topicCreated: true,
+        interestCreated: true,
         sourceBindingCreated: true,
         scanPolicyCreated: true,
         scanPolicyUpdated: false,

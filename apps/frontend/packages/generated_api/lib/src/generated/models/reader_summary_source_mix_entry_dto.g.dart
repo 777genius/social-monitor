@@ -11,13 +11,13 @@ ReaderSummarySourceMixEntryDto _$ReaderSummarySourceMixEntryDtoFromJson(
 ) => ReaderSummarySourceMixEntryDto(
   citationCount: json['citationCount'] as num,
   crossSourceClusterCount: json['crossSourceClusterCount'] as num,
+  interestIds: (json['interestIds'] as List<dynamic>)
+      .map((e) => e as String)
+      .toList(),
   itemCount: json['itemCount'] as num,
   providerKey: json['providerKey'] as String,
   singleSourceOnly: json['singleSourceOnly'] as bool,
   storyClusterCount: json['storyClusterCount'] as num,
-  topicIds: (json['topicIds'] as List<dynamic>)
-      .map((e) => e as String)
-      .toList(),
 );
 
 Map<String, dynamic> _$ReaderSummarySourceMixEntryDtoToJson(
@@ -25,9 +25,9 @@ Map<String, dynamic> _$ReaderSummarySourceMixEntryDtoToJson(
 ) => <String, dynamic>{
   'citationCount': instance.citationCount,
   'crossSourceClusterCount': instance.crossSourceClusterCount,
+  'interestIds': instance.interestIds,
   'itemCount': instance.itemCount,
   'providerKey': instance.providerKey,
   'singleSourceOnly': instance.singleSourceOnly,
   'storyClusterCount': instance.storyClusterCount,
-  'topicIds': instance.topicIds,
 };

@@ -26,7 +26,7 @@ class FakeUserSummaryPreferences implements UserSummaryPreferenceRepositoryPort 
 
   async save(preference: UserSummaryPreference): Promise<void> {
     const snapshot = preference.toSnapshot();
-    this.preferences.set(snapshot.subscriptionId ?? snapshot.topicId ?? snapshot.id, preference);
+    this.preferences.set(snapshot.subscriptionId ?? snapshot.interestId ?? snapshot.id, preference);
   }
 
   async findBySubscription(
@@ -35,10 +35,10 @@ class FakeUserSummaryPreferences implements UserSummaryPreferenceRepositoryPort 
     return this.preferences.get(params.subscriptionId) ?? null;
   }
 
-  async findByTopic(
-    params: Parameters<UserSummaryPreferenceRepositoryPort['findByTopic']>[0],
+  async findByInterest(
+    params: Parameters<UserSummaryPreferenceRepositoryPort['findByInterest']>[0],
   ): Promise<UserSummaryPreference | null> {
-    return this.preferences.get(params.topicId) ?? null;
+    return this.preferences.get(params.interestId) ?? null;
   }
 
   async findEffective(): Promise<UserSummaryPreference | null> {
@@ -104,7 +104,7 @@ const saveSubscription = async (
 };
 
 describe('UpsertUserSummaryPreferenceUseCase', () => {
-  it('creates a topic-level summary preference', async () => {
+  it('creates an interest-level summary preference', async () => {
     const preferences = new FakeUserSummaryPreferences();
     const memoryProjector = new CapturingSummaryPreferenceMemoryProjector();
     const useCase = new UpsertUserSummaryPreferenceUseCase(
@@ -119,7 +119,7 @@ describe('UpsertUserSummaryPreferenceUseCase', () => {
       tenantId: tenant,
       workspaceId: workspace,
       userId: 'user-1',
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       language: 'ru',
       format: 'bullet_digest',
       tone: 'concise',
@@ -135,7 +135,7 @@ describe('UpsertUserSummaryPreferenceUseCase', () => {
       summaryPreference: expect.objectContaining({
         id: 'summary-preference-1',
         userId: 'user-1',
-        topicId: 'topic-1',
+        interestId: 'interest-1',
         language: 'ru',
         format: 'bullet_digest',
         tone: 'concise',
@@ -148,7 +148,7 @@ describe('UpsertUserSummaryPreferenceUseCase', () => {
         workspaceId: workspace,
         preferenceId: 'summary-preference-1',
         userId: 'user-1',
-        topicId: 'topic-1',
+        interestId: 'interest-1',
         language: 'ru',
         format: 'bullet_digest',
         tone: 'concise',
@@ -240,7 +240,7 @@ describe('UpsertUserSummaryPreferenceUseCase', () => {
       tenantId: tenant,
       workspaceId: workspace,
       userId: ' ',
-      topicId: 'topic-1',
+      interestId: 'interest-1',
     });
 
     expect(result.ok).toBe(false);
@@ -259,14 +259,14 @@ describe('UpsertUserSummaryPreferenceUseCase', () => {
       tenantId: tenant,
       workspaceId: workspace,
       userId: 'user-1',
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       language: 'ru',
     });
 
     expect(result.ok).toBe(true);
-    expect(preferences.preferences.get('topic-1')?.toSnapshot()).toEqual(expect.objectContaining({
+    expect(preferences.preferences.get('interest-1')?.toSnapshot()).toEqual(expect.objectContaining({
       userId: 'user-1',
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       language: 'ru',
     }));
   });

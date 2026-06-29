@@ -15,7 +15,7 @@ The app is no longer the default Flutter template. Product workflows live in fea
 The app shell registers:
 
 - `/auth` - session, tenant and workspace access
-- `/topics` - monitoring intents and topic coverage
+- `/interests` - monitoring intents and topic coverage
 - `/sources` - source catalog, bindings, credentials health and scan state
 - `/feed` - aggregated provider items, filters and review flows
 - `/summaries` - reader-summaries, digests and insight review workflows

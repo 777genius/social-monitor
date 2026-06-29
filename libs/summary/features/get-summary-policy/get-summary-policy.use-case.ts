@@ -23,11 +23,11 @@ export class GetSummaryPolicyUseCase {
   ) {}
 
   async execute(query: GetSummaryPolicyQuery): Promise<Result<GetSummaryPolicyResult, GetSummaryPolicyFailure>> {
-    if (query.topicId.trim().length === 0) {
-      return err(new DomainError('validation.failed', 'Summary policy topic id must be non-empty'));
+    if (query.interestId.trim().length === 0) {
+      return err(new DomainError('validation.failed', 'Summary policy interest id must be non-empty'));
     }
 
-    const stored = await this.summaryPolicies.findByTopic(query);
+    const stored = await this.summaryPolicies.findByInterest(query);
     if (stored !== null) {
       return ok({
         policy: presentSummaryPolicy(stored),
@@ -36,11 +36,11 @@ export class GetSummaryPolicyUseCase {
     }
 
     return ok({
-      policy: presentSummaryPolicy(SummaryPolicy.defaultForTopic({
+      policy: presentSummaryPolicy(SummaryPolicy.defaultForInterest({
         id: this.ids.generate(),
         tenantId: query.tenantId,
         workspaceId: query.workspaceId,
-        topicId: query.topicId,
+        interestId: query.interestId,
         now: this.clock.now(),
       })),
       source: 'default',

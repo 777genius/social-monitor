@@ -1,54 +1,55 @@
 import 'package:flutter/foundation.dart';
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
-import '../../application/commands/bind_source_to_topic_command.dart';
+import '../../application/commands/bind_source_to_interest_command.dart';
 import '../../application/commands/change_source_binding_status_command.dart';
 import '../../application/queries/list_source_bindings_query.dart';
 import '../../application/queries/load_source_binding_health_query.dart';
-import '../../application/use_cases/bind_source_to_topic_use_case.dart';
+import '../../application/use_cases/bind_source_to_interest_use_case.dart';
 import '../../application/use_cases/change_source_binding_status_use_case.dart';
 import '../../application/use_cases/list_source_bindings_use_case.dart';
 import '../../application/use_cases/load_source_binding_health_use_case.dart';
+import '../../domain/entities/interest_coverage_plan.dart';
 import '../../domain/entities/source_binding.dart';
 import '../../domain/entities/source_binding_health_snapshot.dart';
 import '../../domain/value_objects/source_binding_id.dart';
 import '../../domain/value_objects/source_binding_status.dart';
+import '../../domain/value_objects/source_interest_id.dart';
 import '../../domain/value_objects/source_provider_key.dart';
-import '../../domain/value_objects/source_topic_id.dart';
 import '../view_models/source_binding_form_draft.dart';
 
 final class SourceBindingsStore extends ChangeNotifier {
   SourceBindingsStore({
     required ListSourceBindingsUseCase listSourceBindings,
-    required BindSourceToTopicUseCase bindSourceToTopic,
+    required BindSourceToInterestUseCase bindSourceToInterest,
     required ChangeSourceBindingStatusUseCase changeSourceBindingStatus,
     required LoadSourceBindingHealthUseCase loadSourceBindingHealth,
     required WorkspaceScope scope,
-    required SourceTopicId topicId,
-    required this.topicTitle,
+    required SourceInterestId interestId,
+    required this.interestTitle,
     OperationGenerationGuard? listGuard,
     OperationGenerationGuard? healthGuard,
   }) : _listSourceBindings = listSourceBindings,
-       _bindSourceToTopic = bindSourceToTopic,
+       _bindSourceToInterest = bindSourceToInterest,
        _changeSourceBindingStatus = changeSourceBindingStatus,
        _loadSourceBindingHealth = loadSourceBindingHealth,
        _scope = scope,
-       _topicId = topicId,
+       _interestId = interestId,
        _listGuard = listGuard ?? OperationGenerationGuard(),
        _healthGuard = healthGuard ?? OperationGenerationGuard();
 
   final ListSourceBindingsUseCase _listSourceBindings;
-  final BindSourceToTopicUseCase _bindSourceToTopic;
+  final BindSourceToInterestUseCase _bindSourceToInterest;
   final ChangeSourceBindingStatusUseCase _changeSourceBindingStatus;
   final LoadSourceBindingHealthUseCase _loadSourceBindingHealth;
   final OperationGenerationGuard _listGuard;
   final OperationGenerationGuard _healthGuard;
 
   WorkspaceScope _scope;
-  SourceTopicId _topicId;
+  SourceInterestId _interestId;
   int _mutationCounter = 0;
 
-  final String topicTitle;
+  final String interestTitle;
 
   AsyncViewState<PageResult<SourceBinding>> bindingsState =
       const InitialViewState<PageResult<SourceBinding>>();
@@ -63,7 +64,7 @@ final class SourceBindingsStore extends ChangeNotifier {
 
   WorkspaceScope get scope => _scope;
 
-  SourceTopicId get topicId => _topicId;
+  SourceInterestId get interestId => _interestId;
 
   bool get isBindFormOpen => _isBindFormOpen;
 
@@ -96,7 +97,7 @@ final class SourceBindingsStore extends ChangeNotifier {
     final failure = _draft.validate();
     return UserActionIntent(
       id: 'source_bindings.bind',
-      idempotencyKey: '${_scope.workspaceId}:${_topicId.value}:bind',
+      idempotencyKey: '${_scope.workspaceId}:${_interestId.value}:bind',
       disabledReasonCode: failure?.code,
     );
   }
@@ -123,13 +124,13 @@ final class SourceBindingsStore extends ChangeNotifier {
 
   void updateScope({
     required WorkspaceScope scope,
-    required SourceTopicId topicId,
+    required SourceInterestId interestId,
   }) {
-    if (scope == _scope && topicId == _topicId) {
+    if (scope == _scope && interestId == _interestId) {
       return;
     }
     _scope = scope;
-    _topicId = topicId;
+    _interestId = interestId;
     _listGuard.invalidate();
     _healthGuard.invalidate();
     _selectedBindingId = null;
@@ -192,7 +193,7 @@ final class SourceBindingsStore extends ChangeNotifier {
     notifyListeners();
 
     final result = await _listSourceBindings(
-      ListSourceBindingsQuery(scope: _scope, topicId: _topicId),
+      ListSourceBindingsQuery(scope: _scope, interestId: _interestId),
     );
     if (!_listGuard.isCurrent(generation)) {
       return;
@@ -235,7 +236,7 @@ final class SourceBindingsStore extends ChangeNotifier {
     final result = await _loadSourceBindingHealth(
       LoadSourceBindingHealthQuery(
         scope: _scope,
-        topicId: _topicId,
+        interestId: _interestId,
         sourceBindingId: binding.id,
       ),
     );
@@ -261,14 +262,58 @@ final class SourceBindingsStore extends ChangeNotifier {
     mutationState = const LoadingViewState<SourceBinding>();
     notifyListeners();
 
-    final result = await _bindSourceToTopic(
-      BindSourceToTopicCommand(
+    final result = await _bindSourceToInterest(
+      BindSourceToInterestCommand(
         scope: _scope,
-        topicId: _topicId,
+        interestId: _interestId,
         providerKey: SourceProviderKey(_draft.providerKey),
         config: _draft.config(),
         idempotencyKey:
-            '${_scope.workspaceId}:${_topicId.value}:bind:$_mutationCounter',
+            '${_scope.workspaceId}:${_interestId.value}:bind:$_mutationCounter',
+      ),
+    );
+    mutationState = result.fold(
+      onSuccess: (binding) {
+        _selectedBindingId = binding.id;
+        _isBindFormOpen = false;
+        return ReadyViewState<SourceBinding>(binding);
+      },
+      onFailure: (failure) => FailureViewState<SourceBinding>(failure: failure),
+    );
+    notifyListeners();
+
+    if (mutationState is ReadyViewState<SourceBinding>) {
+      await load();
+    }
+  }
+
+  Future<void> applyInterestCoveragePlanDraft(
+    InterestCoveragePlanDraft draft,
+  ) async {
+    final bindingDraft = draft.sourceBindingDraft;
+    if (!draft.canApply || bindingDraft == null) {
+      mutationState = const FailureViewState<SourceBinding>(
+        failure: ValidationFailure(
+          message: 'This coverage plan draft cannot be applied',
+          code: 'interest_coverage_plan.draft_not_applicable',
+        ),
+      );
+      notifyListeners();
+      return;
+    }
+
+    _mutationCounter += 1;
+    mutationState = const LoadingViewState<SourceBinding>();
+    notifyListeners();
+
+    final result = await _bindSourceToInterest(
+      BindSourceToInterestCommand(
+        scope: _scope,
+        interestId: _interestId,
+        providerKey: bindingDraft.providerKey,
+        config: bindingDraft.config,
+        idempotencyKey:
+            '${_scope.workspaceId}:${_interestId.value}:plan:${bindingDraft.providerKey.normalized}:$_mutationCounter',
       ),
     );
     mutationState = result.fold(
@@ -304,7 +349,7 @@ final class SourceBindingsStore extends ChangeNotifier {
     final result = await _changeSourceBindingStatus(
       ChangeSourceBindingStatusCommand(
         scope: _scope,
-        topicId: _topicId,
+        interestId: _interestId,
         sourceBindingId: binding.id,
         status: status,
         idempotencyKey:

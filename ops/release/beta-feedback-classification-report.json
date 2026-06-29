@@ -47,7 +47,7 @@
       "eligibleForEvalFixture": true,
       "summaryEvidence": {
         "summaryId": "summary-beta-policy",
-        "topicId": "topic-beta-policy",
+        "interestId": "topic-beta-policy",
         "citationId": "citation-source-001",
         "feedItemId": "feed-item-source-001",
         "sourceItemId": "source-item-source-001",
@@ -67,7 +67,7 @@
       "eligibleForEvalFixture": true,
       "summaryEvidence": {
         "summaryId": "summary-beta-policy",
-        "topicId": "topic-beta-policy",
+        "interestId": "topic-beta-policy",
         "citationId": "citation-source-002",
         "feedItemId": "feed-item-source-002",
         "sourceItemId": "source-item-source-002",
@@ -88,7 +88,7 @@
       "requestedProvider": "x-twitter",
       "summaryEvidence": {
         "summaryId": "summary-beta-policy",
-        "topicId": "topic-beta-policy"
+        "interestId": "topic-beta-policy"
       },
       "sanitizedSignal": "User needs X/Twitter monitoring, but provider remains deferred for beta until approved access and cost controls exist.",
       "action": "Keep X/Twitter disabled in beta and attach demand to source adapter evaluation.",
@@ -105,7 +105,7 @@
       "requestedProvider": "telegram",
       "summaryEvidence": {
         "summaryId": "summary-beta-policy",
-        "topicId": "topic-beta-policy"
+        "interestId": "topic-beta-policy"
       },
       "sanitizedSignal": "User wants Telegram channel monitoring, but explicit channel scope and credential lifecycle are not approved.",
       "action": "Capture source demand and revisit only after channel scope model is approved.",
@@ -121,7 +121,7 @@
       "eligibleForEvalFixture": false,
       "summaryEvidence": {
         "summaryId": "summary-beta-policy",
-        "topicId": "topic-beta-policy"
+        "interestId": "topic-beta-policy"
       },
       "sanitizedSignal": "Operator-assisted beta requires API/OpenAPI walkthroughs because the Flutter frontend is intentionally deferred.",
       "action": "Keep frontend out of MVP scope and document support walkthroughs until self-serve demand repeats.",
@@ -137,7 +137,7 @@
       "eligibleForEvalFixture": true,
       "summaryEvidence": {
         "summaryId": "summary-beta-policy",
-        "topicId": "topic-beta-policy",
+        "interestId": "topic-beta-policy",
         "citationId": "citation-source-003",
         "feedItemId": "feed-item-source-003",
         "sourceItemId": "source-item-source-003",

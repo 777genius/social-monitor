@@ -1,7 +1,7 @@
 export type ScheduledAutoSummaryResultItem = {
   readonly tenantId: string;
   readonly workspaceId: string;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly summaryJobId: string;
   readonly status: string;
   readonly created: boolean;
@@ -17,7 +17,7 @@ export type ScheduleAutoSummariesResult = {
   readonly failed: number;
   readonly summaries: readonly ScheduledAutoSummaryResultItem[];
   readonly failures: readonly {
-    readonly topicId: string;
+    readonly interestId: string;
     readonly message: string;
   }[];
 };

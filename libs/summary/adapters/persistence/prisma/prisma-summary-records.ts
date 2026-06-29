@@ -32,7 +32,7 @@ export type PrismaSummaryJobRecord = {
   readonly id: string;
   readonly tenantId: string;
   readonly workspaceId: string;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly userId: string | null;
   readonly subscriptionId: string | null;
   readonly status: PrismaSummaryStatus;
@@ -51,7 +51,7 @@ export type PrismaSummaryArtifactRecord = {
   readonly id: string;
   readonly tenantId: string;
   readonly workspaceId: string;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly userId: string | null;
   readonly subscriptionId: string | null;
   readonly status: PrismaSummaryStatus;
@@ -72,7 +72,7 @@ export type PrismaSummaryFeedbackRecord = {
   readonly tenantId: string;
   readonly workspaceId: string;
   readonly summaryArtifactId: string;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly idempotencyKey: string;
   readonly submittedBy: string;
   readonly rating: number;
@@ -88,7 +88,7 @@ export type PrismaSummaryPolicyRecord = {
   readonly id: string;
   readonly tenantId: string;
   readonly workspaceId: string;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly language: string;
   readonly format: string;
   readonly tone: string;
@@ -120,7 +120,7 @@ export const summaryJobFromPrisma = (record: PrismaSummaryJobRecord): SummaryJob
     id: record.id,
     tenantId: tenantId(record.tenantId),
     workspaceId: workspaceId(record.workspaceId),
-    topicId: record.topicId,
+    interestId: record.interestId,
     userId: record.userId ?? undefined,
     subscriptionId: record.subscriptionId ?? undefined,
     status: summaryJobStatusFromPrisma(record.status),
@@ -142,13 +142,13 @@ export const summaryFeedbackFromPrisma = (record: PrismaSummaryFeedbackRecord): 
     tenantId: tenantId(record.tenantId),
     workspaceId: workspaceId(record.workspaceId),
     summaryId: record.summaryArtifactId,
-    topicId: record.topicId,
+    interestId: record.interestId,
     idempotencyKey: record.idempotencyKey,
     submittedBy: record.submittedBy,
     rating: record.rating,
     category: normalizeFeedbackCategory(record.category),
     comment: record.note ?? undefined,
-    evidence: normalizeFeedbackEvidence(record.evidence, record.summaryArtifactId, record.topicId),
+    evidence: normalizeFeedbackEvidence(record.evidence, record.summaryArtifactId, record.interestId),
     triageOwner: normalizeTriageOwner(record.triageOwner),
     eligibleForEvalFixture: record.eligibleForEvalFixture,
     createdAt: record.createdAt,
@@ -159,7 +159,7 @@ export const summaryPolicyFromPrisma = (record: PrismaSummaryPolicyRecord): Summ
     id: record.id,
     tenantId: tenantId(record.tenantId),
     workspaceId: workspaceId(record.workspaceId),
-    topicId: record.topicId,
+    interestId: record.interestId,
     language: normalizeSummaryPolicyLanguage(record.language),
     format: normalizeSummaryPolicyFormat(record.format),
     tone: normalizeSummaryPolicyTone(record.tone),
@@ -289,7 +289,7 @@ const normalizeArtifactPayload = (
     summaryId: fallback.id,
     tenantId: tenantId(fallback.tenantId),
     workspaceId: workspaceId(fallback.workspaceId),
-    topicId: fallback.topicId,
+    interestId: fallback.interestId,
     userId: normalizeOptionalString(value.userId) ?? fallback.userId ?? undefined,
     subscriptionId: normalizeOptionalString(value.subscriptionId) ?? fallback.subscriptionId ?? undefined,
     sourceWindow: {
@@ -358,12 +358,12 @@ const normalizeTriageOwner = (value: string): SummaryFeedbackTriageOwner => {
 const normalizeFeedbackEvidence = (
   value: unknown,
   summaryId: string,
-  topicId: string,
+  interestId: string,
 ): SummaryFeedbackEvidence => {
   if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
     return {
       summaryId,
-      topicId,
+      interestId,
       citationId: normalizeOptionalString((value as { readonly citationId?: unknown }).citationId),
       feedItemId: normalizeOptionalString((value as { readonly feedItemId?: unknown }).feedItemId),
       sourceItemId: normalizeOptionalString((value as { readonly sourceItemId?: unknown }).sourceItemId),
@@ -371,7 +371,7 @@ const normalizeFeedbackEvidence = (
     };
   }
 
-  return { summaryId, topicId };
+  return { summaryId, interestId };
 };
 
 const normalizeOptionalString = (value: unknown): string | undefined =>

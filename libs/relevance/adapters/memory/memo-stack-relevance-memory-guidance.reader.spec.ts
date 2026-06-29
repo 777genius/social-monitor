@@ -7,7 +7,7 @@ describe('MemoStackRelevanceMemoryGuidanceReader', () => {
     const client = new CapturingMemoStackContextClient({
       data: {
         rendered_text: [
-          'Guidance: prefer similar github evidence and topic signals for this user.',
+          'Guidance: prefer similar github evidence and interest signals for this user.',
           'Ranking quality signal: positive_relevance.',
           'Provider github was involved.',
           'Guidance: avoid rss evidence for this user unless explicitly requested.',

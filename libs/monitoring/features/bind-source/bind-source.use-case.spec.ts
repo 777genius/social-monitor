@@ -1,12 +1,12 @@
 import { FixedClock, type IdGenerator, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
-import { Topic, type SourceBinding } from '../../domain';
+import { Interest, type SourceBinding } from '../../domain';
 import type {
   IdempotencyPort,
   ListSourceBindingsQuery,
   ListSourceBindingsResult,
-  ListTopicsQuery,
-  ListTopicsResult,
+  ListInterestsQuery,
+  ListInterestsResult,
   OutboxPort,
   SourceBindingConfig,
   SourceBindingConfigValidationResult,
@@ -14,7 +14,7 @@ import type {
   SourceBindingRepositoryPort,
   SourceCatalogPort,
   SourceCapabilityProfile,
-  TopicRepositoryPort,
+  InterestRepositoryPort,
 } from '../../ports';
 import type { BindSourceResult } from './bind-source.result';
 import { BindSourceUseCase } from './bind-source.use-case';
@@ -29,30 +29,30 @@ class SequenceIdGenerator implements IdGenerator {
   }
 }
 
-class FakeTopics implements TopicRepositoryPort {
-  private readonly topics = new Map<string, Topic>();
+class FakeInterests implements InterestRepositoryPort {
+  private readonly interests = new Map<string, Interest>();
 
-  add(topic: Topic): void {
-    const snapshot = topic.toSnapshot();
-    this.topics.set(`${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.id}`, topic);
+  add(interest: Interest): void {
+    const snapshot = interest.toSnapshot();
+    this.interests.set(`${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.id}`, interest);
   }
 
-  async save(topic: Topic): Promise<void> {
-    this.add(topic);
+  async save(interest: Interest): Promise<void> {
+    this.add(interest);
   }
 
-  async findByName(): Promise<Topic | null> {
+  async findByName(): Promise<Interest | null> {
     return null;
   }
 
-  async findById(params: Parameters<TopicRepositoryPort['findById']>[0]): Promise<Topic | null> {
-    return this.topics.get(`${params.tenantId}:${params.workspaceId}:${params.topicId}`) ?? null;
+  async findById(params: Parameters<InterestRepositoryPort['findById']>[0]): Promise<Interest | null> {
+    return this.interests.get(`${params.tenantId}:${params.workspaceId}:${params.interestId}`) ?? null;
   }
 
-  async list(query: ListTopicsQuery): Promise<ListTopicsResult> {
+  async list(query: ListInterestsQuery): Promise<ListInterestsResult> {
     return {
-      topics: [...this.topics.values()].filter((topic) => {
-        const snapshot = topic.toSnapshot();
+      interests: [...this.interests.values()].filter((interest) => {
+        const snapshot = interest.toSnapshot();
 
         return snapshot.tenantId === query.tenantId && snapshot.workspaceId === query.workspaceId;
       }),
@@ -62,23 +62,23 @@ class FakeTopics implements TopicRepositoryPort {
 }
 
 class FakeBindings implements SourceBindingRepositoryPort {
-  private readonly bindingsByTopicProvider = new Map<string, SourceBinding>();
+  private readonly bindingsByInterestProvider = new Map<string, SourceBinding>();
   private readonly bindingsById = new Map<string, SourceBinding>();
 
   async save(binding: SourceBinding): Promise<void> {
     const snapshot = binding.toSnapshot();
-    this.bindingsByTopicProvider.set(
-      `${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.topicId}:${snapshot.providerKey}`,
+    this.bindingsByInterestProvider.set(
+      `${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.interestId}:${snapshot.providerKey}`,
       binding,
     );
     this.bindingsById.set(`${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.id}`, binding);
   }
 
-  async findByTopicAndProvider(
-    params: Parameters<SourceBindingRepositoryPort['findByTopicAndProvider']>[0],
+  async findByInterestAndProvider(
+    params: Parameters<SourceBindingRepositoryPort['findByInterestAndProvider']>[0],
   ): Promise<SourceBinding | null> {
     return (
-      this.bindingsByTopicProvider.get(`${params.tenantId}:${params.workspaceId}:${params.topicId}:${params.providerKey}`) ??
+      this.bindingsByInterestProvider.get(`${params.tenantId}:${params.workspaceId}:${params.interestId}:${params.providerKey}`) ??
       null
     );
   }
@@ -87,7 +87,7 @@ class FakeBindings implements SourceBindingRepositoryPort {
     return this.bindingsById.get(`${params.tenantId}:${params.workspaceId}:${params.sourceBindingId}`) ?? null;
   }
 
-  async listByTopic(query: ListSourceBindingsQuery): Promise<ListSourceBindingsResult> {
+  async listByInterest(query: ListSourceBindingsQuery): Promise<ListSourceBindingsResult> {
     return {
       sourceBindings: [...this.bindingsById.values()].filter((binding) => {
         const snapshot = binding.toSnapshot();
@@ -95,7 +95,7 @@ class FakeBindings implements SourceBindingRepositoryPort {
         return (
           snapshot.tenantId === query.tenantId &&
           snapshot.workspaceId === query.workspaceId &&
-          snapshot.topicId === query.topicId
+          snapshot.interestId === query.interestId
         );
       }),
       nextCursor: undefined,
@@ -163,9 +163,9 @@ class FakeConfigProtector implements SourceBindingConfigProtectorPort {
   }
 }
 
-const makeTopic = () =>
-  Topic.create({
-    id: 'topic-1',
+const makeInterest = () =>
+  Interest.create({
+    id: 'interest-1',
     tenantId: tenantId('tenant-1'),
     workspaceId: workspaceId('workspace-1'),
     name: 'AI Monitoring',
@@ -175,13 +175,13 @@ const makeTopic = () =>
 
 describe('BindSourceUseCase', () => {
   it('binds a production-safe fake source and appends an event', async () => {
-    const topics = new FakeTopics();
-    topics.add(makeTopic());
+    const interests = new FakeInterests();
+    interests.add(makeInterest());
     const outbox = new FakeOutbox();
     const bindings = new FakeBindings();
     const protector = new FakeConfigProtector();
     const useCase = new BindSourceUseCase(
-      topics,
+      interests,
       bindings,
       new FakeCatalog({
         providerKey: 'fake-source',
@@ -199,7 +199,7 @@ describe('BindSourceUseCase', () => {
     const result = await useCase.execute({
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       providerKey: 'fake-source',
       config: { query: 'openai monitoring', apiToken: 'raw-token' },
       idempotencyKey: 'bind-1',
@@ -211,10 +211,10 @@ describe('BindSourceUseCase', () => {
     expect(outbox.events).toHaveLength(1);
     expect(protector.configs).toEqual([{ query: 'openai monitoring', apiToken: 'raw-token' }]);
 
-    const binding = await bindings.findByTopicAndProvider({
+    const binding = await bindings.findByInterestAndProvider({
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       providerKey: 'fake-source',
     });
 
@@ -229,10 +229,10 @@ describe('BindSourceUseCase', () => {
   });
 
   it('rejects unsupported source provider', async () => {
-    const topics = new FakeTopics();
-    topics.add(makeTopic());
+    const interests = new FakeInterests();
+    interests.add(makeInterest());
     const useCase = new BindSourceUseCase(
-      topics,
+      interests,
       new FakeBindings(),
       new FakeCatalog(null),
       new FakeOutbox(),
@@ -245,7 +245,7 @@ describe('BindSourceUseCase', () => {
     const result = await useCase.execute({
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       providerKey: 'unsafe-source',
       config: {},
       idempotencyKey: 'bind-1',
@@ -256,12 +256,12 @@ describe('BindSourceUseCase', () => {
   });
 
   it('rejects invalid provider config before protecting and saving it', async () => {
-    const topics = new FakeTopics();
-    topics.add(makeTopic());
+    const interests = new FakeInterests();
+    interests.add(makeInterest());
     const bindings = new FakeBindings();
     const protector = new FakeConfigProtector();
     const useCase = new BindSourceUseCase(
-      topics,
+      interests,
       bindings,
       new FakeCatalog(
         {
@@ -282,7 +282,7 @@ describe('BindSourceUseCase', () => {
     const result = await useCase.execute({
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       providerKey: 'rss',
       config: { feedUrl: 'http://127.0.0.1/feed.xml' },
       idempotencyKey: 'bind-rss-invalid',
@@ -296,20 +296,20 @@ describe('BindSourceUseCase', () => {
       }),
     }));
     expect(protector.configs).toEqual([]);
-    await expect(bindings.findByTopicAndProvider({
+    await expect(bindings.findByInterestAndProvider({
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       providerKey: 'rss',
     })).resolves.toBeNull();
   });
 
   it('rejects new source bindings after enabled source capacity limit is reached', async () => {
-    const topics = new FakeTopics();
-    topics.add(makeTopic());
+    const interests = new FakeInterests();
+    interests.add(makeInterest());
     const bindings = new FakeBindings();
     const useCase = new BindSourceUseCase(
-      topics,
+      interests,
       bindings,
       new FakeCatalog({
         providerKey: 'source-1',
@@ -322,13 +322,13 @@ describe('BindSourceUseCase', () => {
       new FakeConfigProtector(),
       new SequenceIdGenerator(),
       new FixedClock(new Date('2026-06-05T00:00:00.000Z')),
-      { maxEnabledSourcesPerTopic: 1 },
+      { maxEnabledSourcesPerInterest: 1 },
     );
 
     const first = await useCase.execute({
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       providerKey: 'source-1',
       config: { query: 'openai monitoring' },
       idempotencyKey: 'bind-1',
@@ -337,7 +337,7 @@ describe('BindSourceUseCase', () => {
     const second = await useCase.execute({
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       providerKey: 'source-2',
       config: { query: 'postgres rabbitmq' },
       idempotencyKey: 'bind-2',

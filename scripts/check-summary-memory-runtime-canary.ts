@@ -14,7 +14,7 @@ const token = requiredEnv('INFINITY_CONTEXT_TOKEN');
 const runId = readOptionalEnv('SUMMARY_MEMORY_RUNTIME_CANARY_RUN_ID') ?? `runtime-canary-${Date.now()}`;
 const tenant = tenantId(`tenant-${runId}`);
 const workspace = workspaceId(`workspace-${runId}`);
-const topicId = `topic-${runId}`;
+const interestId = `topic-${runId}`;
 const userId = `user-${runId}`;
 const subscriptionId = `subscription-${runId}`;
 const requestedAt = new Date();
@@ -32,7 +32,7 @@ async function main(): Promise<void> {
   const write = await memory.recordSummaryFeedback({
     tenantId: tenant,
     workspaceId: workspace,
-    topicId,
+    interestId,
     summaryId: `summary-${runId}`,
     feedbackId: `feedback-${runId}`,
     idempotencyKey: `summary-memory-runtime-canary:${runId}`,
@@ -85,7 +85,7 @@ function contextQuery(): Parameters<MemoStackSummaryMemoryAdapter['buildContext'
   return {
     tenantId: tenant,
     workspaceId: workspace,
-    topicId,
+    interestId,
     userId,
     subscriptionId,
     requestedAt,

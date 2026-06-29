@@ -49,7 +49,7 @@ describe('Manual scan request quota (e2e)', () => {
       app,
       tenant,
       workspace,
-      topicIdempotencyKey: 'quota-topic-1',
+      interestIdempotencyKey: 'quota-topic-1',
       bindingIdempotencyKey: 'quota-binding-1',
       policyIdempotencyKey: 'quota-policy-1',
     });
@@ -57,7 +57,7 @@ describe('Manual scan request quota (e2e)', () => {
       app,
       tenant,
       workspace,
-      topicIdempotencyKey: 'quota-topic-2',
+      interestIdempotencyKey: 'quota-topic-2',
       bindingIdempotencyKey: 'quota-binding-2',
       policyIdempotencyKey: 'quota-policy-2',
     });
@@ -103,25 +103,25 @@ const createReadyBinding = async (params: {
   readonly app: INestApplication;
   readonly tenant: string;
   readonly workspace: string;
-  readonly topicIdempotencyKey: string;
+  readonly interestIdempotencyKey: string;
   readonly bindingIdempotencyKey: string;
   readonly policyIdempotencyKey: string;
 }): Promise<string> => {
   const topic = await request(params.app.getHttpServer())
-    .post('/topics')
+    .post('/interests')
     .set('x-tenant-id', params.tenant)
     .set('x-workspace-id', params.workspace)
     .set('x-workspace-role', 'admin')
-    .set('x-request-id', `${params.topicIdempotencyKey}-request`)
-    .set('idempotency-key', params.topicIdempotencyKey)
+    .set('x-request-id', `${params.interestIdempotencyKey}-request`)
+    .set('idempotency-key', params.interestIdempotencyKey)
     .send({
-      name: `Quota ${params.topicIdempotencyKey}`,
-      query: `quota ${params.topicIdempotencyKey}`,
+      name: `Quota ${params.interestIdempotencyKey}`,
+      query: `quota ${params.interestIdempotencyKey}`,
     })
     .expect(201);
 
   const binding = await request(params.app.getHttpServer())
-    .post(`/topics/${topic.body.topicId}/source-bindings`)
+    .post(`/interests/${topic.body.interestId}/source-bindings`)
     .set('x-tenant-id', params.tenant)
     .set('x-workspace-id', params.workspace)
     .set('x-workspace-role', 'admin')

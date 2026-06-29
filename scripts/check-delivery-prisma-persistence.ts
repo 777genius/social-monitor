@@ -209,7 +209,7 @@ async function main(): Promise<void> {
     id: 'summary-digest-source-1',
     tenantId: tenant,
     workspaceId: workspace,
-    topicId: 'topic-1',
+    interestId: 'interest-1',
     status: 'COMPLETED',
     artifactPayload: {
       sourceWindow: {
@@ -227,7 +227,7 @@ async function main(): Promise<void> {
     id: 'summary-digest-source-nosignal',
     tenantId: tenant,
     workspaceId: workspace,
-    topicId: 'topic-1',
+    interestId: 'interest-1',
     status: 'NO_SIGNAL',
     artifactPayload: {
       sourceWindow: {
@@ -245,7 +245,7 @@ async function main(): Promise<void> {
     id: 'summary-digest-source-outside-window',
     tenantId: tenant,
     workspaceId: workspace,
-    topicId: 'topic-1',
+    interestId: 'interest-1',
     status: 'COMPLETED',
     artifactPayload: {
       sourceWindow: {
@@ -263,7 +263,7 @@ async function main(): Promise<void> {
     id: 'feed-digest-source-1',
     tenantId: tenant,
     workspaceId: workspace,
-    topicId: 'topic-1',
+    interestId: 'interest-1',
     observedAt: new Date('2026-06-07T00:15:00.000Z'),
     status: 'VISIBLE',
   });
@@ -271,7 +271,7 @@ async function main(): Promise<void> {
     id: 'feed-digest-source-hidden',
     tenantId: tenant,
     workspaceId: workspace,
-    topicId: 'topic-1',
+    interestId: 'interest-1',
     observedAt: new Date('2026-06-07T00:20:00.000Z'),
     status: 'HIDDEN',
   });
@@ -287,7 +287,7 @@ async function main(): Promise<void> {
     workspaceId: workspace,
     recipientKey: 'endpoint-digest-source',
     channel: 'webhook',
-    topicIds: ['topic-1', 'topic-1'],
+    interestIds: ['interest-1', 'interest-1'],
     windowStartedAt: new Date('2026-06-07T00:00:00.000Z'),
     windowEndedAt: new Date('2026-06-07T01:00:00.000Z'),
     includeNoSignal: false,
@@ -332,7 +332,7 @@ async function main(): Promise<void> {
       {
         resourceType: 'summary',
         resourceId: 'summary-1',
-        topicId: 'topic-1',
+        interestId: 'interest-1',
         includedReason: 'high_signal',
       },
     ],
@@ -368,7 +368,7 @@ async function main(): Promise<void> {
     workspaceId: workspace,
     recipientKey: 'endpoint-1',
     channel: 'webhook',
-    topicIds: ['topic-2', 'topic-1', 'topic-1'],
+    interestIds: ['interest-2', 'interest-1', 'interest-1'],
     intervalSeconds: 3600,
     includeNoSignal: false,
     nextRunAt: new Date('2026-06-07T00:00:00.000Z'),
@@ -384,8 +384,8 @@ async function main(): Promise<void> {
   });
   assert(dueSchedules.length === 1, 'digest schedule repository must find due persisted schedules');
   assert(
-    dueSchedules[0]?.toSnapshot().topicIds.join(',') === 'topic-1,topic-2',
-    'digest schedule repository must hydrate normalized topic ids',
+    dueSchedules[0]?.toSnapshot().interestIds.join(',') === 'interest-1,interest-2',
+    'digest schedule repository must hydrate normalized interest ids',
   );
 
   await schedules.save(schedule.scheduleNext({ nextRunAt: new Date('2026-06-07T01:00:00.000Z') }));
@@ -402,13 +402,13 @@ async function main(): Promise<void> {
     workspaceId: workspace,
     recipientKey: 'endpoint-2',
     channel: 'email',
-    topicIds: ['topic-3', 'topic-1', 'topic-1'],
+    interestIds: ['interest-3', 'interest-1', 'interest-1'],
     intervalSeconds: 7200,
     includeNoSignal: true,
     nextRunAt: new Date('2026-06-07T02:00:00.000Z'),
   });
   assert(isOk(createdSchedule), 'create digest schedule use case must persist through Prisma repository');
-  assert(createdSchedule.value.schedule.topicIds.join(',') === 'topic-1,topic-3', 'created schedule topic ids must normalize');
+  assert(createdSchedule.value.schedule.interestIds.join(',') === 'interest-1,interest-3', 'created schedule interest ids must normalize');
 
   const scheduleView = await new GetDigestScheduleUseCase(schedules).execute({
     tenantId: tenant,
@@ -433,13 +433,13 @@ async function main(): Promise<void> {
   const recordedRealtime = await recordRealtime.execute({
     tenantId: tenant,
     workspaceId: workspace,
-    channel: 'topic:topic-1:summary-status',
+    channel: 'interest:interest-1:summary-status',
     eventType: 'summary.status.changed.v1',
     resourceType: 'summary',
     resourceId: 'summary-1',
     correlationId: correlationId('correlation-realtime-1'),
     payload: {
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       summaryId: 'summary-1',
       status: 'completed',
     },
@@ -450,7 +450,7 @@ async function main(): Promise<void> {
   const listedRealtime = await new ListRealtimeEventsUseCase(realtimeEvents).execute({
     tenantId: tenant,
     workspaceId: workspace,
-    channel: 'topic:topic-1:summary-status',
+    channel: 'interest:interest-1:summary-status',
     limit: 10,
   });
   assert(isOk(listedRealtime), 'realtime event list use case must read through Prisma repository');
@@ -463,7 +463,7 @@ async function main(): Promise<void> {
   const caughtUpRealtime = await realtimeEvents.list({
     tenantId: tenant,
     workspaceId: workspace,
-    channel: 'topic:topic-1:summary-status',
+    channel: 'interest:interest-1:summary-status',
     limit: 10,
     cursor: recordedRealtime.value.replayCursor,
   });
@@ -473,7 +473,7 @@ async function main(): Promise<void> {
   const invalidRealtimeCursor = await realtimeEvents.list({
     tenantId: tenant,
     workspaceId: workspace,
-    channel: 'topic:topic-1:summary-status',
+    channel: 'interest:interest-1:summary-status',
     limit: 10,
     cursor: 'not-a-valid-cursor',
   });
@@ -935,7 +935,7 @@ const normalizeDigestScheduleWriteData = (
   workspaceId: data.workspaceId,
   recipientKey: data.recipientKey,
   channel: data.channel,
-  topicIds: data.topicIds,
+  interestIds: data.interestIds,
   intervalSeconds: data.intervalSeconds,
   includeNoSignal: data.includeNoSignal,
   nextRunAt: data.nextRunAt,
@@ -1085,13 +1085,13 @@ const matchesDigestSourceSummaryWhere = (
   where: {
     readonly tenantId: string;
     readonly workspaceId: string;
-    readonly topicId: { readonly in: readonly string[] };
+    readonly interestId: { readonly in: readonly string[] };
     readonly status: { readonly in: readonly PrismaDigestSourceSummaryRecord['status'][] };
   },
 ): boolean =>
   record.tenantId === where.tenantId &&
   record.workspaceId === where.workspaceId &&
-  where.topicId.in.includes(record.topicId) &&
+  where.interestId.in.includes(record.interestId) &&
   where.status.in.includes(record.status);
 
 const compareDigestSourceSummaryRecords = (
@@ -1112,7 +1112,7 @@ const matchesDigestSourceFeedItemWhere = (
   where: {
     readonly tenantId: string;
     readonly workspaceId: string;
-    readonly topicId: { readonly in: readonly string[] };
+    readonly interestId: { readonly in: readonly string[] };
     readonly status: PrismaDigestSourceFeedItemRecord['status'];
     readonly observedAt: {
       readonly gte: Date;
@@ -1122,7 +1122,7 @@ const matchesDigestSourceFeedItemWhere = (
 ): boolean =>
   record.tenantId === where.tenantId &&
   record.workspaceId === where.workspaceId &&
-  where.topicId.in.includes(record.topicId) &&
+  where.interestId.in.includes(record.interestId) &&
   record.status === where.status &&
   record.observedAt.getTime() >= where.observedAt.gte.getTime() &&
   record.observedAt.getTime() < where.observedAt.lt.getTime();

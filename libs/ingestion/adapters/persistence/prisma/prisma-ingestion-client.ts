@@ -24,7 +24,7 @@ type GitHubRepositoryTrendSnapshotKey = {
 type GitHubRepositoryTrendData = {
   readonly tenantId: string;
   readonly workspaceId: string;
-  readonly topicId?: string;
+  readonly interestId?: string;
   readonly sourceBindingId?: string;
   readonly scanJobId?: string;
   readonly sourceItemId?: string;
@@ -105,7 +105,7 @@ export type PrismaIngestionClient = {
         readonly tenantId: string;
         readonly workspaceId: string;
         readonly scanJobId: string;
-        readonly topicId: string;
+        readonly interestId: string;
         readonly sourceBindingId: string;
         readonly scanPolicyId: string;
         readonly providerKey: string;

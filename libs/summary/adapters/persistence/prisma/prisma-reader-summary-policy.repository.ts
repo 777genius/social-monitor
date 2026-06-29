@@ -24,7 +24,7 @@ export class PrismaReaderSummaryPolicyRepository implements ReaderSummaryPolicyR
       tone: snapshot.tone,
       maxStories: snapshot.maxStories,
       includeRisks: snapshot.includeRisks,
-      includeTopicHighlights: snapshot.includeTopicHighlights,
+      includeInterestHighlights: snapshot.includeInterestHighlights,
       includeRepeatedSignals: snapshot.includeRepeatedSignals,
       dedupeStrategy: snapshot.dedupeStrategy,
       customInstructions: snapshot.customInstructions ?? null,

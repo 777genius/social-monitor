@@ -21,7 +21,7 @@ export type RelevanceFeedbackReason = (typeof relevanceFeedbackReasons)[number];
 
 export type RelevanceFeedbackTarget = {
   readonly feedItemId?: string;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly providerKey: string;
   readonly title: string;
   readonly bodyPreview?: string;
@@ -111,8 +111,8 @@ const normalizeProps = (props: RelevanceFeedbackSignalProps): RelevanceFeedbackS
 };
 
 const normalizeTarget = (target: RelevanceFeedbackTarget): RelevanceFeedbackTarget => {
-  if (target.topicId.trim().length === 0) {
-    throw new Error('Relevance feedback topic id must be non-empty');
+  if (target.interestId.trim().length === 0) {
+    throw new Error('Relevance feedback interest id must be non-empty');
   }
 
   if (target.providerKey.trim().length === 0) {
@@ -125,7 +125,7 @@ const normalizeTarget = (target: RelevanceFeedbackTarget): RelevanceFeedbackTarg
 
   return {
     feedItemId: normalizeOptional(target.feedItemId),
-    topicId: target.topicId.trim(),
+    interestId: target.interestId.trim(),
     providerKey: target.providerKey.trim().toLocaleLowerCase('en-US'),
     title: target.title.trim(),
     bodyPreview: normalizeOptional(target.bodyPreview),

@@ -10,11 +10,11 @@ import '../models/bind_source_request_dto.dart';
 import '../models/bind_source_response_dto.dart';
 import '../models/change_source_binding_status_request_dto.dart';
 import '../models/change_source_binding_status_response_dto.dart';
+import '../models/list_interest_source_daily_history_response_dto.dart';
 import '../models/list_source_binding_overview_response_dto.dart';
 import '../models/list_source_bindings_response_dto.dart';
-import '../models/list_topic_source_daily_history_response_dto.dart';
 import '../models/source_binding_health_response_dto.dart';
-import '../models/status2.dart';
+import '../models/status.dart';
 
 part 'source_bindings_client.g.dart';
 
@@ -23,17 +23,17 @@ abstract class SourceBindingsClient {
   factory SourceBindingsClient(Dio dio, {String? baseUrl}) =
       _SourceBindingsClient;
 
-  /// List source bindings for a topic.
+  /// List source bindings for an interest.
   ///
-  /// [authorization] - Optional Bearer API key. Requires read:topics. If supplied, x-workspace-role is not required.
+  /// [authorization] - Optional Bearer API key. Requires read:interests. If supplied, x-workspace-role is not required.
   ///
   /// [xWorkspaceRole] - Comma-separated workspace roles. Source binding reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.
-  @GET('/topics/{topicId}/source-bindings')
+  @GET('/interests/{interestId}/source-bindings')
   Future<ListSourceBindingsResponseDto> sourceBindingControllerList({
-    @Path('topicId') required String topicId,
+    @Path('interestId') required String interestId,
     @Header('x-workspace-id') required String xWorkspaceId,
     @Header('x-tenant-id') required String xTenantId,
-    @Query('status') List<Status2>? status,
+    @Query('status') List<Status>? status,
     @Query('providerKey') List<String>? providerKey,
     @Query('cursor') String? cursor,
     @Query('limit') num? limit,
@@ -41,16 +41,16 @@ abstract class SourceBindingsClient {
     @Header('x-workspace-role') String? xWorkspaceRole,
   });
 
-  /// Bind a production-safe source provider to a topic.
+  /// Bind a production-safe source provider to an interest.
   ///
   /// [authorization] - Optional Bearer API key. Requires write:source_bindings. If supplied, x-workspace-role is not required.
   ///
   /// [xWorkspaceRole] - Comma-separated workspace roles. Source binding creation requires owner or admin. Required when Authorization bearer API key is not supplied.
   ///
   /// [body] - Name not received - field will be skipped.
-  @POST('/topics/{topicId}/source-bindings')
+  @POST('/interests/{interestId}/source-bindings')
   Future<BindSourceResponseDto> sourceBindingControllerCreate({
-    @Path('topicId') required String topicId,
+    @Path('interestId') required String interestId,
     @Header('idempotency-key') required String idempotencyKey,
     @Header('x-workspace-id') required String xWorkspaceId,
     @Header('x-tenant-id') required String xTenantId,
@@ -61,12 +61,12 @@ abstract class SourceBindingsClient {
 
   /// Get source binding operational health.
   ///
-  /// [authorization] - Optional Bearer API key. Requires read:topics. If supplied, x-workspace-role is not required.
+  /// [authorization] - Optional Bearer API key. Requires read:interests. If supplied, x-workspace-role is not required.
   ///
   /// [xWorkspaceRole] - Comma-separated workspace roles. Source binding health reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.
-  @GET('/topics/{topicId}/source-bindings/{sourceBindingId}/health')
+  @GET('/interests/{interestId}/source-bindings/{sourceBindingId}/health')
   Future<SourceBindingHealthResponseDto> sourceBindingControllerHealth({
-    @Path('topicId') required String topicId,
+    @Path('interestId') required String interestId,
     @Path('sourceBindingId') required String sourceBindingId,
     @Header('x-workspace-id') required String xWorkspaceId,
     @Header('x-tenant-id') required String xTenantId,
@@ -81,10 +81,10 @@ abstract class SourceBindingsClient {
   /// [xWorkspaceRole] - Comma-separated workspace roles. Source binding status updates require owner or admin. Required when Authorization bearer API key is not supplied.
   ///
   /// [body] - Name not received - field will be skipped.
-  @PATCH('/topics/{topicId}/source-bindings/{sourceBindingId}/status')
+  @PATCH('/interests/{interestId}/source-bindings/{sourceBindingId}/status')
   Future<ChangeSourceBindingStatusResponseDto>
   sourceBindingControllerUpdateStatus({
-    @Path('topicId') required String topicId,
+    @Path('interestId') required String interestId,
     @Path('sourceBindingId') required String sourceBindingId,
     @Header('idempotency-key') required String idempotencyKey,
     @Header('x-workspace-id') required String xWorkspaceId,
@@ -94,15 +94,15 @@ abstract class SourceBindingsClient {
     @Header('x-workspace-role') String? xWorkspaceRole,
   });
 
-  /// List daily source scan history for a topic grouped by provider.
+  /// List daily source scan history for an interest grouped by provider.
   ///
-  /// [authorization] - Optional Bearer API key. Requires read:topics. If supplied, x-workspace-role is not required.
+  /// [authorization] - Optional Bearer API key. Requires read:interests. If supplied, x-workspace-role is not required.
   ///
-  /// [xWorkspaceRole] - Comma-separated workspace roles. Topic source history reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.
-  @GET('/topics/{topicId}/source-bindings/daily-history')
-  Future<ListTopicSourceDailyHistoryResponseDto>
+  /// [xWorkspaceRole] - Comma-separated workspace roles. Interest source history reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.
+  @GET('/interests/{interestId}/source-bindings/daily-history')
+  Future<ListInterestSourceDailyHistoryResponseDto>
   sourceBindingControllerDailyHistory({
-    @Path('topicId') required String topicId,
+    @Path('interestId') required String interestId,
     @Header('x-workspace-id') required String xWorkspaceId,
     @Header('x-tenant-id') required String xTenantId,
     @Query('providerKey') List<String>? providerKey,
@@ -111,17 +111,17 @@ abstract class SourceBindingsClient {
     @Header('x-workspace-role') String? xWorkspaceRole,
   });
 
-  /// List source bindings with operational health for a topic.
+  /// List source bindings with operational health for an interest.
   ///
-  /// [authorization] - Optional Bearer API key. Requires read:topics. If supplied, x-workspace-role is not required.
+  /// [authorization] - Optional Bearer API key. Requires read:interests. If supplied, x-workspace-role is not required.
   ///
   /// [xWorkspaceRole] - Comma-separated workspace roles. Source binding overview reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.
-  @GET('/topics/{topicId}/source-bindings/overview')
+  @GET('/interests/{interestId}/source-bindings/overview')
   Future<ListSourceBindingOverviewResponseDto> sourceBindingControllerOverview({
-    @Path('topicId') required String topicId,
+    @Path('interestId') required String interestId,
     @Header('x-workspace-id') required String xWorkspaceId,
     @Header('x-tenant-id') required String xTenantId,
-    @Query('status') List<Status2>? status,
+    @Query('status') List<Status>? status,
     @Query('providerKey') List<String>? providerKey,
     @Query('cursor') String? cursor,
     @Query('limit') num? limit,

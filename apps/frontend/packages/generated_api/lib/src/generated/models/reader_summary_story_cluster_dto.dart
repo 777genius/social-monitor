@@ -14,12 +14,12 @@ class ReaderSummaryStoryClusterDto {
   const ReaderSummaryStoryClusterDto({
     required this.duplicateFeedItemIds,
     required this.id,
+    required this.interestIds,
     required this.observedAtRange,
     required this.providerKeys,
     required this.representativeFeedItemId,
     required this.score,
     required this.storyKey,
-    required this.topicIds,
     required this.whyImportant,
     this.rankingPolicyVersion,
     this.signalBreakdown,
@@ -30,6 +30,7 @@ class ReaderSummaryStoryClusterDto {
 
   final List<String> duplicateFeedItemIds;
   final String id;
+  final List<String> interestIds;
   final ReaderSummaryObservedAtRangeDto observedAtRange;
   final List<String> providerKeys;
   final String? rankingPolicyVersion;
@@ -37,7 +38,6 @@ class ReaderSummaryStoryClusterDto {
   final num score;
   final ReaderSummaryStorySignalBreakdownDto? signalBreakdown;
   final String storyKey;
-  final List<String> topicIds;
   final List<String> whyImportant;
 
   Map<String, Object?> toJson() => _$ReaderSummaryStoryClusterDtoToJson(this);

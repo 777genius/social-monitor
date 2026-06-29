@@ -34,7 +34,7 @@ describe('Digest schedule management (e2e)', () => {
     const createBody = {
       recipientKey: 'user-1',
       channel: 'in_app',
-      topicIds: ['topic-b', 'topic-a', 'topic-a'],
+      interestIds: ['topic-b', 'topic-a', 'topic-a'],
       intervalSeconds: 3600,
       includeNoSignal: true,
       nextRunAt: '2026-06-06T02:00:00.000Z',
@@ -70,7 +70,7 @@ describe('Digest schedule management (e2e)', () => {
         workspaceId: workspace,
         recipientKey: 'user-1',
         channel: 'in_app',
-        topicIds: ['topic-a', 'topic-b'],
+        interestIds: ['topic-a', 'topic-b'],
         intervalSeconds: 3600,
         includeNoSignal: true,
         nextRunAt: '2026-06-06T02:00:00.000Z',
@@ -94,7 +94,7 @@ describe('Digest schedule management (e2e)', () => {
           id: created.body.schedule.id,
           tenantId: tenant,
           workspaceId: workspace,
-          topicIds: ['topic-a', 'topic-b'],
+          interestIds: ['topic-a', 'topic-b'],
         }),
       ],
     });
@@ -111,7 +111,7 @@ describe('Digest schedule management (e2e)', () => {
       tenantId: tenant,
       workspaceId: workspace,
       recipientKey: 'user-1',
-      topicIds: ['topic-a', 'topic-b'],
+      interestIds: ['topic-a', 'topic-b'],
     });
   });
 });

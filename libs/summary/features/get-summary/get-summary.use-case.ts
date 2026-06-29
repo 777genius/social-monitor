@@ -28,7 +28,7 @@ export class GetSummaryUseCase {
     const freshness = await this.freshness.evaluate({
       tenantId: snapshot.tenantId,
       workspaceId: snapshot.workspaceId,
-      topicId: snapshot.topicId,
+      interestId: snapshot.interestId,
       sourceWindow: snapshot.sourceWindow,
     });
 

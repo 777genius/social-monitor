@@ -143,7 +143,7 @@ export class ListSourceBindingDailyHistoryUseCase {
 
     return ok({
       sourceBindingId: query.sourceBindingId,
-      topicId: bindingSnapshot.topicId,
+      interestId: bindingSnapshot.interestId,
       providerKey: bindingSnapshot.providerKey,
       sourceBindingStatus: bindingSnapshot.status,
       cadence,

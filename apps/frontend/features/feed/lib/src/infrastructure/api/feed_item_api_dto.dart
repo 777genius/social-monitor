@@ -5,7 +5,7 @@ final class ListFeedItemsApiRequestDto {
     required this.scope,
     required this.page,
     required this.search,
-    this.topicId,
+    this.interestId,
     this.providerKey,
     this.repositoryTrendWindow,
     this.repositoryLanguage,
@@ -15,7 +15,7 @@ final class ListFeedItemsApiRequestDto {
   final WorkspaceScope scope;
   final PageRequest page;
   final String search;
-  final String? topicId;
+  final String? interestId;
   final String? providerKey;
   final String? repositoryTrendWindow;
   final String? repositoryLanguage;
@@ -25,7 +25,7 @@ final class ListFeedItemsApiRequestDto {
 final class FeedItemApiDto {
   const FeedItemApiDto({
     required this.id,
-    required this.topicId,
+    required this.interestId,
     required this.sourceItemId,
     required this.sourceBindingId,
     required this.providerKey,
@@ -41,7 +41,7 @@ final class FeedItemApiDto {
   });
 
   final String id;
-  final String topicId;
+  final String interestId;
   final String sourceItemId;
   final String sourceBindingId;
   final String providerKey;

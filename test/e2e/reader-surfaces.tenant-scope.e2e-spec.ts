@@ -37,14 +37,14 @@ describe('Reader surfaces tenant scope guard (e2e)', () => {
     const sourceTenant = tenantId('tenant-reader-scope-source-e2e');
     const otherTenant = tenantId('tenant-reader-scope-other-e2e');
     const sourceWorkspace = workspaceId('workspace-reader-scope-source-e2e');
-    const topicId = 'topic-reader-scope-e2e';
+    const interestId = 'topic-reader-scope-e2e';
     const userId = 'reader-scope-user';
 
     feedItems.upsert(FeedItem.publish({
       id: 'feed-reader-scope-1',
       tenantId: sourceTenant,
       workspaceId: sourceWorkspace,
-      topicId,
+      interestId,
       sourceItemId: 'source-reader-scope-1',
       sourceBindingId: 'binding-reader-scope-e2e',
       providerKey: 'reddit',
@@ -78,8 +78,8 @@ describe('Reader surfaces tenant scope guard (e2e)', () => {
       .set('idempotency-key', 'reader-scope-reader-summary-request')
       .send({
         scope: {
-          type: 'topic',
-          topicId,
+          type: 'interest',
+          interestId,
         },
         userId,
       })
@@ -97,7 +97,7 @@ describe('Reader surfaces tenant scope guard (e2e)', () => {
 
     const sourceFeed = await request(app.getHttpServer())
       .get(`/relevance/users/${userId}/feed`)
-      .query({ topicId, limit: 10 })
+      .query({ interestId, limit: 10 })
       .set('x-tenant-id', sourceTenant)
       .set('x-workspace-id', sourceWorkspace)
       .set('x-workspace-role', 'viewer')
@@ -106,14 +106,14 @@ describe('Reader surfaces tenant scope guard (e2e)', () => {
     expect(sourceFeed.body.items).toEqual([
       expect.objectContaining({
         feedItemId: 'feed-reader-scope-1',
-        topicId,
+        interestId,
         providerKey: 'reddit',
       }),
     ]);
 
     const otherTenantFeed = await request(app.getHttpServer())
       .get(`/relevance/users/${userId}/feed`)
-      .query({ topicId, limit: 10 })
+      .query({ interestId, limit: 10 })
       .set('x-tenant-id', otherTenant)
       .set('x-workspace-id', sourceWorkspace)
       .set('x-workspace-role', 'viewer')
@@ -124,7 +124,7 @@ describe('Reader surfaces tenant scope guard (e2e)', () => {
     const otherTenantDigest = await request(app.getHttpServer())
       .get(`/relevance/users/${userId}/digest`)
       .query({
-        topicIds: topicId,
+        interestIds: interestId,
         windowStartedAt: '2026-06-25T00:00:00.000Z',
         windowEndedAt: '2026-06-26T00:00:00.000Z',
         limit: 10,
@@ -139,15 +139,15 @@ describe('Reader surfaces tenant scope guard (e2e)', () => {
       items: [],
     });
 
-    const otherTenantReader summaries = await request(app.getHttpServer())
+    const otherTenantReaderSummaries = await request(app.getHttpServer())
       .get('/reader-summaries')
-      .query({ scopeType: 'topic', topicId, limit: 10 })
+      .query({ scopeType: 'interest', interestId, limit: 10 })
       .set('x-tenant-id', otherTenant)
       .set('x-workspace-id', sourceWorkspace)
       .set('x-workspace-role', 'viewer')
       .expect(200);
 
-    expect(otherTenantReader summaries.body.items).toEqual([]);
+    expect(otherTenantReaderSummaries.body.items).toEqual([]);
 
     await request(app.getHttpServer())
       .get(`/reader-summaries/${executedReaderSummary.value.readerSummaryId}`)
@@ -165,7 +165,7 @@ describe('Reader surfaces tenant scope guard (e2e)', () => {
 
     await request(app.getHttpServer())
       .get(`/relevance/users/${userId}/feed`)
-      .query({ topicId, limit: 10 })
+      .query({ interestId, limit: 10 })
       .set('x-tenant-id', otherTenant)
       .set('x-workspace-id', sourceWorkspace)
       .set('Authorization', `Bearer ${feedKey}`)
@@ -227,7 +227,7 @@ describe('Reader surfaces tenant scope guard (e2e)', () => {
     await request(app.getHttpServer())
       .get('/relevance/users/reader-scope-missing/digest')
       .query({
-        topicIds: 'topic-reader-scope-missing',
+        interestIds: 'topic-reader-scope-missing',
         windowStartedAt: '2026-06-25T00:00:00.000Z',
         windowEndedAt: '2026-06-26T00:00:00.000Z',
       })

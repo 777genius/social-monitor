@@ -11,7 +11,7 @@ describe("RankingPolicy", () => {
       tenantId: tenantId("tenant-ranking-policy"),
       workspaceId: workspaceId("workspace-ranking-policy"),
       userId: "user-ranking-policy",
-      topicWeights: [{ key: "topic-ai", weight: 1 }],
+      interestWeights: [{ key: "topic-ai", weight: 1 }],
       sourceWeights: [{ key: "reddit", weight: 0.5 }],
       keywordWeights: [{ key: "agents", weight: 1 }],
       mutedKeywords: [],
@@ -47,7 +47,7 @@ describe("RankingPolicy", () => {
     ]);
     expect(result[0]?.whyImportant).toEqual(
       expect.arrayContaining([
-        "Matches a preferred topic",
+        "Matches a preferred interest",
         "Comes from a preferred source",
         "Strong source engagement signal",
       ]),
@@ -220,7 +220,7 @@ describe("RankingPolicy", () => {
 const candidate = (
   overrides: Partial<RankingCandidate> & Pick<RankingCandidate, "id" | "title">,
 ): RankingCandidate => ({
-  topicId: "topic-ai",
+  interestId: "topic-ai",
   providerKey: "rss",
   canonicalUrl: `https://example.com/${overrides.id}`,
   bodyPreview: "Fresh source item about AI systems.",

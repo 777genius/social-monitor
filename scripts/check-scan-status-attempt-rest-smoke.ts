@@ -91,7 +91,7 @@ async function main(): Promise<void> {
     };
 
     const topic = await request(app.getHttpServer())
-      .post('/topics')
+      .post('/interests')
       .set(headers)
       .set('idempotency-key', 'topic')
       .send({
@@ -101,7 +101,7 @@ async function main(): Promise<void> {
       .expect(201);
 
     const binding = await request(app.getHttpServer())
-      .post(`/topics/${topic.body.topicId}/source-bindings`)
+      .post(`/interests/${topic.body.interestId}/source-bindings`)
       .set(headers)
       .set('idempotency-key', 'binding')
       .send({

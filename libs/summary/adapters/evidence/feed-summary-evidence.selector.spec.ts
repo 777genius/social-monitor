@@ -20,7 +20,7 @@ class FakeFeedItems implements FeedItemReadRepositoryPort {
           return (
             snapshot.tenantId === query.tenantId &&
             snapshot.workspaceId === query.workspaceId &&
-            (query.topicId === undefined || snapshot.topicId === query.topicId)
+            (query.interestId === undefined || snapshot.interestId === query.interestId)
           );
         })
         .sort((left, right) =>
@@ -45,7 +45,7 @@ describe('FeedSummaryEvidenceSelector', () => {
       id: 'feed-old',
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       sourceItemId: 'binding-1:item-old',
       sourceBindingId: 'binding-1',
       providerKey: 'reddit',
@@ -59,7 +59,7 @@ describe('FeedSummaryEvidenceSelector', () => {
       id: 'feed-new',
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       sourceItemId: 'binding-2:item-new',
       sourceBindingId: 'binding-2',
       providerKey: 'github',
@@ -73,7 +73,7 @@ describe('FeedSummaryEvidenceSelector', () => {
       id: 'feed-other-tenant',
       tenantId: tenantId('tenant-2'),
       workspaceId: workspace,
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       sourceItemId: 'binding-3:item-other',
       sourceBindingId: 'binding-3',
       providerKey: 'rss',
@@ -90,7 +90,7 @@ describe('FeedSummaryEvidenceSelector', () => {
     ).select({
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       maxItems: 2,
     });
 
@@ -117,7 +117,7 @@ describe('FeedSummaryEvidenceSelector', () => {
       }),
     ]);
     expect(result.sourceWindow).toEqual({
-      windowId: 'tenant-1:workspace-1:topic-1:2026-06-06T10:01:00.000Z:2026-06-06T11:01:00.000Z',
+      windowId: 'tenant-1:workspace-1:interest-1:2026-06-06T10:01:00.000Z:2026-06-06T11:01:00.000Z',
       startedAt: new Date('2026-06-06T10:01:00.000Z'),
       endedAt: new Date('2026-06-06T11:01:00.000Z'),
       selectedFeedItemIds: ['feed-new', 'feed-old'],
@@ -133,7 +133,7 @@ describe('FeedSummaryEvidenceSelector', () => {
       id: 'feed-reddit-new-1',
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: 'topic-balanced',
+      interestId: 'interest-balanced',
       sourceItemId: 'reddit-binding:item-new-1',
       sourceBindingId: 'reddit-binding',
       providerKey: 'reddit',
@@ -147,7 +147,7 @@ describe('FeedSummaryEvidenceSelector', () => {
       id: 'feed-reddit-new-2',
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: 'topic-balanced',
+      interestId: 'interest-balanced',
       sourceItemId: 'reddit-binding:item-new-2',
       sourceBindingId: 'reddit-binding',
       providerKey: 'reddit',
@@ -161,7 +161,7 @@ describe('FeedSummaryEvidenceSelector', () => {
       id: 'feed-reddit-new-3',
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: 'topic-balanced',
+      interestId: 'interest-balanced',
       sourceItemId: 'reddit-binding:item-new-3',
       sourceBindingId: 'reddit-binding',
       providerKey: 'reddit',
@@ -175,7 +175,7 @@ describe('FeedSummaryEvidenceSelector', () => {
       id: 'feed-github-older',
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: 'topic-balanced',
+      interestId: 'interest-balanced',
       sourceItemId: 'github-binding:item-older',
       sourceBindingId: 'github-binding',
       providerKey: 'github',
@@ -192,7 +192,7 @@ describe('FeedSummaryEvidenceSelector', () => {
     ).select({
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: 'topic-balanced',
+      interestId: 'interest-balanced',
       maxItems: 3,
     });
 
@@ -218,12 +218,12 @@ describe('FeedSummaryEvidenceSelector', () => {
     ).select({
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       maxItems: 20,
     });
 
     expect(result.items).toEqual([]);
-    expect(result.sourceWindow.windowId).toBe('tenant-1:workspace-1:topic-1:empty');
+    expect(result.sourceWindow.windowId).toBe('tenant-1:workspace-1:interest-1:empty');
     expect(result.sourceWindow.selectedFeedItemIds).toEqual([]);
     expect(result.sourceWindow.endedAt.getTime()).toBeGreaterThan(result.sourceWindow.startedAt.getTime());
   });
@@ -236,7 +236,7 @@ describe('FeedSummaryEvidenceSelector', () => {
       id: 'feed-unsafe',
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: 'topic-safety',
+      interestId: 'interest-safety',
       sourceItemId: 'rss-binding:item-unsafe',
       sourceBindingId: 'rss-binding',
       providerKey: 'rss',
@@ -253,7 +253,7 @@ describe('FeedSummaryEvidenceSelector', () => {
     ).select({
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: 'topic-safety',
+      interestId: 'interest-safety',
       maxItems: 1,
     });
     const serialized = JSON.stringify(result);

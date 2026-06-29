@@ -69,7 +69,7 @@ export class EvaluateSummaryQualityUseCase {
         summaryId: `eval-summary-${fixture.fixtureId}`,
         tenantId: fixture.input.tenantId,
         workspaceId: fixture.input.workspaceId,
-        topicId: fixture.input.topicId,
+        interestId: fixture.input.interestId,
         sourceWindow: fixture.input.evidence.sourceWindow,
         ...attempt.draft,
       });

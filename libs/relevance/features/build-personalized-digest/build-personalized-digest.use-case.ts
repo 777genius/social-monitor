@@ -20,14 +20,14 @@ export class BuildPersonalizedDigestUseCase {
     command: BuildPersonalizedDigestCommand,
   ): Promise<Result<BuildPersonalizedDigestResult, BuildPersonalizedDigestFailure>> {
     const userId = command.userId.trim();
-    const topicIds = [...new Set(command.topicIds.map((topicId) => topicId.trim()).filter(Boolean))]
+    const interestIds = [...new Set(command.interestIds.map((interestId) => interestId.trim()).filter(Boolean))]
       .sort((left, right) => left.localeCompare(right));
 
     if (userId.length === 0) {
       return err(new DomainError('validation.failed', 'Personalized digest userId must be non-empty'));
     }
 
-    if (topicIds.length === 0) {
+    if (interestIds.length === 0) {
       return err(new DomainError('validation.failed', 'Personalized digest requires at least one topic'));
     }
 
@@ -51,9 +51,9 @@ export class BuildPersonalizedDigestUseCase {
       return err(ranked.error);
     }
 
-    const topicSet = new Set(topicIds);
+    const topicSet = new Set(interestIds);
     const items = ranked.value.items
-      .filter((item) => topicSet.has(item.topicId))
+      .filter((item) => topicSet.has(item.interestId))
       .filter((item) => new Date(item.observedAt).getTime() < command.windowEndedAt.getTime())
       .slice(0, command.limit);
 
@@ -64,7 +64,7 @@ export class BuildPersonalizedDigestUseCase {
         startedAt: command.windowStartedAt.toISOString(),
         endedAt: command.windowEndedAt.toISOString(),
       },
-      topicIds,
+      interestIds,
       memoryGuidance: ranked.value.memoryGuidance,
       items,
       highSignalFeedItemIds: items

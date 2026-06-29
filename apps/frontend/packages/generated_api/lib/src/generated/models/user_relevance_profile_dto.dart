@@ -13,11 +13,11 @@ class UserRelevanceProfileDto {
   const UserRelevanceProfileDto({
     required this.blockedProviderKeys,
     required this.id,
+    required this.interestWeights,
     required this.keywordWeights,
     required this.mutedKeywords,
     required this.rulesVersion,
     required this.sourceWeights,
-    required this.topicWeights,
     required this.updatedAt,
     required this.userId,
   });
@@ -27,11 +27,11 @@ class UserRelevanceProfileDto {
 
   final List<String> blockedProviderKeys;
   final String id;
+  final List<RelevanceWeightDto> interestWeights;
   final List<RelevanceWeightDto> keywordWeights;
   final List<String> mutedKeywords;
   final String rulesVersion;
   final List<RelevanceWeightDto> sourceWeights;
-  final List<RelevanceWeightDto> topicWeights;
   final DateTime updatedAt;
   final String userId;
 

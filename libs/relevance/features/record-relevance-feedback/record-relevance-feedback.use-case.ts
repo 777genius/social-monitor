@@ -110,7 +110,7 @@ export class RecordRelevanceFeedbackUseCase {
       const target = signal.toSnapshot().target;
       const direction = relevanceFeedbackDirection(command.action, command.rating);
       const updatedProfile = profile.applyFeedback({
-        topicId: target.topicId,
+        interestId: target.interestId,
         providerKey: target.providerKey,
         keywords: extractSignalKeywords(`${target.title} ${target.bodyPreview ?? ''}`),
         direction,
@@ -162,7 +162,7 @@ export class RecordRelevanceFeedbackUseCase {
     );
     const snapshot = profile.toSnapshot();
     const mayNeedRepair =
-      snapshot.topicWeights.length === 0 &&
+      snapshot.interestWeights.length === 0 &&
       snapshot.sourceWeights.length === 0 &&
       snapshot.keywordWeights.length === 0 &&
       snapshot.blockedProviderKeys.length === 0;
@@ -172,7 +172,7 @@ export class RecordRelevanceFeedbackUseCase {
     }
 
     const repaired = profile.applyFeedback({
-      topicId: params.target.topicId,
+      interestId: params.target.interestId,
       providerKey: params.target.providerKey,
       keywords: extractSignalKeywords(`${params.target.title} ${params.target.bodyPreview ?? ''}`),
       direction: params.direction,

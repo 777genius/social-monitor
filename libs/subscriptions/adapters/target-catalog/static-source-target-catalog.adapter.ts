@@ -22,7 +22,7 @@ const providerRules = new Map<string, readonly ProviderTargetRule[]>([
     { kind: 'search_query', normalize: normalizeSearchQuery },
   ]],
   ['x-twitter', [
-    { kind: 'topic', normalize: normalizeSearchQuery },
+    { kind: 'interest', normalize: normalizeSearchQuery },
     { kind: 'search_query', normalize: normalizeSearchQuery },
     { kind: 'account', normalize: normalizeHandle },
   ]],
@@ -30,7 +30,7 @@ const providerRules = new Map<string, readonly ProviderTargetRule[]>([
     { kind: 'url', normalize: normalizeUrl },
   ]],
   ['hacker-news', [
-    { kind: 'topic', normalize: normalizeSearchQuery },
+    { kind: 'interest', normalize: normalizeSearchQuery },
     { kind: 'search_query', normalize: normalizeSearchQuery },
   ]],
 ]);

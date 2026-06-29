@@ -22,13 +22,13 @@ class SequenceIdGenerator implements IdGenerator {
 }
 
 class FakeSourceBindings implements SourceBindingRepositoryPort {
-  private readonly bindingsByTopicProvider = new Map<string, SourceBinding>();
+  private readonly bindingsByInterestProvider = new Map<string, SourceBinding>();
   private readonly bindingsById = new Map<string, SourceBinding>();
 
   add(binding: SourceBinding): void {
     const snapshot = binding.toSnapshot();
-    this.bindingsByTopicProvider.set(
-      `${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.topicId}:${snapshot.providerKey}`,
+    this.bindingsByInterestProvider.set(
+      `${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.interestId}:${snapshot.providerKey}`,
       binding,
     );
     this.bindingsById.set(`${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.id}`, binding);
@@ -38,11 +38,11 @@ class FakeSourceBindings implements SourceBindingRepositoryPort {
     this.add(binding);
   }
 
-  async findByTopicAndProvider(
-    params: Parameters<SourceBindingRepositoryPort['findByTopicAndProvider']>[0],
+  async findByInterestAndProvider(
+    params: Parameters<SourceBindingRepositoryPort['findByInterestAndProvider']>[0],
   ): Promise<SourceBinding | null> {
     return (
-      this.bindingsByTopicProvider.get(`${params.tenantId}:${params.workspaceId}:${params.topicId}:${params.providerKey}`) ??
+      this.bindingsByInterestProvider.get(`${params.tenantId}:${params.workspaceId}:${params.interestId}:${params.providerKey}`) ??
       null
     );
   }
@@ -51,7 +51,7 @@ class FakeSourceBindings implements SourceBindingRepositoryPort {
     return this.bindingsById.get(`${params.tenantId}:${params.workspaceId}:${params.sourceBindingId}`) ?? null;
   }
 
-  async listByTopic(query: ListSourceBindingsQuery): Promise<ListSourceBindingsResult> {
+  async listByInterest(query: ListSourceBindingsQuery): Promise<ListSourceBindingsResult> {
     return {
       sourceBindings: [...this.bindingsById.values()].filter((binding) => {
         const snapshot = binding.toSnapshot();
@@ -59,7 +59,7 @@ class FakeSourceBindings implements SourceBindingRepositoryPort {
         return (
           snapshot.tenantId === query.tenantId &&
           snapshot.workspaceId === query.workspaceId &&
-          snapshot.topicId === query.topicId
+          snapshot.interestId === query.interestId
         );
       }),
       nextCursor: undefined,
@@ -97,7 +97,7 @@ const makeBinding = () =>
     id: 'binding-1',
     tenantId: tenantId('tenant-1'),
     workspaceId: workspaceId('workspace-1'),
-    topicId: 'topic-1',
+    interestId: 'interest-1',
     providerKey: 'fake-source',
     capabilityProfileVersion: 1,
     config: {},
@@ -124,7 +124,7 @@ describe('ChangeSourceBindingStatusUseCase', () => {
     const pause = await useCase.execute({
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       sourceBindingId: 'binding-1',
       status: 'paused',
       idempotencyKey: 'pause-1',
@@ -148,7 +148,7 @@ describe('ChangeSourceBindingStatusUseCase', () => {
     const resume = await useCase.execute({
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       sourceBindingId: 'binding-1',
       status: 'enabled',
       idempotencyKey: 'resume-1',
@@ -181,7 +181,7 @@ describe('ChangeSourceBindingStatusUseCase', () => {
     const command = {
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       sourceBindingId: 'binding-1',
       status: 'paused' as const,
       idempotencyKey: 'pause-1',
@@ -196,7 +196,7 @@ describe('ChangeSourceBindingStatusUseCase', () => {
     expect(outbox.events).toHaveLength(1);
   });
 
-  it('rejects a source binding outside the requested topic', async () => {
+  it('rejects a source binding outside the requested interest', async () => {
     const bindings = new FakeSourceBindings();
     bindings.add(makeBinding());
     const { useCase } = makeUseCase(bindings);
@@ -204,7 +204,7 @@ describe('ChangeSourceBindingStatusUseCase', () => {
     const result = await useCase.execute({
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
-      topicId: 'other-topic',
+      interestId: 'other-interest',
       sourceBindingId: 'binding-1',
       status: 'paused',
       idempotencyKey: 'pause-1',

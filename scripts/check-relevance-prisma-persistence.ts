@@ -50,7 +50,7 @@ async function main(): Promise<void> {
     tenantId: tenant,
     workspaceId: workspace,
     userId,
-    topicWeights: [{ key: 'ai', weight: 1.25 }],
+    interestWeights: [{ key: 'ai', weight: 1.25 }],
     sourceWeights: [{ key: 'reddit', weight: 0.8 }],
     keywordWeights: [{ key: 'launch', weight: 0.5 }],
     mutedKeywords: ['giveaway'],
@@ -65,7 +65,7 @@ async function main(): Promise<void> {
   if (foundProfile === null) {
     throw new Error('user relevance profile must be readable by tenant/workspace/user');
   }
-  assert(foundProfile.topicWeight('ai') === 1.25, 'topic weight must round-trip through Prisma mapping');
+  assert(foundProfile.interestWeight('ai') === 1.25, 'interest weight must round-trip through Prisma mapping');
   assert(foundProfile.sourceWeight('reddit') === 0.8, 'source weight must round-trip through Prisma mapping');
   assert(foundProfile.hasMutedKeyword('Weekly AI giveaway') === true, 'muted keywords must round-trip');
 
@@ -80,7 +80,7 @@ async function main(): Promise<void> {
     rating: 5,
     target: {
       feedItemId: 'feed-1',
-      topicId: 'ai',
+      interestId: 'ai',
       providerKey: 'reddit',
       title: 'Open source AI launch reaches beta users',
       bodyPreview: 'The team published launch details and early beta feedback.',
@@ -105,7 +105,7 @@ async function main(): Promise<void> {
   if (learnedProfile === null) {
     throw new Error('learned profile must stay durable');
   }
-  assert(learnedProfile.topicWeight('ai') === 1.5, 'feedback must raise topic weight once');
+  assert(learnedProfile.interestWeight('ai') === 1.5, 'feedback must raise interest weight once');
   assert(learnedProfile.sourceWeight('reddit') === 1.05, 'feedback must raise source weight once');
   assert(learnedProfile.keywordWeight('launch') > 0.5, 'feedback must raise matching keyword weight');
 
@@ -118,7 +118,7 @@ async function main(): Promise<void> {
     rating: 5,
     target: {
       feedItemId: 'feed-1',
-      topicId: 'ai',
+      interestId: 'ai',
       providerKey: 'reddit',
       title: 'Open source AI launch reaches beta users',
       bodyPreview: 'The team published launch details and early beta feedback.',
@@ -131,7 +131,7 @@ async function main(): Promise<void> {
   assert(cached.value.created === false, 'idempotent feedback retry must return cached signal');
 
   const afterRetryProfile = await profiles.findByUser({ tenantId: tenant, workspaceId: workspace, userId });
-  assert(afterRetryProfile?.topicWeight('ai') === 1.5, 'idempotent retry must not double-apply learning');
+  assert(afterRetryProfile?.interestWeight('ai') === 1.5, 'idempotent retry must not double-apply learning');
   assert(prisma.relevanceMemoryProjectionRecords().length === 1, 'idempotent retry must not duplicate memory projection');
 
   console.log('Relevance Prisma persistence smoke OK');

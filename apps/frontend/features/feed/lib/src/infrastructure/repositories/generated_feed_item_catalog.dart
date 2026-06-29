@@ -28,7 +28,7 @@ final class GeneratedFeedItemCatalog implements FeedItemCatalog {
         scope: normalized.scope,
         page: normalized.page,
         search: normalized.filter.search,
-        topicId: normalized.filter.topicId,
+        interestId: normalized.filter.interestId,
         providerKey: normalized.filter.providerKey,
         repositoryTrendWindow: normalized.filter.repositoryTrendWindow,
         repositoryLanguage: normalized.filter.repositoryLanguage,

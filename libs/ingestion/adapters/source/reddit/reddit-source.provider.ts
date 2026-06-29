@@ -11,15 +11,17 @@ import type {
   SourceProviderValidationResult,
   SourceQuery,
 } from '../../../ports';
-import type { RedditClientPort, RedditListingPage } from './reddit-client.port';
+import type { RedditClientPort, RedditListingPage, RedditPost } from './reddit-client.port';
 import type { RedditRefreshTokenProviderPort } from './refresh-token-reddit-token-provider';
 import {
   compactUnique,
   firstNonEmptyString,
+  normalizeComment,
   normalizePost,
   parseListingQuery,
   readListing,
   readOptionalNonNegativeInteger,
+  readOptionalPositiveInteger,
   readOptionalString,
   readPositiveInteger,
   readRequiredString,
@@ -103,6 +105,8 @@ export class RedditSourceProvider implements SourceProviderPort {
     const userAgent = readOptionalString(context.config?.userAgent);
     const minScore = readOptionalNonNegativeInteger(context.config?.minScore, 1_000_000);
     const scanPasses = readScanPasses(context.config);
+    const includeComments = context.config?.includeComments === true;
+    const maxCommentsPerPost = readOptionalPositiveInteger(context.config?.maxCommentsPerPost, 100);
 
     if (scanPasses.length > 0) {
       return this.scanPasses({
@@ -111,6 +115,8 @@ export class RedditSourceProvider implements SourceProviderPort {
         plan,
         passes: scanPasses,
         fallbackMinScore: minScore,
+        fallbackIncludeComments: includeComments,
+        fallbackMaxCommentsPerPost: maxCommentsPerPost,
       });
     }
 
@@ -133,7 +139,14 @@ export class RedditSourceProvider implements SourceProviderPort {
           limit: plan.maxItems,
           after: plan.cursor,
         });
-    const normalized = page.posts.flatMap((post) => normalizePost(post, minScore));
+    const normalized = await this.normalizePostsWithOptionalComments({
+      accessToken,
+      userAgent,
+      posts: page.posts,
+      minScore,
+      includeComments,
+      maxCommentsPerPost,
+    });
 
     return {
       items: normalized,
@@ -220,6 +233,8 @@ export class RedditSourceProvider implements SourceProviderPort {
     readonly plan: SourceProviderScanPlan;
     readonly passes: readonly RedditScanPass[];
     readonly fallbackMinScore: number | undefined;
+    readonly fallbackIncludeComments: boolean;
+    readonly fallbackMaxCommentsPerPost: number | undefined;
   }): Promise<SourceProviderScanResult> {
     const perPassFallbackLimit = Math.max(
       1,
@@ -258,8 +273,20 @@ export class RedditSourceProvider implements SourceProviderPort {
       }
 
       const minScore = pass.minScore ?? params.fallbackMinScore;
+      const includeComments = pass.includeComments ?? params.fallbackIncludeComments;
+      const maxCommentsPerPost =
+        pass.maxCommentsPerPost ?? params.fallbackMaxCommentsPerPost;
 
-      for (const item of page.posts.flatMap((post) => normalizePost(post, minScore))) {
+      const normalized = await this.normalizePostsWithOptionalComments({
+        accessToken: params.accessToken,
+        userAgent: params.userAgent,
+        posts: page.posts,
+        minScore,
+        includeComments,
+        maxCommentsPerPost,
+      });
+
+      for (const item of normalized) {
         if (!itemsByExternalId.has(item.externalId)) {
           itemsByExternalId.set(item.externalId, item);
         }
@@ -279,6 +306,41 @@ export class RedditSourceProvider implements SourceProviderPort {
       ),
       warnings: compactUnique(warnings),
     };
+  }
+
+  private async normalizePostsWithOptionalComments(params: {
+    readonly accessToken: string;
+    readonly userAgent: string | undefined;
+    readonly posts: readonly RedditPost[];
+    readonly minScore: number | undefined;
+    readonly includeComments: boolean;
+    readonly maxCommentsPerPost: number | undefined;
+  }): Promise<readonly FetchedSourceItem[]> {
+    const items: FetchedSourceItem[] = [];
+
+    for (const post of params.posts) {
+      items.push(...normalizePost(post, params.minScore));
+
+      if (!params.includeComments) {
+        continue;
+      }
+
+      const comments = await this.client.listPostComments({
+        accessToken: params.accessToken,
+        userAgent: params.userAgent,
+        postId: post.id,
+        subreddit: post.subreddit,
+        limit: params.maxCommentsPerPost ?? 5,
+      });
+
+      items.push(
+        ...comments.comments.flatMap((comment) =>
+          normalizeComment(comment, post, params.minScore),
+        ),
+      );
+    }
+
+    return items;
   }
 }
 

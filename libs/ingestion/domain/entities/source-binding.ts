@@ -5,17 +5,17 @@ import { sourceProviderKey, type SourceProviderKey } from "./source-provider";
 export type SourceBinding = {
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly sourceBindingId: string;
   readonly providerKey: SourceProviderKey;
 };
 
 export const createSourceBinding = (props: SourceBinding): SourceBinding => {
-  const topicId = props.topicId.trim();
+  const interestId = props.interestId.trim();
   const sourceBindingId = props.sourceBindingId.trim();
 
-  if (topicId.length === 0) {
-    throw new Error("Source binding topic id must be non-empty");
+  if (interestId.length === 0) {
+    throw new Error("Source binding interest id must be non-empty");
   }
   if (sourceBindingId.length === 0) {
     throw new Error("Source binding id must be non-empty");
@@ -23,7 +23,7 @@ export const createSourceBinding = (props: SourceBinding): SourceBinding => {
 
   return {
     ...props,
-    topicId,
+    interestId,
     sourceBindingId,
     providerKey: sourceProviderKey(props.providerKey),
   };

@@ -37,8 +37,8 @@ describe('ApiKeyRequestAuthorizer', () => {
       authorizationHeader: 'Bearer smk_test-secret',
       tenantId: tenant,
       workspaceId: workspace,
-      requiredScope: 'read:topics',
-      operation: 'topics.read',
+      requiredScope: 'read:interests',
+      operation: 'interests.read',
     });
 
     expect(result).toEqual({
@@ -48,7 +48,7 @@ describe('ApiKeyRequestAuthorizer', () => {
     });
     expect(dependencies.verifyApiKey.execute).toHaveBeenCalledWith({
       secret: 'smk_test-secret',
-      requiredScope: 'read:topics',
+      requiredScope: 'read:interests',
     });
     expect(dependencies.userAccessTokenVerifier.verify).not.toHaveBeenCalled();
   });
@@ -61,8 +61,8 @@ describe('ApiKeyRequestAuthorizer', () => {
       authorizationHeader: 'Bearer jwt.header.signature',
       tenantId: tenant,
       workspaceId: workspace,
-      requiredScope: 'write:topics',
-      operation: 'topics.create',
+      requiredScope: 'write:interests',
+      operation: 'interests.create',
     });
 
     expect(result).toEqual({
@@ -79,24 +79,24 @@ describe('ApiKeyRequestAuthorizer', () => {
     expect(dependencies.workspaceAuthorization.authorize).toHaveBeenCalledWith({
       tenantId: tenant,
       workspaceId: workspace,
-      action: 'topics.create',
+      action: 'interests.create',
       roles: ['admin'],
     });
     expect(dependencies.checkPublicApiRateLimit.execute).toHaveBeenCalledWith({
       subjectKey: 'user:user-1',
-      operation: 'topics.create',
+      operation: 'interests.create',
       limit: 60,
       windowSeconds: 60,
     });
     expect(dependencies.auditEvents.at(-1)).toMatchObject({
       actorType: 'user',
       actorId: 'user-1',
-      action: 'topics.create',
+      action: 'interests.create',
       outcome: 'succeeded',
       metadata: {
         authType: 'oidc_jwt',
         issuer: 'https://auth.example.test',
-        requiredScope: 'write:topics',
+        requiredScope: 'write:interests',
         roles: ['admin'],
         claimedRoles: ['admin'],
         membershipSource: 'durable',
@@ -121,8 +121,8 @@ describe('ApiKeyRequestAuthorizer', () => {
       authorizationHeader: 'Bearer jwt.header.signature',
       tenantId: tenant,
       workspaceId: workspace,
-      requiredScope: 'write:topics',
-      operation: 'topics.create',
+      requiredScope: 'write:interests',
+      operation: 'interests.create',
     })).rejects.toMatchObject<Partial<DomainError>>({
       code: 'authorization.denied',
       message: 'Bearer JWT tenant or workspace does not match request scope',
@@ -146,8 +146,8 @@ describe('ApiKeyRequestAuthorizer', () => {
       authorizationHeader: 'Bearer jwt.header.signature',
       tenantId: tenant,
       workspaceId: workspace,
-      requiredScope: 'write:topics',
-      operation: 'topics.create',
+      requiredScope: 'write:interests',
+      operation: 'interests.create',
     })).rejects.toMatchObject<Partial<DomainError>>({
       code: 'authorization.denied',
       message: 'Bearer JWT workspace membership is missing',
@@ -186,8 +186,8 @@ describe('ApiKeyRequestAuthorizer', () => {
       authorizationHeader: 'Bearer jwt.header.signature',
       tenantId: tenant,
       workspaceId: workspace,
-      requiredScope: 'write:topics',
-      operation: 'topics.create',
+      requiredScope: 'write:interests',
+      operation: 'interests.create',
     })).rejects.toMatchObject<Partial<DomainError>>({
       code: 'authorization.denied',
     });
@@ -195,7 +195,7 @@ describe('ApiKeyRequestAuthorizer', () => {
     expect(dependencies.workspaceAuthorization.authorize).toHaveBeenCalledWith({
       tenantId: tenant,
       workspaceId: workspace,
-      action: 'topics.create',
+      action: 'interests.create',
       roles: ['viewer'],
     });
     expect(dependencies.checkPublicApiRateLimit.execute).not.toHaveBeenCalled();
@@ -280,7 +280,7 @@ const createDependencies = (params: {
             workspaceId: workspace,
             name: 'test key',
             keyPrefix: 'smk_test-sec',
-            scopes: ['read:topics'] as readonly ApiKeyScope[],
+            scopes: ['read:interests'] as readonly ApiKeyScope[],
             status: 'active' as const,
             createdAt: new Date('2026-01-01T00:00:00.000Z').toISOString(),
           },

@@ -104,7 +104,7 @@ async function run(): Promise<void> {
 async function runHtmlE2e(): Promise<void> {
   const tenant = tenantId('tenant-github-trending-page-html-e2e');
   const workspace = workspaceId('workspace-github-trending-page-html-e2e');
-  const topicId = 'topic-github-trending-page-html-e2e';
+  const interestId = 'topic-github-trending-page-html-e2e';
   const clock = new FixedClock(new Date('2026-06-24T12:00:00.000Z'));
   const provider = new GitHubTrendingPageSourceProvider(
     new HttpGitHubTrendingPageClient(15_000),
@@ -146,7 +146,7 @@ async function runHtmlE2e(): Promise<void> {
     tenantId: tenant,
     workspaceId: workspace,
     scanJobId: 'scan-github-trending-page-html-e2e',
-    topicId,
+    interestId,
     sourceBindingId: 'binding-github-trending-page-html-e2e',
     scanPolicyId: 'policy-github-trending-page-html-e2e',
     providerKey: GITHUB_TRENDING_PAGE_PROVIDER_KEY,
@@ -183,7 +183,7 @@ async function runHtmlE2e(): Promise<void> {
   const feed = await feedItems.list({
     tenantId: tenant,
     workspaceId: workspace,
-    topicId,
+    interestId,
     limit: 10,
   });
 

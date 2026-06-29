@@ -6,7 +6,7 @@ const baseProps = {
   id: 'summary-policy-1',
   tenantId: tenantId('tenant-1'),
   workspaceId: workspaceId('workspace-1'),
-  topicId: 'topic-1',
+  interestId: 'interest-1',
   language: 'en',
   format: 'bullet_digest',
   tone: 'concise',

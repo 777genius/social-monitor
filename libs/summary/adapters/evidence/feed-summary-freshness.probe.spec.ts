@@ -20,7 +20,7 @@ class FakeFeedItems implements FeedItemReadRepositoryPort {
           return (
             snapshot.tenantId === query.tenantId &&
             snapshot.workspaceId === query.workspaceId &&
-            (query.topicId === undefined || snapshot.topicId === query.topicId) &&
+            (query.interestId === undefined || snapshot.interestId === query.interestId) &&
             (query.observedAfter === undefined || snapshot.observedAt.getTime() > query.observedAfter.getTime())
           );
         })
@@ -38,7 +38,7 @@ class FakeFeedItems implements FeedItemReadRepositoryPort {
 }
 
 describe('FeedSummaryFreshnessProbe', () => {
-  it('marks a summary stale when newer topic evidence arrives after the frozen source window', async () => {
+  it('marks a summary stale when newer interest evidence arrives after the frozen source window', async () => {
     const tenant = tenantId('tenant-1');
     const workspace = workspaceId('workspace-1');
     const feedItems = new FakeFeedItems();
@@ -46,21 +46,21 @@ describe('FeedSummaryFreshnessProbe', () => {
       id: 'feed-window',
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       observedAt: new Date('2026-06-06T00:01:00.000Z'),
     }));
     feedItems.upsert(makeFeedItem({
       id: 'feed-newer',
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       observedAt: new Date('2026-06-06T00:03:00.000Z'),
     }));
     feedItems.upsert(makeFeedItem({
-      id: 'feed-other-topic',
+      id: 'feed-other-interest',
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: 'topic-2',
+      interestId: 'interest-2',
       observedAt: new Date('2026-06-06T00:04:00.000Z'),
     }));
 
@@ -70,7 +70,7 @@ describe('FeedSummaryFreshnessProbe', () => {
     ).evaluate({
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       sourceWindow: {
         windowId: 'window-1',
         startedAt: new Date('2026-06-06T00:00:00.000Z'),
@@ -97,7 +97,7 @@ describe('FeedSummaryFreshnessProbe', () => {
       id: 'feed-boundary',
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       observedAt: new Date('2026-06-06T00:02:00.000Z'),
     }));
 
@@ -107,7 +107,7 @@ describe('FeedSummaryFreshnessProbe', () => {
     ).evaluate({
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       sourceWindow: {
         windowId: 'window-1',
         startedAt: new Date('2026-06-06T00:00:00.000Z'),
@@ -127,16 +127,16 @@ const makeFeedItem = (params: {
   readonly id: string;
   readonly tenantId: ReturnType<typeof tenantId>;
   readonly workspaceId: ReturnType<typeof workspaceId>;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly observedAt: Date;
 }): FeedItem =>
   FeedItem.publish({
     id: params.id,
     tenantId: params.tenantId,
     workspaceId: params.workspaceId,
-    topicId: params.topicId,
+    interestId: params.interestId,
     sourceItemId: `${params.id}:source`,
-    sourceBindingId: `${params.topicId}:binding`,
+    sourceBindingId: `${params.interestId}:binding`,
     providerKey: 'rss',
     canonicalUrl: `https://example.test/${params.id}`,
     title: `Title ${params.id}`,

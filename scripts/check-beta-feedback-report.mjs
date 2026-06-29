@@ -160,8 +160,8 @@ for (const finding of findings) {
   }
 
   const evidence = finding.summaryEvidence ?? {};
-  if (!nonEmptyString(evidence.summaryId) || !nonEmptyString(evidence.topicId)) {
-    fail(`${reportPath}: finding "${id}" must include summaryId and topicId evidence`);
+  if (!nonEmptyString(evidence.summaryId) || !nonEmptyString(evidence.interestId)) {
+    fail(`${reportPath}: finding "${id}" must include summaryId and interestId evidence`);
   }
 
   if (evalFixtureCategories.has(finding.category)) {

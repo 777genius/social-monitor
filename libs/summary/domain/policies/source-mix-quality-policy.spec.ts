@@ -83,7 +83,7 @@ const evidenceItem = (
   feedItemId: `${providerKey}-feed-${index}`,
   sourceItemId: `${providerKey}-source-${index}`,
   sourceBindingId: `${providerKey}-binding`,
-  topicId: "ai",
+  interestId: "ai",
   providerKey,
   providerName: providerKey,
   canonicalUrl: `https://example.test/${providerKey}/${index}`,
@@ -111,7 +111,7 @@ const storyCluster = (providerKey: string, index: number): StoryCluster => ({
   storyKey: `${providerKey}-story-${index}`,
   representativeFeedItemId: `${providerKey}-feed-${index}`,
   duplicateFeedItemIds: [],
-  topicIds: ["ai"],
+  interestIds: ["ai"],
   providerKeys: [providerKey],
   score: 1,
   observedAtRange: {

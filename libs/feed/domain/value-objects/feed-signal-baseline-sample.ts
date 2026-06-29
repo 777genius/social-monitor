@@ -6,7 +6,7 @@ import {
 
 export type FeedSignalBaselineSample = {
   readonly feedItemId: string;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly providerKey: string;
   readonly sourceKey: string;
   readonly contentType: string;
@@ -30,7 +30,7 @@ export const feedSignalBaselineSampleFromItem = (
 
   return {
     feedItemId: snapshot.id,
-    topicId: snapshot.topicId,
+    interestId: snapshot.interestId,
     providerKey: metrics.providerKey,
     sourceKey: metrics.sourceKey,
     contentType: metrics.contentType,

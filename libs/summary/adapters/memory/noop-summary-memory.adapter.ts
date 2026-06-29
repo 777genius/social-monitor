@@ -12,7 +12,7 @@ export class NoopSummaryMemoryAdapter implements SummaryMemoryPort {
       status: 'disabled',
       diagnostics: {
         mode: 'disabled',
-        topicId: query.topicId,
+        interestId: query.interestId,
       },
       retrievedAt: query.requestedAt,
     };

@@ -13,7 +13,7 @@ export type FeedSignalBaselineCohortFilter = {
 export type ListFeedSignalBaselineSamplesQuery = {
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
-  readonly topicId?: string;
+  readonly interestId?: string;
   readonly observedAfter: Date;
   readonly limit: number;
   readonly cohortFilters?: readonly FeedSignalBaselineCohortFilter[];

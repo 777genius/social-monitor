@@ -45,7 +45,7 @@ const assert: (condition: unknown, message: string) => asserts condition = (cond
 async function main(): Promise<void> {
   const tenant = tenantId('tenant-auto-summary-scheduler-smoke');
   const workspace = workspaceId('workspace-auto-summary-scheduler-smoke');
-  const topicId = 'topic-auto-summary-scheduler-smoke';
+  const interestId = 'topic-auto-summary-scheduler-smoke';
   const jobs = new InMemorySummaryJobRepository();
   const policies = new InMemorySummaryPolicyRepository();
   const feedItems = new InMemoryFeedItemReadRepository();
@@ -61,18 +61,18 @@ async function main(): Promise<void> {
     ),
   );
 
-  await policies.save(SummaryPolicy.defaultForTopic({
+  await policies.save(SummaryPolicy.defaultForInterest({
     id: 'policy-auto-summary-scheduler-smoke',
     tenantId: tenant,
     workspaceId: workspace,
-    topicId,
+    interestId,
     now: new Date('2026-06-21T11:00:00.000Z'),
   }));
   feedItems.upsert(FeedItem.publish({
     id: 'feed-auto-summary-scheduler-smoke',
     tenantId: tenant,
     workspaceId: workspace,
-    topicId,
+    interestId,
     sourceItemId: 'source-auto-summary-scheduler-smoke',
     sourceBindingId: 'source-binding-auto-summary-scheduler-smoke',
     providerKey: 'rss',

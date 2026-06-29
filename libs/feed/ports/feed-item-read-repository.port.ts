@@ -9,7 +9,7 @@ export type ListFeedItemsQuery = {
   readonly workspaceId: WorkspaceId;
   readonly limit: number;
   readonly cursor?: string;
-  readonly topicId?: string;
+  readonly interestId?: string;
   readonly searchQuery?: string;
   readonly observedAfter?: Date;
   readonly observedBefore?: Date;

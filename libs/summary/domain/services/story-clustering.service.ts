@@ -80,7 +80,7 @@ const buildClusters = (
       rankingPolicyVersion: policy.version,
       representativeFeedItemId: representative.feedItemId,
       duplicateFeedItemIds: sorted.slice(1).map((item) => item.feedItemId),
-      topicIds: uniqueSorted(sorted.map((item) => item.topicId)),
+      interestIds: uniqueSorted(sorted.map((item) => item.interestId)),
       providerKeys: uniqueSorted(sorted.map((item) => item.providerKey)),
       score: signal.score,
       signalBreakdown: signal.breakdown,
@@ -191,7 +191,7 @@ const storyClusterSignal = (
   }
 
   const providerKeys = uniqueSorted(sorted.map((item) => item.providerKey));
-  const topicIds = uniqueSorted(sorted.map((item) => item.topicId));
+  const interestIds = uniqueSorted(sorted.map((item) => item.interestId));
   const strongestByProvider = new Map<string, number>();
 
   for (const item of sorted) {
@@ -225,9 +225,9 @@ const storyClusterSignal = (
     policy.providerDiversityCap,
     (providerKeys.length - 1) * policy.providerDiversityWeight,
   );
-  const topicDiversityBoost = Math.min(
-    policy.topicDiversityCap,
-    (topicIds.length - 1) * policy.topicDiversityWeight,
+  const interestDiversityBoost = Math.min(
+    policy.interestDiversityCap,
+    (interestIds.length - 1) * policy.interestDiversityWeight,
   );
   const freshnessBoost = freshnessBoostFor(
     representative.observedAt,
@@ -239,7 +239,7 @@ const storyClusterSignal = (
     crossProviderSupport: roundScore(otherProviderSupport),
     sameProviderSupport: roundScore(sameProviderSupport),
     providerDiversityBoost: roundScore(providerDiversityBoost),
-    topicDiversityBoost: roundScore(topicDiversityBoost),
+    interestDiversityBoost: roundScore(interestDiversityBoost),
     freshnessBoost: roundScore(freshnessBoost),
     totalScore: 0,
   };
@@ -249,7 +249,7 @@ const storyClusterSignal = (
       crossProviderSupport: breakdown.crossProviderSupport,
       sameProviderSupport: breakdown.sameProviderSupport,
       providerDiversityBoost: breakdown.providerDiversityBoost,
-      topicDiversityBoost: breakdown.topicDiversityBoost,
+      interestDiversityBoost: breakdown.interestDiversityBoost,
       freshnessBoost: breakdown.freshnessBoost,
     }).reduce((total, value) => total + value, 0),
   );
@@ -260,7 +260,7 @@ const storyClusterSignal = (
     breakdown: completeBreakdown,
     reasons: storyClusterReasons({
       providerKeys,
-      topicIds,
+      interestIds,
       evidenceCount: sorted.length,
       score,
     }),
@@ -269,7 +269,7 @@ const storyClusterSignal = (
 
 const storyClusterReasons = (params: {
   readonly providerKeys: readonly string[];
-  readonly topicIds: readonly string[];
+  readonly interestIds: readonly string[];
   readonly evidenceCount: number;
   readonly score: number;
 }): readonly string[] => {
@@ -285,8 +285,8 @@ const storyClusterReasons = (params: {
     reasons.push(`Clustered ${params.evidenceCount} related source items`);
   }
 
-  if (params.topicIds.length > 1) {
-    reasons.push(`Appears across ${params.topicIds.length} monitored topics`);
+  if (params.interestIds.length > 1) {
+    reasons.push(`Appears across ${params.interestIds.length} monitored interests`);
   }
 
   reasons.push(`Story signal score ${formatScore(params.score)}`);
@@ -364,9 +364,9 @@ const compareStoryClusters = (
     return providerCoverageDiff;
   }
 
-  const topicCoverageDiff = right.topicIds.length - left.topicIds.length;
-  if (topicCoverageDiff !== 0) {
-    return topicCoverageDiff;
+  const interestCoverageDiff = right.interestIds.length - left.interestIds.length;
+  if (interestCoverageDiff !== 0) {
+    return interestCoverageDiff;
   }
 
   return (
@@ -406,7 +406,7 @@ const zeroSignalBreakdown = (): NonNullable<
   crossProviderSupport: 0,
   sameProviderSupport: 0,
   providerDiversityBoost: 0,
-  topicDiversityBoost: 0,
+  interestDiversityBoost: 0,
   freshnessBoost: 0,
   totalScore: 0,
 });

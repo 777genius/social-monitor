@@ -37,7 +37,7 @@ import type {
 const clock = new FixedClock(new Date("2026-06-08T00:00:00.000Z"));
 const tenant = tenantId("00000000-0000-7000-8000-000000000401");
 const workspace = workspaceId("00000000-0000-7000-8000-000000000402");
-const topicId = "00000000-0000-7000-8000-000000000403";
+const interestId = "00000000-0000-7000-8000-000000000403";
 
 async function main(): Promise<void> {
   assert(
@@ -76,8 +76,8 @@ async function main(): Promise<void> {
     id: "00000000-0000-7000-8000-000000000601",
     tenantId: tenant,
     workspaceId: workspace,
-    topicId,
-    idempotencyKey: "summary-job:topic:2026-06-08",
+    interestId,
+    idempotencyKey: "summary-job:interest:2026-06-08",
     requestedAt: clock.now(),
   });
   await summaryJobs.save(requestedJob);
@@ -94,7 +94,7 @@ async function main(): Promise<void> {
   const foundJob = await summaryJobs.findByIdempotencyKey({
     tenantId: tenant,
     workspaceId: workspace,
-    idempotencyKey: "summary-job:topic:2026-06-08",
+    idempotencyKey: "summary-job:interest:2026-06-08",
   });
   assert(
     foundJob?.toSnapshot().status === "completed",
@@ -110,8 +110,8 @@ async function main(): Promise<void> {
     id: "00000000-0000-7000-8000-000000000602",
     tenantId: tenant,
     workspaceId: workspace,
-    topicId,
-    idempotencyKey: "summary-job:topic:2026-06-08:no-signal",
+    interestId,
+    idempotencyKey: "summary-job:interest:2026-06-08:no-signal",
     requestedAt: clock.now(),
   })
     .start({ startedAt: new Date("2026-06-08T00:03:00.000Z") })
@@ -124,7 +124,7 @@ async function main(): Promise<void> {
   const listed = await summaryArtifacts.list({
     tenantId: tenant,
     workspaceId: workspace,
-    topicId,
+    interestId,
     limit: 1,
   });
   assert(
@@ -138,7 +138,7 @@ async function main(): Promise<void> {
   const secondPage = await summaryArtifacts.list({
     tenantId: tenant,
     workspaceId: workspace,
-    topicId,
+    interestId,
     limit: 1,
     cursor: listed.nextCursor,
   });
@@ -172,7 +172,7 @@ async function main(): Promise<void> {
     tenantId: tenant,
     workspaceId: workspace,
     summaryId: completedArtifact.toSnapshot().summaryId,
-    topicId,
+    interestId,
     idempotencyKey: "feedback:summary:durable",
     submittedBy: "beta-user@example.test",
     rating: 2,
@@ -180,7 +180,7 @@ async function main(): Promise<void> {
     comment: "The cited item does not support the claim.",
     evidence: {
       summaryId: completedArtifact.toSnapshot().summaryId,
-      topicId,
+      interestId,
       citationId: "citation-1",
       feedItemId: "feed-1",
       sourceItemId: "source-1",
@@ -229,7 +229,7 @@ async function main(): Promise<void> {
     id: "00000000-0000-7000-8000-000000000801",
     tenantId: tenant,
     workspaceId: workspace,
-    topicId,
+    interestId,
     language: "ru",
     format: "bullet_digest",
     tone: "analytical",
@@ -241,10 +241,10 @@ async function main(): Promise<void> {
     updatedAt: clock.now(),
   });
   await summaryPolicies.save(policy);
-  const foundPolicy = await summaryPolicies.findByTopic({
+  const foundPolicy = await summaryPolicies.findByInterest({
     tenantId: tenant,
     workspaceId: workspace,
-    topicId,
+    interestId,
   });
   assert(
     foundPolicy?.toSnapshot().language === "ru",
@@ -264,10 +264,10 @@ async function main(): Promise<void> {
     tenantId: tenant,
     workspaceId: workspace,
     correlationId: correlationId("summary-prisma-outbox-smoke"),
-    causationId: causationId("summary-job:topic:2026-06-08"),
+    causationId: causationId("summary-job:interest:2026-06-08"),
     payload: {
       summaryId: completedArtifact.toSnapshot().summaryId,
-      topicId,
+      interestId,
       summaryJobId: completedJob.toSnapshot().id,
     },
   });
@@ -301,7 +301,7 @@ const makeCompletedArtifact = (summaryId: string): SummaryArtifact =>
     summaryId,
     tenantId: tenant,
     workspaceId: workspace,
-    topicId,
+    interestId,
     sourceWindow: {
       windowId: "window-1",
       startedAt: new Date("2026-06-08T00:00:00.000Z"),
@@ -359,7 +359,7 @@ const makeNoSignalArtifact = (summaryId: string): SummaryArtifact =>
     summaryId,
     tenantId: tenant,
     workspaceId: workspace,
-    topicId,
+    interestId,
     sourceWindow: {
       windowId: "window-2",
       startedAt: new Date("2026-06-08T02:00:00.000Z"),
@@ -431,7 +431,7 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
         id: existing?.id ?? args.create.id,
         tenantId: existing?.tenantId ?? args.create.tenantId,
         workspaceId: existing?.workspaceId ?? args.create.workspaceId,
-        topicId: existing?.topicId ?? args.create.topicId,
+        interestId: existing?.interestId ?? args.create.interestId,
         userId:
           args.update.userId ?? existing?.userId ?? args.create.userId ?? null,
         subscriptionId:
@@ -491,7 +491,7 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
         id: existing?.id ?? args.create.id,
         tenantId: existing?.tenantId ?? args.create.tenantId,
         workspaceId: existing?.workspaceId ?? args.create.workspaceId,
-        topicId: existing?.topicId ?? args.create.topicId,
+        interestId: existing?.interestId ?? args.create.interestId,
         userId:
           args.update.userId ?? existing?.userId ?? args.create.userId ?? null,
         subscriptionId:
@@ -539,7 +539,7 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
         workspaceId: existing?.workspaceId ?? args.create.workspaceId,
         summaryArtifactId:
           existing?.summaryArtifactId ?? args.create.summaryArtifactId,
-        topicId: existing?.topicId ?? args.create.topicId,
+        interestId: existing?.interestId ?? args.create.interestId,
         idempotencyKey: existing?.idempotencyKey ?? args.create.idempotencyKey,
         submittedBy: args.update.submittedBy,
         rating: args.update.rating,
@@ -571,16 +571,16 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
   readonly summaryPolicy: PrismaSummaryClient["summaryPolicy"] = {
     upsert: async (args) => {
       const key = [
-        args.where.tenantId_workspaceId_topicId.tenantId,
-        args.where.tenantId_workspaceId_topicId.workspaceId,
-        args.where.tenantId_workspaceId_topicId.topicId,
+        args.where.tenantId_workspaceId_interestId.tenantId,
+        args.where.tenantId_workspaceId_interestId.workspaceId,
+        args.where.tenantId_workspaceId_interestId.interestId,
       ].join(":");
       const existing = this.policies.get(key);
       const record: PrismaSummaryPolicyRecord = {
         id: existing?.id ?? args.create.id,
         tenantId: existing?.tenantId ?? args.create.tenantId,
         workspaceId: existing?.workspaceId ?? args.create.workspaceId,
-        topicId: existing?.topicId ?? args.create.topicId,
+        interestId: existing?.interestId ?? args.create.interestId,
         language: args.update.language,
         format: args.update.format,
         tone: args.update.tone,
@@ -601,7 +601,7 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
         (record) =>
           record.tenantId === args.where.tenantId &&
           record.workspaceId === args.where.workspaceId &&
-          record.topicId === args.where.topicId,
+          record.interestId === args.where.interestId,
       ) ?? null,
   };
 
@@ -614,10 +614,10 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
         workspaceId: existing?.workspaceId ?? args.create.workspaceId,
         scopeType: args.update.scopeType,
         scopeKey: args.update.scopeKey,
-        topicId:
-          args.update.topicId ??
-          existing?.topicId ??
-          args.create.topicId ??
+        interestId:
+          args.update.interestId ??
+          existing?.interestId ??
+          args.create.interestId ??
           null,
         cadence: args.update.cadence,
         periodStartedAt: args.update.periodStartedAt,
@@ -705,10 +705,10 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
         workspaceId: existing?.workspaceId ?? args.create.workspaceId,
         scopeType: args.update.scopeType,
         scopeKey: args.update.scopeKey,
-        topicId:
-          args.update.topicId ??
-          existing?.topicId ??
-          args.create.topicId ??
+        interestId:
+          args.update.interestId ??
+          existing?.interestId ??
+          args.create.interestId ??
           null,
         cadence: args.update.cadence,
         periodStartedAt: args.update.periodStartedAt,
@@ -766,17 +766,17 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
         workspaceId: existing?.workspaceId ?? args.create.workspaceId,
         scopeType: args.update.scopeType,
         scopeKey: args.update.scopeKey,
-        topicId:
-          args.update.topicId ??
-          existing?.topicId ??
-          args.create.topicId ??
+        interestId:
+          args.update.interestId ??
+          existing?.interestId ??
+          args.create.interestId ??
           null,
         language: args.update.language,
         format: args.update.format,
         tone: args.update.tone,
         maxStories: args.update.maxStories,
         includeRisks: args.update.includeRisks,
-        includeTopicHighlights: args.update.includeTopicHighlights,
+        includeInterestHighlights: args.update.includeInterestHighlights,
         includeRepeatedSignals: args.update.includeRepeatedSignals,
         dedupeStrategy: args.update.dedupeStrategy,
         customInstructions: args.update.customInstructions,
@@ -843,14 +843,14 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
   private filterArtifacts(where: {
     readonly tenantId: string;
     readonly workspaceId: string;
-    readonly topicId?: string;
+    readonly interestId?: string;
     readonly status?: { readonly in: readonly PrismaSummaryStatus[] };
   }): PrismaSummaryArtifactRecord[] {
     return [...this.artifacts.values()].filter(
       (record) =>
         record.tenantId === where.tenantId &&
         record.workspaceId === where.workspaceId &&
-        (where.topicId === undefined || record.topicId === where.topicId) &&
+        (where.interestId === undefined || record.interestId === where.interestId) &&
         (where.status === undefined || where.status.in.includes(record.status)),
     );
   }

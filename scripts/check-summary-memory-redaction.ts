@@ -68,7 +68,7 @@ async function main(): Promise<void> {
   await adapter.buildContext({
     tenantId: tenantId('tenant-redaction'),
     workspaceId: workspaceId('workspace-redaction'),
-    topicId: 'topic-redaction',
+    interestId: 'topic-redaction',
     userId: 'user-redaction',
     subscriptionId: 'subscription-redaction',
     evidence: {
@@ -103,7 +103,7 @@ async function main(): Promise<void> {
   await adapter.recordSummaryFeedback({
     tenantId: tenantId('tenant-redaction'),
     workspaceId: workspaceId('workspace-redaction'),
-    topicId: 'topic-redaction',
+    interestId: 'topic-redaction',
     summaryId: 'summary-redaction',
     feedbackId: 'feedback-redaction',
     idempotencyKey: 'feedback-redaction-key',
@@ -124,7 +124,7 @@ async function main(): Promise<void> {
     preferenceId: 'preference-redaction',
     userId: 'user-redaction',
     subscriptionId: 'subscription-redaction',
-    topicId: 'topic-redaction',
+    interestId: 'topic-redaction',
     language: 'en',
     format: 'bullet_digest',
     tone: 'concise',

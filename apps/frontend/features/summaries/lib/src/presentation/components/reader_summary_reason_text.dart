@@ -32,7 +32,7 @@ bool _isReaderFacingReason(String value) {
       !lower.startsWith('story signal score') &&
       !lower.startsWith('current summary window has') &&
       lower != 'strong source engagement signal' &&
-      lower != 'passes source quality and topic relevance gate' &&
+      lower != 'passes source quality and interest relevance gate' &&
       lower != 'fresh item in the current monitoring window' &&
       !RegExp(r'^clustered \d+ (similar|related) items?$').hasMatch(lower) &&
       !lower.contains('citation references bodypreview evidence') &&

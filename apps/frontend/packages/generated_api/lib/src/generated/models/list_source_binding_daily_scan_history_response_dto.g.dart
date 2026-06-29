@@ -17,6 +17,7 @@ _$ListSourceBindingDailyScanHistoryResponseDtoFromJson(
         ),
       )
       .toList(),
+  interestId: json['interestId'] as String,
   maxScanJobs: json['maxScanJobs'] as num,
   providerKey: json['providerKey'] as String,
   sourceBindingId: json['sourceBindingId'] as String,
@@ -24,7 +25,6 @@ _$ListSourceBindingDailyScanHistoryResponseDtoFromJson(
       ListSourceBindingDailyScanHistoryResponseDtoSourceBindingStatusSourceBindingStatus.fromJson(
         json['sourceBindingStatus'] as String,
       ),
-  topicId: json['topicId'] as String,
   truncated: json['truncated'] as bool,
   windowEndedAt: DateTime.parse(json['windowEndedAt'] as String),
   windowStartedAt: DateTime.parse(json['windowStartedAt'] as String),
@@ -45,12 +45,12 @@ Map<String, dynamic> _$ListSourceBindingDailyScanHistoryResponseDtoToJson(
 ) => <String, dynamic>{
   'cadence': instance.cadence,
   'days': instance.days,
+  'interestId': instance.interestId,
   'maxScanJobs': instance.maxScanJobs,
   'providerKey': instance.providerKey,
   'sourceBindingId': instance.sourceBindingId,
   'sourceBindingStatus': instance.sourceBindingStatus,
   'summary': instance.summary,
-  'topicId': instance.topicId,
   'truncated': instance.truncated,
   'windowEndedAt': instance.windowEndedAt.toIso8601String(),
   'windowStartedAt': instance.windowStartedAt.toIso8601String(),

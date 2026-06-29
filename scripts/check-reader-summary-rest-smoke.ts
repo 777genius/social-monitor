@@ -101,7 +101,7 @@ async function main(): Promise<void> {
           rankingPolicyVersion: 'story_ranking_v1',
           representativeFeedItemId: 'feed-reddit',
           duplicateFeedItemIds: ['feed-github'],
-          topicIds: ['topic-ai', 'topic-github'],
+          interestIds: ['topic-ai', 'topic-github'],
           providerKeys: ['reddit', 'github-repo-radar'],
           score: 2.4,
           signalBreakdown: {
@@ -109,7 +109,7 @@ async function main(): Promise<void> {
             crossProviderSupport: 0.7,
             sameProviderSupport: 0,
             providerDiversityBoost: 0.5,
-            topicDiversityBoost: 0.2,
+            interestDiversityBoost: 0.2,
             freshnessBoost: 0.3,
             totalScore: 2.4,
           },
@@ -163,14 +163,14 @@ async function main(): Promise<void> {
           title: 'AI tooling signal repeats across Reddit and GitHub',
           summary:
             'Reddit discussion and repo-radar evidence point to the same agent tooling theme.',
-          topicIds: ['topic-ai', 'topic-github'],
+          interestIds: ['topic-ai', 'topic-github'],
           providerKeys: ['reddit', 'github-repo-radar'],
           citationIds: ['citation-reddit', 'citation-github'],
         },
       ],
-      topicHighlights: [
+      interestHighlights: [
         {
-          topicId: 'topic-ai',
+          interestId: 'topic-ai',
           title: 'Agent tooling is the strongest AI topic',
           summary:
             'The readerSummary is backed by a Reddit source and a GitHub repo-radar source.',
@@ -181,7 +181,7 @@ async function main(): Promise<void> {
         {
           storyClusterId: 'story:ai-tooling',
           title: 'Agent tooling repeated across monitored topics',
-          topicIds: ['topic-ai', 'topic-github'],
+          interestIds: ['topic-ai', 'topic-github'],
           citationIds: ['citation-reddit', 'citation-github'],
         },
       ],
@@ -515,7 +515,7 @@ async function main(): Promise<void> {
       .post('/reader-summary-requests')
       .set(readerSummaryRequestHeaders)
       .send({
-        scope: { type: 'topic', topicId: 'topic-readerSummary-rest-smoke' },
+        scope: { type: 'interest', interestId: 'topic-readerSummary-rest-smoke' },
         userId,
       })
       .expect(409);
@@ -624,7 +624,7 @@ const readerReaderSummaryContent = (): ReaderSummaryContent => {
     primaryActionKind: 'watch_repository' as const,
     reason:
       'The repository is connected to an active AI agent tooling discussion.',
-    matchedTopicIds: ['topic-ai', 'topic-github'],
+    matchedInterestIds: ['topic-ai', 'topic-github'],
     matchedRules: ['agent-tooling', 'repository-growth'],
     signalScore: 2.4,
     confidence: {
@@ -663,9 +663,9 @@ const readerReaderSummaryContent = (): ReaderSummaryContent => {
       warnings: [],
       isSingleSource: false,
     },
-    topicSections: [
+    interestSections: [
       {
-        topicId: 'topic-ai',
+        interestId: 'topic-ai',
         title: 'AI tooling',
         insight:
           'The useful story is not one isolated post but a repeated provider-backed signal.',
@@ -681,7 +681,7 @@ const readerReaderSummaryContent = (): ReaderSummaryContent => {
         storyClusterCount: 1,
         crossSourceClusterCount: 1,
         singleSourceOnly: false,
-        topicIds: ['topic-ai'],
+        interestIds: ['topic-ai'],
       },
       {
         providerKey: 'github-repo-radar',
@@ -690,7 +690,7 @@ const readerReaderSummaryContent = (): ReaderSummaryContent => {
         storyClusterCount: 1,
         crossSourceClusterCount: 1,
         singleSourceOnly: false,
-        topicIds: ['topic-github'],
+        interestIds: ['topic-github'],
       },
     ],
     topReads: [topRead],

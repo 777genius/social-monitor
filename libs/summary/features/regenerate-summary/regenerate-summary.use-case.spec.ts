@@ -176,7 +176,7 @@ const createSummary = (params: {
     summaryId: 'summary-1',
     tenantId: params.tenantId,
     workspaceId: params.workspaceId,
-    topicId: 'topic-1',
+    interestId: 'interest-1',
     sourceWindow: {
       windowId: 'window-1',
       startedAt: new Date('2026-06-06T00:00:00.000Z'),
@@ -193,7 +193,7 @@ const createSummary = (params: {
     confidence: {
       level: 'none',
       score: 0,
-      rationale: 'No evidence was selected for this topic window.',
+      rationale: 'No evidence was selected for this interest window.',
     },
     lineage: {
       promptVersion: 'prompt-v1',
@@ -208,5 +208,5 @@ const createSummary = (params: {
       outputTokens: 0,
       estimatedCostUsd: 0,
     },
-    noSignalReason: 'No eligible evidence items selected for this topic.',
+    noSignalReason: 'No eligible evidence items selected for this interest.',
   });

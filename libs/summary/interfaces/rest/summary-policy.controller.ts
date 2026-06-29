@@ -22,7 +22,7 @@ import {
 } from './summary-policy.dto';
 
 @ApiTags('summary-policies')
-@Controller('topics/:topicId/summary-policy')
+@Controller('interests/:interestId/summary-policy')
 export class SummaryPolicyController {
   constructor(
     private readonly getSummaryPolicy: GetSummaryPolicyUseCase,
@@ -35,7 +35,7 @@ export class SummaryPolicyController {
   ) {}
 
   @Get()
-  @ApiOperation({ summary: 'Get summary policy for a topic.' })
+  @ApiOperation({ summary: 'Get summary policy for an interest.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
   @ApiKeyOrWorkspaceRoleAuth({
@@ -43,7 +43,7 @@ export class SummaryPolicyController {
     workspaceRoleDescription: 'Comma-separated workspace roles. Summary policy reads allow owner, admin, member or viewer.',
   })
   async get(
-    @Param('topicId') topicId: string,
+    @Param('interestId') interestId: string,
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
@@ -63,7 +63,7 @@ export class SummaryPolicyController {
     const result = await this.getSummaryPolicy.execute({
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
-      topicId,
+      interestId,
     });
 
     if (!result.ok) {
@@ -74,7 +74,7 @@ export class SummaryPolicyController {
   }
 
   @Put()
-  @ApiOperation({ summary: 'Create or update summary policy for a topic.' })
+  @ApiOperation({ summary: 'Create or update summary policy for an interest.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
   @ApiKeyOrWorkspaceRoleAuth({
@@ -82,7 +82,7 @@ export class SummaryPolicyController {
     workspaceRoleDescription: 'Comma-separated workspace roles. Summary policy writes require owner or admin.',
   })
   async upsert(
-    @Param('topicId') topicId: string,
+    @Param('interestId') interestId: string,
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
@@ -104,7 +104,7 @@ export class SummaryPolicyController {
     const result = await this.upsertSummaryPolicy.execute({
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
-      topicId,
+      interestId,
       language: body.language,
       format: body.format,
       tone: body.tone,

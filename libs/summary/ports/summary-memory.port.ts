@@ -56,7 +56,7 @@ export type SummaryMemoryContext = {
 export type BuildSummaryMemoryContextQuery = {
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly userId?: string | undefined;
   readonly subscriptionId?: string | undefined;
   readonly evidence: SummaryEvidenceSelection;
@@ -66,7 +66,7 @@ export type BuildSummaryMemoryContextQuery = {
 export type RecordSummaryFeedbackMemoryCommand = {
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly summaryId: string;
   readonly feedbackId: string;
   readonly idempotencyKey: string;
@@ -97,7 +97,7 @@ export const NOOP_SUMMARY_MEMORY: SummaryMemoryPort = {
       status: 'disabled',
       diagnostics: {
         mode: 'disabled',
-        topicId: query.topicId,
+        interestId: query.interestId,
       },
       retrievedAt: query.requestedAt,
     };

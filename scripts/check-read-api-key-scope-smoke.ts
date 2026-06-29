@@ -48,7 +48,7 @@ async function main(): Promise<void> {
     const tenant = tenantId('tenant-read-api-key-smoke');
     const otherTenant = tenantId('tenant-read-api-key-smoke-other');
     const workspace = workspaceId('workspace-read-api-key-smoke');
-    const topicId = 'topic-read-api-key-smoke';
+    const interestId = 'topic-read-api-key-smoke';
     const headers = {
       'x-tenant-id': tenant,
       'x-workspace-id': workspace,
@@ -64,7 +64,7 @@ async function main(): Promise<void> {
       id: 'feed-read-api-key-smoke',
       tenantId: tenant,
       workspaceId: workspace,
-      topicId,
+      interestId,
       sourceItemId: 'source-read-api-key-smoke',
       sourceBindingId: 'binding-read-api-key-smoke',
       providerKey: 'rss',
@@ -88,7 +88,7 @@ async function main(): Promise<void> {
       tenant,
       workspace,
       name: 'Smoke topic reader',
-      scopes: ['read:topics'],
+      scopes: ['read:interests'],
     });
     const summarySecret = await createApiKey({
       server: app.getHttpServer(),
@@ -107,7 +107,7 @@ async function main(): Promise<void> {
 
     const feedList = await request(app.getHttpServer())
       .get('/feed/items')
-      .query({ topicId, limit: 10 })
+      .query({ interestId, limit: 10 })
       .set(headers)
       .set('Authorization', `Bearer ${feedSecret}`)
       .expect(200);
@@ -120,7 +120,7 @@ async function main(): Promise<void> {
 
     await request(app.getHttpServer())
       .get('/feed/items')
-      .query({ topicId, limit: 10 })
+      .query({ interestId, limit: 10 })
       .set(otherTenantHeaders)
       .set('Authorization', `Bearer ${feedSecret}`)
       .expect(403);
@@ -160,7 +160,7 @@ async function main(): Promise<void> {
       .expect(403);
 
     const createdTopic = await request(app.getHttpServer())
-      .post('/topics')
+      .post('/interests')
       .set(headers)
       .set('x-workspace-role', 'admin')
       .set('x-request-id', 'read-api-key-smoke-topic-request')
@@ -171,7 +171,7 @@ async function main(): Promise<void> {
       })
       .expect(201);
     const createdBinding = await request(app.getHttpServer())
-      .post(`/topics/${createdTopic.body.topicId}/source-bindings`)
+      .post(`/interests/${createdTopic.body.interestId}/source-bindings`)
       .set(headers)
       .set('x-workspace-role', 'admin')
       .set('x-request-id', 'read-api-key-smoke-source-binding-request')
@@ -184,20 +184,20 @@ async function main(): Promise<void> {
       })
       .expect(201);
 
-    const topics = await request(app.getHttpServer())
-      .get('/topics')
+    const interests = await request(app.getHttpServer())
+      .get('/interests')
       .query({ limit: 10 })
       .set(headers)
       .set('Authorization', `Bearer ${topicSecret}`)
       .expect(200);
 
     assert(
-      topics.body.topics.some((item: { readonly id?: string }) => item.id === createdTopic.body.topicId),
-      'read:topics API key must list topics',
+      interests.body.interests.some((item: { readonly id?: string }) => item.id === createdTopic.body.interestId),
+      'read:interests API key must list interests',
     );
 
     const sourceBindings = await request(app.getHttpServer())
-      .get(`/topics/${createdTopic.body.topicId}/source-bindings`)
+      .get(`/interests/${createdTopic.body.interestId}/source-bindings`)
       .query({ limit: 10 })
       .set(headers)
       .set('Authorization', `Bearer ${topicSecret}`)
@@ -207,23 +207,23 @@ async function main(): Promise<void> {
       sourceBindings.body.sourceBindings.some((item: { readonly id?: string }) =>
         item.id === createdBinding.body.sourceBindingId,
       ),
-      'read:topics API key must list source bindings',
+      'read:interests API key must list source bindings',
     );
 
     await request(app.getHttpServer())
-      .get(`/topics/${createdTopic.body.topicId}/source-bindings/${createdBinding.body.sourceBindingId}/health`)
+      .get(`/interests/${createdTopic.body.interestId}/source-bindings/${createdBinding.body.sourceBindingId}/health`)
       .set(headers)
       .set('Authorization', `Bearer ${topicSecret}`)
       .expect(200);
 
     await request(app.getHttpServer())
-      .get('/topics')
+      .get('/interests')
       .set(headers)
       .set('Authorization', `Bearer ${feedSecret}`)
       .expect(403);
 
     const summaryRequest = await request(app.getHttpServer())
-      .post(`/topics/${topicId}/summary-requests`)
+      .post(`/interests/${interestId}/summary-requests`)
       .set(headers)
       .set('x-workspace-role', 'member')
       .set('x-request-id', 'read-api-key-smoke-summary-request')
@@ -249,7 +249,7 @@ async function main(): Promise<void> {
 
     const summaryList = await request(app.getHttpServer())
       .get('/summaries')
-      .query({ topicId })
+      .query({ interestId })
       .set(headers)
       .set('Authorization', `Bearer ${summarySecret}`)
       .expect(200);

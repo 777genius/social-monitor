@@ -5,7 +5,7 @@ import type { SourceItem } from '../domain';
 export type ProjectSourceItemMetadataCommand = {
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly sourceBindingId: string;
   readonly scanJobId: string;
   readonly providerKey: string;

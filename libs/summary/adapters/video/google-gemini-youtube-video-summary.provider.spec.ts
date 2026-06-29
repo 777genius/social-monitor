@@ -67,7 +67,7 @@ describe('GoogleGeminiYoutubeVideoSummaryProvider', () => {
     const result = await provider.summarize({
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       feedItemId: 'feed-1',
       sourceItemId: 'source-1',
       sourceBindingId: 'binding-1',
@@ -132,7 +132,7 @@ describe('GoogleGeminiYoutubeVideoSummaryProvider', () => {
     await expect(provider.summarize({
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       feedItemId: 'feed-1',
       sourceItemId: 'source-1',
       sourceBindingId: 'binding-1',
@@ -176,7 +176,7 @@ describe('GoogleGeminiYoutubeVideoSummaryProvider', () => {
     await provider.summarize({
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       feedItemId: 'feed-1',
       sourceItemId: 'source-1',
       sourceBindingId: 'binding-1',

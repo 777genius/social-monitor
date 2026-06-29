@@ -29,7 +29,7 @@ export class GetSummaryJobStatusUseCase {
 
     return ok({
       summaryJobId: snapshot.id,
-      topicId: snapshot.topicId,
+      interestId: snapshot.interestId,
       status: snapshot.status,
       requestedAt: snapshot.requestedAt.toISOString(),
       startedAt: snapshot.startedAt?.toISOString(),

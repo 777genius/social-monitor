@@ -40,7 +40,7 @@ async function main(): Promise<void> {
 
   try {
     const response = await request(app.getHttpServer())
-      .post('/topics/topic-summary-request-queue-smoke/summary-requests')
+      .post('/interests/topic-summary-request-queue-smoke/summary-requests')
       .set('x-tenant-id', 'tenant-summary-request-queue-smoke')
       .set('x-workspace-id', 'workspace-summary-request-queue-smoke')
       .set('x-workspace-role', 'member')
@@ -60,7 +60,7 @@ async function main(): Promise<void> {
     );
 
     await request(app.getHttpServer())
-      .post('/topics/topic-summary-request-queue-smoke/summary-requests')
+      .post('/interests/topic-summary-request-queue-smoke/summary-requests')
       .set('x-tenant-id', 'tenant-summary-request-queue-smoke')
       .set('x-workspace-id', 'workspace-summary-request-queue-smoke')
       .set('x-workspace-role', 'member')
@@ -70,7 +70,7 @@ async function main(): Promise<void> {
     assert(queue.all().length === 1, 'idempotent summary request must not enqueue duplicate commands');
 
     await request(app.getHttpServer())
-      .post('/topics/topic-summary-request-queue-smoke/summary-requests')
+      .post('/interests/topic-summary-request-queue-smoke/summary-requests')
       .set('x-tenant-id', 'tenant-summary-request-queue-smoke')
       .set('x-workspace-id', 'workspace-summary-request-queue-smoke')
       .set('x-workspace-role', 'member')

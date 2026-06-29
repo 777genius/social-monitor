@@ -24,7 +24,7 @@ export class GitHubRepositoryTrendMetadataProjectionAdapter implements SourceIte
       records.push({
         tenantId: command.tenantId,
         workspaceId: command.workspaceId,
-        topicId: command.topicId,
+        interestId: command.interestId,
         sourceBindingId: command.sourceBindingId,
         scanJobId: command.scanJobId,
         sourceItemId: snapshot.id,

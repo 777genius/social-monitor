@@ -125,7 +125,7 @@ async function proveSourceCredentialRotationAndRedaction(): Promise<readonly Rot
     id: 'source-binding-credential-rotation-smoke',
     tenantId: tenant,
     workspaceId: workspace,
-    topicId: 'topic-credential-rotation-smoke',
+    interestId: 'topic-credential-rotation-smoke',
     providerKey: 'reddit',
     capabilityProfileVersion: 1,
     config: newProtectedConfig,

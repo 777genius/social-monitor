@@ -65,7 +65,7 @@ Design-system P0 primitives
 -> app shell runtime
 -> API and state contracts
 -> auth and workspace bootstrap
--> topics vertical slice
+-> interests vertical slice
 -> sources vertical slice
 -> feed vertical slice
 -> summaries vertical slice
@@ -88,7 +88,7 @@ Use this table as the quick order-of-work index. The detailed phase sections bel
 | 2. App shell runtime | `app` | Route guards, workspace/session context and safe unknown routes are tested |
 | 3. API/state contracts | `shared_kernel`, `generated_api`, feature test support | Mapper, Problem Details, pagination and state patterns are executable examples |
 | 4. Auth/workspace bootstrap | `features/auth`, `app` | Session restore, workspace switch and safe pending intent behavior are tested |
-| 5. Topics | `features/topics` | First full vertical slice proves the architecture path |
+| 5. Topics | `features/interests` | First full vertical slice proves the architecture path |
 | 6. Sources | `features/sources` | Credential repair and provider capability safety are tested |
 | 7. Feed | `features/feed` | Cursor pagination, detail review and stale result handling are tested |
 | 8. Summaries | `features/summaries` | Citation safety, generation state and feedback are tested |
@@ -103,7 +103,7 @@ The shortest valuable path is:
 
 ```text
 Shell with workspace context
--> topics create/edit
+-> interests create/edit
 -> source connect/repair
 -> feed review with filters/detail
 -> summary detail with feedback
@@ -355,14 +355,14 @@ Goal:
 
 Build:
 
-- topic list route;
-- topic filters/search through `AppFilterBar`;
-- topic list through `AppDataList`;
-- topic detail/header through `AppEntityHeader`;
-- create/edit/archive topic form workflow;
-- domain value objects for topic id, name, rules and status;
+- interest list route;
+- interest filters/search through `AppFilterBar`;
+- interest list through `AppDataList`;
+- interest detail/header through `AppEntityHeader`;
+- create/edit/archive interest form workflow;
+- domain value objects for interest id, name, search spec and status;
 - use cases for list, create, update and archive;
-- infrastructure mappers for topic endpoints;
+- infrastructure mappers for interest endpoints;
 - store recipes for list/filter/selection and form workflow.
 
 Tests:
@@ -375,7 +375,7 @@ Tests:
 
 Exit criteria:
 
-- topics is the reference slice for future features;
+- interests is the reference slice for future features;
 - no private UI clone of design-system P0 components;
 - architecture and frontend gates pass.
 
@@ -565,7 +565,7 @@ Acceptance workflow:
 
 1. Sign in or restore session.
 2. Select or confirm workspace.
-3. Create or edit a topic.
+3. Create or edit an interest.
 4. Connect or repair a source.
 5. Review feed items with filters and detail view.
 6. Open summary detail and submit feedback.
@@ -590,7 +590,7 @@ Required checks:
 - `cd apps/frontend && fvm flutter test app/test/architecture/frontend_architecture_boundaries_test.dart`
 - `cd apps/frontend && fvm flutter test packages/design_system`
 - `cd apps/frontend && fvm dart test packages/shared_kernel packages/generated_api`
-- `cd apps/frontend && fvm flutter test features/auth features/topics features/sources features/feed features/summaries features/settings`
+- `cd apps/frontend && fvm flutter test features/auth features/interests features/sources features/feed features/summaries features/settings`
 - security/privacy checklist for provider data
 - responsive smoke for compact, medium and expanded layouts, using fixed test sizes such as 390x844, 834x1112 and 1280x900 when widget tests are enough
 - `git diff --check`

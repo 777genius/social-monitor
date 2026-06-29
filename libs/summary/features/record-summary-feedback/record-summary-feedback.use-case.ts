@@ -175,7 +175,7 @@ export class RecordSummaryFeedbackUseCase {
       tenantId: command.tenantId,
       workspaceId: command.workspaceId,
       summaryId: command.summaryId,
-      topicId: summarySnapshot.topicId,
+      interestId: summarySnapshot.interestId,
       idempotencyKey: command.idempotencyKey,
       submittedBy: command.submittedBy.trim(),
       rating: command.rating,
@@ -183,7 +183,7 @@ export class RecordSummaryFeedbackUseCase {
       comment: normalizedComment,
       evidence: {
         summaryId: command.summaryId,
-        topicId: summarySnapshot.topicId,
+        interestId: summarySnapshot.interestId,
         citationId: citation?.citationId,
         feedItemId: citation?.feedItemId,
         sourceItemId: citation?.sourceItemId,
@@ -222,7 +222,7 @@ export class RecordSummaryFeedbackUseCase {
       await this.memory.recordSummaryFeedback({
         tenantId: snapshot.tenantId,
         workspaceId: snapshot.workspaceId,
-        topicId: snapshot.topicId,
+        interestId: snapshot.interestId,
         summaryId: snapshot.summaryId,
         feedbackId: snapshot.id,
         idempotencyKey: snapshot.idempotencyKey,
@@ -301,7 +301,7 @@ const presentFeedback = (
   const snapshot = feedback.toSnapshot();
   const evidence: SummaryFeedbackEvidence = {
     summaryId: snapshot.evidence.summaryId,
-    topicId: snapshot.evidence.topicId,
+    interestId: snapshot.evidence.interestId,
     citationId: snapshot.evidence.citationId,
     feedItemId: snapshot.evidence.feedItemId,
     sourceItemId: snapshot.evidence.sourceItemId,

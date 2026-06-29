@@ -21,10 +21,10 @@ class _SourceBindingsClient implements SourceBindingsClient {
 
   @override
   Future<ListSourceBindingsResponseDto> sourceBindingControllerList({
-    required String topicId,
+    required String interestId,
     required String xWorkspaceId,
     required String xTenantId,
-    List<Status2>? status,
+    List<Status>? status,
     List<String>? providerKey,
     String? cursor,
     num? limit,
@@ -51,7 +51,7 @@ class _SourceBindingsClient implements SourceBindingsClient {
       Options(method: 'GET', headers: _headers, extra: _extra)
           .compose(
             _dio.options,
-            '/topics/${topicId}/source-bindings',
+            '/interests/${interestId}/source-bindings',
             queryParameters: queryParameters,
             data: _data,
           )
@@ -70,7 +70,7 @@ class _SourceBindingsClient implements SourceBindingsClient {
 
   @override
   Future<BindSourceResponseDto> sourceBindingControllerCreate({
-    required String topicId,
+    required String interestId,
     required String idempotencyKey,
     required String xWorkspaceId,
     required String xTenantId,
@@ -95,7 +95,7 @@ class _SourceBindingsClient implements SourceBindingsClient {
       Options(method: 'POST', headers: _headers, extra: _extra)
           .compose(
             _dio.options,
-            '/topics/${topicId}/source-bindings',
+            '/interests/${interestId}/source-bindings',
             queryParameters: queryParameters,
             data: _data,
           )
@@ -114,7 +114,7 @@ class _SourceBindingsClient implements SourceBindingsClient {
 
   @override
   Future<SourceBindingHealthResponseDto> sourceBindingControllerHealth({
-    required String topicId,
+    required String interestId,
     required String sourceBindingId,
     required String xWorkspaceId,
     required String xTenantId,
@@ -136,7 +136,7 @@ class _SourceBindingsClient implements SourceBindingsClient {
       Options(method: 'GET', headers: _headers, extra: _extra)
           .compose(
             _dio.options,
-            '/topics/${topicId}/source-bindings/${sourceBindingId}/health',
+            '/interests/${interestId}/source-bindings/${sourceBindingId}/health',
             queryParameters: queryParameters,
             data: _data,
           )
@@ -156,7 +156,7 @@ class _SourceBindingsClient implements SourceBindingsClient {
   @override
   Future<ChangeSourceBindingStatusResponseDto>
   sourceBindingControllerUpdateStatus({
-    required String topicId,
+    required String interestId,
     required String sourceBindingId,
     required String idempotencyKey,
     required String xWorkspaceId,
@@ -182,7 +182,7 @@ class _SourceBindingsClient implements SourceBindingsClient {
       Options(method: 'PATCH', headers: _headers, extra: _extra)
           .compose(
             _dio.options,
-            '/topics/${topicId}/source-bindings/${sourceBindingId}/status',
+            '/interests/${interestId}/source-bindings/${sourceBindingId}/status',
             queryParameters: queryParameters,
             data: _data,
           )
@@ -200,9 +200,9 @@ class _SourceBindingsClient implements SourceBindingsClient {
   }
 
   @override
-  Future<ListTopicSourceDailyHistoryResponseDto>
+  Future<ListInterestSourceDailyHistoryResponseDto>
   sourceBindingControllerDailyHistory({
-    required String topicId,
+    required String interestId,
     required String xWorkspaceId,
     required String xTenantId,
     List<String>? providerKey,
@@ -224,20 +224,22 @@ class _SourceBindingsClient implements SourceBindingsClient {
     };
     _headers.removeWhere((k, v) => v == null);
     const Map<String, dynamic>? _data = null;
-    final _options = _setStreamType<ListTopicSourceDailyHistoryResponseDto>(
+    final _options = _setStreamType<ListInterestSourceDailyHistoryResponseDto>(
       Options(method: 'GET', headers: _headers, extra: _extra)
           .compose(
             _dio.options,
-            '/topics/${topicId}/source-bindings/daily-history',
+            '/interests/${interestId}/source-bindings/daily-history',
             queryParameters: queryParameters,
             data: _data,
           )
           .copyWith(baseUrl: _combineBaseUrls(_dio.options.baseUrl, baseUrl)),
     );
     final _result = await _dio.fetch<Map<String, Object?>>(_options);
-    late ListTopicSourceDailyHistoryResponseDto _value;
+    late ListInterestSourceDailyHistoryResponseDto _value;
     try {
-      _value = ListTopicSourceDailyHistoryResponseDto.fromJson(_result.data!);
+      _value = ListInterestSourceDailyHistoryResponseDto.fromJson(
+        _result.data!,
+      );
     } on Object catch (e, s) {
       errorLogger?.logError(e, s, _options, response: _result);
       rethrow;
@@ -247,10 +249,10 @@ class _SourceBindingsClient implements SourceBindingsClient {
 
   @override
   Future<ListSourceBindingOverviewResponseDto> sourceBindingControllerOverview({
-    required String topicId,
+    required String interestId,
     required String xWorkspaceId,
     required String xTenantId,
-    List<Status2>? status,
+    List<Status>? status,
     List<String>? providerKey,
     String? cursor,
     num? limit,
@@ -277,7 +279,7 @@ class _SourceBindingsClient implements SourceBindingsClient {
       Options(method: 'GET', headers: _headers, extra: _extra)
           .compose(
             _dio.options,
-            '/topics/${topicId}/source-bindings/overview',
+            '/interests/${interestId}/source-bindings/overview',
             queryParameters: queryParameters,
             data: _data,
           )

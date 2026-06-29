@@ -11,9 +11,9 @@ class _AiBriefCopy extends StatelessWidget {
     final primaryTheme = _primaryTheme(content);
     final firstTopicInsight = content.oneLineTakeaway.trim().isNotEmpty
         ? _cleanSentence(content.oneLineTakeaway)
-        : content.topicSections.isEmpty
+        : content.interestSections.isEmpty
         ? _cleanSentence(content.oneLineTakeaway)
-        : _cleanSentence(content.topicSections.first.insight);
+        : _cleanSentence(content.interestSections.first.insight);
     final topLinks = content.topReads.take(3).toList(growable: false);
     final xRead = _firstReadForProvider(content.topReads, 'x-twitter');
     final redditRead = _firstReadForProvider(content.topReads, 'reddit');

@@ -18,7 +18,7 @@ abstract class ScanPoliciesClient {
 
   /// Get scan policy for a source binding.
   ///
-  /// [authorization] - Optional Bearer API key. Requires read:topics. If supplied, x-workspace-role is not required.
+  /// [authorization] - Optional Bearer API key. Requires read:interests. If supplied, x-workspace-role is not required.
   ///
   /// [xWorkspaceRole] - Comma-separated workspace roles. Scan policy reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.
   @GET('/source-bindings/{sourceBindingId}/scan-policy')

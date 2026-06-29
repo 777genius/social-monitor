@@ -32,7 +32,7 @@ export class ScanStatusController {
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
   @ApiKeyOrWorkspaceRoleAuth({
-    apiKeyScope: 'read:topics',
+    apiKeyScope: 'read:interests',
     workspaceRoleDescription: 'Comma-separated workspace roles. Scan job reads allow owner, admin, member or viewer.',
   })
   @ApiOkResponse({ type: ScanStatusResponseDto })
@@ -108,7 +108,7 @@ export class ScanStatusController {
         authorizationHeader,
         tenantId,
         workspaceId,
-        requiredScope: 'read:topics',
+        requiredScope: 'read:interests',
         operation: 'scan_jobs.read',
       });
       return;

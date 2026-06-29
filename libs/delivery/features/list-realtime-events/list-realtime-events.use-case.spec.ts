@@ -64,7 +64,7 @@ describe('ListRealtimeEventsUseCase', () => {
     await recorder.execute({
       tenantId: tenant,
       workspaceId: workspace,
-      channel: 'topic:topic-1:summary-status',
+      channel: 'interest:interest-1:summary-status',
       eventType: 'summary.status.changed.v1',
       resourceType: 'summary',
       resourceId: 'summary-1',
@@ -75,13 +75,13 @@ describe('ListRealtimeEventsUseCase', () => {
     const result = await list.execute({
       tenantId: tenant,
       workspaceId: workspace,
-      channel: 'topic:topic-1:summary-status',
+      channel: 'interest:interest-1:summary-status',
       limit: 20,
     });
     const invalidCursor = await list.execute({
       tenantId: tenant,
       workspaceId: workspace,
-      channel: 'topic:topic-1:summary-status',
+      channel: 'interest:interest-1:summary-status',
       limit: 20,
       cursor: 'not-base64-json',
     });

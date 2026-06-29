@@ -192,7 +192,7 @@ describe("RecordSummaryFeedbackUseCase", () => {
         triageOwner: "summary-owner",
         evidence: {
           summaryId: "summary-1",
-          topicId: "topic-1",
+          interestId: "interest-1",
           citationId: "citation-1",
           feedItemId: "feed-1",
           sourceItemId: "source-1",
@@ -247,7 +247,7 @@ describe("RecordSummaryFeedbackUseCase", () => {
       {
         tenantId: tenant,
         workspaceId: workspace,
-        topicId: "topic-1",
+        interestId: "interest-1",
         summaryId: "summary-1",
         feedbackId: "feedback-1",
         idempotencyKey: "feedback-key-1",
@@ -447,7 +447,7 @@ const makeSummary = (params: {
     summaryId: "summary-1",
     tenantId: params.tenantId,
     workspaceId: params.workspaceId,
-    topicId: "topic-1",
+    interestId: "interest-1",
     sourceWindow: {
       windowId: "window-1",
       startedAt: new Date("2026-06-06T00:00:00.000Z"),

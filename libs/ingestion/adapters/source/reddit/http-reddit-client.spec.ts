@@ -135,4 +135,114 @@ describe('HttpRedditClient', () => {
       }],
     });
   });
+
+  it('maps Reddit thread comments including nested replies', async () => {
+    const fetchMock = jest.fn(async (url: string | URL, init?: RequestInit) => {
+      expect(String(url)).toBe('https://oauth.reddit.test/r/ClaudeAI/comments/post_1?limit=2&sort=top');
+      expect(init?.headers).toEqual(expect.objectContaining({
+        authorization: 'Bearer token-value',
+        accept: 'application/json',
+        'user-agent': 'social-monitor-test/0.1',
+      }));
+
+      return new Response(JSON.stringify([
+        { data: { children: [] } },
+        {
+          data: {
+            children: [
+              {
+                data: {
+                  id: 'comment_1',
+                  name: 't1_comment_1',
+                  subreddit: 'ClaudeAI',
+                  body: '  Users explain why comment-level evidence matters.  ',
+                  author: 'example-commenter',
+                  permalink: '/r/ClaudeAI/comments/post_1/_/comment_1/',
+                  created_utc: 1_782_230_060,
+                  score: 25,
+                  removed_by_category: null,
+                  depth: 0,
+                  replies: {
+                    data: {
+                      children: [
+                        {
+                          data: {
+                            id: 'reply_1',
+                            name: 't1_reply_1',
+                            subreddit: 'ClaudeAI',
+                            body: 'Nested replies should stay attached to the same evidence stream.',
+                            author: 'nested-user',
+                            permalink: '/r/ClaudeAI/comments/post_1/_/reply_1/',
+                            created_utc: 1_782_230_090,
+                            score: 8,
+                            depth: 1,
+                          },
+                        },
+                      ],
+                    },
+                  },
+                },
+              },
+              {
+                data: {
+                  body: 'Missing id is not a stable source item',
+                },
+              },
+            ],
+          },
+        },
+      ]), {
+        status: 200,
+        headers: {
+          'x-ratelimit-used': '2',
+          'x-ratelimit-remaining': '98',
+          'x-ratelimit-reset': '55',
+        },
+      });
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const page = await new HttpRedditClient('https://oauth.reddit.test').listPostComments({
+      accessToken: 'token-value',
+      userAgent: 'social-monitor-test/0.1',
+      subreddit: 'ClaudeAI',
+      postId: 'post_1',
+      limit: 2,
+    });
+
+    expect(page).toEqual({
+      comments: [
+        {
+          id: 'comment_1',
+          name: 't1_comment_1',
+          subreddit: 'ClaudeAI',
+          body: 'Users explain why comment-level evidence matters.',
+          author: 'example-commenter',
+          permalink: '/r/ClaudeAI/comments/post_1/_/comment_1/',
+          createdUtc: 1_782_230_060,
+          score: 25,
+          removedByCategory: undefined,
+          depth: 0,
+        },
+        {
+          id: 'reply_1',
+          name: 't1_reply_1',
+          subreddit: 'ClaudeAI',
+          body: 'Nested replies should stay attached to the same evidence stream.',
+          author: 'nested-user',
+          permalink: '/r/ClaudeAI/comments/post_1/_/reply_1/',
+          createdUtc: 1_782_230_090,
+          score: 8,
+          removedByCategory: undefined,
+          depth: 1,
+        },
+      ],
+      rateLimit: {
+        headersObserved: true,
+        used: '2',
+        remaining: '98',
+        reset: '55',
+      },
+    });
+  });
 });

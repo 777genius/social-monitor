@@ -15,11 +15,11 @@ part 'list_source_binding_daily_scan_history_response_dto.g.dart';
 class ListSourceBindingDailyScanHistoryResponseDto {
   const ListSourceBindingDailyScanHistoryResponseDto({
     required this.days,
+    required this.interestId,
     required this.maxScanJobs,
     required this.providerKey,
     required this.sourceBindingId,
     required this.sourceBindingStatus,
-    required this.topicId,
     required this.truncated,
     required this.windowEndedAt,
     required this.windowStartedAt,
@@ -33,13 +33,13 @@ class ListSourceBindingDailyScanHistoryResponseDto {
 
   final ScanPolicyCadenceResponseDto? cadence;
   final List<SourceBindingDailyScanHistoryDayResponseDto> days;
+  final String interestId;
   final num maxScanJobs;
   final String providerKey;
   final String sourceBindingId;
   final ListSourceBindingDailyScanHistoryResponseDtoSourceBindingStatusSourceBindingStatus
   sourceBindingStatus;
   final SourceBindingDailyScanHistorySummaryResponseDto? summary;
-  final String topicId;
   final bool truncated;
   final DateTime windowEndedAt;
   final DateTime windowStartedAt;

@@ -39,7 +39,7 @@ export class FeedController {
   })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'cursor', required: false, type: String })
-  @ApiQuery({ name: 'topicId', required: false, type: String })
+  @ApiQuery({ name: 'interestId', required: false, type: String })
   @ApiQuery({ name: 'q', required: false, type: String })
   @ApiQuery({ name: 'providerKey', required: false, type: String })
   @ApiQuery({ name: 'repositoryTrendWindow', required: false, enum: ['24h', '48h', '7d', '30d', '90d'] })
@@ -53,7 +53,7 @@ export class FeedController {
     @Headers('authorization') authorizationHeader: string | undefined,
     @Query('limit') limitQuery: string | undefined,
     @Query('cursor') cursor: string | undefined,
-    @Query('topicId') topicId: string | undefined,
+    @Query('interestId') interestId: string | undefined,
     @Query('q') searchQuery: string | undefined,
     @Query('providerKey') providerKey: string | undefined,
     @Query('repositoryTrendWindow') repositoryTrendWindow: string | undefined,
@@ -73,7 +73,7 @@ export class FeedController {
         invalidMessage: 'Feed page limit must be between 1 and 100',
       }),
       cursor,
-      topicId: normalizeTopicId(topicId),
+      interestId: normalizeInterestId(interestId),
       searchQuery: normalizeSearchQuery(searchQuery),
       providerKey: normalizeKeyFilter(providerKey),
       repositoryTrendWindow: normalizeSearchQuery(repositoryTrendWindow),
@@ -162,7 +162,7 @@ const normalizeSearchQuery = (value: string | undefined): string | undefined => 
   return trimmed.length === 0 ? undefined : trimmed;
 };
 
-const normalizeTopicId = (value: string | undefined): string | undefined => {
+const normalizeInterestId = (value: string | undefined): string | undefined => {
   if (value === undefined) {
     return undefined;
   }

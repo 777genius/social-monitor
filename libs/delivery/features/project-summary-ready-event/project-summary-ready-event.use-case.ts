@@ -21,7 +21,7 @@ export class ProjectSummaryReadyEventUseCase {
       return err(new DomainError('validation.failed', 'Unsupported summary realtime projection event type'));
     }
 
-    const channel = `topic:${command.event.payload.topicId}:summary-status`;
+    const channel = `interest:${command.event.payload.interestId}:summary-status`;
     const result = await this.recordRealtimeEvent.execute({
       tenantId: command.event.payload.tenantId,
       workspaceId: command.event.payload.workspaceId,
@@ -35,7 +35,7 @@ export class ProjectSummaryReadyEventUseCase {
         summaryId: command.event.payload.summaryId,
         tenantId: command.event.payload.tenantId,
         workspaceId: command.event.payload.workspaceId,
-        topicId: command.event.payload.topicId,
+        interestId: command.event.payload.interestId,
         status: command.event.payload.status,
       },
     });

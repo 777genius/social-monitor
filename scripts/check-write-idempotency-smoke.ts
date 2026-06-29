@@ -17,11 +17,11 @@ import { InMemoryOutboxAdapter } from '../libs/monitoring/adapters/messaging/in-
 import { InMemoryScanJobRepository } from '../libs/monitoring/adapters/persistence/in-memory-scan-job.repository';
 import { InMemoryScanPolicyRepository } from '../libs/monitoring/adapters/persistence/in-memory-scan-policy.repository';
 import { InMemorySourceBindingRepository } from '../libs/monitoring/adapters/persistence/in-memory-source-binding.repository';
-import { InMemoryTopicRepository } from '../libs/monitoring/adapters/persistence/in-memory-topic.repository';
+import { InMemoryInterestRepository } from '../libs/monitoring/adapters/persistence/in-memory-interest.repository';
 import { InMemoryScanQueueAdapter } from '../libs/monitoring/adapters/queue/in-memory-scan-queue.adapter';
 import { FakeSourceCatalogAdapter } from '../libs/monitoring/adapters/source-catalog/fake-source-catalog.adapter';
 import { BindSourceUseCase } from '../libs/monitoring/features/bind-source/bind-source.use-case';
-import { CreateTopicUseCase } from '../libs/monitoring/features/create-topic/create-topic.use-case';
+import { CreateInterestUseCase } from '../libs/monitoring/features/create-interest/create-interest.use-case';
 import { RequestScanUseCase } from '../libs/monitoring/features/request-scan/request-scan.use-case';
 import { SetScanPolicyUseCase } from '../libs/monitoring/features/set-scan-policy/set-scan-policy.use-case';
 import type {
@@ -50,7 +50,7 @@ async function main(): Promise<void> {
 
 async function proveMonitoringWriteIdempotency(): Promise<void> {
   const ids = new SequenceIdGenerator('write-idempotency-monitoring');
-  const topics = new InMemoryTopicRepository();
+  const topics = new InMemoryInterestRepository();
   const bindings = new InMemorySourceBindingRepository();
   const scanPolicies = new InMemoryScanPolicyRepository();
   const scanJobs = new InMemoryScanJobRepository();
@@ -60,26 +60,26 @@ async function proveMonitoringWriteIdempotency(): Promise<void> {
   const scanQueue = new InMemoryScanQueueAdapter(queuePublisher, new InMemoryMetricsRecorder());
   const quota = new CountingScanQuota();
 
-  const createTopic = new CreateTopicUseCase(topics, outbox, idempotency, ids, clock);
-  const firstTopic = unwrap(await createTopic.execute({
+  const createInterest = new CreateInterestUseCase(topics, outbox, idempotency, ids, clock);
+  const firstTopic = unwrap(await createInterest.execute({
     tenantId: tenant,
     workspaceId: workspace,
     name: 'Idempotent Monitoring',
     query: 'reliable social monitoring',
-    idempotencyKey: 'topic:create:idempotent-monitoring',
+    idempotencyKey: 'interest:create:idempotent-monitoring',
     correlationId: correlation,
   }), 'create topic first attempt');
-  const duplicateTopic = unwrap(await createTopic.execute({
+  const duplicateTopic = unwrap(await createInterest.execute({
     tenantId: tenant,
     workspaceId: workspace,
     name: 'Idempotent Monitoring',
     query: 'reliable social monitoring',
-    idempotencyKey: 'topic:create:idempotent-monitoring',
+    idempotencyKey: 'interest:create:idempotent-monitoring',
     correlationId: correlation,
   }), 'create topic duplicate');
   assert(firstTopic.created, 'first topic command must create');
   assert(!duplicateTopic.created, 'duplicate topic command must not create');
-  assert(firstTopic.topicId === duplicateTopic.topicId, 'duplicate topic command must return same topic id');
+  assert(firstTopic.interestId === duplicateTopic.interestId, 'duplicate topic command must return same topic id');
   assert(outbox.all().length === 1, 'duplicate topic command must not append another outbox event');
 
   const bindSource = new BindSourceUseCase(
@@ -95,7 +95,7 @@ async function proveMonitoringWriteIdempotency(): Promise<void> {
   const firstBinding = unwrap(await bindSource.execute({
     tenantId: tenant,
     workspaceId: workspace,
-    topicId: firstTopic.topicId,
+    interestId: firstTopic.interestId,
     providerKey: 'fake-source',
     config: { mode: 'search', query: 'reliable social monitoring' },
     idempotencyKey: 'source:bind:fake-source:idempotent-monitoring',
@@ -104,7 +104,7 @@ async function proveMonitoringWriteIdempotency(): Promise<void> {
   const duplicateBinding = unwrap(await bindSource.execute({
     tenantId: tenant,
     workspaceId: workspace,
-    topicId: firstTopic.topicId,
+    interestId: firstTopic.interestId,
     providerKey: 'fake-source',
     config: { mode: 'search', query: 'reliable social monitoring' },
     idempotencyKey: 'source:bind:fake-source:idempotent-monitoring',
@@ -193,14 +193,14 @@ async function proveSummaryRequestIdempotency(): Promise<void> {
   const first = unwrap(await requestSummary.execute({
     tenantId: tenant,
     workspaceId: workspace,
-    topicId: 'topic-idempotent-summary',
+    interestId: 'topic-idempotent-summary',
     idempotencyKey: 'summary:request:idempotent-topic',
     correlationId: correlation,
   }), 'request summary first attempt');
   const duplicate = unwrap(await requestSummary.execute({
     tenantId: tenant,
     workspaceId: workspace,
-    topicId: 'topic-idempotent-summary',
+    interestId: 'topic-idempotent-summary',
     idempotencyKey: 'summary:request:idempotent-topic',
     correlationId: correlation,
   }), 'request summary duplicate');

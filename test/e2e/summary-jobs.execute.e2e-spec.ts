@@ -37,7 +37,7 @@ describe('Summary job execution flow (e2e)', () => {
     const tenant = tenantId('tenant-summary-exec-e2e');
     const workspace = workspaceId('workspace-summary-exec-e2e');
     const requested = await request(app.getHttpServer())
-      .post('/topics/topic-summary-exec-e2e/summary-requests')
+      .post('/interests/topic-summary-exec-e2e/summary-requests')
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'member')
@@ -79,13 +79,13 @@ describe('Summary job execution flow (e2e)', () => {
     expect(artifact?.toSnapshot()).toMatchObject({
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: 'topic-summary-exec-e2e',
+      interestId: 'topic-summary-exec-e2e',
       qualityFlags: ['no_signal', 'limited_sources'],
       confidence: {
         level: 'none',
         score: 0,
       },
-      noSignalReason: 'No eligible evidence items selected for this topic.',
+      noSignalReason: 'No eligible evidence items selected for this interest.',
     });
     expect(app.get(InMemorySummaryEventPublisher).all()).toEqual([
       expect.objectContaining({
@@ -96,7 +96,7 @@ describe('Summary job execution flow (e2e)', () => {
         payload: expect.objectContaining({
           summaryJobId: requested.body.summaryJobId,
           summaryId: result.value.summaryId,
-          topicId: 'topic-summary-exec-e2e',
+          interestId: 'topic-summary-exec-e2e',
           status: 'no_signal',
         }),
       }),

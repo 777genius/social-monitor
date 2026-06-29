@@ -86,7 +86,7 @@ export class RankFeedItemsUseCase {
     const candidates = await this.feedItems.list({
       tenantId: command.tenantId,
       workspaceId: command.workspaceId,
-      topicId: normalizeOptional(command.topicId),
+      interestId: normalizeOptional(command.interestId),
       observedAfter: command.observedAfter,
       observedBefore: command.observedBefore,
       limit: maxCandidateScan,
@@ -273,7 +273,7 @@ const toRankingCandidate = (item: FeedItem): RankingCandidate => {
 
   return {
     id: snapshot.id,
-    topicId: snapshot.topicId,
+    interestId: snapshot.interestId,
     providerKey: snapshot.providerKey,
     canonicalUrl: snapshot.canonicalUrl,
     title: snapshot.title,
@@ -296,7 +296,7 @@ const presentRankedFeedItem = (
   feedItemId: snapshot.id,
   sourceItemId: snapshot.sourceItemId,
   sourceBindingId: snapshot.sourceBindingId,
-  topicId: snapshot.topicId,
+  interestId: snapshot.interestId,
   providerKey: snapshot.providerKey,
   canonicalUrl: item.safety.sanitizedCanonicalUrl ?? snapshot.canonicalUrl,
   title: item.safety.sanitizedTitle,

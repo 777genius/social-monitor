@@ -5,7 +5,7 @@ import type {
   SummaryMemoryPort,
   SummaryMemoryWriteResult,
 } from '../../ports';
-import { topicReaderSummaryScope } from '../../domain';
+import { interestReaderSummaryScope } from '../../domain';
 import { SummaryMemoryReaderSummaryContextProvider } from './summary-memory-reader-summary-context.provider';
 
 describe('SummaryMemoryReaderSummaryContextProvider', () => {
@@ -25,7 +25,7 @@ describe('SummaryMemoryReaderSummaryContextProvider', () => {
     const artifacts = await new SummaryMemoryReaderSummaryContextProvider(memory).buildContext({
       tenantId: tenantId('tenant-memory-reader'),
       workspaceId: workspaceId('workspace-memory-reader'),
-      scope: topicReaderSummaryScope('topic-ai'),
+      scope: interestReaderSummaryScope('interest-ai'),
       userId: 'user-1',
       subscriptionId: 'subscription-1',
       evidence: makeReaderEvidenceSelection(),
@@ -34,7 +34,7 @@ describe('SummaryMemoryReaderSummaryContextProvider', () => {
 
     expect(memory.queries).toEqual([
       expect.objectContaining({
-        topicId: 'topic-ai',
+        interestId: 'interest-ai',
         userId: 'user-1',
         subscriptionId: 'subscription-1',
         evidence: expect.objectContaining({
@@ -50,8 +50,8 @@ describe('SummaryMemoryReaderSummaryContextProvider', () => {
     ]);
     expect(artifacts).toEqual([
       {
-        artifactId: 'summary-memory:topic:topic-ai',
-        scope: topicReaderSummaryScope('topic-ai'),
+        artifactId: 'summary-memory:interest:interest-ai',
+        scope: interestReaderSummaryScope('interest-ai'),
         summaryText: expect.stringContaining('[REDACTED]'),
         generatedAt: new Date('2026-06-26T08:00:00.000Z'),
         freshness: 'fresh',
@@ -70,7 +70,7 @@ describe('SummaryMemoryReaderSummaryContextProvider', () => {
     await expect(new SummaryMemoryReaderSummaryContextProvider(memory).buildContext({
       tenantId: tenantId('tenant-memory-reader'),
       workspaceId: workspaceId('workspace-memory-reader'),
-      scope: topicReaderSummaryScope('topic-ai'),
+      scope: interestReaderSummaryScope('interest-ai'),
       evidence: makeReaderEvidenceSelection(),
       requestedAt: new Date('2026-06-26T08:01:00.000Z'),
     })).resolves.toEqual([]);
@@ -88,7 +88,7 @@ describe('SummaryMemoryReaderSummaryContextProvider', () => {
     const artifacts = await new SummaryMemoryReaderSummaryContextProvider(memory).buildContext({
       tenantId: tenantId('tenant-memory-reader'),
       workspaceId: workspaceId('workspace-memory-reader'),
-      scope: topicReaderSummaryScope('topic-ai'),
+      scope: interestReaderSummaryScope('interest-ai'),
       evidence: makeReaderEvidenceSelection(),
       requestedAt: new Date('2026-06-26T08:01:00.000Z'),
     });
@@ -99,7 +99,7 @@ describe('SummaryMemoryReaderSummaryContextProvider', () => {
   it('preserves fallback memory retrieval diagnostics in reader context text', async () => {
     const memory = new CapturingSummaryMemory({
       status: 'available',
-      renderedText: 'Fallback provider quality memory.\nFallback topic feedback memory.',
+      renderedText: 'Fallback provider quality memory.\nFallback interest feedback memory.',
       retrieval: {
         retrievalSourcesUsed: ['vector', 'graph'],
         factsUsed: 2,
@@ -113,7 +113,7 @@ describe('SummaryMemoryReaderSummaryContextProvider', () => {
     const artifacts = await new SummaryMemoryReaderSummaryContextProvider(memory).buildContext({
       tenantId: tenantId('tenant-memory-reader'),
       workspaceId: workspaceId('workspace-memory-reader'),
-      scope: topicReaderSummaryScope('topic-ai'),
+      scope: interestReaderSummaryScope('interest-ai'),
       evidence: makeReaderEvidenceSelection(),
       requestedAt: new Date('2026-06-26T08:01:00.000Z'),
     });
@@ -156,7 +156,7 @@ const makeReaderEvidenceSelection = () => ({
       storyKey: 'runtime-regression',
       representativeFeedItemId: 'feed-1',
       duplicateFeedItemIds: [],
-      topicIds: ['topic-ai'],
+      interestIds: ['interest-ai'],
       providerKeys: ['reddit'],
       score: 1,
       observedAtRange: {
@@ -171,7 +171,7 @@ const makeReaderEvidenceSelection = () => ({
       feedItemId: 'feed-1',
       sourceItemId: 'reddit-post-1',
       sourceBindingId: 'binding-1',
-      topicId: 'topic-ai',
+      interestId: 'interest-ai',
       providerKey: 'reddit',
       providerName: 'Reddit',
       canonicalUrl: 'https://reddit.example.test/post-1',

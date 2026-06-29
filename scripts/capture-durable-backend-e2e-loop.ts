@@ -196,7 +196,7 @@ async function main(): Promise<void> {
           {
             summary:
               "topic multi-source scan feed summary feedback digest webhook realtime audit loop observed on durable runtime",
-            topicId: evidence.topicId,
+            interestId: evidence.interestId,
             sourceBindingId: evidence.sourceBindingId,
             scanId: evidence.scanId,
             providerBindings: evidence.sourceBindings,
@@ -359,7 +359,7 @@ async function executeBackendLoop(
   auth: AuthContext,
   runtimeIds: RuntimeIds,
 ): Promise<{
-  readonly topicId: string;
+  readonly interestId: string;
   readonly sourceBindingId: string;
   readonly sourceBindings: readonly SourceBindingEvidence[];
   readonly providerFeedCounts: readonly JsonRecord[];
@@ -393,7 +393,7 @@ async function executeBackendLoop(
   const readerSummaryKey = `readerSummary-${runtimeIds.runId}`;
   const feedbackKey = `feedback-${runtimeIds.runId}`;
   const scanTargets = durableScanTargets();
-  const topic = await requestJson<JsonRecord>("POST", "/topics", {
+  const topic = await requestJson<JsonRecord>("POST", "/interests", {
     headers: withIdempotency(headers, topicKey),
     body: {
       name: `Durable Multi-Provider Backend Loop ${runtimeIds.runId}`,
@@ -401,10 +401,10 @@ async function executeBackendLoop(
         "backend reliability observability social monitoring developer tools",
     },
   });
-  const topicId = readString(topic, "topicId");
+  const interestId = readString(topic, "interestId");
   const summaryPolicy = await requestJson<JsonRecord>(
     "PUT",
-    `/topics/${encodeURIComponent(topicId)}/summary-policy`,
+    `/interests/${encodeURIComponent(interestId)}/summary-policy`,
     {
       headers,
       body: {
@@ -434,32 +434,32 @@ async function executeBackendLoop(
     sourceBindings.push(
       await createSourceBindingAndScan({
         headers,
-        topicId,
+        interestId,
         target,
         runId: runtimeIds.runId,
       }),
     );
   }
-  const scheduledTopic = await requestJson<JsonRecord>("POST", "/topics", {
+  const scheduledTopic = await requestJson<JsonRecord>("POST", "/interests", {
     headers: withIdempotency(
       headers,
-      scheduledTopicIdempotencyKey(runtimeIds.runId),
+      scheduledInterestIdempotencyKey(runtimeIds.runId),
     ),
     body: {
       name: `Durable Scheduled Backend Loop ${runtimeIds.runId}`,
       query: "backend release notes reliability newest",
     },
   });
-  const scheduledTopicId = readString(scheduledTopic, "topicId");
+  const scheduledInterestId = readString(scheduledTopic, "interestId");
   const scheduledScan = await createScheduledSourceBindingAndWait({
     headers,
-    topicId: scheduledTopicId,
+    interestId: scheduledInterestId,
     target: scheduledScanTarget(),
     runId: runtimeIds.runId,
   });
 
   const feed = await pollJson<JsonRecord>(
-    `/feed/items?topicId=${encodeURIComponent(topicId)}&limit=100`,
+    `/feed/items?interestId=${encodeURIComponent(interestId)}&limit=100`,
     headers,
     (page) => {
       const items = readObjectArray(page, "items");
@@ -521,7 +521,7 @@ async function executeBackendLoop(
     {
       tenantId: ids.tenantId,
       workspaceId: ids.workspaceId,
-      topicId,
+      interestId,
       summaryPolicyId,
     },
     {
@@ -532,7 +532,7 @@ async function executeBackendLoop(
 
   const summary = await requestJson<JsonRecord>(
     "POST",
-    `/topics/${encodeURIComponent(topicId)}/summary-requests`,
+    `/interests/${encodeURIComponent(interestId)}/summary-requests`,
     {
       headers: withIdempotency(headers, summaryKey),
     },
@@ -591,7 +591,7 @@ async function executeBackendLoop(
     ),
   });
 
-  const realtimeChannel = `topic:${topicId}:summary-status`;
+  const realtimeChannel = `interest:${interestId}:summary-status`;
   const realtime = await pollJson<JsonRecord>(
     `/realtime/events?channel=${encodeURIComponent(realtimeChannel)}&limit=20`,
     headers,
@@ -640,7 +640,7 @@ async function executeBackendLoop(
       tenantId: auth.tenantId,
       workspaceId: auth.workspaceId,
       userId: runtimeIds.userId,
-      topicId,
+      interestId,
       summaryId,
       feedbackId,
       feedbackProviderKey,
@@ -675,7 +675,7 @@ async function executeBackendLoop(
     body: {
       recipientKey: webhookEndpointId,
       channel: "webhook",
-      topicIds: [topicId],
+      interestIds: [interestId],
       intervalSeconds: digestScheduleWindow.intervalSeconds,
       includeNoSignal: true,
       nextRunAt: digestScheduleWindow.nextRunAt.toISOString(),
@@ -760,7 +760,7 @@ async function executeBackendLoop(
     auth.tenantId,
     auth.workspaceId,
   );
-  const replayedTopic = await requestJson<JsonRecord>("POST", "/topics", {
+  const replayedTopic = await requestJson<JsonRecord>("POST", "/interests", {
     headers: withIdempotency(headers, topicKey),
     body: {
       name: `Durable Backend Loop ${runtimeIds.runId}`,
@@ -779,7 +779,7 @@ async function executeBackendLoop(
   );
   const replayedSummary = await requestJson<JsonRecord>(
     "POST",
-    `/topics/${encodeURIComponent(topicId)}/summary-requests`,
+    `/interests/${encodeURIComponent(interestId)}/summary-requests`,
     {
       headers: withIdempotency(headers, summaryKey),
     },
@@ -796,7 +796,7 @@ async function executeBackendLoop(
   }
 
   return {
-    topicId,
+    interestId,
     sourceBindingId: primaryBinding.sourceBindingId,
     sourceBindings: bindingsWithFeed,
     providerFeedCounts: bindingsWithFeed.map((binding) => ({
@@ -843,7 +843,7 @@ async function executeBackendLoop(
     wrongWorkspaceStatus,
     idempotencyKeys: [
       topicKey,
-      scheduledTopicIdempotencyKey(runtimeIds.runId),
+      scheduledInterestIdempotencyKey(runtimeIds.runId),
       scheduledBindingIdempotencyKey(runtimeIds.runId),
       scheduledPolicyIdempotencyKey(runtimeIds.runId),
       scheduledScan.scheduledIdempotencyKey,
@@ -858,7 +858,7 @@ async function executeBackendLoop(
       feedbackKey,
     ],
     responseIds: [
-      readString(replayedTopic, "topicId"),
+      readString(replayedTopic, "interestId"),
       scheduledScan.scanJobId,
       autoSummary.summaryJobId,
       readString(replayedScan, "scanJobId"),
@@ -871,7 +871,7 @@ async function executeBackendLoop(
 
 async function createSourceBindingAndScan(params: {
   readonly headers: Readonly<Record<string, string>>;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly target: DurableScanTarget;
   readonly runId: string;
 }): Promise<
@@ -882,7 +882,7 @@ async function createSourceBindingAndScan(params: {
 > {
   const binding = await requestJson<JsonRecord>(
     "POST",
-    `/topics/${encodeURIComponent(params.topicId)}/source-bindings`,
+    `/interests/${encodeURIComponent(params.interestId)}/source-bindings`,
     {
       headers: withIdempotency(
         params.headers,
@@ -953,13 +953,13 @@ async function createSourceBindingAndScan(params: {
 
 async function createScheduledSourceBindingAndWait(params: {
   readonly headers: Readonly<Record<string, string>>;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly target: DurableScanTarget;
   readonly runId: string;
 }): Promise<ScheduledScanEvidence> {
   const binding = await requestJson<JsonRecord>(
     "POST",
-    `/topics/${encodeURIComponent(params.topicId)}/source-bindings`,
+    `/interests/${encodeURIComponent(params.interestId)}/source-bindings`,
     {
       headers: withIdempotency(
         params.headers,
@@ -1263,7 +1263,7 @@ async function pollSummaryMemoryEvidence(
     readonly tenantId: string;
     readonly workspaceId: string;
     readonly userId: string;
-    readonly topicId: string;
+    readonly interestId: string;
     readonly summaryId: string;
     readonly feedbackId: string;
     readonly feedbackProviderKey: string;
@@ -1305,7 +1305,7 @@ function summaryMemoryContextQuery(params: {
   readonly tenantId: string;
   readonly workspaceId: string;
   readonly userId: string;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly feedItems: readonly JsonRecord[];
 }): Parameters<MemoStackSummaryMemoryAdapter["buildContext"]>[0] {
   const requestedAt = new Date();
@@ -1337,12 +1337,12 @@ function summaryMemoryContextQuery(params: {
   return {
     tenantId: tenantId(params.tenantId),
     workspaceId: workspaceId(params.workspaceId),
-    topicId: params.topicId,
+    interestId: params.interestId,
     userId: params.userId,
     requestedAt,
     evidence: {
       sourceWindow: {
-        windowId: `durable-backend-loop-memory-${params.topicId}`,
+        windowId: `durable-backend-loop-memory-${params.interestId}`,
         startedAt: requestedAt,
         endedAt: requestedAt,
         selectedFeedItemIds: evidenceItems.map((item) => item.feedItemId),
@@ -1354,7 +1354,7 @@ function summaryMemoryContextQuery(params: {
 
 function summaryMemoryEvidenceSnapshot(
   params: {
-    readonly topicId: string;
+    readonly interestId: string;
     readonly feedbackId: string;
     readonly feedbackProviderKey: string;
   },
@@ -1386,7 +1386,7 @@ function summaryMemoryEvidenceSnapshot(
   );
   const matchedByText =
     rendered.includes(
-      `summary feedback for topic ${params.topicId}`.toLocaleLowerCase("en-US"),
+      `summary feedback for topic ${params.interestId}`.toLocaleLowerCase("en-US"),
     ) ||
     rendered.includes(
       `provider ${params.feedbackProviderKey}`.toLocaleLowerCase("en-US"),
@@ -1407,8 +1407,8 @@ function summaryMemoryEvidenceSnapshot(
   return {
     status: "available",
     memoryBaseUrlOrigin: safeUrlOrigin(config.memoryBaseUrl),
-    topicScopeExternalRef: `topic:${params.topicId}:feedback`,
-    providerScopeExternalRef: `topic:${params.topicId}:provider:${params.feedbackProviderKey}:quality`,
+    topicScopeExternalRef: `interest:${params.interestId}:feedback`,
+    providerScopeExternalRef: `interest:${params.interestId}:provider:${params.feedbackProviderKey}:quality`,
     sourceRefTypes,
     sourceRefCount: sourceRefs.length,
     renderedTextChars: renderedText.length,
@@ -1547,7 +1547,7 @@ async function pollAutoSummaryEvidence(
   params: {
     readonly tenantId: string;
     readonly workspaceId: string;
-    readonly topicId: string;
+    readonly interestId: string;
     readonly summaryPolicyId: string;
   },
   options: { readonly timeoutMs: number; readonly label: string },
@@ -1599,7 +1599,7 @@ async function pollAutoSummaryEvidence(
 async function autoSummaryEvidenceSnapshot(params: {
   readonly tenantId: string;
   readonly workspaceId: string;
-  readonly topicId: string;
+  readonly interestId: string;
 }): Promise<JsonRecord | undefined> {
   return withClient(pool, async (client) => {
     const result = await client.query<{
@@ -1679,7 +1679,7 @@ async function autoSummaryEvidenceSnapshot(params: {
           selected.completed_at,
           selected.failure_reason
       `,
-      [params.tenantId, params.workspaceId, params.topicId],
+      [params.tenantId, params.workspaceId, params.interestId],
     );
     const row = result.rows[0];
     if (row === undefined) {
@@ -1885,7 +1885,7 @@ function scheduledScanTarget(): DurableScanTarget {
   };
 }
 
-function scheduledTopicIdempotencyKey(runId: string): string {
+function scheduledInterestIdempotencyKey(runId: string): string {
   return `scheduled-topic-${runId}`;
 }
 

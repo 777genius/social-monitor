@@ -31,7 +31,7 @@ abstract class FeedClient {
     RepositoryTrendWindow? repositoryTrendWindow,
     @Query('providerKey') String? providerKey,
     @Query('q') String? q,
-    @Query('topicId') String? topicId,
+    @Query('interestId') String? interestId,
     @Query('cursor') String? cursor,
     @Query('limit') num? limit,
     @Header('authorization') String? authorization,

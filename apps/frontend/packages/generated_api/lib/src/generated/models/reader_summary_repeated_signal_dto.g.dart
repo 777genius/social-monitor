@@ -12,18 +12,18 @@ ReaderSummaryRepeatedSignalDto _$ReaderSummaryRepeatedSignalDtoFromJson(
   citationIds: (json['citationIds'] as List<dynamic>)
       .map((e) => e as String)
       .toList(),
-  storyClusterId: json['storyClusterId'] as String,
-  title: json['title'] as String,
-  topicIds: (json['topicIds'] as List<dynamic>)
+  interestIds: (json['interestIds'] as List<dynamic>)
       .map((e) => e as String)
       .toList(),
+  storyClusterId: json['storyClusterId'] as String,
+  title: json['title'] as String,
 );
 
 Map<String, dynamic> _$ReaderSummaryRepeatedSignalDtoToJson(
   ReaderSummaryRepeatedSignalDto instance,
 ) => <String, dynamic>{
   'citationIds': instance.citationIds,
+  'interestIds': instance.interestIds,
   'storyClusterId': instance.storyClusterId,
   'title': instance.title,
-  'topicIds': instance.topicIds,
 };

@@ -6,7 +6,7 @@ export type SummaryEvidenceReaderActionKind =
 
 export type SummaryEvidenceContentQuality = {
   readonly qualityScore: number;
-  readonly topicRelevanceScore: number;
+  readonly interestRelevanceScore: number;
   readonly engagementIntegrityScore: number;
   readonly eligibleForSummary: boolean;
   readonly eligibleForTopRead: boolean;
@@ -20,7 +20,7 @@ export type SummaryEvidenceItem = {
   readonly feedItemId: string;
   readonly sourceItemId: string;
   readonly sourceBindingId: string;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly providerKey: string;
   readonly providerName?: string;
   readonly canonicalUrl: string;
@@ -45,7 +45,7 @@ export type StoryCluster = {
   readonly rankingPolicyVersion?: string;
   readonly representativeFeedItemId: string;
   readonly duplicateFeedItemIds: readonly string[];
-  readonly topicIds: readonly string[];
+  readonly interestIds: readonly string[];
   readonly providerKeys: readonly string[];
   readonly score: number;
   readonly signalBreakdown?: StorySignalBreakdown;
@@ -61,7 +61,7 @@ export type StorySignalBreakdown = {
   readonly crossProviderSupport: number;
   readonly sameProviderSupport: number;
   readonly providerDiversityBoost: number;
-  readonly topicDiversityBoost: number;
+  readonly interestDiversityBoost: number;
   readonly freshnessBoost: number;
   readonly totalScore: number;
 };

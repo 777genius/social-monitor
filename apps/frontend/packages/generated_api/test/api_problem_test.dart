@@ -11,7 +11,7 @@ void main() {
         'status': 422,
         'detail': 'Topic name is required',
         'type': 'https://social-monitor.local/problems/validation',
-        'instance': '/topics',
+        'instance': '/interests',
       },
     );
 
@@ -19,7 +19,7 @@ void main() {
     expect(problem.status, 422);
     expect(problem.detail, 'Topic name is required');
     expect(problem.type, 'https://social-monitor.local/problems/validation');
-    expect(problem.instance, '/topics');
+    expect(problem.instance, '/interests');
   });
 
   test('uses a safe fallback for non problem details payloads', () {

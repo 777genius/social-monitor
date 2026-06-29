@@ -2,10 +2,10 @@ import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:social_monitor_auth/social_monitor_auth.dart';
 import 'package:social_monitor_feed/social_monitor_feed.dart';
+import 'package:social_monitor_interests/social_monitor_interests.dart';
 import 'package:social_monitor_settings/social_monitor_settings.dart';
 import 'package:social_monitor_sources/social_monitor_sources.dart';
 import 'package:social_monitor_summaries/social_monitor_summaries.dart';
-import 'package:social_monitor_topics/social_monitor_topics.dart';
 
 import 'app_demo_feature_builders.dart';
 import 'app_runtime.dart';
@@ -95,12 +95,12 @@ AppRouteWidgetBuilder settingsFeatureBuilder({
   };
 }
 
-AppRouteWidgetBuilder topicsFeatureBuilder({
+AppRouteWidgetBuilder interestsFeatureBuilder({
   required bool useDemoRoutes,
   required AppRuntimeController runtimeController,
 }) {
   if (useDemoRoutes) {
-    final demoBuilder = buildDemoTopicsFeature();
+    final demoBuilder = buildDemoInterestsFeature();
     return (context, uri) => demoBuilder(context);
   }
 
@@ -108,18 +108,20 @@ AppRouteWidgetBuilder topicsFeatureBuilder({
     final runtime = runtimeController.runtime;
     final scope = runtime.workspace.scope;
     final generatedApiRuntime = runtime.generatedApiRuntime;
-    final capability = runtime.capabilities.capability('topics');
+    final capability = runtime.capabilities.capability('interests');
     if (scope != null && generatedApiRuntime != null && capability.isEnabled) {
-      return TopicsFeatureRoute.generatedApi(
+      return InterestsFeatureRoute.generatedApi(
         generatedApiRuntime: generatedApiRuntime,
         scope: scope,
-        onOpenTopicSources: (topicId, topicTitle) {
-          GoRouter.of(context).go(_topicSourcesPath(topicId, topicTitle));
+        onOpenInterestSources: (interestId, interestTitle) {
+          GoRouter.of(
+            context,
+          ).go(_interestSourcesPath(interestId, interestTitle));
         },
       );
     }
 
-    return const RuntimeUnavailableFeaturePage(title: 'Topics');
+    return const RuntimeUnavailableFeaturePage(title: 'Interests');
   };
 }
 
@@ -138,16 +140,16 @@ AppRouteWidgetBuilder sourcesFeatureBuilder({
     final generatedApiRuntime = runtime.generatedApiRuntime;
     final capability = runtime.capabilities.capability('sources');
     if (scope != null && generatedApiRuntime != null && capability.isEnabled) {
-      final topicId = uri.queryParameters['topicId']?.trim();
-      if (topicId != null && topicId.isNotEmpty) {
+      final interestId = uri.queryParameters['interestId']?.trim();
+      if (interestId != null && interestId.isNotEmpty) {
         return SourcesFeatureRoute.sourceBindings(
           generatedApiRuntime: generatedApiRuntime,
           scope: scope,
-          topicId: topicId,
-          topicTitle:
-              uri.queryParameters['topicTitle']?.trim().isNotEmpty == true
-              ? uri.queryParameters['topicTitle']!.trim()
-              : topicId,
+          interestId: interestId,
+          interestTitle:
+              uri.queryParameters['interestTitle']?.trim().isNotEmpty == true
+              ? uri.queryParameters['interestTitle']!.trim()
+              : interestId,
         );
       }
       return SourcesFeatureRoute.generatedApi(
@@ -174,14 +176,16 @@ AppRouteWidgetBuilder feedFeatureBuilder({
     final generatedApiRuntime = runtime.generatedApiRuntime;
     final capability = runtime.capabilities.capability('feed');
     if (scope != null && generatedApiRuntime != null && capability.isEnabled) {
-      final topicId = uri.queryParameters['topicId']?.trim();
-      final topicTitle = uri.queryParameters['topicTitle']?.trim();
+      final interestId = uri.queryParameters['interestId']?.trim();
+      final interestTitle = uri.queryParameters['interestTitle']?.trim();
       return FeedFeatureRoute.generatedApi(
         generatedApiRuntime: generatedApiRuntime,
         scope: scope,
-        topicId: topicId != null && topicId.isNotEmpty ? topicId : null,
-        topicTitle: topicTitle != null && topicTitle.isNotEmpty
-            ? topicTitle
+        interestId: interestId != null && interestId.isNotEmpty
+            ? interestId
+            : null,
+        interestTitle: interestTitle != null && interestTitle.isNotEmpty
+            ? interestTitle
             : null,
       );
     }
@@ -215,10 +219,10 @@ AppRouteWidgetBuilder summariesFeatureBuilder({
   };
 }
 
-String _topicSourcesPath(String topicId, String topicTitle) {
+String _interestSourcesPath(String interestId, String interestTitle) {
   return Uri(
     path: '/sources',
-    queryParameters: {'topicId': topicId, 'topicTitle': topicTitle},
+    queryParameters: {'interestId': interestId, 'interestTitle': interestTitle},
   ).toString();
 }
 

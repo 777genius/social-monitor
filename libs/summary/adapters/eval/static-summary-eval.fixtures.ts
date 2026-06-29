@@ -15,7 +15,7 @@ export const staticSummaryEvalFixtures: readonly SummaryEvalFixture[] = [
     input: {
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: 'empty-topic',
+      interestId: 'empty-interest',
       requestedAt: new Date('2026-06-06T00:00:00.000Z'),
       policy: defaultSummaryGenerationPolicy(),
       evidence: {
@@ -42,7 +42,7 @@ export const staticSummaryEvalFixtures: readonly SummaryEvalFixture[] = [
     input: {
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: 'developer-tools',
+      interestId: 'developer-tools',
       requestedAt: new Date('2026-06-06T00:00:00.000Z'),
       policy: defaultSummaryGenerationPolicy(),
       evidence: {
@@ -92,7 +92,7 @@ export const staticSummaryEvalFixtures: readonly SummaryEvalFixture[] = [
     input: {
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: 'security-research',
+      interestId: 'security-research',
       requestedAt: new Date('2026-06-06T00:00:00.000Z'),
       policy: defaultSummaryGenerationPolicy(),
       evidence: {
@@ -133,7 +133,7 @@ export const staticSummaryEvalFixtures: readonly SummaryEvalFixture[] = [
     input: {
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: 'credential-safety',
+      interestId: 'credential-safety',
       requestedAt: new Date('2026-06-06T00:00:00.000Z'),
       policy: defaultSummaryGenerationPolicy(),
       evidence: {
@@ -173,7 +173,7 @@ export const staticSummaryEvalFixtures: readonly SummaryEvalFixture[] = [
     input: {
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: 'feedback-grounding',
+      interestId: 'feedback-grounding',
       requestedAt: new Date('2026-06-06T00:00:00.000Z'),
       policy: defaultSummaryGenerationPolicy(),
       evidence: {
@@ -223,7 +223,7 @@ export const staticSummaryEvalFixtures: readonly SummaryEvalFixture[] = [
     input: {
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: 'feedback-citation',
+      interestId: 'feedback-citation',
       requestedAt: new Date('2026-06-06T00:00:00.000Z'),
       policy: defaultSummaryGenerationPolicy(),
       evidence: {
@@ -273,7 +273,7 @@ export const staticSummaryEvalFixtures: readonly SummaryEvalFixture[] = [
     input: {
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: 'freshness-regression',
+      interestId: 'freshness-regression',
       requestedAt: new Date('2026-06-06T00:10:00.000Z'),
       policy: defaultSummaryGenerationPolicy(),
       evidence: {

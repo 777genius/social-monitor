@@ -10,7 +10,7 @@ export type UserRelevanceProfileProps = {
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
   readonly userId: string;
-  readonly topicWeights: readonly RelevanceWeight[];
+  readonly interestWeights: readonly RelevanceWeight[];
   readonly sourceWeights: readonly RelevanceWeight[];
   readonly keywordWeights: readonly RelevanceWeight[];
   readonly mutedKeywords: readonly string[];
@@ -21,7 +21,7 @@ export type UserRelevanceProfileProps = {
 };
 
 export type UserRelevanceProfileUpdate = {
-  readonly topicWeights?: readonly RelevanceWeight[];
+  readonly interestWeights?: readonly RelevanceWeight[];
   readonly sourceWeights?: readonly RelevanceWeight[];
   readonly keywordWeights?: readonly RelevanceWeight[];
   readonly mutedKeywords?: readonly string[];
@@ -31,7 +31,7 @@ export type UserRelevanceProfileUpdate = {
 };
 
 export type RelevanceFeedbackAdjustment = {
-  readonly topicId: string;
+  readonly interestId: string;
   readonly providerKey: string;
   readonly keywords: readonly string[];
   readonly direction: 'positive' | 'negative' | 'block_provider';
@@ -63,7 +63,7 @@ export class UserRelevanceProfile {
   update(update: UserRelevanceProfileUpdate): UserRelevanceProfile {
     return UserRelevanceProfile.rehydrate({
       ...this.props,
-      topicWeights: update.topicWeights ?? this.props.topicWeights,
+      interestWeights: update.interestWeights ?? this.props.interestWeights,
       sourceWeights: update.sourceWeights ?? this.props.sourceWeights,
       keywordWeights: update.keywordWeights ?? this.props.keywordWeights,
       mutedKeywords: update.mutedKeywords ?? this.props.mutedKeywords,
@@ -80,7 +80,7 @@ export class UserRelevanceProfile {
       : this.props.blockedProviderKeys;
 
     return this.update({
-      topicWeights: adjustWeights(this.props.topicWeights, [adjustment.topicId], delta),
+      interestWeights: adjustWeights(this.props.interestWeights, [adjustment.interestId], delta),
       sourceWeights: adjustWeights(this.props.sourceWeights, [adjustment.providerKey], delta),
       keywordWeights: adjustWeights(this.props.keywordWeights, adjustment.keywords, delta / 2),
       blockedProviderKeys: nextBlockedProviders,
@@ -88,8 +88,8 @@ export class UserRelevanceProfile {
     });
   }
 
-  topicWeight(topicId: string): number {
-    return findWeight(this.props.topicWeights, topicId);
+  interestWeight(interestId: string): number {
+    return findWeight(this.props.interestWeights, interestId);
   }
 
   sourceWeight(providerKey: string): number {
@@ -124,7 +124,7 @@ export const createDefaultUserRelevanceProfile = (props: {
 }): UserRelevanceProfile =>
   UserRelevanceProfile.create({
     ...props,
-    topicWeights: [],
+    interestWeights: [],
     sourceWeights: [],
     keywordWeights: [],
     mutedKeywords: [],
@@ -154,7 +154,7 @@ const normalizeProps = (props: UserRelevanceProfileProps): UserRelevanceProfileP
   return {
     ...props,
     userId,
-    topicWeights: normalizeWeights(props.topicWeights, 'topic weight'),
+    interestWeights: normalizeWeights(props.interestWeights, 'interest weight'),
     sourceWeights: normalizeWeights(props.sourceWeights, 'source weight'),
     keywordWeights: normalizeWeights(props.keywordWeights, 'keyword weight'),
     mutedKeywords: uniqueSorted(props.mutedKeywords.map(normalizeKey).filter(Boolean)),

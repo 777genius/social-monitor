@@ -5,9 +5,9 @@
 import 'package:json_annotation/json_annotation.dart';
 
 import 'reader_summary_next_action_dto.dart';
+import 'reader_summary_reader_interest_section_dto.dart';
 import 'reader_summary_reader_item_dto.dart';
 import 'reader_summary_reader_quality_state_dto.dart';
-import 'reader_summary_reader_topic_section_dto.dart';
 import 'reader_summary_source_mix_entry_dto.dart';
 import 'reader_summary_trend_delta_dto.dart';
 
@@ -18,13 +18,13 @@ class ReaderSummaryReaderBriefDto {
   const ReaderSummaryReaderBriefDto({
     required this.bullets,
     required this.headline,
+    required this.interestSections,
     required this.nextActions,
     required this.oneLineTakeaway,
     required this.openQuestions,
     required this.qualityState,
     required this.risks,
     required this.sourceMix,
-    required this.topicSections,
     required this.topReads,
     required this.trendDelta,
   });
@@ -34,13 +34,13 @@ class ReaderSummaryReaderBriefDto {
 
   final List<String> bullets;
   final String headline;
+  final List<ReaderSummaryReaderInterestSectionDto> interestSections;
   final List<ReaderSummaryNextActionDto> nextActions;
   final String oneLineTakeaway;
   final List<String> openQuestions;
   final ReaderSummaryReaderQualityStateDto qualityState;
   final List<String> risks;
   final List<ReaderSummarySourceMixEntryDto> sourceMix;
-  final List<ReaderSummaryReaderTopicSectionDto> topicSections;
   final List<ReaderSummaryReaderItemDto> topReads;
   final ReaderSummaryTrendDeltaDto trendDelta;
 

@@ -46,7 +46,7 @@ describe('GetDigestUseCase', () => {
           {
             resourceType: 'summary',
             resourceId: 'summary-1',
-            topicId: 'topic-1',
+            interestId: 'interest-1',
             includedReason: 'within_window',
           },
         ],
@@ -102,7 +102,7 @@ const makeDigest = (overrides: Partial<DigestProps> = {}): Digest => Digest.asse
     {
       resourceType: 'summary',
       resourceId: 'summary-1',
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       includedReason: 'within_window',
     },
   ],

@@ -9,7 +9,7 @@ export const buildReaderHeadline = (
   input: ReaderSummaryModelInput,
   selectedEvidence: ReaderSummaryModelInput["evidence"]["selectedEvidence"],
 ): string => {
-  const scopeLabel = input.scope.type === "workspace" ? "Workspace" : "Topic";
+  const scopeLabel = input.scope.type === "workspace" ? "Workspace" : "Interest";
   const storyCount = selectedEvidence.length;
   const providerLabels = uniqueStrings(selectedEvidence.map(providerLabel));
 

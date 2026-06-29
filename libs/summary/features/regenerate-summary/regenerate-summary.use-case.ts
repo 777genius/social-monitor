@@ -63,7 +63,7 @@ export class RegenerateSummaryUseCase {
     const quota = await this.summaryQuota.reserveSummaryJob({
       tenantId: command.tenantId,
       workspaceId: command.workspaceId,
-      topicId: summarySnapshot.topicId,
+      interestId: summarySnapshot.interestId,
       operation: 'summary.regenerate',
     });
     if (!quota.ok) {
@@ -74,7 +74,7 @@ export class RegenerateSummaryUseCase {
       id: this.ids.generate(),
       tenantId: command.tenantId,
       workspaceId: command.workspaceId,
-      topicId: summarySnapshot.topicId,
+      interestId: summarySnapshot.interestId,
       idempotencyKey,
       requestedAt: this.clock.now(),
     });

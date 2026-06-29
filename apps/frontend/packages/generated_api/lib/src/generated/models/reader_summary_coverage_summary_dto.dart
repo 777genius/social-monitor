@@ -16,14 +16,14 @@ class ReaderSummaryCoverageSummaryDto {
     required this.duplicateFeedItemCount,
     required this.freshnessStatus,
     required this.hasCrossProviderEvidence,
+    required this.interestCount,
     required this.isSingleSource,
     required this.providerCount,
     required this.selectedFeedItemCount,
     required this.storyClusterCount,
-    required this.topicCount,
+    required this.topInterestIds,
     required this.topProviderKeys,
     required this.topReadCount,
-    required this.topTopicIds,
     required this.windowEndedAt,
     required this.windowStartedAt,
   });
@@ -37,14 +37,14 @@ class ReaderSummaryCoverageSummaryDto {
   final ReaderSummaryCoverageSummaryDtoFreshnessStatusFreshnessStatus
   freshnessStatus;
   final bool hasCrossProviderEvidence;
+  final num interestCount;
   final bool isSingleSource;
   final num providerCount;
   final num selectedFeedItemCount;
   final num storyClusterCount;
-  final num topicCount;
+  final List<String> topInterestIds;
   final List<String> topProviderKeys;
   final num topReadCount;
-  final List<String> topTopicIds;
   final DateTime windowEndedAt;
   final DateTime windowStartedAt;
 

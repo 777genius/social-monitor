@@ -145,7 +145,7 @@ export class ExecuteSummaryJobUseCase {
           summaryId: artifactSnapshot.summaryId,
           tenantId: finalSnapshot.tenantId,
           workspaceId: finalSnapshot.workspaceId,
-          topicId: finalSnapshot.topicId,
+          interestId: finalSnapshot.interestId,
           userId: finalSnapshot.userId,
           subscriptionId: finalSnapshot.subscriptionId,
           status: finalSnapshot.status === 'no_signal' ? 'no_signal' : 'completed',
@@ -177,15 +177,15 @@ export class ExecuteSummaryJobUseCase {
     const evidence = await this.evidenceSelector.select({
       tenantId: snapshot.tenantId,
       workspaceId: snapshot.workspaceId,
-      topicId: snapshot.topicId,
+      interestId: snapshot.interestId,
       userId: snapshot.userId,
       subscriptionId: snapshot.subscriptionId,
       maxItems: maxEvidenceItems,
     });
-    const summaryPolicy = await this.summaryPolicies.findByTopic({
+    const summaryPolicy = await this.summaryPolicies.findByInterest({
       tenantId: snapshot.tenantId,
       workspaceId: snapshot.workspaceId,
-      topicId: snapshot.topicId,
+      interestId: snapshot.interestId,
     });
     const userPreference = snapshot.userId === undefined
       ? null
@@ -194,14 +194,14 @@ export class ExecuteSummaryJobUseCase {
           workspaceId: snapshot.workspaceId,
           userId: snapshot.userId,
           subscriptionId: snapshot.subscriptionId,
-          topicId: snapshot.topicId,
+          interestId: snapshot.interestId,
         });
     const basePolicy = summaryPolicy?.toGenerationPolicy() ?? defaultSummaryGenerationPolicy();
     const memoryContext = await this.safeBuildMemoryContext(snapshot, evidence);
     const input = {
       tenantId: snapshot.tenantId,
       workspaceId: snapshot.workspaceId,
-      topicId: snapshot.topicId,
+      interestId: snapshot.interestId,
       userId: snapshot.userId,
       subscriptionId: snapshot.subscriptionId,
       evidence,
@@ -228,7 +228,7 @@ export class ExecuteSummaryJobUseCase {
       summaryId: this.ids.generate(),
       tenantId: snapshot.tenantId,
       workspaceId: snapshot.workspaceId,
-      topicId: snapshot.topicId,
+      interestId: snapshot.interestId,
       userId: snapshot.userId,
       subscriptionId: snapshot.subscriptionId,
       sourceWindow: evidence.sourceWindow,
@@ -246,7 +246,7 @@ export class ExecuteSummaryJobUseCase {
       return await this.memory.buildContext({
         tenantId: snapshot.tenantId,
         workspaceId: snapshot.workspaceId,
-        topicId: snapshot.topicId,
+        interestId: snapshot.interestId,
         userId: snapshot.userId,
         subscriptionId: snapshot.subscriptionId,
         evidence,

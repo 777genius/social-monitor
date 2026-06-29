@@ -16,7 +16,7 @@ const scripts = packageJson.scripts ?? {};
 const violations = [];
 
 const requiredSurfaces = new Set([
-  'topics',
+  'interests',
   'source-bindings',
   'source-credentials',
   'scans',
@@ -42,17 +42,18 @@ const requiredNegativeCases = new Set([
 const allowedRoles = new Set(['owner', 'admin', 'member', 'viewer']);
 const allowedAuthModes = new Set(['bearer-oidc-jwt', 'workspace-role-dev-test']);
 const safeMethods = new Set(['GET', 'HEAD', 'OPTIONS']);
+const readOnlyPostOperations = new Set(['POST /interests/{interestId}/coverage-plan']);
 const allowedApiKeyScopes = new Set([
   'read:delivery_status',
   'read:feed',
   'read:summaries',
-  'read:topics',
+  'read:interests',
   'read:webhook_endpoints',
   'write:delivery_status',
   'write:scan_requests',
   'write:source_bindings',
   'write:summaries',
-  'write:topics',
+  'write:interests',
   'write:webhook_endpoints',
 ]);
 
@@ -254,7 +255,7 @@ function requireOperationShape(operation, label) {
 }
 
 function validateApiKeyScopeSemantics(operation, key) {
-  const expectedPrefix = safeMethods.has(operation.method) ? 'read:' : 'write:';
+  const expectedPrefix = safeMethods.has(operation.method) || readOnlyPostOperations.has(key) ? 'read:' : 'write:';
   if (!operation.apiKeyScope.startsWith(expectedPrefix)) {
     violations.push(`${matrixPath}: protected operation "${key}" must use ${expectedPrefix} apiKeyScope`);
   }

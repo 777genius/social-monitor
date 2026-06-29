@@ -103,7 +103,7 @@ class FakeUserSummaryPreferences implements UserSummaryPreferenceRepositoryPort 
 
   async save(preference: UserSummaryPreference): Promise<void> {
     const snapshot = preference.toSnapshot();
-    this.preferences.set(snapshot.subscriptionId ?? snapshot.topicId ?? snapshot.id, preference);
+    this.preferences.set(snapshot.subscriptionId ?? snapshot.interestId ?? snapshot.id, preference);
   }
 
   async findBySubscription(
@@ -112,8 +112,8 @@ class FakeUserSummaryPreferences implements UserSummaryPreferenceRepositoryPort 
     return this.preferences.get(params.subscriptionId) ?? null;
   }
 
-  async findByTopic(params: Parameters<UserSummaryPreferenceRepositoryPort['findByTopic']>[0]): Promise<UserSummaryPreference | null> {
-    return this.preferences.get(params.topicId) ?? null;
+  async findByInterest(params: Parameters<UserSummaryPreferenceRepositoryPort['findByInterest']>[0]): Promise<UserSummaryPreference | null> {
+    return this.preferences.get(params.interestId) ?? null;
   }
 
   async findEffective(): Promise<UserSummaryPreference | null> {

@@ -1,7 +1,7 @@
 {
   "components": {
     "schemas": {
-      "ActivateTopicSourceRequestDto": {
+      "ActivateInterestSourceRequestDto": {
         "properties": {
           "providerKey": {
             "description": "Canonical provider key or supported legacy alias.",
@@ -15,7 +15,7 @@
             "type": "string"
           },
           "scanPolicy": {
-            "$ref": "#/components/schemas/ActivateTopicSourceScanPolicyRequestDto"
+            "$ref": "#/components/schemas/ActivateInterestSourceScanPolicyRequestDto"
           },
           "schedule": {
             "$ref": "#/components/schemas/UserSubscriptionScheduleRequestDto"
@@ -50,7 +50,7 @@
         ],
         "type": "object"
       },
-      "ActivateTopicSourceScanPolicyRequestDto": {
+      "ActivateInterestSourceScanPolicyRequestDto": {
         "properties": {
           "freshnessSeconds": {
             "minimum": 60,
@@ -178,6 +178,12 @@
             },
             "type": "array"
           },
+          "interestIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "items": {
             "items": {
               "$ref": "#/components/schemas/RankedFeedItemDto"
@@ -194,12 +200,6 @@
             ],
             "type": "string"
           },
-          "topicIds": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
           "userId": {
             "type": "string"
           },
@@ -211,7 +211,7 @@
           "userId",
           "status",
           "window",
-          "topicIds",
+          "interestIds",
           "items",
           "highSignalFeedItemIds"
         ],
@@ -288,6 +288,13 @@
           "includeNoSignal": {
             "type": "boolean"
           },
+          "interestIds": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
           "intervalSeconds": {
             "minimum": 60,
             "type": "number"
@@ -299,21 +306,46 @@
           "recipientKey": {
             "minLength": 1,
             "type": "string"
-          },
-          "topicIds": {
-            "items": {
-              "type": "string"
-            },
-            "minItems": 1,
-            "type": "array"
           }
         },
         "required": [
           "recipientKey",
           "channel",
-          "topicIds",
+          "interestIds",
           "intervalSeconds",
           "includeNoSignal"
+        ],
+        "type": "object"
+      },
+      "CreateInterestRequestDto": {
+        "properties": {
+          "name": {
+            "minLength": 2,
+            "type": "string"
+          },
+          "query": {
+            "minLength": 2,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "query"
+        ],
+        "type": "object"
+      },
+      "CreateInterestResponseDto": {
+        "properties": {
+          "created": {
+            "type": "boolean"
+          },
+          "interestId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "interestId",
+          "created"
         ],
         "type": "object"
       },
@@ -354,38 +386,6 @@
           "providerKey",
           "kind",
           "secret"
-        ],
-        "type": "object"
-      },
-      "CreateTopicRequestDto": {
-        "properties": {
-          "name": {
-            "minLength": 2,
-            "type": "string"
-          },
-          "query": {
-            "minLength": 2,
-            "type": "string"
-          }
-        },
-        "required": [
-          "name",
-          "query"
-        ],
-        "type": "object"
-      },
-      "CreateTopicResponseDto": {
-        "properties": {
-          "created": {
-            "type": "boolean"
-          },
-          "topicId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "topicId",
-          "created"
         ],
         "type": "object"
       },
@@ -469,6 +469,9 @@
           "id": {
             "type": "string"
           },
+          "interestId": {
+            "type": "string"
+          },
           "normalizedSignal": {
             "$ref": "#/components/schemas/FeedNormalizedSignalDto"
           },
@@ -524,14 +527,11 @@
           },
           "title": {
             "type": "string"
-          },
-          "topicId": {
-            "type": "string"
           }
         },
         "required": [
           "id",
-          "topicId",
+          "interestId",
           "sourceItemId",
           "sourceBindingId",
           "providerKey",
@@ -753,6 +753,9 @@
           "id": {
             "type": "string"
           },
+          "interestId": {
+            "type": "string"
+          },
           "normalizedSignal": {
             "$ref": "#/components/schemas/FeedNormalizedSignalDto"
           },
@@ -808,14 +811,11 @@
           },
           "title": {
             "type": "string"
-          },
-          "topicId": {
-            "type": "string"
           }
         },
         "required": [
           "id",
-          "topicId",
+          "interestId",
           "sourceItemId",
           "sourceBindingId",
           "providerKey",
@@ -1044,6 +1044,763 @@
         ],
         "type": "object"
       },
+      "InterestCoveragePlanAlternativeDraftDto": {
+        "properties": {
+          "config": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "label": {
+            "type": "string"
+          },
+          "rationale": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "label",
+          "config",
+          "rationale"
+        ],
+        "type": "object"
+      },
+      "InterestCoveragePlanApplyTargetDto": {
+        "properties": {
+          "method": {
+            "enum": [
+              "POST"
+            ],
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "requiredScope": {
+            "enum": [
+              "write:source_bindings"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "method",
+          "path",
+          "requiredScope"
+        ],
+        "type": "object"
+      },
+      "InterestCoveragePlanBindingDraftDto": {
+        "properties": {
+          "config": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "providerKey": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "providerKey",
+          "config"
+        ],
+        "type": "object"
+      },
+      "InterestCoveragePlanCadenceSuggestionDto": {
+        "properties": {
+          "freshnessSeconds": {
+            "type": "number"
+          },
+          "intervalSeconds": {
+            "type": "number"
+          },
+          "retryBudget": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "intervalSeconds",
+          "freshnessSeconds",
+          "retryBudget"
+        ],
+        "type": "object"
+      },
+      "InterestCoveragePlanDraftDto": {
+        "properties": {
+          "alternativeDrafts": {
+            "items": {
+              "$ref": "#/components/schemas/InterestCoveragePlanAlternativeDraftDto"
+            },
+            "type": "array"
+          },
+          "applyTarget": {
+            "$ref": "#/components/schemas/InterestCoveragePlanApplyTargetDto"
+          },
+          "cadenceSuggestion": {
+            "$ref": "#/components/schemas/InterestCoveragePlanCadenceSuggestionDto"
+          },
+          "confidenceScore": {
+            "type": "number"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "existingSourceBindingId": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "number"
+          },
+          "providerKey": {
+            "type": "string"
+          },
+          "queryModes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "rationale": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "sourceBindingDraft": {
+            "$ref": "#/components/schemas/InterestCoveragePlanBindingDraftDto"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "needs_input",
+              "already_bound",
+              "unsupported"
+            ],
+            "type": "string"
+          },
+          "targetContentUnits": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "providerKey",
+          "displayName",
+          "status",
+          "confidenceScore",
+          "priority",
+          "targetContentUnits",
+          "queryModes",
+          "rationale",
+          "warnings",
+          "alternativeDrafts"
+        ],
+        "type": "object"
+      },
+      "InterestCoveragePlanSkippedProviderDto": {
+        "properties": {
+          "providerKey": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "providerKey",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "InterestResponseDto": {
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "query": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "archived"
+            ],
+            "type": "string"
+          },
+          "tenantId": {
+            "type": "object"
+          },
+          "workspaceId": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "tenantId",
+          "workspaceId",
+          "name",
+          "query",
+          "status",
+          "createdAt"
+        ],
+        "type": "object"
+      },
+      "InterestSourceDailyHistoryCadenceSummaryResponseDto": {
+        "properties": {
+          "maxConfiguredIntervalSeconds": {
+            "type": "number"
+          },
+          "maxEffectiveFreshnessSeconds": {
+            "type": "number"
+          },
+          "maxEffectiveIntervalSeconds": {
+            "type": "number"
+          },
+          "minConfiguredIntervalSeconds": {
+            "type": "number"
+          },
+          "minEffectiveFreshnessSeconds": {
+            "type": "number"
+          },
+          "minEffectiveIntervalSeconds": {
+            "type": "number"
+          },
+          "minimumIntervalSeconds": {
+            "type": "number"
+          },
+          "providerMinimumIntervalEnforced": {
+            "type": "boolean"
+          },
+          "sourceBindingCount": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "sourceBindingCount",
+          "minimumIntervalSeconds",
+          "minConfiguredIntervalSeconds",
+          "maxConfiguredIntervalSeconds",
+          "minEffectiveIntervalSeconds",
+          "maxEffectiveIntervalSeconds",
+          "minEffectiveFreshnessSeconds",
+          "maxEffectiveFreshnessSeconds",
+          "providerMinimumIntervalEnforced"
+        ],
+        "type": "object"
+      },
+      "InterestSourceDailyHistoryDayResponseDto": {
+        "properties": {
+          "activeScans": {
+            "type": "number"
+          },
+          "configuredSourceBindingCount": {
+            "type": "number"
+          },
+          "consecutiveFailures": {
+            "type": "number"
+          },
+          "date": {
+            "type": "string"
+          },
+          "enabledSourceBindingCount": {
+            "type": "number"
+          },
+          "failedScans": {
+            "type": "number"
+          },
+          "fetched": {
+            "type": "number"
+          },
+          "inserted": {
+            "type": "number"
+          },
+          "lastCompletedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "lastScanRequestedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "lastSchedulerEvaluatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "operatorAction": {
+            "type": "string"
+          },
+          "pausedSourceBindingCount": {
+            "type": "number"
+          },
+          "projected": {
+            "type": "number"
+          },
+          "providerBreakdown": {
+            "items": {
+              "$ref": "#/components/schemas/InterestSourceDailyHistoryProviderResponseDto"
+            },
+            "type": "array"
+          },
+          "providerHealthState": {
+            "enum": [
+              "unknown",
+              "operational",
+              "degraded",
+              "down"
+            ],
+            "type": "string"
+          },
+          "providerUnavailableScans": {
+            "type": "number"
+          },
+          "rateLimitedScans": {
+            "type": "number"
+          },
+          "scanCoverageState": {
+            "enum": [
+              "no_sources",
+              "none_scanned",
+              "partial",
+              "complete"
+            ],
+            "type": "string"
+          },
+          "scannedSourceBindingCount": {
+            "type": "number"
+          },
+          "schedulerDecisionCount": {
+            "type": "number"
+          },
+          "schedulerEnqueuedCount": {
+            "type": "number"
+          },
+          "schedulerSkippedByReason": {
+            "$ref": "#/components/schemas/InterestSourceDailyHistorySchedulerSkipBreakdownResponseDto"
+          },
+          "schedulerSkippedCount": {
+            "type": "number"
+          },
+          "signals": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "skippedDuplicates": {
+            "type": "number"
+          },
+          "sourceBindingCount": {
+            "type": "number"
+          },
+          "succeededScans": {
+            "type": "number"
+          },
+          "totalScans": {
+            "type": "number"
+          },
+          "unconfiguredSourceBindingCount": {
+            "type": "number"
+          },
+          "unscannedSourceBindingCount": {
+            "type": "number"
+          },
+          "windowEndedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "windowStartedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "windowStartedAt",
+          "windowEndedAt",
+          "providerHealthState",
+          "sourceBindingCount",
+          "enabledSourceBindingCount",
+          "pausedSourceBindingCount",
+          "configuredSourceBindingCount",
+          "unconfiguredSourceBindingCount",
+          "scannedSourceBindingCount",
+          "unscannedSourceBindingCount",
+          "scanCoverageState",
+          "schedulerDecisionCount",
+          "schedulerEnqueuedCount",
+          "schedulerSkippedCount",
+          "schedulerSkippedByReason",
+          "totalScans",
+          "succeededScans",
+          "failedScans",
+          "activeScans",
+          "rateLimitedScans",
+          "providerUnavailableScans",
+          "consecutiveFailures",
+          "fetched",
+          "inserted",
+          "skippedDuplicates",
+          "projected",
+          "operatorAction",
+          "signals",
+          "providerBreakdown"
+        ],
+        "type": "object"
+      },
+      "InterestSourceDailyHistoryProviderResponseDto": {
+        "properties": {
+          "activeScans": {
+            "type": "number"
+          },
+          "cadenceSummary": {
+            "$ref": "#/components/schemas/InterestSourceDailyHistoryCadenceSummaryResponseDto"
+          },
+          "configuredSourceBindingCount": {
+            "type": "number"
+          },
+          "consecutiveFailures": {
+            "type": "number"
+          },
+          "enabledSourceBindingCount": {
+            "type": "number"
+          },
+          "failedScans": {
+            "type": "number"
+          },
+          "fetched": {
+            "type": "number"
+          },
+          "inserted": {
+            "type": "number"
+          },
+          "lastCompletedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "lastScanRequestedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "lastSchedulerEvaluatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "operatorAction": {
+            "type": "string"
+          },
+          "pausedSourceBindingCount": {
+            "type": "number"
+          },
+          "projected": {
+            "type": "number"
+          },
+          "providerHealthState": {
+            "enum": [
+              "unknown",
+              "operational",
+              "degraded",
+              "down"
+            ],
+            "type": "string"
+          },
+          "providerKey": {
+            "type": "string"
+          },
+          "providerUnavailableScans": {
+            "type": "number"
+          },
+          "rateLimitedScans": {
+            "type": "number"
+          },
+          "scanCoverageState": {
+            "enum": [
+              "no_sources",
+              "none_scanned",
+              "partial",
+              "complete"
+            ],
+            "type": "string"
+          },
+          "scannedSourceBindingCount": {
+            "type": "number"
+          },
+          "schedulerDecisionCount": {
+            "type": "number"
+          },
+          "schedulerEnqueuedCount": {
+            "type": "number"
+          },
+          "schedulerSkippedByReason": {
+            "$ref": "#/components/schemas/InterestSourceDailyHistorySchedulerSkipBreakdownResponseDto"
+          },
+          "schedulerSkippedCount": {
+            "type": "number"
+          },
+          "signals": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "skippedDuplicates": {
+            "type": "number"
+          },
+          "sourceBindingCount": {
+            "type": "number"
+          },
+          "succeededScans": {
+            "type": "number"
+          },
+          "totalScans": {
+            "type": "number"
+          },
+          "unconfiguredSourceBindingCount": {
+            "type": "number"
+          },
+          "unscannedSourceBindingCount": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "providerKey",
+          "sourceBindingCount",
+          "enabledSourceBindingCount",
+          "pausedSourceBindingCount",
+          "configuredSourceBindingCount",
+          "unconfiguredSourceBindingCount",
+          "scannedSourceBindingCount",
+          "unscannedSourceBindingCount",
+          "scanCoverageState",
+          "schedulerDecisionCount",
+          "schedulerEnqueuedCount",
+          "schedulerSkippedCount",
+          "schedulerSkippedByReason",
+          "providerHealthState",
+          "totalScans",
+          "succeededScans",
+          "failedScans",
+          "activeScans",
+          "rateLimitedScans",
+          "providerUnavailableScans",
+          "consecutiveFailures",
+          "fetched",
+          "inserted",
+          "skippedDuplicates",
+          "projected",
+          "operatorAction",
+          "signals"
+        ],
+        "type": "object"
+      },
+      "InterestSourceDailyHistorySchedulerSkipBreakdownResponseDto": {
+        "properties": {
+          "activeScan": {
+            "type": "number"
+          },
+          "duplicateWindow": {
+            "type": "number"
+          },
+          "freshSuccess": {
+            "type": "number"
+          },
+          "providerFailureBackoff": {
+            "type": "number"
+          },
+          "queueBackpressure": {
+            "type": "number"
+          },
+          "rateLimitBackoff": {
+            "type": "number"
+          },
+          "sourceUnavailable": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "activeScan",
+          "duplicateWindow",
+          "freshSuccess",
+          "providerFailureBackoff",
+          "queueBackpressure",
+          "rateLimitBackoff",
+          "sourceUnavailable"
+        ],
+        "type": "object"
+      },
+      "InterestSourceDailyHistorySummaryResponseDto": {
+        "properties": {
+          "activeScans": {
+            "type": "number"
+          },
+          "configuredSourceBindingCount": {
+            "type": "number"
+          },
+          "consecutiveFailures": {
+            "type": "number"
+          },
+          "daysWithFailures": {
+            "type": "number"
+          },
+          "daysWithRateLimits": {
+            "type": "number"
+          },
+          "daysWithScans": {
+            "type": "number"
+          },
+          "enabledSourceBindingCount": {
+            "type": "number"
+          },
+          "failedScans": {
+            "type": "number"
+          },
+          "fetched": {
+            "type": "number"
+          },
+          "inserted": {
+            "type": "number"
+          },
+          "lastCompletedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "lastScanRequestedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "lastSchedulerEvaluatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "operatorAction": {
+            "type": "string"
+          },
+          "pausedSourceBindingCount": {
+            "type": "number"
+          },
+          "projected": {
+            "type": "number"
+          },
+          "providerBreakdown": {
+            "items": {
+              "$ref": "#/components/schemas/InterestSourceDailyHistoryProviderResponseDto"
+            },
+            "type": "array"
+          },
+          "providerHealthState": {
+            "enum": [
+              "unknown",
+              "operational",
+              "degraded",
+              "down"
+            ],
+            "type": "string"
+          },
+          "providerUnavailableScans": {
+            "type": "number"
+          },
+          "rateLimitedScans": {
+            "type": "number"
+          },
+          "scanCoverageState": {
+            "enum": [
+              "no_sources",
+              "none_scanned",
+              "partial",
+              "complete"
+            ],
+            "type": "string"
+          },
+          "scannedSourceBindingCount": {
+            "type": "number"
+          },
+          "schedulerDecisionCount": {
+            "type": "number"
+          },
+          "schedulerEnqueuedCount": {
+            "type": "number"
+          },
+          "schedulerSkippedByReason": {
+            "$ref": "#/components/schemas/InterestSourceDailyHistorySchedulerSkipBreakdownResponseDto"
+          },
+          "schedulerSkippedCount": {
+            "type": "number"
+          },
+          "signals": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "skippedDuplicates": {
+            "type": "number"
+          },
+          "sourceBindingCount": {
+            "type": "number"
+          },
+          "succeededScans": {
+            "type": "number"
+          },
+          "totalScans": {
+            "type": "number"
+          },
+          "unconfiguredSourceBindingCount": {
+            "type": "number"
+          },
+          "unscannedSourceBindingCount": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "providerHealthState",
+          "sourceBindingCount",
+          "enabledSourceBindingCount",
+          "pausedSourceBindingCount",
+          "configuredSourceBindingCount",
+          "unconfiguredSourceBindingCount",
+          "scannedSourceBindingCount",
+          "unscannedSourceBindingCount",
+          "scanCoverageState",
+          "schedulerDecisionCount",
+          "schedulerEnqueuedCount",
+          "schedulerSkippedCount",
+          "schedulerSkippedByReason",
+          "totalScans",
+          "succeededScans",
+          "failedScans",
+          "activeScans",
+          "rateLimitedScans",
+          "providerUnavailableScans",
+          "consecutiveFailures",
+          "fetched",
+          "inserted",
+          "skippedDuplicates",
+          "projected",
+          "daysWithScans",
+          "daysWithFailures",
+          "daysWithRateLimits",
+          "operatorAction",
+          "signals",
+          "providerBreakdown"
+        ],
+        "type": "object"
+      },
       "ListFeedItemsResponseDto": {
         "properties": {
           "items": {
@@ -1061,6 +1818,63 @@
         },
         "required": [
           "items"
+        ],
+        "type": "object"
+      },
+      "ListInterestSourceDailyHistoryResponseDto": {
+        "properties": {
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/InterestSourceDailyHistoryDayResponseDto"
+            },
+            "type": "array"
+          },
+          "interestId": {
+            "type": "string"
+          },
+          "maxScanJobs": {
+            "type": "number"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/InterestSourceDailyHistorySummaryResponseDto"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "windowEndedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "windowStartedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "interestId",
+          "windowStartedAt",
+          "windowEndedAt",
+          "summary",
+          "days",
+          "truncated",
+          "maxScanJobs"
+        ],
+        "type": "object"
+      },
+      "ListInterestsResponseDto": {
+        "properties": {
+          "interests": {
+            "items": {
+              "$ref": "#/components/schemas/InterestResponseDto"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "interests"
         ],
         "type": "object"
       },
@@ -1109,6 +1923,9 @@
             },
             "type": "array"
           },
+          "interestId": {
+            "type": "string"
+          },
           "maxScanJobs": {
             "type": "number"
           },
@@ -1128,9 +1945,6 @@
           "summary": {
             "$ref": "#/components/schemas/SourceBindingDailyScanHistorySummaryResponseDto"
           },
-          "topicId": {
-            "type": "string"
-          },
           "truncated": {
             "type": "boolean"
           },
@@ -1145,7 +1959,7 @@
         },
         "required": [
           "sourceBindingId",
-          "topicId",
+          "interestId",
           "providerKey",
           "sourceBindingStatus",
           "windowStartedAt",
@@ -1259,63 +2073,6 @@
         ],
         "type": "object"
       },
-      "ListTopicSourceDailyHistoryResponseDto": {
-        "properties": {
-          "days": {
-            "items": {
-              "$ref": "#/components/schemas/TopicSourceDailyHistoryDayResponseDto"
-            },
-            "type": "array"
-          },
-          "maxScanJobs": {
-            "type": "number"
-          },
-          "summary": {
-            "$ref": "#/components/schemas/TopicSourceDailyHistorySummaryResponseDto"
-          },
-          "topicId": {
-            "type": "string"
-          },
-          "truncated": {
-            "type": "boolean"
-          },
-          "windowEndedAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "windowStartedAt": {
-            "format": "date-time",
-            "type": "string"
-          }
-        },
-        "required": [
-          "topicId",
-          "windowStartedAt",
-          "windowEndedAt",
-          "summary",
-          "days",
-          "truncated",
-          "maxScanJobs"
-        ],
-        "type": "object"
-      },
-      "ListTopicsResponseDto": {
-        "properties": {
-          "nextCursor": {
-            "type": "string"
-          },
-          "topics": {
-            "items": {
-              "$ref": "#/components/schemas/TopicResponseDto"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "topics"
-        ],
-        "type": "object"
-      },
       "PersonalizedDigestWindowDto": {
         "properties": {
           "endedAt": {
@@ -1330,6 +2087,87 @@
         "required": [
           "startedAt",
           "endedAt"
+        ],
+        "type": "object"
+      },
+      "PlanInterestCoverageRequestDto": {
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "excludeProviders": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "includeProviders": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "keywords": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "rssFeedUrls": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "subreddits": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "PlanInterestCoverageResponseDto": {
+        "properties": {
+          "coverageGaps": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "drafts": {
+            "items": {
+              "$ref": "#/components/schemas/InterestCoveragePlanDraftDto"
+            },
+            "type": "array"
+          },
+          "interest": {
+            "$ref": "#/components/schemas/InterestResponseDto"
+          },
+          "normalizedKeywords": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "planningQuery": {
+            "type": "string"
+          },
+          "skippedProviders": {
+            "items": {
+              "$ref": "#/components/schemas/InterestCoveragePlanSkippedProviderDto"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "interest",
+          "planningQuery",
+          "normalizedKeywords",
+          "drafts",
+          "coverageGaps",
+          "skippedProviders"
         ],
         "type": "object"
       },
@@ -1357,6 +2195,9 @@
             "type": "array"
           },
           "feedItemId": {
+            "type": "string"
+          },
+          "interestId": {
             "type": "string"
           },
           "observedAt": {
@@ -1391,9 +2232,6 @@
           "title": {
             "type": "string"
           },
-          "topicId": {
-            "type": "string"
-          },
           "whyImportant": {
             "items": {
               "type": "string"
@@ -1405,7 +2243,7 @@
           "feedItemId",
           "sourceItemId",
           "sourceBindingId",
-          "topicId",
+          "interestId",
           "providerKey",
           "canonicalUrl",
           "title",
@@ -1479,6 +2317,12 @@
           "headline": {
             "type": "string"
           },
+          "interestHighlights": {
+            "items": {
+              "$ref": "#/components/schemas/ReaderSummaryInterestHighlightDto"
+            },
+            "type": "array"
+          },
           "lineage": {
             "$ref": "#/components/schemas/ReaderSummaryLineageDto"
           },
@@ -1545,12 +2389,6 @@
           "tenantId": {
             "type": "string"
           },
-          "topicHighlights": {
-            "items": {
-              "$ref": "#/components/schemas/ReaderSummaryTopicHighlightDto"
-            },
-            "type": "array"
-          },
           "topStories": {
             "items": {
               "$ref": "#/components/schemas/ReaderSummaryTopStoryDto"
@@ -1581,7 +2419,7 @@
           "executiveSummary",
           "readerBrief",
           "topStories",
-          "topicHighlights",
+          "interestHighlights",
           "repeatedSignals",
           "risksAndUnknowns",
           "citations",
@@ -1715,6 +2553,9 @@
           "hasCrossProviderEvidence": {
             "type": "boolean"
           },
+          "interestCount": {
+            "type": "number"
+          },
           "isSingleSource": {
             "type": "boolean"
           },
@@ -1727,8 +2568,11 @@
           "storyClusterCount": {
             "type": "number"
           },
-          "topicCount": {
-            "type": "number"
+          "topInterestIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "topProviderKeys": {
             "items": {
@@ -1738,12 +2582,6 @@
           },
           "topReadCount": {
             "type": "number"
-          },
-          "topTopicIds": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
           },
           "windowEndedAt": {
             "format": "date-time",
@@ -1760,13 +2598,13 @@
           "topReadCount",
           "citationCount",
           "providerCount",
-          "topicCount",
+          "interestCount",
           "duplicateFeedItemCount",
           "crossSourceClusterCount",
           "hasCrossProviderEvidence",
           "isSingleSource",
           "topProviderKeys",
-          "topTopicIds",
+          "topInterestIds",
           "windowStartedAt",
           "windowEndedAt",
           "freshnessStatus"
@@ -1789,7 +2627,7 @@
           "reason": {
             "enum": [
               "new_evidence_after_window",
-              "topic_bindings_changed",
+              "interest_bindings_changed",
               "reader_summary_policy_changed",
               "ranking_policy_changed"
             ],
@@ -1810,6 +2648,32 @@
         "required": [
           "status",
           "checkedAt"
+        ],
+        "type": "object"
+      },
+      "ReaderSummaryInterestHighlightDto": {
+        "properties": {
+          "citationIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "interestId": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "interestId",
+          "title",
+          "summary",
+          "citationIds"
         ],
         "type": "object"
       },
@@ -1949,10 +2813,10 @@
             "enum": [
               "read_source",
               "watch_repository",
-              "monitor_topic",
+              "monitor_interest",
               "compare_sources",
               "ignore_low_confidence",
-              "add_topic_rule",
+              "add_interest_rule",
               "request_deeper_scan",
               "mark_relevant",
               "mark_not_relevant"
@@ -2096,6 +2960,12 @@
           "headline": {
             "type": "string"
           },
+          "interestSections": {
+            "items": {
+              "$ref": "#/components/schemas/ReaderSummaryReaderInterestSectionDto"
+            },
+            "type": "array"
+          },
           "nextActions": {
             "items": {
               "$ref": "#/components/schemas/ReaderSummaryNextActionDto"
@@ -2126,12 +2996,6 @@
             },
             "type": "array"
           },
-          "topicSections": {
-            "items": {
-              "$ref": "#/components/schemas/ReaderSummaryReaderTopicSectionDto"
-            },
-            "type": "array"
-          },
           "topReads": {
             "items": {
               "$ref": "#/components/schemas/ReaderSummaryReaderItemDto"
@@ -2147,13 +3011,45 @@
           "oneLineTakeaway",
           "bullets",
           "qualityState",
-          "topicSections",
+          "interestSections",
           "sourceMix",
           "topReads",
           "trendDelta",
           "openQuestions",
           "risks",
           "nextActions"
+        ],
+        "type": "object"
+      },
+      "ReaderSummaryReaderInterestSectionDto": {
+        "properties": {
+          "citationIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "insight": {
+            "type": "string"
+          },
+          "interestId": {
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReaderSummaryReaderItemDto"
+            },
+            "type": "array"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "insight",
+          "items",
+          "citationIds"
         ],
         "type": "object"
       },
@@ -2203,13 +3099,13 @@
             },
             "type": "array"
           },
-          "matchedRules": {
+          "matchedInterestIds": {
             "items": {
               "type": "string"
             },
             "type": "array"
           },
-          "matchedTopicIds": {
+          "matchedRules": {
             "items": {
               "type": "string"
             },
@@ -2259,7 +3155,7 @@
           "providerName",
           "primaryActionKind",
           "reason",
-          "matchedTopicIds",
+          "matchedInterestIds",
           "matchedRules",
           "signalScore",
           "confidence",
@@ -2317,7 +3213,7 @@
         ],
         "type": "object"
       },
-      "ReaderSummaryReaderTopicSectionDto": {
+      "ReaderSummaryRepeatedSignalDto": {
         "properties": {
           "citationIds": {
             "items": {
@@ -2325,33 +3221,7 @@
             },
             "type": "array"
           },
-          "insight": {
-            "type": "string"
-          },
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/ReaderSummaryReaderItemDto"
-            },
-            "type": "array"
-          },
-          "title": {
-            "type": "string"
-          },
-          "topicId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "title",
-          "insight",
-          "items",
-          "citationIds"
-        ],
-        "type": "object"
-      },
-      "ReaderSummaryRepeatedSignalDto": {
-        "properties": {
-          "citationIds": {
+          "interestIds": {
             "items": {
               "type": "string"
             },
@@ -2362,18 +3232,12 @@
           },
           "title": {
             "type": "string"
-          },
-          "topicIds": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
           }
         },
         "required": [
           "storyClusterId",
           "title",
-          "topicIds",
+          "interestIds",
           "citationIds"
         ],
         "type": "object"
@@ -2406,6 +3270,12 @@
           },
           "headline": {
             "type": "string"
+          },
+          "interestHighlights": {
+            "items": {
+              "$ref": "#/components/schemas/ReaderSummaryInterestHighlightDto"
+            },
+            "type": "array"
           },
           "lineage": {
             "$ref": "#/components/schemas/ReaderSummaryLineageDto"
@@ -2473,12 +3343,6 @@
           "tenantId": {
             "type": "string"
           },
-          "topicHighlights": {
-            "items": {
-              "$ref": "#/components/schemas/ReaderSummaryTopicHighlightDto"
-            },
-            "type": "array"
-          },
           "topStories": {
             "items": {
               "$ref": "#/components/schemas/ReaderSummaryTopStoryDto"
@@ -2509,7 +3373,7 @@
           "executiveSummary",
           "readerBrief",
           "topStories",
-          "topicHighlights",
+          "interestHighlights",
           "repeatedSignals",
           "risksAndUnknowns",
           "citations",
@@ -2549,13 +3413,13 @@
       },
       "ReaderSummaryScopeDto": {
         "properties": {
-          "topicId": {
+          "interestId": {
             "type": "string"
           },
           "type": {
             "enum": [
               "workspace",
-              "topic"
+              "interest"
             ],
             "type": "string"
           }
@@ -2573,6 +3437,12 @@
           "crossSourceClusterCount": {
             "type": "number"
           },
+          "interestIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "itemCount": {
             "type": "number"
           },
@@ -2584,12 +3454,6 @@
           },
           "storyClusterCount": {
             "type": "number"
-          },
-          "topicIds": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
           }
         },
         "required": [
@@ -2599,7 +3463,7 @@
           "storyClusterCount",
           "crossSourceClusterCount",
           "singleSourceOnly",
-          "topicIds"
+          "interestIds"
         ],
         "type": "object"
       },
@@ -2649,6 +3513,12 @@
           "id": {
             "type": "string"
           },
+          "interestIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "observedAtRange": {
             "$ref": "#/components/schemas/ReaderSummaryObservedAtRangeDto"
           },
@@ -2673,12 +3543,6 @@
           "storyKey": {
             "type": "string"
           },
-          "topicIds": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
           "whyImportant": {
             "items": {
               "type": "string"
@@ -2691,7 +3555,7 @@
           "storyKey",
           "representativeFeedItemId",
           "duplicateFeedItemIds",
-          "topicIds",
+          "interestIds",
           "providerKeys",
           "score",
           "observedAtRange",
@@ -2710,13 +3574,13 @@
           "freshnessBoost": {
             "type": "number"
           },
+          "interestDiversityBoost": {
+            "type": "number"
+          },
           "providerDiversityBoost": {
             "type": "number"
           },
           "sameProviderSupport": {
-            "type": "number"
-          },
-          "topicDiversityBoost": {
             "type": "number"
           },
           "totalScore": {
@@ -2728,13 +3592,13 @@
           "crossProviderSupport",
           "sameProviderSupport",
           "providerDiversityBoost",
-          "topicDiversityBoost",
+          "interestDiversityBoost",
           "freshnessBoost",
           "totalScore"
         ],
         "type": "object"
       },
-      "ReaderSummaryTopicHighlightDto": {
+      "ReaderSummaryTopStoryDto": {
         "properties": {
           "citationIds": {
             "items": {
@@ -2742,27 +3606,7 @@
             },
             "type": "array"
           },
-          "summary": {
-            "type": "string"
-          },
-          "title": {
-            "type": "string"
-          },
-          "topicId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "topicId",
-          "title",
-          "summary",
-          "citationIds"
-        ],
-        "type": "object"
-      },
-      "ReaderSummaryTopStoryDto": {
-        "properties": {
-          "citationIds": {
+          "interestIds": {
             "items": {
               "type": "string"
             },
@@ -2782,19 +3626,13 @@
           },
           "title": {
             "type": "string"
-          },
-          "topicIds": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
           }
         },
         "required": [
           "storyClusterId",
           "title",
           "summary",
-          "topicIds",
+          "interestIds",
           "providerKeys",
           "citationIds"
         ],
@@ -2878,6 +3716,9 @@
           "idempotencyKey": {
             "type": "string"
           },
+          "interestId": {
+            "type": "string"
+          },
           "providerKey": {
             "type": "string"
           },
@@ -2897,15 +3738,12 @@
           },
           "title": {
             "type": "string"
-          },
-          "topicId": {
-            "type": "string"
           }
         },
         "required": [
           "idempotencyKey",
           "action",
-          "topicId",
+          "interestId",
           "providerKey",
           "title"
         ],
@@ -3150,15 +3988,15 @@
           "feedItemId": {
             "type": "string"
           },
-          "providerKey": {
+          "interestId": {
             "type": "string"
           },
-          "topicId": {
+          "providerKey": {
             "type": "string"
           }
         },
         "required": [
-          "topicId",
+          "interestId",
           "providerKey"
         ],
         "type": "object"
@@ -4536,6 +5374,9 @@
           "id": {
             "type": "string"
           },
+          "interestId": {
+            "type": "string"
+          },
           "providerKey": {
             "type": "string"
           },
@@ -4549,9 +5390,6 @@
           "tenantId": {
             "type": "object"
           },
-          "topicId": {
-            "type": "string"
-          },
           "workspaceId": {
             "type": "object"
           }
@@ -4560,7 +5398,7 @@
           "id",
           "tenantId",
           "workspaceId",
-          "topicId",
+          "interestId",
           "providerKey",
           "capabilityProfileVersion",
           "status",
@@ -4891,6 +5729,9 @@
           "headline": {
             "type": "string"
           },
+          "interestId": {
+            "type": "string"
+          },
           "keyPoints": {
             "items": {
               "$ref": "#/components/schemas/SummaryKeyPointDto"
@@ -4942,9 +5783,6 @@
           "tenantId": {
             "type": "string"
           },
-          "topicId": {
-            "type": "string"
-          },
           "usage": {
             "$ref": "#/components/schemas/SummaryUsageDto"
           },
@@ -4960,7 +5798,7 @@
           "summaryId",
           "tenantId",
           "workspaceId",
-          "topicId",
+          "interestId",
           "sourceWindow",
           "headline",
           "executiveSummary",
@@ -5048,6 +5886,9 @@
           "feedItemId": {
             "type": "string"
           },
+          "interestId": {
+            "type": "string"
+          },
           "providerKey": {
             "type": "string"
           },
@@ -5056,14 +5897,11 @@
           },
           "summaryId": {
             "type": "string"
-          },
-          "topicId": {
-            "type": "string"
           }
         },
         "required": [
           "summaryId",
-          "topicId"
+          "interestId"
         ],
         "type": "object"
       },
@@ -5099,6 +5937,9 @@
           "feedbackId": {
             "type": "string"
           },
+          "interestId": {
+            "type": "string"
+          },
           "rating": {
             "maximum": 5,
             "minimum": 1,
@@ -5111,9 +5952,6 @@
             "type": "string"
           },
           "tenantId": {
-            "type": "string"
-          },
-          "topicId": {
             "type": "string"
           },
           "triageOwner": {
@@ -5134,7 +5972,7 @@
           "tenantId",
           "workspaceId",
           "summaryId",
-          "topicId",
+          "interestId",
           "submittedBy",
           "rating",
           "category",
@@ -5195,6 +6033,9 @@
           "failureReason": {
             "type": "string"
           },
+          "interestId": {
+            "type": "string"
+          },
           "requestedAt": {
             "format": "date-time",
             "type": "string"
@@ -5224,14 +6065,11 @@
               "$ref": "#/components/schemas/SummaryJobTimelineEventDto"
             },
             "type": "array"
-          },
-          "topicId": {
-            "type": "string"
           }
         },
         "required": [
           "summaryJobId",
-          "topicId",
+          "interestId",
           "status",
           "requestedAt",
           "timeline"
@@ -5334,6 +6172,9 @@
           "headline": {
             "type": "string"
           },
+          "interestId": {
+            "type": "string"
+          },
           "keyPoints": {
             "items": {
               "$ref": "#/components/schemas/SummaryKeyPointDto"
@@ -5385,9 +6226,6 @@
           "tenantId": {
             "type": "string"
           },
-          "topicId": {
-            "type": "string"
-          },
           "usage": {
             "$ref": "#/components/schemas/SummaryUsageDto"
           },
@@ -5403,7 +6241,7 @@
           "summaryId",
           "tenantId",
           "workspaceId",
-          "topicId",
+          "interestId",
           "sourceWindow",
           "headline",
           "executiveSummary",
@@ -5491,586 +6329,7 @@
         ],
         "type": "object"
       },
-      "TopicResponseDto": {
-        "properties": {
-          "createdAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "id": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "query": {
-            "type": "string"
-          },
-          "status": {
-            "enum": [
-              "active",
-              "archived"
-            ],
-            "type": "string"
-          },
-          "tenantId": {
-            "type": "object"
-          },
-          "workspaceId": {
-            "type": "object"
-          }
-        },
-        "required": [
-          "id",
-          "tenantId",
-          "workspaceId",
-          "name",
-          "query",
-          "status",
-          "createdAt"
-        ],
-        "type": "object"
-      },
-      "TopicSourceDailyHistoryCadenceSummaryResponseDto": {
-        "properties": {
-          "maxConfiguredIntervalSeconds": {
-            "type": "number"
-          },
-          "maxEffectiveFreshnessSeconds": {
-            "type": "number"
-          },
-          "maxEffectiveIntervalSeconds": {
-            "type": "number"
-          },
-          "minConfiguredIntervalSeconds": {
-            "type": "number"
-          },
-          "minEffectiveFreshnessSeconds": {
-            "type": "number"
-          },
-          "minEffectiveIntervalSeconds": {
-            "type": "number"
-          },
-          "minimumIntervalSeconds": {
-            "type": "number"
-          },
-          "providerMinimumIntervalEnforced": {
-            "type": "boolean"
-          },
-          "sourceBindingCount": {
-            "type": "number"
-          }
-        },
-        "required": [
-          "sourceBindingCount",
-          "minimumIntervalSeconds",
-          "minConfiguredIntervalSeconds",
-          "maxConfiguredIntervalSeconds",
-          "minEffectiveIntervalSeconds",
-          "maxEffectiveIntervalSeconds",
-          "minEffectiveFreshnessSeconds",
-          "maxEffectiveFreshnessSeconds",
-          "providerMinimumIntervalEnforced"
-        ],
-        "type": "object"
-      },
-      "TopicSourceDailyHistoryDayResponseDto": {
-        "properties": {
-          "activeScans": {
-            "type": "number"
-          },
-          "configuredSourceBindingCount": {
-            "type": "number"
-          },
-          "consecutiveFailures": {
-            "type": "number"
-          },
-          "date": {
-            "type": "string"
-          },
-          "enabledSourceBindingCount": {
-            "type": "number"
-          },
-          "failedScans": {
-            "type": "number"
-          },
-          "fetched": {
-            "type": "number"
-          },
-          "inserted": {
-            "type": "number"
-          },
-          "lastCompletedAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "lastScanRequestedAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "lastSchedulerEvaluatedAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "operatorAction": {
-            "type": "string"
-          },
-          "pausedSourceBindingCount": {
-            "type": "number"
-          },
-          "projected": {
-            "type": "number"
-          },
-          "providerBreakdown": {
-            "items": {
-              "$ref": "#/components/schemas/TopicSourceDailyHistoryProviderResponseDto"
-            },
-            "type": "array"
-          },
-          "providerHealthState": {
-            "enum": [
-              "unknown",
-              "operational",
-              "degraded",
-              "down"
-            ],
-            "type": "string"
-          },
-          "providerUnavailableScans": {
-            "type": "number"
-          },
-          "rateLimitedScans": {
-            "type": "number"
-          },
-          "scanCoverageState": {
-            "enum": [
-              "no_sources",
-              "none_scanned",
-              "partial",
-              "complete"
-            ],
-            "type": "string"
-          },
-          "scannedSourceBindingCount": {
-            "type": "number"
-          },
-          "schedulerDecisionCount": {
-            "type": "number"
-          },
-          "schedulerEnqueuedCount": {
-            "type": "number"
-          },
-          "schedulerSkippedByReason": {
-            "$ref": "#/components/schemas/TopicSourceDailyHistorySchedulerSkipBreakdownResponseDto"
-          },
-          "schedulerSkippedCount": {
-            "type": "number"
-          },
-          "signals": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "skippedDuplicates": {
-            "type": "number"
-          },
-          "sourceBindingCount": {
-            "type": "number"
-          },
-          "succeededScans": {
-            "type": "number"
-          },
-          "totalScans": {
-            "type": "number"
-          },
-          "unconfiguredSourceBindingCount": {
-            "type": "number"
-          },
-          "unscannedSourceBindingCount": {
-            "type": "number"
-          },
-          "windowEndedAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "windowStartedAt": {
-            "format": "date-time",
-            "type": "string"
-          }
-        },
-        "required": [
-          "date",
-          "windowStartedAt",
-          "windowEndedAt",
-          "providerHealthState",
-          "sourceBindingCount",
-          "enabledSourceBindingCount",
-          "pausedSourceBindingCount",
-          "configuredSourceBindingCount",
-          "unconfiguredSourceBindingCount",
-          "scannedSourceBindingCount",
-          "unscannedSourceBindingCount",
-          "scanCoverageState",
-          "schedulerDecisionCount",
-          "schedulerEnqueuedCount",
-          "schedulerSkippedCount",
-          "schedulerSkippedByReason",
-          "totalScans",
-          "succeededScans",
-          "failedScans",
-          "activeScans",
-          "rateLimitedScans",
-          "providerUnavailableScans",
-          "consecutiveFailures",
-          "fetched",
-          "inserted",
-          "skippedDuplicates",
-          "projected",
-          "operatorAction",
-          "signals",
-          "providerBreakdown"
-        ],
-        "type": "object"
-      },
-      "TopicSourceDailyHistoryProviderResponseDto": {
-        "properties": {
-          "activeScans": {
-            "type": "number"
-          },
-          "cadenceSummary": {
-            "$ref": "#/components/schemas/TopicSourceDailyHistoryCadenceSummaryResponseDto"
-          },
-          "configuredSourceBindingCount": {
-            "type": "number"
-          },
-          "consecutiveFailures": {
-            "type": "number"
-          },
-          "enabledSourceBindingCount": {
-            "type": "number"
-          },
-          "failedScans": {
-            "type": "number"
-          },
-          "fetched": {
-            "type": "number"
-          },
-          "inserted": {
-            "type": "number"
-          },
-          "lastCompletedAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "lastScanRequestedAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "lastSchedulerEvaluatedAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "operatorAction": {
-            "type": "string"
-          },
-          "pausedSourceBindingCount": {
-            "type": "number"
-          },
-          "projected": {
-            "type": "number"
-          },
-          "providerHealthState": {
-            "enum": [
-              "unknown",
-              "operational",
-              "degraded",
-              "down"
-            ],
-            "type": "string"
-          },
-          "providerKey": {
-            "type": "string"
-          },
-          "providerUnavailableScans": {
-            "type": "number"
-          },
-          "rateLimitedScans": {
-            "type": "number"
-          },
-          "scanCoverageState": {
-            "enum": [
-              "no_sources",
-              "none_scanned",
-              "partial",
-              "complete"
-            ],
-            "type": "string"
-          },
-          "scannedSourceBindingCount": {
-            "type": "number"
-          },
-          "schedulerDecisionCount": {
-            "type": "number"
-          },
-          "schedulerEnqueuedCount": {
-            "type": "number"
-          },
-          "schedulerSkippedByReason": {
-            "$ref": "#/components/schemas/TopicSourceDailyHistorySchedulerSkipBreakdownResponseDto"
-          },
-          "schedulerSkippedCount": {
-            "type": "number"
-          },
-          "signals": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "skippedDuplicates": {
-            "type": "number"
-          },
-          "sourceBindingCount": {
-            "type": "number"
-          },
-          "succeededScans": {
-            "type": "number"
-          },
-          "totalScans": {
-            "type": "number"
-          },
-          "unconfiguredSourceBindingCount": {
-            "type": "number"
-          },
-          "unscannedSourceBindingCount": {
-            "type": "number"
-          }
-        },
-        "required": [
-          "providerKey",
-          "sourceBindingCount",
-          "enabledSourceBindingCount",
-          "pausedSourceBindingCount",
-          "configuredSourceBindingCount",
-          "unconfiguredSourceBindingCount",
-          "scannedSourceBindingCount",
-          "unscannedSourceBindingCount",
-          "scanCoverageState",
-          "schedulerDecisionCount",
-          "schedulerEnqueuedCount",
-          "schedulerSkippedCount",
-          "schedulerSkippedByReason",
-          "providerHealthState",
-          "totalScans",
-          "succeededScans",
-          "failedScans",
-          "activeScans",
-          "rateLimitedScans",
-          "providerUnavailableScans",
-          "consecutiveFailures",
-          "fetched",
-          "inserted",
-          "skippedDuplicates",
-          "projected",
-          "operatorAction",
-          "signals"
-        ],
-        "type": "object"
-      },
-      "TopicSourceDailyHistorySchedulerSkipBreakdownResponseDto": {
-        "properties": {
-          "activeScan": {
-            "type": "number"
-          },
-          "duplicateWindow": {
-            "type": "number"
-          },
-          "freshSuccess": {
-            "type": "number"
-          },
-          "providerFailureBackoff": {
-            "type": "number"
-          },
-          "queueBackpressure": {
-            "type": "number"
-          },
-          "rateLimitBackoff": {
-            "type": "number"
-          },
-          "sourceUnavailable": {
-            "type": "number"
-          }
-        },
-        "required": [
-          "activeScan",
-          "duplicateWindow",
-          "freshSuccess",
-          "providerFailureBackoff",
-          "queueBackpressure",
-          "rateLimitBackoff",
-          "sourceUnavailable"
-        ],
-        "type": "object"
-      },
-      "TopicSourceDailyHistorySummaryResponseDto": {
-        "properties": {
-          "activeScans": {
-            "type": "number"
-          },
-          "configuredSourceBindingCount": {
-            "type": "number"
-          },
-          "consecutiveFailures": {
-            "type": "number"
-          },
-          "daysWithFailures": {
-            "type": "number"
-          },
-          "daysWithRateLimits": {
-            "type": "number"
-          },
-          "daysWithScans": {
-            "type": "number"
-          },
-          "enabledSourceBindingCount": {
-            "type": "number"
-          },
-          "failedScans": {
-            "type": "number"
-          },
-          "fetched": {
-            "type": "number"
-          },
-          "inserted": {
-            "type": "number"
-          },
-          "lastCompletedAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "lastScanRequestedAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "lastSchedulerEvaluatedAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "operatorAction": {
-            "type": "string"
-          },
-          "pausedSourceBindingCount": {
-            "type": "number"
-          },
-          "projected": {
-            "type": "number"
-          },
-          "providerBreakdown": {
-            "items": {
-              "$ref": "#/components/schemas/TopicSourceDailyHistoryProviderResponseDto"
-            },
-            "type": "array"
-          },
-          "providerHealthState": {
-            "enum": [
-              "unknown",
-              "operational",
-              "degraded",
-              "down"
-            ],
-            "type": "string"
-          },
-          "providerUnavailableScans": {
-            "type": "number"
-          },
-          "rateLimitedScans": {
-            "type": "number"
-          },
-          "scanCoverageState": {
-            "enum": [
-              "no_sources",
-              "none_scanned",
-              "partial",
-              "complete"
-            ],
-            "type": "string"
-          },
-          "scannedSourceBindingCount": {
-            "type": "number"
-          },
-          "schedulerDecisionCount": {
-            "type": "number"
-          },
-          "schedulerEnqueuedCount": {
-            "type": "number"
-          },
-          "schedulerSkippedByReason": {
-            "$ref": "#/components/schemas/TopicSourceDailyHistorySchedulerSkipBreakdownResponseDto"
-          },
-          "schedulerSkippedCount": {
-            "type": "number"
-          },
-          "signals": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "skippedDuplicates": {
-            "type": "number"
-          },
-          "sourceBindingCount": {
-            "type": "number"
-          },
-          "succeededScans": {
-            "type": "number"
-          },
-          "totalScans": {
-            "type": "number"
-          },
-          "unconfiguredSourceBindingCount": {
-            "type": "number"
-          },
-          "unscannedSourceBindingCount": {
-            "type": "number"
-          }
-        },
-        "required": [
-          "providerHealthState",
-          "sourceBindingCount",
-          "enabledSourceBindingCount",
-          "pausedSourceBindingCount",
-          "configuredSourceBindingCount",
-          "unconfiguredSourceBindingCount",
-          "scannedSourceBindingCount",
-          "unscannedSourceBindingCount",
-          "scanCoverageState",
-          "schedulerDecisionCount",
-          "schedulerEnqueuedCount",
-          "schedulerSkippedCount",
-          "schedulerSkippedByReason",
-          "totalScans",
-          "succeededScans",
-          "failedScans",
-          "activeScans",
-          "rateLimitedScans",
-          "providerUnavailableScans",
-          "consecutiveFailures",
-          "fetched",
-          "inserted",
-          "skippedDuplicates",
-          "projected",
-          "daysWithScans",
-          "daysWithFailures",
-          "daysWithRateLimits",
-          "operatorAction",
-          "signals",
-          "providerBreakdown"
-        ],
-        "type": "object"
-      },
-      "UpdateTopicRequestDto": {
+      "UpdateInterestRequestDto": {
         "properties": {
           "name": {
             "minLength": 2,
@@ -6116,6 +6375,57 @@
         },
         "required": [
           "consent"
+        ],
+        "type": "object"
+      },
+      "UpsertInterestUserSummaryPreferenceRequestDto": {
+        "properties": {
+          "customInstructions": {
+            "maxLength": 1200,
+            "type": "string"
+          },
+          "format": {
+            "enum": [
+              "executive_brief",
+              "bullet_digest",
+              "risk_brief"
+            ],
+            "type": "string"
+          },
+          "includeRisks": {
+            "type": "boolean"
+          },
+          "includeSourceHighlights": {
+            "type": "boolean"
+          },
+          "language": {
+            "enum": [
+              "auto",
+              "en",
+              "ru"
+            ],
+            "type": "string"
+          },
+          "maxKeyPoints": {
+            "maximum": 10,
+            "minimum": 1,
+            "type": "number"
+          },
+          "tone": {
+            "enum": [
+              "neutral",
+              "concise",
+              "analytical"
+            ],
+            "type": "string"
+          },
+          "userId": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "userId"
         ],
         "type": "object"
       },
@@ -6171,62 +6481,17 @@
         ],
         "type": "object"
       },
-      "UpsertTopicUserSummaryPreferenceRequestDto": {
-        "properties": {
-          "customInstructions": {
-            "maxLength": 1200,
-            "type": "string"
-          },
-          "format": {
-            "enum": [
-              "executive_brief",
-              "bullet_digest",
-              "risk_brief"
-            ],
-            "type": "string"
-          },
-          "includeRisks": {
-            "type": "boolean"
-          },
-          "includeSourceHighlights": {
-            "type": "boolean"
-          },
-          "language": {
-            "enum": [
-              "auto",
-              "en",
-              "ru"
-            ],
-            "type": "string"
-          },
-          "maxKeyPoints": {
-            "maximum": 10,
-            "minimum": 1,
-            "type": "number"
-          },
-          "tone": {
-            "enum": [
-              "neutral",
-              "concise",
-              "analytical"
-            ],
-            "type": "string"
-          },
-          "userId": {
-            "minLength": 1,
-            "type": "string"
-          }
-        },
-        "required": [
-          "userId"
-        ],
-        "type": "object"
-      },
       "UpsertUserRelevanceProfileRequestDto": {
         "properties": {
           "blockedProviderKeys": {
             "items": {
               "type": "string"
+            },
+            "type": "array"
+          },
+          "interestWeights": {
+            "items": {
+              "$ref": "#/components/schemas/RelevanceWeightDto"
             },
             "type": "array"
           },
@@ -6243,12 +6508,6 @@
             "type": "array"
           },
           "sourceWeights": {
-            "items": {
-              "$ref": "#/components/schemas/RelevanceWeightDto"
-            },
-            "type": "array"
-          },
-          "topicWeights": {
             "items": {
               "$ref": "#/components/schemas/RelevanceWeightDto"
             },
@@ -6334,6 +6593,12 @@
           "id": {
             "type": "string"
           },
+          "interestWeights": {
+            "items": {
+              "$ref": "#/components/schemas/RelevanceWeightDto"
+            },
+            "type": "array"
+          },
           "keywordWeights": {
             "items": {
               "$ref": "#/components/schemas/RelevanceWeightDto"
@@ -6355,12 +6620,6 @@
             },
             "type": "array"
           },
-          "topicWeights": {
-            "items": {
-              "$ref": "#/components/schemas/RelevanceWeightDto"
-            },
-            "type": "array"
-          },
           "updatedAt": {
             "format": "date-time",
             "type": "string"
@@ -6372,7 +6631,7 @@
         "required": [
           "id",
           "userId",
-          "topicWeights",
+          "interestWeights",
           "sourceWeights",
           "keywordWeights",
           "mutedKeywords",
@@ -7004,7 +7263,7 @@
             "description": ""
           }
         },
-        "summary": "Create a periodic digest schedule for one recipient and topic set.",
+        "summary": "Create a periodic digest schedule for one recipient and interest set.",
         "tags": [
           "delivery"
         ]
@@ -7509,7 +7768,7 @@
           },
           {
             "in": "query",
-            "name": "topicId",
+            "name": "interestId",
             "required": false,
             "schema": {
               "type": "string"
@@ -7910,6 +8169,1245 @@
         ]
       }
     },
+    "/interests": {
+      "get": {
+        "operationId": "InterestController_list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "description": "Optional Bearer API key. Requires read:interests. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Interest reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListInterestsResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "List interests inside the current tenant/workspace.",
+        "tags": [
+          "interests"
+        ]
+      },
+      "post": {
+        "operationId": "InterestController_create",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional Bearer API key. Requires write:interests. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Interest creation requires owner or admin. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateInterestRequestDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateInterestResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Create an interest inside the current tenant/workspace.",
+        "tags": [
+          "interests"
+        ]
+      }
+    },
+    "/interests/{interestId}": {
+      "delete": {
+        "operationId": "InterestController_archive",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "interestId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional Bearer API key. Requires write:interests. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Interest archives require owner or admin. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InterestResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Archive an interest inside the current tenant/workspace.",
+        "tags": [
+          "interests"
+        ]
+      },
+      "patch": {
+        "operationId": "InterestController_update",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "interestId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional Bearer API key. Requires write:interests. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Interest updates require owner or admin. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateInterestRequestDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InterestResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Update an interest inside the current tenant/workspace.",
+        "tags": [
+          "interests"
+        ]
+      }
+    },
+    "/interests/{interestId}/coverage-plan": {
+      "post": {
+        "operationId": "InterestCoveragePlanController_plan",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "interestId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional Bearer API key. Requires read:interests. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Source planning reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanInterestCoverageRequestDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanInterestCoverageResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Plan production-safe source bindings for an interest.",
+        "tags": [
+          "interest-coverage-plans"
+        ]
+      }
+    },
+    "/interests/{interestId}/source-bindings": {
+      "get": {
+        "operationId": "SourceBindingController_list",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "interestId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "items": {
+                "enum": [
+                  "enabled",
+                  "paused"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "providerKey",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "description": "Optional Bearer API key. Requires read:interests. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Source binding reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListSourceBindingsResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "List source bindings for an interest.",
+        "tags": [
+          "source-bindings"
+        ]
+      },
+      "post": {
+        "operationId": "SourceBindingController_create",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "interestId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional Bearer API key. Requires write:source_bindings. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Source binding creation requires owner or admin. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BindSourceRequestDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BindSourceResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Bind a production-safe source provider to an interest.",
+        "tags": [
+          "source-bindings"
+        ]
+      }
+    },
+    "/interests/{interestId}/source-bindings/{sourceBindingId}/health": {
+      "get": {
+        "operationId": "SourceBindingController_health",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "interestId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sourceBindingId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional Bearer API key. Requires read:interests. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Source binding health reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceBindingHealthResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Get source binding operational health.",
+        "tags": [
+          "source-bindings"
+        ]
+      }
+    },
+    "/interests/{interestId}/source-bindings/{sourceBindingId}/status": {
+      "patch": {
+        "operationId": "SourceBindingController_updateStatus",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "interestId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sourceBindingId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional Bearer API key. Requires write:source_bindings. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Source binding status updates require owner or admin. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeSourceBindingStatusRequestDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeSourceBindingStatusResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Pause or resume a source binding.",
+        "tags": [
+          "source-bindings"
+        ]
+      }
+    },
+    "/interests/{interestId}/source-bindings/daily-history": {
+      "get": {
+        "operationId": "SourceBindingController_dailyHistory",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "interestId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "providerKey",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "description": "Optional Bearer API key. Requires read:interests. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Interest source history reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListInterestSourceDailyHistoryResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "List daily source scan history for an interest grouped by provider.",
+        "tags": [
+          "source-bindings"
+        ]
+      }
+    },
+    "/interests/{interestId}/source-bindings/overview": {
+      "get": {
+        "operationId": "SourceBindingController_overview",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "interestId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "items": {
+                "enum": [
+                  "enabled",
+                  "paused"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "providerKey",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "description": "Optional Bearer API key. Requires read:interests. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Source binding overview reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListSourceBindingOverviewResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "List source bindings with operational health for an interest.",
+        "tags": [
+          "source-bindings"
+        ]
+      }
+    },
+    "/interests/{interestId}/summary-policy": {
+      "get": {
+        "operationId": "SummaryPolicyController_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "interestId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional Bearer API key. Requires read:summaries. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Summary policy reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Get summary policy for an interest.",
+        "tags": [
+          "summary-policies"
+        ]
+      },
+      "put": {
+        "operationId": "SummaryPolicyController_upsert",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "interestId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional Bearer API key. Requires write:summaries. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Summary policy writes require owner or admin. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertSummaryPolicyRequestDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Create or update summary policy for an interest.",
+        "tags": [
+          "summary-policies"
+        ]
+      }
+    },
+    "/interests/{interestId}/summary-requests": {
+      "post": {
+        "operationId": "SummaryRequestController_create",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "interestId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional Bearer API key. Requires write:summaries. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Summary requests require owner, admin or member. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestSummaryResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Request a summary for an interest.",
+        "tags": [
+          "summaries"
+        ]
+      }
+    },
+    "/interests/{interestId}/user-summary-preference": {
+      "get": {
+        "operationId": "UserSummaryPreferencesController_getEffectiveInterestSummaryPreference",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "interestId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional Bearer API key. Requires read:summaries. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. User summary preference reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "subscriptionId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "userId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Read the effective interest summary preference overlay for one user.",
+        "tags": [
+          "user-summary-preferences"
+        ]
+      },
+      "put": {
+        "operationId": "UserSummaryPreferencesController_upsertInterestSummaryPreference",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "interestId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional Bearer API key. Requires write:summaries. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. User summary preference writes allow owner, admin or member. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertInterestUserSummaryPreferenceRequestDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Create or update the interest-level summary preference overlay for one user.",
+        "tags": [
+          "user-summary-preferences"
+        ]
+      }
+    },
     "/reader-summaries": {
       "get": {
         "operationId": "ReaderSummaryController_list",
@@ -8014,7 +9512,7 @@
           },
           {
             "in": "query",
-            "name": "topicId",
+            "name": "interestId",
             "required": false,
             "schema": {
               "type": "string"
@@ -8027,7 +9525,7 @@
             "schema": {
               "enum": [
                 "workspace",
-                "topic"
+                "interest"
               ],
               "type": "string"
             }
@@ -8284,7 +9782,7 @@
             "description": ""
           }
         },
-        "summary": "Request a readerSummary for a workspace or topic scope.",
+        "summary": "Request a readerSummary for a workspace or interest scope.",
         "tags": [
           "reader-summaries"
         ]
@@ -8417,7 +9915,7 @@
           },
           {
             "in": "query",
-            "name": "topicIds",
+            "name": "interestIds",
             "required": true,
             "schema": {
               "type": "string"
@@ -8506,7 +10004,7 @@
           },
           {
             "in": "query",
-            "name": "topicId",
+            "name": "interestId",
             "required": false,
             "schema": {
               "type": "string"
@@ -8728,7 +10226,7 @@
             }
           },
           {
-            "description": "Optional Bearer API key. Requires read:topics. If supplied, x-workspace-role is not required.",
+            "description": "Optional Bearer API key. Requires read:interests. If supplied, x-workspace-role is not required.",
             "in": "header",
             "name": "authorization",
             "required": false,
@@ -8793,7 +10291,7 @@
             }
           },
           {
-            "description": "Optional Bearer API key. Requires read:topics. If supplied, x-workspace-role is not required.",
+            "description": "Optional Bearer API key. Requires read:interests. If supplied, x-workspace-role is not required.",
             "in": "header",
             "name": "authorization",
             "required": false,
@@ -8972,7 +10470,7 @@
             }
           },
           {
-            "description": "Optional Bearer API key. Requires read:topics. If supplied, x-workspace-role is not required.",
+            "description": "Optional Bearer API key. Requires read:interests. If supplied, x-workspace-role is not required.",
             "in": "header",
             "name": "authorization",
             "required": false,
@@ -9124,7 +10622,7 @@
             }
           },
           {
-            "description": "Optional Bearer API key. Requires read:topics. If supplied, x-workspace-role is not required.",
+            "description": "Optional Bearer API key. Requires read:interests. If supplied, x-workspace-role is not required.",
             "in": "header",
             "name": "authorization",
             "required": false,
@@ -9205,7 +10703,7 @@
             }
           },
           {
-            "description": "Optional Bearer API key. Requires read:topics. If supplied, x-workspace-role is not required.",
+            "description": "Optional Bearer API key. Requires read:interests. If supplied, x-workspace-role is not required.",
             "in": "header",
             "name": "authorization",
             "required": false,
@@ -9506,7 +11004,7 @@
           },
           {
             "in": "query",
-            "name": "topicId",
+            "name": "interestId",
             "required": false,
             "schema": {
               "type": "string"
@@ -9939,1170 +11437,6 @@
         ]
       }
     },
-    "/topics": {
-      "get": {
-        "operationId": "TopicController_list",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "cursor",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "type": "number"
-            }
-          },
-          {
-            "description": "Optional Bearer API key. Requires read:topics. If supplied, x-workspace-role is not required.",
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Comma-separated workspace roles. Topic reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
-            "in": "header",
-            "name": "x-workspace-role",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-workspace-id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-tenant-id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ListTopicsResponseDto"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "summary": "List topics inside the current tenant/workspace.",
-        "tags": [
-          "topics"
-        ]
-      },
-      "post": {
-        "operationId": "TopicController_create",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "idempotency-key",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Optional Bearer API key. Requires write:topics. If supplied, x-workspace-role is not required.",
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Comma-separated workspace roles. Topic creation requires owner or admin. Required when Authorization bearer API key is not supplied.",
-            "in": "header",
-            "name": "x-workspace-role",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-workspace-id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-tenant-id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateTopicRequestDto"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CreateTopicResponseDto"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "summary": "Create a topic inside the current tenant/workspace.",
-        "tags": [
-          "topics"
-        ]
-      }
-    },
-    "/topics/{topicId}": {
-      "delete": {
-        "operationId": "TopicController_archive",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "topicId",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Optional Bearer API key. Requires write:topics. If supplied, x-workspace-role is not required.",
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Comma-separated workspace roles. Topic archives require owner or admin. Required when Authorization bearer API key is not supplied.",
-            "in": "header",
-            "name": "x-workspace-role",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-workspace-id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-tenant-id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TopicResponseDto"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "summary": "Archive a topic inside the current tenant/workspace.",
-        "tags": [
-          "topics"
-        ]
-      },
-      "patch": {
-        "operationId": "TopicController_update",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "topicId",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Optional Bearer API key. Requires write:topics. If supplied, x-workspace-role is not required.",
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Comma-separated workspace roles. Topic updates require owner or admin. Required when Authorization bearer API key is not supplied.",
-            "in": "header",
-            "name": "x-workspace-role",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-workspace-id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-tenant-id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateTopicRequestDto"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TopicResponseDto"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "summary": "Update a topic inside the current tenant/workspace.",
-        "tags": [
-          "topics"
-        ]
-      }
-    },
-    "/topics/{topicId}/source-bindings": {
-      "get": {
-        "operationId": "SourceBindingController_list",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "topicId",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "status",
-            "required": false,
-            "schema": {
-              "items": {
-                "enum": [
-                  "enabled",
-                  "paused"
-                ],
-                "type": "string"
-              },
-              "type": "array"
-            }
-          },
-          {
-            "in": "query",
-            "name": "providerKey",
-            "required": false,
-            "schema": {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            }
-          },
-          {
-            "in": "query",
-            "name": "cursor",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "type": "number"
-            }
-          },
-          {
-            "description": "Optional Bearer API key. Requires read:topics. If supplied, x-workspace-role is not required.",
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Comma-separated workspace roles. Source binding reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
-            "in": "header",
-            "name": "x-workspace-role",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-workspace-id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-tenant-id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ListSourceBindingsResponseDto"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "summary": "List source bindings for a topic.",
-        "tags": [
-          "source-bindings"
-        ]
-      },
-      "post": {
-        "operationId": "SourceBindingController_create",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "topicId",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "idempotency-key",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Optional Bearer API key. Requires write:source_bindings. If supplied, x-workspace-role is not required.",
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Comma-separated workspace roles. Source binding creation requires owner or admin. Required when Authorization bearer API key is not supplied.",
-            "in": "header",
-            "name": "x-workspace-role",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-workspace-id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-tenant-id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/BindSourceRequestDto"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BindSourceResponseDto"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "summary": "Bind a production-safe source provider to a topic.",
-        "tags": [
-          "source-bindings"
-        ]
-      }
-    },
-    "/topics/{topicId}/source-bindings/{sourceBindingId}/health": {
-      "get": {
-        "operationId": "SourceBindingController_health",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "topicId",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "sourceBindingId",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Optional Bearer API key. Requires read:topics. If supplied, x-workspace-role is not required.",
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Comma-separated workspace roles. Source binding health reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
-            "in": "header",
-            "name": "x-workspace-role",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-workspace-id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-tenant-id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SourceBindingHealthResponseDto"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "summary": "Get source binding operational health.",
-        "tags": [
-          "source-bindings"
-        ]
-      }
-    },
-    "/topics/{topicId}/source-bindings/{sourceBindingId}/status": {
-      "patch": {
-        "operationId": "SourceBindingController_updateStatus",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "topicId",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "sourceBindingId",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "idempotency-key",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Optional Bearer API key. Requires write:source_bindings. If supplied, x-workspace-role is not required.",
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Comma-separated workspace roles. Source binding status updates require owner or admin. Required when Authorization bearer API key is not supplied.",
-            "in": "header",
-            "name": "x-workspace-role",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-workspace-id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-tenant-id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ChangeSourceBindingStatusRequestDto"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChangeSourceBindingStatusResponseDto"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "summary": "Pause or resume a source binding.",
-        "tags": [
-          "source-bindings"
-        ]
-      }
-    },
-    "/topics/{topicId}/source-bindings/daily-history": {
-      "get": {
-        "operationId": "SourceBindingController_dailyHistory",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "topicId",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "providerKey",
-            "required": false,
-            "schema": {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            }
-          },
-          {
-            "in": "query",
-            "name": "days",
-            "required": false,
-            "schema": {
-              "type": "number"
-            }
-          },
-          {
-            "description": "Optional Bearer API key. Requires read:topics. If supplied, x-workspace-role is not required.",
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Comma-separated workspace roles. Topic source history reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
-            "in": "header",
-            "name": "x-workspace-role",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-workspace-id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-tenant-id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ListTopicSourceDailyHistoryResponseDto"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "summary": "List daily source scan history for a topic grouped by provider.",
-        "tags": [
-          "source-bindings"
-        ]
-      }
-    },
-    "/topics/{topicId}/source-bindings/overview": {
-      "get": {
-        "operationId": "SourceBindingController_overview",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "topicId",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "status",
-            "required": false,
-            "schema": {
-              "items": {
-                "enum": [
-                  "enabled",
-                  "paused"
-                ],
-                "type": "string"
-              },
-              "type": "array"
-            }
-          },
-          {
-            "in": "query",
-            "name": "providerKey",
-            "required": false,
-            "schema": {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            }
-          },
-          {
-            "in": "query",
-            "name": "cursor",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "type": "number"
-            }
-          },
-          {
-            "description": "Optional Bearer API key. Requires read:topics. If supplied, x-workspace-role is not required.",
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Comma-separated workspace roles. Source binding overview reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
-            "in": "header",
-            "name": "x-workspace-role",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-workspace-id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-tenant-id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ListSourceBindingOverviewResponseDto"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "summary": "List source bindings with operational health for a topic.",
-        "tags": [
-          "source-bindings"
-        ]
-      }
-    },
-    "/topics/{topicId}/summary-policy": {
-      "get": {
-        "operationId": "SummaryPolicyController_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "topicId",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Optional Bearer API key. Requires read:summaries. If supplied, x-workspace-role is not required.",
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Comma-separated workspace roles. Summary policy reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
-            "in": "header",
-            "name": "x-workspace-role",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-workspace-id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-tenant-id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Get summary policy for a topic.",
-        "tags": [
-          "summary-policies"
-        ]
-      },
-      "put": {
-        "operationId": "SummaryPolicyController_upsert",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "topicId",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Optional Bearer API key. Requires write:summaries. If supplied, x-workspace-role is not required.",
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Comma-separated workspace roles. Summary policy writes require owner or admin. Required when Authorization bearer API key is not supplied.",
-            "in": "header",
-            "name": "x-workspace-role",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-workspace-id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-tenant-id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpsertSummaryPolicyRequestDto"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Create or update summary policy for a topic.",
-        "tags": [
-          "summary-policies"
-        ]
-      }
-    },
-    "/topics/{topicId}/summary-requests": {
-      "post": {
-        "operationId": "SummaryRequestController_create",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "topicId",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "idempotency-key",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Optional Bearer API key. Requires write:summaries. If supplied, x-workspace-role is not required.",
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Comma-separated workspace roles. Summary requests require owner, admin or member. Required when Authorization bearer API key is not supplied.",
-            "in": "header",
-            "name": "x-workspace-role",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-workspace-id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-tenant-id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RequestSummaryResponseDto"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "summary": "Request a summary for a topic.",
-        "tags": [
-          "summaries"
-        ]
-      }
-    },
-    "/topics/{topicId}/user-summary-preference": {
-      "get": {
-        "operationId": "UserSummaryPreferencesController_getEffectiveTopicSummaryPreference",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "topicId",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Optional Bearer API key. Requires read:summaries. If supplied, x-workspace-role is not required.",
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Comma-separated workspace roles. User summary preference reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
-            "in": "header",
-            "name": "x-workspace-role",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "subscriptionId",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "userId",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-workspace-id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-tenant-id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Read the effective topic summary preference overlay for one user.",
-        "tags": [
-          "user-summary-preferences"
-        ]
-      },
-      "put": {
-        "operationId": "UserSummaryPreferencesController_upsertTopicSummaryPreference",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "topicId",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Optional Bearer API key. Requires write:summaries. If supplied, x-workspace-role is not required.",
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Comma-separated workspace roles. User summary preference writes allow owner, admin or member. Required when Authorization bearer API key is not supplied.",
-            "in": "header",
-            "name": "x-workspace-role",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-workspace-id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-tenant-id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpsertTopicUserSummaryPreferenceRequestDto"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Create or update the topic-level summary preference overlay for one user.",
-        "tags": [
-          "user-summary-preferences"
-        ]
-      }
-    },
     "/usage/audit-events": {
       "get": {
         "operationId": "PublicApiAuditEventsController_list",
@@ -11248,7 +11582,7 @@
             }
           },
           {
-            "description": "Optional Bearer API key. Requires read:topics. If supplied, x-workspace-role is not required.",
+            "description": "Optional Bearer API key. Requires read:interests. If supplied, x-workspace-role is not required.",
             "in": "header",
             "name": "authorization",
             "required": false,
@@ -11296,7 +11630,7 @@
         "operationId": "UserSubscriptionsController_create",
         "parameters": [
           {
-            "description": "Optional Bearer API key. Requires write:topics. If supplied, x-workspace-role is not required.",
+            "description": "Optional Bearer API key. Requires write:interests. If supplied, x-workspace-role is not required.",
             "in": "header",
             "name": "authorization",
             "required": false,
@@ -11424,7 +11758,7 @@
         "operationId": "UserSubscriptionsController_activateSource",
         "parameters": [
           {
-            "description": "Optional Bearer API key. Requires write:topics. If supplied, x-workspace-role is not required.",
+            "description": "Optional Bearer API key. Requires write:interests. If supplied, x-workspace-role is not required.",
             "in": "header",
             "name": "authorization",
             "required": false,
@@ -11462,7 +11796,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ActivateTopicSourceRequestDto"
+                "$ref": "#/components/schemas/ActivateInterestSourceRequestDto"
               }
             }
           },

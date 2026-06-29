@@ -369,7 +369,7 @@
           "observedAt": "2026-06-18T01:04:00.000Z",
           "evidence": {
             "summary": "redacted topic to source to scan to feed to summary to delivery to audit loop observed",
-            "topicId": "topic-e2e-example",
+            "interestId": "topic-e2e-example",
             "sourceBindingId": "source-binding-e2e-example",
             "scanId": "scan-e2e-example",
             "providerFeedCounts": [

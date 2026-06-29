@@ -59,7 +59,7 @@ export type PrismaDigestScheduleWriteData = {
   readonly workspaceId: string;
   readonly recipientKey: string;
   readonly channel: string;
-  readonly topicIds: readonly string[];
+  readonly interestIds: readonly string[];
   readonly intervalSeconds: number;
   readonly includeNoSignal: boolean;
   readonly nextRunAt: Date;
@@ -336,7 +336,7 @@ export type PrismaDeliveryClient = {
       readonly where: {
         readonly tenantId: string;
         readonly workspaceId: string;
-        readonly topicId: { readonly in: readonly string[] };
+        readonly interestId: { readonly in: readonly string[] };
         readonly status: { readonly in: readonly PrismaDigestSourceSummaryStatus[] };
       };
       readonly orderBy: readonly [
@@ -351,7 +351,7 @@ export type PrismaDeliveryClient = {
       readonly where: {
         readonly tenantId: string;
         readonly workspaceId: string;
-        readonly topicId: { readonly in: readonly string[] };
+        readonly interestId: { readonly in: readonly string[] };
         readonly status: 'VISIBLE';
         readonly observedAt: {
           readonly gte: Date;

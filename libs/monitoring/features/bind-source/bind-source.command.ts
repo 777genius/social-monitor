@@ -4,7 +4,7 @@ import type { SourceBindingConfig } from '../../ports/source-binding-config-prot
 export type BindSourceCommand = {
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly providerKey: string;
   readonly config: SourceBindingConfig;
   readonly idempotencyKey: string;

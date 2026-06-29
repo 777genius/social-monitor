@@ -40,7 +40,7 @@ export class PrismaSourceBindingRepository implements SourceBindingRepositoryPor
         id: snapshot.id,
         tenantId: snapshot.tenantId,
         workspaceId: snapshot.workspaceId,
-        topicId: snapshot.topicId,
+        interestId: snapshot.interestId,
         sourceCatalogEntryId: sourceCatalogEntry.id,
         capabilityProfileVersion: snapshot.capabilityProfileVersion,
         status: sourceBindingStatusToPrisma(snapshot.status),
@@ -49,10 +49,10 @@ export class PrismaSourceBindingRepository implements SourceBindingRepositoryPor
     }));
   }
 
-  async findByTopicAndProvider(params: {
+  async findByInterestAndProvider(params: {
     tenantId: TenantId;
     workspaceId: WorkspaceId;
-    topicId: string;
+    interestId: string;
     providerKey: string;
   }): Promise<SourceBinding | null> {
     const sourceCatalogEntry = await this.prisma.sourceCatalogEntry.findUnique({
@@ -66,7 +66,7 @@ export class PrismaSourceBindingRepository implements SourceBindingRepositoryPor
       where: {
         tenantId: params.tenantId,
         workspaceId: params.workspaceId,
-        topicId: params.topicId,
+        interestId: params.interestId,
         sourceCatalogEntryId: sourceCatalogEntry.id,
         deletedAt: null,
       },
@@ -105,7 +105,7 @@ export class PrismaSourceBindingRepository implements SourceBindingRepositoryPor
     return sourceBindingFromPrisma(record, sourceCatalogEntry);
   }
 
-  async listByTopic(query: ListSourceBindingsQuery): Promise<ListSourceBindingsResult> {
+  async listByInterest(query: ListSourceBindingsQuery): Promise<ListSourceBindingsResult> {
     const offset = parseOffsetCursor(query.cursor);
     const limit = Math.max(1, Math.min(query.limit, 100));
     const sourceCatalogEntryIds = query.providerKeys === undefined
@@ -118,7 +118,7 @@ export class PrismaSourceBindingRepository implements SourceBindingRepositoryPor
       where: {
         tenantId: query.tenantId,
         workspaceId: query.workspaceId,
-        topicId: query.topicId,
+        interestId: query.interestId,
         ...(sourceCatalogEntryIds === undefined
           ? {}
           : { sourceCatalogEntryId: { in: sourceCatalogEntryIds } }),

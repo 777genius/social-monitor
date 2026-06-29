@@ -217,7 +217,7 @@ const artifact = (
         storyKey: "url:example.test/story",
         representativeFeedItemId: "feed-1",
         duplicateFeedItemIds: [],
-        topicIds: ["topic-ai"],
+        interestIds: ["interest-ai"],
         providerKeys: ["reddit"],
         score: 1,
         observedAtRange: {
@@ -235,12 +235,12 @@ const artifact = (
         storyClusterId: "story-1",
         title: "Reader summary context fixture",
         summary: "Fixture story.",
-        topicIds: ["topic-ai"],
+        interestIds: ["interest-ai"],
         providerKeys: ["reddit"],
         citationIds: ["citation-1"],
       },
     ],
-    topicHighlights: [],
+    interestHighlights: [],
     repeatedSignals: [],
     risksAndUnknowns: [],
     citationMap: [

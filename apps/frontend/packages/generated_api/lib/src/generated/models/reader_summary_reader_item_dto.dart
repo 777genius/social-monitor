@@ -16,8 +16,8 @@ class ReaderSummaryReaderItemDto {
     required this.citationIds,
     required this.confidence,
     required this.confirmedProviderKeys,
+    required this.matchedInterestIds,
     required this.matchedRules,
-    required this.matchedTopicIds,
     required this.primaryActionKind,
     required this.providerKey,
     required this.providerMetrics,
@@ -37,8 +37,8 @@ class ReaderSummaryReaderItemDto {
   final List<String> citationIds;
   final ReaderSummaryReaderItemConfidenceDto confidence;
   final List<String> confirmedProviderKeys;
+  final List<String> matchedInterestIds;
   final List<String> matchedRules;
-  final List<String> matchedTopicIds;
   final ReaderSummaryReaderItemDtoPrimaryActionKindPrimaryActionKind
   primaryActionKind;
   final String providerKey;

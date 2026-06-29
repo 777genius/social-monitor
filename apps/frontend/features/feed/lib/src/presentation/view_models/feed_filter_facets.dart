@@ -70,7 +70,7 @@ FeedFilterFacets buildFeedFilterFacets({
     repositoryTopicOptions: _options(
       values: repositoryTopics.take(6),
       selectedValue: normalizedFilter.repositoryTopic,
-      labelFor: (value) => 'Topic: $value',
+      labelFor: (value) => 'Repository interest: $value',
     ),
   );
 }

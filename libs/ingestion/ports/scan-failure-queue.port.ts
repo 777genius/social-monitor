@@ -6,7 +6,7 @@ export type FailedScanCommand = {
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
   readonly scanJobId: string;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly sourceBindingId: string;
   readonly scanPolicyId: string;
   readonly providerKey: string;

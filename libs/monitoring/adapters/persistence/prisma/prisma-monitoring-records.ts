@@ -13,15 +13,15 @@ import {
   type SourceCredentialKind,
   type SourceCredentialProps,
   type SourceCredentialStatus,
-  Topic,
-  type TopicProps,
+  Interest,
+  type InterestProps,
 } from '../../../domain';
 import type {
   ScanSchedulerDecisionReason,
   ScanSchedulerDecisionRecord,
 } from '../../../ports';
 
-export type PrismaTopicRecord = {
+export type PrismaInterestRecord = {
   readonly id: string;
   readonly tenantId: string;
   readonly workspaceId: string;
@@ -36,7 +36,7 @@ export type PrismaSourceBindingRecord = {
   readonly id: string;
   readonly tenantId: string;
   readonly workspaceId: string;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly sourceCatalogEntryId: string;
   readonly capabilityProfileVersion: number;
   readonly status: 'DRAFT' | 'ENABLED' | 'PAUSED' | 'FAILED';
@@ -178,15 +178,15 @@ export type PrismaIdempotencyKeyRecord = {
   readonly createdAt: Date;
 };
 
-export const topicFromPrisma = (record: PrismaTopicRecord): Topic =>
-  Topic.rehydrate({
+export const interestFromPrisma = (record: PrismaInterestRecord): Interest =>
+  Interest.rehydrate({
     id: record.id,
     tenantId: tenantId(record.tenantId),
     workspaceId: workspaceId(record.workspaceId),
     name: record.name,
     query: record.query,
     createdAt: record.createdAt,
-  } satisfies TopicProps);
+  } satisfies InterestProps);
 
 export const sourceBindingFromPrisma = (
   record: PrismaSourceBindingRecord,
@@ -196,7 +196,7 @@ export const sourceBindingFromPrisma = (
     id: record.id,
     tenantId: tenantId(record.tenantId),
     workspaceId: workspaceId(record.workspaceId),
-    topicId: record.topicId,
+    interestId: record.interestId,
     providerKey: catalogEntry.providerKey,
     capabilityProfileVersion: record.capabilityProfileVersion,
     config: normalizeRecordObject(record.config),

@@ -4,7 +4,7 @@ export type FeedItemProps = {
   readonly id: string;
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly sourceItemId: string;
   readonly sourceBindingId: string;
   readonly providerKey: string;
@@ -49,8 +49,8 @@ export class FeedItem {
       throw new Error('Feed item provider key must be non-empty');
     }
 
-    if (props.topicId.trim().length === 0) {
-      throw new Error('Feed item topic id must be non-empty');
+    if (props.interestId.trim().length === 0) {
+      throw new Error('Feed item interest id must be non-empty');
     }
 
     if (props.canonicalUrl.trim().length === 0) {

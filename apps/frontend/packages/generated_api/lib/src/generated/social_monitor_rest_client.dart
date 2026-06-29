@@ -6,15 +6,16 @@ import 'package:dio/dio.dart' hide Headers;
 
 import 'clients/auth_client.dart';
 import 'clients/feed_client.dart';
+import 'clients/interests_client.dart';
+import 'clients/interest_coverage_plans_client.dart';
+import 'clients/source_bindings_client.dart';
+import 'clients/summaries_client.dart';
 import 'clients/reader_summaries_client.dart';
 import 'clients/relevance_client.dart';
 import 'clients/scan_requests_client.dart';
 import 'clients/scan_policies_client.dart';
 import 'clients/source_credentials_client.dart';
 import 'clients/sources_client.dart';
-import 'clients/summaries_client.dart';
-import 'clients/topics_client.dart';
-import 'clients/source_bindings_client.dart';
 import 'clients/workspace_settings_client.dart';
 
 /// Social Monitor API `v0.1.0`.
@@ -32,20 +33,36 @@ class SocialMonitorRestClient {
 
   AuthClient? _auth;
   FeedClient? _feed;
+  InterestsClient? _interests;
+  InterestCoveragePlansClient? _interestCoveragePlans;
+  SourceBindingsClient? _sourceBindings;
+  SummariesClient? _summaries;
   ReaderSummariesClient? _readerSummaries;
   RelevanceClient? _relevance;
   ScanRequestsClient? _scanRequests;
   ScanPoliciesClient? _scanPolicies;
   SourceCredentialsClient? _sourceCredentials;
   SourcesClient? _sources;
-  SummariesClient? _summaries;
-  TopicsClient? _topics;
-  SourceBindingsClient? _sourceBindings;
   WorkspaceSettingsClient? _workspaceSettings;
 
   AuthClient get auth => _auth ??= AuthClient(_dio, baseUrl: _baseUrl);
 
   FeedClient get feed => _feed ??= FeedClient(_dio, baseUrl: _baseUrl);
+
+  InterestsClient get interests =>
+      _interests ??= InterestsClient(_dio, baseUrl: _baseUrl);
+
+  InterestCoveragePlansClient get interestCoveragePlans =>
+      _interestCoveragePlans ??= InterestCoveragePlansClient(
+        _dio,
+        baseUrl: _baseUrl,
+      );
+
+  SourceBindingsClient get sourceBindings =>
+      _sourceBindings ??= SourceBindingsClient(_dio, baseUrl: _baseUrl);
+
+  SummariesClient get summaries =>
+      _summaries ??= SummariesClient(_dio, baseUrl: _baseUrl);
 
   ReaderSummariesClient get readerSummaries =>
       _readerSummaries ??= ReaderSummariesClient(_dio, baseUrl: _baseUrl);
@@ -64,14 +81,6 @@ class SocialMonitorRestClient {
 
   SourcesClient get sources =>
       _sources ??= SourcesClient(_dio, baseUrl: _baseUrl);
-
-  SummariesClient get summaries =>
-      _summaries ??= SummariesClient(_dio, baseUrl: _baseUrl);
-
-  TopicsClient get topics => _topics ??= TopicsClient(_dio, baseUrl: _baseUrl);
-
-  SourceBindingsClient get sourceBindings =>
-      _sourceBindings ??= SourceBindingsClient(_dio, baseUrl: _baseUrl);
 
   WorkspaceSettingsClient get workspaceSettings =>
       _workspaceSettings ??= WorkspaceSettingsClient(_dio, baseUrl: _baseUrl);

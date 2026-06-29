@@ -44,7 +44,7 @@ async function main(): Promise<void> {
     id: 'source-binding-scheduler-smoke',
     tenantId: tenant,
     workspaceId: workspace,
-    topicId: 'topic-scheduler-smoke',
+    interestId: 'topic-scheduler-smoke',
     providerKey: 'hacker-news',
     capabilityProfileVersion: 1,
     config: {
@@ -68,7 +68,7 @@ async function main(): Promise<void> {
     id: 'source-binding-scheduler-smoke-reddit-fresh',
     tenantId: tenant,
     workspaceId: workspace,
-    topicId: 'topic-scheduler-smoke-reddit',
+    interestId: 'topic-scheduler-smoke-reddit',
     providerKey: 'reddit',
     capabilityProfileVersion: 1,
     config: {

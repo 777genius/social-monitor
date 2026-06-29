@@ -34,7 +34,7 @@ This directory stores architecture decisions for the social monitoring platform.
 - `25-streaming-ingestion.md` - streaming/firehose ingestion, backpressure and filtering.
 - `26-read-models-search-ranking.md` - read models, Postgres-first search and ranking rules.
 - `27-analytics-warehouse.md` - analytics warehouse separation and later ClickHouse/Iceberg options.
-- `28-topic-rules-dsl.md` - structured topic/summary rules, JSON Schema validation and CEL-later policy.
+- `28-interest-rules-dsl.md` - structured interest/summary rules, JSON Schema validation and CEL-later policy.
 - `29-dedupe-clustering-policy.md` - multi-stage dedupe, near-duplicate detection and semantic clustering.
 - `30-connector-certification-suite.md` - connector certification areas, statuses and required test modes.
 - `31-product-admin-ux-boundaries.md` - separation between normal product UX and admin/ops UX.
@@ -213,7 +213,7 @@ This directory stores architecture decisions for the social monitoring platform.
 - `204-tenant-visible-status-model.md` - user/admin-visible source, scan, summary and delivery status states.
 - `205-ai-provider-fallback-degradation.md` - model/provider fallback, graceful degradation and AI incident behavior.
 - `206-lease-lock-semantics.md` - Postgres/Redis lock choices, leases, fencing and scheduler work claiming.
-- `207-topic-dsl-compiler-safety.md` - topic rule DSL compilation, validation, cost estimation and policy checks.
+- `207-interest-dsl-compiler-safety.md` - interest rule DSL compilation, validation, cost estimation and policy checks.
 - `208-source-query-normalization.md` - provider-neutral query model, source capability mapping and degradation.
 - `209-legal-hold-retention-overrides.md` - legal hold, restriction of processing and retention override workflow.
 - `210-support-safe-data-access-scopes.md` - support-safe views, redaction levels and scoped data access approvals.
@@ -400,13 +400,14 @@ This directory stores architecture decisions for the social monitoring platform.
 - `391-video-creator-source-roadmap-2026.md` - roadmap for video, live and creator platform sources.
 - `392-source-token-setup-minimal-permissions-2026.md` - minimal GitHub, Reddit and X/Twitter credential setup rules.
 - `393-x-collector-grpc-architecture.md` - separate Python x-collector service, protobuf contract and canonical X provider boundaries.
+- `394-interest-ubiquitous-language.md` - Interest as the user-owned monitoring entity and valid external topic exceptions.
 
 ## Core Definition
 
 This product is not a scraper. It is a multi-tenant social intelligence platform.
 
 ```text
-tenants -> topics -> source bindings -> scan policies -> normalized feed
+tenants -> interests -> source bindings -> scan policies -> normalized feed
 -> dedupe/clustering -> relevance scoring -> summaries -> digests/alerts
 ```
 

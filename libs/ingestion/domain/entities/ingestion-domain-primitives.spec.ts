@@ -10,12 +10,12 @@ describe("Ingestion DDD primitives", () => {
       createSourceBinding({
         tenantId: tenantId("tenant-ingestion"),
         workspaceId: workspaceId("workspace-ingestion"),
-        topicId: " topic-ai ",
+        interestId: " topic-ai ",
         sourceBindingId: " binding-reddit ",
         providerKey: " reddit ",
       }),
     ).toMatchObject({
-      topicId: "topic-ai",
+      interestId: "topic-ai",
       sourceBindingId: "binding-reddit",
       providerKey: "reddit",
     });

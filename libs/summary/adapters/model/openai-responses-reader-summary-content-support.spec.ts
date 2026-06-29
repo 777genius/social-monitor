@@ -14,7 +14,7 @@ describe("normalizeOpenAiReaderBrief", () => {
           warnings: [],
           isSingleSource: true,
         },
-        topicSections: [],
+        interestSections: [],
         sourceMix: [
           {
             providerKey: "reddit",
@@ -23,7 +23,7 @@ describe("normalizeOpenAiReaderBrief", () => {
             storyClusterCount: 1,
             crossSourceClusterCount: 0,
             singleSourceOnly: true,
-            topicIds: ["ai"],
+            interestIds: ["ai"],
           },
         ],
         topReads: [

@@ -36,9 +36,9 @@ export class PrismaFeedProjectionAdapter implements FeedProjectionPort {
       await withPrismaWriteRetry(async () => {
         const feedItem = await this.prisma.feedItem.upsert({
           where: {
-            tenantId_topicId_dedupeKey: {
+            tenantId_interestId_dedupeKey: {
               tenantId: command.tenantId,
-              topicId: command.topicId,
+              interestId: command.interestId,
               dedupeKey,
             },
           },
@@ -59,7 +59,7 @@ export class PrismaFeedProjectionAdapter implements FeedProjectionPort {
             id: feedItemId,
             tenantId: command.tenantId,
             workspaceId: command.workspaceId,
-            topicId: command.topicId,
+            interestId: command.interestId,
             sourceItemId: snapshot.id,
             sourceBindingId: command.sourceBindingId,
             providerKey: command.providerKey,
@@ -94,7 +94,7 @@ export class PrismaFeedProjectionAdapter implements FeedProjectionPort {
               },
             },
             update: {
-              topicId: command.topicId,
+              interestId: command.interestId,
               providerKey: signalSample.providerKey,
               sourceKey: signalSample.sourceKey,
               contentType: signalSample.contentType,
@@ -106,7 +106,7 @@ export class PrismaFeedProjectionAdapter implements FeedProjectionPort {
               id: this.ids.generate(),
               tenantId: command.tenantId,
               workspaceId: command.workspaceId,
-              topicId: command.topicId,
+              interestId: command.interestId,
               feedItemId: feedItem.id,
               providerKey: signalSample.providerKey,
               sourceKey: signalSample.sourceKey,

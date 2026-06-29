@@ -23,19 +23,19 @@ export class UpsertSummaryPolicyUseCase {
   ) {}
 
   async execute(command: UpsertSummaryPolicyCommand): Promise<Result<UpsertSummaryPolicyResult, UpsertSummaryPolicyFailure>> {
-    if (command.topicId.trim().length === 0) {
-      return err(new DomainError('validation.failed', 'Summary policy topic id must be non-empty'));
+    if (command.interestId.trim().length === 0) {
+      return err(new DomainError('validation.failed', 'Summary policy interest id must be non-empty'));
     }
 
     try {
-      const existing = await this.summaryPolicies.findByTopic(command);
+      const existing = await this.summaryPolicies.findByInterest(command);
       const now = this.clock.now();
       const policy = existing === null
         ? SummaryPolicy.create({
             id: this.ids.generate(),
             tenantId: command.tenantId,
             workspaceId: command.workspaceId,
-            topicId: command.topicId,
+            interestId: command.interestId,
             language: command.language,
             format: command.format,
             tone: command.tone,

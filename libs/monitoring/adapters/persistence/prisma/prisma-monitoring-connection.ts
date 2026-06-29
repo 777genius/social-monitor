@@ -13,7 +13,7 @@ type PrismaMonitoringRuntimeClientConstructor = new (args: {
 }) => PrismaMonitoringRuntimeClient;
 
 export class PrismaMonitoringConnection implements PrismaMonitoringClient {
-  readonly topic: PrismaMonitoringClient['topic'];
+  readonly interest: PrismaMonitoringClient['interest'];
   readonly sourceCatalogEntry: PrismaMonitoringClient['sourceCatalogEntry'];
   readonly sourceBinding: PrismaMonitoringClient['sourceBinding'];
   readonly sourceCredential: PrismaMonitoringClient['sourceCredential'];
@@ -37,7 +37,7 @@ export class PrismaMonitoringConnection implements PrismaMonitoringClient {
     const PrismaClient = loadPrismaRuntimeClient<PrismaMonitoringRuntimeClientConstructor>();
     this.client = new PrismaClient({ adapter: new PrismaPg(this.pool) });
 
-    this.topic = this.client.topic;
+    this.interest = this.client.interest;
     this.sourceCatalogEntry = this.client.sourceCatalogEntry;
     this.sourceBinding = this.client.sourceBinding;
     this.sourceCredential = this.client.sourceCredential;

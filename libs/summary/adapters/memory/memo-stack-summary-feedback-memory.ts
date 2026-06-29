@@ -31,7 +31,7 @@ export const feedbackMemoryText = (
   providerQuality: ProviderQualitySignal | undefined,
 ): string =>
   redactSensitiveText([
-    `Summary feedback for topic ${command.topicId}: rating ${command.rating}/5, category ${command.category}.`,
+    `Summary feedback for interest ${command.interestId}: rating ${command.rating}/5, category ${command.category}.`,
     `Memory guidance: ${mapping.guidance}.`,
     providerQuality === undefined ? '' : `Provider quality lesson: ${providerQuality.guidance}.`,
     command.comment === undefined ? '' : `User note: ${command.comment}`,
@@ -66,7 +66,7 @@ export const userPreferenceMemoryText = (
   userPreference: UserPreferenceSignal,
 ): string =>
   redactSensitiveText([
-    `User summary preference for topic ${command.topicId}: rating ${command.rating}/5, category ${command.category}.`,
+    `User summary preference for interest ${command.interestId}: rating ${command.rating}/5, category ${command.category}.`,
     `Guidance: ${userPreference.guidance}.`,
     command.comment === undefined ? '' : `User note: ${command.comment}`,
   ].filter((line) => line.length > 0).join(' '));
@@ -140,7 +140,7 @@ export const providerQualitySignal = (
   ) {
     return {
       action: 'downrank_low_signal_provider',
-      guidance: `down-rank low-signal ${command.providerKey} evidence for this topic unless stronger corroboration exists`,
+      guidance: `down-rank low-signal ${command.providerKey} evidence for this interest unless stronger corroboration exists`,
       tags: ['provider-quality', 'provider-downrank'],
     };
   }
@@ -149,7 +149,7 @@ export const providerQualitySignal = (
     case 'low_relevance':
       return {
         action: 'downrank_low_signal_provider',
-        guidance: `down-rank low-signal ${command.providerKey} evidence for this topic unless stronger corroboration exists`,
+        guidance: `down-rank low-signal ${command.providerKey} evidence for this interest unless stronger corroboration exists`,
         tags: ['provider-quality', 'provider-downrank'],
       };
     case 'bad_citation':
@@ -182,7 +182,7 @@ export const feedbackMemoryMapping = (category: string): FeedbackMemoryMapping =
       return {
         factKind: 'user_preference',
         factCategory: 'summary_style_preference',
-        guidance: 'prefer shorter summaries for this topic/user unless evidence risk is high',
+        guidance: 'prefer shorter summaries for this interest/user unless evidence risk is high',
         action: 'prefer_shorter_summary',
         tags: ['preference-candidate', 'style-shorter'],
       };
@@ -190,7 +190,7 @@ export const feedbackMemoryMapping = (category: string): FeedbackMemoryMapping =
       return {
         factKind: 'user_preference',
         factCategory: 'summary_style_preference',
-        guidance: 'include more detail and rationale for this topic/user',
+        guidance: 'include more detail and rationale for this interest/user',
         action: 'prefer_more_detail',
         tags: ['preference-candidate', 'style-more-detail'],
       };
@@ -231,7 +231,7 @@ export const feedbackMemoryMapping = (category: string): FeedbackMemoryMapping =
       return {
         factKind: 'user_preference',
         factCategory: 'summary_ux',
-        guidance: 'make summary wording and grouping clearer for this topic/user',
+        guidance: 'make summary wording and grouping clearer for this interest/user',
         action: 'improve_summary_clarity',
         tags: ['ux-quality', 'clarity-signal'],
       };

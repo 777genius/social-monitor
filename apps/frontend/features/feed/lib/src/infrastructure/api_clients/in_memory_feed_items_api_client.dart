@@ -25,7 +25,7 @@ final class InMemoryFeedItemsApiClient implements FeedItemsApiClient {
     }
 
     final search = request.search.trim().toLowerCase();
-    final topicId = request.topicId?.trim();
+    final interestId = request.interestId?.trim();
     final providerKey = request.providerKey?.trim().toLowerCase();
     final repositoryTrendWindow = request.repositoryTrendWindow?.trim();
     final repositoryLanguage = request.repositoryLanguage?.trim();
@@ -37,7 +37,9 @@ final class InMemoryFeedItemsApiClient implements FeedItemsApiClient {
               item.title.toLowerCase().contains(search) ||
               item.bodyPreview.toLowerCase().contains(search);
           final matchesTopic =
-              topicId == null || topicId.isEmpty || item.topicId == topicId;
+              interestId == null ||
+              interestId.isEmpty ||
+              item.interestId == interestId;
           final matchesProvider =
               providerKey == null ||
               providerKey.isEmpty ||

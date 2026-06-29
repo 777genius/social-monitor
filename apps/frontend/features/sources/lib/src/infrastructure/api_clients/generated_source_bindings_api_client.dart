@@ -42,7 +42,7 @@ final class GeneratedSourceBindingsApiClient
         .send<generated.ListSourceBindingsResponseDto>(
           generated.WorkspaceRequest(scope: request.scope),
           () => _runtime.rest.sourceBindings.sourceBindingControllerList(
-            topicId: request.topicId,
+            interestId: request.interestId,
             xWorkspaceId: request.scope.workspaceId,
             xTenantId: request.scope.tenantId,
             cursor: request.page.cursor,
@@ -63,7 +63,7 @@ final class GeneratedSourceBindingsApiClient
         .send<generated.BindSourceResponseDto>(
           generated.WorkspaceRequest(scope: request.scope),
           () => _runtime.rest.sourceBindings.sourceBindingControllerCreate(
-            topicId: request.topicId,
+            interestId: request.interestId,
             idempotencyKey: request.idempotencyKey,
             xWorkspaceId: request.scope.workspaceId,
             xTenantId: request.scope.tenantId,
@@ -76,7 +76,7 @@ final class GeneratedSourceBindingsApiClient
         final listResult = await listSourceBindings(
           SourceBindingListApiRequestDto(
             scope: request.scope,
-            topicId: request.topicId,
+            interestId: request.interestId,
             page: const PageRequest(),
           ),
         );
@@ -107,7 +107,7 @@ final class GeneratedSourceBindingsApiClient
           generated.WorkspaceRequest(scope: request.scope),
           () =>
               _runtime.rest.sourceBindings.sourceBindingControllerUpdateStatus(
-                topicId: request.topicId,
+                interestId: request.interestId,
                 sourceBindingId: request.sourceBindingId,
                 idempotencyKey: request.idempotencyKey,
                 xWorkspaceId: request.scope.workspaceId,
@@ -121,7 +121,7 @@ final class GeneratedSourceBindingsApiClient
         final health = await loadSourceBindingHealth(
           SourceBindingHealthApiRequestDto(
             scope: request.scope,
-            topicId: request.topicId,
+            interestId: request.interestId,
             sourceBindingId: request.sourceBindingId,
           ),
         );
@@ -142,7 +142,7 @@ final class GeneratedSourceBindingsApiClient
         .send<generated.SourceBindingHealthResponseDto>(
           generated.WorkspaceRequest(scope: request.scope),
           () => _runtime.rest.sourceBindings.sourceBindingControllerHealth(
-            topicId: request.topicId,
+            interestId: request.interestId,
             sourceBindingId: request.sourceBindingId,
             xWorkspaceId: request.scope.workspaceId,
             xTenantId: request.scope.tenantId,
@@ -160,7 +160,7 @@ final class GeneratedSourceBindingsApiClient
   ) {
     return SourceBindingApiDto(
       id: sourceBindingId,
-      topicId: request.topicId,
+      interestId: request.interestId,
       providerKey: request.providerKey,
       capabilityProfileVersion: 0,
       status: 'enabled',

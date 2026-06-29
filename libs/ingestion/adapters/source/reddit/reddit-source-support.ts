@@ -4,6 +4,7 @@ import type {
 } from "../../../ports";
 import { redditListings, redditTopTimes } from "./http-reddit-client";
 import type {
+  RedditComment,
   RedditPost,
   RedditPostListing,
   RedditTopTime,
@@ -17,12 +18,16 @@ export type RedditScanPass =
       readonly topTime?: RedditTopTime;
       readonly maxItems?: number;
       readonly minScore?: number;
+      readonly includeComments?: boolean;
+      readonly maxCommentsPerPost?: number;
     }
   | {
       readonly mode: "search";
       readonly query: string;
       readonly maxItems?: number;
       readonly minScore?: number;
+      readonly includeComments?: boolean;
+      readonly maxCommentsPerPost?: number;
     };
 
 export const normalizePost = (
@@ -80,6 +85,48 @@ export const redditWarnings = (
       ]
     : []),
 ];
+
+export const normalizeComment = (
+  comment: RedditComment,
+  post: RedditPost,
+  minScore: number | undefined,
+): readonly FetchedSourceItem[] => {
+  if (comment.removedByCategory !== undefined) {
+    return [];
+  }
+
+  if (
+    minScore !== undefined &&
+    comment.score !== undefined &&
+    comment.score < minScore
+  ) {
+    return [];
+  }
+
+  const body = comment.body?.trim() ?? "";
+
+  if (body.length === 0) {
+    return [];
+  }
+
+  const publishedAt = publishedAtForComment(comment);
+
+  if (publishedAt === undefined) {
+    return [];
+  }
+
+  return [
+    {
+      externalId: `reddit:${comment.name ?? `t1_${comment.id}`}`,
+      canonicalUrl: canonicalCommentUrl(comment, post),
+      title: post.title === undefined ? "Reddit comment" : `Comment on ${post.title}`,
+      body,
+      authorHandle: comment.author,
+      publishedAt,
+      metadata: redditCommentMetadata(comment, post),
+    },
+  ];
+};
 
 export const parseListingQuery = (
   value: string,
@@ -227,6 +274,7 @@ const readScanPass = (value: unknown, index: number): RedditScanPass => {
           : readTopTime(pass.topTime),
       ...(maxItems === undefined ? {} : { maxItems }),
       ...(minScore === undefined ? {} : { minScore }),
+      ...readCommentExpansion(pass),
     };
   }
 
@@ -236,10 +284,32 @@ const readScanPass = (value: unknown, index: number): RedditScanPass => {
       query: readRequiredString(pass.query, `scanPasses[${index}].query`),
       ...(maxItems === undefined ? {} : { maxItems }),
       ...(minScore === undefined ? {} : { minScore }),
+      ...readCommentExpansion(pass),
     };
   }
 
   throw new Error(`Unsupported Reddit scan pass mode: ${mode}`);
+};
+
+const readCommentExpansion = (
+  pass: Readonly<Record<string, unknown>>,
+): {
+  readonly includeComments?: boolean;
+  readonly maxCommentsPerPost?: number;
+} => {
+  if (pass.includeComments !== true) {
+    return {};
+  }
+
+  const maxCommentsPerPost = readOptionalPositiveInteger(
+    pass.maxCommentsPerPost,
+    100,
+  );
+
+  return {
+    includeComments: true,
+    ...(maxCommentsPerPost === undefined ? {} : { maxCommentsPerPost }),
+  };
 };
 
 const isTimestampMissingCandidate = (
@@ -278,12 +348,37 @@ const publishedAtForPost = (post: RedditPost): Date | undefined => {
   return Number.isNaN(publishedAt.getTime()) ? undefined : publishedAt;
 };
 
+const publishedAtForComment = (comment: RedditComment): Date | undefined => {
+  if (
+    comment.createdUtc === undefined ||
+    !Number.isFinite(comment.createdUtc) ||
+    comment.createdUtc <= 0
+  ) {
+    return undefined;
+  }
+
+  const publishedAt = new Date(comment.createdUtc * 1000);
+
+  return Number.isNaN(publishedAt.getTime()) ? undefined : publishedAt;
+};
+
 const canonicalUrl = (post: RedditPost): string => {
   if (post.permalink !== undefined) {
     return new URL(post.permalink, "https://www.reddit.com").toString();
   }
 
   return post.url ?? `https://www.reddit.com/comments/${post.id}`;
+};
+
+const canonicalCommentUrl = (
+  comment: RedditComment,
+  post: RedditPost,
+): string => {
+  if (comment.permalink !== undefined) {
+    return new URL(comment.permalink, "https://www.reddit.com").toString();
+  }
+
+  return `${canonicalUrl(post)}${canonicalUrl(post).includes("?") ? "&" : "?"}comment=${comment.id}`;
 };
 
 const redditEngagementScore = (item: FetchedSourceItem): number => {
@@ -297,12 +392,26 @@ const redditEngagementScore = (item: FetchedSourceItem): number => {
 };
 
 const redditPostMetadata = (post: RedditPost) => ({
+  kind: "reddit_post",
   ...(post.subreddit === undefined ? {} : { subreddit: post.subreddit }),
   ...(linkedUrl(post) === undefined ? {} : { linkedUrl: linkedUrl(post) }),
   ...(post.score === undefined ? {} : { score: post.score }),
   ...(post.numComments === undefined ? {} : { numComments: post.numComments }),
   ...(post.upvoteRatio === undefined ? {} : { upvoteRatio: post.upvoteRatio }),
 });
+
+const redditCommentMetadata = (comment: RedditComment, post: RedditPost) => {
+  const subreddit = comment.subreddit ?? post.subreddit;
+
+  return {
+    kind: "reddit_comment",
+    parentPostId: post.name ?? post.id,
+    ...(post.title === undefined ? {} : { parentPostTitle: post.title }),
+    ...(subreddit === undefined ? {} : { subreddit }),
+    ...(comment.score === undefined ? {} : { score: comment.score }),
+    ...(comment.depth === undefined ? {} : { depth: comment.depth }),
+  };
+};
 
 const linkedUrl = (post: RedditPost): string | undefined => {
   if (post.url === undefined) {
@@ -314,7 +423,7 @@ const linkedUrl = (post: RedditPost): string | undefined => {
   return post.url === discussionUrl ? undefined : post.url;
 };
 
-const readOptionalPositiveInteger = (
+export const readOptionalPositiveInteger = (
   value: unknown,
   max: number,
 ): number | undefined => {

@@ -40,7 +40,7 @@ export class GetFeedItemUseCase {
       signalBaseline: this.signalBaseline,
       tenantId: query.tenantId,
       workspaceId: query.workspaceId,
-      topicId: snapshot.topicId,
+      interestId: snapshot.interestId,
       items: [item],
       now,
     });

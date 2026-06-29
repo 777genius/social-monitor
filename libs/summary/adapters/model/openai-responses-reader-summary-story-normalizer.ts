@@ -52,9 +52,9 @@ export const normalizeTopStories = (
         {
           ...story,
           storyClusterId,
-          topicIds: uniqueNonEmptyStrings([
-            ...story.topicIds,
-            ...(cluster?.topicIds ?? []),
+          interestIds: uniqueNonEmptyStrings([
+            ...story.interestIds,
+            ...(cluster?.interestIds ?? []),
           ]),
           providerKeys: uniqueNonEmptyStrings([
             ...story.providerKeys,
@@ -105,7 +105,7 @@ const normalizeTopStory = (
   storyClusterId: requiredString(value.storyClusterId, "top story cluster id"),
   title: requiredString(value.title, "top story title"),
   summary: requiredString(value.summary, "top story summary"),
-  topicIds: requiredStringArray(value.topicIds, "top story topics"),
+  interestIds: requiredStringArray(value.interestIds, "top story interests"),
   providerKeys: requiredStringArray(value.providerKeys, "top story providers"),
   citationIds: requiredStringArray(value.citationIds, "top story citations"),
 });
@@ -149,9 +149,9 @@ const fallbackTopStories = (
             cluster.whyImportant[0],
             leadEvidence.title,
           ),
-          topicIds: uniqueNonEmptyStrings([
-            ...cluster.topicIds,
-            leadEvidence.topicId,
+          interestIds: uniqueNonEmptyStrings([
+            ...cluster.interestIds,
+            leadEvidence.interestId,
           ]),
           providerKeys: uniqueNonEmptyStrings([
             ...cluster.providerKeys,

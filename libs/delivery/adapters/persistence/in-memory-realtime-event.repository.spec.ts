@@ -23,7 +23,7 @@ describe('InMemoryRealtimeEventRepository', () => {
     );
     const tenant = tenantId('tenant-realtime-window');
     const workspace = workspaceId('workspace-realtime-window');
-    const channel = 'topic:topic-realtime-window:summary-status';
+    const channel = 'interest:interest-realtime-window:summary-status';
     let firstCursor = '';
     let latestCursor = '';
 

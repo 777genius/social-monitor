@@ -30,7 +30,7 @@ async function main(): Promise<void> {
       id: summaryJobId,
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: 'topic-worker-smoke',
+      interestId: 'topic-worker-smoke',
       idempotencyKey: 'summary-worker-smoke:topic-worker-smoke',
       requestedAt: new Date('2026-06-06T00:00:00.000Z'),
     }));

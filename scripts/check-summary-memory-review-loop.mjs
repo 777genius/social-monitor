@@ -112,7 +112,7 @@ assert.deepEqual(reviewResult.diagnostics.warnings, ['context link review failed
 
 const maintenance = await client.workflows.planMemoryMaintenance({
   spaceSlug: 'social-monitor:tenant-1:workspace-1',
-  memoryScopeExternalRef: 'topic:topic-1:feedback',
+  memoryScopeExternalRef: 'interest:topic-1:feedback',
   includeOperations: false,
   includeContextLinkSuggestions: true,
   includeMemorySuggestions: true,

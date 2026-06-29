@@ -26,7 +26,7 @@ export const buildInstructions = (input: SummaryModelInput): string =>
 
 export const buildPromptPayload = (input: SummaryModelInput): string =>
   JSON.stringify({
-    topicId: input.topicId,
+    interestId: input.interestId,
     requestedAt: input.requestedAt.toISOString(),
     policy: input.policy,
     sourceWindow: {

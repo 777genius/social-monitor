@@ -10,14 +10,14 @@ import {
 import { ReaderSummaryReaderBriefDto } from "./reader-summary-reader.dto";
 
 export class ReaderSummaryScopeDto {
-  @ApiProperty({ enum: ["workspace", "topic"] })
-  @IsIn(["workspace", "topic"])
-  declare readonly type: "workspace" | "topic";
+  @ApiProperty({ enum: ["workspace", "interest"] })
+  @IsIn(["workspace", "interest"])
+  declare readonly type: "workspace" | "interest";
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
-  declare readonly topicId?: string;
+  declare readonly interestId?: string;
 }
 
 export class ReaderSummarySourceWindowDto {
@@ -76,7 +76,7 @@ export class ReaderSummaryStorySignalBreakdownDto {
   declare readonly providerDiversityBoost: number;
 
   @ApiProperty()
-  declare readonly topicDiversityBoost: number;
+  declare readonly interestDiversityBoost: number;
 
   @ApiProperty()
   declare readonly freshnessBoost: number;
@@ -102,7 +102,7 @@ export class ReaderSummaryStoryClusterDto {
   declare readonly duplicateFeedItemIds: readonly string[];
 
   @ApiProperty({ type: [String] })
-  declare readonly topicIds: readonly string[];
+  declare readonly interestIds: readonly string[];
 
   @ApiProperty({ type: [String] })
   declare readonly providerKeys: readonly string[];
@@ -154,7 +154,7 @@ export class ReaderSummaryTopStoryDto {
   declare readonly summary: string;
 
   @ApiProperty({ type: [String] })
-  declare readonly topicIds: readonly string[];
+  declare readonly interestIds: readonly string[];
 
   @ApiProperty({ type: [String] })
   declare readonly providerKeys: readonly string[];
@@ -163,9 +163,9 @@ export class ReaderSummaryTopStoryDto {
   declare readonly citationIds: readonly string[];
 }
 
-export class ReaderSummaryTopicHighlightDto {
+export class ReaderSummaryInterestHighlightDto {
   @ApiProperty()
-  declare readonly topicId: string;
+  declare readonly interestId: string;
 
   @ApiProperty()
   declare readonly title: string;
@@ -185,7 +185,7 @@ export class ReaderSummaryRepeatedSignalDto {
   declare readonly title: string;
 
   @ApiProperty({ type: [String] })
-  declare readonly topicIds: readonly string[];
+  declare readonly interestIds: readonly string[];
 
   @ApiProperty({ type: [String] })
   declare readonly citationIds: readonly string[];
@@ -307,14 +307,14 @@ export class ReaderSummaryFreshnessDto {
   @ApiPropertyOptional({
     enum: [
       "new_evidence_after_window",
-      "topic_bindings_changed",
+      "interest_bindings_changed",
       "reader_summary_policy_changed",
       "ranking_policy_changed",
     ],
   })
   declare readonly reason?:
     | "new_evidence_after_window"
-    | "topic_bindings_changed"
+    | "interest_bindings_changed"
     | "reader_summary_policy_changed"
     | "ranking_policy_changed";
 
@@ -342,7 +342,7 @@ export class ReaderSummaryCoverageSummaryDto {
   declare readonly providerCount: number;
 
   @ApiProperty()
-  declare readonly topicCount: number;
+  declare readonly interestCount: number;
 
   @ApiProperty()
   declare readonly duplicateFeedItemCount: number;
@@ -360,7 +360,7 @@ export class ReaderSummaryCoverageSummaryDto {
   declare readonly topProviderKeys: readonly string[];
 
   @ApiProperty({ type: [String] })
-  declare readonly topTopicIds: readonly string[];
+  declare readonly topInterestIds: readonly string[];
 
   @ApiProperty({ format: "date-time" })
   declare readonly windowStartedAt: string;
@@ -421,8 +421,8 @@ export class ReaderSummaryArtifactResponseDto {
   @ApiProperty({ type: () => [ReaderSummaryTopStoryDto] })
   declare readonly topStories: readonly ReaderSummaryTopStoryDto[];
 
-  @ApiProperty({ type: () => [ReaderSummaryTopicHighlightDto] })
-  declare readonly topicHighlights: readonly ReaderSummaryTopicHighlightDto[];
+  @ApiProperty({ type: () => [ReaderSummaryInterestHighlightDto] })
+  declare readonly interestHighlights: readonly ReaderSummaryInterestHighlightDto[];
 
   @ApiProperty({ type: () => [ReaderSummaryRepeatedSignalDto] })
   declare readonly repeatedSignals: readonly ReaderSummaryRepeatedSignalDto[];

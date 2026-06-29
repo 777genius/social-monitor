@@ -12,6 +12,9 @@ _$UpsertUserRelevanceProfileRequestDtoFromJson(Map<String, dynamic> json) =>
       blockedProviderKeys: (json['blockedProviderKeys'] as List<dynamic>?)
           ?.map((e) => e as String)
           .toList(),
+      interestWeights: (json['interestWeights'] as List<dynamic>?)
+          ?.map((e) => RelevanceWeightDto.fromJson(e as Map<String, dynamic>))
+          .toList(),
       keywordWeights: (json['keywordWeights'] as List<dynamic>?)
           ?.map((e) => RelevanceWeightDto.fromJson(e as Map<String, dynamic>))
           .toList(),
@@ -21,17 +24,14 @@ _$UpsertUserRelevanceProfileRequestDtoFromJson(Map<String, dynamic> json) =>
       sourceWeights: (json['sourceWeights'] as List<dynamic>?)
           ?.map((e) => RelevanceWeightDto.fromJson(e as Map<String, dynamic>))
           .toList(),
-      topicWeights: (json['topicWeights'] as List<dynamic>?)
-          ?.map((e) => RelevanceWeightDto.fromJson(e as Map<String, dynamic>))
-          .toList(),
     );
 
 Map<String, dynamic> _$UpsertUserRelevanceProfileRequestDtoToJson(
   UpsertUserRelevanceProfileRequestDto instance,
 ) => <String, dynamic>{
   'blockedProviderKeys': instance.blockedProviderKeys,
+  'interestWeights': instance.interestWeights,
   'keywordWeights': instance.keywordWeights,
   'mutedKeywords': instance.mutedKeywords,
   'sourceWeights': instance.sourceWeights,
-  'topicWeights': instance.topicWeights,
 };

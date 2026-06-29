@@ -73,7 +73,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('Coverage'), findsOneWidget);
-    expect(find.text('By topic'), findsOneWidget);
+    expect(find.text('By interest'), findsOneWidget);
     expect(find.text('Quality'), findsOneWidget);
     expect(find.text('Needs confirmation'), findsWidgets);
     expect(find.text('GitHub Trending: 3 items'), findsOneWidget);

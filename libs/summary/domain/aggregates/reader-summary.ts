@@ -7,14 +7,14 @@ import type {
   RepeatedSignal,
   TopRead,
   TopReadCandidate,
-  TopicHighlight,
+  InterestHighlight,
 } from "../entities/top-read";
 import { buildReaderActions } from "../policies/reader-action-policy";
 import {
   buildReaderSummaryQualityState,
   buildSourceMix,
 } from "../policies/source-mix-quality-policy";
-import { buildTopicSections } from "../policies/reader-topic-section-policy";
+import { buildInterestSections } from "../policies/reader-interest-section-policy";
 import { selectUniqueTopReadCandidates } from "../policies/top-read-selection-policy";
 import type {
   StoryCluster,
@@ -26,7 +26,7 @@ import {
   compactUnique,
   nonEmpty,
   plural,
-  topicTitle,
+  interestTitle,
   uniqueNonEmpty,
 } from "../value-objects/summary-text";
 import {
@@ -48,7 +48,7 @@ export type ReaderSummaryFactoryInput = {
   readonly headline: string;
   readonly executiveSummary: string;
   readonly topStories: readonly TopReadCandidate[];
-  readonly topicHighlights: readonly TopicHighlight[];
+  readonly interestHighlights: readonly InterestHighlight[];
   readonly repeatedSignals: readonly RepeatedSignal[];
   readonly risksAndUnknowns: readonly ReaderSummaryRisk[];
   readonly citationMap: readonly ReaderSummaryCitation[];
@@ -141,7 +141,7 @@ export class ReaderSummary {
       }),
       bullets: buildReaderSummaryBullets(readerInput, topReads),
       qualityState,
-      topicSections: buildTopicSections(readerInput),
+      interestSections: buildInterestSections(readerInput),
       sourceMix,
       topReads,
       trendDelta: buildTrendDelta(readerInput, topReads, sourceMix),
@@ -155,7 +155,7 @@ export class ReaderSummary {
         .filter((risk) => risk.trim().length > 0),
       nextActions: buildReaderActions({
         topReads,
-        topicHighlights: input.topicHighlights,
+        interestHighlights: input.interestHighlights,
         qualityState,
       }),
     });
@@ -165,7 +165,7 @@ export class ReaderSummary {
     return {
       ...this.snapshot,
       bullets: [...this.snapshot.bullets],
-      topicSections: [...this.snapshot.topicSections],
+      interestSections: [...this.snapshot.interestSections],
       sourceMix: [...this.snapshot.sourceMix],
       topReads: [...this.snapshot.topReads],
       openQuestions: [...this.snapshot.openQuestions],
@@ -201,7 +201,7 @@ const buildNoSignalReaderSummary = (
       ],
       isSingleSource: false,
     },
-    topicSections: [],
+    interestSections: [],
     sourceMix: [],
     topReads: [],
     trendDelta: {
@@ -272,10 +272,10 @@ const storyToTopRead = (
     cluster?.providerKeys[0] ??
     "unknown";
   const providerName = evidence?.providerName ?? providerKey;
-  const matchedTopicIds = uniqueNonEmpty([
-    ...story.topicIds,
-    ...(cluster?.topicIds ?? []),
-    ...citedEvidence.map((item) => item.topicId),
+  const matchedInterestIds = uniqueNonEmpty([
+    ...story.interestIds,
+    ...(cluster?.interestIds ?? []),
+    ...citedEvidence.map((item) => item.interestId),
   ]);
   const whyImportant = buildTopReadUserFacingReasons({
     story,
@@ -297,11 +297,11 @@ const storyToTopRead = (
     providerName,
     primaryActionKind: evidence?.readerActionKind ?? "read_source",
     reason: whyImportant[0] ?? story.summary,
-    matchedTopicIds:
-      matchedTopicIds.length > 0 ? matchedTopicIds : ["unknown-topic"],
+    matchedInterestIds:
+      matchedInterestIds.length > 0 ? matchedInterestIds : ["unknown-interest"],
     matchedRules: buildMatchedRules(
       citedEvidence,
-      matchedTopicIds,
+      matchedInterestIds,
       providerKey,
     ),
     signalScore,
@@ -352,7 +352,7 @@ const isUserFacingTopReadReason = (value: string): boolean => {
     !lower.startsWith("story signal score") &&
     !lower.startsWith("current summary window has") &&
     lower !== "strong source engagement signal" &&
-    lower !== "passes source quality and topic relevance gate" &&
+    lower !== "passes source quality and interest relevance gate" &&
     lower !== "fresh item in the current monitoring window" &&
     !/^clustered \d+ (?:similar|related) items?$/u.test(lower) &&
     !lower.includes("citation references bodypreview evidence") &&
@@ -409,9 +409,9 @@ const buildTrendDelta = (
   topReads: readonly TopRead[],
   sourceMix: readonly SourceMixEntry[],
 ): ReaderTrendDelta => {
-  const topicSignals = uniqueNonEmpty([
-    ...input.topicHighlights.map((highlight) => highlight.title),
-    ...input.topStories.flatMap((story) => story.topicIds.map(topicTitle)),
+  const interestSignals = uniqueNonEmpty([
+    ...input.interestHighlights.map((highlight) => highlight.title),
+    ...input.topStories.flatMap((story) => story.interestIds.map(interestTitle)),
   ]);
   const totalReads = topReads.length;
   const newSignal =
@@ -423,7 +423,7 @@ const buildTrendDelta = (
 
   return {
     newSignals: compactUnique([newSignal]),
-    growingSignals: topicSignals.slice(0, 3),
+    growingSignals: interestSignals.slice(0, 3),
     repeatedSignals: input.repeatedSignals
       .slice(0, 3)
       .map((signal) => signal.title),
@@ -452,7 +452,7 @@ const assertReaderSummaryValid = (snapshot: ReaderSummarySnapshot): void => {
     }
     for (const metric of topRead.providerMetrics) {
       if (
-        /^(story signal|base signal|cross-source support|same-source support|provider diversity|topic diversity|freshness)$/iu.test(
+        /^(story signal|base signal|cross-source support|same-source support|provider diversity|interest diversity|freshness)$/iu.test(
           metric.label,
         )
       ) {

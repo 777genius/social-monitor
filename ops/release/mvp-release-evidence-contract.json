@@ -210,8 +210,8 @@
       "blocksRelease": true
     },
     {
-      "gateId": "topic-source-daily-history-rest",
-      "command": "npm run check:topic-source-daily-history-rest",
+      "gateId": "interest-source-daily-history-rest",
+      "command": "npm run check:interest-source-daily-history-rest",
       "blocksRelease": true
     },
     {

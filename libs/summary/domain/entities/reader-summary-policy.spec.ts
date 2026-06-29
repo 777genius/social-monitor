@@ -36,7 +36,7 @@ describe("ReaderSummaryPolicy", () => {
     );
   });
 
-  it("rejects invalid topic scopes before policy persistence", () => {
+  it("rejects invalid interest scopes before policy persistence", () => {
     const now = new Date("2026-06-22T10:00:00.000Z");
 
     expect(() =>
@@ -44,10 +44,10 @@ describe("ReaderSummaryPolicy", () => {
         id: "reader-summary-policy-invalid",
         tenantId: tenantId("tenant-reader-summary-policy-invalid"),
         workspaceId: workspaceId("workspace-reader-summary-policy-invalid"),
-        scope: { type: "topic", topicId: " " },
+        scope: { type: "interest", interestId: " " },
         now,
       }),
-    ).toThrow("Reader summary topic scope topic id must be non-empty");
+    ).toThrow("Reader summary interest scope interest id must be non-empty");
   });
 
   it("normalizes schedule settings and rejects unsupported scheduled cadences", () => {

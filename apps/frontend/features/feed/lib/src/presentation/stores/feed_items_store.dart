@@ -14,13 +14,13 @@ final class FeedItemsStore extends ChangeNotifier {
     required ListFeedItemsUseCase listFeedItems,
     required LoadFeedItemUseCase loadFeedItem,
     required WorkspaceScope scope,
-    String? initialTopicId,
+    String? initialInterestId,
     OperationGenerationGuard? listGuard,
     OperationGenerationGuard? detailGuard,
   }) : _listFeedItems = listFeedItems,
        _loadFeedItem = loadFeedItem,
        _scope = scope,
-       _filter = FeedItemFilter(topicId: initialTopicId).normalized(),
+       _filter = FeedItemFilter(interestId: initialInterestId).normalized(),
        _listGuard = listGuard ?? OperationGenerationGuard(),
        _detailGuard = detailGuard ?? OperationGenerationGuard();
 
@@ -86,8 +86,8 @@ final class FeedItemsStore extends ChangeNotifier {
     await refresh();
   }
 
-  Future<void> clearTopicFilter() async {
-    _filter = _filter.copyWith(clearTopicId: true);
+  Future<void> clearInterestFilter() async {
+    _filter = _filter.copyWith(clearInterestId: true);
     await refresh();
   }
 

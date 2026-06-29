@@ -22,7 +22,7 @@ export const presentSourceBinding = (binding: SourceBinding): SourceBindingView 
     id: snapshot.id,
     tenantId: snapshot.tenantId,
     workspaceId: snapshot.workspaceId,
-    topicId: snapshot.topicId,
+    interestId: snapshot.interestId,
     providerKey: snapshot.providerKey,
     capabilityProfileVersion: snapshot.capabilityProfileVersion,
     status: snapshot.status,

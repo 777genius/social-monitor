@@ -57,7 +57,7 @@ Evidence notes:
 
 ## PR 39 Topic-Scoped Feed Evidence
 
-- `acc4b48 feat: scope feed evidence by topic`
+- `acc4b48 feat: scope feed evidence by interest`
 
 Verified commands:
 
@@ -67,10 +67,10 @@ Verified commands:
 
 Evidence notes:
 
-- Monitoring scan enqueue commands include the source binding `topicId`; the ingestion worker validates the payload and passes `topicId` into `ExecuteScanUseCase`.
-- Feed projection persists `topicId` onto `FeedItem`; feed list/get DTOs expose it and `GET /feed/items?topicId=...` can filter read-model results.
+- Monitoring scan enqueue commands include the source binding `interestId`; the ingestion worker validates the payload and passes `interestId` into `ExecuteScanUseCase`.
+- Feed projection persists `interestId` onto `FeedItem`; feed list/get DTOs expose it and `GET /feed/items?interestId=...` can filter read-model results.
 - `FeedSummaryEvidenceSelector` asks the Feed read port for the requested topic only, so summary evidence cannot leak from another topic in the same workspace.
-- Feed canonical URL dedupe is tenant/workspace/topic scoped; the same URL can appear once per topic while remaining deduped inside each topic.
+- Feed canonical URL dedupe is tenant/workspace/interest scoped; the same URL can appear once per topic while remaining deduped inside each topic.
 
 ## PR 40 Citation Validation Against Selected Evidence
 

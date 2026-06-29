@@ -36,7 +36,7 @@ const clock = new FixedClock(new Date("2026-06-07T00:00:00.000Z"));
 const tenant = tenantId("00000000-0000-7000-8000-000000000101");
 const workspace = workspaceId("00000000-0000-7000-8000-000000000102");
 const sourceBindingId = "00000000-0000-7000-8000-000000000103";
-const topicId = "00000000-0000-7000-8000-000000000104";
+const interestId = "00000000-0000-7000-8000-000000000104";
 
 async function main(): Promise<void> {
   assert(
@@ -164,7 +164,7 @@ async function main(): Promise<void> {
   const projectionResult = await feedProjection.project({
     tenantId: tenant,
     workspaceId: workspace,
-    topicId,
+    interestId,
     sourceBindingId,
     providerKey: "fake-source",
     sourceItems: [firstItem, duplicateProviderItem],
@@ -177,7 +177,7 @@ async function main(): Promise<void> {
   const list = await feedRead.list({
     tenantId: tenant,
     workspaceId: workspace,
-    topicId,
+    interestId,
     limit: 10,
   });
   assert(
@@ -201,7 +201,7 @@ async function main(): Promise<void> {
   const search = await feedRead.list({
     tenantId: tenant,
     workspaceId: workspace,
-    topicId,
+    interestId,
     limit: 10,
     searchQuery: "duplicate durable",
   });
@@ -256,7 +256,7 @@ async function main(): Promise<void> {
   await feedProjection.project({
     tenantId: tenant,
     workspaceId: workspace,
-    topicId,
+    interestId,
     sourceBindingId,
     providerKey: "article-source",
     sourceItems: [articleFromReddit, articleFromRss],
@@ -264,7 +264,7 @@ async function main(): Promise<void> {
   const articleList = await feedRead.list({
     tenantId: tenant,
     workspaceId: workspace,
-    topicId,
+    interestId,
     limit: 10,
     searchQuery: "article via",
   });
@@ -287,7 +287,7 @@ async function main(): Promise<void> {
     tenantId: tenant,
     workspaceId: workspace,
     scanJobId: "00000000-0000-7000-8000-000000000401",
-    topicId,
+    interestId,
     sourceBindingId,
     scanPolicyId: "00000000-0000-7000-8000-000000000402",
     providerKey: "fake-source",
@@ -306,7 +306,7 @@ async function main(): Promise<void> {
     tenantId: tenant,
     workspaceId: workspace,
     scanJobId: "00000000-0000-7000-8000-000000000403",
-    topicId,
+    interestId,
     sourceBindingId,
     scanPolicyId: "00000000-0000-7000-8000-000000000404",
     providerKey: "fake-source",
@@ -670,9 +670,9 @@ class FakePrismaIngestionFeedClient
   readonly feedItem: PrismaFeedClient["feedItem"] = {
     upsert: async (args) => {
       const key = [
-        args.where.tenantId_topicId_dedupeKey.tenantId,
-        args.where.tenantId_topicId_dedupeKey.topicId,
-        args.where.tenantId_topicId_dedupeKey.dedupeKey,
+        args.where.tenantId_interestId_dedupeKey.tenantId,
+        args.where.tenantId_interestId_dedupeKey.interestId,
+        args.where.tenantId_interestId_dedupeKey.dedupeKey,
       ].join(":");
       const existing = this.feedItems.get(key);
       const record: PrismaFeedItemRecord =
@@ -681,7 +681,7 @@ class FakePrismaIngestionFeedClient
               id: args.create.id,
               tenantId: args.create.tenantId,
               workspaceId: args.create.workspaceId,
-              topicId: args.create.topicId,
+              interestId: args.create.interestId,
               sourceItemId: args.create.sourceItemId,
               sourceBindingId: args.create.sourceBindingId,
               providerKey: args.create.providerKey,
@@ -741,7 +741,7 @@ class FakePrismaIngestionFeedClient
           id: existing?.id ?? args.create.id,
           tenantId: existing?.tenantId ?? args.create.tenantId,
           workspaceId: existing?.workspaceId ?? args.create.workspaceId,
-          topicId: args.update.topicId,
+          interestId: args.update.interestId,
           feedItemId: existing?.feedItemId ?? args.create.feedItemId,
           providerKey: args.update.providerKey,
           sourceKey: args.update.sourceKey,
@@ -760,8 +760,8 @@ class FakePrismaIngestionFeedClient
             (record) =>
               record.tenantId === args.where.tenantId &&
               record.workspaceId === args.where.workspaceId &&
-              (args.where.topicId === undefined ||
-                record.topicId === args.where.topicId) &&
+              (args.where.interestId === undefined ||
+                record.interestId === args.where.interestId) &&
               record.observedAt.getTime() >
                 args.where.observedAt.gt.getTime() &&
               matchesFeedSignalBaselineCohortFilters(
@@ -791,7 +791,7 @@ class FakePrismaIngestionFeedClient
     readonly tenantId: string;
     readonly workspaceId: string;
     readonly status: "VISIBLE";
-    readonly topicId?: string;
+    readonly interestId?: string;
     readonly observedAt?: { readonly gt?: Date; readonly lt?: Date };
     readonly providerKey?: string;
   }): PrismaFeedItemRecord[] {
@@ -800,7 +800,7 @@ class FakePrismaIngestionFeedClient
         record.tenantId === where.tenantId &&
         record.workspaceId === where.workspaceId &&
         record.status === where.status &&
-        (where.topicId === undefined || record.topicId === where.topicId) &&
+        (where.interestId === undefined || record.interestId === where.interestId) &&
         (where.providerKey === undefined ||
           record.providerKey === where.providerKey) &&
         (where.observedAt?.gt === undefined ||

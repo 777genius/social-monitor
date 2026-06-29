@@ -10,7 +10,7 @@ export type UpsertUserSummaryPreferenceCommand = {
   readonly workspaceId: WorkspaceId;
   readonly userId: string;
   readonly subscriptionId?: string;
-  readonly topicId?: string;
+  readonly interestId?: string;
   readonly language?: SummaryPolicyLanguage;
   readonly format?: SummaryPolicyFormat;
   readonly tone?: SummaryPolicyTone;

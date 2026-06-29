@@ -32,7 +32,7 @@ describe('Scan policy workspace authorization (e2e)', () => {
     const tenant = tenantId('tenant-scan-policy-authorization-e2e');
     const workspace = workspaceId('workspace-scan-policy-authorization-e2e');
     const topic = await request(app.getHttpServer())
-      .post('/topics')
+      .post('/interests')
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'owner')
@@ -45,7 +45,7 @@ describe('Scan policy workspace authorization (e2e)', () => {
       .expect(201);
 
     const binding = await request(app.getHttpServer())
-      .post(`/topics/${topic.body.topicId}/source-bindings`)
+      .post(`/interests/${topic.body.interestId}/source-bindings`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'owner')

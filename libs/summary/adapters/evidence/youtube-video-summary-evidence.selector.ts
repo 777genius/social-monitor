@@ -49,7 +49,7 @@ export class YoutubeVideoSummaryEvidenceSelector implements SummaryEvidenceSelec
         const summary = await this.provider.summarize({
           tenantId: params.tenantId,
           workspaceId: params.workspaceId,
-          topicId: params.topicId,
+          interestId: params.interestId,
           feedItemId: item.feedItemId,
           sourceItemId: item.sourceItemId,
           sourceBindingId: item.sourceBindingId,

@@ -26,7 +26,7 @@ import { InMemoryScanExecutionAttemptReadModel } from '../../adapters/persistenc
 import { InMemoryScanPolicyRepository } from '../../adapters/persistence/in-memory-scan-policy.repository';
 import { InMemorySourceBindingRepository } from '../../adapters/persistence/in-memory-source-binding.repository';
 import { InMemorySourceCredentialRepository } from '../../adapters/persistence/in-memory-source-credential.repository';
-import { InMemoryTopicRepository } from '../../adapters/persistence/in-memory-topic.repository';
+import { InMemoryInterestRepository } from '../../adapters/persistence/in-memory-interest.repository';
 import { PrismaMonitoringConnection } from '../../adapters/persistence/prisma/prisma-monitoring-connection';
 import type { PrismaMonitoringClient } from '../../adapters/persistence/prisma/prisma-monitoring-client';
 import { PrismaScanJobRepository } from '../../adapters/persistence/prisma/prisma-scan-job.repository';
@@ -34,7 +34,7 @@ import { PrismaScanExecutionAttemptReadModel } from '../../adapters/persistence/
 import { PrismaScanPolicyRepository } from '../../adapters/persistence/prisma/prisma-scan-policy.repository';
 import { PrismaSourceBindingRepository } from '../../adapters/persistence/prisma/prisma-source-binding.repository';
 import { PrismaSourceCredentialRepository } from '../../adapters/persistence/prisma/prisma-source-credential.repository';
-import { PrismaTopicRepository } from '../../adapters/persistence/prisma/prisma-topic.repository';
+import { PrismaInterestRepository } from '../../adapters/persistence/prisma/prisma-interest.repository';
 import { PrismaMonitoringOutboxAdapter } from '../../adapters/persistence/prisma/prisma-monitoring-outbox.adapter';
 import { UsageScanRequestQuotaAdapter } from '../../adapters/quota/usage-scan-request-quota.adapter';
 import { InMemoryScanQueueAdapter } from '../../adapters/queue/in-memory-scan-queue.adapter';
@@ -48,11 +48,11 @@ import {
   FakeSourceCatalogAdapter,
   shouldIncludeFixtureSourceCatalogEntries,
 } from '../../adapters/source-catalog/fake-source-catalog.adapter';
-import { ArchiveTopicUseCase } from '../../features/archive-topic/archive-topic.use-case';
+import { ArchiveInterestUseCase } from '../../features/archive-interest/archive-interest.use-case';
 import { BindSourceUseCase } from '../../features/bind-source/bind-source.use-case';
 import { ChangeSourceBindingStatusUseCase } from '../../features/change-source-binding-status/change-source-binding-status.use-case';
 import { CreateSourceCredentialUseCase } from '../../features/create-source-credential/create-source-credential.use-case';
-import { CreateTopicUseCase } from '../../features/create-topic/create-topic.use-case';
+import { CreateInterestUseCase } from '../../features/create-interest/create-interest.use-case';
 import { GetScanPolicyUseCase } from '../../features/get-scan-policy/get-scan-policy.use-case';
 import { GetScanStatusUseCase } from '../../features/get-scan-status/get-scan-status.use-case';
 import { GetSourceBindingHealthUseCase } from '../../features/get-source-binding-health/get-source-binding-health.use-case';
@@ -61,7 +61,8 @@ import { ListSourceBindingDailyHistoryUseCase } from '../../features/list-source
 import { ListSourceBindingOverviewUseCase } from '../../features/list-source-binding-overview/list-source-binding-overview.use-case';
 import { ListSourceBindingScansUseCase } from '../../features/list-source-binding-scans/list-source-binding-scans.use-case';
 import { ListSourceBindingsUseCase } from '../../features/list-source-bindings/list-source-bindings.use-case';
-import { ListTopicsUseCase } from '../../features/list-topics/list-topics.use-case';
+import { ListInterestsUseCase } from '../../features/list-interests/list-interests.use-case';
+import { PlanInterestCoverageUseCase } from '../../features/plan-interest-coverage/plan-interest-coverage.use-case';
 import { RecordScanExecutionUseCase } from '../../features/record-scan-execution/record-scan-execution.use-case';
 import { RequestScanUseCase } from '../../features/request-scan/request-scan.use-case';
 import { ResolveSourceCredentialUseCase } from '../../features/resolve-source-credential/resolve-source-credential.use-case';
@@ -69,7 +70,7 @@ import { RevokeSourceCredentialUseCase } from '../../features/revoke-source-cred
 import { RotateSourceCredentialUseCase } from '../../features/rotate-source-credential/rotate-source-credential.use-case';
 import { ScheduleDueScansUseCase } from '../../features/schedule-due-scans/schedule-due-scans.use-case';
 import { SetScanPolicyUseCase } from '../../features/set-scan-policy/set-scan-policy.use-case';
-import { UpdateTopicUseCase } from '../../features/update-topic/update-topic.use-case';
+import { UpdateInterestUseCase } from '../../features/update-interest/update-interest.use-case';
 import {
   defaultMonitoringCapacityLimits,
   type MonitoringCapacityLimits,
@@ -90,7 +91,7 @@ import type {
   SourceCredentialResolverPort,
   SourceCredentialVaultPort,
   SourceCatalogPort,
-  TopicRepositoryPort,
+  InterestRepositoryPort,
 } from '../../ports';
 
 import {
@@ -111,7 +112,7 @@ import {
   MONITORING_SOURCE_CREDENTIAL_REPOSITORY,
   MONITORING_SOURCE_CREDENTIAL_RESOLVER,
   MONITORING_SOURCE_CREDENTIAL_VAULT,
-  MONITORING_TOPIC_REPOSITORY,
+  MONITORING_INTEREST_REPOSITORY,
   type MonitoringPersistenceMode,
   type MonitoringScanQueueMode,
   monitoringPersistenceModeProvider,
@@ -124,7 +125,8 @@ import { ScanRequestController } from './scan-request.controller';
 import { ScanStatusController } from './scan-status.controller';
 import { SourceBindingController } from './source-binding.controller';
 import { SourceCredentialController } from './source-credential.controller';
-import { TopicController } from './topic.controller';
+import { InterestController } from './interest.controller';
+import { InterestCoveragePlanController } from './interest-coverage-plan.controller';
 
 type MonitoringScanJobStorePort = ScanJobRepositoryPort & ScanJobHistoryReadPort;
 
@@ -134,12 +136,13 @@ const MONITORING_QUEUE_PUBLISHER = Symbol('MONITORING_QUEUE_PUBLISHER');
 @Module({
   imports: [UsageRestModule, IdentityRestModule],
   controllers: [
-    TopicController,
+    InterestController,
     SourceBindingController,
     ScanPolicyController,
     ScanRequestController,
     ScanStatusController,
     SourceCredentialController,
+    InterestCoveragePlanController,
   ],
   providers: [
     monitoringPersistenceModeProvider,
@@ -151,14 +154,14 @@ const MONITORING_QUEUE_PUBLISHER = Symbol('MONITORING_QUEUE_PUBLISHER');
       inject: [MONITORING_PERSISTENCE_MODE],
     },
     {
-      provide: MONITORING_TOPIC_REPOSITORY,
+      provide: MONITORING_INTEREST_REPOSITORY,
       useFactory: (
         mode: MonitoringPersistenceMode,
         prisma: PrismaMonitoringClient | null,
-      ): TopicRepositoryPort =>
+      ): InterestRepositoryPort =>
         mode === 'prisma'
-          ? new PrismaTopicRepository(requirePrismaMonitoringClient(prisma))
-          : new InMemoryTopicRepository(),
+          ? new PrismaInterestRepository(requirePrismaMonitoringClient(prisma))
+          : new InMemoryInterestRepository(),
       inject: [MONITORING_PERSISTENCE_MODE, MONITORING_PRISMA_CLIENT],
     },
     {
@@ -327,42 +330,55 @@ const MONITORING_QUEUE_PUBLISHER = Symbol('MONITORING_QUEUE_PUBLISHER');
       inject: [ReserveUsageQuotaUseCase],
     },
     {
-      provide: CreateTopicUseCase,
+      provide: CreateInterestUseCase,
       useFactory: (
-        topics: TopicRepositoryPort,
+        interests: InterestRepositoryPort,
         outbox: OutboxPort,
         idempotency: IdempotencyPort,
       ) =>
-        new CreateTopicUseCase(
-          topics,
+        new CreateInterestUseCase(
+          interests,
           outbox,
           idempotency,
           new CryptoIdGenerator(),
           new SystemClock(),
           resolveMonitoringCapacityLimits(process.env),
       ),
-      inject: [MONITORING_TOPIC_REPOSITORY, MONITORING_OUTBOX, MONITORING_IDEMPOTENCY],
+      inject: [MONITORING_INTEREST_REPOSITORY, MONITORING_OUTBOX, MONITORING_IDEMPOTENCY],
     },
     {
-      provide: ListTopicsUseCase,
-      useFactory: (topics: TopicRepositoryPort) => new ListTopicsUseCase(topics),
-      inject: [MONITORING_TOPIC_REPOSITORY],
+      provide: ListInterestsUseCase,
+      useFactory: (interests: InterestRepositoryPort) => new ListInterestsUseCase(interests),
+      inject: [MONITORING_INTEREST_REPOSITORY],
     },
     {
-      provide: UpdateTopicUseCase,
-      useFactory: (topics: TopicRepositoryPort) => new UpdateTopicUseCase(topics),
-      inject: [MONITORING_TOPIC_REPOSITORY],
+      provide: PlanInterestCoverageUseCase,
+      useFactory: (
+        interests: InterestRepositoryPort,
+        sourceBindings: SourceBindingRepositoryPort,
+        sourceCatalog: SourceCatalogPort,
+      ) => new PlanInterestCoverageUseCase(interests, sourceBindings, sourceCatalog),
+      inject: [
+        MONITORING_INTEREST_REPOSITORY,
+        MONITORING_SOURCE_BINDING_REPOSITORY,
+        MONITORING_SOURCE_CATALOG,
+      ],
     },
     {
-      provide: ArchiveTopicUseCase,
-      useFactory: (topics: TopicRepositoryPort) =>
-        new ArchiveTopicUseCase(topics, new SystemClock()),
-      inject: [MONITORING_TOPIC_REPOSITORY],
+      provide: UpdateInterestUseCase,
+      useFactory: (interests: InterestRepositoryPort) => new UpdateInterestUseCase(interests),
+      inject: [MONITORING_INTEREST_REPOSITORY],
+    },
+    {
+      provide: ArchiveInterestUseCase,
+      useFactory: (interests: InterestRepositoryPort) =>
+        new ArchiveInterestUseCase(interests, new SystemClock()),
+      inject: [MONITORING_INTEREST_REPOSITORY],
     },
     {
       provide: BindSourceUseCase,
       useFactory: (
-        topics: TopicRepositoryPort,
+        interests: InterestRepositoryPort,
         bindings: SourceBindingRepositoryPort,
         sourceCatalog: SourceCatalogPort,
         outbox: OutboxPort,
@@ -370,7 +386,7 @@ const MONITORING_QUEUE_PUBLISHER = Symbol('MONITORING_QUEUE_PUBLISHER');
         configProtector: SourceBindingConfigProtectorPort,
       ) =>
         new BindSourceUseCase(
-          topics,
+          interests,
           bindings,
           sourceCatalog,
           outbox,
@@ -381,7 +397,7 @@ const MONITORING_QUEUE_PUBLISHER = Symbol('MONITORING_QUEUE_PUBLISHER');
           resolveMonitoringCapacityLimits(process.env),
         ),
       inject: [
-        MONITORING_TOPIC_REPOSITORY,
+        MONITORING_INTEREST_REPOSITORY,
         MONITORING_SOURCE_BINDING_REPOSITORY,
         MONITORING_SOURCE_CATALOG,
         MONITORING_OUTBOX,
@@ -392,10 +408,10 @@ const MONITORING_QUEUE_PUBLISHER = Symbol('MONITORING_QUEUE_PUBLISHER');
     {
       provide: ListSourceBindingsUseCase,
       useFactory: (
-        topics: TopicRepositoryPort,
+        interests: InterestRepositoryPort,
         bindings: SourceBindingRepositoryPort,
-      ) => new ListSourceBindingsUseCase(topics, bindings),
-      inject: [MONITORING_TOPIC_REPOSITORY, MONITORING_SOURCE_BINDING_REPOSITORY],
+      ) => new ListSourceBindingsUseCase(interests, bindings),
+      inject: [MONITORING_INTEREST_REPOSITORY, MONITORING_SOURCE_BINDING_REPOSITORY],
     },
     {
       provide: CreateSourceCredentialUseCase,
@@ -606,7 +622,8 @@ const MONITORING_QUEUE_PUBLISHER = Symbol('MONITORING_QUEUE_PUBLISHER');
   ],
   exports: [
     BindSourceUseCase,
-    CreateTopicUseCase,
+    CreateInterestUseCase,
+    PlanInterestCoverageUseCase,
     ScheduleDueScansUseCase,
     SetScanPolicyUseCase,
     GetScanStatusUseCase,
@@ -666,8 +683,8 @@ const parseOptionalPositiveInteger = (value: string | undefined): number | undef
 };
 
 const resolveMonitoringCapacityLimits = (env: NodeJS.ProcessEnv): Required<MonitoringCapacityLimits> => ({
-  maxTopicsPerWorkspace: parseOptionalPositiveInteger(env.MONITORING_MAX_TOPICS_PER_WORKSPACE) ??
-    defaultMonitoringCapacityLimits.maxTopicsPerWorkspace,
-  maxEnabledSourcesPerTopic: parseOptionalPositiveInteger(env.MONITORING_MAX_ENABLED_SOURCES_PER_TOPIC) ??
-    defaultMonitoringCapacityLimits.maxEnabledSourcesPerTopic,
+  maxInterestsPerWorkspace: parseOptionalPositiveInteger(env.MONITORING_MAX_INTERESTS_PER_WORKSPACE) ??
+    defaultMonitoringCapacityLimits.maxInterestsPerWorkspace,
+  maxEnabledSourcesPerInterest: parseOptionalPositiveInteger(env.MONITORING_MAX_ENABLED_SOURCES_PER_INTEREST) ??
+    defaultMonitoringCapacityLimits.maxEnabledSourcesPerInterest,
 });

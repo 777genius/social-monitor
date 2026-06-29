@@ -45,7 +45,7 @@ Fields:
 
 Read scopes:
 
-- `read:topics`
+- `read:interests`
 - `read:feed`
 - `read:summaries`
 - `read:delivery_status`
@@ -53,13 +53,13 @@ Read scopes:
 
 Write scopes:
 
-- `write:topics`
+- `write:interests`
 - `write:source_bindings`
 - `write:scan_requests`
 - `write:summaries`
 - `write:webhook_endpoints`
 
-Headless MVP clients can create topics, bind sources, set scan policy, request scans, request summaries and manage webhook endpoints with API keys. Workspace role headers remain supported for operator/admin flows.
+Headless MVP clients can create interests, bind sources, set scan policy, request scans, request summaries and manage webhook endpoints with API keys. Workspace role headers remain supported for operator/admin flows.
 
 ## Best-Fact Choice
 

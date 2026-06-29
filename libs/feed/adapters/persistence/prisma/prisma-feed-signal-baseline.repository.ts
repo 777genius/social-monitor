@@ -15,7 +15,7 @@ export class PrismaFeedSignalBaselineRepository implements FeedSignalBaselineRep
     const where = {
       tenantId: query.tenantId,
       workspaceId: query.workspaceId,
-      topicId: query.topicId,
+      interestId: query.interestId,
       observedAt: { gt: query.observedAfter },
       ...(cohortFilters.length === 0
         ? {}
@@ -35,7 +35,7 @@ export class PrismaFeedSignalBaselineRepository implements FeedSignalBaselineRep
 
     return records.map((record) => ({
       feedItemId: record.feedItemId,
-      topicId: record.topicId,
+      interestId: record.interestId,
       providerKey: record.providerKey,
       sourceKey: record.sourceKey,
       contentType: record.contentType,

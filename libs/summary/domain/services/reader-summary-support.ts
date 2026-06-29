@@ -15,7 +15,7 @@ import {
   firstSentence,
   nonEmpty,
   plural,
-  topicTitle,
+  interestTitle,
   uniqueNonEmpty,
 } from "../value-objects/summary-text";
 
@@ -23,12 +23,12 @@ export { plural } from "../value-objects/summary-text";
 
 export const buildMatchedRules = (
   evidence: readonly SummaryEvidenceItem[],
-  topicIds: readonly string[],
+  interestIds: readonly string[],
   providerKey: string,
 ): readonly string[] => {
   const explicitRules = evidence.flatMap((item) => item.matchedRules ?? []);
   const fallbackRules = [
-    ...topicIds.map((topicId) => `topic:${topicId}`),
+    ...interestIds.map((interestId) => `interest:${interestId}`),
     ...evidence.map((item) => `source-binding:${item.sourceBindingId}`),
     `provider:${providerKey}`,
   ];
@@ -53,9 +53,9 @@ export const buildWhyNow = (
     ...evidence.map((item) => item.providerKey),
   ]).map((providerKey) => providerNamesByKey.get(providerKey) ?? providerKey);
   const duplicateCount = cluster?.duplicateFeedItemIds.length ?? 0;
-  const topicCount =
-    cluster?.topicIds.length ??
-    uniqueNonEmpty(evidence.map((item) => item.topicId)).length;
+  const interestCount =
+    cluster?.interestIds.length ??
+    uniqueNonEmpty(evidence.map((item) => item.interestId)).length;
   const coverage =
     providers.length > 1
       ? `Current summary window has cross-source coverage from ${providers.slice(0, 3).join(", ")}`
@@ -64,9 +64,9 @@ export const buildWhyNow = (
     duplicateCount === 0
       ? ""
       : ` and clustered ${duplicateCount} related item${plural(duplicateCount)}`;
-  const topicText = topicCount > 1 ? ` across ${topicCount} topics` : "";
+  const interestText = interestCount > 1 ? ` across ${interestCount} interests` : "";
 
-  return `${coverage}${topicText}${duplicateText}.`;
+  return `${coverage}${interestText}${duplicateText}.`;
 };
 
 export { normalizeSignalScore };
@@ -433,4 +433,4 @@ export { compactUnique };
 
 export { nonEmpty };
 
-export { topicTitle };
+export { interestTitle };

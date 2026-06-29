@@ -5,7 +5,7 @@ import type {
   ReaderSummaryQualityFlag,
   ReaderSummaryContent,
   ReaderSummaryItem,
-  ReaderSummaryTopicSection,
+  ReaderSummaryInterestSection,
   ReaderSummarySourceMixEntry,
   ReaderSummaryTrendDelta,
 } from "../../domain";
@@ -13,10 +13,10 @@ import type {
 const nextActionKinds = new Set<ReaderSummaryNextAction["kind"]>([
   "read_source",
   "watch_repository",
-  "monitor_topic",
+  "monitor_interest",
   "compare_sources",
   "ignore_low_confidence",
-  "add_topic_rule",
+  "add_interest_rule",
   "request_deeper_scan",
   "mark_relevant",
   "mark_not_relevant",
@@ -49,7 +49,7 @@ export const openAiReaderSummaryContentJsonSchemaDefs = {
       "headline",
       "oneLineTakeaway",
       "bullets",
-      "topicSections",
+      "interestSections",
       "sourceMix",
       "topReads",
       "trendDelta",
@@ -61,9 +61,9 @@ export const openAiReaderSummaryContentJsonSchemaDefs = {
       headline: readerStringSchema(160),
       oneLineTakeaway: readerStringSchema(260),
       bullets: readerStringArraySchema(0),
-      topicSections: {
+      interestSections: {
         type: "array",
-        items: { $ref: "#/$defs/readerTopicSection" },
+        items: { $ref: "#/$defs/readerInterestSection" },
         maxItems: 0,
       },
       sourceMix: {
@@ -86,10 +86,10 @@ export const openAiReaderSummaryContentJsonSchemaDefs = {
       },
     },
   ),
-  readerTopicSection: readerObjectSchema(
-    ["title", "insight", "items", "citationIds", "topicId"],
+  readerInterestSection: readerObjectSchema(
+    ["title", "insight", "items", "citationIds", "interestId"],
     {
-      topicId: { type: ["string", "null"] },
+      interestId: { type: ["string", "null"] },
       title: readerStringSchema(140),
       insight: readerStringSchema(280),
       items: {
@@ -162,10 +162,10 @@ export const normalizeOpenAiReaderBrief = (
       "reader summary content bullets",
     ),
     qualityState: normalizeQualityState(value.qualityState, sourceMix),
-    topicSections: requiredArray<Record<string, unknown>>(
-      value.topicSections,
-      "reader summary content topic sections",
-    ).map((section) => normalizeReaderTopicSection(section, citationById)),
+    interestSections: requiredArray<Record<string, unknown>>(
+      value.interestSections,
+      "reader summary content interest sections",
+    ).map((section) => normalizeReaderInterestSection(section, citationById)),
     sourceMix,
     topReads: requiredArray<Record<string, unknown>>(
       value.topReads,
@@ -186,18 +186,18 @@ export const normalizeOpenAiReaderBrief = (
   };
 };
 
-const normalizeReaderTopicSection = (
+const normalizeReaderInterestSection = (
   value: Record<string, unknown>,
   citationById: ReadonlyMap<string, ReaderSummaryCitation>,
-): ReaderSummaryTopicSection => ({
-  topicId: optionalString(value.topicId),
-  title: requiredString(value.title, "reader topic title"),
-  insight: requiredString(value.insight, "reader topic insight"),
+): ReaderSummaryInterestSection => ({
+  interestId: optionalString(value.interestId),
+  title: requiredString(value.title, "reader interest title"),
+  insight: requiredString(value.insight, "reader interest insight"),
   items: requiredArray<Record<string, unknown>>(
     value.items,
-    "reader topic items",
+    "reader interest items",
   ).map((item) => normalizeReaderItem(item, citationById)),
-  citationIds: requiredStringArray(value.citationIds, "reader topic citations"),
+  citationIds: requiredStringArray(value.citationIds, "reader interest citations"),
 });
 
 const normalizeReaderItem = (
@@ -223,10 +223,10 @@ const normalizeReaderItem = (
     providerName: providerKey,
     primaryActionKind: "read_source",
     reason,
-    matchedTopicIds:
-      optionalStringArray(value.matchedTopicIds).length > 0
-        ? optionalStringArray(value.matchedTopicIds)
-        : ["unknown-topic"],
+    matchedInterestIds:
+      optionalStringArray(value.matchedInterestIds).length > 0
+        ? optionalStringArray(value.matchedInterestIds)
+        : ["unknown-interest"],
     matchedRules:
       optionalStringArray(value.matchedRules).length > 0
         ? optionalStringArray(value.matchedRules)
@@ -269,7 +269,7 @@ const normalizeSourceMixEntry = (
   ),
   singleSourceOnly:
     typeof value.singleSourceOnly === "boolean" ? value.singleSourceOnly : true,
-  topicIds: optionalStringArray(value.topicIds),
+  interestIds: optionalStringArray(value.interestIds),
 });
 
 const normalizeTrendDelta = (

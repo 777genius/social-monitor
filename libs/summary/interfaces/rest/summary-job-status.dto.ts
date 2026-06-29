@@ -24,7 +24,7 @@ export class SummaryJobStatusResponseDto {
   declare readonly summaryJobId: string;
 
   @ApiProperty()
-  declare readonly topicId: string;
+  declare readonly interestId: string;
 
   @ApiProperty({ enum: summaryJobStatuses })
   declare readonly status: (typeof summaryJobStatuses)[number];

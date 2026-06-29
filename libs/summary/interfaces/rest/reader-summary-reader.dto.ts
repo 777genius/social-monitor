@@ -43,7 +43,7 @@ export class ReaderSummaryReaderItemDto {
   declare readonly reason: string;
 
   @ApiProperty({ type: [String] })
-  declare readonly matchedTopicIds: readonly string[];
+  declare readonly matchedInterestIds: readonly string[];
 
   @ApiProperty({ type: [String] })
   declare readonly matchedRules: readonly string[];
@@ -73,9 +73,9 @@ export class ReaderSummaryReaderItemDto {
   declare readonly citationIds: readonly string[];
 }
 
-export class ReaderSummaryReaderTopicSectionDto {
+export class ReaderSummaryReaderInterestSectionDto {
   @ApiPropertyOptional()
-  declare readonly topicId?: string;
+  declare readonly interestId?: string;
 
   @ApiProperty()
   declare readonly title: string;
@@ -110,7 +110,7 @@ export class ReaderSummarySourceMixEntryDto {
   declare readonly singleSourceOnly: boolean;
 
   @ApiProperty({ type: [String] })
-  declare readonly topicIds: readonly string[];
+  declare readonly interestIds: readonly string[];
 }
 
 export class ReaderSummaryTrendDeltaDto {
@@ -171,8 +171,8 @@ export class ReaderSummaryReaderBriefDto {
   @ApiProperty({ type: () => ReaderSummaryReaderQualityStateDto })
   declare readonly qualityState: ReaderSummaryReaderQualityStateDto;
 
-  @ApiProperty({ type: () => [ReaderSummaryReaderTopicSectionDto] })
-  declare readonly topicSections: readonly ReaderSummaryReaderTopicSectionDto[];
+  @ApiProperty({ type: () => [ReaderSummaryReaderInterestSectionDto] })
+  declare readonly interestSections: readonly ReaderSummaryReaderInterestSectionDto[];
 
   @ApiProperty({ type: () => [ReaderSummarySourceMixEntryDto] })
   declare readonly sourceMix: readonly ReaderSummarySourceMixEntryDto[];

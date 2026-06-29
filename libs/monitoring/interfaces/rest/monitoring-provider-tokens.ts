@@ -16,7 +16,7 @@ import type {
   SourceCredentialResolverPort,
   SourceCredentialVaultPort,
   SourceCatalogPort,
-  TopicRepositoryPort,
+  InterestRepositoryPort,
 } from '../../ports';
 
 export type MonitoringPersistenceMode = 'in-memory' | 'prisma';
@@ -25,7 +25,7 @@ export type MonitoringScanQueueMode = 'in-memory' | 'rabbitmq';
 export const MONITORING_PERSISTENCE_MODE = Symbol('MONITORING_PERSISTENCE_MODE');
 export const MONITORING_SCAN_QUEUE_MODE = Symbol('MONITORING_SCAN_QUEUE_MODE');
 export const MONITORING_PRISMA_CLIENT = Symbol('MONITORING_PRISMA_CLIENT');
-export const MONITORING_TOPIC_REPOSITORY = Symbol('MONITORING_TOPIC_REPOSITORY');
+export const MONITORING_INTEREST_REPOSITORY = Symbol('MONITORING_INTEREST_REPOSITORY');
 export const MONITORING_SOURCE_BINDING_REPOSITORY = Symbol('MONITORING_SOURCE_BINDING_REPOSITORY');
 export const MONITORING_SCAN_POLICY_REPOSITORY = Symbol('MONITORING_SCAN_POLICY_REPOSITORY');
 export const MONITORING_SCAN_JOB_REPOSITORY = Symbol('MONITORING_SCAN_JOB_REPOSITORY');
@@ -47,7 +47,7 @@ export type MonitoringProviderTokenMap = {
   readonly [MONITORING_PERSISTENCE_MODE]: MonitoringPersistenceMode;
   readonly [MONITORING_SCAN_QUEUE_MODE]: MonitoringScanQueueMode;
   readonly [MONITORING_PRISMA_CLIENT]: unknown;
-  readonly [MONITORING_TOPIC_REPOSITORY]: TopicRepositoryPort;
+  readonly [MONITORING_INTEREST_REPOSITORY]: InterestRepositoryPort;
   readonly [MONITORING_SOURCE_BINDING_REPOSITORY]: SourceBindingRepositoryPort;
   readonly [MONITORING_SCAN_POLICY_REPOSITORY]: ScanPolicyRepositoryPort;
   readonly [MONITORING_SCAN_JOB_REPOSITORY]: ScanJobRepositoryPort;

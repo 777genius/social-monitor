@@ -14,7 +14,7 @@ export const openAiReaderSummaryJsonSchema = {
     "executiveSummary",
     "content",
     "topStories",
-    "topicHighlights",
+    "interestHighlights",
     "repeatedSignals",
     "risksAndUnknowns",
     "citationMap",
@@ -27,9 +27,9 @@ export const openAiReaderSummaryJsonSchema = {
     executiveSummary: stringSchema(1_200),
     content: { $ref: "#/$defs/content" },
     topStories: arraySchema({ $ref: "#/$defs/topStory" }, 10),
-    topicHighlights: {
+    interestHighlights: {
       type: "array",
-      items: { $ref: "#/$defs/topicHighlight" },
+      items: { $ref: "#/$defs/interestHighlight" },
       maxItems: 5,
     },
     repeatedSignals: {
@@ -62,7 +62,7 @@ export const openAiReaderSummaryJsonSchema = {
         "storyClusterId",
         "title",
         "summary",
-        "topicIds",
+        "interestIds",
         "providerKeys",
         "citationIds",
       ],
@@ -70,26 +70,26 @@ export const openAiReaderSummaryJsonSchema = {
         storyClusterId: stringSchema(120),
         title: stringSchema(180),
         summary: stringSchema(420),
-        topicIds: stringArraySchema(5),
+        interestIds: stringArraySchema(5),
         providerKeys: stringArraySchema(5),
         citationIds: stringArraySchema(2),
       },
     ),
-    topicHighlight: objectSchema(
-      ["topicId", "title", "summary", "citationIds"],
+    interestHighlight: objectSchema(
+      ["interestId", "title", "summary", "citationIds"],
       {
-        topicId: stringSchema(120),
+        interestId: stringSchema(120),
         title: stringSchema(140),
         summary: stringSchema(320),
         citationIds: stringArraySchema(3),
       },
     ),
     repeatedSignal: objectSchema(
-      ["storyClusterId", "title", "topicIds", "citationIds"],
+      ["storyClusterId", "title", "interestIds", "citationIds"],
       {
         storyClusterId: stringSchema(120),
         title: stringSchema(180),
-        topicIds: stringArraySchema(5),
+        interestIds: stringArraySchema(5),
         citationIds: stringArraySchema(3),
       },
     ),

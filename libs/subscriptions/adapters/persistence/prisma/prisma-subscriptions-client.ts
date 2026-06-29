@@ -73,7 +73,7 @@ export type PrismaUserSummaryPreferenceCreate = PrismaUserSummaryPreferenceMutat
   readonly workspaceId: string;
   readonly userId: string;
   readonly subscriptionId: string | null;
-  readonly topicId: string | null;
+  readonly interestId: string | null;
   readonly createdAt: Date;
 };
 
@@ -153,7 +153,7 @@ export type PrismaSubscriptionsClient = {
         readonly workspaceId: string;
         readonly userId: string;
         readonly subscriptionId?: string | null;
-        readonly topicId?: string | null;
+        readonly interestId?: string | null;
       };
     }): Promise<PrismaUserSummaryPreferenceRecord | null>;
   };

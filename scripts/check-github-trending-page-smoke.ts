@@ -61,7 +61,7 @@ void run().catch((error) => {
 async function run(): Promise<void> {
   const tenant = tenantId('tenant-github-trending-page-smoke');
   const workspace = workspaceId('workspace-github-trending-page-smoke');
-  const topicId = 'topic-github-trending-page';
+  const interestId = 'topic-github-trending-page';
   const clock = new FixedClock(new Date('2026-06-24T12:00:00.000Z'));
   const provider = new GitHubTrendingPageSourceProvider(
     new FixtureGitHubTrendingPageClient(),
@@ -103,7 +103,7 @@ async function run(): Promise<void> {
     tenantId: tenant,
     workspaceId: workspace,
     scanJobId: 'scan-github-trending-page-smoke',
-    topicId,
+    interestId,
     sourceBindingId: 'binding-github-trending-page-smoke',
     scanPolicyId: 'policy-github-trending-page-smoke',
     providerKey: GITHUB_TRENDING_PAGE_PROVIDER_KEY,
@@ -140,7 +140,7 @@ async function run(): Promise<void> {
   const feed = await feedItems.list({
     tenantId: tenant,
     workspaceId: workspace,
-    topicId,
+    interestId,
     limit: 10,
   });
   assert(

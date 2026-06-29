@@ -9,6 +9,7 @@ part of 'summary_job_status_response_dto.dart';
 SummaryJobStatusResponseDto _$SummaryJobStatusResponseDtoFromJson(
   Map<String, dynamic> json,
 ) => SummaryJobStatusResponseDto(
+  interestId: json['interestId'] as String,
   requestedAt: DateTime.parse(json['requestedAt'] as String),
   status: SummaryJobStatusResponseDtoStatusStatus.fromJson(
     json['status'] as String,
@@ -19,7 +20,6 @@ SummaryJobStatusResponseDto _$SummaryJobStatusResponseDtoFromJson(
         (e) => SummaryJobTimelineEventDto.fromJson(e as Map<String, dynamic>),
       )
       .toList(),
-  topicId: json['topicId'] as String,
   completedAt: json['completedAt'] == null
       ? null
       : DateTime.parse(json['completedAt'] as String),
@@ -39,11 +39,11 @@ Map<String, dynamic> _$SummaryJobStatusResponseDtoToJson(
   'completedAt': instance.completedAt?.toIso8601String(),
   'failedAt': instance.failedAt?.toIso8601String(),
   'failureReason': instance.failureReason,
+  'interestId': instance.interestId,
   'requestedAt': instance.requestedAt.toIso8601String(),
   'startedAt': instance.startedAt?.toIso8601String(),
   'status': instance.status,
   'summaryId': instance.summaryId,
   'summaryJobId': instance.summaryJobId,
   'timeline': instance.timeline,
-  'topicId': instance.topicId,
 };

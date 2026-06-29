@@ -30,7 +30,7 @@ export class PrismaUserSummaryPreferenceRepository implements UserSummaryPrefere
         workspaceId: snapshot.workspaceId,
         userId: snapshot.userId,
         subscriptionId: snapshot.subscriptionId ?? null,
-        topicId: snapshot.topicId ?? null,
+        interestId: snapshot.interestId ?? null,
         language: snapshot.language ?? null,
         format: snapshot.format ?? null,
         tone: snapshot.tone ?? null,
@@ -60,15 +60,15 @@ export class PrismaUserSummaryPreferenceRepository implements UserSummaryPrefere
     return record === null ? null : userSummaryPreferenceFromPrisma(record);
   }
 
-  async findByTopic(
-    params: Parameters<UserSummaryPreferenceRepositoryPort['findByTopic']>[0],
+  async findByInterest(
+    params: Parameters<UserSummaryPreferenceRepositoryPort['findByInterest']>[0],
   ): Promise<UserSummaryPreference | null> {
     const record = await this.prisma.userSummaryPreference.findFirst({
       where: {
         tenantId: params.tenantId,
         workspaceId: params.workspaceId,
         userId: params.userId,
-        topicId: params.topicId,
+        interestId: params.interestId,
       },
     });
 
@@ -91,11 +91,11 @@ export class PrismaUserSummaryPreferenceRepository implements UserSummaryPrefere
       }
     }
 
-    return this.findByTopic({
+    return this.findByInterest({
       tenantId: params.tenantId,
       workspaceId: params.workspaceId,
       userId: params.userId,
-      topicId: params.topicId,
+      interestId: params.interestId,
     });
   }
 }

@@ -23,7 +23,7 @@ Base fields:
   "title": "Validation failed",
   "status": 400,
   "detail": "One or more fields are invalid.",
-  "instance": "/v1/topics",
+  "instance": "/v1/interests",
   "code": "validation_failed",
   "trace_id": "..."
 }

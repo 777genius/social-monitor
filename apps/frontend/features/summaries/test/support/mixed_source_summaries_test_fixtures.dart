@@ -25,7 +25,7 @@ ReaderSummaryApiDto mixedSourceReaderSummaryApiDto() {
           storyClusterCount: 2,
           crossSourceClusterCount: 1,
           singleSourceOnly: false,
-          topicIds: ['ai-developer-tools'],
+          interestIds: ['ai-developer-tools'],
         ),
         SourceMixEntryApiDto(
           providerKey: 'github-trending-page',
@@ -34,7 +34,7 @@ ReaderSummaryApiDto mixedSourceReaderSummaryApiDto() {
           storyClusterCount: 2,
           crossSourceClusterCount: 1,
           singleSourceOnly: false,
-          topicIds: ['ai-developer-tools'],
+          interestIds: ['ai-developer-tools'],
         ),
         SourceMixEntryApiDto(
           providerKey: 'hacker-news',
@@ -43,7 +43,7 @@ ReaderSummaryApiDto mixedSourceReaderSummaryApiDto() {
           storyClusterCount: 2,
           crossSourceClusterCount: 1,
           singleSourceOnly: false,
-          topicIds: ['ai-developer-tools'],
+          interestIds: ['ai-developer-tools'],
         ),
       ],
       topReads: const [
@@ -51,8 +51,8 @@ ReaderSummaryApiDto mixedSourceReaderSummaryApiDto() {
           title: 'Reddit thread on agent reliability',
           providerKey: 'reddit',
           reason: 'High-engagement Reddit discussion with concrete failures.',
-          matchedTopicIds: ['ai-developer-tools'],
-          matchedRules: ['provider:reddit', 'topic:ai-developer-tools'],
+          matchedInterestIds: ['ai-developer-tools'],
+          matchedRules: ['provider:reddit', 'interest:ai-developer-tools'],
           signalScore: 0.94,
           providerMetrics: [
             ProviderMetricApiDto(label: 'Reddit score', value: '540'),
@@ -67,10 +67,10 @@ ReaderSummaryApiDto mixedSourceReaderSummaryApiDto() {
           title: 'calesthio/OpenMontage',
           providerKey: 'github-trending-page',
           reason: 'Daily GitHub Trending repository in the AI workflow space.',
-          matchedTopicIds: ['ai-developer-tools'],
+          matchedInterestIds: ['ai-developer-tools'],
           matchedRules: [
             'provider:github-trending-page',
-            'topic:ai-developer-tools',
+            'interest:ai-developer-tools',
           ],
           signalScore: 0.89,
           providerMetrics: [
@@ -89,8 +89,8 @@ ReaderSummaryApiDto mixedSourceReaderSummaryApiDto() {
           title: 'HN discussion on model routing',
           providerKey: 'hacker-news',
           reason: 'Hacker News discussion adds technical review context.',
-          matchedTopicIds: ['ai-developer-tools'],
-          matchedRules: ['provider:hacker-news', 'topic:ai-developer-tools'],
+          matchedInterestIds: ['ai-developer-tools'],
+          matchedRules: ['provider:hacker-news', 'interest:ai-developer-tools'],
           signalScore: 0.83,
           providerMetrics: [
             ProviderMetricApiDto(label: 'HN points', value: '312'),

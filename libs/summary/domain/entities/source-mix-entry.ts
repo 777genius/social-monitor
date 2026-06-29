@@ -5,5 +5,5 @@ export type SourceMixEntry = {
   readonly storyClusterCount: number;
   readonly crossSourceClusterCount: number;
   readonly singleSourceOnly: boolean;
-  readonly topicIds: readonly string[];
+  readonly interestIds: readonly string[];
 };

@@ -14,4 +14,4 @@ export * from './source-credential-refresh.port';
 export * from './source-credential-resolver.port';
 export * from './source-credential-vault.port';
 export * from './source-catalog.port';
-export * from './topic-repository.port';
+export * from './interest-repository.port';

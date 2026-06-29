@@ -98,7 +98,7 @@ describe('RequestSummaryUseCase', () => {
     const command = {
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       idempotencyKey: 'summary-1',
       correlationId: 'correlation-1',
     };
@@ -133,7 +133,7 @@ describe('RequestSummaryUseCase', () => {
     ]);
   });
 
-  it('rejects empty topic id', async () => {
+  it('rejects empty interest id', async () => {
     const useCase = new RequestSummaryUseCase(
       new FakeSummaryJobs(),
       new FakeSummaryJobQueue(),
@@ -145,7 +145,7 @@ describe('RequestSummaryUseCase', () => {
     const result = await useCase.execute({
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
-      topicId: ' ',
+      interestId: ' ',
       idempotencyKey: 'summary-1',
       correlationId: 'correlation-1',
     });
@@ -165,7 +165,7 @@ describe('RequestSummaryUseCase', () => {
     const result = await useCase.execute({
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       idempotencyKey: ' ',
       correlationId: 'correlation-1',
     });
@@ -189,7 +189,7 @@ describe('RequestSummaryUseCase', () => {
     const baseCommand = {
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       userId: 'user-1',
       subscriptionId: 'subscription-1',
       idempotencyKey: 'personalized-summary-1',
@@ -232,7 +232,7 @@ describe('RequestSummaryUseCase', () => {
     const result = await useCase.execute({
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       idempotencyKey: 'summary-1',
       correlationId: 'correlation-1',
     });
@@ -264,7 +264,7 @@ describe('RequestSummaryUseCase', () => {
     const result = await useCase.execute({
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       idempotencyKey: 'summary-1',
       correlationId: 'correlation-1',
     });

@@ -18,23 +18,25 @@ final class FeedFeatureModule extends Module {
         tenantId: 'tenant-demo',
         workspaceId: 'ws-demo',
       ),
-      initialTopicId = null,
-      initialTopicTitle = null;
+      initialInterestId = null,
+      initialInterestTitle = null;
 
   FeedFeatureModule.generatedApi({
     required this.generatedApiRuntime,
     required this.scope,
-    this.initialTopicId,
-    this.initialTopicTitle,
+    this.initialInterestId,
+    this.initialInterestTitle,
   });
 
   final Object? generatedApiRuntime;
   final WorkspaceScope scope;
-  final String? initialTopicId;
-  final String? initialTopicTitle;
+  final String? initialInterestId;
+  final String? initialInterestTitle;
 
   Object get retentionKey {
-    final topicPart = initialTopicId == null ? 'all' : initialTopicId!.trim();
+    final topicPart = initialInterestId == null
+        ? 'all'
+        : initialInterestId!.trim();
     return 'feed-${scope.tenantId}-${scope.workspaceId}-$topicPart';
   }
 
@@ -50,7 +52,7 @@ final class FeedFeatureModule extends Module {
         listFeedItems: ListFeedItemsUseCase(i.get<FeedItemCatalog>()),
         loadFeedItem: LoadFeedItemUseCase(i.get<FeedItemCatalog>()),
         scope: scope,
-        initialTopicId: initialTopicId,
+        initialInterestId: initialInterestId,
       ),
     );
   }

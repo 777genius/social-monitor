@@ -73,13 +73,13 @@ class FakeSummaryJobRepository implements SummaryJobRepositoryPort {
     }).slice(0, params.limit);
   }
 
-  latestRequestedAt(params: { readonly tenantId: string; readonly workspaceId: string; readonly topicId: string }): Date | undefined {
+  latestRequestedAt(params: { readonly tenantId: string; readonly workspaceId: string; readonly interestId: string }): Date | undefined {
     return [...this.jobs.values()]
       .map((job) => job.toSnapshot())
       .filter((snapshot) => (
         snapshot.tenantId === params.tenantId &&
         snapshot.workspaceId === params.workspaceId &&
-        snapshot.topicId === params.topicId
+        snapshot.interestId === params.interestId
       ))
       .map((snapshot) => snapshot.requestedAt)
       .sort((left, right) => right.getTime() - left.getTime())[0];
@@ -91,13 +91,13 @@ class FakeSummaryPolicyRepository implements SummaryPolicyRepositoryPort {
 
   async save(policy: SummaryPolicy): Promise<void> {
     const snapshot = policy.toSnapshot();
-    this.policies.set(`${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.topicId}`, policy);
+    this.policies.set(`${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.interestId}`, policy);
   }
 
-  async findByTopic(
-    query: Parameters<SummaryPolicyRepositoryPort['findByTopic']>[0],
+  async findByInterest(
+    query: Parameters<SummaryPolicyRepositoryPort['findByInterest']>[0],
   ): Promise<SummaryPolicy | null> {
-    return this.policies.get(`${query.tenantId}:${query.workspaceId}:${query.topicId}`) ?? null;
+    return this.policies.get(`${query.tenantId}:${query.workspaceId}:${query.interestId}`) ?? null;
   }
 
   all(): readonly SummaryPolicy[] {
@@ -109,25 +109,25 @@ class FakeFeedItems {
   private readonly items: {
     readonly tenantId: string;
     readonly workspaceId: string;
-    readonly topicId: string;
+    readonly interestId: string;
     readonly observedAt: Date;
   }[] = [];
 
-  upsert(params: { readonly tenantId: string; readonly workspaceId: string; readonly topicId: string; readonly observedAt: Date }): void {
+  upsert(params: { readonly tenantId: string; readonly workspaceId: string; readonly interestId: string; readonly observedAt: Date }): void {
     this.items.push(params);
   }
 
   latestObservedAt(params: {
     readonly tenantId: string;
     readonly workspaceId: string;
-    readonly topicId: string;
+    readonly interestId: string;
     readonly before: Date;
   }): Date | undefined {
     return this.items
       .filter((item) => (
         item.tenantId === params.tenantId &&
         item.workspaceId === params.workspaceId &&
-        item.topicId === params.topicId &&
+        item.interestId === params.interestId &&
         item.observedAt.getTime() <= params.before.getTime()
       ))
       .map((item) => item.observedAt)
@@ -137,13 +137,13 @@ class FakeFeedItems {
   countAfter(params: {
     readonly tenantId: string;
     readonly workspaceId: string;
-    readonly topicId: string;
+    readonly interestId: string;
     readonly after?: Date;
   }): number {
     return this.items.filter((item) => (
       item.tenantId === params.tenantId &&
       item.workspaceId === params.workspaceId &&
-      item.topicId === params.topicId &&
+      item.interestId === params.interestId &&
       (params.after === undefined || item.observedAt.getTime() > params.after.getTime())
     )).length;
   }
@@ -173,7 +173,7 @@ class FakeAutoSummaryCandidateRepository implements AutoSummaryCandidateReposito
       const latestFeedItemObservedAt = this.feedItems.latestObservedAt({
         tenantId: snapshot.tenantId,
         workspaceId: snapshot.workspaceId,
-        topicId: snapshot.topicId,
+        interestId: snapshot.interestId,
         before: params.latestFeedItemObservedBefore,
       });
       if (latestFeedItemObservedAt === undefined) {
@@ -183,7 +183,7 @@ class FakeAutoSummaryCandidateRepository implements AutoSummaryCandidateReposito
       const latestSummaryRequestedAt = this.jobs.latestRequestedAt({
         tenantId: snapshot.tenantId,
         workspaceId: snapshot.workspaceId,
-        topicId: snapshot.topicId,
+        interestId: snapshot.interestId,
       });
       if (
         latestSummaryRequestedAt !== undefined &&
@@ -195,13 +195,13 @@ class FakeAutoSummaryCandidateRepository implements AutoSummaryCandidateReposito
       candidates.push({
         tenantId: snapshot.tenantId,
         workspaceId: snapshot.workspaceId,
-        topicId: snapshot.topicId,
+        interestId: snapshot.interestId,
         latestFeedItemObservedAt,
         latestSummaryRequestedAt,
         newFeedItemCount: this.feedItems.countAfter({
           tenantId: snapshot.tenantId,
           workspaceId: snapshot.workspaceId,
-          topicId: snapshot.topicId,
+          interestId: snapshot.interestId,
           after: latestSummaryRequestedAt,
         }),
       });
@@ -229,16 +229,16 @@ class FakeSummaryJobQueue implements SummaryJobQueuePort {
 
 const tenant = tenantId('tenant-auto-summary');
 const workspace = workspaceId('workspace-auto-summary');
-const topicId = 'topic-auto-summary';
+const interestId = 'interest-auto-summary';
 
 describe('ScheduleAutoSummariesUseCase', () => {
-  it('requests one summary job for a topic with new feed items and reuses the idempotency key on the next tick', async () => {
+  it('requests one summary job for an interest with new feed items and reuses the idempotency key on the next tick', async () => {
     const dependencies = makeDependencies();
-    await dependencies.policies.save(SummaryPolicy.defaultForTopic({
+    await dependencies.policies.save(SummaryPolicy.defaultForInterest({
       id: 'policy-auto-summary',
       tenantId: tenant,
       workspaceId: workspace,
-      topicId,
+      interestId,
       now: new Date('2026-06-21T10:00:00.000Z'),
     }));
     dependencies.feedItems.upsert(feedItem('feed-1', new Date('2026-06-21T10:05:00.000Z')));
@@ -264,13 +264,13 @@ describe('ScheduleAutoSummariesUseCase', () => {
     expect(dependencies.queue.all()).toHaveLength(1);
   });
 
-  it('does not schedule when the latest topic summary request is newer than feed evidence', async () => {
+  it('does not schedule when the latest interest summary request is newer than feed evidence', async () => {
     const dependencies = makeDependencies();
-    await dependencies.policies.save(SummaryPolicy.defaultForTopic({
+    await dependencies.policies.save(SummaryPolicy.defaultForInterest({
       id: 'policy-auto-summary-fresh',
       tenantId: tenant,
       workspaceId: workspace,
-      topicId,
+      interestId,
       now: new Date('2026-06-21T10:00:00.000Z'),
     }));
     dependencies.feedItems.upsert(feedItem('feed-1', new Date('2026-06-21T10:05:00.000Z')));
@@ -278,7 +278,7 @@ describe('ScheduleAutoSummariesUseCase', () => {
       id: 'summary-job-fresh',
       tenantId: tenant,
       workspaceId: workspace,
-      topicId,
+      interestId,
       idempotencyKey: 'manual-summary-after-feed',
       requestedAt: new Date('2026-06-21T10:06:00.000Z'),
     }));
@@ -323,6 +323,6 @@ const makeDependencies = () => {
 const feedItem = (_id: string, observedAt: Date) => ({
     tenantId: tenant,
     workspaceId: workspace,
-    topicId,
+    interestId,
     observedAt,
   });

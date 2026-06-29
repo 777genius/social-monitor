@@ -85,7 +85,7 @@ const run = async (): Promise<void> => {
         tenantId: tenant,
         workspaceId: workspace,
         scanJobId: 'scan-hn-smoke',
-        topicId: 'topic-hn-smoke',
+        interestId: 'topic-hn-smoke',
         sourceBindingId: 'hn-binding-smoke',
         scanPolicyId: 'hn-policy-smoke',
         providerKey: 'hacker-news',
@@ -96,7 +96,7 @@ const run = async (): Promise<void> => {
     const feedResult = await feedItems.list({
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: 'topic-hn-smoke',
+      interestId: 'topic-hn-smoke',
       limit: 10,
     });
     const snapshots = feedResult.items.map((item) => item.toSnapshot());

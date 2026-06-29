@@ -2,13 +2,13 @@ import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 
 import type { SummaryPolicy } from '../domain';
 
-export type FindSummaryPolicyByTopicQuery = {
+export type FindSummaryPolicyByInterestQuery = {
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
-  readonly topicId: string;
+  readonly interestId: string;
 };
 
 export interface SummaryPolicyRepositoryPort {
   save(policy: SummaryPolicy): Promise<void>;
-  findByTopic(query: FindSummaryPolicyByTopicQuery): Promise<SummaryPolicy | null>;
+  findByInterest(query: FindSummaryPolicyByInterestQuery): Promise<SummaryPolicy | null>;
 }

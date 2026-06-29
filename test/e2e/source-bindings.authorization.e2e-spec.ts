@@ -32,7 +32,7 @@ describe('Source binding workspace authorization (e2e)', () => {
     const tenant = tenantId('tenant-source-binding-authorization-e2e');
     const workspace = workspaceId('workspace-source-binding-authorization-e2e');
     const topic = await request(app.getHttpServer())
-      .post('/topics')
+      .post('/interests')
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'owner')
@@ -45,7 +45,7 @@ describe('Source binding workspace authorization (e2e)', () => {
       .expect(201);
 
     const missingRole = await request(app.getHttpServer())
-      .post(`/topics/${topic.body.topicId}/source-bindings`)
+      .post(`/interests/${topic.body.interestId}/source-bindings`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-request-id', 'source-binding-auth-missing-role')
@@ -65,7 +65,7 @@ describe('Source binding workspace authorization (e2e)', () => {
     });
 
     const viewer = await request(app.getHttpServer())
-      .post(`/topics/${topic.body.topicId}/source-bindings`)
+      .post(`/interests/${topic.body.interestId}/source-bindings`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'viewer')
@@ -87,7 +87,7 @@ describe('Source binding workspace authorization (e2e)', () => {
     });
 
     const owner = await request(app.getHttpServer())
-      .post(`/topics/${topic.body.topicId}/source-bindings`)
+      .post(`/interests/${topic.body.interestId}/source-bindings`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'owner')
@@ -105,7 +105,7 @@ describe('Source binding workspace authorization (e2e)', () => {
     });
 
     const missingReadRole = await request(app.getHttpServer())
-      .get(`/topics/${topic.body.topicId}/source-bindings/overview`)
+      .get(`/interests/${topic.body.interestId}/source-bindings/overview`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .expect(403);
@@ -118,7 +118,7 @@ describe('Source binding workspace authorization (e2e)', () => {
       },
     });
     await request(app.getHttpServer())
-      .get(`/topics/${topic.body.topicId}/source-bindings/daily-history`)
+      .get(`/interests/${topic.body.interestId}/source-bindings/daily-history`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .expect(403)
@@ -132,7 +132,7 @@ describe('Source binding workspace authorization (e2e)', () => {
       });
 
     const overview = await request(app.getHttpServer())
-      .get(`/topics/${topic.body.topicId}/source-bindings/overview`)
+      .get(`/interests/${topic.body.interestId}/source-bindings/overview`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'viewer')
@@ -147,7 +147,7 @@ describe('Source binding workspace authorization (e2e)', () => {
     ]);
 
     await request(app.getHttpServer())
-      .get(`/topics/${topic.body.topicId}/source-bindings/daily-history`)
+      .get(`/interests/${topic.body.interestId}/source-bindings/daily-history`)
       .query({ days: 2, providerKey: 'fake-source' })
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
@@ -155,7 +155,7 @@ describe('Source binding workspace authorization (e2e)', () => {
       .expect(200)
       .expect((response) => {
         expect(response.body).toMatchObject({
-          topicId: topic.body.topicId,
+          interestId: topic.body.interestId,
           summary: {
             sourceBindingCount: 1,
             enabledSourceBindingCount: 1,
@@ -198,7 +198,7 @@ describe('Source binding workspace authorization (e2e)', () => {
       });
 
     await request(app.getHttpServer())
-      .get(`/topics/${topic.body.topicId}/source-bindings/daily-history`)
+      .get(`/interests/${topic.body.interestId}/source-bindings/daily-history`)
       .query({ days: 2, providerKey: 'rss' })
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
@@ -206,7 +206,7 @@ describe('Source binding workspace authorization (e2e)', () => {
       .expect(200)
       .expect((response) => {
         expect(response.body).toMatchObject({
-          topicId: topic.body.topicId,
+          interestId: topic.body.interestId,
           summary: {
             sourceBindingCount: 0,
             enabledSourceBindingCount: 0,

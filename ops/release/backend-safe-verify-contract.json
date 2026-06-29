@@ -46,9 +46,9 @@
       ]
     },
     {
-      "scriptName": "check:topic-source-daily-history-rest",
+      "scriptName": "check:interest-source-daily-history-rest",
       "includes": [
-        "scripts/check-topic-source-daily-history-rest-smoke.ts"
+        "scripts/check-interest-source-daily-history-rest-smoke.ts"
       ]
     },
     {
@@ -109,7 +109,7 @@
     "check:persistence-readiness",
     "check:monitoring-persistence",
     "check:monitoring-read-rest",
-    "check:topic-source-daily-history-rest",
+    "check:interest-source-daily-history-rest",
     "check:source-binding-health-rest",
     "check:source-profile-rest",
     "check:source-config-protector",

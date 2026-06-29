@@ -25,7 +25,7 @@ describe('MemoStackRelevanceMemoryProjector', () => {
       action: 'hide_source',
       target: {
         feedItemId: 'feed-memory-1',
-        topicId: 'topic-ai-tooling',
+        interestId: 'topic-ai-tooling',
         providerKey: 'reddit',
         title: 'Noisy duplicate discussion',
       },
@@ -68,7 +68,7 @@ describe('MemoStackRelevanceMemoryProjector', () => {
       idempotencyKey: 'feedback-relevance-memory-key-2',
       action: 'less_like_this',
       target: {
-        topicId: 'topic-ai-tooling',
+        interestId: 'topic-ai-tooling',
         providerKey: 'reddit',
         title: 'Noisy single-source post',
         bodyPreview: 'This looks less useful than the other sources.',
@@ -107,7 +107,7 @@ describe('MemoStackRelevanceMemoryProjector', () => {
       idempotencyKey: `feedback-key-${expectedKind}`,
       action: 'less_like_this',
       target: {
-        topicId: 'topic-ai-tooling',
+        interestId: 'topic-ai-tooling',
         providerKey: 'hacker-news',
         title: 'Ranking quality issue',
         bodyPreview,
@@ -143,7 +143,7 @@ describe('MemoStackRelevanceMemoryProjector', () => {
       idempotencyKey: `feedback-key-${feedbackReason}`,
       action: 'less_like_this',
       target: {
-        topicId: 'topic-ai-tooling',
+        interestId: 'topic-ai-tooling',
         providerKey: 'reddit',
         title: 'Reader marked a ranking problem',
         bodyPreview: 'Generic negative feedback without trigger phrases.',

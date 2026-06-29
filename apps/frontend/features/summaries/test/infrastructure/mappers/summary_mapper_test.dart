@@ -75,8 +75,8 @@ void main() {
               title: 'openai/codex',
               providerKey: 'github-repo-radar',
               reason: 'Fast repo growth.',
-              matchedTopicIds: ['ai-tools'],
-              matchedRules: ['topic:ai-tools'],
+              matchedInterestIds: ['ai-tools'],
+              matchedRules: ['interest:ai-tools'],
               signalScore: 1.23,
               providerMetrics: [
                 ProviderMetricApiDto(label: 'Stars', value: '54,000'),

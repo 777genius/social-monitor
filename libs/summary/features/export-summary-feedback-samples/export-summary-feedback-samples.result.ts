@@ -10,7 +10,7 @@ export type RedactedSummaryFeedbackSampleInput = {
   readonly releaseBlocking: true;
   readonly summaryEvidence: {
     readonly summaryId: string;
-    readonly topicId: string;
+    readonly interestId: string;
     readonly citationId?: string;
     readonly feedItemId?: string;
     readonly sourceItemId?: string;

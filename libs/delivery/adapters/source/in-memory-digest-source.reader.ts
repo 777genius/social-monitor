@@ -19,17 +19,17 @@ export class InMemoryDigestSourceReader implements DigestSourceReaderPort {
   }
 
   async readWindow(query: DigestSourceWindowQuery): Promise<DigestSourceWindowResult> {
-    const topicIds = new Set(query.topicIds);
+    const interestIds = new Set(query.interestIds);
 
     return {
       summaries: this.summaries
         .filter((summary) => matchesScope(summary, query))
-        .filter((summary) => topicIds.has(summary.topicId))
+        .filter((summary) => interestIds.has(summary.interestId))
         .filter((summary) => isWithinWindow(summary.sourceWindowEndedAt, query))
         .sort((left, right) => left.summaryId.localeCompare(right.summaryId)),
       feedItems: this.feedItems
         .filter((feedItem) => matchesScope(feedItem, query))
-        .filter((feedItem) => topicIds.has(feedItem.topicId))
+        .filter((feedItem) => interestIds.has(feedItem.interestId))
         .filter((feedItem) => isWithinWindow(feedItem.observedAt, query))
         .sort((left, right) => left.feedItemId.localeCompare(right.feedItemId)),
     };

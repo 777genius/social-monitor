@@ -9,8 +9,8 @@ part 'summary_feedback_evidence_dto.g.dart';
 @JsonSerializable()
 class SummaryFeedbackEvidenceDto {
   const SummaryFeedbackEvidenceDto({
+    required this.interestId,
     required this.summaryId,
-    required this.topicId,
     this.citationId,
     this.feedItemId,
     this.providerKey,
@@ -22,10 +22,10 @@ class SummaryFeedbackEvidenceDto {
 
   final String? citationId;
   final String? feedItemId;
+  final String interestId;
   final String? providerKey;
   final String? sourceItemId;
   final String summaryId;
-  final String topicId;
 
   Map<String, Object?> toJson() => _$SummaryFeedbackEvidenceDtoToJson(this);
 }

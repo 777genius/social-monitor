@@ -6,7 +6,7 @@ final class SourceMixEntry {
     required this.storyClusterCount,
     required this.crossSourceClusterCount,
     required this.singleSourceOnly,
-    required this.topicIds,
+    required this.interestIds,
   });
 
   final String providerKey;
@@ -15,5 +15,5 @@ final class SourceMixEntry {
   final int storyClusterCount;
   final int crossSourceClusterCount;
   final bool singleSourceOnly;
-  final List<String> topicIds;
+  final List<String> interestIds;
 }

@@ -122,7 +122,7 @@ async function main(): Promise<void> {
       id: 'source-binding-source-credential-lifecycle-smoke',
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: 'topic-source-credential-lifecycle-smoke',
+      interestId: 'topic-source-credential-lifecycle-smoke',
       providerKey: 'reddit',
       capabilityProfileVersion: 1,
       config: protectedConfig,
@@ -188,7 +188,7 @@ async function main(): Promise<void> {
       id: 'source-binding-with-inline-token',
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: 'topic-source-credential-lifecycle-smoke',
+      interestId: 'topic-source-credential-lifecycle-smoke',
       providerKey: 'reddit',
       capabilityProfileVersion: 1,
       config: await protector.protect({

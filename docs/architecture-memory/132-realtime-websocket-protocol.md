@@ -43,7 +43,7 @@ Subscriptions:
   "occurredAt": "2026-05-31T12:00:00Z",
   "payload": {
     "itemId": "itm_123",
-    "topicId": "top_123"
+    "interestId": "int_123"
   }
 }
 ```

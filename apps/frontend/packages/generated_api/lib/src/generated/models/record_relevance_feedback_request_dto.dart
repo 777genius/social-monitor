@@ -14,9 +14,9 @@ class RecordRelevanceFeedbackRequestDto {
   const RecordRelevanceFeedbackRequestDto({
     required this.action,
     required this.idempotencyKey,
+    required this.interestId,
     required this.providerKey,
     required this.title,
-    required this.topicId,
     this.bodyPreview,
     this.canonicalUrl,
     this.feedItemId,
@@ -33,11 +33,11 @@ class RecordRelevanceFeedbackRequestDto {
   final String? canonicalUrl;
   final String? feedItemId;
   final String idempotencyKey;
+  final String interestId;
   final String providerKey;
   final num? rating;
   final RecordRelevanceFeedbackRequestDtoReasonReason? reason;
   final String title;
-  final String topicId;
 
   Map<String, Object?> toJson() =>
       _$RecordRelevanceFeedbackRequestDtoToJson(this);

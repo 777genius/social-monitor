@@ -10,18 +10,18 @@ part 'reader_summary_repeated_signal_dto.g.dart';
 class ReaderSummaryRepeatedSignalDto {
   const ReaderSummaryRepeatedSignalDto({
     required this.citationIds,
+    required this.interestIds,
     required this.storyClusterId,
     required this.title,
-    required this.topicIds,
   });
 
   factory ReaderSummaryRepeatedSignalDto.fromJson(Map<String, Object?> json) =>
       _$ReaderSummaryRepeatedSignalDtoFromJson(json);
 
   final List<String> citationIds;
+  final List<String> interestIds;
   final String storyClusterId;
   final String title;
-  final List<String> topicIds;
 
   Map<String, Object?> toJson() => _$ReaderSummaryRepeatedSignalDtoToJson(this);
 }

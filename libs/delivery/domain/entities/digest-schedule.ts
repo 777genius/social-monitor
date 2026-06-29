@@ -10,7 +10,7 @@ export type DigestScheduleProps = {
   readonly workspaceId: WorkspaceId;
   readonly recipientKey: string;
   readonly channel: DeliveryChannel;
-  readonly topicIds: readonly string[];
+  readonly interestIds: readonly string[];
   readonly intervalSeconds: number;
   readonly includeNoSignal: boolean;
   readonly nextRunAt: Date;
@@ -37,8 +37,8 @@ export class DigestSchedule {
       throw new Error('Digest schedule recipient key must be non-empty');
     }
 
-    if (props.topicIds.length === 0 || props.topicIds.some((topicId) => topicId.trim().length === 0)) {
-      throw new Error('Digest schedule topic ids must be non-empty');
+    if (props.interestIds.length === 0 || props.interestIds.some((interestId) => interestId.trim().length === 0)) {
+      throw new Error('Digest schedule interest ids must be non-empty');
     }
 
     if (!Number.isInteger(props.intervalSeconds) || props.intervalSeconds < 60) {
@@ -47,7 +47,7 @@ export class DigestSchedule {
 
     return new DigestSchedule({
       ...props,
-      topicIds: [...new Set(props.topicIds)].sort((left, right) => left.localeCompare(right)),
+      interestIds: [...new Set(props.interestIds)].sort((left, right) => left.localeCompare(right)),
     });
   }
 

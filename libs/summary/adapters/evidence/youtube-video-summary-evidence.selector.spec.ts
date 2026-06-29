@@ -64,7 +64,7 @@ describe('YoutubeVideoSummaryEvidenceSelector', () => {
     const selection = await selector.select({
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       maxItems: 20,
     });
 
@@ -99,7 +99,7 @@ describe('YoutubeVideoSummaryEvidenceSelector', () => {
     const selection = await selector.select({
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       maxItems: 20,
     });
 

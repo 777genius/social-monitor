@@ -5,7 +5,7 @@ import type { SummaryArtifact } from '../domain';
 export type ListSummaryArtifactsQuery = {
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
-  readonly topicId?: string;
+  readonly interestId?: string;
   readonly limit: number;
   readonly cursor?: string;
 };

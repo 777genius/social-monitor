@@ -53,7 +53,7 @@ describe("ReaderSummaryJob", () => {
       id: "reader-summary-job-2",
       tenantId: tenantId("tenant-reader-summary-job-retry"),
       workspaceId: workspaceId("workspace-reader-summary-job-retry"),
-      scope: { type: "topic", topicId: "topic-ai" },
+      scope: { type: "interest", interestId: "interest-ai" },
       period,
       idempotencyKey: "reader-summary-job-retry-key",
       requestedAt,

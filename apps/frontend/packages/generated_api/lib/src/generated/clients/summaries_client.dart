@@ -21,6 +21,21 @@ part 'summaries_client.g.dart';
 abstract class SummariesClient {
   factory SummariesClient(Dio dio, {String? baseUrl}) = _SummariesClient;
 
+  /// Request a summary for an interest.
+  ///
+  /// [authorization] - Optional Bearer API key. Requires write:summaries. If supplied, x-workspace-role is not required.
+  ///
+  /// [xWorkspaceRole] - Comma-separated workspace roles. Summary requests require owner, admin or member. Required when Authorization bearer API key is not supplied.
+  @POST('/interests/{interestId}/summary-requests')
+  Future<RequestSummaryResponseDto> summaryRequestControllerCreate({
+    @Path('interestId') required String interestId,
+    @Header('idempotency-key') required String idempotencyKey,
+    @Header('x-workspace-id') required String xWorkspaceId,
+    @Header('x-tenant-id') required String xTenantId,
+    @Header('authorization') String? authorization,
+    @Header('x-workspace-role') String? xWorkspaceRole,
+  });
+
   /// List tenant/workspace summaries with cursor pagination.
   ///
   /// [authorization] - Optional Bearer API key. Requires read:summaries. If supplied, x-workspace-role is not required.
@@ -32,7 +47,7 @@ abstract class SummariesClient {
     @Header('x-tenant-id') required String xTenantId,
     @Query('cursor') String? cursor,
     @Query('limit') num? limit,
-    @Query('topicId') String? topicId,
+    @Query('interestId') String? interestId,
     @Header('authorization') String? authorization,
     @Header('x-workspace-role') String? xWorkspaceRole,
   });
@@ -111,21 +126,6 @@ abstract class SummariesClient {
   @GET('/summary-jobs/{summaryJobId}/status')
   Future<SummaryJobStatusResponseDto> summaryJobControllerGetStatus({
     @Path('summaryJobId') required String summaryJobId,
-    @Header('x-workspace-id') required String xWorkspaceId,
-    @Header('x-tenant-id') required String xTenantId,
-    @Header('authorization') String? authorization,
-    @Header('x-workspace-role') String? xWorkspaceRole,
-  });
-
-  /// Request a summary for a topic.
-  ///
-  /// [authorization] - Optional Bearer API key. Requires write:summaries. If supplied, x-workspace-role is not required.
-  ///
-  /// [xWorkspaceRole] - Comma-separated workspace roles. Summary requests require owner, admin or member. Required when Authorization bearer API key is not supplied.
-  @POST('/topics/{topicId}/summary-requests')
-  Future<RequestSummaryResponseDto> summaryRequestControllerCreate({
-    @Path('topicId') required String topicId,
-    @Header('idempotency-key') required String idempotencyKey,
     @Header('x-workspace-id') required String xWorkspaceId,
     @Header('x-tenant-id') required String xTenantId,
     @Header('authorization') String? authorization,

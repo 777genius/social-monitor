@@ -22,8 +22,8 @@ export class ListSummariesUseCase {
       }));
     }
 
-    if (query.topicId !== undefined && query.topicId.trim().length === 0) {
-      return err(new DomainError('validation.failed', 'Summary topic filter must be non-empty'));
+    if (query.interestId !== undefined && query.interestId.trim().length === 0) {
+      return err(new DomainError('validation.failed', 'Summary interest filter must be non-empty'));
     }
 
     const result = await this.summaries.list(query);
@@ -33,7 +33,7 @@ export class ListSummariesUseCase {
       const freshness = await this.freshness.evaluate({
         tenantId: snapshot.tenantId,
         workspaceId: snapshot.workspaceId,
-        topicId: snapshot.topicId,
+        interestId: snapshot.interestId,
         sourceWindow: snapshot.sourceWindow,
       });
 

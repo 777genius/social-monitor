@@ -1,12 +1,12 @@
 import '../value_objects/source_binding_id.dart';
 import '../value_objects/source_binding_status.dart';
+import '../value_objects/source_interest_id.dart';
 import '../value_objects/source_provider_key.dart';
-import '../value_objects/source_topic_id.dart';
 
 final class SourceBinding {
   const SourceBinding({
     required this.id,
-    required this.topicId,
+    required this.interestId,
     required this.providerKey,
     required this.capabilityProfileVersion,
     required this.status,
@@ -15,7 +15,7 @@ final class SourceBinding {
   });
 
   final SourceBindingId id;
-  final SourceTopicId topicId;
+  final SourceInterestId interestId;
   final SourceProviderKey providerKey;
   final num capabilityProfileVersion;
   final SourceBindingStatus status;

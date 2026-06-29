@@ -20,8 +20,8 @@ final class ReaderSummaryContentRestMapper {
         warnings: dto.qualityState.warnings,
         isSingleSource: dto.qualityState.isSingleSource,
       ),
-      topicSections: dto.topicSections
-          .map(_topicSection)
+      interestSections: dto.interestSections
+          .map(_interestSection)
           .toList(growable: false),
       sourceMix: dto.sourceMix.map(_sourceMixEntry).toList(growable: false),
       topReads: dto.topReads.map(_readerItem).toList(growable: false),
@@ -37,11 +37,11 @@ final class ReaderSummaryContentRestMapper {
     );
   }
 
-  ReaderTopicSectionApiDto _topicSection(
-    generated.ReaderSummaryReaderTopicSectionDto dto,
+  ReaderInterestSectionApiDto _interestSection(
+    generated.ReaderSummaryReaderInterestSectionDto dto,
   ) {
-    return ReaderTopicSectionApiDto(
-      topicId: dto.topicId,
+    return ReaderInterestSectionApiDto(
+      interestId: dto.interestId,
       title: dto.title,
       insight: dto.insight,
       items: dto.items.map(_readerItem).toList(growable: false),
@@ -56,7 +56,7 @@ final class ReaderSummaryContentRestMapper {
       providerName: dto.providerName,
       primaryActionKind: dto.primaryActionKind.json ?? 'read_source',
       reason: dto.reason,
-      matchedTopicIds: dto.matchedTopicIds,
+      matchedInterestIds: dto.matchedInterestIds,
       matchedRules: dto.matchedRules,
       signalScore: _safeScore(dto.signalScore),
       confidence: TopReadConfidenceApiDto(
@@ -88,7 +88,7 @@ final class ReaderSummaryContentRestMapper {
       storyClusterCount: _safeCount(dto.storyClusterCount),
       crossSourceClusterCount: _safeCount(dto.crossSourceClusterCount),
       singleSourceOnly: dto.singleSourceOnly,
-      topicIds: dto.topicIds,
+      interestIds: dto.interestIds,
     );
   }
 

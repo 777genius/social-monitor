@@ -43,7 +43,7 @@ class _FeedFeatureModuleHostState extends State<FeedFeatureModuleHost> {
     }
     return FeedFeaturePage(
       store: store,
-      topicTitle: _module?.initialTopicTitle,
+      interestTitle: _module?.initialInterestTitle,
     );
   }
 }

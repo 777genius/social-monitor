@@ -603,7 +603,7 @@ Evidence notes:
 
 ## PR 18 Topic Creation Workspace Authorization Evidence
 
-- `f408bf3 feat: authorize topic creation`
+- `f408bf3 feat: authorize interest creation`
 
 Verified commands:
 
@@ -619,12 +619,12 @@ Verified commands:
 Evidence notes:
 
 - Monitoring REST imports `IdentityAuthorizationModule` and depends on the shared `WORKSPACE_AUTHORIZATION_POLICY` port instead of constructing authorization infrastructure locally.
-- `WorkspaceAction` now includes `topics.create`, and the static MVP policy allows owner/admin roles for topic creation.
-- `TopicController` performs tenant/workspace scope validation first, then authorizes `topics.create` before invoking `CreateTopicUseCase`.
+- `WorkspaceAction` now includes `interests.create`, and the static MVP policy allows owner/admin roles for interest creation.
+- `InterestController` performs tenant/workspace scope validation first, then authorizes `interests.create` before invoking `CreateInterestUseCase`.
 - REST parsing of `x-workspace-role` stays at the interface boundary; feature use cases remain authorization-header agnostic.
 - Existing e2e setup flows now pass `x-workspace-role: admin` when legitimately creating topics.
-- `test/e2e/topics.authorization.e2e-spec.ts` records missing-role, viewer-denied and owner-allowed behavior for the Jest e2e suite.
-- `libs/contracts/rest/openapi.snapshot.json` records the required `x-workspace-role` header for `POST /topics`.
+- `test/e2e/interests.authorization.e2e-spec.ts` records missing-role, viewer-denied and owner-allowed behavior for the Jest e2e suite.
+- `libs/contracts/rest/openapi.snapshot.json` records the required `x-workspace-role` header for `POST /interests`.
 
 ## PR 19 Source Binding Workspace Authorization Evidence
 
@@ -649,7 +649,7 @@ Evidence notes:
 - REST parsing of `x-workspace-role` stays at the interface boundary; `BindSourceUseCase` remains independent of HTTP headers and role policy.
 - Existing e2e setup flows now pass `x-workspace-role: admin` when legitimately binding sources.
 - `test/e2e/source-bindings.authorization.e2e-spec.ts` records missing-role, viewer-denied and owner-allowed behavior for the Jest e2e suite.
-- `libs/contracts/rest/openapi.snapshot.json` records the required `x-workspace-role` header for `POST /topics/{topicId}/source-bindings`.
+- `libs/contracts/rest/openapi.snapshot.json` records the required `x-workspace-role` header for `POST /interests/{interestId}/source-bindings`.
 
 ## PR 20 Scan Policy Workspace Authorization Evidence
 
@@ -725,7 +725,7 @@ Evidence notes:
 - REST parsing of `x-workspace-role` stays at the interface boundary; `RequestSummaryUseCase` remains independent of HTTP headers and role policy.
 - Existing e2e setup flows now pass `x-workspace-role: member` when legitimately requesting summaries.
 - `test/e2e/summary-requests.authorization.e2e-spec.ts` records missing-role, viewer-denied and member-allowed behavior for the Jest e2e suite.
-- `libs/contracts/rest/openapi.snapshot.json` records the required `x-workspace-role` header for `POST /topics/{topicId}/summary-requests`.
+- `libs/contracts/rest/openapi.snapshot.json` records the required `x-workspace-role` header for `POST /interests/{interestId}/summary-requests`.
 
 ## PR 23 Summary Regeneration Workspace Authorization Evidence
 
@@ -1127,7 +1127,7 @@ Verified commands:
 Evidence notes:
 
 - The MVP core-loop smoke now proves the full backend chain reaches delivered digest status, not only queued delivery status.
-- The scenario executes topic creation, source binding, scan request, fake provider ingestion, feed projection, summary generation, digest assembly, delivery dispatch, realtime projection and summary feedback in one deterministic path.
+- The scenario executes interest creation, source binding, scan request, fake provider ingestion, feed projection, summary generation, digest assembly, delivery dispatch, realtime projection and summary feedback in one deterministic path.
 - Digest delivery goes through the real `DeliveryAttemptDispatchLoop`, `SendDeliveryAttemptCommandHandler` and `SendDeliveryAttemptUseCase` instead of directly mutating repository state.
 - The smoke asserts deterministic in-app delivery content, dispatch start/success metrics and an empty dispatchable delivery set after the worker tick.
 

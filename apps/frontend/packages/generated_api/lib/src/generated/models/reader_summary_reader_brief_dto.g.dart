@@ -11,6 +11,13 @@ ReaderSummaryReaderBriefDto _$ReaderSummaryReaderBriefDtoFromJson(
 ) => ReaderSummaryReaderBriefDto(
   bullets: (json['bullets'] as List<dynamic>).map((e) => e as String).toList(),
   headline: json['headline'] as String,
+  interestSections: (json['interestSections'] as List<dynamic>)
+      .map(
+        (e) => ReaderSummaryReaderInterestSectionDto.fromJson(
+          e as Map<String, dynamic>,
+        ),
+      )
+      .toList(),
   nextActions: (json['nextActions'] as List<dynamic>)
       .map(
         (e) => ReaderSummaryNextActionDto.fromJson(e as Map<String, dynamic>),
@@ -30,13 +37,6 @@ ReaderSummaryReaderBriefDto _$ReaderSummaryReaderBriefDtoFromJson(
             ReaderSummarySourceMixEntryDto.fromJson(e as Map<String, dynamic>),
       )
       .toList(),
-  topicSections: (json['topicSections'] as List<dynamic>)
-      .map(
-        (e) => ReaderSummaryReaderTopicSectionDto.fromJson(
-          e as Map<String, dynamic>,
-        ),
-      )
-      .toList(),
   topReads: (json['topReads'] as List<dynamic>)
       .map(
         (e) => ReaderSummaryReaderItemDto.fromJson(e as Map<String, dynamic>),
@@ -52,13 +52,13 @@ Map<String, dynamic> _$ReaderSummaryReaderBriefDtoToJson(
 ) => <String, dynamic>{
   'bullets': instance.bullets,
   'headline': instance.headline,
+  'interestSections': instance.interestSections,
   'nextActions': instance.nextActions,
   'oneLineTakeaway': instance.oneLineTakeaway,
   'openQuestions': instance.openQuestions,
   'qualityState': instance.qualityState,
   'risks': instance.risks,
   'sourceMix': instance.sourceMix,
-  'topicSections': instance.topicSections,
   'topReads': instance.topReads,
   'trendDelta': instance.trendDelta,
 };

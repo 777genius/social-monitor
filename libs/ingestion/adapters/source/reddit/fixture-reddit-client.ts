@@ -1,6 +1,8 @@
 import type {
   RedditClientPort,
+  RedditCommentPage,
   RedditListingPage,
+  RedditListPostCommentsRequest,
   RedditListSubredditPostsRequest,
   RedditSearchPostsRequest,
 } from './reddit-client.port';
@@ -53,6 +55,35 @@ export class FixtureRedditClient implements RedditClientPort {
         },
       ],
       after: 't3_fixturesearch1',
+    };
+  }
+
+  async listPostComments(request: RedditListPostCommentsRequest): Promise<RedditCommentPage> {
+    return {
+      comments: [
+        {
+          id: `${request.postId}-comment-1`,
+          name: `t1_${request.postId}_comment_1`,
+          subreddit: request.subreddit,
+          body: 'This thread shows why official APIs and source policy matter.',
+          author: 'comment_researcher',
+          permalink: `/comments/${request.postId}/_/comment_1/`,
+          createdUtc: 1_780_000_180,
+          score: 12,
+          depth: 0,
+        },
+        {
+          id: `${request.postId}-comment-2`,
+          name: `t1_${request.postId}_comment_2`,
+          subreddit: request.subreddit,
+          body: 'Comment-level evidence makes summaries easier to verify.',
+          author: 'summary_builder',
+          permalink: `/comments/${request.postId}/_/comment_2/`,
+          createdUtc: 1_780_000_240,
+          score: 8,
+          depth: 1,
+        },
+      ].slice(0, request.limit),
     };
   }
 }

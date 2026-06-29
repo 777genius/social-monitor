@@ -19,7 +19,7 @@ final class InMemorySourceBindingsApiClient implements SourceBindingsApiClient {
       return Result.failure(_workspaceFailure());
     }
     final items = _items
-        .where((item) => item.topicId == request.topicId)
+        .where((item) => item.interestId == request.interestId)
         .toList(growable: false);
     return Result.success(ListSourceBindingsApiResponseDto(items: items));
   }
@@ -33,7 +33,7 @@ final class InMemorySourceBindingsApiClient implements SourceBindingsApiClient {
     }
     final created = SourceBindingApiDto(
       id: 'binding-${request.providerKey}-${_items.length + 1}',
-      topicId: request.topicId,
+      interestId: request.interestId,
       providerKey: request.providerKey,
       capabilityProfileVersion: 1,
       status: 'enabled',

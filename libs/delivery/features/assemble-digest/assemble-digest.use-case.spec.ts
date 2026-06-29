@@ -62,20 +62,20 @@ class FakeDigestSources implements DigestSourceReaderPort {
   constructor(private readonly result: DigestSourceWindowResult) {}
 
   async readWindow(query: DigestSourceWindowQuery): Promise<DigestSourceWindowResult> {
-    const topicIds = new Set(query.topicIds);
+    const interestIds = new Set(query.interestIds);
 
     return {
       summaries: this.result.summaries.filter(
         (summary) =>
           summary.tenantId === query.tenantId &&
           summary.workspaceId === query.workspaceId &&
-          topicIds.has(summary.topicId),
+          interestIds.has(summary.interestId),
       ),
       feedItems: this.result.feedItems.filter(
         (feedItem) =>
           feedItem.tenantId === query.tenantId &&
           feedItem.workspaceId === query.workspaceId &&
-          topicIds.has(feedItem.topicId),
+          interestIds.has(feedItem.interestId),
       ),
     };
   }
@@ -134,7 +134,7 @@ describe('AssembleDigestUseCase', () => {
             tenantId: tenant,
             workspaceId: workspace,
             summaryId: 'summary-1',
-            topicId: 'topic-1',
+            interestId: 'interest-1',
             sourceWindowStartedAt: new Date('2026-06-06T00:00:00.000Z'),
             sourceWindowEndedAt: new Date('2026-06-06T01:00:00.000Z'),
             signal: 'high',
@@ -145,7 +145,7 @@ describe('AssembleDigestUseCase', () => {
             tenantId: tenant,
             workspaceId: workspace,
             feedItemId: 'feed-item-1',
-            topicId: 'topic-1',
+            interestId: 'interest-1',
             observedAt: new Date('2026-06-06T00:30:00.000Z'),
             signal: 'normal',
           },
@@ -164,7 +164,7 @@ describe('AssembleDigestUseCase', () => {
       workspaceId: workspace,
       recipientKey: 'user-1',
       channel: 'email' as const,
-      topicIds: ['topic-1'],
+      interestIds: ['interest-1'],
       windowStartedAt: new Date('2026-06-06T00:00:00.000Z'),
       windowEndedAt: new Date('2026-06-06T02:00:00.000Z'),
       includeNoSignal: false,
@@ -191,13 +191,13 @@ describe('AssembleDigestUseCase', () => {
         {
           resourceType: 'feed_item',
           resourceId: 'feed-item-1',
-          topicId: 'topic-1',
+          interestId: 'interest-1',
           includedReason: 'within_window',
         },
         {
           resourceType: 'summary',
           resourceId: 'summary-1',
-          topicId: 'topic-1',
+          interestId: 'interest-1',
           includedReason: 'high_signal',
         },
       ],
@@ -219,7 +219,7 @@ describe('AssembleDigestUseCase', () => {
             tenantId: tenant,
             workspaceId: workspace,
             summaryId: 'summary-no-signal',
-            topicId: 'topic-1',
+            interestId: 'interest-1',
             sourceWindowStartedAt: new Date('2026-06-06T00:00:00.000Z'),
             sourceWindowEndedAt: new Date('2026-06-06T01:00:00.000Z'),
             signal: 'no_signal',
@@ -241,7 +241,7 @@ describe('AssembleDigestUseCase', () => {
       workspaceId: workspace,
       recipientKey: 'user-2',
       channel: 'in_app',
-      topicIds: ['topic-1'],
+      interestIds: ['interest-1'],
       windowStartedAt: new Date('2026-06-06T00:00:00.000Z'),
       windowEndedAt: new Date('2026-06-06T02:00:00.000Z'),
       includeNoSignal: false,

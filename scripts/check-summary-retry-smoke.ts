@@ -91,7 +91,7 @@ async function main(): Promise<void> {
     id: jobId,
     tenantId: tenant,
     workspaceId: workspace,
-    topicId: 'topic-summary-retry-smoke',
+    interestId: 'topic-summary-retry-smoke',
     idempotencyKey: 'summary-retry-smoke-request',
     requestedAt: new Date('2026-06-06T10:00:00.000Z'),
   }));

@@ -2,7 +2,9 @@ import { RedditAppOnlyTokenProvider } from '../libs/ingestion/adapters/source/re
 import { HttpRedditClient, redditListings } from '../libs/ingestion/adapters/source/reddit/http-reddit-client';
 import type {
   RedditClientPort,
+  RedditCommentPage,
   RedditListingPage,
+  RedditListPostCommentsRequest,
   RedditListSubredditPostsRequest,
   RedditPostListing,
   RedditSearchPostsRequest,
@@ -133,6 +135,10 @@ class RecordingRedditClient implements RedditClientPort {
     const page = await this.inner.searchPosts(request);
     this.lastPage = page;
     return page;
+  }
+
+  async listPostComments(request: RedditListPostCommentsRequest): Promise<RedditCommentPage> {
+    return this.inner.listPostComments(request);
   }
 }
 

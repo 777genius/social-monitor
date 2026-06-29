@@ -11,7 +11,7 @@ export type RecordUserSummaryPreferenceMemoryCommand = {
   readonly preferenceId: string;
   readonly userId: string;
   readonly subscriptionId?: string | undefined;
-  readonly topicId?: string | undefined;
+  readonly interestId?: string | undefined;
   readonly language?: SummaryPolicyLanguage | undefined;
   readonly format?: SummaryPolicyFormat | undefined;
   readonly tone?: SummaryPolicyTone | undefined;

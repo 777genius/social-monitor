@@ -157,7 +157,7 @@ async function buildRuntimeStaleMarkerProof(): Promise<{
 }> {
   const tenant = tenantId('tenant-summary-quality-loop');
   const workspace = workspaceId('workspace-summary-quality-loop');
-  const topicId = 'topic-summary-quality-loop';
+  const interestId = 'topic-summary-quality-loop';
   const feedItems = new InMemoryFeedItemReadRepository();
   const clock = new FixedClock(new Date('2026-06-06T00:05:00.000Z'));
   const summaryJobs = new InMemorySummaryJobRepository();
@@ -169,7 +169,7 @@ async function buildRuntimeStaleMarkerProof(): Promise<{
     id: 'feed-quality-old',
     tenantId: tenant,
     workspaceId: workspace,
-    topicId,
+    interestId,
     title: 'Original source evidence is selected',
     observedAt: new Date('2026-06-06T00:01:00.000Z'),
   }));
@@ -177,7 +177,7 @@ async function buildRuntimeStaleMarkerProof(): Promise<{
     id: summaryJobId,
     tenantId: tenant,
     workspaceId: workspace,
-    topicId,
+    interestId,
     idempotencyKey: 'summary-quality-loop-key',
     requestedAt: clock.now(),
   }));
@@ -209,7 +209,7 @@ async function buildRuntimeStaleMarkerProof(): Promise<{
     id: 'feed-quality-new',
     tenantId: tenant,
     workspaceId: workspace,
-    topicId,
+    interestId,
     title: 'Newer correction arrives after the source window',
     observedAt: new Date('2026-06-06T00:02:00.000Z'),
   }));
@@ -246,7 +246,7 @@ function makeFeedItem(params: {
   readonly id: string;
   readonly tenantId: ReturnType<typeof tenantId>;
   readonly workspaceId: ReturnType<typeof workspaceId>;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly title: string;
   readonly observedAt: Date;
 }): FeedItem {
@@ -254,9 +254,9 @@ function makeFeedItem(params: {
     id: params.id,
     tenantId: params.tenantId,
     workspaceId: params.workspaceId,
-    topicId: params.topicId,
+    interestId: params.interestId,
     sourceItemId: `${params.id}:source`,
-    sourceBindingId: `${params.topicId}:binding`,
+    sourceBindingId: `${params.interestId}:binding`,
     providerKey: 'rss',
     canonicalUrl: `https://example.test/${params.id}`,
     title: params.title,

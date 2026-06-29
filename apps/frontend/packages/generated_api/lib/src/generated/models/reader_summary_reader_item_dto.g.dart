@@ -18,10 +18,10 @@ ReaderSummaryReaderItemDto _$ReaderSummaryReaderItemDtoFromJson(
   confirmedProviderKeys: (json['confirmedProviderKeys'] as List<dynamic>)
       .map((e) => e as String)
       .toList(),
-  matchedRules: (json['matchedRules'] as List<dynamic>)
+  matchedInterestIds: (json['matchedInterestIds'] as List<dynamic>)
       .map((e) => e as String)
       .toList(),
-  matchedTopicIds: (json['matchedTopicIds'] as List<dynamic>)
+  matchedRules: (json['matchedRules'] as List<dynamic>)
       .map((e) => e as String)
       .toList(),
   primaryActionKind:
@@ -53,8 +53,8 @@ Map<String, dynamic> _$ReaderSummaryReaderItemDtoToJson(
   'citationIds': instance.citationIds,
   'confidence': instance.confidence,
   'confirmedProviderKeys': instance.confirmedProviderKeys,
+  'matchedInterestIds': instance.matchedInterestIds,
   'matchedRules': instance.matchedRules,
-  'matchedTopicIds': instance.matchedTopicIds,
   'primaryActionKind': instance.primaryActionKind,
   'providerKey': instance.providerKey,
   'providerMetrics': instance.providerMetrics,

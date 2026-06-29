@@ -14,7 +14,7 @@ import {
   type ReaderSummaryRepeatedSignal,
   type ReaderSummaryRisk,
   type ReaderSummaryScope,
-  type ReaderSummaryTopicHighlight,
+  type ReaderSummaryInterestHighlight,
   type ReaderSummaryTopStory,
   type ReaderSummaryUsage,
   type SummaryEvidencePersonalization,
@@ -26,7 +26,7 @@ export type PrismaReaderSummaryArtifactPayloadFallback = {
   readonly tenantId: string;
   readonly workspaceId: string;
   readonly scopeType: string;
-  readonly topicId: string | null;
+  readonly interestId: string | null;
   readonly cadence: string;
   readonly periodStartedAt: Date;
   readonly periodEndedAt: Date;
@@ -39,14 +39,14 @@ export type PrismaReaderSummaryArtifactPayloadFallback = {
 
 export const readerSummaryScopeFromPrisma = (record: {
   readonly scopeType: string;
-  readonly topicId: string | null;
+  readonly interestId: string | null;
 }): ReaderSummaryScope => {
   if (record.scopeType === "workspace") {
     return { type: "workspace" };
   }
 
-  if (record.scopeType === "topic" && record.topicId !== null) {
-    return { type: "topic", topicId: record.topicId };
+  if (record.scopeType === "interest" && record.interestId !== null) {
+    return { type: "interest", interestId: record.interestId };
   }
 
   throw new Error(`Unsupported summary scope "${record.scopeType}"`);
@@ -140,9 +140,9 @@ export const normalizeReaderSummaryArtifactPayload = (
       value.topStories,
       "Reader summary top stories",
     ),
-    topicHighlights: requireArray<ReaderSummaryTopicHighlight>(
-      value.topicHighlights,
-      "Reader summary topic highlights",
+    interestHighlights: requireArray<ReaderSummaryInterestHighlight>(
+      value.interestHighlights,
+      "Reader summary interest highlights",
     ),
     repeatedSignals: requireArray<ReaderSummaryRepeatedSignal>(
       value.repeatedSignals,
@@ -309,7 +309,7 @@ const normalizeReaderSummaryContent = (
     content.topReads.some(
       (item) =>
         item.whyNow === undefined ||
-        item.matchedTopicIds === undefined ||
+        item.matchedInterestIds === undefined ||
         item.matchedRules === undefined ||
         item.confidence === undefined ||
         item.confirmedProviderKeys === undefined ||
@@ -323,7 +323,7 @@ const normalizeReaderSummaryContent = (
   return {
     ...content,
     topReads: content.topReads.map(normalizeReaderSummaryItem),
-    topicSections: content.topicSections.map((section) => ({
+    interestSections: content.interestSections.map((section) => ({
       ...section,
       items: section.items.map(normalizeReaderSummaryItem),
     })),
@@ -423,7 +423,7 @@ type SerializedReaderSummaryArtifactPayload = {
   readonly readerBrief?: unknown;
   readonly content?: unknown;
   readonly topStories?: unknown;
-  readonly topicHighlights?: unknown;
+  readonly interestHighlights?: unknown;
   readonly repeatedSignals?: unknown;
   readonly risksAndUnknowns?: unknown;
   readonly citationMap?: unknown;

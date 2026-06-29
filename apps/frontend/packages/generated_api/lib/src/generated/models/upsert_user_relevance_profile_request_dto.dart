@@ -12,10 +12,10 @@ part 'upsert_user_relevance_profile_request_dto.g.dart';
 class UpsertUserRelevanceProfileRequestDto {
   const UpsertUserRelevanceProfileRequestDto({
     this.blockedProviderKeys,
+    this.interestWeights,
     this.keywordWeights,
     this.mutedKeywords,
     this.sourceWeights,
-    this.topicWeights,
   });
 
   factory UpsertUserRelevanceProfileRequestDto.fromJson(
@@ -23,10 +23,10 @@ class UpsertUserRelevanceProfileRequestDto {
   ) => _$UpsertUserRelevanceProfileRequestDtoFromJson(json);
 
   final List<String>? blockedProviderKeys;
+  final List<RelevanceWeightDto>? interestWeights;
   final List<RelevanceWeightDto>? keywordWeights;
   final List<String>? mutedKeywords;
   final List<RelevanceWeightDto>? sourceWeights;
-  final List<RelevanceWeightDto>? topicWeights;
 
   Map<String, Object?> toJson() =>
       _$UpsertUserRelevanceProfileRequestDtoToJson(this);

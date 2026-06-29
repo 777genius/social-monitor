@@ -94,7 +94,7 @@ class PrismaRelevanceFeedbackLearningUnitOfWork implements RelevanceFeedbackLear
   async saveProfile(profile: Parameters<RelevanceFeedbackLearningUnitOfWorkPort['saveProfile']>[0]): Promise<void> {
     const snapshot = profile.toSnapshot();
     const mutation = {
-      topicWeights: snapshot.topicWeights,
+      interestWeights: snapshot.interestWeights,
       sourceWeights: snapshot.sourceWeights,
       keywordWeights: snapshot.keywordWeights,
       mutedKeywords: snapshot.mutedKeywords,

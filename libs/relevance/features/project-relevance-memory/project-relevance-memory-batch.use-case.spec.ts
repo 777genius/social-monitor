@@ -126,7 +126,7 @@ const makeProjection = (): RelevanceMemoryProjection =>
     rating: 5,
     target: {
       feedItemId: 'feed-1',
-      topicId: 'topic-ai-tooling',
+      interestId: 'topic-ai-tooling',
       providerKey: 'github',
       title: 'Trending AI developer library',
     },

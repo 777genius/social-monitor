@@ -40,7 +40,7 @@ async function main(): Promise<void> {
     const tenant = tenantId('tenant-write-api-key-summary-smoke');
     const otherTenant = tenantId('tenant-write-api-key-summary-smoke-other');
     const workspace = workspaceId('workspace-write-api-key-summary-smoke');
-    const topicId = 'topic-write-api-key-summary-smoke';
+    const interestId = 'topic-write-api-key-summary-smoke';
     const server = app.getHttpServer();
     const headers = {
       'x-tenant-id': tenant,
@@ -66,7 +66,7 @@ async function main(): Promise<void> {
     });
 
     await request(server)
-      .put(`/topics/${topicId}/summary-policy`)
+      .put(`/interests/${interestId}/summary-policy`)
       .set(headers)
       .set('Authorization', `Bearer ${workflowSecret}`)
       .set('x-request-id', 'write-api-key-summary-smoke-policy')
@@ -81,13 +81,13 @@ async function main(): Promise<void> {
       .expect(200);
 
     await request(server)
-      .get(`/topics/${topicId}/summary-policy`)
+      .get(`/interests/${interestId}/summary-policy`)
       .set(headers)
       .set('Authorization', `Bearer ${workflowSecret}`)
       .expect(200);
 
     await request(server)
-      .put(`/topics/${topicId}/summary-policy`)
+      .put(`/interests/${interestId}/summary-policy`)
       .set(otherTenantHeaders)
       .set('Authorization', `Bearer ${workflowSecret}`)
       .set('x-request-id', 'write-api-key-summary-smoke-wrong-tenant')
@@ -102,7 +102,7 @@ async function main(): Promise<void> {
       .expect(403);
 
     const summary = await request(server)
-      .post(`/topics/${topicId}/summary-requests`)
+      .post(`/interests/${interestId}/summary-requests`)
       .set(headers)
       .set('Authorization', `Bearer ${workflowSecret}`)
       .set('x-request-id', 'write-api-key-summary-smoke-request')
@@ -118,7 +118,7 @@ async function main(): Promise<void> {
       .expect(200);
 
     await request(server)
-      .put(`/topics/${topicId}/summary-policy`)
+      .put(`/interests/${interestId}/summary-policy`)
       .set(headers)
       .set('Authorization', `Bearer ${readOnlySecret}`)
       .set('x-request-id', 'write-api-key-summary-smoke-read-only-denied')

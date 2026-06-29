@@ -7,7 +7,7 @@ export type CreateDigestScheduleCommand = {
   readonly workspaceId: WorkspaceId;
   readonly recipientKey: string;
   readonly channel: DeliveryChannel;
-  readonly topicIds: readonly string[];
+  readonly interestIds: readonly string[];
   readonly intervalSeconds: number;
   readonly includeNoSignal: boolean;
   readonly nextRunAt?: Date;

@@ -319,7 +319,7 @@ const main = async (): Promise<void> => {
 
   const tenant = tenantId("tenant-live-multi-provider-summary-smoke");
   const workspace = workspaceId("workspace-live-multi-provider-summary-smoke");
-  const topicId = "topic-live-multi-provider-summary-smoke";
+  const interestId = "topic-live-multi-provider-summary-smoke";
   const metrics = new InMemoryMetricsRecorder();
   const feedItems = new InMemoryFeedItemReadRepository();
   const sourceItems = new InMemorySourceItemRepository();
@@ -385,7 +385,7 @@ const main = async (): Promise<void> => {
           tenantId: tenant,
           workspaceId: workspace,
           scanJobId: `scan-live-multi-provider-${target.sourceBindingId}`,
-          topicId,
+          interestId,
           sourceBindingId: target.sourceBindingId,
           scanPolicyId: target.scanPolicyId,
           providerKey: target.providerKey,
@@ -476,7 +476,7 @@ const main = async (): Promise<void> => {
   const feed = await feedItems.list({
     tenantId: tenant,
     workspaceId: workspace,
-    topicId,
+    interestId,
     limit: feedReadLimit,
   });
   const feedSnapshots = feed.items.map((item) => item.toSnapshot());
@@ -513,7 +513,7 @@ const main = async (): Promise<void> => {
       id: "summary-policy-live-multi-provider-smoke",
       tenantId: tenant,
       workspaceId: workspace,
-      topicId,
+      interestId,
       language: summaryPreference.language,
       format: summaryPreference.format,
       tone: summaryPreference.tone,
@@ -537,7 +537,7 @@ const main = async (): Promise<void> => {
     await requestSummary.execute({
       tenantId: tenant,
       workspaceId: workspace,
-      topicId,
+      interestId,
       idempotencyKey: "live-multi-provider-summary-idempotency-key",
       correlationId: "corr-live-multi-provider-summary-smoke",
     }),
@@ -666,7 +666,7 @@ const main = async (): Promise<void> => {
   const readerSummary = await runLiveReaderSummarySmoke({
     tenant,
     workspace,
-    topicId,
+    interestId,
     feedItems,
     feedSnapshots,
     targetBySourceBinding,
@@ -726,7 +726,7 @@ const main = async (): Promise<void> => {
 const runLiveReaderSummarySmoke = async (params: {
   readonly tenant: ReturnType<typeof tenantId>;
   readonly workspace: ReturnType<typeof workspaceId>;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly feedItems: InMemoryFeedItemReadRepository;
   readonly feedSnapshots: readonly {
     readonly id: string;
@@ -756,7 +756,7 @@ const runLiveReaderSummarySmoke = async (params: {
       tone: "analytical",
       maxStories: Math.min(maxSummaryKeyPoints, 10),
       includeRisks: true,
-      includeTopicHighlights: true,
+      includeInterestHighlights: true,
       includeRepeatedSignals: true,
       dedupeStrategy: "canonical_url_then_title",
       customInstructions: [

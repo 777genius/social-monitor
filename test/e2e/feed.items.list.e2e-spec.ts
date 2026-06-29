@@ -186,20 +186,20 @@ describe('Feed items list (e2e)', () => {
       sourceItemId: 'source-other-topic',
       tenant: 'tenant-feed-e2e',
       workspace: 'workspace-feed-e2e',
-      topicId: 'topic-feed-other-e2e',
+      interestId: 'topic-feed-other-e2e',
       publishedAt: new Date('2026-06-05T12:30:00.000Z'),
     });
     const topicFiltered = await request(app.getHttpServer())
       .get('/feed/items')
-      .query({ limit: 10, topicId: 'topic-feed-e2e' })
+      .query({ limit: 10, interestId: 'topic-feed-e2e' })
       .set('x-tenant-id', 'tenant-feed-e2e')
       .set('x-workspace-id', 'workspace-feed-e2e')
       .set('x-workspace-role', 'viewer')
       .expect(200);
 
     expect(topicFiltered.body.items).toEqual([
-      expect.objectContaining({ id: 'feed-2', topicId: 'topic-feed-e2e' }),
-      expect.objectContaining({ id: 'feed-1', topicId: 'topic-feed-e2e' }),
+      expect.objectContaining({ id: 'feed-2', interestId: 'topic-feed-e2e' }),
+      expect.objectContaining({ id: 'feed-1', interestId: 'topic-feed-e2e' }),
     ]);
     expect(topicFiltered.body.sourceBreakdown).toEqual({
       totalItems: 2,
@@ -322,13 +322,13 @@ describe('Feed items list (e2e)', () => {
   it('returns raw provider metrics and cohort-normalized signal', async () => {
     const tenant = 'tenant-feed-signal-e2e';
     const workspace = 'workspace-feed-signal-e2e';
-    const topicId = 'topic-feed-signal-e2e';
+    const interestId = 'topic-feed-signal-e2e';
     const publishedAt = new Date(Date.now() - 4 * 60 * 60 * 1000);
 
     seedRedditItems({
       tenant,
       workspace,
-      topicId,
+      interestId,
       subreddit: 'tiny-saas',
       publishedAt,
       samples: [
@@ -343,7 +343,7 @@ describe('Feed items list (e2e)', () => {
     seedRedditItems({
       tenant,
       workspace,
-      topicId,
+      interestId,
       subreddit: 'programming',
       publishedAt,
       samples: [
@@ -358,7 +358,7 @@ describe('Feed items list (e2e)', () => {
 
     const response = await request(app.getHttpServer())
       .get('/feed/items')
-      .query({ limit: 20, topicId })
+      .query({ limit: 20, interestId })
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'viewer')
@@ -464,7 +464,7 @@ describe('Feed items list (e2e)', () => {
   it('keeps a niche source cohort when the broad topic baseline is crowded by newer popular sources', async () => {
     const tenant = 'tenant-feed-crowded-baseline-e2e';
     const workspace = 'workspace-feed-crowded-baseline-e2e';
-    const topicId = 'topic-feed-crowded-baseline-e2e';
+    const interestId = 'topic-feed-crowded-baseline-e2e';
     const now = Date.now();
 
     seedFeedItem({
@@ -472,7 +472,7 @@ describe('Feed items list (e2e)', () => {
       sourceItemId: 'source-crowded-tiny-target',
       tenant,
       workspace,
-      topicId,
+      interestId,
       sourceBindingId: 'reddit-tiny-saas',
       providerKey: 'reddit',
       canonicalUrl: 'https://reddit.test/r/tiny-saas/comments/target',
@@ -490,7 +490,7 @@ describe('Feed items list (e2e)', () => {
         sourceItemId: `source-crowded-tiny-history-${index}`,
         tenant,
         workspace,
-        topicId,
+        interestId,
         sourceBindingId: 'reddit-tiny-saas',
         providerKey: 'reddit',
         canonicalUrl: `https://reddit.test/r/tiny-saas/comments/history-${index}`,
@@ -509,7 +509,7 @@ describe('Feed items list (e2e)', () => {
         sourceItemId: `source-crowded-programming-${index}`,
         tenant,
         workspace,
-        topicId,
+        interestId,
         sourceBindingId: 'reddit-programming',
         providerKey: 'reddit',
         canonicalUrl: `https://reddit.test/r/programming/comments/${index}`,
@@ -525,7 +525,7 @@ describe('Feed items list (e2e)', () => {
 
     const response = await request(app.getHttpServer())
       .get('/feed/items')
-      .query({ limit: 1, topicId })
+      .query({ limit: 1, interestId })
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'viewer')
@@ -553,7 +553,7 @@ describe('Feed items list (e2e)', () => {
   it('returns provider-specific raw metrics for GitHub, Hacker News and X posts', async () => {
     const tenant = 'tenant-feed-provider-metrics-e2e';
     const workspace = 'workspace-feed-provider-metrics-e2e';
-    const topicId = 'topic-feed-provider-metrics-e2e';
+    const interestId = 'topic-feed-provider-metrics-e2e';
     const publishedAt = new Date(Date.now() - 2 * 60 * 60 * 1000);
 
     seedFeedItem({
@@ -561,7 +561,7 @@ describe('Feed items list (e2e)', () => {
       sourceItemId: 'source-provider-github',
       tenant,
       workspace,
-      topicId,
+      interestId,
       providerKey: 'github-repo-radar',
       canonicalUrl: 'https://github.test/openai/codex',
       publishedAt,
@@ -580,7 +580,7 @@ describe('Feed items list (e2e)', () => {
       sourceItemId: 'source-provider-hn',
       tenant,
       workspace,
-      topicId,
+      interestId,
       providerKey: 'hacker-news',
       canonicalUrl: 'https://news.ycombinator.test/item?id=42',
       publishedAt,
@@ -596,7 +596,7 @@ describe('Feed items list (e2e)', () => {
       sourceItemId: 'source-provider-x',
       tenant,
       workspace,
-      topicId,
+      interestId,
       providerKey: 'x-twitter',
       canonicalUrl: 'https://x.test/post/42',
       publishedAt,
@@ -616,7 +616,7 @@ describe('Feed items list (e2e)', () => {
 
     const response = await request(app.getHttpServer())
       .get('/feed/items')
-      .query({ limit: 10, topicId })
+      .query({ limit: 10, interestId })
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'viewer')
@@ -737,7 +737,7 @@ describe('Feed items list (e2e)', () => {
   it('filters GitHub repo radar feed by long trend windows', async () => {
     const tenant = 'tenant-feed-repo-window-e2e';
     const workspace = 'workspace-feed-repo-window-e2e';
-    const topicId = 'topic-feed-repo-window-e2e';
+    const interestId = 'topic-feed-repo-window-e2e';
     const publishedAt = new Date(Date.now() - 30 * 60 * 1000);
 
     seedFeedItem({
@@ -745,7 +745,7 @@ describe('Feed items list (e2e)', () => {
       sourceItemId: 'source-repo-window-24h',
       tenant,
       workspace,
-      topicId,
+      interestId,
       providerKey: 'github-repo-radar',
       canonicalUrl: 'https://github.test/openai/codex',
       publishedAt,
@@ -764,7 +764,7 @@ describe('Feed items list (e2e)', () => {
       sourceItemId: 'source-repo-window-30d',
       tenant,
       workspace,
-      topicId,
+      interestId,
       providerKey: 'github-repo-radar',
       canonicalUrl: 'https://github.test/langchain-ai/langgraph',
       publishedAt,
@@ -783,7 +783,7 @@ describe('Feed items list (e2e)', () => {
       .get('/feed/items')
       .query({
         limit: 10,
-        topicId,
+        interestId,
         providerKey: 'github-repo-radar',
         repositoryTrendWindow: '30d',
       })
@@ -826,14 +826,14 @@ describe('Feed items list (e2e)', () => {
   it('omits normalized signal when a provider has no comparable raw metrics', async () => {
     const tenant = 'tenant-feed-no-signal-e2e';
     const workspace = 'workspace-feed-no-signal-e2e';
-    const topicId = 'topic-feed-no-signal-e2e';
+    const interestId = 'topic-feed-no-signal-e2e';
 
     seedFeedItem({
       id: 'feed-no-signal-rss',
       sourceItemId: 'source-no-signal-rss',
       tenant,
       workspace,
-      topicId,
+      interestId,
       providerKey: 'rss',
       publishedAt: new Date(Date.now() - 60 * 60 * 1000),
       providerMetadata: {
@@ -843,7 +843,7 @@ describe('Feed items list (e2e)', () => {
 
     const response = await request(app.getHttpServer())
       .get('/feed/items')
-      .query({ limit: 10, topicId })
+      .query({ limit: 10, interestId })
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'viewer')
@@ -880,15 +880,15 @@ describe('Feed items list (e2e)', () => {
   it('keeps cohorts topic-scoped and lowers confidence when exact baseline is too small', async () => {
     const tenant = 'tenant-feed-signal-fallback-e2e';
     const workspace = 'workspace-feed-signal-fallback-e2e';
-    const topicId = 'topic-feed-signal-fallback-e2e';
-    const otherTopicId = 'topic-feed-signal-fallback-other-e2e';
+    const interestId = 'topic-feed-signal-fallback-e2e';
+    const otherInterestId = 'topic-feed-signal-fallback-other-e2e';
     const now = Date.now();
 
     seedHackerNewsItem({
       id: 'feed-signal-hn-target',
       tenant,
       workspace,
-      topicId,
+      interestId,
       points: 40,
       comments: 12,
       publishedAt: new Date(now - 30 * 60 * 1000),
@@ -897,7 +897,7 @@ describe('Feed items list (e2e)', () => {
       id: 'feed-signal-hn-same-age',
       tenant,
       workspace,
-      topicId,
+      interestId,
       points: 25,
       comments: 8,
       publishedAt: new Date(now - 45 * 60 * 1000),
@@ -906,7 +906,7 @@ describe('Feed items list (e2e)', () => {
       id: 'feed-signal-hn-older-1',
       tenant,
       workspace,
-      topicId,
+      interestId,
       points: 5,
       comments: 1,
       publishedAt: new Date(now - 2 * 60 * 60 * 1000),
@@ -915,7 +915,7 @@ describe('Feed items list (e2e)', () => {
       id: 'feed-signal-hn-older-2',
       tenant,
       workspace,
-      topicId,
+      interestId,
       points: 10,
       comments: 3,
       publishedAt: new Date(now - 4 * 60 * 60 * 1000),
@@ -924,7 +924,7 @@ describe('Feed items list (e2e)', () => {
       id: 'feed-signal-hn-older-3',
       tenant,
       workspace,
-      topicId,
+      interestId,
       points: 15,
       comments: 5,
       publishedAt: new Date(now - 8 * 60 * 60 * 1000),
@@ -934,7 +934,7 @@ describe('Feed items list (e2e)', () => {
         id: `feed-signal-hn-other-topic-${index}`,
         tenant,
         workspace,
-        topicId: otherTopicId,
+        interestId: otherInterestId,
         points: 1000 + index,
         comments: 100 + index,
         publishedAt: new Date(now - 30 * 60 * 1000),
@@ -943,7 +943,7 @@ describe('Feed items list (e2e)', () => {
 
     const response = await request(app.getHttpServer())
       .get('/feed/items')
-      .query({ limit: 10, topicId })
+      .query({ limit: 10, interestId })
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'viewer')
@@ -970,8 +970,8 @@ describe('Feed items list (e2e)', () => {
       },
     });
     expect(target.normalizedSignal.confidence).toBeLessThan(0.5);
-    expect(response.body.items.some((item: { readonly topicId: string }) =>
-      item.topicId === otherTopicId)).toBe(false);
+    expect(response.body.items.some((item: { readonly interestId: string }) =>
+      item.interestId === otherInterestId)).toBe(false);
     expect(response.body.sourceBreakdown).toEqual({
       totalItems: 5,
       providerCount: 1,
@@ -990,7 +990,7 @@ describe('Feed items list (e2e)', () => {
         }),
       ],
     });
-    expect(JSON.stringify(response.body.sourceBreakdown)).not.toContain(otherTopicId);
+    expect(JSON.stringify(response.body.sourceBreakdown)).not.toContain(otherInterestId);
   });
 
   const seedFeedItem = (params: {
@@ -998,7 +998,7 @@ describe('Feed items list (e2e)', () => {
     readonly sourceItemId: string;
     readonly tenant: string;
     readonly workspace: string;
-    readonly topicId?: string;
+    readonly interestId?: string;
     readonly sourceBindingId?: string;
     readonly providerKey?: string;
     readonly canonicalUrl?: string;
@@ -1011,7 +1011,7 @@ describe('Feed items list (e2e)', () => {
         id: params.id,
         tenantId: tenantId(params.tenant),
         workspaceId: workspaceId(params.workspace),
-        topicId: params.topicId ?? 'topic-feed-e2e',
+        interestId: params.interestId ?? 'topic-feed-e2e',
         sourceItemId: params.sourceItemId,
         sourceBindingId: params.sourceBindingId ?? 'binding-feed-e2e',
         providerKey: params.providerKey ?? 'rss',
@@ -1029,7 +1029,7 @@ describe('Feed items list (e2e)', () => {
   const seedRedditItems = (params: {
     readonly tenant: string;
     readonly workspace: string;
-    readonly topicId: string;
+    readonly interestId: string;
     readonly subreddit: string;
     readonly publishedAt: Date;
     readonly samples: readonly (readonly [string, number])[];
@@ -1040,7 +1040,7 @@ describe('Feed items list (e2e)', () => {
         sourceItemId: `source-${id}`,
         tenant: params.tenant,
         workspace: params.workspace,
-        topicId: params.topicId,
+        interestId: params.interestId,
         sourceBindingId: `reddit-${params.subreddit}`,
         providerKey: 'reddit',
         canonicalUrl: `https://reddit.test/r/${params.subreddit}/comments/${id}`,
@@ -1059,7 +1059,7 @@ describe('Feed items list (e2e)', () => {
     readonly id: string;
     readonly tenant: string;
     readonly workspace: string;
-    readonly topicId: string;
+    readonly interestId: string;
     readonly points: number;
     readonly comments: number;
     readonly publishedAt: Date;
@@ -1069,7 +1069,7 @@ describe('Feed items list (e2e)', () => {
       sourceItemId: `source-${params.id}`,
       tenant: params.tenant,
       workspace: params.workspace,
-      topicId: params.topicId,
+      interestId: params.interestId,
       sourceBindingId: 'hacker-news-front-page',
       providerKey: 'hacker-news',
       canonicalUrl: `https://news.ycombinator.test/item?id=${params.id}`,

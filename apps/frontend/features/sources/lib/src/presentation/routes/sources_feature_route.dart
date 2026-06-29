@@ -4,7 +4,7 @@ import 'package:flutter/widgets.dart';
 import 'package:modularity_flutter/modularity_flutter.dart';
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
-import '../../domain/value_objects/source_topic_id.dart';
+import '../../domain/value_objects/source_interest_id.dart';
 import '../composition/sources_feature_module.dart';
 import '../composition/sources_feature_module_host.dart';
 import '../stores/source_bindings_store.dart';
@@ -27,22 +27,22 @@ class SourcesFeatureRoute extends StatelessWidget {
     super.key,
     required Object generatedApiRuntime,
     required WorkspaceScope scope,
-    required String topicId,
-    required String topicTitle,
+    required String interestId,
+    required String interestTitle,
   }) : _module = SourcesFeatureModule.sourceBindings(
          generatedApiRuntime: generatedApiRuntime,
          scope: scope,
-         sourceBindingTopicId: SourceTopicId(topicId),
-         sourceBindingTopicTitle: topicTitle,
+         sourceBindingInterestId: SourceInterestId(interestId),
+         sourceBindingInterestTitle: interestTitle,
        );
 
   SourcesFeatureRoute.sourceBindingsDemo({
     super.key,
-    required String topicId,
-    required String topicTitle,
+    required String interestId,
+    required String interestTitle,
   }) : _module = SourcesFeatureModule.sourceBindingsDemo(
-         sourceBindingTopicId: SourceTopicId(topicId),
-         sourceBindingTopicTitle: topicTitle,
+         sourceBindingInterestId: SourceInterestId(interestId),
+         sourceBindingInterestTitle: interestTitle,
        );
 
   final SourcesFeatureModule _module;
@@ -92,9 +92,7 @@ class _LoadedModuleFallbackState extends State<_LoadedModuleFallback> {
   Widget build(BuildContext context) {
     final provider = context.getInheritedWidgetOfExactType<ModuleProvider>();
     final binder = provider?.controller.binder;
-    final isLoaded =
-        binder?.tryGet<SourceProfilesStore>() != null ||
-        binder?.tryGet<SourceBindingsStore>() != null;
+    final isLoaded = _canResolveStore(binder);
     if (isLoaded) {
       _statusCheckTimer?.cancel();
       return widget.child;
@@ -103,5 +101,22 @@ class _LoadedModuleFallbackState extends State<_LoadedModuleFallback> {
     return const Center(
       child: Text('Loading sources', textDirection: TextDirection.ltr),
     );
+  }
+}
+
+bool _canResolveStore(Binder? binder) {
+  if (binder == null) {
+    return false;
+  }
+  return _canResolve<SourceProfilesStore>(binder) ||
+      _canResolve<SourceBindingsStore>(binder);
+}
+
+bool _canResolve<T extends Object>(Binder binder) {
+  try {
+    binder.get<T>();
+    return true;
+  } catch (_) {
+    return false;
   }
 }

@@ -41,8 +41,8 @@ Allowed future machine-interface queries:
 
 Reuse the existing API-key scope model and extend only when implementation begins:
 
-- Existing read scopes: `read:topics`, `read:feed`, `read:summaries`, `read:delivery_status`, `read:webhook_endpoints`.
-- Existing mutation scopes: `write:topics`, `write:source_bindings`, `write:scan_requests`, `write:summaries`, `write:webhook_endpoints`.
+- Existing read scopes: `read:interests`, `read:feed`, `read:summaries`, `read:delivery_status`, `read:webhook_endpoints`.
+- Existing mutation scopes: `write:interests`, `write:source_bindings`, `write:scan_requests`, `write:summaries`, `write:webhook_endpoints`.
 - Future MCP tools must map to the narrowest read scope possible.
 - A future write-capable tool must not reuse read scopes.
 - Tenant/workspace from the API key remains authoritative; client-provided tenant/workspace identifiers are only selectors inside that boundary.

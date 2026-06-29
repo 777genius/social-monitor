@@ -83,7 +83,7 @@ const story = (
   storyClusterId: `story:${id}`,
   title,
   summary: `${title} is worth reading.`,
-  topicIds: ["ai-developer-tools"],
+  interestIds: ["ai-developer-tools"],
   providerKeys,
   citationIds: [citationId],
 });
@@ -119,7 +119,7 @@ const clusters = (ids: readonly string[]): ReadonlyMap<string, StoryCluster> =>
         storyKey: `story-key:${id}`,
         representativeFeedItemId: `feed-${id}`,
         duplicateFeedItemIds: [],
-        topicIds: ["ai-developer-tools"],
+        interestIds: ["ai-developer-tools"],
         providerKeys: ["x-twitter"],
         score: 2.4,
         observedAtRange: {
@@ -141,7 +141,7 @@ const evidenceItem = (
   feedItemId,
   sourceItemId: `source-${feedItemId}`,
   sourceBindingId: `binding-${providerKey}`,
-  topicId: "ai-developer-tools",
+  interestId: "ai-developer-tools",
   providerKey,
   providerName: providerKey,
   canonicalUrl: `https://example.test/${feedItemId}`,
@@ -153,7 +153,7 @@ const evidenceItem = (
   providerMetricLabels: metrics.map(([label, value]) => ({ label, value })),
   contentQuality: {
     qualityScore: 0.9,
-    topicRelevanceScore: 0.9,
+    interestRelevanceScore: 0.9,
     engagementIntegrityScore: 0.9,
     eligibleForSummary: true,
     eligibleForTopRead: true,

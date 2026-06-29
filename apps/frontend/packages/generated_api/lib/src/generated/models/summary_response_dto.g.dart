@@ -20,6 +20,7 @@ SummaryResponseDto _$SummaryResponseDtoFromJson(
     json['freshness'] as Map<String, dynamic>,
   ),
   headline: json['headline'] as String,
+  interestId: json['interestId'] as String,
   keyPoints: (json['keyPoints'] as List<dynamic>)
       .map((e) => SummaryKeyPointDto.fromJson(e as Map<String, dynamic>))
       .toList(),
@@ -41,7 +42,6 @@ SummaryResponseDto _$SummaryResponseDtoFromJson(
   ),
   summaryId: json['summaryId'] as String,
   tenantId: json['tenantId'] as String,
-  topicId: json['topicId'] as String,
   usage: SummaryUsageDto.fromJson(json['usage'] as Map<String, dynamic>),
   workspaceId: json['workspaceId'] as String,
   noSignalReason: json['noSignalReason'] as String?,
@@ -56,6 +56,7 @@ Map<String, dynamic> _$SummaryResponseDtoToJson(SummaryResponseDto instance) =>
       'executiveSummary': instance.executiveSummary,
       'freshness': instance.freshness,
       'headline': instance.headline,
+      'interestId': instance.interestId,
       'keyPoints': instance.keyPoints,
       'lineage': instance.lineage,
       'noSignalReason': instance.noSignalReason,
@@ -67,7 +68,6 @@ Map<String, dynamic> _$SummaryResponseDtoToJson(SummaryResponseDto instance) =>
       'subscriptionId': instance.subscriptionId,
       'summaryId': instance.summaryId,
       'tenantId': instance.tenantId,
-      'topicId': instance.topicId,
       'usage': instance.usage,
       'userId': instance.userId,
       'workspaceId': instance.workspaceId,

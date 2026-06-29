@@ -6,7 +6,7 @@ final class TopRead {
     required this.title,
     required this.providerKey,
     required this.reason,
-    required this.matchedTopicIds,
+    required this.matchedInterestIds,
     required this.matchedRules,
     required this.signalScore,
     required this.confidence,
@@ -21,7 +21,7 @@ final class TopRead {
   final String title;
   final String providerKey;
   final String reason;
-  final List<String> matchedTopicIds;
+  final List<String> matchedInterestIds;
   final List<String> matchedRules;
   final SignalScore signalScore;
   final TopReadConfidence confidence;

@@ -34,7 +34,7 @@ describe('GetSummaryJobStatusUseCase', () => {
       id: 'summary-job-1',
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       idempotencyKey: 'summary-1',
       requestedAt: new Date('2026-06-06T00:00:00.000Z'),
     })
@@ -55,7 +55,7 @@ describe('GetSummaryJobStatusUseCase', () => {
       ok: true,
       value: {
         summaryJobId: 'summary-job-1',
-        topicId: 'topic-1',
+        interestId: 'interest-1',
         status: 'no_signal',
         requestedAt: '2026-06-06T00:00:00.000Z',
         startedAt: '2026-06-06T00:00:01.000Z',

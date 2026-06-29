@@ -53,8 +53,8 @@ export class GetSourceBindingHealthUseCase {
   async execute(
     query: GetSourceBindingHealthQuery,
   ): Promise<Result<GetSourceBindingHealthResult, GetSourceBindingHealthFailure>> {
-    if (query.topicId.trim().length === 0) {
-      return err(new DomainError('validation.failed', 'Topic id is required'));
+    if (query.interestId.trim().length === 0) {
+      return err(new DomainError('validation.failed', 'Interest id is required'));
     }
 
     if (query.sourceBindingId.trim().length === 0) {
@@ -67,7 +67,7 @@ export class GetSourceBindingHealthUseCase {
       sourceBindingId: query.sourceBindingId,
     });
 
-    if (binding === null || binding.toSnapshot().topicId !== query.topicId) {
+    if (binding === null || binding.toSnapshot().interestId !== query.interestId) {
       return err(new DomainError('resource.not_found', 'Source binding not found', {
         sourceBindingId: query.sourceBindingId,
       }));

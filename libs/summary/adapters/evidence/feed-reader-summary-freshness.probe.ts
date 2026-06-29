@@ -18,7 +18,7 @@ export class FeedReaderSummaryFreshnessProbe implements ReaderSummaryFreshnessPr
     const result = await this.feedItems.list({
       tenantId: params.tenantId,
       workspaceId: params.workspaceId,
-      topicId: params.scope.type === "topic" ? params.scope.topicId : undefined,
+      interestId: params.scope.type === "interest" ? params.scope.interestId : undefined,
       observedAfter: params.sourceWindow.endedAt,
       limit: 1,
     });

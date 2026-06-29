@@ -26,7 +26,7 @@ export class DigestSchedulesController {
   ) {}
 
   @Post()
-  @ApiOperation({ summary: 'Create a periodic digest schedule for one recipient and topic set.' })
+  @ApiOperation({ summary: 'Create a periodic digest schedule for one recipient and interest set.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
   @ApiKeyOrWorkspaceRoleAuth({
@@ -59,7 +59,7 @@ export class DigestSchedulesController {
       workspaceId: scope.workspaceId,
       recipientKey: body.recipientKey,
       channel: body.channel,
-      topicIds: body.topicIds,
+      interestIds: body.interestIds,
       intervalSeconds: body.intervalSeconds,
       includeNoSignal: body.includeNoSignal,
       nextRunAt: body.nextRunAt === undefined ? undefined : parseDate(body.nextRunAt, 'nextRunAt'),

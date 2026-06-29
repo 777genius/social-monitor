@@ -12,9 +12,9 @@ class ReaderSummaryStorySignalBreakdownDto {
     required this.baseScore,
     required this.crossProviderSupport,
     required this.freshnessBoost,
+    required this.interestDiversityBoost,
     required this.providerDiversityBoost,
     required this.sameProviderSupport,
-    required this.topicDiversityBoost,
     required this.totalScore,
   });
 
@@ -25,9 +25,9 @@ class ReaderSummaryStorySignalBreakdownDto {
   final num baseScore;
   final num crossProviderSupport;
   final num freshnessBoost;
+  final num interestDiversityBoost;
   final num providerDiversityBoost;
   final num sameProviderSupport;
-  final num topicDiversityBoost;
   final num totalScore;
 
   Map<String, Object?> toJson() =>

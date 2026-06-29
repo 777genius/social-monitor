@@ -18,7 +18,7 @@ const evidenceItem = (
   feedItemId: "feed-1",
   sourceItemId: "source-1",
   sourceBindingId: "binding-1",
-  topicId: "topic-ai",
+  interestId: "interest-ai",
   providerKey: "reddit",
   canonicalUrl: "https://example.com/stories/ai-tooling?utm_source=reddit",
   title: "AI tooling launch",
@@ -31,7 +31,7 @@ const evidenceItem = (
 });
 
 describe("StoryClusteringService", () => {
-  it("clusters the same canonical URL across topics and providers", () => {
+  it("clusters the same canonical URL across interests and providers", () => {
     const service = new StoryClusteringService(clock);
 
     const selection = service.cluster({
@@ -44,14 +44,14 @@ describe("StoryClusteringService", () => {
       items: [
         evidenceItem({
           feedItemId: "feed-reddit",
-          topicId: "topic-ai",
+          interestId: "interest-ai",
           providerKey: "reddit",
           score: 1.8,
         }),
         evidenceItem({
           feedItemId: "feed-github",
           sourceItemId: "source-2",
-          topicId: "topic-github",
+          interestId: "interest-github",
           providerKey: "github",
           canonicalUrl: "https://example.com/stories/ai-tooling#discussion",
           score: 2.2,
@@ -67,14 +67,14 @@ describe("StoryClusteringService", () => {
       rankingPolicyVersion: STORY_RANKING_POLICY_V1.version,
       representativeFeedItemId: "feed-github",
       duplicateFeedItemIds: ["feed-reddit"],
-      topicIds: ["topic-ai", "topic-github"],
+      interestIds: ["interest-ai", "interest-github"],
       providerKeys: ["github", "reddit"],
       signalBreakdown: {
         baseScore: 2.2,
         crossProviderSupport: 0.3,
         sameProviderSupport: 0,
         providerDiversityBoost: 0.25,
-        topicDiversityBoost: 0.12,
+        interestDiversityBoost: 0.12,
         freshnessBoost: 0.18,
         totalScore: 3.05,
       },

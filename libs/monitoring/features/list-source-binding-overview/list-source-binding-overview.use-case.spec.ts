@@ -35,7 +35,7 @@ describe('ListSourceBindingOverviewUseCase', () => {
     ).execute({
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: 'topic-overview',
+      interestId: 'interest-overview',
       limit: 50,
     });
 
@@ -81,13 +81,13 @@ describe('ListSourceBindingOverviewUseCase', () => {
     expect(getSourceBindingHealth.execute).toHaveBeenNthCalledWith(1, {
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: 'topic-overview',
+      interestId: 'interest-overview',
       sourceBindingId: 'binding-reddit',
     });
     expect(getSourceBindingHealth.execute).toHaveBeenNthCalledWith(2, {
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: 'topic-overview',
+      interestId: 'interest-overview',
       sourceBindingId: 'binding-github',
     });
   });
@@ -184,7 +184,7 @@ describe('ListSourceBindingOverviewUseCase', () => {
     ).execute({
       tenantId: tenantId('tenant-overview'),
       workspaceId: workspaceId('workspace-overview'),
-      topicId: 'topic-overview',
+      interestId: 'interest-overview',
       limit: 50,
     });
 
@@ -228,7 +228,7 @@ describe('ListSourceBindingOverviewUseCase', () => {
 
   it('returns list errors without reading per-binding health', async () => {
     const listSourceBindings = {
-      execute: jest.fn().mockResolvedValue(err(new DomainError('resource.not_found', 'Topic not found'))),
+      execute: jest.fn().mockResolvedValue(err(new DomainError('resource.not_found', 'Interest not found'))),
     };
     const getSourceBindingHealth = { execute: jest.fn() };
 
@@ -238,7 +238,7 @@ describe('ListSourceBindingOverviewUseCase', () => {
     ).execute({
       tenantId: tenantId('tenant-overview'),
       workspaceId: workspaceId('workspace-overview'),
-      topicId: 'missing-topic',
+      interestId: 'missing-interest',
       limit: 50,
     });
 
@@ -276,7 +276,7 @@ describe('ListSourceBindingOverviewUseCase', () => {
     ).execute({
       tenantId: tenantId('tenant-overview'),
       workspaceId: workspaceId('workspace-overview'),
-      topicId: 'topic-overview',
+      interestId: 'interest-overview',
       limit: 50,
     });
 
@@ -309,7 +309,7 @@ describe('ListSourceBindingOverviewUseCase', () => {
     ).execute({
       tenantId: tenantId('tenant-overview'),
       workspaceId: workspaceId('workspace-overview'),
-      topicId: 'topic-overview',
+      interestId: 'interest-overview',
       limit: 50,
     });
 
@@ -326,7 +326,7 @@ const makeSourceBindingView = (
   id: 'binding-1',
   tenantId: tenantId('tenant-overview'),
   workspaceId: workspaceId('workspace-overview'),
-  topicId: 'topic-overview',
+  interestId: 'interest-overview',
   providerKey: 'fake-source',
   capabilityProfileVersion: 1,
   status: 'enabled',

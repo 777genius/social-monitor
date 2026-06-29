@@ -32,7 +32,7 @@ import {
 } from "./request-summary.dto";
 
 @ApiTags("summaries")
-@Controller("topics/:topicId/summary-requests")
+@Controller("interests/:interestId/summary-requests")
 export class SummaryRequestController {
   constructor(
     private readonly requestSummary: RequestSummaryUseCase,
@@ -44,7 +44,7 @@ export class SummaryRequestController {
   ) {}
 
   @Post()
-  @ApiOperation({ summary: "Request a summary for a topic." })
+  @ApiOperation({ summary: "Request a summary for an interest." })
   @ApiHeader({ name: "x-tenant-id", required: true })
   @ApiHeader({ name: "x-workspace-id", required: true })
   @ApiKeyOrWorkspaceRoleAuth({
@@ -55,7 +55,7 @@ export class SummaryRequestController {
   @ApiHeader({ name: "idempotency-key", required: true })
   @ApiCreatedResponse({ type: RequestSummaryResponseDto })
   async create(
-    @Param("topicId") topicId: string,
+    @Param("interestId") interestId: string,
     @Headers("x-tenant-id") tenantHeader: string | undefined,
     @Headers("x-workspace-id") workspaceHeader: string | undefined,
     @Headers("x-workspace-role") workspaceRoleHeader: string | undefined,
@@ -79,7 +79,7 @@ export class SummaryRequestController {
     const result = await this.requestSummary.execute({
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
-      topicId,
+      interestId,
       userId: body?.userId,
       subscriptionId: body?.subscriptionId,
       idempotencyKey: requireIdempotencyKeyHeader(idempotencyKey),

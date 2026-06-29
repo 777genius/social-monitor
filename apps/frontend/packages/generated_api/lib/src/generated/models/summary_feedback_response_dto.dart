@@ -18,11 +18,11 @@ class SummaryFeedbackResponseDto {
     required this.eligibleForEvalFixture,
     required this.evidence,
     required this.feedbackId,
+    required this.interestId,
     required this.rating,
     required this.submittedBy,
     required this.summaryId,
     required this.tenantId,
-    required this.topicId,
     required this.triageOwner,
     required this.workspaceId,
     this.comment,
@@ -37,11 +37,11 @@ class SummaryFeedbackResponseDto {
   final bool eligibleForEvalFixture;
   final SummaryFeedbackEvidenceDto evidence;
   final String feedbackId;
+  final String interestId;
   final num rating;
   final String submittedBy;
   final String summaryId;
   final String tenantId;
-  final String topicId;
   final SummaryFeedbackResponseDtoTriageOwnerTriageOwner triageOwner;
   final String workspaceId;
 

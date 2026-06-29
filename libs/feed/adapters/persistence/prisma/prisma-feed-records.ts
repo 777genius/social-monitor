@@ -7,7 +7,7 @@ export type PrismaFeedItemRecord = {
   readonly id: string;
   readonly tenantId: string;
   readonly workspaceId: string;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly sourceItemId: string;
   readonly sourceBindingId: string;
   readonly providerKey: string;
@@ -28,7 +28,7 @@ export const feedItemFromPrisma = (record: PrismaFeedItemRecord): FeedItem =>
     id: record.id,
     tenantId: tenantId(record.tenantId),
     workspaceId: workspaceId(record.workspaceId),
-    topicId: record.topicId,
+    interestId: record.interestId,
     sourceItemId: record.sourceItemId,
     sourceBindingId: record.sourceBindingId,
     providerKey: record.providerKey,

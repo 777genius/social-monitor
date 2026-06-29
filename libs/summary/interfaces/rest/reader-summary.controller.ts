@@ -59,9 +59,9 @@ export class ReaderSummaryController {
   @ApiQuery({
     name: "scopeType",
     required: false,
-    enum: ["workspace", "topic"],
+    enum: ["workspace", "interest"],
   })
-  @ApiQuery({ name: "topicId", required: false, type: String })
+  @ApiQuery({ name: "interestId", required: false, type: String })
   @ApiQuery({
     name: "cadence",
     required: false,
@@ -92,7 +92,7 @@ export class ReaderSummaryController {
     @Headers("x-workspace-role") workspaceRoleHeader: string | undefined,
     @Headers("authorization") authorizationHeader: string | undefined,
     @Query("scopeType") scopeType: string | undefined,
-    @Query("topicId") topicId: string | undefined,
+    @Query("interestId") interestId: string | undefined,
     @Query("cadence") cadence: string | undefined,
     @Query("periodStartedAt") periodStartedAt: string | undefined,
     @Query("periodEndedAt") periodEndedAt: string | undefined,
@@ -119,7 +119,7 @@ export class ReaderSummaryController {
     const result = await this.listReaderSummaries.execute({
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
-      scope: normalizeReaderSummaryScopeQuery(scopeType, topicId),
+      scope: normalizeReaderSummaryScopeQuery(scopeType, interestId),
       cadence: normalizeReaderSummaryCadenceFilter(cadence),
       periodStartedAt: normalizeReaderSummaryDateFilter(
         periodStartedAt,
@@ -225,7 +225,7 @@ export class ReaderSummaryController {
 
 const normalizeReaderSummaryScopeQuery = (
   scopeType: string | undefined,
-  topicId: string | undefined,
+  interestId: string | undefined,
 ): ReaderSummaryScope | undefined => {
   if (scopeType === undefined || scopeType.trim().length === 0) {
     return undefined;
@@ -235,13 +235,13 @@ const normalizeReaderSummaryScopeQuery = (
     return { type: "workspace" };
   }
 
-  if (scopeType === "topic") {
-    return { type: "topic", topicId: topicId ?? "" };
+  if (scopeType === "interest") {
+    return { type: "interest", interestId: interestId ?? "" };
   }
 
   throw new DomainError(
     "validation.failed",
-    "ReaderSummary scopeType must be workspace or topic",
+    "ReaderSummary scopeType must be workspace or interest",
   );
 };
 

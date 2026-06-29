@@ -4,7 +4,7 @@ export type SourceBindingEnabledPayload = {
   readonly sourceBindingId: string;
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly providerKey: string;
   readonly capabilityProfileVersion: number;
 };

@@ -34,7 +34,7 @@ export class ListSourceBindingOverviewUseCase {
         this.getSourceBindingHealth.execute({
           tenantId: query.tenantId,
           workspaceId: query.workspaceId,
-          topicId: query.topicId,
+          interestId: query.interestId,
           sourceBindingId: sourceBinding.id,
         }),
       ),

@@ -58,12 +58,12 @@ final class SummaryStoryApiDto {
 final class RepeatedSignalApiDto {
   const RepeatedSignalApiDto({
     required this.title,
-    required this.topicIds,
+    required this.interestIds,
     required this.citationIds,
   });
 
   final String title;
-  final List<String> topicIds;
+  final List<String> interestIds;
   final List<String> citationIds;
 }
 
@@ -75,7 +75,7 @@ final class TopReadApiDto {
     required this.citationIds,
     this.providerName,
     this.primaryActionKind = 'read_source',
-    this.matchedTopicIds = const [],
+    this.matchedInterestIds = const [],
     this.matchedRules = const [],
     this.signalScore = 0,
     this.confidence = const TopReadConfidenceApiDto(
@@ -95,7 +95,7 @@ final class TopReadApiDto {
   final String? providerName;
   final String primaryActionKind;
   final String reason;
-  final List<String> matchedTopicIds;
+  final List<String> matchedInterestIds;
   final List<String> matchedRules;
   final double signalScore;
   final TopReadConfidenceApiDto confidence;
@@ -126,20 +126,20 @@ final class ProviderMetricApiDto {
   final String value;
 }
 
-final class ReaderTopicSectionApiDto {
-  const ReaderTopicSectionApiDto({
+final class ReaderInterestSectionApiDto {
+  const ReaderInterestSectionApiDto({
     required this.title,
     required this.insight,
     required this.items,
     required this.citationIds,
-    this.topicId,
+    this.interestId,
   });
 
   final String title;
   final String insight;
   final List<TopReadApiDto> items;
   final List<String> citationIds;
-  final String? topicId;
+  final String? interestId;
 }
 
 final class SourceMixEntryApiDto {
@@ -150,7 +150,7 @@ final class SourceMixEntryApiDto {
     this.storyClusterCount = 0,
     this.crossSourceClusterCount = 0,
     this.singleSourceOnly = true,
-    this.topicIds = const [],
+    this.interestIds = const [],
   });
 
   final String providerKey;
@@ -159,7 +159,7 @@ final class SourceMixEntryApiDto {
   final int storyClusterCount;
   final int crossSourceClusterCount;
   final bool singleSourceOnly;
-  final List<String> topicIds;
+  final List<String> interestIds;
 }
 
 final class ReaderSummaryQualityStateApiDto {
@@ -211,7 +211,7 @@ final class ReaderSummaryContentApiDto {
     required this.headline,
     required this.oneLineTakeaway,
     required this.bullets,
-    required this.topicSections,
+    required this.interestSections,
     required this.sourceMix,
     required this.topReads,
     required this.trendDelta,
@@ -230,7 +230,7 @@ final class ReaderSummaryContentApiDto {
   final String oneLineTakeaway;
   final List<String> bullets;
   final ReaderSummaryQualityStateApiDto qualityState;
-  final List<ReaderTopicSectionApiDto> topicSections;
+  final List<ReaderInterestSectionApiDto> interestSections;
   final List<SourceMixEntryApiDto> sourceMix;
   final List<TopReadApiDto> topReads;
   final ReaderTrendDeltaApiDto trendDelta;

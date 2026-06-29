@@ -56,7 +56,7 @@ A model or prompt change cannot ship if:
 
 Use human review for:
 
-- new domains/topics;
+- new domains/interests;
 - high-impact alert templates;
 - eval dataset updates;
 - disagreements between automated graders and product expectation.

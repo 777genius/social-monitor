@@ -2,7 +2,7 @@ import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 
 export type SourceTargetKind =
   | 'subreddit'
-  | 'topic'
+  | 'interest'
   | 'search_query'
   | 'repository'
   | 'account'

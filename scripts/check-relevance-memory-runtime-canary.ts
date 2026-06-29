@@ -61,7 +61,7 @@ async function main(): Promise<void> {
       rating: 5,
       target: {
         feedItemId: `feed-${runId}`,
-        topicId: topic,
+        interestId: topic,
         providerKey: "github",
         title:
           "Trending AI developer tooling library for autonomous coding workflows",

@@ -14,11 +14,11 @@ export const buildSummaryHeadline = (
   );
 
   if (itemCount === 0 || providerLabels.length === 0) {
-    return 'Topic summary';
+    return 'Interest summary';
   }
 
   const itemLabel = itemCount === 1 ? 'item' : 'items';
   const sourceLabel = providerLabels.length === 1 ? 'source' : 'sources';
 
-  return `Topic summary: ${itemCount} ${itemLabel} across ${providerLabels.length} ${sourceLabel} (${summarizeProviderLabels(providerLabels)})`;
+  return `Interest summary: ${itemCount} ${itemLabel} across ${providerLabels.length} ${sourceLabel} (${summarizeProviderLabels(providerLabels)})`;
 };

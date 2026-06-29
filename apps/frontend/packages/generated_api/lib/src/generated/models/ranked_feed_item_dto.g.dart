@@ -15,6 +15,7 @@ RankedFeedItemDto _$RankedFeedItemDtoFromJson(Map<String, dynamic> json) =>
           .map((e) => e as String)
           .toList(),
       feedItemId: json['feedItemId'] as String,
+      interestId: json['interestId'] as String,
       observedAt: DateTime.parse(json['observedAt'] as String),
       providerKey: json['providerKey'] as String,
       publishedAt: DateTime.parse(json['publishedAt'] as String),
@@ -26,7 +27,6 @@ RankedFeedItemDto _$RankedFeedItemDtoFromJson(Map<String, dynamic> json) =>
       sourceBindingId: json['sourceBindingId'] as String,
       sourceItemId: json['sourceItemId'] as String,
       title: json['title'] as String,
-      topicId: json['topicId'] as String,
       whyImportant: (json['whyImportant'] as List<dynamic>)
           .map((e) => e as String)
           .toList(),
@@ -44,6 +44,7 @@ Map<String, dynamic> _$RankedFeedItemDtoToJson(RankedFeedItemDto instance) =>
       'clusterSize': instance.clusterSize,
       'duplicateFeedItemIds': instance.duplicateFeedItemIds,
       'feedItemId': instance.feedItemId,
+      'interestId': instance.interestId,
       'observedAt': instance.observedAt.toIso8601String(),
       'providerKey': instance.providerKey,
       'providerMetadata': instance.providerMetadata,
@@ -54,6 +55,5 @@ Map<String, dynamic> _$RankedFeedItemDtoToJson(RankedFeedItemDto instance) =>
       'sourceBindingId': instance.sourceBindingId,
       'sourceItemId': instance.sourceItemId,
       'title': instance.title,
-      'topicId': instance.topicId,
       'whyImportant': instance.whyImportant,
     };

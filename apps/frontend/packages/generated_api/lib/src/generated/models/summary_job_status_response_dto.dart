@@ -12,11 +12,11 @@ part 'summary_job_status_response_dto.g.dart';
 @JsonSerializable()
 class SummaryJobStatusResponseDto {
   const SummaryJobStatusResponseDto({
+    required this.interestId,
     required this.requestedAt,
     required this.status,
     required this.summaryJobId,
     required this.timeline,
-    required this.topicId,
     this.completedAt,
     this.failedAt,
     this.failureReason,
@@ -30,13 +30,13 @@ class SummaryJobStatusResponseDto {
   final DateTime? completedAt;
   final DateTime? failedAt;
   final String? failureReason;
+  final String interestId;
   final DateTime requestedAt;
   final DateTime? startedAt;
   final SummaryJobStatusResponseDtoStatusStatus status;
   final String? summaryId;
   final String summaryJobId;
   final List<SummaryJobTimelineEventDto> timeline;
-  final String topicId;
 
   Map<String, Object?> toJson() => _$SummaryJobStatusResponseDtoToJson(this);
 }

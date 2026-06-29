@@ -29,7 +29,7 @@ describe('Summary request flow (e2e)', () => {
 
   it('creates topic summary request idempotently', async () => {
     const first = await request(app.getHttpServer())
-      .post('/topics/topic-summary-e2e/summary-requests')
+      .post('/interests/topic-summary-e2e/summary-requests')
       .set('x-tenant-id', 'tenant-summary-e2e')
       .set('x-workspace-id', 'workspace-summary-e2e')
       .set('x-workspace-role', 'member')
@@ -44,7 +44,7 @@ describe('Summary request flow (e2e)', () => {
     });
 
     const second = await request(app.getHttpServer())
-      .post('/topics/topic-summary-e2e/summary-requests')
+      .post('/interests/topic-summary-e2e/summary-requests')
       .set('x-tenant-id', 'tenant-summary-e2e')
       .set('x-workspace-id', 'workspace-summary-e2e')
       .set('x-workspace-role', 'member')

@@ -51,7 +51,7 @@ const now = new Date("2026-06-24T10:00:00.000Z");
 const query = (): LoadUserContextForSummaryQuery => ({
   tenantId: tenantId("tenant-memory"),
   workspaceId: workspaceId("workspace-memory"),
-  topicId: "topic-ai",
+  interestId: "interest-ai",
   userId: "user-1",
   evidence: {
     sourceWindow: {

@@ -42,7 +42,7 @@ const fixture: SummaryEvalFixture = {
   input: {
     tenantId: tenantId('tenant-cost-1'),
     workspaceId: workspaceId('workspace-cost-1'),
-    topicId: 'topic-cost-1',
+    interestId: 'interest-cost-1',
     requestedAt: new Date('2026-06-06T00:00:00.000Z'),
     policy: defaultSummaryGenerationPolicy(),
     evidence: {
@@ -139,7 +139,7 @@ class CostAttributionModel implements SummaryModelPort {
 }
 
 describe('BuildSummaryCostAttributionUseCase', () => {
-  it('attributes eval summary cost to tenant, workspace, topic and model dimensions', async () => {
+  it('attributes eval summary cost to tenant, workspace, interest and model dimensions', async () => {
     const result = new BuildSummaryCostAttributionUseCase(new CostAttributionModel()).execute({
       reportId: 'summary-cost-attribution-test',
       generatedBy: 'unit-test',
@@ -163,7 +163,7 @@ describe('BuildSummaryCostAttributionUseCase', () => {
       fixtureId: 'cost-fixture-1',
       tenantId: 'tenant-cost-1',
       workspaceId: 'workspace-cost-1',
-      topicId: 'topic-cost-1',
+      interestId: 'interest-cost-1',
       sourceWindowId: 'window-cost-1',
       provider: 'cost-fake',
       model: 'cost-fake-v1',

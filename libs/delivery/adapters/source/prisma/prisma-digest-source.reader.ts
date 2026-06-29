@@ -23,9 +23,9 @@ export class PrismaDigestSourceReader implements DigestSourceReaderPort {
   constructor(private readonly prisma: PrismaDeliveryClient) {}
 
   async readWindow(query: DigestSourceWindowQuery): Promise<DigestSourceWindowResult> {
-    const topicIds = uniqueSorted(query.topicIds);
+    const interestIds = uniqueSorted(query.interestIds);
 
-    if (topicIds.length === 0) {
+    if (interestIds.length === 0) {
       return {
         summaries: [],
         feedItems: [],
@@ -37,7 +37,7 @@ export class PrismaDigestSourceReader implements DigestSourceReaderPort {
         where: {
           tenantId: query.tenantId,
           workspaceId: query.workspaceId,
-          topicId: { in: topicIds },
+          interestId: { in: interestIds },
           status: { in: ['COMPLETED', 'NO_SIGNAL'] satisfies readonly PrismaDigestSourceSummaryStatus[] },
         },
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
@@ -47,7 +47,7 @@ export class PrismaDigestSourceReader implements DigestSourceReaderPort {
         where: {
           tenantId: query.tenantId,
           workspaceId: query.workspaceId,
-          topicId: { in: topicIds },
+          interestId: { in: interestIds },
           status: 'VISIBLE',
           observedAt: {
             gte: query.startedAt,
@@ -96,7 +96,7 @@ const summaryCandidateFromPrisma = (record: PrismaDigestSourceSummaryRecord): Di
     tenantId: tenantId(record.tenantId),
     workspaceId: workspaceId(record.workspaceId),
     summaryId: record.id,
-    topicId: record.topicId,
+    interestId: record.interestId,
     sourceWindowStartedAt,
     sourceWindowEndedAt,
     signal: summarySignal(record),
@@ -107,7 +107,7 @@ const feedItemCandidateFromPrisma = (record: PrismaDigestSourceFeedItemRecord): 
   tenantId: tenantId(record.tenantId),
   workspaceId: workspaceId(record.workspaceId),
   feedItemId: record.id,
-  topicId: record.topicId,
+  interestId: record.interestId,
   observedAt: record.observedAt,
   signal: 'normal',
 });

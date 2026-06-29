@@ -74,8 +74,8 @@ const client = new InfinityContextClient({
 
 const context = await client.context.buildContext({
   spaceSlug: 'social-monitor:tenant-1:workspace-1',
-  memoryScopeExternalRefs: ['topic:topic-1:feedback'],
-  query: 'summary guidance topic:topic-1',
+  memoryScopeExternalRefs: ['interest:topic-1:feedback'],
+  query: 'summary guidance interest:topic-1',
   tokenBudget: 64,
   maxFacts: 2,
   maxChunks: 2,
@@ -87,7 +87,7 @@ assert.equal(context.data.diagnostics.vector_status, 'ok');
 
 const feedback = await client.workflows.recordFeedback({
   spaceSlug: 'social-monitor:tenant-1:workspace-1',
-  memoryScopeExternalRef: 'topic:topic-1:feedback',
+  memoryScopeExternalRef: 'interest:topic-1:feedback',
   sourceAgent: 'social-monitor.summary-feedback',
   text: 'Summary feedback for topic topic-1: rating 2/5, category bad_citation.',
   idempotencyKey: 'summary-memory-sdk-smoke-feedback',

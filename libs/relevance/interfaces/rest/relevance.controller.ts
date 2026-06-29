@@ -65,7 +65,7 @@ export class RelevanceController {
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
       userId,
-      topicWeights: body.topicWeights,
+      interestWeights: body.interestWeights,
       sourceWeights: body.sourceWeights,
       keywordWeights: body.keywordWeights,
       mutedKeywords: body.mutedKeywords,
@@ -87,7 +87,7 @@ export class RelevanceController {
     apiKeyScope: 'read:feed',
     workspaceRoleDescription: 'Comma-separated workspace roles. Personalized digest reads allow owner, admin, member or viewer.',
   })
-  @ApiQuery({ name: 'topicIds', required: true, type: String })
+  @ApiQuery({ name: 'interestIds', required: true, type: String })
   @ApiQuery({ name: 'windowStartedAt', required: true, type: String })
   @ApiQuery({ name: 'windowEndedAt', required: true, type: String })
   @ApiQuery({ name: 'limit', required: false, type: Number })
@@ -98,7 +98,7 @@ export class RelevanceController {
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
     @Headers('authorization') authorizationHeader: string | undefined,
-    @Query('topicIds') topicIdsQuery: string | undefined,
+    @Query('interestIds') interestIdsQuery: string | undefined,
     @Query('windowStartedAt') windowStartedAtQuery: string | undefined,
     @Query('windowEndedAt') windowEndedAtQuery: string | undefined,
     @Query('limit') limitQuery: string | undefined,
@@ -109,7 +109,7 @@ export class RelevanceController {
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
       userId,
-      topicIds: parseTopicIds(topicIdsQuery),
+      interestIds: parseInterestIds(interestIdsQuery),
       windowStartedAt: parseRequiredDate(windowStartedAtQuery, 'windowStartedAt'),
       windowEndedAt: parseRequiredDate(windowEndedAtQuery, 'windowEndedAt'),
       limit: parsePaginationLimit(limitQuery, {
@@ -133,7 +133,7 @@ export class RelevanceController {
     apiKeyScope: 'read:feed',
     workspaceRoleDescription: 'Comma-separated workspace roles. Personalized feed reads allow owner, admin, member or viewer.',
   })
-  @ApiQuery({ name: 'topicId', required: false, type: String })
+  @ApiQuery({ name: 'interestId', required: false, type: String })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'observedAfter', required: false, type: String })
   @ApiOkResponse({ type: RankFeedItemsResponseDto })
@@ -143,7 +143,7 @@ export class RelevanceController {
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
     @Headers('authorization') authorizationHeader: string | undefined,
-    @Query('topicId') topicId: string | undefined,
+    @Query('interestId') interestId: string | undefined,
     @Query('limit') limitQuery: string | undefined,
     @Query('observedAfter') observedAfterQuery: string | undefined,
   ): Promise<RankFeedItemsResponseDto> {
@@ -153,7 +153,7 @@ export class RelevanceController {
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
       userId,
-      topicId: normalizeOptional(topicId),
+      interestId: normalizeOptional(interestId),
       observedAfter: parseOptionalDate(observedAfterQuery, 'observedAfter'),
       limit: parsePaginationLimit(limitQuery, {
         defaultLimit: 20,
@@ -196,7 +196,7 @@ export class RelevanceController {
       rating: body.rating,
       target: {
         feedItemId: body.feedItemId,
-        topicId: body.topicId,
+        interestId: body.interestId,
         providerKey: body.providerKey,
         title: body.title,
         bodyPreview: body.bodyPreview,
@@ -303,8 +303,8 @@ const parseRequiredDate = (value: string | undefined, label: string): Date => {
   return date;
 };
 
-const parseTopicIds = (value: string | undefined): readonly string[] =>
+const parseInterestIds = (value: string | undefined): readonly string[] =>
   (value ?? '')
     .split(',')
-    .map((topicId) => topicId.trim())
-    .filter((topicId) => topicId.length > 0);
+    .map((interestId) => interestId.trim())
+    .filter((interestId) => interestId.length > 0);

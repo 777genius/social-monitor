@@ -204,7 +204,7 @@ export class WorkspaceSettingsController {
         traceId: requestContext.correlationId,
         routeId: 'settings',
         releaseVersion: 'frontend-mvp',
-        featureSnapshot: 'auth,topics,sources,feed,summaries,settings',
+        featureSnapshot: 'auth,interests,sources,feed,summaries,settings',
       },
     };
   }

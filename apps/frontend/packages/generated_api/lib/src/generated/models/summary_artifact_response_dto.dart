@@ -24,6 +24,7 @@ class SummaryArtifactResponseDto {
     required this.executiveSummary,
     required this.freshness,
     required this.headline,
+    required this.interestId,
     required this.keyPoints,
     required this.lineage,
     required this.qualityFlags,
@@ -33,7 +34,6 @@ class SummaryArtifactResponseDto {
     required this.sourceWindow,
     required this.summaryId,
     required this.tenantId,
-    required this.topicId,
     required this.usage,
     required this.workspaceId,
     this.noSignalReason,
@@ -49,6 +49,7 @@ class SummaryArtifactResponseDto {
   final String executiveSummary;
   final SummaryFreshnessDto freshness;
   final String headline;
+  final String interestId;
   final List<SummaryKeyPointDto> keyPoints;
   final SummaryLineageDto lineage;
   final String? noSignalReason;
@@ -60,7 +61,6 @@ class SummaryArtifactResponseDto {
   final String? subscriptionId;
   final String summaryId;
   final String tenantId;
-  final String topicId;
   final SummaryUsageDto usage;
   final String? userId;
   final String workspaceId;

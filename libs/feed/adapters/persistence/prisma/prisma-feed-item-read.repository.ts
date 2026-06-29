@@ -32,7 +32,7 @@ export class PrismaFeedItemReadRepository implements FeedItemReadRepositoryPort 
       tenantId: query.tenantId,
       workspaceId: query.workspaceId,
       status: "VISIBLE" as const,
-      topicId: query.topicId,
+      interestId: query.interestId,
       observedAt,
       providerKey: query.providerKey,
     };

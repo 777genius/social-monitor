@@ -60,7 +60,7 @@ export type SourceBindingDailyHistorySummaryView = {
 
 export type ListSourceBindingDailyHistoryResult = {
   readonly sourceBindingId: string;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly providerKey: string;
   readonly sourceBindingStatus: 'enabled' | 'paused';
   readonly cadence?: ScanPolicyCadenceView;

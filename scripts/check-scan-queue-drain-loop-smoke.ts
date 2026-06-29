@@ -117,7 +117,7 @@ async function main(): Promise<void> {
     id: 'source-binding-drain-loop-smoke',
     tenantId: tenant,
     workspaceId: workspace,
-    topicId: 'topic-drain-loop-smoke',
+    interestId: 'topic-drain-loop-smoke',
     providerKey: 'fake-source',
     capabilityProfileVersion: 1,
     config: {
@@ -234,7 +234,7 @@ async function main(): Promise<void> {
     tenantId: tenant,
     workspaceId: workspace,
     scanJobId: 'scan-job-retry-drain-loop-smoke',
-    topicId: 'topic-drain-loop-smoke',
+    interestId: 'topic-drain-loop-smoke',
     sourceBindingId: 'source-binding-drain-loop-smoke',
     scanPolicyId: 'scan-policy-drain-loop-smoke',
     providerKey: 'fake-source',

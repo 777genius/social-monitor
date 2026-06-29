@@ -40,7 +40,7 @@ describe('Scheduled scan enqueue flow (e2e)', () => {
     const workspace = 'workspace-scheduled-e2e';
 
     const topic = await request(app.getHttpServer())
-      .post('/topics')
+      .post('/interests')
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'admin')
@@ -53,7 +53,7 @@ describe('Scheduled scan enqueue flow (e2e)', () => {
       .expect(201);
 
     const binding = await request(app.getHttpServer())
-      .post(`/topics/${topic.body.topicId}/source-bindings`)
+      .post(`/interests/${topic.body.interestId}/source-bindings`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'admin')
@@ -110,7 +110,7 @@ describe('Scheduled scan enqueue flow (e2e)', () => {
       payload: {
         tenantId: tenant,
         workspaceId: workspace,
-        topicId: topic.body.topicId,
+        interestId: topic.body.interestId,
         sourceBindingId: binding.body.sourceBindingId,
         scanPolicyId: policy.body.id,
         retryBudget: 3,
@@ -190,7 +190,7 @@ describe('Scheduled scan enqueue flow (e2e)', () => {
       payload: {
         tenantId: tenant,
         workspaceId: workspace,
-        topicId: activated.body.topicId,
+        interestId: activated.body.interestId,
         sourceBindingId: activated.body.sourceBindingId,
         scanPolicyId: activated.body.scanPolicyId,
         providerKey: 'x-twitter',
@@ -209,7 +209,7 @@ describe('Scheduled scan enqueue flow (e2e)', () => {
     const initialQueueLength = queue.all().length;
 
     const topic = await request(app.getHttpServer())
-      .post('/topics')
+      .post('/interests')
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'admin')
@@ -222,7 +222,7 @@ describe('Scheduled scan enqueue flow (e2e)', () => {
       .expect(201);
 
     const binding = await request(app.getHttpServer())
-      .post(`/topics/${topic.body.topicId}/source-bindings`)
+      .post(`/interests/${topic.body.interestId}/source-bindings`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'admin')
@@ -288,7 +288,7 @@ describe('Scheduled scan enqueue flow (e2e)', () => {
     const initialQueueLength = queue.all().length;
 
     const topic = await request(app.getHttpServer())
-      .post('/topics')
+      .post('/interests')
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'admin')
@@ -301,7 +301,7 @@ describe('Scheduled scan enqueue flow (e2e)', () => {
       .expect(201);
 
     const binding = await request(app.getHttpServer())
-      .post(`/topics/${topic.body.topicId}/source-bindings`)
+      .post(`/interests/${topic.body.interestId}/source-bindings`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'admin')
@@ -334,7 +334,7 @@ describe('Scheduled scan enqueue flow (e2e)', () => {
       .expect(200);
 
     await request(app.getHttpServer())
-      .patch(`/topics/${topic.body.topicId}/source-bindings/${binding.body.sourceBindingId}/status`)
+      .patch(`/interests/${topic.body.interestId}/source-bindings/${binding.body.sourceBindingId}/status`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'admin')

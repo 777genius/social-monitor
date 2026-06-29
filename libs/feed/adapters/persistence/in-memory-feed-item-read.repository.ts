@@ -28,13 +28,13 @@ export class InMemoryFeedItemReadRepository
     const key = [
       snapshot.tenantId,
       snapshot.workspaceId,
-      snapshot.topicId,
+      snapshot.interestId,
       snapshot.sourceItemId,
     ].join(":");
     const canonicalKey = [
       snapshot.tenantId,
       snapshot.workspaceId,
-      snapshot.topicId,
+      snapshot.interestId,
       feedDedupeKeyForItem({
         canonicalUrl: snapshot.canonicalUrl,
         providerMetadata: snapshot.providerMetadata,
@@ -64,7 +64,7 @@ export class InMemoryFeedItemReadRepository
         return (
           snapshot.tenantId === query.tenantId &&
           snapshot.workspaceId === query.workspaceId &&
-          (query.topicId === undefined || snapshot.topicId === query.topicId) &&
+          (query.interestId === undefined || snapshot.interestId === query.interestId) &&
           (query.observedAfter === undefined ||
             snapshot.observedAt.getTime() > query.observedAfter.getTime()) &&
           (query.observedBefore === undefined ||
@@ -102,7 +102,7 @@ export class InMemoryFeedItemReadRepository
         const inScope =
           snapshot.tenantId === query.tenantId &&
           snapshot.workspaceId === query.workspaceId &&
-          (query.topicId === undefined || snapshot.topicId === query.topicId) &&
+          (query.interestId === undefined || snapshot.interestId === query.interestId) &&
           snapshot.observedAt.getTime() > query.observedAfter.getTime();
 
         if (!inScope) {

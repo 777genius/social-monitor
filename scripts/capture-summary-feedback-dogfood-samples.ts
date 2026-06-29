@@ -150,7 +150,7 @@ function dogfoodFeedbackSamples(): readonly DogfoodFeedbackSample[] {
 
 function toSummaryFeedback(sample: DogfoodFeedbackSample, index: number): SummaryFeedback {
   const summaryId = randomUUID();
-  const topicId = randomUUID();
+  const interestId = randomUUID();
   const suffix = `${index + 1}-${compactTimestamp(now)}`;
 
   return SummaryFeedback.record({
@@ -158,7 +158,7 @@ function toSummaryFeedback(sample: DogfoodFeedbackSample, index: number): Summar
     tenantId: tenant,
     workspaceId: workspace,
     summaryId,
-    topicId,
+    interestId,
     idempotencyKey: `summary-feedback-dogfood-${suffix}`,
     submittedBy: 'dogfood-reviewer',
     rating: sample.rating,
@@ -166,7 +166,7 @@ function toSummaryFeedback(sample: DogfoodFeedbackSample, index: number): Summar
     comment: sample.comment,
     evidence: {
       summaryId,
-      topicId,
+      interestId,
       citationId: `dogfood-citation-${suffix}`,
       feedItemId: `dogfood-feed-item-${suffix}`,
       sourceItemId: `dogfood-source-item-${suffix}`,

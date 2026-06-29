@@ -1,5 +1,5 @@
 import '../entities/reader_action.dart';
-import '../entities/reader_topic_section.dart';
+import '../entities/reader_interest_section.dart';
 import '../entities/reader_trend_delta.dart';
 import '../entities/repeated_signal.dart';
 import '../entities/source_mix_entry.dart';
@@ -11,7 +11,7 @@ import '../value_objects/summary_quality.dart';
 import '../value_objects/summary_window.dart';
 
 export '../entities/reader_action.dart';
-export '../entities/reader_topic_section.dart';
+export '../entities/reader_interest_section.dart';
 export '../entities/reader_trend_delta.dart';
 export '../entities/repeated_signal.dart';
 export '../entities/source_mix_entry.dart';
@@ -65,7 +65,7 @@ final class ReaderSummaryContent {
     required this.oneLineTakeaway,
     required this.bullets,
     required this.qualityState,
-    required this.topicSections,
+    required this.interestSections,
     required this.sourceMix,
     required this.topReads,
     required this.trendDelta,
@@ -78,7 +78,7 @@ final class ReaderSummaryContent {
   final String oneLineTakeaway;
   final List<String> bullets;
   final ReaderSummaryQualityState qualityState;
-  final List<ReaderTopicSection> topicSections;
+  final List<ReaderInterestSection> interestSections;
   final List<SourceMixEntry> sourceMix;
   final List<TopRead> topReads;
   final ReaderTrendDelta trendDelta;

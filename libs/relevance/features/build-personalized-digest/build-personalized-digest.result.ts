@@ -10,7 +10,7 @@ export type BuildPersonalizedDigestResult = {
     readonly startedAt: string;
     readonly endedAt: string;
   };
-  readonly topicIds: readonly string[];
+  readonly interestIds: readonly string[];
   readonly memoryGuidance?: RelevanceMemoryGuidanceView;
   readonly items: readonly RankedFeedItemView[];
   readonly highSignalFeedItemIds: readonly string[];

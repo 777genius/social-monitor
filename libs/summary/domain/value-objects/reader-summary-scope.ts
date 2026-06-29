@@ -2,7 +2,7 @@ import type { TenantId, WorkspaceId } from "@social-monitor/shared-kernel";
 
 export type ReaderSummaryScope =
   | { readonly type: "workspace" }
-  | { readonly type: "topic"; readonly topicId: string };
+  | { readonly type: "interest"; readonly interestId: string };
 
 export type ReaderSummaryScopeIdentity = {
   readonly tenantId: TenantId;
@@ -14,15 +14,15 @@ export const workspaceReaderSummaryScope = (): ReaderSummaryScope => ({
   type: "workspace",
 });
 
-export const topicReaderSummaryScope = (
-  topicId: string,
+export const interestReaderSummaryScope = (
+  interestId: string,
 ): ReaderSummaryScope => {
-  const normalizedTopicId = topicId.trim();
-  if (normalizedTopicId.length === 0) {
-    throw new Error("Reader summary topic scope topic id must be non-empty");
+  const normalizedInterestId = interestId.trim();
+  if (normalizedInterestId.length === 0) {
+    throw new Error("Reader summary interest scope interest id must be non-empty");
   }
 
-  return { type: "topic", topicId: normalizedTopicId };
+  return { type: "interest", interestId: normalizedInterestId };
 };
 
 export const assertReaderSummaryScope = (scope: ReaderSummaryScope): void => {
@@ -30,13 +30,13 @@ export const assertReaderSummaryScope = (scope: ReaderSummaryScope): void => {
     return;
   }
 
-  if (scope.topicId.trim().length === 0) {
-    throw new Error("Reader summary topic scope topic id must be non-empty");
+  if (scope.interestId.trim().length === 0) {
+    throw new Error("Reader summary interest scope interest id must be non-empty");
   }
 };
 
 export const readerSummaryScopeKey = (scope: ReaderSummaryScope): string =>
-  scope.type === "workspace" ? "workspace" : `topic:${scope.topicId}`;
+  scope.type === "workspace" ? "workspace" : `interest:${scope.interestId}`;
 
 export const sameReaderSummaryScope = (
   left: ReaderSummaryScope,

@@ -12,7 +12,7 @@ describe('GitHubRepositoryTrendMetadataProjectionAdapter', () => {
     const result = await projection.project({
       tenantId: tenantId('tenant-trend-history'),
       workspaceId: workspaceId('workspace-trend-history'),
-      topicId: '00000000-0000-7000-8000-000000000001',
+      interestId: '00000000-0000-7000-8000-000000000001',
       sourceBindingId: '00000000-0000-7000-8000-000000000002',
       scanJobId: '00000000-0000-7000-8000-000000000003',
       providerKey: 'github-repo-radar',

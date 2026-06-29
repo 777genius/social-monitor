@@ -88,7 +88,7 @@ export class DeterministicReaderSummaryModelAdapter implements ReaderSummaryMode
         executiveSummary:
           "No eligible feed items were available for this summary window.",
         topStories: [],
-        topicHighlights: [],
+        interestHighlights: [],
         repeatedSignals: [],
         risksAndUnknowns: [
           {
@@ -157,20 +157,20 @@ export class DeterministicReaderSummaryModelAdapter implements ReaderSummaryMode
         title: representative.title,
         summary: buildStorySummary(
           representative.title,
-          cluster.topicIds,
+          cluster.interestIds,
           cluster.providerKeys,
         ),
-        topicIds: cluster.topicIds,
+        interestIds: cluster.interestIds,
         providerKeys: cluster.providerKeys,
         citationIds: [citationId],
       };
     });
-    const topicHighlights = input.policy.includeTopicHighlights
-      ? buildTopicHighlights(selectedEvidence, citationMap)
+    const interestHighlights = input.policy.includeInterestHighlights
+      ? buildInterestHighlights(selectedEvidence, citationMap)
       : [];
     const repeatedSignals = input.policy.includeRepeatedSignals
       ? input.evidence.clusters
-          .filter((cluster) => cluster.topicIds.length >= 2)
+          .filter((cluster) => cluster.interestIds.length >= 2)
           .slice(0, 5)
           .map((cluster) => {
             const representative =
@@ -185,7 +185,7 @@ export class DeterministicReaderSummaryModelAdapter implements ReaderSummaryMode
             return {
               storyClusterId: cluster.id,
               title: representative.title,
-              topicIds: cluster.topicIds,
+              interestIds: cluster.interestIds,
               citationIds: [citationId],
             };
           })
@@ -195,7 +195,7 @@ export class DeterministicReaderSummaryModelAdapter implements ReaderSummaryMode
       headline: buildReaderHeadline(input, selectedEvidence),
       executiveSummary: buildExecutiveSummary(input),
       topStories,
-      topicHighlights,
+      interestHighlights,
       repeatedSignals,
       risksAndUnknowns: input.policy.includeRisks
         ? [
@@ -287,16 +287,16 @@ const buildExecutiveSummary = (input: ReaderSummaryModelInput): string => {
   const scopeLabel =
     input.scope.type === "workspace"
       ? "workspace"
-      : `topic ${input.scope.topicId}`;
+      : `interest ${input.scope.interestId}`;
   const repeatedCount = input.evidence.clusters.filter(
-    (cluster) => cluster.topicIds.length >= 2,
+    (cluster) => cluster.interestIds.length >= 2,
   ).length;
   const storyCount = input.evidence.selectedEvidence.length;
   const base = `Current ${formatLabel} covers ${storyCount} selected ${storyCount === 1 ? "story" : "stories"} for ${scopeLabel} in ${articleFor(toneLabel)} ${toneLabel} tone.`;
   const repeated =
     repeatedCount === 0
-      ? "No repeated cross-topic signals were detected."
-      : `${repeatedCount} repeated cross-topic ${repeatedCount === 1 ? "signal was" : "signals were"} detected.`;
+      ? "No repeated cross-interest signals were detected."
+      : `${repeatedCount} repeated cross-interest ${repeatedCount === 1 ? "signal was" : "signals were"} detected.`;
 
   if (input.policy.customInstructions === undefined) {
     return `${base} ${repeated}`;
@@ -318,27 +318,27 @@ const articleFor = (word: string): "a" | "an" =>
 
 const buildStorySummary = (
   title: string,
-  topicIds: readonly string[],
+  interestIds: readonly string[],
   providerKeys: readonly string[],
 ): string =>
-  `${title} appeared across ${topicIds.length} topic(s) and ${providerKeys.length} provider(s).`;
+  `${title} appeared across ${interestIds.length} interest(s) and ${providerKeys.length} provider(s).`;
 
-const buildTopicHighlights = (
+const buildInterestHighlights = (
   selectedEvidence: ReaderSummaryModelInput["evidence"]["selectedEvidence"],
   citationMap: ProviderReaderSummaryAttempt["draft"]["citationMap"],
 ) => {
-  const firstByTopic = new Map<
+  const firstByInterest = new Map<
     string,
     ReaderSummaryModelInput["evidence"]["selectedEvidence"][number]
   >();
   for (const item of selectedEvidence) {
-    if (!firstByTopic.has(item.topicId)) {
-      firstByTopic.set(item.topicId, item);
+    if (!firstByInterest.has(item.interestId)) {
+      firstByInterest.set(item.interestId, item);
     }
   }
 
-  return [...firstByTopic.entries()].slice(0, 8).map(([topicId, item]) => ({
-    topicId,
+  return [...firstByInterest.entries()].slice(0, 8).map(([interestId, item]) => ({
+    interestId,
     title: item.title,
     summary: item.whyImportant[0] ?? "Selected as a relevant summary signal.",
     citationIds: [

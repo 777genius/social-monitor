@@ -44,7 +44,7 @@ export type SourceContentQualityReview = {
   readonly decision: SourceContentQualityDecision;
   readonly confidence: number;
   readonly qualityScore?: number;
-  readonly topicRelevanceScore?: number;
+  readonly interestRelevanceScore?: number;
   readonly engagementIntegrityScore?: number;
   readonly flags?: readonly SourceContentQualityFlag[];
   readonly reason: string;
@@ -52,7 +52,7 @@ export type SourceContentQualityReview = {
 
 export type SourceContentQualityVerdict = {
   readonly qualityScore: number;
-  readonly topicRelevanceScore: number;
+  readonly interestRelevanceScore: number;
   readonly engagementIntegrityScore: number;
   readonly eligibleForSummary: boolean;
   readonly eligibleForTopRead: boolean;
@@ -144,7 +144,7 @@ export class SourceContentQualityPolicy {
         (normalized.rumorOnly ? 0.24 : 0) -
         (normalized.personalMedicalAnecdote ? 0.34 : 0),
     );
-    const topicRelevanceScore = clampScore(
+    const interestRelevanceScore = clampScore(
       normalized.topicTerms.length === 0
         ? 0.66
         : normalized.weakTopicMatch
@@ -167,13 +167,13 @@ export class SourceContentQualityPolicy {
       officialAccount,
       normalized,
       qualityScore,
-      topicRelevanceScore,
+      interestRelevanceScore,
       engagementIntegrityScore,
     });
 
     return finalizeVerdict({
       qualityScore,
-      topicRelevanceScore,
+      interestRelevanceScore,
       engagementIntegrityScore,
       decision,
       flags: [...flags],
@@ -181,7 +181,7 @@ export class SourceContentQualityPolicy {
         decision,
         normalized,
         qualityScore,
-        topicRelevanceScore,
+        interestRelevanceScore,
         engagementIntegrityScore,
       }),
       reason: buildReason(decision, [...flags]),
@@ -224,9 +224,9 @@ export class SourceContentQualityPolicy {
       review.qualityScore,
       blendWeight,
     );
-    const topicRelevanceScore = blendScore(
-      deterministic.topicRelevanceScore,
-      review.topicRelevanceScore,
+    const interestRelevanceScore = blendScore(
+      deterministic.interestRelevanceScore,
+      review.interestRelevanceScore,
       blendWeight,
     );
     const engagementIntegrityScore = blendScore(
@@ -237,7 +237,7 @@ export class SourceContentQualityPolicy {
 
     return finalizeVerdict({
       qualityScore,
-      topicRelevanceScore,
+      interestRelevanceScore,
       engagementIntegrityScore,
       decision: reviewDecision,
       flags: [...flags],
@@ -280,7 +280,7 @@ const evaluateNonXSource = (
       (normalized.rumorOnly ? 0.28 : 0) -
       (normalized.personalMedicalAnecdote ? 0.42 : 0),
   );
-  const topicRelevanceScore = clampScore(
+  const interestRelevanceScore = clampScore(
     normalized.topicTerms.length === 0
       ? 0.86
       : normalized.weakTopicMatch
@@ -305,7 +305,7 @@ const evaluateNonXSource = (
 
   return finalizeVerdict({
     qualityScore,
-    topicRelevanceScore,
+    interestRelevanceScore,
     engagementIntegrityScore,
     decision,
     flags: [...flags],
@@ -316,7 +316,7 @@ const evaluateNonXSource = (
       normalized.personalMedicalAnecdote,
     reason:
       flags.size === 0
-        ? "Provider-native quality signal with topic match"
+        ? "Provider-native quality signal with interest match"
         : `${decision} because ${[...flags].slice(0, 4).join(", ")}`,
   });
 };
@@ -325,7 +325,7 @@ const decide = (params: {
   readonly officialAccount: boolean;
   readonly normalized: NormalizedSourceContentQualityInput;
   readonly qualityScore: number;
-  readonly topicRelevanceScore: number;
+  readonly interestRelevanceScore: number;
   readonly engagementIntegrityScore: number;
 }): SourceContentQualityDecision => {
   if (params.normalized.cryptoPromo || params.normalized.promoOffer) {
@@ -342,7 +342,7 @@ const decide = (params: {
 
   if (
     params.qualityScore < 0.32 ||
-    params.topicRelevanceScore < 0.2 ||
+    params.interestRelevanceScore < 0.2 ||
     params.engagementIntegrityScore < 0.3
   ) {
     return "reject";
@@ -350,7 +350,7 @@ const decide = (params: {
 
   if (
     params.qualityScore < 0.68 ||
-    params.topicRelevanceScore < 0.56 ||
+    params.interestRelevanceScore < 0.56 ||
     params.engagementIntegrityScore < 0.58 ||
     params.normalized.engagementBait ||
     params.normalized.promoOffer ||
@@ -362,14 +362,14 @@ const decide = (params: {
     return "downrank";
   }
 
-  return params.qualityScore >= 0.82 && params.topicRelevanceScore >= 0.75
+  return params.qualityScore >= 0.82 && params.interestRelevanceScore >= 0.75
     ? "promote"
     : "keep";
 };
 
 const finalizeVerdict = (params: {
   readonly qualityScore: number;
-  readonly topicRelevanceScore: number;
+  readonly interestRelevanceScore: number;
   readonly engagementIntegrityScore: number;
   readonly decision: SourceContentQualityDecision;
   readonly flags: readonly SourceContentQualityFlag[];
@@ -383,12 +383,12 @@ const finalizeVerdict = (params: {
     params.decision !== "reject" &&
     params.decision !== "needs_context" &&
     params.qualityScore >= 0.38 &&
-    params.topicRelevanceScore >= 0.34 &&
+    params.interestRelevanceScore >= 0.34 &&
     params.engagementIntegrityScore >= 0.36;
   const eligibleForTopRead =
     eligibleForSummary &&
     params.qualityScore >= 0.65 &&
-    params.topicRelevanceScore >= 0.5 &&
+    params.interestRelevanceScore >= 0.5 &&
     params.engagementIntegrityScore >= 0.56 &&
     !flags.includes("engagement_bait") &&
     !flags.includes("generic_question") &&
@@ -398,7 +398,7 @@ const finalizeVerdict = (params: {
 
   return {
     qualityScore: roundScore(params.qualityScore),
-    topicRelevanceScore: roundScore(params.topicRelevanceScore),
+    interestRelevanceScore: roundScore(params.interestRelevanceScore),
     engagementIntegrityScore: roundScore(params.engagementIntegrityScore),
     eligibleForSummary,
     eligibleForTopRead,
@@ -413,7 +413,7 @@ const needsLlmReview = (params: {
   readonly decision: SourceContentQualityDecision;
   readonly normalized: NormalizedSourceContentQualityInput;
   readonly qualityScore: number;
-  readonly topicRelevanceScore: number;
+  readonly interestRelevanceScore: number;
   readonly engagementIntegrityScore: number;
 }): boolean => {
   if (params.decision === "reject") {
@@ -427,7 +427,7 @@ const needsLlmReview = (params: {
     params.normalized.rumorOnly ||
     params.normalized.personalMedicalAnecdote ||
     (params.qualityScore >= 0.35 && params.qualityScore < 0.76) ||
-    (params.topicRelevanceScore >= 0.25 && params.topicRelevanceScore < 0.62) ||
+    (params.interestRelevanceScore >= 0.25 && params.interestRelevanceScore < 0.62) ||
     params.engagementIntegrityScore < 0.68
   );
 };
@@ -446,7 +446,7 @@ const buildReason = (
   flags: readonly SourceContentQualityFlag[],
 ): string => {
   if (flags.length === 0) {
-    return "High-context X post with direct topic match";
+    return "High-context X post with direct interest match";
   }
 
   return `${decision} because ${flags.slice(0, 4).join(", ")}`;

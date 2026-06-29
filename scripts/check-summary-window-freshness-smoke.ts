@@ -9,14 +9,14 @@ void main();
 async function main(): Promise<void> {
   const tenant = tenantId('tenant-window-smoke');
   const workspace = workspaceId('workspace-window-smoke');
-  const topicId = 'topic-window-smoke';
+  const interestId = 'topic-window-smoke';
   const feedItems = new InMemoryFeedItemReadRepository();
 
   feedItems.upsert(makeFeedItem({
     id: 'feed-window-old',
     tenantId: tenant,
     workspaceId: workspace,
-    topicId,
+    interestId,
     observedAt: new Date('2026-06-06T00:01:00.000Z'),
   }));
 
@@ -26,7 +26,7 @@ async function main(): Promise<void> {
   ).select({
     tenantId: tenant,
     workspaceId: workspace,
-    topicId,
+    interestId,
     maxItems: 10,
   });
 
@@ -43,14 +43,14 @@ async function main(): Promise<void> {
     id: 'feed-boundary',
     tenantId: tenant,
     workspaceId: workspace,
-    topicId,
+    interestId,
     observedAt: selection.sourceWindow.endedAt,
   }));
 
   const boundaryFreshness = await freshness.evaluate({
     tenantId: tenant,
     workspaceId: workspace,
-    topicId,
+    interestId,
     sourceWindow: selection.sourceWindow,
   });
   assertEqual(boundaryFreshness.status, 'fresh', 'boundary freshness status');
@@ -59,14 +59,14 @@ async function main(): Promise<void> {
     id: 'feed-window-new',
     tenantId: tenant,
     workspaceId: workspace,
-    topicId,
+    interestId,
     observedAt: new Date('2026-06-06T00:02:00.000Z'),
   }));
 
   const staleFreshness = await freshness.evaluate({
     tenantId: tenant,
     workspaceId: workspace,
-    topicId,
+    interestId,
     sourceWindow: selection.sourceWindow,
   });
 
@@ -85,16 +85,16 @@ function makeFeedItem(params: {
   readonly id: string;
   readonly tenantId: ReturnType<typeof tenantId>;
   readonly workspaceId: ReturnType<typeof workspaceId>;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly observedAt: Date;
 }): FeedItem {
   return FeedItem.publish({
     id: params.id,
     tenantId: params.tenantId,
     workspaceId: params.workspaceId,
-    topicId: params.topicId,
+    interestId: params.interestId,
     sourceItemId: `${params.id}:source`,
-    sourceBindingId: `${params.topicId}:binding`,
+    sourceBindingId: `${params.interestId}:binding`,
     providerKey: 'rss',
     canonicalUrl: `https://example.test/${params.id}`,
     title: `Title ${params.id}`,

@@ -5,7 +5,7 @@ import type {
 } from './prisma-relevance-records';
 
 export type PrismaUserRelevanceProfileMutation = {
-  readonly topicWeights: readonly unknown[];
+  readonly interestWeights: readonly unknown[];
   readonly sourceWeights: readonly unknown[];
   readonly keywordWeights: readonly unknown[];
   readonly mutedKeywords: readonly string[];

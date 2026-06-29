@@ -49,7 +49,7 @@ export class ScanRequestController {
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
   @ApiKeyOrWorkspaceRoleAuth({
-    apiKeyScope: 'read:topics',
+    apiKeyScope: 'read:interests',
     workspaceRoleDescription: 'Comma-separated workspace roles. Daily scan history reads allow owner, admin, member or viewer.',
   })
   @ApiQuery({ name: 'days', required: false, type: Number })
@@ -97,7 +97,7 @@ export class ScanRequestController {
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
   @ApiKeyOrWorkspaceRoleAuth({
-    apiKeyScope: 'read:topics',
+    apiKeyScope: 'read:interests',
     workspaceRoleDescription: 'Comma-separated workspace roles. Scan request reads allow owner, admin, member or viewer.',
   })
   @ApiQuery({ name: 'limit', required: false, type: Number })
@@ -246,7 +246,7 @@ export class ScanRequestController {
         authorizationHeader,
         tenantId,
         workspaceId,
-        requiredScope: 'read:topics',
+        requiredScope: 'read:interests',
         operation: 'scan_jobs.read',
       });
       return;

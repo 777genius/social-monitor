@@ -113,8 +113,8 @@ final class SummaryMapper {
         warnings: _safeTextList(dto.qualityState.warnings),
         isSingleSource: dto.qualityState.isSingleSource,
       ),
-      topicSections: dto.topicSections
-          .map(_topicSectionToDomain)
+      interestSections: dto.interestSections
+          .map(_interestSectionToDomain)
           .toList(growable: false),
       sourceMix: dto.sourceMix.map(_sourceMixToDomain).toList(growable: false),
       topReads: dto.topReads.map(_readerItemToDomain).toList(growable: false),
@@ -132,11 +132,16 @@ final class SummaryMapper {
     );
   }
 
-  ReaderTopicSection _topicSectionToDomain(ReaderTopicSectionApiDto dto) {
-    return ReaderTopicSection(
-      topicId: _nonEmptyOrNull(dto.topicId),
-      title: _nonEmpty(dto.title, fallback: 'Topic signal'),
-      insight: _safeText(dto.insight, fallback: 'No topic insight available'),
+  ReaderInterestSection _interestSectionToDomain(
+    ReaderInterestSectionApiDto dto,
+  ) {
+    return ReaderInterestSection(
+      interestId: _nonEmptyOrNull(dto.interestId),
+      title: _nonEmpty(dto.title, fallback: 'Interest signal'),
+      insight: _safeText(
+        dto.insight,
+        fallback: 'No interest insight available',
+      ),
       items: dto.items.map(_readerItemToDomain).toList(growable: false),
       citationIds: dto.citationIds,
     );
@@ -147,7 +152,7 @@ final class SummaryMapper {
       title: _nonEmpty(dto.title, fallback: 'Untitled item'),
       providerKey: _nonEmpty(dto.providerKey, fallback: 'unknown'),
       reason: _safeText(dto.reason, fallback: 'Selected as relevant evidence'),
-      matchedTopicIds: _safeTextList(dto.matchedTopicIds),
+      matchedInterestIds: _safeTextList(dto.matchedInterestIds),
       matchedRules: _safeTextList(dto.matchedRules),
       signalScore: SignalScore.normalized(dto.signalScore),
       confidence: TopReadConfidence(
@@ -199,7 +204,7 @@ final class SummaryMapper {
           ? 0
           : dto.crossSourceClusterCount,
       singleSourceOnly: dto.singleSourceOnly,
-      topicIds: _safeTextList(dto.topicIds),
+      interestIds: _safeTextList(dto.interestIds),
     );
   }
 
@@ -226,7 +231,7 @@ final class SummaryMapper {
   RepeatedSignal _repeatedSignalToDomain(RepeatedSignalApiDto dto) {
     return RepeatedSignal(
       title: _nonEmpty(dto.title, fallback: 'Repeated signal'),
-      topicIds: dto.topicIds,
+      interestIds: dto.interestIds,
       citationIds: dto.citationIds,
     );
   }

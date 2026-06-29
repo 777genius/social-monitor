@@ -27,7 +27,7 @@ describe("ProjectFeedbackToMemoryUseCase", () => {
       action: 'more_like_this',
       target: {
         feedItemId: 'feed-1',
-        topicId: 'topic-ai',
+        interestId: 'topic-ai',
         providerKey: 'reddit',
         title: 'Useful AI monitoring source',
       },

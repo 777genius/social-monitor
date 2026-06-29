@@ -27,7 +27,7 @@ import type {
   PrismaScanSchedulerDecisionRecord,
   PrismaSourceBindingRecord,
   PrismaSourceCatalogEntryRecord,
-  PrismaTopicRecord,
+  PrismaInterestRecord,
 } from '../libs/monitoring/adapters/persistence/prisma/prisma-monitoring-records';
 import { ScanPolicy, SourceBinding } from '../libs/monitoring/domain';
 import { ScheduleDueScansUseCase } from '../libs/monitoring/features/schedule-due-scans/schedule-due-scans.use-case';
@@ -64,7 +64,7 @@ async function main(): Promise<void> {
     id: 'source-binding-cross-process-scheduler-smoke',
     tenantId: tenant,
     workspaceId: workspace,
-    topicId: 'topic-cross-process-scheduler-smoke',
+    interestId: 'topic-cross-process-scheduler-smoke',
     providerKey: 'rss',
     capabilityProfileVersion: 1,
     config: {
@@ -166,7 +166,7 @@ async function main(): Promise<void> {
 }
 
 class FakePrismaMonitoringClient implements PrismaMonitoringClient {
-  readonly topics = new Map<string, PrismaTopicRecord>();
+  readonly interests = new Map<string, PrismaInterestRecord>();
   readonly sourceCatalogEntries = new Map<string, PrismaSourceCatalogEntryRecord>();
   readonly sourceBindings = new Map<string, PrismaSourceBindingRecord>();
   readonly scanPolicies = new Map<string, PrismaScanPolicyRecord>();
@@ -176,11 +176,11 @@ class FakePrismaMonitoringClient implements PrismaMonitoringClient {
   readonly outboxEvents = new Map<string, PrismaOutboxEventRecord>();
   readonly idempotencyKeys = new Map<string, PrismaIdempotencyKeyRecord>();
 
-  readonly topic: PrismaMonitoringClient['topic'] = {
-    upsert: async () => unsupported('topic.upsert'),
-    updateMany: async () => unsupported('topic.updateMany'),
-    findFirst: async () => unsupported('topic.findFirst'),
-    findMany: async () => unsupported('topic.findMany'),
+  readonly interest: PrismaMonitoringClient['interest'] = {
+    upsert: async () => unsupported('interest.upsert'),
+    updateMany: async () => unsupported('interest.updateMany'),
+    findFirst: async () => unsupported('interest.findFirst'),
+    findMany: async () => unsupported('interest.findMany'),
   };
 
   readonly sourceCatalogEntry: PrismaMonitoringClient['sourceCatalogEntry'] = {
@@ -210,7 +210,7 @@ class FakePrismaMonitoringClient implements PrismaMonitoringClient {
         id: args.where.id,
         tenantId: existing?.tenantId ?? args.create.tenantId,
         workspaceId: existing?.workspaceId ?? args.create.workspaceId,
-        topicId: existing?.topicId ?? args.create.topicId,
+        interestId: existing?.interestId ?? args.create.interestId,
         sourceCatalogEntryId: existing?.sourceCatalogEntryId ?? args.create.sourceCatalogEntryId,
         capabilityProfileVersion: args.update.capabilityProfileVersion,
         status: args.update.status,
@@ -226,7 +226,7 @@ class FakePrismaMonitoringClient implements PrismaMonitoringClient {
         record.tenantId === args.where.tenantId &&
         record.workspaceId === args.where.workspaceId &&
         (args.where.id === undefined || record.id === args.where.id) &&
-        (args.where.topicId === undefined || record.topicId === args.where.topicId) &&
+        (args.where.interestId === undefined || record.interestId === args.where.interestId) &&
         (args.where.sourceCatalogEntryId === undefined ||
           record.sourceCatalogEntryId === args.where.sourceCatalogEntryId)
       )) ?? null,

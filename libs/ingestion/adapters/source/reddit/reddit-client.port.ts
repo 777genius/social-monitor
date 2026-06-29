@@ -19,6 +19,19 @@ export type RedditPost = {
   readonly upvoteRatio?: number;
 };
 
+export type RedditComment = {
+  readonly id: string;
+  readonly name?: string;
+  readonly subreddit?: string;
+  readonly body?: string;
+  readonly author?: string;
+  readonly permalink?: string;
+  readonly createdUtc?: number;
+  readonly score?: number;
+  readonly removedByCategory?: string;
+  readonly depth?: number;
+};
+
 export type RedditListingPage = {
   readonly posts: readonly RedditPost[];
   readonly after?: string;
@@ -50,7 +63,21 @@ export type RedditSearchPostsRequest = {
   readonly after?: string;
 };
 
+export type RedditListPostCommentsRequest = {
+  readonly accessToken: string;
+  readonly userAgent?: string;
+  readonly postId: string;
+  readonly subreddit?: string;
+  readonly limit: number;
+};
+
+export type RedditCommentPage = {
+  readonly comments: readonly RedditComment[];
+  readonly rateLimit?: RedditRateLimitBudget;
+};
+
 export interface RedditClientPort {
   listSubredditPosts(request: RedditListSubredditPostsRequest): Promise<RedditListingPage>;
   searchPosts(request: RedditSearchPostsRequest): Promise<RedditListingPage>;
+  listPostComments(request: RedditListPostCommentsRequest): Promise<RedditCommentPage>;
 }

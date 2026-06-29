@@ -26,14 +26,14 @@ export const buildSourceMix = (
       citationIds: Set<string>;
       storyClusterIds: Set<string>;
       crossSourceClusterIds: Set<string>;
-      topicIds: Set<string>;
+      interestIds: Set<string>;
     }
   >();
 
   for (const item of input.selectedEvidence ?? []) {
     const current = sourceMixCount(counts, item.providerKey);
     current.itemIds.add(item.feedItemId);
-    current.topicIds.add(item.topicId);
+    current.interestIds.add(item.interestId);
   }
 
   for (const citation of input.citationMap) {
@@ -50,8 +50,8 @@ export const buildSourceMix = (
       if (isCrossSource) {
         current.crossSourceClusterIds.add(cluster.id);
       }
-      for (const topicId of cluster.topicIds) {
-        current.topicIds.add(topicId);
+      for (const interestId of cluster.interestIds) {
+        current.interestIds.add(interestId);
       }
     }
   }
@@ -64,7 +64,7 @@ export const buildSourceMix = (
       storyClusterCount: value.storyClusterIds.size,
       crossSourceClusterCount: value.crossSourceClusterIds.size,
       singleSourceOnly: value.crossSourceClusterIds.size === 0,
-      topicIds: [...value.topicIds].sort(),
+      interestIds: [...value.interestIds].sort(),
     }))
     .sort(
       (left, right) =>
@@ -166,7 +166,7 @@ const sourceMixCount = (
       citationIds: Set<string>;
       storyClusterIds: Set<string>;
       crossSourceClusterIds: Set<string>;
-      topicIds: Set<string>;
+      interestIds: Set<string>;
     }
   >,
   providerKey: string,
@@ -176,7 +176,7 @@ const sourceMixCount = (
     citationIds: new Set<string>(),
     storyClusterIds: new Set<string>(),
     crossSourceClusterIds: new Set<string>(),
-    topicIds: new Set<string>(),
+    interestIds: new Set<string>(),
   };
   counts.set(providerKey, current);
 

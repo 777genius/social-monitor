@@ -15,13 +15,13 @@ class GetFeedItemResponseDto {
     required this.bodyPreview,
     required this.canonicalUrl,
     required this.id,
+    required this.interestId,
     required this.observedAt,
     required this.providerKey,
     required this.publishedAt,
     required this.sourceBindingId,
     required this.sourceItemId,
     required this.title,
-    required this.topicId,
     this.authorHandle,
     this.normalizedSignal,
     this.providerMetadata,
@@ -35,6 +35,7 @@ class GetFeedItemResponseDto {
   final String bodyPreview;
   final String canonicalUrl;
   final String id;
+  final String interestId;
   final FeedNormalizedSignalDto? normalizedSignal;
   final DateTime observedAt;
   final String providerKey;
@@ -44,7 +45,6 @@ class GetFeedItemResponseDto {
   final String sourceBindingId;
   final String sourceItemId;
   final String title;
-  final String topicId;
 
   Map<String, Object?> toJson() => _$GetFeedItemResponseDtoToJson(this);
 }

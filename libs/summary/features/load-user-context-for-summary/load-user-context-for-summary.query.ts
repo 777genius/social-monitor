@@ -5,7 +5,7 @@ import type { SummaryEvidenceSelection } from "../../ports";
 export type LoadUserContextForSummaryQuery = {
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly userId?: string | undefined;
   readonly subscriptionId?: string | undefined;
   readonly evidence: SummaryEvidenceSelection;

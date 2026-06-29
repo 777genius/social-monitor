@@ -1,41 +1,41 @@
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
-import { SourceBinding, Topic, type SourceBindingProps } from '../../domain';
+import { SourceBinding, Interest, type SourceBindingProps } from '../../domain';
 import type {
   ListSourceBindingsQuery,
   ListSourceBindingsResult,
   SourceBindingRepositoryPort,
-  TopicRepositoryPort,
+  InterestRepositoryPort,
 } from '../../ports';
 import { ListSourceBindingsUseCase } from './list-source-bindings.use-case';
 
 describe('ListSourceBindingsUseCase', () => {
-  it('lists source bindings for an existing topic and hides encrypted config payloads', async () => {
-    const topics = new FakeTopicRepository();
+  it('lists source bindings for an existing interest and hides encrypted config payloads', async () => {
+    const interests = new FakeInterestRepository();
     const bindings = new FakeSourceBindingRepository();
     const tenant = tenantId('tenant-1');
     const workspace = workspaceId('workspace-1');
-    const topic = Topic.create({
-      id: 'topic-1',
+    const interest = Interest.create({
+      id: 'interest-1',
       tenantId: tenant,
       workspaceId: workspace,
       name: 'AI Infrastructure',
       query: 'AI infrastructure',
       createdAt: new Date('2026-06-06T00:00:00.000Z'),
     });
-    await topics.save(topic);
+    await interests.save(interest);
     await bindings.save(makeBinding({
       id: 'binding-old',
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       createdAt: new Date('2026-06-06T00:00:00.000Z'),
     }));
     await bindings.save(makeBinding({
       id: 'binding-new',
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       providerKey: 'rss',
       config: {
         url: 'https://example.com/feed.xml',
@@ -49,10 +49,10 @@ describe('ListSourceBindingsUseCase', () => {
       createdAt: new Date('2026-06-06T01:00:00.000Z'),
     }));
 
-    const result = await new ListSourceBindingsUseCase(topics, bindings).execute({
+    const result = await new ListSourceBindingsUseCase(interests, bindings).execute({
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       limit: 1,
     });
 
@@ -78,12 +78,12 @@ describe('ListSourceBindingsUseCase', () => {
   });
 
   it('filters source bindings by provider and status before pagination', async () => {
-    const topics = new FakeTopicRepository();
+    const interests = new FakeInterestRepository();
     const bindings = new FakeSourceBindingRepository();
     const tenant = tenantId('tenant-1');
     const workspace = workspaceId('workspace-1');
-    await topics.save(Topic.create({
-      id: 'topic-1',
+    await interests.save(Interest.create({
+      id: 'interest-1',
       tenantId: tenant,
       workspaceId: workspace,
       name: 'AI Infrastructure',
@@ -94,7 +94,7 @@ describe('ListSourceBindingsUseCase', () => {
       id: 'binding-reddit',
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       providerKey: 'reddit',
       createdAt: new Date('2026-06-06T02:00:00.000Z'),
     }));
@@ -102,7 +102,7 @@ describe('ListSourceBindingsUseCase', () => {
       id: 'binding-rss-paused',
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       providerKey: 'rss',
       status: 'paused',
       createdAt: new Date('2026-06-06T01:00:00.000Z'),
@@ -111,15 +111,15 @@ describe('ListSourceBindingsUseCase', () => {
       id: 'binding-rss-enabled',
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       providerKey: 'rss',
       createdAt: new Date('2026-06-06T00:30:00.000Z'),
     }));
 
-    const result = await new ListSourceBindingsUseCase(topics, bindings).execute({
+    const result = await new ListSourceBindingsUseCase(interests, bindings).execute({
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       limit: 10,
       providerKeys: [' rss ', 'rss'],
       statuses: ['paused'],
@@ -146,14 +146,14 @@ describe('ListSourceBindingsUseCase', () => {
     ]);
   });
 
-  it('returns not found when topic is outside the tenant workspace', async () => {
-    const topics = new FakeTopicRepository();
+  it('returns not found when interest is outside the tenant workspace', async () => {
+    const interests = new FakeInterestRepository();
     const bindings = new FakeSourceBindingRepository();
 
-    await expect(new ListSourceBindingsUseCase(topics, bindings).execute({
+    await expect(new ListSourceBindingsUseCase(interests, bindings).execute({
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
-      topicId: 'missing-topic',
+      interestId: 'missing-interest',
       limit: 50,
     })).resolves.toEqual({
       ok: false,
@@ -164,12 +164,12 @@ describe('ListSourceBindingsUseCase', () => {
   });
 
   it('rejects unsupported status filters before listing bindings', async () => {
-    const topics = new FakeTopicRepository();
+    const interests = new FakeInterestRepository();
     const bindings = new FakeSourceBindingRepository();
     const tenant = tenantId('tenant-1');
     const workspace = workspaceId('workspace-1');
-    await topics.save(Topic.create({
-      id: 'topic-1',
+    await interests.save(Interest.create({
+      id: 'interest-1',
       tenantId: tenant,
       workspaceId: workspace,
       name: 'AI Infrastructure',
@@ -177,10 +177,10 @@ describe('ListSourceBindingsUseCase', () => {
       createdAt: new Date('2026-06-06T00:00:00.000Z'),
     }));
 
-    const result = await new ListSourceBindingsUseCase(topics, bindings).execute({
+    const result = await new ListSourceBindingsUseCase(interests, bindings).execute({
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       limit: 10,
       statuses: ['failed'],
     });
@@ -199,7 +199,7 @@ const makeBinding = (overrides: Partial<SourceBindingProps> = {}): SourceBinding
   id: 'binding-1',
   tenantId: tenantId('tenant-1'),
   workspaceId: workspaceId('workspace-1'),
-  topicId: 'topic-1',
+  interestId: 'interest-1',
   providerKey: 'fake-source',
   capabilityProfileVersion: 1,
   config: { mode: 'search', query: 'AI infrastructure' },
@@ -208,20 +208,20 @@ const makeBinding = (overrides: Partial<SourceBindingProps> = {}): SourceBinding
   ...overrides,
 });
 
-class FakeTopicRepository implements TopicRepositoryPort {
-  private readonly topics = new Map<string, Topic>();
+class FakeInterestRepository implements InterestRepositoryPort {
+  private readonly interests = new Map<string, Interest>();
 
-  async save(topic: Topic): Promise<void> {
-    const snapshot = topic.toSnapshot();
+  async save(interest: Interest): Promise<void> {
+    const snapshot = interest.toSnapshot();
 
-    this.topics.set(`${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.id}`, topic);
+    this.interests.set(`${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.id}`, interest);
   }
 
-  async findByName(params: Parameters<TopicRepositoryPort['findByName']>[0]): Promise<Topic | null> {
+  async findByName(params: Parameters<InterestRepositoryPort['findByName']>[0]): Promise<Interest | null> {
     const normalizedName = params.name.trim().toLowerCase();
 
-    return [...this.topics.values()].find((topic) => {
-      const snapshot = topic.toSnapshot();
+    return [...this.interests.values()].find((interest) => {
+      const snapshot = interest.toSnapshot();
 
       return (
         snapshot.tenantId === params.tenantId &&
@@ -231,12 +231,12 @@ class FakeTopicRepository implements TopicRepositoryPort {
     }) ?? null;
   }
 
-  async findById(params: Parameters<TopicRepositoryPort['findById']>[0]): Promise<Topic | null> {
-    return this.topics.get(`${params.tenantId}:${params.workspaceId}:${params.topicId}`) ?? null;
+  async findById(params: Parameters<InterestRepositoryPort['findById']>[0]): Promise<Interest | null> {
+    return this.interests.get(`${params.tenantId}:${params.workspaceId}:${params.interestId}`) ?? null;
   }
 
-  async list(): Promise<{ readonly topics: readonly Topic[]; readonly nextCursor?: string }> {
-    return { topics: [...this.topics.values()], nextCursor: undefined };
+  async list(): Promise<{ readonly interests: readonly Interest[]; readonly nextCursor?: string }> {
+    return { interests: [...this.interests.values()], nextCursor: undefined };
   }
 }
 
@@ -250,8 +250,8 @@ class FakeSourceBindingRepository implements SourceBindingRepositoryPort {
     this.bindings.set(`${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.id}`, binding);
   }
 
-  async findByTopicAndProvider(
-    params: Parameters<SourceBindingRepositoryPort['findByTopicAndProvider']>[0],
+  async findByInterestAndProvider(
+    params: Parameters<SourceBindingRepositoryPort['findByInterestAndProvider']>[0],
   ): Promise<SourceBinding | null> {
     return [...this.bindings.values()].find((binding) => {
       const snapshot = binding.toSnapshot();
@@ -259,7 +259,7 @@ class FakeSourceBindingRepository implements SourceBindingRepositoryPort {
       return (
         snapshot.tenantId === params.tenantId &&
         snapshot.workspaceId === params.workspaceId &&
-        snapshot.topicId === params.topicId &&
+        snapshot.interestId === params.interestId &&
         snapshot.providerKey === params.providerKey
       );
     }) ?? null;
@@ -269,7 +269,7 @@ class FakeSourceBindingRepository implements SourceBindingRepositoryPort {
     return this.bindings.get(`${params.tenantId}:${params.workspaceId}:${params.sourceBindingId}`) ?? null;
   }
 
-  async listByTopic(query: ListSourceBindingsQuery): Promise<ListSourceBindingsResult> {
+  async listByInterest(query: ListSourceBindingsQuery): Promise<ListSourceBindingsResult> {
     this.queries.push(query);
     const offset = parseCursor(query.cursor);
     const allBindings = [...this.bindings.values()]
@@ -279,7 +279,7 @@ class FakeSourceBindingRepository implements SourceBindingRepositoryPort {
         return (
           snapshot.tenantId === query.tenantId &&
           snapshot.workspaceId === query.workspaceId &&
-          snapshot.topicId === query.topicId &&
+          snapshot.interestId === query.interestId &&
           (query.providerKeys === undefined ||
             query.providerKeys.includes(snapshot.providerKey)) &&
           (query.statuses === undefined ||

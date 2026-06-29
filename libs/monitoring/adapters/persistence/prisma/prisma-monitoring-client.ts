@@ -10,7 +10,7 @@ import type {
   PrismaSourceCredentialRecord,
   PrismaSourceCredentialSecretRecord,
   PrismaSourceCredentialSecretWriteData,
-  PrismaTopicRecord,
+  PrismaInterestRecord,
 } from './prisma-monitoring-records';
 
 type PrismaScanSchedulerDecisionWriteData = {
@@ -30,16 +30,16 @@ type PrismaScanSchedulerDecisionWriteData = {
   readonly causationId?: string | null;
 };
 
-type PrismaTopicStatus = 'ENABLED' | 'DISABLED' | 'ARCHIVED';
+type PrismaInterestStatus = 'ENABLED' | 'DISABLED' | 'ARCHIVED';
 
 export type PrismaMonitoringClient = {
-  readonly topic: {
+  readonly interest: {
     upsert(args: {
       readonly where: { readonly id: string };
       readonly update: {
         readonly name: string;
         readonly query: string;
-        readonly status?: PrismaTopicStatus;
+        readonly status?: PrismaInterestStatus;
         readonly deletedAt?: Date | null;
       };
       readonly create: {
@@ -48,10 +48,10 @@ export type PrismaMonitoringClient = {
         readonly workspaceId: string;
         readonly name: string;
         readonly query: string;
-        readonly status?: PrismaTopicStatus;
+        readonly status?: PrismaInterestStatus;
         readonly deletedAt?: Date | null;
       };
-    }): Promise<PrismaTopicRecord>;
+    }): Promise<PrismaInterestRecord>;
     updateMany(args: {
       readonly where: {
         readonly id: string;
@@ -60,7 +60,7 @@ export type PrismaMonitoringClient = {
         readonly deletedAt: null;
       };
       readonly data: {
-        readonly status: PrismaTopicStatus;
+        readonly status: PrismaInterestStatus;
         readonly deletedAt: Date;
       };
     }): Promise<unknown>;
@@ -72,7 +72,7 @@ export type PrismaMonitoringClient = {
         readonly id?: string;
         readonly deletedAt: null;
       };
-    }): Promise<PrismaTopicRecord | null>;
+    }): Promise<PrismaInterestRecord | null>;
     findMany(args: {
       readonly where: {
         readonly tenantId: string;
@@ -85,7 +85,7 @@ export type PrismaMonitoringClient = {
       ];
       readonly skip: number;
       readonly take: number;
-    }): Promise<readonly PrismaTopicRecord[]>;
+    }): Promise<readonly PrismaInterestRecord[]>;
   };
   readonly sourceCatalogEntry: {
     findUnique(args: {
@@ -104,7 +104,7 @@ export type PrismaMonitoringClient = {
         readonly id: string;
         readonly tenantId: string;
         readonly workspaceId: string;
-        readonly topicId: string;
+        readonly interestId: string;
         readonly sourceCatalogEntryId: string;
         readonly capabilityProfileVersion: number;
         readonly status: 'ENABLED' | 'PAUSED';
@@ -115,7 +115,7 @@ export type PrismaMonitoringClient = {
       readonly where: {
         readonly tenantId: string;
         readonly workspaceId: string;
-        readonly topicId?: string;
+        readonly interestId?: string;
         readonly id?: string;
         readonly sourceCatalogEntryId?: string;
         readonly deletedAt: null;
@@ -125,7 +125,7 @@ export type PrismaMonitoringClient = {
       readonly where: {
         readonly tenantId: string;
         readonly workspaceId: string;
-        readonly topicId: string;
+        readonly interestId: string;
         readonly deletedAt: null;
       };
       readonly orderBy: readonly [

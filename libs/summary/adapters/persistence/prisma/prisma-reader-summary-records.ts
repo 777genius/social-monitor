@@ -29,7 +29,7 @@ export type PrismaReaderSummaryJobRecord = {
   readonly workspaceId: string;
   readonly scopeType: string;
   readonly scopeKey: string;
-  readonly topicId: string | null;
+  readonly interestId: string | null;
   readonly cadence: string;
   readonly periodStartedAt: Date;
   readonly periodEndedAt: Date;
@@ -55,7 +55,7 @@ export type PrismaReaderSummaryArtifactRecord = {
   readonly workspaceId: string;
   readonly scopeType: string;
   readonly scopeKey: string;
-  readonly topicId: string | null;
+  readonly interestId: string | null;
   readonly cadence: string;
   readonly periodStartedAt: Date;
   readonly periodEndedAt: Date;
@@ -82,13 +82,13 @@ export type PrismaReaderSummaryPolicyRecord = {
   readonly workspaceId: string;
   readonly scopeType: string;
   readonly scopeKey: string;
-  readonly topicId: string | null;
+  readonly interestId: string | null;
   readonly language: string;
   readonly format: string;
   readonly tone: string;
   readonly maxStories: number;
   readonly includeRisks: boolean;
-  readonly includeTopicHighlights: boolean;
+  readonly includeInterestHighlights: boolean;
   readonly includeRepeatedSignals: boolean;
   readonly dedupeStrategy: string;
   readonly customInstructions: string | null;
@@ -146,7 +146,7 @@ export const readerSummaryPolicyFromPrisma = (
     tone: normalizeReaderSummaryPolicyTone(record.tone),
     maxStories: record.maxStories,
     includeRisks: record.includeRisks,
-    includeTopicHighlights: record.includeTopicHighlights,
+    includeInterestHighlights: record.includeInterestHighlights,
     includeRepeatedSignals: record.includeRepeatedSignals,
     dedupeStrategy: normalizeReaderSummaryDedupeStrategy(record.dedupeStrategy),
     customInstructions: record.customInstructions ?? undefined,
@@ -246,11 +246,11 @@ export const readerSummaryScopeToPrisma = (
 ): {
   readonly scopeType: string;
   readonly scopeKey: string;
-  readonly topicId: string | null;
+  readonly interestId: string | null;
 } => ({
   scopeType: scope.type,
   scopeKey: readerSummaryScopeKey(scope),
-  topicId: scope.type === "topic" ? scope.topicId : null,
+  interestId: scope.type === "interest" ? scope.interestId : null,
 });
 
 const readerSummaryJobStatusFromPrisma = (

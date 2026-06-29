@@ -96,7 +96,7 @@ export class SourceCredentialController {
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
   @ApiKeyOrWorkspaceRoleAuth({
-    apiKeyScope: 'read:topics',
+    apiKeyScope: 'read:interests',
     workspaceRoleDescription: 'Comma-separated workspace roles. Source credential reads allow owner, admin, member or viewer.',
   })
   @ApiQuery({ name: 'providerKey', required: false, type: String })
@@ -231,7 +231,7 @@ export class SourceCredentialController {
         authorizationHeader,
         tenantId,
         workspaceId,
-        requiredScope: 'read:topics',
+        requiredScope: 'read:interests',
         operation: 'source_credentials.read',
       });
       return;

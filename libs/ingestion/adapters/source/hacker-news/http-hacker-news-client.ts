@@ -3,6 +3,9 @@ import type { HackerNewsClientPort, HackerNewsListing, HackerNewsStory } from '.
 type AlgoliaHit = {
   readonly objectID?: string;
   readonly title?: string;
+  readonly story_title?: string;
+  readonly story_id?: number;
+  readonly parent_id?: number;
   readonly url?: string;
   readonly author?: string;
   readonly created_at_i?: number;
@@ -31,14 +34,26 @@ export class HttpHackerNewsClient implements HackerNewsClientPort {
   constructor(private readonly timeoutMs = 10_000) {}
 
   async searchStories(query: string, limit: number): Promise<readonly HackerNewsStory[]> {
+    return this.searchAlgolia(query, 'story', limit);
+  }
+
+  async searchComments(query: string, limit: number): Promise<readonly HackerNewsStory[]> {
+    return this.searchAlgolia(query, 'comment', limit);
+  }
+
+  private async searchAlgolia(
+    query: string,
+    kind: 'story' | 'comment',
+    limit: number,
+  ): Promise<readonly HackerNewsStory[]> {
     const url = new URL(`${algoliaBaseUrl}/search_by_date`);
     url.searchParams.set('query', query);
-    url.searchParams.set('tags', 'story');
+    url.searchParams.set('tags', kind);
     url.searchParams.set('hitsPerPage', String(normalizeLimit(limit)));
 
     const response = await this.fetchJson<AlgoliaSearchResponse>(url.toString());
 
-    return (response.hits ?? []).flatMap((hit) => normalizeAlgoliaHit(hit));
+    return (response.hits ?? []).flatMap((hit) => normalizeAlgoliaHit(hit, kind));
   }
 
   async listStories(listing: HackerNewsListing, limit: number): Promise<readonly HackerNewsStory[]> {
@@ -92,21 +107,33 @@ const normalizeLimit = (limit: number): number => {
   return Math.min(limit, 100);
 };
 
-const normalizeAlgoliaHit = (hit: AlgoliaHit): readonly HackerNewsStory[] => {
+const normalizeAlgoliaHit = (
+  hit: AlgoliaHit,
+  kind: 'story' | 'comment',
+): readonly HackerNewsStory[] => {
   const id = Number(hit.objectID);
   if (!Number.isInteger(id)) {
     return [];
   }
+  const storyId = readOptionalInteger(hit.story_id);
+  const parentId = readOptionalInteger(hit.parent_id);
+  const text = hit.story_text ?? hit.comment_text;
+  const score = readOptionalInteger(hit.points);
+  const comments = readOptionalInteger(hit.num_comments);
 
   return [{
+    kind,
     id,
-    title: hit.title,
-    url: hit.url,
-    by: hit.author,
-    time: hit.created_at_i,
-    text: hit.story_text ?? hit.comment_text,
-    score: readOptionalInteger(hit.points),
-    comments: readOptionalInteger(hit.num_comments),
+    ...(hit.title === undefined ? {} : { title: hit.title }),
+    ...(hit.story_title === undefined ? {} : { storyTitle: hit.story_title }),
+    ...(storyId === undefined ? {} : { storyId }),
+    ...(parentId === undefined ? {} : { parentId }),
+    ...(hit.url === undefined ? {} : { url: hit.url }),
+    ...(hit.author === undefined ? {} : { by: hit.author }),
+    ...(hit.created_at_i === undefined ? {} : { time: hit.created_at_i }),
+    ...(text === undefined ? {} : { text }),
+    ...(score === undefined ? {} : { score }),
+    ...(comments === undefined ? {} : { comments }),
   }];
 };
 

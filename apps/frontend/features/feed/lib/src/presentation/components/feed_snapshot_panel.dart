@@ -12,12 +12,12 @@ class FeedSnapshotPanel extends StatelessWidget {
     super.key,
     required this.items,
     required this.nextCursor,
-    required this.topicLabel,
+    required this.interestLabel,
   });
 
   final List<FeedItem> items;
   final String? nextCursor;
-  final String? topicLabel;
+  final String? interestLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -42,7 +42,7 @@ class FeedSnapshotPanel extends StatelessWidget {
             final compact = constraints.maxWidth < 760;
             final header = _SnapshotHeader(
               itemCount: items.length,
-              topicLabel: topicLabel,
+              interestLabel: interestLabel,
               hasMore: nextCursor != null,
             );
             final metrics = _SnapshotMetrics(
@@ -95,12 +95,12 @@ class FeedSnapshotPanel extends StatelessWidget {
 class _SnapshotHeader extends StatelessWidget {
   const _SnapshotHeader({
     required this.itemCount,
-    required this.topicLabel,
+    required this.interestLabel,
     required this.hasMore,
   });
 
   final int itemCount;
-  final String? topicLabel;
+  final String? interestLabel;
   final bool hasMore;
 
   @override
@@ -135,7 +135,7 @@ class _SnapshotHeader extends StatelessWidget {
                 ),
               ),
               Text(
-                topicLabel ?? 'All monitored sources',
+                interestLabel ?? 'All monitored sources',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(

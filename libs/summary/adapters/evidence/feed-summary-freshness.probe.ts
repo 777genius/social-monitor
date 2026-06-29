@@ -13,7 +13,7 @@ export class FeedSummaryFreshnessProbe implements SummaryFreshnessPort {
     const result = await this.feedItems.list({
       tenantId: params.tenantId,
       workspaceId: params.workspaceId,
-      topicId: params.topicId,
+      interestId: params.interestId,
       observedAfter: params.sourceWindow.endedAt,
       limit: 1,
     });

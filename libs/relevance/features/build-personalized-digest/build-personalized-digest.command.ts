@@ -4,7 +4,7 @@ export type BuildPersonalizedDigestCommand = {
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
   readonly userId: string;
-  readonly topicIds: readonly string[];
+  readonly interestIds: readonly string[];
   readonly windowStartedAt: Date;
   readonly windowEndedAt: Date;
   readonly limit: number;

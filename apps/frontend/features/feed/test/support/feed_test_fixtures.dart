@@ -70,7 +70,7 @@ PageResult<FeedMention> feedMentionPage(
 
 FeedItemApiDto feedItemApiDto({
   String id = 'feed-1',
-  String topicId = 'topic-demo',
+  String interestId = 'topic-demo',
   String sourceItemId = 'reddit-post-1',
   String sourceBindingId = 'binding-reddit-demo',
   String providerKey = 'reddit',
@@ -87,7 +87,7 @@ FeedItemApiDto feedItemApiDto({
 }) {
   return FeedItemApiDto(
     id: id,
-    topicId: topicId,
+    interestId: interestId,
     sourceItemId: sourceItemId,
     sourceBindingId: sourceBindingId,
     providerKey: providerKey,
@@ -105,7 +105,7 @@ FeedItemApiDto feedItemApiDto({
 
 FeedItem feedItem({
   String id = 'feed-1',
-  String topicId = 'topic-demo',
+  String interestId = 'topic-demo',
   String sourceItemId = 'reddit-post-1',
   String sourceBindingId = 'binding-reddit-demo',
   String providerKey = 'reddit',
@@ -122,7 +122,7 @@ FeedItem feedItem({
 }) {
   return FeedItem(
     id: FeedItemId(id),
-    topicId: topicId,
+    interestId: interestId,
     sourceItemId: sourceItemId,
     sourceBindingId: sourceBindingId,
     providerKey: providerKey,

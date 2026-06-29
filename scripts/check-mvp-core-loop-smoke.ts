@@ -52,7 +52,7 @@ import type {
 import { InMemoryFeedProjectionAdapter } from '../apps/ingestion-worker/src/adapters/feed/in-memory-feed-projection.adapter';
 import { BindSourceUseCase } from '../libs/monitoring/features/bind-source/bind-source.use-case';
 import { ChangeSourceBindingStatusUseCase } from '../libs/monitoring/features/change-source-binding-status/change-source-binding-status.use-case';
-import { CreateTopicUseCase } from '../libs/monitoring/features/create-topic/create-topic.use-case';
+import { CreateInterestUseCase } from '../libs/monitoring/features/create-interest/create-interest.use-case';
 import { GetScanStatusUseCase } from '../libs/monitoring/features/get-scan-status/get-scan-status.use-case';
 import { RecordScanExecutionUseCase } from '../libs/monitoring/features/record-scan-execution/record-scan-execution.use-case';
 import { RequestScanUseCase } from '../libs/monitoring/features/request-scan/request-scan.use-case';
@@ -62,7 +62,7 @@ import { InMemoryOutboxAdapter } from '../libs/monitoring/adapters/messaging/in-
 import { InMemoryScanJobRepository } from '../libs/monitoring/adapters/persistence/in-memory-scan-job.repository';
 import { InMemoryScanPolicyRepository } from '../libs/monitoring/adapters/persistence/in-memory-scan-policy.repository';
 import { InMemorySourceBindingRepository } from '../libs/monitoring/adapters/persistence/in-memory-source-binding.repository';
-import { InMemoryTopicRepository } from '../libs/monitoring/adapters/persistence/in-memory-topic.repository';
+import { InMemoryInterestRepository } from '../libs/monitoring/adapters/persistence/in-memory-interest.repository';
 import { InMemoryScanQueueAdapter } from '../libs/monitoring/adapters/queue/in-memory-scan-queue.adapter';
 import { FakeSourceCatalogAdapter } from '../libs/monitoring/adapters/source-catalog/fake-source-catalog.adapter';
 import type {
@@ -98,7 +98,7 @@ const correlation = 'mvp-core-loop-correlation';
 async function main(): Promise<void> {
   const ids = new SequenceIdGenerator('mvp-core');
   const clock = new FixedClock(fixedNow);
-  const topics = new InMemoryTopicRepository();
+  const topics = new InMemoryInterestRepository();
   const bindings = new InMemorySourceBindingRepository();
   const scanPolicies = new InMemoryScanPolicyRepository();
   const scanJobs = new InMemoryScanJobRepository();
@@ -120,12 +120,12 @@ async function main(): Promise<void> {
   const realtimeEvents = new InMemoryRealtimeEventRepository();
 
   const topic = unwrap(
-    await new CreateTopicUseCase(topics, outbox, idempotency, ids, clock).execute({
+    await new CreateInterestUseCase(topics, outbox, idempotency, ids, clock).execute({
       tenantId: tenant,
       workspaceId: workspace,
       name: 'AI Infrastructure',
       query: 'monitoring',
-      idempotencyKey: 'topic:create:ai-infrastructure',
+      idempotencyKey: 'interest:create:ai-infrastructure',
       correlationId: correlation,
     }),
     'create topic',
@@ -145,7 +145,7 @@ async function main(): Promise<void> {
     ).execute({
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: topic.topicId,
+      interestId: topic.interestId,
       providerKey: 'fake-source',
       config: {
         mode: 'search',
@@ -189,7 +189,7 @@ async function main(): Promise<void> {
     await changeSourceBindingStatus.execute({
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: topic.topicId,
+      interestId: topic.interestId,
       sourceBindingId: sourceBinding.sourceBindingId,
       status: 'paused',
       idempotencyKey: 'source:status:pause',
@@ -218,7 +218,7 @@ async function main(): Promise<void> {
     await changeSourceBindingStatus.execute({
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: topic.topicId,
+      interestId: topic.interestId,
       sourceBindingId: sourceBinding.sourceBindingId,
       status: 'enabled',
       idempotencyKey: 'source:status:resume',
@@ -298,7 +298,7 @@ async function main(): Promise<void> {
     await new ListFeedItemsUseCase(feedItems, feedItems, clock).execute({
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: topic.topicId,
+      interestId: topic.interestId,
       limit: 10,
     }),
     'list feed items',
@@ -317,7 +317,7 @@ async function main(): Promise<void> {
     await new RequestSummaryUseCase(summaryJobs, summaryQueue, new AllowingSummaryQuota(), ids, clock).execute({
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: topic.topicId,
+      interestId: topic.interestId,
       idempotencyKey: 'summary:request:topic',
       correlationId: correlation,
     }),
@@ -368,7 +368,7 @@ async function main(): Promise<void> {
     tenantId: tenant,
     workspaceId: workspace,
     summaryId: summaryExecution.summaryId,
-    topicId: topic.topicId,
+    interestId: topic.interestId,
     sourceWindowStartedAt: digestWindowStartedAt,
     sourceWindowEndedAt: fixedNow,
     signal: 'high',
@@ -378,7 +378,7 @@ async function main(): Promise<void> {
       tenantId: tenant,
       workspaceId: workspace,
       feedItemId: feedItem.id,
-      topicId: feedItem.topicId,
+      interestId: feedItem.interestId,
       observedAt: new Date(feedItem.observedAt),
       signal: 'normal',
     });
@@ -396,7 +396,7 @@ async function main(): Promise<void> {
       workspaceId: workspace,
       recipientKey: 'beta-user-1',
       channel: 'in_app',
-      topicIds: [topic.topicId],
+      interestIds: [topic.interestId],
       windowStartedAt: digestWindowStartedAt,
       windowEndedAt: digestWindowEndedAt,
       includeNoSignal: false,
@@ -537,7 +537,7 @@ async function main(): Promise<void> {
     'project summary ready event',
   );
   assert(
-    realtimeProjection.channel === `topic:${topic.topicId}:summary-status`,
+    realtimeProjection.channel === `interest:${topic.interestId}:summary-status`,
     `unexpected realtime channel ${realtimeProjection.channel}`,
   );
 
@@ -641,7 +641,7 @@ function assertQueuedScanPayload(payload: Readonly<Record<string, unknown>>): as
   assert(isTenantId(payload.tenantId), 'queued scan tenantId must be a string');
   assert(isWorkspaceId(payload.workspaceId), 'queued scan workspaceId must be a string');
   assert(typeof payload.scanJobId === 'string' && payload.scanJobId.length > 0, 'queued scanJobId is required');
-  assert(typeof payload.topicId === 'string' && payload.topicId.length > 0, 'queued topicId is required');
+  assert(typeof payload.interestId === 'string' && payload.interestId.length > 0, 'queued interestId is required');
   assert(
     typeof payload.sourceBindingId === 'string' && payload.sourceBindingId.length > 0,
     'queued sourceBindingId is required',
@@ -680,7 +680,7 @@ function assertSummaryReadyEvent(
   assert(typeof payload.summaryId === 'string' && payload.summaryId.length > 0, 'summaryId is required');
   assert(isTenantId(payload.tenantId), 'summary event tenantId must be a string');
   assert(isWorkspaceId(payload.workspaceId), 'summary event workspaceId must be a string');
-  assert(typeof payload.topicId === 'string' && payload.topicId.length > 0, 'summary event topicId is required');
+  assert(typeof payload.interestId === 'string' && payload.interestId.length > 0, 'summary event interestId is required');
   assert(payload.status === 'completed' || payload.status === 'no_signal', 'summary event status is invalid');
 }
 

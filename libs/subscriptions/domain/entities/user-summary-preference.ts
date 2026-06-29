@@ -22,7 +22,7 @@ export type UserSummaryPreferenceProps = UserSummaryPreferenceOverlay & {
   readonly workspaceId: WorkspaceId;
   readonly userId: string;
   readonly subscriptionId?: string;
-  readonly topicId?: string;
+  readonly interestId?: string;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 };
@@ -80,7 +80,7 @@ export class UserSummaryPreference {
   private static normalize(props: UserSummaryPreferenceProps): UserSummaryPreferenceProps {
     const userId = props.userId.trim();
     const subscriptionId = normalizeOptionalText(props.subscriptionId);
-    const topicId = normalizeOptionalText(props.topicId);
+    const interestId = normalizeOptionalText(props.interestId);
     const customInstructions = normalizeOptionalText(props.customInstructions);
 
     if (props.id.trim().length === 0) {
@@ -91,12 +91,12 @@ export class UserSummaryPreference {
       throw new Error('User summary preference user id must be non-empty');
     }
 
-    if (subscriptionId === undefined && topicId === undefined) {
-      throw new Error('User summary preference requires subscriptionId or topicId');
+    if (subscriptionId === undefined && interestId === undefined) {
+      throw new Error('User summary preference requires subscriptionId or interestId');
     }
 
-    if (subscriptionId !== undefined && topicId !== undefined) {
-      throw new Error('User summary preference cannot target both subscriptionId and topicId');
+    if (subscriptionId !== undefined && interestId !== undefined) {
+      throw new Error('User summary preference cannot target both subscriptionId and interestId');
     }
 
     if (props.language !== undefined && !supportedLanguages.has(props.language)) {
@@ -134,7 +134,7 @@ export class UserSummaryPreference {
       ...props,
       userId,
       subscriptionId,
-      topicId,
+      interestId,
       customInstructions,
     };
   }

@@ -6,7 +6,7 @@ import '../value_objects/feed_signal_snapshot.dart';
 final class FeedItem {
   const FeedItem({
     required this.id,
-    required this.topicId,
+    required this.interestId,
     required this.sourceItemId,
     required this.sourceBindingId,
     required this.providerKey,
@@ -22,7 +22,7 @@ final class FeedItem {
   });
 
   final FeedItemId id;
-  final String topicId;
+  final String interestId;
   final String sourceItemId;
   final String sourceBindingId;
   final String providerKey;

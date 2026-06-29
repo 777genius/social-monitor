@@ -26,11 +26,11 @@ export class LoadUserContextForSummaryUseCase {
   ): Promise<
     Result<LoadUserContextForSummaryResult, LoadUserContextForSummaryFailure>
   > {
-    if (query.topicId.trim().length === 0) {
+    if (query.interestId.trim().length === 0) {
       return err(
         new DomainError(
           "validation.failed",
-          "Summary memory topic id must be non-empty",
+          "Summary memory interest id must be non-empty",
         ),
       );
     }
@@ -46,7 +46,7 @@ export class LoadUserContextForSummaryUseCase {
     try {
       return await this.memory.buildContext({
         ...query,
-        topicId: query.topicId.trim(),
+        interestId: query.interestId.trim(),
       });
     } catch (error) {
       return {

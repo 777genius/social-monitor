@@ -13,12 +13,12 @@ SourceBindingResponseDto _$SourceBindingResponseDtoFromJson(
   configPreview: json['configPreview'],
   createdAt: DateTime.parse(json['createdAt'] as String),
   id: json['id'] as String,
+  interestId: json['interestId'] as String,
   providerKey: json['providerKey'] as String,
   status: SourceBindingResponseDtoStatusStatus.fromJson(
     json['status'] as String,
   ),
   tenantId: json['tenantId'],
-  topicId: json['topicId'] as String,
   workspaceId: json['workspaceId'],
 );
 
@@ -29,9 +29,9 @@ Map<String, dynamic> _$SourceBindingResponseDtoToJson(
   'configPreview': instance.configPreview,
   'createdAt': instance.createdAt.toIso8601String(),
   'id': instance.id,
+  'interestId': instance.interestId,
   'providerKey': instance.providerKey,
   'status': instance.status,
   'tenantId': instance.tenantId,
-  'topicId': instance.topicId,
   'workspaceId': instance.workspaceId,
 };

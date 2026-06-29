@@ -28,8 +28,8 @@ export type PrismaMembershipRecord = {
 };
 
 const apiKeyScopes = [
-  'read:topics',
-  'write:topics',
+  'read:interests',
+  'write:interests',
   'write:source_bindings',
   'write:scan_requests',
   'read:feed',

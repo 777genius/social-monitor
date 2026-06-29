@@ -12,7 +12,7 @@ const tenant = tenantId('tenant-export-summary-feedback');
 const workspace = workspaceId('workspace-export-summary-feedback');
 const otherWorkspace = workspaceId('workspace-export-summary-feedback-other');
 const summaryId = 'summary-export-feedback-1';
-const topicId = 'topic-export-feedback-1';
+const interestId = 'interest-export-feedback-1';
 
 describe('ExportSummaryFeedbackSamplesUseCase', () => {
   it('exports redacted release feedback samples from the selected workspace window', async () => {
@@ -88,7 +88,7 @@ describe('ExportSummaryFeedbackSamplesUseCase', () => {
       category: 'wrong_fact',
       evidence: {
         summaryId,
-        topicId,
+        interestId,
       },
     }));
 
@@ -175,7 +175,7 @@ function createFeedback(overrides: {
   readonly comment?: string;
   readonly evidence?: {
     readonly summaryId: string;
-    readonly topicId: string;
+    readonly interestId: string;
     readonly citationId?: string;
     readonly feedItemId?: string;
     readonly sourceItemId?: string;
@@ -188,7 +188,7 @@ function createFeedback(overrides: {
     tenantId: tenant,
     workspaceId: overrides.workspaceId ?? workspace,
     summaryId,
-    topicId,
+    interestId,
     idempotencyKey: `idempotency:${overrides.id}`,
     submittedBy: 'beta-user-redacted',
     rating: 2,
@@ -196,7 +196,7 @@ function createFeedback(overrides: {
     comment: overrides.comment,
     evidence: overrides.evidence ?? {
       summaryId,
-      topicId,
+      interestId,
       citationId: `citation:${overrides.id}`,
       feedItemId: `feed:${overrides.id}`,
       sourceItemId: `source:${overrides.id}`,

@@ -100,18 +100,22 @@ final class AppCompositionRoot {
         ),
       ),
       _RouteFeatureDescriptor(
-        id: 'topics',
-        title: 'Topics',
-        description: 'Monitoring intents, queries, and topic coverage.',
-        route: FeatureRouteContract(id: AppRouteId('topics'), path: '/topics'),
+        id: 'interests',
+        title: 'Interests',
+        description: 'Monitoring intents, queries, and source coverage.',
+        route: FeatureRouteContract(
+          id: AppRouteId('interests'),
+          path: '/interests',
+        ),
         icon: Icons.track_changes_outlined,
         status: useDemoRoutes
             ? 'Shell'
-            : _runtimeFeatureStatus(runtimeController.runtime, 'topics'),
+            : _runtimeFeatureStatus(runtimeController.runtime, 'interests'),
         statusBuilder: useDemoRoutes
             ? null
-            : () => _runtimeFeatureStatus(runtimeController.runtime, 'topics'),
-        builder: topicsFeatureBuilder(
+            : () =>
+                  _runtimeFeatureStatus(runtimeController.runtime, 'interests'),
+        builder: interestsFeatureBuilder(
           useDemoRoutes: useDemoRoutes,
           runtimeController: runtimeController,
         ),

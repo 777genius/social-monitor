@@ -29,20 +29,20 @@ describe('RelevanceSummaryEvidenceSelector', () => {
     const result = await selector.select({
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       maxItems: 10,
     });
 
     expect(execute).toHaveBeenCalledWith(expect.objectContaining({
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       limit: 10,
       observedAfter: new Date('2026-06-26T11:59:59.999Z'),
       observedBefore: new Date('2026-06-27T12:00:00.001Z'),
     }));
     expect(result.sourceWindow).toEqual({
-      windowId: 'tenant-1:workspace-1:topic-1:personalized-empty',
+      windowId: 'tenant-1:workspace-1:interest-1:personalized-empty',
       startedAt: new Date('2026-06-26T12:00:00.000Z'),
       endedAt: new Date('2026-06-27T12:00:00.000Z'),
       selectedFeedItemIds: [],

@@ -67,7 +67,7 @@ export type PrismaUserSummaryPreferenceRecord = {
   readonly workspaceId: string;
   readonly userId: string;
   readonly subscriptionId: string | null;
-  readonly topicId: string | null;
+  readonly interestId: string | null;
   readonly language: string | null;
   readonly format: string | null;
   readonly tone: string | null;
@@ -133,7 +133,7 @@ export const userSummaryPreferenceFromPrisma = (
     workspaceId: workspaceId(record.workspaceId),
     userId: record.userId,
     subscriptionId: record.subscriptionId ?? undefined,
-    topicId: record.topicId ?? undefined,
+    interestId: record.interestId ?? undefined,
     language: normalizeLanguage(record.language),
     format: normalizeFormat(record.format),
     tone: normalizeTone(record.tone),
@@ -180,7 +180,7 @@ const scheduleStatusFromPrisma = (status: PrismaUserSubscriptionScheduleStatus):
 const normalizeTargetKind = (value: string): SourceTargetKind => {
   if (
     value === 'subreddit' ||
-    value === 'topic' ||
+    value === 'interest' ||
     value === 'search_query' ||
     value === 'repository' ||
     value === 'account' ||

@@ -24,7 +24,7 @@ import { ChangeSourceBindingStatusUseCase } from '../../features/change-source-b
 import { GetSourceBindingHealthUseCase } from '../../features/get-source-binding-health/get-source-binding-health.use-case';
 import { ListSourceBindingOverviewUseCase } from '../../features/list-source-binding-overview/list-source-binding-overview.use-case';
 import { ListSourceBindingsUseCase } from '../../features/list-source-bindings/list-source-bindings.use-case';
-import { ListTopicSourceDailyHistoryUseCase } from '../../features/list-topic-source-daily-history/list-topic-source-daily-history.use-case';
+import { ListInterestSourceDailyHistoryUseCase } from '../../features/list-interest-source-daily-history/list-interest-source-daily-history.use-case';
 import { BindSourceRequestDto, BindSourceResponseDto, normalizeSourceBindingConfig } from './bind-source.dto';
 import { ListSourceBindingsResponseDto, sourceBindingStatusValues } from './list-source-bindings.dto';
 import { ListSourceBindingOverviewResponseDto } from './source-binding-overview.dto';
@@ -33,17 +33,17 @@ import {
   ChangeSourceBindingStatusResponseDto,
 } from './source-binding-status.dto';
 import { SourceBindingHealthResponseDto } from './source-binding-health.dto';
-import { ListTopicSourceDailyHistoryResponseDto } from './topic-source-daily-history.dto';
+import { ListInterestSourceDailyHistoryResponseDto } from './interest-source-daily-history.dto';
 
 @ApiTags('source-bindings')
-@Controller('topics/:topicId/source-bindings')
+@Controller('interests/:interestId/source-bindings')
 export class SourceBindingController {
   constructor(
     private readonly bindSource: BindSourceUseCase,
     private readonly changeSourceBindingStatus: ChangeSourceBindingStatusUseCase,
     private readonly listSourceBindings: ListSourceBindingsUseCase,
     private readonly listSourceBindingOverview: ListSourceBindingOverviewUseCase,
-    private readonly listTopicSourceDailyHistory: ListTopicSourceDailyHistoryUseCase,
+    private readonly listInterestSourceDailyHistory: ListInterestSourceDailyHistoryUseCase,
     private readonly getSourceBindingHealth: GetSourceBindingHealthUseCase,
     private readonly recordPublicApiAuditEvent: RecordPublicApiAuditEventUseCase,
     private readonly apiKeyRequestAuthorizer: ApiKeyRequestAuthorizer,
@@ -54,7 +54,7 @@ export class SourceBindingController {
   ) {}
 
   @Post()
-  @ApiOperation({ summary: 'Bind a production-safe source provider to a topic.' })
+  @ApiOperation({ summary: 'Bind a production-safe source provider to an interest.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
   @ApiKeyOrWorkspaceRoleAuth({
@@ -64,7 +64,7 @@ export class SourceBindingController {
   @ApiHeader({ name: 'idempotency-key', required: true })
   @ApiCreatedResponse({ type: BindSourceResponseDto })
   async create(
-    @Param('topicId') topicId: string,
+    @Param('interestId') interestId: string,
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
@@ -88,7 +88,7 @@ export class SourceBindingController {
     const result = await this.bindSource.execute({
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
-      topicId,
+      interestId,
       providerKey: body.providerKey,
       config: normalizeSourceBindingConfig(body.config),
       idempotencyKey: requireIdempotencyKeyHeader(idempotencyKey),
@@ -107,7 +107,7 @@ export class SourceBindingController {
         resourceId: result.value.sourceBindingId,
         metadata: {
           providerKey: body.providerKey,
-          topicId,
+          interestId,
           created: result.value.created,
         },
       });
@@ -117,11 +117,11 @@ export class SourceBindingController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'List source bindings for a topic.' })
+  @ApiOperation({ summary: 'List source bindings for an interest.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
   @ApiKeyOrWorkspaceRoleAuth({
-    apiKeyScope: 'read:topics',
+    apiKeyScope: 'read:interests',
     workspaceRoleDescription: 'Comma-separated workspace roles. Source binding reads allow owner, admin, member or viewer.',
   })
   @ApiQuery({ name: 'limit', required: false, type: Number })
@@ -130,7 +130,7 @@ export class SourceBindingController {
   @ApiQuery({ name: 'status', required: false, enum: sourceBindingStatusValues, isArray: true })
   @ApiOkResponse({ type: ListSourceBindingsResponseDto })
   async list(
-    @Param('topicId') topicId: string,
+    @Param('interestId') interestId: string,
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
@@ -154,7 +154,7 @@ export class SourceBindingController {
     const result = await this.listSourceBindings.execute({
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
-      topicId,
+      interestId,
       limit: parsePaginationLimit(limitQuery, {
         defaultLimit: 50,
         invalidMessage: 'Source binding list limit must be between 1 and 100',
@@ -172,11 +172,11 @@ export class SourceBindingController {
   }
 
   @Get('overview')
-  @ApiOperation({ summary: 'List source bindings with operational health for a topic.' })
+  @ApiOperation({ summary: 'List source bindings with operational health for an interest.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
   @ApiKeyOrWorkspaceRoleAuth({
-    apiKeyScope: 'read:topics',
+    apiKeyScope: 'read:interests',
     workspaceRoleDescription: 'Comma-separated workspace roles. Source binding overview reads allow owner, admin, member or viewer.',
   })
   @ApiQuery({ name: 'limit', required: false, type: Number })
@@ -185,7 +185,7 @@ export class SourceBindingController {
   @ApiQuery({ name: 'status', required: false, enum: sourceBindingStatusValues, isArray: true })
   @ApiOkResponse({ type: ListSourceBindingOverviewResponseDto })
   async overview(
-    @Param('topicId') topicId: string,
+    @Param('interestId') interestId: string,
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
@@ -209,7 +209,7 @@ export class SourceBindingController {
     const result = await this.listSourceBindingOverview.execute({
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
-      topicId,
+      interestId,
       limit: parsePaginationLimit(limitQuery, {
         defaultLimit: 50,
         invalidMessage: 'Source binding overview limit must be between 1 and 100',
@@ -227,25 +227,25 @@ export class SourceBindingController {
   }
 
   @Get('daily-history')
-  @ApiOperation({ summary: 'List daily source scan history for a topic grouped by provider.' })
+  @ApiOperation({ summary: 'List daily source scan history for an interest grouped by provider.' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
   @ApiKeyOrWorkspaceRoleAuth({
-    apiKeyScope: 'read:topics',
-    workspaceRoleDescription: 'Comma-separated workspace roles. Topic source history reads allow owner, admin, member or viewer.',
+    apiKeyScope: 'read:interests',
+    workspaceRoleDescription: 'Comma-separated workspace roles. Interest source history reads allow owner, admin, member or viewer.',
   })
   @ApiQuery({ name: 'days', required: false, type: Number })
   @ApiQuery({ name: 'providerKey', required: false, type: String, isArray: true })
-  @ApiOkResponse({ type: ListTopicSourceDailyHistoryResponseDto })
+  @ApiOkResponse({ type: ListInterestSourceDailyHistoryResponseDto })
   async dailyHistory(
-    @Param('topicId') topicId: string,
+    @Param('interestId') interestId: string,
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
     @Headers('authorization') authorizationHeader: string | undefined,
     @Query('days') daysQuery: string | undefined,
     @Query('providerKey') providerKeyQuery: string | readonly string[] | undefined,
-  ): Promise<ListTopicSourceDailyHistoryResponseDto> {
+  ): Promise<ListInterestSourceDailyHistoryResponseDto> {
     const scope = requireTenantScope({
       tenantIdHeader: tenantHeader,
       workspaceIdHeader: workspaceHeader,
@@ -257,15 +257,15 @@ export class SourceBindingController {
       authorizationHeader,
     );
 
-    const result = await this.listTopicSourceDailyHistory.execute({
+    const result = await this.listInterestSourceDailyHistory.execute({
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
-      topicId,
+      interestId,
       days: parsePaginationLimit(daysQuery, {
         defaultLimit: 14,
         maxLimit: 90,
         fieldName: 'days',
-        invalidMessage: 'Topic source history days must be between 1 and 90',
+        invalidMessage: 'Interest source history days must be between 1 and 90',
       }),
       providerKeys: parseQueryListFilter(providerKeyQuery),
     });
@@ -282,12 +282,12 @@ export class SourceBindingController {
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
   @ApiKeyOrWorkspaceRoleAuth({
-    apiKeyScope: 'read:topics',
+    apiKeyScope: 'read:interests',
     workspaceRoleDescription: 'Comma-separated workspace roles. Source binding health reads allow owner, admin, member or viewer.',
   })
   @ApiOkResponse({ type: SourceBindingHealthResponseDto })
   async health(
-    @Param('topicId') topicId: string,
+    @Param('interestId') interestId: string,
     @Param('sourceBindingId') sourceBindingId: string,
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
@@ -308,7 +308,7 @@ export class SourceBindingController {
     const result = await this.getSourceBindingHealth.execute({
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
-      topicId,
+      interestId,
       sourceBindingId,
     });
 
@@ -330,7 +330,7 @@ export class SourceBindingController {
         authorizationHeader,
         tenantId,
         workspaceId,
-        requiredScope: 'read:topics',
+        requiredScope: 'read:interests',
         operation: 'source_bindings.read',
       });
       return;
@@ -359,7 +359,7 @@ export class SourceBindingController {
   @ApiHeader({ name: 'idempotency-key', required: true })
   @ApiOkResponse({ type: ChangeSourceBindingStatusResponseDto })
   async updateStatus(
-    @Param('topicId') topicId: string,
+    @Param('interestId') interestId: string,
     @Param('sourceBindingId') sourceBindingId: string,
     @Headers('x-tenant-id') tenantHeader: string | undefined,
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
@@ -384,7 +384,7 @@ export class SourceBindingController {
     const result = await this.changeSourceBindingStatus.execute({
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
-      topicId,
+      interestId,
       sourceBindingId,
       status: body.status,
       idempotencyKey: requireIdempotencyKeyHeader(idempotencyKey),
@@ -402,7 +402,7 @@ export class SourceBindingController {
         action: 'source_binding.status_changed',
         resourceId: result.value.sourceBindingId,
         metadata: {
-          topicId,
+          interestId,
           status: result.value.status,
         },
       });

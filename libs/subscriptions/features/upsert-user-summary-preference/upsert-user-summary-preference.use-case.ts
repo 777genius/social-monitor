@@ -29,7 +29,7 @@ export class UpsertUserSummaryPreferenceUseCase {
   ): Promise<Result<UpsertUserSummaryPreferenceResult, UpsertUserSummaryPreferenceFailure>> {
     const userId = command.userId.trim();
     const subscriptionId = normalizeOptionalText(command.subscriptionId);
-    const topicId = normalizeOptionalText(command.topicId);
+    const interestId = normalizeOptionalText(command.interestId);
 
     if (userId.length === 0) {
       return err(new DomainError('validation.failed', 'User summary preference userId must be non-empty'));
@@ -56,13 +56,13 @@ export class UpsertUserSummaryPreferenceUseCase {
             userId,
             subscriptionId,
           })
-        : topicId === undefined
+        : interestId === undefined
           ? null
-          : await this.preferences.findByTopic({
+          : await this.preferences.findByInterest({
               tenantId: command.tenantId,
               workspaceId: command.workspaceId,
               userId,
-              topicId,
+              interestId,
             });
       const now = this.clock.now();
       const preference = existing === null
@@ -72,7 +72,7 @@ export class UpsertUserSummaryPreferenceUseCase {
             workspaceId: command.workspaceId,
             userId,
             subscriptionId,
-            topicId,
+            interestId,
             language: command.language,
             format: command.format,
             tone: command.tone,
@@ -115,7 +115,7 @@ export class UpsertUserSummaryPreferenceUseCase {
         preferenceId: snapshot.id,
         userId: snapshot.userId,
         subscriptionId: snapshot.subscriptionId,
-        topicId: snapshot.topicId,
+        interestId: snapshot.interestId,
         language: snapshot.language,
         format: snapshot.format,
         tone: snapshot.tone,

@@ -126,8 +126,11 @@ ReaderSummaryContentApiDto readerSummaryContentApiDto({
       title: 'AI coding tools',
       providerKey: 'github-repo-radar',
       reason: 'Developers discussed new agent workflows and IDE support.',
-      matchedTopicIds: ['ai-developer-tools'],
-      matchedRules: ['topic:ai-developer-tools', 'provider:github-repo-radar'],
+      matchedInterestIds: ['ai-developer-tools'],
+      matchedRules: [
+        'interest:ai-developer-tools',
+        'provider:github-repo-radar',
+      ],
       signalScore: 1,
       providerMetrics: [
         ProviderMetricApiDto(label: 'Stars', value: '12,400'),
@@ -161,8 +164,8 @@ ReaderSummaryContentApiDto readerSummaryContentApiDto({
           warnings: ['Source coverage is limited and needs confirmation.'],
           isSingleSource: true,
         ),
-    topicSections: [
-      ReaderTopicSectionApiDto(
+    interestSections: [
+      ReaderInterestSectionApiDto(
         title: 'Developer tooling',
         insight: 'Agent workflows and IDE support are the main discussion.',
         items: topReads,
@@ -182,7 +185,7 @@ ReaderSummaryContentApiDto readerSummaryContentApiDto({
             storyClusterCount: topReads.length,
             crossSourceClusterCount: 0,
             singleSourceOnly: true,
-            topicIds: const ['ai-developer-tools'],
+            interestIds: const ['ai-developer-tools'],
           ),
         ],
     topReads: topReads,
@@ -304,9 +307,9 @@ ReaderSummaryApiDto githubTrendingReaderSummaryApiDto() {
           providerKey: 'github-trending-page',
           reason:
               '#1 repository on github.com/trending today with +3.7k stars today.',
-          matchedTopicIds: ['ai-developer-tools'],
+          matchedInterestIds: ['ai-developer-tools'],
           matchedRules: [
-            'topic:ai-developer-tools',
+            'interest:ai-developer-tools',
             'provider:github-trending-page',
           ],
           signalScore: 1,
@@ -336,9 +339,9 @@ ReaderSummaryApiDto githubTrendingReaderSummaryApiDto() {
           providerKey: 'github-trending-page',
           reason:
               'Useful infrastructure follow-up from today\'s Trending page.',
-          matchedTopicIds: ['ai-developer-tools'],
+          matchedInterestIds: ['ai-developer-tools'],
           matchedRules: [
-            'topic:ai-developer-tools',
+            'interest:ai-developer-tools',
             'provider:github-trending-page',
           ],
           signalScore: 0.9,
@@ -359,9 +362,9 @@ ReaderSummaryApiDto githubTrendingReaderSummaryApiDto() {
           title: 'ZhuLinsen/daily_stock_analysis',
           providerKey: 'github-trending-page',
           reason: 'Useful follow-up for LLM-assisted analysis workflows.',
-          matchedTopicIds: ['ai-developer-tools'],
+          matchedInterestIds: ['ai-developer-tools'],
           matchedRules: [
-            'topic:ai-developer-tools',
+            'interest:ai-developer-tools',
             'provider:github-trending-page',
           ],
           signalScore: 0.82,
@@ -428,9 +431,9 @@ ReaderSummaryApiDto repoRadarTopTenReaderSummaryApiDto() {
       title: 'repo-radar/project-$rank',
       providerKey: 'github-repo-radar',
       reason: 'Repository $rank is gaining stars in the current window.',
-      matchedTopicIds: const ['ai-developer-tools'],
+      matchedInterestIds: const ['ai-developer-tools'],
       matchedRules: const [
-        'topic:ai-developer-tools',
+        'interest:ai-developer-tools',
         'provider:github-repo-radar',
       ],
       signalScore: 1 - index / 20,

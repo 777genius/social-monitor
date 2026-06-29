@@ -6,7 +6,7 @@ export const assertReaderSummaryCitationsAgainstEvidence = (
     GeneratedReaderSummaryDraft,
     | "citationMap"
     | "topStories"
-    | "topicHighlights"
+    | "interestHighlights"
     | "repeatedSignals"
     | "risksAndUnknowns"
   >,

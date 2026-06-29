@@ -42,7 +42,7 @@ const makeItem = () =>
     id: 'feed-1',
     tenantId: tenantId('tenant-1'),
     workspaceId: workspaceId('workspace-1'),
-    topicId: 'topic-1',
+    interestId: 'topic-1',
     sourceItemId: 'source-1',
     sourceBindingId: 'binding-1',
     providerKey: 'github',
@@ -59,7 +59,7 @@ const makeRedditItem = () =>
     id: 'feed-reddit',
     tenantId: tenantId('tenant-1'),
     workspaceId: workspaceId('workspace-1'),
-    topicId: 'topic-1',
+    interestId: 'topic-1',
     sourceItemId: 'source-reddit',
     sourceBindingId: 'binding-tinysaas',
     providerKey: 'reddit',
@@ -96,7 +96,7 @@ describe('GetFeedItemUseCase', () => {
       ok: true,
       value: {
         id: 'feed-1',
-        topicId: 'topic-1',
+        interestId: 'topic-1',
         sourceItemId: 'source-1',
         sourceBindingId: 'binding-1',
         providerKey: 'github',
@@ -113,7 +113,7 @@ describe('GetFeedItemUseCase', () => {
       {
         tenantId: tenantId('tenant-1'),
         workspaceId: workspaceId('workspace-1'),
-        topicId: 'topic-1',
+        interestId: 'topic-1',
         observedAfter: new Date('2026-05-06T01:00:00.000Z'),
         limit: 2000,
       },
@@ -154,14 +154,14 @@ describe('GetFeedItemUseCase', () => {
       {
         tenantId: tenantId('tenant-1'),
         workspaceId: workspaceId('workspace-1'),
-        topicId: 'topic-1',
+        interestId: 'topic-1',
         observedAfter: new Date('2026-05-06T01:00:00.000Z'),
         limit: 2000,
       },
       {
         tenantId: tenantId('tenant-1'),
         workspaceId: workspaceId('workspace-1'),
-        topicId: 'topic-1',
+        interestId: 'topic-1',
         observedAfter: new Date('2026-05-06T01:00:00.000Z'),
         limit: 2000,
         cohortFilters: [

@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { IdentityRestModule } from '@social-monitor/identity/interfaces/rest/identity-rest.module';
 import { BindSourceUseCase } from '@social-monitor/monitoring/features/bind-source/bind-source.use-case';
-import { CreateTopicUseCase } from '@social-monitor/monitoring/features/create-topic/create-topic.use-case';
+import { CreateInterestUseCase } from '@social-monitor/monitoring/features/create-interest/create-interest.use-case';
 import { SetScanPolicyUseCase } from '@social-monitor/monitoring/features/set-scan-policy/set-scan-policy.use-case';
 import { MonitoringRestModule } from '@social-monitor/monitoring/interfaces/rest/monitoring-rest.module';
 import { MemoStackUserSummaryPreferenceMemoryProjector } from '@social-monitor/summary/adapters/memory/memo-stack-user-summary-preference-memory.projector';
@@ -19,7 +19,7 @@ import { PrismaUserSubscriptionRepository } from '../../adapters/persistence/pri
 import { PrismaUserSubscriptionScheduleRepository } from '../../adapters/persistence/prisma/prisma-user-subscription-schedule.repository';
 import { PrismaUserSummaryPreferenceRepository } from '../../adapters/persistence/prisma/prisma-user-summary-preference.repository';
 import { StaticSourceTargetCatalogAdapter } from '../../adapters/target-catalog/static-source-target-catalog.adapter';
-import { ActivateTopicSourceUseCase } from '../../features/activate-topic-source/activate-topic-source.use-case';
+import { ActivateInterestSourceUseCase } from '../../features/activate-interest-source/activate-interest-source.use-case';
 import { CreateUserSubscriptionUseCase } from '../../features/create-user-subscription/create-user-subscription.use-case';
 import { GetEffectiveUserSummaryPreferenceUseCase } from '../../features/get-effective-user-summary-preference/get-effective-user-summary-preference.use-case';
 import { ListUserSubscriptionsUseCase } from '../../features/list-user-subscriptions/list-user-subscriptions.use-case';
@@ -159,24 +159,24 @@ import { UserSubscriptionsController } from './user-subscriptions.controller';
       ],
     },
     {
-      provide: ActivateTopicSourceUseCase,
+      provide: ActivateInterestSourceUseCase,
       useFactory: (
         createUserSubscription: CreateUserSubscriptionUseCase,
-        createTopic: CreateTopicUseCase,
+        createInterest: CreateInterestUseCase,
         bindSource: BindSourceUseCase,
         setScanPolicy: SetScanPolicyUseCase,
         catalog: SourceTargetCatalogPort,
       ) =>
-        new ActivateTopicSourceUseCase(
+        new ActivateInterestSourceUseCase(
           createUserSubscription,
-          createTopic,
+          createInterest,
           bindSource,
           setScanPolicy,
           catalog,
         ),
       inject: [
         CreateUserSubscriptionUseCase,
-        CreateTopicUseCase,
+        CreateInterestUseCase,
         BindSourceUseCase,
         SetScanPolicyUseCase,
         SUBSCRIPTIONS_SOURCE_TARGET_CATALOG,
@@ -226,7 +226,7 @@ import { UserSubscriptionsController } from './user-subscriptions.controller';
     },
   ],
   exports: [
-    ActivateTopicSourceUseCase,
+    ActivateInterestSourceUseCase,
     CreateUserSubscriptionUseCase,
     GetEffectiveUserSummaryPreferenceUseCase,
     InMemorySourceTargetRepository,

@@ -1842,7 +1842,7 @@ function replaceSummaryFeedbackFixtureSamples(artifact) {
       summaryEvidence: {
         ...sample.summaryEvidence,
         summaryId: `dogfood-summary-${replacement.suffix}`,
-        topicId: 'dogfood-topic-summary-001',
+        interestId: 'dogfood-topic-summary-001',
         citationId: `dogfood-citation-${replacement.suffix}`,
         feedItemId: `dogfood-feed-item-${replacement.suffix}`,
         sourceItemId: `dogfood-source-item-${replacement.suffix}`,
@@ -2328,7 +2328,7 @@ function securityFinalSweepExportDocuments() {
           tenantId: 'tenant-alpha-1',
           workspaceId: 'workspace-alpha-1',
           service: 'api-gateway',
-          operation: 'create-topic',
+          operation: 'create-interest',
           status: 'ok',
         },
         {

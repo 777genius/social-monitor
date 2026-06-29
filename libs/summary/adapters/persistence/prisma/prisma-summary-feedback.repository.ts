@@ -40,7 +40,7 @@ export class PrismaSummaryFeedbackRepository implements SummaryFeedbackRepositor
         tenantId: snapshot.tenantId,
         workspaceId: snapshot.workspaceId,
         summaryArtifactId: snapshot.summaryId,
-        topicId: snapshot.topicId,
+        interestId: snapshot.interestId,
         idempotencyKey: snapshot.idempotencyKey,
         createdAt: snapshot.createdAt,
         ...data,

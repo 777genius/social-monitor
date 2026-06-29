@@ -28,7 +28,7 @@ class FakeSummaryArtifacts implements SummaryArtifactRepositoryPort {
         return (
           snapshot.tenantId === query.tenantId &&
           snapshot.workspaceId === query.workspaceId &&
-          (query.topicId === undefined || snapshot.topicId === query.topicId)
+          (query.interestId === undefined || snapshot.interestId === query.interestId)
         );
       }),
       nextCursor: undefined,
@@ -208,7 +208,7 @@ const createSummary = (params: {
     summaryId: params.summaryId,
     tenantId: params.tenantId,
     workspaceId: params.workspaceId,
-    topicId: 'topic-feedback-list',
+    interestId: 'interest-feedback-list',
     sourceWindow: {
       windowId: `${params.summaryId}-window`,
       startedAt: new Date('2026-06-06T09:00:00.000Z'),
@@ -260,7 +260,7 @@ const createFeedback = (params: {
     tenantId: params.tenantId,
     workspaceId: params.workspaceId,
     summaryId: params.summaryId,
-    topicId: 'topic-feedback-list',
+    interestId: 'interest-feedback-list',
     idempotencyKey: `${params.id}-idempotency`,
     submittedBy: 'actor-feedback-list',
     rating: 2,
@@ -268,7 +268,7 @@ const createFeedback = (params: {
     comment: 'Claim is not supported by the cited item.',
     evidence: {
       summaryId: params.summaryId,
-      topicId: 'topic-feedback-list',
+      interestId: 'interest-feedback-list',
       citationId: 'c1',
       feedItemId: 'feed-item-1',
       sourceItemId: 'source-item-1',

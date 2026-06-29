@@ -17,7 +17,7 @@ import type {
   SourceBindingConfigProtectorPort,
   SourceBindingRepositoryPort,
   SourceCatalogPort,
-  TopicRepositoryPort,
+  InterestRepositoryPort,
 } from '../../ports';
 import type { MonitoringCapacityLimits } from '../shared/monitoring-capacity-limits';
 import type { BindSourceCommand } from './bind-source.command';
@@ -27,7 +27,7 @@ type BindSourceFailure = DomainError | Error;
 
 export class BindSourceUseCase {
   constructor(
-    private readonly topics: TopicRepositoryPort,
+    private readonly interests: InterestRepositoryPort,
     private readonly bindings: SourceBindingRepositoryPort,
     private readonly sourceCatalog: SourceCatalogPort,
     private readonly outbox: OutboxPort,
@@ -49,13 +49,13 @@ export class BindSourceUseCase {
       return ok({ ...cached.value, created: false });
     }
 
-    const topic = await this.topics.findById({
+    const interest = await this.interests.findById({
       tenantId: command.tenantId,
       workspaceId: command.workspaceId,
-      topicId: command.topicId,
+      interestId: command.interestId,
     });
-    if (!topic) {
-      return err(new DomainError('resource.not_found', 'Topic not found', { topicId: command.topicId }));
+    if (!interest) {
+      return err(new DomainError('resource.not_found', 'Interest not found', { interestId: command.interestId }));
     }
 
     const capability = await this.sourceCatalog.getCapability(command.providerKey);
@@ -77,10 +77,10 @@ export class BindSourceUseCase {
       );
     }
 
-    const existing = await this.bindings.findByTopicAndProvider({
+    const existing = await this.bindings.findByInterestAndProvider({
       tenantId: command.tenantId,
       workspaceId: command.workspaceId,
-      topicId: command.topicId,
+      interestId: command.interestId,
       providerKey: command.providerKey,
     });
     if (existing) {
@@ -96,19 +96,19 @@ export class BindSourceUseCase {
       return ok(result);
     }
 
-    const maxEnabledSourcesPerTopic = this.capacityLimits.maxEnabledSourcesPerTopic;
-    if (maxEnabledSourcesPerTopic !== undefined) {
-      const currentBindings = await this.bindings.listByTopic({
+    const maxEnabledSourcesPerInterest = this.capacityLimits.maxEnabledSourcesPerInterest;
+    if (maxEnabledSourcesPerInterest !== undefined) {
+      const currentBindings = await this.bindings.listByInterest({
         tenantId: command.tenantId,
         workspaceId: command.workspaceId,
-        topicId: command.topicId,
+        interestId: command.interestId,
         limit: 100,
       });
       const enabledCount = currentBindings.sourceBindings.filter((binding) =>
         binding.toSnapshot().status === 'enabled').length;
-      if (enabledCount >= maxEnabledSourcesPerTopic) {
-        return err(new DomainError('operation.quota_exceeded', 'Topic source binding capacity limit reached', {
-          limit: String(maxEnabledSourcesPerTopic),
+      if (enabledCount >= maxEnabledSourcesPerInterest) {
+        return err(new DomainError('operation.quota_exceeded', 'Interest source binding capacity limit reached', {
+          limit: String(maxEnabledSourcesPerInterest),
         }));
       }
     }
@@ -118,7 +118,7 @@ export class BindSourceUseCase {
       id: this.ids.generate(),
       tenantId: command.tenantId,
       workspaceId: command.workspaceId,
-      topicId: command.topicId,
+      interestId: command.interestId,
       providerKey: capability.providerKey,
       capabilityProfileVersion: capability.version,
       config: protectedConfig,
@@ -141,7 +141,7 @@ export class BindSourceUseCase {
         sourceBindingId: snapshot.id,
         tenantId: command.tenantId,
         workspaceId: command.workspaceId,
-        topicId: snapshot.topicId,
+        interestId: snapshot.interestId,
         providerKey: snapshot.providerKey,
         capabilityProfileVersion: snapshot.capabilityProfileVersion,
       },

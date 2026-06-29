@@ -147,7 +147,7 @@ export class SummaryArtifactResponseDto {
   declare readonly workspaceId: string;
 
   @ApiProperty()
-  declare readonly topicId: string;
+  declare readonly interestId: string;
 
   @ApiPropertyOptional()
   declare readonly userId?: string;

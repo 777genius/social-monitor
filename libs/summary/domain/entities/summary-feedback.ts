@@ -22,7 +22,7 @@ export type SummaryFeedbackTriageOwner =
 
 export type SummaryFeedbackEvidence = {
   readonly summaryId: string;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly citationId?: string;
   readonly feedItemId?: string;
   readonly sourceItemId?: string;
@@ -34,7 +34,7 @@ export type SummaryFeedbackProps = {
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
   readonly summaryId: string;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly idempotencyKey: string;
   readonly submittedBy: string;
   readonly rating: number;
@@ -74,8 +74,8 @@ export class SummaryFeedback {
       throw new Error('Summary feedback summary id must be non-empty');
     }
 
-    if (props.topicId.trim().length === 0) {
-      throw new Error('Summary feedback topic id must be non-empty');
+    if (props.interestId.trim().length === 0) {
+      throw new Error('Summary feedback interest id must be non-empty');
     }
 
     if (props.idempotencyKey.trim().length === 0) {
@@ -98,8 +98,8 @@ export class SummaryFeedback {
       throw new Error('Summary feedback comment must be 2000 characters or less');
     }
 
-    if (props.evidence.summaryId !== props.summaryId || props.evidence.topicId !== props.topicId) {
-      throw new Error('Summary feedback evidence must reference the same summary and topic');
+    if (props.evidence.summaryId !== props.summaryId || props.evidence.interestId !== props.interestId) {
+      throw new Error('Summary feedback evidence must reference the same summary and interest');
     }
 
     if (

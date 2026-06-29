@@ -32,7 +32,7 @@ describe('Realtime event replay (e2e)', () => {
   it('replays tenant/workspace realtime events through REST resync endpoint', async () => {
     const tenant = tenantId('tenant-realtime-e2e');
     const workspace = workspaceId('workspace-realtime-e2e');
-    const channel = 'topic:topic-realtime-e2e:summary-status';
+    const channel = 'interest:topic-realtime-e2e:summary-status';
     await app.get(RecordRealtimeEventUseCase).execute({
       tenantId: tenant,
       workspaceId: workspace,

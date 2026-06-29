@@ -67,7 +67,7 @@ export class SummaryController {
     workspaceRoleDescription:
       "Comma-separated workspace roles. Summary reads allow owner, admin, member or viewer.",
   })
-  @ApiQuery({ name: "topicId", required: false, type: String })
+  @ApiQuery({ name: "interestId", required: false, type: String })
   @ApiQuery({ name: "limit", required: false, type: Number })
   @ApiQuery({ name: "cursor", required: false, type: String })
   @ApiOkResponse({ type: ListSummariesResponseDto })
@@ -76,7 +76,7 @@ export class SummaryController {
     @Headers("x-workspace-id") workspaceHeader: string | undefined,
     @Headers("x-workspace-role") workspaceRoleHeader: string | undefined,
     @Headers("authorization") authorizationHeader: string | undefined,
-    @Query("topicId") topicId: string | undefined,
+    @Query("interestId") interestId: string | undefined,
     @Query("limit") limitQuery: string | undefined,
     @Query("cursor") cursor: string | undefined,
   ): Promise<ListSummariesResponseDto> {
@@ -94,7 +94,7 @@ export class SummaryController {
     const result = await this.listSummaries.execute({
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
-      topicId: normalizeTopicId(topicId),
+      interestId: normalizeInterestId(interestId),
       limit: parsePaginationLimit(limitQuery, {
         defaultLimit: 20,
         invalidMessage: "Summary page limit must be between 1 and 100",
@@ -257,7 +257,7 @@ export class SummaryController {
   }
 }
 
-const normalizeTopicId = (value: string | undefined): string | undefined => {
+const normalizeInterestId = (value: string | undefined): string | undefined => {
   if (value === undefined) {
     return undefined;
   }

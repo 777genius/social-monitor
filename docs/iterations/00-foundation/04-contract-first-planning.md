@@ -39,17 +39,17 @@ Define these endpoints before implementation. Keep the first version small, stab
 | --- | --- | --- | --- |
 | Workspaces | `GET /v1/workspaces` | list user workspaces | tenant-aware, no cross-tenant hints |
 | Workspaces | `POST /v1/workspaces` | create workspace | idempotency key required |
-| Topics | `GET /v1/workspaces/{workspaceId}/topics` | list topics | supports status/filter pagination |
-| Topics | `POST /v1/workspaces/{workspaceId}/topics` | create topic | validates summary/scan rule references |
-| Topics | `PATCH /v1/workspaces/{workspaceId}/topics/{topicId}` | update/disable topic | disabling stops new scans, does not hide history |
+| Interests | `GET /v1/workspaces/{workspaceId}/interests` | list interests | supports status/filter pagination |
+| Interests | `POST /v1/workspaces/{workspaceId}/interests` | create interest | validates summary/scan rule references |
+| Interests | `PATCH /v1/workspaces/{workspaceId}/interests/{interestId}` | update/disable interest | disabling stops new scans, does not hide history |
 | Sources | `GET /v1/source-catalog` | list supported source profiles | returns capability summary and readiness status |
-| Source Bindings | `POST /v1/workspaces/{workspaceId}/topics/{topicId}/source-bindings` | bind source to topic | requires capability profile and credential state when needed |
+| Source Bindings | `POST /v1/workspaces/{workspaceId}/interests/{interestId}/source-bindings` | bind source to interest | requires capability profile and credential state when needed |
 | Source Bindings | `PATCH /v1/workspaces/{workspaceId}/source-bindings/{bindingId}` | enable/disable/update binding | changing source config may reset cursor only by explicit policy |
 | Scan Policies | `PUT /v1/workspaces/{workspaceId}/source-bindings/{bindingId}/scan-policy` | set interval/freshness | validates quota and source limits |
 | Scan Jobs | `POST /v1/workspaces/{workspaceId}/source-bindings/{bindingId}/scan-runs` | request manual scan | rate limited, idempotent |
-| Feed | `GET /v1/workspaces/{workspaceId}/topics/{topicId}/feed` | read deduplicated items | cursor pagination, provenance included |
-| Summaries | `POST /v1/workspaces/{workspaceId}/topics/{topicId}/summaries` | request summary | validates evidence window and summary rules |
-| Summaries | `GET /v1/workspaces/{workspaceId}/topics/{topicId}/summaries` | list summaries | includes citation status and quality state |
+| Feed | `GET /v1/workspaces/{workspaceId}/interests/{interestId}/feed` | read deduplicated items | cursor pagination, provenance included |
+| Summaries | `POST /v1/workspaces/{workspaceId}/interests/{interestId}/summaries` | request briefing | validates evidence window and summary rules |
+| Summaries | `GET /v1/workspaces/{workspaceId}/interests/{interestId}/summaries` | list briefings | includes citation status and quality state |
 | Feedback | `POST /v1/workspaces/{workspaceId}/summaries/{summaryId}/feedback` | record feedback | no prompt/raw provider leakage |
 | Status | `GET /v1/workspaces/{workspaceId}/operations/{operationId}` | read scan/summary operation state | REST source of truth for WS resync |
 
@@ -97,7 +97,7 @@ Each event envelope includes:
 
 1. OpenAPI lint validates naming, versioning, auth, Problem Details and cursor pagination.
 2. Generated Flutter client is regenerated in CI and compared for deterministic output.
-3. API contract tests cover create topic, bind source, request scan, read feed, request summary and submit feedback.
+3. API contract tests cover create interest, bind source, request scan, read feed, request briefing and submit feedback.
 4. Event schema tests cover envelope fields, version compatibility and unknown optional fields.
 5. Mobile mapper tests prove unknown enum/status fallback.
 6. Negative tests prove authorization errors do not reveal other tenants' resource existence.

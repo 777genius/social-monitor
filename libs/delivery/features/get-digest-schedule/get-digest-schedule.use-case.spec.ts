@@ -29,7 +29,7 @@ describe('GetDigestScheduleUseCase', () => {
         tenantId: tenant,
         workspaceId: workspace,
         recipientKey: 'user-1',
-        topicIds: ['topic-a'],
+        interestIds: ['interest-a'],
         nextRunAt: '2026-06-06T01:00:00.000Z',
       }),
     });
@@ -71,7 +71,7 @@ const makeSchedule = (overrides: Partial<DigestScheduleProps> = {}): DigestSched
   workspaceId: workspaceId('workspace-1'),
   recipientKey: 'user-1',
   channel: 'email',
-  topicIds: ['topic-a'],
+  interestIds: ['interest-a'],
   intervalSeconds: 3600,
   includeNoSignal: false,
   nextRunAt: new Date('2026-06-06T01:00:00.000Z'),

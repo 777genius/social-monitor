@@ -132,7 +132,7 @@ function toRedactedSample(feedback: SummaryFeedback): RedactedSummaryFeedbackSam
     releaseBlocking: true,
     summaryEvidence: {
       summaryId: snapshot.evidence.summaryId,
-      topicId: snapshot.evidence.topicId,
+      interestId: snapshot.evidence.interestId,
       citationId: snapshot.evidence.citationId,
       feedItemId: snapshot.evidence.feedItemId,
       sourceItemId: snapshot.evidence.sourceItemId,

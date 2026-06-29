@@ -20,7 +20,10 @@ final class ScanRunMapper {
       created: dto.created,
       decision: ScanRequestDecisionSnapshot(
         decision: _safeText(dto.requestDecision.decision, fallback: 'unknown'),
-        reason: _safeText(dto.requestDecision.reason, fallback: 'Review scan request'),
+        reason: _safeText(
+          dto.requestDecision.reason,
+          fallback: 'Review scan request',
+        ),
         createdNewScan: dto.requestDecision.createdNewScan,
         providerHealthState: dto.requestDecision.providerHealthState,
         nextEligibleAt: dto.requestDecision.nextEligibleAt,

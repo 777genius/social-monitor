@@ -10,12 +10,12 @@ part 'reader_summary_scope_dto.g.dart';
 
 @JsonSerializable()
 class ReaderSummaryScopeDto {
-  const ReaderSummaryScopeDto({required this.type, this.topicId});
+  const ReaderSummaryScopeDto({required this.type, this.interestId});
 
   factory ReaderSummaryScopeDto.fromJson(Map<String, Object?> json) =>
       _$ReaderSummaryScopeDtoFromJson(json);
 
-  final String? topicId;
+  final String? interestId;
   final ReaderSummaryScopeDtoTypeType type;
 
   Map<String, Object?> toJson() => _$ReaderSummaryScopeDtoToJson(this);

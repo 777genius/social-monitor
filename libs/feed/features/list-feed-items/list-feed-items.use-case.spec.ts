@@ -48,7 +48,7 @@ const makeItem = (id: string) =>
     id,
     tenantId: tenantId('tenant-1'),
     workspaceId: workspaceId('workspace-1'),
-    topicId: 'topic-1',
+    interestId: 'topic-1',
     sourceItemId: `source-${id}`,
     sourceBindingId: 'binding-1',
     providerKey: 'reddit',
@@ -65,7 +65,7 @@ const makeRedditItem = (id: string, subreddit: string) =>
     id,
     tenantId: tenantId('tenant-1'),
     workspaceId: workspaceId('workspace-1'),
-    topicId: 'topic-1',
+    interestId: 'topic-1',
     sourceItemId: `source-${id}`,
     sourceBindingId: `binding-${subreddit}`,
     providerKey: 'reddit',
@@ -106,7 +106,7 @@ describe('ListFeedItemsUseCase', () => {
         items: [
           {
             id: '1',
-            topicId: 'topic-1',
+            interestId: 'topic-1',
             sourceItemId: 'source-1',
             sourceBindingId: 'binding-1',
             providerKey: 'reddit',
@@ -145,7 +145,7 @@ describe('ListFeedItemsUseCase', () => {
       {
         tenantId: tenantId('tenant-1'),
         workspaceId: workspaceId('workspace-1'),
-        topicId: 'topic-1',
+        interestId: 'topic-1',
         observedAfter: new Date('2026-05-06T01:00:00.000Z'),
         limit: 2000,
       },
@@ -214,7 +214,7 @@ describe('ListFeedItemsUseCase', () => {
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
       limit: 20,
-      topicId: 'topic-1',
+      interestId: 'topic-1',
       providerKey: 'github-repo-radar',
       repositoryTrendWindow: '24h',
       repositoryLanguage: 'TypeScript',
@@ -265,21 +265,21 @@ describe('ListFeedItemsUseCase', () => {
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
       limit: 20,
-      topicId: 'topic-1',
+      interestId: 'topic-1',
     });
 
     expect(baseline.queries).toEqual([
       {
         tenantId: tenantId('tenant-1'),
         workspaceId: workspaceId('workspace-1'),
-        topicId: 'topic-1',
+        interestId: 'topic-1',
         observedAfter: new Date('2026-05-06T01:00:00.000Z'),
         limit: 2000,
       },
       {
         tenantId: tenantId('tenant-1'),
         workspaceId: workspaceId('workspace-1'),
-        topicId: 'topic-1',
+        interestId: 'topic-1',
         observedAfter: new Date('2026-05-06T01:00:00.000Z'),
         limit: 2000,
         cohortFilters: [
@@ -297,7 +297,7 @@ describe('ListFeedItemsUseCase', () => {
     const firstTopicItem = makeRedditItem('reddit-1', 'TinySaaS');
     const secondTopicItem = FeedItem.publish({
       ...makeRedditItem('reddit-2', 'Programming').toSnapshot(),
-      topicId: 'topic-2',
+      interestId: 'topic-2',
     });
     const repository = new FakeFeedItemReadRepository({ items: [firstTopicItem, secondTopicItem] });
     const baseline = new FakeFeedSignalBaselineRepository();
@@ -313,14 +313,14 @@ describe('ListFeedItemsUseCase', () => {
       {
         tenantId: tenantId('tenant-1'),
         workspaceId: workspaceId('workspace-1'),
-        topicId: 'topic-1',
+        interestId: 'topic-1',
         observedAfter: new Date('2026-05-06T01:00:00.000Z'),
         limit: 2000,
       },
       {
         tenantId: tenantId('tenant-1'),
         workspaceId: workspaceId('workspace-1'),
-        topicId: 'topic-1',
+        interestId: 'topic-1',
         observedAfter: new Date('2026-05-06T01:00:00.000Z'),
         limit: 2000,
         cohortFilters: [
@@ -334,14 +334,14 @@ describe('ListFeedItemsUseCase', () => {
       {
         tenantId: tenantId('tenant-1'),
         workspaceId: workspaceId('workspace-1'),
-        topicId: 'topic-2',
+        interestId: 'topic-2',
         observedAfter: new Date('2026-05-06T01:00:00.000Z'),
         limit: 2000,
       },
       {
         tenantId: tenantId('tenant-1'),
         workspaceId: workspaceId('workspace-1'),
-        topicId: 'topic-2',
+        interestId: 'topic-2',
         observedAfter: new Date('2026-05-06T01:00:00.000Z'),
         limit: 2000,
         cohortFilters: [
@@ -370,7 +370,7 @@ describe('ListFeedItemsUseCase', () => {
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
       limit: 20,
-      topicId: 'topic-1',
+      interestId: 'topic-1',
     });
 
     expect(result.ok).toBe(true);

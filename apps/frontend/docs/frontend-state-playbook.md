@@ -46,7 +46,7 @@ Avoid:
 
 ## Recipe: List With Filters And Selection
 
-Use when a feature has feed items, topics, sources or summaries.
+Use when a feature has feed items, interests, sources or summaries.
 
 State:
 

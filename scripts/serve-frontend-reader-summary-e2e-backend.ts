@@ -25,7 +25,7 @@ type FeedbackSignal = {
   readonly target: {
     readonly feedItemId: string | null;
     readonly providerKey: string;
-    readonly topicId: string;
+    readonly interestId: string;
   };
   readonly createdAt: string;
 };
@@ -37,7 +37,7 @@ type RecordedFeedbackSignal = {
   readonly providerKey: string;
   readonly rating: number | null;
   readonly title: string | null;
-  readonly topicId: string;
+  readonly interestId: string;
 };
 
 const dailyTrendingSeeds = [
@@ -110,7 +110,7 @@ const topReads = dailyTrendingSeeds.map(
         : index < 5
           ? `${title} is visible on the daily GitHub Trending page.`
           : `${title} is retained as a Repo Radar history follow-up.`,
-    matchedTopicIds: ['topic-ai-devtools'],
+    matchedInterestIds: ['topic-ai-devtools'],
     matchedRules:
       index === 0
         ? ['repo_growth', 'cross_source_confirmation']
@@ -165,7 +165,7 @@ const summaryArtifact = {
   summaryId,
   tenantId,
   workspaceId,
-  topicId: 'topic-ai-devtools',
+  interestId: 'topic-ai-devtools',
   userId,
   headline: 'GitHub Trending daily radar',
   executiveSummary:
@@ -251,7 +251,7 @@ const defaultReaderSummaryArtifact = {
       storyKey: 'repo:github.com/calesthio/OpenMontage',
       representativeFeedItemId: 'feed-github-trending-page-1',
       duplicateFeedItemIds: ['feed-reddit-codex'],
-      topicIds: ['topic-ai-devtools'],
+      interestIds: ['topic-ai-devtools'],
       providerKeys: ['github-trending-page', 'reddit'],
       score: 0.92,
       observedAtRange: { startedAt, endedAt },
@@ -276,9 +276,9 @@ const defaultReaderSummaryArtifact = {
       warnings: [],
       isSingleSource: false,
     },
-    topicSections: [
+    interestSections: [
       {
-        topicId: 'topic-ai-devtools',
+        interestId: 'topic-ai-devtools',
         title: 'AI devtools',
         insight:
           'Agentic coding tools are the clearest signal in the current monitoring window.',
@@ -294,7 +294,7 @@ const defaultReaderSummaryArtifact = {
         storyClusterCount: 1,
         crossSourceClusterCount: 1,
         singleSourceOnly: false,
-        topicIds: ['topic-ai-devtools'],
+        interestIds: ['topic-ai-devtools'],
       },
       {
         providerKey: 'github-repo-radar',
@@ -303,7 +303,7 @@ const defaultReaderSummaryArtifact = {
         storyClusterCount: 1,
         crossSourceClusterCount: 1,
         singleSourceOnly: false,
-        topicIds: ['topic-ai-devtools'],
+        interestIds: ['topic-ai-devtools'],
       },
       {
         providerKey: 'reddit',
@@ -312,7 +312,7 @@ const defaultReaderSummaryArtifact = {
         storyClusterCount: 1,
         crossSourceClusterCount: 1,
         singleSourceOnly: false,
-        topicIds: ['topic-ai-devtools'],
+        interestIds: ['topic-ai-devtools'],
       },
     ],
     topReads,
@@ -356,14 +356,14 @@ const defaultReaderSummaryArtifact = {
       title: 'calesthio/OpenMontage tops daily GitHub Trending',
       summary:
         'Daily GitHub Trending rank and Reddit discussion point to active interest in agentic video production tooling.',
-      topicIds: ['topic-ai-devtools'],
+      interestIds: ['topic-ai-devtools'],
       providerKeys: ['github-trending-page', 'reddit'],
       citationIds: ['bc-1', 'bc-reddit'],
     },
   ],
-  topicHighlights: [
+  interestHighlights: [
     {
-      topicId: 'topic-ai-devtools',
+      interestId: 'topic-ai-devtools',
       title: 'AI devtools',
       summary:
         'Agentic coding tools are driving the strongest monitored signal.',
@@ -517,7 +517,7 @@ function buildFeedItemsFromReaderSummaryArtifact(
 
     byId.set(id, {
       id,
-      topicId: stringArray(read?.matchedTopicIds)[0] ?? 'topic-ai-devtools',
+      interestId: stringArray(read?.matchedInterestIds)[0] ?? 'topic-ai-devtools',
       sourceItemId:
         stringOrNull(citation.sourceItemId) ?? `${providerKey}:${citationId}`,
       sourceBindingId: `binding-${providerKey}`,
@@ -553,14 +553,14 @@ function buildFeedItemsFromReaderSummaryArtifact(
 
 function filterFeedItems(items: JsonObject[], url: URL): JsonObject[] {
   const query = url.searchParams.get('q')?.trim().toLowerCase() ?? '';
-  const topicId = url.searchParams.get('topicId')?.trim();
+  const interestId = url.searchParams.get('interestId')?.trim();
   const providerKey = url.searchParams.get('providerKey')?.trim();
 
   return items.filter((item) => {
     if (
-      topicId !== undefined &&
-      topicId.length > 0 &&
-      item.topicId !== topicId
+      interestId !== undefined &&
+      interestId.length > 0 &&
+      item.interestId !== interestId
     ) {
       return false;
     }
@@ -684,7 +684,7 @@ async function handleRequest(
       providerKey: signal.target.providerKey,
       rating: signal.rating,
       title: typeof body.title === 'string' ? body.title : null,
-      topicId: signal.target.topicId,
+      interestId: signal.target.interestId,
     });
     sendJson(response, 201, {
       created: true,
@@ -693,7 +693,7 @@ async function handleRequest(
       profile: {
         id: 'profile-frontend-reader-summary-e2e',
         userId,
-        topicWeights: [],
+        interestWeights: [],
         sourceWeights: [],
         keywordWeights: [],
         blockedProviderKeys: [],
@@ -741,9 +741,9 @@ function buildFeedbackSignal(body: JsonObject): FeedbackSignal {
         typeof target.providerKey === 'string'
           ? target.providerKey
           : 'github-trending-page',
-      topicId:
-        typeof target.topicId === 'string'
-          ? target.topicId
+      interestId:
+        typeof target.interestId === 'string'
+          ? target.interestId
           : 'topic-ai-devtools',
     },
     createdAt: checkedAt,

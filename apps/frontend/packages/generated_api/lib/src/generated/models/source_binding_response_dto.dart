@@ -15,10 +15,10 @@ class SourceBindingResponseDto {
     required this.configPreview,
     required this.createdAt,
     required this.id,
+    required this.interestId,
     required this.providerKey,
     required this.status,
     required this.tenantId,
-    required this.topicId,
     required this.workspaceId,
   });
 
@@ -29,10 +29,10 @@ class SourceBindingResponseDto {
   final dynamic configPreview;
   final DateTime createdAt;
   final String id;
+  final String interestId;
   final String providerKey;
   final SourceBindingResponseDtoStatusStatus status;
   final dynamic tenantId;
-  final String topicId;
   final dynamic workspaceId;
 
   Map<String, Object?> toJson() => _$SourceBindingResponseDtoToJson(this);

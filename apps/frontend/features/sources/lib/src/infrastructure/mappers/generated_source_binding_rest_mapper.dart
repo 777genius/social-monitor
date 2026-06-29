@@ -19,7 +19,7 @@ final class GeneratedSourceBindingRestMapper {
   SourceBindingApiDto sourceBinding(generated.SourceBindingResponseDto dto) {
     return SourceBindingApiDto(
       id: dto.id,
-      topicId: dto.topicId,
+      interestId: dto.interestId,
       providerKey: dto.providerKey,
       capabilityProfileVersion: dto.capabilityProfileVersion,
       status: _bindingStatus(dto.status),

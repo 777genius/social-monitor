@@ -42,7 +42,7 @@
           "path": "test/e2e/write-surfaces.api-key-scope.e2e-spec.ts",
           "markers": [
             "allows a scoped headless monitoring API key",
-            ".post('/topics')",
+            ".post('/interests')",
             "/scan-requests"
           ]
         },
@@ -250,7 +250,7 @@
         },
         {
           "kind": "command",
-          "command": "npm run check:topic-source-daily-history-rest"
+          "command": "npm run check:interest-source-daily-history-rest"
         },
         {
           "kind": "command",

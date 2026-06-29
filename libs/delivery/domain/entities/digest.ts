@@ -3,7 +3,7 @@ import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 export type DigestProvenanceItem = {
   readonly resourceType: 'summary' | 'feed_item';
   readonly resourceId: string;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly includedReason: 'within_window' | 'high_signal' | 'user_selected_topic';
 };
 

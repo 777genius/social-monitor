@@ -15,13 +15,13 @@ class EmptySummaryPolicies implements SummaryPolicyRepositoryPort {
     void policy;
   }
 
-  async findByTopic(): Promise<SummaryPolicy | null> {
+  async findByInterest(): Promise<SummaryPolicy | null> {
     return null;
   }
 }
 
 describe('GetSummaryPolicyUseCase', () => {
-  it('returns default policy when no topic override exists', async () => {
+  it('returns default policy when no interest override exists', async () => {
     const useCase = new GetSummaryPolicyUseCase(
       new EmptySummaryPolicies(),
       new SingleIdGenerator(),
@@ -31,7 +31,7 @@ describe('GetSummaryPolicyUseCase', () => {
     const result = await useCase.execute({
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
-      topicId: 'topic-1',
+      interestId: 'interest-1',
     });
 
     expect(result).toEqual({

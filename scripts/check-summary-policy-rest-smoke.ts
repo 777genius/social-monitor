@@ -39,7 +39,7 @@ async function main(): Promise<void> {
     const tenant = tenantId('tenant-summary-policy-rest-smoke');
     const otherTenant = tenantId('tenant-summary-policy-rest-other');
     const workspace = workspaceId('workspace-summary-policy-rest-smoke');
-    const topicId = 'topic-summary-policy-rest-smoke';
+    const interestId = 'topic-summary-policy-rest-smoke';
     const headers = {
       'x-tenant-id': tenant,
       'x-workspace-id': workspace,
@@ -50,7 +50,7 @@ async function main(): Promise<void> {
     };
 
     const defaultPolicy = await request(app.getHttpServer())
-      .get(`/topics/${topicId}/summary-policy`)
+      .get(`/interests/${interestId}/summary-policy`)
       .set(headers)
       .set('x-workspace-role', 'viewer')
       .expect(200);
@@ -59,7 +59,7 @@ async function main(): Promise<void> {
     assert(defaultPolicy.body.policy.format === 'executive_brief', 'default summary policy must be executive_brief');
 
     await request(app.getHttpServer())
-      .put(`/topics/${topicId}/summary-policy`)
+      .put(`/interests/${interestId}/summary-policy`)
       .set(headers)
       .set('x-workspace-role', 'member')
       .send({
@@ -74,7 +74,7 @@ async function main(): Promise<void> {
       .expect(403);
 
     const upserted = await request(app.getHttpServer())
-      .put(`/topics/${topicId}/summary-policy`)
+      .put(`/interests/${interestId}/summary-policy`)
       .set(headers)
       .set('x-workspace-role', 'admin')
       .send({
@@ -94,7 +94,7 @@ async function main(): Promise<void> {
     assert(upserted.body.policy.includeSourceHighlights === false, 'summary policy REST must persist highlights flag');
 
     await request(app.getHttpServer())
-      .put(`/topics/${topicId}/summary-policy`)
+      .put(`/interests/${interestId}/summary-policy`)
       .set(otherTenantHeaders)
       .set('x-workspace-role', 'admin')
       .send({
@@ -109,7 +109,7 @@ async function main(): Promise<void> {
       .expect(200);
 
     const stored = await request(app.getHttpServer())
-      .get(`/topics/${topicId}/summary-policy`)
+      .get(`/interests/${interestId}/summary-policy`)
       .set(headers)
       .set('x-workspace-role', 'viewer')
       .expect(200);
@@ -121,7 +121,7 @@ async function main(): Promise<void> {
     );
 
     const otherTenantStored = await request(app.getHttpServer())
-      .get(`/topics/${topicId}/summary-policy`)
+      .get(`/interests/${interestId}/summary-policy`)
       .set(otherTenantHeaders)
       .set('x-workspace-role', 'viewer')
       .expect(200);
@@ -132,7 +132,7 @@ async function main(): Promise<void> {
     );
 
     await request(app.getHttpServer())
-      .put(`/topics/${topicId}/summary-policy`)
+      .put(`/interests/${interestId}/summary-policy`)
       .set(headers)
       .set('x-workspace-role', 'admin')
       .send({

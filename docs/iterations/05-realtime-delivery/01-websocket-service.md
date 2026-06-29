@@ -64,9 +64,9 @@ Replay/resync:
 Use stable, tenant-scoped channels:
 
 - `workspace:{workspaceId}:operations`
-- `topic:{topicId}:scan-status`
-- `topic:{topicId}:feed-status`
-- `topic:{topicId}:summary-status`
+- `interest:{interestId}:scan-status`
+- `interest:{interestId}:feed-status`
+- `interest:{interestId}:summary-status`
 - `source-binding:{bindingId}:health`
 
 Do not expose provider names, raw source queries or secrets in channel names.

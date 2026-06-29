@@ -39,7 +39,7 @@ const makeFetch = (
 };
 
 describe('MemoStackUserSummaryPreferenceMemoryProjector', () => {
-  it('records topic-level user preferences into the user preference scope', async () => {
+  it('records interest-level user preferences into the user preference scope', async () => {
     const requests: RecordedRequest[] = [];
     const projector = new MemoStackUserSummaryPreferenceMemoryProjector({
       baseUrl: 'https://memory.example.test/api',
@@ -55,7 +55,7 @@ describe('MemoStackUserSummaryPreferenceMemoryProjector', () => {
       workspaceId: workspaceId('workspace-1'),
       preferenceId: 'preference-1',
       userId: 'user-1',
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       language: 'ru',
       format: 'bullet_digest',
       tone: 'concise',
@@ -183,7 +183,7 @@ describe('MemoStackUserSummaryPreferenceMemoryProjector', () => {
       workspaceId: workspaceId('workspace-1'),
       preferenceId: 'preference-1',
       userId: 'user-1',
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       rulesVersion: 'summary.rules.user-preference.v1',
       createdAt: new Date('2026-06-21T10:00:00.000Z'),
       updatedAt: new Date('2026-06-21T11:00:00.000Z'),

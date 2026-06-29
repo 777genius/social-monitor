@@ -22,7 +22,7 @@ import {
 } from './openai-responses-summary-json';
 
 const defaultNoSignalReason =
-  'No eligible evidence items selected for this topic.';
+  'No eligible evidence items selected for this interest.';
 
 const qualityFlags = new Set<SummaryQualityFlag>([
   'no_signal',

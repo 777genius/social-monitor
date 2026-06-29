@@ -2,6 +2,7 @@ import { MonitoringSourceConfigReaderAdapter } from '../apps/ingestion-worker/sr
 import { InMemorySourceProviderRegistry } from '../libs/ingestion/adapters/source/in-memory-source-provider.registry';
 import type {
   RedditClientPort,
+  RedditCommentPage,
   RedditListSubredditPostsRequest,
   RedditListingPage,
 } from '../libs/ingestion/adapters/source/reddit/reddit-client.port';
@@ -51,7 +52,7 @@ async function main(): Promise<void> {
     id: sourceBindingId,
     tenantId: tenant,
     workspaceId: workspace,
-    topicId: 'topic-reddit-credential-ref-smoke',
+    interestId: 'topic-reddit-credential-ref-smoke',
     providerKey: 'reddit',
     capabilityProfileVersion: 1,
     config,
@@ -147,6 +148,10 @@ class CapturingRedditClient implements RedditClientPort {
 
   async searchPosts(): Promise<RedditListingPage> {
     throw new Error('Reddit credentialRef smoke must use listing scan');
+  }
+
+  async listPostComments(): Promise<RedditCommentPage> {
+    return { comments: [] };
   }
 }
 

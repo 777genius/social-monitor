@@ -138,13 +138,13 @@ async function main(): Promise<void> {
     };
 
     await request(app.getHttpServer())
-      .get('/topics')
+      .get('/interests')
       .set(headers)
       .set('x-workspace-role', 'viewer')
       .expect(200);
 
     const oldTopic = await request(app.getHttpServer())
-      .post('/topics')
+      .post('/interests')
       .set(headers)
       .set('x-workspace-role', 'admin')
       .set('idempotency-key', 'topic-old')
@@ -155,7 +155,7 @@ async function main(): Promise<void> {
       .expect(201);
 
     const newTopic = await request(app.getHttpServer())
-      .post('/topics')
+      .post('/interests')
       .set(headers)
       .set('x-workspace-role', 'admin')
       .set('idempotency-key', 'topic-new')
@@ -166,38 +166,38 @@ async function main(): Promise<void> {
       .expect(201);
 
     await request(app.getHttpServer())
-      .get('/topics')
+      .get('/interests')
       .set(headers)
       .set('x-workspace-role', 'member')
       .query({ limit: 0 })
       .expect(400);
 
-    const firstTopicPage = await request(app.getHttpServer())
-      .get('/topics')
+    const firstInterestPage = await request(app.getHttpServer())
+      .get('/interests')
       .set(headers)
       .set('x-workspace-role', 'viewer')
       .query({ limit: 1 })
       .expect(200);
 
-    assert(firstTopicPage.body.topics.length === 1, 'topic REST list must honor page limit');
-    assert(typeof firstTopicPage.body.nextCursor === 'string', 'topic REST list must return next cursor');
+    assert(firstInterestPage.body.interests.length === 1, 'interest REST list must honor page limit');
+    assert(typeof firstInterestPage.body.nextCursor === 'string', 'interest REST list must return next cursor');
 
-    const secondTopicPage = await request(app.getHttpServer())
-      .get('/topics')
+    const secondInterestPage = await request(app.getHttpServer())
+      .get('/interests')
       .set(headers)
       .set('x-workspace-role', 'viewer')
-      .query({ limit: 1, cursor: firstTopicPage.body.nextCursor })
+      .query({ limit: 1, cursor: firstInterestPage.body.nextCursor })
       .expect(200);
 
-    assert(secondTopicPage.body.topics.length === 1, 'topic REST list second page must return remaining topic');
+    assert(secondInterestPage.body.interests.length === 1, 'interest REST list second page must return remaining interest');
     assert(
-      [firstTopicPage.body.topics[0].id, secondTopicPage.body.topics[0].id].sort().join(',') ===
-      [oldTopic.body.topicId, newTopic.body.topicId].sort().join(','),
-      'topic REST list cursor must page through both created topics',
+      [firstInterestPage.body.interests[0].id, secondInterestPage.body.interests[0].id].sort().join(',') ===
+      [oldTopic.body.interestId, newTopic.body.interestId].sort().join(','),
+      'interest REST list cursor must page through both created interests',
     );
 
     await request(app.getHttpServer())
-      .post(`/topics/${newTopic.body.topicId}/source-bindings`)
+      .post(`/interests/${newTopic.body.interestId}/source-bindings`)
       .set(headers)
       .set('x-workspace-role', 'viewer')
       .set('idempotency-key', 'binding-forbidden')
@@ -208,7 +208,7 @@ async function main(): Promise<void> {
       .expect(403);
 
     await request(app.getHttpServer())
-      .post(`/topics/${newTopic.body.topicId}/source-bindings`)
+      .post(`/interests/${newTopic.body.interestId}/source-bindings`)
       .set(headers)
       .set('x-workspace-role', 'admin')
       .set('idempotency-key', 'binding-rss-localhost-rejected')
@@ -219,7 +219,7 @@ async function main(): Promise<void> {
       .expect(400);
 
     const binding = await request(app.getHttpServer())
-      .post(`/topics/${newTopic.body.topicId}/source-bindings`)
+      .post(`/interests/${newTopic.body.interestId}/source-bindings`)
       .set(headers)
       .set('x-workspace-role', 'admin')
       .set('idempotency-key', 'binding-fake-source')
@@ -230,7 +230,7 @@ async function main(): Promise<void> {
       .expect(201);
 
     const listedBindings = await request(app.getHttpServer())
-      .get(`/topics/${newTopic.body.topicId}/source-bindings`)
+      .get(`/interests/${newTopic.body.interestId}/source-bindings`)
       .set(headers)
       .set('x-workspace-role', 'viewer')
       .expect(200);
@@ -280,7 +280,7 @@ async function main(): Promise<void> {
     assert(fetchedScanPolicy.body.intervalSeconds === 300, 'scan policy REST get must preserve interval');
 
     const sourceHealth = await request(app.getHttpServer())
-      .get(`/topics/${newTopic.body.topicId}/source-bindings/${binding.body.sourceBindingId}/health`)
+      .get(`/interests/${newTopic.body.interestId}/source-bindings/${binding.body.sourceBindingId}/health`)
       .set(headers)
       .set('x-workspace-role', 'viewer')
       .expect(200);
@@ -314,7 +314,7 @@ async function main(): Promise<void> {
       'source binding daily history must preserve source binding id',
     );
     assert(
-      dailyHistory.body.topicId === newTopic.body.topicId,
+      dailyHistory.body.interestId === newTopic.body.interestId,
       'source binding daily history must expose topic id for frontend routing',
     );
     assert(
@@ -365,7 +365,7 @@ async function main(): Promise<void> {
       .expect(404);
 
     const rssBinding = await request(app.getHttpServer())
-      .post(`/topics/${newTopic.body.topicId}/source-bindings`)
+      .post(`/interests/${newTopic.body.interestId}/source-bindings`)
       .set(headers)
       .set('x-workspace-role', 'admin')
       .set('idempotency-key', 'binding-rss-topic-history')
@@ -448,30 +448,30 @@ async function main(): Promise<void> {
     });
 
     const topicDailyHistory = await request(app.getHttpServer())
-      .get(`/topics/${newTopic.body.topicId}/source-bindings/daily-history`)
+      .get(`/interests/${newTopic.body.interestId}/source-bindings/daily-history`)
       .set(headers)
       .set('x-workspace-role', 'viewer')
       .query({ days: 1 })
       .expect(200);
     await request(app.getHttpServer())
-      .get(`/topics/${newTopic.body.topicId}/source-bindings/daily-history`)
+      .get(`/interests/${newTopic.body.interestId}/source-bindings/daily-history`)
       .set(otherWorkspaceHeaders)
       .query({ days: 1 })
       .expect(404);
     await request(app.getHttpServer())
-      .get(`/topics/${newTopic.body.topicId}/source-bindings/daily-history`)
+      .get(`/interests/${newTopic.body.interestId}/source-bindings/daily-history`)
       .set(otherTenantHeaders)
       .query({ days: 1 })
       .expect(404);
     await request(app.getHttpServer())
-      .get(`/topics/${newTopic.body.topicId}/source-bindings/daily-history`)
+      .get(`/interests/${newTopic.body.interestId}/source-bindings/daily-history`)
       .set(headers)
       .set('x-workspace-role', 'viewer')
       .query({ days: 0 })
       .expect(400);
 
     assert(
-      topicDailyHistory.body.topicId === newTopic.body.topicId,
+      topicDailyHistory.body.interestId === newTopic.body.interestId,
       'topic source daily history must preserve topic id',
     );
     assert(topicDailyHistory.body.days.length === 1, 'topic source daily history must honor days query');
@@ -538,7 +538,7 @@ async function main(): Promise<void> {
     );
 
     const rssTopicDailyHistory = await request(app.getHttpServer())
-      .get(`/topics/${newTopic.body.topicId}/source-bindings/daily-history`)
+      .get(`/interests/${newTopic.body.interestId}/source-bindings/daily-history`)
       .set(headers)
       .set('x-workspace-role', 'viewer')
       .query({ days: 1, providerKey: 'rss' })
@@ -554,7 +554,7 @@ async function main(): Promise<void> {
     );
 
     const schedulerBackoffTopic = await request(app.getHttpServer())
-      .post('/topics')
+      .post('/interests')
       .set(headers)
       .set('x-workspace-role', 'admin')
       .set('idempotency-key', 'topic-scheduler-backoff-history')
@@ -564,7 +564,7 @@ async function main(): Promise<void> {
       })
       .expect(201);
     const freshSkipBinding = await request(app.getHttpServer())
-      .post(`/topics/${schedulerBackoffTopic.body.topicId}/source-bindings`)
+      .post(`/interests/${schedulerBackoffTopic.body.interestId}/source-bindings`)
       .set(headers)
       .set('x-workspace-role', 'admin')
       .set('idempotency-key', 'binding-scheduler-fresh-skip-history')
@@ -574,7 +574,7 @@ async function main(): Promise<void> {
       })
       .expect(201);
     const providerBackoffBinding = await request(app.getHttpServer())
-      .post(`/topics/${schedulerBackoffTopic.body.topicId}/source-bindings`)
+      .post(`/interests/${schedulerBackoffTopic.body.interestId}/source-bindings`)
       .set(headers)
       .set('x-workspace-role', 'admin')
       .set('idempotency-key', 'binding-scheduler-provider-backoff-history')
@@ -662,7 +662,7 @@ async function main(): Promise<void> {
     );
 
     const schedulerBackoffTopicHistory = await request(app.getHttpServer())
-      .get(`/topics/${schedulerBackoffTopic.body.topicId}/source-bindings/daily-history`)
+      .get(`/interests/${schedulerBackoffTopic.body.interestId}/source-bindings/daily-history`)
       .set(headers)
       .set('x-workspace-role', 'viewer')
       .query({ days: 1 })
@@ -706,7 +706,7 @@ async function main(): Promise<void> {
     );
 
     await request(app.getHttpServer())
-      .get('/topics/missing-topic/source-bindings')
+      .get('/interests/missing-topic/source-bindings')
       .set(headers)
       .set('x-workspace-role', 'viewer')
       .expect(404);

@@ -12,7 +12,7 @@ import {
   type ReaderSummaryPeriod,
   type ReaderSummaryPolicy,
   type SummaryEvidenceSelection,
-  topicReaderSummaryScope,
+  interestReaderSummaryScope,
 } from "../../domain";
 import type {
   ProviderReaderSummaryAttempt,
@@ -90,7 +90,7 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
         id: "reader-job-1",
         tenantId: tenant,
         workspaceId: workspace,
-        scope: topicReaderSummaryScope("topic-reader-ai"),
+        scope: interestReaderSummaryScope("interest-reader-ai"),
         period: readerSummaryPeriod,
         userId: "user-1",
         subscriptionId: "subscription-1",
@@ -117,8 +117,8 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
         async buildContext() {
           return [
             {
-              artifactId: "summary-memory:topic:topic-reader-ai",
-              scope: topicReaderSummaryScope("topic-reader-ai"),
+              artifactId: "summary-memory:interest:interest-reader-ai",
+              scope: interestReaderSummaryScope("interest-reader-ai"),
               period: readerSummaryPeriod,
               summaryText:
                 "User prefers risk-first summaries for runtime regressions.",
@@ -169,7 +169,7 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
       }),
       contextArtifacts: [
         expect.objectContaining({
-          artifactId: "summary-memory:topic:topic-reader-ai",
+          artifactId: "summary-memory:interest:interest-reader-ai",
           summaryText:
             "User prefers risk-first summaries for runtime regressions.",
         }),
@@ -354,12 +354,12 @@ class CapturingReaderSummaryModel implements ReaderSummaryModelPort {
             storyClusterId: firstCluster.id,
             title: firstItem.title,
             summary: "Selected because it matches the reader preference.",
-            topicIds: firstCluster.topicIds,
+            interestIds: firstCluster.interestIds,
             providerKeys: firstCluster.providerKeys,
             citationIds: ["c1"],
           },
         ],
-        topicHighlights: [],
+        interestHighlights: [],
         repeatedSignals: [],
         risksAndUnknowns: input.policy.includeRisks
           ? [
@@ -441,7 +441,7 @@ const makeReaderEvidenceSelection = (): SummaryEvidenceSelection => ({
       storyKey: "runtime-regression",
       representativeFeedItemId: "feed-1",
       duplicateFeedItemIds: [],
-      topicIds: ["topic-reader-ai"],
+      interestIds: ["interest-reader-ai"],
       providerKeys: ["reddit"],
       score: 1,
       observedAtRange: {
@@ -455,7 +455,7 @@ const makeReaderEvidenceSelection = (): SummaryEvidenceSelection => ({
       storyKey: "github-release",
       representativeFeedItemId: "feed-2",
       duplicateFeedItemIds: [],
-      topicIds: ["topic-reader-ai"],
+      interestIds: ["interest-reader-ai"],
       providerKeys: ["github-trending-page"],
       score: 0.9,
       observedAtRange: {
@@ -470,7 +470,7 @@ const makeReaderEvidenceSelection = (): SummaryEvidenceSelection => ({
       feedItemId: "feed-1",
       sourceItemId: "reddit-post-1",
       sourceBindingId: "binding-reddit",
-      topicId: "topic-reader-ai",
+      interestId: "interest-reader-ai",
       providerKey: "reddit",
       providerName: "Reddit",
       canonicalUrl: "https://reddit.example.test/post-1",
@@ -485,7 +485,7 @@ const makeReaderEvidenceSelection = (): SummaryEvidenceSelection => ({
       feedItemId: "feed-2",
       sourceItemId: "github-trending-1",
       sourceBindingId: "binding-github",
-      topicId: "topic-reader-ai",
+      interestId: "interest-reader-ai",
       providerKey: "github-trending-page",
       providerName: "GitHub Trending",
       canonicalUrl: "https://github.com/example/project",

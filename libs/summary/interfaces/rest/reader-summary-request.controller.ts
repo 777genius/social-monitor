@@ -53,7 +53,7 @@ export class ReaderSummaryRequestController {
 
   @Post()
   @ApiOperation({
-    summary: "Request a readerSummary for a workspace or topic scope.",
+    summary: "Request a readerSummary for a workspace or interest scope.",
   })
   @ApiHeader({ name: "x-tenant-id", required: true })
   @ApiHeader({ name: "x-workspace-id", required: true })
@@ -148,13 +148,13 @@ const normalizeReaderSummaryScope = (
     return { type: "workspace" };
   }
 
-  if (scope.type === "topic") {
-    return { type: "topic", topicId: scope.topicId ?? "" };
+  if (scope.type === "interest") {
+    return { type: "interest", interestId: scope.interestId ?? "" };
   }
 
   throw new DomainError(
     "validation.failed",
-    "ReaderSummary scope type must be workspace or topic",
+    "ReaderSummary scope type must be workspace or interest",
   );
 };
 

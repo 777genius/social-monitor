@@ -34,7 +34,7 @@ describe('Summary feedback submission (e2e)', () => {
   it('records classified feedback with citation evidence and preserves idempotency', async () => {
     const tenant = tenantId('tenant-summary-feedback-submit-e2e');
     const workspace = workspaceId('workspace-summary-feedback-submit-e2e');
-    const { summaryId, topicId, citation } = await createCitedSummary({
+    const { summaryId, interestId, citation } = await createCitedSummary({
       app,
       tenant,
       workspace,
@@ -86,7 +86,7 @@ describe('Summary feedback submission (e2e)', () => {
       triageOwner: 'summary-owner',
       evidence: {
         summaryId,
-        topicId,
+        interestId,
         citationId: citation.citationId,
         feedItemId: citation.feedItemId,
         sourceItemId: citation.sourceItemId,
@@ -130,7 +130,7 @@ describe('Summary feedback submission (e2e)', () => {
         tenantId: tenant,
         workspaceId: workspace,
         summaryId,
-        topicId,
+        interestId,
         submittedBy: 'beta-user-feedback-submit-e2e',
         rating: 2,
         category: 'bad_citation',
@@ -139,7 +139,7 @@ describe('Summary feedback submission (e2e)', () => {
         eligibleForEvalFixture: true,
         evidence: {
           summaryId,
-          topicId,
+          interestId,
           citationId: citation.citationId,
           feedItemId: citation.feedItemId,
           sourceItemId: citation.sourceItemId,
@@ -188,14 +188,14 @@ const createCitedSummary = async (params: {
   readonly workspace: WorkspaceId;
 }): Promise<{
   readonly summaryId: string;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly citation: SummaryCitation;
 }> => {
-  const topicId = 'topic-summary-feedback-submit-e2e';
-  seedSummaryEvidence(params.app, params.tenant, params.workspace, topicId);
+  const interestId = 'topic-summary-feedback-submit-e2e';
+  seedSummaryEvidence(params.app, params.tenant, params.workspace, interestId);
 
   const requested = await request(params.app.getHttpServer())
-    .post(`/topics/${topicId}/summary-requests`)
+    .post(`/interests/${interestId}/summary-requests`)
     .set('x-tenant-id', params.tenant)
     .set('x-workspace-id', params.workspace)
     .set('x-workspace-role', 'member')
@@ -227,7 +227,7 @@ const createCitedSummary = async (params: {
 
   return {
     summaryId: executed.value.summaryId,
-    topicId,
+    interestId,
     citation,
   };
 };
@@ -236,21 +236,24 @@ const seedSummaryEvidence = (
   app: INestApplication,
   tenant: TenantId,
   workspace: WorkspaceId,
-  topicId: string,
+  interestId: string,
 ): void => {
   const feedItems = app.get(InMemoryFeedItemReadRepository);
+  const observedAt = new Date(Date.now() - 60_000);
+  const publishedAt = new Date(observedAt.getTime() - 60_000);
+
   feedItems.upsert(FeedItem.publish({
     id: 'feed-summary-feedback-submit-e2e-1',
     tenantId: tenant,
     workspaceId: workspace,
-    topicId,
+    interestId,
     sourceItemId: 'source-summary-feedback-submit-e2e-1',
     sourceBindingId: 'source-binding-summary-feedback-submit-e2e',
     providerKey: 'rss',
     canonicalUrl: 'https://example.test/summary-feedback/1',
     title: 'Beta feedback evidence source',
     bodyPreview: 'The summary feedback test needs citation-backed evidence for triage.',
-    publishedAt: new Date('2026-06-06T10:00:00.000Z'),
-    observedAt: new Date('2026-06-06T10:01:00.000Z'),
+    publishedAt,
+    observedAt,
   }));
 };

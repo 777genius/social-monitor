@@ -1,6 +1,6 @@
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
-import '../../application/commands/bind_source_to_topic_command.dart';
+import '../../application/commands/bind_source_to_interest_command.dart';
 import '../../application/commands/change_source_binding_status_command.dart';
 import '../../application/contracts/source_binding_catalog.dart';
 import '../../application/queries/list_source_bindings_query.dart';
@@ -28,7 +28,7 @@ final class GeneratedSourceBindingCatalog implements SourceBindingCatalog {
     final result = await _apiClient.listSourceBindings(
       SourceBindingListApiRequestDto(
         scope: query.scope,
-        topicId: query.topicId.value,
+        interestId: query.interestId.value,
         page: query.page,
       ),
     );
@@ -45,13 +45,13 @@ final class GeneratedSourceBindingCatalog implements SourceBindingCatalog {
   }
 
   @override
-  Future<Result<SourceBinding>> bindSourceToTopic(
-    BindSourceToTopicCommand command,
+  Future<Result<SourceBinding>> bindSourceToInterest(
+    BindSourceToInterestCommand command,
   ) async {
     final result = await _apiClient.bindSource(
       BindSourceApiRequestDto(
         scope: command.scope,
-        topicId: command.topicId.value,
+        interestId: command.interestId.value,
         providerKey: command.providerKey.value,
         config: command.config,
         idempotencyKey: command.idempotencyKey,
@@ -67,7 +67,7 @@ final class GeneratedSourceBindingCatalog implements SourceBindingCatalog {
     final result = await _apiClient.changeSourceBindingStatus(
       ChangeSourceBindingStatusApiRequestDto(
         scope: command.scope,
-        topicId: command.topicId.value,
+        interestId: command.interestId.value,
         sourceBindingId: command.sourceBindingId.value,
         status: command.status.name,
         idempotencyKey: command.idempotencyKey,
@@ -83,7 +83,7 @@ final class GeneratedSourceBindingCatalog implements SourceBindingCatalog {
     final result = await _apiClient.loadSourceBindingHealth(
       SourceBindingHealthApiRequestDto(
         scope: query.scope,
-        topicId: query.topicId.value,
+        interestId: query.interestId.value,
         sourceBindingId: query.sourceBindingId.value,
       ),
     );

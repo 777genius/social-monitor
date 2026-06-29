@@ -1,4 +1,5 @@
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
+import 'package:social_monitor_sources/src/infrastructure/api/interest_coverage_plan_api_dto.dart';
 import 'package:social_monitor_sources/src/infrastructure/api/scan_policy_api_dto.dart';
 import 'package:social_monitor_sources/src/infrastructure/api/scan_run_api_dto.dart';
 import 'package:social_monitor_sources/src/infrastructure/api/source_binding_api_dto.dart';
@@ -70,7 +71,7 @@ SourceProfileApiDto sourceProfileApiDto({
 
 SourceBindingApiDto sourceBindingApiDto({
   String id = 'binding-reddit',
-  String topicId = 'topic-competitor',
+  String interestId = 'interest-competitor',
   String providerKey = 'reddit',
   num capabilityProfileVersion = 1,
   String status = 'enabled',
@@ -83,12 +84,62 @@ SourceBindingApiDto sourceBindingApiDto({
 }) {
   return SourceBindingApiDto(
     id: id,
-    topicId: topicId,
+    interestId: interestId,
     providerKey: providerKey,
     capabilityProfileVersion: capabilityProfileVersion,
     status: status,
     configPreview: configPreview,
     createdAt: createdAt ?? DateTime.utc(2026, 6, 23, 12),
+  );
+}
+
+InterestCoveragePlanApiDto interestCoveragePlanApiDto({
+  String interestId = 'interest-competitor',
+  String interestTitle = 'Competitor launches',
+  String planningQuery = '"Competitor launches" OR pricing',
+}) {
+  return InterestCoveragePlanApiDto(
+    interestId: interestId,
+    interestTitle: interestTitle,
+    planningQuery: planningQuery,
+    normalizedKeywords: const ['Competitor launches', 'pricing'],
+    coverageGaps: const [],
+    skippedProviders: const [],
+    drafts: [
+      InterestCoveragePlanDraftApiDto(
+        providerKey: 'reddit',
+        displayName: 'Reddit',
+        status: 'ready',
+        confidenceScore: 8,
+        priority: 1,
+        targetContentUnits: const ['post', 'comment', 'link'],
+        queryModes: const ['search', 'listing'],
+        rationale: const [
+          'Combines search, subreddit listings and post-thread comments.',
+        ],
+        warnings: const ['Keyword-wide Reddit comment search is not used.'],
+        sourceBindingDraft: InterestCoveragePlanBindingDraftApiDto(
+          providerKey: 'reddit',
+          config: {
+            'mode': 'search',
+            'query': planningQuery,
+            'scanPasses': const [
+              {
+                'mode': 'search',
+                'query': '"Competitor launches" OR pricing',
+                'includeComments': true,
+              },
+            ],
+          },
+        ),
+        cadenceSuggestion: const InterestCoveragePlanCadenceSuggestionApiDto(
+          intervalSeconds: 1800,
+          freshnessSeconds: 3600,
+          retryBudget: 3,
+        ),
+        alternativeDrafts: const [],
+      ),
+    ],
   );
 }
 

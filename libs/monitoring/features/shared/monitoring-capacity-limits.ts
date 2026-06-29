@@ -1,10 +1,10 @@
 export type MonitoringCapacityLimits = {
-  readonly maxTopicsPerWorkspace?: number;
-  readonly maxEnabledSourcesPerTopic?: number;
+  readonly maxInterestsPerWorkspace?: number;
+  readonly maxEnabledSourcesPerInterest?: number;
 };
 
 export const defaultMonitoringCapacityLimits: Required<MonitoringCapacityLimits> =
   {
-    maxTopicsPerWorkspace: 10,
-    maxEnabledSourcesPerTopic: 5,
+    maxInterestsPerWorkspace: 10,
+    maxEnabledSourcesPerInterest: 5,
   };

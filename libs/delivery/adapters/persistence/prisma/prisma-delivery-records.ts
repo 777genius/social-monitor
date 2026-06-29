@@ -81,7 +81,7 @@ export type PrismaDigestScheduleRecord = {
   readonly workspaceId: string;
   readonly recipientKey: string;
   readonly channel: string;
-  readonly topicIds: readonly string[];
+  readonly interestIds: readonly string[];
   readonly intervalSeconds: number;
   readonly includeNoSignal: boolean;
   readonly nextRunAt: Date;
@@ -148,7 +148,7 @@ export type PrismaDigestSourceSummaryRecord = {
   readonly id: string;
   readonly tenantId: string;
   readonly workspaceId: string;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly status: PrismaSummaryArtifactStatus;
   readonly artifactPayload: unknown;
   readonly qualitySignals: unknown;
@@ -159,7 +159,7 @@ export type PrismaDigestSourceFeedItemRecord = {
   readonly id: string;
   readonly tenantId: string;
   readonly workspaceId: string;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly observedAt: Date;
   readonly status: PrismaFeedItemStatus;
 };
@@ -171,7 +171,7 @@ const deliveryChannels = ['in_app', 'email', 'webhook'] as const satisfies reado
 const resourceTypes = ['summary', 'digest', 'scan', 'feed'] as const satisfies readonly DeliveryAttemptProps['resourceType'][];
 const realtimeResourceTypes = [
   'workspace',
-  'topic',
+  'interest',
   'source_binding',
   'summary',
   'scan',
@@ -297,7 +297,7 @@ export const digestScheduleFromPrisma = (record: PrismaDigestScheduleRecord): Di
     workspaceId: workspaceId(record.workspaceId),
     recipientKey: record.recipientKey,
     channel: deliveryChannelFromPrisma(record.channel),
-    topicIds: record.topicIds,
+    interestIds: record.interestIds,
     intervalSeconds: record.intervalSeconds,
     includeNoSignal: record.includeNoSignal,
     nextRunAt: record.nextRunAt,
@@ -442,14 +442,14 @@ const digestProvenanceFromPrisma = (value: unknown): readonly DigestProvenanceIt
       throw new Error('Digest provenance resource id from Prisma must be non-empty');
     }
 
-    if (typeof record.topicId !== 'string' || record.topicId.trim().length === 0) {
-      throw new Error('Digest provenance topic id from Prisma must be non-empty');
+    if (typeof record.interestId !== 'string' || record.interestId.trim().length === 0) {
+      throw new Error('Digest provenance interest id from Prisma must be non-empty');
     }
 
     return {
       resourceType,
       resourceId: record.resourceId,
-      topicId: record.topicId,
+      interestId: record.interestId,
       includedReason,
     };
   });

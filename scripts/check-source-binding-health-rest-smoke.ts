@@ -30,7 +30,7 @@ type SourceBindingFixture = {
   readonly scanPolicyId: string;
 };
 
-const createTopic = async (params: {
+const createInterest = async (params: {
   readonly httpServer: HttpServer;
   readonly headers: RequestHeaders;
   readonly idempotencyKey: string;
@@ -38,7 +38,7 @@ const createTopic = async (params: {
   readonly query: string;
 }): Promise<string> => {
   const topic = await request(params.httpServer)
-    .post('/topics')
+    .post('/interests')
     .set(params.headers)
     .set('idempotency-key', params.idempotencyKey)
     .send({
@@ -47,12 +47,12 @@ const createTopic = async (params: {
     })
     .expect(201);
 
-  return topic.body.topicId;
+  return topic.body.interestId;
 };
 
 const createBindingWithPolicy = async (params: {
   readonly httpServer: HttpServer;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly headers: RequestHeaders;
   readonly idempotencyKey: string;
   readonly intervalSeconds: number;
@@ -61,7 +61,7 @@ const createBindingWithPolicy = async (params: {
   readonly config?: Record<string, unknown>;
 }): Promise<SourceBindingFixture> => {
   const binding = await request(params.httpServer)
-    .post(`/topics/${params.topicId}/source-bindings`)
+    .post(`/interests/${params.interestId}/source-bindings`)
     .set(params.headers)
     .set('idempotency-key', `binding-${params.idempotencyKey}`)
     .send({
@@ -89,12 +89,12 @@ const createBindingWithPolicy = async (params: {
 
 const readHealth = async (params: {
   readonly httpServer: HttpServer;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly sourceBindingId: string;
   readonly headers: RequestHeaders;
 }) =>
   request(params.httpServer)
-    .get(`/topics/${params.topicId}/source-bindings/${params.sourceBindingId}/health`)
+    .get(`/interests/${params.interestId}/source-bindings/${params.sourceBindingId}/health`)
     .set(params.headers)
     .expect(200);
 
@@ -196,7 +196,7 @@ async function main(): Promise<void> {
     };
 
     const topic = await request(app.getHttpServer())
-      .post('/topics')
+      .post('/interests')
       .set(adminHeaders)
       .set('idempotency-key', 'topic')
       .send({
@@ -206,7 +206,7 @@ async function main(): Promise<void> {
       .expect(201);
 
     const binding = await request(app.getHttpServer())
-      .post(`/topics/${topic.body.topicId}/source-bindings`)
+      .post(`/interests/${topic.body.interestId}/source-bindings`)
       .set(adminHeaders)
       .set('idempotency-key', 'binding')
       .send({
@@ -216,16 +216,16 @@ async function main(): Promise<void> {
       .expect(201);
 
     const healthBeforePolicy = await request(app.getHttpServer())
-      .get(`/topics/${topic.body.topicId}/source-bindings/${binding.body.sourceBindingId}/health`)
+      .get(`/interests/${topic.body.interestId}/source-bindings/${binding.body.sourceBindingId}/health`)
       .set(viewerHeaders)
       .expect(200);
 
     await request(app.getHttpServer())
-      .get(`/topics/${topic.body.topicId}/source-bindings/${binding.body.sourceBindingId}/health`)
+      .get(`/interests/${topic.body.interestId}/source-bindings/${binding.body.sourceBindingId}/health`)
       .set(otherWorkspaceHeaders)
       .expect(404);
     await request(app.getHttpServer())
-      .get(`/topics/${topic.body.topicId}/source-bindings/${binding.body.sourceBindingId}/health`)
+      .get(`/interests/${topic.body.interestId}/source-bindings/${binding.body.sourceBindingId}/health`)
       .set(otherTenantHeaders)
       .expect(404);
 
@@ -262,7 +262,7 @@ async function main(): Promise<void> {
       .expect(201);
 
     const healthAfterPolicy = await request(app.getHttpServer())
-      .get(`/topics/${topic.body.topicId}/source-bindings/${binding.body.sourceBindingId}/health`)
+      .get(`/interests/${topic.body.interestId}/source-bindings/${binding.body.sourceBindingId}/health`)
       .set(viewerHeaders)
       .expect(200);
 
@@ -299,7 +299,7 @@ async function main(): Promise<void> {
       .expect(404);
 
     const healthDuringScan = await request(app.getHttpServer())
-      .get(`/topics/${topic.body.topicId}/source-bindings/${binding.body.sourceBindingId}/health`)
+      .get(`/interests/${topic.body.interestId}/source-bindings/${binding.body.sourceBindingId}/health`)
       .set(viewerHeaders)
       .expect(200);
 
@@ -322,14 +322,14 @@ async function main(): Promise<void> {
     );
 
     await request(app.getHttpServer())
-      .patch(`/topics/${topic.body.topicId}/source-bindings/${binding.body.sourceBindingId}/status`)
+      .patch(`/interests/${topic.body.interestId}/source-bindings/${binding.body.sourceBindingId}/status`)
       .set(adminHeaders)
       .set('idempotency-key', 'pause-binding')
       .send({ status: 'paused' })
       .expect(200);
 
     const pausedHealth = await request(app.getHttpServer())
-      .get(`/topics/${topic.body.topicId}/source-bindings/${binding.body.sourceBindingId}/health`)
+      .get(`/interests/${topic.body.interestId}/source-bindings/${binding.body.sourceBindingId}/health`)
       .set(viewerHeaders)
       .expect(200);
 
@@ -339,7 +339,7 @@ async function main(): Promise<void> {
       'source health must expose paused scheduler decision',
     );
 
-    const freshTopicId = await createTopic({
+    const freshInterestId = await createInterest({
       httpServer: app.getHttpServer(),
       headers: adminHeaders,
       idempotencyKey: 'topic-fresh',
@@ -348,7 +348,7 @@ async function main(): Promise<void> {
     });
     const fresh = await createBindingWithPolicy({
       httpServer: app.getHttpServer(),
-      topicId: freshTopicId,
+      interestId: freshInterestId,
       headers: adminHeaders,
       idempotencyKey: 'fresh',
       intervalSeconds: 300,
@@ -366,7 +366,7 @@ async function main(): Promise<void> {
 
     const freshHealth = await readHealth({
       httpServer: app.getHttpServer(),
-      topicId: freshTopicId,
+      interestId: freshInterestId,
       sourceBindingId: fresh.sourceBindingId,
       headers: viewerHeaders,
     });
@@ -392,7 +392,7 @@ async function main(): Promise<void> {
       'fresh successful scan must expose recent success signal',
     );
 
-    const rateLimitedTopicId = await createTopic({
+    const rateLimitedInterestId = await createInterest({
       httpServer: app.getHttpServer(),
       headers: adminHeaders,
       idempotencyKey: 'topic-rate-limited',
@@ -401,7 +401,7 @@ async function main(): Promise<void> {
     });
     const rateLimited = await createBindingWithPolicy({
       httpServer: app.getHttpServer(),
-      topicId: rateLimitedTopicId,
+      interestId: rateLimitedInterestId,
       headers: adminHeaders,
       idempotencyKey: 'rate-limited',
       intervalSeconds: 300,
@@ -420,7 +420,7 @@ async function main(): Promise<void> {
 
     const rateLimitedHealth = await readHealth({
       httpServer: app.getHttpServer(),
-      topicId: rateLimitedTopicId,
+      interestId: rateLimitedInterestId,
       sourceBindingId: rateLimited.sourceBindingId,
       headers: viewerHeaders,
     });
@@ -446,7 +446,7 @@ async function main(): Promise<void> {
       'source health recent window must expose rate-limit signal',
     );
 
-    const providerFailureTopicId = await createTopic({
+    const providerFailureInterestId = await createInterest({
       httpServer: app.getHttpServer(),
       headers: adminHeaders,
       idempotencyKey: 'topic-provider-failure',
@@ -455,7 +455,7 @@ async function main(): Promise<void> {
     });
     const providerFailure = await createBindingWithPolicy({
       httpServer: app.getHttpServer(),
-      topicId: providerFailureTopicId,
+      interestId: providerFailureInterestId,
       headers: adminHeaders,
       idempotencyKey: 'provider-failure',
       intervalSeconds: 300,
@@ -484,7 +484,7 @@ async function main(): Promise<void> {
 
     const providerFailureHealth = await readHealth({
       httpServer: app.getHttpServer(),
-      topicId: providerFailureTopicId,
+      interestId: providerFailureInterestId,
       sourceBindingId: providerFailure.sourceBindingId,
       headers: viewerHeaders,
     });
@@ -526,7 +526,7 @@ async function main(): Promise<void> {
 
     const providerDownHealth = await readHealth({
       httpServer: app.getHttpServer(),
-      topicId: providerFailureTopicId,
+      interestId: providerFailureInterestId,
       sourceBindingId: providerFailure.sourceBindingId,
       headers: viewerHeaders,
     });
@@ -539,7 +539,7 @@ async function main(): Promise<void> {
       'source health must expose provider-down operator action',
     );
 
-    const scheduledLaterTopicId = await createTopic({
+    const scheduledLaterInterestId = await createInterest({
       httpServer: app.getHttpServer(),
       headers: adminHeaders,
       idempotencyKey: 'topic-scheduled-later',
@@ -548,7 +548,7 @@ async function main(): Promise<void> {
     });
     const scheduledLater = await createBindingWithPolicy({
       httpServer: app.getHttpServer(),
-      topicId: scheduledLaterTopicId,
+      interestId: scheduledLaterInterestId,
       headers: adminHeaders,
       idempotencyKey: 'scheduled-later',
       intervalSeconds: 300,
@@ -564,7 +564,7 @@ async function main(): Promise<void> {
 
     const scheduledLaterHealth = await readHealth({
       httpServer: app.getHttpServer(),
-      topicId: scheduledLaterTopicId,
+      interestId: scheduledLaterInterestId,
       sourceBindingId: scheduledLater.sourceBindingId,
       headers: viewerHeaders,
     });
@@ -581,7 +581,7 @@ async function main(): Promise<void> {
       'scheduled-later scheduler decision must expose next eligible time',
     );
 
-    const trendingPageTopicId = await createTopic({
+    const trendingPageInterestId = await createInterest({
       httpServer: app.getHttpServer(),
       headers: adminHeaders,
       idempotencyKey: 'topic-trending-page-cadence',
@@ -589,7 +589,7 @@ async function main(): Promise<void> {
       query: 'github trending cadence floor',
     });
     const trendingPageBinding = await request(app.getHttpServer())
-      .post(`/topics/${trendingPageTopicId}/source-bindings`)
+      .post(`/interests/${trendingPageInterestId}/source-bindings`)
       .set(adminHeaders)
       .set('idempotency-key', 'binding-trending-page-cadence')
       .send({
@@ -646,7 +646,7 @@ async function main(): Promise<void> {
 
     const trendingPageHealth = await readHealth({
       httpServer: app.getHttpServer(),
-      topicId: trendingPageTopicId,
+      interestId: trendingPageInterestId,
       sourceBindingId: trendingPageBinding.body.sourceBindingId,
       headers: viewerHeaders,
     });
@@ -683,7 +683,7 @@ async function main(): Promise<void> {
       'GitHub Trending page health decision must expose provider minimum enforcement signal',
     );
 
-    const repoRadarTopicId = await createTopic({
+    const repoRadarInterestId = await createInterest({
       httpServer: app.getHttpServer(),
       headers: adminHeaders,
       idempotencyKey: 'topic-repo-radar-cadence',
@@ -691,7 +691,7 @@ async function main(): Promise<void> {
       query: 'repo radar cadence floor',
     });
     const repoRadarBinding = await request(app.getHttpServer())
-      .post(`/topics/${repoRadarTopicId}/source-bindings`)
+      .post(`/interests/${repoRadarInterestId}/source-bindings`)
       .set(adminHeaders)
       .set('idempotency-key', 'binding-repo-radar-cadence')
       .send({
@@ -750,7 +750,7 @@ async function main(): Promise<void> {
 
     const repoRadarHealth = await readHealth({
       httpServer: app.getHttpServer(),
-      topicId: repoRadarTopicId,
+      interestId: repoRadarInterestId,
       sourceBindingId: repoRadarBinding.body.sourceBindingId,
       headers: viewerHeaders,
     });
@@ -787,7 +787,7 @@ async function main(): Promise<void> {
       'repo-radar health decision must expose provider minimum enforcement signal',
     );
 
-    const overviewTopicId = await createTopic({
+    const overviewInterestId = await createInterest({
       httpServer: app.getHttpServer(),
       headers: adminHeaders,
       idempotencyKey: 'topic-overview',
@@ -796,7 +796,7 @@ async function main(): Promise<void> {
     });
     const overviewRss = await createBindingWithPolicy({
       httpServer: app.getHttpServer(),
-      topicId: overviewTopicId,
+      interestId: overviewInterestId,
       headers: adminHeaders,
       idempotencyKey: 'overview-rss',
       intervalSeconds: 300,
@@ -806,7 +806,7 @@ async function main(): Promise<void> {
     });
     const overviewReddit = await createBindingWithPolicy({
       httpServer: app.getHttpServer(),
-      topicId: overviewTopicId,
+      interestId: overviewInterestId,
       headers: adminHeaders,
       idempotencyKey: 'overview-reddit',
       intervalSeconds: 900,
@@ -816,7 +816,7 @@ async function main(): Promise<void> {
     });
     const overviewGithubIssues = await createBindingWithPolicy({
       httpServer: app.getHttpServer(),
-      topicId: overviewTopicId,
+      interestId: overviewInterestId,
       headers: adminHeaders,
       idempotencyKey: 'overview-github-issues',
       intervalSeconds: 300,
@@ -826,7 +826,7 @@ async function main(): Promise<void> {
     });
     const overviewHackerNews = await createBindingWithPolicy({
       httpServer: app.getHttpServer(),
-      topicId: overviewTopicId,
+      interestId: overviewInterestId,
       headers: adminHeaders,
       idempotencyKey: 'overview-hacker-news',
       intervalSeconds: 300,
@@ -892,15 +892,15 @@ async function main(): Promise<void> {
     });
 
     const overview = await request(app.getHttpServer())
-      .get(`/topics/${overviewTopicId}/source-bindings/overview`)
+      .get(`/interests/${overviewInterestId}/source-bindings/overview`)
       .set(viewerHeaders)
       .expect(200);
     await request(app.getHttpServer())
-      .get(`/topics/${overviewTopicId}/source-bindings/overview`)
+      .get(`/interests/${overviewInterestId}/source-bindings/overview`)
       .set(otherWorkspaceHeaders)
       .expect(404);
     await request(app.getHttpServer())
-      .get(`/topics/${overviewTopicId}/source-bindings/overview`)
+      .get(`/interests/${overviewInterestId}/source-bindings/overview`)
       .set(otherTenantHeaders)
       .expect(404);
 

@@ -111,7 +111,7 @@ describe("SourceContentQualityPolicy", () => {
     expect(verdict.eligibleForSummary).toBe(true);
     expect(verdict.eligibleForTopRead).toBe(true);
     expect(verdict.qualityScore).toBeGreaterThanOrEqual(0.8);
-    expect(verdict.topicRelevanceScore).toBeGreaterThanOrEqual(0.8);
+    expect(verdict.interestRelevanceScore).toBeGreaterThanOrEqual(0.8);
   });
 
   it("keeps prediction-market political rumors out of X top reads", () => {
@@ -199,7 +199,7 @@ describe("SourceContentQualityPolicy", () => {
       decision: "promote",
       confidence: 0.98,
       qualityScore: 1,
-      topicRelevanceScore: 1,
+      interestRelevanceScore: 1,
       engagementIntegrityScore: 1,
       flags: ["llm_promoted"],
       reason: "Model thought it looked important.",

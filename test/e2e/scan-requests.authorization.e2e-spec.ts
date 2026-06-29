@@ -153,7 +153,7 @@ describe('Manual scan request workspace authorization (e2e)', () => {
 
     expect(viewer.body).toMatchObject({
       sourceBindingId: bindingId,
-      topicId: expect.any(String),
+      interestId: expect.any(String),
       providerKey: 'fake-source',
       sourceBindingStatus: 'enabled',
       windowStartedAt: expect.any(String),
@@ -220,7 +220,7 @@ const createReadyBinding = async (params: {
   readonly workspace: string;
 }): Promise<string> => {
   const topic = await request(params.app.getHttpServer())
-    .post('/topics')
+    .post('/interests')
     .set('x-tenant-id', params.tenant)
     .set('x-workspace-id', params.workspace)
     .set('x-workspace-role', 'owner')
@@ -233,7 +233,7 @@ const createReadyBinding = async (params: {
     .expect(201);
 
   const binding = await request(params.app.getHttpServer())
-    .post(`/topics/${topic.body.topicId}/source-bindings`)
+    .post(`/interests/${topic.body.interestId}/source-bindings`)
     .set('x-tenant-id', params.tenant)
     .set('x-workspace-id', params.workspace)
     .set('x-workspace-role', 'owner')

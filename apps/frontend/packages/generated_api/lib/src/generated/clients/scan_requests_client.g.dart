@@ -64,7 +64,7 @@ class _ScanRequestsClient implements ScanRequestsClient {
     required String sourceBindingId,
     required String xWorkspaceId,
     required String xTenantId,
-    List<Status>? status,
+    List<Status2>? status,
     String? cursor,
     num? limit,
     String? authorization,

@@ -94,7 +94,7 @@ export class MemoStackRelevanceMemoryProjector implements RelevanceMemoryProject
       metadata: {
         feedback_id: snapshot.feedbackId,
         user_id: snapshot.userId,
-        topic_id: snapshot.target.topicId,
+        topic_id: snapshot.target.interestId,
         provider_key: snapshot.target.providerKey,
         action: snapshot.action,
         rating: snapshot.rating,
@@ -139,7 +139,7 @@ const relevanceMemoryText = (projection: RelevanceMemoryProjection): string => {
   const rankingFeedback = rankingFeedbackSignal(projection);
 
   return redactSensitiveText([
-    `User relevance feedback for topic ${snapshot.target.topicId}: ${snapshot.action} produced ${snapshot.learningDirection} learning.`,
+    `User relevance feedback for topic ${snapshot.target.interestId}: ${snapshot.action} produced ${snapshot.learningDirection} learning.`,
     `Guidance: ${guidanceFor(projection)}.`,
     `Ranking quality signal: ${rankingFeedback.kind}. ${rankingFeedback.guidance}.`,
     `Provider ${snapshot.target.providerKey} was involved.`,
@@ -154,10 +154,10 @@ const guidanceFor = (projection: RelevanceMemoryProjection): string => {
     return `avoid ${snapshot.target.providerKey} evidence for this user unless explicitly requested`;
   }
   if (snapshot.learningDirection === 'positive') {
-    return `prefer similar ${snapshot.target.providerKey} evidence and topic signals for this user`;
+    return `prefer similar ${snapshot.target.providerKey} evidence and interest signals for this user`;
   }
 
-  return `down-rank similar ${snapshot.target.providerKey} evidence and weakly related topic signals for this user`;
+  return `down-rank similar ${snapshot.target.providerKey} evidence and weakly related interest signals for this user`;
 };
 
 const rankingFeedbackSignal = (projection: RelevanceMemoryProjection): RankingFeedbackSignal => {
@@ -247,7 +247,7 @@ const relevanceTags = (
     `direction-${snapshot.learningDirection}`,
     `action-${snapshot.action}`,
     `provider-${snapshot.target.providerKey}`,
-    `topic-${snapshot.target.topicId}`,
+    `topic-${snapshot.target.interestId}`,
   ];
 };
 

@@ -69,7 +69,7 @@ class ScheduledReaderSummaryEvidenceSelector implements ReaderSummaryEvidenceSel
           storyKey: "url:example.com/shared-ai-tooling",
           representativeFeedItemId: "feed-shared-ai-tooling",
           duplicateFeedItemIds: [],
-          topicIds: ["topic-ai"],
+          interestIds: ["topic-ai"],
           providerKeys: ["github-repo-radar"],
           score: 2.1,
           observedAtRange: {
@@ -84,7 +84,7 @@ class ScheduledReaderSummaryEvidenceSelector implements ReaderSummaryEvidenceSel
           feedItemId: "feed-shared-ai-tooling",
           sourceItemId: "source-shared-ai-tooling",
           sourceBindingId: "binding-github-repo-radar",
-          topicId: "topic-ai",
+          interestId: "topic-ai",
           providerKey: "github-repo-radar",
           providerName: "GitHub Repo Radar",
           canonicalUrl: "https://example.com/shared-ai-tooling",

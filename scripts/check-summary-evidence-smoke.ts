@@ -25,13 +25,13 @@ class SequenceIdGenerator implements IdGenerator {
 const run = async (): Promise<void> => {
   const tenant = tenantId('tenant-summary-smoke');
   const workspace = workspaceId('workspace-summary-smoke');
-  const topicId = 'topic-summary-smoke';
+  const interestId = 'topic-summary-smoke';
   const feedItems = new InMemoryFeedItemReadRepository();
   feedItems.upsert(FeedItem.publish({
     id: 'feed:summary-smoke:1',
     tenantId: tenant,
     workspaceId: workspace,
-    topicId,
+    interestId,
     sourceItemId: 'rss-binding-smoke:rss-guid-1',
     sourceBindingId: 'rss-binding-smoke',
     providerKey: 'rss',
@@ -45,7 +45,7 @@ const run = async (): Promise<void> => {
     id: 'feed:summary-smoke:2',
     tenantId: tenant,
     workspaceId: workspace,
-    topicId,
+    interestId,
     sourceItemId: 'rss-binding-smoke:rss-guid-2',
     sourceBindingId: 'rss-binding-smoke',
     providerKey: 'rss',
@@ -62,7 +62,7 @@ const run = async (): Promise<void> => {
     id: 'summary-policy-smoke',
     tenantId: tenant,
     workspaceId: workspace,
-    topicId,
+    interestId,
     language: 'en',
     format: 'bullet_digest',
     tone: 'concise',
@@ -77,7 +77,7 @@ const run = async (): Promise<void> => {
     id: 'summary-job-smoke',
     tenantId: tenant,
     workspaceId: workspace,
-    topicId,
+    interestId,
     idempotencyKey: 'summary-smoke-request',
     requestedAt: new Date('2026-06-06T10:02:00.000Z'),
   }));

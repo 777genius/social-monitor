@@ -33,7 +33,7 @@ describe('Bind source flow (e2e)', () => {
     const tenant = tenantId('tenant-source-e2e');
     const workspace = workspaceId('workspace-source-e2e');
     const topic = await request(app.getHttpServer())
-      .post('/topics')
+      .post('/interests')
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'admin')
@@ -46,7 +46,7 @@ describe('Bind source flow (e2e)', () => {
       .expect(201);
 
     const first = await request(app.getHttpServer())
-      .post(`/topics/${topic.body.topicId}/source-bindings`)
+      .post(`/interests/${topic.body.interestId}/source-bindings`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'admin')
@@ -64,7 +64,7 @@ describe('Bind source flow (e2e)', () => {
     });
 
     const second = await request(app.getHttpServer())
-      .post(`/topics/${topic.body.topicId}/source-bindings`)
+      .post(`/interests/${topic.body.interestId}/source-bindings`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'admin')
@@ -82,7 +82,7 @@ describe('Bind source flow (e2e)', () => {
     });
 
     const overview = await request(app.getHttpServer())
-      .get(`/topics/${topic.body.topicId}/source-bindings/overview`)
+      .get(`/interests/${topic.body.interestId}/source-bindings/overview`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'viewer')
@@ -137,7 +137,7 @@ describe('Bind source flow (e2e)', () => {
         resourceId: first.body.sourceBindingId,
         metadata: {
           providerKey: 'fake-source',
-          topicId: topic.body.topicId,
+          interestId: topic.body.interestId,
           created: true,
         },
       }),
@@ -149,7 +149,7 @@ describe('Bind source flow (e2e)', () => {
     const tenant = tenantId('tenant-source-filter-e2e');
     const workspace = workspaceId('workspace-source-filter-e2e');
     const topic = await request(app.getHttpServer())
-      .post('/topics')
+      .post('/interests')
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'admin')
@@ -162,7 +162,7 @@ describe('Bind source flow (e2e)', () => {
       .expect(201);
 
     const fake = await request(app.getHttpServer())
-      .post(`/topics/${topic.body.topicId}/source-bindings`)
+      .post(`/interests/${topic.body.interestId}/source-bindings`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'admin')
@@ -175,7 +175,7 @@ describe('Bind source flow (e2e)', () => {
       .expect(201);
 
     const rss = await request(app.getHttpServer())
-      .post(`/topics/${topic.body.topicId}/source-bindings`)
+      .post(`/interests/${topic.body.interestId}/source-bindings`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'admin')
@@ -188,7 +188,7 @@ describe('Bind source flow (e2e)', () => {
       .expect(201);
 
     await request(app.getHttpServer())
-      .patch(`/topics/${topic.body.topicId}/source-bindings/${rss.body.sourceBindingId}/status`)
+      .patch(`/interests/${topic.body.interestId}/source-bindings/${rss.body.sourceBindingId}/status`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'admin')
@@ -198,7 +198,7 @@ describe('Bind source flow (e2e)', () => {
       .expect(200);
 
     await request(app.getHttpServer())
-      .get(`/topics/${topic.body.topicId}/source-bindings`)
+      .get(`/interests/${topic.body.interestId}/source-bindings`)
       .query({ providerKey: 'rss', status: 'paused' })
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
@@ -217,7 +217,7 @@ describe('Bind source flow (e2e)', () => {
       });
 
     await request(app.getHttpServer())
-      .get(`/topics/${topic.body.topicId}/source-bindings`)
+      .get(`/interests/${topic.body.interestId}/source-bindings`)
       .query({ status: 'enabled' })
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
@@ -233,7 +233,7 @@ describe('Bind source flow (e2e)', () => {
       });
 
     await request(app.getHttpServer())
-      .get(`/topics/${topic.body.topicId}/source-bindings/overview`)
+      .get(`/interests/${topic.body.interestId}/source-bindings/overview`)
       .query({ providerKey: 'rss', status: 'paused' })
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
@@ -266,51 +266,53 @@ describe('Bind source flow (e2e)', () => {
       });
   });
 
-  it('rejects deferred providers before creating bindings or audit success records', async () => {
-    const tenant = tenantId('tenant-source-deferred-e2e');
-    const workspace = workspaceId('workspace-source-deferred-e2e');
+  it('binds canonical X/Twitter as a production-safe source and records audit success', async () => {
+    const tenant = tenantId('tenant-source-x-e2e');
+    const workspace = workspaceId('workspace-source-x-e2e');
     const topic = await request(app.getHttpServer())
-      .post('/topics')
+      .post('/interests')
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'admin')
-      .set('x-request-id', 'request-source-deferred-topic')
-      .set('idempotency-key', 'create-source-deferred-topic')
+      .set('x-request-id', 'request-source-x-interest')
+      .set('idempotency-key', 'create-source-x-interest')
       .send({
-        name: 'Deferred Source Monitoring',
+        name: 'X Source Monitoring',
         query: 'x twitter launch monitoring',
       })
       .expect(201);
 
-    const rejected = await request(app.getHttpServer())
-      .post(`/topics/${topic.body.topicId}/source-bindings`)
+    const bound = await request(app.getHttpServer())
+      .post(`/interests/${topic.body.interestId}/source-bindings`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'admin')
-      .set('x-request-id', 'request-source-bind-deferred')
-      .set('idempotency-key', 'bind-x-twitter-deferred')
+      .set('x-request-id', 'request-source-bind-x')
+      .set('idempotency-key', 'bind-x-twitter')
       .send({
         providerKey: 'x-twitter',
         config: { query: 'x twitter launch monitoring' },
       })
-      .expect(400);
+      .expect(201);
 
-    expect(rejected.body).toMatchObject({
-      code: 'validation.failed',
-      detail: 'Source provider is not available for production-safe MVP scans',
-      details: {
-        providerKey: 'x-twitter',
-      },
+    expect(bound.body).toEqual({
+      sourceBindingId: expect.any(String),
+      created: true,
     });
 
     const bindings = await request(app.getHttpServer())
-      .get(`/topics/${topic.body.topicId}/source-bindings`)
+      .get(`/interests/${topic.body.interestId}/source-bindings`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'viewer')
       .expect(200);
 
-    expect(bindings.body.sourceBindings).toEqual([]);
+    expect(bindings.body.sourceBindings).toEqual([
+      expect.objectContaining({
+        id: bound.body.sourceBindingId,
+        providerKey: 'x-twitter',
+      }),
+    ]);
 
     const auditRecords = await app.get(InMemoryPublicApiAuditLog).list({
       tenantId: tenant,
@@ -318,6 +320,17 @@ describe('Bind source flow (e2e)', () => {
       limit: 10,
     });
 
-    expect(auditRecords.records.filter((record) => record.action === 'source_binding.created')).toEqual([]);
+    expect(auditRecords.records.filter((record) => record.action === 'source_binding.created')).toEqual([
+      expect.objectContaining({
+        action: 'source_binding.created',
+        outcome: 'succeeded',
+        resourceId: bound.body.sourceBindingId,
+        metadata: {
+          providerKey: 'x-twitter',
+          interestId: topic.body.interestId,
+          created: true,
+        },
+      }),
+    ]);
   });
 });

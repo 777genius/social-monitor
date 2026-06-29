@@ -9,6 +9,7 @@
     { "method": "GET", "path": "/healthz", "reason": "liveness alias" },
     { "method": "GET", "path": "/ready", "reason": "readiness" },
     { "method": "GET", "path": "/health/ready", "reason": "readiness alias" },
+    { "method": "GET", "path": "/auth/session", "reason": "session restore from bearer token" },
     { "method": "GET", "path": "/sources/profiles", "reason": "public source capability catalog" },
     { "method": "GET", "path": "/beta/launch-support", "reason": "scoped beta support document" },
     { "method": "GET", "path": "/beta/launch-support/known-limitations", "reason": "scoped beta support document" },
@@ -16,16 +17,19 @@
   ],
   "surfaces": [
     {
-      "surfaceId": "topics",
+      "surfaceId": "interests",
       "evidenceFiles": [
-        "test/e2e/topics.authorization.e2e-spec.ts",
+        "test/e2e/interests.authorization.e2e-spec.ts",
         "test/e2e/user-jwt-auth-boundary.e2e-spec.ts",
         "test/e2e/read-surfaces.api-key-scope.e2e-spec.ts",
         "test/e2e/write-surfaces.api-key-scope.e2e-spec.ts"
       ],
       "operations": [
-        { "method": "GET", "path": "/topics", "action": "topics.read", "apiKeyScope": "read:topics", "roles": ["owner", "admin", "member", "viewer"] },
-        { "method": "POST", "path": "/topics", "action": "topics.create", "apiKeyScope": "write:topics", "roles": ["owner", "admin"] }
+        { "method": "GET", "path": "/interests", "action": "interests.read", "apiKeyScope": "read:interests", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "POST", "path": "/interests", "action": "interests.create", "apiKeyScope": "write:interests", "roles": ["owner", "admin"] },
+        { "method": "PATCH", "path": "/interests/{interestId}", "action": "interests.update", "apiKeyScope": "write:interests", "roles": ["owner", "admin"] },
+        { "method": "DELETE", "path": "/interests/{interestId}", "action": "interests.archive", "apiKeyScope": "write:interests", "roles": ["owner", "admin"] },
+        { "method": "POST", "path": "/interests/{interestId}/coverage-plan", "action": "interests.read", "apiKeyScope": "read:interests", "roles": ["owner", "admin", "member", "viewer"] }
       ]
     },
     {
@@ -37,12 +41,12 @@
         "test/e2e/api-to-ingestion-contract.e2e-spec.ts"
       ],
       "operations": [
-        { "method": "GET", "path": "/topics/{topicId}/source-bindings", "action": "source_bindings.read", "apiKeyScope": "read:topics", "roles": ["owner", "admin", "member", "viewer"] },
-        { "method": "GET", "path": "/topics/{topicId}/source-bindings/daily-history", "action": "source_bindings.read", "apiKeyScope": "read:topics", "roles": ["owner", "admin", "member", "viewer"] },
-        { "method": "GET", "path": "/topics/{topicId}/source-bindings/overview", "action": "source_bindings.read", "apiKeyScope": "read:topics", "roles": ["owner", "admin", "member", "viewer"] },
-        { "method": "POST", "path": "/topics/{topicId}/source-bindings", "action": "source_bindings.create", "apiKeyScope": "write:source_bindings", "roles": ["owner", "admin"] },
-        { "method": "GET", "path": "/topics/{topicId}/source-bindings/{sourceBindingId}/health", "action": "source_bindings.read", "apiKeyScope": "read:topics", "roles": ["owner", "admin", "member", "viewer"] },
-        { "method": "PATCH", "path": "/topics/{topicId}/source-bindings/{sourceBindingId}/status", "action": "source_bindings.update_status", "apiKeyScope": "write:source_bindings", "roles": ["owner", "admin"] }
+        { "method": "GET", "path": "/interests/{interestId}/source-bindings", "action": "source_bindings.read", "apiKeyScope": "read:interests", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "GET", "path": "/interests/{interestId}/source-bindings/daily-history", "action": "source_bindings.read", "apiKeyScope": "read:interests", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "GET", "path": "/interests/{interestId}/source-bindings/overview", "action": "source_bindings.read", "apiKeyScope": "read:interests", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "POST", "path": "/interests/{interestId}/source-bindings", "action": "source_bindings.create", "apiKeyScope": "write:source_bindings", "roles": ["owner", "admin"] },
+        { "method": "GET", "path": "/interests/{interestId}/source-bindings/{sourceBindingId}/health", "action": "source_bindings.read", "apiKeyScope": "read:interests", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "PATCH", "path": "/interests/{interestId}/source-bindings/{sourceBindingId}/status", "action": "source_bindings.update_status", "apiKeyScope": "write:source_bindings", "roles": ["owner", "admin"] }
       ]
     },
     {
@@ -52,7 +56,7 @@
         "scripts/check-source-credential-rest-smoke.ts"
       ],
       "operations": [
-        { "method": "GET", "path": "/source-credentials", "action": "source_credentials.read", "apiKeyScope": "read:topics", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "GET", "path": "/source-credentials", "action": "source_credentials.read", "apiKeyScope": "read:interests", "roles": ["owner", "admin", "member", "viewer"] },
         { "method": "POST", "path": "/source-credentials", "action": "source_credentials.write", "apiKeyScope": "write:source_bindings", "roles": ["owner", "admin"] },
         { "method": "POST", "path": "/source-credentials/{sourceCredentialId}/revoke", "action": "source_credentials.write", "apiKeyScope": "write:source_bindings", "roles": ["owner", "admin"] },
         { "method": "PATCH", "path": "/source-credentials/{sourceCredentialId}/rotate", "action": "source_credentials.write", "apiKeyScope": "write:source_bindings", "roles": ["owner", "admin"] }
@@ -67,11 +71,11 @@
         "test/e2e/scan-dead-letters.authorization.e2e-spec.ts"
       ],
       "operations": [
-        { "method": "GET", "path": "/scan-requests/{scanJobId}/status", "action": "scan_jobs.read", "apiKeyScope": "read:topics", "roles": ["owner", "admin", "member", "viewer"] },
-        { "method": "GET", "path": "/source-bindings/{sourceBindingId}/scan-requests", "action": "scan_jobs.read", "apiKeyScope": "read:topics", "roles": ["owner", "admin", "member", "viewer"] },
-        { "method": "GET", "path": "/source-bindings/{sourceBindingId}/scan-requests/daily", "action": "scan_jobs.read", "apiKeyScope": "read:topics", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "GET", "path": "/scan-requests/{scanJobId}/status", "action": "scan_jobs.read", "apiKeyScope": "read:interests", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "GET", "path": "/source-bindings/{sourceBindingId}/scan-requests", "action": "scan_jobs.read", "apiKeyScope": "read:interests", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "GET", "path": "/source-bindings/{sourceBindingId}/scan-requests/daily", "action": "scan_jobs.read", "apiKeyScope": "read:interests", "roles": ["owner", "admin", "member", "viewer"] },
         { "method": "POST", "path": "/source-bindings/{sourceBindingId}/scan-requests", "action": "scan_requests.create", "apiKeyScope": "write:scan_requests", "roles": ["owner", "admin", "member"] },
-        { "method": "GET", "path": "/source-bindings/{sourceBindingId}/scan-policy", "action": "scan_policies.read", "apiKeyScope": "read:topics", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "GET", "path": "/source-bindings/{sourceBindingId}/scan-policy", "action": "scan_policies.read", "apiKeyScope": "read:interests", "roles": ["owner", "admin", "member", "viewer"] },
         { "method": "POST", "path": "/source-bindings/{sourceBindingId}/scan-policy", "action": "scan_policies.set", "apiKeyScope": "write:source_bindings", "roles": ["owner", "admin"] },
         { "method": "GET", "path": "/ingestion/scan-dead-letters", "action": "scan_dead_letters.read", "authModes": ["bearer-oidc-jwt", "workspace-role-dev-test"], "roles": ["owner", "admin"] }
       ]
@@ -113,9 +117,9 @@
         { "method": "GET", "path": "/summaries/{summaryId}", "action": "summaries.read", "apiKeyScope": "read:summaries", "roles": ["owner", "admin", "member", "viewer"] },
         { "method": "POST", "path": "/summaries/{summaryId}/regenerations", "action": "summary_regenerations.create", "apiKeyScope": "write:summaries", "roles": ["owner", "admin", "member"] },
         { "method": "GET", "path": "/summary-jobs/{summaryJobId}/status", "action": "summary_jobs.read", "apiKeyScope": "read:summaries", "roles": ["owner", "admin", "member", "viewer"] },
-        { "method": "GET", "path": "/topics/{topicId}/summary-policy", "action": "summary_policies.read", "apiKeyScope": "read:summaries", "roles": ["owner", "admin", "member", "viewer"] },
-        { "method": "PUT", "path": "/topics/{topicId}/summary-policy", "action": "summary_policies.set", "apiKeyScope": "write:summaries", "roles": ["owner", "admin"] },
-        { "method": "POST", "path": "/topics/{topicId}/summary-requests", "action": "summary_requests.create", "apiKeyScope": "write:summaries", "roles": ["owner", "admin", "member"] }
+        { "method": "GET", "path": "/interests/{interestId}/summary-policy", "action": "summary_policies.read", "apiKeyScope": "read:summaries", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "PUT", "path": "/interests/{interestId}/summary-policy", "action": "summary_policies.set", "apiKeyScope": "write:summaries", "roles": ["owner", "admin"] },
+        { "method": "POST", "path": "/interests/{interestId}/summary-requests", "action": "summary_requests.create", "apiKeyScope": "write:summaries", "roles": ["owner", "admin", "member"] }
       ]
     },
     {
@@ -129,11 +133,11 @@
         "scripts/check-personalized-relevance-engine-smoke.ts"
       ],
       "operations": [
-        { "method": "GET", "path": "/topics/{topicId}/user-summary-preference", "action": "user_summary_preferences.read", "apiKeyScope": "read:summaries", "roles": ["owner", "admin", "member", "viewer"] },
-        { "method": "PUT", "path": "/topics/{topicId}/user-summary-preference", "action": "user_summary_preferences.set", "apiKeyScope": "write:summaries", "roles": ["owner", "admin", "member"] },
-        { "method": "GET", "path": "/user-subscriptions", "action": "user_subscriptions.read", "apiKeyScope": "read:topics", "roles": ["owner", "admin", "member", "viewer"] },
-        { "method": "POST", "path": "/user-subscriptions", "action": "user_subscriptions.create", "apiKeyScope": "write:topics", "roles": ["owner", "admin", "member"] },
-        { "method": "POST", "path": "/user-subscriptions/activate-source", "action": "user_subscriptions.create", "apiKeyScope": "write:topics", "roles": ["owner", "admin", "member"] },
+        { "method": "GET", "path": "/interests/{interestId}/user-summary-preference", "action": "user_summary_preferences.read", "apiKeyScope": "read:summaries", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "PUT", "path": "/interests/{interestId}/user-summary-preference", "action": "user_summary_preferences.set", "apiKeyScope": "write:summaries", "roles": ["owner", "admin", "member"] },
+        { "method": "GET", "path": "/user-subscriptions", "action": "user_subscriptions.read", "apiKeyScope": "read:interests", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "POST", "path": "/user-subscriptions", "action": "user_subscriptions.create", "apiKeyScope": "write:interests", "roles": ["owner", "admin", "member"] },
+        { "method": "POST", "path": "/user-subscriptions/activate-source", "action": "user_subscriptions.create", "apiKeyScope": "write:interests", "roles": ["owner", "admin", "member"] },
         { "method": "PUT", "path": "/user-subscriptions/{subscriptionId}/summary-preference", "action": "user_summary_preferences.set", "apiKeyScope": "write:summaries", "roles": ["owner", "admin", "member"] },
         { "method": "PUT", "path": "/relevance/users/{userId}/profile", "action": "user_summary_preferences.set", "apiKeyScope": "write:summaries", "roles": ["owner", "admin", "member"] },
         { "method": "POST", "path": "/relevance/users/{userId}/feedback", "action": "user_summary_preferences.set", "apiKeyScope": "write:summaries", "roles": ["owner", "admin", "member"] },
@@ -164,6 +168,9 @@
         { "method": "GET", "path": "/delivery/digests/{digestId}", "action": "digests.read", "apiKeyScope": "read:delivery_status", "roles": ["owner", "admin", "member", "viewer"] },
         { "method": "GET", "path": "/delivery/notification-preferences", "action": "notification_preferences.read", "apiKeyScope": "read:delivery_status", "roles": ["owner", "admin", "member", "viewer"] },
         { "method": "PUT", "path": "/delivery/notification-preferences", "action": "notification_preferences.write", "apiKeyScope": "write:delivery_status", "roles": ["owner", "admin", "member"] },
+        { "method": "GET", "path": "/workspace-settings", "action": "notification_preferences.read", "apiKeyScope": "read:delivery_status", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "PATCH", "path": "/workspace-settings/digest", "action": "notification_preferences.write", "apiKeyScope": "write:delivery_status", "roles": ["owner", "admin", "member"] },
+        { "method": "PATCH", "path": "/workspace-settings/telemetry", "action": "notification_preferences.write", "apiKeyScope": "write:delivery_status", "roles": ["owner", "admin", "member"] },
         { "method": "GET", "path": "/delivery/webhook-endpoints", "action": "webhook_endpoints.read", "apiKeyScope": "read:webhook_endpoints", "roles": ["owner", "admin", "member", "viewer"] },
         { "method": "POST", "path": "/delivery/webhook-endpoints", "action": "webhook_endpoints.create", "apiKeyScope": "write:webhook_endpoints", "roles": ["owner", "admin"] },
         { "method": "GET", "path": "/delivery/webhook-endpoints/{webhookEndpointId}", "action": "webhook_endpoints.read", "apiKeyScope": "read:webhook_endpoints", "roles": ["owner", "admin", "member", "viewer"] },

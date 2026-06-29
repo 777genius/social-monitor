@@ -1,6 +1,9 @@
 import type {
   RedditClientPort,
+  RedditComment,
+  RedditCommentPage,
   RedditListingPage,
+  RedditListPostCommentsRequest,
   RedditListSubredditPostsRequest,
   RedditPost,
   RedditPostListing,
@@ -16,6 +19,8 @@ type RedditApiListingResponse = {
     }[];
   };
 };
+
+type RedditApiThreadResponse = readonly RedditApiListingResponse[];
 
 export class HttpRedditClient implements RedditClientPort {
   constructor(
@@ -45,11 +50,47 @@ export class HttpRedditClient implements RedditClientPort {
     return this.fetchListing(url, request.accessToken, request.userAgent);
   }
 
+  async listPostComments(request: RedditListPostCommentsRequest): Promise<RedditCommentPage> {
+    const path = request.subreddit === undefined
+      ? `/comments/${encodeURIComponent(request.postId)}`
+      : `/r/${encodeURIComponent(request.subreddit)}/comments/${encodeURIComponent(request.postId)}`;
+    const url = this.url(path, {
+      limit: String(request.limit),
+      sort: 'top',
+    });
+    const response = await this.fetchJson<RedditApiThreadResponse>(
+      url,
+      request.accessToken,
+      request.userAgent,
+    );
+    const commentListing = response.value[1];
+
+    return {
+      comments: normalizeCommentChildren(commentListing?.data?.children ?? []),
+      rateLimit: response.rateLimit,
+    };
+  }
+
   private async fetchListing(
     url: URL,
     accessToken: string,
     userAgent: string | undefined,
   ): Promise<RedditListingPage> {
+    const response = await this.fetchJson<RedditApiListingResponse>(url, accessToken, userAgent);
+    const posts = (response.value.data?.children ?? []).flatMap((child) => normalizePost(child.data));
+
+    return {
+      posts,
+      after: response.value.data?.after ?? undefined,
+      rateLimit: response.rateLimit,
+    };
+  }
+
+  private async fetchJson<TValue>(
+    url: URL,
+    accessToken: string,
+    userAgent: string | undefined,
+  ): Promise<{ readonly value: TValue; readonly rateLimit: RedditRateLimitBudget }> {
     const response = await fetch(url, {
       headers: {
         authorization: `Bearer ${accessToken}`,
@@ -63,12 +104,8 @@ export class HttpRedditClient implements RedditClientPort {
       throw new Error(`Reddit API returned ${response.status}`);
     }
 
-    const json = await response.json() as RedditApiListingResponse;
-    const posts = (json.data?.children ?? []).flatMap((child) => normalizePost(child.data));
-
     return {
-      posts,
-      after: json.data?.after ?? undefined,
+      value: await response.json() as TValue,
       rateLimit: readRateLimitBudget(response.headers),
     };
   }
@@ -114,6 +151,61 @@ const normalizePost = (data: Readonly<Record<string, unknown>> | undefined): rea
       upvoteRatio: readNumber(data.upvote_ratio),
     },
   ];
+};
+
+const normalizeCommentChildren = (
+  children: readonly {
+    readonly kind?: string;
+    readonly data?: Readonly<Record<string, unknown>>;
+  }[],
+): readonly RedditComment[] =>
+  children.flatMap((child) => [
+    ...normalizeComment(child.data),
+    ...normalizeCommentChildren(readCommentReplies(child.data)),
+  ]);
+
+const normalizeComment = (data: Readonly<Record<string, unknown>> | undefined): readonly RedditComment[] => {
+  if (data === undefined) {
+    return [];
+  }
+
+  const id = readString(data.id);
+  if (id === undefined) {
+    return [];
+  }
+
+  return [
+    {
+      id,
+      name: readString(data.name),
+      subreddit: readString(data.subreddit),
+      body: readString(data.body),
+      author: readString(data.author),
+      permalink: readString(data.permalink),
+      createdUtc: readNumber(data.created_utc),
+      score: readNumber(data.score),
+      removedByCategory: readString(data.removed_by_category),
+      depth: readNumber(data.depth),
+    },
+  ];
+};
+
+const readCommentReplies = (
+  data: Readonly<Record<string, unknown>> | undefined,
+): readonly {
+  readonly kind?: string;
+  readonly data?: Readonly<Record<string, unknown>>;
+}[] => {
+  if (data === undefined) {
+    return [];
+  }
+  const replies = data.replies;
+  if (typeof replies !== 'object' || replies === null || Array.isArray(replies)) {
+    return [];
+  }
+  const children = (replies as RedditApiListingResponse).data?.children;
+
+  return children ?? [];
 };
 
 const readString = (value: unknown): string | undefined =>

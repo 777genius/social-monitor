@@ -72,7 +72,7 @@ async function main(): Promise<void> {
     const body = {
       recipientKey: 'user-rest-smoke',
       channel: 'in_app',
-      topicIds: ['topic-z', 'topic-a', 'topic-a'],
+      interestIds: ['interest-z', 'interest-a', 'interest-a'],
       intervalSeconds: 1800,
       includeNoSignal: true,
       nextRunAt: '2026-06-06T02:00:00.000Z',
@@ -96,8 +96,8 @@ async function main(): Promise<void> {
     assert(created.body.schedule.tenantId === tenant, 'digest schedule REST create must preserve tenant scope');
     assert(created.body.schedule.workspaceId === workspace, 'digest schedule REST create must preserve workspace scope');
     assert(
-      created.body.schedule.topicIds.join(',') === 'topic-a,topic-z',
-      'digest schedule REST create must normalize topic ids',
+      created.body.schedule.interestIds.join(',') === 'interest-a,interest-z',
+      'digest schedule REST create must normalize interest ids',
     );
 
     const otherTenantCreated = await request(app.getHttpServer())
@@ -216,7 +216,7 @@ async function main(): Promise<void> {
       workspaceId: workspace,
       recipientKey: 'user-rest-smoke',
       channel: 'in_app',
-      topicIds: ['topic-z'],
+      interestIds: ['interest-z'],
       windowStartedAt: new Date('2026-06-06T00:00:00.000Z'),
       windowEndedAt: new Date('2026-06-06T01:00:00.000Z'),
       includeNoSignal: true,

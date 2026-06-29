@@ -35,7 +35,7 @@ export class AssembleDigestUseCase {
       return err(validation);
     }
 
-    const topicIds = uniqueSorted(command.topicIds);
+    const interestIds = uniqueSorted(command.interestIds);
     const windowId = buildWindowId(command.windowStartedAt, command.windowEndedAt);
     const existing = await this.digests.findByWindow({
       tenantId: command.tenantId,
@@ -55,7 +55,7 @@ export class AssembleDigestUseCase {
     const sourceWindow = await this.sources.readWindow({
       tenantId: command.tenantId,
       workspaceId: command.workspaceId,
-      topicIds,
+      interestIds,
       startedAt: command.windowStartedAt,
       endedAt: command.windowEndedAt,
     });
@@ -68,13 +68,13 @@ export class AssembleDigestUseCase {
       ...includedSummaries.map<DigestProvenanceItem>((summary) => ({
         resourceType: 'summary',
         resourceId: summary.summaryId,
-        topicId: summary.topicId,
+        interestId: summary.interestId,
         includedReason: summary.signal === 'high' ? 'high_signal' : 'within_window',
       })),
       ...sourceWindow.feedItems.map<DigestProvenanceItem>((feedItem) => ({
         resourceType: 'feed_item',
         resourceId: feedItem.feedItemId,
-        topicId: feedItem.topicId,
+        interestId: feedItem.interestId,
         includedReason: feedItem.signal === 'high' ? 'high_signal' : 'within_window',
       })),
     ].sort(compareProvenance);
@@ -152,12 +152,12 @@ const validate = (command: AssembleDigestCommand): DomainError | null => {
     return new DomainError('validation.failed', 'Digest recipient key must be non-empty');
   }
 
-  if (command.topicIds.length === 0) {
-    return new DomainError('validation.failed', 'Digest must include at least one topic');
+  if (command.interestIds.length === 0) {
+    return new DomainError('validation.failed', 'Digest must include at least one interest');
   }
 
-  if (command.topicIds.some((topicId) => topicId.trim().length === 0)) {
-    return new DomainError('validation.failed', 'Digest topic ids must be non-empty');
+  if (command.interestIds.some((interestId) => interestId.trim().length === 0)) {
+    return new DomainError('validation.failed', 'Digest interest ids must be non-empty');
   }
 
   if (command.windowEndedAt.getTime() <= command.windowStartedAt.getTime()) {

@@ -5,7 +5,7 @@ import type { SourceBinding, SourceBindingStatus } from '../domain';
 export type ListSourceBindingsQuery = {
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly limit: number;
   readonly cursor?: string;
   readonly providerKeys?: readonly string[];
@@ -19,10 +19,10 @@ export type ListSourceBindingsResult = {
 
 export interface SourceBindingRepositoryPort {
   save(binding: SourceBinding): Promise<void>;
-  findByTopicAndProvider(params: {
+  findByInterestAndProvider(params: {
     tenantId: TenantId;
     workspaceId: WorkspaceId;
-    topicId: string;
+    interestId: string;
     providerKey: string;
   }): Promise<SourceBinding | null>;
   findById(params: {
@@ -30,5 +30,5 @@ export interface SourceBindingRepositoryPort {
     workspaceId: WorkspaceId;
     sourceBindingId: string;
   }): Promise<SourceBinding | null>;
-  listByTopic(query: ListSourceBindingsQuery): Promise<ListSourceBindingsResult>;
+  listByInterest(query: ListSourceBindingsQuery): Promise<ListSourceBindingsResult>;
 }

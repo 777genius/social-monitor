@@ -69,7 +69,7 @@ const main = async (): Promise<void> => {
   const clock = { now: () => new Date() };
   const tenant = tenantId('tenant-github-repo-radar-live-smoke');
   const workspace = workspaceId('workspace-github-repo-radar-live-smoke');
-  const topicId = 'topic-github-repo-radar-live-smoke';
+  const interestId = 'topic-github-repo-radar-live-smoke';
   const sourceBindingId = 'binding-github-repo-radar-live-smoke';
   const scanJobId = 'scan-github-repo-radar-live-smoke';
   const provider = new GitHubRepoRadarSourceProvider(
@@ -133,7 +133,7 @@ const main = async (): Promise<void> => {
     tenantId: tenant,
     workspaceId: workspace,
     scanJobId,
-    topicId,
+    interestId,
     sourceBindingId,
     scanPolicyId: 'policy-github-repo-radar-live-smoke',
     providerKey: GITHUB_REPO_RADAR_PROVIDER_KEY,
@@ -152,7 +152,7 @@ const main = async (): Promise<void> => {
   assert(scanExecutionReporter.succeeded !== undefined, 'GitHub repo radar live e2e must report scan success');
   assert(scanExecutionReporter.failed === undefined, 'GitHub repo radar live e2e must not report scan failure');
 
-  const feed = await feedItems.list({ tenantId: tenant, workspaceId: workspace, topicId, limit: 10 });
+  const feed = await feedItems.list({ tenantId: tenant, workspaceId: workspace, interestId, limit: 10 });
   assert(feed.items.length > 0, 'GitHub repo radar live e2e must expose feed items');
 
   const first = feed.items[0]?.toSnapshot();
@@ -174,7 +174,7 @@ const main = async (): Promise<void> => {
   const evidence = await new FeedSummaryEvidenceSelector(feedItems, clock).select({
     tenantId: tenant,
     workspaceId: workspace,
-    topicId,
+    interestId,
     maxItems: 5,
   });
   const summaryModel = new DeterministicSummaryModelAdapter();
@@ -191,7 +191,7 @@ const main = async (): Promise<void> => {
   const summaryInput: SummaryModelInput = {
     tenantId: tenant,
     workspaceId: workspace,
-    topicId,
+    interestId,
     evidence,
     policy: {
       format: 'executive_brief',

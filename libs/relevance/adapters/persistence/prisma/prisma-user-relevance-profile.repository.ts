@@ -11,7 +11,7 @@ export class PrismaUserRelevanceProfileRepository implements UserRelevanceProfil
   async save(profile: UserRelevanceProfile): Promise<void> {
     const snapshot = profile.toSnapshot();
     const mutation = {
-      topicWeights: snapshot.topicWeights,
+      interestWeights: snapshot.interestWeights,
       sourceWeights: snapshot.sourceWeights,
       keywordWeights: snapshot.keywordWeights,
       mutedKeywords: snapshot.mutedKeywords,

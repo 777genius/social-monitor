@@ -3,6 +3,7 @@ import 'package:modularity_flutter/modularity_flutter.dart';
 
 import '../pages/source_bindings_page.dart';
 import '../pages/source_profiles_page.dart';
+import '../stores/interest_coverage_plan_store.dart';
 import '../stores/scan_policy_store.dart';
 import '../stores/scan_run_store.dart';
 import '../stores/source_bindings_store.dart';
@@ -20,6 +21,7 @@ class SourcesFeatureModuleHost extends StatefulWidget {
 class _SourcesFeatureModuleHostState extends State<SourcesFeatureModuleHost> {
   SourceProfilesStore? _profilesStore;
   SourceBindingsStore? _bindingsStore;
+  InterestCoveragePlanStore? _interestCoveragePlanStore;
   ScanPolicyStore? _scanPolicyStore;
   ScanRunStore? _scanRunStore;
   SourcesFeatureModule? _module;
@@ -38,6 +40,7 @@ class _SourcesFeatureModuleHostState extends State<SourcesFeatureModuleHost> {
     _module = module;
     if (module.showSourceBindings) {
       _bindingsStore = binder.get<SourceBindingsStore>();
+      _interestCoveragePlanStore = binder.get<InterestCoveragePlanStore>();
       _scanPolicyStore = binder.get<ScanPolicyStore>();
       _scanRunStore = binder.get<ScanRunStore>();
       return;
@@ -52,6 +55,7 @@ class _SourcesFeatureModuleHostState extends State<SourcesFeatureModuleHost> {
   void dispose() {
     _profilesStore?.dispose();
     _bindingsStore?.dispose();
+    _interestCoveragePlanStore?.dispose();
     _scanPolicyStore?.dispose();
     _scanRunStore?.dispose();
     super.dispose();
@@ -72,13 +76,18 @@ class _SourcesFeatureModuleHostState extends State<SourcesFeatureModuleHost> {
     }
     if (module.showSourceBindings) {
       final store = _bindingsStore;
+      final interestCoveragePlanStore = _interestCoveragePlanStore;
       final policyStore = _scanPolicyStore;
       final scanRunStore = _scanRunStore;
-      if (store == null || policyStore == null || scanRunStore == null) {
+      if (store == null ||
+          interestCoveragePlanStore == null ||
+          policyStore == null ||
+          scanRunStore == null) {
         return const SizedBox.shrink();
       }
       return SourceBindingsPage(
         store: store,
+        interestCoveragePlanStore: interestCoveragePlanStore,
         policyStore: policyStore,
         scanRunStore: scanRunStore,
       );

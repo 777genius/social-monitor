@@ -75,6 +75,7 @@ describe('HttpHackerNewsClient', () => {
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
     await expect(new HttpHackerNewsClient().searchStories('social monitor', 1)).resolves.toEqual([{
+      kind: 'story',
       id: 48656894,
       title: 'Show HN: Social Monitor',
       url: 'https://example.test/social-monitor',
@@ -83,6 +84,44 @@ describe('HttpHackerNewsClient', () => {
       text: 'Project text',
       score: 64,
       comments: 18,
+    }]);
+  });
+
+  it('maps HN Algolia comment hits into comment items', async () => {
+    const fetchMock = jest.fn(async (url: string, init?: RequestInit) => {
+      expect(url).toBe(
+        'https://hn.algolia.com/api/v1/search_by_date?query=agent+monitoring&tags=comment&hitsPerPage=2',
+      );
+      expect(init?.headers).toEqual(expect.objectContaining({
+        accept: 'application/json',
+        'user-agent': 'social-monitor-mvp/0.1',
+      }));
+
+      return jsonResponse({
+        hits: [
+          {
+            objectID: '48656901',
+            story_id: 48656894,
+            parent_id: 48656894,
+            story_title: 'Show HN: Social Monitor',
+            author: 'carol',
+            created_at_i: 1_782_230_200,
+            comment_text: 'Comment-level signals are more actionable.',
+          },
+        ],
+      });
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    await expect(new HttpHackerNewsClient().searchComments('agent monitoring', 2)).resolves.toEqual([{
+      kind: 'comment',
+      id: 48656901,
+      storyTitle: 'Show HN: Social Monitor',
+      storyId: 48656894,
+      parentId: 48656894,
+      by: 'carol',
+      time: 1_782_230_200,
+      text: 'Comment-level signals are more actionable.',
     }]);
   });
 });

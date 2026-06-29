@@ -5,7 +5,7 @@ import type {
   SummaryCostAttributionModelAggregate,
   SummaryCostAttributionReport,
   SummaryCostAttributionRow,
-  SummaryCostAttributionTopicAggregate,
+  SummaryCostAttributionInterestAggregate,
   SummaryCostAttributionUsage,
 } from './build-summary-cost-attribution.result';
 
@@ -66,7 +66,7 @@ export class BuildSummaryCostAttributionUseCase {
           datasetVersion: fixture.datasetVersion,
           tenantId: String(fixture.input.tenantId),
           workspaceId: String(fixture.input.workspaceId),
-          topicId: fixture.input.topicId,
+          interestId: fixture.input.interestId,
           sourceWindowId: fixture.input.evidence.sourceWindow.windowId,
           provider: route.provider,
           model: route.model,
@@ -117,7 +117,7 @@ export class BuildSummaryCostAttributionUseCase {
       },
       rows,
       aggregates: {
-        byTenantWorkspaceTopic: this.aggregateByTenantWorkspaceTopic(rows),
+        byTenantWorkspaceInterest: this.aggregateByTenantWorkspaceInterest(rows),
         byProviderModel: this.aggregateByProviderModel(rows),
       },
       violations,
@@ -155,11 +155,11 @@ export class BuildSummaryCostAttributionUseCase {
     };
   }
 
-  private aggregateByTenantWorkspaceTopic(rows: readonly SummaryCostAttributionRow[]): SummaryCostAttributionTopicAggregate[] {
+  private aggregateByTenantWorkspaceInterest(rows: readonly SummaryCostAttributionRow[]): SummaryCostAttributionInterestAggregate[] {
     const aggregates = new Map<string, { rows: SummaryCostAttributionRow[]; sample: SummaryCostAttributionRow }>();
 
     for (const row of rows) {
-      const key = `${row.tenantId}\u0000${row.workspaceId}\u0000${row.topicId}`;
+      const key = `${row.tenantId}\u0000${row.workspaceId}\u0000${row.interestId}`;
       const aggregate = aggregates.get(key);
 
       if (aggregate === undefined) {
@@ -172,7 +172,7 @@ export class BuildSummaryCostAttributionUseCase {
     return [...aggregates.values()].map((aggregate) => ({
       tenantId: aggregate.sample.tenantId,
       workspaceId: aggregate.sample.workspaceId,
-      topicId: aggregate.sample.topicId,
+      interestId: aggregate.sample.interestId,
       fixtureCount: aggregate.rows.length,
       usage: this.sumUsage(aggregate.rows.map((row) => row.usage)),
     }));

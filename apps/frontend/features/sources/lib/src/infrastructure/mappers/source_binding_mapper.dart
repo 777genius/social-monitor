@@ -3,8 +3,8 @@ import '../../domain/entities/source_binding_health_snapshot.dart';
 import '../../domain/value_objects/source_binding_health_state.dart';
 import '../../domain/value_objects/source_binding_id.dart';
 import '../../domain/value_objects/source_binding_status.dart';
+import '../../domain/value_objects/source_interest_id.dart';
 import '../../domain/value_objects/source_provider_key.dart';
-import '../../domain/value_objects/source_topic_id.dart';
 import '../api/source_binding_api_dto.dart';
 import '../api/source_binding_health_api_dto.dart';
 
@@ -14,7 +14,7 @@ final class SourceBindingMapper {
   SourceBinding toDomain(SourceBindingApiDto dto) {
     return SourceBinding(
       id: SourceBindingId(dto.id),
-      topicId: SourceTopicId(dto.topicId),
+      interestId: SourceInterestId(dto.interestId),
       providerKey: SourceProviderKey(dto.providerKey),
       capabilityProfileVersion: dto.capabilityProfileVersion,
       status: _status(dto.status),

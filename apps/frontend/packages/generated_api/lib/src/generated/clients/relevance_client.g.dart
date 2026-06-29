@@ -24,7 +24,7 @@ class _RelevanceClient implements RelevanceClient {
     required String userId,
     required String windowEndedAt,
     required String windowStartedAt,
-    required String topicIds,
+    required String interestIds,
     required String xWorkspaceId,
     required String xTenantId,
     num? limit,
@@ -35,7 +35,7 @@ class _RelevanceClient implements RelevanceClient {
     final queryParameters = <String, dynamic>{
       r'windowEndedAt': windowEndedAt,
       r'windowStartedAt': windowStartedAt,
-      r'topicIds': topicIds,
+      r'interestIds': interestIds,
       r'limit': limit,
     };
     queryParameters.removeWhere((k, v) => v == null);
@@ -75,7 +75,7 @@ class _RelevanceClient implements RelevanceClient {
     required String xTenantId,
     String? observedAfter,
     num? limit,
-    String? topicId,
+    String? interestId,
     String? authorization,
     String? xWorkspaceRole,
   }) async {
@@ -83,7 +83,7 @@ class _RelevanceClient implements RelevanceClient {
     final queryParameters = <String, dynamic>{
       r'observedAfter': observedAfter,
       r'limit': limit,
-      r'topicId': topicId,
+      r'interestId': interestId,
     };
     queryParameters.removeWhere((k, v) => v == null);
     final _headers = <String, dynamic>{

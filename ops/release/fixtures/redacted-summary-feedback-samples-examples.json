@@ -53,7 +53,7 @@
       "releaseBlocking": true,
       "summaryEvidence": {
         "summaryId": "summary-redacted-sample-001",
-        "topicId": "topic-redacted-sample-001",
+        "interestId": "topic-redacted-sample-001",
         "citationId": "citation-redacted-sample-001",
         "feedItemId": "feed-item-redacted-sample-001",
         "sourceItemId": "source-item-redacted-sample-001",
@@ -88,7 +88,7 @@
       "releaseBlocking": true,
       "summaryEvidence": {
         "summaryId": "summary-redacted-sample-002",
-        "topicId": "topic-redacted-sample-001",
+        "interestId": "topic-redacted-sample-001",
         "citationId": "citation-redacted-sample-002",
         "feedItemId": "feed-item-redacted-sample-002",
         "sourceItemId": "source-item-redacted-sample-002",
@@ -123,7 +123,7 @@
       "releaseBlocking": true,
       "summaryEvidence": {
         "summaryId": "summary-redacted-sample-003",
-        "topicId": "topic-redacted-sample-001",
+        "interestId": "topic-redacted-sample-001",
         "citationId": "citation-redacted-sample-003",
         "feedItemId": "feed-item-redacted-sample-003",
         "sourceItemId": "source-item-redacted-sample-003",

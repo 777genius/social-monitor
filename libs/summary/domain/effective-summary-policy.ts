@@ -3,22 +3,22 @@ import type { ReaderSummaryGenerationPolicy } from './entities/reader-summary-po
 import type { UserSummaryPreferenceOverlay } from '../ports/user-summary-preference-reader.port';
 
 export const resolveEffectiveSummaryPolicy = (
-  topicPolicy: SummaryGenerationPolicy,
+  interestPolicy: SummaryGenerationPolicy,
   userPreference: UserSummaryPreferenceOverlay | null,
 ): SummaryGenerationPolicy => {
   if (userPreference === null) {
-    return topicPolicy;
+    return interestPolicy;
   }
 
   return {
-    language: userPreference.language ?? topicPolicy.language,
-    format: userPreference.format ?? topicPolicy.format,
-    tone: userPreference.tone ?? topicPolicy.tone,
-    maxKeyPoints: userPreference.maxKeyPoints ?? topicPolicy.maxKeyPoints,
-    includeRisks: userPreference.includeRisks ?? topicPolicy.includeRisks,
-    includeSourceHighlights: userPreference.includeSourceHighlights ?? topicPolicy.includeSourceHighlights,
-    customInstructions: userPreference.customInstructions ?? topicPolicy.customInstructions,
-    rulesVersion: `${topicPolicy.rulesVersion}+${userPreference.rulesVersion}`,
+    language: userPreference.language ?? interestPolicy.language,
+    format: userPreference.format ?? interestPolicy.format,
+    tone: userPreference.tone ?? interestPolicy.tone,
+    maxKeyPoints: userPreference.maxKeyPoints ?? interestPolicy.maxKeyPoints,
+    includeRisks: userPreference.includeRisks ?? interestPolicy.includeRisks,
+    includeSourceHighlights: userPreference.includeSourceHighlights ?? interestPolicy.includeSourceHighlights,
+    customInstructions: userPreference.customInstructions ?? interestPolicy.customInstructions,
+    rulesVersion: `${interestPolicy.rulesVersion}+${userPreference.rulesVersion}`,
   };
 };
 
@@ -36,7 +36,7 @@ export const resolveEffectiveReaderSummaryPolicy = (
     tone: userPreference.tone ?? scopePolicy.tone,
     maxStories: userPreference.maxKeyPoints ?? scopePolicy.maxStories,
     includeRisks: userPreference.includeRisks ?? scopePolicy.includeRisks,
-    includeTopicHighlights: userPreference.includeSourceHighlights ?? scopePolicy.includeTopicHighlights,
+    includeInterestHighlights: userPreference.includeSourceHighlights ?? scopePolicy.includeInterestHighlights,
     includeRepeatedSignals: scopePolicy.includeRepeatedSignals,
     dedupeStrategy: scopePolicy.dedupeStrategy,
     customInstructions: userPreference.customInstructions ?? scopePolicy.customInstructions,

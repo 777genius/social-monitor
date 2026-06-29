@@ -33,7 +33,7 @@ final class GeneratedSummaryRestMapper {
             (story) => SummaryStoryApiDto(
               title: story.title,
               summary: story.summary,
-              topicCount: story.topicIds.length,
+              topicCount: story.interestIds.length,
               providerCount: story.providerKeys.length,
               citationIds: story.citationIds,
             ),
@@ -43,7 +43,7 @@ final class GeneratedSummaryRestMapper {
           .map(
             (signal) => RepeatedSignalApiDto(
               title: signal.title,
-              topicIds: signal.topicIds,
+              interestIds: signal.interestIds,
               citationIds: signal.citationIds,
             ),
           )

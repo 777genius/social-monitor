@@ -295,7 +295,7 @@ const requiredEvidenceShapeBySignalId = new Map([
     "backend-loop-topic-to-delivery-audit",
     [
       ["summary", "non_empty_string"],
-      ["topicId", "non_empty_string"],
+      ["interestId", "non_empty_string"],
       ["sourceBindingId", "non_empty_string"],
       ["scanId", "non_empty_string"],
       ["providerFeedCounts", "non_empty_object_array"],

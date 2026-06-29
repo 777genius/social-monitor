@@ -64,7 +64,7 @@ const assert = (condition: unknown, message: string): void => {
 const run = async (): Promise<void> => {
   const tenant = tenantId('tenant-github-repo-radar-smoke');
   const workspace = workspaceId('workspace-github-repo-radar-smoke');
-  const topicId = 'topic-agent-tooling';
+  const interestId = 'topic-agent-tooling';
   const clock = new FixedClock(new Date('2026-06-23T12:00:00.000Z'));
   const provider = new GitHubRepoRadarSourceProvider(
     new FixtureGitHubRepoRadarClient(),
@@ -101,7 +101,7 @@ const run = async (): Promise<void> => {
     tenantId: tenant,
     workspaceId: workspace,
     scanJobId: 'scan-github-repo-radar-smoke',
-    topicId,
+    interestId,
     sourceBindingId: 'binding-github-repo-radar-smoke',
     scanPolicyId: 'policy-github-repo-radar-smoke',
     providerKey: GITHUB_REPO_RADAR_PROVIDER_KEY,
@@ -120,7 +120,7 @@ const run = async (): Promise<void> => {
   assert(scanExecutionReporter.succeeded !== undefined, 'repo radar scan success report is required');
   assert(scanExecutionReporter.failed === undefined, 'repo radar smoke must not report scan failure');
 
-  const feed = await feedItems.list({ tenantId: tenant, workspaceId: workspace, topicId, limit: 10 });
+  const feed = await feedItems.list({ tenantId: tenant, workspaceId: workspace, interestId, limit: 10 });
   assert(feed.items.length === 1, `expected one repo radar feed item, got ${feed.items.length}`);
 
   const feedSnapshot = feed.items[0]?.toSnapshot();
@@ -139,7 +139,7 @@ const run = async (): Promise<void> => {
   const evidence = await new FeedSummaryEvidenceSelector(feedItems, clock).select({
     tenantId: tenant,
     workspaceId: workspace,
-    topicId,
+    interestId,
     maxItems: 5,
   });
   const summaryModel = new DeterministicSummaryModelAdapter();
@@ -156,7 +156,7 @@ const run = async (): Promise<void> => {
   const summaryInput: SummaryModelInput = {
     tenantId: tenant,
     workspaceId: workspace,
-    topicId,
+    interestId,
     evidence,
     policy: {
       format: 'executive_brief',

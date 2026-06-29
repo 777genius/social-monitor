@@ -19,7 +19,7 @@ export class PrismaDigestScheduleRepository implements DigestScheduleRepositoryP
       workspaceId: snapshot.workspaceId,
       recipientKey: snapshot.recipientKey,
       channel: snapshot.channel,
-      topicIds: snapshot.topicIds,
+      interestIds: snapshot.interestIds,
       intervalSeconds: snapshot.intervalSeconds,
       includeNoSignal: snapshot.includeNoSignal,
       nextRunAt: snapshot.nextRunAt,

@@ -9,7 +9,7 @@ import type {
 export type UserRelevanceProfileView = {
   readonly id: string;
   readonly userId: string;
-  readonly topicWeights: readonly { readonly key: string; readonly weight: number }[];
+  readonly interestWeights: readonly { readonly key: string; readonly weight: number }[];
   readonly sourceWeights: readonly { readonly key: string; readonly weight: number }[];
   readonly keywordWeights: readonly { readonly key: string; readonly weight: number }[];
   readonly mutedKeywords: readonly string[];
@@ -25,7 +25,7 @@ export type RelevanceFeedbackSignalView = {
   readonly rating?: number;
   readonly target: {
     readonly feedItemId?: string;
-    readonly topicId: string;
+    readonly interestId: string;
     readonly providerKey: string;
     readonly feedbackReason?: RelevanceFeedbackReason;
   };
@@ -41,7 +41,7 @@ export type SourceContentSafetyView = {
 
 export type SourceContentQualityView = {
   readonly qualityScore: number;
-  readonly topicRelevanceScore: number;
+  readonly interestRelevanceScore: number;
   readonly engagementIntegrityScore: number;
   readonly eligibleForSummary: boolean;
   readonly eligibleForTopRead: boolean;
@@ -57,7 +57,7 @@ export const presentUserRelevanceProfile = (profile: UserRelevanceProfile): User
   return {
     id: snapshot.id,
     userId: snapshot.userId,
-    topicWeights: snapshot.topicWeights,
+    interestWeights: snapshot.interestWeights,
     sourceWeights: snapshot.sourceWeights,
     keywordWeights: snapshot.keywordWeights,
     mutedKeywords: snapshot.mutedKeywords,
@@ -79,7 +79,7 @@ export const presentRelevanceFeedbackSignal = (
     rating: snapshot.rating,
     target: {
       feedItemId: snapshot.target.feedItemId,
-      topicId: snapshot.target.topicId,
+      interestId: snapshot.target.interestId,
       providerKey: snapshot.target.providerKey,
       feedbackReason: snapshot.target.feedbackReason,
     },
@@ -100,7 +100,7 @@ export const presentSourceContentQuality = (
   quality: SourceContentQualityVerdict,
 ): SourceContentQualityView => ({
   qualityScore: quality.qualityScore,
-  topicRelevanceScore: quality.topicRelevanceScore,
+  interestRelevanceScore: quality.interestRelevanceScore,
   engagementIntegrityScore: quality.engagementIntegrityScore,
   eligibleForSummary: quality.eligibleForSummary,
   eligibleForTopRead: quality.eligibleForTopRead,

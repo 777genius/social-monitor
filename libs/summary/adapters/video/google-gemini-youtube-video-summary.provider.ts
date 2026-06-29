@@ -156,7 +156,7 @@ Return strict JSON only with this shape:
   "confidence": {"score": 0.0, "level": "low|medium|high", "rationale": "short reason"}
 }
 
-Topic id: ${request.topicId}
+Interest id: ${request.interestId}
 Feed title: ${request.title}
 Existing preview: ${request.bodyPreview ?? 'none'}
 Do not invent facts that are not supported by the video.`;

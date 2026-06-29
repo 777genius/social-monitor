@@ -13,7 +13,7 @@ import {
 
 export type RankingCandidate = {
   readonly id: string;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly providerKey: string;
   readonly canonicalUrl: string;
   readonly title: string;
@@ -108,7 +108,7 @@ export class RankingPolicy {
     }
 
     const keywords = extractSignalKeywords(searchText);
-    const topicWeight = profile?.topicWeight(candidate.topicId) ?? 0;
+    const interestWeight = profile?.interestWeight(candidate.interestId) ?? 0;
     const sourceWeight = profile?.sourceWeight(candidate.providerKey) ?? 0;
     const keywordScore = keywords.reduce(
       (total, keyword) => total + (profile?.keywordWeight(keyword) ?? 0),
@@ -131,7 +131,7 @@ export class RankingPolicy {
     const safetyPenalty = safety.status === "sanitized" ? -0.25 : 0;
     const score = roundScore(
       1 +
-        topicWeight * 0.8 +
+        interestWeight * 0.8 +
         sourceWeight * 0.7 +
         keywordScore * 0.35 +
         sourceSignalScore +
@@ -146,7 +146,7 @@ export class RankingPolicy {
       contentQuality,
       score,
       whyImportant: buildWhyImportant({
-        topicWeight,
+        interestWeight,
         sourceWeight,
         keywordMatches: keywords.filter(
           (keyword) => (profile?.keywordWeight(keyword) ?? 0) > 0,
@@ -225,7 +225,7 @@ const belongsToCluster = (
     tokenSimilarity(candidate.titleTokens, clusterHead.titleTokens) >= 0.56);
 
 const buildWhyImportant = (params: {
-  readonly topicWeight: number;
+  readonly interestWeight: number;
   readonly sourceWeight: number;
   readonly keywordMatches: readonly string[];
   readonly sourceSignalScore: number;
@@ -236,8 +236,8 @@ const buildWhyImportant = (params: {
 }): readonly string[] => {
   const reasons = [];
 
-  if (params.topicWeight > 0) {
-    reasons.push("Matches a preferred topic");
+  if (params.interestWeight > 0) {
+    reasons.push("Matches a preferred interest");
   }
 
   if (params.sourceWeight > 0) {
@@ -255,7 +255,7 @@ const buildWhyImportant = (params: {
   }
 
   if (params.contentQuality.eligibleForTopRead) {
-    reasons.push("Passes source quality and topic relevance gate");
+    reasons.push("Passes source quality and interest relevance gate");
   }
 
   if (params.contentQuality.decision === "downrank") {
@@ -340,7 +340,7 @@ const qualityAdjustedSourceSignalScore = (params: {
 }): number =>
   normalizeSourceSignalScore(params.sourceSignalScore) *
   params.contentQuality.qualityScore *
-  params.contentQuality.topicRelevanceScore *
+  params.contentQuality.interestRelevanceScore *
   params.contentQuality.engagementIntegrityScore;
 
 const memoryGuidanceBlocksProvider = (

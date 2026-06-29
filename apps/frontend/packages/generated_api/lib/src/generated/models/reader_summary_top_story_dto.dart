@@ -10,22 +10,22 @@ part 'reader_summary_top_story_dto.g.dart';
 class ReaderSummaryTopStoryDto {
   const ReaderSummaryTopStoryDto({
     required this.citationIds,
+    required this.interestIds,
     required this.providerKeys,
     required this.storyClusterId,
     required this.summary,
     required this.title,
-    required this.topicIds,
   });
 
   factory ReaderSummaryTopStoryDto.fromJson(Map<String, Object?> json) =>
       _$ReaderSummaryTopStoryDtoFromJson(json);
 
   final List<String> citationIds;
+  final List<String> interestIds;
   final List<String> providerKeys;
   final String storyClusterId;
   final String summary;
   final String title;
-  final List<String> topicIds;
 
   Map<String, Object?> toJson() => _$ReaderSummaryTopStoryDtoToJson(this);
 }

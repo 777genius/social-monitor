@@ -39,7 +39,7 @@ class SequenceIdGenerator implements IdGenerator {
 const tenant = tenantId('tenant-personalized-relevance-smoke');
 const workspace = workspaceId('workspace-personalized-relevance-smoke');
 const userId = 'user-personalized-relevance-smoke';
-const topicId = 'topic-ai-platforms';
+const interestId = 'topic-ai-platforms';
 const now = new Date('2026-06-22T10:00:00.000Z');
 const summaryArtifacts = new InMemorySummaryArtifactRepository();
 
@@ -69,7 +69,7 @@ async function main(): Promise<void> {
     tenantId: tenant,
     workspaceId: workspace,
     userId,
-    topicWeights: [{ key: topicId, weight: 1 }],
+    interestWeights: [{ key: interestId, weight: 1 }],
     sourceWeights: [{ key: 'github', weight: 1 }, { key: 'reddit', weight: 0.6 }],
     keywordWeights: [{ key: 'agents', weight: 1 }, { key: 'orchestration', weight: 0.8 }],
     mutedKeywords: ['giveaway'],
@@ -81,7 +81,7 @@ async function main(): Promise<void> {
     tenantId: tenant,
     workspaceId: workspace,
     userId,
-    topicId,
+    interestId,
     limit: 10,
   });
   assert(initialRank.ok, 'initial ranking should pass');
@@ -116,7 +116,7 @@ async function main(): Promise<void> {
     action: 'hide_source',
     target: {
       feedItemId: 'feed-relevance-rss-unsafe',
-      topicId,
+      interestId,
       providerKey: 'rss',
       title: unsafe.title,
       bodyPreview: unsafe.bodyPreview,
@@ -129,7 +129,7 @@ async function main(): Promise<void> {
     tenantId: tenant,
     workspaceId: workspace,
     userId,
-    topicId,
+    interestId,
     limit: 10,
   });
   assert(learnedRank.ok, 'learned ranking should pass');
@@ -139,7 +139,7 @@ async function main(): Promise<void> {
     tenantId: tenant,
     workspaceId: workspace,
     userId,
-    topicIds: [topicId],
+    interestIds: [interestId],
     windowStartedAt: new Date('2026-06-22T00:00:00.000Z'),
     windowEndedAt: new Date('2026-06-23T00:00:00.000Z'),
     limit: 5,
@@ -163,7 +163,7 @@ async function executePersonalizedSummary(
     id: 'summary-policy-personalized-relevance-smoke',
     tenantId: tenant,
     workspaceId: workspace,
-    topicId,
+    interestId,
     language: 'en',
     format: 'bullet_digest',
     tone: 'concise',
@@ -178,7 +178,7 @@ async function executePersonalizedSummary(
     id: 'summary-job-personalized-relevance-smoke',
     tenantId: tenant,
     workspaceId: workspace,
-    topicId,
+    interestId,
     userId,
     idempotencyKey: 'summary-personalized-relevance-smoke',
     requestedAt: now,
@@ -226,7 +226,7 @@ function addFeedItem(
     id,
     tenantId: tenant,
     workspaceId: workspace,
-    topicId,
+    interestId,
     sourceItemId: `${id}:source`,
     sourceBindingId: `${providerKey}:binding`,
     providerKey,

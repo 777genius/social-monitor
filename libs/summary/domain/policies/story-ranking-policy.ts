@@ -23,8 +23,8 @@ export type StoryRankingPolicy = {
   readonly sameProviderSupportCap: number;
   readonly providerDiversityWeight: number;
   readonly providerDiversityCap: number;
-  readonly topicDiversityWeight: number;
-  readonly topicDiversityCap: number;
+  readonly interestDiversityWeight: number;
+  readonly interestDiversityCap: number;
   readonly freshnessBoosts: readonly StoryRankingFreshnessBoost[];
   readonly trustedStoryKeyHintPrefixes: readonly string[];
   readonly titleFingerprintMaxTokens: number;
@@ -42,8 +42,8 @@ export const STORY_RANKING_POLICY_V1 = {
   sameProviderSupportCap: 0.24,
   providerDiversityWeight: 0.25,
   providerDiversityCap: 0.75,
-  topicDiversityWeight: 0.12,
-  topicDiversityCap: 0.36,
+  interestDiversityWeight: 0.12,
+  interestDiversityCap: 0.36,
   freshnessBoosts: [
     { maxAgeHours: 6, boost: 0.18 },
     { maxAgeHours: 24, boost: 0.12 },

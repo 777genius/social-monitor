@@ -8,7 +8,7 @@ import type {
 export type ReserveSummaryJobQuotaCommand = {
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
-  readonly topicId?: string;
+  readonly interestId?: string;
   readonly scopeKey?: string;
   readonly operation:
     | "summary.request"

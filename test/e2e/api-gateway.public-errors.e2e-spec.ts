@@ -23,7 +23,7 @@ describe('API gateway public errors (e2e)', () => {
 
   it('returns redacted problem details for transport validation failures', async () => {
     const response = await request(app.getHttpServer())
-      .post('/topics')
+      .post('/interests')
       .set('x-tenant-id', 'tenant-public-error-e2e')
       .set('x-workspace-id', 'workspace-public-error-e2e')
       .set('x-workspace-role', 'admin')

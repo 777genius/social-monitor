@@ -21,7 +21,7 @@ export type RankedFeedItemView = {
   readonly feedItemId: string;
   readonly sourceItemId: string;
   readonly sourceBindingId: string;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly providerKey: string;
   readonly canonicalUrl: string;
   readonly title: string;

@@ -6,7 +6,7 @@ export type SourceBindingProps = {
   readonly id: string;
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly providerKey: string;
   readonly capabilityProfileVersion: number;
   readonly config: Readonly<Record<string, unknown>>;

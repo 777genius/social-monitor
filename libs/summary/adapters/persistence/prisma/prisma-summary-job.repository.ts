@@ -31,7 +31,7 @@ export class PrismaSummaryJobRepository implements SummaryJobRepositoryPort {
         id: snapshot.id,
         tenantId: snapshot.tenantId,
         workspaceId: snapshot.workspaceId,
-        topicId: snapshot.topicId,
+        interestId: snapshot.interestId,
         userId: snapshot.userId ?? null,
         subscriptionId: snapshot.subscriptionId ?? null,
         status,

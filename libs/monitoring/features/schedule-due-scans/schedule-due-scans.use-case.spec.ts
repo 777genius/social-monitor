@@ -45,7 +45,7 @@ class FakeSourceBindings implements SourceBindingRepositoryPort {
     this.add(binding);
   }
 
-  async findByTopicAndProvider(): Promise<SourceBinding | null> {
+  async findByInterestAndProvider(): Promise<SourceBinding | null> {
     return null;
   }
 
@@ -59,7 +59,7 @@ class FakeSourceBindings implements SourceBindingRepositoryPort {
     );
   }
 
-  async listByTopic(
+  async listByInterest(
     query: ListSourceBindingsQuery,
   ): Promise<ListSourceBindingsResult> {
     return {
@@ -69,7 +69,7 @@ class FakeSourceBindings implements SourceBindingRepositoryPort {
         return (
           snapshot.tenantId === query.tenantId &&
           snapshot.workspaceId === query.workspaceId &&
-          snapshot.topicId === query.topicId
+          snapshot.interestId === query.interestId
         );
       }),
       nextCursor: undefined,
@@ -262,7 +262,7 @@ const makeBinding = (providerKey = 'fake-source') =>
     id: 'binding-1',
     tenantId: tenantId('tenant-1'),
     workspaceId: workspaceId('workspace-1'),
-    topicId: 'topic-1',
+    interestId: 'interest-1',
     providerKey,
     capabilityProfileVersion: 1,
     config: {},
@@ -354,7 +354,7 @@ describe('ScheduleDueScansUseCase', () => {
     expect(queue.commands).toEqual([
       expect.objectContaining({
         scanJobId: 'scan-job-1',
-        topicId: 'topic-1',
+        interestId: 'interest-1',
         sourceBindingId: 'binding-1',
         scanPolicyId: 'policy-1',
         providerKey: 'fake-source',
@@ -603,7 +603,7 @@ describe('ScheduleDueScansUseCase', () => {
         id: 'repo-radar-binding-1',
         tenantId: tenantId('tenant-1'),
         workspaceId: workspaceId('workspace-1'),
-        topicId: 'topic-repo-radar',
+        interestId: 'interest-repo-radar',
         providerKey: 'github-repo-radar',
         capabilityProfileVersion: 1,
         config: {
@@ -657,7 +657,7 @@ describe('ScheduleDueScansUseCase', () => {
     });
     expect(queue.commands).toEqual([
       expect.objectContaining({
-        topicId: 'topic-repo-radar',
+        interestId: 'interest-repo-radar',
         sourceBindingId: 'repo-radar-binding-1',
         scanPolicyId: 'repo-radar-daily-policy',
         providerKey: 'github-repo-radar',
@@ -687,7 +687,7 @@ describe('ScheduleDueScansUseCase', () => {
         id: 'repo-radar-binding-1',
         tenantId: tenantId('tenant-1'),
         workspaceId: workspaceId('workspace-1'),
-        topicId: 'topic-repo-radar',
+        interestId: 'interest-repo-radar',
         providerKey: 'github-repo-radar',
         capabilityProfileVersion: 1,
         config: {
@@ -1838,7 +1838,7 @@ describe('ScheduleDueScansUseCase', () => {
         id: 'binding-global-a',
         tenantId: firstTenant,
         workspaceId: firstWorkspace,
-        topicId: 'topic-global-a',
+        interestId: 'interest-global-a',
         providerKey: 'rss',
         capabilityProfileVersion: 1,
         config: { feedUrl: 'https://example.test/a.xml' },
@@ -1850,7 +1850,7 @@ describe('ScheduleDueScansUseCase', () => {
         id: 'binding-global-b',
         tenantId: secondTenant,
         workspaceId: secondWorkspace,
-        topicId: 'topic-global-b',
+        interestId: 'interest-global-b',
         providerKey: 'reddit',
         capabilityProfileVersion: 1,
         config: { subreddit: 'programming', listing: 'hot' },

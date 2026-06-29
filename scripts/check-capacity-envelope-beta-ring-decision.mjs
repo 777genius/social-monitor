@@ -461,14 +461,14 @@ function requireWiring() {
 function requireRuntimeCapacityEnforcement() {
   const monitoringModulePath =
     "libs/monitoring/interfaces/rest/monitoring-rest.module.ts";
-  const createTopicPath =
-    "libs/monitoring/features/create-topic/create-topic.use-case.ts";
+  const createInterestPath =
+    "libs/monitoring/features/create-interest/create-interest.use-case.ts";
   const bindSourcePath =
     "libs/monitoring/features/bind-source/bind-source.use-case.ts";
   const capacityLimitsPath =
     "libs/monitoring/features/shared/monitoring-capacity-limits.ts";
   const monitoringModule = readFileSync(monitoringModulePath, "utf8");
-  const createTopic = readFileSync(createTopicPath, "utf8");
+  const createInterest = readFileSync(createInterestPath, "utf8");
   const bindSource = readFileSync(bindSourcePath, "utf8");
   const capacityLimits = readFileSync(capacityLimitsPath, "utf8");
   const envExample = readFileSync(
@@ -513,9 +513,9 @@ function requireRuntimeCapacityEnforcement() {
     "operation.quota_exceeded",
     "Workspace topic capacity limit reached",
   ]) {
-    if (!createTopic.includes(marker)) {
+    if (!createInterest.includes(marker)) {
       violations.push(
-        `${createTopicPath}: topic capacity enforcement missing "${marker}"`,
+        `${createInterestPath}: topic capacity enforcement missing "${marker}"`,
       );
     }
   }

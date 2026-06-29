@@ -66,7 +66,7 @@ async function verifyInMemoryDrainLoop(): Promise<void> {
     id: summaryJobId,
     tenantId: tenant,
     workspaceId: workspace,
-    topicId: 'topic-summary-queue-drain-loop-smoke',
+    interestId: 'topic-summary-queue-drain-loop-smoke',
     idempotencyKey: 'summary-queue-drain-loop-smoke:topic-summary-queue-drain-loop-smoke',
     requestedAt: new Date('2026-06-16T01:00:00.000Z'),
   }));

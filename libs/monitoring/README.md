@@ -1,12 +1,12 @@
 # Monitoring Context
 
-Owns topics, source bindings, source credentials, scan policy and scan request
+Owns interests, source bindings, source credentials, scan policy and scan request
 coordination.
 
 ## Ubiquitous Language
 
-- `Topic`: monitored intent/rule group.
-- `SourceBinding`: workspace/topic connection to a provider source.
+- `Interest`: monitored intent/rule group.
+- `SourceBinding`: workspace/interest connection to a provider source.
 - `ScanPolicy`: cadence, quota and scheduling policy for scans.
 - `ScanExecution`: monitoring-side record of requested/completed scan work.
 

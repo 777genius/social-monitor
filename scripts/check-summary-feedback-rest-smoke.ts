@@ -199,7 +199,7 @@ const createSummary = (params: {
     summaryId: params.summaryId,
     tenantId: params.tenantId,
     workspaceId: params.workspaceId,
-    topicId: 'topic-summary-feedback-rest-smoke',
+    interestId: 'topic-summary-feedback-rest-smoke',
     sourceWindow: {
       windowId: `${params.summaryId}-window`,
       startedAt: new Date('2026-06-06T09:00:00.000Z'),
@@ -251,7 +251,7 @@ const createFeedback = (params: {
     tenantId: params.tenantId,
     workspaceId: params.workspaceId,
     summaryId: params.summaryId,
-    topicId: 'topic-summary-feedback-rest-smoke',
+    interestId: 'topic-summary-feedback-rest-smoke',
     idempotencyKey: `${params.id}-idempotency`,
     submittedBy: 'actor-summary-feedback-rest-smoke',
     rating: 2,
@@ -259,7 +259,7 @@ const createFeedback = (params: {
     comment: 'The cited item does not support this exact claim.',
     evidence: {
       summaryId: params.summaryId,
-      topicId: 'topic-summary-feedback-rest-smoke',
+      interestId: 'topic-summary-feedback-rest-smoke',
       citationId: 'c1',
       feedItemId: 'feed-item-summary-feedback-rest',
       sourceItemId: 'source-item-summary-feedback-rest',

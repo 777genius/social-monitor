@@ -60,7 +60,7 @@ export interface SummaryEvidenceSelectorPort {
   select(params: {
     tenantId: TenantId;
     workspaceId: WorkspaceId;
-    topicId: string;
+    interestId: string;
     userId?: string;
     subscriptionId?: string;
     maxItems: number;

@@ -277,7 +277,7 @@ export class ListSourceBindingDailyScanHistoryResponseDto implements ListSourceB
   declare readonly sourceBindingId: string;
 
   @ApiProperty()
-  declare readonly topicId: string;
+  declare readonly interestId: string;
 
   @ApiProperty()
   declare readonly providerKey: string;

@@ -7,7 +7,7 @@ export type YoutubeVideoSummaryProviderName = 'disabled' | 'deterministic-local'
 export type YoutubeVideoSummaryRequest = {
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly feedItemId: string;
   readonly sourceItemId: string;
   readonly sourceBindingId: string;

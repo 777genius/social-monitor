@@ -182,7 +182,7 @@ const run = async (): Promise<void> => {
         tenantId: tenant,
         workspaceId: workspace,
         scanJobId: 'scan-github-smoke-1',
-        topicId: 'topic-github-smoke',
+        interestId: 'topic-github-smoke',
         sourceBindingId: 'github-binding-smoke',
         scanPolicyId: 'github-policy-smoke',
         providerKey: LEGACY_GITHUB_ISSUES_PROVIDER_KEY,
@@ -207,7 +207,7 @@ const run = async (): Promise<void> => {
         tenantId: tenant,
         workspaceId: workspace,
         scanJobId: 'scan-github-smoke-2',
-        topicId: 'topic-github-smoke',
+        interestId: 'topic-github-smoke',
         sourceBindingId: 'github-binding-smoke',
         scanPolicyId: 'github-policy-smoke',
         providerKey: LEGACY_GITHUB_ISSUES_PROVIDER_KEY,
@@ -218,7 +218,7 @@ const run = async (): Promise<void> => {
     const feedResult = await feedItems.list({
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: 'topic-github-smoke',
+      interestId: 'topic-github-smoke',
       limit: 10,
     });
     const titles = feedResult.items.map((item) => item.toSnapshot().title).sort();
@@ -267,13 +267,13 @@ const proveScheduledGitHubCollection = async ({
   const scanLeases = new InMemoryScanLeaseAdapter();
   const bindingId = 'github-binding-scheduled-smoke';
   const policyId = 'github-policy-scheduled-smoke';
-  const topicId = 'topic-github-scheduled-smoke';
+  const interestId = 'topic-github-scheduled-smoke';
 
   await bindings.save(SourceBinding.create({
     id: bindingId,
     tenantId: tenant,
     workspaceId: workspace,
-    topicId,
+    interestId,
     providerKey: LEGACY_GITHUB_ISSUES_PROVIDER_KEY,
     capabilityProfileVersion: 1,
     config: {
@@ -371,7 +371,7 @@ const proveScheduledGitHubCollection = async ({
   const feed = await feedItems.list({
     tenantId: tenant,
     workspaceId: workspace,
-    topicId,
+    interestId,
     limit: 10,
   });
   const titles = feed.items.map((item) => item.toSnapshot().title).sort();
@@ -533,7 +533,7 @@ const runScheduledGitHubTick = async ({
   const feed = await feedItems.list({
     tenantId: tenant,
     workspaceId: workspace,
-    topicId: 'topic-github-scheduled-smoke',
+    interestId: 'topic-github-scheduled-smoke',
     limit: 10,
   });
   assert(feed.items.length === expectedFeedCount, `${signal}: expected ${expectedFeedCount} GitHub feed items, got ${feed.items.length}`);

@@ -16,7 +16,7 @@ export class SourceBindingResponseDto implements SourceBindingView {
   declare readonly workspaceId: SourceBindingView['workspaceId'];
 
   @ApiProperty()
-  declare readonly topicId: string;
+  declare readonly interestId: string;
 
   @ApiProperty()
   declare readonly providerKey: string;

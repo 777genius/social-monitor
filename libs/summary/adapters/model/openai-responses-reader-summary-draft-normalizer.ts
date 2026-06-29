@@ -5,7 +5,7 @@ import type {
   ReaderSummaryQualityFlag,
   ReaderSummaryRepeatedSignal,
   ReaderSummaryRisk,
-  ReaderSummaryTopicHighlight,
+  ReaderSummaryInterestHighlight,
 } from "../../domain";
 import { buildReaderSummary } from "../../domain";
 import type { ReaderSummaryModelInput, ReaderSummaryModelRoute } from "../../ports";
@@ -73,11 +73,11 @@ export const normalizeOpenAiReaderSummaryDraft = (
     input,
     citationMap,
   );
-  const topicHighlights = input.policy.includeTopicHighlights
-    ? normalizeTopicHighlights(
+  const interestHighlights = input.policy.includeInterestHighlights
+    ? normalizeInterestHighlights(
         requiredArray<Record<string, unknown>>(
-          raw.topicHighlights,
-          "reader summary topic highlights",
+          raw.interestHighlights,
+          "reader summary interest highlights",
         ),
         citationMap,
       )
@@ -123,7 +123,7 @@ export const normalizeOpenAiReaderSummaryDraft = (
     headline,
     executiveSummary,
     topStories: normalizedTopStories,
-    topicHighlights,
+    interestHighlights,
     repeatedSignals,
     risksAndUnknowns,
     citationMap,
@@ -137,7 +137,7 @@ export const normalizeOpenAiReaderSummaryDraft = (
     executiveSummary,
     content,
     topStories: normalizedTopStories,
-    topicHighlights,
+    interestHighlights,
     repeatedSignals,
     risksAndUnknowns,
     citationMap,
@@ -194,26 +194,26 @@ export const assertOpenAiReaderSummaryDraftShape = (
   }
 };
 
-const normalizeTopicHighlight = (value: Record<string, unknown>): ReaderSummaryTopicHighlight => ({
-  topicId: requiredString(value.topicId, "topic highlight topic id"),
-  title: requiredString(value.title, "topic highlight title"),
-  summary: requiredString(value.summary, "topic highlight summary"),
+const normalizeInterestHighlight = (value: Record<string, unknown>): ReaderSummaryInterestHighlight => ({
+  interestId: requiredString(value.interestId, "interest highlight interest id"),
+  title: requiredString(value.title, "interest highlight title"),
+  summary: requiredString(value.summary, "interest highlight summary"),
   citationIds: requiredStringArray(
     value.citationIds,
-    "topic highlight citations",
+    "interest highlight citations",
   ),
 });
 
-const normalizeTopicHighlights = (
+const normalizeInterestHighlights = (
   values: readonly Record<string, unknown>[],
   citationMap: readonly ReaderSummaryCitation[],
-): readonly ReaderSummaryTopicHighlight[] => {
+): readonly ReaderSummaryInterestHighlight[] => {
   const knownCitationIds = new Set(
     citationMap.map((citation) => citation.citationId),
   );
 
   return values
-    .map(normalizeTopicHighlight)
+    .map(normalizeInterestHighlight)
     .map((highlight) => ({
       ...highlight,
       citationIds: knownStringSubset(highlight.citationIds, knownCitationIds),
@@ -227,7 +227,7 @@ const normalizeRepeatedSignal = (value: Record<string, unknown>): ReaderSummaryR
     "repeated signal cluster id",
   ),
   title: requiredString(value.title, "repeated signal title"),
-  topicIds: requiredStringArray(value.topicIds, "repeated signal topics"),
+  interestIds: requiredStringArray(value.interestIds, "repeated signal interests"),
   citationIds: requiredStringArray(
     value.citationIds,
     "repeated signal citations",
@@ -258,8 +258,8 @@ const normalizeRepeatedSignals = (
       }
 
       const citationIds = knownStringSubset(signal.citationIds, knownCitationIds);
-      const topicIds = uniqueNonEmptyStrings(signal.topicIds);
-      if (citationIds.length === 0 || topicIds.length < 2) {
+      const interestIds = uniqueNonEmptyStrings(signal.interestIds);
+      if (citationIds.length === 0 || interestIds.length < 2) {
         return [];
       }
 
@@ -267,7 +267,7 @@ const normalizeRepeatedSignals = (
         {
           ...signal,
           storyClusterId,
-          topicIds,
+          interestIds,
           citationIds,
         },
       ];

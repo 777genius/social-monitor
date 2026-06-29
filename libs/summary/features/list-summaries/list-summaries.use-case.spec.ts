@@ -26,7 +26,7 @@ class FakeSummaryArtifacts implements SummaryArtifactRepositoryPort {
         return (
           snapshot.tenantId === query.tenantId &&
           snapshot.workspaceId === query.workspaceId &&
-          (query.topicId === undefined || snapshot.topicId === query.topicId)
+          (query.interestId === undefined || snapshot.interestId === query.interestId)
         );
       }),
       nextCursor: undefined,
@@ -48,16 +48,16 @@ class FakeFreshness implements SummaryFreshnessPort {
 }
 
 describe('ListSummariesUseCase', () => {
-  it('lists summaries in tenant/workspace scope and supports topic filter', async () => {
+  it('lists summaries in tenant/workspace scope and supports interest filter', async () => {
     const repository = new FakeSummaryArtifacts();
     const tenant = tenantId('tenant-1');
     const workspace = workspaceId('workspace-1');
-    await repository.save(createSummary({ summaryId: 'summary-1', topicId: 'topic-1', tenantId: tenant, workspaceId: workspace }));
-    await repository.save(createSummary({ summaryId: 'summary-2', topicId: 'topic-2', tenantId: tenant, workspaceId: workspace }));
+    await repository.save(createSummary({ summaryId: 'summary-1', interestId: 'interest-1', tenantId: tenant, workspaceId: workspace }));
+    await repository.save(createSummary({ summaryId: 'summary-2', interestId: 'interest-2', tenantId: tenant, workspaceId: workspace }));
     await repository.save(
       createSummary({
         summaryId: 'summary-other-tenant',
-        topicId: 'topic-1',
+        interestId: 'interest-1',
         tenantId: tenantId('tenant-2'),
         workspaceId: workspace,
       }),
@@ -67,7 +67,7 @@ describe('ListSummariesUseCase', () => {
     const result = await useCase.execute({
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       limit: 20,
     });
 
@@ -77,7 +77,7 @@ describe('ListSummariesUseCase', () => {
         items: [
           expect.objectContaining({
             summaryId: 'summary-1',
-            topicId: 'topic-1',
+            interestId: 'interest-1',
             freshness: {
               status: 'fresh',
               checkedAt: '2026-06-06T00:02:00.000Z',
@@ -92,7 +92,7 @@ describe('ListSummariesUseCase', () => {
 
 const createSummary = (params: {
   readonly summaryId: string;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
 }): SummaryArtifact =>
@@ -101,7 +101,7 @@ const createSummary = (params: {
     summaryId: params.summaryId,
     tenantId: params.tenantId,
     workspaceId: params.workspaceId,
-    topicId: params.topicId,
+    interestId: params.interestId,
     sourceWindow: {
       windowId: `${params.summaryId}-window`,
       startedAt: new Date('2026-06-06T00:00:00.000Z'),
@@ -118,7 +118,7 @@ const createSummary = (params: {
     confidence: {
       level: 'none',
       score: 0,
-      rationale: 'No evidence was selected for this topic window.',
+      rationale: 'No evidence was selected for this interest window.',
     },
     lineage: {
       promptVersion: 'summary.prompt.test.v1',
@@ -133,5 +133,5 @@ const createSummary = (params: {
       outputTokens: 0,
       estimatedCostUsd: 0,
     },
-    noSignalReason: 'No eligible evidence items selected for this topic.',
+    noSignalReason: 'No eligible evidence items selected for this interest.',
   });

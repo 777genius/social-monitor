@@ -10,9 +10,12 @@ ReaderSummaryScopeDto _$ReaderSummaryScopeDtoFromJson(
   Map<String, dynamic> json,
 ) => ReaderSummaryScopeDto(
   type: ReaderSummaryScopeDtoTypeType.fromJson(json['type'] as String),
-  topicId: json['topicId'] as String?,
+  interestId: json['interestId'] as String?,
 );
 
 Map<String, dynamic> _$ReaderSummaryScopeDtoToJson(
   ReaderSummaryScopeDto instance,
-) => <String, dynamic>{'topicId': instance.topicId, 'type': instance.type};
+) => <String, dynamic>{
+  'interestId': instance.interestId,
+  'type': instance.type,
+};

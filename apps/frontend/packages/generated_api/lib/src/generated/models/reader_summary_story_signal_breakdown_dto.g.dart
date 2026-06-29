@@ -12,9 +12,9 @@ _$ReaderSummaryStorySignalBreakdownDtoFromJson(Map<String, dynamic> json) =>
       baseScore: json['baseScore'] as num,
       crossProviderSupport: json['crossProviderSupport'] as num,
       freshnessBoost: json['freshnessBoost'] as num,
+      interestDiversityBoost: json['interestDiversityBoost'] as num,
       providerDiversityBoost: json['providerDiversityBoost'] as num,
       sameProviderSupport: json['sameProviderSupport'] as num,
-      topicDiversityBoost: json['topicDiversityBoost'] as num,
       totalScore: json['totalScore'] as num,
     );
 
@@ -24,8 +24,8 @@ Map<String, dynamic> _$ReaderSummaryStorySignalBreakdownDtoToJson(
   'baseScore': instance.baseScore,
   'crossProviderSupport': instance.crossProviderSupport,
   'freshnessBoost': instance.freshnessBoost,
+  'interestDiversityBoost': instance.interestDiversityBoost,
   'providerDiversityBoost': instance.providerDiversityBoost,
   'sameProviderSupport': instance.sameProviderSupport,
-  'topicDiversityBoost': instance.topicDiversityBoost,
   'totalScore': instance.totalScore,
 };

@@ -11,7 +11,7 @@ const makeItem = (params: {
   readonly id: string;
   readonly sourceItemId: string;
   readonly tenant?: string;
-  readonly topicId?: string;
+  readonly interestId?: string;
   readonly providerKey?: string;
   readonly providerMetadata?: JsonObject;
   readonly canonicalUrl: string;
@@ -22,7 +22,7 @@ const makeItem = (params: {
     id: params.id,
     tenantId: tenantId(params.tenant ?? "tenant-1"),
     workspaceId: workspaceId("workspace-1"),
-    topicId: params.topicId ?? "topic-1",
+    interestId: params.interestId ?? "topic-1",
     sourceItemId: params.sourceItemId,
     sourceBindingId: "binding-1",
     providerKey: params.providerKey ?? "rss",
@@ -98,7 +98,7 @@ describe("InMemoryFeedItemReadRepository", () => {
       makeItem({
         id: "topic-1-feed-1",
         sourceItemId: "topic-1-source-1",
-        topicId: "topic-1",
+        interestId: "topic-1",
         canonicalUrl: "https://example.test/story?utm_source=email&a=1",
       }),
     );
@@ -106,7 +106,7 @@ describe("InMemoryFeedItemReadRepository", () => {
       makeItem({
         id: "topic-1-feed-2",
         sourceItemId: "topic-1-source-2",
-        topicId: "topic-1",
+        interestId: "topic-1",
         canonicalUrl: "https://example.test/story?a=1",
       }),
     );
@@ -114,7 +114,7 @@ describe("InMemoryFeedItemReadRepository", () => {
       makeItem({
         id: "topic-2-feed-1",
         sourceItemId: "topic-2-source-1",
-        topicId: "topic-2",
+        interestId: "topic-2",
         canonicalUrl: "https://example.test/story?a=1",
       }),
     );
@@ -123,7 +123,7 @@ describe("InMemoryFeedItemReadRepository", () => {
       repository.list({
         tenantId: tenantId("tenant-1"),
         workspaceId: workspaceId("workspace-1"),
-        topicId: "topic-1",
+        interestId: "topic-1",
         limit: 10,
       }),
     ).resolves.toEqual({
@@ -138,7 +138,7 @@ describe("InMemoryFeedItemReadRepository", () => {
       repository.list({
         tenantId: tenantId("tenant-1"),
         workspaceId: workspaceId("workspace-1"),
-        topicId: "topic-2",
+        interestId: "topic-2",
         limit: 10,
       }),
     ).resolves.toEqual({
@@ -187,7 +187,7 @@ describe("InMemoryFeedItemReadRepository", () => {
     const result = await repository.list({
       tenantId: tenantId("tenant-1"),
       workspaceId: workspaceId("workspace-1"),
-      topicId: "topic-1",
+      interestId: "topic-1",
       limit: 10,
     });
 
@@ -363,7 +363,7 @@ describe("InMemoryFeedItemReadRepository", () => {
       makeItem({
         id: "feed-reddit",
         sourceItemId: "source-reddit",
-        topicId: "topic-1",
+        interestId: "topic-1",
         providerKey: "reddit",
         canonicalUrl: "https://reddit.com/r/startups/comments/demo",
         providerMetadata: {
@@ -378,7 +378,7 @@ describe("InMemoryFeedItemReadRepository", () => {
       makeItem({
         id: "feed-other-topic",
         sourceItemId: "source-other-topic",
-        topicId: "topic-2",
+        interestId: "topic-2",
         providerKey: "reddit",
         canonicalUrl: "https://reddit.com/r/startups/comments/other",
         providerMetadata: {
@@ -392,7 +392,7 @@ describe("InMemoryFeedItemReadRepository", () => {
       makeItem({
         id: "feed-rss",
         sourceItemId: "source-rss",
-        topicId: "topic-1",
+        interestId: "topic-1",
         providerKey: "rss",
         canonicalUrl: "https://example.test/rss",
       }),
@@ -401,7 +401,7 @@ describe("InMemoryFeedItemReadRepository", () => {
     const samples = await repository.listSamples({
       tenantId: tenantId("tenant-1"),
       workspaceId: workspaceId("workspace-1"),
-      topicId: "topic-1",
+      interestId: "topic-1",
       observedAfter: new Date("2026-06-04T00:00:00.000Z"),
       limit: 10,
     });
@@ -409,7 +409,7 @@ describe("InMemoryFeedItemReadRepository", () => {
     expect(samples).toEqual([
       {
         feedItemId: "feed-reddit",
-        topicId: "topic-1",
+        interestId: "topic-1",
         providerKey: "reddit",
         sourceKey: "r/startups",
         contentType: "post",
@@ -426,7 +426,7 @@ describe("InMemoryFeedItemReadRepository", () => {
       makeItem({
         id: "feed-startups-old-published",
         sourceItemId: "source-startups-old-published",
-        topicId: "topic-1",
+        interestId: "topic-1",
         providerKey: "reddit",
         canonicalUrl: "https://reddit.com/r/startups/comments/old-published",
         publishedAt: new Date("2026-06-01T00:00:00.000Z"),
@@ -442,7 +442,7 @@ describe("InMemoryFeedItemReadRepository", () => {
       makeItem({
         id: "feed-startups-newer-published",
         sourceItemId: "source-startups-newer-published",
-        topicId: "topic-1",
+        interestId: "topic-1",
         providerKey: "reddit",
         canonicalUrl: "https://reddit.com/r/startups/comments/newer-published",
         publishedAt: new Date("2026-06-05T00:00:00.000Z"),
@@ -458,7 +458,7 @@ describe("InMemoryFeedItemReadRepository", () => {
       makeItem({
         id: "feed-programming",
         sourceItemId: "source-programming",
-        topicId: "topic-1",
+        interestId: "topic-1",
         providerKey: "reddit",
         canonicalUrl: "https://reddit.com/r/programming/comments/demo",
         observedAt: new Date("2026-06-05T00:04:00.000Z"),
@@ -473,7 +473,7 @@ describe("InMemoryFeedItemReadRepository", () => {
     const samples = await repository.listSamples({
       tenantId: tenantId("tenant-1"),
       workspaceId: workspaceId("workspace-1"),
-      topicId: "topic-1",
+      interestId: "topic-1",
       observedAfter: new Date("2026-06-04T00:00:00.000Z"),
       limit: 10,
       cohortFilters: [

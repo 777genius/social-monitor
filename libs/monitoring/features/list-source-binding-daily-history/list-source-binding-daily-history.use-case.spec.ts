@@ -27,7 +27,7 @@ class FakeSourceBindings implements SourceBindingRepositoryPort {
     this.bindings.set(`${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.id}`, binding);
   }
 
-  async findByTopicAndProvider(): Promise<SourceBinding | null> {
+  async findByInterestAndProvider(): Promise<SourceBinding | null> {
     return null;
   }
 
@@ -35,7 +35,7 @@ class FakeSourceBindings implements SourceBindingRepositoryPort {
     return this.bindings.get(`${params.tenantId}:${params.workspaceId}:${params.sourceBindingId}`) ?? null;
   }
 
-  async listByTopic(query: ListSourceBindingsQuery): Promise<ListSourceBindingsResult> {
+  async listByInterest(query: ListSourceBindingsQuery): Promise<ListSourceBindingsResult> {
     return {
       sourceBindings: [...this.bindings.values()].filter((binding) => {
         const snapshot = binding.toSnapshot();
@@ -43,7 +43,7 @@ class FakeSourceBindings implements SourceBindingRepositoryPort {
         return (
           snapshot.tenantId === query.tenantId &&
           snapshot.workspaceId === query.workspaceId &&
-          snapshot.topicId === query.topicId
+          snapshot.interestId === query.interestId
         );
       }),
     };
@@ -177,7 +177,7 @@ describe('ListSourceBindingDailyHistoryUseCase', () => {
     if (result.ok) {
       expect(result.value).toEqual({
         sourceBindingId: 'binding-1',
-        topicId: 'topic-1',
+        interestId: 'interest-1',
         providerKey: 'fake-source',
         sourceBindingStatus: 'enabled',
         cadence: {
@@ -572,7 +572,7 @@ const readyBindings = async (providerKey = 'fake-source'): Promise<FakeSourceBin
     id: 'binding-1',
     tenantId: tenant,
     workspaceId: workspace,
-    topicId: 'topic-1',
+    interestId: 'interest-1',
     providerKey,
     capabilityProfileVersion: 1,
     config: { query: 'daily history' },

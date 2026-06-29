@@ -125,7 +125,7 @@ describe('API to ingestion worker queue contract (e2e)', () => {
     const queue = api.select(MonitoringRestModule).get(InMemoryQueuePublisher, { strict: true });
 
     const topic = await request(api.getHttpServer())
-      .post('/topics')
+      .post('/interests')
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'admin')
@@ -138,7 +138,7 @@ describe('API to ingestion worker queue contract (e2e)', () => {
       .expect(201);
 
     const binding = await request(api.getHttpServer())
-      .post(`/topics/${topic.body.topicId}/source-bindings`)
+      .post(`/interests/${topic.body.interestId}/source-bindings`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'admin')
@@ -280,7 +280,7 @@ describe('API to ingestion worker queue contract (e2e)', () => {
         });
       });
     await request(api.getHttpServer())
-      .get(`/topics/${topic.body.topicId}/source-bindings/daily-history`)
+      .get(`/interests/${topic.body.interestId}/source-bindings/daily-history`)
       .query({ days: 1 })
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
@@ -288,7 +288,7 @@ describe('API to ingestion worker queue contract (e2e)', () => {
       .expect(200)
       .expect((response) => {
         expect(response.body).toEqual(expect.objectContaining({
-          topicId: topic.body.topicId,
+          interestId: topic.body.interestId,
           summary: expect.objectContaining({
             sourceBindingCount: 1,
             enabledSourceBindingCount: 1,
@@ -360,7 +360,7 @@ describe('API to ingestion worker queue contract (e2e)', () => {
     const initialQueueLength = queue.all().length;
 
     const topic = await request(api.getHttpServer())
-      .post('/topics')
+      .post('/interests')
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'admin')
@@ -373,7 +373,7 @@ describe('API to ingestion worker queue contract (e2e)', () => {
       .expect(201);
 
     const binding = await request(api.getHttpServer())
-      .post(`/topics/${topic.body.topicId}/source-bindings`)
+      .post(`/interests/${topic.body.interestId}/source-bindings`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'admin')
@@ -501,7 +501,7 @@ describe('API to ingestion worker queue contract (e2e)', () => {
     const initialQueueLength = queue.all().length;
 
     const topic = await request(api.getHttpServer())
-      .post('/topics')
+      .post('/interests')
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'admin')
@@ -514,7 +514,7 @@ describe('API to ingestion worker queue contract (e2e)', () => {
       .expect(201);
 
     const binding = await request(api.getHttpServer())
-      .post(`/topics/${topic.body.topicId}/source-bindings`)
+      .post(`/interests/${topic.body.interestId}/source-bindings`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'admin')
@@ -584,7 +584,7 @@ describe('API to ingestion worker queue contract (e2e)', () => {
 
     const feed = await request(api.getHttpServer())
       .get('/feed/items')
-      .query({ limit: 10, topicId: topic.body.topicId })
+      .query({ limit: 10, interestId: topic.body.interestId })
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'viewer')
@@ -665,7 +665,7 @@ describe('API to ingestion worker queue contract (e2e)', () => {
     const initialQueueLength = queue.all().length;
 
     const topic = await request(api.getHttpServer())
-      .post('/topics')
+      .post('/interests')
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'admin')
@@ -678,7 +678,7 @@ describe('API to ingestion worker queue contract (e2e)', () => {
       .expect(201);
 
     const binding = await request(api.getHttpServer())
-      .post(`/topics/${topic.body.topicId}/source-bindings`)
+      .post(`/interests/${topic.body.interestId}/source-bindings`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'admin')

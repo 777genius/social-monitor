@@ -26,11 +26,11 @@ import { CheckPublicApiRateLimitUseCase } from '@social-monitor/usage/features/c
 import { RecordPublicApiAuditEventUseCase } from '@social-monitor/usage/features/record-public-api-audit-event/record-public-api-audit-event.use-case';
 import { RequestCorrelationIdFactory } from '@social-monitor/platform-request-context';
 import { ok, SystemClock, tenantId, userId, workspaceId } from '@social-monitor/shared-kernel';
-import { ArchiveTopicUseCase } from '@social-monitor/monitoring/features/archive-topic/archive-topic.use-case';
-import { CreateTopicUseCase } from '@social-monitor/monitoring/features/create-topic/create-topic.use-case';
-import { ListTopicsUseCase } from '@social-monitor/monitoring/features/list-topics/list-topics.use-case';
-import { UpdateTopicUseCase } from '@social-monitor/monitoring/features/update-topic/update-topic.use-case';
-import { TopicController } from '@social-monitor/monitoring/interfaces/rest/topic.controller';
+import { ArchiveInterestUseCase } from '@social-monitor/monitoring/features/archive-interest/archive-interest.use-case';
+import { CreateInterestUseCase } from '@social-monitor/monitoring/features/create-interest/create-interest.use-case';
+import { ListInterestsUseCase } from '@social-monitor/monitoring/features/list-interests/list-interests.use-case';
+import { UpdateInterestUseCase } from '@social-monitor/monitoring/features/update-interest/update-interest.use-case';
+import { InterestController } from '@social-monitor/monitoring/interfaces/rest/interest.controller';
 import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
@@ -65,7 +65,7 @@ describe('Production auth boundary matrix (e2e)', () => {
 
     try {
       const denied = await request(harness.app.getHttpServer())
-        .post('/topics')
+        .post('/interests')
         .set('x-tenant-id', tenant)
         .set('x-workspace-id', workspace)
         .set('x-workspace-role', 'admin')
@@ -80,7 +80,7 @@ describe('Production auth boundary matrix (e2e)', () => {
         code: 'authorization.denied',
         detail: 'Workspace role is required',
       });
-      expect(harness.createTopic.execute).not.toHaveBeenCalled();
+      expect(harness.createInterest.execute).not.toHaveBeenCalled();
     } finally {
       await harness.app.close();
     }
@@ -105,7 +105,7 @@ describe('Production auth boundary matrix (e2e)', () => {
 
     try {
       const denied = await request(harness.app.getHttpServer())
-        .get('/topics')
+        .get('/interests')
         .set(jwtHeaders(token))
         .expect(403);
 
@@ -114,7 +114,7 @@ describe('Production auth boundary matrix (e2e)', () => {
         detail: 'Bearer JWT audience is not allowed',
       });
       expect(harness.membershipVerifier.verify).not.toHaveBeenCalled();
-      expect(harness.listTopics.execute).not.toHaveBeenCalled();
+      expect(harness.listInterests.execute).not.toHaveBeenCalled();
     } finally {
       await harness.app.close();
     }
@@ -132,7 +132,7 @@ describe('Production auth boundary matrix (e2e)', () => {
 
     try {
       const denied = await request(harness.app.getHttpServer())
-        .get('/topics')
+        .get('/interests')
         .set(jwtHeaders(token))
         .expect(403);
 
@@ -146,7 +146,7 @@ describe('Production auth boundary matrix (e2e)', () => {
         userId: 'missing-membership-user',
         tokenRoles: ['admin'],
       });
-      expect(harness.listTopics.execute).not.toHaveBeenCalled();
+      expect(harness.listInterests.execute).not.toHaveBeenCalled();
     } finally {
       await harness.app.close();
     }
@@ -225,17 +225,17 @@ const createHarness = async (params: {
   readonly membership: UserWorkspaceMembership | null;
 }): Promise<{
   readonly app: INestApplication;
-  readonly createTopic: { readonly execute: jest.Mock };
-  readonly listTopics: { readonly execute: jest.Mock };
+  readonly createInterest: { readonly execute: jest.Mock };
+  readonly listInterests: { readonly execute: jest.Mock };
   readonly membershipVerifier: { readonly verify: jest.Mock };
 }> => {
-  const createTopic = {
+  const createInterest = {
     execute: jest.fn().mockResolvedValue(ok({
-      topicId: 'topic-production-auth-boundary-matrix',
+      interestId: 'topic-production-auth-boundary-matrix',
       created: true,
     })),
   };
-  const listTopics = {
+  const listInterests = {
     execute: jest.fn().mockResolvedValue(ok({
       topics: [],
       nextCursor: undefined,
@@ -249,10 +249,10 @@ const createHarness = async (params: {
     query: 'production auth boundary',
     status: 'active' as const,
   };
-  const updateTopic = {
+  const updateInterest = {
     execute: jest.fn().mockResolvedValue(ok(topicView)),
   };
-  const archiveTopic = {
+  const archiveInterest = {
     execute: jest.fn().mockResolvedValue(ok({
       ...topicView,
       status: 'archived' as const,
@@ -269,26 +269,26 @@ const createHarness = async (params: {
   };
 
   const moduleRef = await Test.createTestingModule({
-    controllers: [TopicController],
+    controllers: [InterestController],
     providers: [
       ApiKeyRequestAuthorizer,
       WorkspaceRoleHeaderParser,
       RequestCorrelationIdFactory,
       {
-        provide: CreateTopicUseCase,
-        useValue: createTopic,
+        provide: CreateInterestUseCase,
+        useValue: createInterest,
       },
       {
-        provide: ListTopicsUseCase,
-        useValue: listTopics,
+        provide: ListInterestsUseCase,
+        useValue: listInterests,
       },
       {
-        provide: UpdateTopicUseCase,
-        useValue: updateTopic,
+        provide: UpdateInterestUseCase,
+        useValue: updateInterest,
       },
       {
-        provide: ArchiveTopicUseCase,
-        useValue: archiveTopic,
+        provide: ArchiveInterestUseCase,
+        useValue: archiveInterest,
       },
       {
         provide: VerifyApiKeyUseCase,
@@ -346,8 +346,8 @@ const createHarness = async (params: {
 
   return {
     app,
-    createTopic,
-    listTopics,
+    createInterest,
+    listInterests,
     membershipVerifier,
   };
 };

@@ -8,8 +8,8 @@ import 'package:json_annotation/json_annotation.dart';
 enum ReaderSummaryFreshnessDtoReasonReason {
   @JsonValue('new_evidence_after_window')
   newEvidenceAfterWindow('new_evidence_after_window'),
-  @JsonValue('topic_bindings_changed')
-  topicBindingsChanged('topic_bindings_changed'),
+  @JsonValue('interest_bindings_changed')
+  interestBindingsChanged('interest_bindings_changed'),
   @JsonValue('reader_summary_policy_changed')
   readerSummaryPolicyChanged('reader_summary_policy_changed'),
   @JsonValue('ranking_policy_changed')

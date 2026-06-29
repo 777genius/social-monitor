@@ -13,7 +13,7 @@ export class EmptySummaryEvidenceSelector implements SummaryEvidenceSelectorPort
 
     return {
       sourceWindow: {
-        windowId: `${params.tenantId}:${params.workspaceId}:${params.topicId}:empty`,
+        windowId: `${params.tenantId}:${params.workspaceId}:${params.interestId}:empty`,
         startedAt,
         endedAt,
         selectedFeedItemIds: [],

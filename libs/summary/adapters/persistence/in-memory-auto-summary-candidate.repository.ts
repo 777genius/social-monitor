@@ -27,17 +27,17 @@ export class InMemoryAutoSummaryCandidateRepository implements AutoSummaryCandid
           return [];
         }
 
-        const latestSummaryRequestedAt = latestTopicSummaryRequestedAt(summaryJobs, {
+        const latestSummaryRequestedAt = latestInterestSummaryRequestedAt(summaryJobs, {
           tenantId: snapshot.tenantId,
           workspaceId: snapshot.workspaceId,
-          topicId: snapshot.topicId,
+          interestId: snapshot.interestId,
         });
         const dueFeedItems = this.feedItems.all()
           .map((item) => item.toSnapshot())
           .filter((item) =>
             item.tenantId === snapshot.tenantId &&
             item.workspaceId === snapshot.workspaceId &&
-            item.topicId === snapshot.topicId &&
+            item.interestId === snapshot.interestId &&
             item.observedAt.getTime() <= params.latestFeedItemObservedBefore.getTime() &&
             (latestSummaryRequestedAt === undefined || item.observedAt.getTime() > latestSummaryRequestedAt.getTime()),
           );
@@ -49,7 +49,7 @@ export class InMemoryAutoSummaryCandidateRepository implements AutoSummaryCandid
         return [{
           tenantId: snapshot.tenantId,
           workspaceId: snapshot.workspaceId,
-          topicId: snapshot.topicId,
+          interestId: snapshot.interestId,
           latestFeedItemObservedAt: maxDate(dueFeedItems.map((item) => item.observedAt)),
           newFeedItemCount: dueFeedItems.length,
           latestSummaryRequestedAt,
@@ -57,23 +57,23 @@ export class InMemoryAutoSummaryCandidateRepository implements AutoSummaryCandid
       })
       .sort((left, right) =>
         left.latestFeedItemObservedAt.getTime() - right.latestFeedItemObservedAt.getTime() ||
-        left.topicId.localeCompare(right.topicId),
+        left.interestId.localeCompare(right.interestId),
       );
 
     return candidates.slice(0, params.limit);
   }
 }
 
-const latestTopicSummaryRequestedAt = (
+const latestInterestSummaryRequestedAt = (
   jobs: readonly SummaryJob[],
-  params: { readonly tenantId: string; readonly workspaceId: string; readonly topicId: string },
+  params: { readonly tenantId: string; readonly workspaceId: string; readonly interestId: string },
 ): Date | undefined => {
   const requestedAtValues = jobs
     .map((job) => job.toSnapshot())
     .filter((job) =>
       job.tenantId === params.tenantId &&
       job.workspaceId === params.workspaceId &&
-      job.topicId === params.topicId &&
+      job.interestId === params.interestId &&
       job.userId === undefined &&
       job.subscriptionId === undefined,
     )

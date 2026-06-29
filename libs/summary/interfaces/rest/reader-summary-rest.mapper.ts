@@ -55,7 +55,7 @@ export type ReaderSummaryFreshnessView =
       readonly staleMarkedAt: string;
       readonly reason:
         | "new_evidence_after_window"
-        | "topic_bindings_changed"
+        | "interest_bindings_changed"
         | "reader_summary_policy_changed"
         | "ranking_policy_changed";
       readonly newestFeedItemId?: string;

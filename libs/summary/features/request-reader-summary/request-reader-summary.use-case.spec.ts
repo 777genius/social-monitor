@@ -115,7 +115,7 @@ describe("RequestReaderSummaryUseCase", () => {
 
     const result = await useCase.execute({
       ...baseCommand,
-      scope: { type: "topic" as const, topicId: "topic-ai" },
+      scope: { type: "interest" as const, interestId: "interest-ai" },
       correlationId: "correlation-2",
     });
 

@@ -26,7 +26,7 @@ const makeCommand = (
   tenantId: scope.tenantId,
   workspaceId: scope.workspaceId,
   scanJobId,
-  topicId: `topic-${scanJobId}`,
+  interestId: `topic-${scanJobId}`,
   sourceBindingId: `source-binding-${scanJobId}`,
   scanPolicyId: `scan-policy-${scanJobId}`,
   providerKey: 'fake-source',

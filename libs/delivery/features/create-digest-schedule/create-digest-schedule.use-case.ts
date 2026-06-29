@@ -44,7 +44,7 @@ export class CreateDigestScheduleUseCase {
         workspaceId: command.workspaceId,
         recipientKey: command.recipientKey,
         channel: command.channel,
-        topicIds: command.topicIds,
+        interestIds: command.interestIds,
         intervalSeconds: command.intervalSeconds,
         includeNoSignal: command.includeNoSignal,
         nextRunAt: command.nextRunAt ?? new Date(this.clock.now().getTime() + command.intervalSeconds * 1000),

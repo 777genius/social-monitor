@@ -6,7 +6,7 @@ import {
   MemoStackSummaryMemoryAdapter,
   providerQualityScope,
   spaceSlug,
-  topicFeedbackScope,
+  interestFeedbackScope,
   userPreferenceScope,
 } from './memo-stack-summary-memory.adapter';
 import { feedbackMemoryMapping } from './memo-stack-summary-feedback-memory';
@@ -113,7 +113,7 @@ describe('MemoStackSummaryMemoryAdapter', () => {
     const result = await adapter.recordSummaryFeedback({
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       summaryId: 'summary-1',
       feedbackId: 'feedback-1',
       idempotencyKey: 'feedback-key-1',
@@ -135,11 +135,11 @@ describe('MemoStackSummaryMemoryAdapter', () => {
         workflow: 'recordFeedback',
         captureId: 'capture-1',
         factId: 'fact-1',
-        memoryScopeExternalRef: topicFeedbackScope('topic-1'),
-        factMemoryScopeExternalRef: topicFeedbackScope('topic-1'),
+        memoryScopeExternalRef: interestFeedbackScope('interest-1'),
+        factMemoryScopeExternalRef: interestFeedbackScope('interest-1'),
         providerQualityCaptureId: 'provider-capture-1',
         providerQualityFactId: 'provider-fact-1',
-        providerQualityScopeExternalRef: providerQualityScope('topic-1', 'github'),
+        providerQualityScopeExternalRef: providerQualityScope('interest-1', 'github'),
         userPreferenceCaptureId: 'user-preference-capture-1',
         userPreferenceFactId: 'user-preference-fact-1',
         userPreferenceScopeExternalRef: userPreferenceScope('user-1'),
@@ -154,7 +154,7 @@ describe('MemoStackSummaryMemoryAdapter', () => {
     );
     expect(requests[0]?.body).toMatchObject({
       space_slug: spaceSlug('tenant-1', 'workspace-1'),
-      memory_scope_external_ref: topicFeedbackScope('topic-1'),
+      memory_scope_external_ref: interestFeedbackScope('interest-1'),
       source_agent: 'social-monitor.summary-feedback',
       source_kind: 'hook',
       event_type: 'social-monitor.summary_feedback.recorded',
@@ -169,7 +169,7 @@ describe('MemoStackSummaryMemoryAdapter', () => {
       consolidate: true,
       metadata: {
         summary_id: 'summary-1',
-        topic_id: 'topic-1',
+        interest_id: 'interest-1',
         rating: 2,
         category: 'bad_citation',
         provider_key: 'github',
@@ -177,7 +177,7 @@ describe('MemoStackSummaryMemoryAdapter', () => {
         memory_action: 'improve_citation_precision',
         memory_fact_category: 'citation_quality',
         provider_quality_action: 'review_provider_citation_support',
-        provider_quality_scope: providerQualityScope('topic-1', 'github'),
+        provider_quality_scope: providerQualityScope('interest-1', 'github'),
       },
     });
     expect(requests[0]?.body.text).toEqual(expect.stringContaining('Citation points to the wrong claim.'));
@@ -214,7 +214,7 @@ describe('MemoStackSummaryMemoryAdapter', () => {
     );
     expect(requests[1]?.body).toMatchObject({
       space_slug: spaceSlug('tenant-1', 'workspace-1'),
-      memory_scope_external_ref: topicFeedbackScope('topic-1'),
+      memory_scope_external_ref: interestFeedbackScope('interest-1'),
       kind: 'user_preference',
       classification: 'internal',
       category: 'user_preferences',
@@ -260,14 +260,14 @@ describe('MemoStackSummaryMemoryAdapter', () => {
     expect(requests[2]?.url).toBe('https://memory.example.test/api/v1/captures');
     expect(requests[2]?.body).toMatchObject({
       space_slug: spaceSlug('tenant-1', 'workspace-1'),
-      memory_scope_external_ref: providerQualityScope('topic-1', 'github'),
+      memory_scope_external_ref: providerQualityScope('interest-1', 'github'),
       source_agent: 'social-monitor.summary-provider-quality',
       event_type: 'social-monitor.summary_feedback.provider_quality_recorded',
       source_event_id: 'feedback-1:provider-quality',
       metadata: {
         parent_feedback_id: 'feedback-1',
         summary_id: 'summary-1',
-        topic_id: 'topic-1',
+        interest_id: 'interest-1',
         rating: 2,
         category: 'bad_citation',
         provider_key: 'github',
@@ -275,13 +275,13 @@ describe('MemoStackSummaryMemoryAdapter', () => {
         memory_action: 'review_provider_citation_support',
         memory_fact_category: 'provider_quality',
         provider_quality_action: 'review_provider_citation_support',
-        provider_quality_scope: providerQualityScope('topic-1', 'github'),
+        provider_quality_scope: providerQualityScope('interest-1', 'github'),
       },
     });
     expect(requests[3]?.url).toBe('https://memory.example.test/api/v1/facts');
     expect(requests[3]?.body).toMatchObject({
       space_slug: spaceSlug('tenant-1', 'workspace-1'),
-      memory_scope_external_ref: providerQualityScope('topic-1', 'github'),
+      memory_scope_external_ref: providerQualityScope('interest-1', 'github'),
       kind: 'user_preference',
       classification: 'internal',
       category: 'user_preferences',
@@ -315,7 +315,7 @@ describe('MemoStackSummaryMemoryAdapter', () => {
       metadata: {
         parent_feedback_id: 'feedback-1',
         summary_id: 'summary-1',
-        topic_id: 'topic-1',
+        interest_id: 'interest-1',
         rating: 2,
         category: 'bad_citation',
         provider_key: 'github',
@@ -358,7 +358,7 @@ describe('MemoStackSummaryMemoryAdapter', () => {
     const result = await adapter.recordSummaryFeedback({
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       summaryId: 'summary-1',
       feedbackId: 'feedback-1',
       idempotencyKey: 'feedback-key-1',
@@ -393,7 +393,7 @@ describe('MemoStackSummaryMemoryAdapter', () => {
     await adapter.recordSummaryFeedback({
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       summaryId: 'summary-1',
       feedbackId: 'feedback-1',
       idempotencyKey: 'feedback-key-1',
@@ -411,16 +411,16 @@ describe('MemoStackSummaryMemoryAdapter', () => {
     expect(requests[0]?.body.metadata).toMatchObject({
       provider_key: 'reddit',
       provider_quality_action: 'downrank_low_signal_provider',
-      provider_quality_scope: providerQualityScope('topic-1', 'reddit'),
+      provider_quality_scope: providerQualityScope('interest-1', 'reddit'),
       memory_action: 'prefer_shorter_summary',
     });
-    expect(requests[1]?.body.memory_scope_external_ref).toBe(topicFeedbackScope('topic-1'));
+    expect(requests[1]?.body.memory_scope_external_ref).toBe(interestFeedbackScope('interest-1'));
     expect(requests[1]?.body.tags).toEqual(expect.arrayContaining([
       'style-shorter',
       'provider-reddit',
     ]));
     expect(requests[1]?.body.tags).not.toEqual(expect.arrayContaining(['provider-downrank']));
-    expect(requests[3]?.body.memory_scope_external_ref).toBe(providerQualityScope('topic-1', 'reddit'));
+    expect(requests[3]?.body.memory_scope_external_ref).toBe(providerQualityScope('interest-1', 'reddit'));
     expect(requests[3]?.body.tags).toEqual(expect.arrayContaining([
       'provider-quality',
       'provider-downrank',
@@ -494,7 +494,7 @@ describe('MemoStackSummaryMemoryAdapter', () => {
     const result = await adapter.buildContext({
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       userId: 'user-1',
       subscriptionId: 'subscription-1',
       evidence,
@@ -567,16 +567,16 @@ describe('MemoStackSummaryMemoryAdapter', () => {
     expect(requests[0]?.body.memory_scope_external_refs).toEqual([
       'subscription:subscription-1:preferences',
       'user:user-1:preferences',
-      'topic:topic-1:preferences',
+      'interest:interest-1:preferences',
       'workspace-global',
-      providerQualityScope('topic-1', 'github'),
-      topicFeedbackScope('topic-1'),
+      providerQualityScope('interest-1', 'github'),
+      interestFeedbackScope('interest-1'),
     ]);
     expect(requests[0]?.body.query).toEqual(expect.stringContaining('GitHub issue about production auth'));
     expect(requests[0]?.body.query).toEqual(expect.stringContaining('provider distribution: github=1'));
   });
 
-  it('falls back to topic feedback scope when optional preference scopes do not exist', async () => {
+  it('falls back to interest feedback scope when optional preference scopes do not exist', async () => {
     const requests: RecordedRequest[] = [];
     const adapter = new MemoStackSummaryMemoryAdapter({
       baseUrl: 'https://memory.example.test',
@@ -627,11 +627,11 @@ describe('MemoStackSummaryMemoryAdapter', () => {
         },
         {
           data: {
-            rendered_text: 'Fallback topic feedback memory.',
+            rendered_text: 'Fallback interest feedback memory.',
             answer_support: {
               status: 'supported',
               items_returned: 1,
-              warnings: ['topic-feedback-only'],
+              warnings: ['interest-feedback-only'],
             },
             diagnostics: {
               graph_status: 'ok',
@@ -651,7 +651,7 @@ describe('MemoStackSummaryMemoryAdapter', () => {
     const result = await adapter.buildContext({
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       userId: 'user-1',
       subscriptionId: 'subscription-1',
       evidence,
@@ -660,7 +660,7 @@ describe('MemoStackSummaryMemoryAdapter', () => {
 
     expect(result).toEqual({
       status: 'available',
-      renderedText: 'Fallback provider quality memory.\nFallback topic feedback memory.',
+      renderedText: 'Fallback provider quality memory.\nFallback interest feedback memory.',
       sourceRefs: [
         {
           source_type: 'social-monitor.summary-feedback',
@@ -687,7 +687,7 @@ describe('MemoStackSummaryMemoryAdapter', () => {
       support: {
         status: 'partial,supported',
         itemsReturned: 2,
-        warnings: ['provider-quality-only', 'topic-feedback-only'],
+        warnings: ['provider-quality-only', 'interest-feedback-only'],
       },
       diagnostics: {
         fallbackFromScopeNotFound: true,
@@ -697,10 +697,10 @@ describe('MemoStackSummaryMemoryAdapter', () => {
     });
     expect(requests).toHaveLength(3);
     expect(requests[1]?.body.memory_scope_external_refs).toEqual([
-      providerQualityScope('topic-1', 'github'),
+      providerQualityScope('interest-1', 'github'),
     ]);
     expect(requests[2]?.body.memory_scope_external_refs).toEqual([
-      topicFeedbackScope('topic-1'),
+      interestFeedbackScope('interest-1'),
     ]);
   });
 });

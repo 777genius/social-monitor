@@ -13,6 +13,9 @@ ReaderSummaryStoryClusterDto _$ReaderSummaryStoryClusterDtoFromJson(
       .map((e) => e as String)
       .toList(),
   id: json['id'] as String,
+  interestIds: (json['interestIds'] as List<dynamic>)
+      .map((e) => e as String)
+      .toList(),
   observedAtRange: ReaderSummaryObservedAtRangeDto.fromJson(
     json['observedAtRange'] as Map<String, dynamic>,
   ),
@@ -22,9 +25,6 @@ ReaderSummaryStoryClusterDto _$ReaderSummaryStoryClusterDtoFromJson(
   representativeFeedItemId: json['representativeFeedItemId'] as String,
   score: json['score'] as num,
   storyKey: json['storyKey'] as String,
-  topicIds: (json['topicIds'] as List<dynamic>)
-      .map((e) => e as String)
-      .toList(),
   whyImportant: (json['whyImportant'] as List<dynamic>)
       .map((e) => e as String)
       .toList(),
@@ -41,6 +41,7 @@ Map<String, dynamic> _$ReaderSummaryStoryClusterDtoToJson(
 ) => <String, dynamic>{
   'duplicateFeedItemIds': instance.duplicateFeedItemIds,
   'id': instance.id,
+  'interestIds': instance.interestIds,
   'observedAtRange': instance.observedAtRange,
   'providerKeys': instance.providerKeys,
   'rankingPolicyVersion': instance.rankingPolicyVersion,
@@ -48,6 +49,5 @@ Map<String, dynamic> _$ReaderSummaryStoryClusterDtoToJson(
   'score': instance.score,
   'signalBreakdown': instance.signalBreakdown,
   'storyKey': instance.storyKey,
-  'topicIds': instance.topicIds,
   'whyImportant': instance.whyImportant,
 };

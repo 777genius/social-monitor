@@ -31,10 +31,10 @@ describe('Summary request workspace authorization (e2e)', () => {
   it('requires a workspace role with summary request permission', async () => {
     const tenant = tenantId('tenant-summary-request-authorization-e2e');
     const workspace = workspaceId('workspace-summary-request-authorization-e2e');
-    const topicId = 'topic-summary-request-authorization-e2e';
+    const interestId = 'topic-summary-request-authorization-e2e';
 
     const missingRole = await request(app.getHttpServer())
-      .post(`/topics/${topicId}/summary-requests`)
+      .post(`/interests/${interestId}/summary-requests`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-request-id', 'summary-request-auth-missing-role')
@@ -50,7 +50,7 @@ describe('Summary request workspace authorization (e2e)', () => {
     });
 
     const viewer = await request(app.getHttpServer())
-      .post(`/topics/${topicId}/summary-requests`)
+      .post(`/interests/${interestId}/summary-requests`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'viewer')
@@ -68,7 +68,7 @@ describe('Summary request workspace authorization (e2e)', () => {
     });
 
     const member = await request(app.getHttpServer())
-      .post(`/topics/${topicId}/summary-requests`)
+      .post(`/interests/${interestId}/summary-requests`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'member')

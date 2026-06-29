@@ -135,7 +135,7 @@ const makeSummary = (params: {
   summaryId: params.summaryId,
   tenantId: params.tenantId,
   workspaceId: params.workspaceId,
-  topicId: 'topic-1',
+  interestId: 'interest-1',
   sourceWindow: {
     windowId: 'window-1',
     startedAt: new Date('2026-06-06T00:00:00.000Z'),

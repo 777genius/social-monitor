@@ -10,14 +10,14 @@ enum ReaderSummaryNextActionDtoKindKind {
   readSource('read_source'),
   @JsonValue('watch_repository')
   watchRepository('watch_repository'),
-  @JsonValue('monitor_topic')
-  monitorTopic('monitor_topic'),
+  @JsonValue('monitor_interest')
+  monitorInterest('monitor_interest'),
   @JsonValue('compare_sources')
   compareSources('compare_sources'),
   @JsonValue('ignore_low_confidence')
   ignoreLowConfidence('ignore_low_confidence'),
-  @JsonValue('add_topic_rule')
-  addTopicRule('add_topic_rule'),
+  @JsonValue('add_interest_rule')
+  addInterestRule('add_interest_rule'),
   @JsonValue('request_deeper_scan')
   requestDeeperScan('request_deeper_scan'),
   @JsonValue('mark_relevant')

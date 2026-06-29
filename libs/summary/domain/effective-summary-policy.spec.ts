@@ -42,7 +42,7 @@ describe('effective summary policy', () => {
       tone: 'concise',
       maxStories: 4,
       includeRisks: false,
-      includeTopicHighlights: false,
+      includeInterestHighlights: false,
       includeRepeatedSignals: true,
       dedupeStrategy: 'canonical_url_then_title',
       customInstructions: 'Не показывать слабые одиночные сигналы.',

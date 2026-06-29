@@ -34,7 +34,7 @@ describe('CreateDigestScheduleUseCase', () => {
       workspaceId: workspace,
       recipientKey: 'user-1',
       channel: 'in_app',
-      topicIds: ['topic-b', 'topic-a', 'topic-a'],
+      interestIds: ['interest-b', 'interest-a', 'interest-a'],
       intervalSeconds: 3600,
       includeNoSignal: true,
     });
@@ -49,7 +49,7 @@ describe('CreateDigestScheduleUseCase', () => {
           workspaceId: workspace,
           recipientKey: 'user-1',
           channel: 'in_app',
-          topicIds: ['topic-a', 'topic-b'],
+          interestIds: ['interest-a', 'interest-b'],
           intervalSeconds: 3600,
           includeNoSignal: true,
           nextRunAt: '2026-06-06T01:00:00.000Z',
@@ -76,7 +76,7 @@ describe('CreateDigestScheduleUseCase', () => {
       workspaceId: workspaceId('workspace-1'),
       recipientKey: 'user-1',
       channel: 'sms' as DeliveryChannel,
-      topicIds: ['topic-a'],
+      interestIds: ['interest-a'],
       intervalSeconds: 3600,
       includeNoSignal: false,
     });
@@ -112,7 +112,7 @@ describe('CreateDigestScheduleUseCase', () => {
       workspaceId: workspaceId('workspace-1'),
       recipientKey: 'user-1',
       channel: 'email',
-      topicIds: ['topic-a'],
+      interestIds: ['interest-a'],
       intervalSeconds: 3600,
       includeNoSignal: false,
     });
@@ -147,7 +147,7 @@ describe('CreateDigestScheduleUseCase', () => {
       workspaceId: workspaceId('workspace-1'),
       recipientKey: 'user-1',
       channel: 'email',
-      topicIds: ['topic-a'],
+      interestIds: ['interest-a'],
       intervalSeconds: 59,
       includeNoSignal: false,
     });

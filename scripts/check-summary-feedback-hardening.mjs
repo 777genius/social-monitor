@@ -881,7 +881,7 @@ function validateSummaryEvidence(summaryEvidence, category, sampleLabel) {
     return;
   }
 
-  for (const field of ['summaryId', 'topicId']) {
+  for (const field of ['summaryId', 'interestId']) {
     if (typeof summaryEvidence[field] !== 'string' || summaryEvidence[field].trim().length === 0) {
       violations.push(`${sampleLabel}: summaryEvidence.${field} must be a non-empty string`);
     }

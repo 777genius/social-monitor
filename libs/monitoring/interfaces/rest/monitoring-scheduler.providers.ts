@@ -4,7 +4,7 @@ import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
 import { InMemoryScanSchedulerDecisionHistoryRepository } from '../../adapters/persistence/in-memory-scan-scheduler-decision-history.repository';
 import type { PrismaMonitoringClient } from '../../adapters/persistence/prisma/prisma-monitoring-client';
 import { PrismaScanSchedulerDecisionHistoryRepository } from '../../adapters/persistence/prisma/prisma-scan-scheduler-decision-history.repository';
-import { ListTopicSourceDailyHistoryUseCase } from '../../features/list-topic-source-daily-history/list-topic-source-daily-history.use-case';
+import { ListInterestSourceDailyHistoryUseCase } from '../../features/list-interest-source-daily-history/list-interest-source-daily-history.use-case';
 import { ScheduleDueScansUseCase } from '../../features/schedule-due-scans/schedule-due-scans.use-case';
 import type {
   ScanExecutionAttemptReadPort,
@@ -14,7 +14,7 @@ import type {
   ScanQueuePort,
   ScanSchedulerDecisionHistoryPort,
   SourceBindingRepositoryPort,
-  TopicRepositoryPort,
+  InterestRepositoryPort,
 } from '../../ports';
 import {
   MONITORING_PERSISTENCE_MODE,
@@ -25,7 +25,7 @@ import {
   MONITORING_SCAN_QUEUE,
   MONITORING_SCAN_SCHEDULER_DECISION_HISTORY,
   MONITORING_SOURCE_BINDING_REPOSITORY,
-  MONITORING_TOPIC_REPOSITORY,
+  MONITORING_INTEREST_REPOSITORY,
   type MonitoringPersistenceMode,
 } from './monitoring-provider-tokens';
 
@@ -46,17 +46,17 @@ export const monitoringSchedulerProviders: Provider[] = [
     inject: [MONITORING_PERSISTENCE_MODE, MONITORING_PRISMA_CLIENT],
   },
   {
-    provide: ListTopicSourceDailyHistoryUseCase,
+    provide: ListInterestSourceDailyHistoryUseCase,
     useFactory: (
-      topics: TopicRepositoryPort,
+      interests: InterestRepositoryPort,
       bindings: SourceBindingRepositoryPort,
       scanPolicies: ScanPolicyRepositoryPort,
       scanJobs: MonitoringScanJobStorePort,
       scanExecutionAttempts: ScanExecutionAttemptReadPort,
       schedulerDecisions: ScanSchedulerDecisionHistoryPort,
     ) =>
-      new ListTopicSourceDailyHistoryUseCase(
-        topics,
+      new ListInterestSourceDailyHistoryUseCase(
+        interests,
         bindings,
         scanPolicies,
         scanJobs,
@@ -65,7 +65,7 @@ export const monitoringSchedulerProviders: Provider[] = [
         schedulerDecisions,
       ),
     inject: [
-      MONITORING_TOPIC_REPOSITORY,
+      MONITORING_INTEREST_REPOSITORY,
       MONITORING_SOURCE_BINDING_REPOSITORY,
       MONITORING_SCAN_POLICY_REPOSITORY,
       MONITORING_SCAN_JOB_REPOSITORY,

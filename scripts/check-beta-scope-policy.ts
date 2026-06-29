@@ -12,9 +12,9 @@ import { FakeSourceCatalogAdapter } from '../libs/monitoring/adapters/source-cat
 import { InMemoryIdempotencyAdapter } from '../libs/monitoring/adapters/idempotency/in-memory-idempotency.adapter';
 import { InMemoryOutboxAdapter } from '../libs/monitoring/adapters/messaging/in-memory-outbox.adapter';
 import { InMemorySourceBindingRepository } from '../libs/monitoring/adapters/persistence/in-memory-source-binding.repository';
-import { InMemoryTopicRepository } from '../libs/monitoring/adapters/persistence/in-memory-topic.repository';
+import { InMemoryInterestRepository } from '../libs/monitoring/adapters/persistence/in-memory-interest.repository';
 import { BindSourceUseCase } from '../libs/monitoring/features/bind-source/bind-source.use-case';
-import { CreateTopicUseCase } from '../libs/monitoring/features/create-topic/create-topic.use-case';
+import { CreateInterestUseCase } from '../libs/monitoring/features/create-interest/create-interest.use-case';
 import type { SourceBindingConfig, SourceBindingConfigProtectorPort } from '../libs/monitoring/ports';
 import { sourceReadinessProfiles } from '../libs/ingestion/adapters/source/source-readiness-profiles';
 import { FakeSourceProvider } from '../libs/ingestion/adapters/source/fake-source.provider';
@@ -73,15 +73,15 @@ async function proveUnsupportedSourceProfilesStayOutOfBindingCatalog(): Promise<
 }
 
 async function proveUnsupportedBindingsAreRejected(ids: IdGenerator): Promise<void> {
-  const topics = new InMemoryTopicRepository();
+  const topics = new InMemoryInterestRepository();
   const outbox = new InMemoryOutboxAdapter();
   const idempotency = new InMemoryIdempotencyAdapter();
-  const createdTopic = await new CreateTopicUseCase(topics, outbox, idempotency, ids, clock).execute({
+  const createdTopic = await new CreateInterestUseCase(topics, outbox, idempotency, ids, clock).execute({
     tenantId: tenant,
     workspaceId: workspace,
     name: 'Unsupported Source Demand',
     query: 'twitter reddit telegram',
-    idempotencyKey: 'topic:create:unsupported-source-demand',
+    idempotencyKey: 'interest:create:unsupported-source-demand',
     correlationId: correlation,
   });
   assert(createdTopic.ok, 'topic creation should succeed before policy checks');
@@ -102,7 +102,7 @@ async function proveUnsupportedBindingsAreRejected(ids: IdGenerator): Promise<vo
     const result = await bindSource.execute({
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: createdTopic.value.topicId,
+      interestId: createdTopic.value.interestId,
       providerKey: profile.providerKey,
       config: {
         mode: 'search',
@@ -172,7 +172,7 @@ const makeSummary = (params: {
     summaryId: 'summary-beta-policy',
     tenantId: params.tenantId,
     workspaceId: params.workspaceId,
-    topicId: 'topic-beta-policy',
+    interestId: 'topic-beta-policy',
     sourceWindow: {
       windowId: 'window-beta-policy',
       startedAt: new Date('2026-06-06T00:00:00.000Z'),

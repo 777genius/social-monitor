@@ -30,7 +30,7 @@ describe('Summary tenant scope guard (e2e)', () => {
 
   it('returns controlled tenant.scope_missing problem for summary request without tenant', async () => {
     const response = await request(app.getHttpServer())
-      .post('/topics/topic-summary-scope-e2e/summary-requests')
+      .post('/interests/topic-summary-scope-e2e/summary-requests')
       .set('x-workspace-id', workspaceId('workspace-summary-scope-e2e'))
       .set('idempotency-key', 'summary-scope-request-1')
       .expect(400);

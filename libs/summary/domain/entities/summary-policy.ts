@@ -19,7 +19,7 @@ export type SummaryPolicyProps = SummaryGenerationPolicy & {
   readonly id: string;
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 };
@@ -51,11 +51,11 @@ export class SummaryPolicy {
     }));
   }
 
-  static defaultForTopic(params: {
+  static defaultForInterest(params: {
     readonly id: string;
     readonly tenantId: TenantId;
     readonly workspaceId: WorkspaceId;
-    readonly topicId: string;
+    readonly interestId: string;
     readonly now: Date;
   }): SummaryPolicy {
     return SummaryPolicy.create({
@@ -110,8 +110,8 @@ export class SummaryPolicy {
       throw new Error('Summary policy id must be non-empty');
     }
 
-    if (props.topicId.trim().length === 0) {
-      throw new Error('Summary policy topic id must be non-empty');
+    if (props.interestId.trim().length === 0) {
+      throw new Error('Summary policy interest id must be non-empty');
     }
 
     if (!supportedLanguages.has(props.language)) {

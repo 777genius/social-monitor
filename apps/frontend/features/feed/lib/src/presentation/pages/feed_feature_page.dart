@@ -16,12 +16,12 @@ class FeedFeaturePage extends StatefulWidget {
     super.key,
     required this.store,
     this.autoload = true,
-    this.topicTitle,
+    this.interestTitle,
   });
 
   final FeedItemsStore store;
   final bool autoload;
-  final String? topicTitle;
+  final String? interestTitle;
 
   @override
   State<FeedFeaturePage> createState() => _FeedFeaturePageState();
@@ -42,10 +42,10 @@ class _FeedFeaturePageState extends State<FeedFeaturePage> {
       child: AnimatedBuilder(
         animation: widget.store,
         builder: (context, child) {
-          final topicId = widget.store.filter.topicId;
-          final topicLabel = _topicLabel(
-            topicId: topicId,
-            topicTitle: widget.topicTitle,
+          final interestId = widget.store.filter.interestId;
+          final interestLabel = _interestLabel(
+            interestId: interestId,
+            interestTitle: widget.interestTitle,
           );
           final items = _itemsFromState(widget.store.state);
           final facets = buildFeedFilterFacets(
@@ -72,12 +72,12 @@ class _FeedFeaturePageState extends State<FeedFeaturePage> {
                       unawaited(widget.store.updateSearch(value));
                     },
                     filters: [
-                      if (topicId != null)
+                      if (interestId != null)
                         AppFilterChipData(
-                          label: topicLabel ?? 'Topic $topicId',
+                          label: interestLabel ?? 'Interest $interestId',
                           selected: true,
                           onSelected: (_) {
-                            unawaited(widget.store.clearTopicFilter());
+                            unawaited(widget.store.clearInterestFilter());
                           },
                         ),
                       for (final option in facets.providerOptions)
@@ -138,7 +138,10 @@ class _FeedFeaturePageState extends State<FeedFeaturePage> {
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.only(top: AppSpacing.md),
-                  child: _FeedBody(store: widget.store, topicLabel: topicLabel),
+                  child: _FeedBody(
+                    store: widget.store,
+                    interestLabel: interestLabel,
+                  ),
                 ),
               ),
             ],
@@ -150,10 +153,10 @@ class _FeedFeaturePageState extends State<FeedFeaturePage> {
 }
 
 class _FeedBody extends StatelessWidget {
-  const _FeedBody({required this.store, required this.topicLabel});
+  const _FeedBody({required this.store, required this.interestLabel});
 
   final FeedItemsStore store;
-  final String? topicLabel;
+  final String? interestLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -205,7 +208,7 @@ class _FeedBody extends StatelessWidget {
           FeedSnapshotPanel(
             items: items,
             nextCursor: nextCursor,
-            topicLabel: topicLabel,
+            interestLabel: interestLabel,
           ),
           const SizedBox(height: AppSpacing.md),
           AppResponsiveSplitView(
@@ -262,15 +265,18 @@ class _FeedBody extends StatelessWidget {
   }
 }
 
-String? _topicLabel({required String? topicId, required String? topicTitle}) {
-  if (topicId == null) {
+String? _interestLabel({
+  required String? interestId,
+  required String? interestTitle,
+}) {
+  if (interestId == null) {
     return null;
   }
-  final normalizedTitle = topicTitle?.trim();
+  final normalizedTitle = interestTitle?.trim();
   if (normalizedTitle != null && normalizedTitle.isNotEmpty) {
     return normalizedTitle;
   }
-  return 'Topic $topicId';
+  return 'Interest $interestId';
 }
 
 List<FeedItem> _itemsFromState(AsyncViewState<PageResult<FeedItem>> state) {

@@ -12,12 +12,12 @@ final class ListSourceBindingsUseCase {
   Future<Result<PageResult<SourceBinding>>> call(
     ListSourceBindingsQuery query,
   ) {
-    if (!query.scope.isValid || !query.topicId.isValid) {
+    if (!query.scope.isValid || !query.interestId.isValid) {
       return Future.value(
         const Result.failure(
           ValidationFailure(
-            message: 'Workspace scope and topic are required',
-            code: 'source_bindings.scope_or_topic_required',
+            message: 'Workspace scope and interest are required',
+            code: 'source_bindings.scope_or_interest_required',
           ),
         ),
       );

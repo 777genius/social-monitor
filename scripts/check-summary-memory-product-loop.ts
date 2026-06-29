@@ -20,8 +20,8 @@ import type {
 } from '@social-monitor/ingestion/ports';
 import { InMemoryOutboxAdapter } from '@social-monitor/monitoring/adapters/messaging/in-memory-outbox.adapter';
 import { InMemoryIdempotencyAdapter } from '@social-monitor/monitoring/adapters/idempotency/in-memory-idempotency.adapter';
-import { InMemoryTopicRepository } from '@social-monitor/monitoring/adapters/persistence/in-memory-topic.repository';
-import { CreateTopicUseCase } from '@social-monitor/monitoring/features/create-topic/create-topic.use-case';
+import { InMemoryInterestRepository } from '@social-monitor/monitoring/adapters/persistence/in-memory-interest.repository';
+import { CreateInterestUseCase } from '@social-monitor/monitoring/features/create-interest/create-interest.use-case';
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { InMemoryQueuePublisher } from '@social-monitor/platform-queue/adapters/in-memory';
 import {
@@ -51,7 +51,7 @@ import { RequestSummaryUseCase } from '@social-monitor/summary/features/request-
 import {
   providerQualityScope,
   spaceSlug,
-  topicFeedbackScope,
+  interestFeedbackScope,
   userPreferenceScope,
 } from '@social-monitor/summary/adapters/memory/memo-stack-summary-memory.adapter';
 import type {
@@ -77,7 +77,7 @@ async function main(): Promise<void> {
   assertProductLoopEvidenceRequirements();
   const clock = new FixedClock(now);
   const ids = new SequenceIdGenerator(runId);
-  const topics = new InMemoryTopicRepository();
+  const topics = new InMemoryInterestRepository();
   const feedItems = new InMemoryFeedItemReadRepository();
   const summaryJobs = new InMemorySummaryJobRepository();
   const summaryQueue = new InMemorySummaryJobQueueAdapter(new InMemoryQueuePublisher(), new InMemoryMetricsRecorder());
@@ -88,7 +88,7 @@ async function main(): Promise<void> {
   const memoryBackend = mode === 'fixture' ? new MemoStackProductLoopBackend() : undefined;
   const memory = createProductLoopMemory(mode, memoryBackend);
 
-  const topic = unwrap(await new CreateTopicUseCase(
+  const topic = unwrap(await new CreateInterestUseCase(
     topics,
     new InMemoryOutboxAdapter(),
     new InMemoryIdempotencyAdapter(),
@@ -99,19 +99,19 @@ async function main(): Promise<void> {
     workspaceId: workspace,
     name: 'Security monitoring',
     query: 'security monitoring',
-    idempotencyKey: `${runId}:create-topic`,
+    idempotencyKey: `${runId}:create-interest`,
     correlationId: runId,
   }), 'create topic');
   assert(topic.created, 'product loop must create a topic');
 
-  const scanMetrics = await ingestProviderFindings(feedItems, topic.topicId, ids, clock);
+  const scanMetrics = await ingestProviderFindings(feedItems, topic.interestId, ids, clock);
   assert.equal(scanMetrics.length, providerKeys.length, 'product loop must ingest every fixture provider');
   assert.equal(feedItems.all().length, providerKeys.length, 'ingestion projection must create one feed item per provider');
   await summaryPolicies.save(SummaryPolicy.create({
     id: `${runId}-policy`,
     tenantId: tenant,
     workspaceId: workspace,
-    topicId: topic.topicId,
+    interestId: topic.interestId,
     language: 'en',
     format: 'bullet_digest',
     tone: 'analytical',
@@ -124,7 +124,7 @@ async function main(): Promise<void> {
   }));
 
   const firstSummary = await runSummary({
-    topicId: topic.topicId,
+    interestId: topic.interestId,
     idempotencyKey: `${runId}:first-summary`,
     summaryJobs,
     summaryQueue,
@@ -160,15 +160,15 @@ async function main(): Promise<void> {
   }), 'record summary feedback');
   assert(feedback.created, 'feedback must be recorded');
   if (memoryBackend === undefined) {
-    await waitForLiveMemory({ topicId: topic.topicId, feedItems, memory, clock });
+    await waitForLiveMemory({ interestId: topic.interestId, feedItems, memory, clock });
   } else {
     assert.equal(memoryBackend.captureBodies.length, 3, 'feedback must be mirrored into topic, provider and user memo-stack captures');
     assert.equal(memoryBackend.factBodies.length, 3, 'feedback must be mirrored into topic, provider and user memo-stack fact writes');
-    assert.equal(memoryBackend.captureBodies[0]?.memory_scope_external_ref, topicFeedbackScope(topic.topicId));
-    assert.equal(memoryBackend.captureBodies[1]?.memory_scope_external_ref, providerQualityScope(topic.topicId, 'reddit'));
+    assert.equal(memoryBackend.captureBodies[0]?.memory_scope_external_ref, interestFeedbackScope(topic.interestId));
+    assert.equal(memoryBackend.captureBodies[1]?.memory_scope_external_ref, providerQualityScope(topic.interestId, 'reddit'));
     assert.equal(memoryBackend.captureBodies[2]?.memory_scope_external_ref, userPreferenceScope(userId));
-    assert.equal(memoryBackend.factBodies[0]?.memory_scope_external_ref, topicFeedbackScope(topic.topicId));
-    assert.equal(memoryBackend.factBodies[1]?.memory_scope_external_ref, providerQualityScope(topic.topicId, 'reddit'));
+    assert.equal(memoryBackend.factBodies[0]?.memory_scope_external_ref, interestFeedbackScope(topic.interestId));
+    assert.equal(memoryBackend.factBodies[1]?.memory_scope_external_ref, providerQualityScope(topic.interestId, 'reddit'));
     assert.equal(memoryBackend.factBodies[2]?.memory_scope_external_ref, userPreferenceScope(userId));
     assert.equal(memoryBackend.factBodies[2]?.category, 'user_preferences');
     assertIncludesAll(
@@ -183,7 +183,7 @@ async function main(): Promise<void> {
   }
 
   const secondSummary = await runSummary({
-    topicId: topic.topicId,
+    interestId: topic.interestId,
     idempotencyKey: `${runId}:second-summary`,
     summaryJobs,
     summaryQueue,
@@ -200,7 +200,7 @@ async function main(): Promise<void> {
   assertMemoryInfluencedSummary(secondSummary.executiveSummary, mode);
   const postgresEvidence = mode === 'live'
     ? await maybeCheckLivePostgresEvidence({
-        topicId: topic.topicId,
+        interestId: topic.interestId,
         summaryId: firstSummary.summaryId,
         citationId: feedbackCitationId,
         providerKey: 'reddit',
@@ -211,13 +211,13 @@ async function main(): Promise<void> {
     assert.deepEqual(memoryBackend.contextBodies[1]?.memory_scope_external_refs, [
       `subscription:${subscriptionId}:preferences`,
       `user:${userId}:preferences`,
-      `topic:${topic.topicId}:preferences`,
+      `interest:${topic.interestId}:preferences`,
       'workspace-global',
-      providerQualityScope(topic.topicId, 'github'),
-      providerQualityScope(topic.topicId, 'hacker-news'),
-      providerQualityScope(topic.topicId, 'reddit'),
-      providerQualityScope(topic.topicId, 'rss'),
-      `topic:${topic.topicId}:feedback`,
+      providerQualityScope(topic.interestId, 'github'),
+      providerQualityScope(topic.interestId, 'hacker-news'),
+      providerQualityScope(topic.interestId, 'reddit'),
+      providerQualityScope(topic.interestId, 'rss'),
+      `interest:${topic.interestId}:feedback`,
     ]);
     assert(
       String(memoryBackend.contextBodies[1]?.query ?? '').includes('provider distribution: github=1, hacker-news=1, reddit=1, rss=1'),
@@ -258,13 +258,13 @@ function createProductLoopMemory(
 }
 
 async function waitForLiveMemory(params: {
-  readonly topicId: string;
+  readonly interestId: string;
   readonly feedItems: InMemoryFeedItemReadRepository;
   readonly memory: SummaryMemoryPort;
   readonly clock: FixedClock;
 }): Promise<void> {
   for (let attempt = 1; attempt <= 10; attempt += 1) {
-    const context = await params.memory.buildContext(memoryQuery(params.topicId, params.feedItems, params.clock.now()));
+    const context = await params.memory.buildContext(memoryQuery(params.interestId, params.feedItems, params.clock.now()));
     if (
       context.status === 'available' &&
       hasProviderQualityMemory(context.renderedText)
@@ -278,7 +278,7 @@ async function waitForLiveMemory(params: {
 }
 
 async function maybeCheckLivePostgresEvidence(params: {
-  readonly topicId: string;
+  readonly interestId: string;
   readonly summaryId: string;
   readonly citationId: string;
   readonly providerKey: string;
@@ -300,8 +300,8 @@ async function maybeCheckLivePostgresEvidence(params: {
   });
   try {
     const memorySpaceSlug = spaceSlug(tenant, workspace);
-    const memoryScopeRef = topicFeedbackScope(params.topicId);
-    const providerScopeRef = providerQualityScope(params.topicId, params.providerKey);
+    const memoryScopeRef = interestFeedbackScope(params.interestId);
+    const providerScopeRef = providerQualityScope(params.interestId, params.providerKey);
     const userScopeRef = userPreferenceScope(userId);
     const topicCaptures = await countRows(pool, `
       select count(*)::int as count
@@ -319,7 +319,7 @@ async function maybeCheckLivePostgresEvidence(params: {
         and c.metadata_json->>'memory_action' = 'prefer_shorter_summary'
         and c.metadata_json->>'provider_quality_action' = 'downrank_low_signal_provider'
         and c.metadata_json->>'provider_quality_scope' = $6
-    `, [memorySpaceSlug, memoryScopeRef, params.topicId, params.summaryId, params.citationId, providerScopeRef]);
+    `, [memorySpaceSlug, memoryScopeRef, params.interestId, params.summaryId, params.citationId, providerScopeRef]);
     const providerCaptures = await countRows(pool, `
       select count(*)::int as count
       from memory_captures c
@@ -335,7 +335,7 @@ async function maybeCheckLivePostgresEvidence(params: {
         and c.metadata_json->>'citation_id' = $5
         and c.metadata_json->>'provider_quality_action' = 'downrank_low_signal_provider'
         and c.metadata_json->>'provider_quality_scope' = $2
-    `, [memorySpaceSlug, providerScopeRef, params.topicId, params.summaryId, params.citationId]);
+    `, [memorySpaceSlug, providerScopeRef, params.interestId, params.summaryId, params.citationId]);
     const userPreferenceCaptures = await countRows(pool, `
       select count(*)::int as count
       from memory_captures c
@@ -351,7 +351,7 @@ async function maybeCheckLivePostgresEvidence(params: {
         and c.metadata_json->>'citation_id' = $5
         and c.metadata_json->>'memory_action' = 'downrank_similar_provider_evidence'
         and c.metadata_json->>'memory_scope_external_ref' = $2
-    `, [memorySpaceSlug, userScopeRef, params.topicId, params.summaryId, params.citationId]);
+    `, [memorySpaceSlug, userScopeRef, params.interestId, params.summaryId, params.citationId]);
     const topicFacts = await countRows(pool, `
       select count(*)::int as count
       from memory_facts f
@@ -462,7 +462,7 @@ function uniqueSorted(values: readonly string[]): readonly string[] {
 }
 
 function memoryQuery(
-  topicId: string,
+  interestId: string,
   feedItems: InMemoryFeedItemReadRepository,
   requestedAt: Date,
 ): Parameters<SummaryMemoryPort['buildContext']>[0] {
@@ -471,7 +471,7 @@ function memoryQuery(
   return {
     tenantId: tenant,
     workspaceId: workspace,
-    topicId,
+    interestId,
     userId,
     subscriptionId,
     requestedAt,
@@ -514,7 +514,7 @@ function hasProviderQualityMemory(value: string | undefined): boolean {
 
 async function ingestProviderFindings(
   feedItems: InMemoryFeedItemReadRepository,
-  topicId: string,
+  interestId: string,
   ids: IdGenerator,
   clock: FixedClock,
 ): Promise<readonly ScanMetric[]> {
@@ -538,7 +538,7 @@ async function ingestProviderFindings(
       tenantId: tenant,
       workspaceId: workspace,
       scanJobId: `scan-${runId}-${providerKey}`,
-      topicId,
+      interestId,
       sourceBindingId: `binding-${runId}-${providerKey}`,
       scanPolicyId: `scan-policy-${runId}-${providerKey}`,
       providerKey,
@@ -563,7 +563,7 @@ async function ingestProviderFindings(
 }
 
 async function runSummary(params: {
-  readonly topicId: string;
+  readonly interestId: string;
   readonly idempotencyKey: string;
   readonly summaryJobs: InMemorySummaryJobRepository;
   readonly summaryQueue: InMemorySummaryJobQueueAdapter;
@@ -589,7 +589,7 @@ async function runSummary(params: {
   ).execute({
     tenantId: tenant,
     workspaceId: workspace,
-    topicId: params.topicId,
+    interestId: params.interestId,
     userId,
     subscriptionId,
     idempotencyKey: params.idempotencyKey,

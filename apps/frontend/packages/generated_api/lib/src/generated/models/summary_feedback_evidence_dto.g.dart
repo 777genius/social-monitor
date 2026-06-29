@@ -9,8 +9,8 @@ part of 'summary_feedback_evidence_dto.dart';
 SummaryFeedbackEvidenceDto _$SummaryFeedbackEvidenceDtoFromJson(
   Map<String, dynamic> json,
 ) => SummaryFeedbackEvidenceDto(
+  interestId: json['interestId'] as String,
   summaryId: json['summaryId'] as String,
-  topicId: json['topicId'] as String,
   citationId: json['citationId'] as String?,
   feedItemId: json['feedItemId'] as String?,
   providerKey: json['providerKey'] as String?,
@@ -22,8 +22,8 @@ Map<String, dynamic> _$SummaryFeedbackEvidenceDtoToJson(
 ) => <String, dynamic>{
   'citationId': instance.citationId,
   'feedItemId': instance.feedItemId,
+  'interestId': instance.interestId,
   'providerKey': instance.providerKey,
   'sourceItemId': instance.sourceItemId,
   'summaryId': instance.summaryId,
-  'topicId': instance.topicId,
 };

@@ -338,7 +338,7 @@ Work risk-first. These risks can invalidate the MVP if ignored:
 | Realtime inconsistency | WS event required for correctness or no resync path | Keep REST read model as truth and add resync | Missed event cannot be recovered |
 | Support blindness | Failure visible to user but not dashboard/runbook | Add safe metric and support classification | Support needs shell/database access |
 | Scope creep | New source/integration/polish blocks core loop | Classify as Core, Safety, Extension or Deferred | Beta scope changes without evidence/owner |
-| Capacity envelope unknown | No beta limits for tenants/topics/scans/AI/queues | Define envelope, quotas, SLOs and degradation behavior | Cannot decide safe ring expansion |
+| Capacity envelope unknown | No beta limits for tenants/interests/scans/AI/queues | Define envelope, quotas, SLOs and degradation behavior | Cannot decide safe ring expansion |
 
 When a stop condition appears, pause dependent work and fix the risk before adding features.
 
@@ -1028,7 +1028,7 @@ Stop the current slice and resolve the issue before continuing if any of these a
 The first milestone is not "monorepo exists". It is:
 
 ```text
-POST /topics -> POST /source-bindings -> scheduled fake scan
+POST /interests -> POST /source-bindings -> scheduled fake scan
 -> normalized feed item -> generated mobile client can read feed
 ```
 

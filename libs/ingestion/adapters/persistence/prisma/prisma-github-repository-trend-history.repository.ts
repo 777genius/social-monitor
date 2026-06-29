@@ -78,7 +78,7 @@ type TrendRecord = SaveGitHubRepositoryTrendHistoryCommand['records'][number];
 const candidateData = (record: TrendRecord) => ({
   tenantId: record.tenantId,
   workspaceId: record.workspaceId,
-  topicId: record.topicId,
+  interestId: record.interestId,
   sourceBindingId: record.sourceBindingId,
   scanJobId: record.scanJobId,
   repositoryFullName: record.repositoryFullName,
@@ -117,7 +117,7 @@ const snapshotData = (record: TrendRecord) => ({
 const resultData = (record: TrendRecord) => ({
   tenantId: record.tenantId,
   workspaceId: record.workspaceId,
-  topicId: record.topicId,
+  interestId: record.interestId,
   sourceBindingId: record.sourceBindingId,
   scanJobId: record.scanJobId,
   sourceItemId: record.sourceItemId,

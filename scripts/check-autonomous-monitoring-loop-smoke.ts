@@ -101,11 +101,11 @@ import { InMemoryOutboxAdapter } from "../libs/monitoring/adapters/messaging/in-
 import { InMemoryScanJobRepository } from "../libs/monitoring/adapters/persistence/in-memory-scan-job.repository";
 import { InMemoryScanPolicyRepository } from "../libs/monitoring/adapters/persistence/in-memory-scan-policy.repository";
 import { InMemorySourceBindingRepository } from "../libs/monitoring/adapters/persistence/in-memory-source-binding.repository";
-import { InMemoryTopicRepository } from "../libs/monitoring/adapters/persistence/in-memory-topic.repository";
+import { InMemoryInterestRepository } from "../libs/monitoring/adapters/persistence/in-memory-interest.repository";
 import { InMemoryScanQueueAdapter } from "../libs/monitoring/adapters/queue/in-memory-scan-queue.adapter";
 import { FakeSourceCatalogAdapter } from "../libs/monitoring/adapters/source-catalog/fake-source-catalog.adapter";
 import { BindSourceUseCase } from "../libs/monitoring/features/bind-source/bind-source.use-case";
-import { CreateTopicUseCase } from "../libs/monitoring/features/create-topic/create-topic.use-case";
+import { CreateInterestUseCase } from "../libs/monitoring/features/create-interest/create-interest.use-case";
 import { RecordScanExecutionUseCase } from "../libs/monitoring/features/record-scan-execution/record-scan-execution.use-case";
 import { ScheduleDueScansUseCase } from "../libs/monitoring/features/schedule-due-scans/schedule-due-scans.use-case";
 import { SetScanPolicyUseCase } from "../libs/monitoring/features/set-scan-policy/set-scan-policy.use-case";
@@ -122,7 +122,7 @@ type QueuedScanPayload = {
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
   readonly scanJobId: string;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly sourceBindingId: string;
   readonly scanPolicyId: string;
   readonly providerKey: ProviderKey;
@@ -172,7 +172,7 @@ async function main(): Promise<void> {
   const clock = new FixedClock(fixedNow);
   const digestClock = new FixedClock(digestSchedulerNow);
   const metrics = new InMemoryMetricsRecorder();
-  const topics = new InMemoryTopicRepository();
+  const interests = new InMemoryInterestRepository();
   const bindings = new InMemorySourceBindingRepository();
   const scanPolicies = new InMemoryScanPolicyRepository();
   const scanJobs = new InMemoryScanJobRepository();
@@ -220,9 +220,9 @@ async function main(): Promise<void> {
     clock,
   );
 
-  const topic = unwrap(
-    await new CreateTopicUseCase(
-      topics,
+  const interest = unwrap(
+    await new CreateInterestUseCase(
+      interests,
       outbox,
       idempotency,
       ids,
@@ -232,7 +232,7 @@ async function main(): Promise<void> {
       workspaceId: workspace,
       name: "Autonomous Monitoring Loop",
       query: "agent orchestration reliability release monitoring",
-      idempotencyKey: "autonomous-loop:topic",
+      idempotencyKey: "autonomous-loop:interest",
       correlationId,
     }),
     "create autonomous loop topic",
@@ -243,7 +243,7 @@ async function main(): Promise<void> {
       id: "summary-policy-autonomous-monitoring-loop-smoke",
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: topic.topicId,
+      interestId: interest.interestId,
       language: "en",
       format: "bullet_digest",
       tone: "analytical",
@@ -265,7 +265,7 @@ async function main(): Promise<void> {
     tenantId: tenant,
     workspaceId: workspace,
     userId,
-    topicWeights: [{ key: topic.topicId, weight: 1 }],
+    interestWeights: [{ key: interest.interestId, weight: 1 }],
     sourceWeights: [
       { key: "github-issues", weight: 1 },
       { key: "github-trending-page", weight: 0.75 },
@@ -287,8 +287,8 @@ async function main(): Promise<void> {
   );
 
   const scanBindings = await bindProviders({
-    topics,
-    topicId: topic.topicId,
+    interests,
+    interestId: interest.interestId,
     bindings,
     scanPolicies,
     outbox,
@@ -324,7 +324,7 @@ async function main(): Promise<void> {
     recordAudit,
     "autonomous.scan.scheduled",
     "topic",
-    topic.topicId,
+    interest.interestId,
     {
       providerKeys,
       enqueued: scheduledScans.enqueued,
@@ -378,7 +378,7 @@ async function main(): Promise<void> {
     },
   );
 
-  const feedAfterInitialScans = await listFeed(feedItems, topic.topicId, clock);
+  const feedAfterInitialScans = await listFeed(feedItems, interest.interestId, clock);
   const expectedInitialFeedFindings = providerKeys.length * 2;
   assert(
     feedAfterInitialScans.items.length === expectedInitialFeedFindings,
@@ -397,7 +397,7 @@ async function main(): Promise<void> {
     ),
     "replayed provider scans must deduplicate source items",
   );
-  const feedAfterReplay = await listFeed(feedItems, topic.topicId, clock);
+  const feedAfterReplay = await listFeed(feedItems, interest.interestId, clock);
   assert(
     feedAfterReplay.items.length === feedAfterInitialScans.items.length,
     "feed projection must stay stable after duplicate replay scans",
@@ -408,7 +408,7 @@ async function main(): Promise<void> {
       tenantId: tenant,
       workspaceId: workspace,
       userId,
-      topicId: topic.topicId,
+      interestId: interest.interestId,
       limit: 10,
     }),
     "rank autonomous findings",
@@ -443,7 +443,7 @@ async function main(): Promise<void> {
     recordAudit,
     "autonomous.findings.ranked",
     "topic",
-    topic.topicId,
+    interest.interestId,
     {
       topFeedItemId: ranked.items[0]?.feedItemId,
       topProviderKey: ranked.items[0]?.providerKey,
@@ -757,7 +757,7 @@ async function main(): Promise<void> {
       tenantId: tenant,
       workspaceId: workspace,
       feedItemId: item.id,
-      topicId: item.topicId,
+      interestId: item.interestId,
       observedAt: new Date(item.observedAt),
       signal: ranked.items
         .slice(0, 3)
@@ -770,7 +770,7 @@ async function main(): Promise<void> {
     tenantId: tenant,
     workspaceId: workspace,
     summaryId,
-    topicId: topic.topicId,
+    interestId: interest.interestId,
     sourceWindowStartedAt: summarySnapshot.sourceWindow.startedAt,
     sourceWindowEndedAt: summarySnapshot.sourceWindow.endedAt,
     signal: "high",
@@ -785,7 +785,7 @@ async function main(): Promise<void> {
       workspaceId: workspace,
       recipientKey: "webhook-endpoint-autonomous-loop",
       channel: "webhook",
-      topicIds: [topic.topicId],
+      interestIds: [interest.interestId],
       intervalSeconds: 3600,
       includeNoSignal: false,
       nextRunAt: digestDueAt,
@@ -1052,8 +1052,8 @@ async function main(): Promise<void> {
 }
 
 async function bindProviders(params: {
-  readonly topics: InMemoryTopicRepository;
-  readonly topicId: string;
+  readonly interests: InMemoryInterestRepository;
+  readonly interestId: string;
   readonly bindings: InMemorySourceBindingRepository;
   readonly scanPolicies: InMemoryScanPolicyRepository;
   readonly outbox: InMemoryOutboxAdapter;
@@ -1062,7 +1062,7 @@ async function bindProviders(params: {
   readonly clock: FixedClock;
 }): Promise<readonly ScanBinding[]> {
   const bindSource = new BindSourceUseCase(
-    params.topics,
+    params.interests,
     params.bindings,
     new FakeSourceCatalogAdapter({ includeFixtureProviders: false }),
     params.outbox,
@@ -1086,7 +1086,7 @@ async function bindProviders(params: {
       await bindSource.execute({
         tenantId: tenant,
         workspaceId: workspace,
-        topicId: params.topicId,
+        interestId: params.interestId,
         providerKey: target.providerKey,
         config: target.config,
         idempotencyKey: `autonomous-loop:binding:${target.providerKey}`,
@@ -1216,14 +1216,14 @@ function drainScanCommands(
 
 async function listFeed(
   feedItems: InMemoryFeedItemReadRepository,
-  topicId: string,
+  interestId: string,
   clock: FixedClock,
 ) {
   return unwrap(
     await new ListFeedItemsUseCase(feedItems, feedItems, clock).execute({
       tenantId: tenant,
       workspaceId: workspace,
-      topicId,
+      interestId,
       limit: 100,
     }),
     "list autonomous feed items",
@@ -1501,7 +1501,7 @@ function parseQueuedScanPayload(
     tenantId: tenantId(readString(command.payload, "tenantId")),
     workspaceId: workspaceId(readString(command.payload, "workspaceId")),
     scanJobId: readString(command.payload, "scanJobId"),
-    topicId: readString(command.payload, "topicId"),
+    interestId: readString(command.payload, "interestId"),
     sourceBindingId: readString(command.payload, "sourceBindingId"),
     scanPolicyId: readString(command.payload, "scanPolicyId"),
     providerKey: assertProviderKey(readString(command.payload, "providerKey")),
@@ -1608,8 +1608,8 @@ function assertSummaryReadyEvent(
     "summary ready event workspaceId is required",
   );
   assert(
-    typeof event.payload.topicId === "string",
-    "summary ready event topicId is required",
+    typeof event.payload.interestId === "string",
+    "summary ready event interestId is required",
   );
   assert(
     event.payload.status === "completed" ||

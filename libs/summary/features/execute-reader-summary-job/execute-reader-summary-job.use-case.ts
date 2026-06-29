@@ -252,7 +252,7 @@ export class ExecuteReaderSummaryJobUseCase {
             workspaceId: snapshot.workspaceId,
             userId: snapshot.userId,
             subscriptionId: snapshot.subscriptionId,
-            topicId: readerSummaryPreferenceTopicId(snapshot, evidence),
+            interestId: readerSummaryPreferenceInterestId(snapshot, evidence),
           });
     const context = await this.safeBuildContext(snapshot, evidence);
     const basePolicy =
@@ -379,10 +379,10 @@ const withContextUnavailableFlag = (
 
 const unique = <T>(values: readonly T[]): readonly T[] => [...new Set(values)];
 
-const readerSummaryPreferenceTopicId = (
+const readerSummaryPreferenceInterestId = (
   snapshot: ReturnType<ReaderSummaryJob["toSnapshot"]>,
   evidence: SummaryEvidenceSelection,
 ): string =>
-  snapshot.scope.type === "topic"
-    ? snapshot.scope.topicId
-    : (evidence.selectedEvidence[0]?.topicId ?? "workspace");
+  snapshot.scope.type === "interest"
+    ? snapshot.scope.interestId
+    : (evidence.selectedEvidence[0]?.interestId ?? "workspace");

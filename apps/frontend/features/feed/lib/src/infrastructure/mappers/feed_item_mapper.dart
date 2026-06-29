@@ -11,7 +11,7 @@ final class FeedItemMapper {
   FeedItem toDomain(FeedItemApiDto dto) {
     return FeedItem(
       id: FeedItemId(_nonEmpty(dto.id, fallback: 'feed-item-unknown')),
-      topicId: _nonEmpty(dto.topicId, fallback: 'topic-unknown'),
+      interestId: _nonEmpty(dto.interestId, fallback: 'topic-unknown'),
       sourceItemId: _nonEmpty(
         dto.sourceItemId,
         fallback: 'source-item-unknown',

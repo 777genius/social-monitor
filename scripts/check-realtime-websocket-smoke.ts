@@ -100,7 +100,7 @@ async function main(): Promise<void> {
     await waitForConnect(socket);
     await waitForConnect(rejectedSocket);
 
-    const channel = 'topic:topic-realtime-ws-smoke:summary-status';
+    const channel = 'interest:topic-realtime-ws-smoke:summary-status';
     const rejectedByScope = await emitAck<RealtimeAck>(rejectedSocket, 'realtime.subscribe', {
       channel,
       limit: 10,

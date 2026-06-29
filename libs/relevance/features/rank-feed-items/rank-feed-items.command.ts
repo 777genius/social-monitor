@@ -4,7 +4,7 @@ export type RankFeedItemsCommand = {
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
   readonly userId?: string;
-  readonly topicId?: string;
+  readonly interestId?: string;
   readonly limit: number;
   readonly observedAfter?: Date;
   readonly observedBefore?: Date;

@@ -9,8 +9,8 @@ part of 'relevance_feedback_target_dto.dart';
 RelevanceFeedbackTargetDto _$RelevanceFeedbackTargetDtoFromJson(
   Map<String, dynamic> json,
 ) => RelevanceFeedbackTargetDto(
+  interestId: json['interestId'] as String,
   providerKey: json['providerKey'] as String,
-  topicId: json['topicId'] as String,
   feedbackReason: json['feedbackReason'] == null
       ? null
       : RelevanceFeedbackTargetDtoFeedbackReasonFeedbackReason.fromJson(
@@ -24,6 +24,6 @@ Map<String, dynamic> _$RelevanceFeedbackTargetDtoToJson(
 ) => <String, dynamic>{
   'feedbackReason': instance.feedbackReason,
   'feedItemId': instance.feedItemId,
+  'interestId': instance.interestId,
   'providerKey': instance.providerKey,
-  'topicId': instance.topicId,
 };

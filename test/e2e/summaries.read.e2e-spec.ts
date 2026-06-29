@@ -32,9 +32,9 @@ describe('Summary read model (e2e)', () => {
   it('returns executed summaries through REST detail and list endpoints', async () => {
     const tenant = tenantId('tenant-summary-read-e2e');
     const workspace = workspaceId('workspace-summary-read-e2e');
-    const topicId = 'topic-summary-read-e2e';
+    const interestId = 'topic-summary-read-e2e';
     const requested = await request(app.getHttpServer())
-      .post(`/topics/${topicId}/summary-requests`)
+      .post(`/interests/${interestId}/summary-requests`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'member')
@@ -77,7 +77,7 @@ describe('Summary read model (e2e)', () => {
       summaryId: executed.value.summaryId,
       tenantId: tenant,
       workspaceId: workspace,
-      topicId,
+      interestId,
       qualityFlags: ['no_signal', 'limited_sources'],
       confidence: {
         level: 'none',
@@ -85,13 +85,13 @@ describe('Summary read model (e2e)', () => {
         rationale: 'No evidence was selected for the summary window.',
       },
       citations: [],
-      noSignalReason: 'No eligible evidence items selected for this topic.',
+      noSignalReason: 'No eligible evidence items selected for this interest.',
     });
     expect(detail.body.sourceWindow.startedAt).toEqual(expect.any(String));
     expect(detail.body.sourceWindow.endedAt).toEqual(expect.any(String));
 
     const list = await request(app.getHttpServer())
-      .get(`/summaries?topicId=${topicId}`)
+      .get(`/summaries?interestId=${interestId}`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'viewer')
@@ -103,7 +103,7 @@ describe('Summary read model (e2e)', () => {
       summaryId: executed.value.summaryId,
       tenantId: tenant,
       workspaceId: workspace,
-      topicId,
+      interestId,
       freshness: {
         status: 'fresh',
         checkedAt: expect.any(String),

@@ -20,7 +20,7 @@ export class FeedSummaryEvidenceSelector implements SummaryEvidenceSelectorPort 
     const result = await this.feedItems.list({
       tenantId: params.tenantId,
       workspaceId: params.workspaceId,
-      topicId: params.topicId,
+      interestId: params.interestId,
       limit: MAX_EVIDENCE_ITEMS,
     });
     const items = selectProviderBalancedEvidence(
@@ -100,7 +100,7 @@ const buildSourceWindow = (
     const startedAt = new Date(endedAt.getTime() - 1);
 
     return {
-      windowId: `${params.tenantId}:${params.workspaceId}:${params.topicId}:empty`,
+      windowId: `${params.tenantId}:${params.workspaceId}:${params.interestId}:empty`,
       startedAt,
       endedAt,
       selectedFeedItemIds: [],
@@ -114,7 +114,7 @@ const buildSourceWindow = (
   const endedAt = new Date(maxObservedAt > minObservedAt ? maxObservedAt : maxObservedAt + 1);
 
   return {
-    windowId: `${params.tenantId}:${params.workspaceId}:${params.topicId}:${startedAt.toISOString()}:${endedAt.toISOString()}`,
+    windowId: `${params.tenantId}:${params.workspaceId}:${params.interestId}:${startedAt.toISOString()}:${endedAt.toISOString()}`,
     startedAt,
     endedAt,
     selectedFeedItemIds: items.map((item) => item.feedItemId),

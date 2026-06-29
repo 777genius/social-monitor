@@ -54,7 +54,7 @@ async function main(): Promise<void> {
     payload: {
       tenantId: tenant,
       workspaceId: workspace,
-      topicId: 'topic-summary-ready-projection-smoke',
+      interestId: 'topic-summary-ready-projection-smoke',
       summaryJobId: 'summary-job-projection-smoke',
       summaryId: 'summary-projection-smoke',
       status: 'completed',
@@ -63,13 +63,13 @@ async function main(): Promise<void> {
 
   await runtime.onApplicationShutdown('summary-ready-projection-handler-smoke-complete');
 
-  assert(result.channel === 'topic:topic-summary-ready-projection-smoke:summary-status', 'handler must return realtime channel');
+  assert(result.channel === 'interest:topic-summary-ready-projection-smoke:summary-status', 'handler must return realtime channel');
   assert(result.sequence === 1, `handler must assign realtime sequence 1, got ${result.sequence}`);
 
   const replay = await realtimeEvents.list({
     tenantId: tenant,
     workspaceId: workspace,
-    channel: 'topic:topic-summary-ready-projection-smoke:summary-status',
+    channel: 'interest:topic-summary-ready-projection-smoke:summary-status',
     limit: 10,
   });
   const event = replay.events[0]?.toSnapshot();

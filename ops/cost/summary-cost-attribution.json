@@ -31,7 +31,7 @@
       "datasetVersion": "summary.eval.mvp.v1",
       "tenantId": "eval-tenant",
       "workspaceId": "eval-workspace",
-      "topicId": "empty-topic",
+      "interestId": "empty-topic",
       "sourceWindowId": "eval-empty-window",
       "provider": "deterministic-local",
       "model": "summary-fake-v1",
@@ -50,7 +50,7 @@
       "datasetVersion": "summary.eval.mvp.v1",
       "tenantId": "eval-tenant",
       "workspaceId": "eval-workspace",
-      "topicId": "developer-tools",
+      "interestId": "developer-tools",
       "sourceWindowId": "eval-hn-window",
       "provider": "deterministic-local",
       "model": "summary-fake-v1",
@@ -69,7 +69,7 @@
       "datasetVersion": "summary.eval.mvp.v1",
       "tenantId": "eval-tenant",
       "workspaceId": "eval-workspace",
-      "topicId": "security-research",
+      "interestId": "security-research",
       "sourceWindowId": "eval-rss-injection-window",
       "provider": "deterministic-local",
       "model": "summary-fake-v1",
@@ -88,7 +88,7 @@
       "datasetVersion": "summary.eval.mvp.v1",
       "tenantId": "eval-tenant",
       "workspaceId": "eval-workspace",
-      "topicId": "credential-safety",
+      "interestId": "credential-safety",
       "sourceWindowId": "eval-rss-secret-window",
       "provider": "deterministic-local",
       "model": "summary-fake-v1",
@@ -107,7 +107,7 @@
       "datasetVersion": "summary.eval.mvp.v1",
       "tenantId": "eval-tenant",
       "workspaceId": "eval-workspace",
-      "topicId": "feedback-grounding",
+      "interestId": "feedback-grounding",
       "sourceWindowId": "eval-feedback-grounding-window",
       "provider": "deterministic-local",
       "model": "summary-fake-v1",
@@ -126,7 +126,7 @@
       "datasetVersion": "summary.eval.mvp.v1",
       "tenantId": "eval-tenant",
       "workspaceId": "eval-workspace",
-      "topicId": "feedback-citation",
+      "interestId": "feedback-citation",
       "sourceWindowId": "eval-feedback-citation-window",
       "provider": "deterministic-local",
       "model": "summary-fake-v1",
@@ -145,7 +145,7 @@
       "datasetVersion": "summary.eval.mvp.v1",
       "tenantId": "eval-tenant",
       "workspaceId": "eval-workspace",
-      "topicId": "freshness-regression",
+      "interestId": "freshness-regression",
       "sourceWindowId": "eval-stale-window",
       "provider": "deterministic-local",
       "model": "summary-fake-v1",
@@ -165,7 +165,7 @@
       {
         "tenantId": "eval-tenant",
         "workspaceId": "eval-workspace",
-        "topicId": "empty-topic",
+        "interestId": "empty-topic",
         "fixtureCount": 1,
         "usage": {
           "inputTokens": 3,
@@ -177,7 +177,7 @@
       {
         "tenantId": "eval-tenant",
         "workspaceId": "eval-workspace",
-        "topicId": "developer-tools",
+        "interestId": "developer-tools",
         "fixtureCount": 1,
         "usage": {
           "inputTokens": 60,
@@ -189,7 +189,7 @@
       {
         "tenantId": "eval-tenant",
         "workspaceId": "eval-workspace",
-        "topicId": "security-research",
+        "interestId": "security-research",
         "fixtureCount": 1,
         "usage": {
           "inputTokens": 41,
@@ -201,7 +201,7 @@
       {
         "tenantId": "eval-tenant",
         "workspaceId": "eval-workspace",
-        "topicId": "credential-safety",
+        "interestId": "credential-safety",
         "fixtureCount": 1,
         "usage": {
           "inputTokens": 39,
@@ -213,7 +213,7 @@
       {
         "tenantId": "eval-tenant",
         "workspaceId": "eval-workspace",
-        "topicId": "feedback-grounding",
+        "interestId": "feedback-grounding",
         "fixtureCount": 1,
         "usage": {
           "inputTokens": 66,
@@ -225,7 +225,7 @@
       {
         "tenantId": "eval-tenant",
         "workspaceId": "eval-workspace",
-        "topicId": "feedback-citation",
+        "interestId": "feedback-citation",
         "fixtureCount": 1,
         "usage": {
           "inputTokens": 74,
@@ -237,7 +237,7 @@
       {
         "tenantId": "eval-tenant",
         "workspaceId": "eval-workspace",
-        "topicId": "freshness-regression",
+        "interestId": "freshness-regression",
         "fixtureCount": 1,
         "usage": {
           "inputTokens": 30,

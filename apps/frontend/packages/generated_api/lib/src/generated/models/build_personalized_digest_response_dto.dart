@@ -15,9 +15,9 @@ part 'build_personalized_digest_response_dto.g.dart';
 class BuildPersonalizedDigestResponseDto {
   const BuildPersonalizedDigestResponseDto({
     required this.highSignalFeedItemIds,
+    required this.interestIds,
     required this.items,
     required this.status,
-    required this.topicIds,
     required this.userId,
     required this.window,
     this.memoryGuidance,
@@ -28,10 +28,10 @@ class BuildPersonalizedDigestResponseDto {
   ) => _$BuildPersonalizedDigestResponseDtoFromJson(json);
 
   final List<String> highSignalFeedItemIds;
+  final List<String> interestIds;
   final List<RankedFeedItemDto> items;
   final RelevanceMemoryGuidanceDto? memoryGuidance;
   final BuildPersonalizedDigestResponseDtoStatusStatus status;
-  final List<String> topicIds;
   final String userId;
   final PersonalizedDigestWindowDto window;
 

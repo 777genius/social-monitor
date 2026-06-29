@@ -545,6 +545,9 @@ async function verifyRedditPermanentOAuthRuntime(): Promise<void> {
     async searchPosts() {
       throw new Error('Reddit runtime contract should use listing mode');
     },
+    async listPostComments() {
+      return { comments: [] };
+    },
   };
   const sourceProvider = new RedditSourceProvider(
     redditClient,

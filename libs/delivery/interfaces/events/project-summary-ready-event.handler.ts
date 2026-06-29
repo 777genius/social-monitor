@@ -112,7 +112,7 @@ const parseEvent = (
       summaryId: readString(payload, 'summaryId'),
       tenantId: payloadTenantId,
       workspaceId: payloadWorkspaceId,
-      topicId: readString(payload, 'topicId'),
+      interestId: readString(payload, 'interestId'),
       status: readSummaryReadyStatus(payload, 'status'),
     },
   };

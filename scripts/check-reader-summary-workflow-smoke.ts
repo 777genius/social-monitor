@@ -63,7 +63,7 @@ class SelectedReaderSummaryEvidenceSelector implements ReaderSummaryEvidenceSele
           storyKey: "url:example.com/ai-tooling",
           representativeFeedItemId: "feed-reddit",
           duplicateFeedItemIds: ["feed-github"],
-          topicIds: ["topic-ai", "topic-github"],
+          interestIds: ["topic-ai", "topic-github"],
           providerKeys: ["reddit", "github"],
           score: 2.4,
           observedAtRange: {
@@ -78,7 +78,7 @@ class SelectedReaderSummaryEvidenceSelector implements ReaderSummaryEvidenceSele
           feedItemId: "feed-reddit",
           sourceItemId: "source-reddit",
           sourceBindingId: "binding-reddit",
-          topicId: "topic-ai",
+          interestId: "topic-ai",
           providerKey: "reddit",
           providerName: "Reddit",
           canonicalUrl: "https://example.com/ai-tooling",

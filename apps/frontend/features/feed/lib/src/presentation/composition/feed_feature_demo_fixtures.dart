@@ -238,7 +238,7 @@ FeedItemApiDto _demoItem({
   final metrics = _providerMetrics(providerKey, order);
   return FeedItemApiDto(
     id: 'feed-$order',
-    topicId: order.isEven ? 'topic-demo' : 'topic-market-risk',
+    interestId: order.isEven ? 'topic-demo' : 'topic-market-risk',
     sourceItemId: '$providerKey-item-$order',
     sourceBindingId: 'binding-$providerKey-demo',
     providerKey: providerKey,

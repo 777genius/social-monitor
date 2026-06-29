@@ -231,7 +231,7 @@ final class GeneratedSummariesApiClient implements SummariesApiClient {
               action: relevanceAction,
               rating: request.kind == 'mark_relevant' ? 5 : 2,
               feedItemId: null,
-              topicId: request.target.topicId,
+              interestId: request.target.interestId,
               providerKey: request.target.providerKey,
               title: request.target.title,
               bodyPreview: request.target.bodyPreview,

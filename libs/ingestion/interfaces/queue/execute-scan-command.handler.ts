@@ -11,7 +11,7 @@ type ExecuteScanQueuePayload = {
   readonly tenantId: string;
   readonly workspaceId: string;
   readonly scanJobId: string;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly sourceBindingId: string;
   readonly scanPolicyId: string;
   readonly providerKey: string;
@@ -46,7 +46,7 @@ export class ExecuteScanCommandHandler {
           tenantId: tenantId(payload.tenantId),
           workspaceId: workspaceId(payload.workspaceId),
           scanJobId: payload.scanJobId,
-          topicId: payload.topicId,
+          interestId: payload.interestId,
           sourceBindingId: payload.sourceBindingId,
           scanPolicyId: payload.scanPolicyId,
           providerKey: payload.providerKey,
@@ -123,7 +123,7 @@ const parsePayload = (payload: Readonly<Record<string, unknown>>): ExecuteScanQu
   tenantId: readTenantScopeString(payload, 'tenantId'),
   workspaceId: readTenantScopeString(payload, 'workspaceId'),
   scanJobId: readString(payload, 'scanJobId'),
-  topicId: readString(payload, 'topicId'),
+  interestId: readString(payload, 'interestId'),
   sourceBindingId: readString(payload, 'sourceBindingId'),
   scanPolicyId: readString(payload, 'scanPolicyId'),
   providerKey: readString(payload, 'providerKey'),

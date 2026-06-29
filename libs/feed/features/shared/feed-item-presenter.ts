@@ -9,7 +9,7 @@ export const presentFeedItem = (
 
   return {
     id: snapshot.id,
-    topicId: snapshot.topicId,
+    interestId: snapshot.interestId,
     sourceItemId: snapshot.sourceItemId,
     sourceBindingId: snapshot.sourceBindingId,
     providerKey: snapshot.providerKey,

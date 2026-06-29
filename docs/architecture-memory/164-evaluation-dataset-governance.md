@@ -47,7 +47,7 @@ Critical slices:
 - source policy sensitive content;
 - prompt injection examples;
 - low-resource languages;
-- high-priority tenants/topics;
+- high-priority tenants/interests;
 - noisy/spam-heavy threads.
 
 ## Best-Fact Choice

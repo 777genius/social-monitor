@@ -85,7 +85,7 @@ async function main(): Promise<void> {
       tenant,
       workspace,
       name: 'Source credential reader',
-      scopes: ['read:topics'],
+      scopes: ['read:interests'],
     });
     const writeApiKeySecret = await createApiKey({
       server,
@@ -99,7 +99,7 @@ async function main(): Promise<void> {
       tenant,
       workspace: workspaceId('workspace-source-credential-rest-smoke-api-key-other'),
       name: 'Other workspace source credential reader',
-      scopes: ['read:topics'],
+      scopes: ['read:interests'],
     });
 
     await request(app.getHttpServer())
@@ -234,7 +234,7 @@ async function main(): Promise<void> {
 
     assert(
       apiKeyListed.body.sourceCredentials[0]?.id === apiKeyCreated.body.sourceCredential.id,
-      'read:topics API key must list source credentials for its workspace',
+      'read:interests API key must list source credentials for its workspace',
     );
     assertNoSecretMaterial(apiKeyListed.body, 'source credential API key list response must not expose secrets');
 

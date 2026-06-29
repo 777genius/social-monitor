@@ -102,7 +102,7 @@ class FeedItemDetailPanel extends StatelessWidget {
               ('Source item ID', item.sourceItemId),
               ('Author', item.authorHandle ?? 'Unknown author'),
               ('Provider', _providerEvidenceLabel(visuals)),
-              ('Topic', item.topicId),
+              ('Interest', item.interestId),
               ('Source connection', item.sourceBindingId),
               ('Published', feedDateTimeLabel(item.publishedAt)),
               ('Observed', feedDateTimeLabel(item.observedAt)),

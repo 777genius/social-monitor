@@ -9,26 +9,26 @@ import type {
 import { encodeOffsetCursor, parseOffsetCursor } from './offset-pagination';
 
 export class InMemorySourceBindingRepository implements SourceBindingRepositoryPort {
-  private readonly bindingsByTopicProvider = new Map<string, SourceBinding>();
+  private readonly bindingsByInterestProvider = new Map<string, SourceBinding>();
   private readonly bindingsById = new Map<string, SourceBinding>();
 
   async save(binding: SourceBinding): Promise<void> {
     const snapshot = binding.toSnapshot();
-    this.bindingsByTopicProvider.set(
-      this.key(snapshot.tenantId, snapshot.workspaceId, snapshot.topicId, snapshot.providerKey),
+    this.bindingsByInterestProvider.set(
+      this.key(snapshot.tenantId, snapshot.workspaceId, snapshot.interestId, snapshot.providerKey),
       binding,
     );
     this.bindingsById.set(this.idKey(snapshot.tenantId, snapshot.workspaceId, snapshot.id), binding);
   }
 
-  async findByTopicAndProvider(params: {
+  async findByInterestAndProvider(params: {
     tenantId: TenantId;
     workspaceId: WorkspaceId;
-    topicId: string;
+    interestId: string;
     providerKey: string;
   }): Promise<SourceBinding | null> {
     return (
-      this.bindingsByTopicProvider.get(this.key(params.tenantId, params.workspaceId, params.topicId, params.providerKey)) ??
+      this.bindingsByInterestProvider.get(this.key(params.tenantId, params.workspaceId, params.interestId, params.providerKey)) ??
       null
     );
   }
@@ -41,7 +41,7 @@ export class InMemorySourceBindingRepository implements SourceBindingRepositoryP
     return this.bindingsById.get(this.idKey(params.tenantId, params.workspaceId, params.sourceBindingId)) ?? null;
   }
 
-  async listByTopic(query: ListSourceBindingsQuery): Promise<ListSourceBindingsResult> {
+  async listByInterest(query: ListSourceBindingsQuery): Promise<ListSourceBindingsResult> {
     const offset = parseOffsetCursor(query.cursor);
     const allBindings = [...this.bindingsById.values()]
       .filter((binding) => {
@@ -50,7 +50,7 @@ export class InMemorySourceBindingRepository implements SourceBindingRepositoryP
         return (
           snapshot.tenantId === query.tenantId &&
           snapshot.workspaceId === query.workspaceId &&
-          snapshot.topicId === query.topicId &&
+          snapshot.interestId === query.interestId &&
           (query.providerKeys === undefined ||
             query.providerKeys.includes(snapshot.providerKey)) &&
           (query.statuses === undefined ||
@@ -67,8 +67,8 @@ export class InMemorySourceBindingRepository implements SourceBindingRepositoryP
     };
   }
 
-  private key(tenantId: TenantId, workspaceId: WorkspaceId, topicId: string, providerKey: string): string {
-    return `${tenantId}:${workspaceId}:${topicId}:${providerKey}`;
+  private key(tenantId: TenantId, workspaceId: WorkspaceId, interestId: string, providerKey: string): string {
+    return `${tenantId}:${workspaceId}:${interestId}:${providerKey}`;
   }
 
   private idKey(tenantId: TenantId, workspaceId: WorkspaceId, sourceBindingId: string): string {

@@ -30,7 +30,7 @@ describe('Monitoring tenant scope guard (e2e)', () => {
 
   it('returns controlled tenant.scope_missing problem for topic create without tenant', async () => {
     const response = await request(app.getHttpServer())
-      .post('/topics')
+      .post('/interests')
       .set('x-workspace-id', workspaceId('workspace-monitoring-scope-e2e'))
       .set('idempotency-key', 'monitoring-scope-topic-1')
       .send({
@@ -47,7 +47,7 @@ describe('Monitoring tenant scope guard (e2e)', () => {
 
   it('returns controlled tenant.scope_missing problem for source binding without workspace', async () => {
     const response = await request(app.getHttpServer())
-      .post('/topics/topic-monitoring-scope-e2e/source-bindings')
+      .post('/interests/topic-monitoring-scope-e2e/source-bindings')
       .set('x-tenant-id', tenantId('tenant-monitoring-scope-e2e'))
       .set('idempotency-key', 'monitoring-scope-binding-1')
       .send({

@@ -61,9 +61,9 @@ export class ChangeSourceBindingStatusUseCase {
     }
 
     const snapshot = binding.toSnapshot();
-    if (snapshot.topicId !== command.topicId) {
-      return err(new DomainError('resource.not_found', 'Source binding not found for topic', {
-        topicId: command.topicId,
+    if (snapshot.interestId !== command.interestId) {
+      return err(new DomainError('resource.not_found', 'Source binding not found for interest', {
+        interestId: command.interestId,
         sourceBindingId: command.sourceBindingId,
       }));
     }
@@ -99,7 +99,7 @@ export class ChangeSourceBindingStatusUseCase {
         sourceBindingId: updatedSnapshot.id,
         tenantId: command.tenantId,
         workspaceId: command.workspaceId,
-        topicId: updatedSnapshot.topicId,
+        interestId: updatedSnapshot.interestId,
         providerKey: updatedSnapshot.providerKey,
         previousStatus: snapshot.status,
         status: updatedSnapshot.status,

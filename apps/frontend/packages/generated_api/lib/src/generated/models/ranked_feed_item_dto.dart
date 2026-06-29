@@ -16,6 +16,7 @@ class RankedFeedItemDto {
     required this.clusterSize,
     required this.duplicateFeedItemIds,
     required this.feedItemId,
+    required this.interestId,
     required this.observedAt,
     required this.providerKey,
     required this.publishedAt,
@@ -25,7 +26,6 @@ class RankedFeedItemDto {
     required this.sourceBindingId,
     required this.sourceItemId,
     required this.title,
-    required this.topicId,
     required this.whyImportant,
     this.authorHandle,
     this.bodyPreview,
@@ -42,6 +42,7 @@ class RankedFeedItemDto {
   final num clusterSize;
   final List<String> duplicateFeedItemIds;
   final String feedItemId;
+  final String interestId;
   final DateTime observedAt;
   final String providerKey;
   final dynamic providerMetadata;
@@ -52,7 +53,6 @@ class RankedFeedItemDto {
   final String sourceBindingId;
   final String sourceItemId;
   final String title;
-  final String topicId;
   final List<String> whyImportant;
 
   Map<String, Object?> toJson() => _$RankedFeedItemDtoToJson(this);

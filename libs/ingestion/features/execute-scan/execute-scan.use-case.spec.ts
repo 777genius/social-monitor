@@ -32,7 +32,7 @@ const makeExecuteScanCommand = (overrides: Partial<ExecuteScanCommand> = {}): Ex
   tenantId: tenantId('tenant-1'),
   workspaceId: workspaceId('workspace-1'),
   scanJobId: 'scan-job-1',
-  topicId: 'topic-1',
+  interestId: 'topic-1',
   sourceBindingId: 'source-binding-1',
   scanPolicyId: 'scan-policy-1',
   providerKey: 'fake-source',

@@ -8,7 +8,7 @@ import type {
 export type UpsertSummaryPolicyCommand = {
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly language: SummaryPolicyLanguage;
   readonly format: SummaryPolicyFormat;
   readonly tone: SummaryPolicyTone;

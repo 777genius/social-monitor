@@ -7,7 +7,7 @@ export type AssembleDigestCommand = {
   readonly workspaceId: WorkspaceId;
   readonly recipientKey: string;
   readonly channel: DeliveryChannel;
-  readonly topicIds: readonly string[];
+  readonly interestIds: readonly string[];
   readonly windowStartedAt: Date;
   readonly windowEndedAt: Date;
   readonly includeNoSignal: boolean;

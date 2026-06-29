@@ -43,7 +43,7 @@ export class PrismaSummaryArtifactRepository implements SummaryArtifactRepositor
         id: snapshot.summaryId,
         tenantId: snapshot.tenantId,
         workspaceId: snapshot.workspaceId,
-        topicId: snapshot.topicId,
+        interestId: snapshot.interestId,
         userId: snapshot.userId ?? null,
         subscriptionId: snapshot.subscriptionId ?? null,
         status,
@@ -64,7 +64,7 @@ export class PrismaSummaryArtifactRepository implements SummaryArtifactRepositor
     const where = {
       tenantId: query.tenantId,
       workspaceId: query.workspaceId,
-      topicId: query.topicId,
+      interestId: query.interestId,
       status: { in: VISIBLE_SUMMARY_STATUSES },
     };
     const [records, total] = await Promise.all([

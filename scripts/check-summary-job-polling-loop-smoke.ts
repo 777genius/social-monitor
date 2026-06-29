@@ -48,7 +48,7 @@ async function main(): Promise<void> {
     id: summaryJobId,
     tenantId: tenant,
     workspaceId: workspace,
-    topicId: 'topic-summary-polling-loop-smoke',
+    interestId: 'topic-summary-polling-loop-smoke',
     idempotencyKey: 'summary-polling-loop-smoke:topic-summary-polling-loop-smoke',
     requestedAt: new Date('2026-06-06T00:00:00.000Z'),
   }));

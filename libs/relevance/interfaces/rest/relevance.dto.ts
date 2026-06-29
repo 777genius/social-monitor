@@ -48,7 +48,7 @@ export class UpsertUserRelevanceProfileRequestDto {
   @IsOptional()
   @Type(() => RelevanceWeightDto)
   @ValidateNested({ each: true })
-  declare readonly topicWeights?: readonly RelevanceWeightDto[];
+  declare readonly interestWeights?: readonly RelevanceWeightDto[];
 
   @ApiPropertyOptional({ type: () => [RelevanceWeightDto] })
   @IsOptional()
@@ -96,7 +96,7 @@ export class RecordRelevanceFeedbackRequestDto {
 
   @ApiProperty()
   @IsString()
-  declare readonly topicId: string;
+  declare readonly interestId: string;
 
   @ApiProperty()
   @IsString()
@@ -130,7 +130,7 @@ export class UserRelevanceProfileDto {
   declare readonly userId: string;
 
   @ApiProperty({ type: () => [RelevanceWeightDto] })
-  declare readonly topicWeights: readonly RelevanceWeightDto[];
+  declare readonly interestWeights: readonly RelevanceWeightDto[];
 
   @ApiProperty({ type: () => [RelevanceWeightDto] })
   declare readonly sourceWeights: readonly RelevanceWeightDto[];
@@ -207,7 +207,7 @@ export class RankedFeedItemDto {
   declare readonly sourceBindingId: string;
 
   @ApiProperty()
-  declare readonly topicId: string;
+  declare readonly interestId: string;
 
   @ApiProperty()
   declare readonly providerKey: string;
@@ -291,7 +291,7 @@ export class BuildPersonalizedDigestResponseDto {
   declare readonly window: PersonalizedDigestWindowDto;
 
   @ApiProperty({ type: [String] })
-  declare readonly topicIds: readonly string[];
+  declare readonly interestIds: readonly string[];
 
   @ApiPropertyOptional({ type: () => RelevanceMemoryGuidanceDto })
   declare readonly memoryGuidance?: RelevanceMemoryGuidanceDto;
@@ -308,7 +308,7 @@ export class RelevanceFeedbackTargetDto {
   declare readonly feedItemId?: string;
 
   @ApiProperty()
-  declare readonly topicId: string;
+  declare readonly interestId: string;
 
   @ApiProperty()
   declare readonly providerKey: string;

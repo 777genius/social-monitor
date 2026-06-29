@@ -8,7 +8,7 @@ void main() {
       reason: '${'Story'} signal score 2.275',
       whyImportant: const [
         'Strong source engagement signal',
-        'Passes source quality and topic relevance gate',
+        'Passes source quality and interest relevance gate',
         'Fresh item in the current monitoring window',
         'Clustered 72 similar items',
       ],
@@ -47,8 +47,8 @@ TopRead _topRead({required String reason, required List<String> whyImportant}) {
     title: 'Reddit discussion asks why AI labs are building their own chips',
     providerKey: 'reddit',
     reason: reason,
-    matchedTopicIds: const ['ai-infrastructure'],
-    matchedRules: const ['topic:ai-infrastructure'],
+    matchedInterestIds: const ['ai-infrastructure'],
+    matchedRules: const ['interest:ai-infrastructure'],
     signalScore: SignalScore.normalized(2.275),
     confidence: const TopReadConfidence(
       level: 'low',

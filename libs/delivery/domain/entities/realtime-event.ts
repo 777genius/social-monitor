@@ -1,6 +1,6 @@
 import type { CorrelationId, TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 
-export type RealtimeResourceType = 'workspace' | 'topic' | 'source_binding' | 'summary' | 'scan';
+export type RealtimeResourceType = 'workspace' | 'interest' | 'source_binding' | 'summary' | 'scan';
 
 export type RealtimeEventProps = {
   readonly id: string;

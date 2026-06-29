@@ -16,15 +16,15 @@ import {
 import { parsePaginationLimit } from '@social-monitor/platform-request-context';
 import { DomainError, requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 
-import { ActivateTopicSourceUseCase } from '../../features/activate-topic-source/activate-topic-source.use-case';
+import { ActivateInterestSourceUseCase } from '../../features/activate-interest-source/activate-interest-source.use-case';
 import { CreateUserSubscriptionUseCase } from '../../features/create-user-subscription/create-user-subscription.use-case';
 import { ListUserSubscriptionsUseCase } from '../../features/list-user-subscriptions/list-user-subscriptions.use-case';
 import { UpsertUserSummaryPreferenceUseCase } from '../../features/upsert-user-summary-preference/upsert-user-summary-preference.use-case';
 import {
   CreateUserSubscriptionRequestDto,
   type CreateUserSubscriptionResponseDto,
-  ActivateTopicSourceRequestDto,
-  type ActivateTopicSourceResponseDto,
+  ActivateInterestSourceRequestDto,
+  type ActivateInterestSourceResponseDto,
   type ListUserSubscriptionsResponseDto,
   UpsertUserSummaryPreferenceRequestDto,
   type UpsertUserSummaryPreferenceResponseDto,
@@ -34,7 +34,7 @@ import {
 @Controller('user-subscriptions')
 export class UserSubscriptionsController {
   constructor(
-    private readonly activateTopicSource: ActivateTopicSourceUseCase,
+    private readonly activateInterestSource: ActivateInterestSourceUseCase,
     private readonly createUserSubscription: CreateUserSubscriptionUseCase,
     private readonly listUserSubscriptions: ListUserSubscriptionsUseCase,
     private readonly upsertUserSummaryPreference: UpsertUserSummaryPreferenceUseCase,
@@ -49,7 +49,7 @@ export class UserSubscriptionsController {
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
   @ApiKeyOrWorkspaceRoleAuth({
-    apiKeyScope: 'write:topics',
+    apiKeyScope: 'write:interests',
     workspaceRoleDescription: 'Comma-separated workspace roles. Source activation allows owner, admin or member.',
   })
   async activateSource(
@@ -57,8 +57,8 @@ export class UserSubscriptionsController {
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
     @Headers('authorization') authorizationHeader: string | undefined,
-    @Body() body: ActivateTopicSourceRequestDto,
-  ): Promise<ActivateTopicSourceResponseDto> {
+    @Body() body: ActivateInterestSourceRequestDto,
+  ): Promise<ActivateInterestSourceResponseDto> {
     const scope = requireTenantScope({
       tenantIdHeader: tenantHeader,
       workspaceIdHeader: workspaceHeader,
@@ -71,7 +71,7 @@ export class UserSubscriptionsController {
     );
     const targetUserId = resolveUserOwnedTarget(body.userId, authorization);
 
-    const result = await this.activateTopicSource.execute({
+    const result = await this.activateInterestSource.execute({
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
       userId: targetUserId,
@@ -104,7 +104,7 @@ export class UserSubscriptionsController {
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
   @ApiKeyOrWorkspaceRoleAuth({
-    apiKeyScope: 'write:topics',
+    apiKeyScope: 'write:interests',
     workspaceRoleDescription: 'Comma-separated workspace roles. User subscription creation allows owner, admin or member.',
   })
   async create(
@@ -156,7 +156,7 @@ export class UserSubscriptionsController {
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
   @ApiKeyOrWorkspaceRoleAuth({
-    apiKeyScope: 'read:topics',
+    apiKeyScope: 'read:interests',
     workspaceRoleDescription: 'Comma-separated workspace roles. User subscription reads allow owner, admin, member or viewer.',
   })
   @ApiQuery({ name: 'userId', required: true, type: String })
@@ -261,7 +261,7 @@ export class UserSubscriptionsController {
         authorizationHeader,
         tenantId,
         workspaceId,
-        requiredScope: 'read:topics',
+        requiredScope: 'read:interests',
         operation: 'user_subscriptions.read',
       });
     }
@@ -291,7 +291,7 @@ export class UserSubscriptionsController {
         authorizationHeader,
         tenantId,
         workspaceId,
-        requiredScope: 'write:topics',
+        requiredScope: 'write:interests',
         operation: 'user_subscriptions.create',
       });
     }

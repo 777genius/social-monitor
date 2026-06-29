@@ -76,7 +76,7 @@ Required top-level fields:
 - `summaryId`
 - `tenantId`
 - `workspaceId`
-- `topicId`
+- `interestId`
 - `sourceWindow`
 - `headline`
 - `executiveSummary`

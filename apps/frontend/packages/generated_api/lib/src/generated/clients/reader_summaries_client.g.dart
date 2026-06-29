@@ -34,7 +34,7 @@ class _ReaderSummariesClient implements ReaderSummariesClient {
     String? periodEndedAt,
     String? periodStartedAt,
     Cadence? cadence,
-    String? topicId,
+    String? interestId,
     ScopeType? scopeType,
     String? authorization,
     String? xWorkspaceRole,
@@ -52,7 +52,7 @@ class _ReaderSummariesClient implements ReaderSummariesClient {
       r'periodEndedAt': periodEndedAt,
       r'periodStartedAt': periodStartedAt,
       r'cadence': cadence?.toJson(),
-      r'topicId': topicId,
+      r'interestId': interestId,
       r'scopeType': scopeType?.toJson(),
     };
     queryParameters.removeWhere((k, v) => v == null);

@@ -25,7 +25,7 @@ dependencies:
   social_monitor_shared_kernel: any
   social_monitor_sources: any
   social_monitor_summaries: any
-  social_monitor_topics: any
+  social_monitor_interests: any
 
 dev_dependencies:
   flutter_lints: ^6.0.0

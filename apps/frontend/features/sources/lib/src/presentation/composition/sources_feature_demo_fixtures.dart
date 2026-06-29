@@ -1,3 +1,4 @@
+import '../../infrastructure/api/interest_coverage_plan_api_dto.dart';
 import '../../infrastructure/api/scan_policy_api_dto.dart';
 import '../../infrastructure/api/scan_run_api_dto.dart';
 import '../../infrastructure/api/source_binding_api_dto.dart';
@@ -103,7 +104,7 @@ const sourceDemoProfiles = [
 final sourceDemoBindings = [
   SourceBindingApiDto(
     id: 'binding-reddit-demo',
-    topicId: 'topic-market-risk',
+    interestId: 'interest-market-risk',
     providerKey: 'reddit',
     capabilityProfileVersion: 1,
     status: 'enabled',
@@ -116,7 +117,7 @@ final sourceDemoBindings = [
   ),
   SourceBindingApiDto(
     id: 'binding-rss-demo',
-    topicId: 'topic-market-risk',
+    interestId: 'interest-market-risk',
     providerKey: 'rss',
     capabilityProfileVersion: 1,
     status: 'enabled',
@@ -160,3 +161,91 @@ final sourceDemoScanStatuses = [
     ),
   ),
 ];
+
+const sourceDemoPlan = InterestCoveragePlanApiDto(
+  interestId: 'interest-market-risk',
+  interestTitle: 'Market risk',
+  planningQuery: '"Market risk" OR startups OR competitors',
+  normalizedKeywords: ['Market risk', 'startups', 'competitors'],
+  coverageGaps: [],
+  skippedProviders: [],
+  drafts: [
+    InterestCoveragePlanDraftApiDto(
+      providerKey: 'reddit',
+      displayName: 'Reddit',
+      status: 'ready',
+      confidenceScore: 8,
+      priority: 1,
+      targetContentUnits: ['post', 'comment', 'link'],
+      queryModes: ['search', 'listing'],
+      rationale: [
+        'Combines keyword search with subreddit listing passes.',
+        'Collects comments from matched post threads through OAuth.',
+      ],
+      warnings: ['Keyword-wide Reddit comment search is not used.'],
+      sourceBindingDraft: InterestCoveragePlanBindingDraftApiDto(
+        providerKey: 'reddit',
+        config: {
+          'mode': 'search',
+          'query': '"Market risk" OR startups OR competitors',
+          'maxItems': 60,
+          'scanPasses': [
+            {
+              'mode': 'search',
+              'query': '"Market risk" OR startups OR competitors',
+              'includeComments': true,
+              'maxCommentsPerPost': 5,
+            },
+            {
+              'mode': 'listing',
+              'subreddit': 'startups',
+              'listing': 'top',
+              'topTime': 'week',
+              'includeComments': true,
+              'maxCommentsPerPost': 3,
+            },
+          ],
+        },
+      ),
+      cadenceSuggestion: InterestCoveragePlanCadenceSuggestionApiDto(
+        intervalSeconds: 1800,
+        freshnessSeconds: 3600,
+        retryBudget: 3,
+      ),
+      alternativeDrafts: [],
+    ),
+    InterestCoveragePlanDraftApiDto(
+      providerKey: 'hacker-news',
+      displayName: 'Hacker News',
+      status: 'ready',
+      confidenceScore: 7,
+      priority: 2,
+      targetContentUnits: ['post', 'comment', 'link'],
+      queryModes: ['search'],
+      rationale: [
+        'Finds launch-adjacent technical discussion in stories and comments.',
+      ],
+      warnings: [],
+      sourceBindingDraft: InterestCoveragePlanBindingDraftApiDto(
+        providerKey: 'hacker-news',
+        config: {
+          'mode': 'search',
+          'query': '"Market risk" OR startups OR competitors',
+          'scanPasses': [
+            {
+              'mode': 'search',
+              'target': 'story',
+              'query': '"Market risk" OR startups OR competitors',
+            },
+            {
+              'mode': 'search',
+              'target': 'comment',
+              'query': '"Market risk" OR startups OR competitors',
+            },
+          ],
+        },
+      ),
+      alternativeDrafts: [],
+    ),
+  ],
+);

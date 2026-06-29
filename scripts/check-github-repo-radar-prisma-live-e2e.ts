@@ -93,7 +93,7 @@ const main = async (): Promise<void> => {
     const clock = { now: () => new Date(currentClockNow.getTime()) };
     const tenant = tenantId(readOptionalEnv('GITHUB_REPO_RADAR_TENANT_ID') ?? randomUUID());
     const workspace = workspaceId(readOptionalEnv('GITHUB_REPO_RADAR_WORKSPACE_ID') ?? randomUUID());
-    const topicId = readOptionalEnv('GITHUB_REPO_RADAR_TOPIC_ID') ?? randomUUID();
+    const interestId = readOptionalEnv('GITHUB_REPO_RADAR_TOPIC_ID') ?? randomUUID();
     const sourceBindingId = readOptionalEnv('GITHUB_REPO_RADAR_SOURCE_BINDING_ID') ?? randomUUID();
     const scanPolicyId = readOptionalEnv('GITHUB_REPO_RADAR_SCAN_POLICY_ID') ?? randomUUID();
     const radarClientMode = readOptionalEnv('GITHUB_REPO_RADAR_CLIENT') === 'public-gharchive-http'
@@ -179,7 +179,7 @@ const main = async (): Promise<void> => {
         tenantId: tenant,
         workspaceId: workspace,
         scanJobId,
-        topicId,
+        interestId,
         sourceBindingId,
         scanPolicyId,
         providerKey: GITHUB_REPO_RADAR_PROVIDER_KEY,
@@ -208,7 +208,7 @@ const main = async (): Promise<void> => {
     assert(reporter.succeeded.length === scanRuns, `expected ${scanRuns} scan successes, got ${reporter.succeeded.length}`);
     assert(reporter.failed.length === 0, `Prisma live e2e must not report scan failures: ${JSON.stringify(reporter.failed)}`);
 
-    const feed = await feedRead.list({ tenantId: tenant, workspaceId: workspace, topicId, limit: 10 });
+    const feed = await feedRead.list({ tenantId: tenant, workspaceId: workspace, interestId, limit: 10 });
     assert(feed.items.length > 0, 'Prisma live e2e must read persisted feed items from Postgres');
 
     const feedSnapshot = feed.items[0]?.toSnapshot();
@@ -221,7 +221,7 @@ const main = async (): Promise<void> => {
     const sqlEvidence = await readSqlEvidence(pool, {
       tenantId: tenant,
       workspaceId: workspace,
-      topicId,
+      interestId,
       sourceBindingId,
       scanJobIds,
     });
@@ -260,7 +260,7 @@ const main = async (): Promise<void> => {
     const evidence = await new FeedSummaryEvidenceSelector(feedRead, clock).select({
       tenantId: tenant,
       workspaceId: workspace,
-      topicId,
+      interestId,
       maxItems: 5,
     });
     const summaryModel = new DeterministicSummaryModelAdapter();
@@ -277,7 +277,7 @@ const main = async (): Promise<void> => {
     const summaryInput: SummaryModelInput = {
       tenantId: tenant,
       workspaceId: workspace,
-      topicId,
+      interestId,
       evidence,
       policy: {
         format: 'executive_brief',
@@ -416,7 +416,7 @@ const main = async (): Promise<void> => {
       scanRuns,
       tenantId: tenant,
       workspaceId: workspace,
-      topicId,
+      interestId,
       sourceBindingId,
       scanJobIds,
       repository: metadata.repository.fullName,
@@ -455,7 +455,7 @@ const main = async (): Promise<void> => {
 type SqlEvidenceScope = {
   readonly tenantId: string;
   readonly workspaceId: string;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly sourceBindingId: string;
   readonly scanJobIds: readonly string[];
 };
@@ -501,7 +501,7 @@ const readSqlEvidence = async (pool: Pool, scope: SqlEvidenceScope): Promise<Sql
      FROM feed_items
      WHERE tenant_id = $1 AND workspace_id = $2 AND topic_id = $3 AND provider_key = $4
      ORDER BY created_at DESC`,
-    [scope.tenantId, scope.workspaceId, scope.topicId, GITHUB_REPO_RADAR_PROVIDER_KEY],
+    [scope.tenantId, scope.workspaceId, scope.interestId, GITHUB_REPO_RADAR_PROVIDER_KEY],
   );
   const candidates = await pool.query<{ readonly stars_48h: number }>(
     `SELECT stars_48h

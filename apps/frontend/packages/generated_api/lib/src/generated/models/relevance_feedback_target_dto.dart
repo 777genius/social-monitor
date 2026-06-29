@@ -11,8 +11,8 @@ part 'relevance_feedback_target_dto.g.dart';
 @JsonSerializable()
 class RelevanceFeedbackTargetDto {
   const RelevanceFeedbackTargetDto({
+    required this.interestId,
     required this.providerKey,
-    required this.topicId,
     this.feedbackReason,
     this.feedItemId,
   });
@@ -22,8 +22,8 @@ class RelevanceFeedbackTargetDto {
 
   final RelevanceFeedbackTargetDtoFeedbackReasonFeedbackReason? feedbackReason;
   final String? feedItemId;
+  final String interestId;
   final String providerKey;
-  final String topicId;
 
   Map<String, Object?> toJson() => _$RelevanceFeedbackTargetDtoToJson(this);
 }

@@ -330,7 +330,7 @@ export class OpenAiResponsesSummaryModelAdapter implements SummaryModelPort {
       draft: {
         headline: 'No reliable signal yet',
         executiveSummary:
-          'No eligible evidence items were available for this topic window.',
+          'No eligible evidence items were available for this interest window.',
         keyPoints: [],
         risksAndUnknowns: [
           {
@@ -353,7 +353,7 @@ export class OpenAiResponsesSummaryModelAdapter implements SummaryModelPort {
           this.evalDatasetVersion,
         ),
         usage: this.estimate(input, selectedRoute),
-        noSignalReason: 'No eligible evidence items selected for this topic.',
+        noSignalReason: 'No eligible evidence items selected for this interest.',
       },
     };
   }

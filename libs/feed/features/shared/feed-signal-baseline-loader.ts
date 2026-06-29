@@ -17,7 +17,7 @@ export const loadFeedSignalBaselineSamples = async (params: {
   readonly signalBaseline: FeedSignalBaselineRepositoryPort;
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
-  readonly topicId?: string;
+  readonly interestId?: string;
   readonly items: readonly FeedItem[];
   readonly now: Date;
 }): Promise<readonly FeedSignalBaselineSample[]> => {
@@ -26,19 +26,19 @@ export const loadFeedSignalBaselineSamples = async (params: {
   }
 
   const observedAfter = new Date(params.now.getTime() - HISTORICAL_BASELINE_WINDOW_MS);
-  const itemsByTopicId = groupItemsByTopicId(params.items);
-  const topicIds = params.topicId === undefined
-    ? [...itemsByTopicId.keys()]
-    : [params.topicId];
+  const itemsByInterestId = groupItemsByInterestId(params.items);
+  const interestIds = params.interestId === undefined
+    ? [...itemsByInterestId.keys()]
+    : [params.interestId];
 
-  if (topicIds.length === 0) {
+  if (interestIds.length === 0) {
     return [];
   }
 
   const samples: FeedSignalBaselineSample[] = [];
 
-  for (const topicId of topicIds) {
-    const items = itemsByTopicId.get(topicId) ?? [];
+  for (const interestId of interestIds) {
+    const items = itemsByInterestId.get(interestId) ?? [];
 
     if (items.length === 0) {
       continue;
@@ -46,7 +46,7 @@ export const loadFeedSignalBaselineSamples = async (params: {
 
     samples.push(...await loadSamplesForTopic({
       ...params,
-      topicId,
+      interestId,
       items,
       observedAfter,
     }));
@@ -59,14 +59,14 @@ const loadSamplesForTopic = async (params: {
   readonly signalBaseline: FeedSignalBaselineRepositoryPort;
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly items: readonly FeedItem[];
   readonly observedAfter: Date;
 }): Promise<readonly FeedSignalBaselineSample[]> => {
   const topicSamples = await params.signalBaseline.listSamples({
     tenantId: params.tenantId,
     workspaceId: params.workspaceId,
-    topicId: params.topicId,
+    interestId: params.interestId,
     observedAfter: params.observedAfter,
     limit: MAX_HISTORICAL_BASELINE_ITEMS,
   });
@@ -79,7 +79,7 @@ const loadSamplesForTopic = async (params: {
   const exactCohortSamples = await params.signalBaseline.listSamples({
     tenantId: params.tenantId,
     workspaceId: params.workspaceId,
-    topicId: params.topicId,
+    interestId: params.interestId,
     observedAfter: params.observedAfter,
     limit: MAX_HISTORICAL_BASELINE_ITEMS,
     cohortFilters,
@@ -91,18 +91,18 @@ const loadSamplesForTopic = async (params: {
   ]);
 };
 
-const groupItemsByTopicId = (items: readonly FeedItem[]): ReadonlyMap<string, readonly FeedItem[]> => {
-  const itemsByTopicId = new Map<string, FeedItem[]>();
+const groupItemsByInterestId = (items: readonly FeedItem[]): ReadonlyMap<string, readonly FeedItem[]> => {
+  const itemsByInterestId = new Map<string, FeedItem[]>();
 
   for (const item of items) {
-    const topicId = item.toSnapshot().topicId;
-    const topicItems = itemsByTopicId.get(topicId) ?? [];
+    const interestId = item.toSnapshot().interestId;
+    const topicItems = itemsByInterestId.get(interestId) ?? [];
 
     topicItems.push(item);
-    itemsByTopicId.set(topicId, topicItems);
+    itemsByInterestId.set(interestId, topicItems);
   }
 
-  return itemsByTopicId;
+  return itemsByInterestId;
 };
 
 const exactCohortFiltersForItems = (

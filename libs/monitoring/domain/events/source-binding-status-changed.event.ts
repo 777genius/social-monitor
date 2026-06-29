@@ -6,7 +6,7 @@ export type SourceBindingStatusChangedPayload = {
   readonly sourceBindingId: string;
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly providerKey: string;
   readonly previousStatus: SourceBindingStatus;
   readonly status: SourceBindingStatus;

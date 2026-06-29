@@ -19,7 +19,7 @@ export type PrismaUserRelevanceProfileRecord = {
   readonly tenantId: string;
   readonly workspaceId: string;
   readonly userId: string;
-  readonly topicWeights: unknown;
+  readonly interestWeights: unknown;
   readonly sourceWeights: unknown;
   readonly keywordWeights: unknown;
   readonly mutedKeywords: readonly string[];
@@ -69,7 +69,7 @@ export const userRelevanceProfileFromPrisma = (
     tenantId: tenantId(record.tenantId),
     workspaceId: workspaceId(record.workspaceId),
     userId: record.userId,
-    topicWeights: normalizeWeights(record.topicWeights),
+    interestWeights: normalizeWeights(record.interestWeights),
     sourceWeights: normalizeWeights(record.sourceWeights),
     keywordWeights: normalizeWeights(record.keywordWeights),
     mutedKeywords: record.mutedKeywords,
@@ -176,7 +176,7 @@ const normalizeTarget = (value: unknown): RelevanceFeedbackTarget => {
 
   return {
     feedItemId: optionalString(record.feedItemId),
-    topicId: requiredString(record.topicId, 'topicId'),
+    interestId: requiredString(record.interestId, 'interestId'),
     providerKey: requiredString(record.providerKey, 'providerKey'),
     title: requiredString(record.title, 'title'),
     bodyPreview: optionalString(record.bodyPreview),

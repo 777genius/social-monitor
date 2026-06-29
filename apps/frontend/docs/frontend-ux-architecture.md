@@ -101,7 +101,7 @@ Canonical first-level routes:
 ```text
 /
 /auth
-/topics
+/interests
 /sources
 /feed
 /summaries
@@ -113,7 +113,7 @@ Entity routes are added only after the feature has typed route params and tests.
 Preferred future patterns:
 
 ```text
-/topics/:topicId
+/interests/:interestId
 /sources/:sourceId
 /feed/:mentionId
 /summaries/:summaryId

@@ -53,7 +53,7 @@ Golden tests:
 Integration tests:
 
 - sign-in/bootstrap;
-- topic creation;
+- interest creation;
 - source connection repair;
 - feed triage;
 - summary review.
@@ -117,7 +117,7 @@ A workflow is critical when failure blocks:
 
 - sign-in or workspace bootstrap;
 - source connection or credential repair;
-- topic setup;
+- interest setup;
 - feed review;
 - summary generation/review;
 - privacy/security preference changes.

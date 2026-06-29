@@ -5,7 +5,7 @@ CREATE SCHEMA IF NOT EXISTS "public";
 CREATE TYPE "MembershipRole" AS ENUM ('OWNER', 'ADMIN', 'MEMBER', 'VIEWER');
 
 -- CreateEnum
-CREATE TYPE "TopicStatus" AS ENUM ('ENABLED', 'DISABLED', 'ARCHIVED');
+CREATE TYPE "InterestStatus" AS ENUM ('ENABLED', 'DISABLED', 'ARCHIVED');
 
 -- CreateEnum
 CREATE TYPE "SourceBindingStatus" AS ENUM ('DRAFT', 'ENABLED', 'PAUSED', 'FAILED');
@@ -127,18 +127,18 @@ CREATE TABLE "api_keys" (
 );
 
 -- CreateTable
-CREATE TABLE "topics" (
+CREATE TABLE "interests" (
     "id" UUID NOT NULL,
     "tenant_id" UUID NOT NULL,
     "workspace_id" UUID NOT NULL,
     "name" TEXT NOT NULL,
     "query" TEXT NOT NULL,
-    "status" "TopicStatus" NOT NULL DEFAULT 'ENABLED',
+    "status" "InterestStatus" NOT NULL DEFAULT 'ENABLED',
     "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMPTZ(6) NOT NULL,
     "deleted_at" TIMESTAMPTZ(6),
 
-    CONSTRAINT "topics_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "interests_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -171,7 +171,7 @@ CREATE TABLE "source_bindings" (
     "id" UUID NOT NULL,
     "tenant_id" UUID NOT NULL,
     "workspace_id" UUID NOT NULL,
-    "topic_id" UUID NOT NULL,
+    "interest_id" UUID NOT NULL,
     "source_catalog_entry_id" UUID NOT NULL,
     "capability_profile_version" INTEGER NOT NULL,
     "status" "SourceBindingStatus" NOT NULL DEFAULT 'DRAFT',
@@ -329,7 +329,7 @@ CREATE TABLE "scan_failure_queue_entries" (
     "tenant_id" UUID NOT NULL,
     "workspace_id" UUID NOT NULL,
     "scan_job_id" UUID NOT NULL,
-    "topic_id" UUID NOT NULL,
+    "interest_id" UUID NOT NULL,
     "source_binding_id" UUID NOT NULL,
     "scan_policy_id" UUID NOT NULL,
     "provider_key" TEXT NOT NULL,
@@ -384,7 +384,7 @@ CREATE TABLE "feed_items" (
     "id" UUID NOT NULL,
     "tenant_id" UUID NOT NULL,
     "workspace_id" UUID NOT NULL,
-    "topic_id" UUID NOT NULL,
+    "interest_id" UUID NOT NULL,
     "source_item_id" UUID NOT NULL,
     "source_binding_id" UUID NOT NULL,
     "provider_key" TEXT NOT NULL,
@@ -408,7 +408,7 @@ CREATE TABLE "feed_signal_baseline_samples" (
     "id" UUID NOT NULL,
     "tenant_id" UUID NOT NULL,
     "workspace_id" UUID NOT NULL,
-    "topic_id" UUID NOT NULL,
+    "interest_id" UUID NOT NULL,
     "feed_item_id" UUID NOT NULL,
     "provider_key" TEXT NOT NULL,
     "source_key" TEXT NOT NULL,
@@ -427,7 +427,7 @@ CREATE TABLE "github_repository_trend_candidates" (
     "id" UUID NOT NULL,
     "tenant_id" UUID NOT NULL,
     "workspace_id" UUID NOT NULL,
-    "topic_id" UUID NOT NULL,
+    "interest_id" UUID NOT NULL,
     "source_binding_id" UUID NOT NULL,
     "scan_job_id" UUID NOT NULL,
     "repository_full_name" TEXT NOT NULL,
@@ -476,7 +476,7 @@ CREATE TABLE "github_repository_trend_results" (
     "id" UUID NOT NULL,
     "tenant_id" UUID NOT NULL,
     "workspace_id" UUID NOT NULL,
-    "topic_id" UUID NOT NULL,
+    "interest_id" UUID NOT NULL,
     "source_binding_id" UUID NOT NULL,
     "scan_job_id" UUID NOT NULL,
     "source_item_id" UUID NOT NULL,
@@ -498,7 +498,7 @@ CREATE TABLE "summary_artifacts" (
     "id" UUID NOT NULL,
     "tenant_id" UUID NOT NULL,
     "workspace_id" UUID NOT NULL,
-    "topic_id" UUID NOT NULL,
+    "interest_id" UUID NOT NULL,
     "user_id" TEXT,
     "subscription_id" UUID,
     "status" "SummaryStatus" NOT NULL DEFAULT 'COMPLETED',
@@ -521,7 +521,7 @@ CREATE TABLE "summary_jobs" (
     "id" UUID NOT NULL,
     "tenant_id" UUID NOT NULL,
     "workspace_id" UUID NOT NULL,
-    "topic_id" UUID NOT NULL,
+    "interest_id" UUID NOT NULL,
     "user_id" TEXT,
     "subscription_id" UUID,
     "status" "SummaryStatus" NOT NULL DEFAULT 'REQUESTED',
@@ -543,7 +543,7 @@ CREATE TABLE "summary_policies" (
     "id" UUID NOT NULL,
     "tenant_id" UUID NOT NULL,
     "workspace_id" UUID NOT NULL,
-    "topic_id" UUID NOT NULL,
+    "interest_id" UUID NOT NULL,
     "language" TEXT NOT NULL,
     "format" TEXT NOT NULL,
     "tone" TEXT NOT NULL,
@@ -564,7 +564,7 @@ CREATE TABLE "summary_feedback" (
     "tenant_id" UUID NOT NULL,
     "workspace_id" UUID NOT NULL,
     "summary_artifact_id" UUID NOT NULL,
-    "topic_id" UUID NOT NULL,
+    "interest_id" UUID NOT NULL,
     "idempotency_key" TEXT NOT NULL,
     "submitted_by" TEXT NOT NULL,
     "rating" INTEGER NOT NULL,
@@ -585,7 +585,7 @@ CREATE TABLE "reader_summary_artifacts" (
     "workspace_id" UUID NOT NULL,
     "scope_type" TEXT NOT NULL,
     "scope_key" TEXT NOT NULL,
-    "topic_id" UUID,
+    "interest_id" UUID,
     "cadence" TEXT NOT NULL,
     "period_started_at" TIMESTAMPTZ(6) NOT NULL,
     "period_ended_at" TIMESTAMPTZ(6) NOT NULL,
@@ -615,7 +615,7 @@ CREATE TABLE "reader_summary_jobs" (
     "workspace_id" UUID NOT NULL,
     "scope_type" TEXT NOT NULL,
     "scope_key" TEXT NOT NULL,
-    "topic_id" UUID,
+    "interest_id" UUID,
     "cadence" TEXT NOT NULL,
     "period_started_at" TIMESTAMPTZ(6) NOT NULL,
     "period_ended_at" TIMESTAMPTZ(6) NOT NULL,
@@ -644,13 +644,13 @@ CREATE TABLE "reader_summary_policies" (
     "workspace_id" UUID NOT NULL,
     "scope_type" TEXT NOT NULL,
     "scope_key" TEXT NOT NULL,
-    "topic_id" UUID,
+    "interest_id" UUID,
     "language" TEXT NOT NULL,
     "format" TEXT NOT NULL,
     "tone" TEXT NOT NULL,
     "max_stories" INTEGER NOT NULL,
     "include_risks" BOOLEAN NOT NULL,
-    "include_topic_highlights" BOOLEAN NOT NULL,
+    "include_interest_highlights" BOOLEAN NOT NULL,
     "include_repeated_signals" BOOLEAN NOT NULL,
     "dedupe_strategy" TEXT NOT NULL,
     "custom_instructions" TEXT,
@@ -722,7 +722,7 @@ CREATE TABLE "digest_schedules" (
     "workspace_id" UUID NOT NULL,
     "recipient_key" TEXT NOT NULL,
     "channel" TEXT NOT NULL,
-    "topic_ids" TEXT[],
+    "interest_ids" TEXT[],
     "interval_seconds" INTEGER NOT NULL,
     "include_no_signal" BOOLEAN NOT NULL,
     "next_run_at" TIMESTAMPTZ(6) NOT NULL,
@@ -788,7 +788,7 @@ CREATE TABLE "user_summary_preferences" (
     "workspace_id" UUID NOT NULL,
     "user_id" TEXT NOT NULL,
     "subscription_id" UUID,
-    "topic_id" UUID,
+    "interest_id" UUID,
     "language" TEXT,
     "format" TEXT,
     "tone" TEXT,
@@ -809,7 +809,7 @@ CREATE TABLE "user_relevance_profiles" (
     "tenant_id" UUID NOT NULL,
     "workspace_id" UUID NOT NULL,
     "user_id" TEXT NOT NULL,
-    "topic_weights" JSONB NOT NULL,
+    "interest_weights" JSONB NOT NULL,
     "source_weights" JSONB NOT NULL,
     "keyword_weights" JSONB NOT NULL,
     "muted_keywords" TEXT[],
@@ -1070,10 +1070,10 @@ CREATE INDEX "api_keys_tenant_id_workspace_id_created_at_idx" ON "api_keys"("ten
 CREATE INDEX "api_keys_tenant_id_workspace_id_status_idx" ON "api_keys"("tenant_id", "workspace_id", "status");
 
 -- CreateIndex
-CREATE INDEX "topics_tenant_id_workspace_id_status_created_at_idx" ON "topics"("tenant_id", "workspace_id", "status", "created_at");
+CREATE INDEX "interests_tenant_id_workspace_id_status_created_at_idx" ON "interests"("tenant_id", "workspace_id", "status", "created_at");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "topics_tenant_id_workspace_id_name_key" ON "topics"("tenant_id", "workspace_id", "name");
+CREATE UNIQUE INDEX "interests_tenant_id_workspace_id_name_key" ON "interests"("tenant_id", "workspace_id", "name");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "source_catalog_entries_provider_key_key" ON "source_catalog_entries"("provider_key");
@@ -1082,7 +1082,7 @@ CREATE UNIQUE INDEX "source_catalog_entries_provider_key_key" ON "source_catalog
 CREATE UNIQUE INDEX "capability_profiles_source_id_version_key" ON "capability_profiles"("source_id", "version");
 
 -- CreateIndex
-CREATE INDEX "source_bindings_tenant_id_workspace_id_topic_id_status_idx" ON "source_bindings"("tenant_id", "workspace_id", "topic_id", "status");
+CREATE INDEX "source_bindings_tenant_workspace_interest_status_idx" ON "source_bindings"("tenant_id", "workspace_id", "interest_id", "status");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "source_credentials_secret_key_id_key" ON "source_credentials"("secret_key_id");
@@ -1151,10 +1151,10 @@ CREATE INDEX "feed_items_tenant_id_workspace_id_status_created_at_idx" ON "feed_
 CREATE INDEX "feed_items_tenant_id_workspace_id_provider_key_observed_at_idx" ON "feed_items"("tenant_id", "workspace_id", "provider_key", "observed_at");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "feed_items_tenant_id_topic_id_dedupe_key_key" ON "feed_items"("tenant_id", "topic_id", "dedupe_key");
+CREATE UNIQUE INDEX "feed_items_tenant_interest_dedupe_key_key" ON "feed_items"("tenant_id", "interest_id", "dedupe_key");
 
 -- CreateIndex
-CREATE INDEX "feed_signal_baseline_samples_tenant_id_workspace_id_topic_i_idx" ON "feed_signal_baseline_samples"("tenant_id", "workspace_id", "topic_id", "observed_at");
+CREATE INDEX "feed_signal_baseline_samples_interest_observed_idx" ON "feed_signal_baseline_samples"("tenant_id", "workspace_id", "interest_id", "observed_at");
 
 -- CreateIndex
 CREATE INDEX "feed_signal_baseline_samples_tenant_id_workspace_id_provide_idx" ON "feed_signal_baseline_samples"("tenant_id", "workspace_id", "provider_key", "content_type", "observed_at");
@@ -1175,22 +1175,22 @@ CREATE INDEX "github_repository_trend_snapshots_tenant_id_workspace_id_ch_idx" O
 CREATE UNIQUE INDEX "github_repository_trend_snapshots_tenant_id_workspace_id_re_key" ON "github_repository_trend_snapshots"("tenant_id", "workspace_id", "repository_full_name", "checked_at");
 
 -- CreateIndex
-CREATE INDEX "github_repository_trend_results_tenant_id_workspace_id_topi_idx" ON "github_repository_trend_results"("tenant_id", "workspace_id", "topic_id", "checked_at");
+CREATE INDEX "github_repository_trend_results_interest_checked_idx" ON "github_repository_trend_results"("tenant_id", "workspace_id", "interest_id", "checked_at");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "github_repository_trend_results_tenant_id_workspace_id_scan_key" ON "github_repository_trend_results"("tenant_id", "workspace_id", "scan_job_id", "repository_full_name", "primary_window");
 
 -- CreateIndex
-CREATE INDEX "summary_artifacts_tenant_id_workspace_id_topic_id_status_cr_idx" ON "summary_artifacts"("tenant_id", "workspace_id", "topic_id", "status", "created_at");
+CREATE INDEX "summary_artifacts_interest_status_created_idx" ON "summary_artifacts"("tenant_id", "workspace_id", "interest_id", "status", "created_at");
 
 -- CreateIndex
-CREATE INDEX "summary_artifacts_tenant_id_workspace_id_user_id_topic_id_c_idx" ON "summary_artifacts"("tenant_id", "workspace_id", "user_id", "topic_id", "created_at");
+CREATE INDEX "summary_artifacts_user_interest_created_idx" ON "summary_artifacts"("tenant_id", "workspace_id", "user_id", "interest_id", "created_at");
 
 -- CreateIndex
-CREATE INDEX "summary_jobs_tenant_id_workspace_id_topic_id_status_created_idx" ON "summary_jobs"("tenant_id", "workspace_id", "topic_id", "status", "created_at");
+CREATE INDEX "summary_jobs_interest_status_created_idx" ON "summary_jobs"("tenant_id", "workspace_id", "interest_id", "status", "created_at");
 
 -- CreateIndex
-CREATE INDEX "summary_jobs_tenant_id_workspace_id_user_id_topic_id_create_idx" ON "summary_jobs"("tenant_id", "workspace_id", "user_id", "topic_id", "created_at");
+CREATE INDEX "summary_jobs_user_interest_created_idx" ON "summary_jobs"("tenant_id", "workspace_id", "user_id", "interest_id", "created_at");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "summary_jobs_tenant_id_idempotency_key_key" ON "summary_jobs"("tenant_id", "idempotency_key");
@@ -1199,7 +1199,7 @@ CREATE UNIQUE INDEX "summary_jobs_tenant_id_idempotency_key_key" ON "summary_job
 CREATE INDEX "summary_policies_tenant_id_workspace_id_updated_at_idx" ON "summary_policies"("tenant_id", "workspace_id", "updated_at");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "summary_policies_tenant_id_workspace_id_topic_id_key" ON "summary_policies"("tenant_id", "workspace_id", "topic_id");
+CREATE UNIQUE INDEX "summary_policies_tenant_workspace_interest_key" ON "summary_policies"("tenant_id", "workspace_id", "interest_id");
 
 -- CreateIndex
 CREATE INDEX "summary_feedback_tenant_id_workspace_id_summary_artifact_id_idx" ON "summary_feedback"("tenant_id", "workspace_id", "summary_artifact_id");
@@ -1277,7 +1277,7 @@ CREATE INDEX "user_subscription_schedules_tenant_id_workspace_id_status_n_idx" O
 CREATE UNIQUE INDEX "user_summary_preferences_tenant_id_workspace_id_user_id_sub_key" ON "user_summary_preferences"("tenant_id", "workspace_id", "user_id", "subscription_id");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "user_summary_preferences_tenant_id_workspace_id_user_id_top_key" ON "user_summary_preferences"("tenant_id", "workspace_id", "user_id", "topic_id");
+CREATE UNIQUE INDEX "user_summary_preferences_user_interest_key" ON "user_summary_preferences"("tenant_id", "workspace_id", "user_id", "interest_id");
 
 -- CreateIndex
 CREATE INDEX "user_relevance_profiles_tenant_id_workspace_id_updated_at_idx" ON "user_relevance_profiles"("tenant_id", "workspace_id", "updated_at");
@@ -1364,7 +1364,7 @@ ALTER TABLE "memberships" ADD CONSTRAINT "memberships_workspace_id_fkey" FOREIGN
 ALTER TABLE "memberships" ADD CONSTRAINT "memberships_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "topics" ADD CONSTRAINT "topics_workspace_id_fkey" FOREIGN KEY ("workspace_id") REFERENCES "workspaces"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "interests" ADD CONSTRAINT "interests_workspace_id_fkey" FOREIGN KEY ("workspace_id") REFERENCES "workspaces"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "capability_profiles" ADD CONSTRAINT "capability_profiles_source_id_fkey" FOREIGN KEY ("source_id") REFERENCES "source_catalog_entries"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

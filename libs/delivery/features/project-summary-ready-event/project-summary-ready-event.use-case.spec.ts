@@ -51,7 +51,7 @@ class FakeRealtimeEvents implements RealtimeEventRepositoryPort {
 }
 
 describe('ProjectSummaryReadyEventUseCase', () => {
-  it('projects summary.ready into a topic summary status realtime event', async () => {
+  it('projects summary.ready into an interest summary status realtime event', async () => {
     const repository = new FakeRealtimeEvents();
     const result = await new ProjectSummaryReadyEventUseCase(
       new RecordRealtimeEventUseCase(
@@ -72,7 +72,7 @@ describe('ProjectSummaryReadyEventUseCase', () => {
         payload: {
           tenantId: tenantId('tenant-1'),
           workspaceId: workspaceId('workspace-1'),
-          topicId: 'topic-1',
+          interestId: 'interest-1',
           summaryJobId: 'summary-job-1',
           summaryId: 'summary-1',
           status: 'no_signal',
@@ -82,7 +82,7 @@ describe('ProjectSummaryReadyEventUseCase', () => {
     const replay = await repository.list({
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
-      channel: 'topic:topic-1:summary-status',
+      channel: 'interest:interest-1:summary-status',
       limit: 20,
     });
 
@@ -90,7 +90,7 @@ describe('ProjectSummaryReadyEventUseCase', () => {
       ok: true,
       value: {
         realtimeEventId: 'realtime-event-1',
-        channel: 'topic:topic-1:summary-status',
+        channel: 'interest:interest-1:summary-status',
         sequence: 1,
       },
     });
@@ -103,7 +103,7 @@ describe('ProjectSummaryReadyEventUseCase', () => {
         summaryId: 'summary-1',
         tenantId: tenantId('tenant-1'),
         workspaceId: workspaceId('workspace-1'),
-        topicId: 'topic-1',
+        interestId: 'interest-1',
         status: 'no_signal',
       },
     });

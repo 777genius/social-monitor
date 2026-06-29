@@ -21,7 +21,7 @@ Initial REST resources:
 
 - `/v1/tenants`
 - `/v1/memberships`
-- `/v1/topics`
+- `/v1/interests`
 - `/v1/source-bindings`
 - `/v1/scan-policies`
 - `/v1/feed-items`

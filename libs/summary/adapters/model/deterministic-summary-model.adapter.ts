@@ -52,7 +52,7 @@ export class DeterministicSummaryModelAdapter implements SummaryModelPort {
     );
     const memoryTextLength = input.memoryContext?.renderedText?.length ?? 0;
     const inputTokens = Math.ceil(
-      (input.topicId.length + evidenceTextLength + memoryTextLength) / 4,
+      (input.interestId.length + evidenceTextLength + memoryTextLength) / 4,
     );
     const outputTokens = input.evidence.items.length === 0 ? 48 : 160;
 
@@ -102,7 +102,7 @@ export class DeterministicSummaryModelAdapter implements SummaryModelPort {
           },
           lineage,
           usage,
-          noSignalReason: 'No eligible evidence items selected for this topic.',
+          noSignalReason: 'No eligible evidence items selected for this interest.',
         },
       };
     }
@@ -328,7 +328,7 @@ const readNumber = (value: unknown): number | undefined =>
 
 const buildNoSignalSummary = (input: SummaryModelInput): string => {
   const base =
-    'No eligible evidence items were available for this topic window.';
+    'No eligible evidence items were available for this interest window.';
 
   if (input.policy.customInstructions === undefined) {
     return appendMemoryContext(base, input);

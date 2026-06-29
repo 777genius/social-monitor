@@ -16,7 +16,7 @@ final class GeneratedFeedItemRestMapper {
   FeedItemApiDto item(generated.FeedItemDto dto) {
     return FeedItemApiDto(
       id: dto.id,
-      topicId: dto.topicId,
+      interestId: dto.interestId,
       sourceItemId: dto.sourceItemId,
       sourceBindingId: dto.sourceBindingId,
       providerKey: dto.providerKey,
@@ -35,7 +35,7 @@ final class GeneratedFeedItemRestMapper {
   FeedItemApiDto detail(generated.GetFeedItemResponseDto dto) {
     return FeedItemApiDto(
       id: dto.id,
-      topicId: dto.topicId,
+      interestId: dto.interestId,
       sourceItemId: dto.sourceItemId,
       sourceBindingId: dto.sourceBindingId,
       providerKey: dto.providerKey,

@@ -40,7 +40,7 @@ describe('Source binding status API (e2e)', () => {
     const workspace = workspaceId('workspace-source-status-e2e');
 
     const topic = await request(app.getHttpServer())
-      .post('/topics')
+      .post('/interests')
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'admin')
@@ -53,7 +53,7 @@ describe('Source binding status API (e2e)', () => {
       .expect(201);
 
     const binding = await request(app.getHttpServer())
-      .post(`/topics/${topic.body.topicId}/source-bindings`)
+      .post(`/interests/${topic.body.interestId}/source-bindings`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'admin')
@@ -80,7 +80,7 @@ describe('Source binding status API (e2e)', () => {
       .expect(201);
 
     const pause = await request(app.getHttpServer())
-      .patch(`/topics/${topic.body.topicId}/source-bindings/${binding.body.sourceBindingId}/status`)
+      .patch(`/interests/${topic.body.interestId}/source-bindings/${binding.body.sourceBindingId}/status`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'admin')
@@ -96,7 +96,7 @@ describe('Source binding status API (e2e)', () => {
     });
 
     const repeatedPause = await request(app.getHttpServer())
-      .patch(`/topics/${topic.body.topicId}/source-bindings/${binding.body.sourceBindingId}/status`)
+      .patch(`/interests/${topic.body.interestId}/source-bindings/${binding.body.sourceBindingId}/status`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'admin')
@@ -112,7 +112,7 @@ describe('Source binding status API (e2e)', () => {
     });
 
     const health = await request(app.getHttpServer())
-      .get(`/topics/${topic.body.topicId}/source-bindings/${binding.body.sourceBindingId}/health`)
+      .get(`/interests/${topic.body.interestId}/source-bindings/${binding.body.sourceBindingId}/health`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'viewer')
@@ -147,7 +147,7 @@ describe('Source binding status API (e2e)', () => {
     expect(queue.all()).toHaveLength(0);
 
     const resume = await request(app.getHttpServer())
-      .patch(`/topics/${topic.body.topicId}/source-bindings/${binding.body.sourceBindingId}/status`)
+      .patch(`/interests/${topic.body.interestId}/source-bindings/${binding.body.sourceBindingId}/status`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'admin')
@@ -182,7 +182,7 @@ describe('Source binding status API (e2e)', () => {
       correlationId: 'source-status-scan-resumed-correlation',
       payload: {
         scanJobId: scan.body.scanJobId,
-        topicId: topic.body.topicId,
+        interestId: topic.body.interestId,
         sourceBindingId: binding.body.sourceBindingId,
       },
     });
@@ -197,14 +197,14 @@ describe('Source binding status API (e2e)', () => {
       expect.objectContaining({
         resourceId: binding.body.sourceBindingId,
         metadata: {
-          topicId: topic.body.topicId,
+          interestId: topic.body.interestId,
           status: 'enabled',
         },
       }),
       expect.objectContaining({
         resourceId: binding.body.sourceBindingId,
         metadata: {
-          topicId: topic.body.topicId,
+          interestId: topic.body.interestId,
           status: 'paused',
         },
       }),

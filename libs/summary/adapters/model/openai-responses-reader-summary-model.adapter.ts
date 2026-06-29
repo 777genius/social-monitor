@@ -309,7 +309,7 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
       executiveSummary:
         "No eligible evidence items were available for this summary window.",
       topStories: [],
-      topicHighlights: [],
+      interestHighlights: [],
       repeatedSignals: [],
       risksAndUnknowns: [
         {

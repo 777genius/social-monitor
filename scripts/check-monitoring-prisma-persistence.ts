@@ -10,13 +10,13 @@ import {
 
 import { resolveIngestionScanReporterMode } from '../apps/ingestion-worker/src/ingestion-worker-provider-tokens';
 import { PrismaIdempotencyAdapter } from '../libs/monitoring/adapters/idempotency/prisma/prisma-idempotency.adapter';
-import { ScanJob, ScanPolicy, SourceBinding, SourceCredential, Topic } from '../libs/monitoring/domain';
+import { Interest, ScanJob, ScanPolicy, SourceBinding, SourceCredential } from '../libs/monitoring/domain';
 import { PrismaScanJobRepository } from '../libs/monitoring/adapters/persistence/prisma/prisma-scan-job.repository';
 import { PrismaScanSchedulerDecisionHistoryRepository } from '../libs/monitoring/adapters/persistence/prisma/prisma-scan-scheduler-decision-history.repository';
 import { PrismaScanPolicyRepository } from '../libs/monitoring/adapters/persistence/prisma/prisma-scan-policy.repository';
 import { PrismaSourceBindingRepository } from '../libs/monitoring/adapters/persistence/prisma/prisma-source-binding.repository';
 import { PrismaSourceCredentialRepository } from '../libs/monitoring/adapters/persistence/prisma/prisma-source-credential.repository';
-import { PrismaTopicRepository } from '../libs/monitoring/adapters/persistence/prisma/prisma-topic.repository';
+import { PrismaInterestRepository } from '../libs/monitoring/adapters/persistence/prisma/prisma-interest.repository';
 import { PrismaMonitoringOutboxAdapter } from '../libs/monitoring/adapters/persistence/prisma/prisma-monitoring-outbox.adapter';
 import { PrismaSourceCredentialVault } from '../libs/monitoring/adapters/secrets/prisma/prisma-source-credential.vault';
 import {
@@ -35,7 +35,7 @@ import type {
   PrismaSourceCatalogEntryRecord,
   PrismaSourceCredentialRecord,
   PrismaSourceCredentialSecretRecord,
-  PrismaTopicRecord,
+  PrismaInterestRecord,
 } from '../libs/monitoring/adapters/persistence/prisma/prisma-monitoring-records';
 
 const fixedNow = new Date('2026-06-06T00:00:00.000Z');
@@ -103,7 +103,7 @@ async function main(): Promise<void> {
     providerKey: 'fake-source',
   });
 
-  const topics = new PrismaTopicRepository(prisma);
+  const interests = new PrismaInterestRepository(prisma);
   const bindings = new PrismaSourceBindingRepository(prisma);
   const policies = new PrismaScanPolicyRepository(prisma);
   const scanJobs = new PrismaScanJobRepository(prisma);
@@ -114,7 +114,7 @@ async function main(): Promise<void> {
   const ids = new SequenceIdGenerator();
   const idempotency = new PrismaIdempotencyAdapter(prisma, ids);
 
-  const topic = Topic.create({
+  const interest = Interest.create({
     id: '00000000-0000-7000-8000-000000000020',
     tenantId: tenant,
     workspaceId: workspace,
@@ -122,31 +122,31 @@ async function main(): Promise<void> {
     query: 'monitoring',
     createdAt: clock.now(),
   });
-  await topics.save(topic);
+  await interests.save(interest);
 
-  const foundTopic = await topics.findByName({
+  const foundInterest = await interests.findByName({
     tenantId: tenant,
     workspaceId: workspace,
     name: 'AI Infrastructure',
   });
-  assert(foundTopic?.toSnapshot().id === topic.toSnapshot().id, 'topic must round-trip through Prisma repository');
+  assert(foundInterest?.toSnapshot().id === interest.toSnapshot().id, 'interest must round-trip through Prisma repository');
 
-  const listedTopics = await topics.list({
+  const listedInterests = await interests.list({
     tenantId: tenant,
     workspaceId: workspace,
     limit: 10,
   });
-  assert(listedTopics.topics.length === 1, 'topic list must include tenant-scoped persisted topics');
+  assert(listedInterests.interests.length === 1, 'interest list must include tenant-scoped persisted interests');
   assert(
-    listedTopics.topics[0]?.toSnapshot().id === topic.toSnapshot().id,
-    'topic list must rehydrate persisted topic snapshots',
+    listedInterests.interests[0]?.toSnapshot().id === interest.toSnapshot().id,
+    'interest list must rehydrate persisted interest snapshots',
   );
 
   const sourceBinding = SourceBinding.create({
     id: '00000000-0000-7000-8000-000000000030',
     tenantId: tenant,
     workspaceId: workspace,
-    topicId: topic.toSnapshot().id,
+    interestId: interest.toSnapshot().id,
     providerKey: 'fake-source',
     capabilityProfileVersion: 1,
     config: { mode: 'search', query: 'monitoring' },
@@ -155,22 +155,22 @@ async function main(): Promise<void> {
   await bindings.save(sourceBinding);
   await bindings.save(sourceBinding.pause());
 
-  const foundBinding = await bindings.findByTopicAndProvider({
+  const foundBinding = await bindings.findByInterestAndProvider({
     tenantId: tenant,
     workspaceId: workspace,
-    topicId: topic.toSnapshot().id,
+    interestId: interest.toSnapshot().id,
     providerKey: 'fake-source',
   });
   assert(foundBinding?.toSnapshot().status === 'paused', 'source binding pause state must persist');
   assert(foundBinding.toSnapshot().providerKey === 'fake-source', 'source binding provider key must rehydrate from catalog');
 
-  const listedBindings = await bindings.listByTopic({
+  const listedBindings = await bindings.listByInterest({
     tenantId: tenant,
     workspaceId: workspace,
-    topicId: topic.toSnapshot().id,
+    interestId: interest.toSnapshot().id,
     limit: 10,
   });
-  assert(listedBindings.sourceBindings.length === 1, 'source binding list must include topic-scoped bindings');
+  assert(listedBindings.sourceBindings.length === 1, 'source binding list must include interest-scoped bindings');
   assert(
     listedBindings.sourceBindings[0]?.toSnapshot().providerKey === 'fake-source',
     'source binding list must rehydrate provider keys from catalog entries',
@@ -296,24 +296,24 @@ async function main(): Promise<void> {
 
   await outbox.append({
     eventId: eventId('00000000-0000-7000-8000-000000000060'),
-    eventType: 'monitoring.topic.created',
+    eventType: 'monitoring.interest.created',
     schemaVersion: 1,
     occurredAt: clock.now(),
     tenantId: tenant,
     workspaceId: workspace,
     correlationId: correlationId('monitoring-prisma-outbox-smoke'),
-    causationId: causationId('topic:create:monitoring-prisma-outbox-smoke'),
+    causationId: causationId('interest:create:monitoring-prisma-outbox-smoke'),
     payload: {
-      topicId: topic.toSnapshot().id,
+      interestId: interest.toSnapshot().id,
       tenantId: tenant,
       workspaceId: workspace,
-      name: topic.toSnapshot().name,
-      query: topic.toSnapshot().query,
+      name: interest.toSnapshot().name,
+      query: interest.toSnapshot().query,
     },
   });
 
   const outboxRecord = prisma.outboxEvents.get('00000000-0000-7000-8000-000000000060');
-  assert(outboxRecord?.eventType === 'monitoring.topic.created', 'outbox must persist event type');
+  assert(outboxRecord?.eventType === 'monitoring.interest.created', 'outbox must persist event type');
   assert(outboxRecord.status === 'PENDING', 'outbox events must start pending for dispatcher delivery');
   assert(outboxRecord.tenantId === tenant, 'outbox event must preserve tenant scope');
   assert(outboxRecord.workspaceId === workspace, 'outbox event must preserve workspace scope');
@@ -321,27 +321,27 @@ async function main(): Promise<void> {
   await idempotency.set({
     tenantId: tenant,
     workspaceId: workspace,
-    scope: 'topic:create',
-    key: 'topic-create-idempotency-key',
+    scope: 'interest:create',
+    key: 'interest-create-idempotency-key',
     value: {
-      topicId: topic.toSnapshot().id,
+      interestId: interest.toSnapshot().id,
       created: true,
     },
   });
 
   const rehydratedIdempotency = new PrismaIdempotencyAdapter(prisma, ids);
   const idempotencyRecord = await rehydratedIdempotency.get<{
-    readonly topicId: string;
+    readonly interestId: string;
     readonly created: boolean;
   }>({
     tenantId: tenant,
     workspaceId: workspace,
-    scope: 'topic:create',
-    key: 'topic-create-idempotency-key',
+    scope: 'interest:create',
+    key: 'interest-create-idempotency-key',
   });
   assert(idempotencyRecord !== null, 'idempotency record must be readable after write');
   assert(
-    idempotencyRecord.value.topicId === topic.toSnapshot().id,
+    idempotencyRecord.value.interestId === interest.toSnapshot().id,
     'idempotency response payload must persist across adapter instances',
   );
   assert(idempotencyRecord.value.created === true, 'idempotency response payload must preserve created flag');
@@ -349,8 +349,8 @@ async function main(): Promise<void> {
   const storedIdempotency = prisma.idempotencyKeys.get(idempotencyStorageKey({
     tenantId: tenant,
     workspaceId: workspace,
-    scope: 'topic:create',
-    key: 'topic-create-idempotency-key',
+    scope: 'interest:create',
+    key: 'interest-create-idempotency-key',
   }));
   assert(storedIdempotency !== undefined, 'idempotency record must be stored in Prisma client');
   assert(storedIdempotency.responseStatus === 200, 'idempotency records must persist response status');
@@ -414,7 +414,7 @@ async function main(): Promise<void> {
 class FakePrismaMonitoringClient implements PrismaMonitoringClient {
   readonly sourceCatalogEntries = new Map<string, PrismaSourceCatalogEntryRecord>();
   private readonly sourceCatalogEntriesById = new Map<string, PrismaSourceCatalogEntryRecord>();
-  private readonly topics = new Map<string, PrismaTopicRecord>();
+  private readonly interests = new Map<string, PrismaInterestRecord>();
   private readonly sourceBindings = new Map<string, PrismaSourceBindingRecord>();
   private readonly sourceCredentials = new Map<string, PrismaSourceCredentialRecord>();
   private readonly sourceCredentialSecrets = new Map<string, PrismaSourceCredentialSecretRecord>();
@@ -425,10 +425,10 @@ class FakePrismaMonitoringClient implements PrismaMonitoringClient {
   readonly idempotencyKeys = new Map<string, PrismaIdempotencyKeyRecord>();
   readonly outboxEvents = new Map<string, PrismaOutboxEventRecord>();
 
- readonly topic: PrismaMonitoringClient['topic'] = {
+  readonly interest: PrismaMonitoringClient['interest'] = {
     upsert: async (args) => {
-      const existing = this.topics.get(args.where.id);
-      const record: PrismaTopicRecord = {
+      const existing = this.interests.get(args.where.id);
+      const record: PrismaInterestRecord = {
         id: args.where.id,
         tenantId: existing?.tenantId ?? args.create.tenantId,
         workspaceId: existing?.workspaceId ?? args.create.workspaceId,
@@ -438,12 +438,12 @@ class FakePrismaMonitoringClient implements PrismaMonitoringClient {
         createdAt: existing?.createdAt ?? clock.now(),
         deletedAt: existing === undefined ? (args.create.deletedAt ?? null) : (args.update.deletedAt ?? existing.deletedAt),
       };
-      this.topics.set(record.id, record);
+      this.interests.set(record.id, record);
 
       return record;
     },
     updateMany: async (args) => {
-      const existing = this.topics.get(args.where.id);
+      const existing = this.interests.get(args.where.id);
       if (
         existing === undefined ||
         existing.tenantId !== args.where.tenantId ||
@@ -453,7 +453,7 @@ class FakePrismaMonitoringClient implements PrismaMonitoringClient {
         return { count: 0 };
       }
 
-      this.topics.set(existing.id, {
+      this.interests.set(existing.id, {
         ...existing,
         status: args.data.status,
         deletedAt: args.data.deletedAt,
@@ -462,7 +462,7 @@ class FakePrismaMonitoringClient implements PrismaMonitoringClient {
       return { count: 1 };
     },
     findFirst: async (args) =>
-      [...this.topics.values()].find((record) => (
+      [...this.interests.values()].find((record) => (
         record.tenantId === args.where.tenantId &&
         record.workspaceId === args.where.workspaceId &&
         (args.where.id === undefined || record.id === args.where.id) &&
@@ -470,7 +470,7 @@ class FakePrismaMonitoringClient implements PrismaMonitoringClient {
         (record.deletedAt ?? null) === args.where.deletedAt
       )) ?? null,
     findMany: async (args) =>
-      [...this.topics.values()]
+      [...this.interests.values()]
         .filter((record) => (
           record.tenantId === args.where.tenantId &&
           record.workspaceId === args.where.workspaceId &&
@@ -502,7 +502,7 @@ class FakePrismaMonitoringClient implements PrismaMonitoringClient {
         id: args.where.id,
         tenantId: existing?.tenantId ?? args.create.tenantId,
         workspaceId: existing?.workspaceId ?? args.create.workspaceId,
-        topicId: existing?.topicId ?? args.create.topicId,
+        interestId: existing?.interestId ?? args.create.interestId,
         sourceCatalogEntryId: existing?.sourceCatalogEntryId ?? args.create.sourceCatalogEntryId,
         capabilityProfileVersion: args.update.capabilityProfileVersion,
         status: args.update.status,
@@ -518,7 +518,7 @@ class FakePrismaMonitoringClient implements PrismaMonitoringClient {
         record.tenantId === args.where.tenantId &&
         record.workspaceId === args.where.workspaceId &&
         (args.where.id === undefined || record.id === args.where.id) &&
-        (args.where.topicId === undefined || record.topicId === args.where.topicId) &&
+        (args.where.interestId === undefined || record.interestId === args.where.interestId) &&
         (
           args.where.sourceCatalogEntryId === undefined ||
           record.sourceCatalogEntryId === args.where.sourceCatalogEntryId
@@ -529,7 +529,7 @@ class FakePrismaMonitoringClient implements PrismaMonitoringClient {
         .filter((record) => (
           record.tenantId === args.where.tenantId &&
           record.workspaceId === args.where.workspaceId &&
-          record.topicId === args.where.topicId
+          record.interestId === args.where.interestId
         ))
         .sort(compareRecordsByCreationDesc)
         .slice(args.skip, args.skip + args.take),

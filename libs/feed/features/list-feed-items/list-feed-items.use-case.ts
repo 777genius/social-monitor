@@ -56,7 +56,7 @@ export class ListFeedItemsUseCase {
       signalBaseline: this.signalBaseline,
       tenantId: query.tenantId,
       workspaceId: query.workspaceId,
-      topicId: query.topicId,
+      interestId: query.interestId,
       items: result.items,
       now,
     });

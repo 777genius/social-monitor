@@ -89,11 +89,11 @@ describe("CohortBaselineFeedSignalNormalizer", () => {
 
   it("keeps same-source cohorts scoped to each topic when normalizing an all-topics feed", () => {
     const target = redditItem("all-topics-target", "niche-builders", 90, 18, {
-      topicId: "topic-1",
+      interestId: "topic-1",
     });
     const sameTopicHistory = [12, 18, 24, 30].map((score, index) =>
       redditItem(`same-topic-history-${index}`, "niche-builders", score, 4, {
-        topicId: "topic-1",
+        interestId: "topic-1",
         publishedAt: new Date(`2026-06-22T10:0${index}:00.000Z`),
         observedAt: new Date(`2026-06-22T10:1${index}:00.000Z`),
       }),
@@ -106,7 +106,7 @@ describe("CohortBaselineFeedSignalNormalizer", () => {
           score,
           40,
           {
-            topicId: "topic-2",
+            interestId: "topic-2",
             publishedAt: new Date(`2026-06-22T11:0${index}:00.000Z`),
             observedAt: new Date(`2026-06-22T11:1${index}:00.000Z`),
           },
@@ -254,7 +254,7 @@ const redditItem = (
   score: number,
   comments: number,
   overrides: {
-    readonly topicId?: string;
+    readonly interestId?: string;
     readonly publishedAt?: Date;
     readonly observedAt?: Date;
   } = {},
@@ -263,7 +263,7 @@ const redditItem = (
     id,
     tenantId: tenantId("tenant-1"),
     workspaceId: workspaceId("workspace-1"),
-    topicId: overrides.topicId ?? "topic-1",
+    interestId: overrides.interestId ?? "topic-1",
     sourceItemId: `source-${id}`,
     sourceBindingId: `binding-${subreddit}`,
     providerKey: "reddit",

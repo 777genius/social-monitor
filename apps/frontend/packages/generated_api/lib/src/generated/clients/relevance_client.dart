@@ -29,7 +29,7 @@ abstract class RelevanceClient {
     @Path('userId') required String userId,
     @Query('windowEndedAt') required String windowEndedAt,
     @Query('windowStartedAt') required String windowStartedAt,
-    @Query('topicIds') required String topicIds,
+    @Query('interestIds') required String interestIds,
     @Header('x-workspace-id') required String xWorkspaceId,
     @Header('x-tenant-id') required String xTenantId,
     @Query('limit') num? limit,
@@ -49,7 +49,7 @@ abstract class RelevanceClient {
     @Header('x-tenant-id') required String xTenantId,
     @Query('observedAfter') String? observedAfter,
     @Query('limit') num? limit,
-    @Query('topicId') String? topicId,
+    @Query('interestId') String? interestId,
     @Header('authorization') String? authorization,
     @Header('x-workspace-role') String? xWorkspaceRole,
   });

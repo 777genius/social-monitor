@@ -41,7 +41,7 @@ final class GeneratedFeedItemsApiClient implements FeedItemsApiClient {
             xWorkspaceId: request.scope.workspaceId,
             xTenantId: request.scope.tenantId,
             q: request.search.isEmpty ? null : request.search,
-            topicId: request.topicId,
+            interestId: request.interestId,
             providerKey: request.providerKey,
             repositoryTrendWindow: _repositoryTrendWindow(
               request.repositoryTrendWindow,

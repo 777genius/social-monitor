@@ -24,7 +24,7 @@ describe('StaticWorkspaceAuthorizationPolicy', () => {
     expect(policy.authorize({
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
-      action: 'topics.create',
+      action: 'interests.create',
       roles: ['owner'],
     })).toEqual({
       ok: true,
@@ -38,7 +38,7 @@ describe('StaticWorkspaceAuthorizationPolicy', () => {
     expect(policy.authorize({
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
-      action: 'topics.read',
+      action: 'interests.read',
       roles: ['viewer'],
     })).toEqual({
       ok: true,

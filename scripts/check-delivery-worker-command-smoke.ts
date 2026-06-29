@@ -29,7 +29,7 @@ async function main(): Promise<void> {
       workspaceId: workspace,
       recipientKey: 'user-delivery-worker-smoke',
       channel: 'in_app',
-      topicIds: ['topic-delivery-worker-smoke'],
+      interestIds: ['topic-delivery-worker-smoke'],
       intervalSeconds: 3600,
       includeNoSignal: true,
       nextRunAt: new Date('2026-06-06T00:00:00.000Z'),

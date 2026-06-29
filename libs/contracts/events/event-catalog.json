@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "events": [
     {
-      "eventType": "monitoring.topic.created",
+      "eventType": "monitoring.interest.created",
       "schemaVersion": 1,
       "producer": "monitoring",
       "tenantScoped": true,
       "requiredEnvelopeFields": ["tenantId", "workspaceId", "correlationId"],
-      "requiredPayloadFields": ["topicId", "tenantId", "workspaceId", "name", "query"]
+      "requiredPayloadFields": ["interestId", "tenantId", "workspaceId", "name", "query"]
     },
     {
       "eventType": "monitoring.source-binding.enabled",
@@ -19,7 +19,7 @@
         "sourceBindingId",
         "tenantId",
         "workspaceId",
-        "topicId",
+        "interestId",
         "providerKey",
         "capabilityProfileVersion"
       ]
@@ -34,7 +34,7 @@
         "sourceBindingId",
         "tenantId",
         "workspaceId",
-        "topicId",
+        "interestId",
         "providerKey",
         "previousStatus",
         "status"
@@ -70,7 +70,7 @@
       "producer": "summary",
       "tenantScoped": true,
       "requiredEnvelopeFields": ["tenantId", "workspaceId", "correlationId"],
-      "requiredPayloadFields": ["summaryJobId", "summaryId", "tenantId", "workspaceId", "topicId", "status"]
+      "requiredPayloadFields": ["summaryJobId", "summaryId", "tenantId", "workspaceId", "interestId", "status"]
     },
     {
       "eventType": "reader_summary.ready",
@@ -86,7 +86,7 @@
       "producer": "delivery",
       "tenantScoped": true,
       "requiredEnvelopeFields": ["tenantId", "workspaceId", "correlationId"],
-      "requiredPayloadFields": ["summaryJobId", "summaryId", "tenantId", "workspaceId", "topicId", "status"]
+      "requiredPayloadFields": ["summaryJobId", "summaryId", "tenantId", "workspaceId", "interestId", "status"]
     },
     {
       "eventType": "digest.ready.v1",

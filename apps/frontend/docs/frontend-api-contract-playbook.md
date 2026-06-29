@@ -137,7 +137,7 @@ Examples:
 
 ```text
 ListFeedMentionsQuery
-CreateTopicCommand
+CreateInterestCommand
 ReconnectSourceCommand
 LoadSummaryDetailQuery
 ```

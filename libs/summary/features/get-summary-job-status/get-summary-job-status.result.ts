@@ -8,7 +8,7 @@ export type SummaryJobTimelineEvent = {
 
 export type GetSummaryJobStatusResult = {
   readonly summaryJobId: string;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly status: SummaryJobStatus;
   readonly requestedAt: string;
   readonly startedAt?: string;

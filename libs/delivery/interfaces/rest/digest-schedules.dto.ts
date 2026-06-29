@@ -32,7 +32,7 @@ export class CreateDigestScheduleRequestDto {
   @ArrayMinSize(1)
   @IsString({ each: true })
   @MinLength(1, { each: true })
-  topicIds!: string[];
+  interestIds!: string[];
 
   @ApiProperty({ minimum: 60 })
   @IsInt()

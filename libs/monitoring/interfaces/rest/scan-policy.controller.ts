@@ -108,7 +108,7 @@ export class ScanPolicyController {
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
   @ApiKeyOrWorkspaceRoleAuth({
-    apiKeyScope: 'read:topics',
+    apiKeyScope: 'read:interests',
     workspaceRoleDescription: 'Comma-separated workspace roles. Scan policy reads allow owner, admin, member or viewer.',
   })
   @ApiOkResponse({ type: GetScanPolicyResponseDto })
@@ -207,7 +207,7 @@ export class ScanPolicyController {
         authorizationHeader,
         tenantId,
         workspaceId,
-        requiredScope: 'read:topics',
+        requiredScope: 'read:interests',
         operation: 'scan_policies.read',
       });
       return;

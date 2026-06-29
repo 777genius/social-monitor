@@ -38,7 +38,7 @@ describe('RecordRelevanceFeedbackUseCase', () => {
       rating: 2,
       target: {
         feedItemId: 'feed-learning-1',
-        topicId: 'topic-noisy',
+        interestId: 'topic-noisy',
         providerKey: 'reddit',
         title: 'Noisy crypto launch dominates discussion',
         bodyPreview: 'The user marked this item as low relevance.',
@@ -65,7 +65,7 @@ describe('RecordRelevanceFeedbackUseCase', () => {
     });
 
     expect(profile?.sourceWeight('reddit')).toBe(-0.35);
-    expect(profile?.topicWeight('topic-noisy')).toBe(-0.35);
+    expect(profile?.interestWeight('topic-noisy')).toBe(-0.35);
     expect(learning.allFeedback()).toHaveLength(1);
     expect(learning.allMemoryProjections()).toHaveLength(1);
   });
@@ -86,7 +86,7 @@ describe('RecordRelevanceFeedbackUseCase', () => {
       action: 'less_like_this',
       rating: 2,
       target: {
-        topicId: 'topic-ai',
+        interestId: 'topic-ai',
         providerKey: 'reddit',
         title: 'Same title but unrelated event',
         feedbackReason: 'not_same_story',
@@ -113,7 +113,7 @@ describe('RecordRelevanceFeedbackUseCase', () => {
       idempotencyKey: 'feedback-block-source',
       action: 'hide_source',
       target: {
-        topicId: 'topic-ai',
+        interestId: 'topic-ai',
         providerKey: 'spam-source',
         title: 'Spam source item',
       },
@@ -140,7 +140,7 @@ describe('RecordRelevanceFeedbackUseCase', () => {
       rating: 5,
       target: {
         feedItemId: 'feed-repair-1',
-        topicId: 'topic-ai-tooling',
+        interestId: 'topic-ai-tooling',
         providerKey: 'github',
         title: 'Trending AI developer library',
         bodyPreview: 'Developers are adopting a useful AI automation package.',
@@ -163,7 +163,7 @@ describe('RecordRelevanceFeedbackUseCase', () => {
       rating: 5,
       target: {
         feedItemId: 'feed-repair-1',
-        topicId: 'topic-ai-tooling',
+        interestId: 'topic-ai-tooling',
         providerKey: 'github',
         title: 'Trending AI developer library',
         bodyPreview: 'Developers are adopting a useful AI automation package.',
@@ -180,7 +180,7 @@ describe('RecordRelevanceFeedbackUseCase', () => {
       created: false,
       learningDirection: 'positive',
     }));
-    expect(profile?.topicWeight('topic-ai-tooling')).toBe(0.25);
+    expect(profile?.interestWeight('topic-ai-tooling')).toBe(0.25);
     expect(profile?.sourceWeight('github')).toBe(0.25);
     expect(learning.allFeedback()).toHaveLength(1);
     expect(learning.allMemoryProjections()).toHaveLength(1);
@@ -199,7 +199,7 @@ describe('RecordRelevanceFeedbackUseCase', () => {
       idempotencyKey: 'feedback-user-mismatch',
       action: 'less_like_this',
       target: {
-        topicId: 'topic-noisy',
+        interestId: 'topic-noisy',
         providerKey: 'reddit',
         title: 'Noisy item',
       },
@@ -219,7 +219,7 @@ describe('RecordRelevanceFeedbackUseCase', () => {
       idempotencyKey: 'feedback-user-mismatch',
       action: 'less_like_this',
       target: {
-        topicId: 'topic-noisy',
+        interestId: 'topic-noisy',
         providerKey: 'reddit',
         title: 'Noisy item',
       },

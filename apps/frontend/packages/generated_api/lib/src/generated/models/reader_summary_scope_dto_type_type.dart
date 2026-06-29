@@ -8,8 +8,8 @@ import 'package:json_annotation/json_annotation.dart';
 enum ReaderSummaryScopeDtoTypeType {
   @JsonValue('workspace')
   workspace('workspace'),
-  @JsonValue('topic')
-  topic('topic'),
+  @JsonValue('interest')
+  interest('interest'),
 
   /// Default value for all unparsed values, allows backward compatibility when adding new values on the backend.
   $unknown(null);

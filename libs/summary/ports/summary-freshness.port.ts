@@ -20,7 +20,7 @@ export interface SummaryFreshnessPort {
   evaluate(params: {
     readonly tenantId: TenantId;
     readonly workspaceId: WorkspaceId;
-    readonly topicId: string;
+    readonly interestId: string;
     readonly sourceWindow: SummarySourceWindow;
   }): Promise<SummaryFreshness>;
 }

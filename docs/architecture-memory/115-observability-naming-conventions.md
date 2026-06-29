@@ -18,7 +18,7 @@ Use OpenTelemetry semantic conventions first, then add product-specific attribut
 Use stable low-cardinality names:
 
 ```text
-HTTP GET /v1/topics
+HTTP GET /v1/interests
 gRPC EntitlementService.CheckLimit
 Kafka publish item.normalized.v1
 Kafka consume summary.created.v1

@@ -3,7 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 
+import '../components/interest_coverage_plan_panel.dart';
 import '../components/source_bindings_layout.dart';
+import '../stores/interest_coverage_plan_store.dart';
 import '../stores/scan_policy_store.dart';
 import '../stores/scan_run_store.dart';
 import '../stores/source_bindings_store.dart';
@@ -12,12 +14,14 @@ class SourceBindingsPage extends StatefulWidget {
   const SourceBindingsPage({
     super.key,
     required this.store,
+    required this.interestCoveragePlanStore,
     required this.policyStore,
     required this.scanRunStore,
     this.autoload = true,
   });
 
   final SourceBindingsStore store;
+  final InterestCoveragePlanStore interestCoveragePlanStore;
   final ScanPolicyStore policyStore;
   final ScanRunStore scanRunStore;
   final bool autoload;
@@ -36,7 +40,10 @@ class _SourceBindingsPageState extends State<SourceBindingsPage> {
   }
 
   Future<void> _loadBindingsAndPolicy() async {
-    await widget.store.load();
+    await Future.wait([
+      widget.store.load(),
+      widget.interestCoveragePlanStore.plan(),
+    ]);
     final selected = widget.store.selectedBinding;
     if (selected != null) {
       await widget.policyStore.loadFor(selected.id);
@@ -54,14 +61,14 @@ class _SourceBindingsPageState extends State<SourceBindingsPage> {
             slivers: [
               SliverToBoxAdapter(
                 child: AppSectionHeader(
-                  eyebrow: 'Topic sources',
-                  title: 'Topic sources',
+                  eyebrow: 'Interest sources',
+                  title: 'Sources for ${widget.store.interestTitle}',
                   description:
-                      '${widget.store.topicTitle}. Bind backend-supported providers and review health.',
+                      'Only sources for ${widget.store.interestTitle} are shown here. Apply a recommended source or bind one manually.',
                   trailing: AppCommandBar(
                     actions: [
                       AppCommandAction(
-                        label: 'Bind source',
+                        label: 'Bind manually',
                         icon: Icons.add_link,
                         onPressed: widget.store.openBindForm,
                       ),
@@ -72,10 +79,20 @@ class _SourceBindingsPageState extends State<SourceBindingsPage> {
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.only(top: AppSpacing.md),
-                  child: SourceBindingsLayout(
-                    store: widget.store,
-                    policyStore: widget.policyStore,
-                    scanRunStore: widget.scanRunStore,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      InterestCoveragePlanPanel(
+                        store: widget.interestCoveragePlanStore,
+                        bindingsStore: widget.store,
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+                      SourceBindingsLayout(
+                        store: widget.store,
+                        policyStore: widget.policyStore,
+                        scanRunStore: widget.scanRunStore,
+                      ),
+                    ],
                   ),
                 ),
               ),

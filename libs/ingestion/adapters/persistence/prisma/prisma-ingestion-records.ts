@@ -44,7 +44,7 @@ export type PrismaScanFailureQueueEntryRecord = {
   readonly tenantId: string;
   readonly workspaceId: string;
   readonly scanJobId: string;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly sourceBindingId: string;
   readonly scanPolicyId: string;
   readonly providerKey: string;
@@ -138,7 +138,7 @@ export const failedScanCommandFromPrisma = (
   tenantId: tenantId(record.tenantId),
   workspaceId: workspaceId(record.workspaceId),
   scanJobId: record.scanJobId,
-  topicId: record.topicId,
+  interestId: record.interestId,
   sourceBindingId: record.sourceBindingId,
   scanPolicyId: record.scanPolicyId,
   providerKey: record.providerKey,

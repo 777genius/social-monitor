@@ -241,7 +241,7 @@ export class FeedItemDto {
   declare readonly id: string;
 
   @ApiProperty()
-  declare readonly topicId: string;
+  declare readonly interestId: string;
 
   @ApiProperty()
   declare readonly sourceItemId: string;

@@ -211,7 +211,7 @@ const readerSummaryArtifact = (params: {
         storyKey: "url:example.com/ai-tooling",
         representativeFeedItemId: "feed-reddit",
         duplicateFeedItemIds: ["feed-github"],
-        topicIds: ["topic-ai", "topic-github"],
+        interestIds: ["interest-ai", "interest-github"],
         providerKeys: params.providerKeys ?? ["reddit", "github"],
         score: 2.4,
         observedAtRange: {
@@ -232,12 +232,12 @@ const readerSummaryArtifact = (params: {
         title: "AI tooling library is trending",
         summary:
           "Developers are discussing a new AI tooling library across Reddit and GitHub.",
-        topicIds: ["topic-ai", "topic-github"],
+        interestIds: ["interest-ai", "interest-github"],
         providerKeys: ["reddit", "github"],
         citationIds: ["c1"],
       },
     ],
-    topicHighlights: [],
+    interestHighlights: [],
     repeatedSignals: [],
     risksAndUnknowns: [],
     citationMap: [

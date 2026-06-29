@@ -16,11 +16,11 @@ export class SummaryMemoryReaderSummaryContextProvider implements ReaderSummaryC
   async buildContext(
     query: BuildReaderSummaryContextQuery,
   ): Promise<readonly ReaderSummaryContextArtifact[]> {
-    const topicId = readerSummaryMemoryTopicId(query);
+    const interestId = readerSummaryMemoryInterestId(query);
     const context = await this.memory.buildContext({
       tenantId: query.tenantId,
       workspaceId: query.workspaceId,
-      topicId,
+      interestId,
       userId: query.userId,
       subscriptionId: query.subscriptionId,
       evidence: {
@@ -46,7 +46,7 @@ export class SummaryMemoryReaderSummaryContextProvider implements ReaderSummaryC
 
     return [
       {
-        artifactId: `summary-memory:${query.scope.type}:${topicId}`,
+        artifactId: `summary-memory:${query.scope.type}:${interestId}`,
         scope: query.scope,
         period: query.period,
         summaryText,
@@ -57,12 +57,12 @@ export class SummaryMemoryReaderSummaryContextProvider implements ReaderSummaryC
   }
 }
 
-const readerSummaryMemoryTopicId = (query: BuildReaderSummaryContextQuery): string => {
-  if (query.scope.type === 'topic') {
-    return query.scope.topicId;
+const readerSummaryMemoryInterestId = (query: BuildReaderSummaryContextQuery): string => {
+  if (query.scope.type === 'interest') {
+    return query.scope.interestId;
   }
 
-  return query.evidence.selectedEvidence[0]?.topicId ?? 'workspace';
+  return query.evidence.selectedEvidence[0]?.interestId ?? 'workspace';
 };
 
 const memoryContextSummaryText = (context: SummaryMemoryContext): string | undefined => {

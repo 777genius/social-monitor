@@ -24,7 +24,7 @@ export type ReaderSummaryGenerationPolicy = {
   readonly tone: ReaderSummaryPolicyTone;
   readonly maxStories: number;
   readonly includeRisks: boolean;
-  readonly includeTopicHighlights: boolean;
+  readonly includeInterestHighlights: boolean;
   readonly includeRepeatedSignals: boolean;
   readonly dedupeStrategy: ReaderSummaryDedupeStrategy;
   readonly customInstructions?: string;
@@ -74,7 +74,7 @@ export const defaultReaderSummaryGenerationPolicy =
     tone: "analytical",
     maxStories: 10,
     includeRisks: true,
-    includeTopicHighlights: true,
+    includeInterestHighlights: true,
     includeRepeatedSignals: true,
     dedupeStrategy: "canonical_url_then_title",
     rulesVersion: "reader_summary.rules.policy.v1",
@@ -133,7 +133,7 @@ export class ReaderSummaryPolicy {
       tone: this.props.tone,
       maxStories: this.props.maxStories,
       includeRisks: this.props.includeRisks,
-      includeTopicHighlights: this.props.includeTopicHighlights,
+      includeInterestHighlights: this.props.includeInterestHighlights,
       includeRepeatedSignals: this.props.includeRepeatedSignals,
       dedupeStrategy: this.props.dedupeStrategy,
       customInstructions: this.props.customInstructions,

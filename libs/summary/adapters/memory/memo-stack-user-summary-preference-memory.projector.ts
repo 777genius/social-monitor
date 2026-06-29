@@ -73,7 +73,7 @@ export class MemoStackUserSummaryPreferenceMemoryProjector implements UserSummar
         preference_id: command.preferenceId,
         user_id: command.userId,
         subscription_id: command.subscriptionId,
-        topic_id: command.topicId,
+        interest_id: command.interestId,
         rules_version: command.rulesVersion,
         memory_scope_external_ref: scope,
       },
@@ -129,7 +129,7 @@ const userSummaryPreferenceText = (
   preferenceLines: readonly string[],
 ): string => [
   `Explicit user summary preference for user ${command.userId}.`,
-  command.topicId === undefined ? '' : `Topic ${command.topicId}.`,
+  command.interestId === undefined ? '' : `Interest ${command.interestId}.`,
   command.subscriptionId === undefined ? '' : `Subscription ${command.subscriptionId}.`,
   `Rules version ${command.rulesVersion}.`,
   ...preferenceLines,

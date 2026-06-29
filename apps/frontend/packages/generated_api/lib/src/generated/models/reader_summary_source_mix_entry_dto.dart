@@ -11,11 +11,11 @@ class ReaderSummarySourceMixEntryDto {
   const ReaderSummarySourceMixEntryDto({
     required this.citationCount,
     required this.crossSourceClusterCount,
+    required this.interestIds,
     required this.itemCount,
     required this.providerKey,
     required this.singleSourceOnly,
     required this.storyClusterCount,
-    required this.topicIds,
   });
 
   factory ReaderSummarySourceMixEntryDto.fromJson(Map<String, Object?> json) =>
@@ -23,11 +23,11 @@ class ReaderSummarySourceMixEntryDto {
 
   final num citationCount;
   final num crossSourceClusterCount;
+  final List<String> interestIds;
   final num itemCount;
   final String providerKey;
   final bool singleSourceOnly;
   final num storyClusterCount;
-  final List<String> topicIds;
 
   Map<String, Object?> toJson() => _$ReaderSummarySourceMixEntryDtoToJson(this);
 }

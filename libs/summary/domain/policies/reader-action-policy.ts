@@ -1,11 +1,11 @@
 import type { ReaderAction } from "../entities/reader-action";
-import type { TopRead, TopicHighlight } from "../entities/top-read";
+import type { TopRead, InterestHighlight } from "../entities/top-read";
 import type { ReaderSummaryQualityState } from "../value-objects/summary-quality";
-import { topicTitle } from "../value-objects/summary-text";
+import { interestTitle } from "../value-objects/summary-text";
 
 export type ReaderActionPolicyInput = {
   readonly topReads: readonly TopRead[];
-  readonly topicHighlights: readonly TopicHighlight[];
+  readonly interestHighlights: readonly InterestHighlight[];
   readonly qualityState: ReaderSummaryQualityState;
 };
 
@@ -23,8 +23,8 @@ export const buildReaderActions = (
     canonicalUrl: item.canonicalUrl,
   }));
   const firstTopRead = input.topReads[0];
-  const firstTopicId =
-    input.topicHighlights[0]?.topicId ?? firstTopRead?.matchedTopicIds[0];
+  const firstInterestId =
+    input.interestHighlights[0]?.interestId ?? firstTopRead?.matchedInterestIds[0];
 
   if (
     input.qualityState.isSingleSource ||
@@ -41,12 +41,12 @@ export const buildReaderActions = (
     });
   }
 
-  if (firstTopicId !== undefined) {
+  if (firstInterestId !== undefined) {
     actions.push({
-      kind: "add_topic_rule",
-      label: `Tune ${topicTitle(firstTopicId)}`,
+      kind: "add_interest_rule",
+      label: `Tune ${interestTitle(firstInterestId)}`,
       reason:
-        "Add or adjust topic rules if this signal should be tracked more precisely.",
+        "Add or adjust interest rules if this signal should be tracked more precisely.",
       citationIds: firstTopRead?.citationIds ?? [],
       canonicalUrl: firstTopRead?.canonicalUrl,
     });

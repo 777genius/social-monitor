@@ -12,7 +12,7 @@ final class ChangeSourceBindingStatusUseCase {
 
   Future<Result<SourceBinding>> call(ChangeSourceBindingStatusCommand command) {
     if (!command.scope.isValid ||
-        !command.topicId.isValid ||
+        !command.interestId.isValid ||
         !command.sourceBindingId.isValid ||
         command.status == SourceBindingStatus.unknown ||
         command.idempotencyKey.trim().isEmpty) {

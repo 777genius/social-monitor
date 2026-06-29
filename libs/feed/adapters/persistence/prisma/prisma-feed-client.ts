@@ -4,7 +4,7 @@ export type PrismaFeedSignalBaselineSampleRecord = {
   readonly id: string;
   readonly tenantId: string;
   readonly workspaceId: string;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly feedItemId: string;
   readonly providerKey: string;
   readonly sourceKey: string;
@@ -18,9 +18,9 @@ export type PrismaFeedClient = {
   readonly feedItem: {
     upsert(args: {
       readonly where: {
-        readonly tenantId_topicId_dedupeKey: {
+        readonly tenantId_interestId_dedupeKey: {
           readonly tenantId: string;
-          readonly topicId: string;
+          readonly interestId: string;
           readonly dedupeKey: string;
         };
       };
@@ -41,7 +41,7 @@ export type PrismaFeedClient = {
         readonly id: string;
         readonly tenantId: string;
         readonly workspaceId: string;
-        readonly topicId: string;
+        readonly interestId: string;
         readonly sourceItemId: string;
         readonly sourceBindingId: string;
         readonly providerKey: string;
@@ -61,7 +61,7 @@ export type PrismaFeedClient = {
         readonly tenantId: string;
         readonly workspaceId: string;
         readonly status: "VISIBLE";
-        readonly topicId?: string;
+        readonly interestId?: string;
         readonly observedAt?: {
           readonly gt?: Date;
           readonly lt?: Date;
@@ -80,7 +80,7 @@ export type PrismaFeedClient = {
         readonly tenantId: string;
         readonly workspaceId: string;
         readonly status: "VISIBLE";
-        readonly topicId?: string;
+        readonly interestId?: string;
         readonly observedAt?: {
           readonly gt?: Date;
           readonly lt?: Date;
@@ -107,7 +107,7 @@ export type PrismaFeedClient = {
         };
       };
       readonly update: {
-        readonly topicId: string;
+        readonly interestId: string;
         readonly providerKey: string;
         readonly sourceKey: string;
         readonly contentType: string;
@@ -119,7 +119,7 @@ export type PrismaFeedClient = {
         readonly id: string;
         readonly tenantId: string;
         readonly workspaceId: string;
-        readonly topicId: string;
+        readonly interestId: string;
         readonly feedItemId: string;
         readonly providerKey: string;
         readonly sourceKey: string;
@@ -133,7 +133,7 @@ export type PrismaFeedClient = {
       readonly where: {
         readonly tenantId: string;
         readonly workspaceId: string;
-        readonly topicId?: string;
+        readonly interestId?: string;
         readonly observedAt: { readonly gt: Date };
         readonly OR?: readonly {
           readonly providerKey: string;

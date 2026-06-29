@@ -15,7 +15,7 @@ enum MembershipRole {
   VIEWER
 }
 
-enum TopicStatus {
+enum InterestStatus {
   ENABLED
   DISABLED
   ARCHIVED
@@ -154,7 +154,7 @@ model Workspace {
   deletedAt   DateTime?    @map("deleted_at") @db.Timestamptz(6)
   tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   memberships Membership[]
-  topics      Topic[]
+  interests   Interest[]
 
   @@unique([tenantId, slug])
   @@index([tenantId, createdAt])
@@ -211,21 +211,21 @@ model ApiKeyCredential {
   @@map("api_keys")
 }
 
-model Topic {
-  id          String      @id @db.Uuid
-  tenantId    String      @map("tenant_id") @db.Uuid
-  workspaceId String      @map("workspace_id") @db.Uuid
+model Interest {
+  id          String         @id @db.Uuid
+  tenantId    String         @map("tenant_id") @db.Uuid
+  workspaceId String         @map("workspace_id") @db.Uuid
   name        String
   query       String
-  status      TopicStatus @default(ENABLED)
-  createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt   DateTime?   @map("deleted_at") @db.Timestamptz(6)
-  workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  status      InterestStatus @default(ENABLED)
+  createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt   DateTime?      @map("deleted_at") @db.Timestamptz(6)
+  workspace   Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
 
-  @@unique([tenantId, workspaceId, name])
-  @@index([tenantId, workspaceId, status, createdAt])
-  @@map("topics")
+  @@unique([tenantId, workspaceId, name], map: "interests_tenant_id_workspace_id_name_key")
+  @@index([tenantId, workspaceId, status, createdAt], map: "interests_tenant_id_workspace_id_status_created_at_idx")
+  @@map("interests")
 }
 
 model SourceCatalogEntry {
@@ -258,7 +258,7 @@ model SourceBinding {
   id                       String              @id @db.Uuid
   tenantId                 String              @map("tenant_id") @db.Uuid
   workspaceId              String              @map("workspace_id") @db.Uuid
-  topicId                  String              @map("topic_id") @db.Uuid
+  interestId               String              @map("interest_id") @db.Uuid
   sourceCatalogEntryId     String              @map("source_catalog_entry_id") @db.Uuid
   capabilityProfileVersion Int                 @map("capability_profile_version")
   status                   SourceBindingStatus @default(DRAFT)
@@ -268,7 +268,7 @@ model SourceBinding {
   updatedAt                DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt                DateTime?           @map("deleted_at") @db.Timestamptz(6)
 
-  @@index([tenantId, workspaceId, topicId, status])
+  @@index([tenantId, workspaceId, interestId, status], map: "source_bindings_tenant_workspace_interest_status_idx")
   @@map("source_bindings")
 }
 
@@ -423,7 +423,7 @@ model ScanFailureQueueEntry {
   tenantId          String                 @map("tenant_id") @db.Uuid
   workspaceId       String                 @map("workspace_id") @db.Uuid
   scanJobId         String                 @map("scan_job_id") @db.Uuid
-  topicId           String                 @map("topic_id") @db.Uuid
+  interestId        String                 @map("interest_id") @db.Uuid
   sourceBindingId   String                 @map("source_binding_id") @db.Uuid
   scanPolicyId      String                 @map("scan_policy_id") @db.Uuid
   providerKey       String                 @map("provider_key")
@@ -480,7 +480,7 @@ model FeedItem {
   id               String         @id @db.Uuid
   tenantId         String         @map("tenant_id") @db.Uuid
   workspaceId      String         @map("workspace_id") @db.Uuid
-  topicId          String         @map("topic_id") @db.Uuid
+  interestId       String         @map("interest_id") @db.Uuid
   sourceItemId     String         @map("source_item_id") @db.Uuid
   sourceBindingId  String         @map("source_binding_id") @db.Uuid
   providerKey      String         @map("provider_key")
@@ -496,7 +496,7 @@ model FeedItem {
   createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt        DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  @@unique([tenantId, topicId, dedupeKey])
+  @@unique([tenantId, interestId, dedupeKey], map: "feed_items_tenant_interest_dedupe_key_key")
   @@index([tenantId, workspaceId, status, createdAt])
   @@index([tenantId, workspaceId, providerKey, observedAt])
   @@map("feed_items")
@@ -506,7 +506,7 @@ model FeedSignalBaselineSample {
   id          String   @id @db.Uuid
   tenantId    String   @map("tenant_id") @db.Uuid
   workspaceId String   @map("workspace_id") @db.Uuid
-  topicId     String   @map("topic_id") @db.Uuid
+  interestId  String   @map("interest_id") @db.Uuid
   feedItemId  String   @map("feed_item_id") @db.Uuid
   providerKey String   @map("provider_key")
   sourceKey   String   @map("source_key")
@@ -518,7 +518,7 @@ model FeedSignalBaselineSample {
   updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@unique([tenantId, workspaceId, feedItemId])
-  @@index([tenantId, workspaceId, topicId, observedAt])
+  @@index([tenantId, workspaceId, interestId, observedAt], map: "feed_signal_baseline_samples_interest_observed_idx")
   @@index([tenantId, workspaceId, providerKey, contentType, observedAt])
   @@map("feed_signal_baseline_samples")
 }
@@ -527,7 +527,7 @@ model GitHubRepositoryTrendCandidate {
   id                 String   @id @db.Uuid
   tenantId           String   @map("tenant_id") @db.Uuid
   workspaceId        String   @map("workspace_id") @db.Uuid
-  topicId            String   @map("topic_id") @db.Uuid
+  interestId         String   @map("interest_id") @db.Uuid
   sourceBindingId    String   @map("source_binding_id") @db.Uuid
   scanJobId          String   @map("scan_job_id") @db.Uuid
   repositoryFullName String   @map("repository_full_name")
@@ -578,7 +578,7 @@ model GitHubRepositoryTrendResult {
   id                 String   @id @db.Uuid
   tenantId           String   @map("tenant_id") @db.Uuid
   workspaceId        String   @map("workspace_id") @db.Uuid
-  topicId            String   @map("topic_id") @db.Uuid
+  interestId         String   @map("interest_id") @db.Uuid
   sourceBindingId    String   @map("source_binding_id") @db.Uuid
   scanJobId          String   @map("scan_job_id") @db.Uuid
   sourceItemId       String   @map("source_item_id") @db.Uuid
@@ -593,7 +593,7 @@ model GitHubRepositoryTrendResult {
   createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   @@unique([tenantId, workspaceId, scanJobId, repositoryFullName, primaryWindow])
-  @@index([tenantId, workspaceId, topicId, checkedAt])
+  @@index([tenantId, workspaceId, interestId, checkedAt], map: "github_repository_trend_results_interest_checked_idx")
   @@map("github_repository_trend_results")
 }
 
@@ -601,7 +601,7 @@ model SummaryArtifact {
   id              String        @id @db.Uuid
   tenantId        String        @map("tenant_id") @db.Uuid
   workspaceId     String        @map("workspace_id") @db.Uuid
-  topicId         String        @map("topic_id") @db.Uuid
+  interestId      String        @map("interest_id") @db.Uuid
   userId          String?       @map("user_id")
   subscriptionId  String?       @map("subscription_id") @db.Uuid
   status          SummaryStatus @default(COMPLETED)
@@ -616,8 +616,8 @@ model SummaryArtifact {
   createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  @@index([tenantId, workspaceId, topicId, status, createdAt])
-  @@index([tenantId, workspaceId, userId, topicId, createdAt])
+  @@index([tenantId, workspaceId, interestId, status, createdAt], map: "summary_artifacts_interest_status_created_idx")
+  @@index([tenantId, workspaceId, userId, interestId, createdAt], map: "summary_artifacts_user_interest_created_idx")
   @@map("summary_artifacts")
 }
 
@@ -625,7 +625,7 @@ model SummaryJob {
   id                String        @id @db.Uuid
   tenantId          String        @map("tenant_id") @db.Uuid
   workspaceId       String        @map("workspace_id") @db.Uuid
-  topicId           String        @map("topic_id") @db.Uuid
+  interestId        String        @map("interest_id") @db.Uuid
   userId            String?       @map("user_id")
   subscriptionId    String?       @map("subscription_id") @db.Uuid
   status            SummaryStatus @default(REQUESTED)
@@ -640,8 +640,8 @@ model SummaryJob {
   updatedAt         DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@unique([tenantId, idempotencyKey])
-  @@index([tenantId, workspaceId, topicId, status, createdAt])
-  @@index([tenantId, workspaceId, userId, topicId, createdAt])
+  @@index([tenantId, workspaceId, interestId, status, createdAt], map: "summary_jobs_interest_status_created_idx")
+  @@index([tenantId, workspaceId, userId, interestId, createdAt], map: "summary_jobs_user_interest_created_idx")
   @@map("summary_jobs")
 }
 
@@ -649,7 +649,7 @@ model SummaryPolicy {
   id                      String   @id @db.Uuid
   tenantId                String   @map("tenant_id") @db.Uuid
   workspaceId             String   @map("workspace_id") @db.Uuid
-  topicId                 String   @map("topic_id") @db.Uuid
+  interestId              String   @map("interest_id") @db.Uuid
   language                String
   format                  String
   tone                    String
@@ -661,7 +661,7 @@ model SummaryPolicy {
   createdAt               DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt               DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  @@unique([tenantId, workspaceId, topicId])
+  @@unique([tenantId, workspaceId, interestId], map: "summary_policies_tenant_workspace_interest_key")
   @@index([tenantId, workspaceId, updatedAt])
   @@map("summary_policies")
 }
@@ -671,7 +671,7 @@ model SummaryFeedback {
   tenantId               String   @map("tenant_id") @db.Uuid
   workspaceId            String   @map("workspace_id") @db.Uuid
   summaryArtifactId      String   @map("summary_artifact_id") @db.Uuid
-  topicId                String   @map("topic_id") @db.Uuid
+  interestId             String   @map("interest_id") @db.Uuid
   idempotencyKey         String   @map("idempotency_key")
   submittedBy            String   @map("submitted_by")
   rating                 Int
@@ -693,12 +693,12 @@ model ReaderSummaryArtifact {
   workspaceId     String        @map("workspace_id") @db.Uuid
   scopeType       String        @map("scope_type")
   scopeKey        String        @map("scope_key")
-  topicId         String?       @map("topic_id") @db.Uuid
+  interestId      String?       @map("interest_id") @db.Uuid
   cadence         String
-  periodStartedAt DateTime     @map("period_started_at") @db.Timestamptz(6)
-  periodEndedAt   DateTime     @map("period_ended_at") @db.Timestamptz(6)
-  periodTimezone  String       @map("period_timezone")
-  periodKey       String       @map("period_key")
+  periodStartedAt DateTime      @map("period_started_at") @db.Timestamptz(6)
+  periodEndedAt   DateTime      @map("period_ended_at") @db.Timestamptz(6)
+  periodTimezone  String        @map("period_timezone")
+  periodKey       String        @map("period_key")
   userId          String?       @map("user_id")
   subscriptionId  String?       @map("subscription_id") @db.Uuid
   status          SummaryStatus @default(COMPLETED)
@@ -720,29 +720,29 @@ model ReaderSummaryArtifact {
 }
 
 model ReaderSummaryJob {
-  id                 String        @id @db.Uuid
-  tenantId           String        @map("tenant_id") @db.Uuid
-  workspaceId        String        @map("workspace_id") @db.Uuid
-  scopeType          String        @map("scope_type")
-  scopeKey           String        @map("scope_key")
-  topicId            String?       @map("topic_id") @db.Uuid
-  cadence            String
-  periodStartedAt    DateTime      @map("period_started_at") @db.Timestamptz(6)
-  periodEndedAt      DateTime      @map("period_ended_at") @db.Timestamptz(6)
-  periodTimezone     String        @map("period_timezone")
-  periodKey          String        @map("period_key")
-  userId             String?       @map("user_id")
-  subscriptionId     String?       @map("subscription_id") @db.Uuid
-  status             SummaryStatus @default(REQUESTED)
-  idempotencyKey     String        @map("idempotency_key")
-  requestedAt        DateTime      @map("requested_at") @db.Timestamptz(6)
-  startedAt          DateTime?     @map("started_at") @db.Timestamptz(6)
-  completedAt        DateTime?     @map("completed_at") @db.Timestamptz(6)
-  failedAt           DateTime?     @map("failed_at") @db.Timestamptz(6)
+  id                      String        @id @db.Uuid
+  tenantId                String        @map("tenant_id") @db.Uuid
+  workspaceId             String        @map("workspace_id") @db.Uuid
+  scopeType               String        @map("scope_type")
+  scopeKey                String        @map("scope_key")
+  interestId              String?       @map("interest_id") @db.Uuid
+  cadence                 String
+  periodStartedAt         DateTime      @map("period_started_at") @db.Timestamptz(6)
+  periodEndedAt           DateTime      @map("period_ended_at") @db.Timestamptz(6)
+  periodTimezone          String        @map("period_timezone")
+  periodKey               String        @map("period_key")
+  userId                  String?       @map("user_id")
+  subscriptionId          String?       @map("subscription_id") @db.Uuid
+  status                  SummaryStatus @default(REQUESTED)
+  idempotencyKey          String        @map("idempotency_key")
+  requestedAt             DateTime      @map("requested_at") @db.Timestamptz(6)
+  startedAt               DateTime?     @map("started_at") @db.Timestamptz(6)
+  completedAt             DateTime?     @map("completed_at") @db.Timestamptz(6)
+  failedAt                DateTime?     @map("failed_at") @db.Timestamptz(6)
   readerSummaryArtifactId String?       @map("reader_summary_artifact_id") @db.Uuid
-  failureReason      String?       @map("failure_reason")
-  createdAt          DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt          DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  failureReason           String?       @map("failure_reason")
+  createdAt               DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@unique([tenantId, idempotencyKey])
   @@index([tenantId, workspaceId, scopeKey, cadence, periodStartedAt], map: "reader_summary_jobs_period_lookup_idx")
@@ -752,27 +752,27 @@ model ReaderSummaryJob {
 }
 
 model ReaderSummaryPolicy {
-  id                     String   @id @db.Uuid
-  tenantId               String   @map("tenant_id") @db.Uuid
-  workspaceId            String   @map("workspace_id") @db.Uuid
-  scopeType              String   @map("scope_type")
-  scopeKey               String   @map("scope_key")
-  topicId                String?  @map("topic_id") @db.Uuid
-  language               String
-  format                 String
-  tone                   String
-  maxStories             Int      @map("max_stories")
-  includeRisks           Boolean  @map("include_risks")
-  includeTopicHighlights Boolean  @map("include_topic_highlights")
-  includeRepeatedSignals Boolean  @map("include_repeated_signals")
-  dedupeStrategy         String   @map("dedupe_strategy")
-  customInstructions     String?  @map("custom_instructions")
-  rulesVersion           String   @map("rules_version")
-  scheduleEnabled        Boolean  @default(true) @map("schedule_enabled")
-  scheduleTimezone       String   @default("UTC") @map("schedule_timezone")
-  scheduleCadences       String[] @map("schedule_cadences")
-  createdAt              DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt              DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id                        String   @id @db.Uuid
+  tenantId                  String   @map("tenant_id") @db.Uuid
+  workspaceId               String   @map("workspace_id") @db.Uuid
+  scopeType                 String   @map("scope_type")
+  scopeKey                  String   @map("scope_key")
+  interestId                String?  @map("interest_id") @db.Uuid
+  language                  String
+  format                    String
+  tone                      String
+  maxStories                Int      @map("max_stories")
+  includeRisks              Boolean  @map("include_risks")
+  includeInterestHighlights Boolean  @map("include_interest_highlights")
+  includeRepeatedSignals    Boolean  @map("include_repeated_signals")
+  dedupeStrategy            String   @map("dedupe_strategy")
+  customInstructions        String?  @map("custom_instructions")
+  rulesVersion              String   @map("rules_version")
+  scheduleEnabled           Boolean  @default(true) @map("schedule_enabled")
+  scheduleTimezone          String   @default("UTC") @map("schedule_timezone")
+  scheduleCadences          String[] @map("schedule_cadences")
+  createdAt                 DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                 DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@unique([tenantId, workspaceId, scopeKey])
   @@index([tenantId, workspaceId, scheduleEnabled, updatedAt], map: "reader_summary_policies_schedule_lookup_idx")
@@ -839,7 +839,7 @@ model DigestSchedule {
   workspaceId     String               @map("workspace_id") @db.Uuid
   recipientKey    String               @map("recipient_key")
   channel         String
-  topicIds        String[]             @map("topic_ids")
+  interestIds     String[]             @map("interest_ids")
   intervalSeconds Int                  @map("interval_seconds")
   includeNoSignal Boolean              @map("include_no_signal")
   nextRunAt       DateTime             @map("next_run_at") @db.Timestamptz(6)
@@ -913,7 +913,7 @@ model UserSummaryPreference {
   workspaceId             String            @map("workspace_id") @db.Uuid
   userId                  String            @map("user_id")
   subscriptionId          String?           @map("subscription_id") @db.Uuid
-  topicId                 String?           @map("topic_id") @db.Uuid
+  interestId              String?           @map("interest_id") @db.Uuid
   language                String?
   format                  String?
   tone                    String?
@@ -927,7 +927,7 @@ model UserSummaryPreference {
   subscription            UserSubscription? @relation(fields: [subscriptionId], references: [id], onDelete: Restrict)
 
   @@unique([tenantId, workspaceId, userId, subscriptionId])
-  @@unique([tenantId, workspaceId, userId, topicId])
+  @@unique([tenantId, workspaceId, userId, interestId], map: "user_summary_preferences_user_interest_key")
   @@map("user_summary_preferences")
 }
 
@@ -936,7 +936,7 @@ model UserRelevanceProfile {
   tenantId            String   @map("tenant_id") @db.Uuid
   workspaceId         String   @map("workspace_id") @db.Uuid
   userId              String   @map("user_id")
-  topicWeights        Json     @map("topic_weights")
+  interestWeights     Json     @map("interest_weights")
   sourceWeights       Json     @map("source_weights")
   keywordWeights      Json     @map("keyword_weights")
   mutedKeywords       String[] @map("muted_keywords")

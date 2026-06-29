@@ -3,7 +3,7 @@ import type { JsonObject, TenantId, WorkspaceId } from '@social-monitor/shared-k
 export type GitHubRepositoryTrendHistoryRecord = {
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly sourceBindingId: string;
   readonly scanJobId: string;
   readonly sourceItemId: string;

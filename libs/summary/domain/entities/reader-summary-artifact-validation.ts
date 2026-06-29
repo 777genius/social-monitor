@@ -67,9 +67,9 @@ export const assertReaderSummaryArtifactValid = (
       throw new Error("Reader summary story cluster ids must be non-empty");
     }
 
-    if (cluster.topicIds.length === 0 || cluster.providerKeys.length === 0) {
+    if (cluster.interestIds.length === 0 || cluster.providerKeys.length === 0) {
       throw new Error(
-        "Reader summary story clusters must include topic and provider coverage",
+        "Reader summary story clusters must include interest and provider coverage",
       );
     }
   }
@@ -89,10 +89,10 @@ export const assertReaderSummaryArtifactValid = (
     );
   }
 
-  for (const highlight of props.topicHighlights) {
-    if (highlight.topicId.trim().length === 0) {
+  for (const highlight of props.interestHighlights) {
+    if (highlight.interestId.trim().length === 0) {
       throw new Error(
-        "Reader summary topic highlight topic id must be non-empty",
+        "Reader summary interest highlight interest id must be non-empty",
       );
     }
     assertCitedSection(
@@ -100,7 +100,7 @@ export const assertReaderSummaryArtifactValid = (
       highlight.summary,
       highlight.citationIds,
       citationIds,
-      "Reader summary topic highlight",
+      "Reader summary interest highlight",
     );
   }
 
@@ -117,9 +117,9 @@ export const assertReaderSummaryArtifactValid = (
       citationIds,
       "Reader summary repeated signal",
     );
-    if (signal.topicIds.length < 2) {
+    if (signal.interestIds.length < 2) {
       throw new Error(
-        "Reader summary repeated signal must cover at least two topics",
+        "Reader summary repeated signal must cover at least two interests",
       );
     }
   }
@@ -246,19 +246,19 @@ const assertReaderSummaryContent = (
     throw new Error("Reader summary quality state warnings must be non-empty");
   }
 
-  for (const section of content.topicSections) {
+  for (const section of content.interestSections) {
     if (
       section.title.trim().length === 0 ||
       section.insight.trim().length === 0
     ) {
       throw new Error(
-        "Reader summary topic sections must include title and insight",
+        "Reader summary interest sections must include title and insight",
       );
     }
     assertCitationIds(
       section.citationIds,
       knownCitationIds,
-      "Reader summary topic section",
+      "Reader summary interest section",
     );
     for (const item of section.items) {
       assertReaderItem(
@@ -266,7 +266,7 @@ const assertReaderSummaryContent = (
         knownCitationIds,
         citationById,
         knownProviderKeys,
-        "Reader summary topic item",
+        "Reader summary interest item",
       );
     }
   }
@@ -309,7 +309,7 @@ const assertReaderItem = (
     item.reason.trim().length === 0 ||
     item.whyNow.trim().length === 0 ||
     item.whyImportant.length === 0 ||
-    item.matchedTopicIds.length === 0 ||
+    item.matchedInterestIds.length === 0 ||
     item.matchedRules.length === 0 ||
     !Number.isFinite(item.signalScore) ||
     item.signalScore < 0 ||

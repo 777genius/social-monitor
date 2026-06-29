@@ -2,7 +2,7 @@ import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
 import '../../domain/entities/source_binding.dart';
 import '../../domain/entities/source_binding_health_snapshot.dart';
-import '../commands/bind_source_to_topic_command.dart';
+import '../commands/bind_source_to_interest_command.dart';
 import '../commands/change_source_binding_status_command.dart';
 import '../queries/list_source_bindings_query.dart';
 import '../queries/load_source_binding_health_query.dart';
@@ -12,8 +12,8 @@ abstract interface class SourceBindingCatalog {
     ListSourceBindingsQuery query,
   );
 
-  Future<Result<SourceBinding>> bindSourceToTopic(
-    BindSourceToTopicCommand command,
+  Future<Result<SourceBinding>> bindSourceToInterest(
+    BindSourceToInterestCommand command,
   );
 
   Future<Result<SourceBinding>> changeSourceBindingStatus(

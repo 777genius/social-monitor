@@ -12,13 +12,13 @@ GetFeedItemResponseDto _$GetFeedItemResponseDtoFromJson(
   bodyPreview: json['bodyPreview'] as String,
   canonicalUrl: json['canonicalUrl'] as String,
   id: json['id'] as String,
+  interestId: json['interestId'] as String,
   observedAt: DateTime.parse(json['observedAt'] as String),
   providerKey: json['providerKey'] as String,
   publishedAt: DateTime.parse(json['publishedAt'] as String),
   sourceBindingId: json['sourceBindingId'] as String,
   sourceItemId: json['sourceItemId'] as String,
   title: json['title'] as String,
-  topicId: json['topicId'] as String,
   authorHandle: json['authorHandle'] as String?,
   normalizedSignal: json['normalizedSignal'] == null
       ? null
@@ -40,6 +40,7 @@ Map<String, dynamic> _$GetFeedItemResponseDtoToJson(
   'bodyPreview': instance.bodyPreview,
   'canonicalUrl': instance.canonicalUrl,
   'id': instance.id,
+  'interestId': instance.interestId,
   'normalizedSignal': instance.normalizedSignal,
   'observedAt': instance.observedAt.toIso8601String(),
   'providerKey': instance.providerKey,
@@ -49,5 +50,4 @@ Map<String, dynamic> _$GetFeedItemResponseDtoToJson(
   'sourceBindingId': instance.sourceBindingId,
   'sourceItemId': instance.sourceItemId,
   'title': instance.title,
-  'topicId': instance.topicId,
 };

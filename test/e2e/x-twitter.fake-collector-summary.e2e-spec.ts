@@ -45,7 +45,7 @@ describe('X/Twitter fake collector summary flow (e2e)', () => {
   it('collects fake X posts, ranks engagement metadata and builds summary citations', async () => {
     const tenant = tenantId('tenant-x-fake-e2e');
     const workspace = workspaceId('workspace-x-fake-e2e');
-    const topicId = 'topic-x-fake-e2e';
+    const interestId = 'topic-x-fake-e2e';
     const sourceBindingId = 'binding-x-fake-e2e';
     const scanJobId = 'scan-x-fake-e2e';
     const clock = new FixedClock(new Date('2026-06-27T12:00:00.000Z'));
@@ -83,7 +83,7 @@ describe('X/Twitter fake collector summary flow (e2e)', () => {
       tenantId: tenant,
       workspaceId: workspace,
       scanJobId,
-      topicId,
+      interestId,
       sourceBindingId,
       scanPolicyId: 'policy-x-fake-e2e',
       providerKey: 'x-twitter',
@@ -132,7 +132,7 @@ describe('X/Twitter fake collector summary flow (e2e)', () => {
     const ranked = await rankFeedItems.execute({
       tenantId: tenant,
       workspaceId: workspace,
-      topicId,
+      interestId,
       limit: 10,
     });
 
@@ -153,7 +153,7 @@ describe('X/Twitter fake collector summary flow (e2e)', () => {
       id: 'summary-job-x-fake-e2e',
       tenantId: tenant,
       workspaceId: workspace,
-      topicId,
+      interestId,
       idempotencyKey: 'summary-x-fake-e2e',
       requestedAt: clock.now(),
     }));
@@ -187,7 +187,7 @@ describe('X/Twitter fake collector summary flow (e2e)', () => {
     const snapshot = artifact?.toSnapshot();
 
     expect(snapshot).toEqual(expect.objectContaining({
-      topicId,
+      interestId,
       qualityFlags: ['limited_sources'],
       citationMap: expect.arrayContaining([
         expect.objectContaining({
@@ -205,7 +205,7 @@ describe('X/Twitter fake collector summary flow (e2e)', () => {
   it('filters low-quality high-engagement X posts before summary evidence selection', async () => {
     const tenant = tenantId('tenant-x-quality-e2e');
     const workspace = workspaceId('workspace-x-quality-e2e');
-    const topicId = 'topic-x-quality-e2e';
+    const interestId = 'topic-x-quality-e2e';
     const sourceBindingId = 'binding-x-quality-e2e';
     const scanJobId = 'scan-x-quality-e2e';
     const clock = new FixedClock(new Date('2026-06-27T12:00:00.000Z'));
@@ -297,7 +297,7 @@ describe('X/Twitter fake collector summary flow (e2e)', () => {
       tenantId: tenant,
       workspaceId: workspace,
       scanJobId,
-      topicId,
+      interestId,
       sourceBindingId,
       scanPolicyId: 'policy-x-quality-e2e',
       providerKey: 'x-twitter',
@@ -327,7 +327,7 @@ describe('X/Twitter fake collector summary flow (e2e)', () => {
     const ranked = await rankFeedItems.execute({
       tenantId: tenant,
       workspaceId: workspace,
-      topicId,
+      interestId,
       limit: 10,
     });
 
@@ -350,7 +350,7 @@ describe('X/Twitter fake collector summary flow (e2e)', () => {
       id: 'summary-job-x-quality-e2e',
       tenantId: tenant,
       workspaceId: workspace,
-      topicId,
+      interestId,
       idempotencyKey: 'summary-x-quality-e2e',
       requestedAt: clock.now(),
     }));

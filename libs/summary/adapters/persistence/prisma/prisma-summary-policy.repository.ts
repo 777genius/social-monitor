@@ -23,10 +23,10 @@ export class PrismaSummaryPolicyRepository implements SummaryPolicyRepositoryPor
 
     await withPrismaWriteRetry(() => this.prisma.summaryPolicy.upsert({
       where: {
-        tenantId_workspaceId_topicId: {
+        tenantId_workspaceId_interestId: {
           tenantId: snapshot.tenantId,
           workspaceId: snapshot.workspaceId,
-          topicId: snapshot.topicId,
+          interestId: snapshot.interestId,
         },
       },
       update: mutation,
@@ -35,20 +35,20 @@ export class PrismaSummaryPolicyRepository implements SummaryPolicyRepositoryPor
         id: snapshot.id,
         tenantId: snapshot.tenantId,
         workspaceId: snapshot.workspaceId,
-        topicId: snapshot.topicId,
+        interestId: snapshot.interestId,
         createdAt: snapshot.createdAt,
       },
     }));
   }
 
-  async findByTopic(
-    params: Parameters<SummaryPolicyRepositoryPort['findByTopic']>[0],
+  async findByInterest(
+    params: Parameters<SummaryPolicyRepositoryPort['findByInterest']>[0],
   ): Promise<SummaryPolicy | null> {
     const record = await this.prisma.summaryPolicy.findFirst({
       where: {
         tenantId: params.tenantId,
         workspaceId: params.workspaceId,
-        topicId: params.topicId,
+        interestId: params.interestId,
       },
     });
 

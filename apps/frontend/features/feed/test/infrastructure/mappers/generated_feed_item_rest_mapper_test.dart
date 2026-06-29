@@ -32,7 +32,7 @@ void main() {
         );
     final generatedItem = generated.FeedItemDto(
       id: 'feed-1',
-      topicId: 'topic-demo',
+      interestId: 'topic-demo',
       sourceItemId: 'source-item-1',
       sourceBindingId: 'binding-1',
       providerKey: 'reddit',
@@ -93,7 +93,7 @@ void main() {
     final detail = mapper.detail(
       generated.GetFeedItemResponseDto(
         id: 'feed-1',
-        topicId: 'topic-demo',
+        interestId: 'topic-demo',
         sourceItemId: 'source-item-1',
         sourceBindingId: 'binding-1',
         providerKey: 'reddit',

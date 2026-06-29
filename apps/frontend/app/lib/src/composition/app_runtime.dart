@@ -80,8 +80,8 @@ final class AppShellRuntime {
       workspace: AppWorkspaceSnapshot.missing(),
       availableWorkspaces: [],
       capabilities: FeatureFlagSet({
-        'topics': FeatureCapability(
-          key: 'topics',
+        'interests': FeatureCapability(
+          key: 'interests',
           isEnabled: false,
           disabledReasonCode: 'backend_contract_missing',
         ),
@@ -140,7 +140,7 @@ final class AppShellRuntime {
         ),
       ],
       capabilities: FeatureFlagSet({
-        'topics': FeatureCapability(key: 'topics', isEnabled: true),
+        'interests': FeatureCapability(key: 'interests', isEnabled: true),
         'sources': FeatureCapability(key: 'sources', isEnabled: true),
         'feed': FeatureCapability(key: 'feed', isEnabled: true),
         'summaries': FeatureCapability(key: 'summaries', isEnabled: true),
@@ -280,7 +280,7 @@ final class AppWorkspaceSnapshot {
 }
 
 const _enabledRuntimeCapabilities = FeatureFlagSet({
-  'topics': FeatureCapability(key: 'topics', isEnabled: true),
+  'interests': FeatureCapability(key: 'interests', isEnabled: true),
   'sources': FeatureCapability(key: 'sources', isEnabled: true),
   'feed': FeatureCapability(key: 'feed', isEnabled: true),
   'summaries': FeatureCapability(key: 'summaries', isEnabled: true),
@@ -289,8 +289,8 @@ const _enabledRuntimeCapabilities = FeatureFlagSet({
 
 FeatureFlagSet _disabledRuntimeCapabilities(String reasonCode) {
   return FeatureFlagSet({
-    'topics': FeatureCapability(
-      key: 'topics',
+    'interests': FeatureCapability(
+      key: 'interests',
       isEnabled: false,
       disabledReasonCode: reasonCode,
     ),

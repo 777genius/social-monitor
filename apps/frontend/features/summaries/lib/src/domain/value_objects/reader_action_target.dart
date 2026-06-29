@@ -20,7 +20,7 @@ enum ReaderFeedbackReason {
 final class ReaderActionTarget {
   const ReaderActionTarget({
     required this.providerKey,
-    required this.topicId,
+    required this.interestId,
     required this.title,
     required this.citationIds,
     this.bodyPreview,
@@ -28,7 +28,7 @@ final class ReaderActionTarget {
   });
 
   final String providerKey;
-  final String topicId;
+  final String interestId;
   final String title;
   final String? bodyPreview;
   final String? canonicalUrl;
@@ -36,7 +36,7 @@ final class ReaderActionTarget {
 
   bool get isValid {
     return providerKey.trim().isNotEmpty &&
-        topicId.trim().isNotEmpty &&
+        interestId.trim().isNotEmpty &&
         title.trim().isNotEmpty;
   }
 }
@@ -69,14 +69,14 @@ final class ReaderActionTargetResolver {
       return null;
     }
 
-    final topicId = readerItem.matchedTopicIds.firstOrNull;
-    if (topicId == null || topicId.trim().isEmpty) {
+    final interestId = readerItem.matchedInterestIds.firstOrNull;
+    if (interestId == null || interestId.trim().isEmpty) {
       return null;
     }
 
     final target = ReaderActionTarget(
       providerKey: readerItem.providerKey,
-      topicId: topicId,
+      interestId: interestId,
       title: readerItem.title,
       bodyPreview: readerItem.reason,
       canonicalUrl: action.canonicalUrl ?? readerItem.canonicalUrl,
@@ -91,7 +91,7 @@ final class ReaderActionTargetResolver {
   ) {
     final allItems = [
       ...summary.content.topReads,
-      for (final section in summary.content.topicSections) ...section.items,
+      for (final section in summary.content.interestSections) ...section.items,
     ];
     final actionCitationIds = action.citationIds.toSet();
 

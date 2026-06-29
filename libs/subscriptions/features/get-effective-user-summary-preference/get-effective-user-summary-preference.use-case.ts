@@ -17,22 +17,22 @@ export class GetEffectiveUserSummaryPreferenceUseCase {
     query: GetEffectiveUserSummaryPreferenceQuery,
   ): Promise<Result<GetEffectiveUserSummaryPreferenceResult, GetEffectiveUserSummaryPreferenceFailure>> {
     const userId = query.userId.trim();
-    const topicId = query.topicId.trim();
+    const interestId = query.interestId.trim();
     const subscriptionId = normalizeOptionalText(query.subscriptionId);
 
     if (userId.length === 0) {
       return err(new DomainError('validation.failed', 'User summary preference userId must be non-empty'));
     }
 
-    if (topicId.length === 0) {
-      return err(new DomainError('validation.failed', 'User summary preference topicId must be non-empty'));
+    if (interestId.length === 0) {
+      return err(new DomainError('validation.failed', 'User summary preference interestId must be non-empty'));
     }
 
     const preference = await this.preferences.findEffective({
       tenantId: query.tenantId,
       workspaceId: query.workspaceId,
       userId,
-      topicId,
+      interestId,
       subscriptionId,
     });
 
@@ -49,7 +49,7 @@ export class GetEffectiveUserSummaryPreferenceUseCase {
 
 const resolvePreferenceSource = (
   subscriptionId: string | undefined,
-): EffectiveUserSummaryPreferenceSource => (subscriptionId === undefined ? 'topic' : 'subscription');
+): EffectiveUserSummaryPreferenceSource => (subscriptionId === undefined ? 'interest' : 'subscription');
 
 const normalizeOptionalText = (value: string | undefined): string | undefined => {
   const normalized = value?.trim();

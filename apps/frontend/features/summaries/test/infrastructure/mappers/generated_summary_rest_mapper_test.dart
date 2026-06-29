@@ -54,7 +54,7 @@ void main() {
         readerSummary.content.topReads.single.primaryActionKind,
         'watch_repository',
       );
-      expect(readerSummary.content.topReads.single.matchedTopicIds, [
+      expect(readerSummary.content.topReads.single.matchedInterestIds, [
         'ai-tools',
       ]);
       expect(
@@ -182,8 +182,8 @@ generated.ReaderSummaryArtifactResponseDto _readerSummaryArtifact() {
         warnings: ['Source coverage is limited and needs confirmation.'],
         isSingleSource: true,
       ),
-      topicSections: [
-        generated.ReaderSummaryReaderTopicSectionDto(
+      interestSections: [
+        generated.ReaderSummaryReaderInterestSectionDto(
           title: 'AI developer tools',
           insight: 'Agent tooling repositories are gaining attention.',
           items: [
@@ -195,8 +195,11 @@ generated.ReaderSummaryArtifactResponseDto _readerSummaryArtifact() {
                   .ReaderSummaryReaderItemDtoPrimaryActionKindPrimaryActionKind
                   .watchRepository,
               reason: '#1 on github.com/trending today.',
-              matchedTopicIds: ['ai-tools'],
-              matchedRules: ['topic:ai-tools', 'provider:github-trending-page'],
+              matchedInterestIds: ['ai-tools'],
+              matchedRules: [
+                'interest:ai-tools',
+                'provider:github-trending-page',
+              ],
               signalScore: 1,
               confidence: generated.ReaderSummaryReaderItemConfidenceDto(
                 level: generated
@@ -230,7 +233,7 @@ generated.ReaderSummaryArtifactResponseDto _readerSummaryArtifact() {
           storyClusterCount: 1,
           crossSourceClusterCount: 0,
           singleSourceOnly: true,
-          topicIds: ['ai-tools'],
+          interestIds: ['ai-tools'],
         ),
       ],
       topReads: [
@@ -242,8 +245,8 @@ generated.ReaderSummaryArtifactResponseDto _readerSummaryArtifact() {
               .ReaderSummaryReaderItemDtoPrimaryActionKindPrimaryActionKind
               .watchRepository,
           reason: '#1 on github.com/trending today.',
-          matchedTopicIds: ['ai-tools'],
-          matchedRules: ['topic:ai-tools', 'provider:github-trending-page'],
+          matchedInterestIds: ['ai-tools'],
+          matchedRules: ['interest:ai-tools', 'provider:github-trending-page'],
           signalScore: 1,
           confidence: generated.ReaderSummaryReaderItemConfidenceDto(
             level:
@@ -308,12 +311,12 @@ generated.ReaderSummaryArtifactResponseDto _readerSummaryArtifact() {
         representativeFeedItemId: 'feed-1',
         score: 1,
         storyKey: 'url:github.com/calesthio/OpenMontage',
-        topicIds: const ['ai-tools'],
+        interestIds: const ['ai-tools'],
         whyImportant: const ['Fast star growth.'],
       ),
     ],
     tenantId: 'tenant-1',
-    topicHighlights: const [],
+    interestHighlights: const [],
     topStories: const [
       generated.ReaderSummaryTopStoryDto(
         citationIds: ['bc-1'],
@@ -321,7 +324,7 @@ generated.ReaderSummaryArtifactResponseDto _readerSummaryArtifact() {
         storyClusterId: 'story-1',
         summary: 'calesthio/OpenMontage is gaining attention.',
         title: 'calesthio/OpenMontage',
-        topicIds: ['ai-tools'],
+        interestIds: ['ai-tools'],
       ),
     ],
     usage: const generated.ReaderSummaryUsageDto(
@@ -384,7 +387,7 @@ generated.SummaryArtifactResponseDto _summaryArtifact() {
     ),
     summaryId: 'summary-1',
     tenantId: 'tenant-1',
-    topicId: 'topic-1',
+    interestId: 'topic-1',
     usage: const generated.SummaryUsageDto(
       estimatedCostUsd: 0,
       inputTokens: 100,

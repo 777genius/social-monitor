@@ -62,7 +62,7 @@ describe('Scan dead-letter authorization (e2e)', () => {
       tenantId: tenant,
       workspaceId: workspace,
       scanJobId: 'scan-dlq-auth-e2e-1',
-      topicId: 'topic-dlq-auth-e2e-1',
+      interestId: 'topic-dlq-auth-e2e-1',
       sourceBindingId: 'source-binding-dlq-auth-e2e-1',
       scanPolicyId: 'scan-policy-dlq-auth-e2e-1',
       providerKey: 'fake-source',

@@ -34,7 +34,7 @@ async function main(): Promise<void> {
 async function proveRealtimeReplaySafety(): Promise<void> {
   const tenant = tenantId('tenant-delivery-replay-smoke');
   const workspace = workspaceId('workspace-delivery-replay-smoke');
-  const channel = 'topic:topic-delivery-replay-smoke:summary-status';
+  const channel = 'interest:topic-delivery-replay-smoke:summary-status';
   const repository = new InMemoryRealtimeEventRepository();
   const recorder = new RecordRealtimeEventUseCase(
     repository,

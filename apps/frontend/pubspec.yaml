@@ -11,7 +11,7 @@ workspace:
   - packages/generated_api
   - packages/design_system
   - features/auth
-  - features/topics
+  - features/interests
   - features/sources
   - features/feed
   - features/summaries

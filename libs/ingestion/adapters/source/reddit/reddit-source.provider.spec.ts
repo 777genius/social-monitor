@@ -1,7 +1,14 @@
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import type { SourceProviderScanContext, SourceRuntimeConfig } from '../../../ports';
-import type { RedditClientPort, RedditListingPage, RedditListSubredditPostsRequest, RedditSearchPostsRequest } from './reddit-client.port';
+import type {
+  RedditClientPort,
+  RedditCommentPage,
+  RedditListingPage,
+  RedditListPostCommentsRequest,
+  RedditListSubredditPostsRequest,
+  RedditSearchPostsRequest,
+} from './reddit-client.port';
 import { RedditSourceProvider } from './reddit-source.provider';
 import type { RedditRefreshTokenProviderPort, RedditRefreshTokenRequest } from './refresh-token-reddit-token-provider';
 import type { RedditTokenProviderPort } from './reddit-token-provider.port';
@@ -241,6 +248,97 @@ describe('RedditSourceProvider', () => {
     ]);
   });
 
+  it('expands configured Reddit post passes with post-thread comments', async () => {
+    const client = new CapturingRedditClient({
+      listingResponses: new Map<string, RedditListingPage | Error>([
+        [
+          'ClaudeAI:new:',
+          {
+            posts: [
+              redditPost({
+                id: 'post-1',
+                name: 't3_post_1',
+                subreddit: 'ClaudeAI',
+                title: 'Claude Code workflow monitoring',
+                score: 60,
+                numComments: 2,
+              }),
+            ],
+          },
+        ],
+      ]),
+      commentResponses: new Map<string, RedditCommentPage | Error>([
+        [
+          'post-1',
+          {
+            comments: [
+              {
+                id: 'comment-1',
+                name: 't1_comment_1',
+                subreddit: 'ClaudeAI',
+                body: 'The useful signal is in comment-level workflow complaints.',
+                author: 'workflow-builder',
+                permalink: '/r/ClaudeAI/comments/post_1/_/comment_1/',
+                createdUtc: 1_782_230_060,
+                score: 25,
+                depth: 0,
+              },
+              {
+                id: 'comment-low-score',
+                name: 't1_comment_low_score',
+                subreddit: 'ClaudeAI',
+                body: 'This comment is below the configured quality floor.',
+                createdUtc: 1_782_230_070,
+                score: 1,
+                depth: 0,
+              },
+            ],
+          },
+        ],
+      ]),
+    });
+    const provider = new RedditSourceProvider(client, new StaticTokenProvider('reddit-app-only-token'));
+    const context = scanContext({
+      maxItems: 5,
+      scanPasses: [
+        {
+          mode: 'listing',
+          subreddit: 'ClaudeAI',
+          listing: 'new',
+          includeComments: true,
+          maxCommentsPerPost: 2,
+          minScore: 10,
+        },
+      ],
+    });
+    const plan = provider.planScan({ mode: 'listing', query: 'ClaudeAI:new' }, context);
+
+    const result = await provider.scan(plan, context);
+
+    expect(client.commentRequests).toEqual([
+      expect.objectContaining({
+        postId: 'post-1',
+        subreddit: 'ClaudeAI',
+        limit: 2,
+      }),
+    ]);
+    expect(result.items.map((item) => item.externalId)).toEqual([
+      'reddit:t3_post_1',
+      'reddit:t1_comment_1',
+    ]);
+    expect(result.items[1]).toMatchObject({
+      title: 'Comment on Claude Code workflow monitoring',
+      body: 'The useful signal is in comment-level workflow complaints.',
+      metadata: {
+        kind: 'reddit_comment',
+        parentPostId: 't3_post_1',
+        subreddit: 'ClaudeAI',
+        score: 25,
+        depth: 0,
+      },
+    });
+  });
+
   it('keeps successful scan-pass posts when another Reddit pass is temporarily unavailable', async () => {
     const client = new CapturingRedditClient({
       listingResponses: new Map<string, RedditListingPage | Error>([
@@ -415,6 +513,7 @@ class StaticRefreshTokenProvider implements RedditRefreshTokenProviderPort {
 class CapturingRedditClient implements RedditClientPort {
   readonly listingRequests: RedditListSubredditPostsRequest[] = [];
   readonly searchRequests: RedditSearchPostsRequest[] = [];
+  readonly commentRequests: RedditListPostCommentsRequest[] = [];
 
   constructor(
     private readonly response:
@@ -422,6 +521,7 @@ class CapturingRedditClient implements RedditClientPort {
       | {
           readonly listingResponses?: ReadonlyMap<string, RedditListingPage | Error>;
           readonly searchResponse?: RedditListingPage | Error;
+          readonly commentResponses?: ReadonlyMap<string, RedditCommentPage | Error>;
         } = { posts: [] },
   ) {}
 
@@ -447,6 +547,21 @@ class CapturingRedditClient implements RedditClientPort {
     }
 
     const response = this.response.searchResponse ?? { posts: [] };
+
+    if (response instanceof Error) {
+      throw response;
+    }
+
+    return response;
+  }
+
+  async listPostComments(request: RedditListPostCommentsRequest): Promise<RedditCommentPage> {
+    this.commentRequests.push(request);
+    if ('posts' in this.response) {
+      return { comments: [] };
+    }
+
+    const response = this.response.commentResponses?.get(request.postId) ?? { comments: [] };
 
     if (response instanceof Error) {
       throw response;

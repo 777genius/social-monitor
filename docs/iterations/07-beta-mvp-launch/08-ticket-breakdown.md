@@ -28,7 +28,7 @@
 - Artifacts: onboarding checklist, demo topics, support workflow
 - Steps:
   1. Create first-run workspace flow.
-  2. Seed demo sources/topics.
+  2. Seed demo sources/interests.
   3. Create support triage categories.
   4. Document common user mistakes.
 - Edge cases:

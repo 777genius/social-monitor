@@ -29,7 +29,7 @@ describe('UpsertUserRelevanceProfileUseCase', () => {
       tenantId: tenant,
       workspaceId: workspace,
       userId: ' user-1 ',
-      topicWeights: [{ key: 'AI', weight: 1.25 }],
+      interestWeights: [{ key: 'AI', weight: 1.25 }],
       sourceWeights: [{ key: 'Reddit', weight: 0.75 }],
       keywordWeights: [{ key: 'Kubernetes', weight: 1 }],
       mutedKeywords: ['giveaway'],
@@ -40,7 +40,7 @@ describe('UpsertUserRelevanceProfileUseCase', () => {
       profile: expect.objectContaining({
         id: 'profile-1',
         userId: 'user-1',
-        topicWeights: [{ key: 'ai', weight: 1.25 }],
+        interestWeights: [{ key: 'ai', weight: 1.25 }],
         sourceWeights: [{ key: 'reddit', weight: 0.75 }],
         keywordWeights: [{ key: 'kubernetes', weight: 1 }],
         mutedKeywords: ['giveaway'],

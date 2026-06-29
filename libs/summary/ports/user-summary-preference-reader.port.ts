@@ -21,7 +21,7 @@ export type FindEffectiveUserSummaryPreferenceQuery = {
   readonly workspaceId: WorkspaceId;
   readonly userId: string;
   readonly subscriptionId?: string;
-  readonly topicId: string;
+  readonly interestId: string;
 };
 
 export interface UserSummaryPreferenceReaderPort {

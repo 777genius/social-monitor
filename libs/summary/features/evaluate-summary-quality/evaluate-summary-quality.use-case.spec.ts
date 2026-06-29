@@ -70,11 +70,11 @@ class SafeEvalModel implements SummaryModelPort {
           confidence: {
             level: 'none',
             score: 0,
-            rationale: 'No evidence was selected for this topic window.',
+            rationale: 'No evidence was selected for this interest window.',
           },
           lineage,
           usage,
-          noSignalReason: 'No eligible evidence items selected for this topic.',
+          noSignalReason: 'No eligible evidence items selected for this interest.',
         },
       };
     }
@@ -172,7 +172,7 @@ const baseFixture: SummaryEvalFixture = {
   input: {
     tenantId: tenantId('tenant-1'),
     workspaceId: workspaceId('workspace-1'),
-    topicId: 'topic-1',
+    interestId: 'interest-1',
     requestedAt: new Date('2026-06-06T00:00:00.000Z'),
     policy: defaultSummaryGenerationPolicy(),
     evidence: {

@@ -110,7 +110,7 @@ describe('User subscriptions personalized summary flow (e2e)', () => {
     });
 
     const execution = await requestAndExecuteSummary(app, tenant, workspace, {
-      topicId: 'topic-user-subscription-summary-e2e',
+      interestId: 'topic-user-subscription-summary-e2e',
       idempotencyKey: 'personalized-summary-request-1',
       userId,
       subscriptionId,
@@ -120,7 +120,7 @@ describe('User subscriptions personalized summary flow (e2e)', () => {
     expect(snapshot).toMatchObject({
       userId,
       subscriptionId,
-      topicId: 'topic-user-subscription-summary-e2e',
+      interestId: 'topic-user-subscription-summary-e2e',
       executiveSummary: expect.stringContaining('Focus on security-impacting developer discussions.'),
       lineage: expect.objectContaining({
         rulesVersion: 'summary.rules.policy.v1+summary.rules.user-preference.v1',
@@ -133,7 +133,7 @@ describe('User subscriptions personalized summary flow (e2e)', () => {
         payload: expect.objectContaining({
           summaryJobId: execution.summaryJobId,
           summaryId: execution.summaryId,
-          topicId: 'topic-user-subscription-summary-e2e',
+          interestId: 'topic-user-subscription-summary-e2e',
           userId,
           subscriptionId,
           status: 'no_signal',
@@ -301,7 +301,7 @@ describe('User subscriptions personalized summary flow (e2e)', () => {
 
     expect(activated.body).toEqual(expect.objectContaining({
       created: true,
-      topicId: expect.any(String),
+      interestId: expect.any(String),
       sourceBindingId: expect.any(String),
       scanPolicyId: expect.any(String),
       sourceTarget: expect.objectContaining({
@@ -315,30 +315,30 @@ describe('User subscriptions personalized summary flow (e2e)', () => {
         status: 'enabled',
       }),
       activation: {
-        topicCreated: true,
+        interestCreated: true,
         sourceBindingCreated: true,
         scanPolicyCreated: true,
         scanPolicyUpdated: false,
       },
     }));
 
-    const topics = await request(app.getHttpServer())
-      .get('/topics')
+    const interests = await request(app.getHttpServer())
+      .get('/interests')
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'viewer')
       .expect(200);
 
-    expect(topics.body.topics).toEqual([
+    expect(interests.body.interests).toEqual([
       expect.objectContaining({
-        id: activated.body.topicId,
+        id: activated.body.interestId,
         name: 'openai agents',
         query: 'openai agents',
       }),
     ]);
 
     const bindings = await request(app.getHttpServer())
-      .get(`/topics/${activated.body.topicId}/source-bindings`)
+      .get(`/interests/${activated.body.interestId}/source-bindings`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'viewer')
@@ -457,7 +457,7 @@ describe('User subscriptions personalized summary flow (e2e)', () => {
     });
 
     const execution = await requestAndExecuteSummary(app, tenant, workspace, {
-      topicId: 'topic-user-subscription-updated-preference-e2e',
+      interestId: 'topic-user-subscription-updated-preference-e2e',
       idempotencyKey: 'personalized-summary-request-updated-preference-1',
       userId,
       subscriptionId,
@@ -473,11 +473,11 @@ describe('User subscriptions personalized summary flow (e2e)', () => {
   it('applies topic-level user summary preference when no subscription scope is requested', async () => {
     const tenant = tenantId('tenant-topic-user-summary-preference-e2e');
     const workspace = workspaceId('workspace-topic-user-summary-preference-e2e');
-    const topicId = 'topic-user-summary-preference-e2e';
+    const interestId = 'topic-user-summary-preference-e2e';
     const userId = 'user-topic-overlay';
 
     const preference = await request(app.getHttpServer())
-      .put(`/topics/${topicId}/user-summary-preference`)
+      .put(`/interests/${interestId}/user-summary-preference`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'member')
@@ -494,13 +494,13 @@ describe('User subscriptions personalized summary flow (e2e)', () => {
       created: true,
       summaryPreference: expect.objectContaining({
         userId,
-        topicId,
+        interestId,
         customInstructions: 'Use founder-friendly wording.',
       }),
     });
 
     const execution = await requestAndExecuteSummary(app, tenant, workspace, {
-      topicId,
+      interestId,
       idempotencyKey: 'topic-user-summary-preference-request-1',
       userId,
     });
@@ -597,7 +597,7 @@ describe('User subscriptions personalized summary flow (e2e)', () => {
 
   it('rejects subscription-scoped summary requests without a user id', async () => {
     await request(app.getHttpServer())
-      .post('/topics/topic-subscription-scope-validation-e2e/summary-requests')
+      .post('/interests/topic-subscription-scope-validation-e2e/summary-requests')
       .set('x-tenant-id', 'tenant-summary-subscription-validation-e2e')
       .set('x-workspace-id', 'workspace-summary-subscription-validation-e2e')
       .set('x-workspace-role', 'member')
@@ -615,10 +615,10 @@ describe('User subscriptions personalized summary flow (e2e)', () => {
   it('rejects idempotency-key reuse across different personalized summary scopes', async () => {
     const tenant = tenantId('tenant-summary-idempotency-scope-e2e');
     const workspace = workspaceId('workspace-summary-idempotency-scope-e2e');
-    const topicId = 'topic-summary-idempotency-scope-e2e';
+    const interestId = 'topic-summary-idempotency-scope-e2e';
 
     const first = await request(app.getHttpServer())
-      .post(`/topics/${topicId}/summary-requests`)
+      .post(`/interests/${interestId}/summary-requests`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'member')
@@ -636,7 +636,7 @@ describe('User subscriptions personalized summary flow (e2e)', () => {
     });
 
     await request(app.getHttpServer())
-      .post(`/topics/${topicId}/summary-requests`)
+      .post(`/interests/${interestId}/summary-requests`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'member')
@@ -697,7 +697,7 @@ const requestAndExecuteSummary = async (
   tenant: TenantId,
   workspace: WorkspaceId,
   params: {
-    readonly topicId: string;
+    readonly interestId: string;
     readonly idempotencyKey: string;
     readonly userId: string;
     readonly subscriptionId?: string;
@@ -708,7 +708,7 @@ const requestAndExecuteSummary = async (
   readonly artifact: NonNullable<Awaited<ReturnType<InMemorySummaryArtifactRepository['findById']>>>;
 }> => {
   const requested = await request(app.getHttpServer())
-    .post(`/topics/${params.topicId}/summary-requests`)
+    .post(`/interests/${params.interestId}/summary-requests`)
     .set('x-tenant-id', tenant)
     .set('x-workspace-id', workspace)
     .set('x-workspace-role', 'member')

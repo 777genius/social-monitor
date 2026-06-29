@@ -263,7 +263,7 @@ const _featureCrossPackageImportPrefixes = <String>[
   'package:social_monitor_settings/src/',
   'package:social_monitor_sources/src/',
   'package:social_monitor_summaries/src/',
-  'package:social_monitor_topics/src/',
+  'package:social_monitor_interests/src/',
 ];
 
 const _appForbiddenImportPrefixes = <String>[
@@ -293,7 +293,7 @@ const _designSystemForbiddenImportPrefixes = <String>[
   'package:social_monitor_shared_kernel',
   'package:social_monitor_sources',
   'package:social_monitor_summaries',
-  'package:social_monitor_topics',
+  'package:social_monitor_interests',
 ];
 
 const _generatedApiForbiddenImportPrefixes = <String>[
@@ -316,7 +316,7 @@ const _generatedApiForbiddenImportPrefixes = <String>[
   'package:social_monitor_settings',
   'package:social_monitor_sources',
   'package:social_monitor_summaries',
-  'package:social_monitor_topics',
+  'package:social_monitor_interests',
 ];
 
 const _sharedKernelForbiddenImportPrefixes = <String>[
@@ -341,7 +341,7 @@ const _sharedKernelForbiddenImportPrefixes = <String>[
   'package:social_monitor_settings',
   'package:social_monitor_sources',
   'package:social_monitor_summaries',
-  'package:social_monitor_topics',
+  'package:social_monitor_interests',
 ];
 
 const _appForbiddenPubspecEntries = <String>[

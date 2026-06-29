@@ -91,7 +91,7 @@ const createSummaryArtifact = async (params: {
   readonly workspace: WorkspaceId;
 }): Promise<string> => {
   const requested = await request(params.app.getHttpServer())
-    .post('/topics/topic-summary-regeneration-authorization-e2e/summary-requests')
+    .post('/interests/topic-summary-regeneration-authorization-e2e/summary-requests')
     .set('x-tenant-id', params.tenant)
     .set('x-workspace-id', params.workspace)
     .set('x-workspace-role', 'member')

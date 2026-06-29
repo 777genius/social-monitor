@@ -13,6 +13,9 @@ UserRelevanceProfileDto _$UserRelevanceProfileDtoFromJson(
       .map((e) => e as String)
       .toList(),
   id: json['id'] as String,
+  interestWeights: (json['interestWeights'] as List<dynamic>)
+      .map((e) => RelevanceWeightDto.fromJson(e as Map<String, dynamic>))
+      .toList(),
   keywordWeights: (json['keywordWeights'] as List<dynamic>)
       .map((e) => RelevanceWeightDto.fromJson(e as Map<String, dynamic>))
       .toList(),
@@ -21,9 +24,6 @@ UserRelevanceProfileDto _$UserRelevanceProfileDtoFromJson(
       .toList(),
   rulesVersion: json['rulesVersion'] as String,
   sourceWeights: (json['sourceWeights'] as List<dynamic>)
-      .map((e) => RelevanceWeightDto.fromJson(e as Map<String, dynamic>))
-      .toList(),
-  topicWeights: (json['topicWeights'] as List<dynamic>)
       .map((e) => RelevanceWeightDto.fromJson(e as Map<String, dynamic>))
       .toList(),
   updatedAt: DateTime.parse(json['updatedAt'] as String),
@@ -35,11 +35,11 @@ Map<String, dynamic> _$UserRelevanceProfileDtoToJson(
 ) => <String, dynamic>{
   'blockedProviderKeys': instance.blockedProviderKeys,
   'id': instance.id,
+  'interestWeights': instance.interestWeights,
   'keywordWeights': instance.keywordWeights,
   'mutedKeywords': instance.mutedKeywords,
   'rulesVersion': instance.rulesVersion,
   'sourceWeights': instance.sourceWeights,
-  'topicWeights': instance.topicWeights,
   'updatedAt': instance.updatedAt.toIso8601String(),
   'userId': instance.userId,
 };

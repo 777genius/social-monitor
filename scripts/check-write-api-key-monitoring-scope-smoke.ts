@@ -59,7 +59,7 @@ async function main(): Promise<void> {
       tenant,
       workspace,
       name: 'Headless monitoring writer',
-      scopes: ['read:topics', 'write:topics', 'write:source_bindings', 'write:scan_requests'],
+      scopes: ['read:interests', 'write:interests', 'write:source_bindings', 'write:scan_requests'],
     });
     const readOnlySecret = await createApiKey({
       server,
@@ -70,7 +70,7 @@ async function main(): Promise<void> {
     });
 
     const topic = await request(server)
-      .post('/topics')
+      .post('/interests')
       .set(headers)
       .set('Authorization', `Bearer ${workflowSecret}`)
       .set('x-request-id', 'write-api-key-monitoring-smoke-topic')
@@ -82,13 +82,13 @@ async function main(): Promise<void> {
 
     assert(
       topic.status === 201,
-      `write:topics API key must create a topic, got ${topic.status}: ${JSON.stringify(topic.body)}`,
+      `write:interests API key must create a topic, got ${topic.status}: ${JSON.stringify(topic.body)}`,
     );
 
-    assert(topic.body.created === true, 'write:topics API key must create a topic');
+    assert(topic.body.created === true, 'write:interests API key must create a topic');
 
     await request(server)
-      .post('/topics')
+      .post('/interests')
       .set(otherTenantHeaders)
       .set('Authorization', `Bearer ${workflowSecret}`)
       .set('x-request-id', 'write-api-key-monitoring-smoke-wrong-tenant')
@@ -101,7 +101,7 @@ async function main(): Promise<void> {
 
     await expectMissingIdempotencyKey({
       request: request(server)
-        .post('/topics')
+        .post('/interests')
         .set(headers)
         .set('Authorization', `Bearer ${workflowSecret}`)
         .send({
@@ -112,7 +112,7 @@ async function main(): Promise<void> {
     });
 
     const binding = await request(server)
-      .post(`/topics/${topic.body.topicId}/source-bindings`)
+      .post(`/interests/${topic.body.interestId}/source-bindings`)
       .set(headers)
       .set('Authorization', `Bearer ${workflowSecret}`)
       .set('x-request-id', 'write-api-key-monitoring-smoke-source-binding')
@@ -133,7 +133,7 @@ async function main(): Promise<void> {
 
     await expectMissingIdempotencyKey({
       request: request(server)
-        .post(`/topics/${topic.body.topicId}/source-bindings`)
+        .post(`/interests/${topic.body.interestId}/source-bindings`)
         .set(headers)
         .set('Authorization', `Bearer ${workflowSecret}`)
         .send({
@@ -199,7 +199,7 @@ async function main(): Promise<void> {
 
     await expectMissingIdempotencyKey({
       request: request(server)
-        .patch(`/topics/${topic.body.topicId}/source-bindings/${binding.body.sourceBindingId}/status`)
+        .patch(`/interests/${topic.body.interestId}/source-bindings/${binding.body.sourceBindingId}/status`)
         .set(headers)
         .set('Authorization', `Bearer ${workflowSecret}`)
         .send({
@@ -233,11 +233,11 @@ async function main(): Promise<void> {
 
     assert(
       activation.status === 201,
-      `write:topics API key must activate source subscriptions, got ${activation.status}: ${JSON.stringify(activation.body)}`,
+      `write:interests API key must activate source subscriptions, got ${activation.status}: ${JSON.stringify(activation.body)}`,
     );
     assert(
       activation.body.activation?.sourceBindingCreated === true,
-      `write:topics API key activation must create source binding, got ${JSON.stringify(activation.body)}`,
+      `write:interests API key activation must create source binding, got ${JSON.stringify(activation.body)}`,
     );
 
     await request(server)
@@ -259,7 +259,7 @@ async function main(): Promise<void> {
       .expect(403);
 
     await request(server)
-      .post('/topics')
+      .post('/interests')
       .set(headers)
       .set('Authorization', `Bearer ${readOnlySecret}`)
       .set('idempotency-key', 'write-api-key-monitoring-smoke-read-only-denied')
@@ -291,14 +291,14 @@ async function main(): Promise<void> {
       tenantId: tenant,
       workspaceId: workspace,
       actorType: 'api_key',
-      action: 'topics.create',
+      action: 'interests.create',
       outcome: 'succeeded',
       resourceType: 'public_api_request',
       limit: 10,
     });
 
     assert(
-      topicWriteAudit.records.some((record) => record.metadata.requiredScope === 'write:topics'),
+      topicWriteAudit.records.some((record) => record.metadata.requiredScope === 'write:interests'),
       'write API key requests must audit required write scope without storing secrets',
     );
     const subscriptionWriteAudit = await auditLog.list({
@@ -312,7 +312,7 @@ async function main(): Promise<void> {
     });
 
     assert(
-      subscriptionWriteAudit.records.some((record) => record.metadata.requiredScope === 'write:topics'),
+      subscriptionWriteAudit.records.some((record) => record.metadata.requiredScope === 'write:interests'),
       'source activation API key requests must audit required write scope without storing secrets',
     );
 

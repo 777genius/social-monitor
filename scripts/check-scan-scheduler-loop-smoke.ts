@@ -44,7 +44,7 @@ async function main(): Promise<void> {
     id: 'source-binding-scheduler-loop-smoke',
     tenantId: tenant,
     workspaceId: workspace,
-    topicId: 'topic-scheduler-loop-smoke',
+    interestId: 'topic-scheduler-loop-smoke',
     providerKey: 'rss',
     capabilityProfileVersion: 1,
     config: {
@@ -67,7 +67,7 @@ async function main(): Promise<void> {
     id: 'paused-source-binding-scheduler-loop-smoke',
     tenantId: tenant,
     workspaceId: workspace,
-    topicId: 'paused-topic-scheduler-loop-smoke',
+    interestId: 'paused-topic-scheduler-loop-smoke',
     providerKey: 'rss',
     capabilityProfileVersion: 1,
     config: {
@@ -90,7 +90,7 @@ async function main(): Promise<void> {
     id: 'fresh-source-binding-scheduler-loop-smoke',
     tenantId: tenant,
     workspaceId: workspace,
-    topicId: 'fresh-topic-scheduler-loop-smoke',
+    interestId: 'fresh-topic-scheduler-loop-smoke',
     providerKey: 'rss',
     capabilityProfileVersion: 1,
     config: {

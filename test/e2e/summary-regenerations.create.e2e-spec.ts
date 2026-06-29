@@ -33,7 +33,7 @@ describe('Summary regeneration flow (e2e)', () => {
     const tenant = tenantId('tenant-summary-regenerate-e2e');
     const workspace = workspaceId('workspace-summary-regenerate-e2e');
     const requested = await request(app.getHttpServer())
-      .post('/topics/topic-summary-regenerate-e2e/summary-requests')
+      .post('/interests/topic-summary-regenerate-e2e/summary-requests')
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('x-workspace-role', 'member')

@@ -89,11 +89,11 @@ Flutter features:
 
 REST-backed MVP management surfaces:
 
-- `POST /topics` creates a workspace-scoped monitoring topic.
-- `GET /topics` lists workspace topics with opaque cursor pagination.
-- `POST /topics/:topicId/source-bindings` binds a production-safe source provider to a topic.
-- `GET /topics/:topicId/source-bindings` lists source bindings with opaque cursor pagination and safe config previews; encrypted credential fields must expose only metadata, never ciphertext.
-- `PATCH /topics/:topicId/source-bindings/:sourceBindingId/status` pauses or resumes scanning.
+- `POST /interests` creates a workspace-scoped monitoring interest.
+- `GET /interests` lists workspace interests with opaque cursor pagination.
+- `POST /interests/:interestId/source-bindings` binds a production-safe source provider to an interest.
+- `GET /interests/:interestId/source-bindings` lists source bindings with opaque cursor pagination and safe config previews; encrypted credential fields must expose only metadata, never ciphertext.
+- `PATCH /interests/:interestId/source-bindings/:sourceBindingId/status` pauses or resumes scanning.
 - `POST /source-bindings/:sourceBindingId/scan-policy` sets scan cadence.
 - `GET /source-bindings/:sourceBindingId/scan-policy` returns current scan cadence and next run time.
 - `POST /scan-requests` requests a manual scan within quota.

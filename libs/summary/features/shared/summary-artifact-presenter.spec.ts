@@ -10,7 +10,7 @@ describe('presentSummaryArtifact', () => {
       summaryId: 'summary-1',
       tenantId: tenantId('tenant-1'),
       workspaceId: workspaceId('workspace-1'),
-      topicId: 'topic-1',
+      interestId: 'interest-1',
       sourceWindow: {
         windowId: 'window-1',
         startedAt: new Date('2026-06-06T00:00:00.000Z'),

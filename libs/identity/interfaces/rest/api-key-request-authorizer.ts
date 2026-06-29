@@ -346,10 +346,10 @@ const workspaceActions = new Set<WorkspaceAction>([
   'public_api_audit.read',
   'realtime_events.read',
   'scan_dead_letters.read',
-  'topics.archive',
-  'topics.create',
-  'topics.read',
-  'topics.update',
+  'interests.archive',
+  'interests.create',
+  'interests.read',
+  'interests.update',
   'source_bindings.create',
   'source_bindings.read',
   'source_bindings.update_status',
@@ -375,8 +375,8 @@ const workspaceActions = new Set<WorkspaceAction>([
 ]);
 
 const fallbackWorkspaceActionByScope: Record<ApiKeyScope, WorkspaceAction> = {
-  'read:topics': 'topics.read',
-  'write:topics': 'topics.create',
+  'read:interests': 'interests.read',
+  'write:interests': 'interests.create',
   'write:source_bindings': 'source_bindings.create',
   'write:scan_requests': 'scan_requests.create',
   'read:feed': 'feed.read',

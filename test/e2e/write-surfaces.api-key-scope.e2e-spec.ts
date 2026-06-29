@@ -46,7 +46,7 @@ describe('Write surfaces API key scope enforcement (e2e)', () => {
       tenant,
       workspace,
       name: 'Headless monitoring writer',
-      scopes: ['read:topics', 'write:topics', 'write:source_bindings', 'write:scan_requests'],
+      scopes: ['read:interests', 'write:interests', 'write:source_bindings', 'write:scan_requests'],
     });
     const readOnlySecret = await createApiKey({
       tenant,
@@ -56,7 +56,7 @@ describe('Write surfaces API key scope enforcement (e2e)', () => {
     });
 
     const topic = await request(app.getHttpServer())
-      .post('/topics')
+      .post('/interests')
       .set(headers)
       .set('Authorization', `Bearer ${workflowSecret}`)
       .set('x-request-id', 'write-monitoring-api-key-topic')
@@ -68,12 +68,12 @@ describe('Write surfaces API key scope enforcement (e2e)', () => {
       .expect(201);
 
     expect(topic.body).toMatchObject({
-      topicId: expect.any(String),
+      interestId: expect.any(String),
       created: true,
     });
 
     const binding = await request(app.getHttpServer())
-      .post(`/topics/${topic.body.topicId}/source-bindings`)
+      .post(`/interests/${topic.body.interestId}/source-bindings`)
       .set(headers)
       .set('Authorization', `Bearer ${workflowSecret}`)
       .set('x-request-id', 'write-monitoring-api-key-binding')
@@ -123,7 +123,7 @@ describe('Write surfaces API key scope enforcement (e2e)', () => {
         correlationId: 'write-monitoring-api-key-correlation',
         payload: expect.objectContaining({
           scanJobId: scan.body.scanJobId,
-          topicId: topic.body.topicId,
+          interestId: topic.body.interestId,
           sourceBindingId: binding.body.sourceBindingId,
         }),
       }),
@@ -136,7 +136,7 @@ describe('Write surfaces API key scope enforcement (e2e)', () => {
       .expect(200);
 
     await request(app.getHttpServer())
-      .post('/topics')
+      .post('/interests')
       .set(headers)
       .set('Authorization', `Bearer ${readOnlySecret}`)
       .set('idempotency-key', 'write-monitoring-api-key-read-only-denied')
@@ -150,7 +150,7 @@ describe('Write surfaces API key scope enforcement (e2e)', () => {
       tenantId: tenant,
       workspaceId: workspace,
       actorType: 'api_key',
-      action: 'topics.create',
+      action: 'interests.create',
       outcome: 'succeeded',
       resourceType: 'public_api_request',
       limit: 10,
@@ -159,7 +159,7 @@ describe('Write surfaces API key scope enforcement (e2e)', () => {
     expect(auditRecords.records).toEqual(expect.arrayContaining([
       expect.objectContaining({
         metadata: expect.objectContaining({
-          requiredScope: 'write:topics',
+          requiredScope: 'write:interests',
         }),
       }),
     ]));
@@ -169,7 +169,7 @@ describe('Write surfaces API key scope enforcement (e2e)', () => {
   it('allows a scoped summary API key to manage policy and request summary jobs', async () => {
     const tenant = tenantId('tenant-write-summary-api-key-e2e');
     const workspace = workspaceId('workspace-write-summary-api-key-e2e');
-    const topicId = 'topic-write-summary-api-key-e2e';
+    const interestId = 'topic-write-summary-api-key-e2e';
     const headers = {
       'x-tenant-id': tenant,
       'x-workspace-id': workspace,
@@ -188,7 +188,7 @@ describe('Write surfaces API key scope enforcement (e2e)', () => {
     });
 
     const policy = await request(app.getHttpServer())
-      .put(`/topics/${topicId}/summary-policy`)
+      .put(`/interests/${interestId}/summary-policy`)
       .set(headers)
       .set('Authorization', `Bearer ${workflowSecret}`)
       .set('x-request-id', 'write-summary-api-key-policy')
@@ -203,19 +203,19 @@ describe('Write surfaces API key scope enforcement (e2e)', () => {
       .expect(200);
 
     expect(policy.body.policy).toMatchObject({
-      topicId,
+      interestId,
       language: 'en',
       maxKeyPoints: 5,
     });
 
     await request(app.getHttpServer())
-      .get(`/topics/${topicId}/summary-policy`)
+      .get(`/interests/${interestId}/summary-policy`)
       .set(headers)
       .set('Authorization', `Bearer ${workflowSecret}`)
       .expect(200);
 
     const summary = await request(app.getHttpServer())
-      .post(`/topics/${topicId}/summary-requests`)
+      .post(`/interests/${interestId}/summary-requests`)
       .set(headers)
       .set('Authorization', `Bearer ${workflowSecret}`)
       .set('x-request-id', 'write-summary-api-key-request')
@@ -241,8 +241,8 @@ describe('Write surfaces API key scope enforcement (e2e)', () => {
       .set('idempotency-key', 'write-summary-api-key-reader-summary-request')
       .send({
         scope: {
-          type: 'topic',
-          topicId,
+          type: 'interest',
+          interestId,
         },
         userId: 'write-summary-api-key-user',
       })
@@ -294,7 +294,7 @@ describe('Write surfaces API key scope enforcement (e2e)', () => {
         idempotencyKey: 'write-summary-api-key-relevance-feedback',
         action: 'less_like_this',
         rating: 2,
-        topicId,
+        interestId,
         providerKey: 'rss',
         title: 'Low quality source',
         bodyPreview: 'The user does not want more of this source.',
@@ -312,7 +312,7 @@ describe('Write surfaces API key scope enforcement (e2e)', () => {
     });
 
     await request(app.getHttpServer())
-      .put(`/topics/${topicId}/summary-policy`)
+      .put(`/interests/${interestId}/summary-policy`)
       .set(headers)
       .set('Authorization', `Bearer ${readOnlySecret}`)
       .set('x-request-id', 'write-summary-api-key-read-only-denied')
@@ -333,8 +333,8 @@ describe('Write surfaces API key scope enforcement (e2e)', () => {
       .set('idempotency-key', 'write-summary-api-key-reader-summary-read-only-denied')
       .send({
         scope: {
-          type: 'topic',
-          topicId,
+          type: 'interest',
+          interestId,
         },
       })
       .expect(403);

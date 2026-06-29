@@ -342,7 +342,7 @@ function redactedDogfoodSamples() {
       summaryEvidence: {
         ...sample.summaryEvidence,
         summaryId: `dogfood-summary-${replacement.suffix}`,
-        topicId: 'dogfood-topic-summary-001',
+        interestId: 'dogfood-topic-summary-001',
         citationId: `dogfood-citation-${replacement.suffix}`,
         feedItemId: `dogfood-feed-item-${replacement.suffix}`,
         sourceItemId: `dogfood-source-item-${replacement.suffix}`,

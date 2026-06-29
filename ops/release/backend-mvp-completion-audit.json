@@ -229,7 +229,7 @@
         "npm run check:mvp-core-loop",
         "npm run check:autonomous-monitoring-loop",
         "npm run check:openapi",
-        "npm run check:topic-source-daily-history-rest",
+        "npm run check:interest-source-daily-history-rest",
         "npm run check:relevance-memory-runtime-canary-evidence",
         "npm run check:e2e-traceability",
         "npm run check:staging-reliability-evidence"
@@ -239,7 +239,7 @@
         "mvp-core-loop",
         "autonomous-monitoring-loop",
         "openapi-drift",
-        "topic-source-daily-history-rest",
+        "interest-source-daily-history-rest",
         "relevance-memory-runtime-canary-evidence",
         "staging-reliability-evidence"
       ],

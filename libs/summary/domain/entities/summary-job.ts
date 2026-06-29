@@ -6,7 +6,7 @@ export type SummaryJobProps = {
   readonly id: string;
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
-  readonly topicId: string;
+  readonly interestId: string;
   readonly userId?: string;
   readonly subscriptionId?: string;
   readonly status: SummaryJobStatus;
@@ -23,7 +23,7 @@ export class SummaryJob {
   private constructor(private readonly props: SummaryJobProps) {}
 
   static request(props: Omit<SummaryJobProps, 'status'>): SummaryJob {
-    this.assertTopic(props.topicId);
+    this.assertInterest(props.interestId);
     this.assertPersonalizationScope(props);
 
     return new SummaryJob({
@@ -33,7 +33,7 @@ export class SummaryJob {
   }
 
   static rehydrate(props: SummaryJobProps): SummaryJob {
-    this.assertTopic(props.topicId);
+    this.assertInterest(props.interestId);
     this.assertPersonalizationScope(props);
 
     if ((props.status === 'completed' || props.status === 'no_signal') && props.summaryId === undefined) {
@@ -133,7 +133,7 @@ export class SummaryJob {
       id: this.props.id,
       tenantId: this.props.tenantId,
       workspaceId: this.props.workspaceId,
-      topicId: this.props.topicId,
+      interestId: this.props.interestId,
       userId: this.props.userId,
       subscriptionId: this.props.subscriptionId,
       status: 'requested',
@@ -146,9 +146,9 @@ export class SummaryJob {
     return { ...this.props };
   }
 
-  private static assertTopic(topicId: string): void {
-    if (topicId.trim().length === 0) {
-      throw new Error('Summary topic id must be non-empty');
+  private static assertInterest(interestId: string): void {
+    if (interestId.trim().length === 0) {
+      throw new Error('Summary interest id must be non-empty');
     }
   }
 

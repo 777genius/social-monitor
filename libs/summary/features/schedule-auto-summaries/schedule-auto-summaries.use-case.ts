@@ -37,21 +37,21 @@ export class ScheduleAutoSummariesUseCase {
     const failures: ScheduleAutoSummariesResult['failures'][number][] = [];
 
     for (const candidate of candidates) {
-      const idempotencyKey = autoSummaryIdempotencyKey(candidate.topicId, {
+      const idempotencyKey = autoSummaryIdempotencyKey(candidate.interestId, {
         latestFeedItemObservedAt: candidate.latestFeedItemObservedAt,
         newFeedItemCount: candidate.newFeedItemCount,
       });
       const requested = await this.requestSummary.execute({
         tenantId: candidate.tenantId,
         workspaceId: candidate.workspaceId,
-        topicId: candidate.topicId,
+        interestId: candidate.interestId,
         idempotencyKey,
         correlationId: command.correlationId,
       });
 
       if (!requested.ok) {
         failures.push({
-          topicId: candidate.topicId,
+          interestId: candidate.interestId,
           message: requested.error instanceof Error ? requested.error.message : String(requested.error),
         });
         continue;
@@ -60,7 +60,7 @@ export class ScheduleAutoSummariesUseCase {
       summaries.push({
         tenantId: candidate.tenantId,
         workspaceId: candidate.workspaceId,
-        topicId: candidate.topicId,
+        interestId: candidate.interestId,
         summaryJobId: requested.value.summaryJobId,
         status: requested.value.status,
         created: requested.value.created,
@@ -82,7 +82,7 @@ export class ScheduleAutoSummariesUseCase {
 }
 
 export const autoSummaryIdempotencyKey = (
-  topicId: string,
+  interestId: string,
   params: {
     readonly latestFeedItemObservedAt: Date;
     readonly newFeedItemCount: number;
@@ -90,7 +90,7 @@ export const autoSummaryIdempotencyKey = (
 ): string =>
   [
     'auto-summary',
-    topicId,
+    interestId,
     params.latestFeedItemObservedAt.toISOString(),
     String(params.newFeedItemCount),
   ].join(':');

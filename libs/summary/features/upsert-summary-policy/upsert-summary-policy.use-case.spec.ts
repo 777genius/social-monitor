@@ -15,18 +15,18 @@ class FakeSummaryPolicies implements SummaryPolicyRepositoryPort {
 
   async save(policy: SummaryPolicy): Promise<void> {
     const snapshot = policy.toSnapshot();
-    this.policies.set(`${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.topicId}`, policy);
+    this.policies.set(`${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.interestId}`, policy);
   }
 
-  async findByTopic(params: Parameters<SummaryPolicyRepositoryPort['findByTopic']>[0]): Promise<SummaryPolicy | null> {
-    return this.policies.get(`${params.tenantId}:${params.workspaceId}:${params.topicId}`) ?? null;
+  async findByInterest(params: Parameters<SummaryPolicyRepositoryPort['findByInterest']>[0]): Promise<SummaryPolicy | null> {
+    return this.policies.get(`${params.tenantId}:${params.workspaceId}:${params.interestId}`) ?? null;
   }
 }
 
 const command = {
   tenantId: tenantId('tenant-1'),
   workspaceId: workspaceId('workspace-1'),
-  topicId: 'topic-1',
+  interestId: 'interest-1',
   language: 'ru',
   format: 'bullet_digest',
   tone: 'analytical',
@@ -38,7 +38,7 @@ const command = {
 } as const;
 
 describe('UpsertSummaryPolicyUseCase', () => {
-  it('creates and then updates a topic summary policy', async () => {
+  it('creates and then updates an interest summary policy', async () => {
     const useCase = new UpsertSummaryPolicyUseCase(
       new FakeSummaryPolicies(),
       new SingleIdGenerator(),
@@ -52,7 +52,7 @@ describe('UpsertSummaryPolicyUseCase', () => {
         created: true,
         policy: expect.objectContaining({
           summaryPolicyId: 'summary-policy-1',
-          topicId: 'topic-1',
+          interestId: 'interest-1',
           language: 'ru',
           format: 'bullet_digest',
           tone: 'analytical',

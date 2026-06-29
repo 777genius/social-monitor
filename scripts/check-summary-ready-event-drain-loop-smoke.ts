@@ -43,7 +43,7 @@ async function verifySuccessfulDrainLoopAck(): Promise<void> {
     handle: async (event) => {
       handled.push(event);
       return {
-        channel: 'topic:topic-summary-ready-event-drain-smoke:summary-status',
+        channel: 'interest:topic-summary-ready-event-drain-smoke:summary-status',
         realtimeEventId: 'realtime-summary-ready-event-drain-smoke',
         sequence: 1,
       };
@@ -118,7 +118,7 @@ async function verifyRabbitMqSummaryReadyReaderDelivery(): Promise<void> {
       payload: {
         tenantId: 'tenant-summary-ready-rabbit-reader-smoke',
         workspaceId: 'workspace-summary-ready-rabbit-reader-smoke',
-        topicId: 'topic-summary-ready-rabbit-reader-smoke',
+        interestId: 'topic-summary-ready-rabbit-reader-smoke',
         summaryJobId: 'summary-job-ready-rabbit-reader-smoke',
         summaryId: 'summary-ready-rabbit-reader-smoke',
         status: 'completed',
@@ -152,7 +152,7 @@ async function verifyRabbitMqSummaryReadyReaderDelivery(): Promise<void> {
     JSON.stringify(channel.assertedExchanges) === JSON.stringify([
       {
         exchange: 'social-monitor.events',
-        type: 'topic',
+        type: 'interest',
         options: { durable: true },
       },
       {
@@ -314,7 +314,7 @@ function summaryReadyEvent(overrides: Readonly<Record<string, unknown>> = {}): R
     payload: {
       tenantId: tenantId('tenant-summary-ready-event-drain-smoke'),
       workspaceId: workspaceId('workspace-summary-ready-event-drain-smoke'),
-      topicId: 'topic-summary-ready-event-drain-smoke',
+      interestId: 'topic-summary-ready-event-drain-smoke',
       summaryJobId: 'summary-job-ready-event-drain-smoke',
       summaryId: 'summary-ready-event-drain-smoke',
       status: 'completed',

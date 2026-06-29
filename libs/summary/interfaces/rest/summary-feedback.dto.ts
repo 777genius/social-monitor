@@ -46,7 +46,7 @@ export class SummaryFeedbackEvidenceDto {
   declare readonly summaryId: string;
 
   @ApiProperty()
-  declare readonly topicId: string;
+  declare readonly interestId: string;
 
   @ApiPropertyOptional()
   declare readonly citationId?: string;
@@ -75,7 +75,7 @@ export class SummaryFeedbackResponseDto {
   declare readonly summaryId: string;
 
   @ApiProperty()
-  declare readonly topicId: string;
+  declare readonly interestId: string;
 
   @ApiProperty()
   declare readonly submittedBy: string;

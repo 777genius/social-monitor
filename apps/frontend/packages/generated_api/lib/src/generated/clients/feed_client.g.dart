@@ -28,7 +28,7 @@ class _FeedClient implements FeedClient {
     RepositoryTrendWindow? repositoryTrendWindow,
     String? providerKey,
     String? q,
-    String? topicId,
+    String? interestId,
     String? cursor,
     num? limit,
     String? authorization,
@@ -41,7 +41,7 @@ class _FeedClient implements FeedClient {
       r'repositoryTrendWindow': repositoryTrendWindow?.toJson(),
       r'providerKey': providerKey,
       r'q': q,
-      r'topicId': topicId,
+      r'interestId': interestId,
       r'cursor': cursor,
       r'limit': limit,
     };
