@@ -28,7 +28,7 @@ class _SourceFilterChips extends StatelessWidget {
           onSelected: (_) => onSelected(null),
         ),
         AppStatusBadge(
-          label: '$citationCount citations',
+          label: '$citationCount collected',
           tone: AppStatusTone.neutral,
         ),
         for (final entry in entries)
@@ -103,6 +103,7 @@ class _FilteredEvidenceList extends StatelessWidget {
               key: ValueKey('reader-summary-top-read-$index'),
               readIndex: index,
               read: visibleReads[index],
+              showDivider: index < visibleReads.length - 1,
               citations: visibleReads[index].citationIds
                   .map((id) => citationsById[id])
                   .whereType<SummaryCitation>()
@@ -116,6 +117,7 @@ class _FilteredEvidenceList extends StatelessWidget {
             (index) => _CitationCard(
               key: ValueKey('reader-summary-citation-fallback-$index'),
               citation: visibleFallback[index],
+              showDivider: index < visibleFallback.length - 1,
               onOpenUrl: onOpenUrl,
             ),
           )
@@ -134,12 +136,14 @@ class _ReadCard extends StatelessWidget {
     super.key,
     required this.readIndex,
     required this.read,
+    required this.showDivider,
     required this.citations,
     required this.onOpenUrl,
   });
 
   final int readIndex;
   final TopRead read;
+  final bool showDivider;
   final List<SummaryCitation> citations;
   final ValueChanged<String> onOpenUrl;
 
@@ -152,17 +156,9 @@ class _ReadCard extends StatelessWidget {
         : _citationSnippet(citations.first);
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface,
-          border: Border.all(
-            color: Theme.of(context).colorScheme.outlineVariant,
-          ),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.sm),
-          child: Row(
+      child: Column(
+        children: [
+          Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Padding(
@@ -193,9 +189,7 @@ class _ReadCard extends StatelessWidget {
                     if (url != null && url.trim().isNotEmpty) ...[
                       const SizedBox(height: 2),
                       KeyedSubtree(
-                        key: ValueKey(
-                          'reader-summary-top-read-$readIndex-url',
-                        ),
+                        key: ValueKey('reader-summary-top-read-$readIndex-url'),
                         child: ReaderSummaryExternalLink(
                           url: url,
                           onOpenUrl: onOpenUrl,
@@ -243,7 +237,14 @@ class _ReadCard extends StatelessWidget {
               ),
             ],
           ),
-        ),
+          if (showDivider) ...[
+            const SizedBox(height: AppSpacing.sm),
+            Divider(
+              height: 1,
+              color: Theme.of(context).colorScheme.outlineVariant,
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -253,10 +254,12 @@ class _CitationCard extends StatelessWidget {
   const _CitationCard({
     super.key,
     required this.citation,
+    required this.showDivider,
     required this.onOpenUrl,
   });
 
   final SummaryCitation citation;
+  final bool showDivider;
   final ValueChanged<String> onOpenUrl;
 
   @override
@@ -265,37 +268,41 @@ class _CitationCard extends StatelessWidget {
     final snippet = _citationSnippet(citation);
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          border: Border.all(
-            color: Theme.of(context).colorScheme.outlineVariant,
-          ),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: ListTile(
-          title: Text(citation.sourceLabel, maxLines: 2),
-          subtitle: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (snippet != null) Text(snippet, maxLines: 2),
-              if (url != null && url.trim().isNotEmpty) ...[
-                const SizedBox(height: 2),
-                Text(
-                  url,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: Theme.of(context).colorScheme.primary,
-                    decoration: TextDecoration.underline,
-                    letterSpacing: 0,
+      child: Column(
+        children: [
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text(citation.sourceLabel, maxLines: 2),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (snippet != null) Text(snippet, maxLines: 2),
+                if (url != null && url.trim().isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    url,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: Theme.of(context).colorScheme.primary,
+                      decoration: TextDecoration.underline,
+                      letterSpacing: 0,
+                    ),
                   ),
-                ),
+                ],
               ],
-            ],
+            ),
+            trailing: url == null
+                ? null
+                : const Icon(Icons.open_in_new_outlined),
+            onTap: url == null ? null : () => onOpenUrl(url),
           ),
-          trailing: url == null ? null : const Icon(Icons.open_in_new_outlined),
-          onTap: url == null ? null : () => onOpenUrl(url),
-        ),
+          if (showDivider)
+            Divider(
+              height: 1,
+              color: Theme.of(context).colorScheme.outlineVariant,
+            ),
+        ],
       ),
     );
   }

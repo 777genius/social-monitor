@@ -52,86 +52,79 @@ class _ReaderSummaryBriefSurfaceState extends State<ReaderSummaryBriefSurface> {
               )
               .toList(growable: false);
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _BriefToolbar(
-            citationCount: widget.summary.citations.length,
-            sourceCount: content.sourceMix.length,
-            freshnessLabel: widget.summary.freshnessLabel,
-            isRefreshing: widget.isRefreshing,
-            isDegraded: widget.summary.isDegraded,
-            qualityState: content.qualityState,
-          ),
-          Padding(
-            padding: const EdgeInsets.all(AppSpacing.md),
-            child: SelectionArea(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  LayoutBuilder(
-                    builder: (context, constraints) {
-                      final twoColumn = constraints.maxWidth >= 900;
-                      final main = _AiBriefCopy(
-                        content: content,
-                        onOpenUrl: widget.onOpenUrl,
-                      );
-                      final side = _FirstChecksPanel(
-                        topReads: content.topReads,
-                        onOpenUrl: widget.onOpenUrl,
-                      );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _BriefToolbar(
+          citationCount: widget.summary.citations.length,
+          sourceCount: content.sourceMix.length,
+          freshnessLabel: widget.summary.freshnessLabel,
+          isRefreshing: widget.isRefreshing,
+          isDegraded: widget.summary.isDegraded,
+          qualityState: content.qualityState,
+        ),
+        Padding(
+          padding: const EdgeInsets.all(AppSpacing.md),
+          child: SelectionArea(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final twoColumn = constraints.maxWidth >= 900;
+                    final main = _AiBriefCopy(
+                      content: content,
+                      onOpenUrl: widget.onOpenUrl,
+                    );
+                    final side = _FirstChecksPanel(
+                      topReads: content.topReads,
+                      onOpenUrl: widget.onOpenUrl,
+                    );
 
-                      if (!twoColumn) {
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            main,
-                            const SizedBox(height: AppSpacing.md),
-                            side,
-                          ],
-                        );
-                      }
-
-                      return Row(
+                    if (!twoColumn) {
+                      return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(child: main),
-                          const SizedBox(width: AppSpacing.md),
-                          SizedBox(width: 320, child: side),
+                          main,
+                          const SizedBox(height: AppSpacing.md),
+                          side,
                         ],
                       );
-                    },
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-                  _SourceFilterChips(
-                    entries: content.sourceMix,
-                    selectedProviderKey: _selectedProviderKey,
-                    topReadCount: content.topReads.length,
-                    citationCount: widget.summary.citations.length,
-                    onSelected: (providerKey) {
-                      setState(() => _selectedProviderKey = providerKey);
-                    },
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-                  _FilteredEvidenceList(
-                    selectedProviderKey: _selectedProviderKey,
-                    topReads: selectedTopReads,
-                    fallbackCitations: selectedCitations,
-                    citationsById: widget.citationsById,
-                    onOpenUrl: widget.onOpenUrl,
-                  ),
-                ],
-              ),
+                    }
+
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(child: main),
+                        const SizedBox(width: AppSpacing.md),
+                        SizedBox(width: 320, child: side),
+                      ],
+                    );
+                  },
+                ),
+                const SizedBox(height: AppSpacing.md),
+                _SourceFilterChips(
+                  entries: content.sourceMix,
+                  selectedProviderKey: _selectedProviderKey,
+                  topReadCount: content.topReads.length,
+                  citationCount: widget.summary.citations.length,
+                  onSelected: (providerKey) {
+                    setState(() => _selectedProviderKey = providerKey);
+                  },
+                ),
+                const SizedBox(height: AppSpacing.md),
+                _FilteredEvidenceList(
+                  selectedProviderKey: _selectedProviderKey,
+                  topReads: selectedTopReads,
+                  fallbackCitations: selectedCitations,
+                  citationsById: widget.citationsById,
+                  onOpenUrl: widget.onOpenUrl,
+                ),
+              ],
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -155,64 +148,55 @@ class _BriefToolbar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerLowest,
-        border: Border(
-          bottom: BorderSide(
-            color: Theme.of(context).colorScheme.outlineVariant,
-          ),
-        ),
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        AppSpacing.sm,
+        AppSpacing.md,
+        0,
       ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.md,
-          vertical: AppSpacing.sm,
-        ),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final title = Text(
-              'AI summary · $citationCount cited items · $sourceCount sources',
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w900,
-                letterSpacing: 0,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final title = Text(
+            'AI summary · $citationCount collected items · $sourceCount sources',
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          );
+          final badges = Wrap(
+            spacing: AppSpacing.xs,
+            runSpacing: AppSpacing.xs,
+            children: [
+              AppStatusBadge(
+                label: isRefreshing ? 'Refreshing' : freshnessLabel,
+                tone: AppStatusTone.success,
               ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            );
-            final badges = Wrap(
-              spacing: AppSpacing.xs,
-              runSpacing: AppSpacing.xs,
+              AppStatusBadge(
+                label: _confidenceLabel(),
+                tone: _confidenceTone(),
+              ),
+            ],
+          );
+          if (constraints.maxWidth < 420) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                AppStatusBadge(
-                  label: isRefreshing ? 'Refreshing' : freshnessLabel,
-                  tone: AppStatusTone.success,
-                ),
-                AppStatusBadge(
-                  label: _confidenceLabel(),
-                  tone: _confidenceTone(),
-                ),
-              ],
-            );
-            if (constraints.maxWidth < 420) {
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  title,
-                  const SizedBox(height: AppSpacing.xs),
-                  badges,
-                ],
-              );
-            }
-            return Row(
-              children: [
-                Expanded(child: title),
+                title,
+                const SizedBox(height: AppSpacing.xs),
                 badges,
               ],
             );
-          },
-        ),
+          }
+          return Row(
+            children: [
+              Expanded(child: title),
+              badges,
+            ],
+          );
+        },
       ),
     );
   }

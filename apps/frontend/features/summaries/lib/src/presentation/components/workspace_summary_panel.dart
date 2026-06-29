@@ -301,28 +301,19 @@ class _ReadySummary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colorScheme.surface,
-        border: Border.all(color: colorScheme.outlineVariant),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.md),
-        child: ReaderSummaryView(
-          summary: summary,
-          isRefreshing: isRefreshing,
-          readerActionState: readerActionState,
-          activeReaderActionIdempotencyKey: activeReaderActionIdempotencyKey,
-          lastReaderActionIdempotencyKey: lastReaderActionIdempotencyKey,
-          onGenerate: onGenerate,
-          intentForAction: (action) => intentForAction(summary, action),
-          onAction: (action, [feedbackReason]) =>
-              onAction(summary, action, feedbackReason),
-          onOpenUrl: (url) => onOpenUrl(summary, url),
-        ),
+    return Padding(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      child: ReaderSummaryView(
+        summary: summary,
+        isRefreshing: isRefreshing,
+        readerActionState: readerActionState,
+        activeReaderActionIdempotencyKey: activeReaderActionIdempotencyKey,
+        lastReaderActionIdempotencyKey: lastReaderActionIdempotencyKey,
+        onGenerate: onGenerate,
+        intentForAction: (action) => intentForAction(summary, action),
+        onAction: (action, [feedbackReason]) =>
+            onAction(summary, action, feedbackReason),
+        onOpenUrl: (url) => onOpenUrl(summary, url),
       ),
     );
   }

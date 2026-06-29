@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
+import '../../domain/aggregates/reader_summary.dart';
 import '../../domain/entities/generated_summary.dart';
 import '../components/summary_detail_panel.dart';
 import '../components/summary_generation_status_presenter.dart';
@@ -46,7 +47,7 @@ class _SummariesFeaturePageState extends State<SummariesFeaturePage> {
                   eyebrow: 'Intelligence',
                   title: 'Summaries',
                   description:
-                      'Review the workspace summary, source coverage and saved summary history.',
+                      'Review the workspace summary and source coverage.',
                 ),
               ),
               SliverToBoxAdapter(
@@ -83,9 +84,10 @@ class _SummariesBody extends StatelessWidget {
         ? null
         : selected;
     final showSummaryHistory =
-        items.isNotEmpty ||
-        state is LoadingViewState<PageResult<GeneratedSummary>> ||
-        state is FailureViewState<PageResult<GeneratedSummary>>;
+        !_hasWorkspaceSummary(store.workspaceSummaryState) &&
+        (items.isNotEmpty ||
+            state is LoadingViewState<PageResult<GeneratedSummary>> ||
+            state is FailureViewState<PageResult<GeneratedSummary>>);
 
     final content = switch (state) {
       FailureViewState<PageResult<GeneratedSummary>>(:final failure) =>
@@ -177,4 +179,14 @@ class _SummariesBody extends StatelessWidget {
       ],
     );
   }
+}
+
+bool _hasWorkspaceSummary(AsyncViewState<WorkspaceSummarySnapshot> state) {
+  return switch (state) {
+    ReadyViewState<WorkspaceSummarySnapshot>(:final value) =>
+      value.current != null,
+    LoadingViewState<WorkspaceSummarySnapshot>(:final previousValue) =>
+      previousValue?.current != null,
+    _ => false,
+  };
 }

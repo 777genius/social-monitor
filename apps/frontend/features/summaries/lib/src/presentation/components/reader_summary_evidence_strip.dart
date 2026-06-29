@@ -153,5 +153,5 @@ String _sourceMixText(List<SourceMixEntry> entries) {
       .join(', ');
   final suffix = entries.length > 3 ? ' +${entries.length - 3} more' : '';
 
-  return 'Sources: $labels$suffix. $itemCount cited items.';
+  return 'Sources: $labels$suffix. $itemCount collected items.';
 }

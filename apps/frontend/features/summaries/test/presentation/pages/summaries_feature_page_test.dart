@@ -38,7 +38,7 @@ void main() {
 
     expect(find.textContaining('Shared UTC period:'), findsOneWidget);
     expect(find.textContaining('00:00 -'), findsOneWidget);
-    expect(find.text('GitHub Trending daily summary'), findsWidgets);
+    expect(find.text('GitHub Trending daily summary'), findsNothing);
     expect(find.text('AI summary'), findsOneWidget);
     expect(find.textContaining('GitHub daily radar'), findsOneWidget);
     expect(find.textContaining('Key signal:'), findsNothing);
@@ -48,9 +48,12 @@ void main() {
     expect(find.text('High confidence'), findsNothing);
     expect(find.textContaining('Сегодня главный сигнал'), findsNothing);
     expect(find.text('Что проверить первым'), findsNothing);
-    expect(find.text('AI summary · 3 cited items · 1 sources'), findsOneWidget);
+    expect(
+      find.text('AI summary · 3 collected items · 1 sources'),
+      findsOneWidget,
+    );
     expect(find.text('3 top reads'), findsOneWidget);
-    expect(find.text('3 citations'), findsWidgets);
+    expect(find.text('3 collected'), findsWidgets);
     expect(find.text('Top reads'), findsOneWidget);
     expect(find.text('Showing 3 of 3 strongest reads'), findsOneWidget);
     expect(find.text('Evidence and quality'), findsOneWidget);
@@ -157,7 +160,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('AI summary'), findsOneWidget);
-    expect(find.text('AI summary · 3 cited items · 3 sources'), findsOneWidget);
+    expect(
+      find.text('AI summary · 3 collected items · 3 sources'),
+      findsOneWidget,
+    );
     expect(find.text('Reddit 2'), findsOneWidget);
     expect(find.text('GitHub Trending 2'), findsOneWidget);
     expect(find.text('Hacker News 2'), findsOneWidget);
