@@ -167,6 +167,8 @@ class _FeedBody extends StatelessWidget {
     final isCompact = AppScreenClass.of(context).isCompact;
     final hasAnyFilter = store.filter.hasAnyFilter;
     final nextCursor = store.nextCursor;
+    final showPagination =
+        nextCursor != null || state is LoadingViewState<PageResult<FeedItem>>;
     final detailState = store.detailState;
     final selected = store.selectedListItem ?? items.firstOrNull;
     final detailItem = isCompact && !store.hasExplicitSelection
@@ -218,14 +220,17 @@ class _FeedBody extends StatelessWidget {
               emptyMessage: hasAnyFilter
                   ? 'Clear filters to return to all collected posts.'
                   : 'Connect sources or wait for the next collection run.',
-              footer: AppPaginationControls(
-                hasMore: nextCursor != null,
-                isLoading: state is LoadingViewState<PageResult<FeedItem>>,
-                summary: '${items.length} posts shown',
-                onLoadMore: nextCursor == null
-                    ? null
-                    : () => unawaited(store.loadMore()),
-              ),
+              footer: showPagination
+                  ? AppPaginationControls(
+                      hasMore: nextCursor != null,
+                      isLoading:
+                          state is LoadingViewState<PageResult<FeedItem>>,
+                      summary: '${items.length} posts shown',
+                      onLoadMore: nextCursor == null
+                          ? null
+                          : () => unawaited(store.loadMore()),
+                    )
+                  : null,
               itemBuilder: (context, item, index) {
                 return FeedItemCard(
                   key: ValueKey('feed-item-card-${item.id.value}'),

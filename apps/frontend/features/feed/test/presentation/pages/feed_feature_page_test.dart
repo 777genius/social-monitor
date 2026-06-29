@@ -60,6 +60,7 @@ void main() {
     expect(find.text('Body preview'), findsOneWidget);
     expect(find.text('Source link'), findsOneWidget);
     expect(find.text('Copy URL'), findsOneWidget);
+    expect(find.text('All loaded'), findsNothing);
     expect(find.text('Mark reviewed'), findsNothing);
   });
 

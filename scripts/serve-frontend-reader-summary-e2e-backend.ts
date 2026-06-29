@@ -423,6 +423,7 @@ const servedReaderSummaryId =
   typeof readerSummaryArtifact.readerSummaryId === 'string'
     ? readerSummaryArtifact.readerSummaryId
     : readerSummaryId;
+const feedItems = buildFeedItemsFromReaderSummaryArtifact(readerSummaryArtifact);
 
 function loadFrontendFixtureReaderSummaryArtifact(): JsonObject | null {
   const fixturePath = process.env.FRONTEND_READER_SUMMARY_FIXTURE_PATH?.trim();
@@ -466,6 +467,136 @@ function normalizeReaderSummaryArtifactForGeneratedApi(
   };
 }
 
+function buildFeedItemsFromReaderSummaryArtifact(
+  artifact: JsonObject,
+): JsonObject[] {
+  const citations = jsonArray(artifact.citations).filter(isJsonObject);
+  const reads = jsonArray(jsonObject(artifact.readerBrief)?.topReads).filter(
+    isJsonObject,
+  );
+  const readsByCitationId = new Map<string, JsonObject>();
+  const topReadCitationIds = new Set<string>();
+  for (const read of reads) {
+    for (const citationId of stringArray(read.citationIds)) {
+      readsByCitationId.set(citationId, read);
+      topReadCitationIds.add(citationId);
+    }
+  }
+
+  const observedAt =
+    stringOrNull(jsonObject(artifact.freshness)?.newestObservedAt) ??
+    stringOrNull(jsonObject(artifact.sourceWindow)?.endedAt) ??
+    checkedAt;
+  const byId = new Map<string, JsonObject>();
+  const feedItemIdsByCitationId = new Map<string, string>();
+  for (const [index, citation] of citations.entries()) {
+    const citationId = stringOrNull(citation.citationId) ?? `citation-${index}`;
+    const read = readsByCitationId.get(citationId);
+    const providerKey =
+      stringOrNull(citation.providerKey) ??
+      stringOrNull(read?.providerKey) ??
+      'unknown';
+    const id = stringOrNull(citation.feedItemId) ?? `feed-${citationId}`;
+    feedItemIdsByCitationId.set(citationId, id);
+    if (byId.has(id)) {
+      continue;
+    }
+
+    const canonicalUrl =
+      stringOrNull(citation.canonicalUrl) ??
+      stringOrNull(read?.canonicalUrl) ??
+      'https://example.invalid/source-unavailable';
+    const title =
+      stringOrNull(read?.title) ??
+      cleanCitationLabel(stringOrNull(citation.label)) ??
+      canonicalUrl;
+    const bodyPreview =
+      stringOrNull(read?.reason) ??
+      cleanCitationLabel(stringOrNull(citation.label)) ??
+      'Collected source evidence from the current reader summary window.';
+
+    byId.set(id, {
+      id,
+      topicId: stringArray(read?.matchedTopicIds)[0] ?? 'topic-ai-devtools',
+      sourceItemId:
+        stringOrNull(citation.sourceItemId) ?? `${providerKey}:${citationId}`,
+      sourceBindingId: `binding-${providerKey}`,
+      providerKey,
+      canonicalUrl,
+      title,
+      bodyPreview,
+      authorHandle: null,
+      normalizedSignal: null,
+      providerMetadata: {
+        kind: 'reader_summary_evidence',
+        citationId,
+        sourceLabel: stringOrNull(citation.label),
+      },
+      providerMetrics: null,
+      publishedAt: observedAt,
+      observedAt,
+    });
+  }
+
+  const prioritizedIds = [...topReadCitationIds]
+    .map((citationId) => feedItemIdsByCitationId.get(citationId))
+    .filter((id): id is string => id !== undefined);
+  const prioritized = prioritizedIds
+    .map((id) => byId.get(id))
+    .filter((item): item is JsonObject => item !== undefined);
+  const remaining = [...byId.entries()]
+    .filter(([id]) => !prioritizedIds.includes(id))
+    .map(([, item]) => item);
+
+  return [...prioritized, ...remaining];
+}
+
+function filterFeedItems(items: JsonObject[], url: URL): JsonObject[] {
+  const query = url.searchParams.get('q')?.trim().toLowerCase() ?? '';
+  const topicId = url.searchParams.get('topicId')?.trim();
+  const providerKey = url.searchParams.get('providerKey')?.trim();
+
+  return items.filter((item) => {
+    if (
+      topicId !== undefined &&
+      topicId.length > 0 &&
+      item.topicId !== topicId
+    ) {
+      return false;
+    }
+    if (
+      providerKey !== undefined &&
+      providerKey.length > 0 &&
+      item.providerKey !== providerKey
+    ) {
+      return false;
+    }
+    if (query.length === 0) {
+      return true;
+    }
+
+    return `${stringOrNull(item.title) ?? ''} ${
+      stringOrNull(item.bodyPreview) ?? ''
+    }`
+      .toLowerCase()
+      .includes(query);
+  });
+}
+
+function paginateFeedItems(
+  items: JsonObject[],
+  url: URL,
+): { readonly items: JsonObject[]; readonly nextCursor: string | null } {
+  const limit = positiveInteger(url.searchParams.get('limit'), 20);
+  const start = positiveInteger(url.searchParams.get('cursor'), 0);
+  const end = Math.min(start + limit, items.length);
+
+  return {
+    items: items.slice(start, end),
+    nextCursor: end < items.length ? String(end) : null,
+  };
+}
+
 const server = createServer((request, response) => {
   void handleRequest(request, response).catch((error: unknown) => {
     console.error(
@@ -496,6 +627,26 @@ async function handleRequest(
 
   if (request.method === 'GET' && url.pathname === '/summaries') {
     sendJson(response, 200, { items: [summaryArtifact], nextCursor: null });
+    return;
+  }
+
+  if (request.method === 'GET' && url.pathname === '/feed/items') {
+    const filtered = filterFeedItems(feedItems, url);
+    const { items, nextCursor } = paginateFeedItems(filtered, url);
+    sendJson(response, 200, { items, nextCursor });
+    return;
+  }
+
+  if (request.method === 'GET' && url.pathname.startsWith('/feed/items/')) {
+    const feedItemId = decodeURIComponent(
+      url.pathname.slice('/feed/items/'.length),
+    );
+    const item = feedItems.find((candidate) => candidate.id === feedItemId);
+    if (item === undefined) {
+      sendJson(response, 404, { error: 'feed_item_not_found', feedItemId });
+      return;
+    }
+    sendJson(response, 200, item);
     return;
   }
 
@@ -614,6 +765,42 @@ async function readJsonBody(request: IncomingMessage): Promise<JsonObject> {
 
 function isJsonObject(value: unknown): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function jsonObject(value: unknown): JsonObject | null {
+  return isJsonObject(value) ? value : null;
+}
+
+function jsonArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : [];
+}
+
+function stringOrNull(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0
+    ? value.trim()
+    : null;
+}
+
+function cleanCitationLabel(value: string | null): string | null {
+  if (value === null) {
+    return null;
+  }
+  const cleaned = value.replace(/^\[\d+\]\s*/, '').trim();
+  return cleaned.length > 0 ? cleaned : null;
+}
+
+function positiveInteger(value: string | null, fallback: number): number {
+  if (value === null || value.trim().length === 0) {
+    return fallback;
+  }
+  const parsed = Number.parseInt(value, 10);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
 function setCorsHeaders(response: ServerResponse): void {
