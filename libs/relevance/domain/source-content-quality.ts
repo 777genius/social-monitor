@@ -16,6 +16,7 @@ export type SourceContentQualityFlag =
   | "needs_link_context"
   | "official_account"
   | "personal_medical_anecdote"
+  | "promo_offer"
   | "prediction_market_rumor"
   | "rumor_only"
   | "trusted_author"
@@ -28,11 +29,7 @@ export type SourceContentQualityFlag =
   | "llm_rejected";
 
 export type SourceContentQualityDecision =
-  | "promote"
-  | "keep"
-  | "downrank"
-  | "reject"
-  | "needs_context";
+  "promote" | "keep" | "downrank" | "reject" | "needs_context";
 
 export type SourceContentQualityInput = {
   readonly providerKey: string;
@@ -105,6 +102,10 @@ export class SourceContentQualityPolicy {
       flags.add("engagement_bait");
     }
 
+    if (normalized.promoOffer) {
+      flags.add("promo_offer");
+    }
+
     if (normalized.genericQuestion) {
       flags.add("generic_question");
     }
@@ -137,6 +138,7 @@ export class SourceContentQualityPolicy {
         (normalized.mediaOnlyWithoutContext ? 0.2 : 0) -
         (normalized.cryptoPromo ? 0.5 : 0) -
         (normalized.engagementBait ? 0.2 : 0) -
+        (normalized.promoOffer ? 0.45 : 0) -
         (normalized.genericQuestion ? 0.12 : 0) -
         (normalized.predictionMarketRumor ? 0.18 : 0) -
         (normalized.rumorOnly ? 0.24 : 0) -
@@ -155,6 +157,7 @@ export class SourceContentQualityPolicy {
         (normalized.urlOnly ? 0.32 : 0) -
         (normalized.cryptoPromo ? 0.5 : 0) -
         (normalized.engagementBait ? 0.26 : 0) -
+        (normalized.promoOffer ? 0.5 : 0) -
         (normalized.predictionMarketRumor ? 0.34 : 0) -
         (normalized.rumorOnly ? 0.32 : 0) -
         (normalized.personalMedicalAnecdote ? 0.42 : 0) -
@@ -194,7 +197,9 @@ export class SourceContentQualityPolicy {
     }
 
     const hardBlocked = hasHardBlocker(deterministic.flags);
-    const reviewDecision = hardBlocked ? deterministic.decision : review.decision;
+    const reviewDecision = hardBlocked
+      ? deterministic.decision
+      : review.decision;
     const blendWeight = review.confidence >= 0.8 ? 0.45 : 0.25;
     const flags = new Set<SourceContentQualityFlag>([
       ...deterministic.flags,
@@ -256,6 +261,9 @@ const evaluateNonXSource = (
   if (normalized.predictionMarketRumor) {
     flags.add("prediction_market_rumor");
   }
+  if (normalized.promoOffer) {
+    flags.add("promo_offer");
+  }
   if (normalized.rumorOnly) {
     flags.add("rumor_only");
   }
@@ -267,6 +275,7 @@ const evaluateNonXSource = (
     0.95 -
       (normalized.lowInformationDensity ? 0.12 : 0) -
       (normalized.weakTopicMatch ? 0.16 : 0) -
+      (normalized.promoOffer ? 0.42 : 0) -
       (normalized.predictionMarketRumor ? 0.22 : 0) -
       (normalized.rumorOnly ? 0.28 : 0) -
       (normalized.personalMedicalAnecdote ? 0.42 : 0),
@@ -281,14 +290,16 @@ const evaluateNonXSource = (
   const engagementIntegrityScore = clampScore(
     0.92 -
       (normalized.predictionMarketRumor ? 0.28 : 0) -
+      (normalized.promoOffer ? 0.5 : 0) -
       (normalized.rumorOnly ? 0.34 : 0) -
       (normalized.personalMedicalAnecdote ? 0.46 : 0),
   );
-  const decision =
-    normalized.weakTopicMatch ||
-    normalized.predictionMarketRumor ||
-    normalized.rumorOnly ||
-    normalized.personalMedicalAnecdote
+  const decision = normalized.promoOffer
+    ? "reject"
+    : normalized.weakTopicMatch ||
+        normalized.predictionMarketRumor ||
+        normalized.rumorOnly ||
+        normalized.personalMedicalAnecdote
       ? "downrank"
       : "promote";
 
@@ -317,7 +328,7 @@ const decide = (params: {
   readonly topicRelevanceScore: number;
   readonly engagementIntegrityScore: number;
 }): SourceContentQualityDecision => {
-  if (params.normalized.cryptoPromo) {
+  if (params.normalized.cryptoPromo || params.normalized.promoOffer) {
     return "reject";
   }
 
@@ -342,6 +353,7 @@ const decide = (params: {
     params.topicRelevanceScore < 0.56 ||
     params.engagementIntegrityScore < 0.58 ||
     params.normalized.engagementBait ||
+    params.normalized.promoOffer ||
     params.normalized.genericQuestion ||
     params.normalized.predictionMarketRumor ||
     params.normalized.rumorOnly ||
@@ -422,6 +434,7 @@ const needsLlmReview = (params: {
 
 const hasHardBlocker = (flags: readonly SourceContentQualityFlag[]): boolean =>
   flags.includes("crypto_promo") ||
+  flags.includes("promo_offer") ||
   flags.includes("url_only") ||
   flags.includes("tco_only") ||
   flags.includes("needs_link_context") ||

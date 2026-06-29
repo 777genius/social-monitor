@@ -17,6 +17,7 @@ export type NormalizedSourceContentQualityInput = {
   readonly mediaOnlyWithoutContext: boolean;
   readonly cryptoPromo: boolean;
   readonly engagementBait: boolean;
+  readonly promoOffer: boolean;
   readonly genericQuestion: boolean;
   readonly predictionMarketRumor: boolean;
   readonly rumorOnly: boolean;
@@ -51,9 +52,11 @@ export const normalizeSourceContentQualityInput = (
     topicTerms.length > 0 &&
     !topicTerms.some((term) => normalizedText.includes(term));
   const cryptoPromo = cryptoPromoPattern.test(text);
-  const engagementBait = engagementBaitPattern.test(text);
+  const promoOffer = promoOfferPattern.test(text);
+  const engagementBait = engagementBaitPattern.test(text) || promoOffer;
   const predictionMarketRumor =
-    predictionMarketPattern.test(text) && rumorOrPoliticalClaimPattern.test(text);
+    predictionMarketPattern.test(text) &&
+    rumorOrPoliticalClaimPattern.test(text);
   const rumorOnly =
     rumorOnlyPattern.test(text) && unreleasedAiModelPattern.test(text);
   const personalMedicalAnecdote =
@@ -79,6 +82,7 @@ export const normalizeSourceContentQualityInput = (
     mediaOnlyWithoutContext,
     cryptoPromo,
     engagementBait,
+    promoOffer,
     genericQuestion,
     predictionMarketRumor,
     rumorOnly,
@@ -92,9 +96,7 @@ export const isXProvider = (providerKey: string): boolean => {
   const normalized = normalizeText(providerKey.trim());
 
   return (
-    normalized === "x-twitter" ||
-    normalized === "twitter" ||
-    normalized === "x"
+    normalized === "x-twitter" || normalized === "twitter" || normalized === "x"
   );
 };
 
@@ -177,6 +179,8 @@ const cryptoPromoPattern =
   /\b(?:bingx|airdrop|crypto|web3|defi|trading|trade|token|coin|memecoin|giveaway|prize|rewards?)\b|\$[a-z]{2,12}\b/iu;
 const engagementBaitPattern =
   /\b(?:drop\s+your|share\s+your|comment\s+below|reply\s+with|retweet|repost|like\s+and|follow\s+for|top\s+\d+)\b/iu;
+const promoOfferPattern =
+  /\b(?:all\s+paid\s+courses?|paid\s+courses?|free\s+courses?|free\s+for\s+(?:the\s+)?first|first\s+\d{2,6}\s+people|limited\s+spots?|claim\s+(?:your\s+)?free|course\s+giveaway|free\s+access)\b/iu;
 const predictionMarketPattern =
   /\b(?:polymarket|kalshi|prediction\s+market|market\s+odds|betting\s+odds)\b/iu;
 const rumorOrPoliticalClaimPattern =

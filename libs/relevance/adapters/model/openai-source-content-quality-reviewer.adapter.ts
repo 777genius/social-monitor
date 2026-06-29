@@ -83,9 +83,7 @@ export class OpenAiSourceContentQualityReviewerAdapter implements SourceContentQ
             title: request.title,
             bodyPreview: request.bodyPreview,
             canonicalUrl: request.canonicalUrl,
-            providerMetadata: minimalProviderMetadata(
-              request.providerMetadata,
-            ),
+            providerMetadata: minimalProviderMetadata(request.providerMetadata),
             deterministic: request.deterministic,
           })),
         }),
@@ -150,7 +148,9 @@ const minimalProviderMetadata = (
   ];
   const entries = keys
     .map((key) => [key, metadata[key]] as const)
-    .filter((entry): entry is readonly [string, JsonValue] => entry[1] !== undefined);
+    .filter(
+      (entry): entry is readonly [string, JsonValue] => entry[1] !== undefined,
+    );
 
   return entries.length === 0 ? undefined : Object.fromEntries(entries);
 };
@@ -218,7 +218,9 @@ const extractOutputText = (response: JsonObject): string | undefined => {
   return undefined;
 };
 
-const readDecision = (value: JsonValue | undefined): SourceContentQualityDecision => {
+const readDecision = (
+  value: JsonValue | undefined,
+): SourceContentQualityDecision => {
   if (
     value === "promote" ||
     value === "keep" ||
@@ -248,12 +250,19 @@ const optionalScore = (value: JsonValue | undefined): number | undefined =>
     ? clampNumber(value, 0, 1)
     : undefined;
 
-const clampNumber = (value: JsonValue | undefined, min: number, max: number): number =>
+const clampNumber = (
+  value: JsonValue | undefined,
+  min: number,
+  max: number,
+): number =>
   typeof value === "number" && Number.isFinite(value)
     ? Math.min(max, Math.max(min, value))
     : min;
 
-const nonEmptyString = (value: JsonValue | undefined, field: string): string => {
+const nonEmptyString = (
+  value: JsonValue | undefined,
+  field: string,
+): string => {
   if (typeof value === "string" && value.trim().length > 0) {
     return value.trim();
   }
@@ -304,6 +313,7 @@ const allowedFlags = new Set<SourceContentQualityFlag>([
   "needs_link_context",
   "official_account",
   "personal_medical_anecdote",
+  "promo_offer",
   "prediction_market_rumor",
   "rumor_only",
   "trusted_author",

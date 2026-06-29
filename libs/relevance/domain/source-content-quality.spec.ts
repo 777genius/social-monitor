@@ -64,6 +64,32 @@ describe("SourceContentQualityPolicy", () => {
     );
   });
 
+  it("rejects paid-course giveaway X posts even with high engagement", () => {
+    const verdict = policy.evaluate({
+      providerKey: "x-twitter",
+      authorHandle: "expertwith_AI",
+      title: "All Paid Courses Free for First 4500 People",
+      bodyPreview:
+        "All Paid Courses Free for First 4500 People. Claude Code, ChatGPT, AI automation and prompt engineering bundle.",
+      canonicalUrl: "https://x.com/expertwith_AI/status/2071203728359903517",
+      providerMetadata: {
+        kind: "x_post",
+        searchQuery: "Claude Code prompt workflows",
+        likes: 2139,
+        reposts: 1062,
+        replies: 2203,
+      },
+    });
+
+    expect(verdict.decision).toBe("reject");
+    expect(verdict.eligibleForSummary).toBe(false);
+    expect(verdict.eligibleForTopRead).toBe(false);
+    expect(verdict.needsLlmReview).toBe(false);
+    expect(verdict.flags).toEqual(
+      expect.arrayContaining(["engagement_bait", "promo_offer"]),
+    );
+  });
+
   it("promotes self-contained topical X posts", () => {
     const verdict = policy.evaluate({
       providerKey: "x-twitter",

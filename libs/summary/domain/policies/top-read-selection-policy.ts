@@ -16,14 +16,17 @@ export const selectUniqueTopReadCandidates = (
   const result: TopReadCandidate[] = [];
 
   for (const story of stories) {
-    if (
-      !hasTopReadEligibleCitation(story, citationById, evidenceByFeedItemId)
-    ) {
+    const eligibleStory = storyWithTopReadEligibleCitations(
+      story,
+      citationById,
+      evidenceByFeedItemId,
+    );
+    if (eligibleStory === undefined) {
       continue;
     }
 
     const keys = storyDeduplicationKeys(
-      story,
+      eligibleStory,
       citationById,
       evidenceByFeedItemId,
       clusterById,
@@ -34,27 +37,21 @@ export const selectUniqueTopReadCandidates = (
     for (const key of keys) {
       seen.add(key);
     }
-    result.push(story);
+    result.push(eligibleStory);
   }
 
   return diversifyByProviderCoverage(
-    prioritizeSocialNewsStories(
-      result,
-      citationById,
-      evidenceByFeedItemId,
-      clusterById,
-    ),
+    prioritizeSocialNewsStories(result, citationById, evidenceByFeedItemId),
     citationById,
     evidenceByFeedItemId,
-    clusterById,
   );
 };
 
-const hasTopReadEligibleCitation = (
+const storyWithTopReadEligibleCitations = (
   story: TopReadCandidate,
   citationById: ReadonlyMap<string, ReaderSummaryCitation>,
   evidenceByFeedItemId: ReadonlyMap<string, SummaryEvidenceItem>,
-): boolean => {
+): TopReadCandidate | undefined => {
   const citations = story.citationIds
     .map((citationId) => citationById.get(citationId))
     .filter(
@@ -62,14 +59,174 @@ const hasTopReadEligibleCitation = (
     );
 
   if (citations.length === 0) {
+    return story;
+  }
+
+  const eligibleCitations = citations.filter((citation) =>
+    isTopReadEligibleEvidence(evidenceByFeedItemId.get(citation.feedItemId)),
+  );
+  const eligibleCitationIds = eligibleCitations.map(
+    (citation) => citation.citationId,
+  );
+  const eligibleProviderKeys = compactUnique(
+    eligibleCitations.flatMap((citation) => [
+      citation.providerKey,
+      evidenceByFeedItemId.get(citation.feedItemId)?.providerKey,
+    ]),
+  );
+
+  return eligibleCitationIds.length === 0
+    ? undefined
+    : {
+        ...story,
+        providerKeys:
+          eligibleProviderKeys.length > 0
+            ? eligibleProviderKeys
+            : story.providerKeys,
+        citationIds: eligibleCitationIds,
+      };
+};
+
+const isTopReadEligibleEvidence = (
+  evidence: SummaryEvidenceItem | undefined,
+): boolean => {
+  if (evidence === undefined) {
+    return false;
+  }
+
+  if (evidence.contentQuality?.eligibleForTopRead === false) {
+    return false;
+  }
+
+  if (
+    evidence.contentQuality?.flags.some((flag) =>
+      topReadHardBlockQualityFlags.has(flag),
+    ) === true
+  ) {
+    return false;
+  }
+
+  return hasProviderTopReadSignal(evidence);
+};
+
+const topReadHardBlockQualityFlags = new Set([
+  "crypto_promo",
+  "engagement_bait",
+  "generic_question",
+  "media_only_without_context",
+  "needs_link_context",
+  "personal_medical_anecdote",
+  "prediction_market_rumor",
+  "promo_offer",
+  "rumor_only",
+  "tco_only",
+  "url_only",
+  "weak_topic_match",
+]);
+
+const hasProviderTopReadSignal = (evidence: SummaryEvidenceItem): boolean => {
+  const labels = evidence.providerMetricLabels ?? [];
+  const family = providerFamilyKey(evidence.providerKey);
+
+  if (labels.length === 0) {
     return true;
   }
 
-  return citations.some(
-    (citation) =>
-      evidenceByFeedItemId.get(citation.feedItemId)?.contentQuality
-        ?.eligibleForTopRead !== false,
+  if (family === "x-twitter") {
+    const likes = metricValue(labels, "likes") ?? 0;
+    const reposts = metricValue(labels, "reposts") ?? 0;
+    const replies = metricValue(labels, "replies") ?? 0;
+    const weighted = likes + reposts * 2 + replies * 0.5;
+
+    return likes >= 25 || reposts >= 8 || replies >= 12 || weighted >= 50;
+  }
+
+  if (family === "reddit") {
+    const score = metricValue(labels, "score") ?? 0;
+    const comments = metricValue(labels, "comments") ?? 0;
+
+    return score >= 20 || comments >= 5 || score + comments * 2 >= 35;
+  }
+
+  if (family === "hacker-news") {
+    const points = metricValue(labels, "points") ?? 0;
+    const comments = metricValue(labels, "comments") ?? 0;
+
+    return points >= 20 || comments >= 8 || points + comments * 2 >= 35;
+  }
+
+  if (family === "github") {
+    const trend = Math.max(
+      metricSignedValue(labels, "trend 24h") ?? 0,
+      metricSignedValue(labels, "trend 48h") ?? 0,
+      metricSignedValue(labels, "trend") ?? 0,
+      metricAnySignedValue(labels, "github trending") ?? 0,
+    );
+    const rank = metricRankValue(labels, "github trending");
+
+    return trend >= 50 || (rank !== undefined && rank <= 10);
+  }
+
+  return true;
+};
+
+const metricValue = (
+  labels: NonNullable<SummaryEvidenceItem["providerMetricLabels"]>,
+  label: string,
+): number | undefined =>
+  parseMetricNumber(
+    labels.find((metric) => metric.label.toLowerCase() === label)?.value,
   );
+const metricSignedValue = (
+  labels: NonNullable<SummaryEvidenceItem["providerMetricLabels"]>,
+  label: string,
+): number | undefined =>
+  parseSignedMetricNumber(
+    labels.find((metric) => metric.label.toLowerCase() === label)?.value,
+  );
+
+const metricAnySignedValue = (
+  labels: NonNullable<SummaryEvidenceItem["providerMetricLabels"]>,
+  labelPrefix: string,
+): number | undefined =>
+  parseSignedMetricNumber(
+    labels.find((metric) => metric.label.toLowerCase().startsWith(labelPrefix))
+      ?.value,
+  );
+
+const metricRankValue = (
+  labels: NonNullable<SummaryEvidenceItem["providerMetricLabels"]>,
+  labelPrefix: string,
+): number | undefined => {
+  const value = labels.find((metric) =>
+    metric.label.toLowerCase().startsWith(labelPrefix),
+  )?.value;
+
+  return value === undefined
+    ? undefined
+    : parseMetricNumber(value.match(/#\s*([0-9,]+)/u)?.[1]);
+};
+
+const parseMetricNumber = (value: string | undefined): number | undefined => {
+  const match = value?.match(/-?[0-9][0-9,]*/u);
+  if (match === undefined || match === null) {
+    return undefined;
+  }
+  const parsed = Number(match[0].replace(/,/gu, ""));
+
+  return Number.isFinite(parsed) ? parsed : undefined;
+};
+
+const parseSignedMetricNumber = (
+  value: string | undefined,
+): number | undefined => {
+  const match = value?.match(/[+-]\s*[0-9][0-9,]*/u);
+  if (match === undefined || match === null) {
+    return parseMetricNumber(value);
+  }
+  const parsed = Number(match[0].replace(/\s|,/gu, ""));
+
+  return Number.isFinite(parsed) ? parsed : undefined;
 };
 
 const storyDeduplicationKeys = (
@@ -186,7 +343,6 @@ const diversifyByProviderCoverage = (
   stories: readonly TopReadCandidate[],
   citationById: ReadonlyMap<string, ReaderSummaryCitation>,
   evidenceByFeedItemId: ReadonlyMap<string, SummaryEvidenceItem>,
-  clusterById: ReadonlyMap<string, StoryCluster>,
 ): readonly TopReadCandidate[] => {
   const coveredProviderKeys = new Set<string>();
   const selected = new Set<TopReadCandidate>();
@@ -197,7 +353,6 @@ const diversifyByProviderCoverage = (
       story,
       citationById,
       evidenceByFeedItemId,
-      clusterById,
     );
     if (
       diversified.length > 0 &&
@@ -225,7 +380,6 @@ const prioritizeSocialNewsStories = (
   stories: readonly TopReadCandidate[],
   citationById: ReadonlyMap<string, ReaderSummaryCitation>,
   evidenceByFeedItemId: ReadonlyMap<string, SummaryEvidenceItem>,
-  clusterById: ReadonlyMap<string, StoryCluster>,
 ): readonly TopReadCandidate[] =>
   stories
     .map((story, index) => ({ story, index }))
@@ -234,14 +388,23 @@ const prioritizeSocialNewsStories = (
         left.story,
         citationById,
         evidenceByFeedItemId,
-        clusterById,
       );
       const rightPriority = storyProviderPriority(
         right.story,
         citationById,
         evidenceByFeedItemId,
-        clusterById,
       );
+      if (leftPriority.hasProviderMetrics && rightPriority.hasProviderMetrics) {
+        const metricCoverageDiff =
+          rightPriority.providerFamilyCount - leftPriority.providerFamilyCount;
+
+        if (metricCoverageDiff !== 0) {
+          return metricCoverageDiff;
+        }
+
+        return left.index - right.index;
+      }
+
       const priorityDiff = leftPriority.category - rightPriority.category;
 
       if (priorityDiff !== 0) {
@@ -263,19 +426,25 @@ const storyProviderPriority = (
   story: TopReadCandidate,
   citationById: ReadonlyMap<string, ReaderSummaryCitation>,
   evidenceByFeedItemId: ReadonlyMap<string, SummaryEvidenceItem>,
-  clusterById: ReadonlyMap<string, StoryCluster>,
-): { readonly category: number; readonly providerFamilyCount: number } => {
+): {
+  readonly category: number;
+  readonly providerFamilyCount: number;
+  readonly hasProviderMetrics: boolean;
+} => {
   const providerKeys = storyProviderKeys(
     story,
     citationById,
     evidenceByFeedItemId,
-    clusterById,
   );
   const providerFamilies = compactUnique(providerKeys.map(providerFamilyKey));
   const priorities = providerFamilies.map(providerFamilyPriority);
-  const priority = Math.min(...priorities, socialNewsProviderFamilyOrder.length);
+  const priority = Math.min(
+    ...priorities,
+    socialNewsProviderFamilyOrder.length,
+  );
   const hasPrimarySocialFamily =
-    providerFamilies.includes("x-twitter") || providerFamilies.includes("reddit");
+    providerFamilies.includes("x-twitter") ||
+    providerFamilies.includes("reddit");
   const hasStrongCrossProviderSupport =
     providerFamilies.length > 1 &&
     (hasPrimarySocialFamily || providerFamilies.length >= 3);
@@ -283,6 +452,11 @@ const storyProviderPriority = (
   return {
     category: hasStrongCrossProviderSupport ? 0 : priority + 1,
     providerFamilyCount: providerFamilies.length,
+    hasProviderMetrics: storyHasProviderMetrics(
+      story,
+      citationById,
+      evidenceByFeedItemId,
+    ),
   };
 };
 
@@ -329,7 +503,6 @@ const storyProviderKeys = (
   story: TopReadCandidate,
   citationById: ReadonlyMap<string, ReaderSummaryCitation>,
   evidenceByFeedItemId: ReadonlyMap<string, SummaryEvidenceItem>,
-  clusterById: ReadonlyMap<string, StoryCluster>,
 ): readonly string[] => {
   const citations = story.citationIds
     .map((citationId) => citationById.get(citationId))
@@ -339,7 +512,6 @@ const storyProviderKeys = (
 
   return compactUnique([
     ...story.providerKeys,
-    ...(clusterById.get(story.storyClusterId)?.providerKeys ?? []),
     ...citations.map((citation) => citation.providerKey),
     ...citations.map(
       (citation) => evidenceByFeedItemId.get(citation.feedItemId)?.providerKey,
@@ -347,3 +519,19 @@ const storyProviderKeys = (
     story.providerKeys[0] ?? "unknown",
   ]);
 };
+
+const storyHasProviderMetrics = (
+  story: TopReadCandidate,
+  citationById: ReadonlyMap<string, ReaderSummaryCitation>,
+  evidenceByFeedItemId: ReadonlyMap<string, SummaryEvidenceItem>,
+): boolean =>
+  story.citationIds.some((citationId) => {
+    const citation = citationById.get(citationId);
+    if (citation === undefined) {
+      return false;
+    }
+    return (
+      (evidenceByFeedItemId.get(citation.feedItemId)?.providerMetricLabels
+        ?.length ?? 0) > 0
+    );
+  });
