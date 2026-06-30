@@ -5,8 +5,10 @@ import '../../application/commands/change_source_binding_status_command.dart';
 import '../../application/contracts/source_binding_catalog.dart';
 import '../../application/queries/list_source_bindings_query.dart';
 import '../../application/queries/load_source_binding_health_query.dart';
+import '../../application/queries/load_source_binding_overview_query.dart';
 import '../../domain/entities/source_binding.dart';
 import '../../domain/entities/source_binding_health_snapshot.dart';
+import '../../domain/entities/source_binding_overview.dart';
 import '../api/source_binding_api_dto.dart';
 import '../api_clients/source_bindings_api_client.dart';
 import '../mappers/source_binding_mapper.dart';
@@ -90,6 +92,23 @@ final class GeneratedSourceBindingCatalog implements SourceBindingCatalog {
     return result.fold(
       onSuccess: (dto) => Result.success(_mapper.healthToDomain(dto)),
       onFailure: Result<SourceBindingHealthSnapshot>.failure,
+    );
+  }
+
+  @override
+  Future<Result<SourceBindingOverview>> loadSourceBindingOverview(
+    LoadSourceBindingOverviewQuery query,
+  ) async {
+    final result = await _apiClient.loadSourceBindingOverview(
+      SourceBindingOverviewApiRequestDto(
+        scope: query.scope,
+        interestId: query.interestId.value,
+        page: query.page,
+      ),
+    );
+    return result.fold(
+      onSuccess: (dto) => Result.success(_mapper.overviewToDomain(dto)),
+      onFailure: Result<SourceBindingOverview>.failure,
     );
   }
 

@@ -4,7 +4,7 @@ import type {
 } from "../../../ports";
 import { redditListings, redditTopTimes } from "./http-reddit-client";
 import type {
-  RedditComment,
+  RedditCommentSort,
   RedditPost,
   RedditPostListing,
   RedditTopTime,
@@ -20,6 +20,8 @@ export type RedditScanPass =
       readonly minScore?: number;
       readonly includeComments?: boolean;
       readonly maxCommentsPerPost?: number;
+      readonly commentDepth?: number;
+      readonly commentSort?: RedditCommentSort;
     }
   | {
       readonly mode: "search";
@@ -28,7 +30,15 @@ export type RedditScanPass =
       readonly minScore?: number;
       readonly includeComments?: boolean;
       readonly maxCommentsPerPost?: number;
+      readonly commentDepth?: number;
+      readonly commentSort?: RedditCommentSort;
     };
+
+const redditCommentSorts: readonly RedditCommentSort[] = [
+  "confidence",
+  "top",
+  "new",
+];
 
 export const normalizePost = (
   post: RedditPost,
@@ -86,48 +96,6 @@ export const redditWarnings = (
     : []),
 ];
 
-export const normalizeComment = (
-  comment: RedditComment,
-  post: RedditPost,
-  minScore: number | undefined,
-): readonly FetchedSourceItem[] => {
-  if (comment.removedByCategory !== undefined) {
-    return [];
-  }
-
-  if (
-    minScore !== undefined &&
-    comment.score !== undefined &&
-    comment.score < minScore
-  ) {
-    return [];
-  }
-
-  const body = comment.body?.trim() ?? "";
-
-  if (body.length === 0) {
-    return [];
-  }
-
-  const publishedAt = publishedAtForComment(comment);
-
-  if (publishedAt === undefined) {
-    return [];
-  }
-
-  return [
-    {
-      externalId: `reddit:${comment.name ?? `t1_${comment.id}`}`,
-      canonicalUrl: canonicalCommentUrl(comment, post),
-      title: post.title === undefined ? "Reddit comment" : `Comment on ${post.title}`,
-      body,
-      authorHandle: comment.author,
-      publishedAt,
-      metadata: redditCommentMetadata(comment, post),
-    },
-  ];
-};
-
 export const parseListingQuery = (
   value: string,
 ): { readonly subreddit: string; readonly listing: RedditPostListing } => {
@@ -157,6 +125,16 @@ export const readTopTime = (value: unknown): RedditTopTime => {
   }
 
   return topTime as RedditTopTime;
+};
+
+export const readCommentSort = (value: unknown): RedditCommentSort => {
+  const sort = readOptionalString(value) ?? "confidence";
+
+  if (!redditCommentSorts.includes(sort as RedditCommentSort)) {
+    throw new Error(`Unsupported Reddit commentSort: ${sort}`);
+  }
+
+  return sort as RedditCommentSort;
 };
 
 export const readScanPasses = (
@@ -296,6 +274,8 @@ const readCommentExpansion = (
 ): {
   readonly includeComments?: boolean;
   readonly maxCommentsPerPost?: number;
+  readonly commentDepth?: number;
+  readonly commentSort?: RedditCommentSort;
 } => {
   if (pass.includeComments !== true) {
     return {};
@@ -309,6 +289,8 @@ const readCommentExpansion = (
   return {
     includeComments: true,
     ...(maxCommentsPerPost === undefined ? {} : { maxCommentsPerPost }),
+    commentDepth: readPositiveInteger(pass.commentDepth, 2, 0, 10),
+    commentSort: readCommentSort(pass.commentSort),
   };
 };
 
@@ -348,37 +330,12 @@ const publishedAtForPost = (post: RedditPost): Date | undefined => {
   return Number.isNaN(publishedAt.getTime()) ? undefined : publishedAt;
 };
 
-const publishedAtForComment = (comment: RedditComment): Date | undefined => {
-  if (
-    comment.createdUtc === undefined ||
-    !Number.isFinite(comment.createdUtc) ||
-    comment.createdUtc <= 0
-  ) {
-    return undefined;
-  }
-
-  const publishedAt = new Date(comment.createdUtc * 1000);
-
-  return Number.isNaN(publishedAt.getTime()) ? undefined : publishedAt;
-};
-
 const canonicalUrl = (post: RedditPost): string => {
   if (post.permalink !== undefined) {
     return new URL(post.permalink, "https://www.reddit.com").toString();
   }
 
   return post.url ?? `https://www.reddit.com/comments/${post.id}`;
-};
-
-const canonicalCommentUrl = (
-  comment: RedditComment,
-  post: RedditPost,
-): string => {
-  if (comment.permalink !== undefined) {
-    return new URL(comment.permalink, "https://www.reddit.com").toString();
-  }
-
-  return `${canonicalUrl(post)}${canonicalUrl(post).includes("?") ? "&" : "?"}comment=${comment.id}`;
 };
 
 const redditEngagementScore = (item: FetchedSourceItem): number => {
@@ -399,19 +356,6 @@ const redditPostMetadata = (post: RedditPost) => ({
   ...(post.numComments === undefined ? {} : { numComments: post.numComments }),
   ...(post.upvoteRatio === undefined ? {} : { upvoteRatio: post.upvoteRatio }),
 });
-
-const redditCommentMetadata = (comment: RedditComment, post: RedditPost) => {
-  const subreddit = comment.subreddit ?? post.subreddit;
-
-  return {
-    kind: "reddit_comment",
-    parentPostId: post.name ?? post.id,
-    ...(post.title === undefined ? {} : { parentPostTitle: post.title }),
-    ...(subreddit === undefined ? {} : { subreddit }),
-    ...(comment.score === undefined ? {} : { score: comment.score }),
-    ...(comment.depth === undefined ? {} : { depth: comment.depth }),
-  };
-};
 
 const linkedUrl = (post: RedditPost): string | undefined => {
   if (post.url === undefined) {

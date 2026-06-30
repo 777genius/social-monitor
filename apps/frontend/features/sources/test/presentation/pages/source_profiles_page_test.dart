@@ -26,6 +26,12 @@ void main() {
       sourceProfileApiDto(
         providerKey: 'hn',
         displayName: 'Hacker News',
+        health: const SourceProfileHealthApiDto(
+          state: 'unsupported_scope',
+          reasonCode: 'runtime_deferred',
+          message: 'Hacker News source runtime disabled.',
+          signals: ['runtime_deferred'],
+        ),
         readinessState: 'profiled',
         runtimeReadiness: 'deferred',
         limitations: const ['Backend integration deferred'],
@@ -34,6 +40,12 @@ void main() {
       sourceProfileApiDto(
         providerKey: 'github',
         displayName: 'GitHub',
+        health: const SourceProfileHealthApiDto(
+          state: 'unsupported_scope',
+          reasonCode: 'runtime_deferred',
+          message: 'GitHub source runtime disabled.',
+          signals: ['runtime_deferred'],
+        ),
         readinessState: 'profiled',
         runtimeReadiness: 'deferred',
         supportedContentUnits: const ['issues', 'pull requests'],
@@ -48,7 +60,7 @@ void main() {
     expect(find.text('RSS'), findsOneWidget);
     expect(find.text('Hacker News'), findsOneWidget);
     expect(find.text('GitHub'), findsOneWidget);
-    expect(find.text('Not enabled'), findsWidgets);
+    expect(find.text('Unsupported scope'), findsWidgets);
     expect(find.text('Connect source'), findsNothing);
 
     await tester.tap(find.byTooltip('Show limitations').first);

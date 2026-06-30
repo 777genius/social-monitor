@@ -11,8 +11,15 @@ export type ProjectFeedItemsCommand = {
   readonly sourceItems: readonly SourceItem[];
 };
 
+export type ProjectedFeedItemRef = {
+  readonly sourceItemId: string;
+  readonly sourceExternalId: string;
+  readonly feedItemId: string;
+};
+
 export type ProjectFeedItemsResult = {
   readonly projected: number;
+  readonly projectedItems: readonly ProjectedFeedItemRef[];
 };
 
 export interface FeedProjectionPort {

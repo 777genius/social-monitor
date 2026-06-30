@@ -45,6 +45,16 @@ void main() {
     expect(status.userState, ScanUserState.scanDegraded);
     expect(status.failureClass, ScanFailureClass.providerRateLimited);
     expect(status.latestAttempt?.status, ScanAttemptStatus.failed);
+
+    final authStatus = mapper.statusToDomain(
+      scanStatusApiDto(
+        status: 'failed',
+        userState: 'scan_degraded',
+        failureClass: 'provider_auth_failed',
+      ),
+    );
+
+    expect(authStatus.failureClass, ScanFailureClass.providerAuthFailed);
   });
 
   test('maps unknown scan status values as unknown', () {

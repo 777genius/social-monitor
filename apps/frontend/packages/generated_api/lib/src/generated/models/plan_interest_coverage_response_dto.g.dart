@@ -31,6 +31,11 @@ PlanInterestCoverageResponseDto _$PlanInterestCoverageResponseDtoFromJson(
         ),
       )
       .toList(),
+  sourcePack: json['sourcePack'] == null
+      ? null
+      : InterestCoverageSourcePackDto.fromJson(
+          json['sourcePack'] as Map<String, dynamic>,
+        ),
 );
 
 Map<String, dynamic> _$PlanInterestCoverageResponseDtoToJson(
@@ -42,4 +47,5 @@ Map<String, dynamic> _$PlanInterestCoverageResponseDtoToJson(
   'normalizedKeywords': instance.normalizedKeywords,
   'planningQuery': instance.planningQuery,
   'skippedProviders': instance.skippedProviders,
+  'sourcePack': instance.sourcePack,
 };

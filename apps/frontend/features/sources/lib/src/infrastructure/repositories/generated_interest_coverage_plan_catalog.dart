@@ -27,6 +27,7 @@ final class GeneratedInterestCoveragePlanCatalog
         scope: query.scope,
         interestId: query.interestId.value,
         description: query.description,
+        sourcePackKey: query.sourcePackKey,
         keywords: query.keywords,
         subreddits: query.subreddits,
         rssFeedUrls: query.rssFeedUrls,

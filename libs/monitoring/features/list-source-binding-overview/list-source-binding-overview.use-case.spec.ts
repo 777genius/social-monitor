@@ -48,17 +48,20 @@ describe('ListSourceBindingOverviewUseCase', () => {
           scheduledBindings: 1,
           attentionRequiredBindings: 0,
           operatorAction: 'monitor_sources',
+          degradationReasons: [],
           signals: ['scheduled_later'],
           providerBreakdown: [
             expect.objectContaining({
               providerKey: 'github-trending-page',
               totalBindings: 1,
               scheduledBindings: 1,
+              degradationReasons: [],
             }),
             expect.objectContaining({
               providerKey: 'reddit',
               totalBindings: 1,
               healthyBindings: 1,
+              degradationReasons: [],
             }),
           ],
         }),
@@ -117,8 +120,8 @@ describe('ListSourceBindingOverviewUseCase', () => {
         })))
         .mockResolvedValueOnce(ok(makeHealthView({
           sourceBinding: makeSourceBindingView({ id: 'binding-rate-limited', providerKey: 'reddit' }),
-          healthState: 'down',
-          operatorAction: 'pause_or_backoff_provider_until_recovery',
+          healthState: 'rate_limited',
+          operatorAction: 'wait_for_provider_rate_limit_backoff',
           schedulerDecision: {
             canScanNow: false,
             decision: 'rate_limit_backoff',
@@ -138,10 +141,11 @@ describe('ListSourceBindingOverviewUseCase', () => {
             failedScans: 2,
             activeScans: 0,
             rateLimitedScans: 2,
-            providerUnavailableScans: 1,
+            authFailedScans: 0,
+            providerUnavailableScans: 0,
             consecutiveFailures: 2,
             operatorAction: 'wait_for_provider_rate_limit_backoff',
-            signals: ['rate_limit_backoff', 'provider_unavailable'],
+            signals: ['rate_limit_backoff'],
           },
         })))
         .mockResolvedValueOnce(ok(makeHealthView({
@@ -166,6 +170,7 @@ describe('ListSourceBindingOverviewUseCase', () => {
             failedScans: 2,
             activeScans: 0,
             rateLimitedScans: 0,
+            authFailedScans: 0,
             providerUnavailableScans: 2,
             consecutiveFailures: 2,
             operatorAction: 'check_provider_health_or_credentials',
@@ -196,24 +201,25 @@ describe('ListSourceBindingOverviewUseCase', () => {
           canScanNowBindings: 1,
           staleBindings: 1,
           degradedBindings: 1,
-          downBindings: 1,
+          downBindings: 0,
           rateLimitedBindings: 1,
           providerFailureBackoffSkips: 1,
-          providerUnavailableScans: 3,
+          providerUnavailableScans: 2,
           attentionRequiredBindings: 3,
           nextEligibleAt: '2026-06-26T00:05:00.000Z',
           operatorAction: 'check_provider_health_or_credentials',
-          signals: ['provider_failure_backoff', 'provider_unavailable', 'rate_limit_backoff', 'scan_ready', 'scheduled_later', 'source_down', 'stale_source_data'],
+          signals: ['provider_failure_backoff', 'provider_unavailable', 'rate_limit_backoff', 'scan_ready', 'scheduled_later', 'source_rate_limited', 'stale_source_data'],
           providerBreakdown: [
             expect.objectContaining({
               providerKey: 'reddit',
               totalBindings: 3,
               staleBindings: 1,
               degradedBindings: 1,
-              downBindings: 1,
+              downBindings: 0,
+              rateLimitedBindings: 1,
               rateLimitBackoffSkips: 1,
               providerFailureBackoffSkips: 1,
-              providerUnavailableScans: 3,
+              providerUnavailableScans: 2,
             }),
             expect.objectContaining({
               providerKey: 'rss',
@@ -224,6 +230,127 @@ describe('ListSourceBindingOverviewUseCase', () => {
         }),
       }),
     });
+  });
+
+  it('explains degradation reasons without collapsing credential, scope and rate-limit failures', async () => {
+    const listSourceBindings = {
+      execute: jest.fn().mockResolvedValue(ok({
+        sourceBindings: [
+          makeSourceBindingView({ id: 'binding-auth', providerKey: 'reddit' }),
+          makeSourceBindingView({ id: 'binding-scope', providerKey: 'reddit' }),
+          makeSourceBindingView({ id: 'binding-rate', providerKey: 'reddit' }),
+        ],
+      })),
+    };
+    const getSourceBindingHealth = {
+      execute: jest.fn()
+        .mockResolvedValueOnce(ok(makeHealthView({
+          sourceBinding: makeSourceBindingView({ id: 'binding-auth', providerKey: 'reddit' }),
+          healthState: 'degraded',
+          schedulerDecision: {
+            canScanNow: false,
+            decision: 'provider_failure_backoff',
+            reason: 'provider_failure_backoff_active',
+            minimumIntervalSeconds: 900,
+            nextEligibleAt: '2026-06-26T00:20:00.000Z',
+            providerFailureBackoffUntil: '2026-06-26T00:20:00.000Z',
+            waitSeconds: 1200,
+            signals: ['provider_failure_backoff'],
+          },
+          latestScan: {
+            scanJobId: 'scan-auth',
+            status: 'failed',
+            userState: 'scan_degraded',
+            failureClass: 'provider_unavailable',
+            operatorAction: 'check_provider_health_and_retry_budget',
+            requestedAt: '2026-06-26T00:00:00.000Z',
+            completedAt: '2026-06-26T00:01:00.000Z',
+            failureReason: 'provider=reddit kind=auth_failed retryable=false message=provider credential rejected',
+          },
+        })))
+        .mockResolvedValueOnce(ok(makeHealthView({
+          sourceBinding: makeSourceBindingView({ id: 'binding-scope', providerKey: 'reddit' }),
+          healthState: 'degraded',
+          latestScan: {
+            scanJobId: 'scan-scope',
+            status: 'failed',
+            userState: 'scan_degraded',
+            failureClass: 'provider_unavailable',
+            operatorAction: 'check_provider_health_and_retry_budget',
+            requestedAt: '2026-06-26T00:00:00.000Z',
+            completedAt: '2026-06-26T00:01:00.000Z',
+            failureReason: 'provider=reddit kind=invalid_query retryable=false message=insufficient_scope',
+          },
+        })))
+        .mockResolvedValueOnce(ok(makeHealthView({
+          sourceBinding: makeSourceBindingView({ id: 'binding-rate', providerKey: 'reddit' }),
+          healthState: 'degraded',
+          schedulerDecision: {
+            canScanNow: false,
+            decision: 'rate_limit_backoff',
+            reason: 'provider_rate_limit_backoff_active',
+            minimumIntervalSeconds: 900,
+            nextEligibleAt: '2026-06-26T00:30:00.000Z',
+            rateLimitBackoffUntil: '2026-06-26T00:30:00.000Z',
+            waitSeconds: 1800,
+            signals: ['rate_limit_backoff'],
+          },
+          latestScan: {
+            scanJobId: 'scan-rate',
+            status: 'failed',
+            userState: 'scan_degraded',
+            failureClass: 'provider_rate_limited',
+            operatorAction: 'reduce_scan_frequency_or_pause_affected_source',
+            requestedAt: '2026-06-26T00:00:00.000Z',
+            completedAt: '2026-06-26T00:01:00.000Z',
+            failureReason: 'provider=reddit kind=rate_limited retryable=true message=429',
+          },
+        }))),
+    };
+
+    const result = await new ListSourceBindingOverviewUseCase(
+      listSourceBindings,
+      getSourceBindingHealth,
+    ).execute({
+      tenantId: tenantId('tenant-overview'),
+      workspaceId: workspaceId('workspace-overview'),
+      interestId: 'interest-overview',
+      limit: 50,
+    });
+
+    if (!result.ok) {
+      throw result.error;
+    }
+
+    expect(result.value.summary.degradationReasons).toEqual([
+      expect.objectContaining({
+        code: 'auth_failed',
+        severity: 'critical',
+        affectedBindings: 1,
+        operatorAction: 'refresh_or_reconnect_source_credentials',
+        nextEligibleAt: '2026-06-26T00:20:00.000Z',
+        sampleSourceBindingIds: ['binding-auth'],
+      }),
+      expect.objectContaining({
+        code: 'unsupported_scope',
+        severity: 'critical',
+        affectedBindings: 1,
+        operatorAction: 'adjust_source_query_or_requested_scopes',
+        nextEligibleAt: '2026-06-26T00:05:00.000Z',
+        sampleSourceBindingIds: ['binding-scope'],
+      }),
+      expect.objectContaining({
+        code: 'rate_limited',
+        severity: 'warning',
+        affectedBindings: 1,
+        operatorAction: 'wait_for_provider_rate_limit_backoff',
+        nextEligibleAt: '2026-06-26T00:30:00.000Z',
+        sampleSourceBindingIds: ['binding-rate'],
+      }),
+    ]);
+    expect(result.value.summary.providerBreakdown[0]?.degradationReasons).toEqual(
+      result.value.summary.degradationReasons,
+    );
   });
 
   it('returns list errors without reading per-binding health', async () => {
@@ -342,6 +469,13 @@ const makeHealthView = (
     sourceBinding: makeSourceBindingView(),
     healthState: 'scheduled',
     operatorAction: 'wait_for_next_run_or_trigger_manual_scan',
+    healthExplanation: {
+      reasonCode: 'source_scheduled',
+      message: 'Fake source scheduled.',
+      operatorAction: 'wait_for_next_run_or_trigger_manual_scan',
+      unavailableUntil: '2026-06-26T00:05:00.000Z',
+      signals: ['scheduled_later'],
+    },
     evaluatedAt: '2026-06-26T00:00:00.000Z',
     schedulerDecision: {
       canScanNow: false,
@@ -362,6 +496,7 @@ const makeHealthView = (
       failedScans: 0,
       activeScans: 0,
       rateLimitedScans: 0,
+      authFailedScans: 0,
       providerUnavailableScans: 0,
       consecutiveFailures: 0,
       operatorAction: 'wait_for_next_scan_or_trigger_manual_scan',

@@ -11,6 +11,7 @@ _$SourceBindingHealthRecentWindowResponseDtoFromJson(
   Map<String, dynamic> json,
 ) => SourceBindingHealthRecentWindowResponseDto(
   activeScans: json['activeScans'] as num,
+  authFailedScans: json['authFailedScans'] as num,
   consecutiveFailures: json['consecutiveFailures'] as num,
   failedScans: json['failedScans'] as num,
   operatorAction: json['operatorAction'] as String,
@@ -37,6 +38,7 @@ Map<String, dynamic> _$SourceBindingHealthRecentWindowResponseDtoToJson(
   SourceBindingHealthRecentWindowResponseDto instance,
 ) => <String, dynamic>{
   'activeScans': instance.activeScans,
+  'authFailedScans': instance.authFailedScans,
   'consecutiveFailures': instance.consecutiveFailures,
   'failedScans': instance.failedScans,
   'lastFailedAt': instance.lastFailedAt?.toIso8601String(),

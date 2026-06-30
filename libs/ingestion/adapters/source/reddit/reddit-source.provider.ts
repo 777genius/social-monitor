@@ -1,6 +1,7 @@
 import { redactSensitiveText } from '@social-monitor/shared-kernel';
 
 import type {
+  FetchedConversationUnit,
   FetchedSourceItem,
   ProviderFailure,
   SourceCapabilityProfile,
@@ -13,12 +14,13 @@ import type {
 } from '../../../ports';
 import type { RedditClientPort, RedditListingPage, RedditPost } from './reddit-client.port';
 import type { RedditRefreshTokenProviderPort } from './refresh-token-reddit-token-provider';
+import { normalizeComment } from './reddit-comment-source-support';
 import {
   compactUnique,
   firstNonEmptyString,
-  normalizeComment,
   normalizePost,
   parseListingQuery,
+  readCommentSort,
   readListing,
   readOptionalNonNegativeInteger,
   readOptionalPositiveInteger,
@@ -32,6 +34,11 @@ import {
   type RedditScanPass,
 } from './reddit-source-support';
 import type { RedditTokenProviderPort } from './reddit-token-provider.port';
+
+type NormalizedRedditScanResult = {
+  readonly items: readonly FetchedSourceItem[];
+  readonly conversationUnits: readonly FetchedConversationUnit[];
+};
 
 const capabilityProfile: SourceCapabilityProfile = {
   providerKey: 'reddit',
@@ -107,6 +114,8 @@ export class RedditSourceProvider implements SourceProviderPort {
     const scanPasses = readScanPasses(context.config);
     const includeComments = context.config?.includeComments === true;
     const maxCommentsPerPost = readOptionalPositiveInteger(context.config?.maxCommentsPerPost, 100);
+    const commentDepth = readPositiveInteger(context.config?.commentDepth, 2, 0, 10);
+    const commentSort = readCommentSort(context.config?.commentSort);
 
     if (scanPasses.length > 0) {
       return this.scanPasses({
@@ -117,6 +126,8 @@ export class RedditSourceProvider implements SourceProviderPort {
         fallbackMinScore: minScore,
         fallbackIncludeComments: includeComments,
         fallbackMaxCommentsPerPost: maxCommentsPerPost,
+        fallbackCommentDepth: commentDepth,
+        fallbackCommentSort: commentSort,
       });
     }
 
@@ -146,10 +157,13 @@ export class RedditSourceProvider implements SourceProviderPort {
       minScore,
       includeComments,
       maxCommentsPerPost,
+      commentDepth,
+      commentSort,
     });
 
     return {
-      items: normalized,
+      items: normalized.items,
+      conversationUnits: normalized.conversationUnits,
       nextCursor: page.after,
       warnings: redditWarnings(page.posts, minScore),
     };
@@ -235,12 +249,15 @@ export class RedditSourceProvider implements SourceProviderPort {
     readonly fallbackMinScore: number | undefined;
     readonly fallbackIncludeComments: boolean;
     readonly fallbackMaxCommentsPerPost: number | undefined;
+    readonly fallbackCommentDepth: number;
+    readonly fallbackCommentSort: NonNullable<RedditScanPass['commentSort']>;
   }): Promise<SourceProviderScanResult> {
     const perPassFallbackLimit = Math.max(
       1,
       Math.ceil(params.plan.maxItems / params.passes.length),
     );
     const itemsByExternalId = new Map<string, FetchedSourceItem>();
+    const conversationUnitsByProviderUnitId = new Map<string, FetchedConversationUnit>();
     const warnings: string[] = [];
     let failedPasses = 0;
     let firstFailure: unknown;
@@ -276,6 +293,8 @@ export class RedditSourceProvider implements SourceProviderPort {
       const includeComments = pass.includeComments ?? params.fallbackIncludeComments;
       const maxCommentsPerPost =
         pass.maxCommentsPerPost ?? params.fallbackMaxCommentsPerPost;
+      const commentDepth = pass.commentDepth ?? params.fallbackCommentDepth;
+      const commentSort = pass.commentSort ?? params.fallbackCommentSort;
 
       const normalized = await this.normalizePostsWithOptionalComments({
         accessToken: params.accessToken,
@@ -284,11 +303,18 @@ export class RedditSourceProvider implements SourceProviderPort {
         minScore,
         includeComments,
         maxCommentsPerPost,
+        commentDepth,
+        commentSort,
       });
 
-      for (const item of normalized) {
+      for (const item of normalized.items) {
         if (!itemsByExternalId.has(item.externalId)) {
           itemsByExternalId.set(item.externalId, item);
+        }
+      }
+      for (const unit of normalized.conversationUnits) {
+        if (!conversationUnitsByProviderUnitId.has(unit.providerUnitId)) {
+          conversationUnitsByProviderUnitId.set(unit.providerUnitId, unit);
         }
       }
 
@@ -304,6 +330,7 @@ export class RedditSourceProvider implements SourceProviderPort {
         0,
         params.plan.maxItems,
       ),
+      conversationUnits: [...conversationUnitsByProviderUnitId.values()],
       warnings: compactUnique(warnings),
     };
   }
@@ -315,11 +342,19 @@ export class RedditSourceProvider implements SourceProviderPort {
     readonly minScore: number | undefined;
     readonly includeComments: boolean;
     readonly maxCommentsPerPost: number | undefined;
-  }): Promise<readonly FetchedSourceItem[]> {
+    readonly commentDepth: number;
+    readonly commentSort: NonNullable<RedditScanPass['commentSort']>;
+  }): Promise<NormalizedRedditScanResult> {
     const items: FetchedSourceItem[] = [];
+    const conversationUnits: FetchedConversationUnit[] = [];
 
     for (const post of params.posts) {
-      items.push(...normalizePost(post, params.minScore));
+      const normalizedPostItems = normalizePost(post, params.minScore);
+      items.push(...normalizedPostItems);
+
+      if (normalizedPostItems.length === 0) {
+        continue;
+      }
 
       if (!params.includeComments) {
         continue;
@@ -331,16 +366,18 @@ export class RedditSourceProvider implements SourceProviderPort {
         postId: post.id,
         subreddit: post.subreddit,
         limit: params.maxCommentsPerPost ?? 5,
+        depth: params.commentDepth,
+        sort: params.commentSort,
       });
 
-      items.push(
+      conversationUnits.push(
         ...comments.comments.flatMap((comment) =>
           normalizeComment(comment, post, params.minScore),
         ),
       );
     }
 
-    return items;
+    return { items, conversationUnits };
   }
 }
 

@@ -4,6 +4,7 @@
 
 import 'package:json_annotation/json_annotation.dart';
 
+import 'source_binding_overview_degradation_reason_response_dto.dart';
 import 'source_binding_overview_provider_breakdown_response_dto.dart';
 
 part 'source_binding_overview_summary_response_dto.g.dart';
@@ -12,7 +13,9 @@ part 'source_binding_overview_summary_response_dto.g.dart';
 class SourceBindingOverviewSummaryResponseDto {
   const SourceBindingOverviewSummaryResponseDto({
     required this.attentionRequiredBindings,
+    required this.authFailedBindings,
     required this.canScanNowBindings,
+    required this.degradationReasons,
     required this.degradedBindings,
     required this.downBindings,
     required this.freshSuccessSkips,
@@ -29,6 +32,7 @@ class SourceBindingOverviewSummaryResponseDto {
     required this.signals,
     required this.staleBindings,
     required this.totalBindings,
+    required this.unsupportedScopeBindings,
     this.nextEligibleAt,
   });
 
@@ -37,7 +41,10 @@ class SourceBindingOverviewSummaryResponseDto {
   ) => _$SourceBindingOverviewSummaryResponseDtoFromJson(json);
 
   final num attentionRequiredBindings;
+  final num authFailedBindings;
   final num canScanNowBindings;
+  final List<SourceBindingOverviewDegradationReasonResponseDto>
+  degradationReasons;
   final num degradedBindings;
   final num downBindings;
   final num freshSuccessSkips;
@@ -56,6 +63,7 @@ class SourceBindingOverviewSummaryResponseDto {
   final List<String> signals;
   final num staleBindings;
   final num totalBindings;
+  final num unsupportedScopeBindings;
 
   Map<String, Object?> toJson() =>
       _$SourceBindingOverviewSummaryResponseDtoToJson(this);

@@ -13,6 +13,7 @@ String sourceProviderLabel(SourceProviderKey providerKey) {
     'rss' => 'RSS',
     'hacker-news' || 'hn' => 'Hacker News',
     'github' => 'GitHub',
+    'github-repo-radar' => 'GitHub Repo Radar',
     _ => providerKey.normalized,
   };
 }
@@ -23,6 +24,7 @@ IconData sourceBindingProviderIcon(SourceProviderKey providerKey) {
     'rss' => Icons.rss_feed,
     'hacker-news' || 'hn' => Icons.local_fire_department,
     'github' => Icons.code,
+    'github-repo-radar' => Icons.manage_search,
     _ => Icons.hub_outlined,
   };
 }
@@ -51,7 +53,10 @@ String sourceBindingHealthLabel(SourceBindingHealthState state) {
     SourceBindingHealthState.scanning => 'Scanning',
     SourceBindingHealthState.healthy => 'Healthy',
     SourceBindingHealthState.stale => 'Stale',
+    SourceBindingHealthState.rateLimited => 'Rate limited',
+    SourceBindingHealthState.authFailed => 'Auth failed',
     SourceBindingHealthState.degraded => 'Degraded',
+    SourceBindingHealthState.unsupportedScope => 'Unsupported scope',
     SourceBindingHealthState.down => 'Down',
     SourceBindingHealthState.unknown => 'Unknown',
   };
@@ -61,8 +66,11 @@ AppStatusTone sourceBindingHealthTone(SourceBindingHealthState state) {
   return switch (state) {
     SourceBindingHealthState.healthy => AppStatusTone.success,
     SourceBindingHealthState.stale ||
+    SourceBindingHealthState.rateLimited ||
     SourceBindingHealthState.degraded ||
     SourceBindingHealthState.notConfigured => AppStatusTone.warning,
+    SourceBindingHealthState.authFailed ||
+    SourceBindingHealthState.unsupportedScope ||
     SourceBindingHealthState.down => AppStatusTone.danger,
     SourceBindingHealthState.paused ||
     SourceBindingHealthState.scheduled ||

@@ -53,6 +53,17 @@ void main() {
       expect(state.failure.code, 'interest_coverage_plan.scope_invalid');
     },
   );
+
+  test('selects source pack before planning coverage', () async {
+    final store = _store();
+
+    await store.selectSourcePack('ai_dev');
+
+    final state = store.planState as ReadyViewState<InterestCoveragePlan>;
+    expect(store.sourcePackKey, 'ai_dev');
+    expect(state.value.sourcePack?.key, 'ai_dev');
+    expect(state.value.sourcePack?.displayName, 'AI development radar');
+  });
 }
 
 InterestCoveragePlanStore _store() {

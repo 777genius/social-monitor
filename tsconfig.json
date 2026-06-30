@@ -37,6 +37,8 @@
       "@social-monitor/platform-request-context": ["libs/platform/request-context/src/index.ts"],
       "@social-monitor/platform-worker": ["libs/platform/worker/src/index.ts"],
       "@social-monitor/contracts/*": ["libs/contracts/*"],
+      "@social-monitor/conversation": ["libs/conversation/index.ts"],
+      "@social-monitor/conversation/*": ["libs/conversation/*"],
       "@social-monitor/identity/*": ["libs/identity/*"],
       "@social-monitor/launch/*": ["libs/launch/*"],
       "@social-monitor/monitoring/*": ["libs/monitoring/*"],

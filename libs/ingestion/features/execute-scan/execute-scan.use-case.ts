@@ -20,9 +20,11 @@ import {
   SourceItem,
 } from "../../domain";
 import {
+  noopConversationProjection,
   noopSourceItemMetadataProjection,
   noopSourceItemEnrichment,
   SourceFetchError,
+  type ConversationProjectionPort,
   type FeedProjectionPort,
   type ScanAttemptRepositoryPort,
   type ScanCursorRepositoryPort,
@@ -33,6 +35,7 @@ import {
   type SourceItemEnrichmentPort,
   type SourceItemMetadataProjectionPort,
   type SourceItemRepositoryPort,
+  type FetchedConversationUnit,
   type FetchedSourceItem,
 } from "../../ports";
 import type { ExecuteScanCommand } from "./execute-scan.command";
@@ -54,6 +57,7 @@ export class ExecuteScanUseCase {
     private readonly clock: Clock,
     private readonly sourceItemMetadataProjection: SourceItemMetadataProjectionPort = noopSourceItemMetadataProjection,
     private readonly sourceItemEnrichment: SourceItemEnrichmentPort = noopSourceItemEnrichment,
+    private readonly conversationProjection: ConversationProjectionPort = noopConversationProjection,
   ) {}
 
   async execute(
@@ -173,6 +177,18 @@ export class ExecuteScanUseCase {
         sourceBindingId: sourceBinding.sourceBindingId,
         providerKey: sourceBinding.providerKey,
         sourceItems: items,
+      });
+      await this.conversationProjection.project({
+        tenantId: command.tenantId,
+        workspaceId: command.workspaceId,
+        interestId: sourceBinding.interestId,
+        sourceBindingId: sourceBinding.sourceBindingId,
+        providerKey: sourceBinding.providerKey,
+        observedAt: ingestedAt,
+        conversationUnits: (fetched.conversationUnits ?? []).map(
+          sanitizeFetchedConversationUnit,
+        ),
+        projectedFeedItems: projectionResult.projectedItems,
       });
       await this.sourceItemMetadataProjection.project({
         tenantId: command.tenantId,
@@ -358,3 +374,24 @@ const sanitizeFetchedSourceUrl = (value: string): string => {
     return redacted;
   }
 };
+
+const sanitizeFetchedConversationUnit = (
+  unit: FetchedConversationUnit,
+): FetchedConversationUnit => ({
+  ...unit,
+  rootExternalId: redactSensitiveText(unit.rootExternalId),
+  rootProviderItemId: redactSensitiveText(unit.rootProviderItemId),
+  providerUnitId: redactSensitiveText(unit.providerUnitId),
+  canonicalUrl: sanitizeFetchedSourceUrl(unit.canonicalUrl),
+  body: redactSensitiveText(unit.body),
+  authorHandle: unit.authorHandle === undefined
+    ? undefined
+    : redactSensitiveText(unit.authorHandle),
+  threadExternalId: redactSensitiveText(unit.threadExternalId),
+  parentProviderUnitId: unit.parentProviderUnitId === undefined
+    ? undefined
+    : redactSensitiveText(unit.parentProviderUnitId),
+  metadata: unit.metadata === undefined
+    ? undefined
+    : redactSensitiveRecord(unit.metadata) as JsonObject,
+});

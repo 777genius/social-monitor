@@ -11,6 +11,7 @@ final class GeneratedInterestCoveragePlanRestMapper {
   ) {
     return generated.PlanInterestCoverageRequestDto(
       description: _blankToNull(request.description),
+      sourcePackKey: _blankToNull(request.sourcePackKey),
       keywords: _nonEmptyListOrNull(request.keywords),
       subreddits: _nonEmptyListOrNull(request.subreddits),
       rssFeedUrls: _nonEmptyListOrNull(request.rssFeedUrls),
@@ -27,6 +28,7 @@ final class GeneratedInterestCoveragePlanRestMapper {
       interestTitle: dto.interest.name,
       planningQuery: dto.planningQuery,
       normalizedKeywords: dto.normalizedKeywords,
+      sourcePack: dto.sourcePack == null ? null : _sourcePack(dto.sourcePack!),
       drafts: dto.drafts.map(_draft).toList(growable: false),
       coverageGaps: dto.coverageGaps,
       skippedProviders: dto.skippedProviders
@@ -34,6 +36,30 @@ final class GeneratedInterestCoveragePlanRestMapper {
             (skipped) => InterestCoveragePlanSkippedProviderApiDto(
               providerKey: skipped.providerKey,
               reason: skipped.reason,
+            ),
+          )
+          .toList(growable: false),
+    );
+  }
+
+  InterestCoverageSourcePackApiDto _sourcePack(
+    generated.InterestCoverageSourcePackDto dto,
+  ) {
+    return InterestCoverageSourcePackApiDto(
+      key: dto.key,
+      displayName: dto.displayName,
+      description: dto.description,
+      providerStarters: dto.providerStarters
+          .map(
+            (starter) => InterestCoverageSourcePackProviderStarterApiDto(
+              providerKey: starter.providerKey,
+              label: starter.label,
+              keywords: starter.keywords,
+              queries: starter.queries,
+              subreddits: starter.subreddits,
+              topics: starter.topics,
+              languages: starter.languages,
+              rssFeedUrls: starter.rssFeedUrls,
             ),
           )
           .toList(growable: false),

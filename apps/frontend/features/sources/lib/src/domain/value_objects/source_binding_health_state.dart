@@ -5,7 +5,10 @@ enum SourceBindingHealthState {
   scanning,
   healthy,
   stale,
+  rateLimited,
+  authFailed,
   degraded,
+  unsupportedScope,
   down,
   unknown;
 

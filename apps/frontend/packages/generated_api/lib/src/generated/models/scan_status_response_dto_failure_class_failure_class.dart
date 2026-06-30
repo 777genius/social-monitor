@@ -8,6 +8,8 @@ import 'package:json_annotation/json_annotation.dart';
 enum ScanStatusResponseDtoFailureClassFailureClass {
   @JsonValue('provider_unavailable')
   providerUnavailable('provider_unavailable'),
+  @JsonValue('provider_auth_failed')
+  providerAuthFailed('provider_auth_failed'),
   @JsonValue('provider_rate_limited')
   providerRateLimited('provider_rate_limited'),
   @JsonValue('worker_conflict')

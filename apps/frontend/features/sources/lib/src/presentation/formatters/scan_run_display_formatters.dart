@@ -38,6 +38,7 @@ String scanFailureClassLabel(ScanFailureClass failureClass) {
   return switch (failureClass) {
     ScanFailureClass.providerUnavailable => 'Provider unavailable',
     ScanFailureClass.providerRateLimited => 'Provider rate limited',
+    ScanFailureClass.providerAuthFailed => 'Provider auth failed',
     ScanFailureClass.workerConflict => 'Worker conflict',
     ScanFailureClass.systemFailure => 'System failure',
     ScanFailureClass.unknown => 'Unknown failure',

@@ -361,6 +361,7 @@ const providerHealthInputs = (
     return {
       status: snapshot.status,
       failureReason: snapshot.failureReason,
+      failureMetadata: snapshot.failureMetadata,
     };
   });
 

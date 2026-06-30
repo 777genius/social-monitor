@@ -7,6 +7,7 @@ import 'package:social_monitor_sources/src/application/use_cases/list_source_bin
 import 'package:social_monitor_sources/src/application/use_cases/load_scan_policy_use_case.dart';
 import 'package:social_monitor_sources/src/application/use_cases/load_scan_status_use_case.dart';
 import 'package:social_monitor_sources/src/application/use_cases/load_source_binding_health_use_case.dart';
+import 'package:social_monitor_sources/src/application/use_cases/load_source_binding_overview_use_case.dart';
 import 'package:social_monitor_sources/src/application/use_cases/plan_interest_coverage_use_case.dart';
 import 'package:social_monitor_sources/src/application/use_cases/request_scan_use_case.dart';
 import 'package:social_monitor_sources/src/application/use_cases/set_scan_policy_use_case.dart';
@@ -76,6 +77,30 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets('selects source pack from recommended sources panel', (
+    tester,
+  ) async {
+    final store = _store([sourceBindingApiDto()]);
+    final interestCoveragePlanStore = _interestCoveragePlanStore();
+
+    await tester.pumpWidget(
+      _TestApp(
+        store: store,
+        interestCoveragePlanStore: interestCoveragePlanStore,
+        policyStore: _policyStore(),
+        scanRunStore: _scanRunStore(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('source-pack-option-ai_dev')));
+    await tester.pumpAndSettle();
+
+    expect(interestCoveragePlanStore.sourcePackKey, 'ai_dev');
+    expect(find.text('AI development radar'), findsOneWidget);
+    expect(find.textContaining('GitHub Repo Radar:'), findsOneWidget);
+  });
 }
 
 SourceBindingsStore _store(List<SourceBindingApiDto> items) {
@@ -87,6 +112,7 @@ SourceBindingsStore _store(List<SourceBindingApiDto> items) {
     bindSourceToInterest: BindSourceToInterestUseCase(catalog),
     changeSourceBindingStatus: ChangeSourceBindingStatusUseCase(catalog),
     loadSourceBindingHealth: LoadSourceBindingHealthUseCase(catalog),
+    loadSourceBindingOverview: LoadSourceBindingOverviewUseCase(catalog),
     scope: sourceWorkspaceScope,
     interestId: const SourceInterestId('interest-competitor'),
     interestTitle: 'Competitor launches',

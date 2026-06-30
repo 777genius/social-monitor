@@ -1,3 +1,5 @@
+import type { JsonObject } from '@social-monitor/shared-kernel';
+
 import type { ScanJobStatus } from '../../domain';
 import { buildScanStatusView } from './scan-status-view';
 
@@ -10,6 +12,7 @@ export type ScanProviderHealthState =
 export type ScanProviderHealthInput = {
   readonly status: ScanJobStatus;
   readonly failureReason?: string;
+  readonly failureMetadata?: JsonObject;
 };
 
 export type ScanProviderHealthSummary = {
@@ -19,6 +22,7 @@ export type ScanProviderHealthSummary = {
   readonly failedScans: number;
   readonly activeScans: number;
   readonly rateLimitedScans: number;
+  readonly authFailedScans: number;
   readonly providerUnavailableScans: number;
   readonly consecutiveFailures: number;
   readonly operatorAction: string;
@@ -35,9 +39,11 @@ export const summarizeScanProviderHealth = (
     buildScanStatusView({
       status: job.status,
       failureReason: job.failureReason,
+      failureMetadata: job.failureMetadata,
     }).failureClass,
   );
   const rateLimitedScans = failureClasses.filter((failureClass) => failureClass === 'provider_rate_limited').length;
+  const authFailedScans = failureClasses.filter((failureClass) => failureClass === 'provider_auth_failed').length;
   const providerUnavailableScans =
     failureClasses.filter((failureClass) => failureClass === 'provider_unavailable').length;
   const consecutiveFailures = countConsecutiveCompletedFailures(jobs);
@@ -46,6 +52,7 @@ export const summarizeScanProviderHealth = (
     failedScans: failedJobs.length,
     succeededScans: succeededJobs.length,
     activeScans: activeJobs.length,
+    authFailedScans,
     consecutiveFailures,
     providerUnavailableScans,
   });
@@ -57,6 +64,7 @@ export const summarizeScanProviderHealth = (
     failedScans: failedJobs.length,
     activeScans: activeJobs.length,
     rateLimitedScans,
+    authFailedScans,
     providerUnavailableScans,
     consecutiveFailures,
     operatorAction: operatorActionForProviderHealth(providerHealthState),
@@ -66,6 +74,7 @@ export const summarizeScanProviderHealth = (
       failedScans: failedJobs.length,
       activeScans: activeJobs.length,
       rateLimitedScans,
+      authFailedScans,
       providerUnavailableScans,
       consecutiveFailures,
     }),
@@ -97,6 +106,7 @@ const providerHealthStateFor = (params: {
   readonly failedScans: number;
   readonly succeededScans: number;
   readonly activeScans: number;
+  readonly authFailedScans: number;
   readonly consecutiveFailures: number;
   readonly providerUnavailableScans: number;
 }): ScanProviderHealthState => {
@@ -104,7 +114,11 @@ const providerHealthStateFor = (params: {
     return 'unknown';
   }
 
-  if (params.consecutiveFailures >= 3 || params.providerUnavailableScans >= 3) {
+  if (
+    params.consecutiveFailures >= 3 ||
+    params.authFailedScans >= 3 ||
+    params.providerUnavailableScans >= 3
+  ) {
     return 'down';
   }
 
@@ -140,6 +154,7 @@ const scanProviderHealthSignals = (params: {
   readonly failedScans: number;
   readonly activeScans: number;
   readonly rateLimitedScans: number;
+  readonly authFailedScans: number;
   readonly providerUnavailableScans: number;
   readonly consecutiveFailures: number;
 }): readonly string[] => {
@@ -159,6 +174,9 @@ const scanProviderHealthSignals = (params: {
   }
   if (params.rateLimitedScans > 0) {
     signals.push('rate_limited');
+  }
+  if (params.authFailedScans > 0) {
+    signals.push('auth_failed');
   }
   if (params.providerUnavailableScans > 0) {
     signals.push('provider_unavailable');

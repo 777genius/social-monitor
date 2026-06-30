@@ -1,6 +1,10 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-import type { SourceProfileEntry } from '../../features/list-source-profiles/list-source-profiles.result';
+import type {
+  SourceProfileEntry,
+  SourceProfileHealthExplanation,
+  SourceProfileHealthState,
+} from '../../features/list-source-profiles/list-source-profiles.result';
 import type { SourceReadinessState, SourceRuntimeReadiness } from '../../ports';
 
 export const sourceReadinessStateValues = [
@@ -18,6 +22,29 @@ export const sourceRuntimeReadinessValues = [
   'live_beta_ready',
   'deferred',
 ] as const satisfies readonly SourceRuntimeReadiness[];
+
+export const sourceProfileHealthStateValues = [
+  'healthy',
+  'stale',
+  'rate_limited',
+  'auth_failed',
+  'degraded',
+  'unsupported_scope',
+] as const satisfies readonly SourceProfileHealthState[];
+
+export class SourceProfileHealthDto implements SourceProfileHealthExplanation {
+  @ApiProperty({ enum: sourceProfileHealthStateValues })
+  declare readonly state: SourceProfileHealthState;
+
+  @ApiProperty()
+  declare readonly reasonCode: string;
+
+  @ApiProperty()
+  declare readonly message: string;
+
+  @ApiProperty({ type: [String] })
+  declare readonly signals: readonly string[];
+}
 
 export class SourceProfileFreshnessGuardDto {
   @ApiProperty()
@@ -78,6 +105,9 @@ export class SourceProfileDto implements SourceProfileEntry {
   @ApiProperty()
   declare readonly productionSafe: boolean;
 
+  @ApiProperty({ type: () => SourceProfileHealthDto })
+  declare readonly health: SourceProfileHealthDto;
+
   @ApiProperty({ enum: sourceReadinessStateValues })
   declare readonly readinessState: SourceReadinessState;
 
@@ -98,6 +128,9 @@ export class SourceProfileDto implements SourceProfileEntry {
 
   @ApiProperty({ type: [String] })
   declare readonly supportedContentUnits: readonly string[];
+
+  @ApiProperty({ type: [String] })
+  declare readonly unsupportedContentUnits: SourceProfileEntry['unsupportedContentUnits'];
 
   @ApiProperty({ type: [String] })
   declare readonly supportedQueryModes: readonly string[];

@@ -3,6 +3,7 @@ import { err, ok, type DomainError, type Result } from '@social-monitor/shared-k
 import type { GetSourceBindingHealthUseCase } from '../get-source-binding-health/get-source-binding-health.use-case';
 import type { GetSourceBindingHealthResult } from '../get-source-binding-health/get-source-binding-health.result';
 import type { ListSourceBindingsUseCase } from '../list-source-bindings/list-source-bindings.use-case';
+import { buildDegradationReasons } from './list-source-binding-overview-degradation-reasons';
 import type { ListSourceBindingOverviewQuery } from './list-source-binding-overview.query';
 import type {
   ListSourceBindingOverviewResult,
@@ -73,6 +74,8 @@ const buildOverviewSummary = (
     totalBindings: summary.totalBindings,
     healthyBindings: summary.healthyBindings,
     staleBindings: summary.staleBindings,
+    authFailedBindings: summary.authFailedBindings,
+    unsupportedScopeBindings: summary.unsupportedScopeBindings,
     degradedBindings: summary.degradedBindings,
     downBindings: summary.downBindings,
     scanningBindings: summary.scanningBindings,
@@ -81,12 +84,13 @@ const buildOverviewSummary = (
     scheduledBindings: summary.scheduledBindings,
     canScanNowBindings: summary.canScanNowBindings,
     freshSuccessSkips: summary.freshSuccessSkips,
-    rateLimitedBindings: summary.rateLimitBackoffSkips,
+    rateLimitedBindings: summary.rateLimitedBindings,
     providerFailureBackoffSkips: summary.providerFailureBackoffSkips,
     providerUnavailableScans: summary.providerUnavailableScans,
     attentionRequiredBindings: attentionRequiredBindingCount(items),
     nextEligibleAt: summary.nextEligibleAt,
     operatorAction: overviewOperatorAction(items),
+    degradationReasons: buildDegradationReasons(items),
     signals: overviewSignals(items),
     providerBreakdown,
   };
@@ -118,6 +122,9 @@ const buildProviderBreakdown = (
   totalBindings: items.length,
   healthyBindings: countByHealthState(items, 'healthy'),
   staleBindings: countByHealthState(items, 'stale'),
+  rateLimitedBindings: rateLimitedBindingCount(items),
+  authFailedBindings: countByHealthState(items, 'auth_failed'),
+  unsupportedScopeBindings: countByHealthState(items, 'unsupported_scope'),
   degradedBindings: countByHealthState(items, 'degraded'),
   downBindings: countByHealthState(items, 'down'),
   scanningBindings: countByHealthState(items, 'scanning'),
@@ -138,6 +145,7 @@ const buildProviderBreakdown = (
   nextEligibleAt: earliestIsoDate(items
     .map((item) => item.schedulerDecision.nextEligibleAt)
     .filter((value): value is string => value !== undefined)),
+  degradationReasons: buildDegradationReasons(items),
   signals: overviewSignals(items),
 });
 
@@ -153,11 +161,22 @@ const countBySchedulerDecision = (
 ): number =>
   items.filter((item) => item.schedulerDecision.decision === decision).length;
 
+const rateLimitedBindingCount = (
+  items: readonly GetSourceBindingHealthResult[],
+): number =>
+  items.filter((item) =>
+    item.healthState === 'rate_limited' ||
+    item.schedulerDecision.decision === 'rate_limit_backoff',
+  ).length;
+
 const attentionRequiredBindingCount = (
   items: readonly GetSourceBindingHealthResult[],
 ): number =>
   items.filter((item) =>
     item.healthState === 'stale' ||
+    item.healthState === 'rate_limited' ||
+    item.healthState === 'auth_failed' ||
+    item.healthState === 'unsupported_scope' ||
     item.healthState === 'degraded' ||
     item.healthState === 'down' ||
     item.healthState === 'not_configured' ||
@@ -171,6 +190,14 @@ const overviewOperatorAction = (
 ): string => {
   if (items.length === 0) {
     return 'bind_source_provider';
+  }
+
+  if (items.some((item) => item.healthState === 'auth_failed')) {
+    return 'refresh_or_reconnect_source_credentials';
+  }
+
+  if (items.some((item) => item.healthState === 'unsupported_scope')) {
+    return 'adjust_source_query_or_requested_scopes';
   }
 
   if (items.some((item) => item.schedulerDecision.decision === 'provider_failure_backoff')) {
@@ -227,6 +254,15 @@ const overviewSignals = (
   }
   if (items.some((item) => item.schedulerDecision.decision === 'rate_limit_backoff')) {
     signals.add('rate_limit_backoff');
+  }
+  if (items.some((item) => item.healthState === 'rate_limited')) {
+    signals.add('source_rate_limited');
+  }
+  if (items.some((item) => item.healthState === 'auth_failed')) {
+    signals.add('source_auth_failed');
+  }
+  if (items.some((item) => item.healthState === 'unsupported_scope')) {
+    signals.add('source_unsupported_scope');
   }
   if (items.some((item) => item.schedulerDecision.decision === 'provider_failure_backoff')) {
     signals.add('provider_failure_backoff');

@@ -1,5 +1,6 @@
 export type RedditPostListing = 'hot' | 'new' | 'top' | 'rising';
 export type RedditTopTime = 'hour' | 'day' | 'week' | 'month' | 'year' | 'all';
+export type RedditCommentSort = 'confidence' | 'top' | 'new';
 
 export type RedditPost = {
   readonly id: string;
@@ -26,8 +27,10 @@ export type RedditComment = {
   readonly body?: string;
   readonly author?: string;
   readonly permalink?: string;
+  readonly parentId?: string;
   readonly createdUtc?: number;
   readonly score?: number;
+  readonly replyCount?: number;
   readonly removedByCategory?: string;
   readonly depth?: number;
 };
@@ -69,6 +72,8 @@ export type RedditListPostCommentsRequest = {
   readonly postId: string;
   readonly subreddit?: string;
   readonly limit: number;
+  readonly sort?: RedditCommentSort;
+  readonly depth?: number;
 };
 
 export type RedditCommentPage = {

@@ -7,6 +7,7 @@ final class PlanInterestCoverageQuery {
     required this.scope,
     required this.interestId,
     this.description,
+    this.sourcePackKey,
     this.keywords = const [],
     this.subreddits = const [],
     this.rssFeedUrls = const [],
@@ -17,6 +18,7 @@ final class PlanInterestCoverageQuery {
   final WorkspaceScope scope;
   final SourceInterestId interestId;
   final String? description;
+  final String? sourcePackKey;
   final List<String> keywords;
   final List<String> subreddits;
   final List<String> rssFeedUrls;

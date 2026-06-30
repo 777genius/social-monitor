@@ -523,6 +523,59 @@ model FeedSignalBaselineSample {
   @@map("feed_signal_baseline_samples")
 }
 
+model ConversationUnit {
+  id                   String   @id @db.Uuid
+  tenantId             String   @map("tenant_id") @db.Uuid
+  workspaceId          String   @map("workspace_id") @db.Uuid
+  interestId           String   @map("interest_id") @db.Uuid
+  sourceBindingId      String   @map("source_binding_id") @db.Uuid
+  rootFeedItemId       String   @map("root_feed_item_id") @db.Uuid
+  rootProviderItemId   String   @map("root_provider_item_id")
+  providerKey          String   @map("provider_key")
+  providerUnitId       String   @map("provider_unit_id")
+  canonicalUrl         String   @map("canonical_url")
+  authorHandle         String?  @map("author_handle")
+  body                 String
+  publishedAt          DateTime @map("published_at") @db.Timestamptz(6)
+  observedAt           DateTime @map("observed_at") @db.Timestamptz(6)
+  threadExternalId     String   @map("thread_external_id")
+  parentProviderUnitId String?  @map("parent_provider_unit_id")
+  depth                Int
+  role                 String
+  providerMetadata     Json?    @map("provider_metadata")
+  contentHash          String   @map("content_hash")
+  schemaVersion        Int      @default(1) @map("schema_version")
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([tenantId, providerKey, providerUnitId])
+  @@index([tenantId, workspaceId, rootFeedItemId, observedAt])
+  @@index([tenantId, workspaceId, threadExternalId, depth])
+  @@index([tenantId, workspaceId, providerKey, observedAt])
+  @@map("conversation_units")
+}
+
+model ConversationSignalBaselineSample {
+  id                 String   @id @db.Uuid
+  tenantId           String   @map("tenant_id") @db.Uuid
+  workspaceId        String   @map("workspace_id") @db.Uuid
+  interestId         String   @map("interest_id") @db.Uuid
+  conversationUnitId String   @map("conversation_unit_id") @db.Uuid
+  providerKey        String   @map("provider_key")
+  sourceKey          String   @map("source_key")
+  contentType        String   @map("content_type")
+  strength           Float
+  publishedAt        DateTime @map("published_at") @db.Timestamptz(6)
+  observedAt         DateTime @map("observed_at") @db.Timestamptz(6)
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([tenantId, workspaceId, conversationUnitId])
+  @@index([tenantId, workspaceId, interestId, observedAt], map: "conversation_signal_samples_interest_observed_idx")
+  @@index([tenantId, workspaceId, providerKey, contentType, observedAt])
+  @@map("conversation_signal_baseline_samples")
+}
+
 model GitHubRepositoryTrendCandidate {
   id                 String   @id @db.Uuid
   tenantId           String   @map("tenant_id") @db.Uuid

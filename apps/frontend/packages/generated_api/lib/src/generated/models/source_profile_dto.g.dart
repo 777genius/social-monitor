@@ -11,6 +11,9 @@ SourceProfileDto _$SourceProfileDtoFromJson(
 ) => SourceProfileDto(
   acquisitionMode: json['acquisitionMode'] as String,
   cursorModel: json['cursorModel'] as String,
+  health: SourceProfileHealthDto.fromJson(
+    json['health'] as Map<String, dynamic>,
+  ),
   limitations: (json['limitations'] as List<dynamic>)
       .map((e) => e as String)
       .toList(),
@@ -39,6 +42,9 @@ SourceProfileDto _$SourceProfileDtoFromJson(
   supportedQueryModes: (json['supportedQueryModes'] as List<dynamic>)
       .map((e) => e as String)
       .toList(),
+  unsupportedContentUnits: (json['unsupportedContentUnits'] as List<dynamic>)
+      .map((e) => e as String)
+      .toList(),
   capabilityVersion: json['capabilityVersion'] as num?,
   displayName: json['displayName'] as String?,
   freshnessGuard: json['freshnessGuard'] == null
@@ -55,6 +61,7 @@ Map<String, dynamic> _$SourceProfileDtoToJson(SourceProfileDto instance) =>
       'cursorModel': instance.cursorModel,
       'displayName': instance.displayName,
       'freshnessGuard': instance.freshnessGuard,
+      'health': instance.health,
       'limitations': instance.limitations,
       'liveBetaBlockers': instance.liveBetaBlockers,
       'liveEvidenceRequirements': instance.liveEvidenceRequirements,
@@ -65,4 +72,5 @@ Map<String, dynamic> _$SourceProfileDtoToJson(SourceProfileDto instance) =>
       'runtimeReadiness': instance.runtimeReadiness,
       'supportedContentUnits': instance.supportedContentUnits,
       'supportedQueryModes': instance.supportedQueryModes,
+      'unsupportedContentUnits': instance.unsupportedContentUnits,
     };

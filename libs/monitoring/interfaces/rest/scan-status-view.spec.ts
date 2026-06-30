@@ -38,8 +38,17 @@ describe('buildScanStatusView', () => {
       failureReason: 'kind=auth_failed provider credential rejected',
     })).toEqual({
       userState: 'scan_degraded',
-      failureClass: 'provider_unavailable',
-      operatorAction: 'check_provider_health_and_retry_budget',
+      failureClass: 'provider_auth_failed',
+      operatorAction: 'refresh_or_reconnect_source_credentials',
+    });
+    expect(buildScanStatusView({
+      status: 'failed',
+      failureReason: 'provider request failed',
+      failureMetadata: { kind: 'rate_limited' },
+    })).toEqual({
+      userState: 'scan_degraded',
+      failureClass: 'provider_rate_limited',
+      operatorAction: 'reduce_scan_frequency_or_pause_affected_source',
     });
   });
 });

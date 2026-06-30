@@ -154,6 +154,27 @@ final class GeneratedSourceBindingsApiClient
     );
   }
 
+  @override
+  Future<Result<SourceBindingOverviewApiDto>> loadSourceBindingOverview(
+    SourceBindingOverviewApiRequestDto request,
+  ) async {
+    final result = await _runtime.client
+        .send<generated.ListSourceBindingOverviewResponseDto>(
+          generated.WorkspaceRequest(scope: request.scope),
+          () => _runtime.rest.sourceBindings.sourceBindingControllerOverview(
+            interestId: request.interestId,
+            xWorkspaceId: request.scope.workspaceId,
+            xTenantId: request.scope.tenantId,
+            cursor: request.page.cursor,
+            limit: request.page.limit,
+          ),
+        );
+    return result.fold(
+      onSuccess: (dto) => Result.success(_mapper.overview(dto)),
+      onFailure: Result<SourceBindingOverviewApiDto>.failure,
+    );
+  }
+
   SourceBindingApiDto _syntheticBinding(
     String sourceBindingId,
     BindSourceApiRequestDto request,

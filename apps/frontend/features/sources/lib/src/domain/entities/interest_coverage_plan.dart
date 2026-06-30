@@ -12,12 +12,14 @@ final class InterestCoveragePlan {
     required this.drafts,
     required this.coverageGaps,
     required this.skippedProviders,
+    this.sourcePack,
   });
 
   final SourceInterestId interestId;
   final String interestTitle;
   final String planningQuery;
   final List<String> normalizedKeywords;
+  final InterestCoverageSourcePack? sourcePack;
   final List<InterestCoveragePlanDraft> drafts;
   final List<String> coverageGaps;
   final List<InterestCoveragePlanSkippedProvider> skippedProviders;
@@ -25,6 +27,42 @@ final class InterestCoveragePlan {
   List<InterestCoveragePlanDraft> get applicableDrafts => drafts
       .where((draft) => draft.sourceBindingDraft != null && draft.canApply)
       .toList(growable: false);
+}
+
+final class InterestCoverageSourcePack {
+  const InterestCoverageSourcePack({
+    required this.key,
+    required this.displayName,
+    required this.description,
+    required this.providerStarters,
+  });
+
+  final String key;
+  final String displayName;
+  final String description;
+  final List<InterestCoverageSourcePackProviderStarter> providerStarters;
+}
+
+final class InterestCoverageSourcePackProviderStarter {
+  const InterestCoverageSourcePackProviderStarter({
+    required this.providerKey,
+    required this.label,
+    required this.keywords,
+    required this.queries,
+    required this.subreddits,
+    required this.topics,
+    required this.languages,
+    required this.rssFeedUrls,
+  });
+
+  final SourceProviderKey providerKey;
+  final String label;
+  final List<String> keywords;
+  final List<String> queries;
+  final List<String> subreddits;
+  final List<String> topics;
+  final List<String> languages;
+  final List<String> rssFeedUrls;
 }
 
 final class InterestCoveragePlanDraft {

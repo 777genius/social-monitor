@@ -73,6 +73,18 @@ final class InMemorySourceBindingsApiClient implements SourceBindingsApiClient {
         operatorAction: binding.status == 'paused'
             ? 'Resume this binding to collect content.'
             : 'All systems operational.',
+        healthExplanation: SourceBindingHealthExplanationApiDto(
+          reasonCode: binding.status == 'paused'
+              ? 'source_paused'
+              : 'source_healthy',
+          message: binding.status == 'paused'
+              ? 'Source binding paused.'
+              : 'Source healthy.',
+          operatorAction: binding.status == 'paused'
+              ? 'Resume this binding to collect content.'
+              : 'All systems operational.',
+          signals: [binding.status == 'paused' ? 'paused' : 'healthy'],
+        ),
         evaluatedAt: DateTime.utc(2026, 6, 23, 12, 5),
         freshness: const SourceBindingFreshnessApiDto(
           isFresh: true,
@@ -87,6 +99,46 @@ final class InMemorySourceBindingsApiClient implements SourceBindingsApiClient {
           inserted: 96,
           skippedDuplicates: 12,
           projected: 96,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Future<Result<SourceBindingOverviewApiDto>> loadSourceBindingOverview(
+    SourceBindingOverviewApiRequestDto request,
+  ) async {
+    if (!request.scope.isValid) {
+      return Result.failure(_workspaceFailure());
+    }
+    final items = _items
+        .where((item) => item.interestId == request.interestId)
+        .toList(growable: false);
+    final providerCounts = <String, int>{};
+    for (final item in items) {
+      providerCounts.update(
+        item.providerKey,
+        (count) => count + 1,
+        ifAbsent: () => 1,
+      );
+    }
+    final providerBreakdown = providerCounts.entries
+        .map(
+          (entry) => SourceBindingOverviewProviderBreakdownApiDto(
+            providerKey: entry.key,
+            totalBindings: entry.value,
+            degradationReasons: const [],
+          ),
+        )
+        .toList(growable: false);
+
+    return Result.success(
+      SourceBindingOverviewApiDto(
+        summary: SourceBindingOverviewSummaryApiDto(
+          totalBindings: items.length,
+          operatorAction: 'All systems operational.',
+          degradationReasons: const [],
+          providerBreakdown: providerBreakdown,
         ),
       ),
     );

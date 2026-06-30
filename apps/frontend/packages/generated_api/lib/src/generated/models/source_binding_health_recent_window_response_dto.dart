@@ -12,6 +12,7 @@ part 'source_binding_health_recent_window_response_dto.g.dart';
 class SourceBindingHealthRecentWindowResponseDto {
   const SourceBindingHealthRecentWindowResponseDto({
     required this.activeScans,
+    required this.authFailedScans,
     required this.consecutiveFailures,
     required this.failedScans,
     required this.operatorAction,
@@ -32,6 +33,7 @@ class SourceBindingHealthRecentWindowResponseDto {
   ) => _$SourceBindingHealthRecentWindowResponseDtoFromJson(json);
 
   final num activeScans;
+  final num authFailedScans;
   final num consecutiveFailures;
   final num failedScans;
   final DateTime? lastFailedAt;

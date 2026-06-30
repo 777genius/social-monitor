@@ -22,6 +22,7 @@ PlanInterestCoverageRequestDto _$PlanInterestCoverageRequestDtoFromJson(
   rssFeedUrls: (json['rssFeedUrls'] as List<dynamic>?)
       ?.map((e) => e as String)
       .toList(),
+  sourcePackKey: json['sourcePackKey'] as String?,
   subreddits: (json['subreddits'] as List<dynamic>?)
       ?.map((e) => e as String)
       .toList(),
@@ -35,5 +36,6 @@ Map<String, dynamic> _$PlanInterestCoverageRequestDtoToJson(
   'includeProviders': instance.includeProviders,
   'keywords': instance.keywords,
   'rssFeedUrls': instance.rssFeedUrls,
+  'sourcePackKey': instance.sourcePackKey,
   'subreddits': instance.subreddits,
 };

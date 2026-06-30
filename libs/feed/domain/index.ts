@@ -1,5 +1,6 @@
 export * from "./entities/feed-item";
 export * from "./entities/feed-signal";
+export * from "./services/cohort-baseline-content-signal-normalizer";
 export * from "./services/cohort-baseline-feed-signal-normalizer";
 export * from "./value-objects/feed-normalized-signal";
 export * from "./value-objects/feed-provider-metric-labels";

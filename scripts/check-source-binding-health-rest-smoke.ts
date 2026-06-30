@@ -238,6 +238,10 @@ async function main(): Promise<void> {
       'source health must return setup action before policy exists',
     );
     assert(
+      healthBeforePolicy.body.healthExplanation.reasonCode === 'source_not_configured',
+      'source health must explain missing scan policy',
+    );
+    assert(
       healthBeforePolicy.body.recentWindow.providerHealthState === 'unknown',
       'source health must expose unknown provider health before scans',
     );
@@ -424,7 +428,11 @@ async function main(): Promise<void> {
       sourceBindingId: rateLimited.sourceBindingId,
       headers: viewerHeaders,
     });
-    assert(rateLimitedHealth.body.healthState === 'degraded', 'rate-limited source health must be degraded');
+    assert(rateLimitedHealth.body.healthState === 'rate_limited', 'rate-limited source health must be rate_limited');
+    assert(
+      rateLimitedHealth.body.healthExplanation.reasonCode === 'source_rate_limited',
+      'rate-limited source health must expose rate-limit explanation',
+    );
     assert(
       rateLimitedHealth.body.latestScan.failureClass === 'provider_rate_limited',
       'source health must classify latest rate-limit failure',
@@ -489,8 +497,12 @@ async function main(): Promise<void> {
       headers: viewerHeaders,
     });
     assert(
-      providerFailureHealth.body.latestScan.failureClass === 'provider_unavailable',
-      'source health must classify auth/provider failures as provider unavailable',
+      providerFailureHealth.body.healthState === 'auth_failed',
+      'source health must keep credential failures separate from provider outages',
+    );
+    assert(
+      providerFailureHealth.body.latestScan.failureClass === 'provider_auth_failed',
+      'source health must classify credential failures as auth failures',
     );
     assert(
       providerFailureHealth.body.schedulerDecision.decision === 'provider_failure_backoff',
@@ -501,8 +513,12 @@ async function main(): Promise<void> {
       'provider failure scheduler decision must expose backoff deadline',
     );
     assert(
-      providerFailureHealth.body.recentWindow.providerUnavailableScans === 2,
-      'source health recent window must count provider unavailable scans',
+      providerFailureHealth.body.recentWindow.authFailedScans === 2,
+      'source health recent window must count auth failures',
+    );
+    assert(
+      providerFailureHealth.body.recentWindow.providerUnavailableScans === 0,
+      'source health recent window must not collapse auth into provider unavailable',
     );
     assert(
       providerFailureHealth.body.recentWindow.consecutiveFailures === 2,
@@ -531,12 +547,16 @@ async function main(): Promise<void> {
       headers: viewerHeaders,
     });
     assert(
-      providerDownHealth.body.healthState === 'down',
-      `source health must promote repeated provider failures to down, got ${providerDownHealth.body.healthState}`,
+      providerDownHealth.body.healthState === 'auth_failed',
+      `source health must keep repeated auth failures explainable, got ${providerDownHealth.body.healthState}`,
     );
     assert(
-      providerDownHealth.body.operatorAction === 'pause_or_backoff_provider_until_recovery',
-      'source health must expose provider-down operator action',
+      providerDownHealth.body.recentWindow.providerHealthState === 'down',
+      'source health must still mark repeated auth failures down in provider window',
+    );
+    assert(
+      providerDownHealth.body.operatorAction === 'refresh_or_reconnect_source_credentials',
+      'source health must expose credential reconnect operator action',
     );
 
     const scheduledLaterInterestId = await createInterest({
@@ -907,8 +927,9 @@ async function main(): Promise<void> {
     assert(overview.body.items.length === 4, 'source overview must expose every provider binding health item');
     assert(overview.body.summary.totalBindings === 4, 'source overview must count all bindings');
     assert(overview.body.summary.healthyBindings === 1, 'source overview must count healthy bindings');
-    assert(overview.body.summary.degradedBindings === 1, 'source overview must count degraded bindings');
-    assert(overview.body.summary.downBindings === 1, 'source overview must count down bindings');
+    assert(overview.body.summary.degradedBindings === 0, 'source overview must not collapse explainable failures into degraded');
+    assert(overview.body.summary.downBindings === 0, 'source overview must not collapse auth failures into down');
+    assert(overview.body.summary.authFailedBindings === 1, 'source overview must count auth-failed bindings');
     assert(overview.body.summary.scheduledBindings === 1, 'source overview must count scheduled bindings');
     assert(overview.body.summary.freshSuccessSkips === 1, 'source overview must count fresh-success skips');
     assert(overview.body.summary.rateLimitedBindings === 1, 'source overview must count rate-limited bindings');
@@ -917,8 +938,8 @@ async function main(): Promise<void> {
       'source overview must count provider failure backoff skips',
     );
     assert(
-      overview.body.summary.providerUnavailableScans === 3,
-      'source overview must aggregate provider unavailable scans',
+      overview.body.summary.providerUnavailableScans === 0,
+      'source overview must not collapse auth failures into provider unavailable scans',
     );
     assert(
       overview.body.summary.signals.includes('fresh_success_skip'),
@@ -933,12 +954,12 @@ async function main(): Promise<void> {
       'source overview must expose provider failure backoff signal',
     );
     assert(
-      overview.body.summary.signals.includes('provider_unavailable'),
-      'source overview must expose provider unavailable signal',
+      overview.body.summary.signals.includes('source_auth_failed'),
+      'source overview must expose auth-failed signal',
     );
     assert(
-      overview.body.summary.signals.includes('source_down'),
-      'source overview must expose source down signal',
+      overview.body.summary.signals.includes('source_rate_limited'),
+      'source overview must expose rate-limited health signal',
     );
     assert(
       overview.body.summary.signals.includes('scheduled_later'),
@@ -955,11 +976,13 @@ async function main(): Promise<void> {
       overview.body.summary.providerBreakdown.some(
         (provider: {
           providerKey: string;
+          rateLimitedBindings: number;
           degradedBindings: number;
           rateLimitBackoffSkips: number;
         }) =>
           provider.providerKey === 'reddit' &&
-          provider.degradedBindings === 1 &&
+          provider.rateLimitedBindings === 1 &&
+          provider.degradedBindings === 0 &&
           provider.rateLimitBackoffSkips === 1,
       ),
       'source overview must break down Reddit rate-limit state',
@@ -968,13 +991,13 @@ async function main(): Promise<void> {
       overview.body.summary.providerBreakdown.some(
         (provider: {
           providerKey: string;
-          degradedBindings: number;
+          authFailedBindings: number;
           downBindings: number;
           providerFailureBackoffSkips: number;
         }) =>
           provider.providerKey === 'github-issues' &&
-          provider.degradedBindings === 0 &&
-          provider.downBindings === 1 &&
+          provider.authFailedBindings === 1 &&
+          provider.downBindings === 0 &&
           provider.providerFailureBackoffSkips === 1,
       ),
       'source overview must break down GitHub provider failure state',

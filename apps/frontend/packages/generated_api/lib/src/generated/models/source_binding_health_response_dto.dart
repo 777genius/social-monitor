@@ -4,6 +4,7 @@
 
 import 'package:json_annotation/json_annotation.dart';
 
+import 'source_binding_health_explanation_response_dto.dart';
 import 'source_binding_health_freshness_response_dto.dart';
 import 'source_binding_health_policy_response_dto.dart';
 import 'source_binding_health_recent_window_response_dto.dart';
@@ -18,6 +19,7 @@ part 'source_binding_health_response_dto.g.dart';
 class SourceBindingHealthResponseDto {
   const SourceBindingHealthResponseDto({
     required this.evaluatedAt,
+    required this.healthExplanation,
     required this.healthState,
     required this.operatorAction,
     required this.schedulerDecision,
@@ -33,6 +35,7 @@ class SourceBindingHealthResponseDto {
 
   final DateTime evaluatedAt;
   final SourceBindingHealthFreshnessResponseDto? freshness;
+  final SourceBindingHealthExplanationResponseDto healthExplanation;
   final SourceBindingHealthResponseDtoHealthStateHealthState healthState;
   final SourceBindingHealthScanResponseDto? latestScan;
   final String operatorAction;

@@ -65,6 +65,7 @@ export class ListSourceBindingScansUseCase {
       const view = buildScanStatusView({
         status: snapshot.status,
         failureReason: snapshot.failureReason,
+        failureMetadata: snapshot.failureMetadata,
       });
 
       return {

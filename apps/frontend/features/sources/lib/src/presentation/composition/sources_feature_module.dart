@@ -13,6 +13,7 @@ import '../../application/use_cases/list_source_profiles_use_case.dart';
 import '../../application/use_cases/load_scan_policy_use_case.dart';
 import '../../application/use_cases/load_scan_status_use_case.dart';
 import '../../application/use_cases/load_source_binding_health_use_case.dart';
+import '../../application/use_cases/load_source_binding_overview_use_case.dart';
 import '../../application/use_cases/plan_interest_coverage_use_case.dart';
 import '../../application/use_cases/request_scan_use_case.dart';
 import '../../application/use_cases/set_scan_policy_use_case.dart';
@@ -170,6 +171,9 @@ final class SourcesFeatureModule extends Module {
           i.get<SourceBindingCatalog>(),
         ),
         loadSourceBindingHealth: LoadSourceBindingHealthUseCase(
+          i.get<SourceBindingCatalog>(),
+        ),
+        loadSourceBindingOverview: LoadSourceBindingOverviewUseCase(
           i.get<SourceBindingCatalog>(),
         ),
         scope: scope,

@@ -1,25 +1,39 @@
-import { DomainError, err, ok, type Result } from '@social-monitor/shared-kernel';
+import {
+  DomainError,
+  err,
+  ok,
+  type Result,
+} from "@social-monitor/shared-kernel";
 
 import type {
   SourceBindingRepositoryPort,
   SourceCatalogPort,
   InterestRepositoryPort,
-} from '../../ports';
-import {
-  providerScanCadenceProfile,
-} from '../shared/scan-cadence-policy';
-import { presentInterest } from '../shared/interest-presenter';
-import type { PlanInterestCoverageCommand } from './plan-interest-coverage.command';
+} from "../../ports";
+import { providerScanCadenceProfile } from "../shared/scan-cadence-policy";
+import { presentInterest } from "../shared/interest-presenter";
+import type { PlanInterestCoverageCommand } from "./plan-interest-coverage.command";
 import type {
   PlanInterestCoverageResult,
   InterestCoveragePlanDraft,
-} from './plan-interest-coverage.result';
+} from "./plan-interest-coverage.result";
 import {
   providerPlanners,
   sourcePlannerHints,
   type ProviderDraftPlan,
   type ProviderPlanner,
-} from './interest-coverage-provider-draft-planners';
+} from "./interest-coverage-provider-draft-planners";
+import {
+  findInterestCoverageSourcePack,
+  sourcePackGithubLanguages,
+  sourcePackGithubTopics,
+  sourcePackHackerNewsQueries,
+  sourcePackKeywords,
+  sourcePackProviderKeys,
+  sourcePackRssFeedUrls,
+  sourcePackSubreddits,
+  sourcePackView,
+} from "./interest-coverage-source-packs";
 
 type PlanInterestCoverageFailure = DomainError;
 
@@ -38,7 +52,9 @@ export class PlanInterestCoverageUseCase {
     command: PlanInterestCoverageCommand,
   ): Promise<Result<PlanInterestCoverageResult, PlanInterestCoverageFailure>> {
     if (command.interestId.trim().length === 0) {
-      return err(new DomainError('validation.failed', 'Interest id is required'));
+      return err(
+        new DomainError("validation.failed", "Interest id is required"),
+      );
     }
 
     const interest = await this.interests.findById({
@@ -47,11 +63,25 @@ export class PlanInterestCoverageUseCase {
       interestId: command.interestId,
     });
     if (interest === null) {
-      return err(new DomainError('resource.not_found', 'Interest not found', { interestId: command.interestId }));
+      return err(
+        new DomainError("resource.not_found", "Interest not found", {
+          interestId: command.interestId,
+        }),
+      );
+    }
+
+    const sourcePack = findInterestCoverageSourcePack(command.sourcePackKey);
+    if (command.sourcePackKey !== undefined && sourcePack === undefined) {
+      return err(
+        new DomainError("validation.failed", "Unknown source coverage pack", {
+          sourcePackKey: command.sourcePackKey,
+        }),
+      );
     }
 
     const interestSnapshot = interest.toSnapshot();
     const normalizedKeywords = normalizeKeywords([
+      ...sourcePackKeywords(sourcePack),
       ...(command.keywords ?? []),
       interestSnapshot.query,
       interestSnapshot.name,
@@ -59,10 +89,18 @@ export class PlanInterestCoverageUseCase {
     ]);
     const planningQuery = buildPlanningQuery(normalizedKeywords);
     if (planningQuery.length === 0) {
-      return err(new DomainError('validation.failed', 'Coverage planning requires an interest query or keyword hint'));
+      return err(
+        new DomainError(
+          "validation.failed",
+          "Coverage planning requires an interest query or keyword hint",
+        ),
+      );
     }
 
-    const providerSelection = selectProviders(command);
+    const providerSelection = selectProviders(
+      command,
+      sourcePackProviderKeys(sourcePack),
+    );
     if (providerSelection instanceof DomainError) {
       return err(providerSelection);
     }
@@ -80,38 +118,63 @@ export class PlanInterestCoverageUseCase {
         return [snapshot.providerKey, snapshot];
       }),
     );
-    const hints = sourcePlannerHints(command);
+    const hints = sourcePlannerHints({
+      ...command,
+      subreddits: [
+        ...sourcePackSubreddits(sourcePack),
+        ...(command.subreddits ?? []),
+      ],
+      rssFeedUrls: [
+        ...sourcePackRssFeedUrls(sourcePack),
+        ...(command.rssFeedUrls ?? []),
+      ],
+      hackerNewsQueries: sourcePackHackerNewsQueries(sourcePack),
+      githubTopics: sourcePackGithubTopics(sourcePack),
+      githubLanguages: sourcePackGithubLanguages(sourcePack),
+    });
     const drafts: InterestCoveragePlanDraft[] = [];
     const skippedProviders = [...providerSelection.skippedProviders];
 
     for (const planner of providerSelection.planners) {
-      const capability = await this.sourceCatalog.getCapability(planner.providerKey);
+      const capability = await this.sourceCatalog.getCapability(
+        planner.providerKey,
+      );
       if (capability === null || !capability.productionSafe) {
         skippedProviders.push({
           providerKey: planner.providerKey,
-          reason: 'Source provider is not available for production-safe scans.',
+          reason: "Source provider is not available for production-safe scans.",
         });
         continue;
       }
 
-      const existingSourceBinding = existingBindingByProvider.get(planner.providerKey);
+      const existingSourceBinding = existingBindingByProvider.get(
+        planner.providerKey,
+      );
       const draft = planner.build({
         planningQuery,
         hints,
-        ...(existingSourceBinding === undefined ? {} : { existingSourceBinding }),
+        ...(existingSourceBinding === undefined
+          ? {}
+          : { existingSourceBinding }),
       });
-      const validatedDraft = await this.validateDraft(planner.providerKey, draft);
+      const validatedDraft = await this.validateDraft(
+        planner.providerKey,
+        draft,
+      );
       const cadence = providerScanCadenceProfile(planner.providerKey);
 
       drafts.push({
         ...validatedDraft,
-        ...(existingSourceBinding === undefined ? {} : { existingSourceBindingId: existingSourceBinding.id }),
-        ...(validatedDraft.status === 'ready' && existingSourceBinding === undefined
+        ...(existingSourceBinding === undefined
+          ? {}
+          : { existingSourceBindingId: existingSourceBinding.id }),
+        ...(validatedDraft.status === "ready" &&
+        existingSourceBinding === undefined
           ? {
               applyTarget: {
-                method: 'POST',
+                method: "POST",
                 path: `/interests/${command.interestId}/source-bindings`,
-                requiredScope: 'write:source_bindings',
+                requiredScope: "write:source_bindings",
               },
             }
           : {}),
@@ -127,6 +190,9 @@ export class PlanInterestCoverageUseCase {
       interest: presentInterest(interest),
       planningQuery,
       normalizedKeywords,
+      ...(sourcePack === undefined
+        ? {}
+        : { sourcePack: sourcePackView(sourcePack)! }),
       drafts: drafts.sort((left, right) => left.priority - right.priority),
       coverageGaps: coverageGaps(drafts),
       skippedProviders,
@@ -138,18 +204,21 @@ export class PlanInterestCoverageUseCase {
     draft: ProviderDraftPlan,
   ): Promise<ProviderDraftPlan> {
     const config = draft.sourceBindingDraft?.config;
-    if (config === undefined || draft.status !== 'ready') {
+    if (config === undefined || draft.status !== "ready") {
       return draft;
     }
 
-    const validation = await this.sourceCatalog.validateBindingConfig(providerKey, config);
+    const validation = await this.sourceCatalog.validateBindingConfig(
+      providerKey,
+      config,
+    );
     if (validation.ok) {
       return draft;
     }
 
     return {
       ...draft,
-      status: 'unsupported',
+      status: "unsupported",
       warnings: [
         ...draft.warnings,
         `Generated source config failed provider validation: ${validation.reason}`,
@@ -161,10 +230,14 @@ export class PlanInterestCoverageUseCase {
 
 const selectProviders = (
   command: PlanInterestCoverageCommand,
+  sourcePackProviders: readonly string[] | undefined,
 ):
   | {
       readonly planners: readonly ProviderPlanner[];
-      readonly skippedProviders: readonly { readonly providerKey: string; readonly reason: string }[];
+      readonly skippedProviders: readonly {
+        readonly providerKey: string;
+        readonly reason: string;
+      }[];
     }
   | DomainError => {
   const includeProviders = normalizeProviderFilter(command.includeProviders);
@@ -179,15 +252,15 @@ const selectProviders = (
   }
 
   const requestedProviderKeys =
-    includeProviders === undefined
-      ? providerPlanners.map((planner) => planner.providerKey)
-      : includeProviders;
+    includeProviders ??
+    sourcePackProviders ??
+    providerPlanners.map((planner) => planner.providerKey);
   const planners = requestedProviderKeys.flatMap((providerKey) => {
     const planner = providerPlannerByKey.get(providerKey);
     if (planner === undefined) {
       skippedProviders.push({
         providerKey,
-        reason: 'No coverage planner exists for this provider yet.',
+        reason: "No coverage planner exists for this provider yet.",
       });
       return [];
     }
@@ -196,7 +269,10 @@ const selectProviders = (
   });
 
   if (planners.length === 0) {
-    return new DomainError('validation.failed', 'Coverage planning provider selection is empty');
+    return new DomainError(
+      "validation.failed",
+      "Coverage planning provider selection is empty",
+    );
   }
 
   return { planners, skippedProviders };
@@ -209,9 +285,14 @@ const normalizeProviderFilter = (
     return undefined;
   }
 
-  const normalized = uniqueSorted(providers.map((provider) => provider.trim()).filter(Boolean));
+  const normalized = uniqueSorted(
+    providers.map((provider) => provider.trim()).filter(Boolean),
+  );
   if (providers.length > 0 && normalized.length === 0) {
-    return new DomainError('validation.failed', 'Coverage planning provider filter must not be empty');
+    return new DomainError(
+      "validation.failed",
+      "Coverage planning provider filter must not be empty",
+    );
   }
 
   return normalized.length === 0 ? undefined : normalized;
@@ -233,7 +314,7 @@ const splitKeywordHints = (value: string): readonly string[] =>
     .filter(Boolean);
 
 const normalizeKeyword = (value: string): string | undefined => {
-  const normalized = value.replace(/\s+/g, ' ').trim();
+  const normalized = value.replace(/\s+/g, " ").trim();
 
   if (normalized.length < 2) {
     return undefined;
@@ -243,20 +324,22 @@ const normalizeKeyword = (value: string): string | undefined => {
 };
 
 const buildPlanningQuery = (keywords: readonly string[]): string =>
-  keywords.map(searchTerm).join(' OR ').slice(0, 500);
+  keywords.map(searchTerm).join(" OR ").slice(0, 500);
 
 const searchTerm = (keyword: string): string =>
-  /\s/.test(keyword) ? `"${keyword.replace(/"/g, '')}"` : keyword;
+  /\s/.test(keyword) ? `"${keyword.replace(/"/g, "")}"` : keyword;
 
-const coverageGaps = (drafts: readonly InterestCoveragePlanDraft[]): readonly string[] => {
+const coverageGaps = (
+  drafts: readonly InterestCoveragePlanDraft[],
+): readonly string[] => {
   const gaps = new Set<string>();
 
   for (const draft of drafts) {
     for (const warning of draft.warnings) {
-      if (warning.toLowerCase().includes('runtime gap')) {
+      if (warning.toLowerCase().includes("runtime gap")) {
         gaps.add(warning);
       }
-      if (warning.toLowerCase().includes('not implemented yet')) {
+      if (warning.toLowerCase().includes("not implemented yet")) {
         gaps.add(warning);
       }
     }
@@ -266,4 +349,6 @@ const coverageGaps = (drafts: readonly InterestCoveragePlanDraft[]): readonly st
 };
 
 const uniqueSorted = (values: readonly string[]): readonly string[] =>
-  [...new Set(values)].sort((left, right) => left.localeCompare(right, 'en-US'));
+  [...new Set(values)].sort((left, right) =>
+    left.localeCompare(right, "en-US"),
+  );

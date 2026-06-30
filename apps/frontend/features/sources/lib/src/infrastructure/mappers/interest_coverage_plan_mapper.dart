@@ -14,6 +14,7 @@ final class InterestCoveragePlanMapper {
       interestTitle: dto.interestTitle,
       planningQuery: dto.planningQuery,
       normalizedKeywords: dto.normalizedKeywords,
+      sourcePack: dto.sourcePack == null ? null : _sourcePack(dto.sourcePack!),
       drafts: dto.drafts.map(_draft).toList(growable: false),
       coverageGaps: dto.coverageGaps,
       skippedProviders: dto.skippedProviders
@@ -21,6 +22,28 @@ final class InterestCoveragePlanMapper {
             (skipped) => InterestCoveragePlanSkippedProvider(
               providerKey: SourceProviderKey(skipped.providerKey),
               reason: skipped.reason,
+            ),
+          )
+          .toList(growable: false),
+    );
+  }
+
+  InterestCoverageSourcePack _sourcePack(InterestCoverageSourcePackApiDto dto) {
+    return InterestCoverageSourcePack(
+      key: dto.key,
+      displayName: dto.displayName,
+      description: dto.description,
+      providerStarters: dto.providerStarters
+          .map(
+            (starter) => InterestCoverageSourcePackProviderStarter(
+              providerKey: SourceProviderKey(starter.providerKey),
+              label: starter.label,
+              keywords: starter.keywords,
+              queries: starter.queries,
+              subreddits: starter.subreddits,
+              topics: starter.topics,
+              languages: starter.languages,
+              rssFeedUrls: starter.rssFeedUrls,
             ),
           )
           .toList(growable: false),

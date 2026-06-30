@@ -18,8 +18,14 @@ enum SourceBindingHealthResponseDtoHealthStateHealthState {
   healthy('healthy'),
   @JsonValue('stale')
   stale('stale'),
+  @JsonValue('rate_limited')
+  rateLimited('rate_limited'),
+  @JsonValue('auth_failed')
+  authFailed('auth_failed'),
   @JsonValue('degraded')
   degraded('degraded'),
+  @JsonValue('unsupported_scope')
+  unsupportedScope('unsupported_scope'),
   @JsonValue('down')
   down('down'),
 

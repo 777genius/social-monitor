@@ -10,6 +10,9 @@ SourceBindingHealthResponseDto _$SourceBindingHealthResponseDtoFromJson(
   Map<String, dynamic> json,
 ) => SourceBindingHealthResponseDto(
   evaluatedAt: DateTime.parse(json['evaluatedAt'] as String),
+  healthExplanation: SourceBindingHealthExplanationResponseDto.fromJson(
+    json['healthExplanation'] as Map<String, dynamic>,
+  ),
   healthState: SourceBindingHealthResponseDtoHealthStateHealthState.fromJson(
     json['healthState'] as String,
   ),
@@ -47,6 +50,7 @@ Map<String, dynamic> _$SourceBindingHealthResponseDtoToJson(
 ) => <String, dynamic>{
   'evaluatedAt': instance.evaluatedAt.toIso8601String(),
   'freshness': instance.freshness,
+  'healthExplanation': instance.healthExplanation,
   'healthState': instance.healthState,
   'latestScan': instance.latestScan,
   'operatorAction': instance.operatorAction,

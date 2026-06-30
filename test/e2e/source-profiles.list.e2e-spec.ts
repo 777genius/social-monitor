@@ -39,6 +39,7 @@ describe('Source profiles list (e2e)', () => {
         expect.objectContaining({
           providerKey: 'fake-source',
           productionSafe: true,
+          health: expect.objectContaining({ state: 'degraded' }),
           readinessState: 'certification_ready',
           runtimeReadiness: 'fixture_ready',
           liveBetaBlockers: expect.arrayContaining(['Synthetic provider is not a real external source.']),
@@ -47,8 +48,10 @@ describe('Source profiles list (e2e)', () => {
         expect.objectContaining({
           providerKey: 'reddit',
           productionSafe: true,
+          health: expect.objectContaining({ state: 'degraded' }),
           readinessState: 'enabled_beta',
           supportedQueryModes: expect.arrayContaining(['search', 'listing']),
+          unsupportedContentUnits: expect.arrayContaining(['profile', 'media']),
         }),
         expect.objectContaining({
           providerKey: 'hacker-news',
@@ -65,6 +68,7 @@ describe('Source profiles list (e2e)', () => {
         expect.objectContaining({
           providerKey: 'x-twitter',
           productionSafe: false,
+          health: expect.objectContaining({ state: 'unsupported_scope' }),
           readinessState: 'provider_only',
         }),
         expect.objectContaining({

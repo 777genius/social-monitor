@@ -16,6 +16,11 @@ import 'git_hub_trending_repository_provider_metrics_dto_window_window.dart';
 import 'hacker_news_story_provider_metrics_dto_content_type_content_type.dart';
 import 'hacker_news_story_provider_metrics_dto_kind_kind.dart';
 import 'hacker_news_story_provider_metrics_dto_provider_key_provider_key.dart';
+import 'reddit_comment_provider_metrics_dto_content_type_content_type.dart';
+import 'reddit_comment_provider_metrics_dto_kind_kind.dart';
+import 'reddit_comment_provider_metrics_dto_provider_key_provider_key.dart';
+import 'reddit_comment_provider_metrics_dto_role_role.dart';
+import 'reddit_comment_provider_metrics_dto_score_confidence_score_confidence.dart';
 import 'reddit_post_provider_metrics_dto_content_type_content_type.dart';
 import 'reddit_post_provider_metrics_dto_kind_kind.dart';
 import 'reddit_post_provider_metrics_dto_provider_key_provider_key.dart';
@@ -53,6 +58,8 @@ extension GetFeedItemResponseDtoProviderMetricsProviderMetricsUnionDeserializer
           'github_trending_repository',
       GetFeedItemResponseDtoProviderMetricsProviderMetricsHackerNewsStory:
           'hacker_news_story',
+      GetFeedItemResponseDtoProviderMetricsProviderMetricsRedditComment:
+          'reddit_comment',
       GetFeedItemResponseDtoProviderMetricsProviderMetricsRedditPost:
           'reddit_post',
       GetFeedItemResponseDtoProviderMetricsProviderMetricsXPost: 'x_post',
@@ -76,6 +83,12 @@ extension GetFeedItemResponseDtoProviderMetricsProviderMetricsUnionDeserializer
           when value ==
               effective[GetFeedItemResponseDtoProviderMetricsProviderMetricsHackerNewsStory] =>
         GetFeedItemResponseDtoProviderMetricsProviderMetricsHackerNewsStory.fromJson(
+          json,
+        ),
+      _
+          when value ==
+              effective[GetFeedItemResponseDtoProviderMetricsProviderMetricsRedditComment] =>
+        GetFeedItemResponseDtoProviderMetricsProviderMetricsRedditComment.fromJson(
           json,
         ),
       _
@@ -213,6 +226,46 @@ class GetFeedItemResponseDtoProviderMetricsProviderMetricsHackerNewsStory
   @override
   Map<String, dynamic> toJson() =>
       _$GetFeedItemResponseDtoProviderMetricsProviderMetricsHackerNewsStoryToJson(
+        this,
+      );
+}
+
+@JsonSerializable()
+class GetFeedItemResponseDtoProviderMetricsProviderMetricsRedditComment
+    extends GetFeedItemResponseDtoProviderMetricsProviderMetrics {
+  final RedditCommentProviderMetricsDtoContentTypeContentType contentType;
+  final num depth;
+  final RedditCommentProviderMetricsDtoKindKind kind;
+  final RedditCommentProviderMetricsDtoProviderKeyProviderKey providerKey;
+  final num replies;
+  final RedditCommentProviderMetricsDtoRoleRole role;
+  final num score;
+  final RedditCommentProviderMetricsDtoScoreConfidenceScoreConfidence
+  scoreConfidence;
+  final String sourceKey;
+
+  const GetFeedItemResponseDtoProviderMetricsProviderMetricsRedditComment({
+    required this.contentType,
+    required this.depth,
+    required this.kind,
+    required this.providerKey,
+    required this.replies,
+    required this.role,
+    required this.score,
+    required this.scoreConfidence,
+    required this.sourceKey,
+  });
+
+  factory GetFeedItemResponseDtoProviderMetricsProviderMetricsRedditComment.fromJson(
+    Map<String, dynamic> json,
+  ) =>
+      _$GetFeedItemResponseDtoProviderMetricsProviderMetricsRedditCommentFromJson(
+        json,
+      );
+
+  @override
+  Map<String, dynamic> toJson() =>
+      _$GetFeedItemResponseDtoProviderMetricsProviderMetricsRedditCommentToJson(
         this,
       );
 }

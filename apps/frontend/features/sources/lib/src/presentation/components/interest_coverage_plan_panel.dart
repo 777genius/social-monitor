@@ -10,6 +10,7 @@ import '../../domain/value_objects/interest_coverage_plan_draft_status.dart';
 import '../formatters/source_binding_display_formatters.dart';
 import '../stores/interest_coverage_plan_store.dart';
 import '../stores/source_bindings_store.dart';
+import 'interest_coverage_source_pack_controls.dart';
 
 class InterestCoveragePlanPanel extends StatelessWidget {
   const InterestCoveragePlanPanel({
@@ -100,6 +101,8 @@ class _PanelBody extends StatelessWidget {
           ],
         ),
         const SizedBox(height: AppSpacing.sm),
+        InterestCoverageSourcePackSelector(store: store, isLoading: isLoading),
+        const SizedBox(height: AppSpacing.sm),
         switch (state) {
           InitialViewState<InterestCoveragePlan>() => const Text(
             'Build Reddit, Hacker News and RSS drafts for this interest.',
@@ -158,6 +161,10 @@ class _PlanContent extends StatelessWidget {
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
         ),
+        if (value.sourcePack case final sourcePack?) ...[
+          const SizedBox(height: AppSpacing.sm),
+          InterestCoverageSourcePackSummary(sourcePack: sourcePack),
+        ],
         if (value.coverageGaps.isNotEmpty) ...[
           const SizedBox(height: AppSpacing.sm),
           AppInlineProblem(

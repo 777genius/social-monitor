@@ -10,6 +10,12 @@ type SourceProfile = {
   readonly providerKey: string;
   readonly displayName?: string;
   readonly productionSafe: boolean;
+  readonly health: {
+    readonly state: string;
+    readonly reasonCode: string;
+    readonly message: string;
+    readonly signals: readonly string[];
+  };
   readonly readinessState: string;
   readonly runtimeReadiness: string;
   readonly liveBetaBlockers: readonly string[];
@@ -33,6 +39,7 @@ type SourceProfile = {
   };
   readonly acquisitionMode: string;
   readonly supportedContentUnits: readonly string[];
+  readonly unsupportedContentUnits: readonly string[];
   readonly supportedQueryModes: readonly string[];
   readonly cursorModel: string;
   readonly quotaModel: string;
@@ -161,6 +168,10 @@ async function main(): Promise<void> {
       'Fake source must stay fixture-ready only',
     );
     assert(
+      fake.health.state === 'degraded',
+      'Fake source must explain fixture-only degradation',
+    );
+    assert(
       fake.liveBetaBlockers.some((blocker) =>
         blocker.toLowerCase().includes('not a real external source'),
       ),
@@ -186,6 +197,10 @@ async function main(): Promise<void> {
     assert(
       github.supportedQueryModes.includes('search'),
       'GitHub profile must support search mode',
+    );
+    assert(
+      github.unsupportedContentUnits.includes('media'),
+      'GitHub profile must expose unsupported media scope',
     );
     assert(
       github.cursorModel === 'page_token',
@@ -350,6 +365,10 @@ async function main(): Promise<void> {
       'Reddit profile must support post content units',
     );
     assert(
+      reddit.unsupportedContentUnits.includes('profile'),
+      'Reddit profile must expose unsupported profile scope',
+    );
+    assert(
       reddit.limitations.some((limitation) =>
         limitation.toLowerCase().includes('oauth api'),
       ),
@@ -390,6 +409,10 @@ async function main(): Promise<void> {
     assert(
       xTwitter.productionSafe === false,
       'X/Twitter must not be production-safe while provider-only',
+    );
+    assert(
+      xTwitter.health.reasonCode === 'source_not_production_safe',
+      'X/Twitter must explain unavailable runtime health while deferred',
     );
     assert(
       xTwitter.readinessState === 'provider_only',

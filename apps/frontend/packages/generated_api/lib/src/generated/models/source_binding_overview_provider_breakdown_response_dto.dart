@@ -4,12 +4,16 @@
 
 import 'package:json_annotation/json_annotation.dart';
 
+import 'source_binding_overview_degradation_reason_response_dto.dart';
+
 part 'source_binding_overview_provider_breakdown_response_dto.g.dart';
 
 @JsonSerializable()
 class SourceBindingOverviewProviderBreakdownResponseDto {
   const SourceBindingOverviewProviderBreakdownResponseDto({
+    required this.authFailedBindings,
     required this.canScanNowBindings,
+    required this.degradationReasons,
     required this.degradedBindings,
     required this.downBindings,
     required this.freshSuccessSkips,
@@ -20,11 +24,13 @@ class SourceBindingOverviewProviderBreakdownResponseDto {
     required this.providerKey,
     required this.providerUnavailableScans,
     required this.rateLimitBackoffSkips,
+    required this.rateLimitedBindings,
     required this.scanningBindings,
     required this.scheduledBindings,
     required this.signals,
     required this.staleBindings,
     required this.totalBindings,
+    required this.unsupportedScopeBindings,
     this.nextEligibleAt,
   });
 
@@ -32,7 +38,10 @@ class SourceBindingOverviewProviderBreakdownResponseDto {
     Map<String, Object?> json,
   ) => _$SourceBindingOverviewProviderBreakdownResponseDtoFromJson(json);
 
+  final num authFailedBindings;
   final num canScanNowBindings;
+  final List<SourceBindingOverviewDegradationReasonResponseDto>
+  degradationReasons;
   final num degradedBindings;
   final num downBindings;
   final num freshSuccessSkips;
@@ -44,11 +53,13 @@ class SourceBindingOverviewProviderBreakdownResponseDto {
   final String providerKey;
   final num providerUnavailableScans;
   final num rateLimitBackoffSkips;
+  final num rateLimitedBindings;
   final num scanningBindings;
   final num scheduledBindings;
   final List<String> signals;
   final num staleBindings;
   final num totalBindings;
+  final num unsupportedScopeBindings;
 
   Map<String, Object?> toJson() =>
       _$SourceBindingOverviewProviderBreakdownResponseDtoToJson(this);

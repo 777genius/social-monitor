@@ -1,3 +1,9 @@
+import {
+  CONVERSATION_SIGNAL_BASELINE_REPOSITORY,
+  CONVERSATION_UNIT_REPOSITORY,
+  type ConversationSignalBaselineRepositoryPort,
+  type ConversationUnitRepositoryPort,
+} from "@social-monitor/conversation/ports";
 import { InMemoryFeedItemReadRepository } from "@social-monitor/feed/adapters/persistence/in-memory-feed-item-read.repository";
 import {
   FEED_ITEM_READ_REPOSITORY,
@@ -20,6 +26,7 @@ import type { UserSummaryPreferenceRepositoryPort } from "@social-monitor/subscr
 import { ReserveUsageQuotaUseCase } from "@social-monitor/usage/features/reserve-usage-quota/reserve-usage-quota.use-case";
 
 import { FeedSummaryEvidenceSelector } from "../../adapters/evidence/feed-summary-evidence.selector";
+import { ConversationSummaryEvidenceSelector } from "../../adapters/evidence/conversation-summary-evidence.selector";
 import { FeedSummaryFreshnessProbe } from "../../adapters/evidence/feed-summary-freshness.probe";
 import { RelevanceSummaryEvidenceSelector } from "../../adapters/evidence/relevance-summary-evidence.selector";
 import { YoutubeVideoSummaryEvidenceSelector } from "../../adapters/evidence/youtube-video-summary-evidence.selector";
@@ -99,6 +106,7 @@ import {
   resolveSummaryYoutubeVideoSummaryMaxItems,
   resolveSummaryYoutubeVideoSummaryMaxPreviewCharacters,
 } from "./summary-provider-tokens";
+import { summaryConversationPersistenceProviders } from "./summary-conversation-persistence.providers";
 
 export const summaryRestInfrastructureProviders = [
   {
@@ -124,6 +132,7 @@ export const summaryRestInfrastructureProviders = [
         : null,
     inject: [SUMMARY_JOB_QUEUE_MODE],
   },
+  ...summaryConversationPersistenceProviders,
   {
     provide: SUMMARY_JOB_QUEUE,
     useFactory: (
@@ -330,24 +339,33 @@ export const summaryRestInfrastructureProviders = [
     useFactory: (
       feedEvidenceSelector: RelevanceSummaryEvidenceSelector,
       youtubeVideoSummaryProvider: YoutubeVideoSummaryProviderPort,
+      conversationUnits: ConversationUnitRepositoryPort,
+      conversationBaselines: ConversationSignalBaselineRepositoryPort,
     ): SummaryEvidenceSelectorPort =>
-      new YoutubeVideoSummaryEvidenceSelector(
-        feedEvidenceSelector,
-        youtubeVideoSummaryProvider,
-        {
-          maxVideosPerSelection: resolveSummaryYoutubeVideoSummaryMaxItems(
-            process.env,
-          ),
-          maxPreviewCharacters:
-            resolveSummaryYoutubeVideoSummaryMaxPreviewCharacters(
+      new ConversationSummaryEvidenceSelector(
+        new YoutubeVideoSummaryEvidenceSelector(
+          feedEvidenceSelector,
+          youtubeVideoSummaryProvider,
+          {
+            maxVideosPerSelection: resolveSummaryYoutubeVideoSummaryMaxItems(
               process.env,
             ),
-          continueOnProviderError: true,
-        },
+            maxPreviewCharacters:
+              resolveSummaryYoutubeVideoSummaryMaxPreviewCharacters(
+                process.env,
+              ),
+            continueOnProviderError: true,
+          },
+        ),
+        conversationUnits,
+        conversationBaselines,
+        new SystemClock(),
       ),
     inject: [
       RelevanceSummaryEvidenceSelector,
       SUMMARY_YOUTUBE_VIDEO_SUMMARY_PROVIDER,
+      CONVERSATION_UNIT_REPOSITORY,
+      CONVERSATION_SIGNAL_BASELINE_REPOSITORY,
     ],
   },
   {

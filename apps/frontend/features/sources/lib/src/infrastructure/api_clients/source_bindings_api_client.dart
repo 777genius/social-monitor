@@ -19,4 +19,8 @@ abstract interface class SourceBindingsApiClient {
   Future<Result<SourceBindingHealthApiDto>> loadSourceBindingHealth(
     SourceBindingHealthApiRequestDto request,
   );
+
+  Future<Result<SourceBindingOverviewApiDto>> loadSourceBindingOverview(
+    SourceBindingOverviewApiRequestDto request,
+  );
 }

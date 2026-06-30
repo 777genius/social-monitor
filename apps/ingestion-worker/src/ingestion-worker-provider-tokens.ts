@@ -6,6 +6,7 @@ import {
   type RabbitMqQueueType,
 } from '@social-monitor/platform-queue/adapters/rabbitmq';
 import type {
+  ConversationProjectionPort,
   FeedProjectionPort,
   ScanAttemptRepositoryPort,
   ScanCursorRepositoryPort,
@@ -58,6 +59,7 @@ export const INGESTION_GITHUB_REPOSITORY_TREND_HISTORY_REPOSITORY =
 export const INGESTION_SCAN_ATTEMPT_REPOSITORY = Symbol('INGESTION_SCAN_ATTEMPT_REPOSITORY');
 export const INGESTION_SCAN_CURSOR_REPOSITORY = Symbol('INGESTION_SCAN_CURSOR_REPOSITORY');
 export const INGESTION_FEED_PROJECTION = Symbol('INGESTION_FEED_PROJECTION');
+export const INGESTION_CONVERSATION_PROJECTION = Symbol('INGESTION_CONVERSATION_PROJECTION');
 export const INGESTION_SCAN_FAILURE_QUEUE = Symbol('INGESTION_SCAN_FAILURE_QUEUE');
 export const INGESTION_SCAN_LEASE = Symbol('INGESTION_SCAN_LEASE');
 
@@ -76,6 +78,7 @@ export type IngestionWorkerProviderTokenMap = {
   readonly [INGESTION_SCAN_ATTEMPT_REPOSITORY]: ScanAttemptRepositoryPort;
   readonly [INGESTION_SCAN_CURSOR_REPOSITORY]: ScanCursorRepositoryPort;
   readonly [INGESTION_FEED_PROJECTION]: FeedProjectionPort;
+  readonly [INGESTION_CONVERSATION_PROJECTION]: ConversationProjectionPort;
   readonly [INGESTION_SCAN_FAILURE_QUEUE]: ScanFailureQueuePort & ScanRetryQueuePort;
   readonly [INGESTION_SCAN_LEASE]: ScanLeasePort;
 };

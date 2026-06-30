@@ -4,6 +4,7 @@ import type {
   FeedProjectionPort,
   ProjectFeedItemsCommand,
   ProjectFeedItemsResult,
+  ProjectedFeedItemRef,
 } from '@social-monitor/ingestion/ports';
 import { feedBodyPreviewForProjection } from '@social-monitor/feed/adapters/persistence/feed-projection-content';
 
@@ -12,6 +13,7 @@ export class InMemoryFeedProjectionAdapter implements FeedProjectionPort {
 
   async project(command: ProjectFeedItemsCommand): Promise<ProjectFeedItemsResult> {
     let projected = 0;
+    const projectedItems: ProjectedFeedItemRef[] = [];
 
     for (const sourceItem of command.sourceItems) {
       const snapshot = sourceItem.toSnapshot();
@@ -19,10 +21,11 @@ export class InMemoryFeedProjectionAdapter implements FeedProjectionPort {
         body: snapshot.body,
         providerMetadata: snapshot.metadata,
       });
+      const feedItemId = `feed:${snapshot.sourceBindingId}:${snapshot.externalId}`;
 
       this.feedItems.upsert(
         FeedItem.publish({
-          id: `feed:${snapshot.sourceBindingId}:${snapshot.externalId}`,
+          id: feedItemId,
           tenantId: command.tenantId,
           workspaceId: command.workspaceId,
           interestId: command.interestId,
@@ -38,9 +41,14 @@ export class InMemoryFeedProjectionAdapter implements FeedProjectionPort {
           providerMetadata: snapshot.metadata,
         }),
       );
+      projectedItems.push({
+        sourceItemId: snapshot.id,
+        sourceExternalId: snapshot.externalId,
+        feedItemId,
+      });
       projected += 1;
     }
 
-    return { projected };
+    return { projected, projectedItems };
   }
 }

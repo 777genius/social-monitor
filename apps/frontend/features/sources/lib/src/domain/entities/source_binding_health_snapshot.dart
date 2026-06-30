@@ -6,6 +6,7 @@ final class SourceBindingHealthSnapshot {
     required this.binding,
     required this.healthState,
     required this.operatorAction,
+    required this.healthExplanation,
     required this.evaluatedAt,
     this.freshness,
     this.latestScan,
@@ -14,9 +15,28 @@ final class SourceBindingHealthSnapshot {
   final SourceBinding binding;
   final SourceBindingHealthState healthState;
   final String operatorAction;
+  final SourceBindingHealthExplanation healthExplanation;
   final DateTime evaluatedAt;
   final SourceBindingFreshness? freshness;
   final SourceBindingScanSummary? latestScan;
+}
+
+final class SourceBindingHealthExplanation {
+  const SourceBindingHealthExplanation({
+    required this.reasonCode,
+    required this.message,
+    required this.operatorAction,
+    required this.signals,
+    this.unavailableUntil,
+    this.staleBySeconds,
+  });
+
+  final String reasonCode;
+  final String message;
+  final String operatorAction;
+  final List<String> signals;
+  final DateTime? unavailableUntil;
+  final num? staleBySeconds;
 }
 
 final class SourceBindingFreshness {

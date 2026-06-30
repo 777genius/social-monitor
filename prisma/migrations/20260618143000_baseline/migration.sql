@@ -423,6 +423,54 @@ CREATE TABLE "feed_signal_baseline_samples" (
 );
 
 -- CreateTable
+CREATE TABLE "conversation_units" (
+    "id" UUID NOT NULL,
+    "tenant_id" UUID NOT NULL,
+    "workspace_id" UUID NOT NULL,
+    "interest_id" UUID NOT NULL,
+    "source_binding_id" UUID NOT NULL,
+    "root_feed_item_id" UUID NOT NULL,
+    "root_provider_item_id" TEXT NOT NULL,
+    "provider_key" TEXT NOT NULL,
+    "provider_unit_id" TEXT NOT NULL,
+    "canonical_url" TEXT NOT NULL,
+    "author_handle" TEXT,
+    "body" TEXT NOT NULL,
+    "published_at" TIMESTAMPTZ(6) NOT NULL,
+    "observed_at" TIMESTAMPTZ(6) NOT NULL,
+    "thread_external_id" TEXT NOT NULL,
+    "parent_provider_unit_id" TEXT,
+    "depth" INTEGER NOT NULL,
+    "role" TEXT NOT NULL,
+    "provider_metadata" JSONB,
+    "content_hash" TEXT NOT NULL,
+    "schema_version" INTEGER NOT NULL DEFAULT 1,
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMPTZ(6) NOT NULL,
+
+    CONSTRAINT "conversation_units_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "conversation_signal_baseline_samples" (
+    "id" UUID NOT NULL,
+    "tenant_id" UUID NOT NULL,
+    "workspace_id" UUID NOT NULL,
+    "interest_id" UUID NOT NULL,
+    "conversation_unit_id" UUID NOT NULL,
+    "provider_key" TEXT NOT NULL,
+    "source_key" TEXT NOT NULL,
+    "content_type" TEXT NOT NULL,
+    "strength" DOUBLE PRECISION NOT NULL,
+    "published_at" TIMESTAMPTZ(6) NOT NULL,
+    "observed_at" TIMESTAMPTZ(6) NOT NULL,
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMPTZ(6) NOT NULL,
+
+    CONSTRAINT "conversation_signal_baseline_samples_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "github_repository_trend_candidates" (
     "id" UUID NOT NULL,
     "tenant_id" UUID NOT NULL,
@@ -1161,6 +1209,27 @@ CREATE INDEX "feed_signal_baseline_samples_tenant_id_workspace_id_provide_idx" O
 
 -- CreateIndex
 CREATE UNIQUE INDEX "feed_signal_baseline_samples_tenant_id_workspace_id_feed_it_key" ON "feed_signal_baseline_samples"("tenant_id", "workspace_id", "feed_item_id");
+
+-- CreateIndex
+CREATE INDEX "conversation_units_tenant_id_workspace_id_root_feed_item_id_idx" ON "conversation_units"("tenant_id", "workspace_id", "root_feed_item_id", "observed_at");
+
+-- CreateIndex
+CREATE INDEX "conversation_units_tenant_id_workspace_id_thread_external_i_idx" ON "conversation_units"("tenant_id", "workspace_id", "thread_external_id", "depth");
+
+-- CreateIndex
+CREATE INDEX "conversation_units_tenant_id_workspace_id_provider_key_obse_idx" ON "conversation_units"("tenant_id", "workspace_id", "provider_key", "observed_at");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "conversation_units_tenant_id_provider_key_provider_unit_id_key" ON "conversation_units"("tenant_id", "provider_key", "provider_unit_id");
+
+-- CreateIndex
+CREATE INDEX "conversation_signal_samples_interest_observed_idx" ON "conversation_signal_baseline_samples"("tenant_id", "workspace_id", "interest_id", "observed_at");
+
+-- CreateIndex
+CREATE INDEX "conversation_signal_baseline_samples_tenant_id_workspace_id_idx" ON "conversation_signal_baseline_samples"("tenant_id", "workspace_id", "provider_key", "content_type", "observed_at");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "conversation_signal_baseline_samples_tenant_id_workspace_id_key" ON "conversation_signal_baseline_samples"("tenant_id", "workspace_id", "conversation_unit_id");
 
 -- CreateIndex
 CREATE INDEX "github_repository_trend_candidates_tenant_id_workspace_id_s_idx" ON "github_repository_trend_candidates"("tenant_id", "workspace_id", "source_binding_id", "observed_at");

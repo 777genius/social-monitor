@@ -279,8 +279,10 @@ describe('RedditSourceProvider', () => {
                 body: 'The useful signal is in comment-level workflow complaints.',
                 author: 'workflow-builder',
                 permalink: '/r/ClaudeAI/comments/post_1/_/comment_1/',
+                parentId: 't3_post_1',
                 createdUtc: 1_782_230_060,
                 score: 25,
+                replyCount: 3,
                 depth: 0,
               },
               {
@@ -320,21 +322,34 @@ describe('RedditSourceProvider', () => {
         postId: 'post-1',
         subreddit: 'ClaudeAI',
         limit: 2,
+        depth: 2,
+        sort: 'confidence',
       }),
     ]);
     expect(result.items.map((item) => item.externalId)).toEqual([
       'reddit:t3_post_1',
-      'reddit:t1_comment_1',
     ]);
-    expect(result.items[1]).toMatchObject({
-      title: 'Comment on Claude Code workflow monitoring',
+    expect(result.conversationUnits?.map((unit) => unit.providerUnitId)).toEqual([
+      't1_comment_1',
+    ]);
+    expect(result.conversationUnits?.[0]).toMatchObject({
+      rootExternalId: 'reddit:t3_post_1',
+      rootProviderItemId: 't3_post_1',
+      providerUnitId: 't1_comment_1',
       body: 'The useful signal is in comment-level workflow complaints.',
+      threadExternalId: 't3_post_1',
+      depth: 0,
+      role: 'top_level_comment',
       metadata: {
         kind: 'reddit_comment',
+        contentType: 'comment',
         parentPostId: 't3_post_1',
         subreddit: 'ClaudeAI',
         score: 25,
+        replies: 3,
         depth: 0,
+        role: 'top_level_comment',
+        scoreConfidence: 'provider_reported',
       },
     });
   });

@@ -42,6 +42,7 @@ export class RegistrySourceFetcherAdapter implements SourceFetcherPort {
 
       return {
         items: result.items,
+        conversationUnits: result.conversationUnits,
         nextCursor: result.nextCursor,
       };
     } catch (error) {

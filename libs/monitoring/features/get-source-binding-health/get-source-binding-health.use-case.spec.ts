@@ -353,7 +353,13 @@ describe('GetSourceBindingHealthUseCase', () => {
       expect.objectContaining({
         ok: true,
         value: expect.objectContaining({
-          healthState: 'degraded',
+          healthState: 'rate_limited',
+          operatorAction: 'wait_for_provider_rate_limit_backoff',
+          healthExplanation: expect.objectContaining({
+            reasonCode: 'source_rate_limited',
+            operatorAction: 'wait_for_provider_rate_limit_backoff',
+            unavailableUntil: '2026-06-16T00:23:05.000Z',
+          }),
           schedulerDecision: expect.objectContaining({
             canScanNow: false,
             decision: 'rate_limit_backoff',
@@ -473,6 +479,12 @@ describe('GetSourceBindingHealthUseCase', () => {
         ok: true,
         value: expect.objectContaining({
           healthState: 'degraded',
+          operatorAction: 'inspect_latest_scan_failure_and_retry_budget',
+          healthExplanation: expect.objectContaining({
+            reasonCode: 'source_degraded',
+            operatorAction: 'inspect_latest_scan_failure_and_retry_budget',
+            unavailableUntil: '2026-06-16T00:38:05.000Z',
+          }),
           schedulerDecision: expect.objectContaining({
             canScanNow: false,
             decision: 'provider_failure_backoff',
@@ -527,7 +539,13 @@ describe('GetSourceBindingHealthUseCase', () => {
       expect.objectContaining({
         ok: true,
         value: expect.objectContaining({
-          healthState: 'degraded',
+          healthState: 'auth_failed',
+          operatorAction: 'refresh_or_reconnect_source_credentials',
+          healthExplanation: expect.objectContaining({
+            reasonCode: 'source_auth_failed',
+            message: 'Reddit auth failed. Reconnect credentials.',
+            unavailableUntil: '2026-06-16T00:38:05.000Z',
+          }),
           schedulerDecision: expect.objectContaining({
             canScanNow: false,
             decision: 'provider_failure_backoff',
@@ -544,9 +562,10 @@ describe('GetSourceBindingHealthUseCase', () => {
           }),
           recentWindow: expect.objectContaining({
             providerHealthState: 'degraded',
-            providerUnavailableScans: 2,
+            authFailedScans: 2,
+            providerUnavailableScans: 0,
             consecutiveFailures: 2,
-            signals: ['recent_failure', 'provider_unavailable', 'consecutive_failures'],
+            signals: ['recent_failure', 'auth_failed', 'consecutive_failures'],
           }),
         }),
       }),
@@ -591,6 +610,7 @@ describe('GetSourceBindingHealthUseCase', () => {
         failedScans: 1,
         activeScans: 0,
         rateLimitedScans: 1,
+        authFailedScans: 0,
         providerUnavailableScans: 0,
         consecutiveFailures: 1,
         lastSucceededAt: '2026-06-16T00:07:05.000Z',

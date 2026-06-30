@@ -5,13 +5,16 @@ import '../../application/commands/bind_source_to_interest_command.dart';
 import '../../application/commands/change_source_binding_status_command.dart';
 import '../../application/queries/list_source_bindings_query.dart';
 import '../../application/queries/load_source_binding_health_query.dart';
+import '../../application/queries/load_source_binding_overview_query.dart';
 import '../../application/use_cases/bind_source_to_interest_use_case.dart';
 import '../../application/use_cases/change_source_binding_status_use_case.dart';
 import '../../application/use_cases/list_source_bindings_use_case.dart';
 import '../../application/use_cases/load_source_binding_health_use_case.dart';
+import '../../application/use_cases/load_source_binding_overview_use_case.dart';
 import '../../domain/entities/interest_coverage_plan.dart';
 import '../../domain/entities/source_binding.dart';
 import '../../domain/entities/source_binding_health_snapshot.dart';
+import '../../domain/entities/source_binding_overview.dart';
 import '../../domain/value_objects/source_binding_id.dart';
 import '../../domain/value_objects/source_binding_status.dart';
 import '../../domain/value_objects/source_interest_id.dart';
@@ -24,26 +27,32 @@ final class SourceBindingsStore extends ChangeNotifier {
     required BindSourceToInterestUseCase bindSourceToInterest,
     required ChangeSourceBindingStatusUseCase changeSourceBindingStatus,
     required LoadSourceBindingHealthUseCase loadSourceBindingHealth,
+    required LoadSourceBindingOverviewUseCase loadSourceBindingOverview,
     required WorkspaceScope scope,
     required SourceInterestId interestId,
     required this.interestTitle,
     OperationGenerationGuard? listGuard,
     OperationGenerationGuard? healthGuard,
+    OperationGenerationGuard? overviewGuard,
   }) : _listSourceBindings = listSourceBindings,
        _bindSourceToInterest = bindSourceToInterest,
        _changeSourceBindingStatus = changeSourceBindingStatus,
        _loadSourceBindingHealth = loadSourceBindingHealth,
+       _loadSourceBindingOverview = loadSourceBindingOverview,
        _scope = scope,
        _interestId = interestId,
        _listGuard = listGuard ?? OperationGenerationGuard(),
-       _healthGuard = healthGuard ?? OperationGenerationGuard();
+       _healthGuard = healthGuard ?? OperationGenerationGuard(),
+       _overviewGuard = overviewGuard ?? OperationGenerationGuard();
 
   final ListSourceBindingsUseCase _listSourceBindings;
   final BindSourceToInterestUseCase _bindSourceToInterest;
   final ChangeSourceBindingStatusUseCase _changeSourceBindingStatus;
   final LoadSourceBindingHealthUseCase _loadSourceBindingHealth;
+  final LoadSourceBindingOverviewUseCase _loadSourceBindingOverview;
   final OperationGenerationGuard _listGuard;
   final OperationGenerationGuard _healthGuard;
+  final OperationGenerationGuard _overviewGuard;
 
   WorkspaceScope _scope;
   SourceInterestId _interestId;
@@ -55,6 +64,8 @@ final class SourceBindingsStore extends ChangeNotifier {
       const InitialViewState<PageResult<SourceBinding>>();
   AsyncViewState<SourceBindingHealthSnapshot> healthState =
       const InitialViewState<SourceBindingHealthSnapshot>();
+  AsyncViewState<SourceBindingOverview> overviewState =
+      const InitialViewState<SourceBindingOverview>();
   AsyncViewState<SourceBinding> mutationState =
       const InitialViewState<SourceBinding>();
 
@@ -63,21 +74,13 @@ final class SourceBindingsStore extends ChangeNotifier {
   final SourceBindingFormDraft _draft = SourceBindingFormDraft();
 
   WorkspaceScope get scope => _scope;
-
   SourceInterestId get interestId => _interestId;
-
   bool get isBindFormOpen => _isBindFormOpen;
-
   String get providerKey => _draft.providerKey;
-
   String get mode => _draft.mode;
-
   String get query => _draft.query;
-
   String get subreddit => _draft.subreddit;
-
   String get listing => _draft.listing;
-
   String get feedUrl => _draft.feedUrl;
 
   SourceBinding? get selectedBinding {
@@ -133,9 +136,11 @@ final class SourceBindingsStore extends ChangeNotifier {
     _interestId = interestId;
     _listGuard.invalidate();
     _healthGuard.invalidate();
+    _overviewGuard.invalidate();
     _selectedBindingId = null;
     bindingsState = const InitialViewState<PageResult<SourceBinding>>();
     healthState = const InitialViewState<SourceBindingHealthSnapshot>();
+    overviewState = const InitialViewState<SourceBindingOverview>();
     mutationState = const InitialViewState<SourceBinding>();
     notifyListeners();
   }
@@ -216,10 +221,37 @@ final class SourceBindingsStore extends ChangeNotifier {
     );
     notifyListeners();
 
+    await loadOverview();
+
     final selected = selectedBinding;
     if (selected != null) {
       await loadHealth(selected);
     }
+  }
+
+  Future<void> loadOverview() async {
+    final generation = _overviewGuard.markOperationStarted();
+    final previous = switch (overviewState) {
+      ReadyViewState<SourceBindingOverview>(:final value) => value,
+      _ => null,
+    };
+    overviewState = LoadingViewState<SourceBindingOverview>(
+      previousValue: previous,
+    );
+    notifyListeners();
+
+    final result = await _loadSourceBindingOverview(
+      LoadSourceBindingOverviewQuery(scope: _scope, interestId: _interestId),
+    );
+    if (!_overviewGuard.isCurrent(generation)) {
+      return;
+    }
+    overviewState = result.fold(
+      onSuccess: ReadyViewState<SourceBindingOverview>.new,
+      onFailure: (failure) =>
+          FailureViewState<SourceBindingOverview>(failure: failure),
+    );
+    notifyListeners();
   }
 
   Future<void> selectBinding(SourceBinding binding) async {

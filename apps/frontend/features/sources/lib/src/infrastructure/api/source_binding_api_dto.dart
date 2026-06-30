@@ -100,3 +100,71 @@ final class SourceBindingHealthApiRequestDto {
   final String interestId;
   final String sourceBindingId;
 }
+
+final class SourceBindingOverviewApiRequestDto {
+  const SourceBindingOverviewApiRequestDto({
+    required this.scope,
+    required this.interestId,
+    required this.page,
+  });
+
+  final WorkspaceScope scope;
+  final String interestId;
+  final PageRequest page;
+}
+
+final class SourceBindingOverviewApiDto {
+  const SourceBindingOverviewApiDto({required this.summary});
+
+  final SourceBindingOverviewSummaryApiDto summary;
+}
+
+final class SourceBindingOverviewSummaryApiDto {
+  const SourceBindingOverviewSummaryApiDto({
+    required this.totalBindings,
+    required this.operatorAction,
+    required this.degradationReasons,
+    required this.providerBreakdown,
+    this.nextEligibleAt,
+  });
+
+  final num totalBindings;
+  final String operatorAction;
+  final List<SourceBindingOverviewDegradationReasonApiDto> degradationReasons;
+  final List<SourceBindingOverviewProviderBreakdownApiDto> providerBreakdown;
+  final DateTime? nextEligibleAt;
+}
+
+final class SourceBindingOverviewProviderBreakdownApiDto {
+  const SourceBindingOverviewProviderBreakdownApiDto({
+    required this.providerKey,
+    required this.totalBindings,
+    required this.degradationReasons,
+    this.nextEligibleAt,
+  });
+
+  final String providerKey;
+  final num totalBindings;
+  final List<SourceBindingOverviewDegradationReasonApiDto> degradationReasons;
+  final DateTime? nextEligibleAt;
+}
+
+final class SourceBindingOverviewDegradationReasonApiDto {
+  const SourceBindingOverviewDegradationReasonApiDto({
+    required this.code,
+    required this.severity,
+    required this.affectedBindings,
+    required this.operatorAction,
+    required this.sampleSourceBindingIds,
+    required this.signals,
+    this.nextEligibleAt,
+  });
+
+  final String code;
+  final String severity;
+  final num affectedBindings;
+  final String operatorAction;
+  final List<String> sampleSourceBindingIds;
+  final List<String> signals;
+  final DateTime? nextEligibleAt;
+}

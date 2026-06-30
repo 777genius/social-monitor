@@ -492,6 +492,7 @@
                 "github_repository": "#/components/schemas/GitHubRepositoryProviderMetricsDto",
                 "github_trending_repository": "#/components/schemas/GitHubTrendingRepositoryProviderMetricsDto",
                 "hacker_news_story": "#/components/schemas/HackerNewsStoryProviderMetricsDto",
+                "reddit_comment": "#/components/schemas/RedditCommentProviderMetricsDto",
                 "reddit_post": "#/components/schemas/RedditPostProviderMetricsDto",
                 "x_post": "#/components/schemas/XPostProviderMetricsDto"
               },
@@ -500,6 +501,9 @@
             "oneOf": [
               {
                 "$ref": "#/components/schemas/RedditPostProviderMetricsDto"
+              },
+              {
+                "$ref": "#/components/schemas/RedditCommentProviderMetricsDto"
               },
               {
                 "$ref": "#/components/schemas/GitHubRepositoryProviderMetricsDto"
@@ -776,6 +780,7 @@
                 "github_repository": "#/components/schemas/GitHubRepositoryProviderMetricsDto",
                 "github_trending_repository": "#/components/schemas/GitHubTrendingRepositoryProviderMetricsDto",
                 "hacker_news_story": "#/components/schemas/HackerNewsStoryProviderMetricsDto",
+                "reddit_comment": "#/components/schemas/RedditCommentProviderMetricsDto",
                 "reddit_post": "#/components/schemas/RedditPostProviderMetricsDto",
                 "x_post": "#/components/schemas/XPostProviderMetricsDto"
               },
@@ -784,6 +789,9 @@
             "oneOf": [
               {
                 "$ref": "#/components/schemas/RedditPostProviderMetricsDto"
+              },
+              {
+                "$ref": "#/components/schemas/RedditCommentProviderMetricsDto"
               },
               {
                 "$ref": "#/components/schemas/GitHubRepositoryProviderMetricsDto"
@@ -1219,6 +1227,89 @@
         "required": [
           "providerKey",
           "reason"
+        ],
+        "type": "object"
+      },
+      "InterestCoverageSourcePackDto": {
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "providerStarters": {
+            "items": {
+              "$ref": "#/components/schemas/InterestCoverageSourcePackProviderStarterDto"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "key",
+          "displayName",
+          "description",
+          "providerStarters"
+        ],
+        "type": "object"
+      },
+      "InterestCoverageSourcePackProviderStarterDto": {
+        "properties": {
+          "keywords": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "label": {
+            "type": "string"
+          },
+          "languages": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "providerKey": {
+            "type": "string"
+          },
+          "queries": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "rssFeedUrls": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "subreddits": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "topics": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "providerKey",
+          "label",
+          "keywords",
+          "queries",
+          "subreddits",
+          "topics",
+          "languages",
+          "rssFeedUrls"
         ],
         "type": "object"
       },
@@ -2119,6 +2210,9 @@
             },
             "type": "array"
           },
+          "sourcePackKey": {
+            "type": "string"
+          },
           "subreddits": {
             "items": {
               "type": "string"
@@ -2159,6 +2253,9 @@
               "$ref": "#/components/schemas/InterestCoveragePlanSkippedProviderDto"
             },
             "type": "array"
+          },
+          "sourcePack": {
+            "$ref": "#/components/schemas/InterestCoverageSourcePackDto"
           }
         },
         "required": [
@@ -3865,6 +3962,65 @@
         ],
         "type": "object"
       },
+      "RedditCommentProviderMetricsDto": {
+        "properties": {
+          "contentType": {
+            "enum": [
+              "comment"
+            ],
+            "type": "string"
+          },
+          "depth": {
+            "type": "number"
+          },
+          "kind": {
+            "enum": [
+              "reddit_comment"
+            ],
+            "type": "string"
+          },
+          "providerKey": {
+            "enum": [
+              "reddit"
+            ],
+            "type": "string"
+          },
+          "replies": {
+            "type": "number"
+          },
+          "role": {
+            "enum": [
+              "top_level_comment",
+              "reply"
+            ],
+            "type": "string"
+          },
+          "score": {
+            "type": "number"
+          },
+          "scoreConfidence": {
+            "enum": [
+              "provider_reported"
+            ],
+            "type": "string"
+          },
+          "sourceKey": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "providerKey",
+          "sourceKey",
+          "contentType",
+          "score",
+          "replies",
+          "depth",
+          "role",
+          "scoreConfidence"
+        ],
+        "type": "object"
+      },
       "RedditPostProviderMetricsDto": {
         "properties": {
           "comments": {
@@ -4425,6 +4581,7 @@
           "failureClass": {
             "enum": [
               "provider_unavailable",
+              "provider_auth_failed",
               "provider_rate_limited",
               "worker_conflict",
               "system_failure"
@@ -4863,6 +5020,52 @@
         ],
         "type": "object"
       },
+      "SourceBindingHealthExplanationResponseDto": {
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "operatorAction": {
+            "type": "string"
+          },
+          "reasonCode": {
+            "enum": [
+              "source_healthy",
+              "source_stale",
+              "source_rate_limited",
+              "source_auth_failed",
+              "source_degraded",
+              "source_unsupported_scope",
+              "source_paused",
+              "source_not_configured",
+              "source_scheduled",
+              "source_scanning",
+              "source_down"
+            ],
+            "type": "string"
+          },
+          "signals": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "staleBySeconds": {
+            "type": "number"
+          },
+          "unavailableUntil": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reasonCode",
+          "message",
+          "operatorAction",
+          "signals"
+        ],
+        "type": "object"
+      },
       "SourceBindingHealthFreshnessResponseDto": {
         "properties": {
           "ageSeconds": {
@@ -4941,6 +5144,9 @@
           "activeScans": {
             "type": "number"
           },
+          "authFailedScans": {
+            "type": "number"
+          },
           "consecutiveFailures": {
             "type": "number"
           },
@@ -5003,6 +5209,7 @@
           "failedScans",
           "activeScans",
           "rateLimitedScans",
+          "authFailedScans",
           "providerUnavailableScans",
           "consecutiveFailures",
           "operatorAction",
@@ -5019,6 +5226,9 @@
           "freshness": {
             "$ref": "#/components/schemas/SourceBindingHealthFreshnessResponseDto"
           },
+          "healthExplanation": {
+            "$ref": "#/components/schemas/SourceBindingHealthExplanationResponseDto"
+          },
           "healthState": {
             "enum": [
               "paused",
@@ -5027,7 +5237,10 @@
               "scanning",
               "healthy",
               "stale",
+              "rate_limited",
+              "auth_failed",
               "degraded",
+              "unsupported_scope",
               "down"
             ],
             "type": "string"
@@ -5055,6 +5268,7 @@
           "sourceBinding",
           "healthState",
           "operatorAction",
+          "healthExplanation",
           "evaluatedAt",
           "schedulerDecision"
         ],
@@ -5073,6 +5287,7 @@
           "failureClass": {
             "enum": [
               "provider_unavailable",
+              "provider_auth_failed",
               "provider_rate_limited",
               "worker_conflict",
               "system_failure"
@@ -5191,10 +5406,78 @@
         ],
         "type": "object"
       },
+      "SourceBindingOverviewDegradationReasonResponseDto": {
+        "properties": {
+          "affectedBindings": {
+            "type": "number"
+          },
+          "code": {
+            "enum": [
+              "rate_limited",
+              "auth_failed",
+              "unsupported_scope",
+              "provider_unavailable",
+              "provider_down",
+              "stale_data",
+              "scan_policy_missing",
+              "source_paused",
+              "worker_conflict",
+              "system_failure",
+              "degraded"
+            ],
+            "type": "string"
+          },
+          "nextEligibleAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "operatorAction": {
+            "type": "string"
+          },
+          "sampleSourceBindingIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "severity": {
+            "enum": [
+              "info",
+              "warning",
+              "critical"
+            ],
+            "type": "string"
+          },
+          "signals": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "code",
+          "severity",
+          "affectedBindings",
+          "operatorAction",
+          "sampleSourceBindingIds",
+          "signals"
+        ],
+        "type": "object"
+      },
       "SourceBindingOverviewProviderBreakdownResponseDto": {
         "properties": {
+          "authFailedBindings": {
+            "type": "number"
+          },
           "canScanNowBindings": {
             "type": "number"
+          },
+          "degradationReasons": {
+            "items": {
+              "$ref": "#/components/schemas/SourceBindingOverviewDegradationReasonResponseDto"
+            },
+            "type": "array"
           },
           "degradedBindings": {
             "type": "number"
@@ -5230,6 +5513,9 @@
           "rateLimitBackoffSkips": {
             "type": "number"
           },
+          "rateLimitedBindings": {
+            "type": "number"
+          },
           "scanningBindings": {
             "type": "number"
           },
@@ -5247,6 +5533,9 @@
           },
           "totalBindings": {
             "type": "number"
+          },
+          "unsupportedScopeBindings": {
+            "type": "number"
           }
         },
         "required": [
@@ -5254,6 +5543,9 @@
           "totalBindings",
           "healthyBindings",
           "staleBindings",
+          "rateLimitedBindings",
+          "authFailedBindings",
+          "unsupportedScopeBindings",
           "degradedBindings",
           "downBindings",
           "scanningBindings",
@@ -5265,6 +5557,7 @@
           "rateLimitBackoffSkips",
           "providerFailureBackoffSkips",
           "providerUnavailableScans",
+          "degradationReasons",
           "signals"
         ],
         "type": "object"
@@ -5274,8 +5567,17 @@
           "attentionRequiredBindings": {
             "type": "number"
           },
+          "authFailedBindings": {
+            "type": "number"
+          },
           "canScanNowBindings": {
             "type": "number"
+          },
+          "degradationReasons": {
+            "items": {
+              "$ref": "#/components/schemas/SourceBindingOverviewDegradationReasonResponseDto"
+            },
+            "type": "array"
           },
           "degradedBindings": {
             "type": "number"
@@ -5334,12 +5636,17 @@
           },
           "totalBindings": {
             "type": "number"
+          },
+          "unsupportedScopeBindings": {
+            "type": "number"
           }
         },
         "required": [
           "totalBindings",
           "healthyBindings",
           "staleBindings",
+          "authFailedBindings",
+          "unsupportedScopeBindings",
           "degradedBindings",
           "downBindings",
           "scanningBindings",
@@ -5353,6 +5660,7 @@
           "providerUnavailableScans",
           "attentionRequiredBindings",
           "operatorAction",
+          "degradationReasons",
           "signals",
           "providerBreakdown"
         ],
@@ -5550,6 +5858,9 @@
           "freshnessGuard": {
             "$ref": "#/components/schemas/SourceProfileFreshnessGuardDto"
           },
+          "health": {
+            "$ref": "#/components/schemas/SourceProfileHealthDto"
+          },
           "limitations": {
             "items": {
               "type": "string"
@@ -5608,17 +5919,25 @@
               "type": "string"
             },
             "type": "array"
+          },
+          "unsupportedContentUnits": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           }
         },
         "required": [
           "providerKey",
           "productionSafe",
+          "health",
           "readinessState",
           "runtimeReadiness",
           "liveBetaBlockers",
           "liveEvidenceRequirements",
           "acquisitionMode",
           "supportedContentUnits",
+          "unsupportedContentUnits",
           "supportedQueryModes",
           "cursorModel",
           "quotaModel",
@@ -5676,6 +5995,40 @@
           "rateLimitBackoffRequired",
           "staleReadModelState",
           "providerFailureHealthState",
+          "signals"
+        ],
+        "type": "object"
+      },
+      "SourceProfileHealthDto": {
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "reasonCode": {
+            "type": "string"
+          },
+          "signals": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "state": {
+            "enum": [
+              "healthy",
+              "stale",
+              "rate_limited",
+              "auth_failed",
+              "degraded",
+              "unsupported_scope"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "reasonCode",
+          "message",
           "signals"
         ],
         "type": "object"

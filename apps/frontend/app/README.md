@@ -28,6 +28,8 @@ cd apps/frontend/app
 fvm flutter run -d chrome --web-port=53217 -t lib/main_demo.dart
 ```
 
+Run demo mode from this app package, or from the repository root with `npm run frontend:run-demo`. Running `main_demo.dart` from the frontend workspace root does not use `app/pubspec.yaml`, so Flutter web can miss Material Icons font assets.
+
 ## Run Connected Mode
 
 Start the backend API first, then run:

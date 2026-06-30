@@ -2,6 +2,7 @@ import { FixedClock, REDACTED_VALUE, type IdGenerator, tenantId, workspaceId } f
 
 import type { ScanAttempt, SourceItem } from '../../domain';
 import type {
+  ConversationProjectionPort,
   FetchSourceItemsCommand,
   FetchSourceItemsResult,
   FeedProjectionPort,
@@ -9,6 +10,8 @@ import type {
   EnrichSourceItemsResult,
   ProjectFeedItemsCommand,
   ProjectFeedItemsResult,
+  ProjectConversationUnitsCommand,
+  ProjectConversationUnitsResult,
   ScanAttemptRepositoryPort,
   ScanCursorRepositoryPort,
   ScanExecutionReporterPort,
@@ -78,6 +81,52 @@ class FixedSourceFetcher implements SourceFetcherPort {
         },
       ],
       nextCursor: 'cursor-after-scan',
+    };
+  }
+}
+
+class ConversationSourceFetcher implements SourceFetcherPort {
+  async fetch(command: FetchSourceItemsCommand): Promise<FetchSourceItemsResult> {
+    void command;
+
+    return {
+      items: [
+        {
+          externalId: 'reddit:t3_post_1',
+          canonicalUrl: 'https://reddit.test/r/topic/comments/post_1',
+          title: 'Root Reddit post',
+          body: 'Root post body',
+          authorHandle: 'post-author',
+          publishedAt: new Date('2026-06-05T00:00:00.000Z'),
+          metadata: {
+            kind: 'reddit_post',
+            subreddit: 'topic',
+            score: 42,
+          },
+        },
+      ],
+      conversationUnits: [
+        {
+          rootExternalId: 'reddit:t3_post_1',
+          rootProviderItemId: 't3_post_1',
+          providerUnitId: 't1_comment_1',
+          canonicalUrl: 'https://reddit.test/r/topic/comments/post_1/_/comment_1',
+          body: 'High-signal comment body',
+          authorHandle: 'comment-author',
+          publishedAt: new Date('2026-06-05T00:05:00.000Z'),
+          threadExternalId: 't3_post_1',
+          depth: 0,
+          role: 'top_level_comment',
+          metadata: {
+            kind: 'reddit_comment',
+            subreddit: 'topic',
+            score: 25,
+            replies: 2,
+            depth: 0,
+            role: 'top_level_comment',
+          },
+        },
+      ],
     };
   }
 }
@@ -169,7 +218,34 @@ class FakeFeedProjection implements FeedProjectionPort {
 
   async project(command: ProjectFeedItemsCommand): Promise<ProjectFeedItemsResult> {
     this.commands.push(command);
-    return { projected: command.sourceItems.length };
+    return {
+      projected: command.sourceItems.length,
+      projectedItems: command.sourceItems.map((item) => {
+        const snapshot = item.toSnapshot();
+
+        return {
+          sourceItemId: snapshot.id,
+          sourceExternalId: snapshot.externalId,
+          feedItemId: `feed:${snapshot.externalId}`,
+        };
+      }),
+    };
+  }
+}
+
+class FakeConversationProjection implements ConversationProjectionPort {
+  readonly commands: ProjectConversationUnitsCommand[] = [];
+
+  async project(
+    command: ProjectConversationUnitsCommand,
+  ): Promise<ProjectConversationUnitsResult> {
+    this.commands.push(command);
+
+    return {
+      projected: command.conversationUnits.length,
+      skippedOrphans: 0,
+      skippedInvalid: 0,
+    };
   }
 }
 
@@ -362,6 +438,56 @@ describe('ExecuteScanUseCase', () => {
       inserted: 2,
       skippedDuplicates: 0,
       projected: 2,
+    });
+  });
+
+  it('projects fetched conversation units after root feed items are projected', async () => {
+    const projection = new FakeFeedProjection();
+    const conversationProjection = new FakeConversationProjection();
+    const useCase = new ExecuteScanUseCase(
+      new ConversationSourceFetcher(),
+      new FakeSourceItemRepository(),
+      projection,
+      new FakeScanAttemptRepository(),
+      new FakeScanCursorRepository(),
+      new FakeScanExecutionReporter(),
+      new FakeScanFailureQueue(),
+      new FakeScanLease(),
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-05T12:00:00.000Z')),
+      undefined,
+      undefined,
+      conversationProjection,
+    );
+
+    const result = await useCase.execute(makeExecuteScanCommand({
+      providerKey: 'reddit',
+    }));
+
+    expect(result.ok).toBe(true);
+    expect(projection.commands[0]?.sourceItems.map((item) => item.toSnapshot().externalId)).toEqual([
+      'reddit:t3_post_1',
+    ]);
+    expect(conversationProjection.commands).toHaveLength(1);
+    expect(conversationProjection.commands[0]).toMatchObject({
+      providerKey: 'reddit',
+      interestId: 'topic-1',
+      projectedFeedItems: [
+        {
+          sourceExternalId: 'reddit:t3_post_1',
+          feedItemId: 'feed:reddit:t3_post_1',
+        },
+      ],
+      conversationUnits: [
+        {
+          rootExternalId: 'reddit:t3_post_1',
+          providerUnitId: 't1_comment_1',
+          metadata: {
+            kind: 'reddit_comment',
+            score: 25,
+          },
+        },
+      ],
     });
   });
 

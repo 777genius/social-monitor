@@ -12,6 +12,10 @@ import type {
   SourceBindingHealthState,
   SourceBindingProviderHealthState,
 } from '../../features/get-source-binding-health/get-source-binding-health.result';
+import type {
+  SourceBindingHealthExplanationReasonCode,
+  SourceBindingHealthExplanationView,
+} from '../../features/get-source-binding-health/source-binding-health-explanation';
 import type { ScanStatusFailureClass, ScanStatusUserState } from '../../features/shared/scan-status-view';
 import type { ScanJobStatus } from '../../domain';
 import type { ScanExecutionAttemptStatus } from '../../ports';
@@ -25,7 +29,10 @@ export const sourceBindingHealthStateValues = [
   'scanning',
   'healthy',
   'stale',
+  'rate_limited',
+  'auth_failed',
   'degraded',
+  'unsupported_scope',
   'down',
 ] as const satisfies readonly SourceBindingHealthState[];
 
@@ -39,6 +46,7 @@ const scanStatusUserStateValues = [
 ] as const satisfies readonly ScanStatusUserState[];
 const scanStatusFailureClassValues = [
   'provider_unavailable',
+  'provider_auth_failed',
   'provider_rate_limited',
   'worker_conflict',
   'system_failure',
@@ -60,6 +68,19 @@ const sourceBindingHealthSchedulerDecisionValues = [
   'provider_failure_backoff',
   'scheduled_later',
 ] as const satisfies readonly SourceBindingHealthSchedulerDecision[];
+const sourceBindingHealthExplanationReasonCodeValues = [
+  'source_healthy',
+  'source_stale',
+  'source_rate_limited',
+  'source_auth_failed',
+  'source_degraded',
+  'source_unsupported_scope',
+  'source_paused',
+  'source_not_configured',
+  'source_scheduled',
+  'source_scanning',
+  'source_down',
+] as const satisfies readonly SourceBindingHealthExplanationReasonCode[];
 
 export class SourceBindingHealthAttemptResponseDto implements SourceBindingHealthAttemptView {
   @ApiProperty()
@@ -162,6 +183,9 @@ export class SourceBindingHealthRecentWindowResponseDto implements SourceBinding
   declare readonly rateLimitedScans: number;
 
   @ApiProperty()
+  declare readonly authFailedScans: number;
+
+  @ApiProperty()
   declare readonly providerUnavailableScans: number;
 
   @ApiProperty()
@@ -175,6 +199,26 @@ export class SourceBindingHealthRecentWindowResponseDto implements SourceBinding
 
   @ApiProperty()
   declare readonly operatorAction: string;
+
+  @ApiProperty({ type: String, isArray: true })
+  declare readonly signals: readonly string[];
+}
+
+export class SourceBindingHealthExplanationResponseDto implements SourceBindingHealthExplanationView {
+  @ApiProperty({ enum: sourceBindingHealthExplanationReasonCodeValues })
+  declare readonly reasonCode: SourceBindingHealthExplanationReasonCode;
+
+  @ApiProperty()
+  declare readonly message: string;
+
+  @ApiProperty()
+  declare readonly operatorAction: string;
+
+  @ApiPropertyOptional({ format: 'date-time' })
+  declare readonly unavailableUntil?: string;
+
+  @ApiPropertyOptional()
+  declare readonly staleBySeconds?: number;
 
   @ApiProperty({ type: String, isArray: true })
   declare readonly signals: readonly string[];
@@ -265,6 +309,9 @@ export class SourceBindingHealthResponseDto implements GetSourceBindingHealthRes
 
   @ApiProperty()
   declare readonly operatorAction: string;
+
+  @ApiProperty({ type: () => SourceBindingHealthExplanationResponseDto })
+  declare readonly healthExplanation: SourceBindingHealthExplanationResponseDto;
 
   @ApiProperty({ format: 'date-time' })
   declare readonly evaluatedAt: string;

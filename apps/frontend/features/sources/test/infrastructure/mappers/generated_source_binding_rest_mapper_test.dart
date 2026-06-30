@@ -36,6 +36,15 @@ void main() {
             .SourceBindingHealthResponseDtoHealthStateHealthState
             .healthy,
         operatorAction: 'No action needed.',
+        healthExplanation:
+            const generated.SourceBindingHealthExplanationResponseDto(
+              reasonCode: generated
+                  .SourceBindingHealthExplanationResponseDtoReasonCodeReasonCode
+                  .sourceHealthy,
+              message: 'Reddit source healthy.',
+              operatorAction: 'no_action_required',
+              signals: ['healthy'],
+            ),
         evaluatedAt: DateTime.utc(2026, 6, 23, 12, 5),
         schedulerDecision:
             const generated.SourceBindingHealthSchedulerDecisionResponseDto(
@@ -57,10 +66,11 @@ void main() {
     expect(list.nextCursor, 'cursor-2');
     expect(list.items.single.configPreview['subreddit'], 'startups');
     expect(health.healthState, 'healthy');
+    expect(health.healthExplanation.message, 'Reddit source healthy.');
     expect(health.freshness?.ageSeconds, 120);
   });
 
-  test('maps generated provider-down health state', () {
+  test('maps generated auth-failed health state', () {
     const mapper = GeneratedSourceBindingRestMapper();
     final binding = generated.SourceBindingResponseDto(
       id: 'binding-reddit',
@@ -77,9 +87,19 @@ void main() {
     final health = mapper.health(
       generated.SourceBindingHealthResponseDto(
         sourceBinding: binding,
-        healthState:
-            generated.SourceBindingHealthResponseDtoHealthStateHealthState.down,
-        operatorAction: 'pause_or_backoff_provider_until_recovery',
+        healthState: generated
+            .SourceBindingHealthResponseDtoHealthStateHealthState
+            .authFailed,
+        operatorAction: 'refresh_or_reconnect_source_credentials',
+        healthExplanation:
+            const generated.SourceBindingHealthExplanationResponseDto(
+              reasonCode: generated
+                  .SourceBindingHealthExplanationResponseDtoReasonCodeReasonCode
+                  .sourceAuthFailed,
+              message: 'Reddit auth failed. Reconnect credentials.',
+              operatorAction: 'refresh_or_reconnect_source_credentials',
+              signals: ['auth_failed'],
+            ),
         evaluatedAt: DateTime.utc(2026, 6, 23, 12, 5),
         schedulerDecision:
             const generated.SourceBindingHealthSchedulerDecisionResponseDto(
@@ -94,7 +114,7 @@ void main() {
       ),
     );
 
-    expect(health.healthState, 'down');
-    expect(health.operatorAction, 'pause_or_backoff_provider_until_recovery');
+    expect(health.healthState, 'auth_failed');
+    expect(health.operatorAction, 'refresh_or_reconnect_source_credentials');
   });
 }

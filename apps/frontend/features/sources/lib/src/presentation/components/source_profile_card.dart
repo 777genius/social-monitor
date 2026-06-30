@@ -58,6 +58,15 @@ class SourceProfileCard extends StatelessWidget {
                       ),
                       const SizedBox(height: AppSpacing.xs),
                       SourceProfileBadges(profile: profile),
+                      const SizedBox(height: AppSpacing.xs),
+                      Text(
+                        profile.health.message,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(
+                          context,
+                        ).textTheme.bodySmall?.copyWith(letterSpacing: 0),
+                      ),
                     ],
                   ),
                 ),
@@ -102,6 +111,10 @@ List<SourceProfileFact> _facts(SourceProfile profile) {
     SourceProfileFact(
       label: 'Content units',
       value: joinedOrDash(profile.supportedContentUnits),
+    ),
+    SourceProfileFact(
+      label: 'Unsupported',
+      value: joinedOrDash(profile.unsupportedContentUnits),
     ),
     SourceProfileFact(label: 'Cursor model', value: profile.cursorModel),
     SourceProfileFact(label: 'Quota model', value: profile.quotaModel),

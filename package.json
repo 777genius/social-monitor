@@ -78,6 +78,7 @@
     "check:external-beta-evidence-inputs": "node scripts/check-external-beta-evidence-inputs.mjs",
     "frontend:create-feature": "node scripts/create-frontend-feature.mjs",
     "frontend:generate-api": "cd apps/frontend/packages/generated_api && fvm dart run openapi_retrofit_generator && fvm dart run build_runner build && fvm dart format lib test",
+    "frontend:run-demo": "cd apps/frontend/app && fvm flutter run -d chrome -t lib/main_demo.dart",
     "frontend:serve-web-preview": "node scripts/serve-flutter-web-preview.mjs",
     "frontend:serve-reader-summary-e2e-backend": "node scripts/run-with-timeout.mjs --timeout-ms 600000 --node-options --max-old-space-size=768 -- ts-node -r tsconfig-paths/register scripts/serve-frontend-reader-summary-e2e-backend.ts",
     "check:frontend": "cd apps/frontend && fvm flutter analyze && fvm flutter test app && fvm flutter test packages/design_system && fvm dart test packages/shared_kernel && fvm dart test packages/generated_api",

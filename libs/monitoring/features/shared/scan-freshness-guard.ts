@@ -93,7 +93,10 @@ export const providerFailureBackoffUntil = (params: {
       failureReason: snapshot.failureReason,
       failureMetadata: snapshot.failureMetadata,
     });
-    if (view.failureClass !== 'provider_unavailable') {
+    if (
+      view.failureClass !== 'provider_unavailable' &&
+      view.failureClass !== 'provider_auth_failed'
+    ) {
       break;
     }
 

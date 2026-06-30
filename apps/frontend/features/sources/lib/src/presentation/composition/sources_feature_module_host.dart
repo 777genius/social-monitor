@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 import 'package:modularity_flutter/modularity_flutter.dart';
 
@@ -25,34 +27,85 @@ class _SourcesFeatureModuleHostState extends State<SourcesFeatureModuleHost> {
   ScanPolicyStore? _scanPolicyStore;
   ScanRunStore? _scanRunStore;
   SourcesFeatureModule? _module;
+  Timer? _resolveTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _resolveTimer = Timer.periodic(const Duration(milliseconds: 50), (_) {
+      if (!mounted) {
+        return;
+      }
+      if (_module != null) {
+        _resolveTimer?.cancel();
+        _resolveTimer = null;
+        return;
+      }
+      setState(() {});
+    });
+  }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _resolveModuleBindings();
+  }
+
+  bool _resolveModuleBindings() {
     if (_module != null) {
-      return;
+      _resolveTimer?.cancel();
+      _resolveTimer = null;
+      return true;
     }
-    final module = ModuleProvider.moduleOf<SourcesFeatureModule>(
-      context,
-      listen: false,
-    );
-    final binder = ModuleProvider.of(context, listen: false);
-    _module = module;
+
+    final provider = context.getInheritedWidgetOfExactType<ModuleProvider>();
+    final module = provider?.controller.module;
+    if (provider == null || module is! SourcesFeatureModule) {
+      return false;
+    }
+
+    final binder = provider.controller.binder;
     if (module.showSourceBindings) {
-      _bindingsStore = binder.get<SourceBindingsStore>();
-      _interestCoveragePlanStore = binder.get<InterestCoveragePlanStore>();
-      _scanPolicyStore = binder.get<ScanPolicyStore>();
-      _scanRunStore = binder.get<ScanRunStore>();
-      return;
+      final bindingsStore = binder.tryGet<SourceBindingsStore>();
+      final interestCoveragePlanStore = binder
+          .tryGet<InterestCoveragePlanStore>();
+      final scanPolicyStore = binder.tryGet<ScanPolicyStore>();
+      final scanRunStore = binder.tryGet<ScanRunStore>();
+      if (bindingsStore == null ||
+          interestCoveragePlanStore == null ||
+          scanPolicyStore == null ||
+          scanRunStore == null) {
+        return false;
+      }
+      _module = module;
+      _bindingsStore = bindingsStore;
+      _interestCoveragePlanStore = interestCoveragePlanStore;
+      _scanPolicyStore = scanPolicyStore;
+      _scanRunStore = scanRunStore;
+      _resolveTimer?.cancel();
+      _resolveTimer = null;
+      return true;
     }
     if (module.showSourceProfiles) {
-      _profilesStore = binder.get<SourceProfilesStore>();
-      return;
+      final profilesStore = binder.tryGet<SourceProfilesStore>();
+      if (profilesStore == null) {
+        return false;
+      }
+      _module = module;
+      _profilesStore = profilesStore;
+      _resolveTimer?.cancel();
+      _resolveTimer = null;
+      return true;
     }
+    _module = module;
+    _resolveTimer?.cancel();
+    _resolveTimer = null;
+    return true;
   }
 
   @override
   void dispose() {
+    _resolveTimer?.cancel();
     _profilesStore?.dispose();
     _bindingsStore?.dispose();
     _interestCoveragePlanStore?.dispose();
@@ -63,9 +116,12 @@ class _SourcesFeatureModuleHostState extends State<SourcesFeatureModuleHost> {
 
   @override
   Widget build(BuildContext context) {
+    _resolveModuleBindings();
     final module = _module;
     if (module == null) {
-      return const SizedBox.shrink();
+      return const Center(
+        child: Text('Loading sources', textDirection: TextDirection.ltr),
+      );
     }
     if (module.showSourceProfiles) {
       final store = _profilesStore;

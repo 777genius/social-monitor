@@ -138,7 +138,7 @@ describe('HttpRedditClient', () => {
 
   it('maps Reddit thread comments including nested replies', async () => {
     const fetchMock = jest.fn(async (url: string | URL, init?: RequestInit) => {
-      expect(String(url)).toBe('https://oauth.reddit.test/r/ClaudeAI/comments/post_1?limit=2&sort=top');
+      expect(String(url)).toBe('https://oauth.reddit.test/r/ClaudeAI/comments/post_1?limit=2&sort=confidence');
       expect(init?.headers).toEqual(expect.objectContaining({
         authorization: 'Bearer token-value',
         accept: 'application/json',
@@ -158,6 +158,7 @@ describe('HttpRedditClient', () => {
                   body: '  Users explain why comment-level evidence matters.  ',
                   author: 'example-commenter',
                   permalink: '/r/ClaudeAI/comments/post_1/_/comment_1/',
+                  parent_id: 't3_post_1',
                   created_utc: 1_782_230_060,
                   score: 25,
                   removed_by_category: null,
@@ -166,6 +167,7 @@ describe('HttpRedditClient', () => {
                     data: {
                       children: [
                         {
+                          kind: 't1',
                           data: {
                             id: 'reply_1',
                             name: 't1_reply_1',
@@ -173,6 +175,7 @@ describe('HttpRedditClient', () => {
                             body: 'Nested replies should stay attached to the same evidence stream.',
                             author: 'nested-user',
                             permalink: '/r/ClaudeAI/comments/post_1/_/reply_1/',
+                            parent_id: 't1_comment_1',
                             created_utc: 1_782_230_090,
                             score: 8,
                             depth: 1,
@@ -219,8 +222,10 @@ describe('HttpRedditClient', () => {
           body: 'Users explain why comment-level evidence matters.',
           author: 'example-commenter',
           permalink: '/r/ClaudeAI/comments/post_1/_/comment_1/',
+          parentId: 't3_post_1',
           createdUtc: 1_782_230_060,
           score: 25,
+          replyCount: 1,
           removedByCategory: undefined,
           depth: 0,
         },
@@ -231,8 +236,10 @@ describe('HttpRedditClient', () => {
           body: 'Nested replies should stay attached to the same evidence stream.',
           author: 'nested-user',
           permalink: '/r/ClaudeAI/comments/post_1/_/reply_1/',
+          parentId: 't1_comment_1',
           createdUtc: 1_782_230_090,
           score: 8,
+          replyCount: 0,
           removedByCategory: undefined,
           depth: 1,
         },

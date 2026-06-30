@@ -4,6 +4,7 @@ import 'package:social_monitor_sources/src/application/use_cases/bind_source_to_
 import 'package:social_monitor_sources/src/application/use_cases/change_source_binding_status_use_case.dart';
 import 'package:social_monitor_sources/src/application/use_cases/list_source_bindings_use_case.dart';
 import 'package:social_monitor_sources/src/application/use_cases/load_source_binding_health_use_case.dart';
+import 'package:social_monitor_sources/src/application/use_cases/load_source_binding_overview_use_case.dart';
 import 'package:social_monitor_sources/src/domain/entities/interest_coverage_plan.dart';
 import 'package:social_monitor_sources/src/domain/entities/source_binding.dart';
 import 'package:social_monitor_sources/src/domain/value_objects/interest_coverage_plan_draft_status.dart';
@@ -104,6 +105,7 @@ SourceBindingsStore _store(List<SourceBindingApiDto> items) {
     bindSourceToInterest: BindSourceToInterestUseCase(catalog),
     changeSourceBindingStatus: ChangeSourceBindingStatusUseCase(catalog),
     loadSourceBindingHealth: LoadSourceBindingHealthUseCase(catalog),
+    loadSourceBindingOverview: LoadSourceBindingOverviewUseCase(catalog),
     scope: sourceWorkspaceScope,
     interestId: const SourceInterestId('interest-competitor'),
     interestTitle: 'Competitor launches',

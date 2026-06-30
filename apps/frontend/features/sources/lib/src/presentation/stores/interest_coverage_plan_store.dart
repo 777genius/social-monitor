@@ -23,6 +23,7 @@ final class InterestCoveragePlanStore extends ChangeNotifier {
 
   WorkspaceScope _scope;
   SourceInterestId _interestId;
+  String? _sourcePackKey;
 
   final String interestTitle;
 
@@ -32,6 +33,8 @@ final class InterestCoveragePlanStore extends ChangeNotifier {
   WorkspaceScope get scope => _scope;
 
   SourceInterestId get interestId => _interestId;
+
+  String? get sourcePackKey => _sourcePackKey;
 
   UserActionIntent get planIntent {
     return UserActionIntent(
@@ -57,8 +60,19 @@ final class InterestCoveragePlanStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> selectSourcePack(String? sourcePackKey) async {
+    final normalized = _normalizeSourcePackKey(sourcePackKey);
+    if (_sourcePackKey == normalized) {
+      return;
+    }
+    _sourcePackKey = normalized;
+    notifyListeners();
+    await plan();
+  }
+
   Future<void> plan({
     String? description,
+    String? sourcePackKey,
     List<String> keywords = const [],
     List<String> subreddits = const [],
     List<String> rssFeedUrls = const [],
@@ -87,6 +101,7 @@ final class InterestCoveragePlanStore extends ChangeNotifier {
         scope: _scope,
         interestId: _interestId,
         description: description ?? interestTitle,
+        sourcePackKey: _normalizeSourcePackKey(sourcePackKey) ?? _sourcePackKey,
         keywords: keywords,
         subreddits: subreddits,
         rssFeedUrls: rssFeedUrls,
@@ -108,5 +123,10 @@ final class InterestCoveragePlanStore extends ChangeNotifier {
           FailureViewState<InterestCoveragePlan>(failure: failure),
     );
     notifyListeners();
+  }
+
+  String? _normalizeSourcePackKey(String? value) {
+    final normalized = value?.trim();
+    return normalized == null || normalized.isEmpty ? null : normalized;
   }
 }

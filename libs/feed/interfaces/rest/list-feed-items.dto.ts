@@ -36,6 +36,35 @@ export class RedditPostProviderMetricsDto {
   declare readonly upvoteRatio?: number;
 }
 
+export class RedditCommentProviderMetricsDto {
+  @ApiProperty({ enum: ['reddit_comment'] })
+  declare readonly kind: 'reddit_comment';
+
+  @ApiProperty({ enum: ['reddit'] })
+  declare readonly providerKey: 'reddit';
+
+  @ApiProperty()
+  declare readonly sourceKey: string;
+
+  @ApiProperty({ enum: ['comment'] })
+  declare readonly contentType: 'comment';
+
+  @ApiProperty()
+  declare readonly score: number;
+
+  @ApiProperty()
+  declare readonly replies: number;
+
+  @ApiProperty()
+  declare readonly depth: number;
+
+  @ApiProperty({ enum: ['top_level_comment', 'reply'] })
+  declare readonly role: 'top_level_comment' | 'reply';
+
+  @ApiProperty({ enum: ['provider_reported'] })
+  declare readonly scoreConfidence: 'provider_reported';
+}
+
 export class GitHubRepositoryProviderMetricsDto {
   @ApiProperty({ enum: ['github_repository'] })
   declare readonly kind: 'github_repository';
@@ -166,6 +195,7 @@ export class XPostProviderMetricsDto {
 
 export type FeedProviderMetricsDto =
   | RedditPostProviderMetricsDto
+  | RedditCommentProviderMetricsDto
   | GitHubRepositoryProviderMetricsDto
   | GitHubTrendingRepositoryProviderMetricsDto
   | HackerNewsStoryProviderMetricsDto
@@ -173,6 +203,7 @@ export type FeedProviderMetricsDto =
 
 const feedProviderMetricsOneOf = [
   { $ref: getSchemaPath(RedditPostProviderMetricsDto) },
+  { $ref: getSchemaPath(RedditCommentProviderMetricsDto) },
   { $ref: getSchemaPath(GitHubRepositoryProviderMetricsDto) },
   { $ref: getSchemaPath(GitHubTrendingRepositoryProviderMetricsDto) },
   { $ref: getSchemaPath(HackerNewsStoryProviderMetricsDto) },
@@ -231,6 +262,7 @@ export class FeedNormalizedSignalDto {
 @ApiExtraModels(
   FeedMetricDeltaDto,
   RedditPostProviderMetricsDto,
+  RedditCommentProviderMetricsDto,
   GitHubRepositoryProviderMetricsDto,
   GitHubTrendingRepositoryProviderMetricsDto,
   HackerNewsStoryProviderMetricsDto,
@@ -279,6 +311,7 @@ export class FeedItemDto {
       propertyName: 'kind',
       mapping: {
         reddit_post: getSchemaPath(RedditPostProviderMetricsDto),
+        reddit_comment: getSchemaPath(RedditCommentProviderMetricsDto),
         github_repository: getSchemaPath(GitHubRepositoryProviderMetricsDto),
         github_trending_repository: getSchemaPath(
           GitHubTrendingRepositoryProviderMetricsDto,

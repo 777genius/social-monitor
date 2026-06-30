@@ -10,7 +10,15 @@ SourceBindingOverviewSummaryResponseDto
 _$SourceBindingOverviewSummaryResponseDtoFromJson(Map<String, dynamic> json) =>
     SourceBindingOverviewSummaryResponseDto(
       attentionRequiredBindings: json['attentionRequiredBindings'] as num,
+      authFailedBindings: json['authFailedBindings'] as num,
       canScanNowBindings: json['canScanNowBindings'] as num,
+      degradationReasons: (json['degradationReasons'] as List<dynamic>)
+          .map(
+            (e) => SourceBindingOverviewDegradationReasonResponseDto.fromJson(
+              e as Map<String, dynamic>,
+            ),
+          )
+          .toList(),
       degradedBindings: json['degradedBindings'] as num,
       downBindings: json['downBindings'] as num,
       freshSuccessSkips: json['freshSuccessSkips'] as num,
@@ -35,6 +43,7 @@ _$SourceBindingOverviewSummaryResponseDtoFromJson(Map<String, dynamic> json) =>
           .toList(),
       staleBindings: json['staleBindings'] as num,
       totalBindings: json['totalBindings'] as num,
+      unsupportedScopeBindings: json['unsupportedScopeBindings'] as num,
       nextEligibleAt: json['nextEligibleAt'] == null
           ? null
           : DateTime.parse(json['nextEligibleAt'] as String),
@@ -44,7 +53,9 @@ Map<String, dynamic> _$SourceBindingOverviewSummaryResponseDtoToJson(
   SourceBindingOverviewSummaryResponseDto instance,
 ) => <String, dynamic>{
   'attentionRequiredBindings': instance.attentionRequiredBindings,
+  'authFailedBindings': instance.authFailedBindings,
   'canScanNowBindings': instance.canScanNowBindings,
+  'degradationReasons': instance.degradationReasons,
   'degradedBindings': instance.degradedBindings,
   'downBindings': instance.downBindings,
   'freshSuccessSkips': instance.freshSuccessSkips,
@@ -62,4 +73,5 @@ Map<String, dynamic> _$SourceBindingOverviewSummaryResponseDtoToJson(
   'signals': instance.signals,
   'staleBindings': instance.staleBindings,
   'totalBindings': instance.totalBindings,
+  'unsupportedScopeBindings': instance.unsupportedScopeBindings,
 };

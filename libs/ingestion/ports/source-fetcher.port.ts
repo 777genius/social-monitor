@@ -1,5 +1,9 @@
 import type { JsonObject, TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
-import type { ProviderFailureKind, SourceQuery } from './source-provider.port';
+import type {
+  FetchedConversationUnit,
+  ProviderFailureKind,
+  SourceQuery,
+} from './source-provider.port';
 
 export type FetchSourceItemsCommand = {
   readonly tenantId: TenantId;
@@ -24,6 +28,7 @@ export type FetchedSourceItem = {
 
 export type FetchSourceItemsResult = {
   readonly items: readonly FetchedSourceItem[];
+  readonly conversationUnits?: readonly FetchedConversationUnit[];
   readonly nextCursor?: string;
 };
 

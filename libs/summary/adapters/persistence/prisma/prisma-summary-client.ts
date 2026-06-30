@@ -1,3 +1,5 @@
+import type { PrismaConversationClient } from '@social-monitor/conversation/adapters/persistence/prisma/prisma-conversation-client';
+
 import type {
   PrismaSummaryArtifactRecord,
   PrismaSummaryFeedbackRecord,
@@ -132,7 +134,7 @@ export type PrismaReaderSummaryPolicyCreate =
     readonly createdAt: Date;
   };
 
-export type PrismaSummaryClient = {
+export type PrismaSummaryClient = PrismaConversationClient & {
   readonly $queryRaw: <T = unknown>(
     query: TemplateStringsArray,
     ...values: readonly unknown[]

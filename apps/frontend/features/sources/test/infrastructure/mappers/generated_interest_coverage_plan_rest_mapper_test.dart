@@ -21,6 +21,23 @@ void main() {
       ),
       planningQuery: '"Competitor launches" OR pricing',
       normalizedKeywords: const ['Competitor launches', 'pricing'],
+      sourcePack: const generated.InterestCoverageSourcePackDto(
+        key: 'ai_dev',
+        displayName: 'AI dev',
+        description: 'Developer radar',
+        providerStarters: [
+          generated.InterestCoverageSourcePackProviderStarterDto(
+            providerKey: 'reddit',
+            label: 'Reddit AI/dev communities',
+            keywords: ['AI agents'],
+            queries: [],
+            subreddits: ['LocalLLaMA'],
+            topics: [],
+            languages: [],
+            rssFeedUrls: [],
+          ),
+        ],
+      ),
       coverageGaps: const ['Add curated RSS feeds.'],
       skippedProviders: const [
         generated.InterestCoveragePlanSkippedProviderDto(
@@ -80,6 +97,8 @@ void main() {
     final plan = mapper.plan(response);
 
     expect(plan.interestId, 'interest-competitor');
+    expect(plan.sourcePack?.key, 'ai_dev');
+    expect(plan.sourcePack?.providerStarters.single.subreddits, ['LocalLLaMA']);
     expect(plan.coverageGaps, ['Add curated RSS feeds.']);
     expect(plan.skippedProviders.single.providerKey, 'bluesky');
     expect(plan.drafts.first.status, 'ready');
@@ -103,12 +122,14 @@ void main() {
         ),
         interestId: 'interest-competitor',
         description: '  pricing changes  ',
+        sourcePackKey: ' ai_dev ',
         keywords: ['pricing', ''],
         subreddits: ['SaaS'],
       ),
     );
 
     expect(request.description, 'pricing changes');
+    expect(request.sourcePackKey, 'ai_dev');
     expect(request.keywords, ['pricing']);
     expect(request.subreddits, ['SaaS']);
     expect(request.rssFeedUrls, isNull);

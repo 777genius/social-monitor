@@ -16,6 +16,12 @@ void main() {
             providerKey: 'reddit',
             displayName: 'Reddit',
             productionSafe: true,
+            health: generated.SourceProfileHealthDto(
+              state: generated.SourceProfileHealthDtoStateState.healthy,
+              reasonCode: 'source_ready',
+              message: 'Reddit source ready.',
+              signals: ['source_ready'],
+            ),
             readinessState: generated
                 .SourceProfileDtoReadinessStateReadinessState
                 .enabledBeta,
@@ -25,6 +31,7 @@ void main() {
             acquisitionMode: 'pull',
             supportedQueryModes: ['keyword', 'boolean'],
             supportedContentUnits: ['posts', 'comments'],
+            unsupportedContentUnits: ['profile', 'media'],
             cursorModel: 'time-based',
             quotaModel: 'rate limit',
             limitations: ['Rate limits vary by endpoint'],
@@ -39,6 +46,8 @@ void main() {
     expect(response.items.single.providerKey, 'reddit');
     expect(response.items.single.readinessState, 'enabled_beta');
     expect(response.items.single.runtimeReadiness, 'live_beta_ready');
+    expect(response.items.single.health.message, 'Reddit source ready.');
+    expect(response.items.single.unsupportedContentUnits, ['profile', 'media']);
   });
 
   test(
@@ -53,6 +62,12 @@ void main() {
             generated.SourceProfileDto(
               providerKey: 'future',
               productionSafe: true,
+              health: generated.SourceProfileHealthDto(
+                state: generated.SourceProfileHealthDtoStateState.$unknown,
+                reasonCode: '',
+                message: '',
+                signals: [],
+              ),
               readinessState: generated
                   .SourceProfileDtoReadinessStateReadinessState
                   .$unknown,
@@ -62,6 +77,7 @@ void main() {
               acquisitionMode: 'pull',
               supportedQueryModes: [],
               supportedContentUnits: [],
+              unsupportedContentUnits: [],
               cursorModel: 'unknown',
               quotaModel: 'unknown',
               limitations: [],

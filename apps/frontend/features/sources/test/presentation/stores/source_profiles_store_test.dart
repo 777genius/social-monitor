@@ -16,6 +16,12 @@ void main() {
       sourceProfileApiDto(
         providerKey: 'hn',
         displayName: 'Hacker News',
+        health: const SourceProfileHealthApiDto(
+          state: 'unsupported_scope',
+          reasonCode: 'runtime_deferred',
+          message: 'Hacker News source runtime disabled.',
+          signals: ['runtime_deferred'],
+        ),
         readinessState: 'profiled',
         runtimeReadiness: 'deferred',
       ),

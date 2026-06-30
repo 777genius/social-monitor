@@ -56,6 +56,14 @@ final class GeneratedSourceBindingRestMapper {
       sourceBinding: sourceBinding(dto.sourceBinding),
       healthState: _healthState(dto.healthState),
       operatorAction: dto.operatorAction,
+      healthExplanation: SourceBindingHealthExplanationApiDto(
+        reasonCode: dto.healthExplanation.reasonCode.toJson(),
+        message: dto.healthExplanation.message,
+        operatorAction: dto.healthExplanation.operatorAction,
+        signals: dto.healthExplanation.signals,
+        unavailableUntil: dto.healthExplanation.unavailableUntil,
+        staleBySeconds: dto.healthExplanation.staleBySeconds,
+      ),
       evaluatedAt: dto.evaluatedAt,
       freshness: dto.freshness == null
           ? null
@@ -65,6 +73,55 @@ final class GeneratedSourceBindingRestMapper {
               staleBySeconds: dto.freshness!.staleBySeconds,
             ),
       latestScan: _latestScan(dto.latestScan),
+    );
+  }
+
+  SourceBindingOverviewApiDto overview(
+    generated.ListSourceBindingOverviewResponseDto dto,
+  ) {
+    return SourceBindingOverviewApiDto(summary: _overviewSummary(dto.summary));
+  }
+
+  SourceBindingOverviewSummaryApiDto _overviewSummary(
+    generated.SourceBindingOverviewSummaryResponseDto dto,
+  ) {
+    return SourceBindingOverviewSummaryApiDto(
+      totalBindings: dto.totalBindings,
+      operatorAction: dto.operatorAction,
+      degradationReasons: dto.degradationReasons
+          .map(_overviewReason)
+          .toList(growable: false),
+      providerBreakdown: dto.providerBreakdown
+          .map(_providerBreakdown)
+          .toList(growable: false),
+      nextEligibleAt: dto.nextEligibleAt,
+    );
+  }
+
+  SourceBindingOverviewProviderBreakdownApiDto _providerBreakdown(
+    generated.SourceBindingOverviewProviderBreakdownResponseDto dto,
+  ) {
+    return SourceBindingOverviewProviderBreakdownApiDto(
+      providerKey: dto.providerKey,
+      totalBindings: dto.totalBindings,
+      degradationReasons: dto.degradationReasons
+          .map(_overviewReason)
+          .toList(growable: false),
+      nextEligibleAt: dto.nextEligibleAt,
+    );
+  }
+
+  SourceBindingOverviewDegradationReasonApiDto _overviewReason(
+    generated.SourceBindingOverviewDegradationReasonResponseDto dto,
+  ) {
+    return SourceBindingOverviewDegradationReasonApiDto(
+      code: dto.code.toJson(),
+      severity: dto.severity.toJson(),
+      affectedBindings: dto.affectedBindings,
+      operatorAction: dto.operatorAction,
+      sampleSourceBindingIds: dto.sampleSourceBindingIds,
+      signals: dto.signals,
+      nextEligibleAt: dto.nextEligibleAt,
     );
   }
 
@@ -116,8 +173,20 @@ final class GeneratedSourceBindingRestMapper {
         'healthy',
       generated.SourceBindingHealthResponseDtoHealthStateHealthState.stale =>
         'stale',
+      generated
+          .SourceBindingHealthResponseDtoHealthStateHealthState
+          .rateLimited =>
+        'rate_limited',
+      generated
+          .SourceBindingHealthResponseDtoHealthStateHealthState
+          .authFailed =>
+        'auth_failed',
       generated.SourceBindingHealthResponseDtoHealthStateHealthState.degraded =>
         'degraded',
+      generated
+          .SourceBindingHealthResponseDtoHealthStateHealthState
+          .unsupportedScope =>
+        'unsupported_scope',
       generated.SourceBindingHealthResponseDtoHealthStateHealthState.down =>
         'down',
       generated.SourceBindingHealthResponseDtoHealthStateHealthState.$unknown =>

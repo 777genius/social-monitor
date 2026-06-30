@@ -15,6 +15,7 @@ const scanStatusUserStateValues = [
 ] as const satisfies readonly ScanStatusUserState[];
 const scanStatusFailureClassValues = [
   'provider_unavailable',
+  'provider_auth_failed',
   'provider_rate_limited',
   'worker_conflict',
   'system_failure',

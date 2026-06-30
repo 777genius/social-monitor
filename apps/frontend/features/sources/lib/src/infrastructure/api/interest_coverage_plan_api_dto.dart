@@ -5,6 +5,7 @@ final class PlanInterestCoverageApiRequestDto {
     required this.scope,
     required this.interestId,
     this.description,
+    this.sourcePackKey,
     this.keywords = const [],
     this.subreddits = const [],
     this.rssFeedUrls = const [],
@@ -15,6 +16,7 @@ final class PlanInterestCoverageApiRequestDto {
   final WorkspaceScope scope;
   final String interestId;
   final String? description;
+  final String? sourcePackKey;
   final List<String> keywords;
   final List<String> subreddits;
   final List<String> rssFeedUrls;
@@ -31,15 +33,53 @@ final class InterestCoveragePlanApiDto {
     required this.drafts,
     required this.coverageGaps,
     required this.skippedProviders,
+    this.sourcePack,
   });
 
   final String interestId;
   final String interestTitle;
   final String planningQuery;
   final List<String> normalizedKeywords;
+  final InterestCoverageSourcePackApiDto? sourcePack;
   final List<InterestCoveragePlanDraftApiDto> drafts;
   final List<String> coverageGaps;
   final List<InterestCoveragePlanSkippedProviderApiDto> skippedProviders;
+}
+
+final class InterestCoverageSourcePackApiDto {
+  const InterestCoverageSourcePackApiDto({
+    required this.key,
+    required this.displayName,
+    required this.description,
+    required this.providerStarters,
+  });
+
+  final String key;
+  final String displayName;
+  final String description;
+  final List<InterestCoverageSourcePackProviderStarterApiDto> providerStarters;
+}
+
+final class InterestCoverageSourcePackProviderStarterApiDto {
+  const InterestCoverageSourcePackProviderStarterApiDto({
+    required this.providerKey,
+    required this.label,
+    required this.keywords,
+    required this.queries,
+    required this.subreddits,
+    required this.topics,
+    required this.languages,
+    required this.rssFeedUrls,
+  });
+
+  final String providerKey;
+  final String label;
+  final List<String> keywords;
+  final List<String> queries;
+  final List<String> subreddits;
+  final List<String> topics;
+  final List<String> languages;
+  final List<String> rssFeedUrls;
 }
 
 final class InterestCoveragePlanDraftApiDto {

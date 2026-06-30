@@ -1,4 +1,4 @@
-import type { TenantId, WorkspaceId } from "@social-monitor/shared-kernel";
+import type { JsonObject, TenantId, WorkspaceId } from "@social-monitor/shared-kernel";
 
 import type {
   ProviderFailureKind,
@@ -44,8 +44,26 @@ export type SourceProviderScanPlan = {
 
 export type SourceProviderScanResult = {
   readonly items: readonly FetchedSourceItem[];
+  readonly conversationUnits?: readonly FetchedConversationUnit[];
   readonly nextCursor?: string;
   readonly warnings: readonly string[];
+};
+
+export type FetchedConversationUnitRole = 'top_level_comment' | 'reply';
+
+export type FetchedConversationUnit = {
+  readonly rootExternalId: string;
+  readonly rootProviderItemId: string;
+  readonly providerUnitId: string;
+  readonly canonicalUrl: string;
+  readonly body: string;
+  readonly authorHandle?: string;
+  readonly publishedAt: Date;
+  readonly threadExternalId: string;
+  readonly parentProviderUnitId?: string;
+  readonly depth: number;
+  readonly role: FetchedConversationUnitRole;
+  readonly metadata?: JsonObject;
 };
 
 export type SourceProviderValidationResult =

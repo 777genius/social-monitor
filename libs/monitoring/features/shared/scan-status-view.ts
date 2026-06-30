@@ -10,6 +10,7 @@ export type ScanStatusUserState =
 
 export type ScanStatusFailureClass =
   | 'provider_unavailable'
+  | 'provider_auth_failed'
   | 'provider_rate_limited'
   | 'worker_conflict'
   | 'system_failure';
@@ -66,11 +67,10 @@ const classifyFailure = (
   if (failureKind === 'rate_limited') {
     return 'provider_rate_limited';
   }
-  if (
-    failureKind === 'auth_failed' ||
-    failureKind === 'unavailable' ||
-    failureKind === 'invalid_query'
-  ) {
+  if (failureKind === 'auth_failed') {
+    return 'provider_auth_failed';
+  }
+  if (failureKind === 'unavailable' || failureKind === 'invalid_query') {
     return 'provider_unavailable';
   }
 
@@ -85,14 +85,21 @@ const classifyFailure = (
   }
 
   if (
-    normalized.includes('provider') ||
-    normalized.includes('unavailable') ||
     normalized.includes('auth_failed') ||
     normalized.includes('unauthorized') ||
     normalized.includes('forbidden') ||
     normalized.includes('credential') ||
+    normalized.includes('invalid_token') ||
+    normalized.includes('token expired') ||
     normalized.includes('401') ||
     normalized.includes('403')
+  ) {
+    return 'provider_auth_failed';
+  }
+
+  if (
+    normalized.includes('provider') ||
+    normalized.includes('unavailable')
   ) {
     return 'provider_unavailable';
   }
@@ -117,6 +124,8 @@ const operatorActionFor = (failureClass: ScanStatusFailureClass): string => {
   switch (failureClass) {
     case 'provider_rate_limited':
       return 'reduce_scan_frequency_or_pause_affected_source';
+    case 'provider_auth_failed':
+      return 'refresh_or_reconnect_source_credentials';
     case 'provider_unavailable':
       return 'check_provider_health_and_retry_budget';
     case 'worker_conflict':

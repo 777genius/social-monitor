@@ -135,6 +135,47 @@ _$GetFeedItemResponseDtoProviderMetricsProviderMetricsHackerNewsStoryToJson(
   'sourceKey': instance.sourceKey,
 };
 
+GetFeedItemResponseDtoProviderMetricsProviderMetricsRedditComment
+_$GetFeedItemResponseDtoProviderMetricsProviderMetricsRedditCommentFromJson(
+  Map<String, dynamic> json,
+) => GetFeedItemResponseDtoProviderMetricsProviderMetricsRedditComment(
+  contentType: RedditCommentProviderMetricsDtoContentTypeContentType.fromJson(
+    json['contentType'] as String,
+  ),
+  depth: json['depth'] as num,
+  kind: RedditCommentProviderMetricsDtoKindKind.fromJson(
+    json['kind'] as String,
+  ),
+  providerKey: RedditCommentProviderMetricsDtoProviderKeyProviderKey.fromJson(
+    json['providerKey'] as String,
+  ),
+  replies: json['replies'] as num,
+  role: RedditCommentProviderMetricsDtoRoleRole.fromJson(
+    json['role'] as String,
+  ),
+  score: json['score'] as num,
+  scoreConfidence:
+      RedditCommentProviderMetricsDtoScoreConfidenceScoreConfidence.fromJson(
+        json['scoreConfidence'] as String,
+      ),
+  sourceKey: json['sourceKey'] as String,
+);
+
+Map<String, dynamic>
+_$GetFeedItemResponseDtoProviderMetricsProviderMetricsRedditCommentToJson(
+  GetFeedItemResponseDtoProviderMetricsProviderMetricsRedditComment instance,
+) => <String, dynamic>{
+  'contentType': instance.contentType,
+  'depth': instance.depth,
+  'kind': instance.kind,
+  'providerKey': instance.providerKey,
+  'replies': instance.replies,
+  'role': instance.role,
+  'score': instance.score,
+  'scoreConfidence': instance.scoreConfidence,
+  'sourceKey': instance.sourceKey,
+};
+
 GetFeedItemResponseDtoProviderMetricsProviderMetricsRedditPost
 _$GetFeedItemResponseDtoProviderMetricsProviderMetricsRedditPostFromJson(
   Map<String, dynamic> json,

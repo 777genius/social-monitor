@@ -12,9 +12,31 @@ export type SummaryEvidenceItem = {
   readonly canonicalUrl?: string;
   readonly providerMetadata?: JsonObject;
   readonly extractedSummaries?: readonly SummaryEvidenceExtractedSummary[];
+  readonly conversationContext?: SummaryEvidenceConversationContext;
   readonly relevance?: SummaryEvidenceRelevance;
   readonly safety?: SummaryEvidenceSafety;
   readonly observedAt: Date;
+};
+
+export type SummaryEvidenceConversationContext = {
+  readonly rankingBasis: 'cohort_baseline_v1';
+  readonly bundleScore: number;
+  readonly units: readonly SummaryEvidenceConversationUnit[];
+};
+
+export type SummaryEvidenceConversationUnit = {
+  readonly conversationUnitId: string;
+  readonly providerUnitId: string;
+  readonly canonicalUrl: string;
+  readonly authorHandle?: string;
+  readonly body: string;
+  readonly score: number;
+  readonly providerScore?: number;
+  readonly replyCount?: number;
+  readonly signalBand: string;
+  readonly depth: number;
+  readonly role: 'top_level_comment' | 'reply';
+  readonly publishedAt: string;
 };
 
 export type SummaryEvidenceRelevance = {

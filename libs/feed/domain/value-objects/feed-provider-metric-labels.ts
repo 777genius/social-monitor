@@ -46,6 +46,12 @@ export const formatFeedProviderMetrics = (
         metric("Comments", metrics.comments),
         metric("Upvote ratio", formatRatio(metrics.upvoteRatio)),
       ]);
+    case "reddit_comment":
+      return compactMetrics([
+        metric("Score", metrics.score),
+        metric("Replies", metrics.replies),
+        metric("Depth", metrics.depth),
+      ]);
     case "hacker_news_story":
       return compactMetrics([
         metric("Points", metrics.points),
@@ -91,6 +97,12 @@ export const summarizeFeedProviderMetrics = (
         metrics.upvoteRatio === undefined
           ? undefined
           : `${formatRatio(metrics.upvoteRatio)} upvoted`,
+      ]);
+    case "reddit_comment":
+      return compactText([
+        formatNamedNumber("score", metrics.score),
+        formatNamedNumber("replies", metrics.replies),
+        metrics.role === "reply" ? `depth ${metrics.depth}` : "top-level",
       ]);
     case "hacker_news_story":
       return compactText([

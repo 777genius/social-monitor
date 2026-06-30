@@ -187,6 +187,10 @@ class _ReadyHealthSummary extends StatelessWidget {
             ),
             const SizedBox(height: AppSpacing.sm),
             _DetailRow(
+              label: 'Explanation',
+              value: snapshot.healthExplanation.message,
+            ),
+            _DetailRow(
               label: 'Operator action',
               value: snapshot.operatorAction,
             ),

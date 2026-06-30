@@ -4,6 +4,7 @@ import type { ScanProviderHealthState } from '../shared/scan-provider-health-sum
 import type { ScanPolicyView } from '../shared/scan-policy-presenter';
 import type { ScanStatusFailureClass, ScanStatusUserState } from '../shared/scan-status-view';
 import type { SourceBindingView } from '../shared/source-binding-presenter';
+import type { SourceBindingHealthExplanationView } from './source-binding-health-explanation';
 
 export type SourceBindingHealthState =
   | 'paused'
@@ -12,7 +13,10 @@ export type SourceBindingHealthState =
   | 'scanning'
   | 'healthy'
   | 'stale'
+  | 'rate_limited'
+  | 'auth_failed'
   | 'degraded'
+  | 'unsupported_scope'
   | 'down';
 
 export type SourceBindingHealthAttemptView = {
@@ -58,6 +62,7 @@ export type SourceBindingHealthRecentWindowView = {
   readonly failedScans: number;
   readonly activeScans: number;
   readonly rateLimitedScans: number;
+  readonly authFailedScans: number;
   readonly providerUnavailableScans: number;
   readonly consecutiveFailures: number;
   readonly lastSucceededAt?: string;
@@ -101,6 +106,7 @@ export type GetSourceBindingHealthResult = {
   readonly sourceBinding: SourceBindingView;
   readonly healthState: SourceBindingHealthState;
   readonly operatorAction: string;
+  readonly healthExplanation: SourceBindingHealthExplanationView;
   readonly evaluatedAt: string;
   readonly schedulerDecision: SourceBindingHealthSchedulerDecisionView;
   readonly scanPolicy?: SourceBindingHealthPolicyView;

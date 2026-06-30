@@ -1,10 +1,14 @@
 import { PrismaPg } from '@prisma/adapter-pg';
+import type { PrismaConversationClient } from '@social-monitor/conversation/adapters/persistence/prisma/prisma-conversation-client';
 import type { PrismaFeedClient } from '@social-monitor/feed/adapters/persistence/prisma/prisma-feed-client';
 import type { PrismaIngestionClient } from '@social-monitor/ingestion/adapters/persistence/prisma/prisma-ingestion-client';
 import { loadPrismaRuntimeClient } from '@social-monitor/platform-persistence/prisma-runtime-client';
 import { Pool } from 'pg';
 
-export type PrismaIngestionWorkerClient = PrismaIngestionClient & PrismaFeedClient;
+export type PrismaIngestionWorkerClient =
+  PrismaIngestionClient &
+  PrismaFeedClient &
+  PrismaConversationClient;
 
 type PrismaIngestionWorkerRuntimeClient = PrismaIngestionWorkerClient & {
   $disconnect(): Promise<void>;
@@ -25,6 +29,8 @@ export class PrismaIngestionWorkerConnection implements PrismaIngestionWorkerCli
   readonly gitHubRepositoryTrendResult: PrismaIngestionClient['gitHubRepositoryTrendResult'];
   readonly feedItem: PrismaFeedClient['feedItem'];
   readonly feedSignalBaselineSample: PrismaFeedClient['feedSignalBaselineSample'];
+  readonly conversationUnit: PrismaConversationClient['conversationUnit'];
+  readonly conversationSignalBaselineSample: PrismaConversationClient['conversationSignalBaselineSample'];
 
   private readonly pool: Pool;
   private readonly client: PrismaIngestionWorkerRuntimeClient;
@@ -48,6 +54,9 @@ export class PrismaIngestionWorkerConnection implements PrismaIngestionWorkerCli
     this.gitHubRepositoryTrendResult = this.client.gitHubRepositoryTrendResult;
     this.feedItem = this.client.feedItem;
     this.feedSignalBaselineSample = this.client.feedSignalBaselineSample;
+    this.conversationUnit = this.client.conversationUnit;
+    this.conversationSignalBaselineSample =
+      this.client.conversationSignalBaselineSample;
   }
 
   async close(): Promise<void> {

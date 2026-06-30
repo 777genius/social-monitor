@@ -108,18 +108,30 @@ describe('ListSourceProfilesUseCase', () => {
         expect.objectContaining({
           providerKey: 'fake-source',
           productionSafe: true,
+          health: expect.objectContaining({
+            state: 'degraded',
+            reasonCode: 'live_beta_evidence_missing',
+          }),
           readinessState: 'enabled_beta',
           runtimeReadiness: 'fixture_ready',
           supportedQueryModes: expect.arrayContaining(['search']),
+          unsupportedContentUnits: [],
         }),
         expect.objectContaining({
           providerKey: 'reddit',
           productionSafe: false,
+          health: expect.objectContaining({
+            state: 'unsupported_scope',
+            reasonCode: 'source_not_production_safe',
+          }),
           readinessState: 'profiled',
           supportedQueryModes: [],
         }),
         expect.objectContaining({
           providerKey: 'x-twitter',
+          health: expect.objectContaining({
+            state: 'unsupported_scope',
+          }),
           readinessState: 'provider_only',
         }),
       ]),

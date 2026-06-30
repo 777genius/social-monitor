@@ -28,27 +28,35 @@ String sourceRuntimeReadinessLabel(SourceRuntimeReadiness state) {
 }
 
 AppStatusTone sourceProfileTone(SourceProfile profile) {
-  if (profile.isReady) {
-    return AppStatusTone.success;
-  }
-  if (profile.readinessState == SourceReadinessState.rejected ||
-      profile.runtimeReadiness == SourceRuntimeReadiness.unknown) {
-    return AppStatusTone.danger;
-  }
-  return AppStatusTone.warning;
+  return switch (profile.health.state) {
+    'healthy' => AppStatusTone.success,
+    'unsupported_scope' || 'auth_failed' => AppStatusTone.danger,
+    'stale' || 'rate_limited' || 'degraded' => AppStatusTone.warning,
+    _ =>
+      profile.readinessState == SourceReadinessState.rejected ||
+              profile.runtimeReadiness == SourceRuntimeReadiness.unknown
+          ? AppStatusTone.danger
+          : AppStatusTone.warning,
+  };
+}
+
+String sourceProfileHealthLabel(SourceProfile profile) {
+  return switch (profile.health.state) {
+    'healthy' => 'Healthy',
+    'stale' => 'Stale',
+    'rate_limited' => 'Rate limited',
+    'auth_failed' => 'Auth failed',
+    'degraded' => 'Degraded',
+    'unsupported_scope' => 'Unsupported scope',
+    _ => 'Needs review',
+  };
 }
 
 String sourceProfileAvailabilityLabel(SourceProfile profile) {
-  if (profile.isReady) {
-    return 'Available';
+  if (profile.health.state != 'healthy') {
+    return sourceProfileHealthLabel(profile);
   }
-  if (!profile.productionSafe) {
-    return 'Not production safe';
-  }
-  if (!profile.readinessState.isEnabled) {
-    return 'Not enabled';
-  }
-  return 'Runtime deferred';
+  return 'Available';
 }
 
 IconData sourceProviderIcon(SourceProfile profile) {

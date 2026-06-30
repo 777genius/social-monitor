@@ -10,6 +10,7 @@ import {
 
 export type FeedProviderMetrics =
   | RedditPostMetrics
+  | RedditCommentMetrics
   | GitHubRepositoryMetrics
   | GitHubTrendingRepositoryMetrics
   | HackerNewsStoryMetrics
@@ -28,6 +29,21 @@ export type RedditPostMetrics = {
   readonly score: number;
   readonly comments: number;
   readonly upvoteRatio?: number;
+};
+
+export type RedditCommentRole = 'top_level_comment' | 'reply';
+export type RedditCommentScoreConfidence = 'provider_reported';
+
+export type RedditCommentMetrics = {
+  readonly kind: 'reddit_comment';
+  readonly providerKey: 'reddit';
+  readonly sourceKey: string;
+  readonly contentType: 'comment';
+  readonly score: number;
+  readonly replies: number;
+  readonly depth: number;
+  readonly role: RedditCommentRole;
+  readonly scoreConfidence: RedditCommentScoreConfidence;
 };
 
 export type GitHubRepositoryMetrics = {
@@ -85,7 +101,7 @@ export const feedProviderMetricsFromMetadata = (params: {
 }): FeedProviderMetrics | undefined => {
   switch (params.providerKey) {
     case 'reddit':
-      return redditPostMetrics(params.providerMetadata);
+      return redditMetrics(params.providerMetadata);
     case 'github-repo-radar':
       return githubRepositoryMetrics(params.providerMetadata);
     case 'github-trending-page':
@@ -114,6 +130,18 @@ export const feedProviderMetricStrength = (
         Math.log1p(Math.max(0, metrics.score)) * 0.65 +
           Math.log1p(metrics.comments) * 0.35 +
           ratioBoost,
+      );
+    }
+    case 'reddit_comment': {
+      const roleBoost = metrics.role === 'top_level_comment' ? 0.18 : 0;
+      const depthPenalty = Math.min(0.75, Math.max(0, metrics.depth - 1) * 0.18);
+
+      return Math.max(
+        0,
+        Math.log1p(Math.max(0, metrics.score)) * 0.62 +
+          Math.log1p(metrics.replies) * 0.18 +
+          roleBoost -
+          depthPenalty,
       );
     }
     case 'github_repository': {
@@ -153,6 +181,16 @@ const metricDelta = (
 ): number =>
   metrics.trendDeltas.find((delta) => delta.window === window)?.value ?? 0;
 
+const redditMetrics = (
+  metadata: JsonObject | undefined,
+): RedditPostMetrics | RedditCommentMetrics | undefined => {
+  if (metadata?.kind === 'reddit_comment') {
+    return redditCommentMetrics(metadata);
+  }
+
+  return redditPostMetrics(metadata);
+};
+
 const redditPostMetrics = (
   metadata: JsonObject | undefined,
 ): RedditPostMetrics | undefined => {
@@ -173,6 +211,30 @@ const redditPostMetrics = (
     score: score ?? 0,
     comments: comments ?? 0,
     upvoteRatio: readRatio(metadata?.upvoteRatio),
+  };
+};
+
+const redditCommentMetrics = (
+  metadata: JsonObject | undefined,
+): RedditCommentMetrics | undefined => {
+  const score = readInteger(metadata?.score ?? metadata?.providerScore);
+  const replies = readNonNegativeInteger(metadata?.replies ?? metadata?.replyCount);
+  const depth = readNonNegativeInteger(metadata?.depth);
+
+  if (score === undefined && replies === undefined && depth === undefined) {
+    return undefined;
+  }
+
+  return {
+    kind: 'reddit_comment',
+    providerKey: 'reddit',
+    sourceKey: redditProviderSourceKey(readString(metadata?.subreddit)),
+    contentType: 'comment',
+    score: score ?? 0,
+    replies: replies ?? 0,
+    depth: depth ?? 0,
+    role: readRedditCommentRole(metadata?.role),
+    scoreConfidence: 'provider_reported',
   };
 };
 
@@ -420,3 +482,8 @@ const readRatio = (value: JsonValue | undefined): number | undefined =>
   value <= 1
     ? value
     : undefined;
+
+const readRedditCommentRole = (
+  value: JsonValue | undefined,
+): RedditCommentRole =>
+  value === 'reply' ? 'reply' : 'top_level_comment';

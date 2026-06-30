@@ -1,4 +1,7 @@
 import { Module } from '@nestjs/common';
+import { ConversationUnitProjectionAdapter } from '@social-monitor/conversation/adapters/ingestion/conversation-unit-projection.adapter';
+import { InMemoryConversationUnitRepository } from '@social-monitor/conversation/adapters/persistence/in-memory-conversation-unit.repository';
+import { PrismaConversationUnitRepository } from '@social-monitor/conversation/adapters/persistence/prisma/prisma-conversation-unit.repository';
 import { InMemoryFeedItemReadRepository } from '@social-monitor/feed/adapters/persistence/in-memory-feed-item-read.repository';
 import { PrismaFeedProjectionAdapter } from '@social-monitor/feed/adapters/persistence/prisma/prisma-feed-projection.adapter';
 import { MonitoringScanExecutionReporterAdapter } from '@social-monitor/monitoring/adapters/reporting/monitoring-scan-execution-reporter.adapter';
@@ -32,6 +35,7 @@ import { ExecuteScanUseCase } from '@social-monitor/ingestion/features/execute-s
 import { ExecuteScanCommandHandler } from '@social-monitor/ingestion/interfaces/queue/execute-scan-command.handler';
 import type { ScanExecutionReporterPort } from '@social-monitor/ingestion/ports';
 import type {
+  ConversationProjectionPort,
   FeedProjectionPort,
   ScanAttemptRepositoryPort,
   ScanCursorRepositoryPort,
@@ -48,6 +52,7 @@ import {
   type PrismaIngestionWorkerClient,
 } from './adapters/persistence/prisma-ingestion-worker-connection';
 import {
+  INGESTION_CONVERSATION_PROJECTION,
   INGESTION_FEED_PROJECTION,
   INGESTION_RABBITMQ_SCAN_QUEUE_READER_OPTIONS,
   INGESTION_SCAN_ATTEMPT_REPOSITORY,
@@ -191,6 +196,7 @@ const INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL = Symbol(
     },
     InMemorySourceItemRepository,
     InMemoryFeedItemReadRepository,
+    InMemoryConversationUnitRepository,
     {
       provide: InMemoryFeedProjectionAdapter,
       useFactory: (feedItems: InMemoryFeedItemReadRepository) =>
@@ -291,6 +297,31 @@ const INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL = Symbol(
       ],
     },
     {
+      provide: INGESTION_CONVERSATION_PROJECTION,
+      useFactory: (
+        mode: IngestionWorkerPersistenceMode,
+        prisma: PrismaIngestionWorkerClient | null,
+        inMemoryConversationUnits: InMemoryConversationUnitRepository,
+      ): ConversationProjectionPort =>
+        mode === 'prisma'
+          ? new ConversationUnitProjectionAdapter(
+              new PrismaConversationUnitRepository(
+                requirePrismaIngestionWorkerClient(prisma),
+                new CryptoIdGenerator(),
+              ),
+              new CryptoIdGenerator(),
+            )
+          : new ConversationUnitProjectionAdapter(
+              inMemoryConversationUnits,
+              new CryptoIdGenerator(),
+            ),
+      inject: [
+        INGESTION_WORKER_PERSISTENCE_MODE,
+        INGESTION_WORKER_PRISMA_CLIENT,
+        InMemoryConversationUnitRepository,
+      ],
+    },
+    {
       provide: INGESTION_SCAN_FAILURE_QUEUE,
       useFactory: (
         mode: IngestionWorkerPersistenceMode,
@@ -372,6 +403,7 @@ const INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL = Symbol(
     InMemorySourceItemRepository,
     InMemoryFeedItemReadRepository,
     INGESTION_FEED_PROJECTION,
+    INGESTION_CONVERSATION_PROJECTION,
     INGESTION_SCAN_ATTEMPT_REPOSITORY,
     INGESTION_SCAN_CURSOR_REPOSITORY,
     INGESTION_SCAN_FAILURE_QUEUE,

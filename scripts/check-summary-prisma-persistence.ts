@@ -424,6 +424,33 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
     );
   };
 
+  readonly conversationUnit: PrismaSummaryClient["conversationUnit"] = {
+    upsert: async (args) => {
+      void args;
+      throw new Error(
+        "FakePrismaSummaryClient.conversationUnit.upsert is not implemented for this smoke",
+      );
+    },
+    findMany: async (args) => {
+      void args;
+      return [];
+    },
+  };
+
+  readonly conversationSignalBaselineSample: PrismaSummaryClient["conversationSignalBaselineSample"] =
+    {
+      upsert: async (args) => {
+        void args;
+        throw new Error(
+          "FakePrismaSummaryClient.conversationSignalBaselineSample.upsert is not implemented for this smoke",
+        );
+      },
+      findMany: async (args) => {
+        void args;
+        return [];
+      },
+    };
+
   readonly summaryJob: PrismaSummaryClient["summaryJob"] = {
     upsert: async (args) => {
       const existing = this.jobs.get(args.where.id);

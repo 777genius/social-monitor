@@ -56,7 +56,8 @@ export class HttpRedditClient implements RedditClientPort {
       : `/r/${encodeURIComponent(request.subreddit)}/comments/${encodeURIComponent(request.postId)}`;
     const url = this.url(path, {
       limit: String(request.limit),
-      sort: 'top',
+      sort: request.sort ?? 'confidence',
+      ...(request.depth === undefined ? {} : { depth: String(request.depth) }),
     });
     const response = await this.fetchJson<RedditApiThreadResponse>(
       url,
@@ -159,12 +160,23 @@ const normalizeCommentChildren = (
     readonly data?: Readonly<Record<string, unknown>>;
   }[],
 ): readonly RedditComment[] =>
-  children.flatMap((child) => [
-    ...normalizeComment(child.data),
-    ...normalizeCommentChildren(readCommentReplies(child.data)),
-  ]);
+  children.flatMap((child) => {
+    if (child.kind !== undefined && child.kind !== 't1') {
+      return [];
+    }
 
-const normalizeComment = (data: Readonly<Record<string, unknown>> | undefined): readonly RedditComment[] => {
+    const replies = readCommentReplies(child.data);
+
+    return [
+      ...normalizeComment(child.data, countDirectCommentReplies(replies)),
+      ...normalizeCommentChildren(replies),
+    ];
+  });
+
+const normalizeComment = (
+  data: Readonly<Record<string, unknown>> | undefined,
+  replyCount: number,
+): readonly RedditComment[] => {
   if (data === undefined) {
     return [];
   }
@@ -182,13 +194,22 @@ const normalizeComment = (data: Readonly<Record<string, unknown>> | undefined): 
       body: readString(data.body),
       author: readString(data.author),
       permalink: readString(data.permalink),
+      parentId: readString(data.parent_id),
       createdUtc: readNumber(data.created_utc),
       score: readNumber(data.score),
+      replyCount,
       removedByCategory: readString(data.removed_by_category),
       depth: readNumber(data.depth),
     },
   ];
 };
+
+const countDirectCommentReplies = (
+  children: readonly {
+    readonly kind?: string;
+    readonly data?: Readonly<Record<string, unknown>>;
+  }[],
+): number => children.filter((child) => child.kind === 't1').length;
 
 const readCommentReplies = (
   data: Readonly<Record<string, unknown>> | undefined,

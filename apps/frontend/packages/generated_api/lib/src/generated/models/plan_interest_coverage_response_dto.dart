@@ -6,6 +6,7 @@ import 'package:json_annotation/json_annotation.dart';
 
 import 'interest_coverage_plan_draft_dto.dart';
 import 'interest_coverage_plan_skipped_provider_dto.dart';
+import 'interest_coverage_source_pack_dto.dart';
 import 'interest_response_dto.dart';
 
 part 'plan_interest_coverage_response_dto.g.dart';
@@ -19,6 +20,7 @@ class PlanInterestCoverageResponseDto {
     required this.normalizedKeywords,
     required this.planningQuery,
     required this.skippedProviders,
+    this.sourcePack,
   });
 
   factory PlanInterestCoverageResponseDto.fromJson(Map<String, Object?> json) =>
@@ -30,6 +32,7 @@ class PlanInterestCoverageResponseDto {
   final List<String> normalizedKeywords;
   final String planningQuery;
   final List<InterestCoveragePlanSkippedProviderDto> skippedProviders;
+  final InterestCoverageSourcePackDto? sourcePack;
 
   Map<String, Object?> toJson() =>
       _$PlanInterestCoverageResponseDtoToJson(this);

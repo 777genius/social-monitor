@@ -5,6 +5,7 @@ final class SourceBindingHealthApiDto {
     required this.sourceBinding,
     required this.healthState,
     required this.operatorAction,
+    required this.healthExplanation,
     required this.evaluatedAt,
     this.freshness,
     this.latestScan,
@@ -13,9 +14,28 @@ final class SourceBindingHealthApiDto {
   final SourceBindingApiDto sourceBinding;
   final String healthState;
   final String operatorAction;
+  final SourceBindingHealthExplanationApiDto healthExplanation;
   final DateTime evaluatedAt;
   final SourceBindingFreshnessApiDto? freshness;
   final SourceBindingScanSummaryApiDto? latestScan;
+}
+
+final class SourceBindingHealthExplanationApiDto {
+  const SourceBindingHealthExplanationApiDto({
+    required this.reasonCode,
+    required this.message,
+    required this.operatorAction,
+    required this.signals,
+    this.unavailableUntil,
+    this.staleBySeconds,
+  });
+
+  final String reasonCode;
+  final String message;
+  final String operatorAction;
+  final List<String> signals;
+  final DateTime? unavailableUntil;
+  final num? staleBySeconds;
 }
 
 final class SourceBindingFreshnessApiDto {

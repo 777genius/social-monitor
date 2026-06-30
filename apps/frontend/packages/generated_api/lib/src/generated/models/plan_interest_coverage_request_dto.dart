@@ -14,6 +14,7 @@ class PlanInterestCoverageRequestDto {
     this.includeProviders,
     this.keywords,
     this.rssFeedUrls,
+    this.sourcePackKey,
     this.subreddits,
   });
 
@@ -25,6 +26,7 @@ class PlanInterestCoverageRequestDto {
   final List<String>? includeProviders;
   final List<String>? keywords;
   final List<String>? rssFeedUrls;
+  final String? sourcePackKey;
   final List<String>? subreddits;
 
   Map<String, Object?> toJson() => _$PlanInterestCoverageRequestDtoToJson(this);

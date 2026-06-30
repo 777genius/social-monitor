@@ -1,4 +1,5 @@
 export * from './feed-projection.port';
+export * from './conversation-projection.port';
 export * from './github-repository-trend-history-repository.port';
 export * from './article-content-extractor.port';
 export * from './scan-attempt-repository.port';

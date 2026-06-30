@@ -4,6 +4,7 @@ import type {
   FeedProjectionPort,
   ProjectFeedItemsCommand,
   ProjectFeedItemsResult,
+  ProjectedFeedItemRef,
 } from '@social-monitor/ingestion/ports';
 
 import type { PrismaFeedClient } from './prisma-feed-client';
@@ -20,6 +21,7 @@ export class PrismaFeedProjectionAdapter implements FeedProjectionPort {
 
   async project(command: ProjectFeedItemsCommand): Promise<ProjectFeedItemsResult> {
     let projected = 0;
+    const projectedItems: ProjectedFeedItemRef[] = [];
 
     for (const sourceItem of command.sourceItems) {
       const snapshot = sourceItem.toSnapshot();
@@ -117,10 +119,15 @@ export class PrismaFeedProjectionAdapter implements FeedProjectionPort {
             },
           });
         }
+        projectedItems.push({
+          sourceItemId: snapshot.id,
+          sourceExternalId: snapshot.externalId,
+          feedItemId: feedItem.id,
+        });
       });
       projected += 1;
     }
 
-    return { projected };
+    return { projected, projectedItems };
   }
 }

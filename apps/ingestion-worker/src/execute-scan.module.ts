@@ -2,6 +2,7 @@ import type { Provider } from '@nestjs/common';
 import { CircuitBreakerSourceFetcherAdapter } from '@social-monitor/ingestion/adapters/source/circuit-breaker-source-fetcher.adapter';
 import { ExecuteScanUseCase } from '@social-monitor/ingestion/features/execute-scan/execute-scan.use-case';
 import type {
+  ConversationProjectionPort,
   FeedProjectionPort,
   ScanAttemptRepositoryPort,
   ScanCursorRepositoryPort,
@@ -16,6 +17,7 @@ import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
 
 import { ArticleContentSourceItemEnrichmentAdapter } from './article-content-enrichment.module';
 import {
+  INGESTION_CONVERSATION_PROJECTION,
   INGESTION_FEED_PROJECTION,
   INGESTION_SCAN_ATTEMPT_REPOSITORY,
   INGESTION_SCAN_CURSOR_REPOSITORY,
@@ -40,6 +42,7 @@ export const executeScanProviders: Provider[] = [
       scanLeases: ScanLeasePort,
       sourceItemMetadataProjection: SourceItemMetadataProjectionPort,
       sourceItemEnrichment: SourceItemEnrichmentPort,
+      conversationProjection: ConversationProjectionPort,
     ) =>
       new ExecuteScanUseCase(
         sourceFetcher,
@@ -54,6 +57,7 @@ export const executeScanProviders: Provider[] = [
         new SystemClock(),
         sourceItemMetadataProjection,
         sourceItemEnrichment,
+        conversationProjection,
       ),
     inject: [
       CircuitBreakerSourceFetcherAdapter,
@@ -66,6 +70,7 @@ export const executeScanProviders: Provider[] = [
       INGESTION_SCAN_LEASE,
       INGESTION_SOURCE_ITEM_METADATA_PROJECTION,
       ArticleContentSourceItemEnrichmentAdapter,
+      INGESTION_CONVERSATION_PROJECTION,
     ],
   },
 ];

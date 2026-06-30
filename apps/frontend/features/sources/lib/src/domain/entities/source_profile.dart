@@ -7,11 +7,13 @@ final class SourceProfile {
     required this.providerKey,
     required this.displayName,
     required this.productionSafe,
+    required this.health,
     required this.readinessState,
     required this.runtimeReadiness,
     required this.acquisitionMode,
     required this.supportedQueryModes,
     required this.supportedContentUnits,
+    required this.unsupportedContentUnits,
     required this.cursorModel,
     required this.quotaModel,
     required this.limitations,
@@ -22,11 +24,13 @@ final class SourceProfile {
   final SourceProviderKey providerKey;
   final String displayName;
   final bool productionSafe;
+  final SourceProfileHealth health;
   final SourceReadinessState readinessState;
   final SourceRuntimeReadiness runtimeReadiness;
   final String acquisitionMode;
   final List<String> supportedQueryModes;
   final List<String> supportedContentUnits;
+  final List<String> unsupportedContentUnits;
   final String cursorModel;
   final String quotaModel;
   final List<String> limitations;
@@ -39,12 +43,28 @@ final class SourceProfile {
         runtimeReadiness.canCollect;
   }
 
-  bool get isDegraded => !isReady;
+  bool get isDegraded => health.state != 'healthy';
 
   List<String> get allLimitations {
     return [
       ...limitations,
+      if (unsupportedContentUnits.isNotEmpty)
+        'Unsupported scope: ${unsupportedContentUnits.join(', ')}',
       ...liveBetaBlockers.map((item) => 'Live beta blocker: $item'),
     ];
   }
+}
+
+final class SourceProfileHealth {
+  const SourceProfileHealth({
+    required this.state,
+    required this.reasonCode,
+    required this.message,
+    required this.signals,
+  });
+
+  final String state;
+  final String reasonCode;
+  final String message;
+  final List<String> signals;
 }

@@ -28,6 +28,10 @@ import { summarizeScanProviderHealth } from '../shared/scan-provider-health-summ
 import { buildScanStatusView } from '../shared/scan-status-view';
 import { presentSourceBinding } from '../shared/source-binding-presenter';
 import type { GetSourceBindingHealthQuery } from './get-source-binding-health.query';
+import {
+  buildSourceBindingHealthExplanation,
+  classifySourceFailureKind,
+} from './source-binding-health-explanation';
 import type {
   GetSourceBindingHealthResult,
   SourceBindingHealthFreshnessView,
@@ -144,64 +148,88 @@ export class GetSourceBindingHealthUseCase {
       jobs: recentScanJobs.scanJobs,
       now,
     });
+    const latestScanStatusView = latestScanSnapshot === undefined
+      ? undefined
+      : buildScanStatusView({
+          status: latestScanSnapshot.status,
+          failureReason: latestScanSnapshot.failureReason,
+          failureMetadata: latestScanSnapshot.failureMetadata,
+        });
     const healthState = determineHealthState({
       bindingStatus: bindingSnapshot.status,
       hasScanPolicy: scanPolicy !== null,
       latestScanStatus: latestScanSnapshot?.status,
+      latestFailureKind: latestScanStatusView === undefined
+        ? undefined
+        : classifySourceFailureKind({
+            failureClass: latestScanStatusView.failureClass,
+            failureReason: latestScanSnapshot?.failureReason,
+            failureMetadata: latestScanSnapshot?.failureMetadata,
+          }),
       freshness,
       recentProviderHealthState: recentWindow.providerHealthState,
     });
+    const operatorAction = operatorActionForHealth(healthState);
+    const schedulerDecision = buildSchedulerDecision({
+      bindingStatus: bindingSnapshot.status,
+      providerKey: bindingSnapshot.providerKey,
+      scanPolicySnapshot,
+      activeScanJob,
+      duplicateScheduledScan,
+      latestScanJob,
+      freshness,
+      cadence,
+      providerFailureBackoff,
+      now,
+    });
+    const latestScan = latestScanSnapshot === undefined || latestScanStatusView === undefined
+      ? undefined
+      : {
+          scanJobId: latestScanSnapshot.id,
+          status: latestScanSnapshot.status,
+          ...latestScanStatusView,
+          requestedAt: latestScanSnapshot.requestedAt.toISOString(),
+          enqueuedAt: latestScanSnapshot.enqueuedAt?.toISOString(),
+          completedAt: latestScanSnapshot.completedAt?.toISOString(),
+          failureReason: latestScanSnapshot.failureReason,
+          latestAttempt: latestAttempt === null
+            ? undefined
+            : {
+                sourceBindingId: latestAttempt.sourceBindingId,
+                status: latestAttempt.status,
+                startedAt: latestAttempt.startedAt.toISOString(),
+                finishedAt: latestAttempt.finishedAt?.toISOString(),
+                fetched: latestAttempt.fetched,
+                inserted: latestAttempt.inserted,
+                skippedDuplicates: latestAttempt.skippedDuplicates,
+                projected: latestAttempt.projected,
+                failureReason: latestAttempt.failureReason,
+              },
+        };
 
     return ok({
       sourceBinding: presentSourceBinding(binding),
       healthState,
-      operatorAction: operatorActionForHealth(healthState),
-      evaluatedAt: now.toISOString(),
-      schedulerDecision: buildSchedulerDecision({
-        bindingStatus: bindingSnapshot.status,
+      operatorAction,
+      healthExplanation: buildSourceBindingHealthExplanation({
         providerKey: bindingSnapshot.providerKey,
-        scanPolicySnapshot,
-        activeScanJob,
-        duplicateScheduledScan,
-        latestScanJob,
+        healthState,
+        operatorAction,
+        schedulerDecision,
         freshness,
-        cadence,
-        providerFailureBackoff,
-        now,
+        latestFailureClass: latestScanStatusView?.failureClass,
+        latestFailureReason: latestScanSnapshot?.failureReason,
+        recentWindow,
       }),
+      evaluatedAt: now.toISOString(),
+      schedulerDecision,
       scanPolicy: scanPolicy === null || scanPolicySnapshot === undefined
         ? undefined
         : {
             ...presentScanPolicy(scanPolicy, { providerKey: bindingSnapshot.providerKey }),
             isDue: scanPolicySnapshot.nextRunAt.getTime() <= now.getTime(),
           },
-      latestScan: latestScanSnapshot === undefined
-        ? undefined
-        : {
-            scanJobId: latestScanSnapshot.id,
-            status: latestScanSnapshot.status,
-            ...buildScanStatusView({
-              status: latestScanSnapshot.status,
-              failureReason: latestScanSnapshot.failureReason,
-            }),
-            requestedAt: latestScanSnapshot.requestedAt.toISOString(),
-            enqueuedAt: latestScanSnapshot.enqueuedAt?.toISOString(),
-            completedAt: latestScanSnapshot.completedAt?.toISOString(),
-            failureReason: latestScanSnapshot.failureReason,
-            latestAttempt: latestAttempt === null
-              ? undefined
-              : {
-                  sourceBindingId: latestAttempt.sourceBindingId,
-                  status: latestAttempt.status,
-                  startedAt: latestAttempt.startedAt.toISOString(),
-                  finishedAt: latestAttempt.finishedAt?.toISOString(),
-                  fetched: latestAttempt.fetched,
-                  inserted: latestAttempt.inserted,
-                  skippedDuplicates: latestAttempt.skippedDuplicates,
-                  projected: latestAttempt.projected,
-                  failureReason: latestAttempt.failureReason,
-                },
-          },
+      latestScan,
       freshness,
       recentWindow,
     });
@@ -212,6 +240,7 @@ const determineHealthState = (params: {
   readonly bindingStatus: 'enabled' | 'paused';
   readonly hasScanPolicy: boolean;
   readonly latestScanStatus?: 'requested' | 'enqueued' | 'succeeded' | 'failed';
+  readonly latestFailureKind?: ReturnType<typeof classifySourceFailureKind>;
   readonly freshness?: SourceBindingHealthFreshnessView;
   readonly recentProviderHealthState: SourceBindingProviderHealthState;
 }): SourceBindingHealthState => {
@@ -228,6 +257,16 @@ const determineHealthState = (params: {
   }
 
   if (params.latestScanStatus === 'failed') {
+    if (params.latestFailureKind === 'rate_limited') {
+      return 'rate_limited';
+    }
+    if (params.latestFailureKind === 'auth_failed') {
+      return 'auth_failed';
+    }
+    if (params.latestFailureKind === 'unsupported_scope') {
+      return 'unsupported_scope';
+    }
+
     return params.recentProviderHealthState === 'down' ? 'down' : 'degraded';
   }
 
@@ -448,6 +487,7 @@ const buildRecentWindow = (params: {
     failedScans: summary.failedScans,
     activeScans: summary.activeScans,
     rateLimitedScans: summary.rateLimitedScans,
+    authFailedScans: summary.authFailedScans,
     providerUnavailableScans: summary.providerUnavailableScans,
     consecutiveFailures: summary.consecutiveFailures,
     lastSucceededAt: latestCompletedAt(succeededJobs),
@@ -480,8 +520,14 @@ const operatorActionForHealth = (state: SourceBindingHealthState): string => {
       return 'no_action_required';
     case 'stale':
       return 'trigger_manual_scan_or_reduce_scan_interval';
+    case 'rate_limited':
+      return 'wait_for_provider_rate_limit_backoff';
+    case 'auth_failed':
+      return 'refresh_or_reconnect_source_credentials';
     case 'degraded':
       return 'inspect_latest_scan_failure_and_retry_budget';
+    case 'unsupported_scope':
+      return 'adjust_source_query_or_requested_scopes';
     case 'down':
       return 'pause_or_backoff_provider_until_recovery';
   }

@@ -5,6 +5,7 @@ import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 
 import '../components/interest_coverage_plan_panel.dart';
 import '../components/source_bindings_layout.dart';
+import '../components/source_provider_status_panel.dart';
 import '../stores/interest_coverage_plan_store.dart';
 import '../stores/scan_policy_store.dart';
 import '../stores/scan_run_store.dart';
@@ -87,6 +88,9 @@ class _SourceBindingsPageState extends State<SourceBindingsPage> {
                         bindingsStore: widget.store,
                       ),
                       const SizedBox(height: AppSpacing.md),
+                      SourceProviderStatusPanel(
+                        state: widget.store.overviewState,
+                      ),
                       SourceBindingsLayout(
                         store: widget.store,
                         policyStore: widget.policyStore,

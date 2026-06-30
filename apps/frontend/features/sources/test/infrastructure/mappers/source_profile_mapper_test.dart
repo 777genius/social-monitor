@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:social_monitor_sources/src/domain/value_objects/source_readiness_state.dart';
 import 'package:social_monitor_sources/src/domain/value_objects/source_runtime_readiness.dart';
+import 'package:social_monitor_sources/src/infrastructure/api/source_profile_api_dto.dart';
 import 'package:social_monitor_sources/src/infrastructure/mappers/source_profile_mapper.dart';
 
 import '../../support/sources_test_fixtures.dart';
@@ -15,6 +16,8 @@ void main() {
     expect(profile.displayName, 'Reddit');
     expect(profile.readinessState, SourceReadinessState.enabledBeta);
     expect(profile.runtimeReadiness, SourceRuntimeReadiness.liveBetaReady);
+    expect(profile.health.state, 'healthy');
+    expect(profile.unsupportedContentUnits, ['profile', 'media']);
     expect(profile.isReady, isTrue);
   });
 
@@ -27,6 +30,13 @@ void main() {
         displayName: null,
         readinessState: 'future_state',
         runtimeReadiness: 'future_runtime',
+        health: const SourceProfileHealthApiDto(
+          state: '',
+          reasonCode: '',
+          message: '',
+          signals: [],
+        ),
+        unsupportedContentUnits: const [],
         limitations: const ['Future backend state'],
       ),
     );
@@ -34,6 +44,7 @@ void main() {
     expect(profile.displayName, 'New Provider');
     expect(profile.readinessState, SourceReadinessState.unknown);
     expect(profile.runtimeReadiness, SourceRuntimeReadiness.unknown);
+    expect(profile.health.message, 'Source health explanation unavailable');
     expect(profile.isReady, isFalse);
     expect(profile.isDegraded, isTrue);
   });

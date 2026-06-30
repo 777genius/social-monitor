@@ -1,5 +1,6 @@
 import '../../domain/entities/source_binding.dart';
 import '../../domain/entities/source_binding_health_snapshot.dart';
+import '../../domain/entities/source_binding_overview.dart';
 import '../../domain/value_objects/source_binding_health_state.dart';
 import '../../domain/value_objects/source_binding_id.dart';
 import '../../domain/value_objects/source_binding_status.dart';
@@ -28,6 +29,23 @@ final class SourceBindingMapper {
       binding: toDomain(dto.sourceBinding),
       healthState: _healthState(dto.healthState),
       operatorAction: _safeText(dto.operatorAction, fallback: 'Review binding'),
+      healthExplanation: SourceBindingHealthExplanation(
+        reasonCode: _safeText(
+          dto.healthExplanation.reasonCode,
+          fallback: 'source_unknown',
+        ),
+        message: _safeText(
+          dto.healthExplanation.message,
+          fallback: 'Source health explanation unavailable',
+        ),
+        operatorAction: _safeText(
+          dto.healthExplanation.operatorAction,
+          fallback: dto.operatorAction,
+        ),
+        signals: _safeStringList(dto.healthExplanation.signals),
+        unavailableUntil: dto.healthExplanation.unavailableUntil,
+        staleBySeconds: dto.healthExplanation.staleBySeconds,
+      ),
       evaluatedAt: dto.evaluatedAt,
       freshness: dto.freshness == null
           ? null
@@ -53,6 +71,25 @@ final class SourceBindingMapper {
     );
   }
 
+  SourceBindingOverview overviewToDomain(SourceBindingOverviewApiDto dto) {
+    return SourceBindingOverview(
+      summary: SourceBindingOverviewSummary(
+        totalBindings: dto.summary.totalBindings,
+        operatorAction: _safeText(
+          dto.summary.operatorAction,
+          fallback: 'Review provider status',
+        ),
+        degradationReasons: dto.summary.degradationReasons
+            .map(_overviewReason)
+            .toList(growable: false),
+        providerBreakdown: dto.summary.providerBreakdown
+            .map(_providerBreakdown)
+            .toList(growable: false),
+        nextEligibleAt: dto.summary.nextEligibleAt,
+      ),
+    );
+  }
+
   SourceBindingStatus _status(String value) {
     return switch (value.trim()) {
       'enabled' => SourceBindingStatus.enabled,
@@ -69,9 +106,48 @@ final class SourceBindingMapper {
       'scanning' => SourceBindingHealthState.scanning,
       'healthy' => SourceBindingHealthState.healthy,
       'stale' => SourceBindingHealthState.stale,
+      'rate_limited' => SourceBindingHealthState.rateLimited,
+      'auth_failed' => SourceBindingHealthState.authFailed,
       'degraded' => SourceBindingHealthState.degraded,
+      'unsupported_scope' => SourceBindingHealthState.unsupportedScope,
       'down' => SourceBindingHealthState.down,
       _ => SourceBindingHealthState.unknown,
+    };
+  }
+
+  SourceBindingOverviewProviderBreakdown _providerBreakdown(
+    SourceBindingOverviewProviderBreakdownApiDto dto,
+  ) {
+    return SourceBindingOverviewProviderBreakdown(
+      providerKey: SourceProviderKey(dto.providerKey),
+      totalBindings: dto.totalBindings,
+      degradationReasons: dto.degradationReasons
+          .map(_overviewReason)
+          .toList(growable: false),
+      nextEligibleAt: dto.nextEligibleAt,
+    );
+  }
+
+  SourceBindingOverviewDegradationReason _overviewReason(
+    SourceBindingOverviewDegradationReasonApiDto dto,
+  ) {
+    return SourceBindingOverviewDegradationReason(
+      code: _safeText(dto.code, fallback: 'unknown'),
+      severity: _overviewSeverity(dto.severity),
+      affectedBindings: dto.affectedBindings,
+      operatorAction: _safeText(dto.operatorAction, fallback: 'Review source'),
+      sampleSourceBindingIds: _safeStringList(dto.sampleSourceBindingIds),
+      signals: _safeStringList(dto.signals),
+      nextEligibleAt: dto.nextEligibleAt,
+    );
+  }
+
+  SourceBindingOverviewDegradationSeverity _overviewSeverity(String value) {
+    return switch (value.trim()) {
+      'info' => SourceBindingOverviewDegradationSeverity.info,
+      'warning' => SourceBindingOverviewDegradationSeverity.warning,
+      'critical' => SourceBindingOverviewDegradationSeverity.critical,
+      _ => SourceBindingOverviewDegradationSeverity.unknown,
     };
   }
 
@@ -106,5 +182,12 @@ final class SourceBindingMapper {
   String _safeText(String value, {required String fallback}) {
     final trimmed = value.trim();
     return trimmed.isEmpty ? fallback : trimmed;
+  }
+
+  List<String> _safeStringList(List<String> values) {
+    return values
+        .map((value) => value.trim())
+        .where((value) => value.isNotEmpty)
+        .toList(growable: false);
   }
 }
