@@ -1,42 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 
-import '../composition/app_runtime.dart';
 import '../composition/app_theme_mode_controller.dart';
 
 class AppShellHeader extends StatelessWidget {
-  const AppShellHeader({
-    super.key,
-    required this.runtime,
-    required this.themeModeController,
-    required this.onOpenWorkspace,
-  });
+  const AppShellHeader({super.key, required this.themeModeController});
 
-  final AppShellRuntime runtime;
   final AppThemeModeController themeModeController;
-  final VoidCallback onOpenWorkspace;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        AppWorkspaceSwitcher(
-          workspaceName: runtime.workspace.workspaceName,
-          tenantName: runtime.workspace.tenantName,
-          status: AppStatusBadge(
-            label: runtime.workspace.statusLabel,
-            tone: runtime.workspace.isAvailable
-                ? AppStatusTone.success
-                : AppStatusTone.warning,
-          ),
-          onPressed: onOpenWorkspace,
-        ),
-        const SizedBox(height: AppSpacing.sm),
-        _ThemeModeSwitcher(controller: themeModeController),
-      ],
-    );
+    return _ThemeModeSwitcher(controller: themeModeController);
   }
 }
 

@@ -161,7 +161,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Auth and workspace session'), findsOneWidget);
-    expect(find.text('Workspace required'), findsWidgets);
+    expect(find.text('Workspace required'), findsNothing);
   });
 
   testWidgets('renders safe unknown route state', (tester) async {
@@ -320,7 +320,8 @@ void main() {
     await tester.pumpWidget(SocialMonitorApp(composition: composition));
     await tester.pumpAndSettle();
 
-    expect(find.text('Acme alerts'), findsOneWidget);
+    expect(find.text('Monitoring command center'), findsOneWidget);
+    expect(find.text('Acme alerts'), findsNothing);
 
     composition.router.go('/interests');
     await tester.pumpAndSettle();

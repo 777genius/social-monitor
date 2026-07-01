@@ -43,11 +43,7 @@ class AppShellPage extends StatelessWidget {
       selectedPath: location,
       onDestinationSelected: (path) => context.go(path),
       appBarActions: [_CompactThemeModeMenu(controller: themeModeController)],
-      header: AppShellHeader(
-        runtime: runtime,
-        themeModeController: themeModeController,
-        onOpenWorkspace: () => context.go('/auth'),
-      ),
+      header: AppShellHeader(themeModeController: themeModeController),
       child: child,
     );
   }
