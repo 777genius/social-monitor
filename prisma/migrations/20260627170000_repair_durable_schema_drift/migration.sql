@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS "feed_signal_baseline_samples" (
     "id" UUID NOT NULL,
     "tenant_id" UUID NOT NULL,
     "workspace_id" UUID NOT NULL,
-    "topic_id" UUID NOT NULL,
+    "interest_id" UUID NOT NULL,
     "feed_item_id" UUID NOT NULL,
     "provider_key" TEXT NOT NULL,
     "source_key" TEXT NOT NULL,
@@ -48,6 +48,24 @@ CREATE TABLE IF NOT EXISTS "feed_signal_baseline_samples" (
     "updated_at" TIMESTAMPTZ(6) NOT NULL,
     CONSTRAINT "feed_signal_baseline_samples_pkey" PRIMARY KEY ("id")
 );
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_name = 'feed_signal_baseline_samples'
+      AND column_name = 'topic_id'
+  ) AND NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_name = 'feed_signal_baseline_samples'
+      AND column_name = 'interest_id'
+  ) THEN
+    ALTER TABLE "feed_signal_baseline_samples"
+      RENAME COLUMN "topic_id" TO "interest_id";
+  END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS "reader_summary_artifacts" (
     "id" UUID NOT NULL,
@@ -155,7 +173,7 @@ CREATE INDEX IF NOT EXISTS "scan_scheduler_decisions_tenant_id_workspace_id_prov
 CREATE INDEX IF NOT EXISTS "scan_scheduler_decisions_tenant_id_workspace_id_decision_re_idx" ON "scan_scheduler_decisions"("tenant_id", "workspace_id", "decision", "reason", "evaluated_at");
 CREATE UNIQUE INDEX IF NOT EXISTS "scan_scheduler_decisions_tenant_id_workspace_id_decision_ke_key" ON "scan_scheduler_decisions"("tenant_id", "workspace_id", "decision_key");
 
-CREATE INDEX IF NOT EXISTS "feed_signal_baseline_samples_tenant_id_workspace_id_topic_i_idx" ON "feed_signal_baseline_samples"("tenant_id", "workspace_id", "topic_id", "observed_at");
+CREATE INDEX IF NOT EXISTS "feed_signal_baseline_samples_interest_observed_idx" ON "feed_signal_baseline_samples"("tenant_id", "workspace_id", "interest_id", "observed_at");
 CREATE INDEX IF NOT EXISTS "feed_signal_baseline_samples_tenant_id_workspace_id_provide_idx" ON "feed_signal_baseline_samples"("tenant_id", "workspace_id", "provider_key", "content_type", "observed_at");
 CREATE UNIQUE INDEX IF NOT EXISTS "feed_signal_baseline_samples_tenant_id_workspace_id_feed_it_key" ON "feed_signal_baseline_samples"("tenant_id", "workspace_id", "feed_item_id");
 

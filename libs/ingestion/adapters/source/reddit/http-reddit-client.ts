@@ -33,6 +33,7 @@ export class HttpRedditClient implements RedditClientPort {
       limit: String(request.limit),
       ...(request.listing === 'top' && request.topTime !== undefined ? { t: request.topTime } : {}),
       ...(request.after === undefined ? {} : { after: request.after }),
+      raw_json: '1',
     });
 
     return this.fetchListing(url, request.accessToken, request.userAgent);
@@ -45,6 +46,7 @@ export class HttpRedditClient implements RedditClientPort {
       sort: 'new',
       limit: String(request.limit),
       ...(request.after === undefined ? {} : { after: request.after }),
+      raw_json: '1',
     });
 
     return this.fetchListing(url, request.accessToken, request.userAgent);
@@ -143,6 +145,10 @@ const normalizePost = (data: Readonly<Record<string, unknown>> | undefined): rea
       author: readString(data.author),
       permalink: readString(data.permalink),
       url: readString(data.url),
+      thumbnailUrl: readHttpUrl(data.thumbnail),
+      previewImageUrl: readPreviewImageUrl(data.preview),
+      postHint: readString(data.post_hint),
+      isVideo: readBoolean(data.is_video),
       createdUtc: readNumber(data.created_utc),
       over18: readBoolean(data.over_18),
       stickied: readBoolean(data.stickied),
@@ -232,11 +238,65 @@ const readCommentReplies = (
 const readString = (value: unknown): string | undefined =>
   typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
 
+const readHttpUrl = (value: unknown): string | undefined => {
+  const text = decodeHtmlUrl(readString(value));
+  if (text === undefined) {
+    return undefined;
+  }
+
+  try {
+    const url = new URL(text);
+    return url.protocol === 'https:' || url.protocol === 'http:'
+      ? url.toString()
+      : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+const readPreviewImageUrl = (value: unknown): string | undefined => {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const images = value.images;
+  if (!Array.isArray(images)) {
+    return undefined;
+  }
+
+  for (const image of images) {
+    if (!isRecord(image)) {
+      continue;
+    }
+
+    const source = image.source;
+    if (!isRecord(source)) {
+      continue;
+    }
+
+    const sourceUrl = readHttpUrl(source.url);
+    if (sourceUrl !== undefined) {
+      return sourceUrl;
+    }
+  }
+
+  return undefined;
+};
+
+const decodeHtmlUrl = (value: string | undefined): string | undefined =>
+  value
+    ?.replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
+
 const readNumber = (value: unknown): number | undefined =>
   typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 
 const readBoolean = (value: unknown): boolean | undefined =>
   typeof value === 'boolean' ? value : undefined;
+
+const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
 
 const readRateLimitBudget = (headers: Headers): RedditRateLimitBudget => {
   const used = headers.get('x-ratelimit-used') ?? undefined;

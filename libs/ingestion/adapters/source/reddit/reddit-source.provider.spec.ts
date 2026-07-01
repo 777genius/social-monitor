@@ -87,6 +87,10 @@ describe('RedditSourceProvider', () => {
           selftext: 'Users compare the release against coding workflows.',
           permalink: '/r/ClaudeAI/comments/post_1/claude_release_discussion/',
           url: 'https://example.test/claude-release-analysis',
+          thumbnailUrl: 'https://b.thumbs.redditmedia.com/claude-thumb.jpg',
+          previewImageUrl: 'https://preview.redd.it/claude-release.png',
+          postHint: 'image',
+          isVideo: false,
           author: 'example-user',
           createdUtc: 1_782_230_000,
           score: 420,
@@ -127,10 +131,14 @@ describe('RedditSourceProvider', () => {
     });
     expect(result.items[0]).toMatchObject({
       title: 'Claude release discussion',
-      metadata: {
-        subreddit: 'ClaudeAI',
-        linkedUrl: 'https://example.test/claude-release-analysis',
-        score: 420,
+        metadata: {
+          subreddit: 'ClaudeAI',
+          linkedUrl: 'https://example.test/claude-release-analysis',
+          thumbnailUrl: 'https://b.thumbs.redditmedia.com/claude-thumb.jpg',
+          previewImageUrl: 'https://preview.redd.it/claude-release.png',
+          postHint: 'image',
+          isVideo: false,
+          score: 420,
         numComments: 58,
         upvoteRatio: 0.94,
       },

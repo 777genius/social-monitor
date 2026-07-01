@@ -6,7 +6,6 @@ import {
 } from '@social-monitor/shared-kernel';
 
 import {
-  contentHashForConversationUnit,
   ConversationUnit,
   type ConversationUnitProps,
   type ConversationUnitRole,

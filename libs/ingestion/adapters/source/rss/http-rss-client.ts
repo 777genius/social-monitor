@@ -98,6 +98,7 @@ const normalizeRssItem = (item: unknown): readonly RssFeedItem[] => {
     title: readText(item.title),
     content: readText(item['content:encoded']) ?? readText(item.description),
     author: readText(item.author) ?? readText(item['dc:creator']),
+    ...rssMediaFields(item),
     publishedAt: parseDate(readText(item.pubDate) ?? readText(item['dc:date'])),
   }];
 };
@@ -113,8 +114,57 @@ const normalizeAtomEntry = (entry: unknown): readonly RssFeedItem[] => {
     title: readText(entry.title),
     content: readText(entry.content) ?? readText(entry.summary),
     author: readAtomAuthor(entry.author),
+    ...atomMediaFields(entry),
     publishedAt: parseDate(readText(entry.published) ?? readText(entry.updated)),
   }];
+};
+
+const rssMediaFields = (
+  item: Readonly<Record<string, unknown>>,
+): Partial<RssFeedItem> => ({
+  ...mediaFieldsFromMediaElements(item),
+  ...enclosureFields(item.enclosure),
+});
+
+const atomMediaFields = (
+  entry: Readonly<Record<string, unknown>>,
+): Partial<RssFeedItem> => ({
+  ...mediaFieldsFromMediaElements(entry),
+  ...enclosureFields(readAtomEnclosure(entry.link), '@_href'),
+});
+
+const mediaFieldsFromMediaElements = (
+  value: Readonly<Record<string, unknown>>,
+): Partial<RssFeedItem> => {
+  const thumbnailUrl = readElementAttribute(value['media:thumbnail'], '@_url');
+  const content = firstRecord(value['media:content']);
+  const contentUrl = readElementAttribute(content, '@_url');
+  const contentType = readElementAttribute(content, '@_type');
+
+  return {
+    ...(thumbnailUrl === undefined ? {} : { mediaThumbnailUrl: thumbnailUrl }),
+    ...(contentUrl === undefined ? {} : { mediaContentUrl: contentUrl }),
+    ...(contentType === undefined ? {} : { mediaContentType: contentType }),
+  };
+};
+
+const enclosureFields = (
+  value: unknown,
+  urlAttribute: '@_url' | '@_href' = '@_url',
+): Partial<RssFeedItem> => {
+  const enclosure = firstRecord(value);
+  const enclosureUrl = readElementAttribute(enclosure, urlAttribute);
+  const enclosureType = readElementAttribute(enclosure, '@_type');
+
+  return {
+    ...(enclosureUrl === undefined ? {} : { enclosureUrl }),
+    ...(enclosureType === undefined ? {} : { enclosureType }),
+  };
+};
+
+const readAtomEnclosure = (value: unknown): unknown => {
+  const links = Array.isArray(value) ? value : [value];
+  return links.find((link) => isRecord(link) && link['@_rel'] === 'enclosure');
 };
 
 const arrayFromPath = (root: Readonly<Record<string, unknown>>, path: readonly string[]): readonly unknown[] => {
@@ -156,6 +206,21 @@ const readAtomAuthor = (value: unknown): string | undefined => {
   }
 
   return readText(value);
+};
+
+const readElementAttribute = (
+  value: unknown,
+  key: '@_url' | '@_href' | '@_type',
+): string | undefined => {
+  const record = firstRecord(value);
+  return record === undefined ? undefined : readText(record[key]);
+};
+
+const firstRecord = (
+  value: unknown,
+): Readonly<Record<string, unknown>> | undefined => {
+  const candidate = Array.isArray(value) ? value[0] : value;
+  return isRecord(candidate) ? candidate : undefined;
 };
 
 const readText = (value: unknown): string | undefined => {

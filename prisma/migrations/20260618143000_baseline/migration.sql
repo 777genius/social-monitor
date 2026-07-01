@@ -1175,7 +1175,7 @@ CREATE UNIQUE INDEX "cursor_checkpoints_tenant_id_source_binding_id_key" ON "cur
 CREATE INDEX "source_items_tenant_id_workspace_id_source_binding_id_obser_idx" ON "source_items"("tenant_id", "workspace_id", "source_binding_id", "observed_at");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "source_items_tenant_id_provider_key_provider_item_id_key" ON "source_items"("tenant_id", "provider_key", "provider_item_id");
+CREATE UNIQUE INDEX "source_items_tenant_workspace_provider_item_key" ON "source_items"("tenant_id", "workspace_id", "provider_key", "provider_item_id");
 
 -- CreateIndex
 CREATE INDEX "scan_failure_queue_entries_tenant_id_workspace_id_status_cr_idx" ON "scan_failure_queue_entries"("tenant_id", "workspace_id", "status", "created_at");
@@ -1437,6 +1437,9 @@ ALTER TABLE "interests" ADD CONSTRAINT "interests_workspace_id_fkey" FOREIGN KEY
 
 -- AddForeignKey
 ALTER TABLE "capability_profiles" ADD CONSTRAINT "capability_profiles_source_id_fkey" FOREIGN KEY ("source_id") REFERENCES "source_catalog_entries"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "feed_items" ADD CONSTRAINT "feed_items_source_item_id_fkey" FOREIGN KEY ("source_item_id") REFERENCES "source_items"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "user_subscriptions" ADD CONSTRAINT "user_subscriptions_source_target_id_fkey" FOREIGN KEY ("source_target_id") REFERENCES "source_targets"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

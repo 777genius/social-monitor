@@ -352,6 +352,14 @@ const redditPostMetadata = (post: RedditPost) => ({
   kind: "reddit_post",
   ...(post.subreddit === undefined ? {} : { subreddit: post.subreddit }),
   ...(linkedUrl(post) === undefined ? {} : { linkedUrl: linkedUrl(post) }),
+  ...(post.thumbnailUrl === undefined
+    ? {}
+    : { thumbnailUrl: post.thumbnailUrl }),
+  ...(post.previewImageUrl === undefined
+    ? {}
+    : { previewImageUrl: post.previewImageUrl }),
+  ...(post.postHint === undefined ? {} : { postHint: post.postHint }),
+  ...(post.isVideo === undefined ? {} : { isVideo: post.isVideo }),
   ...(post.score === undefined ? {} : { score: post.score }),
   ...(post.numComments === undefined ? {} : { numComments: post.numComments }),
   ...(post.upvoteRatio === undefined ? {} : { upvoteRatio: post.upvoteRatio }),

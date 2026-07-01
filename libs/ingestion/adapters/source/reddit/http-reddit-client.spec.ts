@@ -9,7 +9,7 @@ describe('HttpRedditClient', () => {
 
   it('maps Reddit listing JSON engagement fields and skips children without stable ids', async () => {
     const fetchMock = jest.fn(async (url: string | URL, init?: RequestInit) => {
-      expect(String(url)).toBe('https://oauth.reddit.test/r/ClaudeAI/top?limit=2&t=week');
+      expect(String(url)).toBe('https://oauth.reddit.test/r/ClaudeAI/top?limit=2&t=week&raw_json=1');
       expect(init?.headers).toEqual(expect.objectContaining({
         authorization: 'Bearer token-value',
         accept: 'application/json',
@@ -30,6 +30,16 @@ describe('HttpRedditClient', () => {
                 author: 'example-user',
                 permalink: '/r/ClaudeAI/comments/post_1/release_discussion/',
                 url: 'https://example.test/release-discussion',
+                thumbnail: 'https://b.thumbs.redditmedia.com/thumb.jpg',
+                preview: {
+                  images: [{
+                    source: {
+                      url: 'https://preview.redd.it/release.png?width=1200&amp;format=png',
+                    },
+                  }],
+                },
+                post_hint: 'image',
+                is_video: false,
                 created_utc: 1_782_230_000,
                 over_18: false,
                 stickied: false,
@@ -77,6 +87,10 @@ describe('HttpRedditClient', () => {
         author: 'example-user',
         permalink: '/r/ClaudeAI/comments/post_1/release_discussion/',
         url: 'https://example.test/release-discussion',
+        thumbnailUrl: 'https://b.thumbs.redditmedia.com/thumb.jpg',
+        previewImageUrl: 'https://preview.redd.it/release.png?width=1200&format=png',
+        postHint: 'image',
+        isVideo: false,
         createdUtc: 1_782_230_000,
         over18: false,
         stickied: false,
@@ -96,7 +110,7 @@ describe('HttpRedditClient', () => {
 
   it('maps Reddit search JSON with negative score and default user agent', async () => {
     const fetchMock = jest.fn(async (url: string | URL, init?: RequestInit) => {
-      expect(String(url)).toBe('https://oauth.reddit.test/search?q=agent+feedback&type=link&sort=new&limit=1');
+      expect(String(url)).toBe('https://oauth.reddit.test/search?q=agent+feedback&type=link&sort=new&limit=1&raw_json=1');
       expect(init?.headers).toEqual(expect.objectContaining({
         authorization: 'Bearer token-value',
         'user-agent': 'social-monitor-mvp/0.1',

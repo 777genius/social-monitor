@@ -9,12 +9,15 @@ describe('HttpRssClient', () => {
 
   it('parses RSS items and sends conditional HTTP headers', async () => {
     const fetchMock = jest.fn(async (_url: string, init?: RequestInit) => {
-      expect(init?.headers).toEqual(expect.objectContaining({
-        'if-none-match': '"old-etag"',
-        'if-modified-since': 'Fri, 05 Jun 2026 09:00:00 GMT',
-      }));
+      expect(init?.headers).toEqual(
+        expect.objectContaining({
+          'if-none-match': '"old-etag"',
+          'if-modified-since': 'Fri, 05 Jun 2026 09:00:00 GMT',
+        }),
+      );
 
-      return new Response(`
+      return new Response(
+        `
         <rss version="2.0">
           <channel>
             <item>
@@ -23,34 +26,50 @@ describe('HttpRssClient', () => {
               <title>RSS title</title>
               <description>RSS body</description>
               <author>rss-author</author>
+              <media:thumbnail url="https://cdn.example.test/rss-thumb.jpg" />
+              <media:content url="https://cdn.example.test/rss-image.jpg" type="image/jpeg" />
+              <enclosure url="https://cdn.example.test/rss-video.mp4" type="video/mp4" />
               <pubDate>Fri, 05 Jun 2026 10:00:00 GMT</pubDate>
             </item>
           </channel>
         </rss>
-      `, {
-        status: 200,
-        headers: {
-          etag: '"new-etag"',
-          'last-modified': 'Fri, 05 Jun 2026 10:01:00 GMT',
+      `,
+        {
+          status: 200,
+          headers: {
+            etag: '"new-etag"',
+            'last-modified': 'Fri, 05 Jun 2026 10:01:00 GMT',
+          },
         },
-      });
+      );
     });
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
-    const result = await new HttpRssClient().readFeed('https://example.test/feed.xml', 10, {
-      etag: '"old-etag"',
-      lastModified: 'Fri, 05 Jun 2026 09:00:00 GMT',
-    });
+    const result = await new HttpRssClient().readFeed(
+      'https://example.test/feed.xml',
+      10,
+      {
+        etag: '"old-etag"',
+        lastModified: 'Fri, 05 Jun 2026 09:00:00 GMT',
+      },
+    );
 
     expect(result).toEqual({
-      items: [{
-        guid: 'rss-guid-1',
-        link: 'https://example.test/item-1',
-        title: 'RSS title',
-        content: 'RSS body',
-        author: 'rss-author',
-        publishedAt: new Date('2026-06-05T10:00:00.000Z'),
-      }],
+      items: [
+        {
+          guid: 'rss-guid-1',
+          link: 'https://example.test/item-1',
+          title: 'RSS title',
+          content: 'RSS body',
+          author: 'rss-author',
+          mediaThumbnailUrl: 'https://cdn.example.test/rss-thumb.jpg',
+          mediaContentUrl: 'https://cdn.example.test/rss-image.jpg',
+          mediaContentType: 'image/jpeg',
+          enclosureUrl: 'https://cdn.example.test/rss-video.mp4',
+          enclosureType: 'video/mp4',
+          publishedAt: new Date('2026-06-05T10:00:00.000Z'),
+        },
+      ],
       etag: '"new-etag"',
       lastModified: 'Fri, 05 Jun 2026 10:01:00 GMT',
     });
@@ -66,21 +85,30 @@ describe('HttpRssClient', () => {
             <title>Atom title</title>
             <summary>Atom body</summary>
             <author><name>atom-author</name></author>
+            <media:thumbnail url="https://cdn.example.test/atom-thumb.webp" />
+            <link rel="enclosure" href="https://cdn.example.test/atom-image.webp" type="image/webp" />
             <updated>2026-06-05T10:02:00Z</updated>
           </entry>
         </feed>
       `, { status: 200 }),
     ) as unknown as typeof fetch;
 
-    await expect(new HttpRssClient().readFeed('https://example.test/atom.xml', 10)).resolves.toEqual({
-      items: [{
-        guid: 'tag:example.test,2026:item-1',
-        link: 'https://example.test/atom/item-1',
-        title: 'Atom title',
-        content: 'Atom body',
-        author: 'atom-author',
-        publishedAt: new Date('2026-06-05T10:02:00.000Z'),
-      }],
+    await expect(
+      new HttpRssClient().readFeed('https://example.test/atom.xml', 10),
+    ).resolves.toEqual({
+      items: [
+        {
+          guid: 'tag:example.test,2026:item-1',
+          link: 'https://example.test/atom/item-1',
+          title: 'Atom title',
+          content: 'Atom body',
+          author: 'atom-author',
+          mediaThumbnailUrl: 'https://cdn.example.test/atom-thumb.webp',
+          enclosureUrl: 'https://cdn.example.test/atom-image.webp',
+          enclosureType: 'image/webp',
+          publishedAt: new Date('2026-06-05T10:02:00.000Z'),
+        },
+      ],
       etag: undefined,
       lastModified: undefined,
     });
@@ -94,10 +122,12 @@ describe('HttpRssClient', () => {
       }),
     ) as unknown as typeof fetch;
 
-    await expect(new HttpRssClient().readFeed('https://example.test/feed.xml', 10, {
-      etag: '"same-etag"',
-      lastModified: 'Fri, 05 Jun 2026 09:00:00 GMT',
-    })).resolves.toEqual({
+    await expect(
+      new HttpRssClient().readFeed('https://example.test/feed.xml', 10, {
+        etag: '"same-etag"',
+        lastModified: 'Fri, 05 Jun 2026 09:00:00 GMT',
+      }),
+    ).resolves.toEqual({
       items: [],
       etag: '"same-etag"',
       lastModified: 'Fri, 05 Jun 2026 09:00:00 GMT',
@@ -112,7 +142,10 @@ describe('HttpRssClient', () => {
     });
     globalThis.fetch = jest.fn(async () => response) as unknown as typeof fetch;
 
-    await expect(new HttpRssClient().readFeed('https://example.test/feed.xml', 10))
-      .rejects.toThrow('Feed URL redirect rejected: Feed URL must not target private or local networks.');
+    await expect(
+      new HttpRssClient().readFeed('https://example.test/feed.xml', 10),
+    ).rejects.toThrow(
+      'Feed URL redirect rejected: Feed URL must not target private or local networks.',
+    );
   });
 });

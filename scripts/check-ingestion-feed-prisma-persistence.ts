@@ -20,6 +20,7 @@ import { PrismaScanAttemptRepository } from "../libs/ingestion/adapters/persiste
 import { PrismaScanCursorRepository } from "../libs/ingestion/adapters/persistence/prisma/prisma-scan-cursor.repository";
 import { PrismaSourceItemRepository } from "../libs/ingestion/adapters/persistence/prisma/prisma-source-item.repository";
 import type { PrismaIngestionClient } from "../libs/ingestion/adapters/persistence/prisma/prisma-ingestion-client";
+import type { SavedSourceItemRef } from "../libs/ingestion/ports";
 import type {
   PrismaCursorCheckpointRecord,
   PrismaScanAttemptRecord,
@@ -143,6 +144,14 @@ async function main(): Promise<void> {
     saveResult.skippedDuplicates === 1,
     "source item repository must skip duplicate provider item",
   );
+  assert(
+    saveResult.items.map((item) => item.sourceItemId).join(",") ===
+      [
+        "00000000-0000-7000-8000-000000000301",
+        "00000000-0000-7000-8000-000000000301",
+      ].join(","),
+    "source item repository must return persisted source ids for duplicates",
+  );
 
   await cursors.save({
     tenantId: tenant,
@@ -167,7 +176,10 @@ async function main(): Promise<void> {
     interestId,
     sourceBindingId,
     providerKey: "fake-source",
-    sourceItems: [firstItem, duplicateProviderItem],
+    sourceItems: sourceItemsWithPersistedIds(
+      [firstItem, duplicateProviderItem],
+      saveResult.items,
+    ),
   });
   assert(
     projectionResult.projected === 2,
@@ -247,7 +259,7 @@ async function main(): Promise<void> {
       },
     },
   });
-  await sourceItems.saveBatch({
+  const articleSaveResult = await sourceItems.saveBatch({
     tenantId: tenant,
     workspaceId: workspace,
     providerKey: "article-source",
@@ -259,7 +271,10 @@ async function main(): Promise<void> {
     interestId,
     sourceBindingId,
     providerKey: "article-source",
-    sourceItems: [articleFromReddit, articleFromRss],
+    sourceItems: sourceItemsWithPersistedIds(
+      [articleFromReddit, articleFromRss],
+      articleSaveResult.items,
+    ),
   });
   const articleList = await feedRead.list({
     tenantId: tenant,
@@ -448,6 +463,29 @@ const makeSourceItem = (params: {
     metadata: params.metadata,
   });
 
+const sourceItemsWithPersistedIds = (
+  items: readonly SourceItem[],
+  refs: readonly SavedSourceItemRef[],
+): readonly SourceItem[] => {
+  const persistedIdByExternalId = new Map(
+    refs.map((ref) => [ref.externalId, ref.sourceItemId]),
+  );
+
+  return items.map((item) => {
+    const snapshot = item.toSnapshot();
+    const sourceItemId = persistedIdByExternalId.get(snapshot.externalId);
+
+    if (sourceItemId === undefined) {
+      throw new Error(`Missing persisted source item ref for ${snapshot.externalId}`);
+    }
+
+    return SourceItem.rehydrate({
+      ...snapshot,
+      id: sourceItemId,
+    });
+  });
+};
+
 class SequenceIdGenerator implements IdGenerator {
   private index = 0;
 
@@ -485,10 +523,25 @@ class FakePrismaIngestionFeedClient
       [...this.sourceItems.values()].find(
         (record) =>
           record.tenantId === args.where.tenantId &&
+          record.workspaceId === args.where.workspaceId &&
           record.providerKey === args.where.providerKey &&
           record.providerItemId === args.where.providerItemId,
       ) ?? null,
     create: async (args) => {
+      const existing = [...this.sourceItems.values()].find(
+        (record) =>
+          record.tenantId === args.data.tenantId &&
+          record.workspaceId === args.data.workspaceId &&
+          record.providerKey === args.data.providerKey &&
+          record.providerItemId === args.data.providerItemId,
+      );
+      if (existing !== undefined) {
+        throw Object.assign(
+          new Error("Unique source item constraint violation"),
+          { code: "P2002" },
+        );
+      }
+
       const record: PrismaSourceItemRecord = {
         ...args.data,
         authorHandle: args.data.authorHandle ?? null,
@@ -669,6 +722,20 @@ class FakePrismaIngestionFeedClient
 
   readonly feedItem: PrismaFeedClient["feedItem"] = {
     upsert: async (args) => {
+      const requestedSourceItemId =
+        this.feedItems.get([
+          args.where.tenantId_interestId_dedupeKey.tenantId,
+          args.where.tenantId_interestId_dedupeKey.interestId,
+          args.where.tenantId_interestId_dedupeKey.dedupeKey,
+        ].join(":")) === undefined
+          ? args.create.sourceItemId
+          : args.update.sourceItemId;
+      if (!this.sourceItems.has(requestedSourceItemId)) {
+        throw new Error(
+          `Feed item sourceItemId ${requestedSourceItemId} does not reference a source item`,
+        );
+      }
+
       const key = [
         args.where.tenantId_interestId_dedupeKey.tenantId,
         args.where.tenantId_interestId_dedupeKey.interestId,

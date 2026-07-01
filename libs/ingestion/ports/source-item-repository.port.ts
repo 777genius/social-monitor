@@ -9,9 +9,16 @@ export type SaveSourceItemsCommand = {
   readonly items: readonly SourceItem[];
 };
 
+export type SavedSourceItemRef = {
+  readonly externalId: string;
+  readonly sourceItemId: string;
+  readonly inserted: boolean;
+};
+
 export type SaveSourceItemsResult = {
   readonly inserted: number;
   readonly skippedDuplicates: number;
+  readonly items: readonly SavedSourceItemRef[];
 };
 
 export interface SourceItemRepositoryPort {

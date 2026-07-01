@@ -53,6 +53,7 @@ export type PrismaIngestionClient = {
     findFirst(args: {
       readonly where: {
         readonly tenantId: string;
+        readonly workspaceId: string;
         readonly providerKey: string;
         readonly providerItemId: string;
       };

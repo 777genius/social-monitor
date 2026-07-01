@@ -126,18 +126,33 @@ const normalizeItem = (item: RssFeedItem, index: number, feedUrl: string) => {
       body,
       authorHandle: item.author,
       publishedAt: item.publishedAt,
-      metadata: rssItemMetadata(feedUrl),
+      metadata: rssItemMetadata(item, feedUrl),
     },
   ];
 };
 
-const rssItemMetadata = (feedUrl: string) => {
+const rssItemMetadata = (item: RssFeedItem, feedUrl: string) => {
   const searchQuery = searchQueryFromFeedUrl(feedUrl);
 
   return {
     kind: 'rss_item',
     feedUrl,
     ...(searchQuery === undefined ? {} : { searchQuery }),
+    ...(item.mediaThumbnailUrl === undefined
+      ? {}
+      : { mediaThumbnailUrl: item.mediaThumbnailUrl }),
+    ...(item.mediaContentUrl === undefined
+      ? {}
+      : { mediaContentUrl: item.mediaContentUrl }),
+    ...(item.mediaContentType === undefined
+      ? {}
+      : { mediaContentType: item.mediaContentType }),
+    ...(item.enclosureUrl === undefined
+      ? {}
+      : { enclosureUrl: item.enclosureUrl }),
+    ...(item.enclosureType === undefined
+      ? {}
+      : { enclosureType: item.enclosureType }),
   };
 };
 

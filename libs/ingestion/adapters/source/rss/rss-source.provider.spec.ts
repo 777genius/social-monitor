@@ -232,4 +232,48 @@ describe('RssSourceProvider', () => {
       searchQuery: 'Flutter',
     });
   });
+
+  it('preserves normalized RSS media metadata for summary previews', async () => {
+    const client = {
+      async readFeed() {
+        return {
+          items: [
+            {
+              guid: 'rss-media-item',
+              link: 'https://example.test/rss/media-item',
+              title: 'Media rich RSS item',
+              content: 'RSS item with a safe preview image.',
+              mediaThumbnailUrl: 'https://cdn.example.test/rss-thumb.jpg',
+              mediaContentUrl: 'https://cdn.example.test/rss-image.jpg',
+              mediaContentType: 'image/jpeg',
+              enclosureUrl: 'https://cdn.example.test/rss-video.mp4',
+              enclosureType: 'video/mp4',
+              publishedAt: new Date('2026-06-05T10:06:00.000Z'),
+            },
+          ],
+        };
+      },
+    } satisfies RssClientPort;
+    const provider = new RssSourceProvider(client);
+    const context = {
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      sourceBindingId: 'rss-binding-1',
+      scanJobId: 'scan-job-1',
+      correlationId: 'correlation-1',
+    };
+    const query = { mode: 'url' as const, query: 'https://example.test/feed.xml' };
+
+    const result = await provider.scan(provider.planScan(query, context), context);
+
+    expect(result.items[0]?.metadata).toEqual({
+      kind: 'rss_item',
+      feedUrl: 'https://example.test/feed.xml',
+      mediaThumbnailUrl: 'https://cdn.example.test/rss-thumb.jpg',
+      mediaContentUrl: 'https://cdn.example.test/rss-image.jpg',
+      mediaContentType: 'image/jpeg',
+      enclosureUrl: 'https://cdn.example.test/rss-video.mp4',
+      enclosureType: 'video/mp4',
+    });
+  });
 });

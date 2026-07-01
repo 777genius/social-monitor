@@ -4,6 +4,11 @@ export type RssFeedItem = {
   readonly title?: string;
   readonly content?: string;
   readonly author?: string;
+  readonly mediaThumbnailUrl?: string;
+  readonly mediaContentUrl?: string;
+  readonly mediaContentType?: string;
+  readonly enclosureUrl?: string;
+  readonly enclosureType?: string;
   readonly publishedAt?: Date;
 };
 

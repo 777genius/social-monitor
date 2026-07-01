@@ -11,6 +11,10 @@ export type RedditPost = {
   readonly author?: string;
   readonly permalink?: string;
   readonly url?: string;
+  readonly thumbnailUrl?: string;
+  readonly previewImageUrl?: string;
+  readonly postHint?: string;
+  readonly isVideo?: boolean;
   readonly createdUtc?: number;
   readonly over18?: boolean;
   readonly stickied?: boolean;

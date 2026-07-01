@@ -31,6 +31,7 @@ import {
   type ScanExecutionReporterPort,
   type ScanFailureQueuePort,
   type ScanLeasePort,
+  type SavedSourceItemRef,
   type SourceFetcherPort,
   type SourceItemEnrichmentPort,
   type SourceItemMetadataProjectionPort,
@@ -170,13 +171,17 @@ export class ExecuteScanUseCase {
         providerKey: sourceBinding.providerKey,
         items,
       });
+      const persistedItems = rehydratePersistedSourceItems(
+        items,
+        saveResult.items,
+      );
       const projectionResult = await this.feedProjection.project({
         tenantId: command.tenantId,
         workspaceId: command.workspaceId,
         interestId: sourceBinding.interestId,
         sourceBindingId: sourceBinding.sourceBindingId,
         providerKey: sourceBinding.providerKey,
-        sourceItems: items,
+        sourceItems: persistedItems,
       });
       await this.conversationProjection.project({
         tenantId: command.tenantId,
@@ -197,7 +202,7 @@ export class ExecuteScanUseCase {
         sourceBindingId: sourceBinding.sourceBindingId,
         scanJobId: command.scanJobId,
         providerKey: sourceBinding.providerKey,
-        sourceItems: items,
+        sourceItems: persistedItems,
       });
       if (fetched.nextCursor !== undefined) {
         await this.scanCursors.save({
@@ -323,6 +328,49 @@ const createDomainValue = <T>(factory: () => T): Result<T, DomainError> => {
       ),
     );
   }
+};
+
+const rehydratePersistedSourceItems = (
+  items: readonly SourceItem[],
+  refs: readonly SavedSourceItemRef[],
+): readonly SourceItem[] => {
+  if (items.length !== refs.length) {
+    throw new Error(
+      `Source item repository returned ${refs.length} saved refs for ${items.length} source items`,
+    );
+  }
+
+  const persistedIdByExternalId = new Map<string, string>();
+  for (const ref of refs) {
+    const existingId = persistedIdByExternalId.get(ref.externalId);
+    if (existingId !== undefined && existingId !== ref.sourceItemId) {
+      throw new Error(
+        `Source item repository returned conflicting ids for external item ${ref.externalId}`,
+      );
+    }
+
+    persistedIdByExternalId.set(ref.externalId, ref.sourceItemId);
+  }
+
+  return items.map((item) => {
+    const snapshot = item.toSnapshot();
+    const sourceItemId = persistedIdByExternalId.get(snapshot.externalId);
+
+    if (sourceItemId === undefined) {
+      throw new Error(
+        `Source item repository did not return a saved ref for external item ${snapshot.externalId}`,
+      );
+    }
+
+    if (sourceItemId === snapshot.id) {
+      return item;
+    }
+
+    return SourceItem.rehydrate({
+      ...snapshot,
+      id: sourceItemId,
+    });
+  });
 };
 
 const formatScanFailureReason = (error: unknown): string => {
