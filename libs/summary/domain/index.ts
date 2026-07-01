@@ -24,12 +24,16 @@ export * from "./policies/top-read-selection-policy";
 export * from "./services/story-clustering.service";
 export * from "./services/story-ranking-telemetry";
 export * from "./value-objects/provider-metric-label";
+export * from "./value-objects/preview-media";
 export * from "./value-objects/reader-summary-period";
 export * from "./value-objects/reader-summary-scope";
 export * from "./value-objects/signal-score";
 export type {
   StoryCluster,
   StorySignalBreakdown,
+  SummaryEvidenceConversationAncestor,
+  SummaryEvidenceConversationContext,
+  SummaryEvidenceConversationUnit,
   SummaryEvidenceItem,
   SummaryEvidencePersonalization,
   SummaryEvidenceSelection,

@@ -1,12 +1,17 @@
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
-import { ReaderSummaryArtifact } from "../../domain";
+import {
+  ReaderSummaryArtifact,
+  type ReaderSummaryContent,
+} from "../../domain";
 import type {
+  EnrichReaderSummaryPreviewMediaCommand,
   ListReaderSummaryArtifactsQuery,
   ListReaderSummaryArtifactsResult,
   ReaderSummaryArtifactRepositoryPort,
   ReaderSummaryFreshness,
   ReaderSummaryFreshnessProbePort,
+  ReaderSummaryPreviewMediaEnricherPort,
 } from "../../ports";
 import { GetReaderSummaryUseCase } from "./get-reader-summary.use-case";
 
@@ -75,6 +80,33 @@ describe("GetReaderSummaryUseCase", () => {
       error: expect.objectContaining({ code: "resource.not_found" }),
     });
   });
+
+  it("applies preview media enrichment before presenting the artifact", async () => {
+    const useCase = new GetReaderSummaryUseCase(
+      new FakeReaderSummaryArtifactRepository([
+        readerSummaryArtifact("reader-summary-1"),
+      ]),
+      new FakeReaderSummaryFreshnessProbe(),
+      new FakeReaderSummaryPreviewMediaEnricher(),
+    );
+
+    const result = await useCase.execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      readerSummaryId: "reader-summary-1",
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.value.content.topReads[0]?.previewMedia).toEqual({
+      kind: "image",
+      url: "https://cdn.example.test/real-preview.jpg",
+      sourceUrl: "https://www.reddit.com/r/example/comments/1/post/",
+      altText: "Real provider preview",
+    });
+  });
 });
 
 const tenant = tenantId("tenant-reader-summary-get");
@@ -125,6 +157,70 @@ const readerSummaryArtifact = (
     headline: "Workspace AI tooling reader summary",
     executiveSummary:
       "AI tooling discussion is repeating across monitored sources.",
+    content: {
+      headline: "Workspace AI tooling reader summary",
+      oneLineTakeaway:
+        "AI tooling discussion is repeating across monitored sources.",
+      bullets: ["Developers are discussing a new AI tooling library."],
+      qualityState: {
+        status: "ready",
+        flags: [],
+        warnings: [],
+        isSingleSource: false,
+      },
+      interestSections: [],
+      sourceMix: [
+        {
+          providerKey: "reddit",
+          itemCount: 1,
+          citationCount: 1,
+          storyClusterCount: 1,
+          crossSourceClusterCount: 1,
+          singleSourceOnly: false,
+          interestIds: ["interest-ai", "interest-github"],
+        },
+        {
+          providerKey: "github",
+          itemCount: 1,
+          citationCount: 0,
+          storyClusterCount: 1,
+          crossSourceClusterCount: 1,
+          singleSourceOnly: false,
+          interestIds: ["interest-ai", "interest-github"],
+        },
+      ],
+      topReads: [
+        {
+          title: "AI tooling library is trending",
+          providerKey: "reddit",
+          providerName: "Reddit",
+          primaryActionKind: "read_source",
+          reason: "Cross-provider story cluster is active.",
+          matchedInterestIds: ["interest-ai", "interest-github"],
+          matchedRules: ["ai-tooling"],
+          signalScore: 0.91,
+          confidence: {
+            level: "medium",
+            score: 0.72,
+            rationale: "Direct citation backs the top read.",
+          },
+          confirmedProviderKeys: ["reddit", "github"],
+          providerMetrics: [],
+          whyImportant: ["Clustered 2 similar items"],
+          whyNow: "It appeared in the current reader summary window.",
+          citationIds: ["c1"],
+        },
+      ],
+      trendDelta: {
+        newSignals: [],
+        growingSignals: ["AI tooling"],
+        repeatedSignals: [],
+        fadingSignals: [],
+      },
+      openQuestions: [],
+      risks: [],
+      nextActions: [],
+    },
     topStories: [
       {
         storyClusterId: "story:ai-tooling",
@@ -205,6 +301,27 @@ class FakeReaderSummaryFreshnessProbe implements ReaderSummaryFreshnessProbePort
     return {
       status: "fresh",
       checkedAt: new Date("2026-06-23T08:40:00.000Z"),
+    };
+  }
+}
+
+class FakeReaderSummaryPreviewMediaEnricher
+  implements ReaderSummaryPreviewMediaEnricherPort
+{
+  async enrich(
+    command: EnrichReaderSummaryPreviewMediaCommand,
+  ): Promise<ReaderSummaryContent> {
+    return {
+      ...command.content,
+      topReads: command.content.topReads.map((item) => ({
+        ...item,
+        previewMedia: {
+          kind: "image",
+          url: "https://cdn.example.test/real-preview.jpg",
+          sourceUrl: "https://www.reddit.com/r/example/comments/1/post/",
+          altText: "Real provider preview",
+        },
+      })),
     };
   }
 }

@@ -1,5 +1,6 @@
 import type { ReaderActionKind } from "./reader-action";
 import type { ProviderMetric } from "../value-objects/provider-metric-label";
+import type { PreviewMedia } from "../value-objects/preview-media";
 import type { SignalScore } from "../value-objects/signal-score";
 
 export type TopReadPrimaryActionKind = Extract<
@@ -28,6 +29,7 @@ export type TopRead = {
   readonly whyImportant: readonly string[];
   readonly whyNow: string;
   readonly canonicalUrl?: string;
+  readonly previewMedia?: PreviewMedia;
   readonly citationIds: readonly string[];
 };
 

@@ -209,6 +209,111 @@ describe('FeedSummaryEvidenceSelector', () => {
     ]);
   });
 
+  it('keeps provider coverage beyond the first page of candidate feed items', async () => {
+    const tenant = tenantId('tenant-deep-balanced');
+    const workspace = workspaceId('workspace-deep-balanced');
+    const feedItems = new FakeFeedItems();
+
+    for (let index = 0; index < 60; index += 1) {
+      const itemNumber = index + 1;
+      feedItems.upsert(FeedItem.publish({
+        id: `feed-reddit-${itemNumber}`,
+        tenantId: tenant,
+        workspaceId: workspace,
+        interestId: 'interest-deep-balanced',
+        sourceItemId: `reddit-binding:item-${itemNumber}`,
+        sourceBindingId: 'reddit-binding',
+        providerKey: 'reddit',
+        canonicalUrl: `https://example.test/reddit/${itemNumber}`,
+        title: `Reddit signal ${itemNumber}`,
+        bodyPreview: `Reddit body ${itemNumber}`,
+        publishedAt: new Date(`2026-06-06T12:${String(59 - index).padStart(2, '0')}:00.000Z`),
+        observedAt: new Date(`2026-06-06T12:${String(59 - index).padStart(2, '0')}:30.000Z`),
+      }));
+    }
+    feedItems.upsert(FeedItem.publish({
+      id: 'feed-github-older',
+      tenantId: tenant,
+      workspaceId: workspace,
+      interestId: 'interest-deep-balanced',
+      sourceItemId: 'github-binding:item-older',
+      sourceBindingId: 'github-binding',
+      providerKey: 'github',
+      canonicalUrl: 'https://example.test/github/older',
+      title: 'GitHub older but still relevant provider signal',
+      bodyPreview: 'GitHub body',
+      publishedAt: new Date('2026-06-06T10:00:00.000Z'),
+      observedAt: new Date('2026-06-06T10:00:30.000Z'),
+    }));
+
+    const result = await new FeedSummaryEvidenceSelector(
+      feedItems,
+      new FixedClock(new Date('2026-06-06T12:30:00.000Z')),
+    ).select({
+      tenantId: tenant,
+      workspaceId: workspace,
+      interestId: 'interest-deep-balanced',
+      maxItems: 3,
+    });
+
+    expect(result.items.map((item) => item.feedItemId)).toEqual([
+      'feed-reddit-1',
+      'feed-github-older',
+      'feed-reddit-2',
+    ]);
+  });
+
+  it('skips low-quality X posts before provider-balanced selection', async () => {
+    const tenant = tenantId('tenant-quality-balanced');
+    const workspace = workspaceId('workspace-quality-balanced');
+    const feedItems = new FakeFeedItems();
+    feedItems.upsert(FeedItem.publish({
+      id: 'feed-x-noise',
+      tenantId: tenant,
+      workspaceId: workspace,
+      interestId: 'interest-quality-balanced',
+      sourceItemId: 'x-binding:item-noise',
+      sourceBindingId: 'x-binding',
+      providerKey: 'x-twitter',
+      canonicalUrl: 'https://x.test/noise',
+      title: 'X post by @noise: ︎ ︎ ︎ ︎ ︎',
+      bodyPreview: '︎ ︎ ︎ ︎ ︎',
+      publishedAt: new Date('2026-06-06T12:05:00.000Z'),
+      observedAt: new Date('2026-06-06T12:05:30.000Z'),
+      providerMetadata: { searchQuery: 'AI developer tools' },
+    }));
+    feedItems.upsert(FeedItem.publish({
+      id: 'feed-x-signal',
+      tenantId: tenant,
+      workspaceId: workspace,
+      interestId: 'interest-quality-balanced',
+      sourceItemId: 'x-binding:item-signal',
+      sourceBindingId: 'x-binding',
+      providerKey: 'x-twitter',
+      canonicalUrl: 'https://x.test/signal',
+      title: 'X post by @OpenAIDevs: Codex CLI improves agent workflows',
+      bodyPreview: 'Codex CLI update improves agent workflows, terminal review and developer automation.',
+      publishedAt: new Date('2026-06-06T12:04:00.000Z'),
+      observedAt: new Date('2026-06-06T12:04:30.000Z'),
+      authorHandle: 'OpenAIDevs',
+      providerMetadata: { searchQuery: 'AI developer tools' },
+    }));
+
+    const result = await new FeedSummaryEvidenceSelector(
+      feedItems,
+      new FixedClock(new Date('2026-06-06T12:30:00.000Z')),
+    ).select({
+      tenantId: tenant,
+      workspaceId: workspace,
+      interestId: 'interest-quality-balanced',
+      maxItems: 1,
+    });
+
+    expect(result.items.map((item) => item.feedItemId)).toEqual([
+      'feed-x-signal',
+    ]);
+  });
+
   it('returns an empty window when no feed evidence exists', async () => {
     const tenant = tenantId('tenant-1');
     const workspace = workspaceId('workspace-1');

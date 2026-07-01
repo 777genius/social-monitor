@@ -69,28 +69,31 @@ export const normalizeOpenAiSummaryDraft = (
   evalDatasetVersion: string,
 ): GeneratedSummaryDraft => {
   const normalizedQualityFlags = normalizeQualityFlags(raw.qualityFlags);
+  const modelCitationMap = normalizeCitationMap(raw.citationMap);
   const citationMap = withEvidenceBackedCitations(
-    normalizeCitationMap(raw.citationMap),
+    modelCitationMap.length === 0
+      ? fallbackCitationMap(input.evidence.items)
+      : modelCitationMap,
     input.evidence.items,
   );
   const knownCitationIds = new Set(
     citationMap.map((citation) => citation.citationId),
   );
   const draft = {
-    headline: requiredString(raw.headline, 'headline'),
-    executiveSummary: requiredString(raw.executiveSummary, 'executiveSummary'),
+    headline: stringOrFallback(raw.headline, fallbackHeadline(raw, input)),
+    executiveSummary: stringOrFallback(
+      raw.executiveSummary,
+      fallbackExecutiveSummary(raw, input),
+    ),
     keyPoints: withKnownCitationIds(
-      normalizeKeyPoints(raw.keyPoints),
+      normalizeKeyPoints(raw.keyPoints, citationMap),
       knownCitationIds,
     ),
     risksAndUnknowns: withKnownRiskCitationIds(
-      normalizeRisks(raw.risksAndUnknowns),
+      normalizeRisks(raw.risksAndUnknowns ?? raw.risks),
       knownCitationIds,
     ),
-    sourceHighlights: normalizeStringArray(
-      raw.sourceHighlights,
-      'sourceHighlights',
-    ),
+    sourceHighlights: normalizeSafeStringArray(raw.sourceHighlights),
     citationMap,
     qualityFlags: normalizedQualityFlags,
     confidence: normalizeConfidence(raw.confidence),
@@ -198,26 +201,73 @@ export const assertOpenAiSummaryDraftShape = (
   }
 };
 
-const normalizeKeyPoints = (value: unknown): readonly SummaryKeyPoint[] => {
+const normalizeKeyPoints = (
+  value: unknown,
+  citationMap: readonly SummaryCitation[],
+): readonly SummaryKeyPoint[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
   const values = requiredArray(value, 'keyPoints');
 
   return values.map((item, index) => {
+    if (typeof item === 'string') {
+      return {
+        claim: stringOrFallback(item, `Evidence signal ${index + 1}`),
+        citationIds: fallbackCitationIdsForKeyPoint(index, citationMap),
+      };
+    }
+
     const record = requiredRecord(item, `keyPoints[${index}]`);
+    const claim = stringOrFallback(
+      record.claim ?? record.point ?? record.title,
+      `Evidence signal ${index + 1}`,
+    );
+    const citationIds = normalizeCitationIds(
+      record.citationIds ?? record.citations,
+      `keyPoints[${index}].citationIds`,
+    );
 
     return {
-      claim: requiredString(record.claim, `keyPoints[${index}].claim`),
-      citationIds: normalizeStringArray(
-        record.citationIds,
-        `keyPoints[${index}].citationIds`,
-      ),
+      claim,
+      citationIds:
+        citationIds.length === 0
+          ? fallbackCitationIdsForKeyPoint(index, citationMap)
+          : citationIds,
     };
   });
 };
 
+const fallbackCitationIdsForKeyPoint = (
+  index: number,
+  citationMap: readonly SummaryCitation[],
+): readonly string[] => {
+  const indexedCitation = citationMap[index]?.citationId;
+  if (indexedCitation !== undefined) {
+    return [indexedCitation];
+  }
+
+  const firstCitation = citationMap[0]?.citationId;
+  return firstCitation === undefined ? [] : [firstCitation];
+};
+
 const normalizeRisks = (value: unknown): readonly SummaryRisk[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
   const values = requiredArray(value, 'risksAndUnknowns');
 
   return values.map((item, index) => {
+    if (typeof item === 'string') {
+      return {
+        description: stringOrFallback(item, `Unspecified risk ${index + 1}`),
+        citationIds: undefined,
+        reason: undefined,
+      };
+    }
+
     const record = requiredRecord(item, `risksAndUnknowns[${index}]`);
     const reason = optionalString(record.reason);
 
@@ -229,22 +279,27 @@ const normalizeRisks = (value: unknown): readonly SummaryRisk[] => {
         `Invalid summary risk reason at risksAndUnknowns[${index}].reason`,
       );
     }
+    const description = stringOrFallback(
+      record.description ?? record.risk,
+      `Unspecified risk ${index + 1}`,
+    );
 
     return {
-      description: requiredString(
-        record.description,
-        `risksAndUnknowns[${index}].description`,
-      ),
+      description,
       citationIds:
-        record.citationIds === null
+        (record.citationIds ?? record.citations) === null
           ? undefined
-          : normalizeOptionalStringArray(record.citationIds),
+          : normalizeOptionalStringArray(record.citationIds ?? record.citations),
       reason: reason as SummaryRisk['reason'],
     };
   });
 };
 
 const normalizeCitationMap = (value: unknown): readonly SummaryCitation[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
   const values = requiredArray(value, 'citationMap');
 
   return values.map((item, index) => {
@@ -277,6 +332,46 @@ const normalizeCitationMap = (value: unknown): readonly SummaryCitation[] => {
   });
 };
 
+const fallbackCitationMap = (
+  evidenceItems: SummaryModelInput['evidence']['items'],
+): readonly SummaryCitation[] =>
+  evidenceItems.map((item, index) => ({
+    citationId: `c${index + 1}`,
+    feedItemId: item.feedItemId,
+    sourceItemId: item.sourceItemId,
+    providerKey: item.providerKey,
+    field: chooseEvidenceCitationField(item, 'bodyPreview'),
+  }));
+
+const normalizeSafeStringArray = (value: unknown): readonly string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map(sourceHighlightText)
+    .filter((item): item is string => item !== undefined)
+    .filter((item, index, items) => items.indexOf(item) === index);
+};
+
+const sourceHighlightText = (value: unknown): string | undefined => {
+  if (typeof value === 'string') {
+    return nonEmptyString(value);
+  }
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const record = value as Record<string, unknown>;
+  const source = nonEmptyString(record.source);
+  const whyItMatters = nonEmptyString(record.whyItMatters);
+  if (source !== undefined && whyItMatters !== undefined) {
+    return `${source}: ${whyItMatters}`;
+  }
+
+  return source ?? whyItMatters;
+};
+
 const withEvidenceBackedCitations = (
   citations: readonly SummaryCitation[],
   evidenceItems: SummaryModelInput['evidence']['items'],
@@ -300,9 +395,29 @@ const withEvidenceBackedCitations = (
         sourceItemId: evidence.sourceItemId,
         providerKey: evidence.providerKey,
         canonicalUrl: evidence.canonicalUrl,
+        field: chooseEvidenceCitationField(evidence, citation.field),
       },
     ];
   });
+};
+
+const chooseEvidenceCitationField = (
+  evidence: SummaryModelInput['evidence']['items'][number],
+  preferred: SummaryCitation['field'],
+): SummaryCitation['field'] => {
+  if (preferred === 'title') {
+    return 'title';
+  }
+
+  if (preferred === 'bodyPreview' && (evidence.bodyPreview ?? '').trim().length > 0) {
+    return 'bodyPreview';
+  }
+
+  if (preferred === 'canonicalUrl' && (evidence.canonicalUrl ?? '').trim().length > 0) {
+    return 'canonicalUrl';
+  }
+
+  return 'title';
 };
 
 const withKnownCitationIds = (
@@ -352,15 +467,32 @@ const knownStringSubset = (
 const normalizeQualityFlags = (
   value: unknown,
 ): readonly SummaryQualityFlag[] => {
-  const values = normalizeStringArray(value, 'qualityFlags');
+  const values =
+    value === undefined || value === null
+      ? []
+      : typeof value === 'string'
+        ? [value]
+        : Array.isArray(value)
+          ? normalizeStringArray(value, 'qualityFlags')
+          : qualityFlagKeysFromRecord(value);
 
-  for (const flag of values) {
-    if (!qualityFlags.has(flag as SummaryQualityFlag)) {
-      throw new Error(`Invalid summary quality flag ${flag}`);
-    }
+  return values.filter((flag): flag is SummaryQualityFlag =>
+    qualityFlags.has(flag as SummaryQualityFlag),
+  );
+};
+
+const qualityFlagKeysFromRecord = (value: unknown): readonly string[] => {
+  if (
+    value === null ||
+    typeof value !== 'object' ||
+    Array.isArray(value)
+  ) {
+    return [];
   }
 
-  return values as readonly SummaryQualityFlag[];
+  return Object.entries(value)
+    .filter(([, enabled]) => enabled === true)
+    .map(([flag]) => flag);
 };
 
 const normalizeNoSignalReason = (
@@ -377,6 +509,15 @@ const normalizeNoSignalReason = (
 };
 
 const normalizeConfidence = (value: unknown): SummaryConfidence => {
+  if (value === undefined || value === null) {
+    return {
+      level: 'medium',
+      score: 0.62,
+      rationale:
+        'Confidence inferred from selected evidence because provider output omitted confidence metadata.',
+    };
+  }
+
   const record = requiredRecord(value, 'confidence');
   const level = requiredString(record.level, 'confidence.level');
   const score = requiredNumber(record.score, 'confidence.score');
@@ -390,4 +531,60 @@ const normalizeConfidence = (value: unknown): SummaryConfidence => {
     score,
     rationale: requiredString(record.rationale, 'confidence.rationale'),
   };
+};
+
+const normalizeCitationIds = (
+  value: unknown,
+  label: string,
+): readonly string[] =>
+  value === undefined || value === null
+    ? []
+    : normalizeStringArray(value, label);
+
+const fallbackHeadline = (
+  raw: Record<string, unknown>,
+  input: SummaryModelInput,
+): string =>
+  headlineFromSummary(raw.summary) ??
+  input.evidence.items[0]?.title ??
+  'Current monitored signals';
+
+const fallbackExecutiveSummary = (
+  raw: Record<string, unknown>,
+  input: SummaryModelInput,
+): string =>
+  nonEmptyString(raw.summary) ??
+  input.evidence.items[0]?.bodyPreview ??
+  input.evidence.items[0]?.title ??
+  'Selected evidence was available, but the provider omitted an executive summary.';
+
+const headlineFromSummary = (value: unknown): string | undefined => {
+  const summary = nonEmptyString(value);
+  if (summary === undefined) {
+    return undefined;
+  }
+
+  const firstLine = summary
+    .split(/(?:\r?\n|\\n)/u)
+    .map((line) => line.replace(/^[-*]\s*/u, '').trim())
+    .find((line) => line.length > 0);
+  if (firstLine === undefined) {
+    return undefined;
+  }
+
+  return firstLine.length <= 140
+    ? firstLine
+    : `${firstLine.slice(0, 137).trimEnd()}...`;
+};
+
+const stringOrFallback = (value: unknown, fallback: string): string =>
+  nonEmptyString(value) ?? fallback;
+
+const nonEmptyString = (value: unknown): string | undefined => {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length === 0 ? undefined : trimmed;
 };

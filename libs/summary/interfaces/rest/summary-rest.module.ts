@@ -75,6 +75,12 @@ import {
   summaryYoutubeVideoSummaryProviderModeProvider,
 } from "./summary-provider-tokens";
 import {
+  summaryAgentRuntimeClientOptionsProvider,
+  summaryAgentRuntimeReaderSummaryModelOptionsProvider,
+  summaryAgentRuntimeSummaryModelOptionsProvider,
+} from "./summary-agent-runtime-provider-tokens";
+import { summaryAgentRuntimeProviders } from "./summary-agent-runtime.providers";
+import {
   summaryRestInfrastructureExports,
   summaryRestInfrastructureProviders,
 } from "./summary-rest-infrastructure.module";
@@ -105,9 +111,13 @@ import { SummaryController } from "./summary.controller";
     summaryModelProviderModeProvider,
     readerSummaryModelProviderModeProvider,
     readerSummaryOpenAiResponsesModelOptionsProvider,
+    summaryAgentRuntimeClientOptionsProvider,
+    summaryAgentRuntimeSummaryModelOptionsProvider,
+    summaryAgentRuntimeReaderSummaryModelOptionsProvider,
     summaryMemoryModeProvider,
     summaryYoutubeVideoSummaryProviderModeProvider,
     summaryRabbitMqJobQueueOptionsProvider,
+    ...summaryAgentRuntimeProviders,
     ...summaryRestInfrastructureProviders,
     ...summaryReaderSummaryProviders,
     {

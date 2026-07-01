@@ -225,6 +225,146 @@ describe('OpenAiResponsesSummaryModelAdapter', () => {
     expect(adapter.validateRawProviderResponse(attempt)).toEqual({ ok: true });
   });
 
+  it('repairs non-array quality flags from agent-style JSON output', async () => {
+    const adapter = new OpenAiResponsesSummaryModelAdapter({
+      apiKey: fakeOpenAiApiKey,
+      model: 'test-summary-model',
+      fetchFn: async () => jsonResponse(200, {
+        output_text: JSON.stringify({
+          ...validProviderDraft(),
+          qualityFlags: {
+            limited_sources: true,
+            unknown_flag: true,
+          },
+        }),
+      }),
+    });
+    const input = buildInput();
+    const route = adapter.route(input, {
+      preferredProvider: 'openai-responses',
+      maxInputTokens: 12_000,
+      maxOutputTokens: 4_000,
+      maxEstimatedCostUsd: 1,
+    }, {
+      remainingTokens: 20_000,
+      remainingCostUsd: 1,
+    });
+
+    const attempt = await adapter.summarize(input, route);
+
+    expect(attempt.draft.qualityFlags).toEqual(['limited_sources']);
+    expect(adapter.validateRawProviderResponse(attempt)).toEqual({ ok: true });
+  });
+
+  it('falls back to evidence citations when model citation map shape drifts', async () => {
+    const adapter = new OpenAiResponsesSummaryModelAdapter({
+      apiKey: fakeOpenAiApiKey,
+      model: 'test-summary-model',
+      fetchFn: async () => jsonResponse(200, {
+        output_text: JSON.stringify({
+          ...validProviderDraft(),
+          citationMap: { c1: 'feed-1' },
+          sourceHighlights: null,
+        }),
+      }),
+    });
+    const baseInput = buildInput();
+    const input = buildInput({
+      evidenceItems: baseInput.evidence.items.map((item, index) =>
+        index === 1 ? { ...item, bodyPreview: undefined } : item,
+      ),
+    });
+    const route = adapter.route(input, {
+      preferredProvider: 'openai-responses',
+      maxInputTokens: 12_000,
+      maxOutputTokens: 4_000,
+      maxEstimatedCostUsd: 1,
+    }, {
+      remainingTokens: 20_000,
+      remainingCostUsd: 1,
+    });
+
+    const attempt = await adapter.summarize(input, route);
+
+    expect(attempt.draft.citationMap.map((citation) => citation.citationId)).toEqual(['c1', 'c2']);
+    expect(attempt.draft.citationMap[1]?.field).toBe('title');
+    expect(attempt.draft.keyPoints[0]?.citationIds).toEqual(['c1']);
+    expect(attempt.draft.sourceHighlights).toEqual([]);
+    expect(adapter.validateRawProviderResponse(attempt)).toEqual({ ok: true });
+  });
+
+  it('normalizes compact agent-style summary JSON', async () => {
+    const adapter = new OpenAiResponsesSummaryModelAdapter({
+      apiKey: fakeOpenAiApiKey,
+      model: 'test-summary-model',
+      fetchFn: async () => jsonResponse(200, {
+        output_text: JSON.stringify({
+          summary:
+            '- Backend reliability is the strongest signal.\\n- Provider discussion is still fragmented.',
+          keyPoints: [
+            'Backend reliability is the strongest signal.',
+            {
+              point: 'Backend queues and summaries show durable progress.',
+            },
+          ],
+          risks: [
+            'Provider quotas can still affect freshness.',
+            {
+              risk: 'Live source availability can still drift.',
+              citations: ['c2'],
+            },
+          ],
+          sourceHighlights: [
+            {
+              source: 'Reddit backend thread',
+              whyItMatters: 'It is the clearest social signal.',
+            },
+          ],
+        }),
+      }),
+    });
+    const input = buildInput();
+    const route = adapter.route(input, {
+      preferredProvider: 'openai-responses',
+      maxInputTokens: 12_000,
+      maxOutputTokens: 4_000,
+      maxEstimatedCostUsd: 1,
+    }, {
+      remainingTokens: 20_000,
+      remainingCostUsd: 1,
+    });
+
+    const attempt = await adapter.summarize(input, route);
+
+    expect(attempt.draft.headline).toBe(
+      'Backend reliability is the strongest signal.',
+    );
+    expect(attempt.draft.executiveSummary).toContain(
+      'Provider discussion is still fragmented.',
+    );
+    expect(attempt.draft.keyPoints[0]).toMatchObject({
+      claim: 'Backend reliability is the strongest signal.',
+      citationIds: ['c1'],
+    });
+    expect(attempt.draft.keyPoints[1]).toMatchObject({
+      claim: 'Backend queues and summaries show durable progress.',
+      citationIds: ['c2'],
+    });
+    expect(attempt.draft.risksAndUnknowns[0]).toMatchObject({
+      description: 'Provider quotas can still affect freshness.',
+      citationIds: undefined,
+    });
+    expect(attempt.draft.risksAndUnknowns[1]).toMatchObject({
+      description: 'Live source availability can still drift.',
+      citationIds: ['c2'],
+    });
+    expect(attempt.draft.sourceHighlights[0]).toContain(
+      'Reddit backend thread',
+    );
+    expect(attempt.draft.confidence.level).toBe('medium');
+    expect(adapter.validateRawProviderResponse(attempt)).toEqual({ ok: true });
+  });
+
   it('does not call OpenAI when selected evidence is empty', async () => {
     const fetchFn = jest.fn();
     const adapter = new OpenAiResponsesSummaryModelAdapter({

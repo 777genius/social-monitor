@@ -1,4 +1,5 @@
 import type { ProviderMetric } from "./provider-metric-label";
+import type { PreviewMedia } from "./preview-media";
 
 export type SummaryEvidenceReaderActionKind =
   | "read_source"
@@ -33,10 +34,55 @@ export type SummaryEvidenceItem = {
   readonly whyImportant: readonly string[];
   readonly providerMetricLabels?: readonly ProviderMetric[];
   readonly providerMetricSummary?: string;
+  readonly previewMedia?: PreviewMedia;
+  readonly conversationContext?: SummaryEvidenceConversationContext;
   readonly contentQuality?: SummaryEvidenceContentQuality;
   readonly readerActionKind?: SummaryEvidenceReaderActionKind;
   readonly matchedRules?: readonly string[];
   readonly storyKeyHint?: string;
+};
+
+export type SummaryEvidenceConversationContext = {
+  readonly rankingBasis: "cohort_baseline_v1";
+  readonly bundleScore: number;
+  readonly units: readonly SummaryEvidenceConversationUnit[];
+};
+
+export type SummaryEvidenceConversationUnit = {
+  readonly conversationUnitId: string;
+  readonly providerUnitId: string;
+  readonly parentProviderUnitId?: string;
+  readonly threadExternalId: string;
+  readonly canonicalUrl: string;
+  readonly authorHandle?: string;
+  readonly body: string;
+  readonly score: number;
+  readonly providerScore?: number;
+  readonly replyCount?: number;
+  readonly signalBand: string;
+  readonly depth: number;
+  readonly role: "top_level_comment" | "reply";
+  readonly selectionReason: "ranked";
+  readonly ancestry?: readonly SummaryEvidenceConversationAncestor[];
+  readonly publishedAt: string;
+};
+
+export type SummaryEvidenceConversationAncestor = {
+  readonly conversationUnitId: string;
+  readonly providerUnitId: string;
+  readonly parentProviderUnitId?: string;
+  readonly threadExternalId: string;
+  readonly canonicalUrl: string;
+  readonly authorHandle?: string;
+  readonly body: string;
+  readonly score: number;
+  readonly providerScore?: number;
+  readonly replyCount?: number;
+  readonly signalBand: string;
+  readonly depth: number;
+  readonly role: "top_level_comment" | "reply";
+  readonly selectionReason: "ancestor_context";
+  readonly publishedAt: string;
 };
 
 export type StoryCluster = {

@@ -9,6 +9,7 @@ import {
   OpenAiResponsesReaderSummaryModelAdapter,
   resolveOpenAiResponsesReaderSummaryModelOptions,
 } from "./openai-responses-reader-summary-model.adapter";
+import { buildOpenAiReaderSummaryPromptPayload } from "./openai-responses-reader-summary-prompt";
 
 describe("OpenAiResponsesReaderSummaryModelAdapter", () => {
   it("calls the Responses API and normalizes a cited reader summary draft", async () => {
@@ -36,9 +37,26 @@ describe("OpenAiResponsesReaderSummaryModelAdapter", () => {
                 citationIds: ["c1"],
               },
             ],
-            interestHighlights: [],
-            repeatedSignals: [],
-            risksAndUnknowns: [],
+            interestHighlights: [
+              {
+                title: "AI tooling",
+                summary: "AI tooling keeps appearing in selected evidence.",
+                citationIds: "c1",
+              },
+            ],
+            repeatedSignals: [
+              {
+                title: "AI tooling repeats across interests",
+                interestIds: "interest-ai,interest-dev",
+                citationIds: "c1",
+              },
+            ],
+            risksAndUnknowns: [
+              {
+                risk: "Provider freshness can still vary.",
+                citations: "c1",
+              },
+            ],
             citationMap: [
               {
                 citationId: "c1",
@@ -144,6 +162,64 @@ describe("OpenAiResponsesReaderSummaryModelAdapter", () => {
               },
             ],
             qualityFlags: [],
+            confidence: "medium",
+            noSignalReason: null,
+          }),
+        }),
+    });
+    const input = readerSummaryInput();
+    const route = adapter.route(
+      input,
+      {
+        preferredProvider: "openai-responses",
+        maxInputTokens: 24_000,
+        maxOutputTokens: 4_000,
+        maxEstimatedCostUsd: 1,
+      },
+      {
+        remainingTokens: 32_000,
+        remainingCostUsd: 2,
+      },
+    );
+
+    const attempt = await adapter.generate(input, route);
+
+    expect(attempt.draft.citationMap).toEqual([
+      expect.objectContaining({
+        citationId: "c1",
+        feedItemId: "feed-reddit",
+        sourceItemId: "source-reddit",
+        providerKey: "reddit",
+        canonicalUrl: "https://example.com/ai-tooling",
+      }),
+    ]);
+    expect(adapter.validateRawProviderResponse(attempt)).toEqual({ ok: true });
+  });
+
+  it("falls back to canonical evidence citations when model citation map shape drifts", async () => {
+    const adapter = new OpenAiResponsesReaderSummaryModelAdapter({
+      apiKey: "test-openai-key",
+      fetchFn: async () =>
+        jsonResponse({
+          output_text: JSON.stringify({
+            headline: "Workspace AI tooling signal",
+            executiveSummary:
+              "AI tooling is repeating across monitored sources.",
+            topStories: [
+              {
+                storyClusterId: "story:ai-tooling",
+                title: "AI tooling library is trending",
+                summary: "Developers are discussing a new AI tooling library.",
+                interestIds: ["interest-ai"],
+                providerKeys: ["reddit"],
+                citationIds: ["c1"],
+              },
+            ],
+            interestHighlights: [],
+            repeatedSignals: [],
+            risksAndUnknowns: [],
+            citationMap: { c1: "feed-reddit" },
+            qualityFlags: [],
             confidence: {
               level: "medium",
               score: 0.7,
@@ -176,7 +252,6 @@ describe("OpenAiResponsesReaderSummaryModelAdapter", () => {
         feedItemId: "feed-reddit",
         sourceItemId: "source-reddit",
         providerKey: "reddit",
-        canonicalUrl: "https://example.com/ai-tooling",
       }),
     ]);
     expect(adapter.validateRawProviderResponse(attempt)).toEqual({ ok: true });
@@ -243,6 +318,85 @@ describe("OpenAiResponsesReaderSummaryModelAdapter", () => {
     expect(attempt.draft.topStories[0]?.storyClusterId).toBe(
       "story:ai-tooling",
     );
+    expect(adapter.validateRawProviderResponse(attempt)).toEqual({ ok: true });
+  });
+
+  it("repairs missing story cluster ids through cited evidence", async () => {
+    const adapter = new OpenAiResponsesReaderSummaryModelAdapter({
+      apiKey: "test-openai-key",
+      fetchFn: async () =>
+        jsonResponse({
+          output_text: JSON.stringify({
+            headline: "Workspace AI tooling signal",
+            executiveSummary:
+              "AI tooling is repeating across monitored sources.",
+            topStories: [
+              {
+                summary: "Developers are discussing a new AI tooling library.",
+                interestIds: "interest-ai",
+                providerKeys: "reddit",
+                citationIds: "c1",
+              },
+            ],
+            interestHighlights: [
+              {
+                interestId: "interest-ai",
+                title: "AI tooling",
+                summary: "AI tooling keeps appearing in selected evidence.",
+                citationIds: "c1",
+              },
+            ],
+            repeatedSignals: [
+              {
+                interestIds: "interest-ai,interest-dev",
+                citationIds: "c1",
+              },
+            ],
+            risksAndUnknowns: [
+              {
+                citations: "c1",
+              },
+            ],
+            citationMap: { c1: "feed-reddit" },
+            qualityFlags: [],
+            confidence: "medium",
+            noSignalReason: null,
+          }),
+        }),
+    });
+    const input = readerSummaryInput();
+    const route = adapter.route(
+      input,
+      {
+        preferredProvider: "openai-responses",
+        maxInputTokens: 24_000,
+        maxOutputTokens: 4_000,
+        maxEstimatedCostUsd: 1,
+      },
+      {
+        remainingTokens: 32_000,
+        remainingCostUsd: 2,
+      },
+    );
+
+    const attempt = await adapter.generate(input, route);
+
+    expect(attempt.draft.topStories[0]?.storyClusterId).toBe(
+      "story:ai-tooling",
+    );
+    expect(attempt.draft.interestHighlights[0]?.citationIds).toEqual(["c1"]);
+    expect(attempt.draft.interestHighlights[0]?.interestId).toBe(
+      "interest-ai",
+    );
+    expect(attempt.draft.repeatedSignals[0]?.interestIds).toEqual([
+      "interest-ai",
+      "interest-dev",
+    ]);
+    expect(attempt.draft.risksAndUnknowns[0]?.citationIds).toEqual(["c1"]);
+    expect(attempt.draft.confidence).toMatchObject({
+      level: "low",
+      score: 0.55,
+    });
     expect(adapter.validateRawProviderResponse(attempt)).toEqual({ ok: true });
   });
 
@@ -525,12 +679,46 @@ describe("OpenAiResponsesReaderSummaryModelAdapter", () => {
       rmSync(tempDirectory, { recursive: true, force: true });
     }
   });
+
+  it("serializes ranked conversation context for reader summaries", () => {
+    const payload = JSON.parse(
+      buildOpenAiReaderSummaryPromptPayload(
+        readerSummaryInput({ withConversationContext: true }),
+      ),
+    );
+
+    expect(payload.evidence[0].conversationContext).toMatchObject({
+      rankingBasis: "cohort_baseline_v1",
+      bundleScore: expect.any(Number),
+      units: [
+        {
+          providerUnitId: "t1_high",
+          providerScore: 180,
+          replyCount: 9,
+          depth: 1,
+          role: "reply",
+          selectionReason: "ranked",
+          ancestry: [
+            {
+              providerUnitId: "t1_parent",
+              selectionReason: "ancestor_context",
+              providerScore: 42,
+              depth: 0,
+            },
+          ],
+        },
+      ],
+    });
+  });
 });
 
 const fakeOpenAiApiKey = ["test", "openai", "key"].join("-");
 
 const readerSummaryInput = (
-  params: { readonly empty?: boolean } = {},
+  params: {
+    readonly empty?: boolean;
+    readonly withConversationContext?: boolean;
+  } = {},
 ): ReaderSummaryModelInput => ({
   tenantId: tenantId("tenant-openai-reader-summary-adapter"),
   workspaceId: workspaceId("workspace-openai-reader-summary-adapter"),
@@ -585,6 +773,52 @@ const readerSummaryInput = (
             observedAt: new Date("2026-06-23T08:01:00.000Z"),
             score: 2.4,
             whyImportant: ["Fresh item"],
+            ...(params.withConversationContext
+              ? {
+                  conversationContext: {
+                    rankingBasis: "cohort_baseline_v1",
+                    bundleScore: 1.8,
+                    units: [
+                      {
+                        conversationUnitId: "conversation-high",
+                        providerUnitId: "t1_high",
+                        parentProviderUnitId: "t1_parent",
+                        threadExternalId: "t3_post_1",
+                        canonicalUrl:
+                          "https://reddit.test/r/topic/comments/post_1/_/t1_high",
+                        authorHandle: "commenter",
+                        body: "High-score reply changes the interpretation.",
+                        score: 1.8,
+                        providerScore: 180,
+                        replyCount: 9,
+                        signalBand: "high",
+                        depth: 1,
+                        role: "reply",
+                        selectionReason: "ranked",
+                        ancestry: [
+                          {
+                            conversationUnitId: "conversation-parent",
+                            providerUnitId: "t1_parent",
+                            threadExternalId: "t3_post_1",
+                            canonicalUrl:
+                              "https://reddit.test/r/topic/comments/post_1/_/t1_parent",
+                            body: "Parent comment provides context.",
+                            score: 0.9,
+                            providerScore: 42,
+                            replyCount: 3,
+                            signalBand: "medium",
+                            depth: 0,
+                            role: "top_level_comment",
+                            selectionReason: "ancestor_context",
+                            publishedAt: "2026-06-23T08:00:30.000Z",
+                          },
+                        ],
+                        publishedAt: "2026-06-23T08:01:00.000Z",
+                      },
+                    ],
+                  },
+                }
+              : {}),
           },
         ],
   },

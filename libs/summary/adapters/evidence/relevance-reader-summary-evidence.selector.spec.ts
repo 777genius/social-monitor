@@ -105,6 +105,10 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
         providerKey: "rss",
         rank: 4,
         score: 2.2,
+        providerMetadata: {
+          kind: "rss_item",
+          mediaThumbnailUrl: "https://cdn.example.test/rss-preview.jpg",
+        },
       }),
       rankedItem({
         feedItemId: "feed-trending-2",
@@ -161,7 +165,7 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
       expect.objectContaining({
         observedAfter: new Date("2026-06-22T23:59:59.999Z"),
         observedBefore: readerSummaryPeriod.endedAt,
-        limit: 15,
+        limit: 200,
       }),
     );
     expect(
@@ -183,6 +187,15 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
     expect(selection.sourceWindow.selectedFeedItemIds).toContain(
       "feed-trending-2",
     );
+    expect(
+      selection.selectedEvidence.find((item) => item.feedItemId === "feed-rss")
+        ?.previewMedia,
+    ).toEqual({
+      kind: "image",
+      url: "https://cdn.example.test/rss-preview.jpg",
+      sourceUrl: "https://example.test/feed-rss",
+      altText: "rss story 4",
+    });
     expect(storyRankingMetrics.recorded[0]?.rankingPolicyVersion).toBe(
       "story_ranking_v1",
     );
@@ -197,6 +210,58 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
     });
     expect(storyRankingMetrics.recorded[0]?.personalization).toEqual(
       selection.personalization,
+    );
+  });
+
+  it("keeps provider diversity when a source first appears deep in the ranked candidates", async () => {
+    const rankedItems = [
+      ...Array.from({ length: 80 }, (_, index) =>
+        rankedItem({
+          feedItemId: `feed-reddit-${index + 1}`,
+          providerKey: "reddit",
+          rank: index + 1,
+          score: 3 - index / 100,
+        }),
+      ),
+      rankedItem({
+        feedItemId: "feed-github-deep",
+        providerKey: "github-issues",
+        rank: 81,
+        score: 1.5,
+      }),
+    ];
+    const rankFeedItems = {
+      execute: jest.fn(async (command: RankFeedItemsCommand) =>
+        ok({
+          generatedAt: clock.now().toISOString(),
+          profileApplied: false,
+          items: rankedItems.slice(0, command.limit),
+        }),
+      ),
+    } as unknown as RankFeedItemsUseCase;
+    const selector = new RelevanceReaderSummaryEvidenceSelector(
+      rankFeedItems,
+      {
+        list: jest.fn(),
+        findById: jest.fn(async () => null),
+      },
+      clock,
+      new FakeStoryRankingMetrics(),
+    );
+
+    const selection = await selector.select({
+      tenantId: tenantId("tenant-deep-reader-provider"),
+      workspaceId: workspaceId("workspace-deep-reader-provider"),
+      scope: { type: "workspace" },
+      period: readerSummaryPeriod,
+      maxItems: 5,
+    });
+
+    expect(rankFeedItems.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: 200 }),
+    );
+    expect(selection.selectedEvidence.map((item) => item.feedItemId)).toContain(
+      "feed-github-deep",
     );
   });
 

@@ -8,8 +8,13 @@ import {
 import type {
   ReaderSummaryArtifactRepositoryPort,
   ReaderSummaryFreshnessProbePort,
+  ReaderSummaryPreviewMediaEnricherPort,
 } from "../../ports";
-import { presentReaderSummaryArtifact } from "../shared/reader-summary-artifact-presenter";
+import { NOOP_READER_SUMMARY_PREVIEW_MEDIA_ENRICHER } from "../../ports";
+import {
+  presentReaderSummaryArtifact,
+  readerSummaryContentForArtifact,
+} from "../shared/reader-summary-artifact-presenter";
 import type { GetReaderSummaryQuery } from "./get-reader-summary.query";
 import type { GetReaderSummaryResult } from "./get-reader-summary.result";
 
@@ -19,6 +24,8 @@ export class GetReaderSummaryUseCase {
   constructor(
     private readonly readerSummaries: ReaderSummaryArtifactRepositoryPort,
     private readonly freshness: ReaderSummaryFreshnessProbePort,
+    private readonly previewMediaEnricher: ReaderSummaryPreviewMediaEnricherPort =
+      NOOP_READER_SUMMARY_PREVIEW_MEDIA_ENRICHER,
   ) {}
 
   async execute(
@@ -51,6 +58,13 @@ export class GetReaderSummaryUseCase {
       sourceWindow: snapshot.sourceWindow,
     });
 
-    return ok(presentReaderSummaryArtifact(readerSummary, freshness));
+    const content = await this.previewMediaEnricher.enrich({
+      artifact: readerSummary,
+      content: readerSummaryContentForArtifact(readerSummary),
+    });
+
+    return ok(
+      presentReaderSummaryArtifact(readerSummary, freshness, { content }),
+    );
   }
 }

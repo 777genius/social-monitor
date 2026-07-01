@@ -1,4 +1,5 @@
 export * from "./auto-summary-candidate-repository.port";
+export * from "./agent-runtime-client.port";
 export * from "./reader-summary-artifact-repository.port";
 export * from "./reader-summary-context-provider.port";
 export * from "./reader-summary-evidence-selector.port";
@@ -7,6 +8,7 @@ export * from "./reader-summary-job-queue.port";
 export * from "./reader-summary-job-repository.port";
 export * from "./reader-summary-model.port";
 export * from "./reader-summary-policy-repository.port";
+export * from "./reader-summary-preview-media-enricher.port";
 export * from "./summary-artifact-repository.port";
 export * from "./summary-evidence-selector.port";
 export * from "./summary-event-publisher.port";

@@ -6,7 +6,7 @@ import type { ReaderSummaryModelInput } from "../../ports";
 import {
   firstNonEmptyString,
   knownStringSubset,
-  requiredString,
+  optionalString,
   requiredStringArray,
   uniqueNonEmptyStrings,
 } from "./openai-responses-reader-summary-json";
@@ -102,13 +102,32 @@ export const clusterIdFromCitations = (
 const normalizeTopStory = (
   value: Record<string, unknown>,
 ): ReaderSummaryTopStory => ({
-  storyClusterId: requiredString(value.storyClusterId, "top story cluster id"),
-  title: requiredString(value.title, "top story title"),
-  summary: requiredString(value.summary, "top story summary"),
-  interestIds: requiredStringArray(value.interestIds, "top story interests"),
-  providerKeys: requiredStringArray(value.providerKeys, "top story providers"),
-  citationIds: requiredStringArray(value.citationIds, "top story citations"),
+  storyClusterId: optionalString(value.storyClusterId) ?? "",
+  title: optionalString(value.title) ?? "Cited story",
+  summary:
+    optionalString(value.summary) ??
+    optionalString(value.description) ??
+    "Selected evidence supports this story.",
+  interestIds: normalizeStringArrayLike(value.interestIds, "top story interests"),
+  providerKeys: normalizeStringArrayLike(value.providerKeys, "top story providers"),
+  citationIds: normalizeStringArrayLike(value.citationIds, "top story citations"),
 });
+
+const normalizeStringArrayLike = (
+  value: unknown,
+  label: string,
+): readonly string[] => {
+  if (Array.isArray(value)) {
+    return requiredStringArray(value, label);
+  }
+
+  const scalar = optionalString(value);
+  if (scalar === undefined) {
+    return [];
+  }
+
+  return uniqueNonEmptyStrings(scalar.split(","));
+};
 
 const fallbackTopStories = (
   input: ReaderSummaryModelInput,

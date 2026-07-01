@@ -15,8 +15,10 @@ import {
   type ReaderSummaryEvidenceSelectorPort,
   type StoryRankingMetricsPort,
 } from "../../ports";
+import { previewMediaFromProviderMetadata } from "./provider-preview-media";
 
 const maxReaderSummaryEvidenceItems = 200;
+const maxReaderSummaryCandidateItems = 200;
 
 export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvidenceSelectorPort {
   private readonly clusterer: StoryClusteringService;
@@ -135,6 +137,12 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
             providerKey: snapshot.providerKey,
             providerMetadata: snapshot.providerMetadata,
           }),
+          previewMedia: previewMediaFromProviderMetadata({
+            providerKey: snapshot.providerKey,
+            providerMetadata: snapshot.providerMetadata,
+            title: snapshot.title,
+            canonicalUrl: snapshot.canonicalUrl,
+          }),
           storyKeyHint: rankedItem.clusterId,
         });
       }
@@ -164,6 +172,12 @@ const mapRankedItem = (item: RankedFeedItemView): SummaryEvidenceItem => ({
   ...providerMetricFacts({
     providerKey: item.providerKey,
     providerMetadata: item.providerMetadata,
+  }),
+  previewMedia: previewMediaFromProviderMetadata({
+    providerKey: item.providerKey,
+    providerMetadata: item.providerMetadata,
+    title: item.title,
+    canonicalUrl: item.canonicalUrl,
   }),
   storyKeyHint: item.clusterId,
 });
@@ -219,10 +233,7 @@ const expandedCandidateLimit = (limit: number): number => {
     return 1;
   }
 
-  return Math.min(
-    maxReaderSummaryEvidenceItems,
-    Math.max(limit, limit * 3),
-  );
+  return maxReaderSummaryCandidateItems;
 };
 
 const selectProviderDiverseEvidence = (

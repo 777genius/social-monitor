@@ -93,6 +93,82 @@ describe("buildReaderSummary", () => {
     });
   });
 
+  it("carries representative preview media into top reads", () => {
+    const readerSummary = buildReaderSummary({
+      headline: "AI social pulse",
+      executiveSummary: "One X/Twitter source includes a media preview.",
+      topStories: [
+        {
+          storyClusterId: "cluster-x",
+          title: "X post includes a launch image",
+          summary: "A launch post includes a visual preview.",
+          interestIds: ["ai-developer-tools"],
+          providerKeys: ["x-twitter"],
+          citationIds: ["citation-x"],
+        },
+      ],
+      interestHighlights: [],
+      repeatedSignals: [],
+      risksAndUnknowns: [],
+      citationMap: [
+        {
+          citationId: "citation-x",
+          feedItemId: "feed-x",
+          sourceItemId: "source-x",
+          providerKey: "x-twitter",
+          field: "title",
+          canonicalUrl: "https://x.com/example/status/1",
+        },
+      ],
+      storyClusters: [
+        {
+          id: "cluster-x",
+          storyKey: "x:launch-image",
+          representativeFeedItemId: "feed-x",
+          duplicateFeedItemIds: [],
+          interestIds: ["ai-developer-tools"],
+          providerKeys: ["x-twitter"],
+          score: 2.1,
+          observedAtRange: {
+            startedAt: new Date("2026-06-23T08:00:00.000Z"),
+            endedAt: new Date("2026-06-23T09:00:00.000Z"),
+          },
+          whyImportant: ["Visual launch evidence is easier to scan."],
+        },
+      ],
+      selectedEvidence: [
+        {
+          feedItemId: "feed-x",
+          sourceItemId: "source-x",
+          sourceBindingId: "binding-x",
+          interestId: "ai-developer-tools",
+          providerKey: "x-twitter",
+          providerName: "X/Twitter",
+          canonicalUrl: "https://x.com/example/status/1",
+          title: "X post includes a launch image",
+          publishedAt: new Date("2026-06-23T08:00:00.000Z"),
+          observedAt: new Date("2026-06-23T09:00:00.000Z"),
+          score: 2.1,
+          whyImportant: ["Visual launch evidence is easier to scan."],
+          previewMedia: {
+            kind: "image",
+            url: "https://pbs.twimg.com/media/launch.jpg",
+            sourceUrl: "https://x.com/example/status/1",
+            altText: "X post includes a launch image",
+          },
+        },
+      ],
+      qualityFlags: [],
+    });
+
+    expect(readerSummary.topReads[0]?.previewMedia).toEqual({
+      kind: "image",
+      url: "https://pbs.twimg.com/media/launch.jpg",
+      sourceUrl: "https://x.com/example/status/1",
+      altText: "X post includes a launch image",
+    });
+  });
+
   it("keeps social one-line takeaways content-first while requiring confirmation", () => {
     const readerSummary = buildReaderSummary({
       headline: "AI social pulse",

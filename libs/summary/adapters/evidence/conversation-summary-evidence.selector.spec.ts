@@ -87,9 +87,75 @@ describe('ConversationSummaryEvidenceSelector', () => {
         {
           conversationUnitId: 'conversation-high',
           providerUnitId: 't1_high',
+          threadExternalId: 't3_post_1',
           body: 'High-score comment with useful discussion context.',
           providerScore: 120,
           replyCount: 4,
+          depth: 0,
+          role: 'top_level_comment',
+          selectionReason: 'ranked',
+        },
+      ],
+    });
+  });
+
+  it('adds ancestor context for ranked replies without counting ancestors as ranked units', async () => {
+    const repository = new InMemoryConversationUnitRepository();
+    await repository.saveBatch({
+      tenantId: tenantId('tenant-summary-conversation-test'),
+      workspaceId: workspaceId('workspace-summary-conversation-test'),
+      units: [
+        conversationUnit({
+          id: 'conversation-parent',
+          providerUnitId: 't1_parent',
+          body: 'Parent comment explains what the reply is answering.',
+          score: 3,
+        }),
+        conversationUnit({
+          id: 'conversation-reply',
+          providerUnitId: 't1_reply',
+          parentProviderUnitId: 't1_parent',
+          body: 'High-score reply with the important user reaction.',
+          score: 140,
+          replies: 2,
+          depth: 1,
+          role: 'reply',
+        }),
+      ],
+    });
+    const selector = new ConversationSummaryEvidenceSelector(
+      new StaticEvidenceSelector(),
+      repository,
+      repository,
+      new FixedClock(new Date('2026-06-05T12:30:00.000Z')),
+      {
+        promptLimitPerRoot: 1,
+        maxAncestorDepth: 3,
+        maxTotalConversationUnitsPerRoot: 4,
+      },
+    );
+
+    const result = await selector.select({
+      tenantId: tenantId('tenant-summary-conversation-test'),
+      workspaceId: workspaceId('workspace-summary-conversation-test'),
+      interestId: 'interest-1',
+      maxItems: 5,
+    });
+
+    expect(result.items[0]?.conversationContext?.units).toHaveLength(1);
+    expect(result.items[0]?.conversationContext?.units[0]).toMatchObject({
+      conversationUnitId: 'conversation-reply',
+      providerUnitId: 't1_reply',
+      parentProviderUnitId: 't1_parent',
+      depth: 1,
+      role: 'reply',
+      selectionReason: 'ranked',
+      ancestry: [
+        {
+          conversationUnitId: 'conversation-parent',
+          providerUnitId: 't1_parent',
+          selectionReason: 'ancestor_context',
+          providerScore: 3,
           depth: 0,
           role: 'top_level_comment',
         },
@@ -105,8 +171,13 @@ const conversationUnit = (
     readonly body: string;
     readonly score: number;
     readonly replies?: number;
+    readonly parentProviderUnitId?: string;
+    readonly depth?: number;
+    readonly role?: 'top_level_comment' | 'reply';
   },
 ): ConversationUnit => {
+  const depth = overrides.depth ?? 0;
+  const role = overrides.role ?? 'top_level_comment';
   const props: ConversationUnitProps = {
     id: overrides.id,
     tenantId: tenantId('tenant-summary-conversation-test'),
@@ -122,15 +193,16 @@ const conversationUnit = (
     publishedAt: new Date('2026-06-05T12:05:00.000Z'),
     observedAt: new Date('2026-06-05T12:10:00.000Z'),
     threadExternalId: 't3_post_1',
-    depth: 0,
-    role: 'top_level_comment',
+    parentProviderUnitId: overrides.parentProviderUnitId,
+    depth,
+    role,
     providerMetadata: {
       kind: 'reddit_comment',
       subreddit: 'topic',
       score: overrides.score,
       replies: overrides.replies ?? 0,
-      depth: 0,
-      role: 'top_level_comment',
+      depth,
+      role,
     },
     contentHash: '',
     schemaVersion: 1,

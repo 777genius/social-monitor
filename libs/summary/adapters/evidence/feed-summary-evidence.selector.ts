@@ -1,13 +1,18 @@
 import type { FeedItemReadRepositoryPort } from '@social-monitor/feed/ports';
-import { SourceContentSafetyPolicy } from '@social-monitor/relevance/domain';
+import {
+  SourceContentQualityPolicy,
+  SourceContentSafetyPolicy,
+} from '@social-monitor/relevance/domain';
 import type { Clock } from '@social-monitor/shared-kernel';
 
 import type { SummaryEvidenceItem, SummaryEvidenceSelection, SummaryEvidenceSelectorPort } from '../../ports';
 
 const MAX_EVIDENCE_ITEMS = 50;
+const MAX_CANDIDATE_ITEMS = 500;
 
 export class FeedSummaryEvidenceSelector implements SummaryEvidenceSelectorPort {
   private readonly safetyPolicy = new SourceContentSafetyPolicy();
+  private readonly qualityPolicy = new SourceContentQualityPolicy();
 
   constructor(
     private readonly feedItems: FeedItemReadRepositoryPort,
@@ -17,18 +22,31 @@ export class FeedSummaryEvidenceSelector implements SummaryEvidenceSelectorPort 
   async select(
     params: Parameters<SummaryEvidenceSelectorPort['select']>[0],
   ): Promise<SummaryEvidenceSelection> {
+    const evidenceLimit = normalizeLimit(params.maxItems);
     const result = await this.feedItems.list({
       tenantId: params.tenantId,
       workspaceId: params.workspaceId,
       interestId: params.interestId,
-      limit: MAX_EVIDENCE_ITEMS,
+      limit: MAX_CANDIDATE_ITEMS,
     });
     const items = selectProviderBalancedEvidence(
-      result.items.map((item): SummaryEvidenceItem => {
+      result.items.flatMap((item): readonly SummaryEvidenceItem[] => {
         const snapshot = item.toSnapshot();
         const safety = this.safetyPolicy.evaluate(snapshot);
+        const quality = this.qualityPolicy.evaluate({
+          providerKey: snapshot.providerKey,
+          title: safety.sanitizedTitle,
+          bodyPreview: safety.sanitizedBodyPreview,
+          canonicalUrl: safety.sanitizedCanonicalUrl ?? snapshot.canonicalUrl,
+          authorHandle: snapshot.authorHandle,
+          providerMetadata: snapshot.providerMetadata,
+        });
 
-        return {
+        if (!quality.eligibleForSummary) {
+          return [];
+        }
+
+        return [{
           feedItemId: snapshot.id,
           sourceItemId: snapshot.sourceItemId,
           sourceBindingId: snapshot.sourceBindingId,
@@ -39,9 +57,9 @@ export class FeedSummaryEvidenceSelector implements SummaryEvidenceSelectorPort 
           providerMetadata: snapshot.providerMetadata,
           observedAt: snapshot.observedAt,
           safety,
-        };
+        }];
       }),
-      normalizeLimit(params.maxItems),
+      evidenceLimit,
     );
 
     return {

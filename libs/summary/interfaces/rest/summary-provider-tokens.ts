@@ -20,6 +20,7 @@ import {
   type ReaderSummaryJobRepositoryPort,
   type ReaderSummaryJobQueuePort,
   type ReaderSummaryPolicyRepositoryPort,
+  type ReaderSummaryPreviewMediaEnricherPort,
   type SummaryArtifactRepositoryPort,
   type SummaryEventPublisherPort,
   type SummaryEvidenceSelectorPort,
@@ -34,10 +35,14 @@ import {
 
 export type SummaryPersistenceMode = "in-memory" | "prisma";
 export type SummaryJobQueueMode = "in-memory" | "rabbitmq";
-export type SummaryModelProviderMode = "deterministic" | "openai-responses";
+export type SummaryModelProviderMode =
+  | "deterministic"
+  | "openai-responses"
+  | "agent-runtime";
 export type ReaderSummaryModelProviderMode =
   | "deterministic"
-  | "openai-responses";
+  | "openai-responses"
+  | "agent-runtime";
 export type SummaryMemoryMode = "disabled" | "memo-stack";
 export type SummaryYoutubeVideoSummaryProviderMode =
   | "disabled"
@@ -103,6 +108,9 @@ export const READER_SUMMARY_POLICY_REPOSITORY = Symbol(
 export const READER_SUMMARY_CONTEXT_PROVIDER = Symbol(
   "READER_SUMMARY_CONTEXT_PROVIDER",
 );
+export const READER_SUMMARY_PREVIEW_MEDIA_ENRICHER = Symbol(
+  "READER_SUMMARY_PREVIEW_MEDIA_ENRICHER",
+);
 
 export type SummaryProviderTokenMap = {
   readonly [SUMMARY_PERSISTENCE_MODE]: SummaryPersistenceMode;
@@ -132,6 +140,7 @@ export type SummaryProviderTokenMap = {
   readonly [READER_SUMMARY_ARTIFACT_REPOSITORY]: ReaderSummaryArtifactRepositoryPort;
   readonly [READER_SUMMARY_POLICY_REPOSITORY]: ReaderSummaryPolicyRepositoryPort;
   readonly [READER_SUMMARY_CONTEXT_PROVIDER]: ReaderSummaryContextProviderPort;
+  readonly [READER_SUMMARY_PREVIEW_MEDIA_ENRICHER]: ReaderSummaryPreviewMediaEnricherPort;
 };
 
 export const summaryPersistenceModeProvider: Provider<SummaryPersistenceMode> =
@@ -258,19 +267,23 @@ export const resolveSummaryModelProviderMode = (
 ): SummaryModelProviderMode => {
   const value = env.SUMMARY_MODEL_PROVIDER ?? "deterministic";
 
-  if (value === "deterministic" || value === "openai-responses") {
+  if (
+    value === "deterministic" ||
+    value === "openai-responses" ||
+    value === "agent-runtime"
+  ) {
     assertRuntimeProfileAllowsMode({
       env,
       settingName: "SUMMARY_MODEL_PROVIDER",
       selectedMode: value,
-      durableModes: ["openai-responses"],
+      durableModes: ["openai-responses", "agent-runtime"],
     });
 
     return value;
   }
 
   throw new Error(
-    'SUMMARY_MODEL_PROVIDER must be "deterministic" or "openai-responses"',
+    'SUMMARY_MODEL_PROVIDER must be "deterministic", "openai-responses", or "agent-runtime"',
   );
 };
 
@@ -282,19 +295,23 @@ export const resolveReaderSummaryModelProviderMode = (
     env.READER_SUMMARY_MODEL_PROVIDER ??
     "deterministic";
 
-  if (value === "deterministic" || value === "openai-responses") {
+  if (
+    value === "deterministic" ||
+    value === "openai-responses" ||
+    value === "agent-runtime"
+  ) {
     assertRuntimeProfileAllowsMode({
       env,
       settingName: "READER_SUMMARY_MODEL_PROVIDER",
       selectedMode: value,
-      durableModes: ["openai-responses"],
+      durableModes: ["openai-responses", "agent-runtime"],
     });
 
     return value;
   }
 
   throw new Error(
-    'READER_SUMMARY_MODEL_PROVIDER or READER_SUMMARY_MODEL_PROVIDER must be "deterministic" or "openai-responses"',
+    'READER_SUMMARY_MODEL_PROVIDER or READER_SUMMARY_MODEL_PROVIDER must be "deterministic", "openai-responses", or "agent-runtime"',
   );
 };
 

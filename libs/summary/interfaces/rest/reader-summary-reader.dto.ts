@@ -26,6 +26,20 @@ export class ReaderSummaryReaderItemConfidenceDto {
   declare readonly rationale: string;
 }
 
+export class ReaderSummaryPreviewMediaDto {
+  @ApiProperty({ enum: ["image", "video"] })
+  declare readonly kind: "image" | "video";
+
+  @ApiProperty()
+  declare readonly url: string;
+
+  @ApiPropertyOptional()
+  declare readonly sourceUrl?: string;
+
+  @ApiPropertyOptional()
+  declare readonly altText?: string;
+}
+
 export class ReaderSummaryReaderItemDto {
   @ApiProperty()
   declare readonly title: string;
@@ -68,6 +82,9 @@ export class ReaderSummaryReaderItemDto {
 
   @ApiPropertyOptional()
   declare readonly canonicalUrl?: string;
+
+  @ApiPropertyOptional({ type: () => ReaderSummaryPreviewMediaDto })
+  declare readonly previewMedia?: ReaderSummaryPreviewMediaDto;
 
   @ApiProperty({ type: [String] })
   declare readonly citationIds: readonly string[];

@@ -3031,6 +3031,31 @@
         ],
         "type": "object"
       },
+      "ReaderSummaryPreviewMediaDto": {
+        "properties": {
+          "altText": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "image",
+              "video"
+            ],
+            "type": "string"
+          },
+          "sourceUrl": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "url"
+        ],
+        "type": "object"
+      },
       "ReaderSummaryProviderMetricDto": {
         "properties": {
           "label": {
@@ -3207,6 +3232,9 @@
               "type": "string"
             },
             "type": "array"
+          },
+          "previewMedia": {
+            "$ref": "#/components/schemas/ReaderSummaryPreviewMediaDto"
           },
           "primaryActionKind": {
             "enum": [

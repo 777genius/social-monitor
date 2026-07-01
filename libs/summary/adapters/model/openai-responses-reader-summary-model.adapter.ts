@@ -50,7 +50,7 @@ export type OpenAiResponsesReaderSummaryModelAdapterOptions = {
 
 const provider = "openai-responses";
 const defaultModel = "gpt-5.4-mini";
-const defaultPromptVersion = "reader_summary.prompt.openai.responses.v1";
+const defaultPromptVersion = "reader_summary.prompt.openai.responses.v2";
 const defaultEvalDatasetVersion = "reader_summary.eval.mvp.v1";
 const defaultEndpointUrl = "https://api.openai.com/v1/responses";
 const defaultTimeoutMs = 180_000;
@@ -430,7 +430,8 @@ export const resolveOpenAiResponsesReaderSummaryModelOptions = (
       env.READER_SUMMARY_EVAL_DATASET_VERSION ??
       env.READER_SUMMARY_EVAL_DATASET_VERSION,
     timeoutMs: parsePositiveInteger(
-      env.OPENAI_READER_SUMMARY_TIMEOUT_MS ?? env.OPENAI_READER_SUMMARY_TIMEOUT_MS,
+      env.OPENAI_READER_SUMMARY_TIMEOUT_MS ??
+        env.OPENAI_READER_SUMMARY_TIMEOUT_MS,
     ),
     maxOutputTokens: parsePositiveInteger(
       env.OPENAI_READER_SUMMARY_MAX_OUTPUT_TOKENS ??

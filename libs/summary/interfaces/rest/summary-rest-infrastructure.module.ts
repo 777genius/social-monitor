@@ -30,6 +30,7 @@ import { ConversationSummaryEvidenceSelector } from "../../adapters/evidence/con
 import { FeedSummaryFreshnessProbe } from "../../adapters/evidence/feed-summary-freshness.probe";
 import { RelevanceSummaryEvidenceSelector } from "../../adapters/evidence/relevance-summary-evidence.selector";
 import { YoutubeVideoSummaryEvidenceSelector } from "../../adapters/evidence/youtube-video-summary-evidence.selector";
+import { AgentRuntimeSummaryModelAdapter } from "../../adapters/model/agent-runtime-summary-model.adapter";
 import { InMemorySummaryEventPublisher } from "../../adapters/messaging/in-memory-summary-event-publisher";
 import {
   InMemorySummaryJobQueueAdapter,
@@ -392,18 +393,23 @@ export const summaryRestInfrastructureProviders = [
     useFactory: (
       mode: SummaryModelProviderMode,
       deterministicSummaryModel: DeterministicSummaryModelAdapter,
+      agentRuntimeSummaryModel: AgentRuntimeSummaryModelAdapter,
       openAiSummaryModel: OpenAiResponsesSummaryModelAdapter,
       metrics: InMemoryMetricsRecorder,
-    ) =>
-      new MeteredSummaryModelAdapter(
+    ) => {
+      const selectedModel =
         mode === "openai-responses"
           ? openAiSummaryModel
-          : deterministicSummaryModel,
-        metrics,
-      ),
+          : mode === "agent-runtime"
+            ? agentRuntimeSummaryModel
+            : deterministicSummaryModel;
+
+      return new MeteredSummaryModelAdapter(selectedModel, metrics);
+    },
     inject: [
       SUMMARY_MODEL_PROVIDER_MODE,
       DeterministicSummaryModelAdapter,
+      AgentRuntimeSummaryModelAdapter,
       OpenAiResponsesSummaryModelAdapter,
       InMemoryMetricsRecorder,
     ],

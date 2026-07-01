@@ -1,6 +1,17 @@
 import type { JsonObject, TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 
-import type { SummarySourceWindow } from '../domain';
+import type {
+  SummaryEvidenceConversationContext,
+  SummaryEvidenceConversationAncestor,
+  SummaryEvidenceConversationUnit,
+  SummarySourceWindow,
+} from '../domain';
+
+export type {
+  SummaryEvidenceConversationAncestor,
+  SummaryEvidenceConversationContext,
+  SummaryEvidenceConversationUnit,
+} from '../domain';
 
 export type SummaryEvidenceItem = {
   readonly feedItemId: string;
@@ -16,27 +27,6 @@ export type SummaryEvidenceItem = {
   readonly relevance?: SummaryEvidenceRelevance;
   readonly safety?: SummaryEvidenceSafety;
   readonly observedAt: Date;
-};
-
-export type SummaryEvidenceConversationContext = {
-  readonly rankingBasis: 'cohort_baseline_v1';
-  readonly bundleScore: number;
-  readonly units: readonly SummaryEvidenceConversationUnit[];
-};
-
-export type SummaryEvidenceConversationUnit = {
-  readonly conversationUnitId: string;
-  readonly providerUnitId: string;
-  readonly canonicalUrl: string;
-  readonly authorHandle?: string;
-  readonly body: string;
-  readonly score: number;
-  readonly providerScore?: number;
-  readonly replyCount?: number;
-  readonly signalBand: string;
-  readonly depth: number;
-  readonly role: 'top_level_comment' | 'reply';
-  readonly publishedAt: string;
 };
 
 export type SummaryEvidenceRelevance = {

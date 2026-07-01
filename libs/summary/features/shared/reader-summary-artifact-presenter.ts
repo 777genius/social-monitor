@@ -104,22 +104,11 @@ export type ReaderSummaryFreshnessView =
 export const presentReaderSummaryArtifact = (
   artifact: ReaderSummaryArtifact,
   freshness: ReaderSummaryFreshness,
+  options: { readonly content?: ReaderSummaryContent } = {},
 ): ReaderSummaryArtifactView => {
   const snapshot = artifact.toSnapshot();
   const content =
-    snapshot.content ??
-    buildReaderSummary({
-      headline: snapshot.headline,
-      executiveSummary: snapshot.executiveSummary,
-      topStories: snapshot.topStories,
-      interestHighlights: snapshot.interestHighlights,
-      repeatedSignals: snapshot.repeatedSignals,
-      risksAndUnknowns: snapshot.risksAndUnknowns,
-      citationMap: snapshot.citationMap,
-      storyClusters: snapshot.storyClusters,
-      qualityFlags: snapshot.qualityFlags,
-      noSignalReason: snapshot.noSignalReason,
-    });
+    options.content ?? readerSummaryContentForArtifactSnapshot(snapshot);
   const freshnessView = presentFreshness(freshness);
 
   return {
@@ -156,6 +145,28 @@ export const presentReaderSummaryArtifact = (
     freshness: freshnessView,
   };
 };
+
+export const readerSummaryContentForArtifact = (
+  artifact: ReaderSummaryArtifact,
+): ReaderSummaryContent =>
+  readerSummaryContentForArtifactSnapshot(artifact.toSnapshot());
+
+const readerSummaryContentForArtifactSnapshot = (
+  snapshot: ReaderSummaryArtifactProps,
+): ReaderSummaryContent =>
+  snapshot.content ??
+  buildReaderSummary({
+    headline: snapshot.headline,
+    executiveSummary: snapshot.executiveSummary,
+    topStories: snapshot.topStories,
+    interestHighlights: snapshot.interestHighlights,
+    repeatedSignals: snapshot.repeatedSignals,
+    risksAndUnknowns: snapshot.risksAndUnknowns,
+    citationMap: snapshot.citationMap,
+    storyClusters: snapshot.storyClusters,
+    qualityFlags: snapshot.qualityFlags,
+    noSignalReason: snapshot.noSignalReason,
+  });
 
 const presentReaderSummaryPeriod = (
   period: ReaderSummaryPeriod,

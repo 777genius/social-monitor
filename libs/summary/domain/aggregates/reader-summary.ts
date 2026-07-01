@@ -322,9 +322,17 @@ const storyToTopRead = (
     whyImportant,
     whyNow: buildWhyNow(cluster, story.providerKeys, clusterEvidence),
     canonicalUrl: citation?.canonicalUrl ?? evidence?.canonicalUrl,
+    previewMedia: selectTopReadPreviewMedia(evidence, clusterEvidence),
     citationIds,
   };
 };
+
+const selectTopReadPreviewMedia = (
+  representative: SummaryEvidenceItem | undefined,
+  evidence: readonly SummaryEvidenceItem[],
+): TopRead["previewMedia"] =>
+  representative?.previewMedia ??
+  evidence.find((item) => item.previewMedia !== undefined)?.previewMedia;
 
 const buildTopReadUserFacingReasons = (params: {
   readonly story: TopReadCandidate;

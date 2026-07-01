@@ -1,9 +1,20 @@
-import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { createHash, randomUUID } from "node:crypto";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { InMemoryFeedItemReadRepository } from "@social-monitor/feed/adapters/persistence/in-memory-feed-item-read.repository";
+import { PrismaFeedItemReadRepository } from "@social-monitor/feed/adapters/persistence/prisma/prisma-feed-item-read.repository";
+import { PrismaFeedProjectionAdapter } from "@social-monitor/feed/adapters/persistence/prisma/prisma-feed-projection.adapter";
+import type { FeedItemReadRepositoryPort } from "@social-monitor/feed/ports";
+import { ConversationUnitProjectionAdapter } from "@social-monitor/conversation/adapters/ingestion/conversation-unit-projection.adapter";
+import { InMemoryConversationUnitRepository } from "@social-monitor/conversation/adapters/persistence/in-memory-conversation-unit.repository";
+import { PrismaConversationUnitRepository } from "@social-monitor/conversation/adapters/persistence/prisma/prisma-conversation-unit.repository";
+import type {
+  ConversationSignalBaselineRepositoryPort,
+  ConversationUnitRepositoryPort,
+} from "@social-monitor/conversation/ports";
 import { InMemoryMetricsRecorder } from "@social-monitor/platform-metrics";
 import { InMemoryQueuePublisher } from "@social-monitor/platform-queue/adapters/in-memory";
 import { OpenAiSourceContentQualityReviewerAdapter } from "@social-monitor/relevance/adapters/model/openai-source-content-quality-reviewer.adapter";
@@ -29,6 +40,9 @@ import {
   workspaceId,
 } from "@social-monitor/shared-kernel";
 import { FeedSummaryEvidenceSelector } from "@social-monitor/summary/adapters/evidence/feed-summary-evidence.selector";
+import { ConversationEvidenceContextReader } from "@social-monitor/summary/adapters/evidence/conversation-evidence-context.reader";
+import { ConversationReaderSummaryEvidenceSelector } from "@social-monitor/summary/adapters/evidence/conversation-reader-summary-evidence.selector";
+import { ConversationSummaryEvidenceSelector } from "@social-monitor/summary/adapters/evidence/conversation-summary-evidence.selector";
 import { RelevanceReaderSummaryEvidenceSelector } from "@social-monitor/summary/adapters/evidence/relevance-reader-summary-evidence.selector";
 import { InMemoryReaderSummaryJobQueueAdapter } from "@social-monitor/summary/adapters/messaging/reader-summary-job-queue.adapter";
 import { DeterministicSummaryModelAdapter } from "@social-monitor/summary/adapters/model/deterministic-summary-model.adapter";
@@ -41,6 +55,14 @@ import {
   OpenAiResponsesSummaryModelAdapter,
   resolveOpenAiResponsesSummaryModelOptions,
 } from "@social-monitor/summary/adapters/model/openai-responses-summary-model.adapter";
+import {
+  buildInstructions as buildSummaryInstructions,
+  buildPromptPayload as buildSummaryPromptPayload,
+} from "@social-monitor/summary/adapters/model/openai-responses-summary-prompt";
+import { openAiSummaryJsonSchema } from "@social-monitor/summary/adapters/model/openai-responses-summary-schema";
+import { AgentRuntimeReaderSummaryModelAdapter } from "@social-monitor/summary/adapters/model/agent-runtime-reader-summary-model.adapter";
+import { AgentRuntimeSummaryModelAdapter } from "@social-monitor/summary/adapters/model/agent-runtime-summary-model.adapter";
+import { GrpcAgentRuntimeClient } from "@social-monitor/summary/adapters/model/grpc-agent-runtime-client";
 import { InMemorySummaryEventPublisher } from "@social-monitor/summary/adapters/messaging/in-memory-summary-event-publisher";
 import { InMemorySummaryJobQueueAdapter } from "@social-monitor/summary/adapters/messaging/in-memory-summary-job-queue.adapter";
 import { NoopUserSummaryPreferenceReader } from "@social-monitor/summary/adapters/preferences/noop-user-summary-preference.reader";
@@ -73,11 +95,17 @@ import type {
 import { parse as parseDotenv } from "dotenv";
 
 import { InMemoryFeedProjectionAdapter } from "../apps/ingestion-worker/src/adapters/feed/in-memory-feed-projection.adapter";
+import { PrismaIngestionWorkerConnection } from "../apps/ingestion-worker/src/adapters/persistence/prisma-ingestion-worker-connection";
 import { InMemoryScanLeaseAdapter } from "../libs/ingestion/adapters/lease/in-memory-scan-lease.adapter";
 import { InMemoryScanAttemptRepository } from "../libs/ingestion/adapters/persistence/in-memory-scan-attempt.repository";
 import { InMemoryScanCursorRepository } from "../libs/ingestion/adapters/persistence/in-memory-scan-cursor.repository";
 import { InMemorySourceItemRepository } from "../libs/ingestion/adapters/persistence/in-memory-source-item.repository";
+import { PrismaScanAttemptRepository } from "../libs/ingestion/adapters/persistence/prisma/prisma-scan-attempt.repository";
+import { PrismaScanCursorRepository } from "../libs/ingestion/adapters/persistence/prisma/prisma-scan-cursor.repository";
+import { PrismaSourceItemRepository } from "../libs/ingestion/adapters/persistence/prisma/prisma-source-item.repository";
 import { InMemoryScanFailureQueueAdapter } from "../libs/ingestion/adapters/queue/in-memory-scan-failure-queue.adapter";
+import { PrismaScanFailureQueueAdapter } from "../libs/ingestion/adapters/persistence/prisma/prisma-scan-failure-queue.adapter";
+import { PrismaScanLeaseAdapter } from "../libs/ingestion/adapters/persistence/prisma/prisma-scan-lease.adapter";
 import {
   GITHUB_ISSUES_PROVIDER_KEY,
   GitHubSourceProvider,
@@ -95,6 +123,7 @@ import {
 } from "../libs/ingestion/adapters/source/reddit/http-reddit-client";
 import type { RedditPostListing } from "../libs/ingestion/adapters/source/reddit/reddit-client.port";
 import { RedditSourceProvider } from "../libs/ingestion/adapters/source/reddit/reddit-source.provider";
+import { readCommentSort } from "../libs/ingestion/adapters/source/reddit/reddit-source-support";
 import { HttpRssClient } from "../libs/ingestion/adapters/source/rss/http-rss-client";
 import { RssSourceProvider } from "../libs/ingestion/adapters/source/rss/rss-source.provider";
 import { RegistrySourceFetcherAdapter } from "../libs/ingestion/adapters/source/registry-source-fetcher.adapter";
@@ -102,14 +131,21 @@ import { sourceReadinessProfiles } from "../libs/ingestion/adapters/source/sourc
 import { GrpcXDailyCollectorClient } from "../libs/ingestion/adapters/source/x-twitter-experimental-daily/grpc-x-daily-collector-client";
 import { XTwitterSourceProvider } from "../libs/ingestion/adapters/source/x-twitter-experimental-daily/x-twitter-experimental-daily-source.provider";
 import { ExecuteScanUseCase } from "../libs/ingestion/features/execute-scan/execute-scan.use-case";
+import { SourceFetchError } from "../libs/ingestion/ports";
 import type {
   FetchSourceItemsCommand,
   FetchSourceItemsResult,
+  FeedProjectionPort,
   ReportScanFailedCommand,
   ReportScanSucceededCommand,
+  ScanAttemptRepositoryPort,
+  ScanCursorRepositoryPort,
   ScanExecutionReporterPort,
+  ScanFailureQueuePort,
+  ScanLeasePort,
   SourceConfigReaderPort,
   SourceFetcherPort,
+  SourceItemRepositoryPort,
   SourceQuery,
   SourceRuntimeConfig,
 } from "../libs/ingestion/ports";
@@ -131,6 +167,39 @@ type ScanTarget = {
   readonly config: SourceRuntimeConfig;
 };
 
+type LivePersistenceMode = "in-memory" | "prisma";
+
+type LivePersistenceConfig =
+  | {
+      readonly mode: "in-memory";
+    }
+  | {
+      readonly mode: "prisma";
+      readonly rawDatabaseUrl: string;
+      readonly databaseUrl: string;
+      readonly migrate: boolean;
+      readonly feedFreshnessStartedAt: Date;
+    };
+
+type ConversationUnitEvidenceRepository =
+  ConversationUnitRepositoryPort & ConversationSignalBaselineRepositoryPort;
+
+type LivePersistenceBundle = {
+  readonly mode: LivePersistenceMode;
+  readonly feedItems: FeedItemReadRepositoryPort;
+  readonly conversationUnits: ConversationUnitEvidenceRepository;
+  readonly sourceItems: SourceItemRepositoryPort;
+  readonly feedProjection: FeedProjectionPort;
+  readonly scanAttempts: ScanAttemptRepositoryPort;
+  readonly scanCursors: ScanCursorRepositoryPort;
+  readonly scanFailures: ScanFailureQueuePort;
+  readonly scanLeases: ScanLeasePort;
+  readonly sourceItemIds: IdGenerator;
+  readonly conversationUnitIds: IdGenerator;
+  readonly feedObservedAfter?: Date;
+  close(): Promise<void>;
+};
+
 type ScanMetrics = {
   readonly providerKey: LiveProviderKey;
   readonly sourceBindingId: string;
@@ -140,6 +209,8 @@ type ScanMetrics = {
   readonly projected: number;
   readonly skippedDuplicates: number;
   readonly failureReason?: string;
+  readonly fallbackUsed?: boolean;
+  readonly fallbackReason?: string;
 };
 
 type LiveReaderSummarySmokeResult = {
@@ -180,6 +251,24 @@ const maxSummaryKeyPoints = readPositiveIntegerEnv(
   1,
   10,
 );
+const liveSummaryMaxInputTokens = readPositiveIntegerEnv(
+  "LIVE_MULTI_PROVIDER_SUMMARY_MAX_INPUT_TOKENS",
+  80_000,
+  12_000,
+  160_000,
+);
+const liveSummaryMaxOutputTokens = readPositiveIntegerEnv(
+  "LIVE_MULTI_PROVIDER_SUMMARY_MAX_OUTPUT_TOKENS",
+  8_000,
+  4_000,
+  16_000,
+);
+const liveSummaryBudgetTokens = readPositiveIntegerEnv(
+  "LIVE_MULTI_PROVIDER_SUMMARY_BUDGET_TOKENS",
+  120_000,
+  20_000,
+  200_000,
+);
 const liveReaderSummaryMaxInputTokens = readPositiveIntegerEnv(
   "LIVE_MULTI_PROVIDER_READER_SUMMARY_MAX_INPUT_TOKENS",
   48_000,
@@ -210,9 +299,34 @@ const xTwitterLimitPerProduct = readPositiveIntegerEnv(
   1,
   100,
 );
+const redditIncludeComments = readBooleanEnv(
+  "LIVE_MULTI_PROVIDER_REDDIT_INCLUDE_COMMENTS",
+  true,
+);
+const redditMaxCommentsPerPost = readPositiveIntegerEnv(
+  "LIVE_MULTI_PROVIDER_REDDIT_MAX_COMMENTS_PER_POST",
+  5,
+  1,
+  100,
+);
+const redditCommentDepth = readPositiveIntegerEnv(
+  "LIVE_MULTI_PROVIDER_REDDIT_COMMENT_DEPTH",
+  2,
+  0,
+  10,
+);
+const redditCommentSort = readCommentSort(
+  readOptionalEnv("LIVE_MULTI_PROVIDER_REDDIT_COMMENT_SORT") ?? "confidence",
+);
 const allowEmptyTargets = readBooleanEnv(
   "LIVE_MULTI_PROVIDER_ALLOW_EMPTY_TARGETS",
   sourcePresetMode === aiDeveloperSignalSourcePreset.presetId,
+);
+const xFallbackFreshnessMinutes = readPositiveIntegerEnv(
+  "LIVE_MULTI_PROVIDER_X_FALLBACK_FRESHNESS_MINUTES",
+  24 * 60,
+  1,
+  7 * 24 * 60,
 );
 const sampledAtEnv = "LIVE_MULTI_PROVIDER_SAMPLED_AT";
 const sampledAt =
@@ -220,6 +334,8 @@ const sampledAt =
 const evidencePathEnv = "LIVE_MULTI_PROVIDER_SUMMARY_EVIDENCE_PATH";
 const frontendFixturePathEnv =
   "LIVE_MULTI_PROVIDER_SUMMARY_FRONTEND_FIXTURE_PATH";
+const summaryPromptDebugPathEnv =
+  "LIVE_MULTI_PROVIDER_SUMMARY_PROMPT_DEBUG_PATH";
 const summaryModelMode = readSummaryModelMode();
 const readerSummaryModelMode = readReaderSummaryModelMode();
 
@@ -254,8 +370,14 @@ class LimitedSourceFetcher implements SourceFetcherPort {
       return result;
     }
 
+    const items = result.items.slice(0, maxItems);
+    const selectedExternalIds = new Set(items.map((item) => item.externalId));
+
     return {
-      items: result.items.slice(0, maxItems),
+      items,
+      conversationUnits: (result.conversationUnits ?? []).filter((unit) =>
+        selectedExternalIds.has(unit.rootExternalId),
+      ),
       nextCursor: result.nextCursor,
     };
   }
@@ -298,12 +420,153 @@ class SequenceIdGenerator implements IdGenerator {
   }
 }
 
+class RandomUuidGenerator implements IdGenerator {
+  generate(): string {
+    return randomUUID();
+  }
+}
+
 const assert: (condition: unknown, message: string) => asserts condition = (
   condition,
   message,
 ) => {
   if (!condition) {
     throw new Error(message);
+  }
+};
+
+let livePersistenceToClose: LivePersistenceBundle | undefined;
+
+const readLivePersistenceConfig = (): LivePersistenceConfig => {
+  const mode = readOptionalEnv("LIVE_MULTI_PROVIDER_PERSISTENCE") ?? "in-memory";
+  if (mode === "in-memory") {
+    return { mode };
+  }
+
+  if (mode !== "prisma") {
+    throw new Error('LIVE_MULTI_PROVIDER_PERSISTENCE must be "in-memory" or "prisma"');
+  }
+
+  assert(
+    readBooleanEnv("LIVE_MULTI_PROVIDER_E2E_ALLOW_PERSISTENCE", false),
+    "LIVE_MULTI_PROVIDER_PERSISTENCE=prisma requires LIVE_MULTI_PROVIDER_E2E_ALLOW_PERSISTENCE=true",
+  );
+
+  const rawDatabaseUrl = readOptionalEnv("LIVE_MULTI_PROVIDER_E2E_DATABASE_URL");
+  assert(
+    rawDatabaseUrl !== undefined,
+    "LIVE_MULTI_PROVIDER_PERSISTENCE=prisma requires LIVE_MULTI_PROVIDER_E2E_DATABASE_URL",
+  );
+
+  const schema = readOptionalEnv("LIVE_MULTI_PROVIDER_E2E_SCHEMA");
+  assert(
+    schema === undefined,
+    [
+      "LIVE_MULTI_PROVIDER_E2E_SCHEMA is not supported with the current PrismaPg runtime.",
+      "Use a separate LIVE_MULTI_PROVIDER_E2E_DATABASE_URL for live E2E isolation.",
+    ].join(" "),
+  );
+
+  const productionDatabaseUrl = readOptionalEnv("DATABASE_URL");
+  if (productionDatabaseUrl !== undefined) {
+    assert(
+      !sameDatabaseUrl(rawDatabaseUrl, productionDatabaseUrl),
+      "LIVE_MULTI_PROVIDER_E2E_DATABASE_URL must point at a separate test database, not DATABASE_URL.",
+    );
+  }
+
+  const feedFreshnessStartedAt = new Date(
+    sampledAt.getTime() - xFallbackFreshnessMinutes * 60_000,
+  );
+
+  return {
+    mode,
+    rawDatabaseUrl,
+    databaseUrl: rawDatabaseUrl,
+    migrate: readBooleanEnv("LIVE_MULTI_PROVIDER_E2E_MIGRATE", true),
+    feedFreshnessStartedAt,
+  };
+};
+
+const createLivePersistence = async (params: {
+  readonly config: LivePersistenceConfig;
+  readonly metrics: InMemoryMetricsRecorder;
+}): Promise<LivePersistenceBundle> => {
+  if (params.config.mode === "in-memory") {
+    const feedItems = new InMemoryFeedItemReadRepository();
+    const conversationUnits = new InMemoryConversationUnitRepository();
+
+    return {
+      mode: "in-memory",
+      feedItems,
+      conversationUnits,
+      sourceItems: new InMemorySourceItemRepository(),
+      feedProjection: new InMemoryFeedProjectionAdapter(feedItems),
+      scanAttempts: new InMemoryScanAttemptRepository(),
+      scanCursors: new InMemoryScanCursorRepository(),
+      scanFailures: new InMemoryScanFailureQueueAdapter(params.metrics),
+      scanLeases: new InMemoryScanLeaseAdapter(),
+      sourceItemIds: new SequenceIdGenerator("live-multi-provider-source-item"),
+      conversationUnitIds: new SequenceIdGenerator(
+        "live-multi-provider-conversation-unit",
+      ),
+      async close() {},
+    };
+  }
+
+  await prepareLiveE2eDatabase(params.config);
+
+  process.env.DATABASE_URL = params.config.databaseUrl;
+  const connection = new PrismaIngestionWorkerConnection(params.config.databaseUrl);
+  const ids = new RandomUuidGenerator();
+  const conversationUnits = new PrismaConversationUnitRepository(
+    connection,
+    ids,
+  );
+
+  return {
+    mode: "prisma",
+    feedItems: new PrismaFeedItemReadRepository(connection),
+    conversationUnits,
+    sourceItems: new PrismaSourceItemRepository(connection),
+    feedProjection: new PrismaFeedProjectionAdapter(connection, ids),
+    scanAttempts: new PrismaScanAttemptRepository(connection),
+    scanCursors: new PrismaScanCursorRepository(connection, ids),
+    scanFailures: new PrismaScanFailureQueueAdapter(
+      connection,
+      params.metrics,
+      ids,
+    ),
+    scanLeases: new PrismaScanLeaseAdapter(connection, ids),
+    sourceItemIds: ids,
+    conversationUnitIds: ids,
+    feedObservedAfter: params.config.feedFreshnessStartedAt,
+    close: () => connection.close(),
+  };
+};
+
+const prepareLiveE2eDatabase = async (
+  config: Extract<LivePersistenceConfig, { readonly mode: "prisma" }>,
+): Promise<void> => {
+  if (!config.migrate) {
+    return;
+  }
+
+  const result = spawnSync(
+    process.platform === "win32" ? "npx.cmd" : "npx",
+    ["prisma", "migrate", "deploy", "--schema", "prisma/schema.prisma"],
+    {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        DATABASE_URL: config.databaseUrl,
+      },
+      stdio: "inherit",
+    },
+  );
+
+  if (result.status !== 0) {
+    throw new Error("Live multi-provider E2E database migration failed");
   }
 };
 
@@ -317,16 +580,22 @@ const main = async (): Promise<void> => {
     "Live multi-provider smoke requires Reddit app-only OAuth env: REDDIT_APP_CLIENT_ID/REDDIT_APP_CLIENT_SECRET",
   );
 
-  const tenant = tenantId("tenant-live-multi-provider-summary-smoke");
-  const workspace = workspaceId("workspace-live-multi-provider-summary-smoke");
-  const interestId = "topic-live-multi-provider-summary-smoke";
+  const tenant = tenantId("00000000-0000-7000-8000-000000000901");
+  const workspace = workspaceId("00000000-0000-7000-8000-000000000902");
+  const interestId = "00000000-0000-7000-8000-000000000903";
   const metrics = new InMemoryMetricsRecorder();
-  const feedItems = new InMemoryFeedItemReadRepository();
-  const sourceItems = new InMemorySourceItemRepository();
+  const persistenceConfig = readLivePersistenceConfig();
+  const persistence = await createLivePersistence({
+    config: persistenceConfig,
+    metrics,
+  });
+  livePersistenceToClose = persistence;
   const scanReporter = new CapturingScanExecutionReporter();
   const clock = new FixedClock(sampledAt);
-  const scanIds = new SequenceIdGenerator("live-multi-provider-source-item");
-  const targets = buildScanTargets();
+  const targets = targetsForPersistenceMode(
+    buildScanTargets(),
+    persistenceConfig.mode,
+  );
   const xTwitterProvider = buildXTwitterProvider();
   const targetBySourceBinding = new Map(
     targets.map((target) => [target.sourceBindingId, target]),
@@ -365,15 +634,21 @@ const main = async (): Promise<void> => {
   );
   const executeScan = new ExecuteScanUseCase(
     sourceFetcher,
-    sourceItems,
-    new InMemoryFeedProjectionAdapter(feedItems),
-    new InMemoryScanAttemptRepository(),
-    new InMemoryScanCursorRepository(),
+    persistence.sourceItems,
+    persistence.feedProjection,
+    persistence.scanAttempts,
+    persistence.scanCursors,
     scanReporter,
-    new InMemoryScanFailureQueueAdapter(metrics),
-    new InMemoryScanLeaseAdapter(),
-    scanIds,
+    persistence.scanFailures,
+    persistence.scanLeases,
+    persistence.sourceItemIds,
     clock,
+    undefined,
+    undefined,
+    new ConversationUnitProjectionAdapter(
+      persistence.conversationUnits,
+      persistence.conversationUnitIds,
+    ),
   );
 
   const scanMetrics: ScanMetrics[] = [];
@@ -384,7 +659,7 @@ const main = async (): Promise<void> => {
         await executeScan.execute({
           tenantId: tenant,
           workspaceId: workspace,
-          scanJobId: `scan-live-multi-provider-${target.sourceBindingId}`,
+          scanJobId: scanJobIdForTarget(target),
           interestId,
           sourceBindingId: target.sourceBindingId,
           scanPolicyId: target.scanPolicyId,
@@ -398,6 +673,11 @@ const main = async (): Promise<void> => {
       );
     } catch (error) {
       const failureReason = describeError(error);
+      const fallbackUsed = shouldUsePersistedProviderFallback({
+        target,
+        error,
+        persistence,
+      });
       scanMetrics.push({
         providerKey: target.providerKey,
         sourceBindingId: target.sourceBindingId,
@@ -407,9 +687,13 @@ const main = async (): Promise<void> => {
         projected: 0,
         skippedDuplicates: 0,
         failureReason,
+        fallbackUsed,
+        fallbackReason: fallbackUsed
+          ? persistedProviderFallbackReason(target, persistence)
+          : undefined,
       });
 
-      if (allowEmptyTargets) {
+      if (allowEmptyTargets || fallbackUsed) {
         continue;
       }
 
@@ -419,7 +703,12 @@ const main = async (): Promise<void> => {
       );
     }
 
-    if (!allowEmptyTargets) {
+    const fallbackUsed = shouldUsePersistedProviderFallback({
+      target,
+      result,
+      persistence,
+    });
+    if (!allowEmptyTargets && !fallbackUsed) {
       assert(
         result.fetched > 0,
         `${target.providerKey} live scan must fetch at least one item`,
@@ -441,6 +730,10 @@ const main = async (): Promise<void> => {
       inserted: result.inserted,
       projected: result.projected,
       skippedDuplicates: result.skippedDuplicates,
+      fallbackUsed,
+      fallbackReason: fallbackUsed
+        ? persistedProviderFallbackReason(target, persistence)
+        : undefined,
     });
   }
 
@@ -452,15 +745,30 @@ const main = async (): Promise<void> => {
   const successfulTargets = targets.filter((target) =>
     succeededSourceBindingIds.has(target.sourceBindingId),
   );
+  const fallbackSourceBindingIds = new Set(
+    scanMetrics
+      .filter((scan) => scan.fallbackUsed === true)
+      .map((scan) => scan.sourceBindingId),
+  );
+  const fallbackTargets = targets.filter((target) =>
+    fallbackSourceBindingIds.has(target.sourceBindingId),
+  );
+  const nonFallbackFailures = scanMetrics.filter(
+    (scan) => scan.status === "failed" && scan.fallbackUsed !== true,
+  );
 
   if (!allowEmptyTargets) {
+    const recoveredSourceBindingIds = new Set([
+      ...succeededSourceBindingIds,
+      ...fallbackSourceBindingIds,
+    ]);
     assert(
-      scanReporter.failed.length === 0,
-      "live multi-provider scans must not report failures",
+      nonFallbackFailures.length === 0,
+      "live multi-provider scans must not have non-fallback failures",
     );
     assert(
-      scanReporter.succeeded.length === targets.length,
-      "live multi-provider scans must report every success",
+      recoveredSourceBindingIds.size === targets.length,
+      "live multi-provider scans must either succeed or use an explicit persisted fallback",
     );
   } else {
     assert(successfulTargets.length > 0, "at least one live scan must succeed");
@@ -473,10 +781,11 @@ const main = async (): Promise<void> => {
       0,
     ),
   );
-  const feed = await feedItems.list({
+  const feed = await persistence.feedItems.list({
     tenantId: tenant,
     workspaceId: workspace,
     interestId,
+    observedAfter: persistence.feedObservedAfter,
     limit: feedReadLimit,
   });
   const feedSnapshots = feed.items.map((item) => item.toSnapshot());
@@ -490,6 +799,12 @@ const main = async (): Promise<void> => {
       (item) => targetBySourceBinding.get(item.sourceBindingId)?.providerKey,
     ),
   );
+  for (const target of fallbackTargets) {
+    assert(
+      feedProviderKeys.has(target.providerKey),
+      `persisted fallback must include recent ${target.providerKey} feed items`,
+    );
+  }
   for (const target of requiredFeedTargets) {
     assert(
       feedProviderKeys.has(target.providerKey),
@@ -506,7 +821,7 @@ const main = async (): Promise<void> => {
   );
   const summaryPolicies = new InMemorySummaryPolicyRepository();
   const summaryIds = new SequenceIdGenerator("live-multi-provider-summary");
-  const summaryModel = buildSummaryModel();
+  const summaryModel = maybeWrapSummaryPromptDebugModel(buildSummaryModel());
   const summaryPreference = summaryPreferenceForRun();
   await summaryPolicies.save(
     SummaryPolicy.create({
@@ -558,7 +873,12 @@ const main = async (): Promise<void> => {
     summaryArtifacts,
     summaryPolicies,
     new NoopUserSummaryPreferenceReader(),
-    new FeedSummaryEvidenceSelector(feedItems, clock),
+    new ConversationSummaryEvidenceSelector(
+      new FeedSummaryEvidenceSelector(persistence.feedItems, clock),
+      persistence.conversationUnits,
+      persistence.conversationUnits,
+      clock,
+    ),
     summaryModel,
     summaryEvents,
     summaryIds,
@@ -601,7 +921,7 @@ const main = async (): Promise<void> => {
   );
   if (summaryModelMode === "deterministic") {
     assert(
-      artifactSnapshot.headline.startsWith("Topic summary:"),
+      artifactSnapshot.headline.startsWith("Interest summary:"),
       `summary headline must be topic-level, got ${artifactSnapshot.headline}`,
     );
   }
@@ -667,7 +987,8 @@ const main = async (): Promise<void> => {
     tenant,
     workspace,
     interestId,
-    feedItems,
+    feedItems: persistence.feedItems,
+    conversationUnits: persistence.conversationUnits,
     feedSnapshots,
     targetBySourceBinding,
     targets,
@@ -681,11 +1002,27 @@ const main = async (): Promise<void> => {
     readerSummary,
   });
 
+  const conversationUnitCount = await countConversationUnitsByRootFeedItemIds({
+    tenantId: tenant,
+    workspaceId: workspace,
+    repository: persistence.conversationUnits,
+    rootFeedItemIds: feedSnapshots.map((item) => item.id),
+  });
+  const selectedConversationUnitCountValue =
+    await countConversationUnitsByRootFeedItemIds({
+      tenantId: tenant,
+      workspaceId: workspace,
+      repository: persistence.conversationUnits,
+      rootFeedItemIds: artifactSnapshot.sourceWindow.selectedFeedItemIds,
+    });
+
   writeOptionalEvidenceArtifact({
     scanMetrics,
     feedItemCount: feedSnapshots.length,
     selectedFeedItemCount:
       artifactSnapshot.sourceWindow.selectedFeedItemIds.length,
+    conversationUnitCount,
+    selectedConversationUnitCount: selectedConversationUnitCountValue,
     selectedProviders: [...selectedProviders].sort(),
     citedProviders: [...citedProviders].sort(),
     citationCount: artifactSnapshot.citationMap.length,
@@ -727,7 +1064,8 @@ const runLiveReaderSummarySmoke = async (params: {
   readonly tenant: ReturnType<typeof tenantId>;
   readonly workspace: ReturnType<typeof workspaceId>;
   readonly interestId: string;
-  readonly feedItems: InMemoryFeedItemReadRepository;
+  readonly feedItems: FeedItemReadRepositoryPort;
+  readonly conversationUnits: ConversationUnitEvidenceRepository;
   readonly feedSnapshots: readonly {
     readonly id: string;
     readonly sourceBindingId: string;
@@ -805,10 +1143,17 @@ const runLiveReaderSummarySmoke = async (params: {
     undefined,
     buildSourceContentQualityReviewer(),
   );
-  const evidenceSelector = new RelevanceReaderSummaryEvidenceSelector(
-    rankFeedItems,
-    params.feedItems,
-    params.clock,
+  const evidenceSelector = new ConversationReaderSummaryEvidenceSelector(
+    new RelevanceReaderSummaryEvidenceSelector(
+      rankFeedItems,
+      params.feedItems,
+      params.clock,
+    ),
+    new ConversationEvidenceContextReader(
+      params.conversationUnits,
+      params.conversationUnits,
+      params.clock,
+    ),
   );
   const executeReaderSummary = new ExecuteReaderSummaryJobUseCase(
     readerSummaryJobs,
@@ -904,7 +1249,7 @@ const runLiveReaderSummarySmoke = async (params: {
     "readerSummary reader headline must not repeat the first top read title",
   );
 
-  const requiredReaderTargets = allowEmptyTargets
+  const requiredReaderTargets = allowEmptyTargets || readerSummaryModelMode !== "deterministic"
     ? params.targets.filter((target) =>
         selectedProviders.has(target.providerKey),
       )
@@ -932,12 +1277,33 @@ const runLiveReaderSummarySmoke = async (params: {
         readerSourceMixProviders.has(target.providerKey),
         `readerSummary reader source mix must include ${target.providerKey}`,
       );
+    }
+  }
+  if (!allowEmptyTargets && readerSummaryModelMode !== "deterministic") {
+    for (const providerKey of ["x-twitter", "reddit"] as const) {
+      const providerWasTargeted = params.targets.some(
+        (target) => target.providerKey === providerKey,
+      );
+      if (!providerWasTargeted) {
+        continue;
+      }
+
       assert(
-        topReadProviders.has(target.providerKey),
-        `readerSummary top reads must include ${target.providerKey}`,
+        selectedProviders.has(providerKey),
+        `readerSummary evidence window must include ${providerKey}`,
+      );
+      assert(
+        citedProviders.has(providerKey) ||
+          readerSourceMixProviders.has(providerKey) ||
+          topReadProviders.has(providerKey),
+        `readerSummary output must surface ${providerKey}`,
       );
     }
   }
+  assert(
+    topReadProviders.size >= Math.min(2, requiredProviderCount),
+    `readerSummary top reads must include a diverse provider mix, got ${[...topReadProviders].join(", ")}`,
+  );
   if (readerSummaryModelMode !== "deterministic") {
     assert(
       citedProviders.size >= Math.min(3, requiredProviderCount),
@@ -946,10 +1312,6 @@ const runLiveReaderSummarySmoke = async (params: {
     assert(
       readerSourceMixProviders.size >= Math.min(3, requiredProviderCount),
       `readerSummary source mix must include a diverse provider mix, got ${[...readerSourceMixProviders].join(", ")}`,
-    );
-    assert(
-      topReadProviders.size >= Math.min(2, requiredProviderCount),
-      `readerSummary top reads must include a diverse provider mix, got ${[...topReadProviders].join(", ")}`,
     );
   }
 
@@ -984,16 +1346,121 @@ const buildSummaryModel = (): SummaryModelPort => {
     return new DeterministicSummaryModelAdapter();
   }
 
-  return new OpenAiResponsesSummaryModelAdapter(
-    resolveOpenAiResponsesSummaryModelOptions(process.env, {
-      requireApiKey: true,
-    }),
+  if (summaryModelMode === "agent-runtime") {
+    return new LiveBudgetSummaryModel(
+      new AgentRuntimeSummaryModelAdapter({
+        client: buildAgentRuntimeClient("summary"),
+        agentProvider: readAgentRuntimeProvider(),
+        providerInstanceId: readOptionalEnv("AGENT_RUNTIME_PROVIDER_INSTANCE_ID"),
+        model: readOptionalEnv("LIVE_MULTI_PROVIDER_AGENT_RUNTIME_MODEL"),
+        timeoutMs: readPositiveIntegerEnv(
+          "AGENT_RUNTIME_SUMMARY_TIMEOUT_MS",
+          180_000,
+          1_000,
+          600_000,
+        ),
+        maxOutputTokens: liveSummaryMaxOutputTokens,
+      }),
+    );
+  }
+
+  return new LiveBudgetSummaryModel(
+    new OpenAiResponsesSummaryModelAdapter(
+      resolveOpenAiResponsesSummaryModelOptions(process.env, {
+        requireApiKey: true,
+      }),
+    ),
   );
 };
+
+const maybeWrapSummaryPromptDebugModel = (
+  model: SummaryModelPort,
+): SummaryModelPort => {
+  const debugPath = readOptionalEnv(summaryPromptDebugPathEnv);
+  if (debugPath === undefined) {
+    return model;
+  }
+
+  return new DebugDumpSummaryPromptModel(model, debugPath);
+};
+
+class DebugDumpSummaryPromptModel implements SummaryModelPort {
+  constructor(
+    private readonly delegate: SummaryModelPort,
+    private readonly debugPath: string,
+  ) {}
+
+  route(
+    input: Parameters<SummaryModelPort["route"]>[0],
+    policy: Parameters<SummaryModelPort["route"]>[1],
+    budget: Parameters<SummaryModelPort["route"]>[2],
+  ): ReturnType<SummaryModelPort["route"]> {
+    return this.delegate.route(input, policy, budget);
+  }
+
+  estimate(
+    input: Parameters<SummaryModelPort["estimate"]>[0],
+    route: Parameters<SummaryModelPort["estimate"]>[1],
+  ): ReturnType<SummaryModelPort["estimate"]> {
+    return this.delegate.estimate(input, route);
+  }
+
+  summarize(
+    input: Parameters<SummaryModelPort["summarize"]>[0],
+    route: Parameters<SummaryModelPort["summarize"]>[1],
+  ): ReturnType<SummaryModelPort["summarize"]> {
+    writeFileSync(
+      this.debugPath,
+      JSON.stringify(
+        {
+          systemPrompt: buildSummaryInstructions(input),
+          prompt: buildSummaryPromptPayload(input),
+          outputSchema: openAiSummaryJsonSchema,
+          route,
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+
+    return this.delegate.summarize(input, route);
+  }
+
+  validateRawProviderResponse(
+    attempt: Parameters<SummaryModelPort["validateRawProviderResponse"]>[0],
+  ): ReturnType<SummaryModelPort["validateRawProviderResponse"]> {
+    return this.delegate.validateRawProviderResponse(attempt);
+  }
+
+  classifyError(
+    error: Parameters<SummaryModelPort["classifyError"]>[0],
+  ): ReturnType<SummaryModelPort["classifyError"]> {
+    return this.delegate.classifyError(error);
+  }
+}
 
 const buildReaderSummaryModel = (): ReaderSummaryModelPort => {
   if (readerSummaryModelMode === "deterministic") {
     return new DeterministicReaderSummaryModelAdapter();
+  }
+
+  if (readerSummaryModelMode === "agent-runtime") {
+    return new LiveBudgetReaderSummaryModel(
+      new AgentRuntimeReaderSummaryModelAdapter({
+        client: buildAgentRuntimeClient("reader-summary"),
+        agentProvider: readAgentRuntimeProvider(),
+        providerInstanceId: readOptionalEnv("AGENT_RUNTIME_PROVIDER_INSTANCE_ID"),
+        model: readOptionalEnv("LIVE_MULTI_PROVIDER_AGENT_RUNTIME_READER_MODEL"),
+        timeoutMs: readPositiveIntegerEnv(
+          "AGENT_RUNTIME_READER_SUMMARY_TIMEOUT_MS",
+          240_000,
+          1_000,
+          600_000,
+        ),
+        maxOutputTokens: liveReaderSummaryMaxOutputTokens,
+      }),
+    );
   }
 
   return new LiveBudgetReaderSummaryModel(
@@ -1004,6 +1471,79 @@ const buildReaderSummaryModel = (): ReaderSummaryModelPort => {
     ),
   );
 };
+
+const buildAgentRuntimeClient = (service: string): GrpcAgentRuntimeClient =>
+  GrpcAgentRuntimeClient.connect({
+    address: readOptionalEnv("AGENT_RUNTIME_GRPC_ADDRESS") ?? "127.0.0.1:50052",
+    clock: new SystemClock(),
+    options: {
+      timeoutMs: readPositiveIntegerEnv(
+        "AGENT_RUNTIME_TIMEOUT_MS",
+        service === "reader-summary" ? 240_000 : 180_000,
+        1_000,
+        600_000,
+      ),
+      serviceToken: readOptionalEnv("AGENT_RUNTIME_SERVICE_TOKEN"),
+    },
+  });
+
+const readAgentRuntimeProvider = (): "codex" | "claude" => {
+  const value = readOptionalEnv("AGENT_RUNTIME_PROVIDER") ?? "codex";
+  if (value === "codex" || value === "claude") {
+    return value;
+  }
+
+  throw new Error('AGENT_RUNTIME_PROVIDER must be "codex" or "claude"');
+};
+
+class LiveBudgetSummaryModel implements SummaryModelPort {
+  constructor(private readonly delegate: SummaryModelPort) {}
+
+  route(
+    input: Parameters<SummaryModelPort["route"]>[0],
+    policy: Parameters<SummaryModelPort["route"]>[1],
+    budget: Parameters<SummaryModelPort["route"]>[2],
+  ): ReturnType<SummaryModelPort["route"]> {
+    return this.delegate.route(
+      input,
+      {
+        ...policy,
+        maxInputTokens: Math.max(policy.maxInputTokens, liveSummaryMaxInputTokens),
+        maxOutputTokens: Math.max(policy.maxOutputTokens, liveSummaryMaxOutputTokens),
+      },
+      {
+        ...budget,
+        remainingTokens: Math.max(budget.remainingTokens, liveSummaryBudgetTokens),
+      },
+    );
+  }
+
+  estimate(
+    input: Parameters<SummaryModelPort["estimate"]>[0],
+    route: Parameters<SummaryModelPort["estimate"]>[1],
+  ): ReturnType<SummaryModelPort["estimate"]> {
+    return this.delegate.estimate(input, route);
+  }
+
+  summarize(
+    input: Parameters<SummaryModelPort["summarize"]>[0],
+    route: Parameters<SummaryModelPort["summarize"]>[1],
+  ): ReturnType<SummaryModelPort["summarize"]> {
+    return this.delegate.summarize(input, route);
+  }
+
+  validateRawProviderResponse(
+    attempt: Parameters<SummaryModelPort["validateRawProviderResponse"]>[0],
+  ): ReturnType<SummaryModelPort["validateRawProviderResponse"]> {
+    return this.delegate.validateRawProviderResponse(attempt);
+  }
+
+  classifyError(
+    error: Parameters<SummaryModelPort["classifyError"]>[0],
+  ): ReturnType<SummaryModelPort["classifyError"]> {
+    return this.delegate.classifyError(error);
+  }
+}
 
 class LiveBudgetReaderSummaryModel implements ReaderSummaryModelPort {
   constructor(private readonly delegate: ReaderSummaryModelPort) {}
@@ -1134,6 +1674,7 @@ const buildScanTargets = (): readonly ScanTarget[] => {
           listing: redditListing,
           ...(redditListing === "top" ? { topTime: redditTopTime } : {}),
           ...(redditMinScore === undefined ? {} : { minScore: redditMinScore }),
+          ...redditCommentRuntimeConfig(),
           maxItems: maxItemsPerProvider,
           userAgent,
         },
@@ -1180,6 +1721,16 @@ const buildScanTargets = (): readonly ScanTarget[] => {
     ),
   ];
 };
+
+const redditCommentRuntimeConfig = (): Readonly<Record<string, unknown>> =>
+  redditIncludeComments
+    ? {
+        includeComments: true,
+        maxCommentsPerPost: redditMaxCommentsPerPost,
+        commentDepth: redditCommentDepth,
+        commentSort: redditCommentSort,
+      }
+    : { includeComments: false };
 
 const summaryPreferenceForRun = (): SourceTargetPresetSummaryPreference => {
   if (sourcePresetMode === aiDeveloperSignalSourcePreset.presetId) {
@@ -1230,6 +1781,7 @@ const presetScanTargets = (params: {
           sourceQuery: sourceQueryForPresetEntry(entry),
           config: {
             ...entry.targetConfig,
+            ...(providerKey === "reddit" ? redditCommentRuntimeConfig() : {}),
             userAgent: params.userAgent,
           },
         },
@@ -1422,10 +1974,32 @@ const writeOptionalFrontendFixture = (input: {
   );
 };
 
+const countConversationUnitsByRootFeedItemIds = async (params: {
+  readonly tenantId: ReturnType<typeof tenantId>;
+  readonly workspaceId: ReturnType<typeof workspaceId>;
+  readonly repository: ConversationUnitRepositoryPort;
+  readonly rootFeedItemIds: readonly string[];
+}): Promise<number> => {
+  if (params.rootFeedItemIds.length === 0) {
+    return 0;
+  }
+
+  const units = await params.repository.listByRootFeedItemIds({
+    tenantId: params.tenantId,
+    workspaceId: params.workspaceId,
+    rootFeedItemIds: params.rootFeedItemIds,
+    limitPerRoot: 1_000,
+  });
+
+  return units.length;
+};
+
 const writeOptionalEvidenceArtifact = (input: {
   readonly scanMetrics: readonly ScanMetrics[];
   readonly feedItemCount: number;
   readonly selectedFeedItemCount: number;
+  readonly conversationUnitCount: number;
+  readonly selectedConversationUnitCount: number;
   readonly selectedProviders: readonly LiveProviderKey[];
   readonly citedProviders: readonly string[];
   readonly citationCount: number;
@@ -1483,6 +2057,8 @@ const writeOptionalEvidenceArtifact = (input: {
           requiredProviderCount: input.targets.length,
           feedItemCount: input.feedItemCount,
           selectedFeedItemCount: input.selectedFeedItemCount,
+          conversationUnitCount: input.conversationUnitCount,
+          selectedConversationUnitCount: input.selectedConversationUnitCount,
           selectedProviders: input.selectedProviders,
           citedProviders: input.citedProviders,
           citationCount: input.citationCount,
@@ -1508,6 +2084,8 @@ const writeOptionalEvidenceArtifact = (input: {
       scans: input.scanMetrics,
       feedItems: input.feedItemCount,
       selectedFeedItems: input.selectedFeedItemCount,
+      conversationUnits: input.conversationUnitCount,
+      selectedConversationUnits: input.selectedConversationUnitCount,
       citedProviders: input.citedProviders,
       citations: input.citationCount,
       summaryModelProvider: input.summaryModelProvider,
@@ -1571,28 +2149,42 @@ const readRedditListing = (value: string): RedditPostListing => {
   return value as RedditPostListing;
 };
 
-function readSummaryModelMode(): "deterministic" | "openai-responses" {
+function readSummaryModelMode():
+  | "deterministic"
+  | "openai-responses"
+  | "agent-runtime" {
   const value =
     readOptionalEnv("LIVE_MULTI_PROVIDER_SUMMARY_MODEL") ?? "deterministic";
-  if (value === "deterministic" || value === "openai-responses") {
+  if (
+    value === "deterministic" ||
+    value === "openai-responses" ||
+    value === "agent-runtime"
+  ) {
     return value;
   }
 
   throw new Error(
-    'LIVE_MULTI_PROVIDER_SUMMARY_MODEL must be "deterministic" or "openai-responses"',
+    'LIVE_MULTI_PROVIDER_SUMMARY_MODEL must be "deterministic", "openai-responses" or "agent-runtime"',
   );
 }
 
-function readReaderSummaryModelMode(): "deterministic" | "openai-responses" {
+function readReaderSummaryModelMode():
+  | "deterministic"
+  | "openai-responses"
+  | "agent-runtime" {
   const value =
     readOptionalEnv("LIVE_MULTI_PROVIDER_READER_SUMMARY_MODEL") ??
     "deterministic";
-  if (value === "deterministic" || value === "openai-responses") {
+  if (
+    value === "deterministic" ||
+    value === "openai-responses" ||
+    value === "agent-runtime"
+  ) {
     return value;
   }
 
   throw new Error(
-    'LIVE_MULTI_PROVIDER_READER_SUMMARY_MODEL must be "deterministic" or "openai-responses"',
+    'LIVE_MULTI_PROVIDER_READER_SUMMARY_MODEL must be "deterministic", "openai-responses" or "agent-runtime"',
   );
 }
 
@@ -1631,6 +2223,46 @@ function describeError(error: unknown): string {
 
   return String(error);
 }
+
+const shouldUsePersistedProviderFallback = (params: {
+  readonly target: ScanTarget;
+  readonly persistence: LivePersistenceBundle;
+  readonly error?: unknown;
+  readonly result?: {
+    readonly fetched: number;
+    readonly inserted: number;
+    readonly projected: number;
+  };
+}): boolean => {
+  if (params.persistence.mode !== "prisma") {
+    return false;
+  }
+
+  if (params.error instanceof SourceFetchError) {
+    return (
+      params.error.retryable &&
+      (params.error.kind === "rate_limited" ||
+        params.error.kind === "unavailable" ||
+        params.error.kind === "unknown")
+    );
+  }
+
+  if (params.result !== undefined) {
+    return (
+      params.result.fetched === 0 ||
+      params.result.inserted === 0 ||
+      params.result.projected === 0
+    );
+  }
+
+  return false;
+};
+
+const persistedProviderFallbackReason = (
+  target: ScanTarget,
+  persistence: LivePersistenceBundle,
+): string =>
+  `using persisted ${target.providerKey} feed items observed after ${persistence.feedObservedAfter?.toISOString()}`;
 
 function isSourceInventoryText(value: string): boolean {
   const normalized = value.trim().toLocaleLowerCase("en-US");
@@ -1737,10 +2369,65 @@ function safeIdPart(value: string): string {
   );
 }
 
+const targetsForPersistenceMode = (
+  targets: readonly ScanTarget[],
+  mode: LivePersistenceMode,
+): readonly ScanTarget[] => {
+  if (mode === "in-memory") {
+    return targets;
+  }
+
+  return targets.map((target) => ({
+    ...target,
+    sourceBindingId: stableUuid(`source-binding:${target.sourceBindingId}`),
+    scanPolicyId: stableUuid(`scan-policy:${target.scanPolicyId}`),
+  }));
+};
+
+const scanJobIdForTarget = (target: ScanTarget): string =>
+  isUuid(target.sourceBindingId)
+    ? stableUuid(`scan-job:${target.sourceBindingId}`)
+    : `scan-live-multi-provider-${target.sourceBindingId}`;
+
+const stableUuid = (value: string): string => {
+  const digest = sha256(value);
+
+  return [
+    digest.slice(0, 8),
+    digest.slice(8, 12),
+    `7${digest.slice(13, 16)}`,
+    `8${digest.slice(17, 20)}`,
+    digest.slice(20, 32),
+  ].join("-");
+};
+
+const isUuid = (value: string): boolean =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+    value,
+  );
+
+const sameDatabaseUrl = (left: string, right: string): boolean => {
+  const normalize = (value: string): string => {
+    const url = new URL(value);
+    url.search = "";
+    url.hash = "";
+
+    return url.toString();
+  };
+
+  return normalize(left) === normalize(right);
+};
+
 const sha256 = (value: string): string =>
   createHash("sha256").update(value).digest("hex");
 
-void main().catch((error) => {
-  console.error(error instanceof Error ? (error.stack ?? error.message) : error);
-  process.exit(1);
-});
+void main()
+  .finally(async () => {
+    await livePersistenceToClose?.close();
+  })
+  .catch((error) => {
+    console.error(
+      error instanceof Error ? (error.stack ?? error.message) : error,
+    );
+    process.exit(1);
+  });

@@ -333,6 +333,9 @@ const assertReaderItem = (
       throw new Error(`${label} provider metrics must include label and value`);
     }
   }
+  if (item.previewMedia !== undefined) {
+    assertPreviewMedia(item.previewMedia, label);
+  }
   assertCitationIds(item.citationIds, knownCitationIds, label);
   assertReaderItemProviderMatchesEvidence(
     item,
@@ -366,6 +369,33 @@ const assertReaderItemProviderMatchesEvidence = (
         `${label} confirmed provider must exist in selected evidence`,
       );
     }
+  }
+};
+
+const assertPreviewMedia = (
+  previewMedia: ReaderSummaryItem["previewMedia"],
+  label: string,
+): void => {
+  if (previewMedia === undefined) {
+    return;
+  }
+  if (
+    !["image", "video"].includes(previewMedia.kind) ||
+    previewMedia.url.trim().length === 0
+  ) {
+    throw new Error(`${label} preview media must include kind and URL`);
+  }
+  if (
+    previewMedia.sourceUrl !== undefined &&
+    previewMedia.sourceUrl.trim().length === 0
+  ) {
+    throw new Error(`${label} preview media source URL must be non-empty`);
+  }
+  if (
+    previewMedia.altText !== undefined &&
+    previewMedia.altText.trim().length === 0
+  ) {
+    throw new Error(`${label} preview media alt text must be non-empty`);
   }
 };
 

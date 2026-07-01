@@ -1,5 +1,11 @@
 import type { Provider } from "@nestjs/common";
 import {
+  CONVERSATION_SIGNAL_BASELINE_REPOSITORY,
+  CONVERSATION_UNIT_REPOSITORY,
+  type ConversationSignalBaselineRepositoryPort,
+  type ConversationUnitRepositoryPort,
+} from "@social-monitor/conversation/ports";
+import {
   FEED_ITEM_READ_REPOSITORY,
   type FeedItemReadRepositoryPort,
 } from "@social-monitor/feed/ports";
@@ -14,11 +20,15 @@ import { RankFeedItemsUseCase } from "@social-monitor/relevance/features/rank-fe
 import { CryptoIdGenerator, SystemClock } from "@social-monitor/shared-kernel";
 
 import { ReaderSummaryArtifactContextProvider } from "../../adapters/context/reader-summary-artifact-context.provider";
+import { ConversationEvidenceContextReader } from "../../adapters/evidence/conversation-evidence-context.reader";
+import { ConversationReaderSummaryEvidenceSelector } from "../../adapters/evidence/conversation-reader-summary-evidence.selector";
 import { FeedReaderSummaryFreshnessProbe } from "../../adapters/evidence/feed-reader-summary-freshness.probe";
+import { FeedReaderSummaryPreviewMediaEnricher } from "../../adapters/evidence/feed-reader-summary-preview-media.enricher";
 import { RelevanceReaderSummaryEvidenceSelector } from "../../adapters/evidence/relevance-reader-summary-evidence.selector";
 import { SummaryMemoryReaderSummaryContextProvider } from "../../adapters/memory/summary-memory-reader-summary-context.provider";
 import { StoryRankingMetricsRecorder } from "../../adapters/metrics/story-ranking-metrics.recorder";
 import { ReaderSummaryJobQueuePublisherAdapter } from "../../adapters/messaging/reader-summary-job-queue.adapter";
+import { AgentRuntimeReaderSummaryModelAdapter } from "../../adapters/model/agent-runtime-reader-summary-model.adapter";
 import { DeterministicReaderSummaryModelAdapter } from "../../adapters/model/deterministic-reader-summary-model.adapter";
 import { MeteredReaderSummaryModelAdapter } from "../../adapters/model/metered-reader-summary-model.adapter";
 import {
@@ -46,6 +56,7 @@ import {
   type ReaderSummaryJobRepositoryPort,
   type ReaderSummaryJobQueuePort,
   type ReaderSummaryPolicyRepositoryPort,
+  type ReaderSummaryPreviewMediaEnricherPort,
   type StoryRankingMetricsPort,
   type SummaryEventPublisherPort,
   type SummaryMemoryPort,
@@ -60,6 +71,7 @@ import {
   READER_SUMMARY_MODEL_PROVIDER_MODE,
   READER_SUMMARY_OPENAI_RESPONSES_MODEL_OPTIONS,
   READER_SUMMARY_POLICY_REPOSITORY,
+  READER_SUMMARY_PREVIEW_MEDIA_ENRICHER,
   SUMMARY_EVENT_PUBLISHER,
   SUMMARY_MEMORY,
   SUMMARY_USER_SUMMARY_PREFERENCE_READER,
@@ -187,13 +199,35 @@ export const summaryReaderSummaryProviders: Provider[] = [
     provide: READER_SUMMARY_EVIDENCE_SELECTOR,
     useFactory: (
       selector: RelevanceReaderSummaryEvidenceSelector,
-    ): ReaderSummaryEvidenceSelectorPort => selector,
-    inject: [RelevanceReaderSummaryEvidenceSelector],
+      conversationUnits: ConversationUnitRepositoryPort,
+      conversationBaselines: ConversationSignalBaselineRepositoryPort,
+    ): ReaderSummaryEvidenceSelectorPort =>
+      new ConversationReaderSummaryEvidenceSelector(
+        selector,
+        new ConversationEvidenceContextReader(
+          conversationUnits,
+          conversationBaselines,
+          new SystemClock(),
+        ),
+      ),
+    inject: [
+      RelevanceReaderSummaryEvidenceSelector,
+      CONVERSATION_UNIT_REPOSITORY,
+      CONVERSATION_SIGNAL_BASELINE_REPOSITORY,
+    ],
   },
   {
     provide: FeedReaderSummaryFreshnessProbe,
     useFactory: (feedItems: FeedItemReadRepositoryPort) =>
       new FeedReaderSummaryFreshnessProbe(feedItems, new SystemClock()),
+    inject: [FEED_ITEM_READ_REPOSITORY],
+  },
+  {
+    provide: READER_SUMMARY_PREVIEW_MEDIA_ENRICHER,
+    useFactory: (
+      feedItems: FeedItemReadRepositoryPort,
+    ): ReaderSummaryPreviewMediaEnricherPort =>
+      new FeedReaderSummaryPreviewMediaEnricher(feedItems),
     inject: [FEED_ITEM_READ_REPOSITORY],
   },
   {
@@ -222,18 +256,23 @@ export const summaryReaderSummaryProviders: Provider[] = [
     useFactory: (
       mode: ReaderSummaryModelProviderMode,
       deterministicReaderSummaryModel: DeterministicReaderSummaryModelAdapter,
+      agentRuntimeReaderSummaryModel: AgentRuntimeReaderSummaryModelAdapter,
       openAiReaderSummaryModel: OpenAiResponsesReaderSummaryModelAdapter,
       metrics: InMemoryMetricsRecorder,
-    ) =>
-      new MeteredReaderSummaryModelAdapter(
+    ) => {
+      const selectedModel =
         mode === "openai-responses"
           ? openAiReaderSummaryModel
-          : deterministicReaderSummaryModel,
-        metrics,
-      ),
+          : mode === "agent-runtime"
+            ? agentRuntimeReaderSummaryModel
+            : deterministicReaderSummaryModel;
+
+      return new MeteredReaderSummaryModelAdapter(selectedModel, metrics);
+    },
     inject: [
       READER_SUMMARY_MODEL_PROVIDER_MODE,
       DeterministicReaderSummaryModelAdapter,
+      AgentRuntimeReaderSummaryModelAdapter,
       OpenAiResponsesReaderSummaryModelAdapter,
       InMemoryMetricsRecorder,
     ],
@@ -298,10 +337,17 @@ export const summaryReaderSummaryProviders: Provider[] = [
     useFactory: (
       readerSummaryArtifacts: ReaderSummaryArtifactRepositoryPort,
       freshness: FeedReaderSummaryFreshnessProbe,
-    ) => new GetReaderSummaryUseCase(readerSummaryArtifacts, freshness),
+      previewMediaEnricher: ReaderSummaryPreviewMediaEnricherPort,
+    ) =>
+      new GetReaderSummaryUseCase(
+        readerSummaryArtifacts,
+        freshness,
+        previewMediaEnricher,
+      ),
     inject: [
       READER_SUMMARY_ARTIFACT_REPOSITORY,
       FeedReaderSummaryFreshnessProbe,
+      READER_SUMMARY_PREVIEW_MEDIA_ENRICHER,
     ],
   },
   {
@@ -309,10 +355,17 @@ export const summaryReaderSummaryProviders: Provider[] = [
     useFactory: (
       readerSummaryArtifacts: ReaderSummaryArtifactRepositoryPort,
       freshness: FeedReaderSummaryFreshnessProbe,
-    ) => new ListReaderSummariesUseCase(readerSummaryArtifacts, freshness),
+      previewMediaEnricher: ReaderSummaryPreviewMediaEnricherPort,
+    ) =>
+      new ListReaderSummariesUseCase(
+        readerSummaryArtifacts,
+        freshness,
+        previewMediaEnricher,
+      ),
     inject: [
       READER_SUMMARY_ARTIFACT_REPOSITORY,
       FeedReaderSummaryFreshnessProbe,
+      READER_SUMMARY_PREVIEW_MEDIA_ENRICHER,
     ],
   },
   {

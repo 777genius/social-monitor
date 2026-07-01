@@ -8,6 +8,14 @@ import type {
 import { interestReaderSummaryScope } from '../../domain';
 import { SummaryMemoryReaderSummaryContextProvider } from './summary-memory-reader-summary-context.provider';
 
+const readerPeriod = {
+  cadence: 'daily' as const,
+  startedAt: new Date('2026-06-26T00:00:00.000Z'),
+  endedAt: new Date('2026-06-27T00:00:00.000Z'),
+  timezone: 'UTC',
+  periodKey: 'daily:2026-06-26T00:00:00.000Z:2026-06-27T00:00:00.000Z:UTC',
+};
+
 describe('SummaryMemoryReaderSummaryContextProvider', () => {
   it('maps available summary memory into a reader context artifact', async () => {
     const memory = new CapturingSummaryMemory({
@@ -26,6 +34,7 @@ describe('SummaryMemoryReaderSummaryContextProvider', () => {
       tenantId: tenantId('tenant-memory-reader'),
       workspaceId: workspaceId('workspace-memory-reader'),
       scope: interestReaderSummaryScope('interest-ai'),
+      period: readerPeriod,
       userId: 'user-1',
       subscriptionId: 'subscription-1',
       evidence: makeReaderEvidenceSelection(),
@@ -52,6 +61,7 @@ describe('SummaryMemoryReaderSummaryContextProvider', () => {
       {
         artifactId: 'summary-memory:interest:interest-ai',
         scope: interestReaderSummaryScope('interest-ai'),
+        period: readerPeriod,
         summaryText: expect.stringContaining('[REDACTED]'),
         generatedAt: new Date('2026-06-26T08:00:00.000Z'),
         freshness: 'fresh',
@@ -71,6 +81,7 @@ describe('SummaryMemoryReaderSummaryContextProvider', () => {
       tenantId: tenantId('tenant-memory-reader'),
       workspaceId: workspaceId('workspace-memory-reader'),
       scope: interestReaderSummaryScope('interest-ai'),
+      period: readerPeriod,
       evidence: makeReaderEvidenceSelection(),
       requestedAt: new Date('2026-06-26T08:01:00.000Z'),
     })).resolves.toEqual([]);
@@ -89,6 +100,7 @@ describe('SummaryMemoryReaderSummaryContextProvider', () => {
       tenantId: tenantId('tenant-memory-reader'),
       workspaceId: workspaceId('workspace-memory-reader'),
       scope: interestReaderSummaryScope('interest-ai'),
+      period: readerPeriod,
       evidence: makeReaderEvidenceSelection(),
       requestedAt: new Date('2026-06-26T08:01:00.000Z'),
     });
@@ -114,6 +126,7 @@ describe('SummaryMemoryReaderSummaryContextProvider', () => {
       tenantId: tenantId('tenant-memory-reader'),
       workspaceId: workspaceId('workspace-memory-reader'),
       scope: interestReaderSummaryScope('interest-ai'),
+      period: readerPeriod,
       evidence: makeReaderEvidenceSelection(),
       requestedAt: new Date('2026-06-26T08:01:00.000Z'),
     });
