@@ -1,25 +1,5 @@
 part of 'reader_summary_brief_surface.dart';
 
-final class _BriefText {
-  const _BriefText(this.text) : url = null;
-  const _BriefText.link(this.text, this.url);
-
-  final String text;
-  final String? url;
-}
-
-List<_BriefText> _joinedReadLinks(List<TopRead> reads) {
-  final spans = <_BriefText>[];
-  for (var index = 0; index < reads.length; index += 1) {
-    final read = reads[index];
-    if (index > 0) {
-      spans.add(_BriefText(index == reads.length - 1 ? ' and ' : ', '));
-    }
-    spans.add(_BriefText.link(_shortTitle(read.title), read.canonicalUrl));
-  }
-  return spans;
-}
-
 TopRead? _firstReadForProvider(List<TopRead> reads, String providerKey) {
   for (final read in reads) {
     if (read.providerKey == providerKey) {
@@ -27,6 +7,61 @@ TopRead? _firstReadForProvider(List<TopRead> reads, String providerKey) {
     }
   }
   return null;
+}
+
+String _ensureSentence(String value) {
+  final trimmed = value.trim();
+  if (trimmed.isEmpty) {
+    return 'New signals are worth checking first.';
+  }
+  return trimmed.endsWith('.') ? trimmed : '$trimmed.';
+}
+
+List<String> _summaryCitationIds(ReaderSummaryContent content) {
+  for (final section in content.interestSections) {
+    final ids = _uniqueCitationIds(section.citationIds);
+    if (ids.isNotEmpty) {
+      return ids.take(3).toList(growable: false);
+    }
+  }
+
+  return _uniqueCitationIds(
+    content.topReads.expand((read) => read.citationIds),
+  ).take(3).toList(growable: false);
+}
+
+List<String> _uniqueCitationIds(Iterable<String> ids) {
+  final seen = <String>{};
+  final unique = <String>[];
+  for (final id in ids) {
+    final value = id.trim();
+    if (value.isNotEmpty && seen.add(value)) {
+      unique.add(value);
+    }
+  }
+  return unique;
+}
+
+List<SummaryCitation> _citationsForIds(
+  Iterable<String> ids,
+  Map<String, SummaryCitation> citationsById,
+) {
+  return _uniqueCitationIds(ids)
+      .map((id) => citationsById[id])
+      .whereType<SummaryCitation>()
+      .toList(growable: false);
+}
+
+String _citationLabel(
+  SummaryCitation citation,
+  Map<String, SummaryCitation> citationsById,
+) {
+  final match = RegExp(r'\[\d+\]').firstMatch(citation.sourceLabel);
+  if (match != null) {
+    return match.group(0)!;
+  }
+  final index = citationsById.keys.toList(growable: false).indexOf(citation.id);
+  return '[${index < 0 ? 1 : index + 1}]';
 }
 
 String _primaryTheme(ReaderSummaryContent content) {
@@ -61,30 +96,6 @@ bool _isSourceInventoryHeadline(String value) {
 String _headlineCopy(String primaryTheme) {
   final value = _cleanSentence(primaryTheme);
   return value.endsWith('.') ? value : '$value.';
-}
-
-String _bestReason(TopRead read) {
-  final candidates = [...read.whyImportant, read.reason, read.whyNow];
-  for (final candidate in candidates) {
-    final value = candidate.trim();
-    if (value.isNotEmpty && !_isTechnicalEvidenceText(value)) {
-      return value;
-    }
-  }
-  if (read.providerMetrics.isNotEmpty) {
-    return _providerMetricSummary(read.providerMetrics.first);
-  }
-  return 'Strong source signal in the current monitoring window.';
-}
-
-String? _readMetricSummary(TopRead read) {
-  for (final metric in read.providerMetrics) {
-    final value = _providerMetricSummary(metric);
-    if (!_isTechnicalEvidenceText(value)) {
-      return value;
-    }
-  }
-  return null;
 }
 
 String? _citationSnippet(SummaryCitation citation) {

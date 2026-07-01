@@ -1,3 +1,4 @@
+import '../value_objects/preview_media.dart';
 import '../value_objects/provider_metric_label.dart';
 import '../value_objects/signal_score.dart';
 
@@ -16,6 +17,7 @@ final class TopRead {
     required this.whyNow,
     required this.citationIds,
     this.canonicalUrl,
+    this.previewMedia,
   });
 
   final String title;
@@ -31,6 +33,7 @@ final class TopRead {
   final String whyNow;
   final List<String> citationIds;
   final String? canonicalUrl;
+  final PreviewMedia? previewMedia;
 }
 
 final class TopReadConfidence {

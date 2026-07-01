@@ -43,16 +43,8 @@ class _SummariesFeaturePageState extends State<SummariesFeaturePage> {
           return CustomScrollView(
             slivers: [
               SliverToBoxAdapter(
-                child: const AppSectionHeader(
-                  eyebrow: 'Intelligence',
-                  title: 'Summaries',
-                  description:
-                      'Review the workspace summary and source coverage.',
-                ),
-              ),
-              SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.only(top: AppSpacing.md),
+                  padding: const EdgeInsets.only(top: AppSpacing.xs),
                   child: _SummariesBody(store: widget.store),
                 ),
               ),
@@ -151,6 +143,8 @@ class _SummariesBody extends StatelessWidget {
           lastReaderActionIdempotencyKey: store.lastReaderActionIdempotencyKey,
           selectedPeriod: store.selectedSummaryPeriod,
           selectedPeriodPreset: store.selectedSummaryPeriodPreset,
+          availableSummaryPeriods: store.availableWorkspaceSummaryPeriods,
+          canNavigateToPreviousPeriod: store.canShowPreviousSummaryPeriod,
           canNavigateToNextPeriod: store.canShowNextSummaryPeriod,
           isCurrentPeriod: store.isSelectedSummaryPeriodCurrent,
           onPeriodChanged: (preset) =>

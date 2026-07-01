@@ -99,6 +99,9 @@ final class GeneratedSummaryReviewCatalog implements SummaryReviewCatalog {
           current: dto.current == null
               ? null
               : _mapper.readerSummaryToDomain(dto.current!),
+          availablePeriods: dto.availablePeriods
+              .map(_mapper.summaryPeriodToDomain)
+              .toList(growable: false),
         ),
       ),
       onFailure: Result<WorkspaceSummarySnapshot>.failure,

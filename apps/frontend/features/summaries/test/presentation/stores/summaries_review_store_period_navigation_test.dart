@@ -19,11 +19,33 @@ import 'package:social_monitor_summaries/src/presentation/workflows/summaries_re
 import '../../support/summaries_test_fixtures.dart';
 
 void main() {
-  test('loads the selected ISO week from a calendar date', () async {
-    final availablePeriod = SummaryPeriod(
+  test('does not navigate to periods without a workspace summary', () async {
+    final apiClient = InMemorySummariesApiClient(
+      items: [summaryApiDto()],
+      workspaceSummary: readerSummaryApiDto(),
+    );
+    final store = _store(apiClient);
+
+    await store.loadWorkspaceSummary();
+    final selectedPeriod = store.selectedSummaryPeriod;
+
+    expect(store.canShowPreviousSummaryPeriod, isFalse);
+
+    await store.showPreviousWorkspaceSummaryPeriod();
+
+    expect(store.selectedSummaryPeriod, selectedPeriod);
+  });
+
+  test('navigates only through available workspace summary periods', () async {
+    final currentWeeklyPeriod = SummaryPeriodPreset.weekly.resolve(
+      now: DateTime.utc(2026, 6, 30, 12),
+    );
+    final previousWeeklyPeriod = SummaryPeriod(
       cadence: SummaryPeriodCadence.weekly,
-      startedAt: DateTime.utc(2025, 7, 7),
-      endedAt: DateTime.utc(2025, 7, 14),
+      startedAt: currentWeeklyPeriod.startedAt.subtract(
+        const Duration(days: 7),
+      ),
+      endedAt: currentWeeklyPeriod.startedAt,
       timezone: 'UTC',
     );
     final apiClient = InMemorySummariesApiClient(
@@ -32,8 +54,14 @@ void main() {
       workspaceSummaryAvailablePeriods: [
         summaryPeriodApiDto(
           cadence: 'weekly',
-          startedAt: availablePeriod.startedAt,
-          endedAt: availablePeriod.endedAt,
+          startedAt: previousWeeklyPeriod.startedAt,
+          endedAt: previousWeeklyPeriod.endedAt,
+          periodKey: null,
+        ),
+        summaryPeriodApiDto(
+          cadence: 'weekly',
+          startedAt: currentWeeklyPeriod.startedAt,
+          endedAt: currentWeeklyPeriod.endedAt,
           periodKey: null,
         ),
       ],
@@ -41,46 +69,22 @@ void main() {
     final store = _store(apiClient);
 
     await store.selectWorkspaceSummaryPeriod(SummaryPeriodPreset.weekly);
-    await store.selectWorkspaceSummaryCalendarDate(DateTime(2025, 7, 9));
 
-    final period = apiClient.loadWorkspaceSummaryRequests.last.period;
-    expect(store.selectedSummaryPeriodPreset, SummaryPeriodPreset.weekly);
-    expect(period.cadence, SummaryPeriodCadence.weekly);
-    expect(period.startedAt, DateTime.utc(2025, 7, 7));
-    expect(period.endedAt, DateTime.utc(2025, 7, 14));
-    expect(period.timezone, 'UTC');
-  });
+    expect(store.canShowPreviousSummaryPeriod, isTrue);
 
-  test('loads the selected month from a calendar date', () async {
-    final availablePeriod = SummaryPeriod(
-      cadence: SummaryPeriodCadence.monthly,
-      startedAt: DateTime.utc(2025, 5),
-      endedAt: DateTime.utc(2025, 6),
-      timezone: 'UTC',
+    await store.showPreviousWorkspaceSummaryPeriod();
+
+    expect(store.selectedSummaryPeriod.endedAt, previousWeeklyPeriod.endedAt);
+    expect(store.canShowNextSummaryPeriod, isTrue);
+    expect(
+      apiClient.loadWorkspaceSummaryRequests.last.period.endedAt,
+      previousWeeklyPeriod.endedAt,
     );
-    final apiClient = InMemorySummariesApiClient(
-      items: [summaryApiDto()],
-      workspaceSummary: readerSummaryApiDto(),
-      workspaceSummaryAvailablePeriods: [
-        summaryPeriodApiDto(
-          cadence: 'monthly',
-          startedAt: availablePeriod.startedAt,
-          endedAt: availablePeriod.endedAt,
-          periodKey: null,
-        ),
-      ],
-    );
-    final store = _store(apiClient);
 
-    await store.selectWorkspaceSummaryPeriod(SummaryPeriodPreset.monthly);
-    await store.selectWorkspaceSummaryCalendarDate(DateTime(2025, 5, 23));
+    await store.showNextWorkspaceSummaryPeriod();
 
-    final period = apiClient.loadWorkspaceSummaryRequests.last.period;
-    expect(store.selectedSummaryPeriodPreset, SummaryPeriodPreset.monthly);
-    expect(period.cadence, SummaryPeriodCadence.monthly);
-    expect(period.startedAt, DateTime.utc(2025, 5));
-    expect(period.endedAt, DateTime.utc(2025, 6));
-    expect(period.timezone, 'UTC');
+    expect(store.selectedSummaryPeriod.endedAt, currentWeeklyPeriod.endedAt);
+    expect(store.isSelectedSummaryPeriodCurrent, isTrue);
   });
 }
 

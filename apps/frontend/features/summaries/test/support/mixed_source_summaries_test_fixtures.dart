@@ -55,8 +55,11 @@ ReaderSummaryApiDto mixedSourceReaderSummaryApiDto() {
           matchedRules: ['provider:reddit', 'interest:ai-developer-tools'],
           signalScore: 0.94,
           providerMetrics: [
-            ProviderMetricApiDto(label: 'Reddit score', value: '540'),
-            ProviderMetricApiDto(label: 'Comments', value: '126'),
+            ProviderMetricApiDto(
+              label: 'Reddit evidence',
+              value: '1,214 score, 246 comments, 71% upvoted',
+            ),
+            ProviderMetricApiDto(label: 'Score', value: '1,214'),
           ],
           whyImportant: ['Shows what practitioners are struggling with.'],
           whyNow: 'Current summary window includes an active Reddit thread.',

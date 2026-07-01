@@ -4,6 +4,7 @@
 
 import 'package:json_annotation/json_annotation.dart';
 
+import 'reader_summary_preview_media_dto.dart';
 import 'reader_summary_provider_metric_dto.dart';
 import 'reader_summary_reader_item_confidence_dto.dart';
 import 'reader_summary_reader_item_dto_primary_action_kind_primary_action_kind.dart';
@@ -28,6 +29,7 @@ class ReaderSummaryReaderItemDto {
     required this.whyImportant,
     required this.whyNow,
     this.canonicalUrl,
+    this.previewMedia,
   });
 
   factory ReaderSummaryReaderItemDto.fromJson(Map<String, Object?> json) =>
@@ -39,6 +41,7 @@ class ReaderSummaryReaderItemDto {
   final List<String> confirmedProviderKeys;
   final List<String> matchedInterestIds;
   final List<String> matchedRules;
+  final ReaderSummaryPreviewMediaDto? previewMedia;
   final ReaderSummaryReaderItemDtoPrimaryActionKindPrimaryActionKind
   primaryActionKind;
   final String providerKey;

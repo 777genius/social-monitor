@@ -3,11 +3,15 @@ import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 
 import '../../domain/aggregates/reader_summary.dart';
 
+part 'workspace_summary_period_calendar_dialog.dart';
+
 class WorkspaceSummaryPeriodToolbar extends StatelessWidget {
   const WorkspaceSummaryPeriodToolbar({
     super.key,
     required this.selectedPeriod,
     required this.selectedPreset,
+    required this.availableSummaryPeriods,
+    required this.canNavigateToPreviousPeriod,
     required this.canNavigateToNextPeriod,
     required this.isCurrentPeriod,
     required this.onPeriodChanged,
@@ -20,6 +24,8 @@ class WorkspaceSummaryPeriodToolbar extends StatelessWidget {
 
   final SummaryPeriod selectedPeriod;
   final SummaryPeriodPreset selectedPreset;
+  final List<SummaryPeriod> availableSummaryPeriods;
+  final bool canNavigateToPreviousPeriod;
   final bool canNavigateToNextPeriod;
   final bool isCurrentPeriod;
   final ValueChanged<SummaryPeriodPreset> onPeriodChanged;
@@ -57,7 +63,9 @@ class WorkspaceSummaryPeriodToolbar extends StatelessWidget {
                 IconButton(
                   tooltip: 'Previous period',
                   icon: const Icon(Icons.chevron_left),
-                  onPressed: onPreviousPeriod,
+                  onPressed: canNavigateToPreviousPeriod
+                      ? onPreviousPeriod
+                      : null,
                 ),
                 IconButton(
                   tooltip: 'Current period',
@@ -100,13 +108,17 @@ class WorkspaceSummaryPeriodToolbar extends StatelessWidget {
       firstDate,
       lastDate,
     );
-    final picked = await showDatePicker(
+    final selectablePeriods = _selectablePeriods(availableSummaryPeriods);
+    final picked = await showDialog<DateTime>(
       context: context,
-      initialDate: initialDate,
-      firstDate: firstDate,
-      lastDate: lastDate,
-      helpText: 'Choose ${selectedPreset.label.toLowerCase()} period',
-      fieldLabelText: 'Summary period date',
+      builder: (context) => _SummaryPeriodDateDialog(
+        initialDate: initialDate,
+        firstDate: firstDate,
+        lastDate: lastDate,
+        selectedPreset: selectedPreset,
+        selectablePeriods: selectablePeriods,
+        calendarNow: calendarNow,
+      ),
     );
 
     if (picked != null) {
@@ -127,14 +139,14 @@ class _SummaryPeriodHeader extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Workspace summary',
+          'Summaries',
           style: textTheme.titleMedium?.copyWith(
             fontWeight: FontWeight.w800,
             letterSpacing: 0,
           ),
         ),
         Text(
-          'Shared UTC period: ${selectedPeriod.utcRangeLabel}',
+          selectedPeriod.utcRangeLabel,
           softWrap: true,
           style: textTheme.bodySmall?.copyWith(letterSpacing: 0),
         ),
@@ -249,4 +261,47 @@ DateTime _clampDate(DateTime value, DateTime firstDate, DateTime lastDate) {
   }
 
   return value;
+}
+
+List<SummaryPeriod> _selectablePeriods(List<SummaryPeriod> availablePeriods) {
+  if (availablePeriods.isEmpty) {
+    return const [];
+  }
+  final periodsByKey = <String, SummaryPeriod>{};
+  void add(SummaryPeriod period) {
+    periodsByKey[_summaryPeriodKey(period)] = period;
+  }
+
+  for (final period in availablePeriods) {
+    add(period);
+  }
+  return periodsByKey.values.toList(growable: false);
+}
+
+bool _hasAvailablePeriodForDate({
+  required DateTime date,
+  required SummaryPeriodPreset preset,
+  required List<SummaryPeriod> availablePeriods,
+  required DateTime? calendarNow,
+}) {
+  final period = preset.resolveForCalendarDate(date, now: calendarNow);
+  return availablePeriods.any(
+    (available) => _sameSummaryPeriod(available, period),
+  );
+}
+
+bool _sameSummaryPeriod(SummaryPeriod left, SummaryPeriod right) {
+  return left.cadence == right.cadence &&
+      _datePickerDate(left.startedAt) == _datePickerDate(right.startedAt) &&
+      _datePickerDate(left.endedAt) == _datePickerDate(right.endedAt) &&
+      left.timezone == right.timezone;
+}
+
+String _summaryPeriodKey(SummaryPeriod period) {
+  return [
+    period.cadence.name,
+    period.startedAt.toUtc().toIso8601String(),
+    period.endedAt.toUtc().toIso8601String(),
+    period.timezone,
+  ].join('|');
 }

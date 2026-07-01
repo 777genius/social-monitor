@@ -1,9 +1,14 @@
 part of 'reader_summary_brief_surface.dart';
 
 class _AiBriefCopy extends StatelessWidget {
-  const _AiBriefCopy({required this.content, required this.onOpenUrl});
+  const _AiBriefCopy({
+    required this.content,
+    required this.citationsById,
+    required this.onOpenUrl,
+  });
 
   final ReaderSummaryContent content;
+  final Map<String, SummaryCitation> citationsById;
   final ValueChanged<String> onOpenUrl;
 
   @override
@@ -17,6 +22,31 @@ class _AiBriefCopy extends StatelessWidget {
     final topLinks = content.topReads.take(3).toList(growable: false);
     final xRead = _firstReadForProvider(content.topReads, 'x-twitter');
     final redditRead = _firstReadForProvider(content.topReads, 'reddit');
+    final sourceNoteSpans = xRead == null
+        ? const [
+            _BriefText(
+              'Keep claims as hypotheses until a second source confirms them.',
+            ),
+          ]
+        : [
+            const _BriefText('Source note: '),
+            _BriefText.link(_shortTitle(xRead.title), xRead.canonicalUrl),
+            const _BriefText(
+              ' has enough engagement for discovery, but keep the claim unconfirmed until GitHub, HN, RSS, or Reddit confirms it.',
+            ),
+            if (redditRead != null) ...[
+              const _BriefText(' Reddit adds practical context through '),
+              _BriefText.link(
+                _shortTitle(redditRead.title),
+                redditRead.canonicalUrl,
+              ),
+              const _BriefText('.'),
+            ],
+          ];
+    final sourceNoteCitationIds = _uniqueCitationIds([
+      ...?xRead?.citationIds,
+      ...?redditRead?.citationIds,
+    ]);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -39,58 +69,80 @@ class _AiBriefCopy extends StatelessWidget {
           ),
         ),
         const SizedBox(height: AppSpacing.sm),
-        _LinkedBriefText(
+        _CitedBriefText(
+          keyBase: 'reader-summary-lede',
           spans: [
-            const _BriefText('Summary: '),
-            _BriefText('$firstTopicInsight.'),
-            if (topLinks.isNotEmpty) const _BriefText(' Key links: '),
-            ..._joinedReadLinks(topLinks),
-            if (topLinks.isNotEmpty)
-              const _BriefText(' - these are the most useful first reads.'),
+            const _BriefText('Summary: ', strong: true),
+            _BriefText(_ensureSentence(firstTopicInsight)),
           ],
+          citationIds: _summaryCitationIds(content),
+          citationsById: citationsById,
           onOpenUrl: onOpenUrl,
         ),
-        const SizedBox(height: AppSpacing.sm),
-        _LinkedBriefText(
-          spans: [
-            if (xRead != null) ...[
-              const _BriefText('Source note: '),
-              _BriefText.link(_shortTitle(xRead.title), xRead.canonicalUrl),
-              const _BriefText(
-                ' has enough engagement to be useful for discovery, but keep the claim unconfirmed until GitHub, HN, RSS, or Reddit confirms it.',
-              ),
-            ] else ...[
-              const _BriefText(
-                'Keep claims as hypotheses until a second source confirms them.',
-              ),
-            ],
-            if (redditRead != null) ...[
-              const _BriefText(' Reddit adds practical context through '),
-              _BriefText.link(
-                _shortTitle(redditRead.title),
-                redditRead.canonicalUrl,
-              ),
-              const _BriefText('.'),
-            ],
+        if (topLinks.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            'Key links',
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          for (final entry in topLinks.indexed) ...[
+            _CitedBriefText(
+              keyBase: 'reader-summary-key-link-${entry.$1}',
+              spans: [
+                const _BriefText('- '),
+                _BriefText.link(
+                  _shortTitle(entry.$2.title),
+                  entry.$2.canonicalUrl,
+                ),
+              ],
+              citationIds: entry.$2.citationIds,
+              citationsById: citationsById,
+              onOpenUrl: onOpenUrl,
+            ),
+            if (entry.$1 != topLinks.length - 1)
+              const SizedBox(height: AppSpacing.xs),
           ],
+        ],
+        const SizedBox(height: AppSpacing.sm),
+        _CitedBriefText(
+          keyBase: 'reader-summary-source-note',
+          spans: sourceNoteSpans,
+          citationIds: sourceNoteCitationIds,
+          citationsById: citationsById,
           onOpenUrl: onOpenUrl,
+          muted: true,
         ),
       ],
     );
   }
 }
 
-class _LinkedBriefText extends StatefulWidget {
-  const _LinkedBriefText({required this.spans, required this.onOpenUrl});
+class _CitedBriefText extends StatefulWidget {
+  const _CitedBriefText({
+    required this.keyBase,
+    required this.spans,
+    required this.citationIds,
+    required this.citationsById,
+    required this.onOpenUrl,
+    this.muted = false,
+  });
 
+  final String keyBase;
   final List<_BriefText> spans;
+  final List<String> citationIds;
+  final Map<String, SummaryCitation> citationsById;
   final ValueChanged<String> onOpenUrl;
+  final bool muted;
 
   @override
-  State<_LinkedBriefText> createState() => _LinkedBriefTextState();
+  State<_CitedBriefText> createState() => _CitedBriefTextState();
 }
 
-class _LinkedBriefTextState extends State<_LinkedBriefText> {
+class _CitedBriefTextState extends State<_CitedBriefText> {
   late List<TapGestureRecognizer?> _recognizers;
 
   @override
@@ -100,7 +152,7 @@ class _LinkedBriefTextState extends State<_LinkedBriefText> {
   }
 
   @override
-  void didUpdateWidget(covariant _LinkedBriefText oldWidget) {
+  void didUpdateWidget(covariant _CitedBriefText oldWidget) {
     super.didUpdateWidget(oldWidget);
     _disposeRecognizers();
     _recognizers = _buildRecognizers();
@@ -132,136 +184,125 @@ class _LinkedBriefTextState extends State<_LinkedBriefText> {
 
   @override
   Widget build(BuildContext context) {
-    final bodyStyle = Theme.of(
-      context,
-    ).textTheme.bodyLarge?.copyWith(height: 1.45, letterSpacing: 0);
+    final theme = Theme.of(context);
+    final bodyStyle = theme.textTheme.bodyLarge?.copyWith(
+      height: 1.45,
+      letterSpacing: 0,
+      color: widget.muted ? theme.colorScheme.onSurfaceVariant : null,
+    );
+    final strongStyle = bodyStyle?.copyWith(fontWeight: FontWeight.w900);
     final linkStyle = bodyStyle?.copyWith(
-      color: Theme.of(context).colorScheme.primary,
+      color: theme.colorScheme.primary,
       decoration: TextDecoration.underline,
       decorationThickness: 1.5,
       fontWeight: FontWeight.w800,
     );
+    final citations = _citationsForIds(
+      widget.citationIds,
+      widget.citationsById,
+    );
 
-    return SelectableText.rich(
+    return Text.rich(
       TextSpan(
         style: bodyStyle,
         children: [
           for (var index = 0; index < widget.spans.length; index += 1)
-            () {
-              final span = widget.spans[index];
-              final url = span.url;
-              if (url == null || url.trim().isEmpty) {
-                return TextSpan(text: span.text);
-              }
-              return TextSpan(
-                text: span.text,
-                style: linkStyle,
-                recognizer: _recognizers[index],
-              );
-            }(),
-        ],
-      ),
-      selectionControls: materialTextSelectionControls,
-    );
-  }
-}
-
-class _FirstChecksPanel extends StatelessWidget {
-  const _FirstChecksPanel({required this.topReads, required this.onOpenUrl});
-
-  final List<TopRead> topReads;
-  final ValueChanged<String> onOpenUrl;
-
-  @override
-  Widget build(BuildContext context) {
-    final reads = topReads.take(3).toList(growable: false);
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerLowest,
-        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.sm),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Read first',
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w900,
-                letterSpacing: 0,
+            _textSpanFor(widget.spans[index], index, linkStyle, strongStyle),
+          if (citations.isNotEmpty) const TextSpan(text: ' '),
+          for (final citation in citations)
+            WidgetSpan(
+              alignment: PlaceholderAlignment.baseline,
+              baseline: TextBaseline.alphabetic,
+              child: Padding(
+                padding: const EdgeInsets.only(right: AppSpacing.xs),
+                child: _CitationChip(
+                  key: ValueKey('${widget.keyBase}-citation-${citation.id}'),
+                  label: _citationLabel(citation, widget.citationsById),
+                  citation: citation,
+                  onOpenUrl: widget.onOpenUrl,
+                ),
               ),
             ),
-            const SizedBox(height: AppSpacing.xs),
-            for (final read in reads) ...[
-              _PanelLink(read: read, onOpenUrl: onOpenUrl),
-              const SizedBox(height: AppSpacing.xs),
-            ],
-            const Divider(height: AppSpacing.md),
-            _PanelMetric(label: 'Evidence', value: '${topReads.length} reads'),
-            const _PanelMetric(label: 'Priority', value: 'Read links first'),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _PanelLink extends StatelessWidget {
-  const _PanelLink({required this.read, required this.onOpenUrl});
-
-  final TopRead read;
-  final ValueChanged<String> onOpenUrl;
-
-  @override
-  Widget build(BuildContext context) {
-    final url = read.canonicalUrl;
-    return InkWell(
-      onTap: url == null ? null : () => onOpenUrl(url),
-      borderRadius: BorderRadius.circular(6),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 2),
-        child: Text(
-          _shortTitle(read.title),
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: Theme.of(context).colorScheme.primary,
-            fontWeight: FontWeight.w800,
-            decoration: TextDecoration.underline,
-            letterSpacing: 0,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _PanelMetric extends StatelessWidget {
-  const _PanelMetric({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(label, style: Theme.of(context).textTheme.bodySmall),
-          ),
-          Text(
-            value,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              fontWeight: FontWeight.w900,
-              letterSpacing: 0,
-            ),
-          ),
         ],
       ),
     );
   }
+
+  TextSpan _textSpanFor(
+    _BriefText span,
+    int index,
+    TextStyle? linkStyle,
+    TextStyle? strongStyle,
+  ) {
+    final url = span.url;
+    if (url == null || url.trim().isEmpty) {
+      return TextSpan(text: span.text, style: span.strong ? strongStyle : null);
+    }
+    return TextSpan(
+      text: span.text,
+      style: linkStyle,
+      recognizer: _recognizers[index],
+    );
+  }
+}
+
+class _CitationChip extends StatelessWidget {
+  const _CitationChip({
+    super.key,
+    required this.label,
+    required this.citation,
+    required this.onOpenUrl,
+  });
+
+  final String label;
+  final SummaryCitation citation;
+  final ValueChanged<String> onOpenUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    final url = citation.canonicalUrl;
+    final canOpen = url != null && url.trim().isNotEmpty;
+    final colorScheme = Theme.of(context).colorScheme;
+    return Semantics(
+      link: canOpen,
+      label: '${citation.sourceLabel} source citation',
+      child: MouseRegion(
+        cursor: canOpen ? SystemMouseCursors.click : MouseCursor.defer,
+        child: InkWell(
+          onTap: canOpen ? () => onOpenUrl(url) : null,
+          borderRadius: BorderRadius.circular(6),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.7),
+              border: Border.all(color: colorScheme.outlineVariant),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+              child: Text(
+                label,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: canOpen
+                      ? colorScheme.primary
+                      : colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0,
+                  height: 1.1,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+final class _BriefText {
+  const _BriefText(this.text, {this.strong = false}) : url = null;
+  const _BriefText.link(this.text, this.url) : strong = false;
+
+  final String text;
+  final String? url;
+  final bool strong;
 }

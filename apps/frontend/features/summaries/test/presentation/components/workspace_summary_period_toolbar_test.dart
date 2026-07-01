@@ -24,6 +24,8 @@ void main() {
                 now: DateTime.utc(2026, 6, 27, 12),
               ),
               selectedPreset: SummaryPeriodPreset.daily,
+              availableSummaryPeriods: const [],
+              canNavigateToPreviousPeriod: false,
               canNavigateToNextPeriod: false,
               isCurrentPeriod: true,
               calendarNow: DateTime.utc(2026, 6, 27, 12),
@@ -57,6 +59,8 @@ void main() {
               now: DateTime.utc(2026, 6, 27, 12),
             ),
             selectedPreset: SummaryPeriodPreset.daily,
+            availableSummaryPeriods: const [],
+            canNavigateToPreviousPeriod: false,
             canNavigateToNextPeriod: false,
             isCurrentPeriod: true,
             calendarNow: DateTime.utc(2026, 6, 27, 12),
@@ -77,9 +81,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Choose daily period'), findsOneWidget);
+    expect(find.text('June 2026'), findsOneWidget);
 
-    await tester.tap(find.text('15').last);
+    await tester.tap(
+      find.byKey(const ValueKey('workspace-summary-calendar-day-2026-06-15')),
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.text('OK'));
     await tester.pumpAndSettle();
@@ -87,5 +93,103 @@ void main() {
     expect(selectedDate?.year, 2026);
     expect(selectedDate?.month, DateTime.june);
     expect(selectedDate?.day, 15);
+  });
+
+  testWidgets('keeps dates without a workspace summary unavailable', (
+    tester,
+  ) async {
+    DateTime? selectedDate;
+    final selectedPeriod = SummaryPeriodPreset.daily.resolve(
+      now: DateTime.utc(2026, 6, 27, 12),
+    );
+    final availablePeriod = SummaryPeriodPreset.daily.resolveForCalendarDate(
+      DateTime(2026, 6, 15),
+      now: DateTime.utc(2026, 6, 27, 12),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: Scaffold(
+          body: WorkspaceSummaryPeriodToolbar(
+            selectedPeriod: selectedPeriod,
+            selectedPreset: SummaryPeriodPreset.daily,
+            availableSummaryPeriods: [availablePeriod],
+            canNavigateToPreviousPeriod: false,
+            canNavigateToNextPeriod: false,
+            isCurrentPeriod: true,
+            calendarNow: DateTime.utc(2026, 6, 27, 12),
+            onPeriodChanged: (_) {},
+            onPreviousPeriod: () {},
+            onCurrentPeriod: () {},
+            onNextPeriod: () {},
+            onCalendarDateSelected: (date) {
+              selectedDate = date;
+            },
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey('workspace-summary-period-calendar')),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const ValueKey('workspace-summary-calendar-day-2026-06-16')),
+      warnIfMissed: false,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+
+    expect(selectedDate, isNull);
+  });
+
+  testWidgets('marks dates that have a workspace summary', (tester) async {
+    final selectedPeriod = SummaryPeriodPreset.daily.resolveForCalendarDate(
+      DateTime(2026, 6, 15),
+      now: DateTime.utc(2026, 6, 27, 12),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: Scaffold(
+          body: WorkspaceSummaryPeriodToolbar(
+            selectedPeriod: selectedPeriod,
+            selectedPreset: SummaryPeriodPreset.daily,
+            availableSummaryPeriods: [selectedPeriod],
+            canNavigateToPreviousPeriod: false,
+            canNavigateToNextPeriod: false,
+            isCurrentPeriod: true,
+            calendarNow: DateTime.utc(2026, 6, 27, 12),
+            onPeriodChanged: (_) {},
+            onPreviousPeriod: () {},
+            onCurrentPeriod: () {},
+            onNextPeriod: () {},
+            onCalendarDateSelected: (_) {},
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey('workspace-summary-period-calendar')),
+    );
+    await tester.pumpAndSettle();
+
+    final availableDay = tester.widget<Container>(
+      find.descendant(
+        of: find.byKey(
+          const ValueKey('workspace-summary-calendar-day-2026-06-15'),
+        ),
+        matching: find.byType(Container),
+      ),
+    );
+    final decoration = availableDay.decoration! as BoxDecoration;
+
+    expect(decoration.border, isNotNull);
   });
 }

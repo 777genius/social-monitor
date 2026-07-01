@@ -1,6 +1,7 @@
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
 import '../../domain/value_objects/reader_action_target.dart';
+import '../../domain/value_objects/summary_period.dart';
 import '../api/summary_api_dto.dart';
 import 'summaries_api_client.dart';
 
@@ -8,11 +9,14 @@ final class InMemorySummariesApiClient implements SummariesApiClient {
   InMemorySummariesApiClient({
     required List<SummaryApiDto> items,
     ReaderSummaryApiDto? workspaceSummary,
+    List<SummaryPeriodApiDto> workspaceSummaryAvailablePeriods = const [],
   }) : _items = List<SummaryApiDto>.of(items),
-       _workspaceSummary = workspaceSummary;
+       _workspaceSummary = workspaceSummary,
+       _workspaceSummaryAvailablePeriods = workspaceSummaryAvailablePeriods;
 
   final List<SummaryApiDto> _items;
   final ReaderSummaryApiDto? _workspaceSummary;
+  final List<SummaryPeriodApiDto> _workspaceSummaryAvailablePeriods;
   final Map<String, ReaderSummaryJobApiDto> _summaryJobs = {};
   final List<LoadWorkspaceSummaryApiRequest> loadWorkspaceSummaryRequests = [];
   final List<RequestWorkspaceSummaryApiRequest>
@@ -60,7 +64,19 @@ final class InMemorySummariesApiClient implements SummariesApiClient {
     if (failure != null) {
       return Result.failure(failure);
     }
-    return Result.success(WorkspaceSummaryApiDto(current: _workspaceSummary));
+    final current = _workspaceSummary == null
+        ? null
+        : _readerSummaryForPeriod(_workspaceSummary, request.period);
+    return Result.success(
+      WorkspaceSummaryApiDto(
+        current: current,
+        availablePeriods: _workspaceSummaryAvailablePeriods.isEmpty
+            ? current == null
+                  ? const []
+                  : [current.period]
+            : _workspaceSummaryAvailablePeriods,
+      ),
+    );
   }
 
   @override
@@ -228,4 +244,30 @@ final class InMemorySummariesApiClient implements SummariesApiClient {
     }
     return updated;
   }
+}
+
+ReaderSummaryApiDto _readerSummaryForPeriod(
+  ReaderSummaryApiDto summary,
+  SummaryPeriod period,
+) {
+  return ReaderSummaryApiDto(
+    id: summary.id,
+    title: summary.title,
+    executiveSummary: summary.executiveSummary,
+    userId: summary.userId,
+    content: summary.content,
+    topStories: summary.topStories,
+    repeatedSignals: summary.repeatedSignals,
+    citations: summary.citations,
+    period: SummaryPeriodApiDto(
+      cadence: period.cadence.name,
+      startedAt: period.startedAt,
+      endedAt: period.endedAt,
+      timezone: period.timezone,
+      periodKey: period.periodKey,
+    ),
+    sourceWindow: summary.sourceWindow,
+    freshnessLabel: summary.freshnessLabel,
+    isDegraded: summary.isDegraded,
+  );
 }

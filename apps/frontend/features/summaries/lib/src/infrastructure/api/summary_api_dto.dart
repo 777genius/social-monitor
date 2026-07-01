@@ -88,6 +88,7 @@ final class TopReadApiDto {
     this.whyImportant = const [],
     this.whyNow = 'Selected in the current summary window',
     this.canonicalUrl,
+    this.previewMedia,
   });
 
   final String title;
@@ -105,6 +106,21 @@ final class TopReadApiDto {
   final String whyNow;
   final List<String> citationIds;
   final String? canonicalUrl;
+  final PreviewMediaApiDto? previewMedia;
+}
+
+final class PreviewMediaApiDto {
+  const PreviewMediaApiDto({
+    required this.kind,
+    required this.url,
+    this.sourceUrl,
+    this.altText,
+  });
+
+  final String kind;
+  final String url;
+  final String? sourceUrl;
+  final String? altText;
 }
 
 final class TopReadConfidenceApiDto {
@@ -298,9 +314,13 @@ final class ReaderSummaryApiDto {
 }
 
 final class WorkspaceSummaryApiDto {
-  const WorkspaceSummaryApiDto({this.current});
+  const WorkspaceSummaryApiDto({
+    this.current,
+    this.availablePeriods = const [],
+  });
 
   final ReaderSummaryApiDto? current;
+  final List<SummaryPeriodApiDto> availablePeriods;
 }
 
 final class ReaderSummaryJobApiDto {

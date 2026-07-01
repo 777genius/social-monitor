@@ -7,11 +7,15 @@ import '../../domain/entities/summary_citation.dart';
 import 'github_mark.dart';
 import 'reader_summary_citation_text.dart';
 import 'reader_summary_external_link.dart';
+import 'reader_summary_preview_media.dart';
 import 'reader_summary_provider_label.dart';
+import 'reader_summary_reason_text.dart';
 
 part 'reader_summary_ai_brief.dart';
 part 'reader_summary_filtered_evidence.dart';
+part 'reader_summary_evidence_read_card.dart';
 part 'reader_summary_brief_helpers.dart';
+part 'reader_summary_metric_badges.dart';
 
 class ReaderSummaryBriefSurface extends StatefulWidget {
   const ReaderSummaryBriefSurface({
@@ -56,7 +60,6 @@ class _ReaderSummaryBriefSurfaceState extends State<ReaderSummaryBriefSurface> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _BriefToolbar(
-          citationCount: widget.summary.citations.length,
           sourceCount: content.sourceMix.length,
           freshnessLabel: widget.summary.freshnessLabel,
           isRefreshing: widget.isRefreshing,
@@ -69,45 +72,16 @@ class _ReaderSummaryBriefSurfaceState extends State<ReaderSummaryBriefSurface> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                LayoutBuilder(
-                  builder: (context, constraints) {
-                    final twoColumn = constraints.maxWidth >= 900;
-                    final main = _AiBriefCopy(
-                      content: content,
-                      onOpenUrl: widget.onOpenUrl,
-                    );
-                    final side = _FirstChecksPanel(
-                      topReads: content.topReads,
-                      onOpenUrl: widget.onOpenUrl,
-                    );
-
-                    if (!twoColumn) {
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          main,
-                          const SizedBox(height: AppSpacing.md),
-                          side,
-                        ],
-                      );
-                    }
-
-                    return Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(child: main),
-                        const SizedBox(width: AppSpacing.md),
-                        SizedBox(width: 320, child: side),
-                      ],
-                    );
-                  },
+                _AiBriefCopy(
+                  content: content,
+                  citationsById: widget.citationsById,
+                  onOpenUrl: widget.onOpenUrl,
                 ),
                 const SizedBox(height: AppSpacing.md),
                 _SourceFilterChips(
                   entries: content.sourceMix,
                   selectedProviderKey: _selectedProviderKey,
                   topReadCount: content.topReads.length,
-                  citationCount: widget.summary.citations.length,
                   onSelected: (providerKey) {
                     setState(() => _selectedProviderKey = providerKey);
                   },
@@ -131,7 +105,6 @@ class _ReaderSummaryBriefSurfaceState extends State<ReaderSummaryBriefSurface> {
 
 class _BriefToolbar extends StatelessWidget {
   const _BriefToolbar({
-    required this.citationCount,
     required this.sourceCount,
     required this.freshnessLabel,
     required this.isRefreshing,
@@ -139,7 +112,6 @@ class _BriefToolbar extends StatelessWidget {
     required this.qualityState,
   });
 
-  final int citationCount;
   final int sourceCount;
   final String freshnessLabel;
   final bool isRefreshing;
@@ -157,8 +129,12 @@ class _BriefToolbar extends StatelessWidget {
       ),
       child: LayoutBuilder(
         builder: (context, constraints) {
+          final sourceLabel = sourceCount == 1 ? 'source' : 'sources';
+          final titleText = sourceCount <= 0
+              ? 'AI summary'
+              : 'AI summary · $sourceCount $sourceLabel';
           final title = Text(
-            'AI summary · $citationCount collected items · $sourceCount sources',
+            titleText,
             style: Theme.of(context).textTheme.titleSmall?.copyWith(
               fontWeight: FontWeight.w900,
               letterSpacing: 0,

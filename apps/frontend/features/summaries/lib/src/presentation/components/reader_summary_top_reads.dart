@@ -3,12 +3,12 @@ import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 
 import '../../domain/aggregates/reader_summary.dart';
 import '../../domain/entities/summary_citation.dart';
-import 'github_mark.dart';
 import 'reader_summary_external_link.dart';
 import 'reader_summary_provider_label.dart';
 import 'reader_summary_reason_text.dart';
 import 'reader_summary_sections.dart';
 import 'reader_summary_top_read_details.dart';
+import 'reader_summary_top_read_leading.dart';
 
 const _initialVisibleTopReads = 3;
 
@@ -36,6 +36,9 @@ class _ReaderSummaryTopReadsState extends State<ReaderSummaryTopReads> {
     final visibleCount = _visibleCount(widget.items.length);
     final visibleItems = widget.items.take(visibleCount).toList();
     final hiddenCount = widget.items.length - visibleCount;
+    final reservePreviewSpace = widget.items.any(
+      (item) => item.previewMedia != null,
+    );
 
     return ReaderSummarySection(
       title: 'Top reads',
@@ -61,6 +64,7 @@ class _ReaderSummaryTopReadsState extends State<ReaderSummaryTopReads> {
             (entry) => _TopReadRow(
               index: entry.$1,
               item: entry.$2,
+              reservePreviewSpace: reservePreviewSpace,
               citations: entry.$2.citationIds
                   .map((citationId) => widget.citationsById[citationId])
                   .whereType<SummaryCitation>()
@@ -98,18 +102,19 @@ class _TopReadRow extends StatelessWidget {
   const _TopReadRow({
     required this.index,
     required this.item,
+    required this.reservePreviewSpace,
     required this.citations,
     required this.onOpenUrl,
   });
 
   final int index;
   final TopRead item;
+  final bool reservePreviewSpace;
   final List<SummaryCitation> citations;
   final ValueChanged<String> onOpenUrl;
 
   @override
   Widget build(BuildContext context) {
-    final isGithub = _isGithub(item);
     return Padding(
       key: ValueKey('reader-summary-top-read-$index'),
       padding: const EdgeInsets.only(bottom: AppSpacing.sm),
@@ -122,11 +127,10 @@ class _TopReadRow extends StatelessWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Padding(
-                    padding: const EdgeInsets.only(top: 2),
-                    child: isGithub
-                        ? const GitHubMark(size: 18)
-                        : const Icon(Icons.article_outlined, size: 18),
+                  ReaderSummaryTopReadLeading(
+                    item: item,
+                    compact: compact,
+                    reservePreviewSpace: reservePreviewSpace,
                   ),
                   const SizedBox(width: AppSpacing.sm),
                   Expanded(
@@ -290,11 +294,4 @@ class _InlineDetailsDisclosure extends StatelessWidget {
       ),
     );
   }
-}
-
-bool _isGithub(TopRead item) {
-  final uri = Uri.tryParse(item.canonicalUrl ?? '');
-  return item.providerKey == 'github-repo-radar' ||
-      item.providerKey == 'github-trending-page' ||
-      uri?.host.toLowerCase() == 'github.com';
 }

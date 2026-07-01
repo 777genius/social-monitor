@@ -36,26 +36,35 @@ void main() {
     await _pumpSizedFeature(tester, store: store, size: const Size(1280, 820));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('Shared UTC period:'), findsOneWidget);
+    expect(find.text('Workspace summary'), findsNothing);
+    expect(find.textContaining('Shared UTC period:'), findsNothing);
     expect(find.textContaining('00:00 -'), findsOneWidget);
     expect(find.text('GitHub Trending daily summary'), findsNothing);
     expect(find.text('AI summary'), findsOneWidget);
     expect(find.textContaining('GitHub daily radar'), findsOneWidget);
     expect(find.textContaining('Key signal:'), findsNothing);
-    expect(find.text('Read first'), findsOneWidget);
+    expect(find.text('Read first'), findsNothing);
+    expect(find.text('Key links'), findsOneWidget);
+    for (final key in [
+      'reader-summary-lede-citation-bc-1',
+      'reader-summary-key-link-0-citation-bc-1',
+      'reader-summary-key-link-1-citation-bc-2',
+    ]) {
+      expect(find.byKey(ValueKey(key)), findsOneWidget);
+    }
     expect(find.text('Source-local'), findsNothing);
     expect(find.text('Needs confirmation'), findsWidgets);
-    expect(find.text('High confidence'), findsNothing);
-    expect(find.textContaining('Сегодня главный сигнал'), findsNothing);
-    expect(find.text('Что проверить первым'), findsNothing);
+    expect(find.text('AI summary · 1 source'), findsOneWidget);
+    expect(find.text('3 top reads'), findsOneWidget);
+    expect(find.text('Top reads'), findsOneWidget);
     expect(
-      find.text('AI summary · 3 collected items · 1 sources'),
+      find.text('3 read-first items from the evidence set'),
       findsOneWidget,
     );
-    expect(find.text('3 top reads'), findsOneWidget);
-    expect(find.text('3 collected'), findsWidgets);
-    expect(find.text('Top reads'), findsOneWidget);
-    expect(find.text('Showing 3 of 3 strongest reads'), findsOneWidget);
+    expect(find.text('Why it matters'), findsWidgets);
+    expect(find.text('high engagement'), findsWidgets);
+    expect(find.text('fresh today'), findsWidgets);
+    expect(find.text('topic match'), findsWidgets);
     expect(find.text('Evidence and quality'), findsOneWidget);
     expect(find.text('https://github.com/calesthio/OpenMontage'), findsWidgets);
     expect(
@@ -91,10 +100,9 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(
-      find.text('18.4k stars, #1 today and +3.7k stars today.'),
-      findsWidgets,
-    );
+    expect(find.text('#1'), findsWidgets);
+    expect(find.text('+3,703 stars today'), findsWidgets);
+    expect(find.text('18,398 stars'), findsWidgets);
     expect(
       find.byKey(const ValueKey('workspace-summary-generate-true')),
       findsOneWidget,
@@ -160,16 +168,17 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('AI summary'), findsOneWidget);
-    expect(
-      find.text('AI summary · 3 collected items · 3 sources'),
-      findsOneWidget,
-    );
+    expect(find.text('AI summary · 3 sources'), findsOneWidget);
     expect(find.text('Reddit 2'), findsOneWidget);
     expect(find.text('GitHub Trending 2'), findsOneWidget);
     expect(find.text('Hacker News 2'), findsOneWidget);
-    expect(find.text('Medium confidence'), findsNothing);
+    expect(find.text('3 collected'), findsNothing);
     expect(find.text('Top reads'), findsOneWidget);
     expect(find.text('Reddit thread on agent reliability'), findsWidgets);
+    expect(find.text('1,214 score'), findsWidgets);
+    expect(find.text('246 comments'), findsWidgets);
+    expect(find.text('71% upvoted'), findsWidgets);
+    expect(find.text('Score: 1,214'), findsWidgets);
     expect(find.text('HN discussion on model routing'), findsWidgets);
   });
 
@@ -194,7 +203,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Reddit posts'), findsOneWidget);
-    expect(find.text('Showing 1 of 1 strongest reads'), findsOneWidget);
+    expect(find.text('1 Reddit evidence item'), findsOneWidget);
     expect(
       find.byKey(const ValueKey('reader-summary-top-read-1')),
       findsNothing,
@@ -354,7 +363,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('AI summary'), findsOneWidget);
-    expect(find.text('Showing 10 of 11 strongest reads'), findsOneWidget);
+    expect(
+      find.text('10 of 11 read-first items from the evidence set'),
+      findsOneWidget,
+    );
     expect(
       find.byKey(const ValueKey('reader-summary-top-read-0')),
       findsOneWidget,
@@ -481,8 +493,9 @@ void main() {
     await tester.tap(find.byTooltip('Previous period'));
     await tester.pumpAndSettle();
 
-    expect(store.canShowNextSummaryPeriod, isTrue);
-    expect(store.selectedSummaryPeriod.endedAt, currentWeeklyPeriod.startedAt);
+    expect(store.canShowPreviousSummaryPeriod, isFalse);
+    expect(store.canShowNextSummaryPeriod, isFalse);
+    expect(store.selectedSummaryPeriod, currentWeeklyPeriod);
 
     await tester.tap(find.byTooltip('Next period'));
     await tester.pumpAndSettle();

@@ -22,7 +22,7 @@ final class SummaryMapper {
   }
 
   ReaderSummary readerSummaryToDomain(ReaderSummaryApiDto dto) {
-    final period = _summaryPeriodToDomain(dto.period);
+    final period = summaryPeriodToDomain(dto.period);
     return ReaderSummary(
       id: _nonEmpty(dto.id, fallback: 'summary-unknown'),
       title: _nonEmpty(dto.title, fallback: 'Workspace summary'),
@@ -61,11 +61,11 @@ final class SummaryMapper {
       startedAt: dto.startedAt,
       completedAt: dto.completedAt,
       failedAt: dto.failedAt,
-      period: dto.period == null ? null : _summaryPeriodToDomain(dto.period!),
+      period: dto.period == null ? null : summaryPeriodToDomain(dto.period!),
     );
   }
 
-  SummaryPeriod _summaryPeriodToDomain(SummaryPeriodApiDto dto) {
+  SummaryPeriod summaryPeriodToDomain(SummaryPeriodApiDto dto) {
     return SummaryPeriod(
       cadence: _summaryPeriodCadenceFromApi(dto.cadence),
       startedAt: dto.startedAt.toUtc(),
@@ -102,7 +102,7 @@ final class SummaryMapper {
   ) {
     return ReaderSummaryContent(
       headline: _nonEmpty(dto.headline, fallback: 'Workspace summary'),
-      oneLineTakeaway: _safeText(
+      oneLineTakeaway: _safeLongText(
         dto.oneLineTakeaway,
         fallback: 'No summary takeaway available',
       ),
@@ -183,6 +183,27 @@ final class SummaryMapper {
       ),
       citationIds: dto.citationIds,
       canonicalUrl: _safeUrl(dto.canonicalUrl),
+      previewMedia: _previewMediaToDomain(dto.previewMedia),
+    );
+  }
+
+  PreviewMedia? _previewMediaToDomain(PreviewMediaApiDto? dto) {
+    if (dto == null) {
+      return null;
+    }
+    final url = _safeUrl(dto.url);
+    if (url == null) {
+      return null;
+    }
+
+    return PreviewMedia(
+      kind: switch (dto.kind.trim().toLowerCase()) {
+        'video' => PreviewMediaKind.video,
+        _ => PreviewMediaKind.image,
+      },
+      url: url,
+      sourceUrl: _safeUrl(dto.sourceUrl),
+      altText: _safeTextOrNull(dto.altText),
     );
   }
 
@@ -258,17 +279,34 @@ final class SummaryMapper {
   }
 
   String _safeText(String raw, {required String fallback}) {
-    final withoutSecrets = raw
-        .replaceAll(RegExp(r'Bearer\s+[A-Za-z0-9._~+/=-]+'), '[redacted]')
-        .replaceAll(RegExp(r'sk-[A-Za-z0-9_-]+'), '[redacted]')
-        .replaceAll(RegExp(r'client_secret\s*[:=]\s*\S+'), '[redacted]');
-    final singleLine = withoutSecrets.replaceAll(RegExp(r'\s+'), ' ').trim();
+    final singleLine = _sanitizeText(raw);
     if (singleLine.isEmpty) {
       return fallback;
     }
     return singleLine.length <= 240
         ? singleLine
         : '${singleLine.substring(0, 237)}...';
+  }
+
+  String _safeLongText(String raw, {required String fallback}) {
+    final singleLine = _sanitizeText(raw);
+    if (singleLine.isEmpty) {
+      return fallback;
+    }
+    return singleLine;
+  }
+
+  String? _safeTextOrNull(String? raw) {
+    final text = _safeText(raw ?? '', fallback: '');
+    return text.isEmpty ? null : text;
+  }
+
+  String _sanitizeText(String raw) {
+    final withoutSecrets = raw
+        .replaceAll(RegExp(r'Bearer\s+[A-Za-z0-9._~+/=-]+'), '[redacted]')
+        .replaceAll(RegExp(r'sk-[A-Za-z0-9_-]+'), '[redacted]')
+        .replaceAll(RegExp(r'client_secret\s*[:=]\s*\S+'), '[redacted]');
+    return withoutSecrets.replaceAll(RegExp(r'\s+'), ' ').trim();
   }
 
   String _nonEmpty(String? value, {required String fallback}) {

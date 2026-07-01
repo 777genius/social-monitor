@@ -5,14 +5,12 @@ class _SourceFilterChips extends StatelessWidget {
     required this.entries,
     required this.selectedProviderKey,
     required this.topReadCount,
-    required this.citationCount,
     required this.onSelected,
   });
 
   final List<SourceMixEntry> entries;
   final String? selectedProviderKey;
   final int topReadCount;
-  final int citationCount;
   final ValueChanged<String?> onSelected;
 
   @override
@@ -26,10 +24,6 @@ class _SourceFilterChips extends StatelessWidget {
           label: Text('$topReadCount top reads'),
           selected: selectedProviderKey == null,
           onSelected: (_) => onSelected(null),
-        ),
-        AppStatusBadge(
-          label: '$citationCount collected',
-          tone: AppStatusTone.neutral,
         ),
         for (final entry in entries)
           FilterChip(
@@ -62,18 +56,19 @@ class _FilteredEvidenceList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    const listKeyPrefix = 'reader-summary-top-read';
     final title = selectedProviderKey == null
         ? 'Top reads'
         : '${readerSummaryProviderLabel(selectedProviderKey!)} posts';
     final visibleReads = topReads.take(10).toList(growable: false);
     final visibleFallback = fallbackCitations.take(5).toList(growable: false);
 
-    return Column(
+    final list = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            const Icon(Icons.open_in_new_outlined, size: 18),
+            const Icon(Icons.article_outlined, size: 18),
             const SizedBox(width: AppSpacing.xs),
             Text(
               title,
@@ -87,8 +82,12 @@ class _FilteredEvidenceList extends StatelessWidget {
         const SizedBox(height: AppSpacing.xs),
         Text(
           visibleReads.isNotEmpty
-              ? 'Showing ${visibleReads.length} of ${topReads.length} strongest reads'
-              : 'Showing cited source links for this provider',
+              ? _readCountCopy(
+                  visibleCount: visibleReads.length,
+                  totalCount: topReads.length,
+                  providerKey: selectedProviderKey,
+                )
+              : 'Cited source links for this provider',
           style: Theme.of(context).textTheme.labelSmall?.copyWith(
             color: Theme.of(context).colorScheme.onSurfaceVariant,
             fontWeight: FontWeight.w700,
@@ -100,14 +99,19 @@ class _FilteredEvidenceList extends StatelessWidget {
           ...List.generate(
             visibleReads.length,
             (index) => _ReadCard(
-              key: ValueKey('reader-summary-top-read-$index'),
+              key: ValueKey('$listKeyPrefix-$index'),
               readIndex: index,
+              keyPrefix: listKeyPrefix,
               read: visibleReads[index],
               showDivider: index < visibleReads.length - 1,
-              citations: visibleReads[index].citationIds
-                  .map((id) => citationsById[id])
-                  .whereType<SummaryCitation>()
-                  .toList(growable: false),
+              showReason: true,
+              showCitationSnippet: true,
+              showLeadingRank: false,
+              showInsightLabels: true,
+              showSelectionReasons: true,
+              compact: false,
+              featured: selectedProviderKey == null && index == 0,
+              citations: _citationsForRead(visibleReads[index]),
               onOpenUrl: onOpenUrl,
             ),
           )
@@ -128,126 +132,35 @@ class _FilteredEvidenceList extends StatelessWidget {
           ),
       ],
     );
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 1040),
+      child: list,
+    );
+  }
+
+  List<SummaryCitation> _citationsForRead(TopRead read) {
+    return read.citationIds
+        .map((id) => citationsById[id])
+        .whereType<SummaryCitation>()
+        .toList(growable: false);
   }
 }
 
-class _ReadCard extends StatelessWidget {
-  const _ReadCard({
-    super.key,
-    required this.readIndex,
-    required this.read,
-    required this.showDivider,
-    required this.citations,
-    required this.onOpenUrl,
-  });
-
-  final int readIndex;
-  final TopRead read;
-  final bool showDivider;
-  final List<SummaryCitation> citations;
-  final ValueChanged<String> onOpenUrl;
-
-  @override
-  Widget build(BuildContext context) {
-    final url = read.canonicalUrl;
-    final metricSummary = _readMetricSummary(read);
-    final citationSnippet = citations.isEmpty
-        ? null
-        : _citationSnippet(citations.first);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-      child: Column(
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.only(top: 2),
-                child: _isGithub(read)
-                    ? const GitHubMark(size: 18)
-                    : const Icon(Icons.article_outlined, size: 18),
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    InkWell(
-                      onTap: url == null ? null : () => onOpenUrl(url),
-                      child: Text(
-                        read.title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          color: Theme.of(context).colorScheme.primary,
-                          fontWeight: FontWeight.w900,
-                          decoration: TextDecoration.underline,
-                          letterSpacing: 0,
-                        ),
-                      ),
-                    ),
-                    if (url != null && url.trim().isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      KeyedSubtree(
-                        key: ValueKey('reader-summary-top-read-$readIndex-url'),
-                        child: ReaderSummaryExternalLink(
-                          url: url,
-                          onOpenUrl: onOpenUrl,
-                          maxLines: 1,
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 4),
-                    Text(
-                      _bestReason(read),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                    if (metricSummary != null) ...[
-                      const SizedBox(height: AppSpacing.xs),
-                      Text(
-                        metricSummary,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0,
-                        ),
-                      ),
-                    ],
-                    if (citationSnippet != null) ...[
-                      const SizedBox(height: AppSpacing.xs),
-                      Text(
-                        citationSnippet,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              AppStatusBadge(
-                label: readerSummaryProviderLabel(read.providerKey),
-                tone: AppStatusTone.neutral,
-              ),
-            ],
-          ),
-          if (showDivider) ...[
-            const SizedBox(height: AppSpacing.sm),
-            Divider(
-              height: 1,
-              color: Theme.of(context).colorScheme.outlineVariant,
-            ),
-          ],
-        ],
-      ),
-    );
+String _readCountCopy({
+  required int visibleCount,
+  required int totalCount,
+  required String? providerKey,
+}) {
+  if (providerKey != null) {
+    final provider = readerSummaryProviderLabel(providerKey);
+    final noun = visibleCount == 1 ? 'item' : 'items';
+    return '$visibleCount $provider evidence $noun';
   }
+  if (visibleCount == totalCount) {
+    final noun = visibleCount == 1 ? 'item' : 'items';
+    return '$visibleCount read-first $noun from the evidence set';
+  }
+  return '$visibleCount of $totalCount read-first items from the evidence set';
 }
 
 class _CitationCard extends StatelessWidget {
@@ -294,7 +207,7 @@ class _CitationCard extends StatelessWidget {
             ),
             trailing: url == null
                 ? null
-                : const Icon(Icons.open_in_new_outlined),
+                : const Icon(Icons.chevron_right_rounded),
             onTap: url == null ? null : () => onOpenUrl(url),
           ),
           if (showDivider)

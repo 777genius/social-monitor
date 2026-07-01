@@ -156,8 +156,17 @@ extension SummariesReviewStoreWorkspaceSummaryWorkflow on SummariesReviewStore {
   }
 
   Future<void> showPreviousWorkspaceSummaryPeriod() async {
-    _selectedSummaryPeriodEndedAt = selectedSummaryPeriodPreset
-        .previousPeriodEndedAt(selectedSummaryPeriod.endedAt);
+    final previousAvailable = _previousAvailableSummaryPeriodForSelectedPreset;
+    if (availableWorkspaceSummaryPeriods.isNotEmpty &&
+        previousAvailable == null) {
+      return;
+    }
+
+    _selectedSummaryPeriodEndedAt =
+        previousAvailable?.endedAt ??
+        selectedSummaryPeriodPreset.previousPeriodEndedAt(
+          selectedSummaryPeriod.endedAt,
+        );
     await _reloadSelectedWorkspaceSummaryPeriod();
   }
 
@@ -166,12 +175,19 @@ extension SummariesReviewStoreWorkspaceSummaryWorkflow on SummariesReviewStore {
       return;
     }
 
-    _selectedSummaryPeriodEndedAt = null;
+    _selectedSummaryPeriodEndedAt =
+        _latestAvailableSummaryPeriodForSelectedPreset?.endedAt;
     await _reloadSelectedWorkspaceSummaryPeriod();
   }
 
   Future<void> selectWorkspaceSummaryCalendarDate(DateTime date) async {
     final nextPeriod = selectedSummaryPeriodPreset.resolveForCalendarDate(date);
+    if (availableWorkspaceSummaryPeriods.isNotEmpty &&
+        !availableWorkspaceSummaryPeriods.any(
+          (period) => _sameSummaryPeriodWindow(period, nextPeriod),
+        )) {
+      return;
+    }
     if (nextPeriod == selectedSummaryPeriod) {
       return;
     }
@@ -185,8 +201,11 @@ extension SummariesReviewStoreWorkspaceSummaryWorkflow on SummariesReviewStore {
       return;
     }
 
-    _selectedSummaryPeriodEndedAt = selectedSummaryPeriodPreset
-        .nextPeriodEndedAt(selectedSummaryPeriod.endedAt);
+    _selectedSummaryPeriodEndedAt =
+        _nextAvailableSummaryPeriodForSelectedPreset?.endedAt ??
+        selectedSummaryPeriodPreset.nextPeriodEndedAt(
+          selectedSummaryPeriod.endedAt,
+        );
     await _reloadSelectedWorkspaceSummaryPeriod();
   }
 
@@ -252,6 +271,16 @@ Future<void> _loadWorkspaceSummaryForStore(
         return const EmptyViewState<WorkspaceSummarySnapshot>(
           reason: 'summaries.workspace_summary_empty',
         );
+      }
+      if (_periodMatchesPreset(
+            snapshot.current!.period,
+            store.selectedSummaryPeriodPreset,
+          ) &&
+          !_snapshotSummaryPeriods(snapshot).any(
+            (period) =>
+                _sameSummaryPeriodWindow(period, store.selectedSummaryPeriod),
+          )) {
+        store._selectedSummaryPeriodEndedAt = snapshot.current!.period.endedAt;
       }
       return ReadyViewState<WorkspaceSummarySnapshot>(snapshot);
     },

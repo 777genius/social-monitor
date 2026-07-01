@@ -17,6 +17,7 @@ export '../entities/repeated_signal.dart';
 export '../entities/source_mix_entry.dart';
 export '../entities/summary_story.dart';
 export '../entities/top_read.dart';
+export '../value_objects/preview_media.dart';
 export '../value_objects/provider_metric_label.dart';
 export '../value_objects/signal_score.dart';
 export '../value_objects/summary_period.dart';
@@ -24,9 +25,13 @@ export '../value_objects/summary_quality.dart';
 export '../value_objects/summary_window.dart';
 
 final class WorkspaceSummarySnapshot {
-  const WorkspaceSummarySnapshot({this.current});
+  const WorkspaceSummarySnapshot({
+    this.current,
+    this.availablePeriods = const [],
+  });
 
   final ReaderSummary? current;
+  final List<SummaryPeriod> availablePeriods;
 }
 
 final class ReaderSummary {

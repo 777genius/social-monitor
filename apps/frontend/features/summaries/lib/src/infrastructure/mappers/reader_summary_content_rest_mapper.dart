@@ -74,7 +74,23 @@ final class ReaderSummaryContentRestMapper {
       whyImportant: dto.whyImportant,
       whyNow: dto.whyNow,
       canonicalUrl: dto.canonicalUrl,
+      previewMedia: _previewMedia(dto.previewMedia),
       citationIds: dto.citationIds,
+    );
+  }
+
+  PreviewMediaApiDto? _previewMedia(
+    generated.ReaderSummaryPreviewMediaDto? dto,
+  ) {
+    if (dto == null) {
+      return null;
+    }
+
+    return PreviewMediaApiDto(
+      kind: dto.kind.json ?? 'image',
+      url: dto.url,
+      sourceUrl: dto.sourceUrl,
+      altText: dto.altText,
     );
   }
 

@@ -18,6 +18,8 @@ class WorkspaceSummaryPanel extends StatelessWidget {
     required this.lastReaderActionIdempotencyKey,
     required this.selectedPeriod,
     required this.selectedPeriodPreset,
+    required this.availableSummaryPeriods,
+    required this.canNavigateToPreviousPeriod,
     required this.canNavigateToNextPeriod,
     required this.isCurrentPeriod,
     required this.onPeriodChanged,
@@ -39,6 +41,8 @@ class WorkspaceSummaryPanel extends StatelessWidget {
   final String? lastReaderActionIdempotencyKey;
   final SummaryPeriod selectedPeriod;
   final SummaryPeriodPreset selectedPeriodPreset;
+  final List<SummaryPeriod> availableSummaryPeriods;
+  final bool canNavigateToPreviousPeriod;
   final bool canNavigateToNextPeriod;
   final bool isCurrentPeriod;
   final ValueChanged<SummaryPeriodPreset> onPeriodChanged;
@@ -175,6 +179,8 @@ class WorkspaceSummaryPanel extends StatelessWidget {
     return _WorkspaceSummaryPeriodShell(
       selectedPeriod: selectedPeriod,
       selectedPreset: selectedPeriodPreset,
+      availableSummaryPeriods: availableSummaryPeriods,
+      canNavigateToPreviousPeriod: canNavigateToPreviousPeriod,
       canNavigateToNextPeriod: canNavigateToNextPeriod,
       isCurrentPeriod: isCurrentPeriod,
       onPeriodChanged: onPeriodChanged,
@@ -226,6 +232,8 @@ class _WorkspaceSummaryPeriodShell extends StatelessWidget {
   const _WorkspaceSummaryPeriodShell({
     required this.selectedPeriod,
     required this.selectedPreset,
+    required this.availableSummaryPeriods,
+    required this.canNavigateToPreviousPeriod,
     required this.canNavigateToNextPeriod,
     required this.isCurrentPeriod,
     required this.onPeriodChanged,
@@ -238,6 +246,8 @@ class _WorkspaceSummaryPeriodShell extends StatelessWidget {
 
   final SummaryPeriod selectedPeriod;
   final SummaryPeriodPreset selectedPreset;
+  final List<SummaryPeriod> availableSummaryPeriods;
+  final bool canNavigateToPreviousPeriod;
   final bool canNavigateToNextPeriod;
   final bool isCurrentPeriod;
   final ValueChanged<SummaryPeriodPreset> onPeriodChanged;
@@ -255,6 +265,8 @@ class _WorkspaceSummaryPeriodShell extends StatelessWidget {
         WorkspaceSummaryPeriodToolbar(
           selectedPeriod: selectedPeriod,
           selectedPreset: selectedPreset,
+          availableSummaryPeriods: availableSummaryPeriods,
+          canNavigateToPreviousPeriod: canNavigateToPreviousPeriod,
           canNavigateToNextPeriod: canNavigateToNextPeriod,
           isCurrentPeriod: isCurrentPeriod,
           onPeriodChanged: onPeriodChanged,

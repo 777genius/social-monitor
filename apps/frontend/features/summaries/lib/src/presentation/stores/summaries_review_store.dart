@@ -110,14 +110,104 @@ final class SummariesReviewStore extends ChangeNotifier {
   }
 
   bool get isSelectedSummaryPeriodCurrent {
+    final latestAvailable = _latestAvailableSummaryPeriodForSelectedPreset;
+    if (latestAvailable != null) {
+      return _sameSummaryPeriodWindow(selectedSummaryPeriod, latestAvailable);
+    }
     return selectedSummaryPeriod.endedAt ==
         selectedSummaryPeriodPreset.currentPeriodEndedAt();
   }
 
+  bool get canShowPreviousSummaryPeriod {
+    if (availableWorkspaceSummaryPeriods.isNotEmpty) {
+      return _previousAvailableSummaryPeriodForSelectedPreset != null;
+    }
+    return false;
+  }
+
   bool get canShowNextSummaryPeriod {
+    if (availableWorkspaceSummaryPeriods.isNotEmpty) {
+      return _nextAvailableSummaryPeriodForSelectedPreset != null;
+    }
     return selectedSummaryPeriodPreset.canNavigateNext(
       selectedSummaryPeriod.endedAt,
     );
+  }
+
+  List<SummaryPeriod> get availableWorkspaceSummaryPeriods {
+    final periodsByKey = <String, SummaryPeriod>{};
+    void addPeriod(SummaryPeriod period) {
+      periodsByKey[_summaryPeriodAvailabilityKey(period)] = period;
+    }
+
+    void addSnapshot(WorkspaceSummarySnapshot snapshot) {
+      for (final period in snapshot.availablePeriods) {
+        addPeriod(period);
+      }
+      final current = snapshot.current;
+      if (current != null) {
+        addPeriod(current.period);
+      }
+    }
+
+    switch (workspaceSummaryState) {
+      case ReadyViewState<WorkspaceSummarySnapshot>(:final value):
+        addSnapshot(value);
+      case LoadingViewState<WorkspaceSummarySnapshot>(:final previousValue)
+          when previousValue != null:
+        addSnapshot(previousValue);
+      default:
+        break;
+    }
+
+    return periodsByKey.values.toList(growable: false);
+  }
+
+  SummaryPeriod? get _previousAvailableSummaryPeriodForSelectedPreset {
+    return _nearestAvailableSummaryPeriodForSelectedPreset(
+      isBeforeSelectedPeriod: true,
+    );
+  }
+
+  SummaryPeriod? get _nextAvailableSummaryPeriodForSelectedPreset {
+    return _nearestAvailableSummaryPeriodForSelectedPreset(
+      isBeforeSelectedPeriod: false,
+    );
+  }
+
+  SummaryPeriod? get _latestAvailableSummaryPeriodForSelectedPreset {
+    final periods = _availableSummaryPeriodsForSelectedPreset();
+    if (periods.isEmpty) {
+      return null;
+    }
+    periods.sort((left, right) => left.endedAt.compareTo(right.endedAt));
+    return periods.last;
+  }
+
+  SummaryPeriod? _nearestAvailableSummaryPeriodForSelectedPreset({
+    required bool isBeforeSelectedPeriod,
+  }) {
+    final selectedEndedAt = selectedSummaryPeriod.endedAt.toUtc();
+    final periods = _availableSummaryPeriodsForSelectedPreset()
+        .where(
+          (period) => isBeforeSelectedPeriod
+              ? period.endedAt.toUtc().isBefore(selectedEndedAt)
+              : period.endedAt.toUtc().isAfter(selectedEndedAt),
+        )
+        .toList(growable: false);
+    if (periods.isEmpty) {
+      return null;
+    }
+    periods.sort((left, right) => left.endedAt.compareTo(right.endedAt));
+    return isBeforeSelectedPeriod ? periods.last : periods.first;
+  }
+
+  List<SummaryPeriod> _availableSummaryPeriodsForSelectedPreset() {
+    return availableWorkspaceSummaryPeriods
+        .where(
+          (period) => _periodMatchesPreset(period, selectedSummaryPeriodPreset),
+        )
+        .toList(growable: false);
   }
 
   String? get activeReaderActionIdempotencyKey =>
@@ -251,4 +341,60 @@ final class SummariesReviewStore extends ChangeNotifier {
       detailState = const InitialViewState<GeneratedSummary>();
     }
   }
+}
+
+String _summaryPeriodAvailabilityKey(SummaryPeriod period) {
+  return [
+    period.cadence.name,
+    period.startedAt.toUtc().toIso8601String(),
+    period.endedAt.toUtc().toIso8601String(),
+    period.timezone,
+  ].join('|');
+}
+
+List<SummaryPeriod> _snapshotSummaryPeriods(WorkspaceSummarySnapshot snapshot) {
+  final periodsByKey = <String, SummaryPeriod>{};
+  void add(SummaryPeriod period) {
+    periodsByKey[_summaryPeriodAvailabilityKey(period)] = period;
+  }
+
+  for (final period in snapshot.availablePeriods) {
+    add(period);
+  }
+  final current = snapshot.current;
+  if (current != null) {
+    add(current.period);
+  }
+
+  return periodsByKey.values.toList(growable: false);
+}
+
+bool _sameSummaryPeriodWindow(SummaryPeriod left, SummaryPeriod right) {
+  return left.cadence == right.cadence &&
+      left.startedAt.toUtc() == right.startedAt.toUtc() &&
+      left.endedAt.toUtc() == right.endedAt.toUtc() &&
+      left.timezone == right.timezone;
+}
+
+bool _periodMatchesPreset(SummaryPeriod period, SummaryPeriodPreset preset) {
+  return switch (preset) {
+    SummaryPeriodPreset.daily =>
+      period.cadence == SummaryPeriodCadence.daily &&
+          _periodDurationDays(period) == 1,
+    SummaryPeriodPreset.weekly =>
+      period.cadence == SummaryPeriodCadence.weekly &&
+          _periodDurationDays(period) == 7,
+    SummaryPeriodPreset.twoWeeks =>
+      period.cadence == SummaryPeriodCadence.custom &&
+          _periodDurationDays(period) == 14,
+    SummaryPeriodPreset.threeWeeks =>
+      period.cadence == SummaryPeriodCadence.custom &&
+          _periodDurationDays(period) == 21,
+    SummaryPeriodPreset.monthly =>
+      period.cadence == SummaryPeriodCadence.monthly,
+  };
+}
+
+int _periodDurationDays(SummaryPeriod period) {
+  return period.endedAt.toUtc().difference(period.startedAt.toUtc()).inDays;
 }

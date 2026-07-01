@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:social_monitor_summaries/src/domain/aggregates/reader_summary.dart';
 import 'package:social_monitor_summaries/src/domain/value_objects/summary_generation_status.dart';
 import 'package:social_monitor_summaries/src/infrastructure/api/summary_api_dto.dart';
 import 'package:social_monitor_summaries/src/infrastructure/mappers/summary_mapper.dart';
@@ -85,6 +86,12 @@ void main() {
               whyNow: 'Current summary window has Repo Radar coverage.',
               canonicalUrl:
                   'https://github.com/openai/codex?token=secret&utm_source=feed',
+              previewMedia: PreviewMediaApiDto(
+                kind: 'video',
+                url: 'https://cdn.example.test/poster.jpg?api_key=secret',
+                sourceUrl: 'https://cdn.example.test/video.mp4',
+                altText: 'Preview with Bearer demo',
+              ),
               citationIds: ['bc-1'],
             ),
           ],
@@ -98,6 +105,22 @@ void main() {
       'https://github.com/openai/codex?utm_source=feed',
     );
     expect(summary.content.topReads.single.signalScore.value, 1.23);
+    expect(
+      summary.content.topReads.single.previewMedia?.kind,
+      PreviewMediaKind.video,
+    );
+    expect(
+      summary.content.topReads.single.previewMedia?.url,
+      'https://cdn.example.test/poster.jpg',
+    );
+    expect(
+      summary.content.topReads.single.previewMedia?.sourceUrl,
+      'https://cdn.example.test/video.mp4',
+    );
+    expect(
+      summary.content.topReads.single.previewMedia?.altText,
+      'Preview with [redacted]',
+    );
     expect(summary.period.cadence.name, 'daily');
     expect(summary.summaryWindow.label, 'Evidence window');
     expect(summary.summaryWindow.startsAt, DateTime.utc(2026, 6, 26, 8, 30));
@@ -110,5 +133,30 @@ void main() {
       summary.content.nextActions.map((action) => action.kind),
       containsAll(['watch_repository', 'mark_relevant', 'mark_not_relevant']),
     );
+  });
+
+  test('keeps reader summary takeaway readable without truncating words', () {
+    const mapper = SummaryMapper();
+    final longTakeaway = [
+      'HN and RSS both surface ZCode as Claude Code from the Makers of GLM.',
+      'ClaudeOfficial says Fable 5 returned after updated cybersecurity safeguards.',
+      'Reddit replies add context about no usage reset, guardrails and fallback frustration.',
+      'The takeaway also redacts Bearer demo and sk-demo before display.',
+    ].join(' ');
+
+    final summary = mapper.readerSummaryToDomain(
+      readerSummaryApiDto(
+        content: readerSummaryContentApiDto(oneLineTakeaway: longTakeaway),
+      ),
+    );
+
+    expect(
+      summary.content.oneLineTakeaway,
+      contains('updated cybersecurity safeguards'),
+    );
+    expect(summary.content.oneLineTakeaway, contains('[redacted]'));
+    expect(summary.content.oneLineTakeaway, isNot(contains('Bearer demo')));
+    expect(summary.content.oneLineTakeaway, isNot(contains('sk-demo')));
+    expect(summary.content.oneLineTakeaway, isNot(contains('c...')));
   });
 }

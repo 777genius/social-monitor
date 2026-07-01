@@ -118,40 +118,24 @@ void main() {
     );
   });
 
-  test(
-    'navigates workspace summary periods through the same load flow',
-    () async {
-      final apiClient = InMemorySummariesApiClient(
-        items: [summaryApiDto()],
-        workspaceSummary: readerSummaryApiDto(),
-      );
-      final catalog = GeneratedSummaryReviewCatalog(apiClient: apiClient);
-      final store = _storeFromCatalog(catalog);
+  test('exposes available workspace summary periods while reloading', () {
+    final availablePeriod = SummaryPeriodPreset.daily.resolveForCalendarDate(
+      DateTime(2026, 6, 15),
+      now: DateTime.utc(2026, 6, 27, 12),
+    );
+    final store = _store([summaryApiDto()]);
+    store.workspaceSummaryState = LoadingViewState<WorkspaceSummarySnapshot>(
+      previousValue: WorkspaceSummarySnapshot(
+        availablePeriods: [availablePeriod, availablePeriod],
+      ),
+    );
 
-      await store.selectWorkspaceSummaryPeriod(SummaryPeriodPreset.weekly);
-      final currentWeeklyPeriod = store.selectedSummaryPeriod;
+    final periods = store.availableWorkspaceSummaryPeriods;
 
-      await store.showPreviousWorkspaceSummaryPeriod();
-      final previousWeeklyPeriod = store.selectedSummaryPeriod;
-
-      expect(previousWeeklyPeriod.endedAt, currentWeeklyPeriod.startedAt);
-      expect(store.canShowNextSummaryPeriod, isTrue);
-      expect(
-        apiClient.loadWorkspaceSummaryRequests.last.period,
-        previousWeeklyPeriod,
-      );
-
-      await store.showNextWorkspaceSummaryPeriod();
-
-      expect(store.selectedSummaryPeriod, currentWeeklyPeriod);
-
-      await store.showPreviousWorkspaceSummaryPeriod();
-      await store.showCurrentWorkspaceSummaryPeriod();
-
-      expect(store.selectedSummaryPeriod, currentWeeklyPeriod);
-      expect(store.isSelectedSummaryPeriodCurrent, isTrue);
-    },
-  );
+    expect(periods, hasLength(1));
+    expect(periods.single.startedAt, DateTime.utc(2026, 6, 15));
+    expect(periods.single.endedAt, DateTime.utc(2026, 6, 16));
+  });
 
   test('submits reader relevance action from summary top read', () async {
     final store = _store([
