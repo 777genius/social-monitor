@@ -1,0 +1,88 @@
+syntax = "proto3";
+
+package social_monitor.agent_runtime.v1;
+
+service AgentRuntimeService {
+  rpc RunAgentTask(AgentRuntimeTaskRequest) returns (AgentRuntimeTaskResponse);
+  rpc CheckHealth(AgentRuntimeHealthRequest) returns (AgentRuntimeHealthResponse);
+}
+
+enum AgentRuntimeProvider {
+  AGENT_RUNTIME_PROVIDER_UNSPECIFIED = 0;
+  AGENT_RUNTIME_PROVIDER_CODEX = 1;
+  AGENT_RUNTIME_PROVIDER_CLAUDE = 2;
+}
+
+enum AgentRuntimeTaskStatus {
+  AGENT_RUNTIME_TASK_STATUS_UNSPECIFIED = 0;
+  AGENT_RUNTIME_TASK_STATUS_COMPLETED = 1;
+  AGENT_RUNTIME_TASK_STATUS_FAILED = 2;
+  AGENT_RUNTIME_TASK_STATUS_WAITING_FOR_INPUT = 3;
+}
+
+enum AgentRuntimeHealthStatus {
+  AGENT_RUNTIME_HEALTH_STATUS_UNSPECIFIED = 0;
+  AGENT_RUNTIME_HEALTH_STATUS_SERVING = 1;
+  AGENT_RUNTIME_HEALTH_STATUS_DEGRADED = 2;
+  AGENT_RUNTIME_HEALTH_STATUS_NOT_SERVING = 3;
+}
+
+message AgentRuntimeTaskRequest {
+  uint32 schema_version = 1;
+  string request_id = 2;
+  string tenant_id = 3;
+  string workspace_id = 4;
+  string correlation_id = 5;
+  AgentRuntimeProvider provider = 6;
+  string provider_instance_id = 7;
+  string purpose = 8;
+  string system_prompt = 9;
+  string prompt = 10;
+  string output_schema_json = 11;
+  string controls_json = 12;
+  uint32 timeout_ms = 13;
+  string cwd = 14;
+  map<string, string> metadata = 15;
+}
+
+message AgentRuntimeTaskResponse {
+  uint32 schema_version = 1;
+  AgentRuntimeTaskStatus status = 2;
+  string output_text = 3;
+  string structured_output_json = 4;
+  repeated AgentRuntimeWarning warnings = 5;
+  AgentRuntimeUsage usage = 6;
+  AgentRuntimeFailure failure = 7;
+}
+
+message AgentRuntimeUsage {
+  uint32 input_tokens = 1;
+  uint32 output_tokens = 2;
+  uint32 total_tokens = 3;
+  double estimated_cost_usd = 4;
+}
+
+message AgentRuntimeFailure {
+  string code = 1;
+  string safe_message = 2;
+  bool retryable = 3;
+  bool reconnect_required = 4;
+  string cause_category = 5;
+  map<string, string> details = 6;
+}
+
+message AgentRuntimeWarning {
+  string code = 1;
+  string message = 2;
+}
+
+message AgentRuntimeHealthRequest {
+  string service = 1;
+}
+
+message AgentRuntimeHealthResponse {
+  AgentRuntimeHealthStatus status = 1;
+  string runtime_engine = 2;
+  string runtime_version = 3;
+  repeated AgentRuntimeWarning warnings = 4;
+}
