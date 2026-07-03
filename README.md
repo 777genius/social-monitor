@@ -2,7 +2,8 @@
 
 Social Monitor is a monitoring platform for public social, news, and web signals. It combines a TypeScript/NestJS backend, durable worker runtime, generated API contracts, and a web-first Flutter frontend for analyst and operator workflows.
 
-<img width="1312" height="737" alt="image" src="https://github.com/user-attachments/assets/60aa6da0-3a74-4ce0-afa5-70726fef5f68" />
+<img width="1312" height="728" alt="image" src="https://github.com/user-attachments/assets/54fcb4df-af13-4004-9229-b1dd1bdc462c" />
+
 
 The project is built for teams that need to collect public signals, normalize them into reliable events, search and analyze them, review feed items, generate summaries or reader-summaries, and route important findings into alerts, reports, dashboards, or downstream AI workflows.
 
