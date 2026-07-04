@@ -17,18 +17,32 @@ const knownTopicPatterns: readonly [RegExp, string][] = [
   [/\bclaude\b/iu, "Claude"],
   [/\bcursor\b/iu, "Cursor"],
   [/\bcodex\b/iu, "Codex"],
+  [/\bprompt\s+(?:extraction|injection)\b/iu, "prompt extraction"],
   [/\bmcp\b/iu, "MCP"],
   [/\bopenai\b/iu, "OpenAI"],
   [/\bgemini\b/iu, "Gemini"],
   [/\bllm(?:s)?\b/iu, "LLMs"],
+  [/\bai\s+coding\s+agents?\b/iu, "AI coding agents"],
   [/\bai\s+agents?\b/iu, "AI agents"],
   [/\bai\s+trust\b/iu, "AI trust"],
+  [/\bbetter\s+models?.*\bworse\s+tools?\b/iu, "AI tool quality"],
+  [/\bopenwiki\b/iu, "OpenWiki"],
+  [/\brepo[-\s]?context\b/iu, "repo context"],
+  [/\busage[-\s]?limits?\b/iu, "usage limits"],
   [/\bopen[-\s]?(?:weight|model)s?\b/iu, "open models"],
   [/\btypescript\b/iu, "TypeScript"],
   [/\bpython\b/iu, "Python"],
   [/\brust\b/iu, "Rust"],
   [/\bjavascript\b/iu, "JavaScript"],
   [/\bcybersecurity\b/iu, "cybersecurity"],
+];
+
+const genericLeadInPatterns: readonly RegExp[] = [
+  /^(?:a|an|the)\s+reported\s+(?:issue|claim|risk)\b/iu,
+  /^(?:a|an|the)\s+github\s+(?:issue|thread|discussion)\b/iu,
+  /^(?:hn|hacker\s+news|rss|reddit|x|twitter)(?:\s+and\s+(?:hn|hacker\s+news|rss|reddit|x|twitter))*\s+(?:both|items?|posts?|threads?)\b/iu,
+  /^(?:reddit|hn|hacker\s+news|x|twitter|rss)\s+(?:adds|claims|discusses|reports|says|shows|describes|pushes)\b/iu,
+  /^(?:users|developers|people|posts|threads)\s+(?:discuss|debate|report|say|show|ask|want)\b/iu,
 ];
 
 export const buildReaderSummaryMainTopics = (params: {
@@ -58,7 +72,10 @@ export const buildReaderSummaryMainTopics = (params: {
     ]),
   ];
 
-  return compactUnique(candidates).slice(0, maxMainTopics);
+  return removeShadowedTopics(compactUnique(candidates)).slice(
+    0,
+    maxMainTopics,
+  );
 };
 
 const topicFromRule = (value: string): string | undefined => {
@@ -95,7 +112,7 @@ const topicFromText = (value: string): string | undefined => {
     }
   }
 
-  return compactTopic(cleaned);
+  return undefined;
 };
 
 const compactTopic = (value: string): string | undefined => {
@@ -118,6 +135,12 @@ const compactTopic = (value: string): string | undefined => {
   if (label.length === 0 || label.length > maxTopicLength) {
     return undefined;
   }
+  if (genericLeadInPatterns.some((pattern) => pattern.test(label))) {
+    return undefined;
+  }
+  if (/\bmay\s+be$/iu.test(label)) {
+    return undefined;
+  }
   if (/^\d+\s+(?:top|selected|multi-source|cross-source)/iu.test(label)) {
     return undefined;
   }
@@ -129,3 +152,17 @@ const looksLikeRawId = (value: string): boolean =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(
     value.replaceAll(" ", "-"),
   );
+
+const removeShadowedTopics = (topics: readonly string[]): readonly string[] => {
+  const normalized = new Set(
+    topics.map((topic) => topic.toLocaleLowerCase("en-US")),
+  );
+
+  return topics.filter(
+    (topic) =>
+      !(
+        topic.toLocaleLowerCase("en-US") === "claude" &&
+        normalized.has("claude code")
+      ),
+  );
+};
