@@ -181,8 +181,8 @@ type LivePersistenceConfig =
       readonly feedFreshnessStartedAt: Date;
     };
 
-type ConversationUnitEvidenceRepository =
-  ConversationUnitRepositoryPort & ConversationSignalBaselineRepositoryPort;
+type ConversationUnitEvidenceRepository = ConversationUnitRepositoryPort &
+  ConversationSignalBaselineRepositoryPort;
 
 type LivePersistenceBundle = {
   readonly mode: LivePersistenceMode;
@@ -438,13 +438,16 @@ const assert: (condition: unknown, message: string) => asserts condition = (
 let livePersistenceToClose: LivePersistenceBundle | undefined;
 
 const readLivePersistenceConfig = (): LivePersistenceConfig => {
-  const mode = readOptionalEnv("LIVE_MULTI_PROVIDER_PERSISTENCE") ?? "in-memory";
+  const mode =
+    readOptionalEnv("LIVE_MULTI_PROVIDER_PERSISTENCE") ?? "in-memory";
   if (mode === "in-memory") {
     return { mode };
   }
 
   if (mode !== "prisma") {
-    throw new Error('LIVE_MULTI_PROVIDER_PERSISTENCE must be "in-memory" or "prisma"');
+    throw new Error(
+      'LIVE_MULTI_PROVIDER_PERSISTENCE must be "in-memory" or "prisma"',
+    );
   }
 
   assert(
@@ -452,7 +455,9 @@ const readLivePersistenceConfig = (): LivePersistenceConfig => {
     "LIVE_MULTI_PROVIDER_PERSISTENCE=prisma requires LIVE_MULTI_PROVIDER_E2E_ALLOW_PERSISTENCE=true",
   );
 
-  const rawDatabaseUrl = readOptionalEnv("LIVE_MULTI_PROVIDER_E2E_DATABASE_URL");
+  const rawDatabaseUrl = readOptionalEnv(
+    "LIVE_MULTI_PROVIDER_E2E_DATABASE_URL",
+  );
   assert(
     rawDatabaseUrl !== undefined,
     "LIVE_MULTI_PROVIDER_PERSISTENCE=prisma requires LIVE_MULTI_PROVIDER_E2E_DATABASE_URL",
@@ -517,7 +522,9 @@ const createLivePersistence = async (params: {
   await prepareLiveE2eDatabase(params.config);
 
   process.env.DATABASE_URL = params.config.databaseUrl;
-  const connection = new PrismaIngestionWorkerConnection(params.config.databaseUrl);
+  const connection = new PrismaIngestionWorkerConnection(
+    params.config.databaseUrl,
+  );
   const ids = new RandomUuidGenerator();
   const conversationUnits = new PrismaConversationUnitRepository(
     connection,
@@ -613,7 +620,10 @@ const main = async (): Promise<void> => {
             new HttpGitHubTrendingPageClient(timeoutMs),
             clock,
           ),
-          new HackerNewsSourceProvider(new HttpHackerNewsClient(timeoutMs), new SystemClock()),
+          new HackerNewsSourceProvider(
+            new HttpHackerNewsClient(timeoutMs),
+            new SystemClock(),
+          ),
           new RssSourceProvider(new HttpRssClient(timeoutMs)),
           ...(xTwitterProvider === undefined ? [] : [xTwitterProvider]),
         ],
@@ -1079,7 +1089,9 @@ const runLiveReaderSummarySmoke = async (params: {
   const readerSummaryPolicies = new InMemoryReaderSummaryPolicyRepository();
   const readerSummaryEvents = new InMemorySummaryEventPublisher();
   const readerSummaryQueue = new InMemoryReaderSummaryJobQueueAdapter();
-  const readerSummaryIds = new SequenceIdGenerator("live-multi-provider-readerSummary");
+  const readerSummaryIds = new SequenceIdGenerator(
+    "live-multi-provider-readerSummary",
+  );
   const scope = { type: "workspace" } as const;
   const summaryPreference = summaryPreferenceForRun();
 
@@ -1245,15 +1257,17 @@ const runLiveReaderSummarySmoke = async (params: {
     );
   }
   assert(
-    firstTopReadTitle === undefined || readerBrief.headline !== firstTopReadTitle,
+    firstTopReadTitle === undefined ||
+      readerBrief.headline !== firstTopReadTitle,
     "readerSummary reader headline must not repeat the first top read title",
   );
 
-  const requiredReaderTargets = allowEmptyTargets || readerSummaryModelMode !== "deterministic"
-    ? params.targets.filter((target) =>
-        selectedProviders.has(target.providerKey),
-      )
-    : params.targets;
+  const requiredReaderTargets =
+    allowEmptyTargets || readerSummaryModelMode !== "deterministic"
+      ? params.targets.filter((target) =>
+          selectedProviders.has(target.providerKey),
+        )
+      : params.targets;
   const requiredProviderCount = new Set(
     requiredReaderTargets.map((target) => target.providerKey),
   ).size;
@@ -1329,7 +1343,10 @@ const runLiveReaderSummarySmoke = async (params: {
     citedProviders: [...citedProviders].sort(),
     readerSourceMixProviders: [...readerSourceMixProviders].sort(),
     readerSourceMixCounts: Object.fromEntries(
-      readerBrief.sourceMix.map((entry) => [entry.providerKey, entry.itemCount]),
+      readerBrief.sourceMix.map((entry) => [
+        entry.providerKey,
+        entry.itemCount,
+      ]),
     ),
     topReadProviders: [...topReadProviders].sort(),
     topReadCount: readerBrief.topReads.length,
@@ -1351,7 +1368,9 @@ const buildSummaryModel = (): SummaryModelPort => {
       new AgentRuntimeSummaryModelAdapter({
         client: buildAgentRuntimeClient("summary"),
         agentProvider: readAgentRuntimeProvider(),
-        providerInstanceId: readOptionalEnv("AGENT_RUNTIME_PROVIDER_INSTANCE_ID"),
+        providerInstanceId: readOptionalEnv(
+          "AGENT_RUNTIME_PROVIDER_INSTANCE_ID",
+        ),
         model: readOptionalEnv("LIVE_MULTI_PROVIDER_AGENT_RUNTIME_MODEL"),
         timeoutMs: readPositiveIntegerEnv(
           "AGENT_RUNTIME_SUMMARY_TIMEOUT_MS",
@@ -1450,8 +1469,12 @@ const buildReaderSummaryModel = (): ReaderSummaryModelPort => {
       new AgentRuntimeReaderSummaryModelAdapter({
         client: buildAgentRuntimeClient("reader-summary"),
         agentProvider: readAgentRuntimeProvider(),
-        providerInstanceId: readOptionalEnv("AGENT_RUNTIME_PROVIDER_INSTANCE_ID"),
-        model: readOptionalEnv("LIVE_MULTI_PROVIDER_AGENT_RUNTIME_READER_MODEL"),
+        providerInstanceId: readOptionalEnv(
+          "AGENT_RUNTIME_PROVIDER_INSTANCE_ID",
+        ),
+        model: readOptionalEnv(
+          "LIVE_MULTI_PROVIDER_AGENT_RUNTIME_READER_MODEL",
+        ),
         timeoutMs: readPositiveIntegerEnv(
           "AGENT_RUNTIME_READER_SUMMARY_TIMEOUT_MS",
           240_000,
@@ -1508,12 +1531,21 @@ class LiveBudgetSummaryModel implements SummaryModelPort {
       input,
       {
         ...policy,
-        maxInputTokens: Math.max(policy.maxInputTokens, liveSummaryMaxInputTokens),
-        maxOutputTokens: Math.max(policy.maxOutputTokens, liveSummaryMaxOutputTokens),
+        maxInputTokens: Math.max(
+          policy.maxInputTokens,
+          liveSummaryMaxInputTokens,
+        ),
+        maxOutputTokens: Math.max(
+          policy.maxOutputTokens,
+          liveSummaryMaxOutputTokens,
+        ),
       },
       {
         ...budget,
-        remainingTokens: Math.max(budget.remainingTokens, liveSummaryBudgetTokens),
+        remainingTokens: Math.max(
+          budget.remainingTokens,
+          liveSummaryBudgetTokens,
+        ),
       },
     );
   }
@@ -1605,32 +1637,36 @@ class LiveBudgetReaderSummaryModel implements ReaderSummaryModelPort {
   }
 }
 
-const buildSourceContentQualityReviewer = (): SourceContentQualityReviewerPort => {
-  const mode = resolveRelevanceContentQualityReviewerMode(process.env);
+const buildSourceContentQualityReviewer =
+  (): SourceContentQualityReviewerPort => {
+    const mode = resolveRelevanceContentQualityReviewerMode(process.env);
 
-  if (mode === "disabled") {
-    return NOOP_SOURCE_CONTENT_QUALITY_REVIEWER;
-  }
+    if (mode === "disabled") {
+      return NOOP_SOURCE_CONTENT_QUALITY_REVIEWER;
+    }
 
-  return new OpenAiSourceContentQualityReviewerAdapter(
-    resolveRelevanceContentQualityOpenAiOptions(process.env, {
-      requireApiKey: true,
-    }),
-  );
-};
+    return new OpenAiSourceContentQualityReviewerAdapter(
+      resolveRelevanceContentQualityOpenAiOptions(process.env, {
+        requireApiKey: true,
+      }),
+    );
+  };
 
 const buildScanTargets = (): readonly ScanTarget[] => {
   const userAgent =
     readOptionalEnv("LIVE_MULTI_PROVIDER_USER_AGENT") ??
     "social-monitor-mvp-live-multi-provider-summary/0.1";
   const includeXTwitter = shouldIncludeXTwitterTargets();
+  const includeGithubSupporting = shouldIncludeGithubSupportingTargets();
   if (sourcePresetMode === aiDeveloperSignalSourcePreset.presetId) {
     return [
       ...presetScanTargets({
         userAgent,
         includeXTwitter,
       }),
-      ...supplementalGithubScanTargets(userAgent),
+      ...(includeGithubSupporting
+        ? supplementalGithubScanTargets(userAgent)
+        : []),
     ];
   }
 
@@ -1660,26 +1696,24 @@ const buildScanTargets = (): readonly ScanTarget[] => {
   ];
 
   return [
-    ...subreddits.map(
-      (subreddit, index): ScanTarget => ({
-        providerKey: "reddit",
-        sourceBindingId: `source-binding-live-multi-provider-reddit-${index + 1}-${safeIdPart(subreddit)}`,
-        scanPolicyId: `scan-policy-live-multi-provider-reddit-${index + 1}-${safeIdPart(subreddit)}`,
-        sourceQuery: {
-          mode: "listing",
-          query: `${subreddit}:${redditListing}`,
-        },
-        config: {
-          subreddit,
-          listing: redditListing,
-          ...(redditListing === "top" ? { topTime: redditTopTime } : {}),
-          ...(redditMinScore === undefined ? {} : { minScore: redditMinScore }),
-          ...redditCommentRuntimeConfig(),
-          maxItems: maxItemsPerProvider,
-          userAgent,
-        },
-      }),
-    ),
+    ...subreddits.map((subreddit, index): ScanTarget => ({
+      providerKey: "reddit",
+      sourceBindingId: `source-binding-live-multi-provider-reddit-${index + 1}-${safeIdPart(subreddit)}`,
+      scanPolicyId: `scan-policy-live-multi-provider-reddit-${index + 1}-${safeIdPart(subreddit)}`,
+      sourceQuery: {
+        mode: "listing",
+        query: `${subreddit}:${redditListing}`,
+      },
+      config: {
+        subreddit,
+        listing: redditListing,
+        ...(redditListing === "top" ? { topTime: redditTopTime } : {}),
+        ...(redditMinScore === undefined ? {} : { minScore: redditMinScore }),
+        ...redditCommentRuntimeConfig(),
+        maxItems: maxItemsPerProvider,
+        userAgent,
+      },
+    })),
     {
       providerKey: GITHUB_ISSUES_PROVIDER_KEY,
       ...githubIssuesTarget({ userAgent, query: githubQuery }),
@@ -1699,26 +1733,24 @@ const buildScanTargets = (): readonly ScanTarget[] => {
       sourceQuery: { mode: "url", query: rssFeedUrl },
       config: {},
     },
-    ...(
-      includeXTwitter
-        ? xTwitterQueries.map((query, index): ScanTarget => ({
-            providerKey: "x-twitter",
-            sourceBindingId: `source-binding-live-multi-provider-x-twitter-${index + 1}-${safeIdPart(query)}`,
-            scanPolicyId: `scan-policy-live-multi-provider-x-twitter-${index + 1}-${safeIdPart(query)}`,
-            sourceQuery: { mode: "search", query },
-            config: {
-              language: "en",
-              windowHours: 24,
-              searchProducts: ["top", "latest"],
-              maxItems: xTwitterMaxItems,
-              limitPerProduct: xTwitterLimitPerProduct,
-              minLikes: 10,
-              minRetweets: 0,
-              minReplies: 0,
-            },
-          }))
-        : []
-    ),
+    ...(includeXTwitter
+      ? xTwitterQueries.map((query, index): ScanTarget => ({
+          providerKey: "x-twitter",
+          sourceBindingId: `source-binding-live-multi-provider-x-twitter-${index + 1}-${safeIdPart(query)}`,
+          scanPolicyId: `scan-policy-live-multi-provider-x-twitter-${index + 1}-${safeIdPart(query)}`,
+          sourceQuery: { mode: "search", query },
+          config: {
+            language: "en",
+            windowHours: 24,
+            searchProducts: ["top", "latest"],
+            maxItems: xTwitterMaxItems,
+            limitPerProduct: xTwitterLimitPerProduct,
+            minLikes: 10,
+            minRetweets: 0,
+            minReplies: 0,
+          },
+        }))
+      : []),
   ];
 };
 
@@ -1734,10 +1766,12 @@ const redditCommentRuntimeConfig = (): Readonly<Record<string, unknown>> =>
 
 const summaryPreferenceForRun = (): SourceTargetPresetSummaryPreference => {
   if (sourcePresetMode === aiDeveloperSignalSourcePreset.presetId) {
+    const primaryInstructions = `${aiDeveloperSignalSourcePreset.summaryPreference.customInstructions} Use Reddit, X/Twitter, Hacker News and RSS as the primary signal layer.`;
     return {
       ...aiDeveloperSignalSourcePreset.summaryPreference,
-      customInstructions:
-        `${aiDeveloperSignalSourcePreset.summaryPreference.customInstructions} Use Reddit, X/Twitter, Hacker News and RSS as the primary signal layer. Treat GitHub issues and GitHub Trending as supporting developer evidence unless social/news sources confirm the same story.`,
+      customInstructions: shouldIncludeGithubSupportingTargets()
+        ? `${primaryInstructions} Treat GitHub issues and GitHub Trending as supporting developer evidence unless social/news sources confirm the same story.`
+        : primaryInstructions,
     };
   }
 
@@ -1795,20 +1829,18 @@ const presetScanTargets = (params: {
 
   return [
     ...presetTargets,
-    ...xTwitterQueryOverride.map(
-      (query, index): ScanTarget => ({
-        providerKey: "x-twitter",
-        sourceBindingId: `source-binding-live-multi-provider-x-twitter-override-${index + 1}-${safeIdPart(query)}`,
-        scanPolicyId: `scan-policy-live-multi-provider-x-twitter-override-${index + 1}-${safeIdPart(query)}`,
-        sourceQuery: { mode: "search", query },
-        config: {
-          ...xTwitterTargetConfig,
-          maxItems: xTwitterMaxItems,
-          limitPerProduct: xTwitterLimitPerProduct,
-          userAgent: params.userAgent,
-        },
-      }),
-    ),
+    ...xTwitterQueryOverride.map((query, index): ScanTarget => ({
+      providerKey: "x-twitter",
+      sourceBindingId: `source-binding-live-multi-provider-x-twitter-override-${index + 1}-${safeIdPart(query)}`,
+      scanPolicyId: `scan-policy-live-multi-provider-x-twitter-override-${index + 1}-${safeIdPart(query)}`,
+      sourceQuery: { mode: "search", query },
+      config: {
+        ...xTwitterTargetConfig,
+        maxItems: xTwitterMaxItems,
+        limitPerProduct: xTwitterLimitPerProduct,
+        userAgent: params.userAgent,
+      },
+    })),
   ];
 };
 
@@ -1849,8 +1881,7 @@ const githubIssuesTarget = (params: {
 
 const githubTrendingPageTarget = (userAgent: string): ScanTarget => ({
   providerKey: "github-trending-page",
-  sourceBindingId:
-    "source-binding-live-multi-provider-github-trending-page",
+  sourceBindingId: "source-binding-live-multi-provider-github-trending-page",
   scanPolicyId: "scan-policy-live-multi-provider-github-trending-page",
   sourceQuery: { mode: "listing", query: "daily" },
   config: {
@@ -1929,6 +1960,9 @@ const shouldIncludeXTwitterTargets = (): boolean =>
     "LIVE_MULTI_PROVIDER_INCLUDE_X_TWITTER",
     readOptionalEnv("X_COLLECTOR_GRPC_ADDRESS") !== undefined,
   );
+
+const shouldIncludeGithubSupportingTargets = (): boolean =>
+  readBooleanEnv("LIVE_MULTI_PROVIDER_INCLUDE_GITHUB_SUPPORTING", true);
 
 const maxItemsForProvider = (providerKey: LiveProviderKey): number =>
   providerKey === "x-twitter" ? xTwitterMaxItems : maxItemsPerProvider;
@@ -2094,8 +2128,10 @@ const writeOptionalEvidenceArtifact = (input: {
       readerSummaryId: input.readerSummary.readerSummaryId,
       readerSummarySelectedProviders: input.readerSummary.selectedProviders,
       readerSummaryCitedProviders: input.readerSummary.citedProviders,
-      readerSummaryReaderSourceMixProviders: input.readerSummary.readerSourceMixProviders,
-      readerSummaryReaderSourceMixCounts: input.readerSummary.readerSourceMixCounts,
+      readerSummaryReaderSourceMixProviders:
+        input.readerSummary.readerSourceMixProviders,
+      readerSummaryReaderSourceMixCounts:
+        input.readerSummary.readerSourceMixCounts,
       readerSummaryTopReadProviders: input.readerSummary.topReadProviders,
       readerSummaryTopReadCount: input.readerSummary.topReadCount,
       readerSummaryQualityFlags: input.readerSummary.qualityFlags,
@@ -2150,9 +2186,7 @@ const readRedditListing = (value: string): RedditPostListing => {
 };
 
 function readSummaryModelMode():
-  | "deterministic"
-  | "openai-responses"
-  | "agent-runtime" {
+  "deterministic" | "openai-responses" | "agent-runtime" {
   const value =
     readOptionalEnv("LIVE_MULTI_PROVIDER_SUMMARY_MODEL") ?? "deterministic";
   if (
@@ -2169,9 +2203,7 @@ function readSummaryModelMode():
 }
 
 function readReaderSummaryModelMode():
-  | "deterministic"
-  | "openai-responses"
-  | "agent-runtime" {
+  "deterministic" | "openai-responses" | "agent-runtime" {
   const value =
     readOptionalEnv("LIVE_MULTI_PROVIDER_READER_SUMMARY_MODEL") ??
     "deterministic";
@@ -2189,7 +2221,8 @@ function readReaderSummaryModelMode():
 }
 
 function readSourcePresetMode(): "manual" | "ai-developer-signal-v1" {
-  const value = readOptionalEnv("LIVE_MULTI_PROVIDER_SOURCE_PRESET") ?? "manual";
+  const value =
+    readOptionalEnv("LIVE_MULTI_PROVIDER_SOURCE_PRESET") ?? "manual";
   if (value === "manual") {
     return "manual";
   }
@@ -2402,9 +2435,7 @@ const stableUuid = (value: string): string => {
 };
 
 const isUuid = (value: string): boolean =>
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-    value,
-  );
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 
 const sameDatabaseUrl = (left: string, right: string): boolean => {
   const normalize = (value: string): string => {
