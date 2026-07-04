@@ -55,8 +55,12 @@ const evidencePathEnv = "DURABLE_READER_SUMMARY_EVIDENCE_PATH";
 const frontendFixturePathEnv = "DURABLE_READER_SUMMARY_FRONTEND_FIXTURE_PATH";
 const defaultTenantId = "11111111-1111-4111-8111-111111111111";
 const defaultWorkspaceId = "22222222-2222-4222-8222-222222222222";
+const periodStartedAtEnv = "DURABLE_READER_SUMMARY_PERIOD_STARTED_AT";
+const periodEndedAtEnv = "DURABLE_READER_SUMMARY_PERIOD_ENDED_AT";
+const cadenceEnv = "DURABLE_READER_SUMMARY_CADENCE";
 type DurableReaderSummaryModelMode =
   "deterministic" | "openai-responses" | "agent-runtime";
+type DurableReaderSummaryCadence = "daily" | "weekly" | "monthly" | "custom";
 
 type FeedInventoryRow = {
   readonly providerKey: string;
@@ -75,10 +79,14 @@ async function main(): Promise<void> {
     readEnv("DURABLE_READER_SUMMARY_WORKSPACE_ID") ?? defaultWorkspaceId,
   );
   const timezone = readEnv("DURABLE_READER_SUMMARY_TIMEZONE") ?? "UTC";
-  const periodStartedAt = startOfUtcDay(now);
-  const periodEndedAt = now;
+  const cadence = readCadence();
+  const periodStartedAt =
+    readDateEnv(periodStartedAtEnv) ?? startOfUtcDay(now);
+  const periodEndedAt =
+    readDateEnv(periodEndedAtEnv) ??
+    (cadence === "daily" ? addUtcDays(periodStartedAt, 1) : now);
   const period = buildReaderSummaryPeriod({
-    cadence: "custom",
+    cadence,
     startedAt: periodStartedAt,
     endedAt: periodEndedAt,
     timezone,
@@ -154,7 +162,7 @@ async function main(): Promise<void> {
       tenantId: tenant,
       workspaceId: workspace,
       scope,
-      cadence: "custom",
+      cadence,
       period: {
         startedAt: periodStartedAt,
         endedAt: periodEndedAt,
@@ -406,6 +414,38 @@ const startOfUtcDay = (date: Date): Date =>
   new Date(
     Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
   );
+
+const addUtcDays = (date: Date, days: number): Date =>
+  new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
+
+const readCadence = (): DurableReaderSummaryCadence => {
+  const value = readEnv(cadenceEnv) ?? "custom";
+  if (
+    value === "daily" ||
+    value === "weekly" ||
+    value === "monthly" ||
+    value === "custom"
+  ) {
+    return value;
+  }
+
+  throw new Error(
+    `${cadenceEnv} must be daily, weekly, monthly or custom`,
+  );
+};
+
+const readDateEnv = (name: string): Date | undefined => {
+  const value = readEnv(name);
+  if (value === undefined) {
+    return undefined;
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    throw new Error(`${name} must be an ISO date-time`);
+  }
+
+  return date;
+};
 
 const readModelMode = (): DurableReaderSummaryModelMode => {
   const value = readEnv("DURABLE_READER_SUMMARY_MODEL") ?? "openai-responses";
