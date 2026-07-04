@@ -1,0 +1,909 @@
+{
+  "artifactId": "social-research.sdk-cases.v1",
+  "cases": [
+    {
+      "caseId": "reddit_research_request_v1",
+      "description": "Ergonomic Reddit research request compiles to canonical intent, lanes and explanation.",
+      "expectedExplanation": "reddit/general: AI agents MCP Claude Code reliability (primary topic search)\nreddit/product_or_group: \"Claude Code\" OR MCP (product and entity recall lane)\nreddit/community_listing: claudeai:top (claudeai top listing lane)\nreddit/search_variant: AI agents MCP Claude Code reliability (weekly high-engagement Reddit search pass)\nreddit/thread_enrichment: AI agents MCP Claude Code reliability (fetch comments only for top selected posts)\nreddit/keyword_group: \"agent reliability\" (secondary keyword recall lane)",
+      "expectedIntent": {
+        "depth": "balanced",
+        "entities": {
+          "communities": [
+            {
+              "listings": [
+                "top",
+                "hot"
+              ],
+              "name": "ClaudeAI",
+              "sourceKey": "reddit"
+            }
+          ],
+          "keywords": [
+            "agent reliability"
+          ],
+          "products": [
+            "Claude Code",
+            "MCP"
+          ]
+        },
+        "goal": "research",
+        "sources": [
+          "reddit"
+        ],
+        "topic": "AI agents MCP Claude Code reliability",
+        "window": "30d"
+      },
+      "expectedPlan": {
+        "budgets": [
+          {
+            "includeEnrichment": true,
+            "maxItemsPerLane": 40,
+            "maxLanes": 6,
+            "sourceKey": "reddit"
+          }
+        ],
+        "depth": "balanced",
+        "goal": "research",
+        "intent": {
+          "depth": "balanced",
+          "entities": {
+            "communities": [
+              {
+                "listings": [
+                  "top",
+                  "hot"
+                ],
+                "name": "ClaudeAI",
+                "sourceKey": "reddit"
+              }
+            ],
+            "keywords": [
+              "agent reliability"
+            ],
+            "products": [
+              "Claude Code",
+              "MCP"
+            ]
+          },
+          "goal": "research",
+          "sources": [
+            "reddit"
+          ],
+          "topic": "AI agents MCP Claude Code reliability",
+          "window": "30d"
+        },
+        "lanes": [
+          {
+            "budgetWeight": 1,
+            "kind": "general",
+            "laneId": "reddit:general:ai-agents-mcp-claude-code-reliability",
+            "maxItems": 40,
+            "operation": "search",
+            "priority": 100,
+            "query": "AI agents MCP Claude Code reliability",
+            "reason": "primary topic search",
+            "sourceKey": "reddit"
+          },
+          {
+            "budgetWeight": 1,
+            "kind": "product_or_group",
+            "laneId": "reddit:product_or_group:claude-code-or-mcp",
+            "maxItems": 40,
+            "operation": "search",
+            "priority": 90,
+            "query": "\"Claude Code\" OR MCP",
+            "reason": "product and entity recall lane",
+            "sourceKey": "reddit"
+          },
+          {
+            "budgetWeight": 1,
+            "kind": "community_listing",
+            "laneId": "reddit:community_listing:claudeai-top",
+            "maxItems": 40,
+            "operation": "listing",
+            "parameters": {
+              "topTime": "week"
+            },
+            "priority": 88,
+            "query": "claudeai:top",
+            "reason": "claudeai top listing lane",
+            "sourceKey": "reddit"
+          },
+          {
+            "budgetWeight": 1,
+            "kind": "search_variant",
+            "laneId": "reddit:search_variant:ai-agents-mcp-claude-code-reliability:top-week",
+            "maxItems": 20,
+            "operation": "search",
+            "parameters": {
+              "searchSort": "top",
+              "searchTime": "week"
+            },
+            "priority": 86,
+            "query": "AI agents MCP Claude Code reliability",
+            "reason": "weekly high-engagement Reddit search pass",
+            "sourceKey": "reddit"
+          },
+          {
+            "budgetWeight": 2,
+            "kind": "thread_enrichment",
+            "laneId": "reddit:thread_enrichment:ai-agents-mcp-claude-code-reliability",
+            "maxItems": 10,
+            "operation": "enrichment",
+            "parameters": {
+              "commentSort": "top",
+              "maxCommentsPerPost": 20
+            },
+            "priority": 84,
+            "query": "AI agents MCP Claude Code reliability",
+            "reason": "fetch comments only for top selected posts",
+            "sourceKey": "reddit"
+          },
+          {
+            "budgetWeight": 1,
+            "kind": "keyword_group",
+            "laneId": "reddit:keyword_group:agent-reliability",
+            "maxItems": 40,
+            "operation": "search",
+            "priority": 80,
+            "query": "\"agent reliability\"",
+            "reason": "secondary keyword recall lane",
+            "sourceKey": "reddit"
+          }
+        ],
+        "normalizedTopic": "AI agents MCP Claude Code reliability",
+        "trace": {
+          "lanes": {
+            "afterDedupe": 6,
+            "byKind": [
+              {
+                "count": 1,
+                "kind": "general"
+              },
+              {
+                "count": 1,
+                "kind": "product_or_group"
+              },
+              {
+                "count": 1,
+                "kind": "community_listing"
+              },
+              {
+                "count": 1,
+                "kind": "search_variant"
+              },
+              {
+                "count": 1,
+                "kind": "thread_enrichment"
+              },
+              {
+                "count": 1,
+                "kind": "keyword_group"
+              }
+            ],
+            "cappedByGlobalLimit": false,
+            "emitted": 6,
+            "planned": 6
+          },
+          "planner": {
+            "defaultSourcesUsed": false,
+            "maxLanes": 40,
+            "queryStrategyId": "default-social-query-strategy",
+            "queryStrategyRecipeId": "default-social-query-strategy-v1",
+            "sourceCapabilityMode": "built_in_plus_overrides",
+            "sourceStrategyMode": "built_in_plus_extensions"
+          },
+          "sources": [
+            {
+              "budget": {
+                "includeEnrichment": true,
+                "maxItemsPerLane": 40,
+                "maxLanes": 6,
+                "sourceKey": "reddit"
+              },
+              "capabilityFilteredLaneCount": 8,
+              "capabilityProfileAvailable": true,
+              "cappedBySourceLimit": true,
+              "emittedLaneCount": 6,
+              "plannedLaneCount": 8,
+              "selection": "explicit",
+              "sourceKey": "reddit",
+              "strategyAvailable": true,
+              "warningCodes": [
+                "source_lanes_capped"
+              ]
+            }
+          ],
+          "warnings": {
+            "byCode": [
+              {
+                "code": "source_lanes_capped",
+                "count": 1
+              }
+            ],
+            "total": 1
+          }
+        },
+        "warnings": [
+          {
+            "code": "source_lanes_capped",
+            "message": "reddit lanes capped at 6",
+            "sourceKey": "reddit"
+          }
+        ],
+        "window": "30d"
+      },
+      "kind": "request_to_plan",
+      "requestInput": {
+        "communities": {
+          "listings": [
+            "top",
+            "hot"
+          ],
+          "name": "ClaudeAI",
+          "sourceKey": "reddit"
+        },
+        "keywords": [
+          "agent reliability"
+        ],
+        "preset": "broad_research",
+        "products": [
+          "Claude Code",
+          "MCP"
+        ],
+        "sources": "reddit",
+        "topic": "AI agents MCP Claude Code reliability"
+      }
+    },
+    {
+      "caseId": "x_account_recall_request_v1",
+      "description": "Account-centered X request keeps from: and mention lanes source-neutral at SDK level.",
+      "expectedExplanation": "x-twitter/general: OpenAI Codex launch (primary topic search)\nx-twitter/account_posts: from:openai (official account lane, ranked against the topic)\nx-twitter/product_or_group: Codex (product and entity recall lane)",
+      "expectedIntent": {
+        "depth": "light",
+        "entities": {
+          "handles": [
+            {
+              "handle": "@OpenAI",
+              "includeMentions": true,
+              "includePosts": true,
+              "sourceKey": "x-twitter"
+            }
+          ],
+          "products": [
+            "Codex"
+          ]
+        },
+        "goal": "trend",
+        "sources": [
+          "x-twitter"
+        ],
+        "topic": "OpenAI Codex launch",
+        "window": "7d"
+      },
+      "expectedPlan": {
+        "budgets": [
+          {
+            "includeEnrichment": false,
+            "maxItemsPerLane": 20,
+            "maxLanes": 3,
+            "sourceKey": "x-twitter"
+          }
+        ],
+        "depth": "light",
+        "goal": "trend",
+        "intent": {
+          "depth": "light",
+          "entities": {
+            "handles": [
+              {
+                "handle": "@OpenAI",
+                "includeMentions": true,
+                "includePosts": true,
+                "sourceKey": "x-twitter"
+              }
+            ],
+            "products": [
+              "Codex"
+            ]
+          },
+          "goal": "trend",
+          "sources": [
+            "x-twitter"
+          ],
+          "topic": "OpenAI Codex launch",
+          "window": "7d"
+        },
+        "lanes": [
+          {
+            "budgetWeight": 1,
+            "kind": "general",
+            "laneId": "x-twitter:general:openai-codex-launch",
+            "maxItems": 20,
+            "operation": "search",
+            "priority": 100,
+            "query": "OpenAI Codex launch",
+            "reason": "primary topic search",
+            "sourceKey": "x-twitter"
+          },
+          {
+            "budgetWeight": 1,
+            "kind": "account_posts",
+            "laneId": "x-twitter:account_posts:from-openai",
+            "maxItems": 20,
+            "operation": "account_feed",
+            "parameters": {
+              "topicForRanking": "OpenAI Codex launch"
+            },
+            "priority": 95,
+            "query": "from:openai",
+            "reason": "official account lane, ranked against the topic",
+            "sourceKey": "x-twitter"
+          },
+          {
+            "budgetWeight": 1,
+            "kind": "product_or_group",
+            "laneId": "x-twitter:product_or_group:codex",
+            "maxItems": 20,
+            "operation": "search",
+            "priority": 90,
+            "query": "Codex",
+            "reason": "product and entity recall lane",
+            "sourceKey": "x-twitter"
+          }
+        ],
+        "normalizedTopic": "OpenAI Codex launch",
+        "trace": {
+          "lanes": {
+            "afterDedupe": 3,
+            "byKind": [
+              {
+                "count": 1,
+                "kind": "general"
+              },
+              {
+                "count": 1,
+                "kind": "account_posts"
+              },
+              {
+                "count": 1,
+                "kind": "product_or_group"
+              }
+            ],
+            "cappedByGlobalLimit": false,
+            "emitted": 3,
+            "planned": 3
+          },
+          "planner": {
+            "defaultSourcesUsed": false,
+            "maxLanes": 40,
+            "queryStrategyId": "default-social-query-strategy",
+            "queryStrategyRecipeId": "default-social-query-strategy-v1",
+            "sourceCapabilityMode": "built_in_plus_overrides",
+            "sourceStrategyMode": "built_in_plus_extensions"
+          },
+          "sources": [
+            {
+              "budget": {
+                "includeEnrichment": false,
+                "maxItemsPerLane": 20,
+                "maxLanes": 3,
+                "sourceKey": "x-twitter"
+              },
+              "capabilityFilteredLaneCount": 5,
+              "capabilityProfileAvailable": true,
+              "cappedBySourceLimit": true,
+              "emittedLaneCount": 3,
+              "plannedLaneCount": 5,
+              "selection": "explicit",
+              "sourceKey": "x-twitter",
+              "strategyAvailable": true,
+              "warningCodes": [
+                "source_runtime_not_ready",
+                "source_lanes_capped"
+              ]
+            }
+          ],
+          "warnings": {
+            "byCode": [
+              {
+                "code": "source_runtime_not_ready",
+                "count": 1
+              },
+              {
+                "code": "source_lanes_capped",
+                "count": 1
+              }
+            ],
+            "total": 2
+          }
+        },
+        "warnings": [
+          {
+            "code": "source_runtime_not_ready",
+            "message": "x-twitter runtimeReadiness=deferred; execution policy may deny provider reads.",
+            "sourceKey": "x-twitter"
+          },
+          {
+            "code": "source_lanes_capped",
+            "message": "x-twitter lanes capped at 3",
+            "sourceKey": "x-twitter"
+          }
+        ],
+        "window": "7d"
+      },
+      "kind": "request_to_plan",
+      "requestInput": {
+        "accounts": {
+          "handle": "@OpenAI",
+          "includeMentions": true,
+          "includePosts": true,
+          "sourceKey": "x-twitter"
+        },
+        "preset": "trend_scan",
+        "products": [
+          "Codex"
+        ],
+        "sources": "x-twitter",
+        "topic": "OpenAI Codex launch"
+      }
+    },
+    {
+      "caseId": "mastodon_extension_request_v1",
+      "description": "Unknown Mastodon-compatible source compiles through capability profile and lane strategy extension points.",
+      "expectedExplanation": "mastodon/general: AI agent launch on Mastodon (primary topic search)\nmastodon/account_mentions: @openai.social (custom Mastodon-compatible account mention lane)\nmastodon/fallback_short_query: agent launch mastodon (short query fallback for strict provider search syntax)",
+      "expectedIntent": {
+        "depth": "light",
+        "entities": {
+          "handles": [
+            {
+              "handle": "@openai.social",
+              "includeMentions": true,
+              "includePosts": false,
+              "sourceKey": "mastodon"
+            }
+          ]
+        },
+        "goal": "trend",
+        "sources": [
+          "mastodon"
+        ],
+        "topic": "AI agent launch on Mastodon",
+        "window": "7d"
+      },
+      "expectedPlan": {
+        "budgets": [
+          {
+            "includeEnrichment": false,
+            "maxItemsPerLane": 20,
+            "maxLanes": 3,
+            "sourceKey": "mastodon"
+          }
+        ],
+        "depth": "light",
+        "goal": "trend",
+        "intent": {
+          "depth": "light",
+          "entities": {
+            "handles": [
+              {
+                "handle": "@openai.social",
+                "includeMentions": true,
+                "includePosts": false,
+                "sourceKey": "mastodon"
+              }
+            ]
+          },
+          "goal": "trend",
+          "sources": [
+            "mastodon"
+          ],
+          "topic": "AI agent launch on Mastodon",
+          "window": "7d"
+        },
+        "lanes": [
+          {
+            "budgetWeight": 1,
+            "kind": "general",
+            "laneId": "mastodon:general:ai-agent-launch-on-mastodon",
+            "maxItems": 20,
+            "operation": "search",
+            "priority": 100,
+            "query": "AI agent launch on Mastodon",
+            "reason": "primary topic search",
+            "sourceKey": "mastodon"
+          },
+          {
+            "budgetWeight": 1,
+            "kind": "account_mentions",
+            "laneId": "mastodon:account_mentions:openai-social",
+            "maxItems": 20,
+            "operation": "mention_search",
+            "parameters": {
+              "topicForRanking": "AI agent launch on Mastodon"
+            },
+            "priority": 85,
+            "query": "@openai.social",
+            "reason": "custom Mastodon-compatible account mention lane",
+            "sourceKey": "mastodon"
+          },
+          {
+            "budgetWeight": 1,
+            "kind": "fallback_short_query",
+            "laneId": "mastodon:fallback_short_query:agent-launch-mastodon",
+            "maxItems": 10,
+            "operation": "search",
+            "priority": 30,
+            "query": "agent launch mastodon",
+            "reason": "short query fallback for strict provider search syntax",
+            "sourceKey": "mastodon"
+          }
+        ],
+        "normalizedTopic": "AI agent launch on Mastodon",
+        "trace": {
+          "lanes": {
+            "afterDedupe": 3,
+            "byKind": [
+              {
+                "count": 1,
+                "kind": "general"
+              },
+              {
+                "count": 1,
+                "kind": "account_mentions"
+              },
+              {
+                "count": 1,
+                "kind": "fallback_short_query"
+              }
+            ],
+            "cappedByGlobalLimit": false,
+            "emitted": 3,
+            "planned": 3
+          },
+          "planner": {
+            "defaultSourcesUsed": false,
+            "maxLanes": 40,
+            "queryStrategyId": "default-social-query-strategy",
+            "queryStrategyRecipeId": "default-social-query-strategy-v1",
+            "sourceCapabilityMode": "built_in_plus_overrides",
+            "sourceStrategyMode": "built_in_plus_extensions"
+          },
+          "sources": [
+            {
+              "budget": {
+                "includeEnrichment": false,
+                "maxItemsPerLane": 20,
+                "maxLanes": 3,
+                "sourceKey": "mastodon"
+              },
+              "capabilityFilteredLaneCount": 3,
+              "capabilityProfileAvailable": true,
+              "cappedBySourceLimit": false,
+              "emittedLaneCount": 3,
+              "plannedLaneCount": 3,
+              "selection": "explicit",
+              "sourceKey": "mastodon",
+              "strategyAvailable": true,
+              "warningCodes": [
+                "source_runtime_not_ready"
+              ]
+            }
+          ],
+          "warnings": {
+            "byCode": [
+              {
+                "code": "source_runtime_not_ready",
+                "count": 1
+              }
+            ],
+            "total": 1
+          }
+        },
+        "warnings": [
+          {
+            "code": "source_runtime_not_ready",
+            "message": "mastodon runtimeReadiness=deferred; execution policy may deny provider reads.",
+            "sourceKey": "mastodon"
+          }
+        ],
+        "window": "7d"
+      },
+      "kind": "source_extension_request_to_plan",
+      "requestInput": {
+        "accounts": {
+          "handle": "@openai.social",
+          "includeMentions": true,
+          "includePosts": false,
+          "sourceKey": "mastodon"
+        },
+        "preset": "trend_scan",
+        "sources": "mastodon",
+        "topic": "AI agent launch on Mastodon"
+      },
+      "sourceExtensionContract": {
+        "capabilityProfile": {
+          "cursorModel": "opaque",
+          "displayName": "Mastodon-compatible network",
+          "limitations": [
+            "Golden case proves SDK extension shape only; runtime provider readiness is source-specific."
+          ],
+          "productionSafe": false,
+          "quotaModel": "per_credential",
+          "readiness": {
+            "runtimeReadiness": "deferred",
+            "state": "research_only"
+          },
+          "sourceKey": "mastodon",
+          "supportedContentUnits": [
+            "post",
+            "profile",
+            "link"
+          ],
+          "supportedLaneKinds": [
+            "general",
+            "account_mentions",
+            "fallback_short_query"
+          ],
+          "supportedOperations": [
+            "search",
+            "mention_search"
+          ],
+          "version": 1
+        },
+        "goldenCaseId": "mastodon_extension_request_v1",
+        "laneStrategy": {
+          "contract": "SocialSourceLaneStrategy",
+          "emittedLaneKinds": [
+            "account_mentions"
+          ],
+          "emittedOperations": [
+            "mention_search"
+          ],
+          "recipes": [
+            {
+              "accountSelector": "same_source_include_mentions",
+              "laneKind": "account_mentions",
+              "operation": "mention_search",
+              "parameters": {
+                "topicForRanking": "{topic}"
+              },
+              "priority": 85,
+              "queryTemplate": "@{handle}",
+              "reason": "custom Mastodon-compatible account mention lane",
+              "recipeId": "mastodon-account-mention-template-v1",
+              "recipeKind": "account_lane_template",
+              "sourceKey": "mastodon"
+            }
+          ],
+          "strategyId": "mastodon-account-mentions-v1",
+          "supportsSourceKey": "mastodon"
+        },
+        "sourceKey": "mastodon",
+        "transportPolicy": "strategy_code_is_sdk_runtime_extension_not_transport_json"
+      }
+    },
+    {
+      "caseId": "ranking_quality_recipe_request_v1",
+      "description": "Rank-only SDK workflow applies serializable ranking and quality recipes without provider calls.",
+      "expectedRankedItems": [
+        {
+          "item": {
+            "body": "Claude Code MCP server regression notes with reproduction steps, affected tool calls, and mitigation details.",
+            "canonicalUrl": "https://example.test/useful",
+            "itemId": "useful",
+            "metrics": {
+              "likes": 20
+            },
+            "sourceKey": "x-twitter",
+            "title": "Claude Code MCP server incident notes"
+          },
+          "ranking": {
+            "engagementScore": 15,
+            "qualityScore": 100,
+            "qualitySignals": [],
+            "reasons": [
+              "goal:trend",
+              "strong_topic_match",
+              "quality_pass"
+            ],
+            "recencyScore": 0,
+            "recipeId": "sdk-golden-quality-ranking-v1",
+            "relevanceScore": 100,
+            "score": 79.57
+          }
+        },
+        {
+          "item": {
+            "body": "Claude Code MCP server giveaway, like and retweet, limited time discount for a sponsored webinar.",
+            "canonicalUrl": "https://example.test/promo",
+            "itemId": "promo",
+            "metrics": {
+              "likes": 80000,
+              "reposts": 10000
+            },
+            "sourceKey": "x-twitter",
+            "title": "Claude Code MCP server giveaway"
+          },
+          "ranking": {
+            "engagementScore": 15,
+            "qualityScore": 37,
+            "qualitySignals": [
+              "engagement_bait",
+              "promo_offer"
+            ],
+            "reasons": [
+              "goal:trend",
+              "strong_topic_match",
+              "quality_engagement_bait",
+              "quality_promo_offer"
+            ],
+            "recencyScore": 0,
+            "recipeId": "sdk-golden-quality-ranking-v1",
+            "relevanceScore": 100,
+            "score": 29.44
+          }
+        }
+      ],
+      "kind": "rank_results",
+      "rankInput": {
+        "intent": {
+          "goal": "trend",
+          "topic": "Claude Code MCP server"
+        },
+        "items": [
+          {
+            "body": "Claude Code MCP server giveaway, like and retweet, limited time discount for a sponsored webinar.",
+            "canonicalUrl": "https://example.test/promo",
+            "itemId": "promo",
+            "metrics": {
+              "likes": 80000,
+              "reposts": 10000
+            },
+            "sourceKey": "x-twitter",
+            "title": "Claude Code MCP server giveaway"
+          },
+          {
+            "body": "Claude Code MCP server regression notes with reproduction steps, affected tool calls, and mitigation details.",
+            "canonicalUrl": "https://example.test/useful",
+            "itemId": "useful",
+            "metrics": {
+              "likes": 20
+            },
+            "sourceKey": "x-twitter",
+            "title": "Claude Code MCP server incident notes"
+          }
+        ],
+        "rankingRecipe": {
+          "engagement": {
+            "maxScore": 15
+          },
+          "recipeId": "sdk-golden-quality-ranking-v1",
+          "recipeKind": "social_ranking_recipe_v1",
+          "weightsByGoal": {
+            "trend": {
+              "engagement": 0.1,
+              "relevance": 0.9
+            }
+          }
+        }
+      }
+    },
+    {
+      "caseId": "invalid_empty_topic_failure_v1",
+      "description": "Invalid request input maps to stable non-throwing SDK failure envelope.",
+      "expectedFailure": {
+        "code": "invalid_search_intent",
+        "details": [
+          {
+            "code": "topic_required",
+            "message": "Social search topic must be non-empty."
+          }
+        ],
+        "message": "Cannot execute an invalid social search intent."
+      },
+      "expectedIntent": {
+        "depth": "balanced",
+        "goal": "research",
+        "sources": [
+          "reddit"
+        ],
+        "topic": "",
+        "window": "30d"
+      },
+      "expectedPlanResult": {
+        "errors": [
+          {
+            "code": "topic_required",
+            "message": "Social search topic must be non-empty."
+          }
+        ],
+        "ok": false
+      },
+      "kind": "safe_failure",
+      "requestInput": {
+        "sources": "reddit",
+        "topic": "   "
+      }
+    }
+  ],
+  "generatedFrom": [
+    "libs/social-research/application/social-research-request.ts",
+    "libs/social-research/application/social-research-sdk.ts",
+    "libs/social-research/domain/policies/social-search-planner.ts",
+    "libs/social-research/domain/policies/social-item-ranker.ts",
+    "libs/social-research/domain/policies/social-item-quality-policy.ts"
+  ],
+  "schemaVersion": 1,
+  "sdkOperationsCovered": [
+    "createSearchPlanFromRequest",
+    "explainSearchRequest",
+    "searchRequest",
+    "trySearchRequest",
+    "rankResults",
+    "tryRankResults"
+  ],
+  "sourceExtensionContracts": [
+    {
+      "capabilityProfile": {
+        "cursorModel": "opaque",
+        "displayName": "Mastodon-compatible network",
+        "limitations": [
+          "Golden case proves SDK extension shape only; runtime provider readiness is source-specific."
+        ],
+        "productionSafe": false,
+        "quotaModel": "per_credential",
+        "readiness": {
+          "runtimeReadiness": "deferred",
+          "state": "research_only"
+        },
+        "sourceKey": "mastodon",
+        "supportedContentUnits": [
+          "post",
+          "profile",
+          "link"
+        ],
+        "supportedLaneKinds": [
+          "general",
+          "account_mentions",
+          "fallback_short_query"
+        ],
+        "supportedOperations": [
+          "search",
+          "mention_search"
+        ],
+        "version": 1
+      },
+      "goldenCaseId": "mastodon_extension_request_v1",
+      "laneStrategy": {
+        "contract": "SocialSourceLaneStrategy",
+        "emittedLaneKinds": [
+          "account_mentions"
+        ],
+        "emittedOperations": [
+          "mention_search"
+        ],
+        "recipes": [
+          {
+            "accountSelector": "same_source_include_mentions",
+            "laneKind": "account_mentions",
+            "operation": "mention_search",
+            "parameters": {
+              "topicForRanking": "{topic}"
+            },
+            "priority": 85,
+            "queryTemplate": "@{handle}",
+            "reason": "custom Mastodon-compatible account mention lane",
+            "recipeId": "mastodon-account-mention-template-v1",
+            "recipeKind": "account_lane_template",
+            "sourceKey": "mastodon"
+          }
+        ],
+        "strategyId": "mastodon-account-mentions-v1",
+        "supportsSourceKey": "mastodon"
+      },
+      "sourceKey": "mastodon",
+      "transportPolicy": "strategy_code_is_sdk_runtime_extension_not_transport_json"
+    }
+  ]
+}
