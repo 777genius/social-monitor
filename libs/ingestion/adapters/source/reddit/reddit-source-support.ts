@@ -7,6 +7,8 @@ import type {
   RedditCommentSort,
   RedditPost,
   RedditPostListing,
+  RedditSearchSort,
+  RedditSearchTime,
   RedditTopTime,
 } from "./reddit-client.port";
 
@@ -26,8 +28,11 @@ export type RedditScanPass =
   | {
       readonly mode: "search";
       readonly query: string;
+      readonly searchSort?: RedditSearchSort;
+      readonly searchTime?: RedditSearchTime;
       readonly maxItems?: number;
       readonly minScore?: number;
+      readonly allowedSubreddits?: readonly string[];
       readonly includeComments?: boolean;
       readonly maxCommentsPerPost?: number;
       readonly commentDepth?: number;
@@ -39,62 +44,17 @@ const redditCommentSorts: readonly RedditCommentSort[] = [
   "top",
   "new",
 ];
-
-export const normalizePost = (
-  post: RedditPost,
-  minScore: number | undefined,
-): readonly FetchedSourceItem[] => {
-  if (post.over18 || post.removedByCategory !== undefined) {
-    return [];
-  }
-
-  if (
-    minScore !== undefined &&
-    post.score !== undefined &&
-    post.score < minScore
-  ) {
-    return [];
-  }
-
-  const title = post.title?.trim() ?? "";
-  const body = post.selftext?.trim() ?? "";
-
-  if (title.length + body.length === 0) {
-    return [];
-  }
-
-  const publishedAt = publishedAtForPost(post);
-
-  if (publishedAt === undefined) {
-    return [];
-  }
-
-  return [
-    {
-      externalId: `reddit:${post.name ?? post.id}`,
-      canonicalUrl: canonicalUrl(post),
-      title,
-      body,
-      authorHandle: post.author,
-      publishedAt,
-      metadata: redditPostMetadata(post),
-    },
-  ];
-};
-
-export const redditWarnings = (
-  posts: readonly RedditPost[],
-  minScore: number | undefined,
-): readonly string[] => [
-  ...(posts.some((post) => post.over18 || post.removedByCategory !== undefined)
-    ? ["Some Reddit posts were skipped because they were adult or removed."]
-    : []),
-  ...(posts.some((post) => isTimestampMissingCandidate(post, minScore))
-    ? [
-        "Some Reddit posts had no valid created_utc timestamp; they were skipped.",
-      ]
-    : []),
+const redditSearchSorts: readonly RedditSearchSort[] = [
+  "relevance",
+  "hot",
+  "top",
+  "new",
+  "comments",
 ];
+
+const maxConfiguredRedditScanPasses = 32;
+
+export { normalizePost, redditWarnings } from "./reddit-post-normalizer";
 
 export const parseListingQuery = (
   value: string,
@@ -137,19 +97,42 @@ export const readCommentSort = (value: unknown): RedditCommentSort => {
   return sort as RedditCommentSort;
 };
 
+export const readSearchSort = (value: unknown): RedditSearchSort => {
+  const sort = readOptionalString(value) ?? "new";
+
+  if (!redditSearchSorts.includes(sort as RedditSearchSort)) {
+    throw new Error(`Unsupported Reddit searchSort: ${sort}`);
+  }
+
+  return sort as RedditSearchSort;
+};
+
+export const readOptionalSearchSort = (
+  value: unknown,
+): RedditSearchSort | undefined =>
+  readOptionalString(value) === undefined ? undefined : readSearchSort(value);
+
+export const readOptionalSearchTime = (
+  value: unknown,
+): RedditSearchTime | undefined =>
+  readOptionalString(value) === undefined
+    ? undefined
+    : (readTopTime(value) as RedditSearchTime);
+
 export const readScanPasses = (
   config: SourceProviderScanContext["config"] | undefined,
 ): readonly RedditScanPass[] => {
   const rawPasses = readArray(config?.scanPasses ?? config?.passes);
 
-  return rawPasses.map(readScanPass).slice(0, 10);
+  return rawPasses.map(readScanPass).slice(0, maxConfiguredRedditScanPasses);
 };
 
 export const sortRedditItemsByEngagement = (
   items: readonly FetchedSourceItem[],
 ): readonly FetchedSourceItem[] =>
   [...items].sort((left, right) => {
-    const scoreDiff = redditEngagementScore(right) - redditEngagementScore(left);
+    const scoreDiff =
+      redditEngagementScore(right) - redditEngagementScore(left);
 
     if (scoreDiff !== 0) {
       return scoreDiff;
@@ -157,6 +140,25 @@ export const sortRedditItemsByEngagement = (
 
     return right.publishedAt.getTime() - left.publishedAt.getTime();
   });
+
+export const filterPostsByAllowedSubreddits = (
+  posts: readonly RedditPost[],
+  allowedSubreddits: readonly string[] | undefined,
+): readonly RedditPost[] => {
+  if (allowedSubreddits === undefined || allowedSubreddits.length === 0) {
+    return posts;
+  }
+
+  const allowed = new Set(
+    allowedSubreddits.map((subreddit) => subreddit.toLowerCase()),
+  );
+
+  return posts.filter((post) => {
+    const subreddit = post.subreddit?.toLowerCase();
+
+    return subreddit !== undefined && allowed.has(subreddit);
+  });
+};
 
 export const readRequiredString = (
   value: unknown,
@@ -260,13 +262,69 @@ const readScanPass = (value: unknown, index: number): RedditScanPass => {
     return {
       mode,
       query: readRequiredString(pass.query, `scanPasses[${index}].query`),
+      ...readSearchParameters(pass),
       ...(maxItems === undefined ? {} : { maxItems }),
       ...(minScore === undefined ? {} : { minScore }),
+      ...readAllowedSubreddits(pass),
       ...readCommentExpansion(pass),
     };
   }
 
   throw new Error(`Unsupported Reddit scan pass mode: ${mode}`);
+};
+
+const readSearchParameters = (
+  pass: Readonly<Record<string, unknown>>,
+): {
+  readonly searchSort?: RedditSearchSort;
+  readonly searchTime?: RedditSearchTime;
+} => ({
+  ...optionalSearchSortParameter(pass.searchSort ?? pass.sort),
+  ...optionalSearchTimeParameter(
+    pass.searchTime ?? pass.time ?? pass.topTime,
+  ),
+});
+
+const optionalSearchSortParameter = (
+  value: unknown,
+): { readonly searchSort?: RedditSearchSort } => {
+  const searchSort = readOptionalSearchSort(value);
+
+  return searchSort === undefined ? {} : { searchSort };
+};
+
+const optionalSearchTimeParameter = (
+  value: unknown,
+): { readonly searchTime?: RedditSearchTime } => {
+  const searchTime = readOptionalSearchTime(value);
+
+  return searchTime === undefined ? {} : { searchTime };
+};
+
+const readAllowedSubreddits = (
+  pass: Readonly<Record<string, unknown>>,
+): { readonly allowedSubreddits?: readonly string[] } => {
+  const raw = pass.allowedSubreddits ?? pass.subreddits;
+
+  if (raw === undefined) {
+    return {};
+  }
+
+  if (!Array.isArray(raw)) {
+    throw new Error(
+      "Reddit source config field allowedSubreddits must be an array",
+    );
+  }
+
+  const allowedSubreddits = compactUnique(
+    raw.flatMap((value) => {
+      const subreddit = readOptionalString(value);
+
+      return subreddit === undefined ? [] : [subreddit];
+    }),
+  );
+
+  return allowedSubreddits.length === 0 ? {} : { allowedSubreddits };
 };
 
 const readCommentExpansion = (
@@ -294,50 +352,6 @@ const readCommentExpansion = (
   };
 };
 
-const isTimestampMissingCandidate = (
-  post: RedditPost,
-  minScore: number | undefined,
-): boolean => {
-  if (post.over18 || post.removedByCategory !== undefined) {
-    return false;
-  }
-
-  if (
-    minScore !== undefined &&
-    post.score !== undefined &&
-    post.score < minScore
-  ) {
-    return false;
-  }
-
-  const title = post.title?.trim() ?? "";
-  const body = post.selftext?.trim() ?? "";
-
-  return title.length + body.length > 0 && publishedAtForPost(post) === undefined;
-};
-
-const publishedAtForPost = (post: RedditPost): Date | undefined => {
-  if (
-    post.createdUtc === undefined ||
-    !Number.isFinite(post.createdUtc) ||
-    post.createdUtc <= 0
-  ) {
-    return undefined;
-  }
-
-  const publishedAt = new Date(post.createdUtc * 1000);
-
-  return Number.isNaN(publishedAt.getTime()) ? undefined : publishedAt;
-};
-
-const canonicalUrl = (post: RedditPost): string => {
-  if (post.permalink !== undefined) {
-    return new URL(post.permalink, "https://www.reddit.com").toString();
-  }
-
-  return post.url ?? `https://www.reddit.com/comments/${post.id}`;
-};
-
 const redditEngagementScore = (item: FetchedSourceItem): number => {
   const metadata = readRecordOrUndefined(item.metadata);
   const score = readNumber(metadata?.score);
@@ -345,34 +359,9 @@ const redditEngagementScore = (item: FetchedSourceItem): number => {
   const upvoteRatio = readNumber(metadata?.upvoteRatio);
   const ratioBoost = upvoteRatio === undefined ? 0 : upvoteRatio * 50;
 
-  return Math.max(0, score ?? 0) + Math.max(0, comments ?? 0) * 1.5 + ratioBoost;
-};
-
-const redditPostMetadata = (post: RedditPost) => ({
-  kind: "reddit_post",
-  ...(post.subreddit === undefined ? {} : { subreddit: post.subreddit }),
-  ...(linkedUrl(post) === undefined ? {} : { linkedUrl: linkedUrl(post) }),
-  ...(post.thumbnailUrl === undefined
-    ? {}
-    : { thumbnailUrl: post.thumbnailUrl }),
-  ...(post.previewImageUrl === undefined
-    ? {}
-    : { previewImageUrl: post.previewImageUrl }),
-  ...(post.postHint === undefined ? {} : { postHint: post.postHint }),
-  ...(post.isVideo === undefined ? {} : { isVideo: post.isVideo }),
-  ...(post.score === undefined ? {} : { score: post.score }),
-  ...(post.numComments === undefined ? {} : { numComments: post.numComments }),
-  ...(post.upvoteRatio === undefined ? {} : { upvoteRatio: post.upvoteRatio }),
-});
-
-const linkedUrl = (post: RedditPost): string | undefined => {
-  if (post.url === undefined) {
-    return undefined;
-  }
-
-  const discussionUrl = canonicalUrl(post);
-
-  return post.url === discussionUrl ? undefined : post.url;
+  return (
+    Math.max(0, score ?? 0) + Math.max(0, comments ?? 0) * 1.5 + ratioBoost
+  );
 };
 
 export const readOptionalPositiveInteger = (
@@ -389,7 +378,9 @@ export const readOptionalPositiveInteger = (
     value < 1 ||
     value > max
   ) {
-    throw new Error(`Reddit source config integer must be between 1 and ${max}`);
+    throw new Error(
+      `Reddit source config integer must be between 1 and ${max}`,
+    );
   }
 
   return value;

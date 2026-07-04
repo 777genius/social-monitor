@@ -42,7 +42,9 @@ export class RedditAppOnlyTokenProvider implements RedditTokenProviderPort {
     this.now = options.now ?? Date.now;
   }
 
-  static fromEnvironment(env: NodeJS.ProcessEnv): RedditAppOnlyTokenProvider | null {
+  static optionsFromEnvironment(
+    env: NodeJS.ProcessEnv,
+  ): RedditAppOnlyTokenProviderOptions | null {
     const clientId = firstNonEmptyString(env.REDDIT_APP_CLIENT_ID, env.REDDIT_CLIENT_ID);
     const clientSecret = firstNonEmptyString(env.REDDIT_APP_CLIENT_SECRET, env.REDDIT_CLIENT_SECRET);
 
@@ -50,14 +52,20 @@ export class RedditAppOnlyTokenProvider implements RedditTokenProviderPort {
       return null;
     }
 
-    return new RedditAppOnlyTokenProvider({
+    return {
       clientId,
       clientSecret,
       userAgent: firstNonEmptyString(env.REDDIT_APP_USER_AGENT, env.REDDIT_USER_AGENT),
       tokenUrl: firstNonEmptyString(env.REDDIT_APP_TOKEN_URL),
       timeoutMs: readPositiveInteger(env.REDDIT_APP_TOKEN_TIMEOUT_MS, 10_000),
       refreshSkewMs: readPositiveInteger(env.REDDIT_APP_TOKEN_REFRESH_SKEW_MS, 60_000),
-    });
+    };
+  }
+
+  static fromEnvironment(env: NodeJS.ProcessEnv): RedditAppOnlyTokenProvider | null {
+    const options = RedditAppOnlyTokenProvider.optionsFromEnvironment(env);
+
+    return options === null ? null : new RedditAppOnlyTokenProvider(options);
   }
 
   async getAccessToken(): Promise<string> {

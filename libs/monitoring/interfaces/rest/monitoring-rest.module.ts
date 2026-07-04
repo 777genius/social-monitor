@@ -46,7 +46,7 @@ import {
 import { AesGcmSourceBindingConfigProtector } from '../../adapters/security/aes-gcm-source-binding-config-protector';
 import {
   FakeSourceCatalogAdapter,
-  shouldIncludeFixtureSourceCatalogEntries,
+  sourceCatalogOptionsForRuntime,
 } from '../../adapters/source-catalog/fake-source-catalog.adapter';
 import { ArchiveInterestUseCase } from '../../features/archive-interest/archive-interest.use-case';
 import { BindSourceUseCase } from '../../features/bind-source/bind-source.use-case';
@@ -290,9 +290,7 @@ const MONITORING_QUEUE_PUBLISHER = Symbol('MONITORING_QUEUE_PUBLISHER');
     {
       provide: MONITORING_SOURCE_CATALOG,
       useFactory: (): SourceCatalogPort =>
-        new FakeSourceCatalogAdapter({
-          includeFixtureProviders: shouldIncludeFixtureSourceCatalogEntries(process.env),
-        }),
+        new FakeSourceCatalogAdapter(sourceCatalogOptionsForRuntime(process.env)),
     },
     {
       provide: MONITORING_CONFIG_PROTECTOR,

@@ -1,13 +1,18 @@
-import type { SourceConfigReaderPort, SourceRuntimeConfig } from '@social-monitor/ingestion/ports';
-import { isSensitiveKey } from '@social-monitor/shared-kernel';
+import type {
+  SourceConfigReaderPort,
+  SourceRuntimeConfig,
+} from '@social-monitor/ingestion/ports';
 import type {
   SourceBindingConfig,
   SourceBindingConfigProtectorPort,
   SourceBindingRepositoryPort,
   SourceCredentialResolverPort,
 } from '@social-monitor/monitoring/ports';
+import { isSensitiveKey } from '@social-monitor/shared-kernel';
 
-export class MonitoringSourceConfigReaderAdapter implements SourceConfigReaderPort {
+export class MonitoringSourceConfigReaderAdapter
+  implements SourceConfigReaderPort
+{
   constructor(
     private readonly sourceBindings: SourceBindingRepositoryPort,
     private readonly configProtector: SourceBindingConfigProtectorPort,
@@ -24,14 +29,18 @@ export class MonitoringSourceConfigReaderAdapter implements SourceConfigReaderPo
     }
 
     const snapshot = binding.toSnapshot();
-    const config = await this.configProtector.unprotect(snapshot.config as SourceBindingConfig);
+    const config = await this.configProtector.unprotect(
+      snapshot.config as SourceBindingConfig,
+    );
     const credentialRef = readCredentialRef(config);
     if (credentialRef === undefined) {
       return toSourceRuntimeConfig(config);
     }
 
     if (this.sourceCredentials === undefined) {
-      throw new Error('Source credential resolver is required for credentialRef source binding config');
+      throw new Error(
+        'Source credential resolver is required for credentialRef source binding config',
+      );
     }
 
     assertNoInlineCredentialSecrets(config);
@@ -53,13 +62,19 @@ export class MonitoringSourceConfigReaderAdapter implements SourceConfigReaderPo
   }
 }
 
-const toSourceRuntimeConfig = (config: SourceBindingConfig): SourceRuntimeConfig =>
+const toSourceRuntimeConfig = (
+  config: SourceBindingConfig,
+): SourceRuntimeConfig =>
   Object.fromEntries(Object.entries(config).map(([key, value]) => [key, value]));
 
-const readCredentialRef = (config: SourceBindingConfig): { readonly sourceCredentialId: string } | undefined => {
+const readCredentialRef = (
+  config: SourceBindingConfig,
+): { readonly sourceCredentialId: string } | undefined => {
   const nested = config.credentialRef;
   if (isRecord(nested)) {
-    const sourceCredentialId = readNonEmptyString(nested.sourceCredentialId ?? nested.id);
+    const sourceCredentialId = readNonEmptyString(
+      nested.sourceCredentialId ?? nested.id,
+    );
     if (sourceCredentialId !== undefined) {
       return { sourceCredentialId };
     }
@@ -70,10 +85,14 @@ const readCredentialRef = (config: SourceBindingConfig): { readonly sourceCreden
   return sourceCredentialId === undefined ? undefined : { sourceCredentialId };
 };
 
-const assertNoInlineCredentialSecrets = (config: SourceBindingConfig): void => {
+const assertNoInlineCredentialSecrets = (
+  config: SourceBindingConfig,
+): void => {
   for (const [key, value] of Object.entries(stripCredentialRef(config))) {
     if (containsSensitiveConfigValue(key, value)) {
-      throw new Error(`Source binding config with credentialRef must not include inline credential field: ${key}`);
+      throw new Error(
+        `Source binding config with credentialRef must not include inline credential field: ${key}`,
+      );
     }
   }
 };
@@ -89,13 +108,16 @@ const containsSensitiveConfigValue = (key: string, value: unknown): boolean => {
 
   if (isRecord(value)) {
     return Object.entries(value).some(([nestedKey, nestedValue]) =>
-      containsSensitiveConfigValue(nestedKey, nestedValue));
+      containsSensitiveConfigValue(nestedKey, nestedValue),
+    );
   }
 
   return false;
 };
 
-const stripCredentialRef = (config: SourceBindingConfig): SourceBindingConfig => {
+const stripCredentialRef = (
+  config: SourceBindingConfig,
+): SourceBindingConfig => {
   const safeConfig = { ...config };
   delete safeConfig.credentialRef;
   delete safeConfig.sourceCredentialId;
@@ -104,7 +126,9 @@ const stripCredentialRef = (config: SourceBindingConfig): SourceBindingConfig =>
 };
 
 const readNonEmptyString = (value: unknown): string | undefined =>
-  typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+  typeof value === 'string' && value.trim().length > 0
+    ? value.trim()
+    : undefined;
 
 const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);

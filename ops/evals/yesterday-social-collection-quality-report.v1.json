@@ -1,0 +1,213 @@
+{
+  "schemaVersion": 1,
+  "artifactFormat": "yesterday-social-collection-quality-report-v1",
+  "collectionDate": "2026-07-03",
+  "generatedBy": "npm run check:yesterday-social-collection-quality",
+  "model": {
+    "liveNetwork": false,
+    "reportBuilder": "local-postgres-feed-items-plus-x-collector-run-ledger",
+    "rawPostTextPersistedInReport": false
+  },
+  "inputs": {
+    "postgresFeedWindow": {
+      "startInclusive": "2026-07-03T00:00:00.000Z",
+      "endExclusive": "2026-07-04T00:00:00.000Z"
+    },
+    "xCollectorLedgerPath": "apps/x-collector/var/x-collector/scweet_state.db"
+  },
+  "sourceCoverage": [
+    "github-trending-page",
+    "hacker-news",
+    "reddit",
+    "rss",
+    "x-twitter"
+  ],
+  "primarySourceCoverage": [
+    "reddit",
+    "x-twitter"
+  ],
+  "providerReports": [
+    {
+      "providerKey": "github-trending-page",
+      "feedItemCount": 159,
+      "sourceItemCount": 700,
+      "distinctDedupeKeyCount": 159,
+      "duplicateRate": 0,
+      "textCoverage": 1,
+      "canonicalUrlCoverage": 1,
+      "providerMetadataCoverage": 1,
+      "engagementMetadataCoverage": 0,
+      "queryTermHitRate": 0.283,
+      "publishedOnTargetDateRate": 1,
+      "medianObservedAgeHours": 0.001,
+      "p90ObservedAgeHours": 0.001,
+      "averageBodyPreviewLength": 145.409,
+      "rankInputReadinessScore": 0.8
+    },
+    {
+      "providerKey": "hacker-news",
+      "feedItemCount": 260,
+      "sourceItemCount": 186,
+      "distinctDedupeKeyCount": 260,
+      "duplicateRate": 0,
+      "textCoverage": 1,
+      "canonicalUrlCoverage": 1,
+      "providerMetadataCoverage": 1,
+      "engagementMetadataCoverage": 0.669,
+      "queryTermHitRate": 0.446,
+      "publishedOnTargetDateRate": 0.488,
+      "medianObservedAgeHours": 7.094,
+      "p90ObservedAgeHours": 14.638,
+      "averageBodyPreviewLength": 129.262,
+      "rankInputReadinessScore": 0.934
+    },
+    {
+      "providerKey": "reddit",
+      "feedItemCount": 201,
+      "sourceItemCount": 118,
+      "distinctDedupeKeyCount": 201,
+      "duplicateRate": 0,
+      "textCoverage": 1,
+      "canonicalUrlCoverage": 1,
+      "providerMetadataCoverage": 1,
+      "engagementMetadataCoverage": 1,
+      "queryTermHitRate": 0.259,
+      "publishedOnTargetDateRate": 0.264,
+      "medianObservedAgeHours": 21.524,
+      "p90ObservedAgeHours": 23.852,
+      "averageBodyPreviewLength": 344.692,
+      "rankInputReadinessScore": 1
+    },
+    {
+      "providerKey": "rss",
+      "feedItemCount": 102,
+      "sourceItemCount": 79,
+      "distinctDedupeKeyCount": 102,
+      "duplicateRate": 0,
+      "textCoverage": 1,
+      "canonicalUrlCoverage": 1,
+      "providerMetadataCoverage": 1,
+      "engagementMetadataCoverage": 0,
+      "queryTermHitRate": 0.471,
+      "publishedOnTargetDateRate": 0.422,
+      "medianObservedAgeHours": 9.055,
+      "p90ObservedAgeHours": 35.935,
+      "averageBodyPreviewLength": 2088.755,
+      "rankInputReadinessScore": 0.8
+    },
+    {
+      "providerKey": "x-twitter",
+      "feedItemCount": 98,
+      "sourceItemCount": 98,
+      "distinctDedupeKeyCount": 98,
+      "duplicateRate": 0,
+      "textCoverage": 1,
+      "canonicalUrlCoverage": 1,
+      "providerMetadataCoverage": 1,
+      "engagementMetadataCoverage": 1,
+      "queryTermHitRate": 0.347,
+      "publishedOnTargetDateRate": 0.214,
+      "medianObservedAgeHours": 13.248,
+      "p90ObservedAgeHours": 19.468,
+      "averageBodyPreviewLength": 210.143,
+      "rankInputReadinessScore": 1
+    }
+  ],
+  "interestCoverage": [
+    {
+      "interestFingerprint": "b935f4783b43",
+      "feedItemCount": 722,
+      "providerCounts": {
+        "github-trending-page": 159,
+        "hacker-news": 260,
+        "reddit": 201,
+        "rss": 102
+      },
+      "containsAllPrimarySources": false
+    },
+    {
+      "interestFingerprint": "86f055e1c898",
+      "feedItemCount": 98,
+      "providerCounts": {
+        "x-twitter": 98
+      },
+      "containsAllPrimarySources": false
+    }
+  ],
+  "summaryReadiness": {
+    "primarySourcesCoLocatedInSingleInterest": false,
+    "workspaceOrMultiInterestSummaryNeededForPrimarySourceMix": true
+  },
+  "xCollectorLedger": {
+    "available": true,
+    "runCount": 74,
+    "completedRunCount": 70,
+    "failedRunCount": 4,
+    "completedRunRate": 0.946,
+    "failedReturnedTweetCount": 0,
+    "returnedTweetCount": 1566,
+    "distinctQueryHashCount": 20,
+    "firstStartedAt": "2026-07-03 10:04:32",
+    "lastStartedAt": "2026-07-03 13:14:37",
+    "displayTypeBreakdown": {
+      "Latest": 22,
+      "Top": 52
+    },
+    "strictEngagementRunCount": 23,
+    "discoveryRunCount": 51,
+    "orGroupRunCount": 71,
+    "phraseQueryRunCount": 71,
+    "taskFailureCount": 16,
+    "retryCount": 0,
+    "hasTopAndLatest": true,
+    "hasStrictAndDiscoveryLanes": true,
+    "queryFamilyFingerprints": [
+      "0ec5a664683b",
+      "34a66563f20d",
+      "3d755fdd4f09",
+      "4c8e880ef568",
+      "6903d371687b",
+      "761e0084bed6",
+      "b6234b182c1e",
+      "b9a750fac5ed",
+      "b9dc0f75006a",
+      "de0f66b335f3"
+    ]
+  },
+  "summaryArtifactCoverage": {
+    "artifactCount": 0,
+    "jobCount": 0,
+    "statusCounts": {},
+    "verificationStatus": "not_verified_missing_summary_artifact"
+  },
+  "operationalWarnings": {
+    "xCollectorFailedRunCount": 4,
+    "xCollectorTaskFailureCount": 16,
+    "primarySourcesSplitAcrossInterests": true,
+    "summaryArtifactMissing": true
+  },
+  "qualityGates": {
+    "postgresFeedItemsAvailable": true,
+    "allExpectedPrimarySourcesPresent": true,
+    "redditFeedItemsAtLeast100": true,
+    "xTwitterFeedItemsAtLeast50": true,
+    "everyPrimaryItemHasText": true,
+    "everyPrimaryItemHasCanonicalUrl": true,
+    "primaryDuplicateRateBelowFivePercent": true,
+    "primaryEngagementMetadataCoverageAtLeast90Percent": true,
+    "primaryFreshnessP90Below48Hours": true,
+    "xCollectorLedgerAvailable": true,
+    "xCollectorRunCountAtLeast20": true,
+    "xCollectorCompletedRunRateAtLeast94Percent": true,
+    "xCollectorFailedRunsReturnedNoTweets": true,
+    "xCollectorReturnedAtLeast500Tweets": true,
+    "xCollectorHasTopAndLatest": true,
+    "xCollectorHasStrictAndDiscoveryLanes": true,
+    "xCollectorDistinctQueryHashesAtLeast10": true,
+    "summaryArtifactAbsenceIsExplicit": true,
+    "noRawSecretFragments": true
+  },
+  "collectionBlockingPassed": true,
+  "summaryQualityVerified": false,
+  "completionStatus": "collection_quality_verified_summary_artifact_missing"
+}

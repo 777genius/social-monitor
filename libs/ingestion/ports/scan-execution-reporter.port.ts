@@ -5,6 +5,7 @@ export type ReportScanSucceededCommand = {
   readonly workspaceId: WorkspaceId;
   readonly scanJobId: string;
   readonly completedAt: Date;
+  readonly warnings?: readonly string[];
 };
 
 export type ReportScanFailedCommand = {

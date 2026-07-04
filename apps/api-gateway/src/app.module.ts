@@ -4,6 +4,7 @@ import { DeliveryRestModule } from '@social-monitor/delivery/interfaces/rest/del
 import { FeedRestModule } from '@social-monitor/feed/interfaces/rest/feed-rest.module';
 import { IdentityRestModule } from '@social-monitor/identity/interfaces/rest/identity-rest.module';
 import { sourceReadinessProfilesForRuntime } from '@social-monitor/ingestion/adapters/source/source-readiness-profiles';
+import { resolveSourceProviderRuntimeScope } from '@social-monitor/ingestion/adapters/source/source-provider-runtime-scope';
 import { IngestionRestModule } from '@social-monitor/ingestion/interfaces/rest/ingestion-rest.module';
 import { LaunchRestModule } from '@social-monitor/launch/interfaces/rest/launch-rest.module';
 import { MonitoringRestModule } from '@social-monitor/monitoring/interfaces/rest/monitoring-rest.module';
@@ -22,6 +23,7 @@ import {
   ApiGatewayHealthReporter,
 } from './health-reporter';
 import { RequestContextMiddleware } from './request-context.middleware';
+import { SocialResearchApiModule } from './social-research-api.module';
 
 @Module({
   imports: [
@@ -34,6 +36,7 @@ import { RequestContextMiddleware } from './request-context.middleware';
     SummaryRestModule,
     DeliveryRestModule,
     IdentityRestModule,
+    SocialResearchApiModule,
   ],
   controllers: [HealthController],
   providers: [
@@ -53,7 +56,9 @@ import { RequestContextMiddleware } from './request-context.middleware';
     {
       provide: API_GATEWAY_SOURCE_READINESS_PROFILES,
       useFactory: (): ReturnType<typeof sourceReadinessProfilesForRuntime> =>
-        sourceReadinessProfilesForRuntime(process.env),
+        sourceReadinessProfilesForRuntime(
+          resolveSourceProviderRuntimeScope(process.env),
+        ),
     },
     {
       provide: APP_FILTER,

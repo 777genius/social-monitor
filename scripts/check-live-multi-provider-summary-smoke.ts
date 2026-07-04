@@ -613,7 +613,7 @@ const main = async (): Promise<void> => {
             new HttpGitHubTrendingPageClient(timeoutMs),
             clock,
           ),
-          new HackerNewsSourceProvider(new HttpHackerNewsClient(timeoutMs)),
+          new HackerNewsSourceProvider(new HttpHackerNewsClient(timeoutMs), new SystemClock()),
           new RssSourceProvider(new HttpRssClient(timeoutMs)),
           ...(xTwitterProvider === undefined ? [] : [xTwitterProvider]),
         ],

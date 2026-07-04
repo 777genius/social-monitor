@@ -28,22 +28,32 @@ export class HttpRedditClient implements RedditClientPort {
     private readonly timeoutMs = 10_000,
   ) {}
 
-  async listSubredditPosts(request: RedditListSubredditPostsRequest): Promise<RedditListingPage> {
-    const url = this.url(`/r/${encodeURIComponent(request.subreddit)}/${request.listing}`, {
-      limit: String(request.limit),
-      ...(request.listing === 'top' && request.topTime !== undefined ? { t: request.topTime } : {}),
-      ...(request.after === undefined ? {} : { after: request.after }),
-      raw_json: '1',
-    });
+  async listSubredditPosts(
+    request: RedditListSubredditPostsRequest,
+  ): Promise<RedditListingPage> {
+    const url = this.url(
+      `/r/${encodeURIComponent(request.subreddit)}/${request.listing}`,
+      {
+        limit: String(request.limit),
+        ...(request.listing === 'top' && request.topTime !== undefined
+          ? { t: request.topTime }
+          : {}),
+        ...(request.after === undefined ? {} : { after: request.after }),
+        raw_json: '1',
+      },
+    );
 
     return this.fetchListing(url, request.accessToken, request.userAgent);
   }
 
-  async searchPosts(request: RedditSearchPostsRequest): Promise<RedditListingPage> {
+  async searchPosts(
+    request: RedditSearchPostsRequest,
+  ): Promise<RedditListingPage> {
     const url = this.url('/search', {
       q: request.query,
       type: 'link',
-      sort: 'new',
+      sort: request.sort ?? 'new',
+      ...(request.time === undefined ? {} : { t: request.time }),
       limit: String(request.limit),
       ...(request.after === undefined ? {} : { after: request.after }),
       raw_json: '1',
@@ -52,10 +62,13 @@ export class HttpRedditClient implements RedditClientPort {
     return this.fetchListing(url, request.accessToken, request.userAgent);
   }
 
-  async listPostComments(request: RedditListPostCommentsRequest): Promise<RedditCommentPage> {
-    const path = request.subreddit === undefined
-      ? `/comments/${encodeURIComponent(request.postId)}`
-      : `/r/${encodeURIComponent(request.subreddit)}/comments/${encodeURIComponent(request.postId)}`;
+  async listPostComments(
+    request: RedditListPostCommentsRequest,
+  ): Promise<RedditCommentPage> {
+    const path =
+      request.subreddit === undefined
+        ? `/comments/${encodeURIComponent(request.postId)}`
+        : `/r/${encodeURIComponent(request.subreddit)}/comments/${encodeURIComponent(request.postId)}`;
     const url = this.url(path, {
       limit: String(request.limit),
       sort: request.sort ?? 'confidence',
@@ -79,8 +92,14 @@ export class HttpRedditClient implements RedditClientPort {
     accessToken: string,
     userAgent: string | undefined,
   ): Promise<RedditListingPage> {
-    const response = await this.fetchJson<RedditApiListingResponse>(url, accessToken, userAgent);
-    const posts = (response.value.data?.children ?? []).flatMap((child) => normalizePost(child.data));
+    const response = await this.fetchJson<RedditApiListingResponse>(
+      url,
+      accessToken,
+      userAgent,
+    );
+    const posts = (response.value.data?.children ?? []).flatMap((child) =>
+      normalizePost(child.data),
+    );
 
     return {
       posts,
@@ -93,7 +112,10 @@ export class HttpRedditClient implements RedditClientPort {
     url: URL,
     accessToken: string,
     userAgent: string | undefined,
-  ): Promise<{ readonly value: TValue; readonly rateLimit: RedditRateLimitBudget }> {
+  ): Promise<{
+    readonly value: TValue;
+    readonly rateLimit: RedditRateLimitBudget;
+  }> {
     const response = await fetch(url, {
       headers: {
         authorization: `Bearer ${accessToken}`,
@@ -108,7 +130,7 @@ export class HttpRedditClient implements RedditClientPort {
     }
 
     return {
-      value: await response.json() as TValue,
+      value: (await response.json()) as TValue,
       rateLimit: readRateLimitBudget(response.headers),
     };
   }
@@ -124,7 +146,9 @@ export class HttpRedditClient implements RedditClientPort {
   }
 }
 
-const normalizePost = (data: Readonly<Record<string, unknown>> | undefined): readonly RedditPost[] => {
+const normalizePost = (
+  data: Readonly<Record<string, unknown>> | undefined,
+): readonly RedditPost[] => {
   if (data === undefined) {
     return [];
   }
@@ -227,7 +251,11 @@ const readCommentReplies = (
     return [];
   }
   const replies = data.replies;
-  if (typeof replies !== 'object' || replies === null || Array.isArray(replies)) {
+  if (
+    typeof replies !== 'object' ||
+    replies === null ||
+    Array.isArray(replies)
+  ) {
     return [];
   }
   const children = (replies as RedditApiListingResponse).data?.children;
@@ -236,7 +264,9 @@ const readCommentReplies = (
 };
 
 const readString = (value: unknown): string | undefined =>
-  typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+  typeof value === 'string' && value.trim().length > 0
+    ? value.trim()
+    : undefined;
 
 const readHttpUrl = (value: unknown): string | undefined => {
   const text = decodeHtmlUrl(readString(value));
@@ -284,10 +314,7 @@ const readPreviewImageUrl = (value: unknown): string | undefined => {
 };
 
 const decodeHtmlUrl = (value: string | undefined): string | undefined =>
-  value
-    ?.replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>');
+  value?.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
 
 const readNumber = (value: unknown): number | undefined =>
   typeof value === 'number' && Number.isFinite(value) ? value : undefined;
@@ -304,12 +331,25 @@ const readRateLimitBudget = (headers: Headers): RedditRateLimitBudget => {
   const reset = headers.get('x-ratelimit-reset') ?? undefined;
 
   return {
-    headersObserved: used !== undefined || remaining !== undefined || reset !== undefined,
+    headersObserved:
+      used !== undefined || remaining !== undefined || reset !== undefined,
     used,
     remaining,
     reset,
   };
 };
 
-export const redditListings: readonly RedditPostListing[] = ['hot', 'new', 'top', 'rising'];
-export const redditTopTimes = ['hour', 'day', 'week', 'month', 'year', 'all'] as const;
+export const redditListings: readonly RedditPostListing[] = [
+  'hot',
+  'new',
+  'top',
+  'rising',
+];
+export const redditTopTimes = [
+  'hour',
+  'day',
+  'week',
+  'month',
+  'year',
+  'all',
+] as const;

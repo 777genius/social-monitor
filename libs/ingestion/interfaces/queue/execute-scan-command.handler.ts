@@ -1,7 +1,13 @@
 import type { MetricsRecorderPort } from '@social-monitor/platform-metrics';
 import type { QueueCommandEnvelope } from '@social-monitor/platform-queue';
 import type { WorkerRuntime } from '@social-monitor/platform-worker';
-import { DomainError, tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import {
+  DomainError,
+  emptyJsonObjectAsUndefined,
+  normalizeJsonObject,
+  tenantId,
+  workspaceId,
+} from '@social-monitor/shared-kernel';
 
 import type { ExecuteScanUseCase } from '../../features/execute-scan/execute-scan.use-case';
 import type { ExecuteScanResult } from '../../features/execute-scan/execute-scan.result';
@@ -220,6 +226,7 @@ const readSourceQuery = (
   const queryPayload = value as Readonly<Record<string, unknown>>;
   const mode = queryPayload.mode;
   const query = queryPayload.query;
+  const parameters = readSourceQueryParameters(queryPayload.parameters, field);
 
   if (typeof mode !== 'string' || !sourceQueryModes.includes(mode as SourceQueryMode)) {
     throw new Error(`Invalid execute scan command payload field: ${field}.mode`);
@@ -232,5 +239,21 @@ const readSourceQuery = (
   return {
     mode: mode as SourceQueryMode,
     query: query.trim(),
+    ...(parameters === undefined ? {} : { parameters }),
   };
+};
+
+const readSourceQueryParameters = (
+  value: unknown,
+  field: string,
+): SourceQuery['parameters'] => {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error(`Invalid execute scan command payload field: ${field}.parameters`);
+  }
+
+  return emptyJsonObjectAsUndefined(normalizeJsonObject(value));
 };

@@ -48,12 +48,20 @@ export class RedditRefreshTokenProvider implements RedditRefreshTokenProviderPor
     this.now = options.now ?? Date.now;
   }
 
-  static fromEnvironment(env: NodeJS.ProcessEnv): RedditRefreshTokenProvider {
-    return new RedditRefreshTokenProvider({
+  static optionsFromEnvironment(
+    env: NodeJS.ProcessEnv,
+  ): RedditRefreshTokenProviderOptions {
+    return {
       tokenUrl: firstNonEmptyString(env.REDDIT_REFRESH_TOKEN_URL, env.REDDIT_APP_TOKEN_URL),
       timeoutMs: readPositiveInteger(env.REDDIT_REFRESH_TOKEN_TIMEOUT_MS, 10_000),
       refreshSkewMs: readPositiveInteger(env.REDDIT_REFRESH_TOKEN_REFRESH_SKEW_MS, 60_000),
-    });
+    };
+  }
+
+  static fromEnvironment(env: NodeJS.ProcessEnv): RedditRefreshTokenProvider {
+    return new RedditRefreshTokenProvider(
+      RedditRefreshTokenProvider.optionsFromEnvironment(env),
+    );
   }
 
   async getAccessToken(request: RedditRefreshTokenRequest): Promise<string> {

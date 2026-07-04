@@ -1,5 +1,7 @@
 export type RedditPostListing = 'hot' | 'new' | 'top' | 'rising';
 export type RedditTopTime = 'hour' | 'day' | 'week' | 'month' | 'year' | 'all';
+export type RedditSearchSort = 'relevance' | 'hot' | 'top' | 'new' | 'comments';
+export type RedditSearchTime = RedditTopTime;
 export type RedditCommentSort = 'confidence' | 'top' | 'new';
 
 export type RedditPost = {
@@ -66,6 +68,8 @@ export type RedditSearchPostsRequest = {
   readonly accessToken: string;
   readonly userAgent?: string;
   readonly query: string;
+  readonly sort?: RedditSearchSort;
+  readonly time?: RedditSearchTime;
   readonly limit: number;
   readonly after?: string;
 };

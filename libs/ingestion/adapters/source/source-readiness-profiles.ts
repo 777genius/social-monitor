@@ -8,7 +8,7 @@ import {
   rssLiveEvidenceRequirements,
   xTwitterLiveEvidenceRequirements,
 } from './source-live-evidence-requirements';
-import { isXCollectorRuntimeConfigured } from './x-twitter-experimental-daily/x-collector-runtime-config';
+import type { SourceProviderRuntimeScope } from './source-provider-runtime-scope';
 
 export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
   {
@@ -62,7 +62,11 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
       rateLimitBackoffRequired: true,
       staleReadModelState: 'stale',
       providerFailureHealthState: 'down',
-      signals: ['hn_story_timestamp', 'scan_history_window', 'rate_limit_backoff'],
+      signals: [
+        'hn_story_timestamp',
+        'scan_history_window',
+        'rate_limit_backoff',
+      ],
     },
     acquisitionMode: 'official_or_open_api',
     approvalOwner: 'engineering',
@@ -131,9 +135,10 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
   },
   {
     providerKey: 'github-issues',
-    state: 'enabled_beta',
+    state: 'manual_only',
     runtimeReadiness: 'fixture_ready',
     liveBetaBlockers: [
+      'GitHub issues collection is disabled by default; set GITHUB_ISSUES_COLLECTOR_ENABLED=1 for a separate issue-focused run.',
       'Live GitHub issues API smoke and deployed rate-limit budget evidence required before external beta.',
     ],
     liveEvidenceRequirements: githubIssuesLiveEvidenceRequirements,
@@ -418,13 +423,26 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
 ];
 
 export const sourceReadinessProfilesForRuntime = (
-  env: NodeJS.ProcessEnv,
+  scope: SourceProviderRuntimeScope,
 ): readonly SourceReadinessProfile[] =>
   sourceReadinessProfiles.map((profile) =>
-    profile.providerKey === 'x-twitter' && isXCollectorRuntimeConfigured(env)
+    profile.providerKey === 'x-twitter' && scope.xCollectorRuntimeConfigured
       ? xTwitterRuntimeReadyProfile(profile)
-      : profile,
+      : profile.providerKey === 'github-issues' &&
+          scope.githubIssuesCollectorEnabled
+        ? githubIssuesRuntimeEnabledProfile(profile)
+        : profile,
   );
+
+const githubIssuesRuntimeEnabledProfile = (
+  profile: SourceReadinessProfile,
+): SourceReadinessProfile => ({
+  ...profile,
+  state: 'enabled_beta',
+  liveBetaBlockers: profile.liveBetaBlockers.filter(
+    (blocker) => !blocker.includes('GITHUB_ISSUES_COLLECTOR_ENABLED=1'),
+  ),
+});
 
 const xTwitterRuntimeReadyProfile = (
   profile: SourceReadinessProfile,

@@ -33,6 +33,7 @@ import { InMemorySourceProviderRegistry } from '@social-monitor/ingestion/adapte
 import { RegistrySourceFetcherAdapter } from '@social-monitor/ingestion/adapters/source/registry-source-fetcher.adapter';
 import { ExecuteScanUseCase } from '@social-monitor/ingestion/features/execute-scan/execute-scan.use-case';
 import { ExecuteScanCommandHandler } from '@social-monitor/ingestion/interfaces/queue/execute-scan-command.handler';
+import { sourceProviderRegistryProviders } from '@social-monitor/ingestion/interfaces/source/source-provider-registry.providers';
 import type { ScanExecutionReporterPort } from '@social-monitor/ingestion/ports';
 import type {
   ConversationProjectionPort,
@@ -47,6 +48,7 @@ import type {
 import { InMemoryFeedProjectionAdapter } from './adapters/feed/in-memory-feed-projection.adapter';
 import { articleContentEnrichmentProviders } from './article-content-enrichment.module';
 import { executeScanProviders } from './execute-scan.module';
+import { githubRepoRadarProviders } from './github-repo-radar.module';
 import {
   PrismaIngestionWorkerConnection,
   type PrismaIngestionWorkerClient,
@@ -77,7 +79,6 @@ import {
   resolveIngestionScanQueueDrainLoopOptions,
   resolveIngestionScanSchedulerLoopOptions,
 } from './ingestion-worker-provider-tokens';
-import { sourceProviderRegistryProviders } from './source-provider-registry.module';
 import {
   INGESTION_SCAN_COMMAND_QUEUE_READER,
   InMemoryScanCommandQueueReader,
@@ -133,6 +134,7 @@ const INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL = Symbol(
       useFactory: () => resolveIngestionScanQueueDrainLoopOptions(process.env),
     },
     ...sourceProviderRegistryProviders,
+    ...githubRepoRadarProviders,
     InMemoryScanAttemptRepository,
     InMemoryScanCursorRepository,
     {

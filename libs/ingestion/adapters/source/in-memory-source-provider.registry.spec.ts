@@ -8,9 +8,14 @@ import { sourceReadinessProfiles } from './source-readiness-profiles';
 
 describe('InMemorySourceProviderRegistry', () => {
   it('returns registered providers, capability profiles and future-source readiness profiles', async () => {
-    const registry = new InMemorySourceProviderRegistry([new FakeSourceProvider()], sourceReadinessProfiles);
+    const registry = new InMemorySourceProviderRegistry(
+      [new FakeSourceProvider()],
+      sourceReadinessProfiles,
+    );
 
-    await expect(registry.getProvider('fake-source')).resolves.toBeInstanceOf(FakeSourceProvider);
+    await expect(registry.getProvider('fake-source')).resolves.toBeInstanceOf(
+      FakeSourceProvider,
+    );
     await expect(registry.getProvider('hacker-news')).resolves.toBeNull();
     await expect(registry.listCapabilityProfiles()).resolves.toEqual([
       expect.objectContaining({
@@ -27,10 +32,22 @@ describe('InMemorySourceProviderRegistry', () => {
     );
     await expect(registry.listReadinessProfiles()).resolves.toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ providerKey: 'hacker-news', state: 'enabled_beta' }),
-        expect.objectContaining({ providerKey: GITHUB_ISSUES_PROVIDER_KEY, state: 'enabled_beta' }),
-        expect.objectContaining({ providerKey: 'x-twitter', state: 'provider_only' }),
-        expect.objectContaining({ providerKey: 'telegram', state: 'manual_only' }),
+        expect.objectContaining({
+          providerKey: 'hacker-news',
+          state: 'enabled_beta',
+        }),
+        expect.objectContaining({
+          providerKey: GITHUB_ISSUES_PROVIDER_KEY,
+          state: 'manual_only',
+        }),
+        expect.objectContaining({
+          providerKey: 'x-twitter',
+          state: 'provider_only',
+        }),
+        expect.objectContaining({
+          providerKey: 'telegram',
+          state: 'manual_only',
+        }),
       ]),
     );
   });
@@ -40,13 +57,20 @@ describe('InMemorySourceProviderRegistry', () => {
     const registry = new InMemorySourceProviderRegistry(
       [provider],
       sourceReadinessProfiles,
-      [{ providerKey: LEGACY_GITHUB_ISSUES_PROVIDER_KEY, canonicalProviderKey: 'fake-source' }],
+      [
+        {
+          providerKey: LEGACY_GITHUB_ISSUES_PROVIDER_KEY,
+          canonicalProviderKey: 'fake-source',
+        },
+      ],
     );
 
-    await expect(registry.getProvider(LEGACY_GITHUB_ISSUES_PROVIDER_KEY)).resolves.toBe(provider);
-    await expect(registry.getReadinessProfile(LEGACY_GITHUB_ISSUES_PROVIDER_KEY)).resolves.toEqual(
-      expect.objectContaining({ providerKey: 'fake-source' }),
-    );
+    await expect(
+      registry.getProvider(LEGACY_GITHUB_ISSUES_PROVIDER_KEY),
+    ).resolves.toBe(provider);
+    await expect(
+      registry.getReadinessProfile(LEGACY_GITHUB_ISSUES_PROVIDER_KEY),
+    ).resolves.toEqual(expect.objectContaining({ providerKey: 'fake-source' }));
   });
 
   it('can expose runtime capability profiles without registering a scan provider', async () => {

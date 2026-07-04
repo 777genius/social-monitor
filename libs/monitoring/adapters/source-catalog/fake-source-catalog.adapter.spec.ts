@@ -1,4 +1,7 @@
-import { FakeSourceCatalogAdapter } from './fake-source-catalog.adapter';
+import {
+  FakeSourceCatalogAdapter,
+  sourceCatalogOptionsForRuntime,
+} from './fake-source-catalog.adapter';
 
 describe('FakeSourceCatalogAdapter', () => {
   it('exposes canonical x-twitter as a production-safe monitoring source', async () => {
@@ -46,5 +49,21 @@ describe('FakeSourceCatalogAdapter', () => {
       ok: false,
       reason: 'Unsupported X/Twitter search product: live',
     });
+  });
+
+  it('keeps beta source catalog aligned with runtime source enablement', async () => {
+    const catalog = new FakeSourceCatalogAdapter(
+      sourceCatalogOptionsForRuntime({
+        SOCIAL_MONITOR_RUNTIME_PROFILE: 'beta',
+      }),
+    );
+
+    await expect(catalog.getCapability('fake-source')).resolves.toBeNull();
+    await expect(catalog.getCapability('github-issues')).resolves.toBeNull();
+    await expect(catalog.getCapability('github')).resolves.toBeNull();
+    await expect(catalog.getCapability('x-twitter')).resolves.toBeNull();
+    await expect(catalog.getCapability('hacker-news')).resolves.toEqual(
+      expect.objectContaining({ providerKey: 'hacker-news' }),
+    );
   });
 });

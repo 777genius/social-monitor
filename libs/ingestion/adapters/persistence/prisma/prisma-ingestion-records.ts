@@ -1,6 +1,11 @@
 import { createHash } from 'node:crypto';
 
-import { normalizeJsonObject, tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import {
+  emptyJsonObjectAsUndefined,
+  normalizeJsonObject,
+  tenantId,
+  workspaceId,
+} from '@social-monitor/shared-kernel';
 
 import {
   ScanAttempt,
@@ -167,10 +172,27 @@ const sourceQueryFromPrisma = (value: unknown): SourceQuery => {
     throw new Error('Scan failure source query must be non-empty');
   }
 
+  const parameters = sourceQueryParametersFromPrisma(payload.parameters);
+
   return {
     mode: payload.mode as SourceQueryMode,
     query: payload.query.trim(),
+    ...(parameters === undefined ? {} : { parameters }),
   };
+};
+
+const sourceQueryParametersFromPrisma = (
+  value: unknown,
+): SourceQuery['parameters'] => {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error('Scan failure source query parameters must be an object');
+  }
+
+  return emptyJsonObjectAsUndefined(normalizeJsonObject(value));
 };
 
 export const scanAttemptFromPrisma = (record: PrismaScanAttemptRecord): ScanAttempt =>

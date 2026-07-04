@@ -59,6 +59,8 @@ class SequenceIdGenerator implements IdGenerator {
 class FixedSourceFetcher implements SourceFetcherPort {
   readonly calls: FetchSourceItemsCommand[] = [];
 
+  constructor(private readonly warnings: readonly string[] = []) {}
+
   async fetch(command: FetchSourceItemsCommand): Promise<FetchSourceItemsResult> {
     this.calls.push(command);
 
@@ -82,6 +84,7 @@ class FixedSourceFetcher implements SourceFetcherPort {
         },
       ],
       nextCursor: 'cursor-after-scan',
+      warnings: this.warnings,
     };
   }
 }
@@ -409,6 +412,7 @@ describe('ExecuteScanUseCase', () => {
         inserted: 2,
         skippedDuplicates: 0,
         projected: 2,
+        warnings: [],
       },
     });
     expect(fetcher.calls).toHaveLength(1);
@@ -452,6 +456,39 @@ describe('ExecuteScanUseCase', () => {
       skippedDuplicates: 0,
       projected: 2,
     });
+  });
+
+  it('returns redacted source warnings and passes them to the success reporter', async () => {
+    const fetcher = new FixedSourceFetcher([
+      'Reddit comment enrichment degraded: token=source-secret',
+      'Reddit comment enrichment degraded: token=source-secret',
+      '   ',
+    ]);
+    const reporter = new FakeScanExecutionReporter();
+    const useCase = new ExecuteScanUseCase(
+      fetcher,
+      new FakeSourceItemRepository(),
+      new FakeFeedProjection(),
+      new FakeScanAttemptRepository(),
+      new FakeScanCursorRepository(),
+      reporter,
+      new FakeScanFailureQueue(),
+      new FakeScanLease(),
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-05T12:00:00.000Z')),
+    );
+
+    const result = await useCase.execute(makeExecuteScanCommand());
+
+    expect(result.ok).toBe(true);
+    expect(result.ok ? result.value.warnings : []).toEqual([
+      'Reddit comment enrichment degraded: token=[REDACTED]',
+    ]);
+    expect(reporter.succeeded).toEqual([
+      expect.objectContaining({
+        warnings: ['Reddit comment enrichment degraded: token=[REDACTED]'],
+      }),
+    ]);
   });
 
   it('projects fetched conversation units after root feed items are projected', async () => {
@@ -569,6 +606,7 @@ describe('ExecuteScanUseCase', () => {
         inserted: 0,
         skippedDuplicates: 2,
         projected: 2,
+        warnings: [],
       },
     });
     expect(repository.all()).toHaveLength(2);

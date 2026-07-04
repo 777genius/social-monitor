@@ -9,11 +9,15 @@ export type HackerNewsScanPass =
       readonly target: "story" | "comment";
       readonly query: string;
       readonly maxItems?: number;
+      readonly requiredKeywords?: readonly string[];
+      readonly requiredStoryKeywords?: readonly string[];
     }
   | {
       readonly mode: "listing";
       readonly listing: HackerNewsListing;
       readonly maxItems?: number;
+      readonly requiredKeywords?: readonly string[];
+      readonly requiredStoryKeywords?: readonly string[];
     };
 
 const supportedListings: readonly HackerNewsListing[] = [
@@ -25,10 +29,14 @@ const supportedListings: readonly HackerNewsListing[] = [
   "job",
 ];
 
+const maxConfiguredHackerNewsScanPasses = 28;
+
 export const readScanPasses = (
   config: SourceProviderScanContext["config"] | undefined,
 ): readonly HackerNewsScanPass[] =>
-  readArray(config?.scanPasses ?? config?.passes).map(readScanPass).slice(0, 10);
+  readArray(config?.scanPasses ?? config?.passes)
+    .map(readScanPass)
+    .slice(0, maxConfiguredHackerNewsScanPasses);
 
 export const sourceKeyForPass = (pass: HackerNewsScanPass): string =>
   pass.mode === "listing" ? pass.listing : `${pass.target}_search`;
@@ -42,7 +50,9 @@ export const formatHackerNewsScanPassWarning = (
       ? `listing:${pass.listing}`
       : `${pass.target}_search:${pass.query}`;
   const message =
-    error instanceof Error ? error.message : "Unknown Hacker News scan pass error";
+    error instanceof Error
+      ? error.message
+      : "Unknown Hacker News scan pass error";
 
   return `Hacker News scan pass degraded (${passLabel}): ${redactSensitiveText(message)}`;
 };
@@ -61,17 +71,23 @@ const readScanPass = (value: unknown, index: number): HackerNewsScanPass => {
       mode,
       listing: readListing(pass.listing ?? pass.query),
       ...(maxItems === undefined ? {} : { maxItems }),
+      ...readRequiredKeywords(pass),
+      ...readRequiredStoryKeywords(pass),
     };
   }
 
   if (mode === "search") {
-    const target = readSearchTarget(pass.target ?? pass.contentUnit ?? pass.kind);
+    const target = readSearchTarget(
+      pass.target ?? pass.contentUnit ?? pass.kind,
+    );
 
     return {
       mode,
       target,
       query: readRequiredString(pass.query, `scanPasses[${index}].query`),
       ...(maxItems === undefined ? {} : { maxItems }),
+      ...readRequiredKeywords(pass),
+      ...readRequiredStoryKeywords(pass),
     };
   }
 
@@ -101,6 +117,59 @@ const readSearchTarget = (value: unknown): "story" | "comment" => {
   throw new Error(`Unsupported Hacker News search target: ${target}`);
 };
 
+const readRequiredKeywords = (
+  pass: Readonly<Record<string, unknown>>,
+): { readonly requiredKeywords?: readonly string[] } => {
+  const raw =
+    pass.requiredKeywords ?? pass.includeKeywords ?? pass.requiredTextKeywords;
+
+  if (raw === undefined) {
+    return {};
+  }
+
+  if (!Array.isArray(raw)) {
+    throw new Error(
+      "Hacker News source config field requiredKeywords must be an array",
+    );
+  }
+
+  const requiredKeywords = compactUnique(
+    raw.flatMap((value) => {
+      const keyword = readOptionalString(value);
+
+      return keyword === undefined ? [] : [keyword];
+    }),
+  );
+
+  return requiredKeywords.length === 0 ? {} : { requiredKeywords };
+};
+
+const readRequiredStoryKeywords = (
+  pass: Readonly<Record<string, unknown>>,
+): { readonly requiredStoryKeywords?: readonly string[] } => {
+  const raw = pass.requiredStoryKeywords ?? pass.includeStoryKeywords;
+
+  if (raw === undefined) {
+    return {};
+  }
+
+  if (!Array.isArray(raw)) {
+    throw new Error(
+      "Hacker News source config field requiredStoryKeywords must be an array",
+    );
+  }
+
+  const requiredStoryKeywords = compactUnique(
+    raw.flatMap((value) => {
+      const keyword = readOptionalString(value);
+
+      return keyword === undefined ? [] : [keyword];
+    }),
+  );
+
+  return requiredStoryKeywords.length === 0 ? {} : { requiredStoryKeywords };
+};
+
 const readArray = (value: unknown): readonly unknown[] =>
   Array.isArray(value) ? value : [];
 
@@ -112,7 +181,9 @@ const readRecord = (
     return value as Readonly<Record<string, unknown>>;
   }
 
-  throw new Error(`Hacker News source config must provide ${label} as an object`);
+  throw new Error(
+    `Hacker News source config must provide ${label} as an object`,
+  );
 };
 
 const readRequiredString = (value: unknown, field: string): string => {
@@ -144,7 +215,9 @@ const readOptionalPositiveInteger = (
     value < 1 ||
     value > max
   ) {
-    throw new Error(`Hacker News source config integer must be between 1 and ${max}`);
+    throw new Error(
+      `Hacker News source config integer must be between 1 and ${max}`,
+    );
   }
 
   return value;

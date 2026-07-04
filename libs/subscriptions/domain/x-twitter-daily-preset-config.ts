@@ -1,0 +1,20 @@
+// X/Twitter experimental daily scan configuration for the AI developer preset.
+export const xTwitterDailyConfig = {
+  language: "en",
+  windowHours: 24,
+  searchProducts: ["top", "latest"],
+  maxItems: 80,
+  limitPerProduct: 20,
+  minLikes: 3,
+  minRetweets: 0,
+  minReplies: 0,
+  searchQueries: [
+    '"Claude Code" OR "OpenAI Codex" OR Cursor OR "Cursor AI" OR "AI coding" OR "coding agent"',
+    'MCP OR "MCP server" OR "model context protocol" OR "AI agent"',
+    'OpenAI OR Anthropic OR Claude OR Gemini OR "AI model" OR LLM',
+    'Flutter OR Dart OR TypeScript OR JavaScript OR "Node.js" OR Python OR Rust OR Go',
+    'cybersecurity OR "AI security" OR "security vulnerability" OR infosec',
+    'LangChain OR RAG OR "open source AI" OR "open source LLM" OR Ollama',
+    '"vibe coding" OR "developer tools" OR "agentic coding" OR "AI infrastructure"',
+  ],
+} as const;

@@ -1,4 +1,4 @@
-import { redactSensitiveText } from '@social-monitor/shared-kernel';
+import { redactSensitiveText } from "@social-monitor/shared-kernel";
 
 import {
   GITHUB_TRENDING_PAGE_PROVIDER_KEY,
@@ -6,7 +6,7 @@ import {
   githubTrendingPageWindows,
   type GitHubTrendingPageRepositoryMetadataInput,
   type GitHubTrendingPageWindow,
-} from '../../../domain';
+} from "../../../domain";
 import type {
   FetchedSourceItem,
   ProviderFailure,
@@ -17,30 +17,30 @@ import type {
   SourceProviderScanResult,
   SourceProviderValidationResult,
   SourceQuery,
-} from '../../../ports';
+} from "../../../ports";
 import type {
   GitHubTrendingPageClientPort,
   GitHubTrendingPageRepository,
-} from './github-trending-page-client.port';
+} from "./github-trending-page-client.port";
 
 const capabilityProfile: SourceCapabilityProfile = {
   providerKey: GITHUB_TRENDING_PAGE_PROVIDER_KEY,
-  displayName: 'GitHub Trending Page',
+  displayName: "GitHub Trending Page",
   version: 1,
   productionSafe: true,
-  supportedContentUnits: ['link'],
-  supportedQueryModes: ['listing'],
-  cursorModel: 'time',
+  supportedContentUnits: ["link"],
+  supportedQueryModes: ["listing"],
+  cursorModel: "time",
   stableIdentity: [
-    'canonicalUrl',
-    'providerMetadata.repository.fullName',
-    'providerMetadata.trending.window',
-    'providerMetadata.trending.rank',
+    "canonicalUrl",
+    "providerMetadata.repository.fullName",
+    "providerMetadata.trending.window",
+    "providerMetadata.trending.rank",
   ],
-  quotaModel: 'per_app',
+  quotaModel: "per_app",
   limitations: [
-    'Uses the public GitHub Trending HTML page because GitHub does not expose an official Trending REST endpoint.',
-    'Results match the page ranking at scan time, but the page algorithm is GitHub-owned and can change without notice.',
+    "Uses the public GitHub Trending HTML page because GitHub does not expose an official Trending REST endpoint.",
+    "Results match the page ranking at scan time, but the page algorithm is GitHub-owned and can change without notice.",
   ],
 };
 
@@ -67,7 +67,7 @@ export class GitHubTrendingPageSourceProvider implements SourceProviderPort {
       return {
         ok: false,
         reason:
-          'GitHub Trending page query must be daily, weekly, monthly, today, week or month',
+          "GitHub Trending page query must be daily, weekly, monthly, today, week or month",
       };
     }
 
@@ -90,14 +90,22 @@ export class GitHubTrendingPageSourceProvider implements SourceProviderPort {
   ): Promise<SourceProviderScanResult> {
     const config = parseConfig(plan.query, context, plan.maxItems);
     const checkedAt = this.clock.now();
-    const repositories = await this.client.listTrendingRepositories({
-      window: config.window,
-      language: config.language,
-      spokenLanguage: config.spokenLanguage,
-      limit: plan.maxItems,
-      userAgent: config.userAgent,
-    });
-    const validRepositories = repositories.filter(isUsableTrendingRepository);
+    const repositories = (
+      await Promise.all(
+        config.languages.map((language) =>
+          this.client.listTrendingRepositories({
+            window: config.window,
+            language,
+            spokenLanguage: config.spokenLanguage,
+            limit: config.maxItemsPerLanguage,
+            userAgent: config.userAgent,
+          }),
+        ),
+      )
+    ).flat();
+    const validRepositories = dedupeRepositories(
+      repositories.filter(isUsableTrendingRepository),
+    ).slice(0, plan.maxItems);
 
     return {
       items: validRepositories.map((repository) =>
@@ -120,24 +128,24 @@ export class GitHubTrendingPageSourceProvider implements SourceProviderPort {
     const rawMessage =
       error instanceof Error
         ? error.message
-        : 'Unknown GitHub Trending page provider error';
+        : "Unknown GitHub Trending page provider error";
     const lowerMessage = rawMessage.toLowerCase();
     const message = redactSensitiveText(rawMessage);
 
     if (
-      rawMessage.includes('403') ||
-      rawMessage.includes('429') ||
-      lowerMessage.includes('rate limit')
+      rawMessage.includes("403") ||
+      rawMessage.includes("429") ||
+      lowerMessage.includes("rate limit")
     ) {
       return {
-        kind: 'rate_limited',
+        kind: "rate_limited",
         retryable: true,
         message,
       };
     }
 
     return {
-      kind: 'unavailable',
+      kind: "unavailable",
       retryable: true,
       message,
     };
@@ -146,10 +154,11 @@ export class GitHubTrendingPageSourceProvider implements SourceProviderPort {
 
 type GitHubTrendingPageConfig = {
   readonly window: GitHubTrendingPageWindow;
-  readonly language?: string;
+  readonly languages: readonly (string | undefined)[];
   readonly spokenLanguage?: string;
   readonly userAgent?: string;
-  readonly source: GitHubTrendingPageRepositoryMetadataInput['trending']['source'];
+  readonly maxItemsPerLanguage: number;
+  readonly source: GitHubTrendingPageRepositoryMetadataInput["trending"]["source"];
 };
 
 const parseConfig = (
@@ -163,19 +172,28 @@ const parseConfig = (
     readWindow(query.query);
 
   if (window === undefined) {
-    throw new Error('GitHub Trending page window is invalid');
+    throw new Error("GitHub Trending page window is invalid");
   }
 
   readPositiveInteger(context.config?.maxItems, maxItems, 1, 100);
 
   return {
     window,
-    language: firstNonEmptyString(context.config?.language),
+    languages: readLanguages(
+      context.config?.languages,
+      context.config?.language,
+    ),
     spokenLanguage: firstNonEmptyString(context.config?.spokenLanguage),
     userAgent: firstNonEmptyString(context.config?.userAgent),
+    maxItemsPerLanguage: readPositiveInteger(
+      context.config?.maxItemsPerLanguage,
+      maxItems,
+      1,
+      100,
+    ),
     source: readBoolean(context.config?.fixtureMode, false)
-      ? 'fixture_github_trending_html'
-      : 'github_trending_html',
+      ? "fixture_github_trending_html"
+      : "github_trending_html",
   };
 };
 
@@ -183,7 +201,7 @@ const normalizeRepository = (params: {
   readonly repository: GitHubTrendingPageRepository;
   readonly window: GitHubTrendingPageWindow;
   readonly checkedAt: Date;
-  readonly source: GitHubTrendingPageRepositoryMetadataInput['trending']['source'];
+  readonly source: GitHubTrendingPageRepositoryMetadataInput["trending"]["source"];
 }): FetchedSourceItem => {
   const { repository, window, checkedAt, source } = params;
   const metadata = githubTrendingPageRepositoryMetadata({
@@ -204,14 +222,14 @@ const normalizeRepository = (params: {
     },
   });
   const description =
-    repository.description ?? 'No GitHub Trending description available.';
+    repository.description ?? "No GitHub Trending description available.";
 
   return {
     externalId: `github-trending-page:${window}:${repository.fullName}:${checkedAt.toISOString()}`,
     canonicalUrl: repository.url,
     title: `${repository.fullName} is #${repository.rank} on GitHub Trending`,
     body: `${description}\nGitHub Trending ${window}: #${repository.rank}, +${repository.starsGained} stars. Total stars: ${repository.totalStars}.`,
-    authorHandle: repository.fullName.split('/')[0],
+    authorHandle: repository.fullName.split("/")[0],
     publishedAt: checkedAt,
     metadata,
   };
@@ -220,8 +238,8 @@ const normalizeRepository = (params: {
 const isUsableTrendingRepository = (
   repository: GitHubTrendingPageRepository,
 ): boolean =>
-  repository.fullName.includes('/') &&
-  repository.url.startsWith('https://github.com/') &&
+  repository.fullName.includes("/") &&
+  repository.url.startsWith("https://github.com/") &&
   Number.isInteger(repository.rank) &&
   repository.rank > 0 &&
   Number.isInteger(repository.totalStars) &&
@@ -231,6 +249,36 @@ const isUsableTrendingRepository = (
   Number.isInteger(repository.starsGained) &&
   repository.starsGained > 0;
 
+const dedupeRepositories = (
+  repositories: readonly GitHubTrendingPageRepository[],
+): readonly GitHubTrendingPageRepository[] => {
+  const byFullName = new Map<string, GitHubTrendingPageRepository>();
+
+  for (const repository of repositories) {
+    const key = repository.fullName.toLocaleLowerCase("en-US");
+    const existing = byFullName.get(key);
+
+    if (
+      existing === undefined ||
+      repository.starsGained > existing.starsGained ||
+      (repository.starsGained === existing.starsGained &&
+        repository.rank < existing.rank)
+    ) {
+      byFullName.set(key, repository);
+    }
+  }
+
+  return [...byFullName.values()].sort((left, right) => {
+    const starsGainedDiff = right.starsGained - left.starsGained;
+
+    if (starsGainedDiff !== 0) {
+      return starsGainedDiff;
+    }
+
+    return left.rank - right.rank;
+  });
+};
+
 const githubTrendingPageWarnings = (params: {
   readonly fetchedCount: number;
   readonly validCount: number;
@@ -239,13 +287,13 @@ const githubTrendingPageWarnings = (params: {
 
   if (params.fetchedCount === 0) {
     warnings.push(
-      'GitHub Trending page returned no repositories; parser drift or an empty filtered page should be checked.',
+      "GitHub Trending page returned no repositories; parser drift or an empty filtered page should be checked.",
     );
   }
 
   if (params.validCount < params.fetchedCount) {
     warnings.push(
-      'Some GitHub Trending page repositories had incomplete rank, URL or star metrics and were skipped.',
+      "Some GitHub Trending page repositories had incomplete rank, URL or star metrics and were skipped.",
     );
   }
 
@@ -254,21 +302,21 @@ const githubTrendingPageWarnings = (params: {
 
 const readWindow = (value: unknown): GitHubTrendingPageWindow | undefined => {
   const normalized = firstNonEmptyString(value)
-    ?.toLocaleLowerCase('en-US')
-    .replace(/\s+/gu, '-');
+    ?.toLocaleLowerCase("en-US")
+    .replace(/\s+/gu, "-");
 
   switch (normalized) {
-    case 'daily':
-    case 'today':
-      return 'daily';
-    case 'weekly':
-    case 'week':
-    case 'this-week':
-      return 'weekly';
-    case 'monthly':
-    case 'month':
-    case 'this-month':
-      return 'monthly';
+    case "daily":
+    case "today":
+      return "daily";
+    case "weekly":
+    case "week":
+    case "this-week":
+      return "weekly";
+    case "monthly":
+    case "month":
+    case "this-month":
+      return "monthly";
     default:
       return githubTrendingPageWindows.includes(
         normalized as GitHubTrendingPageWindow,
@@ -279,12 +327,51 @@ const readWindow = (value: unknown): GitHubTrendingPageWindow | undefined => {
 };
 
 const firstNonEmptyString = (value: unknown): string | undefined =>
-  typeof value === 'string' && value.trim().length > 0
+  typeof value === "string" && value.trim().length > 0
     ? value.trim()
     : undefined;
 
+const readLanguages = (
+  languages: unknown,
+  fallbackLanguage: unknown,
+): readonly (string | undefined)[] => {
+  const values = Array.isArray(languages) ? languages : [fallbackLanguage];
+  const normalized = values
+    .map(readLanguage)
+    .filter((value, index, array) => {
+      const key = languageKey(value);
+
+      return (
+        array.findIndex((candidate) => languageKey(candidate) === key) === index
+      );
+    })
+    .slice(0, 24);
+
+  return normalized.length === 0 ? [undefined] : normalized;
+};
+
+const readLanguage = (value: unknown): string | undefined => {
+  const raw = firstNonEmptyString(value);
+
+  if (raw === undefined) {
+    return undefined;
+  }
+
+  const normalized = raw.toLocaleLowerCase("en-US");
+
+  return normalized === "overall" ||
+    normalized === "all" ||
+    normalized === "any" ||
+    normalized === "*"
+    ? undefined
+    : raw;
+};
+
+const languageKey = (value: string | undefined): string =>
+  value?.toLocaleLowerCase("en-US") ?? "overall";
+
 const readBoolean = (value: unknown, fallback: boolean): boolean =>
-  typeof value === 'boolean' ? value : fallback;
+  typeof value === "boolean" ? value : fallback;
 
 const readPositiveInteger = (
   value: unknown,
@@ -297,7 +384,7 @@ const readPositiveInteger = (
   }
 
   if (
-    typeof value !== 'number' ||
+    typeof value !== "number" ||
     !Number.isInteger(value) ||
     value < min ||
     value > max

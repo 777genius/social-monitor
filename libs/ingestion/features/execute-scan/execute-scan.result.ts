@@ -4,4 +4,5 @@ export type ExecuteScanResult = {
   readonly inserted: number;
   readonly skippedDuplicates: number;
   readonly projected: number;
+  readonly warnings: readonly string[];
 };

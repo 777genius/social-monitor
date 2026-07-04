@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 import {
+  SystemClock,
   REDACTED_VALUE,
   isSensitiveKey,
   redactSensitiveText,
@@ -107,7 +108,7 @@ const cases: readonly ProviderCase[] = [
   },
   {
     providerFactory: () =>
-      new HackerNewsSourceProvider(new FixtureHackerNewsClient()),
+      new HackerNewsSourceProvider(new FixtureHackerNewsClient(), new SystemClock()),
     validQuery: { mode: 'search', query: 'monitoring' },
     unsupportedQueryMode: 'thread',
     expectedProviderKey: 'hacker-news',
@@ -122,7 +123,7 @@ const cases: readonly ProviderCase[] = [
     },
     unsupportedQueryMode: 'thread',
     expectedProviderKey: GITHUB_ISSUES_PROVIDER_KEY,
-    expectedReadinessState: 'enabled_beta',
+    expectedReadinessState: 'manual_only',
     expectedFailureKind: 'unavailable',
     contextConfig: {
       maxItems: 1,

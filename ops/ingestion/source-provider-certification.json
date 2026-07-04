@@ -58,10 +58,11 @@
     },
     {
       "providerKey": "github-issues",
-      "readinessState": "enabled_beta",
+      "readinessState": "manual_only",
       "runtimeReadiness": "fixture_ready",
       "liveBetaReady": false,
       "liveBetaBlockers": [
+        "GitHub issues collection is disabled by default; set GITHUB_ISSUES_COLLECTOR_ENABLED=1 for a separate issue-focused run.",
         "Live GitHub issues API smoke and deployed rate-limit budget evidence required before external beta."
       ],
       "liveEvidenceRequirements": [
@@ -431,7 +432,7 @@
       "quotaModel": "per_app",
       "itemCount": 2,
       "warningCount": 0,
-      "firstExternalId": "reddit:t3_fixturepost1",
+      "firstExternalId": "reddit:t3_fixturepost2",
       "nextCursor": "t3_fixturepost2",
       "repeatedScanItemCount": 2,
       "failureKind": "unavailable",

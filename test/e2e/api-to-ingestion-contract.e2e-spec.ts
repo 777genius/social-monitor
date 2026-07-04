@@ -2,7 +2,11 @@ import { type INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { InMemoryQueuePublisher } from '@social-monitor/platform-queue/adapters/in-memory';
-import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import {
+  SystemClock,
+  tenantId,
+  workspaceId,
+} from '@social-monitor/shared-kernel';
 import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
@@ -66,7 +70,10 @@ class FailingSourceFetcher implements SourceFetcherPort {
 }
 
 class HackerNewsFixtureSourceFetcher implements SourceFetcherPort {
-  private readonly provider = new HackerNewsSourceProvider(new FixtureHackerNewsClient());
+  private readonly provider = new HackerNewsSourceProvider(
+    new FixtureHackerNewsClient(),
+    new SystemClock(),
+  );
 
   async fetch(command: Parameters<SourceFetcherPort['fetch']>[0]): Promise<FetchSourceItemsResult> {
     const validation = this.provider.validateBinding(command.sourceQuery);

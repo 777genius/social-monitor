@@ -24,6 +24,8 @@ const config: Config = {
     '^@social-monitor/platform-worker$': '<rootDir>/libs/platform/worker/src/index.ts',
     '^@social-monitor/contracts/(.*)$': '<rootDir>/libs/contracts/$1',
     '^@social-monitor/feed$': '<rootDir>/libs/feed/index.ts',
+    '^@social-monitor/social-research$': '<rootDir>/libs/social-research/index.ts',
+    '^@social-monitor/social-research/(.*)$': '<rootDir>/libs/social-research/$1',
     '^@social-monitor/([^/]+)/(.*)$': '<rootDir>/libs/$1/$2',
   },
   testPathIgnorePatterns: ['/node_modules/', '/dist/', '/prisma/generated/'],

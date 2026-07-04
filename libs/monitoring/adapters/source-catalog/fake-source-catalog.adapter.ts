@@ -82,6 +82,8 @@ const providerAliases = new Map([
 
 type FakeSourceCatalogAdapterOptions = {
   readonly includeFixtureProviders?: boolean;
+  readonly includeGitHubIssuesProvider?: boolean;
+  readonly includeXTwitterProvider?: boolean;
 };
 
 const fixtureProviderKeys = new Set(['fake-source']);
@@ -90,11 +92,30 @@ export const shouldIncludeFixtureSourceCatalogEntries = (
   env: NodeJS.ProcessEnv,
 ): boolean => resolveRuntimeProfile(env) !== 'beta';
 
+export const sourceCatalogOptionsForRuntime = (
+  env: NodeJS.ProcessEnv,
+): FakeSourceCatalogAdapterOptions => {
+  const betaRuntime = resolveRuntimeProfile(env) === 'beta';
+
+  return {
+    includeFixtureProviders: !betaRuntime,
+    includeGitHubIssuesProvider:
+      !betaRuntime || env.GITHUB_ISSUES_COLLECTOR_ENABLED === '1',
+    includeXTwitterProvider:
+      !betaRuntime || isXTwitterSourceCatalogRuntimeConfigured(env),
+  };
+};
+
 export class FakeSourceCatalogAdapter implements SourceCatalogPort {
   private readonly includeFixtureProviders: boolean;
+  private readonly includeGitHubIssuesProvider: boolean;
+  private readonly includeXTwitterProvider: boolean;
 
   constructor(options: FakeSourceCatalogAdapterOptions = {}) {
     this.includeFixtureProviders = options.includeFixtureProviders ?? true;
+    this.includeGitHubIssuesProvider =
+      options.includeGitHubIssuesProvider ?? true;
+    this.includeXTwitterProvider = options.includeXTwitterProvider ?? true;
   }
 
   async getCapability(
@@ -341,6 +362,14 @@ export class FakeSourceCatalogAdapter implements SourceCatalogPort {
       return false;
     }
 
+    if (
+      (canonicalKey === 'github-issues' &&
+        !this.includeGitHubIssuesProvider) ||
+      (canonicalKey === 'x-twitter' && !this.includeXTwitterProvider)
+    ) {
+      return false;
+    }
+
     return (
       this.includeFixtureProviders || !fixtureProviderKeys.has(canonicalKey)
     );
@@ -349,6 +378,17 @@ export class FakeSourceCatalogAdapter implements SourceCatalogPort {
 
 const canonicalProviderKey = (providerKey: string): string =>
   providerAliases.get(providerKey) ?? providerKey;
+
+const isXTwitterSourceCatalogRuntimeConfigured = (
+  env: NodeJS.ProcessEnv,
+): boolean => {
+  const enabled =
+    env.X_COLLECTOR_ENABLED === '1' ||
+    env.X_COLLECTOR_EXPERIMENTAL_ENABLED === '1';
+  const address = env.X_COLLECTOR_GRPC_ADDRESS?.trim();
+
+  return enabled && address !== undefined && address.length > 0;
+};
 
 const supportedHackerNewsListings = new Set([
   'top',

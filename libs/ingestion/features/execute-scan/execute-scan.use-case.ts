@@ -24,6 +24,7 @@ import {
   noopSourceItemMetadataProjection,
   noopSourceItemEnrichment,
   SourceFetchError,
+  SourceItemPersistenceContractError,
   type ConversationProjectionPort,
   type FeedProjectionPort,
   type ScanAttemptRepositoryPort,
@@ -137,6 +138,7 @@ export class ExecuteScanUseCase {
         correlationId: command.correlationId,
         cursor: existingCursor?.cursor,
       });
+      const scanWarnings = sanitizeSourceWarnings(fetched.warnings);
 
       const ingestedAt = this.clock.now();
       const enriched = await this.sourceItemEnrichment.enrich({
@@ -226,6 +228,7 @@ export class ExecuteScanUseCase {
         workspaceId: command.workspaceId,
         scanJobId: command.scanJobId,
         completedAt: this.clock.now(),
+        warnings: scanWarnings,
       });
 
       return ok({
@@ -234,6 +237,7 @@ export class ExecuteScanUseCase {
         inserted: saveResult.inserted,
         skippedDuplicates: saveResult.skippedDuplicates,
         projected: projectionResult.projected,
+        warnings: scanWarnings,
       });
     } catch (error) {
       const safeFailureReason = formatScanFailureReason(error);
@@ -335,7 +339,7 @@ const rehydratePersistedSourceItems = (
   refs: readonly SavedSourceItemRef[],
 ): readonly SourceItem[] => {
   if (items.length !== refs.length) {
-    throw new Error(
+    throw new SourceItemPersistenceContractError(
       `Source item repository returned ${refs.length} saved refs for ${items.length} source items`,
     );
   }
@@ -344,7 +348,7 @@ const rehydratePersistedSourceItems = (
   for (const ref of refs) {
     const existingId = persistedIdByExternalId.get(ref.externalId);
     if (existingId !== undefined && existingId !== ref.sourceItemId) {
-      throw new Error(
+      throw new SourceItemPersistenceContractError(
         `Source item repository returned conflicting ids for external item ${ref.externalId}`,
       );
     }
@@ -357,7 +361,7 @@ const rehydratePersistedSourceItems = (
     const sourceItemId = persistedIdByExternalId.get(snapshot.externalId);
 
     if (sourceItemId === undefined) {
-      throw new Error(
+      throw new SourceItemPersistenceContractError(
         `Source item repository did not return a saved ref for external item ${snapshot.externalId}`,
       );
     }
@@ -443,3 +447,13 @@ const sanitizeFetchedConversationUnit = (
     ? undefined
     : redactSensitiveRecord(unit.metadata) as JsonObject,
 });
+
+const sanitizeSourceWarnings = (
+  warnings: readonly string[] | undefined,
+): readonly string[] => [
+  ...new Set(
+    (warnings ?? [])
+      .map((warning) => redactSensitiveText(warning).trim())
+      .filter((warning) => warning.length > 0),
+  ),
+];

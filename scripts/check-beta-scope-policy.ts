@@ -8,7 +8,10 @@ import {
   type WorkspaceId,
 } from '@social-monitor/shared-kernel';
 
-import { FakeSourceCatalogAdapter } from '../libs/monitoring/adapters/source-catalog/fake-source-catalog.adapter';
+import {
+  FakeSourceCatalogAdapter,
+  sourceCatalogOptionsForRuntime,
+} from '../libs/monitoring/adapters/source-catalog/fake-source-catalog.adapter';
 import { InMemoryIdempotencyAdapter } from '../libs/monitoring/adapters/idempotency/in-memory-idempotency.adapter';
 import { InMemoryOutboxAdapter } from '../libs/monitoring/adapters/messaging/in-memory-outbox.adapter';
 import { InMemorySourceBindingRepository } from '../libs/monitoring/adapters/persistence/in-memory-source-binding.repository';
@@ -18,7 +21,10 @@ import { CreateInterestUseCase } from '../libs/monitoring/features/create-intere
 import type { SourceBindingConfig, SourceBindingConfigProtectorPort } from '../libs/monitoring/ports';
 import { sourceReadinessProfiles } from '../libs/ingestion/adapters/source/source-readiness-profiles';
 import { FakeSourceProvider } from '../libs/ingestion/adapters/source/fake-source.provider';
-import { selectRuntimeSourceProviders } from '../libs/ingestion/adapters/source/source-provider-runtime-scope';
+import {
+  resolveSourceProviderRuntimeScope,
+  selectRuntimeSourceProviders,
+} from '../libs/ingestion/adapters/source/source-provider-runtime-scope';
 import { SummaryArtifact } from '../libs/summary/domain';
 import { InMemorySummaryArtifactRepository } from '../libs/summary/adapters/persistence/in-memory-summary-artifact.repository';
 import { InMemorySummaryFeedbackRepository } from '../libs/summary/adapters/persistence/in-memory-summary-feedback.repository';
@@ -28,6 +34,9 @@ const tenant = tenantId('tenant-beta-scope-policy-smoke');
 const workspace = workspaceId('workspace-beta-scope-policy-smoke');
 const correlation = 'beta-scope-policy-correlation';
 const clock = new FixedClock(new Date('2026-06-06T00:00:00.000Z'));
+const betaSourceCatalogOptions = sourceCatalogOptionsForRuntime({
+  SOCIAL_MONITOR_RUNTIME_PROFILE: 'beta',
+});
 
 async function main(): Promise<void> {
   const ids = new SequenceIdGenerator('beta-policy');
@@ -40,19 +49,25 @@ async function main(): Promise<void> {
 }
 
 function proveFixtureProvidersStayOutOfBetaRuntimeRegistry(): void {
-  const localProviders = selectRuntimeSourceProviders([new FakeSourceProvider()], {
-    SOCIAL_MONITOR_RUNTIME_PROFILE: 'local-dev',
-  });
-  const betaProviders = selectRuntimeSourceProviders([new FakeSourceProvider()], {
-    SOCIAL_MONITOR_RUNTIME_PROFILE: 'beta',
-  });
+  const localProviders = selectRuntimeSourceProviders(
+    [new FakeSourceProvider()],
+    resolveSourceProviderRuntimeScope({
+      SOCIAL_MONITOR_RUNTIME_PROFILE: 'local-dev',
+    }),
+  );
+  const betaProviders = selectRuntimeSourceProviders(
+    [new FakeSourceProvider()],
+    resolveSourceProviderRuntimeScope({
+      SOCIAL_MONITOR_RUNTIME_PROFILE: 'beta',
+    }),
+  );
 
   assert(localProviders.length === 1, 'fake-source must stay available for local deterministic runtime');
   assert(betaProviders.length === 0, 'fake-source must not be registered in beta runtime');
 }
 
 async function proveUnsupportedSourceProfilesStayOutOfBindingCatalog(): Promise<void> {
-  const sourceCatalog = new FakeSourceCatalogAdapter({ includeFixtureProviders: false });
+  const sourceCatalog = new FakeSourceCatalogAdapter(betaSourceCatalogOptions);
   const unsupportedProfiles = sourceReadinessProfiles.filter((profile) => profile.state !== 'enabled_beta');
 
   assert(unsupportedProfiles.length > 0, 'source readiness profiles must include deferred providers');
@@ -89,7 +104,7 @@ async function proveUnsupportedBindingsAreRejected(ids: IdGenerator): Promise<vo
   const bindSource = new BindSourceUseCase(
     topics,
     new InMemorySourceBindingRepository(),
-    new FakeSourceCatalogAdapter({ includeFixtureProviders: false }),
+    new FakeSourceCatalogAdapter(betaSourceCatalogOptions),
     outbox,
     idempotency,
     new PassThroughConfigProtector(),

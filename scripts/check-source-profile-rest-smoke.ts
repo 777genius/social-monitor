@@ -179,24 +179,34 @@ async function main(): Promise<void> {
     );
 
     assert(
-      github.displayName === 'GitHub Issues',
-      'GitHub issues profile must expose display name',
+      github.displayName === undefined,
+      'GitHub issues must not expose runtime display name while disabled by default',
     );
     assert(
-      github.productionSafe === true,
-      'GitHub profile must be marked production safe',
+      github.productionSafe === false,
+      'GitHub issues must not be production-safe while manual-only',
     );
     assert(
-      github.readinessState === 'enabled_beta',
-      'GitHub readiness must be enabled beta',
+      github.health.reasonCode === 'source_not_production_safe',
+      'GitHub issues must explain unavailable runtime health while manual-only',
+    );
+    assert(
+      github.readinessState === 'manual_only',
+      'GitHub issues readiness must stay manual-only unless explicitly enabled',
+    );
+    assert(
+      github.liveBetaBlockers.some((blocker) =>
+        blocker.includes('GITHUB_ISSUES_COLLECTOR_ENABLED=1'),
+      ),
+      'GitHub issues profile must document the explicit enablement flag',
     );
     assert(
       github.acquisitionMode === 'official_or_open_api',
       'GitHub profile must document official API acquisition',
     );
     assert(
-      github.supportedQueryModes.includes('search'),
-      'GitHub profile must support search mode',
+      github.supportedQueryModes.length === 0,
+      'GitHub issues must not expose query modes without a registered runtime provider',
     );
     assert(
       github.unsupportedContentUnits.includes('media'),

@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { IdentityRestModule } from '@social-monitor/identity/interfaces/rest/identity-rest.module';
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
-import { CryptoIdGenerator } from '@social-monitor/shared-kernel';
+import { SystemClock, CryptoIdGenerator } from '@social-monitor/shared-kernel';
 
 import { PrismaIngestionConnection } from '../../adapters/persistence/prisma/prisma-ingestion-connection';
 import type { PrismaIngestionClient } from '../../adapters/persistence/prisma/prisma-ingestion-client';
@@ -28,8 +28,10 @@ import { StaticRedditTokenProvider } from '../../adapters/source/reddit/static-r
 import { FixtureRssClient } from '../../adapters/source/rss/fixture-rss-client';
 import { RssSourceProvider } from '../../adapters/source/rss/rss-source.provider';
 import { sourceReadinessProfilesForRuntime } from '../../adapters/source/source-readiness-profiles';
-import { selectRuntimeSourceProviders } from '../../adapters/source/source-provider-runtime-scope';
-import { isXCollectorRuntimeConfigured } from '../../adapters/source/x-twitter-experimental-daily/x-collector-runtime-config';
+import {
+  resolveSourceProviderRuntimeScope,
+  selectRuntimeSourceProviders,
+} from '../../adapters/source/source-provider-runtime-scope';
 import { xTwitterCapabilityProfile } from '../../adapters/source/x-twitter-experimental-daily/x-twitter-experimental-daily-source.provider';
 import { ListScanDeadLettersUseCase } from '../../features/list-scan-dead-letters/list-scan-dead-letters.use-case';
 import { ListSourceProfilesUseCase } from '../../features/list-source-profiles/list-source-profiles.use-case';
@@ -104,7 +106,7 @@ import { SourceProfileController } from './source-profile.controller';
     {
       provide: HackerNewsSourceProvider,
       useFactory: (client: FixtureHackerNewsClient) =>
-        new HackerNewsSourceProvider(client),
+        new HackerNewsSourceProvider(client, new SystemClock()),
       inject: [FixtureHackerNewsClient],
     },
     {
@@ -158,8 +160,10 @@ import { SourceProfileController } from './source-profile.controller';
         hackerNewsProvider: HackerNewsSourceProvider,
         redditProvider: RedditSourceProvider,
         rssProvider: RssSourceProvider,
-      ) =>
-        new InMemorySourceProviderRegistry(
+      ) => {
+        const runtimeScope = resolveSourceProviderRuntimeScope(process.env);
+
+        return new InMemorySourceProviderRegistry(
           selectRuntimeSourceProviders(
             [
               fakeProvider,
@@ -170,19 +174,20 @@ import { SourceProfileController } from './source-profile.controller';
               redditProvider,
               rssProvider,
             ],
-            process.env,
+            runtimeScope,
           ),
-          sourceReadinessProfilesForRuntime(process.env),
+          sourceReadinessProfilesForRuntime(runtimeScope),
           [
             {
               providerKey: LEGACY_GITHUB_ISSUES_PROVIDER_KEY,
               canonicalProviderKey: GITHUB_ISSUES_PROVIDER_KEY,
             },
           ],
-          isXCollectorRuntimeConfigured(process.env)
+          runtimeScope.xCollectorRuntimeConfigured
             ? [xTwitterCapabilityProfile]
             : [],
-        ),
+        );
+      },
       inject: [
         FakeSourceProvider,
         GitHubSourceProvider,

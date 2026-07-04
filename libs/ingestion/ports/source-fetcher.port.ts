@@ -30,6 +30,7 @@ export type FetchSourceItemsResult = {
   readonly items: readonly FetchedSourceItem[];
   readonly conversationUnits?: readonly FetchedConversationUnit[];
   readonly nextCursor?: string;
+  readonly warnings?: readonly string[];
 };
 
 export class SourceFetchError extends Error {

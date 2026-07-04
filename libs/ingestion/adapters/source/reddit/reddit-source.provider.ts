@@ -1,8 +1,10 @@
-import { redactSensitiveText } from '@social-monitor/shared-kernel';
+import { redactSensitiveText } from "@social-monitor/shared-kernel";
+import {
+  rankSourceItems,
+  type SourceItemRankingPlan,
+} from "../../../domain";
 
 import type {
-  FetchedConversationUnit,
-  FetchedSourceItem,
   ProviderFailure,
   SourceCapabilityProfile,
   SourceProviderPort,
@@ -11,12 +13,22 @@ import type {
   SourceProviderScanResult,
   SourceProviderValidationResult,
   SourceQuery,
-} from '../../../ports';
-import type { RedditClientPort, RedditListingPage, RedditPost } from './reddit-client.port';
-import type { RedditRefreshTokenProviderPort } from './refresh-token-reddit-token-provider';
-import { normalizeComment } from './reddit-comment-source-support';
+} from "../../../ports";
+import type {
+  RedditClientPort,
+  RedditListingPage,
+} from "./reddit-client.port";
+import type { RedditRefreshTokenProviderPort } from "./refresh-token-reddit-token-provider";
+import {
+  fetchSelectedRedditCandidateComments,
+  normalizeRedditPostsWithOptionalComments,
+  selectedCommentExpansionForPass,
+  withMergedRedditCommentExpansion,
+  type RedditScanCandidate,
+} from "./reddit-selected-comment-enrichment";
 import {
   compactUnique,
+  filterPostsByAllowedSubreddits,
   firstNonEmptyString,
   normalizePost,
   parseListingQuery,
@@ -24,34 +36,31 @@ import {
   readListing,
   readOptionalNonNegativeInteger,
   readOptionalPositiveInteger,
+  readOptionalSearchSort,
+  readOptionalSearchTime,
   readOptionalString,
   readPositiveInteger,
   readRequiredString,
   readScanPasses,
   readTopTime,
   redditWarnings,
-  sortRedditItemsByEngagement,
   type RedditScanPass,
-} from './reddit-source-support';
-import type { RedditTokenProviderPort } from './reddit-token-provider.port';
-
-type NormalizedRedditScanResult = {
-  readonly items: readonly FetchedSourceItem[];
-  readonly conversationUnits: readonly FetchedConversationUnit[];
-};
+} from "./reddit-source-support";
+import type { RedditTokenProviderPort } from "./reddit-token-provider.port";
+import { readSourceItemRankingPlan } from "../source-item-ranking-config";
 
 const capabilityProfile: SourceCapabilityProfile = {
-  providerKey: 'reddit',
-  displayName: 'Reddit',
+  providerKey: "reddit",
+  displayName: "Reddit",
   version: 1,
   productionSafe: true,
-  supportedContentUnits: ['post', 'comment', 'community', 'link'],
-  supportedQueryModes: ['search', 'listing'],
-  cursorModel: 'opaque',
-  stableIdentity: ['providerId', 'canonicalUrl'],
-  quotaModel: 'per_app',
+  supportedContentUnits: ["post", "comment", "community", "link"],
+  supportedQueryModes: ["search", "listing"],
+  cursorModel: "opaque",
+  stableIdentity: ["providerId", "canonicalUrl"],
+  quotaModel: "per_app",
   limitations: [
-    'Uses Reddit OAuth API only. Uses app-only OAuth by default; encrypted tenant bearer or refresh-token credentials can override when needed.',
+    "Uses Reddit OAuth API only. Uses app-only OAuth by default; encrypted tenant bearer or refresh-token credentials can override when needed.",
   ],
 };
 
@@ -76,22 +85,29 @@ export class RedditSourceProvider implements SourceProviderPort {
     }
 
     if (query.query.trim().length === 0) {
-      return { ok: false, reason: 'Query must be non-empty' };
+      return { ok: false, reason: "Query must be non-empty" };
     }
 
     return { ok: true };
   }
 
-  planScan(query: SourceQuery, context: SourceProviderScanContext): SourceProviderScanPlan {
+  planScan(
+    query: SourceQuery,
+    context: SourceProviderScanContext,
+  ): SourceProviderScanPlan {
     const maxItems = readPositiveInteger(context.config?.maxItems, 25, 1, 100);
 
-    if (query.mode === 'listing') {
-      const subreddit = readRequiredString(context.config?.subreddit, 'subreddit', query.query);
+    if (query.mode === "listing") {
+      const subreddit = readRequiredString(
+        context.config?.subreddit,
+        "subreddit",
+        query.query,
+      );
       const listing = readListing(context.config?.listing);
 
       return {
         query: {
-          mode: 'listing',
+          mode: "listing",
           query: `${subreddit}:${listing}`,
         },
         maxItems,
@@ -110,11 +126,26 @@ export class RedditSourceProvider implements SourceProviderPort {
   ): Promise<SourceProviderScanResult> {
     const accessToken = await this.resolveAccessToken(context);
     const userAgent = readOptionalString(context.config?.userAgent);
-    const minScore = readOptionalNonNegativeInteger(context.config?.minScore, 1_000_000);
+    const minScore = readOptionalNonNegativeInteger(
+      context.config?.minScore,
+      1_000_000,
+    );
     const scanPasses = readScanPasses(context.config);
     const includeComments = context.config?.includeComments === true;
-    const maxCommentsPerPost = readOptionalPositiveInteger(context.config?.maxCommentsPerPost, 100);
-    const commentDepth = readPositiveInteger(context.config?.commentDepth, 2, 0, 10);
+    const rankingPlan = readSourceItemRankingPlan(
+      context.config,
+      redditRankingQueries(plan, scanPasses),
+    );
+    const maxCommentsPerPost = readOptionalPositiveInteger(
+      context.config?.maxCommentsPerPost,
+      100,
+    );
+    const commentDepth = readPositiveInteger(
+      context.config?.commentDepth,
+      2,
+      0,
+      10,
+    );
     const commentSort = readCommentSort(context.config?.commentSort);
 
     if (scanPasses.length > 0) {
@@ -128,29 +159,37 @@ export class RedditSourceProvider implements SourceProviderPort {
         fallbackMaxCommentsPerPost: maxCommentsPerPost,
         fallbackCommentDepth: commentDepth,
         fallbackCommentSort: commentSort,
+        rankingPlan,
       });
     }
 
-    const listingQuery = plan.query.mode === 'listing'
-      ? parseListingQuery(plan.query.query)
-      : undefined;
-    const page = listingQuery !== undefined
-      ? await this.client.listSubredditPosts({
-          accessToken,
-          userAgent,
-          ...listingQuery,
-          ...(listingQuery.listing === 'top' ? { topTime: readTopTime(context.config?.topTime) } : {}),
-          limit: plan.maxItems,
-          after: plan.cursor,
-        })
-      : await this.client.searchPosts({
-          accessToken,
-          userAgent,
-          query: plan.query.query,
-          limit: plan.maxItems,
-          after: plan.cursor,
-        });
-    const normalized = await this.normalizePostsWithOptionalComments({
+    const listingQuery =
+      plan.query.mode === "listing"
+        ? parseListingQuery(plan.query.query)
+        : undefined;
+    const page =
+      listingQuery !== undefined
+        ? await this.client.listSubredditPosts({
+            accessToken,
+            userAgent,
+            ...listingQuery,
+            ...(listingQuery.listing === "top"
+              ? { topTime: readTopTime(context.config?.topTime) }
+              : {}),
+            limit: plan.maxItems,
+            after: plan.cursor,
+          })
+        : await this.client.searchPosts({
+            accessToken,
+            userAgent,
+            query: plan.query.query,
+            sort: readOptionalSearchSort(context.config?.searchSort),
+            time: readOptionalSearchTime(context.config?.searchTime),
+            limit: plan.maxItems,
+            after: plan.cursor,
+          });
+    const normalized = await normalizeRedditPostsWithOptionalComments({
+      client: this.client,
       accessToken,
       userAgent,
       posts: page.posts,
@@ -162,48 +201,67 @@ export class RedditSourceProvider implements SourceProviderPort {
     });
 
     return {
-      items: normalized.items,
+      items: rankSourceItems(normalized.items, rankingPlan),
       conversationUnits: normalized.conversationUnits,
       nextCursor: page.after,
-      warnings: redditWarnings(page.posts, minScore),
+      warnings: compactUnique([
+        ...redditWarnings(page.posts, minScore),
+        ...normalized.warnings,
+      ]),
     };
   }
 
   classifyError(error: unknown): ProviderFailure {
-    const rawMessage = error instanceof Error ? error.message : 'Unknown Reddit provider error';
+    const rawMessage =
+      error instanceof Error ? error.message : "Unknown Reddit provider error";
     const lowerMessage = rawMessage.toLowerCase();
     const message = redactSensitiveText(rawMessage);
 
     if (
-      rawMessage.includes('401')
-      || rawMessage.includes('403')
-      || lowerMessage.includes('token')
-      || lowerMessage.includes('oauth')
-      || lowerMessage.includes('credential')
+      lowerMessage.includes("rankingmode") ||
+      lowerMessage.includes("ranking mode") ||
+      lowerMessage.includes("source config") ||
+      lowerMessage.includes("unsupported reddit")
     ) {
       return {
-        kind: 'auth_failed',
+        kind: "invalid_query",
         retryable: false,
         message,
       };
     }
 
-    if (rawMessage.includes('429') || lowerMessage.includes('rate limit')) {
+    if (
+      rawMessage.includes("401") ||
+      rawMessage.includes("403") ||
+      lowerMessage.includes("token") ||
+      lowerMessage.includes("oauth") ||
+      lowerMessage.includes("credential")
+    ) {
       return {
-        kind: 'rate_limited',
+        kind: "auth_failed",
+        retryable: false,
+        message,
+      };
+    }
+
+    if (rawMessage.includes("429") || lowerMessage.includes("rate limit")) {
+      return {
+        kind: "rate_limited",
         retryable: true,
         message,
       };
     }
 
     return {
-      kind: 'unavailable',
+      kind: "unavailable",
       retryable: true,
       message,
     };
   }
 
-  private async resolveAccessToken(context: SourceProviderScanContext): Promise<string> {
+  private async resolveAccessToken(
+    context: SourceProviderScanContext,
+  ): Promise<string> {
     const configuredAccessToken = firstNonEmptyString(
       context.config?.accessToken,
       context.config?.apiToken,
@@ -220,22 +278,30 @@ export class RedditSourceProvider implements SourceProviderPort {
     );
     if (refreshToken !== undefined) {
       if (this.refreshTokenProvider === undefined) {
-        throw new Error('Reddit refresh-token OAuth provider is not configured');
+        throw new Error(
+          "Reddit refresh-token OAuth provider is not configured",
+        );
       }
 
       return this.refreshTokenProvider.getAccessToken({
         clientId: readRequiredString(
-          firstNonEmptyString(context.config?.clientId, context.config?.redditClientId),
-          'clientId',
+          firstNonEmptyString(
+            context.config?.clientId,
+            context.config?.redditClientId,
+          ),
+          "clientId",
         ),
-        clientSecret: firstNonEmptyString(context.config?.clientSecret, context.config?.redditClientSecret),
+        clientSecret: firstNonEmptyString(
+          context.config?.clientSecret,
+          context.config?.redditClientSecret,
+        ),
         refreshToken,
         userAgent: readOptionalString(context.config?.userAgent),
       });
     }
 
     if (this.tokenProvider === undefined) {
-      throw new Error('Reddit app-only OAuth token provider is not configured');
+      throw new Error("Reddit app-only OAuth token provider is not configured");
     }
 
     return this.tokenProvider.getAccessToken();
@@ -250,14 +316,14 @@ export class RedditSourceProvider implements SourceProviderPort {
     readonly fallbackIncludeComments: boolean;
     readonly fallbackMaxCommentsPerPost: number | undefined;
     readonly fallbackCommentDepth: number;
-    readonly fallbackCommentSort: NonNullable<RedditScanPass['commentSort']>;
+    readonly fallbackCommentSort: NonNullable<RedditScanPass["commentSort"]>;
+    readonly rankingPlan: SourceItemRankingPlan;
   }): Promise<SourceProviderScanResult> {
     const perPassFallbackLimit = Math.max(
       1,
       Math.ceil(params.plan.maxItems / params.passes.length),
     );
-    const itemsByExternalId = new Map<string, FetchedSourceItem>();
-    const conversationUnitsByProviderUnitId = new Map<string, FetchedConversationUnit>();
+    const candidatesByExternalId = new Map<string, RedditScanCandidate>();
     const warnings: string[] = [];
     let failedPasses = 0;
     let firstFailure: unknown;
@@ -267,21 +333,26 @@ export class RedditSourceProvider implements SourceProviderPort {
       let page: RedditListingPage;
 
       try {
-        page = pass.mode === 'listing'
-          ? await this.client.listSubredditPosts({
-              accessToken: params.accessToken,
-              userAgent: params.userAgent,
-              subreddit: pass.subreddit,
-              listing: pass.listing,
-              ...(pass.listing === 'top' ? { topTime: pass.topTime ?? 'day' } : {}),
-              limit,
-            })
-          : await this.client.searchPosts({
-              accessToken: params.accessToken,
-              userAgent: params.userAgent,
-              query: pass.query,
-              limit,
-            });
+        page =
+          pass.mode === "listing"
+            ? await this.client.listSubredditPosts({
+                accessToken: params.accessToken,
+                userAgent: params.userAgent,
+                subreddit: pass.subreddit,
+                listing: pass.listing,
+                ...(pass.listing === "top"
+                  ? { topTime: pass.topTime ?? "day" }
+                  : {}),
+                limit,
+              })
+            : await this.client.searchPosts({
+                accessToken: params.accessToken,
+                userAgent: params.userAgent,
+                query: pass.query,
+                sort: pass.searchSort,
+                time: pass.searchTime,
+                limit,
+              });
       } catch (error) {
         firstFailure ??= error;
         failedPasses += 1;
@@ -290,102 +361,92 @@ export class RedditSourceProvider implements SourceProviderPort {
       }
 
       const minScore = pass.minScore ?? params.fallbackMinScore;
-      const includeComments = pass.includeComments ?? params.fallbackIncludeComments;
-      const maxCommentsPerPost =
-        pass.maxCommentsPerPost ?? params.fallbackMaxCommentsPerPost;
-      const commentDepth = pass.commentDepth ?? params.fallbackCommentDepth;
-      const commentSort = pass.commentSort ?? params.fallbackCommentSort;
-
-      const normalized = await this.normalizePostsWithOptionalComments({
-        accessToken: params.accessToken,
-        userAgent: params.userAgent,
-        posts: page.posts,
+      const posts =
+        pass.mode === "search"
+          ? filterPostsByAllowedSubreddits(page.posts, pass.allowedSubreddits)
+          : page.posts;
+      const commentExpansion = selectedCommentExpansionForPass({
+        pass,
+        fallbackIncludeComments: params.fallbackIncludeComments,
+        fallbackMaxCommentsPerPost: params.fallbackMaxCommentsPerPost,
+        fallbackCommentDepth: params.fallbackCommentDepth,
+        fallbackCommentSort: params.fallbackCommentSort,
         minScore,
-        includeComments,
-        maxCommentsPerPost,
-        commentDepth,
-        commentSort,
       });
 
-      for (const item of normalized.items) {
-        if (!itemsByExternalId.has(item.externalId)) {
-          itemsByExternalId.set(item.externalId, item);
-        }
-      }
-      for (const unit of normalized.conversationUnits) {
-        if (!conversationUnitsByProviderUnitId.has(unit.providerUnitId)) {
-          conversationUnitsByProviderUnitId.set(unit.providerUnitId, unit);
+      for (const post of posts) {
+        for (const item of normalizePost(post, minScore)) {
+          const existing = candidatesByExternalId.get(item.externalId);
+
+          if (existing === undefined) {
+            candidatesByExternalId.set(item.externalId, {
+              item,
+              post,
+              ...(commentExpansion === undefined ? {} : { commentExpansion }),
+            });
+            continue;
+          }
+
+          candidatesByExternalId.set(
+            item.externalId,
+            withMergedRedditCommentExpansion(existing, commentExpansion),
+          );
         }
       }
 
-      warnings.push(...redditWarnings(page.posts, minScore));
+      warnings.push(...redditWarnings(posts, minScore));
     }
 
     if (failedPasses === params.passes.length && firstFailure !== undefined) {
       throw firstFailure;
     }
 
+    const rankedItems = rankSourceItems(
+      [...candidatesByExternalId.values()].map((candidate) => candidate.item),
+      params.rankingPlan,
+    ).slice(0, params.plan.maxItems);
+    const rankedCandidates = rankedItems.flatMap((item) => {
+      const candidate = candidatesByExternalId.get(item.externalId);
+
+      return candidate === undefined ? [] : [candidate];
+    });
+    const conversationResult = await fetchSelectedRedditCandidateComments({
+      client: this.client,
+      accessToken: params.accessToken,
+      userAgent: params.userAgent,
+      candidates: rankedCandidates,
+    });
+
     return {
-      items: sortRedditItemsByEngagement([...itemsByExternalId.values()]).slice(
-        0,
-        params.plan.maxItems,
-      ),
-      conversationUnits: [...conversationUnitsByProviderUnitId.values()],
-      warnings: compactUnique(warnings),
+      items: rankedItems,
+      conversationUnits: conversationResult.conversationUnits,
+      warnings: compactUnique([...warnings, ...conversationResult.warnings]),
     };
   }
 
-  private async normalizePostsWithOptionalComments(params: {
-    readonly accessToken: string;
-    readonly userAgent: string | undefined;
-    readonly posts: readonly RedditPost[];
-    readonly minScore: number | undefined;
-    readonly includeComments: boolean;
-    readonly maxCommentsPerPost: number | undefined;
-    readonly commentDepth: number;
-    readonly commentSort: NonNullable<RedditScanPass['commentSort']>;
-  }): Promise<NormalizedRedditScanResult> {
-    const items: FetchedSourceItem[] = [];
-    const conversationUnits: FetchedConversationUnit[] = [];
-
-    for (const post of params.posts) {
-      const normalizedPostItems = normalizePost(post, params.minScore);
-      items.push(...normalizedPostItems);
-
-      if (normalizedPostItems.length === 0) {
-        continue;
-      }
-
-      if (!params.includeComments) {
-        continue;
-      }
-
-      const comments = await this.client.listPostComments({
-        accessToken: params.accessToken,
-        userAgent: params.userAgent,
-        postId: post.id,
-        subreddit: post.subreddit,
-        limit: params.maxCommentsPerPost ?? 5,
-        depth: params.commentDepth,
-        sort: params.commentSort,
-      });
-
-      conversationUnits.push(
-        ...comments.comments.flatMap((comment) =>
-          normalizeComment(comment, post, params.minScore),
-        ),
-      );
-    }
-
-    return { items, conversationUnits };
-  }
 }
 
-const formatScanPassWarning = (pass: RedditScanPass, error: unknown): string => {
-  const passLabel = pass.mode === 'listing'
-    ? `${pass.subreddit}:${pass.listing}${pass.listing === 'top' ? `:${pass.topTime ?? 'day'}` : ''}`
-    : `search:${pass.query}`;
-  const message = error instanceof Error ? error.message : 'Unknown Reddit scan pass error';
+const formatScanPassWarning = (
+  pass: RedditScanPass,
+  error: unknown,
+): string => {
+  const passLabel =
+    pass.mode === "listing"
+      ? `${pass.subreddit}:${pass.listing}${pass.listing === "top" ? `:${pass.topTime ?? "day"}` : ""}`
+      : `search:${pass.query}`;
+  const message =
+    error instanceof Error ? error.message : "Unknown Reddit scan pass error";
 
   return `Reddit scan pass degraded (${passLabel}): ${redactSensitiveText(message)}`;
 };
+
+const redditRankingQueries = (
+  plan: SourceProviderScanPlan,
+  passes: readonly RedditScanPass[],
+): readonly string[] =>
+  compactUnique([
+    plan.query.query,
+    ...passes.map((pass) =>
+      pass.mode === "search" ? pass.query : `${pass.subreddit} ${pass.listing}`,
+    ),
+  ]);

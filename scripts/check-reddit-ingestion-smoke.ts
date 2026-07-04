@@ -1,4 +1,4 @@
-import { MonitoringSourceConfigReaderAdapter } from '../apps/ingestion-worker/src/adapters/source/monitoring-source-config-reader.adapter';
+import { MonitoringSourceConfigReaderAdapter } from '../libs/ingestion/adapters/source/monitoring-source-config-reader.adapter';
 import { InMemoryFeedProjectionAdapter } from '../apps/ingestion-worker/src/adapters/feed/in-memory-feed-projection.adapter';
 import { InMemorySourceProviderRegistry } from '../libs/ingestion/adapters/source/in-memory-source-provider.registry';
 import { RegistrySourceFetcherAdapter } from '../libs/ingestion/adapters/source/registry-source-fetcher.adapter';
@@ -78,7 +78,7 @@ async function main(): Promise<void> {
   );
   assert(appTokenProvider.calls === 1, `expected one Reddit app-only token request, got ${appTokenProvider.calls}`);
   assert(result.items.length === 2, `expected two Reddit fixture items, got ${result.items.length}`);
-  assert(result.items[0]?.externalId === 'reddit:t3_fixturepost1', 'first Reddit external id mismatch');
+  assert(result.items[0]?.externalId === 'reddit:t3_fixturepost2', 'first Reddit external id mismatch');
   assert(result.items[0]?.canonicalUrl.startsWith('https://www.reddit.com/r/observability/'), 'canonical URL mismatch');
   assert(result.nextCursor === 't3_fixturepost2', `expected Reddit cursor, got ${result.nextCursor}`);
 

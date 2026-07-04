@@ -1,0 +1,4983 @@
+{
+  "schemaVersion": 1,
+  "datasetVersion": "source-ranking-silver-v1",
+  "generatedBy": "manual silver bootstrap from product ranking requirements",
+  "labelingPolicy": "Silver labels are frozen, deterministic and not used for self-training. LLM/manual refresh may create a later dataset version, but normal eval runs use saved labels only.",
+  "refreshPolicy": {
+    "cadence": "weekly",
+    "cadenceDays": 7,
+    "lastRefreshedAt": "2026-07-04T00:00:00.000Z",
+    "nextRefreshDueAt": "2026-07-11T00:00:00.000Z",
+    "owner": "ingestion-quality-owner",
+    "refreshRunbook": "Refresh silver labels from redacted feedback backlog and frozen provider snapshots; publish a new datasetVersion instead of mutating old labels silently.",
+    "feedbackBacklogArtifact": "ops/evals/summary-feedback-eval-backlog.v1.json",
+    "requiredSourceKeys": [
+      "reddit",
+      "x-twitter"
+    ],
+    "requiredCaseKinds": [
+      "reddit-only",
+      "x-twitter-only",
+      "mixed"
+    ]
+  },
+  "qualityGates": {
+    "minPrecisionAt10": 0.7,
+    "minNdcgAt20": 0.78,
+    "minMustHaveRecallAt20": 1,
+    "maxDuplicateRateAt20": 0.25,
+    "minSourceDiversityAt20": 0.8,
+    "minOfficialCommunityCoverageAt20": 0.8,
+    "maxViralOffTopicAt10": 0,
+    "maxLowConfidenceLabelRate": 0.35
+  },
+  "cases": [
+    {
+      "caseId": "reddit-ai-agents-mcp-reliability",
+      "topic": "AI agents MCP Claude Code reliability",
+      "sourceKeys": [
+        "reddit"
+      ],
+      "queryPlannerIntent": {
+        "topic": "AI agents MCP Claude Code reliability",
+        "sourceKeys": [
+          "reddit"
+        ],
+        "products": [
+          "Claude Code",
+          "MCP"
+        ],
+        "keywords": [
+          "auth retry",
+          "tool failures",
+          "production reliability"
+        ],
+        "communities": [
+          {
+            "name": "ClaudeAI",
+            "sourceKey": "reddit",
+            "listings": [
+              "top",
+              "hot",
+              "new"
+            ]
+          },
+          {
+            "name": "mcp",
+            "sourceKey": "reddit",
+            "listings": [
+              "top",
+              "hot",
+              "new"
+            ]
+          },
+          {
+            "name": "LocalLLaMA",
+            "sourceKey": "reddit",
+            "listings": [
+              "top",
+              "hot"
+            ]
+          },
+          {
+            "name": "programming",
+            "sourceKey": "reddit",
+            "listings": [
+              "hot",
+              "new"
+            ]
+          }
+        ],
+        "maxLanesPerSource": 10,
+        "maxItemsPerLane": 25,
+        "includeEnrichment": true
+      },
+      "rankingMode": "relevance",
+      "rankingQueries": [
+        "AI agents MCP Claude Code reliability",
+        "Claude Code MCP server retry auth tool failures",
+        "agent workflow MCP production issues"
+      ],
+      "queryLanes": [
+        {
+          "laneId": "reddit-general-search",
+          "sourceKey": "reddit",
+          "operation": "search",
+          "query": "AI agents MCP Claude Code reliability",
+          "maxItems": 25
+        },
+        {
+          "laneId": "reddit-top-week-local-llama",
+          "sourceKey": "reddit",
+          "operation": "listing",
+          "query": "LocalLLaMA:top:week",
+          "maxItems": 15
+        }
+      ],
+      "candidates": [
+        {
+          "candidateId": "r-mcp-reliability-notes",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_mcp_reliability_notes",
+          "canonicalUrl": "https://www.reddit.com/r/ClaudeAI/comments/mcp_reliability_notes",
+          "title": "Claude Code MCP server reliability notes",
+          "body": "Maintainers compare AI agents, MCP retries, auth failures and Claude Code tool reliability in production workflows.",
+          "publishedAt": "2026-07-03T10:00:00.000Z",
+          "snapshotRank": 1,
+          "metadata": {
+            "score": 62,
+            "numComments": 18,
+            "upvoteRatio": 0.93
+          }
+        },
+        {
+          "candidateId": "r-agent-auth-retry-bug",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_agent_auth_retry_bug",
+          "canonicalUrl": "https://www.reddit.com/r/mcp/comments/agent_auth_retry_bug",
+          "title": "MCP authentication retry bug fixed in agent tools",
+          "body": "Small but important report about MCP auth retry budgets, agent tool failures and Claude Code reliability.",
+          "publishedAt": "2026-07-03T11:00:00.000Z",
+          "snapshotRank": 6,
+          "metadata": {
+            "score": 5,
+            "numComments": 1,
+            "upvoteRatio": 0.84
+          }
+        },
+        {
+          "candidateId": "r-claudeai-terse-incident",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_claudeai_terse_incident",
+          "canonicalUrl": "https://www.reddit.com/r/ClaudeAI/comments/terse_incident",
+          "title": "Incident report: local tool mode fix landed",
+          "body": "Maintainers share logs and mitigation steps for an auth timeout in yesterday's build.",
+          "publishedAt": "2026-07-03T11:30:00.000Z",
+          "snapshotRank": 13,
+          "metadata": {
+            "score": 18,
+            "numComments": 7,
+            "upvoteRatio": 0.86
+          }
+        },
+        {
+          "candidateId": "r-agent-workflow-compare",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_agent_workflow_compare",
+          "canonicalUrl": "https://www.reddit.com/r/LocalLLaMA/comments/agent_workflow_compare",
+          "title": "Developers compare agent workflow with MCP servers",
+          "body": "Discussion covers AI coding agents, MCP server setup, tool permission failures and reliability tradeoffs.",
+          "publishedAt": "2026-07-03T08:30:00.000Z",
+          "snapshotRank": 2,
+          "metadata": {
+            "score": 210,
+            "numComments": 74,
+            "upvoteRatio": 0.9
+          }
+        },
+        {
+          "candidateId": "r-claude-code-postmortem",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_claude_code_postmortem",
+          "canonicalUrl": "https://www.reddit.com/r/ClaudeAI/comments/claude_code_postmortem",
+          "title": "Claude Code agent reliability postmortem",
+          "body": "Users document MCP server timeouts, retries and prompt injection concerns for AI coding agents.",
+          "publishedAt": "2026-07-02T22:00:00.000Z",
+          "snapshotRank": 3,
+          "metadata": {
+            "score": 145,
+            "numComments": 53,
+            "upvoteRatio": 0.88
+          }
+        },
+        {
+          "candidateId": "r-mcp-tool-permissions",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_mcp_tool_permissions",
+          "canonicalUrl": "https://www.reddit.com/r/mcp/comments/tool_permissions",
+          "title": "MCP tool permissions and agent reliability checklist",
+          "body": "Checklist for Claude Code, MCP server auth, retry handling and safe tool permissions.",
+          "publishedAt": "2026-07-03T06:00:00.000Z",
+          "snapshotRank": 4,
+          "metadata": {
+            "score": 48,
+            "numComments": 16,
+            "upvoteRatio": 0.91
+          }
+        },
+        {
+          "candidateId": "r-production-agent-logs",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_production_agent_logs",
+          "canonicalUrl": "https://www.reddit.com/r/programming/comments/production_agent_logs",
+          "title": "Production logs from AI coding agent failures",
+          "body": "Incident examples mention MCP retries, Claude Code tasks and tool execution reliability.",
+          "publishedAt": "2026-07-02T19:00:00.000Z",
+          "snapshotRank": 5,
+          "metadata": {
+            "score": 310,
+            "numComments": 92,
+            "upvoteRatio": 0.86
+          }
+        },
+        {
+          "candidateId": "r-mcp-observability",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_mcp_observability",
+          "canonicalUrl": "https://www.reddit.com/r/devops/comments/mcp_observability",
+          "title": "Observability for MCP agent servers",
+          "body": "Teams discuss tracing AI agents, MCP server errors and reliability alerting.",
+          "publishedAt": "2026-07-01T21:00:00.000Z",
+          "snapshotRank": 8,
+          "metadata": {
+            "score": 83,
+            "numComments": 22,
+            "upvoteRatio": 0.89
+          }
+        },
+        {
+          "candidateId": "r-agent-sandboxing",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_agent_sandboxing",
+          "canonicalUrl": "https://www.reddit.com/r/programming/comments/agent_sandboxing",
+          "title": "Agent sandboxing reliability for tool-heavy workflows",
+          "body": "Practical thread about coding agents, MCP tools, sandbox failures and user trust.",
+          "publishedAt": "2026-07-01T18:00:00.000Z",
+          "snapshotRank": 7,
+          "metadata": {
+            "score": 97,
+            "numComments": 28,
+            "upvoteRatio": 0.87
+          }
+        },
+        {
+          "candidateId": "r-mcp-reliability-duplicate",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_mcp_reliability_duplicate",
+          "canonicalUrl": "https://www.reddit.com/r/ClaudeAI/comments/mcp_reliability_duplicate",
+          "title": "Claude Code MCP reliability notes mirror",
+          "body": "Mirror of the Claude Code MCP server reliability notes with the same retry and auth failure discussion.",
+          "publishedAt": "2026-07-03T10:15:00.000Z",
+          "snapshotRank": 9,
+          "metadata": {
+            "score": 28,
+            "numComments": 4,
+            "upvoteRatio": 0.8
+          }
+        },
+        {
+          "candidateId": "r-agent-benchmark",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_agent_benchmark",
+          "canonicalUrl": "https://www.reddit.com/r/LocalLLaMA/comments/agent_benchmark",
+          "title": "AI agent reliability benchmark includes MCP tasks",
+          "body": "Benchmark compares coding agents on MCP tool calls, retries and auth handling.",
+          "publishedAt": "2026-06-30T20:00:00.000Z",
+          "snapshotRank": 10,
+          "metadata": {
+            "score": 66,
+            "numComments": 19,
+            "upvoteRatio": 0.82
+          }
+        },
+        {
+          "candidateId": "r-unrelated-pricing-backlash",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_pricing_backlash",
+          "canonicalUrl": "https://www.reddit.com/r/technology/comments/pricing_backlash",
+          "title": "Viral AI subscription pricing backlash",
+          "body": "Huge general AI pricing debate about subscription tiers and consumer backlash.",
+          "publishedAt": "2026-07-03T12:00:00.000Z",
+          "snapshotRank": 11,
+          "metadata": {
+            "score": 9200,
+            "numComments": 1400,
+            "upvoteRatio": 0.95
+          }
+        },
+        {
+          "candidateId": "r-gaming-laptop-deals",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_gaming_laptop_deals",
+          "canonicalUrl": "https://www.reddit.com/r/buildapcsales/comments/gaming_laptop_deals",
+          "title": "Best gaming laptop deals this week",
+          "body": "Consumer laptop sale thread unrelated to AI agents, MCP or Claude Code.",
+          "publishedAt": "2026-07-03T09:00:00.000Z",
+          "snapshotRank": 12,
+          "metadata": {
+            "score": 4100,
+            "numComments": 360,
+            "upvoteRatio": 0.94
+          }
+        }
+      ],
+      "labels": [
+        {
+          "candidateId": "r-mcp-reliability-notes",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.95,
+          "mustHave": true,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "r-agent-auth-retry-bug",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.9,
+          "mustHave": true,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "r-claudeai-terse-incident",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.86,
+          "mustHave": true,
+          "communitySignal": true,
+          "notes": "Terse community-listing item that a single semantic query can miss."
+        },
+        {
+          "candidateId": "r-agent-workflow-compare",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 1,
+          "confidence": 0.92,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "r-claude-code-postmortem",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.9,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "r-mcp-tool-permissions",
+          "relevance": 3,
+          "usefulness": 2,
+          "authority": 1,
+          "novelty": 1,
+          "confidence": 0.88,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "r-production-agent-logs",
+          "relevance": 3,
+          "usefulness": 2,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.87,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "r-mcp-observability",
+          "relevance": 2,
+          "usefulness": 2,
+          "authority": 1,
+          "novelty": 1,
+          "confidence": 0.83,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "r-agent-sandboxing",
+          "relevance": 2,
+          "usefulness": 2,
+          "authority": 1,
+          "novelty": 1,
+          "confidence": 0.82,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "r-mcp-reliability-duplicate",
+          "relevance": 3,
+          "usefulness": 1,
+          "authority": 1,
+          "novelty": 0,
+          "confidence": 0.9,
+          "duplicateOf": "r-mcp-reliability-notes",
+          "communitySignal": true
+        },
+        {
+          "candidateId": "r-agent-benchmark",
+          "relevance": 2,
+          "usefulness": 2,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.8,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "r-unrelated-pricing-backlash",
+          "relevance": 1,
+          "usefulness": 0,
+          "authority": 0,
+          "novelty": 0,
+          "confidence": 0.92,
+          "viralOffTopic": true
+        },
+        {
+          "candidateId": "r-gaming-laptop-deals",
+          "relevance": 0,
+          "usefulness": 0,
+          "authority": 0,
+          "novelty": 0,
+          "confidence": 0.98,
+          "spam": true
+        }
+      ]
+    },
+    {
+      "caseId": "x-openai-codex-cli-release",
+      "topic": "OpenAI Codex CLI release MCP",
+      "sourceKeys": [
+        "x-twitter"
+      ],
+      "queryPlannerIntent": {
+        "topic": "OpenAI Codex CLI release MCP",
+        "sourceKeys": [
+          "x-twitter"
+        ],
+        "products": [
+          "Codex CLI",
+          "MCP"
+        ],
+        "keywords": [
+          "release",
+          "sandboxing",
+          "local tools"
+        ],
+        "handles": [
+          {
+            "handle": "OpenAI",
+            "sourceKey": "x-twitter",
+            "includePosts": true,
+            "includeMentions": true
+          }
+        ],
+        "maxLanesPerSource": 8,
+        "maxItemsPerLane": 25,
+        "includeEnrichment": false
+      },
+      "rankingMode": "relevance",
+      "rankingQueries": [
+        "OpenAI Codex CLI release MCP",
+        "from:OpenAI",
+        "@OpenAI Codex MCP",
+        "Codex CLI MCP setup"
+      ],
+      "queryLanes": [
+        {
+          "laneId": "x-general-search",
+          "sourceKey": "x-twitter",
+          "operation": "search",
+          "query": "OpenAI Codex CLI release MCP",
+          "maxItems": 20
+        },
+        {
+          "laneId": "x-official-openai",
+          "sourceKey": "x-twitter",
+          "operation": "account_feed",
+          "query": "from:OpenAI",
+          "maxItems": 10
+        },
+        {
+          "laneId": "x-openai-mentions",
+          "sourceKey": "x-twitter",
+          "operation": "mention_search",
+          "query": "@OpenAI Codex MCP",
+          "maxItems": 10
+        }
+      ],
+      "candidates": [
+        {
+          "candidateId": "x-openai-codex-mcp",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:1001",
+          "canonicalUrl": "https://x.com/OpenAI/status/1001",
+          "title": "X post by @OpenAI: Codex CLI release adds MCP workflows",
+          "body": "OpenAI Codex CLI release includes MCP workflow examples and local coding agent setup guidance.",
+          "authorHandle": "OpenAI",
+          "publishedAt": "2026-07-03T15:00:00.000Z",
+          "snapshotRank": 1,
+          "metadata": {
+            "likes": 840,
+            "retweets": 210,
+            "replies": 96,
+            "quotes": 44
+          }
+        },
+        {
+          "candidateId": "x-openai-terse-tool-mode",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:1013",
+          "canonicalUrl": "https://x.com/OpenAI/status/1013",
+          "title": "X post by @OpenAI: local tool mode ships",
+          "body": "Local tool mode is live today. Release notes are in docs.",
+          "authorHandle": "OpenAI",
+          "publishedAt": "2026-07-03T15:20:00.000Z",
+          "snapshotRank": 13,
+          "metadata": {
+            "likes": 410,
+            "retweets": 92,
+            "replies": 40,
+            "quotes": 18
+          }
+        },
+        {
+          "candidateId": "x-codex-docs-sandboxing",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:1002",
+          "canonicalUrl": "https://x.com/codexdocs/status/1002",
+          "title": "X post by @codexdocs: Codex CLI docs add sandboxing details",
+          "body": "Codex CLI documentation now shows MCP tools, agent sandboxing and release setup details.",
+          "authorHandle": "codexdocs",
+          "publishedAt": "2026-07-03T14:30:00.000Z",
+          "snapshotRank": 3,
+          "metadata": {
+            "likes": 120,
+            "retweets": 32,
+            "replies": 15,
+            "quotes": 5
+          }
+        },
+        {
+          "candidateId": "x-dev-setup-thread",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:1003",
+          "canonicalUrl": "https://x.com/devtools/status/1003",
+          "title": "X post by @devtools: Codex MCP setup thread",
+          "body": "Developers share OpenAI Codex CLI release notes, MCP setup issues and agent workflow fixes.",
+          "authorHandle": "devtools",
+          "publishedAt": "2026-07-03T13:45:00.000Z",
+          "snapshotRank": 2,
+          "metadata": {
+            "likes": 260,
+            "retweets": 61,
+            "replies": 34,
+            "quotes": 12
+          }
+        },
+        {
+          "candidateId": "x-maintainer-mcp-reliability",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:1004",
+          "canonicalUrl": "https://x.com/maintainer/status/1004",
+          "title": "X post by @maintainer: MCP tool reliability in Codex CLI",
+          "body": "Maintainer explains MCP tool reliability, retries and auth constraints in the Codex CLI release.",
+          "authorHandle": "maintainer",
+          "publishedAt": "2026-07-03T12:15:00.000Z",
+          "snapshotRank": 4,
+          "metadata": {
+            "likes": 77,
+            "retweets": 16,
+            "replies": 9,
+            "quotes": 2
+          }
+        },
+        {
+          "candidateId": "x-openai-codex-duplicate",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:1005",
+          "canonicalUrl": "https://x.com/reposter/status/1005",
+          "title": "X post by @reposter: OpenAI Codex CLI release adds MCP workflows",
+          "body": "Repost of the OpenAI Codex CLI release announcement and MCP workflow examples.",
+          "authorHandle": "reposter",
+          "publishedAt": "2026-07-03T15:05:00.000Z",
+          "snapshotRank": 5,
+          "metadata": {
+            "likes": 35,
+            "retweets": 8,
+            "replies": 2,
+            "quotes": 1
+          }
+        },
+        {
+          "candidateId": "x-codex-install-errors",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:1006",
+          "canonicalUrl": "https://x.com/buildtools/status/1006",
+          "title": "X post by @buildtools: Codex CLI install errors",
+          "body": "Install notes mention OpenAI Codex CLI release, MCP config and local agent tool permissions.",
+          "authorHandle": "buildtools",
+          "publishedAt": "2026-07-03T11:00:00.000Z",
+          "snapshotRank": 6,
+          "metadata": {
+            "likes": 54,
+            "retweets": 11,
+            "replies": 7,
+            "quotes": 1
+          }
+        },
+        {
+          "candidateId": "x-codex-mcp-video",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:1007",
+          "canonicalUrl": "https://x.com/agentbuilder/status/1007",
+          "title": "X post by @agentbuilder: Codex CLI MCP demo",
+          "body": "Short demo of Codex CLI release running MCP tools inside an AI coding agent workflow.",
+          "authorHandle": "agentbuilder",
+          "publishedAt": "2026-07-03T09:30:00.000Z",
+          "snapshotRank": 7,
+          "metadata": {
+            "likes": 185,
+            "retweets": 41,
+            "replies": 21,
+            "quotes": 9
+          }
+        },
+        {
+          "candidateId": "x-codex-security-note",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:1008",
+          "canonicalUrl": "https://x.com/seceng/status/1008",
+          "title": "X post by @seceng: Codex CLI MCP security note",
+          "body": "Security engineer reviews Codex CLI release, MCP tool permissions and local sandboxing.",
+          "authorHandle": "seceng",
+          "publishedAt": "2026-07-02T22:00:00.000Z",
+          "snapshotRank": 8,
+          "metadata": {
+            "likes": 99,
+            "retweets": 20,
+            "replies": 8,
+            "quotes": 3
+          }
+        },
+        {
+          "candidateId": "x-codex-community-faq",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:1009",
+          "canonicalUrl": "https://x.com/codexusers/status/1009",
+          "title": "X post by @codexusers: Codex CLI release FAQ",
+          "body": "Community FAQ covers OpenAI Codex CLI, MCP setup, auth prompts and release caveats.",
+          "authorHandle": "codexusers",
+          "publishedAt": "2026-07-02T21:00:00.000Z",
+          "snapshotRank": 9,
+          "metadata": {
+            "likes": 72,
+            "retweets": 14,
+            "replies": 12,
+            "quotes": 2
+          }
+        },
+        {
+          "candidateId": "x-cli-agent-benchmark",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:1010",
+          "canonicalUrl": "https://x.com/benchai/status/1010",
+          "title": "X post by @benchai: Codex CLI benchmark uses MCP tasks",
+          "body": "Benchmark thread compares Codex CLI release performance on MCP tasks and coding agent workflows.",
+          "authorHandle": "benchai",
+          "publishedAt": "2026-07-01T19:00:00.000Z",
+          "snapshotRank": 10,
+          "metadata": {
+            "likes": 61,
+            "retweets": 10,
+            "replies": 4,
+            "quotes": 1
+          }
+        },
+        {
+          "candidateId": "x-viral-ai-video",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:1011",
+          "canonicalUrl": "https://x.com/aivideos/status/1011",
+          "title": "X post by @aivideos: viral AI video generator clip",
+          "body": "Viral AI video generator demo with cinematic examples and creator reactions.",
+          "authorHandle": "aivideos",
+          "publishedAt": "2026-07-03T16:00:00.000Z",
+          "snapshotRank": 11,
+          "metadata": {
+            "likes": 25000,
+            "retweets": 4800,
+            "replies": 1900,
+            "quotes": 860
+          }
+        },
+        {
+          "candidateId": "x-devday-schedule",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:1012",
+          "canonicalUrl": "https://x.com/events/status/1012",
+          "title": "X post by @events: OpenAI DevDay schedule",
+          "body": "General OpenAI event schedule with venue, timing and livestream notes.",
+          "authorHandle": "events",
+          "publishedAt": "2026-07-03T08:00:00.000Z",
+          "snapshotRank": 12,
+          "metadata": {
+            "likes": 3800,
+            "retweets": 620,
+            "replies": 210,
+            "quotes": 75
+          }
+        }
+      ],
+      "labels": [
+        {
+          "candidateId": "x-openai-codex-mcp",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 2,
+          "novelty": 2,
+          "confidence": 0.96,
+          "mustHave": true,
+          "officialSignal": true
+        },
+        {
+          "candidateId": "x-openai-terse-tool-mode",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 2,
+          "novelty": 2,
+          "confidence": 0.9,
+          "mustHave": true,
+          "officialSignal": true,
+          "notes": "Terse official update that should be found by from:OpenAI even when generic search is weak."
+        },
+        {
+          "candidateId": "x-codex-docs-sandboxing",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.91,
+          "mustHave": true
+        },
+        {
+          "candidateId": "x-dev-setup-thread",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 1,
+          "confidence": 0.9,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "x-maintainer-mcp-reliability",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 2,
+          "novelty": 2,
+          "confidence": 0.88,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "x-openai-codex-duplicate",
+          "relevance": 3,
+          "usefulness": 1,
+          "authority": 0,
+          "novelty": 0,
+          "confidence": 0.9,
+          "duplicateOf": "x-openai-codex-mcp"
+        },
+        {
+          "candidateId": "x-codex-install-errors",
+          "relevance": 3,
+          "usefulness": 2,
+          "authority": 1,
+          "novelty": 1,
+          "confidence": 0.84,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "x-codex-mcp-video",
+          "relevance": 3,
+          "usefulness": 2,
+          "authority": 1,
+          "novelty": 1,
+          "confidence": 0.82,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "x-codex-security-note",
+          "relevance": 3,
+          "usefulness": 2,
+          "authority": 2,
+          "novelty": 2,
+          "confidence": 0.86,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "x-codex-community-faq",
+          "relevance": 2,
+          "usefulness": 2,
+          "authority": 1,
+          "novelty": 1,
+          "confidence": 0.8,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "x-cli-agent-benchmark",
+          "relevance": 2,
+          "usefulness": 2,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.78,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "x-viral-ai-video",
+          "relevance": 0,
+          "usefulness": 0,
+          "authority": 0,
+          "novelty": 0,
+          "confidence": 0.96,
+          "viralOffTopic": true
+        },
+        {
+          "candidateId": "x-devday-schedule",
+          "relevance": 1,
+          "usefulness": 0,
+          "authority": 1,
+          "novelty": 0,
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "caseId": "mixed-agent-production-reliability",
+      "topic": "AI coding agent production reliability",
+      "sourceKeys": [
+        "x-twitter",
+        "reddit"
+      ],
+      "queryPlannerIntent": {
+        "topic": "AI coding agent production reliability",
+        "sourceKeys": [
+          "x-twitter",
+          "reddit"
+        ],
+        "products": [
+          "OpenAI Codex",
+          "Claude Code"
+        ],
+        "keywords": [
+          "production reliability",
+          "retry budget",
+          "tool auth"
+        ],
+        "handles": [
+          {
+            "handle": "OpenAI",
+            "sourceKey": "x-twitter",
+            "includePosts": true,
+            "includeMentions": true
+          }
+        ],
+        "communities": [
+          {
+            "name": "programming",
+            "sourceKey": "reddit",
+            "listings": [
+              "hot",
+              "new"
+            ]
+          },
+          {
+            "name": "devops",
+            "sourceKey": "reddit",
+            "listings": [
+              "top",
+              "hot"
+            ]
+          },
+          {
+            "name": "sre",
+            "sourceKey": "reddit",
+            "listings": [
+              "top",
+              "hot"
+            ]
+          }
+        ],
+        "maxLanes": 14,
+        "maxLanesPerSource": 7,
+        "maxItemsPerLane": 25,
+        "includeEnrichment": true
+      },
+      "rankingMode": "relevance",
+      "rankingQueries": [
+        "AI coding agent production reliability",
+        "OpenAI coding agents production guidance",
+        "Claude Code production agent failures"
+      ],
+      "queryLanes": [
+        {
+          "laneId": "mixed-general",
+          "sourceKey": "x-twitter",
+          "operation": "search",
+          "query": "AI coding agent production reliability",
+          "maxItems": 20
+        },
+        {
+          "laneId": "mixed-reddit-hot",
+          "sourceKey": "reddit",
+          "operation": "listing",
+          "query": "programming:hot",
+          "maxItems": 15
+        }
+      ],
+      "candidates": [
+        {
+          "candidateId": "m-openai-production-guidance",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:2001",
+          "canonicalUrl": "https://x.com/OpenAI/status/2001",
+          "title": "X post by @OpenAI: production guidance for coding agents",
+          "body": "OpenAI shares reliability guidance for AI coding agents in production workflows.",
+          "authorHandle": "OpenAI",
+          "publishedAt": "2026-07-03T18:00:00.000Z",
+          "snapshotRank": 1,
+          "metadata": {
+            "likes": 1200,
+            "retweets": 280,
+            "replies": 130,
+            "quotes": 65
+          }
+        },
+        {
+          "candidateId": "m-reddit-production-failures",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_production_failures",
+          "canonicalUrl": "https://www.reddit.com/r/programming/comments/production_failures",
+          "title": "Teams report Claude Code agent failures in production",
+          "body": "Reddit thread compares AI coding agent reliability, production failures and MCP tool retries.",
+          "publishedAt": "2026-07-03T17:00:00.000Z",
+          "snapshotRank": 2,
+          "metadata": {
+            "score": 780,
+            "numComments": 210,
+            "upvoteRatio": 0.91
+          }
+        },
+        {
+          "candidateId": "m-coding-agent-checklist",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:2002",
+          "canonicalUrl": "https://x.com/reliability/status/2002",
+          "title": "X post by @reliability: coding agent reliability checklist",
+          "body": "Checklist covers AI coding agent production reliability, retries, tool auth and monitoring.",
+          "authorHandle": "reliability",
+          "publishedAt": "2026-07-03T16:20:00.000Z",
+          "snapshotRank": 3,
+          "metadata": {
+            "likes": 340,
+            "retweets": 74,
+            "replies": 31,
+            "quotes": 10
+          }
+        },
+        {
+          "candidateId": "m-reddit-retry-budget",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_retry_budget",
+          "canonicalUrl": "https://www.reddit.com/r/devops/comments/retry_budget",
+          "title": "Long discussion on retry budgets and tool auth",
+          "body": "Production engineers discuss AI coding agent reliability, retry budgets and MCP tool auth.",
+          "publishedAt": "2026-07-03T15:00:00.000Z",
+          "snapshotRank": 4,
+          "metadata": {
+            "score": 230,
+            "numComments": 68,
+            "upvoteRatio": 0.89
+          }
+        },
+        {
+          "candidateId": "m-agent-runbook",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_agent_runbook",
+          "canonicalUrl": "https://www.reddit.com/r/sre/comments/agent_runbook",
+          "title": "Production runbook for AI coding agent failures",
+          "body": "Runbook focuses on coding agent reliability, alerting, rollback and tool failure modes.",
+          "publishedAt": "2026-07-03T14:00:00.000Z",
+          "snapshotRank": 5,
+          "metadata": {
+            "score": 160,
+            "numComments": 44,
+            "upvoteRatio": 0.87
+          }
+        },
+        {
+          "candidateId": "m-agent-observability",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:2003",
+          "canonicalUrl": "https://x.com/observability/status/2003",
+          "title": "X post by @observability: AI agent production traces",
+          "body": "Thread about tracing AI coding agents, reliability failures and production monitoring.",
+          "authorHandle": "observability",
+          "publishedAt": "2026-07-03T13:00:00.000Z",
+          "snapshotRank": 6,
+          "metadata": {
+            "likes": 210,
+            "retweets": 39,
+            "replies": 17,
+            "quotes": 6
+          }
+        },
+        {
+          "candidateId": "m-agent-rollbacks",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_agent_rollbacks",
+          "canonicalUrl": "https://www.reddit.com/r/programming/comments/agent_rollbacks",
+          "title": "Rollback strategy for AI coding agents",
+          "body": "Community thread on production reliability, rollback criteria and coding agent task isolation.",
+          "publishedAt": "2026-07-02T20:00:00.000Z",
+          "snapshotRank": 7,
+          "metadata": {
+            "score": 126,
+            "numComments": 38,
+            "upvoteRatio": 0.84
+          }
+        },
+        {
+          "candidateId": "m-agent-slo",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:2004",
+          "canonicalUrl": "https://x.com/sre/status/2004",
+          "title": "X post by @sre: SLOs for coding agents",
+          "body": "SRE notes on AI coding agent production reliability, SLOs and failure budgets.",
+          "authorHandle": "sre",
+          "publishedAt": "2026-07-02T18:00:00.000Z",
+          "snapshotRank": 8,
+          "metadata": {
+            "likes": 88,
+            "retweets": 15,
+            "replies": 5,
+            "quotes": 1
+          }
+        },
+        {
+          "candidateId": "m-reddit-production-failures-duplicate",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_production_failures_dupe",
+          "canonicalUrl": "https://www.reddit.com/r/programming/comments/production_failures_duplicate",
+          "title": "Teams report Claude Code agent failures in production duplicate",
+          "body": "Duplicate summary of the same Reddit production failures thread about AI coding agent reliability.",
+          "publishedAt": "2026-07-03T17:20:00.000Z",
+          "snapshotRank": 9,
+          "metadata": {
+            "score": 44,
+            "numComments": 6,
+            "upvoteRatio": 0.78
+          }
+        },
+        {
+          "candidateId": "m-agent-safety-review",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:2005",
+          "canonicalUrl": "https://x.com/security/status/2005",
+          "title": "X post by @security: coding agent safety review",
+          "body": "Security review connects AI coding agent production reliability with tool safety and permissions.",
+          "authorHandle": "security",
+          "publishedAt": "2026-07-02T12:00:00.000Z",
+          "snapshotRank": 10,
+          "metadata": {
+            "likes": 73,
+            "retweets": 13,
+            "replies": 8,
+            "quotes": 2
+          }
+        },
+        {
+          "candidateId": "m-unrelated-startup-launch",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_unrelated_startup_launch",
+          "canonicalUrl": "https://www.reddit.com/r/startups/comments/unrelated_launch",
+          "title": "Huge unrelated startup launch",
+          "body": "Startup launch thread with massive engagement about funding, launch metrics and growth.",
+          "publishedAt": "2026-07-03T19:00:00.000Z",
+          "snapshotRank": 11,
+          "metadata": {
+            "score": 12600,
+            "numComments": 2200,
+            "upvoteRatio": 0.96
+          }
+        },
+        {
+          "candidateId": "m-agent-jokes",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:2006",
+          "canonicalUrl": "https://x.com/memes/status/2006",
+          "title": "X post by @memes: coding agent jokes",
+          "body": "Light joke thread about autonomous assistants and developer memes.",
+          "authorHandle": "memes",
+          "publishedAt": "2026-07-03T12:00:00.000Z",
+          "snapshotRank": 12,
+          "metadata": {
+            "likes": 18000,
+            "retweets": 3100,
+            "replies": 740,
+            "quotes": 320
+          }
+        }
+      ],
+      "labels": [
+        {
+          "candidateId": "m-openai-production-guidance",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 2,
+          "novelty": 2,
+          "confidence": 0.96,
+          "mustHave": true,
+          "officialSignal": true
+        },
+        {
+          "candidateId": "m-reddit-production-failures",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.93,
+          "mustHave": true,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "m-coding-agent-checklist",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 1,
+          "confidence": 0.9,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "m-reddit-retry-budget",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.88,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "m-agent-runbook",
+          "relevance": 3,
+          "usefulness": 2,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.86,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "m-agent-observability",
+          "relevance": 3,
+          "usefulness": 2,
+          "authority": 1,
+          "novelty": 1,
+          "confidence": 0.84,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "m-agent-rollbacks",
+          "relevance": 2,
+          "usefulness": 2,
+          "authority": 1,
+          "novelty": 1,
+          "confidence": 0.82,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "m-agent-slo",
+          "relevance": 2,
+          "usefulness": 2,
+          "authority": 1,
+          "novelty": 1,
+          "confidence": 0.8,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "m-reddit-production-failures-duplicate",
+          "relevance": 3,
+          "usefulness": 1,
+          "authority": 0,
+          "novelty": 0,
+          "confidence": 0.9,
+          "duplicateOf": "m-reddit-production-failures",
+          "communitySignal": true
+        },
+        {
+          "candidateId": "m-agent-safety-review",
+          "relevance": 2,
+          "usefulness": 2,
+          "authority": 2,
+          "novelty": 2,
+          "confidence": 0.82,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "m-unrelated-startup-launch",
+          "relevance": 0,
+          "usefulness": 0,
+          "authority": 0,
+          "novelty": 0,
+          "confidence": 0.97,
+          "viralOffTopic": true
+        },
+        {
+          "candidateId": "m-agent-jokes",
+          "relevance": 1,
+          "usefulness": 0,
+          "authority": 0,
+          "novelty": 0,
+          "confidence": 0.9,
+          "viralOffTopic": true
+        }
+      ]
+    },
+    {
+      "caseId": "reddit-cursor-mcp-registry-outage",
+      "topic": "Cursor MCP registry outage",
+      "sourceKeys": [
+        "reddit"
+      ],
+      "queryPlannerIntent": {
+        "topic": "Cursor MCP registry outage",
+        "sourceKeys": [
+          "reddit"
+        ],
+        "products": [
+          "Cursor MCP"
+        ],
+        "keywords": [
+          "registry outage",
+          "tool install",
+          "retry budget"
+        ],
+        "communities": [
+          {
+            "name": "cursor",
+            "sourceKey": "reddit",
+            "listings": [
+              "top",
+              "hot",
+              "new"
+            ]
+          }
+        ],
+        "maxLanesPerSource": 8,
+        "maxItemsPerLane": 20,
+        "includeEnrichment": true
+      },
+      "rankingMode": "relevance",
+      "rankingQueries": [
+        "Cursor MCP registry outage",
+        "Cursor MCP registry outage tool install retry budget"
+      ],
+      "queryLanes": [
+        {
+          "laneId": "reddit-cursor-mcp-registry-outage-reddit-general",
+          "sourceKey": "reddit",
+          "operation": "search",
+          "query": "Cursor MCP registry outage",
+          "maxItems": 20
+        },
+        {
+          "laneId": "reddit-cursor-mcp-registry-outage-reddit-community-top",
+          "sourceKey": "reddit",
+          "operation": "listing",
+          "query": "cursor:top:week",
+          "maxItems": 20
+        }
+      ],
+      "candidates": [
+        {
+          "candidateId": "reddit-cursor-mcp-registry-outage-general",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_reddit_cursor_mcp_registry_outage_general",
+          "canonicalUrl": "https://www.reddit.com/r/cursor/comments/reddit-cursor-mcp-registry-outage-general",
+          "title": "Cursor MCP registry outage production notes",
+          "body": "Cursor MCP users discuss Cursor MCP registry outage, registry outage and tool install with concrete rollout details.",
+          "publishedAt": "2026-07-04T07:00:00.000Z",
+          "snapshotRank": 1,
+          "metadata": {
+            "score": 84,
+            "numComments": 24,
+            "upvoteRatio": 0.88
+          }
+        },
+        {
+          "candidateId": "reddit-cursor-mcp-registry-outage-listing-terse",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_reddit_cursor_mcp_registry_outage_listing_terse",
+          "canonicalUrl": "https://www.reddit.com/r/cursor/comments/canary_hotfix_01",
+          "title": "Hotfix landed after a noisy incident",
+          "body": "Maintainers share mitigation logs, rollout order and a workaround in the community thread.",
+          "publishedAt": "2026-07-04T06:00:00.000Z",
+          "snapshotRank": 7,
+          "metadata": {
+            "score": 31,
+            "numComments": 9,
+            "upvoteRatio": 0.88
+          }
+        },
+        {
+          "candidateId": "reddit-cursor-mcp-registry-outage-keyword",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_reddit_cursor_mcp_registry_outage_keyword",
+          "canonicalUrl": "https://www.reddit.com/r/cursor/comments/reddit-cursor-mcp-registry-outage-keyword",
+          "title": "registry outage checklist for Cursor MCP",
+          "body": "Community checklist covers registry outage, tool install, alerts and safe fallback behavior.",
+          "publishedAt": "2026-07-04T05:00:00.000Z",
+          "snapshotRank": 3,
+          "metadata": {
+            "score": 49,
+            "numComments": 14,
+            "upvoteRatio": 0.88
+          }
+        },
+        {
+          "candidateId": "reddit-cursor-mcp-registry-outage-community",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_reddit_cursor_mcp_registry_outage_community",
+          "canonicalUrl": "https://www.reddit.com/r/mcp/comments/reddit-cursor-mcp-registry-outage-community",
+          "title": "Cursor MCP operator thread",
+          "body": "Operators compare Cursor MCP, Cursor MCP registry outage tradeoffs and release guardrails.",
+          "publishedAt": "2026-07-04T02:00:00.000Z",
+          "snapshotRank": 4,
+          "metadata": {
+            "score": 67,
+            "numComments": 19,
+            "upvoteRatio": 0.88
+          }
+        },
+        {
+          "candidateId": "reddit-cursor-mcp-registry-outage-checklist",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_reddit_cursor_mcp_registry_outage_checklist",
+          "canonicalUrl": "https://www.reddit.com/r/cursor/comments/reddit-cursor-mcp-registry-outage-checklist",
+          "title": "Cursor MCP registry outage runbook for teams",
+          "body": "Step-by-step runbook for Cursor MCP registry outage, registry outage and regression triage.",
+          "publishedAt": "2026-07-04T00:00:00.000Z",
+          "snapshotRank": 5,
+          "metadata": {
+            "score": 38,
+            "numComments": 10,
+            "upvoteRatio": 0.88
+          }
+        },
+        {
+          "candidateId": "reddit-cursor-mcp-registry-outage-unrelated",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_reddit_cursor_mcp_registry_outage_unrelated",
+          "canonicalUrl": "https://www.reddit.com/r/technology/comments/reddit-cursor-mcp-registry-outage-unrelated",
+          "title": "General AI pricing thread",
+          "body": "Broad consumer pricing debate with no operational signal for the monitored topic.",
+          "publishedAt": "2026-07-04T08:00:00.000Z",
+          "snapshotRank": 2,
+          "metadata": {
+            "score": 800,
+            "numComments": 120,
+            "upvoteRatio": 0.88
+          }
+        }
+      ],
+      "labels": [
+        {
+          "candidateId": "reddit-cursor-mcp-registry-outage-general",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.94,
+          "mustHave": true,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "reddit-cursor-mcp-registry-outage-listing-terse",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.9,
+          "mustHave": true,
+          "communitySignal": true,
+          "notes": "Community listing lane should catch this terse but important item."
+        },
+        {
+          "candidateId": "reddit-cursor-mcp-registry-outage-keyword",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.88,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "reddit-cursor-mcp-registry-outage-community",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.86,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "reddit-cursor-mcp-registry-outage-checklist",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.84,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "reddit-cursor-mcp-registry-outage-unrelated",
+          "relevance": 0,
+          "usefulness": 0,
+          "authority": 0,
+          "novelty": 0,
+          "confidence": 0.96,
+          "spam": true
+        }
+      ]
+    },
+    {
+      "caseId": "reddit-langchain-agent-memory-regression",
+      "topic": "LangChain agent memory regression",
+      "sourceKeys": [
+        "reddit"
+      ],
+      "queryPlannerIntent": {
+        "topic": "LangChain agent memory regression",
+        "sourceKeys": [
+          "reddit"
+        ],
+        "products": [
+          "LangChain"
+        ],
+        "keywords": [
+          "memory regression",
+          "agent state",
+          "retrieval bug"
+        ],
+        "communities": [
+          {
+            "name": "LangChain",
+            "sourceKey": "reddit",
+            "listings": [
+              "top",
+              "hot",
+              "new"
+            ]
+          }
+        ],
+        "maxLanesPerSource": 8,
+        "maxItemsPerLane": 20,
+        "includeEnrichment": true
+      },
+      "rankingMode": "relevance",
+      "rankingQueries": [
+        "LangChain agent memory regression",
+        "LangChain memory regression agent state retrieval bug"
+      ],
+      "queryLanes": [
+        {
+          "laneId": "reddit-langchain-agent-memory-regression-reddit-general",
+          "sourceKey": "reddit",
+          "operation": "search",
+          "query": "LangChain agent memory regression",
+          "maxItems": 20
+        },
+        {
+          "laneId": "reddit-langchain-agent-memory-regression-reddit-community-top",
+          "sourceKey": "reddit",
+          "operation": "listing",
+          "query": "LangChain:top:week",
+          "maxItems": 20
+        }
+      ],
+      "candidates": [
+        {
+          "candidateId": "reddit-langchain-agent-memory-regression-general",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_reddit_langchain_agent_memory_regression_general",
+          "canonicalUrl": "https://www.reddit.com/r/LangChain/comments/reddit-langchain-agent-memory-regression-general",
+          "title": "LangChain agent memory regression production notes",
+          "body": "LangChain users discuss LangChain agent memory regression, memory regression and agent state with concrete rollout details.",
+          "publishedAt": "2026-07-04T07:00:00.000Z",
+          "snapshotRank": 1,
+          "metadata": {
+            "score": 84,
+            "numComments": 24,
+            "upvoteRatio": 0.88
+          }
+        },
+        {
+          "candidateId": "reddit-langchain-agent-memory-regression-listing-terse",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_reddit_langchain_agent_memory_regression_listing_terse",
+          "canonicalUrl": "https://www.reddit.com/r/LangChain/comments/canary_hotfix_02",
+          "title": "Hotfix landed after a noisy incident",
+          "body": "Maintainers share mitigation logs, rollout order and a workaround in the community thread.",
+          "publishedAt": "2026-07-04T06:00:00.000Z",
+          "snapshotRank": 7,
+          "metadata": {
+            "score": 31,
+            "numComments": 9,
+            "upvoteRatio": 0.88
+          }
+        },
+        {
+          "candidateId": "reddit-langchain-agent-memory-regression-keyword",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_reddit_langchain_agent_memory_regression_keyword",
+          "canonicalUrl": "https://www.reddit.com/r/LangChain/comments/reddit-langchain-agent-memory-regression-keyword",
+          "title": "memory regression checklist for LangChain",
+          "body": "Community checklist covers memory regression, agent state, alerts and safe fallback behavior.",
+          "publishedAt": "2026-07-04T05:00:00.000Z",
+          "snapshotRank": 3,
+          "metadata": {
+            "score": 49,
+            "numComments": 14,
+            "upvoteRatio": 0.88
+          }
+        },
+        {
+          "candidateId": "reddit-langchain-agent-memory-regression-community",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_reddit_langchain_agent_memory_regression_community",
+          "canonicalUrl": "https://www.reddit.com/r/MachineLearning/comments/reddit-langchain-agent-memory-regression-community",
+          "title": "LangChain operator thread",
+          "body": "Operators compare LangChain, LangChain agent memory regression tradeoffs and release guardrails.",
+          "publishedAt": "2026-07-04T02:00:00.000Z",
+          "snapshotRank": 4,
+          "metadata": {
+            "score": 67,
+            "numComments": 19,
+            "upvoteRatio": 0.88
+          }
+        },
+        {
+          "candidateId": "reddit-langchain-agent-memory-regression-checklist",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_reddit_langchain_agent_memory_regression_checklist",
+          "canonicalUrl": "https://www.reddit.com/r/LangChain/comments/reddit-langchain-agent-memory-regression-checklist",
+          "title": "LangChain agent memory regression runbook for teams",
+          "body": "Step-by-step runbook for LangChain agent memory regression, memory regression and regression triage.",
+          "publishedAt": "2026-07-04T00:00:00.000Z",
+          "snapshotRank": 5,
+          "metadata": {
+            "score": 38,
+            "numComments": 10,
+            "upvoteRatio": 0.88
+          }
+        },
+        {
+          "candidateId": "reddit-langchain-agent-memory-regression-unrelated",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_reddit_langchain_agent_memory_regression_unrelated",
+          "canonicalUrl": "https://www.reddit.com/r/technology/comments/reddit-langchain-agent-memory-regression-unrelated",
+          "title": "General AI pricing thread",
+          "body": "Broad consumer pricing debate with no operational signal for the monitored topic.",
+          "publishedAt": "2026-07-04T08:00:00.000Z",
+          "snapshotRank": 2,
+          "metadata": {
+            "score": 800,
+            "numComments": 120,
+            "upvoteRatio": 0.88
+          }
+        }
+      ],
+      "labels": [
+        {
+          "candidateId": "reddit-langchain-agent-memory-regression-general",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.94,
+          "mustHave": true,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "reddit-langchain-agent-memory-regression-listing-terse",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.9,
+          "mustHave": true,
+          "communitySignal": true,
+          "notes": "Community listing lane should catch this terse but important item."
+        },
+        {
+          "candidateId": "reddit-langchain-agent-memory-regression-keyword",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.88,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "reddit-langchain-agent-memory-regression-community",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.86,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "reddit-langchain-agent-memory-regression-checklist",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.84,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "reddit-langchain-agent-memory-regression-unrelated",
+          "relevance": 0,
+          "usefulness": 0,
+          "authority": 0,
+          "novelty": 0,
+          "confidence": 0.96,
+          "spam": true
+        }
+      ]
+    },
+    {
+      "caseId": "reddit-llamaindex-workflow-tools",
+      "topic": "LlamaIndex workflow tool calling",
+      "sourceKeys": [
+        "reddit"
+      ],
+      "queryPlannerIntent": {
+        "topic": "LlamaIndex workflow tool calling",
+        "sourceKeys": [
+          "reddit"
+        ],
+        "products": [
+          "LlamaIndex"
+        ],
+        "keywords": [
+          "workflow tools",
+          "tool calling",
+          "RAG agents"
+        ],
+        "communities": [
+          {
+            "name": "LlamaIndex",
+            "sourceKey": "reddit",
+            "listings": [
+              "top",
+              "hot",
+              "new"
+            ]
+          }
+        ],
+        "maxLanesPerSource": 8,
+        "maxItemsPerLane": 20,
+        "includeEnrichment": true
+      },
+      "rankingMode": "relevance",
+      "rankingQueries": [
+        "LlamaIndex workflow tool calling",
+        "LlamaIndex workflow tools tool calling RAG agents"
+      ],
+      "queryLanes": [
+        {
+          "laneId": "reddit-llamaindex-workflow-tools-reddit-general",
+          "sourceKey": "reddit",
+          "operation": "search",
+          "query": "LlamaIndex workflow tool calling",
+          "maxItems": 20
+        },
+        {
+          "laneId": "reddit-llamaindex-workflow-tools-reddit-community-top",
+          "sourceKey": "reddit",
+          "operation": "listing",
+          "query": "LlamaIndex:top:week",
+          "maxItems": 20
+        }
+      ],
+      "candidates": [
+        {
+          "candidateId": "reddit-llamaindex-workflow-tools-general",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_reddit_llamaindex_workflow_tools_general",
+          "canonicalUrl": "https://www.reddit.com/r/LlamaIndex/comments/reddit-llamaindex-workflow-tools-general",
+          "title": "LlamaIndex workflow tool calling production notes",
+          "body": "LlamaIndex users discuss LlamaIndex workflow tool calling, workflow tools and tool calling with concrete rollout details.",
+          "publishedAt": "2026-07-04T07:00:00.000Z",
+          "snapshotRank": 1,
+          "metadata": {
+            "score": 84,
+            "numComments": 24,
+            "upvoteRatio": 0.88
+          }
+        },
+        {
+          "candidateId": "reddit-llamaindex-workflow-tools-listing-terse",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_reddit_llamaindex_workflow_tools_listing_terse",
+          "canonicalUrl": "https://www.reddit.com/r/LlamaIndex/comments/canary_hotfix_03",
+          "title": "Hotfix landed after a noisy incident",
+          "body": "Maintainers share mitigation logs, rollout order and a workaround in the community thread.",
+          "publishedAt": "2026-07-04T06:00:00.000Z",
+          "snapshotRank": 7,
+          "metadata": {
+            "score": 31,
+            "numComments": 9,
+            "upvoteRatio": 0.88
+          }
+        },
+        {
+          "candidateId": "reddit-llamaindex-workflow-tools-keyword",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_reddit_llamaindex_workflow_tools_keyword",
+          "canonicalUrl": "https://www.reddit.com/r/LlamaIndex/comments/reddit-llamaindex-workflow-tools-keyword",
+          "title": "workflow tools checklist for LlamaIndex",
+          "body": "Community checklist covers workflow tools, tool calling, alerts and safe fallback behavior.",
+          "publishedAt": "2026-07-04T05:00:00.000Z",
+          "snapshotRank": 3,
+          "metadata": {
+            "score": 49,
+            "numComments": 14,
+            "upvoteRatio": 0.88
+          }
+        },
+        {
+          "candidateId": "reddit-llamaindex-workflow-tools-community",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_reddit_llamaindex_workflow_tools_community",
+          "canonicalUrl": "https://www.reddit.com/r/LocalLLaMA/comments/reddit-llamaindex-workflow-tools-community",
+          "title": "LlamaIndex operator thread",
+          "body": "Operators compare LlamaIndex, LlamaIndex workflow tool calling tradeoffs and release guardrails.",
+          "publishedAt": "2026-07-04T02:00:00.000Z",
+          "snapshotRank": 4,
+          "metadata": {
+            "score": 67,
+            "numComments": 19,
+            "upvoteRatio": 0.88
+          }
+        },
+        {
+          "candidateId": "reddit-llamaindex-workflow-tools-checklist",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_reddit_llamaindex_workflow_tools_checklist",
+          "canonicalUrl": "https://www.reddit.com/r/LlamaIndex/comments/reddit-llamaindex-workflow-tools-checklist",
+          "title": "LlamaIndex workflow tool calling runbook for teams",
+          "body": "Step-by-step runbook for LlamaIndex workflow tool calling, workflow tools and regression triage.",
+          "publishedAt": "2026-07-04T00:00:00.000Z",
+          "snapshotRank": 5,
+          "metadata": {
+            "score": 38,
+            "numComments": 10,
+            "upvoteRatio": 0.88
+          }
+        },
+        {
+          "candidateId": "reddit-llamaindex-workflow-tools-unrelated",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_reddit_llamaindex_workflow_tools_unrelated",
+          "canonicalUrl": "https://www.reddit.com/r/technology/comments/reddit-llamaindex-workflow-tools-unrelated",
+          "title": "General AI pricing thread",
+          "body": "Broad consumer pricing debate with no operational signal for the monitored topic.",
+          "publishedAt": "2026-07-04T08:00:00.000Z",
+          "snapshotRank": 2,
+          "metadata": {
+            "score": 800,
+            "numComments": 120,
+            "upvoteRatio": 0.88
+          }
+        }
+      ],
+      "labels": [
+        {
+          "candidateId": "reddit-llamaindex-workflow-tools-general",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.94,
+          "mustHave": true,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "reddit-llamaindex-workflow-tools-listing-terse",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.9,
+          "mustHave": true,
+          "communitySignal": true,
+          "notes": "Community listing lane should catch this terse but important item."
+        },
+        {
+          "candidateId": "reddit-llamaindex-workflow-tools-keyword",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.88,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "reddit-llamaindex-workflow-tools-community",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.86,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "reddit-llamaindex-workflow-tools-checklist",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.84,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "reddit-llamaindex-workflow-tools-unrelated",
+          "relevance": 0,
+          "usefulness": 0,
+          "authority": 0,
+          "novelty": 0,
+          "confidence": 0.96,
+          "spam": true
+        }
+      ]
+    },
+    {
+      "caseId": "reddit-ollama-tool-use-release",
+      "topic": "Ollama tool use release",
+      "sourceKeys": [
+        "reddit"
+      ],
+      "queryPlannerIntent": {
+        "topic": "Ollama tool use release",
+        "sourceKeys": [
+          "reddit"
+        ],
+        "products": [
+          "Ollama"
+        ],
+        "keywords": [
+          "tool use",
+          "local agents",
+          "model server"
+        ],
+        "communities": [
+          {
+            "name": "ollama",
+            "sourceKey": "reddit",
+            "listings": [
+              "top",
+              "hot",
+              "new"
+            ]
+          }
+        ],
+        "maxLanesPerSource": 8,
+        "maxItemsPerLane": 20,
+        "includeEnrichment": true
+      },
+      "rankingMode": "relevance",
+      "rankingQueries": [
+        "Ollama tool use release",
+        "Ollama tool use local agents model server"
+      ],
+      "queryLanes": [
+        {
+          "laneId": "reddit-ollama-tool-use-release-reddit-general",
+          "sourceKey": "reddit",
+          "operation": "search",
+          "query": "Ollama tool use release",
+          "maxItems": 20
+        },
+        {
+          "laneId": "reddit-ollama-tool-use-release-reddit-community-top",
+          "sourceKey": "reddit",
+          "operation": "listing",
+          "query": "ollama:top:week",
+          "maxItems": 20
+        }
+      ],
+      "candidates": [
+        {
+          "candidateId": "reddit-ollama-tool-use-release-general",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_reddit_ollama_tool_use_release_general",
+          "canonicalUrl": "https://www.reddit.com/r/ollama/comments/reddit-ollama-tool-use-release-general",
+          "title": "Ollama tool use release production notes",
+          "body": "Ollama users discuss Ollama tool use release, tool use and local agents with concrete rollout details.",
+          "publishedAt": "2026-07-04T07:00:00.000Z",
+          "snapshotRank": 1,
+          "metadata": {
+            "score": 84,
+            "numComments": 24,
+            "upvoteRatio": 0.88
+          }
+        },
+        {
+          "candidateId": "reddit-ollama-tool-use-release-listing-terse",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_reddit_ollama_tool_use_release_listing_terse",
+          "canonicalUrl": "https://www.reddit.com/r/ollama/comments/canary_hotfix_04",
+          "title": "Hotfix landed after a noisy incident",
+          "body": "Maintainers share mitigation logs, rollout order and a workaround in the community thread.",
+          "publishedAt": "2026-07-04T06:00:00.000Z",
+          "snapshotRank": 7,
+          "metadata": {
+            "score": 31,
+            "numComments": 9,
+            "upvoteRatio": 0.88
+          }
+        },
+        {
+          "candidateId": "reddit-ollama-tool-use-release-keyword",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_reddit_ollama_tool_use_release_keyword",
+          "canonicalUrl": "https://www.reddit.com/r/ollama/comments/reddit-ollama-tool-use-release-keyword",
+          "title": "tool use checklist for Ollama",
+          "body": "Community checklist covers tool use, local agents, alerts and safe fallback behavior.",
+          "publishedAt": "2026-07-04T05:00:00.000Z",
+          "snapshotRank": 3,
+          "metadata": {
+            "score": 49,
+            "numComments": 14,
+            "upvoteRatio": 0.88
+          }
+        },
+        {
+          "candidateId": "reddit-ollama-tool-use-release-community",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_reddit_ollama_tool_use_release_community",
+          "canonicalUrl": "https://www.reddit.com/r/LocalLLaMA/comments/reddit-ollama-tool-use-release-community",
+          "title": "Ollama operator thread",
+          "body": "Operators compare Ollama, Ollama tool use release tradeoffs and release guardrails.",
+          "publishedAt": "2026-07-04T02:00:00.000Z",
+          "snapshotRank": 4,
+          "metadata": {
+            "score": 67,
+            "numComments": 19,
+            "upvoteRatio": 0.88
+          }
+        },
+        {
+          "candidateId": "reddit-ollama-tool-use-release-checklist",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_reddit_ollama_tool_use_release_checklist",
+          "canonicalUrl": "https://www.reddit.com/r/ollama/comments/reddit-ollama-tool-use-release-checklist",
+          "title": "Ollama tool use release runbook for teams",
+          "body": "Step-by-step runbook for Ollama tool use release, tool use and regression triage.",
+          "publishedAt": "2026-07-04T00:00:00.000Z",
+          "snapshotRank": 5,
+          "metadata": {
+            "score": 38,
+            "numComments": 10,
+            "upvoteRatio": 0.88
+          }
+        },
+        {
+          "candidateId": "reddit-ollama-tool-use-release-unrelated",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_reddit_ollama_tool_use_release_unrelated",
+          "canonicalUrl": "https://www.reddit.com/r/technology/comments/reddit-ollama-tool-use-release-unrelated",
+          "title": "General AI pricing thread",
+          "body": "Broad consumer pricing debate with no operational signal for the monitored topic.",
+          "publishedAt": "2026-07-04T08:00:00.000Z",
+          "snapshotRank": 2,
+          "metadata": {
+            "score": 800,
+            "numComments": 120,
+            "upvoteRatio": 0.88
+          }
+        }
+      ],
+      "labels": [
+        {
+          "candidateId": "reddit-ollama-tool-use-release-general",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.94,
+          "mustHave": true,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "reddit-ollama-tool-use-release-listing-terse",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.9,
+          "mustHave": true,
+          "communitySignal": true,
+          "notes": "Community listing lane should catch this terse but important item."
+        },
+        {
+          "candidateId": "reddit-ollama-tool-use-release-keyword",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.88,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "reddit-ollama-tool-use-release-community",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.86,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "reddit-ollama-tool-use-release-checklist",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.84,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "reddit-ollama-tool-use-release-unrelated",
+          "relevance": 0,
+          "usefulness": 0,
+          "authority": 0,
+          "novelty": 0,
+          "confidence": 0.96,
+          "spam": true
+        }
+      ]
+    },
+    {
+      "caseId": "reddit-vllm-agent-throughput",
+      "topic": "vLLM agent throughput regression",
+      "sourceKeys": [
+        "reddit"
+      ],
+      "queryPlannerIntent": {
+        "topic": "vLLM agent throughput regression",
+        "sourceKeys": [
+          "reddit"
+        ],
+        "products": [
+          "vLLM"
+        ],
+        "keywords": [
+          "throughput regression",
+          "batching",
+          "serving latency"
+        ],
+        "communities": [
+          {
+            "name": "LocalLLaMA",
+            "sourceKey": "reddit",
+            "listings": [
+              "top",
+              "hot",
+              "new"
+            ]
+          }
+        ],
+        "maxLanesPerSource": 8,
+        "maxItemsPerLane": 20,
+        "includeEnrichment": true
+      },
+      "rankingMode": "relevance",
+      "rankingQueries": [
+        "vLLM agent throughput regression",
+        "vLLM throughput regression batching serving latency"
+      ],
+      "queryLanes": [
+        {
+          "laneId": "reddit-vllm-agent-throughput-reddit-general",
+          "sourceKey": "reddit",
+          "operation": "search",
+          "query": "vLLM agent throughput regression",
+          "maxItems": 20
+        },
+        {
+          "laneId": "reddit-vllm-agent-throughput-reddit-community-top",
+          "sourceKey": "reddit",
+          "operation": "listing",
+          "query": "LocalLLaMA:top:week",
+          "maxItems": 20
+        }
+      ],
+      "candidates": [
+        {
+          "candidateId": "reddit-vllm-agent-throughput-general",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_reddit_vllm_agent_throughput_general",
+          "canonicalUrl": "https://www.reddit.com/r/LocalLLaMA/comments/reddit-vllm-agent-throughput-general",
+          "title": "vLLM agent throughput regression production notes",
+          "body": "vLLM users discuss vLLM agent throughput regression, throughput regression and batching with concrete rollout details.",
+          "publishedAt": "2026-07-04T07:00:00.000Z",
+          "snapshotRank": 1,
+          "metadata": {
+            "score": 84,
+            "numComments": 24,
+            "upvoteRatio": 0.88
+          }
+        },
+        {
+          "candidateId": "reddit-vllm-agent-throughput-listing-terse",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_reddit_vllm_agent_throughput_listing_terse",
+          "canonicalUrl": "https://www.reddit.com/r/LocalLLaMA/comments/canary_hotfix_05",
+          "title": "Hotfix landed after a noisy incident",
+          "body": "Maintainers share mitigation logs, rollout order and a workaround in the community thread.",
+          "publishedAt": "2026-07-04T06:00:00.000Z",
+          "snapshotRank": 7,
+          "metadata": {
+            "score": 31,
+            "numComments": 9,
+            "upvoteRatio": 0.88
+          }
+        },
+        {
+          "candidateId": "reddit-vllm-agent-throughput-keyword",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_reddit_vllm_agent_throughput_keyword",
+          "canonicalUrl": "https://www.reddit.com/r/LocalLLaMA/comments/reddit-vllm-agent-throughput-keyword",
+          "title": "throughput regression checklist for vLLM",
+          "body": "Community checklist covers throughput regression, batching, alerts and safe fallback behavior.",
+          "publishedAt": "2026-07-04T05:00:00.000Z",
+          "snapshotRank": 3,
+          "metadata": {
+            "score": 49,
+            "numComments": 14,
+            "upvoteRatio": 0.88
+          }
+        },
+        {
+          "candidateId": "reddit-vllm-agent-throughput-community",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_reddit_vllm_agent_throughput_community",
+          "canonicalUrl": "https://www.reddit.com/r/MachineLearning/comments/reddit-vllm-agent-throughput-community",
+          "title": "vLLM operator thread",
+          "body": "Operators compare vLLM, vLLM agent throughput regression tradeoffs and release guardrails.",
+          "publishedAt": "2026-07-04T02:00:00.000Z",
+          "snapshotRank": 4,
+          "metadata": {
+            "score": 67,
+            "numComments": 19,
+            "upvoteRatio": 0.88
+          }
+        },
+        {
+          "candidateId": "reddit-vllm-agent-throughput-checklist",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_reddit_vllm_agent_throughput_checklist",
+          "canonicalUrl": "https://www.reddit.com/r/LocalLLaMA/comments/reddit-vllm-agent-throughput-checklist",
+          "title": "vLLM agent throughput regression runbook for teams",
+          "body": "Step-by-step runbook for vLLM agent throughput regression, throughput regression and regression triage.",
+          "publishedAt": "2026-07-04T00:00:00.000Z",
+          "snapshotRank": 5,
+          "metadata": {
+            "score": 38,
+            "numComments": 10,
+            "upvoteRatio": 0.88
+          }
+        },
+        {
+          "candidateId": "reddit-vllm-agent-throughput-unrelated",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_reddit_vllm_agent_throughput_unrelated",
+          "canonicalUrl": "https://www.reddit.com/r/technology/comments/reddit-vllm-agent-throughput-unrelated",
+          "title": "General AI pricing thread",
+          "body": "Broad consumer pricing debate with no operational signal for the monitored topic.",
+          "publishedAt": "2026-07-04T08:00:00.000Z",
+          "snapshotRank": 2,
+          "metadata": {
+            "score": 800,
+            "numComments": 120,
+            "upvoteRatio": 0.88
+          }
+        }
+      ],
+      "labels": [
+        {
+          "candidateId": "reddit-vllm-agent-throughput-general",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.94,
+          "mustHave": true,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "reddit-vllm-agent-throughput-listing-terse",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.9,
+          "mustHave": true,
+          "communitySignal": true,
+          "notes": "Community listing lane should catch this terse but important item."
+        },
+        {
+          "candidateId": "reddit-vllm-agent-throughput-keyword",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.88,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "reddit-vllm-agent-throughput-community",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.86,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "reddit-vllm-agent-throughput-checklist",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.84,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "reddit-vllm-agent-throughput-unrelated",
+          "relevance": 0,
+          "usefulness": 0,
+          "authority": 0,
+          "novelty": 0,
+          "confidence": 0.96,
+          "spam": true
+        }
+      ]
+    },
+    {
+      "caseId": "reddit-supabase-mcp-auth",
+      "topic": "Supabase MCP auth scopes",
+      "sourceKeys": [
+        "reddit"
+      ],
+      "queryPlannerIntent": {
+        "topic": "Supabase MCP auth scopes",
+        "sourceKeys": [
+          "reddit"
+        ],
+        "products": [
+          "Supabase MCP"
+        ],
+        "keywords": [
+          "auth scopes",
+          "database tools",
+          "row security"
+        ],
+        "communities": [
+          {
+            "name": "Supabase",
+            "sourceKey": "reddit",
+            "listings": [
+              "top",
+              "hot",
+              "new"
+            ]
+          }
+        ],
+        "maxLanesPerSource": 8,
+        "maxItemsPerLane": 20,
+        "includeEnrichment": true
+      },
+      "rankingMode": "relevance",
+      "rankingQueries": [
+        "Supabase MCP auth scopes",
+        "Supabase MCP auth scopes database tools row security"
+      ],
+      "queryLanes": [
+        {
+          "laneId": "reddit-supabase-mcp-auth-reddit-general",
+          "sourceKey": "reddit",
+          "operation": "search",
+          "query": "Supabase MCP auth scopes",
+          "maxItems": 20
+        },
+        {
+          "laneId": "reddit-supabase-mcp-auth-reddit-community-top",
+          "sourceKey": "reddit",
+          "operation": "listing",
+          "query": "Supabase:top:week",
+          "maxItems": 20
+        }
+      ],
+      "candidates": [
+        {
+          "candidateId": "reddit-supabase-mcp-auth-general",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_reddit_supabase_mcp_auth_general",
+          "canonicalUrl": "https://www.reddit.com/r/Supabase/comments/reddit-supabase-mcp-auth-general",
+          "title": "Supabase MCP auth scopes production notes",
+          "body": "Supabase MCP users discuss Supabase MCP auth scopes, auth scopes and database tools with concrete rollout details.",
+          "publishedAt": "2026-07-04T07:00:00.000Z",
+          "snapshotRank": 1,
+          "metadata": {
+            "score": 84,
+            "numComments": 24,
+            "upvoteRatio": 0.88
+          }
+        },
+        {
+          "candidateId": "reddit-supabase-mcp-auth-listing-terse",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_reddit_supabase_mcp_auth_listing_terse",
+          "canonicalUrl": "https://www.reddit.com/r/Supabase/comments/canary_hotfix_06",
+          "title": "Hotfix landed after a noisy incident",
+          "body": "Maintainers share mitigation logs, rollout order and a workaround in the community thread.",
+          "publishedAt": "2026-07-04T06:00:00.000Z",
+          "snapshotRank": 7,
+          "metadata": {
+            "score": 31,
+            "numComments": 9,
+            "upvoteRatio": 0.88
+          }
+        },
+        {
+          "candidateId": "reddit-supabase-mcp-auth-keyword",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_reddit_supabase_mcp_auth_keyword",
+          "canonicalUrl": "https://www.reddit.com/r/Supabase/comments/reddit-supabase-mcp-auth-keyword",
+          "title": "auth scopes checklist for Supabase MCP",
+          "body": "Community checklist covers auth scopes, database tools, alerts and safe fallback behavior.",
+          "publishedAt": "2026-07-04T05:00:00.000Z",
+          "snapshotRank": 3,
+          "metadata": {
+            "score": 49,
+            "numComments": 14,
+            "upvoteRatio": 0.88
+          }
+        },
+        {
+          "candidateId": "reddit-supabase-mcp-auth-community",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_reddit_supabase_mcp_auth_community",
+          "canonicalUrl": "https://www.reddit.com/r/webdev/comments/reddit-supabase-mcp-auth-community",
+          "title": "Supabase MCP operator thread",
+          "body": "Operators compare Supabase MCP, Supabase MCP auth scopes tradeoffs and release guardrails.",
+          "publishedAt": "2026-07-04T02:00:00.000Z",
+          "snapshotRank": 4,
+          "metadata": {
+            "score": 67,
+            "numComments": 19,
+            "upvoteRatio": 0.88
+          }
+        },
+        {
+          "candidateId": "reddit-supabase-mcp-auth-checklist",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_reddit_supabase_mcp_auth_checklist",
+          "canonicalUrl": "https://www.reddit.com/r/Supabase/comments/reddit-supabase-mcp-auth-checklist",
+          "title": "Supabase MCP auth scopes runbook for teams",
+          "body": "Step-by-step runbook for Supabase MCP auth scopes, auth scopes and regression triage.",
+          "publishedAt": "2026-07-04T00:00:00.000Z",
+          "snapshotRank": 5,
+          "metadata": {
+            "score": 38,
+            "numComments": 10,
+            "upvoteRatio": 0.88
+          }
+        },
+        {
+          "candidateId": "reddit-supabase-mcp-auth-unrelated",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_reddit_supabase_mcp_auth_unrelated",
+          "canonicalUrl": "https://www.reddit.com/r/technology/comments/reddit-supabase-mcp-auth-unrelated",
+          "title": "General AI pricing thread",
+          "body": "Broad consumer pricing debate with no operational signal for the monitored topic.",
+          "publishedAt": "2026-07-04T08:00:00.000Z",
+          "snapshotRank": 2,
+          "metadata": {
+            "score": 800,
+            "numComments": 120,
+            "upvoteRatio": 0.88
+          }
+        }
+      ],
+      "labels": [
+        {
+          "candidateId": "reddit-supabase-mcp-auth-general",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.94,
+          "mustHave": true,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "reddit-supabase-mcp-auth-listing-terse",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.9,
+          "mustHave": true,
+          "communitySignal": true,
+          "notes": "Community listing lane should catch this terse but important item."
+        },
+        {
+          "candidateId": "reddit-supabase-mcp-auth-keyword",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.88,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "reddit-supabase-mcp-auth-community",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.86,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "reddit-supabase-mcp-auth-checklist",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.84,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "reddit-supabase-mcp-auth-unrelated",
+          "relevance": 0,
+          "usefulness": 0,
+          "authority": 0,
+          "novelty": 0,
+          "confidence": 0.96,
+          "spam": true
+        }
+      ]
+    },
+    {
+      "caseId": "reddit-nextjs-ai-sdk-streaming",
+      "topic": "Next.js AI SDK streaming agents",
+      "sourceKeys": [
+        "reddit"
+      ],
+      "queryPlannerIntent": {
+        "topic": "Next.js AI SDK streaming agents",
+        "sourceKeys": [
+          "reddit"
+        ],
+        "products": [
+          "Next.js AI SDK"
+        ],
+        "keywords": [
+          "streaming agents",
+          "tool calls",
+          "edge runtime"
+        ],
+        "communities": [
+          {
+            "name": "nextjs",
+            "sourceKey": "reddit",
+            "listings": [
+              "top",
+              "hot",
+              "new"
+            ]
+          }
+        ],
+        "maxLanesPerSource": 8,
+        "maxItemsPerLane": 20,
+        "includeEnrichment": true
+      },
+      "rankingMode": "relevance",
+      "rankingQueries": [
+        "Next.js AI SDK streaming agents",
+        "Next.js AI SDK streaming agents tool calls edge runtime"
+      ],
+      "queryLanes": [
+        {
+          "laneId": "reddit-nextjs-ai-sdk-streaming-reddit-general",
+          "sourceKey": "reddit",
+          "operation": "search",
+          "query": "Next.js AI SDK streaming agents",
+          "maxItems": 20
+        },
+        {
+          "laneId": "reddit-nextjs-ai-sdk-streaming-reddit-community-top",
+          "sourceKey": "reddit",
+          "operation": "listing",
+          "query": "nextjs:top:week",
+          "maxItems": 20
+        }
+      ],
+      "candidates": [
+        {
+          "candidateId": "reddit-nextjs-ai-sdk-streaming-general",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_reddit_nextjs_ai_sdk_streaming_general",
+          "canonicalUrl": "https://www.reddit.com/r/nextjs/comments/reddit-nextjs-ai-sdk-streaming-general",
+          "title": "Next.js AI SDK streaming agents production notes",
+          "body": "Next.js AI SDK users discuss Next.js AI SDK streaming agents, streaming agents and tool calls with concrete rollout details.",
+          "publishedAt": "2026-07-04T07:00:00.000Z",
+          "snapshotRank": 1,
+          "metadata": {
+            "score": 84,
+            "numComments": 24,
+            "upvoteRatio": 0.88
+          }
+        },
+        {
+          "candidateId": "reddit-nextjs-ai-sdk-streaming-listing-terse",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_reddit_nextjs_ai_sdk_streaming_listing_terse",
+          "canonicalUrl": "https://www.reddit.com/r/nextjs/comments/canary_hotfix_07",
+          "title": "Hotfix landed after a noisy incident",
+          "body": "Maintainers share mitigation logs, rollout order and a workaround in the community thread.",
+          "publishedAt": "2026-07-04T06:00:00.000Z",
+          "snapshotRank": 7,
+          "metadata": {
+            "score": 31,
+            "numComments": 9,
+            "upvoteRatio": 0.88
+          }
+        },
+        {
+          "candidateId": "reddit-nextjs-ai-sdk-streaming-keyword",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_reddit_nextjs_ai_sdk_streaming_keyword",
+          "canonicalUrl": "https://www.reddit.com/r/nextjs/comments/reddit-nextjs-ai-sdk-streaming-keyword",
+          "title": "streaming agents checklist for Next.js AI SDK",
+          "body": "Community checklist covers streaming agents, tool calls, alerts and safe fallback behavior.",
+          "publishedAt": "2026-07-04T05:00:00.000Z",
+          "snapshotRank": 3,
+          "metadata": {
+            "score": 49,
+            "numComments": 14,
+            "upvoteRatio": 0.88
+          }
+        },
+        {
+          "candidateId": "reddit-nextjs-ai-sdk-streaming-community",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_reddit_nextjs_ai_sdk_streaming_community",
+          "canonicalUrl": "https://www.reddit.com/r/webdev/comments/reddit-nextjs-ai-sdk-streaming-community",
+          "title": "Next.js AI SDK operator thread",
+          "body": "Operators compare Next.js AI SDK, Next.js AI SDK streaming agents tradeoffs and release guardrails.",
+          "publishedAt": "2026-07-04T02:00:00.000Z",
+          "snapshotRank": 4,
+          "metadata": {
+            "score": 67,
+            "numComments": 19,
+            "upvoteRatio": 0.88
+          }
+        },
+        {
+          "candidateId": "reddit-nextjs-ai-sdk-streaming-checklist",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_reddit_nextjs_ai_sdk_streaming_checklist",
+          "canonicalUrl": "https://www.reddit.com/r/nextjs/comments/reddit-nextjs-ai-sdk-streaming-checklist",
+          "title": "Next.js AI SDK streaming agents runbook for teams",
+          "body": "Step-by-step runbook for Next.js AI SDK streaming agents, streaming agents and regression triage.",
+          "publishedAt": "2026-07-04T00:00:00.000Z",
+          "snapshotRank": 5,
+          "metadata": {
+            "score": 38,
+            "numComments": 10,
+            "upvoteRatio": 0.88
+          }
+        },
+        {
+          "candidateId": "reddit-nextjs-ai-sdk-streaming-unrelated",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_reddit_nextjs_ai_sdk_streaming_unrelated",
+          "canonicalUrl": "https://www.reddit.com/r/technology/comments/reddit-nextjs-ai-sdk-streaming-unrelated",
+          "title": "General AI pricing thread",
+          "body": "Broad consumer pricing debate with no operational signal for the monitored topic.",
+          "publishedAt": "2026-07-04T08:00:00.000Z",
+          "snapshotRank": 2,
+          "metadata": {
+            "score": 800,
+            "numComments": 120,
+            "upvoteRatio": 0.88
+          }
+        }
+      ],
+      "labels": [
+        {
+          "candidateId": "reddit-nextjs-ai-sdk-streaming-general",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.94,
+          "mustHave": true,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "reddit-nextjs-ai-sdk-streaming-listing-terse",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.9,
+          "mustHave": true,
+          "communitySignal": true,
+          "notes": "Community listing lane should catch this terse but important item."
+        },
+        {
+          "candidateId": "reddit-nextjs-ai-sdk-streaming-keyword",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.88,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "reddit-nextjs-ai-sdk-streaming-community",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.86,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "reddit-nextjs-ai-sdk-streaming-checklist",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.84,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "reddit-nextjs-ai-sdk-streaming-unrelated",
+          "relevance": 0,
+          "usefulness": 0,
+          "authority": 0,
+          "novelty": 0,
+          "confidence": 0.96,
+          "spam": true
+        }
+      ]
+    },
+    {
+      "caseId": "reddit-docker-mcp-desktop-permissions",
+      "topic": "Docker MCP Desktop permissions",
+      "sourceKeys": [
+        "reddit"
+      ],
+      "queryPlannerIntent": {
+        "topic": "Docker MCP Desktop permissions",
+        "sourceKeys": [
+          "reddit"
+        ],
+        "products": [
+          "Docker MCP"
+        ],
+        "keywords": [
+          "desktop permissions",
+          "container tools",
+          "sandbox policy"
+        ],
+        "communities": [
+          {
+            "name": "docker",
+            "sourceKey": "reddit",
+            "listings": [
+              "top",
+              "hot",
+              "new"
+            ]
+          }
+        ],
+        "maxLanesPerSource": 8,
+        "maxItemsPerLane": 20,
+        "includeEnrichment": true
+      },
+      "rankingMode": "relevance",
+      "rankingQueries": [
+        "Docker MCP Desktop permissions",
+        "Docker MCP desktop permissions container tools sandbox policy"
+      ],
+      "queryLanes": [
+        {
+          "laneId": "reddit-docker-mcp-desktop-permissions-reddit-general",
+          "sourceKey": "reddit",
+          "operation": "search",
+          "query": "Docker MCP Desktop permissions",
+          "maxItems": 20
+        },
+        {
+          "laneId": "reddit-docker-mcp-desktop-permissions-reddit-community-top",
+          "sourceKey": "reddit",
+          "operation": "listing",
+          "query": "docker:top:week",
+          "maxItems": 20
+        }
+      ],
+      "candidates": [
+        {
+          "candidateId": "reddit-docker-mcp-desktop-permissions-general",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_reddit_docker_mcp_desktop_permissions_general",
+          "canonicalUrl": "https://www.reddit.com/r/docker/comments/reddit-docker-mcp-desktop-permissions-general",
+          "title": "Docker MCP Desktop permissions production notes",
+          "body": "Docker MCP users discuss Docker MCP Desktop permissions, desktop permissions and container tools with concrete rollout details.",
+          "publishedAt": "2026-07-04T07:00:00.000Z",
+          "snapshotRank": 1,
+          "metadata": {
+            "score": 84,
+            "numComments": 24,
+            "upvoteRatio": 0.88
+          }
+        },
+        {
+          "candidateId": "reddit-docker-mcp-desktop-permissions-listing-terse",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_reddit_docker_mcp_desktop_permissions_listing_terse",
+          "canonicalUrl": "https://www.reddit.com/r/docker/comments/canary_hotfix_08",
+          "title": "Hotfix landed after a noisy incident",
+          "body": "Maintainers share mitigation logs, rollout order and a workaround in the community thread.",
+          "publishedAt": "2026-07-04T06:00:00.000Z",
+          "snapshotRank": 7,
+          "metadata": {
+            "score": 31,
+            "numComments": 9,
+            "upvoteRatio": 0.88
+          }
+        },
+        {
+          "candidateId": "reddit-docker-mcp-desktop-permissions-keyword",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_reddit_docker_mcp_desktop_permissions_keyword",
+          "canonicalUrl": "https://www.reddit.com/r/docker/comments/reddit-docker-mcp-desktop-permissions-keyword",
+          "title": "desktop permissions checklist for Docker MCP",
+          "body": "Community checklist covers desktop permissions, container tools, alerts and safe fallback behavior.",
+          "publishedAt": "2026-07-04T05:00:00.000Z",
+          "snapshotRank": 3,
+          "metadata": {
+            "score": 49,
+            "numComments": 14,
+            "upvoteRatio": 0.88
+          }
+        },
+        {
+          "candidateId": "reddit-docker-mcp-desktop-permissions-community",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_reddit_docker_mcp_desktop_permissions_community",
+          "canonicalUrl": "https://www.reddit.com/r/devops/comments/reddit-docker-mcp-desktop-permissions-community",
+          "title": "Docker MCP operator thread",
+          "body": "Operators compare Docker MCP, Docker MCP Desktop permissions tradeoffs and release guardrails.",
+          "publishedAt": "2026-07-04T02:00:00.000Z",
+          "snapshotRank": 4,
+          "metadata": {
+            "score": 67,
+            "numComments": 19,
+            "upvoteRatio": 0.88
+          }
+        },
+        {
+          "candidateId": "reddit-docker-mcp-desktop-permissions-checklist",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_reddit_docker_mcp_desktop_permissions_checklist",
+          "canonicalUrl": "https://www.reddit.com/r/docker/comments/reddit-docker-mcp-desktop-permissions-checklist",
+          "title": "Docker MCP Desktop permissions runbook for teams",
+          "body": "Step-by-step runbook for Docker MCP Desktop permissions, desktop permissions and regression triage.",
+          "publishedAt": "2026-07-04T00:00:00.000Z",
+          "snapshotRank": 5,
+          "metadata": {
+            "score": 38,
+            "numComments": 10,
+            "upvoteRatio": 0.88
+          }
+        },
+        {
+          "candidateId": "reddit-docker-mcp-desktop-permissions-unrelated",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_reddit_docker_mcp_desktop_permissions_unrelated",
+          "canonicalUrl": "https://www.reddit.com/r/technology/comments/reddit-docker-mcp-desktop-permissions-unrelated",
+          "title": "General AI pricing thread",
+          "body": "Broad consumer pricing debate with no operational signal for the monitored topic.",
+          "publishedAt": "2026-07-04T08:00:00.000Z",
+          "snapshotRank": 2,
+          "metadata": {
+            "score": 800,
+            "numComments": 120,
+            "upvoteRatio": 0.88
+          }
+        }
+      ],
+      "labels": [
+        {
+          "candidateId": "reddit-docker-mcp-desktop-permissions-general",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.94,
+          "mustHave": true,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "reddit-docker-mcp-desktop-permissions-listing-terse",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.9,
+          "mustHave": true,
+          "communitySignal": true,
+          "notes": "Community listing lane should catch this terse but important item."
+        },
+        {
+          "candidateId": "reddit-docker-mcp-desktop-permissions-keyword",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.88,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "reddit-docker-mcp-desktop-permissions-community",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.86,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "reddit-docker-mcp-desktop-permissions-checklist",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.84,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "reddit-docker-mcp-desktop-permissions-unrelated",
+          "relevance": 0,
+          "usefulness": 0,
+          "authority": 0,
+          "novelty": 0,
+          "confidence": 0.96,
+          "spam": true
+        }
+      ]
+    },
+    {
+      "caseId": "x-anthropic-claude-code-permissions",
+      "topic": "Claude Code tool permissions update",
+      "sourceKeys": [
+        "x-twitter"
+      ],
+      "queryPlannerIntent": {
+        "topic": "Claude Code tool permissions update",
+        "sourceKeys": [
+          "x-twitter"
+        ],
+        "products": [
+          "Claude Code"
+        ],
+        "keywords": [
+          "tool permissions",
+          "sandboxing",
+          "enterprise rollout"
+        ],
+        "handles": [
+          {
+            "handle": "AnthropicAI",
+            "sourceKey": "x-twitter",
+            "includePosts": true,
+            "includeMentions": true
+          }
+        ],
+        "maxLanesPerSource": 8,
+        "maxItemsPerLane": 20,
+        "includeEnrichment": true
+      },
+      "rankingMode": "relevance",
+      "rankingQueries": [
+        "Claude Code tool permissions update",
+        "Claude Code tool permissions sandboxing enterprise rollout",
+        "from:AnthropicAI",
+        "@AnthropicAI"
+      ],
+      "queryLanes": [
+        {
+          "laneId": "x-anthropic-claude-code-permissions-x-general",
+          "sourceKey": "x-twitter",
+          "operation": "search",
+          "query": "Claude Code tool permissions update",
+          "maxItems": 20
+        },
+        {
+          "laneId": "x-anthropic-claude-code-permissions-x-from",
+          "sourceKey": "x-twitter",
+          "operation": "account_feed",
+          "query": "from:AnthropicAI",
+          "maxItems": 10
+        },
+        {
+          "laneId": "x-anthropic-claude-code-permissions-x-mention",
+          "sourceKey": "x-twitter",
+          "operation": "mention_search",
+          "query": "@AnthropicAI",
+          "maxItems": 10
+        }
+      ],
+      "candidates": [
+        {
+          "candidateId": "x-anthropic-claude-code-permissions-general",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:xanthropicclaudecodepermissionsgeneral",
+          "canonicalUrl": "https://x.com/devtoolsdaily/status/xanthropicclaudecodepermissionsgeneral",
+          "title": "Claude Code tool permissions update field report",
+          "body": "Claude Code teams discuss Claude Code tool permissions update, tool permissions, sandboxing and rollout safety.",
+          "authorHandle": "devtoolsdaily",
+          "publishedAt": "2026-07-04T07:00:00.000Z",
+          "snapshotRank": 1,
+          "metadata": {
+            "likes": 80,
+            "replies": 16,
+            "retweets": 20,
+            "quotes": 8,
+            "authorHandle": "devtoolsdaily"
+          }
+        },
+        {
+          "candidateId": "x-anthropic-claude-code-permissions-official-terse",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:xanthropicclaudecodepermissionsofficialterse",
+          "canonicalUrl": "https://x.com/AnthropicAI/status/900009",
+          "title": "Patch is rolling out now",
+          "body": "Official rollout note links mitigation details, documentation and the follow-up issue.",
+          "authorHandle": "AnthropicAI",
+          "publishedAt": "2026-07-04T08:00:00.000Z",
+          "snapshotRank": 8,
+          "metadata": {
+            "likes": 160,
+            "replies": 19,
+            "retweets": 45,
+            "quotes": 9,
+            "authorHandle": "AnthropicAI"
+          }
+        },
+        {
+          "candidateId": "x-anthropic-claude-code-permissions-mention",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:xanthropicclaudecodepermissionsmention",
+          "canonicalUrl": "https://x.com/devtoolsdaily/status/xanthropicclaudecodepermissionsmention",
+          "title": "Claude Code user report",
+          "body": "Teams mention @AnthropicAI while tracking tool permissions, sandboxing and production impact.",
+          "authorHandle": "devtoolsdaily",
+          "publishedAt": "2026-07-04T05:00:00.000Z",
+          "snapshotRank": 4,
+          "metadata": {
+            "likes": 35,
+            "replies": 9,
+            "retweets": 6,
+            "quotes": 4,
+            "authorHandle": "devtoolsdaily"
+          }
+        },
+        {
+          "candidateId": "x-anthropic-claude-code-permissions-keyword",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:xanthropicclaudecodepermissionskeyword",
+          "canonicalUrl": "https://x.com/devtoolsdaily/status/xanthropicclaudecodepermissionskeyword",
+          "title": "tool permissions mitigation for Claude Code",
+          "body": "Thread collects tool permissions, sandboxing, fallback steps and dashboard checks.",
+          "authorHandle": "devtoolsdaily",
+          "publishedAt": "2026-07-04T04:00:00.000Z",
+          "snapshotRank": 5,
+          "metadata": {
+            "likes": 44,
+            "replies": 6,
+            "retweets": 8,
+            "quotes": 3,
+            "authorHandle": "devtoolsdaily"
+          }
+        },
+        {
+          "candidateId": "x-anthropic-claude-code-permissions-operator",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:xanthropicclaudecodepermissionsoperator",
+          "canonicalUrl": "https://x.com/platformops/status/xanthropicclaudecodepermissionsoperator",
+          "title": "Claude Code tool permissions update operator checklist",
+          "body": "Operators compare Claude Code, Claude Code tool permissions update and safe rollout controls.",
+          "authorHandle": "platformops",
+          "publishedAt": "2026-07-04T02:00:00.000Z",
+          "snapshotRank": 6,
+          "metadata": {
+            "likes": 51,
+            "replies": 11,
+            "retweets": 10,
+            "quotes": 5,
+            "authorHandle": "platformops"
+          }
+        },
+        {
+          "candidateId": "x-anthropic-claude-code-permissions-unrelated",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:xanthropicclaudecodepermissionsunrelated",
+          "canonicalUrl": "https://x.com/aigossip/status/xanthropicclaudecodepermissionsunrelated",
+          "title": "Viral AI celebrity rumor",
+          "body": "Engaging thread unrelated to the monitored source, release or product issue.",
+          "authorHandle": "aigossip",
+          "publishedAt": "2026-07-04T08:00:00.000Z",
+          "snapshotRank": 2,
+          "metadata": {
+            "likes": 9000,
+            "replies": 600,
+            "retweets": 1200,
+            "quotes": 300,
+            "authorHandle": "aigossip"
+          }
+        }
+      ],
+      "labels": [
+        {
+          "candidateId": "x-anthropic-claude-code-permissions-general",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.9,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "x-anthropic-claude-code-permissions-official-terse",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 2,
+          "novelty": 2,
+          "confidence": 0.95,
+          "mustHave": true,
+          "officialSignal": true,
+          "notes": "Official handle lane should catch this terse post."
+        },
+        {
+          "candidateId": "x-anthropic-claude-code-permissions-mention",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.88,
+          "mustHave": true,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "x-anthropic-claude-code-permissions-keyword",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.86,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "x-anthropic-claude-code-permissions-operator",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.84,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "x-anthropic-claude-code-permissions-unrelated",
+          "relevance": 0,
+          "usefulness": 0,
+          "authority": 0,
+          "novelty": 0,
+          "confidence": 0.96,
+          "spam": true
+        }
+      ]
+    },
+    {
+      "caseId": "x-openai-responses-api-tools",
+      "topic": "OpenAI Responses API tool calling",
+      "sourceKeys": [
+        "x-twitter"
+      ],
+      "queryPlannerIntent": {
+        "topic": "OpenAI Responses API tool calling",
+        "sourceKeys": [
+          "x-twitter"
+        ],
+        "products": [
+          "Responses API"
+        ],
+        "keywords": [
+          "tool calling",
+          "structured outputs",
+          "agent runtime"
+        ],
+        "handles": [
+          {
+            "handle": "OpenAI",
+            "sourceKey": "x-twitter",
+            "includePosts": true,
+            "includeMentions": true
+          }
+        ],
+        "maxLanesPerSource": 8,
+        "maxItemsPerLane": 20,
+        "includeEnrichment": true
+      },
+      "rankingMode": "relevance",
+      "rankingQueries": [
+        "OpenAI Responses API tool calling",
+        "Responses API tool calling structured outputs agent runtime",
+        "from:OpenAI",
+        "@OpenAI"
+      ],
+      "queryLanes": [
+        {
+          "laneId": "x-openai-responses-api-tools-x-general",
+          "sourceKey": "x-twitter",
+          "operation": "search",
+          "query": "OpenAI Responses API tool calling",
+          "maxItems": 20
+        },
+        {
+          "laneId": "x-openai-responses-api-tools-x-from",
+          "sourceKey": "x-twitter",
+          "operation": "account_feed",
+          "query": "from:OpenAI",
+          "maxItems": 10
+        },
+        {
+          "laneId": "x-openai-responses-api-tools-x-mention",
+          "sourceKey": "x-twitter",
+          "operation": "mention_search",
+          "query": "@OpenAI",
+          "maxItems": 10
+        }
+      ],
+      "candidates": [
+        {
+          "candidateId": "x-openai-responses-api-tools-general",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:xopenairesponsesapitoolsgeneral",
+          "canonicalUrl": "https://x.com/devtoolsdaily/status/xopenairesponsesapitoolsgeneral",
+          "title": "OpenAI Responses API tool calling field report",
+          "body": "Responses API teams discuss OpenAI Responses API tool calling, tool calling, structured outputs and rollout safety.",
+          "authorHandle": "devtoolsdaily",
+          "publishedAt": "2026-07-04T07:00:00.000Z",
+          "snapshotRank": 1,
+          "metadata": {
+            "likes": 80,
+            "replies": 16,
+            "retweets": 20,
+            "quotes": 8,
+            "authorHandle": "devtoolsdaily"
+          }
+        },
+        {
+          "candidateId": "x-openai-responses-api-tools-official-terse",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:xopenairesponsesapitoolsofficialterse",
+          "canonicalUrl": "https://x.com/OpenAI/status/900010",
+          "title": "Patch is rolling out now",
+          "body": "Official rollout note links mitigation details, documentation and the follow-up issue.",
+          "authorHandle": "OpenAI",
+          "publishedAt": "2026-07-04T08:00:00.000Z",
+          "snapshotRank": 8,
+          "metadata": {
+            "likes": 160,
+            "replies": 19,
+            "retweets": 45,
+            "quotes": 9,
+            "authorHandle": "OpenAI"
+          }
+        },
+        {
+          "candidateId": "x-openai-responses-api-tools-mention",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:xopenairesponsesapitoolsmention",
+          "canonicalUrl": "https://x.com/devtoolsdaily/status/xopenairesponsesapitoolsmention",
+          "title": "Responses API user report",
+          "body": "Teams mention @OpenAI while tracking tool calling, structured outputs and production impact.",
+          "authorHandle": "devtoolsdaily",
+          "publishedAt": "2026-07-04T05:00:00.000Z",
+          "snapshotRank": 4,
+          "metadata": {
+            "likes": 35,
+            "replies": 9,
+            "retweets": 6,
+            "quotes": 4,
+            "authorHandle": "devtoolsdaily"
+          }
+        },
+        {
+          "candidateId": "x-openai-responses-api-tools-keyword",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:xopenairesponsesapitoolskeyword",
+          "canonicalUrl": "https://x.com/devtoolsdaily/status/xopenairesponsesapitoolskeyword",
+          "title": "tool calling mitigation for Responses API",
+          "body": "Thread collects tool calling, structured outputs, fallback steps and dashboard checks.",
+          "authorHandle": "devtoolsdaily",
+          "publishedAt": "2026-07-04T04:00:00.000Z",
+          "snapshotRank": 5,
+          "metadata": {
+            "likes": 44,
+            "replies": 6,
+            "retweets": 8,
+            "quotes": 3,
+            "authorHandle": "devtoolsdaily"
+          }
+        },
+        {
+          "candidateId": "x-openai-responses-api-tools-operator",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:xopenairesponsesapitoolsoperator",
+          "canonicalUrl": "https://x.com/platformops/status/xopenairesponsesapitoolsoperator",
+          "title": "OpenAI Responses API tool calling operator checklist",
+          "body": "Operators compare Responses API, OpenAI Responses API tool calling and safe rollout controls.",
+          "authorHandle": "platformops",
+          "publishedAt": "2026-07-04T02:00:00.000Z",
+          "snapshotRank": 6,
+          "metadata": {
+            "likes": 51,
+            "replies": 11,
+            "retweets": 10,
+            "quotes": 5,
+            "authorHandle": "platformops"
+          }
+        },
+        {
+          "candidateId": "x-openai-responses-api-tools-unrelated",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:xopenairesponsesapitoolsunrelated",
+          "canonicalUrl": "https://x.com/aigossip/status/xopenairesponsesapitoolsunrelated",
+          "title": "Viral AI celebrity rumor",
+          "body": "Engaging thread unrelated to the monitored source, release or product issue.",
+          "authorHandle": "aigossip",
+          "publishedAt": "2026-07-04T08:00:00.000Z",
+          "snapshotRank": 2,
+          "metadata": {
+            "likes": 9000,
+            "replies": 600,
+            "retweets": 1200,
+            "quotes": 300,
+            "authorHandle": "aigossip"
+          }
+        }
+      ],
+      "labels": [
+        {
+          "candidateId": "x-openai-responses-api-tools-general",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.9,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "x-openai-responses-api-tools-official-terse",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 2,
+          "novelty": 2,
+          "confidence": 0.95,
+          "mustHave": true,
+          "officialSignal": true,
+          "notes": "Official handle lane should catch this terse post."
+        },
+        {
+          "candidateId": "x-openai-responses-api-tools-mention",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.88,
+          "mustHave": true,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "x-openai-responses-api-tools-keyword",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.86,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "x-openai-responses-api-tools-operator",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.84,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "x-openai-responses-api-tools-unrelated",
+          "relevance": 0,
+          "usefulness": 0,
+          "authority": 0,
+          "novelty": 0,
+          "confidence": 0.96,
+          "spam": true
+        }
+      ]
+    },
+    {
+      "caseId": "x-cursor-agent-terminal-mode",
+      "topic": "Cursor agent terminal mode rollout",
+      "sourceKeys": [
+        "x-twitter"
+      ],
+      "queryPlannerIntent": {
+        "topic": "Cursor agent terminal mode rollout",
+        "sourceKeys": [
+          "x-twitter"
+        ],
+        "products": [
+          "Cursor"
+        ],
+        "keywords": [
+          "terminal mode",
+          "agent tasks",
+          "approval flow"
+        ],
+        "handles": [
+          {
+            "handle": "cursor_ai",
+            "sourceKey": "x-twitter",
+            "includePosts": true,
+            "includeMentions": true
+          }
+        ],
+        "maxLanesPerSource": 8,
+        "maxItemsPerLane": 20,
+        "includeEnrichment": true
+      },
+      "rankingMode": "relevance",
+      "rankingQueries": [
+        "Cursor agent terminal mode rollout",
+        "Cursor terminal mode agent tasks approval flow",
+        "from:cursor_ai",
+        "@cursor_ai"
+      ],
+      "queryLanes": [
+        {
+          "laneId": "x-cursor-agent-terminal-mode-x-general",
+          "sourceKey": "x-twitter",
+          "operation": "search",
+          "query": "Cursor agent terminal mode rollout",
+          "maxItems": 20
+        },
+        {
+          "laneId": "x-cursor-agent-terminal-mode-x-from",
+          "sourceKey": "x-twitter",
+          "operation": "account_feed",
+          "query": "from:cursor_ai",
+          "maxItems": 10
+        },
+        {
+          "laneId": "x-cursor-agent-terminal-mode-x-mention",
+          "sourceKey": "x-twitter",
+          "operation": "mention_search",
+          "query": "@cursor_ai",
+          "maxItems": 10
+        }
+      ],
+      "candidates": [
+        {
+          "candidateId": "x-cursor-agent-terminal-mode-general",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:xcursoragentterminalmodegeneral",
+          "canonicalUrl": "https://x.com/devtoolsdaily/status/xcursoragentterminalmodegeneral",
+          "title": "Cursor agent terminal mode rollout field report",
+          "body": "Cursor teams discuss Cursor agent terminal mode rollout, terminal mode, agent tasks and rollout safety.",
+          "authorHandle": "devtoolsdaily",
+          "publishedAt": "2026-07-04T07:00:00.000Z",
+          "snapshotRank": 1,
+          "metadata": {
+            "likes": 80,
+            "replies": 16,
+            "retweets": 20,
+            "quotes": 8,
+            "authorHandle": "devtoolsdaily"
+          }
+        },
+        {
+          "candidateId": "x-cursor-agent-terminal-mode-official-terse",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:xcursoragentterminalmodeofficialterse",
+          "canonicalUrl": "https://x.com/cursor_ai/status/900011",
+          "title": "Patch is rolling out now",
+          "body": "Official rollout note links mitigation details, documentation and the follow-up issue.",
+          "authorHandle": "cursor_ai",
+          "publishedAt": "2026-07-04T08:00:00.000Z",
+          "snapshotRank": 8,
+          "metadata": {
+            "likes": 160,
+            "replies": 19,
+            "retweets": 45,
+            "quotes": 9,
+            "authorHandle": "cursor_ai"
+          }
+        },
+        {
+          "candidateId": "x-cursor-agent-terminal-mode-mention",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:xcursoragentterminalmodemention",
+          "canonicalUrl": "https://x.com/devtoolsdaily/status/xcursoragentterminalmodemention",
+          "title": "Cursor user report",
+          "body": "Teams mention @cursor_ai while tracking terminal mode, agent tasks and production impact.",
+          "authorHandle": "devtoolsdaily",
+          "publishedAt": "2026-07-04T05:00:00.000Z",
+          "snapshotRank": 4,
+          "metadata": {
+            "likes": 35,
+            "replies": 9,
+            "retweets": 6,
+            "quotes": 4,
+            "authorHandle": "devtoolsdaily"
+          }
+        },
+        {
+          "candidateId": "x-cursor-agent-terminal-mode-keyword",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:xcursoragentterminalmodekeyword",
+          "canonicalUrl": "https://x.com/devtoolsdaily/status/xcursoragentterminalmodekeyword",
+          "title": "terminal mode mitigation for Cursor",
+          "body": "Thread collects terminal mode, agent tasks, fallback steps and dashboard checks.",
+          "authorHandle": "devtoolsdaily",
+          "publishedAt": "2026-07-04T04:00:00.000Z",
+          "snapshotRank": 5,
+          "metadata": {
+            "likes": 44,
+            "replies": 6,
+            "retweets": 8,
+            "quotes": 3,
+            "authorHandle": "devtoolsdaily"
+          }
+        },
+        {
+          "candidateId": "x-cursor-agent-terminal-mode-operator",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:xcursoragentterminalmodeoperator",
+          "canonicalUrl": "https://x.com/platformops/status/xcursoragentterminalmodeoperator",
+          "title": "Cursor agent terminal mode rollout operator checklist",
+          "body": "Operators compare Cursor, Cursor agent terminal mode rollout and safe rollout controls.",
+          "authorHandle": "platformops",
+          "publishedAt": "2026-07-04T02:00:00.000Z",
+          "snapshotRank": 6,
+          "metadata": {
+            "likes": 51,
+            "replies": 11,
+            "retweets": 10,
+            "quotes": 5,
+            "authorHandle": "platformops"
+          }
+        },
+        {
+          "candidateId": "x-cursor-agent-terminal-mode-unrelated",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:xcursoragentterminalmodeunrelated",
+          "canonicalUrl": "https://x.com/aigossip/status/xcursoragentterminalmodeunrelated",
+          "title": "Viral AI celebrity rumor",
+          "body": "Engaging thread unrelated to the monitored source, release or product issue.",
+          "authorHandle": "aigossip",
+          "publishedAt": "2026-07-04T08:00:00.000Z",
+          "snapshotRank": 2,
+          "metadata": {
+            "likes": 9000,
+            "replies": 600,
+            "retweets": 1200,
+            "quotes": 300,
+            "authorHandle": "aigossip"
+          }
+        }
+      ],
+      "labels": [
+        {
+          "candidateId": "x-cursor-agent-terminal-mode-general",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.9,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "x-cursor-agent-terminal-mode-official-terse",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 2,
+          "novelty": 2,
+          "confidence": 0.95,
+          "mustHave": true,
+          "officialSignal": true,
+          "notes": "Official handle lane should catch this terse post."
+        },
+        {
+          "candidateId": "x-cursor-agent-terminal-mode-mention",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.88,
+          "mustHave": true,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "x-cursor-agent-terminal-mode-keyword",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.86,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "x-cursor-agent-terminal-mode-operator",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.84,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "x-cursor-agent-terminal-mode-unrelated",
+          "relevance": 0,
+          "usefulness": 0,
+          "authority": 0,
+          "novelty": 0,
+          "confidence": 0.96,
+          "spam": true
+        }
+      ]
+    },
+    {
+      "caseId": "x-windsurf-enterprise-agent-update",
+      "topic": "Windsurf enterprise agent update",
+      "sourceKeys": [
+        "x-twitter"
+      ],
+      "queryPlannerIntent": {
+        "topic": "Windsurf enterprise agent update",
+        "sourceKeys": [
+          "x-twitter"
+        ],
+        "products": [
+          "Windsurf"
+        ],
+        "keywords": [
+          "enterprise agent",
+          "codebase context",
+          "policy controls"
+        ],
+        "handles": [
+          {
+            "handle": "windsurf_ai",
+            "sourceKey": "x-twitter",
+            "includePosts": true,
+            "includeMentions": true
+          }
+        ],
+        "maxLanesPerSource": 8,
+        "maxItemsPerLane": 20,
+        "includeEnrichment": true
+      },
+      "rankingMode": "relevance",
+      "rankingQueries": [
+        "Windsurf enterprise agent update",
+        "Windsurf enterprise agent codebase context policy controls",
+        "from:windsurf_ai",
+        "@windsurf_ai"
+      ],
+      "queryLanes": [
+        {
+          "laneId": "x-windsurf-enterprise-agent-update-x-general",
+          "sourceKey": "x-twitter",
+          "operation": "search",
+          "query": "Windsurf enterprise agent update",
+          "maxItems": 20
+        },
+        {
+          "laneId": "x-windsurf-enterprise-agent-update-x-from",
+          "sourceKey": "x-twitter",
+          "operation": "account_feed",
+          "query": "from:windsurf_ai",
+          "maxItems": 10
+        },
+        {
+          "laneId": "x-windsurf-enterprise-agent-update-x-mention",
+          "sourceKey": "x-twitter",
+          "operation": "mention_search",
+          "query": "@windsurf_ai",
+          "maxItems": 10
+        }
+      ],
+      "candidates": [
+        {
+          "candidateId": "x-windsurf-enterprise-agent-update-general",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:xwindsurfenterpriseagentupdategeneral",
+          "canonicalUrl": "https://x.com/devtoolsdaily/status/xwindsurfenterpriseagentupdategeneral",
+          "title": "Windsurf enterprise agent update field report",
+          "body": "Windsurf teams discuss Windsurf enterprise agent update, enterprise agent, codebase context and rollout safety.",
+          "authorHandle": "devtoolsdaily",
+          "publishedAt": "2026-07-04T07:00:00.000Z",
+          "snapshotRank": 1,
+          "metadata": {
+            "likes": 80,
+            "replies": 16,
+            "retweets": 20,
+            "quotes": 8,
+            "authorHandle": "devtoolsdaily"
+          }
+        },
+        {
+          "candidateId": "x-windsurf-enterprise-agent-update-official-terse",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:xwindsurfenterpriseagentupdateofficialterse",
+          "canonicalUrl": "https://x.com/windsurf_ai/status/900012",
+          "title": "Patch is rolling out now",
+          "body": "Official rollout note links mitigation details, documentation and the follow-up issue.",
+          "authorHandle": "windsurf_ai",
+          "publishedAt": "2026-07-04T08:00:00.000Z",
+          "snapshotRank": 8,
+          "metadata": {
+            "likes": 160,
+            "replies": 19,
+            "retweets": 45,
+            "quotes": 9,
+            "authorHandle": "windsurf_ai"
+          }
+        },
+        {
+          "candidateId": "x-windsurf-enterprise-agent-update-mention",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:xwindsurfenterpriseagentupdatemention",
+          "canonicalUrl": "https://x.com/devtoolsdaily/status/xwindsurfenterpriseagentupdatemention",
+          "title": "Windsurf user report",
+          "body": "Teams mention @windsurf_ai while tracking enterprise agent, codebase context and production impact.",
+          "authorHandle": "devtoolsdaily",
+          "publishedAt": "2026-07-04T05:00:00.000Z",
+          "snapshotRank": 4,
+          "metadata": {
+            "likes": 35,
+            "replies": 9,
+            "retweets": 6,
+            "quotes": 4,
+            "authorHandle": "devtoolsdaily"
+          }
+        },
+        {
+          "candidateId": "x-windsurf-enterprise-agent-update-keyword",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:xwindsurfenterpriseagentupdatekeyword",
+          "canonicalUrl": "https://x.com/devtoolsdaily/status/xwindsurfenterpriseagentupdatekeyword",
+          "title": "enterprise agent mitigation for Windsurf",
+          "body": "Thread collects enterprise agent, codebase context, fallback steps and dashboard checks.",
+          "authorHandle": "devtoolsdaily",
+          "publishedAt": "2026-07-04T04:00:00.000Z",
+          "snapshotRank": 5,
+          "metadata": {
+            "likes": 44,
+            "replies": 6,
+            "retweets": 8,
+            "quotes": 3,
+            "authorHandle": "devtoolsdaily"
+          }
+        },
+        {
+          "candidateId": "x-windsurf-enterprise-agent-update-operator",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:xwindsurfenterpriseagentupdateoperator",
+          "canonicalUrl": "https://x.com/platformops/status/xwindsurfenterpriseagentupdateoperator",
+          "title": "Windsurf enterprise agent update operator checklist",
+          "body": "Operators compare Windsurf, Windsurf enterprise agent update and safe rollout controls.",
+          "authorHandle": "platformops",
+          "publishedAt": "2026-07-04T02:00:00.000Z",
+          "snapshotRank": 6,
+          "metadata": {
+            "likes": 51,
+            "replies": 11,
+            "retweets": 10,
+            "quotes": 5,
+            "authorHandle": "platformops"
+          }
+        },
+        {
+          "candidateId": "x-windsurf-enterprise-agent-update-unrelated",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:xwindsurfenterpriseagentupdateunrelated",
+          "canonicalUrl": "https://x.com/aigossip/status/xwindsurfenterpriseagentupdateunrelated",
+          "title": "Viral AI celebrity rumor",
+          "body": "Engaging thread unrelated to the monitored source, release or product issue.",
+          "authorHandle": "aigossip",
+          "publishedAt": "2026-07-04T08:00:00.000Z",
+          "snapshotRank": 2,
+          "metadata": {
+            "likes": 9000,
+            "replies": 600,
+            "retweets": 1200,
+            "quotes": 300,
+            "authorHandle": "aigossip"
+          }
+        }
+      ],
+      "labels": [
+        {
+          "candidateId": "x-windsurf-enterprise-agent-update-general",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.9,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "x-windsurf-enterprise-agent-update-official-terse",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 2,
+          "novelty": 2,
+          "confidence": 0.95,
+          "mustHave": true,
+          "officialSignal": true,
+          "notes": "Official handle lane should catch this terse post."
+        },
+        {
+          "candidateId": "x-windsurf-enterprise-agent-update-mention",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.88,
+          "mustHave": true,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "x-windsurf-enterprise-agent-update-keyword",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.86,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "x-windsurf-enterprise-agent-update-operator",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.84,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "x-windsurf-enterprise-agent-update-unrelated",
+          "relevance": 0,
+          "usefulness": 0,
+          "authority": 0,
+          "novelty": 0,
+          "confidence": 0.96,
+          "spam": true
+        }
+      ]
+    },
+    {
+      "caseId": "x-devin-background-agent-queue",
+      "topic": "Devin background agent queue",
+      "sourceKeys": [
+        "x-twitter"
+      ],
+      "queryPlannerIntent": {
+        "topic": "Devin background agent queue",
+        "sourceKeys": [
+          "x-twitter"
+        ],
+        "products": [
+          "Devin"
+        ],
+        "keywords": [
+          "background agent",
+          "queue latency",
+          "task handoff"
+        ],
+        "handles": [
+          {
+            "handle": "cognition_labs",
+            "sourceKey": "x-twitter",
+            "includePosts": true,
+            "includeMentions": true
+          }
+        ],
+        "maxLanesPerSource": 8,
+        "maxItemsPerLane": 20,
+        "includeEnrichment": true
+      },
+      "rankingMode": "relevance",
+      "rankingQueries": [
+        "Devin background agent queue",
+        "Devin background agent queue latency task handoff",
+        "from:cognition_labs",
+        "@cognition_labs"
+      ],
+      "queryLanes": [
+        {
+          "laneId": "x-devin-background-agent-queue-x-general",
+          "sourceKey": "x-twitter",
+          "operation": "search",
+          "query": "Devin background agent queue",
+          "maxItems": 20
+        },
+        {
+          "laneId": "x-devin-background-agent-queue-x-from",
+          "sourceKey": "x-twitter",
+          "operation": "account_feed",
+          "query": "from:cognition_labs",
+          "maxItems": 10
+        },
+        {
+          "laneId": "x-devin-background-agent-queue-x-mention",
+          "sourceKey": "x-twitter",
+          "operation": "mention_search",
+          "query": "@cognition_labs",
+          "maxItems": 10
+        }
+      ],
+      "candidates": [
+        {
+          "candidateId": "x-devin-background-agent-queue-general",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:xdevinbackgroundagentqueuegeneral",
+          "canonicalUrl": "https://x.com/devtoolsdaily/status/xdevinbackgroundagentqueuegeneral",
+          "title": "Devin background agent queue field report",
+          "body": "Devin teams discuss Devin background agent queue, background agent, queue latency and rollout safety.",
+          "authorHandle": "devtoolsdaily",
+          "publishedAt": "2026-07-04T07:00:00.000Z",
+          "snapshotRank": 1,
+          "metadata": {
+            "likes": 80,
+            "replies": 16,
+            "retweets": 20,
+            "quotes": 8,
+            "authorHandle": "devtoolsdaily"
+          }
+        },
+        {
+          "candidateId": "x-devin-background-agent-queue-official-terse",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:xdevinbackgroundagentqueueofficialterse",
+          "canonicalUrl": "https://x.com/cognition_labs/status/900013",
+          "title": "Patch is rolling out now",
+          "body": "Official rollout note links mitigation details, documentation and the follow-up issue.",
+          "authorHandle": "cognition_labs",
+          "publishedAt": "2026-07-04T08:00:00.000Z",
+          "snapshotRank": 8,
+          "metadata": {
+            "likes": 160,
+            "replies": 19,
+            "retweets": 45,
+            "quotes": 9,
+            "authorHandle": "cognition_labs"
+          }
+        },
+        {
+          "candidateId": "x-devin-background-agent-queue-mention",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:xdevinbackgroundagentqueuemention",
+          "canonicalUrl": "https://x.com/devtoolsdaily/status/xdevinbackgroundagentqueuemention",
+          "title": "Devin user report",
+          "body": "Teams mention @cognition_labs while tracking background agent, queue latency and production impact.",
+          "authorHandle": "devtoolsdaily",
+          "publishedAt": "2026-07-04T05:00:00.000Z",
+          "snapshotRank": 4,
+          "metadata": {
+            "likes": 35,
+            "replies": 9,
+            "retweets": 6,
+            "quotes": 4,
+            "authorHandle": "devtoolsdaily"
+          }
+        },
+        {
+          "candidateId": "x-devin-background-agent-queue-keyword",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:xdevinbackgroundagentqueuekeyword",
+          "canonicalUrl": "https://x.com/devtoolsdaily/status/xdevinbackgroundagentqueuekeyword",
+          "title": "background agent mitigation for Devin",
+          "body": "Thread collects background agent, queue latency, fallback steps and dashboard checks.",
+          "authorHandle": "devtoolsdaily",
+          "publishedAt": "2026-07-04T04:00:00.000Z",
+          "snapshotRank": 5,
+          "metadata": {
+            "likes": 44,
+            "replies": 6,
+            "retweets": 8,
+            "quotes": 3,
+            "authorHandle": "devtoolsdaily"
+          }
+        },
+        {
+          "candidateId": "x-devin-background-agent-queue-operator",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:xdevinbackgroundagentqueueoperator",
+          "canonicalUrl": "https://x.com/platformops/status/xdevinbackgroundagentqueueoperator",
+          "title": "Devin background agent queue operator checklist",
+          "body": "Operators compare Devin, Devin background agent queue and safe rollout controls.",
+          "authorHandle": "platformops",
+          "publishedAt": "2026-07-04T02:00:00.000Z",
+          "snapshotRank": 6,
+          "metadata": {
+            "likes": 51,
+            "replies": 11,
+            "retweets": 10,
+            "quotes": 5,
+            "authorHandle": "platformops"
+          }
+        },
+        {
+          "candidateId": "x-devin-background-agent-queue-unrelated",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:xdevinbackgroundagentqueueunrelated",
+          "canonicalUrl": "https://x.com/aigossip/status/xdevinbackgroundagentqueueunrelated",
+          "title": "Viral AI celebrity rumor",
+          "body": "Engaging thread unrelated to the monitored source, release or product issue.",
+          "authorHandle": "aigossip",
+          "publishedAt": "2026-07-04T08:00:00.000Z",
+          "snapshotRank": 2,
+          "metadata": {
+            "likes": 9000,
+            "replies": 600,
+            "retweets": 1200,
+            "quotes": 300,
+            "authorHandle": "aigossip"
+          }
+        }
+      ],
+      "labels": [
+        {
+          "candidateId": "x-devin-background-agent-queue-general",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.9,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "x-devin-background-agent-queue-official-terse",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 2,
+          "novelty": 2,
+          "confidence": 0.95,
+          "mustHave": true,
+          "officialSignal": true,
+          "notes": "Official handle lane should catch this terse post."
+        },
+        {
+          "candidateId": "x-devin-background-agent-queue-mention",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.88,
+          "mustHave": true,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "x-devin-background-agent-queue-keyword",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.86,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "x-devin-background-agent-queue-operator",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.84,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "x-devin-background-agent-queue-unrelated",
+          "relevance": 0,
+          "usefulness": 0,
+          "authority": 0,
+          "novelty": 0,
+          "confidence": 0.96,
+          "spam": true
+        }
+      ]
+    },
+    {
+      "caseId": "x-openrouter-tool-routing",
+      "topic": "OpenRouter tool routing reliability",
+      "sourceKeys": [
+        "x-twitter"
+      ],
+      "queryPlannerIntent": {
+        "topic": "OpenRouter tool routing reliability",
+        "sourceKeys": [
+          "x-twitter"
+        ],
+        "products": [
+          "OpenRouter"
+        ],
+        "keywords": [
+          "tool routing",
+          "model fallback",
+          "rate limits"
+        ],
+        "handles": [
+          {
+            "handle": "OpenRouterAI",
+            "sourceKey": "x-twitter",
+            "includePosts": true,
+            "includeMentions": true
+          }
+        ],
+        "maxLanesPerSource": 8,
+        "maxItemsPerLane": 20,
+        "includeEnrichment": true
+      },
+      "rankingMode": "relevance",
+      "rankingQueries": [
+        "OpenRouter tool routing reliability",
+        "OpenRouter tool routing model fallback rate limits",
+        "from:OpenRouterAI",
+        "@OpenRouterAI"
+      ],
+      "queryLanes": [
+        {
+          "laneId": "x-openrouter-tool-routing-x-general",
+          "sourceKey": "x-twitter",
+          "operation": "search",
+          "query": "OpenRouter tool routing reliability",
+          "maxItems": 20
+        },
+        {
+          "laneId": "x-openrouter-tool-routing-x-from",
+          "sourceKey": "x-twitter",
+          "operation": "account_feed",
+          "query": "from:OpenRouterAI",
+          "maxItems": 10
+        },
+        {
+          "laneId": "x-openrouter-tool-routing-x-mention",
+          "sourceKey": "x-twitter",
+          "operation": "mention_search",
+          "query": "@OpenRouterAI",
+          "maxItems": 10
+        }
+      ],
+      "candidates": [
+        {
+          "candidateId": "x-openrouter-tool-routing-general",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:xopenroutertoolroutinggeneral",
+          "canonicalUrl": "https://x.com/devtoolsdaily/status/xopenroutertoolroutinggeneral",
+          "title": "OpenRouter tool routing reliability field report",
+          "body": "OpenRouter teams discuss OpenRouter tool routing reliability, tool routing, model fallback and rollout safety.",
+          "authorHandle": "devtoolsdaily",
+          "publishedAt": "2026-07-04T07:00:00.000Z",
+          "snapshotRank": 1,
+          "metadata": {
+            "likes": 80,
+            "replies": 16,
+            "retweets": 20,
+            "quotes": 8,
+            "authorHandle": "devtoolsdaily"
+          }
+        },
+        {
+          "candidateId": "x-openrouter-tool-routing-official-terse",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:xopenroutertoolroutingofficialterse",
+          "canonicalUrl": "https://x.com/OpenRouterAI/status/900014",
+          "title": "Patch is rolling out now",
+          "body": "Official rollout note links mitigation details, documentation and the follow-up issue.",
+          "authorHandle": "OpenRouterAI",
+          "publishedAt": "2026-07-04T08:00:00.000Z",
+          "snapshotRank": 8,
+          "metadata": {
+            "likes": 160,
+            "replies": 19,
+            "retweets": 45,
+            "quotes": 9,
+            "authorHandle": "OpenRouterAI"
+          }
+        },
+        {
+          "candidateId": "x-openrouter-tool-routing-mention",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:xopenroutertoolroutingmention",
+          "canonicalUrl": "https://x.com/devtoolsdaily/status/xopenroutertoolroutingmention",
+          "title": "OpenRouter user report",
+          "body": "Teams mention @OpenRouterAI while tracking tool routing, model fallback and production impact.",
+          "authorHandle": "devtoolsdaily",
+          "publishedAt": "2026-07-04T05:00:00.000Z",
+          "snapshotRank": 4,
+          "metadata": {
+            "likes": 35,
+            "replies": 9,
+            "retweets": 6,
+            "quotes": 4,
+            "authorHandle": "devtoolsdaily"
+          }
+        },
+        {
+          "candidateId": "x-openrouter-tool-routing-keyword",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:xopenroutertoolroutingkeyword",
+          "canonicalUrl": "https://x.com/devtoolsdaily/status/xopenroutertoolroutingkeyword",
+          "title": "tool routing mitigation for OpenRouter",
+          "body": "Thread collects tool routing, model fallback, fallback steps and dashboard checks.",
+          "authorHandle": "devtoolsdaily",
+          "publishedAt": "2026-07-04T04:00:00.000Z",
+          "snapshotRank": 5,
+          "metadata": {
+            "likes": 44,
+            "replies": 6,
+            "retweets": 8,
+            "quotes": 3,
+            "authorHandle": "devtoolsdaily"
+          }
+        },
+        {
+          "candidateId": "x-openrouter-tool-routing-operator",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:xopenroutertoolroutingoperator",
+          "canonicalUrl": "https://x.com/platformops/status/xopenroutertoolroutingoperator",
+          "title": "OpenRouter tool routing reliability operator checklist",
+          "body": "Operators compare OpenRouter, OpenRouter tool routing reliability and safe rollout controls.",
+          "authorHandle": "platformops",
+          "publishedAt": "2026-07-04T02:00:00.000Z",
+          "snapshotRank": 6,
+          "metadata": {
+            "likes": 51,
+            "replies": 11,
+            "retweets": 10,
+            "quotes": 5,
+            "authorHandle": "platformops"
+          }
+        },
+        {
+          "candidateId": "x-openrouter-tool-routing-unrelated",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:xopenroutertoolroutingunrelated",
+          "canonicalUrl": "https://x.com/aigossip/status/xopenroutertoolroutingunrelated",
+          "title": "Viral AI celebrity rumor",
+          "body": "Engaging thread unrelated to the monitored source, release or product issue.",
+          "authorHandle": "aigossip",
+          "publishedAt": "2026-07-04T08:00:00.000Z",
+          "snapshotRank": 2,
+          "metadata": {
+            "likes": 9000,
+            "replies": 600,
+            "retweets": 1200,
+            "quotes": 300,
+            "authorHandle": "aigossip"
+          }
+        }
+      ],
+      "labels": [
+        {
+          "candidateId": "x-openrouter-tool-routing-general",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.9,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "x-openrouter-tool-routing-official-terse",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 2,
+          "novelty": 2,
+          "confidence": 0.95,
+          "mustHave": true,
+          "officialSignal": true,
+          "notes": "Official handle lane should catch this terse post."
+        },
+        {
+          "candidateId": "x-openrouter-tool-routing-mention",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.88,
+          "mustHave": true,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "x-openrouter-tool-routing-keyword",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.86,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "x-openrouter-tool-routing-operator",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.84,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "x-openrouter-tool-routing-unrelated",
+          "relevance": 0,
+          "usefulness": 0,
+          "authority": 0,
+          "novelty": 0,
+          "confidence": 0.96,
+          "spam": true
+        }
+      ]
+    },
+    {
+      "caseId": "x-prisma-mcp-database-tools",
+      "topic": "Prisma MCP database tools",
+      "sourceKeys": [
+        "x-twitter"
+      ],
+      "queryPlannerIntent": {
+        "topic": "Prisma MCP database tools",
+        "sourceKeys": [
+          "x-twitter"
+        ],
+        "products": [
+          "Prisma MCP"
+        ],
+        "keywords": [
+          "database tools",
+          "schema migration",
+          "safe queries"
+        ],
+        "handles": [
+          {
+            "handle": "prisma",
+            "sourceKey": "x-twitter",
+            "includePosts": true,
+            "includeMentions": true
+          }
+        ],
+        "maxLanesPerSource": 8,
+        "maxItemsPerLane": 20,
+        "includeEnrichment": true
+      },
+      "rankingMode": "relevance",
+      "rankingQueries": [
+        "Prisma MCP database tools",
+        "Prisma MCP database tools schema migration safe queries",
+        "from:prisma",
+        "@prisma"
+      ],
+      "queryLanes": [
+        {
+          "laneId": "x-prisma-mcp-database-tools-x-general",
+          "sourceKey": "x-twitter",
+          "operation": "search",
+          "query": "Prisma MCP database tools",
+          "maxItems": 20
+        },
+        {
+          "laneId": "x-prisma-mcp-database-tools-x-from",
+          "sourceKey": "x-twitter",
+          "operation": "account_feed",
+          "query": "from:prisma",
+          "maxItems": 10
+        },
+        {
+          "laneId": "x-prisma-mcp-database-tools-x-mention",
+          "sourceKey": "x-twitter",
+          "operation": "mention_search",
+          "query": "@prisma",
+          "maxItems": 10
+        }
+      ],
+      "candidates": [
+        {
+          "candidateId": "x-prisma-mcp-database-tools-general",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:xprismamcpdatabasetoolsgeneral",
+          "canonicalUrl": "https://x.com/devtoolsdaily/status/xprismamcpdatabasetoolsgeneral",
+          "title": "Prisma MCP database tools field report",
+          "body": "Prisma MCP teams discuss Prisma MCP database tools, database tools, schema migration and rollout safety.",
+          "authorHandle": "devtoolsdaily",
+          "publishedAt": "2026-07-04T07:00:00.000Z",
+          "snapshotRank": 1,
+          "metadata": {
+            "likes": 80,
+            "replies": 16,
+            "retweets": 20,
+            "quotes": 8,
+            "authorHandle": "devtoolsdaily"
+          }
+        },
+        {
+          "candidateId": "x-prisma-mcp-database-tools-official-terse",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:xprismamcpdatabasetoolsofficialterse",
+          "canonicalUrl": "https://x.com/prisma/status/900015",
+          "title": "Patch is rolling out now",
+          "body": "Official rollout note links mitigation details, documentation and the follow-up issue.",
+          "authorHandle": "prisma",
+          "publishedAt": "2026-07-04T08:00:00.000Z",
+          "snapshotRank": 8,
+          "metadata": {
+            "likes": 160,
+            "replies": 19,
+            "retweets": 45,
+            "quotes": 9,
+            "authorHandle": "prisma"
+          }
+        },
+        {
+          "candidateId": "x-prisma-mcp-database-tools-mention",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:xprismamcpdatabasetoolsmention",
+          "canonicalUrl": "https://x.com/devtoolsdaily/status/xprismamcpdatabasetoolsmention",
+          "title": "Prisma MCP user report",
+          "body": "Teams mention @prisma while tracking database tools, schema migration and production impact.",
+          "authorHandle": "devtoolsdaily",
+          "publishedAt": "2026-07-04T05:00:00.000Z",
+          "snapshotRank": 4,
+          "metadata": {
+            "likes": 35,
+            "replies": 9,
+            "retweets": 6,
+            "quotes": 4,
+            "authorHandle": "devtoolsdaily"
+          }
+        },
+        {
+          "candidateId": "x-prisma-mcp-database-tools-keyword",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:xprismamcpdatabasetoolskeyword",
+          "canonicalUrl": "https://x.com/devtoolsdaily/status/xprismamcpdatabasetoolskeyword",
+          "title": "database tools mitigation for Prisma MCP",
+          "body": "Thread collects database tools, schema migration, fallback steps and dashboard checks.",
+          "authorHandle": "devtoolsdaily",
+          "publishedAt": "2026-07-04T04:00:00.000Z",
+          "snapshotRank": 5,
+          "metadata": {
+            "likes": 44,
+            "replies": 6,
+            "retweets": 8,
+            "quotes": 3,
+            "authorHandle": "devtoolsdaily"
+          }
+        },
+        {
+          "candidateId": "x-prisma-mcp-database-tools-operator",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:xprismamcpdatabasetoolsoperator",
+          "canonicalUrl": "https://x.com/platformops/status/xprismamcpdatabasetoolsoperator",
+          "title": "Prisma MCP database tools operator checklist",
+          "body": "Operators compare Prisma MCP, Prisma MCP database tools and safe rollout controls.",
+          "authorHandle": "platformops",
+          "publishedAt": "2026-07-04T02:00:00.000Z",
+          "snapshotRank": 6,
+          "metadata": {
+            "likes": 51,
+            "replies": 11,
+            "retweets": 10,
+            "quotes": 5,
+            "authorHandle": "platformops"
+          }
+        },
+        {
+          "candidateId": "x-prisma-mcp-database-tools-unrelated",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:xprismamcpdatabasetoolsunrelated",
+          "canonicalUrl": "https://x.com/aigossip/status/xprismamcpdatabasetoolsunrelated",
+          "title": "Viral AI celebrity rumor",
+          "body": "Engaging thread unrelated to the monitored source, release or product issue.",
+          "authorHandle": "aigossip",
+          "publishedAt": "2026-07-04T08:00:00.000Z",
+          "snapshotRank": 2,
+          "metadata": {
+            "likes": 9000,
+            "replies": 600,
+            "retweets": 1200,
+            "quotes": 300,
+            "authorHandle": "aigossip"
+          }
+        }
+      ],
+      "labels": [
+        {
+          "candidateId": "x-prisma-mcp-database-tools-general",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.9,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "x-prisma-mcp-database-tools-official-terse",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 2,
+          "novelty": 2,
+          "confidence": 0.95,
+          "mustHave": true,
+          "officialSignal": true,
+          "notes": "Official handle lane should catch this terse post."
+        },
+        {
+          "candidateId": "x-prisma-mcp-database-tools-mention",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.88,
+          "mustHave": true,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "x-prisma-mcp-database-tools-keyword",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.86,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "x-prisma-mcp-database-tools-operator",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.84,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "x-prisma-mcp-database-tools-unrelated",
+          "relevance": 0,
+          "usefulness": 0,
+          "authority": 0,
+          "novelty": 0,
+          "confidence": 0.96,
+          "spam": true
+        }
+      ]
+    },
+    {
+      "caseId": "x-kubernetes-agent-ops",
+      "topic": "Kubernetes AI agent operations",
+      "sourceKeys": [
+        "x-twitter"
+      ],
+      "queryPlannerIntent": {
+        "topic": "Kubernetes AI agent operations",
+        "sourceKeys": [
+          "x-twitter"
+        ],
+        "products": [
+          "Kubernetes agents"
+        ],
+        "keywords": [
+          "cluster ops",
+          "rollback guardrails",
+          "incident automation"
+        ],
+        "handles": [
+          {
+            "handle": "kubernetesio",
+            "sourceKey": "x-twitter",
+            "includePosts": true,
+            "includeMentions": true
+          }
+        ],
+        "maxLanesPerSource": 8,
+        "maxItemsPerLane": 20,
+        "includeEnrichment": true
+      },
+      "rankingMode": "relevance",
+      "rankingQueries": [
+        "Kubernetes AI agent operations",
+        "Kubernetes agents cluster ops rollback guardrails incident automation",
+        "from:kubernetesio",
+        "@kubernetesio"
+      ],
+      "queryLanes": [
+        {
+          "laneId": "x-kubernetes-agent-ops-x-general",
+          "sourceKey": "x-twitter",
+          "operation": "search",
+          "query": "Kubernetes AI agent operations",
+          "maxItems": 20
+        },
+        {
+          "laneId": "x-kubernetes-agent-ops-x-from",
+          "sourceKey": "x-twitter",
+          "operation": "account_feed",
+          "query": "from:kubernetesio",
+          "maxItems": 10
+        },
+        {
+          "laneId": "x-kubernetes-agent-ops-x-mention",
+          "sourceKey": "x-twitter",
+          "operation": "mention_search",
+          "query": "@kubernetesio",
+          "maxItems": 10
+        }
+      ],
+      "candidates": [
+        {
+          "candidateId": "x-kubernetes-agent-ops-general",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:xkubernetesagentopsgeneral",
+          "canonicalUrl": "https://x.com/devtoolsdaily/status/xkubernetesagentopsgeneral",
+          "title": "Kubernetes AI agent operations field report",
+          "body": "Kubernetes agents teams discuss Kubernetes AI agent operations, cluster ops, rollback guardrails and rollout safety.",
+          "authorHandle": "devtoolsdaily",
+          "publishedAt": "2026-07-04T07:00:00.000Z",
+          "snapshotRank": 1,
+          "metadata": {
+            "likes": 80,
+            "replies": 16,
+            "retweets": 20,
+            "quotes": 8,
+            "authorHandle": "devtoolsdaily"
+          }
+        },
+        {
+          "candidateId": "x-kubernetes-agent-ops-official-terse",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:xkubernetesagentopsofficialterse",
+          "canonicalUrl": "https://x.com/kubernetesio/status/900016",
+          "title": "Patch is rolling out now",
+          "body": "Official rollout note links mitigation details, documentation and the follow-up issue.",
+          "authorHandle": "kubernetesio",
+          "publishedAt": "2026-07-04T08:00:00.000Z",
+          "snapshotRank": 8,
+          "metadata": {
+            "likes": 160,
+            "replies": 19,
+            "retweets": 45,
+            "quotes": 9,
+            "authorHandle": "kubernetesio"
+          }
+        },
+        {
+          "candidateId": "x-kubernetes-agent-ops-mention",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:xkubernetesagentopsmention",
+          "canonicalUrl": "https://x.com/devtoolsdaily/status/xkubernetesagentopsmention",
+          "title": "Kubernetes agents user report",
+          "body": "Teams mention @kubernetesio while tracking cluster ops, rollback guardrails and production impact.",
+          "authorHandle": "devtoolsdaily",
+          "publishedAt": "2026-07-04T05:00:00.000Z",
+          "snapshotRank": 4,
+          "metadata": {
+            "likes": 35,
+            "replies": 9,
+            "retweets": 6,
+            "quotes": 4,
+            "authorHandle": "devtoolsdaily"
+          }
+        },
+        {
+          "candidateId": "x-kubernetes-agent-ops-keyword",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:xkubernetesagentopskeyword",
+          "canonicalUrl": "https://x.com/devtoolsdaily/status/xkubernetesagentopskeyword",
+          "title": "cluster ops mitigation for Kubernetes agents",
+          "body": "Thread collects cluster ops, rollback guardrails, fallback steps and dashboard checks.",
+          "authorHandle": "devtoolsdaily",
+          "publishedAt": "2026-07-04T04:00:00.000Z",
+          "snapshotRank": 5,
+          "metadata": {
+            "likes": 44,
+            "replies": 6,
+            "retweets": 8,
+            "quotes": 3,
+            "authorHandle": "devtoolsdaily"
+          }
+        },
+        {
+          "candidateId": "x-kubernetes-agent-ops-operator",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:xkubernetesagentopsoperator",
+          "canonicalUrl": "https://x.com/platformops/status/xkubernetesagentopsoperator",
+          "title": "Kubernetes AI agent operations operator checklist",
+          "body": "Operators compare Kubernetes agents, Kubernetes AI agent operations and safe rollout controls.",
+          "authorHandle": "platformops",
+          "publishedAt": "2026-07-04T02:00:00.000Z",
+          "snapshotRank": 6,
+          "metadata": {
+            "likes": 51,
+            "replies": 11,
+            "retweets": 10,
+            "quotes": 5,
+            "authorHandle": "platformops"
+          }
+        },
+        {
+          "candidateId": "x-kubernetes-agent-ops-unrelated",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:xkubernetesagentopsunrelated",
+          "canonicalUrl": "https://x.com/aigossip/status/xkubernetesagentopsunrelated",
+          "title": "Viral AI celebrity rumor",
+          "body": "Engaging thread unrelated to the monitored source, release or product issue.",
+          "authorHandle": "aigossip",
+          "publishedAt": "2026-07-04T08:00:00.000Z",
+          "snapshotRank": 2,
+          "metadata": {
+            "likes": 9000,
+            "replies": 600,
+            "retweets": 1200,
+            "quotes": 300,
+            "authorHandle": "aigossip"
+          }
+        }
+      ],
+      "labels": [
+        {
+          "candidateId": "x-kubernetes-agent-ops-general",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.9,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "x-kubernetes-agent-ops-official-terse",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 2,
+          "novelty": 2,
+          "confidence": 0.95,
+          "mustHave": true,
+          "officialSignal": true,
+          "notes": "Official handle lane should catch this terse post."
+        },
+        {
+          "candidateId": "x-kubernetes-agent-ops-mention",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.88,
+          "mustHave": true,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "x-kubernetes-agent-ops-keyword",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.86,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "x-kubernetes-agent-ops-operator",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.84,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "x-kubernetes-agent-ops-unrelated",
+          "relevance": 0,
+          "usefulness": 0,
+          "authority": 0,
+          "novelty": 0,
+          "confidence": 0.96,
+          "spam": true
+        }
+      ]
+    },
+    {
+      "caseId": "mixed-copilot-workspace-agent-rollout",
+      "topic": "GitHub Copilot workspace agent rollout MCP",
+      "sourceKeys": [
+        "reddit",
+        "x-twitter"
+      ],
+      "queryPlannerIntent": {
+        "topic": "GitHub Copilot workspace agent rollout MCP",
+        "sourceKeys": [
+          "reddit",
+          "x-twitter"
+        ],
+        "products": [
+          "GitHub Copilot",
+          "MCP"
+        ],
+        "keywords": [
+          "workspace agent",
+          "connector scopes",
+          "approval flow"
+        ],
+        "handles": [
+          {
+            "handle": "github",
+            "sourceKey": "x-twitter",
+            "includePosts": true,
+            "includeMentions": true
+          }
+        ],
+        "communities": [
+          {
+            "name": "github",
+            "sourceKey": "reddit",
+            "listings": [
+              "top",
+              "hot",
+              "new"
+            ]
+          }
+        ],
+        "maxLanesPerSource": 8,
+        "maxItemsPerLane": 20,
+        "includeEnrichment": true
+      },
+      "rankingMode": "relevance",
+      "rankingQueries": [
+        "GitHub Copilot workspace agent rollout MCP",
+        "GitHub Copilot MCP workspace agent connector scopes",
+        "from:github @github"
+      ],
+      "queryLanes": [
+        {
+          "laneId": "mixed-copilot-workspace-agent-rollout-reddit-general",
+          "sourceKey": "reddit",
+          "operation": "search",
+          "query": "GitHub Copilot workspace agent rollout MCP",
+          "maxItems": 20
+        },
+        {
+          "laneId": "mixed-copilot-workspace-agent-rollout-reddit-github-top",
+          "sourceKey": "reddit",
+          "operation": "listing",
+          "query": "github:top:week",
+          "maxItems": 20
+        },
+        {
+          "laneId": "mixed-copilot-workspace-agent-rollout-x-general",
+          "sourceKey": "x-twitter",
+          "operation": "search",
+          "query": "GitHub Copilot workspace agent rollout MCP",
+          "maxItems": 20
+        },
+        {
+          "laneId": "mixed-copilot-workspace-agent-rollout-x-from-github",
+          "sourceKey": "x-twitter",
+          "operation": "account_feed",
+          "query": "from:github",
+          "maxItems": 10
+        }
+      ],
+      "candidates": [
+        {
+          "candidateId": "mixed-copilot-workspace-agent-rollout-official",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:mixedcopilotworkspaceagentrolloutofficial",
+          "canonicalUrl": "https://x.com/github/status/990001",
+          "title": "Rollout update is live",
+          "body": "Official update links staged availability, connector notes and follow-up documentation.",
+          "authorHandle": "github",
+          "publishedAt": "2026-07-04T08:00:00.000Z",
+          "snapshotRank": 1,
+          "metadata": {
+            "likes": 210,
+            "replies": 28,
+            "retweets": 64,
+            "quotes": 14,
+            "authorHandle": "github"
+          }
+        },
+        {
+          "candidateId": "mixed-copilot-workspace-agent-rollout-reddit-terse",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_mixed_copilot_workspace_agent_rollout_reddit_terse",
+          "canonicalUrl": "https://www.reddit.com/r/github/comments/mixed-copilot-workspace-agent-rollout-reddit-terse",
+          "title": "Rollout thread: access opened",
+          "body": "Community reports new workspace agent access, migration gotchas and MCP connector setup.",
+          "publishedAt": "2026-07-04T06:00:00.000Z",
+          "snapshotRank": 3,
+          "metadata": {
+            "score": 77,
+            "numComments": 28,
+            "upvoteRatio": 0.88
+          }
+        },
+        {
+          "candidateId": "mixed-copilot-workspace-agent-rollout-mention",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:mixedcopilotworkspaceagentrolloutmention",
+          "canonicalUrl": "https://x.com/devtoolsdaily/status/mixedcopilotworkspaceagentrolloutmention",
+          "title": "Copilot workspace field notes",
+          "body": "Teams mention @github while testing workspace agents, MCP connector limits and approval flows.",
+          "authorHandle": "devtoolsdaily",
+          "publishedAt": "2026-07-04T04:00:00.000Z",
+          "snapshotRank": 4,
+          "metadata": {
+            "likes": 42,
+            "replies": 7,
+            "retweets": 9,
+            "quotes": 3,
+            "authorHandle": "devtoolsdaily"
+          }
+        },
+        {
+          "candidateId": "mixed-copilot-workspace-agent-rollout-checklist",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_mixed_copilot_workspace_agent_rollout_checklist",
+          "canonicalUrl": "https://www.reddit.com/r/programming/comments/mixed-copilot-workspace-agent-rollout-checklist",
+          "title": "Copilot workspace agent rollout checklist",
+          "body": "Checklist covers MCP connector scopes, repo permissions and staged rollout controls.",
+          "publishedAt": "2026-07-04T02:00:00.000Z",
+          "snapshotRank": 5,
+          "metadata": {
+            "score": 58,
+            "numComments": 17,
+            "upvoteRatio": 0.88
+          }
+        },
+        {
+          "candidateId": "mixed-copilot-workspace-agent-rollout-operator",
+          "providerKey": "x-twitter",
+          "externalId": "x-twitter:mixedcopilotworkspaceagentrolloutoperator",
+          "canonicalUrl": "https://x.com/platformops/status/mixedcopilotworkspaceagentrolloutoperator",
+          "title": "Workspace agent approval flow",
+          "body": "Operator notes about GitHub Copilot workspace agent rollout and approval guardrails.",
+          "authorHandle": "platformops",
+          "publishedAt": "2026-07-04T00:00:00.000Z",
+          "snapshotRank": 6,
+          "metadata": {
+            "likes": 36,
+            "replies": 5,
+            "retweets": 7,
+            "quotes": 2,
+            "authorHandle": "platformops"
+          }
+        },
+        {
+          "candidateId": "mixed-copilot-workspace-agent-rollout-unrelated",
+          "providerKey": "reddit",
+          "externalId": "reddit:t3_mixed_copilot_workspace_agent_rollout_unrelated",
+          "canonicalUrl": "https://www.reddit.com/r/gaming/comments/mixed-copilot-workspace-agent-rollout-unrelated",
+          "title": "Weekend game sale thread",
+          "body": "Discounts and hardware chatter unrelated to Copilot workspace agents.",
+          "publishedAt": "2026-07-04T07:00:00.000Z",
+          "snapshotRank": 2,
+          "metadata": {
+            "score": 900,
+            "numComments": 90,
+            "upvoteRatio": 0.88
+          }
+        }
+      ],
+      "labels": [
+        {
+          "candidateId": "mixed-copilot-workspace-agent-rollout-official",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 2,
+          "novelty": 2,
+          "confidence": 0.96,
+          "mustHave": true,
+          "officialSignal": true
+        },
+        {
+          "candidateId": "mixed-copilot-workspace-agent-rollout-reddit-terse",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.9,
+          "mustHave": true,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "mixed-copilot-workspace-agent-rollout-mention",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.88,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "mixed-copilot-workspace-agent-rollout-checklist",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.86,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "mixed-copilot-workspace-agent-rollout-operator",
+          "relevance": 3,
+          "usefulness": 3,
+          "authority": 1,
+          "novelty": 2,
+          "confidence": 0.84,
+          "communitySignal": true
+        },
+        {
+          "candidateId": "mixed-copilot-workspace-agent-rollout-unrelated",
+          "relevance": 0,
+          "usefulness": 0,
+          "authority": 0,
+          "novelty": 0,
+          "confidence": 0.96,
+          "spam": true
+        }
+      ]
+    }
+  ]
+}

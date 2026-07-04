@@ -1,0 +1,851 @@
+{
+  "schemaVersion": 1,
+  "datasetVersion": "source-ranking-silver-v1",
+  "generatedBy": "npm run check:source-query-planner-eval",
+  "labelingPolicy": "Silver labels are frozen, deterministic and not used for self-training. LLM/manual refresh may create a later dataset version, but normal eval runs use saved labels only.",
+  "qualityGates": {
+    "minExperimentMustHaveRecallAt20": 1,
+    "minExperimentRelevantRecallAt20": 0.8,
+    "minExperimentOfficialCommunityCoverageAt20": 0.8,
+    "minImprovedCaseCount": 1,
+    "maxRegressedCaseCount": 0
+  },
+  "blockingPassed": true,
+  "metrics": [
+    {
+      "metricId": "experimentMustHaveRecallAt20",
+      "value": 1,
+      "threshold": 1,
+      "passed": true
+    },
+    {
+      "metricId": "experimentRelevantRecallAt20",
+      "value": 1,
+      "threshold": 0.8,
+      "passed": true
+    },
+    {
+      "metricId": "experimentOfficialCommunityCoverageAt20",
+      "value": 1,
+      "threshold": 0.8,
+      "passed": true
+    },
+    {
+      "metricId": "improvedCaseCount",
+      "value": 19,
+      "threshold": 1,
+      "passed": true
+    },
+    {
+      "metricId": "regressedCaseCount",
+      "value": 0,
+      "threshold": 0,
+      "passed": true
+    }
+  ],
+  "caseResults": [
+    {
+      "caseId": "reddit-ai-agents-mcp-reliability",
+      "baseline": {
+        "plannerId": "baseline:single-topic-lane",
+        "laneCount": 1,
+        "retrievedCandidateIds": [
+          "r-mcp-reliability-notes",
+          "r-agent-auth-retry-bug",
+          "r-agent-workflow-compare",
+          "r-claude-code-postmortem",
+          "r-mcp-tool-permissions",
+          "r-production-agent-logs",
+          "r-mcp-observability",
+          "r-agent-sandboxing",
+          "r-mcp-reliability-duplicate",
+          "r-agent-benchmark",
+          "r-gaming-laptop-deals"
+        ],
+        "mustHaveRecallAt20": 0.667,
+        "relevantRecallAt20": 0.909,
+        "officialCommunityCoverageAt20": 1
+      },
+      "experiment": {
+        "plannerId": "experiment:social-research-query-planner",
+        "laneCount": 10,
+        "retrievedCandidateIds": [
+          "r-mcp-reliability-notes",
+          "r-agent-auth-retry-bug",
+          "r-claudeai-terse-incident",
+          "r-agent-workflow-compare",
+          "r-claude-code-postmortem",
+          "r-mcp-tool-permissions",
+          "r-production-agent-logs",
+          "r-mcp-observability",
+          "r-agent-sandboxing",
+          "r-mcp-reliability-duplicate",
+          "r-agent-benchmark",
+          "r-gaming-laptop-deals"
+        ],
+        "mustHaveRecallAt20": 1,
+        "relevantRecallAt20": 1,
+        "officialCommunityCoverageAt20": 1
+      },
+      "deltas": {
+        "mustHaveRecallAt20": 0.333,
+        "relevantRecallAt20": 0.091,
+        "officialCommunityCoverageAt20": 0
+      },
+      "decision": "improved"
+    },
+    {
+      "caseId": "x-openai-codex-cli-release",
+      "baseline": {
+        "plannerId": "baseline:single-topic-lane",
+        "laneCount": 1,
+        "retrievedCandidateIds": [
+          "x-openai-codex-mcp",
+          "x-codex-docs-sandboxing",
+          "x-dev-setup-thread",
+          "x-maintainer-mcp-reliability",
+          "x-openai-codex-duplicate",
+          "x-codex-install-errors",
+          "x-codex-mcp-video",
+          "x-codex-security-note",
+          "x-codex-community-faq",
+          "x-cli-agent-benchmark"
+        ],
+        "mustHaveRecallAt20": 0.667,
+        "relevantRecallAt20": 0.909,
+        "officialCommunityCoverageAt20": 1
+      },
+      "experiment": {
+        "plannerId": "experiment:social-research-query-planner",
+        "laneCount": 6,
+        "retrievedCandidateIds": [
+          "x-openai-codex-mcp",
+          "x-openai-terse-tool-mode",
+          "x-codex-docs-sandboxing",
+          "x-dev-setup-thread",
+          "x-maintainer-mcp-reliability",
+          "x-openai-codex-duplicate",
+          "x-codex-install-errors",
+          "x-codex-mcp-video",
+          "x-codex-security-note",
+          "x-codex-community-faq",
+          "x-cli-agent-benchmark",
+          "x-devday-schedule"
+        ],
+        "mustHaveRecallAt20": 1,
+        "relevantRecallAt20": 1,
+        "officialCommunityCoverageAt20": 1
+      },
+      "deltas": {
+        "mustHaveRecallAt20": 0.333,
+        "relevantRecallAt20": 0.091,
+        "officialCommunityCoverageAt20": 0
+      },
+      "decision": "improved"
+    },
+    {
+      "caseId": "mixed-agent-production-reliability",
+      "baseline": {
+        "plannerId": "baseline:single-topic-lane",
+        "laneCount": 2,
+        "retrievedCandidateIds": [
+          "m-openai-production-guidance",
+          "m-reddit-production-failures",
+          "m-coding-agent-checklist",
+          "m-reddit-retry-budget",
+          "m-agent-runbook",
+          "m-agent-observability",
+          "m-agent-rollbacks",
+          "m-agent-slo",
+          "m-reddit-production-failures-duplicate",
+          "m-agent-safety-review",
+          "m-agent-jokes"
+        ],
+        "mustHaveRecallAt20": 1,
+        "relevantRecallAt20": 1,
+        "officialCommunityCoverageAt20": 1
+      },
+      "experiment": {
+        "plannerId": "experiment:social-research-query-planner",
+        "laneCount": 13,
+        "retrievedCandidateIds": [
+          "m-openai-production-guidance",
+          "m-reddit-production-failures",
+          "m-coding-agent-checklist",
+          "m-reddit-retry-budget",
+          "m-agent-runbook",
+          "m-agent-observability",
+          "m-agent-rollbacks",
+          "m-agent-slo",
+          "m-reddit-production-failures-duplicate",
+          "m-agent-safety-review",
+          "m-agent-jokes"
+        ],
+        "mustHaveRecallAt20": 1,
+        "relevantRecallAt20": 1,
+        "officialCommunityCoverageAt20": 1
+      },
+      "deltas": {
+        "mustHaveRecallAt20": 0,
+        "relevantRecallAt20": 0,
+        "officialCommunityCoverageAt20": 0
+      },
+      "decision": "same"
+    },
+    {
+      "caseId": "reddit-cursor-mcp-registry-outage",
+      "baseline": {
+        "plannerId": "baseline:single-topic-lane",
+        "laneCount": 1,
+        "retrievedCandidateIds": [
+          "reddit-cursor-mcp-registry-outage-general",
+          "reddit-cursor-mcp-registry-outage-keyword",
+          "reddit-cursor-mcp-registry-outage-community",
+          "reddit-cursor-mcp-registry-outage-checklist",
+          "reddit-cursor-mcp-registry-outage-unrelated"
+        ],
+        "mustHaveRecallAt20": 0.5,
+        "relevantRecallAt20": 0.8,
+        "officialCommunityCoverageAt20": 1
+      },
+      "experiment": {
+        "plannerId": "experiment:social-research-query-planner",
+        "laneCount": 8,
+        "retrievedCandidateIds": [
+          "reddit-cursor-mcp-registry-outage-general",
+          "reddit-cursor-mcp-registry-outage-listing-terse",
+          "reddit-cursor-mcp-registry-outage-keyword",
+          "reddit-cursor-mcp-registry-outage-community",
+          "reddit-cursor-mcp-registry-outage-checklist",
+          "reddit-cursor-mcp-registry-outage-unrelated"
+        ],
+        "mustHaveRecallAt20": 1,
+        "relevantRecallAt20": 1,
+        "officialCommunityCoverageAt20": 1
+      },
+      "deltas": {
+        "mustHaveRecallAt20": 0.5,
+        "relevantRecallAt20": 0.2,
+        "officialCommunityCoverageAt20": 0
+      },
+      "decision": "improved"
+    },
+    {
+      "caseId": "reddit-langchain-agent-memory-regression",
+      "baseline": {
+        "plannerId": "baseline:single-topic-lane",
+        "laneCount": 1,
+        "retrievedCandidateIds": [
+          "reddit-langchain-agent-memory-regression-general",
+          "reddit-langchain-agent-memory-regression-keyword",
+          "reddit-langchain-agent-memory-regression-community",
+          "reddit-langchain-agent-memory-regression-checklist",
+          "reddit-langchain-agent-memory-regression-unrelated"
+        ],
+        "mustHaveRecallAt20": 0.5,
+        "relevantRecallAt20": 0.8,
+        "officialCommunityCoverageAt20": 1
+      },
+      "experiment": {
+        "plannerId": "experiment:social-research-query-planner",
+        "laneCount": 8,
+        "retrievedCandidateIds": [
+          "reddit-langchain-agent-memory-regression-general",
+          "reddit-langchain-agent-memory-regression-listing-terse",
+          "reddit-langchain-agent-memory-regression-keyword",
+          "reddit-langchain-agent-memory-regression-community",
+          "reddit-langchain-agent-memory-regression-checklist",
+          "reddit-langchain-agent-memory-regression-unrelated"
+        ],
+        "mustHaveRecallAt20": 1,
+        "relevantRecallAt20": 1,
+        "officialCommunityCoverageAt20": 1
+      },
+      "deltas": {
+        "mustHaveRecallAt20": 0.5,
+        "relevantRecallAt20": 0.2,
+        "officialCommunityCoverageAt20": 0
+      },
+      "decision": "improved"
+    },
+    {
+      "caseId": "reddit-llamaindex-workflow-tools",
+      "baseline": {
+        "plannerId": "baseline:single-topic-lane",
+        "laneCount": 1,
+        "retrievedCandidateIds": [
+          "reddit-llamaindex-workflow-tools-general",
+          "reddit-llamaindex-workflow-tools-keyword",
+          "reddit-llamaindex-workflow-tools-community",
+          "reddit-llamaindex-workflow-tools-checklist",
+          "reddit-llamaindex-workflow-tools-unrelated"
+        ],
+        "mustHaveRecallAt20": 0.5,
+        "relevantRecallAt20": 0.8,
+        "officialCommunityCoverageAt20": 1
+      },
+      "experiment": {
+        "plannerId": "experiment:social-research-query-planner",
+        "laneCount": 8,
+        "retrievedCandidateIds": [
+          "reddit-llamaindex-workflow-tools-general",
+          "reddit-llamaindex-workflow-tools-listing-terse",
+          "reddit-llamaindex-workflow-tools-keyword",
+          "reddit-llamaindex-workflow-tools-community",
+          "reddit-llamaindex-workflow-tools-checklist",
+          "reddit-llamaindex-workflow-tools-unrelated"
+        ],
+        "mustHaveRecallAt20": 1,
+        "relevantRecallAt20": 1,
+        "officialCommunityCoverageAt20": 1
+      },
+      "deltas": {
+        "mustHaveRecallAt20": 0.5,
+        "relevantRecallAt20": 0.2,
+        "officialCommunityCoverageAt20": 0
+      },
+      "decision": "improved"
+    },
+    {
+      "caseId": "reddit-ollama-tool-use-release",
+      "baseline": {
+        "plannerId": "baseline:single-topic-lane",
+        "laneCount": 1,
+        "retrievedCandidateIds": [
+          "reddit-ollama-tool-use-release-general",
+          "reddit-ollama-tool-use-release-keyword",
+          "reddit-ollama-tool-use-release-community",
+          "reddit-ollama-tool-use-release-checklist",
+          "reddit-ollama-tool-use-release-unrelated"
+        ],
+        "mustHaveRecallAt20": 0.5,
+        "relevantRecallAt20": 0.8,
+        "officialCommunityCoverageAt20": 1
+      },
+      "experiment": {
+        "plannerId": "experiment:social-research-query-planner",
+        "laneCount": 8,
+        "retrievedCandidateIds": [
+          "reddit-ollama-tool-use-release-general",
+          "reddit-ollama-tool-use-release-listing-terse",
+          "reddit-ollama-tool-use-release-keyword",
+          "reddit-ollama-tool-use-release-community",
+          "reddit-ollama-tool-use-release-checklist",
+          "reddit-ollama-tool-use-release-unrelated"
+        ],
+        "mustHaveRecallAt20": 1,
+        "relevantRecallAt20": 1,
+        "officialCommunityCoverageAt20": 1
+      },
+      "deltas": {
+        "mustHaveRecallAt20": 0.5,
+        "relevantRecallAt20": 0.2,
+        "officialCommunityCoverageAt20": 0
+      },
+      "decision": "improved"
+    },
+    {
+      "caseId": "reddit-vllm-agent-throughput",
+      "baseline": {
+        "plannerId": "baseline:single-topic-lane",
+        "laneCount": 1,
+        "retrievedCandidateIds": [
+          "reddit-vllm-agent-throughput-general",
+          "reddit-vllm-agent-throughput-keyword",
+          "reddit-vllm-agent-throughput-community",
+          "reddit-vllm-agent-throughput-checklist",
+          "reddit-vllm-agent-throughput-unrelated"
+        ],
+        "mustHaveRecallAt20": 0.5,
+        "relevantRecallAt20": 0.8,
+        "officialCommunityCoverageAt20": 1
+      },
+      "experiment": {
+        "plannerId": "experiment:social-research-query-planner",
+        "laneCount": 8,
+        "retrievedCandidateIds": [
+          "reddit-vllm-agent-throughput-general",
+          "reddit-vllm-agent-throughput-listing-terse",
+          "reddit-vllm-agent-throughput-keyword",
+          "reddit-vllm-agent-throughput-community",
+          "reddit-vllm-agent-throughput-checklist",
+          "reddit-vllm-agent-throughput-unrelated"
+        ],
+        "mustHaveRecallAt20": 1,
+        "relevantRecallAt20": 1,
+        "officialCommunityCoverageAt20": 1
+      },
+      "deltas": {
+        "mustHaveRecallAt20": 0.5,
+        "relevantRecallAt20": 0.2,
+        "officialCommunityCoverageAt20": 0
+      },
+      "decision": "improved"
+    },
+    {
+      "caseId": "reddit-supabase-mcp-auth",
+      "baseline": {
+        "plannerId": "baseline:single-topic-lane",
+        "laneCount": 1,
+        "retrievedCandidateIds": [
+          "reddit-supabase-mcp-auth-general",
+          "reddit-supabase-mcp-auth-keyword",
+          "reddit-supabase-mcp-auth-community",
+          "reddit-supabase-mcp-auth-checklist",
+          "reddit-supabase-mcp-auth-unrelated"
+        ],
+        "mustHaveRecallAt20": 0.5,
+        "relevantRecallAt20": 0.8,
+        "officialCommunityCoverageAt20": 1
+      },
+      "experiment": {
+        "plannerId": "experiment:social-research-query-planner",
+        "laneCount": 8,
+        "retrievedCandidateIds": [
+          "reddit-supabase-mcp-auth-general",
+          "reddit-supabase-mcp-auth-listing-terse",
+          "reddit-supabase-mcp-auth-keyword",
+          "reddit-supabase-mcp-auth-community",
+          "reddit-supabase-mcp-auth-checklist",
+          "reddit-supabase-mcp-auth-unrelated"
+        ],
+        "mustHaveRecallAt20": 1,
+        "relevantRecallAt20": 1,
+        "officialCommunityCoverageAt20": 1
+      },
+      "deltas": {
+        "mustHaveRecallAt20": 0.5,
+        "relevantRecallAt20": 0.2,
+        "officialCommunityCoverageAt20": 0
+      },
+      "decision": "improved"
+    },
+    {
+      "caseId": "reddit-nextjs-ai-sdk-streaming",
+      "baseline": {
+        "plannerId": "baseline:single-topic-lane",
+        "laneCount": 1,
+        "retrievedCandidateIds": [
+          "reddit-nextjs-ai-sdk-streaming-general",
+          "reddit-nextjs-ai-sdk-streaming-keyword",
+          "reddit-nextjs-ai-sdk-streaming-community",
+          "reddit-nextjs-ai-sdk-streaming-checklist",
+          "reddit-nextjs-ai-sdk-streaming-unrelated"
+        ],
+        "mustHaveRecallAt20": 0.5,
+        "relevantRecallAt20": 0.8,
+        "officialCommunityCoverageAt20": 1
+      },
+      "experiment": {
+        "plannerId": "experiment:social-research-query-planner",
+        "laneCount": 8,
+        "retrievedCandidateIds": [
+          "reddit-nextjs-ai-sdk-streaming-general",
+          "reddit-nextjs-ai-sdk-streaming-listing-terse",
+          "reddit-nextjs-ai-sdk-streaming-keyword",
+          "reddit-nextjs-ai-sdk-streaming-community",
+          "reddit-nextjs-ai-sdk-streaming-checklist",
+          "reddit-nextjs-ai-sdk-streaming-unrelated"
+        ],
+        "mustHaveRecallAt20": 1,
+        "relevantRecallAt20": 1,
+        "officialCommunityCoverageAt20": 1
+      },
+      "deltas": {
+        "mustHaveRecallAt20": 0.5,
+        "relevantRecallAt20": 0.2,
+        "officialCommunityCoverageAt20": 0
+      },
+      "decision": "improved"
+    },
+    {
+      "caseId": "reddit-docker-mcp-desktop-permissions",
+      "baseline": {
+        "plannerId": "baseline:single-topic-lane",
+        "laneCount": 1,
+        "retrievedCandidateIds": [
+          "reddit-docker-mcp-desktop-permissions-general",
+          "reddit-docker-mcp-desktop-permissions-keyword",
+          "reddit-docker-mcp-desktop-permissions-community",
+          "reddit-docker-mcp-desktop-permissions-checklist",
+          "reddit-docker-mcp-desktop-permissions-unrelated"
+        ],
+        "mustHaveRecallAt20": 0.5,
+        "relevantRecallAt20": 0.8,
+        "officialCommunityCoverageAt20": 1
+      },
+      "experiment": {
+        "plannerId": "experiment:social-research-query-planner",
+        "laneCount": 8,
+        "retrievedCandidateIds": [
+          "reddit-docker-mcp-desktop-permissions-general",
+          "reddit-docker-mcp-desktop-permissions-listing-terse",
+          "reddit-docker-mcp-desktop-permissions-keyword",
+          "reddit-docker-mcp-desktop-permissions-community",
+          "reddit-docker-mcp-desktop-permissions-checklist",
+          "reddit-docker-mcp-desktop-permissions-unrelated"
+        ],
+        "mustHaveRecallAt20": 1,
+        "relevantRecallAt20": 1,
+        "officialCommunityCoverageAt20": 1
+      },
+      "deltas": {
+        "mustHaveRecallAt20": 0.5,
+        "relevantRecallAt20": 0.2,
+        "officialCommunityCoverageAt20": 0
+      },
+      "decision": "improved"
+    },
+    {
+      "caseId": "x-anthropic-claude-code-permissions",
+      "baseline": {
+        "plannerId": "baseline:single-topic-lane",
+        "laneCount": 1,
+        "retrievedCandidateIds": [
+          "x-anthropic-claude-code-permissions-general",
+          "x-anthropic-claude-code-permissions-mention",
+          "x-anthropic-claude-code-permissions-keyword",
+          "x-anthropic-claude-code-permissions-operator",
+          "x-anthropic-claude-code-permissions-unrelated"
+        ],
+        "mustHaveRecallAt20": 0.5,
+        "relevantRecallAt20": 0.8,
+        "officialCommunityCoverageAt20": 0.5
+      },
+      "experiment": {
+        "plannerId": "experiment:social-research-query-planner",
+        "laneCount": 6,
+        "retrievedCandidateIds": [
+          "x-anthropic-claude-code-permissions-general",
+          "x-anthropic-claude-code-permissions-official-terse",
+          "x-anthropic-claude-code-permissions-mention",
+          "x-anthropic-claude-code-permissions-keyword",
+          "x-anthropic-claude-code-permissions-operator",
+          "x-anthropic-claude-code-permissions-unrelated"
+        ],
+        "mustHaveRecallAt20": 1,
+        "relevantRecallAt20": 1,
+        "officialCommunityCoverageAt20": 1
+      },
+      "deltas": {
+        "mustHaveRecallAt20": 0.5,
+        "relevantRecallAt20": 0.2,
+        "officialCommunityCoverageAt20": 0.5
+      },
+      "decision": "improved"
+    },
+    {
+      "caseId": "x-openai-responses-api-tools",
+      "baseline": {
+        "plannerId": "baseline:single-topic-lane",
+        "laneCount": 1,
+        "retrievedCandidateIds": [
+          "x-openai-responses-api-tools-general",
+          "x-openai-responses-api-tools-mention",
+          "x-openai-responses-api-tools-keyword",
+          "x-openai-responses-api-tools-operator",
+          "x-openai-responses-api-tools-unrelated"
+        ],
+        "mustHaveRecallAt20": 0.5,
+        "relevantRecallAt20": 0.8,
+        "officialCommunityCoverageAt20": 0.5
+      },
+      "experiment": {
+        "plannerId": "experiment:social-research-query-planner",
+        "laneCount": 6,
+        "retrievedCandidateIds": [
+          "x-openai-responses-api-tools-general",
+          "x-openai-responses-api-tools-official-terse",
+          "x-openai-responses-api-tools-mention",
+          "x-openai-responses-api-tools-keyword",
+          "x-openai-responses-api-tools-operator",
+          "x-openai-responses-api-tools-unrelated"
+        ],
+        "mustHaveRecallAt20": 1,
+        "relevantRecallAt20": 1,
+        "officialCommunityCoverageAt20": 1
+      },
+      "deltas": {
+        "mustHaveRecallAt20": 0.5,
+        "relevantRecallAt20": 0.2,
+        "officialCommunityCoverageAt20": 0.5
+      },
+      "decision": "improved"
+    },
+    {
+      "caseId": "x-cursor-agent-terminal-mode",
+      "baseline": {
+        "plannerId": "baseline:single-topic-lane",
+        "laneCount": 1,
+        "retrievedCandidateIds": [
+          "x-cursor-agent-terminal-mode-general",
+          "x-cursor-agent-terminal-mode-mention",
+          "x-cursor-agent-terminal-mode-keyword",
+          "x-cursor-agent-terminal-mode-operator",
+          "x-cursor-agent-terminal-mode-unrelated"
+        ],
+        "mustHaveRecallAt20": 0.5,
+        "relevantRecallAt20": 0.8,
+        "officialCommunityCoverageAt20": 0.5
+      },
+      "experiment": {
+        "plannerId": "experiment:social-research-query-planner",
+        "laneCount": 6,
+        "retrievedCandidateIds": [
+          "x-cursor-agent-terminal-mode-general",
+          "x-cursor-agent-terminal-mode-official-terse",
+          "x-cursor-agent-terminal-mode-mention",
+          "x-cursor-agent-terminal-mode-keyword",
+          "x-cursor-agent-terminal-mode-operator",
+          "x-cursor-agent-terminal-mode-unrelated"
+        ],
+        "mustHaveRecallAt20": 1,
+        "relevantRecallAt20": 1,
+        "officialCommunityCoverageAt20": 1
+      },
+      "deltas": {
+        "mustHaveRecallAt20": 0.5,
+        "relevantRecallAt20": 0.2,
+        "officialCommunityCoverageAt20": 0.5
+      },
+      "decision": "improved"
+    },
+    {
+      "caseId": "x-windsurf-enterprise-agent-update",
+      "baseline": {
+        "plannerId": "baseline:single-topic-lane",
+        "laneCount": 1,
+        "retrievedCandidateIds": [
+          "x-windsurf-enterprise-agent-update-general",
+          "x-windsurf-enterprise-agent-update-mention",
+          "x-windsurf-enterprise-agent-update-keyword",
+          "x-windsurf-enterprise-agent-update-operator",
+          "x-windsurf-enterprise-agent-update-unrelated"
+        ],
+        "mustHaveRecallAt20": 0.5,
+        "relevantRecallAt20": 0.8,
+        "officialCommunityCoverageAt20": 0.5
+      },
+      "experiment": {
+        "plannerId": "experiment:social-research-query-planner",
+        "laneCount": 6,
+        "retrievedCandidateIds": [
+          "x-windsurf-enterprise-agent-update-general",
+          "x-windsurf-enterprise-agent-update-official-terse",
+          "x-windsurf-enterprise-agent-update-mention",
+          "x-windsurf-enterprise-agent-update-keyword",
+          "x-windsurf-enterprise-agent-update-operator",
+          "x-windsurf-enterprise-agent-update-unrelated"
+        ],
+        "mustHaveRecallAt20": 1,
+        "relevantRecallAt20": 1,
+        "officialCommunityCoverageAt20": 1
+      },
+      "deltas": {
+        "mustHaveRecallAt20": 0.5,
+        "relevantRecallAt20": 0.2,
+        "officialCommunityCoverageAt20": 0.5
+      },
+      "decision": "improved"
+    },
+    {
+      "caseId": "x-devin-background-agent-queue",
+      "baseline": {
+        "plannerId": "baseline:single-topic-lane",
+        "laneCount": 1,
+        "retrievedCandidateIds": [
+          "x-devin-background-agent-queue-general",
+          "x-devin-background-agent-queue-mention",
+          "x-devin-background-agent-queue-keyword",
+          "x-devin-background-agent-queue-operator",
+          "x-devin-background-agent-queue-unrelated"
+        ],
+        "mustHaveRecallAt20": 0.5,
+        "relevantRecallAt20": 0.8,
+        "officialCommunityCoverageAt20": 0.5
+      },
+      "experiment": {
+        "plannerId": "experiment:social-research-query-planner",
+        "laneCount": 6,
+        "retrievedCandidateIds": [
+          "x-devin-background-agent-queue-general",
+          "x-devin-background-agent-queue-official-terse",
+          "x-devin-background-agent-queue-mention",
+          "x-devin-background-agent-queue-keyword",
+          "x-devin-background-agent-queue-operator",
+          "x-devin-background-agent-queue-unrelated"
+        ],
+        "mustHaveRecallAt20": 1,
+        "relevantRecallAt20": 1,
+        "officialCommunityCoverageAt20": 1
+      },
+      "deltas": {
+        "mustHaveRecallAt20": 0.5,
+        "relevantRecallAt20": 0.2,
+        "officialCommunityCoverageAt20": 0.5
+      },
+      "decision": "improved"
+    },
+    {
+      "caseId": "x-openrouter-tool-routing",
+      "baseline": {
+        "plannerId": "baseline:single-topic-lane",
+        "laneCount": 1,
+        "retrievedCandidateIds": [
+          "x-openrouter-tool-routing-general",
+          "x-openrouter-tool-routing-mention",
+          "x-openrouter-tool-routing-keyword",
+          "x-openrouter-tool-routing-operator",
+          "x-openrouter-tool-routing-unrelated"
+        ],
+        "mustHaveRecallAt20": 0.5,
+        "relevantRecallAt20": 0.8,
+        "officialCommunityCoverageAt20": 0.5
+      },
+      "experiment": {
+        "plannerId": "experiment:social-research-query-planner",
+        "laneCount": 6,
+        "retrievedCandidateIds": [
+          "x-openrouter-tool-routing-general",
+          "x-openrouter-tool-routing-official-terse",
+          "x-openrouter-tool-routing-mention",
+          "x-openrouter-tool-routing-keyword",
+          "x-openrouter-tool-routing-operator",
+          "x-openrouter-tool-routing-unrelated"
+        ],
+        "mustHaveRecallAt20": 1,
+        "relevantRecallAt20": 1,
+        "officialCommunityCoverageAt20": 1
+      },
+      "deltas": {
+        "mustHaveRecallAt20": 0.5,
+        "relevantRecallAt20": 0.2,
+        "officialCommunityCoverageAt20": 0.5
+      },
+      "decision": "improved"
+    },
+    {
+      "caseId": "x-prisma-mcp-database-tools",
+      "baseline": {
+        "plannerId": "baseline:single-topic-lane",
+        "laneCount": 1,
+        "retrievedCandidateIds": [
+          "x-prisma-mcp-database-tools-general",
+          "x-prisma-mcp-database-tools-mention",
+          "x-prisma-mcp-database-tools-keyword",
+          "x-prisma-mcp-database-tools-operator",
+          "x-prisma-mcp-database-tools-unrelated"
+        ],
+        "mustHaveRecallAt20": 0.5,
+        "relevantRecallAt20": 0.8,
+        "officialCommunityCoverageAt20": 0.5
+      },
+      "experiment": {
+        "plannerId": "experiment:social-research-query-planner",
+        "laneCount": 6,
+        "retrievedCandidateIds": [
+          "x-prisma-mcp-database-tools-general",
+          "x-prisma-mcp-database-tools-official-terse",
+          "x-prisma-mcp-database-tools-mention",
+          "x-prisma-mcp-database-tools-keyword",
+          "x-prisma-mcp-database-tools-operator",
+          "x-prisma-mcp-database-tools-unrelated"
+        ],
+        "mustHaveRecallAt20": 1,
+        "relevantRecallAt20": 1,
+        "officialCommunityCoverageAt20": 1
+      },
+      "deltas": {
+        "mustHaveRecallAt20": 0.5,
+        "relevantRecallAt20": 0.2,
+        "officialCommunityCoverageAt20": 0.5
+      },
+      "decision": "improved"
+    },
+    {
+      "caseId": "x-kubernetes-agent-ops",
+      "baseline": {
+        "plannerId": "baseline:single-topic-lane",
+        "laneCount": 1,
+        "retrievedCandidateIds": [
+          "x-kubernetes-agent-ops-general",
+          "x-kubernetes-agent-ops-mention",
+          "x-kubernetes-agent-ops-keyword",
+          "x-kubernetes-agent-ops-operator",
+          "x-kubernetes-agent-ops-unrelated"
+        ],
+        "mustHaveRecallAt20": 0.5,
+        "relevantRecallAt20": 0.8,
+        "officialCommunityCoverageAt20": 0.5
+      },
+      "experiment": {
+        "plannerId": "experiment:social-research-query-planner",
+        "laneCount": 6,
+        "retrievedCandidateIds": [
+          "x-kubernetes-agent-ops-general",
+          "x-kubernetes-agent-ops-official-terse",
+          "x-kubernetes-agent-ops-mention",
+          "x-kubernetes-agent-ops-keyword",
+          "x-kubernetes-agent-ops-operator",
+          "x-kubernetes-agent-ops-unrelated"
+        ],
+        "mustHaveRecallAt20": 1,
+        "relevantRecallAt20": 1,
+        "officialCommunityCoverageAt20": 1
+      },
+      "deltas": {
+        "mustHaveRecallAt20": 0.5,
+        "relevantRecallAt20": 0.2,
+        "officialCommunityCoverageAt20": 0.5
+      },
+      "decision": "improved"
+    },
+    {
+      "caseId": "mixed-copilot-workspace-agent-rollout",
+      "baseline": {
+        "plannerId": "baseline:single-topic-lane",
+        "laneCount": 2,
+        "retrievedCandidateIds": [
+          "mixed-copilot-workspace-agent-rollout-reddit-terse",
+          "mixed-copilot-workspace-agent-rollout-mention",
+          "mixed-copilot-workspace-agent-rollout-checklist",
+          "mixed-copilot-workspace-agent-rollout-operator",
+          "mixed-copilot-workspace-agent-rollout-unrelated"
+        ],
+        "mustHaveRecallAt20": 0.5,
+        "relevantRecallAt20": 0.8,
+        "officialCommunityCoverageAt20": 0.5
+      },
+      "experiment": {
+        "plannerId": "experiment:social-research-query-planner",
+        "laneCount": 14,
+        "retrievedCandidateIds": [
+          "mixed-copilot-workspace-agent-rollout-official",
+          "mixed-copilot-workspace-agent-rollout-reddit-terse",
+          "mixed-copilot-workspace-agent-rollout-mention",
+          "mixed-copilot-workspace-agent-rollout-checklist",
+          "mixed-copilot-workspace-agent-rollout-operator",
+          "mixed-copilot-workspace-agent-rollout-unrelated"
+        ],
+        "mustHaveRecallAt20": 1,
+        "relevantRecallAt20": 1,
+        "officialCommunityCoverageAt20": 1
+      },
+      "deltas": {
+        "mustHaveRecallAt20": 0.5,
+        "relevantRecallAt20": 0.2,
+        "officialCommunityCoverageAt20": 0.5
+      },
+      "decision": "improved"
+    }
+  ],
+  "evalRunId": "source-query-planner-eval-v1",
+  "gitShaPolicy": "release pipeline records the exact git sha next to this deterministic report",
+  "datasetPath": "ops/evals/source-ranking-eval-dataset.v1.json",
+  "model": {
+    "judge": "none",
+    "baseline": "single-topic-lane",
+    "experiment": "social-research-query-planner",
+    "liveNetwork": false
+  }
+}

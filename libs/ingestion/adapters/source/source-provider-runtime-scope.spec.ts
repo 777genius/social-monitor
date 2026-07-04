@@ -2,6 +2,7 @@ import type { SourceProviderPort } from '../../ports';
 import {
   isBetaSourceProvider,
   isFixtureSourceProvider,
+  resolveSourceProviderRuntimeScope,
   selectRuntimeSourceProviders,
 } from './source-provider-runtime-scope';
 
@@ -19,21 +20,23 @@ describe('source provider runtime scope', () => {
       provider('unknown-provider'),
     ];
 
-    const selected = selectRuntimeSourceProviders(providers, {
-      SOCIAL_MONITOR_RUNTIME_PROFILE: 'beta',
-    });
+    const selected = selectRuntimeSourceProviders(
+      providers,
+      resolveSourceProviderRuntimeScope({
+        SOCIAL_MONITOR_RUNTIME_PROFILE: 'beta',
+      }),
+    );
 
     expect(selected.map((item) => item.key())).toEqual([
       'hacker-news',
       'rss',
-      'github-issues',
       'github-repo-radar',
       'github-trending-page',
       'reddit',
     ]);
     expect(isBetaSourceProvider('hacker-news')).toBe(true);
     expect(isBetaSourceProvider('rss')).toBe(true);
-    expect(isBetaSourceProvider('github-issues')).toBe(true);
+    expect(isBetaSourceProvider('github-issues')).toBe(false);
     expect(isBetaSourceProvider('github-repo-radar')).toBe(true);
     expect(isBetaSourceProvider('github-trending-page')).toBe(true);
     expect(isBetaSourceProvider('reddit')).toBe(true);
@@ -43,7 +46,7 @@ describe('source provider runtime scope', () => {
     expect(isFixtureSourceProvider('x-twitter')).toBe(true);
   });
 
-  it('keeps local and deterministic runtimes open for fixture certification providers', () => {
+  it('keeps local and deterministic runtimes open for fixture certification providers except disabled defaults', () => {
     const providers = [
       provider('fake-source'),
       provider('github-issues'),
@@ -51,15 +54,39 @@ describe('source provider runtime scope', () => {
       provider('unknown-provider'),
     ];
 
-    const selected = selectRuntimeSourceProviders(providers, {
-      SOCIAL_MONITOR_RUNTIME_PROFILE: 'deterministic-test',
-    });
+    const selected = selectRuntimeSourceProviders(
+      providers,
+      resolveSourceProviderRuntimeScope({
+        SOCIAL_MONITOR_RUNTIME_PROFILE: 'deterministic-test',
+      }),
+    );
 
     expect(selected.map((item) => item.key())).toEqual([
       'fake-source',
-      'github-issues',
       'x-twitter',
       'unknown-provider',
+    ]);
+  });
+
+  it('allows GitHub issues only when the issue collector is explicitly enabled', () => {
+    const providers = [
+      provider('hacker-news'),
+      provider('github-issues'),
+      provider('github-repo-radar'),
+    ];
+
+    const selected = selectRuntimeSourceProviders(
+      providers,
+      resolveSourceProviderRuntimeScope({
+        SOCIAL_MONITOR_RUNTIME_PROFILE: 'beta',
+        GITHUB_ISSUES_COLLECTOR_ENABLED: '1',
+      }),
+    );
+
+    expect(selected.map((item) => item.key())).toEqual([
+      'hacker-news',
+      'github-issues',
+      'github-repo-radar',
     ]);
   });
 
@@ -70,10 +97,13 @@ describe('source provider runtime scope', () => {
       provider('unknown-provider'),
     ];
 
-    const selected = selectRuntimeSourceProviders(providers, {
-      SOCIAL_MONITOR_RUNTIME_PROFILE: 'beta',
-      X_COLLECTOR_ENABLED: '1',
-    });
+    const selected = selectRuntimeSourceProviders(
+      providers,
+      resolveSourceProviderRuntimeScope({
+        SOCIAL_MONITOR_RUNTIME_PROFILE: 'beta',
+        X_COLLECTOR_ENABLED: '1',
+      }),
+    );
 
     expect(selected.map((item) => item.key())).toEqual([
       'hacker-news',
@@ -84,10 +114,10 @@ describe('source provider runtime scope', () => {
   it('keeps the legacy x-collector flag as a compatibility alias', () => {
     const selected = selectRuntimeSourceProviders(
       [provider('x-twitter')],
-      {
+      resolveSourceProviderRuntimeScope({
         SOCIAL_MONITOR_RUNTIME_PROFILE: 'beta',
         X_COLLECTOR_EXPERIMENTAL_ENABLED: '1',
-      },
+      }),
     );
 
     expect(selected.map((item) => item.key())).toEqual(['x-twitter']);

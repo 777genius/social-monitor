@@ -25,6 +25,7 @@ export type {
 export type SourceQuery = {
   readonly mode: SourceQueryMode;
   readonly query: string;
+  readonly parameters?: SourceRuntimeConfig;
 };
 
 export type SourceProviderScanContext = {

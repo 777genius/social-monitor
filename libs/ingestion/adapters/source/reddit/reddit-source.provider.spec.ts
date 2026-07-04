@@ -1,6 +1,9 @@
-import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
-import type { SourceProviderScanContext, SourceRuntimeConfig } from '../../../ports';
+import type {
+  SourceProviderScanContext,
+  SourceRuntimeConfig,
+} from "../../../ports";
 import type {
   RedditClientPort,
   RedditCommentPage,
@@ -8,102 +11,135 @@ import type {
   RedditListPostCommentsRequest,
   RedditListSubredditPostsRequest,
   RedditSearchPostsRequest,
-} from './reddit-client.port';
-import { RedditSourceProvider } from './reddit-source.provider';
-import type { RedditRefreshTokenProviderPort, RedditRefreshTokenRequest } from './refresh-token-reddit-token-provider';
-import type { RedditTokenProviderPort } from './reddit-token-provider.port';
+} from "./reddit-client.port";
+import { RedditSourceProvider } from "./reddit-source.provider";
+import type {
+  RedditRefreshTokenProviderPort,
+  RedditRefreshTokenRequest,
+} from "./refresh-token-reddit-token-provider";
+import type { RedditTokenProviderPort } from "./reddit-token-provider.port";
 
-describe('RedditSourceProvider', () => {
-  it('uses app-only OAuth when the source binding has no user token', async () => {
+describe("RedditSourceProvider", () => {
+  it("uses app-only OAuth when the source binding has no user token", async () => {
     const client = new CapturingRedditClient();
-    const provider = new RedditSourceProvider(client, new StaticTokenProvider('reddit-app-only-token'));
+    const provider = new RedditSourceProvider(
+      client,
+      new StaticTokenProvider("reddit-app-only-token"),
+    );
     const context = scanContext({
-      subreddit: 'observability',
-      listing: 'hot',
+      subreddit: "observability",
+      listing: "hot",
     });
-    const plan = provider.planScan({ mode: 'listing', query: 'observability:hot' }, context);
+    const plan = provider.planScan(
+      { mode: "listing", query: "observability:hot" },
+      context,
+    );
 
     await provider.scan(plan, context);
 
     expect(client.listingRequests).toHaveLength(1);
-    expect(client.listingRequests[0]?.accessToken).toBe('reddit-app-only-token');
+    expect(client.listingRequests[0]?.accessToken).toBe(
+      "reddit-app-only-token",
+    );
   });
 
-  it('keeps encrypted tenant bearer tokens as an explicit override', async () => {
+  it("keeps encrypted tenant bearer tokens as an explicit override", async () => {
     const client = new CapturingRedditClient();
-    const appTokenProvider = new StaticTokenProvider('reddit-app-only-token');
-    const refreshTokenProvider = new StaticRefreshTokenProvider('tenant-refresh-access-token');
-    const provider = new RedditSourceProvider(client, appTokenProvider, refreshTokenProvider);
+    const appTokenProvider = new StaticTokenProvider("reddit-app-only-token");
+    const refreshTokenProvider = new StaticRefreshTokenProvider(
+      "tenant-refresh-access-token",
+    );
+    const provider = new RedditSourceProvider(
+      client,
+      appTokenProvider,
+      refreshTokenProvider,
+    );
     const context = scanContext({
-      accessToken: 'tenant-reddit-token',
-      refreshToken: 'tenant-refresh-token',
-      subreddit: 'observability',
-      listing: 'hot',
+      accessToken: "tenant-reddit-token",
+      refreshToken: "tenant-refresh-token",
+      subreddit: "observability",
+      listing: "hot",
     });
-    const plan = provider.planScan({ mode: 'listing', query: 'observability:hot' }, context);
+    const plan = provider.planScan(
+      { mode: "listing", query: "observability:hot" },
+      context,
+    );
 
     await provider.scan(plan, context);
 
     expect(appTokenProvider.calls).toBe(0);
     expect(refreshTokenProvider.requests).toHaveLength(0);
-    expect(client.listingRequests[0]?.accessToken).toBe('tenant-reddit-token');
+    expect(client.listingRequests[0]?.accessToken).toBe("tenant-reddit-token");
   });
 
-  it('exchanges encrypted tenant refresh tokens before falling back to app-only OAuth', async () => {
+  it("exchanges encrypted tenant refresh tokens before falling back to app-only OAuth", async () => {
     const client = new CapturingRedditClient();
-    const appTokenProvider = new StaticTokenProvider('reddit-app-only-token');
-    const refreshTokenProvider = new StaticRefreshTokenProvider('tenant-refresh-access-token');
-    const provider = new RedditSourceProvider(client, appTokenProvider, refreshTokenProvider);
+    const appTokenProvider = new StaticTokenProvider("reddit-app-only-token");
+    const refreshTokenProvider = new StaticRefreshTokenProvider(
+      "tenant-refresh-access-token",
+    );
+    const provider = new RedditSourceProvider(
+      client,
+      appTokenProvider,
+      refreshTokenProvider,
+    );
     const context = scanContext({
-      clientId: 'reddit-client-id',
-      clientSecret: 'reddit-client-secret',
-      refreshToken: 'tenant-refresh-token',
-      userAgent: 'social-monitor-test/0.1',
-      subreddit: 'observability',
-      listing: 'hot',
+      clientId: "reddit-client-id",
+      clientSecret: "reddit-client-secret",
+      refreshToken: "tenant-refresh-token",
+      userAgent: "social-monitor-test/0.1",
+      subreddit: "observability",
+      listing: "hot",
     });
-    const plan = provider.planScan({ mode: 'listing', query: 'observability:hot' }, context);
+    const plan = provider.planScan(
+      { mode: "listing", query: "observability:hot" },
+      context,
+    );
 
     await provider.scan(plan, context);
 
     expect(appTokenProvider.calls).toBe(0);
-    expect(refreshTokenProvider.requests).toEqual([{
-      clientId: 'reddit-client-id',
-      clientSecret: 'reddit-client-secret',
-      refreshToken: 'tenant-refresh-token',
-      userAgent: 'social-monitor-test/0.1',
-    }]);
-    expect(client.listingRequests[0]?.accessToken).toBe('tenant-refresh-access-token');
+    expect(refreshTokenProvider.requests).toEqual([
+      {
+        clientId: "reddit-client-id",
+        clientSecret: "reddit-client-secret",
+        refreshToken: "tenant-refresh-token",
+        userAgent: "social-monitor-test/0.1",
+      },
+    ]);
+    expect(client.listingRequests[0]?.accessToken).toBe(
+      "tenant-refresh-access-token",
+    );
   });
 
-  it('passes top listing time window and keeps engagement metadata', async () => {
+  it("passes top listing time window and keeps engagement metadata", async () => {
     const client = new CapturingRedditClient({
       posts: [
         {
-          id: 'post-1',
-          name: 't3_post_1',
-          subreddit: 'ClaudeAI',
-          title: 'Claude release discussion',
-          selftext: 'Users compare the release against coding workflows.',
-          permalink: '/r/ClaudeAI/comments/post_1/claude_release_discussion/',
-          url: 'https://example.test/claude-release-analysis',
-          thumbnailUrl: 'https://b.thumbs.redditmedia.com/claude-thumb.jpg',
-          previewImageUrl: 'https://preview.redd.it/claude-release.png',
-          postHint: 'image',
+          id: "post-1",
+          name: "t3_post_1",
+          subreddit: "ClaudeAI",
+          title: "Claude release discussion",
+          selftext: "Users compare the release against coding workflows.",
+          permalink: "/r/ClaudeAI/comments/post_1/claude_release_discussion/",
+          url: "https://example.test/claude-release-analysis",
+          thumbnailUrl: "https://b.thumbs.redditmedia.com/claude-thumb.jpg",
+          previewImageUrl: "https://preview.redd.it/claude-release.png",
+          postHint: "image",
           isVideo: false,
-          author: 'example-user',
+          author: "example-user",
           createdUtc: 1_782_230_000,
           score: 420,
           numComments: 58,
           upvoteRatio: 0.94,
         },
         {
-          id: 'post-2',
-          name: 't3_post_2',
-          subreddit: 'ClaudeAI',
-          title: 'Low signal question',
-          selftext: 'No meaningful engagement yet.',
-          permalink: '/r/ClaudeAI/comments/post_2/low_signal_question/',
+          id: "post-2",
+          name: "t3_post_2",
+          subreddit: "ClaudeAI",
+          title: "Low signal question",
+          selftext: "No meaningful engagement yet.",
+          permalink: "/r/ClaudeAI/comments/post_2/low_signal_question/",
           createdUtc: 1_782_230_100,
           score: 2,
           numComments: 0,
@@ -111,34 +147,40 @@ describe('RedditSourceProvider', () => {
         },
       ],
     });
-    const provider = new RedditSourceProvider(client, new StaticTokenProvider('reddit-app-only-token'));
+    const provider = new RedditSourceProvider(
+      client,
+      new StaticTokenProvider("reddit-app-only-token"),
+    );
     const context = scanContext({
-      subreddit: 'ClaudeAI',
-      listing: 'top',
-      topTime: 'week',
+      subreddit: "ClaudeAI",
+      listing: "top",
+      topTime: "week",
       minScore: 100,
       maxItems: 10,
     });
-    const plan = provider.planScan({ mode: 'listing', query: 'ClaudeAI:top' }, context);
+    const plan = provider.planScan(
+      { mode: "listing", query: "ClaudeAI:top" },
+      context,
+    );
 
     const result = await provider.scan(plan, context);
 
     expect(client.listingRequests[0]).toMatchObject({
-      subreddit: 'ClaudeAI',
-      listing: 'top',
-      topTime: 'week',
+      subreddit: "ClaudeAI",
+      listing: "top",
+      topTime: "week",
       limit: 10,
     });
     expect(result.items[0]).toMatchObject({
-      title: 'Claude release discussion',
-        metadata: {
-          subreddit: 'ClaudeAI',
-          linkedUrl: 'https://example.test/claude-release-analysis',
-          thumbnailUrl: 'https://b.thumbs.redditmedia.com/claude-thumb.jpg',
-          previewImageUrl: 'https://preview.redd.it/claude-release.png',
-          postHint: 'image',
-          isVideo: false,
-          score: 420,
+      title: "Claude release discussion",
+      metadata: {
+        subreddit: "ClaudeAI",
+        linkedUrl: "https://example.test/claude-release-analysis",
+        thumbnailUrl: "https://b.thumbs.redditmedia.com/claude-thumb.jpg",
+        previewImageUrl: "https://preview.redd.it/claude-release.png",
+        postHint: "image",
+        isVideo: false,
+        score: 420,
         numComments: 58,
         upvoteRatio: 0.94,
       },
@@ -146,24 +188,24 @@ describe('RedditSourceProvider', () => {
     expect(result.items).toHaveLength(1);
   });
 
-  it('runs configured multi-pass top/day listings with search fallback and engagement sorting', async () => {
+  it("runs configured multi-pass top/day listings with search fallback and engagement sorting", async () => {
     const client = new CapturingRedditClient({
       listingResponses: new Map<string, RedditListingPage | Error>([
         [
-          'OpenAI:top:day',
+          "OpenAI:top:day",
           {
             posts: [
               redditPost({
-                id: 'openai-low',
-                subreddit: 'OpenAI',
-                title: 'OpenAI low score discussion',
+                id: "openai-low",
+                subreddit: "OpenAI",
+                title: "OpenAI low score discussion",
                 score: 12,
                 numComments: 4,
               }),
               redditPost({
-                id: 'shared',
-                subreddit: 'OpenAI',
-                title: 'Shared OpenAI agent reliability thread',
+                id: "shared",
+                subreddit: "OpenAI",
+                title: "Shared OpenAI agent reliability thread",
                 score: 180,
                 numComments: 60,
               }),
@@ -171,13 +213,13 @@ describe('RedditSourceProvider', () => {
           },
         ],
         [
-          'LocalLLaMA:top:day',
+          "LocalLLaMA:top:day",
           {
             posts: [
               redditPost({
-                id: 'local-llama',
-                subreddit: 'LocalLLaMA',
-                title: 'LocalLLaMA compares new open model serving',
+                id: "local-llama",
+                subreddit: "LocalLLaMA",
+                title: "LocalLLaMA compares new open model serving",
                 score: 220,
                 numComments: 90,
               }),
@@ -185,13 +227,13 @@ describe('RedditSourceProvider', () => {
           },
         ],
         [
-          'MachineLearning:top:day',
+          "MachineLearning:top:day",
           {
             posts: [
               redditPost({
-                id: 'machine-learning',
-                subreddit: 'MachineLearning',
-                title: 'MachineLearning paper discussion',
+                id: "machine-learning",
+                subreddit: "MachineLearning",
+                title: "MachineLearning paper discussion",
                 score: 160,
                 numComments: 75,
               }),
@@ -202,72 +244,196 @@ describe('RedditSourceProvider', () => {
       searchResponse: {
         posts: [
           redditPost({
-            id: 'shared',
-            subreddit: 'OpenAI',
-            title: 'Shared OpenAI agent reliability thread',
+            id: "shared",
+            subreddit: "OpenAI",
+            title: "Shared OpenAI agent reliability thread",
             score: 180,
             numComments: 60,
           }),
           redditPost({
-            id: 'search-fallback',
-            subreddit: 'ArtificialInteligence',
-            title: 'AI agents search fallback thread',
+            id: "search-fallback",
+            subreddit: "ArtificialInteligence",
+            title: "AI agents search fallback thread",
             score: 80,
             numComments: 40,
+          }),
+          redditPost({
+            id: "off-topic-darts",
+            subreddit: "Darts",
+            title: "Unrelated high-score Reddit-wide search result",
+            score: 999,
+            numComments: 200,
           }),
         ],
       },
     });
-    const provider = new RedditSourceProvider(client, new StaticTokenProvider('reddit-app-only-token'));
+    const provider = new RedditSourceProvider(
+      client,
+      new StaticTokenProvider("reddit-app-only-token"),
+    );
     const context = scanContext({
       maxItems: 3,
+      rankingMode: "engagement",
       scanPasses: [
-        { mode: 'listing', subreddit: 'OpenAI', listing: 'top', topTime: 'day' },
-        { mode: 'listing', subreddit: 'LocalLLaMA', listing: 'top', topTime: 'day' },
-        { mode: 'listing', subreddit: 'MachineLearning', listing: 'top', topTime: 'day' },
-        { mode: 'search', query: 'OpenAI OR LLM OR AI agents', maxItems: 2 },
+        {
+          mode: "listing",
+          subreddit: "OpenAI",
+          listing: "top",
+          topTime: "day",
+        },
+        {
+          mode: "listing",
+          subreddit: "LocalLLaMA",
+          listing: "top",
+          topTime: "day",
+        },
+        {
+          mode: "listing",
+          subreddit: "MachineLearning",
+          listing: "top",
+          topTime: "day",
+        },
+        {
+          mode: "search",
+          query: "OpenAI OR LLM OR AI agents",
+          searchSort: "top",
+          searchTime: "week",
+          maxItems: 3,
+          allowedSubreddits: ["OpenAI", "ArtificialInteligence"],
+        },
       ],
     });
-    const plan = provider.planScan({ mode: 'search', query: 'OpenAI OR LLM OR AI agents' }, context);
+    const plan = provider.planScan(
+      { mode: "search", query: "OpenAI OR LLM OR AI agents" },
+      context,
+    );
 
     const result = await provider.scan(plan, context);
 
-    expect(client.listingRequests.map((request) => ({
-      subreddit: request.subreddit,
-      listing: request.listing,
-      topTime: request.topTime,
-      limit: request.limit,
-    }))).toEqual([
-      { subreddit: 'OpenAI', listing: 'top', topTime: 'day', limit: 1 },
-      { subreddit: 'LocalLLaMA', listing: 'top', topTime: 'day', limit: 1 },
-      { subreddit: 'MachineLearning', listing: 'top', topTime: 'day', limit: 1 },
+    expect(
+      client.listingRequests.map((request) => ({
+        subreddit: request.subreddit,
+        listing: request.listing,
+        topTime: request.topTime,
+        limit: request.limit,
+      })),
+    ).toEqual([
+      { subreddit: "OpenAI", listing: "top", topTime: "day", limit: 1 },
+      { subreddit: "LocalLLaMA", listing: "top", topTime: "day", limit: 1 },
+      {
+        subreddit: "MachineLearning",
+        listing: "top",
+        topTime: "day",
+        limit: 1,
+      },
     ]);
     expect(client.searchRequests).toEqual([
       expect.objectContaining({
-        query: 'OpenAI OR LLM OR AI agents',
-        limit: 2,
+        query: "OpenAI OR LLM OR AI agents",
+        sort: "top",
+        time: "week",
+        limit: 3,
       }),
     ]);
     expect(result.nextCursor).toBeUndefined();
     expect(result.items.map((item) => item.externalId)).toEqual([
-      'reddit:t3_local-llama',
-      'reddit:t3_machine-learning',
-      'reddit:t3_shared',
+      "reddit:t3_local-llama",
+      "reddit:t3_machine-learning",
+      "reddit:t3_shared",
     ]);
   });
 
-  it('expands configured Reddit post passes with post-thread comments', async () => {
+  it("keeps thirty-two user-interest Reddit scan passes for broad daily discovery", async () => {
+    const subreddits = [
+      "ArtificialInteligence",
+      "OpenAI",
+      "ClaudeAI",
+      "ClaudeCode",
+      "codex",
+      "LocalLLaMA",
+      "MachineLearning",
+      "cybersecurity",
+      "dartlang",
+      "FlutterDev",
+      "javascript",
+      "node",
+      "Python",
+      "webdev",
+      "programming",
+      "technology",
+      "artificial",
+      "ChatGPT",
+      "singularity",
+      "typescript",
+      "rust",
+      "golang",
+      "netsec",
+      "startups",
+      "CursorAI",
+      "MCPservers",
+      "AI_Agents",
+      "LangChain",
+      "OpenSourceAI",
+      "vibecoding",
+      "reactjs",
+      "SaaS",
+    ];
     const client = new CapturingRedditClient({
-      listingResponses: new Map<string, RedditListingPage | Error>([
-        [
-          'ClaudeAI:new:',
+      listingResponses: new Map<string, RedditListingPage | Error>(
+        subreddits.map((subreddit, index) => [
+          `${subreddit}:top:day`,
           {
             posts: [
               redditPost({
-                id: 'post-1',
-                name: 't3_post_1',
-                subreddit: 'ClaudeAI',
-                title: 'Claude Code workflow monitoring',
+                id: `${subreddit.toLowerCase()}-${index}`,
+                subreddit,
+                title: `${subreddit} daily signal`,
+                score: 100 - index,
+              }),
+            ],
+          },
+        ]),
+      ),
+    });
+    const provider = new RedditSourceProvider(
+      client,
+      new StaticTokenProvider("reddit-app-only-token"),
+    );
+    const context = scanContext({
+      maxItems: 48,
+      scanPasses: subreddits.map((subreddit) => ({
+        mode: "listing",
+        subreddit,
+        listing: "top",
+        topTime: "day",
+        maxItems: 1,
+      })),
+    });
+    const plan = provider.planScan(
+      { mode: "search", query: "AI developer interests" },
+      context,
+    );
+
+    const result = await provider.scan(plan, context);
+
+    expect(client.listingRequests.map((request) => request.subreddit)).toEqual(
+      subreddits,
+    );
+    expect(result.items).toHaveLength(subreddits.length);
+  });
+
+  it("expands configured Reddit post passes with post-thread comments", async () => {
+    const client = new CapturingRedditClient({
+      listingResponses: new Map<string, RedditListingPage | Error>([
+        [
+          "ClaudeAI:new:",
+          {
+            posts: [
+              redditPost({
+                id: "post-1",
+                name: "t3_post_1",
+                subreddit: "ClaudeAI",
+                title: "Claude Code workflow monitoring",
                 score: 60,
                 numComments: 2,
               }),
@@ -277,27 +443,27 @@ describe('RedditSourceProvider', () => {
       ]),
       commentResponses: new Map<string, RedditCommentPage | Error>([
         [
-          'post-1',
+          "post-1",
           {
             comments: [
               {
-                id: 'comment-1',
-                name: 't1_comment_1',
-                subreddit: 'ClaudeAI',
-                body: 'The useful signal is in comment-level workflow complaints.',
-                author: 'workflow-builder',
-                permalink: '/r/ClaudeAI/comments/post_1/_/comment_1/',
-                parentId: 't3_post_1',
+                id: "comment-1",
+                name: "t1_comment_1",
+                subreddit: "ClaudeAI",
+                body: "The useful signal is in comment-level workflow complaints.",
+                author: "workflow-builder",
+                permalink: "/r/ClaudeAI/comments/post_1/_/comment_1/",
+                parentId: "t3_post_1",
                 createdUtc: 1_782_230_060,
                 score: 25,
                 replyCount: 3,
                 depth: 0,
               },
               {
-                id: 'comment-low-score',
-                name: 't1_comment_low_score',
-                subreddit: 'ClaudeAI',
-                body: 'This comment is below the configured quality floor.',
+                id: "comment-low-score",
+                name: "t1_comment_low_score",
+                subreddit: "ClaudeAI",
+                body: "This comment is below the configured quality floor.",
                 createdUtc: 1_782_230_070,
                 score: 1,
                 depth: 0,
@@ -307,206 +473,284 @@ describe('RedditSourceProvider', () => {
         ],
       ]),
     });
-    const provider = new RedditSourceProvider(client, new StaticTokenProvider('reddit-app-only-token'));
+    const provider = new RedditSourceProvider(
+      client,
+      new StaticTokenProvider("reddit-app-only-token"),
+    );
     const context = scanContext({
       maxItems: 5,
+      rankingMode: "engagement",
       scanPasses: [
         {
-          mode: 'listing',
-          subreddit: 'ClaudeAI',
-          listing: 'new',
+          mode: "listing",
+          subreddit: "ClaudeAI",
+          listing: "new",
           includeComments: true,
           maxCommentsPerPost: 2,
           minScore: 10,
         },
       ],
     });
-    const plan = provider.planScan({ mode: 'listing', query: 'ClaudeAI:new' }, context);
+    const plan = provider.planScan(
+      { mode: "listing", query: "ClaudeAI:new" },
+      context,
+    );
 
     const result = await provider.scan(plan, context);
 
     expect(client.commentRequests).toEqual([
       expect.objectContaining({
-        postId: 'post-1',
-        subreddit: 'ClaudeAI',
+        postId: "post-1",
+        subreddit: "ClaudeAI",
         limit: 2,
         depth: 2,
-        sort: 'confidence',
+        sort: "confidence",
       }),
     ]);
     expect(result.items.map((item) => item.externalId)).toEqual([
-      'reddit:t3_post_1',
+      "reddit:t3_post_1",
     ]);
-    expect(result.conversationUnits?.map((unit) => unit.providerUnitId)).toEqual([
-      't1_comment_1',
-    ]);
+    expect(
+      result.conversationUnits?.map((unit) => unit.providerUnitId),
+    ).toEqual(["t1_comment_1"]);
     expect(result.conversationUnits?.[0]).toMatchObject({
-      rootExternalId: 'reddit:t3_post_1',
-      rootProviderItemId: 't3_post_1',
-      providerUnitId: 't1_comment_1',
-      body: 'The useful signal is in comment-level workflow complaints.',
-      threadExternalId: 't3_post_1',
+      rootExternalId: "reddit:t3_post_1",
+      rootProviderItemId: "t3_post_1",
+      providerUnitId: "t1_comment_1",
+      body: "The useful signal is in comment-level workflow complaints.",
+      threadExternalId: "t3_post_1",
       depth: 0,
-      role: 'top_level_comment',
+      role: "top_level_comment",
       metadata: {
-        kind: 'reddit_comment',
-        contentType: 'comment',
-        parentPostId: 't3_post_1',
-        subreddit: 'ClaudeAI',
+        kind: "reddit_comment",
+        contentType: "comment",
+        parentPostId: "t3_post_1",
+        subreddit: "ClaudeAI",
         score: 25,
         replies: 3,
         depth: 0,
-        role: 'top_level_comment',
-        scoreConfidence: 'provider_reported',
+        role: "top_level_comment",
+        scoreConfidence: "provider_reported",
       },
     });
   });
 
-  it('keeps successful scan-pass posts when another Reddit pass is temporarily unavailable', async () => {
+  it("keeps successful scan-pass posts when another Reddit pass is temporarily unavailable", async () => {
     const client = new CapturingRedditClient({
       listingResponses: new Map<string, RedditListingPage | Error>([
         [
-          'OpenAI:top:day',
+          "OpenAI:top:day",
           {
             posts: [
               redditPost({
-                id: 'openai-live',
-                subreddit: 'OpenAI',
-                title: 'OpenAI live discussion survives partial outage',
+                id: "openai-live",
+                subreddit: "OpenAI",
+                title: "OpenAI live discussion survives partial outage",
                 score: 320,
                 numComments: 88,
               }),
             ],
           },
         ],
-        ['ClaudeAI:top:day', new Error('fetch failed')],
+        ["ClaudeAI:top:day", new Error("fetch failed")],
       ]),
       searchResponse: {
         posts: [
           redditPost({
-            id: 'search-live',
-            subreddit: 'ArtificialInteligence',
-            title: 'AI agents search fallback survives partial outage',
+            id: "search-live",
+            subreddit: "ArtificialInteligence",
+            title: "AI agents search fallback survives partial outage",
             score: 120,
             numComments: 42,
           }),
         ],
       },
     });
-    const provider = new RedditSourceProvider(client, new StaticTokenProvider('reddit-app-only-token'));
+    const provider = new RedditSourceProvider(
+      client,
+      new StaticTokenProvider("reddit-app-only-token"),
+    );
     const context = scanContext({
       maxItems: 5,
+      rankingMode: "engagement",
       scanPasses: [
-        { mode: 'listing', subreddit: 'OpenAI', listing: 'top', topTime: 'day' },
-        { mode: 'listing', subreddit: 'ClaudeAI', listing: 'top', topTime: 'day' },
-        { mode: 'search', query: 'OpenAI OR AI agents', maxItems: 2 },
+        {
+          mode: "listing",
+          subreddit: "OpenAI",
+          listing: "top",
+          topTime: "day",
+        },
+        {
+          mode: "listing",
+          subreddit: "ClaudeAI",
+          listing: "top",
+          topTime: "day",
+        },
+        { mode: "search", query: "OpenAI OR AI agents", maxItems: 2 },
       ],
     });
-    const plan = provider.planScan({ mode: 'search', query: 'OpenAI OR AI agents' }, context);
+    const plan = provider.planScan(
+      { mode: "search", query: "OpenAI OR AI agents" },
+      context,
+    );
 
     const result = await provider.scan(plan, context);
 
     expect(result.items.map((item) => item.externalId)).toEqual([
-      'reddit:t3_openai-live',
-      'reddit:t3_search-live',
+      "reddit:t3_openai-live",
+      "reddit:t3_search-live",
     ]);
     expect(result.warnings).toContain(
-      'Reddit scan pass degraded (ClaudeAI:top:day): fetch failed',
+      "Reddit scan pass degraded (ClaudeAI:top:day): fetch failed",
     );
   });
 
-  it('fails configured scan-passes when every Reddit pass is unavailable', async () => {
+  it("fails configured scan-passes when every Reddit pass is unavailable", async () => {
     const provider = new RedditSourceProvider(
       new CapturingRedditClient({
         listingResponses: new Map<string, RedditListingPage | Error>([
-          ['OpenAI:top:day', new Error('fetch failed')],
-          ['ClaudeAI:top:day', new Error('upstream timeout')],
+          ["OpenAI:top:day", new Error("fetch failed")],
+          ["ClaudeAI:top:day", new Error("upstream timeout")],
         ]),
       }),
-      new StaticTokenProvider('reddit-app-only-token'),
+      new StaticTokenProvider("reddit-app-only-token"),
     );
     const context = scanContext({
       maxItems: 5,
       scanPasses: [
-        { mode: 'listing', subreddit: 'OpenAI', listing: 'top', topTime: 'day' },
-        { mode: 'listing', subreddit: 'ClaudeAI', listing: 'top', topTime: 'day' },
+        {
+          mode: "listing",
+          subreddit: "OpenAI",
+          listing: "top",
+          topTime: "day",
+        },
+        {
+          mode: "listing",
+          subreddit: "ClaudeAI",
+          listing: "top",
+          topTime: "day",
+        },
       ],
     });
-    const plan = provider.planScan({ mode: 'search', query: 'OpenAI OR AI agents' }, context);
+    const plan = provider.planScan(
+      { mode: "search", query: "OpenAI OR AI agents" },
+      context,
+    );
 
-    await expect(provider.scan(plan, context)).rejects.toThrow('fetch failed');
+    await expect(provider.scan(plan, context)).rejects.toThrow("fetch failed");
   });
 
-  it('skips readable Reddit posts without a valid created timestamp', async () => {
+  it("skips readable Reddit posts without a valid created timestamp", async () => {
     const client = new CapturingRedditClient({
       posts: [
         {
-          id: 'post-missing-created',
-          name: 't3_post_missing_created',
-          subreddit: 'ClaudeAI',
-          title: 'Readable but missing created timestamp',
-          selftext: 'This post must not be ingested with an epoch fallback.',
-          permalink: '/r/ClaudeAI/comments/post_missing_created/readable_missing_timestamp/',
+          id: "post-missing-created",
+          name: "t3_post_missing_created",
+          subreddit: "ClaudeAI",
+          title: "Readable but missing created timestamp",
+          selftext: "This post must not be ingested with an epoch fallback.",
+          permalink:
+            "/r/ClaudeAI/comments/post_missing_created/readable_missing_timestamp/",
           score: 420,
         },
         {
-          id: 'post-valid-created',
-          name: 't3_post_valid_created',
-          subreddit: 'ClaudeAI',
-          title: 'Readable with created timestamp',
-          selftext: 'This post is safe to ingest.',
-          permalink: '/r/ClaudeAI/comments/post_valid_created/readable_with_timestamp/',
+          id: "post-valid-created",
+          name: "t3_post_valid_created",
+          subreddit: "ClaudeAI",
+          title: "Readable with created timestamp",
+          selftext: "This post is safe to ingest.",
+          permalink:
+            "/r/ClaudeAI/comments/post_valid_created/readable_with_timestamp/",
           createdUtc: 1_782_230_000,
           score: 430,
         },
       ],
     });
-    const provider = new RedditSourceProvider(client, new StaticTokenProvider('reddit-app-only-token'));
+    const provider = new RedditSourceProvider(
+      client,
+      new StaticTokenProvider("reddit-app-only-token"),
+    );
     const context = scanContext({
-      subreddit: 'ClaudeAI',
-      listing: 'hot',
+      subreddit: "ClaudeAI",
+      listing: "hot",
       minScore: 100,
     });
-    const plan = provider.planScan({ mode: 'listing', query: 'ClaudeAI:hot' }, context);
+    const plan = provider.planScan(
+      { mode: "listing", query: "ClaudeAI:hot" },
+      context,
+    );
 
     const result = await provider.scan(plan, context);
 
-    expect(result.items.map((item) => item.externalId)).toEqual(['reddit:t3_post_valid_created']);
-    expect(result.items[0]?.publishedAt).toEqual(new Date(1_782_230_000 * 1000));
+    expect(result.items.map((item) => item.externalId)).toEqual([
+      "reddit:t3_post_valid_created",
+    ]);
+    expect(result.items[0]?.publishedAt).toEqual(
+      new Date(1_782_230_000 * 1000),
+    );
     expect(result.warnings).toEqual([
-      'Some Reddit posts had no valid created_utc timestamp; they were skipped.',
+      "Some Reddit posts had no valid created_utc timestamp; they were skipped.",
     ]);
   });
 
-  it('fails closed when a refresh token is present without client credentials', async () => {
+  it("fails closed when a refresh token is present without client credentials", async () => {
     const provider = new RedditSourceProvider(
       new CapturingRedditClient(),
-      new StaticTokenProvider('reddit-app-only-token'),
-      new StaticRefreshTokenProvider('tenant-refresh-access-token'),
+      new StaticTokenProvider("reddit-app-only-token"),
+      new StaticRefreshTokenProvider("tenant-refresh-access-token"),
     );
     const context = scanContext({
-      refreshToken: 'tenant-refresh-token',
-      subreddit: 'observability',
-      listing: 'hot',
+      refreshToken: "tenant-refresh-token",
+      subreddit: "observability",
+      listing: "hot",
     });
-    const plan = provider.planScan({ mode: 'listing', query: 'observability:hot' }, context);
+    const plan = provider.planScan(
+      { mode: "listing", query: "observability:hot" },
+      context,
+    );
 
-    await expect(provider.scan(plan, context)).rejects.toThrow('Reddit source config field is required: clientId');
+    await expect(provider.scan(plan, context)).rejects.toThrow(
+      "Reddit source config field is required: clientId",
+    );
   });
 
-  it('fails closed when neither binding token nor app-only provider is configured', async () => {
+  it("fails closed when neither binding token nor app-only provider is configured", async () => {
     const provider = new RedditSourceProvider(new CapturingRedditClient());
     const context = scanContext({
-      subreddit: 'observability',
-      listing: 'hot',
+      subreddit: "observability",
+      listing: "hot",
     });
-    const plan = provider.planScan({ mode: 'listing', query: 'observability:hot' }, context);
+    const plan = provider.planScan(
+      { mode: "listing", query: "observability:hot" },
+      context,
+    );
 
-    await expect(provider.scan(plan, context)).rejects.toThrow('Reddit app-only OAuth token provider is not configured');
-    expect(provider.classifyError(new Error('Reddit app-only OAuth token provider is not configured'))).toEqual({
-      kind: 'auth_failed',
+    await expect(provider.scan(plan, context)).rejects.toThrow(
+      "Reddit app-only OAuth token provider is not configured",
+    );
+    expect(
+      provider.classifyError(
+        new Error("Reddit app-only OAuth token provider is not configured"),
+      ),
+    ).toEqual({
+      kind: "auth_failed",
       retryable: false,
-      message: 'Reddit app-only OAuth token provider is not configured',
+      message: "Reddit app-only OAuth token provider is not configured",
+    });
+  });
+
+  it("classifies invalid Reddit source config as non-retryable", () => {
+    const provider = new RedditSourceProvider(
+      new CapturingRedditClient(),
+      new StaticTokenProvider("reddit-app-only-token"),
+    );
+
+    expect(
+      provider.classifyError(new Error("Unsupported source ranking mode")),
+    ).toEqual({
+      kind: "invalid_query",
+      retryable: false,
+      message: "Unsupported source ranking mode",
     });
   });
 });
@@ -542,19 +786,29 @@ class CapturingRedditClient implements RedditClientPort {
     private readonly response:
       | RedditListingPage
       | {
-          readonly listingResponses?: ReadonlyMap<string, RedditListingPage | Error>;
+          readonly listingResponses?: ReadonlyMap<
+            string,
+            RedditListingPage | Error
+          >;
           readonly searchResponse?: RedditListingPage | Error;
-          readonly commentResponses?: ReadonlyMap<string, RedditCommentPage | Error>;
+          readonly commentResponses?: ReadonlyMap<
+            string,
+            RedditCommentPage | Error
+          >;
         } = { posts: [] },
   ) {}
 
-  async listSubredditPosts(request: RedditListSubredditPostsRequest): Promise<RedditListingPage> {
+  async listSubredditPosts(
+    request: RedditListSubredditPostsRequest,
+  ): Promise<RedditListingPage> {
     this.listingRequests.push(request);
-    if ('posts' in this.response) {
+    if ("posts" in this.response) {
       return this.response;
     }
 
-    const response = this.response.listingResponses?.get(listingKey(request)) ?? { posts: [] };
+    const response = this.response.listingResponses?.get(
+      listingKey(request),
+    ) ?? { posts: [] };
 
     if (response instanceof Error) {
       throw response;
@@ -563,9 +817,11 @@ class CapturingRedditClient implements RedditClientPort {
     return response;
   }
 
-  async searchPosts(request: RedditSearchPostsRequest): Promise<RedditListingPage> {
+  async searchPosts(
+    request: RedditSearchPostsRequest,
+  ): Promise<RedditListingPage> {
     this.searchRequests.push(request);
-    if ('posts' in this.response) {
+    if ("posts" in this.response) {
       return { posts: [] };
     }
 
@@ -578,13 +834,17 @@ class CapturingRedditClient implements RedditClientPort {
     return response;
   }
 
-  async listPostComments(request: RedditListPostCommentsRequest): Promise<RedditCommentPage> {
+  async listPostComments(
+    request: RedditListPostCommentsRequest,
+  ): Promise<RedditCommentPage> {
     this.commentRequests.push(request);
-    if ('posts' in this.response) {
+    if ("posts" in this.response) {
       return { comments: [] };
     }
 
-    const response = this.response.commentResponses?.get(request.postId) ?? { comments: [] };
+    const response = this.response.commentResponses?.get(request.postId) ?? {
+      comments: [],
+    };
 
     if (response instanceof Error) {
       throw response;
@@ -595,30 +855,30 @@ class CapturingRedditClient implements RedditClientPort {
 }
 
 const listingKey = (request: RedditListSubredditPostsRequest): string =>
-  `${request.subreddit}:${request.listing}:${request.topTime ?? ''}`;
+  `${request.subreddit}:${request.listing}:${request.topTime ?? ""}`;
 
 function scanContext(config: SourceRuntimeConfig): SourceProviderScanContext {
   return {
-    tenantId: tenantId('tenant-reddit-provider-test'),
-    workspaceId: workspaceId('workspace-reddit-provider-test'),
-    sourceBindingId: 'source-binding-reddit-provider-test',
-    scanJobId: 'scan-job-reddit-provider-test',
-    correlationId: 'correlation-reddit-provider-test',
+    tenantId: tenantId("tenant-reddit-provider-test"),
+    workspaceId: workspaceId("workspace-reddit-provider-test"),
+    sourceBindingId: "source-binding-reddit-provider-test",
+    scanJobId: "scan-job-reddit-provider-test",
+    correlationId: "correlation-reddit-provider-test",
     config,
   };
 }
 
-function redditPost(overrides: Partial<RedditListingPage['posts'][number]>) {
-  const id = overrides.id ?? 'post-1';
+function redditPost(overrides: Partial<RedditListingPage["posts"][number]>) {
+  const id = overrides.id ?? "post-1";
 
   return {
     id,
     name: `t3_${id}`,
-    subreddit: 'OpenAI',
-    title: 'Reddit post',
-    selftext: 'Useful discussion.',
+    subreddit: "OpenAI",
+    title: "Reddit post",
+    selftext: "Useful discussion.",
     permalink: `/r/OpenAI/comments/${id}/reddit_post/`,
-    author: 'example-user',
+    author: "example-user",
     createdUtc: 1_782_230_000,
     score: 1,
     numComments: 0,

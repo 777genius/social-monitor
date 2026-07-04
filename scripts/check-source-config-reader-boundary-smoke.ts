@@ -1,4 +1,4 @@
-import { MonitoringSourceConfigReaderAdapter } from '../apps/ingestion-worker/src/adapters/source/monitoring-source-config-reader.adapter';
+import { MonitoringSourceConfigReaderAdapter } from '../libs/ingestion/adapters/source/monitoring-source-config-reader.adapter';
 import { InMemorySourceProviderRegistry } from '../libs/ingestion/adapters/source/in-memory-source-provider.registry';
 import { RegistrySourceFetcherAdapter } from '../libs/ingestion/adapters/source/registry-source-fetcher.adapter';
 import type {

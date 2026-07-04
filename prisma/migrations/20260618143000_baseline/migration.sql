@@ -1087,6 +1087,20 @@ CREATE TABLE "idempotency_keys" (
     CONSTRAINT "idempotency_keys_pkey" PRIMARY KEY ("id")
 );
 
+-- CreateTable
+CREATE TABLE "social_research_result_cache_entries" (
+    "tenant_id" UUID NOT NULL,
+    "workspace_id" UUID NOT NULL,
+    "kind" TEXT NOT NULL,
+    "cache_key" TEXT NOT NULL,
+    "payload" JSONB NOT NULL,
+    "expires_at" TIMESTAMPTZ(6) NOT NULL,
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMPTZ(6) NOT NULL,
+
+    CONSTRAINT "social_research_result_cache_entries_pkey" PRIMARY KEY ("tenant_id","workspace_id","kind","cache_key")
+);
+
 -- CreateIndex
 CREATE UNIQUE INDEX "tenants_slug_key" ON "tenants"("slug");
 
@@ -1419,6 +1433,12 @@ CREATE INDEX "idempotency_keys_expires_at_idx" ON "idempotency_keys"("expires_at
 
 -- CreateIndex
 CREATE UNIQUE INDEX "idempotency_keys_tenant_id_workspace_id_scope_key_key" ON "idempotency_keys"("tenant_id", "workspace_id", "scope", "key");
+
+-- CreateIndex
+CREATE INDEX "social_research_result_cache_entries_tenant_id_workspace_id_idx" ON "social_research_result_cache_entries"("tenant_id", "workspace_id", "kind", "updated_at");
+
+-- CreateIndex
+CREATE INDEX "social_research_result_cache_entries_expires_at_idx" ON "social_research_result_cache_entries"("expires_at");
 
 -- AddForeignKey
 ALTER TABLE "workspaces" ADD CONSTRAINT "workspaces_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "tenants"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

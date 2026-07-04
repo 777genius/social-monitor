@@ -1232,3 +1232,19 @@ model IdempotencyKey {
   @@index([expiresAt])
   @@map("idempotency_keys")
 }
+
+model SocialResearchResultCacheEntry {
+  tenantId    String   @map("tenant_id") @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  kind        String
+  cacheKey    String   @map("cache_key")
+  payload     Json
+  expiresAt   DateTime @map("expires_at") @db.Timestamptz(6)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@id([tenantId, workspaceId, kind, cacheKey])
+  @@index([tenantId, workspaceId, kind, updatedAt])
+  @@index([expiresAt])
+  @@map("social_research_result_cache_entries")
+}

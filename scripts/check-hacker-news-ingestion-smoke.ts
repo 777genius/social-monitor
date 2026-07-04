@@ -47,7 +47,7 @@ const run = async (): Promise<void> => {
   const scanLeases = new InMemoryScanLeaseAdapter();
   const clock = new SystemClock();
   const registry = new InMemorySourceProviderRegistry(
-    [new HackerNewsSourceProvider(new FixtureHackerNewsClient())],
+    [new HackerNewsSourceProvider(new FixtureHackerNewsClient(), new SystemClock())],
     sourceReadinessProfiles,
   );
   const sourceFetcher = new CircuitBreakerSourceFetcherAdapter(

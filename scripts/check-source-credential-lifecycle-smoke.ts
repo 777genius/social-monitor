@@ -10,7 +10,7 @@ import {
   workspaceId,
 } from '@social-monitor/shared-kernel';
 
-import { MonitoringSourceConfigReaderAdapter } from '../apps/ingestion-worker/src/adapters/source/monitoring-source-config-reader.adapter';
+import { MonitoringSourceConfigReaderAdapter } from '../libs/ingestion/adapters/source/monitoring-source-config-reader.adapter';
 import {
   OAuth2SourceCredentialRefresher,
   type OAuth2TokenUrlPolicyResult,

@@ -1,3 +1,4 @@
+import { SystemClock } from '@social-monitor/shared-kernel';
 import { HttpGitHubClient } from '../libs/ingestion/adapters/source/github/http-github-client';
 import { GitHubSourceProvider } from '../libs/ingestion/adapters/source/github/github-source.provider';
 import { HttpHackerNewsClient } from '../libs/ingestion/adapters/source/hacker-news/http-hacker-news-client';
@@ -68,7 +69,7 @@ function assert(condition: unknown, message: string): asserts condition {
 
 async function main(): Promise<void> {
   const hackerNews = new HttpHackerNewsClient(timeoutMs);
-  const hackerNewsProvider = new HackerNewsSourceProvider(hackerNews);
+  const hackerNewsProvider = new HackerNewsSourceProvider(hackerNews, new SystemClock());
   const [topStories, searchStories] = await Promise.all([
     hackerNews.listStories('top', 2),
     hackerNews.searchStories('monitoring', 2),

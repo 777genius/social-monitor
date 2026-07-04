@@ -1,5 +1,14 @@
 import type { SourceTargetKind } from "./entities/source-target";
 
+import { hackerNewsDailyMultiPassConfig } from "./hacker-news-daily-preset-config";
+import { redditDailyMultiPassConfig } from "./reddit-daily-preset-config";
+import {
+  googleNewsDailyFeedUrl,
+  googleNewsRssConfig,
+} from "./rss-daily-preset-config";
+import { xTwitterDailyConfig } from "./x-twitter-daily-preset-config";
+
+
 export type SourceTargetPresetEntry = {
   readonly providerKey: string;
   readonly targetKind: SourceTargetKind;
@@ -26,78 +35,6 @@ export type SourceTargetPreset = {
   readonly entries: readonly SourceTargetPresetEntry[];
 };
 
-const redditDailyMultiPassConfig = {
-  maxItems: 50,
-  scanPasses: [
-    {
-      mode: "listing",
-      subreddit: "OpenAI",
-      listing: "top",
-      topTime: "day",
-      maxItems: 15,
-      minScore: 1,
-    },
-    {
-      mode: "listing",
-      subreddit: "LocalLLaMA",
-      listing: "top",
-      topTime: "day",
-      maxItems: 15,
-      minScore: 1,
-    },
-    {
-      mode: "listing",
-      subreddit: "MachineLearning",
-      listing: "top",
-      topTime: "day",
-      maxItems: 15,
-      minScore: 1,
-    },
-    {
-      mode: "listing",
-      subreddit: "ClaudeAI",
-      listing: "top",
-      topTime: "day",
-      maxItems: 15,
-      minScore: 1,
-    },
-    {
-      mode: "listing",
-      subreddit: "artificial",
-      listing: "top",
-      topTime: "day",
-      maxItems: 15,
-      minScore: 1,
-    },
-    {
-      mode: "search",
-      query:
-        'OpenAI OR ClaudeAI OR LocalLLaMA OR "machine learning" OR "AI agents" OR LLM',
-      maxItems: 20,
-      minScore: 1,
-    },
-  ],
-} as const;
-
-const hnSearchConfig = {
-  maxItems: 10,
-} as const;
-
-const rssConfig = {
-  maxItems: 15,
-} as const;
-
-const xTwitterDailyConfig = {
-  language: "en",
-  windowHours: 24,
-  searchProducts: ["top", "latest"],
-  maxItems: 30,
-  limitPerProduct: 50,
-  minLikes: 10,
-  minRetweets: 0,
-  minReplies: 0,
-} as const;
-
 export const aiDeveloperSignalSourcePreset = {
   presetId: "ai-developer-signal-v1",
   displayName: "AI developer signal",
@@ -118,49 +55,27 @@ export const aiDeveloperSignalSourcePreset = {
     {
       providerKey: "reddit",
       targetKind: "search_query",
-      targetValue: "OpenAI LocalLLaMA MachineLearning AI agents",
+      targetValue: "AI technology programming developer tools",
       targetConfig: redditDailyMultiPassConfig,
     },
-    ...[
-      "openai",
-      "claude",
-      "ai coding agents",
-      "flutter dart",
-      "javascript node",
-      "python developer tools",
-      "cybersecurity",
-    ].map((query): SourceTargetPresetEntry => ({
+    {
       providerKey: "hacker-news",
       targetKind: "search_query",
-      targetValue: query,
-      targetConfig: hnSearchConfig,
-    })),
-    ...[
-      "openai",
-      "claude ai",
-      "ai coding agents",
-      "claude code codex cursor",
-      "flutter dart",
-      "javascript node",
-      "python developer tools",
-      "cybersecurity",
-    ].map((query): SourceTargetPresetEntry => ({
+      targetValue: "AI developer Hacker News discovery",
+      targetConfig: hackerNewsDailyMultiPassConfig,
+    },
+    {
       providerKey: "x-twitter",
       targetKind: "search_query",
-      targetValue: query,
+      targetValue:
+        'OpenAI OR Anthropic OR Claude OR LLM OR "AI agents" OR "coding agents" OR "AI infrastructure"',
       targetConfig: xTwitterDailyConfig,
-    })),
-    ...[
-      "https://hnrss.org/best",
-      "https://hnrss.org/frontpage",
-      "https://hnrss.org/newest?q=AI",
-      "https://hnrss.org/newest?q=Flutter",
-      "https://hnrss.org/newest?q=cybersecurity",
-    ].map((url): SourceTargetPresetEntry => ({
+    },
+    {
       providerKey: "rss",
       targetKind: "url",
-      targetValue: url,
-      targetConfig: rssConfig,
-    })),
+      targetValue: googleNewsDailyFeedUrl,
+      targetConfig: googleNewsRssConfig,
+    },
   ],
 } satisfies SourceTargetPreset;
