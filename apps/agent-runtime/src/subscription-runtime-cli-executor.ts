@@ -17,18 +17,23 @@ export type SubscriptionRuntimeCliExecutorOptions = {
   readonly command: string;
   readonly stateRoot?: string;
   readonly ephemeral: boolean;
+  readonly localEncryptionKey?: string;
   readonly codexAuthJsonPath?: string;
   readonly claudeTokenEnv?: string;
   readonly model?: string;
 };
 
 export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort {
-  constructor(private readonly options: SubscriptionRuntimeCliExecutorOptions) {}
+  constructor(
+    private readonly options: SubscriptionRuntimeCliExecutorOptions,
+  ) {}
 
   async execute(
     request: AgentRuntimeExecutionRequest,
   ): Promise<AgentRuntimeExecutionResult> {
-    const tempDir = await mkdtemp(join(tmpdir(), "social-monitor-agent-runtime-"));
+    const tempDir = await mkdtemp(
+      join(tmpdir(), "social-monitor-agent-runtime-"),
+    );
     const inputPath = join(tempDir, "request.json");
 
     try {
@@ -41,6 +46,7 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
       const result = await runCli({
         command: this.options.command,
         args: this.buildArgs(request, inputPath),
+        env: this.executionEnvPatch(),
         timeoutMs: request.timeoutMs,
       });
 
@@ -103,7 +109,8 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
       });
       const healthy =
         !probe.timedOut &&
-        (probe.exitCode === 0 || isUsageProbeOutput(probe.stdout, probe.stderr));
+        (probe.exitCode === 0 ||
+          isUsageProbeOutput(probe.stdout, probe.stderr));
 
       return {
         healthy,
@@ -171,6 +178,20 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
     }
 
     return args;
+  }
+
+  private executionEnvPatch(): Readonly<Record<string, string>> {
+    if (
+      this.options.ephemeral ||
+      this.options.localEncryptionKey === undefined
+    ) {
+      return {};
+    }
+
+    return {
+      SUBSCRIPTION_RUNTIME_LOCAL_ENCRYPTION_KEY:
+        this.options.localEncryptionKey,
+    };
   }
 }
 
@@ -254,6 +275,7 @@ const invalidCliResult = (stdout: string): AgentRuntimeExecutionResult => ({
 const runCli = async (params: {
   readonly command: string;
   readonly args: readonly string[];
+  readonly env?: Readonly<Record<string, string>>;
   readonly timeoutMs: number;
 }): Promise<{
   readonly exitCode: number | null;
@@ -264,7 +286,7 @@ const runCli = async (params: {
 }> =>
   new Promise((resolve, reject) => {
     const child = spawn(params.command, params.args, {
-      env: process.env,
+      env: { ...process.env, ...params.env },
       stdio: ["ignore", "pipe", "pipe"],
     });
     const stdout: Buffer[] = [];
@@ -302,7 +324,11 @@ const readJsonObject = (
 ): Record<string, unknown> => {
   try {
     const parsed = JSON.parse(value);
-    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    if (
+      parsed === null ||
+      typeof parsed !== "object" ||
+      Array.isArray(parsed)
+    ) {
       throw new Error(`${label} must be a JSON object`);
     }
 
@@ -314,9 +340,7 @@ const readJsonObject = (
   }
 };
 
-const parseStatus = (
-  value: unknown,
-): AgentRuntimeExecutionResult["status"] => {
+const parseStatus = (value: unknown): AgentRuntimeExecutionResult["status"] => {
   if (
     value === "completed" ||
     value === "failed" ||
@@ -396,6 +420,4 @@ const nonNegativeInteger = (value: unknown): number =>
     : 0;
 
 const nonNegativeNumber = (value: unknown): number =>
-  typeof value === "number" && Number.isFinite(value) && value >= 0
-    ? value
-    : 0;
+  typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;

@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 export type AgentRuntimeSettings = {
   readonly bindAddress: string;
   readonly serviceToken?: string;
@@ -5,6 +7,7 @@ export type AgentRuntimeSettings = {
     readonly command: string;
     readonly stateRoot?: string;
     readonly ephemeral: boolean;
+    readonly localEncryptionKey?: string;
     readonly codexAuthJsonPath?: string;
     readonly claudeTokenEnv?: string;
     readonly model?: string;
@@ -14,10 +17,7 @@ export type AgentRuntimeSettings = {
 export const resolveAgentRuntimeSettings = (
   env: NodeJS.ProcessEnv,
 ): AgentRuntimeSettings => ({
-  bindAddress: nonEmptyOrFallback(
-    env.AGENT_RUNTIME_GRPC_BIND,
-    "0.0.0.0:50052",
-  ),
+  bindAddress: nonEmptyOrFallback(env.AGENT_RUNTIME_GRPC_BIND, "0.0.0.0:50052"),
   serviceToken: nonEmptyOptional(env.AGENT_RUNTIME_SERVICE_TOKEN),
   cli: {
     command: nonEmptyOrFallback(
@@ -26,6 +26,7 @@ export const resolveAgentRuntimeSettings = (
     ),
     stateRoot: nonEmptyOptional(env.AGENT_RUNTIME_STATE_ROOT),
     ephemeral: parseBoolean(env.AGENT_RUNTIME_EPHEMERAL),
+    localEncryptionKey: resolveLocalEncryptionKey(env),
     codexAuthJsonPath: nonEmptyOptional(
       env.AGENT_RUNTIME_CODEX_AUTH_JSON_PATH ?? env.CODEX_AUTH_JSON_PATH,
     ),
@@ -54,3 +55,31 @@ const nonEmptyOptional = (value: string | undefined): string | undefined => {
 
 const parseBoolean = (value: string | undefined): boolean =>
   value === "1" || value?.toLowerCase() === "true";
+
+const resolveLocalEncryptionKey = (
+  env: NodeJS.ProcessEnv,
+): string | undefined => {
+  const inlineKey = nonEmptyOptional(
+    env.SUBSCRIPTION_RUNTIME_LOCAL_ENCRYPTION_KEY,
+  );
+  if (inlineKey !== undefined) {
+    return inlineKey;
+  }
+
+  const keyFile = nonEmptyOptional(
+    env.AGENT_RUNTIME_LOCAL_ENCRYPTION_KEY_FILE ??
+      env.SUBSCRIPTION_RUNTIME_LOCAL_ENCRYPTION_KEY_FILE,
+  );
+  if (keyFile === undefined) {
+    return undefined;
+  }
+
+  const fileValue = readFileSync(keyFile, "utf8").trim();
+  if (fileValue.length === 0) {
+    throw new Error(
+      `Agent runtime local encryption key file is empty: ${keyFile}`,
+    );
+  }
+
+  return fileValue;
+};

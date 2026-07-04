@@ -28,7 +28,7 @@ describe("SubscriptionRuntimeCliExecutor", () => {
         'const inputIndex = process.argv.indexOf("--input");',
         "const inputPath = process.argv[inputIndex + 1];",
         'const request = JSON.parse(await readFile(inputPath, "utf8"));',
-        `await writeFile(${JSON.stringify(capturePath)}, JSON.stringify({ argv: process.argv.slice(2), request }), "utf8");`,
+        `await writeFile(${JSON.stringify(capturePath)}, JSON.stringify({ argv: process.argv.slice(2), request, hasLocalEncryptionKey: process.env.SUBSCRIPTION_RUNTIME_LOCAL_ENCRYPTION_KEY === "test-key" }), "utf8");`,
         'process.stdout.write(JSON.stringify({ status: "completed", outputText: "{}", warnings: [] }));',
       ].join("\n"),
       "utf8",
@@ -53,6 +53,48 @@ describe("SubscriptionRuntimeCliExecutor", () => {
     expect(captured.request.task.prompt).toBe("Return JSON.");
     expect(captured.argv).toEqual(expect.arrayContaining(["--ephemeral"]));
   });
+
+  it("passes the local encryption key to durable subscription runtime tasks", async () => {
+    tempDir = await mkdtemp(join(tmpdir(), "agent-runtime-cli-test-"));
+    const capturePath = join(tempDir, "capture.json");
+    const cliPath = join(tempDir, "fake-cli.mjs");
+
+    await writeFile(
+      cliPath,
+      [
+        "#!/usr/bin/env node",
+        'import { readFile, writeFile } from "node:fs/promises";',
+        'const inputIndex = process.argv.indexOf("--input");',
+        "const inputPath = process.argv[inputIndex + 1];",
+        'const request = JSON.parse(await readFile(inputPath, "utf8"));',
+        `await writeFile(${JSON.stringify(capturePath)}, JSON.stringify({ argv: process.argv.slice(2), request, hasLocalEncryptionKey: process.env.SUBSCRIPTION_RUNTIME_LOCAL_ENCRYPTION_KEY === "test-key" }), "utf8");`,
+        'process.stdout.write(JSON.stringify({ status: "completed", outputText: "{}", warnings: [] }));',
+      ].join("\n"),
+      "utf8",
+    );
+    await chmod(cliPath, 0o755);
+
+    const executor = new SubscriptionRuntimeCliExecutor({
+      command: cliPath,
+      ephemeral: false,
+      stateRoot: "/tmp/social-monitor-agent-runtime-test-state",
+      localEncryptionKey: "test-key",
+    });
+
+    await executor.execute(validExecutionRequest());
+
+    const captured = JSON.parse(
+      await readFile(capturePath, "utf8"),
+    ) as CapturedCliRequest;
+
+    expect(captured.argv).toEqual(
+      expect.arrayContaining([
+        "--state-root",
+        "/tmp/social-monitor-agent-runtime-test-state",
+      ]),
+    );
+    expect(captured.hasLocalEncryptionKey).toBe(true);
+  });
 });
 
 type CapturedCliRequest = {
@@ -66,6 +108,7 @@ type CapturedCliRequest = {
       readonly purpose: string;
     };
   };
+  readonly hasLocalEncryptionKey: boolean;
 };
 
 const validExecutionRequest = (): AgentRuntimeExecutionRequest => ({

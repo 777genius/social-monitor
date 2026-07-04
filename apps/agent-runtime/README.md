@@ -35,6 +35,8 @@ Important env:
 - `AGENT_RUNTIME_SERVICE_TOKEN`, optional bearer token for gRPC calls
 - `AGENT_RUNTIME_CLI_PATH`, default `node_modules/.bin/subscription-runtime-run-agent-task`
 - `AGENT_RUNTIME_STATE_ROOT`, durable subscription-runtime state root
+- `AGENT_RUNTIME_LOCAL_ENCRYPTION_KEY_FILE`, local file containing the base64
+  32-byte key used to decrypt durable subscription-runtime sessions
 - `AGENT_RUNTIME_PROVIDER`, `codex` or `claude`, selected by Social Monitor
 - `AGENT_RUNTIME_TIMEOUT_MS`, generic Social Monitor task timeout fallback
 - `AGENT_RUNTIME_CODEX_AUTH_JSON_PATH`
