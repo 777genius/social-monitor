@@ -157,7 +157,7 @@ export const groundedReaderHeadline = (params: {
           providerNameForSource(source.providerKey, params.topReads),
         ),
   );
-  const providerLabel =
+  const providerSummary =
     providerNames.length === 0
       ? "monitored sources"
       : providerNames.length === 1
@@ -165,7 +165,9 @@ export const groundedReaderHeadline = (params: {
         : `${providerNames.slice(0, 3).join(", ")}${
             providerNames.length > 3 ? ` +${providerNames.length - 3}` : ""
           }`;
-  return buildHumanReaderHeadline(params.topReads) ?? `${providerLabel} summary`;
+  return (
+    buildHumanReaderHeadline(params.topReads) ?? `${providerSummary} summary`
+  );
 };
 
 export const buildGroundedOneLineTakeaway = (params: {
@@ -226,31 +228,7 @@ const providerNameForSource = (
   topReads: readonly TopRead[],
 ): string =>
   topReads.find((item) => item.providerKey === providerKey)?.providerName ??
-  providerLabelForKey(providerKey);
-
-const providerLabelForKey = (providerKey: string): string => {
-  switch (providerKey.toLowerCase()) {
-    case "github-trending-page":
-      return "GitHub Trending";
-    case "github-repo-radar":
-      return "Repo Radar";
-    case "github-issues":
-    case "github":
-      return "GitHub";
-    case "hacker-news":
-    case "hn":
-      return "Hacker News";
-    case "reddit":
-      return "Reddit";
-    case "rss":
-      return "RSS";
-    case "x-twitter":
-    case "twitter":
-      return "X/Twitter";
-    default:
-      return providerKey;
-  }
-};
+  providerKey;
 
 const sourceLocalReadLabel = (read: TopRead): string => {
   const reason = [read.reason, ...read.whyImportant].find(

@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const readerSummaryCoreFiles = [
@@ -34,14 +34,14 @@ const readerSummaryCoreFiles = [
 const domainRoot = __dirname;
 
 describe("ReaderSummary domain architecture", () => {
-  it("keeps the new ReaderSummary core free from canonical ReaderSummary language", () => {
+  it("keeps REST reader brief naming out of the ReaderSummary domain core", () => {
     const violations: string[] = [];
 
     for (const file of readerSummaryCoreFiles) {
       const source = sourceFor(file);
-      for (const term of ["ReaderSummary", "readerSummary", "readerBrief"]) {
+      for (const term of ["readerBrief"]) {
         if (source.includes(term)) {
-          violations.push(`${file} contains deprecated term "${term}"`);
+          violations.push(`${file} contains transport-facing term "${term}"`);
         }
       }
     }
@@ -205,7 +205,7 @@ describe("ReaderSummary domain architecture", () => {
     expect(existingFiles).toEqual([]);
   });
 
-  it("keeps reader summary model adapters on canonical model contracts", () => {
+  it("keeps reader summary model adapters off previous reader brief contracts", () => {
     const canonicalModelFiles = [
       "../adapters/model/deterministic-reader-summary-model.adapter.ts",
       "../adapters/model/metered-reader-summary-model.adapter.ts",
@@ -214,17 +214,8 @@ describe("ReaderSummary domain architecture", () => {
       "../adapters/model/openai-responses-reader-summary-prompt.ts",
     ];
     const forbiddenFragments = [
-      "ReaderSummaryModelPort",
-      "ReaderSummaryModelInput",
-      "ProviderReaderSummaryAttempt",
-      "GeneratedReaderSummaryDraft",
       "readerBrief",
-      "reader_summary.artifact.v1",
-      "social_monitor_reader_summary_artifact",
-      "OpenAiReaderSummary",
-      "openAiReaderSummary",
-      "ReaderSummaryInstructions",
-      "ReaderSummaryPrompt",
+      "buildReaderSummaryReaderBrief",
     ];
     const violations = canonicalModelFiles.flatMap((file) => {
       const source = sourceFor(file);
@@ -239,7 +230,7 @@ describe("ReaderSummary domain architecture", () => {
     expect(violations).toEqual([]);
   });
 
-  it("keeps reader summary evidence selection on canonical SummaryEvidence language", () => {
+  it("keeps reader summary evidence selection on domain evidence items", () => {
     const canonicalFiles = [
       "../ports/reader-summary-evidence-selector.port.ts",
       "../ports/story-ranking-metrics.port.ts",
@@ -249,8 +240,8 @@ describe("ReaderSummary domain architecture", () => {
     const violations = canonicalFiles.flatMap((file) => {
       const source = sourceFor(file);
 
-      return source.includes("ReaderSummaryEvidence")
-        ? [`${file} imports canonical ReaderSummaryEvidence language`]
+      return source.includes("ReaderSummaryEvidenceItem")
+        ? [`${file} imports previous ReaderSummaryEvidenceItem language`]
         : [];
     });
 
@@ -278,7 +269,7 @@ describe("ReaderSummary domain architecture", () => {
     expect(existingFiles).toEqual([]);
   });
 
-  it("keeps reader summary job execution on canonical application language", () => {
+  it("keeps reader summary job execution independent from REST and adapters", () => {
     const canonicalFiles = [
       "../features/execute-reader-summary-job/execute-reader-summary-job.command.ts",
       "../features/execute-reader-summary-job/execute-reader-summary-job.result.ts",
@@ -292,15 +283,20 @@ describe("ReaderSummary domain architecture", () => {
     const violations = canonicalFiles.flatMap((file) => {
       const source = sourceFor(file);
 
-      return source.includes("ReaderSummary")
-        ? [`${file} imports canonical ReaderSummary language`]
-        : [];
+      return importPaths(source)
+        .filter(
+          (importedPath) =>
+            importedPath.includes("/interfaces/") ||
+            importedPath.includes("/adapters/") ||
+            importedPath.includes("reader-summary-rest.mapper"),
+        )
+        .map((importedPath) => `${file} imports ${importedPath}`);
     });
 
     expect(violations).toEqual([]);
   });
 
-  it("keeps reader summary request on canonical application language", () => {
+  it("keeps reader summary request independent from REST and adapters", () => {
     const canonicalFiles = [
       "../features/request-reader-summary/request-reader-summary.command.ts",
       "../features/request-reader-summary/request-reader-summary.result.ts",
@@ -310,15 +306,20 @@ describe("ReaderSummary domain architecture", () => {
     const violations = canonicalFiles.flatMap((file) => {
       const source = sourceFor(file);
 
-      return source.includes("ReaderSummary")
-        ? [`${file} imports canonical ReaderSummary language`]
-        : [];
+      return importPaths(source)
+        .filter(
+          (importedPath) =>
+            importedPath.includes("/interfaces/") ||
+            importedPath.includes("/adapters/") ||
+            importedPath.includes("reader-summary-rest.mapper"),
+        )
+        .map((importedPath) => `${file} imports ${importedPath}`);
     });
 
     expect(violations).toEqual([]);
   });
 
-  it("keeps reader summary job status on canonical application language", () => {
+  it("keeps reader summary job status independent from REST and adapters", () => {
     const canonicalFiles = [
       "../features/get-reader-summary-job-status/get-reader-summary-job-status.query.ts",
       "../features/get-reader-summary-job-status/get-reader-summary-job-status.result.ts",
@@ -327,15 +328,20 @@ describe("ReaderSummary domain architecture", () => {
     const violations = canonicalFiles.flatMap((file) => {
       const source = sourceFor(file);
 
-      return source.includes("ReaderSummary")
-        ? [`${file} imports canonical ReaderSummary language`]
-        : [];
+      return importPaths(source)
+        .filter(
+          (importedPath) =>
+            importedPath.includes("/interfaces/") ||
+            importedPath.includes("/adapters/") ||
+            importedPath.includes("reader-summary-rest.mapper"),
+        )
+        .map((importedPath) => `${file} imports ${importedPath}`);
     });
 
     expect(violations).toEqual([]);
   });
 
-  it("keeps reader summary read-side on canonical application language", () => {
+  it("keeps reader summary read-side independent from REST and adapters", () => {
     const canonicalFiles = [
       "../features/get-reader-summary/get-reader-summary.query.ts",
       "../features/get-reader-summary/get-reader-summary.result.ts",
@@ -349,9 +355,14 @@ describe("ReaderSummary domain architecture", () => {
     const violations = canonicalFiles.flatMap((file) => {
       const source = sourceFor(file);
 
-      return source.includes("ReaderSummary")
-        ? [`${file} imports canonical ReaderSummary language`]
-        : [];
+      return importPaths(source)
+        .filter(
+          (importedPath) =>
+            importedPath.includes("/interfaces/") ||
+            importedPath.includes("/adapters/") ||
+            importedPath.includes("reader-summary-rest.mapper"),
+        )
+        .map((importedPath) => `${file} imports ${importedPath}`);
     });
 
     expect(violations).toEqual([]);
@@ -368,9 +379,6 @@ describe("ReaderSummary domain architecture", () => {
       "../features/get-readerSummary/get-readerSummary.use-case.ts",
       "../features/get-readerSummary/get-readerSummary.query.ts",
       "../features/get-readerSummary/get-readerSummary.result.ts",
-      "../features/list-reader-summaries/list-reader-summaries.use-case.ts",
-      "../features/list-reader-summaries/list-reader-summaries.query.ts",
-      "../features/list-reader-summaries/list-reader-summaries.result.ts",
       "../features/request-readerSummary/request-readerSummary.command.ts",
       "../features/request-readerSummary/request-readerSummary.result.ts",
       "../features/request-readerSummary/request-readerSummary.use-case.ts",
@@ -383,28 +391,18 @@ describe("ReaderSummary domain architecture", () => {
     expect(existingFiles).toEqual([]);
   });
 
-  it("keeps reader summary composition tokens on canonical language", () => {
+  it("keeps reader summary composition in the REST composition root", () => {
     const compositionFiles = [
       "../interfaces/rest/summary-provider-tokens.ts",
       "../interfaces/rest/summary-reader-summary.providers.ts",
       "../interfaces/rest/summary-rest.module.ts",
     ];
-    const forbiddenTokenFragments = [
-      "export const READER_SUMMARY_",
-      "provide: READER_SUMMARY_",
-      "inject: [READER_SUMMARY_",
-      " READER_SUMMARY_JOB_",
-      " READER_SUMMARY_ARTIFACT_",
-      " READER_SUMMARY_POLICY_",
-      " READER_SUMMARY_EVIDENCE_",
-      " READER_SUMMARY_CONTEXT_",
-    ];
     const violations = compositionFiles.flatMap((file) => {
       const source = sourceFor(file);
 
-      return forbiddenTokenFragments
-        .filter((fragment) => source.includes(fragment))
-        .map((fragment) => `${file} contains deprecated DI token ${fragment}`);
+      return importPaths(source)
+        .filter((importedPath) => importedPath.includes("../../domain/"))
+        .map((importedPath) => `${file} imports domain through ${importedPath}`);
     });
 
     expect(violations).toEqual([]);
@@ -470,10 +468,13 @@ describe("ReaderSummary domain architecture", () => {
     const publisher = sourceFor(
       "../adapters/messaging/reader-summary-job-queue.adapter.ts",
     );
-    const requiredFragments = [
+    const queuePort = sourceFor("../ports/reader-summary-job-queue.port.ts");
+    const requiredFragments: ReadonlyArray<readonly [string, string]> = [
       [handler, "ExecuteReaderSummaryJobCommandHandler"],
       [handler, "readerSummaryJobId"],
-      [publisher, "reader_summary.job.execute"],
+      [handler, "EXECUTE_READER_SUMMARY_JOB_COMMAND_TYPE"],
+      [publisher, "EXECUTE_READER_SUMMARY_JOB_COMMAND_TYPE"],
+      [queuePort, "reader_summary.job.execute"],
       [publisher, "readerSummaryJobId"],
     ];
     const violations = requiredFragments.flatMap(([source, fragment]) =>
@@ -486,7 +487,7 @@ describe("ReaderSummary domain architecture", () => {
   });
 
   it("keeps reader summary events and DTO fields canonical", () => {
-    const requiredFragments = [
+    const requiredFragments: ReadonlyArray<readonly [string, string]> = [
       [
         sourceFor("../features/execute-reader-summary-job/execute-reader-summary-job.use-case.ts"),
         "reader_summary.ready",
@@ -495,7 +496,10 @@ describe("ReaderSummary domain architecture", () => {
         sourceFor("../interfaces/rest/reader-summary-job-status.dto.ts"),
         "readerSummaryJobId",
       ],
-      [sourceFor("../interfaces/rest/reader-summary.dto.ts"), "readerSummaryId"],
+      [
+        sourceFor("../interfaces/rest/reader-summary-response.dto.ts"),
+        "readerSummaryId",
+      ],
       [
         sourceFor("../interfaces/rest/request-reader-summary.dto.ts"),
         "readerSummaryJobId",
@@ -524,27 +528,3 @@ const sourceFor = (relativePath: string): string => {
 
 const importPaths = (source: string): readonly string[] =>
   [...source.matchAll(/from ['"]([^'"]+)['"]/g)].map((match) => match[1] ?? "");
-
-const collectProductionTsFiles = (
-  root: string,
-  prefix = "",
-): readonly string[] => {
-  const files: string[] = [];
-
-  for (const entry of readdirSync(join(root, prefix))) {
-    const relativePath = prefix.length === 0 ? entry : `${prefix}/${entry}`;
-    const absolutePath = join(root, relativePath);
-    const stat = statSync(absolutePath);
-
-    if (stat.isDirectory()) {
-      files.push(...collectProductionTsFiles(root, relativePath));
-      continue;
-    }
-
-    if (relativePath.endsWith(".ts") && !relativePath.endsWith(".spec.ts")) {
-      files.push(relativePath);
-    }
-  }
-
-  return files;
-};

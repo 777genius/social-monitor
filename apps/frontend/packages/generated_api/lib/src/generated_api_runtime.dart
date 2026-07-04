@@ -15,9 +15,9 @@ final class GeneratedApiConfiguration {
     this.authorizationProvider,
     this.workspaceRoleProvider,
     this.correlationIdProvider,
-    this.connectTimeout = const Duration(seconds: 10),
-    this.sendTimeout = const Duration(seconds: 10),
-    this.receiveTimeout = const Duration(seconds: 30),
+    this.connectTimeout = const Duration(seconds: 30),
+    this.sendTimeout = const Duration(seconds: 15),
+    this.receiveTimeout = const Duration(seconds: 45),
   });
 
   final String baseUrl;

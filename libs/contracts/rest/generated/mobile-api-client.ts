@@ -1311,6 +1311,45 @@ export const mobileApiOperations = [
     ]
   },
   {
+    "operationId": "ReaderSummaryController_listPeriods",
+    "clientName": "ReaderSummaryController_listPeriods",
+    "method": "GET",
+    "path": "/reader-summaries/periods",
+    "tags": [
+      "reader-summaries"
+    ],
+    "summary": "List lightweight reader summary periods for calendars.",
+    "pathParameters": [],
+    "queryParameters": [
+      "cadence",
+      "cursor",
+      "interestId",
+      "limit",
+      "periodEndedAt",
+      "periodStartedAt",
+      "periodStartedBefore",
+      "periodStartedFrom",
+      "scopeType",
+      "timezone"
+    ],
+    "requiredHeaders": [
+      "x-tenant-id",
+      "x-workspace-id"
+    ],
+    "optionalHeaders": [
+      "authorization",
+      "x-workspace-role"
+    ],
+    "requiresTenantWorkspace": true,
+    "supportsBearerApiKey": true,
+    "usesDevOnlyWorkspaceRoleHeader": true,
+    "devOnlyWorkspaceRoleRequired": false,
+    "requestBodySchemaRef": null,
+    "successResponseSchemaRefs": [
+      "#/components/schemas/ListReaderSummaryPeriodsResponseDto"
+    ]
+  },
+  {
     "operationId": "ReaderSummaryJobController_getStatus",
     "clientName": "ReaderSummaryJobController_getStatus",
     "method": "GET",
@@ -1519,6 +1558,66 @@ export const mobileApiOperations = [
     ]
   },
   {
+    "operationId": "RelevanceController_recordPostRatingForUser",
+    "clientName": "RelevanceController_recordPostRatingForUser",
+    "method": "POST",
+    "path": "/relevance/users/{userId}/post-ratings",
+    "tags": [
+      "relevance"
+    ],
+    "summary": "Record a concrete post star rating without applying ranking learning.",
+    "pathParameters": [
+      "userId"
+    ],
+    "queryParameters": [],
+    "requiredHeaders": [
+      "x-tenant-id",
+      "x-workspace-id"
+    ],
+    "optionalHeaders": [
+      "authorization",
+      "x-workspace-role"
+    ],
+    "requiresTenantWorkspace": true,
+    "supportsBearerApiKey": true,
+    "usesDevOnlyWorkspaceRoleHeader": true,
+    "devOnlyWorkspaceRoleRequired": false,
+    "requestBodySchemaRef": "#/components/schemas/RecordPostRatingRequestDto",
+    "successResponseSchemaRefs": [
+      "#/components/schemas/RecordPostRatingResponseDto"
+    ]
+  },
+  {
+    "operationId": "RelevanceController_postRatings",
+    "clientName": "RelevanceController_postRatings",
+    "method": "POST",
+    "path": "/relevance/users/{userId}/post-ratings/query",
+    "tags": [
+      "relevance"
+    ],
+    "summary": "Read latest post ratings for concrete feed/source item targets.",
+    "pathParameters": [
+      "userId"
+    ],
+    "queryParameters": [],
+    "requiredHeaders": [
+      "x-tenant-id",
+      "x-workspace-id"
+    ],
+    "optionalHeaders": [
+      "authorization",
+      "x-workspace-role"
+    ],
+    "requiresTenantWorkspace": true,
+    "supportsBearerApiKey": true,
+    "usesDevOnlyWorkspaceRoleHeader": true,
+    "devOnlyWorkspaceRoleRequired": false,
+    "requestBodySchemaRef": "#/components/schemas/ListPostRatingsRequestDto",
+    "successResponseSchemaRefs": [
+      "#/components/schemas/ListPostRatingsResponseDto"
+    ]
+  },
+  {
     "operationId": "RelevanceController_upsertProfile",
     "clientName": "RelevanceController_upsertProfile",
     "method": "PUT",
@@ -1576,6 +1675,174 @@ export const mobileApiOperations = [
     "requestBodySchemaRef": null,
     "successResponseSchemaRefs": [
       "#/components/schemas/ScanStatusResponseDto"
+    ]
+  },
+  {
+    "operationId": "SocialResearchController_explainPlan",
+    "clientName": "SocialResearchController_explainPlan",
+    "method": "POST",
+    "path": "/social-research/explain-plan",
+    "tags": [
+      "social-research"
+    ],
+    "summary": "Explain social research search lanes without provider calls.",
+    "pathParameters": [],
+    "queryParameters": [],
+    "requiredHeaders": [
+      "x-tenant-id",
+      "x-workspace-id"
+    ],
+    "optionalHeaders": [
+      "authorization",
+      "x-workspace-role"
+    ],
+    "requiresTenantWorkspace": true,
+    "supportsBearerApiKey": true,
+    "usesDevOnlyWorkspaceRoleHeader": true,
+    "devOnlyWorkspaceRoleRequired": false,
+    "requestBodySchemaRef": "#/components/schemas/ExplainSearchPlanRestRequestDto",
+    "successResponseSchemaRefs": [
+      "#/components/schemas/ExplainSearchPlanRestResponseDto"
+    ]
+  },
+  {
+    "operationId": "SocialResearchController_rank",
+    "clientName": "SocialResearchController_rank",
+    "method": "POST",
+    "path": "/social-research/rank",
+    "tags": [
+      "social-research"
+    ],
+    "summary": "Rank normalized social research items without provider calls.",
+    "pathParameters": [],
+    "queryParameters": [],
+    "requiredHeaders": [
+      "x-tenant-id",
+      "x-workspace-id"
+    ],
+    "optionalHeaders": [
+      "authorization",
+      "x-workspace-role"
+    ],
+    "requiresTenantWorkspace": true,
+    "supportsBearerApiKey": true,
+    "usesDevOnlyWorkspaceRoleHeader": true,
+    "devOnlyWorkspaceRoleRequired": false,
+    "requestBodySchemaRef": "#/components/schemas/RankSocialResultsRestRequestDto",
+    "successResponseSchemaRefs": [
+      "#/components/schemas/RankSocialResultsRestResponseDto"
+    ]
+  },
+  {
+    "operationId": "SocialResearchController_search",
+    "clientName": "SocialResearchController_search",
+    "method": "POST",
+    "path": "/social-research/search",
+    "tags": [
+      "social-research"
+    ],
+    "summary": "Execute source-agnostic social research through the SDK.",
+    "pathParameters": [],
+    "queryParameters": [],
+    "requiredHeaders": [
+      "x-tenant-id",
+      "x-workspace-id"
+    ],
+    "optionalHeaders": [
+      "authorization",
+      "x-workspace-role"
+    ],
+    "requiresTenantWorkspace": true,
+    "supportsBearerApiKey": true,
+    "usesDevOnlyWorkspaceRoleHeader": true,
+    "devOnlyWorkspaceRoleRequired": false,
+    "requestBodySchemaRef": "#/components/schemas/SearchSocialRestRequestDto",
+    "successResponseSchemaRefs": [
+      "#/components/schemas/SearchSocialRestResponseDto"
+    ]
+  },
+  {
+    "operationId": "SocialResearchController_listSources",
+    "clientName": "SocialResearchController_listSources",
+    "method": "POST",
+    "path": "/social-research/sources/list",
+    "tags": [
+      "social-research"
+    ],
+    "summary": "List social source capability and certification profiles.",
+    "pathParameters": [],
+    "queryParameters": [],
+    "requiredHeaders": [
+      "x-tenant-id",
+      "x-workspace-id"
+    ],
+    "optionalHeaders": [
+      "authorization",
+      "x-workspace-role"
+    ],
+    "requiresTenantWorkspace": true,
+    "supportsBearerApiKey": true,
+    "usesDevOnlyWorkspaceRoleHeader": true,
+    "devOnlyWorkspaceRoleRequired": false,
+    "requestBodySchemaRef": "#/components/schemas/ListSocialSourcesRestRequestDto",
+    "successResponseSchemaRefs": [
+      "#/components/schemas/ListSocialSourcesRestResponseDto"
+    ]
+  },
+  {
+    "operationId": "SocialResearchController_explainSourceReadiness",
+    "clientName": "SocialResearchController_explainSourceReadiness",
+    "method": "POST",
+    "path": "/social-research/sources/readiness",
+    "tags": [
+      "social-research"
+    ],
+    "summary": "Explain social source readiness without provider calls.",
+    "pathParameters": [],
+    "queryParameters": [],
+    "requiredHeaders": [
+      "x-tenant-id",
+      "x-workspace-id"
+    ],
+    "optionalHeaders": [
+      "authorization",
+      "x-workspace-role"
+    ],
+    "requiresTenantWorkspace": true,
+    "supportsBearerApiKey": true,
+    "usesDevOnlyWorkspaceRoleHeader": true,
+    "devOnlyWorkspaceRoleRequired": false,
+    "requestBodySchemaRef": "#/components/schemas/ExplainSourceReadinessRestRequestDto",
+    "successResponseSchemaRefs": [
+      "#/components/schemas/ExplainSourceReadinessRestResponseDto"
+    ]
+  },
+  {
+    "operationId": "SocialResearchController_fetchThread",
+    "clientName": "SocialResearchController_fetchThread",
+    "method": "POST",
+    "path": "/social-research/threads/fetch",
+    "tags": [
+      "social-research"
+    ],
+    "summary": "Fetch a source thread through the SDK execution boundary.",
+    "pathParameters": [],
+    "queryParameters": [],
+    "requiredHeaders": [
+      "x-tenant-id",
+      "x-workspace-id"
+    ],
+    "optionalHeaders": [
+      "authorization",
+      "x-workspace-role"
+    ],
+    "requiresTenantWorkspace": true,
+    "supportsBearerApiKey": true,
+    "usesDevOnlyWorkspaceRoleHeader": true,
+    "devOnlyWorkspaceRoleRequired": false,
+    "requestBodySchemaRef": "#/components/schemas/FetchSocialThreadRestRequestDto",
+    "successResponseSchemaRefs": [
+      "#/components/schemas/FetchSocialThreadRestResponseDto"
     ]
   },
   {

@@ -1,4 +1,4 @@
-import type { PrismaConversationClient } from '@social-monitor/conversation/adapters/persistence/prisma/prisma-conversation-client';
+import type { PrismaConversationClient } from "@social-monitor/conversation/adapters/persistence/prisma/prisma-conversation-client";
 
 import type {
   PrismaSummaryArtifactRecord,
@@ -10,6 +10,7 @@ import type {
 } from "./prisma-summary-records";
 import type {
   PrismaReaderSummaryArtifactRecord,
+  PrismaReaderSummaryPeriodSummaryRecord,
   PrismaReaderSummaryJobRecord,
   PrismaReaderSummaryPolicyRecord,
 } from "./prisma-reader-summary-records";
@@ -105,6 +106,47 @@ export type PrismaReaderSummaryArtifactCreate =
     readonly workspaceId: string;
     readonly schemaVersion: number;
   };
+
+type PrismaReaderSummaryArtifactWhere = {
+  readonly tenantId: string;
+  readonly workspaceId: string;
+  readonly scopeKey?: string;
+  readonly cadence?: string;
+  readonly periodStartedAt?:
+    | Date
+    | {
+        readonly equals?: Date;
+        readonly gte?: Date;
+        readonly lt?: Date;
+      };
+  readonly periodEndedAt?: Date;
+  readonly periodTimezone?: string;
+  readonly status?: { readonly in: readonly PrismaSummaryStatus[] };
+};
+
+type PrismaReaderSummaryArtifactOrderBy = readonly [
+  { readonly periodStartedAt: "desc" },
+  { readonly createdAt: "desc" },
+  { readonly id: "desc" },
+];
+
+type PrismaReaderSummaryPeriodSummarySelect = {
+  readonly id: true;
+  readonly tenantId: true;
+  readonly workspaceId: true;
+  readonly scopeType: true;
+  readonly scopeKey: true;
+  readonly interestId: true;
+  readonly cadence: true;
+  readonly periodStartedAt: true;
+  readonly periodEndedAt: true;
+  readonly periodTimezone: true;
+  readonly periodKey: true;
+  readonly userId: true;
+  readonly subscriptionId: true;
+  readonly status: true;
+  readonly headline: true;
+};
 
 export type PrismaReaderSummaryPolicyMutation = {
   readonly scopeType: string;
@@ -345,8 +387,7 @@ export type PrismaSummaryClient = PrismaConversationClient & {
         readonly id?: string;
         readonly idempotencyKey?: string;
         readonly status?:
-          | PrismaSummaryStatus
-          | { readonly in: readonly PrismaSummaryStatus[] };
+          PrismaSummaryStatus | { readonly in: readonly PrismaSummaryStatus[] };
       };
     }): Promise<PrismaReaderSummaryJobRecord | null>;
     updateMany(args: {
@@ -393,47 +434,20 @@ export type PrismaSummaryClient = PrismaConversationClient & {
       };
     }): Promise<PrismaReaderSummaryArtifactRecord | null>;
     findMany(args: {
-      readonly where: {
-        readonly tenantId: string;
-        readonly workspaceId: string;
-        readonly scopeKey?: string;
-        readonly cadence?: string;
-        readonly periodStartedAt?:
-          | Date
-          | {
-              readonly equals?: Date;
-              readonly gte?: Date;
-              readonly lt?: Date;
-            };
-        readonly periodEndedAt?: Date;
-        readonly periodTimezone?: string;
-        readonly status?: { readonly in: readonly PrismaSummaryStatus[] };
-      };
-      readonly orderBy: readonly [
-        { readonly periodStartedAt: "desc" },
-        { readonly createdAt: "desc" },
-        { readonly id: "desc" },
-      ];
+      readonly where: PrismaReaderSummaryArtifactWhere;
+      readonly orderBy: PrismaReaderSummaryArtifactOrderBy;
       readonly skip: number;
       readonly take: number;
     }): Promise<readonly PrismaReaderSummaryArtifactRecord[]>;
+    findMany(args: {
+      readonly where: PrismaReaderSummaryArtifactWhere;
+      readonly select: PrismaReaderSummaryPeriodSummarySelect;
+      readonly orderBy: PrismaReaderSummaryArtifactOrderBy;
+      readonly skip: number;
+      readonly take: number;
+    }): Promise<readonly PrismaReaderSummaryPeriodSummaryRecord[]>;
     count(args: {
-      readonly where: {
-        readonly tenantId: string;
-        readonly workspaceId: string;
-        readonly scopeKey?: string;
-        readonly cadence?: string;
-        readonly periodStartedAt?:
-          | Date
-          | {
-              readonly equals?: Date;
-              readonly gte?: Date;
-              readonly lt?: Date;
-            };
-        readonly periodEndedAt?: Date;
-        readonly periodTimezone?: string;
-        readonly status?: { readonly in: readonly PrismaSummaryStatus[] };
-      };
+      readonly where: PrismaReaderSummaryArtifactWhere;
     }): Promise<number>;
   };
   readonly readerSummaryPolicy: {

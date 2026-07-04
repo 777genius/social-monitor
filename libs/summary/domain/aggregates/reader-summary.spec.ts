@@ -91,6 +91,25 @@ describe("buildReaderSummary", () => {
       rationale:
         "Single-source story signal; treat provider metrics as local evidence.",
     });
+    expect(readerSummary.claimBoard[0]).toMatchObject({
+      claim: "OpenAI ties Anthropic after alleged GPT-5.6 preview benchmark",
+      evidence: [
+        {
+          providerKey: "reddit",
+          citationId: "citation-1",
+          canonicalUrl: "https://reddit.example/r/OpenAI/comments/1",
+        },
+      ],
+      risks: [
+        {
+          kind: "single_source",
+        },
+        {
+          kind: "low_confidence",
+        },
+      ],
+      citationIds: ["citation-1"],
+    });
   });
 
   it("carries representative preview media into top reads", () => {
@@ -302,21 +321,21 @@ describe("buildReaderSummary", () => {
     );
     expect(readerSummary.oneLineTakeaway).not.toContain("Review 3 cited");
     expect(readerSummary.topReads.map((read) => read.reason)).toEqual([
-      "Developer rollout chatter is drawing X/Twitter engagement.",
       "AI infrastructure discussion around custom chips is getting practical.",
+      "Developer rollout chatter is drawing X/Twitter engagement.",
       "Biomedical AI research is drawing Hacker News discussion.",
     ]);
     expect(
       readerSummary.topReads.flatMap((read) => read.whyImportant),
     ).not.toContain("Story signal score 2.211");
     expect(readerSummary.topReads.map((read) => read.providerKey)).toEqual([
-      "x-twitter",
       "reddit",
+      "x-twitter",
       "hacker-news",
     ]);
   });
 
-  it("keeps X and Reddit ahead of HN/RSS cross-source support in AI developer digests", () => {
+  it("keeps AI developer digest top reads in ranked story order", () => {
     const readerSummary = buildReaderSummary({
       headline: "Source watch across X/Twitter, Reddit, Hacker News +2",
       executiveSummary:
@@ -326,15 +345,15 @@ describe("buildReaderSummary", () => {
           storyClusterId: "cluster-hn-rss",
           title:
             "HN and RSS amplify cybersecurity discussion around a post-mythos framing",
-          summary:
-            "A cybersecurity article is drawing HN and RSS discussion.",
+          summary: "A cybersecurity article is drawing HN and RSS discussion.",
           interestIds: ["cybersecurity"],
           providerKeys: ["hacker-news", "rss"],
           citationIds: ["citation-hn", "citation-rss"],
         },
         {
           storyClusterId: "cluster-x",
-          title: "X chatter about Claude Code skills routing across coding tools",
+          title:
+            "X chatter about Claude Code skills routing across coding tools",
           summary:
             "Claude Code skills routing is the strongest concrete X signal.",
           interestIds: ["ai-developer-tools"],
@@ -433,7 +452,8 @@ describe("buildReaderSummary", () => {
           interestId: "ai-developer-tools",
           providerKey: "x-twitter",
           providerName: "X/Twitter",
-          title: "X chatter about Claude Code skills routing across coding tools",
+          title:
+            "X chatter about Claude Code skills routing across coding tools",
           canonicalUrl: "https://x.com/rohanpaul_ai/status/1",
           whyImportant: ["Strong source engagement signal"],
         }),
@@ -454,7 +474,7 @@ describe("buildReaderSummary", () => {
 
     expect(
       readerSummary.topReads.slice(0, 3).map((read) => read.providerKey),
-    ).toEqual(["x-twitter", "reddit", "hacker-news"]);
+    ).toEqual(["hacker-news", "x-twitter", "reddit"]);
     expect(readerSummary.headline).not.toContain("Key signals across");
     expect(readerSummary.headline).toContain("Claude Code skills");
     expect(readerSummary.headline).not.toContain("Source watch");
@@ -673,7 +693,7 @@ describe("buildReaderSummary", () => {
     );
   });
 
-  it("diversifies reader top reads across providers before filling same-provider follow-ups", () => {
+  it("preserves ranked reader top reads before provider coverage", () => {
     const input = readerTopReadFixture(12);
     const providerOverrides = new Map<
       number,
@@ -781,19 +801,19 @@ describe("buildReaderSummary", () => {
       })),
     ).toEqual([
       {
-        title: "Reddit discusses agent debugging friction",
-        providerKey: "reddit",
-      },
-      {
-        title: "HN compares repository agents",
-        providerKey: "hacker-news",
-      },
-      {
-        title: "RSS explains agent workflow releases",
-        providerKey: "rss",
-      },
-      {
         title: "repo-radar/project-1",
+        providerKey: "github-repo-radar",
+      },
+      {
+        title: "repo-radar/project-2",
+        providerKey: "github-repo-radar",
+      },
+      {
+        title: "repo-radar/project-3",
+        providerKey: "github-repo-radar",
+      },
+      {
+        title: "repo-radar/project-4",
         providerKey: "github-repo-radar",
       },
     ]);

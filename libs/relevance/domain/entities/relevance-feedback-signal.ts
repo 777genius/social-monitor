@@ -1,8 +1,14 @@
 import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 
+import {
+  normalizePostRatingReason,
+  type PostRatingReason,
+} from './post-rating-reason';
+
 export const relevanceFeedbackActions = [
   'more_like_this',
   'less_like_this',
+  'rate_post',
   'hide_source',
   'dismiss',
   'save',
@@ -21,12 +27,14 @@ export type RelevanceFeedbackReason = (typeof relevanceFeedbackReasons)[number];
 
 export type RelevanceFeedbackTarget = {
   readonly feedItemId?: string;
+  readonly sourceItemId?: string;
   readonly interestId: string;
   readonly providerKey: string;
   readonly title: string;
   readonly bodyPreview?: string;
   readonly canonicalUrl?: string;
   readonly feedbackReason?: RelevanceFeedbackReason;
+  readonly postRatingReason?: PostRatingReason;
 };
 
 export type RelevanceFeedbackSignalProps = {
@@ -65,7 +73,11 @@ export class RelevanceFeedbackSignal {
 export const relevanceFeedbackDirection = (
   action: RelevanceFeedbackAction,
   rating: number | undefined,
-): 'positive' | 'negative' | 'block_provider' => {
+): 'positive' | 'negative' | 'block_provider' | 'recorded' => {
+  if (action === 'rate_post') {
+    return 'recorded';
+  }
+
   if (action === 'hide_source') {
     return 'block_provider';
   }
@@ -102,6 +114,18 @@ const normalizeProps = (props: RelevanceFeedbackSignalProps): RelevanceFeedbackS
     throw new Error('Relevance feedback rating must be an integer between 1 and 5');
   }
 
+  if (props.action === 'rate_post' && props.rating === undefined) {
+    throw new Error('Post rating feedback requires a rating');
+  }
+
+  if (
+    props.action === 'rate_post' &&
+    target.feedItemId === undefined &&
+    target.sourceItemId === undefined
+  ) {
+    throw new Error('Post rating feedback requires feedItemId or sourceItemId');
+  }
+
   return {
     ...props,
     userId,
@@ -125,12 +149,14 @@ const normalizeTarget = (target: RelevanceFeedbackTarget): RelevanceFeedbackTarg
 
   return {
     feedItemId: normalizeOptional(target.feedItemId),
+    sourceItemId: normalizeOptional(target.sourceItemId),
     interestId: target.interestId.trim(),
     providerKey: target.providerKey.trim().toLocaleLowerCase('en-US'),
     title: target.title.trim(),
     bodyPreview: normalizeOptional(target.bodyPreview),
     canonicalUrl: normalizeOptional(target.canonicalUrl),
     feedbackReason: normalizeReason(target.feedbackReason),
+    postRatingReason: normalizePostRatingReason(target.postRatingReason),
   };
 };
 

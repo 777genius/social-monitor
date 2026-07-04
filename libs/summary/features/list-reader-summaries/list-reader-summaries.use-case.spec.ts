@@ -4,6 +4,7 @@ import { ReaderSummaryArtifact, type ReaderSummaryScope } from "../../domain";
 import type {
   ListReaderSummaryArtifactsQuery,
   ListReaderSummaryArtifactsResult,
+  ListReaderSummaryPeriodSummariesResult,
   ReaderSummaryArtifactRepositoryPort,
   ReaderSummaryFreshness,
   ReaderSummaryFreshnessProbePort,
@@ -175,8 +176,7 @@ const period = {
   startedAt: new Date("2026-06-23T00:00:00.000Z"),
   endedAt: new Date("2026-06-24T00:00:00.000Z"),
   timezone: "UTC",
-  periodKey:
-    "daily:2026-06-23T00:00:00.000Z:2026-06-24T00:00:00.000Z:UTC",
+  periodKey: "daily:2026-06-23T00:00:00.000Z:2026-06-24T00:00:00.000Z:UTC",
 };
 
 const readerSummaryArtifact = (params: {
@@ -295,6 +295,10 @@ class FakeReaderSummaryArtifactRepository implements ReaderSummaryArtifactReposi
     };
   }
 
+  async listPeriodSummaries(): Promise<ListReaderSummaryPeriodSummariesResult> {
+    return { items: [] };
+  }
+
   async findById(): Promise<ReaderSummaryArtifact | null> {
     return null;
   }
@@ -310,9 +314,11 @@ class FakeReaderSummaryFreshnessProbe implements ReaderSummaryFreshnessProbePort
   async evaluate(
     query: Parameters<ReaderSummaryFreshnessProbePort["evaluate"]>[0],
   ): Promise<ReaderSummaryFreshness> {
-    return this.freshnessByWindowId[query.sourceWindow.windowId] ?? {
-      status: "fresh",
-      checkedAt: new Date("2026-06-23T08:40:00.000Z"),
-    };
+    return (
+      this.freshnessByWindowId[query.sourceWindow.windowId] ?? {
+        status: "fresh",
+        checkedAt: new Date("2026-06-23T08:40:00.000Z"),
+      }
+    );
   }
 }

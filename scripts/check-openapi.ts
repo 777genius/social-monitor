@@ -81,10 +81,14 @@ import { SourceCredentialController } from "@social-monitor/monitoring/interface
 import { InterestController } from "@social-monitor/monitoring/interfaces/rest/interest.controller";
 import { InterestCoveragePlanController } from "@social-monitor/monitoring/interfaces/rest/interest-coverage-plan.controller";
 import { BuildPersonalizedDigestUseCase } from "@social-monitor/relevance/features/build-personalized-digest/build-personalized-digest.use-case";
+import { ListPostRatingsUseCase } from "@social-monitor/relevance/features/list-post-ratings/list-post-ratings.use-case";
 import { RankFeedItemsUseCase } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.use-case";
+import { RecordPostRatingUseCase } from "@social-monitor/relevance/features/record-post-rating/record-post-rating.use-case";
 import { RecordRelevanceFeedbackUseCase } from "@social-monitor/relevance/features/record-relevance-feedback/record-relevance-feedback.use-case";
 import { UpsertUserRelevanceProfileUseCase } from "@social-monitor/relevance/features/upsert-user-relevance-profile/upsert-user-relevance-profile.use-case";
 import { RelevanceController } from "@social-monitor/relevance/interfaces/rest/relevance.controller";
+import { SocialResearchController } from "@social-monitor/social-research/rest";
+import { SocialResearchToolHandlers } from "@social-monitor/social-research/tools";
 import { GetSummaryJobStatusUseCase } from "@social-monitor/summary/features/get-summary-job-status/get-summary-job-status.use-case";
 import { GetSummaryPolicyUseCase } from "@social-monitor/summary/features/get-summary-policy/get-summary-policy.use-case";
 import { GetSummaryUseCase } from "@social-monitor/summary/features/get-summary/get-summary.use-case";
@@ -92,6 +96,7 @@ import { GetReaderSummaryJobStatusUseCase } from "@social-monitor/summary/featur
 import { GetReaderSummaryUseCase } from "@social-monitor/summary/features/get-reader-summary/get-reader-summary.use-case";
 import { ListSummariesUseCase } from "@social-monitor/summary/features/list-summaries/list-summaries.use-case";
 import { ListSummaryFeedbackUseCase } from "@social-monitor/summary/features/list-summary-feedback/list-summary-feedback.use-case";
+import { ListReaderSummaryPeriodsUseCase } from "@social-monitor/summary/features/list-reader-summary-periods/list-reader-summary-periods.use-case";
 import { ListReaderSummariesUseCase } from "@social-monitor/summary/features/list-reader-summaries/list-reader-summaries.use-case";
 import { RecordSummaryFeedbackUseCase } from "@social-monitor/summary/features/record-summary-feedback/record-summary-feedback.use-case";
 import { RegenerateSummaryUseCase } from "@social-monitor/summary/features/regenerate-summary/regenerate-summary.use-case";
@@ -191,6 +196,39 @@ const noopDeliveryReadAuthorizer = {
   authorize: async () => undefined,
 };
 
+const noopSocialResearchToolHandlers = {
+  searchSocial: async () => ({
+    plan: {
+      normalizedTopic: "contract-check",
+      lanes: [],
+      warnings: [],
+    },
+    items: [],
+    warnings: [],
+    partial: false,
+  }),
+  explainSearchPlan: () => ({
+    plan: {
+      normalizedTopic: "contract-check",
+      lanes: [],
+      warnings: [],
+    },
+    explanation: "contract-check",
+  }),
+  fetchThread: async () => ({
+    root: {
+      itemId: "contract-check",
+      sourceKey: "fake",
+      canonicalUrl: "https://example.com/social-research/thread",
+      title: "Contract check",
+      body: "Contract check",
+    },
+    units: [],
+    warnings: [],
+  }),
+  rankResults: () => [],
+};
+
 const useCaseProviders = [
   BindSourceUseCase,
   ChangeSourceBindingStatusUseCase,
@@ -233,16 +271,19 @@ const useCaseProviders = [
   ListSourceProfilesUseCase,
   ListSummariesUseCase,
   ListSummaryFeedbackUseCase,
+  ListReaderSummaryPeriodsUseCase,
   ListReaderSummariesUseCase,
   ListInterestsUseCase,
   ListWebhookEndpointsUseCase,
   PlanInterestCoverageUseCase,
   BuildPersonalizedDigestUseCase,
+  ListPostRatingsUseCase,
   ActivateInterestSourceUseCase,
   ArchiveInterestUseCase,
   CreateUserSubscriptionUseCase,
   GetEffectiveUserSummaryPreferenceUseCase,
   RankFeedItemsUseCase,
+  RecordPostRatingUseCase,
   RecordRelevanceFeedbackUseCase,
   RecordPublicApiAuditEventUseCase,
   RecordSummaryFeedbackUseCase,
@@ -283,6 +324,7 @@ const useCaseProviders = [
     ScanDeadLetterController,
     BetaLaunchSupportController,
     RelevanceController,
+    SocialResearchController,
     SummaryController,
     ReaderSummaryController,
     ReaderSummaryJobController,
@@ -317,6 +359,10 @@ const useCaseProviders = [
     {
       provide: DeliveryReadAuthorizer,
       useValue: noopDeliveryReadAuthorizer,
+    },
+    {
+      provide: SocialResearchToolHandlers,
+      useValue: noopSocialResearchToolHandlers,
     },
     {
       provide: WORKSPACE_AUTHORIZATION_POLICY,
@@ -438,11 +484,11 @@ function assertFrontendReadyRequestSchemas(document: OpenAPIObject): void {
     "includeNoSignal",
     "nextRunAt",
   ]);
-  assertSchemaHasProperties(document, "ActivateInterestSourceScanPolicyRequestDto", [
-    "intervalSeconds",
-    "freshnessSeconds",
-    "retryBudget",
-  ]);
+  assertSchemaHasProperties(
+    document,
+    "ActivateInterestSourceScanPolicyRequestDto",
+    ["intervalSeconds", "freshnessSeconds", "retryBudget"],
+  );
   assertSchemaHasProperties(document, "CreateApiKeyRequestDto", [
     "name",
     "scopes",
@@ -469,6 +515,34 @@ function assertFrontendReadyRequestSchemas(document: OpenAPIObject): void {
   ]);
   assertSchemaHasProperties(document, "RetryDeliveryAttemptRequestDto", [
     "content",
+  ]);
+  assertSchemaHasProperties(document, "SearchSocialRestRequestDto", [
+    "topic",
+    "sources",
+    "window",
+    "depth",
+    "goal",
+    "entities",
+    "execution",
+  ]);
+  assertSchemaHasProperties(document, "SocialResearchExecutionRestDto", [
+    "scanJobId",
+    "sourceBindingIdBySource",
+  ]);
+  assertSchemaHasProperties(document, "FetchSocialThreadRestRequestDto", [
+    "canonicalUrl",
+    "sourceKey",
+    "externalId",
+    "maxDepth",
+    "execution",
+  ]);
+  assertSchemaHasProperties(document, "RankSocialResultsRestRequestDto", [
+    "topic",
+    "goal",
+    "entities",
+    "items",
+    "limit",
+    "now",
   ]);
   assertSchemaHasProperties(document, "RotateSourceCredentialRequestDto", [
     "secret",
@@ -499,14 +573,24 @@ function assertSchemaHasProperties(
   requiredProperties: readonly string[],
 ): void {
   const schema = document.components?.schemas?.[schemaName];
-  if (schema === undefined || !("properties" in schema) || schema.properties === undefined) {
-    throw new Error(`OpenAPI schema ${schemaName} must expose frontend-ready request properties`);
+  if (
+    schema === undefined ||
+    !("properties" in schema) ||
+    schema.properties === undefined
+  ) {
+    throw new Error(
+      `OpenAPI schema ${schemaName} must expose frontend-ready request properties`,
+    );
   }
 
   const properties = schema.properties;
-  const missing = requiredProperties.filter((property) => !(property in properties));
+  const missing = requiredProperties.filter(
+    (property) => !(property in properties),
+  );
   if (missing.length > 0) {
-    throw new Error(`OpenAPI schema ${schemaName} is missing properties: ${missing.join(", ")}`);
+    throw new Error(
+      `OpenAPI schema ${schemaName} is missing properties: ${missing.join(", ")}`,
+    );
   }
 }
 

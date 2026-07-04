@@ -24,8 +24,10 @@ import { PrismaRelevanceFeedbackRepository } from '../../adapters/persistence/pr
 import { PrismaRelevanceMemoryProjectionRepository } from '../../adapters/persistence/prisma/prisma-relevance-memory-projection.repository';
 import { PrismaUserRelevanceProfileRepository } from '../../adapters/persistence/prisma/prisma-user-relevance-profile.repository';
 import { BuildPersonalizedDigestUseCase } from '../../features/build-personalized-digest/build-personalized-digest.use-case';
+import { ListPostRatingsUseCase } from '../../features/list-post-ratings/list-post-ratings.use-case';
 import { ProjectRelevanceMemoryBatchUseCase } from '../../features/project-relevance-memory/project-relevance-memory-batch.use-case';
 import { RankFeedItemsUseCase } from '../../features/rank-feed-items/rank-feed-items.use-case';
+import { RecordPostRatingUseCase } from '../../features/record-post-rating/record-post-rating.use-case';
 import { RecordRelevanceFeedbackUseCase } from '../../features/record-relevance-feedback/record-relevance-feedback.use-case';
 import { UpsertUserRelevanceProfileUseCase } from '../../features/upsert-user-relevance-profile/upsert-user-relevance-profile.use-case';
 import type {
@@ -34,6 +36,8 @@ import type {
   RelevanceMemoryGuidanceReaderPort,
   RelevanceMemoryProjectionRepositoryPort,
   RelevanceMemoryProjectorPort,
+  PostRatingProjectionPort,
+  PostRatingRepositoryPort,
   SourceContentQualityReviewerPort,
   UserRelevanceProfileRepositoryPort,
 } from '../../ports';
@@ -41,6 +45,8 @@ import {
   NOOP_RELEVANCE_MEMORY_GUIDANCE_READER,
   NOOP_RELEVANCE_MEMORY_PROJECTOR,
   NOOP_SOURCE_CONTENT_QUALITY_REVIEWER,
+  POST_RATING_PROJECTION,
+  POST_RATING_REPOSITORY,
   RELEVANCE_FEEDBACK_LEARNING_STORE,
   RELEVANCE_FEEDBACK_REPOSITORY,
   RELEVANCE_MEMORY_GUIDANCE_READER,
@@ -168,6 +174,18 @@ import {
       inject: [RELEVANCE_PERSISTENCE_MODE, RELEVANCE_PRISMA_CLIENT, InMemoryRelevanceFeedbackRepository],
     },
     {
+      provide: POST_RATING_PROJECTION,
+      useFactory: (feedback: RelevanceFeedbackRepositoryPort): PostRatingProjectionPort =>
+        feedback as RelevanceFeedbackRepositoryPort & PostRatingProjectionPort,
+      inject: [RELEVANCE_FEEDBACK_REPOSITORY],
+    },
+    {
+      provide: POST_RATING_REPOSITORY,
+      useFactory: (feedback: RelevanceFeedbackRepositoryPort): PostRatingRepositoryPort =>
+        feedback as RelevanceFeedbackRepositoryPort & PostRatingRepositoryPort,
+      inject: [RELEVANCE_FEEDBACK_REPOSITORY],
+    },
+    {
       provide: UpsertUserRelevanceProfileUseCase,
       useFactory: (profiles: UserRelevanceProfileRepositoryPort) =>
         new UpsertUserRelevanceProfileUseCase(profiles, new CryptoIdGenerator(), new SystemClock()),
@@ -204,6 +222,17 @@ import {
       inject: [RELEVANCE_FEEDBACK_LEARNING_STORE],
     },
     {
+      provide: ListPostRatingsUseCase,
+      useFactory: (ratings: PostRatingProjectionPort) => new ListPostRatingsUseCase(ratings),
+      inject: [POST_RATING_PROJECTION],
+    },
+    {
+      provide: RecordPostRatingUseCase,
+      useFactory: (ratings: PostRatingRepositoryPort) =>
+        new RecordPostRatingUseCase(ratings, new CryptoIdGenerator(), new SystemClock()),
+      inject: [POST_RATING_REPOSITORY],
+    },
+    {
       provide: ProjectRelevanceMemoryBatchUseCase,
       useFactory: (
         projections: RelevanceMemoryProjectionRepositoryPort,
@@ -219,11 +248,15 @@ import {
   ],
   exports: [
     BuildPersonalizedDigestUseCase,
+    ListPostRatingsUseCase,
     ProjectRelevanceMemoryBatchUseCase,
     RankFeedItemsUseCase,
+    RecordPostRatingUseCase,
     RecordRelevanceFeedbackUseCase,
     UpsertUserRelevanceProfileUseCase,
     USER_RELEVANCE_PROFILE_REPOSITORY,
+    POST_RATING_PROJECTION,
+    POST_RATING_REPOSITORY,
     RELEVANCE_FEEDBACK_REPOSITORY,
     RELEVANCE_FEEDBACK_LEARNING_STORE,
     RELEVANCE_MEMORY_PROJECTION_REPOSITORY,

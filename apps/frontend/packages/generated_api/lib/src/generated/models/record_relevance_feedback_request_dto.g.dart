@@ -25,6 +25,7 @@ RecordRelevanceFeedbackRequestDto _$RecordRelevanceFeedbackRequestDtoFromJson(
       : RecordRelevanceFeedbackRequestDtoReasonReason.fromJson(
           json['reason'] as String,
         ),
+  sourceItemId: json['sourceItemId'] as String?,
 );
 
 Map<String, dynamic> _$RecordRelevanceFeedbackRequestDtoToJson(
@@ -39,5 +40,6 @@ Map<String, dynamic> _$RecordRelevanceFeedbackRequestDtoToJson(
   'providerKey': instance.providerKey,
   'rating': instance.rating,
   'reason': instance.reason,
+  'sourceItemId': instance.sourceItemId,
   'title': instance.title,
 };

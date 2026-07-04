@@ -16,12 +16,18 @@ import { parsePaginationLimit } from '@social-monitor/platform-request-context';
 import { DomainError, requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 
 import { BuildPersonalizedDigestUseCase } from '../../features/build-personalized-digest/build-personalized-digest.use-case';
+import { ListPostRatingsUseCase } from '../../features/list-post-ratings/list-post-ratings.use-case';
 import { RankFeedItemsUseCase } from '../../features/rank-feed-items/rank-feed-items.use-case';
+import { RecordPostRatingUseCase } from '../../features/record-post-rating/record-post-rating.use-case';
 import { RecordRelevanceFeedbackUseCase } from '../../features/record-relevance-feedback/record-relevance-feedback.use-case';
 import { UpsertUserRelevanceProfileUseCase } from '../../features/upsert-user-relevance-profile/upsert-user-relevance-profile.use-case';
 import {
   BuildPersonalizedDigestResponseDto,
+  ListPostRatingsRequestDto,
+  ListPostRatingsResponseDto,
   RankFeedItemsResponseDto,
+  RecordPostRatingRequestDto,
+  RecordPostRatingResponseDto,
   RecordRelevanceFeedbackRequestDto,
   RecordRelevanceFeedbackResponseDto,
   UpsertUserRelevanceProfileRequestDto,
@@ -36,6 +42,8 @@ export class RelevanceController {
     private readonly rankFeedItems: RankFeedItemsUseCase,
     private readonly buildPersonalizedDigest: BuildPersonalizedDigestUseCase,
     private readonly recordRelevanceFeedback: RecordRelevanceFeedbackUseCase,
+    private readonly listPostRatings: ListPostRatingsUseCase,
+    private readonly recordPostRating: RecordPostRatingUseCase,
     private readonly apiKeyRequestAuthorizer: ApiKeyRequestAuthorizer,
     @Inject(WORKSPACE_AUTHORIZATION_POLICY)
     private readonly workspaceAuthorization: WorkspaceAuthorizationPolicyPort,
@@ -196,12 +204,90 @@ export class RelevanceController {
       rating: body.rating,
       target: {
         feedItemId: body.feedItemId,
+        sourceItemId: body.sourceItemId,
         interestId: body.interestId,
         providerKey: body.providerKey,
         title: body.title,
         bodyPreview: body.bodyPreview,
         canonicalUrl: body.canonicalUrl,
         feedbackReason: body.reason,
+      },
+    });
+
+    if (!result.ok) {
+      throw result.error;
+    }
+
+    return result.value;
+  }
+
+  @Post('post-ratings/query')
+  @ApiOperation({ summary: 'Read latest post ratings for concrete feed/source item targets.' })
+  @ApiHeader({ name: 'x-tenant-id', required: true })
+  @ApiHeader({ name: 'x-workspace-id', required: true })
+  @ApiKeyOrWorkspaceRoleAuth({
+    apiKeyScope: 'read:feed',
+    workspaceRoleDescription: 'Comma-separated workspace roles. Post rating reads allow owner, admin, member or viewer.',
+  })
+  @ApiOkResponse({ type: ListPostRatingsResponseDto })
+  async postRatings(
+    @Param('userId') userId: string,
+    @Headers('x-tenant-id') tenantHeader: string | undefined,
+    @Headers('x-workspace-id') workspaceHeader: string | undefined,
+    @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
+    @Headers('authorization') authorizationHeader: string | undefined,
+    @Body() body: ListPostRatingsRequestDto,
+  ): Promise<ListPostRatingsResponseDto> {
+    const scope = requireTenantScope({ tenantIdHeader: tenantHeader, workspaceIdHeader: workspaceHeader });
+    await this.authorizeRead(scope.tenantId, scope.workspaceId, workspaceRoleHeader, authorizationHeader);
+    const result = await this.listPostRatings.execute({
+      tenantId: scope.tenantId,
+      workspaceId: scope.workspaceId,
+      userId,
+      targets: body.targets,
+    });
+
+    if (!result.ok) {
+      throw result.error;
+    }
+
+    return result.value;
+  }
+
+  @Post('post-ratings')
+  @ApiOperation({ summary: 'Record a concrete post star rating without applying ranking learning.' })
+  @ApiHeader({ name: 'x-tenant-id', required: true })
+  @ApiHeader({ name: 'x-workspace-id', required: true })
+  @ApiKeyOrWorkspaceRoleAuth({
+    apiKeyScope: 'write:summaries',
+    workspaceRoleDescription: 'Comma-separated workspace roles. Post rating writes allow owner, admin or member.',
+  })
+  @ApiCreatedResponse({ type: RecordPostRatingResponseDto })
+  async recordPostRatingForUser(
+    @Param('userId') userId: string,
+    @Headers('x-tenant-id') tenantHeader: string | undefined,
+    @Headers('x-workspace-id') workspaceHeader: string | undefined,
+    @Headers('x-workspace-role') workspaceRoleHeader: string | undefined,
+    @Headers('authorization') authorizationHeader: string | undefined,
+    @Body() body: RecordPostRatingRequestDto,
+  ): Promise<RecordPostRatingResponseDto> {
+    const scope = requireTenantScope({ tenantIdHeader: tenantHeader, workspaceIdHeader: workspaceHeader });
+    await this.authorizeWrite(scope.tenantId, scope.workspaceId, workspaceRoleHeader, authorizationHeader);
+    const result = await this.recordPostRating.execute({
+      tenantId: scope.tenantId,
+      workspaceId: scope.workspaceId,
+      userId,
+      idempotencyKey: body.idempotencyKey,
+      rating: body.rating,
+      reason: body.reason,
+      target: {
+        feedItemId: body.feedItemId,
+        sourceItemId: body.sourceItemId,
+        interestId: body.interestId,
+        providerKey: body.providerKey,
+        title: body.title,
+        bodyPreview: body.bodyPreview,
+        canonicalUrl: body.canonicalUrl,
       },
     });
 

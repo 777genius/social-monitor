@@ -342,6 +342,7 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
         content: buildReaderSummary({
           ...noSignalDraft,
           storyClusters: input.evidence.clusters,
+          sourceWindow: input.evidence.sourceWindow,
           selectedEvidence: input.evidence.selectedEvidence,
         }),
       },

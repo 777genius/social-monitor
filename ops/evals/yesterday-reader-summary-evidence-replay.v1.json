@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "artifactFormat": "yesterday-reader-summary-evidence-replay-v1",
+  "collectionDate": "2026-07-03",
+  "generatedBy": "npm run check:yesterday-reader-summary-evidence-replay",
+  "model": {
+    "liveNetwork": false,
+    "replayTarget": "workspace-reader-summary-evidence",
+    "rawPostTextPersistedInReport": false
+  },
+  "inputs": {
+    "period": {
+      "startedAt": "2026-07-03T00:00:00.000Z",
+      "endedAt": "2026-07-04T00:00:00.000Z",
+      "timezone": "UTC"
+    },
+    "maxEvidenceItems": 40
+  },
+  "replay": {
+    "tenantFingerprint": "88237c6b",
+    "workspaceFingerprint": "88237c6c",
+    "selectedEvidenceCount": 40,
+    "clusterCount": 39,
+    "duplicateClusterCount": 1,
+    "providerCounts": [
+      {
+        "providerKey": "hacker-news",
+        "count": 10
+      },
+      {
+        "providerKey": "reddit",
+        "count": 10
+      },
+      {
+        "providerKey": "rss",
+        "count": 10
+      },
+      {
+        "providerKey": "x-twitter",
+        "count": 10
+      }
+    ],
+    "selectedInterestFingerprintCount": 2,
+    "primaryProviderCounts": {
+      "reddit": 10,
+      "x-twitter": 10
+    },
+    "citationReadyEvidenceCount": 40,
+    "textReadyEvidenceCount": 40,
+    "minScore": 1.474,
+    "maxScore": 2.08
+  },
+  "evidencePack": {
+    "confidence": {
+      "level": "medium",
+      "score": 0.65
+    },
+    "topCommunitySignalCount": 8,
+    "officialSignalCount": 5,
+    "emergingSignalCount": 5,
+    "dissentingViewCount": 1,
+    "highEngagementLowConfidenceCount": 0,
+    "sourceCoverage": {
+      "selectedEvidenceCount": 40,
+      "providerCount": 4,
+      "crossProviderClusterCount": 0
+    }
+  },
+  "qualityGates": {
+    "selectedEvidenceAtLeast30": true,
+    "selectedEvidenceHasAtLeastFourProviders": true,
+    "redditSelectedAtLeastTwo": true,
+    "xTwitterSelectedAtLeastTwo": true,
+    "selectedEvidenceSpansMultipleInterests": true,
+    "everySelectedEvidenceHasCanonicalUrl": true,
+    "everySelectedEvidenceHasText": true,
+    "evidencePackConfidenceAtLeastMedium": true,
+    "topCommunitySignalsAvailable": true,
+    "noRawSecretFragments": true
+  },
+  "blockingPassed": true
+}

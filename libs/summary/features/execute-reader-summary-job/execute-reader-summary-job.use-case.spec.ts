@@ -15,6 +15,7 @@ import {
   interestReaderSummaryScope,
 } from "../../domain";
 import type {
+  ListReaderSummaryPeriodSummariesResult,
   ProviderReaderSummaryAttempt,
   ReaderSummaryArtifactRepositoryPort,
   ReaderSummaryContextProviderPort,
@@ -42,8 +43,7 @@ const readerSummaryPeriod: ReaderSummaryPeriod = {
   startedAt: new Date("2026-06-26T00:00:00.000Z"),
   endedAt: new Date("2026-06-27T00:00:00.000Z"),
   timezone: "UTC",
-  periodKey:
-    "daily:2026-06-26T00:00:00.000Z:2026-06-27T00:00:00.000Z:UTC",
+  periodKey: "daily:2026-06-26T00:00:00.000Z:2026-06-27T00:00:00.000Z:UTC",
 };
 
 describe("ExecuteReaderSummaryJobUseCase", () => {
@@ -185,7 +185,7 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
       },
     });
     expect(snapshot?.topStories).toHaveLength(1);
-    expect(observedMaxEvidenceItems).toBe(200);
+    expect(observedMaxEvidenceItems).toBe(120);
     expect(model.observedPolicies()).toContainEqual(
       expect.objectContaining({
         maxOutputTokens: 16_000,
@@ -263,6 +263,10 @@ class FakeReaderSummaryArtifactRepository implements ReaderSummaryArtifactReposi
     Awaited<ReturnType<ReaderSummaryArtifactRepositoryPort["list"]>>
   > {
     return { items: this.artifacts };
+  }
+
+  async listPeriodSummaries(): Promise<ListReaderSummaryPeriodSummariesResult> {
+    return { items: [] };
   }
 
   async findById(): Promise<ReaderSummaryArtifact | null> {
@@ -412,7 +416,9 @@ class CapturingReaderSummaryModel implements ReaderSummaryModelPort {
     };
   }
 
-  observedPolicies(): readonly Parameters<ReaderSummaryModelPort["route"]>[1][] {
+  observedPolicies(): readonly Parameters<
+    ReaderSummaryModelPort["route"]
+  >[1][] {
     return this.policies;
   }
 }

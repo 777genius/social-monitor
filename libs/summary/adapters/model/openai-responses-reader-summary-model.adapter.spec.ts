@@ -710,6 +710,43 @@ describe("OpenAiResponsesReaderSummaryModelAdapter", () => {
       ],
     });
   });
+
+  it("serializes a deterministic evidence profile for reader summary grounding", () => {
+    const payload = JSON.parse(
+      buildOpenAiReaderSummaryPromptPayload(readerSummaryInput()),
+    );
+
+    expect(payload.evidenceProfile).toMatchObject({
+      rankingPolicyVersion: "story_ranking_v1",
+      selectedEvidenceCount: 1,
+      storyClusterCount: 1,
+      providerCount: 1,
+      providerCounts: [{ providerKey: "reddit", count: 1 }],
+      crossProviderClusterCount: 0,
+      topReadEligibleCount: 1,
+      downrankedEvidenceCount: 0,
+      conversationContextItemCount: 0,
+      coverageWarnings: ["limited_evidence", "single_provider"],
+    });
+    expect(payload.evidencePack).toMatchObject({
+      officialSignals: [],
+      topCommunitySignals: [
+        {
+          feedItemId: "feed-reddit",
+          providerKey: "reddit",
+          reasonCodes: ["community_source", "provider:reddit"],
+        },
+      ],
+      sourceCoverage: {
+        selectedEvidenceCount: 1,
+        providerCount: 1,
+      },
+      confidence: {
+        level: "low",
+        score: 0.35,
+      },
+    });
+  });
 });
 
 const fakeOpenAiApiKey = ["test", "openai", "key"].join("-");

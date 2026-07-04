@@ -72,6 +72,36 @@ describe("selectUniqueTopReadCandidates", () => {
     expect(result).toHaveLength(1);
     expect(result[0]?.citationIds).toEqual(["c-strong-gh"]);
   });
+
+  it("keeps ranked story order instead of promoting social provider coverage", () => {
+    const result = selectUniqueTopReadCandidates(
+      [
+        story("github-first", "Repo release ranked first", "c-github", [
+          "github-trending-page",
+        ]),
+        story("reddit-second", "Reddit discussion ranked second", "c-reddit", [
+          "reddit",
+        ]),
+      ],
+      citations([
+        citation("c-github", "feed-github", "github-trending-page"),
+        citation("c-reddit", "feed-reddit", "reddit"),
+      ]),
+      evidence([
+        evidenceItem("feed-github", "github-trending-page", []),
+        evidenceItem("feed-reddit", "reddit", [
+          ["Score", "727"],
+          ["Comments", "140"],
+        ]),
+      ]),
+      clusters(["github-first", "reddit-second"]),
+    );
+
+    expect(result.map((item) => item.title)).toEqual([
+      "Repo release ranked first",
+      "Reddit discussion ranked second",
+    ]);
+  });
 });
 
 const story = (

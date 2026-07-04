@@ -76,6 +76,25 @@ export type PrismaReaderSummaryArtifactRecord = {
   readonly updatedAt: Date;
 };
 
+export type PrismaReaderSummaryPeriodSummaryRecord = Pick<
+  PrismaReaderSummaryArtifactRecord,
+  | "id"
+  | "tenantId"
+  | "workspaceId"
+  | "scopeType"
+  | "scopeKey"
+  | "interestId"
+  | "cadence"
+  | "periodStartedAt"
+  | "periodEndedAt"
+  | "periodTimezone"
+  | "periodKey"
+  | "userId"
+  | "subscriptionId"
+  | "status"
+  | "headline"
+>;
+
 export type PrismaReaderSummaryPolicyRecord = {
   readonly id: string;
   readonly tenantId: string;

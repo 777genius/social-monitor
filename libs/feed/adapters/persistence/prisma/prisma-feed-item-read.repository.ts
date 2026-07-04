@@ -1,4 +1,8 @@
-import type { FeedItem } from "../../../domain";
+import {
+  type FeedItem,
+  feedProviderMetricsFromMetadata,
+  feedProviderMetricStrength,
+} from "../../../domain";
 import type {
   FeedItemReadRepositoryPort,
   ListFeedItemsQuery,
@@ -15,7 +19,7 @@ import {
   parseFeedCursor,
 } from "./prisma-feed-records";
 
-const MAX_FILTER_SCAN = 500;
+const MAX_FILTER_SCAN = 1_000;
 
 type FeedItemObservedAtRange = {
   readonly gt?: Date;
@@ -44,9 +48,11 @@ export class PrismaFeedItemReadRepository implements FeedItemReadRepositoryPort 
         skip: 0,
         take: MAX_FILTER_SCAN,
       });
-      const filtered = records
-        .map((record) => feedItemFromPrisma(record))
-        .filter((item) => matchesFeedItemReadFilters(item, query));
+      const filtered = sortFeedItemsBySignal(
+        records
+          .map((record) => feedItemFromPrisma(record))
+          .filter((item) => matchesFeedItemReadFilters(item, query)),
+      );
       const items = filtered.slice(offset, offset + query.limit);
       const nextOffset = offset + items.length;
 
@@ -59,21 +65,22 @@ export class PrismaFeedItemReadRepository implements FeedItemReadRepositoryPort 
       };
     }
 
-    const [records, total] = await Promise.all([
-      this.prisma.feedItem.findMany({
-        where,
-        orderBy: [{ publishedAt: "desc" }, { id: "desc" }],
-        skip: offset,
-        take: query.limit,
-      }),
-      this.prisma.feedItem.count({ where }),
-    ]);
-    const items = records.map((record) => feedItemFromPrisma(record));
+    const records = await this.prisma.feedItem.findMany({
+      where,
+      orderBy: [{ publishedAt: "desc" }, { id: "desc" }],
+      skip: 0,
+      take: MAX_FILTER_SCAN,
+    });
+    const sorted = sortFeedItemsBySignal(
+      records.map((record) => feedItemFromPrisma(record)),
+    );
+    const items = sorted.slice(offset, offset + query.limit);
     const nextOffset = offset + items.length;
 
     return {
       items,
-      nextCursor: nextOffset < total ? encodeFeedCursor(nextOffset) : undefined,
+      nextCursor:
+        nextOffset < sorted.length ? encodeFeedCursor(nextOffset) : undefined,
     };
   }
 
@@ -109,4 +116,38 @@ const buildObservedAtRange = (
   }
 
   return range.gt === undefined && range.lt === undefined ? undefined : range;
+};
+
+const sortFeedItemsBySignal = (
+  items: readonly FeedItem[],
+): readonly FeedItem[] =>
+  [...items].sort((left, right) => {
+    const leftSnapshot = left.toSnapshot();
+    const rightSnapshot = right.toSnapshot();
+    const signalDiff =
+      feedItemSignalStrength(rightSnapshot) -
+      feedItemSignalStrength(leftSnapshot);
+
+    if (signalDiff !== 0) {
+      return signalDiff;
+    }
+
+    const publishedAtDiff =
+      rightSnapshot.publishedAt.getTime() - leftSnapshot.publishedAt.getTime();
+    if (publishedAtDiff !== 0) {
+      return publishedAtDiff;
+    }
+
+    return rightSnapshot.id.localeCompare(leftSnapshot.id);
+  });
+
+const feedItemSignalStrength = (
+  item: ReturnType<FeedItem["toSnapshot"]>,
+): number => {
+  const metrics = feedProviderMetricsFromMetadata({
+    providerKey: item.providerKey,
+    providerMetadata: item.providerMetadata,
+  });
+
+  return metrics === undefined ? 0 : feedProviderMetricStrength(metrics);
 };

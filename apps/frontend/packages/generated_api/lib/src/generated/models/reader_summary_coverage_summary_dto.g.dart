@@ -31,18 +31,28 @@ ReaderSummaryCoverageSummaryDto _$ReaderSummaryCoverageSummaryDtoFromJson(
   topReadCount: json['topReadCount'] as num,
   windowEndedAt: DateTime.parse(json['windowEndedAt'] as String),
   windowStartedAt: DateTime.parse(json['windowStartedAt'] as String),
+  collectedFeedItemCount: json['collectedFeedItemCount'] as num?,
+  providerBreakdown: (json['providerBreakdown'] as List<dynamic>?)
+      ?.map(
+        (e) => ReaderSummaryProviderCoverageDto.fromJson(
+          e as Map<String, dynamic>,
+        ),
+      )
+      .toList(),
 );
 
 Map<String, dynamic> _$ReaderSummaryCoverageSummaryDtoToJson(
   ReaderSummaryCoverageSummaryDto instance,
 ) => <String, dynamic>{
   'citationCount': instance.citationCount,
+  'collectedFeedItemCount': instance.collectedFeedItemCount,
   'crossSourceClusterCount': instance.crossSourceClusterCount,
   'duplicateFeedItemCount': instance.duplicateFeedItemCount,
   'freshnessStatus': instance.freshnessStatus,
   'hasCrossProviderEvidence': instance.hasCrossProviderEvidence,
   'interestCount': instance.interestCount,
   'isSingleSource': instance.isSingleSource,
+  'providerBreakdown': instance.providerBreakdown,
   'providerCount': instance.providerCount,
   'selectedFeedItemCount': instance.selectedFeedItemCount,
   'storyClusterCount': instance.storyClusterCount,

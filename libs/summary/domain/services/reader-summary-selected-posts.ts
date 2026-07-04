@@ -1,0 +1,95 @@
+import type { ReaderSummaryCitation } from "../entities/citation";
+import type { TopRead } from "../entities/top-read";
+import type { SummaryEvidenceItem } from "../value-objects/summary-evidence-item";
+import { normalizeSignalScore } from "../value-objects/signal-score";
+import { compactUnique } from "../value-objects/summary-text";
+import {
+  buildMatchedRules,
+  readerItemConfidence,
+} from "./reader-summary-support";
+
+export const buildReaderSummarySelectedPosts = (params: {
+  readonly topReads: readonly TopRead[];
+  readonly selectedEvidence?: readonly SummaryEvidenceItem[];
+  readonly citationById: ReadonlyMap<string, ReaderSummaryCitation>;
+}): readonly TopRead[] => {
+  const citationByFeedItemId = new Map(
+    [...params.citationById.values()].map(
+      (citation) => [citation.feedItemId, citation] as const,
+    ),
+  );
+  const posts: TopRead[] = [];
+  const seen = new Set<string>();
+  const push = (post: TopRead): void => {
+    const key = postIdentityKey(post);
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    posts.push(post);
+  };
+
+  for (const read of params.topReads) {
+    push(read);
+  }
+  for (const item of params.selectedEvidence ?? []) {
+    const citation = citationByFeedItemId.get(item.feedItemId);
+    if (citation === undefined) {
+      continue;
+    }
+    push(evidenceToSelectedPost(item, citation));
+  }
+
+  return posts;
+};
+
+const evidenceToSelectedPost = (
+  item: SummaryEvidenceItem,
+  citation: ReaderSummaryCitation,
+): TopRead => {
+  const signalScore = normalizeSignalScore(item.score);
+  const matchedInterestIds = compactUnique([item.interestId]);
+  const whyImportant = compactUnique([
+    ...item.whyImportant,
+    item.bodyPreview,
+    item.title,
+  ]).slice(0, 4);
+
+  return {
+    title: item.title,
+    providerKey: item.providerKey,
+    providerName: item.providerName ?? item.providerKey,
+    primaryActionKind: item.readerActionKind ?? "read_source",
+    reason: whyImportant[0] ?? item.title,
+    matchedInterestIds:
+      matchedInterestIds.length > 0 ? matchedInterestIds : ["unknown-interest"],
+    matchedRules: buildMatchedRules(
+      [item],
+      matchedInterestIds.length > 0 ? matchedInterestIds : ["unknown-interest"],
+      item.providerKey,
+    ),
+    signalScore,
+    confidence: readerItemConfidence({
+      cluster: undefined,
+      evidenceCount: 1,
+      confirmedProviderCount: 1,
+      signalScore,
+    }),
+    confirmedProviderKeys: [item.providerKey],
+    providerMetrics: item.providerMetricLabels ?? [],
+    whyImportant: whyImportant.length > 0 ? whyImportant : [item.title],
+    whyNow: `Selected from ${item.providerName ?? item.providerKey} evidence for this summary.`,
+    canonicalUrl: item.canonicalUrl,
+    previewMedia: item.previewMedia,
+    citationIds: [citation.citationId],
+  };
+};
+
+const postIdentityKey = (post: TopRead): string => {
+  const url = post.canonicalUrl?.trim();
+  if (url !== undefined && url.length > 0) {
+    return `url:${url.toLowerCase()}`;
+  }
+
+  return `title:${post.providerKey.toLowerCase()}:${post.title.toLowerCase()}`;
+};

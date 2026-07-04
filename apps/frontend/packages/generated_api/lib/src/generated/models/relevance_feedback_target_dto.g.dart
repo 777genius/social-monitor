@@ -17,6 +17,7 @@ RelevanceFeedbackTargetDto _$RelevanceFeedbackTargetDtoFromJson(
           json['feedbackReason'] as String,
         ),
   feedItemId: json['feedItemId'] as String?,
+  sourceItemId: json['sourceItemId'] as String?,
 );
 
 Map<String, dynamic> _$RelevanceFeedbackTargetDtoToJson(
@@ -26,4 +27,5 @@ Map<String, dynamic> _$RelevanceFeedbackTargetDtoToJson(
   'feedItemId': instance.feedItemId,
   'interestId': instance.interestId,
   'providerKey': instance.providerKey,
+  'sourceItemId': instance.sourceItemId,
 };

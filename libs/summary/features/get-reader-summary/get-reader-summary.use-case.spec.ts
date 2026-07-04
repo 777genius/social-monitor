@@ -1,14 +1,13 @@
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
-import {
-  ReaderSummaryArtifact,
-  type ReaderSummaryContent,
-} from "../../domain";
+import { ReaderSummaryArtifact, type ReaderSummaryContent } from "../../domain";
 import type {
   EnrichReaderSummaryPreviewMediaCommand,
   ListReaderSummaryArtifactsQuery,
   ListReaderSummaryArtifactsResult,
+  ListReaderSummaryPeriodSummariesResult,
   ReaderSummaryArtifactRepositoryPort,
+  ReaderSummaryCoverageCounterPort,
   ReaderSummaryFreshness,
   ReaderSummaryFreshnessProbePort,
   ReaderSummaryPreviewMediaEnricherPort,
@@ -22,6 +21,8 @@ describe("GetReaderSummaryUseCase", () => {
         readerSummaryArtifact("reader-summary-1"),
       ]),
       new FakeReaderSummaryFreshnessProbe(),
+      undefined,
+      new FakeReaderSummaryCoverageCounter(4),
     );
 
     const result = await useCase.execute({
@@ -43,6 +44,7 @@ describe("GetReaderSummaryUseCase", () => {
           }),
         ],
         coverage: {
+          collectedFeedItemCount: 4,
           selectedFeedItemCount: 1,
           storyClusterCount: 1,
           topReadCount: 1,
@@ -58,6 +60,21 @@ describe("GetReaderSummaryUseCase", () => {
           windowStartedAt: "2026-06-23T08:00:00.000Z",
           windowEndedAt: "2026-06-23T08:30:00.000Z",
           freshnessStatus: "fresh",
+          providerBreakdown: [
+            {
+              providerKey: "reddit",
+              collectedFeedItemCount: 4,
+              selectedFeedItemCount: 1,
+              topReadCount: 1,
+              citationCount: 1,
+            },
+            {
+              providerKey: "github",
+              selectedFeedItemCount: 1,
+              topReadCount: 0,
+              citationCount: 0,
+            },
+          ],
         },
       }),
     });
@@ -116,8 +133,7 @@ const period = {
   startedAt: new Date("2026-06-23T00:00:00.000Z"),
   endedAt: new Date("2026-06-24T00:00:00.000Z"),
   timezone: "UTC",
-  periodKey:
-    "daily:2026-06-23T00:00:00.000Z:2026-06-24T00:00:00.000Z:UTC",
+  periodKey: "daily:2026-06-23T00:00:00.000Z:2026-06-24T00:00:00.000Z:UTC",
 };
 
 const readerSummaryArtifact = (
@@ -280,6 +296,10 @@ class FakeReaderSummaryArtifactRepository implements ReaderSummaryArtifactReposi
     return { items: this.artifacts };
   }
 
+  async listPeriodSummaries(): Promise<ListReaderSummaryPeriodSummariesResult> {
+    return { items: [] };
+  }
+
   async findById(
     params: Parameters<ReaderSummaryArtifactRepositoryPort["findById"]>[0],
   ): Promise<ReaderSummaryArtifact | null> {
@@ -305,9 +325,7 @@ class FakeReaderSummaryFreshnessProbe implements ReaderSummaryFreshnessProbePort
   }
 }
 
-class FakeReaderSummaryPreviewMediaEnricher
-  implements ReaderSummaryPreviewMediaEnricherPort
-{
+class FakeReaderSummaryPreviewMediaEnricher implements ReaderSummaryPreviewMediaEnricherPort {
   async enrich(
     command: EnrichReaderSummaryPreviewMediaCommand,
   ): Promise<ReaderSummaryContent> {
@@ -322,6 +340,26 @@ class FakeReaderSummaryPreviewMediaEnricher
           altText: "Real provider preview",
         },
       })),
+    };
+  }
+}
+
+class FakeReaderSummaryCoverageCounter implements ReaderSummaryCoverageCounterPort {
+  constructor(private readonly collectedFeedItemCount: number) {}
+
+  async countCollectedFeedItems(): Promise<number> {
+    return this.collectedFeedItemCount;
+  }
+
+  async countCollectedFeedItemCoverage() {
+    return {
+      collectedFeedItemCount: this.collectedFeedItemCount,
+      providerBreakdown: [
+        {
+          providerKey: "reddit",
+          collectedFeedItemCount: this.collectedFeedItemCount,
+        },
+      ],
     };
   }
 }

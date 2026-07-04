@@ -5,6 +5,7 @@
 import 'package:json_annotation/json_annotation.dart';
 
 import 'reader_summary_coverage_summary_dto_freshness_status_freshness_status.dart';
+import 'reader_summary_provider_coverage_dto.dart';
 
 part 'reader_summary_coverage_summary_dto.g.dart';
 
@@ -26,12 +27,15 @@ class ReaderSummaryCoverageSummaryDto {
     required this.topReadCount,
     required this.windowEndedAt,
     required this.windowStartedAt,
+    this.collectedFeedItemCount,
+    this.providerBreakdown,
   });
 
   factory ReaderSummaryCoverageSummaryDto.fromJson(Map<String, Object?> json) =>
       _$ReaderSummaryCoverageSummaryDtoFromJson(json);
 
   final num citationCount;
+  final num? collectedFeedItemCount;
   final num crossSourceClusterCount;
   final num duplicateFeedItemCount;
   final ReaderSummaryCoverageSummaryDtoFreshnessStatusFreshnessStatus
@@ -39,6 +43,7 @@ class ReaderSummaryCoverageSummaryDto {
   final bool hasCrossProviderEvidence;
   final num interestCount;
   final bool isSingleSource;
+  final List<ReaderSummaryProviderCoverageDto>? providerBreakdown;
   final num providerCount;
   final num selectedFeedItemCount;
   final num storyClusterCount;

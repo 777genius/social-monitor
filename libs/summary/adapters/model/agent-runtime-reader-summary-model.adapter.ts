@@ -296,6 +296,7 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
         content: buildReaderSummary({
           ...noSignalDraft,
           storyClusters: input.evidence.clusters,
+          sourceWindow: input.evidence.sourceWindow,
           selectedEvidence: input.evidence.selectedEvidence,
         }),
       },

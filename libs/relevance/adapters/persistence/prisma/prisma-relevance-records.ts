@@ -9,6 +9,7 @@ import {
   type RelevanceFeedbackReason,
   type RelevanceFeedbackSignalProps,
   type RelevanceFeedbackTarget,
+  type PostRatingReason,
   type RelevanceWeight,
   UserRelevanceProfile,
   type UserRelevanceProfileProps,
@@ -141,6 +142,7 @@ const normalizeAction = (value: string): RelevanceFeedbackAction => {
   if (
     value === 'more_like_this' ||
     value === 'less_like_this' ||
+    value === 'rate_post' ||
     value === 'hide_source' ||
     value === 'dismiss' ||
     value === 'save'
@@ -176,12 +178,14 @@ const normalizeTarget = (value: unknown): RelevanceFeedbackTarget => {
 
   return {
     feedItemId: optionalString(record.feedItemId),
+    sourceItemId: optionalString(record.sourceItemId),
     interestId: requiredString(record.interestId, 'interestId'),
     providerKey: requiredString(record.providerKey, 'providerKey'),
     title: requiredString(record.title, 'title'),
     bodyPreview: optionalString(record.bodyPreview),
     canonicalUrl: optionalString(record.canonicalUrl),
     feedbackReason: optionalFeedbackReason(record.feedbackReason),
+    postRatingReason: optionalPostRatingReason(record.postRatingReason),
   };
 };
 
@@ -202,6 +206,20 @@ const optionalFeedbackReason = (value: unknown): RelevanceFeedbackReason | undef
     value === 'duplicate' ||
     value === 'low_quality_source' ||
     value === 'overrated_provider'
+  ) {
+    return value;
+  }
+
+  return undefined;
+};
+
+const optionalPostRatingReason = (value: unknown): PostRatingReason | undefined => {
+  if (
+    value === 'duplicate' ||
+    value === 'off_topic' ||
+    value === 'weak_source' ||
+    value === 'too_old' ||
+    value === 'low_quality'
   ) {
     return value;
   }

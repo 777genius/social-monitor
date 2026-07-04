@@ -10,6 +10,8 @@ enum RelevanceFeedbackSignalDtoActionAction {
   moreLikeThis('more_like_this'),
   @JsonValue('less_like_this')
   lessLikeThis('less_like_this'),
+  @JsonValue('rate_post')
+  ratePost('rate_post'),
   @JsonValue('hide_source')
   hideSource('hide_source'),
   @JsonValue('dismiss')

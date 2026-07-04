@@ -108,6 +108,7 @@ export const normalizeOpenAiReaderSummaryDraft = (
     risksAndUnknowns,
     citationMap,
     storyClusters: input.evidence.clusters,
+    sourceWindow: input.evidence.sourceWindow,
     selectedEvidence: input.evidence.selectedEvidence,
     qualityFlags: normalizedQualityFlags,
     noSignalReason,

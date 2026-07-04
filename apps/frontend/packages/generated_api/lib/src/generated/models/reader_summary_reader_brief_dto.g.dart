@@ -10,6 +10,9 @@ ReaderSummaryReaderBriefDto _$ReaderSummaryReaderBriefDtoFromJson(
   Map<String, dynamic> json,
 ) => ReaderSummaryReaderBriefDto(
   bullets: (json['bullets'] as List<dynamic>).map((e) => e as String).toList(),
+  claimBoard: (json['claimBoard'] as List<dynamic>)
+      .map((e) => ReaderSummaryClaimDto.fromJson(e as Map<String, dynamic>))
+      .toList(),
   headline: json['headline'] as String,
   interestSections: (json['interestSections'] as List<dynamic>)
       .map(
@@ -17,6 +20,9 @@ ReaderSummaryReaderBriefDto _$ReaderSummaryReaderBriefDtoFromJson(
           e as Map<String, dynamic>,
         ),
       )
+      .toList(),
+  mainTopics: (json['mainTopics'] as List<dynamic>)
+      .map((e) => e as String)
       .toList(),
   nextActions: (json['nextActions'] as List<dynamic>)
       .map(
@@ -30,7 +36,15 @@ ReaderSummaryReaderBriefDto _$ReaderSummaryReaderBriefDtoFromJson(
   qualityState: ReaderSummaryReaderQualityStateDto.fromJson(
     json['qualityState'] as Map<String, dynamic>,
   ),
+  reliabilityReport: ReaderSummaryReliabilityReportDto.fromJson(
+    json['reliabilityReport'] as Map<String, dynamic>,
+  ),
   risks: (json['risks'] as List<dynamic>).map((e) => e as String).toList(),
+  selectedPosts: (json['selectedPosts'] as List<dynamic>)
+      .map(
+        (e) => ReaderSummaryReaderItemDto.fromJson(e as Map<String, dynamic>),
+      )
+      .toList(),
   sourceMix: (json['sourceMix'] as List<dynamic>)
       .map(
         (e) =>
@@ -51,13 +65,17 @@ Map<String, dynamic> _$ReaderSummaryReaderBriefDtoToJson(
   ReaderSummaryReaderBriefDto instance,
 ) => <String, dynamic>{
   'bullets': instance.bullets,
+  'claimBoard': instance.claimBoard,
   'headline': instance.headline,
   'interestSections': instance.interestSections,
+  'mainTopics': instance.mainTopics,
   'nextActions': instance.nextActions,
   'oneLineTakeaway': instance.oneLineTakeaway,
   'openQuestions': instance.openQuestions,
   'qualityState': instance.qualityState,
+  'reliabilityReport': instance.reliabilityReport,
   'risks': instance.risks,
+  'selectedPosts': instance.selectedPosts,
   'sourceMix': instance.sourceMix,
   'topReads': instance.topReads,
   'trendDelta': instance.trendDelta,

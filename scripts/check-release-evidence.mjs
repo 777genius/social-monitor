@@ -119,6 +119,7 @@ const requiredGateIds = new Set([
   'summary-retry-safety',
   'summary-feedback-hardening',
   'summary-feedback-sample-capture',
+  'summary-feedback-eval-backlog',
   'summary-memory-sdk',
   'summary-memory-sdk-package',
   'summary-memory-boundary',

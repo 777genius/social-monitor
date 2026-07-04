@@ -455,6 +455,215 @@
         ],
         "type": "object"
       },
+      "ExplainSearchPlanRestRequestDto": {
+        "properties": {
+          "accounts": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "communities": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "defaultSources": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "depth": {
+            "enum": [
+              "light",
+              "balanced",
+              "deep"
+            ],
+            "type": "string"
+          },
+          "entities": {
+            "type": "object"
+          },
+          "executionAllowedRuntimeReadiness": {
+            "items": {
+              "enum": [
+                "fixture_ready",
+                "live_beta_ready",
+                "deferred"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "goal": {
+            "enum": [
+              "research",
+              "trend",
+              "support",
+              "competitor",
+              "security"
+            ],
+            "type": "string"
+          },
+          "handles": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "keywords": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            ]
+          },
+          "maxLanes": {
+            "type": "number"
+          },
+          "preset": {
+            "enum": [
+              "broad_research",
+              "trend_scan",
+              "support_watch",
+              "competitor_scan"
+            ],
+            "type": "string"
+          },
+          "products": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            ]
+          },
+          "queryStrategyRecipe": {
+            "type": "object"
+          },
+          "sourceLimits": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "sources": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            ]
+          },
+          "topic": {
+            "type": "string"
+          },
+          "urls": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            ]
+          },
+          "warnWhenSourceReadinessMissing": {
+            "type": "boolean"
+          },
+          "window": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "topic"
+        ],
+        "type": "object"
+      },
+      "ExplainSearchPlanRestResponseDto": {
+        "properties": {
+          "explanation": {
+            "type": "string"
+          },
+          "plan": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "plan",
+          "explanation"
+        ],
+        "type": "object"
+      },
+      "ExplainSourceReadinessRestRequestDto": {
+        "properties": {
+          "sourceKey": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sourceKey"
+        ],
+        "type": "object"
+      },
+      "ExplainSourceReadinessRestResponseDto": {
+        "properties": {
+          "canExecuteWithDefaultPolicy": {
+            "type": "boolean"
+          },
+          "canPlan": {
+            "type": "boolean"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "source": {
+            "type": "object"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "source",
+          "canPlan",
+          "canExecuteWithDefaultPolicy",
+          "summary",
+          "reasons",
+          "warnings"
+        ],
+        "type": "object"
+      },
       "FeedItemDto": {
         "properties": {
           "authorHandle": {
@@ -740,6 +949,40 @@
           "sourceBindingIds",
           "itemCount",
           "sampleItemIds"
+        ],
+        "type": "object"
+      },
+      "FetchSocialThreadRestRequestDto": {
+        "properties": {
+          "canonicalUrl": {
+            "type": "string"
+          },
+          "execution": {
+            "$ref": "#/components/schemas/SocialResearchExecutionRestDto"
+          },
+          "externalId": {
+            "type": "string"
+          },
+          "maxDepth": {
+            "type": "number"
+          },
+          "sourceKey": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "execution"
+        ],
+        "type": "object"
+      },
+      "FetchSocialThreadRestResponseDto": {
+        "properties": {
+          "thread": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "thread"
         ],
         "type": "object"
       },
@@ -1969,11 +2212,56 @@
         ],
         "type": "object"
       },
+      "ListPostRatingsRequestDto": {
+        "properties": {
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/PostRatingLookupTargetDto"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "targets"
+        ],
+        "type": "object"
+      },
+      "ListPostRatingsResponseDto": {
+        "properties": {
+          "ratings": {
+            "items": {
+              "$ref": "#/components/schemas/PostRatingDto"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "ratings"
+        ],
+        "type": "object"
+      },
       "ListReaderSummariesResponseDto": {
         "properties": {
           "items": {
             "items": {
               "$ref": "#/components/schemas/ReaderSummaryArtifactResponseDto"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "ListReaderSummaryPeriodsResponseDto": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReaderSummaryPeriodSummaryDto"
             },
             "type": "array"
           },
@@ -2000,6 +2288,40 @@
         },
         "required": [
           "scanRequests"
+        ],
+        "type": "object"
+      },
+      "ListSocialSourcesRestRequestDto": {
+        "properties": {
+          "includeProfileOnly": {
+            "type": "boolean"
+          },
+          "includeProviderRuntimeGated": {
+            "type": "boolean"
+          },
+          "includeRejected": {
+            "type": "boolean"
+          },
+          "sourceKeys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "ListSocialSourcesRestResponseDto": {
+        "properties": {
+          "sources": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "sources"
         ],
         "type": "object"
       },
@@ -2268,6 +2590,89 @@
         ],
         "type": "object"
       },
+      "PostRatingDto": {
+        "properties": {
+          "feedbackId": {
+            "type": "string"
+          },
+          "learningEffect": {
+            "enum": [
+              "negative",
+              "neutral",
+              "positive"
+            ],
+            "type": "string"
+          },
+          "ratedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "rating": {
+            "maximum": 5,
+            "minimum": 1,
+            "type": "number"
+          },
+          "reason": {
+            "enum": [
+              "duplicate",
+              "off_topic",
+              "weak_source",
+              "too_old",
+              "low_quality"
+            ],
+            "type": "string"
+          },
+          "target": {
+            "$ref": "#/components/schemas/PostRatingTargetDto"
+          },
+          "userId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "feedbackId",
+          "userId",
+          "rating",
+          "learningEffect",
+          "target",
+          "ratedAt"
+        ],
+        "type": "object"
+      },
+      "PostRatingLookupTargetDto": {
+        "properties": {
+          "feedItemId": {
+            "type": "string"
+          },
+          "interestId": {
+            "type": "string"
+          },
+          "sourceItemId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "interestId"
+        ],
+        "type": "object"
+      },
+      "PostRatingTargetDto": {
+        "properties": {
+          "feedItemId": {
+            "type": "string"
+          },
+          "interestId": {
+            "type": "string"
+          },
+          "sourceItemId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "interestId"
+        ],
+        "type": "object"
+      },
       "RankedFeedItemDto": {
         "properties": {
           "authorHandle": {
@@ -2382,6 +2787,61 @@
           "generatedAt",
           "profileApplied",
           "items"
+        ],
+        "type": "object"
+      },
+      "RankSocialResultsRestRequestDto": {
+        "properties": {
+          "entities": {
+            "type": "object"
+          },
+          "goal": {
+            "enum": [
+              "research",
+              "trend",
+              "support",
+              "competitor",
+              "security"
+            ],
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "type": "number"
+          },
+          "now": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "rankingRecipe": {
+            "type": "object"
+          },
+          "topic": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "topic",
+          "items"
+        ],
+        "type": "object"
+      },
+      "RankSocialResultsRestResponseDto": {
+        "properties": {
+          "rankedItems": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "rankedItems"
         ],
         "type": "object"
       },
@@ -2567,6 +3027,84 @@
         ],
         "type": "object"
       },
+      "ReaderSummaryClaimDto": {
+        "properties": {
+          "citationIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "claim": {
+            "type": "string"
+          },
+          "confidence": {
+            "$ref": "#/components/schemas/ReaderSummaryReaderItemConfidenceDto"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/ReaderSummaryClaimEvidenceDto"
+            },
+            "type": "array"
+          },
+          "risks": {
+            "items": {
+              "$ref": "#/components/schemas/ReaderSummaryClaimRiskDto"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "claim",
+          "evidence",
+          "confidence",
+          "risks",
+          "citationIds"
+        ],
+        "type": "object"
+      },
+      "ReaderSummaryClaimEvidenceDto": {
+        "properties": {
+          "canonicalUrl": {
+            "type": "string"
+          },
+          "citationId": {
+            "type": "string"
+          },
+          "providerKey": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "providerKey",
+          "citationId"
+        ],
+        "type": "object"
+      },
+      "ReaderSummaryClaimRiskDto": {
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "single_source",
+              "low_confidence",
+              "unresolved"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "description"
+        ],
+        "type": "object"
+      },
       "ReaderSummaryConfidenceDto": {
         "properties": {
           "level": {
@@ -2634,6 +3172,9 @@
           "citationCount": {
             "type": "number"
           },
+          "collectedFeedItemCount": {
+            "type": "number"
+          },
           "crossSourceClusterCount": {
             "type": "number"
           },
@@ -2655,6 +3196,12 @@
           },
           "isSingleSource": {
             "type": "boolean"
+          },
+          "providerBreakdown": {
+            "items": {
+              "$ref": "#/components/schemas/ReaderSummaryProviderCoverageDto"
+            },
+            "type": "array"
           },
           "providerCount": {
             "type": "number"
@@ -2987,6 +3534,51 @@
         ],
         "type": "object"
       },
+      "ReaderSummaryPeriodSummaryDto": {
+        "properties": {
+          "headline": {
+            "type": "string"
+          },
+          "period": {
+            "$ref": "#/components/schemas/ReaderSummaryPeriodDto"
+          },
+          "readerSummaryId": {
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/ReaderSummaryScopeDto"
+          },
+          "status": {
+            "enum": [
+              "completed",
+              "no_signal"
+            ],
+            "type": "string"
+          },
+          "subscriptionId": {
+            "type": "string"
+          },
+          "tenantId": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "workspaceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "readerSummaryId",
+          "tenantId",
+          "workspaceId",
+          "scope",
+          "period",
+          "headline",
+          "status"
+        ],
+        "type": "object"
+      },
       "ReaderSummaryPersonalizationDto": {
         "properties": {
           "blockedProviderCount": {
@@ -3056,6 +3648,32 @@
         ],
         "type": "object"
       },
+      "ReaderSummaryProviderCoverageDto": {
+        "properties": {
+          "citationCount": {
+            "type": "number"
+          },
+          "collectedFeedItemCount": {
+            "type": "number"
+          },
+          "providerKey": {
+            "type": "string"
+          },
+          "selectedFeedItemCount": {
+            "type": "number"
+          },
+          "topReadCount": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "providerKey",
+          "selectedFeedItemCount",
+          "topReadCount",
+          "citationCount"
+        ],
+        "type": "object"
+      },
       "ReaderSummaryProviderMetricDto": {
         "properties": {
           "label": {
@@ -3079,12 +3697,24 @@
             },
             "type": "array"
           },
+          "claimBoard": {
+            "items": {
+              "$ref": "#/components/schemas/ReaderSummaryClaimDto"
+            },
+            "type": "array"
+          },
           "headline": {
             "type": "string"
           },
           "interestSections": {
             "items": {
               "$ref": "#/components/schemas/ReaderSummaryReaderInterestSectionDto"
+            },
+            "type": "array"
+          },
+          "mainTopics": {
+            "items": {
+              "type": "string"
             },
             "type": "array"
           },
@@ -3106,9 +3736,18 @@
           "qualityState": {
             "$ref": "#/components/schemas/ReaderSummaryReaderQualityStateDto"
           },
+          "reliabilityReport": {
+            "$ref": "#/components/schemas/ReaderSummaryReliabilityReportDto"
+          },
           "risks": {
             "items": {
               "type": "string"
+            },
+            "type": "array"
+          },
+          "selectedPosts": {
+            "items": {
+              "$ref": "#/components/schemas/ReaderSummaryReaderItemDto"
             },
             "type": "array"
           },
@@ -3132,10 +3771,14 @@
           "headline",
           "oneLineTakeaway",
           "bullets",
+          "mainTopics",
           "qualityState",
           "interestSections",
           "sourceMix",
           "topReads",
+          "selectedPosts",
+          "claimBoard",
+          "reliabilityReport",
           "trendDelta",
           "openQuestions",
           "risks",
@@ -3335,6 +3978,83 @@
           "flags",
           "warnings",
           "isSingleSource"
+        ],
+        "type": "object"
+      },
+      "ReaderSummaryReliabilityReportDto": {
+        "properties": {
+          "mode": {
+            "enum": [
+              "shadow"
+            ],
+            "type": "string"
+          },
+          "policyVersion": {
+            "type": "string"
+          },
+          "riskLevel": {
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "type": "string"
+          },
+          "risks": {
+            "items": {
+              "$ref": "#/components/schemas/ReaderSummaryReliabilityRiskDto"
+            },
+            "type": "array"
+          },
+          "riskScore": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "mode",
+          "policyVersion",
+          "riskLevel",
+          "riskScore",
+          "risks"
+        ],
+        "type": "object"
+      },
+      "ReaderSummaryReliabilityRiskDto": {
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "duplicate_risk",
+              "stale_evidence",
+              "single_source",
+              "weak_source",
+              "low_evidence_diversity"
+            ],
+            "type": "string"
+          },
+          "level": {
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "type": "string"
+          },
+          "score": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "kind",
+          "level",
+          "score",
+          "description"
         ],
         "type": "object"
       },
@@ -3817,12 +4537,86 @@
         ],
         "type": "object"
       },
+      "RecordPostRatingRequestDto": {
+        "properties": {
+          "bodyPreview": {
+            "type": "string"
+          },
+          "canonicalUrl": {
+            "type": "string"
+          },
+          "feedItemId": {
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "type": "string"
+          },
+          "interestId": {
+            "type": "string"
+          },
+          "providerKey": {
+            "type": "string"
+          },
+          "rating": {
+            "maximum": 5,
+            "minimum": 1,
+            "type": "number"
+          },
+          "reason": {
+            "enum": [
+              "duplicate",
+              "off_topic",
+              "weak_source",
+              "too_old",
+              "low_quality"
+            ],
+            "type": "string"
+          },
+          "sourceItemId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "idempotencyKey",
+          "rating",
+          "interestId",
+          "providerKey",
+          "title"
+        ],
+        "type": "object"
+      },
+      "RecordPostRatingResponseDto": {
+        "properties": {
+          "created": {
+            "type": "boolean"
+          },
+          "learningDirection": {
+            "enum": [
+              "recorded"
+            ],
+            "type": "string"
+          },
+          "rating": {
+            "$ref": "#/components/schemas/PostRatingDto"
+          }
+        },
+        "required": [
+          "rating",
+          "created",
+          "learningDirection"
+        ],
+        "type": "object"
+      },
       "RecordRelevanceFeedbackRequestDto": {
         "properties": {
           "action": {
             "enum": [
               "more_like_this",
               "less_like_this",
+              "rate_post",
               "hide_source",
               "dismiss",
               "save"
@@ -3861,6 +4655,9 @@
             ],
             "type": "string"
           },
+          "sourceItemId": {
+            "type": "string"
+          },
           "title": {
             "type": "string"
           }
@@ -3886,7 +4683,8 @@
             "enum": [
               "positive",
               "negative",
-              "block_provider"
+              "block_provider",
+              "recorded"
             ],
             "type": "string"
           },
@@ -4124,6 +4922,7 @@
             "enum": [
               "more_like_this",
               "less_like_this",
+              "rate_post",
               "hide_source",
               "dismiss",
               "save"
@@ -4176,6 +4975,9 @@
             "type": "string"
           },
           "providerKey": {
+            "type": "string"
+          },
+          "sourceItemId": {
             "type": "string"
           }
         },
@@ -4668,6 +5470,167 @@
         ],
         "type": "object"
       },
+      "SearchSocialRestRequestDto": {
+        "properties": {
+          "accounts": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "communities": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "defaultSources": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "depth": {
+            "enum": [
+              "light",
+              "balanced",
+              "deep"
+            ],
+            "type": "string"
+          },
+          "entities": {
+            "type": "object"
+          },
+          "execution": {
+            "$ref": "#/components/schemas/SocialResearchExecutionRestDto"
+          },
+          "executionAllowedRuntimeReadiness": {
+            "items": {
+              "enum": [
+                "fixture_ready",
+                "live_beta_ready",
+                "deferred"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "goal": {
+            "enum": [
+              "research",
+              "trend",
+              "support",
+              "competitor",
+              "security"
+            ],
+            "type": "string"
+          },
+          "handles": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "keywords": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            ]
+          },
+          "maxLanes": {
+            "type": "number"
+          },
+          "preset": {
+            "enum": [
+              "broad_research",
+              "trend_scan",
+              "support_watch",
+              "competitor_scan"
+            ],
+            "type": "string"
+          },
+          "products": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            ]
+          },
+          "queryStrategyRecipe": {
+            "type": "object"
+          },
+          "sourceLimits": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "sources": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            ]
+          },
+          "topic": {
+            "type": "string"
+          },
+          "urls": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            ]
+          },
+          "warnWhenSourceReadinessMissing": {
+            "type": "boolean"
+          },
+          "window": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "topic",
+          "execution"
+        ],
+        "type": "object"
+      },
+      "SearchSocialRestResponseDto": {
+        "properties": {
+          "run": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "run"
+        ],
+        "type": "object"
+      },
       "SetNotificationPreferenceRequestDto": {
         "properties": {
           "allowed": {
@@ -4736,6 +5699,27 @@
           "scanPolicyId",
           "created",
           "updated"
+        ],
+        "type": "object"
+      },
+      "SocialResearchExecutionRestDto": {
+        "properties": {
+          "correlationId": {
+            "type": "string"
+          },
+          "cursorByLaneId": {
+            "type": "object"
+          },
+          "scanJobId": {
+            "type": "string"
+          },
+          "sourceBindingIdBySource": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "scanJobId",
+          "sourceBindingIdBySource"
         ],
         "type": "object"
       },
@@ -10029,6 +11013,153 @@
         ]
       }
     },
+    "/reader-summaries/periods": {
+      "get": {
+        "operationId": "ReaderSummaryController_listPeriods",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "timezone",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "periodEndedAt",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "periodStartedBefore",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "periodStartedFrom",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "periodStartedAt",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cadence",
+            "required": false,
+            "schema": {
+              "enum": [
+                "daily",
+                "weekly",
+                "monthly",
+                "custom"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "interestId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeType",
+            "required": false,
+            "schema": {
+              "enum": [
+                "workspace",
+                "interest"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional Bearer API key. Requires read:summaries. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. ReaderSummary reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListReaderSummaryPeriodsResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "List lightweight reader summary periods for calendars.",
+        "tags": [
+          "reader-summaries"
+        ]
+      }
+    },
     "/reader-summary-jobs/{readerSummaryJobId}/status": {
       "get": {
         "operationId": "ReaderSummaryJobController_getStatus",
@@ -10519,6 +11650,156 @@
         ]
       }
     },
+    "/relevance/users/{userId}/post-ratings": {
+      "post": {
+        "operationId": "RelevanceController_recordPostRatingForUser",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "userId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional Bearer API key. Requires write:summaries. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Post rating writes allow owner, admin or member. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordPostRatingRequestDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordPostRatingResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Record a concrete post star rating without applying ranking learning.",
+        "tags": [
+          "relevance"
+        ]
+      }
+    },
+    "/relevance/users/{userId}/post-ratings/query": {
+      "post": {
+        "operationId": "RelevanceController_postRatings",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "userId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional Bearer API key. Requires read:feed. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Post rating reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListPostRatingsRequestDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListPostRatingsResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Read latest post ratings for concrete feed/source item targets.",
+        "tags": [
+          "relevance"
+        ]
+      }
+    },
     "/relevance/users/{userId}/profile": {
       "put": {
         "operationId": "RelevanceController_upsertProfile",
@@ -10656,6 +11937,408 @@
         "summary": "Get current scan job status.",
         "tags": [
           "scan-requests"
+        ]
+      }
+    },
+    "/social-research/explain-plan": {
+      "post": {
+        "operationId": "SocialResearchController_explainPlan",
+        "parameters": [
+          {
+            "description": "Optional Bearer API key. Requires read:feed. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Social research reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExplainSearchPlanRestRequestDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExplainSearchPlanRestResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Explain social research search lanes without provider calls.",
+        "tags": [
+          "social-research"
+        ]
+      }
+    },
+    "/social-research/rank": {
+      "post": {
+        "operationId": "SocialResearchController_rank",
+        "parameters": [
+          {
+            "description": "Optional Bearer API key. Requires read:feed. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Social research reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RankSocialResultsRestRequestDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RankSocialResultsRestResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Rank normalized social research items without provider calls.",
+        "tags": [
+          "social-research"
+        ]
+      }
+    },
+    "/social-research/search": {
+      "post": {
+        "operationId": "SocialResearchController_search",
+        "parameters": [
+          {
+            "description": "Optional Bearer API key. Requires read:feed. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Social research reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchSocialRestRequestDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchSocialRestResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Execute source-agnostic social research through the SDK.",
+        "tags": [
+          "social-research"
+        ]
+      }
+    },
+    "/social-research/sources/list": {
+      "post": {
+        "operationId": "SocialResearchController_listSources",
+        "parameters": [
+          {
+            "description": "Optional Bearer API key. Requires read:feed. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Social research reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListSocialSourcesRestRequestDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListSocialSourcesRestResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "List social source capability and certification profiles.",
+        "tags": [
+          "social-research"
+        ]
+      }
+    },
+    "/social-research/sources/readiness": {
+      "post": {
+        "operationId": "SocialResearchController_explainSourceReadiness",
+        "parameters": [
+          {
+            "description": "Optional Bearer API key. Requires read:feed. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Social research reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExplainSourceReadinessRestRequestDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExplainSourceReadinessRestResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Explain social source readiness without provider calls.",
+        "tags": [
+          "social-research"
+        ]
+      }
+    },
+    "/social-research/threads/fetch": {
+      "post": {
+        "operationId": "SocialResearchController_fetchThread",
+        "parameters": [
+          {
+            "description": "Optional Bearer API key. Requires read:feed. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated workspace roles. Social research reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FetchSocialThreadRestRequestDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FetchSocialThreadRestResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Fetch a source thread through the SDK execution boundary.",
+        "tags": [
+          "social-research"
         ]
       }
     },

@@ -5,90 +5,44 @@ import {
   type Result,
 } from "@social-monitor/shared-kernel";
 
-import {
-  assertReaderSummaryCadence,
-  assertReaderSummaryScope,
-  type ReaderSummaryArtifact,
-} from "../../domain";
+import { type ReaderSummaryArtifact } from "../../domain";
 import type {
   ReaderSummaryArtifactRepositoryPort,
+  ReaderSummaryCoverageCounterPort,
   ReaderSummaryFreshnessProbePort,
   ReaderSummaryPreviewMediaEnricherPort,
 } from "../../ports";
-import { NOOP_READER_SUMMARY_PREVIEW_MEDIA_ENRICHER } from "../../ports";
+import {
+  NOOP_READER_SUMMARY_COVERAGE_COUNTER,
+  NOOP_READER_SUMMARY_PREVIEW_MEDIA_ENRICHER,
+} from "../../ports";
 import {
   presentReaderSummaryArtifact,
   readerSummaryContentForArtifact,
   type ReaderSummaryArtifactView,
 } from "../shared/reader-summary-artifact-presenter";
+import { validateReaderSummaryListQuery } from "../shared/reader-summary-list-query-validation";
 import type { ListReaderSummariesQuery } from "./list-reader-summaries.query";
 import type { ListReaderSummariesResult } from "./list-reader-summaries.result";
 
 type ListReaderSummariesFailure = DomainError;
 
-const MAX_LIMIT = 100;
 const MAX_FILTERED_SCAN_PAGES = 25;
 
 export class ListReaderSummariesUseCase {
   constructor(
     private readonly readerSummaries: ReaderSummaryArtifactRepositoryPort,
     private readonly freshness: ReaderSummaryFreshnessProbePort,
-    private readonly previewMediaEnricher: ReaderSummaryPreviewMediaEnricherPort =
-      NOOP_READER_SUMMARY_PREVIEW_MEDIA_ENRICHER,
+    private readonly previewMediaEnricher: ReaderSummaryPreviewMediaEnricherPort = NOOP_READER_SUMMARY_PREVIEW_MEDIA_ENRICHER,
+    private readonly coverageCounter: ReaderSummaryCoverageCounterPort = NOOP_READER_SUMMARY_COVERAGE_COUNTER,
   ) {}
 
   async execute(
     query: ListReaderSummariesQuery,
   ): Promise<Result<ListReaderSummariesResult, ListReaderSummariesFailure>> {
-    if (
-      !Number.isInteger(query.limit) ||
-      query.limit < 1 ||
-      query.limit > MAX_LIMIT
-    ) {
-      return err(
-        new DomainError(
-          "validation.failed",
-          "Reader summary page limit must be between 1 and 100",
-          {
-            limit: query.limit,
-          },
-        ),
-      );
-    }
-
-    if (query.scope !== undefined) {
-      try {
-        assertReaderSummaryScope(query.scope);
-      } catch (error) {
-        return err(
-          new DomainError(
-            "validation.failed",
-            error instanceof Error
-              ? error.message
-              : "Invalid reader summary scope",
-          ),
-        );
-      }
-    }
-
-    if (query.cadence !== undefined) {
-      try {
-        assertReaderSummaryCadence(query.cadence);
-      } catch (error) {
-        return err(
-          new DomainError(
-            "validation.failed",
-            error instanceof Error
-              ? error.message
-              : "Invalid reader summary cadence",
-          ),
-        );
-      }
-    }
-
-    const periodValidation = validateReaderSummaryPeriodFilters(query);
-    if (!periodValidation.ok) {
-      return err(periodValidation.error);
+    const validation = validateReaderSummaryListQuery(query);
+    if (!validation.ok) {
+      return err(validation.error);
     }
 
     const filters = normalizeListReaderSummaryFilters(query);
@@ -186,8 +140,18 @@ export class ListReaderSummariesUseCase {
       artifact: readerSummary,
       content: readerSummaryContentForArtifact(readerSummary),
     });
+    const collectedCoverage =
+      await this.coverageCounter.countCollectedFeedItemCoverage({
+        tenantId: snapshot.tenantId,
+        workspaceId: snapshot.workspaceId,
+        scope: snapshot.scope,
+        period: snapshot.period,
+      });
 
-    return presentReaderSummaryArtifact(readerSummary, freshness, { content });
+    return presentReaderSummaryArtifact(readerSummary, freshness, {
+      content,
+      collectedCoverage,
+    });
   }
 }
 
@@ -232,60 +196,6 @@ const normalizeOptionalFilter = (
   return normalized === undefined || normalized.length === 0
     ? undefined
     : normalized;
-};
-
-const validateReaderSummaryPeriodFilters = (
-  query: ListReaderSummariesQuery,
-): Result<void, DomainError> => {
-  if (
-    query.periodStartedAt !== undefined &&
-    Number.isNaN(query.periodStartedAt.getTime())
-  ) {
-    return err(
-      new DomainError(
-        "validation.failed",
-        "Reader summary periodStartedAt must be a valid ISO date",
-      ),
-    );
-  }
-
-  if (
-    query.periodEndedAt !== undefined &&
-    Number.isNaN(query.periodEndedAt.getTime())
-  ) {
-    return err(
-      new DomainError(
-        "validation.failed",
-        "Reader summary periodEndedAt must be a valid ISO date",
-      ),
-    );
-  }
-
-  if (
-    query.periodStartedFrom !== undefined &&
-    Number.isNaN(query.periodStartedFrom.getTime())
-  ) {
-    return err(
-      new DomainError(
-        "validation.failed",
-        "Reader summary periodStartedFrom must be a valid ISO date",
-      ),
-    );
-  }
-
-  if (
-    query.periodStartedBefore !== undefined &&
-    Number.isNaN(query.periodStartedBefore.getTime())
-  ) {
-    return err(
-      new DomainError(
-        "validation.failed",
-        "Reader summary periodStartedBefore must be a valid ISO date",
-      ),
-    );
-  }
-
-  return ok(undefined);
 };
 
 const hasPostPresentationFilters = (

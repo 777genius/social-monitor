@@ -73,6 +73,13 @@ export type PrismaRelevanceFeedbackSignalWhereUnique = {
   };
 };
 
+export type PrismaRelevanceFeedbackSignalWhereMany = {
+  readonly tenantId: string;
+  readonly workspaceId: string;
+  readonly userId?: string;
+  readonly action?: string;
+};
+
 export type PrismaRelevanceMemoryProjectionWhereUnique = {
   readonly tenantId_workspaceId_feedbackId: {
     readonly tenantId: string;
@@ -115,6 +122,14 @@ export type PrismaRelevanceFeedbackSignalDelegate = {
       readonly idempotencyKey: string;
     };
   }): Promise<PrismaRelevanceFeedbackSignalRecord | null>;
+  findMany(args: {
+    readonly where: PrismaRelevanceFeedbackSignalWhereMany;
+    readonly orderBy: readonly [
+      { readonly createdAt: 'desc' },
+      { readonly id: 'desc' },
+    ];
+    readonly take: number;
+  }): Promise<readonly PrismaRelevanceFeedbackSignalRecord[]>;
 };
 
 export type PrismaRelevanceMemoryProjectionDelegate = {

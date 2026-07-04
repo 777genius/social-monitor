@@ -46,7 +46,8 @@ import type {
 type RankFeedItemsFailure = DomainError | Error;
 
 const maxLimit = 200;
-const maxCandidateScan = 200;
+const maxCandidatePageLimit = 200;
+const maxCandidateScan = 1_000;
 const maxQualityReviewBatch = 25;
 
 export class RankFeedItemsUseCase {
@@ -83,23 +84,16 @@ export class RankFeedItemsUseCase {
             workspaceId: command.workspaceId,
             userId,
           });
-    const candidates = await this.feedItems.list({
-      tenantId: command.tenantId,
-      workspaceId: command.workspaceId,
-      interestId: normalizeOptional(command.interestId),
-      observedAfter: command.observedAfter,
-      observedBefore: command.observedBefore,
-      limit: maxCandidateScan,
-    });
+    const candidates = await this.listCandidateFeedItems(command);
     const generatedAt = this.clock.now();
     const snapshotsById = new Map(
-      candidates.items.map((item) => {
+      candidates.map((item) => {
         const snapshot = item.toSnapshot();
 
         return [snapshot.id, snapshot] as const;
       }),
     );
-    const baseRankingCandidates = candidates.items.map(toRankingCandidate);
+    const baseRankingCandidates = candidates.map(toRankingCandidate);
     const contentQualityByCandidateId = await this.buildContentQuality(
       baseRankingCandidates,
     );
@@ -151,6 +145,37 @@ export class RankFeedItemsUseCase {
       memoryGuidance: memoryGuidance.view,
       items,
     });
+  }
+
+  private async listCandidateFeedItems(
+    command: RankFeedItemsCommand,
+  ): Promise<readonly FeedItem[]> {
+    const items: FeedItem[] = [];
+    let cursor: string | undefined;
+
+    while (items.length < maxCandidateScan) {
+      const pageLimit = Math.min(
+        maxCandidatePageLimit,
+        maxCandidateScan - items.length,
+      );
+      const page = await this.feedItems.list({
+        tenantId: command.tenantId,
+        workspaceId: command.workspaceId,
+        interestId: normalizeOptional(command.interestId),
+        observedAfter: command.observedAfter,
+        observedBefore: command.observedBefore,
+        limit: pageLimit,
+        cursor,
+      });
+
+      items.push(...page.items);
+      if (page.nextCursor === undefined || page.nextCursor === cursor) {
+        break;
+      }
+      cursor = page.nextCursor;
+    }
+
+    return items;
   }
 
   private async buildMemoryGuidance(params: {
@@ -335,9 +360,7 @@ const isXProvider = (providerKey: string): boolean => {
   const normalized = providerKey.trim().toLocaleLowerCase("en-US");
 
   return (
-    normalized === "x-twitter" ||
-    normalized === "twitter" ||
-    normalized === "x"
+    normalized === "x-twitter" || normalized === "twitter" || normalized === "x"
   );
 };
 

@@ -35,7 +35,7 @@
     "fixtureCount": 7,
     "passedFixtureCount": 7,
     "failedFixtureCount": 0,
-    "inputTokens": 313,
+    "inputTokens": 314,
     "outputTokens": 1008,
     "estimatedCostUsd": 0,
     "checkedKeyPointCount": 9,
@@ -75,7 +75,7 @@
       "blockingPassed": true,
       "failures": [],
       "metrics": {
-        "inputTokens": 3,
+        "inputTokens": 4,
         "outputTokens": 48,
         "estimatedCostUsd": 0,
         "keyPointCount": 0,

@@ -179,6 +179,7 @@
     "check:summary-retry",
     "check:summary-feedback-hardening",
     "check:summary-feedback-sample-capture",
+    "check:summary-feedback-eval-backlog",
     "check:summary-memory-sdk",
     "check:summary-memory-sdk-package",
     "check:summary-memory-boundary",

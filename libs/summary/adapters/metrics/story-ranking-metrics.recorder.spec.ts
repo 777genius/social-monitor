@@ -56,6 +56,86 @@ describe("StoryRankingMetricsRecorder", () => {
         },
       ),
     ).toBe(0.5);
+    expect(
+      metrics.latestGaugeValue(
+        "summary_story_ranking_selected_evidence_total",
+        labels,
+      ),
+    ).toBe(3);
+    expect(
+      metrics.latestGaugeValue("summary_story_ranking_provider_count", labels),
+    ).toBe(2);
+    expect(
+      metrics.latestGaugeValue(
+        "summary_story_ranking_top_read_eligible_total",
+        labels,
+      ),
+    ).toBe(2);
+    expect(
+      metrics.latestGaugeValue(
+        "summary_story_ranking_downranked_evidence_total",
+        labels,
+      ),
+    ).toBe(1);
+    expect(
+      metrics.latestGaugeValue(
+        "summary_story_ranking_conversation_context_total",
+        labels,
+      ),
+    ).toBe(1);
+    expect(
+      metrics.latestGaugeValue(
+        "summary_story_ranking_provider_evidence_total",
+        {
+          ...labels,
+          provider_key: "reddit",
+        },
+      ),
+    ).toBe(2);
+    expect(
+      metrics.latestGaugeValue(
+        "summary_story_ranking_coverage_warning_present",
+        {
+          ...labels,
+          coverage_warning: "downranked_evidence_present",
+        },
+      ),
+    ).toBe(1);
+    expect(
+      metrics.latestGaugeValue(
+        "summary_story_ranking_coverage_warning_present",
+        {
+          ...labels,
+          coverage_warning: "single_provider",
+        },
+      ),
+    ).toBe(0);
+    expect(
+      metrics.latestGaugeValue("summary_reliability_shadow_risk_score", {
+        ...labels,
+        risk_level: "medium",
+      }),
+    ).toBe(0.64);
+    expect(
+      metrics.latestGaugeValue("summary_reliability_shadow_risk_present", {
+        ...labels,
+        risk_kind: "duplicate_risk",
+        risk_level: "medium",
+      }),
+    ).toBe(1);
+    expect(
+      metrics.latestGaugeValue("summary_reliability_shadow_risk_present", {
+        ...labels,
+        risk_kind: "stale_evidence",
+        risk_level: "none",
+      }),
+    ).toBe(0);
+    expect(
+      metrics.latestGaugeValue("summary_reliability_shadow_risk_value", {
+        ...labels,
+        risk_kind: "weak_source",
+      }),
+    ).toBe(0.55);
   });
 });
 
@@ -113,6 +193,17 @@ const selection = (): SummaryEvidenceSelection => ({
       observedAt: new Date("2026-06-23T08:00:00.000Z"),
       score: 2,
       whyImportant: ["Popular Reddit thread"],
+      contentQuality: {
+        qualityScore: 1,
+        interestRelevanceScore: 1,
+        engagementIntegrityScore: 1,
+        eligibleForSummary: true,
+        eligibleForTopRead: true,
+        needsLlmReview: false,
+        decision: "promote",
+        flags: [],
+        reason: "Useful Reddit evidence",
+      },
     },
     {
       feedItemId: "feed-reddit-2",
@@ -126,6 +217,17 @@ const selection = (): SummaryEvidenceSelection => ({
       observedAt: new Date("2026-06-23T08:05:00.000Z"),
       score: 1.9,
       whyImportant: ["Duplicate Reddit thread"],
+      contentQuality: {
+        qualityScore: 0.6,
+        interestRelevanceScore: 0.6,
+        engagementIntegrityScore: 0.7,
+        eligibleForSummary: true,
+        eligibleForTopRead: false,
+        needsLlmReview: true,
+        decision: "downrank",
+        flags: ["weak_interest_match"],
+        reason: "Duplicate has weaker interest match",
+      },
     },
     {
       feedItemId: "feed-github",
@@ -141,6 +243,11 @@ const selection = (): SummaryEvidenceSelection => ({
       whyImportant: ["Repository is gaining stars"],
       providerMetricLabels: [{ label: "Stars", value: "54,000" }],
       providerMetricSummary: "54,000 total stars",
+      conversationContext: {
+        rankingBasis: "cohort_baseline_v1",
+        bundleScore: 1.2,
+        units: [],
+      },
     },
   ],
 });

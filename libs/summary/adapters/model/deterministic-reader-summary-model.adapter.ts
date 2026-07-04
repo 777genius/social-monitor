@@ -10,6 +10,10 @@ import type {
   ProviderReaderSummaryAttempt,
 } from "../../ports";
 import { buildReaderSummary } from "../../domain";
+import {
+  normalizeReaderSummaryStoryLimit,
+  selectProviderDiverseRankedEvidence,
+} from "./deterministic-reader-summary-evidence-selection";
 import { buildReaderHeadline } from "./deterministic-reader-summary-headline";
 
 const route: ReaderSummaryModelRoute = {
@@ -117,13 +121,14 @@ export class DeterministicReaderSummaryModelAdapter implements ReaderSummaryMode
           content: buildReaderSummary({
             ...noSignalDraft,
             storyClusters: input.evidence.clusters,
+            sourceWindow: input.evidence.sourceWindow,
             selectedEvidence: input.evidence.selectedEvidence,
           }),
         },
       };
     }
 
-    const selectedEvidence = selectProviderDiverseEvidence(
+    const selectedEvidence = selectRankedEvidence(
       input.evidence.selectedEvidence,
       input.policy.maxStories,
     );
@@ -228,6 +233,7 @@ export class DeterministicReaderSummaryModelAdapter implements ReaderSummaryMode
         content: buildReaderSummary({
           ...draft,
           storyClusters: input.evidence.clusters,
+          sourceWindow: input.evidence.sourceWindow,
           selectedEvidence,
         }),
       },
@@ -337,68 +343,31 @@ const buildInterestHighlights = (
     }
   }
 
-  return [...firstByInterest.entries()].slice(0, 8).map(([interestId, item]) => ({
-    interestId,
-    title: item.title,
-    summary: item.whyImportant[0] ?? "Selected as a relevant summary signal.",
-    citationIds: [
-      citationMap.find((citation) => citation.feedItemId === item.feedItemId)
-        ?.citationId ?? "c1",
-    ],
-  }));
+  return [...firstByInterest.entries()]
+    .slice(0, 8)
+    .map(([interestId, item]) => ({
+      interestId,
+      title: item.title,
+      summary: item.whyImportant[0] ?? "Selected as a relevant summary signal.",
+      citationIds: [
+        citationMap.find((citation) => citation.feedItemId === item.feedItemId)
+          ?.citationId ?? "c1",
+      ],
+    }));
 };
 
-const selectProviderDiverseEvidence = (
+const selectRankedEvidence = (
   evidence: ReaderSummaryModelInput["evidence"]["selectedEvidence"],
   limit: number,
-): ReaderSummaryModelInput["evidence"]["selectedEvidence"] => {
-  const normalizedLimit = normalizeStoryLimit(limit);
-
-  if (evidence.length <= normalizedLimit) {
-    return evidence;
-  }
-
-  const selected: ReaderSummaryModelInput["evidence"]["selectedEvidence"][number][] =
-    [];
-  const selectedIds = new Set<string>();
-  const providerKeys = uniqueStable(evidence.map((item) => item.providerKey));
-
-  for (const providerKey of providerKeys) {
-    if (selected.length >= normalizedLimit) {
-      break;
-    }
-
-    const providerItem = evidence.find(
-      (item) => item.providerKey === providerKey,
-    );
-    if (providerItem !== undefined) {
-      selected.push(providerItem);
-      selectedIds.add(providerItem.feedItemId);
-    }
-  }
-
-  for (const item of evidence) {
-    if (selected.length >= normalizedLimit) {
-      break;
-    }
-
-    if (selectedIds.has(item.feedItemId)) {
-      continue;
-    }
-
-    selected.push(item);
-    selectedIds.add(item.feedItemId);
-  }
-
-  return selected;
-};
+): ReaderSummaryModelInput["evidence"]["selectedEvidence"] =>
+  selectProviderDiverseRankedEvidence(evidence, limit);
 
 const selectClustersForEvidence = (
   clusters: ReaderSummaryModelInput["evidence"]["clusters"],
   evidence: ReaderSummaryModelInput["evidence"]["selectedEvidence"],
   limit: number,
 ): ReaderSummaryModelInput["evidence"]["clusters"] => {
-  const normalizedLimit = normalizeStoryLimit(limit);
+  const normalizedLimit = normalizeReaderSummaryStoryLimit(limit);
   const clusterByRepresentative = new Map(
     clusters.map(
       (cluster) => [cluster.representativeFeedItemId, cluster] as const,
@@ -430,26 +399,4 @@ const selectClustersForEvidence = (
   }
 
   return selectedClusters.slice(0, normalizedLimit);
-};
-
-const normalizeStoryLimit = (limit: number): number => {
-  if (!Number.isInteger(limit) || limit < 1) {
-    return 1;
-  }
-
-  return Math.min(limit, 20);
-};
-
-const uniqueStable = <T>(values: readonly T[]): readonly T[] => {
-  const seen = new Set<T>();
-  const result: T[] = [];
-
-  for (const value of values) {
-    if (!seen.has(value)) {
-      seen.add(value);
-      result.push(value);
-    }
-  }
-
-  return result;
 };

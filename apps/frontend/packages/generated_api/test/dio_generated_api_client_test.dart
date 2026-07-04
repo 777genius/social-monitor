@@ -93,7 +93,10 @@ void main() {
 
     final failure = (result as ResultFailure<String>).failure;
     expect(failure, isA<NetworkFailure>());
-    expect(failure.message, 'connection timed out');
+    expect(
+      failure.message,
+      'The server is taking longer than expected. Try again in a moment.',
+    );
     expect(failure.code, 'connection_timeout');
   });
 }

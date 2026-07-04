@@ -7,7 +7,11 @@ import 'package:retrofit/retrofit.dart';
 import 'package:retrofit/error_logger.dart';
 
 import '../models/build_personalized_digest_response_dto.dart';
+import '../models/list_post_ratings_request_dto.dart';
+import '../models/list_post_ratings_response_dto.dart';
 import '../models/rank_feed_items_response_dto.dart';
+import '../models/record_post_rating_request_dto.dart';
+import '../models/record_post_rating_response_dto.dart';
 import '../models/record_relevance_feedback_request_dto.dart';
 import '../models/record_relevance_feedback_response_dto.dart';
 import '../models/upsert_user_relevance_profile_request_dto.dart';
@@ -67,6 +71,41 @@ abstract class RelevanceClient {
     @Header('x-workspace-id') required String xWorkspaceId,
     @Header('x-tenant-id') required String xTenantId,
     @Body() required RecordRelevanceFeedbackRequestDto body,
+    @Header('authorization') String? authorization,
+    @Header('x-workspace-role') String? xWorkspaceRole,
+  });
+
+  /// Record a concrete post star rating without applying ranking learning.
+  ///
+  /// [authorization] - Optional Bearer API key. Requires write:summaries. If supplied, x-workspace-role is not required.
+  ///
+  /// [xWorkspaceRole] - Comma-separated workspace roles. Post rating writes allow owner, admin or member. Required when Authorization bearer API key is not supplied.
+  ///
+  /// [body] - Name not received - field will be skipped.
+  @POST('/relevance/users/{userId}/post-ratings')
+  Future<RecordPostRatingResponseDto>
+  relevanceControllerRecordPostRatingForUser({
+    @Path('userId') required String userId,
+    @Header('x-workspace-id') required String xWorkspaceId,
+    @Header('x-tenant-id') required String xTenantId,
+    @Body() required RecordPostRatingRequestDto body,
+    @Header('authorization') String? authorization,
+    @Header('x-workspace-role') String? xWorkspaceRole,
+  });
+
+  /// Read latest post ratings for concrete feed/source item targets.
+  ///
+  /// [authorization] - Optional Bearer API key. Requires read:feed. If supplied, x-workspace-role is not required.
+  ///
+  /// [xWorkspaceRole] - Comma-separated workspace roles. Post rating reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.
+  ///
+  /// [body] - Name not received - field will be skipped.
+  @POST('/relevance/users/{userId}/post-ratings/query')
+  Future<ListPostRatingsResponseDto> relevanceControllerPostRatings({
+    @Path('userId') required String userId,
+    @Header('x-workspace-id') required String xWorkspaceId,
+    @Header('x-tenant-id') required String xTenantId,
+    @Body() required ListPostRatingsRequestDto body,
     @Header('authorization') String? authorization,
     @Header('x-workspace-role') String? xWorkspaceRole,
   });

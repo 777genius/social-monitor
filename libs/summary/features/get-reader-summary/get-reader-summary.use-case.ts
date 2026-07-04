@@ -7,10 +7,14 @@ import {
 
 import type {
   ReaderSummaryArtifactRepositoryPort,
+  ReaderSummaryCoverageCounterPort,
   ReaderSummaryFreshnessProbePort,
   ReaderSummaryPreviewMediaEnricherPort,
 } from "../../ports";
-import { NOOP_READER_SUMMARY_PREVIEW_MEDIA_ENRICHER } from "../../ports";
+import {
+  NOOP_READER_SUMMARY_COVERAGE_COUNTER,
+  NOOP_READER_SUMMARY_PREVIEW_MEDIA_ENRICHER,
+} from "../../ports";
 import {
   presentReaderSummaryArtifact,
   readerSummaryContentForArtifact,
@@ -24,8 +28,8 @@ export class GetReaderSummaryUseCase {
   constructor(
     private readonly readerSummaries: ReaderSummaryArtifactRepositoryPort,
     private readonly freshness: ReaderSummaryFreshnessProbePort,
-    private readonly previewMediaEnricher: ReaderSummaryPreviewMediaEnricherPort =
-      NOOP_READER_SUMMARY_PREVIEW_MEDIA_ENRICHER,
+    private readonly previewMediaEnricher: ReaderSummaryPreviewMediaEnricherPort = NOOP_READER_SUMMARY_PREVIEW_MEDIA_ENRICHER,
+    private readonly coverageCounter: ReaderSummaryCoverageCounterPort = NOOP_READER_SUMMARY_COVERAGE_COUNTER,
   ) {}
 
   async execute(
@@ -62,9 +66,19 @@ export class GetReaderSummaryUseCase {
       artifact: readerSummary,
       content: readerSummaryContentForArtifact(readerSummary),
     });
+    const collectedCoverage =
+      await this.coverageCounter.countCollectedFeedItemCoverage({
+        tenantId: snapshot.tenantId,
+        workspaceId: snapshot.workspaceId,
+        scope: snapshot.scope,
+        period: snapshot.period,
+      });
 
     return ok(
-      presentReaderSummaryArtifact(readerSummary, freshness, { content }),
+      presentReaderSummaryArtifact(readerSummary, freshness, {
+        content,
+        collectedCoverage,
+      }),
     );
   }
 }

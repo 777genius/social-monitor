@@ -15,6 +15,7 @@ class RelevanceFeedbackTargetDto {
     required this.providerKey,
     this.feedbackReason,
     this.feedItemId,
+    this.sourceItemId,
   });
 
   factory RelevanceFeedbackTargetDto.fromJson(Map<String, Object?> json) =>
@@ -24,6 +25,7 @@ class RelevanceFeedbackTargetDto {
   final String? feedItemId;
   final String interestId;
   final String providerKey;
+  final String? sourceItemId;
 
   Map<String, Object?> toJson() => _$RelevanceFeedbackTargetDtoToJson(this);
 }

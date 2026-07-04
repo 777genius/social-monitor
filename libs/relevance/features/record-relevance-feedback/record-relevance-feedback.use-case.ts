@@ -64,6 +64,25 @@ export class RecordRelevanceFeedbackUseCase {
         }
 
         const direction = relevanceFeedbackDirection(snapshot.action, snapshot.rating);
+        if (direction === 'recorded') {
+          const profile = await this.profileForUser(
+            learning,
+            {
+              tenantId: command.tenantId,
+              workspaceId: command.workspaceId,
+            },
+            userId,
+            this.clock.now(),
+          );
+
+          return ok({
+            feedback: presentRelevanceFeedbackSignal(cached),
+            profile: presentUserRelevanceProfile(profile),
+            created: false,
+            learningDirection: direction,
+          });
+        }
+
         const profile = await this.profileForCachedFeedback({
           learning,
           tenantId: command.tenantId,
@@ -109,6 +128,19 @@ export class RecordRelevanceFeedbackUseCase {
       const profile = await this.profileForUser(learning, command, userId, now);
       const target = signal.toSnapshot().target;
       const direction = relevanceFeedbackDirection(command.action, command.rating);
+
+      await learning.saveFeedback(signal);
+      if (direction === 'recorded') {
+        const readProfile = await this.profileForUser(learning, command, userId, now);
+
+        return ok({
+          feedback: presentRelevanceFeedbackSignal(signal),
+          profile: presentUserRelevanceProfile(readProfile),
+          created: true,
+          learningDirection: direction,
+        });
+      }
+
       const updatedProfile = profile.applyFeedback({
         interestId: target.interestId,
         providerKey: target.providerKey,
@@ -117,7 +149,6 @@ export class RecordRelevanceFeedbackUseCase {
         adjustedAt: now,
       });
 
-      await learning.saveFeedback(signal);
       await learning.saveProfile(updatedProfile);
       await learning.saveMemoryProjection(createRelevanceMemoryProjection({
         id: this.ids.generate(),
@@ -148,7 +179,7 @@ export class RecordRelevanceFeedbackUseCase {
     readonly workspaceId: RecordRelevanceFeedbackCommand['workspaceId'];
     readonly userId: string;
     readonly target: RelevanceFeedbackTarget;
-    readonly direction: ReturnType<typeof relevanceFeedbackDirection>;
+    readonly direction: Exclude<ReturnType<typeof relevanceFeedbackDirection>, 'recorded'>;
   }) {
     const now = this.clock.now();
     const profile = await this.profileForUser(

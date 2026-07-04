@@ -12,6 +12,8 @@ enum RecordRelevanceFeedbackResponseDtoLearningDirectionLearningDirection {
   negative('negative'),
   @JsonValue('block_provider')
   blockProvider('block_provider'),
+  @JsonValue('recorded')
+  recorded('recorded'),
 
   /// Default value for all unparsed values, allows backward compatibility when adding new values on the backend.
   $unknown(null);

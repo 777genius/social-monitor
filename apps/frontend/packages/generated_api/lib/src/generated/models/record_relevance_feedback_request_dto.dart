@@ -22,6 +22,7 @@ class RecordRelevanceFeedbackRequestDto {
     this.feedItemId,
     this.rating,
     this.reason,
+    this.sourceItemId,
   });
 
   factory RecordRelevanceFeedbackRequestDto.fromJson(
@@ -37,6 +38,7 @@ class RecordRelevanceFeedbackRequestDto {
   final String providerKey;
   final num? rating;
   final RecordRelevanceFeedbackRequestDtoReasonReason? reason;
+  final String? sourceItemId;
   final String title;
 
   Map<String, Object?> toJson() =>

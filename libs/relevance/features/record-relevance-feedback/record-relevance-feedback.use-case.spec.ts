@@ -123,6 +123,51 @@ describe('RecordRelevanceFeedbackUseCase', () => {
     expect(result.ok && result.value.profile.blockedProviderKeys).toEqual(['spam-source']);
   });
 
+  it('records post ratings without updating ranking profile or memory projection', async () => {
+    const learning = new FakeRelevanceFeedbackLearningStore();
+    const useCase = new RecordRelevanceFeedbackUseCase(
+      learning,
+      new SequenceIdGenerator(),
+      new FixedClock(new Date('2026-06-22T10:00:00.000Z')),
+    );
+
+    const result = await useCase.execute({
+      tenantId: tenantId('tenant-post-rating'),
+      workspaceId: workspaceId('workspace-post-rating'),
+      userId: 'user-post-rating',
+      idempotencyKey: 'post-rating-feed-1-5',
+      action: 'rate_post',
+      rating: 5,
+      target: {
+        feedItemId: 'feed-post-rating-1',
+        sourceItemId: 'source-post-rating-1',
+        interestId: 'topic-ai',
+        providerKey: 'reddit',
+        title: 'Operators discuss AI agent monitoring',
+        bodyPreview: 'The user rated this concrete top post.',
+        canonicalUrl: 'https://reddit.example/r/ai/comments/post-rating-1',
+      },
+    });
+
+    expect(result.ok && result.value).toEqual(expect.objectContaining({
+      created: true,
+      learningDirection: 'recorded',
+    }));
+    expect(result.ok && result.value.feedback.target).toEqual(expect.objectContaining({
+      feedItemId: 'feed-post-rating-1',
+      sourceItemId: 'source-post-rating-1',
+    }));
+    expect(learning.allFeedback()).toHaveLength(1);
+    expect(learning.allMemoryProjections()).toHaveLength(0);
+
+    const profile = await learning.findProfileByUser({
+      tenantId: tenantId('tenant-post-rating'),
+      workspaceId: workspaceId('workspace-post-rating'),
+      userId: 'user-post-rating',
+    });
+    expect(profile).toBeNull();
+  });
+
   it('repairs a missing profile projection on an idempotent replay', async () => {
     const learning = new FakeRelevanceFeedbackLearningStore();
     const now = new Date('2026-06-22T10:00:00.000Z');

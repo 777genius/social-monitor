@@ -56,10 +56,27 @@ final class DioGeneratedApiClient implements GeneratedApiClient {
     }
 
     return NetworkFailure(
-      message: error.message ?? 'Network request failed',
+      message: _networkFailureMessage(error.type),
       code: _networkFailureCode(error.type),
       cause: error,
     );
+  }
+
+  String _networkFailureMessage(DioExceptionType type) {
+    return switch (type) {
+      DioExceptionType.connectionTimeout ||
+      DioExceptionType.sendTimeout ||
+      DioExceptionType.receiveTimeout =>
+        'The server is taking longer than expected. Try again in a moment.',
+      DioExceptionType.connectionError =>
+        'Cannot reach the server. Check your connection and try again.',
+      DioExceptionType.cancel => 'The request was cancelled.',
+      DioExceptionType.badCertificate =>
+        'Secure connection to the server failed.',
+      DioExceptionType.badResponse =>
+        'The server returned an unexpected response.',
+      DioExceptionType.unknown => 'Network request failed. Try again.',
+    };
   }
 
   String _networkFailureCode(DioExceptionType type) {

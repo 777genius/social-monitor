@@ -2,6 +2,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { APP_FILTER } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import {
+  emptyReaderSummaryReliabilityReport,
   ReaderSummaryArtifact,
   type ReaderSummaryContent,
 } from '@social-monitor/summary/domain';
@@ -694,6 +695,8 @@ const readerReaderSummaryContent = (): ReaderSummaryContent => {
       },
     ],
     topReads: [topRead],
+    claimBoard: [],
+    reliabilityReport: emptyReaderSummaryReliabilityReport(),
     trendDelta: {
       newSignals: ['agent tooling'],
       growingSignals: ['github repo radar'],

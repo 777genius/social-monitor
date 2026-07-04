@@ -5,9 +5,11 @@ import type {
   ReaderSummaryContent,
   ReaderSummaryPeriod,
   StoryCluster,
+  TopRead,
 } from "../../domain";
 import { buildReaderSummary } from "../../domain";
 import type { ReaderSummaryFreshness } from "../../ports";
+import type { ReaderSummaryCollectedFeedItemCoverage } from "../../ports";
 
 export type ReaderSummaryCitationView = {
   readonly citationId: string;
@@ -29,6 +31,11 @@ export type ReaderSummaryStoryClusterView = Omit<
   };
 };
 
+export type ReaderSummaryContentView = ReaderSummaryContent & {
+  readonly mainTopics: readonly string[];
+  readonly selectedPosts: readonly TopRead[];
+};
+
 export type ReaderSummaryContextArtifactView = Omit<
   ReaderSummaryContextArtifact,
   "generatedAt" | "period"
@@ -42,7 +49,7 @@ export type ReaderSummaryArtifactView = Omit<
   "period" | "sourceWindow" | "storyClusters" | "contextArtifacts" | "content"
 > & {
   readonly period: ReaderSummaryPeriodView;
-  readonly content: ReaderSummaryContent;
+  readonly content: ReaderSummaryContentView;
   readonly sourceWindow: Omit<
     ReaderSummaryArtifactProps["sourceWindow"],
     "startedAt" | "endedAt"
@@ -66,6 +73,7 @@ export type ReaderSummaryPeriodView = {
 };
 
 export type ReaderSummaryCoverageView = {
+  readonly collectedFeedItemCount?: number;
   readonly selectedFeedItemCount: number;
   readonly storyClusterCount: number;
   readonly topReadCount: number;
@@ -81,6 +89,15 @@ export type ReaderSummaryCoverageView = {
   readonly windowStartedAt: string;
   readonly windowEndedAt: string;
   readonly freshnessStatus: ReaderSummaryFreshnessView["status"];
+  readonly providerBreakdown: readonly ReaderSummaryProviderCoverageView[];
+};
+
+export type ReaderSummaryProviderCoverageView = {
+  readonly providerKey: string;
+  readonly collectedFeedItemCount?: number;
+  readonly selectedFeedItemCount: number;
+  readonly topReadCount: number;
+  readonly citationCount: number;
 };
 
 export type ReaderSummaryFreshnessView =
@@ -104,11 +121,15 @@ export type ReaderSummaryFreshnessView =
 export const presentReaderSummaryArtifact = (
   artifact: ReaderSummaryArtifact,
   freshness: ReaderSummaryFreshness,
-  options: { readonly content?: ReaderSummaryContent } = {},
+  options: {
+    readonly content?: ReaderSummaryContent;
+    readonly collectedCoverage?: ReaderSummaryCollectedFeedItemCoverage;
+  } = {},
 ): ReaderSummaryArtifactView => {
   const snapshot = artifact.toSnapshot();
-  const content =
-    options.content ?? readerSummaryContentForArtifactSnapshot(snapshot);
+  const content = withReaderSummaryContentDefaults(
+    options.content ?? readerSummaryContentForArtifactSnapshot(snapshot),
+  );
   const freshnessView = presentFreshness(freshness);
 
   return {
@@ -141,32 +162,48 @@ export const presentReaderSummaryArtifact = (
       field: citation.field,
       canonicalUrl: citation.canonicalUrl,
     })),
-    coverage: buildCoverageView(snapshot, content, freshnessView),
+    coverage: buildCoverageView(
+      snapshot,
+      content,
+      freshnessView,
+      options.collectedCoverage,
+    ),
     freshness: freshnessView,
   };
 };
 
 export const readerSummaryContentForArtifact = (
   artifact: ReaderSummaryArtifact,
-): ReaderSummaryContent =>
+): ReaderSummaryContentView =>
   readerSummaryContentForArtifactSnapshot(artifact.toSnapshot());
 
 const readerSummaryContentForArtifactSnapshot = (
   snapshot: ReaderSummaryArtifactProps,
-): ReaderSummaryContent =>
-  snapshot.content ??
-  buildReaderSummary({
-    headline: snapshot.headline,
-    executiveSummary: snapshot.executiveSummary,
-    topStories: snapshot.topStories,
-    interestHighlights: snapshot.interestHighlights,
-    repeatedSignals: snapshot.repeatedSignals,
-    risksAndUnknowns: snapshot.risksAndUnknowns,
-    citationMap: snapshot.citationMap,
-    storyClusters: snapshot.storyClusters,
-    qualityFlags: snapshot.qualityFlags,
-    noSignalReason: snapshot.noSignalReason,
-  });
+): ReaderSummaryContentView =>
+  withReaderSummaryContentDefaults(
+    snapshot.content ??
+      buildReaderSummary({
+        headline: snapshot.headline,
+        executiveSummary: snapshot.executiveSummary,
+        topStories: snapshot.topStories,
+        interestHighlights: snapshot.interestHighlights,
+        repeatedSignals: snapshot.repeatedSignals,
+        risksAndUnknowns: snapshot.risksAndUnknowns,
+        citationMap: snapshot.citationMap,
+        storyClusters: snapshot.storyClusters,
+        sourceWindow: snapshot.sourceWindow,
+        qualityFlags: snapshot.qualityFlags,
+        noSignalReason: snapshot.noSignalReason,
+      }),
+  );
+
+const withReaderSummaryContentDefaults = (
+  content: ReaderSummaryContent,
+): ReaderSummaryContentView => ({
+  ...content,
+  mainTopics: content.mainTopics ?? [],
+  selectedPosts: content.selectedPosts ?? content.topReads,
+});
 
 const presentReaderSummaryPeriod = (
   period: ReaderSummaryPeriod,
@@ -182,6 +219,7 @@ const buildCoverageView = (
   snapshot: ReaderSummaryArtifactProps,
   content: ReaderSummaryContent,
   freshness: ReaderSummaryFreshnessView,
+  collectedCoverage: ReaderSummaryCollectedFeedItemCoverage | undefined,
 ): ReaderSummaryCoverageView => {
   const interestIds = countBy(
     snapshot.storyClusters.flatMap((cluster) => cluster.interestIds),
@@ -215,6 +253,9 @@ const buildCoverageView = (
     .map((source) => source.providerKey);
 
   return {
+    ...(collectedCoverage === undefined
+      ? {}
+      : { collectedFeedItemCount: collectedCoverage.collectedFeedItemCount }),
     selectedFeedItemCount: snapshot.sourceWindow.selectedFeedItemIds.length,
     storyClusterCount: snapshot.storyClusters.length,
     topReadCount: content.topReads.length,
@@ -245,7 +286,69 @@ const buildCoverageView = (
     windowStartedAt: snapshot.sourceWindow.startedAt.toISOString(),
     windowEndedAt: snapshot.sourceWindow.endedAt.toISOString(),
     freshnessStatus: freshness.status,
+    providerBreakdown: buildProviderBreakdown(content, collectedCoverage),
   };
+};
+
+const buildProviderBreakdown = (
+  content: ReaderSummaryContent,
+  collectedCoverage: ReaderSummaryCollectedFeedItemCoverage | undefined,
+): readonly ReaderSummaryProviderCoverageView[] => {
+  const providers = new Map<string, ReaderSummaryProviderCoverageView>();
+
+  const upsert = (
+    providerKey: string,
+    patch: Partial<Omit<ReaderSummaryProviderCoverageView, "providerKey">>,
+  ): void => {
+    const key = providerKey.trim();
+    if (key.length === 0) {
+      return;
+    }
+
+    const current = providers.get(key) ?? {
+      providerKey: key,
+      selectedFeedItemCount: 0,
+      topReadCount: 0,
+      citationCount: 0,
+    };
+    providers.set(key, { ...current, ...patch });
+  };
+
+  for (const source of content.sourceMix) {
+    upsert(source.providerKey, {
+      selectedFeedItemCount: source.itemCount,
+      citationCount: source.citationCount,
+    });
+  }
+  for (const read of content.topReads) {
+    const key = read.providerKey.trim();
+    if (key.length === 0) {
+      continue;
+    }
+    const current = providers.get(key);
+    upsert(key, { topReadCount: (current?.topReadCount ?? 0) + 1 });
+  }
+  for (const provider of collectedCoverage?.providerBreakdown ?? []) {
+    upsert(provider.providerKey, {
+      collectedFeedItemCount: provider.collectedFeedItemCount,
+    });
+  }
+
+  return [...providers.values()].sort((left, right) => {
+    const collectedDiff =
+      (right.collectedFeedItemCount ?? 0) - (left.collectedFeedItemCount ?? 0);
+    if (collectedDiff !== 0) {
+      return collectedDiff;
+    }
+
+    const selectedDiff =
+      right.selectedFeedItemCount - left.selectedFeedItemCount;
+    if (selectedDiff !== 0) {
+      return selectedDiff;
+    }
+
+    return left.providerKey.localeCompare(right.providerKey);
+  });
 };
 
 const countBy = (values: readonly string[]): ReadonlyMap<string, number> => {

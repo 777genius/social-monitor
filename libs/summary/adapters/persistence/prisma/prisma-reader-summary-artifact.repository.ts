@@ -1,12 +1,17 @@
 import { withPrismaWriteRetry } from "@social-monitor/platform-persistence";
+import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
 import {
+  buildReaderSummaryPeriod,
   readerSummaryScopeKey,
   type ReaderSummaryArtifact,
+  type ReaderSummaryCadence,
 } from "../../../domain";
 import type {
   ListReaderSummaryArtifactsQuery,
   ListReaderSummaryArtifactsResult,
+  ListReaderSummaryPeriodSummariesResult,
+  ReaderSummaryPeriodSummary,
   ReaderSummaryArtifactRepositoryPort,
 } from "../../../ports";
 import type { PrismaSummaryClient } from "./prisma-summary-client";
@@ -14,9 +19,11 @@ import {
   readerSummaryArtifactFromPrisma,
   readerSummaryArtifactStatusToPrisma,
   readerSummaryQualitySignalsToPrisma,
+  type PrismaReaderSummaryPeriodSummaryRecord,
   readerSummaryScopeToPrisma,
   serializeReaderSummaryArtifact,
 } from "./prisma-reader-summary-records";
+import { readerSummaryScopeFromPrisma } from "./prisma-reader-summary-artifact-payload";
 import {
   encodeSummaryCursor,
   parseSummaryCursor,
@@ -84,23 +91,15 @@ export class PrismaReaderSummaryArtifactRepository implements ReaderSummaryArtif
     query: ListReaderSummaryArtifactsQuery,
   ): Promise<ListReaderSummaryArtifactsResult> {
     const offset = parseSummaryCursor(query.cursor);
-    const where = {
-      tenantId: query.tenantId,
-      workspaceId: query.workspaceId,
-      scopeKey:
-        query.scope === undefined
-          ? undefined
-          : readerSummaryScopeKey(query.scope),
-      cadence: query.cadence,
-      periodStartedAt: periodStartedAtWhere(query),
-      periodEndedAt: query.periodEndedAt,
-      periodTimezone: query.timezone,
-      status: { in: VISIBLE_READER_SUMMARY_STATUSES },
-    };
+    const where = readerSummaryArtifactWhere(query);
     const [records, total] = await Promise.all([
       this.prisma.readerSummaryArtifact.findMany({
         where,
-        orderBy: [{ periodStartedAt: "desc" }, { createdAt: "desc" }, { id: "desc" }],
+        orderBy: [
+          { periodStartedAt: "desc" },
+          { createdAt: "desc" },
+          { id: "desc" },
+        ],
         skip: offset,
         take: query.limit,
       }),
@@ -109,6 +108,51 @@ export class PrismaReaderSummaryArtifactRepository implements ReaderSummaryArtif
     const items = records.map((record) =>
       readerSummaryArtifactFromPrisma(record),
     );
+    const nextOffset = offset + items.length;
+
+    return {
+      items,
+      nextCursor:
+        nextOffset < total ? encodeSummaryCursor(nextOffset) : undefined,
+    };
+  }
+
+  async listPeriodSummaries(
+    query: ListReaderSummaryArtifactsQuery,
+  ): Promise<ListReaderSummaryPeriodSummariesResult> {
+    const offset = parseSummaryCursor(query.cursor);
+    const where = readerSummaryArtifactWhere(query);
+    const [records, total] = await Promise.all([
+      this.prisma.readerSummaryArtifact.findMany({
+        where,
+        select: {
+          id: true,
+          tenantId: true,
+          workspaceId: true,
+          scopeType: true,
+          scopeKey: true,
+          interestId: true,
+          cadence: true,
+          periodStartedAt: true,
+          periodEndedAt: true,
+          periodTimezone: true,
+          periodKey: true,
+          userId: true,
+          subscriptionId: true,
+          status: true,
+          headline: true,
+        },
+        orderBy: [
+          { periodStartedAt: "desc" },
+          { createdAt: "desc" },
+          { id: "desc" },
+        ],
+        skip: offset,
+        take: query.limit,
+      }),
+      this.prisma.readerSummaryArtifact.count({ where }),
+    ]);
+    const items = records.map(periodSummaryFromPrisma);
     const nextOffset = offset + items.length;
 
     return {
@@ -132,6 +176,39 @@ export class PrismaReaderSummaryArtifactRepository implements ReaderSummaryArtif
     return record === null ? null : readerSummaryArtifactFromPrisma(record);
   }
 }
+
+const readerSummaryArtifactWhere = (
+  query: ListReaderSummaryArtifactsQuery,
+) => ({
+  tenantId: query.tenantId,
+  workspaceId: query.workspaceId,
+  scopeKey:
+    query.scope === undefined ? undefined : readerSummaryScopeKey(query.scope),
+  cadence: query.cadence,
+  periodStartedAt: periodStartedAtWhere(query),
+  periodEndedAt: query.periodEndedAt,
+  periodTimezone: query.timezone,
+  status: { in: VISIBLE_READER_SUMMARY_STATUSES },
+});
+
+const periodSummaryFromPrisma = (
+  record: PrismaReaderSummaryPeriodSummaryRecord,
+): ReaderSummaryPeriodSummary => ({
+  tenantId: tenantId(record.tenantId),
+  workspaceId: workspaceId(record.workspaceId),
+  readerSummaryId: record.id,
+  scope: readerSummaryScopeFromPrisma(record),
+  period: buildReaderSummaryPeriod({
+    cadence: record.cadence as ReaderSummaryCadence,
+    startedAt: record.periodStartedAt,
+    endedAt: record.periodEndedAt,
+    timezone: record.periodTimezone,
+  }),
+  headline: record.headline,
+  status: record.status === "NO_SIGNAL" ? "no_signal" : "completed",
+  userId: record.userId ?? undefined,
+  subscriptionId: record.subscriptionId ?? undefined,
+});
 
 const periodStartedAtWhere = (query: ListReaderSummaryArtifactsQuery) => {
   if (

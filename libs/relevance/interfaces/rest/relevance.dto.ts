@@ -1,6 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  IsArray,
   IsIn,
   IsInt,
   IsNumber,
@@ -16,6 +18,7 @@ import {
   relevanceFeedbackActions,
   type RelevanceFeedbackReason,
   relevanceFeedbackReasons,
+  postRatingReasons,
   type RelevanceWeight,
 } from '../../domain';
 
@@ -27,7 +30,8 @@ const sourceContentSafetyCategories = [
   'raw_payload_retention_disabled',
 ] as const;
 const sourceContentSafetyRetentionPolicies = ['normalized_preview_only'] as const;
-const relevanceLearningDirections = ['positive', 'negative', 'block_provider'] as const;
+const relevanceLearningDirections = ['positive', 'negative', 'block_provider', 'recorded'] as const;
+const postRatingLearningEffects = ['negative', 'neutral', 'positive'] as const;
 const personalizedDigestStatuses = ['assembled', 'empty'] as const;
 const relevanceMemoryGuidanceStatuses = ['disabled', 'available', 'empty', 'unavailable'] as const;
 
@@ -93,6 +97,11 @@ export class RecordRelevanceFeedbackRequestDto {
   @IsOptional()
   @IsString()
   declare readonly feedItemId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  declare readonly sourceItemId?: string;
 
   @ApiProperty()
   @IsString()
@@ -307,6 +316,9 @@ export class RelevanceFeedbackTargetDto {
   @ApiPropertyOptional()
   declare readonly feedItemId?: string;
 
+  @ApiPropertyOptional()
+  declare readonly sourceItemId?: string;
+
   @ApiProperty()
   declare readonly interestId: string;
 
@@ -349,4 +361,128 @@ export class RecordRelevanceFeedbackResponseDto {
 
   @ApiProperty({ enum: relevanceLearningDirections })
   declare readonly learningDirection: string;
+}
+
+export class PostRatingLookupTargetDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  declare readonly feedItemId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  declare readonly sourceItemId?: string;
+
+  @ApiProperty()
+  @IsString()
+  declare readonly interestId: string;
+}
+
+export class ListPostRatingsRequestDto {
+  @ApiProperty({ type: () => [PostRatingLookupTargetDto] })
+  @IsArray()
+  @ArrayMaxSize(100)
+  @Type(() => PostRatingLookupTargetDto)
+  @ValidateNested({ each: true })
+  declare readonly targets: readonly PostRatingLookupTargetDto[];
+}
+
+export class RecordPostRatingRequestDto {
+  @ApiProperty()
+  @IsString()
+  declare readonly idempotencyKey: string;
+
+  @ApiProperty({ minimum: 1, maximum: 5 })
+  @IsInt()
+  @Min(1)
+  @Max(5)
+  declare readonly rating: number;
+
+  @ApiPropertyOptional({ enum: postRatingReasons })
+  @IsOptional()
+  @IsIn(postRatingReasons)
+  declare readonly reason?: (typeof postRatingReasons)[number];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  declare readonly feedItemId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  declare readonly sourceItemId?: string;
+
+  @ApiProperty()
+  @IsString()
+  declare readonly interestId: string;
+
+  @ApiProperty()
+  @IsString()
+  declare readonly providerKey: string;
+
+  @ApiProperty()
+  @IsString()
+  declare readonly title: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  declare readonly bodyPreview?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  declare readonly canonicalUrl?: string;
+}
+
+export class PostRatingTargetDto {
+  @ApiPropertyOptional()
+  declare readonly feedItemId?: string;
+
+  @ApiPropertyOptional()
+  declare readonly sourceItemId?: string;
+
+  @ApiProperty()
+  declare readonly interestId: string;
+}
+
+export class PostRatingDto {
+  @ApiProperty()
+  declare readonly feedbackId: string;
+
+  @ApiProperty()
+  declare readonly userId: string;
+
+  @ApiProperty({ minimum: 1, maximum: 5 })
+  declare readonly rating: number;
+
+  @ApiProperty({ enum: postRatingLearningEffects })
+  declare readonly learningEffect: (typeof postRatingLearningEffects)[number];
+
+  @ApiPropertyOptional({ enum: postRatingReasons })
+  declare readonly reason?: (typeof postRatingReasons)[number];
+
+  @ApiProperty({ type: () => PostRatingTargetDto })
+  declare readonly target: PostRatingTargetDto;
+
+  @ApiProperty({ format: 'date-time' })
+  declare readonly ratedAt: string;
+}
+
+export class ListPostRatingsResponseDto {
+  @ApiProperty({ type: () => [PostRatingDto] })
+  declare readonly ratings: readonly PostRatingDto[];
+}
+
+export class RecordPostRatingResponseDto {
+  @ApiProperty({ type: () => PostRatingDto })
+  declare readonly rating: PostRatingDto;
+
+  @ApiProperty()
+  declare readonly created: boolean;
+
+  @ApiProperty({ enum: ['recorded'] })
+  declare readonly learningDirection: 'recorded';
 }

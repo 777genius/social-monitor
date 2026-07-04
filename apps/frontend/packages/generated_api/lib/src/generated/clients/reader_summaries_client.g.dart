@@ -126,6 +126,67 @@ class _ReaderSummariesClient implements ReaderSummariesClient {
   }
 
   @override
+  Future<ListReaderSummaryPeriodsResponseDto>
+  readerSummaryControllerListPeriods({
+    required String xWorkspaceId,
+    required String xTenantId,
+    String? cursor,
+    num? limit,
+    String? timezone,
+    String? periodEndedAt,
+    String? periodStartedBefore,
+    String? periodStartedFrom,
+    String? periodStartedAt,
+    Cadence? cadence,
+    String? interestId,
+    ScopeType? scopeType,
+    String? authorization,
+    String? xWorkspaceRole,
+  }) async {
+    final _extra = <String, dynamic>{};
+    final queryParameters = <String, dynamic>{
+      r'cursor': cursor,
+      r'limit': limit,
+      r'timezone': timezone,
+      r'periodEndedAt': periodEndedAt,
+      r'periodStartedBefore': periodStartedBefore,
+      r'periodStartedFrom': periodStartedFrom,
+      r'periodStartedAt': periodStartedAt,
+      r'cadence': cadence?.toJson(),
+      r'interestId': interestId,
+      r'scopeType': scopeType?.toJson(),
+    };
+    queryParameters.removeWhere((k, v) => v == null);
+    final _headers = <String, dynamic>{
+      r'x-workspace-id': xWorkspaceId,
+      r'x-tenant-id': xTenantId,
+      r'authorization': authorization,
+      r'x-workspace-role': xWorkspaceRole,
+    };
+    _headers.removeWhere((k, v) => v == null);
+    const Map<String, dynamic>? _data = null;
+    final _options = _setStreamType<ListReaderSummaryPeriodsResponseDto>(
+      Options(method: 'GET', headers: _headers, extra: _extra)
+          .compose(
+            _dio.options,
+            '/reader-summaries/periods',
+            queryParameters: queryParameters,
+            data: _data,
+          )
+          .copyWith(baseUrl: _combineBaseUrls(_dio.options.baseUrl, baseUrl)),
+    );
+    final _result = await _dio.fetch<Map<String, Object?>>(_options);
+    late ListReaderSummaryPeriodsResponseDto _value;
+    try {
+      _value = ListReaderSummaryPeriodsResponseDto.fromJson(_result.data!);
+    } on Object catch (e, s) {
+      errorLogger?.logError(e, s, _options, response: _result);
+      rethrow;
+    }
+    return _value;
+  }
+
+  @override
   Future<ReaderSummaryJobStatusResponseDto>
   readerSummaryJobControllerGetStatus({
     required String readerSummaryJobId,

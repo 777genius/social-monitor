@@ -9,6 +9,7 @@ import 'package:retrofit/error_logger.dart';
 import '../models/cadence.dart';
 import '../models/freshness_status.dart';
 import '../models/list_reader_summaries_response_dto.dart';
+import '../models/list_reader_summary_periods_response_dto.dart';
 import '../models/reader_summary_job_status_response_dto.dart';
 import '../models/reader_summary_response_dto.dart';
 import '../models/request_reader_summary_request_dto.dart';
@@ -58,6 +59,30 @@ abstract class ReaderSummariesClient {
     @Path('readerSummaryId') required String readerSummaryId,
     @Header('x-workspace-id') required String xWorkspaceId,
     @Header('x-tenant-id') required String xTenantId,
+    @Header('authorization') String? authorization,
+    @Header('x-workspace-role') String? xWorkspaceRole,
+  });
+
+  /// List lightweight reader summary periods for calendars.
+  ///
+  /// [authorization] - Optional Bearer API key. Requires read:summaries. If supplied, x-workspace-role is not required.
+  ///
+  /// [xWorkspaceRole] - Comma-separated workspace roles. ReaderSummary reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.
+  @GET('/reader-summaries/periods')
+  Future<ListReaderSummaryPeriodsResponseDto>
+  readerSummaryControllerListPeriods({
+    @Header('x-workspace-id') required String xWorkspaceId,
+    @Header('x-tenant-id') required String xTenantId,
+    @Query('cursor') String? cursor,
+    @Query('limit') num? limit,
+    @Query('timezone') String? timezone,
+    @Query('periodEndedAt') String? periodEndedAt,
+    @Query('periodStartedBefore') String? periodStartedBefore,
+    @Query('periodStartedFrom') String? periodStartedFrom,
+    @Query('periodStartedAt') String? periodStartedAt,
+    @Query('cadence') Cadence? cadence,
+    @Query('interestId') String? interestId,
+    @Query('scopeType') ScopeType? scopeType,
     @Header('authorization') String? authorization,
     @Header('x-workspace-role') String? xWorkspaceRole,
   });

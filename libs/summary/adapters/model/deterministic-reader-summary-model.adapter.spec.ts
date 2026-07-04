@@ -4,7 +4,7 @@ import type { ReaderSummaryModelInput } from "../../ports";
 import { DeterministicReaderSummaryModelAdapter } from "./deterministic-reader-summary-model.adapter";
 
 describe("DeterministicReaderSummaryModelAdapter", () => {
-  it("keeps first-page stories and citations provider-diverse", async () => {
+  it("keeps a provider-diverse first page while preserving ranked order", async () => {
     const adapter = new DeterministicReaderSummaryModelAdapter();
     const input = readerSummaryInput();
     const route = adapter.route(
@@ -41,6 +41,18 @@ describe("DeterministicReaderSummaryModelAdapter", () => {
     expect(
       attempt.draft.content?.topReads.map((item) => item.providerKey),
     ).toContain("github-issues");
+    expect(attempt.draft.content?.topReads.map((item) => item.providerKey)).toEqual([
+      "rss",
+      "rss",
+      "github-trending-page",
+      "github-trending-page",
+      "github-trending-page",
+      "rss",
+      "rss",
+      "hacker-news",
+      "reddit",
+      "github-issues",
+    ]);
     expect(attempt.draft.executiveSummary).toContain(
       "Current executive summary covers 12 selected stories for workspace in an analytical tone.",
     );
@@ -88,8 +100,7 @@ const readerSummaryInput = (): ReaderSummaryModelInput => {
       startedAt: new Date("2026-06-23T00:00:00.000Z"),
       endedAt: new Date("2026-06-24T00:00:00.000Z"),
       timezone: "UTC",
-      periodKey:
-        "daily:2026-06-23T00:00:00.000Z:2026-06-24T00:00:00.000Z:UTC",
+      periodKey: "daily:2026-06-23T00:00:00.000Z:2026-06-24T00:00:00.000Z:UTC",
     },
     evidence: {
       rankingPolicyVersion: "story_ranking_v1",

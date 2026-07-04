@@ -220,12 +220,18 @@
       "command": "npm run check:summary-retry",
       "artifact": "scripts/check-summary-retry-smoke.ts",
       "requiredSignal": "retryable summary failures stay bounded and do not duplicate completed artifacts"
+    },
+    {
+      "invariantId": "summary-feedback-eval-label-backlog",
+      "command": "npm run check:summary-feedback-eval-backlog",
+      "artifact": "ops/evals/summary-feedback-eval-backlog.v1.json",
+      "requiredSignal": "redacted feedback samples map to deterministic eval labels, priority, evidence requirements and target eval suites"
     }
   ],
   "externalBetaExitCriteria": [
     "Feedback report evidenceMode is redacted_beta_samples.",
     "SUMMARY_REAL_FEEDBACK_SAMPLES_PATH produced from npm run export:summary-feedback-samples followed by npm run capture:summary-feedback-samples validates against redacted-summary-feedback-samples-v1.",
-    "Every blocker finding from real samples has an owner and one release-blocking eval fixture, validator change or runbook action.",
+    "Every blocker finding from real samples has an owner and one release-blocking eval fixture, validator change, eval backlog label or runbook action.",
     "Claims, citations, summary cost and stale-window markers are covered by release-blocking gates."
   ]
 }

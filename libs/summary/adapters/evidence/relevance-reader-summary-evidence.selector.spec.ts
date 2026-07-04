@@ -80,7 +80,7 @@ const rankedItem = (
 };
 
 describe("RelevanceReaderSummaryEvidenceSelector", () => {
-  it("keeps workspace reader summary evidence provider-diverse after expanded relevance ranking", async () => {
+  it("keeps workspace reader summary evidence in relevance ranking order", async () => {
     const rankedItems = [
       rankedItem({
         feedItemId: "feed-trending",
@@ -142,7 +142,7 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
       ),
     } as unknown as RankFeedItemsUseCase;
     const feedItems: FeedItemReadRepositoryPort = {
-      list: jest.fn(),
+      list: jest.fn(async () => ({ items: [] })),
       findById: jest.fn(async () => null),
     };
     const storyRankingMetrics = new FakeStoryRankingMetrics();
@@ -170,21 +170,13 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
     );
     expect(
       selection.selectedEvidence.map((item) => item.providerKey).sort(),
-    ).toEqual([
-      "github-trending-page",
-      "github-trending-page",
-      "hacker-news",
-      "reddit",
-      "rss",
-    ]);
+    ).toEqual(["hacker-news", "reddit", "rss"]);
     expect(selection.selectedEvidence.map((item) => item.providerKey)).toEqual([
-      "reddit",
       "hacker-news",
+      "reddit",
       "rss",
-      "github-trending-page",
-      "github-trending-page",
     ]);
-    expect(selection.sourceWindow.selectedFeedItemIds).toContain(
+    expect(selection.sourceWindow.selectedFeedItemIds).not.toContain(
       "feed-trending-2",
     );
     expect(
@@ -213,7 +205,7 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
     );
   });
 
-  it("keeps provider diversity when a source first appears deep in the ranked candidates", async () => {
+  it("excludes GitHub technical providers from default reader summary evidence", async () => {
     const rankedItems = [
       ...Array.from({ length: 80 }, (_, index) =>
         rankedItem({
@@ -224,9 +216,15 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
         }),
       ),
       rankedItem({
+        feedItemId: "feed-github-trending",
+        providerKey: "github-trending-page",
+        rank: 81,
+        score: 1.6,
+      }),
+      rankedItem({
         feedItemId: "feed-github-deep",
         providerKey: "github-issues",
-        rank: 81,
+        rank: 82,
         score: 1.5,
       }),
     ];
@@ -242,7 +240,7 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
     const selector = new RelevanceReaderSummaryEvidenceSelector(
       rankFeedItems,
       {
-        list: jest.fn(),
+        list: jest.fn(async () => ({ items: [] })),
         findById: jest.fn(async () => null),
       },
       clock,
@@ -260,12 +258,18 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
     expect(rankFeedItems.execute).toHaveBeenCalledWith(
       expect.objectContaining({ limit: 200 }),
     );
-    expect(selection.selectedEvidence.map((item) => item.feedItemId)).toContain(
-      "feed-github-deep",
-    );
+    expect(
+      selection.selectedEvidence.map((item) => item.feedItemId),
+    ).not.toContain("feed-github-deep");
+    expect(
+      selection.selectedEvidence.map((item) => item.feedItemId),
+    ).not.toContain("feed-github-trending");
+    expect(
+      selection.selectedEvidence.every((item) => item.providerKey === "reddit"),
+    ).toBe(true);
   });
 
-  it("treats GitHub provider variants as secondary after social news families", async () => {
+  it("preserves ranked GitHub repo providers while excluding technical-only providers", async () => {
     const rankedItems = [
       rankedItem({
         feedItemId: "feed-github-trending",
@@ -314,7 +318,7 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
       ),
     } as unknown as RankFeedItemsUseCase;
     const feedItems: FeedItemReadRepositoryPort = {
-      list: jest.fn(),
+      list: jest.fn(async () => ({ items: [] })),
       findById: jest.fn(async () => null),
     };
     const selector = new RelevanceReaderSummaryEvidenceSelector(
@@ -332,29 +336,33 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
       maxItems: 4,
     });
 
-    expect(
-      selection.selectedEvidence.map((item) => item.providerKey),
-    ).toEqual(["reddit", "hacker-news", "rss", "github-trending-page"]);
-  });
-
-  it("keeps roughly thirty selected evidence items per source family when the summary asks for one hundred fifty", async () => {
-    const providerKeys = [
-      "x-twitter",
+    expect(selection.selectedEvidence.map((item) => item.providerKey)).toEqual([
+      "github-repo-radar",
       "reddit",
       "hacker-news",
       "rss",
-      "github-trending-page",
-    ] as const;
-    const rankedItems = providerKeys.flatMap((providerKey, providerIndex) =>
-      Array.from({ length: 35 }, (_, index) =>
+    ]);
+  });
+
+  it("keeps top ranked evidence from each provider in daily reader summaries", async () => {
+    const rankedItems = [
+      ...Array.from({ length: 160 }, (_, index) =>
         rankedItem({
-          feedItemId: `feed-${providerKey}-${index + 1}`,
-          providerKey,
-          rank: providerIndex * 35 + index + 1,
-          score: 3 - index / 100 - providerIndex / 1000,
+          feedItemId: `feed-reddit-${index + 1}`,
+          providerKey: "reddit",
+          rank: index + 1,
+          score: 3 - index / 100,
         }),
       ),
-    );
+      ...Array.from({ length: 35 }, (_, index) =>
+        rankedItem({
+          feedItemId: `feed-rss-${index + 1}`,
+          providerKey: "rss",
+          rank: 161 + index,
+          score: 1 - index / 100,
+        }),
+      ),
+    ];
     const rankFeedItems = {
       execute: jest.fn(async (command: RankFeedItemsCommand) =>
         ok({
@@ -367,7 +375,7 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
     const selector = new RelevanceReaderSummaryEvidenceSelector(
       rankFeedItems,
       {
-        list: jest.fn(),
+        list: jest.fn(async () => ({ items: [] })),
         findById: jest.fn(async () => null),
       },
       clock,
@@ -381,23 +389,170 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
       period: readerSummaryPeriod,
       maxItems: 150,
     });
-    const counts = selection.selectedEvidence.reduce(
-      (result, item) =>
-        result.set(item.providerKey, (result.get(item.providerKey) ?? 0) + 1),
-      new Map<string, number>(),
-    );
 
     expect(rankFeedItems.execute).toHaveBeenCalledWith(
       expect.objectContaining({ limit: 200 }),
     );
     expect(selection.selectedEvidence).toHaveLength(150);
-    expect(Object.fromEntries(counts)).toEqual({
-      "x-twitter": 30,
-      reddit: 30,
-      "hacker-news": 30,
-      rss: 30,
-      "github-trending-page": 30,
+    expect(
+      selection.selectedEvidence.filter((item) => item.providerKey === "rss"),
+    ).toHaveLength(35);
+    expect(selection.selectedEvidence[0]?.providerKey).toBe("reddit");
+  });
+
+  it("supplements reader summary evidence from feed repository when a provider is absent from top relevance ranks", async () => {
+    const tenant = tenantId("tenant-provider-supplement");
+    const workspace = workspaceId("workspace-provider-supplement");
+    const rankedItems = Array.from({ length: 20 }, (_, index) =>
+      rankedItem({
+        feedItemId: `feed-hn-${index + 1}`,
+        providerKey: "hacker-news",
+        rank: index + 1,
+        score: 3 - index / 100,
+      }),
+    );
+    const redditFeedItems = ["feed-reddit-1", "feed-reddit-2"].map(
+      (feedItemId, index) =>
+        FeedItem.publish({
+          id: feedItemId,
+          tenantId: tenant,
+          workspaceId: workspace,
+          interestId: "interest-ai",
+          sourceItemId: `source-${feedItemId}`,
+          sourceBindingId: "binding-reddit",
+          providerKey: "reddit",
+          canonicalUrl: `https://reddit.example/r/artificial/comments/${index + 1}`,
+          title: `Reddit AI discussion ${index + 1}`,
+          bodyPreview:
+            "Reddit users discuss practical AI coding workflows and developer tooling.",
+          publishedAt: new Date("2026-06-23T09:00:00.000Z"),
+          observedAt: new Date("2026-06-23T09:05:00.000Z"),
+          providerMetadata: {
+            kind: "reddit_post",
+            score: 727 - index,
+            comments: 140 - index,
+            upvoteRatio: 0.95,
+            subreddit: "ClaudeAI",
+          },
+        }),
+    );
+    const rankFeedItems = {
+      execute: jest.fn(async (command: RankFeedItemsCommand) =>
+        ok({
+          generatedAt: clock.now().toISOString(),
+          profileApplied: false,
+          items: rankedItems.slice(0, command.limit),
+        }),
+      ),
+    } as unknown as RankFeedItemsUseCase;
+    const feedItems: FeedItemReadRepositoryPort = {
+      list: jest.fn(async (query) => ({
+        items: query.providerKey === "reddit" ? redditFeedItems : [],
+      })),
+      findById: jest.fn(async () => null),
+    };
+    const selector = new RelevanceReaderSummaryEvidenceSelector(
+      rankFeedItems,
+      feedItems,
+      clock,
+      new FakeStoryRankingMetrics(),
+    );
+
+    const selection = await selector.select({
+      tenantId: tenant,
+      workspaceId: workspace,
+      scope: { type: "workspace" },
+      period: readerSummaryPeriod,
+      maxItems: 20,
     });
+
+    expect(feedItems.list).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providerKey: "reddit",
+        limit: 10,
+        observedAfter: new Date("2026-06-22T23:59:59.999Z"),
+        observedBefore: readerSummaryPeriod.endedAt,
+      }),
+    );
+    expect(
+      selection.selectedEvidence.filter((item) => item.providerKey === "reddit"),
+    ).toHaveLength(2);
+    expect(
+      selection.selectedEvidence.map((item) => item.feedItemId),
+    ).toEqual(expect.arrayContaining(["feed-reddit-1", "feed-reddit-2"]));
+    expect(
+      selection.selectedEvidence.find((item) => item.feedItemId === "feed-reddit-1")
+        ?.score,
+    ).toBeGreaterThan(1.35);
+  });
+
+  it("supplements up to forty items per provider for 120-item reader summaries", async () => {
+    const tenant = tenantId("tenant-provider-supplement-120");
+    const workspace = workspaceId("workspace-provider-supplement-120");
+    const rankedItems = Array.from({ length: 120 }, (_, index) =>
+      rankedItem({
+        feedItemId: `feed-hn-wide-${index + 1}`,
+        providerKey: "hacker-news",
+        rank: index + 1,
+        score: 3 - index / 100,
+      }),
+    );
+    const rssFeedItems = Array.from({ length: 45 }, (_, index) =>
+      FeedItem.publish({
+        id: `feed-rss-wide-${index + 1}`,
+        tenantId: tenant,
+        workspaceId: workspace,
+        interestId: "interest-ai",
+        sourceItemId: `source-rss-wide-${index + 1}`,
+        sourceBindingId: "binding-rss",
+        providerKey: "rss",
+        canonicalUrl: `https://rss.example/items/${index + 1}`,
+        title: `RSS AI tooling story ${index + 1}`,
+        bodyPreview:
+          "RSS coverage reports practical AI tooling, infrastructure and developer workflow updates.",
+        publishedAt: new Date("2026-06-23T09:00:00.000Z"),
+        observedAt: new Date("2026-06-23T09:05:00.000Z"),
+      }),
+    );
+    const rankFeedItems = {
+      execute: jest.fn(async (command: RankFeedItemsCommand) =>
+        ok({
+          generatedAt: clock.now().toISOString(),
+          profileApplied: false,
+          items: rankedItems.slice(0, command.limit),
+        }),
+      ),
+    } as unknown as RankFeedItemsUseCase;
+    const feedItems: FeedItemReadRepositoryPort = {
+      list: jest.fn(async (query) => ({
+        items: query.providerKey === "rss" ? rssFeedItems : [],
+      })),
+      findById: jest.fn(async () => null),
+    };
+    const selector = new RelevanceReaderSummaryEvidenceSelector(
+      rankFeedItems,
+      feedItems,
+      clock,
+      new FakeStoryRankingMetrics(),
+    );
+
+    const selection = await selector.select({
+      tenantId: tenant,
+      workspaceId: workspace,
+      scope: { type: "workspace" },
+      period: readerSummaryPeriod,
+      maxItems: 120,
+    });
+
+    expect(feedItems.list).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providerKey: "rss",
+        limit: 80,
+      }),
+    );
+    expect(
+      selection.selectedEvidence.filter((item) => item.providerKey === "rss"),
+    ).toHaveLength(40);
   });
 
   it("preserves X engagement metrics from ranked feed metadata", async () => {
@@ -433,7 +588,7 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
     const selector = new RelevanceReaderSummaryEvidenceSelector(
       rankFeedItems,
       {
-        list: jest.fn(),
+        list: jest.fn(async () => ({ items: [] })),
         findById: jest.fn(async () => null),
       },
       clock,
@@ -486,7 +641,7 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
       ),
     } as unknown as RankFeedItemsUseCase;
     const feedItems: FeedItemReadRepositoryPort = {
-      list: jest.fn(),
+      list: jest.fn(async () => ({ items: [] })),
       findById: jest.fn(async () =>
         FeedItem.publish({
           id: "feed-reddit-codex",
@@ -526,8 +681,8 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
       feedItemId: "feed-reddit-codex",
     });
     expect(selection.selectedEvidence.map((item) => item.feedItemId)).toEqual([
-      "feed-reddit-codex",
       "feed-github-codex",
+      "feed-reddit-codex",
     ]);
     expect(selection.clusters).toHaveLength(1);
     expect(selection.clusters[0]).toEqual(
@@ -575,7 +730,7 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
     const selector = new RelevanceReaderSummaryEvidenceSelector(
       rankFeedItems,
       {
-        list: jest.fn(),
+        list: jest.fn(async () => ({ items: [] })),
         findById: jest.fn(async () => null),
       },
       clock,
@@ -648,7 +803,7 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
     const selector = new RelevanceReaderSummaryEvidenceSelector(
       rankFeedItems,
       {
-        list: jest.fn(),
+        list: jest.fn(async () => ({ items: [] })),
         findById: jest.fn(async () => null),
       },
       clock,
@@ -665,7 +820,6 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
 
     expect(selection.selectedEvidence.map((item) => item.feedItemId)).toEqual([
       "feed-reddit",
-      "feed-github",
     ]);
   });
 });

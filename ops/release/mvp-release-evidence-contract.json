@@ -550,6 +550,11 @@
       "blocksRelease": true
     },
     {
+      "gateId": "summary-feedback-eval-backlog",
+      "command": "npm run check:summary-feedback-eval-backlog",
+      "blocksRelease": true
+    },
+    {
       "gateId": "summary-memory-sdk",
       "command": "npm run check:summary-memory-sdk",
       "blocksRelease": true

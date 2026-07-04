@@ -7,7 +7,9 @@ import {
   type ReaderSummaryCitation,
   type ReaderSummaryConfidence,
   type ReaderSummaryContent,
+  type ReaderSummaryClaim,
   type ReaderSummaryContextArtifact,
+  emptyReaderSummaryReliabilityReport,
   type ReaderSummaryItem,
   type ReaderSummaryLineage,
   type ReaderSummaryPeriod,
@@ -20,6 +22,22 @@ import {
   type SummaryEvidencePersonalization,
   type StoryCluster,
 } from "../../../domain";
+import {
+  nonNegativeNumber,
+  normalizeOptionalString,
+  requireArray,
+  requireDate,
+  requireObject,
+  requireString,
+  requireStringArray,
+} from "./prisma-reader-summary-payload-parsers";
+import type {
+  SerializedReaderSummaryArtifactPayload,
+  SerializedReaderSummaryContextArtifact,
+  SerializedReaderSummaryPeriod,
+  SerializedReaderSummarySourceWindow,
+  SerializedReaderSummaryStoryCluster,
+} from "./prisma-reader-summary-payload-types";
 
 export type PrismaReaderSummaryArtifactPayloadFallback = {
   readonly id: string;
@@ -195,10 +213,9 @@ const normalizeReaderSummaryStoryCluster = (
 const normalizeReaderSummaryContextArtifact = (
   value: SerializedReaderSummaryContextArtifact,
 ): ReaderSummaryContextArtifact => ({
-  ...requireObject<Omit<ReaderSummaryContextArtifact, "generatedAt" | "period">>(
-    value,
-  "Reader summary context artifact",
-  ),
+  ...requireObject<
+    Omit<ReaderSummaryContextArtifact, "generatedAt" | "period">
+  >(value, "Reader summary context artifact"),
   period: normalizeReaderSummaryPeriodPayload(value.period, {
     cadence: "daily",
     periodStartedAt: new Date("1970-01-01T00:00:00.000Z"),
@@ -240,7 +257,9 @@ const normalizeReaderSummaryPeriodPayload = (
   });
 };
 
-const normalizeReaderSummaryCadence = (value: unknown): ReaderSummaryCadence => {
+const normalizeReaderSummaryCadence = (
+  value: unknown,
+): ReaderSummaryCadence => {
   if (
     value === "daily" ||
     value === "weekly" ||
@@ -322,13 +341,34 @@ const normalizeReaderSummaryContent = (
 
   return {
     ...content,
+    mainTopics: normalizeReaderSummaryMainTopics(content.mainTopics),
     topReads: content.topReads.map(normalizeReaderSummaryItem),
+    selectedPosts: normalizeReaderSummarySelectedPosts(
+      content.selectedPosts,
+      content.topReads,
+    ),
+    claimBoard: normalizeReaderSummaryClaimBoard(content.claimBoard),
+    reliabilityReport:
+      content.reliabilityReport ?? emptyReaderSummaryReliabilityReport(),
     interestSections: content.interestSections.map((section) => ({
       ...section,
       items: section.items.map(normalizeReaderSummaryItem),
     })),
   };
 };
+
+const normalizeReaderSummaryMainTopics = (
+  value: readonly string[] | undefined,
+): readonly string[] =>
+  value === undefined
+    ? []
+    : value.map((topic) => topic.trim()).filter((topic) => topic.length > 0);
+
+const normalizeReaderSummarySelectedPosts = (
+  value: readonly ReaderSummaryItem[] | undefined,
+  fallbackTopReads: readonly ReaderSummaryItem[],
+): readonly ReaderSummaryItem[] =>
+  (value ?? fallbackTopReads).map(normalizeReaderSummaryItem);
 
 const normalizeReaderSummaryItem = (
   item: ReaderSummaryItem,
@@ -340,6 +380,16 @@ const normalizeReaderSummaryItem = (
       ? "watch_repository"
       : "read_source",
 });
+
+const normalizeReaderSummaryClaimBoard = (
+  value: unknown,
+): readonly ReaderSummaryClaim[] => {
+  if (value === undefined) {
+    return [];
+  }
+
+  return requireArray<ReaderSummaryClaim>(value, "Reader summary claim board");
+};
 
 const normalizeReaderSummaryArtifactSchemaVersion = (
   value: unknown,
@@ -368,117 +418,4 @@ const normalizeReaderSummaryLineage = (
     ...lineage,
     schemaVersion: "reader_summary.artifact.v1",
   };
-};
-
-const normalizeOptionalString = (value: unknown): string | undefined =>
-  typeof value === "string" && value.trim().length > 0 ? value : undefined;
-
-const nonNegativeNumber = (value: unknown): number =>
-  typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
-
-type SerializedReaderSummarySourceWindow = {
-  readonly windowId?: unknown;
-  readonly startedAt?: unknown;
-  readonly endedAt?: unknown;
-  readonly selectedFeedItemIds?: unknown;
-  readonly storyClusterIds?: unknown;
-};
-
-type SerializedReaderSummaryStoryCluster = Omit<
-  StoryCluster,
-  "observedAtRange"
-> & {
-  readonly observedAtRange?: {
-    readonly startedAt?: unknown;
-    readonly endedAt?: unknown;
-  };
-};
-
-type SerializedReaderSummaryContextArtifact = Omit<
-  ReaderSummaryContextArtifact,
-  "generatedAt" | "period"
-> & {
-  readonly period?: unknown;
-  readonly generatedAt?: unknown;
-};
-
-type SerializedReaderSummaryPeriod = {
-  readonly cadence?: unknown;
-  readonly startedAt?: unknown;
-  readonly endedAt?: unknown;
-  readonly timezone?: unknown;
-};
-
-type SerializedReaderSummaryArtifactPayload = {
-  readonly schemaVersion?: unknown;
-  readonly period?: unknown;
-  readonly userId?: unknown;
-  readonly subscriptionId?: unknown;
-  readonly sourceWindow?: SerializedReaderSummarySourceWindow | unknown;
-  readonly storyClusters?: unknown;
-  readonly contextArtifacts?: unknown;
-  readonly personalization?: unknown;
-  readonly headline?: unknown;
-  readonly executiveSummary?: unknown;
-  readonly readerBrief?: unknown;
-  readonly content?: unknown;
-  readonly topStories?: unknown;
-  readonly interestHighlights?: unknown;
-  readonly repeatedSignals?: unknown;
-  readonly risksAndUnknowns?: unknown;
-  readonly citationMap?: unknown;
-  readonly qualityFlags?: unknown;
-  readonly confidence?: unknown;
-  readonly lineage?: unknown;
-  readonly usage?: unknown;
-  readonly noSignalReason?: unknown;
-};
-
-const requireString = (value: unknown, fieldName: string): string => {
-  if (typeof value !== "string") {
-    throw new Error(`${fieldName} must be a string`);
-  }
-
-  return value;
-};
-
-const requireDate = (value: unknown, fieldName: string): Date => {
-  if (typeof value !== "string") {
-    throw new Error(`${fieldName} must be an ISO date string`);
-  }
-
-  const parsed = new Date(value);
-
-  if (Number.isNaN(parsed.getTime())) {
-    throw new Error(`${fieldName} must be a valid ISO date`);
-  }
-
-  return parsed;
-};
-
-const requireStringArray = (
-  value: unknown,
-  fieldName: string,
-): readonly string[] => {
-  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
-    throw new Error(`${fieldName} must be a string array`);
-  }
-
-  return value;
-};
-
-const requireArray = <T>(value: unknown, fieldName: string): readonly T[] => {
-  if (!Array.isArray(value)) {
-    throw new Error(`${fieldName} must be an array`);
-  }
-
-  return value as readonly T[];
-};
-
-const requireObject = <T>(value: unknown, fieldName: string): T => {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error(`${fieldName} must be an object`);
-  }
-
-  return value as T;
 };

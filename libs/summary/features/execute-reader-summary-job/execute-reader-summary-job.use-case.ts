@@ -61,7 +61,7 @@ const defaultModelBudget: ReaderSummaryModelBudget = {
   remainingCostUsd: 2,
 };
 
-const defaultReaderSummaryMaxEvidenceItems = 200;
+const defaultReaderSummaryMaxEvidenceItems = 120;
 
 export class ExecuteReaderSummaryJobUseCase {
   constructor(

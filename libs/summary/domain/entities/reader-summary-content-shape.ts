@@ -13,9 +13,19 @@ export const assertReaderSummaryContentShape = (
         "No-signal reader summary content must not include top reads",
       );
     }
+    if ((content.selectedPosts ?? []).length > 0) {
+      throw new Error(
+        "No-signal reader summary content must not include selected posts",
+      );
+    }
     if (content.sourceMix.length > 0) {
       throw new Error(
         "No-signal reader summary content must not include source mix",
+      );
+    }
+    if (content.claimBoard.length > 0) {
+      throw new Error(
+        "No-signal reader summary content must not include claim board",
       );
     }
 

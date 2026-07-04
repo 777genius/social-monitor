@@ -1,4 +1,5 @@
 import type { ReaderSummaryCitation } from "../entities/citation";
+import { emptyReaderSummaryReliabilityReport } from "../entities/reader-summary-reliability";
 import type { ReaderSummarySnapshot } from "../entities/reader-summary-snapshot";
 import type { SourceMixEntry } from "../entities/source-mix-entry";
 import type {
@@ -16,11 +17,13 @@ import {
 } from "../policies/source-mix-quality-policy";
 import { buildInterestSections } from "../policies/reader-interest-section-policy";
 import { selectUniqueTopReadCandidates } from "../policies/top-read-selection-policy";
+import { buildReaderSummaryReliabilityReport } from "../policies/reader-summary-reliability-calibration-policy";
 import type {
+  SummaryEvidenceSelection,
   StoryCluster,
   SummaryEvidenceItem,
+  SummarySourceWindow,
 } from "../value-objects/summary-evidence-item";
-import { normalizeSignalScore } from "../value-objects/signal-score";
 import type { ReaderSummaryQualityFlag } from "../value-objects/summary-quality";
 import {
   compactUnique,
@@ -32,17 +35,19 @@ import {
 import {
   buildBestFirstReadBullet,
   buildGroundedOneLineTakeaway,
-  buildMatchedRules,
-  buildWhyNow,
-  confirmedProviderKeys,
   groundedReaderHeadline,
-  readerItemConfidence,
-  storyProviderMetricLabels,
 } from "../services/reader-summary-support";
+import {
+  evidenceClusterMap,
+  storyToTopRead,
+} from "../services/reader-summary-top-read-builder";
+import { buildReaderSummaryMainTopics } from "../services/reader-summary-main-topics";
+import { buildReaderSummarySelectedPosts } from "../services/reader-summary-selected-posts";
 import {
   buildOpenQuestions,
   providerNameForKey,
 } from "./reader-summary-open-questions";
+import { buildReaderSummaryClaimBoard } from "../services/reader-summary-claim-board";
 
 export type ReaderSummaryFactoryInput = {
   readonly headline: string;
@@ -53,13 +58,13 @@ export type ReaderSummaryFactoryInput = {
   readonly risksAndUnknowns: readonly ReaderSummaryRisk[];
   readonly citationMap: readonly ReaderSummaryCitation[];
   readonly storyClusters: readonly StoryCluster[];
+  readonly sourceWindow?: SummarySourceWindow;
   readonly selectedEvidence?: readonly SummaryEvidenceItem[];
   readonly qualityFlags: readonly ReaderSummaryQualityFlag[];
   readonly noSignalReason?: string;
 };
 
 const maxReaderTopReads = 10;
-const maxTopReadCitationIds = 4;
 
 export class ReaderSummary {
   private constructor(private readonly snapshot: ReaderSummarySnapshot) {}
@@ -127,6 +132,11 @@ export class ReaderSummary {
       input.qualityFlags,
       sourceMix,
     );
+    const selectedPosts = buildReaderSummarySelectedPosts({
+      topReads,
+      selectedEvidence: input.selectedEvidence,
+      citationById,
+    });
 
     return ReaderSummary.create({
       headline: groundedReaderHeadline({
@@ -140,10 +150,26 @@ export class ReaderSummary {
         sourceMix,
       }),
       bullets: buildReaderSummaryBullets(readerInput, topReads),
+      mainTopics: buildReaderSummaryMainTopics({
+        topReads,
+        topStories: readerTopStories,
+        interestHighlights: input.interestHighlights,
+        repeatedSignals: input.repeatedSignals,
+        selectedEvidence: input.selectedEvidence,
+      }),
       qualityState,
       interestSections: buildInterestSections(readerInput),
       sourceMix,
       topReads,
+      selectedPosts,
+      claimBoard: buildReaderSummaryClaimBoard({
+        topReads,
+        risksAndUnknowns: input.risksAndUnknowns,
+        citationMap: input.citationMap,
+      }),
+      reliabilityReport: buildReaderSummaryReliabilityReport(
+        reliabilitySelectionFromInput(input),
+      ),
       trendDelta: buildTrendDelta(readerInput, topReads, sourceMix),
       openQuestions: buildOpenQuestions(
         input.qualityFlags,
@@ -165,9 +191,16 @@ export class ReaderSummary {
     return {
       ...this.snapshot,
       bullets: [...this.snapshot.bullets],
+      mainTopics: [...(this.snapshot.mainTopics ?? [])],
       interestSections: [...this.snapshot.interestSections],
       sourceMix: [...this.snapshot.sourceMix],
       topReads: [...this.snapshot.topReads],
+      selectedPosts: [...(this.snapshot.selectedPosts ?? [])],
+      claimBoard: [...this.snapshot.claimBoard],
+      reliabilityReport: {
+        ...this.snapshot.reliabilityReport,
+        risks: [...this.snapshot.reliabilityReport.risks],
+      },
       openQuestions: [...this.snapshot.openQuestions],
       risks: [...this.snapshot.risks],
       nextActions: [...this.snapshot.nextActions],
@@ -201,9 +234,13 @@ const buildNoSignalReaderSummary = (
       ],
       isSingleSource: false,
     },
+    mainTopics: [],
     interestSections: [],
     sourceMix: [],
     topReads: [],
+    selectedPosts: [],
+    claimBoard: [],
+    reliabilityReport: emptyReaderSummaryReliabilityReport(),
     trendDelta: {
       newSignals: [],
       growingSignals: [],
@@ -224,170 +261,42 @@ const buildNoSignalReaderSummary = (
   };
 };
 
-const storyToTopRead = (
-  story: TopReadCandidate,
-  citationById: ReadonlyMap<string, ReaderSummaryCitation>,
-  evidenceByFeedItemId: ReadonlyMap<string, SummaryEvidenceItem>,
-  clusterById: ReadonlyMap<string, StoryCluster>,
-  evidenceByClusterId: ReadonlyMap<string, readonly SummaryEvidenceItem[]>,
-): TopRead => {
-  const modelCitations = story.citationIds
-    .map((citationId) => citationById.get(citationId))
-    .filter(
-      (citation): citation is ReaderSummaryCitation => citation !== undefined,
-    );
-  const modelCitedEvidence = modelCitations
-    .map((citation) => evidenceByFeedItemId.get(citation.feedItemId))
-    .filter((item): item is SummaryEvidenceItem => item !== undefined);
-  const cluster = clusterById.get(story.storyClusterId);
-  const clusterEvidence =
-    cluster === undefined
-      ? modelCitedEvidence
-      : (evidenceByClusterId.get(cluster.id) ?? modelCitedEvidence);
-  const citationIdByFeedItemId = new Map(
-    [...citationById.values()].map(
-      (citation) => [citation.feedItemId, citation.citationId] as const,
-    ),
-  );
-  const citationIds = compactUnique([
-    ...story.citationIds,
-    ...clusterEvidence.map((item) =>
-      citationIdByFeedItemId.get(item.feedItemId),
-    ),
-  ]).slice(0, maxTopReadCitationIds);
-  const citations = citationIds
-    .map((citationId) => citationById.get(citationId))
-    .filter(
-      (citation): citation is ReaderSummaryCitation => citation !== undefined,
-    );
-  const citedEvidence = citations
-    .map((citation) => evidenceByFeedItemId.get(citation.feedItemId))
-    .filter((item): item is SummaryEvidenceItem => item !== undefined);
-  const citation = citations[0];
-  const evidence = citedEvidence[0] ?? clusterEvidence[0];
-  const providerKey =
-    citation?.providerKey ??
-    evidence?.providerKey ??
-    story.providerKeys[0] ??
-    cluster?.providerKeys[0] ??
-    "unknown";
-  const providerName = evidence?.providerName ?? providerKey;
-  const matchedInterestIds = uniqueNonEmpty([
-    ...story.interestIds,
-    ...(cluster?.interestIds ?? []),
-    ...citedEvidence.map((item) => item.interestId),
-  ]);
-  const whyImportant = buildTopReadUserFacingReasons({
-    story,
-    cluster,
-    evidence: clusterEvidence,
-  });
-  const signalScore = normalizeSignalScore(
-    cluster?.score ?? evidence?.score ?? 0,
-  );
-  const confirmedProviders = confirmedProviderKeys({
-    cluster,
-    evidence: clusterEvidence,
-    providerKey,
-  });
+const reliabilitySelectionFromInput = (
+  input: ReaderSummaryFactoryInput,
+): SummaryEvidenceSelection | undefined => {
+  if (input.selectedEvidence === undefined) {
+    return undefined;
+  }
 
   return {
-    title: story.title,
-    providerKey,
-    providerName,
-    primaryActionKind: evidence?.readerActionKind ?? "read_source",
-    reason: whyImportant[0] ?? story.summary,
-    matchedInterestIds:
-      matchedInterestIds.length > 0 ? matchedInterestIds : ["unknown-interest"],
-    matchedRules: buildMatchedRules(
-      citedEvidence,
-      matchedInterestIds,
-      providerKey,
-    ),
-    signalScore,
-    confidence: readerItemConfidence({
-      cluster,
-      evidenceCount: Math.max(
-        clusterEvidence.length,
-        cluster === undefined ? 0 : 1 + cluster.duplicateFeedItemIds.length,
-      ),
-      confirmedProviderCount: confirmedProviders.length,
-      signalScore,
-    }),
-    confirmedProviderKeys: confirmedProviders,
-    providerMetrics: storyProviderMetricLabels({
-      evidence: clusterEvidence,
-      representativeMetricLabels: evidence?.providerMetricLabels,
-    }),
-    whyImportant,
-    whyNow: buildWhyNow(cluster, story.providerKeys, clusterEvidence),
-    canonicalUrl: citation?.canonicalUrl ?? evidence?.canonicalUrl,
-    previewMedia: selectTopReadPreviewMedia(evidence, clusterEvidence),
-    citationIds,
+    rankingPolicyVersion:
+      input.storyClusters[0]?.rankingPolicyVersion ?? "unknown",
+    sourceWindow:
+      input.sourceWindow ??
+      fallbackSourceWindow(input.selectedEvidence, input.storyClusters),
+    clusters: input.storyClusters,
+    selectedEvidence: input.selectedEvidence,
   };
 };
 
-const selectTopReadPreviewMedia = (
-  representative: SummaryEvidenceItem | undefined,
-  evidence: readonly SummaryEvidenceItem[],
-): TopRead["previewMedia"] =>
-  representative?.previewMedia ??
-  evidence.find((item) => item.previewMedia !== undefined)?.previewMedia;
-
-const buildTopReadUserFacingReasons = (params: {
-  readonly story: TopReadCandidate;
-  readonly cluster: StoryCluster | undefined;
-  readonly evidence: readonly SummaryEvidenceItem[];
-}): readonly string[] => {
-  const candidates = compactUnique([
-    ...(params.cluster?.whyImportant ?? []),
-    ...params.evidence.flatMap((item) => item.whyImportant),
-    params.story.summary,
-  ]).filter(isUserFacingTopReadReason);
-
-  if (candidates.length > 0) {
-    return candidates.slice(0, 4);
-  }
-
-  return [`Source-reported: ${params.story.title}`];
-};
-
-const isUserFacingTopReadReason = (value: string): boolean => {
-  const lower = value.trim().toLowerCase();
-
-  return (
-    lower.length > 0 &&
-    !lower.startsWith("story signal score") &&
-    !lower.startsWith("current summary window has") &&
-    lower !== "strong source engagement signal" &&
-    lower !== "passes source quality and interest relevance gate" &&
-    lower !== "fresh item in the current monitoring window" &&
-    !/^clustered \d+ (?:similar|related) items?$/u.test(lower) &&
-    !lower.includes("citation references bodypreview evidence") &&
-    !lower.includes("source item source-binding") &&
-    !lower.includes("bodypreview evidence from source item")
-  );
-};
-
-const evidenceClusterMap = (
-  clusters: readonly StoryCluster[],
-  evidenceByFeedItemId: ReadonlyMap<string, SummaryEvidenceItem>,
-): ReadonlyMap<string, readonly SummaryEvidenceItem[]> => {
-  const result = new Map<string, readonly SummaryEvidenceItem[]>();
-
-  for (const cluster of clusters) {
-    const evidence = [
-      cluster.representativeFeedItemId,
-      ...cluster.duplicateFeedItemIds,
-    ]
-      .map((feedItemId) => evidenceByFeedItemId.get(feedItemId))
-      .filter((item): item is SummaryEvidenceItem => item !== undefined);
-
-    result.set(cluster.id, evidence);
-  }
-
-  return result;
-};
+const fallbackSourceWindow = (
+  selectedEvidence: readonly SummaryEvidenceItem[],
+  storyClusters: readonly StoryCluster[],
+): SummarySourceWindow => ({
+  windowId: "reader-summary-input",
+  startedAt:
+    selectedEvidence
+      .map((item) => item.observedAt)
+      .sort((left, right) => left.getTime() - right.getTime())
+      .at(0) ?? new Date(0),
+  endedAt:
+    selectedEvidence
+      .map((item) => item.observedAt)
+      .sort((left, right) => right.getTime() - left.getTime())
+      .at(0) ?? new Date(0),
+  selectedFeedItemIds: selectedEvidence.map((item) => item.feedItemId),
+  storyClusterIds: storyClusters.map((cluster) => cluster.id),
+});
 
 const buildReaderSummaryBullets = (
   input: ReaderSummaryFactoryInput,
@@ -419,7 +328,9 @@ const buildTrendDelta = (
 ): ReaderTrendDelta => {
   const interestSignals = uniqueNonEmpty([
     ...input.interestHighlights.map((highlight) => highlight.title),
-    ...input.topStories.flatMap((story) => story.interestIds.map(interestTitle)),
+    ...input.topStories.flatMap((story) =>
+      story.interestIds.map(interestTitle),
+    ),
   ]);
   const totalReads = topReads.length;
   const newSignal =

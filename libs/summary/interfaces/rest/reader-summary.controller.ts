@@ -26,18 +26,25 @@ import {
 
 import type { ReaderSummaryCadence, ReaderSummaryScope } from "../../domain";
 import { GetReaderSummaryUseCase } from "../../features/get-reader-summary/get-reader-summary.use-case";
+import { ListReaderSummaryPeriodsUseCase } from "../../features/list-reader-summary-periods/list-reader-summary-periods.use-case";
 import { ListReaderSummariesUseCase } from "../../features/list-reader-summaries/list-reader-summaries.use-case";
 import {
   readerSummaryResponseFromReaderSummary,
+  listReaderSummaryPeriodsResponseFromReaderSummaryPeriods,
   listReaderSummariesResponseFromReaderSummaries,
 } from "./reader-summary-rest.mapper";
-import { ReaderSummaryResponseDto, ListReaderSummariesResponseDto } from "./reader-summary.dto";
+import {
+  ReaderSummaryResponseDto,
+  ListReaderSummariesResponseDto,
+  ListReaderSummaryPeriodsResponseDto,
+} from "./reader-summary.dto";
 
 @ApiTags("reader-summaries")
 @Controller("reader-summaries")
 export class ReaderSummaryController {
   constructor(
     private readonly listReaderSummaries: ListReaderSummariesUseCase,
+    private readonly listReaderSummaryPeriods: ListReaderSummaryPeriodsUseCase,
     private readonly getReaderSummary: GetReaderSummaryUseCase,
     private readonly apiKeyRequestAuthorizer: ApiKeyRequestAuthorizer,
     @Inject(WORKSPACE_AUTHORIZATION_POLICY)
@@ -150,6 +157,101 @@ export class ReaderSummaryController {
     }
 
     return listReaderSummariesResponseFromReaderSummaries(result.value);
+  }
+
+  @Get("periods")
+  @ApiOperation({
+    summary: "List lightweight reader summary periods for calendars.",
+  })
+  @ApiHeader({ name: "x-tenant-id", required: true })
+  @ApiHeader({ name: "x-workspace-id", required: true })
+  @ApiKeyOrWorkspaceRoleAuth({
+    apiKeyScope: "read:summaries",
+    workspaceRoleDescription:
+      "Comma-separated workspace roles. ReaderSummary reads allow owner, admin, member or viewer.",
+  })
+  @ApiQuery({
+    name: "scopeType",
+    required: false,
+    enum: ["workspace", "interest"],
+  })
+  @ApiQuery({ name: "interestId", required: false, type: String })
+  @ApiQuery({
+    name: "cadence",
+    required: false,
+    enum: ["daily", "weekly", "monthly", "custom"],
+  })
+  @ApiQuery({ name: "periodStartedAt", required: false, type: String })
+  @ApiQuery({ name: "periodStartedFrom", required: false, type: String })
+  @ApiQuery({ name: "periodStartedBefore", required: false, type: String })
+  @ApiQuery({ name: "periodEndedAt", required: false, type: String })
+  @ApiQuery({ name: "timezone", required: false, type: String })
+  @ApiQuery({ name: "limit", required: false, type: Number })
+  @ApiQuery({ name: "cursor", required: false, type: String })
+  @ApiOkResponse({ type: ListReaderSummaryPeriodsResponseDto })
+  async listPeriods(
+    @Headers("x-tenant-id") tenantHeader: string | undefined,
+    @Headers("x-workspace-id") workspaceHeader: string | undefined,
+    @Headers("x-workspace-role") workspaceRoleHeader: string | undefined,
+    @Headers("authorization") authorizationHeader: string | undefined,
+    @Query("scopeType") scopeType: string | undefined,
+    @Query("interestId") interestId: string | undefined,
+    @Query("cadence") cadence: string | undefined,
+    @Query("periodStartedAt") periodStartedAt: string | undefined,
+    @Query("periodStartedFrom") periodStartedFrom: string | undefined,
+    @Query("periodStartedBefore") periodStartedBefore: string | undefined,
+    @Query("periodEndedAt") periodEndedAt: string | undefined,
+    @Query("timezone") timezone: string | undefined,
+    @Query("limit") limitQuery: string | undefined,
+    @Query("cursor") cursor: string | undefined,
+  ): Promise<ListReaderSummaryPeriodsResponseDto> {
+    const scope = requireTenantScope({
+      tenantIdHeader: tenantHeader,
+      workspaceIdHeader: workspaceHeader,
+    });
+    await this.authorizeReaderSummaryRead(
+      scope.tenantId,
+      scope.workspaceId,
+      workspaceRoleHeader,
+      authorizationHeader,
+    );
+
+    const result = await this.listReaderSummaryPeriods.execute({
+      tenantId: scope.tenantId,
+      workspaceId: scope.workspaceId,
+      scope: normalizeReaderSummaryScopeQuery(scopeType, interestId),
+      cadence: normalizeReaderSummaryCadenceFilter(cadence),
+      periodStartedAt: normalizeReaderSummaryDateFilter(
+        periodStartedAt,
+        "periodStartedAt",
+      ),
+      periodStartedFrom: normalizeReaderSummaryDateFilter(
+        periodStartedFrom,
+        "periodStartedFrom",
+      ),
+      periodStartedBefore: normalizeReaderSummaryDateFilter(
+        periodStartedBefore,
+        "periodStartedBefore",
+      ),
+      periodEndedAt: normalizeReaderSummaryDateFilter(
+        periodEndedAt,
+        "periodEndedAt",
+      ),
+      timezone: normalizeOptionalReaderSummaryFilter(timezone),
+      limit: parsePaginationLimit(limitQuery, {
+        defaultLimit: 40,
+        invalidMessage: "ReaderSummary page limit must be between 1 and 100",
+      }),
+      cursor,
+    });
+
+    if (!result.ok) {
+      throw result.error;
+    }
+
+    return listReaderSummaryPeriodsResponseFromReaderSummaryPeriods(
+      result.value,
+    );
   }
 
   @Get(":readerSummaryId")

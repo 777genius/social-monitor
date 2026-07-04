@@ -16,6 +16,8 @@ import {
   type AutoSummaryCandidateRepositoryPort,
   type ReaderSummaryArtifactRepositoryPort,
   type ReaderSummaryContextProviderPort,
+  READER_SUMMARY_COVERAGE_COUNTER,
+  type ReaderSummaryCoverageCounterPort,
   type ReaderSummaryEvidenceSelectorPort,
   type ReaderSummaryJobRepositoryPort,
   type ReaderSummaryJobQueuePort,
@@ -36,18 +38,12 @@ import {
 export type SummaryPersistenceMode = "in-memory" | "prisma";
 export type SummaryJobQueueMode = "in-memory" | "rabbitmq";
 export type SummaryModelProviderMode =
-  | "deterministic"
-  | "openai-responses"
-  | "agent-runtime";
+  "deterministic" | "openai-responses" | "agent-runtime";
 export type ReaderSummaryModelProviderMode =
-  | "deterministic"
-  | "openai-responses"
-  | "agent-runtime";
+  "deterministic" | "openai-responses" | "agent-runtime";
 export type SummaryMemoryMode = "disabled" | "memo-stack";
 export type SummaryYoutubeVideoSummaryProviderMode =
-  | "disabled"
-  | "deterministic"
-  | "google-gemini";
+  "disabled" | "deterministic" | "google-gemini";
 
 export const SUMMARY_PERSISTENCE_MODE = Symbol("SUMMARY_PERSISTENCE_MODE");
 export const SUMMARY_JOB_QUEUE_MODE = Symbol("SUMMARY_JOB_QUEUE_MODE");
@@ -140,6 +136,7 @@ export type SummaryProviderTokenMap = {
   readonly [READER_SUMMARY_ARTIFACT_REPOSITORY]: ReaderSummaryArtifactRepositoryPort;
   readonly [READER_SUMMARY_POLICY_REPOSITORY]: ReaderSummaryPolicyRepositoryPort;
   readonly [READER_SUMMARY_CONTEXT_PROVIDER]: ReaderSummaryContextProviderPort;
+  readonly [READER_SUMMARY_COVERAGE_COUNTER]: ReaderSummaryCoverageCounterPort;
   readonly [READER_SUMMARY_PREVIEW_MEDIA_ENRICHER]: ReaderSummaryPreviewMediaEnricherPort;
 };
 

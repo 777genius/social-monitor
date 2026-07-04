@@ -22,6 +22,7 @@ import { CryptoIdGenerator, SystemClock } from "@social-monitor/shared-kernel";
 import { ReaderSummaryArtifactContextProvider } from "../../adapters/context/reader-summary-artifact-context.provider";
 import { ConversationEvidenceContextReader } from "../../adapters/evidence/conversation-evidence-context.reader";
 import { ConversationReaderSummaryEvidenceSelector } from "../../adapters/evidence/conversation-reader-summary-evidence.selector";
+import { FeedReaderSummaryCoverageCounter } from "../../adapters/evidence/feed-reader-summary-coverage.counter";
 import { FeedReaderSummaryFreshnessProbe } from "../../adapters/evidence/feed-reader-summary-freshness.probe";
 import { FeedReaderSummaryPreviewMediaEnricher } from "../../adapters/evidence/feed-reader-summary-preview-media.enricher";
 import { RelevanceReaderSummaryEvidenceSelector } from "../../adapters/evidence/relevance-reader-summary-evidence.selector";
@@ -46,12 +47,15 @@ import { PrismaReaderSummaryPolicyRepository } from "../../adapters/persistence/
 import { ExecuteReaderSummaryJobUseCase } from "../../features/execute-reader-summary-job/execute-reader-summary-job.use-case";
 import { GetReaderSummaryJobStatusUseCase } from "../../features/get-reader-summary-job-status/get-reader-summary-job-status.use-case";
 import { GetReaderSummaryUseCase } from "../../features/get-reader-summary/get-reader-summary.use-case";
+import { ListReaderSummaryPeriodsUseCase } from "../../features/list-reader-summary-periods/list-reader-summary-periods.use-case";
 import { ListReaderSummariesUseCase } from "../../features/list-reader-summaries/list-reader-summaries.use-case";
 import { RequestReaderSummaryUseCase } from "../../features/request-reader-summary/request-reader-summary.use-case";
 import {
   NOOP_READER_SUMMARY_CONTEXT_PROVIDER,
+  READER_SUMMARY_COVERAGE_COUNTER,
   type ReaderSummaryArtifactRepositoryPort,
   type ReaderSummaryContextProviderPort,
+  type ReaderSummaryCoverageCounterPort,
   type ReaderSummaryEvidenceSelectorPort,
   type ReaderSummaryJobRepositoryPort,
   type ReaderSummaryJobQueuePort,
@@ -223,6 +227,14 @@ export const summaryReaderSummaryProviders: Provider[] = [
     inject: [FEED_ITEM_READ_REPOSITORY],
   },
   {
+    provide: READER_SUMMARY_COVERAGE_COUNTER,
+    useFactory: (
+      feedItems: FeedItemReadRepositoryPort,
+    ): ReaderSummaryCoverageCounterPort =>
+      new FeedReaderSummaryCoverageCounter(feedItems),
+    inject: [FEED_ITEM_READ_REPOSITORY],
+  },
+  {
     provide: READER_SUMMARY_PREVIEW_MEDIA_ENRICHER,
     useFactory: (
       feedItems: FeedItemReadRepositoryPort,
@@ -338,16 +350,19 @@ export const summaryReaderSummaryProviders: Provider[] = [
       readerSummaryArtifacts: ReaderSummaryArtifactRepositoryPort,
       freshness: FeedReaderSummaryFreshnessProbe,
       previewMediaEnricher: ReaderSummaryPreviewMediaEnricherPort,
+      coverageCounter: ReaderSummaryCoverageCounterPort,
     ) =>
       new GetReaderSummaryUseCase(
         readerSummaryArtifacts,
         freshness,
         previewMediaEnricher,
+        coverageCounter,
       ),
     inject: [
       READER_SUMMARY_ARTIFACT_REPOSITORY,
       FeedReaderSummaryFreshnessProbe,
       READER_SUMMARY_PREVIEW_MEDIA_ENRICHER,
+      READER_SUMMARY_COVERAGE_COUNTER,
     ],
   },
   {
@@ -356,17 +371,26 @@ export const summaryReaderSummaryProviders: Provider[] = [
       readerSummaryArtifacts: ReaderSummaryArtifactRepositoryPort,
       freshness: FeedReaderSummaryFreshnessProbe,
       previewMediaEnricher: ReaderSummaryPreviewMediaEnricherPort,
+      coverageCounter: ReaderSummaryCoverageCounterPort,
     ) =>
       new ListReaderSummariesUseCase(
         readerSummaryArtifacts,
         freshness,
         previewMediaEnricher,
+        coverageCounter,
       ),
     inject: [
       READER_SUMMARY_ARTIFACT_REPOSITORY,
       FeedReaderSummaryFreshnessProbe,
       READER_SUMMARY_PREVIEW_MEDIA_ENRICHER,
+      READER_SUMMARY_COVERAGE_COUNTER,
     ],
+  },
+  {
+    provide: ListReaderSummaryPeriodsUseCase,
+    useFactory: (readerSummaryArtifacts: ReaderSummaryArtifactRepositoryPort) =>
+      new ListReaderSummaryPeriodsUseCase(readerSummaryArtifacts),
+    inject: [READER_SUMMARY_ARTIFACT_REPOSITORY],
   },
   {
     provide: GetReaderSummaryJobStatusUseCase,

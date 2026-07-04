@@ -13,6 +13,7 @@ import { readPrivateEvidenceJsonFile } from './lib/evidence-env-file.mjs';
 const evidencePath = 'ops/release/summary-feedback-hardening-evidence.json';
 const feedbackPath = 'ops/release/beta-feedback-classification-report.json';
 const evalOutputPath = 'ops/evals/summary-eval-output.json';
+const evalBacklogPath = 'ops/evals/summary-feedback-eval-backlog.v1.json';
 const costPath = 'ops/cost/summary-cost-attribution.json';
 const packagePath = 'package.json';
 const envExamplePath = 'ops/release/external-beta-evidence.env.example';
@@ -48,6 +49,8 @@ const dogfoodCaptureScriptPath = 'scripts/capture-summary-feedback-dogfood-sampl
 const exportScript = 'export:summary-feedback-samples';
 const exportScriptPath = 'scripts/export-summary-feedback-samples.ts';
 const captureCheckScript = 'check:summary-feedback-sample-capture';
+const evalBacklogScript = 'check:summary-feedback-eval-backlog';
+const evalBacklogGateId = 'summary-feedback-eval-backlog';
 const redactedSampleFormat = 'redacted-summary-feedback-samples-v1';
 const redactedSampleEvidenceKind = 'redacted_real_feedback_samples';
 const allowedActionTypes = new Set(['eval_fixture', 'validator_change', 'runbook_action']);
@@ -103,6 +106,7 @@ const requiredInvariantIds = new Set([
   'summary-cost-budget-attributed',
   'summary-window-stale-markers',
   'summary-retry-safety',
+  'summary-feedback-eval-label-backlog',
 ]);
 const requiredFeedbackFixtureIds = new Set([
   'feedback-wrong-fact-grounding',
@@ -1222,6 +1226,9 @@ function requireWiring() {
   if (!scripts[captureCheckScript]) {
     violations.push(`${packagePath}: missing ${captureCheckScript}`);
   }
+  if (!String(scripts[evalBacklogScript] ?? '').includes('scripts/check-summary-feedback-eval-backlog.ts')) {
+    violations.push(`${packagePath}: ${evalBacklogScript} must run scripts/check-summary-feedback-eval-backlog.ts`);
+  }
   const dogfoodCaptureSource = existsSync(dogfoodCaptureScriptPath)
     ? readFileSync(dogfoodCaptureScriptPath, 'utf8')
     : '';
@@ -1261,11 +1268,20 @@ function requireWiring() {
   if (!backendScripts.has(captureCheckScript)) {
     violations.push(`${backendSafePath}: backend-safe verify must include ${captureCheckScript}`);
   }
+  if (!backendScripts.has(evalBacklogScript)) {
+    violations.push(`${backendSafePath}: backend-safe verify must include ${evalBacklogScript}`);
+  }
   if (!releaseGateIds.has(gateId)) {
     violations.push(`${releaseContractPath}: missing ${gateId} release gate`);
   }
+  if (!releaseGateIds.has(evalBacklogGateId)) {
+    violations.push(`${releaseContractPath}: missing ${evalBacklogGateId} release gate`);
+  }
   if (!releaseGateCommands.has(gateCommand)) {
     violations.push(`${releaseContractPath}: release gates must include ${gateScript}`);
+  }
+  if (!releaseGateCommands.has(`npm run ${evalBacklogScript}`)) {
+    violations.push(`${releaseContractPath}: release gates must include ${evalBacklogScript}`);
   }
 
   if (mvpLoopDomain === undefined) {
@@ -1274,11 +1290,20 @@ function requireWiring() {
     if (!mvpLoopDomain.gates?.includes(gateScript)) {
       violations.push(`${backendOpsPath}: mvp-loop must include ${gateScript}`);
     }
+    if (!mvpLoopDomain.gates?.includes(evalBacklogScript)) {
+      violations.push(`${backendOpsPath}: mvp-loop must include ${evalBacklogScript}`);
+    }
     if (!mvpLoopDomain.releaseGateIds?.includes(gateId)) {
       violations.push(`${backendOpsPath}: mvp-loop must include ${gateId} release gate`);
     }
+    if (!mvpLoopDomain.releaseGateIds?.includes(evalBacklogGateId)) {
+      violations.push(`${backendOpsPath}: mvp-loop must include ${evalBacklogGateId} release gate`);
+    }
     if (!mvpLoopDomain.artifacts?.includes(evidencePath)) {
       violations.push(`${backendOpsPath}: mvp-loop must include ${evidencePath}`);
+    }
+    if (!mvpLoopDomain.artifacts?.includes(evalBacklogPath)) {
+      violations.push(`${backendOpsPath}: mvp-loop must include ${evalBacklogPath}`);
     }
   }
 

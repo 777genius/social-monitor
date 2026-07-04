@@ -1,4 +1,5 @@
 import type {
+  PostRating,
   RelevanceFeedbackReason,
   RelevanceFeedbackSignal,
   SourceContentQualityVerdict,
@@ -25,11 +26,26 @@ export type RelevanceFeedbackSignalView = {
   readonly rating?: number;
   readonly target: {
     readonly feedItemId?: string;
+    readonly sourceItemId?: string;
     readonly interestId: string;
     readonly providerKey: string;
     readonly feedbackReason?: RelevanceFeedbackReason;
   };
   readonly createdAt: string;
+};
+
+export type PostRatingView = {
+  readonly feedbackId: string;
+  readonly userId: string;
+  readonly rating: number;
+  readonly learningEffect: PostRating['learningEffect'];
+  readonly reason?: PostRating['reason'];
+  readonly target: {
+    readonly feedItemId?: string;
+    readonly sourceItemId?: string;
+    readonly interestId: string;
+  };
+  readonly ratedAt: string;
 };
 
 export type SourceContentSafetyView = {
@@ -79,6 +95,7 @@ export const presentRelevanceFeedbackSignal = (
     rating: snapshot.rating,
     target: {
       feedItemId: snapshot.target.feedItemId,
+      sourceItemId: snapshot.target.sourceItemId,
       interestId: snapshot.target.interestId,
       providerKey: snapshot.target.providerKey,
       feedbackReason: snapshot.target.feedbackReason,
@@ -86,6 +103,20 @@ export const presentRelevanceFeedbackSignal = (
     createdAt: snapshot.createdAt.toISOString(),
   };
 };
+
+export const presentPostRating = (rating: PostRating): PostRatingView => ({
+  feedbackId: rating.feedbackId,
+  userId: rating.userId,
+  rating: rating.rating,
+  learningEffect: rating.learningEffect,
+  reason: rating.reason,
+  target: {
+    feedItemId: rating.target.feedItemId,
+    sourceItemId: rating.target.sourceItemId,
+    interestId: rating.target.interestId,
+  },
+  ratedAt: rating.ratedAt.toISOString(),
+});
 
 export const presentSourceContentSafety = (
   safety: SourceContentSafetyVerdict,

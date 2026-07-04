@@ -1,6 +1,10 @@
 import type { MetricsRecorderPort } from "@social-monitor/platform-metrics";
 
-import { buildStoryRankingTelemetrySnapshot } from "../../domain";
+import {
+  buildStoryRankingTelemetrySnapshot,
+  readerSummaryReliabilityRiskKinds,
+  summaryEvidenceCoverageWarnings,
+} from "../../domain";
 import type { StoryRankingMetricsPort } from "../../ports";
 import type { SummaryEvidenceSelection } from "../../domain";
 
@@ -51,5 +55,86 @@ export class StoryRankingMetricsRecorder implements StoryRankingMetricsPort {
         top_provider_key: snapshot.topProviderKey,
       },
     });
+    this.metrics.recordGauge({
+      name: "summary_story_ranking_selected_evidence_total",
+      value: snapshot.evidenceProfile.selectedEvidenceCount,
+      labels,
+    });
+    this.metrics.recordGauge({
+      name: "summary_story_ranking_provider_count",
+      value: snapshot.evidenceProfile.providerCount,
+      labels,
+    });
+    this.metrics.recordGauge({
+      name: "summary_story_ranking_top_read_eligible_total",
+      value: snapshot.evidenceProfile.topReadEligibleCount,
+      labels,
+    });
+    this.metrics.recordGauge({
+      name: "summary_story_ranking_downranked_evidence_total",
+      value: snapshot.evidenceProfile.downrankedEvidenceCount,
+      labels,
+    });
+    this.metrics.recordGauge({
+      name: "summary_story_ranking_conversation_context_total",
+      value: snapshot.evidenceProfile.conversationContextItemCount,
+      labels,
+    });
+
+    for (const provider of snapshot.evidenceProfile.providerCounts) {
+      this.metrics.recordGauge({
+        name: "summary_story_ranking_provider_evidence_total",
+        value: provider.count,
+        labels: {
+          ...labels,
+          provider_key: provider.providerKey,
+        },
+      });
+    }
+
+    const activeWarnings = new Set(snapshot.coverageWarnings);
+    for (const warning of summaryEvidenceCoverageWarnings) {
+      this.metrics.recordGauge({
+        name: "summary_story_ranking_coverage_warning_present",
+        value: activeWarnings.has(warning) ? 1 : 0,
+        labels: {
+          ...labels,
+          coverage_warning: warning,
+        },
+      });
+    }
+
+    this.metrics.recordGauge({
+      name: "summary_reliability_shadow_risk_score",
+      value: snapshot.reliabilityReport.riskScore,
+      labels: {
+        ...labels,
+        risk_level: snapshot.reliabilityReport.riskLevel,
+      },
+    });
+
+    const activeRisks = new Map(
+      snapshot.reliabilityReport.risks.map((risk) => [risk.kind, risk] as const),
+    );
+    for (const riskKind of readerSummaryReliabilityRiskKinds) {
+      const risk = activeRisks.get(riskKind);
+      this.metrics.recordGauge({
+        name: "summary_reliability_shadow_risk_present",
+        value: risk === undefined ? 0 : 1,
+        labels: {
+          ...labels,
+          risk_kind: riskKind,
+          risk_level: risk?.level ?? "none",
+        },
+      });
+      this.metrics.recordGauge({
+        name: "summary_reliability_shadow_risk_value",
+        value: risk?.score ?? 0,
+        labels: {
+          ...labels,
+          risk_kind: riskKind,
+        },
+      });
+    }
   }
 }

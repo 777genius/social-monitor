@@ -3,9 +3,17 @@ import type {
   SummaryEvidenceSelection,
   StoryCluster,
 } from "../value-objects/summary-evidence-item";
+import {
+  buildSummaryEvidenceProfile,
+  type SummaryEvidenceCoverageWarning,
+  type SummaryEvidenceProfile,
+} from "../policies/summary-evidence-profile-policy";
+import { buildReaderSummaryReliabilityReport } from "../policies/reader-summary-reliability-calibration-policy";
+import type { ReaderSummaryReliabilityReport } from "../entities/reader-summary-reliability";
 
 export type StoryRankingTelemetrySnapshot = {
   readonly rankingPolicyVersion: string;
+  readonly evidenceProfile: SummaryEvidenceProfile;
   readonly clusterCount: number;
   readonly averageStorySignal: number;
   readonly crossProviderClusterShare: number;
@@ -15,6 +23,8 @@ export type StoryRankingTelemetrySnapshot = {
   readonly clustersWithoutProviderMetrics: number;
   readonly topProviderKey?: string;
   readonly topProviderClusterShare: number;
+  readonly coverageWarnings: readonly SummaryEvidenceCoverageWarning[];
+  readonly reliabilityReport: ReaderSummaryReliabilityReport;
 };
 
 export const buildStoryRankingTelemetrySnapshot = (
@@ -29,9 +39,11 @@ export const buildStoryRankingTelemetrySnapshot = (
     sameProviderDuplicateCount(cluster, evidenceById),
   );
   const topProvider = topRepresentativeProvider(clusters, evidenceById);
+  const evidenceProfile = buildSummaryEvidenceProfile(selection);
 
   return {
     rankingPolicyVersion: selection.rankingPolicyVersion,
+    evidenceProfile,
     clusterCount,
     averageStorySignal: ratio(
       clusters.reduce((total, cluster) => total + cluster.score, 0),
@@ -61,6 +73,8 @@ export const buildStoryRankingTelemetrySnapshot = (
       topProvider?.clusterCount ?? 0,
       clusterCount,
     ),
+    coverageWarnings: evidenceProfile.coverageWarnings,
+    reliabilityReport: buildReaderSummaryReliabilityReport(selection),
   };
 };
 

@@ -5,6 +5,7 @@ import {
 import type {
   ListReaderSummaryArtifactsQuery,
   ListReaderSummaryArtifactsResult,
+  ListReaderSummaryPeriodSummariesResult,
   ReaderSummaryArtifactRepositoryPort,
 } from "../../ports";
 
@@ -59,6 +60,33 @@ export class InMemoryReaderSummaryArtifactRepository implements ReaderSummaryArt
       items,
       nextCursor:
         nextOffset < allItems.length ? encodeCursor(nextOffset) : undefined,
+    };
+  }
+
+  async listPeriodSummaries(
+    query: ListReaderSummaryArtifactsQuery,
+  ): Promise<ListReaderSummaryPeriodSummariesResult> {
+    const result = await this.list(query);
+
+    return {
+      items: result.items.map((artifact) => {
+        const snapshot = artifact.toSnapshot();
+
+        return {
+          tenantId: snapshot.tenantId,
+          workspaceId: snapshot.workspaceId,
+          readerSummaryId: snapshot.readerSummaryId,
+          scope: snapshot.scope,
+          period: snapshot.period,
+          headline: snapshot.headline,
+          status: snapshot.qualityFlags.includes("no_signal")
+            ? "no_signal"
+            : "completed",
+          userId: snapshot.userId,
+          subscriptionId: snapshot.subscriptionId,
+        };
+      }),
+      nextCursor: result.nextCursor,
     };
   }
 

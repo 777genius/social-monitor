@@ -258,6 +258,7 @@ const relevanceSourceRefs = (
   const refs = [
     sourceRef('social-monitor.relevance-feedback', snapshot.feedbackId),
     sourceRef('social-monitor.feed-item', snapshot.target.feedItemId),
+    sourceRef('social-monitor.source-item', snapshot.target.sourceItemId),
   ];
 
   return refs.filter((ref): ref is SourceRef => ref !== undefined);

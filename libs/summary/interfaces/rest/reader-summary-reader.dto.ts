@@ -107,6 +107,89 @@ export class ReaderSummaryReaderInterestSectionDto {
   declare readonly citationIds: readonly string[];
 }
 
+export class ReaderSummaryClaimEvidenceDto {
+  @ApiProperty()
+  declare readonly title: string;
+
+  @ApiProperty()
+  declare readonly providerKey: string;
+
+  @ApiProperty()
+  declare readonly citationId: string;
+
+  @ApiPropertyOptional()
+  declare readonly canonicalUrl?: string;
+}
+
+export class ReaderSummaryClaimRiskDto {
+  @ApiProperty({ enum: ["single_source", "low_confidence", "unresolved"] })
+  declare readonly kind: "single_source" | "low_confidence" | "unresolved";
+
+  @ApiProperty()
+  declare readonly description: string;
+}
+
+export class ReaderSummaryClaimDto {
+  @ApiProperty()
+  declare readonly claim: string;
+
+  @ApiProperty({ type: () => [ReaderSummaryClaimEvidenceDto] })
+  declare readonly evidence: readonly ReaderSummaryClaimEvidenceDto[];
+
+  @ApiProperty({ type: () => ReaderSummaryReaderItemConfidenceDto })
+  declare readonly confidence: ReaderSummaryReaderItemConfidenceDto;
+
+  @ApiProperty({ type: () => [ReaderSummaryClaimRiskDto] })
+  declare readonly risks: readonly ReaderSummaryClaimRiskDto[];
+
+  @ApiProperty({ type: [String] })
+  declare readonly citationIds: readonly string[];
+}
+
+export class ReaderSummaryReliabilityRiskDto {
+  @ApiProperty({
+    enum: [
+      "duplicate_risk",
+      "stale_evidence",
+      "single_source",
+      "weak_source",
+      "low_evidence_diversity",
+    ],
+  })
+  declare readonly kind:
+    | "duplicate_risk"
+    | "stale_evidence"
+    | "single_source"
+    | "weak_source"
+    | "low_evidence_diversity";
+
+  @ApiProperty({ enum: ["low", "medium", "high"] })
+  declare readonly level: "low" | "medium" | "high";
+
+  @ApiProperty({ minimum: 0, maximum: 1 })
+  declare readonly score: number;
+
+  @ApiProperty()
+  declare readonly description: string;
+}
+
+export class ReaderSummaryReliabilityReportDto {
+  @ApiProperty({ enum: ["shadow"] })
+  declare readonly mode: "shadow";
+
+  @ApiProperty()
+  declare readonly policyVersion: string;
+
+  @ApiProperty({ enum: ["low", "medium", "high"] })
+  declare readonly riskLevel: "low" | "medium" | "high";
+
+  @ApiProperty({ minimum: 0, maximum: 1 })
+  declare readonly riskScore: number;
+
+  @ApiProperty({ type: () => [ReaderSummaryReliabilityRiskDto] })
+  declare readonly risks: readonly ReaderSummaryReliabilityRiskDto[];
+}
+
 export class ReaderSummarySourceMixEntryDto {
   @ApiProperty()
   declare readonly providerKey: string;
@@ -185,6 +268,9 @@ export class ReaderSummaryReaderBriefDto {
   @ApiProperty({ type: [String] })
   declare readonly bullets: readonly string[];
 
+  @ApiProperty({ type: [String] })
+  declare readonly mainTopics: readonly string[];
+
   @ApiProperty({ type: () => ReaderSummaryReaderQualityStateDto })
   declare readonly qualityState: ReaderSummaryReaderQualityStateDto;
 
@@ -196,6 +282,15 @@ export class ReaderSummaryReaderBriefDto {
 
   @ApiProperty({ type: () => [ReaderSummaryReaderItemDto] })
   declare readonly topReads: readonly ReaderSummaryReaderItemDto[];
+
+  @ApiProperty({ type: () => [ReaderSummaryReaderItemDto] })
+  declare readonly selectedPosts: readonly ReaderSummaryReaderItemDto[];
+
+  @ApiProperty({ type: () => [ReaderSummaryClaimDto] })
+  declare readonly claimBoard: readonly ReaderSummaryClaimDto[];
+
+  @ApiProperty({ type: () => ReaderSummaryReliabilityReportDto })
+  declare readonly reliabilityReport: ReaderSummaryReliabilityReportDto;
 
   @ApiProperty({ type: () => ReaderSummaryTrendDeltaDto })
   declare readonly trendDelta: ReaderSummaryTrendDeltaDto;

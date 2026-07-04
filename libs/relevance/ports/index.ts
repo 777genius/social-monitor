@@ -1,3 +1,5 @@
+export * from './post-rating-projection.port';
+export * from './post-rating-repository.port';
 export * from './relevance-feedback-repository.port';
 export * from './relevance-feedback-learning-store.port';
 export * from './relevance-memory-guidance-reader.port';

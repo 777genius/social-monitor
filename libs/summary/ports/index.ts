@@ -2,6 +2,7 @@ export * from "./auto-summary-candidate-repository.port";
 export * from "./agent-runtime-client.port";
 export * from "./reader-summary-artifact-repository.port";
 export * from "./reader-summary-context-provider.port";
+export * from "./reader-summary-coverage-counter.port";
 export * from "./reader-summary-evidence-selector.port";
 export * from "./reader-summary-freshness.port";
 export * from "./reader-summary-job-queue.port";

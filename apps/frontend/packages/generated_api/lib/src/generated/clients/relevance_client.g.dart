@@ -158,6 +158,91 @@ class _RelevanceClient implements RelevanceClient {
   }
 
   @override
+  Future<RecordPostRatingResponseDto>
+  relevanceControllerRecordPostRatingForUser({
+    required String userId,
+    required String xWorkspaceId,
+    required String xTenantId,
+    required RecordPostRatingRequestDto body,
+    String? authorization,
+    String? xWorkspaceRole,
+  }) async {
+    final _extra = <String, dynamic>{};
+    final queryParameters = <String, dynamic>{};
+    queryParameters.removeWhere((k, v) => v == null);
+    final _headers = <String, dynamic>{
+      r'x-workspace-id': xWorkspaceId,
+      r'x-tenant-id': xTenantId,
+      r'authorization': authorization,
+      r'x-workspace-role': xWorkspaceRole,
+    };
+    _headers.removeWhere((k, v) => v == null);
+    final _data = <String, dynamic>{};
+    _data.addAll(body.toJson());
+    final _options = _setStreamType<RecordPostRatingResponseDto>(
+      Options(method: 'POST', headers: _headers, extra: _extra)
+          .compose(
+            _dio.options,
+            '/relevance/users/${userId}/post-ratings',
+            queryParameters: queryParameters,
+            data: _data,
+          )
+          .copyWith(baseUrl: _combineBaseUrls(_dio.options.baseUrl, baseUrl)),
+    );
+    final _result = await _dio.fetch<Map<String, Object?>>(_options);
+    late RecordPostRatingResponseDto _value;
+    try {
+      _value = RecordPostRatingResponseDto.fromJson(_result.data!);
+    } on Object catch (e, s) {
+      errorLogger?.logError(e, s, _options, response: _result);
+      rethrow;
+    }
+    return _value;
+  }
+
+  @override
+  Future<ListPostRatingsResponseDto> relevanceControllerPostRatings({
+    required String userId,
+    required String xWorkspaceId,
+    required String xTenantId,
+    required ListPostRatingsRequestDto body,
+    String? authorization,
+    String? xWorkspaceRole,
+  }) async {
+    final _extra = <String, dynamic>{};
+    final queryParameters = <String, dynamic>{};
+    queryParameters.removeWhere((k, v) => v == null);
+    final _headers = <String, dynamic>{
+      r'x-workspace-id': xWorkspaceId,
+      r'x-tenant-id': xTenantId,
+      r'authorization': authorization,
+      r'x-workspace-role': xWorkspaceRole,
+    };
+    _headers.removeWhere((k, v) => v == null);
+    final _data = <String, dynamic>{};
+    _data.addAll(body.toJson());
+    final _options = _setStreamType<ListPostRatingsResponseDto>(
+      Options(method: 'POST', headers: _headers, extra: _extra)
+          .compose(
+            _dio.options,
+            '/relevance/users/${userId}/post-ratings/query',
+            queryParameters: queryParameters,
+            data: _data,
+          )
+          .copyWith(baseUrl: _combineBaseUrls(_dio.options.baseUrl, baseUrl)),
+    );
+    final _result = await _dio.fetch<Map<String, Object?>>(_options);
+    late ListPostRatingsResponseDto _value;
+    try {
+      _value = ListPostRatingsResponseDto.fromJson(_result.data!);
+    } on Object catch (e, s) {
+      errorLogger?.logError(e, s, _options, response: _result);
+      rethrow;
+    }
+    return _value;
+  }
+
+  @override
   Future<UpsertUserRelevanceProfileResponseDto>
   relevanceControllerUpsertProfile({
     required String userId,

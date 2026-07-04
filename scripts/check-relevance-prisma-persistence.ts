@@ -13,6 +13,7 @@ import type {
   PrismaUserRelevanceProfileRecord,
 } from '../libs/relevance/adapters/persistence/prisma/prisma-relevance-records';
 import { PrismaUserRelevanceProfileRepository } from '../libs/relevance/adapters/persistence/prisma/prisma-user-relevance-profile.repository';
+import { RecordPostRatingUseCase } from '../libs/relevance/features/record-post-rating/record-post-rating.use-case';
 import { RecordRelevanceFeedbackUseCase } from '../libs/relevance/features/record-relevance-feedback/record-relevance-feedback.use-case';
 import { UpsertUserRelevanceProfileUseCase } from '../libs/relevance/features/upsert-user-relevance-profile/upsert-user-relevance-profile.use-case';
 import { resolveRelevancePersistenceMode } from '../libs/relevance/interfaces/rest/relevance-provider-tokens';
@@ -44,6 +45,8 @@ async function main(): Promise<void> {
     '00000000-0000-7000-8000-000000000a12',
     '00000000-0000-7000-8000-000000000a13',
     '00000000-0000-7000-8000-000000000a14',
+    '00000000-0000-7000-8000-000000000a15',
+    '00000000-0000-7000-8000-000000000a16',
   ]);
 
   const upserted = await new UpsertUserRelevanceProfileUseCase(profiles, ids, clock).execute({
@@ -134,6 +137,37 @@ async function main(): Promise<void> {
   assert(afterRetryProfile?.interestWeight('ai') === 1.5, 'idempotent retry must not double-apply learning');
   assert(prisma.relevanceMemoryProjectionRecords().length === 1, 'idempotent retry must not duplicate memory projection');
 
+  const rated = await new RecordPostRatingUseCase(feedback, ids, clock).execute({
+    tenantId: tenant,
+    workspaceId: workspace,
+    userId,
+    idempotencyKey: 'rating:reddit:launch:feed-1:3',
+    rating: 3,
+    target: {
+      feedItemId: 'feed-1',
+      sourceItemId: 'source-1',
+      interestId: 'ai',
+      providerKey: 'reddit',
+      title: 'Open source AI launch reaches beta users',
+      bodyPreview: 'The user rated this concrete top post.',
+      canonicalUrl: 'https://reddit.example.test/r/socialmonitor/comments/1',
+    },
+  });
+  if (!isOk(rated)) {
+    throw new Error('post rating feedback must persist through Prisma repository');
+  }
+  assert(rated.value.learningDirection === 'recorded', 'post rating feedback must stay recorded-only');
+
+  const postRatings = await feedback.listLatestByTargets({
+    tenantId: tenant,
+    workspaceId: workspace,
+    userId,
+    targets: [{ feedItemId: 'feed-1', sourceItemId: 'source-1', interestId: 'ai' }],
+  });
+  assert(postRatings.length === 1, 'latest post rating projection must read Prisma feedback events');
+  assert(postRatings[0]?.rating === 3, 'latest post rating projection must preserve neutral rating');
+  assert(postRatings[0]?.learningEffect === 'neutral', '3-star post rating must stay neutral');
+
   console.log('Relevance Prisma persistence smoke OK');
 }
 
@@ -193,6 +227,19 @@ class FakePrismaRelevanceClient implements PrismaRelevanceClient {
       return record;
     },
     findFirst: async (args) => this.feedbackSignals.get(feedbackKey(args.where)) ?? null,
+    findMany: async (args) =>
+      [...this.feedbackSignals.values()]
+        .filter((record) =>
+          record.tenantId === args.where.tenantId &&
+          record.workspaceId === args.where.workspaceId &&
+          (args.where.userId === undefined || record.userId === args.where.userId) &&
+          (args.where.action === undefined || record.action === args.where.action))
+        .sort((left, right) => {
+          const createdDiff = right.createdAt.getTime() - left.createdAt.getTime();
+
+          return createdDiff !== 0 ? createdDiff : right.id.localeCompare(left.id);
+        })
+        .slice(0, args.take),
   };
 
   readonly relevanceMemoryProjection: PrismaRelevanceClient['relevanceMemoryProjection'] = {

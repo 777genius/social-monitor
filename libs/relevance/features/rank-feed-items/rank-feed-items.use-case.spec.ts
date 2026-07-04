@@ -321,6 +321,76 @@ describe("RankFeedItemsUseCase", () => {
     );
   });
 
+  it("ranks high-signal candidates beyond the first two hundred newest items", async () => {
+    const tenant = tenantId("tenant-rank-wide-candidates");
+    const workspace = workspaceId("workspace-rank-wide-candidates");
+    const interestId = "topic-ai-wide";
+    const feedItems = new FakeFeedItemReadRepository();
+    const now = new Date("2026-06-22T12:00:00.000Z");
+
+    for (let index = 0; index < 250; index += 1) {
+      addFeedItem(feedItems, {
+        id: `feed-new-low-${index + 1}`,
+        tenantId: tenant,
+        workspaceId: workspace,
+        interestId,
+        providerKey: "rss",
+        title: `Minor AI update ${index + 1}`,
+        bodyPreview: "Fresh but low-engagement source item.",
+        canonicalUrl: `https://rss.example/minor/${index + 1}`,
+        publishedAt: new Date(now.getTime() - index * 60_000),
+      });
+    }
+    addFeedItem(feedItems, {
+      id: "feed-old-high-signal",
+      tenantId: tenant,
+      workspaceId: workspace,
+      interestId,
+      providerKey: "reddit",
+      title: "AI developers discuss a major production reliability incident",
+      bodyPreview:
+        "Large thread shares concrete production agent failures and fixes.",
+      canonicalUrl: "https://reddit.example/r/MachineLearning/comments/major",
+      publishedAt: new Date("2026-06-22T06:00:00.000Z"),
+      providerMetadata: {
+        subreddit: "MachineLearning",
+        score: 2400,
+        numComments: 510,
+        upvoteRatio: 0.95,
+      },
+    });
+
+    const result = await new RankFeedItemsUseCase(
+      feedItems,
+      new FakeUserRelevanceProfileRepository(),
+      new FixedClock(now),
+    ).execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      interestId,
+      limit: 10,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+
+    expect(feedItems.queries).toHaveLength(2);
+    expect(feedItems.queries[0]).toEqual(
+      expect.objectContaining({ limit: 200 }),
+    );
+    expect(feedItems.queries[1]).toEqual(
+      expect.objectContaining({ cursor: "200", limit: 200 }),
+    );
+    expect(result.value.items[0]).toEqual(
+      expect.objectContaining({
+        feedItemId: "feed-old-high-signal",
+        providerKey: "reddit",
+      }),
+    );
+  });
+
   it("uses memory guidance as a best-effort ranking overlay", async () => {
     const tenant = tenantId("tenant-rank-memory");
     const workspace = workspaceId("workspace-rank-memory");
@@ -505,9 +575,7 @@ describe("RankFeedItemsUseCase", () => {
     expect(result.value.items.map((item) => item.feedItemId)).toEqual([
       "feed-x-good",
     ]);
-    expect(result.value.items[0]?.contentQuality.eligibleForTopRead).toBe(
-      true,
-    );
+    expect(result.value.items[0]?.contentQuality.eligibleForTopRead).toBe(true);
   });
 });
 
@@ -551,6 +619,7 @@ class FakeFeedItemReadRepository implements FeedItemReadRepositoryPort {
 
   async list(query: ListFeedItemsQuery): Promise<ListFeedItemsResult> {
     this.queries.push(query);
+    const offset = query.cursor === undefined ? 0 : Number(query.cursor);
     const items = this.items
       .filter((item) => {
         const snapshot = item.toSnapshot();
@@ -558,7 +627,8 @@ class FakeFeedItemReadRepository implements FeedItemReadRepositoryPort {
         return (
           snapshot.tenantId === query.tenantId &&
           snapshot.workspaceId === query.workspaceId &&
-          (query.interestId === undefined || snapshot.interestId === query.interestId) &&
+          (query.interestId === undefined ||
+            snapshot.interestId === query.interestId) &&
           (query.observedAfter === undefined ||
             snapshot.observedAt.getTime() > query.observedAfter.getTime()) &&
           (query.observedBefore === undefined ||
@@ -569,10 +639,14 @@ class FakeFeedItemReadRepository implements FeedItemReadRepositoryPort {
         (left, right) =>
           right.toSnapshot().publishedAt.getTime() -
           left.toSnapshot().publishedAt.getTime(),
-      )
-      .slice(0, query.limit);
+      );
+    const page = items.slice(offset, offset + query.limit);
+    const nextOffset = offset + page.length;
 
-    return { items };
+    return {
+      items: page,
+      nextCursor: nextOffset < items.length ? String(nextOffset) : undefined,
+    };
   }
 
   async findById(): Promise<FeedItem | null> {
