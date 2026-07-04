@@ -120,13 +120,10 @@ class _TopPostRowState extends State<_TopPostRow> {
 
         final source = _TopPostSourceColumn(
           item: widget.item,
-          dateLabel: widget.dense ? null : widget.dateLabel,
+          dateLabel: widget.dateLabel,
           rating: rating,
         );
-        final content = _TopPostContentColumn(
-          item: widget.item,
-          dense: widget.dense,
-        );
+        final content = _TopPostContentColumn(item: widget.item);
         final metricsRow = _TopPostMetricsRow(metrics: metrics);
         final relevance = _TopPostRelevanceColumn(item: widget.item);
         final menu = _TopPostMenu(
@@ -322,28 +319,25 @@ class _TopPostProviderTile extends StatelessWidget {
 }
 
 class _TopPostContentColumn extends StatelessWidget {
-  const _TopPostContentColumn({required this.item, this.dense = false});
+  const _TopPostContentColumn({required this.item});
 
   final TopRead item;
-  final bool dense;
 
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
-    final tags = dense
-        ? const <String>[]
-        : item.matchedRules
-              .map(readablePostTag)
-              .whereType<String>()
-              .take(3)
-              .toList(growable: false);
+    final tags = item.matchedRules
+        .map(readablePostTag)
+        .whereType<String>()
+        .take(3)
+        .toList(growable: false);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           _shortTitle(item.title),
-          maxLines: dense ? 1 : 2,
+          maxLines: 2,
           overflow: TextOverflow.ellipsis,
           style: textTheme.bodyMedium?.copyWith(
             fontWeight: FontWeight.w700,
@@ -351,19 +345,17 @@ class _TopPostContentColumn extends StatelessWidget {
             height: 1.35,
           ),
         ),
-        if (!dense) ...[
-          const SizedBox(height: AppSpacing.xs),
-          Text(
-            readerSummaryDisplayReason(item),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: textTheme.bodySmall?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-              letterSpacing: 0,
-              height: 1.4,
-            ),
+        const SizedBox(height: AppSpacing.xs),
+        Text(
+          readerSummaryDisplayReason(item),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: textTheme.bodySmall?.copyWith(
+            color: colorScheme.onSurfaceVariant,
+            letterSpacing: 0,
+            height: 1.4,
           ),
-        ],
+        ),
         if (tags.isNotEmpty) ...[
           const SizedBox(height: AppSpacing.sm),
           Wrap(
