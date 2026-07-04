@@ -82,3 +82,7 @@ X_COLLECTOR_SERVICE_TOKEN=local-dev-token
 - `X_COLLECTOR_SCWEET_N_SPLITS`, default `5`
 - `X_COLLECTOR_SCWEET_API_PAGE_SIZE`, default `20`
 - `X_COLLECTOR_SCWEET_MAX_EMPTY_PAGES`, default `1`
+- `X_COLLECTOR_SCWEET_BUDGET_GUARD_ENABLED`, default `1`; preflights
+  Scweet account pool capacity before spending requests
+- `X_COLLECTOR_ACCOUNT_OBSERVABILITY_ENABLED`, default `1`; writes audit-only
+  account usage events to the Scweet SQLite state database

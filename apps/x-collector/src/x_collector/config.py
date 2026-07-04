@@ -23,6 +23,8 @@ class XCollectorSettings:
     scweet_n_splits: int
     scweet_api_page_size: int
     scweet_max_empty_pages: int
+    scweet_budget_guard_enabled: bool
+    account_observability_enabled: bool
 
     @classmethod
     def from_env(
@@ -102,6 +104,16 @@ class XCollectorSettings:
                 1,
                 1,
                 10,
+            ),
+            scweet_budget_guard_enabled=read_bool(
+                source,
+                "X_COLLECTOR_SCWEET_BUDGET_GUARD_ENABLED",
+                True,
+            ),
+            account_observability_enabled=read_bool(
+                source,
+                "X_COLLECTOR_ACCOUNT_OBSERVABILITY_ENABLED",
+                True,
             ),
         )
 

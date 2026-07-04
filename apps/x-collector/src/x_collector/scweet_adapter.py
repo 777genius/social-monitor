@@ -1,14 +1,16 @@
 from __future__ import annotations
 
-import re
-import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from email.utils import parsedate_to_datetime
-from pathlib import Path
 from typing import Any, Callable, Mapping
 
 from . import __version__
+from .account_pool import AccountPoolLimits
+from .account_usage_observer import (
+    AccountUsageObserver,
+    NoopAccountUsageObserver,
+)
 from .config import XCollectorSettings
 from .domain import (
     DailySearchRequest,
@@ -16,15 +18,36 @@ from .domain import (
     SearchProduct,
     XCollectedPost,
     XCollectorAuthError,
+    XCollectorInvalidRequestError,
     XCollectorRateLimitError,
     XCollectorRun,
     XCollectorUnavailableError,
     XCollectorWarning,
     XPostMetrics,
 )
-from .ports import Clock, DailySearchCollectorPort
+from .ports import (
+    AccountPoolLedgerPort,
+    AccountUsageObserverPort,
+    Clock,
+    DailySearchCollectorPort,
+)
 from .scoring import CandidateSignal, rank_candidates
+from .search_budget import (
+    SearchBudgetDecision,
+    budget_search_passes,
+    estimate_pass_request_cost,
+    retry_after_ms_until,
+    warnings_for_budget_decision,
+)
+from .scweet_account_pool_ledger import (
+    SCWEET_REUSABLE_ACCOUNT_STATUSES,
+    ScweetAccountPoolLedger,
+)
+from .scweet_errors import classify_scweet_error
 from .search_plan import ScweetSearchPass, plan_scweet_search_passes
+from .sqlite_account_usage_event_repository import (
+    SqliteAccountUsageEventRepository,
+)
 
 
 ScweetFactory = Callable[[], Any]
@@ -42,10 +65,20 @@ class ScweetDailySearchCollector(DailySearchCollectorPort):
         scweet_factory: ScweetFactory,
         clock: Clock | None = None,
         scweet_db_path: str | None = None,
+        account_pool_ledger: AccountPoolLedgerPort | None = None,
+        scweet_api_page_size: int = 20,
+        scweet_n_splits: int = 5,
+        account_usage_observer: AccountUsageObserverPort | None = None,
     ) -> None:
         self._scweet_factory = scweet_factory
         self._clock = clock or SystemClock()
         self._scweet_db_path = scweet_db_path
+        self._account_pool_ledger = account_pool_ledger
+        self._scweet_api_page_size = scweet_api_page_size
+        self._scweet_n_splits = scweet_n_splits
+        self._account_usage_observer = (
+            account_usage_observer or NoopAccountUsageObserver()
+        )
 
     @classmethod
     def from_settings(
@@ -54,6 +87,7 @@ class ScweetDailySearchCollector(DailySearchCollectorPort):
         clock: Clock | None = None,
     ) -> "ScweetDailySearchCollector":
         settings.ensure_runtime_paths()
+        collector_clock = clock or SystemClock()
 
         def create_scweet() -> Any:
             from Scweet import Scweet, ScweetConfig
@@ -79,7 +113,48 @@ class ScweetDailySearchCollector(DailySearchCollectorPort):
                 provision=True,
             )
 
-        return cls(create_scweet, clock, settings.scweet_db_path)
+        shared_account_pool_ledger = (
+            ScweetAccountPoolLedger(
+                settings.scweet_db_path,
+                AccountPoolLimits(
+                    daily_requests=settings.scweet_daily_requests_limit,
+                    daily_tweets=settings.scweet_daily_tweets_limit,
+                    reusable_statuses=SCWEET_REUSABLE_ACCOUNT_STATUSES,
+                ),
+            )
+            if (
+                settings.scweet_budget_guard_enabled
+                or settings.account_observability_enabled
+            )
+            else None
+        )
+        budget_account_pool_ledger = (
+            shared_account_pool_ledger
+            if settings.scweet_budget_guard_enabled
+            else None
+        )
+        account_usage_observer = (
+            AccountUsageObserver(
+                shared_account_pool_ledger,
+                SqliteAccountUsageEventRepository(settings.scweet_db_path),
+                collector_clock,
+            )
+            if (
+                settings.account_observability_enabled
+                and shared_account_pool_ledger is not None
+            )
+            else NoopAccountUsageObserver()
+        )
+
+        return cls(
+            create_scweet,
+            collector_clock,
+            settings.scweet_db_path,
+            budget_account_pool_ledger,
+            settings.scweet_api_page_size,
+            settings.scweet_n_splits,
+            account_usage_observer,
+        )
 
     def collect_daily_search(
         self,
@@ -101,7 +176,30 @@ class ScweetDailySearchCollector(DailySearchCollectorPort):
                 ),
             )
 
-        for search_pass in plan_scweet_search_passes(request):
+        planned_passes = plan_scweet_search_passes(request)
+        budget = self._budget_search_passes(planned_passes)
+        self._account_usage_observer.record_budget_decision(request, budget)
+        warnings.extend(warnings_for_budget_decision(budget))
+        if not budget.passes and budget.remaining_request_budget is not None:
+            raise XCollectorRateLimitError(
+                "Scweet account pool budget exhausted",
+                retry_after_ms=retry_after_ms_until(
+                    self._clock.now(),
+                    budget.reset_at,
+                ),
+                reset_at=budget.reset_at,
+            )
+
+        for search_pass in budget.passes:
+            usage = self._account_usage_observer.begin_pass(
+                request,
+                search_pass,
+                estimate_pass_request_cost(
+                    search_pass,
+                    api_page_size=self._scweet_api_page_size,
+                    n_splits=self._scweet_n_splits,
+                ),
+            )
             try:
                 records = run_scweet_search_pass(
                     scweet,
@@ -116,20 +214,19 @@ class ScweetDailySearchCollector(DailySearchCollectorPort):
                     clock=self._clock,
                     scweet_db_path=self._scweet_db_path,
                 )
-                if (
-                    isinstance(classified, XCollectorRateLimitError)
-                    and len(fetched_posts) > 0
-                ):
-                    warnings.append(
-                        XCollectorWarning(
-                            code="x_collector.partial_rate_limit",
-                            message=(
-                                f"{search_pass.label} hit a rate limit after "
-                                "earlier passes returned posts; returning "
-                                "partial daily search results"
-                            ),
-                        ),
-                    )
+                self._account_usage_observer.complete_pass_failure(
+                    request,
+                    usage,
+                    failure_kind=collector_failure_kind(classified),
+                    reset_at=collector_failure_reset_at(classified),
+                )
+                warning = partial_warning_for_late_failure(
+                    classified,
+                    search_pass.label,
+                    len(fetched_posts),
+                )
+                if warning is not None:
+                    warnings.append(warning)
                     break
 
                 raise classified from exc
@@ -148,6 +245,12 @@ class ScweetDailySearchCollector(DailySearchCollectorPort):
                     ))
                     accepted_count += 1
 
+            self._account_usage_observer.complete_pass_success(
+                request,
+                usage,
+                fetched_count=len(records),
+                accepted_count=accepted_count,
+            )
             if len(records) < search_pass.limit:
                 warnings.append(
                     XCollectorWarning(
@@ -168,6 +271,18 @@ class ScweetDailySearchCollector(DailySearchCollectorPort):
                         ),
                     ),
                 )
+            if self._account_budget_is_depleted():
+                warnings.append(
+                    XCollectorWarning(
+                        code="x_collector.account_budget_depleted",
+                        message=(
+                            "Scweet account pool budget was depleted after "
+                            f"{search_pass.label}; returning partial daily "
+                            "search results"
+                        ),
+                    ),
+                )
+                break
 
         selected_posts = rank_candidates(
             fetched_posts,
@@ -192,6 +307,77 @@ class ScweetDailySearchCollector(DailySearchCollectorPort):
                 partial=len(selected_posts) < request.max_items,
             ),
         )
+
+    def _budget_search_passes(
+        self,
+        planned_passes: tuple[ScweetSearchPass, ...],
+    ) -> SearchBudgetDecision:
+        snapshot = (
+            self._account_pool_ledger.snapshot(self._clock.now())
+            if self._account_pool_ledger is not None
+            else None
+        )
+
+        return budget_search_passes(
+            planned_passes,
+            snapshot=snapshot,
+            api_page_size=self._scweet_api_page_size,
+            n_splits=self._scweet_n_splits,
+        )
+
+    def _account_budget_is_depleted(self) -> bool:
+        if self._account_pool_ledger is None:
+            return False
+        snapshot = self._account_pool_ledger.snapshot(self._clock.now())
+
+        return snapshot is not None and snapshot.total_remaining_requests <= 0
+
+
+def partial_warning_for_late_failure(
+    failure: Exception,
+    pass_label: str,
+    fetched_count: int,
+) -> XCollectorWarning | None:
+    if fetched_count <= 0:
+        return None
+
+    if isinstance(failure, XCollectorRateLimitError):
+        return XCollectorWarning(
+            code="x_collector.partial_rate_limit",
+            message=(
+                f"{pass_label} hit a rate limit after earlier passes returned "
+                "posts; returning partial daily search results"
+            ),
+        )
+
+    if isinstance(failure, XCollectorUnavailableError):
+        return XCollectorWarning(
+            code="x_collector.partial_provider_failure",
+            message=(
+                f"{pass_label} hit a transient provider failure after earlier "
+                "passes returned posts; returning partial daily search results"
+            ),
+        )
+
+    return None
+
+
+def collector_failure_kind(failure: Exception) -> str:
+    if isinstance(failure, XCollectorRateLimitError):
+        return "rate_limited"
+    if isinstance(failure, XCollectorAuthError):
+        return "auth_failed"
+    if isinstance(failure, XCollectorInvalidRequestError):
+        return "invalid_request"
+    if isinstance(failure, XCollectorUnavailableError):
+        return "unavailable"
+    return "unknown"
+
+
+def collector_failure_reset_at(failure: Exception) -> datetime | None:
+    if isinstance(failure, XCollectorRateLimitError):
+        return failure.reset_at
+    return None
 
 
 def run_scweet_search_pass(
@@ -291,81 +477,6 @@ def post_is_in_window(
     published_at = post.published_at.astimezone(UTC)
 
     return window_start <= published_at <= window_end + timedelta(minutes=5)
-
-
-def classify_scweet_error(
-    exc: Exception,
-    *,
-    clock: Clock | None = None,
-    scweet_db_path: str | None = None,
-) -> Exception:
-    message = str(exc).lower()
-
-    if any(token in message for token in ["auth", "cookie", "token", "401"]):
-        return XCollectorAuthError("Scweet authentication failed")
-
-    if any(
-        token in message
-        for token in ["rate", "limit", "cooldown", "daily cap", "429"]
-    ):
-        now = (clock or SystemClock()).now()
-        reset_at = (
-            rate_limit_reset_from_message(str(exc))
-            or rate_limit_reset_from_scweet_db(scweet_db_path, now)
-            or now + timedelta(minutes=15)
-        )
-        retry_after_ms = max(
-            1,
-            int((reset_at - now).total_seconds() * 1000),
-        )
-        return XCollectorRateLimitError(
-            "Scweet rate limit reached",
-            retry_after_ms=retry_after_ms,
-            reset_at=reset_at,
-        )
-
-    return XCollectorUnavailableError("Scweet collection failed")
-
-
-def rate_limit_reset_from_message(message: str) -> datetime | None:
-    match = re.search(r"\breset=(\d{10,})\b", message)
-    if match is None:
-        return None
-
-    return datetime.fromtimestamp(int(match.group(1)), UTC)
-
-
-def rate_limit_reset_from_scweet_db(
-    scweet_db_path: str | None,
-    now: datetime,
-) -> datetime | None:
-    if scweet_db_path is None or scweet_db_path == ":memory:":
-        return None
-    if not Path(scweet_db_path).exists():
-        return None
-
-    try:
-        with sqlite3.connect(scweet_db_path) as connection:
-            row = connection.execute(
-                """
-                SELECT MAX(available_til)
-                FROM accounts
-                WHERE cooldown_reason = 'rate_limit'
-                  AND available_til IS NOT NULL
-                """,
-            ).fetchone()
-    except sqlite3.Error:
-        return None
-
-    value = row[0] if row is not None else None
-    if not isinstance(value, (int, float)):
-        return None
-
-    reset_at = datetime.fromtimestamp(float(value), UTC)
-    if reset_at <= now or reset_at > now + timedelta(hours=24):
-        return None
-
-    return reset_at
 
 
 def read_mapping(value: Any) -> Mapping[str, Any]:

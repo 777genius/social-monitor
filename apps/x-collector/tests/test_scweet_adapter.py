@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from x_collector.account_pool import AccountPoolLimits
 from x_collector.domain import DailySearchRequest, SearchProduct
 from x_collector.scweet_adapter import (
     ScweetDailySearchCollector,
@@ -14,6 +15,7 @@ from x_collector.scweet_adapter import (
     post_from_scweet_record,
     scweet_date_window,
 )
+from x_collector.scweet_account_pool_ledger import ScweetAccountPoolLedger
 
 
 @dataclass(frozen=True)
@@ -213,6 +215,177 @@ def test_collect_daily_search_returns_partial_results_when_later_pass_is_rate_li
     assert len(fake.calls) == 2
 
 
+def test_collect_daily_search_returns_partial_results_when_later_pass_is_unavailable() -> None:
+    fake = UnavailableAfterFirstPassScweet()
+    collector = ScweetDailySearchCollector(
+        lambda: fake,
+        FixedClock(datetime(2026, 6, 27, 12, tzinfo=UTC)),
+    )
+
+    result = collector.collect_daily_search(request(max_items=5))
+
+    assert [post.tweet_id for post in result.posts] == ["200", "100"]
+    assert result.run.fetched_count == 2
+    assert result.run.returned_count == 2
+    assert result.run.partial is True
+    assert result.warnings[-1].code == "x_collector.partial_provider_failure"
+    assert len(fake.calls) == 2
+
+
+def test_collect_daily_search_limits_passes_to_account_pool_budget(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "scweet_state.db"
+    create_scweet_accounts_table(db_path)
+    insert_scweet_account(
+        db_path,
+        daily_requests=24,
+        daily_tweets=100,
+        last_reset_date="2026-06-27",
+    )
+    fake = FakeScweet()
+    collector = ScweetDailySearchCollector(
+        lambda: fake,
+        FixedClock(datetime(2026, 6, 27, 12, tzinfo=UTC)),
+        str(db_path),
+        ScweetAccountPoolLedger(
+            str(db_path),
+            AccountPoolLimits(daily_requests=30, daily_tweets=600),
+        ),
+        scweet_api_page_size=20,
+        scweet_n_splits=5,
+    )
+
+    result = collector.collect_daily_search(request(max_items=5))
+
+    assert len(fake.calls) == 1
+    assert result.warnings[0].code == "x_collector.account_budget_limited"
+    assert "1 of 3 planned passes" in result.warnings[0].message
+
+
+def test_collect_daily_search_fails_before_scweet_when_account_pool_is_exhausted(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "scweet_state.db"
+    create_scweet_accounts_table(db_path)
+    insert_scweet_account(
+        db_path,
+        daily_requests=30,
+        daily_tweets=100,
+        last_reset_date="2026-06-27",
+    )
+    fake = FakeScweet()
+    collector = ScweetDailySearchCollector(
+        lambda: fake,
+        FixedClock(datetime(2026, 6, 27, 12, tzinfo=UTC)),
+        str(db_path),
+        ScweetAccountPoolLedger(
+            str(db_path),
+            AccountPoolLimits(daily_requests=30, daily_tweets=600),
+        ),
+        scweet_api_page_size=20,
+        scweet_n_splits=5,
+    )
+
+    with pytest.raises(XCollectorRateLimitError) as exc:
+        collector.collect_daily_search(request())
+
+    assert fake.calls == []
+    assert exc.value.reset_at == datetime(2026, 6, 28, 0, tzinfo=UTC)
+
+
+def test_collect_daily_search_treats_stale_daily_usage_as_reset(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "scweet_state.db"
+    create_scweet_accounts_table(db_path)
+    insert_scweet_account(
+        db_path,
+        daily_requests=30,
+        daily_tweets=600,
+        last_reset_date="2026-06-26",
+    )
+    fake = FakeScweet()
+    collector = ScweetDailySearchCollector(
+        lambda: fake,
+        FixedClock(datetime(2026, 6, 27, 12, tzinfo=UTC)),
+        str(db_path),
+        ScweetAccountPoolLedger(
+            str(db_path),
+            AccountPoolLimits(daily_requests=30, daily_tweets=600),
+        ),
+        scweet_api_page_size=20,
+        scweet_n_splits=5,
+    )
+
+    collector.collect_daily_search(request(max_items=1))
+
+    assert len(fake.calls) == 3
+
+
+def test_collect_daily_search_ignores_stale_busy_flag_without_active_lease(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "scweet_state.db"
+    create_scweet_accounts_table(db_path)
+    insert_scweet_account(
+        db_path,
+        daily_requests=0,
+        daily_tweets=0,
+        last_reset_date="2026-06-27",
+        busy=True,
+    )
+    fake = FakeScweet()
+    collector = ScweetDailySearchCollector(
+        lambda: fake,
+        FixedClock(datetime(2026, 6, 27, 12, tzinfo=UTC)),
+        str(db_path),
+        ScweetAccountPoolLedger(
+            str(db_path),
+            AccountPoolLimits(daily_requests=30, daily_tweets=600),
+        ),
+        scweet_api_page_size=20,
+        scweet_n_splits=5,
+    )
+
+    collector.collect_daily_search(request(max_items=1))
+
+    assert len(fake.calls) == 3
+
+
+def test_collect_daily_search_blocks_active_lease(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "scweet_state.db"
+    create_scweet_accounts_table(db_path)
+    insert_scweet_account(
+        db_path,
+        daily_requests=0,
+        daily_tweets=0,
+        last_reset_date="2026-06-27",
+        lease_id="lease-1",
+        lease_expires_at=datetime(2026, 6, 27, 12, 5, tzinfo=UTC).timestamp(),
+    )
+    fake = FakeScweet()
+    collector = ScweetDailySearchCollector(
+        lambda: fake,
+        FixedClock(datetime(2026, 6, 27, 12, tzinfo=UTC)),
+        str(db_path),
+        ScweetAccountPoolLedger(
+            str(db_path),
+            AccountPoolLimits(daily_requests=30, daily_tweets=600),
+        ),
+        scweet_api_page_size=20,
+        scweet_n_splits=5,
+    )
+
+    with pytest.raises(XCollectorRateLimitError) as exc:
+        collector.collect_daily_search(request(max_items=1))
+
+    assert fake.calls == []
+    assert exc.value.reset_at == datetime(2026, 6, 27, 12, 5, tzinfo=UTC)
+
+
 def test_rate_limit_errors_include_scweet_account_cooldown(
     tmp_path: Path,
 ) -> None:
@@ -260,6 +433,21 @@ class RateLimitedAfterFirstPassScweet:
         self.calls.append(object())
         if len(self.calls) > 1:
             raise RuntimeError("rate limit reset=1782652096")
+
+        return [
+            tweet("100", likes=10, retweets=1, comments=1),
+            tweet("200", likes=20, retweets=2, comments=0),
+        ]
+
+
+class UnavailableAfterFirstPassScweet:
+    def __init__(self) -> None:
+        self.calls: list[object] = []
+
+    def search(self, *_: object, **__: object) -> list[dict[str, object]]:
+        self.calls.append(object())
+        if len(self.calls) > 1:
+            raise RuntimeError("404")
 
         return [
             tweet("100", likes=10, retweets=1, comments=1),
@@ -321,3 +509,67 @@ class StaticScweet:
 
     def search(self, *_: object, **__: object) -> object:
         return self.response
+
+
+def create_scweet_accounts_table(db_path: Path) -> None:
+    with sqlite3.connect(db_path) as connection:
+        connection.execute(
+            """
+            CREATE TABLE accounts (
+              id INTEGER NOT NULL PRIMARY KEY,
+              username VARCHAR(255) NOT NULL,
+              status INTEGER NOT NULL,
+              available_til FLOAT,
+              lease_expires_at FLOAT,
+              busy BOOLEAN NOT NULL,
+              daily_requests INTEGER NOT NULL,
+              daily_tweets INTEGER NOT NULL,
+              last_reset_date VARCHAR(10),
+              lease_id VARCHAR(64),
+              cooldown_reason VARCHAR(128)
+            )
+            """,
+        )
+
+
+def insert_scweet_account(
+    db_path: Path,
+    *,
+    daily_requests: int,
+    daily_tweets: int,
+    last_reset_date: str,
+    busy: bool = False,
+    lease_id: str | None = None,
+    lease_expires_at: float = 0.0,
+) -> None:
+    with sqlite3.connect(db_path) as connection:
+        connection.execute(
+            """
+            INSERT INTO accounts (
+              id,
+              username,
+              status,
+              available_til,
+              lease_expires_at,
+              busy,
+              daily_requests,
+              daily_tweets,
+              last_reset_date,
+              lease_id,
+              cooldown_reason
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                1,
+                "research-1",
+                1,
+                0.0,
+                lease_expires_at,
+                busy,
+                daily_requests,
+                daily_tweets,
+                last_reset_date,
+                lease_id,
+                None,
+            ),
+        )
