@@ -46,7 +46,7 @@ class _ReaderSummaryTopPostsState extends State<ReaderSummaryTopPosts> {
   _TopPostSort _sort = _TopPostSort.relevance;
   _TopPostBoard _board = _TopPostBoard.posts;
   final Set<String> _hiddenProviders = {};
-  bool _denseView = false;
+  bool _denseView = true;
   int _visibleCount = _initialVisibleTopPosts;
   ScrollPosition? _scrollPosition;
   int _totalCount = 0;
