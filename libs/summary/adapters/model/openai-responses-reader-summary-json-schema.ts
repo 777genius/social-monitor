@@ -22,6 +22,7 @@ export const openAiReaderSummaryContentJsonSchemaDefs = {
       "sourceMix",
       "topReads",
       "claimBoard",
+      "reliabilityReport",
       "trendDelta",
       "openQuestions",
       "risks",
@@ -113,14 +114,11 @@ export const openAiReaderSummaryContentJsonSchemaDefs = {
       canonicalUrl: { type: ["string", "null"] },
     },
   ),
-  readerClaimConfidence: readerObjectSchema(
-    ["level", "score", "rationale"],
-    {
-      level: { enum: ["low", "medium", "high"] },
-      score: { type: "number", minimum: 0, maximum: 1 },
-      rationale: readerStringSchema(240),
-    },
-  ),
+  readerClaimConfidence: readerObjectSchema(["level", "score", "rationale"], {
+    level: { enum: ["low", "medium", "high"] },
+    score: { type: "number", minimum: 0, maximum: 1 },
+    rationale: readerStringSchema(240),
+  }),
   readerClaimRisk: readerObjectSchema(["kind", "description"], {
     kind: { enum: ["single_source", "low_confidence", "unresolved"] },
     description: readerStringSchema(240),
