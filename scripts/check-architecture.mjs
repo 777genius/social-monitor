@@ -86,6 +86,46 @@ const platformAdapterShortcutImports = new Map([
   ],
 ]);
 
+const socialResearchTransportInterfaceRoots = [
+  'libs/social-research/interfaces/mcp/',
+  'libs/social-research/interfaces/rest/',
+  'libs/social-research/interfaces/grpc/',
+  'libs/social-research/interfaces/tools/',
+];
+
+const forbiddenInSocialResearchApplication = [
+  '@grpc/',
+  '@modelcontextprotocol/',
+  '@nestjs/',
+  '@prisma/',
+  '@social-monitor/ingestion',
+  '@social-monitor/contracts',
+  '/interfaces/',
+  '/infrastructure/',
+];
+
+const forbiddenInSocialResearchTransportInterfaces = [
+  '@social-monitor/ingestion',
+  '@social-monitor/social-research/cache',
+  '@social-monitor/social-research/ingestion',
+  '/infrastructure/',
+  '/adapters/source/',
+  'EphemeralSocialResearchResultCache',
+  'PrismaSocialResearchResultCache',
+  'reddit-client',
+  'reddit-token',
+  'SourceFetcherPort',
+  'SourceFetcherSocialResearchGateway',
+];
+
+const forbiddenInSocialResearchMcpAdapter = [
+  '@grpc/',
+  '@nestjs/',
+  '@social-monitor/contracts',
+  '@social-monitor/identity',
+  '@social-monitor/monitoring',
+];
+
 function importsOf(source) {
   const specifiers = [];
   const patterns = [
@@ -213,6 +253,10 @@ function boundedContextOf(file) {
 
 function architectureLayerOf(file) {
   return toProjectPath(file).match(/^libs\/[^/]+\/(domain|features|ports|adapters|interfaces)(?:\/|$)/)?.[1] ?? null;
+}
+
+function isUnder(projectPath, root) {
+  return projectPath === root.replace(/\/$/, '') || projectPath.startsWith(root);
 }
 
 function isAppAdapterCompositionFile(file) {
@@ -388,6 +432,69 @@ for (const file of globSync('libs/**/*.ts')) {
 
     if (sourceContext && targetContext && sourceContext !== targetContext && targetLayer === 'adapters') {
       addViolation(file, `cross-context adapter import is forbidden: "${specifier}" resolves to "${resolved}"`);
+    }
+  }
+}
+
+for (const file of globSync('libs/social-research/application/**/*.ts')) {
+  if (!isProductionTsFile(file)) {
+    continue;
+  }
+
+  const source = readFileSync(file, 'utf8');
+  for (const specifier of importsOf(source)) {
+    if (forbiddenInSocialResearchApplication.some((forbidden) => specifier.includes(forbidden))) {
+      addViolation(file, `social-research application imports forbidden dependency "${specifier}"`);
+    }
+
+    const resolved = resolveLocalImport(file, specifier);
+    if (
+      resolved?.startsWith('libs/social-research/interfaces/') ||
+      resolved?.startsWith('libs/social-research/infrastructure/')
+    ) {
+      addViolation(file, `social-research application must not depend on interface/infrastructure code: "${specifier}" resolves to "${resolved}"`);
+    }
+  }
+}
+
+for (const file of globSync('libs/social-research/interfaces/**/*.ts')) {
+  if (!isProductionTsFile(file)) {
+    continue;
+  }
+
+  const projectPath = toProjectPath(file);
+  if (!socialResearchTransportInterfaceRoots.some((root) => isUnder(projectPath, root))) {
+    continue;
+  }
+
+  const source = readFileSync(file, 'utf8');
+  for (const specifier of importsOf(source)) {
+    if (forbiddenInSocialResearchTransportInterfaces.some((forbidden) => specifier.includes(forbidden))) {
+      addViolation(file, `social-research transport adapter imports provider/runtime dependency "${specifier}"`);
+    }
+
+    if (
+      isUnder(projectPath, 'libs/social-research/interfaces/mcp/') &&
+      forbiddenInSocialResearchMcpAdapter.some((forbidden) => specifier.includes(forbidden))
+    ) {
+      addViolation(file, `social-research MCP adapter must stay transport-thin; forbidden dependency "${specifier}"`);
+    }
+
+    const resolved = resolveLocalImport(file, specifier);
+    if (resolved?.startsWith('libs/social-research/infrastructure/')) {
+      addViolation(file, `social-research transport adapter must not depend on infrastructure code: "${specifier}" resolves to "${resolved}"`);
+    }
+  }
+}
+
+{
+  const coreEntryPoint = 'libs/social-research/index.ts';
+  if (existsSync(coreEntryPoint)) {
+    const source = readFileSync(coreEntryPoint, 'utf8');
+    for (const specifier of importsOf(source)) {
+      if (specifier.includes('./interfaces/') || specifier.includes('./infrastructure/')) {
+        addViolation(coreEntryPoint, `core social-research entrypoint must not export interface/infrastructure dependency "${specifier}"`);
+      }
     }
   }
 }

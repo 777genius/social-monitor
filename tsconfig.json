@@ -47,6 +47,8 @@
       "@social-monitor/feed": ["libs/feed/index.ts"],
       "@social-monitor/feed/*": ["libs/feed/*"],
       "@social-monitor/relevance/*": ["libs/relevance/*"],
+      "@social-monitor/social-research": ["libs/social-research/index.ts"],
+      "@social-monitor/social-research/*": ["libs/social-research/*"],
       "@social-monitor/summary/*": ["libs/summary/*"],
       "@social-monitor/subscriptions/*": ["libs/subscriptions/*"],
       "@social-monitor/delivery/*": ["libs/delivery/*"],

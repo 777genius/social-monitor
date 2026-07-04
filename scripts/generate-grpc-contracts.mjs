@@ -12,6 +12,7 @@ const protoc = join(projectRoot, 'node_modules/.bin/grpc_tools_node_protoc');
 const tsProtoPlugin = join(projectRoot, 'node_modules/.bin/protoc-gen-ts_proto');
 const protoFiles = [
   join(protoRoot, 'agent_runtime/v1/agent_runtime.proto'),
+  join(protoRoot, 'social_research/v1/social_research.proto'),
   join(protoRoot, 'x_collector/v1/x_collector.proto'),
 ];
 
