@@ -1,4 +1,5 @@
 import type { ReaderSummaryCitation } from "../entities/citation";
+import { readerItemIdentityKeys } from "../entities/reader-summary-content-identity";
 import type { TopRead } from "../entities/top-read";
 import type { SummaryEvidenceItem } from "../value-objects/summary-evidence-item";
 import { normalizeSignalScore } from "../value-objects/signal-score";
@@ -21,11 +22,13 @@ export const buildReaderSummarySelectedPosts = (params: {
   const posts: TopRead[] = [];
   const seen = new Set<string>();
   const push = (post: TopRead): void => {
-    const key = postIdentityKey(post);
-    if (seen.has(key)) {
+    const keys = readerItemIdentityKeys(post, params.citationById);
+    if (keys.some((key) => seen.has(key))) {
       return;
     }
-    seen.add(key);
+    for (const key of keys) {
+      seen.add(key);
+    }
     posts.push(post);
   };
 
@@ -83,13 +86,4 @@ const evidenceToSelectedPost = (
     previewMedia: item.previewMedia,
     citationIds: [citation.citationId],
   };
-};
-
-const postIdentityKey = (post: TopRead): string => {
-  const url = post.canonicalUrl?.trim();
-  if (url !== undefined && url.length > 0) {
-    return `url:${url.toLowerCase()}`;
-  }
-
-  return `title:${post.providerKey.toLowerCase()}:${post.title.toLowerCase()}`;
 };

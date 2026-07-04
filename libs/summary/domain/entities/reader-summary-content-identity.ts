@@ -10,9 +10,7 @@ export const assertUniqueReaderSummarySourceMixProviders = (
   for (const source of sourceMix) {
     const key = source.providerKey.trim().toLowerCase();
     if (providerKeys.has(key)) {
-      throw new Error(
-        "Reader summary source mix provider keys must be unique",
-      );
+      throw new Error("Reader summary source mix provider keys must be unique");
     }
     providerKeys.add(key);
   }
@@ -67,7 +65,7 @@ export const assertUniqueReaderSummaryContentItems = (
   );
 };
 
-const readerItemIdentityKeys = (
+export const readerItemIdentityKeys = (
   item: TopRead,
   citationById: ReadonlyMap<string, ReaderSummaryCitation> | undefined,
 ): readonly string[] => {
