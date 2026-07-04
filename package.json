@@ -69,6 +69,8 @@
     "check:events": "node scripts/check-event-contracts.mjs",
     "generate:grpc": "node scripts/generate-grpc-contracts.mjs",
     "check:grpc-contracts": "node scripts/generate-grpc-contracts.mjs --check",
+    "check:social-research-python-sdk": "PYTHONPATH=libs/social-research/python python3 -m unittest discover -s libs/social-research/python/tests -p 'test_*.py'",
+    "check:social-research-python-sdk-conformance": "python3 scripts/social_research_python_sdk_conformance.py",
     "social-research:mcp": "ts-node -r tsconfig-paths/register apps/social-research-mcp/src/main.ts",
     "social-research:grpc": "ts-node -r tsconfig-paths/register apps/social-research-grpc/src/main.ts",
     "x-collector:generate-grpc": "python3 -m grpc_tools.protoc -I libs/contracts/grpc --python_out=apps/x-collector/src --grpc_python_out=apps/x-collector/src libs/contracts/grpc/x_collector/v1/x_collector.proto",
