@@ -7,7 +7,12 @@ import { InMemoryMetricsRecorder } from "@social-monitor/platform-metrics";
 import { PrismaSummaryConnection } from "@social-monitor/summary/adapters/persistence/prisma/prisma-summary-connection";
 import { PrismaSummaryEventPublisher } from "@social-monitor/summary/adapters/persistence/prisma/prisma-summary-event.publisher";
 import { RelevanceReaderSummaryEvidenceSelector } from "@social-monitor/summary/adapters/evidence/relevance-reader-summary-evidence.selector";
+import {
+  AgentRuntimeReaderSummaryModelAdapter,
+  resolveAgentRuntimeReaderSummaryModelOptions,
+} from "@social-monitor/summary/adapters/model/agent-runtime-reader-summary-model.adapter";
 import { DeterministicReaderSummaryModelAdapter } from "@social-monitor/summary/adapters/model/deterministic-reader-summary-model.adapter";
+import { GrpcAgentRuntimeClient } from "@social-monitor/summary/adapters/model/grpc-agent-runtime-client";
 import {
   OpenAiResponsesReaderSummaryModelAdapter,
   resolveOpenAiResponsesReaderSummaryModelOptions,
@@ -50,6 +55,8 @@ const evidencePathEnv = "DURABLE_READER_SUMMARY_EVIDENCE_PATH";
 const frontendFixturePathEnv = "DURABLE_READER_SUMMARY_FRONTEND_FIXTURE_PATH";
 const defaultTenantId = "11111111-1111-4111-8111-111111111111";
 const defaultWorkspaceId = "22222222-2222-4222-8222-222222222222";
+type DurableReaderSummaryModelMode =
+  "deterministic" | "openai-responses" | "agent-runtime";
 
 type FeedInventoryRow = {
   readonly providerKey: string;
@@ -61,8 +68,12 @@ async function main(): Promise<void> {
   const databaseUrl = requiredEnv(databaseUrlEnv);
   const clock = new SystemClock();
   const now = clock.now();
-  const tenant = tenantId(readEnv("DURABLE_READER_SUMMARY_TENANT_ID") ?? defaultTenantId);
-  const workspace = workspaceId(readEnv("DURABLE_READER_SUMMARY_WORKSPACE_ID") ?? defaultWorkspaceId);
+  const tenant = tenantId(
+    readEnv("DURABLE_READER_SUMMARY_TENANT_ID") ?? defaultTenantId,
+  );
+  const workspace = workspaceId(
+    readEnv("DURABLE_READER_SUMMARY_WORKSPACE_ID") ?? defaultWorkspaceId,
+  );
   const timezone = readEnv("DURABLE_READER_SUMMARY_TIMEZONE") ?? "UTC";
   const periodStartedAt = startOfUtcDay(now);
   const periodEndedAt = now;
@@ -72,8 +83,18 @@ async function main(): Promise<void> {
     endedAt: periodEndedAt,
     timezone,
   });
-  const maxEvidenceItems = readIntegerEnv("DURABLE_READER_SUMMARY_MAX_EVIDENCE_ITEMS", 200, 1, 200);
-  const maxStories = readIntegerEnv("DURABLE_READER_SUMMARY_MAX_STORIES", 15, 1, 20);
+  const maxEvidenceItems = readIntegerEnv(
+    "DURABLE_READER_SUMMARY_MAX_EVIDENCE_ITEMS",
+    200,
+    1,
+    200,
+  );
+  const maxStories = readIntegerEnv(
+    "DURABLE_READER_SUMMARY_MAX_STORIES",
+    15,
+    1,
+    20,
+  );
   const modelMode = readModelMode();
 
   const feedConnection = new PrismaFeedConnection(databaseUrl);
@@ -81,9 +102,15 @@ async function main(): Promise<void> {
 
   try {
     const feedItems = new PrismaFeedItemReadRepository(feedConnection);
-    const readerSummaryJobs = new PrismaReaderSummaryJobRepository(summaryConnection);
-    const readerSummaryArtifacts = new PrismaReaderSummaryArtifactRepository(summaryConnection);
-    const readerSummaryPolicies = new PrismaReaderSummaryPolicyRepository(summaryConnection);
+    const readerSummaryJobs = new PrismaReaderSummaryJobRepository(
+      summaryConnection,
+    );
+    const readerSummaryArtifacts = new PrismaReaderSummaryArtifactRepository(
+      summaryConnection,
+    );
+    const readerSummaryPolicies = new PrismaReaderSummaryPolicyRepository(
+      summaryConnection,
+    );
     const queue = new CapturingReaderSummaryJobQueue();
     const ids = new CryptoIdGenerator();
     const scope = { type: "workspace" } as const;
@@ -171,7 +198,9 @@ async function main(): Promise<void> {
       throw execution.error;
     }
     if (execution.value.readerSummaryId === undefined) {
-      throw new Error("Durable reader summary execution did not produce an artifact id");
+      throw new Error(
+        "Durable reader summary execution did not produce an artifact id",
+      );
     }
 
     const artifact = await readerSummaryArtifacts.findById({
@@ -283,16 +312,39 @@ class AllowingSummaryQuota implements SummaryQuotaPort {
 
     return ok({
       remaining: 999,
-      resetAt: new Date(this.clock.now().getTime() + 24 * 60 * 60 * 1000).toISOString(),
+      resetAt: new Date(
+        this.clock.now().getTime() + 24 * 60 * 60 * 1000,
+      ).toISOString(),
     });
   }
 }
 
 const buildReaderSummaryModel = (
-  mode: "deterministic" | "openai-responses",
+  mode: DurableReaderSummaryModelMode,
 ): ReaderSummaryModelPort => {
   if (mode === "deterministic") {
     return new DeterministicReaderSummaryModelAdapter();
+  }
+
+  if (mode === "agent-runtime") {
+    return new AgentRuntimeReaderSummaryModelAdapter(
+      resolveAgentRuntimeReaderSummaryModelOptions(
+        process.env,
+        GrpcAgentRuntimeClient.connect({
+          address: requiredEnv("AGENT_RUNTIME_GRPC_ADDRESS"),
+          clock: new SystemClock(),
+          options: {
+            timeoutMs: readIntegerEnv(
+              "AGENT_RUNTIME_GRPC_TIMEOUT_MS",
+              5_000,
+              1,
+              600_000,
+            ),
+            serviceToken: readEnv("AGENT_RUNTIME_SERVICE_TOKEN"),
+          },
+        }),
+      ),
+    );
   }
 
   return new OpenAiResponsesReaderSummaryModelAdapter(
@@ -336,10 +388,7 @@ const loadFeedInventory = async (
   }));
 };
 
-const writeOptionalJsonArtifact = (
-  envName: string,
-  value: unknown,
-): void => {
+const writeOptionalJsonArtifact = (envName: string, value: unknown): void => {
   const artifactPath = readEnv(envName);
   if (artifactPath === undefined) {
     return;
@@ -354,15 +403,23 @@ const writeOptionalJsonArtifact = (
 };
 
 const startOfUtcDay = (date: Date): Date =>
-  new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
+  );
 
-const readModelMode = (): "deterministic" | "openai-responses" => {
+const readModelMode = (): DurableReaderSummaryModelMode => {
   const value = readEnv("DURABLE_READER_SUMMARY_MODEL") ?? "openai-responses";
-  if (value === "deterministic" || value === "openai-responses") {
+  if (
+    value === "deterministic" ||
+    value === "openai-responses" ||
+    value === "agent-runtime"
+  ) {
     return value;
   }
 
-  throw new Error("DURABLE_READER_SUMMARY_MODEL must be deterministic or openai-responses");
+  throw new Error(
+    "DURABLE_READER_SUMMARY_MODEL must be deterministic, openai-responses or agent-runtime",
+  );
 };
 
 const readIntegerEnv = (
