@@ -122,4 +122,51 @@ void main() {
 
     expect(selectedPath, '/settings');
   });
+
+  testWidgets('collapses the persistent sidebar into an icon rail', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1180, 780);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: AppAdaptiveShell(
+          title: 'Social Monitor',
+          selectedPath: '/',
+          destinations: const [
+            AppShellDestination(
+              label: 'Overview',
+              path: '/',
+              icon: Icons.monitor_heart_outlined,
+            ),
+            AppShellDestination(
+              label: 'Feed',
+              path: '/feed',
+              icon: Icons.dynamic_feed_outlined,
+            ),
+          ],
+          onDestinationSelected: (_) {},
+          child: const SizedBox(),
+        ),
+      ),
+    );
+
+    expect(find.text('Feed'), findsOneWidget);
+
+    final toggle = find.byKey(const ValueKey('app-shell-sidebar-toggle'));
+    expect(toggle, findsOneWidget);
+
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+
+    // Collapsed rail keeps icons but drops the labels and the brand title.
+    expect(find.text('Feed'), findsNothing);
+    expect(find.text('Overview'), findsNothing);
+    expect(find.text('Social Monitor'), findsNothing);
+    expect(toggle, findsOneWidget);
+  });
 }

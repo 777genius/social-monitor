@@ -4,6 +4,8 @@ import 'package:social_monitor_generated_api/social_monitor_generated_api.dart'
 import '../api/summary_api_dto.dart';
 import 'reader_summary_content_rest_mapper.dart';
 
+part 'generated_summary_rest_mapper_coverage.dart';
+
 final class GeneratedSummaryRestMapper {
   const GeneratedSummaryRestMapper();
 
@@ -19,6 +21,7 @@ final class GeneratedSummaryRestMapper {
   ReaderSummaryApiDto readerSummary(
     generated.ReaderSummaryArtifactResponseDto dto,
   ) {
+    final coverage = dto.coverage;
     return ReaderSummaryApiDto(
       id: dto.readerSummaryId,
       title: dto.headline,
@@ -51,7 +54,7 @@ final class GeneratedSummaryRestMapper {
       citations: dto.citations
           .map(_readerSummaryCitation)
           .toList(growable: false),
-      period: _readerSummaryPeriod(dto.period),
+      period: readerSummaryPeriod(dto.period),
       sourceWindow: SummaryWindowApiDto(
         label: 'Evidence window',
         startedAt: dto.sourceWindow.startedAt,
@@ -59,6 +62,7 @@ final class GeneratedSummaryRestMapper {
       ),
       freshnessLabel: _readerSummaryFreshnessLabel(dto.freshness),
       isDegraded: dto.qualityFlags.any(_isDegradedReaderSummaryFlag),
+      coverage: _readerSummaryCoverage(coverage),
     );
   }
 
@@ -69,7 +73,7 @@ final class GeneratedSummaryRestMapper {
       id: dto.readerSummaryJobId,
       status: _requestReaderSummaryStatus(dto.status),
       created: dto.created,
-      period: _readerSummaryPeriod(dto.period),
+      period: readerSummaryPeriod(dto.period),
     );
   }
 
@@ -85,11 +89,11 @@ final class GeneratedSummaryRestMapper {
       startedAt: dto.startedAt,
       completedAt: dto.completedAt,
       failedAt: dto.failedAt,
-      period: _readerSummaryPeriod(dto.period),
+      period: readerSummaryPeriod(dto.period),
     );
   }
 
-  SummaryPeriodApiDto _readerSummaryPeriod(
+  SummaryPeriodApiDto readerSummaryPeriod(
     generated.ReaderSummaryPeriodDto dto,
   ) {
     return SummaryPeriodApiDto(
@@ -148,6 +152,9 @@ final class GeneratedSummaryRestMapper {
     return SummaryCitationApiDto(
       id: dto.citationId,
       sourceLabel: '${_providerLabel(dto.providerKey)} ${dto.label}',
+      feedItemId: dto.feedItemId,
+      sourceItemId: dto.sourceItemId,
+      providerKey: dto.providerKey,
       rawSnippet: _citationSnippet(
         providerKey: dto.providerKey,
         field: field,
@@ -164,6 +171,9 @@ final class GeneratedSummaryRestMapper {
     return SummaryCitationApiDto(
       id: dto.citationId,
       sourceLabel: '${_providerLabel(dto.providerKey)} ${dto.label}',
+      feedItemId: dto.feedItemId,
+      sourceItemId: dto.sourceItemId,
+      providerKey: dto.providerKey,
       rawSnippet: _citationSnippet(
         providerKey: dto.providerKey,
         field: field,

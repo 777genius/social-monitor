@@ -4,12 +4,15 @@ import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 import '../../application/contracts/reader_source_launcher.dart';
 import '../../application/contracts/summary_review_catalog.dart';
 import '../../application/use_cases/list_summaries_use_case.dart';
+import '../../application/use_cases/load_post_ratings_use_case.dart';
 import '../../application/use_cases/load_summary_detail_use_case.dart';
+import '../../application/use_cases/load_workspace_summary_history_use_case.dart';
 import '../../application/use_cases/load_workspace_summary_job_status_use_case.dart';
 import '../../application/use_cases/load_workspace_summary_use_case.dart';
 import '../../application/use_cases/open_reader_source_use_case.dart';
 import '../../application/use_cases/regenerate_summary_use_case.dart';
 import '../../application/use_cases/request_workspace_summary_use_case.dart';
+import '../../application/use_cases/submit_post_rating_use_case.dart';
 import '../../application/use_cases/submit_reader_action_use_case.dart';
 import '../../application/use_cases/submit_summary_feedback_use_case.dart';
 import '../../infrastructure/api_clients/generated_summaries_api_client.dart';
@@ -59,6 +62,9 @@ final class SummariesFeatureModule extends Module {
           loadWorkspaceSummary: LoadWorkspaceSummaryUseCase(
             i.get<SummaryReviewCatalog>(),
           ),
+          loadWorkspaceSummaryHistory: LoadWorkspaceSummaryHistoryUseCase(
+            i.get<SummaryReviewCatalog>(),
+          ),
           requestWorkspaceSummary: RequestWorkspaceSummaryUseCase(
             i.get<SummaryReviewCatalog>(),
           ),
@@ -68,10 +74,16 @@ final class SummariesFeatureModule extends Module {
           loadSummaryDetail: LoadSummaryDetailUseCase(
             i.get<SummaryReviewCatalog>(),
           ),
+          loadPostRatings: LoadPostRatingsUseCase(
+            i.get<SummaryReviewCatalog>(),
+          ),
           regenerateSummary: RegenerateSummaryUseCase(
             i.get<SummaryReviewCatalog>(),
           ),
           submitFeedback: SubmitSummaryFeedbackUseCase(
+            i.get<SummaryReviewCatalog>(),
+          ),
+          submitPostRating: SubmitPostRatingUseCase(
             i.get<SummaryReviewCatalog>(),
           ),
           submitReaderAction: SubmitReaderActionUseCase(
@@ -94,13 +106,18 @@ final class SummariesFeatureModule extends Module {
       dependencies: SummariesReviewStoreDependencies(
         listSummaries: ListSummariesUseCase(catalog),
         loadWorkspaceSummary: LoadWorkspaceSummaryUseCase(catalog),
+        loadWorkspaceSummaryHistory: LoadWorkspaceSummaryHistoryUseCase(
+          catalog,
+        ),
         requestWorkspaceSummary: RequestWorkspaceSummaryUseCase(catalog),
         loadWorkspaceSummaryJobStatus: LoadWorkspaceSummaryJobStatusUseCase(
           catalog,
         ),
         loadSummaryDetail: LoadSummaryDetailUseCase(catalog),
+        loadPostRatings: LoadPostRatingsUseCase(catalog),
         regenerateSummary: RegenerateSummaryUseCase(catalog),
         submitFeedback: SubmitSummaryFeedbackUseCase(catalog),
+        submitPostRating: SubmitPostRatingUseCase(catalog),
         submitReaderAction: SubmitReaderActionUseCase(catalog),
         openReaderSource: OpenReaderSourceUseCase(
           const UrlLauncherReaderSourceLauncher(),

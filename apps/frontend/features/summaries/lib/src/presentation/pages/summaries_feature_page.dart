@@ -36,22 +36,22 @@ class _SummariesFeaturePageState extends State<SummariesFeaturePage> {
 
   @override
   Widget build(BuildContext context) {
-    return AppPageSurface(
-      child: AnimatedBuilder(
-        animation: widget.store,
-        builder: (context, child) {
-          return CustomScrollView(
-            slivers: [
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.only(top: AppSpacing.xs),
-                  child: _SummariesBody(store: widget.store),
-                ),
+    return AnimatedBuilder(
+      animation: widget.store,
+      builder: (context, child) {
+        return CustomScrollView(
+          slivers: [
+            SliverPadding(
+              padding: appPageSurfaceInsets(
+                context,
+              ).add(const EdgeInsets.only(top: AppSpacing.xs)),
+              sliver: SliverToBoxAdapter(
+                child: _SummariesBody(store: widget.store),
               ),
-            ],
-          );
-        },
-      ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
@@ -77,6 +77,9 @@ class _SummariesBody extends StatelessWidget {
         : selected;
     final showSummaryHistory =
         !_hasWorkspaceSummary(store.workspaceSummaryState) &&
+        !_isWorkspaceSummaryLoadingWithoutPrevious(
+          store.workspaceSummaryState,
+        ) &&
         (items.isNotEmpty ||
             state is LoadingViewState<PageResult<GeneratedSummary>> ||
             state is FailureViewState<PageResult<GeneratedSummary>>);
@@ -131,6 +134,8 @@ class _SummariesBody extends StatelessWidget {
       ),
     };
 
+    final reviewStore = store;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -162,6 +167,8 @@ class _SummariesBody extends StatelessWidget {
           onAction: (summary, action, [feedbackReason]) => unawaited(
             store.submitReaderAction(summary, action, feedbackReason),
           ),
+          topPostRatingFor: reviewStore.topPostRatingFor,
+          onTopPostRating: reviewStore.submitTopPostRating,
           onOpenUrl: (summary, url) => unawaited(
             store.openReaderSourceUrl(summaryId: summary.id, canonicalUrl: url),
           ),
@@ -181,6 +188,16 @@ bool _hasWorkspaceSummary(AsyncViewState<WorkspaceSummarySnapshot> state) {
       value.current != null,
     LoadingViewState<WorkspaceSummarySnapshot>(:final previousValue) =>
       previousValue?.current != null,
+    _ => false,
+  };
+}
+
+bool _isWorkspaceSummaryLoadingWithoutPrevious(
+  AsyncViewState<WorkspaceSummarySnapshot> state,
+) {
+  return switch (state) {
+    LoadingViewState<WorkspaceSummarySnapshot>(:final previousValue) =>
+      previousValue?.current == null,
     _ => false,
   };
 }

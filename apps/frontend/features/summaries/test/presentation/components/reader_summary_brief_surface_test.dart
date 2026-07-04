@@ -1,13 +1,351 @@
+import 'dart:ui' show PointerDeviceKind;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 import 'package:social_monitor_summaries/src/infrastructure/api/summary_api_dto.dart';
 import 'package:social_monitor_summaries/src/infrastructure/mappers/summary_mapper.dart';
 import 'package:social_monitor_summaries/src/presentation/components/reader_summary_brief_surface.dart';
+import 'package:social_monitor_summaries/src/presentation/components/reader_summary_provider_logo.dart';
 
 import '../../support/summaries_test_fixtures.dart';
 
 void main() {
+  testWidgets('renders executive summary markdown without raw markers', (
+    tester,
+  ) async {
+    const mapper = SummaryMapper();
+    final summary = mapper.readerSummaryToDomain(
+      readerSummaryApiDto(
+        executiveSummary:
+            '**Fable 5** is back with stronger coding discussion across sources.',
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark(),
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: ReaderSummaryBriefSurface(
+              summary: summary,
+              citationsById: {
+                for (final citation in summary.citations) citation.id: citation,
+              },
+              isRefreshing: false,
+              onOpenUrl: (_) {},
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.textContaining('Fable 5'), findsWidgets);
+    expect(find.textContaining('**Fable 5**'), findsNothing);
+    expect(find.text('Key links'), findsNothing);
+  });
+
+  testWidgets(
+    'shows collected and selected summary counts without duplicates',
+    (tester) async {
+      const mapper = SummaryMapper();
+      final summary = mapper.readerSummaryToDomain(
+        readerSummaryApiDto(
+          coverage: const ReaderSummaryCoverageApiDto(
+            collectedFeedItemCount: 255,
+            selectedFeedItemCount: 80,
+            topReadCount: 9,
+            citationCount: 80,
+          ),
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.dark(),
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: ReaderSummaryBriefSurface(
+                summary: summary,
+                citationsById: {
+                  for (final citation in summary.citations)
+                    citation.id: citation,
+                },
+                isRefreshing: false,
+                onOpenUrl: (_) {},
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(
+        find.text('255 collected · 80 selected for summary · 9 top reads'),
+        findsOneWidget,
+      );
+      expect(find.text('80 collected · 80 selected'), findsNothing);
+    },
+  );
+
+  testWidgets('lists every related source for multi-citation text', (
+    tester,
+  ) async {
+    const mapper = SummaryMapper();
+    final openedUrls = <String>[];
+    final summary = mapper.readerSummaryToDomain(
+      readerSummaryApiDto(
+        content: const ReaderSummaryContentApiDto(
+          headline: 'Cross-source signal',
+          oneLineTakeaway: 'Three monitored sources confirm the same signal.',
+          bullets: [],
+          interestSections: [
+            ReaderInterestSectionApiDto(
+              title: 'Developer tooling',
+              insight: 'Three monitored sources confirm the same signal.',
+              items: [],
+              citationIds: ['bc-1', 'bc-2', 'bc-3'],
+            ),
+          ],
+          sourceMix: [
+            SourceMixEntryApiDto(
+              providerKey: 'reddit',
+              itemCount: 1,
+              citationCount: 1,
+            ),
+            SourceMixEntryApiDto(
+              providerKey: 'hacker-news',
+              itemCount: 1,
+              citationCount: 1,
+            ),
+            SourceMixEntryApiDto(
+              providerKey: 'rss',
+              itemCount: 1,
+              citationCount: 1,
+            ),
+          ],
+          topReads: [
+            TopReadApiDto(
+              title: 'Reddit post about agent routing',
+              providerKey: 'reddit',
+              reason: 'Reddit discussion backs the claim.',
+              citationIds: ['bc-1'],
+              canonicalUrl: 'https://reddit.com/r/programming/comments/a',
+            ),
+            TopReadApiDto(
+              title: 'HN thread about benchmark clarity',
+              providerKey: 'hacker-news',
+              reason: 'HN discussion backs the claim.',
+              citationIds: ['bc-2'],
+              canonicalUrl: 'https://news.ycombinator.com/item?id=2',
+            ),
+            TopReadApiDto(
+              title: 'RSS article about the launch',
+              providerKey: 'rss',
+              reason: 'RSS article backs the claim.',
+              citationIds: ['bc-3'],
+              canonicalUrl: 'https://example.test/rss',
+            ),
+          ],
+          trendDelta: ReaderTrendDeltaApiDto(
+            newSignals: [],
+            growingSignals: [],
+            repeatedSignals: [],
+            fadingSignals: [],
+          ),
+          openQuestions: [],
+          risks: [],
+          nextActions: [],
+        ),
+        citations: [
+          summaryCitationApiDto(
+            id: 'bc-1',
+            sourceLabel: 'Reddit thread [1]',
+            providerKey: 'reddit',
+            rawSnippet: 'Reddit source context.',
+            canonicalUrl: 'https://reddit.com/r/programming/comments/a',
+          ),
+          summaryCitationApiDto(
+            id: 'bc-2',
+            sourceLabel: 'Hacker News [2]',
+            providerKey: 'hacker-news',
+            rawSnippet: 'HN source context.',
+            canonicalUrl: 'https://news.ycombinator.com/item?id=2',
+          ),
+          summaryCitationApiDto(
+            id: 'bc-3',
+            sourceLabel: 'RSS article [3]',
+            providerKey: 'rss',
+            rawSnippet: 'RSS source context.',
+            canonicalUrl: 'https://example.test/rss',
+          ),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark(),
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: ReaderSummaryBriefSurface(
+              summary: summary,
+              citationsById: {
+                for (final citation in summary.citations) citation.id: citation,
+              },
+              isRefreshing: false,
+              onOpenUrl: openedUrls.add,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await _hoverCitationChip(
+      tester,
+      const ValueKey('reader-summary-lede-citation-bc-1'),
+    );
+
+    expect(
+      find.byKey(const ValueKey('reader-summary-citation-source-bc-1')),
+      findsOneWidget,
+    );
+    final secondSource = find.byKey(
+      const ValueKey('reader-summary-citation-source-bc-2'),
+    );
+    expect(secondSource, findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('reader-summary-citation-source-bc-3')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('reader-summary-citation-source-bc-1')),
+        matching: find.text('[1] Reddit post about agent routing'),
+      ),
+      findsAtLeastNWidgets(1),
+    );
+    expect(
+      find.descendant(
+        of: secondSource,
+        matching: find.text('[2] HN thread about benchmark clarity'),
+      ),
+      findsAtLeastNWidgets(1),
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('reader-summary-citation-source-bc-3')),
+        matching: find.text('[3] RSS article about the launch'),
+      ),
+      findsAtLeastNWidgets(1),
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('reader-summary-citation-source-bc-1')),
+        matching: find.text('Reddit thread [1]'),
+      ),
+      findsNothing,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('reader-summary-citation-source-bc-1')),
+        matching: find.byType(ReaderSummaryProviderLogo),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(secondSource);
+    await tester.pumpAndSettle();
+
+    expect(openedUrls, ['https://news.ycombinator.com/item?id=2']);
+  });
+
+  testWidgets('opens cited source menu from inline citation badges', (
+    tester,
+  ) async {
+    const mapper = SummaryMapper();
+    final openedUrls = <String>[];
+    final summary = mapper.readerSummaryToDomain(
+      readerSummaryApiDto(
+        citations: [
+          summaryCitationApiDto(
+            id: 'bc-1',
+            sourceLabel: 'Reddit discussion [1]',
+            rawSnippet: 'A Reddit post with ranked comments backs this claim.',
+            canonicalUrl: 'https://reddit.com/r/LocalLLaMA/comments/example',
+          ),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark(),
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: ReaderSummaryBriefSurface(
+              summary: summary,
+              citationsById: {
+                for (final citation in summary.citations) citation.id: citation,
+              },
+              isRefreshing: false,
+              onOpenUrl: openedUrls.add,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      find.byKey(const ValueKey('reader-summary-citation-source-bc-1')),
+      findsNothing,
+    );
+
+    await _hoverCitationChip(
+      tester,
+      const ValueKey('reader-summary-lede-citation-bc-1'),
+    );
+
+    final sourceItem = find.byKey(
+      const ValueKey('reader-summary-citation-source-bc-1'),
+    );
+    expect(sourceItem, findsOneWidget);
+    expect(
+      find.descendant(
+        of: sourceItem,
+        matching: find.text('[1] AI coding tools'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: sourceItem,
+        matching: find.text('Reddit discussion [1]'),
+      ),
+      findsNothing,
+    );
+    expect(
+      find.descendant(
+        of: sourceItem,
+        matching: find.text(
+          'A Reddit post with ranked comments backs this claim.',
+        ),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: sourceItem,
+        matching: find.text('https://reddit.com/r/LocalLLaMA/comments/example'),
+      ),
+      findsNothing,
+    );
+
+    await tester.tap(sourceItem);
+    await tester.pumpAndSettle();
+
+    expect(openedUrls, ['https://reddit.com/r/LocalLLaMA/comments/example']);
+  });
+
   testWidgets('renders real preview media in the brief top-read cards', (
     tester,
   ) async {
@@ -63,4 +401,20 @@ void main() {
     expect(find.byType(Image), findsOneWidget);
     expect(find.byIcon(Icons.play_arrow_rounded), findsOneWidget);
   });
+}
+
+Future<void> _hoverCitationChip(
+  WidgetTester tester,
+  ValueKey<String> key,
+) async {
+  final citationChip = find.byKey(key);
+  expect(citationChip, findsOneWidget);
+
+  final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
+  addTearDown(gesture.removePointer);
+  await gesture.addPointer(location: Offset.zero);
+  await tester.pump();
+  await gesture.moveTo(tester.getCenter(citationChip));
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 50));
 }

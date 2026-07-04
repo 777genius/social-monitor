@@ -8,14 +8,18 @@ class ReaderSummaryPreviewMedia extends StatelessWidget {
     super.key,
     required this.media,
     required this.compact,
+    this.size,
+    this.enableLightbox = false,
   });
 
   final PreviewMedia media;
   final bool compact;
+  final double? size;
+  final bool enableLightbox;
 
   @override
   Widget build(BuildContext context) {
-    final size = compact ? 58.0 : 72.0;
+    final resolvedSize = size ?? (compact ? 58.0 : 72.0);
     final colorScheme = Theme.of(context).colorScheme;
     final label =
         media.altText ??
@@ -24,44 +28,102 @@ class ReaderSummaryPreviewMedia extends StatelessWidget {
           PreviewMediaKind.image => 'Image preview',
         };
 
+    final preview = ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: colorScheme.surfaceContainerHighest,
+          border: Border.all(color: colorScheme.outlineVariant),
+        ),
+        child: SizedBox.square(
+          dimension: resolvedSize,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Image.network(
+                media.url,
+                fit: BoxFit.cover,
+                filterQuality: FilterQuality.low,
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) {
+                    return child;
+                  }
+                  return _PreviewFallback(kind: media.kind);
+                },
+                errorBuilder: (context, error, stackTrace) =>
+                    _PreviewFallback(kind: media.kind),
+              ),
+              if (media.kind == PreviewMediaKind.video) const _VideoBadge(),
+            ],
+          ),
+        ),
+      ),
+    );
+
     return Semantics(
       image: true,
+      button: enableLightbox,
       label: label,
       child: Tooltip(
         message: media.kind == PreviewMediaKind.video
             ? 'Video preview'
             : 'Image preview',
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: colorScheme.surfaceContainerHighest,
-              border: Border.all(color: colorScheme.outlineVariant),
-            ),
-            child: SizedBox.square(
-              dimension: size,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  Image.network(
-                    media.url,
-                    fit: BoxFit.cover,
-                    filterQuality: FilterQuality.low,
-                    loadingBuilder: (context, child, loadingProgress) {
-                      if (loadingProgress == null) {
-                        return child;
-                      }
-                      return _PreviewFallback(kind: media.kind);
-                    },
-                    errorBuilder: (context, error, stackTrace) =>
-                        _PreviewFallback(kind: media.kind),
-                  ),
-                  if (media.kind == PreviewMediaKind.video) const _VideoBadge(),
-                ],
+        child: enableLightbox
+            ? GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _openPreviewLightbox(context, media),
+                child: preview,
+              )
+            : preview,
+      ),
+    );
+  }
+}
+
+void _openPreviewLightbox(BuildContext context, PreviewMedia media) {
+  showDialog<void>(
+    context: context,
+    builder: (context) => _PreviewLightbox(media: media),
+  );
+}
+
+class _PreviewLightbox extends StatelessWidget {
+  const _PreviewLightbox({required this.media});
+
+  final PreviewMedia media;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Dialog.fullscreen(
+      backgroundColor: colorScheme.scrim.withValues(alpha: 0.86),
+      child: Stack(
+        children: [
+          Center(
+            child: InteractiveViewer(
+              minScale: 0.8,
+              maxScale: 4,
+              child: Image.network(
+                media.url,
+                fit: BoxFit.contain,
+                filterQuality: FilterQuality.medium,
+                errorBuilder: (context, error, stackTrace) =>
+                    _PreviewFallback(kind: media.kind),
               ),
             ),
           ),
-        ),
+          Positioned(
+            top: AppSpacing.md,
+            right: AppSpacing.md,
+            child: IconButton.filledTonal(
+              onPressed: () => Navigator.of(context).pop(),
+              icon: const Icon(Icons.close_rounded),
+              tooltip: 'Close preview',
+            ),
+          ),
+          if (media.kind == PreviewMediaKind.video)
+            const Center(child: _VideoBadge()),
+        ],
       ),
     );
   }

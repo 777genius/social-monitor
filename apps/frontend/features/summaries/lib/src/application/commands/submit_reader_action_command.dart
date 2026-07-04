@@ -11,6 +11,7 @@ final class SubmitReaderActionCommand {
     required this.label,
     required this.target,
     required this.idempotencyKey,
+    this.rating,
     this.feedbackReason,
   });
 
@@ -21,5 +22,6 @@ final class SubmitReaderActionCommand {
   final String label;
   final ReaderActionTarget target;
   final String idempotencyKey;
+  final int? rating;
   final ReaderFeedbackReason? feedbackReason;
 }

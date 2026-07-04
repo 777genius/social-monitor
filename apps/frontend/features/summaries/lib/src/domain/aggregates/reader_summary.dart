@@ -4,8 +4,11 @@ import '../entities/reader_trend_delta.dart';
 import '../entities/repeated_signal.dart';
 import '../entities/source_mix_entry.dart';
 import '../entities/summary_citation.dart';
+import '../entities/summary_claim.dart';
+import '../entities/summary_reliability.dart';
 import '../entities/summary_story.dart';
 import '../entities/top_read.dart';
+import '../value_objects/reader_summary_coverage.dart';
 import '../value_objects/summary_period.dart';
 import '../value_objects/summary_quality.dart';
 import '../value_objects/summary_window.dart';
@@ -15,10 +18,13 @@ export '../entities/reader_interest_section.dart';
 export '../entities/reader_trend_delta.dart';
 export '../entities/repeated_signal.dart';
 export '../entities/source_mix_entry.dart';
+export '../entities/summary_claim.dart';
+export '../entities/summary_reliability.dart';
 export '../entities/summary_story.dart';
 export '../entities/top_read.dart';
 export '../value_objects/preview_media.dart';
 export '../value_objects/provider_metric_label.dart';
+export '../value_objects/reader_summary_coverage.dart';
 export '../value_objects/signal_score.dart';
 export '../value_objects/summary_period.dart';
 export '../value_objects/summary_quality.dart';
@@ -28,10 +34,12 @@ final class WorkspaceSummarySnapshot {
   const WorkspaceSummarySnapshot({
     this.current,
     this.availablePeriods = const [],
+    this.availablePeriodsAreComplete = false,
   });
 
   final ReaderSummary? current;
   final List<SummaryPeriod> availablePeriods;
+  final bool availablePeriodsAreComplete;
 }
 
 final class ReaderSummary {
@@ -48,6 +56,7 @@ final class ReaderSummary {
     required this.summaryWindow,
     required this.freshnessLabel,
     required this.isDegraded,
+    this.coverage,
   });
 
   final String id;
@@ -62,6 +71,7 @@ final class ReaderSummary {
   final SummaryWindow summaryWindow;
   final String freshnessLabel;
   final bool isDegraded;
+  final ReaderSummaryCoverage? coverage;
 }
 
 final class ReaderSummaryContent {
@@ -69,10 +79,14 @@ final class ReaderSummaryContent {
     required this.headline,
     required this.oneLineTakeaway,
     required this.bullets,
+    this.mainTopics = const [],
     required this.qualityState,
     required this.interestSections,
     required this.sourceMix,
     required this.topReads,
+    this.selectedPosts = const [],
+    this.claimBoard = const [],
+    this.reliabilityReport = emptySummaryReliabilityReport,
     required this.trendDelta,
     required this.openQuestions,
     required this.risks,
@@ -82,10 +96,14 @@ final class ReaderSummaryContent {
   final String headline;
   final String oneLineTakeaway;
   final List<String> bullets;
+  final List<String> mainTopics;
   final ReaderSummaryQualityState qualityState;
   final List<ReaderInterestSection> interestSections;
   final List<SourceMixEntry> sourceMix;
   final List<TopRead> topReads;
+  final List<TopRead> selectedPosts;
+  final List<SummaryClaim> claimBoard;
+  final SummaryReliabilityReport reliabilityReport;
   final ReaderTrendDelta trendDelta;
   final List<String> openQuestions;
   final List<String> risks;

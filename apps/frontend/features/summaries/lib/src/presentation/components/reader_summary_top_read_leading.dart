@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../domain/aggregates/reader_summary.dart';
-import 'github_mark.dart';
 import 'reader_summary_preview_media.dart';
+import 'reader_summary_provider_logo.dart';
 
 class ReaderSummaryTopReadLeading extends StatelessWidget {
   const ReaderSummaryTopReadLeading({
@@ -47,14 +47,5 @@ class ReaderSummaryTopReadLeading extends StatelessWidget {
 }
 
 Widget _fallbackIcon(TopRead item) {
-  return _isGithub(item)
-      ? const GitHubMark(size: 18)
-      : const Icon(Icons.article_outlined, size: 18);
-}
-
-bool _isGithub(TopRead item) {
-  final uri = Uri.tryParse(item.canonicalUrl ?? '');
-  return item.providerKey == 'github-repo-radar' ||
-      item.providerKey == 'github-trending-page' ||
-      uri?.host.toLowerCase() == 'github.com';
+  return ReaderSummaryProviderLogo(providerKey: item.providerKey);
 }

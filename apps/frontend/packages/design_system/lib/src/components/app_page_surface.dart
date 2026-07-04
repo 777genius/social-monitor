@@ -10,17 +10,18 @@ class AppPageSurface extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final screen = AppScreenClass.of(context);
-
-    return Padding(
-      padding: EdgeInsets.all(
-        screen.when(
-          compact: AppSpacing.md,
-          medium: AppSpacing.lg,
-          expanded: AppSpacing.xl,
-        ),
-      ),
-      child: child,
-    );
+    return Padding(padding: appPageSurfaceInsets(context), child: child);
   }
+}
+
+EdgeInsets appPageSurfaceInsets(BuildContext context) {
+  final screen = AppScreenClass.of(context);
+
+  return EdgeInsets.all(
+    screen.when(
+      compact: AppSpacing.md,
+      medium: AppSpacing.lg,
+      expanded: AppSpacing.xl,
+    ),
+  );
 }

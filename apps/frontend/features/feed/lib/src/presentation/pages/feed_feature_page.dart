@@ -5,8 +5,8 @@ import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
 import '../../domain/entities/feed_item.dart';
-import '../components/feed_item_card.dart';
-import '../components/feed_item_detail_panel.dart';
+import '../components/feed_item_detail_dialog.dart';
+import '../components/feed_items_list.dart';
 import '../components/feed_snapshot_panel.dart';
 import '../stores/feed_items_store.dart';
 import '../view_models/feed_filter_facets.dart';
@@ -167,20 +167,10 @@ class _FeedBody extends StatelessWidget {
         previousValue?.items ?? const <FeedItem>[],
       _ => const <FeedItem>[],
     };
-    final isCompact = AppScreenClass.of(context).isCompact;
     final hasAnyFilter = store.filter.hasAnyFilter;
     final nextCursor = store.nextCursor;
     final showPagination =
         nextCursor != null || state is LoadingViewState<PageResult<FeedItem>>;
-    final detailState = store.detailState;
-    final selected = store.selectedListItem ?? items.firstOrNull;
-    final detailItem = isCompact && !store.hasExplicitSelection
-        ? null
-        : store.selectedDetailItem ?? selected;
-    final detailFailure = switch (detailState) {
-      FailureViewState<FeedItem>(:final failure) => failure,
-      _ => null,
-    };
 
     return switch (state) {
       FailureViewState<PageResult<FeedItem>>(:final failure) =>
@@ -211,57 +201,56 @@ class _FeedBody extends StatelessWidget {
             interestLabel: interestLabel,
           ),
           const SizedBox(height: AppSpacing.md),
-          AppResponsiveSplitView(
-            list: AppDataList<FeedItem>(
-              items: items,
-              stableId: (item) => item.id.value,
-              isLoading: state is LoadingViewState<PageResult<FeedItem>>,
-              isStale:
-                  state is ReadyViewState<PageResult<FeedItem>> &&
-                  state.isStale,
-              emptyTitle: 'No feed items',
-              emptyMessage: hasAnyFilter
-                  ? 'Clear filters to return to all collected posts.'
-                  : 'Connect sources or wait for the next collection run.',
-              footer: showPagination
-                  ? AppPaginationControls(
-                      hasMore: nextCursor != null,
-                      isLoading:
-                          state is LoadingViewState<PageResult<FeedItem>>,
-                      summary: '${items.length} posts shown',
-                      onLoadMore: nextCursor == null
-                          ? null
-                          : () => unawaited(store.loadMore()),
-                    )
-                  : null,
-              itemBuilder: (context, item, index) {
-                return FeedItemCard(
-                  key: ValueKey('feed-item-card-${item.id.value}'),
-                  item: item,
-                  selected: detailItem?.id == item.id,
-                  onTap: () => unawaited(store.selectItem(item.id)),
-                );
-              },
-            ),
-            detailTitle: detailItem?.title ?? 'Feed item detail',
-            onCloseDetail: isCompact ? store.clearSelection : null,
-            detail: detailItem == null
-                ? isCompact
-                      ? null
-                      : const AppInlineProblem(
-                          title: 'Select a feed item',
-                          message: 'Choose an item to inspect its provenance.',
-                          tone: AppProblemTone.neutral,
-                        )
-                : FeedItemDetailPanel(
-                    item: detailItem,
-                    isLoading: detailState is LoadingViewState<FeedItem>,
-                    failure: detailFailure,
-                  ),
+          FeedItemsList(
+            items: items,
+            isLoading: state is LoadingViewState<PageResult<FeedItem>>,
+            isStale:
+                state is ReadyViewState<PageResult<FeedItem>> && state.isStale,
+            emptyTitle: 'No feed items',
+            emptyMessage: hasAnyFilter
+                ? 'Clear filters to return to all collected posts.'
+                : 'Connect sources or wait for the next collection run.',
+            footer: showPagination
+                ? AppPaginationControls(
+                    hasMore: nextCursor != null,
+                    isLoading: state is LoadingViewState<PageResult<FeedItem>>,
+                    summary: '${items.length} posts shown',
+                    onLoadMore: nextCursor == null
+                        ? null
+                        : () => unawaited(store.loadMore()),
+                  )
+                : null,
+            onItemTap: (item) => unawaited(_openDetail(context, item)),
           ),
         ],
       ),
     };
+  }
+
+  Future<void> _openDetail(BuildContext context, FeedItem item) async {
+    unawaited(store.selectItem(item.id));
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AnimatedBuilder(
+          animation: store,
+          builder: (context, child) {
+            final detailState = store.detailState;
+            final detailItem = store.selectedDetailItem ?? item;
+            final detailFailure = switch (detailState) {
+              FailureViewState<FeedItem>(:final failure) => failure,
+              _ => null,
+            };
+            return FeedItemDetailDialog(
+              item: detailItem,
+              isLoading: detailState is LoadingViewState<FeedItem>,
+              failure: detailFailure,
+            );
+          },
+        );
+      },
+    );
+    store.clearSelection();
   }
 }
 

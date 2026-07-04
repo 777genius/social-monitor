@@ -16,6 +16,10 @@ language.
   quality state and `ReaderAction`.
 - Top Read: a user-readable item selected for review. It has a normalized
   `signalScore` plus provider-native `providerMetrics`.
+- Top Read Feedback Target: the concrete feed/source item identity used when a
+  user rates a Top Read with 1-5 stars. It is recorded for review learning
+  only and must not directly reorder results until a capped ranking policy
+  explicitly consumes it.
 - Signal Score: normalized ranking score owned by Feed/Relevance/Summary
   selection logic. It is not a Reddit score, HN points, GitHub stars or X likes.
 - Provider Metric: readable native provider metric such as Reddit score, HN

@@ -3,8 +3,7 @@ import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 
 import '../../domain/aggregates/reader_summary.dart';
 import '../../domain/entities/summary_citation.dart';
-import 'reader_summary_external_link.dart';
-import 'reader_summary_provider_label.dart';
+import 'reader_summary_confirmation.dart';
 import 'reader_summary_reason_text.dart';
 import 'reader_summary_sections.dart';
 import 'reader_summary_top_read_details.dart';
@@ -121,6 +120,10 @@ class _TopReadRow extends StatelessWidget {
       child: LayoutBuilder(
         builder: (context, constraints) {
           final compact = constraints.maxWidth < 520;
+          final sourceSupportBadge = readerSummarySourceSupportBadge(
+            item,
+            citations,
+          );
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -153,28 +156,22 @@ class _TopReadRow extends StatelessWidget {
                           runSpacing: AppSpacing.xs,
                           children: [
                             AppStatusBadge(
-                              label: readerSummaryProviderLabel(
-                                item.providerKey,
-                              ),
+                              label: 'signal ${item.signalScore.toFixed(2)}',
                               tone: AppStatusTone.neutral,
                             ),
-                            AppStatusBadge(
-                              label: 'Signal ${item.signalScore.toFixed(2)}',
-                              tone: AppStatusTone.neutral,
-                            ),
-                            AppStatusBadge(
-                              label: readerSummaryConfidenceLabel(
-                                item.confidence,
-                              ),
-                              tone: readerSummaryConfidenceTone(
-                                item.confidence,
-                              ),
-                            ),
-                            if (item.confirmedProviderKeys.length > 1)
+                            if (sourceSupportBadge != null)
                               AppStatusBadge(
-                                label:
-                                    '${item.confirmedProviderKeys.length} providers',
+                                label: sourceSupportBadge,
                                 tone: AppStatusTone.success,
+                              )
+                            else
+                              AppStatusBadge(
+                                label: readerSummaryConfidenceLabel(
+                                  item.confidence,
+                                ),
+                                tone: readerSummaryConfidenceTone(
+                                  item.confidence,
+                                ),
                               ),
                             if (citations.length > 1)
                               AppStatusBadge(
@@ -210,14 +207,6 @@ class _TopReadRow extends StatelessWidget {
                   initiallyExpanded: index == 0,
                   onOpenUrl: onOpenUrl,
                 ),
-              if (compact && item.canonicalUrl != null) ...[
-                const SizedBox(height: AppSpacing.xs),
-                ReaderSummaryExternalLink(
-                  url: item.canonicalUrl!,
-                  onOpenUrl: onOpenUrl,
-                  maxLines: 2,
-                ),
-              ],
             ],
           );
         },

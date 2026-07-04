@@ -11,6 +11,7 @@ String? readerSummaryDisplayCitationSnippet(SummaryCitation citation) {
 bool readerSummaryIsTechnicalEvidenceText(String value) {
   final lower = value.toLowerCase();
   return lower.startsWith('story signal score') ||
+      lower.contains('citation references canonicalurl evidence') ||
       lower.contains('citation references title evidence') ||
       lower.contains('citation references bodypreview evidence') ||
       lower.contains('source item source-binding') ||

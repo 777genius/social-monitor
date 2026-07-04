@@ -5,6 +5,11 @@ const supportedReaderFeedbackActionKinds = {
   'mark_not_relevant',
 };
 
+const summaryHelpfulFeedbackActionKinds = {
+  'mark_relevant',
+  'mark_not_relevant',
+};
+
 enum ReaderFeedbackReason {
   notSameStory('not_same_story', 'Not same story'),
   duplicate('duplicate', 'Duplicate'),
@@ -23,6 +28,8 @@ final class ReaderActionTarget {
     required this.interestId,
     required this.title,
     required this.citationIds,
+    this.feedItemId,
+    this.sourceItemId,
     this.bodyPreview,
     this.canonicalUrl,
   });
@@ -30,6 +37,8 @@ final class ReaderActionTarget {
   final String providerKey;
   final String interestId;
   final String title;
+  final String? feedItemId;
+  final String? sourceItemId;
   final String? bodyPreview;
   final String? canonicalUrl;
   final List<String> citationIds;
@@ -38,6 +47,11 @@ final class ReaderActionTarget {
     return providerKey.trim().isNotEmpty &&
         interestId.trim().isNotEmpty &&
         title.trim().isNotEmpty;
+  }
+
+  bool get hasPostIdentity {
+    return (feedItemId?.trim().isNotEmpty ?? false) ||
+        (sourceItemId?.trim().isNotEmpty ?? false);
   }
 }
 

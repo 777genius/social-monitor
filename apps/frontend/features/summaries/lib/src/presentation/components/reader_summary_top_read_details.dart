@@ -4,8 +4,9 @@ import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 import '../../domain/aggregates/reader_summary.dart';
 import '../../domain/entities/summary_citation.dart';
 import 'reader_summary_citation_text.dart';
+import 'reader_summary_confirmation.dart';
 import 'reader_summary_external_link.dart';
-import 'reader_summary_provider_label.dart';
+import 'reader_summary_provider_logo.dart';
 import 'reader_summary_reason_text.dart';
 
 class ReaderSummaryTopReadDetails extends StatelessWidget {
@@ -26,6 +27,8 @@ class ReaderSummaryTopReadDetails extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final sourceSupportBadge = readerSummarySourceSupportBadge(item, citations);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -39,9 +42,14 @@ class ReaderSummaryTopReadDetails extends StatelessWidget {
           runSpacing: AppSpacing.xs,
           children: [
             AppStatusBadge(
-              label: 'Signal ${item.signalScore.toFixed(2)}',
+              label: 'signal ${item.signalScore.toFixed(2)}',
               tone: AppStatusTone.neutral,
             ),
+            if (sourceSupportBadge != null)
+              AppStatusBadge(
+                label: sourceSupportBadge,
+                tone: AppStatusTone.success,
+              ),
             AppStatusBadge(
               label: readerSummaryConfidenceLabel(item.confidence),
               tone: readerSummaryConfidenceTone(item.confidence),
@@ -49,12 +57,8 @@ class ReaderSummaryTopReadDetails extends StatelessWidget {
             ...item.confirmedProviderKeys
                 .take(4)
                 .map(
-                  (providerKey) => AppStatusBadge(
-                    label: readerSummaryProviderLabel(providerKey),
-                    tone: item.confirmedProviderKeys.length > 1
-                        ? AppStatusTone.success
-                        : AppStatusTone.neutral,
-                  ),
+                  (providerKey) =>
+                      ReaderSummaryProviderLogoChip(providerKey: providerKey),
                 ),
           ],
         ),

@@ -67,7 +67,7 @@ class ReaderSummaryQualitySummary extends StatelessWidget {
   String _statusLabel(String value) {
     return switch (value) {
       'partial' => 'Partial',
-      'limited_sources' => 'Needs confirmation',
+      'limited_sources' => 'Limited sources',
       'low_confidence' => 'Low confidence',
       'no_signal' => 'No signal',
       'failed_provider' => 'Provider failed',
@@ -77,7 +77,7 @@ class ReaderSummaryQualitySummary extends StatelessWidget {
 
   String _flagLabel(String value) {
     if (value == 'limited_sources') {
-      return 'Needs confirmation';
+      return 'Limited sources';
     }
     return value
         .split('_')

@@ -2,24 +2,20 @@ part of 'reader_summary_brief_surface.dart';
 
 class _AiBriefCopy extends StatelessWidget {
   const _AiBriefCopy({
-    required this.content,
+    required this.summary,
     required this.citationsById,
     required this.onOpenUrl,
   });
 
-  final ReaderSummaryContent content;
+  final ReaderSummary summary;
   final Map<String, SummaryCitation> citationsById;
   final ValueChanged<String> onOpenUrl;
 
   @override
   Widget build(BuildContext context) {
+    final content = summary.content;
     final primaryTheme = _primaryTheme(content);
-    final firstTopicInsight = content.oneLineTakeaway.trim().isNotEmpty
-        ? _cleanSentence(content.oneLineTakeaway)
-        : content.interestSections.isEmpty
-        ? _cleanSentence(content.oneLineTakeaway)
-        : _cleanSentence(content.interestSections.first.insight);
-    final topLinks = content.topReads.take(3).toList(growable: false);
+    final citationSourceById = _citationSourceById(content.topReads);
     final xRead = _firstReadForProvider(content.topReads, 'x-twitter');
     final redditRead = _firstReadForProvider(content.topReads, 'reddit');
     final sourceNoteSpans = xRead == null
@@ -52,15 +48,6 @@ class _AiBriefCopy extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'AI summary',
-          style: Theme.of(context).textTheme.labelMedium?.copyWith(
-            color: Theme.of(context).colorScheme.primary,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 0,
-          ),
-        ),
-        const SizedBox(height: AppSpacing.xs),
-        Text(
           _headlineCopy(primaryTheme),
           style: Theme.of(context).textTheme.headlineSmall?.copyWith(
             height: 1.15,
@@ -69,53 +56,109 @@ class _AiBriefCopy extends StatelessWidget {
           ),
         ),
         const SizedBox(height: AppSpacing.sm),
-        _CitedBriefText(
-          keyBase: 'reader-summary-lede',
-          spans: [
-            const _BriefText('Summary: ', strong: true),
-            _BriefText(_ensureSentence(firstTopicInsight)),
-          ],
-          citationIds: _summaryCitationIds(content),
-          citationsById: citationsById,
+        _MarkdownBriefText(
+          markdown: _summaryMarkdown(summary),
           onOpenUrl: onOpenUrl,
         ),
-        if (topLinks.isNotEmpty) ...[
-          const SizedBox(height: AppSpacing.sm),
-          Text(
-            'Key links',
-            style: Theme.of(context).textTheme.labelLarge?.copyWith(
-              fontWeight: FontWeight.w900,
-              letterSpacing: 0,
-            ),
-          ),
-          const SizedBox(height: AppSpacing.xs),
-          for (final entry in topLinks.indexed) ...[
-            _CitedBriefText(
-              keyBase: 'reader-summary-key-link-${entry.$1}',
-              spans: [
-                const _BriefText('- '),
-                _BriefText.link(
-                  _shortTitle(entry.$2.title),
-                  entry.$2.canonicalUrl,
-                ),
-              ],
-              citationIds: entry.$2.citationIds,
-              citationsById: citationsById,
-              onOpenUrl: onOpenUrl,
-            ),
-            if (entry.$1 != topLinks.length - 1)
-              const SizedBox(height: AppSpacing.xs),
-          ],
-        ],
+        const SizedBox(height: AppSpacing.xs),
+        _BriefCitationTrail(
+          keyBase: 'reader-summary-lede',
+          citationIds: _summaryCitationIds(content),
+          citationsById: citationsById,
+          citationSourceById: citationSourceById,
+          onOpenUrl: onOpenUrl,
+        ),
         const SizedBox(height: AppSpacing.sm),
         _CitedBriefText(
           keyBase: 'reader-summary-source-note',
           spans: sourceNoteSpans,
           citationIds: sourceNoteCitationIds,
           citationsById: citationsById,
+          citationSourceById: citationSourceById,
           onOpenUrl: onOpenUrl,
           muted: true,
         ),
+      ],
+    );
+  }
+}
+
+class _MarkdownBriefText extends StatelessWidget {
+  const _MarkdownBriefText({required this.markdown, required this.onOpenUrl});
+
+  final String markdown;
+  final ValueChanged<String> onOpenUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final bodyStyle = theme.textTheme.bodyLarge?.copyWith(
+      height: 1.45,
+      letterSpacing: 0,
+    );
+    final linkStyle = bodyStyle?.copyWith(
+      color: theme.colorScheme.primary,
+      decoration: TextDecoration.underline,
+      decorationThickness: 1.5,
+      fontWeight: FontWeight.w800,
+    );
+
+    return MarkdownBody(
+      data: markdown,
+      selectable: false,
+      onTapLink: (_, href, _) {
+        if (href != null && href.trim().isNotEmpty) {
+          onOpenUrl(href);
+        }
+      },
+      styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
+        p: bodyStyle,
+        pPadding: EdgeInsets.zero,
+        strong: bodyStyle?.copyWith(fontWeight: FontWeight.w900),
+        a: linkStyle,
+        blockSpacing: AppSpacing.xs,
+        listIndent: AppSpacing.lg,
+        listBullet: bodyStyle,
+      ),
+    );
+  }
+}
+
+class _BriefCitationTrail extends StatelessWidget {
+  const _BriefCitationTrail({
+    required this.keyBase,
+    required this.citationIds,
+    required this.citationsById,
+    required this.citationSourceById,
+    required this.onOpenUrl,
+  });
+
+  final String keyBase;
+  final List<String> citationIds;
+  final Map<String, SummaryCitation> citationsById;
+  final Map<String, _CitationSourceContext> citationSourceById;
+  final ValueChanged<String> onOpenUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    final citations = _citationsForIds(citationIds, citationsById);
+    if (citations.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Wrap(
+      spacing: AppSpacing.xs,
+      runSpacing: AppSpacing.xs,
+      children: [
+        for (final citation in citations)
+          _CitationChip(
+            key: ValueKey('$keyBase-citation-${citation.id}'),
+            label: _citationLabel(citation, citationsById),
+            citation: citation,
+            relatedCitations: citations,
+            citationSourceById: citationSourceById,
+            onOpenUrl: onOpenUrl,
+          ),
       ],
     );
   }
@@ -127,6 +170,7 @@ class _CitedBriefText extends StatefulWidget {
     required this.spans,
     required this.citationIds,
     required this.citationsById,
+    required this.citationSourceById,
     required this.onOpenUrl,
     this.muted = false,
   });
@@ -135,6 +179,7 @@ class _CitedBriefText extends StatefulWidget {
   final List<_BriefText> spans;
   final List<String> citationIds;
   final Map<String, SummaryCitation> citationsById;
+  final Map<String, _CitationSourceContext> citationSourceById;
   final ValueChanged<String> onOpenUrl;
   final bool muted;
 
@@ -190,7 +235,6 @@ class _CitedBriefTextState extends State<_CitedBriefText> {
       letterSpacing: 0,
       color: widget.muted ? theme.colorScheme.onSurfaceVariant : null,
     );
-    final strongStyle = bodyStyle?.copyWith(fontWeight: FontWeight.w900);
     final linkStyle = bodyStyle?.copyWith(
       color: theme.colorScheme.primary,
       decoration: TextDecoration.underline,
@@ -207,7 +251,7 @@ class _CitedBriefTextState extends State<_CitedBriefText> {
         style: bodyStyle,
         children: [
           for (var index = 0; index < widget.spans.length; index += 1)
-            _textSpanFor(widget.spans[index], index, linkStyle, strongStyle),
+            _textSpanFor(widget.spans[index], index, linkStyle),
           if (citations.isNotEmpty) const TextSpan(text: ' '),
           for (final citation in citations)
             WidgetSpan(
@@ -219,6 +263,8 @@ class _CitedBriefTextState extends State<_CitedBriefText> {
                   key: ValueKey('${widget.keyBase}-citation-${citation.id}'),
                   label: _citationLabel(citation, widget.citationsById),
                   citation: citation,
+                  relatedCitations: citations,
+                  citationSourceById: widget.citationSourceById,
                   onOpenUrl: widget.onOpenUrl,
                 ),
               ),
@@ -228,15 +274,10 @@ class _CitedBriefTextState extends State<_CitedBriefText> {
     );
   }
 
-  TextSpan _textSpanFor(
-    _BriefText span,
-    int index,
-    TextStyle? linkStyle,
-    TextStyle? strongStyle,
-  ) {
+  TextSpan _textSpanFor(_BriefText span, int index, TextStyle? linkStyle) {
     final url = span.url;
     if (url == null || url.trim().isEmpty) {
-      return TextSpan(text: span.text, style: span.strong ? strongStyle : null);
+      return TextSpan(text: span.text);
     }
     return TextSpan(
       text: span.text,
@@ -246,63 +287,10 @@ class _CitedBriefTextState extends State<_CitedBriefText> {
   }
 }
 
-class _CitationChip extends StatelessWidget {
-  const _CitationChip({
-    super.key,
-    required this.label,
-    required this.citation,
-    required this.onOpenUrl,
-  });
-
-  final String label;
-  final SummaryCitation citation;
-  final ValueChanged<String> onOpenUrl;
-
-  @override
-  Widget build(BuildContext context) {
-    final url = citation.canonicalUrl;
-    final canOpen = url != null && url.trim().isNotEmpty;
-    final colorScheme = Theme.of(context).colorScheme;
-    return Semantics(
-      link: canOpen,
-      label: '${citation.sourceLabel} source citation',
-      child: MouseRegion(
-        cursor: canOpen ? SystemMouseCursors.click : MouseCursor.defer,
-        child: InkWell(
-          onTap: canOpen ? () => onOpenUrl(url) : null,
-          borderRadius: BorderRadius.circular(6),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.7),
-              border: Border.all(color: colorScheme.outlineVariant),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-              child: Text(
-                label,
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: canOpen
-                      ? colorScheme.primary
-                      : colorScheme.onSurfaceVariant,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 0,
-                  height: 1.1,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 final class _BriefText {
-  const _BriefText(this.text, {this.strong = false}) : url = null;
-  const _BriefText.link(this.text, this.url) : strong = false;
+  const _BriefText(this.text) : url = null;
+  const _BriefText.link(this.text, this.url);
 
   final String text;
   final String? url;
-  final bool strong;
 }

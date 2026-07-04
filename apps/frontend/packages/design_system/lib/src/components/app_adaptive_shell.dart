@@ -2,9 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:headless_adaptive/headless_adaptive.dart';
 
 import '../responsive/app_breakpoints.dart';
-import '../tokens/app_spacing.dart';
+import '../tokens/app_colors.dart';
+import 'shell_sidebar/app_shell_destination.dart';
+import 'shell_sidebar/app_shell_sidebar.dart';
 
-class AppAdaptiveShell extends StatelessWidget {
+export 'shell_sidebar/app_shell_brand_logo.dart';
+export 'shell_sidebar/app_shell_destination.dart' show AppShellDestination;
+export 'shell_sidebar/app_shell_sidebar.dart' show AppShellSidebar;
+export 'shell_sidebar/app_shell_sidebar_card_surface.dart';
+export 'shell_sidebar/app_shell_sidebar_cards.dart';
+export 'shell_sidebar/app_shell_sidebar_menu_card.dart';
+
+class AppAdaptiveShell extends StatefulWidget {
   const AppAdaptiveShell({
     super.key,
     required this.title,
@@ -12,7 +21,8 @@ class AppAdaptiveShell extends StatelessWidget {
     required this.selectedPath,
     required this.onDestinationSelected,
     required this.child,
-    this.header,
+    this.sidebarHeader = const [],
+    this.sidebarFooter = const [],
     this.appBarActions = const [],
   });
 
@@ -21,14 +31,30 @@ class AppAdaptiveShell extends StatelessWidget {
   final String selectedPath;
   final ValueChanged<String> onDestinationSelected;
   final Widget child;
-  final Widget? header;
+  final List<Widget> sidebarHeader;
+  final List<Widget> sidebarFooter;
   final List<Widget> appBarActions;
+
+  @override
+  State<AppAdaptiveShell> createState() => _AppAdaptiveShellState();
+}
+
+class _AppAdaptiveShellState extends State<AppAdaptiveShell> {
+  static const _collapsedWidth = 72.0;
+  static const _mediumWidth = 216.0;
+  static const _expandedWidth = 226.0;
+
+  bool _collapsed = false;
+
+  void _toggleCollapsed() {
+    setState(() => _collapsed = !_collapsed);
+  }
 
   @override
   Widget build(BuildContext context) {
     return AdaptiveNavigationShell(
       policy: AppBreakpoints.policy,
-      body: child,
+      body: widget.child,
       builder: (context, navigation, body) {
         final screen = AppScreenClass.fromAdaptive(
           navigation.adaptive.decision.screenClass,
@@ -37,18 +63,22 @@ class AppAdaptiveShell extends StatelessWidget {
 
         return Scaffold(
           appBar: usesCompactNavigation
-              ? AppBar(title: Text(title), actions: appBarActions)
+              ? AppBar(
+                  title: Text(widget.title),
+                  actions: widget.appBarActions,
+                )
               : null,
           drawer: usesCompactNavigation
               ? Drawer(
-                  child: _DestinationList(
-                    title: title,
-                    header: header,
-                    destinations: destinations,
-                    selectedPath: selectedPath,
+                  child: AppShellSidebar(
+                    title: widget.title,
+                    destinations: widget.destinations,
+                    selectedPath: widget.selectedPath,
+                    header: widget.sidebarHeader,
+                    footer: widget.sidebarFooter,
                     onDestinationSelected: (path) {
                       Navigator.of(context).pop();
-                      onDestinationSelected(path);
+                      widget.onDestinationSelected(path);
                     },
                   ),
                 )
@@ -56,16 +86,7 @@ class AppAdaptiveShell extends StatelessWidget {
           body: Row(
             children: [
               if (!usesCompactNavigation)
-                SizedBox(
-                  width: screen == AppScreenClass.medium ? 224 : 280,
-                  child: _DestinationList(
-                    title: title,
-                    header: header,
-                    destinations: destinations,
-                    selectedPath: selectedPath,
-                    onDestinationSelected: onDestinationSelected,
-                  ),
-                ),
+                _buildPersistentSidebar(screen),
               Expanded(child: body),
             ],
           ),
@@ -73,98 +94,30 @@ class AppAdaptiveShell extends StatelessWidget {
       },
     );
   }
-}
 
-class AppShellDestination {
-  const AppShellDestination({
-    required this.label,
-    required this.path,
-    required this.icon,
-  });
+  Widget _buildPersistentSidebar(AppScreenClass screen) {
+    final expandedWidth = screen == AppScreenClass.medium
+        ? _mediumWidth
+        : _expandedWidth;
+    final width = _collapsed ? _collapsedWidth : expandedWidth;
 
-  final String label;
-  final String path;
-  final IconData icon;
-}
-
-class _DestinationList extends StatelessWidget {
-  const _DestinationList({
-    required this.title,
-    required this.header,
-    required this.destinations,
-    required this.selectedPath,
-    required this.onDestinationSelected,
-  });
-
-  final String title;
-  final Widget? header;
-  final List<AppShellDestination> destinations;
-  final String selectedPath;
-  final ValueChanged<String> onDestinationSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
-              child: Text(
-                title,
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 0,
-                ),
-              ),
-            ),
-            if (header != null) ...[
-              const SizedBox(height: AppSpacing.md),
-              header!,
-            ],
-            const SizedBox(height: AppSpacing.lg),
-            Expanded(
-              child: ListView.separated(
-                itemBuilder: (context, index) {
-                  final destination = destinations[index];
-                  final selected = selectedPath == destination.path;
-                  return ListTile(
-                    key: ValueKey(_destinationKeyFor(destination.path)),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    selected: selected,
-                    leading: Icon(destination.icon),
-                    title: Text(
-                      destination.label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    onTap: () => onDestinationSelected(destination.path),
-                  );
-                },
-                separatorBuilder: (context, index) {
-                  return const SizedBox(height: AppSpacing.xs);
-                },
-                itemCount: destinations.length,
-              ),
-            ),
-          ],
-        ),
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeOutCubic,
+      width: width,
+      decoration: const BoxDecoration(color: AppColors.sidebarBackground),
+      clipBehavior: Clip.hardEdge,
+      child: AppShellSidebar(
+        title: widget.title,
+        destinations: widget.destinations,
+        selectedPath: widget.selectedPath,
+        header: widget.sidebarHeader,
+        footer: widget.sidebarFooter,
+        onDestinationSelected: widget.onDestinationSelected,
+        collapsed: _collapsed,
+        contentWidth: width,
+        onToggleCollapsed: _toggleCollapsed,
       ),
     );
   }
-}
-
-String _destinationKeyFor(String path) {
-  if (path == '/') {
-    return 'app-shell-destination-root';
-  }
-
-  final normalized = path
-      .replaceAll(RegExp(r'[^a-zA-Z0-9]+'), '-')
-      .replaceAll(RegExp(r'^-|-$'), '');
-  return 'app-shell-destination-$normalized';
 }

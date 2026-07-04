@@ -14,9 +14,7 @@ import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 import '../../support/feed_test_fixtures.dart';
 
 void main() {
-  testWidgets('renders expanded feed list and backend-real detail', (
-    tester,
-  ) async {
+  testWidgets('opens backend-real feed detail in a dialog', (tester) async {
     final store = _store([
       feedItemApiDto(
         providerKey: 'github-repo-radar',
@@ -43,13 +41,20 @@ void main() {
     expect(find.textContaining('reader summary'), findsNothing);
     expect(find.text('Repo Radar'), findsWidgets);
     expect(find.textContaining('GH Archive WatchEvent'), findsWidgets);
-    expect(find.textContaining('1 hour'), findsWidgets);
     expect(find.text('Signal 91 - Breakout'), findsWidgets);
     expect(find.text('GitHub stars 54.0k'), findsWidgets);
-    expect(find.text('GitHub forks 6.1k'), findsWidgets);
     expect(find.text('Repo Radar trend +210 / 24h'), findsWidgets);
-    expect(find.text('Repo Radar trend +360 / 48h'), findsWidgets);
-    expect(find.text('Repo Radar trend +1.2k / 7d'), findsWidgets);
+    expect(find.text('Post details'), findsNothing);
+    expect(find.text('Repository trend'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('feed-item-card-feed-1')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Post details'), findsOneWidget);
+    expect(find.textContaining('1 hour'), findsWidgets);
+    expect(find.text('GitHub forks 6.1k'), findsOneWidget);
+    expect(find.text('Repo Radar trend +360 / 48h'), findsOneWidget);
+    expect(find.text('Repo Radar trend +1.2k / 7d'), findsOneWidget);
     expect(find.text('Repository trend'), findsOneWidget);
     expect(find.text('openai/codex'), findsWidgets);
     expect(find.text('Primary window'), findsOneWidget);
@@ -60,6 +65,7 @@ void main() {
     expect(find.text('Body preview'), findsOneWidget);
     expect(find.text('Source link'), findsOneWidget);
     expect(find.text('Copy URL'), findsOneWidget);
+    expect(find.byTooltip('Close post detail'), findsOneWidget);
     expect(find.text('All loaded'), findsNothing);
     expect(find.text('Mark reviewed'), findsNothing);
   });
@@ -163,7 +169,7 @@ void main() {
     expect(find.textContaining('rating'), findsNothing);
   });
 
-  testWidgets('compact feed opens detail only after explicit selection', (
+  testWidgets('compact feed opens detail in a dialog after selection', (
     tester,
   ) async {
     final store = _store([feedItemApiDto()]);
@@ -172,6 +178,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Body preview'), findsNothing);
+    expect(find.text('Post details'), findsNothing);
     await tester.scrollUntilVisible(
       find.byKey(const ValueKey('feed-item-card-feed-1')),
       120,
@@ -182,7 +189,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Body preview'), findsOneWidget);
-    expect(find.byTooltip('Close detail'), findsOneWidget);
+    expect(find.text('Post details'), findsOneWidget);
+    expect(find.byTooltip('Close post detail'), findsOneWidget);
   });
 
   testWidgets('long feed list uses lazy repeated-row viewport', (tester) async {
@@ -207,7 +215,7 @@ void main() {
     expect(find.text('Feed item 119'), findsNothing);
 
     final feedListScrollable = find.descendant(
-      of: find.byType(AppDataList<FeedItem>),
+      of: find.byKey(const ValueKey('feed-items-list-scrollable')),
       matching: find.byType(Scrollable),
     );
     expect(feedListScrollable, findsOneWidget);

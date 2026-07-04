@@ -54,6 +54,7 @@ ReaderSummaryApiDto mixedSourceReaderSummaryApiDto() {
           matchedInterestIds: ['ai-developer-tools'],
           matchedRules: ['provider:reddit', 'interest:ai-developer-tools'],
           signalScore: 0.94,
+          confirmedProviderKeys: ['reddit', 'github-trending-page'],
           providerMetrics: [
             ProviderMetricApiDto(
               label: 'Reddit evidence',
@@ -62,9 +63,10 @@ ReaderSummaryApiDto mixedSourceReaderSummaryApiDto() {
             ProviderMetricApiDto(label: 'Score', value: '1,214'),
           ],
           whyImportant: ['Shows what practitioners are struggling with.'],
-          whyNow: 'Current summary window includes an active Reddit thread.',
+          whyNow:
+              'Current summary window has cross-source Reddit and GitHub coverage.',
           canonicalUrl: 'https://reddit.example/r/MachineLearning/comments/1',
-          citationIds: ['bc-1'],
+          citationIds: ['bc-1', 'bc-2'],
         ),
         TopReadApiDto(
           title: 'calesthio/OpenMontage',
@@ -113,20 +115,59 @@ ReaderSummaryApiDto mixedSourceReaderSummaryApiDto() {
         id: 'bc-1',
         sourceLabel: 'Reddit - r/MachineLearning',
         rawSnippet: 'Practitioners compare agent reliability incidents.',
+        providerKey: 'reddit',
         canonicalUrl: 'https://reddit.example/r/MachineLearning/comments/1',
       ),
       summaryCitationApiDto(
         id: 'bc-2',
         sourceLabel: 'GitHub Trending - calesthio/OpenMontage',
         rawSnippet: 'Repository gained rapid daily attention.',
+        providerKey: 'github-trending-page',
         canonicalUrl: 'https://github.com/calesthio/OpenMontage',
       ),
       summaryCitationApiDto(
         id: 'bc-3',
         sourceLabel: 'Hacker News',
         rawSnippet: 'Engineers discuss model routing tradeoffs.',
+        providerKey: 'hacker-news',
         canonicalUrl: 'https://news.ycombinator.com/item?id=1',
       ),
     ],
+    coverage: const ReaderSummaryCoverageApiDto(
+      collectedFeedItemCount: 469,
+      selectedFeedItemCount: 60,
+      topReadCount: 3,
+      citationCount: 6,
+      providerBreakdown: [
+        ReaderSummaryProviderCoverageApiDto(
+          providerKey: 'hacker-news',
+          collectedFeedItemCount: 180,
+          selectedFeedItemCount: 30,
+          topReadCount: 1,
+          citationCount: 2,
+        ),
+        ReaderSummaryProviderCoverageApiDto(
+          providerKey: 'rss',
+          collectedFeedItemCount: 175,
+          selectedFeedItemCount: 0,
+          topReadCount: 0,
+          citationCount: 0,
+        ),
+        ReaderSummaryProviderCoverageApiDto(
+          providerKey: 'reddit',
+          collectedFeedItemCount: 92,
+          selectedFeedItemCount: 28,
+          topReadCount: 1,
+          citationCount: 2,
+        ),
+        ReaderSummaryProviderCoverageApiDto(
+          providerKey: 'github-trending-page',
+          collectedFeedItemCount: 22,
+          selectedFeedItemCount: 2,
+          topReadCount: 1,
+          citationCount: 2,
+        ),
+      ],
+    ),
   );
 }

@@ -147,9 +147,10 @@ void main() {
     expect(selectedDate, isNull);
   });
 
-  testWidgets('marks dates that have a workspace summary', (tester) async {
-    final selectedPeriod = SummaryPeriodPreset.daily.resolveForCalendarDate(
-      DateTime(2026, 6, 15),
+  testWidgets('does not mark every date when summary history is empty', (
+    tester,
+  ) async {
+    final selectedPeriod = SummaryPeriodPreset.daily.resolve(
       now: DateTime.utc(2026, 6, 27, 12),
     );
 
@@ -160,7 +161,7 @@ void main() {
           body: WorkspaceSummaryPeriodToolbar(
             selectedPeriod: selectedPeriod,
             selectedPreset: SummaryPeriodPreset.daily,
-            availableSummaryPeriods: [selectedPeriod],
+            availableSummaryPeriods: const [],
             canNavigateToPreviousPeriod: false,
             canNavigateToNextPeriod: false,
             isCurrentPeriod: true,
@@ -180,16 +181,69 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final availableDay = tester.widget<Container>(
-      find.descendant(
-        of: find.byKey(
-          const ValueKey('workspace-summary-calendar-day-2026-06-15'),
+    final decoration = _calendarDayDecoration(tester, '2026-06-15');
+    final border = decoration.border! as Border;
+
+    expect(border.top.width, 0);
+    expect(border.top.color, Colors.transparent);
+    expect(find.text('Summary history has not loaded yet'), findsOneWidget);
+  });
+
+  testWidgets('marks dates that have a workspace summary', (tester) async {
+    final selectedPeriod = SummaryPeriodPreset.daily.resolveForCalendarDate(
+      DateTime(2026, 6, 14),
+      now: DateTime.utc(2026, 6, 27, 12),
+    );
+    final availablePeriod = SummaryPeriodPreset.daily.resolveForCalendarDate(
+      DateTime(2026, 6, 15),
+      now: DateTime.utc(2026, 6, 27, 12),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: Scaffold(
+          body: WorkspaceSummaryPeriodToolbar(
+            selectedPeriod: selectedPeriod,
+            selectedPreset: SummaryPeriodPreset.daily,
+            availableSummaryPeriods: [availablePeriod],
+            canNavigateToPreviousPeriod: false,
+            canNavigateToNextPeriod: false,
+            isCurrentPeriod: true,
+            calendarNow: DateTime.utc(2026, 6, 27, 12),
+            onPeriodChanged: (_) {},
+            onPreviousPeriod: () {},
+            onCurrentPeriod: () {},
+            onNextPeriod: () {},
+            onCalendarDateSelected: (_) {},
+          ),
         ),
-        matching: find.byType(Container),
       ),
     );
-    final decoration = availableDay.decoration! as BoxDecoration;
 
-    expect(decoration.border, isNotNull);
+    await tester.tap(
+      find.byKey(const ValueKey('workspace-summary-period-calendar')),
+    );
+    await tester.pumpAndSettle();
+
+    final decoration = _calendarDayDecoration(tester, '2026-06-15');
+    final border = decoration.border! as Border;
+
+    expect(border.top.width, 1.5);
+    expect(border.top.color, isNot(Colors.transparent));
+    expect(
+      find.text('Blue dot marks days with a saved summary'),
+      findsOneWidget,
+    );
   });
+}
+
+BoxDecoration _calendarDayDecoration(WidgetTester tester, String dateKey) {
+  final day = tester.widget<Container>(
+    find.descendant(
+      of: find.byKey(ValueKey('workspace-summary-calendar-day-$dateKey')),
+      matching: find.byType(Container),
+    ),
+  );
+  return day.decoration! as BoxDecoration;
 }

@@ -1,11 +1,18 @@
 part of 'reader_summary_brief_surface.dart';
 
 final class _MetricBadgeData {
-  const _MetricBadgeData({required this.icon, required this.label});
+  const _MetricBadgeData({
+    required this.icon,
+    required this.label,
+    this.tone = _MetricBadgeTone.neutral,
+  });
 
   final IconData icon;
   final String label;
+  final _MetricBadgeTone tone;
 }
+
+enum _MetricBadgeTone { neutral, success }
 
 class _ReadMetricBadges extends StatelessWidget {
   const _ReadMetricBadges({required this.read, this.includeRank = true});
@@ -36,10 +43,22 @@ class _MetricBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final colors = switch (data.tone) {
+      _MetricBadgeTone.neutral => (
+        background: colorScheme.surfaceContainerLow,
+        border: colorScheme.outlineVariant,
+        foreground: colorScheme.primary,
+      ),
+      _MetricBadgeTone.success => (
+        background: const Color(0xFFE6F7F4),
+        border: const Color(0xFF99D6CC),
+        foreground: const Color(0xFF12806A),
+      ),
+    };
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerLow,
-        border: Border.all(color: colorScheme.outlineVariant),
+        color: colors.background,
+        border: Border.all(color: colors.border),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Padding(
@@ -47,12 +66,15 @@ class _MetricBadge extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(data.icon, size: 14, color: colorScheme.primary),
+            Icon(data.icon, size: 14, color: colors.foreground),
             const SizedBox(width: 4),
             Text(
               data.label,
               style: Theme.of(context).textTheme.labelSmall?.copyWith(
                 height: 1,
+                color: data.tone == _MetricBadgeTone.success
+                    ? colors.foreground
+                    : null,
                 fontWeight: FontWeight.w800,
                 letterSpacing: 0,
               ),
@@ -107,13 +129,13 @@ List<_MetricBadgeData> _metricBadgesFor(
   final badges = <_MetricBadgeData>[];
   for (final metric in read.providerMetrics) {
     for (final value in _metricPartsFor(metric)) {
-      if (_isTechnicalEvidenceText(value)) {
+      if (_isTechnicalEvidenceText(value) || _isZeroMetricText(value)) {
         continue;
       }
       badges.add(_badgeForMetricPart(value));
     }
   }
-  return badges.take(4).toList(growable: false);
+  return _uniqueBadgeLabels(badges).take(4).toList(growable: false);
 }
 
 List<_MetricBadgeData> _githubMetricBadges(
@@ -220,10 +242,19 @@ bool _isPackedMetricSummary(String value) {
 
 String? _singleMetricLabel(String labelLower, String value) {
   if (labelLower == 'score') {
-    return 'Score: $value';
+    return '$value score';
   }
   if (labelLower.contains('score') && _startsWithMetricNumber(value)) {
     return '$value score';
+  }
+  if (labelLower.contains('like') && _startsWithMetricNumber(value)) {
+    return '$value likes';
+  }
+  if (labelLower.contains('repost') && _startsWithMetricNumber(value)) {
+    return '$value reposts';
+  }
+  if (labelLower.contains('repl') && _startsWithMetricNumber(value)) {
+    return '$value replies';
   }
   if (labelLower.contains('comment') && _startsWithMetricNumber(value)) {
     return '$value comments';
@@ -239,6 +270,13 @@ String? _singleMetricLabel(String labelLower, String value) {
 
 bool _startsWithMetricNumber(String value) {
   return RegExp(r'^[-+]?\d').hasMatch(value.trim());
+}
+
+bool _isZeroMetricText(String value) {
+  return RegExp(
+    r'^(?:[a-z/ ]+:\s*)?0(?:\s+[a-z]+)?$',
+    caseSensitive: false,
+  ).hasMatch(value.trim());
 }
 
 _MetricBadgeData _badgeForMetricPart(String part) {

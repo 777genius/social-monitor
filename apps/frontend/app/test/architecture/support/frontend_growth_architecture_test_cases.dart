@@ -163,6 +163,22 @@ void registerFrontendGrowthArchitectureTests() {
       violations.add('app demo main must support direct web deep links');
     }
 
+    final appMarionetteMain = File(
+      '$frontendRoot/app/lib/main_marionette.dart',
+    ).readAsStringSync();
+    if (!appMarionetteMain.contains('AppCompositionRoot.production()')) {
+      violations.add('app Marionette main must use the production composition path');
+    }
+    if (!appMarionetteMain.contains('usePathUrlStrategy();')) {
+      violations.add('app Marionette main must support direct web deep links');
+    }
+    if (appMarionetteMain.contains('AppCompositionRoot.demo') ||
+        appMarionetteMain.contains('AppCompositionRoot.bootstrap')) {
+      violations.add(
+        'app Marionette main must not use demo or bootstrap composition',
+      );
+    }
+
     final webIndex = File(
       '$frontendRoot/app/web/index.html',
     ).readAsStringSync();

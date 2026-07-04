@@ -13,6 +13,7 @@ export 'src/components/app_inline_problem.dart';
 export 'src/components/app_page_surface.dart';
 export 'src/components/app_pagination_controls.dart';
 export 'src/components/app_permission_repair_surface.dart';
+export 'src/components/app_provider_logo.dart';
 export 'src/components/app_responsive_split_view.dart';
 export 'src/components/app_section_header.dart';
 export 'src/components/app_status_badge.dart';

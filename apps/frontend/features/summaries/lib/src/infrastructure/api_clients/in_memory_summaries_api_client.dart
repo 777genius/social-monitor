@@ -2,6 +2,7 @@ import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
 import '../../domain/value_objects/reader_action_target.dart';
 import '../../domain/value_objects/summary_period.dart';
+import '../api/post_rating_api_dto.dart';
 import '../api/summary_api_dto.dart';
 import 'summaries_api_client.dart';
 
@@ -10,19 +11,26 @@ final class InMemorySummariesApiClient implements SummariesApiClient {
     required List<SummaryApiDto> items,
     ReaderSummaryApiDto? workspaceSummary,
     List<SummaryPeriodApiDto> workspaceSummaryAvailablePeriods = const [],
+    List<PostRatingApiDto> postRatings = const [],
   }) : _items = List<SummaryApiDto>.of(items),
        _workspaceSummary = workspaceSummary,
-       _workspaceSummaryAvailablePeriods = workspaceSummaryAvailablePeriods;
+       _workspaceSummaryAvailablePeriods = workspaceSummaryAvailablePeriods,
+       _postRatings = List<PostRatingApiDto>.of(postRatings);
 
   final List<SummaryApiDto> _items;
   final ReaderSummaryApiDto? _workspaceSummary;
   final List<SummaryPeriodApiDto> _workspaceSummaryAvailablePeriods;
+  final List<PostRatingApiDto> _postRatings;
   final Map<String, ReaderSummaryJobApiDto> _summaryJobs = {};
   final List<LoadWorkspaceSummaryApiRequest> loadWorkspaceSummaryRequests = [];
+  final List<LoadWorkspaceSummaryApiRequest>
+  loadWorkspaceSummaryHistoryRequests = [];
   final List<RequestWorkspaceSummaryApiRequest>
   requestWorkspaceSummaryRequests = [];
   final List<ReaderActionResult> submittedReaderActions = [];
   final List<SubmitReaderActionApiRequest> submittedReaderActionRequests = [];
+  final List<SubmitPostRatingApiRequest> submittedPostRatingRequests = [];
+  final List<LoadPostRatingsApiRequest> loadPostRatingsRequests = [];
 
   @override
   Future<Result<SummaryPageApiDto>> listSummaries(
@@ -75,6 +83,26 @@ final class InMemorySummariesApiClient implements SummariesApiClient {
                   ? const []
                   : [current.period]
             : _workspaceSummaryAvailablePeriods,
+        availablePeriodsAreComplete:
+            _workspaceSummaryAvailablePeriods.isNotEmpty,
+      ),
+    );
+  }
+
+  @override
+  Future<Result<WorkspaceSummaryApiDto>> loadWorkspaceSummaryHistory(
+    LoadWorkspaceSummaryApiRequest request,
+  ) async {
+    loadWorkspaceSummaryHistoryRequests.add(request);
+    final failure = _workspaceFailure(request.scope);
+    if (failure != null) {
+      return Result.failure(failure);
+    }
+
+    return Result.success(
+      WorkspaceSummaryApiDto(
+        availablePeriods: _workspaceSummaryAvailablePeriods,
+        availablePeriodsAreComplete: true,
       ),
     );
   }
@@ -190,13 +218,99 @@ final class InMemorySummariesApiClient implements SummariesApiClient {
       idempotencyKey: request.idempotencyKey,
       kind: request.kind,
       created: true,
-      learningDirection: request.kind == 'mark_relevant'
-          ? 'positive'
-          : 'negative',
+      learningDirection: switch (request.kind) {
+        'mark_relevant' => 'positive',
+        _ => 'negative',
+      },
     );
     submittedReaderActionRequests.add(request);
     submittedReaderActions.add(result);
     return Result.success(result);
+  }
+
+  @override
+  Future<Result<PostRatingSubmissionApiDto>> submitPostRating(
+    SubmitPostRatingApiRequest request,
+  ) async {
+    final failure = _workspaceFailure(request.scope);
+    if (failure != null) {
+      return Result.failure(failure);
+    }
+
+    submittedPostRatingRequests.add(request);
+    final feedbackId = 'post-rating-${request.idempotencyKey.hashCode.abs()}';
+    final rating = _recordPostRating(
+      feedbackId: feedbackId,
+      userId: request.userId,
+      rating: request.rating,
+      reason: request.reason?.apiValue,
+      feedItemId: request.target.feedItemId,
+      sourceItemId: request.target.sourceItemId,
+      interestId: request.target.interestId,
+    );
+
+    return Result.success(
+      PostRatingSubmissionApiDto(
+        rating: rating,
+        created: true,
+        learningDirection: 'recorded',
+      ),
+    );
+  }
+
+  @override
+  Future<Result<List<PostRatingApiDto>>> loadPostRatings(
+    LoadPostRatingsApiRequest request,
+  ) async {
+    loadPostRatingsRequests.add(request);
+    final failure = _workspaceFailure(request.scope);
+    if (failure != null) {
+      return Result.failure(failure);
+    }
+
+    return Result.success([
+      for (final target in request.targets)
+        ..._postRatings.where(
+          (rating) =>
+              rating.userId == request.userId &&
+              rating.interestId == target.interestId &&
+              ((target.feedItemId != null &&
+                      rating.feedItemId == target.feedItemId) ||
+                  (target.sourceItemId != null &&
+                      rating.sourceItemId == target.sourceItemId)),
+        ),
+    ]);
+  }
+
+  PostRatingApiDto _recordPostRating({
+    required String feedbackId,
+    required String userId,
+    required int rating,
+    required String? reason,
+    required String? feedItemId,
+    required String? sourceItemId,
+    required String interestId,
+  }) {
+    _postRatings.removeWhere(
+      (stored) =>
+          stored.userId == userId &&
+          stored.interestId == interestId &&
+          ((feedItemId != null && stored.feedItemId == feedItemId) ||
+              (sourceItemId != null && stored.sourceItemId == sourceItemId)),
+    );
+    final recorded = PostRatingApiDto(
+      feedbackId: feedbackId,
+      userId: userId,
+      rating: rating,
+      learningEffect: _postRatingLearningEffect(rating),
+      reason: reason,
+      feedItemId: feedItemId,
+      sourceItemId: sourceItemId,
+      interestId: interestId,
+      ratedAt: DateTime.now().toUtc(),
+    );
+    _postRatings.add(recorded);
+    return recorded;
   }
 
   AppFailure? _workspaceFailure(WorkspaceScope scope) {
@@ -246,6 +360,16 @@ final class InMemorySummariesApiClient implements SummariesApiClient {
   }
 }
 
+String _postRatingLearningEffect(int rating) {
+  if (rating <= 2) {
+    return 'negative';
+  }
+  if (rating == 3) {
+    return 'neutral';
+  }
+  return 'positive';
+}
+
 ReaderSummaryApiDto _readerSummaryForPeriod(
   ReaderSummaryApiDto summary,
   SummaryPeriod period,
@@ -269,5 +393,6 @@ ReaderSummaryApiDto _readerSummaryForPeriod(
     sourceWindow: summary.sourceWindow,
     freshnessLabel: summary.freshnessLabel,
     isDegraded: summary.isDegraded,
+    coverage: summary.coverage,
   );
 }

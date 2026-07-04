@@ -2,15 +2,20 @@ import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
 import '../../application/commands/regenerate_summary_command.dart';
 import '../../application/commands/request_workspace_summary_command.dart';
+import '../../application/commands/submit_post_rating_command.dart';
 import '../../application/commands/submit_reader_action_command.dart';
 import '../../application/commands/submit_summary_feedback_command.dart';
 import '../../application/queries/list_summaries_query.dart';
+import '../../application/queries/load_post_ratings_query.dart';
 import '../../application/queries/load_summary_detail_query.dart';
 import '../../application/queries/load_workspace_summary_job_status_query.dart';
 import '../../application/queries/load_workspace_summary_query.dart';
+import '../../domain/entities/post_rating.dart';
 import '../../domain/value_objects/reader_action_target.dart';
 import '../../domain/value_objects/summary_feedback_kind.dart';
 import '../../domain/value_objects/summary_period.dart';
+import '../../domain/value_objects/top_read_feedback_target.dart';
+import '../api/post_rating_api_dto.dart';
 import '../api/summary_api_dto.dart';
 
 abstract interface class SummariesApiClient {
@@ -34,7 +39,19 @@ abstract interface class SummariesApiClient {
     SubmitReaderActionApiRequest request,
   );
 
+  Future<Result<PostRatingSubmissionApiDto>> submitPostRating(
+    SubmitPostRatingApiRequest request,
+  );
+
+  Future<Result<List<PostRatingApiDto>>> loadPostRatings(
+    LoadPostRatingsApiRequest request,
+  );
+
   Future<Result<WorkspaceSummaryApiDto>> loadWorkspaceSummary(
+    LoadWorkspaceSummaryApiRequest request,
+  );
+
+  Future<Result<WorkspaceSummaryApiDto>> loadWorkspaceSummaryHistory(
     LoadWorkspaceSummaryApiRequest request,
   );
 
@@ -198,6 +215,7 @@ final class SubmitReaderActionApiRequest {
     required this.label,
     required this.target,
     required this.idempotencyKey,
+    this.rating,
     this.feedbackReason,
   });
 
@@ -212,6 +230,7 @@ final class SubmitReaderActionApiRequest {
       label: command.label,
       target: command.target,
       idempotencyKey: command.idempotencyKey,
+      rating: command.rating,
       feedbackReason: command.feedbackReason,
     );
   }
@@ -223,5 +242,60 @@ final class SubmitReaderActionApiRequest {
   final String label;
   final ReaderActionTarget target;
   final String idempotencyKey;
+  final int? rating;
   final ReaderFeedbackReason? feedbackReason;
+}
+
+final class SubmitPostRatingApiRequest {
+  const SubmitPostRatingApiRequest({
+    required this.scope,
+    required this.summaryId,
+    required this.userId,
+    required this.target,
+    required this.rating,
+    required this.idempotencyKey,
+    this.reason,
+  });
+
+  factory SubmitPostRatingApiRequest.fromCommand(
+    SubmitPostRatingCommand command,
+  ) {
+    return SubmitPostRatingApiRequest(
+      scope: command.scope,
+      summaryId: command.summaryId,
+      userId: command.userId,
+      target: command.target,
+      rating: command.rating,
+      idempotencyKey: command.idempotencyKey,
+      reason: command.reason,
+    );
+  }
+
+  final WorkspaceScope scope;
+  final String summaryId;
+  final String userId;
+  final TopReadFeedbackTarget target;
+  final int rating;
+  final String idempotencyKey;
+  final PostRatingReason? reason;
+}
+
+final class LoadPostRatingsApiRequest {
+  const LoadPostRatingsApiRequest({
+    required this.scope,
+    required this.userId,
+    required this.targets,
+  });
+
+  factory LoadPostRatingsApiRequest.fromQuery(LoadPostRatingsQuery query) {
+    return LoadPostRatingsApiRequest(
+      scope: query.scope,
+      userId: query.userId,
+      targets: query.targets,
+    );
+  }
+
+  final WorkspaceScope scope;
+  final String userId;
+  final List<PostRatingLookupTarget> targets;
 }

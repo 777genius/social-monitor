@@ -44,6 +44,25 @@ class _ReadCard extends StatelessWidget {
       read,
       includeRank: includeRankMetric,
     ).isNotEmpty;
+    final showSeparateLeading = showLeadingRank;
+    final titleLink = InkWell(
+      onTap: url == null ? null : () => onOpenUrl(url),
+      child: Text(
+        read.title,
+        maxLines: compact ? 1 : (featured ? 3 : 2),
+        overflow: TextOverflow.ellipsis,
+        style:
+            (featured
+                    ? Theme.of(context).textTheme.titleMedium
+                    : Theme.of(context).textTheme.titleSmall)
+                ?.copyWith(
+                  color: Theme.of(context).colorScheme.primary,
+                  fontWeight: FontWeight.w900,
+                  decoration: TextDecoration.underline,
+                  letterSpacing: 0,
+                ),
+      ),
+    );
     final contentPadding = compact
         ? const EdgeInsets.all(AppSpacing.sm)
         : featured
@@ -61,66 +80,35 @@ class _ReadCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Padding(
-                padding: EdgeInsets.only(top: previewMedia == null ? 2 : 0),
-                child: previewMedia != null
-                    ? ReaderSummaryPreviewMedia(
-                        media: previewMedia,
-                        compact: compact || !featured,
-                      )
-                    : showLeadingRank
-                    ? _ReadRankBadge(rank: readIndex + 1)
-                    : _ReadSourceIcon(read: read),
-              ),
-              const SizedBox(width: AppSpacing.sm),
+              if (showSeparateLeading) ...[
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: _ReadRankBadge(rank: readIndex + 1),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+              ],
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _ReadTextBlock(
                       label: null,
-                      child: InkWell(
-                        onTap: url == null ? null : () => onOpenUrl(url),
-                        child: Text(
-                          read.title,
-                          maxLines: compact ? 1 : (featured ? 3 : 2),
-                          overflow: TextOverflow.ellipsis,
-                          style:
-                              (featured
-                                      ? Theme.of(context).textTheme.titleMedium
-                                      : Theme.of(context).textTheme.titleSmall)
-                                  ?.copyWith(
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.primary,
-                                    fontWeight: FontWeight.w900,
-                                    decoration: TextDecoration.underline,
-                                    letterSpacing: 0,
+                      child: showSeparateLeading
+                          ? titleLink
+                          : Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 2),
+                                  child: ReaderSummaryProviderLogo(
+                                    providerKey: read.providerKey,
+                                    size: 20,
                                   ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        AppStatusBadge(
-                          label: readerSummaryProviderLabel(read.providerKey),
-                          tone: AppStatusTone.neutral,
-                        ),
-                        if (url != null && url.trim().isNotEmpty) ...[
-                          const SizedBox(width: AppSpacing.xs),
-                          Expanded(
-                            child: KeyedSubtree(
-                              key: ValueKey('$keyPrefix-$readIndex-url'),
-                              child: ReaderSummaryExternalLink(
-                                url: url,
-                                onOpenUrl: onOpenUrl,
-                                maxLines: 1,
-                              ),
+                                ),
+                                const SizedBox(width: AppSpacing.xs),
+                                Expanded(child: titleLink),
+                              ],
                             ),
-                          ),
-                        ],
-                      ],
                     ),
                     if (featured && hasMetricBadges) ...[
                       const SizedBox(height: AppSpacing.sm),
@@ -172,6 +160,15 @@ class _ReadCard extends StatelessWidget {
                   ],
                 ),
               ),
+              if (previewMedia != null) ...[
+                const SizedBox(width: AppSpacing.md),
+                ReaderSummaryPreviewMedia(
+                  media: previewMedia,
+                  compact: false,
+                  size: compact ? 104 : 144,
+                  enableLightbox: true,
+                ),
+              ],
             ],
           ),
           if (showDivider && !featured) ...[
@@ -272,6 +269,12 @@ class _SelectionReasonBadges extends StatelessWidget {
 
 List<_MetricBadgeData> _selectionReasonBadgesFor(TopRead read) {
   final badges = <_MetricBadgeData>[];
+  badges.add(
+    _MetricBadgeData(
+      icon: Icons.insights_outlined,
+      label: 'signal ${read.signalScore.toFixed(2)}',
+    ),
+  );
   if (_hasHighEngagement(read)) {
     badges.add(
       const _MetricBadgeData(
@@ -282,12 +285,11 @@ List<_MetricBadgeData> _selectionReasonBadgesFor(TopRead read) {
   }
   if (_hasCrossSourceSupport(read)) {
     badges.add(
-      const _MetricBadgeData(icon: Icons.hub_outlined, label: 'cross-source'),
-    );
-  }
-  if (_isFreshSignal(read)) {
-    badges.add(
-      const _MetricBadgeData(icon: Icons.today_outlined, label: 'fresh today'),
+      const _MetricBadgeData(
+        icon: Icons.hub_outlined,
+        label: 'cross-source',
+        tone: _MetricBadgeTone.success,
+      ),
     );
   }
   if (_hasTopicMatch(read)) {
@@ -314,18 +316,7 @@ bool _hasHighEngagement(TopRead read) {
 }
 
 bool _hasCrossSourceSupport(TopRead read) {
-  return read.confirmedProviderKeys
-          .where((providerKey) => providerKey.trim().isNotEmpty)
-          .toSet()
-          .length >
-      1;
-}
-
-bool _isFreshSignal(TopRead read) {
-  final text = _readEvidenceText(read);
-  return text.contains('today') ||
-      text.contains('fresh') ||
-      text.contains('current summary window');
+  return readerSummaryHasCrossSourceSupport(read, const []);
 }
 
 bool _hasTopicMatch(TopRead read) {
@@ -358,18 +349,4 @@ List<_MetricBadgeData> _uniqueBadgeLabels(List<_MetricBadgeData> badges) {
     result.add(badge);
   }
   return result;
-}
-
-class _ReadSourceIcon extends StatelessWidget {
-  const _ReadSourceIcon({required this.read});
-
-  final TopRead read;
-
-  @override
-  Widget build(BuildContext context) {
-    if (_isGithub(read)) {
-      return const GitHubMark(size: 18);
-    }
-    return const Icon(Icons.article_outlined, size: 18);
-  }
 }

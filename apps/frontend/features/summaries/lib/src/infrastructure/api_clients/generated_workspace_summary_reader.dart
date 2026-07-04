@@ -14,6 +14,8 @@ final class GeneratedWorkspaceSummaryReader {
   }) : _runtime = runtime,
        _mapper = mapper;
 
+  static const _historyLimit = 40;
+
   final generated.GeneratedApiRuntime _runtime;
   final GeneratedSummaryRestMapper _mapper;
 
@@ -23,46 +25,34 @@ final class GeneratedWorkspaceSummaryReader {
     final exactResult = await _list(request, exactPeriod: true);
     return exactResult.fold(
       onSuccess: (dto) async {
-        final historyResult = await _list(
-          request,
-          exactPeriod: false,
-          limit: 120,
-        );
-        return historyResult.fold(
-          onSuccess: (historyDto) {
-            final currentDto = dto.items.isNotEmpty
-                ? dto
-                : _historyForRequestedPeriod(historyDto, request.period);
-            return Result.success(
-              _workspaceSummaryFrom(currentDto, historyDto),
-            );
-          },
-          onFailure: (failure) {
-            if (dto.items.isNotEmpty) {
-              return Result.success(_workspaceSummaryFrom(dto));
-            }
-            return Result.failure(failure);
-          },
+        if (dto.items.isNotEmpty) {
+          return Result.success(_workspaceSummaryFrom(dto));
+        }
+        final latestResult = await _list(request, exactPeriod: false);
+        return latestResult.fold(
+          onSuccess: (latestDto) =>
+              Result.success(_workspaceSummaryFrom(latestDto)),
+          onFailure: Result<WorkspaceSummaryApiDto>.failure,
         );
       },
       onFailure: Result<WorkspaceSummaryApiDto>.failure,
     );
   }
 
-  generated.ListReaderSummariesResponseDto _historyForRequestedPeriod(
-    generated.ListReaderSummariesResponseDto dto,
-    SummaryPeriod period,
-  ) {
-    return generated.ListReaderSummariesResponseDto(
-      items: dto.items
-          .where(
-            (item) => _periodMatchesRequest(
-              _mapper.readerSummary(item).period,
-              period,
-            ),
-          )
-          .toList(growable: false),
-      nextCursor: dto.nextCursor,
+  Future<Result<WorkspaceSummaryApiDto>> loadHistory(
+    LoadWorkspaceSummaryApiRequest request,
+  ) async {
+    final periodsResult = await _listPeriods(request, limit: _historyLimit);
+    return periodsResult.fold(
+      onSuccess: (periodsDto) {
+        return Result.success(
+          WorkspaceSummaryApiDto(
+            availablePeriods: _availablePeriodsFromPeriodSummaries(periodsDto),
+            availablePeriodsAreComplete: true,
+          ),
+        );
+      },
+      onFailure: Result<WorkspaceSummaryApiDto>.failure,
     );
   }
 
@@ -77,29 +67,49 @@ final class GeneratedWorkspaceSummaryReader {
         xWorkspaceId: request.scope.workspaceId,
         xTenantId: request.scope.tenantId,
         scopeType: generated.ScopeType.workspace,
-        timezone: exactPeriod ? request.period.timezone : null,
+        timezone: request.period.timezone,
         periodEndedAt: exactPeriod ? _queryDate(request.period.endedAt) : null,
         periodStartedAt: exactPeriod
             ? _queryDate(request.period.startedAt)
             : null,
-        cadence: exactPeriod ? _listCadence(request.period.cadence) : null,
+        cadence: _listCadence(request.period.cadence),
+        limit: limit,
+      ),
+    );
+  }
+
+  Future<Result<generated.ListReaderSummaryPeriodsResponseDto>> _listPeriods(
+    LoadWorkspaceSummaryApiRequest request, {
+    num limit = 40,
+  }) {
+    return _runtime.client.send<generated.ListReaderSummaryPeriodsResponseDto>(
+      generated.WorkspaceRequest(scope: request.scope),
+      () => _runtime.rest.readerSummaries.readerSummaryControllerListPeriods(
+        xWorkspaceId: request.scope.workspaceId,
+        xTenantId: request.scope.tenantId,
+        scopeType: generated.ScopeType.workspace,
+        timezone: request.period.timezone,
+        cadence: _listCadence(request.period.cadence),
         limit: limit,
       ),
     );
   }
 
   WorkspaceSummaryApiDto _workspaceSummaryFrom(
-    generated.ListReaderSummariesResponseDto currentDto, [
+    generated.ListReaderSummariesResponseDto currentDto, {
     generated.ListReaderSummariesResponseDto? historyDto,
-  ]) {
+    bool availablePeriodsAreComplete = false,
+  }) {
+    final history = historyDto ?? currentDto;
     final current = currentDto.items.isEmpty
         ? null
         : _mapper.readerSummary(currentDto.items.first);
-    final periods = _availablePeriods(
+    final periods = _availablePeriods(current: current, historyDto: history);
+    return WorkspaceSummaryApiDto(
       current: current,
-      historyDto: historyDto ?? currentDto,
+      availablePeriods: periods,
+      availablePeriodsAreComplete: availablePeriodsAreComplete,
     );
-    return WorkspaceSummaryApiDto(current: current, availablePeriods: periods);
   }
 
   List<SummaryPeriodApiDto> _availablePeriods({
@@ -117,6 +127,18 @@ final class GeneratedWorkspaceSummaryReader {
     for (final item in historyDto.items) {
       add(_mapper.readerSummary(item).period);
     }
+    return periodsByKey.values.toList(growable: false);
+  }
+
+  List<SummaryPeriodApiDto> _availablePeriodsFromPeriodSummaries(
+    generated.ListReaderSummaryPeriodsResponseDto dto,
+  ) {
+    final periodsByKey = <String, SummaryPeriodApiDto>{};
+    for (final item in dto.items) {
+      final period = _mapper.readerSummaryPeriod(item.period);
+      periodsByKey[_periodIdentity(period)] = period;
+    }
+
     return periodsByKey.values.toList(growable: false);
   }
 
@@ -139,19 +161,5 @@ final class GeneratedWorkspaceSummaryReader {
       period.endedAt.toUtc().toIso8601String(),
       period.timezone,
     ].join('|');
-  }
-
-  bool _periodMatchesRequest(
-    SummaryPeriodApiDto actual,
-    SummaryPeriod requested,
-  ) {
-    return actual.cadence == requested.cadence.name &&
-        actual.timezone == requested.timezone &&
-        _durationDays(actual.startedAt, actual.endedAt) ==
-            _durationDays(requested.startedAt, requested.endedAt);
-  }
-
-  int _durationDays(DateTime startedAt, DateTime endedAt) {
-    return endedAt.toUtc().difference(startedAt.toUtc()).inDays;
   }
 }

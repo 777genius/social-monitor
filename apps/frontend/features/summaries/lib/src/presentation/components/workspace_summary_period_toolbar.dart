@@ -2,8 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 
 import '../../domain/aggregates/reader_summary.dart';
+import '../formatters/summary_period_formats.dart';
 
 part 'workspace_summary_period_calendar_dialog.dart';
+part 'workspace_summary_period_calendar_legend.dart';
+part 'workspace_summary_period_preset_selector.dart';
+part 'workspace_summary_period_toolbar_controls.dart';
 
 class WorkspaceSummaryPeriodToolbar extends StatelessWidget {
   const WorkspaceSummaryPeriodToolbar({
@@ -19,6 +23,9 @@ class WorkspaceSummaryPeriodToolbar extends StatelessWidget {
     required this.onCurrentPeriod,
     required this.onNextPeriod,
     required this.onCalendarDateSelected,
+    this.isGenerating = false,
+    this.onGenerate,
+    this.onExport,
     this.calendarNow,
   });
 
@@ -33,6 +40,9 @@ class WorkspaceSummaryPeriodToolbar extends StatelessWidget {
   final VoidCallback onCurrentPeriod;
   final VoidCallback onNextPeriod;
   final ValueChanged<DateTime> onCalendarDateSelected;
+  final bool isGenerating;
+  final VoidCallback? onGenerate;
+  final VoidCallback? onExport;
   final DateTime? calendarNow;
 
   @override
@@ -42,56 +52,74 @@ class WorkspaceSummaryPeriodToolbar extends StatelessWidget {
         final maxWidth = constraints.maxWidth.isFinite
             ? constraints.maxWidth
             : MediaQuery.sizeOf(context).width;
-        final availableWidth = maxWidth.clamp(180.0, 520.0);
-        final selectorWidth = maxWidth.clamp(180.0, 420.0);
-
-        return Wrap(
-          spacing: AppSpacing.md,
-          runSpacing: AppSpacing.sm,
-          alignment: WrapAlignment.spaceBetween,
-          crossAxisAlignment: WrapCrossAlignment.center,
+        final compact = maxWidth < 880;
+        final navigation = _PeriodNavigationGroup(
+          canNavigateToPreviousPeriod: canNavigateToPreviousPeriod,
+          canNavigateToNextPeriod: canNavigateToNextPeriod,
+          isCurrentPeriod: isCurrentPeriod,
+          onPreviousPeriod: onPreviousPeriod,
+          onCurrentPeriod: onCurrentPeriod,
+          onNextPeriod: onNextPeriod,
+        );
+        final dateButton = _PeriodDateButton(
+          label: summaryPeriodToolbarLabel(selectedPeriod),
+          onPressed: () => _choosePeriodDate(context),
+        );
+        final presetSelector = _SummaryPeriodPresetSelector(
+          selectedPreset: selectedPreset,
+          onPeriodChanged: onPeriodChanged,
+        );
+        final actions = Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: availableWidth),
-              child: _SummaryPeriodHeader(selectedPeriod: selectedPeriod),
-            ),
-            Wrap(
-              spacing: AppSpacing.xs,
-              runSpacing: AppSpacing.xs,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                IconButton(
-                  tooltip: 'Previous period',
-                  icon: const Icon(Icons.chevron_left),
-                  onPressed: canNavigateToPreviousPeriod
-                      ? onPreviousPeriod
-                      : null,
-                ),
-                IconButton(
-                  tooltip: 'Current period',
-                  icon: const Icon(Icons.today_outlined),
-                  onPressed: isCurrentPeriod ? null : onCurrentPeriod,
-                ),
-                IconButton(
-                  key: const ValueKey('workspace-summary-period-calendar'),
-                  tooltip: 'Choose period date',
-                  icon: const Icon(Icons.calendar_today_outlined),
-                  onPressed: () => _choosePeriodDate(context),
-                ),
-                IconButton(
-                  tooltip: 'Next period',
-                  icon: const Icon(Icons.chevron_right),
-                  onPressed: canNavigateToNextPeriod ? onNextPeriod : null,
-                ),
-                SizedBox(
-                  width: selectorWidth,
-                  child: _SummaryPeriodPresetSelector(
-                    selectedPreset: selectedPreset,
-                    onPeriodChanged: onPeriodChanged,
-                  ),
-                ),
-              ],
-            ),
+            if (onGenerate != null) ...[
+              _RegenerateButton(
+                isGenerating: isGenerating,
+                onPressed: isGenerating ? null : onGenerate,
+              ),
+              const SizedBox(width: AppSpacing.sm + 4),
+            ],
+            _ExportButton(onPressed: onExport),
+          ],
+        );
+
+        if (compact) {
+          final compactSelector = _SummaryPeriodPresetSelector(
+            selectedPreset: selectedPreset,
+            onPeriodChanged: onPeriodChanged,
+            expand: true,
+          );
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  navigation,
+                  const SizedBox(width: AppSpacing.sm + 4),
+                  Flexible(child: dateButton),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              Row(
+                children: [
+                  Expanded(child: compactSelector),
+                  const SizedBox(width: AppSpacing.sm + 4),
+                  actions,
+                ],
+              ),
+            ],
+          );
+        }
+
+        return Row(
+          children: [
+            navigation,
+            const SizedBox(width: AppSpacing.sm + 4),
+            Flexible(child: dateButton),
+            const Spacer(),
+            presetSelector,
+            const SizedBox(width: AppSpacing.md),
+            actions,
           ],
         );
       },
@@ -124,125 +152,6 @@ class WorkspaceSummaryPeriodToolbar extends StatelessWidget {
     if (picked != null) {
       onCalendarDateSelected(picked);
     }
-  }
-}
-
-class _SummaryPeriodHeader extends StatelessWidget {
-  const _SummaryPeriodHeader({required this.selectedPeriod});
-
-  final SummaryPeriod selectedPeriod;
-
-  @override
-  Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Summaries',
-          style: textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w800,
-            letterSpacing: 0,
-          ),
-        ),
-        Text(
-          selectedPeriod.utcRangeLabel,
-          softWrap: true,
-          style: textTheme.bodySmall?.copyWith(letterSpacing: 0),
-        ),
-      ],
-    );
-  }
-}
-
-class _SummaryPeriodPresetSelector extends StatelessWidget {
-  const _SummaryPeriodPresetSelector({
-    required this.selectedPreset,
-    required this.onPeriodChanged,
-  });
-
-  final SummaryPeriodPreset selectedPreset;
-  final ValueChanged<SummaryPeriodPreset> onPeriodChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final borderRadius = BorderRadius.circular(28);
-    final colorScheme = Theme.of(context).colorScheme;
-    return Material(
-      color: Colors.transparent,
-      clipBehavior: Clip.antiAlias,
-      shape: RoundedRectangleBorder(borderRadius: borderRadius),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          border: Border.all(color: colorScheme.outline),
-          borderRadius: borderRadius,
-        ),
-        child: SizedBox(
-          height: 40,
-          child: Row(
-            children: [
-              for (final entry in SummaryPeriodPreset.values.indexed)
-                Expanded(
-                  child: _SummaryPeriodPresetSegment(
-                    preset: entry.$2,
-                    selected: entry.$2 == selectedPreset,
-                    showLeadingDivider: entry.$1 > 0,
-                    onPressed: () => onPeriodChanged(entry.$2),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SummaryPeriodPresetSegment extends StatelessWidget {
-  const _SummaryPeriodPresetSegment({
-    required this.preset,
-    required this.selected,
-    required this.showLeadingDivider,
-    required this.onPressed,
-  });
-
-  final SummaryPeriodPreset preset;
-  final bool selected;
-  final bool showLeadingDivider;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-    final selectedColor = colorScheme.primary.withValues(alpha: 0.14);
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: selected ? selectedColor : Colors.transparent,
-        border: showLeadingDivider
-            ? Border(left: BorderSide(color: colorScheme.outline))
-            : null,
-      ),
-      child: InkWell(
-        onTap: selected ? null : onPressed,
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
-            child: Text(
-              preset.label,
-              maxLines: 1,
-              overflow: TextOverflow.fade,
-              softWrap: false,
-              style: textTheme.bodySmall?.copyWith(
-                color: selected ? colorScheme.primary : colorScheme.onSurface,
-                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                letterSpacing: 0,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
   }
 }
 

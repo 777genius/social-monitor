@@ -101,7 +101,7 @@ function isInsideRoot(path) {
 function responseHeaders(path) {
   return {
     'content-type': contentType(path),
-    'cache-control': path === indexPath ? 'no-store' : 'public, max-age=3600',
+    'cache-control': 'no-store',
   };
 }
 

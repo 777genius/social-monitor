@@ -11,6 +11,7 @@ final class ReaderSummaryContentRestMapper {
       headline: dto.headline,
       oneLineTakeaway: dto.oneLineTakeaway,
       bullets: dto.bullets,
+      mainTopics: dto.mainTopics,
       qualityState: ReaderSummaryQualityStateApiDto(
         status: dto.qualityState.status.json ?? 'ready',
         flags: dto.qualityState.flags
@@ -25,6 +26,9 @@ final class ReaderSummaryContentRestMapper {
           .toList(growable: false),
       sourceMix: dto.sourceMix.map(_sourceMixEntry).toList(growable: false),
       topReads: dto.topReads.map(_readerItem).toList(growable: false),
+      selectedPosts: dto.selectedPosts.map(_readerItem).toList(growable: false),
+      claimBoard: dto.claimBoard.map(_claim).toList(growable: false),
+      reliabilityReport: _reliabilityReport(dto.reliabilityReport),
       trendDelta: ReaderTrendDeltaApiDto(
         newSignals: dto.trendDelta.newSignals,
         growingSignals: dto.trendDelta.growingSignals,
@@ -34,6 +38,57 @@ final class ReaderSummaryContentRestMapper {
       openQuestions: dto.openQuestions,
       risks: dto.risks,
       nextActions: dto.nextActions.map(_nextAction).toList(growable: false),
+    );
+  }
+
+  SummaryReliabilityReportApiDto _reliabilityReport(
+    generated.ReaderSummaryReliabilityReportDto dto,
+  ) {
+    return SummaryReliabilityReportApiDto(
+      mode: dto.mode.json ?? 'shadow',
+      policyVersion: dto.policyVersion,
+      riskLevel: dto.riskLevel.json ?? 'low',
+      riskScore: _safeConfidenceScore(dto.riskScore),
+      risks: dto.risks
+          .map(
+            (risk) => SummaryReliabilityRiskApiDto(
+              kind: risk.kind.json ?? 'low_evidence_diversity',
+              level: risk.level.json ?? 'low',
+              score: _safeConfidenceScore(risk.score),
+              description: risk.description,
+            ),
+          )
+          .toList(growable: false),
+    );
+  }
+
+  SummaryClaimApiDto _claim(generated.ReaderSummaryClaimDto dto) {
+    return SummaryClaimApiDto(
+      claim: dto.claim,
+      evidence: dto.evidence
+          .map(
+            (evidence) => SummaryClaimEvidenceApiDto(
+              title: evidence.title,
+              providerKey: evidence.providerKey,
+              citationId: evidence.citationId,
+              canonicalUrl: evidence.canonicalUrl,
+            ),
+          )
+          .toList(growable: false),
+      confidence: TopReadConfidenceApiDto(
+        level: dto.confidence.level.json ?? 'low',
+        score: _safeConfidenceScore(dto.confidence.score),
+        rationale: dto.confidence.rationale,
+      ),
+      risks: dto.risks
+          .map(
+            (risk) => SummaryClaimRiskApiDto(
+              kind: risk.kind.json ?? 'unresolved',
+              description: risk.description,
+            ),
+          )
+          .toList(growable: false),
+      citationIds: dto.citationIds,
     );
   }
 

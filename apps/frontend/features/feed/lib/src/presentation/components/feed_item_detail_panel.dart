@@ -203,7 +203,7 @@ class _DetailHero extends StatelessWidget {
                   ),
                   child: Padding(
                     padding: const EdgeInsets.all(AppSpacing.sm),
-                    child: Icon(visuals.icon, color: visuals.accent, size: 20),
+                    child: AppProviderLogo(providerKey: item.providerKey),
                   ),
                 ),
                 const SizedBox(width: AppSpacing.sm),

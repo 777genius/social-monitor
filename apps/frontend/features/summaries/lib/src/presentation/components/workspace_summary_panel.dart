@@ -3,10 +3,13 @@ import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
 import '../../domain/aggregates/reader_summary.dart';
+import '../../domain/entities/post_rating.dart';
 import '../../domain/entities/reader_summary_job_snapshot.dart';
 import '../../domain/value_objects/reader_action_target.dart';
 import 'reader_summary_view.dart';
-import 'workspace_summary_period_toolbar.dart';
+import 'workspace_summary_period_shell.dart';
+import 'workspace_summary_skeleton.dart';
+import 'workspace_summary_status_cards.dart';
 
 class WorkspaceSummaryPanel extends StatelessWidget {
   const WorkspaceSummaryPanel({
@@ -31,6 +34,8 @@ class WorkspaceSummaryPanel extends StatelessWidget {
     required this.onGenerate,
     required this.intentForAction,
     required this.onAction,
+    required this.topPostRatingFor,
+    required this.onTopPostRating,
     required this.onOpenUrl,
   });
 
@@ -60,6 +65,14 @@ class WorkspaceSummaryPanel extends StatelessWidget {
     ReaderFeedbackReason? feedbackReason,
   ])
   onAction;
+  final int? Function(ReaderSummary summary, TopRead item) topPostRatingFor;
+  final Future<bool> Function(
+    ReaderSummary summary,
+    TopRead item,
+    int rating,
+    PostRatingReason? reason,
+  )
+  onTopPostRating;
   final void Function(ReaderSummary summary, String url) onOpenUrl;
 
   @override
@@ -77,11 +90,15 @@ class WorkspaceSummaryPanel extends StatelessWidget {
             onGenerate: onGenerate,
             intentForAction: intentForAction,
             onAction: onAction,
+            topPostRatingFor: topPostRatingFor,
+            onTopPostRating: onTopPostRating,
             onOpenUrl: onOpenUrl,
           ),
+          isGenerating: true,
+          exportSummary: current,
         );
       }
-      return _withPeriodShell(const _GeneratingSummary());
+      return _withPeriodShell(const _GeneratingSummary(), isGenerating: true);
     }
     final failedJob = _failedJob(jobState);
     if (failedJob != null) {
@@ -109,11 +126,18 @@ class WorkspaceSummaryPanel extends StatelessWidget {
             onGenerate: onGenerate,
             intentForAction: intentForAction,
             onAction: onAction,
+            topPostRatingFor: topPostRatingFor,
+            onTopPostRating: onTopPostRating,
             onOpenUrl: onOpenUrl,
           ),
+          isGenerating: true,
+          exportSummary: current,
         );
       }
-      return _withPeriodShell(_GeneratingSummary(job: activeJob));
+      return _withPeriodShell(
+        _GeneratingSummary(job: activeJob),
+        isGenerating: true,
+      );
     }
     if (jobState case FailureViewState<ReaderSummaryJobSnapshot>(
       :final failure,
@@ -142,6 +166,8 @@ class WorkspaceSummaryPanel extends StatelessWidget {
                 onGenerate: onGenerate,
                 intentForAction: intentForAction,
                 onAction: onAction,
+                topPostRatingFor: topPostRatingFor,
+                onTopPostRating: onTopPostRating,
                 onOpenUrl: onOpenUrl,
               ),
       LoadingViewState<WorkspaceSummarySnapshot>(:final previousValue) =>
@@ -157,6 +183,8 @@ class WorkspaceSummaryPanel extends StatelessWidget {
                 onGenerate: onGenerate,
                 intentForAction: intentForAction,
                 onAction: onAction,
+                topPostRatingFor: topPostRatingFor,
+                onTopPostRating: onTopPostRating,
                 onOpenUrl: onOpenUrl,
               ),
       FailureViewState<WorkspaceSummarySnapshot>(:final failure) =>
@@ -172,11 +200,15 @@ class WorkspaceSummaryPanel extends StatelessWidget {
       ),
       _ => const SizedBox.shrink(),
     };
-    return _withPeriodShell(body);
+    return _withPeriodShell(body, exportSummary: _currentSummary(state));
   }
 
-  Widget _withPeriodShell(Widget child) {
-    return _WorkspaceSummaryPeriodShell(
+  Widget _withPeriodShell(
+    Widget child, {
+    bool isGenerating = false,
+    ReaderSummary? exportSummary,
+  }) {
+    return WorkspaceSummaryPeriodShell(
       selectedPeriod: selectedPeriod,
       selectedPreset: selectedPeriodPreset,
       availableSummaryPeriods: availableSummaryPeriods,
@@ -188,6 +220,9 @@ class WorkspaceSummaryPanel extends StatelessWidget {
       onCurrentPeriod: onCurrentPeriod,
       onNextPeriod: onNextPeriod,
       onCalendarDateSelected: onCalendarDateSelected,
+      onGenerate: onGenerate,
+      isGenerating: isGenerating,
+      exportSummary: exportSummary,
       child: child,
     );
   }
@@ -228,60 +263,6 @@ class WorkspaceSummaryPanel extends StatelessWidget {
   }
 }
 
-class _WorkspaceSummaryPeriodShell extends StatelessWidget {
-  const _WorkspaceSummaryPeriodShell({
-    required this.selectedPeriod,
-    required this.selectedPreset,
-    required this.availableSummaryPeriods,
-    required this.canNavigateToPreviousPeriod,
-    required this.canNavigateToNextPeriod,
-    required this.isCurrentPeriod,
-    required this.onPeriodChanged,
-    required this.onPreviousPeriod,
-    required this.onCurrentPeriod,
-    required this.onNextPeriod,
-    required this.onCalendarDateSelected,
-    required this.child,
-  });
-
-  final SummaryPeriod selectedPeriod;
-  final SummaryPeriodPreset selectedPreset;
-  final List<SummaryPeriod> availableSummaryPeriods;
-  final bool canNavigateToPreviousPeriod;
-  final bool canNavigateToNextPeriod;
-  final bool isCurrentPeriod;
-  final ValueChanged<SummaryPeriodPreset> onPeriodChanged;
-  final VoidCallback onPreviousPeriod;
-  final VoidCallback onCurrentPeriod;
-  final VoidCallback onNextPeriod;
-  final ValueChanged<DateTime> onCalendarDateSelected;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        WorkspaceSummaryPeriodToolbar(
-          selectedPeriod: selectedPeriod,
-          selectedPreset: selectedPreset,
-          availableSummaryPeriods: availableSummaryPeriods,
-          canNavigateToPreviousPeriod: canNavigateToPreviousPeriod,
-          canNavigateToNextPeriod: canNavigateToNextPeriod,
-          isCurrentPeriod: isCurrentPeriod,
-          onPeriodChanged: onPeriodChanged,
-          onPreviousPeriod: onPreviousPeriod,
-          onCurrentPeriod: onCurrentPeriod,
-          onNextPeriod: onNextPeriod,
-          onCalendarDateSelected: onCalendarDateSelected,
-        ),
-        const SizedBox(height: AppSpacing.sm),
-        child,
-      ],
-    );
-  }
-}
-
 class _ReadySummary extends StatelessWidget {
   const _ReadySummary({
     required this.summary,
@@ -291,6 +272,8 @@ class _ReadySummary extends StatelessWidget {
     required this.onGenerate,
     required this.intentForAction,
     required this.onAction,
+    required this.topPostRatingFor,
+    required this.onTopPostRating,
     required this.onOpenUrl,
     this.isRefreshing = false,
   });
@@ -308,25 +291,33 @@ class _ReadySummary extends StatelessWidget {
     ReaderFeedbackReason? feedbackReason,
   ])
   onAction;
+  final int? Function(ReaderSummary summary, TopRead item) topPostRatingFor;
+  final Future<bool> Function(
+    ReaderSummary summary,
+    TopRead item,
+    int rating,
+    PostRatingReason? reason,
+  )
+  onTopPostRating;
   final void Function(ReaderSummary summary, String url) onOpenUrl;
   final bool isRefreshing;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      child: ReaderSummaryView(
-        summary: summary,
-        isRefreshing: isRefreshing,
-        readerActionState: readerActionState,
-        activeReaderActionIdempotencyKey: activeReaderActionIdempotencyKey,
-        lastReaderActionIdempotencyKey: lastReaderActionIdempotencyKey,
-        onGenerate: onGenerate,
-        intentForAction: (action) => intentForAction(summary, action),
-        onAction: (action, [feedbackReason]) =>
-            onAction(summary, action, feedbackReason),
-        onOpenUrl: (url) => onOpenUrl(summary, url),
-      ),
+    return ReaderSummaryView(
+      summary: summary,
+      isRefreshing: isRefreshing,
+      readerActionState: readerActionState,
+      activeReaderActionIdempotencyKey: activeReaderActionIdempotencyKey,
+      lastReaderActionIdempotencyKey: lastReaderActionIdempotencyKey,
+      onGenerate: onGenerate,
+      intentForAction: (action) => intentForAction(summary, action),
+      onAction: (action, [feedbackReason]) =>
+          onAction(summary, action, feedbackReason),
+      topPostRatingFor: (item) => topPostRatingFor(summary, item),
+      onTopPostRating: (item, rating, reason) =>
+          onTopPostRating(summary, item, rating, reason),
+      onOpenUrl: (url) => onOpenUrl(summary, url),
     );
   }
 }
@@ -338,13 +329,7 @@ class _EmptySummary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AppInlineProblem(
-      title: 'No workspace summary',
-      message: 'Run a workspace summary after feed items are collected.',
-      tone: AppProblemTone.neutral,
-      actionLabel: 'Generate',
-      onAction: onGenerate,
-    );
+    return WorkspaceSummaryEmptyCard(onGenerate: onGenerate);
   }
 }
 
@@ -364,11 +349,7 @@ class _GeneratingSummary extends StatelessWidget {
       ReaderSummaryJobStatus.unknown => 'Unknown',
       null => 'Starting',
     };
-    return AppInlineProblem(
-      title: 'Generating summary',
-      message: '$status - collecting the latest workspace signal.',
-      tone: AppProblemTone.neutral,
-    );
+    return WorkspaceSummaryGeneratingCard(statusLabel: status);
   }
 }
 
@@ -377,10 +358,6 @@ class _SummarySkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const AppInlineProblem(
-      title: 'Loading summary',
-      message: 'Fetching the latest workspace summary.',
-      tone: AppProblemTone.neutral,
-    );
+    return const WorkspaceSummarySkeleton();
   }
 }

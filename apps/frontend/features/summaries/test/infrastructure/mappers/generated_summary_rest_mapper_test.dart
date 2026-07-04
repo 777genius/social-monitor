@@ -42,8 +42,13 @@ void main() {
         contains('calesthio/OpenMontage'),
       );
       expect(readerSummary.content.qualityState.status, 'limited_sources');
+      expect(readerSummary.content.mainTopics, ['AI developer tools']);
       expect(
         readerSummary.content.topReads.single.canonicalUrl,
+        contains('github.com/calesthio/OpenMontage'),
+      );
+      expect(
+        readerSummary.content.selectedPosts.single.canonicalUrl,
         contains('github.com/calesthio/OpenMontage'),
       );
       expect(
@@ -67,6 +72,18 @@ void main() {
       );
       expect(readerSummary.content.sourceMix.single.storyClusterCount, 1);
       expect(readerSummary.content.nextActions.single.kind, 'watch_repository');
+      expect(readerSummary.coverage?.collectedFeedItemCount, 20);
+      expect(readerSummary.coverage?.selectedFeedItemCount, 12);
+      expect(readerSummary.coverage?.topReadCount, 3);
+      expect(readerSummary.coverage?.citationCount, 7);
+      expect(
+        readerSummary.coverage?.providerBreakdown.single.providerKey,
+        'github-trending-page',
+      );
+      expect(
+        readerSummary.coverage?.providerBreakdown.single.collectedFeedItemCount,
+        20,
+      );
       expect(readerSummary.period.cadence, 'daily');
       expect(readerSummary.sourceWindow.label, 'Evidence window');
       expect(
@@ -150,6 +167,35 @@ generated.ReaderSummaryArtifactResponseDto _readerSummaryArtifact() {
       score: 0.7,
     ),
     contextArtifacts: const [],
+    coverage: generated.ReaderSummaryCoverageSummaryDto(
+      citationCount: 7,
+      collectedFeedItemCount: 20,
+      crossSourceClusterCount: 1,
+      duplicateFeedItemCount: 2,
+      freshnessStatus: generated
+          .ReaderSummaryCoverageSummaryDtoFreshnessStatusFreshnessStatus
+          .fresh,
+      hasCrossProviderEvidence: true,
+      interestCount: 1,
+      isSingleSource: false,
+      providerCount: 2,
+      selectedFeedItemCount: 12,
+      storyClusterCount: 5,
+      topInterestIds: const ['ai-tools'],
+      topProviderKeys: const ['github-trending-page'],
+      topReadCount: 3,
+      windowEndedAt: now,
+      windowStartedAt: now.subtract(const Duration(minutes: 30)),
+      providerBreakdown: const [
+        generated.ReaderSummaryProviderCoverageDto(
+          providerKey: 'github-trending-page',
+          collectedFeedItemCount: 20,
+          selectedFeedItemCount: 12,
+          topReadCount: 3,
+          citationCount: 7,
+        ),
+      ],
+    ),
     executiveSummary:
         'GitHub Trending found concrete AI developer-tool repositories.',
     freshness: generated.ReaderSummaryFreshnessDto(
@@ -172,6 +218,7 @@ generated.ReaderSummaryArtifactResponseDto _readerSummaryArtifact() {
       oneLineTakeaway:
           'calesthio/OpenMontage is the clearest repository signal.',
       bullets: ['calesthio/OpenMontage is worth reading first.'],
+      mainTopics: ['AI developer tools'],
       qualityState: generated.ReaderSummaryReaderQualityStateDto(
         status: generated
             .ReaderSummaryReaderQualityStateDtoStatusStatus
@@ -182,6 +229,38 @@ generated.ReaderSummaryArtifactResponseDto _readerSummaryArtifact() {
         warnings: ['Source coverage is limited and needs confirmation.'],
         isSingleSource: true,
       ),
+      selectedPosts: [
+        generated.ReaderSummaryReaderItemDto(
+          title: 'calesthio/OpenMontage',
+          providerKey: 'github-trending-page',
+          providerName: 'GitHub Trending',
+          primaryActionKind: generated
+              .ReaderSummaryReaderItemDtoPrimaryActionKindPrimaryActionKind
+              .watchRepository,
+          reason: '#1 on github.com/trending today.',
+          matchedInterestIds: ['ai-tools'],
+          matchedRules: ['interest:ai-tools', 'provider:github-trending-page'],
+          signalScore: 1,
+          confidence: generated.ReaderSummaryReaderItemConfidenceDto(
+            level:
+                generated.ReaderSummaryReaderItemConfidenceDtoLevelLevel.medium,
+            score: 0.57,
+            rationale: 'Daily GitHub Trending signal with raw metrics.',
+          ),
+          confirmedProviderKeys: ['github-trending-page'],
+          providerMetrics: [
+            generated.ReaderSummaryProviderMetricDto(
+              label: 'GitHub Trending today',
+              value: '#1, +3,703 stars today',
+            ),
+          ],
+          whyImportant: ['It is #1 on GitHub Trending today.'],
+          whyNow:
+              'Current summary window has github.com/trending page coverage.',
+          canonicalUrl: 'https://github.com/calesthio/OpenMontage',
+          citationIds: ['bc-1'],
+        ),
+      ],
       interestSections: [
         generated.ReaderSummaryReaderInterestSectionDto(
           title: 'AI developer tools',
@@ -268,6 +347,15 @@ generated.ReaderSummaryArtifactResponseDto _readerSummaryArtifact() {
           citationIds: ['bc-1'],
         ),
       ],
+      claimBoard: [],
+      reliabilityReport: generated.ReaderSummaryReliabilityReportDto(
+        mode: generated.ReaderSummaryReliabilityReportDtoModeMode.shadow,
+        policyVersion: 'reader_summary_reliability_shadow_v1',
+        riskLevel:
+            generated.ReaderSummaryReliabilityReportDtoRiskLevelRiskLevel.low,
+        riskScore: 0,
+        risks: [],
+      ),
       trendDelta: generated.ReaderSummaryTrendDeltaDto(
         newSignals: ['calesthio/OpenMontage'],
         growingSignals: [],

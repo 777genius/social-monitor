@@ -284,9 +284,12 @@ void main() {
     await tester.pumpWidget(SocialMonitorApp(composition: composition));
     await tester.pumpAndSettle();
 
-    expect(find.text('Theme'), findsOneWidget);
+    expect(find.byKey(const ValueKey('app-theme-mode-menu')), findsOneWidget);
+    expect(find.text('System'), findsOneWidget);
     expect(composition.themeModeController.themeMode, ThemeMode.system);
 
+    await tester.tap(find.byKey(const ValueKey('app-theme-mode-menu')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('app-theme-mode-dark')));
     await tester.pumpAndSettle();
 
@@ -298,6 +301,8 @@ void main() {
       Brightness.dark,
     );
 
+    await tester.tap(find.byKey(const ValueKey('app-theme-mode-menu')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('app-theme-mode-light')));
     await tester.pumpAndSettle();
 
@@ -321,7 +326,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Monitoring command center'), findsOneWidget);
-    expect(find.text('Acme alerts'), findsNothing);
 
     composition.router.go('/interests');
     await tester.pumpAndSettle();

@@ -36,8 +36,9 @@ class _SummaryPeriodDateDialogState extends State<_SummaryPeriodDateDialog> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final hasAvailabilityData = widget.selectablePeriods.isNotEmpty;
     final canSubmit =
-        widget.selectablePeriods.isEmpty ||
+        !hasAvailabilityData ||
         _hasAvailablePeriodForDate(
           date: _selectedDate,
           preset: widget.selectedPreset,
@@ -117,6 +118,8 @@ class _SummaryPeriodDateDialogState extends State<_SummaryPeriodDateDialog> {
                   _selectedDate = date;
                 }),
               ),
+              const SizedBox(height: AppSpacing.sm),
+              _CalendarLegend(hasAvailabilityData: hasAvailabilityData),
               const SizedBox(height: AppSpacing.md),
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
@@ -249,15 +252,16 @@ class _CalendarDayCell extends StatelessWidget {
 
     final colorScheme = Theme.of(context).colorScheme;
     final inRange = !date.isBefore(firstDate) && !date.isAfter(lastDate);
+    final hasAvailabilityData = selectablePeriods.isNotEmpty;
     final hasAvailableSummary =
-        selectablePeriods.isEmpty ||
+        hasAvailabilityData &&
         _hasAvailablePeriodForDate(
           date: date,
           preset: selectedPreset,
           availablePeriods: selectablePeriods,
           calendarNow: calendarNow,
         );
-    final enabled = inRange && hasAvailableSummary;
+    final enabled = inRange && (!hasAvailabilityData || hasAvailableSummary);
     final selected = _sameDate(date, selectedDate);
     final keyDate = _dateKey(date);
     final foreground = enabled
@@ -284,7 +288,10 @@ class _CalendarDayCell extends StatelessWidget {
             decoration: BoxDecoration(
               color: selected ? colorScheme.primary : Colors.transparent,
               shape: BoxShape.circle,
-              border: Border.all(color: borderColor, width: 1.5),
+              border: Border.all(
+                color: borderColor,
+                width: hasAvailableSummary && !selected ? 1.5 : 0,
+              ),
             ),
             child: Stack(
               alignment: Alignment.center,

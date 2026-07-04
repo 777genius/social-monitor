@@ -159,4 +159,21 @@ void main() {
     expect(summary.content.oneLineTakeaway, isNot(contains('sk-demo')));
     expect(summary.content.oneLineTakeaway, isNot(contains('c...')));
   });
+
+  test('keeps reader summary executive summary complete', () {
+    const mapper = SummaryMapper();
+    final executiveSummary = [
+      '**Fable 5** is the main live signal: Reddit discussion says the model is back with intense user interest.',
+      'Parallel LocalLLaMA threads push a broader theme around reproducible local pipelines and clearer model boundaries.',
+      'HN and RSS add a coding-agent backdrop, while caveats stay attached to source-reported claims.',
+    ].join(' ');
+
+    final summary = mapper.readerSummaryToDomain(
+      readerSummaryApiDto(executiveSummary: executiveSummary),
+    );
+
+    expect(summary.executiveSummary, contains('reproducible local pipelines'));
+    expect(summary.executiveSummary, contains('source-reported claims'));
+    expect(summary.executiveSummary, isNot(contains('...')));
+  });
 }

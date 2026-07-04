@@ -1,14 +1,23 @@
+part 'summary_reader_quality_api_dto.dart';
+part 'reader_summary_content_api_dto.dart';
+
 final class SummaryCitationApiDto {
   const SummaryCitationApiDto({
     required this.id,
     required this.sourceLabel,
     required this.rawSnippet,
+    required this.feedItemId,
+    required this.sourceItemId,
+    this.providerKey,
     this.canonicalUrl,
   });
 
   final String id;
   final String sourceLabel;
   final String rawSnippet;
+  final String feedItemId;
+  final String sourceItemId;
+  final String? providerKey;
   final String? canonicalUrl;
 }
 
@@ -222,37 +231,36 @@ final class ReaderActionApiDto {
   final String? canonicalUrl;
 }
 
-final class ReaderSummaryContentApiDto {
-  const ReaderSummaryContentApiDto({
-    required this.headline,
-    required this.oneLineTakeaway,
-    required this.bullets,
-    required this.interestSections,
-    required this.sourceMix,
-    required this.topReads,
-    required this.trendDelta,
-    required this.openQuestions,
-    required this.risks,
-    required this.nextActions,
-    this.qualityState = const ReaderSummaryQualityStateApiDto(
-      status: 'ready',
-      flags: [],
-      warnings: [],
-      isSingleSource: false,
-    ),
+final class ReaderSummaryCoverageApiDto {
+  const ReaderSummaryCoverageApiDto({
+    required this.selectedFeedItemCount,
+    required this.topReadCount,
+    required this.citationCount,
+    this.collectedFeedItemCount,
+    this.providerBreakdown = const [],
   });
 
-  final String headline;
-  final String oneLineTakeaway;
-  final List<String> bullets;
-  final ReaderSummaryQualityStateApiDto qualityState;
-  final List<ReaderInterestSectionApiDto> interestSections;
-  final List<SourceMixEntryApiDto> sourceMix;
-  final List<TopReadApiDto> topReads;
-  final ReaderTrendDeltaApiDto trendDelta;
-  final List<String> openQuestions;
-  final List<String> risks;
-  final List<ReaderActionApiDto> nextActions;
+  final int selectedFeedItemCount;
+  final int topReadCount;
+  final int citationCount;
+  final int? collectedFeedItemCount;
+  final List<ReaderSummaryProviderCoverageApiDto> providerBreakdown;
+}
+
+final class ReaderSummaryProviderCoverageApiDto {
+  const ReaderSummaryProviderCoverageApiDto({
+    required this.providerKey,
+    required this.selectedFeedItemCount,
+    required this.topReadCount,
+    required this.citationCount,
+    this.collectedFeedItemCount,
+  });
+
+  final String providerKey;
+  final int selectedFeedItemCount;
+  final int topReadCount;
+  final int citationCount;
+  final int? collectedFeedItemCount;
 }
 
 final class SummaryPeriodApiDto {
@@ -297,6 +305,7 @@ final class ReaderSummaryApiDto {
     required this.sourceWindow,
     required this.freshnessLabel,
     required this.isDegraded,
+    this.coverage,
   });
 
   final String id;
@@ -311,16 +320,19 @@ final class ReaderSummaryApiDto {
   final SummaryWindowApiDto sourceWindow;
   final String freshnessLabel;
   final bool isDegraded;
+  final ReaderSummaryCoverageApiDto? coverage;
 }
 
 final class WorkspaceSummaryApiDto {
   const WorkspaceSummaryApiDto({
     this.current,
     this.availablePeriods = const [],
+    this.availablePeriodsAreComplete = false,
   });
 
   final ReaderSummaryApiDto? current;
   final List<SummaryPeriodApiDto> availablePeriods;
+  final bool availablePeriodsAreComplete;
 }
 
 final class ReaderSummaryJobApiDto {

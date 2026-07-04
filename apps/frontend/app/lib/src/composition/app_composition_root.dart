@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
@@ -7,6 +9,7 @@ import '../routing/feature_catalog.dart';
 import 'app_feature_route_builders.dart';
 import 'app_frontend_runtime_config.dart';
 import 'app_runtime.dart';
+import 'app_session_bootstrap.dart';
 import 'app_theme_mode_controller.dart';
 
 final class AppCompositionRoot {
@@ -32,7 +35,7 @@ final class AppCompositionRoot {
     AppFrontendRuntimeConfig? runtimeConfig,
     String initialLocation = AppRoutes.initialFromEnvironment,
   }) {
-    return AppCompositionRoot._build(
+    final root = AppCompositionRoot._build(
       runtime:
           runtime ??
           (runtimeConfig ?? AppFrontendRuntimeConfig.fromEnvironment())
@@ -42,6 +45,8 @@ final class AppCompositionRoot {
       useDemoRoutes: false,
       initialLocation: initialLocation,
     );
+    unawaited(bootstrapAppSession(root.runtimeController));
+    return root;
   }
 
   factory AppCompositionRoot.demo({

@@ -14,12 +14,18 @@ SummaryCitationApiDto summaryCitationApiDto({
   String id = 'c-1',
   String sourceLabel = 'Reddit thread',
   String rawSnippet = 'Users compared competitor pricing tiers.',
+  String feedItemId = 'feed-c-1',
+  String sourceItemId = 'source-c-1',
+  String? providerKey,
   String? canonicalUrl,
 }) {
   return SummaryCitationApiDto(
     id: id,
     sourceLabel: sourceLabel,
     rawSnippet: rawSnippet,
+    feedItemId: feedItemId,
+    sourceItemId: sourceItemId,
+    providerKey: providerKey,
     canonicalUrl: canonicalUrl,
   );
 }
@@ -67,6 +73,7 @@ ReaderSummaryApiDto readerSummaryApiDto({
   SummaryWindowApiDto? sourceWindow,
   String freshnessLabel = 'Fresh',
   bool isDegraded = false,
+  ReaderSummaryCoverageApiDto? coverage,
 }) {
   return ReaderSummaryApiDto(
     id: id,
@@ -81,6 +88,7 @@ ReaderSummaryApiDto readerSummaryApiDto({
     sourceWindow: sourceWindow ?? summaryWindowApiDto(),
     freshnessLabel: freshnessLabel,
     isDegraded: isDegraded,
+    coverage: coverage,
   );
 }
 
@@ -118,9 +126,13 @@ ReaderSummaryContentApiDto readerSummaryContentApiDto({
   String oneLineTakeaway =
       'New AI coding tools are the clearest signal to inspect first.',
   String sourceProviderKey = 'github-repo-radar',
+  List<String> mainTopics = const ['AI coding tools'],
   List<String> newSignals = const ['1 Repo Radar item selected'],
   ReaderSummaryQualityStateApiDto? qualityState,
   List<SourceMixEntryApiDto>? sourceMix,
+  List<SummaryClaimApiDto> claimBoard = const [],
+  SummaryReliabilityReportApiDto reliabilityReport =
+      emptySummaryReliabilityReportApiDto,
   List<TopReadApiDto> topReads = const [
     TopReadApiDto(
       title: 'AI coding tools',
@@ -156,6 +168,7 @@ ReaderSummaryContentApiDto readerSummaryContentApiDto({
     bullets: const [
       'Best first cited read from Repo Radar (1 citation): AI coding tools - needs confirmation; verify citations in Top reads.',
     ],
+    mainTopics: mainTopics,
     qualityState:
         qualityState ??
         const ReaderSummaryQualityStateApiDto(
@@ -189,6 +202,9 @@ ReaderSummaryContentApiDto readerSummaryContentApiDto({
           ),
         ],
     topReads: topReads,
+    selectedPosts: topReads,
+    claimBoard: claimBoard,
+    reliabilityReport: reliabilityReport,
     trendDelta: ReaderTrendDeltaApiDto(
       newSignals: newSignals,
       growingSignals: const ['Developer tooling'],
@@ -241,6 +257,8 @@ GeneratedSummary generatedSummary({
       id: 'c-1',
       sourceLabel: 'Reddit thread',
       safeSnippet: 'Users compared competitor pricing tiers.',
+      feedItemId: 'feed-c-1',
+      sourceItemId: 'source-c-1',
     ),
   ],
   String freshnessLabel = 'Today',
@@ -420,6 +438,21 @@ ReaderSummaryApiDto githubTrendingReaderSummaryApiDto() {
         canonicalUrl: 'https://github.com/ZhuLinsen/daily_stock_analysis',
       ),
     ],
+    coverage: const ReaderSummaryCoverageApiDto(
+      collectedFeedItemCount: 22,
+      selectedFeedItemCount: 3,
+      topReadCount: 3,
+      citationCount: 3,
+      providerBreakdown: [
+        ReaderSummaryProviderCoverageApiDto(
+          providerKey: 'github-trending-page',
+          collectedFeedItemCount: 22,
+          selectedFeedItemCount: 3,
+          topReadCount: 3,
+          citationCount: 3,
+        ),
+      ],
+    ),
   );
 }
 

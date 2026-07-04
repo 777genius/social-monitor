@@ -1,21 +1,45 @@
+import 'dart:async';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:social_monitor_design_system/social_monitor_design_system.dart';
+import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
 import '../../domain/aggregates/reader_summary.dart';
+import '../../domain/entities/post_rating.dart';
 import '../../domain/entities/summary_citation.dart';
-import 'github_mark.dart';
+import '../../domain/value_objects/reader_action_target.dart';
+import '../formatters/summary_period_formats.dart';
+import '../formatters/top_post_metrics.dart';
+import '../formatters/top_post_source_label.dart';
 import 'reader_summary_citation_text.dart';
-import 'reader_summary_external_link.dart';
+import 'reader_summary_confirmation.dart';
+import 'reader_summary_next_actions.dart';
 import 'reader_summary_preview_media.dart';
 import 'reader_summary_provider_label.dart';
+import 'reader_summary_provider_logo.dart';
 import 'reader_summary_reason_text.dart';
 
 part 'reader_summary_ai_brief.dart';
+part 'reader_summary_citation_chip.dart';
+part 'reader_summary_executive_brief.dart';
+part 'reader_summary_feedback_bar.dart';
 part 'reader_summary_filtered_evidence.dart';
 part 'reader_summary_evidence_read_card.dart';
 part 'reader_summary_brief_helpers.dart';
+part 'reader_summary_insight_rail.dart';
 part 'reader_summary_metric_badges.dart';
+part 'reader_summary_provider_coverage_rows.dart';
+part 'reader_summary_top_post_dense_row.dart';
+part 'reader_summary_top_post_metrics_row.dart';
+part 'reader_summary_top_post_rating_control.dart';
+part 'reader_summary_top_post_rating_reason_dialog.dart';
+part 'reader_summary_top_post_rating_slot.dart';
+part 'reader_summary_top_post_row.dart';
+part 'reader_summary_top_posts.dart';
+part 'reader_summary_top_posts_controls.dart';
 
 class ReaderSummaryBriefSurface extends StatefulWidget {
   const ReaderSummaryBriefSurface({
@@ -59,13 +83,7 @@ class _ReaderSummaryBriefSurfaceState extends State<ReaderSummaryBriefSurface> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _BriefToolbar(
-          sourceCount: content.sourceMix.length,
-          freshnessLabel: widget.summary.freshnessLabel,
-          isRefreshing: widget.isRefreshing,
-          isDegraded: widget.summary.isDegraded,
-          qualityState: content.qualityState,
-        ),
+        if (widget.isRefreshing) const _BriefToolbar(),
         Padding(
           padding: const EdgeInsets.all(AppSpacing.md),
           child: SelectionArea(
@@ -73,13 +91,14 @@ class _ReaderSummaryBriefSurfaceState extends State<ReaderSummaryBriefSurface> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _AiBriefCopy(
-                  content: content,
+                  summary: widget.summary,
                   citationsById: widget.citationsById,
                   onOpenUrl: widget.onOpenUrl,
                 ),
                 const SizedBox(height: AppSpacing.md),
                 _SourceFilterChips(
                   entries: content.sourceMix,
+                  coverage: widget.summary.coverage,
                   selectedProviderKey: _selectedProviderKey,
                   topReadCount: content.topReads.length,
                   onSelected: (providerKey) {
@@ -104,19 +123,7 @@ class _ReaderSummaryBriefSurfaceState extends State<ReaderSummaryBriefSurface> {
 }
 
 class _BriefToolbar extends StatelessWidget {
-  const _BriefToolbar({
-    required this.sourceCount,
-    required this.freshnessLabel,
-    required this.isRefreshing,
-    required this.isDegraded,
-    required this.qualityState,
-  });
-
-  final int sourceCount;
-  final String freshnessLabel;
-  final bool isRefreshing;
-  final bool isDegraded;
-  final ReaderSummaryQualityState qualityState;
+  const _BriefToolbar();
 
   @override
   Widget build(BuildContext context) {
@@ -129,80 +136,22 @@ class _BriefToolbar extends StatelessWidget {
       ),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final sourceLabel = sourceCount == 1 ? 'source' : 'sources';
-          final titleText = sourceCount <= 0
-              ? 'AI summary'
-              : 'AI summary · $sourceCount $sourceLabel';
-          final title = Text(
-            titleText,
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w900,
-              letterSpacing: 0,
-            ),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          );
           final badges = Wrap(
             spacing: AppSpacing.xs,
             runSpacing: AppSpacing.xs,
-            children: [
-              AppStatusBadge(
-                label: isRefreshing ? 'Refreshing' : freshnessLabel,
-                tone: AppStatusTone.success,
-              ),
-              AppStatusBadge(
-                label: _confidenceLabel(),
-                tone: _confidenceTone(),
-              ),
+            children: const [
+              AppStatusBadge(label: 'Refreshing', tone: AppStatusTone.success),
             ],
           );
           if (constraints.maxWidth < 420) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                title,
-                const SizedBox(height: AppSpacing.xs),
-                badges,
-              ],
-            );
+            return badges;
           }
-          return Row(
-            children: [
-              Expanded(child: title),
-              badges,
-            ],
+          return Align(
+            alignment: AlignmentDirectional.centerEnd,
+            child: badges,
           );
         },
       ),
     );
-  }
-
-  String _confidenceLabel() {
-    if (qualityState.isSingleSource || qualityState.warnings.isNotEmpty) {
-      return 'Needs confirmation';
-    }
-    return switch (qualityState.status) {
-      'ready' when !isDegraded => 'High confidence',
-      'low_confidence' => 'Low confidence',
-      'limited_sources' => 'Needs confirmation',
-      'partial' => 'Partial evidence',
-      'failed_provider' => 'Provider issue',
-      'no_signal' => 'No signal',
-      _ => 'Medium confidence',
-    };
-  }
-
-  AppStatusTone _confidenceTone() {
-    if (qualityState.status == 'failed_provider' ||
-        qualityState.status == 'no_signal') {
-      return AppStatusTone.danger;
-    }
-    if (qualityState.isSingleSource ||
-        qualityState.warnings.isNotEmpty ||
-        isDegraded ||
-        qualityState.status != 'ready') {
-      return AppStatusTone.warning;
-    }
-    return AppStatusTone.success;
   }
 }

@@ -6,6 +6,9 @@ import '../../domain/value_objects/summary_generation_status.dart';
 import '../../domain/value_objects/summary_id.dart';
 import '../api/summary_api_dto.dart';
 
+part 'summary_mapper_coverage.dart';
+part 'summary_mapper_reader_content.dart';
+
 final class SummaryMapper {
   const SummaryMapper();
 
@@ -26,7 +29,7 @@ final class SummaryMapper {
     return ReaderSummary(
       id: _nonEmpty(dto.id, fallback: 'summary-unknown'),
       title: _nonEmpty(dto.title, fallback: 'Workspace summary'),
-      executiveSummary: _safeText(
+      executiveSummary: _safeLongText(
         dto.executiveSummary,
         fallback: 'No summary available',
       ),
@@ -47,6 +50,7 @@ final class SummaryMapper {
       ),
       freshnessLabel: _nonEmpty(dto.freshnessLabel, fallback: 'Unknown'),
       isDegraded: dto.isDegraded,
+      coverage: _readerSummaryCoverageToDomain(dto.coverage),
     );
   }
 
@@ -93,6 +97,9 @@ final class SummaryMapper {
         dto.rawSnippet,
         fallback: 'No citation snippet available',
       ),
+      feedItemId: _nonEmpty(dto.feedItemId, fallback: dto.id),
+      sourceItemId: _nonEmpty(dto.sourceItemId, fallback: dto.id),
+      providerKey: _nonEmptyOrNull(dto.providerKey),
       canonicalUrl: _safeUrl(dto.canonicalUrl),
     );
   }
@@ -107,6 +114,7 @@ final class SummaryMapper {
         fallback: 'No summary takeaway available',
       ),
       bullets: _safeTextList(dto.bullets),
+      mainTopics: _safeTextList(dto.mainTopics),
       qualityState: ReaderSummaryQualityState(
         status: _nonEmpty(dto.qualityState.status, fallback: 'ready'),
         flags: _safeTextList(dto.qualityState.flags),
@@ -118,6 +126,16 @@ final class SummaryMapper {
           .toList(growable: false),
       sourceMix: dto.sourceMix.map(_sourceMixToDomain).toList(growable: false),
       topReads: dto.topReads.map(_readerItemToDomain).toList(growable: false),
+      selectedPosts: dto.selectedPosts
+          .map(_readerItemToDomain)
+          .toList(growable: false),
+      claimBoard: dto.claimBoard
+          .map((claim) => _summaryClaimToDomain(this, claim))
+          .toList(growable: false),
+      reliabilityReport: _summaryReliabilityToDomain(
+        this,
+        dto.reliabilityReport,
+      ),
       trendDelta: ReaderTrendDelta(
         newSignals: _safeTextList(dto.trendDelta.newSignals),
         growingSignals: _safeTextList(dto.trendDelta.growingSignals),
@@ -215,6 +233,17 @@ final class SummaryMapper {
     };
   }
 
+  double _boundedScore(double value) {
+    if (!value.isFinite || value < 0) {
+      return 0;
+    }
+    if (value > 1) {
+      return 1;
+    }
+
+    return value;
+  }
+
   SourceMixEntry _sourceMixToDomain(SourceMixEntryApiDto dto) {
     return SourceMixEntry(
       providerKey: _nonEmpty(dto.providerKey, fallback: 'unknown'),
@@ -227,6 +256,12 @@ final class SummaryMapper {
       singleSourceOnly: dto.singleSourceOnly,
       interestIds: _safeTextList(dto.interestIds),
     );
+  }
+
+  ReaderSummaryCoverage? _readerSummaryCoverageToDomain(
+    ReaderSummaryCoverageApiDto? dto,
+  ) {
+    return _readerSummaryCoverageToDomainHelper(dto);
   }
 
   ReaderAction _nextActionToDomain(ReaderActionApiDto dto) {

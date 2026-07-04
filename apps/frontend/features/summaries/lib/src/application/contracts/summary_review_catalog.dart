@@ -12,8 +12,9 @@ import '../queries/list_summaries_query.dart';
 import '../queries/load_summary_detail_query.dart';
 import '../queries/load_workspace_summary_job_status_query.dart';
 import '../queries/load_workspace_summary_query.dart';
+import 'post_rating_catalog.dart';
 
-abstract interface class SummaryReviewCatalog {
+abstract interface class SummaryReviewCatalog implements PostRatingCatalog {
   Future<Result<PageResult<GeneratedSummary>>> listSummaries(
     ListSummariesQuery query,
   );
@@ -35,6 +36,10 @@ abstract interface class SummaryReviewCatalog {
   );
 
   Future<Result<WorkspaceSummarySnapshot>> loadWorkspaceSummary(
+    LoadWorkspaceSummaryQuery query,
+  );
+
+  Future<Result<WorkspaceSummarySnapshot>> loadWorkspaceSummaryHistory(
     LoadWorkspaceSummaryQuery query,
   );
 

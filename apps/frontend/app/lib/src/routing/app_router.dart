@@ -38,10 +38,8 @@ GoRouter createAppRouter({
     routes: [
       ShellRoute(
         builder: (context, state, child) {
-          final runtime = runtimeController.runtime;
           return AppShellPage(
             features: features,
-            runtime: runtime,
             themeModeController: themeModeController,
             location: state.uri.path,
             child: child,

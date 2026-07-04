@@ -211,7 +211,9 @@ extension SummariesReviewStoreWorkspaceSummaryWorkflow on SummariesReviewStore {
 
   Future<void> _reloadSelectedWorkspaceSummaryPeriod() async {
     _summaryGenerationGuard.invalidate();
+    _postRatingGenerationGuard.invalidate();
     workspaceSummaryState = const InitialViewState<WorkspaceSummarySnapshot>();
+    postRatingState = const InitialViewState<Map<String, PostRating>>();
     summaryJobState = const InitialViewState<ReaderSummaryJobSnapshot>();
     _notifyStateChanged();
 
@@ -267,20 +269,19 @@ Future<void> _loadWorkspaceSummaryForStore(
 
   store.workspaceSummaryState = result.fold(
     onSuccess: (snapshot) {
-      if (snapshot.current == null) {
-        return const EmptyViewState<WorkspaceSummarySnapshot>(
-          reason: 'summaries.workspace_summary_empty',
-        );
+      final current = snapshot.current;
+      if (current == null) {
+        return ReadyViewState<WorkspaceSummarySnapshot>(snapshot);
       }
       if (_periodMatchesPreset(
-            snapshot.current!.period,
+            current.period,
             store.selectedSummaryPeriodPreset,
           ) &&
           !_snapshotSummaryPeriods(snapshot).any(
             (period) =>
                 _sameSummaryPeriodWindow(period, store.selectedSummaryPeriod),
           )) {
-        store._selectedSummaryPeriodEndedAt = snapshot.current!.period.endedAt;
+        store._selectedSummaryPeriodEndedAt = current.period.endedAt;
       }
       return ReadyViewState<WorkspaceSummarySnapshot>(snapshot);
     },
@@ -288,6 +289,85 @@ Future<void> _loadWorkspaceSummaryForStore(
         FailureViewState<WorkspaceSummarySnapshot>(failure: failure),
   );
   store._notifyStateChanged();
+  final currentSummary = switch (store.workspaceSummaryState) {
+    ReadyViewState<WorkspaceSummarySnapshot>(:final value) => value.current,
+    _ => null,
+  };
+  if (currentSummary != null) {
+    unawaited(store._loadPostRatingsForSummary(currentSummary));
+  }
+  final readyState = store.workspaceSummaryState;
+  if (readyState is ReadyViewState<WorkspaceSummarySnapshot> &&
+      !readyState.value.availablePeriodsAreComplete) {
+    unawaited(
+      _loadWorkspaceSummaryHistoryForStore(store, generation, readyState.value),
+    );
+  }
+}
+
+Future<void> _loadWorkspaceSummaryHistoryForStore(
+  SummariesReviewStore store,
+  int generation,
+  WorkspaceSummarySnapshot currentSnapshot,
+) async {
+  Result<WorkspaceSummarySnapshot> result;
+  try {
+    result = await store._dependencies.loadWorkspaceSummaryHistory(
+      LoadWorkspaceSummaryQuery(
+        scope: store._scope,
+        period: store.selectedSummaryPeriod,
+      ),
+    );
+  } on Object catch (error) {
+    result = Result.failure(
+      UnexpectedFailure(
+        message: 'Workspace summary history failed to load.',
+        code: 'summaries.workspace_summary_history_unexpected_failure',
+        cause: error,
+      ),
+    );
+  }
+  if (!store._summaryGenerationGuard.isCurrent(generation)) {
+    return;
+  }
+
+  final history = result.fold<WorkspaceSummarySnapshot?>(
+    onSuccess: (snapshot) => snapshot,
+    onFailure: (_) => null,
+  );
+  if (history == null) {
+    return;
+  }
+
+  final state = store.workspaceSummaryState;
+  if (state is! ReadyViewState<WorkspaceSummarySnapshot>) {
+    return;
+  }
+
+  final current =
+      state.value.current ?? history.current ?? currentSnapshot.current;
+  store.workspaceSummaryState = ReadyViewState<WorkspaceSummarySnapshot>(
+    WorkspaceSummarySnapshot(
+      current: current,
+      availablePeriods: [
+        ..._snapshotSummaryPeriods(currentSnapshot),
+        ..._snapshotSummaryPeriods(history),
+      ],
+      availablePeriodsAreComplete: true,
+    ),
+  );
+  store._notifyStateChanged();
+}
+
+String _workspaceSummaryLoadKey(WorkspaceScope scope, SummaryPeriod period) {
+  return [
+    scope.tenantId,
+    scope.workspaceId,
+    period.cadence.name,
+    period.startedAt.toUtc().toIso8601String(),
+    period.endedAt.toUtc().toIso8601String(),
+    period.timezone,
+  ].join('|');
 }
 
 String _defaultSummaryRequestIdempotencyKey(

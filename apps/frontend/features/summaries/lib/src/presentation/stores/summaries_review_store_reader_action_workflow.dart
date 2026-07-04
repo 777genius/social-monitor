@@ -112,6 +112,91 @@ extension SummariesReviewStoreReaderActionWorkflow on SummariesReviewStore {
     _notifyStateChanged();
   }
 
+  Future<bool> submitTopPostRating(
+    ReaderSummary summary,
+    TopRead item,
+    int rating,
+    PostRatingReason? reason,
+  ) async {
+    if (rating < 1 || rating > 5) {
+      return false;
+    }
+    if (postRatingRequiresReason(rating) && reason == null) {
+      return false;
+    }
+    if (!_scope.isValid) {
+      return false;
+    }
+
+    final userId = summary.userId?.trim();
+    if (userId == null || userId.isEmpty) {
+      return false;
+    }
+
+    final target = _topPostRatingTarget(summary, item);
+    if (target == null || !target.isValid || !target.hasPostIdentity) {
+      return false;
+    }
+
+    final idempotencyKey = _topPostRatingIdempotencyKey(
+      summary: summary,
+      target: target,
+      rating: rating,
+    );
+    final generation = _readerActionGenerationGuard.markOperationStarted();
+    _activeReaderActionIdempotencyKey = idempotencyKey;
+    _lastReaderActionIdempotencyKey = idempotencyKey;
+    final previous = switch (readerActionState) {
+      ReadyViewState<ReaderActionResult>(:final value) => value,
+      LoadingViewState<ReaderActionResult>(:final previousValue) =>
+        previousValue,
+      _ => null,
+    };
+    readerActionState = LoadingViewState<ReaderActionResult>(
+      previousValue: previous,
+    );
+    _notifyStateChanged();
+
+    final result = await _dependencies.submitPostRating(
+      SubmitPostRatingCommand(
+        scope: _scope,
+        summaryId: summary.id,
+        userId: userId,
+        target: target,
+        rating: rating,
+        reason: reason,
+        idempotencyKey: idempotencyKey,
+      ),
+    );
+    if (!_readerActionGenerationGuard.isCurrent(generation)) {
+      if (_activeReaderActionIdempotencyKey == idempotencyKey) {
+        _activeReaderActionIdempotencyKey = null;
+      }
+      return false;
+    }
+
+    _activeReaderActionIdempotencyKey = null;
+    var submitted = false;
+    readerActionState = result.fold(
+      onSuccess: (value) {
+        submitted = true;
+        _rememberSubmittedTopPostRating(value.rating);
+        final actionResult = ReaderActionResult(
+          actionId: value.rating.feedbackId,
+          idempotencyKey: idempotencyKey,
+          kind: 'rate_post',
+          created: value.created,
+          learningDirection: value.learningDirection,
+        );
+        return ReadyViewState<ReaderActionResult>(actionResult);
+      },
+      onFailure: (failure) =>
+          FailureViewState<ReaderActionResult>(failure: failure),
+    );
+    _notifyStateChanged();
+    return submitted;
+  }
+
   Future<void> openReaderSourceUrl({
     required String summaryId,
     required String canonicalUrl,
@@ -192,6 +277,57 @@ extension SummariesReviewStoreReaderActionWorkflow on SummariesReviewStore {
         ? action.citationIds.join(',')
         : action.canonicalUrl ?? action.label;
     return '${_scope.workspaceId}:${summary.id}:${action.kind}:$targetKey';
+  }
+
+  TopReadFeedbackTarget? _topPostRatingTarget(
+    ReaderSummary summary,
+    TopRead item,
+  ) {
+    final interestId = item.matchedInterestIds.firstOrNull;
+    if (interestId == null || interestId.trim().isEmpty) {
+      return null;
+    }
+
+    final citation = _firstCitationForTopRead(summary, item);
+    return TopReadFeedbackTarget(
+      providerKey: item.providerKey,
+      interestId: interestId,
+      title: item.title,
+      feedItemId: citation?.feedItemId,
+      sourceItemId: citation?.sourceItemId,
+      bodyPreview: item.reason,
+      canonicalUrl: item.canonicalUrl,
+      citationIds: item.citationIds,
+    );
+  }
+
+  SummaryCitation? _firstCitationForTopRead(
+    ReaderSummary summary,
+    TopRead item,
+  ) {
+    final citationById = {
+      for (final citation in summary.citations) citation.id: citation,
+    };
+    for (final citationId in item.citationIds) {
+      final citation = citationById[citationId];
+      if (citation != null) {
+        return citation;
+      }
+    }
+    return null;
+  }
+
+  String _topPostRatingIdempotencyKey({
+    required ReaderSummary summary,
+    required TopReadFeedbackTarget target,
+    required int rating,
+  }) {
+    final targetKey =
+        target.feedItemId ??
+        target.sourceItemId ??
+        target.canonicalUrl ??
+        target.title;
+    return '${_scope.workspaceId}:${summary.id}:rate_post:$targetKey:$rating';
   }
 
   Uri? _readerActionSourceUri(ReaderAction action) {

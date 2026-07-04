@@ -6,24 +6,31 @@ import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 import '../../application/commands/open_reader_source_command.dart';
 import '../../application/commands/regenerate_summary_command.dart';
 import '../../application/commands/request_workspace_summary_command.dart';
+import '../../application/commands/submit_post_rating_command.dart';
 import '../../application/commands/submit_reader_action_command.dart';
 import '../../application/commands/submit_summary_feedback_command.dart';
 import '../../application/queries/list_summaries_query.dart';
+import '../../application/queries/load_post_ratings_query.dart';
 import '../../application/queries/load_summary_detail_query.dart';
 import '../../application/queries/load_workspace_summary_job_status_query.dart';
 import '../../application/queries/load_workspace_summary_query.dart';
 import '../../domain/aggregates/reader_summary.dart';
 import '../../domain/entities/generated_summary.dart';
+import '../../domain/entities/post_rating.dart';
 import '../../domain/entities/reader_summary_job_snapshot.dart';
+import '../../domain/entities/summary_citation.dart';
 import '../../domain/value_objects/reader_action_target.dart';
 import '../../domain/value_objects/summary_feedback_kind.dart';
 import '../../domain/value_objects/summary_generation_status.dart';
 import '../../domain/value_objects/summary_id.dart';
+import '../../domain/value_objects/top_read_feedback_target.dart';
 import '../workflows/summaries_review_store_dependencies.dart';
 
 part 'summaries_review_store_workspace_summary_workflow.dart';
+part 'summaries_review_store_post_rating_workflow.dart';
 part 'summaries_review_store_reader_action_workflow.dart';
 part 'summaries_review_store_summary_workflow.dart';
+part 'summaries_review_store_period_helpers.dart';
 
 typedef SummaryRequestIdempotencyKeyFactory =
     String Function(WorkspaceScope scope, SummaryPeriod period);
@@ -41,6 +48,7 @@ final class SummariesReviewStore extends ChangeNotifier {
     OperationGenerationGuard? detailGenerationGuard,
     OperationGenerationGuard? mutationGenerationGuard,
     OperationGenerationGuard? readerActionGenerationGuard,
+    OperationGenerationGuard? postRatingGenerationGuard,
     Duration workspaceSummaryLoadTimeout = const Duration(seconds: 20),
     ReaderActionTargetResolver readerActionTargetResolver =
         const ReaderActionTargetResolver(),
@@ -61,6 +69,8 @@ final class SummariesReviewStore extends ChangeNotifier {
            mutationGenerationGuard ?? OperationGenerationGuard(),
        _readerActionGenerationGuard =
            readerActionGenerationGuard ?? OperationGenerationGuard(),
+       _postRatingGenerationGuard =
+           postRatingGenerationGuard ?? OperationGenerationGuard(),
        _workspaceSummaryLoadTimeout = workspaceSummaryLoadTimeout,
        _readerActionTargetResolver = readerActionTargetResolver;
 
@@ -75,6 +85,7 @@ final class SummariesReviewStore extends ChangeNotifier {
   final OperationGenerationGuard _detailGenerationGuard;
   final OperationGenerationGuard _mutationGenerationGuard;
   final OperationGenerationGuard _readerActionGenerationGuard;
+  final OperationGenerationGuard _postRatingGenerationGuard;
   final Duration _workspaceSummaryLoadTimeout;
 
   WorkspaceScope _scope;
@@ -82,6 +93,8 @@ final class SummariesReviewStore extends ChangeNotifier {
   SummaryId? _selectedSummaryId;
   String? _activeReaderActionIdempotencyKey;
   String? _lastReaderActionIdempotencyKey;
+  Future<void>? _activeWorkspaceSummaryLoad;
+  String? _activeWorkspaceSummaryLoadKey;
   bool _isDisposed = false;
   SummaryPeriodPreset selectedSummaryPeriodPreset = SummaryPeriodPreset.daily;
   DateTime? _selectedSummaryPeriodEndedAt;
@@ -100,6 +113,8 @@ final class SummariesReviewStore extends ChangeNotifier {
       const InitialViewState<GeneratedSummary>();
   AsyncViewState<ReaderActionResult> readerActionState =
       const InitialViewState<ReaderActionResult>();
+  AsyncViewState<Map<String, PostRating>> postRatingState =
+      const InitialViewState<Map<String, PostRating>>();
 
   WorkspaceScope get scope => _scope;
 
@@ -252,6 +267,9 @@ final class SummariesReviewStore extends ChangeNotifier {
     _detailGenerationGuard.invalidate();
     _mutationGenerationGuard.invalidate();
     _readerActionGenerationGuard.invalidate();
+    _postRatingGenerationGuard.invalidate();
+    _activeWorkspaceSummaryLoad = null;
+    _activeWorkspaceSummaryLoadKey = null;
     super.dispose();
   }
 
@@ -265,6 +283,7 @@ final class SummariesReviewStore extends ChangeNotifier {
     _detailGenerationGuard.invalidate();
     _mutationGenerationGuard.invalidate();
     _readerActionGenerationGuard.invalidate();
+    _postRatingGenerationGuard.invalidate();
     _selectedSummaryId = null;
     listState = const InitialViewState<PageResult<GeneratedSummary>>();
     workspaceSummaryState = const InitialViewState<WorkspaceSummarySnapshot>();
@@ -273,8 +292,11 @@ final class SummariesReviewStore extends ChangeNotifier {
     regenerationState = const InitialViewState<GeneratedSummary>();
     feedbackState = const InitialViewState<GeneratedSummary>();
     readerActionState = const InitialViewState<ReaderActionResult>();
+    postRatingState = const InitialViewState<Map<String, PostRating>>();
     _activeReaderActionIdempotencyKey = null;
     _lastReaderActionIdempotencyKey = null;
+    _activeWorkspaceSummaryLoad = null;
+    _activeWorkspaceSummaryLoadKey = null;
     _notifyStateChanged();
   }
 
@@ -326,8 +348,25 @@ final class SummariesReviewStore extends ChangeNotifier {
   }
 
   Future<void> loadWorkspaceSummary() async {
+    final loadKey = _workspaceSummaryLoadKey(_scope, selectedSummaryPeriod);
+    final activeLoad = _activeWorkspaceSummaryLoad;
+    if (activeLoad != null && _activeWorkspaceSummaryLoadKey == loadKey) {
+      await activeLoad;
+      return;
+    }
+
     final generation = _summaryGenerationGuard.markOperationStarted();
-    await _loadWorkspaceSummaryForStore(this, generation);
+    final load = _loadWorkspaceSummaryForStore(this, generation);
+    _activeWorkspaceSummaryLoad = load;
+    _activeWorkspaceSummaryLoadKey = loadKey;
+    try {
+      await load;
+    } finally {
+      if (_activeWorkspaceSummaryLoadKey == loadKey) {
+        _activeWorkspaceSummaryLoad = null;
+        _activeWorkspaceSummaryLoadKey = null;
+      }
+    }
   }
 
   void _clearSelectionIfMissing(List<GeneratedSummary> items) {
@@ -341,60 +380,4 @@ final class SummariesReviewStore extends ChangeNotifier {
       detailState = const InitialViewState<GeneratedSummary>();
     }
   }
-}
-
-String _summaryPeriodAvailabilityKey(SummaryPeriod period) {
-  return [
-    period.cadence.name,
-    period.startedAt.toUtc().toIso8601String(),
-    period.endedAt.toUtc().toIso8601String(),
-    period.timezone,
-  ].join('|');
-}
-
-List<SummaryPeriod> _snapshotSummaryPeriods(WorkspaceSummarySnapshot snapshot) {
-  final periodsByKey = <String, SummaryPeriod>{};
-  void add(SummaryPeriod period) {
-    periodsByKey[_summaryPeriodAvailabilityKey(period)] = period;
-  }
-
-  for (final period in snapshot.availablePeriods) {
-    add(period);
-  }
-  final current = snapshot.current;
-  if (current != null) {
-    add(current.period);
-  }
-
-  return periodsByKey.values.toList(growable: false);
-}
-
-bool _sameSummaryPeriodWindow(SummaryPeriod left, SummaryPeriod right) {
-  return left.cadence == right.cadence &&
-      left.startedAt.toUtc() == right.startedAt.toUtc() &&
-      left.endedAt.toUtc() == right.endedAt.toUtc() &&
-      left.timezone == right.timezone;
-}
-
-bool _periodMatchesPreset(SummaryPeriod period, SummaryPeriodPreset preset) {
-  return switch (preset) {
-    SummaryPeriodPreset.daily =>
-      period.cadence == SummaryPeriodCadence.daily &&
-          _periodDurationDays(period) == 1,
-    SummaryPeriodPreset.weekly =>
-      period.cadence == SummaryPeriodCadence.weekly &&
-          _periodDurationDays(period) == 7,
-    SummaryPeriodPreset.twoWeeks =>
-      period.cadence == SummaryPeriodCadence.custom &&
-          _periodDurationDays(period) == 14,
-    SummaryPeriodPreset.threeWeeks =>
-      period.cadence == SummaryPeriodCadence.custom &&
-          _periodDurationDays(period) == 21,
-    SummaryPeriodPreset.monthly =>
-      period.cadence == SummaryPeriodCadence.monthly,
-  };
-}
-
-int _periodDurationDays(SummaryPeriod period) {
-  return period.endedAt.toUtc().difference(period.startedAt.toUtc()).inDays;
 }

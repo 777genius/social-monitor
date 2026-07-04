@@ -17,6 +17,25 @@ String _ensureSentence(String value) {
   return trimmed.endsWith('.') ? trimmed : '$trimmed.';
 }
 
+String _summaryMarkdown(ReaderSummary summary) {
+  final executiveSummary = summary.executiveSummary.trim();
+  if (executiveSummary.isNotEmpty &&
+      executiveSummary != 'No summary available') {
+    return executiveSummary;
+  }
+
+  final takeaway = summary.content.oneLineTakeaway.trim();
+  if (takeaway.isNotEmpty) {
+    return _ensureSentence(takeaway);
+  }
+
+  return _ensureSentence(
+    summary.content.interestSections.isEmpty
+        ? summary.content.headline
+        : summary.content.interestSections.first.insight,
+  );
+}
+
 List<String> _summaryCitationIds(ReaderSummaryContent content) {
   for (final section in content.interestSections) {
     final ids = _uniqueCitationIds(section.citationIds);
@@ -50,6 +69,23 @@ List<SummaryCitation> _citationsForIds(
       .map((id) => citationsById[id])
       .whereType<SummaryCitation>()
       .toList(growable: false);
+}
+
+Map<String, _CitationSourceContext> _citationSourceById(List<TopRead> reads) {
+  final sources = <String, _CitationSourceContext>{};
+  for (final read in reads) {
+    for (final citationId in read.citationIds) {
+      sources.putIfAbsent(
+        citationId,
+        () => _CitationSourceContext(
+          title: _shortTitle(read.title),
+          providerKey: read.providerKey,
+          canonicalUrl: read.canonicalUrl,
+        ),
+      );
+    }
+  }
+  return sources;
 }
 
 String _citationLabel(
@@ -157,11 +193,4 @@ bool _citationMatchesProvider(SummaryCitation citation, String providerKey) {
     'rss' => haystack.contains('rss') || haystack.contains('hnrss'),
     _ => haystack.contains(providerKey.toLowerCase()),
   };
-}
-
-bool _isGithub(TopRead item) {
-  final uri = Uri.tryParse(item.canonicalUrl ?? '');
-  return item.providerKey == 'github-repo-radar' ||
-      item.providerKey == 'github-trending-page' ||
-      uri?.host.toLowerCase() == 'github.com';
 }

@@ -4,25 +4,32 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 import 'package:social_monitor_summaries/src/application/commands/regenerate_summary_command.dart';
 import 'package:social_monitor_summaries/src/application/commands/request_workspace_summary_command.dart';
+import 'package:social_monitor_summaries/src/application/commands/submit_post_rating_command.dart';
 import 'package:social_monitor_summaries/src/application/commands/submit_reader_action_command.dart';
 import 'package:social_monitor_summaries/src/application/commands/submit_summary_feedback_command.dart';
 import 'package:social_monitor_summaries/src/application/contracts/reader_source_launcher.dart';
 import 'package:social_monitor_summaries/src/application/contracts/summary_review_catalog.dart';
 import 'package:social_monitor_summaries/src/application/queries/list_summaries_query.dart';
+import 'package:social_monitor_summaries/src/application/queries/load_post_ratings_query.dart';
 import 'package:social_monitor_summaries/src/application/queries/load_summary_detail_query.dart';
 import 'package:social_monitor_summaries/src/application/queries/load_workspace_summary_job_status_query.dart';
 import 'package:social_monitor_summaries/src/application/queries/load_workspace_summary_query.dart';
+import 'package:social_monitor_summaries/src/application/results/post_rating_submission_result.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/list_summaries_use_case.dart';
+import 'package:social_monitor_summaries/src/application/use_cases/load_post_ratings_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/load_summary_detail_use_case.dart';
+import 'package:social_monitor_summaries/src/application/use_cases/load_workspace_summary_history_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/load_workspace_summary_job_status_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/load_workspace_summary_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/open_reader_source_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/regenerate_summary_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/request_workspace_summary_use_case.dart';
+import 'package:social_monitor_summaries/src/application/use_cases/submit_post_rating_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/submit_reader_action_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/submit_summary_feedback_use_case.dart';
 import 'package:social_monitor_summaries/src/domain/aggregates/reader_summary.dart';
 import 'package:social_monitor_summaries/src/domain/entities/generated_summary.dart';
+import 'package:social_monitor_summaries/src/domain/entities/post_rating.dart';
 import 'package:social_monitor_summaries/src/domain/entities/reader_summary_job_snapshot.dart';
 import 'package:social_monitor_summaries/src/domain/value_objects/reader_action_target.dart';
 import 'package:social_monitor_summaries/src/domain/value_objects/summary_feedback_kind.dart';
@@ -380,6 +387,29 @@ void main() {
 
     expect(catalog.pendingWorkspaceSummarys.single.isCompleted, isTrue);
   });
+
+  test('deduplicates reentrant workspace summary loads', () async {
+    final catalog = _DeferredSummaryReviewCatalog([
+      generatedSummary(id: 's-1', title: 'Stored summary'),
+    ], deferWorkspaceSummary: true);
+    final store = _storeFromCatalog(catalog);
+
+    final first = store.loadWorkspaceSummary();
+    final second = store.loadWorkspaceSummary();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(catalog.pendingWorkspaceSummarys, hasLength(1));
+    catalog.pendingWorkspaceSummarys.single.complete(
+      const Result.success(
+        WorkspaceSummarySnapshot(availablePeriodsAreComplete: true),
+      ),
+    );
+
+    await Future.wait([first, second]);
+
+    expect(catalog.workspaceSummaryLoadCount, 1);
+    expect(catalog.workspaceSummaryHistoryLoadCount, 0);
+  });
 }
 
 SummariesReviewStore _store(
@@ -405,13 +435,16 @@ SummariesReviewStore _storeFromCatalog(
     dependencies: SummariesReviewStoreDependencies(
       listSummaries: ListSummariesUseCase(catalog),
       loadWorkspaceSummary: LoadWorkspaceSummaryUseCase(catalog),
+      loadWorkspaceSummaryHistory: LoadWorkspaceSummaryHistoryUseCase(catalog),
       requestWorkspaceSummary: RequestWorkspaceSummaryUseCase(catalog),
       loadWorkspaceSummaryJobStatus: LoadWorkspaceSummaryJobStatusUseCase(
         catalog,
       ),
       loadSummaryDetail: LoadSummaryDetailUseCase(catalog),
+      loadPostRatings: LoadPostRatingsUseCase(catalog),
       regenerateSummary: RegenerateSummaryUseCase(catalog),
       submitFeedback: SubmitSummaryFeedbackUseCase(catalog),
+      submitPostRating: SubmitPostRatingUseCase(catalog),
       submitReaderAction: SubmitReaderActionUseCase(catalog),
       openReaderSource: OpenReaderSourceUseCase(
         sourceLauncher ?? _FakeReaderSourceLauncher(),
@@ -448,6 +481,8 @@ final class _DeferredSummaryReviewCatalog implements SummaryReviewCatalog {
   final pendingDetails = <_PendingDetailRequest>[];
   final pendingWorkspaceSummarys =
       <Completer<Result<WorkspaceSummarySnapshot>>>[];
+  var workspaceSummaryLoadCount = 0;
+  var workspaceSummaryHistoryLoadCount = 0;
 
   @override
   Future<Result<PageResult<GeneratedSummary>>> listSummaries(
@@ -495,9 +530,22 @@ final class _DeferredSummaryReviewCatalog implements SummaryReviewCatalog {
   }
 
   @override
+  Future<Result<PostRatingSubmissionResult>> submitPostRating(
+    SubmitPostRatingCommand command,
+  ) async => const Result.failure(
+    UnexpectedFailure(message: 'Unexpected post rating in test'),
+  );
+
+  @override
+  Future<Result<List<PostRating>>> loadPostRatings(LoadPostRatingsQuery query) {
+    return Future.value(const Result.success(<PostRating>[]));
+  }
+
+  @override
   Future<Result<WorkspaceSummarySnapshot>> loadWorkspaceSummary(
     LoadWorkspaceSummaryQuery query,
   ) {
+    workspaceSummaryLoadCount += 1;
     if (hangWorkspaceSummary) {
       return Completer<Result<WorkspaceSummarySnapshot>>().future;
     }
@@ -506,6 +554,14 @@ final class _DeferredSummaryReviewCatalog implements SummaryReviewCatalog {
       pendingWorkspaceSummarys.add(completer);
       return completer.future;
     }
+    return Future.value(const Result.success(WorkspaceSummarySnapshot()));
+  }
+
+  @override
+  Future<Result<WorkspaceSummarySnapshot>> loadWorkspaceSummaryHistory(
+    LoadWorkspaceSummaryQuery query,
+  ) {
+    workspaceSummaryHistoryLoadCount += 1;
     return Future.value(const Result.success(WorkspaceSummarySnapshot()));
   }
 

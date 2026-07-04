@@ -4,12 +4,15 @@ import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 import 'package:social_monitor_summaries/src/application/contracts/reader_source_launcher.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/list_summaries_use_case.dart';
+import 'package:social_monitor_summaries/src/application/use_cases/load_post_ratings_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/load_summary_detail_use_case.dart';
+import 'package:social_monitor_summaries/src/application/use_cases/load_workspace_summary_history_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/load_workspace_summary_job_status_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/load_workspace_summary_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/open_reader_source_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/regenerate_summary_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/request_workspace_summary_use_case.dart';
+import 'package:social_monitor_summaries/src/application/use_cases/submit_post_rating_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/submit_reader_action_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/submit_summary_feedback_use_case.dart';
 import 'package:social_monitor_summaries/src/domain/aggregates/reader_summary.dart';
@@ -26,9 +29,7 @@ import '../../support/mixed_source_summaries_test_fixtures.dart';
 import '../../support/summaries_test_fixtures.dart';
 
 void main() {
-  testWidgets('renders expanded summaries with AI summary and source links', (
-    tester,
-  ) async {
+  testWidgets('renders expanded summaries with source links', (tester) async {
     final store = _store([
       githubTrendingSummaryApiDto(),
     ], workspaceSummary: githubTrendingReaderSummaryApiDto());
@@ -37,74 +38,42 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Workspace summary'), findsNothing);
-    expect(find.textContaining('Shared UTC period:'), findsNothing);
-    expect(find.textContaining('00:00 -'), findsOneWidget);
+    expect(find.text('Executive summary'), findsNothing);
+    expect(find.text('Collection window (UTC)'), findsNothing);
     expect(find.text('GitHub Trending daily summary'), findsNothing);
-    expect(find.text('AI summary'), findsOneWidget);
     expect(find.textContaining('GitHub daily radar'), findsOneWidget);
-    expect(find.textContaining('Key signal:'), findsNothing);
-    expect(find.text('Read first'), findsNothing);
-    expect(find.text('Key links'), findsOneWidget);
-    for (final key in [
-      'reader-summary-lede-citation-bc-1',
-      'reader-summary-key-link-0-citation-bc-1',
-      'reader-summary-key-link-1-citation-bc-2',
-    ]) {
-      expect(find.byKey(ValueKey(key)), findsOneWidget);
-    }
-    expect(find.text('Source-local'), findsNothing);
-    expect(find.text('Needs confirmation'), findsWidgets);
-    expect(find.text('AI summary · 1 source'), findsOneWidget);
-    expect(find.text('3 top reads'), findsOneWidget);
-    expect(find.text('Top reads'), findsOneWidget);
     expect(
-      find.text('3 read-first items from the evidence set'),
+      find.byKey(const ValueKey('reader-summary-lede-citation-bc-1')),
       findsOneWidget,
     );
-    expect(find.text('Why it matters'), findsWidgets);
-    expect(find.text('high engagement'), findsWidgets);
-    expect(find.text('fresh today'), findsWidgets);
-    expect(find.text('topic match'), findsWidgets);
-    expect(find.text('Evidence and quality'), findsOneWidget);
-    expect(find.text('https://github.com/calesthio/OpenMontage'), findsWidgets);
+    expect(find.text('Coverage by source'), findsOneWidget);
     expect(
-      find.byKey(const ValueKey('reader-summary-top-read-0-url')),
+      find.text('Collected posts and selected evidence used in this summary.'),
       findsOneWidget,
     );
+    expect(find.text('22 collected'), findsOneWidget);
+    expect(
+      find.text('3 selected (14%) · 3 top reads · 3 citations'),
+      findsOneWidget,
+    );
+    expect(find.text('Repositories ranked by GitHub momentum'), findsOneWidget);
     await tester.scrollUntilVisible(
-      find.byKey(const ValueKey('reader-summary-evidence-quality')),
+      find.byKey(const ValueKey('reader-summary-top-post-0')),
       500,
       scrollable: find.byType(Scrollable).first,
     );
     await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const ValueKey('reader-summary-evidence-quality')),
-    );
-    await tester.pumpAndSettle();
-    expect(find.text('Coverage'), findsOneWidget);
-    expect(find.text('By interest'), findsOneWidget);
-    expect(find.text('Quality'), findsOneWidget);
-    expect(find.text('Needs confirmation'), findsWidgets);
-    expect(find.text('GitHub Trending: 3 items'), findsOneWidget);
-    expect(find.text('3 clusters'), findsOneWidget);
-    expect(
-      find.text(
-        'Only GitHub Trending contributed cited evidence across 3 story clusters. Other connected providers did not confirm this yet.',
-      ),
-      findsOneWidget,
-    );
     expect(find.text('calesthio/OpenMontage'), findsWidgets);
+    expect(find.text('Stars'), findsWidgets);
+    expect(find.text('18K'), findsWidgets);
+    expect(find.text('Same-source support'), findsWidgets);
+    expect(find.text('Matching 1 interest'), findsWidgets);
     expect(
-      find.byKey(
-        const ValueKey('reader-summary-source-filter-github-trending-page'),
-      ),
+      find.byKey(const ValueKey('workspace-summary-toolbar-generate')),
       findsOneWidget,
     );
-    expect(find.text('#1'), findsWidgets);
-    expect(find.text('+3,703 stars today'), findsWidgets);
-    expect(find.text('18,398 stars'), findsWidgets);
     expect(
-      find.byKey(const ValueKey('workspace-summary-generate-true')),
+      find.byKey(const ValueKey('workspace-summary-export')),
       findsOneWidget,
     );
   });
@@ -133,9 +102,7 @@ void main() {
     expect(find.textContaining('AI coding tools'), findsWidgets);
   });
 
-  testWidgets('quality warnings override high confidence badge', (
-    tester,
-  ) async {
+  testWidgets('quality warnings stay off the brief surface', (tester) async {
     final store = _store(
       [githubTrendingSummaryApiDto()],
       workspaceSummary: readerSummaryApiDto(
@@ -153,33 +120,84 @@ void main() {
     await _pumpSizedFeature(tester, store: store, size: const Size(1280, 820));
     await tester.pumpAndSettle();
 
-    expect(find.text('Needs confirmation'), findsOneWidget);
-    expect(find.text('High confidence'), findsNothing);
+    expect(find.text('Needs confirmation'), findsNothing);
+    expect(find.text('Confidence'), findsNothing);
+    expect(
+      find.byKey(const ValueKey('reader-summary-confidence-level')),
+      findsNothing,
+    );
   });
 
-  testWidgets('shows mixed source coverage before technical evidence details', (
+  testWidgets(
+    'shows provider coverage funnel before technical evidence details',
+    (tester) async {
+      final store = _store([
+        githubTrendingSummaryApiDto(),
+      ], workspaceSummary: mixedSourceReaderSummaryApiDto());
+
+      await _pumpSizedFeature(
+        tester,
+        store: store,
+        size: const Size(1280, 820),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Coverage by source'), findsOneWidget);
+      expect(find.text('Reddit'), findsWidgets);
+      expect(find.text('Hacker News'), findsWidgets);
+      expect(find.text('RSS'), findsOneWidget);
+      expect(find.text('180 collected'), findsOneWidget);
+      expect(find.text('92 collected'), findsOneWidget);
+      expect(
+        find.text('28 selected (30%) · 1 top read · 2 citations'),
+        findsOneWidget,
+      );
+      expect(find.text('0 selected'), findsOneWidget);
+      expect(find.text('Top posts'), findsOneWidget);
+      expect(find.text('Reddit thread on agent reliability'), findsWidgets);
+      expect(find.text('Upvotes'), findsWidgets);
+      expect(find.text('1.2K'), findsWidgets);
+      expect(find.text('Comments'), findsWidgets);
+      expect(find.text('246'), findsWidgets);
+      expect(find.text('HN discussion on model routing'), findsWidgets);
+      expect(find.text('Points'), findsWidgets);
+      expect(find.text('312'), findsWidgets);
+    },
+  );
+
+  testWidgets('separates GitHub Trending repositories from top posts', (
     tester,
   ) async {
     final store = _store([
       githubTrendingSummaryApiDto(),
     ], workspaceSummary: mixedSourceReaderSummaryApiDto());
-
     await _pumpSizedFeature(tester, store: store, size: const Size(1280, 820));
     await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('reader-summary-top-posts-board-github')),
+      500,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Reddit thread on agent reliability'), findsOneWidget);
+    expect(find.text('calesthio/OpenMontage'), findsNothing);
+    await tester.tap(
+      find.byKey(const ValueKey('reader-summary-top-posts-board-github')),
+    );
+    await tester.pumpAndSettle();
 
-    expect(find.text('AI summary'), findsOneWidget);
-    expect(find.text('AI summary · 3 sources'), findsOneWidget);
-    expect(find.text('Reddit 2'), findsOneWidget);
-    expect(find.text('GitHub Trending 2'), findsOneWidget);
-    expect(find.text('Hacker News 2'), findsOneWidget);
-    expect(find.text('3 collected'), findsNothing);
-    expect(find.text('Top reads'), findsOneWidget);
-    expect(find.text('Reddit thread on agent reliability'), findsWidgets);
-    expect(find.text('1,214 score'), findsWidgets);
-    expect(find.text('246 comments'), findsWidgets);
-    expect(find.text('71% upvoted'), findsWidgets);
-    expect(find.text('Score: 1,214'), findsWidgets);
-    expect(find.text('HN discussion on model routing'), findsWidgets);
+    expect(find.text('GitHub Trending'), findsWidgets);
+    expect(find.text('Repositories ranked by GitHub momentum'), findsOneWidget);
+    expect(find.text('calesthio/OpenMontage'), findsOneWidget);
+    expect(find.text('Reddit thread on agent reliability'), findsNothing);
+
+    await tester.tap(
+      find.byKey(const ValueKey('reader-summary-top-posts-board-posts')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Reddit thread on agent reliability'), findsOneWidget);
+    expect(find.text('calesthio/OpenMontage'), findsNothing);
   });
 
   testWidgets('provider chips filter the evidence list below the summary', (
@@ -192,33 +210,31 @@ void main() {
     await _pumpSizedFeature(tester, store: store, size: const Size(1280, 820));
     await tester.pumpAndSettle();
 
-    expect(
-      find.byKey(const ValueKey('reader-summary-top-read-1')),
-      findsOneWidget,
-    );
+    expect(find.text('Reddit thread on agent reliability'), findsOneWidget);
 
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('reader-summary-top-posts-filters')),
+      500,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.tap(
-      find.byKey(const ValueKey('reader-summary-source-filter-reddit')),
+      find.byKey(const ValueKey('reader-summary-top-posts-filters')),
     );
     await tester.pumpAndSettle();
-
-    expect(find.text('Reddit posts'), findsOneWidget);
-    expect(find.text('1 Reddit evidence item'), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey('reader-summary-top-read-1')),
-      findsNothing,
-    );
-
-    await tester.tap(
-      find.byKey(const ValueKey('reader-summary-source-filter-all')),
-    );
+    await tester.tap(find.text('Reddit').last);
     await tester.pumpAndSettle();
 
-    expect(find.text('Top reads'), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey('reader-summary-top-read-2')),
-      findsOneWidget,
+    expect(find.text('Reddit thread on agent reliability'), findsNothing);
+    expect(find.text('HN discussion on model routing'), findsOneWidget);
+
+    await tester.tap(
+      find.byKey(const ValueKey('reader-summary-top-posts-filters')),
     );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Reddit').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Reddit thread on agent reliability'), findsOneWidget);
   });
 
   testWidgets('compact summaries open detail only after explicit selection', (
@@ -322,26 +338,23 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('AI summary'), findsOneWidget);
-    expect(find.text('Evidence and quality'), findsOneWidget);
+    expect(find.text('AI summary'), findsNothing);
+    expect(find.text('Executive summary'), findsNothing);
+    expect(find.textContaining('GitHub daily radar'), findsOneWidget);
     expect(
-      find.byKey(const ValueKey('reader-summary-source-filter-all')),
+      find.byKey(const ValueKey('workspace-summary-toolbar-generate')),
       findsOneWidget,
     );
 
     await tester.scrollUntilVisible(
-      find.byKey(const ValueKey('reader-summary-top-read-0')),
+      find.byKey(const ValueKey('reader-summary-top-post-0')),
       500,
       scrollable: find.byType(Scrollable).first,
     );
     await tester.pumpAndSettle();
 
     expect(
-      find.byKey(const ValueKey('reader-summary-top-read-0-url')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey('workspace-summary-generate-true')),
+      find.byKey(const ValueKey('reader-summary-top-post-0')),
       findsOneWidget,
     );
   });
@@ -362,35 +375,23 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('AI summary'), findsOneWidget);
+    expect(find.text('AI summary'), findsNothing);
     expect(
-      find.text('10 of 11 read-first items from the evidence set'),
+      find.byKey(const ValueKey('reader-summary-top-post-0')),
       findsOneWidget,
     );
+
+    final scrollable = find.byType(Scrollable).first;
+    final lastPost = find.byKey(const ValueKey('reader-summary-top-post-10'));
+    for (var i = 0; i < 40 && !tester.any(lastPost); i += 1) {
+      await tester.drag(scrollable, const Offset(0, -320));
+      await tester.pumpAndSettle();
+    }
     expect(
-      find.byKey(const ValueKey('reader-summary-top-read-0')),
+      find.byKey(const ValueKey('reader-summary-top-post-10')),
       findsOneWidget,
     );
-    expect(
-      find.byKey(const ValueKey('reader-summary-top-read-9')),
-      findsOneWidget,
-    );
-    await tester.scrollUntilVisible(
-      find.byKey(const ValueKey('reader-summary-top-read-9')),
-      500,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.pumpAndSettle();
-    expect(
-      find.byKey(const ValueKey('reader-summary-top-read-9')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey('reader-summary-top-read-10')),
-      findsNothing,
-    );
-    expect(find.text('repo-radar/project-10'), findsWidgets);
-    expect(find.text('repo-radar/project-11'), findsNothing);
+    expect(find.text('repo-radar/project-11'), findsWidgets);
   });
 
   testWidgets('stale summary keeps previous content while refreshing', (
@@ -416,10 +417,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('AI summary'), findsOneWidget);
-    expect(find.text('Refreshing'), findsOneWidget);
+    expect(find.text('AI summary'), findsNothing);
+    expect(find.text('Executive summary'), findsNothing);
+    expect(find.textContaining('GitHub daily radar'), findsOneWidget);
     expect(
-      find.byKey(const ValueKey('workspace-summary-generate-false')),
+      find.byKey(const ValueKey('workspace-summary-toolbar-generate')),
       findsOneWidget,
     );
   });
@@ -524,13 +526,16 @@ SummariesReviewStore _store(
     dependencies: SummariesReviewStoreDependencies(
       listSummaries: ListSummariesUseCase(catalog),
       loadWorkspaceSummary: LoadWorkspaceSummaryUseCase(catalog),
+      loadWorkspaceSummaryHistory: LoadWorkspaceSummaryHistoryUseCase(catalog),
       requestWorkspaceSummary: RequestWorkspaceSummaryUseCase(catalog),
       loadWorkspaceSummaryJobStatus: LoadWorkspaceSummaryJobStatusUseCase(
         catalog,
       ),
       loadSummaryDetail: LoadSummaryDetailUseCase(catalog),
+      loadPostRatings: LoadPostRatingsUseCase(catalog),
       regenerateSummary: RegenerateSummaryUseCase(catalog),
       submitFeedback: SubmitSummaryFeedbackUseCase(catalog),
+      submitPostRating: SubmitPostRatingUseCase(catalog),
       submitReaderAction: SubmitReaderActionUseCase(catalog),
       openReaderSource: const OpenReaderSourceUseCase(
         _FakeReaderSourceLauncher(),
@@ -544,7 +549,6 @@ SummariesReviewStore _store(
 
 final class _FakeReaderSourceLauncher implements ReaderSourceLauncher {
   const _FakeReaderSourceLauncher();
-
   @override
   Future<Result<Unit>> open(Uri uri) async => const Result.success(Unit.value);
 }
@@ -575,7 +579,6 @@ class _TestApp extends StatelessWidget {
   final SummariesReviewStore store;
   final Size size;
   final bool autoload;
-
   @override
   Widget build(BuildContext context) {
     final theme = AppTheme.light();
