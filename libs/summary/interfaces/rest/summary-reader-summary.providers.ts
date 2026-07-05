@@ -25,11 +25,13 @@ import { ConversationReaderSummaryEvidenceSelector } from "../../adapters/eviden
 import { FeedReaderSummaryCoverageCounter } from "../../adapters/evidence/feed-reader-summary-coverage.counter";
 import { FeedReaderSummaryFreshnessProbe } from "../../adapters/evidence/feed-reader-summary-freshness.probe";
 import { FeedReaderSummaryPreviewMediaEnricher } from "../../adapters/evidence/feed-reader-summary-preview-media.enricher";
+import { FeedReaderSummaryTopicCollectionMetricsReader } from "../../adapters/evidence/feed-reader-summary-topic-collection-metrics.reader";
 import { RelevanceReaderSummaryEvidenceSelector } from "../../adapters/evidence/relevance-reader-summary-evidence.selector";
 import { SummaryMemoryReaderSummaryContextProvider } from "../../adapters/memory/summary-memory-reader-summary-context.provider";
 import { StoryRankingMetricsRecorder } from "../../adapters/metrics/story-ranking-metrics.recorder";
 import { ReaderSummaryJobQueuePublisherAdapter } from "../../adapters/messaging/reader-summary-job-queue.adapter";
 import { AgentRuntimeReaderSummaryModelAdapter } from "../../adapters/model/agent-runtime-reader-summary-model.adapter";
+import { AgentRuntimeReaderSummaryTopicLabeler } from "../../adapters/model/agent-runtime-reader-summary-topic-labeler.adapter";
 import { DeterministicReaderSummaryModelAdapter } from "../../adapters/model/deterministic-reader-summary-model.adapter";
 import { MeteredReaderSummaryModelAdapter } from "../../adapters/model/metered-reader-summary-model.adapter";
 import {
@@ -39,11 +41,14 @@ import {
 import { InMemoryReaderSummaryArtifactRepository } from "../../adapters/persistence/in-memory-reader-summary-artifact.repository";
 import { InMemoryReaderSummaryJobRepository } from "../../adapters/persistence/in-memory-reader-summary-job.repository";
 import { InMemoryReaderSummaryPolicyRepository } from "../../adapters/persistence/in-memory-reader-summary-policy.repository";
+import { InMemoryReaderSummaryTopicRecommendationDecisionRepository } from "../../adapters/persistence/in-memory-reader-summary-topic-recommendation-decision.repository";
 import { UsageSummaryQuotaAdapter } from "../../adapters/quota/usage-summary-quota.adapter";
 import type { PrismaSummaryClient } from "../../adapters/persistence/prisma/prisma-summary-client";
 import { PrismaReaderSummaryArtifactRepository } from "../../adapters/persistence/prisma/prisma-reader-summary-artifact.repository";
 import { PrismaReaderSummaryJobRepository } from "../../adapters/persistence/prisma/prisma-reader-summary-job.repository";
 import { PrismaReaderSummaryPolicyRepository } from "../../adapters/persistence/prisma/prisma-reader-summary-policy.repository";
+import { PrismaReaderSummaryTopicRecommendationDecisionRepository } from "../../adapters/persistence/prisma/prisma-reader-summary-topic-recommendation-decision.repository";
+import { BuildReaderSummaryTopicMapUseCase } from "../../features/build-reader-summary-topic-map/build-reader-summary-topic-map.use-case";
 import { ExecuteReaderSummaryJobUseCase } from "../../features/execute-reader-summary-job/execute-reader-summary-job.use-case";
 import { GetReaderSummaryJobStatusUseCase } from "../../features/get-reader-summary-job-status/get-reader-summary-job-status.use-case";
 import { GetReaderSummaryUseCase } from "../../features/get-reader-summary/get-reader-summary.use-case";
@@ -53,6 +58,8 @@ import { RequestReaderSummaryUseCase } from "../../features/request-reader-summa
 import {
   NOOP_READER_SUMMARY_CONTEXT_PROVIDER,
   READER_SUMMARY_COVERAGE_COUNTER,
+  READER_SUMMARY_TOPIC_COLLECTION_METRICS_READER,
+  READER_SUMMARY_TOPIC_RECOMMENDATION_DECISION_REPOSITORY,
   type ReaderSummaryArtifactRepositoryPort,
   type ReaderSummaryContextProviderPort,
   type ReaderSummaryCoverageCounterPort,
@@ -61,6 +68,8 @@ import {
   type ReaderSummaryJobQueuePort,
   type ReaderSummaryPolicyRepositoryPort,
   type ReaderSummaryPreviewMediaEnricherPort,
+  type ReaderSummaryTopicCollectionMetricsReaderPort,
+  type ReaderSummaryTopicRecommendationDecisionRepositoryPort,
   type StoryRankingMetricsPort,
   type SummaryEventPublisherPort,
   type SummaryMemoryPort,
@@ -76,6 +85,7 @@ import {
   READER_SUMMARY_OPENAI_RESPONSES_MODEL_OPTIONS,
   READER_SUMMARY_POLICY_REPOSITORY,
   READER_SUMMARY_PREVIEW_MEDIA_ENRICHER,
+  READER_SUMMARY_TOPIC_LABELER_MODE,
   SUMMARY_EVENT_PUBLISHER,
   SUMMARY_MEMORY,
   SUMMARY_USER_SUMMARY_PREFERENCE_READER,
@@ -85,6 +95,7 @@ import {
   SUMMARY_RABBITMQ_JOB_QUEUE_OPTIONS,
   SUMMARY_RABBITMQ_QUEUE_CHANNEL,
   type ReaderSummaryModelProviderMode,
+  type ReaderSummaryTopicLabelerMode,
   type SummaryJobQueueMode,
   type SummaryPersistenceMode,
 } from "./summary-provider-tokens";
@@ -93,6 +104,7 @@ export const summaryReaderSummaryProviders: Provider[] = [
   InMemoryReaderSummaryJobRepository,
   InMemoryReaderSummaryArtifactRepository,
   InMemoryReaderSummaryPolicyRepository,
+  InMemoryReaderSummaryTopicRecommendationDecisionRepository,
   {
     provide: StoryRankingMetricsRecorder,
     useFactory: (metrics: InMemoryMetricsRecorder): StoryRankingMetricsPort =>
@@ -235,6 +247,33 @@ export const summaryReaderSummaryProviders: Provider[] = [
     inject: [FEED_ITEM_READ_REPOSITORY],
   },
   {
+    provide: READER_SUMMARY_TOPIC_COLLECTION_METRICS_READER,
+    useFactory: (
+      feedItems: FeedItemReadRepositoryPort,
+    ): ReaderSummaryTopicCollectionMetricsReaderPort =>
+      new FeedReaderSummaryTopicCollectionMetricsReader(feedItems),
+    inject: [FEED_ITEM_READ_REPOSITORY],
+  },
+  {
+    provide: READER_SUMMARY_TOPIC_RECOMMENDATION_DECISION_REPOSITORY,
+    useFactory: (
+      mode: SummaryPersistenceMode,
+      prisma: PrismaSummaryClient | null,
+      repository: InMemoryReaderSummaryTopicRecommendationDecisionRepository,
+    ): ReaderSummaryTopicRecommendationDecisionRepositoryPort =>
+      mode === "prisma"
+        ? new PrismaReaderSummaryTopicRecommendationDecisionRepository(
+            requirePrismaSummaryClient(prisma),
+            new CryptoIdGenerator(),
+          )
+        : repository,
+    inject: [
+      SUMMARY_PERSISTENCE_MODE,
+      SUMMARY_PRISMA_CLIENT,
+      InMemoryReaderSummaryTopicRecommendationDecisionRepository,
+    ],
+  },
+  {
     provide: READER_SUMMARY_PREVIEW_MEDIA_ENRICHER,
     useFactory: (
       feedItems: FeedItemReadRepositoryPort,
@@ -290,6 +329,21 @@ export const summaryReaderSummaryProviders: Provider[] = [
     ],
   },
   {
+    provide: BuildReaderSummaryTopicMapUseCase,
+    useFactory: (
+      mode: ReaderSummaryTopicLabelerMode,
+      agentRuntimeTopicLabeler: AgentRuntimeReaderSummaryTopicLabeler,
+    ) =>
+      new BuildReaderSummaryTopicMapUseCase({
+        mode,
+        labeler: mode === "agent-runtime" ? agentRuntimeTopicLabeler : null,
+      }),
+    inject: [
+      READER_SUMMARY_TOPIC_LABELER_MODE,
+      AgentRuntimeReaderSummaryTopicLabeler,
+    ],
+  },
+  {
     provide: RequestReaderSummaryUseCase,
     useFactory: (
       readerSummaryJobs: ReaderSummaryJobRepositoryPort,
@@ -320,6 +374,7 @@ export const summaryReaderSummaryProviders: Provider[] = [
       events: SummaryEventPublisherPort,
       contextProvider: ReaderSummaryContextProviderPort,
       userSummaryPreferences: UserSummaryPreferenceReaderPort,
+      topicMapBuilder: BuildReaderSummaryTopicMapUseCase,
     ) =>
       new ExecuteReaderSummaryJobUseCase(
         readerSummaryJobs,
@@ -332,6 +387,7 @@ export const summaryReaderSummaryProviders: Provider[] = [
         new SystemClock(),
         contextProvider,
         userSummaryPreferences,
+        topicMapBuilder,
       ),
     inject: [
       READER_SUMMARY_JOB_REPOSITORY,
@@ -342,6 +398,7 @@ export const summaryReaderSummaryProviders: Provider[] = [
       SUMMARY_EVENT_PUBLISHER,
       READER_SUMMARY_CONTEXT_PROVIDER,
       SUMMARY_USER_SUMMARY_PREFERENCE_READER,
+      BuildReaderSummaryTopicMapUseCase,
     ],
   },
   {

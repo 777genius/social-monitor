@@ -62,6 +62,13 @@ export class SourceBinding {
     });
   }
 
+  reconfigure(config: Readonly<Record<string, unknown>>): SourceBinding {
+    return new SourceBinding({
+      ...this.props,
+      config,
+    });
+  }
+
   toSnapshot(): SourceBindingProps {
     return { ...this.props };
   }

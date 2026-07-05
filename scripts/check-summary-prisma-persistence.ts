@@ -1,6 +1,7 @@
 import {
   causationId,
   correlationId,
+  CryptoIdGenerator,
   eventId,
   FixedClock,
   tenantId,
@@ -12,6 +13,7 @@ import {
   SummaryFeedback,
   SummaryJob,
   SummaryPolicy,
+  ReaderSummaryTopicRecommendationDecision,
 } from "../libs/summary/domain";
 import { PrismaSummaryArtifactRepository } from "../libs/summary/adapters/persistence/prisma/prisma-summary-artifact.repository";
 import type { PrismaSummaryClient } from "../libs/summary/adapters/persistence/prisma/prisma-summary-client";
@@ -19,12 +21,14 @@ import { PrismaSummaryEventPublisher } from "../libs/summary/adapters/persistenc
 import { PrismaSummaryFeedbackRepository } from "../libs/summary/adapters/persistence/prisma/prisma-summary-feedback.repository";
 import { PrismaSummaryJobRepository } from "../libs/summary/adapters/persistence/prisma/prisma-summary-job.repository";
 import { PrismaSummaryPolicyRepository } from "../libs/summary/adapters/persistence/prisma/prisma-summary-policy.repository";
+import { PrismaReaderSummaryTopicRecommendationDecisionRepository } from "../libs/summary/adapters/persistence/prisma/prisma-reader-summary-topic-recommendation-decision.repository";
 import { resolveSummaryPersistenceMode } from "../libs/summary/interfaces/rest/summary-provider-tokens";
 import type {
   PrismaReaderSummaryArtifactRecord,
   PrismaReaderSummaryJobRecord,
   PrismaReaderSummaryPolicyRecord,
 } from "../libs/summary/adapters/persistence/prisma/prisma-reader-summary-records";
+import type { PrismaReaderSummaryTopicRecommendationDecisionRecord } from "../libs/summary/adapters/persistence/prisma/prisma-reader-summary-topic-recommendation-decision-records";
 import type {
   PrismaSummaryArtifactRecord,
   PrismaSummaryFeedbackRecord,
@@ -62,6 +66,11 @@ async function main(): Promise<void> {
   const feedbackRepository = new PrismaSummaryFeedbackRepository(prisma);
   const summaryPolicies = new PrismaSummaryPolicyRepository(prisma);
   const summaryEvents = new PrismaSummaryEventPublisher(prisma);
+  const topicRecommendationDecisions =
+    new PrismaReaderSummaryTopicRecommendationDecisionRepository(
+      prisma,
+      new CryptoIdGenerator(),
+    );
   const completedArtifact = makeCompletedArtifact(
     "00000000-0000-7000-8000-000000000501",
   );
@@ -292,6 +301,28 @@ async function main(): Promise<void> {
     "summary outbox event must preserve workspace scope",
   );
 
+  await topicRecommendationDecisions.save(
+    ReaderSummaryTopicRecommendationDecision.record({
+      tenantId: tenant,
+      workspaceId: workspace,
+      recommendationId: "topic-rec:14:cybersecurity",
+      topicLabel: "cybersecurity",
+      status: "accepted",
+      decidedBy: "admin-demo",
+      note: "promote after stable signal",
+      decidedAt: clock.now(),
+    }),
+  );
+  const decisions = await topicRecommendationDecisions.listByRecommendationIds({
+    tenantId: tenant,
+    workspaceId: workspace,
+    recommendationIds: ["topic-rec:14:cybersecurity"],
+  });
+  assert(
+    decisions.length === 1 && decisions[0]?.toSnapshot().status === "accepted",
+    "reader summary topic recommendation decision must round-trip",
+  );
+
   console.log("Summary Prisma persistence smoke OK");
 }
 
@@ -415,6 +446,10 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
   private readonly readerSummaryPolicies = new Map<
     string,
     PrismaReaderSummaryPolicyRecord
+  >();
+  private readonly readerSummaryTopicRecommendationDecisions = new Map<
+    string,
+    PrismaReaderSummaryTopicRecommendationDecisionRecord
   >();
   readonly outboxEvents = new Map<string, PrismaSummaryOutboxEventRecord>();
 
@@ -723,61 +758,66 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
         .slice(0, args.take),
   };
 
-  readonly readerSummaryArtifact: PrismaSummaryClient["readerSummaryArtifact"] = {
-    upsert: async (args) => {
-      const existing = this.readerSummaryArtifacts.get(args.where.id);
-      const record: PrismaReaderSummaryArtifactRecord = {
-        id: existing?.id ?? args.create.id,
-        tenantId: existing?.tenantId ?? args.create.tenantId,
-        workspaceId: existing?.workspaceId ?? args.create.workspaceId,
-        scopeType: args.update.scopeType,
-        scopeKey: args.update.scopeKey,
-        interestId:
-          args.update.interestId ??
-          existing?.interestId ??
-          args.create.interestId ??
-          null,
-        cadence: args.update.cadence,
-        periodStartedAt: args.update.periodStartedAt,
-        periodEndedAt: args.update.periodEndedAt,
-        periodTimezone: args.update.periodTimezone,
-        periodKey: args.update.periodKey,
-        userId:
-          args.update.userId ?? existing?.userId ?? args.create.userId ?? null,
-        subscriptionId:
-          args.update.subscriptionId ??
-          existing?.subscriptionId ??
-          args.create.subscriptionId ??
-          null,
-        schemaVersion: existing?.schemaVersion ?? args.create.schemaVersion,
-        status: args.update.status,
-        modelVersion: args.update.modelVersion,
-        promptVersion: args.update.promptVersion,
-        headline: args.update.headline,
-        summaryText: args.update.summaryText,
-        artifactPayload: args.update.artifactPayload,
-        citations: args.update.citations,
-        qualitySignals: args.update.qualitySignals,
-        createdAt: existing?.createdAt ?? clock.now(),
-        updatedAt: clock.now(),
-      };
-      this.readerSummaryArtifacts.set(record.id, record);
+  readonly readerSummaryArtifact: PrismaSummaryClient["readerSummaryArtifact"] =
+    {
+      upsert: async (args) => {
+        const existing = this.readerSummaryArtifacts.get(args.where.id);
+        const record: PrismaReaderSummaryArtifactRecord = {
+          id: existing?.id ?? args.create.id,
+          tenantId: existing?.tenantId ?? args.create.tenantId,
+          workspaceId: existing?.workspaceId ?? args.create.workspaceId,
+          scopeType: args.update.scopeType,
+          scopeKey: args.update.scopeKey,
+          interestId:
+            args.update.interestId ??
+            existing?.interestId ??
+            args.create.interestId ??
+            null,
+          cadence: args.update.cadence,
+          periodStartedAt: args.update.periodStartedAt,
+          periodEndedAt: args.update.periodEndedAt,
+          periodTimezone: args.update.periodTimezone,
+          periodKey: args.update.periodKey,
+          userId:
+            args.update.userId ??
+            existing?.userId ??
+            args.create.userId ??
+            null,
+          subscriptionId:
+            args.update.subscriptionId ??
+            existing?.subscriptionId ??
+            args.create.subscriptionId ??
+            null,
+          schemaVersion: existing?.schemaVersion ?? args.create.schemaVersion,
+          status: args.update.status,
+          modelVersion: args.update.modelVersion,
+          promptVersion: args.update.promptVersion,
+          headline: args.update.headline,
+          summaryText: args.update.summaryText,
+          artifactPayload: args.update.artifactPayload,
+          citations: args.update.citations,
+          qualitySignals: args.update.qualitySignals,
+          createdAt: existing?.createdAt ?? clock.now(),
+          updatedAt: clock.now(),
+        };
+        this.readerSummaryArtifacts.set(record.id, record);
 
-      return record;
-    },
-    findFirst: async (args) =>
-      [...this.readerSummaryArtifacts.values()].find(
-        (record) =>
-          record.tenantId === args.where.tenantId &&
-          record.workspaceId === args.where.workspaceId &&
-          record.id === args.where.id,
-      ) ?? null,
-    findMany: async (args) =>
-      this.filterReaderSummaryArtifacts(args.where)
-        .sort(compareReaderSummaryArtifacts)
-        .slice(args.skip, args.skip + args.take),
-    count: async (args) => this.filterReaderSummaryArtifacts(args.where).length,
-  };
+        return record;
+      },
+      findFirst: async (args) =>
+        [...this.readerSummaryArtifacts.values()].find(
+          (record) =>
+            record.tenantId === args.where.tenantId &&
+            record.workspaceId === args.where.workspaceId &&
+            record.id === args.where.id,
+        ) ?? null,
+      findMany: async (args) =>
+        this.filterReaderSummaryArtifacts(args.where)
+          .sort(compareReaderSummaryArtifacts)
+          .slice(args.skip, args.skip + args.take),
+      count: async (args) =>
+        this.filterReaderSummaryArtifacts(args.where).length,
+    };
 
   readonly readerSummaryPolicy: PrismaSummaryClient["readerSummaryPolicy"] = {
     upsert: async (args) => {
@@ -846,6 +886,62 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
         .slice(0, args.take),
   };
 
+  readonly readerSummaryTopicRecommendationDecision: PrismaSummaryClient["readerSummaryTopicRecommendationDecision"] =
+    {
+      upsert: async (args) => {
+        const key = [
+          args.where.tenantId_workspaceId_recommendationId.tenantId,
+          args.where.tenantId_workspaceId_recommendationId.workspaceId,
+          args.where.tenantId_workspaceId_recommendationId.recommendationId,
+        ].join(":");
+        const existing =
+          this.readerSummaryTopicRecommendationDecisions.get(key);
+        const record: PrismaReaderSummaryTopicRecommendationDecisionRecord = {
+          id: existing?.id ?? args.create.id,
+          tenantId: existing?.tenantId ?? args.create.tenantId,
+          workspaceId: existing?.workspaceId ?? args.create.workspaceId,
+          recommendationId:
+            existing?.recommendationId ?? args.create.recommendationId,
+          topicLabel: args.update.topicLabel,
+          status: args.update.status,
+          decidedBy: args.update.decidedBy,
+          note: args.update.note,
+          decidedAt: args.update.decidedAt,
+          application: args.update.application,
+          createdAt: existing?.createdAt ?? clock.now(),
+          updatedAt: clock.now(),
+        };
+        this.readerSummaryTopicRecommendationDecisions.set(key, record);
+
+        return record;
+      },
+      findMany: async (args) =>
+        [...this.readerSummaryTopicRecommendationDecisions.values()].filter(
+          (record) =>
+            record.tenantId === args.where.tenantId &&
+            record.workspaceId === args.where.workspaceId &&
+            args.where.recommendationId.in.includes(record.recommendationId),
+        ),
+      findUnique: async (args) =>
+        this.readerSummaryTopicRecommendationDecisions.get(
+          [
+            args.where.tenantId_workspaceId_recommendationId.tenantId,
+            args.where.tenantId_workspaceId_recommendationId.workspaceId,
+            args.where.tenantId_workspaceId_recommendationId.recommendationId,
+          ].join(":"),
+        ) ?? null,
+      deleteMany: async (args) => {
+        const key = [
+          args.where.tenantId,
+          args.where.workspaceId,
+          args.where.recommendationId,
+        ].join(":");
+        const deleted = this.readerSummaryTopicRecommendationDecisions.delete(key);
+
+        return { count: deleted ? 1 : 0 };
+      },
+    };
+
   readonly outboxEvent: PrismaSummaryClient["outboxEvent"] = {
     create: async (args) => {
       const record: PrismaSummaryOutboxEventRecord = {
@@ -877,7 +973,8 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
       (record) =>
         record.tenantId === where.tenantId &&
         record.workspaceId === where.workspaceId &&
-        (where.interestId === undefined || record.interestId === where.interestId) &&
+        (where.interestId === undefined ||
+          record.interestId === where.interestId) &&
         (where.status === undefined || where.status.in.includes(record.status)),
     );
   }
@@ -1006,7 +1103,8 @@ const readerSummaryPeriodStartedAtMatches = (
   return (
     (filter.equals === undefined ||
       recordValue.getTime() === filter.equals.getTime()) &&
-    (filter.gte === undefined || recordValue.getTime() >= filter.gte.getTime()) &&
+    (filter.gte === undefined ||
+      recordValue.getTime() >= filter.gte.getTime()) &&
     (filter.lt === undefined || recordValue.getTime() < filter.lt.getTime())
   );
 };

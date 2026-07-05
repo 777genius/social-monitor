@@ -1409,6 +1409,70 @@ export const mobileApiOperations = [
     ]
   },
   {
+    "operationId": "ReaderSummaryTopicRecommendationController_list",
+    "clientName": "ReaderSummaryTopicRecommendationController_list",
+    "method": "GET",
+    "path": "/reader-summary-topic-recommendations",
+    "tags": [
+      "reader-summaries"
+    ],
+    "summary": "List topic promotion recommendations from recent summaries.",
+    "pathParameters": [],
+    "queryParameters": [
+      "interestId",
+      "limit",
+      "scopeType",
+      "windowDays"
+    ],
+    "requiredHeaders": [
+      "x-tenant-id",
+      "x-workspace-id"
+    ],
+    "optionalHeaders": [
+      "authorization",
+      "x-workspace-role"
+    ],
+    "requiresTenantWorkspace": true,
+    "supportsBearerApiKey": true,
+    "usesDevOnlyWorkspaceRoleHeader": true,
+    "devOnlyWorkspaceRoleRequired": false,
+    "requestBodySchemaRef": null,
+    "successResponseSchemaRefs": [
+      "#/components/schemas/ListReaderSummaryTopicRecommendationsResponseDto"
+    ]
+  },
+  {
+    "operationId": "ReaderSummaryTopicRecommendationController_decide",
+    "clientName": "ReaderSummaryTopicRecommendationController_decide",
+    "method": "POST",
+    "path": "/reader-summary-topic-recommendations/{recommendationId}/decision",
+    "tags": [
+      "reader-summaries"
+    ],
+    "summary": "Accept or reject a topic promotion recommendation.",
+    "pathParameters": [
+      "recommendationId"
+    ],
+    "queryParameters": [],
+    "requiredHeaders": [
+      "x-tenant-id",
+      "x-workspace-id"
+    ],
+    "optionalHeaders": [
+      "authorization",
+      "x-user-id",
+      "x-workspace-role"
+    ],
+    "requiresTenantWorkspace": true,
+    "supportsBearerApiKey": true,
+    "usesDevOnlyWorkspaceRoleHeader": true,
+    "devOnlyWorkspaceRoleRequired": false,
+    "requestBodySchemaRef": "#/components/schemas/DecideReaderSummaryTopicRecommendationRequestDto",
+    "successResponseSchemaRefs": [
+      "#/components/schemas/DecideReaderSummaryTopicRecommendationResponseDto"
+    ]
+  },
+  {
     "operationId": "HealthController_ready[0]",
     "clientName": "HealthController_ready_0",
     "method": "GET",

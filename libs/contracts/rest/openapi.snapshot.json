@@ -455,6 +455,69 @@
         ],
         "type": "object"
       },
+      "DecideReaderSummaryTopicRecommendationRequestDto": {
+        "properties": {
+          "action": {
+            "enum": [
+              "accept",
+              "reject",
+              "undo"
+            ],
+            "type": "string"
+          },
+          "interestIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "note": {
+            "maxLength": 500,
+            "type": "string"
+          },
+          "providerKeys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "topicLabel": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "topicLabel"
+        ],
+        "type": "object"
+      },
+      "DecideReaderSummaryTopicRecommendationResponseDto": {
+        "properties": {
+          "application": {
+            "$ref": "#/components/schemas/ReaderSummaryAcceptedTopicApplicationDto"
+          },
+          "decision": {
+            "$ref": "#/components/schemas/ReaderSummaryTopicRecommendationDecisionDto"
+          },
+          "decisionStatus": {
+            "enum": [
+              "pending",
+              "accepted",
+              "rejected"
+            ],
+            "type": "string"
+          },
+          "reversion": {
+            "$ref": "#/components/schemas/ReaderSummaryAcceptedTopicReversionDto"
+          }
+        },
+        "required": [
+          "decisionStatus",
+          "application",
+          "reversion"
+        ],
+        "type": "object"
+      },
       "ExplainSearchPlanRestRequestDto": {
         "properties": {
           "accounts": {
@@ -2274,6 +2337,30 @@
         ],
         "type": "object"
       },
+      "ListReaderSummaryTopicRecommendationsResponseDto": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReaderSummaryTopicRecommendationDto"
+            },
+            "type": "array"
+          },
+          "windowEndedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "windowStartedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "windowStartedAt",
+          "windowEndedAt",
+          "items"
+        ],
+        "type": "object"
+      },
       "ListScanRequestsResponseDto": {
         "properties": {
           "nextCursor": {
@@ -2842,6 +2929,126 @@
         },
         "required": [
           "rankedItems"
+        ],
+        "type": "object"
+      },
+      "ReaderSummaryAcceptedTopicApplicationBindingDto": {
+        "properties": {
+          "changed": {
+            "type": "boolean"
+          },
+          "changedConfigPaths": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "interestId": {
+            "type": "string"
+          },
+          "providerKey": {
+            "type": "string"
+          },
+          "sourceBindingId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sourceBindingId",
+          "interestId",
+          "providerKey",
+          "changed",
+          "changedConfigPaths"
+        ],
+        "type": "object"
+      },
+      "ReaderSummaryAcceptedTopicApplicationDto": {
+        "properties": {
+          "changedSourceBindingCount": {
+            "type": "number"
+          },
+          "sourceBindingUpdates": {
+            "items": {
+              "$ref": "#/components/schemas/ReaderSummaryAcceptedTopicApplicationBindingDto"
+            },
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "not_requested",
+              "applied",
+              "already_applied",
+              "no_supported_bindings"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "changedSourceBindingCount",
+          "sourceBindingUpdates"
+        ],
+        "type": "object"
+      },
+      "ReaderSummaryAcceptedTopicReversionBindingDto": {
+        "properties": {
+          "interestId": {
+            "type": "string"
+          },
+          "providerKey": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "restoredConfigPaths": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "reverted": {
+            "type": "boolean"
+          },
+          "sourceBindingId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sourceBindingId",
+          "interestId",
+          "providerKey",
+          "reverted",
+          "restoredConfigPaths"
+        ],
+        "type": "object"
+      },
+      "ReaderSummaryAcceptedTopicReversionDto": {
+        "properties": {
+          "revertedSourceBindingCount": {
+            "type": "number"
+          },
+          "sourceBindingReversions": {
+            "items": {
+              "$ref": "#/components/schemas/ReaderSummaryAcceptedTopicReversionBindingDto"
+            },
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "not_requested",
+              "reverted",
+              "partially_reverted",
+              "nothing_to_revert",
+              "blocked"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "revertedSourceBindingCount",
+          "sourceBindingReversions"
         ],
         "type": "object"
       },
@@ -3757,6 +3964,9 @@
             },
             "type": "array"
           },
+          "topicMap": {
+            "$ref": "#/components/schemas/ReaderSummaryTopicMapDto"
+          },
           "topReads": {
             "items": {
               "$ref": "#/components/schemas/ReaderSummaryReaderItemDto"
@@ -3772,6 +3982,7 @@
           "oneLineTakeaway",
           "bullets",
           "mainTopics",
+          "topicMap",
           "qualityState",
           "interestSections",
           "sourceMix",
@@ -4440,6 +4651,429 @@
           "interestDiversityBoost",
           "freshnessBoost",
           "totalScore"
+        ],
+        "type": "object"
+      },
+      "ReaderSummaryTopicMapConfidenceDto": {
+        "properties": {
+          "level": {
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "type": "string"
+          },
+          "rationale": {
+            "type": "string"
+          },
+          "score": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "level",
+          "score",
+          "rationale"
+        ],
+        "type": "object"
+      },
+      "ReaderSummaryTopicMapDto": {
+        "properties": {
+          "confidence": {
+            "$ref": "#/components/schemas/ReaderSummaryTopicMapConfidenceDto"
+          },
+          "edges": {
+            "items": {
+              "$ref": "#/components/schemas/ReaderSummaryTopicMapEdgeDto"
+            },
+            "type": "array"
+          },
+          "generatedBy": {
+            "enum": [
+              "deterministic",
+              "agent-runtime"
+            ],
+            "type": "string"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/ReaderSummaryTopicMapGroupDto"
+            },
+            "type": "array"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/ReaderSummaryTopicMapNodeDto"
+            },
+            "type": "array"
+          },
+          "schemaVersion": {
+            "enum": [
+              "reader_summary.topic_map.v1"
+            ],
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "schemaVersion",
+          "generatedBy",
+          "confidence",
+          "nodes",
+          "groups",
+          "edges",
+          "warnings"
+        ],
+        "type": "object"
+      },
+      "ReaderSummaryTopicMapEdgeDto": {
+        "properties": {
+          "reason": {
+            "type": "string"
+          },
+          "sourceNodeId": {
+            "type": "string"
+          },
+          "targetNodeId": {
+            "type": "string"
+          },
+          "weight": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "sourceNodeId",
+          "targetNodeId",
+          "weight",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "ReaderSummaryTopicMapGroupDto": {
+        "properties": {
+          "colorKey": {
+            "type": "string"
+          },
+          "confidence": {
+            "$ref": "#/components/schemas/ReaderSummaryTopicMapConfidenceDto"
+          },
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "nodeIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "colorKey",
+          "nodeIds",
+          "confidence"
+        ],
+        "type": "object"
+      },
+      "ReaderSummaryTopicMapNodeDto": {
+        "properties": {
+          "citationIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "evidenceCount": {
+            "type": "number"
+          },
+          "groupId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "interestIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "keywords": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "label": {
+            "type": "string"
+          },
+          "popularityScore": {
+            "maximum": 100,
+            "minimum": 0,
+            "type": "number"
+          },
+          "providerKeys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "rationale": {
+            "type": "string"
+          },
+          "sizeWeight": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "storyClusterIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "groupId",
+          "storyClusterIds",
+          "popularityScore",
+          "sizeWeight",
+          "evidenceCount",
+          "providerKeys",
+          "interestIds",
+          "citationIds",
+          "keywords",
+          "rationale"
+        ],
+        "type": "object"
+      },
+      "ReaderSummaryTopicRecommendationDecisionDto": {
+        "properties": {
+          "decidedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "decidedBy": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "recommendationId": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "accepted",
+              "rejected"
+            ],
+            "type": "string"
+          },
+          "topicLabel": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "recommendationId",
+          "topicLabel",
+          "status",
+          "decidedBy",
+          "decidedAt"
+        ],
+        "type": "object"
+      },
+      "ReaderSummaryTopicRecommendationDto": {
+        "properties": {
+          "confidenceScore": {
+            "type": "number"
+          },
+          "currentTier": {
+            "enum": [
+              "core",
+              "adjacent",
+              "unknown"
+            ],
+            "type": "string"
+          },
+          "decidedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "decidedBy": {
+            "type": "string"
+          },
+          "decisionNote": {
+            "type": "string"
+          },
+          "decisionStatus": {
+            "enum": [
+              "pending",
+              "accepted",
+              "rejected"
+            ],
+            "type": "string"
+          },
+          "evidenceReaderSummaryIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "interestIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "kind": {
+            "enum": [
+              "promote_adjacent_topic",
+              "observe_adjacent_topic"
+            ],
+            "type": "string"
+          },
+          "metrics": {
+            "$ref": "#/components/schemas/ReaderSummaryTopicRecommendationMetricsDto"
+          },
+          "providerKeys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "rationale": {
+            "type": "string"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "recommendationId": {
+            "type": "string"
+          },
+          "suggestedTier": {
+            "enum": [
+              "core",
+              "adjacent",
+              "unknown"
+            ],
+            "type": "string"
+          },
+          "topicLabel": {
+            "type": "string"
+          },
+          "windowDays": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "recommendationId",
+          "kind",
+          "decisionStatus",
+          "topicLabel",
+          "currentTier",
+          "suggestedTier",
+          "confidenceScore",
+          "rationale",
+          "windowDays",
+          "metrics",
+          "providerKeys",
+          "interestIds",
+          "evidenceReaderSummaryIds",
+          "reasons"
+        ],
+        "type": "object"
+      },
+      "ReaderSummaryTopicRecommendationMetricsDto": {
+        "properties": {
+          "averageSignalScore": {
+            "type": "number"
+          },
+          "citationCount": {
+            "type": "number"
+          },
+          "citationRate": {
+            "type": "number"
+          },
+          "collectedPostCount": {
+            "type": "number"
+          },
+          "crossSourceSummaryCount": {
+            "type": "number"
+          },
+          "duplicateEvidenceCount": {
+            "type": "number"
+          },
+          "duplicateRate": {
+            "type": "number"
+          },
+          "lowRelevanceSignalCount": {
+            "type": "number"
+          },
+          "mutedSignalCount": {
+            "type": "number"
+          },
+          "noiseRate": {
+            "type": "number"
+          },
+          "selectedEvidenceCount": {
+            "type": "number"
+          },
+          "selectionRate": {
+            "type": "number"
+          },
+          "summaryCount": {
+            "type": "number"
+          },
+          "topReadCount": {
+            "type": "number"
+          },
+          "topReadRate": {
+            "type": "number"
+          },
+          "usefulSummaryCount": {
+            "type": "number"
+          },
+          "userRatedSignalCount": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "collectedPostCount",
+          "summaryCount",
+          "selectedEvidenceCount",
+          "topReadCount",
+          "citationCount",
+          "crossSourceSummaryCount",
+          "usefulSummaryCount",
+          "duplicateEvidenceCount",
+          "lowRelevanceSignalCount",
+          "mutedSignalCount",
+          "userRatedSignalCount",
+          "selectionRate",
+          "citationRate",
+          "topReadRate",
+          "duplicateRate",
+          "noiseRate",
+          "averageSignalScore"
         ],
         "type": "object"
       },
@@ -11295,6 +11929,182 @@
           }
         },
         "summary": "Request a readerSummary for a workspace or interest scope.",
+        "tags": [
+          "reader-summaries"
+        ]
+      }
+    },
+    "/reader-summary-topic-recommendations": {
+      "get": {
+        "operationId": "ReaderSummaryTopicRecommendationController_list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "windowDays",
+            "required": false,
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "interestId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeType",
+            "required": false,
+            "schema": {
+              "enum": [
+                "workspace",
+                "interest"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional Bearer API key. Requires read:summaries. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "ReaderSummary recommendation reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListReaderSummaryTopicRecommendationsResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "List topic promotion recommendations from recent summaries.",
+        "tags": [
+          "reader-summaries"
+        ]
+      }
+    },
+    "/reader-summary-topic-recommendations/{recommendationId}/decision": {
+      "post": {
+        "operationId": "ReaderSummaryTopicRecommendationController_decide",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "recommendationId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional Bearer API key. Requires write:summaries. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "ReaderSummary topic recommendation decisions allow owner or admin. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-user-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecideReaderSummaryTopicRecommendationRequestDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecideReaderSummaryTopicRecommendationResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Accept, reject or undo a topic promotion recommendation.",
         "tags": [
           "reader-summaries"
         ]

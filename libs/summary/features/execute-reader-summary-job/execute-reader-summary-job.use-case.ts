@@ -12,6 +12,7 @@ import {
 
 import {
   assertReaderSummaryCitationsAgainstEvidence,
+  buildReaderSummary,
   defaultReaderSummaryGenerationPolicy,
   ReaderSummaryArtifact,
   resolveEffectiveReaderSummaryPolicy,
@@ -36,6 +37,7 @@ import {
   NOOP_USER_SUMMARY_PREFERENCE_READER,
   type UserSummaryPreferenceReaderPort,
 } from "../../ports";
+import { BuildReaderSummaryTopicMapUseCase } from "../build-reader-summary-topic-map/build-reader-summary-topic-map.use-case";
 import type { ExecuteReaderSummaryJobCommand } from "./execute-reader-summary-job.command";
 import type { ExecuteReaderSummaryJobResult } from "./execute-reader-summary-job.result";
 
@@ -75,6 +77,7 @@ export class ExecuteReaderSummaryJobUseCase {
     private readonly clock: Clock,
     private readonly contextProvider: ReaderSummaryContextProviderPort = NOOP_READER_SUMMARY_CONTEXT_PROVIDER,
     private readonly userSummaryPreferences: UserSummaryPreferenceReaderPort = NOOP_USER_SUMMARY_PREFERENCE_READER,
+    private readonly topicMapBuilder: BuildReaderSummaryTopicMapUseCase = new BuildReaderSummaryTopicMapUseCase(),
   ) {}
 
   async execute(
@@ -287,9 +290,18 @@ export class ExecuteReaderSummaryJobUseCase {
     } catch (error) {
       return err(this.readerSummaryModel.classifyError(error));
     }
-    const draft = context.unavailable
+    const draftWithContext = context.unavailable
       ? withContextUnavailableFlag(attempt.draft)
       : attempt.draft;
+    const draftResult = await this.withTopicMap(
+      snapshot,
+      evidence,
+      draftWithContext,
+    );
+    if (!draftResult.ok) {
+      return err(this.readerSummaryModel.classifyError(draftResult.error));
+    }
+    const draft = draftResult.value;
 
     const artifact = ReaderSummaryArtifact.create({
       schemaVersion: "reader_summary.artifact.v1",
@@ -310,6 +322,52 @@ export class ExecuteReaderSummaryJobUseCase {
     return ok({ artifact });
   }
 
+  private async withTopicMap(
+    snapshot: ReturnType<ReaderSummaryJob["toSnapshot"]>,
+    evidence: SummaryEvidenceSelection,
+    draft: ProviderReaderSummaryAttempt["draft"],
+  ): Promise<Result<ProviderReaderSummaryAttempt["draft"], DomainError>> {
+    const topicMapResult = await this.topicMapBuilder.execute({
+      tenantId: snapshot.tenantId,
+      workspaceId: snapshot.workspaceId,
+      scope: snapshot.scope,
+      period: snapshot.period,
+      requestedAt: snapshot.requestedAt,
+      clusters: evidence.clusters,
+      selectedEvidence: evidence.selectedEvidence,
+      topStories: draft.topStories,
+      citationMap: draft.citationMap,
+    });
+    if (!topicMapResult.ok) {
+      return err(topicMapResult.error);
+    }
+    const topicMap = topicMapResult.value;
+    const content =
+      draft.content ??
+      buildReaderSummary({
+        headline: draft.headline,
+        executiveSummary: draft.executiveSummary,
+        topStories: draft.topStories,
+        interestHighlights: draft.interestHighlights,
+        repeatedSignals: draft.repeatedSignals,
+        risksAndUnknowns: draft.risksAndUnknowns,
+        citationMap: draft.citationMap,
+        storyClusters: evidence.clusters,
+        sourceWindow: evidence.sourceWindow,
+        selectedEvidence: evidence.selectedEvidence,
+        qualityFlags: draft.qualityFlags,
+        noSignalReason: draft.noSignalReason,
+      });
+
+    return ok({
+      ...draft,
+      content: {
+        ...content,
+        topicMap,
+      },
+    });
+  }
+
   private async safeBuildContext(
     snapshot: ReturnType<ReaderSummaryJob["toSnapshot"]>,
     evidence: SummaryEvidenceSelection,
@@ -317,10 +375,10 @@ export class ExecuteReaderSummaryJobUseCase {
     try {
       const artifacts = await this.contextProvider.buildContext({
         tenantId: snapshot.tenantId,
-      workspaceId: snapshot.workspaceId,
-      scope: snapshot.scope,
-      period: snapshot.period,
-      userId: snapshot.userId,
+        workspaceId: snapshot.workspaceId,
+        scope: snapshot.scope,
+        period: snapshot.period,
+        userId: snapshot.userId,
         subscriptionId: snapshot.subscriptionId,
         evidence,
         requestedAt: snapshot.requestedAt,

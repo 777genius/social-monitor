@@ -21,6 +21,7 @@ export class PrismaSummaryConnection implements PrismaSummaryClient {
   readonly readerSummaryJob: PrismaSummaryClient['readerSummaryJob'];
   readonly readerSummaryArtifact: PrismaSummaryClient['readerSummaryArtifact'];
   readonly readerSummaryPolicy: PrismaSummaryClient['readerSummaryPolicy'];
+  readonly readerSummaryTopicRecommendationDecision: PrismaSummaryClient['readerSummaryTopicRecommendationDecision'];
   readonly outboxEvent: PrismaSummaryClient['outboxEvent'];
   readonly conversationUnit: PrismaSummaryClient['conversationUnit'];
   readonly conversationSignalBaselineSample: PrismaSummaryClient['conversationSignalBaselineSample'];
@@ -44,6 +45,8 @@ export class PrismaSummaryConnection implements PrismaSummaryClient {
     this.readerSummaryJob = this.client.readerSummaryJob;
     this.readerSummaryArtifact = this.client.readerSummaryArtifact;
     this.readerSummaryPolicy = this.client.readerSummaryPolicy;
+    this.readerSummaryTopicRecommendationDecision =
+      this.client.readerSummaryTopicRecommendationDecision;
     this.outboxEvent = this.client.outboxEvent;
     this.conversationUnit = this.client.conversationUnit;
     this.conversationSignalBaselineSample =

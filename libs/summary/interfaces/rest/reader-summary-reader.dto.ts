@@ -258,6 +258,109 @@ export class ReaderSummaryReaderQualityStateDto {
   declare readonly isSingleSource: boolean;
 }
 
+export class ReaderSummaryTopicMapConfidenceDto {
+  @ApiProperty({ enum: ["low", "medium", "high"] })
+  declare readonly level: "low" | "medium" | "high";
+
+  @ApiProperty({ minimum: 0, maximum: 1 })
+  declare readonly score: number;
+
+  @ApiProperty()
+  declare readonly rationale: string;
+}
+
+export class ReaderSummaryTopicMapNodeDto {
+  @ApiProperty()
+  declare readonly id: string;
+
+  @ApiProperty()
+  declare readonly label: string;
+
+  @ApiProperty()
+  declare readonly groupId: string;
+
+  @ApiProperty({ type: [String] })
+  declare readonly storyClusterIds: readonly string[];
+
+  @ApiProperty({ minimum: 0, maximum: 100 })
+  declare readonly popularityScore: number;
+
+  @ApiProperty({ minimum: 0, maximum: 1 })
+  declare readonly sizeWeight: number;
+
+  @ApiProperty()
+  declare readonly evidenceCount: number;
+
+  @ApiProperty({ type: [String] })
+  declare readonly providerKeys: readonly string[];
+
+  @ApiProperty({ type: [String] })
+  declare readonly interestIds: readonly string[];
+
+  @ApiProperty({ type: [String] })
+  declare readonly citationIds: readonly string[];
+
+  @ApiProperty({ type: [String] })
+  declare readonly keywords: readonly string[];
+
+  @ApiProperty()
+  declare readonly rationale: string;
+}
+
+export class ReaderSummaryTopicMapGroupDto {
+  @ApiProperty()
+  declare readonly id: string;
+
+  @ApiProperty()
+  declare readonly label: string;
+
+  @ApiProperty()
+  declare readonly colorKey: string;
+
+  @ApiProperty({ type: [String] })
+  declare readonly nodeIds: readonly string[];
+
+  @ApiProperty({ type: () => ReaderSummaryTopicMapConfidenceDto })
+  declare readonly confidence: ReaderSummaryTopicMapConfidenceDto;
+}
+
+export class ReaderSummaryTopicMapEdgeDto {
+  @ApiProperty()
+  declare readonly sourceNodeId: string;
+
+  @ApiProperty()
+  declare readonly targetNodeId: string;
+
+  @ApiProperty({ minimum: 0, maximum: 1 })
+  declare readonly weight: number;
+
+  @ApiProperty()
+  declare readonly reason: string;
+}
+
+export class ReaderSummaryTopicMapDto {
+  @ApiProperty({ enum: ["reader_summary.topic_map.v1"] })
+  declare readonly schemaVersion: "reader_summary.topic_map.v1";
+
+  @ApiProperty({ enum: ["deterministic", "agent-runtime"] })
+  declare readonly generatedBy: "deterministic" | "agent-runtime";
+
+  @ApiProperty({ type: () => ReaderSummaryTopicMapConfidenceDto })
+  declare readonly confidence: ReaderSummaryTopicMapConfidenceDto;
+
+  @ApiProperty({ type: () => [ReaderSummaryTopicMapNodeDto] })
+  declare readonly nodes: readonly ReaderSummaryTopicMapNodeDto[];
+
+  @ApiProperty({ type: () => [ReaderSummaryTopicMapGroupDto] })
+  declare readonly groups: readonly ReaderSummaryTopicMapGroupDto[];
+
+  @ApiProperty({ type: () => [ReaderSummaryTopicMapEdgeDto] })
+  declare readonly edges: readonly ReaderSummaryTopicMapEdgeDto[];
+
+  @ApiProperty({ type: [String] })
+  declare readonly warnings: readonly string[];
+}
+
 export class ReaderSummaryReaderBriefDto {
   @ApiProperty()
   declare readonly headline: string;
@@ -270,6 +373,9 @@ export class ReaderSummaryReaderBriefDto {
 
   @ApiProperty({ type: [String] })
   declare readonly mainTopics: readonly string[];
+
+  @ApiProperty({ type: () => ReaderSummaryTopicMapDto })
+  declare readonly topicMap: ReaderSummaryTopicMapDto;
 
   @ApiProperty({ type: () => ReaderSummaryReaderQualityStateDto })
   declare readonly qualityState: ReaderSummaryReaderQualityStateDto;

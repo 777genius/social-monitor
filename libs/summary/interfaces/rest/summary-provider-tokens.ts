@@ -16,7 +16,7 @@ import {
   type AutoSummaryCandidateRepositoryPort,
   type ReaderSummaryArtifactRepositoryPort,
   type ReaderSummaryContextProviderPort,
-  READER_SUMMARY_COVERAGE_COUNTER,
+  type READER_SUMMARY_COVERAGE_COUNTER,
   type ReaderSummaryCoverageCounterPort,
   type ReaderSummaryEvidenceSelectorPort,
   type ReaderSummaryJobRepositoryPort,
@@ -41,6 +41,7 @@ export type SummaryModelProviderMode =
   "deterministic" | "openai-responses" | "agent-runtime";
 export type ReaderSummaryModelProviderMode =
   "deterministic" | "openai-responses" | "agent-runtime";
+export type ReaderSummaryTopicLabelerMode = "deterministic" | "agent-runtime";
 export type SummaryMemoryMode = "disabled" | "memo-stack";
 export type SummaryYoutubeVideoSummaryProviderMode =
   "disabled" | "deterministic" | "google-gemini";
@@ -52,6 +53,9 @@ export const SUMMARY_MODEL_PROVIDER_MODE = Symbol(
 );
 export const READER_SUMMARY_MODEL_PROVIDER_MODE = Symbol(
   "READER_SUMMARY_MODEL_PROVIDER_MODE",
+);
+export const READER_SUMMARY_TOPIC_LABELER_MODE = Symbol(
+  "READER_SUMMARY_TOPIC_LABELER_MODE",
 );
 export const READER_SUMMARY_OPENAI_RESPONSES_MODEL_OPTIONS = Symbol(
   "READER_SUMMARY_OPENAI_RESPONSES_MODEL_OPTIONS",
@@ -113,6 +117,7 @@ export type SummaryProviderTokenMap = {
   readonly [SUMMARY_JOB_QUEUE_MODE]: SummaryJobQueueMode;
   readonly [SUMMARY_MODEL_PROVIDER_MODE]: SummaryModelProviderMode;
   readonly [READER_SUMMARY_MODEL_PROVIDER_MODE]: ReaderSummaryModelProviderMode;
+  readonly [READER_SUMMARY_TOPIC_LABELER_MODE]: ReaderSummaryTopicLabelerMode;
   readonly [READER_SUMMARY_OPENAI_RESPONSES_MODEL_OPTIONS]: OpenAiResponsesReaderSummaryModelAdapterOptions;
   readonly [SUMMARY_MEMORY_MODE]: SummaryMemoryMode;
   readonly [SUMMARY_YOUTUBE_VIDEO_SUMMARY_PROVIDER_MODE]: SummaryYoutubeVideoSummaryProviderMode;
@@ -161,6 +166,14 @@ export const readerSummaryModelProviderModeProvider: Provider<ReaderSummaryModel
   {
     provide: READER_SUMMARY_MODEL_PROVIDER_MODE,
     useFactory: () => resolveReaderSummaryModelProviderMode(process.env),
+  };
+
+export const readerSummaryTopicLabelerModeProvider: Provider<ReaderSummaryTopicLabelerMode> =
+  {
+    provide: READER_SUMMARY_TOPIC_LABELER_MODE,
+    useFactory: (readerSummaryMode: ReaderSummaryModelProviderMode) =>
+      resolveReaderSummaryTopicLabelerMode(process.env, readerSummaryMode),
+    inject: [READER_SUMMARY_MODEL_PROVIDER_MODE],
   };
 
 export const readerSummaryOpenAiResponsesModelOptionsProvider: Provider<OpenAiResponsesReaderSummaryModelAdapterOptions> =
@@ -287,10 +300,7 @@ export const resolveSummaryModelProviderMode = (
 export const resolveReaderSummaryModelProviderMode = (
   env: NodeJS.ProcessEnv,
 ): ReaderSummaryModelProviderMode => {
-  const value =
-    env.READER_SUMMARY_MODEL_PROVIDER ??
-    env.READER_SUMMARY_MODEL_PROVIDER ??
-    "deterministic";
+  const value = env.READER_SUMMARY_MODEL_PROVIDER ?? "agent-runtime";
 
   if (
     value === "deterministic" ||
@@ -308,7 +318,36 @@ export const resolveReaderSummaryModelProviderMode = (
   }
 
   throw new Error(
-    'READER_SUMMARY_MODEL_PROVIDER or READER_SUMMARY_MODEL_PROVIDER must be "deterministic", "openai-responses", or "agent-runtime"',
+    'READER_SUMMARY_MODEL_PROVIDER must be "deterministic", "openai-responses", or "agent-runtime"',
+  );
+};
+
+export const resolveReaderSummaryTopicLabelerMode = (
+  env: NodeJS.ProcessEnv,
+  readerSummaryMode: ReaderSummaryModelProviderMode,
+): ReaderSummaryTopicLabelerMode => {
+  const value = env.READER_SUMMARY_TOPIC_LABELER ?? "agent-runtime";
+  const selected =
+    value === "auto"
+      ? readerSummaryMode === "agent-runtime" ||
+        (env.AGENT_RUNTIME_GRPC_ADDRESS ?? "").trim().length > 0
+        ? "agent-runtime"
+        : "deterministic"
+      : value;
+
+  if (selected === "deterministic" || selected === "agent-runtime") {
+    assertRuntimeProfileAllowsMode({
+      env,
+      settingName: "READER_SUMMARY_TOPIC_LABELER",
+      selectedMode: selected,
+      durableModes: ["agent-runtime"],
+    });
+
+    return selected;
+  }
+
+  throw new Error(
+    'READER_SUMMARY_TOPIC_LABELER must be "auto", "deterministic", or "agent-runtime"',
   );
 };
 
@@ -451,10 +490,5 @@ const parsePositiveInteger = (
   fallback: number,
 ): number => {
   const parsed = Number(value);
-
-  if (Number.isInteger(parsed) && parsed > 0) {
-    return parsed;
-  }
-
-  return fallback;
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 };

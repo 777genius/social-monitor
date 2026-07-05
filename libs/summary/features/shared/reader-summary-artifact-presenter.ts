@@ -1,13 +1,15 @@
 import type {
   ReaderSummaryArtifact,
   ReaderSummaryArtifactProps,
+  ReaderSummaryConfidence,
   ReaderSummaryContextArtifact,
   ReaderSummaryContent,
   ReaderSummaryPeriod,
+  ReaderSummaryTopicMap,
   StoryCluster,
   TopRead,
 } from "../../domain";
-import { buildReaderSummary } from "../../domain";
+import { buildReaderSummary, emptyReaderSummaryTopicMap } from "../../domain";
 import type { ReaderSummaryFreshness } from "../../ports";
 import type { ReaderSummaryCollectedFeedItemCoverage } from "../../ports";
 
@@ -33,6 +35,7 @@ export type ReaderSummaryStoryClusterView = Omit<
 
 export type ReaderSummaryContentView = ReaderSummaryContent & {
   readonly mainTopics: readonly string[];
+  readonly topicMap: ReaderSummaryTopicMap;
   readonly selectedPosts: readonly TopRead[];
 };
 
@@ -129,6 +132,7 @@ export const presentReaderSummaryArtifact = (
   const snapshot = artifact.toSnapshot();
   const content = withReaderSummaryContentDefaults(
     options.content ?? readerSummaryContentForArtifactSnapshot(snapshot),
+    snapshot.confidence,
   );
   const freshnessView = presentFreshness(freshness);
 
@@ -195,15 +199,73 @@ const readerSummaryContentForArtifactSnapshot = (
         qualityFlags: snapshot.qualityFlags,
         noSignalReason: snapshot.noSignalReason,
       }),
+    snapshot.confidence,
   );
 
 const withReaderSummaryContentDefaults = (
   content: ReaderSummaryContent,
-): ReaderSummaryContentView => ({
-  ...content,
-  mainTopics: content.mainTopics ?? [],
-  selectedPosts: content.selectedPosts ?? content.topReads,
+  confidence: ReaderSummaryConfidence,
+): ReaderSummaryContentView => {
+  const topReads = content.topReads.map(sanitizeTopReadForPresentation);
+  const selectedPostSource = content.selectedPosts ?? content.topReads;
+  const openQuestions = readerSummaryOpenQuestionsForPresentation(
+    content,
+    confidence,
+  );
+
+  return {
+    ...content,
+    mainTopics: content.mainTopics ?? [],
+    topicMap: content.topicMap ?? emptyReaderSummaryTopicMap(),
+    openQuestions,
+    topReads,
+    selectedPosts: selectedPostSource.map(sanitizeTopReadForPresentation),
+    interestSections: content.interestSections.map((section) => ({
+      ...section,
+      items: section.items.map(sanitizeTopReadForPresentation),
+    })),
+  };
+};
+
+const readerSummaryOpenQuestionsForPresentation = (
+  content: ReaderSummaryContent,
+  confidence: ReaderSummaryConfidence,
+): readonly string[] => {
+  if (content.openQuestions.length > 0) {
+    return content.openQuestions;
+  }
+
+  const hasRisks =
+    content.risks.length > 0 || content.reliabilityReport.risks.length > 0;
+  if (confidence.level !== "low" && !hasRisks) {
+    return content.openQuestions;
+  }
+
+  return ["Which claims need more confirmation before acting on this summary?"];
+};
+
+const sanitizeTopReadForPresentation = (item: TopRead): TopRead => ({
+  ...item,
+  matchedRules: item.matchedRules.filter(isPublicMatchedRule),
 });
+
+const isPublicMatchedRule = (rule: string): boolean => {
+  const normalized = rule.trim().toLowerCase();
+
+  return !technicalMatchedRulePrefixes.some((prefix) =>
+    normalized.startsWith(prefix),
+  );
+};
+
+const technicalMatchedRulePrefixes = [
+  "interest:",
+  "source-binding:",
+  "sourcebinding:",
+  "provider:",
+  "rule:",
+  "binding:",
+  "scope:",
+] as const;
 
 const presentReaderSummaryPeriod = (
   period: ReaderSummaryPeriod,

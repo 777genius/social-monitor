@@ -7,9 +7,12 @@ import 'package:retrofit/retrofit.dart';
 import 'package:retrofit/error_logger.dart';
 
 import '../models/cadence.dart';
+import '../models/decide_reader_summary_topic_recommendation_request_dto.dart';
+import '../models/decide_reader_summary_topic_recommendation_response_dto.dart';
 import '../models/freshness_status.dart';
 import '../models/list_reader_summaries_response_dto.dart';
 import '../models/list_reader_summary_periods_response_dto.dart';
+import '../models/list_reader_summary_topic_recommendations_response_dto.dart';
 import '../models/reader_summary_job_status_response_dto.dart';
 import '../models/reader_summary_response_dto.dart';
 import '../models/request_reader_summary_request_dto.dart';
@@ -117,5 +120,42 @@ abstract class ReaderSummariesClient {
     @Body() required RequestReaderSummaryRequestDto body,
     @Header('authorization') String? authorization,
     @Header('x-workspace-role') String? xWorkspaceRole,
+  });
+
+  /// List topic promotion recommendations from recent summaries.
+  ///
+  /// [authorization] - Optional Bearer API key. Requires read:summaries. If supplied, x-workspace-role is not required.
+  ///
+  /// [xWorkspaceRole] - ReaderSummary recommendation reads allow owner, admin, member or viewer. Required when Authorization bearer API key is not supplied.
+  @GET('/reader-summary-topic-recommendations')
+  Future<ListReaderSummaryTopicRecommendationsResponseDto>
+  readerSummaryTopicRecommendationControllerList({
+    @Header('x-workspace-id') required String xWorkspaceId,
+    @Header('x-tenant-id') required String xTenantId,
+    @Query('limit') num? limit,
+    @Query('windowDays') num? windowDays,
+    @Query('interestId') String? interestId,
+    @Query('scopeType') ScopeType? scopeType,
+    @Header('authorization') String? authorization,
+    @Header('x-workspace-role') String? xWorkspaceRole,
+  });
+
+  /// Accept, reject or undo a topic promotion recommendation.
+  ///
+  /// [authorization] - Optional Bearer API key. Requires write:summaries. If supplied, x-workspace-role is not required.
+  ///
+  /// [xWorkspaceRole] - ReaderSummary topic recommendation decisions allow owner or admin. Required when Authorization bearer API key is not supplied.
+  ///
+  /// [body] - Name not received - field will be skipped.
+  @POST('/reader-summary-topic-recommendations/{recommendationId}/decision')
+  Future<DecideReaderSummaryTopicRecommendationResponseDto>
+  readerSummaryTopicRecommendationControllerDecide({
+    @Path('recommendationId') required String recommendationId,
+    @Header('x-workspace-id') required String xWorkspaceId,
+    @Header('x-tenant-id') required String xTenantId,
+    @Body() required DecideReaderSummaryTopicRecommendationRequestDto body,
+    @Header('authorization') String? authorization,
+    @Header('x-workspace-role') String? xWorkspaceRole,
+    @Header('x-user-id') String? xUserId,
   });
 }

@@ -835,6 +835,25 @@ model ReaderSummaryPolicy {
   @@map("reader_summary_policies")
 }
 
+model ReaderSummaryTopicRecommendationDecision {
+  id               String   @id @db.Uuid
+  tenantId         String   @map("tenant_id") @db.Uuid
+  workspaceId      String   @map("workspace_id") @db.Uuid
+  recommendationId String   @map("recommendation_id")
+  topicLabel       String   @map("topic_label")
+  status           String
+  decidedBy        String   @map("decided_by")
+  note             String?
+  application      Json?
+  decidedAt        DateTime @map("decided_at") @db.Timestamptz(6)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([tenantId, workspaceId, recommendationId], map: "reader_summary_topic_recommendation_decisions_scope_key")
+  @@index([tenantId, workspaceId, decidedAt], map: "reader_summary_topic_recommendation_decisions_scope_time_idx")
+  @@map("reader_summary_topic_recommendation_decisions")
+}
+
 model DeliveryAttempt {
   id                String         @id @db.Uuid
   tenantId          String         @map("tenant_id") @db.Uuid

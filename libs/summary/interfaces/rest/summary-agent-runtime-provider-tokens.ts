@@ -5,14 +5,20 @@ import {
   type AgentRuntimeReaderSummaryModelAdapterOptions,
 } from "../../adapters/model/agent-runtime-reader-summary-model.adapter";
 import {
+  resolveAgentRuntimeReaderSummaryTopicLabelerOptions,
+  type AgentRuntimeReaderSummaryTopicLabelerOptions,
+} from "../../adapters/model/agent-runtime-reader-summary-topic-labeler.adapter";
+import {
   resolveAgentRuntimeSummaryModelOptions,
   type AgentRuntimeSummaryModelAdapterOptions,
 } from "../../adapters/model/agent-runtime-summary-model.adapter";
 import { GrpcAgentRuntimeClient } from "../../adapters/model/grpc-agent-runtime-client";
 import {
   READER_SUMMARY_MODEL_PROVIDER_MODE,
+  READER_SUMMARY_TOPIC_LABELER_MODE,
   SUMMARY_MODEL_PROVIDER_MODE,
   type ReaderSummaryModelProviderMode,
+  type ReaderSummaryTopicLabelerMode,
   type SummaryModelProviderMode,
 } from "./summary-provider-tokens";
 
@@ -25,6 +31,8 @@ export const SUMMARY_AGENT_RUNTIME_SUMMARY_MODEL_OPTIONS = Symbol(
 export const SUMMARY_AGENT_RUNTIME_READER_SUMMARY_MODEL_OPTIONS = Symbol(
   "SUMMARY_AGENT_RUNTIME_READER_SUMMARY_MODEL_OPTIONS",
 );
+export const SUMMARY_AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_OPTIONS =
+  Symbol("SUMMARY_AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_OPTIONS");
 
 export type SummaryAgentRuntimeClientOptions = {
   readonly address: string;
@@ -38,15 +46,18 @@ export const summaryAgentRuntimeClientOptionsProvider: Provider<SummaryAgentRunt
     useFactory: (
       summaryMode: SummaryModelProviderMode,
       readerSummaryMode: ReaderSummaryModelProviderMode,
+      topicLabelerMode: ReaderSummaryTopicLabelerMode,
     ) =>
       resolveSummaryAgentRuntimeClientOptions(process.env, {
         requireAddress:
           summaryMode === "agent-runtime" ||
-          readerSummaryMode === "agent-runtime",
+          readerSummaryMode === "agent-runtime" ||
+          topicLabelerMode === "agent-runtime",
       }),
     inject: [
       SUMMARY_MODEL_PROVIDER_MODE,
       READER_SUMMARY_MODEL_PROVIDER_MODE,
+      READER_SUMMARY_TOPIC_LABELER_MODE,
     ],
   };
 
@@ -66,6 +77,14 @@ export const summaryAgentRuntimeReaderSummaryModelOptionsProvider: Provider<Agen
     inject: [GrpcAgentRuntimeClient],
   };
 
+export const summaryAgentRuntimeReaderSummaryTopicLabelerOptionsProvider: Provider<AgentRuntimeReaderSummaryTopicLabelerOptions> =
+  {
+    provide: SUMMARY_AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_OPTIONS,
+    useFactory: (client: GrpcAgentRuntimeClient) =>
+      resolveAgentRuntimeReaderSummaryTopicLabelerOptions(process.env, client),
+    inject: [GrpcAgentRuntimeClient],
+  };
+
 export const resolveSummaryAgentRuntimeClientOptions = (
   env: NodeJS.ProcessEnv,
   params: { readonly requireAddress: boolean },
@@ -74,7 +93,7 @@ export const resolveSummaryAgentRuntimeClientOptions = (
 
   if (params.requireAddress && address.length === 0) {
     throw new Error(
-      "SUMMARY_MODEL_PROVIDER=agent-runtime or READER_SUMMARY_MODEL_PROVIDER=agent-runtime requires AGENT_RUNTIME_GRPC_ADDRESS",
+      "Agent-runtime summary providers require AGENT_RUNTIME_GRPC_ADDRESS",
     );
   }
 

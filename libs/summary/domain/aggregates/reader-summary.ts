@@ -10,6 +10,10 @@ import type {
   TopReadCandidate,
   InterestHighlight,
 } from "../entities/top-read";
+import {
+  emptyReaderSummaryTopicMap,
+  type ReaderSummaryTopicMap,
+} from "../entities/reader-summary-topic-map";
 import { buildReaderActions } from "../policies/reader-action-policy";
 import {
   buildReaderSummaryQualityState,
@@ -60,6 +64,7 @@ export type ReaderSummaryFactoryInput = {
   readonly storyClusters: readonly StoryCluster[];
   readonly sourceWindow?: SummarySourceWindow;
   readonly selectedEvidence?: readonly SummaryEvidenceItem[];
+  readonly topicMap?: ReaderSummaryTopicMap;
   readonly qualityFlags: readonly ReaderSummaryQualityFlag[];
   readonly noSignalReason?: string;
 };
@@ -102,7 +107,8 @@ export class ReaderSummary {
       citationById,
       evidenceByFeedItemId,
       clusterById,
-    ).slice(0, maxReaderTopReads);
+      maxReaderTopReads,
+    );
 
     if (readerTopStories.length === 0) {
       return ReaderSummary.create(
@@ -157,6 +163,7 @@ export class ReaderSummary {
         repeatedSignals: input.repeatedSignals,
         selectedEvidence: input.selectedEvidence,
       }),
+      topicMap: input.topicMap ?? emptyReaderSummaryTopicMap(),
       qualityState,
       interestSections: buildInterestSections(readerInput),
       sourceMix,
@@ -192,6 +199,7 @@ export class ReaderSummary {
       ...this.snapshot,
       bullets: [...this.snapshot.bullets],
       mainTopics: [...(this.snapshot.mainTopics ?? [])],
+      topicMap: this.snapshot.topicMap ?? emptyReaderSummaryTopicMap(),
       interestSections: [...this.snapshot.interestSections],
       sourceMix: [...this.snapshot.sourceMix],
       topReads: [...this.snapshot.topReads],
@@ -235,6 +243,7 @@ const buildNoSignalReaderSummary = (
       isSingleSource: false,
     },
     mainTopics: [],
+    topicMap: emptyReaderSummaryTopicMap(),
     interestSections: [],
     sourceMix: [],
     topReads: [],

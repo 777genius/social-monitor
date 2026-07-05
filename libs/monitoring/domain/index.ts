@@ -6,5 +6,7 @@ export * from './entities/interest';
 export * from './events/scan-requested.event';
 export * from './events/scan-policy-set.event';
 export * from './events/source-binding-enabled.event';
+export * from './events/source-binding-config-expanded.event';
+export * from './events/source-binding-config-expansion-reverted.event';
 export * from './events/source-binding-status-changed.event';
 export * from './events/interest-created.event';

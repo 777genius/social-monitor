@@ -6,6 +6,10 @@ import {
   type AgentRuntimeReaderSummaryModelAdapterOptions,
 } from "../../adapters/model/agent-runtime-reader-summary-model.adapter";
 import {
+  AgentRuntimeReaderSummaryTopicLabeler,
+  type AgentRuntimeReaderSummaryTopicLabelerOptions,
+} from "../../adapters/model/agent-runtime-reader-summary-topic-labeler.adapter";
+import {
   AgentRuntimeSummaryModelAdapter,
   type AgentRuntimeSummaryModelAdapterOptions,
 } from "../../adapters/model/agent-runtime-summary-model.adapter";
@@ -13,6 +17,7 @@ import { GrpcAgentRuntimeClient } from "../../adapters/model/grpc-agent-runtime-
 import {
   SUMMARY_AGENT_RUNTIME_CLIENT_OPTIONS,
   SUMMARY_AGENT_RUNTIME_READER_SUMMARY_MODEL_OPTIONS,
+  SUMMARY_AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_OPTIONS,
   SUMMARY_AGENT_RUNTIME_SUMMARY_MODEL_OPTIONS,
   type SummaryAgentRuntimeClientOptions,
 } from "./summary-agent-runtime-provider-tokens";
@@ -44,5 +49,11 @@ export const summaryAgentRuntimeProviders: readonly Provider[] = [
     useFactory: (options: AgentRuntimeReaderSummaryModelAdapterOptions) =>
       new AgentRuntimeReaderSummaryModelAdapter(options),
     inject: [SUMMARY_AGENT_RUNTIME_READER_SUMMARY_MODEL_OPTIONS],
+  },
+  {
+    provide: AgentRuntimeReaderSummaryTopicLabeler,
+    useFactory: (options: AgentRuntimeReaderSummaryTopicLabelerOptions) =>
+      new AgentRuntimeReaderSummaryTopicLabeler(options),
+    inject: [SUMMARY_AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_OPTIONS],
   },
 ];
