@@ -341,6 +341,7 @@
     "noVisibleHistoricalBadGamingArtifacts": true,
     "badGamingArtifactsUseRejectedStatus": true,
     "latestPeriodHasSingleVisibleArtifact": true,
+    "rejectedArtifactsDoNotHideCanonical": true,
     "collectionIntegrityCleanForEval": true,
     "noRawSecretFragments": true
   },
