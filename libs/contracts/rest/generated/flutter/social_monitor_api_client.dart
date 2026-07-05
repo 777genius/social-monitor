@@ -1450,7 +1450,7 @@ const socialMonitorApiOperations = <Map<String, Object?>>[
     'tags': [
       'reader-summaries',
     ],
-    'summary': 'Accept or reject a topic promotion recommendation.',
+    'summary': 'Accept, reject or undo a topic promotion recommendation.',
     'pathParameters': [
       'recommendationId',
     ],
