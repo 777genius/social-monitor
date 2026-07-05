@@ -4,8 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
+import '../../application/commands/decide_topic_recommendation_command.dart';
 import '../../domain/aggregates/reader_summary.dart';
 import '../../domain/entities/generated_summary.dart';
+import '../../domain/entities/post_rating.dart';
+import '../../domain/entities/reader_summary_topic_recommendation.dart';
+import '../components/reader_summary_brief_surface.dart';
+import '../components/reader_summary_view.dart';
 import '../components/summary_detail_panel.dart';
 import '../components/summary_generation_status_presenter.dart';
 import '../components/workspace_summary_panel.dart';
@@ -45,9 +50,7 @@ class _SummariesFeaturePageState extends State<SummariesFeaturePage> {
               padding: appPageSurfaceInsets(
                 context,
               ).add(const EdgeInsets.only(top: AppSpacing.xs)),
-              sliver: SliverToBoxAdapter(
-                child: _SummariesBody(store: widget.store),
-              ),
+              sliver: _SummariesBody(store: widget.store),
             ),
           ],
         );
@@ -72,14 +75,13 @@ class _SummariesBody extends StatelessWidget {
     };
     final isCompact = AppScreenClass.of(context).isCompact;
     final selected = store.selectedSummary ?? items.firstOrNull;
+    final workspaceSummaryState = store.workspaceSummaryState;
     final detailSummary = isCompact && !store.hasExplicitSelection
         ? null
         : selected;
     final showSummaryHistory =
-        !_hasWorkspaceSummary(store.workspaceSummaryState) &&
-        !_isWorkspaceSummaryLoadingWithoutPrevious(
-          store.workspaceSummaryState,
-        ) &&
+        !_hasWorkspaceSummary(workspaceSummaryState) &&
+        !_isWorkspaceSummaryLoadingWithoutPrevious(workspaceSummaryState) &&
         (items.isNotEmpty ||
             state is LoadingViewState<PageResult<GeneratedSummary>> ||
             state is FailureViewState<PageResult<GeneratedSummary>>);
@@ -136,50 +138,123 @@ class _SummariesBody extends StatelessWidget {
 
     final reviewStore = store;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        WorkspaceSummaryPanel(
-          state: store.workspaceSummaryState,
-          jobState: store.summaryJobState,
-          readerActionState: store.readerActionState,
-          activeReaderActionIdempotencyKey:
-              store.activeReaderActionIdempotencyKey,
-          lastReaderActionIdempotencyKey: store.lastReaderActionIdempotencyKey,
-          selectedPeriod: store.selectedSummaryPeriod,
-          selectedPeriodPreset: store.selectedSummaryPeriodPreset,
-          availableSummaryPeriods: store.availableWorkspaceSummaryPeriods,
-          canNavigateToPreviousPeriod: store.canShowPreviousSummaryPeriod,
-          canNavigateToNextPeriod: store.canShowNextSummaryPeriod,
-          isCurrentPeriod: store.isSelectedSummaryPeriodCurrent,
-          onPeriodChanged: (preset) =>
-              unawaited(store.selectWorkspaceSummaryPeriod(preset)),
-          onPreviousPeriod: () =>
-              unawaited(store.showPreviousWorkspaceSummaryPeriod()),
-          onCurrentPeriod: () =>
-              unawaited(store.showCurrentWorkspaceSummaryPeriod()),
-          onNextPeriod: () => unawaited(store.showNextWorkspaceSummaryPeriod()),
-          onCalendarDateSelected: (date) =>
-              unawaited(store.selectWorkspaceSummaryCalendarDate(date)),
-          onRetry: () => unawaited(store.loadWorkspaceSummary()),
-          onGenerate: () => unawaited(store.requestWorkspaceSummary()),
-          intentForAction: store.readerActionIntentFor,
-          onAction: (summary, action, [feedbackReason]) => unawaited(
-            store.submitReaderAction(summary, action, feedbackReason),
-          ),
-          topPostRatingFor: reviewStore.topPostRatingFor,
-          onTopPostRating: reviewStore.submitTopPostRating,
-          onOpenUrl: (summary, url) => unawaited(
-            store.openReaderSourceUrl(summaryId: summary.id, canonicalUrl: url),
+    final topPostsSummary = _summaryForTopPosts(workspaceSummaryState);
+    final topPostItems = topPostsSummary == null
+        ? const <TopRead>[]
+        : readerSummaryTopPostItems(topPostsSummary);
+    final selectedPostCount =
+        topPostsSummary?.coverage?.selectedFeedItemCount ?? topPostItems.length;
+
+    return SliverMainAxisGroup(
+      slivers: [
+        SliverToBoxAdapter(
+          child: WorkspaceSummaryPanel(
+            state: workspaceSummaryState,
+            jobState: store.summaryJobState,
+            readerActionState: store.readerActionState,
+            topicRecommendationState: reviewStore.topicRecommendationState,
+            activeReaderActionIdempotencyKey:
+                store.activeReaderActionIdempotencyKey,
+            lastReaderActionIdempotencyKey:
+                store.lastReaderActionIdempotencyKey,
+            selectedPeriod: store.selectedSummaryPeriod,
+            selectedPeriodPreset: store.selectedSummaryPeriodPreset,
+            availableSummaryPeriods: store.availableWorkspaceSummaryPeriods,
+            canNavigateToPreviousPeriod: store.canShowPreviousSummaryPeriod,
+            canNavigateToNextPeriod: store.canShowNextSummaryPeriod,
+            isCurrentPeriod: store.isSelectedSummaryPeriodCurrent,
+            onPeriodChanged: (preset) =>
+                unawaited(store.selectWorkspaceSummaryPeriod(preset)),
+            onPreviousPeriod: () =>
+                unawaited(store.showPreviousWorkspaceSummaryPeriod()),
+            onCurrentPeriod: () =>
+                unawaited(store.showCurrentWorkspaceSummaryPeriod()),
+            onNextPeriod: () =>
+                unawaited(store.showNextWorkspaceSummaryPeriod()),
+            onCalendarDateSelected: (date) =>
+                unawaited(store.selectWorkspaceSummaryCalendarDate(date)),
+            onRetry: () => unawaited(store.loadWorkspaceSummary()),
+            onGenerate: () => unawaited(store.requestWorkspaceSummary()),
+            intentForAction: store.readerActionIntentFor,
+            onAction: (summary, action, [feedbackReason]) => unawaited(
+              store.submitReaderAction(summary, action, feedbackReason),
+            ),
+            topPostRatingFor: reviewStore.topPostRatingFor,
+            onTopPostRating: reviewStore.submitTopPostRating,
+            onTopicRecommendationDecision: (recommendation, status) async {
+              await store.decideTopicRecommendation(
+                recommendation: recommendation,
+                action: _topicRecommendationDecisionAction(status),
+              );
+            },
+            onOpenUrl: (summary, url) => unawaited(
+              store.openReaderSourceUrl(
+                summaryId: summary.id,
+                canonicalUrl: url,
+              ),
+            ),
+            includeTopPosts: false,
           ),
         ),
-        if (showSummaryHistory) ...[
-          const SizedBox(height: AppSpacing.md),
-          content,
+        if (topPostsSummary != null && topPostItems.isNotEmpty) ...[
+          const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.md + 2)),
+          ReaderSummaryTopPostsSliver(
+            items: topPostItems,
+            curatedTopPostCount: topPostsSummary.content.topReads.length,
+            selectedPostCount: selectedPostCount,
+            period: topPostsSummary.period,
+            citationsById: {
+              for (final citation in topPostsSummary.citations)
+                citation.id: citation,
+            },
+            ratingFor: (TopRead item) =>
+                reviewStore.topPostRatingFor(topPostsSummary, item),
+            onRated: (TopRead item, int rating, PostRatingReason? reason) =>
+                reviewStore.submitTopPostRating(
+                  topPostsSummary,
+                  item,
+                  rating,
+                  reason,
+                ),
+            onOpenUrl: (String url) => unawaited(
+              store.openReaderSourceUrl(
+                summaryId: topPostsSummary.id,
+                canonicalUrl: url,
+              ),
+            ),
+          ),
         ],
+        if (showSummaryHistory)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.only(top: AppSpacing.md),
+              child: content,
+            ),
+          ),
       ],
     );
   }
+}
+
+ReaderSummary? _summaryForTopPosts(
+  AsyncViewState<WorkspaceSummarySnapshot> state,
+) {
+  return switch (state) {
+    ReadyViewState<WorkspaceSummarySnapshot>(:final value) => value.current,
+    LoadingViewState<WorkspaceSummarySnapshot>(:final previousValue) =>
+      previousValue?.current,
+    _ => null,
+  };
+}
+
+TopicRecommendationDecisionAction _topicRecommendationDecisionAction(
+  ReaderSummaryTopicRecommendationDecisionStatus status,
+) {
+  return status == ReaderSummaryTopicRecommendationDecisionStatus.accepted
+      ? TopicRecommendationDecisionAction.accept
+      : status == ReaderSummaryTopicRecommendationDecisionStatus.pending
+      ? TopicRecommendationDecisionAction.undo
+      : TopicRecommendationDecisionAction.reject;
 }
 
 bool _hasWorkspaceSummary(AsyncViewState<WorkspaceSummarySnapshot> state) {

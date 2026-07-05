@@ -2,6 +2,7 @@ part of 'reader_summary_brief_surface.dart';
 
 class _TopPostRow extends StatefulWidget {
   const _TopPostRow({
+    super.key,
     required this.index,
     required this.item,
     required this.dateLabel,
@@ -9,6 +10,7 @@ class _TopPostRow extends StatefulWidget {
     required this.onRated,
     required this.onOpenUrl,
     this.dense = false,
+    this.reservePreviewSpace = false,
   });
 
   final int index;
@@ -23,6 +25,7 @@ class _TopPostRow extends StatefulWidget {
   onRated;
   final ValueChanged<String> onOpenUrl;
   final bool dense;
+  final bool reservePreviewSpace;
 
   @override
   State<_TopPostRow> createState() => _TopPostRowState();
@@ -123,7 +126,10 @@ class _TopPostRowState extends State<_TopPostRow> {
           dateLabel: widget.dateLabel,
           rating: rating,
         );
-        final content = _TopPostContentColumn(item: widget.item);
+        final content = _TopPostContentColumn(
+          item: widget.item,
+          reservePreviewSpace: widget.reservePreviewSpace,
+        );
         final metricsRow = _TopPostMetricsRow(metrics: metrics);
         final relevance = _TopPostRelevanceColumn(item: widget.item);
         final menu = _TopPostMenu(
@@ -314,82 +320,6 @@ class _TopPostProviderTile extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _TopPostContentColumn extends StatelessWidget {
-  const _TopPostContentColumn({required this.item});
-
-  final TopRead item;
-
-  @override
-  Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-    final colorScheme = Theme.of(context).colorScheme;
-    final tags = item.matchedRules
-        .map(readablePostTag)
-        .whereType<String>()
-        .take(3)
-        .toList(growable: false);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          _shortTitle(item.title),
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: textTheme.bodyMedium?.copyWith(
-            fontWeight: FontWeight.w700,
-            letterSpacing: 0,
-            height: 1.35,
-          ),
-        ),
-        const SizedBox(height: AppSpacing.xs),
-        Text(
-          readerSummaryDisplayReason(item),
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: textTheme.bodySmall?.copyWith(
-            color: colorScheme.onSurfaceVariant,
-            letterSpacing: 0,
-            height: 1.4,
-          ),
-        ),
-        if (tags.isNotEmpty) ...[
-          const SizedBox(height: AppSpacing.sm),
-          Wrap(
-            spacing: AppSpacing.xs + 2,
-            runSpacing: AppSpacing.xs + 2,
-            children: [
-              for (final tag in tags)
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: colorScheme.surfaceContainerHighest.withValues(
-                      alpha: 0.55,
-                    ),
-                    border: Border.all(color: colorScheme.outlineVariant),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: AppSpacing.sm + 2,
-                      vertical: 3,
-                    ),
-                    child: Text(
-                      tag,
-                      style: textTheme.labelSmall?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 0,
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ],
-      ],
     );
   }
 }

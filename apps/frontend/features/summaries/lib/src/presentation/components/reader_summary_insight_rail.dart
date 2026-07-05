@@ -19,6 +19,10 @@ class ReaderSummaryInsightRail extends StatelessWidget {
           const SizedBox(height: AppSpacing.lg),
         ],
         _CollectionStatsSection(summary: summary),
+        if (!summary.content.topicMap.isEmpty) ...[
+          const SizedBox(height: AppSpacing.lg),
+          ReaderSummaryTopicMapPanel(topicMap: summary.content.topicMap),
+        ],
       ],
     );
   }

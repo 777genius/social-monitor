@@ -1,9 +1,11 @@
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
 import '../../domain/value_objects/reader_action_target.dart';
-import '../../domain/value_objects/summary_period.dart';
 import '../api/post_rating_api_dto.dart';
 import '../api/summary_api_dto.dart';
+import '../api/topic_recommendation_api_dto.dart';
+import 'in_memory_topic_recommendation_reader.dart';
+import 'in_memory_workspace_summary_reader.dart';
 import 'summaries_api_client.dart';
 
 final class InMemorySummariesApiClient implements SummariesApiClient {
@@ -12,15 +14,18 @@ final class InMemorySummariesApiClient implements SummariesApiClient {
     ReaderSummaryApiDto? workspaceSummary,
     List<SummaryPeriodApiDto> workspaceSummaryAvailablePeriods = const [],
     List<PostRatingApiDto> postRatings = const [],
+    TopicRecommendationQueueApiDto? topicRecommendations,
   }) : _items = List<SummaryApiDto>.of(items),
        _workspaceSummary = workspaceSummary,
        _workspaceSummaryAvailablePeriods = workspaceSummaryAvailablePeriods,
-       _postRatings = List<PostRatingApiDto>.of(postRatings);
+       _postRatings = List<PostRatingApiDto>.of(postRatings),
+       _topicRecommendations = topicRecommendations;
 
   final List<SummaryApiDto> _items;
   final ReaderSummaryApiDto? _workspaceSummary;
   final List<SummaryPeriodApiDto> _workspaceSummaryAvailablePeriods;
   final List<PostRatingApiDto> _postRatings;
+  final TopicRecommendationQueueApiDto? _topicRecommendations;
   final Map<String, ReaderSummaryJobApiDto> _summaryJobs = {};
   final List<LoadWorkspaceSummaryApiRequest> loadWorkspaceSummaryRequests = [];
   final List<LoadWorkspaceSummaryApiRequest>
@@ -31,6 +36,8 @@ final class InMemorySummariesApiClient implements SummariesApiClient {
   final List<SubmitReaderActionApiRequest> submittedReaderActionRequests = [];
   final List<SubmitPostRatingApiRequest> submittedPostRatingRequests = [];
   final List<LoadPostRatingsApiRequest> loadPostRatingsRequests = [];
+  final List<DecideTopicRecommendationApiRequest>
+  decidedTopicRecommendationRequests = [];
 
   @override
   Future<Result<SummaryPageApiDto>> listSummaries(
@@ -66,43 +73,49 @@ final class InMemorySummariesApiClient implements SummariesApiClient {
   @override
   Future<Result<WorkspaceSummaryApiDto>> loadWorkspaceSummary(
     LoadWorkspaceSummaryApiRequest request,
-  ) async {
+  ) {
     loadWorkspaceSummaryRequests.add(request);
-    final failure = _workspaceFailure(request.scope);
-    if (failure != null) {
-      return Result.failure(failure);
-    }
-    final current = _workspaceSummary == null
-        ? null
-        : _readerSummaryForPeriod(_workspaceSummary, request.period);
-    return Result.success(
-      WorkspaceSummaryApiDto(
-        current: current,
-        availablePeriods: _workspaceSummaryAvailablePeriods.isEmpty
-            ? current == null
-                  ? const []
-                  : [current.period]
-            : _workspaceSummaryAvailablePeriods,
-        availablePeriodsAreComplete:
-            _workspaceSummaryAvailablePeriods.isNotEmpty,
-      ),
-    );
+    return _workspaceSummaryReader().load(request);
   }
 
   @override
   Future<Result<WorkspaceSummaryApiDto>> loadWorkspaceSummaryHistory(
     LoadWorkspaceSummaryApiRequest request,
-  ) async {
+  ) {
     loadWorkspaceSummaryHistoryRequests.add(request);
+    return _workspaceSummaryReader().loadHistory(request);
+  }
+
+  @override
+  Future<Result<TopicRecommendationQueueApiDto>> loadTopicRecommendations(
+    LoadTopicRecommendationsApiRequest request,
+  ) => InMemoryTopicRecommendationReader(
+    topicRecommendations: _topicRecommendations,
+    workspaceFailure: _workspaceFailure,
+  ).load(request);
+
+  @override
+  Future<Result<TopicRecommendationDecisionApiDto>> decideTopicRecommendation(
+    DecideTopicRecommendationApiRequest request,
+  ) async {
+    decidedTopicRecommendationRequests.add(request);
     final failure = _workspaceFailure(request.scope);
     if (failure != null) {
       return Result.failure(failure);
     }
 
     return Result.success(
-      WorkspaceSummaryApiDto(
-        availablePeriods: _workspaceSummaryAvailablePeriods,
-        availablePeriodsAreComplete: true,
+      TopicRecommendationDecisionApiDto(
+        recommendationId: request.recommendationId,
+        topicLabel: request.topicLabel,
+        status: switch (request.action) {
+          'accept' => 'accepted',
+          'undo' => 'pending',
+          _ => 'rejected',
+        },
+        decidedBy: 'workspace-admin',
+        note: request.note,
+        decidedAt: DateTime.now().toUtc(),
       ),
     );
   }
@@ -358,6 +371,14 @@ final class InMemorySummariesApiClient implements SummariesApiClient {
     }
     return updated;
   }
+
+  InMemoryWorkspaceSummaryReader _workspaceSummaryReader() {
+    return InMemoryWorkspaceSummaryReader(
+      workspaceSummary: _workspaceSummary,
+      availablePeriods: _workspaceSummaryAvailablePeriods,
+      workspaceFailure: _workspaceFailure,
+    );
+  }
 }
 
 String _postRatingLearningEffect(int rating) {
@@ -368,31 +389,4 @@ String _postRatingLearningEffect(int rating) {
     return 'neutral';
   }
   return 'positive';
-}
-
-ReaderSummaryApiDto _readerSummaryForPeriod(
-  ReaderSummaryApiDto summary,
-  SummaryPeriod period,
-) {
-  return ReaderSummaryApiDto(
-    id: summary.id,
-    title: summary.title,
-    executiveSummary: summary.executiveSummary,
-    userId: summary.userId,
-    content: summary.content,
-    topStories: summary.topStories,
-    repeatedSignals: summary.repeatedSignals,
-    citations: summary.citations,
-    period: SummaryPeriodApiDto(
-      cadence: period.cadence.name,
-      startedAt: period.startedAt,
-      endedAt: period.endedAt,
-      timezone: period.timezone,
-      periodKey: period.periodKey,
-    ),
-    sourceWindow: summary.sourceWindow,
-    freshnessLabel: summary.freshnessLabel,
-    isDegraded: summary.isDegraded,
-    coverage: summary.coverage,
-  );
 }

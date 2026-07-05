@@ -1,9 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 import 'package:social_monitor_summaries/src/application/contracts/reader_source_launcher.dart';
+import 'package:social_monitor_summaries/src/application/use_cases/decide_topic_recommendation_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/list_summaries_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/load_post_ratings_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/load_summary_detail_use_case.dart';
+import 'package:social_monitor_summaries/src/application/use_cases/load_topic_recommendations_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/load_workspace_summary_history_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/load_workspace_summary_job_status_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/load_workspace_summary_use_case.dart';
@@ -183,6 +185,8 @@ SummariesReviewStore _store(InMemorySummariesApiClient apiClient) {
         catalog,
       ),
       loadSummaryDetail: LoadSummaryDetailUseCase(catalog),
+      loadTopicRecommendations: LoadTopicRecommendationsUseCase(catalog),
+      decideTopicRecommendation: DecideTopicRecommendationUseCase(catalog),
       loadPostRatings: LoadPostRatingsUseCase(catalog),
       regenerateSummary: RegenerateSummaryUseCase(catalog),
       submitFeedback: SubmitSummaryFeedbackUseCase(catalog),

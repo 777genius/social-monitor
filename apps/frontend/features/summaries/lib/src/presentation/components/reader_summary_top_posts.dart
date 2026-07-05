@@ -1,6 +1,5 @@
 part of 'reader_summary_brief_surface.dart';
 
-const _initialVisibleTopPosts = 3;
 const _githubTrendingProviderKey = 'github-trending-page';
 
 enum _TopPostSort { relevance, engagement }
@@ -41,48 +40,16 @@ class ReaderSummaryTopPosts extends StatefulWidget {
 }
 
 class _ReaderSummaryTopPostsState extends State<ReaderSummaryTopPosts> {
-  static const _revealBatch = 3;
-
   _TopPostSort _sort = _TopPostSort.relevance;
   _TopPostBoard _board = _TopPostBoard.posts;
   final Set<String> _hiddenProviders = {};
-  bool _denseView = true;
-  int _visibleCount = _initialVisibleTopPosts;
-  ScrollPosition? _scrollPosition;
-  int _totalCount = 0;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final position = Scrollable.maybeOf(context)?.position;
-    if (!identical(position, _scrollPosition)) {
-      _scrollPosition?.removeListener(_maybeRevealMorePosts);
-      _scrollPosition = position?..addListener(_maybeRevealMorePosts);
-    }
-  }
+  final ScrollController _postsScrollController = ScrollController();
+  bool _denseView = false;
 
   @override
   void dispose() {
-    _scrollPosition?.removeListener(_maybeRevealMorePosts);
+    _postsScrollController.dispose();
     super.dispose();
-  }
-
-  void _maybeRevealMorePosts() {
-    final position = _scrollPosition;
-    if (position == null || !position.hasPixels || !mounted) {
-      return;
-    }
-    if (_visibleCount >= _totalCount) {
-      return;
-    }
-    final revealDistance = position.hasViewportDimension
-        ? position.viewportDimension
-        : 600.0;
-    if (position.extentAfter < revealDistance) {
-      setState(() {
-        _visibleCount = (_visibleCount + _revealBatch).clamp(0, _totalCount);
-      });
-    }
   }
 
   @override
@@ -107,14 +74,10 @@ class _ReaderSummaryTopPostsState extends State<ReaderSummaryTopPosts> {
             .where((item) => !_hiddenProviders.contains(item.providerKey))
             .toList(growable: false)
           ..sort(_compare);
-    _totalCount = filtered.length;
-    final visible = filtered.take(_visibleCount).toList(growable: false);
-    if (_visibleCount < _totalCount) {
-      // Fill the viewport (and one batch beyond) even before any scrolling.
-      WidgetsBinding.instance.addPostFrameCallback(
-        (_) => _maybeRevealMorePosts(),
-      );
-    }
+    final reservePreviewSpace = filtered.any(
+      (item) => item.previewMedia != null,
+    );
+    final listHeight = _topPostsListViewportHeight(context);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -134,16 +97,12 @@ class _ReaderSummaryTopPostsState extends State<ReaderSummaryTopPosts> {
           hiddenProviders: _hiddenProviders,
           denseView: _denseView,
           onBoardChanged: _setBoard,
-          onSortChanged: (sort) => setState(() => _sort = sort),
-          onProviderToggled: (providerKey) => setState(() {
-            if (!_hiddenProviders.remove(providerKey)) {
-              _hiddenProviders.add(providerKey);
-            }
-          }),
-          onDenseViewChanged: (dense) => setState(() => _denseView = dense),
+          onSortChanged: _setSort,
+          onProviderToggled: _toggleProvider,
+          onDenseViewChanged: _setDenseView,
         ),
         const SizedBox(height: AppSpacing.sm),
-        if (visible.isEmpty)
+        if (filtered.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
             child: Text(
@@ -157,19 +116,38 @@ class _ReaderSummaryTopPostsState extends State<ReaderSummaryTopPosts> {
             ),
           )
         else
-          for (final entry in visible.indexed) ...[
-            if (entry.$1 > 0)
-              Divider(height: 1, color: colorScheme.outlineVariant),
-            _TopPostRow(
-              index: entry.$1,
-              item: entry.$2,
-              dateLabel: summaryPeriodDayLabel(widget.period),
-              dense: _denseView,
-              rating: widget.ratingFor(entry.$2),
-              onRated: widget.onRated,
-              onOpenUrl: widget.onOpenUrl,
+          SizedBox(
+            height: listHeight,
+            child: Scrollbar(
+              controller: _postsScrollController,
+              child: ListView.separated(
+                controller: _postsScrollController,
+                primary: false,
+                cacheExtent: listHeight,
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                itemCount: filtered.length,
+                separatorBuilder: (context, index) =>
+                    Divider(height: 1, color: colorScheme.outlineVariant),
+                itemBuilder: (context, index) {
+                  final item = filtered[index];
+                  return _TopPostRow(
+                    key: ValueKey(
+                      'reader-summary-top-post-${_topPostStableId(item)}',
+                    ),
+                    index: index,
+                    item: item,
+                    dateLabel: summaryPeriodDayLabel(widget.period),
+                    dense: _denseView,
+                    reservePreviewSpace: reservePreviewSpace,
+                    rating: widget.ratingFor(item),
+                    onRated: widget.onRated,
+                    onOpenUrl: widget.onOpenUrl,
+                  );
+                },
+              ),
             ),
-          ],
+          ),
       ],
     );
   }
@@ -218,9 +196,51 @@ class _ReaderSummaryTopPostsState extends State<ReaderSummaryTopPosts> {
   void _setBoard(_TopPostBoard board) {
     setState(() {
       _board = board;
-      _visibleCount = _initialVisibleTopPosts;
     });
+    _resetPostsScroll();
   }
+
+  void _setSort(_TopPostSort sort) {
+    setState(() => _sort = sort);
+    _resetPostsScroll();
+  }
+
+  void _toggleProvider(String providerKey) {
+    setState(() {
+      if (!_hiddenProviders.remove(providerKey)) {
+        _hiddenProviders.add(providerKey);
+      }
+    });
+    _resetPostsScroll();
+  }
+
+  void _setDenseView(bool dense) {
+    setState(() => _denseView = dense);
+    _resetPostsScroll();
+  }
+
+  void _resetPostsScroll() {
+    if (!_postsScrollController.hasClients) {
+      return;
+    }
+    _postsScrollController.jumpTo(0);
+  }
+}
+
+double _topPostsListViewportHeight(BuildContext context) {
+  final windowHeight = MediaQuery.sizeOf(context).height;
+  if (!windowHeight.isFinite || windowHeight <= 0) {
+    return 620;
+  }
+  return (windowHeight * 0.68).clamp(360.0, 760.0).toDouble();
+}
+
+String _topPostStableId(TopRead item) {
+  final canonicalUrl = item.canonicalUrl?.trim();
+  if (canonicalUrl != null && canonicalUrl.isNotEmpty) {
+    return canonicalUrl;
+  }
+  return '${item.providerKey.trim()}:${item.title.trim()}';
 }
 
 class _TopPostsHeader extends StatelessWidget {

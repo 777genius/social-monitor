@@ -4,12 +4,14 @@ import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
 import '../../domain/aggregates/reader_summary.dart';
 import '../../domain/entities/post_rating.dart';
+import '../../domain/entities/reader_summary_topic_recommendation.dart';
 import '../../domain/entities/summary_citation.dart';
 import '../../domain/value_objects/reader_action_target.dart';
 import 'reader_summary_brief_surface.dart';
 import 'reader_summary_claim_board.dart';
 import 'reader_summary_next_actions.dart';
 import 'reader_summary_reliability_indicators.dart';
+import 'reader_summary_topic_recommendations_panel.dart';
 
 /// Executive summary board matching the summaries page reference design:
 /// executive brief card with insight rail, and top posts.
@@ -19,6 +21,7 @@ class ReaderSummaryView extends StatelessWidget {
     required this.summary,
     required this.isRefreshing,
     required this.readerActionState,
+    required this.topicRecommendationState,
     required this.activeReaderActionIdempotencyKey,
     required this.lastReaderActionIdempotencyKey,
     required this.onGenerate,
@@ -26,12 +29,16 @@ class ReaderSummaryView extends StatelessWidget {
     required this.onAction,
     required this.topPostRatingFor,
     required this.onTopPostRating,
+    required this.onTopicRecommendationDecision,
     required this.onOpenUrl,
+    this.includeTopPosts = true,
   });
 
   final ReaderSummary summary;
   final bool isRefreshing;
   final AsyncViewState<ReaderActionResult> readerActionState;
+  final AsyncViewState<ReaderSummaryTopicRecommendationQueue>
+  topicRecommendationState;
   final String? activeReaderActionIdempotencyKey;
   final String? lastReaderActionIdempotencyKey;
   final VoidCallback onGenerate;
@@ -44,14 +51,20 @@ class ReaderSummaryView extends StatelessWidget {
     PostRatingReason? reason,
   )
   onTopPostRating;
+  final Future<void> Function(
+    ReaderSummaryTopicRecommendation recommendation,
+    ReaderSummaryTopicRecommendationDecisionStatus status,
+  )
+  onTopicRecommendationDecision;
   final ValueChanged<String> onOpenUrl;
+  final bool includeTopPosts;
 
   @override
   Widget build(BuildContext context) {
     final citationsById = {
       for (final citation in summary.citations) citation.id: citation,
     };
-    final topPostItems = _topPostItems(summary);
+    final topPostItems = readerSummaryTopPostItems(summary);
     final selectedPostCount =
         summary.coverage?.selectedFeedItemCount ?? topPostItems.length;
 
@@ -67,6 +80,10 @@ class ReaderSummaryView extends StatelessWidget {
             onAction: onAction,
             onOpenUrl: onOpenUrl,
           ),
+          ReaderSummaryTopicRecommendationsPanel(
+            state: topicRecommendationState,
+            onDecision: onTopicRecommendationDecision,
+          ),
           if (summary.content.claimBoard.isNotEmpty) ...[
             const SizedBox(height: AppSpacing.md + 2),
             ReaderSummaryClaimBoard(
@@ -81,7 +98,7 @@ class ReaderSummaryView extends StatelessWidget {
               report: summary.content.reliabilityReport,
             ),
           ],
-          if (topPostItems.isNotEmpty) ...[
+          if (includeTopPosts && topPostItems.isNotEmpty) ...[
             const SizedBox(height: AppSpacing.md + 2),
             ReaderSummaryTopPosts(
               items: topPostItems,
@@ -100,7 +117,7 @@ class ReaderSummaryView extends StatelessWidget {
   }
 }
 
-List<TopRead> _topPostItems(ReaderSummary summary) =>
+List<TopRead> readerSummaryTopPostItems(ReaderSummary summary) =>
     summary.content.selectedPosts.isNotEmpty
     ? summary.content.selectedPosts
     : summary.content.topReads;
@@ -137,23 +154,20 @@ class _ExecutiveBoardCard extends StatelessWidget {
 
         final Widget content;
         if (wide) {
-          content = IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(child: brief),
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.lg,
-                  ),
-                  child: SizedBox(
-                    width: 1,
-                    child: ColoredBox(color: colorScheme.outlineVariant),
-                  ),
+          content = Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: brief),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+                child: SizedBox(
+                  width: 1,
+                  height: 360,
+                  child: ColoredBox(color: colorScheme.outlineVariant),
                 ),
-                SizedBox(width: 300, child: rail),
-              ],
-            ),
+              ),
+              SizedBox(width: 300, child: rail),
+            ],
           );
         } else {
           content = Column(

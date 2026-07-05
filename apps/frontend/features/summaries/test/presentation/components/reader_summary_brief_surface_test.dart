@@ -45,6 +45,38 @@ void main() {
     expect(find.text('Key links'), findsNothing);
   });
 
+  testWidgets('renders grouped topic map panel in reader summary', (
+    tester,
+  ) async {
+    const mapper = SummaryMapper();
+    final summary = mapper.readerSummaryToDomain(readerSummaryApiDto());
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark(),
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: ReaderSummaryBriefSurface(
+              summary: summary,
+              citationsById: {
+                for (final citation in summary.citations) citation.id: citation,
+              },
+              isRefreshing: false,
+              onOpenUrl: (_) {},
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byType(ReaderSummaryTopicMapPanel), findsOneWidget);
+    expect(find.text('Topic map'), findsOneWidget);
+    expect(find.text('AI grouped'), findsOneWidget);
+    expect(find.text('Agent tools'), findsOneWidget);
+    expect(find.text('Protocols'), findsOneWidget);
+    expect(find.byType(CustomPaint), findsAtLeastNWidgets(1));
+  });
+
   testWidgets(
     'shows collected and selected summary counts without duplicates',
     (tester) async {

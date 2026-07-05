@@ -51,6 +51,9 @@ ReaderSummaryReaderBriefDto _$ReaderSummaryReaderBriefDtoFromJson(
             ReaderSummarySourceMixEntryDto.fromJson(e as Map<String, dynamic>),
       )
       .toList(),
+  topicMap: ReaderSummaryTopicMapDto.fromJson(
+    json['topicMap'] as Map<String, dynamic>,
+  ),
   topReads: (json['topReads'] as List<dynamic>)
       .map(
         (e) => ReaderSummaryReaderItemDto.fromJson(e as Map<String, dynamic>),
@@ -77,6 +80,7 @@ Map<String, dynamic> _$ReaderSummaryReaderBriefDtoToJson(
   'risks': instance.risks,
   'selectedPosts': instance.selectedPosts,
   'sourceMix': instance.sourceMix,
+  'topicMap': instance.topicMap,
   'topReads': instance.topReads,
   'trendDelta': instance.trendDelta,
 };

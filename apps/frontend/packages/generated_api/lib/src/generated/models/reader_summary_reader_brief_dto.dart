@@ -11,6 +11,7 @@ import 'reader_summary_reader_item_dto.dart';
 import 'reader_summary_reader_quality_state_dto.dart';
 import 'reader_summary_reliability_report_dto.dart';
 import 'reader_summary_source_mix_entry_dto.dart';
+import 'reader_summary_topic_map_dto.dart';
 import 'reader_summary_trend_delta_dto.dart';
 
 part 'reader_summary_reader_brief_dto.g.dart';
@@ -31,6 +32,7 @@ class ReaderSummaryReaderBriefDto {
     required this.risks,
     required this.selectedPosts,
     required this.sourceMix,
+    required this.topicMap,
     required this.topReads,
     required this.trendDelta,
   });
@@ -51,6 +53,7 @@ class ReaderSummaryReaderBriefDto {
   final List<String> risks;
   final List<ReaderSummaryReaderItemDto> selectedPosts;
   final List<ReaderSummarySourceMixEntryDto> sourceMix;
+  final ReaderSummaryTopicMapDto topicMap;
   final List<ReaderSummaryReaderItemDto> topReads;
   final ReaderSummaryTrendDeltaDto trendDelta;
 

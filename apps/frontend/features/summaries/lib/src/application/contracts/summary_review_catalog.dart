@@ -3,13 +3,16 @@ import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 import '../../domain/aggregates/reader_summary.dart';
 import '../../domain/entities/generated_summary.dart';
 import '../../domain/entities/reader_summary_job_snapshot.dart';
+import '../../domain/entities/reader_summary_topic_recommendation.dart';
 import '../../domain/value_objects/reader_action_target.dart';
+import '../commands/decide_topic_recommendation_command.dart';
 import '../commands/regenerate_summary_command.dart';
 import '../commands/request_workspace_summary_command.dart';
 import '../commands/submit_reader_action_command.dart';
 import '../commands/submit_summary_feedback_command.dart';
 import '../queries/list_summaries_query.dart';
 import '../queries/load_summary_detail_query.dart';
+import '../queries/load_topic_recommendations_query.dart';
 import '../queries/load_workspace_summary_job_status_query.dart';
 import '../queries/load_workspace_summary_query.dart';
 import 'post_rating_catalog.dart';
@@ -42,6 +45,12 @@ abstract interface class SummaryReviewCatalog implements PostRatingCatalog {
   Future<Result<WorkspaceSummarySnapshot>> loadWorkspaceSummaryHistory(
     LoadWorkspaceSummaryQuery query,
   );
+
+  Future<Result<ReaderSummaryTopicRecommendationQueue>>
+  loadTopicRecommendations(LoadTopicRecommendationsQuery query);
+
+  Future<Result<ReaderSummaryTopicRecommendationDecisionStatus>>
+  decideTopicRecommendation(DecideTopicRecommendationCommand command);
 
   Future<Result<ReaderSummaryJobSnapshot>> requestWorkspaceSummary(
     RequestWorkspaceSummaryCommand command,

@@ -1,6 +1,8 @@
+import '../../application/use_cases/decide_topic_recommendation_use_case.dart';
 import '../../application/use_cases/list_summaries_use_case.dart';
 import '../../application/use_cases/load_post_ratings_use_case.dart';
 import '../../application/use_cases/load_summary_detail_use_case.dart';
+import '../../application/use_cases/load_topic_recommendations_use_case.dart';
 import '../../application/use_cases/load_workspace_summary_history_use_case.dart';
 import '../../application/use_cases/load_workspace_summary_job_status_use_case.dart';
 import '../../application/use_cases/load_workspace_summary_use_case.dart';
@@ -19,6 +21,8 @@ final class SummariesReviewStoreDependencies {
     required this.requestWorkspaceSummary,
     required this.loadWorkspaceSummaryJobStatus,
     required this.loadSummaryDetail,
+    required this.loadTopicRecommendations,
+    required this.decideTopicRecommendation,
     required this.loadPostRatings,
     required this.regenerateSummary,
     required this.submitFeedback,
@@ -33,6 +37,8 @@ final class SummariesReviewStoreDependencies {
   final RequestWorkspaceSummaryUseCase requestWorkspaceSummary;
   final LoadWorkspaceSummaryJobStatusUseCase loadWorkspaceSummaryJobStatus;
   final LoadSummaryDetailUseCase loadSummaryDetail;
+  final LoadTopicRecommendationsUseCase loadTopicRecommendations;
+  final DecideTopicRecommendationUseCase decideTopicRecommendation;
   final LoadPostRatingsUseCase loadPostRatings;
   final RegenerateSummaryUseCase regenerateSummary;
   final SubmitSummaryFeedbackUseCase submitFeedback;

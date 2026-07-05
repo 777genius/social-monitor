@@ -3,9 +3,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 import 'package:social_monitor_summaries/src/application/contracts/reader_source_launcher.dart';
+import 'package:social_monitor_summaries/src/application/use_cases/decide_topic_recommendation_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/list_summaries_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/load_post_ratings_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/load_summary_detail_use_case.dart';
+import 'package:social_monitor_summaries/src/application/use_cases/load_topic_recommendations_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/load_workspace_summary_history_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/load_workspace_summary_job_status_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/load_workspace_summary_use_case.dart';
@@ -153,6 +155,12 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('0 selected'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('Top posts'),
+        500,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
       expect(find.text('Top posts'), findsOneWidget);
       expect(find.text('Reddit thread on agent reliability'), findsWidgets);
       expect(find.text('Upvotes'), findsWidgets);
@@ -210,18 +218,23 @@ void main() {
     await _pumpSizedFeature(tester, store: store, size: const Size(1280, 820));
     await tester.pumpAndSettle();
 
-    expect(find.text('Reddit thread on agent reliability'), findsOneWidget);
-
     await tester.scrollUntilVisible(
       find.byKey(const ValueKey('reader-summary-top-posts-filters')),
       500,
       scrollable: find.byType(Scrollable).first,
     );
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('reader-summary-top-posts-filters')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Reddit thread on agent reliability'), findsOneWidget);
     await tester.tap(
       find.byKey(const ValueKey('reader-summary-top-posts-filters')),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Reddit').last);
+    await tester.tap(
+      find.widgetWithText(CheckedPopupMenuItem<String>, 'Reddit'),
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('Reddit thread on agent reliability'), findsNothing);
@@ -231,7 +244,9 @@ void main() {
       find.byKey(const ValueKey('reader-summary-top-posts-filters')),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Reddit').last);
+    await tester.tap(
+      find.widgetWithText(CheckedPopupMenuItem<String>, 'Reddit'),
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('Reddit thread on agent reliability'), findsOneWidget);
@@ -532,6 +547,8 @@ SummariesReviewStore _store(
         catalog,
       ),
       loadSummaryDetail: LoadSummaryDetailUseCase(catalog),
+      loadTopicRecommendations: LoadTopicRecommendationsUseCase(catalog),
+      decideTopicRecommendation: DecideTopicRecommendationUseCase(catalog),
       loadPostRatings: LoadPostRatingsUseCase(catalog),
       regenerateSummary: RegenerateSummaryUseCase(catalog),
       submitFeedback: SubmitSummaryFeedbackUseCase(catalog),
@@ -564,25 +581,9 @@ Future<void> _pumpSizedFeature(
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
 
+  final theme = AppTheme.light();
   await tester.pumpWidget(
-    _TestApp(store: store, size: size, autoload: autoload),
-  );
-}
-
-class _TestApp extends StatelessWidget {
-  const _TestApp({
-    required this.store,
-    required this.size,
-    required this.autoload,
-  });
-
-  final SummariesReviewStore store;
-  final Size size;
-  final bool autoload;
-  @override
-  Widget build(BuildContext context) {
-    final theme = AppTheme.light();
-    return AppHeadlessScope(
+    AppHeadlessScope(
       theme: theme,
       appBuilder: (overlayBuilder) => MaterialApp(
         theme: theme,
@@ -594,6 +595,6 @@ class _TestApp extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
 }

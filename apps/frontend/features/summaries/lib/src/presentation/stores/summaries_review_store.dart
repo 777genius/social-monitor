@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
+import '../../application/commands/decide_topic_recommendation_command.dart';
 import '../../application/commands/open_reader_source_command.dart';
 import '../../application/commands/regenerate_summary_command.dart';
 import '../../application/commands/request_workspace_summary_command.dart';
@@ -12,12 +13,14 @@ import '../../application/commands/submit_summary_feedback_command.dart';
 import '../../application/queries/list_summaries_query.dart';
 import '../../application/queries/load_post_ratings_query.dart';
 import '../../application/queries/load_summary_detail_query.dart';
+import '../../application/queries/load_topic_recommendations_query.dart';
 import '../../application/queries/load_workspace_summary_job_status_query.dart';
 import '../../application/queries/load_workspace_summary_query.dart';
 import '../../domain/aggregates/reader_summary.dart';
 import '../../domain/entities/generated_summary.dart';
 import '../../domain/entities/post_rating.dart';
 import '../../domain/entities/reader_summary_job_snapshot.dart';
+import '../../domain/entities/reader_summary_topic_recommendation.dart';
 import '../../domain/entities/summary_citation.dart';
 import '../../domain/value_objects/reader_action_target.dart';
 import '../../domain/value_objects/summary_feedback_kind.dart';
@@ -29,6 +32,7 @@ import '../workflows/summaries_review_store_dependencies.dart';
 part 'summaries_review_store_workspace_summary_workflow.dart';
 part 'summaries_review_store_post_rating_workflow.dart';
 part 'summaries_review_store_reader_action_workflow.dart';
+part 'summaries_review_store_topic_recommendation_workflow.dart';
 part 'summaries_review_store_summary_workflow.dart';
 part 'summaries_review_store_period_helpers.dart';
 
@@ -49,6 +53,7 @@ final class SummariesReviewStore extends ChangeNotifier {
     OperationGenerationGuard? mutationGenerationGuard,
     OperationGenerationGuard? readerActionGenerationGuard,
     OperationGenerationGuard? postRatingGenerationGuard,
+    OperationGenerationGuard? topicRecommendationGenerationGuard,
     Duration workspaceSummaryLoadTimeout = const Duration(seconds: 20),
     ReaderActionTargetResolver readerActionTargetResolver =
         const ReaderActionTargetResolver(),
@@ -71,6 +76,8 @@ final class SummariesReviewStore extends ChangeNotifier {
            readerActionGenerationGuard ?? OperationGenerationGuard(),
        _postRatingGenerationGuard =
            postRatingGenerationGuard ?? OperationGenerationGuard(),
+       _topicRecommendationGenerationGuard =
+           topicRecommendationGenerationGuard ?? OperationGenerationGuard(),
        _workspaceSummaryLoadTimeout = workspaceSummaryLoadTimeout,
        _readerActionTargetResolver = readerActionTargetResolver;
 
@@ -86,6 +93,7 @@ final class SummariesReviewStore extends ChangeNotifier {
   final OperationGenerationGuard _mutationGenerationGuard;
   final OperationGenerationGuard _readerActionGenerationGuard;
   final OperationGenerationGuard _postRatingGenerationGuard;
+  final OperationGenerationGuard _topicRecommendationGenerationGuard;
   final Duration _workspaceSummaryLoadTimeout;
 
   WorkspaceScope _scope;
@@ -115,6 +123,9 @@ final class SummariesReviewStore extends ChangeNotifier {
       const InitialViewState<ReaderActionResult>();
   AsyncViewState<Map<String, PostRating>> postRatingState =
       const InitialViewState<Map<String, PostRating>>();
+  AsyncViewState<ReaderSummaryTopicRecommendationQueue>
+  topicRecommendationState =
+      const InitialViewState<ReaderSummaryTopicRecommendationQueue>();
 
   WorkspaceScope get scope => _scope;
 
@@ -268,6 +279,7 @@ final class SummariesReviewStore extends ChangeNotifier {
     _mutationGenerationGuard.invalidate();
     _readerActionGenerationGuard.invalidate();
     _postRatingGenerationGuard.invalidate();
+    _topicRecommendationGenerationGuard.invalidate();
     _activeWorkspaceSummaryLoad = null;
     _activeWorkspaceSummaryLoadKey = null;
     super.dispose();
@@ -284,6 +296,7 @@ final class SummariesReviewStore extends ChangeNotifier {
     _mutationGenerationGuard.invalidate();
     _readerActionGenerationGuard.invalidate();
     _postRatingGenerationGuard.invalidate();
+    _topicRecommendationGenerationGuard.invalidate();
     _selectedSummaryId = null;
     listState = const InitialViewState<PageResult<GeneratedSummary>>();
     workspaceSummaryState = const InitialViewState<WorkspaceSummarySnapshot>();
@@ -293,6 +306,8 @@ final class SummariesReviewStore extends ChangeNotifier {
     feedbackState = const InitialViewState<GeneratedSummary>();
     readerActionState = const InitialViewState<ReaderActionResult>();
     postRatingState = const InitialViewState<Map<String, PostRating>>();
+    topicRecommendationState =
+        const InitialViewState<ReaderSummaryTopicRecommendationQueue>();
     _activeReaderActionIdempotencyKey = null;
     _lastReaderActionIdempotencyKey = null;
     _activeWorkspaceSummaryLoad = null;
@@ -302,6 +317,7 @@ final class SummariesReviewStore extends ChangeNotifier {
 
   Future<void> load() async {
     unawaited(loadWorkspaceSummary());
+    unawaited(loadTopicRecommendations());
 
     final generation = _listGenerationGuard.markOperationStarted();
     final previous = switch (listState) {

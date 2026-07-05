@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+import 'package:graphview/GraphView.dart' as graphview;
 import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
@@ -32,13 +34,21 @@ part 'reader_summary_brief_helpers.dart';
 part 'reader_summary_insight_rail.dart';
 part 'reader_summary_metric_badges.dart';
 part 'reader_summary_provider_coverage_rows.dart';
+part 'reader_summary_topic_map_graph.dart';
+part 'reader_summary_topic_map_graph_layout.dart';
+part 'reader_summary_topic_map_graph_model.dart';
+part 'reader_summary_topic_map_panel.dart';
+part 'reader_summary_topic_map_visuals.dart';
 part 'reader_summary_top_post_dense_row.dart';
+part 'reader_summary_top_post_content_column.dart';
 part 'reader_summary_top_post_metrics_row.dart';
+part 'reader_summary_top_post_preview_slot.dart';
 part 'reader_summary_top_post_rating_control.dart';
 part 'reader_summary_top_post_rating_reason_dialog.dart';
 part 'reader_summary_top_post_rating_slot.dart';
 part 'reader_summary_top_post_row.dart';
 part 'reader_summary_top_posts.dart';
+part 'reader_summary_top_posts_sliver.dart';
 part 'reader_summary_top_posts_controls.dart';
 
 class ReaderSummaryBriefSurface extends StatefulWidget {
@@ -95,6 +105,10 @@ class _ReaderSummaryBriefSurfaceState extends State<ReaderSummaryBriefSurface> {
                   citationsById: widget.citationsById,
                   onOpenUrl: widget.onOpenUrl,
                 ),
+                if (!content.topicMap.isEmpty) ...[
+                  const SizedBox(height: AppSpacing.md),
+                  ReaderSummaryTopicMapPanel(topicMap: content.topicMap),
+                ],
                 const SizedBox(height: AppSpacing.md),
                 _SourceFilterChips(
                   entries: content.sourceMix,

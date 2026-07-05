@@ -5,11 +5,14 @@ import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 import '../../domain/aggregates/reader_summary.dart';
 import '../../domain/entities/post_rating.dart';
 import '../../domain/entities/reader_summary_job_snapshot.dart';
+import '../../domain/entities/reader_summary_topic_recommendation.dart';
 import '../../domain/value_objects/reader_action_target.dart';
 import 'reader_summary_view.dart';
 import 'workspace_summary_period_shell.dart';
 import 'workspace_summary_skeleton.dart';
 import 'workspace_summary_status_cards.dart';
+
+part 'workspace_ready_summary.dart';
 
 class WorkspaceSummaryPanel extends StatelessWidget {
   const WorkspaceSummaryPanel({
@@ -17,6 +20,7 @@ class WorkspaceSummaryPanel extends StatelessWidget {
     required this.state,
     required this.jobState,
     required this.readerActionState,
+    required this.topicRecommendationState,
     required this.activeReaderActionIdempotencyKey,
     required this.lastReaderActionIdempotencyKey,
     required this.selectedPeriod,
@@ -36,12 +40,16 @@ class WorkspaceSummaryPanel extends StatelessWidget {
     required this.onAction,
     required this.topPostRatingFor,
     required this.onTopPostRating,
+    required this.onTopicRecommendationDecision,
     required this.onOpenUrl,
+    this.includeTopPosts = true,
   });
 
   final AsyncViewState<WorkspaceSummarySnapshot> state;
   final AsyncViewState<ReaderSummaryJobSnapshot> jobState;
   final AsyncViewState<ReaderActionResult> readerActionState;
+  final AsyncViewState<ReaderSummaryTopicRecommendationQueue>
+  topicRecommendationState;
   final String? activeReaderActionIdempotencyKey;
   final String? lastReaderActionIdempotencyKey;
   final SummaryPeriod selectedPeriod;
@@ -73,7 +81,13 @@ class WorkspaceSummaryPanel extends StatelessWidget {
     PostRatingReason? reason,
   )
   onTopPostRating;
+  final Future<void> Function(
+    ReaderSummaryTopicRecommendation recommendation,
+    ReaderSummaryTopicRecommendationDecisionStatus status,
+  )
+  onTopicRecommendationDecision;
   final void Function(ReaderSummary summary, String url) onOpenUrl;
+  final bool includeTopPosts;
 
   @override
   Widget build(BuildContext context) {
@@ -85,6 +99,7 @@ class WorkspaceSummaryPanel extends StatelessWidget {
             summary: current,
             isRefreshing: true,
             readerActionState: readerActionState,
+            topicRecommendationState: topicRecommendationState,
             activeReaderActionIdempotencyKey: activeReaderActionIdempotencyKey,
             lastReaderActionIdempotencyKey: lastReaderActionIdempotencyKey,
             onGenerate: onGenerate,
@@ -92,7 +107,9 @@ class WorkspaceSummaryPanel extends StatelessWidget {
             onAction: onAction,
             topPostRatingFor: topPostRatingFor,
             onTopPostRating: onTopPostRating,
+            onTopicRecommendationDecision: onTopicRecommendationDecision,
             onOpenUrl: onOpenUrl,
+            includeTopPosts: includeTopPosts,
           ),
           isGenerating: true,
           exportSummary: current,
@@ -121,6 +138,7 @@ class WorkspaceSummaryPanel extends StatelessWidget {
             summary: current,
             isRefreshing: true,
             readerActionState: readerActionState,
+            topicRecommendationState: topicRecommendationState,
             activeReaderActionIdempotencyKey: activeReaderActionIdempotencyKey,
             lastReaderActionIdempotencyKey: lastReaderActionIdempotencyKey,
             onGenerate: onGenerate,
@@ -128,7 +146,9 @@ class WorkspaceSummaryPanel extends StatelessWidget {
             onAction: onAction,
             topPostRatingFor: topPostRatingFor,
             onTopPostRating: onTopPostRating,
+            onTopicRecommendationDecision: onTopicRecommendationDecision,
             onOpenUrl: onOpenUrl,
+            includeTopPosts: includeTopPosts,
           ),
           isGenerating: true,
           exportSummary: current,
@@ -160,6 +180,7 @@ class WorkspaceSummaryPanel extends StatelessWidget {
             : _ReadySummary(
                 summary: value.current!,
                 readerActionState: readerActionState,
+                topicRecommendationState: topicRecommendationState,
                 activeReaderActionIdempotencyKey:
                     activeReaderActionIdempotencyKey,
                 lastReaderActionIdempotencyKey: lastReaderActionIdempotencyKey,
@@ -168,7 +189,9 @@ class WorkspaceSummaryPanel extends StatelessWidget {
                 onAction: onAction,
                 topPostRatingFor: topPostRatingFor,
                 onTopPostRating: onTopPostRating,
+                onTopicRecommendationDecision: onTopicRecommendationDecision,
                 onOpenUrl: onOpenUrl,
+                includeTopPosts: includeTopPosts,
               ),
       LoadingViewState<WorkspaceSummarySnapshot>(:final previousValue) =>
         previousValue?.current == null
@@ -177,6 +200,7 @@ class WorkspaceSummaryPanel extends StatelessWidget {
                 summary: previousValue!.current!,
                 isRefreshing: true,
                 readerActionState: readerActionState,
+                topicRecommendationState: topicRecommendationState,
                 activeReaderActionIdempotencyKey:
                     activeReaderActionIdempotencyKey,
                 lastReaderActionIdempotencyKey: lastReaderActionIdempotencyKey,
@@ -185,7 +209,9 @@ class WorkspaceSummaryPanel extends StatelessWidget {
                 onAction: onAction,
                 topPostRatingFor: topPostRatingFor,
                 onTopPostRating: onTopPostRating,
+                onTopicRecommendationDecision: onTopicRecommendationDecision,
                 onOpenUrl: onOpenUrl,
+                includeTopPosts: includeTopPosts,
               ),
       FailureViewState<WorkspaceSummarySnapshot>(:final failure) =>
         AppInlineProblem(
@@ -260,65 +286,6 @@ class WorkspaceSummaryPanel extends StatelessWidget {
         previousValue?.current,
       _ => null,
     };
-  }
-}
-
-class _ReadySummary extends StatelessWidget {
-  const _ReadySummary({
-    required this.summary,
-    required this.readerActionState,
-    required this.activeReaderActionIdempotencyKey,
-    required this.lastReaderActionIdempotencyKey,
-    required this.onGenerate,
-    required this.intentForAction,
-    required this.onAction,
-    required this.topPostRatingFor,
-    required this.onTopPostRating,
-    required this.onOpenUrl,
-    this.isRefreshing = false,
-  });
-
-  final ReaderSummary summary;
-  final AsyncViewState<ReaderActionResult> readerActionState;
-  final String? activeReaderActionIdempotencyKey;
-  final String? lastReaderActionIdempotencyKey;
-  final VoidCallback onGenerate;
-  final UserActionIntent Function(ReaderSummary summary, ReaderAction action)
-  intentForAction;
-  final void Function(
-    ReaderSummary summary,
-    ReaderAction action, [
-    ReaderFeedbackReason? feedbackReason,
-  ])
-  onAction;
-  final int? Function(ReaderSummary summary, TopRead item) topPostRatingFor;
-  final Future<bool> Function(
-    ReaderSummary summary,
-    TopRead item,
-    int rating,
-    PostRatingReason? reason,
-  )
-  onTopPostRating;
-  final void Function(ReaderSummary summary, String url) onOpenUrl;
-  final bool isRefreshing;
-
-  @override
-  Widget build(BuildContext context) {
-    return ReaderSummaryView(
-      summary: summary,
-      isRefreshing: isRefreshing,
-      readerActionState: readerActionState,
-      activeReaderActionIdempotencyKey: activeReaderActionIdempotencyKey,
-      lastReaderActionIdempotencyKey: lastReaderActionIdempotencyKey,
-      onGenerate: onGenerate,
-      intentForAction: (action) => intentForAction(summary, action),
-      onAction: (action, [feedbackReason]) =>
-          onAction(summary, action, feedbackReason),
-      topPostRatingFor: (item) => topPostRatingFor(summary, item),
-      onTopPostRating: (item, rating, reason) =>
-          onTopPostRating(summary, item, rating, reason),
-      onOpenUrl: (url) => onOpenUrl(summary, url),
-    );
   }
 }
 

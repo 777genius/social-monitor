@@ -6,6 +6,7 @@ import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 import 'package:social_monitor_summaries/src/domain/aggregates/reader_summary.dart';
 import 'package:social_monitor_summaries/src/domain/entities/post_rating.dart';
+import 'package:social_monitor_summaries/src/domain/entities/reader_summary_topic_recommendation.dart';
 import 'package:social_monitor_summaries/src/domain/value_objects/reader_action_target.dart';
 import 'package:social_monitor_summaries/src/infrastructure/api/summary_api_dto.dart';
 import 'package:social_monitor_summaries/src/infrastructure/mappers/summary_mapper.dart';
@@ -14,6 +15,18 @@ import 'package:social_monitor_summaries/src/presentation/components/reader_summ
 import '../../support/summaries_test_fixtures.dart';
 
 void main() {
+  testWidgets('shows topic map on the reader summary page', (tester) async {
+    final summary = const SummaryMapper().readerSummaryToDomain(
+      readerSummaryApiDto(),
+    );
+
+    await tester.pumpWidget(_TestApp(summary: summary, showTopicMap: true));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Topic map'), findsOneWidget);
+    expect(find.text('AI grouped'), findsOneWidget);
+  });
+
   testWidgets('ranks supported and engaged posts above single-source ties', (
     tester,
   ) async {
@@ -378,13 +391,136 @@ void main() {
     await tester.tap(find.byTooltip('Open source'));
     expect(openedUrl, 'https://reddit.example/r/mcp/comments/1');
   });
+
+  testWidgets('renders preview media inside the full top post row', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    final summary = const SummaryMapper().readerSummaryToDomain(
+      readerSummaryApiDto(
+        content: readerSummaryContentApiDto(
+          topReads: const [
+            TopReadApiDto(
+              title: 'X post with launch screenshot',
+              providerKey: 'x-twitter',
+              reason: 'The original source includes a real post image.',
+              matchedInterestIds: ['ai-developer-tools'],
+              signalScore: 3.2,
+              confidence: TopReadConfidenceApiDto(
+                level: 'high',
+                score: 0.81,
+                rationale: 'Source item has direct media evidence.',
+              ),
+              providerMetrics: [
+                ProviderMetricApiDto(label: 'Likes', value: '2,351'),
+              ],
+              canonicalUrl: 'https://x.com/example/status/123',
+              previewMedia: PreviewMediaApiDto(
+                kind: 'image',
+                url: 'https://cdn.example.test/post-image.jpg',
+                sourceUrl: 'https://x.com/example/status/123',
+                altText: 'Launch screenshot',
+              ),
+              citationIds: ['media-citation'],
+            ),
+          ],
+        ),
+        citations: [
+          summaryCitationApiDto(id: 'media-citation', providerKey: 'x-twitter'),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(_TestApp(summary: summary));
+    await tester.pumpAndSettle();
+
+    final rowFinder = find.byKey(const ValueKey('reader-summary-top-post-0'));
+    expect(rowFinder, findsOneWidget);
+    expect(
+      find.descendant(of: rowFinder, matching: find.byType(Image)),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: rowFinder,
+        matching: find.text('X post with launch screenshot'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('compact view collapses top posts into single-line rows', (
+    tester,
+  ) async {
+    final summary = const SummaryMapper().readerSummaryToDomain(
+      readerSummaryApiDto(
+        content: readerSummaryContentApiDto(
+          topReads: const [
+            TopReadApiDto(
+              title: 'Compact mode single row post',
+              providerKey: 'reddit',
+              reason:
+                  'A detailed explanation that only the roomy list view shows.',
+              matchedInterestIds: ['ai-developer-tools'],
+              signalScore: 2.4,
+              confidence: TopReadConfidenceApiDto(
+                level: 'medium',
+                score: 0.55,
+                rationale: 'Same-source support.',
+              ),
+              confirmedProviderKeys: ['reddit'],
+              providerMetrics: [
+                ProviderMetricApiDto(label: 'Likes', value: '959'),
+              ],
+              citationIds: ['compact-citation'],
+            ),
+          ],
+        ),
+        citations: [
+          summaryCitationApiDto(id: 'compact-citation', providerKey: 'reddit'),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(_TestApp(summary: summary));
+    await tester.pumpAndSettle();
+
+    // Detailed list view prints the expanded relevance breakdown.
+    expect(find.text('Compact mode single row post'), findsOneWidget);
+    expect(find.textContaining('Signal '), findsWidgets);
+    expect(find.textContaining('Matching '), findsWidgets);
+
+    await tester.tap(
+      find.byKey(const ValueKey('reader-summary-top-posts-view-compact')),
+    );
+    await tester.pumpAndSettle();
+
+    // Compact view keeps the title and a single-line relevance chip, but drops
+    // the multi-line relevance breakdown so each post fits one row.
+    expect(find.text('Compact mode single row post'), findsOneWidget);
+    expect(find.text('Same-source support'), findsOneWidget);
+    expect(find.textContaining('Signal '), findsNothing);
+    expect(find.textContaining('Matching '), findsNothing);
+  });
 }
 
 class _TestApp extends StatelessWidget {
-  const _TestApp({required this.summary, this.onTopPostRating, this.onOpenUrl});
+  const _TestApp({
+    required this.summary,
+    this.onTopPostRating,
+    this.onOpenUrl,
+    this.showTopicMap = false,
+  });
 
   final ReaderSummary summary;
   final ValueChanged<String>? onOpenUrl;
+  final bool showTopicMap;
   final Future<bool> Function(
     TopRead item,
     int rating,
@@ -395,6 +531,9 @@ class _TestApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = AppTheme.light();
+    final viewSummary = showTopicMap
+        ? summary
+        : readerSummaryWithoutTopicMap(summary);
     return AppHeadlessScope(
       theme: theme,
       appBuilder: (overlayBuilder) => MaterialApp(
@@ -405,9 +544,13 @@ class _TestApp extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: ReaderSummaryView(
-                summary: summary,
+                summary: viewSummary,
                 isRefreshing: false,
                 readerActionState: const InitialViewState<ReaderActionResult>(),
+                topicRecommendationState:
+                    const InitialViewState<
+                      ReaderSummaryTopicRecommendationQueue
+                    >(),
                 activeReaderActionIdempotencyKey: null,
                 lastReaderActionIdempotencyKey: null,
                 onGenerate: () {},
@@ -416,6 +559,7 @@ class _TestApp extends StatelessWidget {
                 onAction: (action, [reason]) {},
                 topPostRatingFor: (_) => null,
                 onTopPostRating: onTopPostRating ?? (_, _, _) async => true,
+                onTopicRecommendationDecision: (_, _) async {},
                 onOpenUrl: onOpenUrl ?? (_) {},
               ),
             ),

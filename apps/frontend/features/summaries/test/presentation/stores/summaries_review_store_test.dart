@@ -1,23 +1,12 @@
-import 'dart:async';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
-import 'package:social_monitor_summaries/src/application/commands/regenerate_summary_command.dart';
-import 'package:social_monitor_summaries/src/application/commands/request_workspace_summary_command.dart';
-import 'package:social_monitor_summaries/src/application/commands/submit_post_rating_command.dart';
-import 'package:social_monitor_summaries/src/application/commands/submit_reader_action_command.dart';
-import 'package:social_monitor_summaries/src/application/commands/submit_summary_feedback_command.dart';
 import 'package:social_monitor_summaries/src/application/contracts/reader_source_launcher.dart';
 import 'package:social_monitor_summaries/src/application/contracts/summary_review_catalog.dart';
-import 'package:social_monitor_summaries/src/application/queries/list_summaries_query.dart';
-import 'package:social_monitor_summaries/src/application/queries/load_post_ratings_query.dart';
-import 'package:social_monitor_summaries/src/application/queries/load_summary_detail_query.dart';
-import 'package:social_monitor_summaries/src/application/queries/load_workspace_summary_job_status_query.dart';
-import 'package:social_monitor_summaries/src/application/queries/load_workspace_summary_query.dart';
-import 'package:social_monitor_summaries/src/application/results/post_rating_submission_result.dart';
+import 'package:social_monitor_summaries/src/application/use_cases/decide_topic_recommendation_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/list_summaries_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/load_post_ratings_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/load_summary_detail_use_case.dart';
+import 'package:social_monitor_summaries/src/application/use_cases/load_topic_recommendations_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/load_workspace_summary_history_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/load_workspace_summary_job_status_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/load_workspace_summary_use_case.dart';
@@ -29,7 +18,6 @@ import 'package:social_monitor_summaries/src/application/use_cases/submit_reader
 import 'package:social_monitor_summaries/src/application/use_cases/submit_summary_feedback_use_case.dart';
 import 'package:social_monitor_summaries/src/domain/aggregates/reader_summary.dart';
 import 'package:social_monitor_summaries/src/domain/entities/generated_summary.dart';
-import 'package:social_monitor_summaries/src/domain/entities/post_rating.dart';
 import 'package:social_monitor_summaries/src/domain/entities/reader_summary_job_snapshot.dart';
 import 'package:social_monitor_summaries/src/domain/value_objects/reader_action_target.dart';
 import 'package:social_monitor_summaries/src/domain/value_objects/summary_feedback_kind.dart';
@@ -40,6 +28,7 @@ import 'package:social_monitor_summaries/src/infrastructure/repositories/generat
 import 'package:social_monitor_summaries/src/presentation/stores/summaries_review_store.dart';
 import 'package:social_monitor_summaries/src/presentation/workflows/summaries_review_store_dependencies.dart';
 
+import '../../support/deferred_summary_review_catalog.dart';
 import '../../support/summaries_test_fixtures.dart';
 
 void main() {
@@ -303,7 +292,7 @@ void main() {
   });
 
   test('detail load rejects stale result from older selection', () async {
-    final catalog = _DeferredSummaryReviewCatalog([
+    final catalog = DeferredSummaryReviewCatalog([
       generatedSummary(id: 's-1', title: 'First summary'),
       generatedSummary(id: 's-2', title: 'Second summary'),
     ]);
@@ -347,7 +336,7 @@ void main() {
   });
 
   test('slow workspace summary does not block summary list load', () async {
-    final catalog = _DeferredSummaryReviewCatalog([
+    final catalog = DeferredSummaryReviewCatalog([
       generatedSummary(id: 's-1', title: 'Stored summary'),
     ], hangWorkspaceSummary: true);
     final store = _storeFromCatalog(
@@ -371,7 +360,7 @@ void main() {
   });
 
   test('dispose invalidates pending workspace summary load', () async {
-    final catalog = _DeferredSummaryReviewCatalog([
+    final catalog = DeferredSummaryReviewCatalog([
       generatedSummary(id: 's-1', title: 'Stored summary'),
     ], deferWorkspaceSummary: true);
     final store = _storeFromCatalog(catalog);
@@ -389,7 +378,7 @@ void main() {
   });
 
   test('deduplicates reentrant workspace summary loads', () async {
-    final catalog = _DeferredSummaryReviewCatalog([
+    final catalog = DeferredSummaryReviewCatalog([
       generatedSummary(id: 's-1', title: 'Stored summary'),
     ], deferWorkspaceSummary: true);
     final store = _storeFromCatalog(catalog);
@@ -441,6 +430,8 @@ SummariesReviewStore _storeFromCatalog(
         catalog,
       ),
       loadSummaryDetail: LoadSummaryDetailUseCase(catalog),
+      loadTopicRecommendations: LoadTopicRecommendationsUseCase(catalog),
+      decideTopicRecommendation: DecideTopicRecommendationUseCase(catalog),
       loadPostRatings: LoadPostRatingsUseCase(catalog),
       regenerateSummary: RegenerateSummaryUseCase(catalog),
       submitFeedback: SubmitSummaryFeedbackUseCase(catalog),
@@ -465,136 +456,5 @@ final class _FakeReaderSourceLauncher implements ReaderSourceLauncher {
   Future<Result<Unit>> open(Uri uri) async {
     opened.add(uri);
     return const Result.success(Unit.value);
-  }
-}
-
-final class _DeferredSummaryReviewCatalog implements SummaryReviewCatalog {
-  _DeferredSummaryReviewCatalog(
-    this.items, {
-    this.hangWorkspaceSummary = false,
-    this.deferWorkspaceSummary = false,
-  });
-
-  final List<GeneratedSummary> items;
-  final bool hangWorkspaceSummary;
-  final bool deferWorkspaceSummary;
-  final pendingDetails = <_PendingDetailRequest>[];
-  final pendingWorkspaceSummarys =
-      <Completer<Result<WorkspaceSummarySnapshot>>>[];
-  var workspaceSummaryLoadCount = 0;
-  var workspaceSummaryHistoryLoadCount = 0;
-
-  @override
-  Future<Result<PageResult<GeneratedSummary>>> listSummaries(
-    ListSummariesQuery query,
-  ) {
-    return Future.value(Result.success(generatedSummaryPage(items)));
-  }
-
-  @override
-  Future<Result<GeneratedSummary>> loadSummaryDetail(
-    LoadSummaryDetailQuery query,
-  ) {
-    final completer = Completer<Result<GeneratedSummary>>();
-    pendingDetails.add(_PendingDetailRequest(query, completer));
-    return completer.future;
-  }
-
-  @override
-  Future<Result<GeneratedSummary>> regenerateSummary(
-    RegenerateSummaryCommand command,
-  ) {
-    return Future.value(Result.success(items.first));
-  }
-
-  @override
-  Future<Result<GeneratedSummary>> submitFeedback(
-    SubmitSummaryFeedbackCommand command,
-  ) {
-    return Future.value(
-      Result.success(
-        generatedSummary(id: command.summaryId.value, feedbackSubmitted: true),
-      ),
-    );
-  }
-
-  @override
-  Future<Result<ReaderActionResult>> submitReaderAction(
-    SubmitReaderActionCommand command,
-  ) {
-    return Future.value(
-      const Result.failure(
-        UnexpectedFailure(message: 'Unexpected reader action in test'),
-      ),
-    );
-  }
-
-  @override
-  Future<Result<PostRatingSubmissionResult>> submitPostRating(
-    SubmitPostRatingCommand command,
-  ) async => const Result.failure(
-    UnexpectedFailure(message: 'Unexpected post rating in test'),
-  );
-
-  @override
-  Future<Result<List<PostRating>>> loadPostRatings(LoadPostRatingsQuery query) {
-    return Future.value(const Result.success(<PostRating>[]));
-  }
-
-  @override
-  Future<Result<WorkspaceSummarySnapshot>> loadWorkspaceSummary(
-    LoadWorkspaceSummaryQuery query,
-  ) {
-    workspaceSummaryLoadCount += 1;
-    if (hangWorkspaceSummary) {
-      return Completer<Result<WorkspaceSummarySnapshot>>().future;
-    }
-    if (deferWorkspaceSummary) {
-      final completer = Completer<Result<WorkspaceSummarySnapshot>>();
-      pendingWorkspaceSummarys.add(completer);
-      return completer.future;
-    }
-    return Future.value(const Result.success(WorkspaceSummarySnapshot()));
-  }
-
-  @override
-  Future<Result<WorkspaceSummarySnapshot>> loadWorkspaceSummaryHistory(
-    LoadWorkspaceSummaryQuery query,
-  ) {
-    workspaceSummaryHistoryLoadCount += 1;
-    return Future.value(const Result.success(WorkspaceSummarySnapshot()));
-  }
-
-  @override
-  Future<Result<ReaderSummaryJobSnapshot>> requestWorkspaceSummary(
-    RequestWorkspaceSummaryCommand command,
-  ) {
-    return Future.value(
-      const Result.failure(
-        UnexpectedFailure(message: 'Unexpected summary request in test'),
-      ),
-    );
-  }
-
-  @override
-  Future<Result<ReaderSummaryJobSnapshot>> loadWorkspaceSummaryJobStatus(
-    LoadWorkspaceSummaryJobStatusQuery query,
-  ) {
-    return Future.value(
-      const Result.failure(
-        UnexpectedFailure(message: 'Unexpected summary status read in test'),
-      ),
-    );
-  }
-}
-
-final class _PendingDetailRequest {
-  const _PendingDetailRequest(this.query, this.completer);
-
-  final LoadSummaryDetailQuery query;
-  final Completer<Result<GeneratedSummary>> completer;
-
-  void completeWith(GeneratedSummary summary) {
-    completer.complete(Result.success(summary));
   }
 }

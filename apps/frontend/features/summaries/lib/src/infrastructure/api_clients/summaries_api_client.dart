@@ -1,5 +1,6 @@
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
+import '../../application/commands/decide_topic_recommendation_command.dart';
 import '../../application/commands/regenerate_summary_command.dart';
 import '../../application/commands/request_workspace_summary_command.dart';
 import '../../application/commands/submit_post_rating_command.dart';
@@ -8,6 +9,7 @@ import '../../application/commands/submit_summary_feedback_command.dart';
 import '../../application/queries/list_summaries_query.dart';
 import '../../application/queries/load_post_ratings_query.dart';
 import '../../application/queries/load_summary_detail_query.dart';
+import '../../application/queries/load_topic_recommendations_query.dart';
 import '../../application/queries/load_workspace_summary_job_status_query.dart';
 import '../../application/queries/load_workspace_summary_query.dart';
 import '../../domain/entities/post_rating.dart';
@@ -17,6 +19,7 @@ import '../../domain/value_objects/summary_period.dart';
 import '../../domain/value_objects/top_read_feedback_target.dart';
 import '../api/post_rating_api_dto.dart';
 import '../api/summary_api_dto.dart';
+import '../api/topic_recommendation_api_dto.dart';
 
 abstract interface class SummariesApiClient {
   Future<Result<SummaryPageApiDto>> listSummaries(
@@ -53,6 +56,14 @@ abstract interface class SummariesApiClient {
 
   Future<Result<WorkspaceSummaryApiDto>> loadWorkspaceSummaryHistory(
     LoadWorkspaceSummaryApiRequest request,
+  );
+
+  Future<Result<TopicRecommendationQueueApiDto>> loadTopicRecommendations(
+    LoadTopicRecommendationsApiRequest request,
+  );
+
+  Future<Result<TopicRecommendationDecisionApiDto>> decideTopicRecommendation(
+    DecideTopicRecommendationApiRequest request,
   );
 
   Future<Result<ReaderSummaryJobApiDto>> requestWorkspaceSummary(
@@ -119,6 +130,65 @@ final class LoadWorkspaceSummaryApiRequest {
 
   final WorkspaceScope scope;
   final SummaryPeriod period;
+}
+
+final class LoadTopicRecommendationsApiRequest {
+  const LoadTopicRecommendationsApiRequest({
+    required this.scope,
+    required this.windowDays,
+    required this.limit,
+  });
+
+  factory LoadTopicRecommendationsApiRequest.fromQuery(
+    LoadTopicRecommendationsQuery query,
+  ) {
+    final normalized = query.normalized();
+    return LoadTopicRecommendationsApiRequest(
+      scope: normalized.scope,
+      windowDays: normalized.windowDays,
+      limit: normalized.limit,
+    );
+  }
+
+  final WorkspaceScope scope;
+  final int windowDays;
+  final int limit;
+}
+
+final class DecideTopicRecommendationApiRequest {
+  const DecideTopicRecommendationApiRequest({
+    required this.scope,
+    required this.recommendationId,
+    required this.topicLabel,
+    required this.action,
+    required this.interestIds,
+    required this.providerKeys,
+    this.note,
+  });
+
+  factory DecideTopicRecommendationApiRequest.fromCommand(
+    DecideTopicRecommendationCommand command,
+  ) {
+    final normalized = command.normalized();
+
+    return DecideTopicRecommendationApiRequest(
+      scope: normalized.scope,
+      recommendationId: normalized.recommendationId,
+      topicLabel: normalized.topicLabel,
+      action: normalized.action.apiValue,
+      interestIds: normalized.interestIds,
+      providerKeys: normalized.providerKeys,
+      note: normalized.note,
+    );
+  }
+
+  final WorkspaceScope scope;
+  final String recommendationId;
+  final String topicLabel;
+  final String action;
+  final List<String> interestIds;
+  final List<String> providerKeys;
+  final String? note;
 }
 
 final class RequestWorkspaceSummaryApiRequest {

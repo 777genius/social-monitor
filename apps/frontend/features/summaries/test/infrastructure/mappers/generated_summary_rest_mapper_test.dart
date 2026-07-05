@@ -3,6 +3,8 @@ import 'package:social_monitor_generated_api/social_monitor_generated_api.dart'
     as generated;
 import 'package:social_monitor_summaries/src/infrastructure/mappers/generated_summary_rest_mapper.dart';
 
+import 'generated_reader_summary_topic_map_fixture.dart';
+
 void main() {
   test('maps generated summary artifact into feature DTO', () {
     const mapper = GeneratedSummaryRestMapper();
@@ -43,6 +45,12 @@ void main() {
       );
       expect(readerSummary.content.qualityState.status, 'limited_sources');
       expect(readerSummary.content.mainTopics, ['AI developer tools']);
+      expect(readerSummary.content.topicMap.generatedBy, 'agent-runtime');
+      expect(readerSummary.content.topicMap.confidence.level, 'medium');
+      expect(readerSummary.content.topicMap.nodes, hasLength(2));
+      expect(readerSummary.content.topicMap.nodes.first.label, 'AI tools');
+      expect(readerSummary.content.topicMap.groups.single.label, 'Agent tools');
+      expect(readerSummary.content.topicMap.edges.single.weight, 0.82);
       expect(
         readerSummary.content.topReads.single.canonicalUrl,
         contains('github.com/calesthio/OpenMontage'),
@@ -219,6 +227,7 @@ generated.ReaderSummaryArtifactResponseDto _readerSummaryArtifact() {
           'calesthio/OpenMontage is the clearest repository signal.',
       bullets: ['calesthio/OpenMontage is worth reading first.'],
       mainTopics: ['AI developer tools'],
+      topicMap: generatedReaderSummaryTopicMapDto,
       qualityState: generated.ReaderSummaryReaderQualityStateDto(
         status: generated
             .ReaderSummaryReaderQualityStateDtoStatusStatus

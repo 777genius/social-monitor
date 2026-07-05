@@ -1,9 +1,12 @@
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
+import 'package:social_monitor_summaries/src/domain/aggregates/reader_summary.dart';
 import 'package:social_monitor_summaries/src/domain/entities/generated_summary.dart';
 import 'package:social_monitor_summaries/src/domain/entities/summary_citation.dart';
 import 'package:social_monitor_summaries/src/domain/value_objects/summary_generation_status.dart';
 import 'package:social_monitor_summaries/src/domain/value_objects/summary_id.dart';
 import 'package:social_monitor_summaries/src/infrastructure/api/summary_api_dto.dart';
+
+import 'summaries_topic_map_test_fixtures.dart';
 
 const summaryWorkspaceScope = WorkspaceScope(
   tenantId: 'tenant-demo',
@@ -121,12 +124,50 @@ SummaryWindowApiDto summaryWindowApiDto({
   );
 }
 
+ReaderSummary readerSummaryWithoutTopicMap(ReaderSummary summary) {
+  final content = summary.content;
+
+  return ReaderSummary(
+    id: summary.id,
+    title: summary.title,
+    executiveSummary: summary.executiveSummary,
+    userId: summary.userId,
+    content: ReaderSummaryContent(
+      headline: content.headline,
+      oneLineTakeaway: content.oneLineTakeaway,
+      bullets: content.bullets,
+      mainTopics: content.mainTopics,
+      topicMap: emptyReaderSummaryTopicMap,
+      qualityState: content.qualityState,
+      interestSections: content.interestSections,
+      sourceMix: content.sourceMix,
+      topReads: content.topReads,
+      selectedPosts: content.selectedPosts,
+      claimBoard: content.claimBoard,
+      reliabilityReport: content.reliabilityReport,
+      trendDelta: content.trendDelta,
+      openQuestions: content.openQuestions,
+      risks: content.risks,
+      nextActions: content.nextActions,
+    ),
+    topStories: summary.topStories,
+    repeatedSignals: summary.repeatedSignals,
+    citations: summary.citations,
+    period: summary.period,
+    summaryWindow: summary.summaryWindow,
+    freshnessLabel: summary.freshnessLabel,
+    isDegraded: summary.isDegraded,
+    coverage: summary.coverage,
+  );
+}
+
 ReaderSummaryContentApiDto readerSummaryContentApiDto({
   String headline = 'AI workspace summary',
   String oneLineTakeaway =
       'New AI coding tools are the clearest signal to inspect first.',
   String sourceProviderKey = 'github-repo-radar',
   List<String> mainTopics = const ['AI coding tools'],
+  ReaderSummaryTopicMapApiDto topicMap = sampleTopicMapApiDto,
   List<String> newSignals = const ['1 Repo Radar item selected'],
   ReaderSummaryQualityStateApiDto? qualityState,
   List<SourceMixEntryApiDto>? sourceMix,
@@ -169,6 +210,7 @@ ReaderSummaryContentApiDto readerSummaryContentApiDto({
       'Best first cited read from Repo Radar (1 citation): AI coding tools - needs confirmation; verify citations in Top reads.',
     ],
     mainTopics: mainTopics,
+    topicMap: topicMap,
     qualityState:
         qualityState ??
         const ReaderSummaryQualityStateApiDto(

@@ -1,5 +1,6 @@
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
+import '../../application/commands/decide_topic_recommendation_command.dart';
 import '../../application/commands/regenerate_summary_command.dart';
 import '../../application/commands/request_workspace_summary_command.dart';
 import '../../application/commands/submit_post_rating_command.dart';
@@ -9,6 +10,7 @@ import '../../application/contracts/summary_review_catalog.dart';
 import '../../application/queries/list_summaries_query.dart';
 import '../../application/queries/load_post_ratings_query.dart';
 import '../../application/queries/load_summary_detail_query.dart';
+import '../../application/queries/load_topic_recommendations_query.dart';
 import '../../application/queries/load_workspace_summary_job_status_query.dart';
 import '../../application/queries/load_workspace_summary_query.dart';
 import '../../application/results/post_rating_submission_result.dart';
@@ -16,21 +18,27 @@ import '../../domain/aggregates/reader_summary.dart';
 import '../../domain/entities/generated_summary.dart';
 import '../../domain/entities/post_rating.dart';
 import '../../domain/entities/reader_summary_job_snapshot.dart';
+import '../../domain/entities/reader_summary_topic_recommendation.dart';
 import '../../domain/value_objects/reader_action_target.dart';
 import '../api/post_rating_api_dto.dart';
 import '../api/summary_api_dto.dart';
 import '../api_clients/summaries_api_client.dart';
 import '../mappers/summary_mapper.dart';
+import '../mappers/topic_recommendation_mapper.dart';
 
 final class GeneratedSummaryReviewCatalog implements SummaryReviewCatalog {
   const GeneratedSummaryReviewCatalog({
     required SummariesApiClient apiClient,
     SummaryMapper mapper = const SummaryMapper(),
+    TopicRecommendationMapper topicRecommendationMapper =
+        const TopicRecommendationMapper(),
   }) : _apiClient = apiClient,
-       _mapper = mapper;
+       _mapper = mapper,
+       _topicRecommendationMapper = topicRecommendationMapper;
 
   final SummariesApiClient _apiClient;
   final SummaryMapper _mapper;
+  final TopicRecommendationMapper _topicRecommendationMapper;
 
   @override
   Future<Result<PageResult<GeneratedSummary>>> listSummaries(
@@ -143,6 +151,34 @@ final class GeneratedSummaryReviewCatalog implements SummaryReviewCatalog {
       LoadWorkspaceSummaryApiRequest.fromQuery(query),
     );
     return _mapWorkspaceSummary(result);
+  }
+
+  @override
+  Future<Result<ReaderSummaryTopicRecommendationQueue>>
+  loadTopicRecommendations(LoadTopicRecommendationsQuery query) async {
+    final result = await _apiClient.loadTopicRecommendations(
+      LoadTopicRecommendationsApiRequest.fromQuery(query),
+    );
+    return result.fold(
+      onSuccess: (dto) =>
+          Result.success(_topicRecommendationMapper.toDomain(dto)),
+      onFailure: Result<ReaderSummaryTopicRecommendationQueue>.failure,
+    );
+  }
+
+  @override
+  Future<Result<ReaderSummaryTopicRecommendationDecisionStatus>>
+  decideTopicRecommendation(DecideTopicRecommendationCommand command) async {
+    final result = await _apiClient.decideTopicRecommendation(
+      DecideTopicRecommendationApiRequest.fromCommand(command),
+    );
+
+    return result.fold(
+      onSuccess: (dto) => Result.success(
+        ReaderSummaryTopicRecommendationDecisionStatus.fromApiValue(dto.status),
+      ),
+      onFailure: Result<ReaderSummaryTopicRecommendationDecisionStatus>.failure,
+    );
   }
 
   @override

@@ -8,6 +8,7 @@ import '../api/summary_api_dto.dart';
 
 part 'summary_mapper_coverage.dart';
 part 'summary_mapper_reader_content.dart';
+part 'summary_mapper_topic_map.dart';
 
 final class SummaryMapper {
   const SummaryMapper();
@@ -115,6 +116,7 @@ final class SummaryMapper {
       ),
       bullets: _safeTextList(dto.bullets),
       mainTopics: _safeTextList(dto.mainTopics),
+      topicMap: _topicMapToDomain(this, dto.topicMap),
       qualityState: ReaderSummaryQualityState(
         status: _nonEmpty(dto.qualityState.status, fallback: 'ready'),
         flags: _safeTextList(dto.qualityState.flags),
@@ -325,10 +327,7 @@ final class SummaryMapper {
 
   String _safeLongText(String raw, {required String fallback}) {
     final singleLine = _sanitizeText(raw);
-    if (singleLine.isEmpty) {
-      return fallback;
-    }
-    return singleLine;
+    return singleLine.isEmpty ? fallback : singleLine;
   }
 
   String? _safeTextOrNull(String? raw) {

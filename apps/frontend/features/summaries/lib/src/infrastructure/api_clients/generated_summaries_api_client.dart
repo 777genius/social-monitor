@@ -7,9 +7,11 @@ import '../../domain/value_objects/summary_feedback_kind.dart';
 import '../../domain/value_objects/summary_period.dart';
 import '../api/post_rating_api_dto.dart';
 import '../api/summary_api_dto.dart';
+import '../api/topic_recommendation_api_dto.dart';
 import '../mappers/generated_summary_rest_mapper.dart';
 import 'generated_post_rating_writer.dart';
 import 'generated_post_ratings_reader.dart';
+import 'generated_topic_recommendation_reader.dart';
 import 'generated_workspace_summary_reader.dart';
 import 'summaries_api_client.dart';
 
@@ -82,6 +84,16 @@ final class GeneratedSummariesApiClient implements SummariesApiClient {
     runtime: _runtime,
     mapper: _mapper,
   ).loadHistory(request);
+
+  @override
+  Future<Result<TopicRecommendationQueueApiDto>> loadTopicRecommendations(
+    LoadTopicRecommendationsApiRequest request,
+  ) => GeneratedTopicRecommendationReader(runtime: _runtime).load(request);
+
+  @override
+  Future<Result<TopicRecommendationDecisionApiDto>> decideTopicRecommendation(
+    DecideTopicRecommendationApiRequest request,
+  ) => GeneratedTopicRecommendationReader(runtime: _runtime).decide(request);
 
   @override
   Future<Result<ReaderSummaryJobApiDto>> requestWorkspaceSummary(

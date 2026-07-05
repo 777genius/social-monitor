@@ -100,6 +100,17 @@ void main() {
     );
 
     expect(summary.content.headline, 'AI workspace summary');
+    expect(summary.content.topicMap.generatedBy, 'agent-runtime');
+    expect(summary.content.topicMap.confidence.level, 'high');
+    expect(
+      summary.content.topicMap.nodes.map((node) => node.label),
+      containsAll(['AI tools', 'Codex']),
+    );
+    expect(
+      summary.content.topicMap.groups.map((group) => group.label),
+      contains('Agent tools'),
+    );
+    expect(summary.content.topicMap.edges.single.weight, 0.8);
     expect(
       summary.content.topReads.single.canonicalUrl,
       'https://github.com/openai/codex?utm_source=feed',
