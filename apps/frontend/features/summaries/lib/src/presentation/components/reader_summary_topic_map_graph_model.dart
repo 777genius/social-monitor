@@ -63,7 +63,10 @@ final class _TopicGraphModel {
           group: group,
           radius: radius,
           center: groupCenter + _groupNodeSeedOffset(index, nodes.length),
-          showLabel: radius >= 10.5 || index < 2,
+          showLabel:
+              radius >= 16 ||
+              (index == 0 && radius >= 13.5) ||
+              node.sizeWeight >= 0.82,
           isPrimary: index == 0 || node.sizeWeight >= 0.78,
         );
       }

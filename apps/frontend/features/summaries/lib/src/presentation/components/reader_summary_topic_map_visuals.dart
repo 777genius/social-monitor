@@ -51,9 +51,9 @@ Color _labelColor(Color color) =>
 String _compactTopicLabel(String value) {
   final normalized = value.replaceAll(RegExp(r'\s+'), ' ').trim();
 
-  return normalized.length <= 38
+  return normalized.length <= 32
       ? normalized
-      : '${normalized.substring(0, 35).trim()}...';
+      : '${normalized.substring(0, 29).trim()}...';
 }
 
 String _topicMapSemanticLabel(ReaderSummaryTopicMap topicMap) {

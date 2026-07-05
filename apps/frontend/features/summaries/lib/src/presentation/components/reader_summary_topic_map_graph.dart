@@ -43,6 +43,7 @@ class _TopicMapForceGraph extends StatelessWidget {
           borderRadius: BorderRadius.circular(8),
         ),
         child: Stack(
+          fit: StackFit.expand,
           children: [
             Positioned.fill(
               child: CustomPaint(
@@ -251,16 +252,17 @@ class _TopicMapBubbleNode extends StatelessWidget {
 
 double _topicBubbleFontSize(String label, double radius) {
   final lengthFactor = switch (label.length) {
-    > 22 => 0.76,
-    > 16 => 0.86,
+    > 30 => 0.82,
+    > 22 => 0.90,
+    > 16 => 0.96,
     _ => 1.0,
   };
   final radiusFactor = switch (radius) {
-    < 12 => 0.46,
-    < 17 => 0.40,
-    < 23 => 0.34,
-    _ => 1 / 3.75,
+    < 16 => 0.56,
+    < 22 => 0.52,
+    < 32 => 0.46,
+    _ => 0.38,
   };
 
-  return (radius * radiusFactor * lengthFactor).clamp(4.6, 12.5).toDouble();
+  return (radius * radiusFactor * lengthFactor).clamp(7.2, 15.0).toDouble();
 }

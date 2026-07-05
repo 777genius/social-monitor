@@ -16,61 +16,51 @@ class ReaderSummaryTopicMapPanel extends StatelessWidget {
         ? AppColors.darkBorder
         : AppColors.border;
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colorScheme.surface,
-        border: Border.all(color: borderColor),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.md),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Topic map',
-              style: textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.md),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final width = constraints.maxWidth.isFinite
-                    ? constraints.maxWidth
-                    : 640.0;
-                final height = width < 420 ? 282.0 : 348.0;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Topic map',
+          style: textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0,
+          ),
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final width = constraints.maxWidth.isFinite
+                ? constraints.maxWidth
+                : 640.0;
+            final height = width < 420 ? 300.0 : 360.0;
 
-                return Semantics(
-                  label: _topicMapSemanticLabel(topicMap),
-                  child: SizedBox(
-                    width: double.infinity,
-                    height: height,
-                    child: _TopicMapForceGraph(
-                      topicMap: topicMap,
-                      graphSize: Size(width, height),
-                      textColor: colorScheme.onSurface,
-                      mutedColor: muted,
-                      borderColor: borderColor,
-                    ),
-                  ),
-                );
-              },
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            Wrap(
-              spacing: AppSpacing.sm,
-              runSpacing: AppSpacing.xs,
-              children: [
-                for (final group in _topicMapLegendGroups(topicMap).take(6))
-                  _TopicGroupLegendChip(group: group),
-              ],
-            ),
+            return Semantics(
+              label: _topicMapSemanticLabel(topicMap),
+              child: SizedBox(
+                width: width,
+                height: height,
+                child: _TopicMapForceGraph(
+                  topicMap: topicMap,
+                  graphSize: Size(width, height),
+                  textColor: colorScheme.onSurface,
+                  mutedColor: muted,
+                  borderColor: borderColor,
+                ),
+              ),
+            );
+          },
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        Wrap(
+          spacing: AppSpacing.sm,
+          runSpacing: AppSpacing.xs,
+          children: [
+            for (final group in _topicMapLegendGroups(topicMap).take(6))
+              _TopicGroupLegendChip(group: group),
           ],
         ),
-      ),
+      ],
     );
   }
 }
