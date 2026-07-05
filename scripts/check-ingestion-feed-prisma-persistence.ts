@@ -39,6 +39,25 @@ const workspace = workspaceId("00000000-0000-7000-8000-000000000102");
 const sourceBindingId = "00000000-0000-7000-8000-000000000103";
 const interestId = "00000000-0000-7000-8000-000000000104";
 
+const projectionSnapshots = (providerKey: string) => ({
+  interestQuerySnapshot: {
+    interestId,
+    query: "durable feed quality",
+  },
+  sourceBindingSnapshot: {
+    sourceBindingId,
+    providerKey,
+    sourceQuery: {
+      mode: "search" as const,
+      query: `durable feed ${providerKey}`,
+    },
+  },
+  workspaceScopeSnapshot: {
+    tenantId: tenant,
+    workspaceId: workspace,
+  },
+});
+
 async function main(): Promise<void> {
   assert(
     resolveFeedPersistenceMode({}) === "in-memory",
@@ -176,6 +195,7 @@ async function main(): Promise<void> {
     interestId,
     sourceBindingId,
     providerKey: "fake-source",
+    snapshots: projectionSnapshots("fake-source"),
     sourceItems: sourceItemsWithPersistedIds(
       [firstItem, duplicateProviderItem],
       saveResult.items,
@@ -271,6 +291,7 @@ async function main(): Promise<void> {
     interestId,
     sourceBindingId,
     providerKey: "article-source",
+    snapshots: projectionSnapshots("article-source"),
     sourceItems: sourceItemsWithPersistedIds(
       [articleFromReddit, articleFromRss],
       articleSaveResult.items,
@@ -476,7 +497,9 @@ const sourceItemsWithPersistedIds = (
     const sourceItemId = persistedIdByExternalId.get(snapshot.externalId);
 
     if (sourceItemId === undefined) {
-      throw new Error(`Missing persisted source item ref for ${snapshot.externalId}`);
+      throw new Error(
+        `Missing persisted source item ref for ${snapshot.externalId}`,
+      );
     }
 
     return SourceItem.rehydrate({
@@ -723,11 +746,13 @@ class FakePrismaIngestionFeedClient
   readonly feedItem: PrismaFeedClient["feedItem"] = {
     upsert: async (args) => {
       const requestedSourceItemId =
-        this.feedItems.get([
-          args.where.tenantId_interestId_dedupeKey.tenantId,
-          args.where.tenantId_interestId_dedupeKey.interestId,
-          args.where.tenantId_interestId_dedupeKey.dedupeKey,
-        ].join(":")) === undefined
+        this.feedItems.get(
+          [
+            args.where.tenantId_interestId_dedupeKey.tenantId,
+            args.where.tenantId_interestId_dedupeKey.interestId,
+            args.where.tenantId_interestId_dedupeKey.dedupeKey,
+          ].join(":"),
+        ) === undefined
           ? args.create.sourceItemId
           : args.update.sourceItemId;
       if (!this.sourceItems.has(requestedSourceItemId)) {
@@ -867,7 +892,8 @@ class FakePrismaIngestionFeedClient
         record.tenantId === where.tenantId &&
         record.workspaceId === where.workspaceId &&
         record.status === where.status &&
-        (where.interestId === undefined || record.interestId === where.interestId) &&
+        (where.interestId === undefined ||
+          record.interestId === where.interestId) &&
         (where.providerKey === undefined ||
           record.providerKey === where.providerKey) &&
         (where.observedAt?.gt === undefined ||

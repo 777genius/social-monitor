@@ -26,18 +26,25 @@ type FeedItemObservedAtRange = {
   readonly lt?: Date;
 };
 
+type FeedItemPublishedAtRange = {
+  readonly gte?: Date;
+  readonly lt?: Date;
+};
+
 export class PrismaFeedItemReadRepository implements FeedItemReadRepositoryPort {
   constructor(private readonly prisma: PrismaFeedClient) {}
 
   async list(query: ListFeedItemsQuery): Promise<ListFeedItemsResult> {
     const offset = parseFeedCursor(query.cursor);
     const observedAt = buildObservedAtRange(query);
+    const publishedAt = buildPublishedAtRange(query);
     const where = {
       tenantId: query.tenantId,
       workspaceId: query.workspaceId,
       status: "VISIBLE" as const,
       interestId: query.interestId,
       observedAt,
+      publishedAt,
       providerKey: query.providerKey,
     };
 
@@ -116,6 +123,22 @@ const buildObservedAtRange = (
   }
 
   return range.gt === undefined && range.lt === undefined ? undefined : range;
+};
+
+const buildPublishedAtRange = (
+  query: ListFeedItemsQuery,
+): FeedItemPublishedAtRange | undefined => {
+  const range: { gte?: Date; lt?: Date } = {};
+
+  if (query.publishedAtOrAfter !== undefined) {
+    range.gte = query.publishedAtOrAfter;
+  }
+
+  if (query.publishedBefore !== undefined) {
+    range.lt = query.publishedBefore;
+  }
+
+  return range.gte === undefined && range.lt === undefined ? undefined : range;
 };
 
 const sortFeedItemsBySignal = (

@@ -41,6 +41,34 @@ describe("PrismaFeedItemReadRepository", () => {
       "00000000-0000-4000-8000-000000000001",
     ]);
   });
+
+  it("pushes publication window filters into the database query", async () => {
+    const prisma = new FakePrismaFeedClient([]);
+    const repository = new PrismaFeedItemReadRepository(
+      prisma as unknown as PrismaFeedClient,
+    );
+    const publishedAtOrAfter = new Date("2026-07-04T00:00:00.000Z");
+    const publishedBefore = new Date("2026-07-05T00:00:00.000Z");
+
+    await repository.list({
+      tenantId: tenantId("00000000-0000-7000-8000-000000000901"),
+      workspaceId: workspaceId("00000000-0000-7000-8000-000000000902"),
+      publishedAtOrAfter,
+      publishedBefore,
+      limit: 10,
+    });
+
+    expect(prisma.feedItem.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          publishedAt: {
+            gte: publishedAtOrAfter,
+            lt: publishedBefore,
+          },
+        }),
+      }),
+    );
+  });
 });
 
 class FakePrismaFeedClient {

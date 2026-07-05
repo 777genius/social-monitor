@@ -12,8 +12,9 @@ export type XExperimentalDailyScanConfig = {
   readonly windowEnd: Date;
   readonly searchProducts: readonly XDailySearchProduct[];
   readonly searchQueries: readonly string[];
-  readonly limitPerProduct: number;
+  readonly limitPerProduct?: number;
   readonly maxItemsPerQuery: number;
+  readonly maxItemsBySearchQuery: ReadonlyMap<string, number>;
   readonly minLikes?: number;
   readonly minRetweets?: number;
   readonly minReplies?: number;
@@ -25,6 +26,10 @@ export const parseConfig = (
   now: Date,
 ): XExperimentalDailyScanConfig => {
   const searchQueries = readSearchQueries(plan.query.query, context.config);
+  const maxItemsBySearchQuery = readMaxItemsBySearchQuery(
+    context.config,
+    searchQueries,
+  );
   const maxItemsPerQuery = readMaxItemsPerQuery(
     context.config,
     plan.maxItems,
@@ -37,13 +42,13 @@ export const parseConfig = (
     windowEnd: readDate(context.config?.windowEnd, now),
     searchProducts: readSearchProducts(context.config?.searchProducts),
     searchQueries,
-    limitPerProduct: readPositiveInteger(
+    limitPerProduct: readOptionalPositiveInteger(
       context.config?.limitPerProduct,
-      maxItemsPerQuery,
       1,
       100,
     ),
     maxItemsPerQuery,
+    maxItemsBySearchQuery,
     minLikes: readOptionalPositiveInteger(
       context.config?.minLikes,
       0,
@@ -285,6 +290,48 @@ const readMaxItemsPerQuery = (
     1,
     100,
   );
+};
+
+const readMaxItemsBySearchQuery = (
+  config: unknown,
+  searchQueries: readonly string[],
+): ReadonlyMap<string, number> => {
+  const record = readRecordOrUndefined(config);
+  const raw = record?.searchQueryBudgets ?? record?.searchQueryMaxItems;
+  const allowedQueries = new Set(searchQueries);
+  const entries = Array.isArray(raw)
+    ? raw.flatMap((item): readonly [string, number][] => {
+        const budget = readRecordOrUndefined(item);
+        const query = readOptionalString(budget?.query);
+        const maxItems = readBudgetInteger(
+          budget?.maxItems ?? budget?.maxItemsPerQuery,
+        );
+
+        return query !== undefined &&
+          maxItems !== undefined &&
+          allowedQueries.has(query)
+          ? [[query, maxItems]]
+          : [];
+      })
+    : Object.entries(readRecordOrUndefined(raw) ?? {}).flatMap(
+        ([query, value]): readonly [string, number][] => {
+          const maxItems = readBudgetInteger(value);
+
+          return maxItems !== undefined && allowedQueries.has(query)
+            ? [[query, maxItems]]
+            : [];
+        },
+      );
+
+  return new Map(entries);
+};
+
+const readBudgetInteger = (value: unknown): number | undefined => {
+  const parsed = typeof value === "number" ? value : Number(value);
+
+  return Number.isInteger(parsed) && parsed >= 1
+    ? Math.min(parsed, 100)
+    : undefined;
 };
 
 const readStringArray = (value: unknown): readonly string[] =>

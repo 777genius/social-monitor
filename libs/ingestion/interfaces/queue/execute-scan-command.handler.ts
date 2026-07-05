@@ -1,17 +1,17 @@
-import type { MetricsRecorderPort } from '@social-monitor/platform-metrics';
-import type { QueueCommandEnvelope } from '@social-monitor/platform-queue';
-import type { WorkerRuntime } from '@social-monitor/platform-worker';
+import type { MetricsRecorderPort } from "@social-monitor/platform-metrics";
+import type { QueueCommandEnvelope } from "@social-monitor/platform-queue";
+import type { WorkerRuntime } from "@social-monitor/platform-worker";
 import {
   DomainError,
   emptyJsonObjectAsUndefined,
   normalizeJsonObject,
   tenantId,
   workspaceId,
-} from '@social-monitor/shared-kernel';
+} from "@social-monitor/shared-kernel";
 
-import type { ExecuteScanUseCase } from '../../features/execute-scan/execute-scan.use-case';
-import type { ExecuteScanResult } from '../../features/execute-scan/execute-scan.result';
-import type { SourceQuery, SourceQueryMode } from '../../ports';
+import type { ExecuteScanUseCase } from "../../features/execute-scan/execute-scan.use-case";
+import type { ExecuteScanResult } from "../../features/execute-scan/execute-scan.result";
+import type { SourceQuery, SourceQueryMode } from "../../ports";
 
 type ExecuteScanQueuePayload = {
   readonly tenantId: string;
@@ -22,13 +22,15 @@ type ExecuteScanQueuePayload = {
   readonly scanPolicyId: string;
   readonly providerKey: string;
   readonly sourceQuery: SourceQuery;
+  readonly interestQuerySnapshot?: string;
   readonly attemptNumber?: number;
   readonly retryBudget?: number;
   readonly workerId?: string;
   readonly leaseTtlSeconds?: number;
 };
 
-export type ExecuteScanQueueCommand = QueueCommandEnvelope<ExecuteScanQueuePayload>;
+export type ExecuteScanQueueCommand =
+  QueueCommandEnvelope<ExecuteScanQueuePayload>;
 
 export class ExecuteScanCommandHandler {
   constructor(
@@ -37,14 +39,16 @@ export class ExecuteScanCommandHandler {
     private readonly runtime: WorkerRuntime,
   ) {}
 
-  async handle(command: QueueCommandEnvelope<Readonly<Record<string, unknown>>>): Promise<ExecuteScanResult> {
-    if (command.commandType !== 'ingestion.scan.execute') {
+  async handle(
+    command: QueueCommandEnvelope<Readonly<Record<string, unknown>>>,
+  ): Promise<ExecuteScanResult> {
+    if (command.commandType !== "ingestion.scan.execute") {
       throw new Error(`Unsupported command type: ${command.commandType}`);
     }
 
     return this.runtime.runIfAccepting(command.commandType, async () => {
       const payload = parsePayload(command.payload);
-      this.recordMetric('started');
+      this.recordMetric("started");
       let failureRecorded = false;
 
       try {
@@ -57,6 +61,7 @@ export class ExecuteScanCommandHandler {
           scanPolicyId: payload.scanPolicyId,
           providerKey: payload.providerKey,
           sourceQuery: payload.sourceQuery,
+          interestQuerySnapshot: payload.interestQuerySnapshot,
           correlationId: command.correlationId,
           causationId: command.causationId ?? command.commandId,
           attemptNumber: payload.attemptNumber,
@@ -66,17 +71,17 @@ export class ExecuteScanCommandHandler {
         });
 
         if (!result.ok) {
-          this.recordMetric('failed');
+          this.recordMetric("failed");
           this.recordFailureClassMetric(result.error);
           failureRecorded = true;
           throw result.error;
         }
 
-        this.recordMetric('succeeded');
+        this.recordMetric("succeeded");
         return result.value;
       } catch (error) {
         if (!failureRecorded) {
-          this.recordMetric('failed');
+          this.recordMetric("failed");
           this.recordFailureClassMetric(error);
         }
         throw error;
@@ -84,77 +89,98 @@ export class ExecuteScanCommandHandler {
     });
   }
 
-  private recordMetric(status: 'started' | 'succeeded' | 'failed'): void {
+  private recordMetric(status: "started" | "succeeded" | "failed"): void {
     this.metrics.incrementCounter({
-      name: 'scan_jobs_total',
+      name: "scan_jobs_total",
       labels: {
-        job_type: 'scan',
+        job_type: "scan",
         status,
-        worker: 'ingestion-worker',
+        worker: "ingestion-worker",
       },
     });
   }
 
   private recordFailureClassMetric(error: unknown): void {
     this.metrics.incrementCounter({
-      name: 'scan_failures_total',
+      name: "scan_failures_total",
       labels: {
         failure_class: classifyFailure(error),
-        job_type: 'scan',
-        worker: 'ingestion-worker',
+        job_type: "scan",
+        worker: "ingestion-worker",
       },
     });
   }
 }
 
-const classifyFailure = (error: unknown): 'provider_rate_limited' | 'provider_unavailable' | 'worker_conflict' | 'system_failure' => {
-  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+const classifyFailure = (
+  error: unknown,
+):
+  | "provider_rate_limited"
+  | "provider_unavailable"
+  | "worker_conflict"
+  | "system_failure" => {
+  const message =
+    error instanceof Error
+      ? error.message.toLowerCase()
+      : String(error).toLowerCase();
 
-  if (message.includes('rate limit') || message.includes('429')) {
-    return 'provider_rate_limited';
+  if (message.includes("rate limit") || message.includes("429")) {
+    return "provider_rate_limited";
   }
 
-  if (message.includes('provider') || message.includes('unavailable')) {
-    return 'provider_unavailable';
+  if (message.includes("provider") || message.includes("unavailable")) {
+    return "provider_unavailable";
   }
 
-  if (message.includes('lease') || message.includes('already')) {
-    return 'worker_conflict';
+  if (message.includes("lease") || message.includes("already")) {
+    return "worker_conflict";
   }
 
-  return 'system_failure';
+  return "system_failure";
 };
 
-const parsePayload = (payload: Readonly<Record<string, unknown>>): ExecuteScanQueuePayload => ({
-  tenantId: readTenantScopeString(payload, 'tenantId'),
-  workspaceId: readTenantScopeString(payload, 'workspaceId'),
-  scanJobId: readString(payload, 'scanJobId'),
-  interestId: readString(payload, 'interestId'),
-  sourceBindingId: readString(payload, 'sourceBindingId'),
-  scanPolicyId: readString(payload, 'scanPolicyId'),
-  providerKey: readString(payload, 'providerKey'),
-  sourceQuery: readSourceQuery(payload, 'sourceQuery'),
-  attemptNumber: readOptionalPositiveInteger(payload, 'attemptNumber'),
-  retryBudget: readOptionalNonNegativeInteger(payload, 'retryBudget'),
-  workerId: readOptionalString(payload, 'workerId'),
-  leaseTtlSeconds: readOptionalPositiveInteger(payload, 'leaseTtlSeconds'),
+const parsePayload = (
+  payload: Readonly<Record<string, unknown>>,
+): ExecuteScanQueuePayload => ({
+  tenantId: readTenantScopeString(payload, "tenantId"),
+  workspaceId: readTenantScopeString(payload, "workspaceId"),
+  scanJobId: readString(payload, "scanJobId"),
+  interestId: readString(payload, "interestId"),
+  sourceBindingId: readString(payload, "sourceBindingId"),
+  scanPolicyId: readString(payload, "scanPolicyId"),
+  providerKey: readString(payload, "providerKey"),
+  sourceQuery: readSourceQuery(payload, "sourceQuery"),
+  interestQuerySnapshot: readOptionalString(payload, "interestQuerySnapshot"),
+  attemptNumber: readOptionalPositiveInteger(payload, "attemptNumber"),
+  retryBudget: readOptionalNonNegativeInteger(payload, "retryBudget"),
+  workerId: readOptionalString(payload, "workerId"),
+  leaseTtlSeconds: readOptionalPositiveInteger(payload, "leaseTtlSeconds"),
 });
 
-const readString = (payload: Readonly<Record<string, unknown>>, field: string): string => {
+const readString = (
+  payload: Readonly<Record<string, unknown>>,
+  field: string,
+): string => {
   const value = payload[field];
 
-  if (typeof value !== 'string' || value.trim().length === 0) {
+  if (typeof value !== "string" || value.trim().length === 0) {
     throw new Error(`Invalid execute scan command payload field: ${field}`);
   }
 
   return value;
 };
 
-const readTenantScopeString = (payload: Readonly<Record<string, unknown>>, field: string): string => {
+const readTenantScopeString = (
+  payload: Readonly<Record<string, unknown>>,
+  field: string,
+): string => {
   const value = payload[field];
 
-  if (typeof value !== 'string' || value.trim().length === 0) {
-    throw new DomainError('tenant.scope_missing', `${field} command payload field is required`);
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new DomainError(
+      "tenant.scope_missing",
+      `${field} command payload field is required`,
+    );
   }
 
   return value;
@@ -170,7 +196,7 @@ const readOptionalString = (
     return undefined;
   }
 
-  if (typeof value !== 'string' || value.trim().length === 0) {
+  if (typeof value !== "string" || value.trim().length === 0) {
     throw new Error(`Invalid execute scan command payload field: ${field}`);
   }
 
@@ -187,7 +213,7 @@ const readOptionalPositiveInteger = (
     return undefined;
   }
 
-  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
     throw new Error(`Invalid execute scan command payload field: ${field}`);
   }
 
@@ -204,14 +230,20 @@ const readOptionalNonNegativeInteger = (
     return undefined;
   }
 
-  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
     throw new Error(`Invalid execute scan command payload field: ${field}`);
   }
 
   return value;
 };
 
-const sourceQueryModes: readonly SourceQueryMode[] = ['search', 'listing', 'account_feed', 'thread', 'url'];
+const sourceQueryModes: readonly SourceQueryMode[] = [
+  "search",
+  "listing",
+  "account_feed",
+  "thread",
+  "url",
+];
 
 const readSourceQuery = (
   payload: Readonly<Record<string, unknown>>,
@@ -219,7 +251,7 @@ const readSourceQuery = (
 ): SourceQuery => {
   const value = payload[field];
 
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error(`Invalid execute scan command payload field: ${field}`);
   }
 
@@ -228,12 +260,19 @@ const readSourceQuery = (
   const query = queryPayload.query;
   const parameters = readSourceQueryParameters(queryPayload.parameters, field);
 
-  if (typeof mode !== 'string' || !sourceQueryModes.includes(mode as SourceQueryMode)) {
-    throw new Error(`Invalid execute scan command payload field: ${field}.mode`);
+  if (
+    typeof mode !== "string" ||
+    !sourceQueryModes.includes(mode as SourceQueryMode)
+  ) {
+    throw new Error(
+      `Invalid execute scan command payload field: ${field}.mode`,
+    );
   }
 
-  if (typeof query !== 'string' || query.trim().length === 0) {
-    throw new Error(`Invalid execute scan command payload field: ${field}.query`);
+  if (typeof query !== "string" || query.trim().length === 0) {
+    throw new Error(
+      `Invalid execute scan command payload field: ${field}.query`,
+    );
   }
 
   return {
@@ -246,13 +285,15 @@ const readSourceQuery = (
 const readSourceQueryParameters = (
   value: unknown,
   field: string,
-): SourceQuery['parameters'] => {
+): SourceQuery["parameters"] => {
   if (value === undefined) {
     return undefined;
   }
 
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    throw new Error(`Invalid execute scan command payload field: ${field}.parameters`);
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(
+      `Invalid execute scan command payload field: ${field}.parameters`,
+    );
   }
 
   return emptyJsonObjectAsUndefined(normalizeJsonObject(value));

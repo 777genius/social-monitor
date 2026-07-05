@@ -1,5 +1,6 @@
 import {
   nextCursorForQueries,
+  parseConfig,
   readCursorByQuery,
   readSearchQueries,
 } from "./x-twitter-experimental-daily-config";
@@ -47,6 +48,35 @@ describe("X/Twitter daily search query config", () => {
       "AI agents MCP Claude Code launch",
       '("Claude Code" OR "OpenAI Codex")',
       "from:OpenAI",
+    ]);
+  });
+
+  it("reads per-query budgets for compiled source query planner lanes", () => {
+    const config = parseConfig(
+      {
+        query: { mode: "search", query: "ai agents" },
+        maxItems: 30,
+      },
+      {
+        tenantId: "tenant" as never,
+        workspaceId: "workspace" as never,
+        sourceBindingId: "binding",
+        scanJobId: "scan",
+        correlationId: "correlation",
+        config: {
+          searchQueries: ["mcp server", "cursor ai"],
+          searchQueryBudgets: [
+            { query: "ai agents", maxItems: 12 },
+            { query: "mcp server", maxItems: 6 },
+          ],
+        },
+      },
+      new Date("2026-06-27T00:00:00.000Z"),
+    );
+
+    expect([...config.maxItemsBySearchQuery.entries()]).toEqual([
+      ["ai agents", 12],
+      ["mcp server", 6],
     ]);
   });
 

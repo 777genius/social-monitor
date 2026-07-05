@@ -1,12 +1,7 @@
 import { redactSensitiveText } from "@social-monitor/shared-kernel";
-import {
-  rankSourceItems,
-  type SourceItemRankingPlan,
-} from "../../../domain";
-
+import { rankSourceItems, type SourceItemRankingPlan } from "../../../domain";
 import type {
   ProviderFailure,
-  SourceCapabilityProfile,
   SourceProviderPort,
   SourceProviderScanContext,
   SourceProviderScanPlan,
@@ -14,10 +9,8 @@ import type {
   SourceProviderValidationResult,
   SourceQuery,
 } from "../../../ports";
-import type {
-  RedditClientPort,
-  RedditListingPage,
-} from "./reddit-client.port";
+import { redditCapabilityProfile } from "./reddit-capability-profile";
+import type { RedditClientPort, RedditListingPage } from "./reddit-client.port";
 import type { RedditRefreshTokenProviderPort } from "./refresh-token-reddit-token-provider";
 import {
   fetchSelectedRedditCandidateComments,
@@ -45,25 +38,10 @@ import {
   readTopTime,
   redditWarnings,
   type RedditScanPass,
+  type RedditSourceQueryLaneMetadata,
 } from "./reddit-source-support";
 import type { RedditTokenProviderPort } from "./reddit-token-provider.port";
 import { readSourceItemRankingPlan } from "../source-item-ranking-config";
-
-const capabilityProfile: SourceCapabilityProfile = {
-  providerKey: "reddit",
-  displayName: "Reddit",
-  version: 1,
-  productionSafe: true,
-  supportedContentUnits: ["post", "comment", "community", "link"],
-  supportedQueryModes: ["search", "listing"],
-  cursorModel: "opaque",
-  stableIdentity: ["providerId", "canonicalUrl"],
-  quotaModel: "per_app",
-  limitations: [
-    "Uses Reddit OAuth API only. Uses app-only OAuth by default; encrypted tenant bearer or refresh-token credentials can override when needed.",
-  ],
-};
-
 export class RedditSourceProvider implements SourceProviderPort {
   constructor(
     private readonly client: RedditClientPort,
@@ -72,15 +50,15 @@ export class RedditSourceProvider implements SourceProviderPort {
   ) {}
 
   key(): string {
-    return capabilityProfile.providerKey;
+    return redditCapabilityProfile.providerKey;
   }
 
-  capabilityProfile(): SourceCapabilityProfile {
-    return capabilityProfile;
+  capabilityProfile() {
+    return redditCapabilityProfile;
   }
 
   validateBinding(query: SourceQuery): SourceProviderValidationResult {
-    if (!capabilityProfile.supportedQueryModes.includes(query.mode)) {
+    if (!redditCapabilityProfile.supportedQueryModes.includes(query.mode)) {
       return { ok: false, reason: `Unsupported query mode: ${query.mode}` };
     }
 
@@ -140,6 +118,10 @@ export class RedditSourceProvider implements SourceProviderPort {
       context.config?.maxCommentsPerPost,
       100,
     );
+    const maxCommentedPosts = readOptionalPositiveInteger(
+      context.config?.maxCommentedPosts,
+      100,
+    );
     const commentDepth = readPositiveInteger(
       context.config?.commentDepth,
       2,
@@ -156,6 +138,7 @@ export class RedditSourceProvider implements SourceProviderPort {
         passes: scanPasses,
         fallbackMinScore: minScore,
         fallbackIncludeComments: includeComments,
+        maxCommentedPosts,
         fallbackMaxCommentsPerPost: maxCommentsPerPost,
         fallbackCommentDepth: commentDepth,
         fallbackCommentSort: commentSort,
@@ -195,9 +178,11 @@ export class RedditSourceProvider implements SourceProviderPort {
       posts: page.posts,
       minScore,
       includeComments,
+      maxCommentedPosts,
       maxCommentsPerPost,
       commentDepth,
       commentSort,
+      sourceQueryLane: sourceQueryLaneForPlan(plan),
     });
 
     return {
@@ -314,6 +299,7 @@ export class RedditSourceProvider implements SourceProviderPort {
     readonly passes: readonly RedditScanPass[];
     readonly fallbackMinScore: number | undefined;
     readonly fallbackIncludeComments: boolean;
+    readonly maxCommentedPosts: number | undefined;
     readonly fallbackMaxCommentsPerPost: number | undefined;
     readonly fallbackCommentDepth: number;
     readonly fallbackCommentSort: NonNullable<RedditScanPass["commentSort"]>;
@@ -375,7 +361,11 @@ export class RedditSourceProvider implements SourceProviderPort {
       });
 
       for (const post of posts) {
-        for (const item of normalizePost(post, minScore)) {
+        for (const item of normalizePost(
+          post,
+          minScore,
+          sourceQueryLaneForPass(pass, limit),
+        )) {
           const existing = candidatesByExternalId.get(item.externalId);
 
           if (existing === undefined) {
@@ -414,7 +404,10 @@ export class RedditSourceProvider implements SourceProviderPort {
       client: this.client,
       accessToken: params.accessToken,
       userAgent: params.userAgent,
-      candidates: rankedCandidates,
+      candidates: rankedCandidates.slice(
+        0,
+        params.maxCommentedPosts ?? rankedCandidates.length,
+      ),
     });
 
     return {
@@ -423,7 +416,6 @@ export class RedditSourceProvider implements SourceProviderPort {
       warnings: compactUnique([...warnings, ...conversationResult.warnings]),
     };
   }
-
 }
 
 const formatScanPassWarning = (
@@ -439,6 +431,61 @@ const formatScanPassWarning = (
 
   return `Reddit scan pass degraded (${passLabel}): ${redactSensitiveText(message)}`;
 };
+
+const sourceQueryLaneForPlan = (
+  plan: SourceProviderScanPlan,
+): RedditSourceQueryLaneMetadata => {
+  if (plan.query.mode === "listing") {
+    const listing = parseListingQuery(plan.query.query);
+
+    return {
+      providerKey: "reddit",
+      mode: "listing",
+      query: plan.query.query,
+      maxItems: plan.maxItems,
+      subreddit: listing.subreddit,
+      listing: listing.listing,
+    };
+  }
+
+  return {
+    providerKey: "reddit",
+    mode: "search",
+    query: plan.query.query,
+    maxItems: plan.maxItems,
+  };
+};
+
+const sourceQueryLaneForPass = (
+  pass: RedditScanPass,
+  maxItems: number,
+): RedditSourceQueryLaneMetadata =>
+  pass.mode === "listing"
+    ? {
+        providerKey: "reddit",
+        mode: "listing",
+        query: redditListingPassQuery(pass),
+        maxItems,
+        subreddit: pass.subreddit,
+        listing: pass.listing,
+        ...(pass.topTime === undefined ? {} : { topTime: pass.topTime }),
+      }
+    : {
+        providerKey: "reddit",
+        mode: "search",
+        query: pass.query,
+        maxItems,
+        ...(pass.searchSort === undefined
+          ? {}
+          : { searchSort: pass.searchSort }),
+        ...(pass.searchTime === undefined
+          ? {}
+          : { searchTime: pass.searchTime }),
+      };
+
+const redditListingPassQuery = (
+  pass: Extract<RedditScanPass, { mode: "listing" }>,
+): string => `${pass.subreddit}:${pass.listing}`;
 
 const redditRankingQueries = (
   plan: SourceProviderScanPlan,

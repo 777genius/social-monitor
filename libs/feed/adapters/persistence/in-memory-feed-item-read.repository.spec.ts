@@ -235,6 +235,59 @@ describe("InMemoryFeedItemReadRepository", () => {
     ]);
   });
 
+  it("filters feed items by publication window with an inclusive start and exclusive end", async () => {
+    const repository = new InMemoryFeedItemReadRepository();
+    repository.upsert(
+      makeItem({
+        id: "feed-before-window",
+        sourceItemId: "source-before-window",
+        canonicalUrl: "https://example.test/published-before-window",
+        publishedAt: new Date("2026-06-22T23:59:59.999Z"),
+        observedAt: new Date("2026-06-23T12:00:00.000Z"),
+      }),
+    );
+    repository.upsert(
+      makeItem({
+        id: "feed-at-window-start",
+        sourceItemId: "source-at-window-start",
+        canonicalUrl: "https://example.test/published-at-window-start",
+        publishedAt: new Date("2026-06-23T00:00:00.000Z"),
+        observedAt: new Date("2026-06-23T12:01:00.000Z"),
+      }),
+    );
+    repository.upsert(
+      makeItem({
+        id: "feed-inside-window",
+        sourceItemId: "source-inside-window",
+        canonicalUrl: "https://example.test/published-inside-window",
+        publishedAt: new Date("2026-06-23T10:00:00.000Z"),
+        observedAt: new Date("2026-06-23T12:02:00.000Z"),
+      }),
+    );
+    repository.upsert(
+      makeItem({
+        id: "feed-at-window-end",
+        sourceItemId: "source-at-window-end",
+        canonicalUrl: "https://example.test/published-at-window-end",
+        publishedAt: new Date("2026-06-24T00:00:00.000Z"),
+        observedAt: new Date("2026-06-23T12:03:00.000Z"),
+      }),
+    );
+
+    const result = await repository.list({
+      tenantId: tenantId("tenant-1"),
+      workspaceId: workspaceId("workspace-1"),
+      publishedAtOrAfter: new Date("2026-06-23T00:00:00.000Z"),
+      publishedBefore: new Date("2026-06-24T00:00:00.000Z"),
+      limit: 10,
+    });
+
+    expect(result.items.map((item) => item.toSnapshot().id)).toEqual([
+      "feed-inside-window",
+      "feed-at-window-start",
+    ]);
+  });
+
   it("filters repository radar items by provider and trend metadata", async () => {
     const repository = new InMemoryFeedItemReadRepository();
     repository.upsert(

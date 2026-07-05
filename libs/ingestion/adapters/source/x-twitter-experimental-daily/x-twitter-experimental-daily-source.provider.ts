@@ -111,12 +111,19 @@ export class XTwitterSourceProvider implements SourceProviderPort {
         : readCursorByQuery(plan.cursor);
     const postsByExternalId = new Map<
       string,
-      { readonly post: XDailyCollectedPost; readonly searchQuery: string }
+      {
+        readonly post: XDailyCollectedPost;
+        readonly searchQuery: string;
+        readonly maxItems: number;
+      }
     >();
     const warnings: string[] = [];
     const nextCursorsByQuery = new Map<string, string>();
 
     for (const [index, searchQuery] of config.searchQueries.entries()) {
+      const queryMaxItems =
+        config.maxItemsBySearchQuery.get(searchQuery) ??
+        config.maxItemsPerQuery;
       let result: Awaited<
         ReturnType<XDailyCollectorClientPort["collectDailySearch"]>
       >;
@@ -136,8 +143,8 @@ export class XTwitterSourceProvider implements SourceProviderPort {
           windowHours: config.windowHours,
           windowEnd: config.windowEnd,
           searchProducts: config.searchProducts,
-          limitPerProduct: config.limitPerProduct,
-          maxItems: config.maxItemsPerQuery,
+          limitPerProduct: config.limitPerProduct ?? queryMaxItems,
+          maxItems: queryMaxItems,
           minLikes: config.minLikes,
           minRetweets: config.minRetweets,
           minReplies: config.minReplies,
@@ -148,10 +155,7 @@ export class XTwitterSourceProvider implements SourceProviderPort {
         } satisfies XDailyCollectorRequest);
       } catch (error) {
         const failure = this.classifyError(error);
-        if (
-          failure.kind === "rate_limited" &&
-          postsByExternalId.size > 0
-        ) {
+        if (failure.kind === "rate_limited" && postsByExternalId.size > 0) {
           warnings.push(
             redactSensitiveText(
               `${searchQuery}: x-twitter.partial_rate_limit: ${failure.message}`,
@@ -173,7 +177,11 @@ export class XTwitterSourceProvider implements SourceProviderPort {
           existing === undefined ||
           xPostSignalScore(post) > xPostSignalScore(existing.post)
         ) {
-          postsByExternalId.set(externalId, { post, searchQuery });
+          postsByExternalId.set(externalId, {
+            post,
+            searchQuery,
+            maxItems: queryMaxItems,
+          });
         }
       }
 
@@ -192,7 +200,7 @@ export class XTwitterSourceProvider implements SourceProviderPort {
 
     const normalizedItems = [...postsByExternalId.values()]
       .sort((left, right) => compareCollectedPosts(left.post, right.post))
-      .map((item) => normalizePost(item.post, item.searchQuery));
+      .map((item) => normalizePost(item.post, item.searchQuery, item.maxItems));
 
     return {
       items: rankSourceItems(normalizedItems, rankingPlan).slice(
@@ -252,6 +260,7 @@ export class XTwitterSourceProvider implements SourceProviderPort {
 const normalizePost = (
   post: XDailyCollectedPost,
   searchQuery: string,
+  maxItems: number,
 ): FetchedSourceItem => ({
   externalId: `${X_TWITTER_PROVIDER_KEY}:${post.tweetId}`,
   canonicalUrl: post.canonicalUrl,
@@ -267,6 +276,12 @@ const normalizePost = (
       ? {}
       : { authorHandle: post.authorHandle }),
     searchQuery,
+    sourceQueryLane: {
+      providerKey: X_TWITTER_PROVIDER_KEY,
+      mode: "search",
+      query: searchQuery,
+      maxItems,
+    },
     sourceProduct: post.sourceProduct,
     trendScore: post.trendScore,
     likes: post.metrics.likes,

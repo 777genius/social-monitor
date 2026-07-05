@@ -54,7 +54,11 @@ const redditSearchSorts: readonly RedditSearchSort[] = [
 
 const maxConfiguredRedditScanPasses = 32;
 
-export { normalizePost, redditWarnings } from "./reddit-post-normalizer";
+export {
+  normalizePost,
+  redditWarnings,
+  type RedditSourceQueryLaneMetadata,
+} from "./reddit-post-normalizer";
 
 export const parseListingQuery = (
   value: string,
@@ -280,9 +284,7 @@ const readSearchParameters = (
   readonly searchTime?: RedditSearchTime;
 } => ({
   ...optionalSearchSortParameter(pass.searchSort ?? pass.sort),
-  ...optionalSearchTimeParameter(
-    pass.searchTime ?? pass.time ?? pass.topTime,
-  ),
+  ...optionalSearchTimeParameter(pass.searchTime ?? pass.time ?? pass.topTime),
 });
 
 const optionalSearchSortParameter = (

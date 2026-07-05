@@ -183,6 +183,15 @@ describe("RedditSourceProvider", () => {
         score: 420,
         numComments: 58,
         upvoteRatio: 0.94,
+        sourceProduct: "top",
+        sourceQueryLane: {
+          providerKey: "reddit",
+          mode: "listing",
+          query: "ClaudeAI:top",
+          maxItems: 10,
+          subreddit: "ClaudeAI",
+          listing: "top",
+        },
       },
     });
     expect(result.items).toHaveLength(1);

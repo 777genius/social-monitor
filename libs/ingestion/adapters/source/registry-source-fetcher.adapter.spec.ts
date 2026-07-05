@@ -1,8 +1,10 @@
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import type { SourceQueryPlan, SourceQueryPlannerIntent } from '../../domain';
 import type {
+  FetchedSourceItem,
   ProviderFailure,
   SourceCapabilityProfile,
+  SourceCursorModel,
   SourceConfigReaderPort,
   SourceProviderPort,
   SourceProviderScanContext,
@@ -215,6 +217,11 @@ describe('RegistrySourceFetcherAdapter', () => {
           'from:OpenAI',
           '@OpenAI',
         ],
+        searchQueryBudgets: [
+          { query: 'AI agents MCP Claude Code', maxItems: 10 },
+          { query: 'from:OpenAI', maxItems: 5 },
+          { query: '@OpenAI', maxItems: 5 },
+        ],
       },
     });
     expect(provider.observedContext?.config).toMatchObject({
@@ -313,6 +320,7 @@ describe('RegistrySourceFetcherAdapter', () => {
     expect(provider.observedContext?.config).toMatchObject({
       maxItems: 55,
       includeComments: true,
+      maxCommentedPosts: 10,
       maxCommentsPerPost: 20,
       commentSort: 'confidence',
       scanPasses: [
@@ -339,6 +347,35 @@ describe('RegistrySourceFetcherAdapter', () => {
     });
   });
 
+  it('adaptively reads additional cursor pages until enough unique items are collected', async () => {
+    const provider = new PagingProvider('opaque');
+    const result = await fetchPagingSource(provider);
+    expect(provider.observedCursors).toEqual([undefined, 'page-2']);
+    expect(result.items.map((item) => item.externalId)).toEqual([
+      'paging:1',
+      'paging:2',
+      'paging:3',
+      'paging:4',
+    ]);
+    expect(result.nextCursor).toBe('page-3');
+    expect(result.warnings).toContain(
+      'adaptive_pagination.stats;pages=2;items=4;duplicates=1;stop=target_items',
+    );
+  });
+
+  it('does not adaptively paginate time-cursor providers', async () => {
+    const provider = new PagingProvider('time');
+    const result = await fetchPagingSource(provider);
+    expect(provider.observedCursors).toEqual([undefined]);
+    expect(result.items.map((item) => item.externalId)).toEqual([
+      'paging:1',
+      'paging:2',
+    ]);
+    expect(result.warnings).toContain(
+      'adaptive_pagination.disabled:unsupported_cursor_model:time',
+    );
+  });
+
   it('rejects unknown providers before scanning', async () => {
     const fetcher = new RegistrySourceFetcherAdapter(new InMemorySourceProviderRegistry([], []));
 
@@ -357,7 +394,6 @@ describe('RegistrySourceFetcherAdapter', () => {
     const fetcher = new RegistrySourceFetcherAdapter(
       new InMemorySourceProviderRegistry([new FakeSourceProvider()], []),
     );
-
     await expect(fetcher.fetch({
       tenantId: tenantId('tenant-registry-fetcher'),
       workspaceId: workspaceId('workspace-registry-fetcher'),
@@ -447,6 +483,110 @@ class CapturingProvider implements SourceProviderPort {
   }
 }
 
+class PagingProvider implements SourceProviderPort {
+  readonly observedCursors: Array<string | undefined> = [];
+
+  constructor(private readonly cursorModel: SourceCursorModel) {}
+
+  key(): string {
+    return 'paging-source';
+  }
+
+  capabilityProfile(): SourceCapabilityProfile {
+    return {
+      providerKey: 'paging-source',
+      displayName: 'Paging Source',
+      version: 1,
+      productionSafe: true,
+      supportedContentUnits: ['post'],
+      supportedQueryModes: ['search'],
+      cursorModel: this.cursorModel,
+      stableIdentity: ['externalId', 'canonicalUrl'],
+      quotaModel: 'none',
+      limitations: [],
+    };
+  }
+
+  validateBinding(query: SourceQuery): SourceProviderValidationResult {
+    return query.mode === 'search'
+      ? { ok: true }
+      : { ok: false, reason: `Unsupported query mode: ${query.mode}` };
+  }
+
+  planScan(query: SourceQuery): SourceProviderScanPlan {
+    return {
+      query,
+      maxItems: 2,
+    };
+  }
+
+  async scan(plan: SourceProviderScanPlan): Promise<SourceProviderScanResult> {
+    this.observedCursors.push(plan.cursor);
+
+    if (plan.cursor === undefined) {
+      return {
+        items: [fetchedItem('paging:1'), fetchedItem('paging:2')],
+        nextCursor: 'page-2',
+        warnings: ['first page warning'],
+      };
+    }
+
+    if (plan.cursor === 'page-2') {
+      return {
+        items: [
+          fetchedItem('paging:2'),
+          fetchedItem('paging:3'),
+          fetchedItem('paging:4'),
+        ],
+        nextCursor: 'page-3',
+        warnings: ['second page warning'],
+      };
+    }
+
+    return {
+      items: [fetchedItem('paging:5')],
+      warnings: [],
+    };
+  }
+
+  classifyError(error: unknown): ProviderFailure {
+    return {
+      kind: 'unknown',
+      retryable: false,
+      message: error instanceof Error ? error.message : 'Unknown provider error',
+    };
+  }
+}
+
+const fetchPagingSource = async (provider: PagingProvider) => {
+  const fetcher = new RegistrySourceFetcherAdapter(
+    new InMemorySourceProviderRegistry([provider], []),
+    {
+      async readConfig() {
+        return {
+          adaptivePagination: {
+            enabled: true,
+            targetItems: 4,
+            maxPages: 3,
+            minNewItemsPerPage: 1,
+            maxDuplicateRate: 0.9,
+          },
+        };
+      },
+    } satisfies SourceConfigReaderPort,
+  );
+
+  return fetcher.fetch({
+    tenantId: tenantId('tenant-registry-fetcher'),
+    workspaceId: workspaceId('workspace-registry-fetcher'),
+    sourceBindingId: 'source-binding-registry-fetcher',
+    scanJobId: 'scan-job-registry-fetcher',
+    providerKey: 'paging-source',
+    sourceQuery: { mode: 'search', query: 'AI agents' },
+    correlationId: 'correlation-registry-fetcher',
+  });
+};
+
 const lane = (
   params: Omit<SourceQueryPlan['lanes'][number], 'reason'> & {
     readonly reason?: string;
@@ -454,4 +594,12 @@ const lane = (
 ): SourceQueryPlan['lanes'][number] => ({
   reason: 'test lane',
   ...params,
+});
+
+const fetchedItem = (externalId: string): FetchedSourceItem => ({
+  externalId,
+  canonicalUrl: `https://example.test/${externalId}`,
+  title: externalId,
+  body: externalId,
+  publishedAt: new Date('2026-01-01T00:00:00.000Z'),
 });

@@ -183,6 +183,24 @@ export class ExecuteScanUseCase {
         interestId: sourceBinding.interestId,
         sourceBindingId: sourceBinding.sourceBindingId,
         providerKey: sourceBinding.providerKey,
+        snapshots: {
+          interestQuerySnapshot: {
+            interestId: sourceBinding.interestId,
+            query: command.interestQuerySnapshot ?? command.sourceQuery.query,
+          },
+          sourceBindingSnapshot: {
+            sourceBindingId: sourceBinding.sourceBindingId,
+            providerKey: sourceBinding.providerKey,
+            sourceQuery: {
+              mode: command.sourceQuery.mode,
+              query: command.sourceQuery.query,
+            },
+          },
+          workspaceScopeSnapshot: {
+            tenantId: command.tenantId,
+            workspaceId: command.workspaceId,
+          },
+        },
         sourceItems: persistedItems,
       });
       await this.conversationProjection.project({
@@ -308,17 +326,19 @@ const buildScanFailureMetadata = (error: unknown): JsonObject | undefined => {
     return undefined;
   }
 
-  return emptyJsonObjectAsUndefined(normalizeJsonObject({
-    providerKey: error.providerKey,
-    kind: error.kind,
-    retryable: error.retryable,
-    ...(error.retryAfterMs === undefined
-      ? {}
-      : { retryAfterMs: error.retryAfterMs }),
-    ...(error.rateLimitResetAt === undefined
-      ? {}
-      : { rateLimitResetAt: error.rateLimitResetAt.toISOString() }),
-  }));
+  return emptyJsonObjectAsUndefined(
+    normalizeJsonObject({
+      providerKey: error.providerKey,
+      kind: error.kind,
+      retryable: error.retryable,
+      ...(error.retryAfterMs === undefined
+        ? {}
+        : { retryAfterMs: error.retryAfterMs }),
+      ...(error.rateLimitResetAt === undefined
+        ? {}
+        : { rateLimitResetAt: error.rateLimitResetAt.toISOString() }),
+    }),
+  );
 };
 
 const createDomainValue = <T>(factory: () => T): Result<T, DomainError> => {
@@ -392,18 +412,22 @@ const formatScanFailureReason = (error: unknown): string => {
     : "Unknown scan execution failure";
 };
 
-const sanitizeFetchedSourceItem = (item: FetchedSourceItem): FetchedSourceItem => ({
+const sanitizeFetchedSourceItem = (
+  item: FetchedSourceItem,
+): FetchedSourceItem => ({
   ...item,
   externalId: redactSensitiveText(item.externalId),
   canonicalUrl: sanitizeFetchedSourceUrl(item.canonicalUrl),
   title: redactSensitiveText(item.title),
   body: redactSensitiveText(item.body),
-  authorHandle: item.authorHandle === undefined
-    ? undefined
-    : redactSensitiveText(item.authorHandle),
-  metadata: item.metadata === undefined
-    ? undefined
-    : redactSensitiveRecord(item.metadata) as JsonObject,
+  authorHandle:
+    item.authorHandle === undefined
+      ? undefined
+      : redactSensitiveText(item.authorHandle),
+  metadata:
+    item.metadata === undefined
+      ? undefined
+      : (redactSensitiveRecord(item.metadata) as JsonObject),
 });
 
 const sanitizeFetchedSourceUrl = (value: string): string => {
@@ -436,16 +460,19 @@ const sanitizeFetchedConversationUnit = (
   providerUnitId: redactSensitiveText(unit.providerUnitId),
   canonicalUrl: sanitizeFetchedSourceUrl(unit.canonicalUrl),
   body: redactSensitiveText(unit.body),
-  authorHandle: unit.authorHandle === undefined
-    ? undefined
-    : redactSensitiveText(unit.authorHandle),
+  authorHandle:
+    unit.authorHandle === undefined
+      ? undefined
+      : redactSensitiveText(unit.authorHandle),
   threadExternalId: redactSensitiveText(unit.threadExternalId),
-  parentProviderUnitId: unit.parentProviderUnitId === undefined
-    ? undefined
-    : redactSensitiveText(unit.parentProviderUnitId),
-  metadata: unit.metadata === undefined
-    ? undefined
-    : redactSensitiveRecord(unit.metadata) as JsonObject,
+  parentProviderUnitId:
+    unit.parentProviderUnitId === undefined
+      ? undefined
+      : redactSensitiveText(unit.parentProviderUnitId),
+  metadata:
+    unit.metadata === undefined
+      ? undefined
+      : (redactSensitiveRecord(unit.metadata) as JsonObject),
 });
 
 const sanitizeSourceWarnings = (

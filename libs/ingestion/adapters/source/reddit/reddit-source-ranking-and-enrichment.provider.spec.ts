@@ -120,6 +120,53 @@ describe("RedditSourceProvider ranking and selected enrichment", () => {
     );
   });
 
+  it("caps Reddit comment enrichment to the configured top N ranked posts", async () => {
+    const client = clientWithPosts(
+      [
+        redditPost({
+          id: "mcp-relevant",
+          title: "Claude Code MCP server reliability notes",
+          score: 200,
+          numComments: 30,
+        }),
+        redditPost({
+          id: "mcp-second",
+          title: "MCP server auth retries",
+          score: 150,
+          numComments: 25,
+        }),
+      ],
+      new Map([
+        ["mcp-relevant", { comments: [] }],
+        ["mcp-second", { comments: [] }],
+      ]),
+    );
+    const provider = providerFor(client);
+    const context = scanContext({
+      maxItems: 2,
+      maxCommentedPosts: 1,
+      scanPasses: [
+        topOpenAiPass({
+          maxItems: 2,
+          includeComments: true,
+          maxCommentsPerPost: 2,
+        }),
+      ],
+    });
+
+    await provider.scan(
+      provider.planScan(
+        { mode: "search", query: "Claude Code MCP server reliability" },
+        context,
+      ),
+      context,
+    );
+
+    expect(client.commentRequests.map((request) => request.postId)).toEqual([
+      "mcp-relevant",
+    ]);
+  });
+
   it("keeps selected Reddit posts when comment enrichment is unavailable", async () => {
     const client = clientWithPosts(
       [

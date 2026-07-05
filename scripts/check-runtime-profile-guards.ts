@@ -47,6 +47,7 @@ import {
   resolveSummaryRabbitMqJobQueueOptions,
   resolveSummaryPersistenceMode,
   resolveReaderSummaryModelProviderMode,
+  resolveReaderSummaryTopicLabelerMode,
   resolveSummaryYoutubeVideoSummaryProviderMode,
 } from '../libs/summary/interfaces/rest/summary-provider-tokens';
 import { resolveUsagePersistenceMode } from '../libs/usage/interfaces/rest/usage-provider-tokens';
@@ -193,9 +194,25 @@ assert(
   resolveSummaryModelProviderMode({ ...betaEnv, SUMMARY_MODEL_PROVIDER: 'openai-responses' }) === 'openai-responses',
   'summary beta model provider',
 );
+assert(
+  resolveReaderSummaryModelProviderMode(betaEnv) === 'agent-runtime',
+  'reader summary beta model provider defaults to agent-runtime',
+);
+assert(
+  resolveReaderSummaryTopicLabelerMode(betaEnv, 'agent-runtime') === 'agent-runtime',
+  'reader summary topic labeler defaults to agent-runtime',
+);
 assertThrows(
-  () => resolveReaderSummaryModelProviderMode(betaEnv),
+  () => resolveReaderSummaryModelProviderMode({ ...betaEnv, READER_SUMMARY_MODEL_PROVIDER: 'deterministic' }),
   'READER_SUMMARY_MODEL_PROVIDER must reject deterministic mode in beta runtime',
+);
+assertThrows(
+  () =>
+    resolveReaderSummaryTopicLabelerMode(
+      { ...betaEnv, READER_SUMMARY_TOPIC_LABELER: 'deterministic' },
+      'agent-runtime',
+    ),
+  'READER_SUMMARY_TOPIC_LABELER must reject deterministic mode in beta runtime',
 );
 assert(
   resolveReaderSummaryModelProviderMode({ ...betaEnv, READER_SUMMARY_MODEL_PROVIDER: 'openai-responses' }) ===

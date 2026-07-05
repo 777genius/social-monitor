@@ -9,9 +9,19 @@ import type {
   SourceFetcherPort,
   SourceProviderScanContext,
   SourceProviderRegistryPort,
+  SourceProviderPort,
+  SourceProviderScanPlan,
+  SourceProviderScanResult,
   SourceRuntimeConfig,
 } from '../../ports';
 import { SourceFetchError } from '../../ports';
+import {
+  adaptivePaginationFailureWarning,
+  adaptivePaginationStatsWarning,
+  createAdaptivePaginationAccumulator,
+  readAdaptivePaginationPolicy,
+  type AdaptivePaginationStopReason,
+} from './adaptive-source-pagination';
 import {
   DefaultSourceQueryPlanRuntimeCompiler,
   isSourceQueryPlannerEnabled,
@@ -71,7 +81,11 @@ export class RegistrySourceFetcherAdapter implements SourceFetcherPort {
         ...provider.planScan(planned.sourceQuery, context),
         cursor: command.cursor,
       };
-      const result = await provider.scan(plan, context);
+      const result = await this.scanWithAdaptivePagination(
+        provider,
+        plan,
+        context,
+      );
 
       return {
         items: result.items,
@@ -94,6 +108,109 @@ export class RegistrySourceFetcherAdapter implements SourceFetcherPort {
         rateLimitResetAt: failure.rateLimitResetAt,
       });
     }
+  }
+
+  private async scanWithAdaptivePagination(
+    provider: SourceProviderPort,
+    initialPlan: SourceProviderScanPlan,
+    context: SourceProviderScanContext,
+  ): Promise<SourceProviderScanResult> {
+    const policyResult = readAdaptivePaginationPolicy({
+      config: context.config,
+      cursorModel: provider.capabilityProfile().cursorModel,
+      firstPageLimit: initialPlan.maxItems,
+    });
+
+    if (!policyResult.enabled) {
+      const result = await provider.scan(initialPlan, context);
+
+      return policyResult.warning === undefined
+        ? result
+        : {
+            ...result,
+            warnings: compactUnique([...result.warnings, policyResult.warning]),
+          };
+    }
+
+    const accumulator = createAdaptivePaginationAccumulator();
+    let cursor = initialPlan.cursor;
+    let nextCursor: string | undefined;
+    let stopReason: AdaptivePaginationStopReason = 'max_pages';
+
+    for (let page = 0; page < policyResult.policy.maxPages; page += 1) {
+      let result: SourceProviderScanResult;
+
+      try {
+        result = await provider.scan({ ...initialPlan, cursor }, context);
+      } catch (error) {
+        if (page === 0) {
+          throw error;
+        }
+
+        const failure = provider.classifyError(error, context);
+        if (!failure.retryable) {
+          throw error;
+        }
+
+        stopReason = 'partial_retryable_failure';
+        const state = accumulator.state(stopReason);
+        return {
+          items: state.items,
+          conversationUnits: state.conversationUnits,
+          nextCursor: cursor,
+          warnings: compactUnique([
+            ...state.warnings,
+            adaptivePaginationFailureWarning({
+              kind: failure.kind,
+              message: failure.message,
+            }),
+            adaptivePaginationStatsWarning(state),
+          ]),
+        };
+      }
+
+      const pageStats = accumulator.appendPage(result);
+      nextCursor = result.nextCursor;
+
+      if (accumulator.uniqueItemCount() >= policyResult.policy.targetItems) {
+        stopReason = 'target_items';
+        break;
+      }
+
+      if (nextCursor === undefined) {
+        stopReason = 'no_next_cursor';
+        break;
+      }
+
+      if (nextCursor === cursor) {
+        stopReason = 'cursor_not_advanced';
+        break;
+      }
+
+      if (pageStats.newItemCount < policyResult.policy.minNewItemsPerPage) {
+        stopReason = 'low_new_item_yield';
+        break;
+      }
+
+      if (pageStats.duplicateRate > policyResult.policy.maxDuplicateRate) {
+        stopReason = 'high_duplicate_rate';
+        break;
+      }
+
+      cursor = nextCursor;
+    }
+
+    const state = accumulator.state(stopReason);
+
+    return {
+      items: state.items,
+      conversationUnits: state.conversationUnits,
+      nextCursor,
+      warnings: compactUnique([
+        ...state.warnings,
+        adaptivePaginationStatsWarning(state),
+      ]),
+    };
   }
 
   private async readMergedConfig(

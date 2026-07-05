@@ -13,6 +13,8 @@ export type ListFeedItemsQuery = {
   readonly searchQuery?: string;
   readonly observedAfter?: Date;
   readonly observedBefore?: Date;
+  readonly publishedAtOrAfter?: Date;
+  readonly publishedBefore?: Date;
   readonly providerKey?: string;
   readonly repositoryTrendWindow?: string;
   readonly repositoryLanguage?: string;

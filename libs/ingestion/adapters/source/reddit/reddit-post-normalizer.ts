@@ -1,9 +1,22 @@
 import type { FetchedSourceItem } from "../../../ports";
 import type { RedditPost } from "./reddit-client.port";
 
+export type RedditSourceQueryLaneMetadata = {
+  readonly providerKey: "reddit";
+  readonly mode: "search" | "listing";
+  readonly query: string;
+  readonly maxItems?: number;
+  readonly subreddit?: string;
+  readonly listing?: string;
+  readonly topTime?: string;
+  readonly searchSort?: string;
+  readonly searchTime?: string;
+};
+
 export const normalizePost = (
   post: RedditPost,
   minScore: number | undefined,
+  sourceQueryLane?: RedditSourceQueryLaneMetadata,
 ): readonly FetchedSourceItem[] => {
   if (post.over18 || post.removedByCategory !== undefined) {
     return [];
@@ -38,7 +51,7 @@ export const normalizePost = (
       body,
       authorHandle: post.author,
       publishedAt,
-      metadata: redditPostMetadata(post),
+      metadata: redditPostMetadata(post, sourceQueryLane),
     },
   ];
 };
@@ -103,7 +116,10 @@ const canonicalUrl = (post: RedditPost): string => {
   return post.url ?? `https://www.reddit.com/comments/${post.id}`;
 };
 
-const redditPostMetadata = (post: RedditPost) => ({
+const redditPostMetadata = (
+  post: RedditPost,
+  sourceQueryLane: RedditSourceQueryLaneMetadata | undefined,
+) => ({
   kind: "reddit_post",
   ...(post.subreddit === undefined ? {} : { subreddit: post.subreddit }),
   ...(linkedUrl(post) === undefined ? {} : { linkedUrl: linkedUrl(post) }),
@@ -118,6 +134,16 @@ const redditPostMetadata = (post: RedditPost) => ({
   ...(post.score === undefined ? {} : { score: post.score }),
   ...(post.numComments === undefined ? {} : { numComments: post.numComments }),
   ...(post.upvoteRatio === undefined ? {} : { upvoteRatio: post.upvoteRatio }),
+  ...(sourceQueryLane === undefined
+    ? {}
+    : {
+        sourceQueryLane,
+        ...(sourceQueryLane.mode === "search"
+          ? { searchQuery: sourceQueryLane.query }
+          : {
+              sourceProduct: sourceQueryLane.listing ?? sourceQueryLane.mode,
+            }),
+      }),
 });
 
 const linkedUrl = (post: RedditPost): string | undefined => {

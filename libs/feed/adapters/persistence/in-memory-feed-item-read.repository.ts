@@ -69,6 +69,11 @@ export class InMemoryFeedItemReadRepository
             snapshot.observedAt.getTime() > query.observedAfter.getTime()) &&
           (query.observedBefore === undefined ||
             snapshot.observedAt.getTime() < query.observedBefore.getTime()) &&
+          (query.publishedAtOrAfter === undefined ||
+            snapshot.publishedAt.getTime() >=
+              query.publishedAtOrAfter.getTime()) &&
+          (query.publishedBefore === undefined ||
+            snapshot.publishedAt.getTime() < query.publishedBefore.getTime()) &&
           matchesFeedItemReadFilters(item, query)
         );
       })

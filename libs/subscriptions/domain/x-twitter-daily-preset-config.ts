@@ -8,6 +8,13 @@ export const xTwitterDailyConfig = {
   minLikes: 3,
   minRetweets: 0,
   minReplies: 0,
+  adaptivePagination: {
+    enabled: true,
+    targetItems: 120,
+    maxPages: 2,
+    minNewItemsPerPage: 10,
+    maxDuplicateRate: 0.65,
+  },
   searchQueries: [
     '"Claude Code" OR "OpenAI Codex" OR Cursor OR "Cursor AI" OR "AI coding" OR "coding agent"',
     'MCP OR "MCP server" OR "model context protocol" OR "AI agent"',

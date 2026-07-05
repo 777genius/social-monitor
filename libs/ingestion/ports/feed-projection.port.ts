@@ -1,6 +1,23 @@
-import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
+import type { TenantId, WorkspaceId } from "@social-monitor/shared-kernel";
 
-import type { SourceItem } from '../domain';
+import type { SourceItem } from "../domain";
+import type { SourceQuery } from "./source-provider.port";
+
+export type FeedProjectionSnapshots = {
+  readonly interestQuerySnapshot: {
+    readonly interestId: string;
+    readonly query: string;
+  };
+  readonly sourceBindingSnapshot: {
+    readonly sourceBindingId: string;
+    readonly providerKey: string;
+    readonly sourceQuery: Pick<SourceQuery, "mode" | "query">;
+  };
+  readonly workspaceScopeSnapshot: {
+    readonly tenantId: TenantId;
+    readonly workspaceId: WorkspaceId;
+  };
+};
 
 export type ProjectFeedItemsCommand = {
   readonly tenantId: TenantId;
@@ -8,6 +25,7 @@ export type ProjectFeedItemsCommand = {
   readonly interestId: string;
   readonly sourceBindingId: string;
   readonly providerKey: string;
+  readonly snapshots: FeedProjectionSnapshots;
   readonly sourceItems: readonly SourceItem[];
 };
 

@@ -179,9 +179,8 @@ const compileXTwitterPlannedQuery = (params: {
       readRecord(params.runtimeConfig?.sourceQueryPlanner)?.maxSearchQueries ??
         params.runtimeConfig?.maxSearchQueries,
     ) ?? 16;
-  const searchQueries = compactUnique(
-    sourceLanes.map((lane) => lane.query.trim()),
-  ).slice(0, maxQueries);
+  const queryBudgets = xSearchQueryBudgets(sourceLanes, maxQueries);
+  const searchQueries = queryBudgets.map((budget) => budget.query);
   const primaryLane = sourceLanes[0];
 
   if (searchQueries.length === 0 || primaryLane === undefined) {
@@ -199,6 +198,10 @@ const compileXTwitterPlannedQuery = (params: {
         maxItems: totalMaxItems(sourceLanes),
         maxSearchQueries: searchQueries.length,
         searchQueries,
+        searchQueryBudgets: queryBudgets.map((budget) => ({
+          query: budget.query,
+          maxItems: budget.maxItems,
+        })),
       }),
     },
     warnings:
@@ -302,10 +305,40 @@ const redditCommentExpansionParameters = (
 
   return compactRuntimeConfig({
     includeComments: true,
+    maxCommentedPosts: maxItemsForLane(lane),
     maxCommentsPerPost: readNumberParameter(lane, 'maxCommentsPerPost'),
     commentDepth: readNumberParameter(lane, 'commentDepth'),
     commentSort: readStringParameter(lane, 'commentSort'),
   });
+};
+
+const xSearchQueryBudgets = (
+  lanes: readonly SourceQueryPlanLane[],
+  maxQueries: number,
+): readonly { readonly query: string; readonly maxItems: number }[] => {
+  const budgetsByQuery = new Map<string, number>();
+  const orderedQueries: string[] = [];
+
+  for (const lane of lanes) {
+    const query = lane.query.trim();
+    if (query.length === 0) {
+      continue;
+    }
+
+    if (!budgetsByQuery.has(query)) {
+      orderedQueries.push(query);
+    }
+
+    budgetsByQuery.set(
+      query,
+      Math.max(budgetsByQuery.get(query) ?? 0, maxItemsForLane(lane)),
+    );
+  }
+
+  return orderedQueries.slice(0, maxQueries).map((query) => ({
+    query,
+    maxItems: budgetsByQuery.get(query) ?? 1,
+  }));
 };
 
 const skippedLaneWarnings = (
@@ -455,13 +488,7 @@ const readNumberParameter = (
 };
 
 const totalMaxItems = (lanes: readonly SourceQueryPlanLane[]): number =>
-  Math.max(
-    1,
-    Math.min(
-      100,
-      lanes.reduce((total, lane) => total + maxItemsForLane(lane), 0),
-    ),
-  );
+  Math.max(1, Math.min(100, lanes.reduce((total, lane) => total + maxItemsForLane(lane), 0)));
 
 const maxItemsForLane = (lane: SourceQueryPlanLane): number =>
   Math.max(1, Math.min(100, lane.maxItems));

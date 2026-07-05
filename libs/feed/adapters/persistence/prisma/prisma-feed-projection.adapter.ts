@@ -1,17 +1,22 @@
-import { withPrismaWriteRetry } from '@social-monitor/platform-persistence';
-import type { IdGenerator } from '@social-monitor/shared-kernel';
+import { withPrismaWriteRetry } from "@social-monitor/platform-persistence";
+import type { IdGenerator } from "@social-monitor/shared-kernel";
 import type {
   FeedProjectionPort,
   ProjectFeedItemsCommand,
   ProjectFeedItemsResult,
   ProjectedFeedItemRef,
-} from '@social-monitor/ingestion/ports';
+} from "@social-monitor/ingestion/ports";
 
-import type { PrismaFeedClient } from './prisma-feed-client';
-import { feedItemFromPrisma } from './prisma-feed-records';
-import { feedSignalBaselineSampleFromItem } from '../../../domain';
-import { feedDedupeKeyForItem } from '../feed-dedupe-key';
-import { feedBodyPreviewForProjection } from '../feed-projection-content';
+import type { PrismaFeedClient } from "./prisma-feed-client";
+import { feedItemFromPrisma } from "./prisma-feed-records";
+import { feedSignalBaselineSampleFromItem } from "../../../domain";
+import { feedDedupeKeyForItem } from "../feed-dedupe-key";
+import {
+  assertFeedProjectionCommandIntegrity,
+  assertFeedProjectionSourceItemBinding,
+  feedBodyPreviewForProjection,
+  feedProviderMetadataForProjection,
+} from "../feed-projection-content";
 
 export class PrismaFeedProjectionAdapter implements FeedProjectionPort {
   constructor(
@@ -19,12 +24,17 @@ export class PrismaFeedProjectionAdapter implements FeedProjectionPort {
     private readonly ids: IdGenerator,
   ) {}
 
-  async project(command: ProjectFeedItemsCommand): Promise<ProjectFeedItemsResult> {
+  async project(
+    command: ProjectFeedItemsCommand,
+  ): Promise<ProjectFeedItemsResult> {
+    assertFeedProjectionCommandIntegrity(command);
+
     let projected = 0;
     const projectedItems: ProjectedFeedItemRef[] = [];
 
     for (const sourceItem of command.sourceItems) {
       const snapshot = sourceItem.toSnapshot();
+      assertFeedProjectionSourceItemBinding(command, snapshot);
       const dedupeKey = feedDedupeKeyForItem({
         canonicalUrl: snapshot.canonicalUrl,
         providerMetadata: snapshot.metadata,
@@ -32,6 +42,10 @@ export class PrismaFeedProjectionAdapter implements FeedProjectionPort {
       const bodyPreview = feedBodyPreviewForProjection({
         body: snapshot.body,
         providerMetadata: snapshot.metadata,
+      });
+      const providerMetadata = feedProviderMetadataForProjection({
+        providerMetadata: snapshot.metadata,
+        snapshots: command.snapshots,
       });
       const feedItemId = this.ids.generate();
 
@@ -54,8 +68,8 @@ export class PrismaFeedProjectionAdapter implements FeedProjectionPort {
             authorHandle: snapshot.authorHandle ?? null,
             publishedAt: snapshot.publishedAt,
             observedAt: snapshot.ingestedAt,
-            providerMetadata: snapshot.metadata ?? null,
-            status: 'VISIBLE',
+            providerMetadata,
+            status: "VISIBLE",
           },
           create: {
             id: feedItemId,
@@ -72,11 +86,13 @@ export class PrismaFeedProjectionAdapter implements FeedProjectionPort {
             authorHandle: snapshot.authorHandle ?? null,
             publishedAt: snapshot.publishedAt,
             observedAt: snapshot.ingestedAt,
-            providerMetadata: snapshot.metadata ?? null,
-            status: 'VISIBLE',
+            providerMetadata,
+            status: "VISIBLE",
           },
         });
-        const signalSample = feedSignalBaselineSampleFromItem(feedItemFromPrisma(feedItem));
+        const signalSample = feedSignalBaselineSampleFromItem(
+          feedItemFromPrisma(feedItem),
+        );
 
         if (signalSample === undefined) {
           await this.prisma.feedSignalBaselineSample.deleteMany({

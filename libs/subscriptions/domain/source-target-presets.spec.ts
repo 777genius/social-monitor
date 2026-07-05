@@ -139,6 +139,13 @@ describe("aiDeveloperSignalSourcePreset", () => {
           readonly maxItems: number;
           readonly limitPerProduct: number;
           readonly minLikes: number;
+          readonly adaptivePagination?: {
+            readonly enabled: boolean;
+            readonly targetItems: number;
+            readonly maxPages: number;
+            readonly minNewItemsPerPage: number;
+            readonly maxDuplicateRate: number;
+          };
           readonly searchQueries: readonly string[];
         }
       | undefined;
@@ -190,6 +197,13 @@ describe("aiDeveloperSignalSourcePreset", () => {
       maxItems: 80,
       limitPerProduct: 20,
       minLikes: 3,
+    });
+    expect(xConfig?.adaptivePagination).toMatchObject({
+      enabled: true,
+      targetItems: 120,
+      maxPages: 2,
+      minNewItemsPerPage: 10,
+      maxDuplicateRate: 0.65,
     });
     expect(xConfig?.searchQueries).toEqual([
       '"Claude Code" OR "OpenAI Codex" OR Cursor OR "Cursor AI" OR "AI coding" OR "coding agent"',

@@ -64,6 +64,12 @@ describe("XTwitterSourceProvider", () => {
             provider: "x-twitter",
             tweetId: "123",
             searchQuery: "ai agents",
+            sourceQueryLane: {
+              providerKey: "x-twitter",
+              mode: "search",
+              query: "ai agents",
+              maxItems: 25,
+            },
             likes: 100,
             retweets: 10,
             replies: 4,
@@ -162,6 +168,12 @@ describe("XTwitterSourceProvider", () => {
     ]);
     expect(result.items[1]?.metadata).toMatchObject({
       searchQuery: "mcp server",
+      sourceQueryLane: {
+        providerKey: "x-twitter",
+        mode: "search",
+        query: "mcp server",
+        maxItems: 1,
+      },
       likes: 90,
     });
     expect(result.nextCursor).toBe(
@@ -202,6 +214,45 @@ describe("XTwitterSourceProvider", () => {
     expect(collector.requests.map((request) => request.maxItems)).toEqual([
       5, 5,
     ]);
+  });
+
+  it("uses per-query budgets when source query planner compiled lane budgets", async () => {
+    const collector = new MultiQueryCollector();
+    const provider = new XTwitterSourceProvider(collector, {
+      now: () => new Date("2026-06-27T00:00:00.000Z"),
+    });
+    const context = {
+      tenantId: tenantId("tenant-1"),
+      workspaceId: workspaceId("workspace-1"),
+      sourceBindingId: "binding-1",
+      scanJobId: "scan-1",
+      correlationId: "corr-1",
+      config: {
+        maxItems: 30,
+        searchQueries: ["mcp server", "cursor ai"],
+        searchQueryBudgets: [
+          { query: "ai agents", maxItems: 12 },
+          { query: "mcp server", maxItems: 6 },
+        ],
+      },
+    };
+
+    await provider.scan(
+      provider.planScan({ mode: "search", query: "ai agents" }, context),
+      context,
+    );
+
+    expect(collector.requests.map((request) => request.query)).toEqual([
+      "ai agents",
+      "mcp server",
+      "cursor ai",
+    ]);
+    expect(collector.requests.map((request) => request.maxItems)).toEqual([
+      12, 6, 10,
+    ]);
+    expect(
+      collector.requests.map((request) => request.limitPerProduct),
+    ).toEqual([12, 6, 10]);
   });
 
   it("returns collected posts when a later configured query is rate limited", async () => {

@@ -1,13 +1,20 @@
 import { redactSensitiveText } from "@social-monitor/shared-kernel";
 
-import type { FetchedConversationUnit, FetchedSourceItem } from "../../../ports";
+import type {
+  FetchedConversationUnit,
+  FetchedSourceItem,
+} from "../../../ports";
 import type {
   RedditClientPort,
   RedditCommentPage,
   RedditPost,
 } from "./reddit-client.port";
 import { normalizeComment } from "./reddit-comment-source-support";
-import { normalizePost, type RedditScanPass } from "./reddit-source-support";
+import {
+  normalizePost,
+  type RedditScanPass,
+  type RedditSourceQueryLaneMetadata,
+} from "./reddit-source-support";
 
 export type RedditSelectedPostCommentExpansion = {
   readonly minScore: number | undefined;
@@ -134,22 +141,35 @@ export const normalizeRedditPostsWithOptionalComments = async (params: {
   readonly posts: readonly RedditPost[];
   readonly minScore: number | undefined;
   readonly includeComments: boolean;
+  readonly maxCommentedPosts: number | undefined;
   readonly maxCommentsPerPost: number | undefined;
   readonly commentDepth: number;
   readonly commentSort: NonNullable<RedditScanPass["commentSort"]>;
+  readonly sourceQueryLane?: RedditSourceQueryLaneMetadata;
 }): Promise<NormalizedRedditPostResult> => {
   const items: FetchedSourceItem[] = [];
   const conversationUnits: FetchedConversationUnit[] = [];
   const warnings: string[] = [];
+  let commentedPostCount = 0;
 
   for (const post of params.posts) {
-    const normalizedPostItems = normalizePost(post, params.minScore);
+    const normalizedPostItems = normalizePost(
+      post,
+      params.minScore,
+      params.sourceQueryLane,
+    );
     items.push(...normalizedPostItems);
 
     const rootItem = normalizedPostItems[0];
-    if (rootItem === undefined || !params.includeComments) {
+    if (
+      rootItem === undefined ||
+      !params.includeComments ||
+      commentedPostCount >=
+        (params.maxCommentedPosts ?? Number.POSITIVE_INFINITY)
+    ) {
       continue;
     }
+    commentedPostCount += 1;
 
     let comments: RedditCommentPage;
     try {
