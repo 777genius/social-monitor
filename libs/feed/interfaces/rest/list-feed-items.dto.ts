@@ -161,6 +161,38 @@ export class HackerNewsStoryProviderMetricsDto {
   declare readonly comments: number;
 }
 
+export class HackerNewsCommentProviderMetricsDto {
+  @ApiProperty({ enum: ['hacker_news_comment'] })
+  declare readonly kind: 'hacker_news_comment';
+
+  @ApiProperty({ enum: ['hacker-news'] })
+  declare readonly providerKey: 'hacker-news';
+
+  @ApiProperty()
+  declare readonly sourceKey: string;
+
+  @ApiProperty({ enum: ['comment'] })
+  declare readonly contentType: 'comment';
+
+  @ApiProperty()
+  declare readonly score: number;
+
+  @ApiProperty()
+  declare readonly replies: number;
+
+  @ApiProperty()
+  declare readonly depth: number;
+
+  @ApiPropertyOptional()
+  declare readonly rank?: number;
+
+  @ApiProperty({ enum: ['top_level_comment', 'reply'] })
+  declare readonly role: 'top_level_comment' | 'reply';
+
+  @ApiProperty({ enum: ['provider_reported', 'not_available'] })
+  declare readonly scoreConfidence: 'provider_reported' | 'not_available';
+}
+
 export class XPostProviderMetricsDto {
   @ApiProperty({ enum: ['x_post'] })
   declare readonly kind: 'x_post';
@@ -199,6 +231,7 @@ export type FeedProviderMetricsDto =
   | GitHubRepositoryProviderMetricsDto
   | GitHubTrendingRepositoryProviderMetricsDto
   | HackerNewsStoryProviderMetricsDto
+  | HackerNewsCommentProviderMetricsDto
   | XPostProviderMetricsDto;
 
 const feedProviderMetricsOneOf = [
@@ -207,6 +240,7 @@ const feedProviderMetricsOneOf = [
   { $ref: getSchemaPath(GitHubRepositoryProviderMetricsDto) },
   { $ref: getSchemaPath(GitHubTrendingRepositoryProviderMetricsDto) },
   { $ref: getSchemaPath(HackerNewsStoryProviderMetricsDto) },
+  { $ref: getSchemaPath(HackerNewsCommentProviderMetricsDto) },
   { $ref: getSchemaPath(XPostProviderMetricsDto) },
 ];
 
@@ -266,6 +300,7 @@ export class FeedNormalizedSignalDto {
   GitHubRepositoryProviderMetricsDto,
   GitHubTrendingRepositoryProviderMetricsDto,
   HackerNewsStoryProviderMetricsDto,
+  HackerNewsCommentProviderMetricsDto,
   XPostProviderMetricsDto,
 )
 export class FeedItemDto {
@@ -317,6 +352,7 @@ export class FeedItemDto {
           GitHubTrendingRepositoryProviderMetricsDto,
         ),
         hacker_news_story: getSchemaPath(HackerNewsStoryProviderMetricsDto),
+        hacker_news_comment: getSchemaPath(HackerNewsCommentProviderMetricsDto),
         x_post: getSchemaPath(XPostProviderMetricsDto),
       },
     },

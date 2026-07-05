@@ -13,6 +13,11 @@ import 'git_hub_trending_repository_provider_metrics_dto_content_type_content_ty
 import 'git_hub_trending_repository_provider_metrics_dto_kind_kind.dart';
 import 'git_hub_trending_repository_provider_metrics_dto_provider_key_provider_key.dart';
 import 'git_hub_trending_repository_provider_metrics_dto_window_window.dart';
+import 'hacker_news_comment_provider_metrics_dto_content_type_content_type.dart';
+import 'hacker_news_comment_provider_metrics_dto_kind_kind.dart';
+import 'hacker_news_comment_provider_metrics_dto_provider_key_provider_key.dart';
+import 'hacker_news_comment_provider_metrics_dto_role_role.dart';
+import 'hacker_news_comment_provider_metrics_dto_score_confidence_score_confidence.dart';
 import 'hacker_news_story_provider_metrics_dto_content_type_content_type.dart';
 import 'hacker_news_story_provider_metrics_dto_kind_kind.dart';
 import 'hacker_news_story_provider_metrics_dto_provider_key_provider_key.dart';
@@ -56,6 +61,8 @@ extension FeedItemDtoProviderMetricsProviderMetricsUnionDeserializer
           'github_repository',
       FeedItemDtoProviderMetricsProviderMetricsGithubTrendingRepository:
           'github_trending_repository',
+      FeedItemDtoProviderMetricsProviderMetricsHackerNewsComment:
+          'hacker_news_comment',
       FeedItemDtoProviderMetricsProviderMetricsHackerNewsStory:
           'hacker_news_story',
       FeedItemDtoProviderMetricsProviderMetricsRedditComment: 'reddit_comment',
@@ -75,6 +82,12 @@ extension FeedItemDtoProviderMetricsProviderMetricsUnionDeserializer
           when value ==
               effective[FeedItemDtoProviderMetricsProviderMetricsGithubTrendingRepository] =>
         FeedItemDtoProviderMetricsProviderMetricsGithubTrendingRepository.fromJson(
+          json,
+        ),
+      _
+          when value ==
+              effective[FeedItemDtoProviderMetricsProviderMetricsHackerNewsComment] =>
+        FeedItemDtoProviderMetricsProviderMetricsHackerNewsComment.fromJson(
           json,
         ),
       _
@@ -181,6 +194,45 @@ class FeedItemDtoProviderMetricsProviderMetricsGithubTrendingRepository
       _$FeedItemDtoProviderMetricsProviderMetricsGithubTrendingRepositoryToJson(
         this,
       );
+}
+
+@JsonSerializable()
+class FeedItemDtoProviderMetricsProviderMetricsHackerNewsComment
+    extends FeedItemDtoProviderMetricsProviderMetrics {
+  final HackerNewsCommentProviderMetricsDtoContentTypeContentType contentType;
+  final num depth;
+  final HackerNewsCommentProviderMetricsDtoKindKind kind;
+  final HackerNewsCommentProviderMetricsDtoProviderKeyProviderKey providerKey;
+  final num? rank;
+  final num replies;
+  final HackerNewsCommentProviderMetricsDtoRoleRole role;
+  final num score;
+  final HackerNewsCommentProviderMetricsDtoScoreConfidenceScoreConfidence
+  scoreConfidence;
+  final String sourceKey;
+
+  const FeedItemDtoProviderMetricsProviderMetricsHackerNewsComment({
+    required this.contentType,
+    required this.depth,
+    required this.kind,
+    required this.providerKey,
+    required this.rank,
+    required this.replies,
+    required this.role,
+    required this.score,
+    required this.scoreConfidence,
+    required this.sourceKey,
+  });
+
+  factory FeedItemDtoProviderMetricsProviderMetricsHackerNewsComment.fromJson(
+    Map<String, dynamic> json,
+  ) => _$FeedItemDtoProviderMetricsProviderMetricsHackerNewsCommentFromJson(
+    json,
+  );
+
+  @override
+  Map<String, dynamic> toJson() =>
+      _$FeedItemDtoProviderMetricsProviderMetricsHackerNewsCommentToJson(this);
 }
 
 @JsonSerializable()

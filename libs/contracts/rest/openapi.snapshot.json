@@ -763,6 +763,7 @@
               "mapping": {
                 "github_repository": "#/components/schemas/GitHubRepositoryProviderMetricsDto",
                 "github_trending_repository": "#/components/schemas/GitHubTrendingRepositoryProviderMetricsDto",
+                "hacker_news_comment": "#/components/schemas/HackerNewsCommentProviderMetricsDto",
                 "hacker_news_story": "#/components/schemas/HackerNewsStoryProviderMetricsDto",
                 "reddit_comment": "#/components/schemas/RedditCommentProviderMetricsDto",
                 "reddit_post": "#/components/schemas/RedditPostProviderMetricsDto",
@@ -785,6 +786,9 @@
               },
               {
                 "$ref": "#/components/schemas/HackerNewsStoryProviderMetricsDto"
+              },
+              {
+                "$ref": "#/components/schemas/HackerNewsCommentProviderMetricsDto"
               },
               {
                 "$ref": "#/components/schemas/XPostProviderMetricsDto"
@@ -1085,6 +1089,7 @@
               "mapping": {
                 "github_repository": "#/components/schemas/GitHubRepositoryProviderMetricsDto",
                 "github_trending_repository": "#/components/schemas/GitHubTrendingRepositoryProviderMetricsDto",
+                "hacker_news_comment": "#/components/schemas/HackerNewsCommentProviderMetricsDto",
                 "hacker_news_story": "#/components/schemas/HackerNewsStoryProviderMetricsDto",
                 "reddit_comment": "#/components/schemas/RedditCommentProviderMetricsDto",
                 "reddit_post": "#/components/schemas/RedditPostProviderMetricsDto",
@@ -1107,6 +1112,9 @@
               },
               {
                 "$ref": "#/components/schemas/HackerNewsStoryProviderMetricsDto"
+              },
+              {
+                "$ref": "#/components/schemas/HackerNewsCommentProviderMetricsDto"
               },
               {
                 "$ref": "#/components/schemas/XPostProviderMetricsDto"
@@ -1315,6 +1323,69 @@
           "rank",
           "starsGained",
           "window"
+        ],
+        "type": "object"
+      },
+      "HackerNewsCommentProviderMetricsDto": {
+        "properties": {
+          "contentType": {
+            "enum": [
+              "comment"
+            ],
+            "type": "string"
+          },
+          "depth": {
+            "type": "number"
+          },
+          "kind": {
+            "enum": [
+              "hacker_news_comment"
+            ],
+            "type": "string"
+          },
+          "providerKey": {
+            "enum": [
+              "hacker-news"
+            ],
+            "type": "string"
+          },
+          "rank": {
+            "type": "number"
+          },
+          "replies": {
+            "type": "number"
+          },
+          "role": {
+            "enum": [
+              "top_level_comment",
+              "reply"
+            ],
+            "type": "string"
+          },
+          "score": {
+            "type": "number"
+          },
+          "scoreConfidence": {
+            "enum": [
+              "provider_reported",
+              "not_available"
+            ],
+            "type": "string"
+          },
+          "sourceKey": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "providerKey",
+          "sourceKey",
+          "contentType",
+          "score",
+          "replies",
+          "depth",
+          "role",
+          "scoreConfidence"
         ],
         "type": "object"
       },

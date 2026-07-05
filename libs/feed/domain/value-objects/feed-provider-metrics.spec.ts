@@ -390,6 +390,67 @@ describe("feedProviderMetricsFromMetadata", () => {
     });
   });
 
+  it("maps Hacker News comment score, replies and depth", () => {
+    const metrics = feedProviderMetricsFromMetadata({
+      providerKey: "hacker-news",
+      providerMetadata: {
+        kind: "hacker_news_comment",
+        source: "comment_search",
+        score: 17,
+        replies: 2,
+        depth: 1,
+        rank: 4,
+        role: "reply",
+      },
+    });
+
+    expect(metrics).toEqual({
+      kind: "hacker_news_comment",
+      providerKey: "hacker-news",
+      sourceKey: "hn:comment_search",
+      contentType: "comment",
+      score: 17,
+      replies: 2,
+      depth: 1,
+      rank: 4,
+      role: "reply",
+      scoreConfidence: "provider_reported",
+    });
+    expect(
+      metrics === undefined ? undefined : feedProviderMetricStrength(metrics),
+    ).toBeGreaterThan(0);
+  });
+
+  it("maps Hacker News comment display rank when score is unavailable", () => {
+    const metrics = feedProviderMetricsFromMetadata({
+      providerKey: "hacker-news",
+      providerMetadata: {
+        kind: "hacker_news_comment",
+        source: "top",
+        replies: 1,
+        depth: 0,
+        rank: 1,
+        role: "top_level_comment",
+      },
+    });
+
+    expect(metrics).toEqual({
+      kind: "hacker_news_comment",
+      providerKey: "hacker-news",
+      sourceKey: "hn:top",
+      contentType: "comment",
+      score: 0,
+      replies: 1,
+      depth: 0,
+      rank: 1,
+      role: "top_level_comment",
+      scoreConfidence: "not_available",
+    });
+    expect(
+      metrics === undefined ? undefined : feedProviderMetricStrength(metrics),
+    ).toBeGreaterThan(0);
+  });
+
   it("maps X API v2 public_metrics into public engagement counters", () => {
     const metrics = feedProviderMetricsFromMetadata({
       providerKey: "x-twitter",

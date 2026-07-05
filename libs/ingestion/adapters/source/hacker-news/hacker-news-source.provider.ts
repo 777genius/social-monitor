@@ -4,6 +4,8 @@ import {
 } from "@social-monitor/shared-kernel";
 
 import type {
+  FetchedConversationUnit,
+  FetchedSourceItem,
   ProviderFailure,
   SourceCapabilityProfile,
   SourceProviderPort,
@@ -19,9 +21,13 @@ import type {
   HackerNewsStory,
 } from "./hacker-news-client.port";
 import {
+  commentExpansionForHackerNewsPass,
+  normalizeHackerNewsCommentSearchPass,
+  normalizeHackerNewsStoriesWithOptionalComments,
+} from "./hacker-news-comment-enrichment";
+import {
   hackerNewsRecencyWarnings,
   hackerNewsWarnings,
-  normalizeHackerNewsStory,
 } from "./hacker-news-item-normalizer";
 import {
   compactUnique,
@@ -110,9 +116,32 @@ export class HackerNewsSourceProvider implements SourceProviderPort {
       context.config?.maxItemAgeHours,
       24 * 31,
     );
+    const includeComments = context.config?.includeComments === true;
+    const maxCommentedStories = readOptionalPositiveInteger(
+      context.config?.maxCommentedStories ?? context.config?.maxCommentedPosts,
+      100,
+    );
+    const maxCommentsPerPost = readOptionalPositiveInteger(
+      context.config?.maxCommentsPerPost,
+      100,
+    );
+    const commentDepth = readPositiveInteger(
+      context.config?.commentDepth,
+      2,
+      0,
+      10,
+    );
 
     if (scanPasses.length > 0) {
-      return this.scanPasses(plan, scanPasses, maxItemAgeHours);
+      return this.scanPasses({
+        plan,
+        passes: scanPasses,
+        maxItemAgeHours,
+        fallbackIncludeComments: includeComments,
+        fallbackMaxCommentedStories: maxCommentedStories,
+        fallbackMaxCommentsPerPost: maxCommentsPerPost,
+        fallbackCommentDepth: commentDepth,
+      });
     }
 
     const stories =
@@ -121,52 +150,77 @@ export class HackerNewsSourceProvider implements SourceProviderPort {
             plan.query.query as HackerNewsListing,
             plan.maxItems,
           )
-        : await this.client.searchStories(plan.query.query, plan.maxItems);
+        : await this.client.searchStories(
+            plan.query.query,
+            plan.maxItems,
+            searchOptionsForMaxItemAge(maxItemAgeHours, this.clock.now()),
+          );
     const cursorTime = decodeTimeCursor(plan.cursor);
     const sourceKey =
       plan.query.mode === "listing" ? plan.query.query : "search";
     const searchQuery =
       plan.query.mode === "search" ? plan.query.query : undefined;
-    const items = stories
-      .flatMap((story) => normalizeHackerNewsStory(story, sourceKey, searchQuery))
-      .filter(
-        (item) =>
-          cursorTime === undefined || item.publishedAt.getTime() > cursorTime,
-      );
+    const normalized = await normalizeHackerNewsStoriesWithOptionalComments({
+      client: this.client,
+      stories,
+      sourceKey,
+      searchQuery,
+      includeComments,
+      maxCommentedStories,
+      maxCommentsPerPost,
+      commentDepth,
+    });
+    const items = normalized.items.filter(
+      (item) =>
+        cursorTime === undefined || item.publishedAt.getTime() > cursorTime,
+    );
     const filteredItems = filterItemsByMaxAge(
       items,
       maxItemAgeHours,
       this.clock.now(),
     );
+    const returnedRootExternalIds = new Set(
+      filteredItems.map((item) => item.externalId),
+    );
 
     return {
       items: filteredItems,
+      conversationUnits: normalized.conversationUnits.filter((unit) =>
+        returnedRootExternalIds.has(unit.rootExternalId),
+      ),
       nextCursor: encodeTimeCursor(filteredItems, plan.cursor),
       warnings: [
         ...hackerNewsWarnings(stories),
+        ...normalized.warnings,
         ...hackerNewsRecencyWarnings(items, filteredItems, maxItemAgeHours),
       ],
     };
   }
 
-  private async scanPasses(
-    plan: SourceProviderScanPlan,
-    passes: readonly HackerNewsScanPass[],
-    maxItemAgeHours: number | undefined,
-  ): Promise<SourceProviderScanResult> {
+  private async scanPasses(params: {
+    readonly plan: SourceProviderScanPlan;
+    readonly passes: readonly HackerNewsScanPass[];
+    readonly maxItemAgeHours: number | undefined;
+    readonly fallbackIncludeComments: boolean;
+    readonly fallbackMaxCommentedStories: number | undefined;
+    readonly fallbackMaxCommentsPerPost: number | undefined;
+    readonly fallbackCommentDepth: number;
+  }): Promise<SourceProviderScanResult> {
     const perPassFallbackLimit = Math.max(
       1,
-      Math.ceil(plan.maxItems / passes.length),
+      Math.ceil(params.plan.maxItems / params.passes.length),
     );
-    const itemsByExternalId = new Map<
+    const itemsByExternalId = new Map<string, FetchedSourceItem>();
+    const conversationUnitsByProviderUnitId = new Map<
       string,
-      ReturnType<typeof normalizeHackerNewsStory>[number]
+      FetchedConversationUnit
     >();
+    const rootStoriesById = new Map<number, HackerNewsStory | null>();
     const warnings: string[] = [];
     let failedPasses = 0;
     let firstFailure: unknown;
 
-    for (const pass of passes) {
+    for (const pass of params.passes) {
       const limit = pass.maxItems ?? perPassFallbackLimit;
       let stories: readonly HackerNewsStory[];
 
@@ -174,9 +228,17 @@ export class HackerNewsSourceProvider implements SourceProviderPort {
         if (pass.mode === "listing") {
           stories = await this.client.listStories(pass.listing, limit);
         } else if (pass.target === "comment") {
-          stories = await this.client.searchComments(pass.query, limit);
+          stories = await this.client.searchComments(
+            pass.query,
+            limit,
+            searchOptionsForMaxItemAge(params.maxItemAgeHours, this.clock.now()),
+          );
         } else {
-          stories = await this.client.searchStories(pass.query, limit);
+          stories = await this.client.searchStories(
+            pass.query,
+            limit,
+            searchOptionsForMaxItemAge(params.maxItemAgeHours, this.clock.now()),
+          );
         }
       } catch (error) {
         firstFailure ??= error;
@@ -192,18 +254,67 @@ export class HackerNewsSourceProvider implements SourceProviderPort {
       const sourceKey = sourceKeyForPass(pass);
       const searchQuery = pass.mode === "search" ? pass.query : undefined;
 
-      for (const item of filteredStories.flatMap((story) =>
-        normalizeHackerNewsStory(story, sourceKey, searchQuery),
-      )) {
+      if (pass.mode === "search" && pass.target === "comment") {
+        const normalized = await normalizeHackerNewsCommentSearchPass({
+          client: this.client,
+          rootStoriesById,
+          comments: filteredStories,
+          sourceKey,
+          searchQuery,
+        });
+
+        for (const item of normalized.items) {
+          if (!itemsByExternalId.has(item.externalId)) {
+            itemsByExternalId.set(item.externalId, item);
+          }
+        }
+
+        for (const unit of normalized.conversationUnits) {
+          if (!conversationUnitsByProviderUnitId.has(unit.providerUnitId)) {
+            conversationUnitsByProviderUnitId.set(unit.providerUnitId, unit);
+          }
+        }
+
+        warnings.push(...normalized.warnings);
+        warnings.push(...hackerNewsWarnings(filteredStories));
+        continue;
+      }
+
+      const expansion = commentExpansionForHackerNewsPass({
+        pass,
+        fallbackIncludeComments: params.fallbackIncludeComments,
+        fallbackMaxCommentedStories: params.fallbackMaxCommentedStories,
+        fallbackMaxCommentsPerPost: params.fallbackMaxCommentsPerPost,
+        fallbackCommentDepth: params.fallbackCommentDepth,
+      });
+      const normalized = await normalizeHackerNewsStoriesWithOptionalComments({
+        client: this.client,
+        stories: filteredStories,
+        sourceKey,
+        searchQuery,
+        includeComments: expansion !== undefined,
+        maxCommentedStories: expansion?.maxCommentedStories,
+        maxCommentsPerPost: expansion?.maxCommentsPerPost,
+        commentDepth: expansion?.commentDepth ?? params.fallbackCommentDepth,
+      });
+
+      for (const item of normalized.items) {
         if (!itemsByExternalId.has(item.externalId)) {
           itemsByExternalId.set(item.externalId, item);
         }
       }
 
+      for (const unit of normalized.conversationUnits) {
+        if (!conversationUnitsByProviderUnitId.has(unit.providerUnitId)) {
+          conversationUnitsByProviderUnitId.set(unit.providerUnitId, unit);
+        }
+      }
+
+      warnings.push(...normalized.warnings);
       warnings.push(...hackerNewsWarnings(filteredStories));
     }
 
-    if (failedPasses === passes.length && firstFailure !== undefined) {
+    if (failedPasses === params.passes.length && firstFailure !== undefined) {
       throw firstFailure;
     }
 
@@ -212,18 +323,26 @@ export class HackerNewsSourceProvider implements SourceProviderPort {
     );
     const filteredItems = filterItemsByMaxAge(
       sortedItems,
-      maxItemAgeHours,
+      params.maxItemAgeHours,
       this.clock.now(),
+    );
+    const returnedRootExternalIds = new Set(
+      filteredItems
+        .slice(0, params.plan.maxItems)
+        .map((item) => item.externalId),
     );
 
     return {
-      items: filteredItems.slice(0, plan.maxItems),
+      items: filteredItems.slice(0, params.plan.maxItems),
+      conversationUnits: [...conversationUnitsByProviderUnitId.values()].filter(
+        (unit) => returnedRootExternalIds.has(unit.rootExternalId),
+      ),
       warnings: compactUnique([
         ...warnings,
         ...hackerNewsRecencyWarnings(
           sortedItems,
           filteredItems,
-          maxItemAgeHours,
+          params.maxItemAgeHours,
         ),
       ]),
     };
@@ -344,6 +463,17 @@ const filterItemsByMaxAge = <TItem extends { readonly publishedAt: Date }>(
 
   return items.filter((item) => item.publishedAt.getTime() >= cutoff);
 };
+
+const searchOptionsForMaxItemAge = (
+  maxItemAgeHours: number | undefined,
+  now: Date,
+) =>
+  maxItemAgeHours === undefined
+    ? undefined
+    : {
+        from: new Date(now.getTime() - maxItemAgeHours * 60 * 60 * 1000),
+        to: now,
+      };
 
 const readPositiveInteger = (
   value: unknown,

@@ -1,4 +1,9 @@
-import type { HackerNewsClientPort, HackerNewsListing, HackerNewsStory } from './hacker-news-client.port';
+import type {
+  HackerNewsClientPort,
+  HackerNewsListStoryCommentsRequest,
+  HackerNewsListing,
+  HackerNewsStory,
+} from './hacker-news-client.port';
 
 const fixtureStories: readonly HackerNewsStory[] = [
   {
@@ -37,6 +42,8 @@ const fixtureComments: readonly HackerNewsStory[] = [
     by: 'carol',
     time: 1_780_000_090,
     text: 'This monitoring approach would be useful for developer tools launches.',
+    depth: 0,
+    rank: 1,
   },
   {
     kind: 'comment',
@@ -47,6 +54,8 @@ const fixtureComments: readonly HackerNewsStory[] = [
     by: 'dave',
     time: 1_780_000_150,
     text: 'The hard part is comment-level evidence and deduping by source.',
+    depth: 0,
+    rank: 1,
   },
 ];
 
@@ -57,6 +66,19 @@ export class FixtureHackerNewsClient implements HackerNewsClientPort {
 
   async searchComments(_query: string, limit: number): Promise<readonly HackerNewsStory[]> {
     return fixtureComments.slice(0, limit);
+  }
+
+  async getStory(id: number): Promise<HackerNewsStory | null> {
+    return fixtureStories.find((story) => story.id === id) ?? null;
+  }
+
+  async listStoryComments(
+    request: HackerNewsListStoryCommentsRequest,
+  ): Promise<readonly HackerNewsStory[]> {
+    return fixtureComments
+      .filter((comment) => comment.storyId === request.storyId)
+      .filter((comment) => (comment.depth ?? 0) <= request.depth)
+      .slice(0, request.limit);
   }
 
   async listStories(_listing: HackerNewsListing, limit: number): Promise<readonly HackerNewsStory[]> {

@@ -13,6 +13,11 @@ import 'git_hub_trending_repository_provider_metrics_dto_content_type_content_ty
 import 'git_hub_trending_repository_provider_metrics_dto_kind_kind.dart';
 import 'git_hub_trending_repository_provider_metrics_dto_provider_key_provider_key.dart';
 import 'git_hub_trending_repository_provider_metrics_dto_window_window.dart';
+import 'hacker_news_comment_provider_metrics_dto_content_type_content_type.dart';
+import 'hacker_news_comment_provider_metrics_dto_kind_kind.dart';
+import 'hacker_news_comment_provider_metrics_dto_provider_key_provider_key.dart';
+import 'hacker_news_comment_provider_metrics_dto_role_role.dart';
+import 'hacker_news_comment_provider_metrics_dto_score_confidence_score_confidence.dart';
 import 'hacker_news_story_provider_metrics_dto_content_type_content_type.dart';
 import 'hacker_news_story_provider_metrics_dto_kind_kind.dart';
 import 'hacker_news_story_provider_metrics_dto_provider_key_provider_key.dart';
@@ -56,6 +61,8 @@ extension GetFeedItemResponseDtoProviderMetricsProviderMetricsUnionDeserializer
           'github_repository',
       GetFeedItemResponseDtoProviderMetricsProviderMetricsGithubTrendingRepository:
           'github_trending_repository',
+      GetFeedItemResponseDtoProviderMetricsProviderMetricsHackerNewsComment:
+          'hacker_news_comment',
       GetFeedItemResponseDtoProviderMetricsProviderMetricsHackerNewsStory:
           'hacker_news_story',
       GetFeedItemResponseDtoProviderMetricsProviderMetricsRedditComment:
@@ -77,6 +84,12 @@ extension GetFeedItemResponseDtoProviderMetricsProviderMetricsUnionDeserializer
           when value ==
               effective[GetFeedItemResponseDtoProviderMetricsProviderMetricsGithubTrendingRepository] =>
         GetFeedItemResponseDtoProviderMetricsProviderMetricsGithubTrendingRepository.fromJson(
+          json,
+        ),
+      _
+          when value ==
+              effective[GetFeedItemResponseDtoProviderMetricsProviderMetricsHackerNewsComment] =>
+        GetFeedItemResponseDtoProviderMetricsProviderMetricsHackerNewsComment.fromJson(
           json,
         ),
       _
@@ -193,6 +206,48 @@ class GetFeedItemResponseDtoProviderMetricsProviderMetricsGithubTrendingReposito
   @override
   Map<String, dynamic> toJson() =>
       _$GetFeedItemResponseDtoProviderMetricsProviderMetricsGithubTrendingRepositoryToJson(
+        this,
+      );
+}
+
+@JsonSerializable()
+class GetFeedItemResponseDtoProviderMetricsProviderMetricsHackerNewsComment
+    extends GetFeedItemResponseDtoProviderMetricsProviderMetrics {
+  final HackerNewsCommentProviderMetricsDtoContentTypeContentType contentType;
+  final num depth;
+  final HackerNewsCommentProviderMetricsDtoKindKind kind;
+  final HackerNewsCommentProviderMetricsDtoProviderKeyProviderKey providerKey;
+  final num? rank;
+  final num replies;
+  final HackerNewsCommentProviderMetricsDtoRoleRole role;
+  final num score;
+  final HackerNewsCommentProviderMetricsDtoScoreConfidenceScoreConfidence
+  scoreConfidence;
+  final String sourceKey;
+
+  const GetFeedItemResponseDtoProviderMetricsProviderMetricsHackerNewsComment({
+    required this.contentType,
+    required this.depth,
+    required this.kind,
+    required this.providerKey,
+    required this.rank,
+    required this.replies,
+    required this.role,
+    required this.score,
+    required this.scoreConfidence,
+    required this.sourceKey,
+  });
+
+  factory GetFeedItemResponseDtoProviderMetricsProviderMetricsHackerNewsComment.fromJson(
+    Map<String, dynamic> json,
+  ) =>
+      _$GetFeedItemResponseDtoProviderMetricsProviderMetricsHackerNewsCommentFromJson(
+        json,
+      );
+
+  @override
+  Map<String, dynamic> toJson() =>
+      _$GetFeedItemResponseDtoProviderMetricsProviderMetricsHackerNewsCommentToJson(
         this,
       );
 }

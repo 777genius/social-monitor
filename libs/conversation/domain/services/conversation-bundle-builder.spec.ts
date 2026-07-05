@@ -104,6 +104,55 @@ describe('ConversationBundleBuilder', () => {
     ).toBeLessThanOrEqual(1);
   });
 
+  it('keeps low-signal Hacker News comments as ancestry without ranking them', () => {
+    const bundles = new ConversationBundleBuilder().build({
+      units: [
+        hackerNewsConversationUnit({
+          id: 'low-signal-parent',
+          providerUnitId: 'hn:2001',
+          body: 'lol',
+          depth: 0,
+          role: 'top_level_comment',
+          rank: 1,
+          replies: 4,
+          signalQuality: 'low',
+        }),
+        hackerNewsConversationUnit({
+          id: 'useful-reply',
+          providerUnitId: 'hn:2002',
+          parentProviderUnitId: 'hn:2001',
+          body: 'The important detail is that HN comment scores are not exposed, so display order can only be used as a weak ranking proxy.',
+          depth: 1,
+          role: 'reply',
+          rank: 2,
+          signalQuality: 'normal',
+        }),
+      ],
+      now: new Date('2026-06-05T12:30:00.000Z'),
+      limitPerRoot: 1,
+      maxAncestorDepth: 3,
+      maxTotalUnitsPerRoot: 4,
+    });
+
+    expect(bundles[0]?.units).toHaveLength(1);
+    expect(bundles[0]?.units[0]).toMatchObject({
+      conversationUnitId: 'useful-reply',
+      providerUnitId: 'hn:2002',
+      parentProviderUnitId: 'hn:2001',
+      selectionReason: 'ranked',
+      ancestry: [
+        {
+          conversationUnitId: 'low-signal-parent',
+          providerUnitId: 'hn:2001',
+          selectionReason: 'ancestor_context',
+          body: 'lol',
+          depth: 0,
+          role: 'top_level_comment',
+        },
+      ],
+    });
+  });
+
   it('leaves missing or cyclic parent chains as bounded context instead of failing', () => {
     const bundles = new ConversationBundleBuilder().build({
       units: [
@@ -219,6 +268,69 @@ const conversationUnit = (
       replies: overrides.replies ?? 0,
       depth,
       role,
+    },
+    contentHash: '',
+    schemaVersion: 1,
+  };
+
+  return ConversationUnit.capture({
+    ...props,
+    contentHash: contentHashForConversationUnit(props),
+  });
+};
+
+const hackerNewsConversationUnit = (
+  overrides: {
+    readonly id: string;
+    readonly providerUnitId: string;
+    readonly body: string;
+    readonly replies?: number;
+    readonly parentProviderUnitId?: string;
+    readonly depth?: number;
+    readonly role?: 'top_level_comment' | 'reply';
+    readonly rank?: number;
+    readonly signalQuality?: 'normal' | 'low';
+    readonly publishedAt?: Date;
+  },
+): ConversationUnit => {
+  const depth = overrides.depth ?? 0;
+  const role = overrides.role ?? 'top_level_comment';
+  const props: ConversationUnitProps = {
+    id: overrides.id,
+    tenantId: tenantId('tenant-conversation-bundle-test'),
+    workspaceId: workspaceId('workspace-conversation-bundle-test'),
+    interestId: 'interest-1',
+    sourceBindingId: 'source-binding-1',
+    rootFeedItemId: 'feed-hn-story-1',
+    rootProviderItemId: '1001',
+    providerKey: 'hacker-news',
+    providerUnitId: overrides.providerUnitId,
+    canonicalUrl: `https://news.ycombinator.com/item?id=${overrides.providerUnitId.replace('hn:', '')}`,
+    body: overrides.body,
+    publishedAt: overrides.publishedAt ?? new Date('2026-06-05T12:05:00.000Z'),
+    observedAt: new Date('2026-06-05T12:10:00.000Z'),
+    threadExternalId: 'hn:1001',
+    parentProviderUnitId: overrides.parentProviderUnitId,
+    depth,
+    role,
+    providerMetadata: {
+      kind: 'hacker_news_comment',
+      source: 'hacker-news',
+      contentType: 'comment',
+      rootProviderItemId: '1001',
+      storyId: 1001,
+      replies: overrides.replies ?? 0,
+      replyCount: overrides.replies ?? 0,
+      depth,
+      role,
+      scoreConfidence: 'not_available',
+      signalQuality: overrides.signalQuality ?? 'normal',
+      ...(overrides.rank === undefined
+        ? {}
+        : {
+            rank: overrides.rank,
+            rankConfidence: 'hn_display_order',
+          }),
     },
     contentHash: '',
     schemaVersion: 1,

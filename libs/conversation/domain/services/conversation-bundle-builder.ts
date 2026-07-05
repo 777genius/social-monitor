@@ -96,6 +96,7 @@ export class ConversationBundleBuilder {
         role: snapshot.role,
         providerMetrics: signal.providerMetrics,
         normalizedSignal: signal.normalizedSignal,
+        rankEligible: isRankEligibleConversationUnit(snapshot.providerMetadata),
       });
       grouped.set(snapshot.rootFeedItemId, existing);
     }
@@ -103,6 +104,7 @@ export class ConversationBundleBuilder {
     return [...grouped.entries()].map(([rootFeedItemId, units]) => {
       const rankedLimit = normalizeLimit(params.limitPerRoot);
       const rankedUnits = units
+        .filter((unit) => unit.rankEligible)
         .sort(compareBundleUnits)
         .slice(0, rankedLimit);
       const indexedUnits = new Map(
@@ -123,8 +125,10 @@ export class ConversationBundleBuilder {
 
         remainingAncestorSlots -= ancestry.length;
 
+        const rankedUnit = omitRankEligibility(unit);
+
         return {
-          ...unit,
+          ...rankedUnit,
           selectionReason: 'ranked' as const,
           ancestry,
         };
@@ -142,7 +146,9 @@ export class ConversationBundleBuilder {
 type ConversationBundleUnitBase = Omit<
   ConversationBundleAncestorUnit,
   'selectionReason'
->;
+> & {
+  readonly rankEligible: boolean;
+};
 
 const collectAncestry = (params: {
   readonly unit: ConversationBundleUnitBase;
@@ -173,8 +179,9 @@ const collectAncestry = (params: {
       break;
     }
 
+    const ancestor = omitRankEligibility(parent);
     ancestors.push({
-      ...parent,
+      ...ancestor,
       selectionReason: 'ancestor_context',
     });
     parentProviderUnitId = parent.parentProviderUnitId;
@@ -233,3 +240,24 @@ const normalizeMaxTotalUnitsPerRoot = (
   value === undefined || !Number.isInteger(value) || value < rankedLimit
     ? rankedLimit + rankedLimit * 3
     : Math.min(value, 80);
+
+const isRankEligibleConversationUnit = (metadata: unknown): boolean => {
+  if (
+    typeof metadata !== 'object' ||
+    metadata === null ||
+    Array.isArray(metadata)
+  ) {
+    return true;
+  }
+
+  return (metadata as Readonly<Record<string, unknown>>).signalQuality !== 'low';
+};
+
+const omitRankEligibility = (
+  unit: ConversationBundleUnitBase,
+): Omit<ConversationBundleUnitBase, 'rankEligible'> => {
+  const { rankEligible, ...withoutRankEligibility } = unit;
+  void rankEligible;
+
+  return withoutRankEligibility;
+};

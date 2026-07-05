@@ -14,6 +14,7 @@ export type FeedProviderMetrics =
   | GitHubRepositoryMetrics
   | GitHubTrendingRepositoryMetrics
   | HackerNewsStoryMetrics
+  | HackerNewsCommentMetrics
   | XPostMetrics;
 
 export type FeedMetricDelta = {
@@ -32,6 +33,7 @@ export type RedditPostMetrics = {
 };
 
 export type RedditCommentRole = 'top_level_comment' | 'reply';
+export type CommentScoreConfidence = 'provider_reported' | 'not_available';
 export type RedditCommentScoreConfidence = 'provider_reported';
 
 export type RedditCommentMetrics = {
@@ -82,6 +84,19 @@ export type HackerNewsStoryMetrics = {
   readonly comments: number;
 };
 
+export type HackerNewsCommentMetrics = {
+  readonly kind: 'hacker_news_comment';
+  readonly providerKey: 'hacker-news';
+  readonly sourceKey: string;
+  readonly contentType: 'comment';
+  readonly score: number;
+  readonly replies: number;
+  readonly depth: number;
+  readonly rank?: number;
+  readonly role: RedditCommentRole;
+  readonly scoreConfidence: CommentScoreConfidence;
+};
+
 export type XPostMetrics = {
   readonly kind: 'x_post';
   readonly providerKey: 'x-twitter';
@@ -107,7 +122,7 @@ export const feedProviderMetricsFromMetadata = (params: {
     case 'github-trending-page':
       return githubTrendingRepositoryMetrics(params.providerMetadata);
     case 'hacker-news':
-      return hackerNewsStoryMetrics(params.providerMetadata);
+      return hackerNewsMetrics(params.providerMetadata);
     case 'x-twitter':
       return xPostMetrics(params.providerMetadata);
     default:
@@ -164,6 +179,23 @@ export const feedProviderMetricStrength = (
       );
     case 'hacker_news_story':
       return Math.log1p(metrics.points) + Math.log1p(metrics.comments) * 0.6;
+    case 'hacker_news_comment': {
+      const roleBoost = metrics.role === 'top_level_comment' ? 0.15 : 0;
+      const depthPenalty = Math.min(0.5, Math.max(0, metrics.depth - 1) * 0.15);
+      const rankBoost =
+        metrics.score > 0 || metrics.rank === undefined
+          ? 0
+          : Math.max(0, 1.2 - Math.log1p(metrics.rank) * 0.2);
+
+      return Math.max(
+        0,
+        Math.log1p(metrics.score) * 0.7 +
+          Math.log1p(metrics.replies) * 0.15 +
+          rankBoost +
+          roleBoost -
+          depthPenalty,
+      );
+    }
     case 'x_post':
       return Math.log1p(
         metrics.likes +
@@ -333,6 +365,13 @@ const readTrendingPageWindow = (
 ): GitHubTrendingPageWindow =>
   value === 'weekly' || value === 'monthly' ? value : 'daily';
 
+const hackerNewsMetrics = (
+  metadata: JsonObject | undefined,
+): HackerNewsStoryMetrics | HackerNewsCommentMetrics | undefined =>
+  metadata?.kind === 'hacker_news_comment'
+    ? hackerNewsCommentMetrics(metadata)
+    : hackerNewsStoryMetrics(metadata);
+
 const hackerNewsStoryMetrics = (
   metadata: JsonObject | undefined,
 ): HackerNewsStoryMetrics | undefined => {
@@ -354,6 +393,37 @@ const hackerNewsStoryMetrics = (
     contentType: 'story',
     points: points ?? 0,
     comments: comments ?? 0,
+  };
+};
+
+const hackerNewsCommentMetrics = (
+  metadata: JsonObject | undefined,
+): HackerNewsCommentMetrics | undefined => {
+  const score = readNonNegativeInteger(metadata?.score ?? metadata?.providerScore);
+  const replies = readNonNegativeInteger(metadata?.replies ?? metadata?.replyCount);
+  const depth = readNonNegativeInteger(metadata?.depth);
+  const rank = readPositiveInteger(metadata?.rank);
+
+  if (
+    score === undefined &&
+    replies === undefined &&
+    depth === undefined &&
+    rank === undefined
+  ) {
+    return undefined;
+  }
+
+  return {
+    kind: 'hacker_news_comment',
+    providerKey: 'hacker-news',
+    sourceKey: hackerNewsProviderSourceKey(readString(metadata?.source)),
+    contentType: 'comment',
+    score: score ?? 0,
+    replies: replies ?? 0,
+    depth: depth ?? 0,
+    ...(rank === undefined ? {} : { rank }),
+    role: readRedditCommentRole(metadata?.role),
+    scoreConfidence: score === undefined ? 'not_available' : 'provider_reported',
   };
 };
 

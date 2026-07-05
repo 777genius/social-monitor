@@ -11,6 +11,10 @@ export type HackerNewsScanPass =
       readonly maxItems?: number;
       readonly requiredKeywords?: readonly string[];
       readonly requiredStoryKeywords?: readonly string[];
+      readonly includeComments?: boolean;
+      readonly maxCommentedStories?: number;
+      readonly maxCommentsPerPost?: number;
+      readonly commentDepth?: number;
     }
   | {
       readonly mode: "listing";
@@ -18,6 +22,10 @@ export type HackerNewsScanPass =
       readonly maxItems?: number;
       readonly requiredKeywords?: readonly string[];
       readonly requiredStoryKeywords?: readonly string[];
+      readonly includeComments?: boolean;
+      readonly maxCommentedStories?: number;
+      readonly maxCommentsPerPost?: number;
+      readonly commentDepth?: number;
     };
 
 const supportedListings: readonly HackerNewsListing[] = [
@@ -73,6 +81,7 @@ const readScanPass = (value: unknown, index: number): HackerNewsScanPass => {
       ...(maxItems === undefined ? {} : { maxItems }),
       ...readRequiredKeywords(pass),
       ...readRequiredStoryKeywords(pass),
+      ...readCommentExpansion(pass),
     };
   }
 
@@ -88,6 +97,7 @@ const readScanPass = (value: unknown, index: number): HackerNewsScanPass => {
       ...(maxItems === undefined ? {} : { maxItems }),
       ...readRequiredKeywords(pass),
       ...readRequiredStoryKeywords(pass),
+      ...readCommentExpansion(pass),
     };
   }
 
@@ -170,6 +180,33 @@ const readRequiredStoryKeywords = (
   return requiredStoryKeywords.length === 0 ? {} : { requiredStoryKeywords };
 };
 
+const readCommentExpansion = (
+  pass: Readonly<Record<string, unknown>>,
+): {
+  readonly includeComments?: boolean;
+  readonly maxCommentedStories?: number;
+  readonly maxCommentsPerPost?: number;
+  readonly commentDepth?: number;
+} => {
+  const includeComments = readOptionalBoolean(pass.includeComments);
+  const maxCommentedStories = readOptionalPositiveInteger(
+    pass.maxCommentedStories ?? pass.maxCommentedPosts,
+    100,
+  );
+  const maxCommentsPerPost = readOptionalPositiveInteger(
+    pass.maxCommentsPerPost,
+    100,
+  );
+  const commentDepth = readOptionalNonNegativeInteger(pass.commentDepth, 10);
+
+  return {
+    ...(includeComments === undefined ? {} : { includeComments }),
+    ...(maxCommentedStories === undefined ? {} : { maxCommentedStories }),
+    ...(maxCommentsPerPost === undefined ? {} : { maxCommentsPerPost }),
+    ...(commentDepth === undefined ? {} : { commentDepth }),
+  };
+};
+
 const readArray = (value: unknown): readonly unknown[] =>
   Array.isArray(value) ? value : [];
 
@@ -201,6 +238,9 @@ const readOptionalString = (value: unknown): string | undefined =>
     ? value.trim()
     : undefined;
 
+const readOptionalBoolean = (value: unknown): boolean | undefined =>
+  typeof value === "boolean" ? value : undefined;
+
 const readOptionalPositiveInteger = (
   value: unknown,
   max: number,
@@ -217,6 +257,28 @@ const readOptionalPositiveInteger = (
   ) {
     throw new Error(
       `Hacker News source config integer must be between 1 and ${max}`,
+    );
+  }
+
+  return value;
+};
+
+const readOptionalNonNegativeInteger = (
+  value: unknown,
+  max: number,
+): number | undefined => {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (
+    typeof value !== "number" ||
+    !Number.isInteger(value) ||
+    value < 0 ||
+    value > max
+  ) {
+    throw new Error(
+      `Hacker News source config integer must be between 0 and ${max}`,
     );
   }
 

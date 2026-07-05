@@ -117,6 +117,12 @@ const compareConversationUnits = (
     return scoreDiff;
   }
 
+  const rankDiff = readRank(leftSnapshot.providerMetadata) -
+    readRank(rightSnapshot.providerMetadata);
+  if (rankDiff !== 0) {
+    return rankDiff;
+  }
+
   const depthDiff = leftSnapshot.depth - rightSnapshot.depth;
   if (depthDiff !== 0) {
     return depthDiff;
@@ -158,4 +164,16 @@ const readScore = (metadata: unknown): number => {
   const value = (metadata as Readonly<Record<string, unknown>>).score;
 
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+};
+
+const readRank = (metadata: unknown): number => {
+  if (typeof metadata !== 'object' || metadata === null || Array.isArray(metadata)) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  const value = (metadata as Readonly<Record<string, unknown>>).rank;
+
+  return typeof value === 'number' && Number.isInteger(value) && value > 0
+    ? value
+    : Number.POSITIVE_INFINITY;
 };

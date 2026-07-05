@@ -57,6 +57,15 @@ export const formatFeedProviderMetrics = (
         metric("Points", metrics.points),
         metric("Comments", metrics.comments),
       ]);
+    case "hacker_news_comment":
+      return compactMetrics([
+        metrics.scoreConfidence === "provider_reported"
+          ? metric("Score", metrics.score)
+          : undefined,
+        metric("Replies", metrics.replies),
+        metric("Depth", metrics.depth),
+        metric("HN rank", metrics.rank),
+      ]);
     case "x_post":
       return compactMetrics([
         metric("Likes", metrics.likes),
@@ -108,6 +117,15 @@ export const summarizeFeedProviderMetrics = (
       return compactText([
         formatNamedNumber("points", metrics.points),
         formatNamedNumber("comments", metrics.comments),
+      ]);
+    case "hacker_news_comment":
+      return compactText([
+        metrics.scoreConfidence === "provider_reported"
+          ? formatNamedNumber("score", metrics.score)
+          : undefined,
+        formatNamedNumber("replies", metrics.replies),
+        metrics.role === "reply" ? `depth ${metrics.depth}` : "top-level",
+        metrics.rank === undefined ? undefined : `HN #${metrics.rank}`,
       ]);
     case "x_post":
       return compactText([

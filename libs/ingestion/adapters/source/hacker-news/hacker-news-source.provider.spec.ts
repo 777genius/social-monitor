@@ -103,21 +103,107 @@ describe("HackerNewsSourceProvider", () => {
     );
 
     expect(result.items.map((item) => item.externalId)).toEqual([
-      "hn:2002",
-      "hn:2001",
       "hn:1002",
       "hn:1001",
     ]);
-    expect(result.items[0]).toMatchObject({
-      externalId: "hn:2002",
-      title: "Ask HN: Reliable RSS and API ingestion",
+    expect(result.conversationUnits?.map((unit) => unit.providerUnitId)).toEqual([
+      "hn:2001",
+      "hn:2002",
+    ]);
+    expect(result.conversationUnits?.[1]).toMatchObject({
+      rootExternalId: "hn:1002",
+      rootProviderItemId: "1002",
+      providerUnitId: "hn:2002",
+      canonicalUrl: "https://news.ycombinator.com/item?id=2002",
       body: "The hard part is comment-level evidence and deduping by source.",
+      threadExternalId: "hn:1002",
+      depth: 0,
+      role: "top_level_comment",
       metadata: {
         kind: "hacker_news_comment",
+        contentType: "comment",
         source: "comment_search",
         searchQuery: "monitoring",
         storyId: 1002,
         parentId: 1002,
+        rootProviderItemId: "1002",
+        replies: 0,
+        replyCount: 0,
+        depth: 0,
+        role: "top_level_comment",
+        signalQuality: "normal",
+        scoreConfidence: "not_available",
+      },
+    });
+  });
+
+  it("marks obvious low-signal HN comments without dropping the conversation unit", async () => {
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const client = {
+      async listStories() {
+        return [];
+      },
+      async searchStories() {
+        return [];
+      },
+      async searchComments() {
+        return [
+          {
+            kind: "comment" as const,
+            id: 6001,
+            storyId: 9001,
+            parentId: 9001,
+            storyTitle: "Ask HN: Comment quality",
+            text: "lol",
+            time: nowSeconds,
+          },
+        ];
+      },
+      async getStory(id: number) {
+        return {
+          id,
+          title: "Ask HN: Comment quality",
+          time: nowSeconds - 30,
+          score: 25,
+          comments: 1,
+        };
+      },
+      async listStoryComments() {
+        return [];
+      },
+    } satisfies HackerNewsClientPort;
+    const provider = new HackerNewsSourceProvider(client, new SystemClock());
+    const context = {
+      tenantId: tenantId("tenant-1"),
+      workspaceId: workspaceId("workspace-1"),
+      sourceBindingId: "hn-binding-1",
+      scanJobId: "scan-job-1",
+      correlationId: "correlation-1",
+      config: {
+        maxItems: 10,
+        scanPasses: [
+          {
+            mode: "search",
+            target: "comment",
+            query: "comment quality",
+            maxItems: 1,
+          },
+        ],
+      },
+    };
+
+    const result = await provider.scan(
+      provider.planScan({ mode: "search", query: "comment quality" }, context),
+      context,
+    );
+
+    expect(result.conversationUnits).toHaveLength(1);
+    expect(result.conversationUnits?.[0]).toMatchObject({
+      providerUnitId: "hn:6001",
+      body: "lol",
+      metadata: {
+        kind: "hacker_news_comment",
+        signalQuality: "low",
       },
     });
   });
@@ -145,6 +231,12 @@ describe("HackerNewsSourceProvider", () => {
         return [];
       },
       async searchComments() {
+        return [];
+      },
+      async getStory() {
+        return null;
+      },
+      async listStoryComments() {
         return [];
       },
     } satisfies HackerNewsClientPort;
@@ -213,6 +305,22 @@ describe("HackerNewsSourceProvider", () => {
           },
         ];
       },
+      async getStory(id: number) {
+        if (id === 9002) {
+          return {
+            id,
+            title: "Show HN: AI agent tool for code review",
+            time: nowSeconds - 30,
+            score: 25,
+            comments: 2,
+          };
+        }
+
+        return null;
+      },
+      async listStoryComments() {
+        return [];
+      },
     } satisfies HackerNewsClientPort;
     const provider = new HackerNewsSourceProvider(client, new SystemClock());
     const context = {
@@ -240,7 +348,10 @@ describe("HackerNewsSourceProvider", () => {
       context,
     );
 
-    expect(result.items.map((item) => item.externalId)).toEqual(["hn:5002"]);
+    expect(result.items.map((item) => item.externalId)).toEqual(["hn:9002"]);
+    expect(result.conversationUnits?.map((unit) => unit.providerUnitId)).toEqual([
+      "hn:5002",
+    ]);
   });
 
   it("keeps twenty-eight configured scan passes for broader daily discovery", async () => {
@@ -292,6 +403,12 @@ describe("HackerNewsSourceProvider", () => {
         ];
       },
       async searchComments() {
+        return [];
+      },
+      async getStory() {
+        return null;
+      },
+      async listStoryComments() {
         return [];
       },
       async listStories() {
@@ -398,6 +515,12 @@ describe("HackerNewsSourceProvider", () => {
       async searchComments() {
         return [];
       },
+      async getStory() {
+        return null;
+      },
+      async listStoryComments() {
+        return [];
+      },
       async listStories() {
         return [];
       },
@@ -443,7 +566,6 @@ class RecordingHackerNewsClient implements HackerNewsClientPort {
 
   async searchStories(
     query: string,
-    _limit: number,
   ): Promise<Awaited<ReturnType<HackerNewsClientPort["searchStories"]>>> {
     this.storySearchQueries.push(query);
 
@@ -458,6 +580,16 @@ class RecordingHackerNewsClient implements HackerNewsClientPort {
 
   async searchComments(): Promise<
     Awaited<ReturnType<HackerNewsClientPort["searchComments"]>>
+  > {
+    return [];
+  }
+
+  async getStory(): Promise<Awaited<ReturnType<HackerNewsClientPort["getStory"]>>> {
+    return null;
+  }
+
+  async listStoryComments(): Promise<
+    Awaited<ReturnType<HackerNewsClientPort["listStoryComments"]>>
   > {
     return [];
   }

@@ -174,12 +174,19 @@ const truncateForPrompt = (value: string, maxLength: number): string => {
 const readProviderScore = (
   metrics: ConversationBundleUnit['providerMetrics'],
 ): number | undefined =>
-  metrics.kind === 'reddit_comment' ? metrics.score : undefined;
+  metrics.kind === 'reddit_comment'
+    ? metrics.score
+    : metrics.kind === 'hacker_news_comment' &&
+        metrics.scoreConfidence === 'provider_reported'
+      ? metrics.score
+      : undefined;
 
 const readReplyCount = (
   metrics: ConversationBundleUnit['providerMetrics'],
 ): number | undefined =>
-  metrics.kind === 'reddit_comment' ? metrics.replies : undefined;
+  metrics.kind === 'reddit_comment' || metrics.kind === 'hacker_news_comment'
+    ? metrics.replies
+    : undefined;
 
 const uniqueNonEmpty = (values: readonly string[]): readonly string[] => {
   const seen = new Set<string>();

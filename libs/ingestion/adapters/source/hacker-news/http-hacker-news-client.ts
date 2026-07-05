@@ -1,4 +1,10 @@
-import type { HackerNewsClientPort, HackerNewsListing, HackerNewsStory } from './hacker-news-client.port';
+import type {
+  HackerNewsClientPort,
+  HackerNewsListStoryCommentsRequest,
+  HackerNewsListing,
+  HackerNewsSearchOptions,
+  HackerNewsStory,
+} from './hacker-news-client.port';
 
 type AlgoliaHit = {
   readonly objectID?: string;
@@ -21,6 +27,8 @@ type AlgoliaSearchResponse = {
 
 const firebaseBaseUrl = 'https://hacker-news.firebaseio.com/v0';
 const algoliaBaseUrl = 'https://hn.algolia.com/api/v1';
+const algoliaOverfetchMultiplier = 2;
+const minAlgoliaStoryPoints = 2;
 const listingEndpoints: Readonly<Record<HackerNewsListing, string>> = {
   top: 'topstories',
   new: 'newstories',
@@ -33,27 +41,127 @@ const listingEndpoints: Readonly<Record<HackerNewsListing, string>> = {
 export class HttpHackerNewsClient implements HackerNewsClientPort {
   constructor(private readonly timeoutMs = 10_000) {}
 
-  async searchStories(query: string, limit: number): Promise<readonly HackerNewsStory[]> {
-    return this.searchAlgolia(query, 'story', limit);
+  async searchStories(
+    query: string,
+    limit: number,
+    options?: HackerNewsSearchOptions,
+  ): Promise<readonly HackerNewsStory[]> {
+    return this.searchAlgolia(query, 'story', limit, options);
   }
 
-  async searchComments(query: string, limit: number): Promise<readonly HackerNewsStory[]> {
-    return this.searchAlgolia(query, 'comment', limit);
+  async searchComments(
+    query: string,
+    limit: number,
+    options?: HackerNewsSearchOptions,
+  ): Promise<readonly HackerNewsStory[]> {
+    return this.searchAlgolia(query, 'comment', limit, options);
+  }
+
+  async getStory(id: number): Promise<HackerNewsStory | null> {
+    return this.fetchStory(id);
+  }
+
+  async listStoryComments(
+    request: HackerNewsListStoryCommentsRequest,
+  ): Promise<readonly HackerNewsStory[]> {
+    const root = await this.getStory(request.storyId);
+    const rootKids = root?.kids ?? [];
+
+    if (rootKids.length === 0) {
+      return [];
+    }
+
+    const comments = await this.fetchCommentTree({
+      ids: rootKids,
+      rootStoryId: request.storyId,
+      limit: normalizeLimit(request.limit),
+      maxDepth: normalizeCommentDepth(request.depth),
+      currentDepth: 0,
+    });
+
+    return comments.map((comment, index) => ({
+      ...comment,
+      rank: index + 1,
+    }));
+  }
+
+  private async fetchCommentTree(params: {
+    readonly ids: readonly number[];
+    readonly rootStoryId: number;
+    readonly limit: number;
+    readonly maxDepth: number;
+    readonly currentDepth: number;
+  }): Promise<readonly HackerNewsStory[]> {
+    const comments: HackerNewsStory[] = [];
+
+    for (const id of params.ids) {
+      if (comments.length >= params.limit) {
+        break;
+      }
+
+      const item = await this.getStory(id);
+      if (item?.kind !== 'comment') {
+        continue;
+      }
+
+      const comment = {
+        ...item,
+        storyId: params.rootStoryId,
+        depth: params.currentDepth,
+      };
+      comments.push(comment);
+
+      if (
+        comments.length >= params.limit ||
+        params.currentDepth >= params.maxDepth ||
+        item.kids === undefined ||
+        item.kids.length === 0
+      ) {
+        continue;
+      }
+
+      comments.push(
+        ...(await this.fetchCommentTree({
+          ids: item.kids,
+          rootStoryId: params.rootStoryId,
+          limit: params.limit - comments.length,
+          maxDepth: params.maxDepth,
+          currentDepth: params.currentDepth + 1,
+        })),
+      );
+    }
+
+    return comments;
   }
 
   private async searchAlgolia(
     query: string,
     kind: 'story' | 'comment',
     limit: number,
+    options: HackerNewsSearchOptions | undefined,
   ): Promise<readonly HackerNewsStory[]> {
+    const normalizedLimit = normalizeLimit(limit);
+    const normalizedQuery = normalizeAlgoliaQuery(query);
     const url = new URL(`${algoliaBaseUrl}/search_by_date`);
-    url.searchParams.set('query', query);
+    url.searchParams.set('query', normalizedQuery);
     url.searchParams.set('tags', kind);
-    url.searchParams.set('hitsPerPage', String(normalizeLimit(limit)));
+    url.searchParams.set('hitsPerPage', String(algoliaFetchLimit(normalizedLimit)));
+
+    const optionalWords = optionalWordsForQuery(normalizedQuery);
+    if (optionalWords !== undefined) {
+      url.searchParams.set('optionalWords', optionalWords);
+    }
+
+    const numericFilters = numericFiltersForSearchOptions(options);
+    if (numericFilters !== undefined) {
+      url.searchParams.set('numericFilters', numericFilters);
+    }
 
     const response = await this.fetchJson<AlgoliaSearchResponse>(url.toString());
+    const hits = filterAlgoliaHits(response.hits ?? [], kind, normalizedQuery)
+      .slice(0, normalizedLimit);
 
-    return (response.hits ?? []).flatMap((hit) => normalizeAlgoliaHit(hit, kind));
+    return hits.flatMap((hit) => normalizeAlgoliaHit(hit, kind));
   }
 
   async listStories(listing: HackerNewsListing, limit: number): Promise<readonly HackerNewsStory[]> {
@@ -68,7 +176,7 @@ export class HttpHackerNewsClient implements HackerNewsClientPort {
       .filter((id): id is number => Number.isInteger(id))
       .slice(0, normalizeLimit(limit));
 
-    return Promise.all(ids.map((id) => this.fetchStory(id)))
+    return Promise.all(ids.map((id) => this.getStory(id)))
       .then((stories) => stories.filter((story): story is HackerNewsStory => story !== null));
   }
 
@@ -107,6 +215,177 @@ const normalizeLimit = (limit: number): number => {
   return Math.min(limit, 100);
 };
 
+const normalizeCommentDepth = (depth: number): number => {
+  if (!Number.isInteger(depth) || depth < 0) {
+    return 0;
+  }
+
+  return Math.min(depth, 10);
+};
+
+const algoliaFetchLimit = (limit: number): number =>
+  Math.min(100, Math.max(limit, limit * algoliaOverfetchMultiplier));
+
+const normalizeAlgoliaQuery = (query: string): string =>
+  query.replace(/[-,]/g, ' ').split(/\s+/u).filter(Boolean).join(' ');
+
+const optionalWordsForQuery = (query: string): string | undefined => {
+  const [, ...optionalWords] = query.split(' ').filter(Boolean);
+
+  return optionalWords.length === 0 ? undefined : optionalWords.join(' ');
+};
+
+const numericFiltersForSearchOptions = (
+  options: HackerNewsSearchOptions | undefined,
+): string | undefined => {
+  const filters = [
+    options?.from === undefined
+      ? undefined
+      : `created_at_i>${unixTimestamp(options.from)}`,
+    options?.to === undefined ? undefined : `created_at_i<${unixTimestamp(options.to)}`,
+  ].filter((filter): filter is string => filter !== undefined);
+
+  return filters.length === 0 ? undefined : filters.join(',');
+};
+
+const unixTimestamp = (date: Date): number => Math.floor(date.getTime() / 1000);
+
+const filterAlgoliaHits = (
+  hits: readonly AlgoliaHit[],
+  kind: 'story' | 'comment',
+  query: string,
+): readonly AlgoliaHit[] => {
+  const queryMatchedHits = selectQueryMatchedHits(hits, query);
+
+  if (kind === 'comment') {
+    return queryMatchedHits;
+  }
+
+  const qualifyingHits = queryMatchedHits.filter(
+    (hit) => (hit.points ?? 0) > minAlgoliaStoryPoints,
+  );
+
+  return qualifyingHits.length === 0 ? queryMatchedHits : qualifyingHits;
+};
+
+const hackerNewsTitlePrefix = /^(Tell HN|Show HN|Ask HN|Launch HN)\s*:\s*/iu;
+const wordBoundaryPatternCache = new Map<string, RegExp>();
+
+type QueryMatchContext = {
+  readonly queryWords: readonly string[];
+  readonly stripTitlePrefixes: boolean;
+  readonly minimumPrecisionScore: number;
+};
+
+const selectQueryMatchedHits = (
+  hits: readonly AlgoliaHit[],
+  query: string,
+): readonly AlgoliaHit[] => {
+  const context = queryMatchContext(query);
+  const scoredHits = hits.map((hit) => ({
+    hit,
+    precisionScore: algoliaHitPrecisionScore(hit, context),
+  }));
+  const looseMatches = scoredHits.filter((scored) => scored.precisionScore > 0);
+
+  if (context.queryWords.length === 0) {
+    return hits;
+  }
+
+  const preciseMatches = looseMatches.filter(
+    (scored) => scored.precisionScore >= context.minimumPrecisionScore,
+  );
+
+  return (preciseMatches.length === 0 ? looseMatches : preciseMatches).map(
+    (scored) => scored.hit,
+  );
+};
+
+const algoliaHitPrecisionScore = (
+  hit: AlgoliaHit,
+  context: QueryMatchContext,
+): number => {
+  const haystack = [
+    normalizeTitleForQueryMatch(hit.title, context.stripTitlePrefixes),
+    normalizeTitleForQueryMatch(hit.story_title, context.stripTitlePrefixes),
+    hit.story_text,
+    hit.comment_text,
+    hit.url,
+  ]
+    .flatMap((value) => (value === undefined ? [] : [stripHtml(value)]))
+    .join(' ')
+    .toLocaleLowerCase('en-US');
+  const matchedWords = context.queryWords.filter((word) =>
+    queryWordMatches(word, haystack),
+  );
+
+  return context.queryWords.length === 0
+    ? 1
+    : matchedWords.length / context.queryWords.length;
+};
+
+const queryMatchContext = (
+  query: string,
+): QueryMatchContext => {
+  const words = compactUnique(
+    query.toLocaleLowerCase('en-US').split(' ').filter(Boolean),
+  );
+
+  if (!words.includes('hn')) {
+    return {
+      queryWords: words,
+      stripTitlePrefixes: true,
+      minimumPrecisionScore: minimumPrecisionScore(words),
+    };
+  }
+
+  const topicWords = words.filter((word) => !hackerNewsPrefixWords.has(word));
+  const queryWords = topicWords.length === 0 ? words : topicWords;
+
+  return {
+    queryWords,
+    stripTitlePrefixes: topicWords.length > 0,
+    minimumPrecisionScore: minimumPrecisionScore(queryWords),
+  };
+};
+
+const compactUnique = (values: readonly string[]): readonly string[] => [
+  ...new Set(values),
+];
+
+const minimumPrecisionScore = (queryWords: readonly string[]): number =>
+  queryWords.length <= 2 ? 1 / Math.max(1, queryWords.length) : 0.4;
+
+const hackerNewsPrefixWords = new Set(['tell', 'show', 'ask', 'launch', 'hn']);
+
+const normalizeTitleForQueryMatch = (
+  value: string | undefined,
+  stripTitlePrefixes: boolean,
+): string | undefined =>
+  stripTitlePrefixes ? value?.replace(hackerNewsTitlePrefix, '') : value;
+
+const wordBoundaryPattern = (word: string): RegExp => {
+  const cached = wordBoundaryPatternCache.get(word);
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  const pattern = new RegExp(`\\b${escapeRegExp(word)}\\b`, 'iu');
+  wordBoundaryPatternCache.set(word, pattern);
+
+  return pattern;
+};
+
+const simpleWordPattern = /^[a-z0-9]+$/iu;
+
+const queryWordMatches = (word: string, haystack: string): boolean =>
+  simpleWordPattern.test(word)
+    ? wordBoundaryPattern(word).test(haystack)
+    : haystack.includes(word);
+
+const escapeRegExp = (value: string): string =>
+  value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+
 const normalizeAlgoliaHit = (
   hit: AlgoliaHit,
   kind: 'story' | 'comment',
@@ -117,7 +396,7 @@ const normalizeAlgoliaHit = (
   }
   const storyId = readOptionalInteger(hit.story_id);
   const parentId = readOptionalInteger(hit.parent_id);
-  const text = hit.story_text ?? hit.comment_text;
+  const text = cleanOptionalText(hit.story_text ?? hit.comment_text);
   const score = readOptionalInteger(hit.points);
   const comments = readOptionalInteger(hit.num_comments);
 
@@ -142,14 +421,20 @@ const normalizeFirebaseStory = (story: Readonly<Record<string, unknown>>): Hacke
   if (id === undefined) {
     return null;
   }
+  const kind = readFirebaseKind(story.type);
+  const parentId = readOptionalInteger(story.parent);
+  const kids = readOptionalIntegerArray(story.kids);
 
   return {
+    ...(kind === undefined ? {} : { kind }),
     id,
     title: readOptionalString(story.title),
+    ...(parentId === undefined ? {} : { parentId }),
+    ...(kids === undefined ? {} : { kids }),
     url: readOptionalString(story.url),
     by: readOptionalString(story.by),
     time: readOptionalInteger(story.time),
-    text: readOptionalString(story.text),
+    text: cleanOptionalText(readOptionalString(story.text)),
     score: readOptionalInteger(story.score),
     comments: readOptionalInteger(story.descendants),
     deleted: story.deleted === true,
@@ -159,6 +444,64 @@ const normalizeFirebaseStory = (story: Readonly<Record<string, unknown>>): Hacke
 
 const readOptionalString = (value: unknown): string | undefined =>
   typeof value === 'string' ? value : undefined;
+
+const readFirebaseKind = (value: unknown): 'story' | 'comment' | undefined => {
+  if (value === 'comment') {
+    return 'comment';
+  }
+
+  return value === 'story' || value === 'job' || value === 'poll'
+    ? 'story'
+    : undefined;
+};
+
+const readOptionalIntegerArray = (
+  value: unknown,
+): readonly number[] | undefined => {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  return value.filter((item): item is number => Number.isInteger(item));
+};
+
+const cleanOptionalText = (value: string | undefined): string | undefined =>
+  value === undefined ? undefined : stripHtml(value);
+
+const stripHtml = (value: string): string =>
+  decodeHtmlEntities(
+    value
+      .replace(/<p>/giu, '\n')
+      .replace(/<br\s*\/?>/giu, '\n')
+      .replace(/<[^>]+>/gu, ''),
+  ).trim();
+
+const decodeHtmlEntities = (value: string): string =>
+  value.replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos|nbsp);/giu, (match, entity: string) => {
+    const normalizedEntity = entity.toLocaleLowerCase('en-US');
+    if (normalizedEntity.startsWith('#x')) {
+      return characterFromCodePoint(Number.parseInt(normalizedEntity.slice(2), 16), match);
+    }
+    if (normalizedEntity.startsWith('#')) {
+      return characterFromCodePoint(Number.parseInt(normalizedEntity.slice(1), 10), match);
+    }
+
+    return namedHtmlEntities[normalizedEntity] ?? match;
+  });
+
+const namedHtmlEntities: Readonly<Record<string, string>> = {
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+  nbsp: ' ',
+};
+
+const characterFromCodePoint = (codePoint: number, fallback: string): string =>
+  Number.isInteger(codePoint) && codePoint >= 0 && codePoint <= 0x10ffff
+    ? String.fromCodePoint(codePoint)
+    : fallback;
 
 const readOptionalInteger = (value: unknown): number | undefined =>
   typeof value === 'number' && Number.isInteger(value) ? value : undefined;
