@@ -1,0 +1,137 @@
+{
+  "schemaVersion": 1,
+  "artifactFormat": "reader-summary-clean-real-day-e2e-report-v1",
+  "generatedBy": "npm run check:reader-summary-clean-real-day-e2e",
+  "model": {
+    "liveNetwork": false,
+    "reportBuilder": "clean-real-day-reader-summary-e2e-quality-gate",
+    "rawProviderPayloadPersistedInReport": false
+  },
+  "inputs": {
+    "collectionPath": "ops/evals/reader-summary-clean-real-day-collection.v1.json",
+    "plannerCanaryPath": "ops/evals/source-query-planner-real-binding-canary.v1.json",
+    "qualityDashboardPath": "ops/evals/reader-summary-quality-dashboard.v1.json",
+    "feedbackCalibrationPath": "ops/evals/summary-feedback-calibration-report.v1.json"
+  },
+  "collectionDate": "2026-07-05",
+  "collection": {
+    "feedItemCount": 64,
+    "providerCounts": {
+      "reddit": 39,
+      "x-twitter": 25
+    },
+    "sourceQueryLaneCoverage": 1,
+    "distinctSourceQueryLaneCount": 5,
+    "targetCount": 2,
+    "succeededScanCount": 2
+  },
+  "planner": {
+    "bindingCount": 2,
+    "redditBindingCount": 1,
+    "xTwitterBindingCount": 1,
+    "realBindingCanaryBindingCount": 2
+  },
+  "summary": {
+    "artifactFingerprint": "febadf33",
+    "confidenceLevel": "medium",
+    "confidenceScore": 0.65,
+    "selectedFeedItemCount": 57,
+    "storyClusterCount": 57,
+    "topReadCount": 10,
+    "topReadProviderSkew": 0.6,
+    "primarySelectedCounts": {
+      "reddit": 39,
+      "x-twitter": 18
+    },
+    "primaryTopReadCounts": {
+      "reddit": 4,
+      "x-twitter": 6
+    },
+    "technicalLeakCount": 0
+  },
+  "topReadQuality": {
+    "rowCount": 10,
+    "unexplainedTopReadCount": 0,
+    "lowConfidenceWithoutRiskCount": 0
+  },
+  "claimBoard": {
+    "claimCount": 7,
+    "structuredClaimBoardPresent": true,
+    "everyClaimHasTwoEvidenceOrExplicitRisk": true
+  },
+  "collectionStrategy": {
+    "redditQueryLaneCount": 2,
+    "xTwitterQueryLaneCount": 2,
+    "redditEligibleTopReadCandidateCount": 13,
+    "xTwitterEligibleTopReadCandidateCount": 21,
+    "plannerExecutionGap": false,
+    "queryLaneWeaknessDetected": false
+  },
+  "feedback": {
+    "calibrationStatus": "no_feedback",
+    "shadowStatus": "no_feedback",
+    "ratingCount": 0,
+    "negativeRatingCount": 0,
+    "positiveRatingCount": 0,
+    "negativeRatingsMissingReasonCount": 0,
+    "reasonCount": 5,
+    "shadowMode": "shadow_no_ranking_influence"
+  },
+  "qualityGates": {
+    "collectionArtifactFormatValid": true,
+    "plannerCanaryArtifactFormatValid": true,
+    "qualityDashboardArtifactFormatValid": true,
+    "feedbackArtifactFormatValid": true,
+    "collectionArtifactPassed": true,
+    "collectionQualityGatesPassed": true,
+    "cleanCollectionDateMatchesDashboard": true,
+    "cleanCollectionFreshFeedWritten": true,
+    "cleanCollectionPrimarySourcesCollected": true,
+    "cleanCollectionNoOrphans": true,
+    "cleanCollectionSnapshotsPersisted": true,
+    "cleanCollectionQueryLaneCoverageComplete": true,
+    "cleanCollectionMultipleQueryLanesObserved": true,
+    "cleanCollectionTargetsUsePlannerCanary": true,
+    "cleanCollectionScansSucceeded": true,
+    "plannerCanaryArtifactPassed": true,
+    "plannerCanaryQualityGatesPassed": true,
+    "plannerPrimaryBindingsPresent": true,
+    "plannerEveryBindingEnabled": true,
+    "plannerEveryBindingUsesRealCanary": true,
+    "plannerKeepsProviderSpecificFallbacks": true,
+    "dashboardArtifactPassed": true,
+    "dashboardCleanAggregatePassed": true,
+    "dashboardHasNoDegradedCleanDates": true,
+    "dashboardPlannerRolloutProofReady": true,
+    "dashboardDirtyDaysExcludedFromRolloutProof": true,
+    "latestCleanDayPassed": true,
+    "latestCleanDayQualityGatesPassed": true,
+    "latestCleanDayMatchesCleanCollectionCounts": true,
+    "latestCleanDaySummaryArtifactPresent": true,
+    "latestCleanDayHasEnoughTopReads": true,
+    "latestCleanDayHasEnoughSelectedEvidence": true,
+    "latestCleanDayPrimarySourcesSelected": true,
+    "latestCleanDayPrimarySourcesReachTopReads": true,
+    "latestCleanDayTopReadSkewControlled": true,
+    "latestCleanDayNoTechnicalLeakage": true,
+    "latestCleanDayTopReadTelemetryComplete": true,
+    "latestCleanDayTopReadsExplained": true,
+    "latestCleanDayStructuredClaimBoardPresent": true,
+    "latestCleanDayClaimsSupportedOrRisked": true,
+    "latestCleanDayCollectionStrategyPassed": true,
+    "latestCleanDayPlannerCanaryTelemetryPresent": true,
+    "latestCleanDayPlannerCanaryExecuted": true,
+    "latestCleanDayQueryLanesHealthy": true,
+    "feedbackCalibrationArtifactPassed": true,
+    "feedbackCalibrationQualityGatesPassed": true,
+    "feedbackCalibrationStatusExplicit": true,
+    "feedbackRankingInfluenceDisabled": true,
+    "feedbackLowRatingsRequireReason": true,
+    "feedbackReasonTaxonomyPresent": true,
+    "feedbackShadowDoesNotInfluenceRanking": true,
+    "feedbackShadowNegativeRatingsHaveReason": true,
+    "feedbackShadowNoHighRankNegativeCluster": true,
+    "noRawSecretFragments": true
+  },
+  "blockingPassed": true
+}

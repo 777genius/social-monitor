@@ -16,6 +16,9 @@
     },
     "maxEvidenceItems": 40
   },
+  "collectionIntegrity": {
+    "status": "clean"
+  },
   "replay": {
     "tenantFingerprint": "88237c6b",
     "workspaceFingerprint": "88237c6c",
@@ -47,7 +50,7 @@
     },
     "citationReadyEvidenceCount": 40,
     "textReadyEvidenceCount": 40,
-    "minScore": 1.474,
+    "minScore": 1.471,
     "maxScore": 2.08
   },
   "evidencePack": {
@@ -67,6 +70,7 @@
     }
   },
   "qualityGates": {
+    "collectionIntegrityCleanForEval": true,
     "selectedEvidenceAtLeast30": true,
     "selectedEvidenceHasAtLeastFourProviders": true,
     "redditSelectedAtLeastTwo": true,

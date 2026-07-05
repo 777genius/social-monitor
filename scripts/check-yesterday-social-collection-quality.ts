@@ -5,11 +5,21 @@ import { dirname } from "node:path";
 
 import { Pool } from "pg";
 
+import {
+  collectionDateOptionOrDefault,
+  type CollectionIntegrityStatus,
+  readCollectionIntegrityStatus,
+} from "./lib/yesterday-social-replay-support";
+
 type FeedRow = {
   readonly interestId: string;
+  readonly interestExists: boolean;
   readonly providerKey: string;
   readonly dedupeKey: string;
   readonly sourceItemId: string;
+  readonly sourceItemExists: boolean;
+  readonly sourceBindingId: string;
+  readonly sourceBindingExists: boolean;
   readonly canonicalUrl: string;
   readonly title: string;
   readonly bodyPreview: string;
@@ -17,7 +27,9 @@ type FeedRow = {
   readonly publishedAt: Date;
   readonly hasProviderMetadata: boolean;
   readonly hasEngagementMetadata: boolean;
-  readonly interestQuery: string;
+  readonly hasInterestSnapshot: boolean;
+  readonly hasSourceBindingSnapshot: boolean;
+  readonly interestQuery: string | null;
 };
 
 type SourceItemCountRow = {
@@ -54,6 +66,12 @@ type XRunStats = {
   readonly retries?: number;
 };
 
+type XCollectorJsonWarning = {
+  readonly runId: string | null;
+  readonly field: "input_json" | "stats_json";
+  readonly reason: string;
+};
+
 type ProviderReport = {
   readonly providerKey: string;
   readonly feedItemCount: number;
@@ -79,6 +97,24 @@ type InterestCoverage = {
   readonly containsAllPrimarySources: boolean;
 };
 
+type DataIntegrityReport = {
+  readonly feedItemCount: number;
+  readonly joinedInterestCount: number;
+  readonly orphanInterestCount: number;
+  readonly orphanInterestRate: number;
+  readonly orphanInterestWithSnapshotCount: number;
+  readonly orphanInterestFingerprints: readonly string[];
+  readonly joinedSourceItemCount: number;
+  readonly orphanSourceItemCount: number;
+  readonly orphanSourceItemRate: number;
+  readonly orphanSourceItemFingerprints: readonly string[];
+  readonly joinedSourceBindingCount: number;
+  readonly orphanSourceBindingCount: number;
+  readonly orphanSourceBindingRate: number;
+  readonly orphanSourceBindingWithSnapshotCount: number;
+  readonly orphanSourceBindingFingerprints: readonly string[];
+};
+
 type Report = {
   readonly schemaVersion: 1;
   readonly artifactFormat: "yesterday-social-collection-quality-report-v1";
@@ -99,6 +135,8 @@ type Report = {
   readonly sourceCoverage: readonly string[];
   readonly primarySourceCoverage: readonly string[];
   readonly providerReports: readonly ProviderReport[];
+  readonly dataIntegrity: DataIntegrityReport;
+  readonly collectionIntegrity: CollectionIntegrityStatus;
   readonly interestCoverage: readonly InterestCoverage[];
   readonly summaryReadiness: {
     readonly primarySourcesCoLocatedInSingleInterest: boolean;
@@ -118,6 +156,10 @@ type Report = {
     readonly xCollectorTaskFailureCount: number;
     readonly primarySourcesSplitAcrossInterests: boolean;
     readonly summaryArtifactMissing: boolean;
+    readonly orphanInterestFeedItemCount: number;
+    readonly orphanSourceItemFeedItemCount: number;
+    readonly orphanSourceBindingFeedItemCount: number;
+    readonly xCollectorInvalidJsonFieldCount: number;
   };
   readonly qualityGates: Record<string, boolean>;
   readonly collectionBlockingPassed: boolean;
@@ -127,9 +169,11 @@ type Report = {
     | "collection_and_summary_quality_verified";
 };
 
-const collectionDate = readOption("--date") ?? "2026-07-03";
+const { collectionDate, wasExplicit: collectionDateWasExplicit } =
+  collectionDateOptionOrDefault("2026-07-03");
 const update = process.argv.includes("--update");
-const outputPath = "ops/evals/yesterday-social-collection-quality-report.v1.json";
+const outputPath =
+  "ops/evals/yesterday-social-collection-quality-report.v1.json";
 const xCollectorLedgerPath =
   process.env.YESTERDAY_SOCIAL_QUALITY_X_LEDGER_PATH ??
   "apps/x-collector/var/x-collector/scweet_state.db";
@@ -165,7 +209,13 @@ async function main(): Promise<void> {
       );
     }
 
-    validateExistingReport();
+    if (collectionDateWasExplicit) {
+      throw new Error(
+        `Local yesterday social data sources are unavailable for ${collectionDate}; refusing to validate a fallback artifact for an explicit date.`,
+      );
+    }
+
+    validateExistingReport(collectionDate);
     return;
   }
 
@@ -214,6 +264,8 @@ async function tryBuildReport(): Promise<Report | undefined> {
     const summaryArtifacts = await querySummaryArtifacts(pool);
     const summaryJobs = await querySummaryJobs(pool);
     const providerReports = buildProviderReports(feedRows, sourceItemCounts);
+    const dataIntegrity = buildDataIntegrityReport(feedRows);
+    const collectionIntegrity = readCollectionIntegrityStatus(collectionDate);
     const interestCoverage = buildInterestCoverage(feedRows);
     const primarySourcesCoLocatedInSingleInterest = interestCoverage.some(
       (item: InterestCoverage) => item.containsAllPrimarySources,
@@ -236,7 +288,9 @@ async function tryBuildReport(): Promise<Report | undefined> {
           : "not_verified_missing_summary_artifact",
     } as const;
     const primaryReports = primarySources.flatMap((source) => {
-      const report = providerReports.find((item) => item.providerKey === source);
+      const report = providerReports.find(
+        (item) => item.providerKey === source,
+      );
 
       return report === undefined ? [] : [report];
     });
@@ -275,6 +329,7 @@ async function tryBuildReport(): Promise<Report | undefined> {
         xCollectorLedger.completedRunRate >= 0.94,
       xCollectorFailedRunsReturnedNoTweets:
         xCollectorLedger.failedReturnedTweetCount === 0,
+      xCollectorLedgerJsonValid: xCollectorLedger.invalidJsonFieldCount === 0,
       xCollectorReturnedAtLeast500Tweets:
         xCollectorLedger.returnedTweetCount >= 500,
       xCollectorHasTopAndLatest: xCollectorLedger.hasTopAndLatest,
@@ -287,6 +342,17 @@ async function tryBuildReport(): Promise<Report | undefined> {
           "verified_from_summary_artifacts" ||
         summaryArtifactCoverage.verificationStatus ===
           "not_verified_missing_summary_artifact",
+      noOrphanFeedInterestReferences:
+        dataIntegrity.orphanInterestCount === 0 ||
+        dataIntegrity.orphanInterestWithSnapshotCount ===
+          dataIntegrity.orphanInterestCount,
+      noOrphanFeedSourceItemReferences:
+        dataIntegrity.orphanSourceItemCount === 0,
+      noOrphanFeedSourceBindingReferences:
+        dataIntegrity.orphanSourceBindingCount === 0 ||
+        dataIntegrity.orphanSourceBindingWithSnapshotCount ===
+          dataIntegrity.orphanSourceBindingCount,
+      collectionIntegrityCleanForEval: collectionIntegrity.status === "clean",
       noRawSecretFragments: true,
     };
     const reportWithoutSecretGate = {
@@ -296,8 +362,7 @@ async function tryBuildReport(): Promise<Report | undefined> {
       generatedBy: "npm run check:yesterday-social-collection-quality",
       model: {
         liveNetwork: false,
-        reportBuilder:
-          "local-postgres-feed-items-plus-x-collector-run-ledger",
+        reportBuilder: "local-postgres-feed-items-plus-x-collector-run-ledger",
         rawPostTextPersistedInReport: false,
       },
       inputs: {
@@ -307,6 +372,8 @@ async function tryBuildReport(): Promise<Report | undefined> {
       sourceCoverage,
       primarySourceCoverage,
       providerReports,
+      dataIntegrity,
+      collectionIntegrity,
       interestCoverage,
       summaryReadiness: {
         primarySourcesCoLocatedInSingleInterest,
@@ -323,6 +390,11 @@ async function tryBuildReport(): Promise<Report | undefined> {
         summaryArtifactMissing:
           summaryArtifactCoverage.verificationStatus ===
           "not_verified_missing_summary_artifact",
+        orphanInterestFeedItemCount: dataIntegrity.orphanInterestCount,
+        orphanSourceItemFeedItemCount: dataIntegrity.orphanSourceItemCount,
+        orphanSourceBindingFeedItemCount:
+          dataIntegrity.orphanSourceBindingCount,
+        xCollectorInvalidJsonFieldCount: xCollectorLedger.invalidJsonFieldCount,
       },
       qualityGates,
       collectionBlockingPassed: false,
@@ -363,8 +435,12 @@ async function queryFeedRows(pool: Pool): Promise<readonly FeedRow[]> {
       select
         f.provider_key as "providerKey",
         f.interest_id::text as "interestId",
+        (i.id is not null) as "interestExists",
         f.dedupe_key as "dedupeKey",
         f.source_item_id::text as "sourceItemId",
+        (si.id is not null) as "sourceItemExists",
+        f.source_binding_id::text as "sourceBindingId",
+        (sb.id is not null) as "sourceBindingExists",
         f.canonical_url as "canonicalUrl",
         f.title as "title",
         f.body_preview as "bodyPreview",
@@ -377,9 +453,26 @@ async function queryFeedRows(pool: Pool): Promise<readonly FeedRow[]> {
           f.provider_metadata::text like '%retweets%' or
           f.provider_metadata::text like '%comments%'
         ) as "hasEngagementMetadata",
+        (
+          jsonb_typeof(f.provider_metadata -> 'interestQuerySnapshot') = 'object' and
+          f.provider_metadata #>> '{interestQuerySnapshot,interestId}' = f.interest_id::text and
+          length(trim(coalesce(f.provider_metadata #>> '{interestQuerySnapshot,query}', ''))) > 0
+        ) as "hasInterestSnapshot",
+        (
+          jsonb_typeof(f.provider_metadata -> 'sourceBindingSnapshot') = 'object' and
+          f.provider_metadata #>> '{sourceBindingSnapshot,sourceBindingId}' = f.source_binding_id::text and
+          f.provider_metadata #>> '{sourceBindingSnapshot,providerKey}' = f.provider_key and
+          length(trim(coalesce(f.provider_metadata #>> '{sourceBindingSnapshot,sourceQuery,mode}', ''))) > 0 and
+          length(trim(coalesce(f.provider_metadata #>> '{sourceBindingSnapshot,sourceQuery,query}', ''))) > 0 and
+          jsonb_typeof(f.provider_metadata -> 'workspaceScopeSnapshot') = 'object' and
+          f.provider_metadata #>> '{workspaceScopeSnapshot,tenantId}' = f.tenant_id::text and
+          f.provider_metadata #>> '{workspaceScopeSnapshot,workspaceId}' = f.workspace_id::text
+        ) as "hasSourceBindingSnapshot",
         i.query as "interestQuery"
       from feed_items f
-      join interests i on i.id = f.interest_id
+      left join interests i on i.id = f.interest_id
+      left join source_items si on si.id = f.source_item_id
+      left join source_bindings sb on sb.id = f.source_binding_id
       where f.observed_at >= $1::timestamptz
         and f.observed_at < $2::timestamptz
       order by f.provider_key, f.observed_at, f.id
@@ -388,6 +481,44 @@ async function queryFeedRows(pool: Pool): Promise<readonly FeedRow[]> {
   );
 
   return result.rows;
+}
+
+function buildDataIntegrityReport(
+  feedRows: readonly FeedRow[],
+): DataIntegrityReport {
+  const orphanInterestRows = feedRows.filter((row) => !row.interestExists);
+  const orphanSourceItemRows = feedRows.filter((row) => !row.sourceItemExists);
+  const orphanSourceBindingRows = feedRows.filter(
+    (row) => !row.sourceBindingExists,
+  );
+
+  return {
+    feedItemCount: feedRows.length,
+    joinedInterestCount: feedRows.length - orphanInterestRows.length,
+    orphanInterestCount: orphanInterestRows.length,
+    orphanInterestRate: ratio(feedRows, (row) => !row.interestExists),
+    orphanInterestWithSnapshotCount: orphanInterestRows.filter(
+      (row) => row.hasInterestSnapshot,
+    ).length,
+    orphanInterestFingerprints: fingerprints(
+      orphanInterestRows.map((row) => row.interestId),
+    ),
+    joinedSourceItemCount: feedRows.length - orphanSourceItemRows.length,
+    orphanSourceItemCount: orphanSourceItemRows.length,
+    orphanSourceItemRate: ratio(feedRows, (row) => !row.sourceItemExists),
+    orphanSourceItemFingerprints: fingerprints(
+      orphanSourceItemRows.map((row) => row.sourceItemId),
+    ),
+    joinedSourceBindingCount: feedRows.length - orphanSourceBindingRows.length,
+    orphanSourceBindingCount: orphanSourceBindingRows.length,
+    orphanSourceBindingRate: ratio(feedRows, (row) => !row.sourceBindingExists),
+    orphanSourceBindingWithSnapshotCount: orphanSourceBindingRows.filter(
+      (row) => row.hasSourceBindingSnapshot,
+    ).length,
+    orphanSourceBindingFingerprints: fingerprints(
+      orphanSourceBindingRows.map((row) => row.sourceBindingId),
+    ),
+  };
 }
 
 async function querySourceItemCounts(
@@ -428,7 +559,9 @@ async function querySummaryArtifacts(
   return result.rows;
 }
 
-async function querySummaryJobs(pool: Pool): Promise<readonly SummaryCountRow[]> {
+async function querySummaryJobs(
+  pool: Pool,
+): Promise<readonly SummaryCountRow[]> {
   const result = await pool.query<SummaryCountRow>(
     `
       select status::text as "status", count(*)::text as "count"
@@ -478,10 +611,7 @@ function buildProviderReports(
         canonicalUrlCoverage: ratio(rows, (row) =>
           /^https?:\/\//i.test(row.canonicalUrl),
         ),
-        providerMetadataCoverage: ratio(
-          rows,
-          (row) => row.hasProviderMetadata,
-        ),
+        providerMetadataCoverage: ratio(rows, (row) => row.hasProviderMetadata),
         engagementMetadataCoverage: ratio(
           rows,
           (row) => row.hasEngagementMetadata,
@@ -525,34 +655,19 @@ function buildInterestCoverage(
 
 function buildXCollectorLedgerReport() {
   if (!existsSync(xCollectorLedgerPath)) {
-    return {
-      available: false,
-      runCount: 0,
-      completedRunCount: 0,
-      failedRunCount: 0,
-      completedRunRate: 0,
-      failedReturnedTweetCount: 0,
-      returnedTweetCount: 0,
-      distinctQueryHashCount: 0,
-      firstStartedAt: null,
-      lastStartedAt: null,
-      displayTypeBreakdown: {},
-      strictEngagementRunCount: 0,
-      discoveryRunCount: 0,
-      orGroupRunCount: 0,
-      phraseQueryRunCount: 0,
-      taskFailureCount: 0,
-      retryCount: 0,
-      hasTopAndLatest: false,
-      hasStrictAndDiscoveryLanes: false,
-      queryFamilyFingerprints: [],
-    } as const;
+    return emptyXCollectorLedgerReport(false, "ledger_file_missing");
   }
 
-  const rows = readXRunRows();
+  const rowsResult = readXRunRows();
+  if (!rowsResult.ok) {
+    return emptyXCollectorLedgerReport(false, rowsResult.error);
+  }
+
+  const rows = rowsResult.rows;
   const queryHashes = new Set<string>();
   const displayTypeBreakdown = new Map<string, number>();
   const queryFamilyFingerprints = new Set<string>();
+  const invalidJsonFields: XCollectorJsonWarning[] = [];
   let completedRunCount = 0;
   let failedRunCount = 0;
   let failedReturnedTweetCount = 0;
@@ -565,8 +680,17 @@ function buildXCollectorLedgerReport() {
   let retryCount = 0;
 
   for (const row of rows) {
-    const input = parseJson<XRunInput>(row.input_json);
-    const stats = parseJson<XRunStats>(row.stats_json);
+    const inputResult = parseJsonField<XRunInput>(row, "input_json");
+    const statsResult = parseJsonField<XRunStats>(row, "stats_json");
+    if (!inputResult.ok) {
+      invalidJsonFields.push(inputResult.warning);
+    }
+    if (!statsResult.ok) {
+      invalidJsonFields.push(statsResult.warning);
+    }
+
+    const input = inputResult.ok ? inputResult.value : undefined;
+    const stats = statsResult.ok ? statsResult.value : undefined;
     const displayType = input?.display_type ?? "unknown";
     const minLikes = input?.min_likes ?? 0;
     const minRetweets = input?.min_retweets ?? 0;
@@ -635,11 +759,47 @@ function buildXCollectorLedgerReport() {
       displayTypeBreakdown.has("Top") && displayTypeBreakdown.has("Latest"),
     hasStrictAndDiscoveryLanes:
       strictEngagementRunCount > 0 && discoveryRunCount > 0,
+    invalidJsonFieldCount: invalidJsonFields.length,
+    invalidJsonFields: invalidJsonFields.slice(0, 20),
+    readError: null,
     queryFamilyFingerprints: [...queryFamilyFingerprints].sort(),
   } as const;
 }
 
-function readXRunRows(): readonly XRunRow[] {
+function emptyXCollectorLedgerReport(
+  available: boolean,
+  readError: string | null,
+) {
+  return {
+    available,
+    runCount: 0,
+    completedRunCount: 0,
+    failedRunCount: 0,
+    completedRunRate: 0,
+    failedReturnedTweetCount: 0,
+    returnedTweetCount: 0,
+    distinctQueryHashCount: 0,
+    firstStartedAt: null,
+    lastStartedAt: null,
+    displayTypeBreakdown: {},
+    strictEngagementRunCount: 0,
+    discoveryRunCount: 0,
+    orGroupRunCount: 0,
+    phraseQueryRunCount: 0,
+    taskFailureCount: 0,
+    retryCount: 0,
+    hasTopAndLatest: false,
+    hasStrictAndDiscoveryLanes: false,
+    invalidJsonFieldCount: 0,
+    invalidJsonFields: [],
+    readError,
+    queryFamilyFingerprints: [],
+  } as const;
+}
+
+function readXRunRows():
+  | { readonly ok: true; readonly rows: readonly XRunRow[] }
+  | { readonly ok: false; readonly error: string } {
   const sql = `
     select
       run_id,
@@ -654,15 +814,30 @@ function readXRunRows(): readonly XRunRow[] {
     where date(started_at, 'unixepoch') = '${collectionDate}'
     order by started_at asc
   `;
-  const output = execFileSync("sqlite3", ["-json", xCollectorLedgerPath, sql], {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+  try {
+    const output = execFileSync(
+      "sqlite3",
+      ["-json", xCollectorLedgerPath, sql],
+      {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+    const normalized = output.trim();
 
-  return JSON.parse(output) as readonly XRunRow[];
+    return {
+      ok: true,
+      rows:
+        normalized.length === 0
+          ? []
+          : (JSON.parse(normalized) as readonly XRunRow[]),
+    };
+  } catch (error) {
+    return { ok: false, error: errorMessage(error) };
+  }
 }
 
-function validateExistingReport(): void {
+function validateExistingReport(expectedCollectionDate: string): void {
   if (!existsSync(outputPath)) {
     throw new Error(
       `${outputPath} is missing and local data sources are unavailable.`,
@@ -672,8 +847,8 @@ function validateExistingReport(): void {
   const report = readJson<Report>(outputPath);
   const valid =
     report.schemaVersion === 1 &&
-    report.artifactFormat ===
-      "yesterday-social-collection-quality-report-v1" &&
+    report.artifactFormat === "yesterday-social-collection-quality-report-v1" &&
+    report.collectionDate === expectedCollectionDate &&
     report.collectionBlockingPassed === true &&
     primarySources.every((source) =>
       report.primarySourceCoverage.includes(source),
@@ -707,7 +882,7 @@ function hasReadableText(row: FeedRow): boolean {
 }
 
 function hasQueryTermHit(row: FeedRow): boolean {
-  const terms = tokenize(row.interestQuery);
+  const terms = tokenize(row.interestQuery ?? "");
   const text = `${row.title} ${row.bodyPreview}`.toLowerCase();
 
   return terms.length > 0 && terms.some((term) => text.includes(term));
@@ -766,9 +941,14 @@ function tokenize(value: string): readonly string[] {
   ];
 }
 
-function statusCounts(rows: readonly SummaryCountRow[]): Record<string, number> {
+function statusCounts(
+  rows: readonly SummaryCountRow[],
+): Record<string, number> {
   return Object.fromEntries(
-    rows.map((row) => [row.status ?? "unknown", Number.parseInt(row.count, 10)]),
+    rows.map((row) => [
+      row.status ?? "unknown",
+      Number.parseInt(row.count, 10),
+    ]),
   );
 }
 
@@ -864,18 +1044,38 @@ function parseJson<TValue>(value: string | undefined): TValue | undefined {
   return JSON.parse(value) as TValue;
 }
 
+function parseJsonField<TValue>(
+  row: XRunRow,
+  field: "input_json" | "stats_json",
+):
+  | { readonly ok: true; readonly value: TValue | undefined }
+  | { readonly ok: false; readonly warning: XCollectorJsonWarning } {
+  try {
+    return { ok: true, value: parseJson<TValue>(row[field]) };
+  } catch (error) {
+    return {
+      ok: false,
+      warning: {
+        runId: row.run_id ?? null,
+        field,
+        reason: errorMessage(error),
+      },
+    };
+  }
+}
+
 function readJson<TValue>(path: string): TValue {
   return JSON.parse(readFileSync(path, "utf8")) as TValue;
 }
 
-function readOption(name: string): string | undefined {
-  const index = process.argv.indexOf(name);
-
-  return index >= 0 ? process.argv[index + 1] : undefined;
-}
-
 function hashText(value: string): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+function fingerprints(values: readonly string[]): readonly string[] {
+  return [...new Set(values.map((value) => hashText(value).slice(0, 12)))]
+    .sort()
+    .slice(0, 20);
 }
 
 function noRawSecretFragments(value: unknown): boolean {

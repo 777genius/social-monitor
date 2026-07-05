@@ -19,6 +19,9 @@
     "maxEvidenceItems": 40,
     "maxStories": 10
   },
+  "collectionIntegrity": {
+    "status": "clean"
+  },
   "replay": {
     "tenantFingerprint": "88237c6b",
     "workspaceFingerprint": "88237c6c",
@@ -29,25 +32,25 @@
     "publishedEventCount": 1,
     "selectedFeedItemCount": 40,
     "storyClusterCount": 39,
-    "topReadCount": 9,
-    "citationCount": 10,
+    "topReadCount": 10,
+    "citationCount": 40,
     "providerCount": 4,
     "sourceMixProviderCounts": [
       {
         "providerKey": "x-twitter",
-        "count": 1
+        "count": 10
       },
       {
         "providerKey": "reddit",
-        "count": 2
+        "count": 10
       },
       {
         "providerKey": "hacker-news",
-        "count": 4
+        "count": 10
       },
       {
         "providerKey": "rss",
-        "count": 3
+        "count": 10
       }
     ],
     "topReadProviderCounts": [
@@ -56,45 +59,45 @@
         "count": 4
       },
       {
-        "providerKey": "rss",
-        "count": 3
+        "providerKey": "reddit",
+        "count": 2
       },
       {
-        "providerKey": "reddit",
-        "count": 1
+        "providerKey": "rss",
+        "count": 2
       },
       {
         "providerKey": "x-twitter",
-        "count": 1
+        "count": 2
       }
     ],
     "primarySourceMixCounts": {
-      "reddit": 2,
-      "x-twitter": 1
+      "reddit": 10,
+      "x-twitter": 10
     },
     "primaryTopReadCounts": {
-      "reddit": 1,
-      "x-twitter": 1
+      "reddit": 2,
+      "x-twitter": 2
     },
-    "citedTopReadCount": 9,
-    "canonicalUrlTopReadCount": 9,
-    "citationCanonicalUrlCount": 10,
-    "minTopReadSignalScore": 2.098,
-    "averageTopReadSignalScore": 2.189,
+    "citedTopReadCount": 10,
+    "canonicalUrlTopReadCount": 10,
+    "citationCanonicalUrlCount": 40,
+    "minTopReadSignalScore": 1.988,
+    "averageTopReadSignalScore": 2.168,
     "mediumOrHighConfidenceTopReadCount": 1,
-    "lowConfidenceTopReadCount": 8
+    "lowConfidenceTopReadCount": 9
   },
   "finalText": {
-    "textFingerprint": "20fd4a84",
+    "textFingerprint": "790c1e9b",
     "headlineChars": 88,
     "oneLineTakeawayChars": 89,
     "bulletCount": 2,
     "openQuestionCount": 1,
     "nextActionCount": 6,
     "riskCount": 1,
-    "averageTopReadTitleChars": 69.444,
-    "averageTopReadReasonChars": 105.333,
-    "averageTopReadWhyNowChars": 47.778,
+    "averageTopReadTitleChars": 72.9,
+    "averageTopReadReasonChars": 103.7,
+    "averageTopReadWhyNowChars": 47.9,
     "technicalLeakCount": 0
   },
   "qualityState": {
@@ -106,6 +109,7 @@
     "confidenceScore": 0.65
   },
   "qualityGates": {
+    "collectionIntegrityCleanForEval": true,
     "requestCreatedJob": true,
     "executionCompleted": true,
     "artifactPersisted": true,

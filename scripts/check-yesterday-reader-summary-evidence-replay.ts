@@ -9,19 +9,19 @@ import { RelevanceReaderSummaryEvidenceSelector } from "../libs/summary/adapters
 import { buildSummaryEvidencePack } from "../libs/summary/domain/policies/summary-evidence-pack-policy";
 import { buildReaderSummaryPeriod } from "../libs/summary/domain/value-objects/reader-summary-period";
 import {
+  collectionDateOptionOrDefault,
+  type CollectionIntegrityStatus,
   fingerprint,
   message,
   nextDate,
   normalizeLineEndings,
   noRawSecretFragments,
+  readCollectionIntegrityStatus,
   readDominantFeedScope,
-  readOption,
   roundMetric,
   yesterdaySocialQualityDatabaseUrl,
 } from "./lib/yesterday-social-replay-support";
-import {
-  FixedClock,
-} from "@social-monitor/shared-kernel";
+import { FixedClock } from "@social-monitor/shared-kernel";
 
 type Report = {
   readonly schemaVersion: 1;
@@ -41,6 +41,7 @@ type Report = {
     };
     readonly maxEvidenceItems: number;
   };
+  readonly collectionIntegrity: CollectionIntegrityStatus;
   readonly replay: {
     readonly tenantFingerprint: string;
     readonly workspaceFingerprint: string;
@@ -78,8 +79,9 @@ type Report = {
   readonly blockingPassed: boolean;
 };
 
-const collectionDate = readOption("--date") ?? "2026-07-03";
+const { collectionDate } = collectionDateOptionOrDefault("2026-07-03");
 const update = process.argv.includes("--update");
+const allowDirtyCollection = process.argv.includes("--allow-dirty-collection");
 const outputPath = "ops/evals/yesterday-reader-summary-evidence-replay.v1.json";
 const maxEvidenceItems = 40;
 const primarySources = ["reddit", "x-twitter"];
@@ -200,8 +202,8 @@ async function tryBuildReport(): Promise<Report | undefined> {
         selection.selectedEvidence.map((item) => fingerprint(item.interestId)),
       ).size,
       primaryProviderCounts,
-      citationReadyEvidenceCount: selection.selectedEvidence.filter(
-        (item) => /^https?:\/\//i.test(item.canonicalUrl),
+      citationReadyEvidenceCount: selection.selectedEvidence.filter((item) =>
+        /^https?:\/\//i.test(item.canonicalUrl),
       ).length,
       textReadyEvidenceCount: selection.selectedEvidence.filter(
         (item) => `${item.title} ${item.bodyPreview ?? ""}`.trim().length > 0,
@@ -218,8 +220,7 @@ async function tryBuildReport(): Promise<Report | undefined> {
       officialSignalCount: pack.officialSignals.length,
       emergingSignalCount: pack.emergingSignals.length,
       dissentingViewCount: pack.dissentingViews.length,
-      highEngagementLowConfidenceCount:
-        pack.highEngagementLowConfidence.length,
+      highEngagementLowConfidenceCount: pack.highEngagementLowConfidence.length,
       sourceCoverage: {
         selectedEvidenceCount: pack.sourceCoverage.selectedEvidenceCount,
         providerCount: pack.sourceCoverage.providerCount,
@@ -229,7 +230,10 @@ async function tryBuildReport(): Promise<Report | undefined> {
     };
     const redditSelectedCount = primaryProviderCounts.reddit ?? 0;
     const xTwitterSelectedCount = primaryProviderCounts["x-twitter"] ?? 0;
+    const collectionIntegrity = readCollectionIntegrityStatus(collectionDate);
     const qualityGates = {
+      collectionIntegrityCleanForEval:
+        collectionIntegrity.status === "clean" || allowDirtyCollection,
       selectedEvidenceAtLeast30: replay.selectedEvidenceCount >= 30,
       selectedEvidenceHasAtLeastFourProviders:
         replay.providerCounts.length >= 4,
@@ -265,6 +269,7 @@ async function tryBuildReport(): Promise<Report | undefined> {
         },
         maxEvidenceItems,
       },
+      collectionIntegrity,
       replay,
       evidencePack,
       qualityGates,
@@ -302,8 +307,7 @@ function validateExistingReport(): void {
   const report = JSON.parse(readFileSync(outputPath, "utf8")) as Report;
   const valid =
     report.schemaVersion === 1 &&
-    report.artifactFormat ===
-      "yesterday-reader-summary-evidence-replay-v1" &&
+    report.artifactFormat === "yesterday-reader-summary-evidence-replay-v1" &&
     report.blockingPassed === true &&
     primarySources.every(
       (source) => (report.replay.primaryProviderCounts[source] ?? 0) >= 2,

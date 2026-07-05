@@ -113,6 +113,26 @@
       "rankInputReadinessScore": 1
     }
   ],
+  "dataIntegrity": {
+    "feedItemCount": 820,
+    "joinedInterestCount": 820,
+    "orphanInterestCount": 0,
+    "orphanInterestRate": 0,
+    "orphanInterestWithSnapshotCount": 0,
+    "orphanInterestFingerprints": [],
+    "joinedSourceItemCount": 820,
+    "orphanSourceItemCount": 0,
+    "orphanSourceItemRate": 0,
+    "orphanSourceItemFingerprints": [],
+    "joinedSourceBindingCount": 820,
+    "orphanSourceBindingCount": 0,
+    "orphanSourceBindingRate": 0,
+    "orphanSourceBindingWithSnapshotCount": 0,
+    "orphanSourceBindingFingerprints": []
+  },
+  "collectionIntegrity": {
+    "status": "clean"
+  },
   "interestCoverage": [
     {
       "interestFingerprint": "b935f4783b43",
@@ -161,6 +181,9 @@
     "retryCount": 0,
     "hasTopAndLatest": true,
     "hasStrictAndDiscoveryLanes": true,
+    "invalidJsonFieldCount": 0,
+    "invalidJsonFields": [],
+    "readError": null,
     "queryFamilyFingerprints": [
       "0ec5a664683b",
       "34a66563f20d",
@@ -184,7 +207,11 @@
     "xCollectorFailedRunCount": 4,
     "xCollectorTaskFailureCount": 16,
     "primarySourcesSplitAcrossInterests": true,
-    "summaryArtifactMissing": true
+    "summaryArtifactMissing": true,
+    "orphanInterestFeedItemCount": 0,
+    "orphanSourceItemFeedItemCount": 0,
+    "orphanSourceBindingFeedItemCount": 0,
+    "xCollectorInvalidJsonFieldCount": 0
   },
   "qualityGates": {
     "postgresFeedItemsAvailable": true,
@@ -200,11 +227,16 @@
     "xCollectorRunCountAtLeast20": true,
     "xCollectorCompletedRunRateAtLeast94Percent": true,
     "xCollectorFailedRunsReturnedNoTweets": true,
+    "xCollectorLedgerJsonValid": true,
     "xCollectorReturnedAtLeast500Tweets": true,
     "xCollectorHasTopAndLatest": true,
     "xCollectorHasStrictAndDiscoveryLanes": true,
     "xCollectorDistinctQueryHashesAtLeast10": true,
     "summaryArtifactAbsenceIsExplicit": true,
+    "noOrphanFeedInterestReferences": true,
+    "noOrphanFeedSourceItemReferences": true,
+    "noOrphanFeedSourceBindingReferences": true,
+    "collectionIntegrityCleanForEval": true,
     "noRawSecretFragments": true
   },
   "collectionBlockingPassed": true,

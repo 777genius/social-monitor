@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 1,
+  "artifactFormat": "reader-summary-clean-real-day-collection-v1",
+  "generatedBy": "npm run run:reader-summary-clean-real-day-collection",
+  "model": {
+    "mode": "targeted_real_binding_collection",
+    "liveNetwork": true,
+    "rawProviderPayloadPersistedInReport": false,
+    "rawPostTextPersistedInReport": false,
+    "rawProviderConfigPersistedInReport": false
+  },
+  "inputs": {
+    "database": "local-postgres",
+    "providerKeys": [
+      "reddit",
+      "x-twitter"
+    ],
+    "xCollectorConfigured": true
+  },
+  "run": {
+    "startedAt": "2026-07-05T16:01:09.594Z",
+    "completedAt": "2026-07-05T16:01:46.111Z",
+    "collectionDate": "2026-07-05"
+  },
+  "targets": [
+    {
+      "providerKey": "reddit",
+      "bindingFingerprint": "0c450737",
+      "interestFingerprint": "76a4b2fd",
+      "workspaceFingerprint": "88237c6c",
+      "plannerEnabled": true,
+      "canaryRollout": true
+    },
+    {
+      "providerKey": "x-twitter",
+      "bindingFingerprint": "ea231a0a",
+      "interestFingerprint": "9ea2cba0",
+      "workspaceFingerprint": "88237c6c",
+      "plannerEnabled": true,
+      "canaryRollout": true
+    }
+  ],
+  "scans": [
+    {
+      "providerKey": "reddit",
+      "bindingFingerprint": "0c450737",
+      "status": "succeeded",
+      "fetched": 39,
+      "inserted": 0,
+      "projected": 39,
+      "skippedDuplicates": 39,
+      "warningCount": 0
+    },
+    {
+      "providerKey": "x-twitter",
+      "bindingFingerprint": "ea231a0a",
+      "status": "succeeded",
+      "fetched": 25,
+      "inserted": 20,
+      "projected": 25,
+      "skippedDuplicates": 5,
+      "warningCount": 2
+    }
+  ],
+  "freshWindow": {
+    "feedItemCount": 64,
+    "providerCounts": {
+      "reddit": 39,
+      "x-twitter": 25
+    },
+    "orphanInterestCount": 0,
+    "orphanSourceBindingCount": 0,
+    "interestSnapshotCoverage": 1,
+    "sourceBindingSnapshotCoverage": 1,
+    "sourceQueryLaneCoverage": 1,
+    "distinctSourceQueryLaneCount": 5
+  },
+  "qualityGates": {
+    "targetBindingsPresent": true,
+    "everyRequestedProviderSucceeded": true,
+    "freshFeedItemsWritten": true,
+    "noFreshOrphanInterestReferences": true,
+    "noFreshOrphanSourceBindingReferences": true,
+    "freshInterestSnapshotsPersisted": true,
+    "freshSourceBindingSnapshotsPersisted": true,
+    "freshSourceQueryLaneCoverageComplete": true,
+    "freshMultipleQueryLanesObserved": true,
+    "noRawSecretFragments": true
+  },
+  "blockingPassed": true
+}

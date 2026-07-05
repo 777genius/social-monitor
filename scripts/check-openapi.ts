@@ -89,6 +89,7 @@ import { UpsertUserRelevanceProfileUseCase } from "@social-monitor/relevance/fea
 import { RelevanceController } from "@social-monitor/relevance/interfaces/rest/relevance.controller";
 import { SocialResearchController } from "@social-monitor/social-research/rest";
 import { SocialResearchToolHandlers } from "@social-monitor/social-research/tools";
+import { DecideReaderSummaryTopicRecommendationUseCase } from "@social-monitor/summary/features/decide-reader-summary-topic-recommendation/decide-reader-summary-topic-recommendation.use-case";
 import { GetSummaryJobStatusUseCase } from "@social-monitor/summary/features/get-summary-job-status/get-summary-job-status.use-case";
 import { GetSummaryPolicyUseCase } from "@social-monitor/summary/features/get-summary-policy/get-summary-policy.use-case";
 import { GetSummaryUseCase } from "@social-monitor/summary/features/get-summary/get-summary.use-case";
@@ -96,6 +97,7 @@ import { GetReaderSummaryJobStatusUseCase } from "@social-monitor/summary/featur
 import { GetReaderSummaryUseCase } from "@social-monitor/summary/features/get-reader-summary/get-reader-summary.use-case";
 import { ListSummariesUseCase } from "@social-monitor/summary/features/list-summaries/list-summaries.use-case";
 import { ListSummaryFeedbackUseCase } from "@social-monitor/summary/features/list-summary-feedback/list-summary-feedback.use-case";
+import { ListReaderSummaryTopicRecommendationsUseCase } from "@social-monitor/summary/features/list-reader-summary-topic-recommendations/list-reader-summary-topic-recommendations.use-case";
 import { ListReaderSummaryPeriodsUseCase } from "@social-monitor/summary/features/list-reader-summary-periods/list-reader-summary-periods.use-case";
 import { ListReaderSummariesUseCase } from "@social-monitor/summary/features/list-reader-summaries/list-reader-summaries.use-case";
 import { RecordSummaryFeedbackUseCase } from "@social-monitor/summary/features/record-summary-feedback/record-summary-feedback.use-case";
@@ -106,6 +108,7 @@ import { UpsertSummaryPolicyUseCase } from "@social-monitor/summary/features/ups
 import { ReaderSummaryController } from "@social-monitor/summary/interfaces/rest/reader-summary.controller";
 import { ReaderSummaryJobController } from "@social-monitor/summary/interfaces/rest/reader-summary-job.controller";
 import { ReaderSummaryRequestController } from "@social-monitor/summary/interfaces/rest/reader-summary-request.controller";
+import { ReaderSummaryTopicRecommendationController } from "@social-monitor/summary/interfaces/rest/reader-summary-topic-recommendation.controller";
 import { SummaryFeedbackController } from "@social-monitor/summary/interfaces/rest/summary-feedback.controller";
 import { SummaryJobController } from "@social-monitor/summary/interfaces/rest/summary-job.controller";
 import { SummaryPolicyController } from "@social-monitor/summary/interfaces/rest/summary-policy.controller";
@@ -271,6 +274,8 @@ const useCaseProviders = [
   ListSourceProfilesUseCase,
   ListSummariesUseCase,
   ListSummaryFeedbackUseCase,
+  ListReaderSummaryTopicRecommendationsUseCase,
+  DecideReaderSummaryTopicRecommendationUseCase,
   ListReaderSummaryPeriodsUseCase,
   ListReaderSummariesUseCase,
   ListInterestsUseCase,
@@ -329,6 +334,7 @@ const useCaseProviders = [
     ReaderSummaryController,
     ReaderSummaryJobController,
     ReaderSummaryRequestController,
+    ReaderSummaryTopicRecommendationController,
     SummaryFeedbackController,
     SummaryJobController,
     SummaryPolicyController,
@@ -424,6 +430,7 @@ async function main(): Promise<void> {
 
 async function generateOpenApiSnapshot(): Promise<OpenAPIObject> {
   const app = await NestFactory.create(OpenApiContractModule, {
+    abortOnError: false,
     logger: false,
   });
   try {
@@ -595,6 +602,6 @@ function assertSchemaHasProperties(
 }
 
 void main().catch((error) => {
-  console.error(error instanceof Error ? error.message : error);
+  console.error(error instanceof Error ? (error.stack ?? error.message) : error);
   process.exitCode = 1;
 });

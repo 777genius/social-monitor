@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "artifactFormat": "source-query-planner-real-binding-canary-v1",
+  "generatedBy": "npm run check:source-query-planner-real-binding-canary",
+  "model": {
+    "mode": "real_binding_canary_config",
+    "liveNetwork": false,
+    "rawProviderConfigPersistedInReport": false
+  },
+  "inputs": {
+    "database": "local-postgres",
+    "providerKeys": [
+      "reddit",
+      "x-twitter"
+    ]
+  },
+  "totals": {
+    "bindingCount": 2,
+    "redditBindingCount": 1,
+    "xTwitterBindingCount": 1
+  },
+  "bindings": [
+    {
+      "providerKey": "reddit",
+      "bindingFingerprint": "0c450737",
+      "tenantFingerprint": "88237c6b",
+      "workspaceFingerprint": "88237c6c",
+      "plannerEnabled": true,
+      "rollout": "real_binding_canary",
+      "maxLanesPerSource": 8,
+      "maxItemsPerLane": 25,
+      "maxSearchQueries": null,
+      "includeEnrichment": true,
+      "scanPassCount": 32,
+      "searchQueryCount": 0,
+      "searchQueryBudgetCount": 0
+    },
+    {
+      "providerKey": "x-twitter",
+      "bindingFingerprint": "ea231a0a",
+      "tenantFingerprint": "88237c6b",
+      "workspaceFingerprint": "88237c6c",
+      "plannerEnabled": true,
+      "rollout": "real_binding_canary",
+      "maxLanesPerSource": 8,
+      "maxItemsPerLane": 25,
+      "maxSearchQueries": 8,
+      "includeEnrichment": false,
+      "scanPassCount": 0,
+      "searchQueryCount": 7,
+      "searchQueryBudgetCount": 0
+    }
+  ],
+  "qualityGates": {
+    "primaryBindingsPresent": true,
+    "redditBindingPresent": true,
+    "xTwitterBindingPresent": true,
+    "everyBindingPlannerEnabled": true,
+    "everyBindingUsesCanaryRollout": true,
+    "redditKeepsExistingScanPasses": true,
+    "xTwitterKeepsExistingSearchQueries": true,
+    "noRawSecretFragments": true
+  },
+  "blockingPassed": true
+}

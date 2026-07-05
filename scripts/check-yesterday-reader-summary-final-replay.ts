@@ -26,13 +26,15 @@ import type {
   SummaryQuotaPort,
 } from "../libs/summary/ports";
 import {
+  collectionDateOptionOrDefault,
+  type CollectionIntegrityStatus,
   fingerprint,
   message,
   nextDate,
   normalizeLineEndings,
   noRawSecretFragments,
+  readCollectionIntegrityStatus,
   readDominantFeedScope,
-  readOption,
   roundMetric,
   yesterdaySocialQualityDatabaseUrl,
 } from "./lib/yesterday-social-replay-support";
@@ -69,6 +71,7 @@ type Report = {
     readonly maxEvidenceItems: number;
     readonly maxStories: number;
   };
+  readonly collectionIntegrity: CollectionIntegrityStatus;
   readonly replay: {
     readonly tenantFingerprint: string;
     readonly workspaceFingerprint: string;
@@ -119,8 +122,9 @@ type Report = {
   readonly blockingPassed: boolean;
 };
 
-const collectionDate = readOption("--date") ?? "2026-07-03";
+const { collectionDate } = collectionDateOptionOrDefault("2026-07-03");
 const update = process.argv.includes("--update");
+const allowDirtyCollection = process.argv.includes("--allow-dirty-collection");
 const outputPath = "ops/evals/yesterday-reader-summary-final-replay.v1.json";
 const maxEvidenceItems = 40;
 const maxStories = 10;
@@ -290,7 +294,9 @@ async function tryBuildReport(): Promise<Report | undefined> {
       throw execution.error;
     }
     if (execution.value.readerSummaryId === undefined) {
-      throw new Error("Reader summary final replay did not produce artifact id");
+      throw new Error(
+        "Reader summary final replay did not produce artifact id",
+      );
     }
 
     const artifact = await artifacts.findById({
@@ -405,7 +411,10 @@ async function tryBuildReport(): Promise<Report | undefined> {
         (item) => item.confidence.level === "low",
       ).length,
     };
+    const collectionIntegrity = readCollectionIntegrityStatus(collectionDate);
     const qualityGates = {
+      collectionIntegrityCleanForEval:
+        collectionIntegrity.status === "clean" || allowDirtyCollection,
       requestCreatedJob: request.value.created === true,
       executionCompleted: execution.value.status === "completed",
       artifactPersisted: artifacts.all().length === 1,
@@ -476,6 +485,7 @@ async function tryBuildReport(): Promise<Report | undefined> {
         maxEvidenceItems,
         maxStories,
       },
+      collectionIntegrity,
       replay,
       finalText,
       qualityState,
@@ -613,7 +623,9 @@ class AllowingSummaryQuota implements SummaryQuotaPort {
   async reserveSummaryJob(): ReturnType<SummaryQuotaPort["reserveSummaryJob"]> {
     return ok({
       remaining: 999,
-      resetAt: new Date(clock.now().getTime() + 24 * 60 * 60 * 1000).toISOString(),
+      resetAt: new Date(
+        clock.now().getTime() + 24 * 60 * 60 * 1000,
+      ).toISOString(),
     });
   }
 }

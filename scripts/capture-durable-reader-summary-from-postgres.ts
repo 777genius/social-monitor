@@ -11,6 +11,10 @@ import {
   AgentRuntimeReaderSummaryModelAdapter,
   resolveAgentRuntimeReaderSummaryModelOptions,
 } from "@social-monitor/summary/adapters/model/agent-runtime-reader-summary-model.adapter";
+import {
+  AgentRuntimeReaderSummaryTopicLabeler,
+  resolveAgentRuntimeReaderSummaryTopicLabelerOptions,
+} from "@social-monitor/summary/adapters/model/agent-runtime-reader-summary-topic-labeler.adapter";
 import { DeterministicReaderSummaryModelAdapter } from "@social-monitor/summary/adapters/model/deterministic-reader-summary-model.adapter";
 import { GrpcAgentRuntimeClient } from "@social-monitor/summary/adapters/model/grpc-agent-runtime-client";
 import {
@@ -26,6 +30,7 @@ import {
   ReaderSummaryPolicy,
 } from "@social-monitor/summary/domain";
 import { ExecuteReaderSummaryJobUseCase } from "@social-monitor/summary/features/execute-reader-summary-job/execute-reader-summary-job.use-case";
+import { BuildReaderSummaryTopicMapUseCase } from "@social-monitor/summary/features/build-reader-summary-topic-map/build-reader-summary-topic-map.use-case";
 import { presentReaderSummaryArtifact } from "@social-monitor/summary/features/shared/reader-summary-artifact-presenter";
 import { RequestReaderSummaryUseCase } from "@social-monitor/summary/features/request-reader-summary/request-reader-summary.use-case";
 import type {
@@ -80,8 +85,7 @@ async function main(): Promise<void> {
   );
   const timezone = readEnv("DURABLE_READER_SUMMARY_TIMEZONE") ?? "UTC";
   const cadence = readCadence();
-  const periodStartedAt =
-    readDateEnv(periodStartedAtEnv) ?? startOfUtcDay(now);
+  const periodStartedAt = readDateEnv(periodStartedAtEnv) ?? startOfUtcDay(now);
   const periodEndedAt =
     readDateEnv(periodEndedAtEnv) ??
     (cadence === "daily" ? addUtcDays(periodStartedAt, 1) : now);
@@ -104,6 +108,8 @@ async function main(): Promise<void> {
     20,
   );
   const modelMode = readModelMode();
+  const agentRuntimeClient =
+    modelMode === "agent-runtime" ? buildAgentRuntimeClient() : null;
 
   const feedConnection = new PrismaFeedConnection(databaseUrl);
   const summaryConnection = new PrismaSummaryConnection(databaseUrl);
@@ -191,10 +197,13 @@ async function main(): Promise<void> {
       readerSummaryArtifacts,
       readerSummaryPolicies,
       evidenceSelector,
-      buildReaderSummaryModel(modelMode),
+      buildReaderSummaryModel(modelMode, agentRuntimeClient),
       new PrismaSummaryEventPublisher(summaryConnection),
       ids,
       clock,
+      undefined,
+      undefined,
+      buildTopicMapBuilder(modelMode, agentRuntimeClient),
     );
     const execution = await executeReaderSummary.execute({
       tenantId: tenant,
@@ -329,6 +338,7 @@ class AllowingSummaryQuota implements SummaryQuotaPort {
 
 const buildReaderSummaryModel = (
   mode: DurableReaderSummaryModelMode,
+  agentRuntimeClient: GrpcAgentRuntimeClient | null,
 ): ReaderSummaryModelPort => {
   if (mode === "deterministic") {
     return new DeterministicReaderSummaryModelAdapter();
@@ -338,19 +348,7 @@ const buildReaderSummaryModel = (
     return new AgentRuntimeReaderSummaryModelAdapter(
       resolveAgentRuntimeReaderSummaryModelOptions(
         process.env,
-        GrpcAgentRuntimeClient.connect({
-          address: requiredEnv("AGENT_RUNTIME_GRPC_ADDRESS"),
-          clock: new SystemClock(),
-          options: {
-            timeoutMs: readIntegerEnv(
-              "AGENT_RUNTIME_GRPC_TIMEOUT_MS",
-              5_000,
-              1,
-              600_000,
-            ),
-            serviceToken: readEnv("AGENT_RUNTIME_SERVICE_TOKEN"),
-          },
-        }),
+        requireAgentRuntimeClient(agentRuntimeClient),
       ),
     );
   }
@@ -360,6 +358,47 @@ const buildReaderSummaryModel = (
       requireApiKey: true,
     }),
   );
+};
+
+const buildTopicMapBuilder = (
+  mode: DurableReaderSummaryModelMode,
+  agentRuntimeClient: GrpcAgentRuntimeClient | null,
+): BuildReaderSummaryTopicMapUseCase =>
+  mode === "agent-runtime"
+    ? new BuildReaderSummaryTopicMapUseCase({
+        mode: "agent-runtime",
+        labeler: new AgentRuntimeReaderSummaryTopicLabeler(
+          resolveAgentRuntimeReaderSummaryTopicLabelerOptions(
+            process.env,
+            requireAgentRuntimeClient(agentRuntimeClient),
+          ),
+        ),
+      })
+    : new BuildReaderSummaryTopicMapUseCase();
+
+const buildAgentRuntimeClient = (): GrpcAgentRuntimeClient =>
+  GrpcAgentRuntimeClient.connect({
+    address: requiredEnv("AGENT_RUNTIME_GRPC_ADDRESS"),
+    clock: new SystemClock(),
+    options: {
+      timeoutMs: readIntegerEnv(
+        "AGENT_RUNTIME_GRPC_TIMEOUT_MS",
+        5_000,
+        1,
+        600_000,
+      ),
+      serviceToken: readEnv("AGENT_RUNTIME_SERVICE_TOKEN"),
+    },
+  });
+
+const requireAgentRuntimeClient = (
+  client: GrpcAgentRuntimeClient | null,
+): GrpcAgentRuntimeClient => {
+  if (client === null) {
+    throw new Error("AGENT_RUNTIME_GRPC_ADDRESS is required for agent-runtime");
+  }
+
+  return client;
 };
 
 const loadFeedInventory = async (
@@ -383,8 +422,8 @@ const loadFeedInventory = async (
     where tenant_id = ${params.tenantId}
       and workspace_id = ${params.workspaceId}
       and status = 'VISIBLE'
-      and observed_at >= ${params.startedAt}
-      and observed_at < ${params.endedAt}
+      and published_at >= ${params.startedAt}
+      and published_at < ${params.endedAt}
     group by provider_key
     order by provider_key asc
   `;
@@ -429,9 +468,7 @@ const readCadence = (): DurableReaderSummaryCadence => {
     return value;
   }
 
-  throw new Error(
-    `${cadenceEnv} must be daily, weekly, monthly or custom`,
-  );
+  throw new Error(`${cadenceEnv} must be daily, weekly, monthly or custom`);
 };
 
 const readDateEnv = (name: string): Date | undefined => {
