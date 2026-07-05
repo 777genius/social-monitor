@@ -29,14 +29,17 @@ final class DeferredSummaryReviewCatalog implements SummaryReviewCatalog {
     this.items, {
     this.hangWorkspaceSummary = false,
     this.deferWorkspaceSummary = false,
+    this.workspaceSummarySnapshot = const WorkspaceSummarySnapshot(),
   });
 
   final List<GeneratedSummary> items;
   final bool hangWorkspaceSummary;
   final bool deferWorkspaceSummary;
+  final WorkspaceSummarySnapshot workspaceSummarySnapshot;
   final pendingDetails = <PendingSummaryDetailRequest>[];
   final pendingWorkspaceSummarys =
       <Completer<Result<WorkspaceSummarySnapshot>>>[];
+  var summaryListLoadCount = 0;
   var workspaceSummaryLoadCount = 0;
   var workspaceSummaryHistoryLoadCount = 0;
 
@@ -44,6 +47,7 @@ final class DeferredSummaryReviewCatalog implements SummaryReviewCatalog {
   Future<Result<PageResult<GeneratedSummary>>> listSummaries(
     ListSummariesQuery query,
   ) {
+    summaryListLoadCount += 1;
     return Future.value(Result.success(generatedSummaryPage(items)));
   }
 
@@ -110,7 +114,7 @@ final class DeferredSummaryReviewCatalog implements SummaryReviewCatalog {
       pendingWorkspaceSummarys.add(completer);
       return completer.future;
     }
-    return Future.value(const Result.success(WorkspaceSummarySnapshot()));
+    return Future.value(Result.success(workspaceSummarySnapshot));
   }
 
   @override

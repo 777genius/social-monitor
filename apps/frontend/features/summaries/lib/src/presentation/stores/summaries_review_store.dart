@@ -35,6 +35,7 @@ part 'summaries_review_store_reader_action_workflow.dart';
 part 'summaries_review_store_topic_recommendation_workflow.dart';
 part 'summaries_review_store_summary_workflow.dart';
 part 'summaries_review_store_period_helpers.dart';
+part 'summaries_review_store_list_workflow.dart';
 
 typedef SummaryRequestIdempotencyKeyFactory =
     String Function(WorkspaceScope scope, SummaryPeriod period);
@@ -101,8 +102,12 @@ final class SummariesReviewStore extends ChangeNotifier {
   SummaryId? _selectedSummaryId;
   String? _activeReaderActionIdempotencyKey;
   String? _lastReaderActionIdempotencyKey;
+  Future<void>? _activeStoreLoad;
+  String? _activeStoreLoadKey;
   Future<void>? _activeWorkspaceSummaryLoad;
   String? _activeWorkspaceSummaryLoadKey;
+  Future<void>? _activeGeneratedSummaryHistoryLoad;
+  String? _activeGeneratedSummaryHistoryLoadKey;
   bool _isDisposed = false;
   SummaryPeriodPreset selectedSummaryPeriodPreset = SummaryPeriodPreset.daily;
   DateTime? _selectedSummaryPeriodEndedAt;
@@ -280,8 +285,12 @@ final class SummariesReviewStore extends ChangeNotifier {
     _readerActionGenerationGuard.invalidate();
     _postRatingGenerationGuard.invalidate();
     _topicRecommendationGenerationGuard.invalidate();
+    _activeStoreLoad = null;
+    _activeStoreLoadKey = null;
     _activeWorkspaceSummaryLoad = null;
     _activeWorkspaceSummaryLoadKey = null;
+    _activeGeneratedSummaryHistoryLoad = null;
+    _activeGeneratedSummaryHistoryLoadKey = null;
     super.dispose();
   }
 
@@ -310,57 +319,34 @@ final class SummariesReviewStore extends ChangeNotifier {
         const InitialViewState<ReaderSummaryTopicRecommendationQueue>();
     _activeReaderActionIdempotencyKey = null;
     _lastReaderActionIdempotencyKey = null;
+    _activeStoreLoad = null;
+    _activeStoreLoadKey = null;
     _activeWorkspaceSummaryLoad = null;
     _activeWorkspaceSummaryLoadKey = null;
+    _activeGeneratedSummaryHistoryLoad = null;
+    _activeGeneratedSummaryHistoryLoadKey = null;
     _notifyStateChanged();
   }
 
   Future<void> load() async {
-    unawaited(loadWorkspaceSummary());
-    unawaited(loadTopicRecommendations());
-
-    final generation = _listGenerationGuard.markOperationStarted();
-    final previous = switch (listState) {
-      ReadyViewState<PageResult<GeneratedSummary>>(:final value) => value,
-      LoadingViewState<PageResult<GeneratedSummary>>(:final previousValue) =>
-        previousValue,
-      _ => null,
-    };
-    listState = LoadingViewState<PageResult<GeneratedSummary>>(
-      previousValue: previous,
-    );
-    _notifyStateChanged();
-
-    final result = await _dependencies.listSummaries(
-      ListSummariesQuery(scope: _scope),
-    );
-    if (!_listGenerationGuard.isCurrent(generation)) {
+    final loadKey = _workspaceSummaryLoadKey(_scope, selectedSummaryPeriod);
+    final activeLoad = _activeStoreLoad;
+    if (activeLoad != null && _activeStoreLoadKey == loadKey) {
+      await activeLoad;
       return;
     }
 
-    listState = result.fold(
-      onSuccess: (page) {
-        if (page.items.isEmpty) {
-          _selectedSummaryId = null;
-          detailState = const InitialViewState<GeneratedSummary>();
-          return const EmptyViewState<PageResult<GeneratedSummary>>(
-            reason: 'summaries.empty',
-          );
-        }
-        _clearSelectionIfMissing(page.items);
-        return ReadyViewState<PageResult<GeneratedSummary>>(
-          PageResult<GeneratedSummary>(
-            items: page.items,
-            request: page.request,
-            nextCursor: page.nextCursor,
-            isPartial: page.isPartial,
-          ),
-        );
-      },
-      onFailure: (failure) =>
-          FailureViewState<PageResult<GeneratedSummary>>(failure: failure),
-    );
-    _notifyStateChanged();
+    final load = _loadPrimaryReaderSummary();
+    _activeStoreLoad = load;
+    _activeStoreLoadKey = loadKey;
+    try {
+      await load;
+    } finally {
+      if (_activeStoreLoadKey == loadKey) {
+        _activeStoreLoad = null;
+        _activeStoreLoadKey = null;
+      }
+    }
   }
 
   Future<void> loadWorkspaceSummary() async {
