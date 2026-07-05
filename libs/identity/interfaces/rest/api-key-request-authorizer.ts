@@ -334,6 +334,7 @@ const workspaceActions = new Set<WorkspaceAction>([
   'api_keys.revoke',
   'reader_summary_jobs.read',
   'reader_summary_requests.create',
+  'reader_summary_topic_recommendations.decide',
   'reader-summaries.read',
   'delivery_attempts.read',
   'delivery_attempts.retry',
