@@ -8,10 +8,9 @@ import '../../domain/entities/reader_summary_topic_recommendation.dart';
 import '../../domain/entities/summary_citation.dart';
 import '../../domain/value_objects/reader_action_target.dart';
 import 'reader_summary_brief_surface.dart';
-import 'reader_summary_claim_board.dart';
 import 'reader_summary_next_actions.dart';
-import 'reader_summary_reliability_indicators.dart';
 import 'reader_summary_topic_recommendations_panel.dart';
+import 'reader_summary_trust_panel.dart';
 
 /// Executive summary board matching the summaries page reference design:
 /// executive brief card with insight rail, and top posts.
@@ -84,18 +83,14 @@ class ReaderSummaryView extends StatelessWidget {
             state: topicRecommendationState,
             onDecision: onTopicRecommendationDecision,
           ),
-          if (summary.content.claimBoard.isNotEmpty) ...[
+          if (summary.content.claimBoard.isNotEmpty ||
+              summary.content.reliabilityReport.risks.isNotEmpty) ...[
             const SizedBox(height: AppSpacing.md + 2),
-            ReaderSummaryClaimBoard(
+            ReaderSummaryTrustPanel(
               claims: summary.content.claimBoard,
+              reliabilityReport: summary.content.reliabilityReport,
               citationsById: citationsById,
               onOpenUrl: onOpenUrl,
-            ),
-          ],
-          if (summary.content.reliabilityReport.risks.isNotEmpty) ...[
-            const SizedBox(height: AppSpacing.md + 2),
-            ReaderSummaryReliabilityIndicators(
-              report: summary.content.reliabilityReport,
             ),
           ],
           if (includeTopPosts && topPostItems.isNotEmpty) ...[

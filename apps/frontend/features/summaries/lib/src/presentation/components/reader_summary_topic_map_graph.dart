@@ -193,12 +193,29 @@ class _TopicMapBubbleNode extends StatelessWidget {
     final color = _topicColor(bubble.group.colorKey);
     final labelColor = _labelColor(color);
     final diameter = bubble.radius * 2;
-    final label = _compactTopicLabel(bubble.node.label);
-    final fontSize = _topicBubbleFontSize(label, bubble.radius);
+    final label = _topicMapBubbleLabel(bubble.node.label);
+    final padding = _topicMapLabelPolicy.padding(bubble.radius);
+    final maxLines = _topicMapLabelPolicy.maxLines(bubble.radius);
+    final labelStyle = TextStyle(
+      color: labelColor,
+      fontSize: _topicMapLabelPolicy.fontSize(label, bubble.radius),
+      fontWeight: FontWeight.w800,
+      height: 1.04,
+      letterSpacing: 0,
+      shadows: [
+        Shadow(color: textColor.withValues(alpha: 0.22), blurRadius: 2),
+      ],
+    );
+    final renderLabel = _topicMapLabelPolicy.fits(
+      label: label,
+      style: labelStyle,
+      radius: bubble.radius,
+      padding: padding,
+      maxLines: maxLines,
+    );
 
     return Tooltip(
-      message:
-          '$label · ${bubble.node.popularityScore.round()} score · ${bubble.node.evidenceCount} posts',
+      message: _topicMapBubbleTooltip(bubble),
       waitDuration: const Duration(milliseconds: 350),
       child: SizedBox.square(
         dimension: diameter,
@@ -220,26 +237,14 @@ class _TopicMapBubbleNode extends StatelessWidget {
           ),
           child: Center(
             child: Padding(
-              padding: EdgeInsets.all(math.max(2.0, bubble.radius * 0.13)),
-              child: bubble.showLabel
+              padding: padding,
+              child: renderLabel
                   ? Text(
                       label,
-                      maxLines: bubble.radius >= 20 ? 2 : 1,
-                      overflow: TextOverflow.ellipsis,
+                      maxLines: maxLines,
+                      overflow: TextOverflow.clip,
                       textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: labelColor,
-                        fontSize: fontSize,
-                        fontWeight: FontWeight.w800,
-                        height: 1.04,
-                        letterSpacing: 0,
-                        shadows: [
-                          Shadow(
-                            color: textColor.withValues(alpha: 0.22),
-                            blurRadius: 2,
-                          ),
-                        ],
-                      ),
+                      style: labelStyle,
                     )
                   : const SizedBox.shrink(),
             ),
@@ -250,19 +255,16 @@ class _TopicMapBubbleNode extends StatelessWidget {
   }
 }
 
-double _topicBubbleFontSize(String label, double radius) {
-  final lengthFactor = switch (label.length) {
-    > 30 => 0.82,
-    > 22 => 0.90,
-    > 16 => 0.96,
-    _ => 1.0,
-  };
-  final radiusFactor = switch (radius) {
-    < 16 => 0.56,
-    < 22 => 0.52,
-    < 32 => 0.46,
-    _ => 0.38,
-  };
+String _topicMapBubbleTooltip(_TopicGraphBubble bubble) {
+  final providers = bubble.node.providerKeys.isEmpty
+      ? 'none'
+      : bubble.node.providerKeys.join(', ');
 
-  return (radius * radiusFactor * lengthFactor).clamp(7.2, 15.0).toDouble();
+  return [
+    bubble.node.label,
+    'Score: ${bubble.node.popularityScore.round()}',
+    'Posts: ${bubble.node.evidenceCount}',
+    'Providers: $providers',
+    'Group: ${bubble.group.label}',
+  ].join('\n');
 }

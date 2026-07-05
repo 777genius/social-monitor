@@ -121,8 +121,8 @@ class WorkspaceSummaryPanel extends StatelessWidget {
     if (failedJob != null) {
       return _withPeriodShell(
         AppInlineProblem(
-          title: 'Summary generation failed',
-          message: failedJob.failureReason ?? 'The summary job failed.',
+          title: _terminalProblemTitle(failedJob),
+          message: _terminalProblemMessage(failedJob),
           tone: AppProblemTone.warning,
           actionLabel: 'Generate',
           onAction: onGenerate,
@@ -271,9 +271,29 @@ class WorkspaceSummaryPanel extends StatelessWidget {
   ) {
     return switch (state) {
       ReadyViewState<ReaderSummaryJobSnapshot>(:final value)
-          when value.status == ReaderSummaryJobStatus.failed =>
+          when value.status == ReaderSummaryJobStatus.failed ||
+              value.status == ReaderSummaryJobStatus.qualityRejected =>
         value,
       _ => null,
+    };
+  }
+
+  String _terminalProblemTitle(ReaderSummaryJobSnapshot job) {
+    return switch (job.status) {
+      ReaderSummaryJobStatus.qualityRejected => 'Summary quality rejected',
+      _ => 'Summary generation failed',
+    };
+  }
+
+  String _terminalProblemMessage(ReaderSummaryJobSnapshot job) {
+    if (job.failureReason != null && job.failureReason!.trim().isNotEmpty) {
+      return job.failureReason!;
+    }
+
+    return switch (job.status) {
+      ReaderSummaryJobStatus.qualityRejected =>
+        'The summary did not pass pre-publish quality checks.',
+      _ => 'The summary job failed.',
     };
   }
 
@@ -313,6 +333,7 @@ class _GeneratingSummary extends StatelessWidget {
       ReaderSummaryJobStatus.completed => 'Completed',
       ReaderSummaryJobStatus.noSignal => 'No signal',
       ReaderSummaryJobStatus.failed => 'Failed',
+      ReaderSummaryJobStatus.qualityRejected => 'Quality rejected',
       ReaderSummaryJobStatus.unknown => 'Unknown',
       null => 'Starting',
     };

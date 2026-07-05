@@ -300,7 +300,7 @@ void main() {
     expect(find.text('Saved'), findsOneWidget);
   });
 
-  testWidgets('shows compact claim board and expands cited evidence', (
+  testWidgets('shows compact trust summary and expands cited evidence', (
     tester,
   ) async {
     String? openedUrl;
@@ -365,30 +365,41 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Claim board'), findsOneWidget);
+    expect(find.text('Trust & evidence'), findsOneWidget);
+    expect(find.text('Medium confidence 63%'), findsOneWidget);
+    expect(find.text('1 provider'), findsOneWidget);
+    expect(find.text('Needs confirmation'), findsOneWidget);
+    expect(find.text('Medium risk 52%'), findsOneWidget);
+    expect(
+      find.text('Reddit users report useful MCP agent workflows'),
+      findsNothing,
+    );
+    expect(find.textContaining('Thread evidence about MCP'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('reader-summary-trust-toggle')));
+    await tester.pumpAndSettle();
+
     expect(
       find.text('Reddit users report useful MCP agent workflows'),
       findsOneWidget,
     );
-    expect(find.text('medium confidence 63%'), findsOneWidget);
-    expect(find.text('1 risk'), findsOneWidget);
-    expect(find.text('Reliability'), findsOneWidget);
-    expect(find.text('Medium risk 52%'), findsOneWidget);
-    expect(find.text('Single source'), findsWidgets);
-    expect(find.textContaining('Thread evidence about MCP'), findsNothing);
-
-    await tester.tap(
-      find.byKey(const ValueKey('reader-summary-claim-board-expand-0')),
-    );
-    await tester.pumpAndSettle();
-
     expect(find.textContaining('Thread evidence about MCP'), findsOneWidget);
+    expect(find.text('1 citation'), findsOneWidget);
+    expect(find.text('Single provider'), findsOneWidget);
     expect(
       find.text('Single-source claim; wait for confirmation.'),
       findsOneWidget,
     );
 
-    await tester.tap(find.byTooltip('Open source'));
+    final sourceButton = find.byKey(
+      const ValueKey('reader-summary-trust-evidence-source-claim-citation'),
+    );
+    await tester.scrollUntilVisible(
+      sourceButton,
+      120,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(sourceButton);
     expect(openedUrl, 'https://reddit.example/r/mcp/comments/1');
   });
 

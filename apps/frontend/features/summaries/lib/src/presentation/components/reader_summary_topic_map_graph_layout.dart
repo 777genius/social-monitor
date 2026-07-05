@@ -123,51 +123,6 @@ Offset _seedTopLeft({
   return clamped - Offset(radius, radius);
 }
 
-double _topicBubbleRadius(
-  ReaderSummaryTopicMapNode node,
-  Size graphSize,
-  List<ReaderSummaryTopicMapNode> visibleNodes,
-) {
-  final visibleNodeCount = visibleNodes.length;
-  final areaPerNode =
-      (graphSize.width * graphSize.height) / math.max(1, visibleNodeCount);
-  final densityRadius = math.sqrt(areaPerNode / math.pi) * 1.22;
-  final compact = graphSize.width < 420;
-  final maxRadius = densityRadius
-      .clamp(compact ? 28.0 : 32.0, compact ? 44.0 : 62.0)
-      .toDouble();
-  final minRadius = math.max(compact ? 9.0 : 10.5, maxRadius * 0.28);
-  final weight = _topicBubbleImportance(node, visibleNodes);
-
-  return minRadius + math.pow(weight, 1.52) * (maxRadius - minRadius);
-}
-
-double _topicBubbleImportance(
-  ReaderSummaryTopicMapNode node,
-  List<ReaderSummaryTopicMapNode> visibleNodes,
-) {
-  if (visibleNodes.length <= 1) {
-    return 1;
-  }
-
-  final scores = visibleNodes.map((item) => item.popularityScore).toList();
-  final minScore = scores.reduce(math.min);
-  final maxScore = scores.reduce(math.max);
-  final scoreRange = maxScore - minScore;
-  final scoreWeight = scoreRange <= 0.001
-      ? node.sizeWeight.clamp(0.0, 1.0).toDouble()
-      : ((node.popularityScore - minScore) / scoreRange).clamp(0.0, 1.0);
-  final rank = visibleNodes.indexWhere((item) => item.id == node.id);
-  final rankWeight = rank < 0
-      ? scoreWeight
-      : (1 - rank / math.max(1, visibleNodes.length - 1)).clamp(0.0, 1.0);
-  final sizeWeight = node.sizeWeight.clamp(0.0, 1.0).toDouble();
-
-  return (scoreWeight * 0.58 + rankWeight * 0.30 + sizeWeight * 0.12)
-      .clamp(0.0, 1.0)
-      .toDouble();
-}
-
 List<_TopicGraphBubble> _positionedBubbles({
   required Map<String, _TopicGraphBubble> bubblesById,
   required Map<String, graphview.Node> graphNodesById,
@@ -202,7 +157,7 @@ List<_TopicGraphBubble> _positionedBubbles({
       xOffset + (graphCenter.dx - graphBounds.left) * scale,
       yOffset + (graphCenter.dy - graphBounds.top) * scale,
     );
-    final groupedCenter = _centerWithGroupGravity(
+    final groupedCenter = _topicMapGroupGravityPolicy.apply(
       center: center,
       groupCenter: groupCentersById[bubble.group.id],
       graphSize: graphSize,
@@ -217,20 +172,6 @@ List<_TopicGraphBubble> _positionedBubbles({
   final resolved = _resolveBubbleCollisions(positioned, graphSize);
 
   return _fitBubbleLayout(resolved, graphSize);
-}
-
-Offset _centerWithGroupGravity({
-  required Offset center,
-  required Offset? groupCenter,
-  required Size graphSize,
-}) {
-  if (groupCenter == null) {
-    return center;
-  }
-
-  final gravity = graphSize.width < 420 ? 0.48 : 0.40;
-
-  return Offset.lerp(center, groupCenter, gravity) ?? center;
 }
 
 List<_TopicGraphBubble> _fitBubbleLayout(
@@ -302,7 +243,7 @@ List<_TopicGraphBubble> _resolveBubbleCollisions(
   Size graphSize,
 ) {
   final centers = bubbles.map((bubble) => bubble.center).toList();
-  for (var pass = 0; pass < 14; pass++) {
+  for (var pass = 0; pass < 24; pass++) {
     for (var left = 0; left < bubbles.length; left++) {
       for (var right = left + 1; right < bubbles.length; right++) {
         final delta = centers[right] - centers[left];

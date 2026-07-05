@@ -77,6 +77,105 @@ void main() {
     expect(find.byType(CustomPaint), findsAtLeastNWidgets(1));
   });
 
+  testWidgets('hides topic labels that do not fit their bubble', (
+    tester,
+  ) async {
+    const mapper = SummaryMapper();
+    final summary = mapper.readerSummaryToDomain(
+      readerSummaryApiDto(
+        content: readerSummaryContentApiDto(
+          topicMap: const ReaderSummaryTopicMapApiDto(
+            generatedBy: 'agent-runtime',
+            confidence: ReaderSummaryTopicMapConfidenceApiDto(
+              level: 'high',
+              score: 0.9,
+              rationale: 'Label fit policy test.',
+            ),
+            nodes: [
+              ReaderSummaryTopicMapNodeApiDto(
+                id: 'topic:major',
+                label: 'Major signal',
+                groupId: 'group:agent-tools',
+                storyClusterIds: ['story:major'],
+                popularityScore: 100,
+                sizeWeight: 1,
+                evidenceCount: 8,
+                providerKeys: ['reddit', 'hacker-news'],
+                interestIds: ['ai'],
+                citationIds: ['bc-1'],
+                keywords: ['major'],
+                rationale: 'Primary topic.',
+              ),
+              ReaderSummaryTopicMapNodeApiDto(
+                id: 'topic:tiny',
+                label: 'Tiny unreadable label that should stay in tooltip',
+                groupId: 'group:agent-tools',
+                storyClusterIds: ['story:tiny'],
+                popularityScore: 1,
+                sizeWeight: 0.01,
+                evidenceCount: 1,
+                providerKeys: ['rss'],
+                interestIds: ['ai'],
+                citationIds: ['bc-1'],
+                keywords: ['tiny'],
+                rationale: 'Small topic.',
+              ),
+            ],
+            groups: [
+              ReaderSummaryTopicMapGroupApiDto(
+                id: 'group:agent-tools',
+                label: 'Agent tools',
+                colorKey: 'blue',
+                nodeIds: ['topic:major', 'topic:tiny'],
+                confidence: ReaderSummaryTopicMapConfidenceApiDto(
+                  level: 'high',
+                  score: 0.9,
+                  rationale: 'Same semantic group.',
+                ),
+              ),
+            ],
+            edges: [
+              ReaderSummaryTopicMapEdgeApiDto(
+                sourceNodeId: 'topic:major',
+                targetNodeId: 'topic:tiny',
+                weight: 0.8,
+                reason: 'Same semantic topic group',
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark(),
+        home: Scaffold(
+          body: SizedBox(
+            width: 320,
+            child: ReaderSummaryTopicMapPanel(
+              topicMap: summary.content.topicMap,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Topic map'), findsOneWidget);
+    expect(find.textContaining('Tiny unreadable'), findsNothing);
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Tooltip &&
+            (widget.message?.contains('Tiny unreadable label') ?? false) &&
+            (widget.message?.contains('Score: 1') ?? false) &&
+            (widget.message?.contains('Providers: rss') ?? false) &&
+            (widget.message?.contains('Group: Agent tools') ?? false),
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets(
     'shows collected and selected summary counts without duplicates',
     (tester) async {

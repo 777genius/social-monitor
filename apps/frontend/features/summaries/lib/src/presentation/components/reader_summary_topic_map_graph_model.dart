@@ -32,6 +32,10 @@ final class _TopicGraphModel {
     final groupsById = {for (final group in groups) group.id: group};
     final bubblesById = <String, _TopicGraphBubble>{};
     final nodesByGroupId = _nodesByGroup(visibleNodes, groups);
+    final radiiByNodeId = _topicMapSizingPolicy.radiiByNodeId(
+      nodes: visibleNodes,
+      graphSize: graphSize,
+    );
     final groupCenters = _groupSeedCenters(nodesByGroupId.length, graphSize);
     final groupCentersById = <String, Offset>{};
 
@@ -39,13 +43,17 @@ final class _TopicGraphModel {
       final entry = nodesByGroupId.entries.elementAt(groupIndex);
       final group = groupsById[entry.key] ?? groups.first;
       final nodes = entry.value
-        ..sort((left, right) => right.sizeWeight.compareTo(left.sizeWeight));
+        ..sort(
+          (left, right) => (radiiByNodeId[right.id] ?? 0).compareTo(
+            radiiByNodeId[left.id] ?? 0,
+          ),
+        );
       final groupCenter = groupCenters[groupIndex % groupCenters.length];
       groupCentersById[entry.key] = groupCenter;
 
       for (var index = 0; index < nodes.length; index++) {
         final node = nodes[index];
-        final radius = _topicBubbleRadius(node, graphSize, visibleNodes);
+        final radius = radiiByNodeId[node.id] ?? 10.0;
         final graphNode = graphview.Node.Id(node.id)
           ..size = Size(radius * 2, radius * 2)
           ..position = groupIndex == 0 && index == 0
@@ -63,11 +71,7 @@ final class _TopicGraphModel {
           group: group,
           radius: radius,
           center: groupCenter + _groupNodeSeedOffset(index, nodes.length),
-          showLabel:
-              radius >= 16 ||
-              (index == 0 && radius >= 13.5) ||
-              node.sizeWeight >= 0.82,
-          isPrimary: index == 0 || node.sizeWeight >= 0.78,
+          isPrimary: radius >= (graphSize.width < 420 ? 24 : 30),
         );
       }
     }
@@ -215,7 +219,6 @@ final class _TopicGraphBubble {
     required this.group,
     required this.radius,
     required this.center,
-    required this.showLabel,
     required this.isPrimary,
   });
 
@@ -223,7 +226,6 @@ final class _TopicGraphBubble {
   final ReaderSummaryTopicMapGroup group;
   final double radius;
   final Offset center;
-  final bool showLabel;
   final bool isPrimary;
 
   _TopicGraphBubble copyWithCenter(Offset value) => _TopicGraphBubble(
@@ -231,7 +233,6 @@ final class _TopicGraphBubble {
     group: group,
     radius: radius,
     center: value,
-    showLabel: showLabel,
     isPrimary: isPrimary,
   );
 }

@@ -48,13 +48,8 @@ Color _labelColor(Color color) =>
     ? Colors.white
     : AppColors.ink;
 
-String _compactTopicLabel(String value) {
-  final normalized = value.replaceAll(RegExp(r'\s+'), ' ').trim();
-
-  return normalized.length <= 32
-      ? normalized
-      : '${normalized.substring(0, 29).trim()}...';
-}
+String _topicMapBubbleLabel(String value) =>
+    value.replaceAll(RegExp(r'\s+'), ' ').trim();
 
 String _topicMapSemanticLabel(ReaderSummaryTopicMap topicMap) {
   final labels = topicMap.nodes

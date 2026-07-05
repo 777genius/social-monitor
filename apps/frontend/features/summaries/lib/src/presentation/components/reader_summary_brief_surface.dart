@@ -39,6 +39,7 @@ part 'reader_summary_topic_map_graph.dart';
 part 'reader_summary_topic_map_graph_layout.dart';
 part 'reader_summary_topic_map_graph_model.dart';
 part 'reader_summary_topic_map_panel.dart';
+part 'reader_summary_topic_map_policies.dart';
 part 'reader_summary_topic_map_visuals.dart';
 part 'reader_summary_top_post_dense_row.dart';
 part 'reader_summary_top_post_content_column.dart';
