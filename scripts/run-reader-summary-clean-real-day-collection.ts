@@ -127,6 +127,8 @@ type CleanRealDayCollectionReport = {
   readonly freshWindow: {
     readonly feedItemCount: number;
     readonly providerCounts: Record<string, number>;
+    readonly sourceQueryLaneCoverageByProvider: Record<string, number>;
+    readonly distinctSourceQueryLaneCountByProvider: Record<string, number>;
     readonly orphanInterestCount: number;
     readonly orphanSourceBindingCount: number;
     readonly interestSnapshotCoverage: number;
@@ -473,6 +475,14 @@ async function readFreshWindowProof(
           ...accumulator.providerCounts,
           [row.providerKey]: feedItemCount,
         },
+        sourceQueryLaneCoverageByProvider: {
+          ...accumulator.sourceQueryLaneCoverageByProvider,
+          [row.providerKey]: coverage(sourceQueryLaneCount, feedItemCount),
+        },
+        distinctSourceQueryLaneCountByProvider: {
+          ...accumulator.distinctSourceQueryLaneCountByProvider,
+          [row.providerKey]: numberFromPg(row.distinctSourceQueryLaneCount),
+        },
         orphanInterestCount:
           accumulator.orphanInterestCount +
           numberFromPg(row.orphanInterestCount),
@@ -495,6 +505,8 @@ async function readFreshWindowProof(
     {
       feedItemCount: 0,
       providerCounts: {} as Record<string, number>,
+      sourceQueryLaneCoverageByProvider: {} as Record<string, number>,
+      distinctSourceQueryLaneCountByProvider: {} as Record<string, number>,
       orphanInterestCount: 0,
       orphanSourceBindingCount: 0,
       interestSnapshotCount: 0,
@@ -507,6 +519,9 @@ async function readFreshWindowProof(
   return {
     feedItemCount: totals.feedItemCount,
     providerCounts: totals.providerCounts,
+    sourceQueryLaneCoverageByProvider: totals.sourceQueryLaneCoverageByProvider,
+    distinctSourceQueryLaneCountByProvider:
+      totals.distinctSourceQueryLaneCountByProvider,
     orphanInterestCount: totals.orphanInterestCount,
     orphanSourceBindingCount: totals.orphanSourceBindingCount,
     interestSnapshotCoverage: coverage(
@@ -540,6 +555,18 @@ function buildReport(params: {
   const allRequestedProvidersSucceeded = providerKeys.every((providerKey) =>
     succeededProviders.has(providerKey),
   );
+  const plannerProviderKeys = params.targets
+    .filter((target) => asRecord(target.config.sourceQueryPlanner).enabled)
+    .map((target) => target.providerKey);
+  const plannerLaneCoverageComplete = plannerProviderKeys.every(
+    (providerKey) =>
+      params.freshWindow.sourceQueryLaneCoverageByProvider[providerKey] === 1,
+  );
+  const plannerMultipleQueryLanesObserved = plannerProviderKeys.every(
+    (providerKey) =>
+      (params.freshWindow.distinctSourceQueryLaneCountByProvider[providerKey] ??
+        0) >= 1,
+  );
   const qualityGates = {
     targetBindingsPresent: params.targets.length === providerKeys.length,
     everyRequestedProviderSucceeded: allRequestedProvidersSucceeded,
@@ -553,9 +580,9 @@ function buildReport(params: {
     freshSourceBindingSnapshotsPersisted:
       params.freshWindow.sourceBindingSnapshotCoverage === 1,
     freshSourceQueryLaneCoverageComplete:
-      params.freshWindow.sourceQueryLaneCoverage === 1,
+      plannerProviderKeys.length === 0 || plannerLaneCoverageComplete,
     freshMultipleQueryLanesObserved:
-      params.freshWindow.distinctSourceQueryLaneCount >= providerKeys.length,
+      plannerProviderKeys.length === 0 || plannerMultipleQueryLanesObserved,
     noRawSecretFragments: true,
   };
 

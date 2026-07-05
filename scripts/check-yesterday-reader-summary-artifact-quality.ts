@@ -1,13 +1,10 @@
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 import { Pool } from "pg";
 
+import { SourceContentQualityPolicy } from "@social-monitor/relevance/domain";
+import type { JsonObject } from "@social-monitor/shared-kernel";
 import { isDefaultReaderSummaryEvidenceProvider } from "@social-monitor/summary/adapters/evidence/reader-summary-evidence-provider-filter";
 import {
   readerSummaryArtifactFromPrisma,
@@ -37,6 +34,21 @@ import { isLocalDataSourceUnavailable } from "./lib/reader-summary-quality-eval-
 type ProviderCountRow = {
   readonly providerKey: string;
   readonly collectedFeedItemCount: string;
+};
+
+type TopReadFeedItemQualityRow = {
+  readonly id: string;
+  readonly providerKey: string;
+  readonly canonicalUrl: string;
+  readonly authorHandle: string | null;
+  readonly title: string;
+  readonly bodyPreview: string | null;
+  readonly providerMetadata: unknown;
+};
+
+type ArtifactStatusCountRow = {
+  readonly status: string;
+  readonly count: string;
 };
 
 type ArtifactQualityReport = {
@@ -74,6 +86,13 @@ type ArtifactQualityReport = {
     readonly confidenceScore: number;
     readonly qualityFlagCount: number;
   };
+  readonly artifactHistory: {
+    readonly visibleBadGamingArtifactCount: number;
+    readonly rejectedBadGamingArtifactCount: number;
+    readonly failedBadGamingArtifactCount: number;
+    readonly visiblePeriodArtifactCount: number;
+    readonly supersededPeriodArtifactCount: number;
+  };
   readonly collectionIntegrity: CollectionIntegrityStatus;
   readonly coverage: {
     readonly collectedFeedItemCount: number;
@@ -102,6 +121,7 @@ type ArtifactQualityReport = {
     readonly selectedPostsWithCanonicalUrl: number;
     readonly selectedPostDuplicateCanonicalUrlCount: number;
     readonly selectedPostsRepresentTopReadPreview: boolean;
+    readonly selectedPostsRepresentDedupedSelectedEvidence: boolean;
     readonly selectedPostsMismatchDocumented: boolean;
   };
   readonly summaryStructure: {
@@ -131,6 +151,26 @@ type ArtifactQualityReport = {
     readonly sourceWindowHours: number;
     readonly highEngagementLowConfidenceTopReadCount: number;
   };
+  readonly sourceQuality: {
+    readonly topReadCitationFeedItemCount: number;
+    readonly foundTopReadCitationFeedItemCount: number;
+    readonly missingTopReadCitationFeedItemCount: number;
+    readonly ineligibleTopReadCitationCount: number;
+    readonly weakTopicMatchCitationCount: number;
+    readonly downrankedCitationCount: number;
+    readonly rows: readonly {
+      readonly citationFingerprint: string;
+      readonly feedItemFingerprint: string;
+      readonly providerKey: string;
+      readonly decision: string;
+      readonly eligibleForSummary: boolean;
+      readonly eligibleForTopRead: boolean;
+      readonly qualityScore: number;
+      readonly interestRelevanceScore: number;
+      readonly engagementIntegrityScore: number;
+      readonly flags: readonly string[];
+    }[];
+  };
   readonly qualityGates: Record<string, boolean>;
   readonly warningSignals: Record<string, boolean>;
   readonly infoSignals: Record<string, boolean>;
@@ -147,6 +187,8 @@ const outputPath =
   "ops/evals/yesterday-reader-summary-artifact-quality.v1.json";
 const databaseUrl = yesterdaySocialQualityDatabaseUrl();
 const primarySources = ["reddit", "x-twitter"] as const;
+const badGamingFalsePositiveNeedle =
+  "game industry is making me incredibly depressed";
 
 void main();
 
@@ -240,6 +282,22 @@ async function buildReport(): Promise<ArtifactQualityReport> {
       tenantId: String(scope.tenantId),
       workspaceId: String(scope.workspaceId),
     });
+    const visibleBadGamingArtifactCount =
+      await readVisibleBadGamingArtifactCount(pool, {
+        tenantId: String(scope.tenantId),
+        workspaceId: String(scope.workspaceId),
+      });
+    const badGamingStatusCounts = await readBadGamingArtifactStatusCounts(
+      pool,
+      {
+        tenantId: String(scope.tenantId),
+        workspaceId: String(scope.workspaceId),
+      },
+    );
+    const periodStatusCounts = await readPeriodArtifactStatusCounts(pool, {
+      tenantId: String(scope.tenantId),
+      workspaceId: String(scope.workspaceId),
+    });
     const collectedCoverage = await readCollectedCoverage(pool, {
       tenantId: String(scope.tenantId),
       workspaceId: String(scope.workspaceId),
@@ -254,9 +312,29 @@ async function buildReport(): Promise<ArtifactQualityReport> {
     });
     const content = view.content;
     const coverage = view.coverage;
+    const citationById = new Map(
+      view.citations.map((item) => [item.citationId, item] as const),
+    );
     const citationIds = new Set(view.citations.map((item) => item.citationId));
     const selectedPosts = content.selectedPosts;
     const topReads = content.topReads;
+    const topReadCitationFeedItemIds = uniqueStrings(
+      topReads.flatMap((read) =>
+        read.citationIds
+          .map((citationId) => citationById.get(citationId)?.feedItemId)
+          .filter((value): value is string => value !== undefined),
+      ),
+    );
+    const topReadFeedItems = await readFeedItemsByIds(pool, {
+      tenantId: String(scope.tenantId),
+      workspaceId: String(scope.workspaceId),
+      feedItemIds: topReadCitationFeedItemIds,
+    });
+    const sourceQuality = buildTopReadSourceQuality({
+      topReads,
+      citationById,
+      feedItems: topReadFeedItems,
+    });
     const lowConfidenceTopReadCount = topReads.filter(
       (item) => item.confidence.level === "low",
     ).length;
@@ -274,9 +352,16 @@ async function buildReport(): Promise<ArtifactQualityReport> {
       selectedPosts.length === coverage.topReadCount &&
       selectedPosts.every(hasCanonicalUrl) &&
       coverage.citationCount === coverage.selectedFeedItemCount;
+    const selectedPostsRepresentDedupedSelectedEvidence =
+      selectedPosts.length > 0 &&
+      selectedPosts.length <= coverage.selectedFeedItemCount &&
+      selectedPosts.every(hasCanonicalUrl) &&
+      selectedPostDuplicateCanonicalUrlCount === 0 &&
+      coverage.citationCount === coverage.selectedFeedItemCount;
     const selectedPostsMismatchDocumented =
       selectedPosts.length === coverage.selectedFeedItemCount ||
       selectedPostsRepresentTopReadPreview ||
+      selectedPostsRepresentDedupedSelectedEvidence ||
       reliabilityMentionsDedupeOrFilter(content.reliabilityReport);
     const userFacingTechnicalLeaks = collectUserFacingTechnicalLeaks(content);
     const uiPayloadTechnicalTagCount = countUiPayloadTechnicalTags([
@@ -381,6 +466,16 @@ async function buildReport(): Promise<ArtifactQualityReport> {
         confidenceScore: view.confidence.score,
         qualityFlagCount: view.qualityFlags.length,
       },
+      artifactHistory: {
+        visibleBadGamingArtifactCount,
+        rejectedBadGamingArtifactCount:
+          badGamingStatusCounts.REJECTED ?? 0,
+        failedBadGamingArtifactCount: badGamingStatusCounts.FAILED ?? 0,
+        visiblePeriodArtifactCount:
+          (periodStatusCounts.COMPLETED ?? 0) +
+          (periodStatusCounts.NO_SIGNAL ?? 0),
+        supersededPeriodArtifactCount: periodStatusCounts.SUPERSEDED ?? 0,
+      },
       collectionIntegrity,
       coverage: {
         collectedFeedItemCount: coverage.collectedFeedItemCount ?? 0,
@@ -414,6 +509,7 @@ async function buildReport(): Promise<ArtifactQualityReport> {
           selectedPosts.filter(hasCanonicalUrl).length,
         selectedPostDuplicateCanonicalUrlCount,
         selectedPostsRepresentTopReadPreview,
+        selectedPostsRepresentDedupedSelectedEvidence,
         selectedPostsMismatchDocumented,
       },
       summaryStructure: {
@@ -436,6 +532,7 @@ async function buildReport(): Promise<ArtifactQualityReport> {
         uiPayloadTechnicalTagCount,
       },
       shadowRankingMetrics,
+      sourceQuality,
       qualityGates: {
         artifactPeriodMatchesRequestedDate:
           record.periodStartedAt.toISOString() ===
@@ -480,6 +577,21 @@ async function buildReport(): Promise<ArtifactQualityReport> {
           content.openQuestions.length > 0,
         noUserFacingTechnicalLeakage: userFacingTechnicalLeaks.length === 0,
         noUiPayloadTechnicalTags: uiPayloadTechnicalTagCount === 0,
+        topReadCitationFeedItemsFound:
+          sourceQuality.missingTopReadCitationFeedItemCount === 0,
+        topReadsDoNotReferenceIneligibleSourceQuality:
+          sourceQuality.ineligibleTopReadCitationCount === 0,
+        topReadsDoNotReferenceWeakTopicMatchEvidence:
+          sourceQuality.weakTopicMatchCitationCount === 0,
+        noVisibleHistoricalBadGamingArtifacts:
+          visibleBadGamingArtifactCount === 0,
+        badGamingArtifactsUseRejectedStatus:
+          (badGamingStatusCounts.FAILED ?? 0) === 0 &&
+          visibleBadGamingArtifactCount === 0,
+        latestPeriodHasSingleVisibleArtifact:
+          (periodStatusCounts.COMPLETED ?? 0) +
+            (periodStatusCounts.NO_SIGNAL ?? 0) ===
+          1,
         collectionIntegrityCleanForEval:
           collectionIntegrity.status === "clean" || allowDirtyCollection,
         noRawSecretFragments: true,
@@ -499,6 +611,7 @@ async function buildReport(): Promise<ArtifactQualityReport> {
         selectedPostsLessThanSelectedFeedItems:
           selectedPosts.length < coverage.selectedFeedItemCount,
         selectedPostsRepresentTopReadPreview,
+        selectedPostsRepresentDedupedSelectedEvidence,
         crossSourceEvidencePresent: coverage.crossSourceClusterCount > 0,
         historicalLatestVisibleGateBypassed: allowHistorical,
         dirtyCollectionAllowedForInspection:
@@ -539,11 +652,18 @@ function validateExistingReport(): void {
   const valid =
     report.schemaVersion === 1 &&
     report.artifactFormat === "yesterday-reader-summary-artifact-quality-v1" &&
-    report.generatedBy === "npm run check:yesterday-reader-summary-artifact-quality" &&
+    report.generatedBy ===
+      "npm run check:yesterday-reader-summary-artifact-quality" &&
     report.model.liveNetwork === false &&
     report.model.rawPostTextPersistedInReport === false &&
     report.blockingPassed === true &&
     report.qualityGates.noRawSecretFragments === true &&
+    report.qualityGates.topReadsDoNotReferenceIneligibleSourceQuality ===
+      true &&
+    report.qualityGates.topReadsDoNotReferenceWeakTopicMatchEvidence === true &&
+    report.qualityGates.noVisibleHistoricalBadGamingArtifacts === true &&
+    report.qualityGates.badGamingArtifactsUseRejectedStatus === true &&
+    report.qualityGates.latestPeriodHasSingleVisibleArtifact === true &&
     noRawSecretFragments(report);
 
   if (!valid) {
@@ -592,6 +712,7 @@ async function readLatestArtifact(
       from reader_summary_artifacts
       where tenant_id = $1::uuid
         and workspace_id = $2::uuid
+        and status in ('COMPLETED', 'NO_SIGNAL')
         and scope_type = 'workspace'
         and cadence = 'daily'
         and period_started_at = $3::timestamptz
@@ -671,6 +792,64 @@ async function readLatestVisibleArtifact(
   return row;
 }
 
+async function readPeriodArtifactStatusCounts(
+  pool: Pool,
+  scope: {
+    readonly tenantId: string;
+    readonly workspaceId: string;
+  },
+): Promise<Record<string, number>> {
+  const result = await pool.query<ArtifactStatusCountRow>(
+    `
+      select status::text as status, count(*)::text as count
+      from reader_summary_artifacts
+      where tenant_id = $1::uuid
+        and workspace_id = $2::uuid
+        and scope_type = 'workspace'
+        and cadence = 'daily'
+        and period_started_at = $3::timestamptz
+        and period_ended_at = $4::timestamptz
+      group by status
+      order by status
+    `,
+    [
+      scope.tenantId,
+      scope.workspaceId,
+      feedWindow().startInclusive,
+      feedWindow().endExclusive,
+    ],
+  );
+
+  return Object.fromEntries(
+    result.rows.map((row) => [row.status, Number.parseInt(row.count, 10)]),
+  );
+}
+
+async function readBadGamingArtifactStatusCounts(
+  pool: Pool,
+  scope: {
+    readonly tenantId: string;
+    readonly workspaceId: string;
+  },
+): Promise<Record<string, number>> {
+  const result = await pool.query<ArtifactStatusCountRow>(
+    `
+      select status::text as status, count(*)::text as count
+      from reader_summary_artifacts
+      where tenant_id = $1::uuid
+        and workspace_id = $2::uuid
+        and artifact_payload::text ilike $3
+      group by status
+      order by status
+    `,
+    [scope.tenantId, scope.workspaceId, `%${badGamingFalsePositiveNeedle}%`],
+  );
+
+  return Object.fromEntries(
+    result.rows.map((row) => [row.status, Number.parseInt(row.count, 10)]),
+  );
+}
+
 async function readCollectedCoverage(
   pool: Pool,
   scope: {
@@ -705,6 +884,9 @@ async function readCollectedCoverage(
     .map((item) => ({
       providerKey: item.providerKey,
       collectedFeedItemCount: Number.parseInt(item.collectedFeedItemCount, 10),
+      lowRelevanceFeedItemCount: 0,
+      mutedFeedItemCount: 0,
+      userRatedFeedItemCount: 0,
     }))
     .sort((left, right) => {
       const countDiff =
@@ -719,8 +901,68 @@ async function readCollectedCoverage(
       (sum, item) => sum + item.collectedFeedItemCount,
       0,
     ),
+    lowRelevanceFeedItemCount: 0,
+    mutedFeedItemCount: 0,
+    userRatedFeedItemCount: 0,
     providerBreakdown,
+    topicBreakdown: [],
+    queryBreakdown: [],
   };
+}
+
+async function readVisibleBadGamingArtifactCount(
+  pool: Pool,
+  scope: {
+    readonly tenantId: string;
+    readonly workspaceId: string;
+  },
+): Promise<number> {
+  const result = await pool.query<{ readonly count: string }>(
+    `
+      select count(*)::text as count
+      from reader_summary_artifacts
+      where tenant_id = $1::uuid
+        and workspace_id = $2::uuid
+        and status in ('COMPLETED', 'NO_SIGNAL')
+        and artifact_payload::text ilike $3
+    `,
+    [scope.tenantId, scope.workspaceId, `%${badGamingFalsePositiveNeedle}%`],
+  );
+
+  return Number.parseInt(result.rows[0]?.count ?? "0", 10);
+}
+
+async function readFeedItemsByIds(
+  pool: Pool,
+  params: {
+    readonly tenantId: string;
+    readonly workspaceId: string;
+    readonly feedItemIds: readonly string[];
+  },
+): Promise<readonly TopReadFeedItemQualityRow[]> {
+  if (params.feedItemIds.length === 0) {
+    return [];
+  }
+
+  const result = await pool.query<TopReadFeedItemQualityRow>(
+    `
+      select
+        id::text as "id",
+        provider_key as "providerKey",
+        canonical_url as "canonicalUrl",
+        author_handle as "authorHandle",
+        title,
+        body_preview as "bodyPreview",
+        provider_metadata as "providerMetadata"
+      from feed_items
+      where tenant_id = $1::uuid
+        and workspace_id = $2::uuid
+        and id = any($3::uuid[])
+    `,
+    [params.tenantId, params.workspaceId, params.feedItemIds],
+  );
+
+  return result.rows;
 }
 
 function feedWindow(): {
@@ -752,6 +994,91 @@ function primarySourceCounts(
   return Object.fromEntries(
     primarySources.map((source) => [source, counts[source] ?? 0]),
   );
+}
+
+function buildTopReadSourceQuality(params: {
+  readonly topReads: readonly {
+    readonly citationIds: readonly string[];
+  }[];
+  readonly citationById: ReadonlyMap<
+    string,
+    {
+      readonly citationId: string;
+      readonly feedItemId: string;
+    }
+  >;
+  readonly feedItems: readonly TopReadFeedItemQualityRow[];
+}): ArtifactQualityReport["sourceQuality"] {
+  const qualityPolicy = new SourceContentQualityPolicy();
+  const feedItemById = new Map(
+    params.feedItems.map((item) => [item.id, item] as const),
+  );
+  const rows = params.topReads.flatMap((read) =>
+    read.citationIds
+      .map((citationId) => {
+        const citation = params.citationById.get(citationId);
+        const feedItem =
+          citation === undefined
+            ? undefined
+            : feedItemById.get(citation.feedItemId);
+        if (citation === undefined || feedItem === undefined) {
+          return undefined;
+        }
+
+        const verdict = qualityPolicy.evaluate({
+          providerKey: feedItem.providerKey,
+          title: feedItem.title,
+          bodyPreview: feedItem.bodyPreview ?? undefined,
+          canonicalUrl: feedItem.canonicalUrl,
+          authorHandle: feedItem.authorHandle ?? undefined,
+          providerMetadata: asJsonObject(feedItem.providerMetadata),
+        });
+
+        return {
+          citationFingerprint: fingerprint(citation.citationId),
+          feedItemFingerprint: fingerprint(citation.feedItemId),
+          providerKey: feedItem.providerKey,
+          decision: verdict.decision,
+          eligibleForSummary: verdict.eligibleForSummary,
+          eligibleForTopRead: verdict.eligibleForTopRead,
+          qualityScore: verdict.qualityScore,
+          interestRelevanceScore: verdict.interestRelevanceScore,
+          engagementIntegrityScore: verdict.engagementIntegrityScore,
+          flags: verdict.flags,
+        };
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== undefined),
+  );
+  const topReadCitationFeedItemCount = params.topReads.reduce(
+    (count, read) => count + read.citationIds.length,
+    0,
+  );
+
+  return {
+    topReadCitationFeedItemCount,
+    foundTopReadCitationFeedItemCount: rows.length,
+    missingTopReadCitationFeedItemCount:
+      topReadCitationFeedItemCount - rows.length,
+    ineligibleTopReadCitationCount: rows.filter(
+      (row) => !row.eligibleForTopRead,
+    ).length,
+    weakTopicMatchCitationCount: rows.filter((row) =>
+      row.flags.includes("weak_topic_match"),
+    ).length,
+    downrankedCitationCount: rows.filter((row) => row.decision === "downrank")
+      .length,
+    rows,
+  };
+}
+
+function asJsonObject(value: unknown): JsonObject | undefined {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as JsonObject)
+    : undefined;
+}
+
+function uniqueStrings(values: readonly string[]): readonly string[] {
+  return [...new Set(values.filter((value) => value.trim().length > 0))];
 }
 
 function hasCanonicalUrl(item: { readonly canonicalUrl?: string }): boolean {

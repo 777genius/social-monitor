@@ -1825,6 +1825,9 @@ async function readCollectedCoverage(
     .map((item) => ({
       providerKey: item.providerKey,
       collectedFeedItemCount: Number.parseInt(item.collectedFeedItemCount, 10),
+      lowRelevanceFeedItemCount: 0,
+      mutedFeedItemCount: 0,
+      userRatedFeedItemCount: 0,
     }));
 
   return {
@@ -1832,7 +1835,12 @@ async function readCollectedCoverage(
       (sum, item) => sum + item.collectedFeedItemCount,
       0,
     ),
+    lowRelevanceFeedItemCount: 0,
+    mutedFeedItemCount: 0,
+    userRatedFeedItemCount: 0,
     providerBreakdown,
+    topicBreakdown: [],
+    queryBreakdown: [],
   };
 }
 

@@ -1,0 +1,819 @@
+{
+  "schemaVersion": 1,
+  "artifactFormat": "reader-summary-source-quality-trace-v1",
+  "collectionDate": "2026-07-05",
+  "generatedBy": "npm run check:reader-summary-source-quality-trace",
+  "model": {
+    "liveNetwork": false,
+    "reportBuilder": "reader-summary-source-quality-trace",
+    "rawPostTextPersistedInReport": false,
+    "rawProviderPayloadPersistedInReport": false
+  },
+  "inputs": {
+    "database": "local-postgres",
+    "period": {
+      "startedAt": "2026-07-05T00:00:00.000Z",
+      "endedAt": "2026-07-06T00:00:00.000Z",
+      "timezone": "UTC"
+    },
+    "rankLimit": 200,
+    "scope": {
+      "tenantFingerprint": "88237c6b",
+      "workspaceFingerprint": "88237c6c"
+    }
+  },
+  "summary": {
+    "artifactFingerprint": "3ceeea58",
+    "selectedFeedItemCount": 120,
+    "topReadCount": 10
+  },
+  "sources": {
+    "reddit": {
+      "collectedCount": 89,
+      "laneCount": 3,
+      "rankedCount": 75,
+      "selectedCount": 30,
+      "topReadCount": 2,
+      "topReadEligibleCount": 26,
+      "weakTopicMatchCount": 63,
+      "ineligibleTopReadCount": 63,
+      "weakTopicMatchTopReadCount": 0,
+      "ineligibleActualTopReadCount": 0,
+      "averageRankScore": 1.538,
+      "laneFamilies": {
+        "search:general": 1,
+        "search:new:any": 1,
+        "search:top:week": 1
+      },
+      "laneFamilyHealth": {
+        "search:general": {
+          "collectedCount": 2,
+          "rankedCount": 2,
+          "selectedCount": 0,
+          "topReadCount": 0,
+          "weakTopicMatchCount": 2,
+          "weakTopicMatchTopReadCount": 0,
+          "ineligibleActualTopReadCount": 0,
+          "averageRankScore": 1.503
+        },
+        "search:new:any": {
+          "collectedCount": 75,
+          "rankedCount": 69,
+          "selectedCount": 27,
+          "topReadCount": 0,
+          "weakTopicMatchCount": 52,
+          "weakTopicMatchTopReadCount": 0,
+          "ineligibleActualTopReadCount": 0,
+          "averageRankScore": 1.521
+        },
+        "search:top:week": {
+          "collectedCount": 12,
+          "rankedCount": 4,
+          "selectedCount": 3,
+          "topReadCount": 2,
+          "weakTopicMatchCount": 9,
+          "weakTopicMatchTopReadCount": 0,
+          "ineligibleActualTopReadCount": 0,
+          "averageRankScore": 1.837
+        }
+      },
+      "laneHealth": [
+        {
+          "laneFingerprint": "b7e96057",
+          "laneFamily": "search:top:week",
+          "queryFingerprint": "10d12086",
+          "collectedCount": 12,
+          "rankedCount": 4,
+          "selectedCount": 3,
+          "topReadCount": 2,
+          "topReadEligibleCount": 3,
+          "weakTopicMatchCount": 9,
+          "ineligibleTopReadCount": 9,
+          "weakTopicMatchTopReadCount": 0,
+          "ineligibleActualTopReadCount": 0,
+          "averageRankScore": 1.837,
+          "maxRankScore": 2.043,
+          "qualityDecisions": {
+            "downrank": 9,
+            "promote": 3
+          },
+          "sampleItems": [
+            {
+              "itemFingerprint": "b0f83c0b",
+              "rank": 44,
+              "rankScore": 2.043,
+              "qualityDecision": "promote",
+              "eligibleForSummary": true,
+              "eligibleForTopRead": true,
+              "flags": [],
+              "selected": true,
+              "topRead": true,
+              "filterReasons": [
+                "selected_evidence",
+                "top_read"
+              ]
+            },
+            {
+              "itemFingerprint": "ec7e9395",
+              "rank": 114,
+              "rankScore": 1.795,
+              "qualityDecision": "promote",
+              "eligibleForSummary": true,
+              "eligibleForTopRead": true,
+              "flags": [],
+              "selected": true,
+              "topRead": true,
+              "filterReasons": [
+                "selected_evidence",
+                "top_read"
+              ]
+            },
+            {
+              "itemFingerprint": "ce46a375",
+              "rank": 50,
+              "rankScore": 2.022,
+              "qualityDecision": "promote",
+              "eligibleForSummary": true,
+              "eligibleForTopRead": true,
+              "flags": [],
+              "selected": true,
+              "topRead": false,
+              "filterReasons": [
+                "selected_evidence",
+                "not_top_read"
+              ]
+            },
+            {
+              "itemFingerprint": "efb49d48",
+              "rank": 193,
+              "rankScore": 1.488,
+              "qualityDecision": "downrank",
+              "eligibleForSummary": true,
+              "eligibleForTopRead": false,
+              "flags": [
+                "weak_topic_match"
+              ],
+              "selected": false,
+              "topRead": false,
+              "filterReasons": [
+                "weak_topic_match",
+                "top_read_ineligible",
+                "not_selected_evidence",
+                "not_top_read"
+              ]
+            },
+            {
+              "itemFingerprint": "02fb9d88",
+              "qualityDecision": "downrank",
+              "eligibleForSummary": true,
+              "eligibleForTopRead": false,
+              "flags": [
+                "weak_topic_match"
+              ],
+              "selected": false,
+              "topRead": false,
+              "filterReasons": [
+                "weak_topic_match",
+                "top_read_ineligible",
+                "not_ranked_top_200",
+                "not_selected_evidence",
+                "not_top_read"
+              ]
+            },
+            {
+              "itemFingerprint": "48e7ffbb",
+              "qualityDecision": "downrank",
+              "eligibleForSummary": true,
+              "eligibleForTopRead": false,
+              "flags": [
+                "weak_topic_match"
+              ],
+              "selected": false,
+              "topRead": false,
+              "filterReasons": [
+                "weak_topic_match",
+                "top_read_ineligible",
+                "not_ranked_top_200",
+                "not_selected_evidence",
+                "not_top_read"
+              ]
+            },
+            {
+              "itemFingerprint": "6a15b192",
+              "qualityDecision": "downrank",
+              "eligibleForSummary": true,
+              "eligibleForTopRead": false,
+              "flags": [
+                "weak_topic_match"
+              ],
+              "selected": false,
+              "topRead": false,
+              "filterReasons": [
+                "weak_topic_match",
+                "top_read_ineligible",
+                "not_ranked_top_200",
+                "not_selected_evidence",
+                "not_top_read"
+              ]
+            },
+            {
+              "itemFingerprint": "776ca5a9",
+              "qualityDecision": "downrank",
+              "eligibleForSummary": true,
+              "eligibleForTopRead": false,
+              "flags": [
+                "weak_topic_match"
+              ],
+              "selected": false,
+              "topRead": false,
+              "filterReasons": [
+                "weak_topic_match",
+                "top_read_ineligible",
+                "not_ranked_top_200",
+                "not_selected_evidence",
+                "not_top_read"
+              ]
+            }
+          ]
+        },
+        {
+          "laneFingerprint": "26185a84",
+          "laneFamily": "search:new:any",
+          "queryFingerprint": "10d12086",
+          "collectedCount": 75,
+          "rankedCount": 69,
+          "selectedCount": 27,
+          "topReadCount": 0,
+          "topReadEligibleCount": 23,
+          "weakTopicMatchCount": 52,
+          "ineligibleTopReadCount": 52,
+          "weakTopicMatchTopReadCount": 0,
+          "ineligibleActualTopReadCount": 0,
+          "averageRankScore": 1.521,
+          "maxRankScore": 1.571,
+          "qualityDecisions": {
+            "downrank": 52,
+            "promote": 23
+          },
+          "sampleItems": [
+            {
+              "itemFingerprint": "bd907e8e",
+              "rank": 122,
+              "rankScore": 1.571,
+              "qualityDecision": "promote",
+              "eligibleForSummary": true,
+              "eligibleForTopRead": true,
+              "flags": [],
+              "selected": true,
+              "topRead": false,
+              "filterReasons": [
+                "selected_evidence",
+                "not_top_read"
+              ]
+            },
+            {
+              "itemFingerprint": "239452fd",
+              "rank": 123,
+              "rankScore": 1.569,
+              "qualityDecision": "promote",
+              "eligibleForSummary": true,
+              "eligibleForTopRead": true,
+              "flags": [],
+              "selected": true,
+              "topRead": false,
+              "filterReasons": [
+                "selected_evidence",
+                "not_top_read"
+              ]
+            },
+            {
+              "itemFingerprint": "7fd03c43",
+              "rank": 124,
+              "rankScore": 1.569,
+              "qualityDecision": "promote",
+              "eligibleForSummary": true,
+              "eligibleForTopRead": true,
+              "flags": [],
+              "selected": true,
+              "topRead": false,
+              "filterReasons": [
+                "selected_evidence",
+                "not_top_read"
+              ]
+            },
+            {
+              "itemFingerprint": "cc602f58",
+              "rank": 125,
+              "rankScore": 1.569,
+              "qualityDecision": "promote",
+              "eligibleForSummary": true,
+              "eligibleForTopRead": true,
+              "flags": [],
+              "selected": true,
+              "topRead": false,
+              "filterReasons": [
+                "selected_evidence",
+                "not_top_read"
+              ]
+            },
+            {
+              "itemFingerprint": "b0384cc2",
+              "rank": 127,
+              "rankScore": 1.55,
+              "qualityDecision": "promote",
+              "eligibleForSummary": true,
+              "eligibleForTopRead": true,
+              "flags": [],
+              "selected": true,
+              "topRead": false,
+              "filterReasons": [
+                "selected_evidence",
+                "not_top_read"
+              ]
+            },
+            {
+              "itemFingerprint": "b2b20532",
+              "rank": 129,
+              "rankScore": 1.55,
+              "qualityDecision": "promote",
+              "eligibleForSummary": true,
+              "eligibleForTopRead": true,
+              "flags": [],
+              "selected": true,
+              "topRead": false,
+              "filterReasons": [
+                "selected_evidence",
+                "not_top_read"
+              ]
+            },
+            {
+              "itemFingerprint": "f0e5e403",
+              "rank": 128,
+              "rankScore": 1.55,
+              "qualityDecision": "promote",
+              "eligibleForSummary": true,
+              "eligibleForTopRead": true,
+              "flags": [],
+              "selected": true,
+              "topRead": false,
+              "filterReasons": [
+                "selected_evidence",
+                "not_top_read"
+              ]
+            },
+            {
+              "itemFingerprint": "2ccbe669",
+              "rank": 131,
+              "rankScore": 1.548,
+              "qualityDecision": "promote",
+              "eligibleForSummary": true,
+              "eligibleForTopRead": true,
+              "flags": [],
+              "selected": true,
+              "topRead": false,
+              "filterReasons": [
+                "selected_evidence",
+                "not_top_read"
+              ]
+            }
+          ]
+        },
+        {
+          "laneFingerprint": "faa89272",
+          "laneFamily": "search:general",
+          "queryFingerprint": "61b13846",
+          "collectedCount": 2,
+          "rankedCount": 2,
+          "selectedCount": 0,
+          "topReadCount": 0,
+          "topReadEligibleCount": 0,
+          "weakTopicMatchCount": 2,
+          "ineligibleTopReadCount": 2,
+          "weakTopicMatchTopReadCount": 0,
+          "ineligibleActualTopReadCount": 0,
+          "averageRankScore": 1.503,
+          "maxRankScore": 1.506,
+          "qualityDecisions": {
+            "downrank": 2
+          },
+          "sampleItems": [
+            {
+              "itemFingerprint": "f7a9c5f0",
+              "rank": 171,
+              "rankScore": 1.506,
+              "qualityDecision": "downrank",
+              "eligibleForSummary": true,
+              "eligibleForTopRead": false,
+              "flags": [
+                "weak_topic_match"
+              ],
+              "selected": false,
+              "topRead": false,
+              "filterReasons": [
+                "weak_topic_match",
+                "top_read_ineligible",
+                "not_selected_evidence",
+                "not_top_read"
+              ]
+            },
+            {
+              "itemFingerprint": "081e1944",
+              "rank": 182,
+              "rankScore": 1.5,
+              "qualityDecision": "downrank",
+              "eligibleForSummary": true,
+              "eligibleForTopRead": false,
+              "flags": [
+                "weak_topic_match"
+              ],
+              "selected": false,
+              "topRead": false,
+              "filterReasons": [
+                "weak_topic_match",
+                "top_read_ineligible",
+                "not_selected_evidence",
+                "not_top_read"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "x-twitter": {
+      "collectedCount": 37,
+      "laneCount": 2,
+      "rankedCount": 22,
+      "selectedCount": 25,
+      "topReadCount": 3,
+      "topReadEligibleCount": 25,
+      "weakTopicMatchCount": 10,
+      "ineligibleTopReadCount": 12,
+      "weakTopicMatchTopReadCount": 0,
+      "ineligibleActualTopReadCount": 0,
+      "averageRankScore": 1.814,
+      "laneFamilies": {
+        "product_or_group": 1,
+        "search:general": 1
+      },
+      "laneFamilyHealth": {
+        "fallback": {
+          "collectedCount": 0,
+          "rankedCount": 0,
+          "selectedCount": 0,
+          "topReadCount": 0,
+          "weakTopicMatchCount": 0,
+          "weakTopicMatchTopReadCount": 0,
+          "ineligibleActualTopReadCount": 0,
+          "averageRankScore": 0
+        },
+        "from": {
+          "collectedCount": 0,
+          "rankedCount": 0,
+          "selectedCount": 0,
+          "topReadCount": 0,
+          "weakTopicMatchCount": 0,
+          "weakTopicMatchTopReadCount": 0,
+          "ineligibleActualTopReadCount": 0,
+          "averageRankScore": 0
+        },
+        "mention": {
+          "collectedCount": 0,
+          "rankedCount": 0,
+          "selectedCount": 0,
+          "topReadCount": 0,
+          "weakTopicMatchCount": 0,
+          "weakTopicMatchTopReadCount": 0,
+          "ineligibleActualTopReadCount": 0,
+          "averageRankScore": 0
+        },
+        "product_or_group": {
+          "collectedCount": 15,
+          "rankedCount": 12,
+          "selectedCount": 12,
+          "topReadCount": 1,
+          "weakTopicMatchCount": 3,
+          "weakTopicMatchTopReadCount": 0,
+          "ineligibleActualTopReadCount": 0,
+          "averageRankScore": 1.766
+        },
+        "search:general": {
+          "collectedCount": 22,
+          "rankedCount": 10,
+          "selectedCount": 13,
+          "topReadCount": 2,
+          "weakTopicMatchCount": 7,
+          "weakTopicMatchTopReadCount": 0,
+          "ineligibleActualTopReadCount": 0,
+          "averageRankScore": 1.873
+        }
+      },
+      "laneHealth": [
+        {
+          "laneFingerprint": "5614b685",
+          "laneFamily": "search:general",
+          "queryFingerprint": "833e64b1",
+          "collectedCount": 22,
+          "rankedCount": 10,
+          "selectedCount": 13,
+          "topReadCount": 2,
+          "topReadEligibleCount": 13,
+          "weakTopicMatchCount": 7,
+          "ineligibleTopReadCount": 9,
+          "weakTopicMatchTopReadCount": 0,
+          "ineligibleActualTopReadCount": 0,
+          "averageRankScore": 1.873,
+          "maxRankScore": 2.045,
+          "qualityDecisions": {
+            "downrank": 7,
+            "promote": 13,
+            "reject": 2
+          },
+          "sampleItems": [
+            {
+              "itemFingerprint": "8c37d6f3",
+              "rank": 62,
+              "rankScore": 1.996,
+              "qualityDecision": "promote",
+              "eligibleForSummary": true,
+              "eligibleForTopRead": true,
+              "flags": [],
+              "selected": true,
+              "topRead": true,
+              "filterReasons": [
+                "selected_evidence",
+                "top_read"
+              ]
+            },
+            {
+              "itemFingerprint": "f9483271",
+              "rank": 105,
+              "rankScore": 1.854,
+              "qualityDecision": "promote",
+              "eligibleForSummary": true,
+              "eligibleForTopRead": true,
+              "flags": [],
+              "selected": true,
+              "topRead": true,
+              "filterReasons": [
+                "selected_evidence",
+                "top_read"
+              ]
+            },
+            {
+              "itemFingerprint": "801f746b",
+              "rank": 42,
+              "rankScore": 2.045,
+              "qualityDecision": "promote",
+              "eligibleForSummary": true,
+              "eligibleForTopRead": true,
+              "flags": [],
+              "selected": true,
+              "topRead": false,
+              "filterReasons": [
+                "selected_evidence",
+                "not_top_read"
+              ]
+            },
+            {
+              "itemFingerprint": "635844ae",
+              "rank": 93,
+              "rankScore": 1.931,
+              "qualityDecision": "promote",
+              "eligibleForSummary": true,
+              "eligibleForTopRead": true,
+              "flags": [],
+              "selected": true,
+              "topRead": false,
+              "filterReasons": [
+                "selected_evidence",
+                "not_top_read"
+              ]
+            },
+            {
+              "itemFingerprint": "a9f78d12",
+              "rank": 106,
+              "rankScore": 1.852,
+              "qualityDecision": "promote",
+              "eligibleForSummary": true,
+              "eligibleForTopRead": true,
+              "flags": [],
+              "selected": true,
+              "topRead": false,
+              "filterReasons": [
+                "selected_evidence",
+                "not_top_read"
+              ]
+            },
+            {
+              "itemFingerprint": "1b413393",
+              "rank": 109,
+              "rankScore": 1.833,
+              "qualityDecision": "promote",
+              "eligibleForSummary": true,
+              "eligibleForTopRead": true,
+              "flags": [],
+              "selected": true,
+              "topRead": false,
+              "filterReasons": [
+                "selected_evidence",
+                "not_top_read"
+              ]
+            },
+            {
+              "itemFingerprint": "14c66d79",
+              "rank": 110,
+              "rankScore": 1.822,
+              "qualityDecision": "promote",
+              "eligibleForSummary": true,
+              "eligibleForTopRead": true,
+              "flags": [],
+              "selected": true,
+              "topRead": false,
+              "filterReasons": [
+                "selected_evidence",
+                "not_top_read"
+              ]
+            },
+            {
+              "itemFingerprint": "baadf54c",
+              "rank": 111,
+              "rankScore": 1.82,
+              "qualityDecision": "promote",
+              "eligibleForSummary": true,
+              "eligibleForTopRead": true,
+              "flags": [],
+              "selected": true,
+              "topRead": false,
+              "filterReasons": [
+                "selected_evidence",
+                "not_top_read"
+              ]
+            }
+          ]
+        },
+        {
+          "laneFingerprint": "300bcd47",
+          "laneFamily": "product_or_group",
+          "queryFingerprint": "c002eed6",
+          "collectedCount": 15,
+          "rankedCount": 12,
+          "selectedCount": 12,
+          "topReadCount": 1,
+          "topReadEligibleCount": 12,
+          "weakTopicMatchCount": 3,
+          "ineligibleTopReadCount": 3,
+          "weakTopicMatchTopReadCount": 0,
+          "ineligibleActualTopReadCount": 0,
+          "averageRankScore": 1.766,
+          "maxRankScore": 2.016,
+          "qualityDecisions": {
+            "downrank": 3,
+            "promote": 12
+          },
+          "sampleItems": [
+            {
+              "itemFingerprint": "c6968047",
+              "rank": 55,
+              "rankScore": 2.016,
+              "qualityDecision": "promote",
+              "eligibleForSummary": true,
+              "eligibleForTopRead": true,
+              "flags": [],
+              "selected": true,
+              "topRead": true,
+              "filterReasons": [
+                "selected_evidence",
+                "top_read"
+              ]
+            },
+            {
+              "itemFingerprint": "c6c7ed01",
+              "rank": 72,
+              "rankScore": 1.975,
+              "qualityDecision": "promote",
+              "eligibleForSummary": true,
+              "eligibleForTopRead": true,
+              "flags": [],
+              "selected": true,
+              "topRead": false,
+              "filterReasons": [
+                "selected_evidence",
+                "not_top_read"
+              ]
+            },
+            {
+              "itemFingerprint": "f0703357",
+              "rank": 107,
+              "rankScore": 1.846,
+              "qualityDecision": "promote",
+              "eligibleForSummary": true,
+              "eligibleForTopRead": true,
+              "flags": [],
+              "selected": true,
+              "topRead": false,
+              "filterReasons": [
+                "selected_evidence",
+                "not_top_read"
+              ]
+            },
+            {
+              "itemFingerprint": "afe93888",
+              "rank": 108,
+              "rankScore": 1.843,
+              "qualityDecision": "promote",
+              "eligibleForSummary": true,
+              "eligibleForTopRead": true,
+              "flags": [],
+              "selected": true,
+              "topRead": false,
+              "filterReasons": [
+                "selected_evidence",
+                "not_top_read"
+              ]
+            },
+            {
+              "itemFingerprint": "3cda0fe3",
+              "rank": 113,
+              "rankScore": 1.797,
+              "qualityDecision": "promote",
+              "eligibleForSummary": true,
+              "eligibleForTopRead": true,
+              "flags": [],
+              "selected": true,
+              "topRead": false,
+              "filterReasons": [
+                "selected_evidence",
+                "not_top_read"
+              ]
+            },
+            {
+              "itemFingerprint": "bf87c323",
+              "rank": 116,
+              "rankScore": 1.773,
+              "qualityDecision": "promote",
+              "eligibleForSummary": true,
+              "eligibleForTopRead": true,
+              "flags": [],
+              "selected": true,
+              "topRead": false,
+              "filterReasons": [
+                "selected_evidence",
+                "not_top_read"
+              ]
+            },
+            {
+              "itemFingerprint": "06e91578",
+              "rank": 117,
+              "rankScore": 1.764,
+              "qualityDecision": "promote",
+              "eligibleForSummary": true,
+              "eligibleForTopRead": true,
+              "flags": [],
+              "selected": true,
+              "topRead": false,
+              "filterReasons": [
+                "selected_evidence",
+                "not_top_read"
+              ]
+            },
+            {
+              "itemFingerprint": "5e50c211",
+              "rank": 118,
+              "rankScore": 1.726,
+              "qualityDecision": "promote",
+              "eligibleForSummary": true,
+              "eligibleForTopRead": true,
+              "flags": [],
+              "selected": true,
+              "topRead": false,
+              "filterReasons": [
+                "selected_evidence",
+                "not_top_read"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "qualityGates": {
+    "collectionIntegrityClean": true,
+    "summaryArtifactPresent": true,
+    "primarySourcesCollected": true,
+    "primarySourcesHaveLaneHealth": true,
+    "primarySourcesHaveRankAndSelectionTrace": true,
+    "primarySourcesReachTopReads": true,
+    "redditTopReadsAreQualityEligible": true,
+    "xTwitterTopReadsAreQualityEligible": true,
+    "xTwitterLaneHealthMetricsPresent": true,
+    "noRawSecretFragments": true
+  },
+  "warningSignals": {
+    "redditWeakTopicMatchesCollected": true,
+    "xTwitterWeakTopicMatchesCollected": true,
+    "redditIneligibleCollected": false,
+    "xTwitterIneligibleCollected": true,
+    "xTwitterNoFromLaneObserved": true
+  },
+  "blockingPassed": true
+}

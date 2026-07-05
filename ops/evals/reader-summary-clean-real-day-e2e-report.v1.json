@@ -32,27 +32,27 @@
     "realBindingCanaryBindingCount": 2
   },
   "summary": {
-    "artifactFingerprint": "febadf33",
-    "confidenceLevel": "medium",
-    "confidenceScore": 0.65,
-    "selectedFeedItemCount": 57,
-    "storyClusterCount": 57,
+    "artifactFingerprint": "3ceeea58",
+    "confidenceLevel": "low",
+    "confidenceScore": 0.55,
+    "selectedFeedItemCount": 120,
+    "storyClusterCount": 120,
     "topReadCount": 10,
-    "topReadProviderSkew": 0.6,
+    "topReadProviderSkew": 0.5,
     "primarySelectedCounts": {
-      "reddit": 39,
-      "x-twitter": 18
+      "reddit": 30,
+      "x-twitter": 25
     },
     "primaryTopReadCounts": {
-      "reddit": 4,
-      "x-twitter": 6
+      "reddit": 2,
+      "x-twitter": 2
     },
     "technicalLeakCount": 0
   },
   "topReadQuality": {
     "rowCount": 10,
     "unexplainedTopReadCount": 0,
-    "lowConfidenceWithoutRiskCount": 0
+    "lowConfidenceWithoutRiskCount": 2
   },
   "claimBoard": {
     "claimCount": 7,
@@ -63,7 +63,7 @@
     "redditQueryLaneCount": 2,
     "xTwitterQueryLaneCount": 2,
     "redditEligibleTopReadCandidateCount": 13,
-    "xTwitterEligibleTopReadCandidateCount": 21,
+    "xTwitterEligibleTopReadCandidateCount": 33,
     "plannerExecutionGap": false,
     "queryLaneWeaknessDetected": false
   },
@@ -106,7 +106,7 @@
     "dashboardDirtyDaysExcludedFromRolloutProof": true,
     "latestCleanDayPassed": true,
     "latestCleanDayQualityGatesPassed": true,
-    "latestCleanDayMatchesCleanCollectionCounts": true,
+    "latestCleanDayIncludesCleanCollectionPrimaryCounts": true,
     "latestCleanDaySummaryArtifactPresent": true,
     "latestCleanDayHasEnoughTopReads": true,
     "latestCleanDayHasEnoughSelectedEvidence": true,

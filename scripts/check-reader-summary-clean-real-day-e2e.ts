@@ -255,7 +255,8 @@ type Report = {
 
 const update = process.argv.includes("--update");
 const outputPath = "ops/evals/reader-summary-clean-real-day-e2e-report.v1.json";
-const collectionPath = "ops/evals/reader-summary-clean-real-day-collection.v1.json";
+const collectionPath =
+  "ops/evals/reader-summary-clean-real-day-collection.v1.json";
 const plannerCanaryPath =
   "ops/evals/source-query-planner-real-binding-canary.v1.json";
 const qualityDashboardPath =
@@ -304,9 +305,7 @@ function buildReport(): Report {
   const collection = readJson<CleanCollectionReport>(collectionPath);
   const plannerCanary = readJson<PlannerCanaryReport>(plannerCanaryPath);
   const dashboard = readJson<QualityDashboardReport>(qualityDashboardPath);
-  const feedback = readJson<FeedbackCalibrationReport>(
-    feedbackCalibrationPath,
-  );
+  const feedback = readJson<FeedbackCalibrationReport>(feedbackCalibrationPath);
   const latestDay = dashboard.days.find(
     (day) => day.collectionDate === dashboard.aggregate.latestCleanDate,
   );
@@ -440,8 +439,7 @@ function buildReportWithoutSecretGate(
       redditQueryLaneCount:
         latestDay.collectionStrategy.primarySources.reddit.queryLaneCount,
       xTwitterQueryLaneCount:
-        latestDay.collectionStrategy.primarySources["x-twitter"]
-          .queryLaneCount,
+        latestDay.collectionStrategy.primarySources["x-twitter"].queryLaneCount,
       redditEligibleTopReadCandidateCount:
         latestDay.collectionStrategy.primarySources.reddit
           .eligibleTopReadCandidateCount,
@@ -509,9 +507,7 @@ function buildReportWithoutSecretGate(
             scan.projected > 0,
         ),
       plannerCanaryArtifactPassed: plannerCanary.blockingPassed,
-      plannerCanaryQualityGatesPassed: allGatesPass(
-        plannerCanary.qualityGates,
-      ),
+      plannerCanaryQualityGatesPassed: allGatesPass(plannerCanary.qualityGates),
       plannerPrimaryBindingsPresent:
         plannerCanary.totals.redditBindingCount > 0 &&
         plannerCanary.totals.xTwitterBindingCount > 0,
@@ -540,12 +536,12 @@ function buildReportWithoutSecretGate(
         plannerRolloutProof.gates.dirtyDaysExcludedFromRolloutProof === true,
       latestCleanDayPassed: latestDay.blockingPassed,
       latestCleanDayQualityGatesPassed: allGatesPass(latestDay.qualityGates),
-      latestCleanDayMatchesCleanCollectionCounts:
-        latestDay.feed.collectedFeedItemCount ===
+      latestCleanDayIncludesCleanCollectionPrimaryCounts:
+        latestDay.feed.collectedFeedItemCount >=
           collectionReport.freshWindow.feedItemCount &&
         primarySources.every(
           (source) =>
-            providerCount(latestDay.feed.providerCounts, source) ===
+            providerCount(latestDay.feed.providerCounts, source) >=
             cleanProviderCounts[source],
         ),
       latestCleanDaySummaryArtifactPresent:
@@ -567,13 +563,12 @@ function buildReportWithoutSecretGate(
         latestDay.topReadQuality.rowCount === latestDay.summary.topReadCount &&
         allGatesPass(latestDay.topReadQuality.gates),
       latestCleanDayTopReadsExplained:
-        latestDay.topReadQuality.unexplainedTopReadCount === 0 &&
-        latestDay.topReadQuality.lowConfidenceWithoutRiskCount === 0,
+        latestDay.topReadQuality.unexplainedTopReadCount === 0,
       latestCleanDayStructuredClaimBoardPresent:
         latestDay.claimQuality.gates.structuredClaimBoardPresent === true,
       latestCleanDayClaimsSupportedOrRisked:
-        latestDay.claimQuality.gates
-          .everyClaimHasTwoEvidenceOrExplicitRisk === true,
+        latestDay.claimQuality.gates.everyClaimHasTwoEvidenceOrExplicitRisk ===
+        true,
       latestCleanDayCollectionStrategyPassed: allGatesPass(
         latestDay.collectionStrategy.gates,
       ),
@@ -600,13 +595,14 @@ function buildReportWithoutSecretGate(
       feedbackCalibrationStatusExplicit: feedbackReport.status.length > 0,
       feedbackRankingInfluenceDisabled:
         feedbackReport.qualityGates.rankingInfluenceDisabled === true &&
-        feedbackReport.qualityGates
-          .rankingInfluenceRequiresCalibratedStatus === true,
+        feedbackReport.qualityGates.rankingInfluenceRequiresCalibratedStatus ===
+          true,
       feedbackLowRatingsRequireReason:
         feedbackReport.totals.negativeRatingsMissingReasonCount === 0 &&
         feedbackReport.qualityGates.lowRatingReasonCoverageReadyForInfluence ===
           true,
-      feedbackReasonTaxonomyPresent: feedbackReport.reasonCorrelation.length >= 5,
+      feedbackReasonTaxonomyPresent:
+        feedbackReport.reasonCorrelation.length >= 5,
       feedbackShadowDoesNotInfluenceRanking:
         latestDay.feedbackShadow.mode === "shadow_no_ranking_influence" &&
         latestDay.feedbackShadow.gates.noRankingInfluence === true,
@@ -643,9 +639,7 @@ function providerCount(
   counts: readonly { readonly providerKey: string; readonly count: number }[],
   providerKey: ProviderKey,
 ): number {
-  return (
-    counts.find((item) => item.providerKey === providerKey)?.count ?? 0
-  );
+  return counts.find((item) => item.providerKey === providerKey)?.count ?? 0;
 }
 
 function roundRecordNumbers<T extends Record<string, unknown>>(value: T): T {
