@@ -311,6 +311,7 @@ final class SummaryMapper {
       'completed' => ReaderSummaryJobStatus.completed,
       'no_signal' => ReaderSummaryJobStatus.noSignal,
       'failed' => ReaderSummaryJobStatus.failed,
+      'quality_rejected' => ReaderSummaryJobStatus.qualityRejected,
       _ => ReaderSummaryJobStatus.unknown,
     };
   }

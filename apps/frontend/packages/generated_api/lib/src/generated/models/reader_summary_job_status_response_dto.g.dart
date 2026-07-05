@@ -31,6 +31,11 @@ ReaderSummaryJobStatusResponseDto _$ReaderSummaryJobStatusResponseDtoFromJson(
   failedAt: json['failedAt'] == null
       ? null
       : DateTime.parse(json['failedAt'] as String),
+  failureClass: json['failureClass'] == null
+      ? null
+      : ReaderSummaryJobStatusResponseDtoFailureClassFailureClass.fromJson(
+          json['failureClass'] as String,
+        ),
   failureReason: json['failureReason'] as String?,
   readerSummaryId: json['readerSummaryId'] as String?,
   startedAt: json['startedAt'] == null
@@ -43,6 +48,7 @@ Map<String, dynamic> _$ReaderSummaryJobStatusResponseDtoToJson(
 ) => <String, dynamic>{
   'completedAt': instance.completedAt?.toIso8601String(),
   'failedAt': instance.failedAt?.toIso8601String(),
+  'failureClass': instance.failureClass,
   'failureReason': instance.failureReason,
   'period': instance.period,
   'readerSummaryId': instance.readerSummaryId,

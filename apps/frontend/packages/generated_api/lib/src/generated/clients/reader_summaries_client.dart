@@ -14,6 +14,7 @@ import '../models/list_reader_summaries_response_dto.dart';
 import '../models/list_reader_summary_periods_response_dto.dart';
 import '../models/list_reader_summary_topic_recommendations_response_dto.dart';
 import '../models/reader_summary_job_status_response_dto.dart';
+import '../models/reader_summary_quality_rejection_response_dto.dart';
 import '../models/reader_summary_response_dto.dart';
 import '../models/request_reader_summary_request_dto.dart';
 import '../models/request_reader_summary_response_dto.dart';
@@ -86,6 +87,21 @@ abstract class ReaderSummariesClient {
     @Query('cadence') Cadence? cadence,
     @Query('interestId') String? interestId,
     @Query('scopeType') ScopeType? scopeType,
+    @Header('authorization') String? authorization,
+    @Header('x-workspace-role') String? xWorkspaceRole,
+  });
+
+  /// Get safe quality rejection diagnostics for a readerSummary job.
+  ///
+  /// [authorization] - Optional Bearer API key. Requires read:summaries. If supplied, x-workspace-role is not required.
+  ///
+  /// [xWorkspaceRole] - Comma-separated workspace roles. ReaderSummary quality rejection diagnostics require owner or admin. Required when Authorization bearer API key is not supplied.
+  @GET('/reader-summary-jobs/{readerSummaryJobId}/quality-rejection')
+  Future<ReaderSummaryQualityRejectionResponseDto>
+  readerSummaryJobControllerGetQualityRejection({
+    @Path('readerSummaryJobId') required String readerSummaryJobId,
+    @Header('x-workspace-id') required String xWorkspaceId,
+    @Header('x-tenant-id') required String xTenantId,
     @Header('authorization') String? authorization,
     @Header('x-workspace-role') String? xWorkspaceRole,
   });

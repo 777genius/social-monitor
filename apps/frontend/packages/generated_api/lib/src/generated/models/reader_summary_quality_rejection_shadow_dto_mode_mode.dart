@@ -5,20 +5,16 @@
 import 'package:json_annotation/json_annotation.dart';
 
 @JsonEnum()
-enum RedditCommentProviderMetricsDtoScoreConfidenceScoreConfidence {
-  @JsonValue('provider_reported')
-  providerReported('provider_reported'),
-  @JsonValue('not_available')
-  notAvailable('not_available'),
+enum ReaderSummaryQualityRejectionShadowDtoModeMode {
+  @JsonValue('shadow')
+  shadow('shadow'),
 
   /// Default value for all unparsed values, allows backward compatibility when adding new values on the backend.
   $unknown(null);
 
-  const RedditCommentProviderMetricsDtoScoreConfidenceScoreConfidence(
-    this.json,
-  );
+  const ReaderSummaryQualityRejectionShadowDtoModeMode(this.json);
 
-  factory RedditCommentProviderMetricsDtoScoreConfidenceScoreConfidence.fromJson(
+  factory ReaderSummaryQualityRejectionShadowDtoModeMode.fromJson(
     String json,
   ) => values.firstWhere((e) => e.json == json, orElse: () => $unknown);
 
@@ -30,6 +26,6 @@ enum RedditCommentProviderMetricsDtoScoreConfidenceScoreConfidence {
   String toString() => json ?? super.toString();
 
   /// Returns all defined enum values excluding the $unknown value.
-  static List<RedditCommentProviderMetricsDtoScoreConfidenceScoreConfidence>
+  static List<ReaderSummaryQualityRejectionShadowDtoModeMode>
   get $valuesDefined => values.where((value) => value != $unknown).toList();
 }

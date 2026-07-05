@@ -321,6 +321,8 @@ final class GeneratedSummaryRestMapper {
       generated.RequestReaderSummaryResponseDtoStatusStatus.noSignal =>
         'no_signal',
       generated.RequestReaderSummaryResponseDtoStatusStatus.failed => 'failed',
+      generated.RequestReaderSummaryResponseDtoStatusStatus.qualityRejected =>
+        'quality_rejected',
       generated.RequestReaderSummaryResponseDtoStatusStatus.$unknown =>
         'unknown',
     };
@@ -340,6 +342,8 @@ final class GeneratedSummaryRestMapper {
         'no_signal',
       generated.ReaderSummaryJobStatusResponseDtoStatusStatus.failed =>
         'failed',
+      generated.ReaderSummaryJobStatusResponseDtoStatusStatus.qualityRejected =>
+        'quality_rejected',
       generated.ReaderSummaryJobStatusResponseDtoStatusStatus.$unknown =>
         'unknown',
     };

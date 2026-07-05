@@ -141,6 +141,28 @@ void main() {
     expect(status.summaryId, 'readerSummary-1');
     expect(status.completedAt, completedAt);
     expect(status.period?.cadence, 'daily');
+
+    final rejectedStatus = mapper.readerSummaryJobStatus(
+      generated.ReaderSummaryJobStatusResponseDto(
+        readerSummaryId: 'readerSummary-rejected-1',
+        readerSummaryJobId: 'readerSummary-job-rejected',
+        requestedAt: completedAt.subtract(const Duration(minutes: 2)),
+        failedAt: completedAt,
+        failureReason: 'Rejected by quality gate',
+        period: _readerSummaryPeriod(),
+        scope: const generated.ReaderSummaryScopeDto(
+          type: generated.ReaderSummaryScopeDtoTypeType.workspace,
+        ),
+        status: generated
+            .ReaderSummaryJobStatusResponseDtoStatusStatus
+            .qualityRejected,
+        timeline: const [],
+      ),
+    );
+
+    expect(rejectedStatus.status, 'quality_rejected');
+    expect(rejectedStatus.summaryId, 'readerSummary-rejected-1');
+    expect(rejectedStatus.failureReason, 'Rejected by quality gate');
   });
 }
 

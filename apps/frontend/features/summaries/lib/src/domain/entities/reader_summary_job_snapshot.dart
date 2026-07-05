@@ -6,12 +6,16 @@ enum ReaderSummaryJobStatus {
   completed,
   noSignal,
   failed,
+  qualityRejected,
   unknown;
 
   bool get isPending => this == requested || this == running;
 
   bool get isTerminal =>
-      this == completed || this == noSignal || this == failed;
+      this == completed ||
+      this == noSignal ||
+      this == failed ||
+      this == qualityRejected;
 
   bool get shouldRefreshSummary => this == completed || this == noSignal;
 }

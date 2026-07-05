@@ -16,6 +16,8 @@ enum ReaderSummaryJobTimelineEventDtoStatusStatus {
   noSignal('no_signal'),
   @JsonValue('failed')
   failed('failed'),
+  @JsonValue('quality_rejected')
+  qualityRejected('quality_rejected'),
 
   /// Default value for all unparsed values, allows backward compatibility when adding new values on the backend.
   $unknown(null);

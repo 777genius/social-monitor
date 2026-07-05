@@ -29,6 +29,7 @@ RedditCommentProviderMetricsDto _$RedditCommentProviderMetricsDtoFromJson(
         json['scoreConfidence'] as String,
       ),
   sourceKey: json['sourceKey'] as String,
+  rank: json['rank'] as num?,
 );
 
 Map<String, dynamic> _$RedditCommentProviderMetricsDtoToJson(
@@ -38,6 +39,7 @@ Map<String, dynamic> _$RedditCommentProviderMetricsDtoToJson(
   'depth': instance.depth,
   'kind': instance.kind,
   'providerKey': instance.providerKey,
+  'rank': instance.rank,
   'replies': instance.replies,
   'role': instance.role,
   'score': instance.score,

@@ -292,6 +292,7 @@ class GetFeedItemResponseDtoProviderMetricsProviderMetricsRedditComment
   final num depth;
   final RedditCommentProviderMetricsDtoKindKind kind;
   final RedditCommentProviderMetricsDtoProviderKeyProviderKey providerKey;
+  final num? rank;
   final num replies;
   final RedditCommentProviderMetricsDtoRoleRole role;
   final num score;
@@ -304,6 +305,7 @@ class GetFeedItemResponseDtoProviderMetricsProviderMetricsRedditComment
     required this.depth,
     required this.kind,
     required this.providerKey,
+    required this.rank,
     required this.replies,
     required this.role,
     required this.score,
