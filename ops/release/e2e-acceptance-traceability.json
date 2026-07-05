@@ -350,7 +350,7 @@
           "path": "test/e2e/source-bindings.create.e2e-spec.ts",
           "markers": [
             "rejects deferred providers before creating bindings",
-            "providerKey: 'x-twitter'",
+            "providerKey: 'telegram'",
             "Source provider is not available for production-safe MVP scans"
           ]
         },

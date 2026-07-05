@@ -266,6 +266,55 @@ describe('Bind source flow (e2e)', () => {
       });
   });
 
+  it('rejects deferred providers before creating bindings', async () => {
+    const tenant = tenantId('tenant-source-deferred-e2e');
+    const workspace = workspaceId('workspace-source-deferred-e2e');
+    const topic = await request(app.getHttpServer())
+      .post('/interests')
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
+      .set('x-request-id', 'request-source-deferred-topic')
+      .set('idempotency-key', 'create-source-deferred-topic')
+      .send({
+        name: 'Deferred Source Monitoring',
+        query: 'deferred source monitoring',
+      })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post(`/interests/${topic.body.interestId}/source-bindings`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'admin')
+      .set('x-request-id', 'request-source-bind-deferred')
+      .set('idempotency-key', 'bind-deferred-source')
+      .send({
+        providerKey: 'telegram',
+        config: { query: 'telegram launch monitoring' },
+      })
+      .expect(400)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          code: 'validation.failed',
+          detail: 'Source provider is not available for production-safe MVP scans',
+          details: {
+            providerKey: 'telegram',
+          },
+        });
+      });
+
+    await request(app.getHttpServer())
+      .get(`/interests/${topic.body.interestId}/source-bindings`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
+      .expect(200)
+      .expect((response) => {
+        expect(response.body).toEqual({ sourceBindings: [] });
+      });
+  });
+
   it('binds canonical X/Twitter as a production-safe source and records audit success', async () => {
     const tenant = tenantId('tenant-source-x-e2e');
     const workspace = workspaceId('workspace-source-x-e2e');
