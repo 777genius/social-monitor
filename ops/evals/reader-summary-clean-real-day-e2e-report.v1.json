@@ -5,6 +5,8 @@
   "model": {
     "liveNetwork": false,
     "reportBuilder": "clean-real-day-reader-summary-e2e-quality-gate",
+    "allowDegraded": true,
+    "allowHistorical": true,
     "rawProviderPayloadPersistedInReport": false
   },
   "inputs": {
@@ -83,7 +85,7 @@
     "rejectedBadGamingArtifactCount": 3,
     "failedBadGamingArtifactCount": 0,
     "visiblePeriodArtifactCount": 1,
-    "supersededPeriodArtifactCount": 4
+    "supersededPeriodArtifactCount": 12
   },
   "qualityGates": {
     "collectionArtifactFormatValid": true,

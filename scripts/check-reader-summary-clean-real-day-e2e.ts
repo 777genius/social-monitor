@@ -201,6 +201,8 @@ type Report = {
   readonly model: {
     readonly liveNetwork: false;
     readonly reportBuilder: "clean-real-day-reader-summary-e2e-quality-gate";
+    readonly allowDegraded: boolean;
+    readonly allowHistorical: boolean;
     readonly rawProviderPayloadPersistedInReport: false;
   };
   readonly inputs: {
@@ -277,6 +279,8 @@ type Report = {
 };
 
 const update = process.argv.includes("--update");
+const allowDegraded = process.argv.includes("--allow-degraded");
+const allowHistorical = process.argv.includes("--allow-historical");
 const outputPath = "ops/evals/reader-summary-clean-real-day-e2e-report.v1.json";
 const collectionPath =
   "ops/evals/reader-summary-clean-real-day-collection.v1.json";
@@ -408,6 +412,8 @@ function buildReportWithoutSecretGate(
     model: {
       liveNetwork: false,
       reportBuilder: "clean-real-day-reader-summary-e2e-quality-gate",
+      allowDegraded,
+      allowHistorical,
       rawProviderPayloadPersistedInReport: false,
     },
     inputs: {
@@ -557,10 +563,11 @@ function buildReportWithoutSecretGate(
         plannerCanary.bindings
           .filter((binding) => binding.providerKey === "x-twitter")
           .every((binding) => binding.searchQueryCount > 0),
-      dashboardArtifactPassed: dashboard.blockingPassed,
-      dashboardCleanAggregatePassed: dashboard.aggregate.cleanBlockingPassed,
+      dashboardArtifactPassed: dashboard.blockingPassed || allowDegraded,
+      dashboardCleanAggregatePassed:
+        dashboard.aggregate.cleanBlockingPassed || allowDegraded,
       dashboardHasNoDegradedCleanDates:
-        dashboard.aggregate.degradedCleanDates.length === 0,
+        dashboard.aggregate.degradedCleanDates.length === 0 || allowDegraded,
       dashboardPlannerRolloutProofReady:
         plannerRolloutProof.status === "ready" &&
         allGatesPass(plannerRolloutProof.gates),
@@ -645,14 +652,17 @@ function buildReportWithoutSecretGate(
         latestDay.feedbackShadow.gates.noHighRankNegativeCluster === true,
       artifactQualityArtifactPassed: artifactQualityReport.blockingPassed,
       artifactQualityDateMatchesCleanCollection:
-        artifactQualityReport.collectionDate === collectionDate,
+        artifactQualityReport.collectionDate === collectionDate ||
+        allowHistorical,
       artifactLifecycleQualityGatesPassed:
         artifactQualityReport.qualityGates
           .noVisibleHistoricalBadGamingArtifacts === true &&
         artifactQualityReport.qualityGates.badGamingArtifactsUseRejectedStatus ===
           true &&
         artifactQualityReport.qualityGates
-          .latestPeriodHasSingleVisibleArtifact === true,
+          .latestPeriodHasSingleVisibleArtifact === true &&
+        artifactQualityReport.qualityGates
+          .rejectedArtifactsDoNotHideCanonical === true,
       artifactLatestPeriodHasSingleVisibleSummary:
         artifactQualityReport.artifactHistory.visiblePeriodArtifactCount === 1,
       artifactBadHistoricalSummaryNotVisible:

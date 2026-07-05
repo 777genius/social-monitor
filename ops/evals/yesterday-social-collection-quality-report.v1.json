@@ -5,7 +5,7 @@
   "generatedBy": "npm run check:yesterday-social-collection-quality",
   "model": {
     "liveNetwork": false,
-    "reportBuilder": "local-postgres-feed-items-plus-x-collector-run-ledger",
+    "reportBuilder": "local-postgres-feed-items-plus-x-collector-run-and-account-ledger",
     "rawPostTextPersistedInReport": false
   },
   "inputs": {
@@ -29,19 +29,19 @@
   "providerReports": [
     {
       "providerKey": "github-trending-page",
-      "feedItemCount": 159,
+      "feedItemCount": 119,
       "sourceItemCount": 700,
-      "distinctDedupeKeyCount": 159,
+      "distinctDedupeKeyCount": 119,
       "duplicateRate": 0,
       "textCoverage": 1,
       "canonicalUrlCoverage": 1,
       "providerMetadataCoverage": 1,
       "engagementMetadataCoverage": 0,
-      "queryTermHitRate": 0.283,
+      "queryTermHitRate": 0.252,
       "publishedOnTargetDateRate": 1,
       "medianObservedAgeHours": 0.001,
       "p90ObservedAgeHours": 0.001,
-      "averageBodyPreviewLength": 145.409,
+      "averageBodyPreviewLength": 141.37,
       "rankInputReadinessScore": 0.8
     },
     {
@@ -114,21 +114,94 @@
     }
   ],
   "dataIntegrity": {
-    "feedItemCount": 820,
-    "joinedInterestCount": 820,
+    "feedItemCount": 780,
+    "joinedInterestCount": 780,
     "orphanInterestCount": 0,
     "orphanInterestRate": 0,
     "orphanInterestWithSnapshotCount": 0,
     "orphanInterestFingerprints": [],
-    "joinedSourceItemCount": 820,
+    "joinedSourceItemCount": 780,
     "orphanSourceItemCount": 0,
     "orphanSourceItemRate": 0,
     "orphanSourceItemFingerprints": [],
-    "joinedSourceBindingCount": 820,
+    "joinedSourceBindingCount": 780,
     "orphanSourceBindingCount": 0,
     "orphanSourceBindingRate": 0,
     "orphanSourceBindingWithSnapshotCount": 0,
     "orphanSourceBindingFingerprints": []
+  },
+  "dayWindowAudit": {
+    "observedWindow": {
+      "startInclusive": "2026-07-03T00:00:00.000Z",
+      "endExclusive": "2026-07-04T00:00:00.000Z"
+    },
+    "observedInsideWindowFeedItemCount": 780,
+    "observedOutsideWindowFeedItemCount": 0,
+    "observedButPublishedOutsideWindowFeedItemCount": 417,
+    "publishedInsideWindowFeedItemCount": 388,
+    "publishedOutsideWindowFeedItemCount": 0,
+    "duplicateFeedItemCount": 1,
+    "lowRelevanceFeedItemCount": 0,
+    "mutedFeedItemCount": 0,
+    "userRatedFeedItemCount": 0,
+    "summaryCandidateFeedItemCount": 269,
+    "providerBreakdown": [
+      {
+        "providerKey": "github-trending-page",
+        "observedInsideWindowFeedItemCount": 119,
+        "publishedInsideWindowFeedItemCount": 119,
+        "observedButPublishedOutsideWindowFeedItemCount": 0,
+        "publishedOutsideWindowFeedItemCount": 0,
+        "duplicateFeedItemCount": 0,
+        "lowRelevanceFeedItemCount": 0,
+        "mutedFeedItemCount": 0,
+        "userRatedFeedItemCount": 0
+      },
+      {
+        "providerKey": "hacker-news",
+        "observedInsideWindowFeedItemCount": 260,
+        "publishedInsideWindowFeedItemCount": 127,
+        "observedButPublishedOutsideWindowFeedItemCount": 133,
+        "publishedOutsideWindowFeedItemCount": 0,
+        "duplicateFeedItemCount": 0,
+        "lowRelevanceFeedItemCount": 0,
+        "mutedFeedItemCount": 0,
+        "userRatedFeedItemCount": 0
+      },
+      {
+        "providerKey": "reddit",
+        "observedInsideWindowFeedItemCount": 201,
+        "publishedInsideWindowFeedItemCount": 59,
+        "observedButPublishedOutsideWindowFeedItemCount": 148,
+        "publishedOutsideWindowFeedItemCount": 0,
+        "duplicateFeedItemCount": 0,
+        "lowRelevanceFeedItemCount": 0,
+        "mutedFeedItemCount": 0,
+        "userRatedFeedItemCount": 0
+      },
+      {
+        "providerKey": "rss",
+        "observedInsideWindowFeedItemCount": 102,
+        "publishedInsideWindowFeedItemCount": 46,
+        "observedButPublishedOutsideWindowFeedItemCount": 59,
+        "publishedOutsideWindowFeedItemCount": 0,
+        "duplicateFeedItemCount": 1,
+        "lowRelevanceFeedItemCount": 0,
+        "mutedFeedItemCount": 0,
+        "userRatedFeedItemCount": 0
+      },
+      {
+        "providerKey": "x-twitter",
+        "observedInsideWindowFeedItemCount": 98,
+        "publishedInsideWindowFeedItemCount": 37,
+        "observedButPublishedOutsideWindowFeedItemCount": 77,
+        "publishedOutsideWindowFeedItemCount": 0,
+        "duplicateFeedItemCount": 0,
+        "lowRelevanceFeedItemCount": 0,
+        "mutedFeedItemCount": 0,
+        "userRatedFeedItemCount": 0
+      }
+    ]
   },
   "collectionIntegrity": {
     "status": "clean"
@@ -136,9 +209,9 @@
   "interestCoverage": [
     {
       "interestFingerprint": "b935f4783b43",
-      "feedItemCount": 722,
+      "feedItemCount": 682,
       "providerCounts": {
-        "github-trending-page": 159,
+        "github-trending-page": 119,
         "hacker-news": 260,
         "reddit": 201,
         "rss": 102
@@ -197,6 +270,77 @@
       "de0f66b335f3"
     ]
   },
+  "xAccountPool": {
+    "available": true,
+    "accountCount": 2,
+    "eventCount": 0,
+    "passStartedCount": 0,
+    "passSucceededCount": 0,
+    "passFailedCount": 0,
+    "cooldownObservedCount": 0,
+    "rateLimitCount": 0,
+    "totalEstimatedRequestCost": 0,
+    "totalRequestDelta": 0,
+    "totalTweetDelta": 0,
+    "totalReturnedCount": 0,
+    "accounts": [
+      {
+        "accountFingerprint": "8ca1818c55b8",
+        "usernameFingerprint": "b382a2784ddc",
+        "priorityRank": 1,
+        "prioritySource": "account_order",
+        "status": 1,
+        "busy": false,
+        "dailyRequests": 25,
+        "dailyTweets": 279,
+        "lastResetDate": "2026-07-05",
+        "lastUsedAt": "2026-07-05 18:36:45",
+        "latestEventAt": null,
+        "cooldownUntil": null,
+        "cooldownReasonFingerprint": null,
+        "eventCount": 0,
+        "passStartedCount": 0,
+        "passSucceededCount": 0,
+        "passFailedCount": 0,
+        "cooldownObservedCount": 0,
+        "rateLimitCount": 0,
+        "estimatedRequestCost": 0,
+        "requestDelta": 0,
+        "tweetDelta": 0,
+        "fetchedCount": 0,
+        "acceptedCount": 0,
+        "returnedCount": 0
+      },
+      {
+        "accountFingerprint": "305b9c91ff51",
+        "usernameFingerprint": "e0bd5eb0b11f",
+        "priorityRank": 2,
+        "prioritySource": "account_order",
+        "status": 1,
+        "busy": false,
+        "dailyRequests": 25,
+        "dailyTweets": 295,
+        "lastResetDate": "2026-07-05",
+        "lastUsedAt": "2026-07-05 18:36:43",
+        "latestEventAt": null,
+        "cooldownUntil": null,
+        "cooldownReasonFingerprint": null,
+        "eventCount": 0,
+        "passStartedCount": 0,
+        "passSucceededCount": 0,
+        "passFailedCount": 0,
+        "cooldownObservedCount": 0,
+        "rateLimitCount": 0,
+        "estimatedRequestCost": 0,
+        "requestDelta": 0,
+        "tweetDelta": 0,
+        "fetchedCount": 0,
+        "acceptedCount": 0,
+        "returnedCount": 0
+      }
+    ],
+    "readError": null
+  },
   "summaryArtifactCoverage": {
     "artifactCount": 0,
     "jobCount": 0,
@@ -211,7 +355,10 @@
     "orphanInterestFeedItemCount": 0,
     "orphanSourceItemFeedItemCount": 0,
     "orphanSourceBindingFeedItemCount": 0,
-    "xCollectorInvalidJsonFieldCount": 0
+    "xCollectorInvalidJsonFieldCount": 0,
+    "xAccountPoolUsageEventCount": 0,
+    "publishedOutsideWindowFeedItemCount": 417,
+    "lowRelevanceFeedItemCount": 0
   },
   "qualityGates": {
     "postgresFeedItemsAvailable": true,
@@ -232,6 +379,11 @@
     "xCollectorHasTopAndLatest": true,
     "xCollectorHasStrictAndDiscoveryLanes": true,
     "xCollectorDistinctQueryHashesAtLeast10": true,
+    "xAccountPoolStateAvailable": true,
+    "xAccountPoolTracksPerAccount": true,
+    "dayWindowAuditAvailable": true,
+    "observedWindowFilterIsStrict": true,
+    "duplicateAndLowRelevanceCountsReported": true,
     "summaryArtifactAbsenceIsExplicit": true,
     "noOrphanFeedInterestReferences": true,
     "noOrphanFeedSourceItemReferences": true,

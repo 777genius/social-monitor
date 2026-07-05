@@ -214,6 +214,8 @@ type TopReadQualityReport = {
   readonly unexplainedTopReadRate: number;
   readonly lowConfidenceWithoutRiskCount: number;
   readonly lowConfidenceWithoutRiskRate: number;
+  readonly weakTopReadOutrankingStrongSocialCount: number;
+  readonly weakTopReadOutrankingStrongSocialRate: number;
   readonly selectionSignalCounts: Record<string, number>;
   readonly riskSignalCounts: Record<string, number>;
   readonly reliabilityRiskCounts: Record<string, number>;
@@ -798,6 +800,8 @@ function buildTopReadQuality(
       unexplainedTopReadRate: 0,
       lowConfidenceWithoutRiskCount: 0,
       lowConfidenceWithoutRiskRate: 0,
+      weakTopReadOutrankingStrongSocialCount: 0,
+      weakTopReadOutrankingStrongSocialRate: 0,
       selectionSignalCounts: {},
       riskSignalCounts: {},
       reliabilityRiskCounts: {},
@@ -806,6 +810,7 @@ function buildTopReadQuality(
       gates: {
         telemetryAvailableForArtifact: false,
         everyTopReadHasSelectionSignal: false,
+        noWeakTopReadOutranksStrongSocialRead: false,
       },
     };
   }
@@ -849,6 +854,8 @@ function buildTopReadQuality(
       row.confidenceLevel === "low" &&
       !row.riskSignals.some((signal) => signal !== "low_confidence"),
   ).length;
+  const weakTopReadOutrankingStrongSocialCount =
+    weakTopReadOutrankingStrongSocialRows(rows).length;
 
   return {
     rowCount: rows.length,
@@ -857,6 +864,11 @@ function buildTopReadQuality(
     lowConfidenceWithoutRiskCount,
     lowConfidenceWithoutRiskRate: ratio(
       lowConfidenceWithoutRiskCount,
+      rows.length,
+    ),
+    weakTopReadOutrankingStrongSocialCount,
+    weakTopReadOutrankingStrongSocialRate: ratio(
+      weakTopReadOutrankingStrongSocialCount,
       rows.length,
     ),
     selectionSignalCounts: countedRecord(
@@ -875,8 +887,51 @@ function buildTopReadQuality(
         rows.length === view.content.topReads.length &&
         view.content.topReads.length > 0,
       everyTopReadHasSelectionSignal: unexplainedTopReadCount === 0,
+      noWeakTopReadOutranksStrongSocialRead:
+        weakTopReadOutrankingStrongSocialCount === 0,
     },
   };
+}
+
+function weakTopReadOutrankingStrongSocialRows(
+  rows: readonly TopReadQualityRow[],
+): readonly TopReadQualityRow[] {
+  return rows.filter((row, index) => {
+    if (!isWeakTopReadWithoutClearReason(row)) {
+      return false;
+    }
+
+    return rows.slice(index + 1).some((candidate) =>
+      isStrongSocialReadBelowWeakRead(candidate, row),
+    );
+  });
+}
+
+function isWeakTopReadWithoutClearReason(row: TopReadQualityRow): boolean {
+  const weak =
+    row.confidenceLevel === "low" ||
+    row.signalScore < 0.7 ||
+    row.riskSignals.includes("low_signal_score") ||
+    row.riskSignals.includes("low_evidence");
+  const hasClearReason =
+    row.selectionSignals.includes("cross_provider_confirmation") ||
+    row.selectionSignals.includes("multi_citation_evidence") ||
+    row.confirmedProviderCount > 1 ||
+    row.citationCount > 1;
+
+  return weak && !hasClearReason;
+}
+
+function isStrongSocialReadBelowWeakRead(
+  candidate: TopReadQualityRow,
+  weakRow: TopReadQualityRow,
+): boolean {
+  return (
+    ["reddit", "x-twitter", "rss"].includes(candidate.providerKey) &&
+    candidate.signalScore >= Math.max(1, weakRow.signalScore + 0.25) &&
+    candidate.confidenceLevel !== "low" &&
+    !candidate.riskSignals.includes("low_signal_score")
+  );
 }
 
 function buildTopReadProviderContribution(

@@ -72,7 +72,25 @@ export const forbiddenSerializedFragments = [
 
 export const yesterdaySocialQualityDatabaseUrl = (): string =>
   process.env.YESTERDAY_SOCIAL_QUALITY_DATABASE_URL ??
+  process.env.DATABASE_URL ??
+  readDatabaseUrlFromEnvFile() ??
   defaultYesterdaySocialQualityDatabaseUrl;
+
+function readDatabaseUrlFromEnvFile(): string | undefined {
+  if (!existsSync(".env")) {
+    return undefined;
+  }
+
+  const match = readFileSync(".env", "utf8").match(
+    /^DATABASE_URL=(?:"([^"]+)"|'([^']+)'|([^\r\n#]+))/m,
+  );
+  const value = match?.[1] ?? match?.[2] ?? match?.[3];
+  const normalized = value?.trim();
+
+  return normalized === undefined || normalized.length === 0
+    ? undefined
+    : normalized;
+}
 
 export async function readDominantFeedScope(params: {
   readonly databaseUrl: string;

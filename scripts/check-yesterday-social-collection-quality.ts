@@ -5,10 +5,14 @@ import { dirname } from "node:path";
 
 import { Pool } from "pg";
 
+import { statsForFeedItemMetadata } from "@social-monitor/summary/adapters/evidence/feed-item-collection-stats";
+import { isDefaultReaderSummaryEvidenceProvider } from "@social-monitor/summary/adapters/evidence/reader-summary-evidence-provider-filter";
+
 import {
   collectionDateOptionOrDefault,
   type CollectionIntegrityStatus,
   readCollectionIntegrityStatus,
+  yesterdaySocialQualityDatabaseUrl,
 } from "./lib/yesterday-social-replay-support";
 
 type FeedRow = {
@@ -30,6 +34,7 @@ type FeedRow = {
   readonly hasInterestSnapshot: boolean;
   readonly hasSourceBindingSnapshot: boolean;
   readonly interestQuery: string | null;
+  readonly providerMetadata: unknown;
 };
 
 type SourceItemCountRow = {
@@ -70,6 +75,38 @@ type XCollectorJsonWarning = {
   readonly runId: string | null;
   readonly field: "input_json" | "stats_json";
   readonly reason: string;
+};
+
+type XAccountUsageEventRow = {
+  readonly event_id?: string;
+  readonly event_type?: string;
+  readonly occurred_at?: string;
+  readonly account_id?: number | null;
+  readonly username?: string | null;
+  readonly estimated_request_cost?: number | null;
+  readonly requests_before?: number | null;
+  readonly requests_after?: number | null;
+  readonly tweets_before?: number | null;
+  readonly tweets_after?: number | null;
+  readonly fetched_count?: number | null;
+  readonly accepted_count?: number | null;
+  readonly returned_count?: number | null;
+  readonly failure_kind?: string | null;
+  readonly cooldown_reason?: string | null;
+  readonly reset_at?: string | null;
+};
+
+type XAccountStateRow = {
+  readonly id?: number;
+  readonly username?: string;
+  readonly status?: number;
+  readonly daily_requests?: number;
+  readonly daily_tweets?: number;
+  readonly last_reset_date?: string | null;
+  readonly available_until?: string | null;
+  readonly last_used_at?: string | null;
+  readonly cooldown_reason?: string | null;
+  readonly busy?: number;
 };
 
 type ProviderReport = {
@@ -115,6 +152,36 @@ type DataIntegrityReport = {
   readonly orphanSourceBindingFingerprints: readonly string[];
 };
 
+type DayWindowAuditProviderReport = {
+  readonly providerKey: string;
+  readonly observedInsideWindowFeedItemCount: number;
+  readonly publishedInsideWindowFeedItemCount: number;
+  readonly observedButPublishedOutsideWindowFeedItemCount: number;
+  readonly publishedOutsideWindowFeedItemCount: number;
+  readonly duplicateFeedItemCount: number;
+  readonly lowRelevanceFeedItemCount: number;
+  readonly mutedFeedItemCount: number;
+  readonly userRatedFeedItemCount: number;
+};
+
+type DayWindowAuditReport = {
+  readonly observedWindow: {
+    readonly startInclusive: string;
+    readonly endExclusive: string;
+  };
+  readonly observedInsideWindowFeedItemCount: number;
+  readonly observedOutsideWindowFeedItemCount: 0;
+  readonly publishedInsideWindowFeedItemCount: number;
+  readonly observedButPublishedOutsideWindowFeedItemCount: number;
+  readonly publishedOutsideWindowFeedItemCount: number;
+  readonly duplicateFeedItemCount: number;
+  readonly lowRelevanceFeedItemCount: number;
+  readonly mutedFeedItemCount: number;
+  readonly userRatedFeedItemCount: number;
+  readonly summaryCandidateFeedItemCount: number;
+  readonly providerBreakdown: readonly DayWindowAuditProviderReport[];
+};
+
 type Report = {
   readonly schemaVersion: 1;
   readonly artifactFormat: "yesterday-social-collection-quality-report-v1";
@@ -136,6 +203,7 @@ type Report = {
   readonly primarySourceCoverage: readonly string[];
   readonly providerReports: readonly ProviderReport[];
   readonly dataIntegrity: DataIntegrityReport;
+  readonly dayWindowAudit: DayWindowAuditReport;
   readonly collectionIntegrity: CollectionIntegrityStatus;
   readonly interestCoverage: readonly InterestCoverage[];
   readonly summaryReadiness: {
@@ -143,6 +211,7 @@ type Report = {
     readonly workspaceOrMultiInterestSummaryNeededForPrimarySourceMix: boolean;
   };
   readonly xCollectorLedger: ReturnType<typeof buildXCollectorLedgerReport>;
+  readonly xAccountPool: ReturnType<typeof buildXAccountPoolReport>;
   readonly summaryArtifactCoverage: {
     readonly artifactCount: number;
     readonly jobCount: number;
@@ -160,6 +229,9 @@ type Report = {
     readonly orphanSourceItemFeedItemCount: number;
     readonly orphanSourceBindingFeedItemCount: number;
     readonly xCollectorInvalidJsonFieldCount: number;
+    readonly xAccountPoolUsageEventCount: number;
+    readonly publishedOutsideWindowFeedItemCount: number;
+    readonly lowRelevanceFeedItemCount: number;
   };
   readonly qualityGates: Record<string, boolean>;
   readonly collectionBlockingPassed: boolean;
@@ -172,14 +244,13 @@ type Report = {
 const { collectionDate, wasExplicit: collectionDateWasExplicit } =
   collectionDateOptionOrDefault("2026-07-03");
 const update = process.argv.includes("--update");
+const writeFailedReport = process.argv.includes("--write-failed-report");
 const outputPath =
   "ops/evals/yesterday-social-collection-quality-report.v1.json";
 const xCollectorLedgerPath =
   process.env.YESTERDAY_SOCIAL_QUALITY_X_LEDGER_PATH ??
   "apps/x-collector/var/x-collector/scweet_state.db";
-const localDatabaseUrl =
-  process.env.YESTERDAY_SOCIAL_QUALITY_DATABASE_URL ??
-  "postgresql://social_monitor:social_monitor_local_password@127.0.0.1:55432/social_monitor";
+const localDatabaseUrl = yesterdaySocialQualityDatabaseUrl();
 const primarySources = ["reddit", "x-twitter"];
 const forbiddenSerializedFragments = [
   "access_token",
@@ -197,7 +268,10 @@ const forbiddenSerializedFragments = [
   "sk-live-",
 ];
 
-void main();
+void main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
 
 async function main(): Promise<void> {
   const report = await tryBuildReport();
@@ -221,15 +295,18 @@ async function main(): Promise<void> {
 
   const serialized = `${JSON.stringify(report, null, 2)}\n`;
 
+  if (update && (report.collectionBlockingPassed || writeFailedReport)) {
+    mkdirSync(dirname(outputPath), { recursive: true });
+    writeFileSync(outputPath, serialized);
+    console.log(`Updated ${outputPath}`);
+  }
+
   if (!report.collectionBlockingPassed) {
     console.error(serialized);
     throw new Error("Yesterday social collection quality gates failed");
   }
 
   if (update) {
-    mkdirSync(dirname(outputPath), { recursive: true });
-    writeFileSync(outputPath, serialized);
-    console.log(`Updated ${outputPath}`);
     return;
   }
 
@@ -260,11 +337,16 @@ async function tryBuildReport(): Promise<Report | undefined> {
 
   try {
     const feedRows = await queryFeedRows(pool);
+    const publishedWindowFeedRows = await queryPublishedWindowFeedRows(pool);
     const sourceItemCounts = await querySourceItemCounts(pool);
     const summaryArtifacts = await querySummaryArtifacts(pool);
     const summaryJobs = await querySummaryJobs(pool);
     const providerReports = buildProviderReports(feedRows, sourceItemCounts);
     const dataIntegrity = buildDataIntegrityReport(feedRows);
+    const dayWindowAudit = buildDayWindowAudit({
+      observedRows: feedRows,
+      publishedRows: publishedWindowFeedRows,
+    });
     const collectionIntegrity = readCollectionIntegrityStatus(collectionDate);
     const interestCoverage = buildInterestCoverage(feedRows);
     const primarySourcesCoLocatedInSingleInterest = interestCoverage.some(
@@ -278,6 +360,7 @@ async function tryBuildReport(): Promise<Report | undefined> {
       sourceCoverage.includes(source),
     );
     const xCollectorLedger = buildXCollectorLedgerReport();
+    const xAccountPool = buildXAccountPoolReport();
     const summaryArtifactCoverage = {
       artifactCount: sumCounts(summaryArtifacts),
       jobCount: sumCounts(summaryJobs),
@@ -337,6 +420,17 @@ async function tryBuildReport(): Promise<Report | undefined> {
         xCollectorLedger.hasStrictAndDiscoveryLanes,
       xCollectorDistinctQueryHashesAtLeast10:
         xCollectorLedger.distinctQueryHashCount >= 10,
+      xAccountPoolStateAvailable:
+        !xCollectorLedger.available || xAccountPool.available,
+      xAccountPoolTracksPerAccount:
+        !xAccountPool.available || xAccountPool.accounts.length > 0,
+      dayWindowAuditAvailable:
+        dayWindowAudit.observedInsideWindowFeedItemCount === feedRows.length,
+      observedWindowFilterIsStrict:
+        dayWindowAudit.observedOutsideWindowFeedItemCount === 0,
+      duplicateAndLowRelevanceCountsReported:
+        dayWindowAudit.duplicateFeedItemCount >= 0 &&
+        dayWindowAudit.lowRelevanceFeedItemCount >= 0,
       summaryArtifactAbsenceIsExplicit:
         summaryArtifactCoverage.verificationStatus ===
           "verified_from_summary_artifacts" ||
@@ -362,7 +456,8 @@ async function tryBuildReport(): Promise<Report | undefined> {
       generatedBy: "npm run check:yesterday-social-collection-quality",
       model: {
         liveNetwork: false,
-        reportBuilder: "local-postgres-feed-items-plus-x-collector-run-ledger",
+        reportBuilder:
+          "local-postgres-feed-items-plus-x-collector-run-and-account-ledger",
         rawPostTextPersistedInReport: false,
       },
       inputs: {
@@ -373,6 +468,7 @@ async function tryBuildReport(): Promise<Report | undefined> {
       primarySourceCoverage,
       providerReports,
       dataIntegrity,
+      dayWindowAudit,
       collectionIntegrity,
       interestCoverage,
       summaryReadiness: {
@@ -381,6 +477,7 @@ async function tryBuildReport(): Promise<Report | undefined> {
           !primarySourcesCoLocatedInSingleInterest,
       },
       xCollectorLedger,
+      xAccountPool,
       summaryArtifactCoverage,
       operationalWarnings: {
         xCollectorFailedRunCount: xCollectorLedger.failedRunCount,
@@ -395,6 +492,10 @@ async function tryBuildReport(): Promise<Report | undefined> {
         orphanSourceBindingFeedItemCount:
           dataIntegrity.orphanSourceBindingCount,
         xCollectorInvalidJsonFieldCount: xCollectorLedger.invalidJsonFieldCount,
+        xAccountPoolUsageEventCount: xAccountPool.eventCount,
+        publishedOutsideWindowFeedItemCount:
+          dayWindowAudit.observedButPublishedOutsideWindowFeedItemCount,
+        lowRelevanceFeedItemCount: dayWindowAudit.lowRelevanceFeedItemCount,
       },
       qualityGates,
       collectionBlockingPassed: false,
@@ -430,6 +531,19 @@ async function tryBuildReport(): Promise<Report | undefined> {
 }
 
 async function queryFeedRows(pool: Pool): Promise<readonly FeedRow[]> {
+  return queryFeedRowsByWindow(pool, "observed_at");
+}
+
+async function queryPublishedWindowFeedRows(
+  pool: Pool,
+): Promise<readonly FeedRow[]> {
+  return queryFeedRowsByWindow(pool, "published_at");
+}
+
+async function queryFeedRowsByWindow(
+  pool: Pool,
+  windowColumn: "observed_at" | "published_at",
+): Promise<readonly FeedRow[]> {
   const result = await pool.query<FeedRow>(
     `
       select
@@ -468,13 +582,14 @@ async function queryFeedRows(pool: Pool): Promise<readonly FeedRow[]> {
           f.provider_metadata #>> '{workspaceScopeSnapshot,tenantId}' = f.tenant_id::text and
           f.provider_metadata #>> '{workspaceScopeSnapshot,workspaceId}' = f.workspace_id::text
         ) as "hasSourceBindingSnapshot",
-        i.query as "interestQuery"
+        i.query as "interestQuery",
+        f.provider_metadata as "providerMetadata"
       from feed_items f
       left join interests i on i.id = f.interest_id
       left join source_items si on si.id = f.source_item_id
       left join source_bindings sb on sb.id = f.source_binding_id
-      where f.observed_at >= $1::timestamptz
-        and f.observed_at < $2::timestamptz
+      where f.${windowColumn} >= $1::timestamptz
+        and f.${windowColumn} < $2::timestamptz
       order by f.provider_key, f.observed_at, f.id
     `,
     [feedWindow().startInclusive, feedWindow().endExclusive],
@@ -518,6 +633,101 @@ function buildDataIntegrityReport(
     orphanSourceBindingFingerprints: fingerprints(
       orphanSourceBindingRows.map((row) => row.sourceBindingId),
     ),
+  };
+}
+
+function buildDayWindowAudit(params: {
+  readonly observedRows: readonly FeedRow[];
+  readonly publishedRows: readonly FeedRow[];
+}): DayWindowAuditReport {
+  const window = feedWindow();
+  const rowsByObservedProvider = groupBy(
+    params.observedRows,
+    (row) => row.providerKey,
+  );
+  const rowsByPublishedProvider = groupBy(
+    params.publishedRows,
+    (row) => row.providerKey,
+  );
+  const providerKeys = new Set([
+    ...rowsByObservedProvider.keys(),
+    ...rowsByPublishedProvider.keys(),
+  ]);
+  const providerBreakdown = [
+    ...providerKeys.values(),
+  ]
+    .map((providerKey): DayWindowAuditProviderReport => {
+      const observedRows = rowsByObservedProvider.get(providerKey) ?? [];
+      const publishedRows = rowsByPublishedProvider.get(providerKey) ?? [];
+      const counts = dayWindowCounts(publishedRows);
+
+      return {
+        providerKey,
+        observedInsideWindowFeedItemCount: observedRows.length,
+        publishedInsideWindowFeedItemCount:
+          counts.publishedInsideWindowFeedItemCount,
+        observedButPublishedOutsideWindowFeedItemCount: observedRows.filter(
+          (row) => !isPublishedInsideTargetDate(row),
+        ).length,
+        publishedOutsideWindowFeedItemCount:
+          counts.publishedOutsideWindowFeedItemCount,
+        duplicateFeedItemCount: counts.duplicateFeedItemCount,
+        lowRelevanceFeedItemCount: counts.lowRelevanceFeedItemCount,
+        mutedFeedItemCount: counts.mutedFeedItemCount,
+        userRatedFeedItemCount: counts.userRatedFeedItemCount,
+      };
+    })
+    .sort((left, right) => left.providerKey.localeCompare(right.providerKey));
+  const totals = dayWindowCounts(params.publishedRows);
+
+  return {
+    observedWindow: window,
+    observedInsideWindowFeedItemCount: params.observedRows.length,
+    observedOutsideWindowFeedItemCount: 0,
+    observedButPublishedOutsideWindowFeedItemCount: params.observedRows.filter(
+      (row) => !isPublishedInsideTargetDate(row),
+    ).length,
+    ...totals,
+    providerBreakdown,
+  };
+}
+
+function dayWindowCounts(
+  rows: readonly FeedRow[],
+): Omit<
+  DayWindowAuditReport,
+  | "observedWindow"
+  | "observedInsideWindowFeedItemCount"
+  | "observedOutsideWindowFeedItemCount"
+  | "observedButPublishedOutsideWindowFeedItemCount"
+  | "providerBreakdown"
+> {
+  const stats = rows.map((row) =>
+    statsForFeedItemMetadata(recordValue(row.providerMetadata)),
+  );
+  const publishedInsideWindowFeedItemCount = rows.filter((row) =>
+    isPublishedInsideTargetDate(row),
+  ).length;
+
+  return {
+    publishedInsideWindowFeedItemCount,
+    publishedOutsideWindowFeedItemCount:
+      rows.length - publishedInsideWindowFeedItemCount,
+    duplicateFeedItemCount:
+      rows.length - new Set(rows.map((row) => row.dedupeKey)).size,
+    lowRelevanceFeedItemCount: stats.filter((item) => item.lowRelevance)
+      .length,
+    mutedFeedItemCount: stats.filter((item) => item.muted).length,
+    userRatedFeedItemCount: stats.filter((item) => item.userRated).length,
+    summaryCandidateFeedItemCount: rows.filter((row, index) => {
+      const itemStats = stats[index];
+      return (
+        itemStats !== undefined &&
+        isDefaultReaderSummaryEvidenceProvider(row.providerKey) &&
+        isPublishedInsideTargetDate(row) &&
+        !itemStats.muted
+      );
+    }).length,
   };
 }
 
@@ -797,6 +1007,151 @@ function emptyXCollectorLedgerReport(
   } as const;
 }
 
+function buildXAccountPoolReport() {
+  if (!existsSync(xCollectorLedgerPath)) {
+    return emptyXAccountPoolReport(false, "ledger_file_missing");
+  }
+
+  const stateResult = readXAccountStateRows();
+  if (!stateResult.ok) {
+    return emptyXAccountPoolReport(false, stateResult.error);
+  }
+
+  const eventResult = readXAccountUsageEventRows();
+  if (!eventResult.ok) {
+    return emptyXAccountPoolReport(true, eventResult.error, stateResult.rows);
+  }
+
+  const events = eventResult.rows;
+  const eventsByAccount = groupBy(events, (event) =>
+    accountBucketKey(event.account_id, event.username),
+  );
+  const stateByAccount = new Map(
+    stateResult.rows.map((row) => [accountBucketKey(row.id, row.username), row]),
+  );
+  const accountKeys = new Set([
+    ...stateByAccount.keys(),
+    ...eventsByAccount.keys(),
+  ]);
+  const accounts = [...accountKeys]
+    .map((accountKey) =>
+      buildXAccountReport({
+        accountKey,
+        state: stateByAccount.get(accountKey),
+        events: eventsByAccount.get(accountKey) ?? [],
+      }),
+    )
+    .sort(
+      (left, right) =>
+        left.priorityRank - right.priorityRank ||
+        left.accountFingerprint.localeCompare(right.accountFingerprint),
+    );
+
+  return {
+    available: true,
+    accountCount: accounts.length,
+    eventCount: events.length,
+    passStartedCount: countEvents(events, "pass_started"),
+    passSucceededCount: countEvents(events, "pass_succeeded"),
+    passFailedCount: countEvents(events, "pass_failed"),
+    cooldownObservedCount: countEvents(events, "cooldown_observed"),
+    rateLimitCount: events.filter(isRateLimitEvent).length,
+    totalEstimatedRequestCost: sumEventNumbers(
+      events,
+      (event) => event.estimated_request_cost,
+    ),
+    totalRequestDelta: sumEventNumbers(events, requestDelta),
+    totalTweetDelta: sumEventNumbers(events, tweetDelta),
+    totalReturnedCount: sumEventNumbers(events, (event) => event.returned_count),
+    accounts,
+    readError: null,
+  } as const;
+}
+
+function emptyXAccountPoolReport(
+  available: boolean,
+  readError: string | null,
+  stateRows: readonly XAccountStateRow[] = [],
+) {
+  return {
+    available,
+    accountCount: stateRows.length,
+    eventCount: 0,
+    passStartedCount: 0,
+    passSucceededCount: 0,
+    passFailedCount: 0,
+    cooldownObservedCount: 0,
+    rateLimitCount: 0,
+    totalEstimatedRequestCost: 0,
+    totalRequestDelta: 0,
+    totalTweetDelta: 0,
+    totalReturnedCount: 0,
+    accounts: stateRows.map((state) =>
+      buildXAccountReport({
+        accountKey: accountBucketKey(state.id, state.username),
+        state,
+        events: [],
+      }),
+    ),
+    readError,
+  } as const;
+}
+
+function buildXAccountReport(params: {
+  readonly accountKey: string;
+  readonly state: XAccountStateRow | undefined;
+  readonly events: readonly XAccountUsageEventRow[];
+}) {
+  const username = params.state?.username ?? params.events[0]?.username ?? "";
+  const accountId = params.state?.id ?? params.events[0]?.account_id ?? null;
+  const eventTimes = params.events
+    .map((event) => event.occurred_at)
+    .filter((value): value is string => value !== undefined);
+  const latestEventAt = eventTimes.sort().at(-1) ?? null;
+
+  return {
+    accountFingerprint: fingerprint(`x-account:${accountId ?? params.accountKey}`),
+    usernameFingerprint:
+      username.trim().length === 0 ? null : fingerprint(`x-user:${username}`),
+    priorityRank: accountId ?? 9999,
+    prioritySource: "account_order",
+    status: params.state?.status ?? null,
+    busy: params.state?.busy === undefined ? null : params.state.busy === 1,
+    dailyRequests: params.state?.daily_requests ?? null,
+    dailyTweets: params.state?.daily_tweets ?? null,
+    lastResetDate: params.state?.last_reset_date ?? null,
+    lastUsedAt: params.state?.last_used_at ?? latestEventAt,
+    latestEventAt,
+    cooldownUntil: params.state?.available_until ?? null,
+    cooldownReasonFingerprint:
+      params.state?.cooldown_reason === null ||
+      params.state?.cooldown_reason === undefined
+        ? null
+        : fingerprint(params.state.cooldown_reason),
+    eventCount: params.events.length,
+    passStartedCount: countEvents(params.events, "pass_started"),
+    passSucceededCount: countEvents(params.events, "pass_succeeded"),
+    passFailedCount: countEvents(params.events, "pass_failed"),
+    cooldownObservedCount: countEvents(params.events, "cooldown_observed"),
+    rateLimitCount: params.events.filter(isRateLimitEvent).length,
+    estimatedRequestCost: sumEventNumbers(
+      params.events,
+      (event) => event.estimated_request_cost,
+    ),
+    requestDelta: sumEventNumbers(params.events, requestDelta),
+    tweetDelta: sumEventNumbers(params.events, tweetDelta),
+    fetchedCount: sumEventNumbers(params.events, (event) => event.fetched_count),
+    acceptedCount: sumEventNumbers(
+      params.events,
+      (event) => event.accepted_count,
+    ),
+    returnedCount: sumEventNumbers(
+      params.events,
+      (event) => event.returned_count,
+    ),
+  } as const;
+}
+
 function readXRunRows():
   | { readonly ok: true; readonly rows: readonly XRunRow[] }
   | { readonly ok: false; readonly error: string } {
@@ -837,6 +1192,173 @@ function readXRunRows():
   }
 }
 
+function readXAccountUsageEventRows():
+  | { readonly ok: true; readonly rows: readonly XAccountUsageEventRow[] }
+  | { readonly ok: false; readonly error: string } {
+  const sql = `
+    select
+      event_id,
+      event_type,
+      occurred_at,
+      account_id,
+      username,
+      estimated_request_cost,
+      requests_before,
+      requests_after,
+      tweets_before,
+      tweets_after,
+      fetched_count,
+      accepted_count,
+      returned_count,
+      failure_kind,
+      cooldown_reason,
+      reset_at
+    from account_usage_events
+    where date(occurred_at) = '${collectionDate}'
+    order by occurred_at asc, event_id asc
+  `;
+
+  try {
+    const output = execFileSync(
+      "sqlite3",
+      ["-json", xCollectorLedgerPath, sql],
+      {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+    const normalized = output.trim();
+
+    return {
+      ok: true,
+      rows:
+        normalized.length === 0
+          ? []
+          : (JSON.parse(normalized) as readonly XAccountUsageEventRow[]),
+    };
+  } catch (error) {
+    return { ok: false, error: errorMessage(error) };
+  }
+}
+
+function readXAccountStateRows():
+  | { readonly ok: true; readonly rows: readonly XAccountStateRow[] }
+  | { readonly ok: false; readonly error: string } {
+  const sql = `
+    select
+      id,
+      username,
+      status,
+      daily_requests,
+      daily_tweets,
+      last_reset_date,
+      case
+        when available_til is not null and available_til > 0
+        then datetime(available_til, 'unixepoch')
+        else null
+      end as available_until,
+      case
+        when last_used is not null and last_used > 0
+        then datetime(last_used, 'unixepoch')
+        else null
+      end as last_used_at,
+      cooldown_reason,
+      busy
+    from accounts
+    order by id asc
+  `;
+
+  try {
+    const output = execFileSync(
+      "sqlite3",
+      ["-json", xCollectorLedgerPath, sql],
+      {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+    const normalized = output.trim();
+
+    return {
+      ok: true,
+      rows:
+        normalized.length === 0
+          ? []
+          : (JSON.parse(normalized) as readonly XAccountStateRow[]),
+    };
+  } catch (error) {
+    return { ok: false, error: errorMessage(error) };
+  }
+}
+
+function accountBucketKey(
+  accountId: number | null | undefined,
+  username: string | null | undefined,
+): string {
+  if (accountId !== null && accountId !== undefined) {
+    return `id:${accountId}`;
+  }
+
+  const trimmed = username?.trim();
+  return trimmed === undefined || trimmed.length === 0
+    ? "unknown"
+    : `username:${trimmed}`;
+}
+
+function countEvents(
+  events: readonly XAccountUsageEventRow[],
+  eventType: string,
+): number {
+  return events.filter((event) => event.event_type === eventType).length;
+}
+
+function isRateLimitEvent(event: XAccountUsageEventRow): boolean {
+  const text = `${event.failure_kind ?? ""} ${event.cooldown_reason ?? ""}`
+    .trim()
+    .toLowerCase();
+
+  return (
+    text.includes("rate") ||
+    text.includes("limit") ||
+    text.includes("429") ||
+    text.includes("cooldown")
+  );
+}
+
+function sumEventNumbers(
+  events: readonly XAccountUsageEventRow[],
+  valueOf: (event: XAccountUsageEventRow) => number | null | undefined,
+): number {
+  return events.reduce((sum, event) => {
+    const value = valueOf(event);
+    return sum + (typeof value === "number" && Number.isFinite(value) ? value : 0);
+  }, 0);
+}
+
+function requestDelta(event: XAccountUsageEventRow): number {
+  return counterDelta(event.requests_before, event.requests_after);
+}
+
+function tweetDelta(event: XAccountUsageEventRow): number {
+  return counterDelta(event.tweets_before, event.tweets_after);
+}
+
+function counterDelta(
+  before: number | null | undefined,
+  after: number | null | undefined,
+): number {
+  if (
+    typeof before !== "number" ||
+    typeof after !== "number" ||
+    !Number.isFinite(before) ||
+    !Number.isFinite(after)
+  ) {
+    return 0;
+  }
+
+  return Math.max(after - before, 0);
+}
+
 function validateExistingReport(expectedCollectionDate: string): void {
   if (!existsSync(outputPath)) {
     throw new Error(
@@ -875,6 +1397,16 @@ function feedWindow(): {
     startInclusive: start.toISOString(),
     endExclusive: end.toISOString(),
   };
+}
+
+function isPublishedInsideTargetDate(row: FeedRow): boolean {
+  return row.publishedAt.toISOString().startsWith(`${collectionDate}T`);
+}
+
+function recordValue(value: unknown): Record<string, unknown> | undefined {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
 }
 
 function hasReadableText(row: FeedRow): boolean {
@@ -1070,6 +1602,10 @@ function readJson<TValue>(path: string): TValue {
 
 function hashText(value: string): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+function fingerprint(value: string): string {
+  return hashText(value).slice(0, 12);
 }
 
 function fingerprints(values: readonly string[]): readonly string[] {
