@@ -219,6 +219,75 @@ describe("selectUniqueTopReadCandidates", () => {
       "feed-reddit-4",
     ]);
   });
+
+  it("keeps weak-topic high-engagement Reddit evidence out of top reads", () => {
+    const result = selectUniqueTopReadCandidates(
+      [
+        story(
+          "reddit-gaming",
+          "The game industry is making me incredibly depressed and I'm done",
+          "c-reddit-gaming",
+          ["reddit"],
+        ),
+      ],
+      citations([citation("c-reddit-gaming", "feed-reddit-gaming", "reddit")]),
+      evidence([
+        evidenceItem(
+          "feed-reddit-gaming",
+          "reddit",
+          [
+            ["Score", "10,132"],
+            ["Comments", "2,700"],
+          ],
+          {
+            qualityScore: 0.79,
+            interestRelevanceScore: 0.38,
+            eligibleForTopRead: false,
+            needsLlmReview: true,
+            decision: "downrank",
+            flags: ["weak_topic_match"],
+            reason: "downrank because weak_topic_match",
+          },
+        ),
+      ]),
+      clusters(["reddit-gaming"]),
+    );
+
+    expect(result).toEqual([]);
+  });
+
+  it("hard-blocks weak_topic_match even if a stale verdict marks the item top-read eligible", () => {
+    const result = selectUniqueTopReadCandidates(
+      [
+        story(
+          "reddit-weak-topic",
+          "High engagement but weak topic match",
+          "c-reddit-weak-topic",
+          ["reddit"],
+        ),
+      ],
+      citations([
+        citation("c-reddit-weak-topic", "feed-reddit-weak-topic", "reddit"),
+      ]),
+      evidence([
+        evidenceItem(
+          "feed-reddit-weak-topic",
+          "reddit",
+          [
+            ["Score", "8,000"],
+            ["Comments", "1,400"],
+          ],
+          {
+            eligibleForTopRead: true,
+            flags: ["weak_topic_match"],
+          },
+        ),
+      ]),
+      clusters(["reddit-weak-topic"]),
+    );
+
+    expect(result).toEqual([]);
+  });
 });
 
 const story = (
@@ -284,6 +353,7 @@ const evidenceItem = (
   feedItemId: string,
   providerKey: string,
   metrics: readonly (readonly [string, string])[],
+  quality?: Partial<NonNullable<SummaryEvidenceItem["contentQuality"]>>,
 ): SummaryEvidenceItem => ({
   feedItemId,
   sourceItemId: `source-${feedItemId}`,
@@ -308,6 +378,7 @@ const evidenceItem = (
     decision: "promote",
     flags: [],
     reason: "Test quality signal",
+    ...quality,
   },
 });
 

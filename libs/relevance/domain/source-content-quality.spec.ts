@@ -230,4 +230,72 @@ describe("SourceContentQualityPolicy", () => {
     expect(verdict.needsLlmReview).toBe(true);
     expect(verdict.flags).toEqual(expect.arrayContaining(["weak_topic_match"]));
   });
+
+  it("does not match short AI topic terms inside unrelated words", () => {
+    const verdict = policy.evaluate({
+      providerKey: "reddit",
+      title: "The game industry is making me incredibly depressed and I'm done",
+      bodyPreview:
+        "Everything coming out this past month from Sony, Microsoft, Steam, GTA, Bethesda, Bungie, EVERYTHING has been a daily dose of end stage capitalism.",
+      canonicalUrl:
+        "https://www.reddit.com/r/gaming/comments/1ul3qtu/the_game_industry_is_making_me_incredibly/",
+      providerMetadata: {
+        kind: "reddit_post",
+        score: 10132,
+        subreddit: "gaming",
+        numComments: 2700,
+        searchQuery: "AI technology programming developer tools",
+      },
+    });
+
+    expect(verdict.decision).toBe("downrank");
+    expect(verdict.eligibleForSummary).toBe(true);
+    expect(verdict.eligibleForTopRead).toBe(false);
+    expect(verdict.needsLlmReview).toBe(true);
+    expect(verdict.flags).toEqual(expect.arrayContaining(["weak_topic_match"]));
+  });
+
+  it("does not let standalone AI satisfy a broad developer-tools query in an unrelated subreddit", () => {
+    const verdict = policy.evaluate({
+      providerKey: "reddit",
+      title: "AI generated game trailers are everywhere now",
+      bodyPreview:
+        "Players debate AI art in upcoming games without discussing code assistants or technical workflows.",
+      canonicalUrl: "https://www.reddit.com/r/gaming/comments/example/",
+      providerMetadata: {
+        kind: "reddit_post",
+        score: 9800,
+        subreddit: "gaming",
+        numComments: 1800,
+        searchQuery: "AI technology programming developer tools",
+      },
+    });
+
+    expect(verdict.decision).toBe("downrank");
+    expect(verdict.eligibleForSummary).toBe(true);
+    expect(verdict.eligibleForTopRead).toBe(false);
+    expect(verdict.flags).toEqual(expect.arrayContaining(["weak_topic_match"]));
+  });
+
+  it("allows standalone AI when the source community matches a strong query term", () => {
+    const verdict = policy.evaluate({
+      providerKey: "reddit",
+      title: "AI helper setup question",
+      bodyPreview:
+        "Discussion about configuring model-assisted code review in a production repo.",
+      canonicalUrl: "https://www.reddit.com/r/programming/comments/example/",
+      providerMetadata: {
+        kind: "reddit_post",
+        score: 312,
+        subreddit: "programming",
+        numComments: 49,
+        searchQuery: "AI technology programming developer tools",
+      },
+    });
+
+    expect(verdict.decision).toBe("promote");
+    expect(verdict.eligibleForSummary).toBe(true);
+    expect(verdict.eligibleForTopRead).toBe(true);
+    expect(verdict.flags).not.toContain("weak_topic_match");
+  });
 });

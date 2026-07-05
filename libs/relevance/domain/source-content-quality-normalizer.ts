@@ -46,11 +46,17 @@ export const normalizeSourceContentQualityInput = (
     urlOnly ||
     (/\b(?:watch|video|clip|demo|image|photo)\b/iu.test(textWithoutUrls) &&
       tokens.length < 8);
-  const normalizedText = normalizeText(textWithoutUrls);
   const topicTerms = topicTermsFromMetadata(input.providerMetadata);
+  const sourceCommunityTerms = sourceCommunityTermsFromMetadata(
+    input.providerMetadata,
+  );
   const weakTopicMatch =
     topicTerms.length > 0 &&
-    !topicTerms.some((term) => normalizedText.includes(term));
+    !hasTopicMatch({
+      topicTerms,
+      textTokens: tokens,
+      sourceCommunityTerms,
+    });
   const cryptoPromo = cryptoPromoPattern.test(text);
   const promoOffer = promoOfferPattern.test(text);
   const engagementBait = engagementBaitPattern.test(text) || promoOffer;
@@ -144,6 +150,81 @@ const readStringArray = (value: JsonValue | undefined): readonly string[] =>
         .filter((item): item is string => item !== undefined)
     : [];
 
+const sourceCommunityTermsFromMetadata = (
+  metadata: JsonObject | undefined,
+): readonly string[] =>
+  uniqueStable(
+    [
+      readString(metadata?.subreddit),
+      readString(metadata?.community),
+      readString(metadata?.channel),
+      readString(metadata?.forum),
+    ]
+      .filter((value): value is string => value !== undefined)
+      .flatMap(communityTopicTerms),
+  );
+
+const hasTopicMatch = (params: {
+  readonly topicTerms: readonly string[];
+  readonly textTokens: readonly string[];
+  readonly sourceCommunityTerms: readonly string[];
+}): boolean => {
+  const textTokenSet = new Set(params.textTokens);
+  const communityTokenSet = new Set(params.sourceCommunityTerms);
+  const strongTopicTerms = params.topicTerms.filter(
+    (term) => !isShortTopicTerm(term),
+  );
+
+  if (
+    strongTopicTerms.some((term) =>
+      topicTermVariants(term).some((variant) => textTokenSet.has(variant)),
+    )
+  ) {
+    return true;
+  }
+
+  const shortTextMatch = params.topicTerms
+    .filter(isShortTopicTerm)
+    .some((term) =>
+      topicTermVariants(term).some((variant) => textTokenSet.has(variant)),
+    );
+
+  if (!shortTextMatch) {
+    return false;
+  }
+
+  if (strongTopicTerms.length === 0) {
+    return true;
+  }
+
+  return strongTopicTerms.some((term) =>
+    topicTermVariants(term).some((variant) => communityTokenSet.has(variant)),
+  );
+};
+
+const topicTermVariants = (value: string): readonly string[] => {
+  const normalized = normalizeText(value.trim());
+  const aliases = topicTermAliases.get(normalized) ?? [];
+  const variants = [normalized, ...aliases];
+
+  return uniqueStable(variants);
+};
+
+const communityTopicTerms = (value: string): readonly string[] => {
+  const split = splitCompactCommunityName(value);
+
+  return uniqueStable([...extractSignalKeywords(split), ...tokenize(split)]);
+};
+
+const splitCompactCommunityName = (value: string): string =>
+  value
+    .replace(/[_-]+/gu, " ")
+    .replace(/([a-z])([A-Z])/gu, "$1 $2")
+    .replace(/([A-Z]+)([A-Z][a-z])/gu, "$1 $2");
+
+const isShortTopicTerm = (value: string): boolean =>
+  shortTopicTerms.has(normalizeText(value.trim()));
+
 const removeUrls = (value: string): string =>
   value.replace(urlPattern, " ").replace(/\s+/gu, " ").trim();
 
@@ -202,6 +283,33 @@ const trustedXAuthors = new Set([
   "nvidiaai",
   "openai",
   "sama",
+]);
+const topicTermAliases = new Map<string, readonly string[]>([
+  [
+    "ai",
+    [
+      "artificial",
+      "intelligence",
+      "llm",
+      "llms",
+      "gpt",
+      "openai",
+      "anthropic",
+      "claude",
+    ],
+  ],
+  ["ml", ["machine", "learning"]],
+  ["agent", ["agents"]],
+  ["agents", ["agent"]],
+  ["developer", ["developers"]],
+  ["developers", ["developer"]],
+  ["model", ["models"]],
+  ["models", ["model"]],
+  ["tool", ["tools"]],
+  ["tools", ["tool"]],
+  ["workflow", ["workflows"]],
+  ["workflows", ["workflow"]],
+  ["x", ["twitter"]],
 ]);
 const shortTopicTerms = new Set(["ai", "ml", "x"]);
 const topicOperatorTerms = new Set(["and", "or", "not", "top", "latest"]);

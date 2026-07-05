@@ -34,6 +34,7 @@ const topReadHardBlockQualityFlags = new Set([
   "rumor_only",
   "tco_only",
   "url_only",
+  "weak_topic_match",
   "weak_interest_match",
 ]);
 
