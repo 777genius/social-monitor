@@ -348,6 +348,10 @@ class FakeReaderSummaryArtifactRepository implements ReaderSummaryArtifactReposi
       }) ?? null
     );
   }
+
+  async findRejectedDebugById(): Promise<null> {
+    return null;
+  }
 }
 
 class FakeReaderSummaryFreshnessProbe implements ReaderSummaryFreshnessProbePort {

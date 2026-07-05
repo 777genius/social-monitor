@@ -51,6 +51,7 @@ import { PrismaReaderSummaryTopicRecommendationDecisionRepository } from "../../
 import { BuildReaderSummaryTopicMapUseCase } from "../../features/build-reader-summary-topic-map/build-reader-summary-topic-map.use-case";
 import { ExecuteReaderSummaryJobUseCase } from "../../features/execute-reader-summary-job/execute-reader-summary-job.use-case";
 import { GetReaderSummaryJobStatusUseCase } from "../../features/get-reader-summary-job-status/get-reader-summary-job-status.use-case";
+import { GetReaderSummaryQualityRejectionUseCase } from "../../features/get-reader-summary-quality-rejection/get-reader-summary-quality-rejection.use-case";
 import { GetReaderSummaryUseCase } from "../../features/get-reader-summary/get-reader-summary.use-case";
 import { ListReaderSummaryPeriodsUseCase } from "../../features/list-reader-summary-periods/list-reader-summary-periods.use-case";
 import { ListReaderSummariesUseCase } from "../../features/list-reader-summaries/list-reader-summaries.use-case";
@@ -454,6 +455,18 @@ export const summaryReaderSummaryProviders: Provider[] = [
     useFactory: (readerSummaryJobs: ReaderSummaryJobRepositoryPort) =>
       new GetReaderSummaryJobStatusUseCase(readerSummaryJobs),
     inject: [READER_SUMMARY_JOB_REPOSITORY],
+  },
+  {
+    provide: GetReaderSummaryQualityRejectionUseCase,
+    useFactory: (
+      readerSummaryJobs: ReaderSummaryJobRepositoryPort,
+      readerSummaryArtifacts: ReaderSummaryArtifactRepositoryPort,
+    ) =>
+      new GetReaderSummaryQualityRejectionUseCase(
+        readerSummaryJobs,
+        readerSummaryArtifacts,
+      ),
+    inject: [READER_SUMMARY_JOB_REPOSITORY, READER_SUMMARY_ARTIFACT_REPOSITORY],
   },
 ];
 

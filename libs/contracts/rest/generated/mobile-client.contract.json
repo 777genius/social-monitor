@@ -76,8 +76,8 @@
     "enumStrings": "preserve_raw_value_and_map_to_unknown_in_ui_layer",
     "additionalJsonProperties": "ignore_for_strong_models_preserve_in_raw_payload_when_available"
   },
-  "operationCount": 88,
-  "mobileReadyOperationCount": 88,
+  "operationCount": 89,
+  "mobileReadyOperationCount": 89,
   "devOnlyWorkspaceRoleOperations": [],
   "mobileReadyOperations": [
     "ApiKeysController_create",
@@ -111,6 +111,7 @@
     "ReaderSummaryController_get",
     "ReaderSummaryController_list",
     "ReaderSummaryController_listPeriods",
+    "ReaderSummaryJobController_getQualityRejection",
     "ReaderSummaryJobController_getStatus",
     "ReaderSummaryRequestController_create",
     "ReaderSummaryTopicRecommendationController_decide",
@@ -1451,6 +1452,36 @@
       "requestBodySchemaRef": null,
       "successResponseSchemaRefs": [
         "#/components/schemas/ListReaderSummaryPeriodsResponseDto"
+      ]
+    },
+    {
+      "operationId": "ReaderSummaryJobController_getQualityRejection",
+      "clientName": "ReaderSummaryJobController_getQualityRejection",
+      "method": "GET",
+      "path": "/reader-summary-jobs/{readerSummaryJobId}/quality-rejection",
+      "tags": [
+        "reader-summaries"
+      ],
+      "summary": "Get safe quality rejection diagnostics for a readerSummary job.",
+      "pathParameters": [
+        "readerSummaryJobId"
+      ],
+      "queryParameters": [],
+      "requiredHeaders": [
+        "x-tenant-id",
+        "x-workspace-id"
+      ],
+      "optionalHeaders": [
+        "authorization",
+        "x-workspace-role"
+      ],
+      "requiresTenantWorkspace": true,
+      "supportsBearerApiKey": true,
+      "usesDevOnlyWorkspaceRoleHeader": true,
+      "devOnlyWorkspaceRoleRequired": false,
+      "requestBodySchemaRef": null,
+      "successResponseSchemaRefs": [
+        "#/components/schemas/ReaderSummaryQualityRejectionResponseDto"
       ]
     },
     {

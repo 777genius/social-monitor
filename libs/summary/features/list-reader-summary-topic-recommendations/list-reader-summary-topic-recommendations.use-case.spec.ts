@@ -166,6 +166,10 @@ class FakeReaderSummaryArtifactRepository
   async findById(): Promise<ReaderSummaryArtifact | null> {
     return null;
   }
+
+  async findRejectedDebugById(): Promise<null> {
+    return null;
+  }
 }
 
 class FakeTopicCollectionMetrics

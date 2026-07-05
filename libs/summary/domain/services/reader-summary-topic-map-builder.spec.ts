@@ -159,6 +159,69 @@ describe("buildReaderSummaryTopicMap", () => {
     expect(new Set(map.nodes.map((node) => node.groupId)).size).toBe(2);
   });
 
+  it("keeps flat single-item topic scores visually separable", () => {
+    const map = buildReaderSummaryTopicMap({
+      clusters: [
+        storyCluster({
+          id: "story:first",
+          representativeFeedItemId: "feed-first",
+          score: 1,
+        }),
+        storyCluster({
+          id: "story:second",
+          representativeFeedItemId: "feed-second",
+          score: 1,
+        }),
+        storyCluster({
+          id: "story:third",
+          representativeFeedItemId: "feed-third",
+          score: 1,
+        }),
+        storyCluster({
+          id: "story:fourth",
+          representativeFeedItemId: "feed-fourth",
+          score: 1,
+        }),
+      ],
+      selectedEvidence: [
+        evidenceItem({
+          feedItemId: "feed-first",
+          title: "First ranked topic",
+          providerKey: "hacker-news",
+        }),
+        evidenceItem({
+          feedItemId: "feed-second",
+          title: "Second ranked topic",
+          providerKey: "reddit",
+        }),
+        evidenceItem({
+          feedItemId: "feed-third",
+          title: "Third ranked topic",
+          providerKey: "rss",
+        }),
+        evidenceItem({
+          feedItemId: "feed-fourth",
+          title: "Fourth ranked topic",
+          providerKey: "x-twitter",
+        }),
+      ],
+      topStories: [],
+      citationMap: [
+        citation("c1", "feed-first", "hacker-news"),
+        citation("c2", "feed-second", "reddit"),
+        citation("c3", "feed-third", "rss"),
+        citation("c4", "feed-fourth", "x-twitter"),
+      ],
+    });
+
+    expect(map.nodes.map((node) => Math.round(node.popularityScore))).toEqual([
+      100, 74, 48, 22,
+    ]);
+    expect(map.nodes[0]?.sizeWeight).toBeGreaterThan(
+      map.nodes[3]?.sizeWeight ?? 0,
+    );
+  });
+
   it("does not surface source or UI meta labels as topic node labels", () => {
     const map = buildReaderSummaryTopicMap({
       clusters: [

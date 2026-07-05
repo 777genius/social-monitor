@@ -4,12 +4,14 @@ import type {
   ReaderSummaryClaimRisk,
 } from "../entities/reader-summary-claim";
 import type { ReaderSummaryRisk, TopRead } from "../entities/top-read";
-import { compactUnique } from "../value-objects/summary-text";
+import type { SummaryEvidenceItem } from "../value-objects/summary-evidence-item";
+import { compactUnique, nonEmpty } from "../value-objects/summary-text";
 
 export type ReaderSummaryClaimBoardInput = {
   readonly topReads: readonly TopRead[];
   readonly risksAndUnknowns: readonly ReaderSummaryRisk[];
   readonly citationMap: readonly ReaderSummaryCitation[];
+  readonly selectedEvidence?: readonly SummaryEvidenceItem[];
 };
 
 const maxClaimBoardItems = 7;
@@ -24,10 +26,22 @@ export const buildReaderSummaryClaimBoard = (
       (citation) => [citation.citationId, citation] as const,
     ),
   );
+  const evidenceByFeedItemId = new Map(
+    (input.selectedEvidence ?? []).map(
+      (evidence) => [evidence.feedItemId, evidence] as const,
+    ),
+  );
 
   return input.topReads
     .slice(0, maxClaimBoardItems)
-    .map((read) => claimFromTopRead(read, input.risksAndUnknowns, citationById))
+    .map((read) =>
+      claimFromTopRead(
+        read,
+        input.risksAndUnknowns,
+        citationById,
+        evidenceByFeedItemId,
+      ),
+    )
     .filter((claim): claim is ReaderSummaryClaim => claim !== undefined);
 };
 
@@ -35,6 +49,7 @@ const claimFromTopRead = (
   read: TopRead,
   risksAndUnknowns: readonly ReaderSummaryRisk[],
   citationById: ReadonlyMap<string, ReaderSummaryCitation>,
+  evidenceByFeedItemId: ReadonlyMap<string, SummaryEvidenceItem>,
 ): ReaderSummaryClaim | undefined => {
   const citationIds = compactUnique(read.citationIds).filter((citationId) =>
     citationById.has(citationId),
@@ -46,15 +61,13 @@ const claimFromTopRead = (
       return citation === undefined
         ? undefined
         : {
-            title: read.title,
+            title: evidenceTitle(read, citation, evidenceByFeedItemId),
             providerKey: citation.providerKey,
             citationId,
             canonicalUrl: citation.canonicalUrl ?? read.canonicalUrl,
           };
     })
-    .filter(
-      (item): item is NonNullable<typeof item> => item !== undefined,
-    )
+    .filter((item): item is NonNullable<typeof item> => item !== undefined)
     .slice(0, maxClaimEvidenceItems);
 
   if (read.title.trim().length === 0 || evidence.length === 0) {
@@ -68,6 +81,16 @@ const claimFromTopRead = (
     risks: claimRisks(read, risksAndUnknowns).slice(0, maxClaimRisks),
     citationIds,
   };
+};
+
+const evidenceTitle = (
+  read: TopRead,
+  citation: ReaderSummaryCitation,
+  evidenceByFeedItemId: ReadonlyMap<string, SummaryEvidenceItem>,
+): string => {
+  const evidence = evidenceByFeedItemId.get(citation.feedItemId);
+
+  return nonEmpty(evidence?.title ?? "", read.title);
 };
 
 const claimRisks = (

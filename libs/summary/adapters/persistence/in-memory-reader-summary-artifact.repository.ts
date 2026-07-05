@@ -7,17 +7,43 @@ import type {
   ListReaderSummaryArtifactsResult,
   ListReaderSummaryPeriodSummariesResult,
   ReaderSummaryArtifactRepositoryPort,
+  ReaderSummaryRejectedArtifactDebug,
 } from "../../ports";
+
+type ReaderSummaryPublicationDecisionForPersistence = NonNullable<
+  NonNullable<
+    Parameters<ReaderSummaryArtifactRepositoryPort["save"]>[1]
+  >["publicationDecision"]
+>;
 
 export class InMemoryReaderSummaryArtifactRepository implements ReaderSummaryArtifactRepositoryPort {
   private readonly artifactsById = new Map<string, ReaderSummaryArtifact>();
+  private readonly statusesById = new Map<string, ReaderSummaryArtifactVisibility>();
+  private readonly publicationDecisionsById = new Map<
+    string,
+    ReaderSummaryPublicationDecisionForPersistence
+  >();
 
-  async save(artifact: ReaderSummaryArtifact): Promise<void> {
+  async save(
+    artifact: ReaderSummaryArtifact,
+    options?: Parameters<ReaderSummaryArtifactRepositoryPort["save"]>[1],
+  ): Promise<void> {
     const snapshot = artifact.toSnapshot();
-    this.artifactsById.set(
-      `${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.readerSummaryId}`,
-      artifact,
-    );
+    const key = artifactKey(snapshot);
+    const visibility =
+      options?.publicationDecision?.status === "rejected"
+        ? "rejected"
+        : "visible";
+
+    if (visibility === "visible") {
+      this.supersedeMatchingVisibleArtifacts(snapshot, key);
+    }
+
+    this.artifactsById.set(key, artifact);
+    this.statusesById.set(key, visibility);
+    if (options?.publicationDecision !== undefined) {
+      this.publicationDecisionsById.set(key, options.publicationDecision);
+    }
   }
 
   async list(
@@ -27,8 +53,10 @@ export class InMemoryReaderSummaryArtifactRepository implements ReaderSummaryArt
     const allItems = [...this.artifactsById.values()]
       .filter((artifact) => {
         const snapshot = artifact.toSnapshot();
+        const key = artifactKey(snapshot);
 
         return (
+          this.statusesById.get(key) === "visible" &&
           snapshot.tenantId === query.tenantId &&
           snapshot.workspaceId === query.workspaceId &&
           (query.scope === undefined ||
@@ -93,17 +121,197 @@ export class InMemoryReaderSummaryArtifactRepository implements ReaderSummaryArt
   async findById(
     params: Parameters<ReaderSummaryArtifactRepositoryPort["findById"]>[0],
   ): Promise<ReaderSummaryArtifact | null> {
-    return (
-      this.artifactsById.get(
-        `${params.tenantId}:${params.workspaceId}:${params.readerSummaryId}`,
-      ) ?? null
+    const key = `${params.tenantId}:${params.workspaceId}:${params.readerSummaryId}`;
+
+    if (this.statusesById.get(key) === "rejected") {
+      return null;
+    }
+
+    return this.artifactsById.get(key) ?? null;
+  }
+
+  async findRejectedDebugById(
+    params: Parameters<
+      ReaderSummaryArtifactRepositoryPort["findRejectedDebugById"]
+    >[0],
+  ): Promise<ReaderSummaryRejectedArtifactDebug | null> {
+    const key = `${params.tenantId}:${params.workspaceId}:${params.readerSummaryId}`;
+    const artifact = this.artifactsById.get(key);
+    if (artifact === undefined || this.statusesById.get(key) !== "rejected") {
+      return null;
+    }
+
+    return rejectedDebugFromArtifact(
+      artifact,
+      this.publicationDecisionsById.get(key),
     );
   }
 
   all(): readonly ReaderSummaryArtifact[] {
     return [...this.artifactsById.values()];
   }
+
+  private supersedeMatchingVisibleArtifacts(
+    snapshot: ReturnType<ReaderSummaryArtifact["toSnapshot"]>,
+    currentKey: string,
+  ): void {
+    for (const [key, artifact] of this.artifactsById.entries()) {
+      if (key === currentKey || this.statusesById.get(key) !== "visible") {
+        continue;
+      }
+
+      if (sameReaderSummaryCanonicalSlot(artifact.toSnapshot(), snapshot)) {
+        this.statusesById.set(key, "superseded");
+      }
+    }
+  }
 }
+
+type ReaderSummaryArtifactVisibility = "visible" | "rejected" | "superseded";
+
+const rejectedDebugFromArtifact = (
+  artifact: ReaderSummaryArtifact,
+  publicationDecision: ReaderSummaryPublicationDecisionForPersistence | undefined,
+): ReaderSummaryRejectedArtifactDebug => {
+  const snapshot = artifact.toSnapshot();
+
+  return {
+    tenantId: snapshot.tenantId,
+    workspaceId: snapshot.workspaceId,
+    readerSummaryId: snapshot.readerSummaryId,
+    scope: snapshot.scope,
+    period: snapshot.period,
+    headline: snapshot.headline,
+    canonicalScore: publicationDecision?.canonicalScore ?? 0,
+    shadow: shadowReportFromDecision(publicationDecision),
+    reasonCodes:
+      publicationDecision?.status === "rejected"
+        ? publicationDecision.reasonCodes
+        : [],
+    reasons: publicationDecision?.reasons ?? [],
+    violations: rejectionViolationsFromDecision(publicationDecision),
+    topReads: rejectedDebugTopReads(snapshot),
+    citations: snapshot.citationMap.map((citation) => ({
+      citationId: citation.citationId,
+      feedItemId: citation.feedItemId,
+      sourceItemId: citation.sourceItemId,
+      providerKey: citation.providerKey,
+      canonicalUrl: citation.canonicalUrl,
+    })),
+  };
+};
+
+const rejectedDebugTopReads = (
+  snapshot: ReturnType<ReaderSummaryArtifact["toSnapshot"]>,
+): ReaderSummaryRejectedArtifactDebug["topReads"] => {
+  const contentTopReads = snapshot.content?.topReads;
+  if (contentTopReads !== undefined && contentTopReads.length > 0) {
+    return contentTopReads.map((item) => ({
+      title: item.title,
+      providerKey: item.providerKey,
+      canonicalUrl: item.canonicalUrl,
+      citationIds: item.citationIds,
+    }));
+  }
+
+  const citationById = new Map(
+    snapshot.citationMap.map((citation) => [
+      citation.citationId,
+      citation,
+    ] as const),
+  );
+
+  return snapshot.topStories.map((item) => ({
+    title: item.title,
+    providerKey: item.providerKeys[0],
+    canonicalUrl: firstCanonicalUrl(item.citationIds, citationById),
+    citationIds: item.citationIds,
+  }));
+};
+
+const firstCanonicalUrl = (
+  citationIds: readonly string[],
+  citationById: ReadonlyMap<
+    string,
+    ReturnType<ReaderSummaryArtifact["toSnapshot"]>["citationMap"][number]
+  >,
+): string | undefined => {
+  for (const citationId of citationIds) {
+    const canonicalUrl = citationById.get(citationId)?.canonicalUrl;
+    if (canonicalUrl !== undefined) {
+      return canonicalUrl;
+    }
+  }
+
+  return undefined;
+};
+
+const rejectionViolationsFromDecision = (
+  publicationDecision: ReaderSummaryPublicationDecisionForPersistence | undefined,
+): ReaderSummaryRejectedArtifactDebug["violations"] => {
+  if (publicationDecision?.status !== "rejected") {
+    return [];
+  }
+
+  const findings = publicationDecisionFindings(publicationDecision);
+
+  if (findings.length > 0) {
+    return findings.map((finding) => ({
+      code: finding.code,
+      reason: finding.reason,
+      topReadTitle: finding.topReadTitle,
+      citationId: finding.citationId,
+      feedItemId: finding.feedItemId,
+      sourceItemId: finding.sourceItemId,
+      providerKey: finding.providerKey,
+      canonicalUrl: finding.canonicalUrl,
+    }));
+  }
+
+  return publicationDecision.reasons.map((reason, index) => ({
+    code: publicationDecision.reasonCodes[index] ?? "technical_leakage",
+    reason,
+  }));
+};
+
+const publicationDecisionFindings = (
+  publicationDecision: ReaderSummaryPublicationDecisionForPersistence,
+): ReaderSummaryRejectedArtifactDebug["violations"] =>
+  "findings" in publicationDecision && Array.isArray(publicationDecision.findings)
+    ? publicationDecision.findings
+    : [];
+
+const shadowReportFromDecision = (
+  publicationDecision: ReaderSummaryPublicationDecisionForPersistence | undefined,
+): ReaderSummaryRejectedArtifactDebug["shadow"] => {
+  const shadow =
+    publicationDecision !== undefined && "shadow" in publicationDecision
+      ? publicationDecision.shadow
+      : undefined;
+
+  return {
+    mode: "shadow",
+    riskScore: shadow?.riskScore ?? 0,
+    signals: shadow?.signals ?? [],
+  };
+};
+
+const artifactKey = (
+  snapshot: ReturnType<ReaderSummaryArtifact["toSnapshot"]>,
+): string =>
+  `${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.readerSummaryId}`;
+
+const sameReaderSummaryCanonicalSlot = (
+  left: ReturnType<ReaderSummaryArtifact["toSnapshot"]>,
+  right: ReturnType<ReaderSummaryArtifact["toSnapshot"]>,
+): boolean =>
+  left.tenantId === right.tenantId &&
+  left.workspaceId === right.workspaceId &&
+  readerSummaryScopeKey(left.scope) === readerSummaryScopeKey(right.scope) &&
+  left.period.cadence === right.period.cadence &&
+  left.period.startedAt.getTime() === right.period.startedAt.getTime() &&
+  left.period.endedAt.getTime() === right.period.endedAt.getTime() &&
+  left.period.timezone === right.period.timezone;
 
 const compareReaderSummaryArtifacts = (
   left: ReaderSummaryArtifact,

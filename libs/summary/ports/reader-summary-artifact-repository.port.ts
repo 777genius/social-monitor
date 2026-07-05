@@ -4,6 +4,7 @@ import type {
   ReaderSummaryArtifact,
   ReaderSummaryCadence,
   ReaderSummaryPeriod,
+  ReaderSummaryPublicationDecision,
   ReaderSummaryScope,
 } from "../domain";
 
@@ -43,8 +44,57 @@ export type ListReaderSummaryPeriodSummariesResult = {
   readonly nextCursor?: string;
 };
 
+export type ReaderSummaryRejectedArtifactDebug = {
+  readonly tenantId: TenantId;
+  readonly workspaceId: WorkspaceId;
+  readonly readerSummaryId: string;
+  readonly scope: ReaderSummaryScope;
+  readonly period: ReaderSummaryPeriod;
+  readonly headline: string;
+  readonly canonicalScore: number;
+  readonly shadow: {
+    readonly mode: "shadow";
+    readonly riskScore: number;
+    readonly signals: readonly {
+      readonly code: string;
+      readonly score: number;
+      readonly reason: string;
+    }[];
+  };
+  readonly reasonCodes: readonly string[];
+  readonly reasons: readonly string[];
+  readonly violations: readonly {
+    readonly code: string;
+    readonly reason: string;
+    readonly topReadTitle?: string;
+    readonly citationId?: string;
+    readonly feedItemId?: string;
+    readonly sourceItemId?: string;
+    readonly providerKey?: string;
+    readonly canonicalUrl?: string;
+  }[];
+  readonly topReads: readonly {
+    readonly title: string;
+    readonly providerKey?: string;
+    readonly canonicalUrl?: string;
+    readonly citationIds: readonly string[];
+  }[];
+  readonly citations: readonly {
+    readonly citationId: string;
+    readonly feedItemId: string;
+    readonly sourceItemId: string;
+    readonly providerKey: string;
+    readonly canonicalUrl?: string;
+  }[];
+};
+
 export interface ReaderSummaryArtifactRepositoryPort {
-  save(artifact: ReaderSummaryArtifact): Promise<void>;
+  save(
+    artifact: ReaderSummaryArtifact,
+    options?: {
+      readonly publicationDecision?: ReaderSummaryPublicationDecision;
+    },
+  ): Promise<void>;
   list(
     query: ListReaderSummaryArtifactsQuery,
   ): Promise<ListReaderSummaryArtifactsResult>;
@@ -56,4 +106,9 @@ export interface ReaderSummaryArtifactRepositoryPort {
     readonly workspaceId: WorkspaceId;
     readonly readerSummaryId: string;
   }): Promise<ReaderSummaryArtifact | null>;
+  findRejectedDebugById(params: {
+    readonly tenantId: TenantId;
+    readonly workspaceId: WorkspaceId;
+    readonly readerSummaryId: string;
+  }): Promise<ReaderSummaryRejectedArtifactDebug | null>;
 }

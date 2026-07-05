@@ -1350,6 +1350,36 @@ export const mobileApiOperations = [
     ]
   },
   {
+    "operationId": "ReaderSummaryJobController_getQualityRejection",
+    "clientName": "ReaderSummaryJobController_getQualityRejection",
+    "method": "GET",
+    "path": "/reader-summary-jobs/{readerSummaryJobId}/quality-rejection",
+    "tags": [
+      "reader-summaries"
+    ],
+    "summary": "Get safe quality rejection diagnostics for a readerSummary job.",
+    "pathParameters": [
+      "readerSummaryJobId"
+    ],
+    "queryParameters": [],
+    "requiredHeaders": [
+      "x-tenant-id",
+      "x-workspace-id"
+    ],
+    "optionalHeaders": [
+      "authorization",
+      "x-workspace-role"
+    ],
+    "requiresTenantWorkspace": true,
+    "supportsBearerApiKey": true,
+    "usesDevOnlyWorkspaceRoleHeader": true,
+    "devOnlyWorkspaceRoleRequired": false,
+    "requestBodySchemaRef": null,
+    "successResponseSchemaRefs": [
+      "#/components/schemas/ReaderSummaryQualityRejectionResponseDto"
+    ]
+  },
+  {
     "operationId": "ReaderSummaryJobController_getStatus",
     "clientName": "ReaderSummaryJobController_getStatus",
     "method": "GET",

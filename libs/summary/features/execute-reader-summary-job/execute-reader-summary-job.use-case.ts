@@ -15,6 +15,7 @@ import {
   buildReaderSummary,
   defaultReaderSummaryGenerationPolicy,
   ReaderSummaryArtifact,
+  ReaderSummaryPublicationPolicy,
   resolveEffectiveReaderSummaryPolicy,
   type ReaderSummaryContextArtifact,
   type ReaderSummaryJob,
@@ -43,7 +44,10 @@ import type { ExecuteReaderSummaryJobResult } from "./execute-reader-summary-job
 
 type ExecuteReaderSummaryJobFailure = DomainError | Error;
 type ReaderSummaryModelPipelineResult = Result<
-  { readonly artifact: ReaderSummaryArtifact },
+  {
+    readonly artifact: ReaderSummaryArtifact;
+    readonly evidence: SummaryEvidenceSelection;
+  },
   ReaderSummaryModelFailure
 >;
 type ReaderSummaryContextBuildResult = {
@@ -78,6 +82,7 @@ export class ExecuteReaderSummaryJobUseCase {
     private readonly contextProvider: ReaderSummaryContextProviderPort = NOOP_READER_SUMMARY_CONTEXT_PROVIDER,
     private readonly userSummaryPreferences: UserSummaryPreferenceReaderPort = NOOP_USER_SUMMARY_PREFERENCE_READER,
     private readonly topicMapBuilder: BuildReaderSummaryTopicMapUseCase = new BuildReaderSummaryTopicMapUseCase(),
+    private readonly publicationPolicy: ReaderSummaryPublicationPolicy = new ReaderSummaryPublicationPolicy(),
   ) {}
 
   async execute(
@@ -169,7 +174,29 @@ export class ExecuteReaderSummaryJobUseCase {
         );
       }
 
-      await this.readerSummaryArtifacts.save(result.value.artifact);
+      const publicationDecision = this.publicationPolicy.evaluate({
+        artifact: result.value.artifact,
+        evidence: result.value.evidence,
+      });
+      await this.readerSummaryArtifacts.save(result.value.artifact, {
+        publicationDecision,
+      });
+
+      if (publicationDecision.status === "rejected") {
+        const artifactSnapshot = result.value.artifact.toSnapshot();
+        const rejectedJob = runningJob.rejectForQuality({
+          rejectedAt: this.clock.now(),
+          readerSummaryId: artifactSnapshot.readerSummaryId,
+          failureReason: `Reader summary artifact failed pre-publish quality gate: ${publicationDecision.reasons.join("; ")}`,
+        });
+        await this.readerSummaryJobs.save(rejectedJob);
+
+        return ok({
+          readerSummaryJobId: rejectedJob.toSnapshot().id,
+          status: "quality_rejected",
+          readerSummaryId: artifactSnapshot.readerSummaryId,
+        });
+      }
 
       const artifactSnapshot = result.value.artifact.toSnapshot();
       const finalJob = artifactSnapshot.qualityFlags.includes("no_signal")
@@ -319,7 +346,7 @@ export class ExecuteReaderSummaryJobUseCase {
       ...draft,
     });
 
-    return ok({ artifact });
+    return ok({ artifact, evidence });
   }
 
   private async withTopicMap(

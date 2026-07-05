@@ -65,14 +65,22 @@ export class RequestReaderSummaryResponseDto {
   declare readonly period: ReaderSummaryPeriodDto;
 
   @ApiProperty({
-    enum: ["requested", "running", "completed", "no_signal", "failed"],
+    enum: [
+      "requested",
+      "running",
+      "completed",
+      "no_signal",
+      "failed",
+      "quality_rejected",
+    ],
   })
   declare readonly status:
     | "requested"
     | "running"
     | "completed"
     | "no_signal"
-    | "failed";
+    | "failed"
+    | "quality_rejected";
 
   @ApiProperty()
   declare readonly created: boolean;

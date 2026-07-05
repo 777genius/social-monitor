@@ -61,7 +61,11 @@ export class ExecuteReaderSummaryJobCommandHandler {
           throw result.error;
         }
 
-        this.recordMetric(completionMetricStatus(result.value.status));
+        const metricStatus = completionMetricStatus(result.value.status);
+        this.recordMetric(metricStatus);
+        if (metricStatus === "quality_rejected") {
+          this.recordFailureClassMetric("quality_rejected");
+        }
         return {
           readerSummaryJobId: result.value.readerSummaryJobId,
           status: result.value.status,
@@ -92,7 +96,8 @@ export class ExecuteReaderSummaryJobCommandHandler {
     this.metrics.incrementCounter({
       name: "summary_job_failures_total",
       labels: {
-        failure_class: classifyFailure(error),
+        failure_class:
+          error === "quality_rejected" ? "quality_rejected" : classifyFailure(error),
         job_type: "readerSummary",
         worker: "intelligence-worker",
       },
@@ -101,7 +106,11 @@ export class ExecuteReaderSummaryJobCommandHandler {
 }
 
 type ReaderSummaryJobMetricStatus =
-  "started" | "succeeded" | "failed" | "no_signal";
+  | "started"
+  | "succeeded"
+  | "failed"
+  | "no_signal"
+  | "quality_rejected";
 
 const completionMetricStatus = (
   status: ReaderSummaryJobStatus,
@@ -114,6 +123,10 @@ const completionMetricStatus = (
     return "no_signal";
   }
 
+  if (status === "quality_rejected") {
+    return "quality_rejected";
+  }
+
   return "succeeded";
 };
 
@@ -122,10 +135,15 @@ const classifyFailure = (
 ):
   | "budget_exceeded"
   | "citation_validation_failed"
+  | "quality_rejected"
   | "worker_conflict"
   | "system_failure" => {
   if (error instanceof DomainError) {
     const kind = error.details.kind;
+
+    if (kind === "quality_rejected") {
+      return "quality_rejected";
+    }
 
     if (kind === "budget_exceeded") {
       return "budget_exceeded";

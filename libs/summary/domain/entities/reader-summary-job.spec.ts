@@ -65,4 +65,47 @@ describe("ReaderSummaryJob", () => {
       }),
     ).toThrow("Reader summary job can only retry from failed status");
   });
+
+  it("treats quality rejection as non-retryable terminal outcome with artifact diagnostics", () => {
+    const requestedAt = new Date("2026-06-22T10:00:00.000Z");
+    const startedAt = new Date("2026-06-22T10:01:00.000Z");
+    const rejectedAt = new Date("2026-06-22T10:02:00.000Z");
+
+    const rejected = ReaderSummaryJob.request({
+      id: "reader-summary-job-quality-rejected",
+      tenantId: tenantId("tenant-reader-summary-job-quality-rejected"),
+      workspaceId: workspaceId("workspace-reader-summary-job-quality-rejected"),
+      scope: { type: "workspace" },
+      period,
+      idempotencyKey: "reader-summary-job-quality-rejected-key",
+      requestedAt,
+    })
+      .start({ startedAt })
+      .rejectForQuality({
+        rejectedAt,
+        readerSummaryId: "reader-summary-rejected-1",
+        failureReason: "Reader summary failed pre-publish quality gate.",
+      });
+
+    expect(rejected.toSnapshot()).toEqual(
+      expect.objectContaining({
+        status: "quality_rejected",
+        readerSummaryId: "reader-summary-rejected-1",
+        failedAt: rejectedAt,
+      }),
+    );
+    expect(() =>
+      rejected.retry({
+        requestedAt: new Date("2026-06-22T10:03:00.000Z"),
+      }),
+    ).toThrow("Reader summary job can only retry from failed status");
+    expect(() =>
+      ReaderSummaryJob.rehydrate({
+        ...rejected.toSnapshot(),
+        readerSummaryId: undefined,
+      }),
+    ).toThrow(
+      "Quality rejected reader summary job must reference a rejected artifact",
+    );
+  });
 });

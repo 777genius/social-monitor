@@ -7,13 +7,16 @@ import {
 } from "@social-monitor/shared-kernel";
 
 import {
+  emptyReaderSummaryTopicMap,
   type ReaderSummaryArtifact,
+  type ReaderSummaryPublicationDecision,
   ReaderSummaryJob,
   type ReaderSummaryPeriod,
   type ReaderSummaryPolicy,
   type SummaryEvidenceSelection,
   interestReaderSummaryScope,
 } from "../../domain";
+import type { BuildReaderSummaryTopicMapUseCase } from "../build-reader-summary-topic-map/build-reader-summary-topic-map.use-case";
 import type {
   ListReaderSummaryPeriodSummariesResult,
   ProviderReaderSummaryAttempt,
@@ -204,9 +207,100 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
       }),
     );
   });
+
+  it("rejects a generated artifact before publish when top reads fail source quality", async () => {
+    const tenant = tenantId("tenant-reader-summary-use-case");
+    const workspace = workspaceId("workspace-reader-summary-use-case");
+    const jobs = new FakeReaderSummaryJobRepository();
+    const artifacts = new FakeReaderSummaryArtifactRepository();
+    const events = new CapturingSummaryEventPublisher();
+
+    await jobs.save(
+      ReaderSummaryJob.request({
+        id: "reader-job-rejected",
+        tenantId: tenant,
+        workspaceId: workspace,
+        scope: interestReaderSummaryScope("interest-reader-ai"),
+        period: readerSummaryPeriod,
+        idempotencyKey: "reader-job-key-rejected",
+        requestedAt: new Date("2026-06-26T08:00:00.000Z"),
+      }),
+    );
+
+    const result = await new ExecuteReaderSummaryJobUseCase(
+      jobs,
+      artifacts,
+      new EmptyReaderSummaryPolicyRepository(),
+      {
+        async select() {
+          return makeReaderEvidenceSelection({
+            firstContentQuality: {
+              qualityScore: 0.2,
+              interestRelevanceScore: 0.4,
+              engagementIntegrityScore: 0.4,
+              eligibleForSummary: true,
+              eligibleForTopRead: false,
+              needsLlmReview: true,
+              decision: "downrank",
+              flags: ["rumor_only"],
+              reason: "Rumor-only evidence is not safe as a top read.",
+            },
+          });
+        },
+      },
+      new CapturingReaderSummaryModel(),
+      events,
+      new StaticIdGenerator(),
+      new FixedClock(new Date("2026-06-26T08:05:00.000Z")),
+      undefined,
+      undefined,
+      emptyTopicMapBuilder(),
+    ).execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      readerSummaryJobId: "reader-job-rejected",
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        readerSummaryJobId: "reader-job-rejected",
+        status: "quality_rejected",
+        readerSummaryId: "reader-summary-id-1",
+      },
+    });
+    expect(artifacts.all()).toHaveLength(1);
+    expect(artifacts.decisions()[0]).toMatchObject({
+      status: "rejected",
+      reasonCodes: ["top_read_ineligible_source"],
+    });
+    expect(
+      (
+        await jobs.findById({
+          tenantId: tenant,
+          workspaceId: workspace,
+          readerSummaryJobId: "reader-job-rejected",
+        })
+      )?.toSnapshot(),
+    ).toMatchObject({
+      status: "quality_rejected",
+      readerSummaryId: "reader-summary-id-1",
+      failureReason: expect.stringContaining(
+        "pre-publish quality gate",
+      ),
+    });
+    expect(events.all()).toEqual([]);
+  });
 });
 
 const unused = <T>(): T => ({}) as T;
+
+const emptyTopicMapBuilder = (): BuildReaderSummaryTopicMapUseCase =>
+  ({
+    async execute() {
+      return { ok: true, value: emptyReaderSummaryTopicMap() };
+    },
+  }) as unknown as BuildReaderSummaryTopicMapUseCase;
 
 class FakeReaderSummaryJobRepository implements ReaderSummaryJobRepositoryPort {
   private readonly jobsById = new Map<string, ReaderSummaryJob>();
@@ -254,9 +348,17 @@ class FakeReaderSummaryJobRepository implements ReaderSummaryJobRepositoryPort {
 
 class FakeReaderSummaryArtifactRepository implements ReaderSummaryArtifactRepositoryPort {
   private readonly artifacts: ReaderSummaryArtifact[] = [];
+  private readonly publicationDecisions: ReaderSummaryPublicationDecision[] =
+    [];
 
-  async save(artifact: ReaderSummaryArtifact): Promise<void> {
+  async save(
+    artifact: ReaderSummaryArtifact,
+    options?: Parameters<ReaderSummaryArtifactRepositoryPort["save"]>[1],
+  ): Promise<void> {
     this.artifacts.push(artifact);
+    if (options?.publicationDecision !== undefined) {
+      this.publicationDecisions.push(options.publicationDecision);
+    }
   }
 
   async list(): Promise<
@@ -273,8 +375,16 @@ class FakeReaderSummaryArtifactRepository implements ReaderSummaryArtifactReposi
     return this.artifacts[0] ?? null;
   }
 
+  async findRejectedDebugById(): Promise<null> {
+    return null;
+  }
+
   all(): readonly ReaderSummaryArtifact[] {
     return this.artifacts;
+  }
+
+  decisions(): readonly ReaderSummaryPublicationDecision[] {
+    return this.publicationDecisions;
   }
 }
 
@@ -423,7 +533,9 @@ class CapturingReaderSummaryModel implements ReaderSummaryModelPort {
   }
 }
 
-const makeReaderEvidenceSelection = (): SummaryEvidenceSelection => ({
+const makeReaderEvidenceSelection = (overrides: {
+  readonly firstContentQuality?: SummaryEvidenceSelection["selectedEvidence"][number]["contentQuality"];
+} = {}): SummaryEvidenceSelection => ({
   rankingPolicyVersion: "story-ranking.v1",
   personalization: {
     memoryGuidanceStatus: "available",
@@ -486,6 +598,7 @@ const makeReaderEvidenceSelection = (): SummaryEvidenceSelection => ({
       observedAt: new Date("2026-06-26T07:20:00.000Z"),
       score: 1,
       whyImportant: ["Matches user preference"],
+      contentQuality: overrides.firstContentQuality,
     },
     {
       feedItemId: "feed-2",

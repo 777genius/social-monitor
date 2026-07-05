@@ -66,6 +66,7 @@ export class GetReaderSummaryJobStatusUseCase {
       failedAt: snapshot.failedAt?.toISOString(),
       readerSummaryId: snapshot.readerSummaryId,
       failureReason: snapshot.failureReason,
+      failureClass: failureClassFor(snapshot.status),
       timeline: buildTimeline(snapshot),
     });
   }
@@ -96,9 +97,9 @@ const buildTimeline = (
   );
   pushIfPresent(
     events,
-    "failed",
+    snapshot.status === "quality_rejected" ? "quality_rejected" : "failed",
     snapshot.failedAt,
-    snapshot.failureReason ?? "Reader summary generation failed",
+    messageForFailedStatus(snapshot),
   );
 
   return events;
@@ -123,3 +124,22 @@ const messageForCompletedStatus = (status: ReaderSummaryJobStatus): string =>
   status === "no_signal"
     ? "Reader summary completed with no reliable signal"
     : "Reader summary completed";
+
+const messageForFailedStatus = (snapshot: ReaderSummaryJobProps): string =>
+  snapshot.status === "quality_rejected"
+    ? "Reader summary rejected by pre-publish quality gate"
+    : (snapshot.failureReason ?? "Reader summary generation failed");
+
+const failureClassFor = (
+  status: ReaderSummaryJobStatus,
+): "quality_rejected" | "system_failure" | undefined => {
+  if (status === "quality_rejected") {
+    return "quality_rejected";
+  }
+
+  if (status === "failed") {
+    return "system_failure";
+  }
+
+  return undefined;
+};

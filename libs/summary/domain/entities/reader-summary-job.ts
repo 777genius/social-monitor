@@ -13,7 +13,8 @@ export type ReaderSummaryJobStatus =
   | "running"
   | "completed"
   | "no_signal"
-  | "failed";
+  | "failed"
+  | "quality_rejected";
 
 export type ReaderSummaryJobProps = {
   readonly id: string;
@@ -71,12 +72,21 @@ export class ReaderSummaryJob {
     }
 
     if (
-      props.status === "failed" &&
+      (props.status === "failed" || props.status === "quality_rejected") &&
       ((props.failureReason ?? "").trim().length === 0 ||
         props.failedAt === undefined)
     ) {
       throw new Error(
-        "Failed reader summary job must include failure time and reason",
+        "Terminal failed reader summary job must include failure time and reason",
+      );
+    }
+
+    if (
+      props.status === "quality_rejected" &&
+      props.readerSummaryId === undefined
+    ) {
+      throw new Error(
+        "Quality rejected reader summary job must reference a rejected artifact",
       );
     }
 
@@ -156,6 +166,34 @@ export class ReaderSummaryJob {
       ...this.props,
       status: "failed",
       failedAt: params.failedAt,
+      failureReason: params.failureReason.trim(),
+    });
+  }
+
+  rejectForQuality(params: {
+    readonly rejectedAt: Date;
+    readonly failureReason: string;
+    readonly readerSummaryId: string;
+  }): ReaderSummaryJob {
+    if (this.props.status !== "running") {
+      throw new Error(
+        "Reader summary job can only be quality rejected from running status",
+      );
+    }
+
+    if (params.failureReason.trim().length === 0) {
+      throw new Error(
+        "Quality rejected reader summary job must include rejection reason",
+      );
+    }
+
+    assertReaderSummaryId(params.readerSummaryId);
+
+    return new ReaderSummaryJob({
+      ...this.props,
+      status: "quality_rejected",
+      failedAt: params.rejectedAt,
+      readerSummaryId: params.readerSummaryId,
       failureReason: params.failureReason.trim(),
     });
   }

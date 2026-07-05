@@ -50,6 +50,7 @@ describe("GetReaderSummaryJobStatusUseCase", () => {
         failedAt: undefined,
         readerSummaryId: "reader-summary-1",
         failureReason: undefined,
+        failureClass: undefined,
         timeline: [
           {
             status: "requested",
@@ -67,6 +68,49 @@ describe("GetReaderSummaryJobStatusUseCase", () => {
             message: "Reader summary completed",
           },
         ],
+      },
+    });
+  });
+
+  it("returns quality rejected reader summary job status with failure class", async () => {
+    const job = ReaderSummaryJob.rehydrate({
+      id: "reader-summary-job-quality-rejected",
+      tenantId: tenant,
+      workspaceId: workspace,
+      scope: { type: "workspace" },
+      period,
+      status: "quality_rejected",
+      idempotencyKey: "reader-summary-quality-rejected",
+      requestedAt: new Date("2026-06-23T08:00:00.000Z"),
+      startedAt: new Date("2026-06-23T08:01:00.000Z"),
+      failedAt: new Date("2026-06-23T08:02:00.000Z"),
+      readerSummaryId: "reader-summary-rejected-1",
+      failureReason: "Reader summary artifact failed pre-publish quality gate.",
+    });
+    const useCase = new GetReaderSummaryJobStatusUseCase(
+      new FakeReaderSummaryJobRepository([job]),
+    );
+
+    const result = await useCase.execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      readerSummaryJobId: "reader-summary-job-quality-rejected",
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        readerSummaryJobId: "reader-summary-job-quality-rejected",
+        status: "quality_rejected",
+        readerSummaryId: "reader-summary-rejected-1",
+        failureClass: "quality_rejected",
+        timeline: expect.arrayContaining([
+          {
+            status: "quality_rejected",
+            occurredAt: "2026-06-23T08:02:00.000Z",
+            message: "Reader summary rejected by pre-publish quality gate",
+          },
+        ]),
       },
     });
   });

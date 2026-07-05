@@ -113,4 +113,8 @@ class FakeReaderSummaryArtifactRepository implements ReaderSummaryArtifactReposi
   async findById(): Promise<ReaderSummaryArtifact | null> {
     return null;
   }
+
+  async findRejectedDebugById(): Promise<null> {
+    return null;
+  }
 }

@@ -173,6 +173,7 @@ export class ReaderSummary {
         topReads,
         risksAndUnknowns: input.risksAndUnknowns,
         citationMap: input.citationMap,
+        selectedEvidence: input.selectedEvidence,
       }),
       reliabilityReport: buildReaderSummaryReliabilityReport(
         reliabilitySelectionFromInput(input),

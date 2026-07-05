@@ -10,6 +10,7 @@ import {
 
 import {
   ReaderSummaryArtifact,
+  ReaderSummaryJob,
   ReaderSummaryTopicRecommendationDecision,
   SummaryArtifact,
   SummaryFeedback,
@@ -25,6 +26,7 @@ import { PrismaSummaryJobRepository } from "../libs/summary/adapters/persistence
 import { PrismaSummaryPolicyRepository } from "../libs/summary/adapters/persistence/prisma/prisma-summary-policy.repository";
 import { PrismaReaderSummaryTopicRecommendationDecisionRepository } from "../libs/summary/adapters/persistence/prisma/prisma-reader-summary-topic-recommendation-decision.repository";
 import { PrismaReaderSummaryArtifactRepository } from "../libs/summary/adapters/persistence/prisma/prisma-reader-summary-artifact.repository";
+import { PrismaReaderSummaryJobRepository } from "../libs/summary/adapters/persistence/prisma/prisma-reader-summary-job.repository";
 import { resolveSummaryPersistenceMode } from "../libs/summary/interfaces/rest/summary-provider-tokens";
 import type {
   PrismaReaderSummaryArtifactRecord,
@@ -77,6 +79,7 @@ async function main(): Promise<void> {
   const readerSummaryArtifacts = new PrismaReaderSummaryArtifactRepository(
     prisma,
   );
+  const readerSummaryJobs = new PrismaReaderSummaryJobRepository(prisma);
   const completedArtifact = makeCompletedArtifact(
     "00000000-0000-7000-8000-000000000501",
   );
@@ -363,6 +366,175 @@ async function main(): Promise<void> {
     "superseded reader summary artifact must use SUPERSEDED status",
   );
 
+  await readerSummaryArtifacts.save(
+    makeReaderSummaryArtifact("00000000-0000-7000-8000-000000000b03", {
+      headline: "Rejected reader summary",
+    }),
+    {
+      publicationDecision: {
+        status: "rejected",
+        qualityPassed: false,
+        canonicalScore: 0.2,
+        shadow: {
+          mode: "shadow",
+          policyVersion: "reader_summary_publication_shadow_v1",
+          riskScore: 0.7,
+          signals: [
+            {
+              code: "single_source",
+              score: 0.7,
+              reason: "Selected evidence comes from a single provider family.",
+            },
+          ],
+        },
+        reasonCodes: ["top_read_ineligible_source"],
+        reasons: ["Top read references ineligible evidence."],
+        findings: [
+          {
+            code: "top_read_ineligible_source",
+            reason: "Top read references ineligible evidence.",
+            topReadTitle: "Rejected reader summary",
+            citationId: "reader-citation-1",
+            feedItemId: "reader-feed-1",
+            sourceItemId: "reader-source-1",
+            providerKey: "rss",
+            canonicalUrl: "https://example.test/reader-summary",
+          },
+        ],
+      },
+    },
+  );
+  const visibleAfterRejected = await readerSummaryArtifacts.list({
+    tenantId: tenant,
+    workspaceId: workspace,
+    scope: { type: "workspace" },
+    cadence: "daily",
+    periodStartedAt: new Date("2026-06-08T00:00:00.000Z"),
+    periodEndedAt: new Date("2026-06-09T00:00:00.000Z"),
+    timezone: "UTC",
+    limit: 10,
+  });
+  assert(
+    visibleAfterRejected.items.length === 1 &&
+      visibleAfterRejected.items[0]?.toSnapshot().readerSummaryId ===
+        "00000000-0000-7000-8000-000000000b02",
+    "rejected reader summary artifact must not supersede the current visible canonical artifact",
+  );
+  assert(
+    prisma.readerSummaryArtifactStatus(
+      "00000000-0000-7000-8000-000000000b03",
+    ) === "REJECTED",
+    "rejected reader summary artifact must use REJECTED status",
+  );
+  const rejectedById = await readerSummaryArtifacts.findById({
+    tenantId: tenant,
+    workspaceId: workspace,
+    readerSummaryId: "00000000-0000-7000-8000-000000000b03",
+  });
+  assert(
+    rejectedById === null,
+    "rejected reader summary artifact must not be readable through user-facing findById",
+  );
+  const rejectedDebug = await readerSummaryArtifacts.findRejectedDebugById({
+    tenantId: tenant,
+    workspaceId: workspace,
+    readerSummaryId: "00000000-0000-7000-8000-000000000b03",
+  });
+  assert(
+    rejectedDebug?.reasonCodes.includes("top_read_ineligible_source") === true,
+    "rejected reader summary debug view must expose rejection reason codes",
+  );
+  assert(
+    rejectedDebug?.violations.some(
+      (violation) =>
+        violation.code === "top_read_ineligible_source" &&
+        violation.citationId === "reader-citation-1",
+    ) === true,
+    "rejected reader summary debug view must expose structured rejection violations",
+  );
+  await readerSummaryArtifacts.save(
+    makeReaderSummaryArtifactWithoutContent(
+      "00000000-0000-7000-8000-000000000b04",
+      {
+        headline: "Rejected reader summary without content",
+      },
+    ),
+    {
+      publicationDecision: {
+        status: "rejected",
+        qualityPassed: false,
+        canonicalScore: 0.2,
+        shadow: {
+          mode: "shadow",
+          policyVersion: "reader_summary_publication_shadow_v1",
+          riskScore: 0,
+          signals: [],
+        },
+        reasonCodes: ["top_read_ineligible_source"],
+        reasons: ["Top read references ineligible evidence."],
+        findings: [
+          {
+            code: "top_read_ineligible_source",
+            reason: "Top read references ineligible evidence.",
+            topReadTitle: "Reader source signal",
+            citationId: "reader-citation-1",
+            feedItemId: "reader-feed-1",
+          },
+        ],
+      },
+    },
+  );
+  const rejectedDebugWithoutContent =
+    await readerSummaryArtifacts.findRejectedDebugById({
+      tenantId: tenant,
+      workspaceId: workspace,
+      readerSummaryId: "00000000-0000-7000-8000-000000000b04",
+    });
+  assert(
+    rejectedDebugWithoutContent?.topReads[0]?.title ===
+      "Reader source signal" &&
+      rejectedDebugWithoutContent.topReads[0]?.canonicalUrl ===
+        "https://example.test/reader-summary",
+    "rejected reader summary debug view must fallback to topStories when content is absent",
+  );
+
+  const qualityRejectedReaderSummaryJob = ReaderSummaryJob.request({
+    id: "00000000-0000-7000-8000-000000000c01",
+    tenantId: tenant,
+    workspaceId: workspace,
+    scope: { type: "workspace" },
+    period: makeReaderSummaryArtifact(
+      "00000000-0000-7000-8000-000000000c02",
+      { headline: "Reader summary job period source" },
+    ).toSnapshot().period,
+    idempotencyKey: "reader-summary-job:quality-rejected",
+    requestedAt: clock.now(),
+  })
+    .start({ startedAt: new Date("2026-06-08T00:05:00.000Z") })
+    .rejectForQuality({
+      rejectedAt: new Date("2026-06-08T00:06:00.000Z"),
+      readerSummaryId: "00000000-0000-7000-8000-000000000b03",
+      failureReason: "Reader summary artifact failed pre-publish quality gate.",
+    });
+  await readerSummaryJobs.save(qualityRejectedReaderSummaryJob);
+  assert(
+    prisma.readerSummaryJobStatus(
+      "00000000-0000-7000-8000-000000000c01",
+    ) === "REJECTED",
+    "quality rejected reader summary job must persist as REJECTED",
+  );
+  const retryClaim = await readerSummaryJobs.claimForExecution({
+    tenantId: tenant,
+    workspaceId: workspace,
+    readerSummaryJobId: "00000000-0000-7000-8000-000000000c01",
+    requestedAt: new Date("2026-06-08T00:07:00.000Z"),
+    startedAt: new Date("2026-06-08T00:07:00.000Z"),
+  });
+  assert(
+    retryClaim === null,
+    "quality rejected reader summary job must not be retry-claimable",
+  );
+
   console.log("Summary Prisma persistence smoke OK");
 }
 
@@ -595,6 +767,15 @@ const makeReaderSummaryArtifact = (
     },
   });
 
+const makeReaderSummaryArtifactWithoutContent = (
+  readerSummaryId: string,
+  overrides: { readonly headline: string },
+): ReaderSummaryArtifact =>
+  ReaderSummaryArtifact.create({
+    ...makeReaderSummaryArtifact(readerSummaryId, overrides).toSnapshot(),
+    content: undefined,
+  });
+
 const readerSummaryTopRead = () => ({
   storyClusterId: "reader-story-1",
   title: "Reader source signal",
@@ -644,6 +825,10 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
 
   readerSummaryArtifactStatus(id: string): PrismaSummaryStatus | undefined {
     return this.readerSummaryArtifacts.get(id)?.status;
+  }
+
+  readerSummaryJobStatus(id: string): PrismaSummaryStatus | undefined {
+    return this.readerSummaryJobs.get(id)?.status;
   }
 
   readonly $queryRaw: PrismaSummaryClient["$queryRaw"] = async () => {
@@ -1016,7 +1201,9 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
           (record) =>
             record.tenantId === args.where.tenantId &&
             record.workspaceId === args.where.workspaceId &&
-            record.id === args.where.id,
+            record.id === args.where.id &&
+            (args.where.status === undefined ||
+              args.where.status.in.includes(record.status)),
         ) ?? null,
       findMany: async (args) =>
         this.filterReaderSummaryArtifacts(args.where)

@@ -94,6 +94,7 @@ import { GetSummaryJobStatusUseCase } from "@social-monitor/summary/features/get
 import { GetSummaryPolicyUseCase } from "@social-monitor/summary/features/get-summary-policy/get-summary-policy.use-case";
 import { GetSummaryUseCase } from "@social-monitor/summary/features/get-summary/get-summary.use-case";
 import { GetReaderSummaryJobStatusUseCase } from "@social-monitor/summary/features/get-reader-summary-job-status/get-reader-summary-job-status.use-case";
+import { GetReaderSummaryQualityRejectionUseCase } from "@social-monitor/summary/features/get-reader-summary-quality-rejection/get-reader-summary-quality-rejection.use-case";
 import { GetReaderSummaryUseCase } from "@social-monitor/summary/features/get-reader-summary/get-reader-summary.use-case";
 import { ListSummariesUseCase } from "@social-monitor/summary/features/list-summaries/list-summaries.use-case";
 import { ListSummaryFeedbackUseCase } from "@social-monitor/summary/features/list-summary-feedback/list-summary-feedback.use-case";
@@ -255,6 +256,7 @@ const useCaseProviders = [
   GetSummaryPolicyUseCase,
   GetSummaryUseCase,
   GetReaderSummaryJobStatusUseCase,
+  GetReaderSummaryQualityRejectionUseCase,
   GetReaderSummaryUseCase,
   GetWebhookEndpointUseCase,
   GetBetaLaunchSupportUseCase,

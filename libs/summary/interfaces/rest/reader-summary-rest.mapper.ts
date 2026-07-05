@@ -1,5 +1,6 @@
 import type { RequestReaderSummaryResult } from "../../features/request-reader-summary/request-reader-summary.result";
 import type { GetReaderSummaryJobStatusResult } from "../../features/get-reader-summary-job-status/get-reader-summary-job-status.result";
+import type { GetReaderSummaryQualityRejectionResult } from "../../features/get-reader-summary-quality-rejection/get-reader-summary-quality-rejection.result";
 import type {
   ReaderSummaryArtifactView as CanonicalReaderSummaryArtifactView,
   ReaderSummaryContextArtifactView as CanonicalReaderSummaryContextArtifactView,
@@ -10,7 +11,10 @@ import type {
   ListReaderSummaryPeriodsResponseDto,
   ListReaderSummariesResponseDto,
 } from "./reader-summary.dto";
-import type { ReaderSummaryJobStatusResponseDto } from "./reader-summary-job-status.dto";
+import type {
+  ReaderSummaryJobStatusResponseDto,
+  ReaderSummaryQualityRejectionResponseDto,
+} from "./reader-summary-job-status.dto";
 import type { RequestReaderSummaryResponseDto } from "./request-reader-summary.dto";
 
 export type ReaderSummaryCitationView = {
@@ -120,7 +124,32 @@ export const readerSummaryJobStatusFromReaderSummary = (
   failedAt: result.failedAt,
   readerSummaryId: result.readerSummaryId,
   failureReason: result.failureReason,
+  failureClass: result.failureClass,
   timeline: result.timeline,
+});
+
+export const readerSummaryQualityRejectionFromReaderSummary = (
+  result: GetReaderSummaryQualityRejectionResult,
+): ReaderSummaryQualityRejectionResponseDto => ({
+  readerSummaryJobId: result.readerSummaryJobId,
+  readerSummaryId: result.readerSummaryId,
+  scope: result.scope,
+  period: {
+    cadence: result.period.cadence,
+    startedAt: result.period.startedAt.toISOString(),
+    endedAt: result.period.endedAt.toISOString(),
+    timezone: result.period.timezone,
+    periodKey: result.period.periodKey,
+  },
+  headline: result.headline,
+  failureClass: result.failureClass,
+  canonicalScore: result.canonicalScore,
+  shadow: result.shadow,
+  reasonCodes: result.reasonCodes,
+  reasons: result.reasons,
+  violations: result.violations,
+  topReads: result.topReads,
+  citations: result.citations,
 });
 
 export const readerSummaryResponseFromReaderSummary = (

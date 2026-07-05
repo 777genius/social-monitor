@@ -13,6 +13,7 @@ import type {
   ListReaderSummaryPeriodSummariesResult,
   ReaderSummaryPeriodSummary,
   ReaderSummaryArtifactRepositoryPort,
+  ReaderSummaryRejectedArtifactDebug,
 } from "../../../ports";
 import type { PrismaSummaryClient } from "./prisma-summary-client";
 import {
@@ -20,6 +21,7 @@ import {
   readerSummaryArtifactStatusToPrisma,
   readerSummaryCitationsToPrisma,
   readerSummaryQualitySignalsToPrisma,
+  type PrismaReaderSummaryArtifactRecord,
   type PrismaReaderSummaryPeriodSummaryRecord,
   readerSummaryScopeToPrisma,
   serializeReaderSummaryArtifact,
@@ -31,16 +33,38 @@ import {
 } from "./prisma-summary-records";
 
 const VISIBLE_READER_SUMMARY_STATUSES = ["COMPLETED", "NO_SIGNAL"] as const;
+const PUBLISHED_READER_SUMMARY_STATUSES = [
+  ...VISIBLE_READER_SUMMARY_STATUSES,
+  "SUPERSEDED",
+] as const;
+
+type ReaderSummaryPublicationDecisionForPersistence = NonNullable<
+  NonNullable<
+    Parameters<ReaderSummaryArtifactRepositoryPort["save"]>[1]
+  >["publicationDecision"]
+>;
 
 export class PrismaReaderSummaryArtifactRepository implements ReaderSummaryArtifactRepositoryPort {
   constructor(private readonly prisma: PrismaSummaryClient) {}
 
-  async save(artifact: ReaderSummaryArtifact): Promise<void> {
+  async save(
+    artifact: ReaderSummaryArtifact,
+    options?: Parameters<ReaderSummaryArtifactRepositoryPort["save"]>[1],
+  ): Promise<void> {
     const snapshot = artifact.toSnapshot();
-    const status = readerSummaryArtifactStatusToPrisma(artifact);
+    const publicationDecision = options?.publicationDecision;
+    const status =
+      publicationDecision?.status === "rejected"
+        ? "REJECTED"
+        : readerSummaryArtifactStatusToPrisma(artifact);
     const artifactPayload = serializeReaderSummaryArtifact(artifact);
     const citations = readerSummaryCitationsToPrisma(artifact);
-    const qualitySignals = readerSummaryQualitySignalsToPrisma(artifact);
+    const qualitySignals = {
+      ...readerSummaryQualitySignalsToPrisma(artifact),
+      ...(publicationDecision === undefined
+        ? {}
+        : { publicationDecision }),
+    };
     const scopeFields = readerSummaryScopeToPrisma(snapshot.scope);
 
     await withPrismaWriteRetry(async () => {
@@ -87,6 +111,10 @@ export class PrismaReaderSummaryArtifactRepository implements ReaderSummaryArtif
           qualitySignals,
         },
       });
+
+      if (status === "REJECTED") {
+        return;
+      }
 
       await this.prisma.readerSummaryArtifact.updateMany({
         where: {
@@ -188,10 +216,28 @@ export class PrismaReaderSummaryArtifactRepository implements ReaderSummaryArtif
         tenantId: params.tenantId,
         workspaceId: params.workspaceId,
         id: params.readerSummaryId,
+        status: { in: PUBLISHED_READER_SUMMARY_STATUSES },
       },
     });
 
     return record === null ? null : readerSummaryArtifactFromPrisma(record);
+  }
+
+  async findRejectedDebugById(
+    params: Parameters<
+      ReaderSummaryArtifactRepositoryPort["findRejectedDebugById"]
+    >[0],
+  ): Promise<ReaderSummaryRejectedArtifactDebug | null> {
+    const record = await this.prisma.readerSummaryArtifact.findFirst({
+      where: {
+        tenantId: params.tenantId,
+        workspaceId: params.workspaceId,
+        id: params.readerSummaryId,
+        status: { in: ["REJECTED"] },
+      },
+    });
+
+    return record === null ? null : rejectedDebugFromPrisma(record);
   }
 }
 
@@ -227,6 +273,161 @@ const periodSummaryFromPrisma = (
   userId: record.userId ?? undefined,
   subscriptionId: record.subscriptionId ?? undefined,
 });
+
+const rejectedDebugFromPrisma = (
+  record: PrismaReaderSummaryArtifactRecord,
+): ReaderSummaryRejectedArtifactDebug => {
+  const artifact = readerSummaryArtifactFromPrisma(record);
+  const snapshot = artifact.toSnapshot();
+  const publicationDecision = publicationDecisionFromQualitySignals(
+    record.qualitySignals,
+  );
+
+  return {
+    tenantId: snapshot.tenantId,
+    workspaceId: snapshot.workspaceId,
+    readerSummaryId: snapshot.readerSummaryId,
+    scope: snapshot.scope,
+    period: snapshot.period,
+    headline: snapshot.headline,
+    canonicalScore: publicationDecision?.canonicalScore ?? 0,
+    shadow: shadowReportFromDecision(publicationDecision),
+    reasonCodes:
+      publicationDecision?.status === "rejected"
+        ? publicationDecision.reasonCodes
+        : [],
+    reasons: publicationDecision?.reasons ?? [],
+    violations: rejectionViolationsFromDecision(publicationDecision),
+    topReads: rejectedDebugTopReads(snapshot),
+    citations: snapshot.citationMap.map((citation) => ({
+      citationId: citation.citationId,
+      feedItemId: citation.feedItemId,
+      sourceItemId: citation.sourceItemId,
+      providerKey: citation.providerKey,
+      canonicalUrl: citation.canonicalUrl,
+    })),
+  };
+};
+
+const rejectedDebugTopReads = (
+  snapshot: ReturnType<ReaderSummaryArtifact["toSnapshot"]>,
+): ReaderSummaryRejectedArtifactDebug["topReads"] => {
+  const contentTopReads = snapshot.content?.topReads;
+  if (contentTopReads !== undefined && contentTopReads.length > 0) {
+    return contentTopReads.map((item) => ({
+      title: item.title,
+      providerKey: item.providerKey,
+      canonicalUrl: item.canonicalUrl,
+      citationIds: item.citationIds,
+    }));
+  }
+
+  const citationById = new Map(
+    snapshot.citationMap.map((citation) => [
+      citation.citationId,
+      citation,
+    ] as const),
+  );
+
+  return snapshot.topStories.map((item) => ({
+    title: item.title,
+    providerKey: item.providerKeys[0],
+    canonicalUrl: firstCanonicalUrl(item.citationIds, citationById),
+    citationIds: item.citationIds,
+  }));
+};
+
+const firstCanonicalUrl = (
+  citationIds: readonly string[],
+  citationById: ReadonlyMap<
+    string,
+    ReturnType<ReaderSummaryArtifact["toSnapshot"]>["citationMap"][number]
+  >,
+): string | undefined => {
+  for (const citationId of citationIds) {
+    const canonicalUrl = citationById.get(citationId)?.canonicalUrl;
+    if (canonicalUrl !== undefined) {
+      return canonicalUrl;
+    }
+  }
+
+  return undefined;
+};
+
+const rejectionViolationsFromDecision = (
+  publicationDecision: ReaderSummaryPublicationDecisionForPersistence | undefined,
+): ReaderSummaryRejectedArtifactDebug["violations"] => {
+  if (publicationDecision?.status !== "rejected") {
+    return [];
+  }
+
+  const findings = publicationDecisionFindings(publicationDecision);
+
+  if (findings.length > 0) {
+    return findings.map((finding) => ({
+      code: finding.code,
+      reason: finding.reason,
+      topReadTitle: finding.topReadTitle,
+      citationId: finding.citationId,
+      feedItemId: finding.feedItemId,
+      sourceItemId: finding.sourceItemId,
+      providerKey: finding.providerKey,
+      canonicalUrl: finding.canonicalUrl,
+    }));
+  }
+
+  return publicationDecision.reasons.map((reason, index) => ({
+    code: publicationDecision.reasonCodes[index] ?? "technical_leakage",
+    reason,
+  }));
+};
+
+const publicationDecisionFindings = (
+  publicationDecision: ReaderSummaryPublicationDecisionForPersistence,
+): ReaderSummaryRejectedArtifactDebug["violations"] =>
+  "findings" in publicationDecision && Array.isArray(publicationDecision.findings)
+    ? publicationDecision.findings
+    : [];
+
+const publicationDecisionFromQualitySignals = (
+  qualitySignals: unknown,
+): ReaderSummaryPublicationDecisionForPersistence | undefined => {
+  if (
+    typeof qualitySignals !== "object" ||
+    qualitySignals === null ||
+    !("publicationDecision" in qualitySignals)
+  ) {
+    return undefined;
+  }
+
+  const decision = qualitySignals.publicationDecision;
+  if (
+    typeof decision !== "object" ||
+    decision === null ||
+    !("status" in decision) ||
+    !("canonicalScore" in decision) ||
+    !("reasons" in decision)
+  ) {
+    return undefined;
+  }
+
+  return decision as ReaderSummaryPublicationDecisionForPersistence;
+};
+
+const shadowReportFromDecision = (
+  publicationDecision: ReaderSummaryPublicationDecisionForPersistence | undefined,
+): ReaderSummaryRejectedArtifactDebug["shadow"] => {
+  const shadow =
+    publicationDecision !== undefined && "shadow" in publicationDecision
+      ? publicationDecision.shadow
+      : undefined;
+
+  return {
+    mode: "shadow",
+    riskScore: shadow?.riskScore ?? 0,
+    signals: shadow?.signals ?? [],
+  };
+};
 
 const periodStartedAtWhere = (query: ListReaderSummaryArtifactsQuery) => {
   if (

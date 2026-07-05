@@ -4,11 +4,18 @@ import { Test } from '@nestjs/testing';
 import {
   emptyReaderSummaryReliabilityReport,
   ReaderSummaryArtifact,
+  ReaderSummaryJob,
   type ReaderSummaryContent,
 } from '@social-monitor/summary/domain';
 import { SummaryRestModule } from '@social-monitor/summary/interfaces/rest/summary-rest.module';
-import { READER_SUMMARY_ARTIFACT_REPOSITORY } from '@social-monitor/summary/interfaces/rest/summary-provider-tokens';
-import type { ReaderSummaryArtifactRepositoryPort } from '@social-monitor/summary/ports';
+import {
+  READER_SUMMARY_ARTIFACT_REPOSITORY,
+  READER_SUMMARY_JOB_REPOSITORY,
+} from '@social-monitor/summary/interfaces/rest/summary-provider-tokens';
+import type {
+  ReaderSummaryArtifactRepositoryPort,
+  ReaderSummaryJobRepositoryPort,
+} from '@social-monitor/summary/ports';
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import request from 'supertest';
 
@@ -29,6 +36,9 @@ const requireValue = <T>(value: T | undefined, message: string): T => {
 };
 
 async function main(): Promise<void> {
+  process.env.READER_SUMMARY_MODEL_PROVIDER = 'deterministic';
+  process.env.READER_SUMMARY_TOPIC_LABELER = 'deterministic';
+
   const moduleRef = await Test.createTestingModule({
     imports: [SummaryRestModule],
     providers: [
@@ -70,6 +80,10 @@ async function main(): Promise<void> {
     };
     const repository = moduleRef.get<ReaderSummaryArtifactRepositoryPort>(
       READER_SUMMARY_ARTIFACT_REPOSITORY,
+      { strict: false },
+    );
+    const readerSummaryJobs = moduleRef.get<ReaderSummaryJobRepositoryPort>(
+      READER_SUMMARY_JOB_REPOSITORY,
       { strict: false },
     );
 
@@ -235,6 +249,72 @@ async function main(): Promise<void> {
       },
     });
     await repository.save(dailyArtifact);
+
+    const rejectedReaderSummaryId = 'readerSummary-rest-smoke-rejected';
+    const rejectedJobId = 'readerSummary-rest-smoke-quality-rejected-job';
+    await repository.save(
+      ReaderSummaryArtifact.create({
+        ...dailyArtifact.toSnapshot(),
+        readerSummaryId: rejectedReaderSummaryId,
+        headline: 'Rejected readerSummary smoke artifact',
+        content: {
+          ...readerReaderSummaryContent(),
+          headline: 'Rejected readerSummary smoke artifact',
+        },
+      }),
+      {
+        publicationDecision: {
+          status: 'rejected',
+          qualityPassed: false,
+          canonicalScore: 0.2,
+          shadow: {
+            mode: 'shadow',
+            policyVersion: 'reader_summary_publication_shadow_v1',
+            riskScore: 0.7,
+            signals: [
+              {
+                code: 'single_source',
+                score: 0.7,
+                reason:
+                  'Selected evidence comes from a single provider family.',
+              },
+            ],
+          },
+          reasonCodes: ['top_read_ineligible_source'],
+          reasons: ['Top read references ineligible evidence.'],
+          findings: [
+            {
+              code: 'top_read_ineligible_source',
+              reason: 'Top read references ineligible evidence.',
+              topReadTitle: 'OpenAI Codex is a high-signal AI tooling read',
+              citationId: 'citation-github',
+              feedItemId: 'feed-github',
+              sourceItemId: 'source-github',
+              providerKey: 'github-repo-radar',
+              canonicalUrl: 'https://github.com/openai/codex',
+            },
+          ],
+        },
+      },
+    );
+    await readerSummaryJobs.save(
+      ReaderSummaryJob.request({
+        id: rejectedJobId,
+        tenantId: tenant,
+        workspaceId: workspace,
+        scope: { type: 'workspace' },
+        period: dailyArtifact.toSnapshot().period,
+        idempotencyKey: 'readerSummary-rest-smoke-quality-rejected',
+        requestedAt: new Date('2026-06-23T08:40:00.000Z'),
+      })
+        .start({ startedAt: new Date('2026-06-23T08:41:00.000Z') })
+        .rejectForQuality({
+          rejectedAt: new Date('2026-06-23T08:42:00.000Z'),
+          readerSummaryId: rejectedReaderSummaryId,
+          failureReason:
+            'Reader summary artifact failed pre-publish quality gate.',
+        }),
+    );
 
     const baseArtifact = dailyArtifact.toSnapshot();
     await repository.save(
@@ -545,6 +625,43 @@ async function main(): Promise<void> {
       .set(otherTenantHeaders)
       .expect(404);
 
+    const rejectedStatusResponse = await request(app.getHttpServer())
+      .get(`/reader-summary-jobs/${rejectedJobId}/status`)
+      .set(headers)
+      .expect(200);
+    assertReaderSummaryQualityRejectedJobStatus(
+      rejectedStatusResponse.body as ReaderSummaryJobStatusResponseBody,
+      rejectedJobId,
+      rejectedReaderSummaryId,
+    );
+
+    await request(app.getHttpServer())
+      .get(`/reader-summary-jobs/${rejectedJobId}/quality-rejection`)
+      .set(headers)
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .get(`/reader-summary-jobs/${rejectedJobId}/quality-rejection`)
+      .set({
+        ...headers,
+        authorization: 'Bearer smk_readerSummary_quality_rejection_reader_key',
+        'x-workspace-role': 'admin',
+      })
+      .expect(403);
+
+    const rejectionDebugResponse = await request(app.getHttpServer())
+      .get(`/reader-summary-jobs/${rejectedJobId}/quality-rejection`)
+      .set({
+        ...headers,
+        'x-workspace-role': 'admin',
+      })
+      .expect(200);
+    assertReaderSummaryQualityRejectionDebug(
+      rejectionDebugResponse.body as ReaderSummaryQualityRejectionBody,
+      rejectedJobId,
+      rejectedReaderSummaryId,
+    );
+
     await request(app.getHttpServer())
       .post('/reader-summary-requests')
       .set({
@@ -769,16 +886,45 @@ type RequestReaderSummaryResponseBody = {
 
 type ReaderSummaryJobStatusResponseBody = {
   readonly readerSummaryJobId?: unknown;
+  readonly readerSummaryId?: unknown;
   readonly period?: ReaderSummaryPeriodBody;
   readonly scope?: {
     readonly type?: unknown;
   };
   readonly status?: unknown;
+  readonly failureClass?: unknown;
   readonly requestedAt?: unknown;
+  readonly failedAt?: unknown;
   readonly timeline?: readonly {
     readonly status?: unknown;
     readonly message?: unknown;
   }[];
+};
+
+type ReaderSummaryQualityRejectionBody = {
+  readonly readerSummaryJobId?: unknown;
+  readonly readerSummaryId?: unknown;
+  readonly failureClass?: unknown;
+  readonly reasonCodes?: readonly unknown[];
+  readonly reasons?: readonly unknown[];
+  readonly violations?: readonly {
+    readonly code?: unknown;
+    readonly reason?: unknown;
+    readonly topReadTitle?: unknown;
+    readonly citationId?: unknown;
+    readonly feedItemId?: unknown;
+    readonly sourceItemId?: unknown;
+    readonly providerKey?: unknown;
+    readonly canonicalUrl?: unknown;
+  }[];
+  readonly canonicalScore?: unknown;
+  readonly shadow?: {
+    readonly mode?: unknown;
+    readonly riskScore?: unknown;
+    readonly signals?: readonly unknown[];
+  };
+  readonly topReads?: readonly unknown[];
+  readonly citations?: readonly unknown[];
 };
 
 type ReaderSummaryPeriodBody = {
@@ -929,6 +1075,90 @@ const assertReaderSummaryJobStatus = (
         event.message === 'Reader summary requested',
     ) === true,
     'reader summary job status REST must expose canonical timeline language',
+  );
+};
+
+const assertReaderSummaryQualityRejectedJobStatus = (
+  body: ReaderSummaryJobStatusResponseBody,
+  readerSummaryJobId: string,
+  readerSummaryId: string,
+): void => {
+  assert(
+    body.readerSummaryJobId === readerSummaryJobId,
+    'readerSummary rejected job status REST must expose the requested job id',
+  );
+  assert(
+    body.readerSummaryId === readerSummaryId,
+    'readerSummary rejected job status REST must expose rejected artifact id',
+  );
+  assert(
+    body.status === 'quality_rejected',
+    'readerSummary rejected job status REST must expose quality_rejected',
+  );
+  assert(
+    body.failureClass === 'quality_rejected',
+    'readerSummary rejected job status REST must expose quality failure class',
+  );
+  assert(
+    typeof body.failedAt === 'string' && body.failedAt.length > 0,
+    'readerSummary rejected job status REST must expose failedAt',
+  );
+  assert(
+    body.timeline?.some(
+      (event) =>
+        event.status === 'quality_rejected' &&
+        event.message ===
+          'Reader summary rejected by pre-publish quality gate',
+    ) === true,
+    'readerSummary rejected job status REST must expose quality timeline event',
+  );
+};
+
+const assertReaderSummaryQualityRejectionDebug = (
+  body: ReaderSummaryQualityRejectionBody,
+  readerSummaryJobId: string,
+  readerSummaryId: string,
+): void => {
+  assert(
+    body.readerSummaryJobId === readerSummaryJobId,
+    'readerSummary rejection debug REST must expose the requested job id',
+  );
+  assert(
+    body.readerSummaryId === readerSummaryId,
+    'readerSummary rejection debug REST must expose rejected artifact id',
+  );
+  assert(
+    body.failureClass === 'quality_rejected',
+    'readerSummary rejection debug REST must expose quality failure class',
+  );
+  assert(
+    body.reasonCodes?.includes('top_read_ineligible_source') === true,
+    'readerSummary rejection debug REST must expose rejection reason codes',
+  );
+  assert(
+    body.reasons?.length === 1,
+    'readerSummary rejection debug REST must expose safe reasons',
+  );
+  assert(
+    body.canonicalScore === 0.2,
+    'readerSummary rejection debug REST must expose canonical score',
+  );
+  assert(
+    body.violations?.some(
+      (violation) =>
+        violation.code === 'top_read_ineligible_source' &&
+        violation.citationId === 'citation-github' &&
+        violation.feedItemId === 'feed-github',
+    ) === true,
+    'readerSummary rejection debug REST must expose structured culprit diagnostics',
+  );
+  assert(
+    body.shadow?.mode === 'shadow' && body.shadow.signals?.length === 1,
+    'readerSummary rejection debug REST must expose shadow diagnostics',
+  );
+  assert(
+    body.topReads?.length === 1 && body.citations?.length === 2,
+    'readerSummary rejection debug REST must expose safe evidence diagnostics',
   );
 };
 

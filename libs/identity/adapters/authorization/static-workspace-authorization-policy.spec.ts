@@ -400,6 +400,43 @@ describe('StaticWorkspaceAuthorizationPolicy', () => {
     });
   });
 
+  it('allows every workspace role to read reader summary job status', () => {
+    const policy = new StaticWorkspaceAuthorizationPolicy();
+
+    expect(policy.authorize({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      action: 'reader_summary_jobs.read',
+      roles: ['viewer'],
+    })).toEqual({
+      ok: true,
+      value: undefined,
+    });
+  });
+
+  it('allows only owner and admin roles to read reader summary rejection diagnostics', () => {
+    const policy = new StaticWorkspaceAuthorizationPolicy();
+
+    expect(policy.authorize({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      action: 'reader_summary_rejections.read',
+      roles: ['admin'],
+    })).toEqual({
+      ok: true,
+      value: undefined,
+    });
+    expect(policy.authorize({
+      tenantId: tenantId('tenant-1'),
+      workspaceId: workspaceId('workspace-1'),
+      action: 'reader_summary_rejections.read',
+      roles: ['member'],
+    })).toEqual({
+      ok: false,
+      error: expect.objectContaining({ code: 'authorization.denied' }),
+    });
+  });
+
   it('allows every workspace role to read summary policies', () => {
     const policy = new StaticWorkspaceAuthorizationPolicy();
 

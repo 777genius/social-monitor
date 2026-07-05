@@ -198,6 +198,10 @@ export const readerSummaryJobStatusToPrisma = (
     return "NO_SIGNAL";
   }
 
+  if (status === "quality_rejected") {
+    return "REJECTED";
+  }
+
   return "FAILED";
 };
 
@@ -353,7 +357,7 @@ const jsonValueForPrisma = (
 };
 
 const jsonStringForPrisma = (value: string): string => {
-  const withoutNullBytes = value.replace(/\u0000/gu, "");
+  const withoutNullBytes = value.split("\u0000").join("");
   let result = "";
 
   for (let index = 0; index < withoutNullBytes.length; index += 1) {
@@ -412,6 +416,10 @@ const readerSummaryJobStatusFromPrisma = (
 
   if (status === "FAILED") {
     return "failed";
+  }
+
+  if (status === "REJECTED") {
+    return "quality_rejected";
   }
 
   throw new Error(

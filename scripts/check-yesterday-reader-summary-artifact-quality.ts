@@ -592,6 +592,13 @@ async function buildReport(): Promise<ArtifactQualityReport> {
           (periodStatusCounts.COMPLETED ?? 0) +
             (periodStatusCounts.NO_SIGNAL ?? 0) ===
           1,
+        rejectedArtifactsDoNotHideCanonical:
+          (badGamingStatusCounts.REJECTED ?? 0) > 0 &&
+          (badGamingStatusCounts.FAILED ?? 0) === 0 &&
+          visibleBadGamingArtifactCount === 0 &&
+          (periodStatusCounts.COMPLETED ?? 0) +
+            (periodStatusCounts.NO_SIGNAL ?? 0) ===
+            1,
         collectionIntegrityCleanForEval:
           collectionIntegrity.status === "clean" || allowDirtyCollection,
         noRawSecretFragments: true,
@@ -664,6 +671,7 @@ function validateExistingReport(): void {
     report.qualityGates.noVisibleHistoricalBadGamingArtifacts === true &&
     report.qualityGates.badGamingArtifactsUseRejectedStatus === true &&
     report.qualityGates.latestPeriodHasSingleVisibleArtifact === true &&
+    report.qualityGates.rejectedArtifactsDoNotHideCanonical === true &&
     noRawSecretFragments(report);
 
   if (!valid) {

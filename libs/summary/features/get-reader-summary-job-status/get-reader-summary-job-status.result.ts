@@ -10,6 +10,10 @@ export type ReaderSummaryJobTimelineEvent = {
   readonly message: string;
 };
 
+export type ReaderSummaryJobFailureClass =
+  | "quality_rejected"
+  | "system_failure";
+
 export type GetReaderSummaryJobStatusResult = {
   readonly readerSummaryJobId: string;
   readonly scope: ReaderSummaryScope;
@@ -27,5 +31,6 @@ export type GetReaderSummaryJobStatusResult = {
   readonly failedAt?: string;
   readonly readerSummaryId?: string;
   readonly failureReason?: string;
+  readonly failureClass?: ReaderSummaryJobFailureClass;
   readonly timeline: readonly ReaderSummaryJobTimelineEvent[];
 };

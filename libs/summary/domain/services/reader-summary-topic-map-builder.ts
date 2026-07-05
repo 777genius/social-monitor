@@ -173,20 +173,27 @@ const topicNodeForCluster = (params: {
 const normalizeNodePopularity = (
   nodes: readonly ReaderSummaryTopicMapNode[],
 ): readonly ReaderSummaryTopicMapNode[] => {
-  const scored = nodes.map((node) => {
+  const scored = nodes.map((node, index) => {
     const rawScore =
       node.popularityScore +
       Math.log1p(node.evidenceCount) * 0.18 +
       Math.max(0, node.providerKeys.length - 1) * 0.15 +
       Math.max(0, node.interestIds.length - 1) * 0.08;
 
-    return { node, rawScore };
+    return { node, rawScore, index };
   });
   const maxScore = Math.max(...scored.map((item) => item.rawScore), 0.001);
+  const minScore = Math.min(...scored.map((item) => item.rawScore));
+  const scoreRange = maxScore - minScore;
+  const hasScoreSpread = scoreRange >= Math.max(0.08, maxScore * 0.04);
+  const maxRank = Math.max(1, scored.length - 1);
 
   return scored
-    .map(({ node, rawScore }) => {
-      const normalized = Math.max(0.18, Math.min(1, rawScore / maxScore));
+    .map(({ node, rawScore, index }) => {
+      const scoreWeight = hasScoreSpread
+        ? (rawScore - minScore) / scoreRange
+        : 1 - (index / maxRank) * 0.78;
+      const normalized = Math.max(0.18, Math.min(1, scoreWeight));
 
       return {
         ...node,

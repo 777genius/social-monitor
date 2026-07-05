@@ -129,6 +129,59 @@ describe("ExecuteReaderSummaryJobCommandHandler", () => {
     ).toBe(0);
   });
 
+  it("records quality rejected reader summary jobs as controlled non-provider outcomes", async () => {
+    const executeReaderSummaryJob = new FakeExecuteReaderSummaryJobUseCase({
+      readerSummaryJobId: "readerSummary-job-1",
+      status: "quality_rejected",
+      readerSummaryId: "readerSummary-1",
+    });
+    const metrics = new InMemoryMetricsRecorder();
+    const runtime = new WorkerRuntime({ serviceName: "intelligence-worker" });
+    runtime.onModuleInit();
+
+    const result = await new ExecuteReaderSummaryJobCommandHandler(
+      executeReaderSummaryJob as unknown as ExecuteReaderSummaryJobUseCase,
+      metrics,
+      runtime,
+    ).handle({
+      commandId: "command-1",
+      commandType: EXECUTE_READER_SUMMARY_JOB_COMMAND_TYPE,
+      schemaVersion: 1,
+      correlationId: "correlation-1",
+      payload: {
+        tenantId: "tenant-1",
+        workspaceId: "workspace-1",
+        readerSummaryJobId: "reader-summary-job-1",
+      },
+    });
+
+    expect(result).toMatchObject({
+      status: "quality_rejected",
+      readerSummaryId: "readerSummary-1",
+    });
+    expect(
+      metrics.counterValue("summary_jobs_total", {
+        job_type: "readerSummary",
+        status: "quality_rejected",
+        worker: "intelligence-worker",
+      }),
+    ).toBe(1);
+    expect(
+      metrics.counterValue("summary_jobs_total", {
+        job_type: "readerSummary",
+        status: "failed",
+        worker: "intelligence-worker",
+      }),
+    ).toBe(0);
+    expect(
+      metrics.counterValue("summary_job_failures_total", {
+        failure_class: "quality_rejected",
+        job_type: "readerSummary",
+        worker: "intelligence-worker",
+      }),
+    ).toBe(1);
+  });
+
   it("returns controlled tenant scope errors before executing the use case", async () => {
     const executeReaderSummaryJob = new FakeExecuteReaderSummaryJobUseCase();
     const runtime = new WorkerRuntime({ serviceName: "intelligence-worker" });

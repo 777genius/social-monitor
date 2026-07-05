@@ -228,6 +228,7 @@ export type PrismaReaderSummaryClient = {
         readonly tenantId: string;
         readonly workspaceId: string;
         readonly id: string;
+        readonly status?: { readonly in: readonly PrismaSummaryStatus[] };
       };
     }): Promise<PrismaReaderSummaryArtifactRecord | null>;
     findMany(args: {

@@ -158,6 +158,88 @@ describe("selectUniqueTopReadCandidates", () => {
     ]);
   });
 
+  it("promotes stronger social evidence above weak single-source reads", () => {
+    const result = selectUniqueTopReadCandidates(
+      [
+        story("weak-x", "Weak X chatter", "c-weak-x", ["x-twitter"]),
+        {
+          ...story("strong-reddit", "Cross-source Reddit signal", "c-reddit", [
+            "reddit",
+            "rss",
+          ]),
+          citationIds: ["c-reddit", "c-rss"],
+        },
+        story("weak-hn", "Weak HN follow-up", "c-weak-hn", ["hacker-news"]),
+      ],
+      citations([
+        citation("c-weak-x", "feed-weak-x", "x-twitter"),
+        citation("c-reddit", "feed-reddit", "reddit"),
+        citation("c-rss", "feed-rss", "rss"),
+        citation("c-weak-hn", "feed-weak-hn", "hacker-news"),
+      ]),
+      evidence([
+        evidenceItem("feed-weak-x", "x-twitter", [["Likes", "240"]], {
+          eligibleForTopRead: true,
+        }),
+        {
+          ...evidenceItem("feed-reddit", "reddit", [
+            ["Score", "940"],
+            ["Comments", "220"],
+          ]),
+          score: 2.3,
+        },
+        {
+          ...evidenceItem("feed-rss", "rss", []),
+          score: 2.1,
+        },
+        evidenceItem("feed-weak-hn", "hacker-news", [["Points", "35"]], {
+          eligibleForTopRead: true,
+        }),
+      ]),
+      new Map([
+        [
+          "story:weak-x",
+          cluster({
+            id: "weak-x",
+            representativeFeedItemId: "feed-weak-x",
+            providerKeys: ["x-twitter"],
+            score: 1.89,
+          }),
+        ],
+        [
+          "story:strong-reddit",
+          cluster({
+            id: "strong-reddit",
+            representativeFeedItemId: "feed-reddit",
+            duplicateFeedItemIds: ["feed-rss"],
+            providerKeys: ["reddit", "rss"],
+            score: 3.1,
+            signalBreakdown: {
+              baseScore: 2.3,
+              crossProviderSupport: 0.22,
+              sameProviderSupport: 0,
+              providerDiversityBoost: 0.12,
+              interestDiversityBoost: 0,
+              freshnessBoost: 0,
+              totalScore: 3.1,
+            },
+          }),
+        ],
+        [
+          "story:weak-hn",
+          cluster({
+            id: "weak-hn",
+            representativeFeedItemId: "feed-weak-hn",
+            providerKeys: ["hacker-news"],
+            score: 1.98,
+          }),
+        ],
+      ]),
+    );
+
+    expect(result[0]?.title).toBe("Cross-source Reddit signal");
+  });
+
   it("fills from eligible selected evidence and caps a dominant social provider", () => {
     const result = selectUniqueTopReadCandidates(
       [
@@ -348,6 +430,29 @@ const clusters = (ids: readonly string[]): ReadonlyMap<string, StoryCluster> =>
       return [cluster.id, cluster] as const;
     }),
   );
+
+const cluster = (params: {
+  readonly id: string;
+  readonly representativeFeedItemId: string;
+  readonly duplicateFeedItemIds?: readonly string[];
+  readonly providerKeys: readonly string[];
+  readonly score: number;
+  readonly signalBreakdown?: StoryCluster["signalBreakdown"];
+}): StoryCluster => ({
+  id: `story:${params.id}`,
+  storyKey: `story-key:${params.id}`,
+  representativeFeedItemId: params.representativeFeedItemId,
+  duplicateFeedItemIds: params.duplicateFeedItemIds ?? [],
+  interestIds: ["ai-developer-tools"],
+  providerKeys: params.providerKeys,
+  score: params.score,
+  signalBreakdown: params.signalBreakdown,
+  observedAtRange: {
+    startedAt: new Date("2026-06-29T00:00:00.000Z"),
+    endedAt: new Date("2026-06-29T01:00:00.000Z"),
+  },
+  whyImportant: [`Story ${params.id} is active.`],
+});
 
 const evidenceItem = (
   feedItemId: string,
