@@ -6,6 +6,9 @@ final class _ProviderCoverageRowData {
     required this.selectedFeedItemCount,
     required this.topReadCount,
     required this.citationCount,
+    required this.lowRelevanceFeedItemCount,
+    required this.mutedFeedItemCount,
+    required this.userRatedFeedItemCount,
     required this.color,
     this.collectedFeedItemCount,
   });
@@ -15,6 +18,9 @@ final class _ProviderCoverageRowData {
   final int selectedFeedItemCount;
   final int topReadCount;
   final int citationCount;
+  final int lowRelevanceFeedItemCount;
+  final int mutedFeedItemCount;
+  final int userRatedFeedItemCount;
   final Color color;
 
   int get scaleCount {
@@ -43,6 +49,12 @@ final class _ProviderCoverageRowData {
     }
     if (citationCount > 0) {
       parts.add('${formatCompactCount(citationCount)} citations');
+    }
+    if (lowRelevanceFeedItemCount > 0) {
+      parts.add('${formatCompactCount(lowRelevanceFeedItemCount)} low rel.');
+    }
+    if (mutedFeedItemCount > 0) {
+      parts.add('${formatCompactCount(mutedFeedItemCount)} muted');
     }
     return parts.isEmpty ? 'No selected evidence' : parts.join(' · ');
   }
@@ -81,6 +93,13 @@ List<_ProviderCoverageRowData> _providerCoverageRows(ReaderSummary summary) {
           ),
           topReadCount: _safeCoverageCount(provider.topReadCount),
           citationCount: _safeCoverageCount(provider.citationCount),
+          lowRelevanceFeedItemCount: _safeCoverageCount(
+            provider.lowRelevanceFeedItemCount,
+          ),
+          mutedFeedItemCount: _safeCoverageCount(provider.mutedFeedItemCount),
+          userRatedFeedItemCount: _safeCoverageCount(
+            provider.userRatedFeedItemCount,
+          ),
           color: _providerCoverageColor(provider.providerKey),
         ),
     ]);
@@ -106,6 +125,9 @@ List<_ProviderCoverageRowData> _providerCoverageRows(ReaderSummary summary) {
       selectedFeedItemCount: _safeCoverageCount(source.itemCount),
       topReadCount: topReadCounts[key] ?? 0,
       citationCount: _safeCoverageCount(source.citationCount),
+      lowRelevanceFeedItemCount: 0,
+      mutedFeedItemCount: 0,
+      userRatedFeedItemCount: 0,
       color: _providerCoverageColor(key),
     );
   }
@@ -118,6 +140,9 @@ List<_ProviderCoverageRowData> _providerCoverageRows(ReaderSummary summary) {
         selectedFeedItemCount: 0,
         topReadCount: entry.value,
         citationCount: 0,
+        lowRelevanceFeedItemCount: 0,
+        mutedFeedItemCount: 0,
+        userRatedFeedItemCount: 0,
         color: _providerCoverageColor(entry.key),
       ),
     );

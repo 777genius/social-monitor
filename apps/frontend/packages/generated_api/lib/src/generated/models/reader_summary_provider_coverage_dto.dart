@@ -10,9 +10,12 @@ part 'reader_summary_provider_coverage_dto.g.dart';
 class ReaderSummaryProviderCoverageDto {
   const ReaderSummaryProviderCoverageDto({
     required this.citationCount,
+    required this.lowRelevanceFeedItemCount,
+    required this.mutedFeedItemCount,
     required this.providerKey,
     required this.selectedFeedItemCount,
     required this.topReadCount,
+    required this.userRatedFeedItemCount,
     this.collectedFeedItemCount,
   });
 
@@ -22,9 +25,12 @@ class ReaderSummaryProviderCoverageDto {
 
   final num citationCount;
   final num? collectedFeedItemCount;
+  final num lowRelevanceFeedItemCount;
+  final num mutedFeedItemCount;
   final String providerKey;
   final num selectedFeedItemCount;
   final num topReadCount;
+  final num userRatedFeedItemCount;
 
   Map<String, Object?> toJson() =>
       _$ReaderSummaryProviderCoverageDtoToJson(this);

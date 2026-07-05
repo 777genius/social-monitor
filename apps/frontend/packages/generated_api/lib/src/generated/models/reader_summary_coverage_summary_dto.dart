@@ -6,6 +6,8 @@ import 'package:json_annotation/json_annotation.dart';
 
 import 'reader_summary_coverage_summary_dto_freshness_status_freshness_status.dart';
 import 'reader_summary_provider_coverage_dto.dart';
+import 'reader_summary_query_coverage_dto.dart';
+import 'reader_summary_topic_coverage_dto.dart';
 
 part 'reader_summary_coverage_summary_dto.g.dart';
 
@@ -19,16 +21,21 @@ class ReaderSummaryCoverageSummaryDto {
     required this.hasCrossProviderEvidence,
     required this.interestCount,
     required this.isSingleSource,
+    required this.lowRelevanceFeedItemCount,
+    required this.mutedFeedItemCount,
     required this.providerCount,
     required this.selectedFeedItemCount,
     required this.storyClusterCount,
     required this.topInterestIds,
     required this.topProviderKeys,
     required this.topReadCount,
+    required this.userRatedFeedItemCount,
     required this.windowEndedAt,
     required this.windowStartedAt,
     this.collectedFeedItemCount,
     this.providerBreakdown,
+    this.queryBreakdown,
+    this.topicBreakdown,
   });
 
   factory ReaderSummaryCoverageSummaryDto.fromJson(Map<String, Object?> json) =>
@@ -43,13 +50,18 @@ class ReaderSummaryCoverageSummaryDto {
   final bool hasCrossProviderEvidence;
   final num interestCount;
   final bool isSingleSource;
+  final num lowRelevanceFeedItemCount;
+  final num mutedFeedItemCount;
   final List<ReaderSummaryProviderCoverageDto>? providerBreakdown;
   final num providerCount;
+  final List<ReaderSummaryQueryCoverageDto>? queryBreakdown;
   final num selectedFeedItemCount;
   final num storyClusterCount;
+  final List<ReaderSummaryTopicCoverageDto>? topicBreakdown;
   final List<String> topInterestIds;
   final List<String> topProviderKeys;
   final num topReadCount;
+  final num userRatedFeedItemCount;
   final DateTime windowEndedAt;
   final DateTime windowStartedAt;
 

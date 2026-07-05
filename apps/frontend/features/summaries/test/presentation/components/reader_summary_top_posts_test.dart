@@ -24,7 +24,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Topic map'), findsOneWidget);
-    expect(find.text('AI grouped'), findsOneWidget);
+    expect(find.text('AI tools'), findsOneWidget);
   });
 
   testWidgets('ranks supported and engaged posts above single-source ties', (

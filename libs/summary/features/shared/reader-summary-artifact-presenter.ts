@@ -77,6 +77,9 @@ export type ReaderSummaryPeriodView = {
 
 export type ReaderSummaryCoverageView = {
   readonly collectedFeedItemCount?: number;
+  readonly lowRelevanceFeedItemCount: number;
+  readonly mutedFeedItemCount: number;
+  readonly userRatedFeedItemCount: number;
   readonly selectedFeedItemCount: number;
   readonly storyClusterCount: number;
   readonly topReadCount: number;
@@ -93,14 +96,36 @@ export type ReaderSummaryCoverageView = {
   readonly windowEndedAt: string;
   readonly freshnessStatus: ReaderSummaryFreshnessView["status"];
   readonly providerBreakdown: readonly ReaderSummaryProviderCoverageView[];
+  readonly topicBreakdown: readonly ReaderSummaryTopicCoverageView[];
+  readonly queryBreakdown: readonly ReaderSummaryQueryCoverageView[];
 };
 
 export type ReaderSummaryProviderCoverageView = {
   readonly providerKey: string;
   readonly collectedFeedItemCount?: number;
+  readonly lowRelevanceFeedItemCount: number;
+  readonly mutedFeedItemCount: number;
+  readonly userRatedFeedItemCount: number;
   readonly selectedFeedItemCount: number;
   readonly topReadCount: number;
   readonly citationCount: number;
+};
+
+export type ReaderSummaryTopicCoverageView = {
+  readonly topicKey: string;
+  readonly topicLabel?: string;
+  readonly collectedFeedItemCount: number;
+  readonly lowRelevanceFeedItemCount: number;
+  readonly mutedFeedItemCount: number;
+  readonly userRatedFeedItemCount: number;
+};
+
+export type ReaderSummaryQueryCoverageView = {
+  readonly query: string;
+  readonly collectedFeedItemCount: number;
+  readonly lowRelevanceFeedItemCount: number;
+  readonly mutedFeedItemCount: number;
+  readonly userRatedFeedItemCount: number;
 };
 
 export type ReaderSummaryFreshnessView =
@@ -318,6 +343,10 @@ const buildCoverageView = (
     ...(collectedCoverage === undefined
       ? {}
       : { collectedFeedItemCount: collectedCoverage.collectedFeedItemCount }),
+    lowRelevanceFeedItemCount:
+      collectedCoverage?.lowRelevanceFeedItemCount ?? 0,
+    mutedFeedItemCount: collectedCoverage?.mutedFeedItemCount ?? 0,
+    userRatedFeedItemCount: collectedCoverage?.userRatedFeedItemCount ?? 0,
     selectedFeedItemCount: snapshot.sourceWindow.selectedFeedItemIds.length,
     storyClusterCount: snapshot.storyClusters.length,
     topReadCount: content.topReads.length,
@@ -349,6 +378,8 @@ const buildCoverageView = (
     windowEndedAt: snapshot.sourceWindow.endedAt.toISOString(),
     freshnessStatus: freshness.status,
     providerBreakdown: buildProviderBreakdown(content, collectedCoverage),
+    topicBreakdown: collectedCoverage?.topicBreakdown ?? [],
+    queryBreakdown: collectedCoverage?.queryBreakdown ?? [],
   };
 };
 
@@ -372,6 +403,9 @@ const buildProviderBreakdown = (
       selectedFeedItemCount: 0,
       topReadCount: 0,
       citationCount: 0,
+      lowRelevanceFeedItemCount: 0,
+      mutedFeedItemCount: 0,
+      userRatedFeedItemCount: 0,
     };
     providers.set(key, { ...current, ...patch });
   };
@@ -393,6 +427,9 @@ const buildProviderBreakdown = (
   for (const provider of collectedCoverage?.providerBreakdown ?? []) {
     upsert(provider.providerKey, {
       collectedFeedItemCount: provider.collectedFeedItemCount,
+      lowRelevanceFeedItemCount: provider.lowRelevanceFeedItemCount,
+      mutedFeedItemCount: provider.mutedFeedItemCount,
+      userRatedFeedItemCount: provider.userRatedFeedItemCount,
     });
   }
 

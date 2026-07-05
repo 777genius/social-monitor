@@ -3404,6 +3404,12 @@
           "isSingleSource": {
             "type": "boolean"
           },
+          "lowRelevanceFeedItemCount": {
+            "type": "number"
+          },
+          "mutedFeedItemCount": {
+            "type": "number"
+          },
           "providerBreakdown": {
             "items": {
               "$ref": "#/components/schemas/ReaderSummaryProviderCoverageDto"
@@ -3413,11 +3419,23 @@
           "providerCount": {
             "type": "number"
           },
+          "queryBreakdown": {
+            "items": {
+              "$ref": "#/components/schemas/ReaderSummaryQueryCoverageDto"
+            },
+            "type": "array"
+          },
           "selectedFeedItemCount": {
             "type": "number"
           },
           "storyClusterCount": {
             "type": "number"
+          },
+          "topicBreakdown": {
+            "items": {
+              "$ref": "#/components/schemas/ReaderSummaryTopicCoverageDto"
+            },
+            "type": "array"
           },
           "topInterestIds": {
             "items": {
@@ -3434,6 +3452,9 @@
           "topReadCount": {
             "type": "number"
           },
+          "userRatedFeedItemCount": {
+            "type": "number"
+          },
           "windowEndedAt": {
             "format": "date-time",
             "type": "string"
@@ -3444,6 +3465,9 @@
           }
         },
         "required": [
+          "lowRelevanceFeedItemCount",
+          "mutedFeedItemCount",
+          "userRatedFeedItemCount",
           "selectedFeedItemCount",
           "storyClusterCount",
           "topReadCount",
@@ -3863,6 +3887,12 @@
           "collectedFeedItemCount": {
             "type": "number"
           },
+          "lowRelevanceFeedItemCount": {
+            "type": "number"
+          },
+          "mutedFeedItemCount": {
+            "type": "number"
+          },
           "providerKey": {
             "type": "string"
           },
@@ -3871,10 +3901,16 @@
           },
           "topReadCount": {
             "type": "number"
+          },
+          "userRatedFeedItemCount": {
+            "type": "number"
           }
         },
         "required": [
           "providerKey",
+          "lowRelevanceFeedItemCount",
+          "mutedFeedItemCount",
+          "userRatedFeedItemCount",
           "selectedFeedItemCount",
           "topReadCount",
           "citationCount"
@@ -3893,6 +3929,33 @@
         "required": [
           "label",
           "value"
+        ],
+        "type": "object"
+      },
+      "ReaderSummaryQueryCoverageDto": {
+        "properties": {
+          "collectedFeedItemCount": {
+            "type": "number"
+          },
+          "lowRelevanceFeedItemCount": {
+            "type": "number"
+          },
+          "mutedFeedItemCount": {
+            "type": "number"
+          },
+          "query": {
+            "type": "string"
+          },
+          "userRatedFeedItemCount": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "query",
+          "collectedFeedItemCount",
+          "lowRelevanceFeedItemCount",
+          "mutedFeedItemCount",
+          "userRatedFeedItemCount"
         ],
         "type": "object"
       },
@@ -4651,6 +4714,36 @@
           "interestDiversityBoost",
           "freshnessBoost",
           "totalScore"
+        ],
+        "type": "object"
+      },
+      "ReaderSummaryTopicCoverageDto": {
+        "properties": {
+          "collectedFeedItemCount": {
+            "type": "number"
+          },
+          "lowRelevanceFeedItemCount": {
+            "type": "number"
+          },
+          "mutedFeedItemCount": {
+            "type": "number"
+          },
+          "topicKey": {
+            "type": "string"
+          },
+          "topicLabel": {
+            "type": "string"
+          },
+          "userRatedFeedItemCount": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "topicKey",
+          "collectedFeedItemCount",
+          "lowRelevanceFeedItemCount",
+          "mutedFeedItemCount",
+          "userRatedFeedItemCount"
         ],
         "type": "object"
       },

@@ -18,6 +18,10 @@ class ReaderSummaryInsightRail extends StatelessWidget {
           _CoverageBySourceSection(rows: rows),
           const SizedBox(height: AppSpacing.lg),
         ],
+        if (_hasCoverageDiagnostics(summary.coverage)) ...[
+          _CoverageDiagnosticsSection(coverage: summary.coverage!),
+          const SizedBox(height: AppSpacing.lg),
+        ],
         _CollectionStatsSection(summary: summary),
         if (!summary.content.topicMap.isEmpty) ...[
           const SizedBox(height: AppSpacing.lg),

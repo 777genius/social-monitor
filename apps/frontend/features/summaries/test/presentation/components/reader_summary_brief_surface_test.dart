@@ -71,7 +71,7 @@ void main() {
 
     expect(find.byType(ReaderSummaryTopicMapPanel), findsOneWidget);
     expect(find.text('Topic map'), findsOneWidget);
-    expect(find.text('AI grouped'), findsOneWidget);
+    expect(find.text('AI tools'), findsOneWidget);
     expect(find.text('Agent tools'), findsOneWidget);
     expect(find.text('Protocols'), findsOneWidget);
     expect(find.byType(CustomPaint), findsAtLeastNWidgets(1));

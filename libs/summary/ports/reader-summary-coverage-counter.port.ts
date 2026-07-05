@@ -16,11 +16,36 @@ export type CountReaderSummaryCollectedFeedItemsQuery = {
 export type ReaderSummaryCollectedProviderCoverage = {
   readonly providerKey: string;
   readonly collectedFeedItemCount: number;
+  readonly lowRelevanceFeedItemCount: number;
+  readonly mutedFeedItemCount: number;
+  readonly userRatedFeedItemCount: number;
+};
+
+export type ReaderSummaryCollectedTopicCoverage = {
+  readonly topicKey: string;
+  readonly topicLabel?: string;
+  readonly collectedFeedItemCount: number;
+  readonly lowRelevanceFeedItemCount: number;
+  readonly mutedFeedItemCount: number;
+  readonly userRatedFeedItemCount: number;
+};
+
+export type ReaderSummaryCollectedQueryCoverage = {
+  readonly query: string;
+  readonly collectedFeedItemCount: number;
+  readonly lowRelevanceFeedItemCount: number;
+  readonly mutedFeedItemCount: number;
+  readonly userRatedFeedItemCount: number;
 };
 
 export type ReaderSummaryCollectedFeedItemCoverage = {
   readonly collectedFeedItemCount: number;
+  readonly lowRelevanceFeedItemCount: number;
+  readonly mutedFeedItemCount: number;
+  readonly userRatedFeedItemCount: number;
   readonly providerBreakdown: readonly ReaderSummaryCollectedProviderCoverage[];
+  readonly topicBreakdown: readonly ReaderSummaryCollectedTopicCoverage[];
+  readonly queryBreakdown: readonly ReaderSummaryCollectedQueryCoverage[];
 };
 
 export interface ReaderSummaryCoverageCounterPort {

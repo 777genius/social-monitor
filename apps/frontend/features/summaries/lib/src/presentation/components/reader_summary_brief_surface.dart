@@ -28,6 +28,7 @@ part 'reader_summary_ai_brief.dart';
 part 'reader_summary_citation_chip.dart';
 part 'reader_summary_executive_brief.dart';
 part 'reader_summary_feedback_bar.dart';
+part 'reader_summary_coverage_diagnostics.dart';
 part 'reader_summary_filtered_evidence.dart';
 part 'reader_summary_evidence_read_card.dart';
 part 'reader_summary_brief_helpers.dart';

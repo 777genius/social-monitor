@@ -4,7 +4,11 @@ import type {
   ListFeedItemsQuery,
   ListFeedItemsResult,
 } from "@social-monitor/feed/ports";
-import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
+import {
+  type JsonObject,
+  tenantId,
+  workspaceId,
+} from "@social-monitor/shared-kernel";
 
 import { FeedReaderSummaryCoverageCounter } from "./feed-reader-summary-coverage.counter";
 
@@ -87,14 +91,153 @@ describe("FeedReaderSummaryCoverageCounter", () => {
 
     expect(result).toEqual({
       collectedFeedItemCount: 6,
+      lowRelevanceFeedItemCount: 0,
+      mutedFeedItemCount: 0,
+      userRatedFeedItemCount: 0,
       providerBreakdown: [
-        { providerKey: "reddit", collectedFeedItemCount: 2 },
-        { providerKey: "rss", collectedFeedItemCount: 2 },
-        { providerKey: "hacker-news", collectedFeedItemCount: 1 },
-        { providerKey: "x-twitter", collectedFeedItemCount: 1 },
+        providerCoverage("reddit", 2),
+        providerCoverage("rss", 2),
+        providerCoverage("hacker-news", 1),
+        providerCoverage("x-twitter", 1),
+      ],
+      topicBreakdown: [topicCoverage("interest-ai", 6)],
+      queryBreakdown: [],
+    });
+  });
+
+  it("returns quality, topic and query coverage for collection diagnostics", async () => {
+    const feedItems = new FakeFeedItems([
+      [
+        {
+          providerKey: "reddit",
+          interestId: "interest-ai",
+          providerMetadata: {
+            searchQuery: "AI agents",
+            interestQuerySnapshot: { query: "AI coding" },
+            sourceBindingSnapshot: {
+              sourceQuery: { query: "AI agents" },
+            },
+            normalizedSignal: { score: 12 },
+          },
+        },
+        {
+          providerKey: "x-twitter",
+          interestId: "interest-ai",
+          providerMetadata: {
+            searchQuery: "AI agents",
+            interestQuerySnapshot: { query: "AI coding" },
+            sourceBindingSnapshot: {
+              sourceQuery: { query: "AI agents" },
+            },
+            relevance: { muted: true },
+          },
+        },
+        {
+          providerKey: "rss",
+          interestId: "interest-security",
+          providerMetadata: {
+            searchQueries: ["cybersecurity", "AI agents"],
+            interestQuerySnapshot: { query: "Security" },
+            sourceBindingSnapshot: {
+              sourceQuery: { query: "AI agents" },
+            },
+            rating: { userRated: true },
+          },
+        },
+      ],
+    ]);
+    const counter = new FeedReaderSummaryCoverageCounter(feedItems);
+
+    const result = await counter.countCollectedFeedItemCoverage({
+      tenantId: tenant,
+      workspaceId: workspace,
+      scope: { type: "workspace" },
+      period,
+    });
+
+    expect(result).toEqual({
+      collectedFeedItemCount: 3,
+      lowRelevanceFeedItemCount: 1,
+      mutedFeedItemCount: 1,
+      userRatedFeedItemCount: 1,
+      providerBreakdown: [
+        providerCoverage("reddit", 1, { lowRelevance: 1 }),
+        providerCoverage("rss", 1, { userRated: 1 }),
+        providerCoverage("x-twitter", 1, { muted: 1 }),
+      ],
+      topicBreakdown: [
+        topicCoverage("interest-ai", "AI coding", 2, {
+          lowRelevance: 1,
+          muted: 1,
+        }),
+        topicCoverage("interest-security", "Security", 1, { userRated: 1 }),
+      ],
+      queryBreakdown: [
+        queryCoverage("AI agents", 3, {
+          lowRelevance: 1,
+          muted: 1,
+          userRated: 1,
+        }),
+        queryCoverage("cybersecurity", 1, { userRated: 1 }),
       ],
     });
   });
+});
+
+const providerCoverage = (
+  providerKey: string,
+  collectedFeedItemCount: number,
+  stats: Partial<CoverageStats> = {},
+) => ({
+  providerKey,
+  ...coverageStats(collectedFeedItemCount, stats),
+});
+
+const topicCoverage = (
+  topicKey: string,
+  topicLabelOrCount: string | number,
+  collectedFeedItemCountOrStats?: number | Partial<CoverageStats>,
+  maybeStats: Partial<CoverageStats> = {},
+) => {
+  const hasLabel = typeof topicLabelOrCount === "string";
+  const collectedFeedItemCount = hasLabel
+    ? (collectedFeedItemCountOrStats as number)
+    : topicLabelOrCount;
+  const stats = hasLabel
+    ? maybeStats
+    : ((collectedFeedItemCountOrStats as Partial<CoverageStats> | undefined) ??
+      {});
+
+  return {
+    topicKey,
+    ...(hasLabel ? { topicLabel: topicLabelOrCount } : {}),
+    ...coverageStats(collectedFeedItemCount, stats),
+  };
+};
+
+const queryCoverage = (
+  query: string,
+  collectedFeedItemCount: number,
+  stats: Partial<CoverageStats> = {},
+) => ({
+  query,
+  ...coverageStats(collectedFeedItemCount, stats),
+});
+
+type CoverageStats = {
+  readonly lowRelevance: number;
+  readonly muted: number;
+  readonly userRated: number;
+};
+
+const coverageStats = (
+  collectedFeedItemCount: number,
+  stats: Partial<CoverageStats>,
+) => ({
+  collectedFeedItemCount,
+  lowRelevanceFeedItemCount: stats.lowRelevance ?? 0,
+  mutedFeedItemCount: stats.muted ?? 0,
+  userRatedFeedItemCount: stats.userRated ?? 0,
 });
 
 const tenant = tenantId("tenant-reader-summary-coverage");
@@ -111,7 +254,9 @@ class FakeFeedItems implements FeedItemReadRepositoryPort {
   readonly queries: ListFeedItemsQuery[] = [];
 
   constructor(
-    private readonly pages: readonly (number | readonly string[])[],
+    private readonly pages: readonly (
+      number | readonly (string | FakeFeedItemInput)[]
+    )[],
   ) {}
 
   async list(query: ListFeedItemsQuery): Promise<ListFeedItemsResult> {
@@ -119,26 +264,29 @@ class FakeFeedItems implements FeedItemReadRepositoryPort {
     const pageIndex =
       query.cursor === undefined ? 0 : Number(query.cursor) / query.limit;
     const page = this.pages[pageIndex] ?? 0;
-    const providerKeys =
+    const inputs: readonly FakeFeedItemInput[] =
       typeof page === "number"
-        ? Array.from({ length: page }, () => "reddit")
-        : page;
+        ? Array.from({ length: page }, () => ({ providerKey: "reddit" }))
+        : page.map((input) =>
+            typeof input === "string" ? { providerKey: input } : input,
+          );
 
     return {
-      items: providerKeys.map((providerKey, index) =>
+      items: inputs.map((input, index) =>
         FeedItem.publish({
           id: `feed-${pageIndex}-${index}`,
           tenantId: tenant,
           workspaceId: workspace,
-          interestId: "interest-ai",
+          interestId: input.interestId ?? "interest-ai",
           sourceItemId: `source-${pageIndex}-${index}`,
-          sourceBindingId: `binding-${providerKey}`,
-          providerKey,
+          sourceBindingId: `binding-${input.providerKey}`,
+          providerKey: input.providerKey,
           canonicalUrl: `https://example.test/${pageIndex}/${index}`,
-          title: `${providerKey} story`,
+          title: `${input.providerKey} story`,
           bodyPreview: "Summary coverage test item.",
           publishedAt: period.startedAt,
           observedAt: period.startedAt,
+          providerMetadata: input.providerMetadata,
         }),
       ),
       nextCursor:
@@ -152,3 +300,9 @@ class FakeFeedItems implements FeedItemReadRepositoryPort {
     return null;
   }
 }
+
+type FakeFeedItemInput = {
+  readonly providerKey: string;
+  readonly interestId?: string;
+  readonly providerMetadata?: JsonObject;
+};

@@ -61,6 +61,9 @@ describe("GetReaderSummaryUseCase", () => {
         ],
         coverage: {
           collectedFeedItemCount: 4,
+          lowRelevanceFeedItemCount: 0,
+          mutedFeedItemCount: 0,
+          userRatedFeedItemCount: 0,
           selectedFeedItemCount: 1,
           storyClusterCount: 1,
           topReadCount: 1,
@@ -80,6 +83,9 @@ describe("GetReaderSummaryUseCase", () => {
             {
               providerKey: "reddit",
               collectedFeedItemCount: 4,
+              lowRelevanceFeedItemCount: 0,
+              mutedFeedItemCount: 0,
+              userRatedFeedItemCount: 0,
               selectedFeedItemCount: 1,
               topReadCount: 1,
               citationCount: 1,
@@ -89,8 +95,13 @@ describe("GetReaderSummaryUseCase", () => {
               selectedFeedItemCount: 1,
               topReadCount: 0,
               citationCount: 0,
+              lowRelevanceFeedItemCount: 0,
+              mutedFeedItemCount: 0,
+              userRatedFeedItemCount: 0,
             },
           ],
+          topicBreakdown: [],
+          queryBreakdown: [],
         },
       }),
     });
@@ -377,12 +388,20 @@ class FakeReaderSummaryCoverageCounter implements ReaderSummaryCoverageCounterPo
   async countCollectedFeedItemCoverage() {
     return {
       collectedFeedItemCount: this.collectedFeedItemCount,
+      lowRelevanceFeedItemCount: 0,
+      mutedFeedItemCount: 0,
+      userRatedFeedItemCount: 0,
       providerBreakdown: [
         {
           providerKey: "reddit",
           collectedFeedItemCount: this.collectedFeedItemCount,
+          lowRelevanceFeedItemCount: 0,
+          mutedFeedItemCount: 0,
+          userRatedFeedItemCount: 0,
         },
       ],
+      topicBreakdown: [],
+      queryBreakdown: [],
     };
   }
 }

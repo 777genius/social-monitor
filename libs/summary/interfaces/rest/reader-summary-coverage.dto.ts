@@ -8,6 +8,15 @@ export class ReaderSummaryProviderCoverageDto {
   declare readonly collectedFeedItemCount?: number;
 
   @ApiProperty()
+  declare readonly lowRelevanceFeedItemCount: number;
+
+  @ApiProperty()
+  declare readonly mutedFeedItemCount: number;
+
+  @ApiProperty()
+  declare readonly userRatedFeedItemCount: number;
+
+  @ApiProperty()
   declare readonly selectedFeedItemCount: number;
 
   @ApiProperty()
@@ -17,9 +26,55 @@ export class ReaderSummaryProviderCoverageDto {
   declare readonly citationCount: number;
 }
 
+export class ReaderSummaryTopicCoverageDto {
+  @ApiProperty()
+  declare readonly topicKey: string;
+
+  @ApiPropertyOptional()
+  declare readonly topicLabel?: string;
+
+  @ApiProperty()
+  declare readonly collectedFeedItemCount: number;
+
+  @ApiProperty()
+  declare readonly lowRelevanceFeedItemCount: number;
+
+  @ApiProperty()
+  declare readonly mutedFeedItemCount: number;
+
+  @ApiProperty()
+  declare readonly userRatedFeedItemCount: number;
+}
+
+export class ReaderSummaryQueryCoverageDto {
+  @ApiProperty()
+  declare readonly query: string;
+
+  @ApiProperty()
+  declare readonly collectedFeedItemCount: number;
+
+  @ApiProperty()
+  declare readonly lowRelevanceFeedItemCount: number;
+
+  @ApiProperty()
+  declare readonly mutedFeedItemCount: number;
+
+  @ApiProperty()
+  declare readonly userRatedFeedItemCount: number;
+}
+
 export class ReaderSummaryCoverageSummaryDto {
   @ApiPropertyOptional()
   declare readonly collectedFeedItemCount?: number;
+
+  @ApiProperty()
+  declare readonly lowRelevanceFeedItemCount: number;
+
+  @ApiProperty()
+  declare readonly mutedFeedItemCount: number;
+
+  @ApiProperty()
+  declare readonly userRatedFeedItemCount: number;
 
   @ApiProperty()
   declare readonly selectedFeedItemCount: number;
@@ -68,4 +123,10 @@ export class ReaderSummaryCoverageSummaryDto {
 
   @ApiPropertyOptional({ type: () => [ReaderSummaryProviderCoverageDto] })
   declare readonly providerBreakdown?: readonly ReaderSummaryProviderCoverageDto[];
+
+  @ApiPropertyOptional({ type: () => [ReaderSummaryTopicCoverageDto] })
+  declare readonly topicBreakdown?: readonly ReaderSummaryTopicCoverageDto[];
+
+  @ApiPropertyOptional({ type: () => [ReaderSummaryQueryCoverageDto] })
+  declare readonly queryBreakdown?: readonly ReaderSummaryQueryCoverageDto[];
 }

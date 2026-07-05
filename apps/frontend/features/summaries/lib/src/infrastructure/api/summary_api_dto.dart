@@ -1,5 +1,6 @@
 part 'summary_reader_quality_api_dto.dart';
 part 'reader_summary_content_api_dto.dart';
+part 'reader_summary_coverage_api_dto.dart';
 
 final class SummaryCitationApiDto {
   const SummaryCitationApiDto({
@@ -229,38 +230,6 @@ final class ReaderActionApiDto {
   final String reason;
   final List<String> citationIds;
   final String? canonicalUrl;
-}
-
-final class ReaderSummaryCoverageApiDto {
-  const ReaderSummaryCoverageApiDto({
-    required this.selectedFeedItemCount,
-    required this.topReadCount,
-    required this.citationCount,
-    this.collectedFeedItemCount,
-    this.providerBreakdown = const [],
-  });
-
-  final int selectedFeedItemCount;
-  final int topReadCount;
-  final int citationCount;
-  final int? collectedFeedItemCount;
-  final List<ReaderSummaryProviderCoverageApiDto> providerBreakdown;
-}
-
-final class ReaderSummaryProviderCoverageApiDto {
-  const ReaderSummaryProviderCoverageApiDto({
-    required this.providerKey,
-    required this.selectedFeedItemCount,
-    required this.topReadCount,
-    required this.citationCount,
-    this.collectedFeedItemCount,
-  });
-
-  final String providerKey;
-  final int selectedFeedItemCount;
-  final int topReadCount;
-  final int citationCount;
-  final int? collectedFeedItemCount;
 }
 
 final class SummaryPeriodApiDto {

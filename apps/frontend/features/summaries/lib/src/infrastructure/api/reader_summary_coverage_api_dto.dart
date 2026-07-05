@@ -1,11 +1,13 @@
-final class ReaderSummaryCoverage {
-  const ReaderSummaryCoverage({
+part of 'summary_api_dto.dart';
+
+final class ReaderSummaryCoverageApiDto {
+  const ReaderSummaryCoverageApiDto({
     required this.selectedFeedItemCount,
     required this.topReadCount,
     required this.citationCount,
-    required this.lowRelevanceFeedItemCount,
-    required this.mutedFeedItemCount,
-    required this.userRatedFeedItemCount,
+    this.lowRelevanceFeedItemCount = 0,
+    this.mutedFeedItemCount = 0,
+    this.userRatedFeedItemCount = 0,
     this.collectedFeedItemCount,
     this.providerBreakdown = const [],
     this.topicBreakdown = const [],
@@ -19,20 +21,20 @@ final class ReaderSummaryCoverage {
   final int mutedFeedItemCount;
   final int userRatedFeedItemCount;
   final int? collectedFeedItemCount;
-  final List<ReaderSummaryProviderCoverage> providerBreakdown;
-  final List<ReaderSummaryTopicCoverage> topicBreakdown;
-  final List<ReaderSummaryQueryCoverage> queryBreakdown;
+  final List<ReaderSummaryProviderCoverageApiDto> providerBreakdown;
+  final List<ReaderSummaryTopicCoverageApiDto> topicBreakdown;
+  final List<ReaderSummaryQueryCoverageApiDto> queryBreakdown;
 }
 
-final class ReaderSummaryProviderCoverage {
-  const ReaderSummaryProviderCoverage({
+final class ReaderSummaryProviderCoverageApiDto {
+  const ReaderSummaryProviderCoverageApiDto({
     required this.providerKey,
     required this.selectedFeedItemCount,
     required this.topReadCount,
     required this.citationCount,
-    required this.lowRelevanceFeedItemCount,
-    required this.mutedFeedItemCount,
-    required this.userRatedFeedItemCount,
+    this.lowRelevanceFeedItemCount = 0,
+    this.mutedFeedItemCount = 0,
+    this.userRatedFeedItemCount = 0,
     this.collectedFeedItemCount,
   });
 
@@ -46,14 +48,14 @@ final class ReaderSummaryProviderCoverage {
   final int? collectedFeedItemCount;
 }
 
-final class ReaderSummaryTopicCoverage {
-  const ReaderSummaryTopicCoverage({
+final class ReaderSummaryTopicCoverageApiDto {
+  const ReaderSummaryTopicCoverageApiDto({
     required this.topicKey,
-    this.topicLabel,
     required this.collectedFeedItemCount,
-    required this.lowRelevanceFeedItemCount,
-    required this.mutedFeedItemCount,
-    required this.userRatedFeedItemCount,
+    this.topicLabel,
+    this.lowRelevanceFeedItemCount = 0,
+    this.mutedFeedItemCount = 0,
+    this.userRatedFeedItemCount = 0,
   });
 
   final String topicKey;
@@ -64,13 +66,13 @@ final class ReaderSummaryTopicCoverage {
   final int userRatedFeedItemCount;
 }
 
-final class ReaderSummaryQueryCoverage {
-  const ReaderSummaryQueryCoverage({
+final class ReaderSummaryQueryCoverageApiDto {
+  const ReaderSummaryQueryCoverageApiDto({
     required this.query,
     required this.collectedFeedItemCount,
-    required this.lowRelevanceFeedItemCount,
-    required this.mutedFeedItemCount,
-    required this.userRatedFeedItemCount,
+    this.lowRelevanceFeedItemCount = 0,
+    this.mutedFeedItemCount = 0,
+    this.userRatedFeedItemCount = 0,
   });
 
   final String query;

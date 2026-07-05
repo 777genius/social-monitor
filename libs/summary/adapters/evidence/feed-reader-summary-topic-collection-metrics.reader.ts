@@ -5,14 +5,13 @@ import type {
   ReaderSummaryTopicCollectionMetricsQuery,
   ReaderSummaryTopicCollectionMetricsReaderPort,
 } from "../../ports";
+import { statsForFeedItemMetadata } from "./feed-item-collection-stats";
 import { isDefaultReaderSummaryEvidenceProvider } from "./reader-summary-evidence-provider-filter";
 
 const PAGE_LIMIT = 100;
 const MAX_PAGES_PER_QUERY = 100;
 
-export class FeedReaderSummaryTopicCollectionMetricsReader
-  implements ReaderSummaryTopicCollectionMetricsReaderPort
-{
+export class FeedReaderSummaryTopicCollectionMetricsReader implements ReaderSummaryTopicCollectionMetricsReaderPort {
   constructor(private readonly feedItems: FeedItemReadRepositoryPort) {}
 
   async readTopicCollectionMetrics(
@@ -45,9 +44,9 @@ export class FeedReaderSummaryTopicCollectionMetricsReader
 
     return {
       collectedPostCount: feedItemStats.size,
-      lowRelevancePostCount: countStats(feedItemStats, 'lowRelevance'),
-      mutedPostCount: countStats(feedItemStats, 'muted'),
-      userRatedPostCount: countStats(feedItemStats, 'userRated'),
+      lowRelevancePostCount: countStats(feedItemStats, "lowRelevance"),
+      mutedPostCount: countStats(feedItemStats, "muted"),
+      userRatedPostCount: countStats(feedItemStats, "userRated"),
     };
   }
 
@@ -80,7 +79,10 @@ export class FeedReaderSummaryTopicCollectionMetricsReader
         }
         feedItemStats.set(
           snapshot.id,
-          mergeStats(feedItemStats.get(snapshot.id), statsForFeedItem(snapshot)),
+          mergeStats(
+            feedItemStats.get(snapshot.id),
+            statsForFeedItem(snapshot),
+          ),
         );
       }
 
@@ -151,33 +153,12 @@ const emptyCollectionMetrics = (): ReaderSummaryTopicCollectionMetrics => ({
 const statsForFeedItem = (snapshot: {
   readonly providerMetadata?: Readonly<Record<string, unknown>>;
 }): FeedItemTopicStats => {
-  const metadata = snapshot.providerMetadata;
+  const stats = statsForFeedItemMetadata(snapshot.providerMetadata);
 
   return {
-    lowRelevance: readNumericPath(metadata, [
-      ['normalizedSignal', 'score'],
-      ['signal', 'score'],
-      ['relevance', 'score'],
-    ]).some((score) => score < 20),
-    muted:
-      readBooleanPath(metadata, [
-        ['muted'],
-        ['relevance', 'muted'],
-        ['ranking', 'muted'],
-      ]) ||
-      readStringPath(metadata, [
-        ['muteReason'],
-        ['relevance', 'muteReason'],
-      ]) !== undefined,
-    userRated:
-      readBooleanPath(metadata, [
-        ['userRated'],
-        ['rating', 'userRated'],
-      ]) ||
-      readNumericPath(metadata, [
-        ['userRating'],
-        ['rating', 'value'],
-      ]).length > 0,
+    lowRelevance: stats.lowRelevance,
+    muted: stats.muted,
+    userRated: stats.userRated,
   };
 };
 
@@ -200,52 +181,3 @@ const countStats = (
   stats: ReadonlyMap<string, FeedItemTopicStats>,
   key: keyof FeedItemTopicStats,
 ): number => [...stats.values()].filter((value) => value[key]).length;
-
-const readNumericPath = (
-  value: unknown,
-  paths: readonly (readonly string[])[],
-): readonly number[] =>
-  paths.flatMap((path) => {
-    const nested = readPath(value, path);
-
-    return typeof nested === 'number' && Number.isFinite(nested)
-      ? [nested]
-      : [];
-  });
-
-const readBooleanPath = (
-  value: unknown,
-  paths: readonly (readonly string[])[],
-): boolean => paths.some((path) => readPath(value, path) === true);
-
-const readStringPath = (
-  value: unknown,
-  paths: readonly (readonly string[])[],
-): string | undefined => {
-  for (const path of paths) {
-    const nested = readPath(value, path);
-
-    if (typeof nested === 'string' && nested.trim().length > 0) {
-      return nested.trim();
-    }
-  }
-
-  return undefined;
-};
-
-const readPath = (
-  value: unknown,
-  path: readonly string[],
-): unknown => {
-  let current = value;
-
-  for (const key of path) {
-    if (current === null || typeof current !== 'object' || Array.isArray(current)) {
-      return undefined;
-    }
-
-    current = (current as Readonly<Record<string, unknown>>)[key];
-  }
-
-  return current;
-};
