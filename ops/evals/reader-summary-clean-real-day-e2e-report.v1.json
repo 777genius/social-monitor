@@ -85,7 +85,7 @@
     "rejectedBadGamingArtifactCount": 3,
     "failedBadGamingArtifactCount": 0,
     "visiblePeriodArtifactCount": 1,
-    "supersededPeriodArtifactCount": 12
+    "supersededPeriodArtifactCount": 4
   },
   "qualityGates": {
     "collectionArtifactFormatValid": true,
