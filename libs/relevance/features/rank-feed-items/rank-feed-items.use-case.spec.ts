@@ -200,6 +200,8 @@ describe("RankFeedItemsUseCase", () => {
       workspaceId: workspace,
       observedAfter: new Date("2026-06-22T23:59:59.999Z"),
       observedBefore: new Date("2026-06-24T00:00:00.000Z"),
+      publishedAtOrAfter: new Date("2026-06-23T00:00:00.000Z"),
+      publishedBefore: new Date("2026-06-24T00:00:00.000Z"),
       limit: 10,
     });
 
@@ -211,6 +213,8 @@ describe("RankFeedItemsUseCase", () => {
       expect.objectContaining({
         observedAfter: new Date("2026-06-22T23:59:59.999Z"),
         observedBefore: new Date("2026-06-24T00:00:00.000Z"),
+        publishedAtOrAfter: new Date("2026-06-23T00:00:00.000Z"),
+        publishedBefore: new Date("2026-06-24T00:00:00.000Z"),
       }),
     );
   });
@@ -632,7 +636,12 @@ class FakeFeedItemReadRepository implements FeedItemReadRepositoryPort {
           (query.observedAfter === undefined ||
             snapshot.observedAt.getTime() > query.observedAfter.getTime()) &&
           (query.observedBefore === undefined ||
-            snapshot.observedAt.getTime() < query.observedBefore.getTime())
+            snapshot.observedAt.getTime() < query.observedBefore.getTime()) &&
+          (query.publishedAtOrAfter === undefined ||
+            snapshot.publishedAt.getTime() >=
+              query.publishedAtOrAfter.getTime()) &&
+          (query.publishedBefore === undefined ||
+            snapshot.publishedAt.getTime() < query.publishedBefore.getTime())
         );
       })
       .sort(

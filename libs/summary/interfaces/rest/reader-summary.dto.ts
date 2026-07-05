@@ -32,6 +32,14 @@ export {
   ReaderSummaryPeriodSummaryDto,
   ReaderSummaryResponseDto,
 } from "./reader-summary-response.dto";
+export {
+  DecideReaderSummaryTopicRecommendationRequestDto,
+  DecideReaderSummaryTopicRecommendationResponseDto,
+  ListReaderSummaryTopicRecommendationsResponseDto,
+  ReaderSummaryTopicRecommendationDecisionDto,
+  ReaderSummaryTopicRecommendationDto,
+  ReaderSummaryTopicRecommendationMetricsDto,
+} from "./reader-summary-topic-recommendation.dto";
 
 // Compatibility facade for existing REST imports. Canonical readerSummaryId is
 // declared on ReaderSummaryArtifactResponseDto in reader-summary-response.dto.ts.

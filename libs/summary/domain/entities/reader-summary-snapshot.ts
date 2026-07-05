@@ -1,6 +1,7 @@
 import type { ReaderAction } from "./reader-action";
 import type { ReaderSummaryClaim } from "./reader-summary-claim";
 import type { ReaderSummaryReliabilityReport } from "./reader-summary-reliability";
+import type { ReaderSummaryTopicMap } from "./reader-summary-topic-map";
 import type { SourceMixEntry } from "./source-mix-entry";
 import type {
   ReaderInterestSection,
@@ -14,6 +15,7 @@ export type ReaderSummarySnapshot = {
   readonly oneLineTakeaway: string;
   readonly bullets: readonly string[];
   readonly mainTopics?: readonly string[];
+  readonly topicMap?: ReaderSummaryTopicMap;
   readonly qualityState: ReaderSummaryQualityState;
   readonly interestSections: readonly ReaderInterestSection[];
   readonly sourceMix: readonly SourceMixEntry[];

@@ -6,11 +6,11 @@ import {
   type FeedItem,
 } from "@social-monitor/feed/domain";
 import type { RankedFeedItemView } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.result";
-import {
+import type {
   SourceContentQualityPolicy,
   SourceContentSafetyPolicy,
 } from "@social-monitor/relevance/domain";
-import { type JsonObject } from "@social-monitor/shared-kernel";
+import type { JsonObject } from "@social-monitor/shared-kernel";
 
 import type { SummaryEvidenceItem } from "../../domain";
 import { previewMediaFromProviderMetadata } from "./provider-preview-media";
@@ -177,9 +177,16 @@ export const filterItemsByReaderSummaryPeriod = (
 ): readonly SummaryEvidenceItem[] =>
   items.filter(
     (item) =>
-      item.observedAt.getTime() >= period.startedAt.getTime() &&
-      item.observedAt.getTime() < period.endedAt.getTime(),
+      isInsidePeriod(item.observedAt, period) ||
+      isInsidePeriod(item.publishedAt, period),
   );
+
+const isInsidePeriod = (
+  date: Date,
+  period: Parameters<ReaderSummaryEvidenceSelectorPort["select"]>[0]["period"],
+): boolean =>
+  date.getTime() >= period.startedAt.getTime() &&
+  date.getTime() < period.endedAt.getTime();
 
 export const inclusiveObservedAfter = (startedAt: Date): Date =>
   new Date(startedAt.getTime() - 1);

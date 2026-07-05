@@ -6,6 +6,7 @@ import type {
 } from "@social-monitor/feed/ports";
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
+import { emptyReaderSummaryReliabilityReport } from "../../domain/entities/reader-summary-reliability";
 import { ReaderSummaryArtifact, type ReaderSummaryContent } from "../../domain";
 import { FeedReaderSummaryPreviewMediaEnricher } from "./feed-reader-summary-preview-media.enricher";
 
@@ -70,6 +71,8 @@ const readerSummaryContent = (): ReaderSummaryContent => ({
   headline: "Workspace AI tooling reader summary",
   oneLineTakeaway: "AI tooling discussion is repeating.",
   bullets: ["Developers are discussing a new AI tooling library."],
+  claimBoard: [],
+  reliabilityReport: emptyReaderSummaryReliabilityReport(),
   qualityState: {
     status: "ready",
     flags: [],

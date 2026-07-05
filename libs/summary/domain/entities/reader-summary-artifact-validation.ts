@@ -132,6 +132,7 @@ export const assertReaderSummaryArtifactValid = (
       citationIds,
       citationById,
       providerKeysFromStoryClusters(props.storyClusters),
+      clusterIds,
     );
   }
 

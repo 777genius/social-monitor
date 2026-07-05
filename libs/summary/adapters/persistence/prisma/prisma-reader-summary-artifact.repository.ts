@@ -18,6 +18,7 @@ import type { PrismaSummaryClient } from "./prisma-summary-client";
 import {
   readerSummaryArtifactFromPrisma,
   readerSummaryArtifactStatusToPrisma,
+  readerSummaryCitationsToPrisma,
   readerSummaryQualitySignalsToPrisma,
   type PrismaReaderSummaryPeriodSummaryRecord,
   readerSummaryScopeToPrisma,
@@ -38,6 +39,8 @@ export class PrismaReaderSummaryArtifactRepository implements ReaderSummaryArtif
     const snapshot = artifact.toSnapshot();
     const status = readerSummaryArtifactStatusToPrisma(artifact);
     const artifactPayload = serializeReaderSummaryArtifact(artifact);
+    const citations = readerSummaryCitationsToPrisma(artifact);
+    const qualitySignals = readerSummaryQualitySignalsToPrisma(artifact);
     const scopeFields = readerSummaryScopeToPrisma(snapshot.scope);
 
     await withPrismaWriteRetry(() =>
@@ -58,8 +61,8 @@ export class PrismaReaderSummaryArtifactRepository implements ReaderSummaryArtif
           headline: snapshot.headline,
           summaryText: snapshot.executiveSummary,
           artifactPayload,
-          citations: snapshot.citationMap,
-          qualitySignals: readerSummaryQualitySignalsToPrisma(artifact),
+          citations,
+          qualitySignals,
         },
         create: {
           id: snapshot.readerSummaryId,
@@ -80,8 +83,8 @@ export class PrismaReaderSummaryArtifactRepository implements ReaderSummaryArtif
           headline: snapshot.headline,
           summaryText: snapshot.executiveSummary,
           artifactPayload,
-          citations: snapshot.citationMap,
-          qualitySignals: readerSummaryQualitySignalsToPrisma(artifact),
+          citations,
+          qualitySignals,
         },
       }),
     );

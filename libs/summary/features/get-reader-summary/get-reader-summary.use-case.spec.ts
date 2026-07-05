@@ -1,6 +1,10 @@
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
-import { ReaderSummaryArtifact, type ReaderSummaryContent } from "../../domain";
+import {
+  ReaderSummaryArtifact,
+  emptyReaderSummaryReliabilityReport,
+  type ReaderSummaryContent,
+} from "../../domain";
 import type {
   EnrichReaderSummaryPreviewMediaCommand,
   ListReaderSummaryArtifactsQuery,
@@ -36,6 +40,18 @@ describe("GetReaderSummaryUseCase", () => {
       value: expect.objectContaining({
         readerSummaryId: "reader-summary-1",
         headline: "Workspace AI tooling reader summary",
+        content: expect.objectContaining({
+          selectedPosts: [
+            expect.objectContaining({
+              matchedRules: ["ai-tooling"],
+            }),
+          ],
+          topReads: [
+            expect.objectContaining({
+              matchedRules: ["ai-tooling"],
+            }),
+          ],
+        }),
         citations: [
           expect.objectContaining({
             citationId: "c1",
@@ -178,6 +194,8 @@ const readerSummaryArtifact = (
       oneLineTakeaway:
         "AI tooling discussion is repeating across monitored sources.",
       bullets: ["Developers are discussing a new AI tooling library."],
+      claimBoard: [],
+      reliabilityReport: emptyReaderSummaryReliabilityReport(),
       qualityState: {
         status: "ready",
         flags: [],
@@ -213,7 +231,12 @@ const readerSummaryArtifact = (
           primaryActionKind: "read_source",
           reason: "Cross-provider story cluster is active.",
           matchedInterestIds: ["interest-ai", "interest-github"],
-          matchedRules: ["ai-tooling"],
+          matchedRules: [
+            "interest:interest-ai",
+            "source-binding:source-binding-reddit",
+            "provider:reddit",
+            "ai-tooling",
+          ],
           signalScore: 0.91,
           confidence: {
             level: "medium",

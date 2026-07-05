@@ -33,8 +33,8 @@ export class FeedReaderSummaryCoverageCounter implements ReaderSummaryCoverageCo
         workspaceId: query.workspaceId,
         interestId:
           query.scope.type === "interest" ? query.scope.interestId : undefined,
-        observedAfter: query.period.startedAt,
-        observedBefore: query.period.endedAt,
+        publishedAtOrAfter: query.period.startedAt,
+        publishedBefore: query.period.endedAt,
         limit: PAGE_LIMIT,
         cursor,
       });

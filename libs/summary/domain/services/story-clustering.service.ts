@@ -14,7 +14,13 @@ import {
   STORY_RANKING_POLICY_V1,
   type StoryRankingPolicy,
 } from "../policies/story-ranking-policy";
-import { storyKey } from "./story-key-normalizer";
+import {
+  sharedStoryTopicTokenCount,
+  storyKey,
+  storyTopicAnchorTokens,
+  storyTopicSimilarity,
+  storyTopicTokens,
+} from "./story-key-normalizer";
 
 export class StoryClusteringService {
   constructor(
@@ -58,14 +64,31 @@ const buildClusters = (
   now: Date,
   policy: StoryRankingPolicy,
 ): readonly StoryCluster[] => {
-  const groups = new Map<string, SummaryEvidenceItem[]>();
+  const groups: {
+    readonly key: string;
+    readonly items: SummaryEvidenceItem[];
+  }[] = [];
 
   for (const item of items) {
     const key = storyKey(item, policy);
-    groups.set(key, [...(groups.get(key) ?? []), item]);
+    const group = groups.find(
+      (candidate) =>
+        candidate.key === key ||
+        candidate.items.some((head) =>
+          belongsToCrossProviderStory(item, head, policy),
+        ),
+    );
+
+    if (group === undefined) {
+      groups.push({ key, items: [item] });
+    } else {
+      group.items.push(item);
+    }
   }
 
-  return [...groups.entries()].map(([key, clusterItems]) => {
+  return groups.map((group) => {
+    const key = group.key;
+    const clusterItems = group.items;
     const sorted = [...clusterItems].sort(compareEvidenceItems);
     const representative = sorted[0];
     if (representative === undefined) {
@@ -94,6 +117,31 @@ const buildClusters = (
       ]),
     } satisfies StoryCluster;
   });
+};
+
+const belongsToCrossProviderStory = (
+  item: SummaryEvidenceItem,
+  head: SummaryEvidenceItem,
+  policy: StoryRankingPolicy,
+): boolean => {
+  if (item.providerKey === head.providerKey) {
+    return false;
+  }
+
+  const itemTokens = storyTopicTokens(item, policy);
+  const headTokens = storyTopicTokens(head, policy);
+  const sharedTokens = sharedStoryTopicTokenCount(itemTokens, headTokens);
+  const sharedAnchorTokens = sharedStoryTopicTokenCount(
+    storyTopicAnchorTokens(itemTokens),
+    storyTopicAnchorTokens(headTokens),
+  );
+
+  return (
+    sharedAnchorTokens > 0 &&
+    sharedTokens >= policy.crossSourceMinSharedTopicTokens &&
+    storyTopicSimilarity(itemTokens, headTokens) >=
+      policy.crossSourceTopicSimilarityThreshold
+  );
 };
 
 const selectedClusterEvidence = (
@@ -286,7 +334,9 @@ const storyClusterReasons = (params: {
   }
 
   if (params.interestIds.length > 1) {
-    reasons.push(`Appears across ${params.interestIds.length} monitored interests`);
+    reasons.push(
+      `Appears across ${params.interestIds.length} monitored interests`,
+    );
   }
 
   reasons.push(`Story signal score ${formatScore(params.score)}`);
@@ -364,7 +414,8 @@ const compareStoryClusters = (
     return providerCoverageDiff;
   }
 
-  const interestCoverageDiff = right.interestIds.length - left.interestIds.length;
+  const interestCoverageDiff =
+    right.interestIds.length - left.interestIds.length;
   if (interestCoverageDiff !== 0) {
     return interestCoverageDiff;
   }

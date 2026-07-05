@@ -40,8 +40,10 @@ describe("DeterministicReaderSummaryModelAdapter", () => {
     expect(attempt.draft.headline).not.toBe("rss story 1");
     expect(
       attempt.draft.content?.topReads.map((item) => item.providerKey),
-    ).toContain("github-issues");
-    expect(attempt.draft.content?.topReads.map((item) => item.providerKey)).toEqual([
+    ).not.toContain("github-issues");
+    expect(
+      attempt.draft.content?.topReads.map((item) => item.providerKey),
+    ).toEqual([
       "rss",
       "rss",
       "github-trending-page",
@@ -51,7 +53,7 @@ describe("DeterministicReaderSummaryModelAdapter", () => {
       "rss",
       "hacker-news",
       "reddit",
-      "github-issues",
+      "reddit",
     ]);
     expect(attempt.draft.executiveSummary).toContain(
       "Current executive summary covers 12 selected stories for workspace in an analytical tone.",

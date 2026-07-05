@@ -188,6 +188,88 @@ describe("StoryClusteringService", () => {
     ).toEqual([]);
   });
 
+  it("clusters cross-provider stories by shared product and topic tokens", () => {
+    const service = new StoryClusteringService(clock);
+
+    const selection = service.cluster({
+      identity: {
+        tenantId: tenantId("tenant-1"),
+        workspaceId: workspaceId("workspace-1"),
+        scope: { type: "workspace" },
+      },
+      limit: 10,
+      items: [
+        evidenceItem({
+          feedItemId: "reddit-claude-code",
+          sourceItemId: "reddit-claude-code",
+          providerKey: "reddit",
+          canonicalUrl:
+            "https://www.reddit.com/r/ClaudeAI/comments/abc/claude_code_cache_security",
+          title: "Claude Code session cache security concern gets traction",
+          bodyPreview:
+            "Developers discuss Claude Code cache leakage and security impact.",
+          score: 2.1,
+        }),
+        evidenceItem({
+          feedItemId: "x-claude-code",
+          sourceItemId: "x-claude-code",
+          providerKey: "x-twitter",
+          canonicalUrl: "https://x.com/example/status/123",
+          title: "Claude Code security chatter focuses on session cache leak",
+          bodyPreview:
+            "Builders mention Claude Code session cache risk and mitigation steps.",
+          score: 1.9,
+        }),
+      ],
+    });
+
+    expect(selection.clusters).toHaveLength(1);
+    expect(selection.clusters[0]).toMatchObject({
+      representativeFeedItemId: "reddit-claude-code",
+      duplicateFeedItemIds: ["x-claude-code"],
+      providerKeys: ["reddit", "x-twitter"],
+    });
+    expect(selection.clusters[0]?.whyImportant).toContain(
+      "Confirmed by 2 providers: reddit, x-twitter",
+    );
+  });
+
+  it("does not fuzzy-merge generic AI agent stories without enough shared topic tokens", () => {
+    const service = new StoryClusteringService(clock);
+
+    const selection = service.cluster({
+      identity: {
+        tenantId: tenantId("tenant-1"),
+        workspaceId: workspaceId("workspace-1"),
+        scope: { type: "workspace" },
+      },
+      limit: 10,
+      items: [
+        evidenceItem({
+          feedItemId: "reddit-agent-memory",
+          sourceItemId: "reddit-agent-memory",
+          providerKey: "reddit",
+          canonicalUrl:
+            "https://www.reddit.com/r/LocalLLaMA/comments/agent_memory",
+          title: "AI agents need better long-term memory",
+          bodyPreview: "Discussion about memory design for coding workflows.",
+          score: 1.8,
+        }),
+        evidenceItem({
+          feedItemId: "x-agent-pricing",
+          sourceItemId: "x-agent-pricing",
+          providerKey: "x-twitter",
+          canonicalUrl: "https://x.com/example/status/agent-pricing",
+          title: "AI agent pricing complaints keep spreading",
+          bodyPreview: "Builders complain about usage caps and pricing.",
+          score: 1.7,
+        }),
+      ],
+    });
+
+    expect(selection.clusters).toHaveLength(2);
+  });
+
   it("uses a GitHub repository as the canonical entity across discussion sources", () => {
     const service = new StoryClusteringService(clock);
 

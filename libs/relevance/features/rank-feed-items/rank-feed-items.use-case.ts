@@ -164,6 +164,8 @@ export class RankFeedItemsUseCase {
         interestId: normalizeOptional(command.interestId),
         observedAfter: command.observedAfter,
         observedBefore: command.observedBefore,
+        publishedAtOrAfter: command.publishedAtOrAfter,
+        publishedBefore: command.publishedBefore,
         limit: pageLimit,
         cursor,
       });

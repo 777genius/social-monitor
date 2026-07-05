@@ -1,9 +1,6 @@
 import type { ReaderSummaryCitation } from "../entities/citation";
 import type { TopReadCandidate } from "../entities/top-read";
-import type {
-  StoryCluster,
-  SummaryEvidenceItem,
-} from "../value-objects/summary-evidence-item";
+import type { StoryCluster, SummaryEvidenceItem } from "../value-objects/summary-evidence-item";
 import { compactUnique } from "../value-objects/summary-text";
 import { isTopReadEligibleEvidence } from "./top-read-eligibility-policy";
 
@@ -12,9 +9,11 @@ export const selectUniqueTopReadCandidates = (
   citationById: ReadonlyMap<string, ReaderSummaryCitation>,
   evidenceByFeedItemId: ReadonlyMap<string, SummaryEvidenceItem>,
   clusterById: ReadonlyMap<string, StoryCluster>,
+  limit = 10,
 ): readonly TopReadCandidate[] => {
   const seen = new Set<string>();
-  const result: TopReadCandidate[] = [];
+  const uniqueStories: TopReadCandidate[] = [];
+  const normalizedLimit = normalizeLimit(limit);
 
   for (const story of stories) {
     const eligibleStory = storyWithTopReadEligibleCitations(
@@ -38,10 +37,319 @@ export const selectUniqueTopReadCandidates = (
     for (const key of keys) {
       seen.add(key);
     }
-    result.push(eligibleStory);
+    uniqueStories.push(eligibleStory);
+  }
+
+  return selectProviderBalancedTopReads(
+    supplementTopReadCandidates({
+      stories: uniqueStories,
+      citationById,
+      evidenceByFeedItemId,
+      clusterById,
+      limit: normalizedLimit,
+    }),
+    normalizedLimit,
+  );
+};
+
+const primarySocialProviders = ["x-twitter", "reddit"] as const;
+
+const selectProviderBalancedTopReads = (
+  stories: readonly TopReadCandidate[],
+  limit: number,
+): readonly TopReadCandidate[] => {
+  const normalizedLimit = normalizeLimit(limit);
+  const selected: TopReadCandidate[] = [];
+  const selectedIds = new Set<string>();
+  const providerCounts = new Map<string, number>();
+  const activeProviders = activeProviderKeys(stories);
+  const providerCap = providerCapForLimit(normalizedLimit, activeProviders);
+  const primaryMinimum = primaryMinimumForLimit(normalizedLimit);
+  const requiredPrimaryCounts = new Map(
+    primarySocialProviders
+      .filter((providerKey) =>
+        stories.some((story) => primaryProviderKey(story) === providerKey),
+      )
+      .map((providerKey) => [
+        providerKey,
+        Math.min(primaryMinimum, countStoriesForProvider(stories, providerKey)),
+      ]),
+  );
+
+  const select = (story: TopReadCandidate): void => {
+    if (
+      selected.length >= normalizedLimit ||
+      selectedIds.has(story.storyClusterId)
+    ) {
+      return;
+    }
+    selected.push(story);
+    selectedIds.add(story.storyClusterId);
+    const providerKey = primaryProviderKey(story);
+    providerCounts.set(providerKey, (providerCounts.get(providerKey) ?? 0) + 1);
+  };
+
+  for (const story of stories) {
+    const providerKey = primaryProviderKey(story);
+    if ((providerCounts.get(providerKey) ?? 0) >= providerCap) {
+      continue;
+    }
+    if (
+      shouldReserveRemainingSlot({
+        providerKey,
+        selectedCount: selected.length,
+        limit: normalizedLimit,
+        providerCounts,
+        requiredPrimaryCounts,
+      })
+    ) {
+      continue;
+    }
+    select(story);
+  }
+
+  for (const story of stories) {
+    select(story);
+  }
+
+  return selected;
+};
+
+const supplementTopReadCandidates = (params: {
+  readonly stories: readonly TopReadCandidate[];
+  readonly citationById: ReadonlyMap<string, ReaderSummaryCitation>;
+  readonly evidenceByFeedItemId: ReadonlyMap<string, SummaryEvidenceItem>;
+  readonly clusterById: ReadonlyMap<string, StoryCluster>;
+  readonly limit: number;
+}): readonly TopReadCandidate[] => {
+  const primaryMinimum = primaryMinimumForLimit(params.limit);
+  const targetMinimum = targetMinimumForLimit(params.limit);
+  const result: TopReadCandidate[] = [...params.stories];
+  const usedStoryClusterIds = new Set(
+    result.map((story) => story.storyClusterId),
+  );
+  const usedCitationIds = new Set(result.flatMap((story) => story.citationIds));
+  const usedDeduplicationKeys = new Set(
+    result.flatMap((story) =>
+      storyDeduplicationKeys(
+        story,
+        params.citationById,
+        params.evidenceByFeedItemId,
+        params.clusterById,
+      ),
+    ),
+  );
+  const citationByFeedItemId = new Map(
+    [...params.citationById.values()].map(
+      (citation) => [citation.feedItemId, citation] as const,
+    ),
+  );
+  const clusters = [...params.clusterById.values()];
+  const evidence = [...params.evidenceByFeedItemId.values()].sort(
+    (left, right) =>
+      right.score - left.score ||
+      right.observedAt.getTime() - left.observedAt.getTime(),
+  );
+
+  for (const providerKey of primarySocialProviders) {
+    while (countStoriesForProvider(result, providerKey) < primaryMinimum) {
+      const candidate = evidence.find((item) => {
+        const citation = citationByFeedItemId.get(item.feedItemId);
+        const cluster = clusterForEvidence(item.feedItemId, clusters);
+
+        return (
+          item.providerKey === providerKey &&
+          citation !== undefined &&
+          !usedCitationIds.has(citation.citationId) &&
+          (cluster === undefined || !usedStoryClusterIds.has(cluster.id)) &&
+          isTopReadEligibleEvidence(item)
+        );
+      });
+
+      if (candidate === undefined) {
+        break;
+      }
+
+      if (
+        !appendEvidenceCandidate({
+          result,
+          evidence: candidate,
+          clusters,
+          citationByFeedItemId,
+          usedStoryClusterIds,
+          usedCitationIds,
+          usedDeduplicationKeys,
+          citationById: params.citationById,
+          evidenceByFeedItemId: params.evidenceByFeedItemId,
+          clusterById: params.clusterById,
+        })
+      ) {
+        break;
+      }
+    }
+  }
+
+  for (const candidate of evidence) {
+    if (result.length >= Math.max(params.limit * 4, targetMinimum)) {
+      break;
+    }
+
+    appendEvidenceCandidate({
+      result,
+      evidence: candidate,
+      clusters,
+      citationByFeedItemId,
+      usedStoryClusterIds,
+      usedCitationIds,
+      usedDeduplicationKeys,
+      citationById: params.citationById,
+      evidenceByFeedItemId: params.evidenceByFeedItemId,
+      clusterById: params.clusterById,
+    });
   }
 
   return result;
+};
+
+const appendEvidenceCandidate = (params: {
+  readonly result: TopReadCandidate[];
+  readonly evidence: SummaryEvidenceItem;
+  readonly clusters: readonly StoryCluster[];
+  readonly citationByFeedItemId: ReadonlyMap<string, ReaderSummaryCitation>;
+  readonly usedStoryClusterIds: Set<string>;
+  readonly usedCitationIds: Set<string>;
+  readonly usedDeduplicationKeys: Set<string>;
+  readonly citationById: ReadonlyMap<string, ReaderSummaryCitation>;
+  readonly evidenceByFeedItemId: ReadonlyMap<string, SummaryEvidenceItem>;
+  readonly clusterById: ReadonlyMap<string, StoryCluster>;
+}): boolean => {
+  const citation = params.citationByFeedItemId.get(params.evidence.feedItemId);
+  const cluster = clusterForEvidence(params.evidence.feedItemId, params.clusters);
+  const storyClusterId = cluster?.id ?? `feed:${params.evidence.feedItemId}`;
+
+  if (
+    citation === undefined ||
+    params.usedCitationIds.has(citation.citationId) ||
+    params.usedStoryClusterIds.has(storyClusterId) ||
+    !isTopReadEligibleEvidence(params.evidence)
+  ) {
+    return false;
+  }
+
+  const story = {
+    storyClusterId,
+    title: params.evidence.title,
+    summary:
+      params.evidence.whyImportant.find((reason) => reason.trim().length > 0) ??
+      "Selected to preserve primary source coverage.",
+    interestIds: cluster?.interestIds ?? [params.evidence.interestId],
+    providerKeys: compactUnique([
+      params.evidence.providerKey,
+      ...(cluster?.providerKeys ?? []),
+    ]),
+    citationIds: [citation.citationId],
+  } satisfies TopReadCandidate;
+  const deduplicationKeys = storyDeduplicationKeys(
+    story,
+    params.citationById,
+    params.evidenceByFeedItemId,
+    params.clusterById,
+  );
+
+  if (deduplicationKeys.some((key) => params.usedDeduplicationKeys.has(key))) {
+    return false;
+  }
+
+  params.result.push(story);
+  params.usedStoryClusterIds.add(storyClusterId);
+  params.usedCitationIds.add(citation.citationId);
+  for (const key of deduplicationKeys) {
+    params.usedDeduplicationKeys.add(key);
+  }
+
+  return true;
+};
+
+const countStoriesForProvider = (
+  stories: readonly TopReadCandidate[],
+  providerKey: string,
+): number =>
+  stories.filter((story) => primaryProviderKey(story) === providerKey).length;
+
+const clusterForEvidence = (
+  feedItemId: string,
+  clusters: readonly StoryCluster[],
+): StoryCluster | undefined =>
+  clusters.find(
+    (cluster) =>
+      cluster.representativeFeedItemId === feedItemId ||
+      cluster.duplicateFeedItemIds.includes(feedItemId),
+  );
+
+const normalizeLimit = (value: number): number => {
+  if (!Number.isFinite(value) || !Number.isInteger(value) || value < 1) {
+    return 10;
+  }
+
+  return Math.min(value, 10);
+};
+
+const providerCapForLimit = (
+  limit: number,
+  activeProviders: readonly string[],
+): number =>
+  activeProviders.length <= 1
+    ? limit
+    : Math.max(primaryMinimumForLimit(limit), Math.floor(limit * 0.6));
+
+const primaryMinimumForLimit = (limit: number): number => (limit >= 8 ? 2 : 1);
+
+const targetMinimumForLimit = (limit: number): number => Math.min(limit, 8);
+
+const primaryProviderKey = (story: TopReadCandidate): string =>
+  story.providerKeys[0] ?? "unknown";
+
+const activeProviderKeys = (
+  stories: readonly TopReadCandidate[],
+): readonly string[] => compactUnique(stories.map(primaryProviderKey));
+
+const shouldReserveRemainingSlot = (params: {
+  readonly providerKey: string;
+  readonly selectedCount: number;
+  readonly limit: number;
+  readonly providerCounts: ReadonlyMap<string, number>;
+  readonly requiredPrimaryCounts: ReadonlyMap<string, number>;
+}): boolean => {
+  const currentProviderRequired =
+    params.requiredPrimaryCounts.get(params.providerKey) ?? 0;
+  const currentProviderCount =
+    params.providerCounts.get(params.providerKey) ?? 0;
+  const helpsRequiredPrimary = currentProviderCount < currentProviderRequired;
+  const missingAfterSelection = missingRequiredPrimaryCount({
+    providerCounts: params.providerCounts,
+    requiredPrimaryCounts: params.requiredPrimaryCounts,
+    selectedProviderKey: params.providerKey,
+  });
+  const remainingSlotsAfterSelection = params.limit - params.selectedCount - 1;
+
+  return !helpsRequiredPrimary && missingAfterSelection > remainingSlotsAfterSelection;
+};
+
+const missingRequiredPrimaryCount = (params: {
+  readonly providerCounts: ReadonlyMap<string, number>;
+  readonly requiredPrimaryCounts: ReadonlyMap<string, number>;
+  readonly selectedProviderKey: string;
+}): number => {
+  let missing = 0;
+
+  for (const [providerKey, required] of params.requiredPrimaryCounts.entries()) {
+    const selected =
+      (params.providerCounts.get(providerKey) ?? 0) +
+      (providerKey === params.selectedProviderKey ? 1 : 0);
+    missing += Math.max(0, required - selected);
+  }
+
+  return missing;
 };
 
 const storyWithTopReadEligibleCitations = (
@@ -162,7 +470,6 @@ const normalizeCanonicalUrlKey = (value: string): string | undefined => {
 
 const normalizePathname = (hostname: string, pathname: string): string => {
   const normalized = pathname.replace(/\/+$/, "") || "/";
-
   return hostname === "github.com" ? normalized.toLowerCase() : normalized;
 };
 
@@ -175,7 +482,6 @@ const githubRepositoryKeyFromUrl = (value: string): string | undefined => {
     const [owner, repo] = parsed.pathname
       .split("/")
       .filter((segment) => segment.length > 0);
-
     return owner === undefined || repo === undefined
       ? undefined
       : `${owner.toLowerCase()}/${repo.toLowerCase()}`;
@@ -186,10 +492,7 @@ const githubRepositoryKeyFromUrl = (value: string): string | undefined => {
 
 const githubRepositoryKeyFromTitle = (value: string): string | undefined => {
   const match = value.trim().match(/^([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)$/);
-  const owner = match?.[1];
-  const repo = match?.[2];
-
-  return owner === undefined || repo === undefined
+  return match?.[1] === undefined || match[2] === undefined
     ? undefined
-    : `${owner.toLowerCase()}/${repo.toLowerCase()}`;
+    : `${match[1].toLowerCase()}/${match[2].toLowerCase()}`;
 };

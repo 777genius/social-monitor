@@ -5,6 +5,7 @@ import {
   ReaderSummaryArtifact,
   type ReaderSummaryArtifactProps,
 } from "./reader-summary-artifact";
+import { emptyReaderSummaryReliabilityReport } from "./reader-summary-reliability";
 
 const baseArtifact = (
   overrides: Partial<ReaderSummaryArtifactProps> = {},
@@ -133,6 +134,8 @@ const readerContent = (
   headline: "AI tooling is trending across sources",
   oneLineTakeaway: "One monitored story is worth reading now.",
   bullets: ["Repeated evidence points to a useful developer tooling signal."],
+  claimBoard: [],
+  reliabilityReport: emptyReaderSummaryReliabilityReport(),
   qualityState: {
     status: "ready",
     flags: [],

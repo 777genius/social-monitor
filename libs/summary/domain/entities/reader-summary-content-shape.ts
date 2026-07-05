@@ -28,6 +28,11 @@ export const assertReaderSummaryContentShape = (
         "No-signal reader summary content must not include claim board",
       );
     }
+    if ((content.topicMap?.nodes ?? []).length > 0) {
+      throw new Error(
+        "No-signal reader summary content must not include topic map nodes",
+      );
+    }
 
     return;
   }

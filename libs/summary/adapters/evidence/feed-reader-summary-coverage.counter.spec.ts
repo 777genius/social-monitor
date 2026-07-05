@@ -25,8 +25,8 @@ describe("FeedReaderSummaryCoverageCounter", () => {
       expect.objectContaining({
         tenantId: tenant,
         workspaceId: workspace,
-        observedAfter: period.startedAt,
-        observedBefore: period.endedAt,
+        publishedAtOrAfter: period.startedAt,
+        publishedBefore: period.endedAt,
         interestId: undefined,
         limit: 100,
         cursor: undefined,
@@ -34,6 +34,8 @@ describe("FeedReaderSummaryCoverageCounter", () => {
       expect.objectContaining({ cursor: "100" }),
       expect.objectContaining({ cursor: "200" }),
     ]);
+    expect(feedItems.queries[0]?.observedAfter).toBeUndefined();
+    expect(feedItems.queries[0]?.observedBefore).toBeUndefined();
   });
 
   it("scopes collected feed item counts to interest summaries", async () => {

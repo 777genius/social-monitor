@@ -128,11 +128,12 @@ export class DeterministicReaderSummaryModelAdapter implements ReaderSummaryMode
       };
     }
 
+    const citedEvidence = input.evidence.selectedEvidence;
     const selectedEvidence = selectRankedEvidence(
       input.evidence.selectedEvidence,
       input.policy.maxStories,
     );
-    const citationMap = selectedEvidence.map((item, index) => ({
+    const citationMap = citedEvidence.map((item, index) => ({
       citationId: `c${index + 1}`,
       feedItemId: item.feedItemId,
       sourceItemId: item.sourceItemId,
@@ -234,7 +235,7 @@ export class DeterministicReaderSummaryModelAdapter implements ReaderSummaryMode
           ...draft,
           storyClusters: input.evidence.clusters,
           sourceWindow: input.evidence.sourceWindow,
-          selectedEvidence,
+          selectedEvidence: citedEvidence,
         }),
       },
     };

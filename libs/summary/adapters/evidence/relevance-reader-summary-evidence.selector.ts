@@ -1,10 +1,3 @@
-import {
-  feedProviderMetricsFromMetadata,
-  feedProviderMetricStrength,
-  formatFeedProviderMetrics,
-  summarizeFeedProviderMetrics,
-  type FeedItem,
-} from "@social-monitor/feed/domain";
 import type { FeedItemReadRepositoryPort } from "@social-monitor/feed/ports";
 import type { RankFeedItemsUseCase } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.use-case";
 import type { RankedFeedItemView } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.result";
@@ -12,10 +5,10 @@ import {
   SourceContentQualityPolicy,
   SourceContentSafetyPolicy,
 } from "@social-monitor/relevance/domain";
-import { type Clock, type JsonObject } from "@social-monitor/shared-kernel";
+import type { Clock } from "@social-monitor/shared-kernel";
 
 import { StoryClusteringService, type SummaryEvidenceItem } from "../../domain";
-import type { SummaryEvidenceSelection } from "../../domain";
+import { isTopReadEligibleEvidence } from "../../domain/policies/top-read-eligibility-policy";
 import {
   NOOP_STORY_RANKING_METRICS,
   type ReaderSummaryEvidenceSelectorPort,
@@ -29,7 +22,6 @@ import {
   expandedCandidateLimit,
   filterItemsByDefaultReaderSummaryProviders,
   filterItemsByReaderSummaryPeriod,
-  inclusiveObservedAfter,
   mapRankedItem,
   mapSupplementFeedItem,
   providerMetricFacts,
@@ -63,7 +55,7 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
       interestId:
         params.scope.type === "interest" ? params.scope.interestId : undefined,
       userId: params.userId,
-      observedAfter: inclusiveObservedAfter(params.period.startedAt),
+      observedAfter: params.period.startedAt,
       observedBefore: params.period.endedAt,
       limit: expandedCandidateLimit(params.maxItems),
     });
@@ -79,7 +71,10 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
       params.period,
     );
     const items = selectRankedEvidence(
-      await this.withProviderDiversitySupplements(params, rankedItems),
+      await this.withTopReadCandidateSupplements(
+        params,
+        await this.withProviderDiversitySupplements(params, rankedItems),
+      ),
       params.maxItems,
     );
 
@@ -189,7 +184,10 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
         continue;
       }
 
-      let providerCount = countItemsForProvider(itemsById.values(), providerKey);
+      let providerCount = countItemsForProvider(
+        itemsById.values(),
+        providerKey,
+      );
       if (providerCount >= target) {
         continue;
       }
@@ -198,9 +196,11 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
         tenantId: params.tenantId,
         workspaceId: params.workspaceId,
         interestId:
-          params.scope.type === "interest" ? params.scope.interestId : undefined,
+          params.scope.type === "interest"
+            ? params.scope.interestId
+            : undefined,
         providerKey,
-        observedAfter: inclusiveObservedAfter(params.period.startedAt),
+        observedAfter: params.period.startedAt,
         observedBefore: params.period.endedAt,
         limit: target * 2,
       });
@@ -233,4 +233,141 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
 
     return [...itemsById.values()];
   }
+
+  private async withTopReadCandidateSupplements(
+    params: Parameters<ReaderSummaryEvidenceSelectorPort["select"]>[0],
+    rankedItems: readonly SummaryEvidenceItem[],
+  ): Promise<readonly SummaryEvidenceItem[]> {
+    const itemsById = new Map(
+      rankedItems.map((item) => [item.feedItemId, item] as const),
+    );
+    const target = topReadCandidateSupplementTargetForLimit(params.maxItems);
+
+    for (const providerKey of topReadCandidateReserveProviders) {
+      let providerEligibleCount = countTopReadEligibleItemsForProvider(
+        itemsById.values(),
+        providerKey,
+      );
+      if (providerEligibleCount >= target) {
+        continue;
+      }
+
+      const page = await this.feedItems.list({
+        tenantId: params.tenantId,
+        workspaceId: params.workspaceId,
+        interestId:
+          params.scope.type === "interest"
+            ? params.scope.interestId
+            : undefined,
+        providerKey,
+        observedAfter: params.period.startedAt,
+        observedBefore: params.period.endedAt,
+        limit: target * 4,
+      });
+
+      for (const feedItem of page.items) {
+        if (providerEligibleCount >= target) {
+          break;
+        }
+
+        const snapshot = feedItem.toSnapshot();
+        if (itemsById.has(snapshot.id)) {
+          continue;
+        }
+
+        const supplement = mapSupplementFeedItem({
+          snapshot,
+          qualityPolicy: this.qualityPolicy,
+          safetyPolicy: this.safetyPolicy,
+          now: this.clock.now(),
+        });
+
+        if (
+          supplement.contentQuality?.eligibleForSummary === false ||
+          !isTopReadEligibleEvidence(supplement)
+        ) {
+          continue;
+        }
+
+        itemsById.set(supplement.feedItemId, supplement);
+        providerEligibleCount += 1;
+      }
+    }
+
+    return promoteTopReadCandidatesWithinProviders([...itemsById.values()]);
+  }
 }
+
+const topReadCandidateReserveProviders = ["x-twitter", "reddit"] as const;
+
+const topReadCandidateSupplementTargetForLimit = (limit: number): number => {
+  if (limit >= 80) {
+    return 10;
+  }
+
+  if (limit >= 40) {
+    return 6;
+  }
+
+  return 3;
+};
+
+const countTopReadEligibleItemsForProvider = (
+  items: Iterable<SummaryEvidenceItem>,
+  providerKey: string,
+): number => {
+  let count = 0;
+
+  for (const item of items) {
+    if (
+      item.providerKey === providerKey &&
+      isTopReadEligibleEvidence(item)
+    ) {
+      count += 1;
+    }
+  }
+
+  return count;
+};
+
+const promoteTopReadCandidatesWithinProviders = (
+  items: readonly SummaryEvidenceItem[],
+): readonly SummaryEvidenceItem[] => {
+  const rankedByProvider = new Map<string, SummaryEvidenceItem[]>();
+  for (const item of items) {
+    rankedByProvider.set(item.providerKey, [
+      ...(rankedByProvider.get(item.providerKey) ?? []),
+      item,
+    ]);
+  }
+
+  for (const [providerKey, providerItems] of rankedByProvider.entries()) {
+    rankedByProvider.set(
+      providerKey,
+      [...providerItems].sort(compareTopReadFit),
+    );
+  }
+
+  return items.map(
+    (item) => rankedByProvider.get(item.providerKey)?.shift() ?? item,
+  );
+};
+
+const compareTopReadFit = (
+  left: SummaryEvidenceItem,
+  right: SummaryEvidenceItem,
+): number => {
+  const eligibilityDiff =
+    Number(isTopReadEligibleEvidence(right)) -
+    Number(isTopReadEligibleEvidence(left));
+  if (eligibilityDiff !== 0) {
+    return eligibilityDiff;
+  }
+
+  const scoreDiff = right.score - left.score;
+  if (scoreDiff !== 0) {
+    return scoreDiff;
+  }
+
+  return right.observedAt.getTime() - left.observedAt.getTime();
+};

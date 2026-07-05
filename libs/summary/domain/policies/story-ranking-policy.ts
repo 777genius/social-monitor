@@ -1,4 +1,4 @@
-export type StoryRankingPolicyVersion = 'story_ranking_v1';
+export type StoryRankingPolicyVersion = "story_ranking_v1" | "story_ranking_v2";
 
 export type StoryRankingEvalThresholds = {
   readonly minTopKOrderAccuracy: number;
@@ -28,11 +28,14 @@ export type StoryRankingPolicy = {
   readonly freshnessBoosts: readonly StoryRankingFreshnessBoost[];
   readonly trustedStoryKeyHintPrefixes: readonly string[];
   readonly titleFingerprintMaxTokens: number;
+  readonly semanticTopicMaxTokens: number;
+  readonly crossSourceMinSharedTopicTokens: number;
+  readonly crossSourceTopicSimilarityThreshold: number;
   readonly evalThresholds: StoryRankingEvalThresholds;
 };
 
 export const STORY_RANKING_POLICY_V1 = {
-  version: 'story_ranking_v1',
+  version: "story_ranking_v2",
   maxClusters: 200,
   maxSelectedEvidencePerCluster: 4,
   maxCrossProviderEvidence: 3,
@@ -49,8 +52,11 @@ export const STORY_RANKING_POLICY_V1 = {
     { maxAgeHours: 24, boost: 0.12 },
     { maxAgeHours: 72, boost: 0.06 },
   ],
-  trustedStoryKeyHintPrefixes: ['url:', 'github-repo:'],
+  trustedStoryKeyHintPrefixes: ["url:", "github-repo:"],
   titleFingerprintMaxTokens: 10,
+  semanticTopicMaxTokens: 10,
+  crossSourceMinSharedTopicTokens: 3,
+  crossSourceTopicSimilarityThreshold: 0.42,
   evalThresholds: {
     minTopKOrderAccuracy: 1,
     maxFalseMergeRate: 0,

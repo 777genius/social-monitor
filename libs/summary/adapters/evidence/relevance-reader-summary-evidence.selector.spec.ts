@@ -163,7 +163,7 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
 
     expect(rankFeedItems.execute).toHaveBeenCalledWith(
       expect.objectContaining({
-        observedAfter: new Date("2026-06-22T23:59:59.999Z"),
+        observedAfter: readerSummaryPeriod.startedAt,
         observedBefore: readerSummaryPeriod.endedAt,
         limit: 200,
       }),
@@ -189,7 +189,7 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
       altText: "rss story 4",
     });
     expect(storyRankingMetrics.recorded[0]?.rankingPolicyVersion).toBe(
-      "story_ranking_v1",
+      "story_ranking_v2",
     );
     expect(selection.personalization).toEqual({
       memoryGuidanceStatus: "available",
@@ -470,20 +470,131 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
       expect.objectContaining({
         providerKey: "reddit",
         limit: 10,
-        observedAfter: new Date("2026-06-22T23:59:59.999Z"),
+        observedAfter: readerSummaryPeriod.startedAt,
         observedBefore: readerSummaryPeriod.endedAt,
       }),
     );
     expect(
-      selection.selectedEvidence.filter((item) => item.providerKey === "reddit"),
+      selection.selectedEvidence.filter(
+        (item) => item.providerKey === "reddit",
+      ),
     ).toHaveLength(2);
+    expect(selection.selectedEvidence.map((item) => item.feedItemId)).toEqual(
+      expect.arrayContaining(["feed-reddit-1", "feed-reddit-2"]),
+    );
     expect(
-      selection.selectedEvidence.map((item) => item.feedItemId),
-    ).toEqual(expect.arrayContaining(["feed-reddit-1", "feed-reddit-2"]));
-    expect(
-      selection.selectedEvidence.find((item) => item.feedItemId === "feed-reddit-1")
-        ?.score,
+      selection.selectedEvidence.find(
+        (item) => item.feedItemId === "feed-reddit-1",
+      )?.score,
     ).toBeGreaterThan(1.35);
+  });
+
+  it("reserves top-read eligible Reddit evidence even when weak Reddit already appears in ranked results", async () => {
+    const tenant = tenantId("tenant-top-read-reddit-reserve");
+    const workspace = workspaceId("workspace-top-read-reddit-reserve");
+    const rankedItems = [
+      ...Array.from({ length: 10 }, (_, index) =>
+        rankedItem({
+          feedItemId: `feed-x-${index + 1}`,
+          providerKey: "x-twitter",
+          rank: index + 1,
+          score: 3 - index / 100,
+          providerMetadata: {
+            kind: "x_post",
+            public_metrics: {
+              like_count: 100 - index,
+              retweet_count: 20,
+              reply_count: 10,
+            },
+          },
+        }),
+      ),
+      ...Array.from({ length: 10 }, (_, index) =>
+        rankedItem({
+          feedItemId: `feed-weak-reddit-${index + 1}`,
+          providerKey: "reddit",
+          rank: 11 + index,
+          score: 2 - index / 100,
+          providerMetadata: {
+            kind: "reddit_post",
+            score: 0,
+            comments: 0,
+            upvoteRatio: 0.46,
+          },
+        }),
+      ),
+    ];
+    const strongRedditFeedItems = Array.from({ length: 4 }, (_, index) =>
+      FeedItem.publish({
+        id: `feed-strong-reddit-${index + 1}`,
+        tenantId: tenant,
+        workspaceId: workspace,
+        interestId: "interest-ai",
+        sourceItemId: `source-strong-reddit-${index + 1}`,
+        sourceBindingId: "binding-reddit",
+        providerKey: "reddit",
+        canonicalUrl: `https://reddit.example/r/artificial/comments/strong-${index + 1}`,
+        title: `Strong Reddit AI discussion ${index + 1}`,
+        bodyPreview:
+          "Reddit users compare concrete AI coding workflows and reliability tradeoffs.",
+        publishedAt: new Date("2026-06-23T09:00:00.000Z"),
+        observedAt: new Date("2026-06-23T09:05:00.000Z"),
+        providerMetadata: {
+          kind: "reddit_post",
+          score: 500 - index * 20,
+          comments: 90 - index * 5,
+          upvoteRatio: 0.91,
+          subreddit: "ClaudeAI",
+        },
+      }),
+    );
+    const rankFeedItems = {
+      execute: jest.fn(async (command: RankFeedItemsCommand) =>
+        ok({
+          generatedAt: clock.now().toISOString(),
+          profileApplied: false,
+          items: rankedItems.slice(0, command.limit),
+        }),
+      ),
+    } as unknown as RankFeedItemsUseCase;
+    const feedItems: FeedItemReadRepositoryPort = {
+      list: jest.fn(async (query) => ({
+        items: query.providerKey === "reddit" ? strongRedditFeedItems : [],
+      })),
+      findById: jest.fn(async () => null),
+    };
+    const selector = new RelevanceReaderSummaryEvidenceSelector(
+      rankFeedItems,
+      feedItems,
+      clock,
+      new FakeStoryRankingMetrics(),
+    );
+
+    const selection = await selector.select({
+      tenantId: tenant,
+      workspaceId: workspace,
+      scope: { type: "workspace" },
+      period: readerSummaryPeriod,
+      maxItems: 10,
+    });
+
+    expect(feedItems.list).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providerKey: "reddit",
+        limit: 12,
+      }),
+    );
+    const selectedRedditIds = selection.selectedEvidence
+      .filter((item) => item.providerKey === "reddit")
+      .map((item) => item.feedItemId);
+    expect(selectedRedditIds).toEqual(
+      expect.arrayContaining([
+        "feed-strong-reddit-1",
+        "feed-strong-reddit-2",
+        "feed-strong-reddit-3",
+      ]),
+    );
+    expect(selectedRedditIds).toHaveLength(5);
   });
 
   it("supplements up to forty items per provider for 120-item reader summaries", async () => {
@@ -702,6 +813,7 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
         rank: 1,
         score: 2.5,
         observedAt: "2026-06-23T00:00:00.000Z",
+        publishedAt: "2026-06-23T00:00:00.000Z",
       }),
       rankedItem({
         feedItemId: "feed-inside",
@@ -709,13 +821,23 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
         rank: 2,
         score: 2.4,
         observedAt: "2026-06-23T23:59:59.999Z",
+        publishedAt: "2026-06-23T23:59:59.999Z",
       }),
       rankedItem({
         feedItemId: "feed-at-end",
         providerKey: "rss",
         rank: 3,
         score: 2.3,
-        observedAt: "2026-06-24T00:00:00.000Z",
+        observedAt: "2026-06-23T12:00:00.000Z",
+        publishedAt: "2026-06-24T00:00:00.000Z",
+      }),
+      rankedItem({
+        feedItemId: "feed-observed-inside-published-before",
+        providerKey: "x-twitter",
+        rank: 4,
+        score: 2.2,
+        observedAt: "2026-06-23T12:00:00.000Z",
+        publishedAt: "2026-06-22T23:59:59.999Z",
       }),
     ];
     const rankFeedItems = {
@@ -747,13 +869,15 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
 
     expect(rankFeedItems.execute).toHaveBeenCalledWith(
       expect.objectContaining({
-        observedAfter: new Date("2026-06-22T23:59:59.999Z"),
+        observedAfter: new Date("2026-06-23T00:00:00.000Z"),
         observedBefore: new Date("2026-06-24T00:00:00.000Z"),
       }),
     );
     expect(selection.selectedEvidence.map((item) => item.feedItemId)).toEqual([
       "feed-at-start",
       "feed-inside",
+      "feed-at-end",
+      "feed-observed-inside-published-before",
     ]);
   });
 

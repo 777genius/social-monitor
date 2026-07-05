@@ -9,6 +9,7 @@ import {
   type ReaderSummaryContent,
   type ReaderSummaryClaim,
   type ReaderSummaryContextArtifact,
+  emptyReaderSummaryTopicMap,
   emptyReaderSummaryReliabilityReport,
   type ReaderSummaryItem,
   type ReaderSummaryLineage,
@@ -342,6 +343,7 @@ const normalizeReaderSummaryContent = (
   return {
     ...content,
     mainTopics: normalizeReaderSummaryMainTopics(content.mainTopics),
+    topicMap: content.topicMap ?? emptyReaderSummaryTopicMap(),
     topReads: content.topReads.map(normalizeReaderSummaryItem),
     selectedPosts: normalizeReaderSummarySelectedPosts(
       content.selectedPosts,
