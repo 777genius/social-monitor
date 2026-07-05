@@ -113,6 +113,7 @@ const requiredGateIds = new Set([
   'beta-feedback-report',
   'summary-evidence-citations',
   'summary-eval-regression',
+  'reader-summary-quality-regression',
   'summary-production-quality-loop',
   'summary-cost-attribution',
   'summary-window-freshness',

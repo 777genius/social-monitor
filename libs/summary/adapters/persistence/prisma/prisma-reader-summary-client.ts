@@ -37,6 +37,7 @@ export type PrismaReaderSummaryArtifactCreate =
   };
 
 type PrismaReaderSummaryArtifactWhere = {
+  readonly id?: { readonly not: string };
   readonly tenantId: string;
   readonly workspaceId: string;
   readonly scopeKey?: string;
@@ -216,6 +217,12 @@ export type PrismaReaderSummaryClient = {
       readonly update: PrismaReaderSummaryArtifactMutation;
       readonly create: PrismaReaderSummaryArtifactCreate;
     }): Promise<PrismaReaderSummaryArtifactRecord>;
+    updateMany(args: {
+      readonly where: PrismaReaderSummaryArtifactWhere;
+      readonly data: {
+        readonly status: PrismaSummaryStatus;
+      };
+    }): Promise<{ readonly count: number }>;
     findFirst(args: {
       readonly where: {
         readonly tenantId: string;

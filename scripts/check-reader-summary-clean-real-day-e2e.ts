@@ -179,6 +179,21 @@ type FeedbackCalibrationReport = {
   readonly blockingPassed: boolean;
 };
 
+type ArtifactQualityReport = {
+  readonly schemaVersion: 1;
+  readonly artifactFormat: "yesterday-reader-summary-artifact-quality-v1";
+  readonly collectionDate: string;
+  readonly artifactHistory: {
+    readonly visibleBadGamingArtifactCount: number;
+    readonly rejectedBadGamingArtifactCount: number;
+    readonly failedBadGamingArtifactCount: number;
+    readonly visiblePeriodArtifactCount: number;
+    readonly supersededPeriodArtifactCount: number;
+  };
+  readonly qualityGates: Record<string, boolean>;
+  readonly blockingPassed: boolean;
+};
+
 type Report = {
   readonly schemaVersion: 1;
   readonly artifactFormat: "reader-summary-clean-real-day-e2e-report-v1";
@@ -193,6 +208,7 @@ type Report = {
     readonly plannerCanaryPath: string;
     readonly qualityDashboardPath: string;
     readonly feedbackCalibrationPath: string;
+    readonly artifactQualityPath: string;
   };
   readonly collectionDate: string;
   readonly collection: {
@@ -249,6 +265,13 @@ type Report = {
     readonly reasonCount: number;
     readonly shadowMode: string;
   };
+  readonly artifactHistory: {
+    readonly visibleBadGamingArtifactCount: number;
+    readonly rejectedBadGamingArtifactCount: number;
+    readonly failedBadGamingArtifactCount: number;
+    readonly visiblePeriodArtifactCount: number;
+    readonly supersededPeriodArtifactCount: number;
+  };
   readonly qualityGates: Record<string, boolean>;
   readonly blockingPassed: boolean;
 };
@@ -263,6 +286,8 @@ const qualityDashboardPath =
   "ops/evals/reader-summary-quality-dashboard.v1.json";
 const feedbackCalibrationPath =
   "ops/evals/summary-feedback-calibration-report.v1.json";
+const artifactQualityPath =
+  "ops/evals/yesterday-reader-summary-artifact-quality.v1.json";
 const primarySources = ["reddit", "x-twitter"] as const;
 
 void main();
@@ -306,6 +331,7 @@ function buildReport(): Report {
   const plannerCanary = readJson<PlannerCanaryReport>(plannerCanaryPath);
   const dashboard = readJson<QualityDashboardReport>(qualityDashboardPath);
   const feedback = readJson<FeedbackCalibrationReport>(feedbackCalibrationPath);
+  const artifactQuality = readJson<ArtifactQualityReport>(artifactQualityPath);
   const latestDay = dashboard.days.find(
     (day) => day.collectionDate === dashboard.aggregate.latestCleanDate,
   );
@@ -322,6 +348,7 @@ function buildReport(): Report {
     dashboard,
     latestDay,
     feedback,
+    artifactQuality,
   );
   const qualityGates = {
     ...reportWithoutSecretGate.qualityGates,
@@ -345,6 +372,7 @@ function buildReportWithoutSecretGate(
   dashboard: QualityDashboardReport,
   latestDay: DashboardDay,
   feedbackReport: FeedbackCalibrationReport,
+  artifactQualityReport: ArtifactQualityReport,
 ): Report {
   const collectionDate = collectionReport.run.collectionDate;
   const plannerRolloutProof = dashboard.aggregate.plannerRolloutProof;
@@ -387,6 +415,7 @@ function buildReportWithoutSecretGate(
       plannerCanaryPath,
       qualityDashboardPath,
       feedbackCalibrationPath,
+      artifactQualityPath,
     },
     collectionDate,
     collection: {
@@ -460,6 +489,7 @@ function buildReportWithoutSecretGate(
       reasonCount: feedbackReport.reasonCorrelation.length,
       shadowMode: latestDay.feedbackShadow.mode,
     },
+    artifactHistory: artifactQualityReport.artifactHistory,
     qualityGates: {
       collectionArtifactFormatValid:
         collectionReport.artifactFormat ===
@@ -472,6 +502,9 @@ function buildReportWithoutSecretGate(
       feedbackArtifactFormatValid:
         feedbackReport.artifactFormat ===
         "summary-feedback-calibration-report-v1",
+      artifactQualityArtifactFormatValid:
+        artifactQualityReport.artifactFormat ===
+        "yesterday-reader-summary-artifact-quality-v1",
       collectionArtifactPassed: collectionReport.blockingPassed,
       collectionQualityGatesPassed: allGatesPass(collectionReport.qualityGates),
       cleanCollectionDateMatchesDashboard:
@@ -610,6 +643,23 @@ function buildReportWithoutSecretGate(
         latestDay.feedbackShadow.gates.negativeRatingsHaveReason === true,
       feedbackShadowNoHighRankNegativeCluster:
         latestDay.feedbackShadow.gates.noHighRankNegativeCluster === true,
+      artifactQualityArtifactPassed: artifactQualityReport.blockingPassed,
+      artifactQualityDateMatchesCleanCollection:
+        artifactQualityReport.collectionDate === collectionDate,
+      artifactLifecycleQualityGatesPassed:
+        artifactQualityReport.qualityGates
+          .noVisibleHistoricalBadGamingArtifacts === true &&
+        artifactQualityReport.qualityGates.badGamingArtifactsUseRejectedStatus ===
+          true &&
+        artifactQualityReport.qualityGates
+          .latestPeriodHasSingleVisibleArtifact === true,
+      artifactLatestPeriodHasSingleVisibleSummary:
+        artifactQualityReport.artifactHistory.visiblePeriodArtifactCount === 1,
+      artifactBadHistoricalSummaryNotVisible:
+        artifactQualityReport.artifactHistory.visibleBadGamingArtifactCount ===
+          0 &&
+        artifactQualityReport.artifactHistory.failedBadGamingArtifactCount ===
+          0,
       noRawSecretFragments: true,
     },
     blockingPassed: false,

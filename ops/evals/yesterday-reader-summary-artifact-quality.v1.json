@@ -34,7 +34,11 @@
     "qualityFlagCount": 0
   },
   "artifactHistory": {
-    "visibleBadGamingArtifactCount": 0
+    "visibleBadGamingArtifactCount": 0,
+    "rejectedBadGamingArtifactCount": 3,
+    "failedBadGamingArtifactCount": 0,
+    "visiblePeriodArtifactCount": 1,
+    "supersededPeriodArtifactCount": 4
   },
   "collectionIntegrity": {
     "status": "clean"
@@ -335,6 +339,8 @@
     "topReadsDoNotReferenceIneligibleSourceQuality": true,
     "topReadsDoNotReferenceWeakTopicMatchEvidence": true,
     "noVisibleHistoricalBadGamingArtifacts": true,
+    "badGamingArtifactsUseRejectedStatus": true,
+    "latestPeriodHasSingleVisibleArtifact": true,
     "collectionIntegrityCleanForEval": true,
     "noRawSecretFragments": true
   },

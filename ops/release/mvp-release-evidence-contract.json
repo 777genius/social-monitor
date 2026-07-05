@@ -520,6 +520,11 @@
       "blocksRelease": true
     },
     {
+      "gateId": "reader-summary-quality-regression",
+      "command": "npm run check:reader-summary-quality-regression",
+      "blocksRelease": true
+    },
+    {
       "gateId": "summary-production-quality-loop",
       "command": "npm run check:summary-quality-loop",
       "blocksRelease": true

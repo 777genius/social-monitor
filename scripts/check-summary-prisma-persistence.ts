@@ -9,12 +9,14 @@ import {
 } from "@social-monitor/shared-kernel";
 
 import {
+  ReaderSummaryArtifact,
+  ReaderSummaryTopicRecommendationDecision,
   SummaryArtifact,
   SummaryFeedback,
   SummaryJob,
   SummaryPolicy,
-  ReaderSummaryTopicRecommendationDecision,
 } from "../libs/summary/domain";
+import { emptyReaderSummaryReliabilityReport } from "../libs/summary/domain/entities/reader-summary-reliability";
 import { PrismaSummaryArtifactRepository } from "../libs/summary/adapters/persistence/prisma/prisma-summary-artifact.repository";
 import type { PrismaSummaryClient } from "../libs/summary/adapters/persistence/prisma/prisma-summary-client";
 import { PrismaSummaryEventPublisher } from "../libs/summary/adapters/persistence/prisma/prisma-summary-event.publisher";
@@ -22,6 +24,7 @@ import { PrismaSummaryFeedbackRepository } from "../libs/summary/adapters/persis
 import { PrismaSummaryJobRepository } from "../libs/summary/adapters/persistence/prisma/prisma-summary-job.repository";
 import { PrismaSummaryPolicyRepository } from "../libs/summary/adapters/persistence/prisma/prisma-summary-policy.repository";
 import { PrismaReaderSummaryTopicRecommendationDecisionRepository } from "../libs/summary/adapters/persistence/prisma/prisma-reader-summary-topic-recommendation-decision.repository";
+import { PrismaReaderSummaryArtifactRepository } from "../libs/summary/adapters/persistence/prisma/prisma-reader-summary-artifact.repository";
 import { resolveSummaryPersistenceMode } from "../libs/summary/interfaces/rest/summary-provider-tokens";
 import type {
   PrismaReaderSummaryArtifactRecord,
@@ -71,6 +74,9 @@ async function main(): Promise<void> {
       prisma,
       new CryptoIdGenerator(),
     );
+  const readerSummaryArtifacts = new PrismaReaderSummaryArtifactRepository(
+    prisma,
+  );
   const completedArtifact = makeCompletedArtifact(
     "00000000-0000-7000-8000-000000000501",
   );
@@ -323,6 +329,40 @@ async function main(): Promise<void> {
     "reader summary topic recommendation decision must round-trip",
   );
 
+  await readerSummaryArtifacts.save(
+    makeReaderSummaryArtifact("00000000-0000-7000-8000-000000000b01", {
+      headline: "Older reader summary",
+    }),
+  );
+  await readerSummaryArtifacts.save(
+    makeReaderSummaryArtifact("00000000-0000-7000-8000-000000000b02", {
+      headline: "Latest reader summary",
+    }),
+  );
+
+  const visibleReaderSummaries = await readerSummaryArtifacts.list({
+    tenantId: tenant,
+    workspaceId: workspace,
+    scope: { type: "workspace" },
+    cadence: "daily",
+    periodStartedAt: new Date("2026-06-08T00:00:00.000Z"),
+    periodEndedAt: new Date("2026-06-09T00:00:00.000Z"),
+    timezone: "UTC",
+    limit: 10,
+  });
+  assert(
+    visibleReaderSummaries.items.length === 1 &&
+      visibleReaderSummaries.items[0]?.toSnapshot().readerSummaryId ===
+        "00000000-0000-7000-8000-000000000b02",
+    "reader summary artifact save must supersede older visible same-period artifacts",
+  );
+  assert(
+    prisma.readerSummaryArtifactStatus(
+      "00000000-0000-7000-8000-000000000b01",
+    ) === "SUPERSEDED",
+    "superseded reader summary artifact must use SUPERSEDED status",
+  );
+
   console.log("Summary Prisma persistence smoke OK");
 }
 
@@ -430,6 +470,155 @@ const makeNoSignalArtifact = (summaryId: string): SummaryArtifact =>
     noSignalReason: "No selected evidence",
   });
 
+const makeReaderSummaryArtifact = (
+  readerSummaryId: string,
+  overrides: { readonly headline: string },
+): ReaderSummaryArtifact =>
+  ReaderSummaryArtifact.create({
+    schemaVersion: "reader_summary.artifact.v1",
+    readerSummaryId,
+    tenantId: tenant,
+    workspaceId: workspace,
+    scope: { type: "workspace" },
+    period: {
+      cadence: "daily",
+      startedAt: new Date("2026-06-08T00:00:00.000Z"),
+      endedAt: new Date("2026-06-09T00:00:00.000Z"),
+      timezone: "UTC",
+      periodKey:
+        "daily:2026-06-08T00:00:00.000Z:2026-06-09T00:00:00.000Z:UTC",
+    },
+    sourceWindow: {
+      windowId: "reader-window-1",
+      startedAt: new Date("2026-06-08T08:00:00.000Z"),
+      endedAt: new Date("2026-06-08T09:00:00.000Z"),
+      selectedFeedItemIds: ["reader-feed-1"],
+      storyClusterIds: ["reader-story-1"],
+    },
+    storyClusters: [
+      {
+        id: "reader-story-1",
+        storyKey: "url:example.test/reader-summary",
+        representativeFeedItemId: "reader-feed-1",
+        duplicateFeedItemIds: [],
+        interestIds: ["interest-ai"],
+        providerKeys: ["rss"],
+        score: 1.2,
+        observedAtRange: {
+          startedAt: new Date("2026-06-08T08:00:00.000Z"),
+          endedAt: new Date("2026-06-08T09:00:00.000Z"),
+        },
+        whyImportant: ["Relevant source item."],
+      },
+    ],
+    contextArtifacts: [],
+    headline: overrides.headline,
+    executiveSummary: "Reader summary body",
+    content: {
+      headline: overrides.headline,
+      oneLineTakeaway: "Reader takeaway",
+      bullets: ["Reader bullet"],
+      mainTopics: ["AI"],
+      qualityState: {
+        status: "ready",
+        flags: [],
+        warnings: [],
+        isSingleSource: true,
+      },
+      interestSections: [],
+      sourceMix: [
+        {
+          providerKey: "rss",
+          itemCount: 1,
+          citationCount: 1,
+          storyClusterCount: 1,
+          crossSourceClusterCount: 0,
+          singleSourceOnly: true,
+          interestIds: ["interest-ai"],
+        },
+      ],
+      topReads: [readerSummaryTopRead()],
+      selectedPosts: [readerSummaryTopRead()],
+      claimBoard: [],
+      reliabilityReport: emptyReaderSummaryReliabilityReport(),
+      trendDelta: {
+        newSignals: ["1 RSS item selected"],
+        growingSignals: [],
+        repeatedSignals: [],
+        fadingSignals: [],
+      },
+      risks: [],
+      openQuestions: ["Is there confirming source evidence?"],
+      nextActions: [],
+    },
+    topStories: [
+      {
+        storyClusterId: "reader-story-1",
+        title: "Reader source signal",
+        summary: "A cited source item is relevant.",
+        interestIds: ["interest-ai"],
+        providerKeys: ["rss"],
+        citationIds: ["reader-citation-1"],
+      },
+    ],
+    interestHighlights: [],
+    repeatedSignals: [],
+    risksAndUnknowns: [],
+    citationMap: [
+      {
+        citationId: "reader-citation-1",
+        feedItemId: "reader-feed-1",
+        sourceItemId: "reader-source-1",
+        providerKey: "rss",
+        field: "bodyPreview",
+        canonicalUrl: "https://example.test/reader-summary",
+      },
+    ],
+    qualityFlags: [],
+    confidence: {
+      level: "high",
+      score: 0.9,
+      rationale: "Durable reader summary smoke fixture",
+    },
+    lineage: {
+      promptVersion: "reader-summary.prompt.v1",
+      schemaVersion: "reader_summary.artifact.v1",
+      modelVersion: "deterministic-local.v1",
+      providerVersion: "local",
+      rulesVersion: "reader-summary.rules.v1",
+      evalDatasetVersion: "reader-summary.eval.v1",
+    },
+    usage: {
+      inputTokens: 100,
+      outputTokens: 40,
+      estimatedCostUsd: 0,
+    },
+  });
+
+const readerSummaryTopRead = () => ({
+  storyClusterId: "reader-story-1",
+  title: "Reader source signal",
+  providerKey: "rss",
+  providerName: "RSS",
+  primaryActionKind: "read_source" as const,
+  reason: "It is relevant to the monitored topic.",
+  matchedInterestIds: ["interest-ai"],
+  matchedRules: ["ai"],
+  signalScore: 1.2,
+  confidence: {
+    level: "medium" as const,
+    score: 0.64,
+    rationale: "The source item is cited.",
+  },
+  confirmedProviderKeys: ["rss"],
+  providerMetrics: [],
+  whyImportant: ["Relevant source item."],
+  whyNow: "It appeared in the current summary window.",
+  canonicalUrl: "https://example.test/reader-summary",
+  citationIds: ["reader-citation-1"],
+  previewMedia: undefined,
+});
+
 class FakePrismaSummaryClient implements PrismaSummaryClient {
   private readonly jobs = new Map<string, PrismaSummaryJobRecord>();
   private readonly artifacts = new Map<string, PrismaSummaryArtifactRecord>();
@@ -452,6 +641,10 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
     PrismaReaderSummaryTopicRecommendationDecisionRecord
   >();
   readonly outboxEvents = new Map<string, PrismaSummaryOutboxEventRecord>();
+
+  readerSummaryArtifactStatus(id: string): PrismaSummaryStatus | undefined {
+    return this.readerSummaryArtifacts.get(id)?.status;
+  }
 
   readonly $queryRaw: PrismaSummaryClient["$queryRaw"] = async () => {
     throw new Error(
@@ -804,6 +997,20 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
 
         return record;
       },
+      updateMany: async (args) => {
+        let count = 0;
+        for (const record of this.filterReaderSummaryArtifacts(args.where)) {
+          const updated: PrismaReaderSummaryArtifactRecord = {
+            ...record,
+            status: args.data.status,
+            updatedAt: clock.now(),
+          };
+          this.readerSummaryArtifacts.set(record.id, updated);
+          count += 1;
+        }
+
+        return { count };
+      },
       findFirst: async (args) =>
         [...this.readerSummaryArtifacts.values()].find(
           (record) =>
@@ -1002,6 +1209,7 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
   }
 
   private filterReaderSummaryArtifacts(where: {
+    readonly id?: { readonly not: string };
     readonly tenantId: string;
     readonly workspaceId: string;
     readonly scopeKey?: string;
@@ -1021,6 +1229,7 @@ class FakePrismaSummaryClient implements PrismaSummaryClient {
       (record) =>
         record.tenantId === where.tenantId &&
         record.workspaceId === where.workspaceId &&
+        (where.id?.not === undefined || record.id !== where.id.not) &&
         (where.scopeKey === undefined || record.scopeKey === where.scopeKey) &&
         (where.cadence === undefined || record.cadence === where.cadence) &&
         readerSummaryPeriodStartedAtMatches(

@@ -62,6 +62,7 @@ enum SummaryStatus {
   NO_SIGNAL
   FAILED
   REJECTED
+  SUPERSEDED
 }
 
 enum DeliveryStatus {

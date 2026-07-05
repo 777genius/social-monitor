@@ -23,7 +23,7 @@ CREATE TYPE "ScanJobStatus" AS ENUM ('REQUESTED', 'ENQUEUED', 'SUCCEEDED', 'FAIL
 CREATE TYPE "FeedItemStatus" AS ENUM ('VISIBLE', 'HIDDEN', 'TOMBSTONED');
 
 -- CreateEnum
-CREATE TYPE "SummaryStatus" AS ENUM ('REQUESTED', 'RUNNING', 'COMPLETED', 'NO_SIGNAL', 'FAILED', 'REJECTED');
+CREATE TYPE "SummaryStatus" AS ENUM ('REQUESTED', 'RUNNING', 'COMPLETED', 'NO_SIGNAL', 'FAILED', 'REJECTED', 'SUPERSEDED');
 
 -- CreateEnum
 CREATE TYPE "DeliveryStatus" AS ENUM ('QUEUED', 'ASSEMBLING', 'SUPPRESSED', 'SENDING', 'DELIVERED', 'FAILED_RETRYABLE', 'FAILED_TERMINAL', 'DEAD_LETTERED', 'CANCELLED');
@@ -713,6 +713,24 @@ CREATE TABLE "reader_summary_policies" (
 );
 
 -- CreateTable
+CREATE TABLE "reader_summary_topic_recommendation_decisions" (
+    "id" UUID NOT NULL,
+    "tenant_id" UUID NOT NULL,
+    "workspace_id" UUID NOT NULL,
+    "recommendation_id" TEXT NOT NULL,
+    "topic_label" TEXT NOT NULL,
+    "status" TEXT NOT NULL,
+    "decided_by" TEXT NOT NULL,
+    "note" TEXT,
+    "application" JSONB,
+    "decided_at" TIMESTAMPTZ(6) NOT NULL,
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMPTZ(6) NOT NULL,
+
+    CONSTRAINT "reader_summary_topic_recommendation_decisions_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "delivery_attempts" (
     "id" UUID NOT NULL,
     "tenant_id" UUID NOT NULL,
@@ -1319,6 +1337,12 @@ CREATE INDEX "reader_summary_policies_tenant_id_workspace_id_updated_at_idx" ON 
 
 -- CreateIndex
 CREATE UNIQUE INDEX "reader_summary_policies_tenant_id_workspace_id_scope_key_key" ON "reader_summary_policies"("tenant_id", "workspace_id", "scope_key");
+
+-- CreateIndex
+CREATE INDEX "reader_summary_topic_recommendation_decisions_scope_time_idx" ON "reader_summary_topic_recommendation_decisions"("tenant_id", "workspace_id", "decided_at");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "reader_summary_topic_recommendation_decisions_scope_key" ON "reader_summary_topic_recommendation_decisions"("tenant_id", "workspace_id", "recommendation_id");
 
 -- CreateIndex
 CREATE INDEX "delivery_attempts_tenant_id_workspace_id_state_queued_at_idx" ON "delivery_attempts"("tenant_id", "workspace_id", "state", "queued_at");

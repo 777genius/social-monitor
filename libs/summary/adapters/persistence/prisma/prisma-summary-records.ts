@@ -26,7 +26,14 @@ import {
   type SummaryUsage,
 } from '../../../domain';
 
-export type PrismaSummaryStatus = 'REQUESTED' | 'RUNNING' | 'COMPLETED' | 'NO_SIGNAL' | 'FAILED' | 'REJECTED';
+export type PrismaSummaryStatus =
+  | 'REQUESTED'
+  | 'RUNNING'
+  | 'COMPLETED'
+  | 'NO_SIGNAL'
+  | 'FAILED'
+  | 'REJECTED'
+  | 'SUPERSEDED';
 
 export type PrismaSummaryJobRecord = {
   readonly id: string;

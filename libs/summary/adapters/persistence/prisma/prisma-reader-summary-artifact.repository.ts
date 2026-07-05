@@ -43,8 +43,8 @@ export class PrismaReaderSummaryArtifactRepository implements ReaderSummaryArtif
     const qualitySignals = readerSummaryQualitySignalsToPrisma(artifact);
     const scopeFields = readerSummaryScopeToPrisma(snapshot.scope);
 
-    await withPrismaWriteRetry(() =>
-      this.prisma.readerSummaryArtifact.upsert({
+    await withPrismaWriteRetry(async () => {
+      await this.prisma.readerSummaryArtifact.upsert({
         where: { id: snapshot.readerSummaryId },
         update: {
           ...scopeFields,
@@ -86,8 +86,23 @@ export class PrismaReaderSummaryArtifactRepository implements ReaderSummaryArtif
           citations,
           qualitySignals,
         },
-      }),
-    );
+      });
+
+      await this.prisma.readerSummaryArtifact.updateMany({
+        where: {
+          id: { not: snapshot.readerSummaryId },
+          tenantId: snapshot.tenantId,
+          workspaceId: snapshot.workspaceId,
+          scopeKey: readerSummaryScopeKey(snapshot.scope),
+          cadence: snapshot.period.cadence,
+          periodStartedAt: snapshot.period.startedAt,
+          periodEndedAt: snapshot.period.endedAt,
+          periodTimezone: snapshot.period.timezone,
+          status: { in: VISIBLE_READER_SUMMARY_STATUSES },
+        },
+        data: { status: "SUPERSEDED" },
+      });
+    });
   }
 
   async list(
