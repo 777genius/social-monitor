@@ -12,10 +12,16 @@ import { PrismaScanLeaseAdapter } from "@social-monitor/ingestion/adapters/persi
 import { PrismaSourceItemRepository } from "@social-monitor/ingestion/adapters/persistence/prisma/prisma-source-item.repository";
 import { NoopScanExecutionReporterAdapter } from "@social-monitor/ingestion/adapters/reporting/noop-scan-execution-reporter.adapter";
 import { CircuitBreakerSourceFetcherAdapter } from "@social-monitor/ingestion/adapters/source/circuit-breaker-source-fetcher.adapter";
+import { HttpGitHubTrendingPageClient } from "@social-monitor/ingestion/adapters/source/github-trending-page/http-github-trending-page-client";
+import { GitHubTrendingPageSourceProvider } from "@social-monitor/ingestion/adapters/source/github-trending-page/github-trending-page-source.provider";
+import { HttpHackerNewsClient } from "@social-monitor/ingestion/adapters/source/hacker-news/http-hacker-news-client";
+import { HackerNewsSourceProvider } from "@social-monitor/ingestion/adapters/source/hacker-news/hacker-news-source.provider";
 import { HttpRedditClient } from "@social-monitor/ingestion/adapters/source/reddit/http-reddit-client";
 import { RedditAppOnlyTokenProvider } from "@social-monitor/ingestion/adapters/source/reddit/app-only-reddit-token-provider";
 import { RedditRefreshTokenProvider } from "@social-monitor/ingestion/adapters/source/reddit/refresh-token-reddit-token-provider";
 import { RedditSourceProvider } from "@social-monitor/ingestion/adapters/source/reddit/reddit-source.provider";
+import { HttpRssClient } from "@social-monitor/ingestion/adapters/source/rss/http-rss-client";
+import { RssSourceProvider } from "@social-monitor/ingestion/adapters/source/rss/rss-source.provider";
 import { InMemorySourceProviderRegistry } from "@social-monitor/ingestion/adapters/source/in-memory-source-provider.registry";
 import { RegistrySourceFetcherAdapter } from "@social-monitor/ingestion/adapters/source/registry-source-fetcher.adapter";
 import { SocialResearchSourceQueryPlannerAdapter } from "@social-monitor/ingestion/adapters/source/social-research-source-query-planner.adapter";
@@ -53,7 +59,8 @@ import {
   stringValue,
 } from "./lib/reader-summary-quality-eval-support";
 
-type ProviderKey = "reddit" | "x-twitter";
+type ProviderKey =
+  "github-trending-page" | "hacker-news" | "reddit" | "rss" | "x-twitter";
 
 type SourceBindingTarget = {
   readonly tenantId: string;
@@ -335,10 +342,25 @@ function buildProviders(clock: SystemClock): readonly SourceProviderPort[] {
     process.env,
   );
   const providers: SourceProviderPort[] = [
+    new GitHubTrendingPageSourceProvider(
+      new HttpGitHubTrendingPageClient(
+        positiveIntegerEnv(process.env.GITHUB_TRENDING_TIMEOUT_MS, 10_000),
+      ),
+      clock,
+    ),
+    new HackerNewsSourceProvider(
+      new HttpHackerNewsClient(
+        positiveIntegerEnv(process.env.HACKER_NEWS_TIMEOUT_MS, 10_000),
+      ),
+      clock,
+    ),
     new RedditSourceProvider(
       new HttpRedditClient(),
       redditTokenProvider ?? undefined,
       RedditRefreshTokenProvider.fromEnvironment(process.env),
+    ),
+    new RssSourceProvider(
+      new HttpRssClient(positiveIntegerEnv(process.env.RSS_TIMEOUT_MS, 10_000)),
     ),
   ];
   const xCollectorAddress = process.env.X_COLLECTOR_GRPC_ADDRESS?.trim();
@@ -597,6 +619,21 @@ function sourceQueryFromConfig(
   providerKey: ProviderKey,
   config: SourceRuntimeConfig,
 ): SourceQuery {
+  if (providerKey === "github-trending-page") {
+    return {
+      mode: "listing",
+      query: stringValue(config.window) ?? "daily",
+      parameters: config,
+    };
+  }
+  if (providerKey === "rss") {
+    return {
+      mode: "url",
+      query: stringValue(config.feedUrl) ?? stringValue(config.url) ?? "",
+      parameters: config,
+    };
+  }
+
   return {
     mode: sourceQueryModeFromValue(config.mode),
     query:
@@ -616,7 +653,13 @@ function sourceQueryModeFromValue(value: unknown): SourceQueryMode {
 function readProviderKeys(): readonly ProviderKey[] {
   const option = readOption("--providers");
   if (option === undefined) {
-    return ["reddit", "x-twitter"];
+    return [
+      "github-trending-page",
+      "hacker-news",
+      "reddit",
+      "rss",
+      "x-twitter",
+    ];
   }
 
   const providers = option
@@ -628,7 +671,13 @@ function readProviderKeys(): readonly ProviderKey[] {
   }
 
   return providers.map((provider) => {
-    if (provider !== "reddit" && provider !== "x-twitter") {
+    if (
+      provider !== "github-trending-page" &&
+      provider !== "hacker-news" &&
+      provider !== "reddit" &&
+      provider !== "rss" &&
+      provider !== "x-twitter"
+    ) {
       throw new Error(`Unsupported provider for clean collection: ${provider}`);
     }
 
