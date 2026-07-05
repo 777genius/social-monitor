@@ -1,26 +1,18 @@
-import { readFileSync } from 'node:fs';
-
-const pidFile =
-  process.env.SOCIAL_MONITOR_FRONTEND_PID_FILE ??
-  '/tmp/social-monitor-flutter-web.pid';
+import {
+  assertMarionetteFrontendProcess,
+  assertProcessIsRunning,
+  readFrontendPid,
+  readFrontendRuntimeConfig,
+} from './lib/frontend-dev-runtime-support.mjs';
 
 let pid;
 try {
-  pid = Number.parseInt(readFileSync(pidFile, 'utf8').trim(), 10);
-} catch {
-  console.error(`Cannot read Flutter frontend pid file: ${pidFile}`);
-  process.exit(1);
-}
-
-if (!Number.isInteger(pid) || pid <= 0) {
-  console.error(`Invalid Flutter frontend pid in ${pidFile}`);
-  process.exit(1);
-}
-
-try {
-  process.kill(pid, 0);
-} catch {
-  console.error(`Flutter frontend process is not running: ${pid}`);
+  const config = readFrontendRuntimeConfig();
+  pid = readFrontendPid(config.pidFile);
+  assertProcessIsRunning(pid);
+  assertMarionetteFrontendProcess(pid);
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error));
   process.exit(1);
 }
 

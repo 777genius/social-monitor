@@ -87,6 +87,7 @@
     "frontend:run-demo": "cd apps/frontend/app && fvm flutter run -d chrome -t lib/main_demo.dart",
     "frontend:run-connected-marionette": "node scripts/run-frontend-marionette-web.mjs",
     "frontend:hot-restart": "node scripts/hot-restart-frontend-web.mjs",
+    "check:frontend-dev-runtime": "node scripts/check-frontend-dev-runtime.mjs",
     "frontend:serve-web-preview": "node scripts/serve-flutter-web-preview.mjs",
     "frontend:serve-reader-summary-e2e-backend": "node scripts/run-with-timeout.mjs --timeout-ms 600000 --node-options --max-old-space-size=768 -- ts-node -r tsconfig-paths/register scripts/serve-frontend-reader-summary-e2e-backend.ts",
     "check:frontend": "cd apps/frontend && fvm flutter analyze && fvm flutter test app && fvm flutter test packages/design_system && fvm dart test packages/shared_kernel && fvm dart test packages/generated_api",
