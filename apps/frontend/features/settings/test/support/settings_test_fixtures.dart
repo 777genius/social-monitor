@@ -2,6 +2,7 @@ import 'package:social_monitor_settings/src/domain/entities/diagnostic_snapshot.
 import 'package:social_monitor_settings/src/domain/entities/workspace_settings.dart';
 import 'package:social_monitor_settings/src/domain/value_objects/digest_frequency.dart';
 import 'package:social_monitor_settings/src/domain/value_objects/telemetry_consent_state.dart';
+import 'package:social_monitor_settings/src/infrastructure/api/summary_preference_api_dto.dart';
 import 'package:social_monitor_settings/src/infrastructure/api/workspace_settings_api_dto.dart';
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
@@ -56,5 +57,25 @@ WorkspaceSettings workspaceSettings({
     digestFrequency: digestFrequency,
     telemetryConsent: telemetryConsent,
     diagnostics: diagnostics,
+  );
+}
+
+SummaryPreferenceApiDto summaryPreferenceApiDto({
+  String? format = 'executive_brief',
+  String? tone = 'analytical',
+  bool? includeRisks = true,
+  bool? includeSourceHighlights = true,
+  String? customInstructions = '',
+  String source = 'interest',
+  DateTime? updatedAt,
+}) {
+  return SummaryPreferenceApiDto(
+    format: format,
+    tone: tone,
+    includeRisks: includeRisks,
+    includeSourceHighlights: includeSourceHighlights,
+    customInstructions: customInstructions,
+    source: source,
+    updatedAt: updatedAt,
   );
 }

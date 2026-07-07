@@ -11,6 +11,11 @@ import {
 } from "@social-monitor/shared-kernel";
 
 import { ReaderSummaryTopicRecommendationDecision } from "../../domain";
+import {
+  isUsableReaderSummaryTopicRecommendationLabel,
+  normalizeReaderSummaryTopicRecommendationLabel,
+  readerSummaryTopicRecommendationLabel,
+} from "../../domain/policies/reader-summary-topic-recommendation-label";
 import type {
   ReaderSummaryAcceptedTopicApplication,
   ReaderSummaryAcceptedTopicReversion,
@@ -41,14 +46,41 @@ export class DecideReaderSummaryTopicRecommendationUseCase {
     }
 
     const recommendationId = command.recommendationId.trim();
-    const topicLabel = command.topicLabel.trim();
+    const topicLabel = readerSummaryTopicRecommendationLabel({
+      label: command.topicLabel,
+    });
+    if (
+      command.action === "accept" &&
+      !isUsableReaderSummaryTopicRecommendationLabel(topicLabel)
+    ) {
+      return err(
+        new DomainError(
+          "validation.failed",
+          "Accepted topic recommendation topicLabel must resolve to a concrete topic query",
+          { topicLabel },
+        ),
+      );
+    }
+
+    const canonicalRecommendationId = canonicalTopicRecommendationId(
+      recommendationId,
+      topicLabel,
+    );
     if (command.action === "undo") {
-      return this.undoDecision(command, recommendationId, topicLabel);
+      return this.undoDecision({
+        command,
+        recommendationId: canonicalRecommendationId,
+        rawRecommendationId: recommendationId,
+      });
     }
 
     const application =
       command.action === "accept"
-        ? await this.applyAcceptedTopic(command, recommendationId, topicLabel)
+        ? await this.applyAcceptedTopic(
+            command,
+            canonicalRecommendationId,
+            topicLabel,
+          )
         : ok(notRequestedApplication());
     if (!application.ok) {
       return err(topicApplicationError(application.error));
@@ -57,7 +89,7 @@ export class DecideReaderSummaryTopicRecommendationUseCase {
     const decision = ReaderSummaryTopicRecommendationDecision.record({
       tenantId: command.tenantId,
       workspaceId: command.workspaceId,
-      recommendationId,
+      recommendationId: canonicalRecommendationId,
       topicLabel,
       status: command.action === "accept" ? "accepted" : "rejected",
       decidedBy: command.decidedBy.trim(),
@@ -69,7 +101,7 @@ export class DecideReaderSummaryTopicRecommendationUseCase {
     await this.decisions.save(decision);
     await this.publishDecisionEvent({
       command,
-      recommendationId,
+      recommendationId: canonicalRecommendationId,
       topicLabel,
       decision,
       decisionStatus: decision.toSnapshot().status,
@@ -85,18 +117,14 @@ export class DecideReaderSummaryTopicRecommendationUseCase {
     });
   }
 
-  private async undoDecision(
-    command: DecideReaderSummaryTopicRecommendationCommand,
-    recommendationId: string,
-    topicLabel: string,
-  ): Promise<
+  private async undoDecision(params: {
+    readonly command: DecideReaderSummaryTopicRecommendationCommand;
+    readonly recommendationId: string;
+    readonly rawRecommendationId: string;
+  }): Promise<
     Result<DecideReaderSummaryTopicRecommendationResult, DomainError>
   > {
-    const existing = await this.decisions.findByRecommendationId({
-      tenantId: command.tenantId,
-      workspaceId: command.workspaceId,
-      recommendationId,
-    });
+    const existing = await this.findDecisionForUndo(params);
     if (existing === null) {
       return ok({
         decisionStatus: "pending",
@@ -108,7 +136,12 @@ export class DecideReaderSummaryTopicRecommendationUseCase {
     const snapshot = existing.toSnapshot();
     const reversion =
       snapshot.status === "accepted"
-        ? await this.revertAcceptedTopic(command, snapshot.application)
+        ? await this.revertAcceptedTopic({
+            command: params.command,
+            recommendationId: snapshot.recommendationId,
+            topicLabel: snapshot.topicLabel,
+            application: snapshot.application,
+          })
         : ok(notRequestedReversion());
     if (!reversion.ok) {
       return err(topicApplicationError(reversion.error));
@@ -120,22 +153,22 @@ export class DecideReaderSummaryTopicRecommendationUseCase {
           "operation.conflict",
           "Accepted topic recommendation cannot be undone because collection config changed after it was applied",
           {
-            recommendationId,
-            topicLabel,
+            recommendationId: snapshot.recommendationId,
+            topicLabel: snapshot.topicLabel,
           },
         ),
       );
     }
 
     await this.decisions.deleteByRecommendationId({
-      tenantId: command.tenantId,
-      workspaceId: command.workspaceId,
-      recommendationId,
+      tenantId: params.command.tenantId,
+      workspaceId: params.command.workspaceId,
+      recommendationId: snapshot.recommendationId,
     });
     await this.publishDecisionEvent({
-      command,
-      recommendationId,
-      topicLabel,
+      command: params.command,
+      recommendationId: snapshot.recommendationId,
+      topicLabel: snapshot.topicLabel,
       decisionStatus: "pending",
       application: notRequestedApplication(),
       reversion: reversion.value,
@@ -145,6 +178,30 @@ export class DecideReaderSummaryTopicRecommendationUseCase {
       decisionStatus: "pending",
       application: notRequestedApplication(),
       reversion: reversion.value,
+    });
+  }
+
+  private async findDecisionForUndo(params: {
+    readonly command: DecideReaderSummaryTopicRecommendationCommand;
+    readonly recommendationId: string;
+    readonly rawRecommendationId: string;
+  }): Promise<ReaderSummaryTopicRecommendationDecision | null> {
+    const existing = await this.decisions.findByRecommendationId({
+      tenantId: params.command.tenantId,
+      workspaceId: params.command.workspaceId,
+      recommendationId: params.recommendationId,
+    });
+    if (
+      existing !== null ||
+      params.rawRecommendationId === params.recommendationId
+    ) {
+      return existing;
+    }
+
+    return this.decisions.findByRecommendationId({
+      tenantId: params.command.tenantId,
+      workspaceId: params.command.workspaceId,
+      recommendationId: params.rawRecommendationId,
     });
   }
 
@@ -168,13 +225,15 @@ export class DecideReaderSummaryTopicRecommendationUseCase {
     });
   }
 
-  private async revertAcceptedTopic(
-    command: DecideReaderSummaryTopicRecommendationCommand,
-    application: ReaderSummaryAcceptedTopicApplication | undefined,
-  ): Promise<
+  private async revertAcceptedTopic(params: {
+    readonly command: DecideReaderSummaryTopicRecommendationCommand;
+    readonly recommendationId: string;
+    readonly topicLabel: string;
+    readonly application: ReaderSummaryAcceptedTopicApplication | undefined;
+  }): Promise<
     Result<ReaderSummaryAcceptedTopicReversion, DomainError | Error>
   > {
-    if (application === undefined) {
+    if (params.application === undefined) {
       return err(
         new DomainError(
           "validation.failed",
@@ -184,14 +243,16 @@ export class DecideReaderSummaryTopicRecommendationUseCase {
     }
 
     return this.acceptedTopicApplier.revert({
-      tenantId: command.tenantId,
-      workspaceId: command.workspaceId,
-      recommendationId: command.recommendationId.trim(),
-      topicLabel: command.topicLabel.trim(),
-      application,
-      decidedBy: command.decidedBy.trim(),
-      idempotencyKey: `${recommendationDecisionIdempotencyKey(command)}:undo`,
-      correlationId: recommendationDecisionCorrelationId(command),
+      tenantId: params.command.tenantId,
+      workspaceId: params.command.workspaceId,
+      recommendationId: params.recommendationId,
+      topicLabel: params.topicLabel,
+      application: params.application,
+      decidedBy: params.command.decidedBy.trim(),
+      idempotencyKey: `${recommendationDecisionIdempotencyKey(
+        params.command,
+      )}:undo`,
+      correlationId: recommendationDecisionCorrelationId(params.command),
     });
   }
 
@@ -311,13 +372,30 @@ const recommendationDecisionIdempotencyKey = (
   command: DecideReaderSummaryTopicRecommendationCommand,
 ): string =>
   normalizedOptional(command.idempotencyKey) ??
-  `reader-summary-topic-recommendation:${command.recommendationId.trim()}:${command.action}`;
+  `reader-summary-topic-recommendation:${canonicalTopicRecommendationId(
+    command.recommendationId.trim(),
+    readerSummaryTopicRecommendationLabel({ label: command.topicLabel }),
+  )}:${command.action}`;
 
 const recommendationDecisionCorrelationId = (
   command: DecideReaderSummaryTopicRecommendationCommand,
 ): string =>
   normalizedOptional(command.correlationId) ??
   recommendationDecisionIdempotencyKey(command);
+
+const canonicalTopicRecommendationId = (
+  recommendationId: string,
+  topicLabel: string,
+): string => {
+  const match = /^topic-rec:(\d+):/u.exec(recommendationId);
+  if (match?.[1] === undefined) {
+    return recommendationId;
+  }
+
+  return `topic-rec:${match[1]}:${normalizeReaderSummaryTopicRecommendationLabel(
+    topicLabel,
+  )}`;
+};
 
 const notRequestedApplication = (): ReaderSummaryAcceptedTopicApplication => ({
   status: "not_requested",

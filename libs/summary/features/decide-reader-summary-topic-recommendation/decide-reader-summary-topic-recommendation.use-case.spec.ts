@@ -1,5 +1,4 @@
 import {
-  DomainError,
   type EventEnvelope,
   FixedClock,
   err,
@@ -8,7 +7,7 @@ import {
   workspaceId,
 } from "@social-monitor/shared-kernel";
 
-import type { ReaderSummaryTopicRecommendationDecision } from "../../domain";
+import { ReaderSummaryTopicRecommendationDecision } from "../../domain";
 import type {
   ApplyReaderSummaryAcceptedTopicCommand,
   ReaderSummaryAcceptedTopicApplication,
@@ -116,6 +115,47 @@ describe("DecideReaderSummaryTopicRecommendationUseCase", () => {
     ]);
   });
 
+  it("canonicalizes stale headline-like topic labels before applying", async () => {
+    const decisions = new FakeTopicRecommendationDecisions();
+    const applier = new FakeAcceptedTopicApplier();
+    const useCase = new DecideReaderSummaryTopicRecommendationUseCase(
+      decisions,
+      new FixedClock(new Date("2026-07-05T12:00:00.000Z")),
+      applier,
+      new FakeSummaryEvents(),
+      new SequenceIds(),
+    );
+
+    const result = await useCase.execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      recommendationId:
+        "topic-rec:14:the productivity stack many professionals rely on every",
+      topicLabel: "The productivity stack many professionals rely on every",
+      action: "accept",
+      interestIds: ["interest-ai"],
+      decidedBy: "admin-user",
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: expect.objectContaining({
+        decisionStatus: "accepted",
+      }),
+    });
+    expect(applier.commands).toEqual([
+      expect.objectContaining({
+        recommendationId: "topic-rec:14:productivity stack",
+        topicLabel: "Productivity stack",
+      }),
+    ]);
+    expect(decisions.saved?.toSnapshot()).toMatchObject({
+      recommendationId: "topic-rec:14:productivity stack",
+      topicLabel: "Productivity stack",
+      status: "accepted",
+    });
+  });
+
   it("rejects blank actors", async () => {
     const result = await new DecideReaderSummaryTopicRecommendationUseCase(
       new FakeTopicRecommendationDecisions(),
@@ -163,6 +203,38 @@ describe("DecideReaderSummaryTopicRecommendationUseCase", () => {
     expect(decisions.saved).toBeUndefined();
     expect(applier.commands).toEqual([]);
   });
+
+  it.each(["The", "Show"])(
+    "rejects generic stopword label %s before applying a topic",
+    async (topicLabel) => {
+    const decisions = new FakeTopicRecommendationDecisions();
+    const applier = new FakeAcceptedTopicApplier();
+    const result = await new DecideReaderSummaryTopicRecommendationUseCase(
+      decisions,
+      new FixedClock(new Date("2026-07-05T12:00:00.000Z")),
+      applier,
+      new FakeSummaryEvents(),
+      new SequenceIds(),
+    ).execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      recommendationId: `topic-rec:14:${topicLabel.toLowerCase()}`,
+      topicLabel,
+      action: "accept",
+      interestIds: ["interest-ai"],
+      decidedBy: "admin-user",
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: expect.objectContaining({
+        code: "validation.failed",
+      }),
+    });
+    expect(decisions.saved).toBeUndefined();
+    expect(applier.commands).toEqual([]);
+    },
+  );
 
   it("wraps unexpected topic application failures in a public domain error", async () => {
     const result = await new DecideReaderSummaryTopicRecommendationUseCase(
@@ -304,6 +376,68 @@ describe("DecideReaderSummaryTopicRecommendationUseCase", () => {
       }),
     );
   });
+
+  it("can undo legacy headline-like decisions saved under the raw recommendation id", async () => {
+    const decisions = new FakeTopicRecommendationDecisions();
+    const applier = new FakeAcceptedTopicApplier();
+    const events = new FakeSummaryEvents();
+    const rawRecommendationId =
+      "topic-rec:14:the productivity stack many professionals rely on every";
+    decisions.saved = ReaderSummaryTopicRecommendationDecision.record({
+      tenantId: tenant,
+      workspaceId: workspace,
+      recommendationId: rawRecommendationId,
+      topicLabel: "The productivity stack many professionals rely on every",
+      status: "accepted",
+      decidedBy: "admin-user",
+      decidedAt: new Date("2026-07-05T12:00:00.000Z"),
+      application: {
+        status: "applied",
+        changedSourceBindingCount: 1,
+        sourceBindingUpdates: [
+          {
+            sourceBindingId: "binding-reddit",
+            interestId: "interest-ai",
+            providerKey: "reddit",
+            changed: true,
+            changedConfigPaths: ["promotedTopics", "scanPasses"],
+            rollbackToken: { schemaVersion: 1 },
+          },
+        ],
+      },
+    });
+    const useCase = new DecideReaderSummaryTopicRecommendationUseCase(
+      decisions,
+      new FixedClock(new Date("2026-07-05T12:00:00.000Z")),
+      applier,
+      events,
+      new SequenceIds(),
+    );
+
+    const result = await useCase.execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      recommendationId: rawRecommendationId,
+      topicLabel: "The productivity stack many professionals rely on every",
+      action: "undo",
+      decidedBy: "admin-user",
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: expect.objectContaining({
+        decisionStatus: "pending",
+        reversion: expect.objectContaining({ status: "reverted" }),
+      }),
+    });
+    expect(applier.revertCommands).toEqual([
+      expect.objectContaining({
+        recommendationId: rawRecommendationId,
+        topicLabel: "The productivity stack many professionals rely on every",
+      }),
+    ]);
+    expect(decisions.saved).toBeUndefined();
+  });
 });
 
 const tenant = tenantId("tenant-topic-rec-decision");
@@ -327,15 +461,34 @@ class FakeTopicRecommendationDecisions
   }
 
   async findByRecommendationId(
-    _lookup?: unknown,
+    lookup?: {
+      readonly recommendationId?: string;
+      readonly [key: string]: unknown;
+    },
   ): Promise<
     ReaderSummaryTopicRecommendationDecision | null
   > {
-    return this.saved ?? null;
+    if (this.saved === undefined) {
+      return null;
+    }
+
+    return this.saved.toSnapshot().recommendationId === lookup?.recommendationId
+      ? this.saved
+      : null;
   }
 
-  async deleteByRecommendationId(): Promise<void> {
-    this.saved = undefined;
+  async deleteByRecommendationId(
+    lookup?: {
+      readonly recommendationId?: string;
+      readonly [key: string]: unknown;
+    },
+  ): Promise<void> {
+    if (
+      this.saved === undefined ||
+      this.saved.toSnapshot().recommendationId === lookup?.recommendationId
+    ) {
+      this.saved = undefined;
+    }
   }
 }
 

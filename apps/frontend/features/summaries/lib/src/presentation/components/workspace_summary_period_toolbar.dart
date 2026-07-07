@@ -3,11 +3,17 @@ import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 
 import '../../domain/aggregates/reader_summary.dart';
 import '../formatters/summary_period_formats.dart';
+import 'reader_summary_collection_stats.dart';
 
 part 'workspace_summary_period_calendar_dialog.dart';
 part 'workspace_summary_period_calendar_legend.dart';
 part 'workspace_summary_period_preset_selector.dart';
 part 'workspace_summary_period_toolbar_controls.dart';
+
+const _toolbarSingleRowMinWidth = 960.0;
+const _toolbarDateMaxWidth = 220.0;
+const _toolbarPresetMaxWidth = 420.0;
+const _toolbarStatsWidth = 260.0;
 
 class WorkspaceSummaryPeriodToolbar extends StatelessWidget {
   const WorkspaceSummaryPeriodToolbar({
@@ -26,6 +32,7 @@ class WorkspaceSummaryPeriodToolbar extends StatelessWidget {
     this.isGenerating = false,
     this.onGenerate,
     this.onExport,
+    this.collectionStatsSummary,
     this.calendarNow,
   });
 
@@ -43,6 +50,7 @@ class WorkspaceSummaryPeriodToolbar extends StatelessWidget {
   final bool isGenerating;
   final VoidCallback? onGenerate;
   final VoidCallback? onExport;
+  final ReaderSummary? collectionStatsSummary;
   final DateTime? calendarNow;
 
   @override
@@ -52,7 +60,9 @@ class WorkspaceSummaryPeriodToolbar extends StatelessWidget {
         final maxWidth = constraints.maxWidth.isFinite
             ? constraints.maxWidth
             : MediaQuery.sizeOf(context).width;
-        final compact = maxWidth < 880;
+        final screen = AppScreenClass.of(context);
+        final compact =
+            screen.isCompact || maxWidth < _toolbarSingleRowMinWidth;
         final navigation = _PeriodNavigationGroup(
           canNavigateToPreviousPeriod: canNavigateToPreviousPeriod,
           canNavigateToNextPeriod: canNavigateToNextPeriod,
@@ -68,6 +78,7 @@ class WorkspaceSummaryPeriodToolbar extends StatelessWidget {
         final presetSelector = _SummaryPeriodPresetSelector(
           selectedPreset: selectedPreset,
           onPeriodChanged: onPeriodChanged,
+          expand: true,
         );
         final actions = Row(
           mainAxisSize: MainAxisSize.min,
@@ -82,6 +93,13 @@ class WorkspaceSummaryPeriodToolbar extends StatelessWidget {
             _ExportButton(onPressed: onExport),
           ],
         );
+        final collectionStats = collectionStatsSummary == null
+            ? null
+            : ReaderSummaryCollectionStats(
+                summary: collectionStatsSummary!,
+                showHeading: false,
+                compact: true,
+              );
 
         if (compact) {
           final compactSelector = _SummaryPeriodPresetSelector(
@@ -107,6 +125,10 @@ class WorkspaceSummaryPeriodToolbar extends StatelessWidget {
                   actions,
                 ],
               ),
+              if (collectionStats != null) ...[
+                const SizedBox(height: AppSpacing.sm),
+                collectionStats,
+              ],
             ],
           );
         }
@@ -115,10 +137,29 @@ class WorkspaceSummaryPeriodToolbar extends StatelessWidget {
           children: [
             navigation,
             const SizedBox(width: AppSpacing.sm + 4),
-            Flexible(child: dateButton),
-            const Spacer(),
-            presetSelector,
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: _toolbarDateMaxWidth),
+              child: dateButton,
+            ),
             const SizedBox(width: AppSpacing.md),
+            Flexible(
+              fit: FlexFit.loose,
+              child: KeyedSubtree(
+                key: const ValueKey('workspace-summary-period-presets'),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(
+                    maxWidth: _toolbarPresetMaxWidth,
+                  ),
+                  child: presetSelector,
+                ),
+              ),
+            ),
+            const SizedBox(width: AppSpacing.md),
+            if (collectionStats != null) ...[
+              SizedBox(width: _toolbarStatsWidth, child: collectionStats),
+              const SizedBox(width: AppSpacing.md),
+            ],
+            const Spacer(),
             actions,
           ],
         );

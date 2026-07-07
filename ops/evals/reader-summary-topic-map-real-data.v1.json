@@ -22,7 +22,7 @@
     "status": "clean"
   },
   "sourceData": {
-    "feedItemCount": 820,
+    "feedItemCount": 765,
     "providerCounts": [
       {
         "providerKey": "hacker-news",
@@ -34,7 +34,7 @@
       },
       {
         "providerKey": "github-trending-page",
-        "count": 159
+        "count": 104
       },
       {
         "providerKey": "rss",
@@ -52,7 +52,7 @@
     "requestStatus": "requested",
     "executionStatus": "completed",
     "selectedFeedItemCount": 40,
-    "storyClusterCount": 39,
+    "storyClusterCount": 38,
     "topReadCount": 10,
     "citationCount": 40,
     "sourceMixProviderCounts": [
@@ -79,8 +79,8 @@
     "generatedBy": "deterministic",
     "confidenceLevel": "medium",
     "confidenceScore": 0.7,
-    "nodeCount": 39,
-    "groupCount": 27,
+    "nodeCount": 38,
+    "groupCount": 25,
     "edgeCount": 80,
     "warningCount": 0,
     "topNodeFingerprints": [
@@ -97,20 +97,20 @@
       },
       {
         "nodeFingerprint": "0dd6ad42",
-        "groupFingerprint": "171ac6fd",
-        "popularityScore": 96.553,
-        "sizeWeight": 0.983,
+        "groupFingerprint": "859d71d8",
+        "popularityScore": 87.99,
+        "sizeWeight": 0.938,
         "evidenceCount": 1,
         "providerCount": 1,
         "interestCount": 1,
         "citationCount": 1,
-        "keywordCount": 6
+        "keywordCount": 8
       },
       {
         "nodeFingerprint": "0dccb7e1",
-        "groupFingerprint": "171a75ae",
-        "popularityScore": 96.512,
-        "sizeWeight": 0.982,
+        "groupFingerprint": "cc3a89ec",
+        "popularityScore": 87.846,
+        "sizeWeight": 0.937,
         "evidenceCount": 1,
         "providerCount": 1,
         "interestCount": 1,
@@ -119,9 +119,9 @@
       },
       {
         "nodeFingerprint": "80329211",
-        "groupFingerprint": "171ac6fd",
-        "popularityScore": 96.512,
-        "sizeWeight": 0.982,
+        "groupFingerprint": "859d71d8",
+        "popularityScore": 87.846,
+        "sizeWeight": 0.937,
         "evidenceCount": 1,
         "providerCount": 1,
         "interestCount": 1,
@@ -131,8 +131,8 @@
       {
         "nodeFingerprint": "0dcc4492",
         "groupFingerprint": "d7e7220b",
-        "popularityScore": 96.512,
-        "sizeWeight": 0.982,
+        "popularityScore": 87.846,
+        "sizeWeight": 0.937,
         "evidenceCount": 1,
         "providerCount": 1,
         "interestCount": 1,
@@ -142,8 +142,8 @@
       {
         "nodeFingerprint": "0dd78e7a",
         "groupFingerprint": "ee4eccf1",
-        "popularityScore": 96.512,
-        "sizeWeight": 0.982,
+        "popularityScore": 87.846,
+        "sizeWeight": 0.937,
         "evidenceCount": 1,
         "providerCount": 1,
         "interestCount": 1,
@@ -153,30 +153,8 @@
       {
         "nodeFingerprint": "0dd78b3a",
         "groupFingerprint": "2b6046bc",
-        "popularityScore": 96.512,
-        "sizeWeight": 0.982,
-        "evidenceCount": 1,
-        "providerCount": 1,
-        "interestCount": 1,
-        "citationCount": 1,
-        "keywordCount": 2
-      },
-      {
-        "nodeFingerprint": "0dcca270",
-        "groupFingerprint": "c01859bd",
-        "popularityScore": 96.512,
-        "sizeWeight": 0.982,
-        "evidenceCount": 1,
-        "providerCount": 1,
-        "interestCount": 1,
-        "citationCount": 1,
-        "keywordCount": 2
-      },
-      {
-        "nodeFingerprint": "0dd80a79",
-        "groupFingerprint": "171a8c75",
-        "popularityScore": 96.512,
-        "sizeWeight": 0.982,
+        "popularityScore": 87.846,
+        "sizeWeight": 0.937,
         "evidenceCount": 1,
         "providerCount": 1,
         "interestCount": 1,
@@ -184,10 +162,32 @@
         "keywordCount": 6
       },
       {
+        "nodeFingerprint": "0dcca270",
+        "groupFingerprint": "c01859bd",
+        "popularityScore": 87.846,
+        "sizeWeight": 0.937,
+        "evidenceCount": 1,
+        "providerCount": 1,
+        "interestCount": 1,
+        "citationCount": 1,
+        "keywordCount": 7
+      },
+      {
+        "nodeFingerprint": "0dd80a79",
+        "groupFingerprint": "171a8c75",
+        "popularityScore": 87.846,
+        "sizeWeight": 0.937,
+        "evidenceCount": 1,
+        "providerCount": 1,
+        "interestCount": 1,
+        "citationCount": 1,
+        "keywordCount": 8
+      },
+      {
         "nodeFingerprint": "0dd71d81",
         "groupFingerprint": "ee4eccf1",
-        "popularityScore": 96.512,
-        "sizeWeight": 0.982,
+        "popularityScore": 87.846,
+        "sizeWeight": 0.937,
         "evidenceCount": 1,
         "providerCount": 1,
         "interestCount": 1,
@@ -197,19 +197,19 @@
       {
         "nodeFingerprint": "0dd79298",
         "groupFingerprint": "44763c81",
-        "popularityScore": 96.512,
-        "sizeWeight": 0.982,
+        "popularityScore": 87.846,
+        "sizeWeight": 0.937,
         "evidenceCount": 1,
         "providerCount": 1,
         "interestCount": 1,
         "citationCount": 1,
-        "keywordCount": 7
+        "keywordCount": 8
       },
       {
         "nodeFingerprint": "0dd6a1a4",
         "groupFingerprint": "93544015",
-        "popularityScore": 96.512,
-        "sizeWeight": 0.982,
+        "popularityScore": 87.846,
+        "sizeWeight": 0.937,
         "evidenceCount": 1,
         "providerCount": 1,
         "interestCount": 1,
@@ -219,20 +219,8 @@
     ],
     "groupFingerprints": [
       {
-        "groupFingerprint": "99da588e",
-        "nodeCount": 4,
-        "colorKey": "pink",
-        "confidenceScore": 0.72
-      },
-      {
-        "groupFingerprint": "9328c849",
-        "nodeCount": 4,
-        "colorKey": "orange",
-        "confidenceScore": 0.72
-      },
-      {
         "groupFingerprint": "ee4eccf1",
-        "nodeCount": 3,
+        "nodeCount": 6,
         "colorKey": "violet",
         "confidenceScore": 0.72
       },
@@ -243,7 +231,19 @@
         "confidenceScore": 0.72
       },
       {
-        "groupFingerprint": "171ac6fd",
+        "groupFingerprint": "9328c849",
+        "nodeCount": 3,
+        "colorKey": "slate",
+        "confidenceScore": 0.72
+      },
+      {
+        "groupFingerprint": "99da588e",
+        "nodeCount": 3,
+        "colorKey": "pink",
+        "confidenceScore": 0.72
+      },
+      {
+        "groupFingerprint": "859d71d8",
         "nodeCount": 2,
         "colorKey": "green",
         "confidenceScore": 0.72
@@ -251,7 +251,7 @@
       {
         "groupFingerprint": "ba91f4b5",
         "nodeCount": 2,
-        "colorKey": "blue",
+        "colorKey": "green",
         "confidenceScore": 0.72
       },
       {
@@ -261,7 +261,7 @@
         "confidenceScore": 0.72
       },
       {
-        "groupFingerprint": "171a75ae",
+        "groupFingerprint": "cc3a89ec",
         "nodeCount": 1,
         "colorKey": "pink",
         "confidenceScore": 0.72
@@ -303,123 +303,121 @@
         "confidenceScore": 0.72
       },
       {
+        "groupFingerprint": "171aa0cf",
+        "nodeCount": 1,
+        "colorKey": "pink",
+        "confidenceScore": 0.72
+      },
+      {
         "groupFingerprint": "bb771670",
         "nodeCount": 1,
         "colorKey": "violet",
         "confidenceScore": 0.72
       },
       {
+        "groupFingerprint": "fc58734d",
+        "nodeCount": 1,
+        "colorKey": "teal",
+        "confidenceScore": 0.72
+      },
+      {
         "groupFingerprint": "bb364071",
-        "nodeCount": 1,
-        "colorKey": "teal",
-        "confidenceScore": 0.72
-      },
-      {
-        "groupFingerprint": "cc34e5e1",
-        "nodeCount": 1,
-        "colorKey": "slate",
-        "confidenceScore": 0.72
-      },
-      {
-        "groupFingerprint": "d2cb8eb6",
-        "nodeCount": 1,
-        "colorKey": "green",
-        "confidenceScore": 0.72
-      },
-      {
-        "groupFingerprint": "5c8878a8",
-        "nodeCount": 1,
-        "colorKey": "pink",
-        "confidenceScore": 0.72
-      },
-      {
-        "groupFingerprint": "95cfcee1",
-        "nodeCount": 1,
-        "colorKey": "amber",
-        "confidenceScore": 0.72
-      },
-      {
-        "groupFingerprint": "13bed61a",
-        "nodeCount": 1,
-        "colorKey": "violet",
-        "confidenceScore": 0.72
-      },
-      {
-        "groupFingerprint": "3bb1b0d1",
-        "nodeCount": 1,
-        "colorKey": "teal",
-        "confidenceScore": 0.72
-      },
-      {
-        "groupFingerprint": "d1144c6c",
         "nodeCount": 1,
         "colorKey": "orange",
         "confidenceScore": 0.72
       },
       {
-        "groupFingerprint": "c5bde69d",
-        "nodeCount": 1,
-        "colorKey": "slate",
-        "confidenceScore": 0.72
-      },
-      {
-        "groupFingerprint": "6a0fb6c3",
+        "groupFingerprint": "cc34e5e1",
         "nodeCount": 1,
         "colorKey": "blue",
         "confidenceScore": 0.72
       },
       {
-        "groupFingerprint": "cc34814f",
+        "groupFingerprint": "25fd7f73",
         "nodeCount": 1,
-        "colorKey": "green",
+        "colorKey": "amber",
         "confidenceScore": 0.72
       },
       {
-        "groupFingerprint": "05824dd4",
+        "groupFingerprint": "5c8878a8",
         "nodeCount": 1,
-        "colorKey": "pink",
+        "colorKey": "violet",
+        "confidenceScore": 0.72
+      },
+      {
+        "groupFingerprint": "d1144c6c",
+        "nodeCount": 1,
+        "colorKey": "teal",
+        "confidenceScore": 0.72
+      },
+      {
+        "groupFingerprint": "c5bde69d",
+        "nodeCount": 1,
+        "colorKey": "orange",
+        "confidenceScore": 0.72
+      },
+      {
+        "groupFingerprint": "6a0fb6c3",
+        "nodeCount": 1,
+        "colorKey": "slate",
+        "confidenceScore": 0.72
+      },
+      {
+        "groupFingerprint": "cc34814f",
+        "nodeCount": 1,
+        "colorKey": "blue",
         "confidenceScore": 0.72
       }
     ]
+  },
+  "weakLlmFallbackProbe": {
+    "generatedBy": "agent-runtime",
+    "nodeCount": 25,
+    "groupCount": 24,
+    "weakInputNodeLabelCount": 38,
+    "acceptedNodeLabelCount": 25,
+    "acceptedGroupLabelCount": 24,
+    "rawPostTextPersistedInReport": false
   },
   "visualFixture": {
     "groups": [
       {
         "id": "g1",
         "label": "Group 1",
-        "colorKey": "pink",
+        "colorKey": "violet",
         "nodeIds": [
-          "n7",
-          "n13"
+          "n5",
+          "n6",
+          "n10",
+          "n11",
+          "n15"
         ]
       },
       {
         "id": "g2",
         "label": "Group 2",
-        "colorKey": "orange",
+        "colorKey": "amber",
         "nodeIds": [
-          "n11",
-          "n14",
-          "n16"
+          "n7",
+          "n8",
+          "n9"
         ]
       },
       {
         "id": "g3",
         "label": "Group 3",
-        "colorKey": "violet",
+        "colorKey": "slate",
         "nodeIds": [
-          "n5",
-          "n6"
+          "n12",
+          "n16"
         ]
       },
       {
         "id": "g4",
         "label": "Group 4",
-        "colorKey": "amber",
+        "colorKey": "pink",
         "nodeIds": [
-          "n8",
-          "n9",
-          "n10"
+          "n14"
         ]
       },
       {
@@ -434,10 +432,9 @@
       {
         "id": "g6",
         "label": "Group 6",
-        "colorKey": "blue",
+        "colorKey": "green",
         "nodeIds": [
-          "n12",
-          "n15"
+          "n13"
         ]
       },
       {
@@ -470,238 +467,208 @@
         "id": "n2",
         "label": "Topic 2",
         "groupId": "g5",
-        "popularityScore": 96.553,
-        "sizeWeight": 0.983,
+        "popularityScore": 87.99,
+        "sizeWeight": 0.938,
         "evidenceCount": 1
       },
       {
         "id": "n3",
         "label": "Topic 3",
         "groupId": "g8",
-        "popularityScore": 96.512,
-        "sizeWeight": 0.982,
+        "popularityScore": 87.846,
+        "sizeWeight": 0.937,
         "evidenceCount": 1
       },
       {
         "id": "n4",
         "label": "Topic 4",
         "groupId": "g5",
-        "popularityScore": 96.512,
-        "sizeWeight": 0.982,
+        "popularityScore": 87.846,
+        "sizeWeight": 0.937,
         "evidenceCount": 1
       },
       {
         "id": "n5",
         "label": "Topic 5",
-        "groupId": "g3",
-        "popularityScore": 96.512,
-        "sizeWeight": 0.982,
+        "groupId": "g1",
+        "popularityScore": 87.846,
+        "sizeWeight": 0.937,
         "evidenceCount": 1
       },
       {
         "id": "n6",
         "label": "Topic 6",
-        "groupId": "g3",
-        "popularityScore": 96.512,
-        "sizeWeight": 0.982,
+        "groupId": "g1",
+        "popularityScore": 87.846,
+        "sizeWeight": 0.937,
         "evidenceCount": 1
       },
       {
         "id": "n7",
         "label": "Topic 7",
-        "groupId": "g1",
-        "popularityScore": 96.512,
-        "sizeWeight": 0.982,
+        "groupId": "g2",
+        "popularityScore": 87.122,
+        "sizeWeight": 0.933,
         "evidenceCount": 1
       },
       {
         "id": "n8",
         "label": "Topic 8",
-        "groupId": "g4",
-        "popularityScore": 96.304,
-        "sizeWeight": 0.981,
+        "groupId": "g2",
+        "popularityScore": 86.977,
+        "sizeWeight": 0.933,
         "evidenceCount": 1
       },
       {
         "id": "n9",
         "label": "Topic 9",
-        "groupId": "g4",
-        "popularityScore": 96.263,
-        "sizeWeight": 0.981,
+        "groupId": "g2",
+        "popularityScore": 86.977,
+        "sizeWeight": 0.933,
         "evidenceCount": 1
       },
       {
         "id": "n10",
         "label": "Topic 10",
-        "groupId": "g4",
-        "popularityScore": 96.263,
-        "sizeWeight": 0.981,
+        "groupId": "g1",
+        "popularityScore": 83.649,
+        "sizeWeight": 0.915,
         "evidenceCount": 1
       },
       {
         "id": "n11",
         "label": "Topic 11",
-        "groupId": "g2",
-        "popularityScore": 92.276,
-        "sizeWeight": 0.961,
+        "groupId": "g1",
+        "popularityScore": 73.663,
+        "sizeWeight": 0.858,
         "evidenceCount": 1
       },
       {
         "id": "n12",
         "label": "Topic 12",
-        "groupId": "g6",
-        "popularityScore": 90.78,
-        "sizeWeight": 0.953,
+        "groupId": "g3",
+        "popularityScore": 73.084,
+        "sizeWeight": 0.855,
         "evidenceCount": 1
       },
       {
         "id": "n13",
         "label": "Topic 13",
-        "groupId": "g1",
-        "popularityScore": 90.531,
-        "sizeWeight": 0.951,
+        "groupId": "g6",
+        "popularityScore": 67.874,
+        "sizeWeight": 0.824,
         "evidenceCount": 1
       },
       {
         "id": "n14",
         "label": "Topic 14",
-        "groupId": "g2",
-        "popularityScore": 87.749,
-        "sizeWeight": 0.937,
+        "groupId": "g4",
+        "popularityScore": 67.006,
+        "sizeWeight": 0.819,
         "evidenceCount": 1
       },
       {
         "id": "n15",
         "label": "Topic 15",
-        "groupId": "g6",
-        "popularityScore": 87.582,
-        "sizeWeight": 0.936,
+        "groupId": "g1",
+        "popularityScore": 62.23,
+        "sizeWeight": 0.789,
         "evidenceCount": 1
       },
       {
         "id": "n16",
         "label": "Topic 16",
-        "groupId": "g2",
-        "popularityScore": 85.506,
-        "sizeWeight": 0.925,
+        "groupId": "g3",
+        "popularityScore": 57.31,
+        "sizeWeight": 0.757,
         "evidenceCount": 1
       }
     ],
     "edges": [
       {
-        "sourceNodeId": "n8",
+        "sourceNodeId": "n7",
+        "targetNodeId": "n8",
+        "weight": 0.86
+      },
+      {
+        "sourceNodeId": "n7",
         "targetNodeId": "n9",
         "weight": 0.86
       },
       {
         "sourceNodeId": "n8",
-        "targetNodeId": "n10",
+        "targetNodeId": "n9",
         "weight": 0.86
-      },
-      {
-        "sourceNodeId": "n9",
-        "targetNodeId": "n10",
-        "weight": 0.86
-      },
-      {
-        "sourceNodeId": "n2",
-        "targetNodeId": "n4",
-        "weight": 0.78
       },
       {
         "sourceNodeId": "n5",
         "targetNodeId": "n6",
-        "weight": 0.7
-      },
-      {
-        "sourceNodeId": "n14",
-        "targetNodeId": "n16",
-        "weight": 0.7
-      },
-      {
-        "sourceNodeId": "n11",
-        "targetNodeId": "n14",
-        "weight": 0.64
-      },
-      {
-        "sourceNodeId": "n11",
-        "targetNodeId": "n16",
-        "weight": 0.64
-      },
-      {
-        "sourceNodeId": "n7",
-        "targetNodeId": "n13",
-        "weight": 0.56
-      },
-      {
-        "sourceNodeId": "n11",
-        "targetNodeId": "n15",
-        "weight": 0.38
-      },
-      {
-        "sourceNodeId": "n12",
-        "targetNodeId": "n15",
-        "weight": 0.38
-      },
-      {
-        "sourceNodeId": "n8",
-        "targetNodeId": "n13",
-        "weight": 0.32
-      },
-      {
-        "sourceNodeId": "n9",
-        "targetNodeId": "n13",
-        "weight": 0.32
+        "weight": 0.82
       },
       {
         "sourceNodeId": "n10",
-        "targetNodeId": "n13",
-        "weight": 0.32
+        "targetNodeId": "n11",
+        "weight": 0.76
       },
       {
-        "sourceNodeId": "n1",
-        "targetNodeId": "n8",
-        "weight": 0.26
+        "sourceNodeId": "n10",
+        "targetNodeId": "n15",
+        "weight": 0.76
       },
       {
-        "sourceNodeId": "n1",
-        "targetNodeId": "n9",
-        "weight": 0.26
+        "sourceNodeId": "n11",
+        "targetNodeId": "n15",
+        "weight": 0.76
       },
       {
-        "sourceNodeId": "n1",
+        "sourceNodeId": "n2",
+        "targetNodeId": "n4",
+        "weight": 0.74
+      },
+      {
+        "sourceNodeId": "n12",
+        "targetNodeId": "n16",
+        "weight": 0.64
+      },
+      {
+        "sourceNodeId": "n5",
         "targetNodeId": "n10",
-        "weight": 0.26
+        "weight": 0.5
       },
       {
-        "sourceNodeId": "n1",
-        "targetNodeId": "n12",
-        "weight": 0.26
+        "sourceNodeId": "n5",
+        "targetNodeId": "n11",
+        "weight": 0.5
       },
       {
-        "sourceNodeId": "n1",
-        "targetNodeId": "n13",
-        "weight": 0.26
+        "sourceNodeId": "n5",
+        "targetNodeId": "n15",
+        "weight": 0.5
+      },
+      {
+        "sourceNodeId": "n6",
+        "targetNodeId": "n10",
+        "weight": 0.44
+      },
+      {
+        "sourceNodeId": "n6",
+        "targetNodeId": "n11",
+        "weight": 0.44
+      },
+      {
+        "sourceNodeId": "n6",
+        "targetNodeId": "n15",
+        "weight": 0.44
       },
       {
         "sourceNodeId": "n2",
         "targetNodeId": "n5",
-        "weight": 0.26
+        "weight": 0.38
       },
       {
         "sourceNodeId": "n2",
         "targetNodeId": "n6",
-        "weight": 0.26
-      },
-      {
-        "sourceNodeId": "n2",
-        "targetNodeId": "n7",
-        "weight": 0.26
-      },
-      {
-        "sourceNodeId": "n3",
-        "targetNodeId": "n4",
-        "weight": 0.26
+        "weight": 0.38
       }
     ]
   },
@@ -724,6 +691,12 @@
     "topNodePopularitySorted": true,
     "topicMapConfidenceAtLeastMedium": true,
     "sanitizedVisualFixtureAvailable": true,
+    "topicNodeLabelsAreConcrete": true,
+    "topicGroupLabelsAreConcrete": true,
+    "weakLlmFallbackProbeHasNodes": true,
+    "weakLlmFallbackRejectsGenericNodeLabels": true,
+    "weakLlmFallbackRejectsGenericGroupLabels": true,
+    "weakLlmFallbackDoesNotKeepWeakInputLabels": true,
     "noRawSecretFragments": true
   },
   "blockingPassed": true

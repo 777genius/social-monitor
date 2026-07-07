@@ -431,6 +431,95 @@ describe("RedditSourceProvider", () => {
     expect(result.items).toHaveLength(subreddits.length);
   });
 
+  it("continues Reddit listing pages until the bounded pagination target is reached", async () => {
+    const client = new CapturingRedditClient({
+      listingResponses: new Map<string, RedditListingPage | Error>([
+        [
+          "ClaudeAI:top:day|after:",
+          {
+            posts: [
+              redditPost({
+                id: "claude-page-1-a",
+                subreddit: "ClaudeAI",
+                title: "Claude page one signal A",
+                score: 140,
+              }),
+              redditPost({
+                id: "claude-page-1-b",
+                subreddit: "ClaudeAI",
+                title: "Claude page one signal B",
+                score: 130,
+              }),
+            ],
+            after: "page-2",
+          },
+        ],
+        [
+          "ClaudeAI:top:day|after:page-2",
+          {
+            posts: [
+              redditPost({
+                id: "claude-page-2-a",
+                subreddit: "ClaudeAI",
+                title: "Claude page two signal A",
+                score: 120,
+              }),
+              redditPost({
+                id: "claude-page-2-b",
+                subreddit: "ClaudeAI",
+                title: "Claude page two signal B",
+                score: 110,
+              }),
+            ],
+          },
+        ],
+      ]),
+    });
+    const provider = new RedditSourceProvider(
+      client,
+      new StaticTokenProvider("reddit-app-only-token"),
+    );
+    const context = scanContext({
+      maxItems: 4,
+      scanPasses: [
+        {
+          mode: "listing",
+          subreddit: "ClaudeAI",
+          listing: "top",
+          topTime: "day",
+          maxItems: 4,
+        },
+      ],
+      adaptivePagination: {
+        enabled: true,
+        targetItems: 4,
+        maxPages: 2,
+        minNewItemsPerPage: 1,
+        maxDuplicateRate: 0.75,
+      },
+    });
+    const plan = provider.planScan(
+      { mode: "search", query: "ClaudeAI top" },
+      context,
+    );
+
+    const result = await provider.scan(plan, context);
+
+    expect(client.listingRequests.map((request) => request.after)).toEqual([
+      undefined,
+      "page-2",
+    ]);
+    expect(result.items.map((item) => item.externalId)).toEqual([
+      "reddit:t3_claude-page-1-a",
+      "reddit:t3_claude-page-1-b",
+      "reddit:t3_claude-page-2-a",
+      "reddit:t3_claude-page-2-b",
+    ]);
+    expect(result.warnings).toContain(
+      "reddit_adaptive_pagination.stats;pass=ClaudeAI:top:day;pages=2;items=4;duplicates=0",
+    );
+  });
+
   it("expands configured Reddit post passes with post-thread comments", async () => {
     const client = new CapturingRedditClient({
       listingResponses: new Map<string, RedditListingPage | Error>([
@@ -816,8 +905,9 @@ class CapturingRedditClient implements RedditClientPort {
     }
 
     const response = this.response.listingResponses?.get(
-      listingKey(request),
-    ) ?? { posts: [] };
+      listingPageKey(request),
+    ) ??
+      this.response.listingResponses?.get(listingKey(request)) ?? { posts: [] };
 
     if (response instanceof Error) {
       throw response;
@@ -865,6 +955,9 @@ class CapturingRedditClient implements RedditClientPort {
 
 const listingKey = (request: RedditListSubredditPostsRequest): string =>
   `${request.subreddit}:${request.listing}:${request.topTime ?? ""}`;
+
+const listingPageKey = (request: RedditListSubredditPostsRequest): string =>
+  `${listingKey(request)}|after:${request.after ?? ""}`;
 
 function scanContext(config: SourceRuntimeConfig): SourceProviderScanContext {
   return {

@@ -13,6 +13,7 @@ Widget _denseTopPostRow(
   double width,
   Widget rating,
   Widget menu,
+  _TopPostSupportSignal supportSignal,
 ) {
   final textTheme = Theme.of(context).textTheme;
   final showMetric = width >= 680 && metrics.isNotEmpty;
@@ -40,7 +41,7 @@ Widget _denseTopPostRow(
       ],
       if (showChip) ...[
         const SizedBox(width: AppSpacing.md),
-        _DenseRelevanceChip(item: item),
+        _DenseRelevanceChip(supportSignal: supportSignal),
       ],
       const SizedBox(width: AppSpacing.sm),
       rating,
@@ -85,40 +86,43 @@ class _DensePrimaryMetric extends StatelessWidget {
 
 /// Single-line relevance chip reusing the shared relevance badge.
 class _DenseRelevanceChip extends StatelessWidget {
-  const _DenseRelevanceChip({required this.item});
+  const _DenseRelevanceChip({required this.supportSignal});
 
-  final TopRead item;
+  final _TopPostSupportSignal supportSignal;
 
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
-    final badge = _topPostRelevanceBadge(context, item);
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: badge.background,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.sm + 2,
-          vertical: AppSpacing.xs + 1,
+    final badge = _topPostSupportStyle(context, supportSignal);
+    return Tooltip(
+      message: badge.tooltip,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: badge.background,
+          borderRadius: BorderRadius.circular(999),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(badge.icon, size: 13, color: badge.foreground),
-            const SizedBox(width: AppSpacing.xs),
-            Text(
-              badge.label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: textTheme.labelSmall?.copyWith(
-                color: badge.foreground,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.sm + 2,
+            vertical: AppSpacing.xs + 1,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(badge.icon, size: 13, color: badge.foreground),
+              const SizedBox(width: AppSpacing.xs),
+              Text(
+                badge.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: textTheme.labelSmall?.copyWith(
+                  color: badge.foreground,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

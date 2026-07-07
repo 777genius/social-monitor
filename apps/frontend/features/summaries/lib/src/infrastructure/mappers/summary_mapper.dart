@@ -8,6 +8,7 @@ import '../api/summary_api_dto.dart';
 
 part 'summary_mapper_coverage.dart';
 part 'summary_mapper_reader_content.dart';
+part 'summary_mapper_text_sanitizer.dart';
 part 'summary_mapper_topic_map.dart';
 
 final class SummaryMapper {
@@ -184,7 +185,8 @@ final class SummaryMapper {
             : dto.confidence.score,
         rationale: _safeText(
           dto.confidence.rationale,
-          fallback: 'Single-source story signal.',
+          fallback:
+              'This story has not been independently confirmed across monitored source groups yet.',
         ),
       ),
       confirmedProviderKeys: _safeTextList(dto.confirmedProviderKeys),
@@ -201,6 +203,7 @@ final class SummaryMapper {
         dto.whyNow,
         fallback: 'Selected in the current summary window',
       ),
+      publishedAt: dto.publishedAt,
       citationIds: dto.citationIds,
       canonicalUrl: _safeUrl(dto.canonicalUrl),
       previewMedia: _previewMediaToDomain(dto.previewMedia),
@@ -327,21 +330,13 @@ final class SummaryMapper {
   }
 
   String _safeLongText(String raw, {required String fallback}) {
-    final singleLine = _sanitizeText(raw);
-    return singleLine.isEmpty ? fallback : singleLine;
+    final text = _sanitizeLongText(raw);
+    return text.isEmpty ? fallback : text;
   }
 
   String? _safeTextOrNull(String? raw) {
     final text = _safeText(raw ?? '', fallback: '');
     return text.isEmpty ? null : text;
-  }
-
-  String _sanitizeText(String raw) {
-    final withoutSecrets = raw
-        .replaceAll(RegExp(r'Bearer\s+[A-Za-z0-9._~+/=-]+'), '[redacted]')
-        .replaceAll(RegExp(r'sk-[A-Za-z0-9_-]+'), '[redacted]')
-        .replaceAll(RegExp(r'client_secret\s*[:=]\s*\S+'), '[redacted]');
-    return withoutSecrets.replaceAll(RegExp(r'\s+'), ' ').trim();
   }
 
   String _nonEmpty(String? value, {required String fallback}) {
@@ -392,9 +387,6 @@ final class SummaryMapper {
 
   bool _looksSecretQueryKey(String key) {
     final normalized = key.toLowerCase();
-    return normalized.contains('token') ||
-        normalized.contains('secret') ||
-        normalized.contains('key') ||
-        normalized.contains('password');
+    return ['token', 'secret', 'key', 'password'].any(normalized.contains);
   }
 }

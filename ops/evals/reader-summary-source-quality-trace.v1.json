@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "artifactFormat": "reader-summary-source-quality-trace-v1",
-  "collectionDate": "2026-07-05",
+  "collectionDate": "2026-07-06",
   "generatedBy": "npm run check:reader-summary-source-quality-trace",
   "model": {
     "liveNetwork": false,
@@ -12,8 +12,8 @@
   "inputs": {
     "database": "local-postgres",
     "period": {
-      "startedAt": "2026-07-05T00:00:00.000Z",
-      "endedAt": "2026-07-06T00:00:00.000Z",
+      "startedAt": "2026-07-06T00:00:00.000Z",
+      "endedAt": "2026-07-07T00:00:00.000Z",
       "timezone": "UTC"
     },
     "rankLimit": 200,
@@ -23,58 +23,47 @@
     }
   },
   "summary": {
-    "artifactFingerprint": "3ceeea58",
+    "artifactFingerprint": "976600b3",
     "selectedFeedItemCount": 120,
     "topReadCount": 10
   },
   "sources": {
     "reddit": {
-      "collectedCount": 89,
-      "laneCount": 3,
-      "rankedCount": 75,
+      "collectedCount": 37,
+      "laneCount": 2,
+      "rankedCount": 36,
       "selectedCount": 30,
-      "topReadCount": 2,
-      "topReadEligibleCount": 26,
-      "weakTopicMatchCount": 63,
-      "ineligibleTopReadCount": 63,
+      "topReadCount": 3,
+      "topReadEligibleCount": 8,
+      "weakTopicMatchCount": 29,
+      "ineligibleTopReadCount": 29,
       "weakTopicMatchTopReadCount": 0,
       "ineligibleActualTopReadCount": 0,
-      "averageRankScore": 1.538,
+      "averageRankScore": 1.511,
       "laneFamilies": {
-        "search:general": 1,
         "search:new:any": 1,
         "search:top:week": 1
       },
       "laneFamilyHealth": {
-        "search:general": {
-          "collectedCount": 2,
-          "rankedCount": 2,
-          "selectedCount": 0,
-          "topReadCount": 0,
-          "weakTopicMatchCount": 2,
-          "weakTopicMatchTopReadCount": 0,
-          "ineligibleActualTopReadCount": 0,
-          "averageRankScore": 1.503
-        },
         "search:new:any": {
-          "collectedCount": 75,
-          "rankedCount": 69,
-          "selectedCount": 27,
+          "collectedCount": 25,
+          "rankedCount": 24,
+          "selectedCount": 25,
           "topReadCount": 0,
-          "weakTopicMatchCount": 52,
+          "weakTopicMatchCount": 20,
           "weakTopicMatchTopReadCount": 0,
           "ineligibleActualTopReadCount": 0,
-          "averageRankScore": 1.521
+          "averageRankScore": 1.527
         },
         "search:top:week": {
           "collectedCount": 12,
-          "rankedCount": 4,
-          "selectedCount": 3,
-          "topReadCount": 2,
+          "rankedCount": 12,
+          "selectedCount": 5,
+          "topReadCount": 3,
           "weakTopicMatchCount": 9,
           "weakTopicMatchTopReadCount": 0,
           "ineligibleActualTopReadCount": 0,
-          "averageRankScore": 1.837
+          "averageRankScore": 1.479
         }
       },
       "laneHealth": [
@@ -83,16 +72,16 @@
           "laneFamily": "search:top:week",
           "queryFingerprint": "10d12086",
           "collectedCount": 12,
-          "rankedCount": 4,
-          "selectedCount": 3,
-          "topReadCount": 2,
+          "rankedCount": 12,
+          "selectedCount": 5,
+          "topReadCount": 3,
           "topReadEligibleCount": 3,
           "weakTopicMatchCount": 9,
           "ineligibleTopReadCount": 9,
           "weakTopicMatchTopReadCount": 0,
           "ineligibleActualTopReadCount": 0,
-          "averageRankScore": 1.837,
-          "maxRankScore": 2.043,
+          "averageRankScore": 1.479,
+          "maxRankScore": 1.978,
           "qualityDecisions": {
             "downrank": 9,
             "promote": 3
@@ -100,23 +89,8 @@
           "sampleItems": [
             {
               "itemFingerprint": "b0f83c0b",
-              "rank": 44,
-              "rankScore": 2.043,
-              "qualityDecision": "promote",
-              "eligibleForSummary": true,
-              "eligibleForTopRead": true,
-              "flags": [],
-              "selected": true,
-              "topRead": true,
-              "filterReasons": [
-                "selected_evidence",
-                "top_read"
-              ]
-            },
-            {
-              "itemFingerprint": "ec7e9395",
-              "rank": 114,
-              "rankScore": 1.795,
+              "rank": 84,
+              "rankScore": 1.978,
               "qualityDecision": "promote",
               "eligibleForSummary": true,
               "eligibleForTopRead": true,
@@ -130,40 +104,76 @@
             },
             {
               "itemFingerprint": "ce46a375",
-              "rank": 50,
-              "rankScore": 2.022,
+              "rank": 89,
+              "rankScore": 1.966,
               "qualityDecision": "promote",
               "eligibleForSummary": true,
               "eligibleForTopRead": true,
               "flags": [],
               "selected": true,
+              "topRead": true,
+              "filterReasons": [
+                "selected_evidence",
+                "top_read"
+              ]
+            },
+            {
+              "itemFingerprint": "ec7e9395",
+              "rank": 123,
+              "rankScore": 1.724,
+              "qualityDecision": "promote",
+              "eligibleForSummary": true,
+              "eligibleForTopRead": true,
+              "flags": [],
+              "selected": true,
+              "topRead": true,
+              "filterReasons": [
+                "selected_evidence",
+                "top_read"
+              ]
+            },
+            {
+              "itemFingerprint": "32e8aecb",
+              "rank": 170,
+              "rankScore": 1.473,
+              "qualityDecision": "downrank",
+              "eligibleForSummary": true,
+              "eligibleForTopRead": false,
+              "flags": [
+                "weak_topic_match"
+              ],
+              "selected": true,
               "topRead": false,
               "filterReasons": [
+                "weak_topic_match",
+                "top_read_ineligible",
                 "selected_evidence",
                 "not_top_read"
               ]
             },
             {
               "itemFingerprint": "efb49d48",
-              "rank": 193,
-              "rankScore": 1.488,
+              "rank": 183,
+              "rankScore": 1.417,
               "qualityDecision": "downrank",
               "eligibleForSummary": true,
               "eligibleForTopRead": false,
               "flags": [
                 "weak_topic_match"
               ],
-              "selected": false,
+              "selected": true,
               "topRead": false,
               "filterReasons": [
                 "weak_topic_match",
                 "top_read_ineligible",
-                "not_selected_evidence",
+                "selected_evidence",
                 "not_top_read"
               ]
             },
             {
-              "itemFingerprint": "02fb9d88",
+              "itemFingerprint": "efb1b2fe",
+              "rank": 186,
+              "rankScore": 1.381,
               "qualityDecision": "downrank",
               "eligibleForSummary": true,
               "eligibleForTopRead": false,
@@ -175,13 +185,14 @@
               "filterReasons": [
                 "weak_topic_match",
                 "top_read_ineligible",
-                "not_ranked_top_200",
                 "not_selected_evidence",
                 "not_top_read"
               ]
             },
             {
               "itemFingerprint": "48e7ffbb",
+              "rank": 187,
+              "rankScore": 1.375,
               "qualityDecision": "downrank",
               "eligibleForSummary": true,
               "eligibleForTopRead": false,
@@ -193,13 +204,14 @@
               "filterReasons": [
                 "weak_topic_match",
                 "top_read_ineligible",
-                "not_ranked_top_200",
                 "not_selected_evidence",
                 "not_top_read"
               ]
             },
             {
-              "itemFingerprint": "6a15b192",
+              "itemFingerprint": "dac5f87c",
+              "rank": 188,
+              "rankScore": 1.362,
               "qualityDecision": "downrank",
               "eligibleForSummary": true,
               "eligibleForTopRead": false,
@@ -211,25 +223,6 @@
               "filterReasons": [
                 "weak_topic_match",
                 "top_read_ineligible",
-                "not_ranked_top_200",
-                "not_selected_evidence",
-                "not_top_read"
-              ]
-            },
-            {
-              "itemFingerprint": "776ca5a9",
-              "qualityDecision": "downrank",
-              "eligibleForSummary": true,
-              "eligibleForTopRead": false,
-              "flags": [
-                "weak_topic_match"
-              ],
-              "selected": false,
-              "topRead": false,
-              "filterReasons": [
-                "weak_topic_match",
-                "top_read_ineligible",
-                "not_ranked_top_200",
                 "not_selected_evidence",
                 "not_top_read"
               ]
@@ -240,71 +233,26 @@
           "laneFingerprint": "26185a84",
           "laneFamily": "search:new:any",
           "queryFingerprint": "10d12086",
-          "collectedCount": 75,
-          "rankedCount": 69,
-          "selectedCount": 27,
+          "collectedCount": 25,
+          "rankedCount": 24,
+          "selectedCount": 25,
           "topReadCount": 0,
-          "topReadEligibleCount": 23,
-          "weakTopicMatchCount": 52,
-          "ineligibleTopReadCount": 52,
+          "topReadEligibleCount": 5,
+          "weakTopicMatchCount": 20,
+          "ineligibleTopReadCount": 20,
           "weakTopicMatchTopReadCount": 0,
           "ineligibleActualTopReadCount": 0,
-          "averageRankScore": 1.521,
-          "maxRankScore": 1.571,
+          "averageRankScore": 1.527,
+          "maxRankScore": 1.592,
           "qualityDecisions": {
-            "downrank": 52,
-            "promote": 23
+            "downrank": 20,
+            "promote": 5
           },
           "sampleItems": [
             {
-              "itemFingerprint": "bd907e8e",
-              "rank": 122,
-              "rankScore": 1.571,
-              "qualityDecision": "promote",
-              "eligibleForSummary": true,
-              "eligibleForTopRead": true,
-              "flags": [],
-              "selected": true,
-              "topRead": false,
-              "filterReasons": [
-                "selected_evidence",
-                "not_top_read"
-              ]
-            },
-            {
-              "itemFingerprint": "239452fd",
-              "rank": 123,
-              "rankScore": 1.569,
-              "qualityDecision": "promote",
-              "eligibleForSummary": true,
-              "eligibleForTopRead": true,
-              "flags": [],
-              "selected": true,
-              "topRead": false,
-              "filterReasons": [
-                "selected_evidence",
-                "not_top_read"
-              ]
-            },
-            {
-              "itemFingerprint": "7fd03c43",
-              "rank": 124,
-              "rankScore": 1.569,
-              "qualityDecision": "promote",
-              "eligibleForSummary": true,
-              "eligibleForTopRead": true,
-              "flags": [],
-              "selected": true,
-              "topRead": false,
-              "filterReasons": [
-                "selected_evidence",
-                "not_top_read"
-              ]
-            },
-            {
-              "itemFingerprint": "cc602f58",
+              "itemFingerprint": "1ca12fce",
               "rank": 125,
-              "rankScore": 1.569,
+              "rankScore": 1.592,
               "qualityDecision": "promote",
               "eligibleForSummary": true,
               "eligibleForTopRead": true,
@@ -317,9 +265,9 @@
               ]
             },
             {
-              "itemFingerprint": "b0384cc2",
-              "rank": 127,
-              "rankScore": 1.55,
+              "itemFingerprint": "b85ad39c",
+              "rank": 126,
+              "rankScore": 1.576,
               "qualityDecision": "promote",
               "eligibleForSummary": true,
               "eligibleForTopRead": true,
@@ -332,24 +280,9 @@
               ]
             },
             {
-              "itemFingerprint": "b2b20532",
-              "rank": 129,
-              "rankScore": 1.55,
-              "qualityDecision": "promote",
-              "eligibleForSummary": true,
-              "eligibleForTopRead": true,
-              "flags": [],
-              "selected": true,
-              "topRead": false,
-              "filterReasons": [
-                "selected_evidence",
-                "not_top_read"
-              ]
-            },
-            {
-              "itemFingerprint": "f0e5e403",
+              "itemFingerprint": "6b249cfd",
               "rank": 128,
-              "rankScore": 1.55,
+              "rankScore": 1.557,
               "qualityDecision": "promote",
               "eligibleForSummary": true,
               "eligibleForTopRead": true,
@@ -362,76 +295,89 @@
               ]
             },
             {
-              "itemFingerprint": "2ccbe669",
+              "itemFingerprint": "c10f68da",
+              "rank": 129,
+              "rankScore": 1.557,
+              "qualityDecision": "promote",
+              "eligibleForSummary": true,
+              "eligibleForTopRead": true,
+              "flags": [],
+              "selected": true,
+              "topRead": false,
+              "filterReasons": [
+                "selected_evidence",
+                "not_top_read"
+              ]
+            },
+            {
+              "itemFingerprint": "e326a96f",
+              "rank": 130,
+              "rankScore": 1.557,
+              "qualityDecision": "promote",
+              "eligibleForSummary": true,
+              "eligibleForTopRead": true,
+              "flags": [],
+              "selected": true,
+              "topRead": false,
+              "filterReasons": [
+                "selected_evidence",
+                "not_top_read"
+              ]
+            },
+            {
+              "itemFingerprint": "139456b7",
+              "rank": 133,
+              "rankScore": 1.527,
+              "qualityDecision": "downrank",
+              "eligibleForSummary": true,
+              "eligibleForTopRead": false,
+              "flags": [
+                "weak_topic_match"
+              ],
+              "selected": true,
+              "topRead": false,
+              "filterReasons": [
+                "weak_topic_match",
+                "top_read_ineligible",
+                "selected_evidence",
+                "not_top_read"
+              ]
+            },
+            {
+              "itemFingerprint": "61e84fa6",
               "rank": 131,
-              "rankScore": 1.548,
-              "qualityDecision": "promote",
-              "eligibleForSummary": true,
-              "eligibleForTopRead": true,
-              "flags": [],
-              "selected": true,
-              "topRead": false,
-              "filterReasons": [
-                "selected_evidence",
-                "not_top_read"
-              ]
-            }
-          ]
-        },
-        {
-          "laneFingerprint": "faa89272",
-          "laneFamily": "search:general",
-          "queryFingerprint": "61b13846",
-          "collectedCount": 2,
-          "rankedCount": 2,
-          "selectedCount": 0,
-          "topReadCount": 0,
-          "topReadEligibleCount": 0,
-          "weakTopicMatchCount": 2,
-          "ineligibleTopReadCount": 2,
-          "weakTopicMatchTopReadCount": 0,
-          "ineligibleActualTopReadCount": 0,
-          "averageRankScore": 1.503,
-          "maxRankScore": 1.506,
-          "qualityDecisions": {
-            "downrank": 2
-          },
-          "sampleItems": [
-            {
-              "itemFingerprint": "f7a9c5f0",
-              "rank": 171,
-              "rankScore": 1.506,
+              "rankScore": 1.527,
               "qualityDecision": "downrank",
               "eligibleForSummary": true,
               "eligibleForTopRead": false,
               "flags": [
                 "weak_topic_match"
               ],
-              "selected": false,
+              "selected": true,
               "topRead": false,
               "filterReasons": [
                 "weak_topic_match",
                 "top_read_ineligible",
-                "not_selected_evidence",
+                "selected_evidence",
                 "not_top_read"
               ]
             },
             {
-              "itemFingerprint": "081e1944",
-              "rank": 182,
-              "rankScore": 1.5,
+              "itemFingerprint": "be298341",
+              "rank": 132,
+              "rankScore": 1.527,
               "qualityDecision": "downrank",
               "eligibleForSummary": true,
               "eligibleForTopRead": false,
               "flags": [
                 "weak_topic_match"
               ],
-              "selected": false,
+              "selected": true,
               "topRead": false,
               "filterReasons": [
                 "weak_topic_match",
                 "top_read_ineligible",
-                "not_selected_evidence",
+                "selected_evidence",
                 "not_top_read"
               ]
             }
@@ -440,17 +386,17 @@
       ]
     },
     "x-twitter": {
-      "collectedCount": 37,
+      "collectedCount": 35,
       "laneCount": 2,
-      "rankedCount": 22,
-      "selectedCount": 25,
-      "topReadCount": 3,
-      "topReadEligibleCount": 25,
-      "weakTopicMatchCount": 10,
-      "ineligibleTopReadCount": 12,
+      "rankedCount": 25,
+      "selectedCount": 27,
+      "topReadCount": 6,
+      "topReadEligibleCount": 27,
+      "weakTopicMatchCount": 5,
+      "ineligibleTopReadCount": 8,
       "weakTopicMatchTopReadCount": 0,
       "ineligibleActualTopReadCount": 0,
-      "averageRankScore": 1.814,
+      "averageRankScore": 1.87,
       "laneFamilies": {
         "product_or_group": 1,
         "search:general": 1
@@ -487,52 +433,53 @@
           "averageRankScore": 0
         },
         "product_or_group": {
-          "collectedCount": 15,
-          "rankedCount": 12,
-          "selectedCount": 12,
-          "topReadCount": 1,
+          "collectedCount": 23,
+          "rankedCount": 16,
+          "selectedCount": 17,
+          "topReadCount": 6,
           "weakTopicMatchCount": 3,
           "weakTopicMatchTopReadCount": 0,
           "ineligibleActualTopReadCount": 0,
-          "averageRankScore": 1.766
+          "averageRankScore": 1.881
         },
         "search:general": {
-          "collectedCount": 22,
-          "rankedCount": 10,
-          "selectedCount": 13,
-          "topReadCount": 2,
-          "weakTopicMatchCount": 7,
+          "collectedCount": 12,
+          "rankedCount": 9,
+          "selectedCount": 10,
+          "topReadCount": 0,
+          "weakTopicMatchCount": 2,
           "weakTopicMatchTopReadCount": 0,
           "ineligibleActualTopReadCount": 0,
-          "averageRankScore": 1.873
+          "averageRankScore": 1.85
         }
       },
       "laneHealth": [
         {
-          "laneFingerprint": "5614b685",
-          "laneFamily": "search:general",
-          "queryFingerprint": "833e64b1",
-          "collectedCount": 22,
-          "rankedCount": 10,
-          "selectedCount": 13,
-          "topReadCount": 2,
-          "topReadEligibleCount": 13,
-          "weakTopicMatchCount": 7,
-          "ineligibleTopReadCount": 9,
+          "laneFingerprint": "300bcd47",
+          "laneFamily": "product_or_group",
+          "queryFingerprint": "c002eed6",
+          "collectedCount": 23,
+          "rankedCount": 16,
+          "selectedCount": 17,
+          "topReadCount": 6,
+          "topReadEligibleCount": 17,
+          "weakTopicMatchCount": 3,
+          "ineligibleTopReadCount": 6,
           "weakTopicMatchTopReadCount": 0,
           "ineligibleActualTopReadCount": 0,
-          "averageRankScore": 1.873,
-          "maxRankScore": 2.045,
+          "averageRankScore": 1.881,
+          "maxRankScore": 2.026,
           "qualityDecisions": {
-            "downrank": 7,
-            "promote": 13,
-            "reject": 2
+            "downrank": 2,
+            "needs_context": 1,
+            "promote": 17,
+            "reject": 3
           },
           "sampleItems": [
             {
-              "itemFingerprint": "8c37d6f3",
-              "rank": 62,
-              "rankScore": 1.996,
+              "itemFingerprint": "b4923f4f",
+              "rank": 60,
+              "rankScore": 2.026,
               "qualityDecision": "promote",
               "eligibleForSummary": true,
               "eligibleForTopRead": true,
@@ -545,9 +492,49 @@
               ]
             },
             {
-              "itemFingerprint": "f9483271",
-              "rank": 105,
-              "rankScore": 1.854,
+              "itemFingerprint": "d568b4c4",
+              "rank": 66,
+              "rankScore": 2.003,
+              "qualityDecision": "promote",
+              "eligibleForSummary": true,
+              "eligibleForTopRead": true,
+              "flags": [
+                "official_account",
+                "trusted_author"
+              ],
+              "selected": true,
+              "topRead": true,
+              "filterReasons": [
+                "official_account",
+                "trusted_author",
+                "selected_evidence",
+                "top_read"
+              ]
+            },
+            {
+              "itemFingerprint": "84f6d3d9",
+              "rank": 70,
+              "rankScore": 2,
+              "qualityDecision": "promote",
+              "eligibleForSummary": true,
+              "eligibleForTopRead": true,
+              "flags": [
+                "official_account",
+                "trusted_author"
+              ],
+              "selected": true,
+              "topRead": true,
+              "filterReasons": [
+                "official_account",
+                "trusted_author",
+                "selected_evidence",
+                "top_read"
+              ]
+            },
+            {
+              "itemFingerprint": "33359973",
+              "rank": 74,
+              "rankScore": 1.995,
               "qualityDecision": "promote",
               "eligibleForSummary": true,
               "eligibleForTopRead": true,
@@ -560,84 +547,59 @@
               ]
             },
             {
-              "itemFingerprint": "801f746b",
-              "rank": 42,
-              "rankScore": 2.045,
+              "itemFingerprint": "ea7bf579",
+              "rank": 101,
+              "rankScore": 1.93,
               "qualityDecision": "promote",
               "eligibleForSummary": true,
               "eligibleForTopRead": true,
               "flags": [],
               "selected": true,
-              "topRead": false,
+              "topRead": true,
               "filterReasons": [
                 "selected_evidence",
-                "not_top_read"
+                "top_read"
               ]
             },
             {
-              "itemFingerprint": "635844ae",
-              "rank": 93,
-              "rankScore": 1.931,
-              "qualityDecision": "promote",
-              "eligibleForSummary": true,
-              "eligibleForTopRead": true,
-              "flags": [],
-              "selected": true,
-              "topRead": false,
-              "filterReasons": [
-                "selected_evidence",
-                "not_top_read"
-              ]
-            },
-            {
-              "itemFingerprint": "a9f78d12",
-              "rank": 106,
-              "rankScore": 1.852,
-              "qualityDecision": "promote",
-              "eligibleForSummary": true,
-              "eligibleForTopRead": true,
-              "flags": [],
-              "selected": true,
-              "topRead": false,
-              "filterReasons": [
-                "selected_evidence",
-                "not_top_read"
-              ]
-            },
-            {
-              "itemFingerprint": "1b413393",
-              "rank": 109,
-              "rankScore": 1.833,
-              "qualityDecision": "promote",
-              "eligibleForSummary": true,
-              "eligibleForTopRead": true,
-              "flags": [],
-              "selected": true,
-              "topRead": false,
-              "filterReasons": [
-                "selected_evidence",
-                "not_top_read"
-              ]
-            },
-            {
-              "itemFingerprint": "14c66d79",
-              "rank": 110,
-              "rankScore": 1.822,
-              "qualityDecision": "promote",
-              "eligibleForSummary": true,
-              "eligibleForTopRead": true,
-              "flags": [],
-              "selected": true,
-              "topRead": false,
-              "filterReasons": [
-                "selected_evidence",
-                "not_top_read"
-              ]
-            },
-            {
-              "itemFingerprint": "baadf54c",
+              "itemFingerprint": "72bb0fab",
               "rank": 111,
-              "rankScore": 1.82,
+              "rankScore": 1.873,
+              "qualityDecision": "promote",
+              "eligibleForSummary": true,
+              "eligibleForTopRead": true,
+              "flags": [],
+              "selected": true,
+              "topRead": true,
+              "filterReasons": [
+                "selected_evidence",
+                "top_read"
+              ]
+            },
+            {
+              "itemFingerprint": "7cc99607",
+              "rank": 67,
+              "rankScore": 2.003,
+              "qualityDecision": "promote",
+              "eligibleForSummary": true,
+              "eligibleForTopRead": true,
+              "flags": [
+                "official_account",
+                "trusted_author"
+              ],
+              "selected": true,
+              "topRead": false,
+              "filterReasons": [
+                "official_account",
+                "trusted_author",
+                "selected_evidence",
+                "not_top_read"
+              ]
+            },
+            {
+              "itemFingerprint": "6378ce2e",
+              "rank": 98,
+              "rankScore": 1.942,
               "qualityDecision": "promote",
               "eligibleForSummary": true,
               "eligibleForTopRead": true,
@@ -652,44 +614,29 @@
           ]
         },
         {
-          "laneFingerprint": "300bcd47",
-          "laneFamily": "product_or_group",
-          "queryFingerprint": "c002eed6",
-          "collectedCount": 15,
-          "rankedCount": 12,
-          "selectedCount": 12,
-          "topReadCount": 1,
-          "topReadEligibleCount": 12,
-          "weakTopicMatchCount": 3,
-          "ineligibleTopReadCount": 3,
+          "laneFingerprint": "5614b685",
+          "laneFamily": "search:general",
+          "queryFingerprint": "833e64b1",
+          "collectedCount": 12,
+          "rankedCount": 9,
+          "selectedCount": 10,
+          "topReadCount": 0,
+          "topReadEligibleCount": 10,
+          "weakTopicMatchCount": 2,
+          "ineligibleTopReadCount": 2,
           "weakTopicMatchTopReadCount": 0,
           "ineligibleActualTopReadCount": 0,
-          "averageRankScore": 1.766,
-          "maxRankScore": 2.016,
+          "averageRankScore": 1.85,
+          "maxRankScore": 1.992,
           "qualityDecisions": {
-            "downrank": 3,
-            "promote": 12
+            "downrank": 2,
+            "promote": 10
           },
           "sampleItems": [
             {
-              "itemFingerprint": "c6968047",
-              "rank": 55,
-              "rankScore": 2.016,
-              "qualityDecision": "promote",
-              "eligibleForSummary": true,
-              "eligibleForTopRead": true,
-              "flags": [],
-              "selected": true,
-              "topRead": true,
-              "filterReasons": [
-                "selected_evidence",
-                "top_read"
-              ]
-            },
-            {
-              "itemFingerprint": "c6c7ed01",
-              "rank": 72,
-              "rankScore": 1.975,
+              "itemFingerprint": "d9cbcfe6",
+              "rank": 76,
+              "rankScore": 1.992,
               "qualityDecision": "promote",
               "eligibleForSummary": true,
               "eligibleForTopRead": true,
@@ -702,9 +649,9 @@
               ]
             },
             {
-              "itemFingerprint": "f0703357",
-              "rank": 107,
-              "rankScore": 1.846,
+              "itemFingerprint": "188a8e50",
+              "rank": 110,
+              "rankScore": 1.877,
               "qualityDecision": "promote",
               "eligibleForSummary": true,
               "eligibleForTopRead": true,
@@ -717,9 +664,9 @@
               ]
             },
             {
-              "itemFingerprint": "afe93888",
-              "rank": 108,
-              "rankScore": 1.843,
+              "itemFingerprint": "3a9d4cf2",
+              "rank": 114,
+              "rankScore": 1.856,
               "qualityDecision": "promote",
               "eligibleForSummary": true,
               "eligibleForTopRead": true,
@@ -732,9 +679,9 @@
               ]
             },
             {
-              "itemFingerprint": "3cda0fe3",
-              "rank": 113,
-              "rankScore": 1.797,
+              "itemFingerprint": "5e0a0294",
+              "rank": 115,
+              "rankScore": 1.841,
               "qualityDecision": "promote",
               "eligibleForSummary": true,
               "eligibleForTopRead": true,
@@ -747,9 +694,9 @@
               ]
             },
             {
-              "itemFingerprint": "bf87c323",
+              "itemFingerprint": "0d1b8d78",
               "rank": 116,
-              "rankScore": 1.773,
+              "rankScore": 1.829,
               "qualityDecision": "promote",
               "eligibleForSummary": true,
               "eligibleForTopRead": true,
@@ -762,9 +709,9 @@
               ]
             },
             {
-              "itemFingerprint": "06e91578",
+              "itemFingerprint": "65dfefb0",
               "rank": 117,
-              "rankScore": 1.764,
+              "rankScore": 1.821,
               "qualityDecision": "promote",
               "eligibleForSummary": true,
               "eligibleForTopRead": true,
@@ -777,9 +724,24 @@
               ]
             },
             {
-              "itemFingerprint": "5e50c211",
+              "itemFingerprint": "bb0c2100",
               "rank": 118,
-              "rankScore": 1.726,
+              "rankScore": 1.815,
+              "qualityDecision": "promote",
+              "eligibleForSummary": true,
+              "eligibleForTopRead": true,
+              "flags": [],
+              "selected": true,
+              "topRead": false,
+              "filterReasons": [
+                "selected_evidence",
+                "not_top_read"
+              ]
+            },
+            {
+              "itemFingerprint": "83fc0c0b",
+              "rank": 120,
+              "rankScore": 1.813,
               "qualityDecision": "promote",
               "eligibleForSummary": true,
               "eligibleForTopRead": true,

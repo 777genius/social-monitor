@@ -21,12 +21,38 @@ import {
   storyTopicAnchorTokens,
   storyTopicTokens,
 } from "./story-key-normalizer";
+import {
+  aggregateReaderSummaryTopicMapNodes,
+  readerSummaryTopicMapAggregateKey,
+  type ReaderSummaryTopicMapNodeDraft,
+} from "./reader-summary-topic-map-aggregation";
 import type {
   BuildReaderSummaryTopicMapParams,
   ReaderSummaryTopicGroupLabel,
   ReaderSummaryTopicLabelPlan,
   ReaderSummaryTopicNodeLabel,
 } from "./reader-summary-topic-label-plan";
+import {
+  hasUsableTopicNodeLabel,
+  isUsableTopicGroupLabel,
+  isWeakTopicLabel,
+  sanitizeTopicNodeLabel,
+} from "./reader-summary-topic-map-label-quality";
+import {
+  extractReaderSummaryTopicLabelCandidates,
+  groundReaderSummaryTopicNodeLabel,
+  readerSummaryTopicLabelEvidenceTexts,
+  selectReaderSummaryTopicLabel,
+} from "./reader-summary-topic-label-candidates";
+import {
+  compactId,
+  compactLabel,
+  compactOptional,
+  fallbackTopicFamilyGroupId,
+  fallbackTopicLabel,
+  humanizeSlug,
+  slug,
+} from "./reader-summary-topic-map-text";
 
 const maxEdges = 80;
 const colorKeys = [
@@ -39,23 +65,6 @@ const colorKeys = [
   "orange",
   "slate",
 ] as const;
-const metaTopicLabels = new Set([
-  "reader summary",
-  "topic labels",
-  "topic map",
-  "top reads",
-  "source cards",
-  "recommendations",
-  "feedback loop",
-  "visual tests",
-  "workflow design",
-  "rss quality",
-  "source health",
-  "hacker news",
-  "reddit api",
-  "x signals",
-]);
-
 export const buildReaderSummaryTopicMap = (
   params: BuildReaderSummaryTopicMapParams,
 ): ReaderSummaryTopicMap => {
@@ -70,13 +79,27 @@ export const buildReaderSummaryTopicMap = (
     params.topStories.map((story) => [story.storyClusterId, story] as const),
   );
   const citationsByFeedItemId = citationsByFeedItemIdMap(params.citationMap);
-  const nodeLabels = new Map(
-    (params.labelPlan?.nodeLabels ?? []).map(
-      (label) => [label.nodeId, label] as const,
-    ),
+  const providerLabels = compactUnique(
+    params.selectedEvidence.flatMap((item) => [
+      item.providerName,
+      item.providerKey,
+      humanizeSlug(item.providerKey),
+    ]),
   );
-  const labelGroups = validLabelGroups(params.labelPlan, nodeLabels);
-  const rawNodes = params.clusters
+  const nodeLabels = new Map(
+    (params.labelPlan?.nodeLabels ?? [])
+      .map(sanitizeTopicNodeLabel)
+      .filter(hasUsableTopicNodeLabel)
+      .map((label) => [label.nodeId, label] as const),
+  );
+  const labelGroups = validLabelGroups(
+    params.labelPlan,
+    nodeLabels,
+    providerLabels,
+  );
+  const aggregateByFallbackGroup =
+    params.generatedBy === "agent-runtime" && nodeLabels.size === 0;
+  const nodeDrafts = params.clusters
     .map((cluster) =>
       topicNodeForCluster({
         cluster,
@@ -84,14 +107,16 @@ export const buildReaderSummaryTopicMap = (
         story: storyByClusterId.get(cluster.id),
         citationsByFeedItemId,
         nodeLabel: nodeLabels.get(topicNodeId(cluster.id)),
+        aggregateByFallbackGroup,
       }),
     )
-    .filter((node): node is ReaderSummaryTopicMapNode => node !== null);
+    .filter((node): node is ReaderSummaryTopicMapNodeDraft => node !== null);
 
-  if (rawNodes.length === 0) {
+  if (nodeDrafts.length === 0) {
     return emptyReaderSummaryTopicMap(params.warnings ?? []);
   }
 
+  const rawNodes = aggregateReaderSummaryTopicMapNodes(nodeDrafts);
   const nodes = normalizeNodePopularity(rawNodes);
   const groups = topicGroups(nodes, labelGroups);
   const edges = topicEdges(nodes);
@@ -117,7 +142,8 @@ const topicNodeForCluster = (params: {
   readonly story?: TopReadCandidate;
   readonly citationsByFeedItemId: ReadonlyMap<string, readonly string[]>;
   readonly nodeLabel?: ReaderSummaryTopicNodeLabel;
-}): ReaderSummaryTopicMapNode | null => {
+  readonly aggregateByFallbackGroup: boolean;
+}): ReaderSummaryTopicMapNodeDraft | null => {
   const evidence = [
     params.cluster.representativeFeedItemId,
     ...params.cluster.duplicateFeedItemIds,
@@ -133,23 +159,48 @@ const topicNodeForCluster = (params: {
   const fallbackKeywords = uniqueNonEmpty(
     evidence.flatMap((item) => storyTopicTokens(item, STORY_RANKING_POLICY_V1)),
   ).slice(0, 8);
-  const label = topicDisplayLabel({
-    nodeLabel: params.nodeLabel,
+  const labelContext = {
     story: params.story,
     evidence,
     fallbackKeywords,
     cluster: params.cluster,
+  };
+  const labelCandidates = extractReaderSummaryTopicLabelCandidates({
+    ...labelContext,
+    fallbackLabel: params.nodeLabel?.label,
   });
+  const evidenceTexts = readerSummaryTopicLabelEvidenceTexts(labelContext);
+  const providerLabels = params.cluster.providerKeys.map(humanizeSlug);
+  const label = selectReaderSummaryTopicLabel({
+    proposedLabel: params.nodeLabel?.label,
+    labelCandidates,
+    evidenceTexts,
+    providerLabels,
+  });
+  const nodeLabel = groundReaderSummaryTopicNodeLabel({
+    nodeLabel: params.nodeLabel,
+    selectedLabel: label,
+    evidenceTexts,
+    providerLabels,
+    candidateLabels: labelCandidates.map((candidate) => candidate.label),
+  });
+  const fallbackTopicId = deterministicGroupId(
+    params.cluster,
+    fallbackKeywords,
+  );
   const groupId =
-    compactId(params.nodeLabel?.groupId) ??
-    deterministicGroupId(params.cluster, fallbackKeywords);
+    compactId(nodeLabel?.groupId) ??
+    (params.aggregateByFallbackGroup
+      ? fallbackTopicFamilyGroupId(fallbackTopicId)
+      : fallbackTopicId);
+  const rawScore = Math.max(0, params.cluster.score);
 
   return {
     id: nodeId,
     label,
     groupId,
     storyClusterIds: [params.cluster.id],
-    popularityScore: Math.max(0, params.cluster.score),
+    popularityScore: rawScore,
     sizeWeight: 0.2,
     evidenceCount: evidence.length,
     providerKeys: uniqueNonEmpty(params.cluster.providerKeys),
@@ -160,13 +211,24 @@ const topicNodeForCluster = (params: {
       ),
     ),
     keywords: uniqueNonEmpty([
-      ...(params.nodeLabel?.keywords ?? []),
+      ...(nodeLabel?.keywords ?? []),
+      ...labelCandidates.map((candidate) => candidate.label),
       ...fallbackKeywords,
     ]).slice(0, 8),
     rationale:
-      compactOptional(params.nodeLabel?.rationale) ??
+      compactOptional(nodeLabel?.rationale) ??
       params.cluster.whyImportant[0] ??
       `Clustered ${evidence.length} related source items`,
+    aggregateKey: readerSummaryTopicMapAggregateKey({
+      nodeId,
+      nodeLabel,
+      fallbackGroupId: fallbackTopicId,
+      aggregateFallbackGroup: params.aggregateByFallbackGroup,
+    }),
+    aggregateLabel: params.aggregateByFallbackGroup
+      ? fallbackTopicLabel(fallbackTopicId)
+      : undefined,
+    aggregateRankScore: rawScore,
   };
 };
 
@@ -309,6 +371,7 @@ export const topicNodeId = (storyClusterId: string): string =>
 const validLabelGroups = (
   plan: ReaderSummaryTopicLabelPlan | undefined,
   nodeLabels: ReadonlyMap<string, ReaderSummaryTopicNodeLabel>,
+  providerLabels: readonly string[],
 ): ReadonlyMap<string, ReaderSummaryTopicGroupLabel> => {
   if (plan === undefined) {
     return new Map();
@@ -323,8 +386,7 @@ const validLabelGroups = (
     plan.groups
       .filter(
         (group) =>
-          compactId(group.id) !== undefined &&
-          group.label.trim().length > 0 &&
+          isUsableTopicGroupLabel(group, { providerLabels }) &&
           (referencedGroupIds.has(group.id) ||
             (group.nodeIds ?? []).some((nodeId) => nodeLabels.has(nodeId))),
       )
@@ -336,7 +398,9 @@ const deterministicGroupId = (
   cluster: StoryCluster,
   keywords: readonly string[],
 ): string => {
-  const semanticToken = storyTopicAnchorTokens(keywords)[0] ?? keywords[0];
+  const semanticToken =
+    storyTopicAnchorTokens(keywords)[0] ??
+    keywords.find((keyword) => !isWeakTopicLabel(keyword));
   if (semanticToken !== undefined) {
     return `topic:${slug(semanticToken)}`;
   }
@@ -357,54 +421,14 @@ const deterministicGroupLabel = (
     return interestTitle(rawValue);
   }
 
-  return compactLabel(nodes[0]?.keywords[0] ?? humanizeSlug(rawValue));
-};
-
-const humanizeSlug = (value: string): string => value.replace(/[-_]+/gu, " ");
-
-const topicDisplayLabel = (params: {
-  readonly nodeLabel?: ReaderSummaryTopicNodeLabel;
-  readonly story?: TopReadCandidate;
-  readonly evidence: readonly SummaryEvidenceItem[];
-  readonly fallbackKeywords: readonly string[];
-  readonly cluster: StoryCluster;
-}): string => {
-  const candidates = compactUnique([
-    params.nodeLabel?.label,
-    params.story?.title,
-    params.evidence[0]?.title,
-    ...params.fallbackKeywords.map(humanizeSlug),
-    params.cluster.storyKey,
-  ]).map(compactLabel);
-  const providerLabels = params.cluster.providerKeys.map(humanizeSlug);
-
-  return (
-    candidates.find((label) => !isMetaTopicLabel(label, providerLabels)) ??
-    candidates[0] ??
-    "Untitled topic"
+  const fallbackLabel = compactLabel(
+    nodes
+      .flatMap((node) => node.keywords)
+      .find((keyword) => !isWeakTopicLabel(keyword)) ?? humanizeSlug(rawValue),
   );
+
+  return isWeakTopicLabel(fallbackLabel) ? "Other topics" : fallbackLabel;
 };
-
-const isMetaTopicLabel = (
-  label: string,
-  providerLabels: readonly string[],
-): boolean => {
-  const normalized = normalizeTopicLabel(label);
-  if (metaTopicLabels.has(normalized)) {
-    return true;
-  }
-
-  return providerLabels
-    .map(normalizeTopicLabel)
-    .some((providerLabel) => providerLabel === normalized);
-};
-
-const normalizeTopicLabel = (value: string): string =>
-  value
-    .toLocaleLowerCase("en-US")
-    .replace(/[^a-z0-9]+/gu, " ")
-    .replace(/\s+/gu, " ")
-    .trim();
 
 const citationsByFeedItemIdMap = (
   citations: readonly ReaderSummaryCitation[],
@@ -457,33 +481,6 @@ const sharedCount = (
       .filter((value) => rightSet.has(value)),
   ).size;
 };
-
-const compactLabel = (value: string): string =>
-  value
-    .replace(/^summary:\s*/iu, "")
-    .replace(/^x\s+post\s+by\s+@[^:]+:\s*/iu, "")
-    .replace(/\s+/gu, " ")
-    .trim()
-    .slice(0, 56) || "Untitled topic";
-
-const compactOptional = (value: string | undefined): string | undefined => {
-  const trimmed = value?.replace(/\s+/gu, " ").trim();
-
-  return trimmed === undefined || trimmed.length === 0 ? undefined : trimmed;
-};
-
-const compactId = (value: string | undefined): string | undefined => {
-  const trimmed = value?.trim();
-
-  return trimmed === undefined || trimmed.length === 0 ? undefined : trimmed;
-};
-
-const slug = (value: string): string =>
-  value
-    .toLocaleLowerCase("en-US")
-    .replace(/[^a-z0-9]+/gu, "-")
-    .replace(/^-+|-+$/gu, "")
-    .slice(0, 48) || "unknown";
 
 const boundedScore = (value: number): number =>
   roundScore(Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0);

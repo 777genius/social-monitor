@@ -99,6 +99,207 @@ describe("buildReaderSummaryTopicMap", () => {
     });
   });
 
+  it("aggregates LLM-labeled same-topic clusters into one bubble", () => {
+    const map = buildReaderSummaryTopicMap({
+      clusters: [
+        storyCluster({
+          id: "story:claude-code-hn",
+          score: 0.9,
+          representativeFeedItemId: "feed-claude-code-hn",
+          interestIds: ["ai-agents"],
+          providerKeys: ["hacker-news"],
+        }),
+        storyCluster({
+          id: "story:claude-code-reddit",
+          score: 0.7,
+          representativeFeedItemId: "feed-claude-code-reddit",
+          interestIds: ["ai-agents"],
+          providerKeys: ["reddit"],
+        }),
+        storyCluster({
+          id: "story:openai-routing",
+          score: 0.5,
+          representativeFeedItemId: "feed-openai-routing",
+          interestIds: ["ai-agents"],
+          providerKeys: ["rss"],
+        }),
+      ],
+      selectedEvidence: [
+        evidenceItem({
+          feedItemId: "feed-claude-code-hn",
+          title: "Claude Code adds agent workflow controls",
+          providerKey: "hacker-news",
+        }),
+        evidenceItem({
+          feedItemId: "feed-claude-code-reddit",
+          title: "Developers compare Claude Code agent workflows",
+          providerKey: "reddit",
+        }),
+        evidenceItem({
+          feedItemId: "feed-openai-routing",
+          title: "OpenAI routing benchmark launch",
+          providerKey: "rss",
+        }),
+      ],
+      topStories: [],
+      citationMap: [
+        citation("c1", "feed-claude-code-hn", "hacker-news"),
+        citation("c2", "feed-claude-code-reddit", "reddit"),
+        citation("c3", "feed-openai-routing", "rss"),
+      ],
+      labelPlan: {
+        nodeLabels: [
+          {
+            nodeId: "topic:story:claude-code-hn",
+            topicId: "topic:claude-code-agents",
+            label: "Claude Code",
+            groupId: "group:claude",
+          },
+          {
+            nodeId: "topic:story:claude-code-reddit",
+            topicId: "topic:claude-code-agents",
+            label: "Claude Code",
+            groupId: "group:claude",
+          },
+          {
+            nodeId: "topic:story:openai-routing",
+            topicId: "topic:openai-routing",
+            label: "OpenAI routing",
+            groupId: "group:openai",
+          },
+        ],
+        groups: [
+          { id: "group:claude", label: "Claude" },
+          { id: "group:openai", label: "OpenAI" },
+        ],
+      },
+      generatedBy: "agent-runtime",
+    });
+
+    const claude = map.nodes.find((node) => node.label === "Claude Code");
+
+    expect(map.nodes).toHaveLength(2);
+    expect(claude).toMatchObject({
+      groupId: "group:claude",
+      storyClusterIds: ["story:claude-code-hn", "story:claude-code-reddit"],
+      evidenceCount: 2,
+      providerKeys: ["hacker-news", "reddit"],
+      citationIds: ["c1", "c2"],
+    });
+    expect(claude?.id).toBe(
+      "topic:aggregate:llm-topic-topic-claude-code-agents",
+    );
+    expect(claude?.popularityScore).toBeGreaterThan(50);
+    expect(claude?.sizeWeight).toBeGreaterThan(0.7);
+  });
+
+  it("aggregates deterministic groups when agent-runtime labeling returns no usable labels", () => {
+    const map = buildReaderSummaryTopicMap({
+      clusters: [
+        storyCluster({
+          id: "story:claude-code",
+          representativeFeedItemId: "feed-claude-code",
+          interestIds: ["ai-agents"],
+          providerKeys: ["hacker-news"],
+        }),
+        storyCluster({
+          id: "story:claude-cache",
+          representativeFeedItemId: "feed-claude-cache",
+          interestIds: ["ai-agents"],
+          providerKeys: ["reddit"],
+        }),
+        storyCluster({
+          id: "story:palantir",
+          representativeFeedItemId: "feed-palantir",
+          interestIds: ["ai-agents"],
+          providerKeys: ["x-twitter"],
+        }),
+      ],
+      selectedEvidence: [
+        evidenceItem({
+          feedItemId: "feed-claude-code",
+          title: "Claude Code agents reshape pull request review",
+          providerKey: "hacker-news",
+        }),
+        evidenceItem({
+          feedItemId: "feed-claude-cache",
+          title: "Claude Code session cache improves agent workflows",
+          providerKey: "reddit",
+        }),
+        evidenceItem({
+          feedItemId: "feed-palantir",
+          title: "Palantir earnings debate lifts developer interest",
+          providerKey: "x-twitter",
+        }),
+      ],
+      topStories: [],
+      citationMap: [
+        citation("c1", "feed-claude-code", "hacker-news"),
+        citation("c2", "feed-claude-cache", "reddit"),
+        citation("c3", "feed-palantir", "x-twitter"),
+      ],
+      labelPlan: { nodeLabels: [], groups: [] },
+      generatedBy: "agent-runtime",
+    });
+
+    const claude = map.nodes.find((node) => node.label === "Claude Code");
+
+    expect(map.nodes).toHaveLength(2);
+    expect(claude).toMatchObject({
+      groupId: "topic:claude",
+      evidenceCount: 2,
+      storyClusterIds: ["story:claude-code", "story:claude-cache"],
+      providerKeys: ["hacker-news", "reddit"],
+    });
+  });
+
+  it("keeps parent and product fallback topics in the same color group", () => {
+    const map = buildReaderSummaryTopicMap({
+      clusters: [
+        storyCluster({
+          id: "story:claude-general",
+          representativeFeedItemId: "feed-claude-general",
+          interestIds: ["ai-agents"],
+          providerKeys: ["rss"],
+        }),
+        storyCluster({
+          id: "story:claude-code",
+          representativeFeedItemId: "feed-claude-code",
+          interestIds: ["ai-agents"],
+          providerKeys: ["hacker-news"],
+        }),
+      ],
+      selectedEvidence: [
+        evidenceItem({
+          feedItemId: "feed-claude-general",
+          title: "Claude model updates and agent workflow notes",
+          providerKey: "rss",
+        }),
+        evidenceItem({
+          feedItemId: "feed-claude-code",
+          title: "Claude Code agents reshape pull request review",
+          providerKey: "hacker-news",
+        }),
+      ],
+      topStories: [],
+      citationMap: [
+        citation("c1", "feed-claude-general", "rss"),
+        citation("c2", "feed-claude-code", "hacker-news"),
+      ],
+      labelPlan: { nodeLabels: [], groups: [] },
+      generatedBy: "agent-runtime",
+    });
+
+    expect(map.nodes.map((node) => node.label)).toEqual([
+      "Claude ecosystem",
+      "Claude Code Agents",
+    ]);
+    expect(new Set(map.nodes.map((node) => node.groupId))).toEqual(
+      new Set(["topic:claude"]),
+    );
+    expect(map.groups).toHaveLength(1);
+  });
+
   it("groups deterministic fallback topics by content before interest", () => {
     const map = buildReaderSummaryTopicMap({
       clusters: [
@@ -262,7 +463,162 @@ describe("buildReaderSummaryTopicMap", () => {
       generatedBy: "agent-runtime",
     });
 
-    expect(map.nodes[0]?.label).toBe("OpenAI routing benchmark launch");
+    expect(map.nodes[0]?.label).toBe("OpenAI Routing Benchmark");
+  });
+
+  it("does not promote generic question words into topic labels or groups", () => {
+    const map = buildReaderSummaryTopicMap({
+      clusters: [
+        storyCluster({
+          id: "story:claude-cache-question",
+          representativeFeedItemId: "feed-claude-cache-question",
+          providerKeys: ["hacker-news"],
+        }),
+        storyCluster({
+          id: "story:doj-amazon",
+          representativeFeedItemId: "feed-doj-amazon",
+          providerKeys: ["rss"],
+        }),
+      ],
+      selectedEvidence: [
+        evidenceItem({
+          feedItemId: "feed-claude-cache-question",
+          title: "Ask HN: Why Claude Code cache feels slow",
+          providerKey: "hacker-news",
+        }),
+        evidenceItem({
+          feedItemId: "feed-doj-amazon",
+          title: "The DOJ antitrust filing targets Amazon pricing",
+          providerKey: "rss",
+        }),
+      ],
+      topStories: [],
+      citationMap: [
+        citation("c1", "feed-claude-cache-question", "hacker-news"),
+        citation("c2", "feed-doj-amazon", "rss"),
+      ],
+      labelPlan: {
+        nodeLabels: [
+          {
+            nodeId: "topic:story:claude-cache-question",
+            topicId: "topic:why",
+            label: "Why",
+            groupId: "group:show",
+            keywords: ["why", "the", "claude-code"],
+          },
+        ],
+        groups: [{ id: "group:show", label: "Show" }],
+      },
+      generatedBy: "agent-runtime",
+    });
+
+    const weakLabels = new Set(["Ask", "How", "Show", "The", "What", "Why"]);
+
+    expect(map.nodes.map((node) => node.label)).not.toEqual(
+      expect.arrayContaining([...weakLabels]),
+    );
+    expect(map.groups.map((group) => group.label)).not.toEqual(
+      expect.arrayContaining([...weakLabels]),
+    );
+    expect(map.nodes[0]?.label).toContain("Claude Code");
+  });
+
+  it("keeps broad LLM group labels separate from concrete bubble labels", () => {
+    const map = buildReaderSummaryTopicMap({
+      clusters: [
+        storyCluster({
+          id: "story:claude-code-cache",
+          representativeFeedItemId: "feed-claude-code-cache",
+          providerKeys: ["hacker-news"],
+        }),
+      ],
+      selectedEvidence: [
+        evidenceItem({
+          feedItemId: "feed-claude-code-cache",
+          title: "Claude Code session cache improves agent workflows",
+          providerKey: "hacker-news",
+        }),
+      ],
+      topStories: [],
+      citationMap: [citation("c1", "feed-claude-code-cache", "hacker-news")],
+      labelPlan: {
+        nodeLabels: [
+          {
+            nodeId: "topic:story:claude-code-cache",
+            topicId: "topic:claude",
+            label: "Claude",
+            groupId: "group:claude",
+            keywords: ["claude", "claude-code", "session-cache"],
+          },
+        ],
+        groups: [{ id: "group:claude", label: "Claude" }],
+      },
+      generatedBy: "agent-runtime",
+    });
+
+    expect(map.nodes[0]?.label).toContain("Claude Code");
+    expect(map.nodes[0]?.label).not.toBe("Claude");
+    expect(map.nodes[0]?.groupId).toBe("group:claude");
+    expect(map.groups[0]?.label).toBe("Claude");
+  });
+
+  it("uses evidence-backed topic phrases instead of short headline fragments", () => {
+    const map = buildReaderSummaryTopicMap({
+      clusters: [
+        storyCluster({
+          id: "story:productivity-stack",
+          representativeFeedItemId: "feed-productivity-stack",
+          providerKeys: ["rss"],
+        }),
+        storyCluster({
+          id: "story:anthropic-workshop",
+          representativeFeedItemId: "feed-anthropic-workshop",
+          providerKeys: ["hacker-news"],
+        }),
+      ],
+      selectedEvidence: [
+        evidenceItem({
+          feedItemId: "feed-productivity-stack",
+          title: "The productivity stack many professionals rely on every day",
+          providerKey: "rss",
+        }),
+        evidenceItem({
+          feedItemId: "feed-anthropic-workshop",
+          title: "Anthropic just showed a 24-minute workshop on AI security",
+          providerKey: "hacker-news",
+        }),
+      ],
+      topStories: [],
+      citationMap: [
+        citation("c1", "feed-productivity-stack", "rss"),
+        citation("c2", "feed-anthropic-workshop", "hacker-news"),
+      ],
+      labelPlan: {
+        nodeLabels: [
+          {
+            nodeId: "topic:story:productivity-stack",
+            topicId: "topic:the",
+            label: "The",
+            groupId: "group:show",
+          },
+          {
+            nodeId: "topic:story:anthropic-workshop",
+            topicId: "topic:show",
+            label: "Show",
+            groupId: "group:show",
+          },
+        ],
+        groups: [{ id: "group:show", label: "Show" }],
+      },
+      generatedBy: "agent-runtime",
+    });
+
+    expect(map.nodes.map((node) => node.label)).toEqual(
+      expect.arrayContaining(["Productivity Stack", "Anthropic AI Security"]),
+    );
+    expect(map.nodes.map((node) => node.label)).not.toEqual(
+      expect.arrayContaining(["The", "Show"]),
+    );
   });
 });
 

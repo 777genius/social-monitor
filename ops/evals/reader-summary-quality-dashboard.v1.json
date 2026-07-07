@@ -10,12 +10,12 @@
   },
   "inputs": {
     "database": "local-postgres",
-    "dayCount": 4,
-    "cleanDayCount": 3,
+    "dayCount": 5,
+    "cleanDayCount": 4,
     "dirtyDayCount": 1
   },
   "aggregate": {
-    "latestCleanDate": "2026-07-05",
+    "latestCleanDate": "2026-07-06",
     "cleanBlockingPassed": false,
     "degradedCleanDates": [
       "2026-07-02"
@@ -25,9 +25,10 @@
     ],
     "plannerRolloutProof": {
       "status": "ready",
-      "latestEligibleCleanDate": "2026-07-05",
+      "latestEligibleCleanDate": "2026-07-06",
       "eligibleCleanDates": [
-        "2026-07-05"
+        "2026-07-05",
+        "2026-07-06"
       ],
       "blockedDates": [
         {
@@ -75,21 +76,21 @@
         "dirtyDaysExcludedFromRolloutProof": true
       }
     },
-    "averageCleanCrossSourceClusterRate": 0.021,
-    "averageCleanTopReadProviderSkew": 0.452,
+    "averageCleanCrossSourceClusterRate": 0.015,
+    "averageCleanTopReadProviderSkew": 0.414,
     "averageCleanUnexplainedTopReadRate": 0,
-    "averageCleanLowConfidenceWithoutRiskRate": 0.067,
+    "averageCleanLowConfidenceWithoutRiskRate": 0.1,
     "totalPrimaryCollected": {
-      "reddit": 612,
-      "x-twitter": 291
+      "reddit": 641,
+      "x-twitter": 326
     },
     "totalPrimarySelected": {
-      "reddit": 125,
-      "x-twitter": 123
+      "reddit": 155,
+      "x-twitter": 150
     },
     "totalPrimaryTopReads": {
-      "reddit": 12,
-      "x-twitter": 7
+      "reddit": 14,
+      "x-twitter": 10
     }
   },
   "days": [
@@ -679,7 +680,7 @@
         "workspaceFingerprint": "88237c6c"
       },
       "feed": {
-        "collectedFeedItemCount": 780,
+        "collectedFeedItemCount": 765,
         "providerCounts": [
           {
             "providerKey": "hacker-news",
@@ -691,7 +692,7 @@
           },
           {
             "providerKey": "github-trending-page",
-            "count": 119
+            "count": 104
           },
           {
             "providerKey": "rss",
@@ -1870,23 +1871,23 @@
         "workspaceFingerprint": "88237c6c"
       },
       "feed": {
-        "collectedFeedItemCount": 380,
+        "collectedFeedItemCount": 317,
         "providerCounts": [
           {
             "providerKey": "hacker-news",
             "count": 111
           },
           {
-            "providerKey": "github-trending-page",
-            "count": 100
+            "providerKey": "reddit",
+            "count": 81
           },
           {
-            "providerKey": "reddit",
-            "count": 89
+            "providerKey": "github-trending-page",
+            "count": 46
           },
           {
             "providerKey": "rss",
-            "count": 43
+            "count": 42
           },
           {
             "providerKey": "x-twitter",
@@ -1897,9 +1898,9 @@
       },
       "summary": {
         "artifactStatus": "present",
-        "artifactFingerprint": "3ceeea58",
-        "confidenceLevel": "low",
-        "confidenceScore": 0.55,
+        "artifactFingerprint": "af8537ab",
+        "confidenceLevel": "medium",
+        "confidenceScore": 0.65,
         "selectedFeedItemCount": 120,
         "storyClusterCount": 120,
         "crossSourceClusterRate": 0,
@@ -1930,14 +1931,14 @@
           "has_why_now": 10,
           "high_signal_score": 10,
           "low_confidence": 10,
-          "provider_metrics": 9,
-          "multi_citation_evidence": 4
+          "provider_metrics": 7,
+          "multi_citation_evidence": 6
         },
         "riskSignalCounts": {
           "low_confidence": 10,
-          "single_source": 8,
-          "low_evidence": 6,
-          "weak_provider_metrics": 1
+          "single_source": 6,
+          "low_evidence": 4,
+          "weak_provider_metrics": 3
         },
         "reliabilityRiskCounts": {
           "single_source:medium": 1,
@@ -1982,7 +1983,7 @@
             "index": 1,
             "providerKey": "hacker-news",
             "sourceFingerprint": "706d8e81",
-            "signalScore": 2.294,
+            "signalScore": 2.17,
             "confidenceLevel": "low",
             "citationCount": 2,
             "confirmedProviderCount": 1,
@@ -2003,8 +2004,75 @@
           {
             "index": 2,
             "providerKey": "hacker-news",
+            "sourceFingerprint": "706ee01d",
+            "signalScore": 2.169,
+            "confidenceLevel": "low",
+            "citationCount": 2,
+            "confirmedProviderCount": 1,
+            "matchedRuleCount": 0,
+            "providerMetricCount": 0,
+            "selectionSignals": [
+              "high_signal_score",
+              "low_confidence",
+              "multi_citation_evidence",
+              "has_why_now",
+              "has_why_important"
+            ],
+            "riskSignals": [
+              "low_confidence",
+              "weak_provider_metrics"
+            ]
+          },
+          {
+            "index": 3,
+            "providerKey": "rss",
+            "sourceFingerprint": "0b74a0ea",
+            "signalScore": 2.169,
+            "confidenceLevel": "low",
+            "citationCount": 1,
+            "confirmedProviderCount": 1,
+            "matchedRuleCount": 0,
+            "providerMetricCount": 0,
+            "selectionSignals": [
+              "high_signal_score",
+              "low_confidence",
+              "has_why_now",
+              "has_why_important"
+            ],
+            "riskSignals": [
+              "low_confidence",
+              "low_evidence",
+              "single_source",
+              "weak_provider_metrics"
+            ]
+          },
+          {
+            "index": 4,
+            "providerKey": "hacker-news",
+            "sourceFingerprint": "706dfa63",
+            "signalScore": 2.169,
+            "confidenceLevel": "low",
+            "citationCount": 2,
+            "confirmedProviderCount": 1,
+            "matchedRuleCount": 0,
+            "providerMetricCount": 0,
+            "selectionSignals": [
+              "high_signal_score",
+              "low_confidence",
+              "multi_citation_evidence",
+              "has_why_now",
+              "has_why_important"
+            ],
+            "riskSignals": [
+              "low_confidence",
+              "weak_provider_metrics"
+            ]
+          },
+          {
+            "index": 5,
+            "providerKey": "hacker-news",
             "sourceFingerprint": "706e892e",
-            "signalScore": 2.293,
+            "signalScore": 2.169,
             "confidenceLevel": "low",
             "citationCount": 2,
             "confirmedProviderCount": 1,
@@ -2023,79 +2091,10 @@
             ]
           },
           {
-            "index": 3,
-            "providerKey": "x-twitter",
-            "sourceFingerprint": "161fd359",
-            "signalScore": 2.212,
-            "confidenceLevel": "low",
-            "citationCount": 1,
-            "confirmedProviderCount": 1,
-            "matchedRuleCount": 0,
-            "providerMetricCount": 7,
-            "selectionSignals": [
-              "high_signal_score",
-              "low_confidence",
-              "provider_metrics",
-              "has_why_now",
-              "has_why_important"
-            ],
-            "riskSignals": [
-              "low_confidence",
-              "low_evidence",
-              "single_source"
-            ]
-          },
-          {
-            "index": 4,
-            "providerKey": "x-twitter",
-            "sourceFingerprint": "a75e4e22",
-            "signalScore": 2.192,
-            "confidenceLevel": "low",
-            "citationCount": 2,
-            "confirmedProviderCount": 1,
-            "matchedRuleCount": 0,
-            "providerMetricCount": 7,
-            "selectionSignals": [
-              "high_signal_score",
-              "low_confidence",
-              "provider_metrics",
-              "multi_citation_evidence",
-              "has_why_now",
-              "has_why_important"
-            ],
-            "riskSignals": [
-              "low_confidence",
-              "single_source"
-            ]
-          },
-          {
-            "index": 5,
-            "providerKey": "reddit",
-            "sourceFingerprint": "80933efb",
-            "signalScore": 2.239,
-            "confidenceLevel": "low",
-            "citationCount": 1,
-            "confirmedProviderCount": 1,
-            "matchedRuleCount": 0,
-            "providerMetricCount": 4,
-            "selectionSignals": [
-              "high_signal_score",
-              "low_confidence",
-              "provider_metrics",
-              "has_why_now",
-              "has_why_important"
-            ],
-            "riskSignals": [
-              "low_confidence",
-              "low_evidence",
-              "single_source"
-            ]
-          },
-          {
             "index": 6,
             "providerKey": "reddit",
-            "sourceFingerprint": "78b6f26d",
-            "signalScore": 1.991,
+            "sourceFingerprint": "80933efb",
+            "signalScore": 2.116,
             "confidenceLevel": "low",
             "citationCount": 1,
             "confirmedProviderCount": 1,
@@ -2116,37 +2115,37 @@
           },
           {
             "index": 7,
-            "providerKey": "rss",
-            "sourceFingerprint": "0b74a0ea",
-            "signalScore": 2.293,
+            "providerKey": "reddit",
+            "sourceFingerprint": "44564134",
+            "signalScore": 2.094,
             "confidenceLevel": "low",
-            "citationCount": 1,
+            "citationCount": 2,
             "confirmedProviderCount": 1,
             "matchedRuleCount": 0,
-            "providerMetricCount": 0,
+            "providerMetricCount": 4,
             "selectionSignals": [
               "high_signal_score",
               "low_confidence",
+              "provider_metrics",
+              "multi_citation_evidence",
               "has_why_now",
               "has_why_important"
             ],
             "riskSignals": [
               "low_confidence",
-              "low_evidence",
-              "single_source",
-              "weak_provider_metrics"
+              "single_source"
             ]
           },
           {
             "index": 8,
-            "providerKey": "hacker-news",
-            "sourceFingerprint": "706ca4ef",
-            "signalScore": 2.293,
+            "providerKey": "x-twitter",
+            "sourceFingerprint": "161fd359",
+            "signalScore": 2.089,
             "confidenceLevel": "low",
             "citationCount": 1,
             "confirmedProviderCount": 1,
             "matchedRuleCount": 0,
-            "providerMetricCount": 3,
+            "providerMetricCount": 7,
             "selectionSignals": [
               "high_signal_score",
               "low_confidence",
@@ -2163,31 +2162,8 @@
           {
             "index": 9,
             "providerKey": "hacker-news",
-            "sourceFingerprint": "706ca5a1",
-            "signalScore": 2.293,
-            "confidenceLevel": "low",
-            "citationCount": 1,
-            "confirmedProviderCount": 1,
-            "matchedRuleCount": 0,
-            "providerMetricCount": 3,
-            "selectionSignals": [
-              "high_signal_score",
-              "low_confidence",
-              "provider_metrics",
-              "has_why_now",
-              "has_why_important"
-            ],
-            "riskSignals": [
-              "low_confidence",
-              "low_evidence",
-              "single_source"
-            ]
-          },
-          {
-            "index": 10,
-            "providerKey": "hacker-news",
-            "sourceFingerprint": "706cb3b5",
-            "signalScore": 2.293,
+            "sourceFingerprint": "706ca4ef",
+            "signalScore": 2.169,
             "confidenceLevel": "low",
             "citationCount": 2,
             "confirmedProviderCount": 1,
@@ -2203,6 +2179,29 @@
             ],
             "riskSignals": [
               "low_confidence",
+              "single_source"
+            ]
+          },
+          {
+            "index": 10,
+            "providerKey": "x-twitter",
+            "sourceFingerprint": "12c78d4a",
+            "signalScore": 2.117,
+            "confidenceLevel": "low",
+            "citationCount": 1,
+            "confirmedProviderCount": 1,
+            "matchedRuleCount": 0,
+            "providerMetricCount": 7,
+            "selectionSignals": [
+              "high_signal_score",
+              "low_confidence",
+              "provider_metrics",
+              "has_why_now",
+              "has_why_important"
+            ],
+            "riskSignals": [
+              "low_confidence",
+              "low_evidence",
               "single_source"
             ]
           }
@@ -2231,7 +2230,7 @@
       "collectionStrategy": {
         "primarySources": {
           "reddit": {
-            "collectedCount": 89,
+            "collectedCount": 81,
             "selectedCount": 30,
             "topReadCount": 2,
             "interestCount": 1,
@@ -2240,14 +2239,14 @@
             "sourceBindingCount": 1,
             "queryLaneCount": 2,
             "productLaneCount": 0,
-            "eligibleTopReadCandidateCount": 13,
-            "sourceSkewRatio": 0.034,
+            "eligibleTopReadCandidateCount": 5,
+            "sourceSkewRatio": 0.025,
             "topSourceFingerprints": [
-              "acc918df",
               "6d768492",
               "9b629637",
               "7997b8ea",
-              "f13f9ec6"
+              "f13f9ec6",
+              "70c86aa0"
             ]
           },
           "x-twitter": {
@@ -2285,7 +2284,7 @@
               "compiledAppliedCount": 1,
               "compiledSearchQueryCount": 0,
               "compiledScanPassCount": 3,
-              "collectedCount": 89,
+              "collectedCount": 81,
               "selectedCount": 30,
               "topReadCount": 2,
               "lanes": [
@@ -2385,7 +2384,7 @@
         "gates": {
           "redditCollectedEnough": true,
           "xTwitterCollectedEnough": true,
-          "redditEligibleCandidatesEnough": true,
+          "redditEligibleCandidatesEnough": false,
           "xTwitterEligibleCandidatesEnough": true,
           "redditSummaryRepresentationEnough": true,
           "xTwitterSummaryRepresentationEnough": true,
@@ -2453,6 +2452,605 @@
         "redditMissingFromTopReads": false,
         "xTwitterMissingFromTopReads": false,
         "queryLaneWeaknessDetected": false,
+        "plannerCanaryExecutionGap": false,
+        "unexplainedTopReadsPresent": false,
+        "lowConfidenceTopReadsWithoutRisk": true,
+        "feedbackInsufficientForLearning": true
+      },
+      "blockingPassed": true
+    },
+    {
+      "collectionDate": "2026-07-06",
+      "collectionIntegrity": {
+        "status": "clean"
+      },
+      "scope": {
+        "tenantFingerprint": "88237c6b",
+        "workspaceFingerprint": "88237c6c"
+      },
+      "feed": {
+        "collectedFeedItemCount": 311,
+        "providerCounts": [
+          {
+            "providerKey": "github-trending-page",
+            "count": 100
+          },
+          {
+            "providerKey": "hacker-news",
+            "count": 100
+          },
+          {
+            "providerKey": "rss",
+            "count": 39
+          },
+          {
+            "providerKey": "reddit",
+            "count": 37
+          },
+          {
+            "providerKey": "x-twitter",
+            "count": 35
+          }
+        ],
+        "interestCount": 2
+      },
+      "summary": {
+        "artifactStatus": "present",
+        "artifactFingerprint": "976600b3",
+        "confidenceLevel": "low",
+        "confidenceScore": 0.55,
+        "selectedFeedItemCount": 120,
+        "storyClusterCount": 120,
+        "crossSourceClusterRate": 0,
+        "topReadCount": 10,
+        "lowConfidenceTopReadCount": 10,
+        "lowConfidenceTopReadRate": 1,
+        "technicalLeakCount": 0,
+        "topReadProviderSkew": 0.3,
+        "primarySelectedCounts": {
+          "reddit": 30,
+          "x-twitter": 27
+        },
+        "primaryTopReadCounts": {
+          "reddit": 2,
+          "x-twitter": 3
+        }
+      },
+      "topReadQuality": {
+        "rowCount": 10,
+        "unexplainedTopReadCount": 0,
+        "unexplainedTopReadRate": 0,
+        "lowConfidenceWithoutRiskCount": 2,
+        "lowConfidenceWithoutRiskRate": 0.2,
+        "weakTopReadOutrankingStrongSocialCount": 0,
+        "weakTopReadOutrankingStrongSocialRate": 0,
+        "selectionSignalCounts": {
+          "has_why_important": 10,
+          "has_why_now": 10,
+          "high_signal_score": 10,
+          "low_confidence": 10,
+          "multi_citation_evidence": 8,
+          "provider_metrics": 8
+        },
+        "riskSignalCounts": {
+          "low_confidence": 10,
+          "single_source": 8,
+          "low_evidence": 2,
+          "weak_provider_metrics": 2
+        },
+        "reliabilityRiskCounts": {
+          "single_source:medium": 1,
+          "weak_source:medium": 1
+        },
+        "providerContribution": [
+          {
+            "providerKey": "hacker-news",
+            "selectedCount": 33,
+            "topReadCount": 3,
+            "selectedShare": 0.275,
+            "topReadShare": 0.3,
+            "topReadLift": 1.091
+          },
+          {
+            "providerKey": "rss",
+            "selectedCount": 30,
+            "topReadCount": 2,
+            "selectedShare": 0.25,
+            "topReadShare": 0.2,
+            "topReadLift": 0.8
+          },
+          {
+            "providerKey": "reddit",
+            "selectedCount": 30,
+            "topReadCount": 2,
+            "selectedShare": 0.25,
+            "topReadShare": 0.2,
+            "topReadLift": 0.8
+          },
+          {
+            "providerKey": "x-twitter",
+            "selectedCount": 27,
+            "topReadCount": 3,
+            "selectedShare": 0.225,
+            "topReadShare": 0.3,
+            "topReadLift": 1.333
+          }
+        ],
+        "rows": [
+          {
+            "index": 1,
+            "providerKey": "x-twitter",
+            "sourceFingerprint": "77c0eeca",
+            "signalScore": 2.192,
+            "confidenceLevel": "low",
+            "citationCount": 2,
+            "confirmedProviderCount": 1,
+            "matchedRuleCount": 0,
+            "providerMetricCount": 7,
+            "selectionSignals": [
+              "high_signal_score",
+              "low_confidence",
+              "provider_metrics",
+              "multi_citation_evidence",
+              "has_why_now",
+              "has_why_important"
+            ],
+            "riskSignals": [
+              "low_confidence",
+              "single_source"
+            ]
+          },
+          {
+            "index": 2,
+            "providerKey": "rss",
+            "sourceFingerprint": "0cab0f7f",
+            "signalScore": 2.297,
+            "confidenceLevel": "low",
+            "citationCount": 1,
+            "confirmedProviderCount": 1,
+            "matchedRuleCount": 0,
+            "providerMetricCount": 0,
+            "selectionSignals": [
+              "high_signal_score",
+              "low_confidence",
+              "has_why_now",
+              "has_why_important"
+            ],
+            "riskSignals": [
+              "low_confidence",
+              "low_evidence",
+              "single_source",
+              "weak_provider_metrics"
+            ]
+          },
+          {
+            "index": 3,
+            "providerKey": "rss",
+            "sourceFingerprint": "d1a7ec1e",
+            "signalScore": 1.678,
+            "confidenceLevel": "low",
+            "citationCount": 2,
+            "confirmedProviderCount": 1,
+            "matchedRuleCount": 0,
+            "providerMetricCount": 0,
+            "selectionSignals": [
+              "high_signal_score",
+              "low_confidence",
+              "multi_citation_evidence",
+              "has_why_now",
+              "has_why_important"
+            ],
+            "riskSignals": [
+              "low_confidence",
+              "single_source",
+              "weak_provider_metrics"
+            ]
+          },
+          {
+            "index": 4,
+            "providerKey": "hacker-news",
+            "sourceFingerprint": "71a654b7",
+            "signalScore": 2.297,
+            "confidenceLevel": "low",
+            "citationCount": 2,
+            "confirmedProviderCount": 1,
+            "matchedRuleCount": 0,
+            "providerMetricCount": 3,
+            "selectionSignals": [
+              "high_signal_score",
+              "low_confidence",
+              "provider_metrics",
+              "multi_citation_evidence",
+              "has_why_now",
+              "has_why_important"
+            ],
+            "riskSignals": [
+              "low_confidence"
+            ]
+          },
+          {
+            "index": 5,
+            "providerKey": "hacker-news",
+            "sourceFingerprint": "71a40054",
+            "signalScore": 2.297,
+            "confidenceLevel": "low",
+            "citationCount": 2,
+            "confirmedProviderCount": 1,
+            "matchedRuleCount": 0,
+            "providerMetricCount": 3,
+            "selectionSignals": [
+              "high_signal_score",
+              "low_confidence",
+              "provider_metrics",
+              "multi_citation_evidence",
+              "has_why_now",
+              "has_why_important"
+            ],
+            "riskSignals": [
+              "low_confidence"
+            ]
+          },
+          {
+            "index": 6,
+            "providerKey": "x-twitter",
+            "sourceFingerprint": "fe9243f4",
+            "signalScore": 2.215,
+            "confidenceLevel": "low",
+            "citationCount": 2,
+            "confirmedProviderCount": 1,
+            "matchedRuleCount": 0,
+            "providerMetricCount": 7,
+            "selectionSignals": [
+              "high_signal_score",
+              "low_confidence",
+              "provider_metrics",
+              "multi_citation_evidence",
+              "has_why_now",
+              "has_why_important"
+            ],
+            "riskSignals": [
+              "low_confidence",
+              "single_source"
+            ]
+          },
+          {
+            "index": 7,
+            "providerKey": "reddit",
+            "sourceFingerprint": "80933efb",
+            "signalScore": 2.167,
+            "confidenceLevel": "low",
+            "citationCount": 1,
+            "confirmedProviderCount": 1,
+            "matchedRuleCount": 0,
+            "providerMetricCount": 4,
+            "selectionSignals": [
+              "high_signal_score",
+              "low_confidence",
+              "provider_metrics",
+              "has_why_now",
+              "has_why_important"
+            ],
+            "riskSignals": [
+              "low_confidence",
+              "low_evidence",
+              "single_source"
+            ]
+          },
+          {
+            "index": 8,
+            "providerKey": "reddit",
+            "sourceFingerprint": "78b6f26d",
+            "signalScore": 1.913,
+            "confidenceLevel": "low",
+            "citationCount": 2,
+            "confirmedProviderCount": 1,
+            "matchedRuleCount": 0,
+            "providerMetricCount": 4,
+            "selectionSignals": [
+              "high_signal_score",
+              "low_confidence",
+              "provider_metrics",
+              "multi_citation_evidence",
+              "has_why_now",
+              "has_why_important"
+            ],
+            "riskSignals": [
+              "low_confidence",
+              "single_source"
+            ]
+          },
+          {
+            "index": 9,
+            "providerKey": "hacker-news",
+            "sourceFingerprint": "71a5607b",
+            "signalScore": 2.297,
+            "confidenceLevel": "low",
+            "citationCount": 2,
+            "confirmedProviderCount": 1,
+            "matchedRuleCount": 0,
+            "providerMetricCount": 3,
+            "selectionSignals": [
+              "high_signal_score",
+              "low_confidence",
+              "provider_metrics",
+              "multi_citation_evidence",
+              "has_why_now",
+              "has_why_important"
+            ],
+            "riskSignals": [
+              "low_confidence",
+              "single_source"
+            ]
+          },
+          {
+            "index": 10,
+            "providerKey": "x-twitter",
+            "sourceFingerprint": "aa98de49",
+            "signalScore": 2.119,
+            "confidenceLevel": "low",
+            "citationCount": 2,
+            "confirmedProviderCount": 1,
+            "matchedRuleCount": 0,
+            "providerMetricCount": 7,
+            "selectionSignals": [
+              "high_signal_score",
+              "low_confidence",
+              "provider_metrics",
+              "multi_citation_evidence",
+              "has_why_now",
+              "has_why_important"
+            ],
+            "riskSignals": [
+              "low_confidence",
+              "single_source"
+            ]
+          }
+        ],
+        "gates": {
+          "telemetryAvailableForArtifact": true,
+          "everyTopReadHasSelectionSignal": true,
+          "noWeakTopReadOutranksStrongSocialRead": true
+        }
+      },
+      "claimQuality": {
+        "claimCount": 7,
+        "claimsWithTwoEvidenceOrRisk": 7,
+        "missingStructuredClaimBoard": false,
+        "singleSourceConfidentClaimCount": 0,
+        "socialOnlyConfidentClaimCount": 0,
+        "highConfidenceWithoutCrossSourceEvidence": false,
+        "gates": {
+          "structuredClaimBoardPresent": true,
+          "everyClaimHasTwoEvidenceOrExplicitRisk": true,
+          "noSingleSourceConfidentClaims": true,
+          "noSocialOnlyConfidentClaims": true,
+          "confidenceDropsWithoutCrossSourceEvidence": true
+        }
+      },
+      "collectionStrategy": {
+        "primarySources": {
+          "reddit": {
+            "collectedCount": 37,
+            "selectedCount": 30,
+            "topReadCount": 2,
+            "interestCount": 1,
+            "collectedForEveryInterest": false,
+            "minCollectedPerInterest": 0,
+            "sourceBindingCount": 1,
+            "queryLaneCount": 1,
+            "productLaneCount": 0,
+            "eligibleTopReadCandidateCount": 12,
+            "sourceSkewRatio": 0.081,
+            "topSourceFingerprints": [
+              "acc918df",
+              "cbc9fafd",
+              "2c9054d6",
+              "c757cebf",
+              "d7e7d80b"
+            ]
+          },
+          "x-twitter": {
+            "collectedCount": 35,
+            "selectedCount": 27,
+            "topReadCount": 3,
+            "interestCount": 1,
+            "collectedForEveryInterest": false,
+            "minCollectedPerInterest": 0,
+            "sourceBindingCount": 1,
+            "queryLaneCount": 2,
+            "productLaneCount": 2,
+            "eligibleTopReadCandidateCount": 33,
+            "sourceSkewRatio": 0.086,
+            "topSourceFingerprints": [
+              "5b728138",
+              "4f4708cc",
+              "e068ade4",
+              "94f9c54a",
+              "83c4eeb9"
+            ]
+          }
+        },
+        "plannerCanary": {
+          "mode": "shadow_config_preview",
+          "primarySources": {
+            "reddit": {
+              "bindingCount": 1,
+              "canaryEnabledBindingCount": 1,
+              "plannedLaneCount": 4,
+              "executableLaneCount": 3,
+              "executedLaneCount": 3,
+              "observedLaneFingerprintCount": 1,
+              "plannedBudget": 59,
+              "compiledAppliedCount": 1,
+              "compiledSearchQueryCount": 0,
+              "compiledScanPassCount": 3,
+              "collectedCount": 37,
+              "selectedCount": 30,
+              "topReadCount": 2,
+              "lanes": [
+                {
+                  "laneFingerprint": "bc26913e",
+                  "kind": "general",
+                  "operation": "search",
+                  "maxItems": 25,
+                  "queryFingerprint": "a05936a2",
+                  "executionState": "executed"
+                },
+                {
+                  "laneFingerprint": "23a11f40",
+                  "kind": "search_variant",
+                  "operation": "search",
+                  "maxItems": 12,
+                  "queryFingerprint": "a05936a2",
+                  "executionState": "executed"
+                },
+                {
+                  "laneFingerprint": "e4905569",
+                  "kind": "thread_enrichment",
+                  "operation": "enrichment",
+                  "maxItems": 10,
+                  "queryFingerprint": "a05936a2",
+                  "executionState": "executed"
+                },
+                {
+                  "laneFingerprint": "1a0eddc6",
+                  "kind": "fallback_short_query",
+                  "operation": "search",
+                  "maxItems": 12,
+                  "queryFingerprint": "7c4237aa",
+                  "executionState": "not_seen_in_feed"
+                }
+              ],
+              "executedLaneFingerprints": [
+                "a05936a2"
+              ],
+              "warnings": []
+            },
+            "x-twitter": {
+              "bindingCount": 1,
+              "canaryEnabledBindingCount": 1,
+              "plannedLaneCount": 2,
+              "executableLaneCount": 2,
+              "executedLaneCount": 2,
+              "observedLaneFingerprintCount": 2,
+              "plannedBudget": 37,
+              "compiledAppliedCount": 1,
+              "compiledSearchQueryCount": 2,
+              "compiledScanPassCount": 0,
+              "collectedCount": 35,
+              "selectedCount": 27,
+              "topReadCount": 3,
+              "lanes": [
+                {
+                  "laneFingerprint": "79ba900e",
+                  "kind": "general",
+                  "operation": "search",
+                  "maxItems": 25,
+                  "queryFingerprint": "be0b9f32",
+                  "executionState": "executed"
+                },
+                {
+                  "laneFingerprint": "09580f31",
+                  "kind": "fallback_short_query",
+                  "operation": "search",
+                  "maxItems": 12,
+                  "queryFingerprint": "d3985c0d",
+                  "executionState": "executed"
+                }
+              ],
+              "executedLaneFingerprints": [
+                "be0b9f32",
+                "d3985c0d"
+              ],
+              "warnings": [
+                "x-twitter runtimeReadiness=deferred; execution policy may deny provider reads."
+              ]
+            }
+          },
+          "gates": {
+            "redditPlannerPreviewAvailable": true,
+            "xTwitterPlannerPreviewAvailable": true
+          },
+          "warningSignals": {
+            "redditPlannedLanesNotExecuted": false,
+            "xTwitterPlannedLanesNotExecuted": false,
+            "redditLaneMetadataMissing": false,
+            "xTwitterLaneMetadataMissing": false,
+            "redditExecutionUnderPlannedHalf": false,
+            "xTwitterExecutionUnderPlannedHalf": false
+          }
+        },
+        "gates": {
+          "redditCollectedEnough": true,
+          "xTwitterCollectedEnough": true,
+          "redditEligibleCandidatesEnough": true,
+          "xTwitterEligibleCandidatesEnough": true,
+          "redditSummaryRepresentationEnough": true,
+          "xTwitterSummaryRepresentationEnough": true,
+          "redditSourceSkewControlled": true,
+          "xTwitterSourceSkewControlled": true
+        },
+        "warningSignals": {
+          "redditQueryLanesMissing": true,
+          "xTwitterQueryLanesMissing": false,
+          "redditTopNewLatestMixMissing": true,
+          "xTwitterTopNewLatestMixMissing": false,
+          "redditNotCollectedForEveryInterest": true,
+          "xTwitterNotCollectedForEveryInterest": true
+        }
+      },
+      "feedbackShadow": {
+        "mode": "shadow_no_ranking_influence",
+        "ratingCount": 0,
+        "negativeRatingCount": 0,
+        "positiveRatingCount": 0,
+        "negativeReasonCounts": {},
+        "providerNegativeRates": [],
+        "queryNegativeRates": [],
+        "sourceNegativeRates": [],
+        "negativeTopReadMatchCount": 0,
+        "positiveTopReadMatchCount": 0,
+        "badProviderFingerprints": [],
+        "badQueryFingerprints": [],
+        "badSourceFingerprints": [],
+        "rankingScoreAlignment": {
+          "status": "no_feedback",
+          "matchedTopReadRatingCount": 0,
+          "averageMatchedTopReadSignalScore": 0,
+          "averageNegativeTopReadSignalScore": 0,
+          "averagePositiveTopReadSignalScore": 0,
+          "negativeHighScoreRatingCount": 0,
+          "positiveHighScoreRatingCount": 0
+        },
+        "gates": {
+          "noRankingInfluence": true,
+          "enoughFeedbackForLearning": false,
+          "negativeRatingsHaveReason": true,
+          "noHighRankNegativeCluster": true
+        }
+      },
+      "qualityGates": {
+        "collectionIntegrityCleanForEval": true,
+        "artifactPresent": true,
+        "summaryHasTopReads": true,
+        "summaryHasPrimarySourcesSelected": true,
+        "summaryHasPrimarySourcesInTopReads": true,
+        "noTechnicalLeakage": true,
+        "topReadProviderSkewControlled": true,
+        "topReadQualityPasses": true,
+        "claimQualityPasses": true,
+        "primaryCollectionMinimumsPass": true,
+        "primaryCollectionSourceSkewPass": true,
+        "plannerCanaryTelemetryPresent": true,
+        "feedbackShadowDoesNotInfluenceRanking": true
+      },
+      "warningSignals": {
+        "dirtyCollection": false,
+        "lowConfidenceTopReadsPresent": true,
+        "topReadProviderSkewAboveHalf": false,
+        "redditMissingFromTopReads": false,
+        "xTwitterMissingFromTopReads": false,
+        "queryLaneWeaknessDetected": true,
         "plannerCanaryExecutionGap": false,
         "unexplainedTopReadsPresent": false,
         "lowConfidenceTopReadsWithoutRisk": true,

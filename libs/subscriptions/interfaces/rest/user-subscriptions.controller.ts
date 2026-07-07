@@ -1,18 +1,13 @@
 import { Body, Controller, Get, Headers, Inject, Param, Post, Put, Query } from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
-import {
-  WorkspaceRoleHeaderParser,
-} from '@social-monitor/identity/interfaces/authorization/workspace-role-header.parser';
+import { WorkspaceRoleHeaderParser } from '@social-monitor/identity/interfaces/authorization/workspace-role-header.parser';
 import {
   ApiKeyRequestAuthorizer,
   hasBearerAuthorizationHeader,
   type BearerRequestAuthorization,
 } from '@social-monitor/identity/interfaces/rest/api-key-request-authorizer';
 import { ApiKeyOrWorkspaceRoleAuth } from '@social-monitor/identity/interfaces/rest/api-key-openapi.decorators';
-import {
-  WORKSPACE_AUTHORIZATION_POLICY,
-  type WorkspaceAuthorizationPolicyPort,
-} from '@social-monitor/identity/ports';
+import { WORKSPACE_AUTHORIZATION_POLICY, type WorkspaceAuthorizationPolicyPort } from '@social-monitor/identity/ports';
 import { parsePaginationLimit } from '@social-monitor/platform-request-context';
 import { DomainError, requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 
@@ -45,7 +40,9 @@ export class UserSubscriptionsController {
   ) {}
 
   @Post('activate-source')
-  @ApiOperation({ summary: 'Create a user subscription and activate its monitoring source pipeline.' })
+  @ApiOperation({
+    summary: 'Create a user subscription and activate its monitoring source pipeline.',
+  })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
   @ApiKeyOrWorkspaceRoleAuth({
@@ -100,12 +97,15 @@ export class UserSubscriptionsController {
   }
 
   @Post()
-  @ApiOperation({ summary: 'Create a user subscription to a provider-specific source target.' })
+  @ApiOperation({
+    summary: 'Create a user subscription to a provider-specific source target.',
+  })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
   @ApiKeyOrWorkspaceRoleAuth({
     apiKeyScope: 'write:interests',
-    workspaceRoleDescription: 'Comma-separated workspace roles. User subscription creation allows owner, admin or member.',
+    workspaceRoleDescription:
+      'Comma-separated workspace roles. User subscription creation allows owner, admin or member.',
   })
   async create(
     @Headers('x-tenant-id') tenantHeader: string | undefined,
@@ -157,7 +157,8 @@ export class UserSubscriptionsController {
   @ApiHeader({ name: 'x-workspace-id', required: true })
   @ApiKeyOrWorkspaceRoleAuth({
     apiKeyScope: 'read:interests',
-    workspaceRoleDescription: 'Comma-separated workspace roles. User subscription reads allow owner, admin, member or viewer.',
+    workspaceRoleDescription:
+      'Comma-separated workspace roles. User subscription reads allow owner, admin, member or viewer.',
   })
   @ApiQuery({ name: 'userId', required: true, type: String })
   @ApiQuery({ name: 'limit', required: false, type: Number })
@@ -202,12 +203,15 @@ export class UserSubscriptionsController {
   }
 
   @Put(':subscriptionId/summary-preference')
-  @ApiOperation({ summary: 'Create or update the summary preference overlay for a user subscription.' })
+  @ApiOperation({
+    summary: 'Create or update the summary preference overlay for a user subscription.',
+  })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
   @ApiKeyOrWorkspaceRoleAuth({
     apiKeyScope: 'write:summaries',
-    workspaceRoleDescription: 'Comma-separated workspace roles. User summary preference writes allow owner, admin or member.',
+    workspaceRoleDescription:
+      'Comma-separated workspace roles. User summary preference writes allow owner, admin or member.',
   })
   async upsertSummaryPreference(
     @Param('subscriptionId') subscriptionId: string,
@@ -234,13 +238,13 @@ export class UserSubscriptionsController {
       workspaceId: scope.workspaceId,
       userId: targetUserId,
       subscriptionId,
-      language: body.language,
-      format: body.format,
-      tone: body.tone,
-      maxKeyPoints: body.maxKeyPoints,
-      includeRisks: body.includeRisks,
-      includeSourceHighlights: body.includeSourceHighlights,
-      customInstructions: body.customInstructions,
+      language: optionalRestField(body.language),
+      format: optionalRestField(body.format),
+      tone: optionalRestField(body.tone),
+      maxKeyPoints: optionalRestField(body.maxKeyPoints),
+      includeRisks: optionalRestField(body.includeRisks),
+      includeSourceHighlights: optionalRestField(body.includeSourceHighlights),
+      customInstructions: optionalRestField(body.customInstructions),
     });
 
     if (!result.ok) {
@@ -365,3 +369,5 @@ const parseDate = (value: string, fieldName: string): Date => {
 
   return parsed;
 };
+
+const optionalRestField = <T>(value: T | null | undefined): T | undefined => (value === null ? undefined : value);

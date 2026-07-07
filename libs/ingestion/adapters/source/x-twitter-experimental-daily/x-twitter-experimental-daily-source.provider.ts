@@ -20,6 +20,10 @@ import type {
 } from "../../../ports";
 import { readSourceItemRankingPlan } from "../source-item-ranking-config";
 import {
+  readAdaptivePaginationPolicy,
+  type AdaptivePaginationPolicy,
+} from "../adaptive-source-pagination";
+import {
   nextCursorForQueries,
   parseConfig,
   readCursorByQuery,
@@ -119,40 +123,63 @@ export class XTwitterSourceProvider implements SourceProviderPort {
     >();
     const warnings: string[] = [];
     const nextCursorsByQuery = new Map<string, string>();
+    const pagination = readAdaptivePaginationPolicy({
+      config: context.config,
+      cursorModel: xTwitterCapabilityProfile.cursorModel,
+      firstPageLimit: plan.maxItems,
+    });
+    const paginationPolicy = pagination.enabled ? pagination.policy : undefined;
 
     for (const [index, searchQuery] of config.searchQueries.entries()) {
       const queryMaxItems =
         config.maxItemsBySearchQuery.get(searchQuery) ??
         config.maxItemsPerQuery;
-      let result: Awaited<
-        ReturnType<XDailyCollectorClientPort["collectDailySearch"]>
-      >;
       try {
-        result = await this.collector.collectDailySearch({
-          requestId:
-            config.searchQueries.length === 1
-              ? context.scanJobId
-              : `${context.scanJobId}:${index + 1}`,
-          tenantId: context.tenantId,
-          workspaceId: context.workspaceId,
-          sourceBindingId: context.sourceBindingId,
-          scanJobId: context.scanJobId,
-          correlationId: context.correlationId,
-          query: searchQuery,
-          language: config.language,
-          windowHours: config.windowHours,
-          windowEnd: config.windowEnd,
-          searchProducts: config.searchProducts,
-          limitPerProduct: config.limitPerProduct ?? queryMaxItems,
-          maxItems: queryMaxItems,
-          minLikes: config.minLikes,
-          minRetweets: config.minRetweets,
-          minReplies: config.minReplies,
-          cursor:
+        const result = await this.collectQueryWithBoundedPagination({
+          context,
+          config,
+          plan,
+          searchQuery,
+          queryIndex: index,
+          queryMaxItems,
+          initialCursor:
             config.searchQueries.length === 1
               ? plan.cursor
               : queryCursors.get(searchQuery),
-        } satisfies XDailyCollectorRequest);
+          paginationPolicy,
+        });
+
+        for (const post of result.posts.filter((item) =>
+          matchesMetricThresholds(item.metrics, config),
+        )) {
+          const externalId = `${X_TWITTER_PROVIDER_KEY}:${post.tweetId}`;
+          const existing = postsByExternalId.get(externalId);
+
+          if (
+            existing === undefined ||
+            xPostSignalScore(post) > xPostSignalScore(existing.post)
+          ) {
+            postsByExternalId.set(externalId, {
+              post,
+              searchQuery,
+              maxItems: result.queryTargetItems,
+            });
+          }
+        }
+
+        if (result.nextCursor !== undefined) {
+          nextCursorsByQuery.set(searchQuery, result.nextCursor);
+        }
+
+        warnings.push(
+          ...result.warnings.map((warning) =>
+            config.searchQueries.length === 1
+              ? formatWarning(warning)
+              : redactSensitiveText(
+                  `${searchQuery}: ${formatWarning(warning)}`,
+                ),
+          ),
+        );
       } catch (error) {
         const failure = this.classifyError(error);
         if (failure.kind === "rate_limited" && postsByExternalId.size > 0) {
@@ -166,36 +193,6 @@ export class XTwitterSourceProvider implements SourceProviderPort {
 
         throw error;
       }
-
-      for (const post of result.posts.filter((item) =>
-        matchesMetricThresholds(item.metrics, config),
-      )) {
-        const externalId = `${X_TWITTER_PROVIDER_KEY}:${post.tweetId}`;
-        const existing = postsByExternalId.get(externalId);
-
-        if (
-          existing === undefined ||
-          xPostSignalScore(post) > xPostSignalScore(existing.post)
-        ) {
-          postsByExternalId.set(externalId, {
-            post,
-            searchQuery,
-            maxItems: queryMaxItems,
-          });
-        }
-      }
-
-      if (result.nextCursor !== undefined) {
-        nextCursorsByQuery.set(searchQuery, result.nextCursor);
-      }
-
-      warnings.push(
-        ...result.warnings.map((warning) =>
-          config.searchQueries.length === 1
-            ? formatWarning(warning)
-            : redactSensitiveText(`${searchQuery}: ${formatWarning(warning)}`),
-        ),
-      );
     }
 
     const normalizedItems = [...postsByExternalId.values()]
@@ -213,6 +210,130 @@ export class XTwitterSourceProvider implements SourceProviderPort {
         queryCursors,
       ),
       warnings,
+    };
+  }
+
+  private async collectQueryWithBoundedPagination(params: {
+    readonly context: SourceProviderScanContext;
+    readonly config: XExperimentalDailyScanConfig;
+    readonly plan: SourceProviderScanPlan;
+    readonly searchQuery: string;
+    readonly queryIndex: number;
+    readonly queryMaxItems: number;
+    readonly initialCursor: string | undefined;
+    readonly paginationPolicy: AdaptivePaginationPolicy | undefined;
+  }): Promise<{
+    readonly posts: readonly XDailyCollectedPost[];
+    readonly warnings: readonly XDailyCollectorWarning[];
+    readonly nextCursor: string | undefined;
+    readonly queryTargetItems: number;
+  }> {
+    const queryTargetItems =
+      params.paginationPolicy === undefined
+        ? params.queryMaxItems
+        : Math.max(
+            params.queryMaxItems,
+            Math.ceil(
+              params.paginationPolicy.targetItems /
+                Math.max(params.config.searchQueries.length, 1),
+            ),
+          );
+    const postsByTweetId = new Map<string, XDailyCollectedPost>();
+    const warnings: XDailyCollectorWarning[] = [];
+    const maxPages = params.paginationPolicy?.maxPages ?? 1;
+    const baseLimit = params.config.limitPerProduct ?? params.queryMaxItems;
+    let cursor = params.initialCursor;
+    let nextCursor: string | undefined;
+    let duplicateCount = 0;
+
+    for (let page = 0; page < maxPages; page += 1) {
+      const expandedMaxItems = Math.min(
+        queryTargetItems,
+        params.queryMaxItems * (page + 1),
+      );
+      const result = await this.collector.collectDailySearch({
+        requestId:
+          params.config.searchQueries.length === 1
+            ? params.context.scanJobId
+            : `${params.context.scanJobId}:${params.queryIndex + 1}:${page + 1}`,
+        tenantId: params.context.tenantId,
+        workspaceId: params.context.workspaceId,
+        sourceBindingId: params.context.sourceBindingId,
+        scanJobId: params.context.scanJobId,
+        correlationId: params.context.correlationId,
+        query: params.searchQuery,
+        language: params.config.language,
+        windowHours: params.config.windowHours,
+        windowEnd: params.config.windowEnd,
+        searchProducts: params.config.searchProducts,
+        limitPerProduct: Math.min(100, baseLimit * (page + 1)),
+        maxItems: expandedMaxItems,
+        minLikes: params.config.minLikes,
+        minRetweets: params.config.minRetweets,
+        minReplies: params.config.minReplies,
+        cursor,
+      } satisfies XDailyCollectorRequest);
+
+      let pageNewItemCount = 0;
+      let pageDuplicateCount = 0;
+      for (const post of result.posts) {
+        const existing = postsByTweetId.get(post.tweetId);
+        if (existing === undefined) {
+          postsByTweetId.set(post.tweetId, post);
+          pageNewItemCount += 1;
+          continue;
+        }
+
+        duplicateCount += 1;
+        pageDuplicateCount += 1;
+        if (xPostSignalScore(post) > xPostSignalScore(existing)) {
+          postsByTweetId.set(post.tweetId, post);
+        }
+      }
+
+      warnings.push(...result.warnings);
+      nextCursor = result.nextCursor;
+      if (
+        params.paginationPolicy === undefined ||
+        postsByTweetId.size >= queryTargetItems
+      ) {
+        break;
+      }
+
+      const pageItemCount = pageNewItemCount + pageDuplicateCount;
+      const duplicateRate =
+        pageItemCount === 0 ? 0 : pageDuplicateCount / pageItemCount;
+      if (
+        pageNewItemCount < params.paginationPolicy.minNewItemsPerPage ||
+        duplicateRate > params.paginationPolicy.maxDuplicateRate
+      ) {
+        break;
+      }
+
+      if (nextCursor === undefined || nextCursor === cursor) {
+        break;
+      }
+
+      cursor = nextCursor;
+    }
+
+    if (params.paginationPolicy !== undefined && maxPages > 1) {
+      warnings.push({
+        code: "x_collector.adaptive_pagination_stats",
+        message: [
+          "x_adaptive_pagination.stats",
+          `items=${postsByTweetId.size}`,
+          `duplicates=${duplicateCount}`,
+          `target=${queryTargetItems}`,
+        ].join(";"),
+      });
+    }
+
+    return {
+      posts: [...postsByTweetId.values()],
+      warnings,
+      nextCursor,
+      queryTargetItems,
     };
   }
 

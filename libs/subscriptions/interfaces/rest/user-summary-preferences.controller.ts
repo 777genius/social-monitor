@@ -1,26 +1,21 @@
 import { Body, Controller, Get, Headers, Inject, Param, Put, Query } from '@nestjs/common';
-import { ApiHeader, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
-import {
-  WorkspaceRoleHeaderParser,
-} from '@social-monitor/identity/interfaces/authorization/workspace-role-header.parser';
+import { ApiHeader, ApiOkResponse, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { WorkspaceRoleHeaderParser } from '@social-monitor/identity/interfaces/authorization/workspace-role-header.parser';
 import {
   ApiKeyRequestAuthorizer,
   hasBearerAuthorizationHeader,
   type BearerRequestAuthorization,
 } from '@social-monitor/identity/interfaces/rest/api-key-request-authorizer';
 import { ApiKeyOrWorkspaceRoleAuth } from '@social-monitor/identity/interfaces/rest/api-key-openapi.decorators';
-import {
-  WORKSPACE_AUTHORIZATION_POLICY,
-  type WorkspaceAuthorizationPolicyPort,
-} from '@social-monitor/identity/ports';
+import { WORKSPACE_AUTHORIZATION_POLICY, type WorkspaceAuthorizationPolicyPort } from '@social-monitor/identity/ports';
 import { DomainError, requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 
 import { GetEffectiveUserSummaryPreferenceUseCase } from '../../features/get-effective-user-summary-preference/get-effective-user-summary-preference.use-case';
 import { UpsertUserSummaryPreferenceUseCase } from '../../features/upsert-user-summary-preference/upsert-user-summary-preference.use-case';
 import {
-  type GetEffectiveUserSummaryPreferenceResponseDto,
+  GetEffectiveUserSummaryPreferenceResponseDto,
   UpsertInterestUserSummaryPreferenceRequestDto,
-  type UpsertUserSummaryPreferenceResponseDto,
+  UpsertUserSummaryPreferenceResponseDto,
 } from './user-subscriptions.dto';
 
 @ApiTags('user-summary-preferences')
@@ -36,14 +31,18 @@ export class UserSummaryPreferencesController {
   ) {}
 
   @Get()
-  @ApiOperation({ summary: 'Read the effective interest summary preference overlay for one user.' })
+  @ApiOperation({
+    summary: 'Read the effective interest summary preference overlay for one user.',
+  })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
+  @ApiOkResponse({ type: GetEffectiveUserSummaryPreferenceResponseDto })
   @ApiQuery({ name: 'userId', required: true, type: String })
   @ApiQuery({ name: 'subscriptionId', required: false, type: String })
   @ApiKeyOrWorkspaceRoleAuth({
     apiKeyScope: 'read:summaries',
-    workspaceRoleDescription: 'Comma-separated workspace roles. User summary preference reads allow owner, admin, member or viewer.',
+    workspaceRoleDescription:
+      'Comma-separated workspace roles. User summary preference reads allow owner, admin, member or viewer.',
   })
   async getEffectiveInterestSummaryPreference(
     @Param('interestId') interestId: string,
@@ -86,12 +85,16 @@ export class UserSummaryPreferencesController {
   }
 
   @Put()
-  @ApiOperation({ summary: 'Create or update the interest-level summary preference overlay for one user.' })
+  @ApiOperation({
+    summary: 'Create or update the interest-level summary preference overlay for one user.',
+  })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   @ApiHeader({ name: 'x-workspace-id', required: true })
+  @ApiOkResponse({ type: UpsertUserSummaryPreferenceResponseDto })
   @ApiKeyOrWorkspaceRoleAuth({
     apiKeyScope: 'write:summaries',
-    workspaceRoleDescription: 'Comma-separated workspace roles. User summary preference writes allow owner, admin or member.',
+    workspaceRoleDescription:
+      'Comma-separated workspace roles. User summary preference writes allow owner, admin or member.',
   })
   async upsertInterestSummaryPreference(
     @Param('interestId') interestId: string,
@@ -122,13 +125,13 @@ export class UserSummaryPreferencesController {
       workspaceId: scope.workspaceId,
       userId: targetUserId,
       interestId,
-      language: body.language,
-      format: body.format,
-      tone: body.tone,
-      maxKeyPoints: body.maxKeyPoints,
-      includeRisks: body.includeRisks,
-      includeSourceHighlights: body.includeSourceHighlights,
-      customInstructions: body.customInstructions,
+      language: optionalRestField(body.language),
+      format: optionalRestField(body.format),
+      tone: optionalRestField(body.tone),
+      maxKeyPoints: optionalRestField(body.maxKeyPoints),
+      includeRisks: optionalRestField(body.includeRisks),
+      includeSourceHighlights: optionalRestField(body.includeSourceHighlights),
+      customInstructions: optionalRestField(body.customInstructions),
     });
 
     if (!result.ok) {
@@ -214,3 +217,5 @@ const resolveUserOwnedTarget = (
 
   return authorization.userId;
 };
+
+const optionalRestField = <T>(value: T | null | undefined): T | undefined => (value === null ? undefined : value);

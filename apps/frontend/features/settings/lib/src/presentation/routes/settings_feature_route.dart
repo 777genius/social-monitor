@@ -15,11 +15,13 @@ class SettingsFeatureRoute extends StatelessWidget {
   SettingsFeatureRoute.runtime({
     super.key,
     required WorkspaceScope scope,
+    required String userId,
     required Object generatedApiRuntime,
     this.themeMode,
     this.onThemeModeChanged,
   }) : module = SettingsFeatureModule.runtime(
          scope: scope,
+         userId: userId,
          generatedApiRuntime: generatedApiRuntime,
        );
 

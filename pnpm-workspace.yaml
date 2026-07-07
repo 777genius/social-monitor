@@ -1,0 +1,7 @@
+allowBuilds:
+  '@prisma/engines': set this to true or false
+  '@scarf/scarf': set this to true or false
+  grpc-tools: set this to true or false
+  prisma: set this to true or false
+  protobufjs: set this to true or false
+  unrs-resolver: set this to true or false

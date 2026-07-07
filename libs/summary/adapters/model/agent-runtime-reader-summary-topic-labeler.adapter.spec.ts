@@ -16,6 +16,7 @@ describe("AgentRuntimeReaderSummaryTopicLabeler", () => {
         nodeLabels: [
           {
             nodeId: "topic:story:codex",
+            topicId: "topic:codex-agents",
             label: "Codex agents",
             groupId: "group:agent-tools",
           },
@@ -84,6 +85,15 @@ describe("AgentRuntimeReaderSummaryTopicLabeler", () => {
           providerKeys: ["github-trending-page"],
           interestIds: ["ai-agents"],
           keywords: ["codex", "agents"],
+          labelCandidates: [
+            {
+              label: "OpenAI Codex agent workflows",
+              source: "evidence-title",
+              score: 0.94,
+              evidenceFeedItemIds: ["feed-codex-1"],
+              rationale: "Derived from an evidence title.",
+            },
+          ],
         },
       ],
     });
@@ -91,6 +101,7 @@ describe("AgentRuntimeReaderSummaryTopicLabeler", () => {
     expect(result.nodeLabels).toEqual([
       {
         nodeId: "topic:story:codex",
+        topicId: "topic:codex-agents",
         label: "Codex agents",
         groupId: "group:agent-tools",
         keywords: [],
@@ -103,7 +114,10 @@ describe("AgentRuntimeReaderSummaryTopicLabeler", () => {
       timeoutMs: 1234,
     });
     expect(client.commands[0]?.systemPrompt).toContain(
-      "Avoid internal UI/meta labels",
+      "Choose each node label from labelCandidates",
+    );
+    expect(client.commands[0]?.systemPrompt).toContain(
+      "Use the same topicId",
     );
     expect(
       JSON.parse(client.commands[0]?.prompt ?? "{}").nodes[0],
@@ -112,6 +126,12 @@ describe("AgentRuntimeReaderSummaryTopicLabeler", () => {
         {
           title: "openai/codex adds stronger local agent workflows",
           providerKey: "github-trending-page",
+        },
+      ],
+      labelCandidates: [
+        {
+          label: "OpenAI Codex agent workflows",
+          source: "evidence-title",
         },
       ],
     });

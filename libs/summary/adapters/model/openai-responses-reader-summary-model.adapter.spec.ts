@@ -115,6 +115,28 @@ describe("OpenAiResponsesReaderSummaryModelAdapter", () => {
         "Lead with what happened and why it matters",
       ),
     });
+    expect(JSON.parse(capturedCalls[0]?.init?.body as string)).toMatchObject({
+      instructions: expect.stringContaining(
+        "prefer one compact lead paragraph followed by 2-3 short Markdown bullets",
+      ),
+    });
+    expect(JSON.parse(capturedCalls[0]?.init?.body as string)).toMatchObject({
+      instructions: expect.stringContaining(
+        "- **Main signal:** ...",
+      ),
+      text: {
+        format: {
+          schema: {
+            properties: {
+              executiveSummary: expect.objectContaining({
+                maxLength: 1_800,
+              }),
+            },
+          },
+        },
+      },
+    });
+    expect(adapter.estimate(input, route).outputTokens).toBe(3_200);
     expect(attempt.draft).toMatchObject({
       headline: "Workspace AI tooling signal",
       usage: {
@@ -529,7 +551,7 @@ describe("OpenAiResponsesReaderSummaryModelAdapter", () => {
     const attempt = await adapter.generate(input, route);
 
     expect(attempt.draft.topStories).toHaveLength(8);
-    expect(attempt.draft.content?.topReads).toHaveLength(8);
+    expect(attempt.draft.content?.topReads).toHaveLength(10);
     expect(attempt.draft.topStories[0]?.title).toBe(
       "Model selected one AI tooling story",
     );

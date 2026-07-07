@@ -5,6 +5,7 @@ import type {
   ReaderSummaryContextArtifact,
   ReaderSummaryContent,
   ReaderSummaryPeriod,
+  ReaderInterestSection,
   ReaderSummaryTopicMap,
   StoryCluster,
   TopRead,
@@ -33,10 +34,26 @@ export type ReaderSummaryStoryClusterView = Omit<
   };
 };
 
-export type ReaderSummaryContentView = ReaderSummaryContent & {
+export type ReaderSummaryTopReadView = Omit<TopRead, "publishedAt"> & {
+  readonly publishedAt?: string;
+};
+
+export type ReaderSummaryInterestSectionView = Omit<
+  ReaderInterestSection,
+  "items"
+> & {
+  readonly items: readonly ReaderSummaryTopReadView[];
+};
+
+export type ReaderSummaryContentView = Omit<
+  ReaderSummaryContent,
+  "interestSections" | "topReads" | "selectedPosts"
+> & {
   readonly mainTopics: readonly string[];
   readonly topicMap: ReaderSummaryTopicMap;
-  readonly selectedPosts: readonly TopRead[];
+  readonly interestSections: readonly ReaderSummaryInterestSectionView[];
+  readonly topReads: readonly ReaderSummaryTopReadView[];
+  readonly selectedPosts: readonly ReaderSummaryTopReadView[];
 };
 
 export type ReaderSummaryContextArtifactView = Omit<
@@ -156,7 +173,7 @@ export const presentReaderSummaryArtifact = (
 ): ReaderSummaryArtifactView => {
   const snapshot = artifact.toSnapshot();
   const content = withReaderSummaryContentDefaults(
-    options.content ?? readerSummaryContentForArtifactSnapshot(snapshot),
+    options.content ?? readerSummaryDomainContentForArtifactSnapshot(snapshot),
     snapshot.confidence,
   );
   const freshnessView = presentFreshness(freshness);
@@ -203,29 +220,26 @@ export const presentReaderSummaryArtifact = (
 
 export const readerSummaryContentForArtifact = (
   artifact: ReaderSummaryArtifact,
-): ReaderSummaryContentView =>
-  readerSummaryContentForArtifactSnapshot(artifact.toSnapshot());
+): ReaderSummaryContent =>
+  readerSummaryDomainContentForArtifactSnapshot(artifact.toSnapshot());
 
-const readerSummaryContentForArtifactSnapshot = (
+const readerSummaryDomainContentForArtifactSnapshot = (
   snapshot: ReaderSummaryArtifactProps,
-): ReaderSummaryContentView =>
-  withReaderSummaryContentDefaults(
-    snapshot.content ??
-      buildReaderSummary({
-        headline: snapshot.headline,
-        executiveSummary: snapshot.executiveSummary,
-        topStories: snapshot.topStories,
-        interestHighlights: snapshot.interestHighlights,
-        repeatedSignals: snapshot.repeatedSignals,
-        risksAndUnknowns: snapshot.risksAndUnknowns,
-        citationMap: snapshot.citationMap,
-        storyClusters: snapshot.storyClusters,
-        sourceWindow: snapshot.sourceWindow,
-        qualityFlags: snapshot.qualityFlags,
-        noSignalReason: snapshot.noSignalReason,
-      }),
-    snapshot.confidence,
-  );
+): ReaderSummaryContent =>
+  snapshot.content ??
+  buildReaderSummary({
+    headline: snapshot.headline,
+    executiveSummary: snapshot.executiveSummary,
+    topStories: snapshot.topStories,
+    interestHighlights: snapshot.interestHighlights,
+    repeatedSignals: snapshot.repeatedSignals,
+    risksAndUnknowns: snapshot.risksAndUnknowns,
+    citationMap: snapshot.citationMap,
+    storyClusters: snapshot.storyClusters,
+    sourceWindow: snapshot.sourceWindow,
+    qualityFlags: snapshot.qualityFlags,
+    noSignalReason: snapshot.noSignalReason,
+  });
 
 const withReaderSummaryContentDefaults = (
   content: ReaderSummaryContent,
@@ -269,10 +283,25 @@ const readerSummaryOpenQuestionsForPresentation = (
   return ["Which claims need more confirmation before acting on this summary?"];
 };
 
-const sanitizeTopReadForPresentation = (item: TopRead): TopRead => ({
+const sanitizeTopReadForPresentation = (
+  item: TopRead,
+): ReaderSummaryTopReadView => ({
   ...item,
+  publishedAt: presentTopReadPublishedAt(item.publishedAt),
   matchedRules: item.matchedRules.filter(isPublicMatchedRule),
 });
+
+const presentTopReadPublishedAt = (
+  value: TopRead["publishedAt"] | string | undefined,
+): string | undefined => {
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  return typeof value === "string" && value.trim().length > 0
+    ? value
+    : undefined;
+};
 
 const isPublicMatchedRule = (rule: string): boolean => {
   const normalized = rule.trim().toLowerCase();
@@ -304,10 +333,19 @@ const presentReaderSummaryPeriod = (
 
 const buildCoverageView = (
   snapshot: ReaderSummaryArtifactProps,
-  content: ReaderSummaryContent,
+  content: Pick<ReaderSummaryContentView, "sourceMix" | "topReads">,
   freshness: ReaderSummaryFreshnessView,
   collectedCoverage: ReaderSummaryCollectedFeedItemCoverage | undefined,
 ): ReaderSummaryCoverageView => {
+  const selectedFeedItemCount =
+    snapshot.sourceWindow.selectedFeedItemIds.length;
+  const collectedFeedItemCount =
+    collectedCoverage === undefined
+      ? undefined
+      : Math.max(
+          collectedCoverage.collectedFeedItemCount,
+          selectedFeedItemCount,
+        );
   const interestIds = countBy(
     snapshot.storyClusters.flatMap((cluster) => cluster.interestIds),
   );
@@ -340,14 +378,12 @@ const buildCoverageView = (
     .map((source) => source.providerKey);
 
   return {
-    ...(collectedCoverage === undefined
-      ? {}
-      : { collectedFeedItemCount: collectedCoverage.collectedFeedItemCount }),
+    ...(collectedCoverage === undefined ? {} : { collectedFeedItemCount }),
     lowRelevanceFeedItemCount:
       collectedCoverage?.lowRelevanceFeedItemCount ?? 0,
     mutedFeedItemCount: collectedCoverage?.mutedFeedItemCount ?? 0,
     userRatedFeedItemCount: collectedCoverage?.userRatedFeedItemCount ?? 0,
-    selectedFeedItemCount: snapshot.sourceWindow.selectedFeedItemIds.length,
+    selectedFeedItemCount,
     storyClusterCount: snapshot.storyClusters.length,
     topReadCount: content.topReads.length,
     citationCount: snapshot.citationMap.length,
@@ -384,7 +420,7 @@ const buildCoverageView = (
 };
 
 const buildProviderBreakdown = (
-  content: ReaderSummaryContent,
+  content: Pick<ReaderSummaryContentView, "sourceMix" | "topReads">,
   collectedCoverage: ReaderSummaryCollectedFeedItemCoverage | undefined,
 ): readonly ReaderSummaryProviderCoverageView[] => {
   const providers = new Map<string, ReaderSummaryProviderCoverageView>();
@@ -433,21 +469,40 @@ const buildProviderBreakdown = (
     });
   }
 
-  return [...providers.values()].sort((left, right) => {
-    const collectedDiff =
-      (right.collectedFeedItemCount ?? 0) - (left.collectedFeedItemCount ?? 0);
-    if (collectedDiff !== 0) {
-      return collectedDiff;
-    }
+  return [...providers.values()]
+    .map(normalizeProviderCollectedCount)
+    .sort((left, right) => {
+      const collectedDiff =
+        (right.collectedFeedItemCount ?? 0) -
+        (left.collectedFeedItemCount ?? 0);
+      if (collectedDiff !== 0) {
+        return collectedDiff;
+      }
 
-    const selectedDiff =
-      right.selectedFeedItemCount - left.selectedFeedItemCount;
-    if (selectedDiff !== 0) {
-      return selectedDiff;
-    }
+      const selectedDiff =
+        right.selectedFeedItemCount - left.selectedFeedItemCount;
+      if (selectedDiff !== 0) {
+        return selectedDiff;
+      }
 
-    return left.providerKey.localeCompare(right.providerKey);
-  });
+      return left.providerKey.localeCompare(right.providerKey);
+    });
+};
+
+const normalizeProviderCollectedCount = (
+  provider: ReaderSummaryProviderCoverageView,
+): ReaderSummaryProviderCoverageView => {
+  if (provider.collectedFeedItemCount === undefined) {
+    return provider;
+  }
+
+  return {
+    ...provider,
+    collectedFeedItemCount: Math.max(
+      provider.collectedFeedItemCount,
+      provider.selectedFeedItemCount,
+    ),
+  };
 };
 
 const countBy = (values: readonly string[]): ReadonlyMap<string, number> => {

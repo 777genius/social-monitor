@@ -38,8 +38,9 @@ void main() {
 
     expect(snapshot.confidenceLevel, 'low');
     expect(snapshot.confidenceScore, 0.42);
-    expect(snapshot.providerCount, 3);
+    expect(snapshot.sourceGroupCount, 3);
     expect(snapshot.needsConfirmation, isTrue);
+    expect(snapshot.hasMixedConfidence, isTrue);
   });
 
   test('marks trust summary as needing confirmation for reliability risks', () {
@@ -61,7 +62,37 @@ void main() {
       ),
     );
 
-    expect(snapshot.providerCount, 1);
+    expect(snapshot.sourceGroupCount, 1);
+    expect(snapshot.needsConfirmation, isTrue);
+    expect(snapshot.hasMixedConfidence, isFalse);
+  });
+
+  test('does not treat unrelated single-source claims as cross-confirmed', () {
+    final snapshot = ReaderSummaryTrustSnapshot.from(
+      claims: [
+        claim(
+          evidence: const [
+            SummaryClaimEvidence(
+              title: 'Reddit evidence',
+              providerKey: 'reddit',
+              citationId: 'c1',
+            ),
+          ],
+        ),
+        claim(
+          evidence: const [
+            SummaryClaimEvidence(
+              title: 'HN evidence',
+              providerKey: 'hacker-news',
+              citationId: 'c2',
+            ),
+          ],
+        ),
+      ],
+      report: emptySummaryReliabilityReport,
+    );
+
+    expect(snapshot.sourceGroupCount, 2);
     expect(snapshot.needsConfirmation, isTrue);
   });
 }

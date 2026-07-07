@@ -4,6 +4,7 @@ import type {
   ReaderSummaryPeriod,
   ReaderSummaryScope,
   ReaderSummaryTopicLabelPlan,
+  ReaderSummaryTopicLabelCandidateOption,
   StoryCluster,
   SummaryEvidenceItem,
   TopReadCandidate,
@@ -19,6 +20,7 @@ export type ReaderSummaryTopicLabelCandidate = {
   readonly providerKeys: readonly string[];
   readonly interestIds: readonly string[];
   readonly keywords: readonly string[];
+  readonly labelCandidates: readonly ReaderSummaryTopicLabelCandidateOption[];
 };
 
 export type ReaderSummaryTopicLabelerInput = {

@@ -286,7 +286,7 @@ const runCli = async (params: {
 }> =>
   new Promise((resolve, reject) => {
     const child = spawn(params.command, params.args, {
-      env: { ...process.env, ...params.env },
+      env: { ...runtimeChildBaseEnv(process.env), ...params.env },
       stdio: ["ignore", "pipe", "pipe"],
     });
     const stdout: Buffer[] = [];
@@ -314,6 +314,23 @@ const runCli = async (params: {
       });
     });
   });
+
+const runtimeChildBaseEnv = (
+  env: NodeJS.ProcessEnv,
+): Readonly<Record<string, string>> =>
+  Object.fromEntries(
+    Object.entries(env).filter(
+      ([key, value]) =>
+        value !== undefined && !runtimeSessionScopedEnvKeys.has(key),
+    ),
+  ) as Readonly<Record<string, string>>;
+
+const runtimeSessionScopedEnvKeys = new Set([
+  "CODEX_THREAD_ID",
+  "CODEX_GOAL_ID",
+  "CODEX_TURN_ID",
+  "CODEX_SESSION_ID",
+]);
 
 const isUsageProbeOutput = (stdout: string, stderr: string): boolean =>
   `${stdout}\n${stderr}`.includes("subscription-runtime-run-agent-task");

@@ -6,6 +6,7 @@ class _TopPostRow extends StatefulWidget {
     required this.index,
     required this.item,
     required this.dateLabel,
+    required this.citationsById,
     required this.rating,
     required this.onRated,
     required this.onOpenUrl,
@@ -16,6 +17,7 @@ class _TopPostRow extends StatefulWidget {
   final int index;
   final TopRead item;
   final String dateLabel;
+  final Map<String, SummaryCitation> citationsById;
   final int? rating;
   final Future<bool> Function(
     TopRead item,
@@ -40,6 +42,7 @@ class _TopPostRowState extends State<_TopPostRow> {
   bool _focused = false;
   bool _ratingInFlight = false;
   bool _ratedInSession = false;
+  bool _evidenceExpanded = false;
 
   bool get _showRating =>
       _hovered ||
@@ -54,6 +57,7 @@ class _TopPostRowState extends State<_TopPostRow> {
     if (widget.index != oldWidget.index || widget.item != oldWidget.item) {
       _ratingInFlight = false;
       _ratedInSession = widget.rating != null;
+      _evidenceExpanded = false;
     } else if (widget.rating != null) {
       _ratedInSession = true;
     }
@@ -111,6 +115,10 @@ class _TopPostRowState extends State<_TopPostRow> {
         );
 
         if (widget.dense) {
+          final supportSignal = _topPostSupportSignal(
+            item: widget.item,
+            citationsById: widget.citationsById,
+          );
           return _denseTopPostRow(
             context,
             widget.item,
@@ -118,6 +126,7 @@ class _TopPostRowState extends State<_TopPostRow> {
             constraints.maxWidth,
             rating,
             _TopPostMenu(item: widget.item, onOpenUrl: widget.onOpenUrl),
+            supportSignal,
           );
         }
 
@@ -131,47 +140,92 @@ class _TopPostRowState extends State<_TopPostRow> {
           reservePreviewSpace: widget.reservePreviewSpace,
         );
         final metricsRow = _TopPostMetricsRow(metrics: metrics);
-        final relevance = _TopPostRelevanceColumn(item: widget.item);
+        final supportSignal = _topPostSupportSignal(
+          item: widget.item,
+          citationsById: widget.citationsById,
+        );
+        final relevance = _TopPostRelevanceColumn(
+          item: widget.item,
+          supportSignal: supportSignal,
+        );
         final menu = _TopPostMenu(
           item: widget.item,
           onOpenUrl: widget.onOpenUrl,
         );
 
         if (wide) {
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SizedBox(width: 190, child: source),
-              const SizedBox(width: AppSpacing.md),
-              Expanded(child: content),
-              const SizedBox(width: AppSpacing.md),
-              metricsRow,
-              const SizedBox(width: AppSpacing.md),
-              SizedBox(width: 156, child: relevance),
-              const SizedBox(width: AppSpacing.sm),
-              menu,
-            ],
-          );
-        }
-
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+          return _withEvidenceStack(
+            wide: true,
+            supportSignal: supportSignal,
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(child: source),
-                Flexible(child: relevance),
+                SizedBox(width: 190, child: source),
+                const SizedBox(width: AppSpacing.md),
+                Expanded(child: content),
+                const SizedBox(width: AppSpacing.md),
+                metricsRow,
+                const SizedBox(width: AppSpacing.md),
+                SizedBox(width: 156, child: relevance),
+                const SizedBox(width: AppSpacing.sm),
                 menu,
               ],
             ),
-            const SizedBox(height: AppSpacing.sm),
-            content,
-            const SizedBox(height: AppSpacing.sm),
-            metricsRow,
-          ],
+          );
+        }
+
+        return _withEvidenceStack(
+          wide: false,
+          supportSignal: supportSignal,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: source),
+                  Flexible(child: relevance),
+                  menu,
+                ],
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              content,
+              const SizedBox(height: AppSpacing.sm),
+              metricsRow,
+            ],
+          ),
         );
       },
+    );
+  }
+
+  Widget _withEvidenceStack({
+    required bool wide,
+    required _TopPostSupportSignal supportSignal,
+    required Widget child,
+  }) {
+    if (supportSignal.evidenceItems.isEmpty) {
+      return child;
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        child,
+        Padding(
+          padding: EdgeInsets.only(
+            left: wide ? AppSpacing.xl : AppSpacing.md,
+            right: wide ? AppSpacing.md : 0,
+            top: AppSpacing.sm,
+          ),
+          child: _TopPostEvidenceStack(
+            supportSignal: supportSignal,
+            expanded: _evidenceExpanded,
+            onToggle: _toggleEvidenceExpanded,
+            onOpenUrl: widget.onOpenUrl,
+          ),
+        ),
+      ],
     );
   }
 
@@ -187,6 +241,10 @@ class _TopPostRowState extends State<_TopPostRow> {
       return;
     }
     setState(() => _focused = value);
+  }
+
+  void _toggleEvidenceExpanded() {
+    setState(() => _evidenceExpanded = !_evidenceExpanded);
   }
 
   Future<bool> _submitRating(int rating, PostRatingReason? reason) async {

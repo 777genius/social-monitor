@@ -10,6 +10,7 @@ import 'clients/interests_client.dart';
 import 'clients/interest_coverage_plans_client.dart';
 import 'clients/source_bindings_client.dart';
 import 'clients/summaries_client.dart';
+import 'clients/user_summary_preferences_client.dart';
 import 'clients/reader_summaries_client.dart';
 import 'clients/relevance_client.dart';
 import 'clients/scan_requests_client.dart';
@@ -37,6 +38,7 @@ class SocialMonitorRestClient {
   InterestCoveragePlansClient? _interestCoveragePlans;
   SourceBindingsClient? _sourceBindings;
   SummariesClient? _summaries;
+  UserSummaryPreferencesClient? _userSummaryPreferences;
   ReaderSummariesClient? _readerSummaries;
   RelevanceClient? _relevance;
   ScanRequestsClient? _scanRequests;
@@ -63,6 +65,12 @@ class SocialMonitorRestClient {
 
   SummariesClient get summaries =>
       _summaries ??= SummariesClient(_dio, baseUrl: _baseUrl);
+
+  UserSummaryPreferencesClient get userSummaryPreferences =>
+      _userSummaryPreferences ??= UserSummaryPreferencesClient(
+        _dio,
+        baseUrl: _baseUrl,
+      );
 
   ReaderSummariesClient get readerSummaries =>
       _readerSummaries ??= ReaderSummariesClient(_dio, baseUrl: _baseUrl);

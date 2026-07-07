@@ -187,4 +187,51 @@ void main() {
     expect(summary.executiveSummary, contains('source-reported claims'));
     expect(summary.executiveSummary, isNot(contains('...')));
   });
+
+  test('preserves structured reader summary markdown paragraphs', () {
+    const mapper = SummaryMapper();
+    final executiveSummary = [
+      '**AI-agent workflows** dominated the day across X, Reddit and HN.',
+      '',
+      'The main product signal is practical workflow sharing, while policy and platform-risk stories cut through as separate themes.',
+      '- Claude/Codex users are sharing prompt-loop and debugging patterns.',
+      '- EU surveillance coverage is cross-source but still needs careful reading.',
+      '- Bearer demo and sk-demo must be redacted without flattening structure.',
+    ].join('\n');
+
+    final summary = mapper.readerSummaryToDomain(
+      readerSummaryApiDto(executiveSummary: executiveSummary),
+    );
+
+    expect(summary.executiveSummary, contains('\n\nThe main product signal'));
+    expect(summary.executiveSummary, contains('\n- Claude/Codex users'));
+    expect(summary.executiveSummary, contains('[redacted]'));
+    expect(summary.executiveSummary, isNot(contains('Bearer demo')));
+    expect(summary.executiveSummary, isNot(contains('sk-demo')));
+  });
+
+  test('hides backend clustering terms from reader-facing summary copy', () {
+    const mapper = SummaryMapper();
+
+    final summary = mapper.readerSummaryToDomain(
+      readerSummaryApiDto(
+        executiveSummary:
+            'Confidence is medium because the window has broad provider coverage but no backend cross-provider clusters.',
+        content: readerSummaryContentApiDto(
+          oneLineTakeaway:
+              'No backend cross-provider clusters were detected across source families.',
+        ),
+      ),
+    );
+
+    expect(summary.executiveSummary, contains('broad source coverage'));
+    expect(
+      summary.executiveSummary,
+      contains('no confirmed cross-source matches'),
+    );
+    expect(summary.executiveSummary, isNot(contains('backend')));
+    expect(summary.executiveSummary, isNot(contains('provider coverage')));
+    expect(summary.content.oneLineTakeaway, contains('source groups'));
+    expect(summary.content.oneLineTakeaway, isNot(contains('backend')));
+  });
 }

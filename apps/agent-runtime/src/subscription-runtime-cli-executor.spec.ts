@@ -7,8 +7,16 @@ import { SubscriptionRuntimeCliExecutor } from "./subscription-runtime-cli-execu
 
 describe("SubscriptionRuntimeCliExecutor", () => {
   let tempDir: string | undefined;
+  let previousCodexThreadId: string | undefined;
 
   afterEach(async () => {
+    if (previousCodexThreadId === undefined) {
+      delete process.env.CODEX_THREAD_ID;
+    } else {
+      process.env.CODEX_THREAD_ID = previousCodexThreadId;
+    }
+    previousCodexThreadId = undefined;
+
     if (tempDir !== undefined) {
       await rm(tempDir, { recursive: true, force: true });
       tempDir = undefined;
@@ -28,7 +36,7 @@ describe("SubscriptionRuntimeCliExecutor", () => {
         'const inputIndex = process.argv.indexOf("--input");',
         "const inputPath = process.argv[inputIndex + 1];",
         'const request = JSON.parse(await readFile(inputPath, "utf8"));',
-        `await writeFile(${JSON.stringify(capturePath)}, JSON.stringify({ argv: process.argv.slice(2), request, hasLocalEncryptionKey: process.env.SUBSCRIPTION_RUNTIME_LOCAL_ENCRYPTION_KEY === "test-key" }), "utf8");`,
+        `await writeFile(${JSON.stringify(capturePath)}, JSON.stringify({ argv: process.argv.slice(2), request, hasLocalEncryptionKey: process.env.SUBSCRIPTION_RUNTIME_LOCAL_ENCRYPTION_KEY === "test-key", codexThreadId: process.env.CODEX_THREAD_ID ?? "" }), "utf8");`,
         'process.stdout.write(JSON.stringify({ status: "completed", outputText: "{}", warnings: [] }));',
       ].join("\n"),
       "utf8",
@@ -55,6 +63,8 @@ describe("SubscriptionRuntimeCliExecutor", () => {
   });
 
   it("passes the local encryption key to durable subscription runtime tasks", async () => {
+    previousCodexThreadId = process.env.CODEX_THREAD_ID;
+    process.env.CODEX_THREAD_ID = "host-codex-thread";
     tempDir = await mkdtemp(join(tmpdir(), "agent-runtime-cli-test-"));
     const capturePath = join(tempDir, "capture.json");
     const cliPath = join(tempDir, "fake-cli.mjs");
@@ -67,7 +77,7 @@ describe("SubscriptionRuntimeCliExecutor", () => {
         'const inputIndex = process.argv.indexOf("--input");',
         "const inputPath = process.argv[inputIndex + 1];",
         'const request = JSON.parse(await readFile(inputPath, "utf8"));',
-        `await writeFile(${JSON.stringify(capturePath)}, JSON.stringify({ argv: process.argv.slice(2), request, hasLocalEncryptionKey: process.env.SUBSCRIPTION_RUNTIME_LOCAL_ENCRYPTION_KEY === "test-key" }), "utf8");`,
+        `await writeFile(${JSON.stringify(capturePath)}, JSON.stringify({ argv: process.argv.slice(2), request, hasLocalEncryptionKey: process.env.SUBSCRIPTION_RUNTIME_LOCAL_ENCRYPTION_KEY === "test-key", codexThreadId: process.env.CODEX_THREAD_ID ?? "" }), "utf8");`,
         'process.stdout.write(JSON.stringify({ status: "completed", outputText: "{}", warnings: [] }));',
       ].join("\n"),
       "utf8",
@@ -94,6 +104,7 @@ describe("SubscriptionRuntimeCliExecutor", () => {
       ]),
     );
     expect(captured.hasLocalEncryptionKey).toBe(true);
+    expect(captured.codexThreadId).toBe("");
   });
 });
 
@@ -109,6 +120,7 @@ type CapturedCliRequest = {
     };
   };
   readonly hasLocalEncryptionKey: boolean;
+  readonly codexThreadId: string;
 };
 
 const validExecutionRequest = (): AgentRuntimeExecutionRequest => ({

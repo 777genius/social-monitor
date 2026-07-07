@@ -16,6 +16,11 @@ describe("BuildReaderSummaryTopicMapUseCase", () => {
     }).execute(command());
 
     expect(labeler.inputs).toHaveLength(1);
+    expect(labeler.inputs[0]?.candidates[0]?.labelCandidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: expect.stringContaining("Runtime") }),
+      ]),
+    );
     expect(result.ok).toBe(true);
     if (!result.ok) {
       throw result.error;
@@ -52,7 +57,7 @@ describe("BuildReaderSummaryTopicMapUseCase", () => {
       throw result.error;
     }
     expect(result.value.generatedBy).toBe("deterministic");
-    expect(result.value.nodes[0]?.label).toBe("Runtime signal");
+    expect(result.value.nodes[0]?.label).toBe("Runtime Signal");
   });
 
   it("requires a topic labeler in agent-runtime mode", async () => {

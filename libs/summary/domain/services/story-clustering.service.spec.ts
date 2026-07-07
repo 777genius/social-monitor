@@ -81,7 +81,7 @@ describe("StoryClusteringService", () => {
     });
     expect(selection.clusters[0]?.score).toBe(3.05);
     expect(selection.clusters[0]?.whyImportant).toContain(
-      "Confirmed by 2 providers: github, reddit",
+      "Confirmed by 2 source groups: github, reddit",
     );
     expect(selection.sourceWindow.selectedFeedItemIds).toEqual([
       "feed-github",
@@ -168,6 +168,7 @@ describe("StoryClusteringService", () => {
         evidenceItem({
           feedItemId: "feed-security-issue",
           sourceItemId: "reddit-security",
+          providerKey: "hacker-news",
           canonicalUrl: "https://example.com/openai-codex-security-issue",
           title: "OpenAI Codex launches developer agents",
           storyKeyHint: "title:openai-codex-launches-developer-agents",
@@ -230,7 +231,7 @@ describe("StoryClusteringService", () => {
       providerKeys: ["reddit", "x-twitter"],
     });
     expect(selection.clusters[0]?.whyImportant).toContain(
-      "Confirmed by 2 providers: reddit, x-twitter",
+      "Confirmed by 2 source groups: reddit, x-twitter",
     );
   });
 

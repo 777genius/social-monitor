@@ -30,6 +30,7 @@ class ReaderSummaryReaderItemDto {
     required this.whyNow,
     this.canonicalUrl,
     this.previewMedia,
+    this.publishedAt,
   });
 
   factory ReaderSummaryReaderItemDto.fromJson(Map<String, Object?> json) =>
@@ -47,6 +48,7 @@ class ReaderSummaryReaderItemDto {
   final String providerKey;
   final List<ReaderSummaryProviderMetricDto> providerMetrics;
   final String providerName;
+  final DateTime? publishedAt;
   final String reason;
   final num signalScore;
   final String title;

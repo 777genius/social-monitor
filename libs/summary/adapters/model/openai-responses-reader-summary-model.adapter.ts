@@ -148,7 +148,7 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
         ? 128
         : Math.min(
             this.maxOutputTokens,
-            Math.max(512, input.policy.maxStories * 260),
+            Math.max(768, input.policy.maxStories * 320),
           );
     const estimatedCostUsd =
       (inputTokens * this.estimatedInputCostUsdPerMillionTokens +

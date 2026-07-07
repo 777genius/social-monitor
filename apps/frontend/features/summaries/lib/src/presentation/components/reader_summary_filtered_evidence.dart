@@ -46,13 +46,17 @@ class _SourceFilterChips extends StatelessWidget {
           ),
       ],
     );
+    final selectedCount = _selectedPostCount(
+      entries,
+      coverage: coverage,
+      fallback: topReadCount,
+    );
     final stats = _SourceFilterStats(
-      collectedCount: coverage?.collectedFeedItemCount,
-      selectedCount: _selectedPostCount(
-        entries,
-        coverage: coverage,
-        fallback: topReadCount,
+      collectedCount: _normalizedCollectedCount(
+        coverage?.collectedFeedItemCount,
+        selectedCount,
       ),
+      selectedCount: selectedCount,
       topReadCount: coverage?.topReadCount ?? topReadCount,
     );
     return LayoutBuilder(
@@ -130,6 +134,13 @@ int _selectedPostCount(
   }
   final count = entries.fold<int>(0, (sum, entry) => sum + entry.itemCount);
   return count > 0 ? count : fallback;
+}
+
+int? _normalizedCollectedCount(int? collectedCount, int selectedCount) {
+  if (collectedCount == null) {
+    return null;
+  }
+  return collectedCount > selectedCount ? collectedCount : selectedCount;
 }
 
 String _summaryStatsLabel({

@@ -67,6 +67,7 @@ class WorkspaceSummaryPeriodShell extends StatelessWidget {
           onExport: summary == null
               ? null
               : () => _exportSummary(context, summary),
+          collectionStatsSummary: summary,
         ),
         const SizedBox(height: AppSpacing.md),
         child,

@@ -38,7 +38,10 @@ class SocialMonitorApp extends StatelessWidget {
               themeMode: themeMode,
               builder: (context, child) => overlayBuilder(
                 context,
-                SelectionArea(child: child ?? const SizedBox.shrink()),
+                FocusTraversalGroup(
+                  policy: WidgetOrderTraversalPolicy(),
+                  child: SelectionArea(child: child ?? const SizedBox.shrink()),
+                ),
               ),
               routerConfig: composition.router,
             ),

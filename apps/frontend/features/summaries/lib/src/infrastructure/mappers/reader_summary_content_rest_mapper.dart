@@ -194,6 +194,7 @@ final class ReaderSummaryContentRestMapper {
           .toList(growable: false),
       whyImportant: dto.whyImportant,
       whyNow: dto.whyNow,
+      publishedAt: dto.publishedAt,
       canonicalUrl: dto.canonicalUrl,
       previewMedia: _previewMedia(dto.previewMedia),
       citationIds: dto.citationIds,

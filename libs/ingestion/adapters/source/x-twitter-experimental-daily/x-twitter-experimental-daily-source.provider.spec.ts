@@ -216,6 +216,45 @@ describe("XTwitterSourceProvider", () => {
     ]);
   });
 
+  it("uses bounded adaptive expansion to ask the collector for deeper query results", async () => {
+    const collector = new MultiQueryCollector();
+    const provider = new XTwitterSourceProvider(collector, {
+      now: () => new Date("2026-06-27T00:00:00.000Z"),
+    });
+    const context = {
+      tenantId: tenantId("tenant-1"),
+      workspaceId: workspaceId("workspace-1"),
+      sourceBindingId: "binding-1",
+      scanJobId: "scan-1",
+      correlationId: "corr-1",
+      config: {
+        maxItems: 20,
+        maxItemsPerQuery: 3,
+        limitPerProduct: 3,
+        searchQueries: ["mcp server"],
+        adaptivePagination: {
+          enabled: true,
+          targetItems: 12,
+          maxPages: 2,
+          minNewItemsPerPage: 1,
+          maxDuplicateRate: 0.9,
+        },
+      },
+    };
+
+    await provider.scan(
+      provider.planScan({ mode: "search", query: "ai agents" }, context),
+      context,
+    );
+
+    expect(collector.requests.map((request) => request.maxItems)).toEqual([
+      3, 6, 3, 6,
+    ]);
+    expect(
+      collector.requests.map((request) => request.limitPerProduct),
+    ).toEqual([3, 6, 3, 6]);
+  });
+
   it("uses per-query budgets when source query planner compiled lane budgets", async () => {
     const collector = new MultiQueryCollector();
     const provider = new XTwitterSourceProvider(collector, {

@@ -1,9 +1,16 @@
 part of 'reader_summary_brief_surface.dart';
 
+enum ReaderSummaryTopicMapRenderer { graphView, flutterGraphView }
+
 class ReaderSummaryTopicMapPanel extends StatelessWidget {
-  const ReaderSummaryTopicMapPanel({super.key, required this.topicMap});
+  const ReaderSummaryTopicMapPanel({
+    super.key,
+    required this.topicMap,
+    this.renderer = ReaderSummaryTopicMapRenderer.graphView,
+  });
 
   final ReaderSummaryTopicMap topicMap;
+  final ReaderSummaryTopicMapRenderer renderer;
 
   @override
   Widget build(BuildContext context) {
@@ -33,19 +40,32 @@ class ReaderSummaryTopicMapPanel extends StatelessWidget {
             final width = constraints.maxWidth.isFinite
                 ? constraints.maxWidth
                 : 640.0;
-            final height = width < 420 ? 300.0 : 360.0;
+            final height = width < 420 ? 320.0 : 380.0;
 
             return Semantics(
               label: _topicMapSemanticLabel(topicMap),
-              child: SizedBox(
-                width: width,
-                height: height,
-                child: _TopicMapForceGraph(
-                  topicMap: topicMap,
-                  graphSize: Size(width, height),
-                  textColor: colorScheme.onSurface,
-                  mutedColor: muted,
-                  borderColor: borderColor,
+              child: ExcludeFocusTraversal(
+                child: SizedBox(
+                  width: width,
+                  height: height,
+                  child: switch (renderer) {
+                    ReaderSummaryTopicMapRenderer.graphView =>
+                      _TopicMapForceGraph(
+                        topicMap: topicMap,
+                        graphSize: Size(width, height),
+                        textColor: colorScheme.onSurface,
+                        mutedColor: muted,
+                        borderColor: borderColor,
+                      ),
+                    ReaderSummaryTopicMapRenderer.flutterGraphView =>
+                      _TopicMapFlutterGraphView(
+                        topicMap: topicMap,
+                        graphSize: Size(width, height),
+                        textColor: colorScheme.onSurface,
+                        mutedColor: muted,
+                        borderColor: borderColor,
+                      ),
+                  },
                 ),
               ),
             );
@@ -57,7 +77,10 @@ class ReaderSummaryTopicMapPanel extends StatelessWidget {
           runSpacing: AppSpacing.xs,
           children: [
             for (final group in _topicMapLegendGroups(topicMap).take(6))
-              _TopicGroupLegendChip(group: group),
+              _TopicGroupLegendChip(
+                group: group,
+                label: _topicMapLegendLabel(topicMap, group),
+              ),
           ],
         ),
       ],
@@ -66,9 +89,10 @@ class ReaderSummaryTopicMapPanel extends StatelessWidget {
 }
 
 class _TopicGroupLegendChip extends StatelessWidget {
-  const _TopicGroupLegendChip({required this.group});
+  const _TopicGroupLegendChip({required this.group, required this.label});
 
   final ReaderSummaryTopicMapGroup group;
+  final String label;
 
   @override
   Widget build(BuildContext context) {
@@ -95,7 +119,7 @@ class _TopicGroupLegendChip extends StatelessWidget {
             ),
             const SizedBox(width: AppSpacing.xs),
             Text(
-              group.label,
+              label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: textTheme.labelSmall?.copyWith(

@@ -77,6 +77,158 @@ describe("buildReaderSummaryTopicRecommendations", () => {
 
     expect(recommendations).toEqual([]);
   });
+
+  it("deduplicates title-like duration variants for the same topic", () => {
+    const recommendations = buildReaderSummaryTopicRecommendations({
+      artifacts: [
+        artifact("summary-1", {
+          topicLabel:
+            "Anthropic just showed a 24-minute workshop on AI security",
+          keywords: ["anthropic", "ai", "security"],
+          providerKeys: ["reddit", "rss"],
+          evidenceCount: 4,
+          citationIds: ["c1", "c2"],
+          clusterScore: 2.1,
+        }),
+        artifact("summary-2", {
+          topicLabel:
+            "Anthropic just showed a 27-minute workshop on AI security",
+          keywords: ["anthropic", "ai", "security"],
+          providerKeys: ["hacker-news", "rss"],
+          evidenceCount: 4,
+          citationIds: ["c3", "c4"],
+          clusterScore: 2.2,
+        }),
+        artifact("summary-3", {
+          topicLabel:
+            "Anthropic just showed a 24 minute workshop on AI security",
+          keywords: ["anthropic", "ai", "security"],
+          providerKeys: ["x-twitter", "reddit"],
+          evidenceCount: 4,
+          citationIds: ["c5", "c6"],
+          clusterScore: 2.3,
+        }),
+      ],
+      windowDays: 14,
+      limit: 5,
+    });
+
+    expect(recommendations).toHaveLength(1);
+    expect(recommendations[0]).toMatchObject({
+      recommendationId: "topic-rec:14:anthropic ai security",
+      topicLabel: "Anthropic AI security",
+      metrics: {
+        summaryCount: 3,
+        selectedEvidenceCount: 12,
+        citationCount: 6,
+      },
+    });
+  });
+
+  it("uses concise query labels when topic nodes contain headline-like labels", () => {
+    const recommendations = buildReaderSummaryTopicRecommendations({
+      artifacts: [
+        artifact("summary-productivity-1", {
+          topicLabel: "The productivity stack many professionals rely on every",
+          keywords: ["productivity", "stack", "professionals"],
+          providerKeys: ["reddit", "rss"],
+          evidenceCount: 4,
+          citationIds: ["c1", "c2"],
+          clusterScore: 2.2,
+        }),
+        artifact("summary-productivity-2", {
+          topicLabel: "The productivity stack many professionals rely on every",
+          keywords: ["productivity", "stack", "professionals"],
+          providerKeys: ["hacker-news", "rss"],
+          evidenceCount: 4,
+          citationIds: ["c3", "c4"],
+          clusterScore: 2.1,
+        }),
+        artifact("summary-productivity-3", {
+          topicLabel: "The productivity stack many professionals rely on every",
+          keywords: ["productivity", "stack", "professionals"],
+          providerKeys: ["x-twitter", "reddit"],
+          evidenceCount: 4,
+          citationIds: ["c5", "c6"],
+          clusterScore: 2.3,
+        }),
+      ],
+      windowDays: 14,
+      limit: 5,
+    });
+
+    expect(recommendations[0]).toMatchObject({
+      recommendationId: "topic-rec:14:productivity stack",
+      topicLabel: "Productivity stack",
+    });
+  });
+
+  it("replaces short stopword labels with keyword-derived topic labels", () => {
+    const recommendations = buildReaderSummaryTopicRecommendations({
+      artifacts: [
+        artifact("summary-github-1", {
+          topicLabel: "The",
+          keywords: ["github", "ecosystem"],
+          providerKeys: ["reddit", "rss"],
+          evidenceCount: 5,
+          citationIds: ["c1", "c2"],
+          clusterScore: 2.2,
+        }),
+        artifact("summary-github-2", {
+          topicLabel: "The",
+          keywords: ["github", "ecosystem"],
+          providerKeys: ["hacker-news", "rss"],
+          evidenceCount: 5,
+          citationIds: ["c3", "c4"],
+          clusterScore: 2.1,
+        }),
+        artifact("summary-anthropic-1", {
+          topicLabel: "Show",
+          keywords: ["anthropic", "ai", "security"],
+          providerKeys: ["x-twitter", "reddit"],
+          evidenceCount: 5,
+          citationIds: ["c5", "c6"],
+          clusterScore: 2.3,
+        }),
+      ],
+      windowDays: 14,
+      limit: 5,
+    });
+
+    expect(recommendations.map((item) => item.topicLabel)).toEqual(
+      expect.arrayContaining(["GitHub ecosystem", "Anthropic AI security"]),
+    );
+    expect(recommendations.map((item) => item.topicLabel)).not.toEqual(
+      expect.arrayContaining(["The", "Show"]),
+    );
+  });
+
+  it("drops short stopword labels when no concrete keywords exist", () => {
+    const recommendations = buildReaderSummaryTopicRecommendations({
+      artifacts: [
+        artifact("summary-noise-1", {
+          topicLabel: "The",
+          keywords: [],
+          providerKeys: ["reddit", "rss"],
+          evidenceCount: 5,
+          citationIds: ["c1", "c2"],
+          clusterScore: 2.2,
+        }),
+        artifact("summary-noise-2", {
+          topicLabel: "Show",
+          keywords: [],
+          providerKeys: ["hacker-news", "rss"],
+          evidenceCount: 5,
+          citationIds: ["c3", "c4"],
+          clusterScore: 2.1,
+        }),
+      ],
+      windowDays: 14,
+      limit: 5,
+    });
+
+    expect(recommendations).toEqual([]);
+  });
 });
 
 const tenant = tenantId("tenant-topic-rec");
@@ -91,6 +243,7 @@ const artifact = (
     readonly citationIds: readonly string[];
     readonly clusterScore: number;
     readonly duplicateCount?: number;
+    readonly keywords?: readonly string[];
   },
 ): ReaderSummaryArtifactProps => {
   const duplicateFeedItemIds = Array.from(
@@ -179,6 +332,7 @@ const content = (
     readonly providerKeys: readonly string[];
     readonly evidenceCount: number;
     readonly citationIds: readonly string[];
+    readonly keywords?: readonly string[];
   },
 ): ReaderSummaryArtifactProps["content"] => ({
   headline: `${params.topicLabel} summary`,
@@ -237,6 +391,7 @@ const topicMap = (
     readonly providerKeys: readonly string[];
     readonly evidenceCount: number;
     readonly citationIds: readonly string[];
+    readonly keywords?: readonly string[];
   },
 ): ReaderSummaryTopicMap => ({
   schemaVersion: "reader_summary.topic_map.v1",
@@ -258,7 +413,7 @@ const topicMap = (
       providerKeys: params.providerKeys,
       interestIds: ["interest-ai-security"],
       citationIds: params.citationIds,
-      keywords: ["security"],
+      keywords: params.keywords ?? ["security"],
       rationale: "Adjacent topic signal",
     },
   ],

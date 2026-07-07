@@ -26,7 +26,6 @@ class RedditCommentProviderMetricsDto {
     required this.score,
     required this.scoreConfidence,
     required this.sourceKey,
-    this.rank,
   });
 
   factory RedditCommentProviderMetricsDto.fromJson(Map<String, Object?> json) =>
@@ -36,7 +35,6 @@ class RedditCommentProviderMetricsDto {
   final num depth;
   final RedditCommentProviderMetricsDtoKindKind kind;
   final RedditCommentProviderMetricsDtoProviderKeyProviderKey providerKey;
-  final num? rank;
   final num replies;
   final RedditCommentProviderMetricsDtoRoleRole role;
   final num score;

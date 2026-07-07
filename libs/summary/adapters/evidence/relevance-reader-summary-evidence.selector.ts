@@ -55,8 +55,8 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
       interestId:
         params.scope.type === "interest" ? params.scope.interestId : undefined,
       userId: params.userId,
-      observedAfter: params.period.startedAt,
-      observedBefore: params.period.endedAt,
+      publishedAtOrAfter: params.period.startedAt,
+      publishedBefore: params.period.endedAt,
       limit: expandedCandidateLimit(params.maxItems),
     });
 
@@ -200,8 +200,8 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
             ? params.scope.interestId
             : undefined,
         providerKey,
-        observedAfter: params.period.startedAt,
-        observedBefore: params.period.endedAt,
+        publishedAtOrAfter: params.period.startedAt,
+        publishedBefore: params.period.endedAt,
         limit: target * 2,
       });
 
@@ -260,8 +260,8 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
             ? params.scope.interestId
             : undefined,
         providerKey,
-        observedAfter: params.period.startedAt,
-        observedBefore: params.period.endedAt,
+        publishedAtOrAfter: params.period.startedAt,
+        publishedBefore: params.period.endedAt,
         limit: target * 4,
       });
 

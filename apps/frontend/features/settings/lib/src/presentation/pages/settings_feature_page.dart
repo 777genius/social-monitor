@@ -8,18 +8,22 @@ import '../../domain/entities/diagnostic_snapshot.dart';
 import '../../domain/entities/workspace_settings.dart';
 import '../../domain/value_objects/digest_frequency.dart';
 import '../../domain/value_objects/telemetry_consent_state.dart';
+import '../components/summary_preference_panel.dart';
+import '../stores/summary_preference_store.dart';
 import '../stores/workspace_settings_store.dart';
 
 class SettingsFeaturePage extends StatefulWidget {
   const SettingsFeaturePage({
     super.key,
     required this.store,
+    required this.summaryPreferenceStore,
     this.autoload = true,
     this.themeMode,
     this.onThemeModeChanged,
   });
 
   final WorkspaceSettingsStore store;
+  final SummaryPreferenceStore summaryPreferenceStore;
   final bool autoload;
   final ThemeMode? themeMode;
   final ValueChanged<ThemeMode>? onThemeModeChanged;
@@ -34,6 +38,7 @@ class _SettingsFeaturePageState extends State<SettingsFeaturePage> {
     super.initState();
     if (widget.autoload) {
       unawaited(widget.store.load());
+      unawaited(widget.summaryPreferenceStore.load());
     }
   }
 
@@ -58,6 +63,7 @@ class _SettingsFeaturePageState extends State<SettingsFeaturePage> {
                   padding: const EdgeInsets.only(top: AppSpacing.md),
                   child: _SettingsBody(
                     store: widget.store,
+                    summaryPreferenceStore: widget.summaryPreferenceStore,
                     themeMode: widget.themeMode,
                     onThemeModeChanged: widget.onThemeModeChanged,
                   ),
@@ -74,11 +80,13 @@ class _SettingsFeaturePageState extends State<SettingsFeaturePage> {
 class _SettingsBody extends StatelessWidget {
   const _SettingsBody({
     required this.store,
+    required this.summaryPreferenceStore,
     required this.themeMode,
     required this.onThemeModeChanged,
   });
 
   final WorkspaceSettingsStore store;
+  final SummaryPreferenceStore summaryPreferenceStore;
   final ThemeMode? themeMode;
   final ValueChanged<ThemeMode>? onThemeModeChanged;
 
@@ -116,6 +124,7 @@ class _SettingsBody extends StatelessWidget {
         ),
       _ when readySettings != null => _ReadySettings(
         store: store,
+        summaryPreferenceStore: summaryPreferenceStore,
         settings: readySettings,
         themeMode: themeMode,
         onThemeModeChanged: onThemeModeChanged,
@@ -132,12 +141,14 @@ class _SettingsBody extends StatelessWidget {
 class _ReadySettings extends StatelessWidget {
   const _ReadySettings({
     required this.store,
+    required this.summaryPreferenceStore,
     required this.settings,
     required this.themeMode,
     required this.onThemeModeChanged,
   });
 
   final WorkspaceSettingsStore store;
+  final SummaryPreferenceStore summaryPreferenceStore;
   final WorkspaceSettings settings;
   final ThemeMode? themeMode;
   final ValueChanged<ThemeMode>? onThemeModeChanged;
@@ -168,6 +179,8 @@ class _ReadySettings extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.md),
         ],
+        SummaryPreferencePanel(store: summaryPreferenceStore),
+        const SizedBox(height: AppSpacing.md),
         const AppInlineProblem(
           title: 'Support-safe diagnostics',
           message:
@@ -223,6 +236,7 @@ class _ReadySettings extends StatelessWidget {
             AppCommandAction(
               label: 'Copy diagnostics',
               icon: Icons.copy,
+              controlKeyBase: 'settings-copy-diagnostics',
               onPressed: () => store.prepareDiagnosticsCopy(settings),
             ),
           ],

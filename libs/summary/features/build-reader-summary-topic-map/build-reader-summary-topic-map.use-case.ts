@@ -7,7 +7,7 @@ import {
 
 import {
   buildReaderSummaryTopicMap,
-  topicNodeId,
+  extractReaderSummaryTopicLabelCandidates,
   type ReaderSummaryTopicMap,
 } from "../../domain";
 import type {
@@ -89,6 +89,16 @@ export class BuildReaderSummaryTopicMapUseCase {
     >
   > {
     try {
+      const evidenceById = new Map(
+        command.selectedEvidence.map((item) => [item.feedItemId, item] as const),
+      );
+      const clusterById = new Map(
+        command.clusters.map((cluster) => [cluster.id, cluster] as const),
+      );
+      const storyByClusterId = new Map(
+        command.topStories.map((story) => [story.storyClusterId, story] as const),
+      );
+
       return ok(
         await this.labeler!.label({
           tenantId: command.tenantId,
@@ -101,19 +111,42 @@ export class BuildReaderSummaryTopicMapUseCase {
           topStories: command.topStories,
           candidates: deterministic.nodes.map((node) => {
             const storyClusterId = node.storyClusterIds[0] ?? node.id;
+            const cluster = clusterById.get(storyClusterId);
+            const evidence =
+              cluster === undefined
+                ? []
+                : [
+                    cluster.representativeFeedItemId,
+                    ...cluster.duplicateFeedItemIds,
+                  ]
+                    .map((id) => evidenceById.get(id))
+                    .filter(
+                      (
+                        item,
+                      ): item is (typeof command.selectedEvidence)[number] =>
+                        item !== undefined,
+                    );
 
             return {
               nodeId: node.id,
               storyClusterId,
               fallbackLabel: node.label,
-              summary: command.topStories.find(
-                (story) => topicNodeId(story.storyClusterId) === node.id,
-              )?.summary,
+              summary: storyByClusterId.get(storyClusterId)?.summary,
               score: node.popularityScore,
               evidenceCount: node.evidenceCount,
               providerKeys: node.providerKeys,
               interestIds: node.interestIds,
               keywords: node.keywords,
+              labelCandidates:
+                cluster === undefined
+                  ? []
+                  : extractReaderSummaryTopicLabelCandidates({
+                      story: storyByClusterId.get(storyClusterId),
+                      evidence,
+                      fallbackKeywords: node.keywords,
+                      fallbackLabel: node.label,
+                      cluster,
+                    }),
             } satisfies ReaderSummaryTopicLabelCandidate;
           }),
         }),

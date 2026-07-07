@@ -18,9 +18,8 @@ import {
 
 import type { CreateUserSubscriptionResult } from '../../features/create-user-subscription/create-user-subscription.result';
 import type { ActivateInterestSourceResult } from '../../features/activate-interest-source/activate-interest-source.result';
-import type { GetEffectiveUserSummaryPreferenceResult } from '../../features/get-effective-user-summary-preference/get-effective-user-summary-preference.result';
+import type { EffectiveUserSummaryPreferenceSource } from '../../features/get-effective-user-summary-preference/get-effective-user-summary-preference.result';
 import type { ListUserSubscriptionsResult } from '../../features/list-user-subscriptions/list-user-subscriptions.result';
-import type { UpsertUserSummaryPreferenceResult } from '../../features/upsert-user-summary-preference/upsert-user-summary-preference.result';
 
 export class UserSubscriptionScheduleRequestDto {
   @ApiProperty({ minLength: 1 })
@@ -178,8 +177,51 @@ export class UpsertInterestUserSummaryPreferenceRequestDto extends UserSummaryPr
   userId!: string;
 }
 
+export class UserSummaryPreferenceViewDto extends UserSummaryPreferenceRequestDto {
+  @ApiProperty({ minLength: 1 })
+  id!: string;
+
+  @ApiProperty({ minLength: 1 })
+  tenantId!: string;
+
+  @ApiProperty({ minLength: 1 })
+  workspaceId!: string;
+
+  @ApiProperty({ minLength: 1 })
+  userId!: string;
+
+  @ApiPropertyOptional({ minLength: 1 })
+  subscriptionId?: string;
+
+  @ApiPropertyOptional({ minLength: 1 })
+  interestId?: string;
+
+  @ApiProperty({ minLength: 1 })
+  rulesVersion!: string;
+
+  @ApiProperty({ format: 'date-time' })
+  createdAt!: string;
+
+  @ApiProperty({ format: 'date-time' })
+  updatedAt!: string;
+}
+
+export class GetEffectiveUserSummaryPreferenceResponseDto {
+  @ApiPropertyOptional({ type: () => UserSummaryPreferenceViewDto })
+  summaryPreference?: UserSummaryPreferenceViewDto;
+
+  @ApiProperty({ enum: ['subscription', 'interest', 'none'] })
+  source!: EffectiveUserSummaryPreferenceSource;
+}
+
+export class UpsertUserSummaryPreferenceResponseDto {
+  @ApiProperty({ type: () => UserSummaryPreferenceViewDto })
+  summaryPreference!: UserSummaryPreferenceViewDto;
+
+  @ApiProperty()
+  created!: boolean;
+}
+
 export type CreateUserSubscriptionResponseDto = CreateUserSubscriptionResult;
 export type ActivateInterestSourceResponseDto = ActivateInterestSourceResult;
-export type GetEffectiveUserSummaryPreferenceResponseDto = GetEffectiveUserSummaryPreferenceResult;
 export type ListUserSubscriptionsResponseDto = ListUserSubscriptionsResult;
-export type UpsertUserSummaryPreferenceResponseDto = UpsertUserSummaryPreferenceResult;

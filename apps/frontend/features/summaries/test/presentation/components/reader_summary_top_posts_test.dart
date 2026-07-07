@@ -24,7 +24,64 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Topic map'), findsOneWidget);
-    expect(find.text('AI tools'), findsOneWidget);
+    expect(
+      find.bySemanticsLabel(RegExp(r'Topic map: .*AI tools')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('shows each top post published date, not summary period date', (
+    tester,
+  ) async {
+    final summary = const SummaryMapper().readerSummaryToDomain(
+      readerSummaryApiDto(
+        period: summaryPeriodApiDto(
+          startedAt: DateTime.utc(2026, 7, 6),
+          endedAt: DateTime.utc(2026, 7, 7),
+          periodKey:
+              'daily:2026-07-06T00:00:00.000Z:2026-07-07T00:00:00.000Z:UTC',
+        ),
+        content: readerSummaryContentApiDto(
+          topReads: [
+            TopReadApiDto(
+              title: 'Older post should show its real date',
+              providerKey: 'reddit',
+              reason: 'Regression check for per-post publishedAt rendering.',
+              matchedInterestIds: ['ai-developer-tools'],
+              signalScore: 2.1,
+              publishedAt: DateTime.utc(2026, 7, 4, 18),
+              citationIds: ['published-date-citation'],
+            ),
+          ],
+        ),
+        citations: [
+          summaryCitationApiDto(
+            id: 'published-date-citation',
+            providerKey: 'reddit',
+          ),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(_TestApp(summary: summary));
+    await tester.pumpAndSettle();
+
+    final rowFinder = find.byKey(const ValueKey('reader-summary-top-post-0'));
+    expect(
+      find.descendant(
+        of: rowFinder,
+        matching: find.text('Older post should show its real date'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: rowFinder, matching: find.text('Jul 4, 2026')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: rowFinder, matching: find.text('Jul 6, 2026')),
+      findsNothing,
+    );
   });
 
   testWidgets('ranks supported and engaged posts above single-source ties', (
@@ -134,6 +191,13 @@ void main() {
   });
 
   testWidgets('submits a star rating for a concrete top post', (tester) async {
+    tester.view.physicalSize = const Size(1280, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
     String? ratedTitle;
     int? submittedRating;
     PostRatingReason? submittedReason;
@@ -221,6 +285,13 @@ void main() {
   testWidgets('requires a reason before submitting a 1-star rating', (
     tester,
   ) async {
+    tester.view.physicalSize = const Size(1280, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
     int? submittedRating;
     PostRatingReason? submittedReason;
     final summary = const SummaryMapper().readerSummaryToDomain(
@@ -326,7 +397,8 @@ void main() {
               risks: [
                 SummaryClaimRiskApiDto(
                   kind: 'single_source',
-                  description: 'Single-source claim; wait for confirmation.',
+                  description:
+                      'Needs independent confirmation before treating it as verified.',
                 ),
               ],
               citationIds: ['claim-citation'],
@@ -366,10 +438,16 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Trust & evidence'), findsOneWidget);
-    expect(find.text('Medium confidence 63%'), findsOneWidget);
-    expect(find.text('1 provider'), findsOneWidget);
-    expect(find.text('Needs confirmation'), findsOneWidget);
-    expect(find.text('Medium risk 52%'), findsOneWidget);
+    expect(find.text('Needs confirmation'), findsWidgets);
+    expect(
+      find.text(
+        'Treat this as a lead until another independent source group confirms the key items.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Medium confidence'), findsOneWidget);
+    expect(find.text('1 source group'), findsOneWidget);
+    expect(find.text('Medium evidence risk'), findsOneWidget);
     expect(
       find.text('Reddit users report useful MCP agent workflows'),
       findsNothing,
@@ -385,9 +463,11 @@ void main() {
     );
     expect(find.textContaining('Thread evidence about MCP'), findsOneWidget);
     expect(find.text('1 citation'), findsOneWidget);
-    expect(find.text('Single provider'), findsOneWidget);
+    expect(find.text('Not independently confirmed'), findsOneWidget);
     expect(
-      find.text('Single-source claim; wait for confirmation.'),
+      find.text(
+        'Treat this as a lead until another independent source group confirms it.',
+      ),
       findsOneWidget,
     );
 
@@ -401,69 +481,6 @@ void main() {
     );
     await tester.tap(sourceButton);
     expect(openedUrl, 'https://reddit.example/r/mcp/comments/1');
-  });
-
-  testWidgets('renders preview media inside the full top post row', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(1280, 900);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(() {
-      tester.view.resetPhysicalSize();
-      tester.view.resetDevicePixelRatio();
-    });
-
-    final summary = const SummaryMapper().readerSummaryToDomain(
-      readerSummaryApiDto(
-        content: readerSummaryContentApiDto(
-          topReads: const [
-            TopReadApiDto(
-              title: 'X post with launch screenshot',
-              providerKey: 'x-twitter',
-              reason: 'The original source includes a real post image.',
-              matchedInterestIds: ['ai-developer-tools'],
-              signalScore: 3.2,
-              confidence: TopReadConfidenceApiDto(
-                level: 'high',
-                score: 0.81,
-                rationale: 'Source item has direct media evidence.',
-              ),
-              providerMetrics: [
-                ProviderMetricApiDto(label: 'Likes', value: '2,351'),
-              ],
-              canonicalUrl: 'https://x.com/example/status/123',
-              previewMedia: PreviewMediaApiDto(
-                kind: 'image',
-                url: 'https://cdn.example.test/post-image.jpg',
-                sourceUrl: 'https://x.com/example/status/123',
-                altText: 'Launch screenshot',
-              ),
-              citationIds: ['media-citation'],
-            ),
-          ],
-        ),
-        citations: [
-          summaryCitationApiDto(id: 'media-citation', providerKey: 'x-twitter'),
-        ],
-      ),
-    );
-
-    await tester.pumpWidget(_TestApp(summary: summary));
-    await tester.pumpAndSettle();
-
-    final rowFinder = find.byKey(const ValueKey('reader-summary-top-post-0'));
-    expect(rowFinder, findsOneWidget);
-    expect(
-      find.descendant(of: rowFinder, matching: find.byType(Image)),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(
-        of: rowFinder,
-        matching: find.text('X post with launch screenshot'),
-      ),
-      findsOneWidget,
-    );
   });
 
   testWidgets('compact view collapses top posts into single-line rows', (

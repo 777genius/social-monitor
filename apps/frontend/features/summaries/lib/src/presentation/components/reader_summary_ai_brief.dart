@@ -98,8 +98,7 @@ class _MarkdownBriefText extends StatelessWidget {
     );
     final linkStyle = bodyStyle?.copyWith(
       color: theme.colorScheme.primary,
-      decoration: TextDecoration.underline,
-      decorationThickness: 1.5,
+      decoration: TextDecoration.none,
       fontWeight: FontWeight.w800,
     );
 
@@ -237,8 +236,7 @@ class _CitedBriefTextState extends State<_CitedBriefText> {
     );
     final linkStyle = bodyStyle?.copyWith(
       color: theme.colorScheme.primary,
-      decoration: TextDecoration.underline,
-      decorationThickness: 1.5,
+      decoration: TextDecoration.none,
       fontWeight: FontWeight.w800,
     );
     final citations = _citationsForIds(
@@ -251,7 +249,7 @@ class _CitedBriefTextState extends State<_CitedBriefText> {
         style: bodyStyle,
         children: [
           for (var index = 0; index < widget.spans.length; index += 1)
-            _textSpanFor(widget.spans[index], index, linkStyle),
+            ..._inlineSpansFor(widget.spans[index], index, linkStyle),
           if (citations.isNotEmpty) const TextSpan(text: ' '),
           for (final citation in citations)
             WidgetSpan(
@@ -274,17 +272,90 @@ class _CitedBriefTextState extends State<_CitedBriefText> {
     );
   }
 
-  TextSpan _textSpanFor(_BriefText span, int index, TextStyle? linkStyle) {
+  List<InlineSpan> _inlineSpansFor(
+    _BriefText span,
+    int index,
+    TextStyle? linkStyle,
+  ) {
     final url = span.url;
     if (url == null || url.trim().isEmpty) {
-      return TextSpan(text: span.text);
+      return [TextSpan(text: span.text)];
     }
-    return TextSpan(
-      text: span.text,
-      style: linkStyle,
-      recognizer: _recognizers[index],
+    return [
+      WidgetSpan(
+        alignment: PlaceholderAlignment.middle,
+        child: Padding(
+          padding: const EdgeInsets.only(right: AppSpacing.xs),
+          child: _BriefLinkFavicon(url: url),
+        ),
+      ),
+      TextSpan(
+        text: span.text,
+        style: linkStyle,
+        recognizer: _recognizers[index],
+      ),
+    ];
+  }
+}
+
+class _BriefLinkFavicon extends StatelessWidget {
+  const _BriefLinkFavicon({required this.url});
+
+  final String url;
+
+  @override
+  Widget build(BuildContext context) {
+    final faviconUrl = _faviconUrlFor(url);
+    final fallbackProviderKey = _providerKeyForUrl(url);
+    final fallback = fallbackProviderKey == null
+        ? Icon(
+            Icons.public_rounded,
+            size: 14,
+            color: Theme.of(context).colorScheme.primary,
+          )
+        : ReaderSummaryProviderLogo(providerKey: fallbackProviderKey, size: 14);
+
+    if (faviconUrl == null) {
+      return SizedBox.square(dimension: 14, child: Center(child: fallback));
+    }
+
+    return SizedBox.square(
+      key: ValueKey('reader-summary-brief-link-favicon-$faviconUrl'),
+      dimension: 14,
+      child: Image.network(
+        faviconUrl,
+        fit: BoxFit.contain,
+        filterQuality: FilterQuality.low,
+        errorBuilder: (context, error, stackTrace) => Center(child: fallback),
+      ),
     );
   }
+}
+
+String? _faviconUrlFor(String value) {
+  final uri = Uri.tryParse(value.trim());
+  if (uri == null || uri.host.trim().isEmpty) {
+    return null;
+  }
+  final scheme = uri.scheme == 'http' ? 'http' : 'https';
+  return '$scheme://${uri.host}/favicon.ico';
+}
+
+String? _providerKeyForUrl(String value) {
+  final host = Uri.tryParse(value.trim())?.host.toLowerCase() ?? '';
+  if (host.contains('reddit.com')) {
+    return 'reddit';
+  }
+  if (host == 'x.com' || host.endsWith('.x.com') || host.contains('twitter.')) {
+    return 'x-twitter';
+  }
+  if (host.contains('github.com')) {
+    return 'github';
+  }
+  if (host.contains('ycombinator.com')) {
+    return 'hacker-news';
+  }
+  return null;
 }
 
 final class _BriefText {

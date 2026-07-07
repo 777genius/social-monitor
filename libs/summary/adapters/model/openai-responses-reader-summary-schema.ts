@@ -24,7 +24,7 @@ export const openAiReaderSummaryJsonSchema = {
   ],
   properties: {
     headline: stringSchema(160),
-    executiveSummary: stringSchema(1_200),
+    executiveSummary: stringSchema(1_800),
     content: { $ref: "#/$defs/content" },
     topStories: arraySchema({ $ref: "#/$defs/topStory" }, 10),
     interestHighlights: {

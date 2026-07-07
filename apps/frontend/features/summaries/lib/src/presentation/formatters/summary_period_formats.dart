@@ -84,6 +84,11 @@ String summaryPeriodDayLabel(SummaryPeriod period) {
   return '${_monthShortNames[day.month - 1]} ${day.day}, ${day.year}';
 }
 
+String summaryPublishedDayLabel(DateTime publishedAt) {
+  final utc = publishedAt.toUtc();
+  return '${_monthShortNames[utc.month - 1]} ${utc.day}, ${utc.year}';
+}
+
 /// Collection window label, e.g. `Jun 21, 2026 00:00 - Jun 22, 2026 00:00`.
 String summaryPeriodCollectionWindowLabel(SummaryPeriod period) {
   return '${_utcStampLabel(period.startedAt)} - '

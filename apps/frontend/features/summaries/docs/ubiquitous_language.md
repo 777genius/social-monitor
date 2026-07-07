@@ -25,9 +25,10 @@ language.
 - Provider Metric: readable native provider metric such as Reddit score, HN
   points, GitHub stars, X likes, comments or upvote ratio.
 - Source Mix: provider coverage summary for the workspace summary.
-- Trust & evidence: compact reader-facing summary of confidence, provider
-  diversity, citations and reliability risks for a Summary. It opens the cited
-  evidence details but must not present itself as a generic truth oracle.
+- Trust & evidence: compact reader-facing summary of confidence, monitored
+  source-group diversity, citations and reliability risks for a Summary. It
+  opens the cited evidence details, hides raw internal scores from users and
+  must not present itself as a generic truth oracle.
 - Reader Action: explicit action proposed to the user, such as reading a source,
   watching a repository or marking a top read relevant/not relevant.
 - Digest: scheduled collection of summaries for a workspace or user.

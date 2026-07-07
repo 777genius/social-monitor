@@ -16,6 +16,7 @@ final class TopRead {
     required this.whyImportant,
     required this.whyNow,
     required this.citationIds,
+    this.publishedAt,
     this.canonicalUrl,
     this.previewMedia,
   });
@@ -32,6 +33,7 @@ final class TopRead {
   final List<String> whyImportant;
   final String whyNow;
   final List<String> citationIds;
+  final DateTime? publishedAt;
   final String? canonicalUrl;
   final PreviewMedia? previewMedia;
 }

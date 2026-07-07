@@ -141,9 +141,13 @@ export const resolveAgentRuntimeReaderSummaryTopicLabelerOptions = (
 
 const topicLabelerInstructions = [
   "You label and group Social Monitor summary topic nodes.",
-  "Return JSON only. Do not invent node ids. Use concise human topic labels, not raw post titles.",
+  "Return JSON only. Do not invent node ids.",
+  "Choose each node label from labelCandidates[].label. You may lightly compress or improve a candidate only when every significant word is grounded in labelCandidates or evidenceSamples.",
   "Prefer concrete product, person, project, company, event, or technology names when the evidence supports them.",
+  "Do not use generic one-word labels such as The, Why, What, How, Ask, Show, People, Users, Posts, News, Updates, Discussion, or Signal.",
   "Avoid internal UI/meta labels such as Reader Summary, Topic Labels, Topic Map, Top Reads, RSS Quality, Source Health, and provider-only labels such as Hacker News, Reddit, RSS, or X unless the evidence is explicitly about that source itself.",
+  "Use the same topicId for candidates that describe the same concrete story, event, release, project, product, company, or person so they become one bubble.",
+  "Use groupId only for a broader semantic family/color, not as the unique bubble id.",
   "Group semantically related nodes together so nodes in the same group can share a color.",
   "If uncertain, keep the fallback label and make a conservative group.",
 ].join("\n");
@@ -166,7 +170,26 @@ const buildTopicLabelPrompt = (
         maxLabelWords: 4,
         maxGroups: 8,
         preserveNodeIds: true,
-        avoidGenericLabels: ["Updates", "Discussion", "News", "Signal"],
+        sameTopicIdMergesBubble: true,
+        topicIdFormat: "topic:<stable-short-slug>",
+        groupIdFormat: "group:<semantic-family-slug>",
+        labelSourcePolicy:
+          "Use labelCandidates first; improved labels must be evidence-grounded.",
+        avoidGenericLabels: [
+          "The",
+          "Why",
+          "What",
+          "How",
+          "Ask",
+          "Show",
+          "People",
+          "Users",
+          "Posts",
+          "Updates",
+          "Discussion",
+          "News",
+          "Signal",
+        ],
       },
       period: {
         cadence: input.period.cadence,
@@ -187,6 +210,13 @@ const buildTopicLabelPrompt = (
           providerKeys: candidate.providerKeys,
           interestIds: candidate.interestIds,
           keywords: candidate.keywords,
+          labelCandidates: candidate.labelCandidates.map((labelCandidate) => ({
+            label: labelCandidate.label,
+            source: labelCandidate.source,
+            score: labelCandidate.score,
+            evidenceFeedItemIds: labelCandidate.evidenceFeedItemIds,
+            rationale: labelCandidate.rationale,
+          })),
           evidenceSamples: topicEvidenceSamples({
             candidate,
             clusterById,
@@ -244,6 +274,7 @@ const topicLabelerJsonSchema = {
         additionalProperties: false,
         properties: {
           nodeId: { type: "string" },
+          topicId: { type: "string" },
           label: { type: "string" },
           groupId: { type: "string" },
           keywords: { type: "array", items: { type: "string" } },
@@ -279,6 +310,7 @@ const normalizeTopicLabelPlan = (
   const nodeLabels = readRecordArray(raw.nodeLabels)
     .map((label) => ({
       nodeId: stringValue(label.nodeId),
+      topicId: optionalString(label.topicId),
       label: optionalString(label.label),
       groupId: optionalString(label.groupId),
       keywords: readStringArray(label.keywords).slice(0, 8),

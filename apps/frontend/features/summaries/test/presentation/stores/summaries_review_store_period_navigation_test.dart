@@ -42,9 +42,7 @@ void main() {
   });
 
   test('navigates only through available workspace summary periods', () async {
-    final currentWeeklyPeriod = SummaryPeriodPreset.weekly.resolve(
-      now: DateTime.utc(2026, 6, 30, 12),
-    );
+    final currentWeeklyPeriod = SummaryPeriodPreset.weekly.resolve();
     final previousWeeklyPeriod = SummaryPeriod(
       cadence: SummaryPeriodCadence.weekly,
       startedAt: currentWeeklyPeriod.startedAt.subtract(

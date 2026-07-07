@@ -282,7 +282,7 @@ export class ExecuteReaderSummaryJobUseCase {
             workspaceId: snapshot.workspaceId,
             userId: snapshot.userId,
             subscriptionId: snapshot.subscriptionId,
-            interestId: readerSummaryPreferenceInterestId(snapshot, evidence),
+            interestId: readerSummaryPreferenceInterestId(snapshot),
           });
     const context = await this.safeBuildContext(snapshot, evidence);
     const basePolicy =
@@ -466,8 +466,7 @@ const unique = <T>(values: readonly T[]): readonly T[] => [...new Set(values)];
 
 const readerSummaryPreferenceInterestId = (
   snapshot: ReturnType<ReaderSummaryJob["toSnapshot"]>,
-  evidence: SummaryEvidenceSelection,
 ): string =>
   snapshot.scope.type === "interest"
     ? snapshot.scope.interestId
-    : (evidence.selectedEvidence[0]?.interestId ?? "workspace");
+    : "00000000-0000-7000-8000-000000000903";

@@ -1,13 +1,24 @@
 part of 'reader_summary_brief_surface.dart';
 
 const _topicMapNamedColorLimit = 8;
+const _topicMapMaxColoredGroups = 5;
+const _topicMapGroupedColorKeys = [
+  'orange',
+  'green',
+  'violet',
+  'amber',
+  'teal',
+  'pink',
+  'blue',
+  'slate',
+];
 
 List<ReaderSummaryTopicMapGroup> _visibleGroups(
   ReaderSummaryTopicMap topicMap,
   List<ReaderSummaryTopicMapNode> visibleNodes,
 ) {
   if (topicMap.groups.isNotEmpty) {
-    return _groupsWithVisibleColorKeys(topicMap.groups);
+    return _groupsWithVisibleColorKeys(topicMap.groups, visibleNodes);
   }
 
   return _groupsWithVisibleColorKeys([
@@ -18,27 +29,99 @@ List<ReaderSummaryTopicMapGroup> _visibleGroups(
       nodeIds: visibleNodes.map((node) => node.id).toList(),
       confidence: topicMap.confidence,
     ),
-  ]);
+  ], visibleNodes);
 }
 
 List<ReaderSummaryTopicMapGroup> _topicMapLegendGroups(
   ReaderSummaryTopicMap topicMap,
-) => _visibleGroups(topicMap, topicMap.nodes);
+) => _visibleGroups(
+  topicMap,
+  topicMap.nodes.take(_topicMapDesktopNodeLimit).toList(growable: false),
+);
 
 List<ReaderSummaryTopicMapGroup> _groupsWithVisibleColorKeys(
   List<ReaderSummaryTopicMapGroup> groups,
+  List<ReaderSummaryTopicMapNode> visibleNodes,
 ) {
-  if (groups.length <= _topicMapNamedColorLimit) {
-    return groups;
+  final visibleNodeIds = visibleNodes.map((node) => node.id).toSet();
+  final visibleCountByGroupId = <String, int>{};
+  final visibleNodesByGroupId = <String, List<ReaderSummaryTopicMapNode>>{};
+  for (final node in visibleNodes) {
+    visibleCountByGroupId.update(
+      node.groupId,
+      (value) => value + 1,
+      ifAbsent: () => 1,
+    );
+    visibleNodesByGroupId.putIfAbsent(node.groupId, () => []).add(node);
   }
 
-  return [
-    for (var index = 0; index < groups.length; index++)
+  final rankedGroups = groups
+      .where(
+        (group) =>
+            (visibleCountByGroupId[group.id] ?? 0) > 0 &&
+            !_isWeakTopicMapGroup(group),
+      )
+      .toList(growable: false);
+  rankedGroups.sort((left, right) {
+    final byCount = (visibleCountByGroupId[right.id] ?? 0).compareTo(
+      visibleCountByGroupId[left.id] ?? 0,
+    );
+    if (byCount != 0) {
+      return byCount;
+    }
+
+    return _topicGroupVisualScore(
+      visibleNodesByGroupId[right.id] ?? const [],
+    ).compareTo(
+      _topicGroupVisualScore(visibleNodesByGroupId[left.id] ?? const []),
+    );
+  });
+
+  final grouped = rankedGroups
+      .take(_topicMapMaxColoredGroups)
+      .toList(growable: false);
+  final groupedIds = grouped.map((group) => group.id).toSet();
+  final ungroupedNodeIds = [
+    for (final node in visibleNodes)
+      if (!groupedIds.contains(node.groupId)) node.id,
+  ];
+  final result = [
+    for (var index = 0; index < grouped.length; index++)
       _topicGroupWithColorKey(
-        groups[index],
-        '$_topicGeneratedColorPrefix$index:${groups[index].id}',
+        grouped[index],
+        grouped.length <= _topicMapNamedColorLimit
+            ? grouped[index].colorKey
+            : _topicMapGroupedColorKeys[index %
+                  _topicMapGroupedColorKeys.length],
       ),
   ];
+
+  if (ungroupedNodeIds.isNotEmpty) {
+    result.add(
+      ReaderSummaryTopicMapGroup(
+        id: _topicMapNeutralGroupId,
+        label: 'ungrouped',
+        colorKey: _topicMapNeutralColorKey,
+        nodeIds: ungroupedNodeIds
+            .where(visibleNodeIds.contains)
+            .toList(growable: false),
+        confidence: const ReaderSummaryTopicMapConfidence(
+          level: 'low',
+          score: 0,
+          rationale: 'Single-node topics are shown as neutral.',
+        ),
+      ),
+    );
+  }
+
+  return result.isEmpty ? groups.take(1).toList(growable: false) : result;
+}
+
+double _topicGroupVisualScore(List<ReaderSummaryTopicMapNode> nodes) {
+  return nodes.fold<double>(
+    0,
+    (sum, node) => sum + node.popularityScore + node.evidenceCount * 4,
+  );
 }
 
 ReaderSummaryTopicMapGroup _topicGroupWithColorKey(
@@ -59,7 +142,9 @@ Map<String, List<ReaderSummaryTopicMapNode>> _nodesByGroup(
   List<ReaderSummaryTopicMapGroup> groups,
 ) {
   final groupIds = groups.map((group) => group.id).toSet();
-  final fallbackGroupId = groups.first.id;
+  final fallbackGroupId = groupIds.contains(_topicMapNeutralGroupId)
+      ? _topicMapNeutralGroupId
+      : groups.first.id;
   final byGroup = <String, List<ReaderSummaryTopicMapNode>>{};
 
   for (final node in nodes) {
@@ -84,8 +169,8 @@ List<Offset> _groupSeedCenters(int count, Size graphSize) {
   }
 
   final center = Offset(graphSize.width * 0.5, graphSize.height * 0.53);
-  final xRadius = graphSize.width * 0.40;
-  final yRadius = graphSize.height * 0.35;
+  final xRadius = graphSize.width * 0.34;
+  final yRadius = graphSize.height * 0.30;
 
   return List.generate(count, (index) {
     final angle = -math.pi / 2 + (math.pi * 2 * index / count);
@@ -105,7 +190,7 @@ Offset _groupNodeSeedOffset(int index, int count) {
   final ring = 1 + ((index - 1) ~/ 7);
   final ringIndex = (index - 1) % 7;
   final angle = -math.pi / 2 + (math.pi * 2 * ringIndex / math.min(7, count));
-  final distance = 48.0 + ring * 24.0 + (index.isEven ? 8 : 0);
+  final distance = 38.0 + ring * 18.0 + (index.isEven ? 5 : 0);
 
   return Offset(math.cos(angle) * distance, math.sin(angle) * distance);
 }
@@ -191,7 +276,7 @@ List<_TopicGraphBubble> _fitBubbleLayout(
         targetWidth / math.max(1.0, bounds.width),
         targetHeight / math.max(1.0, bounds.height),
       )
-      .clamp(1.0, 1.18)
+      .clamp(1.0, 1.30)
       .toDouble();
 
   if (scale <= 1.02) {
@@ -249,7 +334,7 @@ List<_TopicGraphBubble> _resolveBubbleCollisions(
         final delta = centers[right] - centers[left];
         final distance = math.max(1.0, delta.distance);
         final overlap =
-            bubbles[left].radius + bubbles[right].radius + 3 - distance;
+            bubbles[left].radius + bubbles[right].radius + 0.8 - distance;
         if (overlap <= 0) {
           continue;
         }

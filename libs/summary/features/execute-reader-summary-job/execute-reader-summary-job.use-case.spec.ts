@@ -15,6 +15,7 @@ import {
   type ReaderSummaryPolicy,
   type SummaryEvidenceSelection,
   interestReaderSummaryScope,
+  workspaceReaderSummaryScope,
 } from "../../domain";
 import type { BuildReaderSummaryTopicMapUseCase } from "../build-reader-summary-topic-map/build-reader-summary-topic-map.use-case";
 import type {
@@ -134,9 +135,11 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
       {
         async findEffectivePreference() {
           return {
+            format: "risk_brief",
             tone: "concise",
             maxKeyPoints: 1,
             includeRisks: false,
+            includeSourceHighlights: false,
             customInstructions: "Focus on runtime regressions.",
             rulesVersion: "summary.rules.user-preference.v1",
           };
@@ -194,6 +197,19 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
         maxOutputTokens: 16_000,
       }),
     );
+    expect(model.observedGenerationPolicies()).toContainEqual({
+      language: "auto",
+      format: "risk_brief",
+      tone: "concise",
+      maxStories: 1,
+      includeRisks: false,
+      includeInterestHighlights: false,
+      includeRepeatedSignals: true,
+      dedupeStrategy: "canonical_url_then_title",
+      customInstructions: "Focus on runtime regressions.",
+      rulesVersion:
+        "reader_summary.rules.policy.v1+summary.rules.user-preference.v1",
+    });
     expect(events.all()).toContainEqual(
       expect.objectContaining({
         eventType: "reader_summary.ready",
@@ -205,6 +221,67 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
           subscriptionId: "subscription-1",
         }),
       }),
+    );
+  });
+
+  it("uses stable workspace preference scope for workspace reader summaries", async () => {
+    const tenant = tenantId("tenant-reader-summary-use-case");
+    const workspace = workspaceId("workspace-reader-summary-use-case");
+    const jobs = new FakeReaderSummaryJobRepository();
+    const artifacts = new FakeReaderSummaryArtifactRepository();
+    let observedPreferenceQuery:
+      | Parameters<UserSummaryPreferenceReaderPort["findEffectivePreference"]>[0]
+      | undefined;
+
+    await jobs.save(
+      ReaderSummaryJob.request({
+        id: "reader-job-workspace",
+        tenantId: tenant,
+        workspaceId: workspace,
+        scope: workspaceReaderSummaryScope(),
+        period: readerSummaryPeriod,
+        userId: "user-1",
+        idempotencyKey: "reader-job-key-workspace",
+        requestedAt: new Date("2026-06-26T08:00:00.000Z"),
+      }),
+    );
+
+    const result = await new ExecuteReaderSummaryJobUseCase(
+      jobs,
+      artifacts,
+      new EmptyReaderSummaryPolicyRepository(),
+      {
+        async select() {
+          return makeReaderEvidenceSelection();
+        },
+      },
+      new CapturingReaderSummaryModel(),
+      new CapturingSummaryEventPublisher(),
+      new StaticIdGenerator(),
+      new FixedClock(new Date("2026-06-26T08:05:00.000Z")),
+      undefined,
+      {
+        async findEffectivePreference(query) {
+          observedPreferenceQuery = query;
+          return {
+            customInstructions: "Use the saved workspace summary style.",
+            rulesVersion: "summary.rules.user-preference.v1",
+          };
+        },
+      } satisfies UserSummaryPreferenceReaderPort,
+    ).execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      readerSummaryJobId: "reader-job-workspace",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(observedPreferenceQuery).toMatchObject({
+      userId: "user-1",
+      interestId: "00000000-0000-7000-8000-000000000903",
+    });
+    expect(artifacts.all()[0]?.toSnapshot().executiveSummary).toContain(
+      "Use the saved workspace summary style.",
     );
   });
 
@@ -418,6 +495,9 @@ class CapturingSummaryEventPublisher implements SummaryEventPublisherPort {
 class CapturingReaderSummaryModel implements ReaderSummaryModelPort {
   private readonly policies: Parameters<ReaderSummaryModelPort["route"]>[1][] =
     [];
+  private readonly generationPolicies: Parameters<
+    ReaderSummaryModelPort["generate"]
+  >[0]["policy"][] = [];
 
   route(
     input: Parameters<ReaderSummaryModelPort["route"]>[0],
@@ -452,6 +532,7 @@ class CapturingReaderSummaryModel implements ReaderSummaryModelPort {
     input: Parameters<ReaderSummaryModelPort["generate"]>[0],
     selectedRoute: ReaderSummaryModelRoute,
   ): Promise<ProviderReaderSummaryAttempt> {
+    this.generationPolicies.push(input.policy);
     const firstItem = input.evidence.selectedEvidence[0];
     const firstCluster = input.evidence.clusters[0];
     if (firstItem === undefined || firstCluster === undefined) {
@@ -530,6 +611,12 @@ class CapturingReaderSummaryModel implements ReaderSummaryModelPort {
     ReaderSummaryModelPort["route"]
   >[1][] {
     return this.policies;
+  }
+
+  observedGenerationPolicies(): readonly Parameters<
+    ReaderSummaryModelPort["generate"]
+  >[0]["policy"][] {
+    return this.generationPolicies;
   }
 }
 

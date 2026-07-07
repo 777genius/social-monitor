@@ -21,9 +21,13 @@ import { InMemoryReaderSummaryArtifactRepository } from "../libs/summary/adapter
 import { InMemoryReaderSummaryJobRepository } from "../libs/summary/adapters/persistence/in-memory-reader-summary-job.repository";
 import { InMemoryReaderSummaryPolicyRepository } from "../libs/summary/adapters/persistence/in-memory-reader-summary-policy.repository";
 import {
+  evaluateTopicLabelQuality,
+  buildReaderSummaryTopicMap,
   buildReaderSummaryPeriod,
   ReaderSummaryPolicy,
+  topicNodeId,
   type ReaderSummaryTopicMap,
+  type SummaryEvidenceSelection,
 } from "../libs/summary/domain";
 import { ExecuteReaderSummaryJobUseCase } from "../libs/summary/features/execute-reader-summary-job/execute-reader-summary-job.use-case";
 import { RequestReaderSummaryUseCase } from "../libs/summary/features/request-reader-summary/request-reader-summary.use-case";
@@ -137,6 +141,15 @@ type Report = {
       readonly confidenceScore: number;
     }[];
   };
+  readonly weakLlmFallbackProbe: {
+    readonly generatedBy: ReaderSummaryTopicMap["generatedBy"];
+    readonly nodeCount: number;
+    readonly groupCount: number;
+    readonly weakInputNodeLabelCount: number;
+    readonly acceptedNodeLabelCount: number;
+    readonly acceptedGroupLabelCount: number;
+    readonly rawPostTextPersistedInReport: false;
+  };
   readonly visualFixture: SanitizedTopicMapFixture;
   readonly qualityGates: Record<string, boolean>;
   readonly blockingPassed: boolean;
@@ -152,6 +165,7 @@ const maxEvidenceItems = 40;
 const maxStories = 10;
 const localDatabaseUrl = yesterdaySocialQualityDatabaseUrl();
 const clock = new FixedClock(new Date(`${collectionDate}T23:59:59.000Z`));
+const weakLlmProbeLabels = new Set(["ask", "show", "the", "why"]);
 
 void main();
 
@@ -297,6 +311,13 @@ async function buildReport(): Promise<Report> {
       clock,
       new StoryRankingMetricsRecorder(new InMemoryMetricsRecorder()),
     );
+    const replayEvidence = await evidenceSelector.select({
+      tenantId: scope.tenantId,
+      workspaceId: scope.workspaceId,
+      scope: { type: "workspace" },
+      period,
+      maxItems: maxEvidenceItems,
+    });
     const execution = await new ExecuteReaderSummaryJobUseCase(
       jobs,
       artifacts,
@@ -354,6 +375,19 @@ async function buildReport(): Promise<Report> {
     const nodeIds = new Set(topicMap.nodes.map((node) => node.id));
     const groupIds = new Set(topicMap.groups.map((group) => group.id));
     const visualFixture = sanitizedFixture(topicMap);
+    const providerLabels = sourceData.providerCounts.map(
+      (provider) => provider.providerKey,
+    );
+    const weakLlmFallbackProbe = buildWeakLlmFallbackProbe({
+      evidence: replayEvidence,
+      providerLabels,
+    });
+    const nodeLabelQualities = topicMap.nodes.map((node) =>
+      evaluateTopicLabelQuality(node.label, { providerLabels }),
+    );
+    const groupLabelQualities = topicMap.groups.map((group) =>
+      evaluateTopicLabelQuality(group.label, { providerLabels }),
+    );
     const reportWithoutSecretGate = {
       schemaVersion: 1,
       artifactFormat: "reader-summary-topic-map-real-data-v1",
@@ -403,6 +437,15 @@ async function buildReport(): Promise<Report> {
           colorKey: group.colorKey,
           confidenceScore: group.confidence.score,
         })),
+      },
+      weakLlmFallbackProbe: {
+        generatedBy: weakLlmFallbackProbe.topicMap.generatedBy,
+        nodeCount: weakLlmFallbackProbe.topicMap.nodes.length,
+        groupCount: weakLlmFallbackProbe.topicMap.groups.length,
+        weakInputNodeLabelCount: weakLlmFallbackProbe.weakInputNodeLabelCount,
+        acceptedNodeLabelCount: weakLlmFallbackProbe.acceptedNodeLabelCount,
+        acceptedGroupLabelCount: weakLlmFallbackProbe.acceptedGroupLabelCount,
+        rawPostTextPersistedInReport: false,
       },
       visualFixture,
       qualityGates: {},
@@ -457,6 +500,27 @@ async function buildReport(): Promise<Report> {
         topicMap.confidence.level === "high",
       sanitizedVisualFixtureAvailable:
         visualFixture.nodes.length > 0 && visualFixture.groups.length > 0,
+      topicNodeLabelsAreConcrete: nodeLabelQualities.every(
+        (quality) => quality.accepted,
+      ),
+      topicGroupLabelsAreConcrete: groupLabelQualities.every(
+        (quality) => quality.accepted,
+      ),
+      weakLlmFallbackProbeHasNodes:
+        weakLlmFallbackProbe.topicMap.nodes.length > 0,
+      weakLlmFallbackRejectsGenericNodeLabels:
+        weakLlmFallbackProbe.acceptedNodeLabelCount ===
+        weakLlmFallbackProbe.topicMap.nodes.length,
+      weakLlmFallbackRejectsGenericGroupLabels:
+        weakLlmFallbackProbe.acceptedGroupLabelCount ===
+        weakLlmFallbackProbe.topicMap.groups.length,
+      weakLlmFallbackDoesNotKeepWeakInputLabels:
+        weakLlmFallbackProbe.topicMap.nodes.every(
+          (node) => !weakLlmProbeLabels.has(normalizedProbeLabel(node.label)),
+        ) &&
+        weakLlmFallbackProbe.topicMap.groups.every(
+          (group) => !weakLlmProbeLabels.has(normalizedProbeLabel(group.label)),
+        ),
       noRawSecretFragments: noRawSecretFragments(reportWithoutSecretGate),
     };
 
@@ -472,6 +536,72 @@ async function buildReport(): Promise<Report> {
   } finally {
     await connection.close().catch(() => undefined);
   }
+}
+
+function buildWeakLlmFallbackProbe(params: {
+  readonly evidence: SummaryEvidenceSelection;
+  readonly providerLabels: readonly string[];
+}): {
+  readonly topicMap: ReaderSummaryTopicMap;
+  readonly weakInputNodeLabelCount: number;
+  readonly acceptedNodeLabelCount: number;
+  readonly acceptedGroupLabelCount: number;
+} {
+  const citationMap = params.evidence.selectedEvidence.map((item, index) => ({
+    citationId: `weak-llm-probe-c${index + 1}`,
+    feedItemId: item.feedItemId,
+    sourceItemId: item.sourceItemId,
+    providerKey: item.providerKey,
+    field: "title" as const,
+    canonicalUrl: item.canonicalUrl,
+  }));
+  const weakInputNodeLabels = params.evidence.clusters.map(
+    (cluster, index) => ({
+      nodeId: topicNodeId(cluster.id),
+      topicId: `topic:${weakLlmProbeLabelAt(index)}`,
+      label: weakLlmProbeLabelAt(index),
+      groupId: "group:show",
+      keywords: [weakLlmProbeLabelAt(index), "the", "show"],
+    }),
+  );
+  const topicMap = buildReaderSummaryTopicMap({
+    clusters: params.evidence.clusters,
+    selectedEvidence: params.evidence.selectedEvidence,
+    topStories: [],
+    citationMap,
+    labelPlan: {
+      nodeLabels: weakInputNodeLabels,
+      groups: [{ id: "group:show", label: "Show" }],
+    },
+    generatedBy: "agent-runtime",
+  });
+
+  return {
+    topicMap,
+    weakInputNodeLabelCount: weakInputNodeLabels.length,
+    acceptedNodeLabelCount: topicMap.nodes.filter(
+      (node) =>
+        evaluateTopicLabelQuality(node.label, {
+          providerLabels: params.providerLabels,
+        }).accepted,
+    ).length,
+    acceptedGroupLabelCount: topicMap.groups.filter(
+      (group) =>
+        evaluateTopicLabelQuality(group.label, {
+          providerLabels: params.providerLabels,
+        }).accepted,
+    ).length,
+  };
+}
+
+function weakLlmProbeLabelAt(index: number): string {
+  const labels = ["Why", "The", "Show", "Ask"] as const;
+
+  return labels[index % labels.length] ?? "Why";
+}
+
+function normalizedProbeLabel(value: string): string {
+  return value.toLocaleLowerCase("en-US").replace(/[^a-z0-9]+/g, " ").trim();
 }
 
 async function readSourceData(collectionDate: string): Promise<{

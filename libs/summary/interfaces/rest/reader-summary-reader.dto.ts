@@ -80,6 +80,9 @@ export class ReaderSummaryReaderItemDto {
   @ApiProperty()
   declare readonly whyNow: string;
 
+  @ApiPropertyOptional({ format: "date-time" })
+  declare readonly publishedAt?: string;
+
   @ApiPropertyOptional()
   declare readonly canonicalUrl?: string;
 

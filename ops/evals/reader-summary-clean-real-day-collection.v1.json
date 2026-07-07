@@ -12,17 +12,36 @@
   "inputs": {
     "database": "local-postgres",
     "providerKeys": [
+      "github-trending-page",
+      "hacker-news",
       "reddit",
+      "rss",
       "x-twitter"
     ],
     "xCollectorConfigured": true
   },
   "run": {
-    "startedAt": "2026-07-05T16:01:09.594Z",
-    "completedAt": "2026-07-05T16:01:46.111Z",
-    "collectionDate": "2026-07-05"
+    "startedAt": "2026-07-06T20:38:05.959Z",
+    "completedAt": "2026-07-06T20:39:14.426Z",
+    "collectionDate": "2026-07-06"
   },
   "targets": [
+    {
+      "providerKey": "github-trending-page",
+      "bindingFingerprint": "338d5a2a",
+      "interestFingerprint": "76a4b2fd",
+      "workspaceFingerprint": "88237c6c",
+      "plannerEnabled": false,
+      "canaryRollout": false
+    },
+    {
+      "providerKey": "hacker-news",
+      "bindingFingerprint": "5b7bc348",
+      "interestFingerprint": "76a4b2fd",
+      "workspaceFingerprint": "88237c6c",
+      "plannerEnabled": false,
+      "canaryRollout": false
+    },
     {
       "providerKey": "reddit",
       "bindingFingerprint": "0c450737",
@@ -30,6 +49,14 @@
       "workspaceFingerprint": "88237c6c",
       "plannerEnabled": true,
       "canaryRollout": true
+    },
+    {
+      "providerKey": "rss",
+      "bindingFingerprint": "50739cc3",
+      "interestFingerprint": "76a4b2fd",
+      "workspaceFingerprint": "88237c6c",
+      "plannerEnabled": false,
+      "canaryRollout": false
     },
     {
       "providerKey": "x-twitter",
@@ -42,38 +69,85 @@
   ],
   "scans": [
     {
+      "providerKey": "github-trending-page",
+      "bindingFingerprint": "338d5a2a",
+      "status": "succeeded",
+      "fetched": 100,
+      "inserted": 100,
+      "projected": 100,
+      "skippedDuplicates": 0,
+      "warningCount": 1
+    },
+    {
+      "providerKey": "hacker-news",
+      "bindingFingerprint": "5b7bc348",
+      "status": "succeeded",
+      "fetched": 100,
+      "inserted": 100,
+      "projected": 100,
+      "skippedDuplicates": 0,
+      "warningCount": 1
+    },
+    {
       "providerKey": "reddit",
       "bindingFingerprint": "0c450737",
       "status": "succeeded",
-      "fetched": 39,
-      "inserted": 0,
-      "projected": 39,
-      "skippedDuplicates": 39,
+      "fetched": 37,
+      "inserted": 29,
+      "projected": 37,
+      "skippedDuplicates": 8,
       "warningCount": 0
+    },
+    {
+      "providerKey": "rss",
+      "bindingFingerprint": "50739cc3",
+      "status": "succeeded",
+      "fetched": 40,
+      "inserted": 38,
+      "projected": 40,
+      "skippedDuplicates": 2,
+      "warningCount": 1
     },
     {
       "providerKey": "x-twitter",
       "bindingFingerprint": "ea231a0a",
       "status": "succeeded",
-      "fetched": 25,
-      "inserted": 20,
-      "projected": 25,
-      "skippedDuplicates": 5,
+      "fetched": 35,
+      "inserted": 35,
+      "projected": 35,
+      "skippedDuplicates": 0,
       "warningCount": 2
     }
   ],
   "freshWindow": {
-    "feedItemCount": 64,
+    "feedItemCount": 311,
     "providerCounts": {
-      "reddit": 39,
-      "x-twitter": 25
+      "github-trending-page": 100,
+      "hacker-news": 100,
+      "reddit": 37,
+      "rss": 39,
+      "x-twitter": 35
+    },
+    "sourceQueryLaneCoverageByProvider": {
+      "github-trending-page": 0,
+      "hacker-news": 0,
+      "reddit": 1,
+      "rss": 0,
+      "x-twitter": 1
+    },
+    "distinctSourceQueryLaneCountByProvider": {
+      "github-trending-page": 0,
+      "hacker-news": 0,
+      "reddit": 2,
+      "rss": 0,
+      "x-twitter": 2
     },
     "orphanInterestCount": 0,
     "orphanSourceBindingCount": 0,
     "interestSnapshotCoverage": 1,
     "sourceBindingSnapshotCoverage": 1,
-    "sourceQueryLaneCoverage": 1,
-    "distinctSourceQueryLaneCount": 5
+    "sourceQueryLaneCoverage": 0.232,
+    "distinctSourceQueryLaneCount": 4
   },
   "qualityGates": {
     "targetBindingsPresent": true,

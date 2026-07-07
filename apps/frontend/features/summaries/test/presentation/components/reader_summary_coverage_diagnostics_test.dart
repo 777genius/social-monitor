@@ -12,7 +12,7 @@ import 'package:social_monitor_summaries/src/presentation/components/reader_summ
 import '../../support/summaries_test_fixtures.dart';
 
 void main() {
-  testWidgets('shows coverage diagnostics by topic and query', (tester) async {
+  testWidgets('hides raw coverage diagnostics by default', (tester) async {
     final summary = const SummaryMapper().readerSummaryToDomain(
       readerSummaryApiDto(
         coverage: const ReaderSummaryCoverageApiDto(
@@ -47,12 +47,13 @@ void main() {
     await tester.pumpWidget(_TestApp(summary: summary));
     await tester.pumpAndSettle();
 
-    expect(find.text('Coverage signals'), findsOneWidget);
-    expect(find.text('7 low rel.'), findsOneWidget);
-    expect(find.text('3 muted'), findsOneWidget);
-    expect(find.text('2 rated'), findsOneWidget);
-    expect(find.text('AI agents'), findsOneWidget);
-    expect(find.text('claude code OR codex'), findsOneWidget);
+    expect(find.text('Coverage by source'), findsOneWidget);
+    expect(find.text('Coverage signals'), findsNothing);
+    expect(find.text('7 low rel.'), findsNothing);
+    expect(find.text('3 muted'), findsNothing);
+    expect(find.text('2 rated'), findsNothing);
+    expect(find.text('AI agents'), findsNothing);
+    expect(find.text('claude code OR codex'), findsNothing);
   });
 }
 

@@ -163,8 +163,8 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
 
     expect(rankFeedItems.execute).toHaveBeenCalledWith(
       expect.objectContaining({
-        observedAfter: readerSummaryPeriod.startedAt,
-        observedBefore: readerSummaryPeriod.endedAt,
+        publishedAtOrAfter: readerSummaryPeriod.startedAt,
+        publishedBefore: readerSummaryPeriod.endedAt,
         limit: 200,
       }),
     );
@@ -470,8 +470,8 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
       expect.objectContaining({
         providerKey: "reddit",
         limit: 10,
-        observedAfter: readerSummaryPeriod.startedAt,
-        observedBefore: readerSummaryPeriod.endedAt,
+        publishedAtOrAfter: readerSummaryPeriod.startedAt,
+        publishedBefore: readerSummaryPeriod.endedAt,
       }),
     );
     expect(
@@ -869,15 +869,13 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
 
     expect(rankFeedItems.execute).toHaveBeenCalledWith(
       expect.objectContaining({
-        observedAfter: new Date("2026-06-23T00:00:00.000Z"),
-        observedBefore: new Date("2026-06-24T00:00:00.000Z"),
+        publishedAtOrAfter: new Date("2026-06-23T00:00:00.000Z"),
+        publishedBefore: new Date("2026-06-24T00:00:00.000Z"),
       }),
     );
     expect(selection.selectedEvidence.map((item) => item.feedItemId)).toEqual([
       "feed-at-start",
       "feed-inside",
-      "feed-at-end",
-      "feed-observed-inside-published-before",
     ]);
   });
 

@@ -4,14 +4,16 @@ final class ReaderSummaryTrustSnapshot {
   const ReaderSummaryTrustSnapshot({
     required this.confidenceLevel,
     required this.confidenceScore,
-    required this.providerCount,
+    required this.sourceGroupCount,
     required this.needsConfirmation,
+    required this.hasMixedConfidence,
   });
 
   final String confidenceLevel;
   final double confidenceScore;
-  final int providerCount;
+  final int sourceGroupCount;
   final bool needsConfirmation;
+  final bool hasMixedConfidence;
 
   factory ReaderSummaryTrustSnapshot.from({
     required List<SummaryClaim> claims,
@@ -23,35 +25,42 @@ final class ReaderSummaryTrustSnapshot {
         : confidences
               .map((confidence) => confidence.score.clamp(0, 1).toDouble())
               .reduce((left, right) => left < right ? left : right);
-    final providerCount = uniqueTrustEvidenceProviders(
+    final sourceGroupCount = uniqueTrustEvidenceSourceGroups(
       claims.expand((claim) => claim.evidence),
     ).length;
     final riskKinds = {
       ...claims.expand((claim) => claim.risks.map((risk) => risk.kind)),
       ...report.risks.map((risk) => risk.kind),
     };
+    final hasSingleSourceClaim = claims.any(
+      (claim) => uniqueTrustEvidenceSourceGroups(claim.evidence).length <= 1,
+    );
 
+    final confidenceLevels = confidences.map((item) => item.level).toSet();
     final confidenceLevel = confidences.isEmpty
         ? confidenceLevelForScore(confidenceScore)
-        : lowestConfidenceLevel(confidences.map((item) => item.level));
+        : lowestConfidenceLevel(confidenceLevels);
 
     return ReaderSummaryTrustSnapshot(
       confidenceLevel: confidenceLevel,
       confidenceScore: confidenceScore,
-      providerCount: providerCount,
+      sourceGroupCount: sourceGroupCount,
       needsConfirmation:
           confidenceLevel == 'low' ||
           confidenceScore < 0.5 ||
-          providerCount <= 1 ||
+          sourceGroupCount <= 1 ||
+          hasSingleSourceClaim ||
           riskKinds.contains('single_source') ||
           riskKinds.contains('low_confidence') ||
+          riskKinds.contains('unresolved') ||
           riskKinds.contains('weak_source') ||
           riskKinds.contains('low_evidence_diversity'),
+      hasMixedConfidence: confidenceLevels.length > 1,
     );
   }
 }
 
-Set<String> uniqueTrustEvidenceProviders(
+Set<String> uniqueTrustEvidenceSourceGroups(
   Iterable<SummaryClaimEvidence> evidence,
 ) {
   return {

@@ -41,6 +41,7 @@ import {
   type RedditSourceQueryLaneMetadata,
 } from "./reddit-source-support";
 import type { RedditTokenProviderPort } from "./reddit-token-provider.port";
+import { readAdaptivePaginationPolicy } from "../adaptive-source-pagination";
 import { readSourceItemRankingPlan } from "../source-item-ranking-config";
 export class RedditSourceProvider implements SourceProviderPort {
   constructor(
@@ -143,6 +144,7 @@ export class RedditSourceProvider implements SourceProviderPort {
         fallbackCommentDepth: commentDepth,
         fallbackCommentSort: commentSort,
         rankingPlan,
+        config: context.config,
       });
     }
 
@@ -304,11 +306,18 @@ export class RedditSourceProvider implements SourceProviderPort {
     readonly fallbackCommentDepth: number;
     readonly fallbackCommentSort: NonNullable<RedditScanPass["commentSort"]>;
     readonly rankingPlan: SourceItemRankingPlan;
+    readonly config: SourceProviderScanContext["config"];
   }): Promise<SourceProviderScanResult> {
     const perPassFallbackLimit = Math.max(
       1,
       Math.ceil(params.plan.maxItems / params.passes.length),
     );
+    const pagination = readAdaptivePaginationPolicy({
+      config: params.config,
+      cursorModel: redditCapabilityProfile.cursorModel,
+      firstPageLimit: params.plan.maxItems,
+    });
+    const paginationPolicy = pagination.enabled ? pagination.policy : undefined;
     const candidatesByExternalId = new Map<string, RedditScanCandidate>();
     const warnings: string[] = [];
     let failedPasses = 0;
@@ -316,41 +325,7 @@ export class RedditSourceProvider implements SourceProviderPort {
 
     for (const pass of params.passes) {
       const limit = pass.maxItems ?? perPassFallbackLimit;
-      let page: RedditListingPage;
-
-      try {
-        page =
-          pass.mode === "listing"
-            ? await this.client.listSubredditPosts({
-                accessToken: params.accessToken,
-                userAgent: params.userAgent,
-                subreddit: pass.subreddit,
-                listing: pass.listing,
-                ...(pass.listing === "top"
-                  ? { topTime: pass.topTime ?? "day" }
-                  : {}),
-                limit,
-              })
-            : await this.client.searchPosts({
-                accessToken: params.accessToken,
-                userAgent: params.userAgent,
-                query: pass.query,
-                sort: pass.searchSort,
-                time: pass.searchTime,
-                limit,
-              });
-      } catch (error) {
-        firstFailure ??= error;
-        failedPasses += 1;
-        warnings.push(formatScanPassWarning(pass, error));
-        continue;
-      }
-
       const minScore = pass.minScore ?? params.fallbackMinScore;
-      const posts =
-        pass.mode === "search"
-          ? filterPostsByAllowedSubreddits(page.posts, pass.allowedSubreddits)
-          : page.posts;
       const commentExpansion = selectedCommentExpansionForPass({
         pass,
         fallbackIncludeComments: params.fallbackIncludeComments,
@@ -359,32 +334,127 @@ export class RedditSourceProvider implements SourceProviderPort {
         fallbackCommentSort: params.fallbackCommentSort,
         minScore,
       });
+      let cursor: string | undefined;
+      let pageCount = 0;
+      let passNewItemCount = 0;
+      let duplicateItemCount = 0;
+      const maxPages = paginationPolicy?.maxPages ?? 1;
 
-      for (const post of posts) {
-        for (const item of normalizePost(
-          post,
-          minScore,
-          sourceQueryLaneForPass(pass, limit),
-        )) {
-          const existing = candidatesByExternalId.get(item.externalId);
+      for (let pageIndex = 0; pageIndex < maxPages; pageIndex += 1) {
+        let page: RedditListingPage;
 
-          if (existing === undefined) {
-            candidatesByExternalId.set(item.externalId, {
-              item,
-              post,
-              ...(commentExpansion === undefined ? {} : { commentExpansion }),
-            });
-            continue;
+        try {
+          page =
+            pass.mode === "listing"
+              ? await this.client.listSubredditPosts({
+                  accessToken: params.accessToken,
+                  userAgent: params.userAgent,
+                  subreddit: pass.subreddit,
+                  listing: pass.listing,
+                  ...(pass.listing === "top"
+                    ? { topTime: pass.topTime ?? "day" }
+                    : {}),
+                  limit,
+                  after: cursor,
+                })
+              : await this.client.searchPosts({
+                  accessToken: params.accessToken,
+                  userAgent: params.userAgent,
+                  query: pass.query,
+                  sort: pass.searchSort,
+                  time: pass.searchTime,
+                  limit,
+                  after: cursor,
+                });
+        } catch (error) {
+          if (pageIndex === 0) {
+            firstFailure ??= error;
+            failedPasses += 1;
           }
 
-          candidatesByExternalId.set(
-            item.externalId,
-            withMergedRedditCommentExpansion(existing, commentExpansion),
-          );
+          warnings.push(formatScanPassWarning(pass, error));
+          break;
         }
+
+        pageCount += 1;
+        let pageNewItemCount = 0;
+        let pageDuplicateItemCount = 0;
+        const posts =
+          pass.mode === "search"
+            ? filterPostsByAllowedSubreddits(page.posts, pass.allowedSubreddits)
+            : page.posts;
+
+        for (const post of posts) {
+          if (passNewItemCount >= limit) {
+            break;
+          }
+
+          for (const item of normalizePost(
+            post,
+            minScore,
+            sourceQueryLaneForPass(pass, limit),
+          )) {
+            if (passNewItemCount >= limit) {
+              break;
+            }
+
+            const existing = candidatesByExternalId.get(item.externalId);
+
+            if (existing === undefined) {
+              candidatesByExternalId.set(item.externalId, {
+                item,
+                post,
+                ...(commentExpansion === undefined ? {} : { commentExpansion }),
+              });
+              pageNewItemCount += 1;
+              passNewItemCount += 1;
+              continue;
+            }
+
+            duplicateItemCount += 1;
+            pageDuplicateItemCount += 1;
+            candidatesByExternalId.set(
+              item.externalId,
+              withMergedRedditCommentExpansion(existing, commentExpansion),
+            );
+          }
+        }
+
+        warnings.push(...redditWarnings(posts, minScore));
+        if (paginationPolicy === undefined || passNewItemCount >= limit) {
+          break;
+        }
+
+        const nextCursor = page.after;
+        if (nextCursor === undefined || nextCursor === cursor) {
+          break;
+        }
+
+        const pageItemCount = pageNewItemCount + pageDuplicateItemCount;
+        const duplicateRate =
+          pageItemCount === 0 ? 0 : pageDuplicateItemCount / pageItemCount;
+        if (pageNewItemCount < paginationPolicy.minNewItemsPerPage) {
+          break;
+        }
+
+        if (duplicateRate > paginationPolicy.maxDuplicateRate) {
+          break;
+        }
+
+        cursor = nextCursor;
       }
 
-      warnings.push(...redditWarnings(posts, minScore));
+      if (paginationPolicy !== undefined && pageCount > 1) {
+        warnings.push(
+          [
+            "reddit_adaptive_pagination.stats",
+            `pass=${redditScanPassLabel(pass)}`,
+            `pages=${pageCount}`,
+            `items=${passNewItemCount}`,
+            `duplicates=${duplicateItemCount}`,
+          ].join(";"),
+        );
+      }
     }
 
     if (failedPasses === params.passes.length && firstFailure !== undefined) {
@@ -422,15 +492,16 @@ const formatScanPassWarning = (
   pass: RedditScanPass,
   error: unknown,
 ): string => {
-  const passLabel =
-    pass.mode === "listing"
-      ? `${pass.subreddit}:${pass.listing}${pass.listing === "top" ? `:${pass.topTime ?? "day"}` : ""}`
-      : `search:${pass.query}`;
   const message =
     error instanceof Error ? error.message : "Unknown Reddit scan pass error";
 
-  return `Reddit scan pass degraded (${passLabel}): ${redactSensitiveText(message)}`;
+  return `Reddit scan pass degraded (${redditScanPassLabel(pass)}): ${redactSensitiveText(message)}`;
 };
+
+const redditScanPassLabel = (pass: RedditScanPass): string =>
+  pass.mode === "listing"
+    ? `${pass.subreddit}:${pass.listing}${pass.listing === "top" ? `:${pass.topTime ?? "day"}` : ""}`
+    : `search:${pass.query}`;
 
 const sourceQueryLaneForPlan = (
   plan: SourceProviderScanPlan,

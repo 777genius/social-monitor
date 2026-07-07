@@ -63,8 +63,9 @@ export const buildWhyNow = (
   const duplicateText =
     duplicateCount === 0
       ? ""
-      : ` and clustered ${duplicateCount} related item${plural(duplicateCount)}`;
-  const interestText = interestCount > 1 ? ` across ${interestCount} interests` : "";
+      : ` and linked ${duplicateCount} related item${plural(duplicateCount)}`;
+  const interestText =
+    interestCount > 1 ? ` across ${interestCount} interests` : "";
 
   return `${coverage}${interestText}${duplicateText}.`;
 };
@@ -97,16 +98,25 @@ export const readerItemConfidence = (params: {
   const sameProviderSupport = breakdown?.sameProviderSupport ?? 0;
   const evidenceSupport = params.evidenceCount > 1 ? 0.08 : 0;
   const normalizedSignal = Math.min(params.signalScore / 4, 0.42);
+  const crossProviderFallbackSupport =
+    params.cluster === undefined && params.confirmedProviderCount > 1
+      ? 0.16
+      : 0;
   const confirmationSupport =
     params.confirmedProviderCount > 1
-      ? Math.min(crossProviderSupport + providerDiversityBoost, 0.38)
+      ? Math.max(
+          Math.min(crossProviderSupport + providerDiversityBoost, 0.38),
+          crossProviderFallbackSupport,
+        )
       : Math.min(sameProviderSupport, 0.12);
   const rawScore = clampConfidenceScore(
     0.18 + normalizedSignal + confirmationSupport + evidenceSupport,
   );
   const score =
     params.confirmedProviderCount > 1
-      ? rawScore
+      ? params.cluster === undefined
+        ? Math.min(rawScore, 0.68)
+        : rawScore
       : Math.min(rawScore, params.evidenceCount > 1 ? 0.55 : 0.42);
   const level =
     score >= 0.72 && params.confirmedProviderCount > 1
@@ -116,10 +126,12 @@ export const readerItemConfidence = (params: {
         : "low";
   const rationale =
     params.confirmedProviderCount > 1
-      ? `${params.confirmedProviderCount} providers confirm this story signal.`
+      ? params.cluster === undefined
+        ? `${params.confirmedProviderCount} cited source groups support this story, but the key claim has not been fully cross-verified yet.`
+        : `${params.confirmedProviderCount} monitored source groups support this story.`
       : params.evidenceCount > 1
-        ? `${params.evidenceCount} source items support this story, but from one provider.`
-        : "Single-source story signal; treat provider metrics as local evidence.";
+        ? `${params.evidenceCount} cited items support this story, but they are not independent cross-source confirmation.`
+        : "This story has not been independently confirmed across monitored source groups yet.";
 
   return {
     level,
@@ -218,7 +230,7 @@ export const buildBestFirstReadBullet = (topRead: TopRead): string => {
   }
 
   return [
-    `Best first read (${citationLabel}, ${topRead.confirmedProviderKeys.length} providers):`,
+    `Best first read (${citationLabel}, ${topRead.confirmedProviderKeys.length} source groups):`,
     `${topRead.title} - ${topRead.reason}`,
   ].join(" ");
 };
@@ -321,9 +333,14 @@ const compactHeadlinePart = (value: string): string => {
     return compact;
   }
 
-  const shortened = compact.slice(0, maxLength).replace(/\s+\S*$/u, "").trim();
+  const shortened = compact
+    .slice(0, maxLength)
+    .replace(/\s+\S*$/u, "")
+    .trim();
 
-  return shortened.length === 0 ? compact.slice(0, maxLength).trim() : shortened;
+  return shortened.length === 0
+    ? compact.slice(0, maxLength).trim()
+    : shortened;
 };
 
 export const storyProviderMetricLabels = (params: {

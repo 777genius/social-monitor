@@ -2,7 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 import 'package:social_monitor_summaries/src/domain/aggregates/reader_summary.dart';
+import 'package:social_monitor_summaries/src/infrastructure/api/summary_api_dto.dart';
+import 'package:social_monitor_summaries/src/infrastructure/mappers/summary_mapper.dart';
 import 'package:social_monitor_summaries/src/presentation/components/workspace_summary_period_toolbar.dart';
+
+import '../../support/summaries_test_fixtures.dart';
 
 void main() {
   testWidgets('keeps every period segment visible on compact width', (
@@ -43,6 +47,77 @@ void main() {
     expect(tester.takeException(), isNull);
     final monthRect = tester.getRect(find.text('Month'));
     expect(monthRect.right, lessThanOrEqualTo(390));
+  });
+
+  testWidgets('keeps period controls, stats and actions in one expanded row', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1024, 720);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final summary = const SummaryMapper().readerSummaryToDomain(
+      readerSummaryApiDto(
+        coverage: const ReaderSummaryCoverageApiDto(
+          collectedFeedItemCount: 333,
+          selectedFeedItemCount: 120,
+          topReadCount: 10,
+          citationCount: 120,
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: Scaffold(
+          body: Padding(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            child: WorkspaceSummaryPeriodToolbar(
+              selectedPeriod: SummaryPeriodPreset.daily.resolve(
+                now: DateTime.utc(2026, 7, 5, 12),
+              ),
+              selectedPreset: SummaryPeriodPreset.daily,
+              availableSummaryPeriods: const [],
+              canNavigateToPreviousPeriod: false,
+              canNavigateToNextPeriod: false,
+              isCurrentPeriod: true,
+              calendarNow: DateTime.utc(2026, 7, 5, 12),
+              collectionStatsSummary: summary,
+              onGenerate: () {},
+              onExport: () {},
+              onPeriodChanged: (_) {},
+              onPreviousPeriod: () {},
+              onCurrentPeriod: () {},
+              onNextPeriod: () {},
+              onCalendarDateSelected: (_) {},
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
+
+    final presetRect = tester.getRect(
+      find.byKey(const ValueKey('workspace-summary-period-presets')),
+    );
+    expect(presetRect.width, lessThanOrEqualTo(421));
+
+    final rowCenterY = tester
+        .getCenter(
+          find.byKey(const ValueKey('workspace-summary-period-calendar')),
+        )
+        .dy;
+    for (final finder in [
+      find.text('Daily'),
+      find.byKey(const ValueKey('reader-summary-stat-Posts')),
+      find.byKey(const ValueKey('reader-summary-stat-Sources')),
+      find.byKey(const ValueKey('workspace-summary-export')),
+    ]) {
+      expect((tester.getCenter(finder).dy - rowCenterY).abs(), lessThan(28));
+    }
   });
 
   testWidgets('opens material calendar and returns the selected period date', (

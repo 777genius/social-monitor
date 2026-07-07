@@ -89,7 +89,7 @@ describe("buildReaderSummary", () => {
       level: "low",
       score: 0.42,
       rationale:
-        "Single-source story signal; treat provider metrics as local evidence.",
+        "This story has not been independently confirmed across monitored source groups yet.",
     });
     expect(readerSummary.claimBoard[0]).toMatchObject({
       claim: "OpenAI ties Anthropic after alleged GPT-5.6 preview benchmark",
@@ -185,6 +185,117 @@ describe("buildReaderSummary", () => {
       url: "https://pbs.twimg.com/media/launch.jpg",
       sourceUrl: "https://x.com/example/status/1",
       altText: "X post includes a launch image",
+    });
+  });
+
+  it("keeps ineligible cluster evidence out of reader top reads", () => {
+    const readerSummary = buildReaderSummary({
+      headline: "Mixed evidence cluster",
+      executiveSummary:
+        "A mixed cluster contains one weak Hacker News item and one strong Reddit item.",
+      topStories: [
+        {
+          storyClusterId: "cluster-mixed",
+          title: "Claude Code tracker allegation gets social attention",
+          summary: "The strong Reddit discussion is the first read.",
+          interestIds: ["ai-developer-tools"],
+          providerKeys: ["hacker-news", "reddit"],
+          citationIds: ["citation-weak", "citation-strong"],
+        },
+      ],
+      interestHighlights: [],
+      repeatedSignals: [],
+      risksAndUnknowns: [],
+      citationMap: [
+        {
+          citationId: "citation-weak",
+          feedItemId: "feed-weak",
+          sourceItemId: "source-weak",
+          providerKey: "hacker-news",
+          field: "title",
+          canonicalUrl: "https://news.ycombinator.com/item?id=1",
+        },
+        {
+          citationId: "citation-strong",
+          feedItemId: "feed-strong",
+          sourceItemId: "source-strong",
+          providerKey: "reddit",
+          field: "title",
+          canonicalUrl: "https://reddit.example/r/ClaudeAI/comments/1",
+        },
+      ],
+      storyClusters: [
+        {
+          id: "cluster-mixed",
+          storyKey: "mixed:claude-code-tracker",
+          representativeFeedItemId: "feed-weak",
+          duplicateFeedItemIds: ["feed-strong"],
+          interestIds: ["ai-developer-tools"],
+          providerKeys: ["hacker-news", "reddit"],
+          score: 2.5,
+          observedAtRange: {
+            startedAt: new Date("2026-07-06T08:00:00.000Z"),
+            endedAt: new Date("2026-07-06T09:00:00.000Z"),
+          },
+          whyImportant: ["Mixed evidence cluster."],
+        },
+      ],
+      selectedEvidence: [
+        {
+          feedItemId: "feed-weak",
+          sourceItemId: "source-weak",
+          sourceBindingId: "binding-hn",
+          interestId: "ai-developer-tools",
+          providerKey: "hacker-news",
+          providerName: "Hacker News",
+          canonicalUrl: "https://news.ycombinator.com/item?id=1",
+          title: "Weak HN discussion",
+          publishedAt: new Date("2026-07-04T08:00:00.000Z"),
+          observedAt: new Date("2026-07-06T08:00:00.000Z"),
+          score: 0.8,
+          whyImportant: ["Weak evidence should not lead."],
+          providerMetricLabels: [
+            { label: "Points", value: "1" },
+            { label: "Comments", value: "0" },
+          ],
+          contentQuality: {
+            qualityScore: 0.5,
+            interestRelevanceScore: 0.4,
+            engagementIntegrityScore: 0.8,
+            eligibleForSummary: true,
+            eligibleForTopRead: false,
+            needsLlmReview: true,
+            decision: "downrank",
+            flags: ["weak_topic_match"],
+            reason: "Weak topic match.",
+          },
+        },
+        {
+          feedItemId: "feed-strong",
+          sourceItemId: "source-strong",
+          sourceBindingId: "binding-reddit",
+          interestId: "ai-developer-tools",
+          providerKey: "reddit",
+          providerName: "Reddit",
+          canonicalUrl: "https://reddit.example/r/ClaudeAI/comments/1",
+          title: "Strong Reddit discussion",
+          publishedAt: new Date("2026-07-06T08:15:00.000Z"),
+          observedAt: new Date("2026-07-06T08:20:00.000Z"),
+          score: 2.5,
+          whyImportant: ["Strong Reddit discussion is active."],
+          providerMetricLabels: [
+            { label: "Score", value: "727" },
+            { label: "Comments", value: "140" },
+          ],
+        },
+      ],
+      qualityFlags: [],
+    });
+
+    expect(readerSummary.topReads[0]).toMatchObject({
+      providerKey: "reddit",
+      publishedAt: new Date("2026-07-06T08:15:00.000Z"),
+      citationIds: ["citation-strong"],
     });
   });
 
@@ -1184,7 +1295,7 @@ describe("buildReaderSummary", () => {
       "1 cross-source item selected",
     ]);
     expect(readerSummary.topReads[0]?.whyNow).toBe(
-      "Current summary window has cross-source coverage from Repo Radar, Reddit and clustered 1 related item.",
+      "Current summary window has cross-source coverage from Repo Radar, Reddit and linked 1 related item.",
     );
     expect(readerSummary.topReads[0]?.citationIds).toEqual([
       "citation-1",

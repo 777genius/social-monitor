@@ -151,6 +151,35 @@ describe("GetReaderSummaryUseCase", () => {
       altText: "Real provider preview",
     });
   });
+
+  it("does not present collected coverage below selected evidence count", async () => {
+    const useCase = new GetReaderSummaryUseCase(
+      new FakeReaderSummaryArtifactRepository([
+        readerSummaryArtifact("reader-summary-1"),
+      ]),
+      new FakeReaderSummaryFreshnessProbe(),
+      undefined,
+      new FakeReaderSummaryCoverageCounter(0),
+    );
+
+    const result = await useCase.execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      readerSummaryId: "reader-summary-1",
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+
+    expect(result.value.coverage.collectedFeedItemCount).toBe(1);
+    expect(
+      result.value.coverage.providerBreakdown.find(
+        (provider) => provider.providerKey === "reddit",
+      )?.collectedFeedItemCount,
+    ).toBe(1);
+  });
 });
 
 const tenant = tenantId("tenant-reader-summary-get");

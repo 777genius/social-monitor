@@ -118,25 +118,20 @@ const topicSelectors = (
     ...query.interestIds,
     query.scope.type === "interest" ? query.scope.interestId : "",
   ]);
-  const selectors: TopicSelector[] = interestIds.map((interestId) => ({
-    interestId,
-  }));
   const topicSearch = query.topicLabel.trim();
 
-  if (topicSearch.length > 0) {
-    selectors.push(
-      ...interestIds.map((interestId) => ({
-        interestId,
-        searchQuery: topicSearch,
-      })),
-    );
-
-    if (interestIds.length === 0) {
-      selectors.push({ searchQuery: topicSearch });
-    }
+  if (topicSearch.length === 0) {
+    return [];
   }
 
-  return selectors;
+  if (interestIds.length === 0) {
+    return [{ searchQuery: topicSearch }];
+  }
+
+  return interestIds.map((interestId) => ({
+    interestId,
+    searchQuery: topicSearch,
+  }));
 };
 
 const uniqueNonEmpty = (values: readonly string[]): readonly string[] => [

@@ -1,0 +1,375 @@
+import type {
+  ReaderSummaryTopicGroupLabel,
+  ReaderSummaryTopicNodeLabel,
+} from "./reader-summary-topic-label-plan";
+import {
+  compactLabel,
+  compactId,
+  compactOptional,
+  normalizeTopicLabel,
+} from "./reader-summary-topic-map-text";
+
+export type TopicLabelQualityContext = {
+  readonly evidenceTexts?: readonly string[];
+  readonly providerLabels?: readonly string[];
+  readonly candidateLabels?: readonly string[];
+};
+
+export type TopicLabelQualityResult = {
+  readonly accepted: boolean;
+  readonly label: string;
+  readonly score: number;
+  readonly meaningfulTokens: readonly string[];
+  readonly groundedTokenCount: number;
+  readonly reasons: readonly string[];
+};
+
+const metaTopicLabels = new Set([
+  "reader summary",
+  "topic labels",
+  "topic map",
+  "top reads",
+  "source cards",
+  "recommendations",
+  "feedback loop",
+  "visual tests",
+  "workflow design",
+  "rss quality",
+  "source health",
+  "hacker news",
+  "reddit api",
+  "x signals",
+]);
+
+const weakTopicLabelTokens = new Set([
+  "a",
+  "about",
+  "after",
+  "all",
+  "an",
+  "and",
+  "are",
+  "as",
+  "ask",
+  "at",
+  "be",
+  "been",
+  "being",
+  "but",
+  "by",
+  "before",
+  "can",
+  "could",
+  "council",
+  "day",
+  "days",
+  "did",
+  "do",
+  "does",
+  "entire",
+  "every",
+  "for",
+  "from",
+  "global",
+  "go",
+  "goto",
+  "has",
+  "have",
+  "having",
+  "hn",
+  "how",
+  "if",
+  "in",
+  "into",
+  "is",
+  "it",
+  "its",
+  "just",
+  "many",
+  "minute",
+  "minutes",
+  "more",
+  "my",
+  "new",
+  "news",
+  "not",
+  "of",
+  "on",
+  "or",
+  "over",
+  "people",
+  "post",
+  "posts",
+  "price",
+  "prompt",
+  "prompts",
+  "professionals",
+  "pros",
+  "rely",
+  "relying",
+  "should",
+  "ship",
+  "shipping",
+  "show",
+  "shown",
+  "source",
+  "story",
+  "that",
+  "the",
+  "these",
+  "this",
+  "those",
+  "thread",
+  "to",
+  "top",
+  "update",
+  "updates",
+  "user",
+  "users",
+  "was",
+  "were",
+  "what",
+  "when",
+  "where",
+  "who",
+  "why",
+  "with",
+  "without",
+  "workshop",
+  "workers",
+  "words",
+  "would",
+  "your",
+]);
+
+const genericActionTokens = new Set([
+  "add",
+  "adds",
+  "added",
+  "adding",
+  "announce",
+  "announces",
+  "announced",
+  "behind",
+  "breaking",
+  "build",
+  "building",
+  "change",
+  "changes",
+  "compare",
+  "compares",
+  "deep",
+  "every",
+  "gets",
+  "getting",
+  "give",
+  "gives",
+  "just",
+  "lead",
+  "leads",
+  "launch",
+  "launched",
+  "launches",
+  "launching",
+  "make",
+  "makes",
+  "many",
+  "race",
+  "races",
+  "racing",
+  "report",
+  "reported",
+  "release",
+  "released",
+  "releases",
+  "releasing",
+  "relies",
+  "rise",
+  "rises",
+  "showed",
+  "showing",
+  "shows",
+  "ship",
+  "ships",
+  "shipping",
+  "smartest",
+  "test",
+  "tests",
+  "use",
+  "using",
+  "verify",
+  "verifies",
+  "verified",
+  "verifying",
+]);
+
+export const sanitizeTopicNodeLabel = (
+  label: ReaderSummaryTopicNodeLabel,
+): ReaderSummaryTopicNodeLabel => ({
+  nodeId: label.nodeId,
+  topicId: sanitizeTopicId(label.topicId),
+  label: sanitizeTopicLabel(label.label),
+  groupId: sanitizeTopicId(label.groupId),
+  keywords: (label.keywords ?? [])
+    .map(compactOptional)
+    .filter((keyword): keyword is string => keyword !== undefined)
+    .filter((keyword) => !isWeakTopicLabel(keyword))
+    .slice(0, 8),
+  rationale: compactOptional(label.rationale),
+});
+
+export const hasUsableTopicNodeLabel = (
+  label: ReaderSummaryTopicNodeLabel,
+): boolean =>
+  compactId(label.topicId) !== undefined ||
+  compactOptional(label.label) !== undefined ||
+  compactId(label.groupId) !== undefined;
+
+export const isUsableTopicLabel = (
+  label: string,
+  providerLabels: readonly string[],
+): boolean =>
+  evaluateTopicLabelQuality(label, { providerLabels }).accepted;
+
+export const isUsableTopicGroupLabel = (
+  group: ReaderSummaryTopicGroupLabel,
+  context: TopicLabelQualityContext = {},
+): boolean =>
+  compactId(group.id) !== undefined &&
+  compactOptional(group.label) !== undefined &&
+  !isWeakTopicId(group.id) &&
+  evaluateTopicLabelQuality(group.label, context).accepted;
+
+export const isWeakTopicId = (value: string | undefined): boolean => {
+  const compact = compactId(value);
+  if (compact === undefined) {
+    return true;
+  }
+  const [, rawValue = compact] = compact.split(":");
+
+  return isWeakTopicLabel(rawValue);
+};
+
+export const isWeakTopicLabel = (value: string): boolean => {
+  const meaningfulTokens = meaningfulTopicLabelTokens(value);
+
+  return meaningfulTokens.length === 0;
+};
+
+export const evaluateTopicLabelQuality = (
+  value: string,
+  context: TopicLabelQualityContext = {},
+): TopicLabelQualityResult => {
+  const label = compactLabel(value);
+  const normalized = normalizeTopicLabel(label);
+  const providerLabels = context.providerLabels ?? [];
+  const meaningfulTokens = meaningfulTopicLabelTokens(label);
+  const evidenceTokenSet = evidenceTokens([
+    ...(context.evidenceTexts ?? []),
+    ...(context.candidateLabels ?? []),
+  ]);
+  const groundedTokenCount = meaningfulTokens.filter((token) =>
+    evidenceTokenSet.has(token),
+  ).length;
+  const reasons: string[] = [];
+
+  if (normalized.length === 0 || meaningfulTokens.length === 0) {
+    reasons.push("label has no meaningful topic words");
+  }
+  if (isMetaTopicLabel(label, providerLabels)) {
+    reasons.push("label is a source or UI meta label");
+  }
+  if (meaningfulTokens.length > 5) {
+    reasons.push("label is longer than five significant words");
+  }
+  if (meaningfulTokens.length === 1 && !hasConcreteSingleTokenSignal(label)) {
+    reasons.push("single-word label is not a concrete entity signal");
+  }
+  if (evidenceTokenSet.size > 0) {
+    const requiredGroundedTokens = meaningfulTokens.length <= 2 ? 1 : 2;
+    if (groundedTokenCount < requiredGroundedTokens) {
+      reasons.push("label is not grounded in collected evidence");
+    }
+  }
+
+  const phraseScore = Math.min(0.22, meaningfulTokens.length * 0.055);
+  const groundingScore =
+    meaningfulTokens.length === 0
+      ? 0
+      : (groundedTokenCount / meaningfulTokens.length) * 0.24;
+  const entityScore = hasConcreteSingleTokenSignal(label) ? 0.14 : 0;
+  const accepted = reasons.length === 0;
+
+  return {
+    accepted,
+    label,
+    score: accepted
+      ? roundQualityScore(0.42 + phraseScore + groundingScore + entityScore)
+      : 0,
+    meaningfulTokens,
+    groundedTokenCount,
+    reasons,
+  };
+};
+
+export const meaningfulTopicLabelTokens = (value: string): readonly string[] =>
+  normalizeTopicLabel(value)
+    .split(/\s+/u)
+    .filter((token) => token.length > 1)
+    .filter((token) => !/^\d+$/u.test(token))
+    .filter((token) => !isWeakTopicLabelToken(token));
+
+export const isWeakTopicLabelToken = (value: string): boolean => {
+  const normalized = normalizeTopicLabel(value);
+
+  return (
+    normalized.length === 0 ||
+    weakTopicLabelTokens.has(normalized) ||
+    genericActionTokens.has(normalized)
+  );
+};
+
+export const hasConcreteSingleTokenSignal = (value: string): boolean => {
+  const compact = compactLabel(value);
+
+  return (
+    /\b[A-Z]{2,}\b/u.test(compact) ||
+    /\b[A-Z][a-z]+[A-Z][A-Za-z]*\b/u.test(compact) ||
+    /[0-9+#./-]/u.test(compact) ||
+    /^[A-Z][a-z0-9+#./-]{2,}$/u.test(compact)
+  );
+};
+
+const sanitizeTopicId = (value: string | undefined): string | undefined => {
+  const compact = compactId(value);
+
+  return compact === undefined || isWeakTopicId(compact) ? undefined : compact;
+};
+
+const sanitizeTopicLabel = (value: string | undefined): string | undefined => {
+  const compact = compactOptional(value);
+
+  return compact === undefined || isWeakTopicLabel(compact)
+    ? undefined
+    : compact;
+};
+
+const isMetaTopicLabel = (
+  label: string,
+  providerLabels: readonly string[],
+): boolean => {
+  const normalized = normalizeTopicLabel(label);
+  if (metaTopicLabels.has(normalized)) {
+    return true;
+  }
+
+  return providerLabels
+    .map(normalizeTopicLabel)
+    .some((providerLabel) => providerLabel === normalized);
+};
+
+const evidenceTokens = (values: readonly string[]): ReadonlySet<string> =>
+  new Set(values.flatMap((value) => meaningfulTopicLabelTokens(value)));
+
+const roundQualityScore = (value: number): number =>
+  Math.round(Math.min(1, Math.max(0, value)) * 1000) / 1000;

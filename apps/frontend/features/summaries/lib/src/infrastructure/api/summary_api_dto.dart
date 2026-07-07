@@ -91,12 +91,14 @@ final class TopReadApiDto {
     this.confidence = const TopReadConfidenceApiDto(
       level: 'low',
       score: 0.35,
-      rationale: 'Single-source story signal.',
+      rationale:
+          'This story has not been independently confirmed across monitored source groups yet.',
     ),
     this.confirmedProviderKeys = const [],
     this.providerMetrics = const [],
     this.whyImportant = const [],
     this.whyNow = 'Selected in the current summary window',
+    this.publishedAt,
     this.canonicalUrl,
     this.previewMedia,
   });
@@ -114,6 +116,7 @@ final class TopReadApiDto {
   final List<ProviderMetricApiDto> providerMetrics;
   final List<String> whyImportant;
   final String whyNow;
+  final DateTime? publishedAt;
   final List<String> citationIds;
   final String? canonicalUrl;
   final PreviewMediaApiDto? previewMedia;

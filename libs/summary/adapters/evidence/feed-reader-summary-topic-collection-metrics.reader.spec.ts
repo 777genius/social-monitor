@@ -35,13 +35,36 @@ describe("FeedReaderSummaryTopicCollectionMetricsReader", () => {
     expect(feedItems.queries).toEqual([
       expect.objectContaining({
         interestId: "interest-ai-security",
-        searchQuery: undefined,
+        searchQuery: "AI security",
         publishedAtOrAfter: period.startedAt,
         publishedBefore: period.endedAt,
       }),
+    ]);
+  });
+
+  it("does not count the whole interest when a topic search is available", async () => {
+    const feedItems = new FakeFeedItems();
+    const reader = new FeedReaderSummaryTopicCollectionMetricsReader(feedItems);
+
+    const result = await reader.readTopicCollectionMetrics({
+      tenantId: tenant,
+      workspaceId: workspace,
+      scope: { type: "workspace" },
+      period,
+      topicLabel: "Open source repos",
+      interestIds: ["interest-ai-security"],
+    });
+
+    expect(result).toEqual({
+      collectedPostCount: 1,
+      lowRelevancePostCount: 0,
+      mutedPostCount: 0,
+      userRatedPostCount: 0,
+    });
+    expect(feedItems.queries).toEqual([
       expect.objectContaining({
         interestId: "interest-ai-security",
-        searchQuery: "AI security",
+        searchQuery: "Open source repos",
       }),
     ]);
   });
@@ -80,22 +103,32 @@ class FakeFeedItems implements FeedItemReadRepositoryPort {
 
   async list(query: ListFeedItemsQuery): Promise<ListFeedItemsResult> {
     this.queries.push(query);
-    const items =
-      query.searchQuery === undefined
-        ? [
-            item("feed-1", "reddit", "AI security signal", {
-              normalizedSignal: { score: 12 },
-            }),
-            item("feed-2", "github-issues", "Excluded provider"),
-          ]
-        : [
-            item("feed-1", "reddit", "AI security signal", {
-              normalizedSignal: { score: 12 },
-            }),
-            item("feed-3", "rss", "AI security RSS signal"),
-          ];
+    const normalizedSearch = query.searchQuery?.toLowerCase();
 
-    return { items };
+    if (normalizedSearch?.includes("open source") === true) {
+      return { items: [item("feed-4", "rss", "Open source repos signal")] };
+    }
+
+    if (query.searchQuery === undefined) {
+      return {
+        items: [
+          item("feed-1", "reddit", "AI security signal", {
+            normalizedSignal: { score: 12 },
+          }),
+          item("feed-2", "github-issues", "Excluded provider"),
+          item("feed-4", "rss", "Open source repos signal"),
+        ],
+      };
+    }
+
+    return {
+      items: [
+        item("feed-1", "reddit", "AI security signal", {
+          normalizedSignal: { score: 12 },
+        }),
+        item("feed-3", "rss", "AI security RSS signal"),
+      ],
+    };
   }
 
   async findById(): Promise<FeedItem | null> {

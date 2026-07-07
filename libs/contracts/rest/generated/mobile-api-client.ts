@@ -1208,7 +1208,9 @@ export const mobileApiOperations = [
     "usesDevOnlyWorkspaceRoleHeader": true,
     "devOnlyWorkspaceRoleRequired": false,
     "requestBodySchemaRef": null,
-    "successResponseSchemaRefs": []
+    "successResponseSchemaRefs": [
+      "#/components/schemas/GetEffectiveUserSummaryPreferenceResponseDto"
+    ]
   },
   {
     "operationId": "UserSummaryPreferencesController_upsertInterestSummaryPreference",
@@ -1236,7 +1238,9 @@ export const mobileApiOperations = [
     "usesDevOnlyWorkspaceRoleHeader": true,
     "devOnlyWorkspaceRoleRequired": false,
     "requestBodySchemaRef": "#/components/schemas/UpsertInterestUserSummaryPreferenceRequestDto",
-    "successResponseSchemaRefs": []
+    "successResponseSchemaRefs": [
+      "#/components/schemas/UpsertUserSummaryPreferenceResponseDto"
+    ]
   },
   {
     "operationId": "ReaderSummaryController_list",

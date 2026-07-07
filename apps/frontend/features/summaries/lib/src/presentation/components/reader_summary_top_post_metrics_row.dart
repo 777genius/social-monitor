@@ -83,48 +83,55 @@ IconData _topPostMetricIcon(String label) {
 }
 
 class _TopPostRelevanceColumn extends StatelessWidget {
-  const _TopPostRelevanceColumn({required this.item});
+  const _TopPostRelevanceColumn({
+    required this.item,
+    required this.supportSignal,
+  });
 
   final TopRead item;
+  final _TopPostSupportSignal supportSignal;
 
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
-    final badge = _topPostRelevanceBadge(context, item);
+    final badge = _topPostSupportStyle(context, supportSignal);
     final interestCount = item.matchedInterestIds.length;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        DecoratedBox(
-          decoration: BoxDecoration(
-            color: badge.background,
-            borderRadius: BorderRadius.circular(999),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.sm + 2,
-              vertical: AppSpacing.xs + 1,
+        Tooltip(
+          message: badge.tooltip,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: badge.background,
+              borderRadius: BorderRadius.circular(999),
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(badge.icon, size: 13, color: badge.foreground),
-                const SizedBox(width: AppSpacing.xs),
-                Flexible(
-                  child: Text(
-                    badge.label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: textTheme.labelSmall?.copyWith(
-                      color: badge.foreground,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.sm + 2,
+                vertical: AppSpacing.xs + 1,
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(badge.icon, size: 13, color: badge.foreground),
+                  const SizedBox(width: AppSpacing.xs),
+                  Flexible(
+                    child: Text(
+                      badge.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: textTheme.labelSmall?.copyWith(
+                        color: badge.foreground,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0,
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -156,6 +163,7 @@ class _TopPostRelevanceColumn extends StatelessWidget {
 
 typedef _TopPostRelevanceBadge = ({
   String label,
+  String tooltip,
   Color background,
   Color foreground,
   IconData icon,
@@ -163,28 +171,32 @@ typedef _TopPostRelevanceBadge = ({
 
 /// Resolves the cross-source/same-source/single-source relevance badge shared
 /// by the detailed relevance column and the compact dense row chip.
-_TopPostRelevanceBadge _topPostRelevanceBadge(
+_TopPostRelevanceBadge _topPostSupportStyle(
   BuildContext context,
-  TopRead item,
+  _TopPostSupportSignal supportSignal,
 ) {
   final colorScheme = Theme.of(context).colorScheme;
-  if (_topPostConfirmedProviderCount(item) > 1) {
-    return (
+  return switch (supportSignal.kind) {
+    _TopPostSupportKind.crossSource => (
       label: 'Cross-source',
+      tooltip:
+          'Same story confirmed by different source families, for example Reddit + RSS, HN + RSS, or X + Reddit. Stronger signal: less likely to be one-platform noise.',
       background: AppColors.successSurface,
       foreground: AppColors.success,
       icon: Icons.hub_outlined,
-    );
-  }
-  return switch (item.confidence.level.trim().toLowerCase()) {
-    'high' || 'medium' => (
+    ),
+    _TopPostSupportKind.sameSource => (
       label: 'Same-source support',
-      background: AppColors.warningSurface,
-      foreground: AppColors.amber,
+      tooltip:
+          'Related posts exist inside one source family, for example several Reddit posts or several X posts. Useful trend signal, but weaker because one platform can echo itself.',
+      background: colorScheme.primary.withValues(alpha: 0.12),
+      foreground: colorScheme.primary,
       icon: Icons.check_circle_outline_rounded,
     ),
-    _ => (
+    _TopPostSupportKind.singleSource => (
       label: 'Single source',
+      tooltip:
+          'Only one monitored source item supports this story so far. Treat it as a lead until another source confirms it.',
       background: colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
       foreground: colorScheme.onSurfaceVariant,
       icon: Icons.radio_button_unchecked_rounded,

@@ -175,11 +175,7 @@ export const filterItemsByReaderSummaryPeriod = (
   items: readonly SummaryEvidenceItem[],
   period: Parameters<ReaderSummaryEvidenceSelectorPort["select"]>[0]["period"],
 ): readonly SummaryEvidenceItem[] =>
-  items.filter(
-    (item) =>
-      isInsidePeriod(item.observedAt, period) ||
-      isInsidePeriod(item.publishedAt, period),
-  );
+  items.filter((item) => isInsidePeriod(item.publishedAt, period));
 
 const isInsidePeriod = (
   date: Date,

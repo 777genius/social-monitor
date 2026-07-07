@@ -21,4 +21,5 @@ openapi_generator:
     - relevance
     - summaries
     - reader-summaries
+    - user-summary-preferences
     - workspace-settings

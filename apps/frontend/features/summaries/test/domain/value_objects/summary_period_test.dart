@@ -35,18 +35,18 @@ void main() {
     expect(monthly.endedAt, DateTime.utc(2026, 7));
   });
 
-  test('uses the current UTC day for daily workspace summaries', () {
+  test('uses the latest completed UTC day for daily workspace summaries', () {
     final period = SummaryPeriodPreset.daily.resolve(
       now: DateTime.utc(2026, 6, 27, 12),
     );
 
-    expect(period.startedAt, DateTime.utc(2026, 6, 27));
-    expect(period.endedAt, DateTime.utc(2026, 6, 28));
+    expect(period.startedAt, DateTime.utc(2026, 6, 26));
+    expect(period.endedAt, DateTime.utc(2026, 6, 27));
     expect(
       SummaryPeriodPreset.daily.latestSelectableCalendarDate(
         now: DateTime.utc(2026, 6, 27, 12),
       ),
-      DateTime.utc(2026, 6, 27),
+      DateTime.utc(2026, 6, 26),
     );
   });
 

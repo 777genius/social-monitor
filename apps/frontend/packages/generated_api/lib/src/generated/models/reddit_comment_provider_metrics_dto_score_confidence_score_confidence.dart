@@ -8,8 +8,6 @@ import 'package:json_annotation/json_annotation.dart';
 enum RedditCommentProviderMetricsDtoScoreConfidenceScoreConfidence {
   @JsonValue('provider_reported')
   providerReported('provider_reported'),
-  @JsonValue('not_available')
-  notAvailable('not_available'),
 
   /// Default value for all unparsed values, allows backward compatibility when adding new values on the backend.
   $unknown(null);

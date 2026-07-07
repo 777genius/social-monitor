@@ -40,12 +40,12 @@ class ReaderSummaryCoverageSummary extends StatelessWidget {
         tone: AppStatusTone.neutral,
       ),
       AppStatusBadge(
-        label: '${entry.storyClusterCount} clusters',
+        label: '${entry.storyClusterCount} story groups',
         tone: AppStatusTone.neutral,
       ),
       if (entry.crossSourceClusterCount > 0)
         AppStatusBadge(
-          label: '${entry.crossSourceClusterCount} cross-source',
+          label: '${entry.crossSourceClusterCount} cross-source matches',
           tone: AppStatusTone.success,
         )
       else if (entry.singleSourceOnly)
@@ -71,7 +71,7 @@ class ReaderSummaryCoverageSummary extends StatelessWidget {
     );
     if (entries.length == 1) {
       final provider = readerSummaryProviderLabel(entries.single.providerKey);
-      return 'Only $provider contributed cited evidence across $clusterCount story clusters. Other connected providers did not confirm this yet.';
+      return 'Only $provider contributed cited evidence across $clusterCount story groups. Other connected source groups did not confirm this yet.';
     }
 
     final labels = entries
@@ -79,6 +79,6 @@ class ReaderSummaryCoverageSummary extends StatelessWidget {
         .map((entry) => readerSummaryProviderLabel(entry.providerKey))
         .join(', ');
     final suffix = entries.length > 3 ? ' +${entries.length - 3} more' : '';
-    return '$labels$suffix contributed $itemCount cited items across $clusterCount story clusters, with $crossSourceCount cross-source confirmations.';
+    return '$labels$suffix contributed $itemCount cited items across $clusterCount story groups, with $crossSourceCount cross-source matches.';
   }
 }

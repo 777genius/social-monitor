@@ -38,6 +38,13 @@ describe("AgentRuntimeReaderSummaryModelAdapter", () => {
     await adapter.generate(input, route);
 
     expect(route.model).toBe("codex:agent-runtime-reader-summary");
+    expect(adapter.estimate(input, route).outputTokens).toBe(3_200);
+    expect(client.commands[0]?.systemPrompt).toContain(
+      "prefer one compact lead paragraph followed by 2-3 short Markdown bullets",
+    );
+    expect(client.commands[0]?.systemPrompt).toContain(
+      "- **Main signal:** ...",
+    );
     expect(client.commands[0]?.controls).not.toHaveProperty("model");
   });
 

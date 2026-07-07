@@ -66,7 +66,7 @@ describe("buildReaderSummaryClaimBoard", () => {
             level: "low",
             score: 0.42,
             rationale:
-              "Single-source story signal; treat provider metrics as local evidence.",
+              "This story has not been independently confirmed across monitored source groups yet.",
           },
           confirmedProviderKeys: ["reddit"],
         }),
@@ -94,12 +94,12 @@ describe("buildReaderSummaryClaimBoard", () => {
         {
           kind: "single_source",
           description:
-            "Single-source claim; wait for another provider to confirm.",
+            "Needs independent confirmation before treating it as verified.",
         },
         {
           kind: "low_confidence",
           description:
-            "Single-source story signal; treat provider metrics as local evidence.",
+            "This story has not been independently confirmed across monitored source groups yet.",
         },
       ],
     });
@@ -118,7 +118,7 @@ const topRead = (overrides: Partial<TopRead> = {}): TopRead => ({
   confidence: {
     level: "medium",
     score: 0.64,
-    rationale: "Two providers confirm this story signal.",
+    rationale: "2 monitored source groups support this story.",
   },
   confirmedProviderKeys: ["reddit", "rss"],
   providerMetrics: [],

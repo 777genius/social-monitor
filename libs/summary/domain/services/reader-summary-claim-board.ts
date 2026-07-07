@@ -108,7 +108,8 @@ const claimRisks = (
   if (read.confirmedProviderKeys.length <= 1) {
     inferredRisks.push({
       kind: "single_source",
-      description: "Single-source claim; wait for another provider to confirm.",
+      description:
+        "Needs independent confirmation before treating it as verified.",
     });
   }
   if (read.confidence.level === "low" || read.confidence.score < 0.5) {

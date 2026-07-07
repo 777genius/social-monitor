@@ -128,6 +128,12 @@ const belongsToCrossProviderStory = (
     return false;
   }
 
+  const itemKey = storyKey(item, policy);
+  const headKey = storyKey(head, policy);
+  if (itemKey !== headKey && canonicalStoryKeysConflict(itemKey, headKey)) {
+    return false;
+  }
+
   const itemTokens = storyTopicTokens(item, policy);
   const headTokens = storyTopicTokens(head, policy);
   const sharedTokens = sharedStoryTopicTokenCount(itemTokens, headTokens);
@@ -143,6 +149,12 @@ const belongsToCrossProviderStory = (
       policy.crossSourceTopicSimilarityThreshold
   );
 };
+
+const canonicalStoryKeysConflict = (left: string, right: string): boolean =>
+  (left.startsWith("github-repo:") && right.startsWith("github-repo:")) ||
+  (left.startsWith("url:") &&
+    right.startsWith("url:") &&
+    left.slice(4).split("/").at(0) === right.slice(4).split("/").at(0));
 
 const selectedClusterEvidence = (
   items: readonly SummaryEvidenceItem[],
@@ -325,7 +337,7 @@ const storyClusterReasons = (params: {
 
   if (params.providerKeys.length > 1) {
     reasons.push(
-      `Confirmed by ${params.providerKeys.length} providers: ${params.providerKeys.slice(0, 3).join(", ")}`,
+      `Confirmed by ${params.providerKeys.length} source groups: ${params.providerKeys.slice(0, 3).join(", ")}`,
     );
   }
 
@@ -363,11 +375,11 @@ const buildSourceWindow = (
     };
   }
 
-  const observedTimes = selectedEvidence.map((item) =>
-    item.observedAt.getTime(),
+  const publishedTimes = selectedEvidence.map((item) =>
+    item.publishedAt.getTime(),
   );
-  const startedAt = new Date(Math.min(...observedTimes));
-  const endedAtValue = Math.max(...observedTimes);
+  const startedAt = new Date(Math.min(...publishedTimes));
+  const endedAtValue = Math.max(...publishedTimes);
   const endedAt = new Date(
     endedAtValue > startedAt.getTime() ? endedAtValue : endedAtValue + 1,
   );

@@ -3,8 +3,10 @@ import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 
 import '../../domain/aggregates/reader_summary.dart';
 import '../../domain/entities/summary_citation.dart';
+import '../formatters/reader_summary_trust_copy.dart';
 import '../view_models/reader_summary_trust_snapshot.dart';
-import 'reader_summary_sections.dart';
+
+part 'reader_summary_trust_summary_line.dart';
 
 class ReaderSummaryTrustPanel extends StatefulWidget {
   const ReaderSummaryTrustPanel({
@@ -28,6 +30,10 @@ class ReaderSummaryTrustPanel extends StatefulWidget {
 class _ReaderSummaryTrustPanelState extends State<ReaderSummaryTrustPanel> {
   bool _expanded = false;
 
+  void _toggleExpanded() {
+    setState(() => _expanded = !_expanded);
+  }
+
   @override
   Widget build(BuildContext context) {
     if (widget.claims.isEmpty && widget.reliabilityReport.risks.isEmpty) {
@@ -39,78 +45,77 @@ class _ReaderSummaryTrustPanelState extends State<ReaderSummaryTrustPanel> {
       report: widget.reliabilityReport,
     );
 
-    return ReaderSummarySection(
-      title: 'Trust & evidence',
-      icon: Icons.verified_outlined,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _TrustBadges(snapshot: snapshot, report: widget.reliabilityReport),
-          const SizedBox(height: AppSpacing.xs),
-          TextButton.icon(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Divider(height: AppSpacing.md),
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
             key: const ValueKey('reader-summary-trust-toggle'),
-            onPressed: () => setState(() => _expanded = !_expanded),
-            icon: Icon(
-              _expanded
-                  ? Icons.expand_less_outlined
-                  : Icons.expand_more_outlined,
+            borderRadius: BorderRadius.circular(8),
+            onTap: _toggleExpanded,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _TrustSummaryLine(
+                    snapshot: snapshot,
+                    report: widget.reliabilityReport,
+                    expanded: _expanded,
+                  ),
+                  if (_expanded) ...[
+                    const SizedBox(height: AppSpacing.sm),
+                    _TrustDetails(
+                      claims: widget.claims,
+                      report: widget.reliabilityReport,
+                      citationsById: widget.citationsById,
+                      onOpenUrl: widget.onOpenUrl,
+                    ),
+                  ],
+                ],
+              ),
             ),
-            label: Text(_expanded ? 'Hide evidence' : 'View evidence'),
           ),
-          if (_expanded) ...[
-            const SizedBox(height: AppSpacing.xs),
-            _TrustDetails(
-              claims: widget.claims,
-              report: widget.reliabilityReport,
-              citationsById: widget.citationsById,
-              onOpenUrl: widget.onOpenUrl,
-            ),
-          ],
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
 
-class _TrustBadges extends StatelessWidget {
-  const _TrustBadges({required this.snapshot, required this.report});
+class _TrustVerdict extends StatelessWidget {
+  const _TrustVerdict({required this.snapshot});
 
   final ReaderSummaryTrustSnapshot snapshot;
-  final SummaryReliabilityReport report;
 
   @override
   Widget build(BuildContext context) {
-    return Wrap(
-      spacing: AppSpacing.xs,
-      runSpacing: AppSpacing.xs,
+    final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        AppStatusBadge(
-          label:
-              '${_levelLabel(snapshot.confidenceLevel)} confidence ${_percent(snapshot.confidenceScore)}%',
-          tone: _confidenceTone(snapshot.confidenceLevel),
-        ),
-        if (snapshot.providerCount > 0)
-          AppStatusBadge(
-            label:
-                '${snapshot.providerCount} provider${snapshot.providerCount == 1 ? '' : 's'}',
-            tone: snapshot.providerCount > 1
-                ? AppStatusTone.success
-                : AppStatusTone.warning,
+        Text(
+          trustVerdictTitle(snapshot),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0,
           ),
-        AppStatusBadge(
-          label: snapshot.needsConfirmation
-              ? 'Needs confirmation'
-              : 'Evidence linked',
-          tone: snapshot.needsConfirmation
-              ? AppStatusTone.warning
-              : AppStatusTone.success,
         ),
-        if (report.risks.isNotEmpty)
-          AppStatusBadge(
-            label:
-                '${_levelLabel(report.riskLevel)} risk ${_percent(report.riskScore)}%',
-            tone: _riskTone(report.riskLevel),
+        const SizedBox(height: AppSpacing.xs),
+        Text(
+          trustVerdictDescription(snapshot),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: textTheme.bodySmall?.copyWith(
+            color: colorScheme.onSurfaceVariant,
+            letterSpacing: 0,
           ),
+        ),
       ],
     );
   }
@@ -166,7 +171,7 @@ class _ReliabilityNotes extends StatelessWidget {
             (risk) => Padding(
               padding: const EdgeInsets.only(bottom: AppSpacing.xs),
               child: Text(
-                risk.description,
+                trustReliabilityRiskDescription(risk),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: textTheme.bodySmall?.copyWith(
@@ -197,7 +202,9 @@ class _TrustStory extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final providerCount = uniqueTrustEvidenceProviders(claim.evidence).length;
+    final lacksIndependentConfirmation = trustClaimLacksIndependentConfirmation(
+      claim,
+    );
 
     return DecoratedBox(
       key: ValueKey('reader-summary-trust-story-$index'),
@@ -224,7 +231,7 @@ class _TrustStory extends StatelessWidget {
               runSpacing: AppSpacing.xs,
               children: [
                 AppStatusBadge(
-                  label: _confidenceLabel(claim.confidence),
+                  label: trustConfidenceBadgeLabel(claim.confidence.level),
                   tone: _confidenceTone(claim.confidence.level),
                 ),
                 AppStatusBadge(
@@ -233,22 +240,21 @@ class _TrustStory extends StatelessWidget {
                   tone: AppStatusTone.neutral,
                 ),
                 AppStatusBadge(
-                  label:
-                      '$providerCount provider${providerCount == 1 ? '' : 's'}',
-                  tone: providerCount > 1
-                      ? AppStatusTone.success
-                      : AppStatusTone.warning,
+                  label: trustClaimSupportLabel(claim),
+                  tone: lacksIndependentConfirmation
+                      ? AppStatusTone.warning
+                      : AppStatusTone.success,
                 ),
                 if (claim.risks.isNotEmpty)
                   AppStatusBadge(
-                    label: _claimRiskLabel(claim.risks.first.kind),
+                    label: trustClaimRiskBadgeLabel(claim.risks.first.kind),
                     tone: AppStatusTone.warning,
                   ),
               ],
             ),
             const SizedBox(height: AppSpacing.xs),
             Text(
-              claim.confidence.rationale,
+              trustConfidenceExplanation(claim.confidence),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -259,7 +265,7 @@ class _TrustStory extends StatelessWidget {
             if (claim.risks.isNotEmpty) ...[
               const SizedBox(height: AppSpacing.xs),
               Text(
-                claim.risks.first.description,
+                trustClaimRiskDescription(claim.risks.first),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -332,28 +338,6 @@ class _EvidenceLine extends StatelessWidget {
     );
   }
 }
-
-String _confidenceLabel(TopReadConfidence confidence) {
-  return '${confidence.level} confidence ${_percent(confidence.score)}%';
-}
-
-String _claimRiskLabel(String kind) {
-  return switch (kind) {
-    'single_source' => 'Single provider',
-    'low_confidence' => 'Low confidence',
-    _ => 'Needs review',
-  };
-}
-
-String _levelLabel(String level) {
-  return switch (level) {
-    'high' => 'High',
-    'medium' => 'Medium',
-    _ => 'Low',
-  };
-}
-
-int _percent(double score) => (score.clamp(0, 1) * 100).round();
 
 AppStatusTone _confidenceTone(String level) {
   return switch (level) {

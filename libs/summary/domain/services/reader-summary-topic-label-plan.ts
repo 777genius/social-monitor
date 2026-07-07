@@ -14,6 +14,7 @@ export type ReaderSummaryTopicLabelPlan = {
 
 export type ReaderSummaryTopicNodeLabel = {
   readonly nodeId: string;
+  readonly topicId?: string;
   readonly label?: string;
   readonly groupId?: string;
   readonly keywords?: readonly string[];

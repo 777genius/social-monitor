@@ -195,7 +195,6 @@ _$GetFeedItemResponseDtoProviderMetricsProviderMetricsRedditCommentFromJson(
   providerKey: RedditCommentProviderMetricsDtoProviderKeyProviderKey.fromJson(
     json['providerKey'] as String,
   ),
-  rank: json['rank'] as num?,
   replies: json['replies'] as num,
   role: RedditCommentProviderMetricsDtoRoleRole.fromJson(
     json['role'] as String,
@@ -216,7 +215,6 @@ _$GetFeedItemResponseDtoProviderMetricsProviderMetricsRedditCommentToJson(
   'depth': instance.depth,
   'kind': instance.kind,
   'providerKey': instance.providerKey,
-  'rank': instance.rank,
   'replies': instance.replies,
   'role': instance.role,
   'score': instance.score,

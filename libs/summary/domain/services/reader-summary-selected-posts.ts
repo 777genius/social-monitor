@@ -82,6 +82,7 @@ const evidenceToSelectedPost = (
     providerMetrics: item.providerMetricLabels ?? [],
     whyImportant: whyImportant.length > 0 ? whyImportant : [item.title],
     whyNow: `Selected from ${item.providerName ?? item.providerKey} evidence for this summary.`,
+    publishedAt: item.publishedAt,
     canonicalUrl: item.canonicalUrl,
     previewMedia: item.previewMedia,
     citationIds: [citation.citationId],

@@ -192,8 +192,8 @@ class _ReaderSummariesClient implements ReaderSummariesClient {
     required String readerSummaryJobId,
     required String xWorkspaceId,
     required String xTenantId,
-    String? authorization,
     String? xWorkspaceRole,
+    String? authorization,
   }) async {
     final _extra = <String, dynamic>{};
     final queryParameters = <String, dynamic>{};
@@ -201,8 +201,8 @@ class _ReaderSummariesClient implements ReaderSummariesClient {
     final _headers = <String, dynamic>{
       r'x-workspace-id': xWorkspaceId,
       r'x-tenant-id': xTenantId,
-      r'authorization': authorization,
       r'x-workspace-role': xWorkspaceRole,
+      r'authorization': authorization,
     };
     _headers.removeWhere((k, v) => v == null);
     const Map<String, dynamic>? _data = null;

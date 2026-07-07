@@ -2,34 +2,34 @@
   "schemaVersion": 1,
   "artifactFormat": "reader-summary-production-day-run-v1",
   "generatedBy": "npm run run:reader-summary-production-day",
-  "collectionDate": "2026-07-03",
+  "collectionDate": "2026-07-06",
   "model": {
     "liveCollection": false,
-    "summaryModel": "deterministic",
+    "summaryModel": "agent-runtime",
     "writesProductionData": true,
     "allowDegraded": true,
-    "allowHistorical": true,
+    "allowHistorical": false,
     "rawProviderPayloadPersistedInReport": false,
     "rawPostTextPersistedInReport": false
   },
   "inputs": {
-    "periodStartedAt": "2026-07-03T00:00:00.000Z",
-    "periodEndedAt": "2026-07-04T00:00:00.000Z",
+    "periodStartedAt": "2026-07-06T00:00:00.000Z",
+    "periodEndedAt": "2026-07-07T00:00:00.000Z",
     "tenantFingerprint": "ec29f9d19b2f",
     "workspaceFingerprint": "c27aefd6f61b",
-    "evidencePath": "/var/folders/7b/ydmc_b0n251bc4hss4tz8y880000gn/T/social-monitor/reader-summary-production-day/2026-07-03/durable-reader-summary-2026-07-03.v1.json",
-    "frontendFixturePath": "/var/folders/7b/ydmc_b0n251bc4hss4tz8y880000gn/T/social-monitor/reader-summary-production-day/2026-07-03/frontend-reader-summary-2026-07-03.fixture.v1.json"
+    "evidencePath": "/tmp/social-monitor/reader-summary-production-day/2026-07-06/durable-reader-summary-2026-07-06.v1.json",
+    "frontendFixturePath": "/tmp/social-monitor/reader-summary-production-day/2026-07-06/frontend-reader-summary-2026-07-06.fixture.v1.json"
   },
   "run": {
-    "startedAt": "2026-07-05T20:42:08.649Z",
-    "completedAt": "2026-07-05T20:42:29.730Z"
+    "startedAt": "2026-07-06T20:40:31.493Z",
+    "completedAt": "2026-07-06T20:43:40.133Z"
   },
   "steps": [
     {
       "id": "migrate",
       "command": "npm run migrate:deploy",
       "status": "passed",
-      "durationMs": 2092,
+      "durationMs": 118995,
       "exitCode": 0
     },
     {
@@ -41,98 +41,110 @@
     },
     {
       "id": "collection-quality",
-      "command": "npm run check:yesterday-social-collection-quality -- --update --date 2026-07-03 --write-failed-report",
-      "status": "passed",
-      "durationMs": 1797,
-      "exitCode": 0
+      "command": "npm run check:yesterday-social-collection-quality -- --update --date 2026-07-06 --write-failed-report",
+      "status": "failed",
+      "durationMs": 19066,
+      "exitCode": 1
     },
     {
       "id": "durable-reader-summary",
       "command": "npm run capture:durable-reader-summary",
-      "status": "passed",
-      "durationMs": 7408,
-      "exitCode": 0
+      "status": "failed",
+      "durationMs": 31220,
+      "exitCode": 1
     },
     {
       "id": "artifact-quality",
-      "command": "npm run check:yesterday-reader-summary-artifact-quality -- --update --date 2026-07-03 --allow-dirty-collection --allow-historical",
-      "status": "passed",
-      "durationMs": 2579,
-      "exitCode": 0
+      "command": "npm run check:yesterday-reader-summary-artifact-quality -- --update --date 2026-07-06 --allow-dirty-collection",
+      "status": "failed",
+      "durationMs": 6722,
+      "exitCode": 1
     },
     {
       "id": "quality-dashboard",
-      "command": "npm run check:reader-summary-quality-dashboard -- --update --allow-degraded --allow-historical",
+      "command": "npm run check:reader-summary-quality-dashboard -- --update --allow-degraded",
       "status": "passed",
-      "durationMs": 2318,
+      "durationMs": 4473,
       "exitCode": 0
     },
     {
       "id": "source-quality-trace",
       "command": "npm run check:reader-summary-source-quality-trace -- --update",
-      "status": "passed",
-      "durationMs": 3277,
-      "exitCode": 0
+      "status": "failed",
+      "durationMs": 5790,
+      "exitCode": 1
     },
     {
       "id": "clean-day-e2e",
-      "command": "npm run check:reader-summary-clean-real-day-e2e -- --update --allow-degraded --allow-historical",
-      "status": "passed",
-      "durationMs": 1568,
-      "exitCode": 0
+      "command": "npm run check:reader-summary-clean-real-day-e2e -- --update --allow-degraded",
+      "status": "failed",
+      "durationMs": 1989,
+      "exitCode": 1
     }
   ],
   "stats": {
-    "collectedFeedItemCount": 780,
-    "publishedInsideWindowFeedItemCount": 388,
-    "observedButPublishedOutsideWindowFeedItemCount": 417,
-    "duplicateFeedItemCount": 1,
+    "collectedFeedItemCount": 311,
+    "publishedInsideWindowFeedItemCount": 290,
+    "observedButPublishedOutsideWindowFeedItemCount": 21,
+    "duplicateFeedItemCount": 0,
     "lowRelevanceFeedItemCount": 0,
-    "summaryCandidateFeedItemCount": 269,
-    "selectedFeedItemCount": 120,
-    "topReadCount": 10,
+    "summaryCandidateFeedItemCount": 190,
+    "selectedFeedItemCount": null,
+    "topReadCount": null,
     "providerCounts": {
-      "github-trending-page": 119,
-      "hacker-news": 127,
-      "reddit": 59,
-      "rss": 46,
-      "x-twitter": 37
+      "github-trending-page": 100,
+      "hacker-news": 100,
+      "reddit": 25,
+      "rss": 36,
+      "x-twitter": 29
     },
-    "xAccountCount": 2,
-    "xAccountUsageEventCount": 0,
+    "xAccountCount": 3,
+    "xAccountUsageEventCount": 22,
     "xAccounts": [
       {
         "accountFingerprint": "8ca1818c55b8",
         "priorityRank": 1,
-        "dailyRequests": 25,
-        "dailyTweets": 279,
-        "passSucceededCount": 0,
+        "dailyRequests": 9,
+        "dailyTweets": 82,
+        "passSucceededCount": 6,
         "passFailedCount": 0,
         "rateLimitCount": 0,
         "cooldownObservedCount": 0,
-        "lastUsedAt": "2026-07-05 18:36:45",
+        "lastUsedAt": "2026-07-06 20:39:14",
         "cooldownUntil": null
       },
       {
         "accountFingerprint": "305b9c91ff51",
         "priorityRank": 2,
-        "dailyRequests": 25,
-        "dailyTweets": 295,
+        "dailyRequests": 10,
+        "dailyTweets": 135,
+        "passSucceededCount": 6,
+        "passFailedCount": 0,
+        "rateLimitCount": 0,
+        "cooldownObservedCount": 0,
+        "lastUsedAt": "2026-07-06 20:39:14",
+        "cooldownUntil": null
+      },
+      {
+        "accountFingerprint": "578979ae9594",
+        "priorityRank": 9999,
+        "dailyRequests": 0,
+        "dailyTweets": 0,
         "passSucceededCount": 0,
         "passFailedCount": 0,
         "rateLimitCount": 0,
         "cooldownObservedCount": 0,
-        "lastUsedAt": "2026-07-05 18:36:43",
+        "lastUsedAt": "2026-07-06T20:39:09.697631+00:00",
         "cooldownUntil": null
       }
     ]
   },
   "qualityGates": {
-    "allStepsPassed": true,
+    "allStepsPassed": false,
     "collectionQualityReported": true,
-    "durableSummaryCaptured": true,
+    "durableSummaryCaptured": false,
     "xAccountPoolReported": true,
     "noRawSecretFragments": true
   },
-  "blockingPassed": true
+  "blockingPassed": false
 }

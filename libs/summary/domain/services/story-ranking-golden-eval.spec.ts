@@ -270,7 +270,7 @@ describe("story ranking golden eval", () => {
   ],
   "signalScore": 3.08,
   "title": "openai/codex",
-  "whyNow": "Current summary window has cross-source coverage from Repo Radar, Reddit and clustered 1 related item.",
+  "whyNow": "Current summary window has cross-source coverage from Repo Radar, Reddit and linked 1 related item.",
 }
 `);
   });

@@ -20,7 +20,6 @@ final class _TopicGraphModel {
   static _TopicGraphModel fromTopicMap({
     required ReaderSummaryTopicMap topicMap,
     required Size graphSize,
-    required Color mutedColor,
   }) {
     final nodeLimit = graphSize.width < 420
         ? _topicMapCompactNodeLimit
@@ -32,6 +31,10 @@ final class _TopicGraphModel {
     final groupsById = {for (final group in groups) group.id: group};
     final bubblesById = <String, _TopicGraphBubble>{};
     final nodesByGroupId = _nodesByGroup(visibleNodes, groups);
+    final groupIdByNodeId = {
+      for (final entry in nodesByGroupId.entries)
+        for (final node in entry.value) node.id: entry.key,
+    };
     final radiiByNodeId = _topicMapSizingPolicy.radiiByNodeId(
       nodes: visibleNodes,
       graphSize: graphSize,
@@ -84,15 +87,27 @@ final class _TopicGraphModel {
       if (source == null || target == null) {
         continue;
       }
+      final sourceGroupId = groupIdByNodeId[edge.sourceNodeId];
+      final targetGroupId = groupIdByNodeId[edge.targetNodeId];
+      if (sourceGroupId == null ||
+          targetGroupId == null ||
+          sourceGroupId != targetGroupId ||
+          sourceGroupId == _topicMapNeutralGroupId) {
+        continue;
+      }
       final pairKey = _edgePairKey(edge.sourceNodeId, edge.targetNodeId);
       if (!edgePairs.add(pairKey)) {
         continue;
       }
+      final groupColor = _topicColor(
+        groupsById[sourceGroupId]?.colorKey ?? 'blue',
+      );
+      final edgeAlpha = 0.12 + edge.weight * 0.20;
       graphEdges.add(
         _TopicGraphEdge(
           sourceNodeId: edge.sourceNodeId,
           targetNodeId: edge.targetNodeId,
-          color: mutedColor.withValues(alpha: 0.10 + edge.weight * 0.18),
+          color: groupColor,
           strokeWidth: 0.8 + edge.weight * 2.1,
         ),
       );
@@ -100,13 +115,16 @@ final class _TopicGraphModel {
         source,
         target,
         paint: Paint()
-          ..color = mutedColor.withValues(alpha: 0.10 + edge.weight * 0.18)
+          ..color = groupColor.withValues(alpha: edgeAlpha)
           ..strokeWidth = 0.8 + edge.weight * 2.1
           ..style = PaintingStyle.stroke,
       );
     }
 
     for (final entry in nodesByGroupId.entries) {
+      if (entry.key == _topicMapNeutralGroupId) {
+        continue;
+      }
       final groupNodes = entry.value;
       if (groupNodes.length < 2) {
         continue;
@@ -129,7 +147,7 @@ final class _TopicGraphModel {
           _TopicGraphEdge(
             sourceNodeId: groupNodes.first.id,
             targetNodeId: node.id,
-            color: groupColor.withValues(alpha: 0.08),
+            color: groupColor,
             strokeWidth: 1.05,
           ),
         );
@@ -137,61 +155,27 @@ final class _TopicGraphModel {
           anchor,
           target,
           paint: Paint()
-            ..color = groupColor.withValues(alpha: 0.08)
+            ..color = groupColor.withValues(alpha: 0.16)
             ..strokeWidth = 1.05
             ..style = PaintingStyle.stroke,
         );
       }
     }
 
-    final groupAnchors = nodesByGroupId.values
-        .where((nodes) => nodes.isNotEmpty)
-        .map((nodes) => nodes.first)
-        .toList(growable: false);
-    for (var index = 0; index < groupAnchors.length - 1; index++) {
-      final sourceNode = groupAnchors[index];
-      final targetNode = groupAnchors[index + 1];
-      final source = graphNodesById[sourceNode.id];
-      final target = graphNodesById[targetNode.id];
-      if (source == null || target == null) {
-        continue;
-      }
-      final pairKey = _edgePairKey(sourceNode.id, targetNode.id);
-      if (!edgePairs.add(pairKey)) {
-        continue;
-      }
-      graphEdges.add(
-        _TopicGraphEdge(
-          sourceNodeId: sourceNode.id,
-          targetNodeId: targetNode.id,
-          color: mutedColor.withValues(alpha: 0.045),
-          strokeWidth: 0.8,
-        ),
-      );
-      graph.addEdge(
-        source,
-        target,
-        paint: Paint()
-          ..color = mutedColor.withValues(alpha: 0.045)
-          ..strokeWidth = 0.8
-          ..style = PaintingStyle.stroke,
-      );
-    }
-
     final configuration = graphview.FruchtermanReingoldConfiguration(
       iterations: visibleNodes.length > 34 ? 950 : 720,
-      repulsionRate: 0.42,
-      attractionRate: 0.11,
-      repulsionPercentage: 0.92,
-      attractionPercentage: 0.18,
-      clusterPadding: 22,
+      repulsionRate: 0.31,
+      attractionRate: 0.14,
+      repulsionPercentage: 0.72,
+      attractionPercentage: 0.24,
+      clusterPadding: 8,
       shuffleNodes: false,
     );
     final algorithm = graphview.FruchtermanReingoldAlgorithm(
       configuration,
       renderer: graphview.ArrowEdgeRenderer(noArrow: true),
     );
-    if (graph.nodes.isNotEmpty) {
+    if (graph.nodes.length > 1) {
       algorithm.run(graph, 0, 0);
     }
     final positionedBubbles = _positionedBubbles(

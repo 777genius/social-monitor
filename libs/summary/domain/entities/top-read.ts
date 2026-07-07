@@ -28,6 +28,7 @@ export type TopRead = {
   readonly providerMetrics: readonly ProviderMetric[];
   readonly whyImportant: readonly string[];
   readonly whyNow: string;
+  readonly publishedAt?: Date;
   readonly canonicalUrl?: string;
   readonly previewMedia?: PreviewMedia;
   readonly citationIds: readonly string[];

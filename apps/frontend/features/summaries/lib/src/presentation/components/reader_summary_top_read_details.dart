@@ -97,20 +97,13 @@ class ReaderSummaryTopReadDetails extends StatelessWidget {
   }
 }
 
-String readerSummaryConfidenceLabel(
-  TopReadConfidence confidence, {
-  bool compact = false,
-}) {
-  final score = (confidence.score * 100).round().clamp(0, 100);
+String readerSummaryConfidenceLabel(TopReadConfidence confidence) {
   final level = switch (confidence.level) {
     'high' => 'High',
     'medium' => 'Medium',
     _ => 'Low',
   };
-  if (compact) {
-    return '$level $score%';
-  }
-  return '$level confidence $score%';
+  return '$level confidence';
 }
 
 AppStatusTone readerSummaryConfidenceTone(TopReadConfidence confidence) {

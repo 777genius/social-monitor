@@ -1053,6 +1053,25 @@
         ],
         "type": "object"
       },
+      "GetEffectiveUserSummaryPreferenceResponseDto": {
+        "properties": {
+          "source": {
+            "enum": [
+              "subscription",
+              "interest",
+              "none"
+            ],
+            "type": "string"
+          },
+          "summaryPreference": {
+            "$ref": "#/components/schemas/UserSummaryPreferenceViewDto"
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "type": "object"
+      },
       "GetFeedItemResponseDto": {
         "properties": {
           "authorHandle": {
@@ -4454,6 +4473,10 @@
             "type": "array"
           },
           "providerName": {
+            "type": "string"
+          },
+          "publishedAt": {
+            "format": "date-time",
             "type": "string"
           },
           "reason": {
@@ -8959,6 +8982,21 @@
         ],
         "type": "object"
       },
+      "UpsertUserSummaryPreferenceResponseDto": {
+        "properties": {
+          "created": {
+            "type": "boolean"
+          },
+          "summaryPreference": {
+            "$ref": "#/components/schemas/UserSummaryPreferenceViewDto"
+          }
+        },
+        "required": [
+          "summaryPreference",
+          "created"
+        ],
+        "type": "object"
+      },
       "UserRelevanceProfileDto": {
         "properties": {
           "blockedProviderKeys": {
@@ -9094,6 +9132,95 @@
             "type": "string"
           }
         },
+        "type": "object"
+      },
+      "UserSummaryPreferenceViewDto": {
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "customInstructions": {
+            "maxLength": 1200,
+            "type": "string"
+          },
+          "format": {
+            "enum": [
+              "executive_brief",
+              "bullet_digest",
+              "risk_brief"
+            ],
+            "type": "string"
+          },
+          "id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "includeRisks": {
+            "type": "boolean"
+          },
+          "includeSourceHighlights": {
+            "type": "boolean"
+          },
+          "interestId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "language": {
+            "enum": [
+              "auto",
+              "en",
+              "ru"
+            ],
+            "type": "string"
+          },
+          "maxKeyPoints": {
+            "maximum": 10,
+            "minimum": 1,
+            "type": "number"
+          },
+          "rulesVersion": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "subscriptionId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "tenantId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "tone": {
+            "enum": [
+              "neutral",
+              "concise",
+              "analytical"
+            ],
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "userId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "workspaceId": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tenantId",
+          "workspaceId",
+          "userId",
+          "rulesVersion",
+          "createdAt",
+          "updatedAt"
+        ],
         "type": "object"
       },
       "WorkspaceSettingsDiagnosticsDto": {
@@ -11710,6 +11837,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetEffectiveUserSummaryPreferenceResponseDto"
+                }
+              }
+            },
             "description": ""
           }
         },
@@ -11776,6 +11910,13 @@
         },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpsertUserSummaryPreferenceResponseDto"
+                }
+              }
+            },
             "description": ""
           }
         },

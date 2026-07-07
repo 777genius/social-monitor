@@ -45,6 +45,48 @@ void main() {
     expect(find.text('Key links'), findsNothing);
   });
 
+  testWidgets('renders structured executive summary paragraphs and bullets', (
+    tester,
+  ) async {
+    const mapper = SummaryMapper();
+    final summary = mapper.readerSummaryToDomain(
+      readerSummaryApiDto(
+        executiveSummary: [
+          '**AI-agent workflows** dominated the day across social sources.',
+          '',
+          '- **Main signal:** Claude/Codex users are sharing concrete prompt-loop, MCP and debugging workflows.',
+          '- **Why it matters:** Product teams can reuse these workflow patterns instead of chasing isolated prompts.',
+          '- **Watch:** Treat single-source launch and benchmark claims as provisional.',
+        ].join('\n'),
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark(),
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: ReaderSummaryBriefSurface(
+              summary: summary,
+              citationsById: {
+                for (final citation in summary.citations) citation.id: citation,
+              },
+              isRefreshing: false,
+              onOpenUrl: (_) {},
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.textContaining('AI-agent workflows'), findsWidgets);
+    expect(find.textContaining('Main signal:'), findsOneWidget);
+    expect(find.textContaining('Why it matters:'), findsOneWidget);
+    expect(find.textContaining('Treat single-source launch'), findsOneWidget);
+    expect(find.textContaining('**AI-agent workflows**'), findsNothing);
+    expect(find.textContaining('**Main signal:**'), findsNothing);
+  });
+
   testWidgets('renders grouped topic map panel in reader summary', (
     tester,
   ) async {

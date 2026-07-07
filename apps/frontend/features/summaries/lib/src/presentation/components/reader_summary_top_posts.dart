@@ -137,7 +137,8 @@ class _ReaderSummaryTopPostsState extends State<ReaderSummaryTopPosts> {
                     ),
                     index: index,
                     item: item,
-                    dateLabel: summaryPeriodDayLabel(widget.period),
+                    dateLabel: _topPostDateLabel(item, widget.period),
+                    citationsById: widget.citationsById,
                     dense: _denseView,
                     reservePreviewSpace: reservePreviewSpace,
                     rating: widget.ratingFor(item),
@@ -364,6 +365,15 @@ class _TopPostsHeader extends StatelessWidget {
 
 bool _isGithubTrendingTopRead(TopRead item) =>
     item.providerKey.trim().toLowerCase() == _githubTrendingProviderKey;
+
+String _topPostDateLabel(TopRead item, SummaryPeriod fallbackPeriod) {
+  final publishedAt = item.publishedAt;
+  if (publishedAt == null) {
+    return summaryPeriodDayLabel(fallbackPeriod);
+  }
+
+  return summaryPublishedDayLabel(publishedAt);
+}
 
 String _topPostBoardTitle(_TopPostBoard board) {
   return switch (board) {

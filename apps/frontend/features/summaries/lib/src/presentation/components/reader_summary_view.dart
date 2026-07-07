@@ -140,6 +140,9 @@ class _ExecutiveBoardCard extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final wide = constraints.maxWidth >= 760;
+        final hasCoverage = ReaderSummaryCoverageBySourceBand.hasCoverage(
+          summary,
+        );
         final brief = ReaderSummaryExecutiveBrief(
           summary: summary,
           citationsById: citationsById,
@@ -147,9 +150,9 @@ class _ExecutiveBoardCard extends StatelessWidget {
         );
         final rail = ReaderSummaryInsightRail(summary: summary);
 
-        final Widget content;
+        final Widget boardBody;
         if (wide) {
-          content = Row(
+          boardBody = Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(child: brief),
@@ -165,7 +168,7 @@ class _ExecutiveBoardCard extends StatelessWidget {
             ],
           );
         } else {
-          content = Column(
+          boardBody = Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               brief,
@@ -176,7 +179,16 @@ class _ExecutiveBoardCard extends StatelessWidget {
             ],
           );
         }
-        return content;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (hasCoverage) ...[
+              ReaderSummaryCoverageBySourceBand(summary: summary),
+              const SizedBox(height: AppSpacing.lg),
+            ],
+            boardBody,
+          ],
+        );
       },
     );
   }

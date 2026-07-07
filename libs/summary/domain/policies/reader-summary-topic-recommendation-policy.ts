@@ -6,6 +6,12 @@ import type {
 import type { ReaderSummaryTopicMapNode } from "../entities/reader-summary-topic-map";
 import type { TopRead } from "../entities/top-read";
 import { uniqueNonEmpty } from "../value-objects/summary-text";
+import {
+  isUsableReaderSummaryTopicRecommendationLabel,
+  normalizeReaderSummaryTopicRecommendationLabel as normalizeTopicLabel,
+  readerSummaryTopicRecommendationLabel,
+  readerSummaryTopicRecommendationQueryTokens,
+} from "./reader-summary-topic-recommendation-label";
 
 export type BuildReaderSummaryTopicRecommendationsParams = {
   readonly artifacts: readonly ReaderSummaryArtifactProps[];
@@ -102,7 +108,10 @@ const aggregateTopicSignals = (
   for (const artifact of artifacts) {
     for (const signal of topicSignalsForArtifact(artifact)) {
       const normalizedLabel = normalizeTopicLabel(signal.label);
-      if (normalizedLabel.length === 0 || topicTier(normalizedLabel) === "core") {
+      if (
+        !isUsableReaderSummaryTopicRecommendationLabel(signal.label) ||
+        topicTier(normalizedLabel) === "core"
+      ) {
         continue;
       }
 
@@ -164,7 +173,10 @@ const signalForTopicNode = (params: {
 
   return {
     readerSummaryId: params.artifact.readerSummaryId,
-    label: params.node.label,
+    label: readerSummaryTopicRecommendationLabel({
+      label: params.node.label,
+      keywords: params.node.keywords,
+    }),
     providerKeys: params.node.providerKeys,
     interestIds: params.node.interestIds,
     citationIds: params.node.citationIds,
@@ -185,14 +197,25 @@ const fallbackSignalForLabel = (params: {
   readonly label: string;
   readonly topReads: readonly TopRead[];
 }): TopicSignal => {
-  const normalizedLabel = normalizeTopicLabel(params.label);
-  const matchedTopReads = params.topReads.filter((read) =>
-    normalizeTopicLabel(read.title).includes(normalizedLabel),
-  );
+  const label = readerSummaryTopicRecommendationLabel({
+    label: params.label,
+    keywords: [],
+  });
+  const normalizedLabel = normalizeTopicLabel(label);
+  const queryTokens = readerSummaryTopicRecommendationQueryTokens(label);
+  const matchedTopReads = params.topReads.filter((read) => {
+    const normalizedTitle = normalizeTopicLabel(read.title);
+
+    return (
+      normalizedTitle.includes(normalizedLabel) ||
+      (queryTokens.length > 0 &&
+        queryTokens.every((token) => normalizedTitle.includes(token)))
+    );
+  });
 
   return {
     readerSummaryId: params.artifact.readerSummaryId,
-    label: params.label,
+    label,
     providerKeys: uniqueNonEmpty(
       matchedTopReads.flatMap((read) => [
         read.providerKey,
@@ -383,14 +406,6 @@ const preferredLabel = (signals: readonly TopicSignal[]): string =>
   signals
     .map((signal) => signal.label.trim())
     .sort((left, right) => left.length - right.length)[0] ?? "Topic";
-
-const normalizeTopicLabel = (value: string): string =>
-  value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9+#.]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
 
 const average = (values: readonly number[]): number => {
   const finite = values.filter((value) => Number.isFinite(value));

@@ -24,23 +24,24 @@ AppRouteWidgetBuilder authFeatureBuilder({
 
   return (context, uri) {
     final runtime = runtimeController.runtime;
+    final workspaces = [
+      for (final workspace in runtime.availableWorkspaces)
+        if (workspace.scope case final scope?)
+          (
+            scope: scope,
+            tenantName: workspace.tenantName,
+            workspaceName: workspace.workspaceName,
+            workspaceRole: workspace.workspaceRole,
+            statusLabel: workspace.statusLabel,
+          ),
+    ];
     return AuthFeatureRoute.runtime(
-      generatedApiRuntime: runtime.generatedApiRuntime,
+      generatedApiRuntime: workspaces.isEmpty ? runtime.generatedApiRuntime : null,
       userId: runtime.session.userId,
       userLabel: runtime.session.userLabel,
       userRole: runtime.session.userRole,
       selectedScope: runtime.workspace.scope,
-      workspaces: [
-        for (final workspace in runtime.availableWorkspaces)
-          if (workspace.scope case final scope?)
-            (
-              scope: scope,
-              tenantName: workspace.tenantName,
-              workspaceName: workspace.workspaceName,
-              workspaceRole: workspace.workspaceRole,
-              statusLabel: workspace.statusLabel,
-            ),
-      ],
+      workspaces: workspaces,
       onSessionRestored: (session) {
         runtimeController.restoreAuthSession(
           userId: session.userId,
@@ -87,6 +88,7 @@ AppRouteWidgetBuilder settingsFeatureBuilder({
       animation: themeModeController,
       builder: (context, _) => SettingsFeatureRoute.runtime(
         scope: scope,
+        userId: runtime.session.userId,
         generatedApiRuntime: generatedApiRuntime,
         themeMode: themeModeController.themeMode,
         onThemeModeChanged: themeModeController.setThemeMode,

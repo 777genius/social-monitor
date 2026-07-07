@@ -93,17 +93,17 @@ abstract class ReaderSummariesClient {
 
   /// Get safe quality rejection diagnostics for a readerSummary job.
   ///
-  /// [authorization] - Optional Bearer API key. Requires read:summaries. If supplied, x-workspace-role is not required.
+  /// [xWorkspaceRole] - Local-dev fallback only. ReaderSummary quality rejection diagnostics require owner or admin.
   ///
-  /// [xWorkspaceRole] - Comma-separated workspace roles. ReaderSummary quality rejection diagnostics require owner or admin. Required when Authorization bearer API key is not supplied.
+  /// [authorization] - Bearer OIDC JWT for production ReaderSummary quality rejection diagnostics.
   @GET('/reader-summary-jobs/{readerSummaryJobId}/quality-rejection')
   Future<ReaderSummaryQualityRejectionResponseDto>
   readerSummaryJobControllerGetQualityRejection({
     @Path('readerSummaryJobId') required String readerSummaryJobId,
     @Header('x-workspace-id') required String xWorkspaceId,
     @Header('x-tenant-id') required String xTenantId,
-    @Header('authorization') String? authorization,
     @Header('x-workspace-role') String? xWorkspaceRole,
+    @Header('authorization') String? authorization,
   });
 
   /// Get readerSummary job status and safe timeline.

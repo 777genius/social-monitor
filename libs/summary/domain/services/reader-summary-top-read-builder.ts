@@ -13,6 +13,7 @@ import {
   readerItemConfidence,
   storyProviderMetricLabels,
 } from "./reader-summary-support";
+import { isTopReadEligibleEvidence } from "../policies/top-read-eligibility-policy";
 
 const maxTopReadCitationIds = 4;
 
@@ -51,19 +52,25 @@ export const storyToTopRead = (
   const modelCitedEvidence = modelCitations
     .map((citation) => evidenceByFeedItemId.get(citation.feedItemId))
     .filter((item): item is SummaryEvidenceItem => item !== undefined);
+  const eligibleModelCitationIds = modelCitations
+    .filter((citation) =>
+      isTopReadEligibleEvidence(evidenceByFeedItemId.get(citation.feedItemId)),
+    )
+    .map((citation) => citation.citationId);
   const cluster = clusterById.get(story.storyClusterId);
   const clusterEvidence =
     cluster === undefined
       ? modelCitedEvidence
       : (evidenceByClusterId.get(cluster.id) ?? modelCitedEvidence);
+  const topReadEvidence = clusterEvidence.filter(isTopReadEligibleEvidence);
   const citationIdByFeedItemId = new Map(
     [...citationById.values()].map(
       (citation) => [citation.feedItemId, citation.citationId] as const,
     ),
   );
   const citationIds = compactUnique([
-    ...story.citationIds,
-    ...clusterEvidence.map((item) =>
+    ...eligibleModelCitationIds,
+    ...topReadEvidence.map((item) =>
       citationIdByFeedItemId.get(item.feedItemId),
     ),
   ]).slice(0, maxTopReadCitationIds);
@@ -74,9 +81,12 @@ export const storyToTopRead = (
     );
   const citedEvidence = citations
     .map((citation) => evidenceByFeedItemId.get(citation.feedItemId))
-    .filter((item): item is SummaryEvidenceItem => item !== undefined);
+    .filter(
+      (item): item is SummaryEvidenceItem =>
+        item !== undefined && isTopReadEligibleEvidence(item),
+    );
   const citation = citations[0];
-  const evidence = citedEvidence[0] ?? clusterEvidence[0];
+  const evidence = citedEvidence[0] ?? topReadEvidence[0] ?? clusterEvidence[0];
   const providerKey =
     citation?.providerKey ??
     evidence?.providerKey ??
@@ -87,19 +97,19 @@ export const storyToTopRead = (
   const matchedInterestIds = uniqueNonEmpty([
     ...story.interestIds,
     ...(cluster?.interestIds ?? []),
-    ...citedEvidence.map((item) => item.interestId),
+    ...topReadEvidence.map((item) => item.interestId),
   ]);
   const whyImportant = buildTopReadUserFacingReasons({
     story,
     cluster,
-    evidence: clusterEvidence,
+    evidence: topReadEvidence,
   });
   const signalScore = normalizeSignalScore(
     cluster?.score ?? evidence?.score ?? 0,
   );
   const confirmedProviders = confirmedProviderKeys({
     cluster,
-    evidence: clusterEvidence,
+    evidence: topReadEvidence,
     providerKey,
   });
 
@@ -119,22 +129,20 @@ export const storyToTopRead = (
     signalScore,
     confidence: readerItemConfidence({
       cluster,
-      evidenceCount: Math.max(
-        clusterEvidence.length,
-        cluster === undefined ? 0 : 1 + cluster.duplicateFeedItemIds.length,
-      ),
+      evidenceCount: Math.max(topReadEvidence.length, citedEvidence.length),
       confirmedProviderCount: confirmedProviders.length,
       signalScore,
     }),
     confirmedProviderKeys: confirmedProviders,
     providerMetrics: storyProviderMetricLabels({
-      evidence: clusterEvidence,
+      evidence: topReadEvidence,
       representativeMetricLabels: evidence?.providerMetricLabels,
     }),
     whyImportant,
-    whyNow: buildWhyNow(cluster, story.providerKeys, clusterEvidence),
+    whyNow: buildWhyNow(cluster, story.providerKeys, topReadEvidence),
+    publishedAt: evidence?.publishedAt,
     canonicalUrl: citation?.canonicalUrl ?? evidence?.canonicalUrl,
-    previewMedia: selectTopReadPreviewMedia(evidence, clusterEvidence),
+    previewMedia: selectTopReadPreviewMedia(evidence, topReadEvidence),
     citationIds,
   };
 };
