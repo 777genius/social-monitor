@@ -6,7 +6,7 @@ import { join } from 'node:path';
 export function readFrontendRuntimeConfig(env = process.env) {
   const port = env.SOCIAL_MONITOR_FRONTEND_PORT ?? '53217';
   const host = env.SOCIAL_MONITOR_FRONTEND_HOST ?? '127.0.0.1';
-  const device = env.SOCIAL_MONITOR_FRONTEND_DEVICE ?? 'chrome';
+  const device = env.SOCIAL_MONITOR_FRONTEND_DEVICE ?? 'web-server';
   const launchPath = env.SOCIAL_MONITOR_FRONTEND_LAUNCH_PATH ?? '/summaries';
   const launchUrl = `http://${host}:${port}${launchPath}`;
   const pidFile =

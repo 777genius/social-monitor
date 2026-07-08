@@ -66,6 +66,13 @@ fvm flutter test app/test/architecture/frontend_architecture_boundaries_test.dar
 
 Keep this test green before claiming frontend architecture work is done.
 
+## Frontend Dev Runtime Refresh
+
+- If the live local frontend is running and you change ordinary Dart UI files, run `npm run frontend:hot-reload` before asking the user to refresh.
+- Use `npm run frontend:hot-restart` for changes that must re-run app startup, such as `main`, app composition, web assets or pubspec changes.
+- For multi-agent work, keep `npm run frontend:watch-hot-reload` running next to `npm run frontend:run-connected-marionette`; it watches frontend Dart/web/package files and sends hot reload by default, escalating to restart for startup/web/package changes.
+- Do not start another frontend server on a neighboring port just to see changes. Reuse the existing `127.0.0.1:53217` dev runtime unless the user explicitly asks otherwise.
+
 ## Before Claiming Done
 
 Run the smallest checks that prove the changed surface:

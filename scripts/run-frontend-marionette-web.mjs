@@ -11,7 +11,7 @@ const repoRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const appDir = join(repoRoot, 'apps/frontend/app');
 
 const config = readFrontendRuntimeConfig();
-const device = process.env.SOCIAL_MONITOR_FRONTEND_DEVICE ?? 'chrome';
+const device = config.device;
 const runHeadless =
   process.env.SOCIAL_MONITOR_FRONTEND_HEADLESS?.toLowerCase() === 'true';
 const browserDebugPort = process.env.SOCIAL_MONITOR_FRONTEND_BROWSER_DEBUG_PORT;
@@ -79,7 +79,9 @@ console.log(`Frontend web: ${config.launchUrl}`);
 console.log(`Flutter device: ${device}`);
 console.log(`Headless browser: ${runHeadless ? 'yes' : 'no'}`);
 console.log(`PID file: ${config.pidFile}`);
-console.log('Use npm run frontend:hot-restart for full Flutter-tool restart.');
+console.log('Use npm run frontend:hot-reload for ordinary Dart UI edits.');
+console.log('Use npm run frontend:hot-restart when main/initState/web/pubspec changes need it.');
+console.log('Use npm run frontend:watch-hot-reload during multi-agent frontend edits.');
 
 const child = spawn('fvm', args, {
   cwd: appDir,

@@ -56,4 +56,11 @@ Run the smallest checks that prove the frontend change:
 - App shell change: `fvm flutter test app`.
 - Design-system/shared-kernel/generated-api change: run the affected package tests plus the architecture test.
 
+## Live Dev Runtime
+
+- When the user is viewing `http://127.0.0.1:53217`, apply ordinary Dart UI changes with `npm run frontend:hot-reload`.
+- Use `npm run frontend:hot-restart` only when app startup, `initState`, web assets or pubspec changes require a restart.
+- During multi-agent frontend work, prefer leaving `npm run frontend:watch-hot-reload` running so Dart changes trigger safe Flutter hot reload and startup/web/package changes trigger restart automatically.
+- Do not launch duplicate frontend instances on nearby ports unless the user explicitly asks for a separate instance.
+
 Do not run agent launch, provisioning, terminal-runtime, task-assignment or smoke-flow checks on this real project.
