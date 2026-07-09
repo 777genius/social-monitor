@@ -9,10 +9,29 @@ DEFAULT_REUSABLE_ACCOUNT_STATUSES = (ACTIVE_ACCOUNT_STATUS,)
 
 
 @dataclass(frozen=True)
+class AccountLimitOverride:
+    daily_requests: int
+    daily_tweets: int
+    priority: int = 100
+
+
+@dataclass(frozen=True)
 class AccountPoolLimits:
     daily_requests: int
     daily_tweets: int
     reusable_statuses: tuple[int, ...] = DEFAULT_REUSABLE_ACCOUNT_STATUSES
+    per_account: dict[str, AccountLimitOverride] | None = None
+
+    def for_username(self, username: str) -> AccountLimitOverride:
+        override = (self.per_account or {}).get(username.strip().lower())
+        if override is not None:
+            return override
+
+        return AccountLimitOverride(
+            daily_requests=self.daily_requests,
+            daily_tweets=self.daily_tweets,
+            priority=100,
+        )
 
 
 @dataclass(frozen=True)
@@ -22,6 +41,9 @@ class AccountCapacity:
     status: int
     daily_requests: int
     daily_tweets: int
+    daily_requests_limit: int
+    daily_tweets_limit: int
+    priority: int
     remaining_requests: int
     remaining_tweets: int
     available_at: datetime | None

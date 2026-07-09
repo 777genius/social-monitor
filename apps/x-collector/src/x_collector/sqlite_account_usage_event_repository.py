@@ -17,7 +17,7 @@ class SqliteAccountUsageEventRepository:
 
         Path(self._db_path).parent.mkdir(parents=True, exist_ok=True)
         with sqlite3.connect(self._db_path) as connection:
-            connection.execute(account_usage_events_schema())
+            ensure_account_usage_events_schema(connection)
             for index_schema in account_usage_events_index_schemas():
                 connection.execute(index_schema)
             connection.executemany(
@@ -36,6 +36,9 @@ class SqliteAccountUsageEventRepository:
                   pass_label,
                   product,
                   estimated_request_cost,
+                  daily_requests_limit,
+                  daily_tweets_limit,
+                  account_priority,
                   requests_before,
                   requests_after,
                   tweets_before,
@@ -46,9 +49,26 @@ class SqliteAccountUsageEventRepository:
                   failure_kind,
                   cooldown_reason,
                   reset_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [event_to_row(event) for event in events],
+            )
+
+
+def ensure_account_usage_events_schema(connection: sqlite3.Connection) -> None:
+    connection.execute(account_usage_events_schema())
+    columns = {
+        row[1]
+        for row in connection.execute("PRAGMA table_info(account_usage_events)")
+    }
+    for column, definition in {
+        "daily_requests_limit": "INTEGER",
+        "daily_tweets_limit": "INTEGER",
+        "account_priority": "INTEGER",
+    }.items():
+        if column not in columns:
+            connection.execute(
+                f"ALTER TABLE account_usage_events ADD COLUMN {column} {definition}",
             )
 
 
@@ -68,6 +88,9 @@ def account_usage_events_schema() -> str:
       pass_label TEXT,
       product TEXT,
       estimated_request_cost INTEGER,
+      daily_requests_limit INTEGER,
+      daily_tweets_limit INTEGER,
+      account_priority INTEGER,
       requests_before INTEGER,
       requests_after INTEGER,
       tweets_before INTEGER,
@@ -114,6 +137,9 @@ def event_to_row(event: AccountUsageEvent) -> tuple[Any, ...]:
         event.pass_label,
         event.product,
         event.estimated_request_cost,
+        event.daily_requests_limit,
+        event.daily_tweets_limit,
+        event.account_priority,
         event.requests_before,
         event.requests_after,
         event.tweets_before,

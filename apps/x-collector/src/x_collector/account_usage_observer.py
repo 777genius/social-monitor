@@ -259,6 +259,9 @@ class AccountUsageObserver:
             account=after,
             usage=usage,
             estimated_request_cost=usage.estimated_request_cost,
+            daily_requests_limit=after.daily_requests_limit,
+            daily_tweets_limit=after.daily_tweets_limit,
+            account_priority=after.priority,
             requests_before=before.daily_requests if before else None,
             requests_after=after.daily_requests,
             tweets_before=before.daily_tweets if before else None,
@@ -278,6 +281,9 @@ class AccountUsageObserver:
         account: AccountCapacity | None = None,
         usage: SearchPassUsage | None = None,
         estimated_request_cost: int | None = None,
+        daily_requests_limit: int | None = None,
+        daily_tweets_limit: int | None = None,
+        account_priority: int | None = None,
         requests_before: int | None = None,
         requests_after: int | None = None,
         tweets_before: int | None = None,
@@ -302,6 +308,21 @@ class AccountUsageObserver:
             pass_label=usage.pass_label if usage else None,
             product=usage.product if usage else None,
             estimated_request_cost=estimated_request_cost,
+            daily_requests_limit=(
+                daily_requests_limit
+                if daily_requests_limit is not None
+                else account.daily_requests_limit if account else None
+            ),
+            daily_tweets_limit=(
+                daily_tweets_limit
+                if daily_tweets_limit is not None
+                else account.daily_tweets_limit if account else None
+            ),
+            account_priority=(
+                account_priority
+                if account_priority is not None
+                else account.priority if account else None
+            ),
             requests_before=requests_before,
             requests_after=requests_after,
             tweets_before=tweets_before,

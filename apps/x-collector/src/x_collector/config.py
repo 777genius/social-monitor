@@ -18,12 +18,15 @@ class XCollectorSettings:
     scweet_manifest_scrape_on_init: bool
     scweet_daily_requests_limit: int
     scweet_daily_tweets_limit: int
+    scweet_account_limits_json: str | None
+    scweet_account_limits_file: str | None
     scweet_requests_per_minute: int
     scweet_min_delay_seconds: float
     scweet_n_splits: int
     scweet_api_page_size: int
     scweet_max_empty_pages: int
     scweet_budget_guard_enabled: bool
+    scweet_adaptive_budget_enabled: bool
     account_observability_enabled: bool
 
     @classmethod
@@ -70,6 +73,14 @@ class XCollectorSettings:
                 1,
                 1_000_000,
             ),
+            scweet_account_limits_json=read_optional_string(
+                source,
+                "X_COLLECTOR_SCWEET_ACCOUNT_LIMITS_JSON",
+            ),
+            scweet_account_limits_file=read_optional_string(
+                source,
+                "X_COLLECTOR_SCWEET_ACCOUNT_LIMITS_FILE",
+            ),
             scweet_requests_per_minute=read_int(
                 source,
                 "X_COLLECTOR_SCWEET_REQUESTS_PER_MINUTE",
@@ -108,6 +119,11 @@ class XCollectorSettings:
             scweet_budget_guard_enabled=read_bool(
                 source,
                 "X_COLLECTOR_SCWEET_BUDGET_GUARD_ENABLED",
+                True,
+            ),
+            scweet_adaptive_budget_enabled=read_bool(
+                source,
+                "X_COLLECTOR_SCWEET_ADAPTIVE_BUDGET_ENABLED",
                 True,
             ),
             account_observability_enabled=read_bool(

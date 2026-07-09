@@ -27,6 +27,12 @@ class AccountPoolLedgerPort(Protocol):
     def snapshot(self, now: datetime) -> AccountPoolSnapshot | None:
         raise NotImplementedError
 
+    def apply_profile_cooldowns(self, now: datetime) -> None:
+        raise NotImplementedError
+
+    def apply_collection_priorities(self, now: datetime) -> None:
+        raise NotImplementedError
+
 
 class AccountUsageEventRepositoryPort(Protocol):
     def append_events(self, events: tuple[AccountUsageEvent, ...]) -> None:

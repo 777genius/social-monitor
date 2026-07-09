@@ -30,6 +30,9 @@ class AccountUsageEvent:
     pass_label: str | None = None
     product: str | None = None
     estimated_request_cost: int | None = None
+    daily_requests_limit: int | None = None
+    daily_tweets_limit: int | None = None
+    account_priority: int | None = None
     requests_before: int | None = None
     requests_after: int | None = None
     tweets_before: int | None = None

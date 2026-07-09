@@ -77,6 +77,14 @@ X_COLLECTOR_SERVICE_TOKEN=local-dev-token
 - `X_COLLECTOR_SCWEET_MANIFEST_SCRAPE_ON_INIT`, default `1`
 - `X_COLLECTOR_SCWEET_DAILY_REQUESTS_LIMIT`, default `30`
 - `X_COLLECTOR_SCWEET_DAILY_TWEETS_LIMIT`, default `600`
+- `X_COLLECTOR_SCWEET_ACCOUNT_LIMITS_JSON`, optional per-account budget guard
+  profile keyed by username, for example
+  `{"premium_user":{"dailyRequests":120,"dailyTweets":2000,"priority":0}}`
+- `X_COLLECTOR_SCWEET_ACCOUNT_LIMITS_FILE`, optional JSON file with the same
+  shape, or `{ "accounts": [{ "username": "...", "dailyRequests": 120,
+  "dailyTweets": 2000, "priority": 0 }] }`. Lower priority values are leased
+  first when multiple accounts are eligible. Store only usernames and limits,
+  never cookies or auth tokens.
 - `X_COLLECTOR_SCWEET_REQUESTS_PER_MINUTE`, default `30`
 - `X_COLLECTOR_SCWEET_MIN_DELAY_SECONDS`, default `2.0`
 - `X_COLLECTOR_SCWEET_N_SPLITS`, default `5`
@@ -84,5 +92,8 @@ X_COLLECTOR_SERVICE_TOKEN=local-dev-token
 - `X_COLLECTOR_SCWEET_MAX_EMPTY_PAGES`, default `1`
 - `X_COLLECTOR_SCWEET_BUDGET_GUARD_ENABLED`, default `1`; preflights
   Scweet account pool capacity before spending requests
+- `X_COLLECTOR_SCWEET_ADAPTIVE_BUDGET_ENABLED`, default `1`; derives effective
+  per-account request/tweet caps from recent clean usage and observed provider
+  rate limits without storing secrets
 - `X_COLLECTOR_ACCOUNT_OBSERVABILITY_ENABLED`, default `1`; writes audit-only
   account usage events to the Scweet SQLite state database

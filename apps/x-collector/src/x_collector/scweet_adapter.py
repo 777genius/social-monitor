@@ -6,7 +6,13 @@ from email.utils import parsedate_to_datetime
 from typing import Any, Callable, Mapping
 
 from . import __version__
-from .account_pool import AccountPoolLimits
+from .account_pool import AccountLimitOverride, AccountPoolLimits
+from .account_limit_profiles import AccountLimitProfile, load_account_limit_profiles
+from .adaptive_account_limits import (
+    AdaptiveAccountLimitPolicy,
+    adapt_account_pool_limits,
+    read_sqlite_account_limit_observations,
+)
 from .account_usage_observer import (
     AccountUsageObserver,
     NoopAccountUsageObserver,
@@ -59,6 +65,63 @@ class SystemClock:
         return datetime.now(UTC)
 
 
+def scweet_runtime_limits(
+    *,
+    default_daily_requests: int,
+    default_daily_tweets: int,
+    account_limit_profiles: Mapping[str, AccountLimitProfile],
+) -> AccountLimitOverride:
+    return AccountLimitOverride(
+        daily_requests=max(
+            default_daily_requests,
+            *(profile.daily_requests for profile in account_limit_profiles.values()),
+        ),
+        daily_tweets=max(
+            default_daily_tweets,
+            *(profile.daily_tweets for profile in account_limit_profiles.values()),
+        ),
+        priority=100,
+    )
+
+
+def build_account_pool_limits(
+    *,
+    settings: XCollectorSettings,
+    account_limit_profiles: Mapping[str, AccountLimitProfile],
+) -> AccountPoolLimits:
+    return AccountPoolLimits(
+        daily_requests=settings.scweet_daily_requests_limit,
+        daily_tweets=settings.scweet_daily_tweets_limit,
+        per_account={
+            username: AccountLimitOverride(
+                daily_requests=profile.daily_requests,
+                daily_tweets=profile.daily_tweets,
+                priority=profile.priority,
+            )
+            for username, profile in account_limit_profiles.items()
+        },
+        reusable_statuses=SCWEET_REUSABLE_ACCOUNT_STATUSES,
+    )
+
+
+def runtime_limits_from_account_pool(
+    limits: AccountPoolLimits,
+) -> AccountLimitOverride:
+    per_account = limits.per_account or {}
+
+    return AccountLimitOverride(
+        daily_requests=max(
+            limits.daily_requests,
+            *(limit.daily_requests for limit in per_account.values()),
+        ),
+        daily_tweets=max(
+            limits.daily_tweets,
+            *(limit.daily_tweets for limit in per_account.values()),
+        ),
+        priority=100,
+    )
+
+
 class ScweetDailySearchCollector(DailySearchCollectorPort):
     def __init__(
         self,
@@ -88,13 +151,34 @@ class ScweetDailySearchCollector(DailySearchCollectorPort):
     ) -> "ScweetDailySearchCollector":
         settings.ensure_runtime_paths()
         collector_clock = clock or SystemClock()
+        account_limit_profiles = load_account_limit_profiles(
+            inline_json=settings.scweet_account_limits_json,
+            file_path=settings.scweet_account_limits_file,
+        )
+        account_pool_limits = build_account_pool_limits(
+            settings=settings,
+            account_limit_profiles=account_limit_profiles,
+        )
+        effective_account_pool_limits = adapt_account_pool_limits(
+            account_pool_limits,
+            read_sqlite_account_limit_observations(
+                settings.scweet_db_path,
+                collector_clock.now(),
+            ),
+            AdaptiveAccountLimitPolicy(
+                enabled=settings.scweet_adaptive_budget_enabled,
+            ),
+        )
+        runtime_limits = runtime_limits_from_account_pool(
+            effective_account_pool_limits,
+        )
 
         def create_scweet() -> Any:
             from Scweet import Scweet, ScweetConfig
 
             config = ScweetConfig(
-                daily_requests_limit=settings.scweet_daily_requests_limit,
-                daily_tweets_limit=settings.scweet_daily_tweets_limit,
+                daily_requests_limit=runtime_limits.daily_requests,
+                daily_tweets_limit=runtime_limits.daily_tweets,
                 requests_per_min=settings.scweet_requests_per_minute,
                 min_delay_s=settings.scweet_min_delay_seconds,
                 n_splits=settings.scweet_n_splits,
@@ -116,11 +200,7 @@ class ScweetDailySearchCollector(DailySearchCollectorPort):
         shared_account_pool_ledger = (
             ScweetAccountPoolLedger(
                 settings.scweet_db_path,
-                AccountPoolLimits(
-                    daily_requests=settings.scweet_daily_requests_limit,
-                    daily_tweets=settings.scweet_daily_tweets_limit,
-                    reusable_statuses=SCWEET_REUSABLE_ACCOUNT_STATUSES,
-                ),
+                effective_account_pool_limits,
             )
             if (
                 settings.scweet_budget_guard_enabled
@@ -162,6 +242,7 @@ class ScweetDailySearchCollector(DailySearchCollectorPort):
     ) -> DailySearchResult:
         started_at = self._clock.now()
         scweet = self._scweet_factory()
+        self._prepare_account_pool()
         since, until = scweet_date_window(request)
         fetched_posts: list[tuple[XCollectedPost, CandidateSignal]] = []
         warnings: list[XCollectorWarning] = []
@@ -191,6 +272,7 @@ class ScweetDailySearchCollector(DailySearchCollectorPort):
             )
 
         for search_pass in budget.passes:
+            self._prepare_account_pool()
             usage = self._account_usage_observer.begin_pass(
                 request,
                 search_pass,
@@ -332,6 +414,14 @@ class ScweetDailySearchCollector(DailySearchCollectorPort):
 
         return snapshot is not None and snapshot.total_remaining_requests <= 0
 
+    def _prepare_account_pool(self) -> None:
+        if self._account_pool_ledger is None:
+            return
+
+        now = self._clock.now()
+        self._account_pool_ledger.apply_profile_cooldowns(now)
+        self._account_pool_ledger.apply_collection_priorities(now)
+
 
 def partial_warning_for_late_failure(
     failure: Exception,
@@ -410,7 +500,17 @@ def run_scweet_search_pass(
 def scweet_date_window(request: DailySearchRequest) -> tuple[str, str]:
     window_end = request.window_end.astimezone(UTC)
     window_start = window_end - timedelta(hours=request.window_hours)
-    until_date = (window_end.date() + timedelta(days=1)).isoformat()
+    until_offset_days = (
+        0
+        if (
+            window_end.hour == 0
+            and window_end.minute == 0
+            and window_end.second == 0
+            and window_end.microsecond == 0
+        )
+        else 1
+    )
+    until_date = (window_end.date() + timedelta(days=until_offset_days)).isoformat()
 
     return window_start.date().isoformat(), until_date
 
@@ -476,7 +576,7 @@ def post_is_in_window(
     window_start = window_end - timedelta(hours=request.window_hours)
     published_at = post.published_at.astimezone(UTC)
 
-    return window_start <= published_at <= window_end + timedelta(minutes=5)
+    return window_start <= published_at < window_end
 
 
 def read_mapping(value: Any) -> Mapping[str, Any]:

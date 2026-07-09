@@ -52,6 +52,9 @@ def test_collect_daily_search_records_audit_only_account_usage_events(
     assert succeeded[0]["account_id"] == 1
     assert succeeded[0]["requests_before"] == 0
     assert succeeded[0]["requests_after"] == 1
+    assert succeeded[0]["daily_requests_limit"] == 30
+    assert succeeded[0]["daily_tweets_limit"] == 600
+    assert succeeded[0]["account_priority"] == 100
     assert succeeded[0]["tweets_before"] == 0
     assert succeeded[0]["tweets_after"] == 2
     assert succeeded[0]["fetched_count"] == 2
