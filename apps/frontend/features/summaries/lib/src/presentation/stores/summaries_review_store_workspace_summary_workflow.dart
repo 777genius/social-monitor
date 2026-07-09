@@ -243,6 +243,7 @@ Future<void> _loadWorkspaceSummaryForStore(
           LoadWorkspaceSummaryQuery(
             scope: store._scope,
             period: store.selectedSummaryPeriod,
+            allowLatestFallback: store._selectedSummaryPeriodEndedAt == null,
           ),
         )
         .timeout(store._workspaceSummaryLoadTimeout);

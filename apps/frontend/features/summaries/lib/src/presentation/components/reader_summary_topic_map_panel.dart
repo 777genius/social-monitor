@@ -15,7 +15,6 @@ class ReaderSummaryTopicMapPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
     final muted = Theme.of(context).brightness == Brightness.dark
         ? AppColors.darkTextMuted
         : AppColors.textMuted;
@@ -27,14 +26,6 @@ class ReaderSummaryTopicMapPanel extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Topic map',
-          style: textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w800,
-            letterSpacing: 0,
-          ),
-        ),
-        const SizedBox(height: AppSpacing.sm),
         LayoutBuilder(
           builder: (context, constraints) {
             final width = constraints.maxWidth.isFinite

@@ -28,6 +28,9 @@ final class GeneratedWorkspaceSummaryReader {
         if (dto.items.isNotEmpty) {
           return Result.success(_workspaceSummaryFrom(dto));
         }
+        if (!request.allowLatestFallback) {
+          return Result.success(_workspaceSummaryFrom(dto));
+        }
         final latestResult = await _list(request, exactPeriod: false);
         return latestResult.fold(
           onSuccess: (latestDto) =>

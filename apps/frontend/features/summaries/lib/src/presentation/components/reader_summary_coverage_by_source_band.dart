@@ -27,8 +27,6 @@ class _CoverageBySourceSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-    final colorScheme = Theme.of(context).colorScheme;
     final maxCollectedCount = rows.fold<int>(
       1,
       (max, row) => row.scaleCount > max ? row.scaleCount : max,
@@ -38,21 +36,6 @@ class _CoverageBySourceSection extends StatelessWidget {
       key: const ValueKey('reader-summary-coverage-by-source'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const _RailSectionLabel(
-          label: 'Coverage by source',
-          infoTooltip:
-              'Collected is everything gathered for the period. Selected is evidence used for this summary. Top reads are the items surfaced below.',
-        ),
-        const SizedBox(height: AppSpacing.xs),
-        Text(
-          'Collected posts and selected evidence used in this summary.',
-          style: textTheme.labelSmall?.copyWith(
-            color: colorScheme.onSurfaceVariant,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 0,
-          ),
-        ),
-        const SizedBox(height: AppSpacing.sm),
         _ProviderCoverageRowsWrap(
           rows: rows,
           maxCollectedCount: maxCollectedCount,

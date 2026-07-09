@@ -44,15 +44,13 @@ class _SummariesFeaturePageState extends State<SummariesFeaturePage> {
     return AnimatedBuilder(
       animation: widget.store,
       builder: (context, child) {
-        return CustomScrollView(
-          slivers: [
-            SliverPadding(
-              padding: appPageSurfaceInsets(
-                context,
-              ).add(const EdgeInsets.only(top: AppSpacing.xs)),
-              sliver: _SummariesBody(store: widget.store),
-            ),
-          ],
+        return MediaQuery.removePadding(
+          context: context,
+          removeTop: true,
+          child: CustomScrollView(
+            key: const PageStorageKey<String>('summaries-feature-scroll-view'),
+            slivers: [_SummariesBody(store: widget.store)],
+          ),
         );
       },
     );
@@ -66,6 +64,19 @@ class _SummariesBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final pageInsets = appPageSurfaceInsets(context);
+    final contentPadding = EdgeInsets.fromLTRB(
+      pageInsets.left,
+      AppSpacing.md,
+      pageInsets.right,
+      pageInsets.bottom,
+    );
+    final horizontalPadding = EdgeInsets.fromLTRB(
+      pageInsets.left,
+      0,
+      pageInsets.right,
+      0,
+    );
     final state = store.listState;
     final items = switch (state) {
       ReadyViewState<PageResult<GeneratedSummary>>(:final value) => value.items,
@@ -194,42 +205,49 @@ class _SummariesBody extends StatelessWidget {
               ),
             ),
             includeTopPosts: false,
+            contentPadding: contentPadding,
           ),
         ),
         if (topPostsSummary != null && topPostItems.isNotEmpty) ...[
           const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.md + 2)),
-          ReaderSummaryTopPostsSliver(
-            items: topPostItems,
-            curatedTopPostCount: topPostsSummary.content.topReads.length,
-            selectedPostCount: selectedPostCount,
-            period: topPostsSummary.period,
-            citationsById: {
-              for (final citation in topPostsSummary.citations)
-                citation.id: citation,
-            },
-            ratingFor: (TopRead item) =>
-                reviewStore.topPostRatingFor(topPostsSummary, item),
-            onRated: (TopRead item, int rating, PostRatingReason? reason) =>
-                reviewStore.submitTopPostRating(
-                  topPostsSummary,
-                  item,
-                  rating,
-                  reason,
+          SliverPadding(
+            padding: horizontalPadding,
+            sliver: ReaderSummaryTopPostsSliver(
+              items: topPostItems,
+              curatedTopPostCount: topPostsSummary.content.topReads.length,
+              selectedPostCount: selectedPostCount,
+              period: topPostsSummary.period,
+              citationsById: {
+                for (final citation in topPostsSummary.citations)
+                  citation.id: citation,
+              },
+              ratingFor: (TopRead item) =>
+                  reviewStore.topPostRatingFor(topPostsSummary, item),
+              onRated: (TopRead item, int rating, PostRatingReason? reason) =>
+                  reviewStore.submitTopPostRating(
+                    topPostsSummary,
+                    item,
+                    rating,
+                    reason,
+                  ),
+              onOpenUrl: (String url) => unawaited(
+                store.openReaderSourceUrl(
+                  summaryId: topPostsSummary.id,
+                  canonicalUrl: url,
                 ),
-            onOpenUrl: (String url) => unawaited(
-              store.openReaderSourceUrl(
-                summaryId: topPostsSummary.id,
-                canonicalUrl: url,
               ),
             ),
           ),
         ],
         if (showSummaryHistory)
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.only(top: AppSpacing.md),
-              child: content,
+          SliverPadding(
+            padding: EdgeInsets.fromLTRB(
+              pageInsets.left,
+              AppSpacing.md,
+              pageInsets.right,
+              pageInsets.bottom,
             ),
+            sliver: SliverToBoxAdapter(child: content),
           ),
       ],
     );

@@ -145,19 +145,18 @@ class _BriefCitationTrail extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
+    final primaryCitation = citations.first;
     return Wrap(
       spacing: AppSpacing.xs,
       runSpacing: AppSpacing.xs,
       children: [
-        for (final citation in citations)
-          _CitationChip(
-            key: ValueKey('$keyBase-citation-${citation.id}'),
-            label: _citationLabel(citation, citationsById),
-            citation: citation,
-            relatedCitations: citations,
-            citationSourceById: citationSourceById,
-            onOpenUrl: onOpenUrl,
-          ),
+        _CitationChip(
+          key: ValueKey('$keyBase-citation-${primaryCitation.id}'),
+          citation: primaryCitation,
+          relatedCitations: citations,
+          citationSourceById: citationSourceById,
+          onOpenUrl: onOpenUrl,
+        ),
       ],
     );
   }
@@ -251,16 +250,17 @@ class _CitedBriefTextState extends State<_CitedBriefText> {
           for (var index = 0; index < widget.spans.length; index += 1)
             ..._inlineSpansFor(widget.spans[index], index, linkStyle),
           if (citations.isNotEmpty) const TextSpan(text: ' '),
-          for (final citation in citations)
+          if (citations.isNotEmpty)
             WidgetSpan(
               alignment: PlaceholderAlignment.baseline,
               baseline: TextBaseline.alphabetic,
               child: Padding(
                 padding: const EdgeInsets.only(right: AppSpacing.xs),
                 child: _CitationChip(
-                  key: ValueKey('${widget.keyBase}-citation-${citation.id}'),
-                  label: _citationLabel(citation, widget.citationsById),
-                  citation: citation,
+                  key: ValueKey(
+                    '${widget.keyBase}-citation-${citations.first.id}',
+                  ),
+                  citation: citations.first,
                   relatedCitations: citations,
                   citationSourceById: widget.citationSourceById,
                   onOpenUrl: widget.onOpenUrl,

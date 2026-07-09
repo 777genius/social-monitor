@@ -204,7 +204,8 @@ class _TopPostRowState extends State<_TopPostRow> {
     required _TopPostSupportSignal supportSignal,
     required Widget child,
   }) {
-    if (supportSignal.evidenceItems.isEmpty) {
+    if (supportSignal.kind == _TopPostSupportKind.singleSource &&
+        supportSignal.evidenceItems.isEmpty) {
       return child;
     }
 

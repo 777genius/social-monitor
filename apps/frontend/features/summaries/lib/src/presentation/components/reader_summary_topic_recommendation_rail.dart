@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 
 import '../../domain/entities/reader_summary_topic_recommendation.dart';
+import 'reader_summary_topic_decision_icon_button.dart';
+import 'reader_summary_topic_rail_scroll_button.dart';
 
 typedef ReaderSummaryTopicRecommendationDecisionCallback =
     Future<void> Function(
@@ -27,11 +29,91 @@ class ReaderSummaryTopicRecommendationRail extends StatefulWidget {
 class _ReaderSummaryTopicRecommendationRailState
     extends State<ReaderSummaryTopicRecommendationRail> {
   final ScrollController _scrollController = ScrollController();
+  bool _canScrollBackward = false;
+  bool _canScrollForward = false;
+  bool _syncScheduled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_syncArrowState);
+  }
+
+  @override
+  void didUpdateWidget(ReaderSummaryTopicRecommendationRail oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.items.length != widget.items.length) {
+      _scheduleArrowSync();
+    }
+  }
 
   @override
   void dispose() {
+    _scrollController.removeListener(_syncArrowState);
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _scheduleArrowSync() {
+    if (_syncScheduled) {
+      return;
+    }
+
+    _syncScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _syncScheduled = false;
+      if (!mounted) {
+        return;
+      }
+      _syncArrowState();
+    });
+  }
+
+  void _syncArrowState() {
+    if (!_scrollController.hasClients ||
+        !_scrollController.position.hasContentDimensions) {
+      _setArrowState(backward: false, forward: false);
+      return;
+    }
+
+    const tolerance = 1.0;
+    final position = _scrollController.position;
+    _setArrowState(
+      backward: position.pixels > position.minScrollExtent + tolerance,
+      forward: position.pixels < position.maxScrollExtent - tolerance,
+    );
+  }
+
+  void _setArrowState({required bool backward, required bool forward}) {
+    if (_canScrollBackward == backward && _canScrollForward == forward) {
+      return;
+    }
+
+    setState(() {
+      _canScrollBackward = backward;
+      _canScrollForward = forward;
+    });
+  }
+
+  Future<void> _scrollBy(double distance) async {
+    if (!_scrollController.hasClients) {
+      return;
+    }
+
+    final position = _scrollController.position;
+    final target = (position.pixels + distance)
+        .clamp(position.minScrollExtent, position.maxScrollExtent)
+        .toDouble();
+
+    await _scrollController.animateTo(
+      target,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+    );
+    if (!mounted) {
+      return;
+    }
+    _syncArrowState();
   }
 
   @override
@@ -42,36 +124,77 @@ class _ReaderSummaryTopicRecommendationRailState
         final cardWidth = maxWidth.isFinite
             ? maxWidth.clamp(280.0, 340.0).toDouble()
             : 340.0;
+        final gapCount = widget.items.length > 1 ? widget.items.length - 1 : 0;
         final contentWidth =
-            widget.items.length * cardWidth +
-            (widget.items.length - 1) * AppSpacing.sm;
+            widget.items.length * cardWidth + gapCount * AppSpacing.sm;
         final shouldShowScrollbar =
             maxWidth.isFinite && contentWidth > maxWidth;
+        final scrollDistance = cardWidth + AppSpacing.sm;
+        final showBackwardArrow = shouldShowScrollbar && _canScrollBackward;
+        final showForwardArrow =
+            shouldShowScrollbar &&
+            (_canScrollForward || !_scrollController.hasClients);
 
-        return Scrollbar(
-          controller: _scrollController,
-          thumbVisibility: shouldShowScrollbar,
-          child: SingleChildScrollView(
-            controller: _scrollController,
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.only(bottom: AppSpacing.xs),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                for (var index = 0; index < widget.items.length; index++) ...[
-                  SizedBox(
-                    width: cardWidth,
-                    child: _TopicRecommendationTile(
-                      recommendation: widget.items[index],
-                      onDecision: widget.onDecision,
-                    ),
-                  ),
-                  if (index < widget.items.length - 1)
-                    const SizedBox(width: AppSpacing.sm),
-                ],
-              ],
+        _scheduleArrowSync();
+
+        return Stack(
+          children: [
+            Scrollbar(
+              controller: _scrollController,
+              thumbVisibility: shouldShowScrollbar,
+              child: SingleChildScrollView(
+                controller: _scrollController,
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.only(bottom: AppSpacing.xs),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    for (
+                      var index = 0;
+                      index < widget.items.length;
+                      index++
+                    ) ...[
+                      SizedBox(
+                        width: cardWidth,
+                        child: _TopicRecommendationTile(
+                          recommendation: widget.items[index],
+                          onDecision: widget.onDecision,
+                        ),
+                      ),
+                      if (index < widget.items.length - 1)
+                        const SizedBox(width: AppSpacing.sm),
+                    ],
+                  ],
+                ),
+              ),
             ),
-          ),
+            if (showBackwardArrow)
+              Positioned(
+                left: 0,
+                top: 0,
+                bottom: AppSpacing.xs,
+                child: Center(
+                  child: ReaderSummaryTopicRailScrollButton(
+                    tooltip: 'Show previous topic recommendation',
+                    icon: Icons.chevron_left_rounded,
+                    onPressed: () => _scrollBy(-scrollDistance),
+                  ),
+                ),
+              ),
+            if (showForwardArrow)
+              Positioned(
+                right: 0,
+                top: 0,
+                bottom: AppSpacing.xs,
+                child: Center(
+                  child: ReaderSummaryTopicRailScrollButton(
+                    tooltip: 'Show next topic recommendation',
+                    icon: Icons.chevron_right_rounded,
+                    onPressed: () => _scrollBy(scrollDistance),
+                  ),
+                ),
+              ),
+          ],
         );
       },
     );
@@ -185,20 +308,20 @@ class _RecommendationActions extends StatelessWidget {
       return Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _DecisionIconButton(
+          ReaderSummaryTopicDecisionIconButton(
             tooltip: 'Add topic query: ${recommendation.topicLabel}',
             icon: Icons.thumb_up_alt_outlined,
-            tone: _DecisionIconButtonTone.accept,
+            tone: ReaderSummaryTopicDecisionIconButtonTone.accept,
             onPressed: () => onDecision(
               recommendation,
               ReaderSummaryTopicRecommendationDecisionStatus.accepted,
             ),
           ),
           const SizedBox(width: 4),
-          _DecisionIconButton(
+          ReaderSummaryTopicDecisionIconButton(
             tooltip: 'Reject topic query: ${recommendation.topicLabel}',
             icon: Icons.thumb_down_alt_outlined,
-            tone: _DecisionIconButtonTone.reject,
+            tone: ReaderSummaryTopicDecisionIconButtonTone.reject,
             onPressed: () => onDecision(
               recommendation,
               ReaderSummaryTopicRecommendationDecisionStatus.rejected,
@@ -208,59 +331,14 @@ class _RecommendationActions extends StatelessWidget {
       );
     }
 
-    return _DecisionIconButton(
+    return ReaderSummaryTopicDecisionIconButton(
       tooltip: 'Undo topic decision',
       icon: Icons.undo_rounded,
-      tone: _DecisionIconButtonTone.neutral,
+      tone: ReaderSummaryTopicDecisionIconButtonTone.neutral,
       onPressed: () => onDecision(
         recommendation,
         ReaderSummaryTopicRecommendationDecisionStatus.pending,
       ),
-    );
-  }
-}
-
-enum _DecisionIconButtonTone { accept, reject, neutral }
-
-class _DecisionIconButton extends StatelessWidget {
-  const _DecisionIconButton({
-    required this.tooltip,
-    required this.icon,
-    required this.tone,
-    required this.onPressed,
-  });
-
-  final String tooltip;
-  final IconData icon;
-  final _DecisionIconButtonTone tone;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final foreground = switch (tone) {
-      _DecisionIconButtonTone.accept => AppColors.success,
-      _DecisionIconButtonTone.reject => colorScheme.error,
-      _DecisionIconButtonTone.neutral => colorScheme.onSurfaceVariant,
-    };
-
-    return IconButton.filledTonal(
-      tooltip: tooltip,
-      style: IconButton.styleFrom(
-        fixedSize: const Size.square(32),
-        minimumSize: const Size.square(32),
-        padding: EdgeInsets.zero,
-        backgroundColor: foreground.withValues(alpha: 0.12),
-        foregroundColor: foreground,
-        hoverColor: foreground.withValues(alpha: 0.16),
-        focusColor: foreground.withValues(alpha: 0.18),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
-          side: BorderSide(color: foreground.withValues(alpha: 0.22)),
-        ),
-      ),
-      icon: Icon(icon, size: 17),
-      onPressed: onPressed,
     );
   }
 }

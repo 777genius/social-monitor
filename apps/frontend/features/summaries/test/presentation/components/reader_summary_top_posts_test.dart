@@ -23,7 +23,7 @@ void main() {
     await tester.pumpWidget(_TestApp(summary: summary, showTopicMap: true));
     await tester.pumpAndSettle();
 
-    expect(find.text('Topic map'), findsOneWidget);
+    expect(find.text('Topic map'), findsNothing);
     expect(
       find.bySemanticsLabel(RegExp(r'Topic map: .*AI tools')),
       findsOneWidget,
@@ -184,7 +184,7 @@ void main() {
     );
     expect(find.text('Cross-source'), findsOneWidget);
     expect(find.text('Same-source support'), findsOneWidget);
-    expect(find.text('Single source'), findsWidgets);
+    expect(find.text('Single source'), findsNothing);
     expect(find.text('Low relevance'), findsNothing);
     expect(find.text('Shares'), findsNothing);
     expect(find.text('Views'), findsNothing);

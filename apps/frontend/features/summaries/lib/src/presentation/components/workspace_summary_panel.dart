@@ -43,6 +43,7 @@ class WorkspaceSummaryPanel extends StatelessWidget {
     required this.onTopicRecommendationDecision,
     required this.onOpenUrl,
     this.includeTopPosts = true,
+    this.contentPadding = const EdgeInsets.only(top: AppSpacing.md),
   });
 
   final AsyncViewState<WorkspaceSummarySnapshot> state;
@@ -88,6 +89,7 @@ class WorkspaceSummaryPanel extends StatelessWidget {
   onTopicRecommendationDecision;
   final void Function(ReaderSummary summary, String url) onOpenUrl;
   final bool includeTopPosts;
+  final EdgeInsets contentPadding;
 
   @override
   Widget build(BuildContext context) {
@@ -249,6 +251,7 @@ class WorkspaceSummaryPanel extends StatelessWidget {
       onGenerate: onGenerate,
       isGenerating: isGenerating,
       exportSummary: exportSummary,
+      contentPadding: contentPadding,
       child: child,
     );
   }

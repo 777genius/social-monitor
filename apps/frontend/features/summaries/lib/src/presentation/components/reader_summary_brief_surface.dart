@@ -48,6 +48,7 @@ part 'reader_summary_topic_map_panel.dart';
 part 'reader_summary_topic_map_policies.dart';
 part 'reader_summary_topic_map_visuals.dart';
 part 'reader_summary_top_post_dense_row.dart';
+part 'reader_summary_top_post_evidence_source_row.dart';
 part 'reader_summary_top_post_content_column.dart';
 part 'reader_summary_top_post_evidence_stack.dart';
 part 'reader_summary_top_post_metrics_row.dart';

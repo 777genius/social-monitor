@@ -117,6 +117,7 @@ final class LoadWorkspaceSummaryApiRequest {
   const LoadWorkspaceSummaryApiRequest({
     required this.scope,
     required this.period,
+    required this.allowLatestFallback,
   });
 
   factory LoadWorkspaceSummaryApiRequest.fromQuery(
@@ -125,11 +126,13 @@ final class LoadWorkspaceSummaryApiRequest {
     return LoadWorkspaceSummaryApiRequest(
       scope: query.scope,
       period: query.period,
+      allowLatestFallback: query.allowLatestFallback,
     );
   }
 
   final WorkspaceScope scope;
   final SummaryPeriod period;
+  final bool allowLatestFallback;
 }
 
 final class LoadTopicRecommendationsApiRequest {

@@ -169,6 +169,41 @@ void main() {
       expect(store.canShowPreviousSummaryPeriod, isTrue);
     },
   );
+
+  test(
+    'allows latest fallback only for default workspace summary load',
+    () async {
+      final selectedPeriod = SummaryPeriodPreset.daily.resolveForCalendarDate(
+        DateTime(2026, 7, 5),
+      );
+      final apiClient = InMemorySummariesApiClient(
+        items: [summaryApiDto()],
+        workspaceSummary: readerSummaryApiDto(),
+        workspaceSummaryAvailablePeriods: [
+          summaryPeriodApiDto(
+            startedAt: selectedPeriod.startedAt,
+            endedAt: selectedPeriod.endedAt,
+            periodKey: null,
+          ),
+        ],
+      );
+      final store = _store(apiClient);
+
+      await store.loadWorkspaceSummary();
+
+      expect(
+        apiClient.loadWorkspaceSummaryRequests.last.allowLatestFallback,
+        true,
+      );
+
+      await store.selectWorkspaceSummaryCalendarDate(DateTime(2026, 7, 5));
+
+      expect(
+        apiClient.loadWorkspaceSummaryRequests.last.allowLatestFallback,
+        false,
+      );
+    },
+  );
 }
 
 SummariesReviewStore _store(InMemorySummariesApiClient apiClient) {

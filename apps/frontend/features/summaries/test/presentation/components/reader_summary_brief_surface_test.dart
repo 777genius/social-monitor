@@ -112,10 +112,8 @@ void main() {
     );
 
     expect(find.byType(ReaderSummaryTopicMapPanel), findsOneWidget);
-    expect(find.text('Topic map'), findsOneWidget);
-    expect(find.text('AI tools'), findsOneWidget);
-    expect(find.text('Agent tools'), findsOneWidget);
-    expect(find.text('Protocols'), findsOneWidget);
+    expect(find.text('Topic map'), findsNothing);
+    expect(find.text('AI tools'), findsAtLeastNWidgets(1));
     expect(find.byType(CustomPaint), findsAtLeastNWidgets(1));
   });
 
@@ -203,7 +201,7 @@ void main() {
       ),
     );
 
-    expect(find.text('Topic map'), findsOneWidget);
+    expect(find.text('Topic map'), findsNothing);
     expect(find.textContaining('Tiny unreadable'), findsNothing);
     expect(
       find.byWidgetPredicate(
@@ -379,6 +377,13 @@ void main() {
     );
 
     expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('reader-summary-lede-citation-bc-1')),
+        matching: find.text('3'),
+      ),
+      findsOneWidget,
+    );
+    expect(
       find.byKey(const ValueKey('reader-summary-citation-source-bc-1')),
       findsOneWidget,
     );
@@ -393,21 +398,21 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(const ValueKey('reader-summary-citation-source-bc-1')),
-        matching: find.text('[1] Reddit post about agent routing'),
+        matching: find.text('Reddit post about agent routing'),
       ),
       findsAtLeastNWidgets(1),
     );
     expect(
       find.descendant(
         of: secondSource,
-        matching: find.text('[2] HN thread about benchmark clarity'),
+        matching: find.text('HN thread about benchmark clarity'),
       ),
       findsAtLeastNWidgets(1),
     );
     expect(
       find.descendant(
         of: find.byKey(const ValueKey('reader-summary-citation-source-bc-3')),
-        matching: find.text('[3] RSS article about the launch'),
+        matching: find.text('RSS article about the launch'),
       ),
       findsAtLeastNWidgets(1),
     );
@@ -483,10 +488,7 @@ void main() {
     );
     expect(sourceItem, findsOneWidget);
     expect(
-      find.descendant(
-        of: sourceItem,
-        matching: find.text('[1] AI coding tools'),
-      ),
+      find.descendant(of: sourceItem, matching: find.text('AI coding tools')),
       findsOneWidget,
     );
     expect(

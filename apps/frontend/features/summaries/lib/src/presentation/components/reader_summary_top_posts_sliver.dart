@@ -1,5 +1,8 @@
 part of 'reader_summary_brief_surface.dart';
 
+const _topPostsInitialVisibleCount = 24;
+const _topPostsRevealBatchSize = 24;
+
 class ReaderSummaryTopPostsSliver extends StatefulWidget {
   const ReaderSummaryTopPostsSliver({
     super.key,
@@ -37,7 +40,16 @@ class _ReaderSummaryTopPostsSliverState
   _TopPostSort _sort = _TopPostSort.relevance;
   _TopPostBoard _board = _TopPostBoard.posts;
   final Set<String> _hiddenProviders = {};
+  int _visibleItemLimit = _topPostsInitialVisibleCount;
   bool _denseView = false;
+
+  @override
+  void didUpdateWidget(covariant ReaderSummaryTopPostsSliver oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.items != oldWidget.items) {
+      _visibleItemLimit = _topPostsInitialVisibleCount;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -64,6 +76,11 @@ class _ReaderSummaryTopPostsSliverState
     final reservePreviewSpace = filtered.any(
       (item) => item.previewMedia != null,
     );
+    final visibleItemCount = math.min(filtered.length, _visibleItemLimit);
+    final hasMoreItems = visibleItemCount < filtered.length;
+    final sliverItemCount = hasMoreItems
+        ? visibleItemCount * 2
+        : visibleItemCount * 2 - 1;
 
     return SliverMainAxisGroup(
       slivers: [
@@ -106,8 +123,15 @@ class _ReaderSummaryTopPostsSliverState
           )
         else
           SliverList.builder(
-            itemCount: filtered.length * 2 - 1,
+            itemCount: sliverItemCount,
             itemBuilder: (context, index) {
+              if (hasMoreItems && index == sliverItemCount - 1) {
+                return _TopPostsRevealTrigger(
+                  remainingCount: filtered.length - visibleItemCount,
+                  onReveal: _revealMoreItems,
+                );
+              }
+
               if (index.isOdd) {
                 return Divider(height: 1, color: colorScheme.outlineVariant);
               }
@@ -176,11 +200,23 @@ class _ReaderSummaryTopPostsSliverState
   }
 
   void _setBoard(_TopPostBoard board) {
-    setState(() => _board = board);
+    if (_board == board) {
+      return;
+    }
+    setState(() {
+      _board = board;
+      _visibleItemLimit = _topPostsInitialVisibleCount;
+    });
   }
 
   void _setSort(_TopPostSort sort) {
-    setState(() => _sort = sort);
+    if (_sort == sort) {
+      return;
+    }
+    setState(() {
+      _sort = sort;
+      _visibleItemLimit = _topPostsInitialVisibleCount;
+    });
   }
 
   void _toggleProvider(String providerKey) {
@@ -188,10 +224,100 @@ class _ReaderSummaryTopPostsSliverState
       if (!_hiddenProviders.remove(providerKey)) {
         _hiddenProviders.add(providerKey);
       }
+      _visibleItemLimit = _topPostsInitialVisibleCount;
     });
   }
 
   void _setDenseView(bool dense) {
-    setState(() => _denseView = dense);
+    if (_denseView == dense) {
+      return;
+    }
+    setState(() {
+      _denseView = dense;
+      _visibleItemLimit = _topPostsInitialVisibleCount;
+    });
+  }
+
+  void _revealMoreItems() {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _visibleItemLimit += _topPostsRevealBatchSize;
+    });
+  }
+}
+
+class _TopPostsRevealTrigger extends StatefulWidget {
+  const _TopPostsRevealTrigger({
+    required this.remainingCount,
+    required this.onReveal,
+  });
+
+  final int remainingCount;
+  final VoidCallback onReveal;
+
+  @override
+  State<_TopPostsRevealTrigger> createState() => _TopPostsRevealTriggerState();
+}
+
+class _TopPostsRevealTriggerState extends State<_TopPostsRevealTrigger> {
+  int? _scheduledRemainingCount;
+
+  @override
+  void initState() {
+    super.initState();
+    _scheduleReveal();
+  }
+
+  @override
+  void didUpdateWidget(covariant _TopPostsRevealTrigger oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _scheduleReveal();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+      child: Center(
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: colorScheme.primary,
+              ),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Text(
+              'Loading more top posts',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+                letterSpacing: 0,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _scheduleReveal() {
+    if (widget.remainingCount <= 0 ||
+        _scheduledRemainingCount == widget.remainingCount) {
+      return;
+    }
+    _scheduledRemainingCount = widget.remainingCount;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      widget.onReveal();
+    });
   }
 }

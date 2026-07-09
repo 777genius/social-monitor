@@ -33,6 +33,8 @@ void main() {
     expect(find.text('Evidence'), findsNothing);
     expect(find.text('Open source repos'), findsOneWidget);
     expect(find.byType(Scrollbar), findsOneWidget);
+    expect(find.byTooltip('Show previous topic recommendation'), findsNothing);
+    expect(find.byTooltip('Show next topic recommendation'), findsOneWidget);
     expect(find.byIcon(Icons.thumb_up_alt_outlined), findsNWidgets(2));
     expect(find.byIcon(Icons.thumb_down_alt_outlined), findsNWidgets(2));
 
@@ -42,6 +44,38 @@ void main() {
     expect(decisions, [
       ReaderSummaryTopicRecommendationDecisionStatus.accepted,
     ]);
+  });
+
+  testWidgets('shows rail arrows only when another recommendation is hidden', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(620, 480);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      _TestApp(
+        recommendations: [
+          recommendation('Open source repos'),
+          recommendation('Anthropic workshop'),
+        ],
+        onDecision: (_, _) async {},
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byTooltip('Show previous topic recommendation'), findsNothing);
+    expect(find.byTooltip('Show next topic recommendation'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Show next topic recommendation'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byTooltip('Show previous topic recommendation'),
+      findsOneWidget,
+    );
+    expect(find.byTooltip('Show next topic recommendation'), findsNothing);
   });
 }
 

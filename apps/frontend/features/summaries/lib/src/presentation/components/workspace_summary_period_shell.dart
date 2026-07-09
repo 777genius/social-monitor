@@ -26,6 +26,7 @@ class WorkspaceSummaryPeriodShell extends StatelessWidget {
     required this.isGenerating,
     required this.exportSummary,
     required this.child,
+    this.contentPadding = const EdgeInsets.only(top: AppSpacing.md),
   });
 
   final SummaryPeriod selectedPeriod;
@@ -43,6 +44,7 @@ class WorkspaceSummaryPeriodShell extends StatelessWidget {
   final bool isGenerating;
   final ReaderSummary? exportSummary;
   final Widget child;
+  final EdgeInsets contentPadding;
 
   @override
   Widget build(BuildContext context) {
@@ -50,27 +52,28 @@ class WorkspaceSummaryPeriodShell extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        WorkspaceSummaryPeriodToolbar(
-          selectedPeriod: selectedPeriod,
-          selectedPreset: selectedPreset,
-          availableSummaryPeriods: availableSummaryPeriods,
-          canNavigateToPreviousPeriod: canNavigateToPreviousPeriod,
-          canNavigateToNextPeriod: canNavigateToNextPeriod,
-          isCurrentPeriod: isCurrentPeriod,
-          onPeriodChanged: onPeriodChanged,
-          onPreviousPeriod: onPreviousPeriod,
-          onCurrentPeriod: onCurrentPeriod,
-          onNextPeriod: onNextPeriod,
-          onCalendarDateSelected: onCalendarDateSelected,
-          onGenerate: onGenerate,
-          isGenerating: isGenerating,
-          onExport: summary == null
-              ? null
-              : () => _exportSummary(context, summary),
-          collectionStatsSummary: summary,
+        _WorkspaceSummaryHeaderBand(
+          child: WorkspaceSummaryPeriodToolbar(
+            selectedPeriod: selectedPeriod,
+            selectedPreset: selectedPreset,
+            availableSummaryPeriods: availableSummaryPeriods,
+            canNavigateToPreviousPeriod: canNavigateToPreviousPeriod,
+            canNavigateToNextPeriod: canNavigateToNextPeriod,
+            isCurrentPeriod: isCurrentPeriod,
+            onPeriodChanged: onPeriodChanged,
+            onPreviousPeriod: onPreviousPeriod,
+            onCurrentPeriod: onCurrentPeriod,
+            onNextPeriod: onNextPeriod,
+            onCalendarDateSelected: onCalendarDateSelected,
+            onGenerate: onGenerate,
+            isGenerating: isGenerating,
+            onExport: summary == null
+                ? null
+                : () => _exportSummary(context, summary),
+            collectionStatsSummary: summary,
+          ),
         ),
-        const SizedBox(height: AppSpacing.md),
-        child,
+        Padding(padding: contentPadding, child: child),
       ],
     );
   }
@@ -85,6 +88,34 @@ class WorkspaceSummaryPeriodShell extends StatelessWidget {
     );
     messenger?.showSnackBar(
       const SnackBar(content: Text('Summary copied to clipboard')),
+    );
+  }
+}
+
+class _WorkspaceSummaryHeaderBand extends StatelessWidget {
+  const _WorkspaceSummaryHeaderBand({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return DecoratedBox(
+      key: const ValueKey('workspace-summary-header-band'),
+      decoration: BoxDecoration(
+        color: dark ? AppColors.darkSurfaceMuted : AppColors.surfaceMuted,
+        border: Border.symmetric(
+          horizontal: BorderSide(color: colorScheme.outlineVariant),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.md,
+          vertical: AppSpacing.sm,
+        ),
+        child: child,
+      ),
     );
   }
 }

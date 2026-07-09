@@ -97,7 +97,7 @@ void main() {
         ),
         findsOneWidget,
       );
-      expect(find.text('X post about agent workflow loops'), findsOneWidget);
+      expect(find.text('X post about agent workflow loops'), findsNothing);
       expect(
         find.text('Reddit thread confirming workflow pain'),
         findsOneWidget,
@@ -113,6 +113,115 @@ void main() {
       await tester.pump();
 
       expect(openedUrl, 'https://reddit.example/r/ai/comments/1');
+    },
+  );
+
+  testWidgets(
+    'keeps cross-source support visible when citation rows are incomplete',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      final summary = const SummaryMapper().readerSummaryToDomain(
+        readerSummaryApiDto(
+          content: readerSummaryContentApiDto(
+            topReads: const [
+              TopReadApiDto(
+                title: 'Claude Code tracker raises telemetry questions',
+                providerKey: 'rss',
+                reason:
+                    'The post explains why Claude Code tracking concerns matter for developer teams.',
+                matchedInterestIds: ['ai-developer-tools'],
+                signalScore: 2.69,
+                confidence: TopReadConfidenceApiDto(
+                  level: 'high',
+                  score: 0.74,
+                  rationale: 'Two providers support this story signal.',
+                ),
+                confirmedProviderKeys: ['hacker-news', 'rss'],
+                citationIds: ['missing-cross-source-citation'],
+              ),
+              TopReadApiDto(
+                title: 'Token pricing and agent cost measurement get scrutiny',
+                providerKey: 'hacker-news',
+                reason:
+                    'HN and RSS surfaced a concrete cost-analysis angle for AI product teams.',
+                matchedInterestIds: ['ai-developer-tools'],
+                signalScore: 2.18,
+                confidence: TopReadConfidenceApiDto(
+                  level: 'high',
+                  score: 0.72,
+                  rationale: 'Two providers support this story signal.',
+                ),
+                confirmedProviderKeys: ['hacker-news', 'rss'],
+                citationIds: ['pricing-hn', 'pricing-rss'],
+              ),
+            ],
+          ),
+          citations: [
+            summaryCitationApiDto(
+              id: 'pricing-hn',
+              sourceLabel: 'Hacker News pricing discussion',
+              providerKey: 'hacker-news',
+              canonicalUrl: 'https://news.ycombinator.com/item?id=42',
+            ),
+            summaryCitationApiDto(
+              id: 'pricing-rss',
+              sourceLabel: 'RSS post about token pricing',
+              providerKey: 'rss',
+              canonicalUrl: 'https://rss.example/token-pricing',
+            ),
+          ],
+        ),
+      );
+
+      await tester.pumpWidget(_TestApp(summary: summary));
+      await tester.pumpAndSettle();
+
+      final firstRow = find.byKey(const ValueKey('reader-summary-top-post-0'));
+      expect(
+        find.descendant(
+          of: firstRow,
+          matching: find.text('Claude Code tracker raises telemetry questions'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: firstRow,
+          matching: find.text('Cross-source · 2 sources'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: firstRow,
+          matching: find.textContaining('Show evidence'),
+        ),
+        findsNothing,
+      );
+
+      final secondRow = find.byKey(const ValueKey('reader-summary-top-post-1'));
+      expect(
+        find.descendant(
+          of: secondRow,
+          matching: find.text(
+            'Token pricing and agent cost measurement get scrutiny',
+          ),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: secondRow,
+          matching: find.text('Cross-source · 2 sources · Show evidence'),
+        ),
+        findsOneWidget,
+      );
     },
   );
 
@@ -193,7 +302,7 @@ void main() {
     await tester.tap(toggleFinder);
     await tester.pumpAndSettle();
 
-    expect(find.text('Reddit thread about agent workflows'), findsOneWidget);
+    expect(find.text('Reddit thread about agent workflows'), findsNothing);
     expect(find.text('Reddit follow-up on workflow costs'), findsOneWidget);
   });
 }

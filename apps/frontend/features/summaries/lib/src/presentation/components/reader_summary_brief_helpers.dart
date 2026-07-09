@@ -81,23 +81,12 @@ Map<String, _CitationSourceContext> _citationSourceById(List<TopRead> reads) {
           title: _shortTitle(read.title),
           providerKey: read.providerKey,
           canonicalUrl: read.canonicalUrl,
+          read: read,
         ),
       );
     }
   }
   return sources;
-}
-
-String _citationLabel(
-  SummaryCitation citation,
-  Map<String, SummaryCitation> citationsById,
-) {
-  final match = RegExp(r'\[\d+\]').firstMatch(citation.sourceLabel);
-  if (match != null) {
-    return match.group(0)!;
-  }
-  final index = citationsById.keys.toList(growable: false).indexOf(citation.id);
-  return '[${index < 0 ? 1 : index + 1}]';
 }
 
 String _primaryTheme(ReaderSummaryContent content) {

@@ -3,14 +3,12 @@ part of 'reader_summary_brief_surface.dart';
 class _CitationChip extends StatefulWidget {
   const _CitationChip({
     super.key,
-    required this.label,
     required this.citation,
     required this.relatedCitations,
     required this.citationSourceById,
     required this.onOpenUrl,
   });
 
-  final String label;
   final SummaryCitation citation;
   final List<SummaryCitation> relatedCitations;
   final Map<String, _CitationSourceContext> citationSourceById;
@@ -23,6 +21,7 @@ class _CitationChip extends StatefulWidget {
 class _CitationChipState extends State<_CitationChip> {
   final MenuController _menuController = MenuController();
   Timer? _closeTimer;
+  bool _menuOpen = false;
 
   @override
   void dispose() {
@@ -32,6 +31,9 @@ class _CitationChipState extends State<_CitationChip> {
 
   void _openMenu() {
     _closeTimer?.cancel();
+    if (!_menuOpen) {
+      setState(() => _menuOpen = true);
+    }
     if (!_menuController.isOpen) {
       _menuController.open();
     }
@@ -40,8 +42,10 @@ class _CitationChipState extends State<_CitationChip> {
   void _toggleMenu() {
     _closeTimer?.cancel();
     if (_menuController.isOpen) {
+      setState(() => _menuOpen = false);
       _menuController.close();
     } else {
+      setState(() => _menuOpen = true);
       _menuController.open();
     }
   }
@@ -50,6 +54,7 @@ class _CitationChipState extends State<_CitationChip> {
     _closeTimer?.cancel();
     _closeTimer = Timer(const Duration(milliseconds: 280), () {
       if (mounted) {
+        setState(() => _menuOpen = false);
         _menuController.close();
       }
     });
@@ -62,29 +67,37 @@ class _CitationChipState extends State<_CitationChip> {
     final relatedCitations = widget.relatedCitations.isEmpty
         ? [widget.citation]
         : widget.relatedCitations;
+    final sourceCount = _citationSourceCount(
+      relatedCitations,
+      widget.citationSourceById,
+    );
     final colorScheme = Theme.of(context).colorScheme;
     return MenuAnchor(
       controller: _menuController,
       alignmentOffset: const Offset(0, 6),
-      menuChildren: [
-        for (final citation in relatedCitations)
-          MouseRegion(
-            onEnter: (_) => _openMenu(),
-            onExit: (_) => _scheduleClose(),
-            child: MenuItemButton(
-              key: ValueKey('reader-summary-citation-source-${citation.id}'),
-              onPressed:
-                  citation.canonicalUrl != null &&
-                      citation.canonicalUrl!.trim().isNotEmpty
-                  ? () => widget.onOpenUrl(citation.canonicalUrl!)
-                  : null,
-              child: _CitationSourcePreview(
-                citation: citation,
-                source: widget.citationSourceById[citation.id],
-              ),
-            ),
-          ),
-      ],
+      menuChildren: _menuOpen
+          ? [
+              for (final citation in relatedCitations)
+                MouseRegion(
+                  onEnter: (_) => _openMenu(),
+                  onExit: (_) => _scheduleClose(),
+                  child: MenuItemButton(
+                    key: ValueKey(
+                      'reader-summary-citation-source-${citation.id}',
+                    ),
+                    onPressed:
+                        citation.canonicalUrl != null &&
+                            citation.canonicalUrl!.trim().isNotEmpty
+                        ? () => widget.onOpenUrl(citation.canonicalUrl!)
+                        : null,
+                    child: _CitationSourcePreview(
+                      citation: citation,
+                      source: widget.citationSourceById[citation.id],
+                    ),
+                  ),
+                ),
+            ]
+          : const [],
       child: Semantics(
         button: true,
         link: canOpen,
@@ -105,17 +118,30 @@ class _CitationChipState extends State<_CitationChip> {
                 borderRadius: BorderRadius.circular(6),
               ),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                child: Text(
-                  widget.label,
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: canOpen
-                        ? colorScheme.primary
-                        : colorScheme.onSurfaceVariant,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 0,
-                    height: 1.1,
-                  ),
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.hub_outlined,
+                      size: 13,
+                      color: canOpen
+                          ? colorScheme.primary
+                          : colorScheme.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: 3),
+                    Text(
+                      '$sourceCount',
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: canOpen
+                            ? colorScheme.primary
+                            : colorScheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0,
+                        height: 1.1,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -130,11 +156,13 @@ final class _CitationSourceContext {
   const _CitationSourceContext({
     required this.title,
     required this.providerKey,
+    required this.read,
     this.canonicalUrl,
   });
 
   final String title;
   final String providerKey;
+  final TopRead read;
   final String? canonicalUrl;
 }
 
@@ -149,6 +177,14 @@ class _CitationSourcePreview extends StatelessWidget {
     final snippet = _citationSnippet(citation);
     final providerKey = _providerKeyForCitation(citation, source);
     final title = _citationPreviewTitle(citation, source);
+    final read = source?.read;
+    if (read != null) {
+      return _TopPostReferenceCard(
+        read: read,
+        fallbackSnippet: snippet,
+        providerKey: providerKey,
+      );
+    }
     return ConstrainedBox(
       constraints: const BoxConstraints(minWidth: 260, maxWidth: 360),
       child: Padding(
@@ -276,4 +312,88 @@ String _citationSemanticsLabel(
     return '${citation.sourceLabel} source citation';
   }
   return '${citation.sourceLabel} source citation, $count sources available';
+}
+
+int _citationSourceCount(
+  List<SummaryCitation> citations,
+  Map<String, _CitationSourceContext> citationSourceById,
+) {
+  final sources = <String>{};
+  for (final citation in citations) {
+    final source = citationSourceById[citation.id];
+    final identity =
+        source?.canonicalUrl?.trim() ??
+        citation.canonicalUrl?.trim() ??
+        citation.id.trim();
+    if (identity.isNotEmpty) {
+      sources.add(identity.toLowerCase());
+    }
+  }
+  return sources.isEmpty ? citations.length : sources.length;
+}
+
+class _TopPostReferenceCard extends StatelessWidget {
+  const _TopPostReferenceCard({
+    required this.read,
+    required this.providerKey,
+    this.fallbackSnippet,
+  });
+
+  final TopRead read;
+  final String providerKey;
+  final String? fallbackSnippet;
+
+  @override
+  Widget build(BuildContext context) {
+    final metrics = topPostMetricsFor(read);
+    final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+    final snippet = fallbackSnippet;
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minWidth: 320, maxWidth: 460),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: colorScheme.surfaceContainerLowest,
+          border: Border.all(color: colorScheme.outlineVariant),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.sm),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _TopPostProviderTile(providerKey: providerKey),
+              const SizedBox(width: AppSpacing.sm + 4),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _TopPostTextBody(item: read, floatPreview: false),
+                    if (snippet != null) ...[
+                      const SizedBox(height: AppSpacing.xs),
+                      Text(
+                        snippet,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: textTheme.labelSmall?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                          letterSpacing: 0,
+                          height: 1.3,
+                        ),
+                      ),
+                    ],
+                    if (metrics.isNotEmpty) ...[
+                      const SizedBox(height: AppSpacing.sm),
+                      _TopPostMetricsRow(metrics: metrics.take(3).toList()),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
