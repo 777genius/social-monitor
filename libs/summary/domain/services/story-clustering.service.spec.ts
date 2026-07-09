@@ -235,6 +235,181 @@ describe("StoryClusteringService", () => {
     );
   });
 
+  it("keeps technical selection notes out of story cluster reasons", () => {
+    const service = new StoryClusteringService(clock);
+
+    const selection = service.cluster({
+      identity: {
+        tenantId: tenantId("tenant-1"),
+        workspaceId: workspaceId("workspace-1"),
+        scope: { type: "workspace" },
+      },
+      limit: 10,
+      items: [
+        evidenceItem({
+          whyImportant: [
+            "Selected to preserve provider coverage in the reader summary window",
+            "Unsafe source instructions were sandboxed before summarization",
+            "Strong source engagement signal",
+          ],
+        }),
+      ],
+    });
+
+    expect(selection.clusters[0]?.whyImportant).toEqual(
+      expect.arrayContaining(["Strong source engagement signal"]),
+    );
+    expect(selection.clusters[0]?.whyImportant).not.toEqual(
+      expect.arrayContaining([
+        "Selected to preserve provider coverage in the reader summary window",
+        "Unsafe source instructions were sandboxed before summarization",
+      ]),
+    );
+  });
+
+  it("uses stronger native engagement as the representative when story scores are close", () => {
+    const service = new StoryClusteringService(clock);
+
+    const selection = service.cluster({
+      identity: {
+        tenantId: tenantId("tenant-1"),
+        workspaceId: workspaceId("workspace-1"),
+        scope: { type: "workspace" },
+      },
+      limit: 10,
+      items: [
+        evidenceItem({
+          feedItemId: "rss-token-pricing",
+          sourceItemId: "rss-token-pricing",
+          providerKey: "rss",
+          canonicalUrl: "https://example.com/stories/token-pricing",
+          title: "Token pricing analysis",
+          bodyPreview:
+            "RSS mirrors the token pricing story with limited engagement context.",
+          score: 2.32,
+          observedAt: new Date("2026-06-23T08:20:00.000Z"),
+        }),
+        evidenceItem({
+          feedItemId: "hn-token-pricing",
+          sourceItemId: "hn-token-pricing",
+          providerKey: "hacker-news",
+          canonicalUrl: "https://example.com/stories/token-pricing",
+          title: "Price per 1M tokens is meaningless",
+          bodyPreview:
+            "HN discussion adds points and comments to the token pricing story.",
+          score: 2.2,
+          observedAt: new Date("2026-06-23T08:10:00.000Z"),
+          providerMetricLabels: [
+            { label: "Points", value: "420" },
+            { label: "Comments", value: "87" },
+          ],
+          providerMetricSummary: "420 points, 87 comments",
+        }),
+      ],
+    });
+
+    expect(selection.clusters).toHaveLength(1);
+    expect(selection.clusters[0]).toMatchObject({
+      representativeFeedItemId: "hn-token-pricing",
+      duplicateFeedItemIds: ["rss-token-pricing"],
+      signalBreakdown: {
+        baseScore: 2.32,
+      },
+    });
+    expect(selection.sourceWindow.selectedFeedItemIds).toEqual([
+      "hn-token-pricing",
+      "rss-token-pricing",
+    ]);
+  });
+
+  it("keeps a clearly stronger story score ahead of viral duplicate metrics", () => {
+    const service = new StoryClusteringService(clock);
+
+    const selection = service.cluster({
+      identity: {
+        tenantId: tenantId("tenant-1"),
+        workspaceId: workspaceId("workspace-1"),
+        scope: { type: "workspace" },
+      },
+      limit: 10,
+      items: [
+        evidenceItem({
+          feedItemId: "rss-model-release",
+          sourceItemId: "rss-model-release",
+          providerKey: "rss",
+          canonicalUrl: "https://example.com/stories/model-release",
+          title: "Model release technical details",
+          bodyPreview: "RSS article captures the concrete model release.",
+          score: 2.4,
+        }),
+        evidenceItem({
+          feedItemId: "x-model-release",
+          sourceItemId: "x-model-release",
+          providerKey: "x-twitter",
+          canonicalUrl: "https://example.com/stories/model-release",
+          title: "Hot take on the model release",
+          bodyPreview:
+            "Social post mentions the model release with broad engagement.",
+          score: 1.9,
+          providerMetricLabels: [
+            { label: "Likes", value: "12,400" },
+            { label: "Reposts", value: "2,100" },
+            { label: "Replies", value: "460" },
+          ],
+          providerMetricSummary: "12,400 likes, 2,100 reposts, 460 replies",
+        }),
+      ],
+    });
+
+    expect(selection.clusters).toHaveLength(1);
+    expect(selection.clusters[0]).toMatchObject({
+      representativeFeedItemId: "rss-model-release",
+      duplicateFeedItemIds: ["x-model-release"],
+      signalBreakdown: {
+        baseScore: 2.4,
+      },
+    });
+  });
+
+  it("does not treat percentage ratios as representative engagement counts", () => {
+    const service = new StoryClusteringService(clock);
+
+    const selection = service.cluster({
+      identity: {
+        tenantId: tenantId("tenant-1"),
+        workspaceId: workspaceId("workspace-1"),
+        scope: { type: "workspace" },
+      },
+      limit: 10,
+      items: [
+        evidenceItem({
+          feedItemId: "rss-upvote-context",
+          sourceItemId: "rss-upvote-context",
+          providerKey: "rss",
+          canonicalUrl: "https://example.com/stories/upvote-context",
+          title: "Upvote context writeup",
+          score: 2.25,
+        }),
+        evidenceItem({
+          feedItemId: "reddit-upvote-context",
+          sourceItemId: "reddit-upvote-context",
+          providerKey: "reddit",
+          canonicalUrl: "https://example.com/stories/upvote-context",
+          title: "Upvote context discussion",
+          score: 2.2,
+          providerMetricLabels: [{ label: "Upvote ratio", value: "91%" }],
+          providerMetricSummary: "91% upvoted",
+        }),
+      ],
+    });
+
+    expect(selection.clusters).toHaveLength(1);
+    expect(selection.clusters[0]).toMatchObject({
+      representativeFeedItemId: "rss-upvote-context",
+      duplicateFeedItemIds: ["reddit-upvote-context"],
+    });
+  });
+
   it("does not fuzzy-merge generic AI agent stories without enough shared topic tokens", () => {
     const service = new StoryClusteringService(clock);
 

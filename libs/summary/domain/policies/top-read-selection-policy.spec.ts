@@ -73,6 +73,91 @@ describe("selectUniqueTopReadCandidates", () => {
     expect(result[0]?.citationIds).toEqual(["c-strong-gh"]);
   });
 
+  it("uses engagement metrics as a tie-breaker for close same-provider top reads", () => {
+    const result = selectUniqueTopReadCandidates(
+      [
+        story("weak-hn", "Small HN discussion", "c-weak-hn", ["hacker-news"]),
+        story("strong-hn", "Major HN discussion", "c-strong-hn", [
+          "hacker-news",
+        ]),
+      ],
+      citations([
+        citation("c-weak-hn", "feed-weak-hn", "hacker-news"),
+        citation("c-strong-hn", "feed-strong-hn", "hacker-news"),
+      ]),
+      evidence([
+        evidenceItem("feed-weak-hn", "hacker-news", [
+          ["Points", "5"],
+          ["Comments", "9"],
+        ]),
+        evidenceItem("feed-strong-hn", "hacker-news", [
+          ["Points", "338"],
+          ["Comments", "44"],
+        ]),
+      ]),
+      clusters(["weak-hn", "strong-hn"]),
+    );
+
+    expect(result.map((item) => item.title)).toEqual([
+      "Major HN discussion",
+      "Small HN discussion",
+    ]);
+  });
+
+  it("orders close cross-provider discussion reads by engagement strength", () => {
+    const result = selectUniqueTopReadCandidates(
+      [
+        story("x", "X rollout", "c-x", ["x-twitter"]),
+        story("hn", "HN discussion", "c-hn", ["hacker-news"]),
+      ],
+      citations([
+        citation("c-x", "feed-x", "x-twitter"),
+        citation("c-hn", "feed-hn", "hacker-news"),
+      ]),
+      evidence([
+        {
+          ...evidenceItem("feed-x", "x-twitter", [
+            ["Likes", "2,000"],
+            ["Replies", "90"],
+          ]),
+          score: 2.21,
+        },
+        {
+          ...evidenceItem("feed-hn", "hacker-news", [
+            ["Points", "340"],
+            ["Comments", "170"],
+          ]),
+          score: 2.27,
+        },
+      ]),
+      new Map([
+        [
+          "story:x",
+          cluster({
+            id: "x",
+            representativeFeedItemId: "feed-x",
+            providerKeys: ["x-twitter"],
+            score: 2.21,
+          }),
+        ],
+        [
+          "story:hn",
+          cluster({
+            id: "hn",
+            representativeFeedItemId: "feed-hn",
+            providerKeys: ["hacker-news"],
+            score: 2.27,
+          }),
+        ],
+      ]),
+    );
+
+    expect(result.map((item) => item.title)).toEqual([
+      "HN discussion",
+      "X rollout",
+    ]);
+  });
+
   it("balances top reads with primary social minimums and dominant provider caps", () => {
     const result = selectUniqueTopReadCandidates(
       [
@@ -147,15 +232,20 @@ describe("selectUniqueTopReadCandidates", () => {
     );
 
     expect(result.map((item) => item.title)).toEqual([
-      "Reddit discussion 1",
-      "Reddit discussion 2",
-      "Reddit discussion 3",
-      "Reddit discussion 4",
       "X discussion 1",
       "X discussion 2",
+      "Reddit discussion 1",
       "HN discussion",
+      "Reddit discussion 2",
+      "Reddit discussion 3",
       "RSS article",
     ]);
+    expect(providerCounts(result)).toEqual({
+      reddit: 3,
+      "x-twitter": 2,
+      "hacker-news": 1,
+      rss: 1,
+    });
   });
 
   it("promotes stronger social evidence above weak single-source reads", () => {
@@ -238,6 +328,324 @@ describe("selectUniqueTopReadCandidates", () => {
     );
 
     expect(result[0]?.title).toBe("Cross-source Reddit signal");
+  });
+
+  it("keeps stronger same-provider supported reads above weak earlier picks", () => {
+    const result = selectUniqueTopReadCandidates(
+      [
+        story("weak-x", "J-Space reached X", "c-weak-x", ["x-twitter"]),
+        {
+          ...story("supported-x", "Claude open source expansion", "c-x-main", [
+            "x-twitter",
+          ]),
+          citationIds: ["c-x-main", "c-x-support"],
+        },
+      ],
+      citations([
+        citation("c-weak-x", "feed-weak-x", "x-twitter"),
+        citation("c-x-main", "feed-x-main", "x-twitter"),
+        citation("c-x-support", "feed-x-support", "x-twitter"),
+      ]),
+      evidence([
+        {
+          ...evidenceItem("feed-weak-x", "x-twitter", [["Likes", "180"]], {
+            eligibleForTopRead: true,
+          }),
+          score: 1.78,
+        },
+        {
+          ...evidenceItem("feed-x-main", "x-twitter", [
+            ["Likes", "1,800"],
+            ["Reposts", "180"],
+          ]),
+          score: 2.14,
+        },
+        {
+          ...evidenceItem("feed-x-support", "x-twitter", [
+            ["Likes", "900"],
+            ["Reposts", "70"],
+          ]),
+          score: 2.02,
+        },
+      ]),
+      new Map([
+        [
+          "story:weak-x",
+          cluster({
+            id: "weak-x",
+            representativeFeedItemId: "feed-weak-x",
+            providerKeys: ["x-twitter"],
+            score: 1.78,
+          }),
+        ],
+        [
+          "story:supported-x",
+          cluster({
+            id: "supported-x",
+            representativeFeedItemId: "feed-x-main",
+            duplicateFeedItemIds: ["feed-x-support"],
+            providerKeys: ["x-twitter"],
+            score: 2.14,
+          }),
+        ],
+      ]),
+    );
+
+    expect(result.map((item) => item.title)).toEqual([
+      "Claude open source expansion",
+      "J-Space reached X",
+    ]);
+  });
+
+  it("does not treat RSS as strong discussion evidence when ordering top reads", () => {
+    const result = selectUniqueTopReadCandidates(
+      [
+        story("hn", "Eligible HN discussion", "c-hn", ["hacker-news"]),
+        {
+          ...story("rss", "RSS cross-source article", "c-rss", [
+            "rss",
+            "hacker-news",
+          ]),
+          citationIds: ["c-rss", "c-rss-support"],
+        },
+      ],
+      citations([
+        citation("c-hn", "feed-hn", "hacker-news"),
+        citation("c-rss", "feed-rss", "rss"),
+        citation("c-rss-support", "feed-rss-support", "hacker-news"),
+      ]),
+      evidence([
+        {
+          ...evidenceItem("feed-hn", "hacker-news", [
+            ["Points", "25"],
+            ["Comments", "9"],
+          ]),
+          score: 1.7,
+        },
+        {
+          ...evidenceItem("feed-rss", "rss", []),
+          score: 2.4,
+        },
+        {
+          ...evidenceItem("feed-rss-support", "hacker-news", [
+            ["Points", "40"],
+            ["Comments", "12"],
+          ]),
+          score: 2.1,
+        },
+      ]),
+      new Map(),
+    );
+
+    expect(result.map((item) => item.title)).toEqual([
+      "Eligible HN discussion",
+      "RSS cross-source article",
+    ]);
+  });
+
+  it("does not count RSS mirrors of Hacker News as independent source support", () => {
+    const result = selectUniqueTopReadCandidates(
+      [
+        {
+          ...story("typescript", "TypeScript rewrite", "c-hn", [
+            "hacker-news",
+            "rss",
+          ]),
+          citationIds: ["c-hn", "c-rss"],
+        },
+        {
+          ...story("claude", "Claude access extension", "c-x-main", [
+            "x-twitter",
+          ]),
+          citationIds: ["c-x-main", "c-x-support"],
+        },
+      ],
+      citations([
+        {
+          ...citation("c-hn", "feed-hn", "hacker-news"),
+          canonicalUrl: "https://news.ycombinator.com/item?id=48823421",
+        },
+        {
+          ...citation("c-rss", "feed-rss", "rss"),
+          canonicalUrl: "https://news.ycombinator.com/item?id=48823421",
+        },
+        citation("c-x-main", "feed-x-main", "x-twitter"),
+        citation("c-x-support", "feed-x-support", "x-twitter"),
+      ]),
+      evidence([
+        {
+          ...evidenceItem("feed-hn", "hacker-news", [
+            ["Points", "28"],
+            ["Comments", "3"],
+          ]),
+          canonicalUrl: "https://news.ycombinator.com/item?id=48823421",
+          score: 1.86,
+        },
+        {
+          ...evidenceItem("feed-rss", "rss", []),
+          canonicalUrl: "https://news.ycombinator.com/item?id=48823421",
+          score: 1.7,
+        },
+        {
+          ...evidenceItem("feed-x-main", "x-twitter", [
+            ["Likes", "79,000"],
+            ["Reposts", "9,100"],
+          ]),
+          score: 2.2,
+        },
+        {
+          ...evidenceItem("feed-x-support", "x-twitter", [
+            ["Likes", "12,000"],
+            ["Reposts", "1,100"],
+          ]),
+          score: 2.05,
+        },
+      ]),
+      new Map([
+        [
+          "story:typescript",
+          cluster({
+            id: "typescript",
+            representativeFeedItemId: "feed-hn",
+            duplicateFeedItemIds: ["feed-rss"],
+            providerKeys: ["hacker-news", "rss"],
+            score: 1.86,
+          }),
+        ],
+        [
+          "story:claude",
+          cluster({
+            id: "claude",
+            representativeFeedItemId: "feed-x-main",
+            duplicateFeedItemIds: ["feed-x-support"],
+            providerKeys: ["x-twitter"],
+            score: 2.2,
+          }),
+        ],
+      ]),
+    );
+
+    expect(result.map((item) => item.title)).toEqual([
+      "Claude access extension",
+      "TypeScript rewrite",
+    ]);
+  });
+
+  it("does not count loose model citations outside a cluster as ranking support", () => {
+    const result = selectUniqueTopReadCandidates(
+      [
+        {
+          ...story("typescript", "TypeScript Go rewrite", "c-hn", [
+            "hacker-news",
+          ]),
+          citationIds: ["c-hn", "c-rss-loose"],
+        },
+        {
+          ...story("claude", "Claude Fable extension", "c-x-main", [
+            "x-twitter",
+          ]),
+          citationIds: ["c-x-main", "c-x-support"],
+        },
+      ],
+      citations([
+        citation("c-hn", "feed-hn", "hacker-news"),
+        citation("c-rss-loose", "feed-rss-loose", "rss"),
+        citation("c-x-main", "feed-x-main", "x-twitter"),
+        citation("c-x-support", "feed-x-support", "x-twitter"),
+      ]),
+      evidence([
+        {
+          ...evidenceItem("feed-hn", "hacker-news", [
+            ["Points", "28"],
+            ["Comments", "3"],
+          ]),
+          score: 1.86,
+        },
+        {
+          ...evidenceItem("feed-rss-loose", "rss", []),
+          canonicalUrl: "https://example.com/related-go-post",
+          score: 1.7,
+        },
+        {
+          ...evidenceItem("feed-x-main", "x-twitter", [
+            ["Likes", "79,000"],
+            ["Reposts", "9,100"],
+          ]),
+          score: 2.2,
+        },
+        {
+          ...evidenceItem("feed-x-support", "x-twitter", [
+            ["Likes", "12,000"],
+            ["Reposts", "1,100"],
+          ]),
+          score: 2.05,
+        },
+      ]),
+      new Map([
+        [
+          "story:typescript",
+          cluster({
+            id: "typescript",
+            representativeFeedItemId: "feed-hn",
+            providerKeys: ["hacker-news"],
+            score: 1.86,
+          }),
+        ],
+        [
+          "story:claude",
+          cluster({
+            id: "claude",
+            representativeFeedItemId: "feed-x-main",
+            duplicateFeedItemIds: ["feed-x-support"],
+            providerKeys: ["x-twitter"],
+            score: 2.2,
+          }),
+        ],
+      ]),
+    );
+
+    expect(result.map((item) => item.title)).toEqual([
+      "Claude Fable extension",
+      "TypeScript Go rewrite",
+    ]);
+  });
+
+  it("preserves support citations when supplementing a cross-source cluster", () => {
+    const result = selectUniqueTopReadCandidates(
+      [],
+      citations([
+        citation("c-rss", "feed-rss", "rss"),
+        citation("c-hn", "feed-hn", "hacker-news"),
+      ]),
+      evidence([
+        {
+          ...evidenceItem("feed-rss", "rss", []),
+          score: 2.7,
+        },
+        {
+          ...evidenceItem("feed-hn", "hacker-news", [
+            ["Points", "42"],
+            ["Comments", "17"],
+          ]),
+          score: 2.2,
+        },
+      ]),
+      new Map([
+        [
+          "story:tracker",
+          cluster({
+            id: "tracker",
+            representativeFeedItemId: "feed-rss",
+            duplicateFeedItemIds: ["feed-hn"],
+            providerKeys: ["rss", "hacker-news"],
+            score: 2.69,
+          }),
+        ],
+      ]),
+    );
+
+    expect(result[0]?.providerKeys).toEqual(["rss", "hacker-news"]);
+    expect(result[0]?.citationIds).toEqual(["c-rss", "c-hn"]);
   });
 
   it("fills from eligible selected evidence and caps a dominant social provider", () => {
@@ -369,6 +777,89 @@ describe("selectUniqueTopReadCandidates", () => {
     );
 
     expect(result).toEqual([]);
+  });
+
+  it("drops citationless stories when their cluster has no top-read eligible evidence", () => {
+    const result = selectUniqueTopReadCandidates(
+      [
+        {
+          ...story("generic-hn", "Generic high-engagement HN item", "unused", [
+            "hacker-news",
+          ]),
+          citationIds: [],
+        },
+      ],
+      citations([citation("c-generic-hn", "feed-generic-hn", "hacker-news")]),
+      evidence([
+        evidenceItem(
+          "feed-generic-hn",
+          "hacker-news",
+          [
+            ["Points", "800"],
+            ["Comments", "300"],
+          ],
+          {
+            eligibleForTopRead: false,
+            flags: ["weak_topic_match"],
+            decision: "downrank",
+          },
+        ),
+      ]),
+      new Map([
+        [
+          "story:generic-hn",
+          cluster({
+            id: "generic-hn",
+            representativeFeedItemId: "feed-generic-hn",
+            providerKeys: ["hacker-news"],
+            score: 2.9,
+          }),
+        ],
+      ]),
+    );
+
+    expect(result).toEqual([]);
+  });
+
+  it("hydrates citationless cross-source stories from eligible cluster evidence", () => {
+    const result = selectUniqueTopReadCandidates(
+      [
+        {
+          ...story("tracker", "Anthropic tracker story", "unused", [
+            "rss",
+            "hacker-news",
+          ]),
+          citationIds: [],
+        },
+      ],
+      citations([
+        citation("c-rss", "feed-rss", "rss"),
+        citation("c-hn", "feed-hn", "hacker-news"),
+      ]),
+      evidence([
+        evidenceItem("feed-rss", "rss", []),
+        evidenceItem("feed-hn", "hacker-news", [
+          ["Points", "42"],
+          ["Comments", "17"],
+        ]),
+      ]),
+      new Map([
+        [
+          "story:tracker",
+          cluster({
+            id: "tracker",
+            representativeFeedItemId: "feed-rss",
+            duplicateFeedItemIds: ["feed-hn"],
+            providerKeys: ["rss", "hacker-news"],
+            score: 2.69,
+          }),
+        ],
+      ]),
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0]?.providerKeys).toEqual(["rss", "hacker-news"]);
+    expect(result[0]?.citationIds).toEqual(["c-rss", "c-hn"]);
   });
 });
 

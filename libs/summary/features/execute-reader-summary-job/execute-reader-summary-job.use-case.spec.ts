@@ -285,6 +285,55 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
     );
   });
 
+  it("rebuilds reader content from evidence instead of trusting model content", async () => {
+    const tenant = tenantId("tenant-reader-summary-use-case");
+    const workspace = workspaceId("workspace-reader-summary-use-case");
+    const jobs = new FakeReaderSummaryJobRepository();
+    const artifacts = new FakeReaderSummaryArtifactRepository();
+
+    await jobs.save(
+      ReaderSummaryJob.request({
+        id: "reader-job-model-content",
+        tenantId: tenant,
+        workspaceId: workspace,
+        scope: workspaceReaderSummaryScope(),
+        period: readerSummaryPeriod,
+        idempotencyKey: "reader-job-key-model-content",
+        requestedAt: new Date("2026-06-26T08:00:00.000Z"),
+      }),
+    );
+
+    const result = await new ExecuteReaderSummaryJobUseCase(
+      jobs,
+      artifacts,
+      new EmptyReaderSummaryPolicyRepository(),
+      {
+        async select() {
+          return makeReaderEvidenceSelection();
+        },
+      },
+      new CapturingReaderSummaryModel(
+        { topReads: [{ title: "Untrusted model top read" }] } as unknown as
+          ProviderReaderSummaryAttempt["draft"]["content"],
+      ),
+      new CapturingSummaryEventPublisher(),
+      new StaticIdGenerator(),
+      new FixedClock(new Date("2026-06-26T08:05:00.000Z")),
+      undefined,
+      undefined,
+      emptyTopicMapBuilder(),
+    ).execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      readerSummaryJobId: "reader-job-model-content",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(
+      artifacts.all()[0]?.toSnapshot().content?.topReads[0]?.title,
+    ).toBe("Runtime regression discussion");
+  });
+
   it("rejects a generated artifact before publish when top reads fail source quality", async () => {
     const tenant = tenantId("tenant-reader-summary-use-case");
     const workspace = workspaceId("workspace-reader-summary-use-case");
@@ -499,6 +548,10 @@ class CapturingReaderSummaryModel implements ReaderSummaryModelPort {
     ReaderSummaryModelPort["generate"]
   >[0]["policy"][] = [];
 
+  constructor(
+    private readonly generatedContent?: ProviderReaderSummaryAttempt["draft"]["content"],
+  ) {}
+
   route(
     input: Parameters<ReaderSummaryModelPort["route"]>[0],
     policy: Parameters<ReaderSummaryModelPort["route"]>[1],
@@ -591,6 +644,7 @@ class CapturingReaderSummaryModel implements ReaderSummaryModelPort {
           rankingPolicyVersion: input.evidence.rankingPolicyVersion,
         },
         usage: this.estimate(input, selectedRoute),
+        content: this.generatedContent,
       },
     };
   }

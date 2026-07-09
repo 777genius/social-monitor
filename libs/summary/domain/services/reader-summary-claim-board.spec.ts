@@ -104,6 +104,39 @@ describe("buildReaderSummaryClaimBoard", () => {
       ],
     });
   });
+
+  it("adds an explicit low-evidence risk for high-confidence claims with one citation", () => {
+    const claims = buildReaderSummaryClaimBoard({
+      topReads: [
+        topRead({
+          title: "Cross-provider story has one rendered evidence line",
+          citationIds: ["c1"],
+          confidence: {
+            level: "high",
+            score: 0.98,
+            rationale: "2 monitored source groups support this story.",
+          },
+          confirmedProviderKeys: ["rss", "hacker-news"],
+        }),
+      ],
+      risksAndUnknowns: [],
+      citationMap: [
+        citation({
+          citationId: "c1",
+          feedItemId: "feed-1",
+          providerKey: "rss",
+        }),
+      ],
+    });
+
+    expect(claims[0]?.risks).toEqual([
+      {
+        kind: "low_evidence",
+        description:
+          "Only one cited evidence line is available in the claim board.",
+      },
+    ]);
+  });
 });
 
 const topRead = (overrides: Partial<TopRead> = {}): TopRead => ({

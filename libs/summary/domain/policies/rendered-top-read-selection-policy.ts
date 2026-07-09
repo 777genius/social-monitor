@@ -1,0 +1,229 @@
+import type { SourceMixEntry } from "../entities/source-mix-entry";
+import type { TopRead, TopReadCandidate } from "../entities/top-read";
+import { compactUnique } from "../value-objects/summary-text";
+import {
+  topReadPrimaryMinimumForLimit,
+  topReadProviderCapForLimit,
+} from "./top-read-provider-diversity-policy";
+
+export type RenderedTopReadCandidate = {
+  readonly story: TopReadCandidate;
+  readonly topRead: TopRead;
+};
+
+export const selectRenderedTopReadCandidates = (params: {
+  readonly candidates: readonly RenderedTopReadCandidate[];
+  readonly sourceMix: readonly SourceMixEntry[];
+  readonly limit: number;
+}): readonly RenderedTopReadCandidate[] => {
+  const limit = normalizeLimit(params.limit);
+  const activeProviders = activeProviderKeys(params);
+  const providerCap = topReadProviderCapForLimit({
+    limit,
+    activeProviderCount: activeProviders.length,
+    primaryMinimum: topReadPrimaryMinimumForLimit(limit),
+  });
+  const selected: RenderedTopReadCandidate[] = [];
+  const selectedStoryIds = new Set<string>();
+  const providerCounts = new Map<string, number>();
+  const pool = rankedCandidatePool(qualityCandidatePool(params.candidates, limit));
+  const select = (candidate: RenderedTopReadCandidate): void => {
+    selected.push(candidate);
+    selectedStoryIds.add(candidate.story.storyClusterId);
+    const providerKey = candidate.topRead.providerKey;
+    providerCounts.set(providerKey, (providerCounts.get(providerKey) ?? 0) + 1);
+  };
+
+  for (const candidate of pool) {
+    if (selected.length >= limit) {
+      break;
+    }
+    const providerKey = candidate.topRead.providerKey;
+    const cap = socialNewsProviderKeys.has(providerKey) ? providerCap : limit;
+    if ((providerCounts.get(providerKey) ?? 0) >= cap) {
+      continue;
+    }
+    select(candidate);
+  }
+
+  for (const candidate of pool) {
+    if (selected.length >= limit) {
+      break;
+    }
+    if (
+      selectedStoryIds.has(candidate.story.storyClusterId) ||
+      !isQualityTopRead(candidate.topRead)
+    ) {
+      continue;
+    }
+    select(candidate);
+  }
+
+  return selected;
+};
+
+const qualityCandidatePool = (
+  candidates: readonly RenderedTopReadCandidate[],
+  limit: number,
+): readonly RenderedTopReadCandidate[] => {
+  if (candidates.length <= limit || !isSocialNewsDominant(candidates, limit)) {
+    return candidates;
+  }
+
+  const qualityCandidates = candidates.filter((candidate) =>
+    isQualityTopRead(candidate.topRead),
+  );
+
+  return qualityCandidates.length >= Math.min(limit, 6)
+    ? qualityCandidates
+    : candidates;
+};
+
+const rankedCandidatePool = (
+  candidates: readonly RenderedTopReadCandidate[],
+): readonly RenderedTopReadCandidate[] =>
+  candidates
+    .map((candidate, index) => ({ candidate, index }))
+    .sort((left, right) => {
+      const scoreDelta =
+        topReadRankScore(right.candidate.topRead) -
+        topReadRankScore(left.candidate.topRead);
+
+      return scoreDelta === 0 ? left.index - right.index : scoreDelta;
+    })
+    .map((entry) => entry.candidate);
+
+const topReadRankScore = (read: TopRead): number =>
+  read.signalScore +
+  confidenceRankBoost(read) +
+  crossSourceRankBoost(read) +
+  citationRankBoost(read);
+
+const confidenceRankBoost = (read: TopRead): number => {
+  if (read.confidence.level === "high") {
+    return 0.35;
+  }
+  if (read.confidence.level === "medium") {
+    return 0.18;
+  }
+
+  return 0;
+};
+
+const crossSourceRankBoost = (read: TopRead): number =>
+  read.confirmedProviderKeys.length > 1 ? 0.3 : 0;
+
+const citationRankBoost = (read: TopRead): number =>
+  Math.min(read.citationIds.length, 3) * 0.03;
+
+const isSocialNewsDominant = (
+  candidates: readonly RenderedTopReadCandidate[],
+  limit: number,
+): boolean =>
+  candidates.filter((candidate) =>
+    socialNewsProviderKeys.has(candidate.topRead.providerKey),
+  ).length >= Math.min(limit, candidates.length);
+
+const isQualityTopRead = (read: TopRead): boolean => {
+  if (!socialNewsProviderKeys.has(read.providerKey)) {
+    return true;
+  }
+  if (read.confirmedProviderKeys.length > 1 || read.confidence.level !== "low") {
+    return true;
+  }
+  if (isTrustedOfficialXPost(read)) {
+    return !hasFallbackReason(read) || read.signalScore >= strongSingleSourceSignalScore;
+  }
+  if (read.signalScore >= strongSingleSourceSignalScore) {
+    return !isUnverifiedBreakingXPost(read);
+  }
+  if (read.signalScore >= usefulSingleSourceSignalScore) {
+    return !hasFallbackReason(read) && !isUnverifiedBreakingXPost(read);
+  }
+
+  return false;
+};
+
+const isTrustedOfficialXPost = (read: TopRead): boolean => {
+  if (read.providerKey !== "x-twitter") {
+    return false;
+  }
+  const username = xUsername(read.canonicalUrl);
+
+  return username !== undefined && trustedXUsernames.has(username);
+};
+
+const isUnverifiedBreakingXPost = (read: TopRead): boolean =>
+  read.providerKey === "x-twitter" &&
+  read.confirmedProviderKeys.length <= 1 &&
+  /\b(?:breaking|just\s+in)\b/iu.test(read.title);
+
+const hasFallbackReason = (read: TopRead): boolean =>
+  read.reason.trim().toLowerCase().startsWith("source-reported:");
+
+const xUsername = (value: string | undefined): string | undefined => {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  try {
+    const parsed = new URL(value);
+    const hostname = parsed.hostname.toLowerCase();
+    if (hostname !== "x.com" && hostname !== "twitter.com") {
+      return undefined;
+    }
+
+    return parsed.pathname
+      .split("/")
+      .filter((segment) => segment.length > 0)[0]
+      ?.toLowerCase();
+  } catch {
+    return undefined;
+  }
+};
+
+const activeProviderKeys = (params: {
+  readonly candidates: readonly RenderedTopReadCandidate[];
+  readonly sourceMix: readonly SourceMixEntry[];
+}): readonly string[] =>
+  compactUnique([
+    ...params.sourceMix
+      .filter(
+        (source) =>
+          source.itemCount > 0 ||
+          source.citationCount > 0 ||
+          source.storyClusterCount > 0,
+      )
+      .map((source) => source.providerKey)
+      .filter((providerKey) => socialNewsProviderKeys.has(providerKey)),
+    ...params.candidates
+      .map((candidate) => candidate.topRead.providerKey)
+      .filter((providerKey) => socialNewsProviderKeys.has(providerKey)),
+  ]);
+
+const socialNewsProviderKeys = new Set([
+  "x-twitter",
+  "reddit",
+  "hacker-news",
+  "rss",
+]);
+
+const trustedXUsernames = new Set([
+  "anthropicai",
+  "cloudflare",
+  "cursor_ai",
+  "github",
+  "googledeepmind",
+  "mistralai",
+  "openai",
+]);
+const strongSingleSourceSignalScore = 2.2;
+const usefulSingleSourceSignalScore = 1.9;
+
+const normalizeLimit = (value: number): number => {
+  if (!Number.isFinite(value) || !Number.isInteger(value) || value < 1) {
+    return 10;
+  }
+
+  return Math.min(value, 10);
+};

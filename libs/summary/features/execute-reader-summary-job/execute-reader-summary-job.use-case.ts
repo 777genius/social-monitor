@@ -369,22 +369,20 @@ export class ExecuteReaderSummaryJobUseCase {
       return err(topicMapResult.error);
     }
     const topicMap = topicMapResult.value;
-    const content =
-      draft.content ??
-      buildReaderSummary({
-        headline: draft.headline,
-        executiveSummary: draft.executiveSummary,
-        topStories: draft.topStories,
-        interestHighlights: draft.interestHighlights,
-        repeatedSignals: draft.repeatedSignals,
-        risksAndUnknowns: draft.risksAndUnknowns,
-        citationMap: draft.citationMap,
-        storyClusters: evidence.clusters,
-        sourceWindow: evidence.sourceWindow,
-        selectedEvidence: evidence.selectedEvidence,
-        qualityFlags: draft.qualityFlags,
-        noSignalReason: draft.noSignalReason,
-      });
+    const content = buildReaderSummary({
+      headline: draft.headline,
+      executiveSummary: draft.executiveSummary,
+      topStories: draft.topStories,
+      interestHighlights: draft.interestHighlights,
+      repeatedSignals: draft.repeatedSignals,
+      risksAndUnknowns: draft.risksAndUnknowns,
+      citationMap: draft.citationMap,
+      storyClusters: evidence.clusters,
+      sourceWindow: evidence.sourceWindow,
+      selectedEvidence: evidence.selectedEvidence,
+      qualityFlags: draft.qualityFlags,
+      noSignalReason: draft.noSignalReason,
+    });
 
     return ok({
       ...draft,

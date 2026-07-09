@@ -78,7 +78,10 @@ const claimFromTopRead = (
     claim: read.title,
     evidence,
     confidence: read.confidence,
-    risks: claimRisks(read, risksAndUnknowns).slice(0, maxClaimRisks),
+    risks: claimRisks(read, risksAndUnknowns, evidence.length).slice(
+      0,
+      maxClaimRisks,
+    ),
     citationIds,
   };
 };
@@ -96,6 +99,7 @@ const evidenceTitle = (
 const claimRisks = (
   read: TopRead,
   risksAndUnknowns: readonly ReaderSummaryRisk[],
+  evidenceCount: number,
 ): readonly ReaderSummaryClaimRisk[] => {
   const matchedRisks = risksAndUnknowns
     .filter((risk) => overlaps(read.citationIds, risk.citationIds ?? []))
@@ -116,6 +120,13 @@ const claimRisks = (
     inferredRisks.push({
       kind: "low_confidence",
       description: read.confidence.rationale,
+    });
+  }
+  if (evidenceCount < 2) {
+    inferredRisks.push({
+      kind: "low_evidence",
+      description:
+        "Only one cited evidence line is available in the claim board.",
     });
   }
 

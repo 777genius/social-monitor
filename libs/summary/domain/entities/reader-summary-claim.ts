@@ -3,6 +3,7 @@ import type { TopReadConfidence } from "./top-read";
 export const readerSummaryClaimRiskKinds = [
   "single_source",
   "low_confidence",
+  "low_evidence",
   "unresolved",
 ] as const;
 

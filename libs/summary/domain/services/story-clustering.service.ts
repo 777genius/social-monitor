@@ -14,6 +14,7 @@ import {
   STORY_RANKING_POLICY_V1,
   type StoryRankingPolicy,
 } from "../policies/story-ranking-policy";
+import { compareRepresentativeEvidenceItems } from "../policies/representative-evidence-selection-policy";
 import {
   sharedStoryTopicTokenCount,
   storyKey,
@@ -89,13 +90,13 @@ const buildClusters = (
   return groups.map((group) => {
     const key = group.key;
     const clusterItems = group.items;
-    const sorted = [...clusterItems].sort(compareEvidenceItems);
+    const sorted = [...clusterItems].sort(compareRepresentativeEvidenceItems);
     const representative = sorted[0];
     if (representative === undefined) {
       throw new Error("Reader summary story cluster must contain evidence");
     }
     const observedTimes = sorted.map((item) => item.observedAt.getTime());
-    const signal = storyClusterSignal(sorted, now, policy);
+    const signal = storyClusterSignal(clusterItems, now, policy);
 
     return {
       id: `story:${key}`,
@@ -113,10 +114,24 @@ const buildClusters = (
       },
       whyImportant: uniqueStable([
         ...signal.reasons,
-        ...sorted.flatMap((item) => item.whyImportant),
+        ...sorted.flatMap((item) =>
+          item.whyImportant.filter(isUserFacingStoryReason),
+        ),
       ]),
     } satisfies StoryCluster;
   });
+};
+
+const isUserFacingStoryReason = (value: string): boolean => {
+  const trimmed = value.trim();
+  const lower = trimmed.toLowerCase();
+
+  return (
+    trimmed.length > 0 &&
+    !lower.startsWith("selected to preserve ") &&
+    !lower.startsWith("unsafe source instructions were sandboxed") &&
+    !lower.includes("provider coverage in the reader summary")
+  );
 };
 
 const belongsToCrossProviderStory = (
@@ -240,9 +255,9 @@ const storyClusterSignal = (
   readonly breakdown: StoryCluster["signalBreakdown"];
   readonly reasons: readonly string[];
 } => {
-  const sorted = [...items].sort(compareEvidenceItems);
-  const representative = sorted[0];
-  if (representative === undefined) {
+  const sorted = [...items].sort(compareSignalEvidenceItems);
+  const signalLeader = sorted[0];
+  if (signalLeader === undefined) {
     return {
       score: 0,
       breakdown: zeroSignalBreakdown(),
@@ -260,7 +275,7 @@ const storyClusterSignal = (
   }
 
   const otherProviderSupport = [...strongestByProvider.entries()]
-    .filter(([providerKey]) => providerKey !== representative.providerKey)
+    .filter(([providerKey]) => providerKey !== signalLeader.providerKey)
     .map(([, score]) => Math.max(0, score))
     .sort((left, right) => right - left)
     .slice(0, policy.maxCrossProviderEvidence)
@@ -274,7 +289,7 @@ const storyClusterSignal = (
       0,
     );
   const sameProviderDuplicateCount =
-    sorted.filter((item) => item.providerKey === representative.providerKey)
+    sorted.filter((item) => item.providerKey === signalLeader.providerKey)
       .length - 1;
   const sameProviderSupport = Math.min(
     policy.sameProviderSupportCap,
@@ -290,12 +305,12 @@ const storyClusterSignal = (
     (interestIds.length - 1) * policy.interestDiversityWeight,
   );
   const freshnessBoost = freshnessBoostFor(
-    representative.observedAt,
+    signalLeader.observedAt,
     now,
     policy,
   );
   const breakdown = {
-    baseScore: roundScore(representative.score),
+    baseScore: roundScore(signalLeader.score),
     crossProviderSupport: roundScore(otherProviderSupport),
     sameProviderSupport: roundScore(sameProviderSupport),
     providerDiversityBoost: roundScore(providerDiversityBoost),
@@ -399,7 +414,7 @@ const buildSourceWindow = (
   };
 };
 
-const compareEvidenceItems = (
+const compareSignalEvidenceItems = (
   left: SummaryEvidenceItem,
   right: SummaryEvidenceItem,
 ): number => {

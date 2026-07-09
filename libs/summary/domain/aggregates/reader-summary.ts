@@ -20,7 +20,11 @@ import {
   buildSourceMix,
 } from "../policies/source-mix-quality-policy";
 import { buildInterestSections } from "../policies/reader-interest-section-policy";
-import { selectUniqueTopReadCandidates } from "../policies/top-read-selection-policy";
+import {
+  selectUniqueTopReadCandidatePool,
+  selectUniqueTopReadCandidates,
+} from "../policies/top-read-selection-policy";
+import { selectRenderedTopReadCandidates } from "../policies/rendered-top-read-selection-policy";
 import { buildReaderSummaryReliabilityReport } from "../policies/reader-summary-reliability-calibration-policy";
 import type {
   SummaryEvidenceSelection,
@@ -102,7 +106,8 @@ export class ReaderSummary {
       input.storyClusters,
       evidenceByFeedItemId,
     );
-    const readerTopStories = selectUniqueTopReadCandidates(
+    const sourceMix = buildSourceMix(input);
+    const curatedReaderTopStories = selectUniqueTopReadCandidates(
       input.topStories,
       citationById,
       evidenceByFeedItemId,
@@ -110,7 +115,7 @@ export class ReaderSummary {
       maxReaderTopReads,
     );
 
-    if (readerTopStories.length === 0) {
+    if (curatedReaderTopStories.length === 0) {
       return ReaderSummary.create(
         buildNoSignalReaderSummary({
           ...input,
@@ -119,21 +124,43 @@ export class ReaderSummary {
         }),
       );
     }
-
-    const readerInput = {
-      ...input,
-      topStories: readerTopStories,
-    };
-    const topReads = readerTopStories.map((story) =>
-      storyToTopRead(
+    const readerTopStoryPool = uniqueTopReadStoryPool([
+      ...curatedReaderTopStories,
+      ...selectUniqueTopReadCandidatePool(
+        input.topStories,
+        citationById,
+        evidenceByFeedItemId,
+        clusterById,
+        maxReaderTopReads,
+      ),
+    ]);
+    const renderedTopReadCandidates = readerTopStoryPool.map((story) => ({
+      story,
+      topRead: storyToTopRead(
         story,
         citationById,
         evidenceByFeedItemId,
         clusterById,
         evidenceByClusterId,
       ),
+    }));
+    const readerTopReadCandidates = selectRenderedTopReadCandidates(
+      {
+        candidates: renderedTopReadCandidates,
+        sourceMix,
+        limit: maxReaderTopReads,
+      },
     );
-    const sourceMix = buildSourceMix(input);
+    const readerTopStories = readerTopReadCandidates.map(
+      (candidate) => candidate.story,
+    );
+    const topReads = readerTopReadCandidates.map(
+      (candidate) => candidate.topRead,
+    );
+    const readerInput = {
+      ...input,
+      topStories: readerTopStories,
+    };
     const qualityState = buildReaderSummaryQualityState(
       input.qualityFlags,
       sourceMix,
@@ -216,6 +243,23 @@ export class ReaderSummary {
     };
   }
 }
+
+const uniqueTopReadStoryPool = (
+  stories: readonly TopReadCandidate[],
+): readonly TopReadCandidate[] => {
+  const seen = new Set<string>();
+  const result: TopReadCandidate[] = [];
+
+  for (const story of stories) {
+    if (seen.has(story.storyClusterId)) {
+      continue;
+    }
+    seen.add(story.storyClusterId);
+    result.push(story);
+  }
+
+  return result;
+};
 
 export const buildReaderSummary = (
   input: ReaderSummaryFactoryInput,

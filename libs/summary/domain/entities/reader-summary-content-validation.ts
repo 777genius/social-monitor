@@ -11,6 +11,7 @@ import {
   assertUniqueReaderSummarySourceMixProviders,
 } from "./reader-summary-content-identity";
 import { assertReaderSummaryContentShape } from "./reader-summary-content-shape";
+import { readerSummaryProviderIdentity } from "../value-objects/reader-summary-provider-identity";
 
 export const assertReaderSummaryContent = (
   content: ReaderSummaryContent,
@@ -329,7 +330,9 @@ const assertReaderSummaryClaim = (
       throw new Error("Reader summary claim risks must be non-empty");
     }
     if (
-      !["single_source", "low_confidence", "unresolved"].includes(risk.kind)
+      !["single_source", "low_confidence", "low_evidence", "unresolved"].includes(
+        risk.kind,
+      )
     ) {
       throw new Error("Reader summary claim risk kind is unsupported");
     }
@@ -394,10 +397,7 @@ const assertReaderItemProviderMatchesEvidence = (
 ): void => {
   const citationProviderKeys = new Set(
     item.citationIds
-      .map((citationId) => citationById.get(citationId)?.providerKey)
-      .filter(
-        (providerKey): providerKey is string => providerKey !== undefined,
-      ),
+      .flatMap((citationId) => providerKeysForCitation(citationById.get(citationId))),
   );
 
   if (!citationProviderKeys.has(item.providerKey)) {
@@ -459,11 +459,28 @@ const providerKeysFromCitations = (
   const providerKeys = new Set<string>();
 
   for (const citationId of knownCitationIds) {
-    const providerKey = citationById.get(citationId)?.providerKey;
-    if (providerKey !== undefined) {
+    for (const providerKey of providerKeysForCitation(
+      citationById.get(citationId),
+    )) {
       providerKeys.add(providerKey);
     }
   }
 
   return providerKeys;
+};
+
+const providerKeysForCitation = (
+  citation: ReaderSummaryCitation | undefined,
+): readonly string[] => {
+  if (citation === undefined) {
+    return [];
+  }
+
+  return [
+    citation.providerKey,
+    readerSummaryProviderIdentity({
+      providerKey: citation.providerKey,
+      canonicalUrl: citation.canonicalUrl,
+    }).providerKey,
+  ];
 };

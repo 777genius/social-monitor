@@ -6,6 +6,7 @@ import type {
   StoryCluster,
   SummaryEvidenceItem,
 } from "../value-objects/summary-evidence-item";
+import { readerSummaryProviderIdentity } from "../value-objects/reader-summary-provider-identity";
 import {
   clampConfidenceScore,
   normalizeSignalScore,
@@ -41,17 +42,28 @@ export const buildWhyNow = (
   providerKeys: readonly string[],
   evidence: readonly SummaryEvidenceItem[],
 ): string => {
+  const evidenceIdentities = evidence.map((item) =>
+    readerSummaryProviderIdentity(item),
+  );
+  const clusterProviderKeys = multiProviderClusterKeys(cluster);
+  const clusterProviderIdentities = clusterProviderKeys.map((providerKey) => ({
+    providerKey,
+    providerName: providerDisplayName(providerKey),
+  }));
   const providerNamesByKey = new Map(
-    evidence.map(
-      (item) =>
-        [item.providerKey, item.providerName ?? item.providerKey] as const,
+    [...evidenceIdentities, ...clusterProviderIdentities].map(
+      (identity) =>
+        [identity.providerKey, identity.providerName] as const,
     ),
   );
-  const providers = uniqueNonEmpty([
-    ...(cluster?.providerKeys ?? []),
-    ...providerKeys,
-    ...evidence.map((item) => item.providerKey),
-  ]).map((providerKey) => providerNamesByKey.get(providerKey) ?? providerKey);
+  const providers = uniqueNonEmpty(
+    evidenceIdentities.length > 0 || clusterProviderKeys.length > 0
+      ? [
+          ...evidenceIdentities.map((identity) => identity.providerKey),
+          ...clusterProviderKeys,
+        ]
+      : [...(cluster?.providerKeys ?? []), ...providerKeys],
+  ).map((providerKey) => providerNamesByKey.get(providerKey) ?? providerKey);
   const duplicateCount = cluster?.duplicateFeedItemIds.length ?? 0;
   const interestCount =
     cluster?.interestIds.length ??
@@ -77,13 +89,47 @@ export const confirmedProviderKeys = (params: {
   readonly evidence: readonly SummaryEvidenceItem[];
   readonly providerKey: string;
 }): readonly string[] => {
-  const providerKeys = uniqueNonEmpty([
-    ...(params.cluster?.providerKeys ?? []),
-    ...params.evidence.map((item) => item.providerKey),
-    params.providerKey,
-  ]);
+  const evidenceProviderKeys = params.evidence.map(
+    (item) => readerSummaryProviderIdentity(item).providerKey,
+  );
+  const clusterProviderKeys = multiProviderClusterKeys(params.cluster);
+  const providerKeys = uniqueNonEmpty(
+    evidenceProviderKeys.length > 0 || clusterProviderKeys.length > 0
+      ? [...evidenceProviderKeys, ...clusterProviderKeys]
+      : [params.providerKey],
+  );
 
   return providerKeys.length > 0 ? providerKeys : [params.providerKey];
+};
+
+const multiProviderClusterKeys = (
+  cluster: StoryCluster | undefined,
+): readonly string[] => {
+  const providerKeys = compactUnique(cluster?.providerKeys ?? []);
+
+  return providerKeys.length > 1 ? providerKeys : [];
+};
+
+const providerDisplayName = (providerKey: string): string => {
+  switch (providerKey) {
+    case "hacker-news":
+      return "Hacker News";
+    case "x-twitter":
+      return "X/Twitter";
+    case "rss":
+      return "RSS";
+    case "reddit":
+      return "Reddit";
+    case "github-trending-page":
+      return "GitHub Trending";
+    case "github-repo-radar":
+      return "Repo Radar";
+    case "github-issues":
+    case "github":
+      return "GitHub";
+    default:
+      return providerKey;
+  }
 };
 
 export const readerItemConfidence = (params: {
@@ -350,7 +396,7 @@ export const storyProviderMetricLabels = (params: {
   return uniqueMetrics([
     ...params.evidence.slice(0, 3).flatMap(evidenceProviderMetrics),
     ...(params.representativeMetricLabels ?? []),
-  ]);
+  ]).filter(isUserFacingProviderMetric);
 };
 
 const evidenceProviderMetrics = (
@@ -387,6 +433,28 @@ const uniqueMetrics = (
 
   return result;
 };
+
+const isUserFacingProviderMetric = (metric: ProviderMetric): boolean => {
+  if (!zeroOnlyMetricLabels.has(metric.label.trim().toLowerCase())) {
+    return true;
+  }
+
+  return !isEmptyMetricValue(metric.value);
+};
+
+const isEmptyMetricValue = (value: string): boolean => {
+  const normalized = value.trim().toLowerCase();
+
+  return normalized === "0" || normalized === "-" || normalized === "n/a";
+};
+
+const zeroOnlyMetricLabels = new Set([
+  "bookmarks",
+  "impressions",
+  "quotes",
+  "shares",
+  "views",
+]);
 
 export const uniqueActions = (
   actions: readonly ReaderAction[],

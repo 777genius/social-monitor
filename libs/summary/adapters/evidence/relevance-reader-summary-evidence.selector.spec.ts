@@ -739,7 +739,7 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
         score: 3.0,
         canonicalUrl: "https://github.com/openai/codex",
         title: "openai/codex gains attention",
-        duplicateFeedItemIds: ["feed-reddit-codex"],
+        duplicateFeedItemIds: ["feed-reddit-codex", "feed-generic-hn"],
       }),
     ];
     const rankFeedItems = {
@@ -753,23 +753,34 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
     } as unknown as RankFeedItemsUseCase;
     const feedItems: FeedItemReadRepositoryPort = {
       list: jest.fn(async () => ({ items: [] })),
-      findById: jest.fn(async () =>
-        FeedItem.publish({
-          id: "feed-reddit-codex",
+      findById: jest.fn(async ({ feedItemId }) => {
+        const isGeneric = feedItemId === "feed-generic-hn";
+
+        return FeedItem.publish({
+          id: feedItemId,
           tenantId: tenant,
           workspaceId: workspace,
           interestId: "interest-ai",
-          sourceItemId: "source-reddit-codex",
-          sourceBindingId: "binding-reddit",
-          providerKey: "reddit",
-          canonicalUrl: "https://reddit.example/r/codex/comments/1",
-          title: "Reddit discusses openai/codex adoption",
-          bodyPreview:
-            "Operators compare https://github.com/openai/codex with other coding agents.",
+          sourceItemId: `source-${feedItemId}`,
+          sourceBindingId: isGeneric ? "binding-hn" : "binding-reddit",
+          providerKey: isGeneric ? "hacker-news" : "reddit",
+          canonicalUrl: `https://example.test/${feedItemId}`,
+          title: isGeneric
+            ? "Every new car sold in the European Union must include a driver monitoring camera"
+            : "Reddit discusses openai/codex adoption",
+          bodyPreview: isGeneric
+            ? ""
+            : "Operators compare https://github.com/openai/codex with other coding agents.",
           publishedAt: new Date("2026-06-23T10:05:00.000Z"),
           observedAt: new Date("2026-06-23T10:06:00.000Z"),
-        }),
-      ),
+          providerMetadata: {
+            kind: isGeneric ? "hacker_news_story" : "reddit_post",
+            interestQuerySnapshot: {
+              query: "Claude Codex OpenAI coding agents AI developer tools",
+            },
+          },
+        });
+      }),
     };
     const selector = new RelevanceReaderSummaryEvidenceSelector(
       rankFeedItems,
@@ -794,14 +805,25 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
     expect(selection.selectedEvidence.map((item) => item.feedItemId)).toEqual([
       "feed-github-codex",
       "feed-reddit-codex",
+      "feed-generic-hn",
     ]);
-    expect(selection.clusters).toHaveLength(1);
-    expect(selection.clusters[0]).toEqual(
-      expect.objectContaining({
-        representativeFeedItemId: "feed-github-codex",
-        duplicateFeedItemIds: ["feed-reddit-codex"],
-        providerKeys: expect.arrayContaining(["github-repo-radar", "reddit"]),
-      }),
+    expect(
+      selection.selectedEvidence.find((item) => item.feedItemId === "feed-generic-hn")
+        ?.contentQuality?.eligibleForTopRead,
+    ).toBe(false);
+    expect(selection.clusters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          representativeFeedItemId: "feed-github-codex",
+          duplicateFeedItemIds: ["feed-reddit-codex"],
+          providerKeys: expect.arrayContaining(["github-repo-radar", "reddit"]),
+        }),
+        expect.objectContaining({
+          representativeFeedItemId: "feed-generic-hn",
+          duplicateFeedItemIds: [],
+          providerKeys: ["hacker-news"],
+        }),
+      ]),
     );
   });
 

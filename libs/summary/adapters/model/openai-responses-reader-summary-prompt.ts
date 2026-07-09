@@ -40,6 +40,7 @@ export const buildOpenAiReaderSummaryInstructions = (
     "Use lightweight Markdown in executiveSummary and content.oneLineTakeaway when it improves readability: bold key product/model names, claims and bullet labels. Do not use HTML, tables or Markdown links.",
     "Keep the JSON response focused. Do not restate the same item in content, topStories, interestHighlights and risks. Prefer concrete synthesis over long explanations.",
     "Length limits: headline under 120 characters, executiveSummary 900-1,500 characters when enough evidence exists and under 1,800 characters always, each topStories title under 140 characters, each topStories summary under 280 characters.",
+    "Each topStories title must name the concrete post, project or topic. Do not use Cross-source, cross-provider attention, source coverage or confirmed by N sources as a topStories title; keep that support in evidence/confidence language.",
     "The headline must express the main situation found in the sources. Do not start headline or content.headline with a source inventory like Key signals across X/Twitter, Strongest reads across, Source watch, Review cited reads or similar.",
     "The first sentence of executiveSummary and content.oneLineTakeaway must explain what is happening, not that the system reviewed sources.",
     "Lead with what happened and why it matters. Do not make headline, executiveSummary or content.oneLineTakeaway start with process instructions like Start with, inspect, review, verify, treat, use, check or read.",

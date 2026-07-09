@@ -30,11 +30,13 @@ import { readerSummaryScopeFromPrisma } from "./prisma-reader-summary-artifact-p
 import {
   encodeSummaryCursor,
   parseSummaryCursor,
+  type PrismaSummaryStatus,
 } from "./prisma-summary-records";
 
-const VISIBLE_READER_SUMMARY_STATUSES = ["COMPLETED", "NO_SIGNAL"] as const;
+const VISIBLE_READER_SUMMARY_STATUSES = ["COMPLETED"] as const;
 const PUBLISHED_READER_SUMMARY_STATUSES = [
   ...VISIBLE_READER_SUMMARY_STATUSES,
+  "NO_SIGNAL",
   "SUPERSEDED",
 ] as const;
 
@@ -61,9 +63,7 @@ export class PrismaReaderSummaryArtifactRepository implements ReaderSummaryArtif
     const citations = readerSummaryCitationsToPrisma(artifact);
     const qualitySignals = {
       ...readerSummaryQualitySignalsToPrisma(artifact),
-      ...(publicationDecision === undefined
-        ? {}
-        : { publicationDecision }),
+      ...(publicationDecision === undefined ? {} : { publicationDecision }),
     };
     const scopeFields = readerSummaryScopeToPrisma(snapshot.scope);
 
@@ -112,7 +112,7 @@ export class PrismaReaderSummaryArtifactRepository implements ReaderSummaryArtif
         },
       });
 
-      if (status === "REJECTED") {
+      if (!isVisibleReaderSummaryStatus(status)) {
         return;
       }
 
@@ -323,10 +323,9 @@ const rejectedDebugTopReads = (
   }
 
   const citationById = new Map(
-    snapshot.citationMap.map((citation) => [
-      citation.citationId,
-      citation,
-    ] as const),
+    snapshot.citationMap.map(
+      (citation) => [citation.citationId, citation] as const,
+    ),
   );
 
   return snapshot.topStories.map((item) => ({
@@ -355,7 +354,8 @@ const firstCanonicalUrl = (
 };
 
 const rejectionViolationsFromDecision = (
-  publicationDecision: ReaderSummaryPublicationDecisionForPersistence | undefined,
+  publicationDecision:
+    ReaderSummaryPublicationDecisionForPersistence | undefined,
 ): ReaderSummaryRejectedArtifactDebug["violations"] => {
   if (publicationDecision?.status !== "rejected") {
     return [];
@@ -385,7 +385,8 @@ const rejectionViolationsFromDecision = (
 const publicationDecisionFindings = (
   publicationDecision: ReaderSummaryPublicationDecisionForPersistence,
 ): ReaderSummaryRejectedArtifactDebug["violations"] =>
-  "findings" in publicationDecision && Array.isArray(publicationDecision.findings)
+  "findings" in publicationDecision &&
+  Array.isArray(publicationDecision.findings)
     ? publicationDecision.findings
     : [];
 
@@ -415,7 +416,8 @@ const publicationDecisionFromQualitySignals = (
 };
 
 const shadowReportFromDecision = (
-  publicationDecision: ReaderSummaryPublicationDecisionForPersistence | undefined,
+  publicationDecision:
+    ReaderSummaryPublicationDecisionForPersistence | undefined,
 ): ReaderSummaryRejectedArtifactDebug["shadow"] => {
   const shadow =
     publicationDecision !== undefined && "shadow" in publicationDecision
@@ -451,3 +453,10 @@ const periodStartedAtWhere = (query: ListReaderSummaryArtifactsQuery) => {
     lt: query.periodStartedBefore,
   };
 };
+
+const isVisibleReaderSummaryStatus = (
+  status: PrismaSummaryStatus,
+): status is (typeof VISIBLE_READER_SUMMARY_STATUSES)[number] =>
+  VISIBLE_READER_SUMMARY_STATUSES.some(
+    (visibleStatus) => visibleStatus === status,
+  );

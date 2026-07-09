@@ -14,7 +14,6 @@ import {
   type ReaderSummaryEvidenceSelectorPort,
   type StoryRankingMetricsPort,
 } from "../../ports";
-import { previewMediaFromProviderMetadata } from "./provider-preview-media";
 import { isDefaultReaderSummaryEvidenceProvider } from "./reader-summary-evidence-provider-filter";
 
 import {
@@ -24,10 +23,7 @@ import {
   filterItemsByReaderSummaryPeriod,
   mapRankedItem,
   mapSupplementFeedItem,
-  providerMetricFacts,
-  providerNameForProvider,
   providerSupplementTargetForLimit,
-  readerActionKindForProvider,
   readerSummaryProviderDiversityOrder,
   selectRankedEvidence,
 } from "./relevance-reader-summary-evidence-support";
@@ -134,34 +130,15 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
           continue;
         }
 
-        const snapshot = duplicate.toSnapshot();
+        const supplement = mapSupplementFeedItem({
+          snapshot: duplicate.toSnapshot(),
+          qualityPolicy: this.qualityPolicy,
+          safetyPolicy: this.safetyPolicy,
+          now: this.clock.now(),
+        });
         itemsById.set(duplicateFeedItemId, {
-          feedItemId: snapshot.id,
-          sourceItemId: snapshot.sourceItemId,
-          sourceBindingId: snapshot.sourceBindingId,
-          interestId: snapshot.interestId,
-          providerKey: snapshot.providerKey,
-          providerName: providerNameForProvider(snapshot.providerKey),
-          canonicalUrl: snapshot.canonicalUrl,
-          title: snapshot.title,
-          bodyPreview: snapshot.bodyPreview,
-          authorHandle: snapshot.authorHandle,
-          publishedAt: snapshot.publishedAt,
-          observedAt: snapshot.observedAt,
-          score: Math.max(0, rankedItem.score - 0.001),
-          whyImportant: rankedItem.whyImportant,
-          contentQuality: rankedItem.contentQuality,
-          readerActionKind: readerActionKindForProvider(snapshot.providerKey),
-          ...providerMetricFacts({
-            providerKey: snapshot.providerKey,
-            providerMetadata: snapshot.providerMetadata,
-          }),
-          previewMedia: previewMediaFromProviderMetadata({
-            providerKey: snapshot.providerKey,
-            providerMetadata: snapshot.providerMetadata,
-            title: snapshot.title,
-            canonicalUrl: snapshot.canonicalUrl,
-          }),
+          ...supplement,
+          score: Math.min(supplement.score, Math.max(0, rankedItem.score - 0.001)),
           storyKeyHint: rankedItem.clusterId,
         });
       }

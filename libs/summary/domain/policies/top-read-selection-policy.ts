@@ -7,9 +7,56 @@ import type {
 import { normalizeSignalScore } from "../value-objects/signal-score";
 import { compactUnique } from "../value-objects/summary-text";
 import { readerItemConfidence } from "../services/reader-summary-support";
+import {
+  compareRepresentativeEvidenceItems,
+  representativeMetricStrength,
+} from "./representative-evidence-selection-policy";
+import {
+  shouldApplyCoreTopicLead,
+  topReadCoreTopicStrength,
+} from "./top-read-core-topic-policy";
+import {
+  topReadPrimaryMinimumForLimit,
+  topReadProviderCapForLimit,
+} from "./top-read-provider-diversity-policy";
 import { isTopReadEligibleEvidence } from "./top-read-eligibility-policy";
+import { readerSummaryProviderIdentity } from "../value-objects/reader-summary-provider-identity";
 
 export const selectUniqueTopReadCandidates = (
+  stories: readonly TopReadCandidate[],
+  citationById: ReadonlyMap<string, ReaderSummaryCitation>,
+  evidenceByFeedItemId: ReadonlyMap<string, SummaryEvidenceItem>,
+  clusterById: ReadonlyMap<string, StoryCluster>,
+  limit = 10,
+): readonly TopReadCandidate[] => {
+  const normalizedLimit = normalizeLimit(limit);
+  const rankedStories = selectUniqueTopReadCandidatePool(
+    stories,
+    citationById,
+    evidenceByFeedItemId,
+    clusterById,
+    normalizedLimit,
+  );
+  const selectedStories = selectProviderBalancedTopReads(
+    rankedStories,
+    normalizedLimit,
+    topReadProviderKeyByStoryId(
+      rankedStories,
+      citationById,
+      evidenceByFeedItemId,
+      clusterById,
+    ),
+  );
+
+  return prioritizeStrongDiscussionEvidence(
+    selectedStories,
+    citationById,
+    evidenceByFeedItemId,
+    clusterById,
+  );
+};
+
+export const selectUniqueTopReadCandidatePool = (
   stories: readonly TopReadCandidate[],
   citationById: ReadonlyMap<string, ReaderSummaryCitation>,
   evidenceByFeedItemId: ReadonlyMap<string, SummaryEvidenceItem>,
@@ -19,12 +66,15 @@ export const selectUniqueTopReadCandidates = (
   const seen = new Set<string>();
   const uniqueStories: TopReadCandidate[] = [];
   const normalizedLimit = normalizeLimit(limit);
+  const citationByFeedItemId = citationMapByFeedItemId(citationById);
 
   for (const story of stories) {
     const eligibleStory = storyWithTopReadEligibleCitations(
       story,
       citationById,
       evidenceByFeedItemId,
+      clusterById,
+      citationByFeedItemId,
     );
     if (eligibleStory === undefined) {
       continue;
@@ -45,35 +95,38 @@ export const selectUniqueTopReadCandidates = (
     uniqueStories.push(eligibleStory);
   }
 
-  return selectProviderBalancedTopReads(
-    prioritizeStrongSocialEvidence(
-      supplementTopReadCandidates({
-        stories: uniqueStories,
-        citationById,
-        evidenceByFeedItemId,
-        clusterById,
-        limit: normalizedLimit,
-      }),
+  return prioritizeStrongDiscussionEvidence(
+    supplementTopReadCandidates({
+      stories: uniqueStories,
       citationById,
       evidenceByFeedItemId,
       clusterById,
-    ),
-    normalizedLimit,
+      limit: normalizedLimit,
+    }),
+    citationById,
+    evidenceByFeedItemId,
+    clusterById,
   );
 };
 
 const primarySocialProviders = ["x-twitter", "reddit"] as const;
-const strongSocialProviderKeys = new Set(["reddit", "x-twitter", "rss"]);
+const strongDiscussionProviderKeys = new Set([
+  "reddit",
+  "x-twitter",
+  "hacker-news",
+]);
 
 interface TopReadCandidateProfile {
   readonly providerKey: string;
   readonly signalScore: number;
+  readonly metricStrength: number;
+  readonly coreTopicStrength: number;
   readonly confidenceLevel: "low" | "medium" | "high";
   readonly citationCount: number;
   readonly confirmedProviderCount: number;
 }
 
-const prioritizeStrongSocialEvidence = (
+const prioritizeStrongDiscussionEvidence = (
   stories: readonly TopReadCandidate[],
   citationById: ReadonlyMap<string, ReaderSummaryCitation>,
   evidenceByFeedItemId: ReadonlyMap<string, SummaryEvidenceItem>,
@@ -104,13 +157,15 @@ const prioritizeStrongSocialEvidence = (
 
     const rightShouldLead =
       isWeakSingleSourceCandidate(leftProfile) &&
-      isStrongSocialCandidateAboveWeak(rightProfile, leftProfile);
+      isStrongDiscussionCandidateAboveWeak(rightProfile, leftProfile);
     const leftShouldLead =
       isWeakSingleSourceCandidate(rightProfile) &&
-      isStrongSocialCandidateAboveWeak(leftProfile, rightProfile);
+      isStrongDiscussionCandidateAboveWeak(leftProfile, rightProfile);
 
     if (rightShouldLead === leftShouldLead) {
-      return 0;
+      return rightShouldLead
+        ? compareTopReadCandidateProfiles(leftProfile, rightProfile)
+        : 0;
     }
 
     return rightShouldLead ? 1 : -1;
@@ -138,15 +193,21 @@ const topReadCandidateProfile = (
       : [cluster.representativeFeedItemId, ...cluster.duplicateFeedItemIds]
           .map((feedItemId) => evidenceByFeedItemId.get(feedItemId))
           .filter((item): item is SummaryEvidenceItem => item !== undefined);
-  const evidence = clusterEvidence.length > 0 ? clusterEvidence : citedEvidence;
+  const evidence =
+    clusterEvidence.filter(isTopReadEligibleEvidence).length > 0
+      ? clusterEvidence.filter(isTopReadEligibleEvidence)
+      : citedEvidence.filter(isTopReadEligibleEvidence);
   const providerKey =
-    citations[0]?.providerKey ??
-    evidence[0]?.providerKey ??
-    primaryProviderKey(story);
+    citations[0] === undefined
+      ? evidence[0] === undefined
+        ? primaryProviderKey(story)
+        : readerProviderKeyForEvidence(evidence[0])
+      : readerProviderKeyForCitation(citations[0]);
   const confirmedProviderCount = compactUnique([
-    ...story.providerKeys,
-    ...(cluster?.providerKeys ?? []),
-    ...evidence.map((item) => item.providerKey),
+    ...(cluster === undefined
+      ? citations.map(readerProviderKeyForCitation)
+      : []),
+    ...evidence.map(readerProviderKeyForEvidence),
     providerKey,
   ]).length;
   const evidenceCount = Math.max(
@@ -158,10 +219,17 @@ const topReadCandidateProfile = (
   const signalScore = normalizeSignalScore(
     cluster?.score ?? Math.max(0, ...evidence.map((item) => item.score)),
   );
+  const coreTopicStrength = topReadCoreTopicStrength({
+    story,
+    cluster,
+    evidence,
+  });
 
   return {
     providerKey,
     signalScore,
+    metricStrength: Math.max(0, ...evidence.map(representativeMetricStrength)),
+    coreTopicStrength,
     confidenceLevel: readerItemConfidence({
       cluster,
       evidenceCount,
@@ -173,6 +241,27 @@ const topReadCandidateProfile = (
   };
 };
 
+const topReadProviderKeyByStoryId = (
+  stories: readonly TopReadCandidate[],
+  citationById: ReadonlyMap<string, ReaderSummaryCitation>,
+  evidenceByFeedItemId: ReadonlyMap<string, SummaryEvidenceItem>,
+  clusterById: ReadonlyMap<string, StoryCluster>,
+): ReadonlyMap<string, string> =>
+  new Map(
+    stories.map(
+      (story) =>
+        [
+          story.storyClusterId,
+          topReadCandidateProfile(
+            story,
+            citationById,
+            evidenceByFeedItemId,
+            clusterById,
+          ).providerKey,
+        ] as const,
+    ),
+  );
+
 const isWeakSingleSourceCandidate = (
   profile: TopReadCandidateProfile,
 ): boolean =>
@@ -180,34 +269,96 @@ const isWeakSingleSourceCandidate = (
   profile.citationCount <= 1 &&
   profile.confirmedProviderCount <= 1;
 
-const isStrongSocialCandidateAboveWeak = (
+const isStrongDiscussionCandidateAboveWeak = (
   candidate: TopReadCandidateProfile,
   weak: TopReadCandidateProfile,
 ): boolean =>
-  strongSocialProviderKeys.has(candidate.providerKey) &&
+  strongDiscussionProviderKeys.has(candidate.providerKey) &&
   candidate.signalScore >= Math.max(1, weak.signalScore + 0.25) &&
   candidate.confidenceLevel !== "low" &&
   (candidate.citationCount > 1 || candidate.confirmedProviderCount > 1);
 
+const compareTopReadCandidateProfiles = (
+  left: TopReadCandidateProfile,
+  right: TopReadCandidateProfile,
+): number => {
+  const signalDiff = right.signalScore - left.signalScore;
+  const providerLeadDiff = providerLeadRank(right) - providerLeadRank(left);
+  if (providerLeadDiff !== 0 && Math.abs(signalDiff) <= 0.75) {
+    return providerLeadDiff;
+  }
+
+  const supportDiff =
+    supportRank(right) - supportRank(left) ||
+    right.confirmedProviderCount - left.confirmedProviderCount;
+  if (supportDiff !== 0) {
+    return supportDiff;
+  }
+
+  const coreTopicDiff = right.coreTopicStrength - left.coreTopicStrength;
+  if (
+    coreTopicDiff !== 0 &&
+    shouldApplyCoreTopicLead({
+      leftStrength: left.coreTopicStrength,
+      rightStrength: right.coreTopicStrength,
+      signalDiff,
+    })
+  ) {
+    return coreTopicDiff;
+  }
+
+  if (Math.abs(signalDiff) > 0.05) {
+    return signalDiff;
+  }
+
+  const metricDiff = right.metricStrength - left.metricStrength;
+  if (Math.abs(metricDiff) > 0.001) {
+    return metricDiff;
+  }
+
+  return right.citationCount - left.citationCount;
+};
+
+const supportRank = (profile: TopReadCandidateProfile): number => {
+  if (profile.confidenceLevel === "high") {
+    return 3;
+  }
+  if (profile.confidenceLevel === "medium") {
+    return 2;
+  }
+
+  return 1;
+};
+
+const providerLeadRank = (profile: TopReadCandidateProfile): number =>
+  strongDiscussionProviderKeys.has(profile.providerKey) ? 1 : 0;
+
 const selectProviderBalancedTopReads = (
   stories: readonly TopReadCandidate[],
   limit: number,
+  providerKeyByStoryId: ReadonlyMap<string, string> = new Map(),
 ): readonly TopReadCandidate[] => {
   const normalizedLimit = normalizeLimit(limit);
   const selected: TopReadCandidate[] = [];
   const selectedIds = new Set<string>();
   const providerCounts = new Map<string, number>();
-  const activeProviders = activeProviderKeys(stories);
+  const activeProviders = activeProviderKeys(stories, providerKeyByStoryId);
   const providerCap = providerCapForLimit(normalizedLimit, activeProviders);
   const primaryMinimum = primaryMinimumForLimit(normalizedLimit);
   const requiredPrimaryCounts = new Map(
     primarySocialProviders
       .filter((providerKey) =>
-        stories.some((story) => primaryProviderKey(story) === providerKey),
+        stories.some(
+          (story) =>
+            primaryProviderKey(story, providerKeyByStoryId) === providerKey,
+        ),
       )
       .map((providerKey) => [
         providerKey,
-        Math.min(primaryMinimum, countStoriesForProvider(stories, providerKey)),
+        Math.min(
+          primaryMinimum,
+          countStoriesForProvider(stories, providerKey, providerKeyByStoryId),
+        ),
       ]),
   );
 
@@ -220,12 +371,12 @@ const selectProviderBalancedTopReads = (
     }
     selected.push(story);
     selectedIds.add(story.storyClusterId);
-    const providerKey = primaryProviderKey(story);
+    const providerKey = primaryProviderKey(story, providerKeyByStoryId);
     providerCounts.set(providerKey, (providerCounts.get(providerKey) ?? 0) + 1);
   };
 
   for (const story of stories) {
-    const providerKey = primaryProviderKey(story);
+    const providerKey = primaryProviderKey(story, providerKeyByStoryId);
     if ((providerCounts.get(providerKey) ?? 0) >= providerCap) {
       continue;
     }
@@ -244,6 +395,10 @@ const selectProviderBalancedTopReads = (
   }
 
   for (const story of stories) {
+    const providerKey = primaryProviderKey(story, providerKeyByStoryId);
+    if ((providerCounts.get(providerKey) ?? 0) >= providerCap) {
+      continue;
+    }
     select(story);
   }
 
@@ -281,9 +436,7 @@ const supplementTopReadCandidates = (params: {
   );
   const clusters = [...params.clusterById.values()];
   const evidence = [...params.evidenceByFeedItemId.values()].sort(
-    (left, right) =>
-      right.score - left.score ||
-      right.observedAt.getTime() - left.observedAt.getTime(),
+    compareRepresentativeEvidenceItems,
   );
 
   for (const providerKey of primarySocialProviders) {
@@ -359,8 +512,19 @@ const appendEvidenceCandidate = (params: {
   readonly clusterById: ReadonlyMap<string, StoryCluster>;
 }): boolean => {
   const citation = params.citationByFeedItemId.get(params.evidence.feedItemId);
-  const cluster = clusterForEvidence(params.evidence.feedItemId, params.clusters);
+  const cluster = clusterForEvidence(
+    params.evidence.feedItemId,
+    params.clusters,
+  );
   const storyClusterId = cluster?.id ?? `feed:${params.evidence.feedItemId}`;
+  const citationIds = compactUnique([
+    citation?.citationId,
+    ...clusterEvidenceCitationIds({
+      cluster,
+      citationByFeedItemId: params.citationByFeedItemId,
+      evidenceByFeedItemId: params.evidenceByFeedItemId,
+    }),
+  ]);
 
   if (
     citation === undefined ||
@@ -382,7 +546,7 @@ const appendEvidenceCandidate = (params: {
       params.evidence.providerKey,
       ...(cluster?.providerKeys ?? []),
     ]),
-    citationIds: [citation.citationId],
+    citationIds,
   } satisfies TopReadCandidate;
   const deduplicationKeys = storyDeduplicationKeys(
     story,
@@ -397,7 +561,9 @@ const appendEvidenceCandidate = (params: {
 
   params.result.push(story);
   params.usedStoryClusterIds.add(storyClusterId);
-  params.usedCitationIds.add(citation.citationId);
+  for (const citationId of citationIds) {
+    params.usedCitationIds.add(citationId);
+  }
   for (const key of deduplicationKeys) {
     params.usedDeduplicationKeys.add(key);
   }
@@ -405,11 +571,38 @@ const appendEvidenceCandidate = (params: {
   return true;
 };
 
+const clusterEvidenceCitationIds = (params: {
+  readonly cluster: StoryCluster | undefined;
+  readonly citationByFeedItemId: ReadonlyMap<string, ReaderSummaryCitation>;
+  readonly evidenceByFeedItemId: ReadonlyMap<string, SummaryEvidenceItem>;
+}): readonly string[] => {
+  if (params.cluster === undefined) {
+    return [];
+  }
+
+  return [
+    params.cluster.representativeFeedItemId,
+    ...params.cluster.duplicateFeedItemIds,
+  ]
+    .map((feedItemId) => ({
+      citation: params.citationByFeedItemId.get(feedItemId),
+      evidence: params.evidenceByFeedItemId.get(feedItemId),
+    }))
+    .filter(({ citation, evidence }) => {
+      return citation !== undefined && isTopReadEligibleEvidence(evidence);
+    })
+    .map(({ citation }) => citation?.citationId)
+    .filter((citationId): citationId is string => citationId !== undefined);
+};
+
 const countStoriesForProvider = (
   stories: readonly TopReadCandidate[],
   providerKey: string,
+  providerKeyByStoryId: ReadonlyMap<string, string> = new Map(),
 ): number =>
-  stories.filter((story) => primaryProviderKey(story) === providerKey).length;
+  stories.filter(
+    (story) => primaryProviderKey(story, providerKeyByStoryId) === providerKey,
+  ).length;
 
 const clusterForEvidence = (
   feedItemId: string,
@@ -433,20 +626,31 @@ const providerCapForLimit = (
   limit: number,
   activeProviders: readonly string[],
 ): number =>
-  activeProviders.length <= 1
-    ? limit
-    : Math.max(primaryMinimumForLimit(limit), Math.floor(limit * 0.6));
+  topReadProviderCapForLimit({
+    limit,
+    activeProviderCount: activeProviders.length,
+    primaryMinimum: primaryMinimumForLimit(limit),
+  });
 
-const primaryMinimumForLimit = (limit: number): number => (limit >= 8 ? 2 : 1);
+const primaryMinimumForLimit = topReadPrimaryMinimumForLimit;
 
 const targetMinimumForLimit = (limit: number): number => Math.min(limit, 8);
 
-const primaryProviderKey = (story: TopReadCandidate): string =>
-  story.providerKeys[0] ?? "unknown";
+const primaryProviderKey = (
+  story: TopReadCandidate,
+  providerKeyByStoryId: ReadonlyMap<string, string> = new Map(),
+): string =>
+  providerKeyByStoryId.get(story.storyClusterId) ??
+  story.providerKeys[0] ??
+  "unknown";
 
 const activeProviderKeys = (
   stories: readonly TopReadCandidate[],
-): readonly string[] => compactUnique(stories.map(primaryProviderKey));
+  providerKeyByStoryId: ReadonlyMap<string, string> = new Map(),
+): readonly string[] =>
+  compactUnique(
+    stories.map((story) => primaryProviderKey(story, providerKeyByStoryId)),
+  );
 
 const shouldReserveRemainingSlot = (params: {
   readonly providerKey: string;
@@ -467,7 +671,10 @@ const shouldReserveRemainingSlot = (params: {
   });
   const remainingSlotsAfterSelection = params.limit - params.selectedCount - 1;
 
-  return !helpsRequiredPrimary && missingAfterSelection > remainingSlotsAfterSelection;
+  return (
+    !helpsRequiredPrimary &&
+    missingAfterSelection > remainingSlotsAfterSelection
+  );
 };
 
 const missingRequiredPrimaryCount = (params: {
@@ -477,7 +684,10 @@ const missingRequiredPrimaryCount = (params: {
 }): number => {
   let missing = 0;
 
-  for (const [providerKey, required] of params.requiredPrimaryCounts.entries()) {
+  for (const [
+    providerKey,
+    required,
+  ] of params.requiredPrimaryCounts.entries()) {
     const selected =
       (params.providerCounts.get(providerKey) ?? 0) +
       (providerKey === params.selectedProviderKey ? 1 : 0);
@@ -491,7 +701,15 @@ const storyWithTopReadEligibleCitations = (
   story: TopReadCandidate,
   citationById: ReadonlyMap<string, ReaderSummaryCitation>,
   evidenceByFeedItemId: ReadonlyMap<string, SummaryEvidenceItem>,
+  clusterById: ReadonlyMap<string, StoryCluster>,
+  citationByFeedItemId: ReadonlyMap<string, ReaderSummaryCitation>,
 ): TopReadCandidate | undefined => {
+  const cluster = clusterById.get(story.storyClusterId);
+  const eligibleClusterCitations = eligibleClusterCitationIds(
+    cluster,
+    citationByFeedItemId,
+    evidenceByFeedItemId,
+  );
   const citations = story.citationIds
     .map((citationId) => citationById.get(citationId))
     .filter(
@@ -499,20 +717,33 @@ const storyWithTopReadEligibleCitations = (
     );
 
   if (citations.length === 0) {
-    return story;
+    return eligibleClusterCitations.length === 0
+      ? undefined
+      : {
+          ...story,
+          providerKeys: eligibleProviderKeysForCitations(
+            eligibleClusterCitations,
+            evidenceByFeedItemId,
+          ),
+          citationIds: eligibleClusterCitations.map(
+            (citation) => citation.citationId,
+          ),
+        };
   }
 
   const eligibleCitations = citations.filter((citation) =>
     isTopReadEligibleEvidence(evidenceByFeedItemId.get(citation.feedItemId)),
   );
-  const eligibleCitationIds = eligibleCitations.map(
+  const eligibleCitationsWithClusterSupport = compactUniqueByCitationId([
+    ...eligibleCitations,
+    ...eligibleClusterCitations,
+  ]);
+  const eligibleCitationIds = eligibleCitationsWithClusterSupport.map(
     (citation) => citation.citationId,
   );
-  const eligibleProviderKeys = compactUnique(
-    eligibleCitations.flatMap((citation) => [
-      citation.providerKey,
-      evidenceByFeedItemId.get(citation.feedItemId)?.providerKey,
-    ]),
+  const eligibleProviderKeys = eligibleProviderKeysForCitations(
+    eligibleCitationsWithClusterSupport,
+    evidenceByFeedItemId,
   );
 
   return eligibleCitationIds.length === 0
@@ -526,6 +757,86 @@ const storyWithTopReadEligibleCitations = (
         citationIds: eligibleCitationIds,
       };
 };
+
+const citationMapByFeedItemId = (
+  citationById: ReadonlyMap<string, ReaderSummaryCitation>,
+): ReadonlyMap<string, ReaderSummaryCitation> =>
+  new Map(
+    [...citationById.values()].map(
+      (citation) => [citation.feedItemId, citation] as const,
+    ),
+  );
+
+const eligibleClusterCitationIds = (
+  cluster: StoryCluster | undefined,
+  citationByFeedItemId: ReadonlyMap<string, ReaderSummaryCitation>,
+  evidenceByFeedItemId: ReadonlyMap<string, SummaryEvidenceItem>,
+): readonly ReaderSummaryCitation[] => {
+  if (cluster === undefined) {
+    return [];
+  }
+
+  return [
+    cluster.representativeFeedItemId,
+    ...cluster.duplicateFeedItemIds,
+  ].flatMap((feedItemId) => {
+    const citation = citationByFeedItemId.get(feedItemId);
+    const evidence = evidenceByFeedItemId.get(feedItemId);
+
+    return citation !== undefined && isTopReadEligibleEvidence(evidence)
+      ? [citation]
+      : [];
+  });
+};
+
+const compactUniqueByCitationId = (
+  citations: readonly ReaderSummaryCitation[],
+): readonly ReaderSummaryCitation[] => {
+  const seen = new Set<string>();
+  const unique: ReaderSummaryCitation[] = [];
+
+  for (const citation of citations) {
+    if (seen.has(citation.citationId)) {
+      continue;
+    }
+    seen.add(citation.citationId);
+    unique.push(citation);
+  }
+
+  return unique;
+};
+
+const eligibleProviderKeysForCitations = (
+  citations: readonly ReaderSummaryCitation[],
+  evidenceByFeedItemId: ReadonlyMap<string, SummaryEvidenceItem>,
+): readonly string[] =>
+  compactUnique(
+    citations.flatMap((citation) => {
+      const evidence = evidenceByFeedItemId.get(citation.feedItemId);
+
+      return [
+        readerProviderKeyForCitation(citation),
+        evidence === undefined
+          ? undefined
+          : readerProviderKeyForEvidence(evidence),
+      ];
+    }),
+  );
+
+const readerProviderKeyForCitation = (
+  citation: ReaderSummaryCitation,
+): string =>
+  readerSummaryProviderIdentity({
+    providerKey: citation.providerKey,
+    canonicalUrl: citation.canonicalUrl,
+  }).providerKey;
+
+const readerProviderKeyForEvidence = (evidence: SummaryEvidenceItem): string =>
+  readerSummaryProviderIdentity({
+    providerKey: evidence.providerKey,
+    providerName: evidence.providerName,
+    canonicalUrl: evidence.canonicalUrl,
+  }).providerKey;
 
 const storyDeduplicationKeys = (
   story: TopReadCandidate,

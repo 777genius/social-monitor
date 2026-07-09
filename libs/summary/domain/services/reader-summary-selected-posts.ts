@@ -54,9 +54,10 @@ const evidenceToSelectedPost = (
   const matchedInterestIds = compactUnique([item.interestId]);
   const whyImportant = compactUnique([
     ...item.whyImportant,
-    item.bodyPreview,
     item.title,
-  ]).slice(0, 4);
+  ])
+    .filter(isUserFacingSelectedPostReason)
+    .slice(0, 4);
 
   return {
     title: item.title,
@@ -87,4 +88,22 @@ const evidenceToSelectedPost = (
     previewMedia: item.previewMedia,
     citationIds: [citation.citationId],
   };
+};
+
+const isUserFacingSelectedPostReason = (value: string | undefined): boolean => {
+  const trimmed = value?.trim() ?? "";
+  const lower = trimmed.toLowerCase();
+
+  return (
+    trimmed.length > 0 &&
+    trimmed.length <= 360 &&
+    !lower.startsWith("illustration by ") &&
+    !lower.startsWith("source:") &&
+    !lower.startsWith("selected to preserve ") &&
+    !lower.startsWith("source coverage") &&
+    !lower.startsWith("unsafe source instructions were sandboxed") &&
+    !lower.includes("provider coverage in the reader summary") &&
+    !lower.includes("source: http") &&
+    !/https?:\/\/\S+/iu.test(trimmed)
+  );
 };
