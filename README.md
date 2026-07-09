@@ -125,6 +125,7 @@ libs/
 
 docs/
   architecture-memory/  durable product and architecture decisions
+  providers/            per-provider setup for real source collection
   iterations/           implementation and planning notes
 
 prisma/
@@ -234,6 +235,82 @@ docker compose --profile app up -d --build
 
 The app profile runs a one-shot `migrate` service before starting the API and workers. Runtime selectors in `docker-compose.yml` use Prisma persistence, RabbitMQ command queues and the signed HTTP webhook delivery provider where available.
 
+## First End-to-End Source Result
+
+Fastest path: use a provider that does not need credentials. Start with
+Hacker News, RSS or GitHub Trending Page.
+
+1. Start the app profile:
+
+   ```sh
+   cp .env.example .env
+   docker compose --profile app up -d --build
+   ```
+
+2. Create an interest:
+
+   ```sh
+   export API_BASE_URL=http://127.0.0.1:3000
+   export TENANT_ID=00000000-0000-7000-8000-000000000901
+   export WORKSPACE_ID=00000000-0000-7000-8000-000000000902
+
+   curl -sS -X POST "$API_BASE_URL/interests" \
+     -H "content-type: application/json" \
+     -H "x-tenant-id: $TENANT_ID" \
+     -H "x-workspace-id: $WORKSPACE_ID" \
+     -H "x-workspace-role: owner" \
+     -H "idempotency-key: local-interest-openai" \
+     -d '{"name":"OpenAI monitoring","query":"OpenAI developer tools"}'
+   ```
+
+3. Bind a source. Use the returned `interestId`:
+
+   ```sh
+   curl -sS -X POST "$API_BASE_URL/interests/<interestId>/source-bindings" \
+     -H "content-type: application/json" \
+     -H "x-tenant-id: $TENANT_ID" \
+     -H "x-workspace-id: $WORKSPACE_ID" \
+     -H "x-workspace-role: owner" \
+     -H "idempotency-key: local-bind-hn-openai" \
+     -d '{"providerKey":"hacker-news","config":{"mode":"search","query":"OpenAI","maxItems":10}}'
+   ```
+
+4. Request a scan. Use the returned `sourceBindingId`:
+
+   ```sh
+   curl -sS -X POST "$API_BASE_URL/source-bindings/<sourceBindingId>/scan-requests" \
+     -H "x-tenant-id: $TENANT_ID" \
+     -H "x-workspace-id: $WORKSPACE_ID" \
+     -H "x-workspace-role: owner" \
+     -H "idempotency-key: local-scan-hn-openai"
+   ```
+
+5. Check status and feed items. Use the returned `scanJobId`:
+
+   ```sh
+   curl -sS "$API_BASE_URL/scan-requests/<scanJobId>/status" \
+     -H "x-tenant-id: $TENANT_ID" \
+     -H "x-workspace-id: $WORKSPACE_ID" \
+     -H "x-workspace-role: owner"
+
+   curl -sS "$API_BASE_URL/feed/items?limit=20" \
+     -H "x-tenant-id: $TENANT_ID" \
+     -H "x-workspace-id: $WORKSPACE_ID" \
+     -H "x-workspace-role: owner"
+   ```
+
+Open provider setup docs before enabling credentialed sources:
+
+- `docs/providers/README.md` - provider matrix and end-to-end source setup.
+- `docs/providers/hacker-news.md` - no account or key required.
+- `docs/providers/rss.md` - no key required, but each binding needs a public feed URL.
+- `docs/providers/github-trending-page.md` - no account or key required.
+- `docs/providers/github-repo-radar.md` - needs Google Cloud BigQuery for full live mode.
+- `docs/providers/github-issues.md` - manual-only, optional GitHub token, beta flag required in beta runtime.
+- `docs/providers/reddit.md` - requires Reddit OAuth credentials for real data.
+- `docs/providers/x-twitter.md` - private collector setup, dedicated research accounts only.
+- `docs/providers/telegram.md` - deferred, no bindable runtime provider yet.
+
 ## Frontend Quick Start
 
 Install or refresh Flutter workspace dependencies:
@@ -278,7 +355,7 @@ Optional connected-mode defines:
 --dart-define=SOCIAL_MONITOR_WORKSPACE_ROLE=admin
 --dart-define=SOCIAL_MONITOR_USER_LABEL="MVP Operator"
 --dart-define=SOCIAL_MONITOR_CORRELATION_ID=frontend-generated-api-session
---dart-define=SOCIAL_MONITOR_API_BEARER_TOKEN=your-token
+--dart-define=SOCIAL_MONITOR_API_BEARER_TOKEN=<your-token>
 ```
 
 The default `.env.example` CORS origin is `http://localhost:53217`, so keep `--web-port=53217` unless you update backend CORS config.
@@ -318,7 +395,10 @@ npm run frontend:create-feature -- <bounded_context> "<Title>" "<Purpose>"
 npm run frontend:generate-api
 ```
 
-Live connector checks are intentionally separated from `npm run verify`: HN/RSS/GitHub public checks can run without credentials, while Reddit requires tenant-owned OAuth credentials. `capture:live-reddit-oauth` and `check:live-reddit-oauth` accept either a short-lived `REDDIT_ACCESS_TOKEN` or durable `REDDIT_CLIENT_ID`/`REDDIT_APP_CLIENT_ID` + optional client secret + `REDDIT_REFRESH_TOKEN`, then write only redacted evidence artifacts. X/Twitter and Telegram remain deferred until an approved API/vendor or authorized channel path is available.
+Live connector checks are intentionally separated from `npm run verify` because
+they can call external services and may require real accounts. See
+`docs/providers/README.md` for the current provider matrix, credential setup and
+per-provider live evidence commands.
 
 Summary feedback capture expects an already-redacted JSON input outside the git workspace. Set `SUMMARY_FEEDBACK_REDACTED_INPUT_PATH`, `SUMMARY_REAL_FEEDBACK_SAMPLES_PATH`, `SUMMARY_FEEDBACK_SOURCE_KIND`, `SUMMARY_FEEDBACK_ENVIRONMENT_ID`, `SUMMARY_FEEDBACK_OPERATOR`, `SUMMARY_FEEDBACK_REDACTED_BY`, `SUMMARY_FEEDBACK_APPROVED_BY`, `SUMMARY_FEEDBACK_COLLECTION_METHOD`, and either input `sampleWindow` or `SUMMARY_FEEDBACK_WINDOW_STARTED_AT` / `SUMMARY_FEEDBACK_WINDOW_ENDED_AT`.
 

@@ -42,5 +42,22 @@ Important env:
 - `AGENT_RUNTIME_CODEX_AUTH_JSON_PATH`
 - `AGENT_RUNTIME_CLAUDE_TOKEN_ENV`, default `CLAUDE_CODE_OAUTH_TOKEN`
 
+## Local Codex Compose
+
+For a local production-like Codex runtime, use the checked-in auth override
+instead of ad hoc `/tmp` compose files:
+
+```sh
+CODEX_AUTH_JSON_HOST_PATH="${HOME}/.codex/auth.json" \
+docker compose -f docker-compose.yml -f docker-compose.agent-runtime-codex.yml \
+  --profile app up -d --build agent-runtime
+```
+
+The override mounts the host Codex auth JSON at
+`/run/secrets/codex-auth.json` and sets
+`AGENT_RUNTIME_CODEX_AUTH_JSON_PATH` accordingly. The image itself installs
+`@openai/codex` and CA certificates, so the container does not need a manual
+Codex install step.
+
 The health RPC probes `AGENT_RUNTIME_CLI_PATH --help`. It does not run an agent
 task.
