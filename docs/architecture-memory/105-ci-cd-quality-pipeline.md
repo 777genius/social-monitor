@@ -22,6 +22,7 @@ Backend:
 - format;
 - lint;
 - code-quality guardrails;
+- source/test 1000 LOC line-cap gate;
 - TypeScript typecheck;
 - unit tests;
 - architecture dependency checks;
@@ -85,6 +86,8 @@ The CI/CD system is the enforcement layer for Clean Architecture, generated cont
 - direct in-memory adapter construction inside feature use cases;
 - tenant-scoped REST controllers without `requireTenantScope(...)`;
 - production `console.*` calls.
+
+`npm run check:source-line-cap` must run in `npm run verify` before expensive build/test stages. It blocks human-written source or test files over 1000 LOC, excludes generated/build/vendor outputs and freezes explicit legacy debt until those files are split.
 
 `npm run check:agent-quality-rules` must also run before expensive gates. It blocks missing or vague Claude/agent instructions for Clean Architecture, SOLID, DRY, runtime profile safety, source readiness, generated contracts and dependency audit discipline.
 

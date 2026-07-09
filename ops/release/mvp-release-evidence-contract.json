@@ -20,6 +20,11 @@
       "blocksRelease": true
     },
     {
+      "gateId": "source-test-line-cap",
+      "command": "npm run check:source-line-cap",
+      "blocksRelease": true
+    },
+    {
       "gateId": "secret-scan",
       "command": "npm run check:secrets",
       "blocksRelease": true

@@ -39,8 +39,8 @@ export async function readDominantReaderSummaryQualityScope(
         workspace_id::text as "workspaceId",
         count(*)::text as "feedItemCount"
       from feed_items
-      where observed_at >= $1::timestamptz
-        and observed_at < $2::timestamptz
+      where published_at >= $1::timestamptz
+        and published_at < $2::timestamptz
       group by tenant_id, workspace_id
       order by count(*) desc
       limit 1
@@ -95,17 +95,11 @@ export async function readLatestReaderSummaryArtifact(
         and workspace_id = $2::uuid
         and scope_type = 'workspace'
         and cadence = 'daily'
-        and period_started_at = $3::timestamptz
-        and period_ended_at = $4::timestamptz
+        and period_key = $3
       order by created_at desc, id desc
       limit 1
     `,
-    [
-      scope.tenantId,
-      scope.workspaceId,
-      dayStart(collectionDate),
-      dayEnd(collectionDate),
-    ],
+    [scope.tenantId, scope.workspaceId, dailyPeriodKey(collectionDate)],
   );
 
   return result.rows[0] ?? null;
@@ -182,6 +176,10 @@ export function dayStart(collectionDate: string): string {
 
 export function dayEnd(collectionDate: string): string {
   return new Date(nextDate(collectionDate)).toISOString();
+}
+
+export function dailyPeriodKey(collectionDate: string): string {
+  return `daily:${dayStart(collectionDate)}:${dayEnd(collectionDate)}:UTC`;
 }
 
 export function readMetadataString(

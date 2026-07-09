@@ -7,7 +7,12 @@ import {
   roundMetric,
 } from "./lib/yesterday-social-replay-support";
 
-type ProviderKey = "reddit" | "x-twitter";
+type PrimaryProviderKey = "reddit" | "x-twitter";
+type ProviderKey =
+  | PrimaryProviderKey
+  | "github-trending-page"
+  | "hacker-news"
+  | "rss";
 
 type CleanCollectionReport = {
   readonly schemaVersion: 1;
@@ -32,7 +37,7 @@ type CleanCollectionReport = {
   }[];
   readonly freshWindow: {
     readonly feedItemCount: number;
-    readonly providerCounts: Record<ProviderKey, number>;
+    readonly providerCounts: Record<string, number>;
     readonly orphanInterestCount: number;
     readonly orphanSourceBindingCount: number;
     readonly interestSnapshotCoverage: number;
@@ -99,7 +104,7 @@ type DashboardDay = {
   };
   readonly collectionStrategy: {
     readonly primarySources: Record<
-      ProviderKey,
+      PrimaryProviderKey,
       {
         readonly collectedCount: number;
         readonly selectedCount: number;
@@ -112,7 +117,7 @@ type DashboardDay = {
     >;
     readonly plannerCanary: {
       readonly primarySources: Record<
-        ProviderKey,
+        PrimaryProviderKey,
         {
           readonly bindingCount: number;
           readonly canaryEnabledBindingCount: number;
@@ -215,7 +220,7 @@ type Report = {
   readonly collectionDate: string;
   readonly collection: {
     readonly feedItemCount: number;
-    readonly providerCounts: Record<ProviderKey, number>;
+    readonly providerCounts: Record<PrimaryProviderKey, number>;
     readonly sourceQueryLaneCoverage: number;
     readonly distinctSourceQueryLaneCount: number;
     readonly targetCount: number;
@@ -235,8 +240,8 @@ type Report = {
     readonly storyClusterCount: number;
     readonly topReadCount: number;
     readonly topReadProviderSkew: number;
-    readonly primarySelectedCounts: Record<ProviderKey, number>;
-    readonly primaryTopReadCounts: Record<ProviderKey, number>;
+    readonly primarySelectedCounts: Record<PrimaryProviderKey, number>;
+    readonly primaryTopReadCounts: Record<PrimaryProviderKey, number>;
     readonly technicalLeakCount: number;
   };
   readonly topReadQuality: {
@@ -379,6 +384,12 @@ function buildReportWithoutSecretGate(
   artifactQualityReport: ArtifactQualityReport,
 ): Report {
   const collectionDate = collectionReport.run.collectionDate;
+  const primaryCollectionTargets = collectionReport.targets.filter((target) =>
+    isPrimaryProviderKey(target.providerKey),
+  );
+  const primaryCollectionScans = collectionReport.scans.filter((scan) =>
+    isPrimaryProviderKey(scan.providerKey),
+  );
   const plannerRolloutProof = dashboard.aggregate.plannerRolloutProof;
   const cleanProviderCounts = primaryProviderCounts(
     collectionReport.freshWindow.providerCounts,
@@ -529,19 +540,21 @@ function buildReportWithoutSecretGate(
         collectionReport.freshWindow.interestSnapshotCoverage === 1 &&
         collectionReport.freshWindow.sourceBindingSnapshotCoverage === 1,
       cleanCollectionQueryLaneCoverageComplete:
-        collectionReport.freshWindow.sourceQueryLaneCoverage === 1,
+        collectionReport.qualityGates.freshSourceQueryLaneCoverageComplete ===
+        true,
       cleanCollectionMultipleQueryLanesObserved:
         collectionReport.freshWindow.distinctSourceQueryLaneCount >= 2,
       cleanCollectionTargetsUsePlannerCanary:
-        collectionReport.targets.length >= primarySources.length &&
-        collectionReport.targets.every(
+        primaryCollectionTargets.length >= primarySources.length &&
+        primaryCollectionTargets.every(
           (target) => target.plannerEnabled && target.canaryRollout,
         ),
       cleanCollectionScansSucceeded:
-        collectionReport.scans.length >= primarySources.length &&
-        collectionReport.scans.every(
+        collectionReport.scans.length >= collectionReport.targets.length &&
+        collectionReport.scans.every((scan) => scan.status === "succeeded") &&
+        primaryCollectionScans.length >= primarySources.length &&
+        primaryCollectionScans.every(
           (scan) =>
-            scan.status === "succeeded" &&
             scan.fetched > 0 &&
             scan.projected > 0,
         ),
@@ -572,7 +585,7 @@ function buildReportWithoutSecretGate(
         plannerRolloutProof.status === "ready" &&
         allGatesPass(plannerRolloutProof.gates),
       dashboardDirtyDaysExcludedFromRolloutProof:
-        dashboard.aggregate.dirtyDates.length > 0 &&
+        dashboard.aggregate.dirtyDates.length === 0 ||
         plannerRolloutProof.gates.dirtyDaysExcludedFromRolloutProof === true,
       latestCleanDayPassed: latestDay.blockingPassed,
       latestCleanDayQualityGatesPassed: allGatesPass(latestDay.qualityGates),
@@ -688,11 +701,17 @@ function allGatesPass(gates: Record<string, boolean>): boolean {
 
 function primaryProviderCounts(
   counts: Record<string, number>,
-): Record<ProviderKey, number> {
+): Record<PrimaryProviderKey, number> {
   return {
     reddit: counts.reddit ?? 0,
     "x-twitter": counts["x-twitter"] ?? 0,
   };
+}
+
+function isPrimaryProviderKey(
+  providerKey: string,
+): providerKey is PrimaryProviderKey {
+  return primarySources.includes(providerKey as PrimaryProviderKey);
 }
 
 function providerCount(

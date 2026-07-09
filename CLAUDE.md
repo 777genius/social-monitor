@@ -37,6 +37,7 @@ Load the project quality rules before changing code:
 - Source/provider changes must keep fixture readiness and live beta readiness explicit.
 - API changes must keep OpenAPI, generated clients and error contracts fresh.
 - Dependency changes must check the current stable version and keep `npm audit --audit-level=moderate` and `npm run check:dependencies` green.
+- Human-written source and test files have a hard 1000 LOC cap. Generated/build/vendor outputs are excluded; existing legacy debt in `scripts/check-source-line-cap.mjs` may only shrink and cannot receive new behavior without splitting.
 - Project Claude hooks are active in `.claude/settings.json`. They block prohibited real-project agent/runtime commands, include `TaskCreated`/`Agent` coverage, respect `stop_hook_active` and keep architecture/code-quality rules from becoming prose-only.
 - Project Claude permissions and hooks block `.env`, `.envrc`, `.npmrc`, `.netrc`, cloud/kube/GitHub config, secret directories, private keys, credential CLIs, network CLIs and destructive reset commands. Do not bypass that through Bash subprocesses.
 - User-controlled outbound URLs use the shared-kernel outbound URL policy for SSRF protection, and HTTP infrastructure implementations use `AbortSignal.timeout` for live provider calls.
@@ -45,7 +46,7 @@ Load the project quality rules before changing code:
 
 Run the smallest checks that prove the changed surface:
 
-- Architecture or dependency-direction change: `npm run check:architecture` and `npm run check:code-quality`.
+- Architecture or dependency-direction change: `npm run check:architecture`, `npm run check:code-quality` and `npm run check:source-line-cap`.
 - Runtime/env/provider-token change: `npm run check:runtime-profile-guards`, plus the affected persistence/queue check.
 - Contract/API/client change: `npm run check:openapi`, `npm run check:mobile-client-contract` and Flutter client check when Dart is available.
 - Frontend architecture or design-system change: from `apps/frontend`, run `fvm flutter analyze`, `fvm flutter test app/test/architecture/frontend_architecture_boundaries_test.dart` and the affected app/package tests.

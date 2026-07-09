@@ -47,8 +47,10 @@ import { Pool } from "pg";
 
 import { PrismaIngestionWorkerConnection } from "../apps/ingestion-worker/src/adapters/persistence/prisma-ingestion-worker-connection";
 import {
+  collectionDateOptionOrDefault,
   fingerprint,
   message,
+  nextDate,
   noRawSecretFragments,
   normalizeLineEndings,
   yesterdaySocialQualityDatabaseUrl,
@@ -58,6 +60,8 @@ import {
   isLocalDataSourceUnavailable,
   stringValue,
 } from "./lib/reader-summary-quality-eval-support";
+import { loadDotenvIfPresent } from "./lib/env-file";
+import { allQualityGatesPassed } from "./lib/quality-gates";
 
 type ProviderKey =
   "github-trending-page" | "hacker-news" | "reddit" | "rss" | "x-twitter";
@@ -99,6 +103,10 @@ type CleanRealDayCollectionReport = {
     readonly database: "local-postgres";
     readonly providerKeys: readonly ProviderKey[];
     readonly xCollectorConfigured: boolean;
+    readonly targetPublishedWindow: {
+      readonly startInclusive: string;
+      readonly endExclusive: string;
+    };
   };
   readonly run: {
     readonly startedAt: string;
@@ -136,6 +144,7 @@ type CleanRealDayCollectionReport = {
     readonly sourceQueryLaneCoverage: number;
     readonly distinctSourceQueryLaneCount: number;
   };
+  readonly targetWindow: CleanRealDayCollectionReport["freshWindow"];
   readonly qualityGates: Record<string, boolean>;
   readonly blockingPassed: boolean;
 };
@@ -145,6 +154,12 @@ const databaseUrl = yesterdaySocialQualityDatabaseUrl();
 const providerKeys = readProviderKeys();
 const update = process.argv.includes("--update");
 const artifactOnly = process.argv.includes("--artifact-only");
+const { collectionDate: targetCollectionDate } =
+  collectionDateOptionOrDefault(dateOnly(new Date()));
+const targetPublishedWindow = {
+  startInclusive: `${targetCollectionDate}T00:00:00.000Z`,
+  endExclusive: nextDate(targetCollectionDate),
+};
 
 void main();
 
@@ -204,12 +219,14 @@ async function tryRunCollection(): Promise<
       startedAt,
       completedAt,
     });
+    const targetWindow = await readTargetWindowProof(pool);
     const reportWithoutSecretGate = buildReport({
       targets,
       scanResults,
       startedAt,
       completedAt,
       freshWindow,
+      targetWindow,
     });
     const qualityGates = {
       ...reportWithoutSecretGate.qualityGates,
@@ -422,13 +439,30 @@ async function readTargets(
 
   return result.rows.map((row) => {
     const config = asRecord(row.config) as SourceRuntimeConfig;
+    const runtimeConfig = configForTargetPublishedWindow(
+      row.providerKey,
+      config,
+    );
 
     return {
       ...row,
-      config,
-      sourceQuery: sourceQueryFromConfig(row.providerKey, config),
+      config: runtimeConfig,
+      sourceQuery: sourceQueryFromConfig(row.providerKey, runtimeConfig),
     };
   });
+}
+
+function configForTargetPublishedWindow(
+  providerKey: ProviderKey,
+  config: SourceRuntimeConfig,
+): SourceRuntimeConfig {
+  return {
+    ...config,
+    ...(providerKey === "x-twitter"
+      ? { windowEnd: targetPublishedWindow.endExclusive }
+      : {}),
+    targetPublishedWindow,
+  };
 }
 
 async function readFreshWindowProof(
@@ -438,6 +472,38 @@ async function readFreshWindowProof(
     readonly completedAt: Date;
   },
 ): Promise<CleanRealDayCollectionReport["freshWindow"]> {
+  return readFeedWindowProof(pool, {
+    startInclusive: params.startedAt,
+    endInclusive: params.completedAt,
+    timestampColumn: "observed_at",
+  });
+}
+
+async function readTargetWindowProof(
+  pool: Pool,
+): Promise<CleanRealDayCollectionReport["freshWindow"]> {
+  return readFeedWindowProof(pool, {
+    startInclusive: new Date(targetPublishedWindow.startInclusive),
+    endExclusive: new Date(targetPublishedWindow.endExclusive),
+    timestampColumn: "published_at",
+  });
+}
+
+async function readFeedWindowProof(
+  pool: Pool,
+  params: {
+    readonly startInclusive: Date;
+    readonly endInclusive?: Date;
+    readonly endExclusive?: Date;
+    readonly timestampColumn: "observed_at" | "published_at";
+  },
+): Promise<CleanRealDayCollectionReport["freshWindow"]> {
+  const endOperator = params.endExclusive === undefined ? "<=" : "<";
+  const end = params.endExclusive ?? params.endInclusive;
+  if (end === undefined) {
+    throw new Error("Feed window proof end is required");
+  }
+
   const result = await pool.query<ScanProofRow>(
     `
       select
@@ -452,15 +518,15 @@ async function readFreshWindowProof(
       from feed_items fi
       left join interests i on i.id = fi.interest_id
       left join source_bindings sb on sb.id = fi.source_binding_id
-      where fi.observed_at >= $1::timestamptz
-        and fi.observed_at <= $2::timestamptz
+      where fi.${params.timestampColumn} >= $1::timestamptz
+        and fi.${params.timestampColumn} ${endOperator} $2::timestamptz
         and fi.provider_key = any($3::text[])
       group by fi.provider_key
       order by fi.provider_key
     `,
     [
-      params.startedAt.toISOString(),
-      params.completedAt.toISOString(),
+      params.startInclusive.toISOString(),
+      end.toISOString(),
       providerKeys,
     ],
   );
@@ -546,6 +612,7 @@ function buildReport(params: {
   readonly startedAt: Date;
   readonly completedAt: Date;
   readonly freshWindow: CleanRealDayCollectionReport["freshWindow"];
+  readonly targetWindow: CleanRealDayCollectionReport["freshWindow"];
 }): CleanRealDayCollectionReport {
   const succeededProviders = new Set(
     params.scanResults
@@ -558,31 +625,63 @@ function buildReport(params: {
   const plannerProviderKeys = params.targets
     .filter((target) => asRecord(target.config.sourceQueryPlanner).enabled)
     .map((target) => target.providerKey);
-  const plannerLaneCoverageComplete = plannerProviderKeys.every(
+  const plannerProviderKeysWithFreshItems = plannerProviderKeys.filter(
+    (providerKey) =>
+      (params.freshWindow.providerCounts[providerKey] ?? 0) > 0,
+  );
+  const plannerProviderKeysWithTargetItems = plannerProviderKeys.filter(
+    (providerKey) =>
+      (params.targetWindow.providerCounts[providerKey] ?? 0) > 0,
+  );
+  const plannerLaneCoverageComplete = plannerProviderKeysWithFreshItems.every(
     (providerKey) =>
       params.freshWindow.sourceQueryLaneCoverageByProvider[providerKey] === 1,
   );
-  const plannerMultipleQueryLanesObserved = plannerProviderKeys.every(
+  const targetPlannerLaneCoverageComplete =
+    plannerProviderKeysWithTargetItems.every(
+      (providerKey) =>
+        params.targetWindow.sourceQueryLaneCoverageByProvider[providerKey] === 1,
+    );
+  const plannerMultipleQueryLanesObserved =
+    plannerProviderKeysWithFreshItems.every(
     (providerKey) =>
       (params.freshWindow.distinctSourceQueryLaneCountByProvider[providerKey] ??
         0) >= 1,
-  );
+    );
+  const targetPlannerMultipleQueryLanesObserved =
+    plannerProviderKeysWithTargetItems.every(
+      (providerKey) =>
+        (params.targetWindow.distinctSourceQueryLaneCountByProvider[
+          providerKey
+        ] ?? 0) >= 1,
+    );
   const qualityGates = {
     targetBindingsPresent: params.targets.length === providerKeys.length,
     everyRequestedProviderSucceeded: allRequestedProvidersSucceeded,
-    freshFeedItemsWritten: params.freshWindow.feedItemCount > 0,
+    targetWindowFeedItemsAvailable: params.targetWindow.feedItemCount > 0,
+    everyRequestedProviderHasTargetItems: providerKeys.every(
+      (providerKey) => (params.targetWindow.providerCounts[providerKey] ?? 0) > 0,
+    ),
     noFreshOrphanInterestReferences:
       params.freshWindow.orphanInterestCount === 0,
     noFreshOrphanSourceBindingReferences:
       params.freshWindow.orphanSourceBindingCount === 0,
-    freshInterestSnapshotsPersisted:
-      params.freshWindow.interestSnapshotCoverage === 1,
-    freshSourceBindingSnapshotsPersisted:
-      params.freshWindow.sourceBindingSnapshotCoverage === 1,
+    targetInterestSnapshotsPersisted:
+      params.targetWindow.interestSnapshotCoverage === 1,
+    targetSourceBindingSnapshotsPersisted:
+      params.targetWindow.sourceBindingSnapshotCoverage === 1,
     freshSourceQueryLaneCoverageComplete:
-      plannerProviderKeys.length === 0 || plannerLaneCoverageComplete,
+      plannerProviderKeysWithFreshItems.length === 0 ||
+      plannerLaneCoverageComplete,
     freshMultipleQueryLanesObserved:
-      plannerProviderKeys.length === 0 || plannerMultipleQueryLanesObserved,
+      plannerProviderKeysWithFreshItems.length === 0 ||
+      plannerMultipleQueryLanesObserved,
+    targetSourceQueryLaneCoverageComplete:
+      plannerProviderKeysWithTargetItems.length === 0 ||
+      targetPlannerLaneCoverageComplete,
+    targetMultipleQueryLanesObserved:
+      plannerProviderKeysWithTargetItems.length === 0 ||
+      targetPlannerMultipleQueryLanesObserved,
     noRawSecretFragments: true,
   };
 
@@ -601,11 +700,12 @@ function buildReport(params: {
       database: "local-postgres",
       providerKeys,
       xCollectorConfigured: xCollectorConfigured(),
+      targetPublishedWindow,
     },
     run: {
       startedAt: params.startedAt.toISOString(),
       completedAt: params.completedAt.toISOString(),
-      collectionDate: collectionDate(params.startedAt),
+      collectionDate: targetCollectionDate,
     },
     targets: params.targets.map((target) => {
       const planner = asRecord(target.config.sourceQueryPlanner);
@@ -621,8 +721,9 @@ function buildReport(params: {
     }),
     scans: params.scanResults,
     freshWindow: params.freshWindow,
+    targetWindow: params.targetWindow,
     qualityGates,
-    blockingPassed: false,
+    blockingPassed: allQualityGatesPassed(qualityGates),
   };
 }
 
@@ -755,42 +856,6 @@ function validateExistingReport(): void {
   );
 }
 
-function loadDotenvIfPresent(path: string): void {
-  if (!existsSync(path)) {
-    return;
-  }
-
-  for (const [key, value] of Object.entries(parseDotenv(readFileSync(path)))) {
-    process.env[key] ??= value;
-  }
-}
-
-function parseDotenv(buffer: Buffer): Record<string, string> {
-  const values: Record<string, string> = {};
-  for (const line of buffer.toString("utf8").split(/\r?\n/)) {
-    const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/);
-    if (match === null || match[1]?.startsWith("#")) {
-      continue;
-    }
-
-    const key = match[1];
-    if (key === undefined) {
-      continue;
-    }
-
-    let value = match[2]?.trim() ?? "";
-    if (
-      (value.startsWith("'") && value.endsWith("'")) ||
-      (value.startsWith('"') && value.endsWith('"'))
-    ) {
-      value = value.slice(1, -1);
-    }
-    values[key] = value;
-  }
-
-  return values;
-}
-
 function xCollectorConfigured(): boolean {
   return (
     (process.env.X_COLLECTOR_ENABLED === "1" ||
@@ -822,6 +887,6 @@ function coverage(numerator: number, denominator: number): number {
   return denominator === 0 ? 0 : Number((numerator / denominator).toFixed(3));
 }
 
-function collectionDate(value: Date): string {
+function dateOnly(value: Date): string {
   return value.toISOString().slice(0, 10);
 }

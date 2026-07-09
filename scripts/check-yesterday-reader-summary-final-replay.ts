@@ -19,7 +19,10 @@ import {
 } from "../libs/summary/domain";
 import { ExecuteReaderSummaryJobUseCase } from "../libs/summary/features/execute-reader-summary-job/execute-reader-summary-job.use-case";
 import { RequestReaderSummaryUseCase } from "../libs/summary/features/request-reader-summary/request-reader-summary.use-case";
-import { presentReaderSummaryArtifact } from "../libs/summary/features/shared/reader-summary-artifact-presenter";
+import {
+  presentReaderSummaryArtifact,
+  type ReaderSummaryContentView,
+} from "../libs/summary/features/shared/reader-summary-artifact-presenter";
 import type {
   EnqueueReaderSummaryJobCommand,
   ReaderSummaryJobQueuePort,
@@ -543,7 +546,7 @@ function validateExistingReport(): void {
 }
 
 function collectUserFacingText(
-  content: ReaderSummaryContent,
+  content: ReaderSummaryContentView,
 ): readonly string[] {
   return [
     content.headline,

@@ -5,8 +5,8 @@
   "model": {
     "liveNetwork": false,
     "reportBuilder": "clean-real-day-reader-summary-e2e-quality-gate",
-    "allowDegraded": true,
-    "allowHistorical": true,
+    "allowDegraded": false,
+    "allowHistorical": false,
     "rawProviderPayloadPersistedInReport": false
   },
   "inputs": {
@@ -16,17 +16,17 @@
     "feedbackCalibrationPath": "ops/evals/summary-feedback-calibration-report.v1.json",
     "artifactQualityPath": "ops/evals/yesterday-reader-summary-artifact-quality.v1.json"
   },
-  "collectionDate": "2026-07-05",
+  "collectionDate": "2026-07-08",
   "collection": {
-    "feedItemCount": 64,
+    "feedItemCount": 127,
     "providerCounts": {
-      "reddit": 39,
-      "x-twitter": 25
+      "reddit": 96,
+      "x-twitter": 16
     },
-    "sourceQueryLaneCoverage": 1,
-    "distinctSourceQueryLaneCount": 5,
-    "targetCount": 2,
-    "succeededScanCount": 2
+    "sourceQueryLaneCoverage": 0.882,
+    "distinctSourceQueryLaneCount": 26,
+    "targetCount": 5,
+    "succeededScanCount": 5
   },
   "planner": {
     "bindingCount": 2,
@@ -35,20 +35,20 @@
     "realBindingCanaryBindingCount": 2
   },
   "summary": {
-    "artifactFingerprint": "3ceeea58",
+    "artifactFingerprint": "829df04a",
     "confidenceLevel": "low",
     "confidenceScore": 0.55,
     "selectedFeedItemCount": 120,
-    "storyClusterCount": 120,
+    "storyClusterCount": 118,
     "topReadCount": 10,
-    "topReadProviderSkew": 0.5,
+    "topReadProviderSkew": 0.4,
     "primarySelectedCounts": {
       "reddit": 30,
-      "x-twitter": 25
+      "x-twitter": 30
     },
     "primaryTopReadCounts": {
       "reddit": 2,
-      "x-twitter": 2
+      "x-twitter": 3
     },
     "technicalLeakCount": 0
   },
@@ -63,10 +63,10 @@
     "everyClaimHasTwoEvidenceOrExplicitRisk": true
   },
   "collectionStrategy": {
-    "redditQueryLaneCount": 2,
+    "redditQueryLaneCount": 25,
     "xTwitterQueryLaneCount": 2,
-    "redditEligibleTopReadCandidateCount": 13,
-    "xTwitterEligibleTopReadCandidateCount": 33,
+    "redditEligibleTopReadCandidateCount": 85,
+    "xTwitterEligibleTopReadCandidateCount": 70,
     "plannerExecutionGap": false,
     "queryLaneWeaknessDetected": false
   },
@@ -85,7 +85,7 @@
     "rejectedBadGamingArtifactCount": 3,
     "failedBadGamingArtifactCount": 0,
     "visiblePeriodArtifactCount": 1,
-    "supersededPeriodArtifactCount": 4
+    "supersededPeriodArtifactCount": 20
   },
   "qualityGates": {
     "collectionArtifactFormatValid": true,

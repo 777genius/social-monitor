@@ -22,7 +22,6 @@ import {
   presentReaderSummaryArtifact,
   type ReaderSummaryArtifactView,
 } from "@social-monitor/summary/features/shared/reader-summary-artifact-presenter";
-import type { ReaderSummaryCollectedFeedItemCoverage } from "@social-monitor/summary/ports";
 
 import {
   type CollectionIntegrityStatus,
@@ -31,15 +30,22 @@ import {
   noRawSecretFragments,
   normalizeLineEndings,
   readCollectionIntegrityStatus,
+  readOption,
   roundMetric,
   yesterdaySocialQualityDatabaseUrl,
 } from "./lib/yesterday-social-replay-support";
 import {
+  type DashboardFeedItemRow as FeedItemRow,
+  type DashboardRatingRow as RatingRow,
+  readDashboardCollectedCoverage,
+  readDashboardCollectionDates,
+  readDashboardFeedItems,
+  readDashboardRatings,
+} from "./lib/reader-summary-quality-dashboard-published-window";
+import {
   asRecord,
   averageMetric,
   countBy,
-  dayEnd,
-  dayStart,
   isDefined,
   isLocalDataSourceUnavailable,
   parseHost,
@@ -54,27 +60,6 @@ import {
   stringValue,
   sumPrimaryCounts as sumPrimaryCountsForSources,
 } from "./lib/reader-summary-quality-eval-support";
-
-type FeedItemRow = {
-  readonly id: string;
-  readonly sourceItemId: string;
-  readonly sourceBindingId: string;
-  readonly interestId: string;
-  readonly providerKey: string;
-  readonly canonicalUrl: string;
-  readonly authorHandle: string | null;
-  readonly title: string;
-  readonly publishedAt: Date;
-  readonly observedAt: Date;
-  readonly providerMetadata: unknown;
-};
-
-type RatingRow = {
-  readonly id: string;
-  readonly rating: number | null;
-  readonly target: unknown;
-  readonly createdAt: Date;
-};
 
 type SourceBindingRow = {
   readonly id: string;
@@ -399,7 +384,10 @@ async function tryBuildReport(): Promise<
   });
 
   try {
-    const collectionDates = await readCollectionDates(pool);
+    const collectionDates = await readDashboardCollectionDates(
+      pool,
+      readOption("--date"),
+    );
     if (collectionDates.length === 0) {
       throw new Error("No feed item collection days found");
     }
@@ -520,13 +508,13 @@ async function buildDayReport(
     collectionDate,
   );
   const collectionIntegrity = readCollectionIntegrityStatus(collectionDate);
-  const feedItems = await readFeedItems(pool, scope, collectionDate);
+  const feedItems = await readDashboardFeedItems(pool, scope, collectionDate);
   const artifactRecord = await readLatestReaderSummaryArtifact(
     pool,
     scope,
     collectionDate,
   );
-  const collectedCoverage = await readCollectedCoverage(
+  const collectedCoverage = await readDashboardCollectedCoverage(
     pool,
     scope,
     collectionDate,
@@ -584,7 +572,11 @@ async function buildDayReport(
   const qualityGates = {
     collectionIntegrityCleanForEval: collectionIntegrity.status === "clean",
     artifactPresent: view !== undefined,
-    summaryHasTopReads: summary.topReadCount >= 8,
+    summaryHasTopReads: curatedTopReadCountPasses({
+      selectedFeedItemCount: summary.selectedFeedItemCount,
+      topReadCount: summary.topReadCount,
+      topReadQuality,
+    }),
     summaryHasPrimarySourcesSelected: primarySources.every(
       (source) => (summary.primarySelectedCounts[source] ?? 0) >= 1,
     ),
@@ -592,7 +584,7 @@ async function buildDayReport(
       (source) => (summary.primaryTopReadCounts[source] ?? 0) >= 1,
     ),
     noTechnicalLeakage: summary.technicalLeakCount === 0,
-    topReadProviderSkewControlled: summary.topReadProviderSkew <= 0.6,
+    topReadProviderSkewControlled: topReadProviderSkewPasses(summary),
     topReadQualityPasses: Object.values(topReadQuality.gates).every(Boolean),
     claimQualityPasses: Object.values(claimQuality.gates).every(Boolean),
     primaryCollectionMinimumsPass:
@@ -1205,6 +1197,31 @@ function summaryRepresentationEnough(
   return report.selectedCount >= 5 && report.topReadCount >= 2;
 }
 
+function curatedTopReadCountPasses(params: {
+  readonly selectedFeedItemCount: number;
+  readonly topReadCount: number;
+  readonly topReadQuality: TopReadQualityReport;
+}): boolean {
+  const strictTarget = Math.min(8, params.selectedFeedItemCount);
+  if (params.topReadCount >= strictTarget) {
+    return true;
+  }
+
+  return (
+    params.topReadCount >= 5 &&
+    params.topReadQuality.gates.everyTopReadHasSelectionSignal === true &&
+    params.topReadQuality.gates.noWeakTopReadOutranksStrongSocialRead === true
+  );
+}
+
+function topReadProviderSkewPasses(
+  summary: ReaderSummaryQualityDayReport["summary"],
+): boolean {
+  const skewLimit = summary.topReadCount < 10 ? 0.75 : 0.6;
+
+  return summary.topReadProviderSkew <= skewLimit;
+}
+
 async function buildPlannerCanaryReport(params: {
   readonly pool: Pool;
   readonly scope: Scope;
@@ -1392,7 +1409,8 @@ function buildPrimarySourceStrategy(
   ).size;
   const queryLaneCount = new Set(
     providerItems
-      .map((item) => readMetadataString(item.providerMetadata, "searchQuery"))
+      .map((item) => sourceQueryLaneQuery(asRecord(item.providerMetadata)) ??
+        readMetadataString(item.providerMetadata, "searchQuery"))
       .filter(isDefined),
   ).size;
   const productLaneCount = new Set(
@@ -1452,7 +1470,11 @@ async function buildFeedbackShadow(
     readonly feedItems: readonly FeedItemRow[];
   },
 ): Promise<ReaderSummaryQualityDayReport["feedbackShadow"]> {
-  const ratings = await readRatings(pool, params.scope, params.collectionDate);
+  const ratings = await readDashboardRatings(
+    pool,
+    params.scope,
+    params.collectionDate,
+  );
   const feedItemIds = new Set(params.feedItems.map((item) => item.id));
   const sourceItemIds = new Set(
     params.feedItems.map((item) => item.sourceItemId),
@@ -1795,158 +1817,6 @@ function rankingScoreAlignmentStatus(params: {
   return "aligned";
 }
 
-async function readCollectionDates(pool: Pool): Promise<readonly string[]> {
-  const result = await pool.query<{ readonly collectionDate: string }>(
-    `
-      select to_char(observed_at at time zone 'UTC', 'YYYY-MM-DD') as "collectionDate"
-      from feed_items
-      group by 1
-      order by 1
-    `,
-  );
-
-  return result.rows.map((row) => row.collectionDate);
-}
-
-async function readFeedItems(
-  pool: Pool,
-  scope: Scope,
-  collectionDate: string,
-): Promise<readonly FeedItemRow[]> {
-  const result = await pool.query<FeedItemRow>(
-    `
-      select
-        id::text as "id",
-        source_item_id::text as "sourceItemId",
-        source_binding_id::text as "sourceBindingId",
-        interest_id::text as "interestId",
-        provider_key as "providerKey",
-        canonical_url as "canonicalUrl",
-        author_handle as "authorHandle",
-        title,
-        published_at as "publishedAt",
-        observed_at as "observedAt",
-        provider_metadata as "providerMetadata"
-      from feed_items
-      where tenant_id = $1::uuid
-        and workspace_id = $2::uuid
-        and observed_at >= $3::timestamptz
-        and observed_at < $4::timestamptz
-      order by provider_key, observed_at, id
-    `,
-    [
-      scope.tenantId,
-      scope.workspaceId,
-      dayStart(collectionDate),
-      dayEnd(collectionDate),
-    ],
-  );
-
-  return result.rows;
-}
-
-async function readCollectedCoverage(
-  pool: Pool,
-  scope: Scope,
-  collectionDate: string,
-): Promise<ReaderSummaryCollectedFeedItemCoverage> {
-  const result = await pool.query<{
-    readonly providerKey: string;
-    readonly collectedFeedItemCount: string;
-  }>(
-    `
-      select
-        provider_key as "providerKey",
-        count(*)::text as "collectedFeedItemCount"
-      from feed_items
-      where tenant_id = $1::uuid
-        and workspace_id = $2::uuid
-        and observed_at >= $3::timestamptz
-        and observed_at < $4::timestamptz
-        and published_at >= $3::timestamptz
-        and published_at < $4::timestamptz
-      group by provider_key
-      order by provider_key
-    `,
-    [
-      scope.tenantId,
-      scope.workspaceId,
-      dayStart(collectionDate),
-      dayEnd(collectionDate),
-    ],
-  );
-  const providerBreakdown = result.rows
-    .filter((item) => isDefaultReaderSummaryEvidenceProvider(item.providerKey))
-    .map((item) => ({
-      providerKey: item.providerKey,
-      collectedFeedItemCount: Number.parseInt(item.collectedFeedItemCount, 10),
-      lowRelevanceFeedItemCount: 0,
-      mutedFeedItemCount: 0,
-      userRatedFeedItemCount: 0,
-    }));
-
-  return {
-    collectedFeedItemCount: providerBreakdown.reduce(
-      (sum, item) => sum + item.collectedFeedItemCount,
-      0,
-    ),
-    lowRelevanceFeedItemCount: 0,
-    mutedFeedItemCount: 0,
-    userRatedFeedItemCount: 0,
-    providerBreakdown,
-    topicBreakdown: [],
-    queryBreakdown: [],
-  };
-}
-
-async function readRatings(
-  pool: Pool,
-  scope: Scope,
-  collectionDate: string,
-): Promise<readonly RatingRow[]> {
-  const result = await pool.query<RatingRow>(
-    `
-      select
-        id::text as "id",
-        rating,
-        target,
-        created_at as "createdAt"
-      from relevance_feedback_signals
-      where tenant_id = $1::uuid
-        and workspace_id = $2::uuid
-        and action = 'rate_post'
-        and (
-          target->>'feedItemId' in (
-            select id::text
-            from feed_items
-            where tenant_id = $1::uuid
-              and workspace_id = $2::uuid
-              and observed_at >= $3::timestamptz
-              and observed_at < $4::timestamptz
-          )
-          or target->>'sourceItemId' in (
-            select source_item_id::text
-            from feed_items
-            where tenant_id = $1::uuid
-              and workspace_id = $2::uuid
-              and observed_at >= $3::timestamptz
-              and observed_at < $4::timestamptz
-          )
-        )
-      order by created_at desc, id desc
-      limit 5000
-    `,
-    [
-      scope.tenantId,
-      scope.workspaceId,
-      dayStart(collectionDate),
-      dayEnd(collectionDate),
-    ],
-  );
-
-  return result.rows;
-}
-
 async function readPrimarySourceBindings(
   pool: Pool,
   scope: Scope,
@@ -2219,11 +2089,17 @@ function providerSourceKey(
 }
 
 function sourceProduct(metadata: unknown): string | undefined {
+  const record = asRecord(metadata);
+  const lane = asRecord(record.sourceQueryLane);
   const value =
-    readMetadataString(metadata, "sourceProduct") ??
-    readMetadataString(metadata, "sort") ??
-    readMetadataString(metadata, "searchSort") ??
-    readMetadataString(metadata, "timeline");
+    readMetadataString(record, "sourceProduct") ??
+    readMetadataString(record, "sort") ??
+    readMetadataString(record, "searchSort") ??
+    readMetadataString(record, "timeline") ??
+    readMetadataString(lane, "sourceProduct") ??
+    readMetadataString(lane, "listing") ??
+    readMetadataString(lane, "searchSort") ??
+    readMetadataString(lane, "timeline");
 
   return value?.trim().toLowerCase();
 }

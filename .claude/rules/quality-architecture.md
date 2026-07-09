@@ -35,6 +35,7 @@ These rules exist because code quality must not depend on the memory or taste of
 - HTTP adapters must use bounded outbound requests with `AbortSignal.timeout`; live provider calls cannot wait forever on a remote service.
 - Prisma persistence writes must use `withPrismaWriteRetry` from `@social-monitor/platform-persistence`; write transactions must use Serializable isolation so P2034 conflicts are retried consistently.
 - Production files that approach the line budget need splitting by responsibility before more behavior is added.
+- Human-written source and test files have a hard 1000 LOC cap. Generated/build/vendor outputs are excluded. Existing legacy debt listed in `scripts/check-source-line-cap.mjs` may only shrink; adding new behavior to those files requires splitting first.
 
 ## SOLID
 
@@ -88,6 +89,7 @@ These rules exist because code quality must not depend on the memory or taste of
 ## Testing And Evidence
 
 - New use cases need focused sibling specs.
+- Source and test files must stay under the 1000 LOC hard cap enforced by `npm run check:source-line-cap`.
 - Adapter/runtime/contract changes need the targeted executable check that proves the changed contract.
 - Smoke checks may supplement missing integration speed, but not replace missing use-case specs.
 - Do not claim production/beta readiness from green unit tests alone when the risk is migration history, runtime durability, source live evidence or auth boundary.

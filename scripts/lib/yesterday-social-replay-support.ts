@@ -113,8 +113,8 @@ export async function readDominantFeedScope(params: {
           workspace_id::text as "workspaceId",
           count(*)::text as "feedItemCount"
         from feed_items
-        where observed_at >= $1::timestamptz
-          and observed_at < $2::timestamptz
+        where published_at >= $1::timestamptz
+          and published_at < $2::timestamptz
         group by tenant_id, workspace_id
         order by count(*) desc
         limit 1

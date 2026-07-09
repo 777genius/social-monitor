@@ -29,7 +29,10 @@ import {
   roundMetric,
   yesterdaySocialQualityDatabaseUrl,
 } from "./lib/yesterday-social-replay-support";
-import { isLocalDataSourceUnavailable } from "./lib/reader-summary-quality-eval-support";
+import {
+  dailyPeriodKey,
+  isLocalDataSourceUnavailable,
+} from "./lib/reader-summary-quality-eval-support";
 
 type ProviderCountRow = {
   readonly providerKey: string;
@@ -535,15 +538,10 @@ async function buildReport(): Promise<ArtifactQualityReport> {
       sourceQuality,
       qualityGates: {
         artifactPeriodMatchesRequestedDate:
-          record.periodStartedAt.toISOString() ===
-            feedWindow().startInclusive &&
-          record.periodEndedAt.toISOString() === feedWindow().endExclusive,
+          record.periodKey === dailyPeriodKey(collectionDate),
         latestVisibleArtifactPeriodMatchesRequestedDate:
           allowHistorical ||
-          (latestVisible.periodStartedAt.toISOString() ===
-            feedWindow().startInclusive &&
-            latestVisible.periodEndedAt.toISOString() ===
-              feedWindow().endExclusive),
+          latestVisible.periodKey === dailyPeriodKey(collectionDate),
         artifactStatusIsVisible:
           record.status === "COMPLETED" || record.status === "NO_SIGNAL",
         coverageSelectedMatchesSourceWindow:
@@ -593,9 +591,9 @@ async function buildReport(): Promise<ArtifactQualityReport> {
             (periodStatusCounts.NO_SIGNAL ?? 0) ===
           1,
         rejectedArtifactsDoNotHideCanonical:
-          (badGamingStatusCounts.REJECTED ?? 0) > 0 &&
-          (badGamingStatusCounts.FAILED ?? 0) === 0 &&
           visibleBadGamingArtifactCount === 0 &&
+          ((badGamingStatusCounts.REJECTED ?? 0) === 0 ||
+            (badGamingStatusCounts.FAILED ?? 0) === 0) &&
           (periodStatusCounts.COMPLETED ?? 0) +
             (periodStatusCounts.NO_SIGNAL ?? 0) ===
             1,
@@ -723,17 +721,11 @@ async function readLatestArtifact(
         and status in ('COMPLETED', 'NO_SIGNAL')
         and scope_type = 'workspace'
         and cadence = 'daily'
-        and period_started_at = $3::timestamptz
-        and period_ended_at = $4::timestamptz
+        and period_key = $3
       order by created_at desc, id desc
       limit 1
     `,
-    [
-      scope.tenantId,
-      scope.workspaceId,
-      feedWindow().startInclusive,
-      feedWindow().endExclusive,
-    ],
+    [scope.tenantId, scope.workspaceId, dailyPeriodKey(collectionDate)],
   );
   const row = result.rows[0];
 
@@ -815,17 +807,11 @@ async function readPeriodArtifactStatusCounts(
         and workspace_id = $2::uuid
         and scope_type = 'workspace'
         and cadence = 'daily'
-        and period_started_at = $3::timestamptz
-        and period_ended_at = $4::timestamptz
+        and period_key = $3
       group by status
       order by status
     `,
-    [
-      scope.tenantId,
-      scope.workspaceId,
-      feedWindow().startInclusive,
-      feedWindow().endExclusive,
-    ],
+    [scope.tenantId, scope.workspaceId, dailyPeriodKey(collectionDate)],
   );
 
   return Object.fromEntries(
@@ -873,8 +859,6 @@ async function readCollectedCoverage(
       from feed_items
       where tenant_id = $1::uuid
         and workspace_id = $2::uuid
-        and observed_at >= $3::timestamptz
-        and observed_at < $4::timestamptz
         and published_at >= $3::timestamptz
         and published_at < $4::timestamptz
       group by provider_key

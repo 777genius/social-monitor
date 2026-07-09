@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
@@ -53,6 +54,7 @@ import {
   type Result,
 } from "@social-monitor/shared-kernel";
 
+import { loadDotenvIfPresent } from "./lib/env-file";
 import { writeLiveEvidenceArtifactAtomically } from "./lib/live-evidence-artifact";
 
 const databaseUrlEnv = "DATABASE_URL";
@@ -63,6 +65,8 @@ const defaultWorkspaceId = "22222222-2222-4222-8222-222222222222";
 const periodStartedAtEnv = "DURABLE_READER_SUMMARY_PERIOD_STARTED_AT";
 const periodEndedAtEnv = "DURABLE_READER_SUMMARY_PERIOD_ENDED_AT";
 const cadenceEnv = "DURABLE_READER_SUMMARY_CADENCE";
+
+loadDotenvIfPresent(".env");
 type DurableReaderSummaryModelMode =
   "deterministic" | "openai-responses" | "agent-runtime";
 type DurableReaderSummaryCadence = "daily" | "weekly" | "monthly" | "custom";
@@ -131,7 +135,12 @@ async function main(): Promise<void> {
 
     await readerSummaryPolicies.save(
       ReaderSummaryPolicy.create({
-        id: "6f3c8f05-d594-48d0-a760-1adceca4b341",
+        id: deterministicUuid([
+          "reader-summary-policy",
+          tenant,
+          workspace,
+          scope.type,
+        ].join(":")),
         tenantId: tenant,
         workspaceId: workspace,
         scope,
@@ -529,6 +538,24 @@ const requiredEnv = (name: string): string => {
 const readEnv = (name: string): string | undefined => {
   const value = process.env[name]?.trim();
   return value === undefined || value.length === 0 ? undefined : value;
+};
+
+const deterministicUuid = (value: string): string => {
+  const bytes = Buffer.from(createHash("sha256").update(value).digest()).subarray(
+    0,
+    16,
+  );
+  bytes[6] = (bytes[6]! & 0x0f) | 0x40;
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+  const hex = bytes.toString("hex");
+
+  return [
+    hex.slice(0, 8),
+    hex.slice(8, 12),
+    hex.slice(12, 16),
+    hex.slice(16, 20),
+    hex.slice(20),
+  ].join("-");
 };
 
 void main().catch((error) => {

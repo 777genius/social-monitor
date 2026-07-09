@@ -18,6 +18,7 @@ import {
   readOption,
   yesterdaySocialQualityDatabaseUrl,
 } from "./lib/yesterday-social-replay-support";
+import { loadDotenvIfPresent } from "./lib/env-file";
 
 type StepStatus = "passed" | "failed" | "skipped";
 
@@ -28,6 +29,14 @@ type StepReport = {
   readonly durationMs: number;
   readonly exitCode: number | null;
 };
+
+const degradedQualityStepIds = new Set([
+  "collection-quality",
+  "quality-dashboard",
+  "source-quality-trace",
+]);
+
+loadDotenvIfPresent(".env");
 
 type ProductionDayReport = {
   readonly schemaVersion: 1;
@@ -55,6 +64,12 @@ type ProductionDayReport = {
     readonly startedAt: string;
     readonly completedAt: string;
   };
+  readonly summary: {
+    readonly evidenceArtifactId: string | null;
+    readonly readerSummaryId: string | null;
+    readonly readerSummaryJobId: string | null;
+    readonly headline: string | null;
+  };
   readonly steps: readonly StepReport[];
   readonly stats: {
     readonly collectedFeedItemCount: number | null;
@@ -71,6 +86,7 @@ type ProductionDayReport = {
     readonly xAccounts: readonly {
       readonly accountFingerprint: string;
       readonly priorityRank: number;
+      readonly prioritySource: string;
       readonly dailyRequests: number;
       readonly dailyTweets: number;
       readonly passSucceededCount: number;
@@ -145,6 +161,8 @@ async function main(): Promise<void> {
         "run:reader-summary-clean-real-day-collection",
         "--",
         "--update",
+        "--date",
+        collectionDate,
       ]),
     );
   }
@@ -162,6 +180,7 @@ async function main(): Promise<void> {
       "--date",
       collectionDate,
       "--write-failed-report",
+      ...(allowHistorical ? ["--allow-historical"] : []),
     ]),
   );
 
@@ -203,8 +222,20 @@ async function main(): Promise<void> {
       "check:reader-summary-quality-dashboard",
       "--",
       "--update",
+      "--date",
+      collectionDate,
       ...(allowDegraded ? ["--allow-degraded"] : []),
       ...(allowHistorical ? ["--allow-historical"] : []),
+    ]),
+  );
+  steps.push(
+    runNpm("top-read-ranking", [
+      "run",
+      "check:reader-summary-top-read-ranking",
+      "--",
+      "--update",
+      "--date",
+      collectionDate,
     ]),
   );
   steps.push(
@@ -213,18 +244,31 @@ async function main(): Promise<void> {
       "check:reader-summary-source-quality-trace",
       "--",
       "--update",
+      "--date",
+      collectionDate,
     ]),
   );
-  steps.push(
-    runNpm("clean-day-e2e", [
-      "run",
-      "check:reader-summary-clean-real-day-e2e",
-      "--",
-      "--update",
-      ...(allowDegraded ? ["--allow-degraded"] : []),
-      ...(allowHistorical ? ["--allow-historical"] : []),
-    ]),
-  );
+  if (shouldRunCleanDayE2e()) {
+    steps.push(
+      runNpm("clean-day-e2e", [
+        "run",
+        "check:reader-summary-clean-real-day-e2e",
+        "--",
+        "--update",
+        ...(allowDegraded ? ["--allow-degraded"] : []),
+        ...(allowHistorical ? ["--allow-historical"] : []),
+      ]),
+    );
+  } else {
+    steps.push({
+      id: "clean-day-e2e",
+      command:
+        "npm run check:reader-summary-clean-real-day-e2e -- skipped for historical production-day date",
+      status: "skipped",
+      durationMs: 0,
+      exitCode: null,
+    });
+  }
 
   const completedAt = new Date();
   const report = buildReport({
@@ -269,6 +313,13 @@ function runNpm(
   };
 }
 
+function shouldRunCleanDayE2e(): boolean {
+  if (!allowHistorical) {
+    return true;
+  }
+  return collectionDate >= new Date().toISOString().slice(0, 10);
+}
+
 function buildReport(params: {
   readonly startedAt: Date;
   readonly completedAt: Date;
@@ -294,6 +345,7 @@ function buildReport(params: {
       readonly accounts?: readonly {
         readonly accountFingerprint?: string;
         readonly priorityRank?: number;
+        readonly prioritySource?: string;
         readonly dailyRequests?: number;
         readonly dailyTweets?: number;
         readonly passSucceededCount?: number;
@@ -306,7 +358,11 @@ function buildReport(params: {
     };
   }>("ops/evals/yesterday-social-collection-quality-report.v1.json");
   const durableEvidence = readJsonIfExists<{
+    readonly artifactId?: string;
     readonly result?: {
+      readonly readerSummaryId?: string;
+      readonly readerSummaryJobId?: string;
+      readonly headline?: string;
       readonly selectedFeedItemCount?: number;
       readonly topReadCount?: number;
     };
@@ -318,14 +374,22 @@ function buildReport(params: {
     ]) ?? [],
   );
   const qualityGates = {
-    allStepsPassed: params.steps.every(
-      (step) => step.status === "passed" || step.status === "skipped",
+    allRequiredStepsPassed: params.steps.every((step) =>
+      stepPassedOrAllowedDegraded(step),
+    ),
+    degradedFailuresAreExplicitlyAllowed: params.steps.every(
+      (step) =>
+        step.status !== "failed" ||
+        (allowDegraded && degradedQualityStepIds.has(step.id)),
     ),
     collectionQualityReported:
       collectionQuality?.dayWindowAudit?.publishedInsideWindowFeedItemCount !==
       undefined,
     durableSummaryCaptured:
       durableEvidence?.result?.selectedFeedItemCount !== undefined,
+    durableSummaryPersisted:
+      typeof durableEvidence?.result?.readerSummaryId === "string" &&
+      durableEvidence.result.readerSummaryId.length > 0,
     xAccountPoolReported: collectionQuality?.xAccountPool?.accountCount !==
       undefined,
     noRawSecretFragments: true,
@@ -356,10 +420,16 @@ function buildReport(params: {
       startedAt: params.startedAt.toISOString(),
       completedAt: params.completedAt.toISOString(),
     },
+    summary: {
+      evidenceArtifactId: durableEvidence?.artifactId ?? null,
+      readerSummaryId: durableEvidence?.result?.readerSummaryId ?? null,
+      readerSummaryJobId: durableEvidence?.result?.readerSummaryJobId ?? null,
+      headline: durableEvidence?.result?.headline ?? null,
+    },
     steps: params.steps,
     stats: {
       collectedFeedItemCount:
-        collectionQuality?.dayWindowAudit?.observedInsideWindowFeedItemCount ??
+        collectionQuality?.dayWindowAudit?.publishedInsideWindowFeedItemCount ??
         null,
       publishedInsideWindowFeedItemCount:
         collectionQuality?.dayWindowAudit?.publishedInsideWindowFeedItemCount ??
@@ -389,6 +459,7 @@ function buildReport(params: {
                 {
                   accountFingerprint: account.accountFingerprint,
                   priorityRank: account.priorityRank,
+                  prioritySource: account.prioritySource ?? "unknown",
                   dailyRequests: account.dailyRequests ?? 0,
                   dailyTweets: account.dailyTweets ?? 0,
                   passSucceededCount: account.passSucceededCount ?? 0,
@@ -414,6 +485,14 @@ function buildReport(params: {
     qualityGates: finalQualityGates,
     blockingPassed: Object.values(finalQualityGates).every(Boolean),
   };
+}
+
+function stepPassedOrAllowedDegraded(step: StepReport): boolean {
+  if (step.status === "passed" || step.status === "skipped") {
+    return true;
+  }
+
+  return allowDegraded && degradedQualityStepIds.has(step.id);
 }
 
 async function readDominantPublishedScope(): Promise<{
@@ -481,6 +560,7 @@ function printStats(report: ProductionDayReport): void {
       [
         `xAccount=${account.accountFingerprint}`,
         `priority=${account.priorityRank}`,
+        `prioritySource=${account.prioritySource}`,
         `requests=${account.dailyRequests}`,
         `tweets=${account.dailyTweets}`,
         `success=${account.passSucceededCount}`,

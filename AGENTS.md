@@ -22,6 +22,7 @@ Read these before any code change:
 
 - Do not run agent launch, provisioning, terminal-runtime, task-assignment or smoke-flow checks on real user projects. Use sandbox/test projects only.
 - Do not weaken architecture tests, hooks or dependency-direction gates without replacing them with equal or stronger executable checks.
+- Do not let human-written source or test files exceed 1000 LOC. Generated/build/vendor outputs are excluded; existing legacy debt in `scripts/check-source-line-cap.mjs` may only shrink and cannot receive new behavior without splitting.
 - Do not add behavior to human-written Dart files over 500 lines. Split first.
 - Do not let any human-written Dart file exceed 600 lines.
 - Do not add raw `headless`, `headless_adaptive`, generated API clients or heavy renderer packages directly to feature widgets.
@@ -83,6 +84,7 @@ Run the smallest checks that prove the changed surface:
 - frontend app/design-system change: also run the affected app or package tests;
 - frontend shared-kernel/generated-client change: also run `fvm dart test packages/shared_kernel packages/generated_api`;
 - backend architecture/runtime/API/security change: follow the gates in `CLAUDE.md`;
+- source/test line-cap rule change: run `npm run check:source-line-cap`;
 - rule/hook change: run the relevant rule or hook checks if available.
 
 If a required check cannot run, state the exact blocker and do not claim full verification.

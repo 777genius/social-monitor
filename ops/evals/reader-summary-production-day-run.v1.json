@@ -2,34 +2,40 @@
   "schemaVersion": 1,
   "artifactFormat": "reader-summary-production-day-run-v1",
   "generatedBy": "npm run run:reader-summary-production-day",
-  "collectionDate": "2026-07-06",
+  "collectionDate": "2026-07-08",
   "model": {
     "liveCollection": false,
     "summaryModel": "agent-runtime",
     "writesProductionData": true,
-    "allowDegraded": true,
-    "allowHistorical": false,
+    "allowDegraded": false,
+    "allowHistorical": true,
     "rawProviderPayloadPersistedInReport": false,
     "rawPostTextPersistedInReport": false
   },
   "inputs": {
-    "periodStartedAt": "2026-07-06T00:00:00.000Z",
-    "periodEndedAt": "2026-07-07T00:00:00.000Z",
+    "periodStartedAt": "2026-07-08T00:00:00.000Z",
+    "periodEndedAt": "2026-07-09T00:00:00.000Z",
     "tenantFingerprint": "ec29f9d19b2f",
     "workspaceFingerprint": "c27aefd6f61b",
-    "evidencePath": "/tmp/social-monitor/reader-summary-production-day/2026-07-06/durable-reader-summary-2026-07-06.v1.json",
-    "frontendFixturePath": "/tmp/social-monitor/reader-summary-production-day/2026-07-06/frontend-reader-summary-2026-07-06.fixture.v1.json"
+    "evidencePath": "/var/folders/7b/ydmc_b0n251bc4hss4tz8y880000gn/T/social-monitor/reader-summary-production-day/2026-07-08/durable-reader-summary-2026-07-08.v1.json",
+    "frontendFixturePath": "/var/folders/7b/ydmc_b0n251bc4hss4tz8y880000gn/T/social-monitor/reader-summary-production-day/2026-07-08/frontend-reader-summary-2026-07-08.fixture.v1.json"
   },
   "run": {
-    "startedAt": "2026-07-06T20:40:31.493Z",
-    "completedAt": "2026-07-06T20:43:40.133Z"
+    "startedAt": "2026-07-09T17:20:48.521Z",
+    "completedAt": "2026-07-09T17:22:55.857Z"
+  },
+  "summary": {
+    "evidenceArtifactId": "durable-reader-summary-postgres-evidence-v1",
+    "readerSummaryId": "c460b131-9ffe-4d09-9d3c-1ccab5f49fb7",
+    "readerSummaryJobId": "ee3dab82-27f6-4157-92a3-ad4ae69cdde8",
+    "headline": "GPT-5.6 rollout chatter, GPT-Live launch, and agent-security work dominate AI/product monitoring"
   },
   "steps": [
     {
       "id": "migrate",
       "command": "npm run migrate:deploy",
       "status": "passed",
-      "durationMs": 118995,
+      "durationMs": 6271,
       "exitCode": 0
     },
     {
@@ -41,110 +47,109 @@
     },
     {
       "id": "collection-quality",
-      "command": "npm run check:yesterday-social-collection-quality -- --update --date 2026-07-06 --write-failed-report",
-      "status": "failed",
-      "durationMs": 19066,
-      "exitCode": 1
+      "command": "npm run check:yesterday-social-collection-quality -- --update --date 2026-07-08 --write-failed-report --allow-historical",
+      "status": "passed",
+      "durationMs": 2051,
+      "exitCode": 0
     },
     {
       "id": "durable-reader-summary",
       "command": "npm run capture:durable-reader-summary",
-      "status": "failed",
-      "durationMs": 31220,
-      "exitCode": 1
+      "status": "passed",
+      "durationMs": 102441,
+      "exitCode": 0
     },
     {
       "id": "artifact-quality",
-      "command": "npm run check:yesterday-reader-summary-artifact-quality -- --update --date 2026-07-06 --allow-dirty-collection",
-      "status": "failed",
-      "durationMs": 6722,
-      "exitCode": 1
+      "command": "npm run check:yesterday-reader-summary-artifact-quality -- --update --date 2026-07-08 --allow-historical",
+      "status": "passed",
+      "durationMs": 5947,
+      "exitCode": 0
     },
     {
       "id": "quality-dashboard",
-      "command": "npm run check:reader-summary-quality-dashboard -- --update --allow-degraded",
+      "command": "npm run check:reader-summary-quality-dashboard -- --update --date 2026-07-08 --allow-historical",
       "status": "passed",
-      "durationMs": 4473,
+      "durationMs": 2680,
+      "exitCode": 0
+    },
+    {
+      "id": "top-read-ranking",
+      "command": "npm run check:reader-summary-top-read-ranking -- --update --date 2026-07-08",
+      "status": "passed",
+      "durationMs": 2235,
       "exitCode": 0
     },
     {
       "id": "source-quality-trace",
-      "command": "npm run check:reader-summary-source-quality-trace -- --update",
-      "status": "failed",
-      "durationMs": 5790,
-      "exitCode": 1
+      "command": "npm run check:reader-summary-source-quality-trace -- --update --date 2026-07-08",
+      "status": "passed",
+      "durationMs": 5638,
+      "exitCode": 0
     },
     {
       "id": "clean-day-e2e",
-      "command": "npm run check:reader-summary-clean-real-day-e2e -- --update --allow-degraded",
-      "status": "failed",
-      "durationMs": 1989,
-      "exitCode": 1
+      "command": "npm run check:reader-summary-clean-real-day-e2e -- skipped for historical production-day date",
+      "status": "skipped",
+      "durationMs": 0,
+      "exitCode": null
     }
   ],
   "stats": {
-    "collectedFeedItemCount": 311,
-    "publishedInsideWindowFeedItemCount": 290,
-    "observedButPublishedOutsideWindowFeedItemCount": 21,
+    "collectedFeedItemCount": 536,
+    "publishedInsideWindowFeedItemCount": 536,
+    "observedButPublishedOutsideWindowFeedItemCount": 78,
     "duplicateFeedItemCount": 0,
     "lowRelevanceFeedItemCount": 0,
-    "summaryCandidateFeedItemCount": 190,
-    "selectedFeedItemCount": null,
-    "topReadCount": null,
+    "summaryCandidateFeedItemCount": 434,
+    "selectedFeedItemCount": 120,
+    "topReadCount": 8,
     "providerCounts": {
-      "github-trending-page": 100,
-      "hacker-news": 100,
-      "reddit": 25,
-      "rss": 36,
-      "x-twitter": 29
+      "github-trending-page": 102,
+      "hacker-news": 130,
+      "reddit": 171,
+      "rss": 56,
+      "x-twitter": 77
     },
-    "xAccountCount": 3,
-    "xAccountUsageEventCount": 22,
+    "xAccountCount": 2,
+    "xAccountUsageEventCount": 477,
     "xAccounts": [
       {
-        "accountFingerprint": "8ca1818c55b8",
-        "priorityRank": 1,
-        "dailyRequests": 9,
-        "dailyTweets": 82,
-        "passSucceededCount": 6,
-        "passFailedCount": 0,
-        "rateLimitCount": 0,
-        "cooldownObservedCount": 0,
-        "lastUsedAt": "2026-07-06 20:39:14",
-        "cooldownUntil": null
-      },
-      {
         "accountFingerprint": "305b9c91ff51",
-        "priorityRank": 2,
-        "dailyRequests": 10,
-        "dailyTweets": 135,
-        "passSucceededCount": 6,
+        "priorityRank": 0,
+        "prioritySource": "account_profile",
+        "dailyRequests": 139,
+        "dailyTweets": 1733,
+        "passSucceededCount": 133,
         "passFailedCount": 0,
         "rateLimitCount": 0,
         "cooldownObservedCount": 0,
-        "lastUsedAt": "2026-07-06 20:39:14",
+        "lastUsedAt": "2026-07-09 16:27:52",
         "cooldownUntil": null
       },
       {
-        "accountFingerprint": "578979ae9594",
-        "priorityRank": 9999,
-        "dailyRequests": 0,
-        "dailyTweets": 0,
-        "passSucceededCount": 0,
+        "accountFingerprint": "8ca1818c55b8",
+        "priorityRank": 100,
+        "prioritySource": "account_profile",
+        "dailyRequests": 65,
+        "dailyTweets": 761,
+        "passSucceededCount": 87,
         "passFailedCount": 0,
-        "rateLimitCount": 0,
+        "rateLimitCount": 23,
         "cooldownObservedCount": 0,
-        "lastUsedAt": "2026-07-06T20:39:09.697631+00:00",
-        "cooldownUntil": null
+        "lastUsedAt": "2026-07-09 11:40:44",
+        "cooldownUntil": "2026-07-10 00:00:00"
       }
     ]
   },
   "qualityGates": {
-    "allStepsPassed": false,
+    "allRequiredStepsPassed": true,
+    "degradedFailuresAreExplicitlyAllowed": true,
     "collectionQualityReported": true,
-    "durableSummaryCaptured": false,
+    "durableSummaryCaptured": true,
+    "durableSummaryPersisted": true,
     "xAccountPoolReported": true,
     "noRawSecretFragments": true
   },
-  "blockingPassed": false
+  "blockingPassed": true
 }

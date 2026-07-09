@@ -42,27 +42,28 @@ Code quality rules must be enforceable, not only documented. `npm run verify` mu
 30. Domain/features must not import public contracts, interface modules or generated clients; if application behavior needs contract knowledge, depend on a port and place the contract-backed implementation in an adapter.
 31. Adapters and ports must not read `process.env`; runtime config must be passed explicitly from composition roots/provider-token resolvers.
 32. Production files have a default 500-line budget. Existing explicit exceptions need a local budget and must not grow without splitting responsibilities.
-33. Feature use cases, adapters and platform queue publishers must not read wall-clock time directly; use `Clock` when time affects behavior.
-34. Adapters must not generate identities directly or instantiate `SystemClock`/`CryptoIdGenerator` defaults; composition roots provide `Clock`/`IdGenerator` when identity creation affects persisted data or cross-process messages.
-35. Worker loops must create command/correlation ids through platform command-id helpers instead of ad hoc `Date.now()` strings.
-36. Claude hook behavior must stay executable through `npm run check:claude-hooks`; real-project `Agent`/`TaskCreated` flows stay blocked and Stop hooks must respect `stop_hook_active`.
-37. Architecture boundary checks must inspect static imports, re-exports, `require(...)` and dynamic `import(...)`; inner layers cannot bypass dependency rules with alternate import syntax.
-38. Claude hook commands must use `command` + `args` with `${CLAUDE_PROJECT_DIR}`, and Stop hooks must chdir to the project root before running npm gates.
-39. Claude permissions and PreToolUse hooks must block `.env`, `.envrc`, `.npmrc`, `.netrc`, cloud/kube/GitHub config, secret directories, private keys, Bash subprocess secret reads, credential CLIs, network CLIs and destructive reset commands.
-40. Production runtime imports in `apps` and `libs` must not form circular dependencies; split ports/shared primitives/mappers before feature growth continues.
-41. Apps must import `libs` through `@social-monitor/...` aliases, not deep-relative `../../../libs/...` paths.
-42. Architecture checks must resolve relative imports before enforcing context/adapter rules, so path syntax cannot bypass the dependency rule.
-43. Interface controllers, gateways, support services and authorizers must receive env-derived config through provider tokens; direct `process.env` reads are blocked outside composition files.
-44. Trusted workspace-role header parsing must use `WorkspaceRoleHeaderParser`; controller-level env checks are blocked.
-45. Production code must not call `randomUUID()` directly outside `CryptoIdGenerator`; transport correlation ids use `RequestCorrelationIdFactory`.
-46. App controllers must not read env, wall-clock time or process uptime directly; expose readiness through provider-backed reporters.
-47. REST pagination limits must use platform `parsePaginationLimit` helpers; ad hoc `Number(limitQuery)` parsing and local `parseLimit` helpers are blocked.
-48. REST controllers must use `async`/`await` for transport flow; promise chains in controllers are blocked.
-49. App services/controllers/reporters must not import bounded-context adapters directly; adapter-backed readiness data is injected by module provider tokens, and composition roots may import adapters.
-50. Platform root barrels expose core ports/primitives only. They must not re-export `./adapters/*`, RabbitMQ, InMemory, Prisma or SDK implementation files; composition roots import platform queue/event adapters through explicit adapter subpaths and never legacy adapter shortcuts.
-51. Secret and token redaction policy must live in shared-kernel redaction helpers; duplicated sensitive-key/string regexes in filters, loggers, audits or adapters are blocked.
-52. Prisma persistence writes must use `withPrismaWriteRetry` from `@social-monitor/platform-persistence`; write transactions must use Serializable isolation so P2034 conflicts are retried consistently.
-53. RabbitMQ production queue declarations must use the platform queue-arguments helper; ad hoc DLX/quorum argument maps in publishers or worker readers are blocked.
+33. Human-written source and test files have a hard 1000 LOC cap enforced by `npm run check:source-line-cap`; generated/build/vendor outputs are excluded and listed legacy debt may only shrink.
+34. Feature use cases, adapters and platform queue publishers must not read wall-clock time directly; use `Clock` when time affects behavior.
+35. Adapters must not generate identities directly or instantiate `SystemClock`/`CryptoIdGenerator` defaults; composition roots provide `Clock`/`IdGenerator` when identity creation affects persisted data or cross-process messages.
+36. Worker loops must create command/correlation ids through platform command-id helpers instead of ad hoc `Date.now()` strings.
+37. Claude hook behavior must stay executable through `npm run check:claude-hooks`; real-project `Agent`/`TaskCreated` flows stay blocked and Stop hooks must respect `stop_hook_active`.
+38. Architecture boundary checks must inspect static imports, re-exports, `require(...)` and dynamic `import(...)`; inner layers cannot bypass dependency rules with alternate import syntax.
+39. Claude hook commands must use `command` + `args` with `${CLAUDE_PROJECT_DIR}`, and Stop hooks must chdir to the project root before running npm gates.
+40. Claude permissions and PreToolUse hooks must block `.env`, `.envrc`, `.npmrc`, `.netrc`, cloud/kube/GitHub config, secret directories, private keys, Bash subprocess secret reads, credential CLIs, network CLIs and destructive reset commands.
+41. Production runtime imports in `apps` and `libs` must not form circular dependencies; split ports/shared primitives/mappers before feature growth continues.
+42. Apps must import `libs` through `@social-monitor/...` aliases, not deep-relative `../../../libs/...` paths.
+43. Architecture checks must resolve relative imports before enforcing context/adapter rules, so path syntax cannot bypass the dependency rule.
+44. Interface controllers, gateways, support services and authorizers must receive env-derived config through provider tokens; direct `process.env` reads are blocked outside composition files.
+45. Trusted workspace-role header parsing must use `WorkspaceRoleHeaderParser`; controller-level env checks are blocked.
+46. Production code must not call `randomUUID()` directly outside `CryptoIdGenerator`; transport correlation ids use `RequestCorrelationIdFactory`.
+47. App controllers must not read env, wall-clock time or process uptime directly; expose readiness through provider-backed reporters.
+48. REST pagination limits must use platform `parsePaginationLimit` helpers; ad hoc `Number(limitQuery)` parsing and local `parseLimit` helpers are blocked.
+49. REST controllers must use `async`/`await` for transport flow; promise chains in controllers are blocked.
+50. App services/controllers/reporters must not import bounded-context adapters directly; adapter-backed readiness data is injected by module provider tokens, and composition roots may import adapters.
+51. Platform root barrels expose core ports/primitives only. They must not re-export `./adapters/*`, RabbitMQ, InMemory, Prisma or SDK implementation files; composition roots import platform queue/event adapters through explicit adapter subpaths and never legacy adapter shortcuts.
+52. Secret and token redaction policy must live in shared-kernel redaction helpers; duplicated sensitive-key/string regexes in filters, loggers, audits or adapters are blocked.
+53. Prisma persistence writes must use `withPrismaWriteRetry` from `@social-monitor/platform-persistence`; write transactions must use Serializable isolation so P2034 conflicts are retried consistently.
+54. RabbitMQ production queue declarations must use the platform queue-arguments helper; ad hoc DLX/quorum argument maps in publishers or worker readers are blocked.
 
 ## Current Gate
 
@@ -70,6 +71,7 @@ Run:
 
 ```bash
 npm run check:code-quality
+npm run check:source-line-cap
 npm run check:agent-quality-rules
 npm run check:claude-hooks
 ```

@@ -569,8 +569,8 @@ async function rankFeedItems(
     const result = await useCase.execute({
       tenantId: scope.tenantId,
       workspaceId: scope.workspaceId,
-      observedAfter: new Date(dayStart(collectionDate)),
-      observedBefore: new Date(dayEnd(collectionDate)),
+      publishedAtOrAfter: new Date(dayStart(collectionDate)),
+      publishedBefore: new Date(dayEnd(collectionDate)),
       limit: rankLimit,
     });
     if (!result.ok) {
@@ -606,8 +606,9 @@ async function readFeedItems(
       from feed_items
       where tenant_id = $1::uuid
         and workspace_id = $2::uuid
-        and observed_at >= $3::timestamptz
-        and observed_at < $4::timestamptz
+        and status = 'VISIBLE'
+        and published_at >= $3::timestamptz
+        and published_at < $4::timestamptz
         and provider_key in ('reddit', 'x-twitter')
       order by provider_key, observed_at, id
     `,

@@ -34,6 +34,7 @@ import { RequestReaderSummaryUseCase } from "../libs/summary/features/request-re
 import {
   presentReaderSummaryArtifact,
   type ReaderSummaryArtifactView,
+  type ReaderSummaryContentView,
 } from "../libs/summary/features/shared/reader-summary-artifact-presenter";
 import type {
   EnqueueReaderSummaryJobCommand,
@@ -635,7 +636,9 @@ function claimQualityPassed(view: ReaderSummaryArtifactView): boolean {
   });
 }
 
-function collectUserFacingText(content: ReaderSummaryContent): readonly string[] {
+function collectUserFacingText(
+  content: ReaderSummaryContentView,
+): readonly string[] {
   return [
     content.headline,
     content.oneLineTakeaway,
