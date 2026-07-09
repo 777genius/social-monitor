@@ -23,6 +23,8 @@ export type NormalizedSourceContentQualityInput = {
   readonly rumorOnly: boolean;
   readonly personalMedicalAnecdote: boolean;
   readonly weakTopicMatch: boolean;
+  readonly missingTopicContext: boolean;
+  readonly legacyCoreTopicSignal: boolean;
   readonly needsLinkContext: boolean;
 };
 
@@ -57,6 +59,10 @@ export const normalizeSourceContentQualityInput = (
       textTokens: tokens,
       sourceCommunityTerms,
     });
+  const missingTopicContext = topicTerms.length === 0;
+  const legacyCoreTopicSignal = legacyCoreTopicSignalPattern.test(
+    textWithoutUrls,
+  );
   const cryptoPromo = cryptoPromoPattern.test(text);
   const promoOffer = promoOfferPattern.test(text);
   const engagementBait = engagementBaitPattern.test(text) || promoOffer;
@@ -94,6 +100,8 @@ export const normalizeSourceContentQualityInput = (
     rumorOnly,
     personalMedicalAnecdote,
     weakTopicMatch,
+    missingTopicContext,
+    legacyCoreTopicSignal,
     needsLinkContext,
   };
 };
@@ -118,15 +126,35 @@ export const isTrustedXAuthor = (value: string | undefined): boolean => {
 const topicTermsFromMetadata = (
   metadata: JsonObject | undefined,
 ): readonly string[] => {
+  const interestQuerySnapshot = readObject(metadata?.interestQuerySnapshot);
+  const sourceBindingSnapshot = readObject(metadata?.sourceBindingSnapshot);
+  const sourceQuery = readObject(sourceBindingSnapshot?.sourceQuery);
+  const searchQuery = readString(metadata?.searchQuery);
+  const query = readString(metadata?.query);
+  const interestQuery = readString(interestQuerySnapshot?.query);
+  const sourceQueryText = readString(sourceQuery?.query);
   const values = [
-    readString(metadata?.searchQuery),
+    searchQuery,
+    query,
+    interestQuery,
+    sourceQueryText,
     readString(metadata?.topic),
     ...readStringArray(metadata?.topics),
   ].filter((value): value is string => value !== undefined);
-  const terms = values.flatMap((value) => [
-    ...extractSignalKeywords(value),
-    ...tokenize(value).filter((token) => shortTopicTerms.has(token)),
-  ]);
+  const literalSearchValues = [
+    searchQuery,
+    query,
+    sourceQueryModeAllowsLiteralTerms(sourceQuery)
+      ? sourceQueryText
+      : undefined,
+  ].filter((value): value is string => value !== undefined);
+  const terms = [
+    ...values.flatMap((value) => [
+      ...extractSignalKeywords(value),
+      ...tokenize(value).filter((token) => shortTopicTerms.has(token)),
+    ]),
+    ...literalSearchValues.flatMap(literalTopicTermsFromSearchQuery),
+  ];
 
   return uniqueStable(
     terms.filter(
@@ -150,6 +178,36 @@ const readStringArray = (value: JsonValue | undefined): readonly string[] =>
         .filter((item): item is string => item !== undefined)
     : [];
 
+const readObject = (value: JsonValue | undefined): JsonObject | undefined =>
+  value !== undefined &&
+  value !== null &&
+  typeof value === "object" &&
+  !Array.isArray(value)
+    ? (value as JsonObject)
+    : undefined;
+
+const sourceQueryModeAllowsLiteralTerms = (
+  sourceQuery: JsonObject | undefined,
+): boolean => {
+  const mode = readString(sourceQuery?.mode)?.toLocaleLowerCase("en-US");
+
+  return mode === undefined || mode !== "url";
+};
+
+const literalTopicTermsFromSearchQuery = (value: string): readonly string[] => {
+  if (urlPresencePattern.test(value) || value.length > 160) {
+    return [];
+  }
+
+  return tokenize(value).filter(
+    (token) =>
+      !topicOperatorTerms.has(token) &&
+      (token.length >= 3 ||
+        shortTopicTerms.has(token) ||
+        languageTopicTerms.has(token)),
+  );
+};
+
 const sourceCommunityTermsFromMetadata = (
   metadata: JsonObject | undefined,
 ): readonly string[] =>
@@ -159,10 +217,36 @@ const sourceCommunityTermsFromMetadata = (
       readString(metadata?.community),
       readString(metadata?.channel),
       readString(metadata?.forum),
+      ...communityDefaultsForMetadata(metadata),
     ]
       .filter((value): value is string => value !== undefined)
       .flatMap(communityTopicTerms),
   );
+
+const communityDefaultsForMetadata = (
+  metadata: JsonObject | undefined,
+): readonly string[] => {
+  const kind = readString(metadata?.kind)?.toLocaleLowerCase("en-US");
+  const feedUrl = readString(metadata?.feedUrl)?.toLocaleLowerCase("en-US");
+
+  if (kind === "hacker_news_story" || feedUrl?.includes("hnrss.org") === true) {
+    return ["hacker news", "developer technology programming software"];
+  }
+
+  if (kind === "rss_item" && feedUrl?.includes("openai.com") === true) {
+    return ["openai artificial intelligence model developer"];
+  }
+
+  if (kind === "rss_item" && feedUrl?.includes("github.blog") === true) {
+    return ["github developer open source programming"];
+  }
+
+  if (kind === "rss_item" && feedUrl?.includes("cloudflare.com") === true) {
+    return ["cloudflare infrastructure developer security"];
+  }
+
+  return [];
+};
 
 const hasTopicMatch = (params: {
   readonly topicTerms: readonly string[];
@@ -259,7 +343,7 @@ const tcoUrlPattern = /https?:\/\/t\.co\/[a-z0-9_-]+/iu;
 const cryptoPromoPattern =
   /\b(?:bingx|airdrop|crypto|web3|defi|trading|trade|token|coin|memecoin|giveaway|prize|rewards?)\b|\$[a-z]{2,12}\b/iu;
 const engagementBaitPattern =
-  /\b(?:drop\s+your|share\s+your|comment\s+below|reply\s+with|retweet|repost|like\s+and|follow\s+for|top\s+\d+)\b/iu;
+  /\b(?:drop\s+your|share\s+your|comment\s+below|reply\s+with|retweet|repost|like\s+and|follow\s+for|top\s+\d+|stop\s+wasting\s+hours?|i\s+have\s+already\s+done\s+it\s+for\s+you|with\s+one\s+list|zero\s+confusion|no\s+fluff)\b/iu;
 const promoOfferPattern =
   /\b(?:all\s+paid\s+courses?|paid\s+courses?|free\s+courses?|free\s+for\s+(?:the\s+)?first|first\s+\d{2,6}\s+people|limited\s+spots?|claim\s+(?:your\s+)?free|course\s+giveaway|free\s+access)\b/iu;
 const predictionMarketPattern =
@@ -276,6 +360,8 @@ const aiCodingToolPattern =
   /\b(?:claude\s+code|codex|cursor|copilot|ai\s+agent|coding\s+agent)\b/iu;
 const medicalContextPattern =
   /\b(?:mri|ct\s+scan|scan|diagnos(?:is|e|ed)|doctor|medical|medicine|clinical|hospital|patient|cancer|tumou?r|symptom|therapy|treatment|prescription)\b/iu;
+const legacyCoreTopicSignalPattern =
+  /\b(?:ai|a\.i\.|artificial\s+intelligence|llm|llms|gpt|openai|anthropic|claude|codex|cursor|copilot|mcp|model|models|agentic|agent|agents|inference|token|tokens|neural|machine\s+learning|deep\s+learning|deepfake|cybersecurity|security|privacy|surveillance|geolocation|developer\s+tool|developer\s+tools|coding\s+agent|coding\s+agents|ai-generated\s+code|ai\s+code|vibe-coding)\b/iu;
 const trustedXAuthors = new Set([
   "anthropicai",
   "gdb",
@@ -296,13 +382,26 @@ const topicTermAliases = new Map<string, readonly string[]>([
       "openai",
       "anthropic",
       "claude",
+      "model",
+      "models",
+      "token",
+      "tokens",
+      "inference",
+      "neural",
+      "stochastic",
+      "parrot",
+      "parrots",
     ],
+  ],
+  [
+    "coding",
+    ["code", "programming", "software", "developer", "developers", "dev"],
   ],
   ["ml", ["machine", "learning"]],
   ["agent", ["agents"]],
   ["agents", ["agent"]],
-  ["developer", ["developers"]],
-  ["developers", ["developer"]],
+  ["developer", ["developers", "dev", "software", "engineering"]],
+  ["developers", ["developer", "dev", "software", "engineering"]],
   ["model", ["models"]],
   ["models", ["model"]],
   ["tool", ["tools"]],
@@ -312,6 +411,7 @@ const topicTermAliases = new Map<string, readonly string[]>([
   ["x", ["twitter"]],
 ]);
 const shortTopicTerms = new Set(["ai", "ml", "x"]);
+const languageTopicTerms = new Set(["go", "js", "ts"]);
 const topicOperatorTerms = new Set(["and", "or", "not", "top", "latest"]);
 const stopWords = new Set([
   "and",

@@ -86,14 +86,15 @@ export class RegistrySourceFetcherAdapter implements SourceFetcherPort {
         plan,
         context,
       );
+      const filteredResult = filterByTargetPublishedWindow(result, context);
 
       return {
-        items: result.items,
-        conversationUnits: result.conversationUnits,
-        nextCursor: result.nextCursor,
+        items: filteredResult.items,
+        conversationUnits: filteredResult.conversationUnits,
+        nextCursor: filteredResult.nextCursor,
         warnings: compactUnique([
           ...planned.warnings,
-          ...(result.warnings ?? []),
+          ...(filteredResult.warnings ?? []),
         ]),
       };
     } catch (error) {
@@ -310,3 +311,69 @@ const mergeSourceQueryParameters = (
 const compactUnique = (values: readonly string[]): readonly string[] => [
   ...new Set(values),
 ];
+
+const filterByTargetPublishedWindow = (
+  result: SourceProviderScanResult,
+  context: SourceProviderScanContext,
+): SourceProviderScanResult => {
+  const window = readTargetPublishedWindow(context.config);
+  if (window === undefined) {
+    return result;
+  }
+
+  const items = result.items.filter(
+    (item) =>
+      item.publishedAt.getTime() >= window.start.getTime() &&
+      item.publishedAt.getTime() < window.end.getTime(),
+  );
+  if (items.length === result.items.length) {
+    return result;
+  }
+
+  const retainedRootExternalIds = new Set(items.map((item) => item.externalId));
+
+  return {
+    ...result,
+    items,
+    conversationUnits: result.conversationUnits?.filter((unit) =>
+      retainedRootExternalIds.has(unit.rootExternalId),
+    ),
+    warnings: compactUnique([
+      ...result.warnings,
+      [
+        'target_published_window.filtered',
+        `kept=${items.length}`,
+        `dropped=${result.items.length - items.length}`,
+      ].join(';'),
+    ]),
+  };
+};
+
+const readTargetPublishedWindow = (
+  config: SourceRuntimeConfig | undefined,
+): { readonly start: Date; readonly end: Date } | undefined => {
+  const raw = readRecord(config?.targetPublishedWindow);
+  const start = readDate(raw?.startInclusive);
+  const end = readDate(raw?.endExclusive);
+
+  return start !== undefined && end !== undefined && start < end
+    ? { start, end }
+    : undefined;
+};
+
+const readRecord = (
+  value: unknown,
+): Readonly<Record<string, unknown>> | undefined =>
+  value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Readonly<Record<string, unknown>>)
+    : undefined;
+
+const readDate = (value: unknown): Date | undefined => {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+
+  const date = new Date(value);
+
+  return Number.isNaN(date.getTime()) ? undefined : date;
+};

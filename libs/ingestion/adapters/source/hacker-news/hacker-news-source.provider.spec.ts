@@ -2,7 +2,10 @@ import { SystemClock, tenantId, workspaceId } from "@social-monitor/shared-kerne
 
 import { certifySourceProvider } from "../testing/source-provider-certification";
 import { FixtureHackerNewsClient } from "./fixture-hacker-news-client";
-import type { HackerNewsClientPort } from "./hacker-news-client.port";
+import type {
+  HackerNewsClientPort,
+  HackerNewsSearchOptions,
+} from "./hacker-news-client.port";
 import { HackerNewsSourceProvider } from "./hacker-news-source.provider";
 
 describe("HackerNewsSourceProvider", () => {
@@ -385,6 +388,114 @@ describe("HackerNewsSourceProvider", () => {
     );
   });
 
+  it("uses target published window for historical search passes", async () => {
+    const client = new RecordingHackerNewsClient();
+    const provider = new HackerNewsSourceProvider(client, new SystemClock());
+    const context = {
+      tenantId: tenantId("tenant-1"),
+      workspaceId: workspaceId("workspace-1"),
+      sourceBindingId: "hn-binding-1",
+      scanJobId: "scan-job-1",
+      correlationId: "correlation-1",
+      config: {
+        maxItems: 4,
+        maxItemAgeHours: 48,
+        targetPublishedWindow: {
+          startInclusive: "2026-07-07T00:00:00.000Z",
+          endExclusive: "2026-07-08T00:00:00.000Z",
+        },
+        scanPasses: [
+          {
+            mode: "search",
+            target: "story",
+            query: "developer tools",
+            maxItems: 2,
+          },
+          {
+            mode: "search",
+            target: "comment",
+            query: "model context protocol",
+            maxItems: 2,
+          },
+        ],
+      },
+    };
+
+    await provider.scan(
+      provider.planScan({ mode: "search", query: "monitoring" }, context),
+      context,
+    );
+
+    expect(client.storySearchOptions).toEqual([
+      {
+        from: new Date("2026-07-07T00:00:00.000Z"),
+        to: new Date("2026-07-08T00:00:00.000Z"),
+      },
+    ]);
+    expect(client.commentSearchOptions).toEqual([
+      {
+        from: new Date("2026-07-07T00:00:00.000Z"),
+        to: new Date("2026-07-08T00:00:00.000Z"),
+      },
+    ]);
+  });
+
+  it("uses dated search instead of live listings for historical listing passes", async () => {
+    const client = new RecordingHackerNewsClient();
+    const provider = new HackerNewsSourceProvider(client, new SystemClock());
+    const context = {
+      tenantId: tenantId("tenant-1"),
+      workspaceId: workspaceId("workspace-1"),
+      sourceBindingId: "hn-binding-1",
+      scanJobId: "scan-job-1",
+      correlationId: "correlation-1",
+      config: {
+        maxItems: 4,
+        targetPublishedWindow: {
+          startInclusive: "2026-07-07T00:00:00.000Z",
+          endExclusive: "2026-07-08T00:00:00.000Z",
+        },
+        scanPasses: [
+          {
+            mode: "listing",
+            listing: "top",
+            maxItems: 2,
+          },
+          {
+            mode: "listing",
+            listing: "ask",
+            maxItems: 2,
+            requiredKeywords: ["ai", "developer"],
+          },
+        ] as const,
+      },
+    };
+
+    await provider.scan(
+      provider.planScan(
+        { mode: "search", query: "AI developer Hacker News discovery" },
+        context,
+      ),
+      context,
+    );
+
+    expect(client.listStoryCalls).toEqual([]);
+    expect(client.storySearchQueries).toEqual([
+      "AI developer Hacker News discovery",
+      "ai developer",
+    ]);
+    expect(client.storySearchOptions).toEqual([
+      {
+        from: new Date("2026-07-07T00:00:00.000Z"),
+        to: new Date("2026-07-08T00:00:00.000Z"),
+      },
+      {
+        from: new Date("2026-07-07T00:00:00.000Z"),
+        to: new Date("2026-07-08T00:00:00.000Z"),
+      },
+    ]);
+  });
+
   it("skips stale multi-pass search hits when maxItemAgeHours is configured", async () => {
     const nowSeconds = Math.floor(Date.now() / 1000);
     const client = {
@@ -563,11 +674,17 @@ describe("HackerNewsSourceProvider", () => {
 
 class RecordingHackerNewsClient implements HackerNewsClientPort {
   readonly storySearchQueries: string[] = [];
+  readonly storySearchOptions: (HackerNewsSearchOptions | undefined)[] = [];
+  readonly commentSearchOptions: (HackerNewsSearchOptions | undefined)[] = [];
+  readonly listStoryCalls: string[] = [];
 
   async searchStories(
     query: string,
+    _limit: number,
+    options?: HackerNewsSearchOptions,
   ): Promise<Awaited<ReturnType<HackerNewsClientPort["searchStories"]>>> {
     this.storySearchQueries.push(query);
+    this.storySearchOptions.push(options);
 
     return [
       {
@@ -578,9 +695,14 @@ class RecordingHackerNewsClient implements HackerNewsClientPort {
     ];
   }
 
-  async searchComments(): Promise<
+  async searchComments(
+    _query?: string,
+    _limit?: number,
+    options?: HackerNewsSearchOptions,
+  ): Promise<
     Awaited<ReturnType<HackerNewsClientPort["searchComments"]>>
   > {
+    this.commentSearchOptions.push(options);
     return [];
   }
 
@@ -594,9 +716,14 @@ class RecordingHackerNewsClient implements HackerNewsClientPort {
     return [];
   }
 
-  async listStories(): Promise<
+  async listStories(
+    listing?: Parameters<HackerNewsClientPort["listStories"]>[0],
+  ): Promise<
     Awaited<ReturnType<HackerNewsClientPort["listStories"]>>
   > {
+    if (listing !== undefined) {
+      this.listStoryCalls.push(listing);
+    }
     return [];
   }
 }

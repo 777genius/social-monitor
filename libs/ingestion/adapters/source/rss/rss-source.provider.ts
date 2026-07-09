@@ -46,6 +46,11 @@ type SourcedRssFeedItem = {
   readonly index: number;
 };
 
+type TargetPublishedWindow = {
+  readonly startInclusive: Date;
+  readonly endExclusive: Date;
+};
+
 const capabilityProfile: SourceCapabilityProfile = {
   providerKey: "rss",
   displayName: "RSS/Atom",
@@ -106,36 +111,46 @@ export class RssSourceProvider implements SourceProviderPort {
       context.config?.maxItemAgeHours,
       24 * 31,
     );
-    const feedUrls = readFeedUrls(plan.query.query, context.config);
+    const targetWindow = readTargetPublishedWindow(context.config);
+    const feedUrls = feedUrlsForTargetWindow(
+      readFeedUrls(plan.query.query, context.config),
+      targetWindow,
+    );
 
     if (feedUrls.length === 1) {
+      const feedUrl = feedUrls[0] ?? plan.query.query;
       const feed = await this.client.readFeed(
-        plan.query.query,
+        feedUrl,
         plan.maxItems,
         decodeCursor(plan.cursor),
       );
-      const filteredItems = filterItemsByRelativeAge(
+      const filteredItems = filterItemsForWindow(
         feed.items,
         maxItemAgeHours,
+        targetWindow,
       );
 
       return {
         items: filteredItems.flatMap((item, index) =>
-          normalizeItem(item, index, plan.query.query),
+          normalizeItem(item, index, feedUrl),
         ),
         nextCursor: encodeCursor(feed, plan.cursor),
         warnings: [
           ...rssWarnings(feed.items),
-          ...rssRecencyWarnings(feed.items, filteredItems, maxItemAgeHours),
+          ...rssRecencyWarnings(
+            feed.items,
+            filteredItems,
+            targetWindow === undefined ? maxItemAgeHours : undefined,
+          ),
         ],
       };
     }
 
     const feedCursor = decodeMultiFeedCursor(plan.cursor);
-    const perFeedLimit = Math.max(
-      1,
-      Math.ceil(plan.maxItems / feedUrls.length),
-    );
+    const perFeedLimit =
+      targetWindow === undefined
+        ? Math.max(1, Math.ceil(plan.maxItems / feedUrls.length))
+        : plan.maxItems;
     const feedResults = await Promise.all(
       feedUrls.map((feedUrl) =>
         readFeedSafely(
@@ -167,6 +182,7 @@ export class RssSourceProvider implements SourceProviderPort {
     const filteredSourcedItems = filterSourcedItemsByRelativeAge(
       sourcedItems,
       maxItemAgeHours,
+      targetWindow,
     );
     const allItems = sourcedItems.map(({ item }) => item);
     const filteredItems = filteredSourcedItems.map(({ item }) => item);
@@ -185,7 +201,11 @@ export class RssSourceProvider implements SourceProviderPort {
       warnings: [
         ...feedReadWarnings,
         ...rssWarnings(allItems),
-        ...rssRecencyWarnings(allItems, filteredItems, maxItemAgeHours),
+        ...rssRecencyWarnings(
+          allItems,
+          filteredItems,
+          targetWindow === undefined ? maxItemAgeHours : undefined,
+        ),
       ],
     };
   }
@@ -309,6 +329,98 @@ const searchQueryFromFeedUrl = (feedUrl: string): string | undefined => {
   }
 };
 
+const readTargetPublishedWindow = (
+  config: SourceProviderScanContext["config"],
+): TargetPublishedWindow | undefined => {
+  const raw = config?.targetPublishedWindow;
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+    return undefined;
+  }
+
+  const record = raw as Record<string, unknown>;
+  const start = readDate(record.startInclusive);
+  const end = readDate(record.endExclusive);
+
+  return start === undefined ||
+    end === undefined ||
+    start.getTime() >= end.getTime()
+    ? undefined
+    : { startInclusive: start, endExclusive: end };
+};
+
+const readDate = (value: unknown): Date | undefined => {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const date = new Date(value);
+
+  return Number.isNaN(date.getTime()) ? undefined : date;
+};
+
+const feedUrlsForTargetWindow = (
+  feedUrls: readonly string[],
+  targetWindow: TargetPublishedWindow | undefined,
+): readonly string[] =>
+  targetWindow === undefined
+    ? feedUrls
+    : feedUrls.flatMap((feedUrl) =>
+        googleNewsHistoricalFeedUrls(feedUrl, targetWindow) ?? [feedUrl],
+      );
+
+const googleNewsHistoricalFeedUrls = (
+  feedUrl: string,
+  targetWindow: TargetPublishedWindow,
+): readonly string[] | undefined => {
+  try {
+    const parsed = new URL(feedUrl);
+    if (
+      parsed.hostname !== "news.google.com" ||
+      parsed.pathname !== "/rss/search"
+    ) {
+      return undefined;
+    }
+    const query = parsed.searchParams.get("q")?.trim();
+    if (query === undefined || query.length === 0) {
+      return undefined;
+    }
+    const queryTerms = historicalGoogleNewsQueryTerms(query);
+
+    return queryTerms.map((term) => {
+      const historicalUrl = new URL(parsed.toString());
+      historicalUrl.searchParams.set(
+        "q",
+        `${term} after:${dateToken(targetWindow.startInclusive)} before:${dateToken(
+          targetWindow.endExclusive,
+        )}`,
+      );
+
+      return historicalUrl.toString();
+    });
+  } catch {
+    return undefined;
+  }
+};
+
+const maxHistoricalGoogleNewsFeeds = 12;
+
+const historicalGoogleNewsQueryTerms = (query: string): readonly string[] => {
+  const normalized = queryWithoutRelativeWindow(query);
+  const terms = normalized
+    .split(/\s+OR\s+/iu)
+    .map((term) => term.trim())
+    .filter((term) => term.length > 0);
+
+  return (terms.length === 0 ? [normalized] : terms).slice(
+    0,
+    maxHistoricalGoogleNewsFeeds,
+  );
+};
+
+const queryWithoutRelativeWindow = (query: string): string =>
+  query.replace(/\bwhen:\d+[dhm]\b/giu, "").replace(/\s+/gu, " ").trim();
+
+const dateToken = (date: Date): string => date.toISOString().slice(0, 10);
+
 const rssWarnings = (items: readonly RssFeedItem[]): readonly string[] => [
   ...(items.some(
     (item) =>
@@ -378,13 +490,32 @@ const rssRecencyWarnings = (
       ]
     : [];
 
+const filterItemsForWindow = (
+  items: readonly RssFeedItem[],
+  maxItemAgeHours: number | undefined,
+  targetWindow: TargetPublishedWindow | undefined,
+): readonly RssFeedItem[] =>
+  targetWindow === undefined
+    ? filterItemsByRelativeAge(items, maxItemAgeHours)
+    : items.filter((item) => isInsideTargetWindow(item, targetWindow));
+
+const isInsideTargetWindow = (
+  item: RssFeedItem,
+  targetWindow: TargetPublishedWindow,
+): boolean =>
+  item.publishedAt === undefined ||
+  (item.publishedAt >= targetWindow.startInclusive &&
+    item.publishedAt < targetWindow.endExclusive);
+
 const filterSourcedItemsByRelativeAge = (
   entries: readonly SourcedRssFeedItem[],
   maxItemAgeHours: number | undefined,
+  targetWindow: TargetPublishedWindow | undefined,
 ): readonly SourcedRssFeedItem[] => {
-  const filteredItems = filterItemsByRelativeAge(
+  const filteredItems = filterItemsForWindow(
     entries.map(({ item }) => item),
     maxItemAgeHours,
+    targetWindow,
   );
   const filteredSet = new Set(filteredItems);
 

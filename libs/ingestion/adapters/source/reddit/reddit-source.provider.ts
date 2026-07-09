@@ -10,7 +10,12 @@ import type {
   SourceQuery,
 } from "../../../ports";
 import { redditCapabilityProfile } from "./reddit-capability-profile";
-import type { RedditClientPort, RedditListingPage } from "./reddit-client.port";
+import type {
+  RedditClientPort,
+  RedditListingPage,
+  RedditPost,
+  RedditTopTime,
+} from "./reddit-client.port";
 import type { RedditRefreshTokenProviderPort } from "./refresh-token-reddit-token-provider";
 import {
   fetchSelectedRedditCandidateComments,
@@ -318,6 +323,7 @@ export class RedditSourceProvider implements SourceProviderPort {
       firstPageLimit: params.plan.maxItems,
     });
     const paginationPolicy = pagination.enabled ? pagination.policy : undefined;
+    const targetPublishedWindow = readTargetPublishedWindow(params.config);
     const candidatesByExternalId = new Map<string, RedditScanCandidate>();
     const warnings: string[] = [];
     let failedPasses = 0;
@@ -352,7 +358,12 @@ export class RedditSourceProvider implements SourceProviderPort {
                   subreddit: pass.subreddit,
                   listing: pass.listing,
                   ...(pass.listing === "top"
-                    ? { topTime: pass.topTime ?? "day" }
+                    ? {
+                        topTime: redditTopTimeForTargetWindow(
+                          pass.topTime ?? "day",
+                          targetPublishedWindow,
+                        ),
+                      }
                     : {}),
                   limit,
                   after: cursor,
@@ -383,6 +394,7 @@ export class RedditSourceProvider implements SourceProviderPort {
           pass.mode === "search"
             ? filterPostsByAllowedSubreddits(page.posts, pass.allowedSubreddits)
             : page.posts;
+        const windowStats = pageTargetWindowStats(posts, targetPublishedWindow);
 
         for (const post of posts) {
           if (passNewItemCount >= limit) {
@@ -394,6 +406,10 @@ export class RedditSourceProvider implements SourceProviderPort {
             minScore,
             sourceQueryLaneForPass(pass, limit),
           )) {
+            if (!isInsideTargetPublishedWindow(item, targetPublishedWindow)) {
+              continue;
+            }
+
             if (passNewItemCount >= limit) {
               break;
             }
@@ -428,6 +444,17 @@ export class RedditSourceProvider implements SourceProviderPort {
         const nextCursor = page.after;
         if (nextCursor === undefined || nextCursor === cursor) {
           break;
+        }
+
+        if (
+          shouldContinuePastEmptyTargetWindowPage({
+            pageNewItemCount,
+            pageDuplicateItemCount,
+            windowStats,
+          })
+        ) {
+          cursor = nextCursor;
+          continue;
         }
 
         const pageItemCount = pageNewItemCount + pageDuplicateItemCount;
@@ -497,6 +524,103 @@ const formatScanPassWarning = (
 
   return `Reddit scan pass degraded (${redditScanPassLabel(pass)}): ${redactSensitiveText(message)}`;
 };
+
+type TargetPublishedWindow = {
+  readonly startInclusive: Date;
+  readonly endExclusive: Date;
+};
+
+type TargetWindowStats = {
+  readonly newerCount: number;
+  readonly insideCount: number;
+  readonly olderCount: number;
+};
+
+const readTargetPublishedWindow = (
+  config: SourceProviderScanContext["config"],
+): TargetPublishedWindow | undefined => {
+  const raw = config?.targetPublishedWindow;
+  if (raw === undefined || typeof raw !== "object" || raw === null) {
+    return undefined;
+  }
+
+  const record = raw as Record<string, unknown>;
+  const start = dateFromUnknown(record.startInclusive);
+  const end = dateFromUnknown(record.endExclusive);
+  if (start === undefined || end === undefined || start >= end) {
+    return undefined;
+  }
+
+  return { startInclusive: start, endExclusive: end };
+};
+
+const dateFromUnknown = (value: unknown): Date | undefined => {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    return undefined;
+  }
+
+  const date = new Date(value);
+
+  return Number.isNaN(date.getTime()) ? undefined : date;
+};
+
+const redditTopTimeForTargetWindow = (
+  requested: RedditTopTime,
+  targetPublishedWindow: TargetPublishedWindow | undefined,
+): RedditTopTime =>
+  targetPublishedWindow !== undefined && requested === "day"
+    ? "week"
+    : requested;
+
+const isInsideTargetPublishedWindow = (
+  item: { readonly publishedAt: Date },
+  targetPublishedWindow: TargetPublishedWindow | undefined,
+): boolean =>
+  targetPublishedWindow === undefined ||
+  (item.publishedAt >= targetPublishedWindow.startInclusive &&
+    item.publishedAt < targetPublishedWindow.endExclusive);
+
+const pageTargetWindowStats = (
+  posts: readonly RedditPost[],
+  targetPublishedWindow: TargetPublishedWindow | undefined,
+): TargetWindowStats => {
+  if (targetPublishedWindow === undefined) {
+    return { newerCount: 0, insideCount: posts.length, olderCount: 0 };
+  }
+
+  return posts.reduce(
+    (stats, post) => {
+      const createdAt =
+        post.createdUtc === undefined
+          ? undefined
+          : new Date(post.createdUtc * 1000);
+      if (createdAt === undefined || Number.isNaN(createdAt.getTime())) {
+        return stats;
+      }
+
+      if (createdAt >= targetPublishedWindow.endExclusive) {
+        return { ...stats, newerCount: stats.newerCount + 1 };
+      }
+
+      if (createdAt < targetPublishedWindow.startInclusive) {
+        return { ...stats, olderCount: stats.olderCount + 1 };
+      }
+
+      return { ...stats, insideCount: stats.insideCount + 1 };
+    },
+    { newerCount: 0, insideCount: 0, olderCount: 0 },
+  );
+};
+
+const shouldContinuePastEmptyTargetWindowPage = (params: {
+  readonly pageNewItemCount: number;
+  readonly pageDuplicateItemCount: number;
+  readonly windowStats: TargetWindowStats;
+}): boolean =>
+  params.windowStats.insideCount === 0 &&
+  params.windowStats.newerCount > 0 &&
+  params.windowStats.olderCount === 0 &&
+  params.pageNewItemCount + params.pageDuplicateItemCount === 0;
 
 const redditScanPassLabel = (pass: RedditScanPass): string =>
   pass.mode === "listing"

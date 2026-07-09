@@ -90,6 +90,30 @@ describe("SourceContentQualityPolicy", () => {
     );
   });
 
+  it("keeps resource-bait X lists out of top reads even with engagement", () => {
+    const verdict = policy.evaluate({
+      providerKey: "x-twitter",
+      authorHandle: "Tanaypawar27",
+      title:
+        "Stop wasting hours trying to learn AI. I have already done it for you.",
+      bodyPreview:
+        "With one list. Zero confusion. And no fluff. Videos: LLM Introduction, LLMs from Scratch, Agentic AI Overview.",
+      canonicalUrl: "https://x.com/Tanaypawar27/status/2073979626037391694",
+      providerMetadata: {
+        kind: "x_post",
+        searchQuery: "openai anthropic claude llm",
+        likes: 269,
+        reposts: 111,
+        replies: 35,
+      },
+    });
+
+    expect(verdict.decision).toBe("downrank");
+    expect(verdict.eligibleForSummary).toBe(true);
+    expect(verdict.eligibleForTopRead).toBe(false);
+    expect(verdict.flags).toEqual(expect.arrayContaining(["engagement_bait"]));
+  });
+
   it("promotes self-contained topical X posts", () => {
     const verdict = policy.evaluate({
       providerKey: "x-twitter",
@@ -290,6 +314,220 @@ describe("SourceContentQualityPolicy", () => {
         subreddit: "programming",
         numComments: 49,
         searchQuery: "AI technology programming developer tools",
+      },
+    });
+
+    expect(verdict.decision).toBe("promote");
+    expect(verdict.eligibleForSummary).toBe(true);
+    expect(verdict.eligibleForTopRead).toBe(true);
+    expect(verdict.flags).not.toContain("weak_topic_match");
+  });
+
+  it("uses nested interest query metadata to downrank off-topic HN discovery items", () => {
+    const verdict = policy.evaluate({
+      providerKey: "hacker-news",
+      title:
+        "Nintendo announces new product revisions in Europe with replaceable batteries",
+      bodyPreview:
+        "HN discussion about consumer hardware battery revisions in Europe.",
+      canonicalUrl: "https://news.ycombinator.com/item?id=48804193",
+      providerMetadata: {
+        kind: "hacker_news_story",
+        points: 275,
+        comments: 171,
+        interestQuerySnapshot: {
+          query: "Claude Codex OpenAI coding agents AI developer tools",
+        },
+        sourceBindingSnapshot: {
+          sourceQuery: {
+            mode: "search",
+            query: "AI developer Hacker News discovery",
+          },
+        },
+      },
+    });
+
+    expect(verdict.decision).toBe("downrank");
+    expect(verdict.eligibleForSummary).toBe(true);
+    expect(verdict.eligibleForTopRead).toBe(false);
+    expect(verdict.flags).toEqual(expect.arrayContaining(["weak_topic_match"]));
+  });
+
+  it("keeps legacy HN game-engine Fable matches out of top reads without topic context", () => {
+    const verdict = policy.evaluate({
+      providerKey: "hacker-news",
+      title:
+        "Command and Conquer Generals natively ported to macOS, iPhone, iPad using Fable",
+      bodyPreview: "",
+      canonicalUrl: "https://news.ycombinator.com/item?id=48788283",
+      providerMetadata: {
+        kind: "hacker_news_story",
+        points: 130,
+        comments: 67,
+      },
+    });
+
+    expect(verdict.decision).toBe("downrank");
+    expect(verdict.eligibleForSummary).toBe(true);
+    expect(verdict.eligibleForTopRead).toBe(false);
+    expect(verdict.flags).toEqual(
+      expect.arrayContaining(["missing_topic_context"]),
+    );
+  });
+
+  it("keeps legacy HN AI-code items eligible through explicit core topic signals", () => {
+    const verdict = policy.evaluate({
+      providerKey: "hacker-news",
+      title: "We charge $10k a week to delete AI-generated code",
+      bodyPreview:
+        "HN discussion about maintenance costs after teams adopt coding agents.",
+      canonicalUrl: "https://news.ycombinator.com/item?id=48830001",
+      providerMetadata: {
+        kind: "hacker_news_story",
+        points: 214,
+        comments: 91,
+      },
+    });
+
+    expect(verdict.decision).toBe("promote");
+    expect(verdict.eligibleForSummary).toBe(true);
+    expect(verdict.eligibleForTopRead).toBe(true);
+    expect(verdict.flags).toEqual(
+      expect.arrayContaining(["missing_topic_context"]),
+    );
+  });
+
+  it("keeps legacy HN privacy-policy items eligible through explicit core topic signals", () => {
+    const verdict = policy.evaluate({
+      providerKey: "hacker-news",
+      title: "Virginia bans sale of geolocation data",
+      bodyPreview:
+        "HN discussion about privacy, surveillance and brokered mobile location data.",
+      canonicalUrl: "https://news.ycombinator.com/item?id=48830002",
+      providerMetadata: {
+        kind: "hacker_news_story",
+        points: 341,
+        comments: 188,
+      },
+    });
+
+    expect(verdict.decision).toBe("promote");
+    expect(verdict.eligibleForSummary).toBe(true);
+    expect(verdict.eligibleForTopRead).toBe(true);
+    expect(verdict.flags).toEqual(
+      expect.arrayContaining(["missing_topic_context"]),
+    );
+  });
+
+  it("keeps AI dev-kit HN items eligible through developer query aliases", () => {
+    const verdict = policy.evaluate({
+      providerKey: "hacker-news",
+      title: "AMD Ryzen AI Halo - $4k AI Dev Kit",
+      bodyPreview:
+        "Developers discuss local AI inference hardware and workstation workflows.",
+      canonicalUrl: "https://news.ycombinator.com/item?id=48805624",
+      providerMetadata: {
+        kind: "hacker_news_story",
+        points: 222,
+        comments: 162,
+        interestQuerySnapshot: {
+          query: "Claude Codex OpenAI coding agents AI developer tools",
+        },
+        sourceBindingSnapshot: {
+          sourceQuery: {
+            mode: "search",
+            query: "AI developer Hacker News discovery",
+          },
+        },
+      },
+    });
+
+    expect(verdict.decision).toBe("promote");
+    expect(verdict.eligibleForSummary).toBe(true);
+    expect(verdict.eligibleForTopRead).toBe(true);
+    expect(verdict.flags).not.toContain("weak_topic_match");
+  });
+
+  it("keeps AI token-pricing HN discussions eligible through technical community context", () => {
+    const verdict = policy.evaluate({
+      providerKey: "hacker-news",
+      title: "Price per 1M tokens is meaningless",
+      bodyPreview:
+        "HN discussion about model pricing, inference workloads and token cost measurement.",
+      canonicalUrl: "https://news.ycombinator.com/item?id=48800000",
+      providerMetadata: {
+        kind: "hacker_news_story",
+        points: 42,
+        comments: 17,
+        interestQuerySnapshot: {
+          query: "Claude Codex OpenAI coding agents AI developer tools",
+        },
+        sourceBindingSnapshot: {
+          sourceQuery: {
+            mode: "search",
+            query: "AI developer Hacker News discovery",
+          },
+        },
+      },
+    });
+
+    expect(verdict.decision).toBe("promote");
+    expect(verdict.eligibleForSummary).toBe(true);
+    expect(verdict.eligibleForTopRead).toBe(true);
+    expect(verdict.flags).not.toContain("weak_topic_match");
+  });
+
+  it("keeps HN RSS token-pricing items eligible through feed community context", () => {
+    const verdict = policy.evaluate({
+      providerKey: "rss",
+      title: "Price per 1M tokens is meaningless",
+      bodyPreview:
+        "Article URL: https://janilowski.pl/en/blog/2026/price-per-m-tokens/ Comments URL: https://news.ycombinator.com/item?id=48809542",
+      canonicalUrl: "https://janilowski.pl/en/blog/2026/price-per-m-tokens/",
+      providerMetadata: {
+        kind: "rss_item",
+        feedUrl: "https://hnrss.org/frontpage",
+        interestQuerySnapshot: {
+          query: "Claude Codex OpenAI coding agents AI developer tools",
+        },
+        sourceBindingSnapshot: {
+          sourceQuery: {
+            mode: "url",
+            query:
+              "https://news.google.com/rss/search?q=OpenAI%20OR%20Claude%20OR%20developer%20tools",
+          },
+        },
+      },
+    });
+
+    expect(verdict.decision).toBe("promote");
+    expect(verdict.eligibleForSummary).toBe(true);
+    expect(verdict.eligibleForTopRead).toBe(true);
+    expect(verdict.flags).not.toContain("weak_topic_match");
+  });
+
+  it("uses concise RSS search queries as topic terms without trusting long feed URLs", () => {
+    const verdict = policy.evaluate({
+      providerKey: "rss",
+      title:
+        "Bumblebee: A zero-dependency Go scanner for malicious MCP servers and extensions",
+      bodyPreview:
+        "Article URL: https://github.com/perplexityai/bumblebee Comments URL: https://news.ycombinator.com/item?id=48809896",
+      canonicalUrl: "https://github.com/perplexityai/bumblebee",
+      providerMetadata: {
+        kind: "rss_item",
+        feedUrl: "https://hnrss.org/newest?q=Go",
+        searchQuery: "Go",
+        interestQuerySnapshot: {
+          query: "Claude Codex OpenAI coding agents AI developer tools",
+        },
+        sourceBindingSnapshot: {
+          sourceQuery: {
+            mode: "url",
+            query:
+              "https://news.google.com/rss/search?q=OpenAI%20OR%20Claude%20OR%20developer%20tools",
+          },
+        },
       },
     });
 

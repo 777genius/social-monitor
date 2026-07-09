@@ -276,6 +276,132 @@ describe("RssSourceProvider", () => {
     );
   });
 
+  it("rewrites Google News RSS feeds for historical target windows", async () => {
+    const reads: {
+      readonly feedUrl: string;
+      readonly limit: number;
+      readonly options: unknown;
+    }[] = [];
+    const feedUrl =
+      "https://news.google.com/rss/search?q=OpenAI%20OR%20Claude%20when%3A1d&hl=en-US&gl=US&ceid=US:en";
+    const client = {
+      async readFeed(readUrl, limit, options) {
+        reads.push({ feedUrl: readUrl, limit, options });
+
+        const query = new URL(readUrl).searchParams.get("q") ?? "unknown";
+
+        return {
+          items: [
+            {
+              guid: `${query}:before-window`,
+              link: "https://example.test/rss/before-window",
+              title: "Before window",
+              content: "Must be filtered out.",
+              publishedAt: new Date("2026-07-06T23:59:59.000Z"),
+            },
+            {
+              guid: `${query}:inside-window`,
+              link: "https://example.test/rss/inside-window",
+              title: "Inside window",
+              content: "Must survive target window filtering.",
+              publishedAt: new Date("2026-07-07T12:00:00.000Z"),
+            },
+            {
+              guid: `${query}:after-window`,
+              link: "https://example.test/rss/after-window",
+              title: "After window",
+              content: "Must be filtered out.",
+              publishedAt: new Date("2026-07-08T00:00:00.000Z"),
+            },
+          ],
+          etag: '"historical-google-news"',
+        };
+      },
+    } satisfies RssClientPort;
+    const provider = new RssSourceProvider(client);
+    const context = {
+      tenantId: tenantId("tenant-1"),
+      workspaceId: workspaceId("workspace-1"),
+      sourceBindingId: "rss-binding-1",
+      scanJobId: "scan-job-1",
+      correlationId: "correlation-1",
+      config: {
+        targetPublishedWindow: {
+          startInclusive: "2026-07-07T00:00:00.000Z",
+          endExclusive: "2026-07-08T00:00:00.000Z",
+        },
+      },
+    };
+
+    const result = await provider.scan(
+      provider.planScan({ mode: "url", query: feedUrl }, context),
+      context,
+    );
+
+    expect(
+      reads.map((read) => new URL(read.feedUrl).searchParams.get("q")),
+    ).toEqual([
+      "OpenAI after:2026-07-07 before:2026-07-08",
+      "Claude after:2026-07-07 before:2026-07-08",
+    ]);
+    expect(result.items.map((item) => item.externalId)).toEqual([
+      "OpenAI after:2026-07-07 before:2026-07-08:inside-window",
+      "Claude after:2026-07-07 before:2026-07-08:inside-window",
+    ]);
+    expect(result.warnings).not.toContain(
+      "Some RSS items were older than maxItemAgeHours=744; they were skipped.",
+    );
+  });
+
+  it("does not dilute per-feed reads during historical multi-feed backfill", async () => {
+    const reads: {
+      readonly feedUrl: string;
+      readonly limit: number;
+    }[] = [];
+    const primaryFeedUrl = "https://example.test/feed.xml";
+    const extraFeedUrl = "https://hnrss.org/newest?q=Claude%20Code";
+    const client = {
+      async readFeed(feedUrl, limit) {
+        reads.push({ feedUrl, limit });
+
+        return {
+          items: [
+            {
+              guid: `${feedUrl}:inside-window`,
+              link: `${feedUrl.replace(/\?.*$/u, "")}/inside-window`,
+              title: "Inside historical window",
+              content: "A historical item.",
+              publishedAt: new Date("2026-07-07T12:00:00.000Z"),
+            },
+          ],
+        };
+      },
+    } satisfies RssClientPort;
+    const provider = new RssSourceProvider(client);
+    const context = {
+      tenantId: tenantId("tenant-1"),
+      workspaceId: workspaceId("workspace-1"),
+      sourceBindingId: "rss-binding-1",
+      scanJobId: "scan-job-1",
+      correlationId: "correlation-1",
+      config: {
+        maxItems: 30,
+        feedUrls: [extraFeedUrl],
+        targetPublishedWindow: {
+          startInclusive: "2026-07-07T00:00:00.000Z",
+          endExclusive: "2026-07-08T00:00:00.000Z",
+        },
+      },
+    };
+
+    await provider.scan(
+      provider.planScan({ mode: "url", query: primaryFeedUrl }, context),
+      context,
+    );
+
+    expect(reads.map((read) => read.limit)).toEqual([30, 30]);
+  });
+
   it("keeps successful multi-feed RSS reads when one extra feed times out", async () => {
     const primaryFeedUrl = "https://example.test/feed.xml";
     const slowFeedUrl = "https://hnrss.org/newest?q=AI%20agents";

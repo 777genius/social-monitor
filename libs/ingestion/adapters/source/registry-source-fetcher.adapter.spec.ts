@@ -93,6 +93,43 @@ describe('RegistrySourceFetcherAdapter', () => {
     });
   });
 
+  it('filters scanned items and conversation units to the requested published window', async () => {
+    const provider = new WindowedProvider();
+    const fetcher = new RegistrySourceFetcherAdapter(
+      new InMemorySourceProviderRegistry([provider], []),
+      {
+        async readConfig() {
+          return {
+            targetPublishedWindow: {
+              startInclusive: '2026-07-07T00:00:00.000Z',
+              endExclusive: '2026-07-08T00:00:00.000Z',
+            },
+          };
+        },
+      } satisfies SourceConfigReaderPort,
+    );
+
+    const result = await fetcher.fetch({
+      tenantId: tenantId('tenant-registry-fetcher'),
+      workspaceId: workspaceId('workspace-registry-fetcher'),
+      sourceBindingId: 'source-binding-registry-fetcher',
+      scanJobId: 'scan-job-registry-fetcher',
+      providerKey: 'windowed-source',
+      sourceQuery: { mode: 'search', query: 'AI agents' },
+      correlationId: 'correlation-registry-fetcher',
+    });
+
+    expect(result.items.map((item) => item.externalId)).toEqual([
+      'inside-window',
+    ]);
+    expect(
+      result.conversationUnits?.map((unit) => unit.rootExternalId),
+    ).toEqual(['inside-window']);
+    expect(result.warnings).toContain(
+      'target_published_window.filtered;kept=1;dropped=1',
+    );
+  });
+
   it('does not call the source query planner when the runtime flag is disabled', async () => {
     class ThrowingPlanner implements SourceQueryPlannerPort {
       async compilePlan(): Promise<SourceQueryPlan> {
@@ -558,6 +595,62 @@ class PagingProvider implements SourceProviderPort {
   }
 }
 
+class WindowedProvider implements SourceProviderPort {
+  key(): string {
+    return 'windowed-source';
+  }
+
+  capabilityProfile(): SourceCapabilityProfile {
+    return {
+      providerKey: 'windowed-source',
+      displayName: 'Windowed Source',
+      version: 1,
+      productionSafe: true,
+      supportedContentUnits: ['post', 'comment'],
+      supportedQueryModes: ['search'],
+      cursorModel: 'opaque',
+      stableIdentity: ['externalId', 'canonicalUrl'],
+      quotaModel: 'none',
+      limitations: [],
+    };
+  }
+
+  validateBinding(query: SourceQuery): SourceProviderValidationResult {
+    return query.mode === 'search'
+      ? { ok: true }
+      : { ok: false, reason: `Unsupported query mode: ${query.mode}` };
+  }
+
+  planScan(query: SourceQuery): SourceProviderScanPlan {
+    return {
+      query,
+      maxItems: 2,
+    };
+  }
+
+  async scan(): Promise<SourceProviderScanResult> {
+    return {
+      items: [
+        fetchedItem('inside-window', '2026-07-07T12:00:00.000Z'),
+        fetchedItem('outside-window', '2026-07-06T12:00:00.000Z'),
+      ],
+      conversationUnits: [
+        conversationUnit('inside-window'),
+        conversationUnit('outside-window'),
+      ],
+      warnings: [],
+    };
+  }
+
+  classifyError(error: unknown): ProviderFailure {
+    return {
+      kind: 'unknown',
+      retryable: false,
+      message: error instanceof Error ? error.message : 'Unknown provider error',
+    };
+  }
+}
+
 const fetchPagingSource = async (provider: PagingProvider) => {
   const fetcher = new RegistrySourceFetcherAdapter(
     new InMemorySourceProviderRegistry([provider], []),
@@ -596,10 +689,25 @@ const lane = (
   ...params,
 });
 
-const fetchedItem = (externalId: string): FetchedSourceItem => ({
+const fetchedItem = (
+  externalId: string,
+  publishedAt = '2026-01-01T00:00:00.000Z',
+): FetchedSourceItem => ({
   externalId,
   canonicalUrl: `https://example.test/${externalId}`,
   title: externalId,
   body: externalId,
-  publishedAt: new Date('2026-01-01T00:00:00.000Z'),
+  publishedAt: new Date(publishedAt),
+});
+
+const conversationUnit = (rootExternalId: string) => ({
+  rootExternalId,
+  rootProviderItemId: rootExternalId,
+  providerUnitId: `${rootExternalId}:comment`,
+  canonicalUrl: `https://example.test/${rootExternalId}#comment`,
+  body: `Comment for ${rootExternalId}`,
+  publishedAt: new Date('2026-07-07T12:30:00.000Z'),
+  threadExternalId: rootExternalId,
+  depth: 0,
+  role: 'top_level_comment' as const,
 });

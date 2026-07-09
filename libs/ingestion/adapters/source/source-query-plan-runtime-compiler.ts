@@ -4,8 +4,8 @@ import type {
   SourceQueryPlannerAccount,
   SourceQueryPlannerCommunity,
   SourceQueryPlannerIntent,
-} from '../../domain';
-import type { SourceQuery, SourceRuntimeConfig } from '../../ports';
+} from "../../domain";
+import type { SourceQuery, SourceRuntimeConfig } from "../../ports";
 import {
   compactRuntimeConfig,
   compactUnique,
@@ -15,7 +15,7 @@ import {
   readOptionalPositiveInteger,
   readRecord,
   readString,
-} from './source-runtime-config-readers';
+} from "./source-runtime-config-readers";
 
 export type SourceQueryPlannerRuntimeCompilation = {
   readonly sourceQuery: SourceQuery;
@@ -39,13 +39,13 @@ export class DefaultSourceQueryPlanRuntimeCompiler implements SourceQueryPlanRun
     readonly runtimeConfig?: SourceRuntimeConfig;
     readonly plan: SourceQueryPlan;
   }): SourceQueryPlannerRuntimeCompilation {
-    if (params.providerKey === 'reddit') {
+    if (params.providerKey === "reddit") {
       return compileRedditPlannedQuery(params);
     }
 
     if (
-      params.providerKey === 'x-twitter' ||
-      params.providerKey === 'x-twitter-experimental-daily'
+      params.providerKey === "x-twitter" ||
+      params.providerKey === "x-twitter-experimental-daily"
     ) {
       return compileXTwitterPlannedQuery(params);
     }
@@ -108,7 +108,7 @@ export const sourceQueryPlannerIntentFromConfig = (params: {
       planner?.communities,
       planner?.subreddits,
       params.config?.communities,
-      ...(params.providerKey === 'reddit'
+      ...(params.providerKey === "reddit"
         ? [params.config?.allowedSubreddits, params.config?.subreddits]
         : []),
     ]),
@@ -129,34 +129,44 @@ export const sourceQueryPlannerIntentFromConfig = (params: {
 
 const compileRedditPlannedQuery = (params: {
   readonly originalSourceQuery: SourceQuery;
+  readonly runtimeConfig?: SourceRuntimeConfig;
   readonly plan: SourceQueryPlan;
 }): SourceQueryPlannerRuntimeCompilation => {
-  const sourceLanes = executableLanes(params.plan, 'reddit');
+  const sourceLanes = executableLanes(params.plan, "reddit");
   const scanLanes = sourceLanes.filter(
-    (lane) => lane.operation !== 'enrichment',
+    (lane) => lane.operation !== "enrichment",
   );
   const enrichmentLanes = sourceLanes.filter(
-    (lane) => lane.operation === 'enrichment',
+    (lane) => lane.operation === "enrichment",
   );
-  const allowedSubreddits = redditAllowedSubredditsFromListings(scanLanes);
-  const scanPasses = scanLanes.flatMap((lane) =>
-    redditScanPassForLane(lane, allowedSubreddits),
+  const baselineScanPasses = redditBaselineScanPassesFromConfig(
+    params.runtimeConfig,
+  );
+  const allowedSubreddits = redditAllowedSubredditsForPlan(
+    scanLanes,
+    params.runtimeConfig,
+  );
+  const scanPasses = mergeRedditScanPasses(
+    scanLanes.flatMap((lane) =>
+      redditScanPassForLane(lane, allowedSubreddits),
+    ),
+    baselineScanPasses,
   );
   const primaryLane = scanLanes[0];
 
   if (scanPasses.length === 0 || primaryLane === undefined) {
     return fallbackCompilation(
       params.originalSourceQuery,
-      'source_query_planner.no_reddit_scan_passes',
+      "source_query_planner.no_reddit_scan_passes",
     );
   }
 
   return {
     sourceQuery: {
-      mode: 'search',
+      mode: "search",
       query: primaryLane.query,
       parameters: compactRuntimeConfig({
-        maxItems: totalMaxItems(scanLanes),
+        maxItems: redditCompilationMaxItems(scanLanes, params.runtimeConfig),
         scanPasses,
         ...redditCommentExpansionParameters(enrichmentLanes),
       }),
@@ -171,8 +181,8 @@ const compileXTwitterPlannedQuery = (params: {
   readonly runtimeConfig?: SourceRuntimeConfig;
   readonly plan: SourceQueryPlan;
 }): SourceQueryPlannerRuntimeCompilation => {
-  const sourceLanes = executableLanes(params.plan, 'x-twitter').filter((lane) =>
-    ['search', 'account_feed', 'mention_search'].includes(lane.operation),
+  const sourceLanes = executableLanes(params.plan, "x-twitter").filter((lane) =>
+    ["search", "account_feed", "mention_search"].includes(lane.operation),
   );
   const maxQueries =
     readOptionalPositiveInteger(
@@ -186,13 +196,13 @@ const compileXTwitterPlannedQuery = (params: {
   if (searchQueries.length === 0 || primaryLane === undefined) {
     return fallbackCompilation(
       params.originalSourceQuery,
-      'source_query_planner.no_x_search_queries',
+      "source_query_planner.no_x_search_queries",
     );
   }
 
   return {
     sourceQuery: {
-      mode: 'search',
+      mode: "search",
       query: primaryLane.query,
       parameters: compactRuntimeConfig({
         maxItems: totalMaxItems(sourceLanes),
@@ -206,7 +216,7 @@ const compileXTwitterPlannedQuery = (params: {
     },
     warnings:
       sourceLanes.length > searchQueries.length
-        ? ['source_query_planner.x_search_queries_capped']
+        ? ["source_query_planner.x_search_queries_capped"]
         : [],
     applied: true,
   };
@@ -222,46 +232,142 @@ const redditScanPassForLane = (
   lane: SourceQueryPlanLane,
   fallbackAllowedSubreddits?: readonly string[],
 ): readonly SourceRuntimeConfig[] => {
-  if (lane.operation === 'listing') {
+  if (lane.operation === "listing") {
     const listing = redditListingFromQuery(lane.query);
 
     return listing === undefined
       ? []
       : [
           compactRuntimeConfig({
-            mode: 'listing',
+            mode: "listing",
             subreddit: listing.subreddit,
             listing: listing.listing,
             maxItems: maxItemsForLane(lane),
-            topTime: readStringParameter(lane, 'topTime'),
+            topTime: readStringParameter(lane, "topTime"),
           }),
         ];
   }
 
-  if (lane.operation !== 'search') {
+  if (lane.operation !== "search") {
     return [];
   }
 
   return [
     compactRuntimeConfig({
-      mode: 'search',
+      mode: "search",
       query: lane.query,
       maxItems: maxItemsForLane(lane),
       searchSort:
-        readStringParameter(lane, 'searchSort') ??
-        (lane.kind === 'general' ? 'new' : undefined),
-      searchTime: readStringParameter(lane, 'searchTime'),
+        readStringParameter(lane, "searchSort") ??
+        (lane.kind === "general" ? "new" : undefined),
+      searchTime: readStringParameter(lane, "searchTime"),
       allowedSubreddits:
-        readStringArrayParameter(lane, 'allowedSubreddits') ??
+        readStringArrayParameter(lane, "allowedSubreddits") ??
         fallbackAllowedSubreddits,
     }),
   ];
 };
 
+const redditBaselineScanPassesFromConfig = (
+  runtimeConfig: SourceRuntimeConfig | undefined,
+): readonly SourceRuntimeConfig[] =>
+  readArray(runtimeConfig?.scanPasses).flatMap((pass) => {
+    const record = readRecord(pass);
+    const mode = readString(record?.mode) ?? "listing";
+
+    if (mode === "listing") {
+      const subreddit = readString(record?.subreddit ?? record?.query);
+      if (subreddit === undefined) {
+        return [];
+      }
+
+      return [
+        compactRuntimeConfig({
+          mode: "listing",
+          subreddit,
+          listing: readString(record?.listing) ?? "top",
+          topTime: readString(record?.topTime),
+          maxItems: readFiniteNumber(record?.maxItems),
+          minScore: readFiniteNumber(record?.minScore),
+          includeComments: readBoolean(record?.includeComments),
+          maxCommentsPerPost: readFiniteNumber(record?.maxCommentsPerPost),
+        }),
+      ];
+    }
+
+    if (mode !== "search") {
+      return [];
+    }
+
+    const query = readString(record?.query);
+    if (query === undefined) {
+      return [];
+    }
+
+    return [
+      compactRuntimeConfig({
+        mode: "search",
+        query,
+        searchSort: readString(record?.searchSort),
+        searchTime: readString(record?.searchTime),
+        maxItems: readFiniteNumber(record?.maxItems),
+        minScore: readFiniteNumber(record?.minScore),
+        includeComments: readBoolean(record?.includeComments),
+        maxCommentsPerPost: readFiniteNumber(record?.maxCommentsPerPost),
+        allowedSubreddits: readStringArrayFromValues(
+          record?.allowedSubreddits,
+          record?.subreddits,
+        ),
+      }),
+    ];
+  });
+
+const mergeRedditScanPasses = (
+  planned: readonly SourceRuntimeConfig[],
+  baseline: readonly SourceRuntimeConfig[],
+): readonly SourceRuntimeConfig[] =>
+  compactUniqueBy([...planned, ...baseline], redditScanPassKey);
+
+const redditScanPassKey = (pass: SourceRuntimeConfig): string => {
+  const mode = readString(pass.mode) ?? "listing";
+  if (mode === "search") {
+    return [
+      "search",
+      readString(pass.query) ?? "",
+      readString(pass.searchSort) ?? "",
+      readString(pass.searchTime) ?? "",
+      readStringArrayFromValues(pass.allowedSubreddits, pass.subreddits)
+        .map((subreddit) => subreddit.toLowerCase())
+        .join(","),
+    ].join(":");
+  }
+
+  return [
+    "listing",
+    (readString(pass.subreddit ?? pass.query) ?? "").toLowerCase(),
+    readString(pass.listing) ?? "top",
+    readString(pass.topTime) ?? "",
+  ].join(":");
+};
+
+const redditCompilationMaxItems = (
+  lanes: readonly SourceQueryPlanLane[],
+  runtimeConfig: SourceRuntimeConfig | undefined,
+): number => {
+  const configuredMaxItems = readOptionalPositiveInteger(
+    runtimeConfig?.maxItems,
+  );
+
+  return Math.min(100, Math.max(totalMaxItems(lanes), configuredMaxItems ?? 1));
+};
+
+const readFiniteNumber = (value: unknown): number | undefined =>
+  typeof value === "number" && Number.isFinite(value) ? value : undefined;
+
 const redditListingFromQuery = (
   query: string,
 ): { readonly subreddit: string; readonly listing: string } | undefined => {
-  const [subreddit, listing] = query.split(':');
+  const [subreddit, listing] = query.split(":");
 
   if (
     subreddit === undefined ||
@@ -278,21 +384,42 @@ const redditListingFromQuery = (
   };
 };
 
-const redditAllowedSubredditsFromListings = (
+const redditAllowedSubredditsForPlan = (
   lanes: readonly SourceQueryPlanLane[],
+  runtimeConfig: SourceRuntimeConfig | undefined,
 ): readonly string[] | undefined => {
-  const subreddits = lanes.flatMap((lane) => {
-    if (lane.operation !== 'listing') {
-      return [];
-    }
+  const subreddits = [
+    ...redditAllowedSubredditsFromConfig(runtimeConfig),
+    ...lanes.flatMap((lane) => {
+      if (lane.operation !== "listing") {
+        return [];
+      }
 
-    const listing = redditListingFromQuery(lane.query);
+      const listing = redditListingFromQuery(lane.query);
 
-    return listing === undefined ? [] : [listing.subreddit];
-  });
+      return listing === undefined ? [] : [listing.subreddit];
+    }),
+  ];
 
   return subreddits.length === 0 ? undefined : compactUnique(subreddits);
 };
+
+const redditAllowedSubredditsFromConfig = (
+  runtimeConfig: SourceRuntimeConfig | undefined,
+): readonly string[] => [
+  ...readStringArrayFromValues(runtimeConfig?.allowedSubreddits),
+  ...readArray(runtimeConfig?.scanPasses).flatMap((pass) => {
+    const record = readRecord(pass);
+    const mode = readString(record?.mode) ?? "listing";
+    const subreddit = readString(record?.subreddit ?? record?.query);
+
+    if (mode === "search") {
+      return readStringArrayFromValues(record?.allowedSubreddits);
+    }
+
+    return mode === "listing" && subreddit !== undefined ? [subreddit] : [];
+  }),
+];
 
 const redditCommentExpansionParameters = (
   lanes: readonly SourceQueryPlanLane[],
@@ -306,9 +433,9 @@ const redditCommentExpansionParameters = (
   return compactRuntimeConfig({
     includeComments: true,
     maxCommentedPosts: maxItemsForLane(lane),
-    maxCommentsPerPost: readNumberParameter(lane, 'maxCommentsPerPost'),
-    commentDepth: readNumberParameter(lane, 'commentDepth'),
-    commentSort: readStringParameter(lane, 'commentSort'),
+    maxCommentsPerPost: readNumberParameter(lane, "maxCommentsPerPost"),
+    commentDepth: readNumberParameter(lane, "commentDepth"),
+    commentSort: readStringParameter(lane, "commentSort"),
   });
 };
 
@@ -346,9 +473,9 @@ const skippedLaneWarnings = (
   executableCount: number,
 ): readonly string[] =>
   executableCount >=
-  lanes.filter((lane) => lane.operation !== 'enrichment').length
+  lanes.filter((lane) => lane.operation !== "enrichment").length
     ? []
-    : ['source_query_planner.some_lanes_skipped'];
+    : ["source_query_planner.some_lanes_skipped"];
 
 const fallbackCompilation = (
   sourceQuery: SourceQuery,
@@ -392,7 +519,7 @@ const readPlannerAccounts = (
         },
       ];
     }),
-    (account) => `${account.sourceKey ?? '*'}:${account.handle}`,
+    (account) => `${account.sourceKey ?? "*"}:${account.handle}`,
   );
 
 const readPlannerCommunities = (
@@ -420,13 +547,13 @@ const readPlannerCommunities = (
         },
       ];
     }),
-    (community) => `${community.sourceKey ?? '*'}:${community.name}`,
+    (community) => `${community.sourceKey ?? "*"}:${community.name}`,
   );
 
 const readCommunityListings = (
   value: unknown,
-): SourceQueryPlannerCommunity['listings'] => {
-  const listings: NonNullable<SourceQueryPlannerCommunity['listings']> =
+): SourceQueryPlannerCommunity["listings"] => {
+  const listings: NonNullable<SourceQueryPlannerCommunity["listings"]> =
     readArray(value).flatMap((item) => {
       const listing = readString(item);
 
@@ -438,8 +565,8 @@ const readCommunityListings = (
 
 const isCommunityListing = (
   value: string | undefined,
-): value is NonNullable<SourceQueryPlannerCommunity['listings']>[number] =>
-  value === 'top' || value === 'hot' || value === 'new';
+): value is NonNullable<SourceQueryPlannerCommunity["listings"]>[number] =>
+  value === "top" || value === "hot" || value === "new";
 
 const readStringArrayFromValues = (
   ...values: readonly unknown[]
@@ -482,13 +609,19 @@ const readNumberParameter = (
 ): number | undefined => {
   const value = lane.parameters?.[key];
 
-  return typeof value === 'number' && Number.isFinite(value)
+  return typeof value === "number" && Number.isFinite(value)
     ? value
     : undefined;
 };
 
 const totalMaxItems = (lanes: readonly SourceQueryPlanLane[]): number =>
-  Math.max(1, Math.min(100, lanes.reduce((total, lane) => total + maxItemsForLane(lane), 0)));
+  Math.max(
+    1,
+    Math.min(
+      100,
+      lanes.reduce((total, lane) => total + maxItemsForLane(lane), 0),
+    ),
+  );
 
 const maxItemsForLane = (lane: SourceQueryPlanLane): number =>
   Math.max(1, Math.min(100, lane.maxItems));

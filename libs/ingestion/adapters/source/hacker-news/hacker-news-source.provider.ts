@@ -18,6 +18,7 @@ import type {
 import type {
   HackerNewsClientPort,
   HackerNewsListing,
+  HackerNewsSearchOptions,
   HackerNewsStory,
 } from "./hacker-news-client.port";
 import {
@@ -131,12 +132,19 @@ export class HackerNewsSourceProvider implements SourceProviderPort {
       0,
       10,
     );
+    const targetWindow = readTargetPublishedWindow(context.config);
+    const searchOptions = searchOptionsForTargetWindow(targetWindow) ??
+      searchOptionsForMaxItemAge(maxItemAgeHours, this.clock.now());
+    const recencyFilterHours =
+      targetWindow === undefined ? maxItemAgeHours : undefined;
 
     if (scanPasses.length > 0) {
       return this.scanPasses({
         plan,
         passes: scanPasses,
         maxItemAgeHours,
+        searchOptions,
+        recencyFilterHours,
         fallbackIncludeComments: includeComments,
         fallbackMaxCommentedStories: maxCommentedStories,
         fallbackMaxCommentsPerPost: maxCommentsPerPost,
@@ -153,7 +161,7 @@ export class HackerNewsSourceProvider implements SourceProviderPort {
         : await this.client.searchStories(
             plan.query.query,
             plan.maxItems,
-            searchOptionsForMaxItemAge(maxItemAgeHours, this.clock.now()),
+            searchOptions,
           );
     const cursorTime = decodeTimeCursor(plan.cursor);
     const sourceKey =
@@ -176,7 +184,7 @@ export class HackerNewsSourceProvider implements SourceProviderPort {
     );
     const filteredItems = filterItemsByMaxAge(
       items,
-      maxItemAgeHours,
+      recencyFilterHours,
       this.clock.now(),
     );
     const returnedRootExternalIds = new Set(
@@ -192,7 +200,7 @@ export class HackerNewsSourceProvider implements SourceProviderPort {
       warnings: [
         ...hackerNewsWarnings(stories),
         ...normalized.warnings,
-        ...hackerNewsRecencyWarnings(items, filteredItems, maxItemAgeHours),
+        ...hackerNewsRecencyWarnings(items, filteredItems, recencyFilterHours),
       ],
     };
   }
@@ -201,6 +209,8 @@ export class HackerNewsSourceProvider implements SourceProviderPort {
     readonly plan: SourceProviderScanPlan;
     readonly passes: readonly HackerNewsScanPass[];
     readonly maxItemAgeHours: number | undefined;
+    readonly searchOptions: HackerNewsSearchOptions | undefined;
+    readonly recencyFilterHours: number | undefined;
     readonly fallbackIncludeComments: boolean;
     readonly fallbackMaxCommentedStories: number | undefined;
     readonly fallbackMaxCommentsPerPost: number | undefined;
@@ -225,19 +235,28 @@ export class HackerNewsSourceProvider implements SourceProviderPort {
       let stories: readonly HackerNewsStory[];
 
       try {
-        if (pass.mode === "listing") {
+        if (
+          pass.mode === "listing" &&
+          isTargetPublishedSearchOptions(params.searchOptions)
+        ) {
+          stories = await this.client.searchStories(
+            historicalListingSearchQuery(pass, params.plan.query.query),
+            limit,
+            params.searchOptions,
+          );
+        } else if (pass.mode === "listing") {
           stories = await this.client.listStories(pass.listing, limit);
         } else if (pass.target === "comment") {
           stories = await this.client.searchComments(
             pass.query,
             limit,
-            searchOptionsForMaxItemAge(params.maxItemAgeHours, this.clock.now()),
+            params.searchOptions,
           );
         } else {
           stories = await this.client.searchStories(
             pass.query,
             limit,
-            searchOptionsForMaxItemAge(params.maxItemAgeHours, this.clock.now()),
+            params.searchOptions,
           );
         }
       } catch (error) {
@@ -323,7 +342,7 @@ export class HackerNewsSourceProvider implements SourceProviderPort {
     );
     const filteredItems = filterItemsByMaxAge(
       sortedItems,
-      params.maxItemAgeHours,
+      params.recencyFilterHours,
       this.clock.now(),
     );
     const returnedRootExternalIds = new Set(
@@ -342,7 +361,7 @@ export class HackerNewsSourceProvider implements SourceProviderPort {
         ...hackerNewsRecencyWarnings(
           sortedItems,
           filteredItems,
-          params.maxItemAgeHours,
+          params.recencyFilterHours,
         ),
       ]),
     };
@@ -372,6 +391,18 @@ export class HackerNewsSourceProvider implements SourceProviderPort {
     };
   }
 }
+
+const isTargetPublishedSearchOptions = (
+  options: HackerNewsSearchOptions | undefined,
+): boolean => options?.from !== undefined && options.to !== undefined;
+
+const historicalListingSearchQuery = (
+  pass: HackerNewsScanPass,
+  fallbackQuery: string,
+): string =>
+  pass.mode === "listing" && pass.requiredKeywords !== undefined
+    ? pass.requiredKeywords.join(" ")
+    : fallbackQuery;
 
 const decodeTimeCursor = (cursor: string | undefined): number | undefined => {
   if (cursor === undefined) {
@@ -474,6 +505,52 @@ const searchOptionsForMaxItemAge = (
         from: new Date(now.getTime() - maxItemAgeHours * 60 * 60 * 1000),
         to: now,
       };
+
+const searchOptionsForTargetWindow = (
+  window: TargetPublishedWindow | undefined,
+): HackerNewsSearchOptions | undefined =>
+  window === undefined
+    ? undefined
+    : {
+        from: window.startInclusive,
+        to: window.endExclusive,
+      };
+
+type TargetPublishedWindow = {
+  readonly startInclusive: Date;
+  readonly endExclusive: Date;
+};
+
+const readTargetPublishedWindow = (
+  config: SourceProviderScanContext["config"] | undefined,
+): TargetPublishedWindow | undefined => {
+  const raw = readRecord(config?.targetPublishedWindow);
+  const startInclusive = readDate(raw?.startInclusive);
+  const endExclusive = readDate(raw?.endExclusive);
+
+  return startInclusive !== undefined &&
+    endExclusive !== undefined &&
+    startInclusive < endExclusive
+    ? { startInclusive, endExclusive }
+    : undefined;
+};
+
+const readRecord = (
+  value: unknown,
+): Readonly<Record<string, unknown>> | undefined =>
+  value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Readonly<Record<string, unknown>>)
+    : undefined;
+
+const readDate = (value: unknown): Date | undefined => {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const date = new Date(value);
+
+  return Number.isNaN(date.getTime()) ? undefined : date;
+};
 
 const readPositiveInteger = (
   value: unknown,

@@ -35,6 +35,13 @@ const redditSearchAllowedSubreddits = [
 
 export const redditDailyMultiPassConfig = {
   maxItems: 100,
+    adaptivePagination: {
+      enabled: true,
+      targetItems: 100,
+      maxPages: 4,
+      minNewItemsPerPage: 2,
+      maxDuplicateRate: 0.75,
+    },
   scanPasses: [
     {
       mode: "listing",

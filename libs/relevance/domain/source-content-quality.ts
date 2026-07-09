@@ -13,6 +13,7 @@ export type SourceContentQualityFlag =
   | "generic_question"
   | "low_information_density"
   | "media_only_without_context"
+  | "missing_topic_context"
   | "needs_link_context"
   | "official_account"
   | "personal_medical_anecdote"
@@ -258,6 +259,9 @@ const evaluateNonXSource = (
   if (normalized.weakTopicMatch) {
     flags.add("weak_topic_match");
   }
+  if (normalized.missingTopicContext) {
+    flags.add("missing_topic_context");
+  }
   if (normalized.predictionMarketRumor) {
     flags.add("prediction_market_rumor");
   }
@@ -282,7 +286,9 @@ const evaluateNonXSource = (
   );
   const interestRelevanceScore = clampScore(
     normalized.topicTerms.length === 0
-      ? 0.86
+      ? normalized.legacyCoreTopicSignal
+        ? 0.78
+        : 0.49
       : normalized.weakTopicMatch
         ? 0.38
         : 0.9,
@@ -296,7 +302,8 @@ const evaluateNonXSource = (
   );
   const decision = normalized.promoOffer
     ? "reject"
-    : normalized.weakTopicMatch ||
+    : (normalized.missingTopicContext && !normalized.legacyCoreTopicSignal) ||
+        normalized.weakTopicMatch ||
         normalized.predictionMarketRumor ||
         normalized.rumorOnly ||
         normalized.personalMedicalAnecdote
