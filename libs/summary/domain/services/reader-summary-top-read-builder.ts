@@ -67,12 +67,22 @@ export const storyToTopRead = (
   const modelCitedEvidence = modelCitations
     .map((citation) => evidenceByFeedItemId.get(citation.feedItemId))
     .filter((item): item is SummaryEvidenceItem => item !== undefined);
+  const cluster = clusterById.get(story.storyClusterId);
+  const clusterFeedItemIds = new Set(
+    cluster === undefined
+      ? []
+      : [cluster.representativeFeedItemId, ...cluster.duplicateFeedItemIds],
+  );
   const eligibleModelCitationIds = modelCitations
-    .filter((citation) =>
-      isTopReadEligibleEvidence(evidenceByFeedItemId.get(citation.feedItemId)),
+    .filter(
+      (citation) =>
+        (cluster === undefined ||
+          clusterFeedItemIds.has(citation.feedItemId)) &&
+        isTopReadEligibleEvidence(
+          evidenceByFeedItemId.get(citation.feedItemId),
+        ),
     )
     .map((citation) => citation.citationId);
-  const cluster = clusterById.get(story.storyClusterId);
   const clusterEvidence =
     cluster === undefined
       ? modelCitedEvidence

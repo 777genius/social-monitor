@@ -15,7 +15,10 @@ import {
   type StoryRankingPolicy,
 } from "../policies/story-ranking-policy";
 import { compareRepresentativeEvidenceItems } from "../policies/representative-evidence-selection-policy";
-import { belongsToCrossProviderCluster } from "./story-cluster-membership";
+import {
+  belongsToCrossProviderCluster,
+  hasCrossProviderClaimFacetConflict,
+} from "./story-cluster-membership";
 import { storyKey } from "./story-key-normalizer";
 
 export class StoryClusteringService {
@@ -69,7 +72,8 @@ const buildClusters = (
     const key = storyKey(item, policy);
     const group = groups.find(
       (candidate) =>
-        candidate.key === key ||
+        (candidate.key === key &&
+          !hasCrossProviderClaimFacetConflict(item, candidate.items, policy)) ||
         belongsToCrossProviderCluster(item, candidate.items, policy),
     );
 

@@ -74,8 +74,10 @@ describe("StoryClusteringService claim facets", () => {
           sourceItemId: "x-artificial-analysis",
           providerKey: "x-twitter",
           canonicalUrl: "https://x.com/example/status/artificial-analysis",
-          title: "Artificial Analysis compares GPT-5.6 with Claude",
-          bodyPreview: "The benchmark compares coding and agent performance.",
+          title:
+            "GPT-5.6 Sol comes close second to Claude Fable 5 in the Artificial Analysis Intelligence Index",
+          bodyPreview:
+            "Artificial Analysis compares model intelligence, cost and coding agent performance.",
         }),
         evidenceItem({
           feedItemId: "reddit-fable-cost",
@@ -107,6 +109,29 @@ describe("StoryClusteringService claim facets", () => {
           canonicalUrl: "https://reddit.com/r/OpenAI/codex-cli",
           title: "GPT-5.6 changes the Codex CLI workflow",
           bodyPreview: "Users compare Codex command-line behavior.",
+        }),
+      ]),
+    ).toBe(2);
+  });
+
+  it("keeps a Fable promo-window story separate from a limit reset", () => {
+    expect(
+      clusterCount([
+        evidenceItem({
+          feedItemId: "hn-fable-window",
+          sourceItemId: "hn-fable-window",
+          providerKey: "hacker-news",
+          canonicalUrl: "https://news.ycombinator.com/item?id=window",
+          title: "Fable July 12th disclaimer disappears from Claude Code",
+          bodyPreview: "The promotional period language was removed.",
+        }),
+        evidenceItem({
+          feedItemId: "reddit-limit-reset",
+          sourceItemId: "reddit-limit-reset",
+          providerKey: "reddit",
+          canonicalUrl: "https://reddit.com/r/ClaudeAI/limit-reset",
+          title: "5 hour and weekly limits have been reset",
+          bodyPreview: "Users report that their usage limits reset today.",
         }),
       ]),
     ).toBe(2);

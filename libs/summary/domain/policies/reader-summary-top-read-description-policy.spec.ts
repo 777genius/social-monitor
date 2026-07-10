@@ -73,6 +73,29 @@ describe("reader summary top-read description policy", () => {
 
     expect(enriched).toBe(supplementalStory);
   });
+
+  it("does not reuse a promo-window description for a separate limit reset", () => {
+    const limitReset = story({
+      id: "story:limit-reset",
+      title: "5 hour and weekly limits have been reset. Thanks Anthropic!",
+      summary: "Reddit users report a fresh usage-limit reset.",
+      citationIds: ["c23"],
+    });
+    const promoWindow = story({
+      id: "story:fable-promo-window",
+      title: "Fable July 12th disclaimer disappears from Claude Code",
+      summary:
+        "An HN-linked item noted that Claude Code messaging about Fable 5 weekly-limit access through July 12 seemed to disappear. The quoted text described Fable 5 drawing down usage faster than Opus and allowing part of weekly usage during the promotional period. The signal matters because provider limit language can change quickly. Check official support pages before assuming limits.",
+      citationIds: ["c15"],
+    });
+
+    const [enriched] = enrichTopReadCandidateDescriptions({
+      candidates: [limitReset],
+      modelStories: [promoWindow],
+    });
+
+    expect(enriched).toBe(limitReset);
+  });
 });
 
 const story = (params: {

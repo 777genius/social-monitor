@@ -401,6 +401,70 @@ describe("reader summary top read builder", () => {
     expect(topRead.whyNow).toBe("Current summary window has RSS coverage.");
   });
 
+  it("rejects model citations that do not belong to the deterministic story cluster", () => {
+    const story: TopReadCandidate = {
+      storyClusterId: "story:benchmark",
+      title: "Artificial Analysis benchmark update",
+      summary: "Artificial Analysis published a model benchmark update.",
+      interestIds: ["ai-agents"],
+      providerKeys: ["x-twitter", "reddit"],
+      citationIds: ["citation-x", "citation-unrelated-reddit"],
+    };
+    const benchmark = evidenceItem({
+      feedItemId: "feed-x-benchmark",
+      providerKey: "x-twitter",
+      title: "Artificial Analysis compares GPT-5.6 and Claude",
+    });
+    const unrelated = evidenceItem({
+      feedItemId: "feed-reddit-bun",
+      providerKey: "reddit",
+      title: "Bun was rewritten from Zig to Rust",
+    });
+    const cluster: StoryCluster = {
+      id: story.storyClusterId,
+      storyKey: "url:x.com/artificial-analysis",
+      representativeFeedItemId: benchmark.feedItemId,
+      duplicateFeedItemIds: [],
+      interestIds: ["ai-agents"],
+      providerKeys: ["x-twitter"],
+      score: 2.2,
+      observedAtRange: {
+        startedAt: benchmark.observedAt,
+        endedAt: new Date(benchmark.observedAt.getTime() + 1),
+      },
+      whyImportant: [],
+    };
+    const citations = [
+      citation({
+        citationId: "citation-x",
+        feedItemId: benchmark.feedItemId,
+        sourceItemId: benchmark.sourceItemId,
+        providerKey: benchmark.providerKey,
+      }),
+      citation({
+        citationId: "citation-unrelated-reddit",
+        feedItemId: unrelated.feedItemId,
+        sourceItemId: unrelated.sourceItemId,
+        providerKey: unrelated.providerKey,
+      }),
+    ];
+    const evidence = [benchmark, unrelated];
+
+    const topRead = storyToTopRead(
+      story,
+      new Map(citations.map((item) => [item.citationId, item] as const)),
+      new Map(evidence.map((item) => [item.feedItemId, item] as const)),
+      new Map([[cluster.id, cluster]]),
+      evidenceClusterMap(
+        [cluster],
+        new Map(evidence.map((item) => [item.feedItemId, item] as const)),
+      ),
+    );
+
+    expect(topRead.citationIds).toEqual(["citation-x"]);
+    expect(topRead.confirmedProviderKeys).toEqual(["x-twitter"]);
+  });
+
   it("keeps internal provider-coverage fallback text out of the reason", () => {
     const story: TopReadCandidate = {
       storyClusterId: "story:rss-coverage",

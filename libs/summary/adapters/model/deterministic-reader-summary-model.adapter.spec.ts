@@ -44,15 +44,13 @@ describe("DeterministicReaderSummaryModelAdapter", () => {
     expect(
       attempt.draft.content?.topReads.map((item) => item.providerKey),
     ).toEqual([
+      "github-trending-page",
+      "github-trending-page",
+      "github-trending-page",
       "rss",
-      "rss",
-      "github-trending-page",
-      "github-trending-page",
-      "github-trending-page",
       "rss",
       "rss",
       "hacker-news",
-      "reddit",
       "reddit",
     ]);
     expect(attempt.draft.executiveSummary).toContain(
@@ -155,6 +153,6 @@ const evidenceItem = (
   observedAt: new Date(
     `2026-06-23T08:${String(index).padStart(2, "0")}:30.000Z`,
   ),
-  score,
+  score: score + 1,
   whyImportant: ["Fresh item in the current monitoring window"],
 });

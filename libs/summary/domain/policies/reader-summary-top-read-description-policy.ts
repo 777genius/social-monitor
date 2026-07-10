@@ -1,6 +1,7 @@
 import type { TopReadCandidate } from "../entities/top-read";
 
 const detailedDescriptionMinimumLength = 280;
+const minimumDistinctiveTitleTermMatches = 3;
 
 export const enrichTopReadCandidateDescriptions = (params: {
   readonly candidates: readonly TopReadCandidate[];
@@ -55,12 +56,17 @@ const relatedStoryScore = (
     modelText.includes(token),
   );
 
-  return sharedTokens.length >= 2 ? sharedTokens.length : 0;
+  return sharedTokens.length >= minimumDistinctiveTitleTermMatches
+    ? sharedTokens.length
+    : 0;
 };
 
 const distinctiveTitleTokens = (value: string): readonly string[] =>
-  [...new Set(normalizeText(value).match(/[\p{L}\p{N}][\p{L}\p{N}-]{5,}/gu) ?? [])]
-    .filter((token) => !genericTitleTokens.has(token));
+  [
+    ...new Set(
+      normalizeText(value).match(/[\p{L}\p{N}][\p{L}\p{N}-]{5,}/gu) ?? [],
+    ),
+  ].filter((token) => !genericTitleTokens.has(token));
 
 const normalizeText = (value: string): string =>
   value

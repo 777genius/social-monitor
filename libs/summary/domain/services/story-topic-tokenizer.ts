@@ -89,14 +89,17 @@ const claimFacetDefinitions = [
   [/\bagents?[\s'’]+last\s+exam\b/iu, "benchmark:agents-last-exam"],
   [/\bartificial\s+analysis\b/iu, "benchmark:artificial-analysis"],
   [/\barc[\s-]?agi\b/iu, "benchmark:arc-agi"],
-  [/\bchatgpt\s+work\b/iu, "product:chatgpt-work"],
-  [/\bcodex\s+(?:cli|command[\s-]?line)\b/iu, "product:codex-cli"],
-  [/\bclaude\s+reflect\b/iu, "product:claude-reflect"],
+  [/\bchatgpt\s+work\b/iu, "feature:chatgpt-work"],
+  [/\bcodex\s+(?:cli|command[\s-]?line)\b/iu, "feature:codex-cli"],
+  [/\bclaude\s+reflect\b/iu, "feature:claude-reflect"],
   [
-    /\bfable(?:\s*[-\u2010-\u2015\u2212 ]?\s*\d+(?:\.\d+)*)?\b/iu,
-    "product:fable",
+    /\bfable\b[\s\S]{0,64}\b(?:july\s+12(?:th)?|disclaimer|promotional?\s+period)\b|\b(?:july\s+12(?:th)?|disclaimer|promotional?\s+period)\b[\s\S]{0,64}\bfable\b/iu,
+    "issue:fable-promo-window",
   ],
-  [/\bbun(?:\.js)?\b/iu, "product:bun"],
+  [
+    /\b(?:5[\s-]?hour|weekly|daily|usage)\s+limits?\b[\s\S]{0,36}\breset\b|\breset\b[\s\S]{0,36}\b(?:5[\s-]?hour|weekly|daily|usage)\s+limits?\b/iu,
+    "issue:usage-limit-reset",
+  ],
 ] as const;
 
 const topicAliasDefinitions = [

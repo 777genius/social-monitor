@@ -28,6 +28,17 @@ export const belongsToCrossProviderCluster = (
   );
 };
 
+export const hasCrossProviderClaimFacetConflict = (
+  item: SummaryEvidenceItem,
+  clusterItems: readonly SummaryEvidenceItem[],
+  policy: StoryRankingPolicy,
+): boolean =>
+  clusterItems.some(
+    (candidate) =>
+      candidate.providerKey !== item.providerKey &&
+      !claimFacetsAreCompatible(item, candidate, policy),
+  );
+
 const belongsToCrossProviderStory = (
   item: SummaryEvidenceItem,
   head: SummaryEvidenceItem,
@@ -39,13 +50,7 @@ const belongsToCrossProviderStory = (
     return false;
   }
 
-  const itemClaimFacets = storyClaimFacetTokens(item);
-  const headClaimFacets = storyClaimFacetTokens(head);
-  if (
-    itemClaimFacets.length > 0 &&
-    headClaimFacets.length > 0 &&
-    sharedStoryTopicTokenCount(itemClaimFacets, headClaimFacets) === 0
-  ) {
+  if (!claimFacetsAreCompatible(item, head, policy)) {
     return false;
   }
 
@@ -75,6 +80,31 @@ const belongsToCrossProviderStory = (
     sharedTokens >= policy.crossSourceMinSharedTopicTokens;
 
   return semanticMatch || productEventMatch;
+};
+
+const claimFacetsAreCompatible = (
+  item: SummaryEvidenceItem,
+  head: SummaryEvidenceItem,
+  policy: StoryRankingPolicy,
+): boolean => {
+  const itemFacets = storyClaimFacetTokens(item);
+  const headFacets = storyClaimFacetTokens(head);
+  if (itemFacets.length === 0 && headFacets.length === 0) {
+    return true;
+  }
+  if (sharedStoryTopicTokenCount(itemFacets, headFacets) > 0) {
+    return true;
+  }
+
+  const facetedItem = itemFacets.length > 0 ? item : head;
+  const otherFacets = itemFacets.length > 0 ? headFacets : itemFacets;
+  if (otherFacets.length > 0) {
+    return false;
+  }
+
+  return (
+    storyTopicEventTokens(storyTopicTokens(facetedItem, policy)).length > 0
+  );
 };
 
 const canonicalStoryKeysConflict = (left: string, right: string): boolean =>

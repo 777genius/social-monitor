@@ -184,7 +184,7 @@ const storyCluster = (
   overrides: Partial<StoryCluster> & Pick<StoryCluster, "id">,
 ): StoryCluster => ({
   storyKey: overrides.id,
-  rankingPolicyVersion: "story_ranking_v4",
+  rankingPolicyVersion: "story_ranking_v5",
   representativeFeedItemId: "feed-1",
   duplicateFeedItemIds: [],
   interestIds: ["ai-agents"],

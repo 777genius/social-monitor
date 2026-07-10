@@ -1291,7 +1291,7 @@ describe("buildReaderSummary", () => {
       "1 cross-source item selected",
     ]);
     expect(readerSummary.topReads[0]?.whyNow).toBe(
-      "Current summary window has cross-source coverage from Repo Radar, Reddit and linked 1 related item.",
+      "Current summary window has cross-source coverage from Repo Radar, Reddit.",
     );
     expect(readerSummary.topReads[0]?.citationIds).toEqual([
       "citation-1",
