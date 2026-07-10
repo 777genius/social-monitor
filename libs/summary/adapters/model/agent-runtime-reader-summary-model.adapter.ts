@@ -2,6 +2,7 @@ import { buildReaderSummary, readerSummaryScopeKey } from "../../domain";
 import type {
   AgentRuntimeClientPort,
   AgentRuntimeProvider,
+  AgentRuntimeTaskCommand,
   ProviderReaderSummaryAttempt,
   ReaderSummaryModelBudget,
   ReaderSummaryModelEstimate,
@@ -39,6 +40,7 @@ export type AgentRuntimeReaderSummaryModelAdapterOptions = {
   readonly agentProvider?: AgentRuntimeProvider;
   readonly providerInstanceId?: string;
   readonly model?: string;
+  readonly reasoningEffort?: "xhigh";
   readonly promptVersion?: string;
   readonly evalDatasetVersion?: string;
   readonly timeoutMs?: number;
@@ -48,10 +50,11 @@ export type AgentRuntimeReaderSummaryModelAdapterOptions = {
 
 const provider = "agent-runtime";
 const defaultAgentProvider: AgentRuntimeProvider = "codex";
-const defaultModel = "agent-runtime-reader-summary";
-const defaultPromptVersion = "reader_summary.prompt.agent_runtime.v2";
+const defaultModel = "gpt-5.5";
+const defaultReasoningEffort = "xhigh" as const;
+const defaultPromptVersion = "reader_summary.prompt.agent_runtime.v8";
 const defaultEvalDatasetVersion = "reader_summary.eval.mvp.v1";
-const defaultTimeoutMs = 180_000;
+const defaultTimeoutMs = 600_000;
 const defaultMaxOutputTokens = 16_000;
 const defaultInputTokenDivisor = 4;
 
@@ -60,6 +63,7 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
   private readonly agentProvider: AgentRuntimeProvider;
   private readonly providerInstanceId?: string;
   private readonly model: string;
+  private readonly reasoningEffort: "xhigh";
   private readonly promptVersion: string;
   private readonly evalDatasetVersion: string;
   private readonly timeoutMs: number;
@@ -71,6 +75,7 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
     this.agentProvider = options.agentProvider ?? defaultAgentProvider;
     this.providerInstanceId = options.providerInstanceId;
     this.model = nonEmptyOrFallback(options.model, defaultModel);
+    this.reasoningEffort = options.reasoningEffort ?? defaultReasoningEffort;
     this.promptVersion = nonEmptyOrFallback(
       options.promptVersion,
       defaultPromptVersion,
@@ -151,9 +156,49 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
       return this.buildNoSignalAttempt(input, selectedRoute);
     }
 
-    const result = await this.client.runTask({
+    for (const attempt of ["primary", "repair"] as const) {
+      const result = await this.client.runTask(
+        this.buildTaskCommand(input, selectedRoute, attempt),
+      );
+      try {
+        const rawDraft = readAgentRuntimeObjectOutput(
+          result,
+          parseOpenAiReaderSummaryJsonObject,
+          "Reader summary",
+        );
+        const usage = usageFromAgentRuntime(
+          result.usage,
+          this.estimate(input, selectedRoute),
+        );
+        const draft = normalizeOpenAiReaderSummaryDraft(
+          rawDraft,
+          input,
+          selectedRoute,
+          usage,
+          this.evalDatasetVersion,
+        );
+
+        return { route: selectedRoute, draft };
+      } catch (error) {
+        if (attempt === "primary" && isRepairableNarrativeError(error)) {
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    throw new Error("Reader summary repair attempt did not return a result");
+  }
+
+  private buildTaskCommand(
+    input: ReaderSummaryModelInput,
+    selectedRoute: ReaderSummaryModelRoute,
+    attempt: "primary" | "repair",
+  ): AgentRuntimeTaskCommand {
+    const isRepair = attempt === "repair";
+    return {
       requestId: buildAgentRuntimeRequestId(
-        "reader-summary",
+        isRepair ? "reader-summary-repair" : "reader-summary",
         input.tenantId,
         input.workspaceId,
         readerSummaryScopeKey(input.scope),
@@ -170,43 +215,28 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
       ),
       provider: this.agentProvider,
       providerInstanceId: this.providerInstanceId,
-      purpose: "social_monitor.reader_summary.generate",
-      systemPrompt: buildOpenAiReaderSummaryInstructions(input),
+      purpose: isRepair
+        ? "social_monitor.reader_summary.repair"
+        : "social_monitor.reader_summary.generate",
+      systemPrompt: isRepair
+        ? `${buildOpenAiReaderSummaryInstructions(input)}\n${narrativeRepairInstruction}`
+        : buildOpenAiReaderSummaryInstructions(input),
       prompt: buildOpenAiReaderSummaryPromptPayload(input),
       outputSchema: openAiReaderSummaryJsonSchema,
       controls: {
         interactive: false,
         outputSchemaName: "social_monitor_reader_summary_artifact",
         schemaVersion: selectedRoute.schemaVersion,
-        ...runtimeModelControl(this.model, defaultModel),
+        model: this.model,
         maxOutputTokens: this.maxOutputTokens,
       },
       timeoutMs: this.timeoutMs,
       metadata: {
         adapter: "agent-runtime-reader-summary",
         promptVersion: selectedRoute.promptVersion,
+        reasoningEffort: this.reasoningEffort,
+        attempt,
       },
-    });
-    const rawDraft = readAgentRuntimeObjectOutput(
-      result,
-      parseOpenAiReaderSummaryJsonObject,
-      "Reader summary",
-    );
-    const usage = usageFromAgentRuntime(
-      result.usage,
-      this.estimate(input, selectedRoute),
-    );
-    const draft = normalizeOpenAiReaderSummaryDraft(
-      rawDraft,
-      input,
-      selectedRoute,
-      usage,
-      this.evalDatasetVersion,
-    );
-
-    return {
-      route: selectedRoute,
-      draft,
     };
   }
 
@@ -248,7 +278,7 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
   private buildRoute(): ReaderSummaryModelRoute {
     return {
       provider,
-      model: `${this.agentProvider}:${this.model}`,
+      model: `${this.agentProvider}:${this.model}:${this.reasoningEffort}`,
       promptVersion: this.promptVersion,
       schemaVersion: "reader_summary.artifact.v1",
     };
@@ -304,6 +334,13 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
   }
 }
 
+const narrativeRepairInstruction =
+  "Repair the complete JSON response. Every narrativeSections item must use the non-empty string fields title and text, never summary, body or description. narrativeSections[0] must have kind lead and cite at least one citationId listed in coveragePlan.lead. Include exactly one secondary_signal for every coveragePlan.secondary entry, copying its storyClusterId and one of its citationIds. Do not change facts or invent citations.";
+
+const isRepairableNarrativeError = (error: unknown): boolean =>
+  error instanceof Error &&
+  error.message.startsWith("Reader summary narrative");
+
 export const resolveAgentRuntimeReaderSummaryModelOptions = (
   env: NodeJS.ProcessEnv,
   client: AgentRuntimeClientPort,
@@ -312,6 +349,10 @@ export const resolveAgentRuntimeReaderSummaryModelOptions = (
   agentProvider: parseAgentRuntimeProvider(env.AGENT_RUNTIME_PROVIDER),
   providerInstanceId: env.AGENT_RUNTIME_PROVIDER_INSTANCE_ID,
   model: env.AGENT_RUNTIME_READER_SUMMARY_MODEL,
+  reasoningEffort: parseReaderSummaryReasoningEffort(
+    env.AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT ??
+      env.AGENT_RUNTIME_REASONING_EFFORT,
+  ),
   promptVersion: env.AGENT_RUNTIME_READER_SUMMARY_PROMPT_VERSION,
   evalDatasetVersion: env.READER_SUMMARY_EVAL_DATASET_VERSION,
   timeoutMs: parsePositiveInteger(
@@ -321,6 +362,21 @@ export const resolveAgentRuntimeReaderSummaryModelOptions = (
     env.AGENT_RUNTIME_READER_SUMMARY_MAX_OUTPUT_TOKENS,
   ),
 });
+
+const parseReaderSummaryReasoningEffort = (
+  value: string | undefined,
+): "xhigh" | undefined => {
+  if (value === undefined || value.trim().length === 0) {
+    return undefined;
+  }
+  if (value.trim() !== "xhigh") {
+    throw new Error(
+      "AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT must be xhigh",
+    );
+  }
+
+  return "xhigh";
+};
 
 const parseAgentRuntimeProvider = (
   value: string | undefined,
@@ -334,9 +390,3 @@ const parseAgentRuntimeProvider = (
 
   throw new Error('AGENT_RUNTIME_PROVIDER must be "codex" or "claude"');
 };
-
-const runtimeModelControl = (
-  model: string,
-  defaultModelAlias: string,
-): { readonly model?: string } =>
-  model === defaultModelAlias ? {} : { model };

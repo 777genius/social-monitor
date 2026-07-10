@@ -1,28 +1,27 @@
 import {
   emptyReaderSummaryTopicMap,
   type ReaderSummaryTopicMap,
-  type ReaderSummaryTopicMapGenerator,
-  type ReaderSummaryTopicMapGroup,
   type ReaderSummaryTopicMapNode,
 } from "../entities/reader-summary-topic-map";
 import type { ReaderSummaryCitation } from "../entities/citation";
 import type { TopReadCandidate } from "../entities/top-read";
+import {
+  applyReaderSummaryTopicMapGroupingPolicy,
+  READER_SUMMARY_TOPIC_MAP_MAX_NODES,
+} from "../policies/reader-summary-topic-map-grouping-policy";
 import { STORY_RANKING_POLICY_V1 } from "../policies/story-ranking-policy";
 import type {
   StoryCluster,
   SummaryEvidenceItem,
 } from "../value-objects/summary-evidence-item";
-import {
-  compactUnique,
-  interestTitle,
-  uniqueNonEmpty,
-} from "../value-objects/summary-text";
+import { compactUnique, uniqueNonEmpty } from "../value-objects/summary-text";
 import {
   storyTopicAnchorTokens,
   storyTopicTokens,
-} from "./story-key-normalizer";
+} from "./story-topic-tokenizer";
 import {
   aggregateReaderSummaryTopicMapNodes,
+  mergeReaderSummaryTopicMapNodesByLabel,
   readerSummaryTopicMapAggregateKey,
   type ReaderSummaryTopicMapNodeDraft,
 } from "./reader-summary-topic-map-aggregation";
@@ -33,11 +32,17 @@ import type {
   ReaderSummaryTopicNodeLabel,
 } from "./reader-summary-topic-label-plan";
 import {
+  evaluateTopicLabelQuality,
   hasUsableTopicNodeLabel,
   isUsableTopicGroupLabel,
   isWeakTopicLabel,
   sanitizeTopicNodeLabel,
 } from "./reader-summary-topic-map-label-quality";
+import {
+  buildReaderSummaryTopicMapGroups,
+  readerSummaryTopicMapConfidence,
+} from "./reader-summary-topic-map-structure";
+import { buildReaderSummaryTopicMapEdges } from "../policies/reader-summary-topic-map-edge-policy";
 import {
   extractReaderSummaryTopicLabelCandidates,
   groundReaderSummaryTopicNodeLabel,
@@ -46,7 +51,6 @@ import {
 } from "./reader-summary-topic-label-candidates";
 import {
   compactId,
-  compactLabel,
   compactOptional,
   fallbackTopicFamilyGroupId,
   fallbackTopicLabel,
@@ -54,17 +58,6 @@ import {
   slug,
 } from "./reader-summary-topic-map-text";
 
-const maxEdges = 80;
-const colorKeys = [
-  "blue",
-  "green",
-  "pink",
-  "amber",
-  "violet",
-  "teal",
-  "orange",
-  "slate",
-] as const;
 export const buildReaderSummaryTopicMap = (
   params: BuildReaderSummaryTopicMapParams,
 ): ReaderSummaryTopicMap => {
@@ -92,6 +85,11 @@ export const buildReaderSummaryTopicMap = (
       .filter(hasUsableTopicNodeLabel)
       .map((label) => [label.nodeId, label] as const),
   );
+  const reviewedNodeIds = new Set(
+    (params.labelPlan?.nodeLabels ?? [])
+      .map((label) => compactId(label.nodeId))
+      .filter((nodeId): nodeId is string => nodeId !== undefined),
+  );
   const labelGroups = validLabelGroups(
     params.labelPlan,
     nodeLabels,
@@ -99,7 +97,8 @@ export const buildReaderSummaryTopicMap = (
   );
   const aggregateByFallbackGroup =
     params.generatedBy === "agent-runtime" && nodeLabels.size === 0;
-  const nodeDrafts = params.clusters
+  const reviewedClusters = reviewedTopicClusters(params, reviewedNodeIds);
+  const nodeDrafts = reviewedClusters
     .map((cluster) =>
       topicNodeForCluster({
         cluster,
@@ -116,19 +115,43 @@ export const buildReaderSummaryTopicMap = (
     return emptyReaderSummaryTopicMap(params.warnings ?? []);
   }
 
-  const rawNodes = aggregateReaderSummaryTopicMapNodes(nodeDrafts);
-  const nodes = normalizeNodePopularity(rawNodes);
-  const groups = topicGroups(nodes, labelGroups);
-  const edges = topicEdges(nodes);
+  const rawNodes = mergeReaderSummaryTopicMapNodesByLabel(
+    aggregateReaderSummaryTopicMapNodes(nodeDrafts),
+  );
+  const semanticAnchorsByGroup = new Map(
+    [...labelGroups].map(([groupId, group]) => [
+      groupId,
+      uniqueNonEmpty([group.label, ...(group.semanticAnchors ?? [])]),
+    ]),
+  );
+  const nodes = applyReaderSummaryTopicMapGroupingPolicy(
+    normalizeNodePopularity(rawNodes).slice(
+      0,
+      READER_SUMMARY_TOPIC_MAP_MAX_NODES,
+    ),
+    { semanticAnchorsByGroup },
+  );
+  const groups = buildReaderSummaryTopicMapGroups(nodes, labelGroups);
+  const edges = buildReaderSummaryTopicMapEdges(nodes, groups);
+  const omittedClusterCount = params.clusters.length - reviewedClusters.length;
   const warnings = uniqueNonEmpty([
     ...(params.warnings ?? []),
     ...(params.labelPlan?.warnings ?? []),
+    ...(omittedClusterCount > 0
+      ? [
+          `Omitted ${omittedClusterCount} lower-ranked topic candidates that were not reviewed by the configured labeler`,
+        ]
+      : []),
   ]);
 
   return {
     schemaVersion: "reader_summary.topic_map.v1",
     generatedBy: params.generatedBy ?? "deterministic",
-    confidence: topicMapConfidence(nodes, groups, params.generatedBy),
+    confidence: readerSummaryTopicMapConfidence(
+      nodes,
+      groups,
+      params.generatedBy,
+    ),
     nodes,
     groups,
     edges,
@@ -177,6 +200,15 @@ const topicNodeForCluster = (params: {
     evidenceTexts,
     providerLabels,
   });
+  if (
+    !evaluateTopicLabelQuality(label, {
+      evidenceTexts,
+      providerLabels,
+      candidateLabels: labelCandidates.map((candidate) => candidate.label),
+    }).accepted
+  ) {
+    return null;
+  }
   const nodeLabel = groundReaderSummaryTopicNodeLabel({
     nodeLabel: params.nodeLabel,
     selectedLabel: label,
@@ -188,6 +220,14 @@ const topicNodeForCluster = (params: {
     params.cluster,
     fallbackKeywords,
   );
+  const aggregateLabel = params.aggregateByFallbackGroup
+    ? acceptedAggregateLabel({
+        label: fallbackTopicLabel(fallbackTopicId),
+        evidenceTexts,
+        providerLabels,
+        candidateLabels: labelCandidates.map((candidate) => candidate.label),
+      })
+    : undefined;
   const groupId =
     compactId(nodeLabel?.groupId) ??
     (params.aggregateByFallbackGroup
@@ -225,36 +265,59 @@ const topicNodeForCluster = (params: {
       fallbackGroupId: fallbackTopicId,
       aggregateFallbackGroup: params.aggregateByFallbackGroup,
     }),
-    aggregateLabel: params.aggregateByFallbackGroup
-      ? fallbackTopicLabel(fallbackTopicId)
-      : undefined,
+    aggregateLabel,
     aggregateRankScore: rawScore,
   };
 };
 
+const acceptedAggregateLabel = (params: {
+  readonly label: string;
+  readonly evidenceTexts: readonly string[];
+  readonly providerLabels: readonly string[];
+  readonly candidateLabels: readonly string[];
+}): string | undefined =>
+  evaluateTopicLabelQuality(params.label, {
+    evidenceTexts: params.evidenceTexts,
+    providerLabels: params.providerLabels,
+    candidateLabels: params.candidateLabels,
+  }).accepted
+    ? params.label
+    : undefined;
+
 const normalizeNodePopularity = (
   nodes: readonly ReaderSummaryTopicMapNode[],
 ): readonly ReaderSummaryTopicMapNode[] => {
-  const scored = nodes.map((node, index) => {
+  const scored = nodes.map((node) => {
     const rawScore =
       node.popularityScore +
       Math.log1p(node.evidenceCount) * 0.18 +
       Math.max(0, node.providerKeys.length - 1) * 0.15 +
       Math.max(0, node.interestIds.length - 1) * 0.08;
 
-    return { node, rawScore, index };
+    return { node, rawScore };
   });
   const maxScore = Math.max(...scored.map((item) => item.rawScore), 0.001);
   const minScore = Math.min(...scored.map((item) => item.rawScore));
   const scoreRange = maxScore - minScore;
   const hasScoreSpread = scoreRange >= Math.max(0.08, maxScore * 0.04);
-  const maxRank = Math.max(1, scored.length - 1);
+  const tiedScoreWeight = Math.max(0.18, Math.min(1, maxScore));
+  const transformedScores = scored
+    .map((item) => Math.log1p(item.rawScore))
+    .sort((left, right) => left - right);
+  const transformedMin = transformedScores[0] ?? 0;
+  const transformedMax = transformedScores.at(-1) ?? transformedMin;
+  const transformedRange = transformedMax - transformedMin;
 
   return scored
-    .map(({ node, rawScore, index }) => {
+    .map(({ node, rawScore }) => {
+      const transformed = Math.log1p(rawScore);
+      const logarithmicSignal =
+        transformedRange <= 0
+          ? 1
+          : (transformed - transformedMin) / transformedRange;
       const scoreWeight = hasScoreSpread
-        ? (rawScore - minScore) / scoreRange
-        : 1 - (index / maxRank) * 0.78;
+        ? 0.18 + logarithmicSignal * 0.82
+        : tiedScoreWeight;
       const normalized = Math.max(0.18, Math.min(1, scoreWeight));
 
       return {
@@ -266,107 +329,21 @@ const normalizeNodePopularity = (
     .sort((left, right) => right.popularityScore - left.popularityScore);
 };
 
-const topicGroups = (
-  nodes: readonly ReaderSummaryTopicMapNode[],
-  labelGroups: ReadonlyMap<string, ReaderSummaryTopicGroupLabel>,
-): readonly ReaderSummaryTopicMapGroup[] => {
-  const byGroup = new Map<string, ReaderSummaryTopicMapNode[]>();
-
-  for (const node of nodes) {
-    byGroup.set(node.groupId, [...(byGroup.get(node.groupId) ?? []), node]);
-  }
-
-  return [...byGroup.entries()]
-    .map(([groupId, groupNodes], index) => {
-      const labeled = labelGroups.get(groupId);
-      const nodeIds = groupNodes.map((node) => node.id);
-
-      return {
-        id: groupId,
-        label:
-          compactOptional(labeled?.label) ??
-          deterministicGroupLabel(groupId, groupNodes),
-        colorKey: colorKeys[index % colorKeys.length] ?? "blue",
-        nodeIds,
-        confidence: {
-          level: labeled === undefined ? "medium" : "high",
-          score: boundedScore(labeled?.confidenceScore ?? 0.72),
-          rationale:
-            compactOptional(labeled?.rationale) ??
-            `Groups ${groupNodes.length} related topic nodes`,
-        },
-      } satisfies ReaderSummaryTopicMapGroup;
-    })
-    .sort((left, right) => right.nodeIds.length - left.nodeIds.length);
-};
-
-const topicEdges = (
-  nodes: readonly ReaderSummaryTopicMapNode[],
-): ReaderSummaryTopicMap["edges"] =>
-  nodes
-    .flatMap((source, sourceIndex) =>
-      nodes.slice(sourceIndex + 1).map((target) => {
-        const sameGroup = source.groupId === target.groupId ? 0.32 : 0;
-        const sharedInterests = sharedCount(
-          source.interestIds,
-          target.interestIds,
-        );
-        const sharedProviders = sharedCount(
-          source.providerKeys,
-          target.providerKeys,
-        );
-        const sharedKeywords = sharedCount(source.keywords, target.keywords);
-        const weight = roundScore(
-          Math.min(
-            1,
-            sameGroup +
-              Math.min(0.35, sharedInterests * 0.18) +
-              Math.min(0.2, sharedProviders * 0.08) +
-              Math.min(0.28, sharedKeywords * 0.06),
-          ),
-        );
-
-        return {
-          sourceNodeId: source.id,
-          targetNodeId: target.id,
-          weight,
-          reason: edgeReason({
-            sameGroup: sameGroup > 0,
-            sharedInterests,
-            sharedProviders,
-            sharedKeywords,
-          }),
-        };
-      }),
-    )
-    .filter((edge) => edge.weight >= 0.24)
-    .sort((left, right) => right.weight - left.weight)
-    .slice(0, maxEdges);
-
-const topicMapConfidence = (
-  nodes: readonly ReaderSummaryTopicMapNode[],
-  groups: readonly ReaderSummaryTopicMapGroup[],
-  generatedBy: ReaderSummaryTopicMapGenerator | undefined,
-): ReaderSummaryTopicMap["confidence"] => {
-  const crossSourceNodeCount = nodes.filter(
-    (node) => node.providerKeys.length > 1,
-  ).length;
-  const score = boundedScore(
-    0.45 +
-      Math.min(0.25, nodes.length * 0.03) +
-      Math.min(0.2, crossSourceNodeCount * 0.06) +
-      (generatedBy === "agent-runtime" ? 0.1 : 0),
-  );
-
-  return {
-    level: score >= 0.78 ? "high" : score >= 0.55 ? "medium" : "low",
-    score,
-    rationale: `Built from ${nodes.length} topic nodes across ${groups.length} semantic groups`,
-  };
-};
-
 export const topicNodeId = (storyClusterId: string): string =>
   `topic:${storyClusterId}`;
+
+const reviewedTopicClusters = (
+  params: BuildReaderSummaryTopicMapParams,
+  reviewedNodeIds: ReadonlySet<string>,
+): readonly StoryCluster[] => {
+  if (params.generatedBy !== "agent-runtime" || reviewedNodeIds.size === 0) {
+    return params.clusters;
+  }
+
+  return params.clusters.filter((cluster) =>
+    reviewedNodeIds.has(topicNodeId(cluster.id)),
+  );
+};
 
 const validLabelGroups = (
   plan: ReaderSummaryTopicLabelPlan | undefined,
@@ -412,24 +389,6 @@ const deterministicGroupId = (
   return `provider:${slug(cluster.providerKeys[0] ?? "unknown")}`;
 };
 
-const deterministicGroupLabel = (
-  groupId: string,
-  nodes: readonly ReaderSummaryTopicMapNode[],
-): string => {
-  const [, rawValue = groupId] = groupId.split(":");
-  if (groupId.startsWith("interest:")) {
-    return interestTitle(rawValue);
-  }
-
-  const fallbackLabel = compactLabel(
-    nodes
-      .flatMap((node) => node.keywords)
-      .find((keyword) => !isWeakTopicLabel(keyword)) ?? humanizeSlug(rawValue),
-  );
-
-  return isWeakTopicLabel(fallbackLabel) ? "Other topics" : fallbackLabel;
-};
-
 const citationsByFeedItemIdMap = (
   citations: readonly ReaderSummaryCitation[],
 ): ReadonlyMap<string, readonly string[]> => {
@@ -444,45 +403,5 @@ const citationsByFeedItemIdMap = (
 
   return result;
 };
-
-const edgeReason = (params: {
-  readonly sameGroup: boolean;
-  readonly sharedInterests: number;
-  readonly sharedProviders: number;
-  readonly sharedKeywords: number;
-}): string => {
-  if (params.sameGroup) {
-    return "Same semantic topic group";
-  }
-  if (params.sharedInterests > 0) {
-    return "Shared monitored interest";
-  }
-  if (params.sharedKeywords > 0) {
-    return "Shared content keywords";
-  }
-  if (params.sharedProviders > 0) {
-    return "Shared source provider";
-  }
-
-  return "Weak related topic signal";
-};
-
-const sharedCount = (
-  left: readonly string[],
-  right: readonly string[],
-): number => {
-  const rightSet = new Set(
-    right.map((value) => value.toLocaleLowerCase("en-US")),
-  );
-
-  return new Set(
-    left
-      .map((value) => value.toLocaleLowerCase("en-US"))
-      .filter((value) => rightSet.has(value)),
-  ).size;
-};
-
-const boundedScore = (value: number): number =>
-  roundScore(Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0);
 
 const roundScore = (value: number): number => Math.round(value * 1000) / 1000;

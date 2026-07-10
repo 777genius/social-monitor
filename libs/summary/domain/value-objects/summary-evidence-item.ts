@@ -27,6 +27,7 @@ export type SummaryEvidenceItem = {
   readonly canonicalUrl: string;
   readonly title: string;
   readonly bodyPreview?: string;
+  readonly sourceText?: string;
   readonly authorHandle?: string;
   readonly publishedAt: Date;
   readonly observedAt: Date;

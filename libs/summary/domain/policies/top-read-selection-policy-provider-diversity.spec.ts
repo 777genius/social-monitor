@@ -4,7 +4,10 @@ import type {
   StoryCluster,
   SummaryEvidenceItem,
 } from "../value-objects/summary-evidence-item";
-import { selectUniqueTopReadCandidates } from "./top-read-selection-policy";
+import {
+  selectUniqueTopReadCandidatePool,
+  selectUniqueTopReadCandidates,
+} from "./top-read-selection-policy";
 
 describe("selectUniqueTopReadCandidates provider diversity", () => {
   it("caps one dominant provider when enough other providers have eligible reads", () => {
@@ -178,6 +181,56 @@ describe("selectUniqueTopReadCandidates provider diversity", () => {
       "hacker-news": 2,
       rss: 1,
     });
+  });
+
+  it("keeps HN and RSS candidates in a dominant-provider supplement pool", () => {
+    const xStories = Array.from({ length: 42 }, (_, index) =>
+      story(
+        `x-pool-${index + 1}`,
+        `Claude X pool signal ${index + 1}`,
+        `c-x-pool-${index + 1}`,
+        ["x-twitter"],
+      ),
+    );
+    const secondaryStories = [
+      story("hn-pool-1", "Claude HN pool signal", "c-hn-pool-1", [
+        "hacker-news",
+      ]),
+      story("rss-pool-1", "Claude RSS pool signal", "c-rss-pool-1", [
+        "rss",
+      ]),
+    ];
+    const allStories = [...xStories, ...secondaryStories];
+    const pool = selectUniqueTopReadCandidatePool(
+      xStories.slice(0, 10),
+      citations(
+        allStories.map((item) =>
+          citation(
+            item.citationIds[0] ?? "",
+            feedItemId(item),
+            item.providerKeys[0] ?? "unknown",
+          ),
+        ),
+      ),
+      evidence(
+        allStories.map((item, index) =>
+          evidenceItem(
+            feedItemId(item),
+            item.providerKeys[0] ?? "unknown",
+            index,
+          ),
+        ),
+      ),
+      new Map(
+        allStories.map((item, index) =>
+          cluster(item, item.providerKeys[0] ?? "unknown", 2.4 - index * 0.005),
+        ),
+      ),
+      10,
+    );
+
+    expect(providerCounts(pool)["hacker-news"]).toBe(1);
+    expect(providerCounts(pool).rss).toBe(1);
   });
 });
 

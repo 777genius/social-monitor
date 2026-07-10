@@ -313,7 +313,19 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
         },
       },
       new CapturingReaderSummaryModel(
-        { topReads: [{ title: "Untrusted model top read" }] } as unknown as
+        {
+          topReads: [{ title: "Untrusted model top read" }],
+          narrativeSections: [
+            {
+              id: "lead",
+              kind: "lead",
+              title: "Overview",
+              text: "Runtime regression discussion is the main signal.",
+              citationIds: ["c1"],
+              storyClusterId: "cluster-1",
+            },
+          ],
+        } as unknown as
           ProviderReaderSummaryAttempt["draft"]["content"],
       ),
       new CapturingSummaryEventPublisher(),
@@ -332,6 +344,18 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
     expect(
       artifacts.all()[0]?.toSnapshot().content?.topReads[0]?.title,
     ).toBe("Runtime regression discussion");
+    expect(
+      artifacts.all()[0]?.toSnapshot().content?.narrativeSections,
+    ).toEqual([
+      {
+        id: "lead",
+        kind: "lead",
+        title: "Overview",
+        text: "Runtime regression discussion is the main signal.",
+        citationIds: ["c1"],
+        storyClusterId: "cluster-1",
+      },
+    ]);
   });
 
   it("rejects a generated artifact before publish when top reads fail source quality", async () => {
@@ -702,7 +726,7 @@ const makeReaderEvidenceSelection = (overrides: {
       duplicateFeedItemIds: [],
       interestIds: ["interest-reader-ai"],
       providerKeys: ["reddit"],
-      score: 1,
+      score: 2.2,
       observedAtRange: {
         startedAt: new Date("2026-06-26T07:20:00.000Z"),
         endedAt: new Date("2026-06-26T07:20:00.000Z"),
@@ -737,7 +761,7 @@ const makeReaderEvidenceSelection = (overrides: {
       bodyPreview: "Users are discussing a runtime regression.",
       publishedAt: new Date("2026-06-26T07:10:00.000Z"),
       observedAt: new Date("2026-06-26T07:20:00.000Z"),
-      score: 1,
+      score: 2.2,
       whyImportant: ["Matches user preference"],
       contentQuality: overrides.firstContentQuality,
     },

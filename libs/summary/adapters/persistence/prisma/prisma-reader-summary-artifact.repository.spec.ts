@@ -47,6 +47,38 @@ describe("PrismaReaderSummaryArtifactRepository", () => {
     expect(prisma.statusFor("reader-summary-completed")).toBe("COMPLETED");
     expect(prisma.statusFor("reader-summary-empty")).toBe("NO_SIGNAL");
   });
+
+  it("does not republish an older artifact when its save is replayed", async () => {
+    const prisma = new FakeReaderSummaryPrisma();
+    const repository = new PrismaReaderSummaryArtifactRepository(prisma.client);
+    const older = readerSummaryArtifact("reader-summary-older");
+    const newer = readerSummaryArtifact("reader-summary-newer");
+
+    await repository.save(older);
+    await repository.save(newer);
+    await repository.save(older);
+
+    expect(prisma.statusFor("reader-summary-older")).toBe("SUPERSEDED");
+    expect(prisma.statusFor("reader-summary-newer")).toBe("COMPLETED");
+  });
+
+  it("does not let deterministic output supersede subscription runtime output", async () => {
+    const prisma = new FakeReaderSummaryPrisma();
+    const repository = new PrismaReaderSummaryArtifactRepository(prisma.client);
+
+    await repository.save(
+      readerSummaryArtifact("reader-summary-runtime", "codex:gpt-5.5:xhigh"),
+    );
+    await repository.save(
+      readerSummaryArtifact(
+        "reader-summary-deterministic",
+        "deterministic-reader-summary-v1",
+      ),
+    );
+
+    expect(prisma.statusFor("reader-summary-runtime")).toBe("COMPLETED");
+    expect(prisma.statusFor("reader-summary-deterministic")).toBe("SUPERSEDED");
+  });
 });
 
 const tenant = tenantId("tenant-reader-summary-prisma");
@@ -61,6 +93,7 @@ const period = {
 
 const readerSummaryArtifact = (
   readerSummaryId: string,
+  modelVersion = "deterministic-local.v1",
 ): ReaderSummaryArtifact =>
   ReaderSummaryArtifact.create({
     schemaVersion: "reader_summary.artifact.v1",
@@ -164,7 +197,7 @@ const readerSummaryArtifact = (
     lineage: {
       promptVersion: "reader-summary.prompt.test.v1",
       schemaVersion: "reader_summary.artifact.v1",
-      modelVersion: "deterministic-local.v1",
+      modelVersion,
       providerVersion: "local",
       rulesVersion: "reader-summary.rules.v1",
       evalDatasetVersion: "reader-summary.eval.v1",

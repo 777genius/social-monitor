@@ -343,6 +343,7 @@ const normalizeReaderSummaryContent = (
   return {
     ...content,
     mainTopics: normalizeReaderSummaryMainTopics(content.mainTopics),
+    narrativeSections: content.narrativeSections ?? [],
     topicMap: content.topicMap ?? emptyReaderSummaryTopicMap(),
     topReads: content.topReads.map(normalizeReaderSummaryItem),
     selectedPosts: normalizeReaderSummarySelectedPosts(

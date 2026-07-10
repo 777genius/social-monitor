@@ -4,6 +4,7 @@ import type {
   SummaryEvidenceItem,
 } from "../value-objects/summary-evidence-item";
 import type { ReaderSummaryCitation } from "../entities/citation";
+import { READER_SUMMARY_TOPIC_MAP_MAX_NODES } from "../policies/reader-summary-topic-map-grouping-policy";
 
 describe("buildReaderSummaryTopicMap", () => {
   it("sizes nodes by cluster signal and groups LLM-labeled related topics", () => {
@@ -38,7 +39,7 @@ describe("buildReaderSummaryTopicMap", () => {
         }),
         evidenceItem({
           feedItemId: "feed-codex",
-          title: "openai/codex leads developer tooling",
+          title: "openai/codex agent workflows for developer tooling",
           providerKey: "github-trending-page",
         }),
       ],
@@ -74,6 +75,7 @@ describe("buildReaderSummaryTopicMap", () => {
           {
             id: "group:agent-tools",
             label: "Agent tools",
+            semanticAnchors: ["agent", "agent workflows"],
             confidenceScore: 0.91,
           },
         ],
@@ -89,14 +91,10 @@ describe("buildReaderSummaryTopicMap", () => {
     expect(map.groups).toHaveLength(1);
     expect(map.groups[0]).toMatchObject({
       id: "group:agent-tools",
-      label: "Agent tools",
+      label: "Agent Tools",
       nodeIds: ["topic:story:agents", "topic:story:codex"],
     });
-    expect(map.edges[0]).toMatchObject({
-      sourceNodeId: "topic:story:agents",
-      targetNodeId: "topic:story:codex",
-      reason: "Same semantic topic group",
-    });
+    expect(map.edges).toEqual([]);
   });
 
   it("aggregates LLM-labeled same-topic clusters into one bubble", () => {
@@ -180,7 +178,7 @@ describe("buildReaderSummaryTopicMap", () => {
 
     expect(map.nodes).toHaveLength(2);
     expect(claude).toMatchObject({
-      groupId: "group:claude",
+      groupId: "group:ungrouped",
       storyClusterIds: ["story:claude-code-hn", "story:claude-code-reddit"],
       evidenceCount: 2,
       providerKeys: ["hacker-news", "reddit"],
@@ -246,11 +244,12 @@ describe("buildReaderSummaryTopicMap", () => {
 
     expect(map.nodes).toHaveLength(2);
     expect(claude).toMatchObject({
-      groupId: "topic:claude",
+      groupId: "group:ungrouped",
       evidenceCount: 2,
       storyClusterIds: ["story:claude-code", "story:claude-cache"],
       providerKeys: ["hacker-news", "reddit"],
     });
+    expect(map.edges).toHaveLength(0);
   });
 
   it("keeps parent and product fallback topics in the same color group", () => {
@@ -291,16 +290,16 @@ describe("buildReaderSummaryTopicMap", () => {
     });
 
     expect(map.nodes.map((node) => node.label)).toEqual([
-      "Claude ecosystem",
-      "Claude Code Agents",
+      "Claude Agent",
+      "Claude Code",
     ]);
     expect(new Set(map.nodes.map((node) => node.groupId))).toEqual(
-      new Set(["topic:claude"]),
+      new Set(["group:claude"]),
     );
     expect(map.groups).toHaveLength(1);
   });
 
-  it("groups deterministic fallback topics by content before interest", () => {
+  it("merges deterministic fallback topics before applying group support", () => {
     const map = buildReaderSummaryTopicMap({
       clusters: [
         storyCluster({
@@ -344,23 +343,30 @@ describe("buildReaderSummaryTopicMap", () => {
       ],
     });
 
-    const claudeCode = map.nodes.find(
-      (node) => node.id === "topic:story:claude-code",
-    );
-    const claudeCache = map.nodes.find(
-      (node) => node.id === "topic:story:claude-cache",
-    );
+    const claudeCode = map.nodes.find((node) => node.label === "Claude Code");
     const palantir = map.nodes.find(
       (node) => node.id === "topic:story:palantir",
     );
 
-    expect(claudeCode?.groupId).toBe("topic:claude-code");
-    expect(claudeCache?.groupId).toBe("topic:claude-code");
-    expect(palantir?.groupId).toBe("topic:palantir");
-    expect(new Set(map.nodes.map((node) => node.groupId)).size).toBe(2);
+    expect(claudeCode?.groupId).toBe("group:ungrouped");
+    expect(claudeCode?.storyClusterIds).toEqual([
+      "story:claude-code",
+      "story:claude-cache",
+    ]);
+    expect(palantir?.groupId).toBe("group:ungrouped");
+    expect(new Set(map.nodes.map((node) => node.groupId))).toEqual(
+      new Set(["group:ungrouped"]),
+    );
+    expect(
+      map.edges.every((edge) => {
+        const source = map.nodes.find((node) => node.id === edge.sourceNodeId);
+
+        return source?.groupId !== "group:ungrouped";
+      }),
+    ).toBe(true);
   });
 
-  it("keeps flat single-item topic scores visually separable", () => {
+  it("keeps equal topic evidence at equal popularity and size", () => {
     const map = buildReaderSummaryTopicMap({
       clusters: [
         storyCluster({
@@ -416,11 +422,68 @@ describe("buildReaderSummaryTopicMap", () => {
     });
 
     expect(map.nodes.map((node) => Math.round(node.popularityScore))).toEqual([
-      100, 74, 48, 22,
+      100, 100, 100, 100,
     ]);
-    expect(map.nodes[0]?.sizeWeight).toBeGreaterThan(
-      map.nodes[3]?.sizeWeight ?? 0,
+    expect(new Set(map.nodes.map((node) => node.sizeWeight))).toEqual(
+      new Set([1]),
     );
+  });
+
+  it("keeps secondary popularity signals separable under one dominant topic", () => {
+    const scores = [12, 2.4, 2.2, 2, 1.8];
+    const clusters = scores.map((score, index) =>
+      storyCluster({
+        id: `story:signal-${index}`,
+        representativeFeedItemId: `feed-signal-${index}`,
+        score,
+      }),
+    );
+    const selectedEvidence = clusters.map((cluster, index) =>
+      evidenceItem({
+        feedItemId: cluster.representativeFeedItemId,
+        title: `Project${index} runtime benchmark`,
+        providerKey: "rss",
+      }),
+    );
+    const map = buildReaderSummaryTopicMap({
+      clusters,
+      selectedEvidence,
+      topStories: [],
+      citationMap: selectedEvidence.map((item, index) =>
+        citation(`c${index}`, item.feedItemId, item.providerKey),
+      ),
+    });
+
+    expect(new Set(map.nodes.map((node) => node.popularityScore)).size).toBe(5);
+    expect(map.nodes[1]?.popularityScore).toBeGreaterThan(23);
+    expect(map.nodes.at(-1)?.popularityScore).toBe(18);
+  });
+
+  it("caps the published map before layout payloads become unbounded", () => {
+    const clusters = Array.from({ length: 45 }, (_, index) =>
+      storyCluster({
+        id: `story:project-${index}`,
+        representativeFeedItemId: `feed-project-${index}`,
+        score: 1 - index / 100,
+      }),
+    );
+    const selectedEvidence = clusters.map((cluster, index) =>
+      evidenceItem({
+        feedItemId: cluster.representativeFeedItemId,
+        title: `Project${index} runtime signal`,
+        providerKey: "rss",
+      }),
+    );
+    const map = buildReaderSummaryTopicMap({
+      clusters,
+      selectedEvidence,
+      topStories: [],
+      citationMap: selectedEvidence.map((item, index) =>
+        citation(`c${index}`, item.feedItemId, item.providerKey),
+      ),
+    });
+
+    expect(map.nodes).toHaveLength(READER_SUMMARY_TOPIC_MAP_MAX_NODES);
   });
 
   it("does not surface source or UI meta labels as topic node labels", () => {
@@ -531,6 +594,11 @@ describe("buildReaderSummaryTopicMap", () => {
           representativeFeedItemId: "feed-claude-code-cache",
           providerKeys: ["hacker-news"],
         }),
+        storyCluster({
+          id: "story:claude-permissions",
+          representativeFeedItemId: "feed-claude-permissions",
+          providerKeys: ["reddit"],
+        }),
       ],
       selectedEvidence: [
         evidenceItem({
@@ -538,9 +606,17 @@ describe("buildReaderSummaryTopicMap", () => {
           title: "Claude Code session cache improves agent workflows",
           providerKey: "hacker-news",
         }),
+        evidenceItem({
+          feedItemId: "feed-claude-permissions",
+          title: "Claude permissions change agent workflows",
+          providerKey: "reddit",
+        }),
       ],
       topStories: [],
-      citationMap: [citation("c1", "feed-claude-code-cache", "hacker-news")],
+      citationMap: [
+        citation("c1", "feed-claude-code-cache", "hacker-news"),
+        citation("c2", "feed-claude-permissions", "reddit"),
+      ],
       labelPlan: {
         nodeLabels: [
           {
@@ -549,6 +625,13 @@ describe("buildReaderSummaryTopicMap", () => {
             label: "Claude",
             groupId: "group:claude",
             keywords: ["claude", "claude-code", "session-cache"],
+          },
+          {
+            nodeId: "topic:story:claude-permissions",
+            topicId: "topic:claude-permissions",
+            label: "Claude Permissions",
+            groupId: "group:claude",
+            keywords: ["claude", "permissions"],
           },
         ],
         groups: [{ id: "group:claude", label: "Claude" }],
@@ -560,6 +643,111 @@ describe("buildReaderSummaryTopicMap", () => {
     expect(map.nodes[0]?.label).not.toBe("Claude");
     expect(map.nodes[0]?.groupId).toBe("group:claude");
     expect(map.groups[0]?.label).toBe("Claude");
+  });
+
+  it("omits candidates that were not reviewed by the configured labeler", () => {
+    const map = buildReaderSummaryTopicMap({
+      clusters: [
+        storyCluster({
+          id: "story:reviewed",
+          representativeFeedItemId: "feed-reviewed",
+          score: 1,
+        }),
+        storyCluster({
+          id: "story:not-reviewed",
+          representativeFeedItemId: "feed-not-reviewed",
+          score: 0.9,
+        }),
+      ],
+      selectedEvidence: [
+        evidenceItem({
+          feedItemId: "feed-reviewed",
+          title: "Reviewed runtime topic",
+          providerKey: "rss",
+        }),
+        evidenceItem({
+          feedItemId: "feed-not-reviewed",
+          title: "Unreviewed unrelated topic",
+          providerKey: "reddit",
+        }),
+      ],
+      topStories: [],
+      citationMap: [
+        citation("c1", "feed-reviewed", "rss"),
+        citation("c2", "feed-not-reviewed", "reddit"),
+      ],
+      labelPlan: {
+        nodeLabels: [
+          {
+            nodeId: "topic:story:reviewed",
+            label: "Runtime Topic",
+            groupId: "group:runtime",
+          },
+        ],
+        groups: [{ id: "group:runtime", label: "Runtime" }],
+      },
+      generatedBy: "agent-runtime",
+    });
+
+    expect(map.nodes.map((node) => node.id)).toEqual(["topic:story:reviewed"]);
+    expect(map.warnings).toEqual([
+      expect.stringContaining("Omitted 1 lower-ranked topic candidate"),
+    ]);
+  });
+
+  it("falls back to the semantic group id when an LLM group label is a headline", () => {
+    const map = buildReaderSummaryTopicMap({
+      clusters: [
+        storyCluster({
+          id: "story:claude-reflect",
+          representativeFeedItemId: "feed-claude-reflect",
+        }),
+        storyCluster({
+          id: "story:claude-limits",
+          representativeFeedItemId: "feed-claude-limits",
+        }),
+      ],
+      selectedEvidence: [
+        evidenceItem({
+          feedItemId: "feed-claude-reflect",
+          title: "Claude Reflect product release",
+          providerKey: "rss",
+        }),
+        evidenceItem({
+          feedItemId: "feed-claude-limits",
+          title: "Claude usage limits reset",
+          providerKey: "reddit",
+        }),
+      ],
+      topStories: [],
+      citationMap: [
+        citation("c1", "feed-claude-reflect", "rss"),
+        citation("c2", "feed-claude-limits", "reddit"),
+      ],
+      labelPlan: {
+        nodeLabels: [
+          {
+            nodeId: "topic:story:claude-reflect",
+            label: "Claude Reflect",
+            groupId: "group:claude-products",
+          },
+          {
+            nodeId: "topic:story:claude-limits",
+            label: "Claude Usage Limits",
+            groupId: "group:claude-products",
+          },
+        ],
+        groups: [
+          {
+            id: "group:claude-products",
+            label: "Introducing Way Reflect",
+          },
+        ],
+      },
+      generatedBy: "agent-runtime",
+    });
+
+    expect(map.groups[0]?.label).toBe("Claude Products");
   });
 
   it("uses evidence-backed topic phrases instead of short headline fragments", () => {
@@ -626,7 +814,7 @@ const storyCluster = (
   overrides: Partial<StoryCluster> & Pick<StoryCluster, "id">,
 ): StoryCluster => ({
   storyKey: overrides.id,
-  rankingPolicyVersion: "story_ranking_v2",
+  rankingPolicyVersion: "story_ranking_v4",
   representativeFeedItemId: "feed-1",
   duplicateFeedItemIds: [],
   interestIds: ["interest-1"],

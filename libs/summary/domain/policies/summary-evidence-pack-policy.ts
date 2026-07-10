@@ -3,6 +3,8 @@ import type {
   SummaryEvidenceSelection,
   StoryCluster,
 } from "../value-objects/summary-evidence-item";
+import { readerSummaryProviderIdentity } from "../value-objects/reader-summary-provider-identity";
+import { hasFirstPartyOfficialEvidence } from "./reader-summary-source-authority-policy";
 
 export type SummaryEvidencePackSignal = {
   readonly feedItemId: string;
@@ -50,14 +52,6 @@ const communityProviderKeys = new Set([
   "bluesky",
 ]);
 
-const officialProviderKeys = new Set([
-  "github",
-  "github-repo-radar",
-  "github-trending-page",
-  "rss",
-  "youtube",
-]);
-
 const dissentFragments = [
   "debunk",
   "not true",
@@ -86,24 +80,29 @@ export const buildSummaryEvidencePack = (
     selectedEvidenceCount: selection.selectedEvidence.length,
     providerCount: providerCounts.length,
     providerCounts,
-    crossProviderClusterCount: selection.clusters.filter(
-      (cluster) => new Set(cluster.providerKeys).size > 1,
-    ).length,
+    crossProviderClusterCount: countIndependentCrossProviderClusters(selection),
   };
 
   return {
     officialSignals: topSignals(
-      selection.selectedEvidence.filter(isOfficialSignal),
+      selection.selectedEvidence.filter(
+        (item) => isOfficialSignal(item) && isQualityLeadSignal(item),
+      ),
       5,
     ),
     topCommunitySignals: topSignals(
-      selection.selectedEvidence.filter(isCommunitySignal),
+      selection.selectedEvidence.filter(
+        (item) => isCommunitySignal(item) && isQualityLeadSignal(item),
+      ),
       8,
     ),
     emergingSignals: orderedSignals(
-      [...selection.selectedEvidence].sort(
-        (left, right) => right.observedAt.getTime() - left.observedAt.getTime(),
-      ),
+      selection.selectedEvidence
+        .filter(isQualityLeadSignal)
+        .sort(
+          (left, right) =>
+            right.observedAt.getTime() - left.observedAt.getTime(),
+        ),
       5,
     ),
     dissentingViews: topSignals(
@@ -118,6 +117,31 @@ export const buildSummaryEvidencePack = (
     sourceCoverage,
     confidence: confidenceFor(sourceCoverage),
   };
+};
+
+const countIndependentCrossProviderClusters = (
+  selection: SummaryEvidenceSelection,
+): number => {
+  const evidenceByFeedItemId = new Map(
+    selection.selectedEvidence.map((item) => [item.feedItemId, item] as const),
+  );
+
+  return selection.clusters.filter((cluster) => {
+    const clusterEvidence = [
+      cluster.representativeFeedItemId,
+      ...cluster.duplicateFeedItemIds,
+    ]
+      .map((feedItemId) => evidenceByFeedItemId.get(feedItemId))
+      .filter((item): item is SummaryEvidenceItem => item !== undefined);
+    const providerKeys =
+      clusterEvidence.length >= 2
+        ? clusterEvidence.map(
+            (item) => readerSummaryProviderIdentity(item).providerKey,
+          )
+        : cluster.providerKeys;
+
+    return new Set(providerKeys).size > 1;
+  }).length;
 };
 
 const topSignals = (
@@ -173,7 +197,7 @@ const signalReasonCodes = (
 };
 
 const isOfficialSignal = (item: SummaryEvidenceItem): boolean =>
-  officialProviderKeys.has(item.providerKey) ||
+  hasFirstPartyOfficialEvidence([item]) ||
   (item.matchedRules ?? []).some((rule) => /official|trusted/i.test(rule));
 
 const isCommunitySignal = (item: SummaryEvidenceItem): boolean =>
@@ -191,11 +215,14 @@ const hasDissentSignal = (item: SummaryEvidenceItem): boolean => {
 };
 
 const isHighEngagementLowConfidence = (item: SummaryEvidenceItem): boolean =>
-  hasHighEngagementMetric(item) &&
-  (item.contentQuality?.needsLlmReview === true ||
-    item.contentQuality?.decision === "downrank" ||
-    (item.contentQuality?.interestRelevanceScore ?? 1) < 0.5 ||
-    (item.contentQuality?.engagementIntegrityScore ?? 1) < 0.5);
+  hasHighEngagementMetric(item) && !isQualityLeadSignal(item);
+
+const isQualityLeadSignal = (item: SummaryEvidenceItem): boolean =>
+  item.contentQuality?.eligibleForSummary !== false &&
+  item.contentQuality?.needsLlmReview !== true &&
+  item.contentQuality?.decision !== "downrank" &&
+  (item.contentQuality?.interestRelevanceScore ?? 1) >= 0.5 &&
+  (item.contentQuality?.engagementIntegrityScore ?? 1) >= 0.5;
 
 const hasHighEngagementMetric = (item: SummaryEvidenceItem): boolean =>
   (item.providerMetricLabels ?? []).some((metric) => {
@@ -253,12 +280,21 @@ const confidenceFor = (
     };
   }
 
-  if (coverage.providerCount >= 2 && coverage.crossProviderClusterCount > 0) {
+  if (coverage.providerCount >= 3 && coverage.crossProviderClusterCount > 0) {
     return {
       level: "high",
-      score: 0.85,
+      score: 0.82,
       rationale:
-        "Evidence includes multiple providers and at least one cross-provider cluster.",
+        "Evidence spans at least three providers and includes cross-provider support.",
+    };
+  }
+
+  if (coverage.providerCount >= 2 && coverage.crossProviderClusterCount > 0) {
+    return {
+      level: "medium",
+      score: 0.68,
+      rationale:
+        "Evidence includes cross-provider repetition, but that does not independently verify every claim.",
     };
   }
 

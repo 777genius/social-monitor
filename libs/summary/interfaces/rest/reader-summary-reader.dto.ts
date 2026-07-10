@@ -125,14 +125,23 @@ export class ReaderSummaryClaimEvidenceDto {
 }
 
 export class ReaderSummaryClaimRiskDto {
-  @ApiProperty({ enum: ["single_source", "low_confidence", "unresolved"] })
-  declare readonly kind: "single_source" | "low_confidence" | "unresolved";
+  @ApiProperty({
+    enum: ["single_source", "low_confidence", "low_evidence", "unresolved"],
+  })
+  declare readonly kind:
+    | "single_source"
+    | "low_confidence"
+    | "low_evidence"
+    | "unresolved";
 
   @ApiProperty()
   declare readonly description: string;
 }
 
 export class ReaderSummaryClaimDto {
+  @ApiPropertyOptional()
+  declare readonly id?: string;
+
   @ApiProperty()
   declare readonly claim: string;
 
@@ -147,6 +156,39 @@ export class ReaderSummaryClaimDto {
 
   @ApiProperty({ type: [String] })
   declare readonly citationIds: readonly string[];
+}
+
+export class ReaderSummaryNarrativeSectionDto {
+  @ApiProperty()
+  declare readonly id: string;
+
+  @ApiProperty({
+    enum: [
+      "lead",
+      "main_signal",
+      "why_it_matters",
+      "secondary_signal",
+      "watch",
+    ],
+  })
+  declare readonly kind:
+    | "lead"
+    | "main_signal"
+    | "why_it_matters"
+    | "secondary_signal"
+    | "watch";
+
+  @ApiProperty()
+  declare readonly title: string;
+
+  @ApiProperty()
+  declare readonly text: string;
+
+  @ApiProperty({ type: [String] })
+  declare readonly citationIds: readonly string[];
+
+  @ApiPropertyOptional()
+  declare readonly storyClusterId?: string;
 }
 
 export class ReaderSummaryReliabilityRiskDto {
@@ -320,6 +362,9 @@ export class ReaderSummaryTopicMapGroupDto {
   @ApiProperty()
   declare readonly colorKey: string;
 
+  @ApiPropertyOptional({ type: [String] })
+  declare readonly semanticAnchors?: readonly string[];
+
   @ApiProperty({ type: [String] })
   declare readonly nodeIds: readonly string[];
 
@@ -373,6 +418,9 @@ export class ReaderSummaryReaderBriefDto {
 
   @ApiProperty({ type: [String] })
   declare readonly bullets: readonly string[];
+
+  @ApiProperty({ type: () => [ReaderSummaryNarrativeSectionDto] })
+  declare readonly narrativeSections: readonly ReaderSummaryNarrativeSectionDto[];
 
   @ApiProperty({ type: [String] })
   declare readonly mainTopics: readonly string[];

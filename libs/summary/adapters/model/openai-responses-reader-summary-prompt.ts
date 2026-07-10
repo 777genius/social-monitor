@@ -1,19 +1,10 @@
 import {
+  buildReaderSummaryCoveragePlan,
   buildSummaryEvidencePack,
   buildSummaryEvidenceProfile,
 } from "../../domain";
 import type { ReaderSummaryModelInput } from "../../ports";
-
-type ReaderSummaryEvidenceInputItem =
-  ReaderSummaryModelInput["evidence"]["selectedEvidence"][number];
-type ReaderSummaryConversationContext = NonNullable<
-  ReaderSummaryEvidenceInputItem["conversationContext"]
->;
-type ReaderSummaryConversationUnit =
-  ReaderSummaryConversationContext["units"][number];
-type ReaderSummaryConversationAncestor = NonNullable<
-  ReaderSummaryConversationUnit["ancestry"]
->[number];
+import { buildAdaptiveReaderSummaryEvidence } from "./openai-responses-reader-summary-adaptive-evidence";
 
 export const buildOpenAiReaderSummaryInstructions = (
   input: ReaderSummaryModelInput,
@@ -29,18 +20,31 @@ export const buildOpenAiReaderSummaryInstructions = (
     "Every top story, interest highlight and repeated signal must cite one or more citation IDs from citationMap.",
     "Use evidenceProfile as the authoritative coverage summary for source mix, confidence caveats and low-evidence warnings.",
     "Use evidencePack to balance official signals, community signals, emerging signals, dissenting views and high-engagement low-confidence items.",
+    "Every evidence item contains an original title and a baseline bodyPreview. Items marked expanded_candidate also contain sourceContent selected deterministically from the original source, never an LLM paraphrase.",
+    "For sourceContent mode full_social_post or full_source_text, use the complete provided text. For rss_relevant_fragments or relevant_fragments, treat the 2-3 fragments as separate original excerpts from the same source.",
+    "Prefer sourceContent over bodyPreview when resolving exact model variants, modes, tiers, limits, benchmark values and other material qualifiers.",
+    "Treat evidencePack.confidence as a ceiling for claim confidence, not as permission to generalize every selected item.",
+    "RSS is a delivery mechanism, not proof of source authority. Do not treat an RSS mirror of a Hacker News item as independent confirmation.",
     "Do not turn a single source title into a confirmed product, model, launch, benchmark, pricing or availability claim.",
     "Only put a product/version/benchmark/launch claim in the headline when it is supported by citations from at least two distinct providerKeys.",
     "If a claim is supported by one provider only, keep the headline neutral and phrase the item as source-reported or source-discussed.",
-    "The backend derives the final reader content, claim board and reliability shadow report from headline, executiveSummary, topStories, citations and risks. Keep raw content compact: set content.headline to the same meaning as headline, content.oneLineTakeaway to one short sentence, and keep content arrays empty unless a field is impossible to leave empty.",
+    "The backend derives the final reader content, claim board and reliability shadow report from narrativeSections, topStories, citations and risks. Keep raw content compact: set content.headline to the same meaning as headline, content.oneLineTakeaway to one short sentence, and keep content arrays empty unless a field is impossible to leave empty.",
     "Write headline, executiveSummary and content.oneLineTakeaway like a useful short article summary of the best source items, not a telemetry report, checklist or process note.",
-    "Make executiveSummary slightly richer by default, but never padded: prefer one compact lead paragraph followed by 2-3 short Markdown bullets when there are distinct themes. Use two short paragraphs only when bullets would repeat the same point.",
-    "Structure executiveSummary around: what happened, why it matters, what is still uncertain. Keep caveats attached to the relevant claims.",
-    "Preferred bullet style: '- **Main signal:** ...', '- **Why it matters:** ...', '- **Watch:** ...'. Omit any bullet that the evidence does not support. Do not create generic sections.",
+    "Return narrativeSections as the canonical reader narrative. executiveSummary must be a faithful Markdown rendering of the same sections and must not add claims of its own.",
+    "The first narrativeSections item must be kind lead and cite one or more citationIds from coveragePlan.lead. Follow it with optional main_signal and why_it_matters sections, one secondary_signal for every entry in coveragePlan.secondary, and an optional watch section. Never fill a missing section with generic prose.",
+    "Each narrative section must add information not already stated elsewhere. Do not paraphrase the lead under Main signal or repeat the same caveat in multiple sections.",
+    "For secondary_signal, copy the exact storyClusterId from coveragePlan and cite only citationIds listed for that planned cluster.",
+    "Keep the lead focused on coveragePlan.lead. Other signals today must remain concise and must not displace the lead.",
+    "Explain unfamiliar product, model or project names on first mention with a short reader-facing description when the evidence defines them. If the evidence does not explain a name, omit it instead of listing unexplained names.",
+    "Do not use internal workflow language such as source note, enough engagement for discovery, selected evidence, providerKeys, model budget, quality gate or keep the claim unconfirmed. Express uncertainty naturally and specifically for the reader.",
     "Use lightweight Markdown in executiveSummary and content.oneLineTakeaway when it improves readability: bold key product/model names, claims and bullet labels. Do not use HTML, tables or Markdown links.",
     "Keep the JSON response focused. Do not restate the same item in content, topStories, interestHighlights and risks. Prefer concrete synthesis over long explanations.",
-    "Length limits: headline under 120 characters, executiveSummary 900-1,500 characters when enough evidence exists and under 1,800 characters always, each topStories title under 140 characters, each topStories summary under 280 characters.",
+    "Length limits: headline under 120 characters; the complete narrative 220-320 words when the coverage plan has secondary signals and shorter when it does not; lead 70-110 words; each secondary signal 25-55 words; each topStories title under 140 characters; each topStories summary 420-650 characters when supported and under 720 characters always.",
     "Each topStories title must name the concrete post, project or topic. Do not use Cross-source, cross-provider attention, source coverage or confirmed by N sources as a topStories title; keep that support in evidence/confidence language.",
+    "Rewrite conversational, question-style or truncated source titles into concise neutral titles that state the concrete topic or result. Do not copy lowercase post fragments, first-person hooks or trailing ellipses as topStories titles.",
+    "Preserve material qualifiers exactly as stated in the cited evidence, including model, variant, mode and tier names such as Ultra, Pro, Max, Preview or Thinking. If a claim is specific to one variant or mode, name it in both the topStories title and summary; never generalize it to the whole model family.",
+    "Each topStories summary must explain why the item matters and should use 3-5 concise sentences covering what happened, the concrete product or workflow impact, and any evidence-backed uncertainty. Do not merely repeat the title, prefix the source text with Source-reported, pad weak evidence or invent missing details.",
+    "Keep source validation out of topStories summary prose: do not mention cross-provider support, source coverage, selected evidence or provider counts there. Put those details in confidence and citations instead.",
     "The headline must express the main situation found in the sources. Do not start headline or content.headline with a source inventory like Key signals across X/Twitter, Strongest reads across, Source watch, Review cited reads or similar.",
     "The first sentence of executiveSummary and content.oneLineTakeaway must explain what is happening, not that the system reviewed sources.",
     "Lead with what happened and why it matters. Do not make headline, executiveSummary or content.oneLineTakeaway start with process instructions like Start with, inspect, review, verify, treat, use, check or read.",
@@ -51,7 +55,7 @@ export const buildOpenAiReaderSummaryInstructions = (
     "Prefer cross-interest repeated signals over isolated low-confidence items.",
     "Daily priority: social/news evidence is primary. Prefer X/Twitter, Reddit, Hacker News and RSS for the headline, first paragraph, topStories and reader content topReads.",
     "Treat GitHub, GitHub Trending, GitHub issues and Repo Radar as secondary supporting context unless a GitHub item is also confirmed by social/news sources or no eligible social/news evidence exists.",
-    "When enough eligible evidence exists, return 8-10 topStories. Never return more than 10 topStories. Use at most 2 citationIds per topStory.",
+    "When enough eligible evidence exists, return 12-15 topStories so the backend ranking pool has detailed descriptions for every likely final top read. Never return more than 15 topStories. Use at most 2 citationIds per topStory.",
     "Return at most 5 interestHighlights, at most 5 repeatedSignals, at most 4 risksAndUnknowns and at most 10 citationMap entries. citationMap may include only the citations used by topStories.",
     "Keep at least two X/Twitter and two Reddit topStories before secondary GitHub-only stories when eligible social/news evidence exists.",
     "For general AI/product monitoring, do not put prediction-market, political, stock-trading or rumor-only X posts in the first topStories unless at least two distinct providerKeys corroborate the same claim.",
@@ -71,14 +75,30 @@ export const buildOpenAiReaderSummaryInstructions = (
 
 export const buildOpenAiReaderSummaryPromptPayload = (
   input: ReaderSummaryModelInput,
-): string =>
-  JSON.stringify({
+): string => {
+  const citationIdByFeedItemId = new Map(
+    input.evidence.selectedEvidence.map(
+      (item, index) => [item.feedItemId, `c${index + 1}`] as const,
+    ),
+  );
+  const coveragePlan = buildReaderSummaryCoveragePlan(input.evidence);
+
+  return JSON.stringify({
     scope: input.scope,
     requestedAt: input.requestedAt.toISOString(),
     policy: input.policy,
     personalization: input.evidence.personalization,
     evidenceProfile: buildSummaryEvidenceProfile(input.evidence),
     evidencePack: buildSummaryEvidencePack(input.evidence),
+    coveragePlan: {
+      lead:
+        coveragePlan.lead === undefined
+          ? null
+          : promptCoverageItem(coveragePlan.lead, citationIdByFeedItemId),
+      secondary: coveragePlan.secondary.map((item) =>
+        promptCoverageItem(item, citationIdByFeedItemId),
+      ),
+    },
     sourceWindow: {
       windowId: input.evidence.sourceWindow.windowId,
       startedAt: input.evidence.sourceWindow.startedAt.toISOString(),
@@ -105,8 +125,24 @@ export const buildOpenAiReaderSummaryPromptPayload = (
       generatedAt: artifact.generatedAt.toISOString(),
       freshness: artifact.freshness,
     })),
-    evidence: input.evidence.selectedEvidence.map(compactEvidenceItem),
+    evidence: buildAdaptiveReaderSummaryEvidence(input.evidence, coveragePlan),
   });
+};
+
+const promptCoverageItem = (
+  item: ReturnType<typeof buildReaderSummaryCoveragePlan>["secondary"][number],
+  citationIdByFeedItemId: ReadonlyMap<string, string>,
+) => ({
+  role: item.role,
+  storyClusterId: item.clusterId,
+  score: item.score,
+  citationIds: item.feedItemIds
+    .map((feedItemId) => citationIdByFeedItemId.get(feedItemId))
+    .filter((id): id is string => id !== undefined),
+  providerKeys: item.providerKeys,
+  interestIds: item.interestIds,
+  whyImportant: item.whyImportant,
+});
 
 const readerSummaryFormatLabel = (format: string): string => {
   switch (format) {
@@ -119,100 +155,4 @@ const readerSummaryFormatLabel = (format: string): string => {
     default:
       return format;
   }
-};
-
-const compactEvidenceItem = (
-  item: ReaderSummaryEvidenceInputItem,
-  index: number,
-) => ({
-  index: index + 1,
-  citationId: `c${index + 1}`,
-  feedItemId: item.feedItemId,
-  sourceItemId: item.sourceItemId,
-  providerKey: item.providerKey,
-  title: compactText(item.title, 280),
-  bodyPreview:
-    item.bodyPreview === undefined
-      ? undefined
-      : compactText(item.bodyPreview, 420),
-  canonicalUrl: item.canonicalUrl,
-  authorHandle: item.authorHandle,
-  publishedAt: item.publishedAt.toISOString(),
-  observedAt: item.observedAt.toISOString(),
-  score: item.score,
-  whyImportant: compactStringArray(item.whyImportant, {
-    maxItems: 3,
-    maxLength: 160,
-  }),
-  contentQuality:
-    item.contentQuality === undefined
-      ? undefined
-      : {
-          decision: item.contentQuality.decision,
-          reason: compactText(item.contentQuality.reason, 140),
-          flags: item.contentQuality.flags.slice(0, 6),
-          eligibleForTopRead: item.contentQuality.eligibleForTopRead,
-          qualityScore: item.contentQuality.qualityScore,
-          interestRelevanceScore: item.contentQuality.interestRelevanceScore,
-          engagementIntegrityScore: item.contentQuality.engagementIntegrityScore,
-        },
-  conversationContext:
-    item.conversationContext === undefined
-      ? undefined
-      : compactConversationContext(item.conversationContext),
-});
-
-const compactConversationContext = (
-  context: ReaderSummaryConversationContext,
-) => ({
-  rankingBasis: context.rankingBasis,
-  bundleScore: context.bundleScore,
-  units: context.units.slice(0, 5).map(compactConversationUnit),
-});
-
-const compactConversationUnit = (unit: ReaderSummaryConversationUnit) => ({
-  providerUnitId: unit.providerUnitId,
-  authorHandle: unit.authorHandle,
-  body: compactText(unit.body, 320),
-  score: unit.score,
-  providerScore: unit.providerScore,
-  replyCount: unit.replyCount,
-  signalBand: unit.signalBand,
-  depth: unit.depth,
-  role: unit.role,
-  selectionReason: unit.selectionReason,
-  ancestry: unit.ancestry?.slice(0, 2).map(compactConversationAncestor),
-});
-
-const compactConversationAncestor = (
-  ancestor: ReaderSummaryConversationAncestor,
-) => ({
-  providerUnitId: ancestor.providerUnitId,
-  authorHandle: ancestor.authorHandle,
-  body: compactText(ancestor.body, 220),
-  score: ancestor.score,
-  providerScore: ancestor.providerScore,
-  replyCount: ancestor.replyCount,
-  signalBand: ancestor.signalBand,
-  depth: ancestor.depth,
-  role: ancestor.role,
-  selectionReason: ancestor.selectionReason,
-});
-
-const compactStringArray = (
-  values: readonly string[],
-  params: { readonly maxItems: number; readonly maxLength: number },
-): readonly string[] =>
-  values.slice(0, params.maxItems).map((value) =>
-    compactText(value, params.maxLength),
-  );
-
-const compactText = (value: string, maxLength: number): string => {
-  const normalized = value.replace(/\s+/gu, " ").trim();
-
-  if (normalized.length <= maxLength) {
-    return normalized;
-  }
-
-  return `${normalized.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...`;
 };

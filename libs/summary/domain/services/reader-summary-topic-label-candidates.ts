@@ -1,4 +1,5 @@
 import type { TopReadCandidate } from "../entities/top-read";
+import { READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID } from "../entities/reader-summary-topic-map";
 import type {
   StoryCluster,
   SummaryEvidenceItem,
@@ -14,9 +15,11 @@ import {
   compactId,
   compactLabel,
   compactOptional,
+  formatReaderSummaryTopicToken,
   humanizeSlug,
   normalizeTopicLabel,
 } from "./reader-summary-topic-map-text";
+import { storyTopicAnchorTokens } from "./story-topic-tokenizer";
 
 export type ReaderSummaryTopicLabelCandidateSource =
   | "top-story-title"
@@ -89,13 +92,6 @@ export const extractReaderSummaryTopicLabelCandidates = (
       baseScore: 0.6,
       rationale: "Derived from deterministic fallback label.",
     }),
-    ...textCandidates({
-      value: context.cluster?.storyKey,
-      source: "story-key",
-      evidenceFeedItemIds: context.evidence.map((item) => item.feedItemId),
-      baseScore: 0.54,
-      rationale: "Derived from the deterministic story key.",
-    }),
   ];
   const byLabel = new Map<string, ReaderSummaryTopicLabelCandidateOption>();
 
@@ -121,25 +117,38 @@ export const extractReaderSummaryTopicLabelCandidates = (
   }
 
   return [...byLabel.values()]
-    .sort((left, right) => right.score - left.score)
+    .sort(
+      (left, right) =>
+        right.score - left.score ||
+        topicLabelSpecificity(right.label) - topicLabelSpecificity(left.label),
+    )
     .slice(0, 8);
 };
+
+const topicLabelSpecificity = (label: string): number =>
+  /[0-9]/u.test(label) ? 1 : 0;
 
 export const readerSummaryTopicLabelEvidenceTexts = (
   context: ReaderSummaryTopicLabelEvidenceContext,
 ): readonly string[] =>
   compactUnique([
-    context.story?.title,
+    readerFacingTopicEvidenceText(context.story?.title),
     context.story?.summary,
     ...context.evidence.flatMap((item) => [
-      item.title,
+      readerFacingTopicEvidenceText(item.title),
       item.bodyPreview,
       ...item.whyImportant,
     ]),
     context.fallbackLabel,
     ...context.fallbackKeywords.map(humanizeSlug),
-    context.cluster?.storyKey,
   ]);
+
+const readerFacingTopicEvidenceText = (
+  value: string | undefined,
+): string | undefined =>
+  value
+    ?.replace(/^x\s+post\s+by\s+@[^:]+:\s*/iu, "")
+    .replace(/^(?:ask|show)\s+hn:\s*/iu, "");
 
 export const selectReaderSummaryTopicLabel = (params: {
   readonly proposedLabel?: string;
@@ -233,6 +242,7 @@ const concreteSingletonTopicTokens = new Set([
   "cursor",
   "fable",
   "gemini",
+  "grok",
   "mcp",
   "palantir",
 ]);
@@ -262,12 +272,13 @@ export const groundReaderSummaryTopicNodeLabel = (params: {
     candidateLabels: params.candidateLabels,
   });
   const keywords = (nodeLabel.keywords ?? [])
-    .filter((keyword) =>
-      evaluateTopicLabelQuality(keyword, {
-        evidenceTexts: params.evidenceTexts,
-        providerLabels: params.providerLabels,
-        candidateLabels: params.candidateLabels,
-      }).accepted,
+    .filter(
+      (keyword) =>
+        evaluateTopicLabelQuality(keyword, {
+          evidenceTexts: params.evidenceTexts,
+          providerLabels: params.providerLabels,
+          candidateLabels: params.candidateLabels,
+        }).accepted,
     )
     .slice(0, 8);
   if (topicId === undefined && groupId === undefined && keywords.length === 0) {
@@ -308,18 +319,122 @@ const keywordCandidates = (
   keywords: readonly string[],
   evidence: readonly SummaryEvidenceItem[],
 ): readonly ReaderSummaryTopicLabelCandidateOption[] => {
-  const labels = compactUnique([
-    topicPhraseFromTokens(keywords.map(humanizeSlug)),
-    topicPhraseFromTokens(keywords.slice(0, 2).map(humanizeSlug)),
-  ]);
+  const allAnchors = storyTopicAnchorTokens(keywords);
+  const anchors = rankAnchorsByEvidenceProminence(allAnchors, evidence).slice(
+    0,
+    4,
+  );
+  const anchorSet = new Set(allAnchors);
+  const subjectKeywords = keywords.filter((keyword) => !anchorSet.has(keyword));
+  const evidencePhrases = compactUnique(
+    evidence.flatMap((item) => phraseCandidates(item.title).slice(0, 1)),
+  ).slice(0, 2);
+  const scoredLabels = [
+    ...anchors.slice(0, 2).flatMap((anchor, anchorIndex) =>
+      evidencePhrases.flatMap((phrase) => {
+        const label = prefixPhraseWithAnchor(anchor, phrase);
 
-  return labels.map((label) => ({
+        return label === phrase
+          ? []
+          : [{ label, score: 0.96 - anchorIndex * 0.02 }];
+      }),
+    ),
+    ...anchors.map((anchor) => ({
+      label: topicPhraseFromTokens(
+        [anchor, ...subjectKeywords].map(humanizeSlug),
+        2,
+      ),
+      score: 0.94,
+    })),
+    ...anchors.map((anchor) => ({
+      label: topicPhraseFromTokens([humanizeSlug(anchor)]),
+      score: 0.8,
+    })),
+    {
+      label: topicPhraseFromTokens(keywords.map(humanizeSlug)),
+      score: 0.78,
+    },
+    {
+      label: topicPhraseFromTokens(keywords.map(humanizeSlug), 2),
+      score: 0.76,
+    },
+  ];
+  const byLabel = new Map<string, { readonly label: string; score: number }>();
+  for (const item of scoredLabels) {
+    const label = compactLabel(item.label);
+    const key = normalizeTopicLabel(label);
+    if (key.length === 0) {
+      continue;
+    }
+    const current = byLabel.get(key);
+    if (current === undefined || current.score < item.score) {
+      byLabel.set(key, { label, score: item.score });
+    }
+  }
+
+  return [...byLabel.values()].map(({ label, score }) => ({
     label,
     source: "keyword-phrase",
-    score: 0.72,
+    score,
     evidenceFeedItemIds: evidence.map((item) => item.feedItemId),
     rationale: "Derived from shared topic keywords.",
   }));
+};
+
+const rankAnchorsByEvidenceProminence = (
+  anchors: readonly string[],
+  evidence: readonly SummaryEvidenceItem[],
+): readonly string[] =>
+  anchors
+    .map((anchor, index) => ({
+      anchor,
+      index,
+      position: anchorEvidencePosition(anchor, evidence),
+      specificity: anchorSpecificity(anchor),
+    }))
+    .sort(
+      (left, right) =>
+        left.position - right.position ||
+        right.specificity - left.specificity ||
+        left.index - right.index,
+    )
+    .map((item) => item.anchor);
+
+const anchorEvidencePosition = (
+  anchor: string,
+  evidence: readonly SummaryEvidenceItem[],
+): number => {
+  const needle = normalizeTopicLabel(humanizeSlug(anchor));
+  let best = Number.MAX_SAFE_INTEGER;
+  for (const item of evidence) {
+    const titlePosition = normalizeTopicLabel(item.title).indexOf(needle);
+    if (titlePosition >= 0) {
+      best = Math.min(best, titlePosition);
+    }
+    const bodyPosition = normalizeTopicLabel(item.bodyPreview ?? "").indexOf(
+      needle,
+    );
+    if (bodyPosition >= 0) {
+      best = Math.min(best, 10_000 + bodyPosition);
+    }
+  }
+
+  return best;
+};
+
+const anchorSpecificity = (anchor: string): number =>
+  (/[0-9]/u.test(anchor) ? 10 : 0) +
+  meaningfulTopicLabelTokens(humanizeSlug(anchor)).length;
+
+const prefixPhraseWithAnchor = (anchor: string, phrase: string): string => {
+  const displayAnchor = formatReaderSummaryTopicToken(humanizeSlug(anchor));
+  const anchorTokens = new Set(meaningfulTopicLabelTokens(displayAnchor));
+  const phraseTokens = new Set(meaningfulTopicLabelTokens(phrase));
+  if ([...anchorTokens].every((token) => phraseTokens.has(token))) {
+    return phrase;
+  }
+
+  return compactLabel(`${displayAnchor} ${phrase}`);
 };
 
 const phraseCandidates = (value: string): readonly string[] => {
@@ -347,6 +462,7 @@ const topicPhraseFromTokens = (
   tokens: readonly string[],
   maxTokens = 5,
 ): string => {
+  const seen = new Set<string>();
   const meaningful = tokens
     .map((token) =>
       token.replace(
@@ -357,39 +473,19 @@ const topicPhraseFromTokens = (
     .filter((token) => token.length > 0)
     .filter((token) => !isDurationToken(token))
     .filter((token) => meaningfulTopicLabelTokens(token).length > 0)
+    .filter((token) => {
+      const normalized = normalizeTopicLabel(token);
+      if (normalized.length === 0 || seen.has(normalized)) {
+        return false;
+      }
+      seen.add(normalized);
+
+      return true;
+    })
     .slice(0, maxTokens)
-    .map(formatTopicToken);
+    .map(formatReaderSummaryTopicToken);
 
   return compactLabel(meaningful.join(" "));
-};
-
-const formatTopicToken = (value: string): string => {
-  const normalized = normalizeTopicLabel(value).replace(/\s+/gu, "");
-  if (normalized === "ai") {
-    return "AI";
-  }
-  if (normalized === "openai") {
-    return "OpenAI";
-  }
-  if (normalized === "chatgpt") {
-    return "ChatGPT";
-  }
-  if (normalized === "github") {
-    return "GitHub";
-  }
-  if (normalized === "mcp") {
-    return "MCP";
-  }
-  if (/^gpt\d+/u.test(normalized)) {
-    return value.toLocaleUpperCase("en-US");
-  }
-  if (/[A-Z]/u.test(value.slice(1))) {
-    return value;
-  }
-
-  return `${value.charAt(0).toLocaleUpperCase("en-US")}${value
-    .slice(1)
-    .toLocaleLowerCase("en-US")}`;
 };
 
 const roundCandidateScore = (value: number): number =>
@@ -404,7 +500,7 @@ const topicLabelFromIdValue = (value: string): string =>
   humanizeSlug(value)
     .split(/\s+/u)
     .filter((part) => part.length > 0)
-    .map(formatTopicToken)
+    .map(formatReaderSummaryTopicToken)
     .join(" ");
 
 const groundedTopicId = (params: {
@@ -441,7 +537,14 @@ const groundedGroupId = (params: {
   readonly candidateLabels: readonly string[];
 }): string | undefined => {
   const groupId = compactId(params.groupId);
-  if (groupId === undefined || isWeakTopicId(groupId)) {
+  if (groupId === READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID) {
+    return groupId;
+  }
+  if (
+    groupId === undefined ||
+    !groupId.startsWith("group:") ||
+    isWeakTopicId(groupId)
+  ) {
     return undefined;
   }
   const [, rawValue = groupId] = groupId.split(":");

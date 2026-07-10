@@ -1,4 +1,5 @@
 import type { SummaryEvidenceItem } from "../value-objects/summary-evidence-item";
+import { hasReaderSummaryEvidenceHardBlock } from "./reader-summary-evidence-eligibility-policy";
 
 export const isTopReadEligibleEvidence = (
   evidence: SummaryEvidenceItem | undefined,
@@ -12,31 +13,13 @@ export const isTopReadEligibleEvidence = (
   }
 
   if (
-    evidence.contentQuality?.flags.some((flag) =>
-      topReadHardBlockQualityFlags.has(flag),
-    ) === true
+    hasReaderSummaryEvidenceHardBlock(evidence.contentQuality?.flags ?? [])
   ) {
     return false;
   }
 
   return hasProviderTopReadSignal(evidence);
 };
-
-const topReadHardBlockQualityFlags = new Set([
-  "crypto_promo",
-  "engagement_bait",
-  "generic_question",
-  "media_only_without_context",
-  "needs_link_context",
-  "personal_medical_anecdote",
-  "prediction_market_rumor",
-  "promo_offer",
-  "rumor_only",
-  "tco_only",
-  "url_only",
-  "weak_topic_match",
-  "weak_interest_match",
-]);
 
 const hasProviderTopReadSignal = (evidence: SummaryEvidenceItem): boolean => {
   const labels = evidence.providerMetricLabels ?? [];

@@ -1,4 +1,5 @@
 import type { ReaderSummaryCitation } from "../entities/citation";
+import type { ReaderSummaryNarrativeSection } from "../entities/reader-summary-narrative-section";
 import { emptyReaderSummaryReliabilityReport } from "../entities/reader-summary-reliability";
 import type { ReaderSummarySnapshot } from "../entities/reader-summary-snapshot";
 import type { SourceMixEntry } from "../entities/source-mix-entry";
@@ -25,6 +26,7 @@ import {
   selectUniqueTopReadCandidates,
 } from "../policies/top-read-selection-policy";
 import { selectRenderedTopReadCandidates } from "../policies/rendered-top-read-selection-policy";
+import { enrichTopReadCandidateDescriptions } from "../policies/reader-summary-top-read-description-policy";
 import { buildReaderSummaryReliabilityReport } from "../policies/reader-summary-reliability-calibration-policy";
 import type {
   SummaryEvidenceSelection,
@@ -60,6 +62,7 @@ import { buildReaderSummaryClaimBoard } from "../services/reader-summary-claim-b
 export type ReaderSummaryFactoryInput = {
   readonly headline: string;
   readonly executiveSummary: string;
+  readonly narrativeSections?: readonly ReaderSummaryNarrativeSection[];
   readonly topStories: readonly TopReadCandidate[];
   readonly interestHighlights: readonly InterestHighlight[];
   readonly repeatedSignals: readonly RepeatedSignal[];
@@ -73,7 +76,7 @@ export type ReaderSummaryFactoryInput = {
   readonly noSignalReason?: string;
 };
 
-const maxReaderTopReads = 10;
+const maxReaderTopReads = 8;
 
 export class ReaderSummary {
   private constructor(private readonly snapshot: ReaderSummarySnapshot) {}
@@ -124,16 +127,19 @@ export class ReaderSummary {
         }),
       );
     }
-    const readerTopStoryPool = uniqueTopReadStoryPool([
-      ...curatedReaderTopStories,
-      ...selectUniqueTopReadCandidatePool(
-        input.topStories,
-        citationById,
-        evidenceByFeedItemId,
-        clusterById,
-        maxReaderTopReads,
-      ),
-    ]);
+    const readerTopStoryPool = enrichTopReadCandidateDescriptions({
+      candidates: uniqueTopReadStoryPool([
+        ...curatedReaderTopStories,
+        ...selectUniqueTopReadCandidatePool(
+          input.topStories,
+          citationById,
+          evidenceByFeedItemId,
+          clusterById,
+          maxReaderTopReads,
+        ),
+      ]),
+      modelStories: input.topStories,
+    });
     const renderedTopReadCandidates = readerTopStoryPool.map((story) => ({
       story,
       topRead: storyToTopRead(
@@ -144,13 +150,11 @@ export class ReaderSummary {
         evidenceByClusterId,
       ),
     }));
-    const readerTopReadCandidates = selectRenderedTopReadCandidates(
-      {
-        candidates: renderedTopReadCandidates,
-        sourceMix,
-        limit: maxReaderTopReads,
-      },
-    );
+    const readerTopReadCandidates = selectRenderedTopReadCandidates({
+      candidates: renderedTopReadCandidates,
+      sourceMix,
+      limit: maxReaderTopReads,
+    });
     const readerTopStories = readerTopReadCandidates.map(
       (candidate) => candidate.story,
     );
@@ -183,7 +187,10 @@ export class ReaderSummary {
         sourceMix,
       }),
       bullets: buildReaderSummaryBullets(readerInput, topReads),
+      narrativeSections: [...(input.narrativeSections ?? [])],
       mainTopics: buildReaderSummaryMainTopics({
+        headline: input.headline,
+        executiveSummary: input.executiveSummary,
         topReads,
         topStories: readerTopStories,
         interestHighlights: input.interestHighlights,
@@ -198,6 +205,7 @@ export class ReaderSummary {
       selectedPosts,
       claimBoard: buildReaderSummaryClaimBoard({
         topReads,
+        narrativeSections: input.narrativeSections,
         risksAndUnknowns: input.risksAndUnknowns,
         citationMap: input.citationMap,
         selectedEvidence: input.selectedEvidence,
@@ -226,6 +234,7 @@ export class ReaderSummary {
     return {
       ...this.snapshot,
       bullets: [...this.snapshot.bullets],
+      narrativeSections: [...(this.snapshot.narrativeSections ?? [])],
       mainTopics: [...(this.snapshot.mainTopics ?? [])],
       topicMap: this.snapshot.topicMap ?? emptyReaderSummaryTopicMap(),
       interestSections: [...this.snapshot.interestSections],
@@ -276,6 +285,7 @@ const buildNoSignalReaderSummary = (
     headline: nonEmpty(input.headline, "No reliable workspace signal yet"),
     oneLineTakeaway: reason,
     bullets: [reason],
+    narrativeSections: [],
     qualityState: {
       status: "no_signal",
       flags: uniqueNonEmpty([

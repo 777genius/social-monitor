@@ -107,6 +107,45 @@ export class PrismaFeedItemReadRepository implements FeedItemReadRepositoryPort 
 
     return record === null ? null : feedItemFromPrisma(record);
   }
+
+  async readSourceContent(query: {
+    readonly tenantId: string;
+    readonly workspaceId: string;
+    readonly feedItemIds: readonly string[];
+  }) {
+    if (query.feedItemIds.length === 0) {
+      return [];
+    }
+
+    const records = await this.prisma.feedItem.findMany({
+      where: {
+        tenantId: query.tenantId,
+        workspaceId: query.workspaceId,
+        status: "VISIBLE",
+        id: { in: query.feedItemIds },
+      },
+      orderBy: [{ publishedAt: "desc" }, { id: "desc" }],
+      skip: 0,
+      take: query.feedItemIds.length,
+      include: {
+        sourceItem: {
+          select: { body: true },
+        },
+      },
+    });
+
+    return records.flatMap((record) =>
+      record.sourceItem === undefined
+        ? []
+        : [
+            {
+              feedItemId: record.id,
+              sourceItemId: record.sourceItemId,
+              body: record.sourceItem.body,
+            },
+          ],
+    );
+  }
 }
 
 const buildObservedAtRange = (

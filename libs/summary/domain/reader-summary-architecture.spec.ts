@@ -23,6 +23,7 @@ const readerSummaryCoreFiles = [
   "services/story-key-normalizer.ts",
   "services/story-ranking-telemetry.ts",
   "value-objects/provider-metric-label.ts",
+  "value-objects/reader-summary-provider-identity.ts",
   "value-objects/reader-summary-scope.ts",
   "value-objects/signal-score.ts",
   "value-objects/summary-evidence-item.ts",
@@ -249,12 +250,21 @@ describe("ReaderSummary domain architecture", () => {
   });
 
   it("keeps Feed provider metric mapping behind explicit Feed domain imports", () => {
-    const selector = sourceFor(
+    const evidenceAdapterFiles = [
       "../adapters/evidence/relevance-reader-summary-evidence.selector.ts",
-    );
+      "../adapters/evidence/relevance-reader-summary-evidence-support.ts",
+    ];
+    const sources = evidenceAdapterFiles.map(sourceFor);
+    const providerMetricMapping = sources[1] ?? "";
 
-    expect(selector).not.toContain('from "@social-monitor/feed"');
-    expect(selector).toContain('from "@social-monitor/feed/domain"');
+    expect(sources).not.toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('from "@social-monitor/feed"'),
+      ]),
+    );
+    expect(providerMetricMapping).toContain(
+      'from "@social-monitor/feed/domain"',
+    );
   });
 
   it("does not keep canonical ReaderSummary evidence selector shims", () => {

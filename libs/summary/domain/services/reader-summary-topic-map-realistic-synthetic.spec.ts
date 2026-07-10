@@ -166,13 +166,15 @@ describe("buildReaderSummaryTopicMap synthetic real-like day", () => {
         ?.groupId,
     ).not.toBe("group:hacker-news");
     expect(
-      map.nodes.every((node) =>
-        evaluateTopicLabelQuality(node.label, { providerLabels }).accepted,
+      map.nodes.every(
+        (node) =>
+          evaluateTopicLabelQuality(node.label, { providerLabels }).accepted,
       ),
     ).toBe(true);
     expect(
-      map.groups.every((group) =>
-        evaluateTopicLabelQuality(group.label, { providerLabels }).accepted,
+      map.groups.every(
+        (group) =>
+          evaluateTopicLabelQuality(group.label, { providerLabels }).accepted,
       ),
     ).toBe(true);
   });
@@ -182,7 +184,7 @@ const storyCluster = (
   overrides: Partial<StoryCluster> & Pick<StoryCluster, "id">,
 ): StoryCluster => ({
   storyKey: overrides.id,
-  rankingPolicyVersion: "story_ranking_v2",
+  rankingPolicyVersion: "story_ranking_v4",
   representativeFeedItemId: "feed-1",
   duplicateFeedItemIds: [],
   interestIds: ["ai-agents"],

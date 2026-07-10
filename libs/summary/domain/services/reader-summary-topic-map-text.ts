@@ -25,6 +25,31 @@ export const compactId = (value: string | undefined): string | undefined => {
 export const humanizeSlug = (value: string): string =>
   value.replace(/[-_]+/gu, " ");
 
+export const readerSummaryTopicLabelFromSlug = (value: string): string =>
+  humanizeSlug(value)
+    .split(/\s+/u)
+    .filter(Boolean)
+    .map(formatReaderSummaryTopicToken)
+    .join(" ");
+
+export const formatReaderSummaryTopicToken = (value: string): string => {
+  const normalized = normalizeTopicLabel(value).replace(/\s+/gu, "");
+  const canonical = canonicalTopicTokens[normalized];
+  if (canonical !== undefined) {
+    return canonical;
+  }
+  if (/^gpt\d+/u.test(normalized)) {
+    return value.toLocaleUpperCase("en-US");
+  }
+  if (/[A-Z]/u.test(value.slice(1))) {
+    return value;
+  }
+
+  return `${value.charAt(0).toLocaleUpperCase("en-US")}${value
+    .slice(1)
+    .toLocaleLowerCase("en-US")}`;
+};
+
 export const normalizeTopicLabel = (value: string): string =>
   value
     .toLocaleLowerCase("en-US")
@@ -65,14 +90,14 @@ export const fallbackTopicLabel = (topicId: string): string => {
     return "GitHub ecosystem";
   }
 
-  return titleCaseTopicLabel(humanizeSlug(rawValue));
+  return readerSummaryTopicLabelFromSlug(rawValue);
 };
 
-const titleCaseTopicLabel = (value: string): string =>
-  value
-    .split(/\s+/u)
-    .filter((part) => part.length > 0)
-    .map(
-      (part) => `${part.charAt(0).toLocaleUpperCase("en-US")}${part.slice(1)}`,
-    )
-    .join(" ");
+const canonicalTopicTokens: Readonly<Record<string, string>> = {
+  ai: "AI",
+  chatgpt: "ChatGPT",
+  github: "GitHub",
+  mcp: "MCP",
+  openai: "OpenAI",
+  xai: "xAI",
+};

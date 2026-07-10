@@ -3344,6 +3344,9 @@
             },
             "type": "array"
           },
+          "id": {
+            "type": "string"
+          },
           "risks": {
             "items": {
               "$ref": "#/components/schemas/ReaderSummaryClaimRiskDto"
@@ -3391,6 +3394,7 @@
             "enum": [
               "single_source",
               "low_confidence",
+              "low_evidence",
               "unresolved"
             ],
             "type": "string"
@@ -3769,6 +3773,46 @@
           "providerVersion",
           "rulesVersion",
           "evalDatasetVersion"
+        ],
+        "type": "object"
+      },
+      "ReaderSummaryNarrativeSectionDto": {
+        "properties": {
+          "citationIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "lead",
+              "main_signal",
+              "why_it_matters",
+              "secondary_signal",
+              "watch"
+            ],
+            "type": "string"
+          },
+          "storyClusterId": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "title",
+          "text",
+          "citationIds"
         ],
         "type": "object"
       },
@@ -4291,6 +4335,12 @@
             },
             "type": "array"
           },
+          "narrativeSections": {
+            "items": {
+              "$ref": "#/components/schemas/ReaderSummaryNarrativeSectionDto"
+            },
+            "type": "array"
+          },
           "nextActions": {
             "items": {
               "$ref": "#/components/schemas/ReaderSummaryNextActionDto"
@@ -4347,6 +4397,7 @@
           "headline",
           "oneLineTakeaway",
           "bullets",
+          "narrativeSections",
           "mainTopics",
           "topicMap",
           "qualityState",
@@ -5174,6 +5225,12 @@
             "type": "string"
           },
           "nodeIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "semanticAnchors": {
             "items": {
               "type": "string"
             },

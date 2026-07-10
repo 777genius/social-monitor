@@ -100,6 +100,29 @@ export class InMemoryFeedItemReadRepository
     return item ?? null;
   }
 
+  async readSourceContent(query: {
+    readonly tenantId: string;
+    readonly workspaceId: string;
+    readonly feedItemIds: readonly string[];
+  }) {
+    const requestedIds = new Set(query.feedItemIds);
+
+    return [...this.itemsById.values()].flatMap((item) => {
+      const snapshot = item.toSnapshot();
+      return snapshot.tenantId === query.tenantId &&
+        snapshot.workspaceId === query.workspaceId &&
+        requestedIds.has(snapshot.id)
+        ? [
+            {
+              feedItemId: snapshot.id,
+              sourceItemId: snapshot.sourceItemId,
+              body: snapshot.bodyPreview,
+            },
+          ]
+        : [];
+    });
+  }
+
   async listSamples(query: ListFeedSignalBaselineSamplesQuery) {
     return [...this.itemsById.values()]
       .flatMap((item) => {

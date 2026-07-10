@@ -15,8 +15,22 @@ import {
   storyProviderMetricLabels,
 } from "./reader-summary-support";
 import { isTopReadEligibleEvidence } from "../policies/top-read-eligibility-policy";
+import { hasFirstPartyOfficialEvidence } from "../policies/reader-summary-source-authority-policy";
+import {
+  isFallbackReaderReason,
+  isReaderTitleReasonDuplicate,
+  readerFacingEvidenceExcerpt,
+} from "../policies/reader-summary-reader-facing-text-policy";
+import {
+  buildTopReadTitle,
+  evidenceReaderTitle,
+  isReaderFacingTopReadTitle,
+  isSourceCoverageFramingText,
+  isUnverifiedBreakingSourceTitle,
+} from "./reader-summary-top-read-title";
 
 const maxTopReadCitationIds = 4;
+const minimumDetailedStorySummaryLength = 240;
 
 export const evidenceClusterMap = (
   clusters: readonly StoryCluster[],
@@ -86,8 +100,10 @@ export const storyToTopRead = (
       (item): item is SummaryEvidenceItem =>
         item !== undefined && isTopReadEligibleEvidence(item),
     );
+  const supportEvidence =
+    citedEvidence.length > 0 ? citedEvidence : topReadEvidence;
   const citation = citations[0];
-  const evidence = citedEvidence[0] ?? topReadEvidence[0] ?? clusterEvidence[0];
+  const evidence = supportEvidence[0] ?? clusterEvidence[0];
   const providerKey =
     citation?.providerKey ??
     evidence?.providerKey ??
@@ -104,25 +120,26 @@ export const storyToTopRead = (
   const matchedInterestIds = uniqueNonEmpty([
     ...story.interestIds,
     ...(cluster?.interestIds ?? []),
-    ...topReadEvidence.map((item) => item.interestId),
+    ...supportEvidence.map((item) => item.interestId),
   ]);
   const whyImportant = buildTopReadUserFacingReasons({
     story,
     cluster,
-    evidence: topReadEvidence,
+    evidence: supportEvidence,
   });
   const signalScore = normalizeSignalScore(
     cluster?.score ?? evidence?.score ?? 0,
   );
   const confirmedProviders = confirmedProviderKeys({
-    cluster,
-    evidence: topReadEvidence,
+    cluster: undefined,
+    evidence: supportEvidence,
     providerKey: readerProviderKey,
   });
   const title = buildTopReadTitle({
     storyTitle: story.title,
-    evidence:
-      topReadEvidence.length > 0 ? topReadEvidence : clusterEvidence,
+    storySummary: story.summary,
+    primaryEvidence: evidence,
+    evidence: supportEvidence.length > 0 ? supportEvidence : clusterEvidence,
   });
 
   return {
@@ -134,30 +151,28 @@ export const storyToTopRead = (
     matchedInterestIds:
       matchedInterestIds.length > 0 ? matchedInterestIds : ["unknown-interest"],
     matchedRules: buildMatchedRules(
-      citedEvidence,
+      supportEvidence,
       matchedInterestIds,
       readerProviderKey,
     ),
     signalScore,
     confidence: readerItemConfidence({
       cluster,
-      evidenceCount:
-        cluster === undefined
-          ? Math.max(topReadEvidence.length, citedEvidence.length)
-          : topReadEvidence.length,
+      evidenceCount: supportEvidence.length,
       confirmedProviderCount: confirmedProviders.length,
       signalScore,
+      firstPartyOfficial: hasFirstPartyOfficialEvidence(supportEvidence),
     }),
     confirmedProviderKeys: confirmedProviders,
     providerMetrics: storyProviderMetricLabels({
-      evidence: topReadEvidence,
+      evidence: supportEvidence,
       representativeMetricLabels: evidence?.providerMetricLabels,
     }),
     whyImportant,
-    whyNow: buildWhyNow(cluster, story.providerKeys, topReadEvidence),
+    whyNow: buildWhyNow(undefined, confirmedProviders, supportEvidence),
     publishedAt: evidence?.publishedAt,
     canonicalUrl: citation?.canonicalUrl ?? evidence?.canonicalUrl,
-    previewMedia: selectTopReadPreviewMedia(evidence, topReadEvidence),
+    previewMedia: selectTopReadPreviewMedia(evidence, supportEvidence),
     citationIds,
   };
 };
@@ -175,46 +190,140 @@ const buildTopReadUserFacingReasons = (params: {
   readonly evidence: readonly SummaryEvidenceItem[];
 }): readonly string[] => {
   const candidates = compactUnique([
+    readerFacingStorySummary(params.story),
     ...(params.cluster?.whyImportant ?? []),
     ...params.evidence.flatMap((item) => item.whyImportant),
     params.story.summary,
-  ]).filter(isUserFacingTopReadReason);
+  ]).filter(
+    (reason) =>
+      isUserFacingTopReadReason(reason) &&
+      !isReaderTitleReasonDuplicate(params.story.title, reason),
+  );
 
   if (candidates.length > 0) {
     return candidates.slice(0, 4);
   }
 
-  return [`Source-reported: ${params.story.title}`];
+  const representative = params.evidence[0];
+  const officialReason = firstPartyOfficialReason(representative);
+  if (officialReason !== undefined) {
+    return [officialReason];
+  }
+  const evidenceReason = readerFacingEvidenceReason(representative);
+  if (evidenceReason !== undefined) {
+    return [evidenceReason];
+  }
+  const metricSummary = representative?.providerMetricSummary?.trim();
+  const engagement =
+    metricSummary === undefined || metricSummary.length === 0
+      ? ""
+      : ` with ${metricSummary}`;
+
+  return [readerFacingFallbackReason(representative, engagement)];
 };
 
-const buildTopReadTitle = (params: {
-  readonly storyTitle: string;
-  readonly evidence: readonly SummaryEvidenceItem[];
-}): string => {
-  const storyTitle = cleanTopReadTitle(params.storyTitle);
-  if (isReaderFacingTopReadTitle(storyTitle)) {
-    return storyTitle;
+const readerFacingStorySummary = (
+  story: TopReadCandidate,
+): string | undefined => {
+  const summary = story.summary.trim();
+  if (
+    summary.length >= minimumDetailedStorySummaryLength &&
+    isUserFacingTopReadReason(summary) &&
+    !isReaderTitleReasonDuplicate(story.title, summary)
+  ) {
+    return summary;
   }
 
-  const evidenceTitle = params.evidence
-    .map((item) => cleanTopReadTitle(item.title))
-    .find(isReaderFacingTopReadTitle);
+  const readerSentences = summary
+    .split(/(?<=[.!?])\s+/u)
+    .filter(
+      (sentence) =>
+        isUserFacingTopReadReason(sentence) &&
+        !isReaderTitleReasonDuplicate(story.title, sentence),
+    );
+  const cleaned = readerSentences.join(" ").trim();
 
-  return evidenceTitle ?? (storyTitle.length > 0 ? storyTitle : "Cited story");
+  return cleaned.length >= minimumDetailedStorySummaryLength
+    ? cleaned
+    : undefined;
 };
 
-const cleanTopReadTitle = (value: string): string =>
-  value.trim().replace(/^X post by @[^:]+:\s*/iu, "").trim();
-
-const isReaderFacingTopReadTitle = (value: string): boolean => {
-  const lower = value.trim().toLowerCase();
-
-  return (
-    lower.length > 0 &&
-    lower !== "cited story" &&
-    lower !== "selected evidence" &&
-    !isSourceCoverageFramingText(lower)
+const readerFacingEvidenceReason = (
+  evidence: SummaryEvidenceItem | undefined,
+): string | undefined => {
+  if (
+    evidence?.providerKey === "x-twitter" &&
+    isUnverifiedBreakingSourceTitle(evidence.title)
+  ) {
+    return undefined;
+  }
+  const excerpt = readerFacingEvidenceExcerpt(
+    evidence?.bodyPreview,
+    evidence?.title,
   );
+  if (excerpt === undefined) {
+    return undefined;
+  }
+
+  switch (evidence?.providerKey) {
+    case "reddit":
+      return `The Reddit post reports: ${excerpt}`;
+    case "x-twitter":
+      return `The X post reports: ${excerpt}`;
+    case "rss":
+      return `The report states: ${excerpt}`;
+    case "hacker-news":
+      return `The Hacker News source states: ${excerpt}`;
+    default:
+      return `The source states: ${excerpt}`;
+  }
+};
+
+const firstPartyOfficialReason = (
+  evidence: SummaryEvidenceItem | undefined,
+): string | undefined => {
+  if (evidence === undefined || !hasFirstPartyOfficialEvidence([evidence])) {
+    return undefined;
+  }
+
+  const title = evidenceReaderTitle(evidence);
+  if (!isReaderFacingTopReadTitle(title)) {
+    return undefined;
+  }
+
+  const sourceName =
+    evidence.authorHandle?.trim() || evidence.providerName?.trim();
+
+  if (sourceName === undefined || sourceName.length === 0) {
+    return `The first-party post provides direct evidence for this update: ${title}.`;
+  }
+
+  return `${sourceName}'s first-party post provides direct evidence for this update: ${title}.`;
+};
+
+const readerFacingFallbackReason = (
+  evidence: SummaryEvidenceItem | undefined,
+  engagement: string,
+): string => {
+  if (
+    evidence?.providerKey === "x-twitter" &&
+    isUnverifiedBreakingSourceTitle(evidence.title)
+  ) {
+    return `The high-engagement post${engagement} is an unverified rollout report; it is useful for tracking product chatter but should not be treated as confirmation.`;
+  }
+
+  switch (evidence?.providerKey) {
+    case "hacker-news":
+      return `The discussion${engagement} surfaces practical trade-offs that may affect current AI engineering decisions.`;
+    case "reddit":
+      return `The discussion${engagement} adds user-experience and operational context that may not appear in the original announcement.`;
+    case "x-twitter":
+      return `The post${engagement} is drawing enough attention to shape current discussion around monitored AI products and developer workflows.`;
+    case "rss":
+      return `The report${engagement} adds timely context for evaluating monitored AI products and developer workflows.`;
+    default:
+      return `The source${engagement} adds timely context for current AI product and engineering decisions.`;
+  }
 };
 
 const isUserFacingTopReadReason = (value: string): boolean => {
@@ -222,6 +331,7 @@ const isUserFacingTopReadReason = (value: string): boolean => {
 
   return (
     lower.length > 0 &&
+    !isFallbackReaderReason(value) &&
     !isSourceCoverageFramingText(lower) &&
     !lower.startsWith("story signal score") &&
     !lower.startsWith("current summary window has") &&
@@ -236,25 +346,3 @@ const isUserFacingTopReadReason = (value: string): boolean => {
     !lower.includes("bodypreview evidence from source item")
   );
 };
-
-const isSourceCoverageFramingText = (lower: string): boolean =>
-  lower.startsWith("confirmed by ") ||
-  lower.startsWith("cross-source") ||
-  lower.startsWith("cross-provider") ||
-  lower.startsWith("selected to preserve ") ||
-  lower.startsWith("source coverage") ||
-  lower.startsWith("provider coverage") ||
-  lower.includes("cross-source attention") ||
-  lower.includes("cross-provider attention") ||
-  lower.includes("cross-source coverage") ||
-  lower.includes("cross-provider coverage") ||
-  lower.includes("cross-source confirmation") ||
-  lower.includes("cross-provider confirmation") ||
-  /\b(?:both|multi-source|multi-provider)\b.*\b(?:attention|coverage|support|confirmation)\b/iu.test(
-    lower,
-  ) ||
-  /\b(?:hn|hacker news|rss|reddit|x\/twitter|x-twitter|twitter|x)\b.*\band\b.*\b(?:hn|hacker news|rss|reddit|x\/twitter|x-twitter|twitter|x)\b.*\b(?:attention|coverage|support|confirmation)\b/iu.test(
-    lower,
-  ) ||
-  lower.includes("source groups support this story") ||
-  lower.includes("monitored source groups support this story");

@@ -1,9 +1,8 @@
-export type ReaderSummaryTopicMapSchemaVersion =
-  "reader_summary.topic_map.v1";
+export type ReaderSummaryTopicMapSchemaVersion = "reader_summary.topic_map.v1";
 
-export type ReaderSummaryTopicMapGenerator =
-  | "deterministic"
-  | "agent-runtime";
+export type ReaderSummaryTopicMapGenerator = "deterministic" | "agent-runtime";
+
+export const READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID = "group:ungrouped";
 
 export type ReaderSummaryTopicMapConfidence = {
   readonly level: "low" | "medium" | "high";
@@ -30,6 +29,7 @@ export type ReaderSummaryTopicMapGroup = {
   readonly id: string;
   readonly label: string;
   readonly colorKey: string;
+  readonly semanticAnchors?: readonly string[];
   readonly nodeIds: readonly string[];
   readonly confidence: ReaderSummaryTopicMapConfidence;
 };

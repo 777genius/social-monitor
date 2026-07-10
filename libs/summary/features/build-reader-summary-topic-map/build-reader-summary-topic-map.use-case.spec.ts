@@ -3,6 +3,8 @@ import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 import type {
   ReaderSummaryTopicLabelerPort,
   ReaderSummaryTopicLabelerInput,
+  ReaderSummaryTopicMapPublicationAuditPort,
+  ReaderSummaryTopicMapPublicationRejection,
 } from "../../ports";
 import type { StoryCluster, SummaryEvidenceItem } from "../../domain";
 import { BuildReaderSummaryTopicMapUseCase } from "./build-reader-summary-topic-map.use-case";
@@ -29,7 +31,7 @@ describe("BuildReaderSummaryTopicMapUseCase", () => {
     expect(result.value.nodes[0]).toMatchObject({
       id: "topic:story:runtime",
       label: "Runtime agents",
-      groupId: "group:runtime",
+      groupId: "group:ungrouped",
     });
     expect(result.value.nodes[0]?.popularityScore).toBeGreaterThan(0);
   });
@@ -71,6 +73,27 @@ describe("BuildReaderSummaryTopicMapUseCase", () => {
     }
     expect(result.error.message).toContain("requires a topic labeler");
   });
+
+  it("rejects an LLM map whose proposed groups have no shared evidence anchors", async () => {
+    const publicationAudit = new RecordingTopicMapPublicationAudit();
+    const result = await new BuildReaderSummaryTopicMapUseCase({
+      mode: "agent-runtime",
+      labeler: new UnsupportedGroupTopicLabeler(),
+      publicationAudit,
+    }).execute(multiTopicCommand());
+
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      throw new Error("Expected topic map publication quality to fail");
+    }
+    expect(result.error.message).toContain("failed publication quality");
+    expect(result.error.message).toContain("supported semantic groups");
+    expect(publicationAudit.rejections).toHaveLength(1);
+    expect(publicationAudit.rejections[0]).toMatchObject({
+      minimumGroupedCoverage: 0.5,
+      structureQuality: { passed: false },
+    });
+  });
 });
 
 class CapturingTopicLabeler implements ReaderSummaryTopicLabelerPort {
@@ -97,6 +120,37 @@ class CapturingTopicLabeler implements ReaderSummaryTopicLabelerPort {
 class FailingTopicLabeler implements ReaderSummaryTopicLabelerPort {
   async label(): Promise<never> {
     throw new Error("agent runtime unavailable");
+  }
+}
+
+class UnsupportedGroupTopicLabeler implements ReaderSummaryTopicLabelerPort {
+  async label(
+    input: ReaderSummaryTopicLabelerInput,
+  ): Promise<Awaited<ReturnType<ReaderSummaryTopicLabelerPort["label"]>>> {
+    return {
+      nodeLabels: input.candidates.map((candidate) => ({
+        nodeId: candidate.nodeId,
+        label: candidate.fallbackLabel,
+        groupId: "group:openai-models",
+      })),
+      groups: [
+        {
+          id: "group:openai-models",
+          label: "OpenAI Models",
+          semanticAnchors: ["OpenAI", "GPT"],
+        },
+      ],
+    };
+  }
+}
+
+class RecordingTopicMapPublicationAudit implements ReaderSummaryTopicMapPublicationAuditPort {
+  readonly rejections: ReaderSummaryTopicMapPublicationRejection[] = [];
+
+  async recordRejectedCandidate(
+    rejection: ReaderSummaryTopicMapPublicationRejection,
+  ): Promise<void> {
+    this.rejections.push(rejection);
   }
 }
 
@@ -165,3 +219,35 @@ const command = () => ({
     },
   ],
 });
+
+const multiTopicCommand = (): ReturnType<typeof command> => {
+  const base = command();
+  const names = ["Alpha", "Beta", "Gamma", "Delta"] as const;
+  const clusters = Array.from({ length: 4 }, (_, index) => ({
+    ...base.clusters[0]!,
+    id: `story:runtime-${index}`,
+    storyKey: `runtime-${index}`,
+    representativeFeedItemId: `feed-runtime-${index}`,
+  }));
+  const selectedEvidence = Array.from({ length: 4 }, (_, index) => ({
+    ...base.selectedEvidence[0]!,
+    feedItemId: `feed-runtime-${index}`,
+    sourceItemId: `source-runtime-${index}`,
+    title: `${names[index]} runtime signal`,
+  }));
+
+  return {
+    ...base,
+    clusters,
+    selectedEvidence,
+    topStories: [],
+    citationMap: selectedEvidence.map((item, index) => ({
+      citationId: `c${index + 1}`,
+      feedItemId: item.feedItemId,
+      sourceItemId: item.sourceItemId,
+      providerKey: item.providerKey,
+      field: "title" as const,
+      canonicalUrl: item.canonicalUrl,
+    })),
+  };
+};

@@ -7,7 +7,11 @@ import {
 } from "@social-monitor/relevance/domain";
 import type { Clock } from "@social-monitor/shared-kernel";
 
-import { StoryClusteringService, type SummaryEvidenceItem } from "../../domain";
+import {
+  StoryClusteringService,
+  type SummaryEvidenceItem,
+  type SummaryEvidenceSelection,
+} from "../../domain";
 import { isTopReadEligibleEvidence } from "../../domain/policies/top-read-eligibility-policy";
 import {
   NOOP_STORY_RANKING_METRICS,
@@ -103,7 +107,56 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
     };
     this.storyRankingMetrics.recordStoryRanking(personalizedSelection);
 
-    return personalizedSelection;
+    return this.withOriginalSourceText(params, personalizedSelection);
+  }
+
+  private async withOriginalSourceText(
+    params: Parameters<ReaderSummaryEvidenceSelectorPort["select"]>[0],
+    selection: SummaryEvidenceSelection,
+  ): Promise<SummaryEvidenceSelection> {
+    const readSourceContent = this.feedItems.readSourceContent;
+    if (
+      readSourceContent === undefined ||
+      selection.selectedEvidence.length === 0
+    ) {
+      return selection;
+    }
+
+    try {
+      const sourceContent = await readSourceContent.call(this.feedItems, {
+        tenantId: params.tenantId,
+        workspaceId: params.workspaceId,
+        feedItemIds: selection.selectedEvidence.map((item) => item.feedItemId),
+      });
+      const sourceTextByFeedItemId = new Map(
+        sourceContent.map((item) => [item.feedItemId, item] as const),
+      );
+
+      return {
+        ...selection,
+        selectedEvidence: selection.selectedEvidence.map((item) => {
+          const source = sourceTextByFeedItemId.get(item.feedItemId);
+          if (
+            source === undefined ||
+            source.sourceItemId !== item.sourceItemId
+          ) {
+            return item;
+          }
+          const safety = this.safetyPolicy.evaluate({
+            providerKey: item.providerKey,
+            title: item.title,
+            bodyPreview: source.body.slice(0, 50_000),
+            canonicalUrl: item.canonicalUrl,
+          });
+
+          return safety.sanitizedBodyPreview === undefined
+            ? item
+            : { ...item, sourceText: safety.sanitizedBodyPreview };
+        }),
+      };
+    } catch {
+      return selection;
+    }
   }
 
   private async expandRankedItems(

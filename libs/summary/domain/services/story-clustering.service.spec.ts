@@ -235,6 +235,167 @@ describe("StoryClusteringService", () => {
     );
   });
 
+  it("clusters cross-provider launch coverage by product version and event", () => {
+    const service = new StoryClusteringService(clock);
+
+    const selection = service.cluster({
+      identity: {
+        tenantId: tenantId("tenant-1"),
+        workspaceId: workspaceId("workspace-1"),
+        scope: { type: "workspace" },
+      },
+      limit: 10,
+      items: [
+        evidenceItem({
+          feedItemId: "x-gpt-56-rollout",
+          sourceItemId: "x-gpt-56-rollout",
+          providerKey: "x-twitter",
+          canonicalUrl: "https://x.com/OpenAI/status/2075271421149020426",
+          title:
+            "OpenAI says GPT‑5.6 Sol, Terra and Luna are rolling out in ChatGPT and the API",
+          bodyPreview: "The GPT-5.6 family is rolling out today.",
+          score: 2.4,
+        }),
+        evidenceItem({
+          feedItemId: "rss-gpt-56-launch",
+          sourceItemId: "rss-gpt-56-launch",
+          providerKey: "rss",
+          canonicalUrl: "https://news.example.test/openai-gpt-56-launch",
+          title: "OpenAI pairs its GPT-5.6 rollout with ChatGPT Work",
+          bodyPreview: "The public rollout includes new ChatGPT workflows.",
+          score: 1.5,
+        }),
+      ],
+    });
+
+    expect(selection.clusters).toHaveLength(1);
+    expect(selection.clusters[0]?.providerKeys).toEqual(["rss", "x-twitter"]);
+  });
+
+  it("does not merge a model rollout with an anecdotal Codex usage-limit report", () => {
+    const service = new StoryClusteringService(clock);
+
+    const selection = service.cluster({
+      identity: {
+        tenantId: tenantId("tenant-1"),
+        workspaceId: workspaceId("workspace-1"),
+        scope: { type: "workspace" },
+      },
+      limit: 10,
+      items: [
+        evidenceItem({
+          feedItemId: "x-gpt-56-rollout",
+          sourceItemId: "x-gpt-56-rollout",
+          providerKey: "x-twitter",
+          canonicalUrl: "https://x.com/OpenAI/status/2075271421149020426",
+          title:
+            "X post by @OpenAI: Sol, Terra, and Luna, our GPT-5.6 family of models, are starting to roll out now in ChatGPT",
+          bodyPreview:
+            "Sol, Terra, and Luna, our GPT-5.6 family of models, are starting to roll out now in ChatGPT, Codex, and the API.",
+          score: 2.4,
+        }),
+        evidenceItem({
+          feedItemId: "reddit-sol-usage-limit",
+          sourceItemId: "reddit-sol-usage-limit",
+          providerKey: "reddit",
+          canonicalUrl:
+            "https://www.reddit.com/r/OpenAI/comments/1urz4j7/sol_5_ultra_burned_through_the_5hour_limit_in_15/",
+          title: "Sol 5 Ultra burned through the 5-hour limit in 15 minutes.",
+          bodyPreview:
+            "I launched codex and asked it to do a refactor. After 15 minutes, I had less than 10% of my daily limit left on a $100 subscription.",
+          score: 2.1,
+        }),
+      ],
+    });
+
+    expect(selection.clusters).toHaveLength(2);
+    expect(
+      selection.clusters.flatMap((cluster) => cluster.duplicateFeedItemIds),
+    ).toEqual([]);
+  });
+
+  it("does not bridge distinct claims through one broad cross-provider item", () => {
+    const service = new StoryClusteringService(clock);
+
+    const selection = service.cluster({
+      identity: {
+        tenantId: tenantId("tenant-1"),
+        workspaceId: workspaceId("workspace-1"),
+        scope: { type: "workspace" },
+      },
+      limit: 10,
+      items: [
+        evidenceItem({
+          feedItemId: "rss-cache-security",
+          sourceItemId: "rss-cache-security",
+          providerKey: "rss",
+          canonicalUrl: "https://reports.example.test/claude-cache-security",
+          title: "Claude Code session cache security",
+          bodyPreview: "Developers report cache leakage vulnerabilities.",
+        }),
+        evidenceItem({
+          feedItemId: "hn-cache-pricing",
+          sourceItemId: "hn-cache-pricing",
+          providerKey: "hacker-news",
+          canonicalUrl: "https://news.ycombinator.com/item?id=123",
+          title: "Claude Code session cache pricing limits quota subscription",
+          bodyPreview: "",
+        }),
+        evidenceItem({
+          feedItemId: "reddit-pricing-limits",
+          sourceItemId: "reddit-pricing-limits",
+          providerKey: "reddit",
+          canonicalUrl:
+            "https://www.reddit.com/r/ClaudeAI/comments/abc/claude_pricing_limits/",
+          title: "Claude Code pricing limits quota subscription",
+          bodyPreview: "",
+        }),
+      ],
+    });
+
+    expect(selection.clusters).toHaveLength(2);
+    expect(
+      selection.clusters.some(
+        (cluster) =>
+          cluster.representativeFeedItemId === "rss-cache-security" &&
+          cluster.duplicateFeedItemIds.includes("reddit-pricing-limits"),
+      ),
+    ).toBe(false);
+  });
+
+  it("does not merge different events that only share a model version", () => {
+    const service = new StoryClusteringService(clock);
+
+    const selection = service.cluster({
+      identity: {
+        tenantId: tenantId("tenant-1"),
+        workspaceId: workspaceId("workspace-1"),
+        scope: { type: "workspace" },
+      },
+      limit: 10,
+      items: [
+        evidenceItem({
+          feedItemId: "x-gpt-56-launch",
+          sourceItemId: "x-gpt-56-launch",
+          providerKey: "x-twitter",
+          canonicalUrl: "https://x.com/OpenAI/status/launch",
+          title: "OpenAI launches GPT-5.6 for ChatGPT",
+          bodyPreview: "The model is rolling out today.",
+        }),
+        evidenceItem({
+          feedItemId: "rss-gpt-56-security",
+          sourceItemId: "rss-gpt-56-security",
+          providerKey: "rss",
+          canonicalUrl: "https://security.example.test/gpt-56-audit",
+          title: "Independent GPT-5.6 security audit finds prompt leakage",
+          bodyPreview: "Researchers detail a reproducible extraction issue.",
+        }),
+      ],
+    });
+
+    expect(selection.clusters).toHaveLength(2);
+  });
+
   it("keeps technical selection notes out of story cluster reasons", () => {
     const service = new StoryClusteringService(clock);
 

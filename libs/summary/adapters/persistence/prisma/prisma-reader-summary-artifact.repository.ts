@@ -27,6 +27,7 @@ import {
   serializeReaderSummaryArtifact,
 } from "./prisma-reader-summary-records";
 import { readerSummaryScopeFromPrisma } from "./prisma-reader-summary-artifact-payload";
+import { readerSummaryStatusAfterModelAuthorityCheck } from "./prisma-reader-summary-publication-authority";
 import {
   encodeSummaryCursor,
   parseSummaryCursor,
@@ -54,8 +55,18 @@ export class PrismaReaderSummaryArtifactRepository implements ReaderSummaryArtif
     options?: Parameters<ReaderSummaryArtifactRepositoryPort["save"]>[1],
   ): Promise<void> {
     const snapshot = artifact.toSnapshot();
+    const existing = await this.prisma.readerSummaryArtifact.findFirst({
+      where: {
+        id: snapshot.readerSummaryId,
+        tenantId: snapshot.tenantId,
+        workspaceId: snapshot.workspaceId,
+      },
+    });
+    if (existing !== null) {
+      return;
+    }
     const publicationDecision = options?.publicationDecision;
-    const status =
+    const proposedStatus: PrismaSummaryStatus =
       publicationDecision?.status === "rejected"
         ? "REJECTED"
         : readerSummaryArtifactStatusToPrisma(artifact);
@@ -68,6 +79,12 @@ export class PrismaReaderSummaryArtifactRepository implements ReaderSummaryArtif
     const scopeFields = readerSummaryScopeToPrisma(snapshot.scope);
 
     await withPrismaWriteRetry(async () => {
+      const status = await readerSummaryStatusAfterModelAuthorityCheck({
+        prisma: this.prisma,
+        proposedStatus,
+        snapshot,
+      });
+
       await this.prisma.readerSummaryArtifact.upsert({
         where: { id: snapshot.readerSummaryId },
         update: {

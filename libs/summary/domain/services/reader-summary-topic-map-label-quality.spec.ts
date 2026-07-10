@@ -66,4 +66,52 @@ describe("evaluateTopicLabelQuality", () => {
       reasons: expect.arrayContaining(["label is a source or UI meta label"]),
     });
   });
+
+  it.each([
+    "Codex CLI Say",
+    "OpenAI Brings ChatGPT",
+    "We're Bringing Codex",
+    "Grok Grok Created",
+    "GPT-5 Consuming Usage",
+    "Didn Expect One",
+    "Grok Serious Run",
+    "Grok Here Honest",
+    "Biggest Scam Humanity",
+    "Scientists Come Work",
+    "Often Forget Clueless",
+    "Scam Humanity Normal",
+    "Claude Any AI",
+    "OpenKnowledge Best Markdown",
+  ])("rejects headline fragment label %s", (label) => {
+    expect(
+      evaluateTopicLabelQuality(label, {
+        evidenceTexts: [`${label} appears verbatim in collected evidence.`],
+      }),
+    ).toMatchObject({ accepted: false, score: 0 });
+  });
+
+  it.each(["Codex CLI", "OpenAI ChatGPT", "Grok", "GPT-5 Usage"])(
+    "accepts noun phrase label %s",
+    (label) => {
+      expect(
+        evaluateTopicLabelQuality(label, {
+          evidenceTexts: [`${label} appears in collected evidence.`],
+        }),
+      ).toMatchObject({ accepted: true });
+    },
+  );
+
+  it("rejects an ungrounded qualifier attached to a grounded entity", () => {
+    expect(
+      evaluateTopicLabelQuality("Grok Kunchenguid", {
+        evidenceTexts: ["Grok 4.5 model review"],
+      }),
+    ).toMatchObject({
+      accepted: false,
+      groundedTokenCount: 1,
+      reasons: expect.arrayContaining([
+        "label is not grounded in collected evidence",
+      ]),
+    });
+  });
 });

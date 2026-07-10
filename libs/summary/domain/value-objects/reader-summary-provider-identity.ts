@@ -14,7 +14,7 @@ export const readerSummaryProviderIdentity = (params: {
   ) {
     return {
       providerKey: "hacker-news",
-      providerName: "Hacker News via RSS",
+      providerName: params.providerName ?? params.providerKey,
     };
   }
 

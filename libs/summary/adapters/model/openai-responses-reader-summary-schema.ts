@@ -12,6 +12,7 @@ export const openAiReaderSummaryJsonSchema = {
   required: [
     "headline",
     "executiveSummary",
+    "narrativeSections",
     "content",
     "topStories",
     "interestHighlights",
@@ -25,8 +26,9 @@ export const openAiReaderSummaryJsonSchema = {
   properties: {
     headline: stringSchema(160),
     executiveSummary: stringSchema(1_800),
+    narrativeSections: arraySchema({ $ref: "#/$defs/narrativeSection" }, 7),
     content: { $ref: "#/$defs/content" },
-    topStories: arraySchema({ $ref: "#/$defs/topStory" }, 10),
+    topStories: arraySchema({ $ref: "#/$defs/topStory" }, 15),
     interestHighlights: {
       type: "array",
       items: { $ref: "#/$defs/interestHighlight" },
@@ -57,6 +59,24 @@ export const openAiReaderSummaryJsonSchema = {
   },
   $defs: {
     ...openAiReaderSummaryContentJsonSchemaDefs,
+    narrativeSection: objectSchema(
+      ["kind", "title", "text", "citationIds", "storyClusterId"],
+      {
+        kind: {
+          enum: [
+            "lead",
+            "main_signal",
+            "why_it_matters",
+            "secondary_signal",
+            "watch",
+          ],
+        },
+        title: { ...stringSchema(100), minLength: 1 },
+        text: { ...stringSchema(720), minLength: 1 },
+        citationIds: { ...stringArraySchema(3), minItems: 1 },
+        storyClusterId: { ...stringSchema(120), type: ["string", "null"] },
+      },
+    ),
     topStory: objectSchema(
       [
         "storyClusterId",
@@ -69,7 +89,7 @@ export const openAiReaderSummaryJsonSchema = {
       {
         storyClusterId: stringSchema(120),
         title: stringSchema(180),
-        summary: stringSchema(420),
+        summary: stringSchema(720),
         interestIds: stringArraySchema(5),
         providerKeys: stringArraySchema(5),
         citationIds: stringArraySchema(2),
@@ -95,7 +115,11 @@ export const openAiReaderSummaryJsonSchema = {
     ),
     risk: objectSchema(["description", "citationIds", "reason"], {
       description: stringSchema(260),
-      citationIds: { type: ["array", "null"], items: stringSchema(40), maxItems: 3 },
+      citationIds: {
+        type: ["array", "null"],
+        items: stringSchema(40),
+        maxItems: 3,
+      },
       reason: { enum: [...openAiReaderSummaryRiskReasons, null] },
     }),
     citation: objectSchema(

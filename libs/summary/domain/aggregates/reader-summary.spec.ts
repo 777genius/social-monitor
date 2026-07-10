@@ -432,16 +432,16 @@ describe("buildReaderSummary", () => {
     );
     expect(readerSummary.oneLineTakeaway).not.toContain("Review 3 cited");
     expect(readerSummary.topReads.map((read) => read.reason)).toEqual([
-      "AI infrastructure discussion around custom chips is getting practical.",
       "Developer rollout chatter is drawing X/Twitter engagement.",
+      "AI infrastructure discussion around custom chips is getting practical.",
       "Biomedical AI research is drawing Hacker News discussion.",
     ]);
     expect(
       readerSummary.topReads.flatMap((read) => read.whyImportant),
     ).not.toContain("Story signal score 2.211");
     expect(readerSummary.topReads.map((read) => read.providerKey)).toEqual([
-      "reddit",
       "x-twitter",
+      "reddit",
       "hacker-news",
     ]);
   });
@@ -779,11 +779,11 @@ describe("buildReaderSummary", () => {
     ]);
   });
 
-  it("keeps the ten highest ranked stories available as reader top reads", () => {
+  it("keeps the eight highest ranked stories available as reader top reads", () => {
     const input = readerTopReadFixture(12);
     const readerSummary = buildReaderSummary(input);
 
-    expect(readerSummary.topReads).toHaveLength(10);
+    expect(readerSummary.topReads).toHaveLength(8);
     expect(readerSummary.topReads.map((item) => item.title)).toEqual([
       "repo-radar/project-1",
       "repo-radar/project-2",
@@ -793,18 +793,16 @@ describe("buildReaderSummary", () => {
       "repo-radar/project-6",
       "repo-radar/project-7",
       "repo-radar/project-8",
-      "repo-radar/project-9",
-      "repo-radar/project-10",
     ]);
     expect(readerSummary.topReads.map((item) => item.title)).not.toContain(
       "repo-radar/project-11",
     );
     expect(readerSummary.bullets).toContain(
-      "9 follow-up links available in Top reads.",
+      "7 follow-up links available in Top reads.",
     );
   });
 
-  it("preserves ranked reader top reads before provider coverage", () => {
+  it("does not fill top reads with weak synthetic provider coverage", () => {
     const input = readerTopReadFixture(12);
     const providerOverrides = new Map<
       number,
@@ -904,7 +902,7 @@ describe("buildReaderSummary", () => {
       }),
     });
 
-    expect(readerSummary.topReads).toHaveLength(10);
+    expect(readerSummary.topReads).toHaveLength(8);
     expect(
       readerSummary.topReads.slice(0, 4).map((item) => ({
         title: item.title,
@@ -932,7 +930,7 @@ describe("buildReaderSummary", () => {
       "repo-radar/project-2",
     );
     expect(readerSummary.trendDelta.newSignals).toEqual([
-      "10 multi-source items selected",
+      "8 multi-source items selected",
     ]);
     expect(readerSummary.openQuestions).toContain(
       "Which top reads need confirmation from another monitored source?",
@@ -959,7 +957,7 @@ describe("buildReaderSummary", () => {
       ],
     });
 
-    expect(readerSummary.topReads).toHaveLength(10);
+    expect(readerSummary.topReads).toHaveLength(8);
     expect(readerSummary.topReads.map((item) => item.title)).toEqual([
       "repo-radar/project-1",
       "repo-radar/project-2",
@@ -969,8 +967,6 @@ describe("buildReaderSummary", () => {
       "repo-radar/project-6",
       "repo-radar/project-7",
       "repo-radar/project-8",
-      "repo-radar/project-9",
-      "repo-radar/project-10",
     ]);
     expect(readerSummary.topReads.map((item) => item.title)).not.toContain(
       "repo-radar/project-1 repeated model output",

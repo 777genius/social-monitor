@@ -13,6 +13,7 @@ import type {
 import type { JsonObject } from "@social-monitor/shared-kernel";
 
 import type { SummaryEvidenceItem } from "../../domain";
+import { isReaderSummaryEvidenceEligible } from "../../domain/policies/reader-summary-evidence-eligibility-policy";
 import { previewMediaFromProviderMetadata } from "./provider-preview-media";
 import { isDefaultReaderSummaryEvidenceProvider } from "./reader-summary-evidence-provider-filter";
 import type { ReaderSummaryEvidenceSelectorPort } from "../../ports";
@@ -33,7 +34,10 @@ export const mapRankedItem = (item: RankedFeedItemView): SummaryEvidenceItem => 
   sourceBindingId: item.sourceBindingId,
   interestId: item.interestId,
   providerKey: item.providerKey,
-  providerName: providerNameForProvider(item.providerKey),
+  providerName: providerNameForEvidence({
+    providerKey: item.providerKey,
+    canonicalUrl: item.canonicalUrl,
+  }),
   canonicalUrl: item.canonicalUrl,
   title: item.title,
   bodyPreview: item.bodyPreview,
@@ -103,6 +107,15 @@ export const providerNameForProvider = (providerKey: string): string => {
   }
 };
 
+export const providerNameForEvidence = (params: {
+  readonly providerKey: string;
+  readonly canonicalUrl?: string;
+}): string =>
+  params.providerKey.toLowerCase() === "rss" &&
+  isHackerNewsCanonicalUrl(params.canonicalUrl)
+    ? "Hacker News via RSS"
+    : providerNameForProvider(params.providerKey);
+
 export const expandedCandidateLimit = (limit: number): number => {
   if (!Number.isInteger(limit) || limit < 1) {
     return 1;
@@ -162,7 +175,7 @@ export const selectProviderDiverseEvidence = (
 };
 
 export const isEligibleForEvidence = (item: SummaryEvidenceItem): boolean =>
-  item.contentQuality?.eligibleForSummary !== false;
+  isReaderSummaryEvidenceEligible(item);
 
 export const filterItemsByDefaultReaderSummaryProviders = (
   items: readonly SummaryEvidenceItem[],
@@ -297,7 +310,11 @@ export const mapSupplementFeedItem = (params: {
     sourceBindingId: params.snapshot.sourceBindingId,
     interestId: params.snapshot.interestId,
     providerKey: params.snapshot.providerKey,
-    providerName: providerNameForProvider(params.snapshot.providerKey),
+    providerName: providerNameForEvidence({
+      providerKey: params.snapshot.providerKey,
+      canonicalUrl:
+        safety.sanitizedCanonicalUrl ?? params.snapshot.canonicalUrl,
+    }),
     canonicalUrl: safety.sanitizedCanonicalUrl ?? params.snapshot.canonicalUrl,
     title: safety.sanitizedTitle,
     bodyPreview: safety.sanitizedBodyPreview,
@@ -323,6 +340,18 @@ export const mapSupplementFeedItem = (params: {
       canonicalUrl: safety.sanitizedCanonicalUrl ?? params.snapshot.canonicalUrl,
     }),
   };
+};
+
+const isHackerNewsCanonicalUrl = (value: string | undefined): boolean => {
+  if (value === undefined) {
+    return false;
+  }
+
+  try {
+    return new URL(value).hostname.toLowerCase() === "news.ycombinator.com";
+  } catch {
+    return false;
+  }
 };
 
 export const supplementEvidenceScore = (params: {

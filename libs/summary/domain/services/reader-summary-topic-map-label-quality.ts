@@ -48,6 +48,7 @@ const weakTopicLabelTokens = new Set([
   "all",
   "an",
   "and",
+  "any",
   "are",
   "as",
   "ask",
@@ -58,12 +59,16 @@ const weakTopicLabelTokens = new Set([
   "but",
   "by",
   "before",
+  "best",
+  "biggest",
   "can",
+  "clueless",
   "could",
   "council",
   "day",
   "days",
   "did",
+  "didn",
   "do",
   "does",
   "entire",
@@ -76,9 +81,11 @@ const weakTopicLabelTokens = new Set([
   "has",
   "have",
   "having",
+  "here",
   "hn",
   "how",
   "if",
+  "impression",
   "in",
   "into",
   "is",
@@ -86,14 +93,18 @@ const weakTopicLabelTokens = new Set([
   "its",
   "just",
   "many",
+  "me",
   "minute",
   "minutes",
   "more",
   "my",
   "new",
   "news",
+  "normal",
   "not",
+  "one",
   "of",
+  "often",
   "on",
   "or",
   "over",
@@ -105,8 +116,10 @@ const weakTopicLabelTokens = new Set([
   "prompts",
   "professionals",
   "pros",
+  "re",
   "rely",
   "relying",
+  "serious",
   "should",
   "ship",
   "shipping",
@@ -120,12 +133,14 @@ const weakTopicLabelTokens = new Set([
   "this",
   "those",
   "thread",
+  "today",
   "to",
   "top",
   "update",
   "updates",
   "user",
   "users",
+  "we",
   "was",
   "were",
   "what",
@@ -139,6 +154,7 @@ const weakTopicLabelTokens = new Set([
   "workers",
   "words",
   "would",
+  "you",
   "your",
 ]);
 
@@ -147,23 +163,50 @@ const genericActionTokens = new Set([
   "adds",
   "added",
   "adding",
+  "accepted",
+  "according",
   "announce",
   "announces",
   "announced",
   "behind",
   "breaking",
   "build",
+  "built",
   "building",
+  "bring",
+  "bringing",
+  "brings",
+  "caught",
   "change",
   "changes",
+  "come",
+  "comes",
   "compare",
   "compares",
+  "consume",
+  "consuming",
+  "created",
+  "creates",
+  "creating",
   "deep",
+  "ditching",
+  "dropped",
+  "expect",
+  "expected",
   "every",
+  "forget",
+  "forgot",
   "gets",
   "getting",
   "give",
+  "gave",
   "gives",
+  "happens",
+  "hiring",
+  "introduce",
+  "introduced",
+  "introducing",
+  "let",
   "just",
   "lead",
   "leads",
@@ -172,6 +215,7 @@ const genericActionTokens = new Set([
   "launches",
   "launching",
   "make",
+  "made",
   "makes",
   "many",
   "race",
@@ -183,9 +227,17 @@ const genericActionTokens = new Set([
   "released",
   "releases",
   "releasing",
+  "replacing",
   "relies",
   "rise",
   "rises",
+  "rolling",
+  "run",
+  "running",
+  "presents",
+  "say",
+  "said",
+  "says",
   "showed",
   "showing",
   "shows",
@@ -201,6 +253,42 @@ const genericActionTokens = new Set([
   "verifies",
   "verified",
   "verifying",
+]);
+
+const headlineClauseTokens = new Set([
+  "accepted",
+  "according",
+  "any",
+  "best",
+  "biggest",
+  "bringing",
+  "brings",
+  "caught",
+  "come",
+  "comes",
+  "consuming",
+  "created",
+  "ditching",
+  "dropped",
+  "expect",
+  "expected",
+  "forget",
+  "forgot",
+  "gave",
+  "happens",
+  "hiring",
+  "here",
+  "introducing",
+  "made",
+  "normal",
+  "presents",
+  "replacing",
+  "rolling",
+  "run",
+  "running",
+  "say",
+  "said",
+  "says",
 ]);
 
 export const sanitizeTopicNodeLabel = (
@@ -228,8 +316,7 @@ export const hasUsableTopicNodeLabel = (
 export const isUsableTopicLabel = (
   label: string,
   providerLabels: readonly string[],
-): boolean =>
-  evaluateTopicLabelQuality(label, { providerLabels }).accepted;
+): boolean => evaluateTopicLabelQuality(label, { providerLabels }).accepted;
 
 export const isUsableTopicGroupLabel = (
   group: ReaderSummaryTopicGroupLabel,
@@ -269,7 +356,7 @@ export const evaluateTopicLabelQuality = (
     ...(context.candidateLabels ?? []),
   ]);
   const groundedTokenCount = meaningfulTokens.filter((token) =>
-    evidenceTokenSet.has(token),
+    evidenceTokenSet.has(semanticTokenFamily(token)),
   ).length;
   const reasons: string[] = [];
 
@@ -282,11 +369,22 @@ export const evaluateTopicLabelQuality = (
   if (meaningfulTokens.length > 5) {
     reasons.push("label is longer than five significant words");
   }
+  if (
+    topicLabelTokens(label).some((token) => headlineClauseTokens.has(token))
+  ) {
+    reasons.push("label is a headline clause instead of a topic noun phrase");
+  }
+  if (hasRepeatedTopicToken(label)) {
+    reasons.push("label repeats the same topic word");
+  }
+  if (hasTruncatedContractionToken(label)) {
+    reasons.push("label contains a truncated sentence contraction");
+  }
   if (meaningfulTokens.length === 1 && !hasConcreteSingleTokenSignal(label)) {
     reasons.push("single-word label is not a concrete entity signal");
   }
   if (evidenceTokenSet.size > 0) {
-    const requiredGroundedTokens = meaningfulTokens.length <= 2 ? 1 : 2;
+    const requiredGroundedTokens = Math.min(2, meaningfulTokens.length);
     if (groundedTokenCount < requiredGroundedTokens) {
       reasons.push("label is not grounded in collected evidence");
     }
@@ -369,7 +467,32 @@ const isMetaTopicLabel = (
 };
 
 const evidenceTokens = (values: readonly string[]): ReadonlySet<string> =>
-  new Set(values.flatMap((value) => meaningfulTopicLabelTokens(value)));
+  new Set(
+    values.flatMap((value) =>
+      meaningfulTopicLabelTokens(value).map(semanticTokenFamily),
+    ),
+  );
+
+const semanticTokenFamily = (token: string): string =>
+  token.length > 4 && token.endsWith("s") ? token.slice(0, -1) : token;
+
+const topicLabelTokens = (value: string): readonly string[] =>
+  normalizeTopicLabel(value).split(/\s+/u).filter(Boolean);
+
+const hasRepeatedTopicToken = (value: string): boolean => {
+  const tokens = topicLabelTokens(value).filter(
+    (token) => !isWeakTopicLabelToken(token),
+  );
+
+  return new Set(tokens).size < tokens.length;
+};
+
+const hasTruncatedContractionToken = (value: string): boolean =>
+  topicLabelTokens(value).some((token) =>
+    /^(?:aren|couldn|didn|doesn|don|hadn|hasn|haven|isn|shouldn|wasn|weren|won|wouldn)$/u.test(
+      token,
+    ),
+  );
 
 const roundQualityScore = (value: number): number =>
   Math.round(Math.min(1, Math.max(0, value)) * 1000) / 1000;

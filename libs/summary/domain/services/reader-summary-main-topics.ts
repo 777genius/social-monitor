@@ -10,31 +10,54 @@ import { compactUnique, interestTitle } from "../value-objects/summary-text";
 const maxMainTopics = 6;
 const maxTopicWords = 4;
 const maxTopicLength = 34;
+const minimumNarrativeTopics = 3;
 
-const knownTopicPatterns: readonly [RegExp, string][] = [
-  [/\bfable\s*5\b/iu, "Fable 5"],
-  [/\bclaude\s+code\b/iu, "Claude Code"],
-  [/\bclaude\b/iu, "Claude"],
-  [/\bcursor\b/iu, "Cursor"],
-  [/\bcodex\b/iu, "Codex"],
-  [/\bprompt\s+(?:extraction|injection)\b/iu, "prompt extraction"],
-  [/\bmcp\b/iu, "MCP"],
-  [/\bopenai\b/iu, "OpenAI"],
-  [/\bgemini\b/iu, "Gemini"],
-  [/\bllm(?:s)?\b/iu, "LLMs"],
-  [/\bai\s+coding\s+agents?\b/iu, "AI coding agents"],
-  [/\bai\s+agents?\b/iu, "AI agents"],
-  [/\bai\s+trust\b/iu, "AI trust"],
-  [/\bbetter\s+models?.*\bworse\s+tools?\b/iu, "AI tool quality"],
-  [/\bopenwiki\b/iu, "OpenWiki"],
-  [/\brepo[-\s]?context\b/iu, "repo context"],
-  [/\busage[-\s]?limits?\b/iu, "usage limits"],
-  [/\bopen[-\s]?(?:weight|model)s?\b/iu, "open models"],
-  [/\btypescript\b/iu, "TypeScript"],
-  [/\bpython\b/iu, "Python"],
-  [/\brust\b/iu, "Rust"],
-  [/\bjavascript\b/iu, "JavaScript"],
-  [/\bcybersecurity\b/iu, "cybersecurity"],
+type TopicPattern = {
+  readonly pattern: RegExp;
+  readonly label: string | ((match: RegExpExecArray) => string);
+};
+
+const knownTopicPatterns: readonly TopicPattern[] = [
+  { pattern: /\bchatgpt\s+work\b/iu, label: "ChatGPT Work" },
+  {
+    pattern: /\bgpt[-\s]?(\d+(?:\.\d+)*)\b/iu,
+    label: (match) => `GPT-${match[1]}`,
+  },
+  { pattern: /\bfable\s*5\b/iu, label: "Fable 5" },
+  { pattern: /\bclaude\s+code\b/iu, label: "Claude Code" },
+  { pattern: /\bclaude\b/iu, label: "Claude" },
+  { pattern: /\bcursor\b/iu, label: "Cursor" },
+  { pattern: /\bcodex\b/iu, label: "Codex" },
+  {
+    pattern: /\bprompt\s+(?:extraction|injection)\b/iu,
+    label: "prompt extraction",
+  },
+  { pattern: /\bmcp\b/iu, label: "MCP" },
+  { pattern: /\bopenai\b/iu, label: "OpenAI" },
+  { pattern: /\bgemini\b/iu, label: "Gemini" },
+  { pattern: /\bllm(?:s)?\b/iu, label: "LLMs" },
+  {
+    pattern: /\bai\s+coding\s+agents?\b/iu,
+    label: "AI coding agents",
+  },
+  { pattern: /\bai[-\s]+agents?\b/iu, label: "AI agents" },
+  { pattern: /\bai\s+trust\b/iu, label: "AI trust" },
+  {
+    pattern: /\bbetter\s+models?.*\bworse\s+tools?\b/iu,
+    label: "AI tool quality",
+  },
+  { pattern: /\bopenwiki\b/iu, label: "OpenWiki" },
+  { pattern: /\brepo[-\s]?context\b/iu, label: "repo context" },
+  { pattern: /\busage[-\s]?limits?\b/iu, label: "usage limits" },
+  {
+    pattern: /\bopen[-\s]?(?:weight|model)s?\b/iu,
+    label: "open models",
+  },
+  { pattern: /\btypescript\b/iu, label: "TypeScript" },
+  { pattern: /\bpython\b/iu, label: "Python" },
+  { pattern: /\brust\b/iu, label: "Rust" },
+  { pattern: /\bjavascript\b/iu, label: "JavaScript" },
+  { pattern: /\bcybersecurity\b/iu, label: "cybersecurity" },
 ];
 
 const genericLeadInPatterns: readonly RegExp[] = [
@@ -46,13 +69,21 @@ const genericLeadInPatterns: readonly RegExp[] = [
 ];
 
 export const buildReaderSummaryMainTopics = (params: {
+  readonly headline?: string;
+  readonly executiveSummary?: string;
   readonly topReads: readonly TopRead[];
   readonly topStories: readonly TopReadCandidate[];
   readonly interestHighlights: readonly InterestHighlight[];
   readonly repeatedSignals: readonly RepeatedSignal[];
   readonly selectedEvidence?: readonly SummaryEvidenceItem[];
 }): readonly string[] => {
-  const candidates = [
+  const narrativeTopics = removeShadowedTopics(
+    compactUnique([
+      ...topicsFromText(params.headline ?? ""),
+      ...topicsFromText(params.executiveSummary ?? ""),
+    ]),
+  );
+  const supportingCandidates = [
     ...params.topReads.flatMap((read) => [
       ...read.matchedInterestIds.map(topicFromInterestId),
       topicFromText(read.title),
@@ -71,11 +102,14 @@ export const buildReaderSummaryMainTopics = (params: {
       ...(item.matchedRules ?? []).map(topicFromRule),
     ]),
   ];
+  const topics =
+    narrativeTopics.length >= minimumNarrativeTopics
+      ? narrativeTopics
+      : removeShadowedTopics(
+          compactUnique([...narrativeTopics, ...supportingCandidates]),
+        );
 
-  return removeShadowedTopics(compactUnique(candidates)).slice(
-    0,
-    maxMainTopics,
-  );
+  return topics.slice(0, maxMainTopics);
 };
 
 const topicFromRule = (value: string): string | undefined => {
@@ -96,24 +130,62 @@ const topicFromInterestId = (value: string): string | undefined => {
   return compactTopic(interestTitle(trimmed));
 };
 
+const topicsFromText = (value: string): readonly string[] => {
+  const cleaned = cleanTopicText(value);
+  if (cleaned.length === 0 || looksLikeRawId(cleaned)) {
+    return [];
+  }
+
+  return knownTopicPatterns
+    .map(({ pattern, label }, priority) => {
+      const match = pattern.exec(cleaned);
+      if (match === null) {
+        return undefined;
+      }
+      return {
+        index: match.index,
+        priority,
+        label: typeof label === "string" ? label : label(match),
+      };
+    })
+    .filter(
+      (
+        match,
+      ): match is {
+        readonly index: number;
+        readonly priority: number;
+        readonly label: string;
+      } => match !== undefined,
+    )
+    .sort(
+      (left, right) =>
+        left.index - right.index || left.priority - right.priority,
+    )
+    .map((match) => match.label);
+};
+
 const topicFromText = (value: string): string | undefined => {
-  const cleaned = value
-    .replace(/^x\s+post\s+by\s+@[^:]+:\s*/iu, "")
-    .replace(/^issue:\s*/iu, "")
-    .replace(/^summary:\s*/iu, "")
-    .trim();
+  const cleaned = cleanTopicText(value);
   if (cleaned.length === 0 || looksLikeRawId(cleaned)) {
     return undefined;
   }
 
-  for (const [pattern, label] of knownTopicPatterns) {
-    if (pattern.test(cleaned)) {
-      return label;
+  for (const { pattern, label } of knownTopicPatterns) {
+    const match = pattern.exec(cleaned);
+    if (match !== null) {
+      return typeof label === "string" ? label : label(match);
     }
   }
 
   return undefined;
 };
+
+const cleanTopicText = (value: string): string =>
+  value
+    .replace(/^x\s+post\s+by\s+@[^:]+:\s*/iu, "")
+    .replace(/^issue:\s*/iu, "")
+    .replace(/^summary:\s*/iu, "")
+    .trim();
 
 const compactTopic = (value: string): string | undefined => {
   const firstClause = value

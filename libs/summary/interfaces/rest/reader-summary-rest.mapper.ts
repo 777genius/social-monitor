@@ -33,13 +33,22 @@ export type ReaderSummaryStoryClusterView =
 export type ReaderSummaryContextArtifactView =
   CanonicalReaderSummaryContextArtifactView;
 
+type ReaderSummaryBriefView = Omit<
+  CanonicalReaderSummaryArtifactView["content"],
+  "narrativeSections"
+> & {
+  readonly narrativeSections: NonNullable<
+    CanonicalReaderSummaryArtifactView["content"]["narrativeSections"]
+  >;
+};
+
 export type ReaderSummaryArtifactView = Omit<
   CanonicalReaderSummaryArtifactView,
   "schemaVersion" | "readerSummaryId" | "content" | "lineage" | "freshness"
 > & {
   readonly schemaVersion: "reader_summary.artifact.v1";
   readonly readerSummaryId: string;
-  readonly readerBrief: CanonicalReaderSummaryArtifactView["content"];
+  readonly readerBrief: ReaderSummaryBriefView;
   readonly lineage: Omit<
     CanonicalReaderSummaryArtifactView["lineage"],
     "schemaVersion"
@@ -84,7 +93,10 @@ export const readerSummaryArtifactViewFromReaderSummaryView = (
     ...rest,
     schemaVersion: "reader_summary.artifact.v1",
     readerSummaryId: readerSummaryId,
-    readerBrief: content,
+    readerBrief: {
+      ...content,
+      narrativeSections: content.narrativeSections ?? [],
+    },
     lineage: {
       ...lineage,
       schemaVersion: "reader_summary.artifact.v1",

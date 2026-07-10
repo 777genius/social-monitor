@@ -7,12 +7,14 @@ import {
 
 import {
   buildReaderSummaryTopicMap,
+  evaluateReaderSummaryTopicMapStructure,
   extractReaderSummaryTopicLabelCandidates,
   type ReaderSummaryTopicMap,
 } from "../../domain";
 import type {
   ReaderSummaryTopicLabelCandidate,
   ReaderSummaryTopicLabelerPort,
+  ReaderSummaryTopicMapPublicationAuditPort,
 } from "../../ports";
 import type { BuildReaderSummaryTopicMapCommand } from "./build-reader-summary-topic-map.command";
 
@@ -21,6 +23,7 @@ export type BuildReaderSummaryTopicMapMode = "deterministic" | "agent-runtime";
 export type BuildReaderSummaryTopicMapUseCaseOptions = {
   readonly mode?: BuildReaderSummaryTopicMapMode;
   readonly labeler?: ReaderSummaryTopicLabelerPort | null;
+  readonly publicationAudit?: ReaderSummaryTopicMapPublicationAuditPort | null;
 };
 export type BuildReaderSummaryTopicMapResult = Result<
   ReaderSummaryTopicMap,
@@ -30,10 +33,12 @@ export type BuildReaderSummaryTopicMapResult = Result<
 export class BuildReaderSummaryTopicMapUseCase {
   private readonly mode: BuildReaderSummaryTopicMapMode;
   private readonly labeler: ReaderSummaryTopicLabelerPort | null;
+  private readonly publicationAudit: ReaderSummaryTopicMapPublicationAuditPort | null;
 
   constructor(options: BuildReaderSummaryTopicMapUseCaseOptions = {}) {
     this.mode = options.mode ?? "deterministic";
     this.labeler = options.labeler ?? null;
+    this.publicationAudit = options.publicationAudit ?? null;
   }
 
   async execute(
@@ -48,7 +53,7 @@ export class BuildReaderSummaryTopicMapUseCase {
     });
 
     if (this.mode === "deterministic" || deterministic.nodes.length === 0) {
-      return ok(deterministic);
+      return publishableTopicMap(deterministic, this.publicationAudit);
     }
 
     if (this.labeler === null) {
@@ -67,7 +72,7 @@ export class BuildReaderSummaryTopicMapUseCase {
       return labelPlanResult;
     }
 
-    return ok(
+    return publishableTopicMap(
       buildReaderSummaryTopicMap({
         clusters: command.clusters,
         selectedEvidence: command.selectedEvidence,
@@ -76,6 +81,7 @@ export class BuildReaderSummaryTopicMapUseCase {
         labelPlan: labelPlanResult.value,
         generatedBy: "agent-runtime",
       }),
+      this.publicationAudit,
     );
   }
 
@@ -161,6 +167,40 @@ const topicMapFailure = (message: string): DomainError =>
   new DomainError("external.dependency_unavailable", message, {
     dependency: "reader_summary_topic_labeler",
   });
+
+const publishableTopicMap = async (
+  topicMap: ReaderSummaryTopicMap,
+  publicationAudit: ReaderSummaryTopicMapPublicationAuditPort | null,
+): Promise<BuildReaderSummaryTopicMapResult> => {
+  const structure = evaluateReaderSummaryTopicMapStructure(topicMap);
+  const minimumGroupedCoverage =
+    topicMap.generatedBy === "agent-runtime" && topicMap.nodes.length >= 4
+      ? 0.5
+      : 0;
+  if (
+    structure.passed &&
+    structure.metrics.groupedCoverage >= minimumGroupedCoverage
+  ) {
+    return ok(topicMap);
+  }
+
+  await publicationAudit?.recordRejectedCandidate({
+    topicMap,
+    structureQuality: structure,
+    minimumGroupedCoverage,
+  });
+
+  return err(
+    topicMapFailure(
+      `Reader summary topic map failed publication quality: ${[
+        ...structure.issues,
+        ...(structure.metrics.groupedCoverage < minimumGroupedCoverage
+          ? ["agent-runtime grouped coverage is below 0.5"]
+          : []),
+      ].join("; ")}`,
+    ),
+  );
+};
 
 const topicLabelerFailureMessage = (error: unknown): string =>
   error instanceof Error && error.message.trim().length > 0

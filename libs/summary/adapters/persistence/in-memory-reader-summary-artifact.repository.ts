@@ -1,4 +1,5 @@
 import {
+  canReaderSummaryModelSupersede,
   readerSummaryScopeKey,
   type ReaderSummaryArtifact,
 } from "../../domain";
@@ -18,7 +19,10 @@ type ReaderSummaryPublicationDecisionForPersistence = NonNullable<
 
 export class InMemoryReaderSummaryArtifactRepository implements ReaderSummaryArtifactRepositoryPort {
   private readonly artifactsById = new Map<string, ReaderSummaryArtifact>();
-  private readonly statusesById = new Map<string, ReaderSummaryArtifactVisibility>();
+  private readonly statusesById = new Map<
+    string,
+    ReaderSummaryArtifactVisibility
+  >();
   private readonly publicationDecisionsById = new Map<
     string,
     ReaderSummaryPublicationDecisionForPersistence
@@ -30,13 +34,16 @@ export class InMemoryReaderSummaryArtifactRepository implements ReaderSummaryArt
   ): Promise<void> {
     const snapshot = artifact.toSnapshot();
     const key = artifactKey(snapshot);
-    const visibility =
+    if (this.artifactsById.has(key)) {
+      return;
+    }
+    let visibility: ReaderSummaryArtifactVisibility =
       options?.publicationDecision?.status === "rejected"
         ? "rejected"
         : "visible";
 
     if (visibility === "visible") {
-      this.supersedeMatchingVisibleArtifacts(snapshot, key);
+      visibility = this.resolvePublicationVisibility(snapshot, key);
     }
 
     this.artifactsById.set(key, artifact);
@@ -151,19 +158,33 @@ export class InMemoryReaderSummaryArtifactRepository implements ReaderSummaryArt
     return [...this.artifactsById.values()];
   }
 
-  private supersedeMatchingVisibleArtifacts(
+  private resolvePublicationVisibility(
     snapshot: ReturnType<ReaderSummaryArtifact["toSnapshot"]>,
     currentKey: string,
-  ): void {
+  ): ReaderSummaryArtifactVisibility {
+    let blockedByHigherAuthority = false;
     for (const [key, artifact] of this.artifactsById.entries()) {
       if (key === currentKey || this.statusesById.get(key) !== "visible") {
         continue;
       }
 
-      if (sameReaderSummaryCanonicalSlot(artifact.toSnapshot(), snapshot)) {
+      const visibleSnapshot = artifact.toSnapshot();
+      if (!sameReaderSummaryCanonicalSlot(visibleSnapshot, snapshot)) {
+        continue;
+      }
+      if (
+        canReaderSummaryModelSupersede(
+          snapshot.lineage.modelVersion,
+          visibleSnapshot.lineage.modelVersion,
+        )
+      ) {
         this.statusesById.set(key, "superseded");
+      } else {
+        blockedByHigherAuthority = true;
       }
     }
+
+    return blockedByHigherAuthority ? "superseded" : "visible";
   }
 }
 
@@ -171,7 +192,8 @@ type ReaderSummaryArtifactVisibility = "visible" | "rejected" | "superseded";
 
 const rejectedDebugFromArtifact = (
   artifact: ReaderSummaryArtifact,
-  publicationDecision: ReaderSummaryPublicationDecisionForPersistence | undefined,
+  publicationDecision:
+    ReaderSummaryPublicationDecisionForPersistence | undefined,
 ): ReaderSummaryRejectedArtifactDebug => {
   const snapshot = artifact.toSnapshot();
 
@@ -215,10 +237,9 @@ const rejectedDebugTopReads = (
   }
 
   const citationById = new Map(
-    snapshot.citationMap.map((citation) => [
-      citation.citationId,
-      citation,
-    ] as const),
+    snapshot.citationMap.map(
+      (citation) => [citation.citationId, citation] as const,
+    ),
   );
 
   return snapshot.topStories.map((item) => ({
@@ -247,7 +268,8 @@ const firstCanonicalUrl = (
 };
 
 const rejectionViolationsFromDecision = (
-  publicationDecision: ReaderSummaryPublicationDecisionForPersistence | undefined,
+  publicationDecision:
+    ReaderSummaryPublicationDecisionForPersistence | undefined,
 ): ReaderSummaryRejectedArtifactDebug["violations"] => {
   if (publicationDecision?.status !== "rejected") {
     return [];
@@ -277,12 +299,14 @@ const rejectionViolationsFromDecision = (
 const publicationDecisionFindings = (
   publicationDecision: ReaderSummaryPublicationDecisionForPersistence,
 ): ReaderSummaryRejectedArtifactDebug["violations"] =>
-  "findings" in publicationDecision && Array.isArray(publicationDecision.findings)
+  "findings" in publicationDecision &&
+  Array.isArray(publicationDecision.findings)
     ? publicationDecision.findings
     : [];
 
 const shadowReportFromDecision = (
-  publicationDecision: ReaderSummaryPublicationDecisionForPersistence | undefined,
+  publicationDecision:
+    ReaderSummaryPublicationDecisionForPersistence | undefined,
 ): ReaderSummaryRejectedArtifactDebug["shadow"] => {
   const shadow =
     publicationDecision !== undefined && "shadow" in publicationDecision

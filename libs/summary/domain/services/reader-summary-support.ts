@@ -1,6 +1,7 @@
 import type { ReaderAction } from "../entities/reader-action";
 import type { SourceMixEntry } from "../entities/source-mix-entry";
 import type { TopRead, TopReadConfidence } from "../entities/top-read";
+import { isFallbackReaderReason } from "../policies/reader-summary-reader-facing-text-policy";
 import type { ProviderMetric } from "../value-objects/provider-metric-label";
 import type {
   StoryCluster,
@@ -45,20 +46,29 @@ export const buildWhyNow = (
   const evidenceIdentities = evidence.map((item) =>
     readerSummaryProviderIdentity(item),
   );
+  const normalizedPrimaryProviderKeys = providerKeys.map((providerKey) => {
+    const matchingProviderKeys = uniqueNonEmpty(
+      evidence.flatMap((item, index) =>
+        item.providerKey === providerKey
+          ? [evidenceIdentities[index]?.providerKey ?? providerKey]
+          : [],
+      ),
+    );
+
+    return matchingProviderKeys.length === 1
+      ? (matchingProviderKeys[0] ?? providerKey)
+      : providerKey;
+  });
   const clusterProviderKeys = multiProviderClusterKeys(cluster);
-  const clusterProviderIdentities = clusterProviderKeys.map((providerKey) => ({
-    providerKey,
-    providerName: providerDisplayName(providerKey),
-  }));
   const providerNamesByKey = new Map(
-    [...evidenceIdentities, ...clusterProviderIdentities].map(
-      (identity) =>
-        [identity.providerKey, identity.providerName] as const,
+    evidenceIdentities.map(
+      (identity) => [identity.providerKey, identity.providerName] as const,
     ),
   );
   const providers = uniqueNonEmpty(
     evidenceIdentities.length > 0 || clusterProviderKeys.length > 0
       ? [
+          ...normalizedPrimaryProviderKeys,
           ...evidenceIdentities.map((identity) => identity.providerKey),
           ...clusterProviderKeys,
         ]
@@ -110,39 +120,19 @@ const multiProviderClusterKeys = (
   return providerKeys.length > 1 ? providerKeys : [];
 };
 
-const providerDisplayName = (providerKey: string): string => {
-  switch (providerKey) {
-    case "hacker-news":
-      return "Hacker News";
-    case "x-twitter":
-      return "X/Twitter";
-    case "rss":
-      return "RSS";
-    case "reddit":
-      return "Reddit";
-    case "github-trending-page":
-      return "GitHub Trending";
-    case "github-repo-radar":
-      return "Repo Radar";
-    case "github-issues":
-    case "github":
-      return "GitHub";
-    default:
-      return providerKey;
-  }
-};
-
 export const readerItemConfidence = (params: {
   readonly cluster: StoryCluster | undefined;
   readonly evidenceCount: number;
   readonly confirmedProviderCount: number;
   readonly signalScore: number;
+  readonly firstPartyOfficial?: boolean;
 }): TopReadConfidence => {
   const breakdown = params.cluster?.signalBreakdown;
   const crossProviderSupport = breakdown?.crossProviderSupport ?? 0;
   const providerDiversityBoost = breakdown?.providerDiversityBoost ?? 0;
   const sameProviderSupport = breakdown?.sameProviderSupport ?? 0;
   const evidenceSupport = params.evidenceCount > 1 ? 0.08 : 0;
+  const firstPartySupport = params.firstPartyOfficial === true ? 0.12 : 0;
   const normalizedSignal = Math.min(params.signalScore / 4, 0.42);
   const crossProviderFallbackSupport =
     params.cluster === undefined && params.confirmedProviderCount > 1
@@ -156,14 +146,29 @@ export const readerItemConfidence = (params: {
         )
       : Math.min(sameProviderSupport, 0.12);
   const rawScore = clampConfidenceScore(
-    0.18 + normalizedSignal + confirmationSupport + evidenceSupport,
+    0.18 +
+      normalizedSignal +
+      confirmationSupport +
+      evidenceSupport +
+      firstPartySupport,
   );
+  const strongCrossProviderAuthority =
+    params.firstPartyOfficial === true || params.confirmedProviderCount >= 3;
   const score =
     params.confirmedProviderCount > 1
       ? params.cluster === undefined
         ? Math.min(rawScore, 0.68)
-        : rawScore
-      : Math.min(rawScore, params.evidenceCount > 1 ? 0.55 : 0.42);
+        : strongCrossProviderAuthority
+          ? rawScore
+          : Math.min(rawScore, 0.68)
+      : Math.min(
+          rawScore,
+          params.firstPartyOfficial === true
+            ? 0.62
+            : params.evidenceCount > 1
+              ? 0.55
+              : 0.42,
+        );
   const level =
     score >= 0.72 && params.confirmedProviderCount > 1
       ? "high"
@@ -174,10 +179,14 @@ export const readerItemConfidence = (params: {
     params.confirmedProviderCount > 1
       ? params.cluster === undefined
         ? `${params.confirmedProviderCount} cited source groups support this story, but the key claim has not been fully cross-verified yet.`
-        : `${params.confirmedProviderCount} monitored source groups support this story.`
-      : params.evidenceCount > 1
-        ? `${params.evidenceCount} cited items support this story, but they are not independent cross-source confirmation.`
-        : "This story has not been independently confirmed across monitored source groups yet.";
+        : strongCrossProviderAuthority
+          ? `${params.confirmedProviderCount} monitored source groups support this story${params.firstPartyOfficial === true ? ", including an eligible first-party source" : ""}.`
+          : `${params.confirmedProviderCount} monitored source groups surface this story, but repetition across platforms does not independently verify every claim.`
+      : params.firstPartyOfficial === true
+        ? "This is a first-party official source for the announcement; product performance and comparative claims remain source-reported until independently verified."
+        : params.evidenceCount > 1
+          ? `${params.evidenceCount} cited items support this story, but they are not independent cross-source confirmation.`
+          : "This story has not been independently confirmed across monitored source groups yet.";
 
   return {
     level,
@@ -233,17 +242,22 @@ export const buildGroundedOneLineTakeaway = (params: {
   readonly topReads: readonly TopRead[];
   readonly sourceMix: readonly SourceMixEntry[];
 }): string => {
+  const executiveSummary = params.executiveSummary.trim();
   const fallback =
-    firstSentence(params.executiveSummary) ??
+    firstSentence(executiveSummary) ??
     params.topReads[0]?.reason ??
     "Review the latest monitored signals.";
+  const hasGroundedSupport = params.topReads.some(
+    (read) =>
+      read.confirmedProviderKeys.length > 1 || read.confidence.level === "high",
+  );
 
   if (
     params.topReads.length === 0 ||
     (!isTechnicalReaderHeadline(fallback) &&
-      !isUnconfirmedModelClaimText(fallback))
+      (hasGroundedSupport || !isUnconfirmedModelClaimText(executiveSummary)))
   ) {
-    return fallback;
+    return compactExecutiveSummary(executiveSummary) || fallback;
   }
 
   const topReadCount = params.topReads.length;
@@ -260,6 +274,26 @@ export const buildGroundedOneLineTakeaway = (params: {
     lead,
     "Confirm important claims with another monitored source before acting.",
   ].join(" ");
+};
+
+const compactExecutiveSummary = (value: string): string => {
+  const normalized = value.trim();
+  const maxLength = 1_600;
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+
+  const candidate = normalized.slice(0, maxLength);
+  const paragraphBoundary = candidate.lastIndexOf("\n\n");
+  const wordBoundary = candidate.lastIndexOf(" ");
+  const boundary =
+    paragraphBoundary >= 900
+      ? paragraphBoundary
+      : wordBoundary >= 1_200
+        ? wordBoundary
+        : maxLength;
+
+  return `${candidate.slice(0, boundary).trimEnd()}...`;
 };
 
 export const buildBestFirstReadBullet = (topRead: TopRead): string => {
@@ -301,12 +335,9 @@ const isWeakReaderReason = (value: string): boolean => {
   const lower = value.trim().toLowerCase();
 
   return (
-    lower.length === 0 ||
-    lower.startsWith("story signal score") ||
-    lower.startsWith("current summary window has") ||
-    lower.includes("citation references bodypreview evidence") ||
-    lower.includes("source item source-binding") ||
-    lower.includes("bodypreview evidence from source item")
+    isFallbackReaderReason(value) ||
+    lower.includes("reader summary window") ||
+    lower.includes("monitored read")
   );
 };
 

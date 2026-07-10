@@ -15,13 +15,8 @@ import {
   type StoryRankingPolicy,
 } from "../policies/story-ranking-policy";
 import { compareRepresentativeEvidenceItems } from "../policies/representative-evidence-selection-policy";
-import {
-  sharedStoryTopicTokenCount,
-  storyKey,
-  storyTopicAnchorTokens,
-  storyTopicSimilarity,
-  storyTopicTokens,
-} from "./story-key-normalizer";
+import { belongsToCrossProviderCluster } from "./story-cluster-membership";
+import { storyKey } from "./story-key-normalizer";
 
 export class StoryClusteringService {
   constructor(
@@ -75,9 +70,7 @@ const buildClusters = (
     const group = groups.find(
       (candidate) =>
         candidate.key === key ||
-        candidate.items.some((head) =>
-          belongsToCrossProviderStory(item, head, policy),
-        ),
+        belongsToCrossProviderCluster(item, candidate.items, policy),
     );
 
     if (group === undefined) {
@@ -133,43 +126,6 @@ const isUserFacingStoryReason = (value: string): boolean => {
     !lower.includes("provider coverage in the reader summary")
   );
 };
-
-const belongsToCrossProviderStory = (
-  item: SummaryEvidenceItem,
-  head: SummaryEvidenceItem,
-  policy: StoryRankingPolicy,
-): boolean => {
-  if (item.providerKey === head.providerKey) {
-    return false;
-  }
-
-  const itemKey = storyKey(item, policy);
-  const headKey = storyKey(head, policy);
-  if (itemKey !== headKey && canonicalStoryKeysConflict(itemKey, headKey)) {
-    return false;
-  }
-
-  const itemTokens = storyTopicTokens(item, policy);
-  const headTokens = storyTopicTokens(head, policy);
-  const sharedTokens = sharedStoryTopicTokenCount(itemTokens, headTokens);
-  const sharedAnchorTokens = sharedStoryTopicTokenCount(
-    storyTopicAnchorTokens(itemTokens),
-    storyTopicAnchorTokens(headTokens),
-  );
-
-  return (
-    sharedAnchorTokens > 0 &&
-    sharedTokens >= policy.crossSourceMinSharedTopicTokens &&
-    storyTopicSimilarity(itemTokens, headTokens) >=
-      policy.crossSourceTopicSimilarityThreshold
-  );
-};
-
-const canonicalStoryKeysConflict = (left: string, right: string): boolean =>
-  (left.startsWith("github-repo:") && right.startsWith("github-repo:")) ||
-  (left.startsWith("url:") &&
-    right.startsWith("url:") &&
-    left.slice(4).split("/").at(0) === right.slice(4).split("/").at(0));
 
 const selectedClusterEvidence = (
   items: readonly SummaryEvidenceItem[],

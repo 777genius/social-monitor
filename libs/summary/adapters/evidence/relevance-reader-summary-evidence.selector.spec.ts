@@ -189,7 +189,7 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
       altText: "rss story 4",
     });
     expect(storyRankingMetrics.recorded[0]?.rankingPolicyVersion).toBe(
-      "story_ranking_v2",
+      "story_ranking_v4",
     );
     expect(selection.personalization).toEqual({
       memoryGuidanceStatus: "available",
@@ -728,7 +728,7 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
     );
   });
 
-  it("expands duplicate feed items into reader evidence so cross-source story clusters stay visible", async () => {
+  it("expands eligible duplicates while dropping unrelated hard-blocked items", async () => {
     const tenant = tenantId("tenant-cross-source");
     const workspace = workspaceId("workspace-cross-source");
     const rankedItems = [
@@ -805,23 +805,18 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
     expect(selection.selectedEvidence.map((item) => item.feedItemId)).toEqual([
       "feed-github-codex",
       "feed-reddit-codex",
-      "feed-generic-hn",
     ]);
     expect(
-      selection.selectedEvidence.find((item) => item.feedItemId === "feed-generic-hn")
-        ?.contentQuality?.eligibleForTopRead,
-    ).toBe(false);
+      selection.selectedEvidence.find(
+        (item) => item.feedItemId === "feed-generic-hn",
+      )?.contentQuality?.eligibleForTopRead,
+    ).toBeUndefined();
     expect(selection.clusters).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           representativeFeedItemId: "feed-github-codex",
           duplicateFeedItemIds: ["feed-reddit-codex"],
           providerKeys: expect.arrayContaining(["github-repo-radar", "reddit"]),
-        }),
-        expect.objectContaining({
-          representativeFeedItemId: "feed-generic-hn",
-          duplicateFeedItemIds: [],
-          providerKeys: ["hacker-news"],
         }),
       ]),
     );

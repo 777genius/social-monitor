@@ -21,6 +21,10 @@ import {
 } from "./top-read-provider-diversity-policy";
 import { isTopReadEligibleEvidence } from "./top-read-eligibility-policy";
 import { readerSummaryProviderIdentity } from "../value-objects/reader-summary-provider-identity";
+import {
+  firstPartyPublicationBurstKey,
+  hasFirstPartyOfficialEvidence,
+} from "./reader-summary-source-authority-policy";
 
 export const selectUniqueTopReadCandidates = (
   stories: readonly TopReadCandidate[],
@@ -163,9 +167,7 @@ const prioritizeStrongDiscussionEvidence = (
       isStrongDiscussionCandidateAboveWeak(leftProfile, rightProfile);
 
     if (rightShouldLead === leftShouldLead) {
-      return rightShouldLead
-        ? compareTopReadCandidateProfiles(leftProfile, rightProfile)
-        : 0;
+      return compareTopReadCandidateProfiles(leftProfile, rightProfile);
     }
 
     return rightShouldLead ? 1 : -1;
@@ -235,6 +237,7 @@ const topReadCandidateProfile = (
       evidenceCount,
       confirmedProviderCount,
       signalScore,
+      firstPartyOfficial: hasFirstPartyOfficialEvidence(evidence),
     }).level,
     citationCount: citations.length,
     confirmedProviderCount,
@@ -474,6 +477,44 @@ const supplementTopReadCandidates = (params: {
       ) {
         break;
       }
+    }
+  }
+
+  for (const providerKey of [
+    "x-twitter",
+    "reddit",
+    "hacker-news",
+    "rss",
+  ] as const) {
+    for (const candidate of evidence) {
+      if (countStoriesForProvider(result, providerKey) >= 4) {
+        break;
+      }
+      if (candidate.providerKey !== providerKey) {
+        continue;
+      }
+      const candidateCluster = clusterForEvidence(
+        candidate.feedItemId,
+        clusters,
+      );
+      if (
+        candidateCluster !== undefined &&
+        candidateCluster.representativeFeedItemId !== candidate.feedItemId
+      ) {
+        continue;
+      }
+      appendEvidenceCandidate({
+        result,
+        evidence: candidate,
+        clusters,
+        citationByFeedItemId,
+        usedStoryClusterIds,
+        usedCitationIds,
+        usedDeduplicationKeys,
+        citationById: params.citationById,
+        evidenceByFeedItemId: params.evidenceByFeedItemId,
+        clusterById: params.clusterById,
+      });
     }
   }
 
@@ -860,6 +901,17 @@ const storyDeduplicationKeys = (
   const normalizedUrls = citationCanonicalUrls
     .map(normalizeCanonicalUrlKey)
     .filter((key): key is string => key !== undefined);
+  const evidenceItems = compactUnique([
+    ...citationFeedItemIds,
+    ...(cluster === undefined
+      ? []
+      : [cluster.representativeFeedItemId, ...cluster.duplicateFeedItemIds]),
+  ])
+    .map((feedItemId) => evidenceByFeedItemId.get(feedItemId))
+    .filter((item): item is SummaryEvidenceItem => item !== undefined);
+  const firstPartyBurstKeys = compactUnique(
+    evidenceItems.map(firstPartyPublicationBurstKey),
+  );
   const repositoryKeys = compactUnique([
     ...citationCanonicalUrls.map(githubRepositoryKeyFromUrl),
     githubRepositoryKeyFromTitle(story.title),
@@ -870,6 +922,7 @@ const storyDeduplicationKeys = (
     cluster === undefined ? undefined : `story:${cluster.storyKey}`,
     ...citationFeedItemIds.map((feedItemId) => `feed:${feedItemId}`),
     ...normalizedUrls.map((canonicalUrl) => `url:${canonicalUrl}`),
+    ...firstPartyBurstKeys.map((key) => `first-party-burst:${key}`),
     ...repositoryKeys.map((repositoryKey) => `repo:${repositoryKey}`),
   ]);
 };

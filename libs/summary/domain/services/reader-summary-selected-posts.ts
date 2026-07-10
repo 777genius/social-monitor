@@ -8,6 +8,7 @@ import {
   buildMatchedRules,
   readerItemConfidence,
 } from "./reader-summary-support";
+import { hasFirstPartyOfficialEvidence } from "../policies/reader-summary-source-authority-policy";
 
 export const buildReaderSummarySelectedPosts = (params: {
   readonly topReads: readonly TopRead[];
@@ -52,10 +53,10 @@ const evidenceToSelectedPost = (
 ): TopRead => {
   const signalScore = normalizeSignalScore(item.score);
   const matchedInterestIds = compactUnique([item.interestId]);
-  const whyImportant = compactUnique([
-    ...item.whyImportant,
-    item.title,
-  ])
+  const sourceExcerpt = readerSummarySelectedPostSourceExcerpt(
+    item.bodyPreview,
+  );
+  const whyImportant = compactUnique([sourceExcerpt, item.title])
     .filter(isUserFacingSelectedPostReason)
     .slice(0, 4);
 
@@ -78,6 +79,7 @@ const evidenceToSelectedPost = (
       evidenceCount: 1,
       confirmedProviderCount: 1,
       signalScore,
+      firstPartyOfficial: hasFirstPartyOfficialEvidence([item]),
     }),
     confirmedProviderKeys: [item.providerKey],
     providerMetrics: item.providerMetricLabels ?? [],
@@ -88,6 +90,46 @@ const evidenceToSelectedPost = (
     previewMedia: item.previewMedia,
     citationIds: [citation.citationId],
   };
+};
+
+export const readerSummarySelectedPostSourceExcerpt = (
+  value: string | undefined,
+): string | undefined => {
+  const normalized = value
+    ?.replace(/\[([^\]]+)\]\(\s*https?:\/\/[^)\s]+\s*\)/giu, "$1")
+    .replace(/\(\s*https?:\/\/[^)\s]+\s*\)/giu, "")
+    .replace(/https?:\/\/\S+/giu, "")
+    .replace(/<[^>]+>/gu, " ")
+    .replace(/[*_~`]+/gu, "")
+    .replace(/\s+/gu, " ")
+    .trim()
+    .replace(/^X post by @[^:]+:\s*/iu, "")
+    .replace(
+      /^(?:(?:illustration|image|photo)(?:\s+credit)?\s+by\s+[^.!?]+[.!?]\s*)+/iu,
+      "",
+    )
+    .replace(
+      /^(?:(?:source|image source|photo credit):\s*[^.!?]+[.!?]\s*)+/iu,
+      "",
+    )
+    .trim();
+
+  if (
+    normalized === undefined ||
+    normalized.length < 24 ||
+    !/[\p{L}\p{N}]/u.test(normalized)
+  ) {
+    return undefined;
+  }
+  if (normalized.length <= 360) {
+    return normalized;
+  }
+
+  const prefix = normalized.slice(0, 357);
+  const lastWordBoundary = prefix.lastIndexOf(" ");
+  const excerpt =
+    lastWordBoundary >= 240 ? prefix.slice(0, lastWordBoundary) : prefix;
+  return `${excerpt.trimEnd()}...`;
 };
 
 const isUserFacingSelectedPostReason = (value: string | undefined): boolean => {

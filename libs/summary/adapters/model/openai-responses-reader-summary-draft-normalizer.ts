@@ -8,7 +8,10 @@ import type {
   ReaderSummaryInterestHighlight,
 } from "../../domain";
 import { buildReaderSummary } from "../../domain";
-import type { ReaderSummaryModelInput, ReaderSummaryModelRoute } from "../../ports";
+import type {
+  ReaderSummaryModelInput,
+  ReaderSummaryModelRoute,
+} from "../../ports";
 import {
   openAiReaderSummaryConfidenceLevels,
   openAiReaderSummaryQualityFlags,
@@ -29,6 +32,10 @@ import {
   clusterIdFromCitations,
   normalizeTopStories,
 } from "./openai-responses-reader-summary-story-normalizer";
+import {
+  normalizeOpenAiReaderSummaryNarrative,
+  readerSummaryNarrativeMarkdown,
+} from "./openai-responses-reader-summary-narrative";
 
 const qualityFlags = new Set<ReaderSummaryQualityFlag>(
   openAiReaderSummaryQualityFlags,
@@ -51,7 +58,7 @@ export const normalizeOpenAiReaderSummaryDraft = (
     input.evidence.selectedEvidence,
   );
   const headline = requiredString(raw.headline, "reader summary headline");
-  const executiveSummary = requiredString(
+  const legacyExecutiveSummary = requiredString(
     raw.executiveSummary,
     "reader summary executive summary",
   );
@@ -61,6 +68,33 @@ export const normalizeOpenAiReaderSummaryDraft = (
     input,
     citationMap,
   );
+  const narrativeSections = normalizeOpenAiReaderSummaryNarrative({
+    rawSections: raw.narrativeSections,
+    legacyExecutiveSummary,
+    input,
+    citationMap,
+    storyTitlesByClusterId: new Map(
+      normalizedTopStories.map((story) => [story.storyClusterId, story.title]),
+    ),
+    storySummariesByClusterId: new Map(
+      normalizedTopStories.map((story) => [
+        story.storyClusterId,
+        story.summary,
+      ]),
+    ),
+    storySummariesByCitationId: new Map(
+      normalizedTopStories.flatMap((story) =>
+        story.citationIds.map((citationId) => [
+          citationId,
+          story.summary,
+        ] as const),
+      ),
+    ),
+  });
+  const executiveSummary =
+    narrativeSections.length === 0
+      ? legacyExecutiveSummary
+      : readerSummaryNarrativeMarkdown(narrativeSections);
   const interestHighlights = input.policy.includeInterestHighlights
     ? normalizeInterestHighlights(
         normalizeRecordArray(raw.interestHighlights),
@@ -92,8 +126,8 @@ export const normalizeOpenAiReaderSummaryDraft = (
       : rawQualityFlags.filter((flag) => flag !== "no_signal");
   const noSignalReason =
     normalizedTopStories.length === 0
-      ? optionalString(raw.noSignalReason) ??
-        "OpenAI reader summary returned no domain-safe cited stories."
+      ? (optionalString(raw.noSignalReason) ??
+        "OpenAI reader summary returned no domain-safe cited stories.")
       : undefined;
   const confidence = normalizeConfidence(
     asRecord(raw.confidence) ?? {},
@@ -102,6 +136,7 @@ export const normalizeOpenAiReaderSummaryDraft = (
   const content = buildReaderSummary({
     headline,
     executiveSummary,
+    narrativeSections,
     topStories: normalizedTopStories,
     interestHighlights,
     repeatedSignals,
@@ -124,11 +159,7 @@ export const normalizeOpenAiReaderSummaryDraft = (
     citationMap,
     qualityFlags: normalizedQualityFlags,
     confidence,
-    lineage: buildOpenAiReaderSummaryLineage(
-      input,
-      route,
-      evalDatasetVersion,
-    ),
+    lineage: buildOpenAiReaderSummaryLineage(input, route, evalDatasetVersion),
     usage,
     noSignalReason,
   };
@@ -175,7 +206,9 @@ export const assertOpenAiReaderSummaryDraftShape = (
   }
 };
 
-const normalizeInterestHighlight = (value: Record<string, unknown>): ReaderSummaryInterestHighlight => ({
+const normalizeInterestHighlight = (
+  value: Record<string, unknown>,
+): ReaderSummaryInterestHighlight => ({
   interestId: optionalString(value.interestId) ?? "",
   title: optionalString(value.title) ?? "Interest signal",
   summary:
@@ -208,7 +241,10 @@ const normalizeInterestHighlights = (
   return values
     .map(normalizeInterestHighlight)
     .flatMap((highlight): readonly ReaderSummaryInterestHighlight[] => {
-      const citationIds = knownStringSubset(highlight.citationIds, knownCitationIds);
+      const citationIds = knownStringSubset(
+        highlight.citationIds,
+        knownCitationIds,
+      );
       if (citationIds.length === 0) {
         return [];
       }
@@ -237,10 +273,15 @@ const normalizeInterestHighlights = (
     });
 };
 
-const normalizeRepeatedSignal = (value: Record<string, unknown>): ReaderSummaryRepeatedSignal => ({
+const normalizeRepeatedSignal = (
+  value: Record<string, unknown>,
+): ReaderSummaryRepeatedSignal => ({
   storyClusterId: optionalString(value.storyClusterId) ?? "",
   title: optionalString(value.title) ?? "Repeated signal",
-  interestIds: normalizeStringArrayLike(value.interestIds, "repeated signal interests"),
+  interestIds: normalizeStringArrayLike(
+    value.interestIds,
+    "repeated signal interests",
+  ),
   citationIds: normalizeStringArrayLike(
     value.citationIds,
     "repeated signal citations",
@@ -270,7 +311,10 @@ const normalizeRepeatedSignals = (
         return [];
       }
 
-      const citationIds = knownStringSubset(signal.citationIds, knownCitationIds);
+      const citationIds = knownStringSubset(
+        signal.citationIds,
+        knownCitationIds,
+      );
       const interestIds = uniqueNonEmptyStrings(signal.interestIds);
       if (citationIds.length === 0 || interestIds.length < 2) {
         return [];
@@ -291,7 +335,10 @@ const normalizeRisk = (value: Record<string, unknown>): ReaderSummaryRisk => ({
   description:
     optionalString(value.description ?? value.risk) ??
     "Selected evidence has unresolved uncertainty.",
-  citationIds: normalizeStringArrayLike(value.citationIds ?? value.citations, "risk citations"),
+  citationIds: normalizeStringArrayLike(
+    value.citationIds ?? value.citations,
+    "risk citations",
+  ),
   reason: normalizeSetValue(value.reason, riskReasons, "risk reason"),
 });
 

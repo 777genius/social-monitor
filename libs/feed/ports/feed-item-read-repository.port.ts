@@ -26,6 +26,12 @@ export type ListFeedItemsResult = {
   readonly nextCursor?: string;
 };
 
+export type FeedSourceContentItem = {
+  readonly feedItemId: string;
+  readonly sourceItemId: string;
+  readonly body: string;
+};
+
 export interface FeedItemReadRepositoryPort {
   list(query: ListFeedItemsQuery): Promise<ListFeedItemsResult>;
   findById(query: {
@@ -33,4 +39,9 @@ export interface FeedItemReadRepositoryPort {
     workspaceId: WorkspaceId;
     feedItemId: string;
   }): Promise<FeedItem | null>;
+  readSourceContent?(query: {
+    readonly tenantId: TenantId;
+    readonly workspaceId: WorkspaceId;
+    readonly feedItemIds: readonly string[];
+  }): Promise<readonly FeedSourceContentItem[]>;
 }

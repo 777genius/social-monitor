@@ -23,6 +23,7 @@ export type ReaderSummaryClaimRisk = {
 };
 
 export type ReaderSummaryClaim = {
+  readonly id?: string;
   readonly claim: string;
   readonly evidence: readonly ReaderSummaryClaimEvidence[];
   readonly confidence: TopReadConfidence;

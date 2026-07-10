@@ -69,6 +69,42 @@ describe("PrismaFeedItemReadRepository", () => {
       }),
     );
   });
+
+  it("batch-loads original source content without exposing it in feed items", async () => {
+    const record = feedRecord({
+      id: "00000000-0000-4000-8000-000000000003",
+      providerKey: "reddit",
+      title: "Sol 5 Ultra usage report",
+      publishedAt: new Date("2026-07-02T12:00:00.000Z"),
+      sourceItem: {
+        body: "Original long source body for adaptive evidence.",
+      },
+    });
+    const prisma = new FakePrismaFeedClient([record]);
+    const repository = new PrismaFeedItemReadRepository(
+      prisma as unknown as PrismaFeedClient,
+    );
+
+    const result = await repository.readSourceContent({
+      tenantId: tenantId("00000000-0000-7000-8000-000000000901"),
+      workspaceId: workspaceId("00000000-0000-7000-8000-000000000902"),
+      feedItemIds: [record.id],
+    });
+
+    expect(result).toEqual([
+      {
+        feedItemId: record.id,
+        sourceItemId: record.sourceItemId,
+        body: "Original long source body for adaptive evidence.",
+      },
+    ]);
+    expect(prisma.feedItem.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: { in: [record.id] } }),
+        include: { sourceItem: { select: { body: true } } },
+      }),
+    );
+  });
 });
 
 class FakePrismaFeedClient {

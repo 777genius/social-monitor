@@ -372,6 +372,7 @@ export class ExecuteReaderSummaryJobUseCase {
     const content = buildReaderSummary({
       headline: draft.headline,
       executiveSummary: draft.executiveSummary,
+      narrativeSections: draft.content?.narrativeSections,
       topStories: draft.topStories,
       interestHighlights: draft.interestHighlights,
       repeatedSignals: draft.repeatedSignals,

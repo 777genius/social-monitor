@@ -1,11 +1,31 @@
 import { buildReaderSummaryMainTopics } from "./reader-summary-main-topics";
-import type {
-  TopRead,
-  TopReadCandidate,
-} from "../entities/top-read";
+import type { TopRead, TopReadCandidate } from "../entities/top-read";
 import type { SummaryEvidenceItem } from "../value-objects/summary-evidence-item";
 
 describe("buildReaderSummaryMainTopics", () => {
+  it("prioritizes topics named in the reader summary over unrelated top reads", () => {
+    const topics = buildReaderSummaryMainTopics({
+      headline: "OpenAI GPT-5.6 and ChatGPT Work lead AI agent discussion",
+      executiveSummary:
+        "OpenAI is rolling out GPT-5.6 and ChatGPT Work for longer-running Codex workflows.",
+      topReads: [
+        topRead("Fable 5 users discuss usage limits"),
+        topRead("Claude Code adds another MCP workflow"),
+      ],
+      topStories: [],
+      interestHighlights: [],
+      repeatedSignals: [],
+    });
+
+    expect(topics).toEqual([
+      "OpenAI",
+      "GPT-5.6",
+      "ChatGPT Work",
+      "AI agents",
+      "Codex",
+    ]);
+  });
+
   it("keeps reader topics as compact product tags instead of generic prose", () => {
     const topics = buildReaderSummaryMainTopics({
       topReads: [
@@ -43,10 +63,7 @@ describe("buildReaderSummaryMainTopics", () => {
   });
 });
 
-const topRead = (
-  title: string,
-  ...whyImportant: readonly string[]
-): TopRead =>
+const topRead = (title: string, ...whyImportant: readonly string[]): TopRead =>
   ({
     title,
     providerKey: "reddit",

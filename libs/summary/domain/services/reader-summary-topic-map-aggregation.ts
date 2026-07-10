@@ -29,7 +29,9 @@ export const aggregateReaderSummaryTopicMapNodes = (
   return [...byTopic.values()].map((topicDrafts) => {
     const rankedDrafts = topicDrafts
       .slice()
-      .sort((left, right) => right.aggregateRankScore - left.aggregateRankScore);
+      .sort(
+        (left, right) => right.aggregateRankScore - left.aggregateRankScore,
+      );
     const lead = rankedDrafts[0];
     if (lead === undefined) {
       throw new Error("Reader summary topic aggregate is empty");
@@ -74,6 +76,53 @@ export const aggregateReaderSummaryTopicMapNodes = (
   });
 };
 
+export const mergeReaderSummaryTopicMapNodesByLabel = (
+  nodes: readonly ReaderSummaryTopicMapNode[],
+): readonly ReaderSummaryTopicMapNode[] => {
+  const nodesByLabel = new Map<string, ReaderSummaryTopicMapNode[]>();
+  for (const node of nodes) {
+    const labelKey = normalizeTopicLabel(node.label);
+    nodesByLabel.set(labelKey, [...(nodesByLabel.get(labelKey) ?? []), node]);
+  }
+
+  return [...nodesByLabel.entries()].map(([labelKey, sameLabelNodes]) => {
+    const ranked = sameLabelNodes.slice().sort(compareTopicNodes);
+    const lead = ranked[0];
+    if (lead === undefined) {
+      throw new Error("Reader summary topic label aggregate is empty");
+    }
+    if (ranked.length === 1) {
+      return lead;
+    }
+    const evidenceCount = ranked.reduce(
+      (total, node) => total + node.evidenceCount,
+      0,
+    );
+    const storyClusterIds = uniqueNonEmpty(
+      ranked.flatMap((node) => node.storyClusterIds),
+    );
+
+    return {
+      ...lead,
+      id: `topic:aggregate:label:${slug(labelKey)}`,
+      storyClusterIds,
+      popularityScore: ranked.reduce(
+        (total, node) => total + Math.max(0, node.popularityScore),
+        0,
+      ),
+      evidenceCount,
+      providerKeys: uniqueNonEmpty(ranked.flatMap((node) => node.providerKeys)),
+      interestIds: uniqueNonEmpty(ranked.flatMap((node) => node.interestIds)),
+      citationIds: uniqueNonEmpty(ranked.flatMap((node) => node.citationIds)),
+      keywords: uniqueNonEmpty(ranked.flatMap((node) => node.keywords)).slice(
+        0,
+        8,
+      ),
+      rationale: `Aggregates ${storyClusterIds.length} story clusters and ${evidenceCount} source items with the same reader-facing topic`,
+    };
+  });
+};
+
 export const readerSummaryTopicMapAggregateKey = (params: {
   readonly nodeId: string;
   readonly nodeLabel?: ReaderSummaryTopicNodeLabel;
@@ -101,6 +150,17 @@ export const readerSummaryTopicMapAggregateKey = (params: {
 const aggregateTopicNodeId = (aggregateKey: string): string =>
   `topic:aggregate:${slug(aggregateKey)}`;
 
+const compareTopicNodes = (
+  left: ReaderSummaryTopicMapNode,
+  right: ReaderSummaryTopicMapNode,
+): number => {
+  const byPopularity = right.popularityScore - left.popularityScore;
+
+  return byPopularity !== 0
+    ? byPopularity
+    : right.evidenceCount - left.evidenceCount;
+};
+
 const toPublicTopicNode = (
   draft: ReaderSummaryTopicMapNodeDraft,
 ): ReaderSummaryTopicMapNode => ({
@@ -118,7 +178,9 @@ const toPublicTopicNode = (
   rationale: draft.rationale,
 });
 
-const singleTopicNodeLabel = (draft: ReaderSummaryTopicMapNodeDraft): string => {
+const singleTopicNodeLabel = (
+  draft: ReaderSummaryTopicMapNodeDraft,
+): string => {
   if (draft.aggregateLabel === undefined) {
     return draft.label;
   }

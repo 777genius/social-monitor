@@ -106,15 +106,127 @@ describe("reader summary top read builder", () => {
     expect(topRead.whyImportant.join(" ")).not.toContain("cross-provider");
     expect(topRead.confirmedProviderKeys).toEqual(["hacker-news", "rss"]);
     expect(topRead.whyNow).toBe(
-      "Current summary window has cross-source coverage from Hacker News, RSS and linked 1 related item.",
+      "Current summary window has cross-source coverage from Hacker News, RSS.",
     );
+  });
+
+  it("prefers the model-written story description over shorter evidence labels", () => {
+    const modelDescription =
+      "OpenAI introduced a work agent that can continue multi-step projects across connected apps and files. The release matters because it moves Codex-style automation beyond isolated coding tasks into longer operational workflows. Teams may be able to hand off research, document work and follow-up actions without rebuilding context for every step. Access scope and real-world reliability still need to be evaluated before the product is trusted with sensitive work.";
+    const story: TopReadCandidate = {
+      storyClusterId: "story:work-agent",
+      title: "OpenAI introduces a Codex-powered work agent",
+      summary: modelDescription,
+      interestIds: ["ai-agents"],
+      providerKeys: ["x-twitter"],
+      citationIds: ["citation-work-agent"],
+    };
+    const evidence = evidenceItem({
+      feedItemId: "feed-work-agent",
+      providerKey: "x-twitter",
+      providerName: "X/Twitter",
+      title: "OpenAI introduces a Codex-powered work agent",
+      whyImportant: ["First-party product announcement"],
+    });
+    const evidenceCitation = citation({
+      citationId: "citation-work-agent",
+      feedItemId: evidence.feedItemId,
+      sourceItemId: evidence.sourceItemId,
+      providerKey: evidence.providerKey,
+    });
+
+    const topRead = storyToTopRead(
+      story,
+      new Map([[evidenceCitation.citationId, evidenceCitation]]),
+      new Map([[evidence.feedItemId, evidence]]),
+      new Map(),
+      new Map(),
+    );
+
+    expect(topRead.reason).toBe(modelDescription);
+    expect(topRead.whyImportant[0]).toBe(modelDescription);
+  });
+
+  it("keeps a native Reddit title with its exact model variant", () => {
+    const story: TopReadCandidate = {
+      storyClusterId: "story:sol-ultra-limit",
+      title: "Users report GPT-5.6 consuming usage limits quickly",
+      summary:
+        "A Reddit user says their GPT-5.6 session consumed most of a usage limit in about 15 minutes. The report is anecdotal but relevant to early adoption.",
+      interestIds: ["ai-agents"],
+      providerKeys: ["reddit"],
+      citationIds: ["citation-sol-ultra"],
+    };
+    const evidence = evidenceItem({
+      feedItemId: "feed-sol-ultra",
+      providerKey: "reddit",
+      providerName: "Reddit",
+      title: "Sol 5 Ultra burned through the 5-hour limit in 15 minutes.",
+    });
+    const evidenceCitation = citation({
+      citationId: "citation-sol-ultra",
+      feedItemId: evidence.feedItemId,
+      sourceItemId: evidence.sourceItemId,
+      providerKey: evidence.providerKey,
+    });
+
+    const topRead = storyToTopRead(
+      story,
+      new Map([[evidenceCitation.citationId, evidenceCitation]]),
+      new Map([[evidence.feedItemId, evidence]]),
+      new Map(),
+      new Map(),
+    );
+
+    expect(topRead.title).toBe(
+      "Sol 5 Ultra burned through the 5-hour limit in 15 minutes.",
+    );
+  });
+
+  it("removes source-coverage sentences without discarding the useful model description", () => {
+    const story: TopReadCandidate = {
+      storyClusterId: "story:work-agent-coverage",
+      title: "OpenAI introduces a Codex-powered work agent",
+      summary:
+        "OpenAI introduced a work agent that can continue multi-step projects across connected apps and files. The story has the strongest cross-provider support in the selected evidence. Teams may be able to delegate research and follow-up actions without rebuilding context for every step. Access scope and real-world reliability still need careful evaluation.",
+      interestIds: ["ai-agents"],
+      providerKeys: ["x-twitter"],
+      citationIds: ["citation-work-agent-coverage"],
+    };
+    const evidence = evidenceItem({
+      feedItemId: "feed-work-agent-coverage",
+      providerKey: "x-twitter",
+      providerName: "X/Twitter",
+      title: story.title,
+      whyImportant: ["First-party product announcement"],
+    });
+    const evidenceCitation = citation({
+      citationId: "citation-work-agent-coverage",
+      feedItemId: evidence.feedItemId,
+      sourceItemId: evidence.sourceItemId,
+      providerKey: evidence.providerKey,
+    });
+
+    const topRead = storyToTopRead(
+      story,
+      new Map([[evidenceCitation.citationId, evidenceCitation]]),
+      new Map([[evidence.feedItemId, evidence]]),
+      new Map(),
+      new Map(),
+    );
+
+    expect(topRead.reason).toBe(
+      "OpenAI introduced a work agent that can continue multi-step projects across connected apps and files. Teams may be able to delegate research and follow-up actions without rebuilding context for every step. Access scope and real-world reliability still need careful evaluation.",
+    );
+    expect(topRead.reason).not.toContain("cross-provider");
   });
 
   it("renders Hacker News RSS mirrors as Hacker News without false cross-source support", () => {
     const story: TopReadCandidate = {
       storyClusterId: "story:hnrss-vibe-coding",
       title: "TypeScript Go rewrite drew HN and RSS attention",
-      summary: "HN discussion asks whether OSS maintainers accept AI-written PRs.",
+      summary:
+        "HN discussion asks whether OSS maintainers accept AI-written PRs.",
       interestIds: ["ai-agents"],
       providerKeys: ["rss"],
       citationIds: ["citation-hnrss"],
@@ -140,7 +252,7 @@ describe("reader summary top read builder", () => {
         feedItemId: "feed-hnrss",
         sourceItemId: "source-hnrss",
         providerKey: "rss",
-        providerName: "RSS",
+        providerName: "Hacker News via RSS",
         canonicalUrl: "https://news.ycombinator.com/item?id=48816039",
         title: "Ask HN: Are OSS projects allowing vibe-coding?",
         whyImportant: [
@@ -179,7 +291,9 @@ describe("reader summary top read builder", () => {
 
     expect(topRead.providerKey).toBe("hacker-news");
     expect(topRead.providerName).toBe("Hacker News via RSS");
-    expect(topRead.title).toBe("Ask HN: Are OSS projects allowing vibe-coding?");
+    expect(topRead.title).toBe(
+      "Ask HN: Are OSS projects allowing vibe-coding?",
+    );
     expect(topRead.confirmedProviderKeys).toEqual(["hacker-news"]);
     expect(topRead.confidence.rationale).toContain(
       "not been independently confirmed",
@@ -189,7 +303,7 @@ describe("reader summary top read builder", () => {
     );
   });
 
-  it("keeps deterministic cross-source support when one cluster item is not top-read eligible", () => {
+  it("does not expose cross-source support without a visible eligible citation", () => {
     const story: TopReadCandidate = {
       storyClusterId: "story:anthropic-tracker",
       title: "Anthropic tracker report gets multi-source attention",
@@ -281,18 +395,17 @@ describe("reader summary top read builder", () => {
     );
 
     expect(topRead.citationIds).toEqual(["citation-rss"]);
-    expect(topRead.confirmedProviderKeys).toEqual(["rss", "hacker-news"]);
-    expect(topRead.confidence.level).toBe("high");
-    expect(topRead.whyNow).toBe(
-      "Current summary window has cross-source coverage from RSS, Hacker News and linked 1 related item.",
-    );
+    expect(topRead.confirmedProviderKeys).toEqual(["rss"]);
+    expect(topRead.confidence.level).toBe("low");
+    expect(topRead.confidence.score).toBe(0.42);
+    expect(topRead.whyNow).toBe("Current summary window has RSS coverage.");
   });
 
   it("keeps internal provider-coverage fallback text out of the reason", () => {
     const story: TopReadCandidate = {
       storyClusterId: "story:rss-coverage",
-      title: "RSS explains an AI agent security update",
-      summary: "Selected to preserve primary source coverage.",
+      title: "Strong source engagement signal",
+      summary: "Source-reported: RSS explains an AI agent security update.",
       interestIds: ["ai-agents"],
       providerKeys: ["rss"],
       citationIds: ["citation-rss"],
@@ -303,8 +416,11 @@ describe("reader summary top read builder", () => {
         providerKey: "rss",
         providerName: "RSS",
         title: "RSS explains an AI agent security update",
+        bodyPreview:
+          "The update records how connected MCP servers access files, networks and local tools. Teams can use the audit data before granting production permissions.",
         whyImportant: [
           "Selected to preserve provider coverage in the reader summary window",
+          "Appears across 2 monitored interests",
           "Unsafe source instructions were sandboxed before summarization",
         ],
       }),
@@ -333,8 +449,11 @@ describe("reader summary top read builder", () => {
     );
 
     expect(topRead.reason).toBe(
-      "Source-reported: RSS explains an AI agent security update",
+      "The report states: The update records how connected MCP servers access files, networks and local tools.",
     );
+    expect(topRead.title).toBe("RSS explains an AI agent security update");
+    expect(topRead.reason).not.toContain(topRead.title);
+    expect(topRead.reason).not.toContain("source-reported");
   });
 
   it("removes provider boilerplate from X top read titles", () => {
@@ -378,6 +497,204 @@ describe("reader summary top read builder", () => {
     );
 
     expect(topRead.title).toBe("GPT-Live voice models roll out in ChatGPT");
+  });
+
+  it("labels an unverified breaking X hook without hiding its subject", () => {
+    const story: TopReadCandidate = {
+      storyClusterId: "story:unverified-gpt",
+      title: "Strong source engagement signal",
+      summary: "Source-reported: rollout chatter needs confirmation.",
+      interestIds: ["ai-agents"],
+      providerKeys: ["x-twitter"],
+      citationIds: ["citation-x"],
+    };
+    const evidence = [
+      evidenceItem({
+        feedItemId: "feed-x",
+        providerKey: "x-twitter",
+        providerName: "X/Twitter",
+        title:
+          "X post by @WatcherGuru: JUST IN: US government grants OpenAI approval to release GPT 5.6",
+        providerMetricSummary: "4,829 likes, 379 reposts, 267 replies",
+        whyImportant: ["Strong source engagement signal"],
+      }),
+    ];
+    const citations = [
+      citation({
+        citationId: "citation-x",
+        feedItemId: "feed-x",
+        sourceItemId: "source-x",
+        providerKey: "x-twitter",
+      }),
+    ];
+
+    const topRead = storyToTopRead(
+      story,
+      new Map(citations.map((item) => [item.citationId, item] as const)),
+      new Map(evidence.map((item) => [item.feedItemId, item] as const)),
+      new Map(),
+      evidenceClusterMap([], new Map()),
+    );
+
+    expect(topRead.title).toBe(
+      "Unverified report: US government grants OpenAI approval to release GPT 5.6",
+    );
+    expect(topRead.reason).toContain("should not be treated as confirmation");
+  });
+
+  it("uses a complete preview when an official X title is truncated", () => {
+    const story: TopReadCandidate = {
+      storyClusterId: "story:gpt-rollout",
+      title: "Strong source engagement signal",
+      summary: "Source-reported: rollout details.",
+      interestIds: ["ai-agents"],
+      providerKeys: ["x-twitter"],
+      citationIds: ["citation-x"],
+    };
+    const evidence = evidenceItem({
+      feedItemId: "feed-x",
+      providerKey: "x-twitter",
+      providerName: "X/Twitter",
+      authorHandle: "OpenAI",
+      title:
+        "X post by @OpenAI: Sol, Terra, and Luna, our GPT-5.6 family, are starting to roll out...",
+      bodyPreview:
+        "Sol, Terra, and Luna, our GPT-5.6 family, are starting to roll out now in ChatGPT, Codex, and the API. https://t.co/example",
+      whyImportant: ["Strong source engagement signal"],
+      contentQuality: {
+        qualityScore: 1,
+        interestRelevanceScore: 0.95,
+        engagementIntegrityScore: 1,
+        eligibleForSummary: true,
+        eligibleForTopRead: true,
+        needsLlmReview: false,
+        decision: "promote",
+        flags: ["official_account", "trusted_author"],
+        reason: "First-party product announcement",
+      },
+    });
+    const citationItem = citation({
+      citationId: "citation-x",
+      feedItemId: "feed-x",
+      sourceItemId: "source-x",
+      providerKey: "x-twitter",
+    });
+
+    const topRead = storyToTopRead(
+      story,
+      new Map([[citationItem.citationId, citationItem]]),
+      new Map([[evidence.feedItemId, evidence]]),
+      new Map(),
+      new Map(),
+    );
+
+    expect(topRead.title).toBe(
+      "Sol, Terra, and Luna, our GPT-5.6 family, are starting to roll out now in ChatGPT, Codex, and the API",
+    );
+    expect(topRead.reason).toBe(
+      "OpenAI's first-party post provides direct evidence for this update: Sol, Terra, and Luna, our GPT-5.6 family, are starting to roll out now in ChatGPT, Codex, and the API.",
+    );
+  });
+
+  it("normalizes a conversational X hook when the model copies it", () => {
+    const story: TopReadCandidate = {
+      storyClusterId: "story:fable-demo",
+      title:
+        "X post by @builder: what happens when Fable spends a full week of credits...",
+      summary: "A high-engagement Fable workflow experiment.",
+      interestIds: ["ai-agents"],
+      providerKeys: ["x-twitter"],
+      citationIds: ["citation-x"],
+    };
+    const evidence = [
+      evidenceItem({
+        feedItemId: "feed-x",
+        providerKey: "x-twitter",
+        providerName: "X/Twitter",
+        title: story.title,
+      }),
+    ];
+    const citations = [
+      citation({
+        citationId: "citation-x",
+        feedItemId: "feed-x",
+        sourceItemId: "source-x",
+        providerKey: "x-twitter",
+      }),
+    ];
+    const citationById = new Map(
+      citations.map((item) => [item.citationId, item] as const),
+    );
+    const evidenceByFeedItemId = new Map(
+      evidence.map((item) => [item.feedItemId, item] as const),
+    );
+
+    const topRead = storyToTopRead(
+      story,
+      citationById,
+      evidenceByFeedItemId,
+      new Map(),
+      evidenceClusterMap([], evidenceByFeedItemId),
+    );
+
+    expect(topRead.title).toBe("A high-engagement Fable workflow experiment");
+  });
+
+  it("marks an eligible official first-party announcement as medium confidence", () => {
+    const story: TopReadCandidate = {
+      storyClusterId: "story:gpt-rollout",
+      title: "OpenAI announces a GPT rollout",
+      summary: "OpenAI published a first-party rollout announcement.",
+      interestIds: ["ai-agents"],
+      providerKeys: ["x-twitter"],
+      citationIds: ["citation-x"],
+    };
+    const evidence = [
+      evidenceItem({
+        feedItemId: "feed-x",
+        providerKey: "x-twitter",
+        providerName: "X/Twitter",
+        authorHandle: "OpenAI",
+        contentQuality: {
+          qualityScore: 1,
+          interestRelevanceScore: 0.9,
+          engagementIntegrityScore: 1,
+          eligibleForSummary: true,
+          eligibleForTopRead: true,
+          needsLlmReview: false,
+          decision: "promote",
+          flags: ["official_account", "trusted_author"],
+          reason: "First-party product announcement",
+        },
+      }),
+    ];
+    const citations = [
+      citation({
+        citationId: "citation-x",
+        feedItemId: "feed-x",
+        sourceItemId: "source-x",
+        providerKey: "x-twitter",
+      }),
+    ];
+    const citationById = new Map(
+      citations.map((item) => [item.citationId, item] as const),
+    );
+    const evidenceByFeedItemId = new Map(
+      evidence.map((item) => [item.feedItemId, item] as const),
+    );
+
+    const topRead = storyToTopRead(
+      story,
+      citationById,
+      evidenceByFeedItemId,
+      new Map(),
+      evidenceClusterMap([], evidenceByFeedItemId),
+    );
+
+    expect(topRead.confidence.level).toBe("medium");
+    expect(topRead.confidence.score).toBe(0.62);
+    expect(topRead.confidence.rationale).toContain("first-party official");
+    expect(topRead.confirmedProviderKeys).toEqual(["x-twitter"]);
   });
 
   it("omits empty optional engagement metrics from top reads", () => {
@@ -472,5 +789,6 @@ const citation = (params: {
   sourceItemId: params.sourceItemId,
   providerKey: params.providerKey,
   field: "title",
-  canonicalUrl: params.canonicalUrl ?? "https://example.com/claude-code-tracker",
+  canonicalUrl:
+    params.canonicalUrl ?? "https://example.com/claude-code-tracker",
 });

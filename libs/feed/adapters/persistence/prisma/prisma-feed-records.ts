@@ -21,6 +21,9 @@ export type PrismaFeedItemRecord = {
   readonly status: 'VISIBLE' | 'HIDDEN' | 'TOMBSTONED';
   readonly createdAt: Date;
   readonly providerMetadata: unknown | null;
+  readonly sourceItem?: {
+    readonly body: string;
+  };
 };
 
 export const feedItemFromPrisma = (record: PrismaFeedItemRecord): FeedItem =>

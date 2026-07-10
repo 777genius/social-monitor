@@ -117,12 +117,32 @@ describe("OpenAiResponsesReaderSummaryModelAdapter", () => {
     });
     expect(JSON.parse(capturedCalls[0]?.init?.body as string)).toMatchObject({
       instructions: expect.stringContaining(
-        "prefer one compact lead paragraph followed by 2-3 short Markdown bullets",
+        "Return narrativeSections as the canonical reader narrative",
       ),
     });
     expect(JSON.parse(capturedCalls[0]?.init?.body as string)).toMatchObject({
       instructions: expect.stringContaining(
-        "- **Main signal:** ...",
+        "Each narrative section must add information not already stated elsewhere",
+      ),
+    });
+    expect(JSON.parse(capturedCalls[0]?.init?.body as string)).toMatchObject({
+      instructions: expect.stringContaining(
+        "Explain unfamiliar product, model or project names on first mention",
+      ),
+    });
+    expect(JSON.parse(capturedCalls[0]?.init?.body as string)).toMatchObject({
+      instructions: expect.stringContaining(
+        "Do not use internal workflow language such as source note",
+      ),
+    });
+    expect(JSON.parse(capturedCalls[0]?.init?.body as string)).toMatchObject({
+      instructions: expect.stringContaining(
+        "Preserve material qualifiers exactly as stated",
+      ),
+    });
+    expect(JSON.parse(capturedCalls[0]?.init?.body as string)).toMatchObject({
+      instructions: expect.stringContaining(
+        "one secondary_signal for every entry in coveragePlan.secondary",
       ),
       text: {
         format: {
@@ -136,6 +156,9 @@ describe("OpenAiResponsesReaderSummaryModelAdapter", () => {
         },
       },
     });
+    expect(route.promptVersion).toBe(
+      "reader_summary.prompt.openai.responses.v8",
+    );
     expect(adapter.estimate(input, route).outputTokens).toBe(3_200);
     expect(attempt.draft).toMatchObject({
       headline: "Workspace AI tooling signal",
@@ -407,9 +430,7 @@ describe("OpenAiResponsesReaderSummaryModelAdapter", () => {
       "story:ai-tooling",
     );
     expect(attempt.draft.interestHighlights[0]?.citationIds).toEqual(["c1"]);
-    expect(attempt.draft.interestHighlights[0]?.interestId).toBe(
-      "interest-ai",
-    );
+    expect(attempt.draft.interestHighlights[0]?.interestId).toBe("interest-ai");
     expect(attempt.draft.repeatedSignals[0]?.interestIds).toEqual([
       "interest-ai",
       "interest-dev",
@@ -551,7 +572,7 @@ describe("OpenAiResponsesReaderSummaryModelAdapter", () => {
     const attempt = await adapter.generate(input, route);
 
     expect(attempt.draft.topStories).toHaveLength(8);
-    expect(attempt.draft.content?.topReads).toHaveLength(10);
+    expect(attempt.draft.content?.topReads).toHaveLength(8);
     expect(attempt.draft.topStories[0]?.title).toBe(
       "Model selected one AI tooling story",
     );

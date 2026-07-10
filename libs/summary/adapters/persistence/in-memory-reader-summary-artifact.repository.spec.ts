@@ -12,12 +12,17 @@ describe("InMemoryReaderSummaryArtifactRepository", () => {
     const repository = new InMemoryReaderSummaryArtifactRepository();
 
     await repository.save(artifact("reader-summary-memory-a", "Older summary"));
-    await repository.save(artifact("reader-summary-memory-b", "Latest summary"));
+    await repository.save(
+      artifact("reader-summary-memory-b", "Latest summary"),
+    );
+    await repository.save(artifact("reader-summary-memory-a", "Older summary"));
 
     const visibleBeforeRejected = await repository.list(listQuery());
-    expect(visibleBeforeRejected.items.map((item) => item.toSnapshot().readerSummaryId)).toEqual([
-      "reader-summary-memory-b",
-    ]);
+    expect(
+      visibleBeforeRejected.items.map(
+        (item) => item.toSnapshot().readerSummaryId,
+      ),
+    ).toEqual(["reader-summary-memory-b"]);
 
     await repository.save(
       artifact("reader-summary-memory-c", "Rejected summary"),
@@ -58,9 +63,11 @@ describe("InMemoryReaderSummaryArtifactRepository", () => {
     );
 
     const visibleAfterRejected = await repository.list(listQuery());
-    expect(visibleAfterRejected.items.map((item) => item.toSnapshot().readerSummaryId)).toEqual([
-      "reader-summary-memory-b",
-    ]);
+    expect(
+      visibleAfterRejected.items.map(
+        (item) => item.toSnapshot().readerSummaryId,
+      ),
+    ).toEqual(["reader-summary-memory-b"]);
     await expect(
       repository.findById({
         tenantId: tenant,
@@ -137,6 +144,30 @@ describe("InMemoryReaderSummaryArtifactRepository", () => {
       ],
     });
   });
+
+  it("keeps subscription runtime output visible when deterministic output arrives later", async () => {
+    const repository = new InMemoryReaderSummaryArtifactRepository();
+
+    await repository.save(
+      artifact(
+        "reader-summary-runtime",
+        "Runtime summary",
+        "codex:gpt-5.5:xhigh",
+      ),
+    );
+    await repository.save(
+      artifact(
+        "reader-summary-deterministic",
+        "Deterministic summary",
+        "deterministic-reader-summary-v1",
+      ),
+    );
+
+    const result = await repository.list(listQuery());
+    expect(
+      result.items.map((item) => item.toSnapshot().readerSummaryId),
+    ).toEqual(["reader-summary-runtime"]);
+  });
 });
 
 const listQuery = () => ({
@@ -153,6 +184,7 @@ const listQuery = () => ({
 const artifact = (
   readerSummaryId: string,
   headline: string,
+  modelVersion = "in-memory-reader-summary-test",
 ): ReaderSummaryArtifact =>
   ReaderSummaryArtifact.create({
     schemaVersion: "reader_summary.artifact.v1",
@@ -165,8 +197,7 @@ const artifact = (
       startedAt: new Date("2026-07-05T00:00:00.000Z"),
       endedAt: new Date("2026-07-06T00:00:00.000Z"),
       timezone: "UTC",
-      periodKey:
-        "daily:2026-07-05T00:00:00.000Z:2026-07-06T00:00:00.000Z:UTC",
+      periodKey: "daily:2026-07-05T00:00:00.000Z:2026-07-06T00:00:00.000Z:UTC",
     },
     sourceWindow: {
       windowId: "reader-summary-memory-window",
@@ -262,7 +293,7 @@ const artifact = (
     lineage: {
       promptVersion: "reader-summary.prompt.test.v1",
       schemaVersion: "reader_summary.artifact.v1",
-      modelVersion: "in-memory-reader-summary-test",
+      modelVersion,
       providerVersion: "deterministic-local",
       rulesVersion: "reader-summary.rules.test.v1",
       evalDatasetVersion: "reader-summary.eval.test.v1",

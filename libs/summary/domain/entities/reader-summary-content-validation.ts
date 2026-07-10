@@ -3,7 +3,6 @@ import type {
   ReaderSummaryItem,
 } from "./reader-summary-artifact";
 import type { ReaderSummaryCitation } from "./citation";
-import type { ReaderSummaryClaim } from "./reader-summary-claim";
 import type { ReaderSummaryTopicMapConfidence } from "./reader-summary-topic-map";
 import {
   assertUniqueReaderSummaryItems,
@@ -11,6 +10,8 @@ import {
   assertUniqueReaderSummarySourceMixProviders,
 } from "./reader-summary-content-identity";
 import { assertReaderSummaryContentShape } from "./reader-summary-content-shape";
+import { assertReaderSummaryClaim } from "./reader-summary-claim-validation";
+import { assertReaderSummaryNarrativeSections } from "./reader-summary-narrative-validation";
 import { readerSummaryProviderIdentity } from "../value-objects/reader-summary-provider-identity";
 
 export const assertReaderSummaryContent = (
@@ -66,7 +67,16 @@ export const assertReaderSummaryContent = (
       throw new Error("Reader summary main topics must be non-empty");
     }
   }
-  assertReaderSummaryTopicMap(content.topicMap, knownCitationIds, storyClusterIds);
+  assertReaderSummaryNarrativeSections(
+    content.narrativeSections ?? [],
+    knownCitationIds,
+    storyClusterIds,
+  );
+  assertReaderSummaryTopicMap(
+    content.topicMap,
+    knownCitationIds,
+    storyClusterIds,
+  );
   assertReaderSummaryReliabilityReport(content.reliabilityReport);
 
   for (const section of content.interestSections) {
@@ -280,65 +290,6 @@ const assertReaderSummaryReliabilityReport = (
   }
 };
 
-const assertReaderSummaryClaim = (
-  claim: ReaderSummaryClaim,
-  knownCitationIds: ReadonlySet<string>,
-  knownProviderKeys: ReadonlySet<string>,
-): void => {
-  if (
-    claim.claim.trim().length === 0 ||
-    claim.evidence.length === 0 ||
-    claim.citationIds.length === 0 ||
-    !["low", "medium", "high"].includes(claim.confidence.level) ||
-    !Number.isFinite(claim.confidence.score) ||
-    claim.confidence.score < 0 ||
-    claim.confidence.score > 1 ||
-    claim.confidence.rationale.trim().length === 0
-  ) {
-    throw new Error(
-      "Reader summary claim board items must include claim, evidence and confidence",
-    );
-  }
-
-  assertCitationIds(
-    claim.citationIds,
-    knownCitationIds,
-    "Reader summary claim",
-  );
-  for (const evidence of claim.evidence) {
-    if (
-      evidence.title.trim().length === 0 ||
-      evidence.providerKey.trim().length === 0 ||
-      evidence.citationId.trim().length === 0
-    ) {
-      throw new Error("Reader summary claim evidence must be non-empty");
-    }
-    if (!knownProviderKeys.has(evidence.providerKey)) {
-      throw new Error(
-        "Reader summary claim evidence provider must exist in selected evidence",
-      );
-    }
-    assertCitationIds(
-      [evidence.citationId],
-      knownCitationIds,
-      "Reader summary claim evidence",
-    );
-  }
-
-  for (const risk of claim.risks) {
-    if (risk.description.trim().length === 0) {
-      throw new Error("Reader summary claim risks must be non-empty");
-    }
-    if (
-      !["single_source", "low_confidence", "low_evidence", "unresolved"].includes(
-        risk.kind,
-      )
-    ) {
-      throw new Error("Reader summary claim risk kind is unsupported");
-    }
-  }
-};
-
 const assertReaderItem = (
   item: ReaderSummaryItem,
   knownCitationIds: ReadonlySet<string>,
@@ -396,8 +347,9 @@ const assertReaderItemProviderMatchesEvidence = (
   label: string,
 ): void => {
   const citationProviderKeys = new Set(
-    item.citationIds
-      .flatMap((citationId) => providerKeysForCitation(citationById.get(citationId))),
+    item.citationIds.flatMap((citationId) =>
+      providerKeysForCitation(citationById.get(citationId)),
+    ),
   );
 
   if (!citationProviderKeys.has(item.providerKey)) {

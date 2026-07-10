@@ -5,11 +5,27 @@ import {
   topReadPrimaryMinimumForLimit,
   topReadProviderCapForLimit,
 } from "./top-read-provider-diversity-policy";
+import {
+  isFallbackReaderReason,
+  isReaderTitleReasonDuplicate,
+  isUnpolishedReaderTitle,
+} from "./reader-summary-reader-facing-text-policy";
 
 export type RenderedTopReadCandidate = {
   readonly story: TopReadCandidate;
   readonly topRead: TopRead;
 };
+
+export type ReaderFacingTopReadQualityInput = Pick<
+  TopRead,
+  | "title"
+  | "reason"
+  | "providerKey"
+  | "canonicalUrl"
+  | "signalScore"
+  | "confidence"
+  | "confirmedProviderKeys"
+>;
 
 export const selectRenderedTopReadCandidates = (params: {
   readonly candidates: readonly RenderedTopReadCandidate[];
@@ -26,7 +42,12 @@ export const selectRenderedTopReadCandidates = (params: {
   const selected: RenderedTopReadCandidate[] = [];
   const selectedStoryIds = new Set<string>();
   const providerCounts = new Map<string, number>();
-  const pool = rankedCandidatePool(qualityCandidatePool(params.candidates, limit));
+  const pool = rankedCandidatePool(
+    qualityCandidatePool(params.candidates, limit),
+  );
+  const fallbackShouldRespectProviderCap =
+    compactUnique(pool.map((candidate) => candidate.topRead.providerKey))
+      .length > 1;
   const select = (candidate: RenderedTopReadCandidate): void => {
     selected.push(candidate);
     selectedStoryIds.add(candidate.story.storyClusterId);
@@ -37,6 +58,9 @@ export const selectRenderedTopReadCandidates = (params: {
   for (const candidate of pool) {
     if (selected.length >= limit) {
       break;
+    }
+    if (!isReaderFacingQualityTopRead(candidate.topRead)) {
+      continue;
     }
     const providerKey = candidate.topRead.providerKey;
     const cap = socialNewsProviderKeys.has(providerKey) ? providerCap : limit;
@@ -52,27 +76,67 @@ export const selectRenderedTopReadCandidates = (params: {
     }
     if (
       selectedStoryIds.has(candidate.story.storyClusterId) ||
-      !isQualityTopRead(candidate.topRead)
+      !isReaderFacingQualityTopRead(candidate.topRead)
+    ) {
+      continue;
+    }
+    const providerKey = candidate.topRead.providerKey;
+    if (
+      fallbackShouldRespectProviderCap &&
+      socialNewsProviderKeys.has(providerKey) &&
+      (providerCounts.get(providerKey) ?? 0) >= providerCap
     ) {
       continue;
     }
     select(candidate);
   }
 
-  return selected;
+  for (const candidate of pool) {
+    if (selected.length >= limit) {
+      break;
+    }
+    if (
+      selectedStoryIds.has(candidate.story.storyClusterId) ||
+      !isReaderFacingQualityTopRead(candidate.topRead)
+    ) {
+      continue;
+    }
+    const providerKey = candidate.topRead.providerKey;
+    const refillCap = socialNewsProviderKeys.has(providerKey)
+      ? maxRenderedSocialProviderCount
+      : limit;
+    if ((providerCounts.get(providerKey) ?? 0) >= refillCap) {
+      continue;
+    }
+    select(candidate);
+  }
+
+  return rankedCandidatePool(selected);
 };
 
 const qualityCandidatePool = (
   candidates: readonly RenderedTopReadCandidate[],
   limit: number,
 ): readonly RenderedTopReadCandidate[] => {
-  if (candidates.length <= limit || !isSocialNewsDominant(candidates, limit)) {
+  if (!isSocialNewsDominant(candidates, limit)) {
     return candidates;
   }
 
   const qualityCandidates = candidates.filter((candidate) =>
-    isQualityTopRead(candidate.topRead),
+    isReaderFacingQualityTopRead(candidate.topRead),
   );
+  const detailedQualityCandidates = qualityCandidates.filter(
+    (candidate) =>
+      candidate.topRead.reason.trim().length >= minimumDetailedReasonLength,
+  );
+
+  if (detailedQualityCandidates.length >= Math.min(limit, 8)) {
+    return detailedQualityCandidates;
+  }
+
+  if (candidates.length <= limit) {
+    return candidates;
+  }
 
   return qualityCandidates.length >= Math.min(limit, 6)
     ? qualityCandidates
@@ -124,27 +188,41 @@ const isSocialNewsDominant = (
     socialNewsProviderKeys.has(candidate.topRead.providerKey),
   ).length >= Math.min(limit, candidates.length);
 
-const isQualityTopRead = (read: TopRead): boolean => {
+export const isReaderFacingQualityTopRead = (
+  read: ReaderFacingTopReadQualityInput,
+): boolean => {
+  if (
+    isUnpolishedReaderTitle(read.title) ||
+    hasFallbackReason(read) ||
+    isReaderTitleReasonDuplicate(read.title, read.reason)
+  ) {
+    return false;
+  }
   if (!socialNewsProviderKeys.has(read.providerKey)) {
     return true;
   }
-  if (read.confirmedProviderKeys.length > 1 || read.confidence.level !== "low") {
+  if (
+    read.confirmedProviderKeys.length > 1 ||
+    read.confidence.level !== "low"
+  ) {
     return true;
   }
   if (isTrustedOfficialXPost(read)) {
-    return !hasFallbackReason(read) || read.signalScore >= strongSingleSourceSignalScore;
+    return true;
   }
   if (read.signalScore >= strongSingleSourceSignalScore) {
     return !isUnverifiedBreakingXPost(read);
   }
   if (read.signalScore >= usefulSingleSourceSignalScore) {
-    return !hasFallbackReason(read) && !isUnverifiedBreakingXPost(read);
+    return !isUnverifiedBreakingXPost(read);
   }
 
   return false;
 };
 
-const isTrustedOfficialXPost = (read: TopRead): boolean => {
+const isTrustedOfficialXPost = (
+  read: ReaderFacingTopReadQualityInput,
+): boolean => {
   if (read.providerKey !== "x-twitter") {
     return false;
   }
@@ -153,13 +231,15 @@ const isTrustedOfficialXPost = (read: TopRead): boolean => {
   return username !== undefined && trustedXUsernames.has(username);
 };
 
-const isUnverifiedBreakingXPost = (read: TopRead): boolean =>
+const isUnverifiedBreakingXPost = (
+  read: ReaderFacingTopReadQualityInput,
+): boolean =>
   read.providerKey === "x-twitter" &&
   read.confirmedProviderKeys.length <= 1 &&
-  /\b(?:breaking|just\s+in)\b/iu.test(read.title);
+  /^(?:unverified report:)|\b(?:breaking|just\s+in)\b/iu.test(read.title);
 
-const hasFallbackReason = (read: TopRead): boolean =>
-  read.reason.trim().toLowerCase().startsWith("source-reported:");
+const hasFallbackReason = (read: ReaderFacingTopReadQualityInput): boolean =>
+  isFallbackReaderReason(read.reason);
 
 const xUsername = (value: string | undefined): string | undefined => {
   if (value === undefined) {
@@ -219,6 +299,8 @@ const trustedXUsernames = new Set([
 ]);
 const strongSingleSourceSignalScore = 2.2;
 const usefulSingleSourceSignalScore = 1.9;
+const minimumDetailedReasonLength = 240;
+const maxRenderedSocialProviderCount = 4;
 
 const normalizeLimit = (value: number): number => {
   if (!Number.isFinite(value) || !Number.isInteger(value) || value < 1) {

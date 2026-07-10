@@ -3,12 +3,18 @@ import type {
   ReaderSummaryClaim,
   ReaderSummaryClaimRisk,
 } from "../entities/reader-summary-claim";
-import type { ReaderSummaryRisk, TopRead } from "../entities/top-read";
+import type { ReaderSummaryNarrativeSection } from "../entities/reader-summary-narrative-section";
+import type {
+  ReaderSummaryRisk,
+  TopRead,
+  TopReadConfidence,
+} from "../entities/top-read";
 import type { SummaryEvidenceItem } from "../value-objects/summary-evidence-item";
 import { compactUnique, nonEmpty } from "../value-objects/summary-text";
 
 export type ReaderSummaryClaimBoardInput = {
   readonly topReads: readonly TopRead[];
+  readonly narrativeSections?: readonly ReaderSummaryNarrativeSection[];
   readonly risksAndUnknowns: readonly ReaderSummaryRisk[];
   readonly citationMap: readonly ReaderSummaryCitation[];
   readonly selectedEvidence?: readonly SummaryEvidenceItem[];
@@ -32,6 +38,22 @@ export const buildReaderSummaryClaimBoard = (
     ),
   );
 
+  const narrativeClaims = (input.narrativeSections ?? [])
+    .slice(0, maxClaimBoardItems)
+    .map((section) =>
+      claimFromNarrativeSection(
+        section,
+        input.topReads,
+        input.risksAndUnknowns,
+        citationById,
+        evidenceByFeedItemId,
+      ),
+    )
+    .filter((claim): claim is ReaderSummaryClaim => claim !== undefined);
+  if (narrativeClaims.length > 0) {
+    return narrativeClaims;
+  }
+
   return input.topReads
     .slice(0, maxClaimBoardItems)
     .map((read) =>
@@ -45,6 +67,49 @@ export const buildReaderSummaryClaimBoard = (
     .filter((claim): claim is ReaderSummaryClaim => claim !== undefined);
 };
 
+const claimFromNarrativeSection = (
+  section: ReaderSummaryNarrativeSection,
+  topReads: readonly TopRead[],
+  risksAndUnknowns: readonly ReaderSummaryRisk[],
+  citationById: ReadonlyMap<string, ReaderSummaryCitation>,
+  evidenceByFeedItemId: ReadonlyMap<string, SummaryEvidenceItem>,
+): ReaderSummaryClaim | undefined => {
+  const citationIds = compactUnique(section.citationIds).filter((citationId) =>
+    citationById.has(citationId),
+  );
+  const supportingReads = topReads.filter((read) =>
+    overlaps(read.citationIds, citationIds),
+  );
+  const evidence = claimEvidence({
+    citationIds,
+    fallbackTitle: section.title,
+    citationById,
+    evidenceByFeedItemId,
+  });
+  if (section.text.trim().length === 0 || evidence.length === 0) {
+    return undefined;
+  }
+  const confidence = conservativeConfidence(supportingReads, evidence.length);
+  const providerKeys = compactUnique(evidence.map((item) => item.providerKey));
+
+  return {
+    id: section.id,
+    claim: section.text,
+    evidence,
+    confidence,
+    risks: claimRisks(
+      {
+        citationIds,
+        confirmedProviderCount: providerKeys.length,
+        confidence,
+      },
+      risksAndUnknowns,
+      evidence.length,
+    ).slice(0, maxClaimRisks),
+    citationIds,
+  };
+};
+
 const claimFromTopRead = (
   read: TopRead,
   risksAndUnknowns: readonly ReaderSummaryRisk[],
@@ -54,21 +119,13 @@ const claimFromTopRead = (
   const citationIds = compactUnique(read.citationIds).filter((citationId) =>
     citationById.has(citationId),
   );
-  const evidence = citationIds
-    .map((citationId) => {
-      const citation = citationById.get(citationId);
-
-      return citation === undefined
-        ? undefined
-        : {
-            title: evidenceTitle(read, citation, evidenceByFeedItemId),
-            providerKey: citation.providerKey,
-            citationId,
-            canonicalUrl: citation.canonicalUrl ?? read.canonicalUrl,
-          };
-    })
-    .filter((item): item is NonNullable<typeof item> => item !== undefined)
-    .slice(0, maxClaimEvidenceItems);
+  const evidence = claimEvidence({
+    citationIds,
+    fallbackTitle: read.title,
+    fallbackCanonicalUrl: read.canonicalUrl,
+    citationById,
+    evidenceByFeedItemId,
+  });
 
   if (read.title.trim().length === 0 || evidence.length === 0) {
     return undefined;
@@ -78,48 +135,72 @@ const claimFromTopRead = (
     claim: read.title,
     evidence,
     confidence: read.confidence,
-    risks: claimRisks(read, risksAndUnknowns, evidence.length).slice(
-      0,
-      maxClaimRisks,
-    ),
+    risks: claimRisks(
+      {
+        citationIds,
+        confirmedProviderCount: read.confirmedProviderKeys.length,
+        confidence: read.confidence,
+      },
+      risksAndUnknowns,
+      evidence.length,
+    ).slice(0, maxClaimRisks),
     citationIds,
   };
 };
 
-const evidenceTitle = (
-  read: TopRead,
-  citation: ReaderSummaryCitation,
-  evidenceByFeedItemId: ReadonlyMap<string, SummaryEvidenceItem>,
-): string => {
-  const evidence = evidenceByFeedItemId.get(citation.feedItemId);
+const claimEvidence = (params: {
+  readonly citationIds: readonly string[];
+  readonly fallbackTitle: string;
+  readonly fallbackCanonicalUrl?: string;
+  readonly citationById: ReadonlyMap<string, ReaderSummaryCitation>;
+  readonly evidenceByFeedItemId: ReadonlyMap<string, SummaryEvidenceItem>;
+}) =>
+  params.citationIds
+    .map((citationId) => {
+      const citation = params.citationById.get(citationId);
+      if (citation === undefined) {
+        return undefined;
+      }
+      const evidence = params.evidenceByFeedItemId.get(citation.feedItemId);
 
-  return nonEmpty(evidence?.title ?? "", read.title);
-};
+      return {
+        title: nonEmpty(evidence?.title ?? "", params.fallbackTitle),
+        providerKey: citation.providerKey,
+        citationId,
+        canonicalUrl: citation.canonicalUrl ?? params.fallbackCanonicalUrl,
+      };
+    })
+    .filter((item): item is NonNullable<typeof item> => item !== undefined)
+    .slice(0, maxClaimEvidenceItems);
 
 const claimRisks = (
-  read: TopRead,
+  claim: {
+    readonly citationIds: readonly string[];
+    readonly confirmedProviderCount: number;
+    readonly confidence: TopReadConfidence;
+  },
   risksAndUnknowns: readonly ReaderSummaryRisk[],
   evidenceCount: number,
 ): readonly ReaderSummaryClaimRisk[] => {
   const matchedRisks = risksAndUnknowns
-    .filter((risk) => overlaps(read.citationIds, risk.citationIds ?? []))
+    .filter((risk) => overlaps(claim.citationIds, risk.citationIds ?? []))
     .map((risk): ReaderSummaryClaimRisk => ({
       kind: "unresolved",
       description: risk.description,
     }));
   const inferredRisks: ReaderSummaryClaimRisk[] = [];
 
-  if (read.confirmedProviderKeys.length <= 1) {
+  if (claim.confirmedProviderCount <= 1) {
     inferredRisks.push({
       kind: "single_source",
       description:
         "Needs independent confirmation before treating it as verified.",
     });
   }
-  if (read.confidence.level === "low" || read.confidence.score < 0.5) {
+  if (claim.confidence.level === "low" || claim.confidence.score < 0.5) {
     inferredRisks.push({
       kind: "low_confidence",
-      description: read.confidence.rationale,
+      description: claim.confidence.rationale,
     });
   }
   if (evidenceCount < 2) {
@@ -131,6 +212,24 @@ const claimRisks = (
   }
 
   return uniqueRisks([...matchedRisks, ...inferredRisks]);
+};
+
+const conservativeConfidence = (
+  reads: readonly TopRead[],
+  evidenceCount: number,
+): TopReadConfidence => {
+  if (reads.length === 0) {
+    return {
+      level: "low",
+      score: evidenceCount > 1 ? 0.42 : 0.32,
+      rationale:
+        "Confidence is limited because this narrative claim is not represented by a ranked top read.",
+    };
+  }
+
+  return [...reads].sort(
+    (left, right) => left.confidence.score - right.confidence.score,
+  )[0]!.confidence;
 };
 
 const overlaps = (

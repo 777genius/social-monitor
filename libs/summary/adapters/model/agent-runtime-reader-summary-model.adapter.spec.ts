@@ -10,7 +10,7 @@ import type {
 import { AgentRuntimeReaderSummaryModelAdapter } from "./agent-runtime-reader-summary-model.adapter";
 
 describe("AgentRuntimeReaderSummaryModelAdapter", () => {
-  it("does not send the default lineage alias as a Codex runtime model", async () => {
+  it("uses the strict production Codex model and effort by default", async () => {
     const client = new CapturingAgentRuntimeClient({
       status: "completed",
       structuredOutput: validReaderProviderDraft(),
@@ -37,15 +37,48 @@ describe("AgentRuntimeReaderSummaryModelAdapter", () => {
 
     await adapter.generate(input, route);
 
-    expect(route.model).toBe("codex:agent-runtime-reader-summary");
+    expect(route.model).toBe("codex:gpt-5.5:xhigh");
+    expect(route.promptVersion).toBe("reader_summary.prompt.agent_runtime.v8");
+    expect(client.commands).toHaveLength(1);
     expect(adapter.estimate(input, route).outputTokens).toBe(3_200);
     expect(client.commands[0]?.systemPrompt).toContain(
-      "prefer one compact lead paragraph followed by 2-3 short Markdown bullets",
+      "Return narrativeSections as the canonical reader narrative",
     );
     expect(client.commands[0]?.systemPrompt).toContain(
-      "- **Main signal:** ...",
+      "one secondary_signal for every entry in coveragePlan.secondary",
     );
-    expect(client.commands[0]?.controls).not.toHaveProperty("model");
+    expect(client.commands[0]?.systemPrompt).toContain(
+      "complete narrative 220-320 words",
+    );
+    expect(client.commands[0]?.systemPrompt).toContain(
+      "Rewrite conversational, question-style or truncated source titles",
+    );
+    expect(client.commands[0]?.systemPrompt).toContain(
+      "Preserve material qualifiers exactly as stated",
+    );
+    expect(client.commands[0]?.systemPrompt).toContain(
+      "must explain why the item matters",
+    );
+    expect(client.commands[0]?.systemPrompt).toContain(
+      "each topStories summary 420-650 characters",
+    );
+    expect(client.commands[0]?.systemPrompt).toContain(
+      "Keep source validation out of topStories summary prose",
+    );
+    expect(client.commands[0]?.systemPrompt).toContain(
+      "return 12-15 topStories",
+    );
+    expect(client.commands[0]?.systemPrompt).toContain(
+      "evidencePack.confidence as a ceiling",
+    );
+    expect(client.commands[0]?.systemPrompt).toContain(
+      "RSS is a delivery mechanism",
+    );
+    expect(client.commands[0]?.controls).toMatchObject({ model: "gpt-5.5" });
+    expect(client.commands[0]?.timeoutMs).toBe(600_000);
+    expect(client.commands[0]?.metadata).toMatchObject({
+      reasoningEffort: "xhigh",
+    });
   });
 
   it("passes an explicit real runtime model through controls", async () => {
@@ -76,23 +109,193 @@ describe("AgentRuntimeReaderSummaryModelAdapter", () => {
 
     await adapter.generate(input, route);
 
-    expect(route.model).toBe("codex:gpt-5.5");
+    expect(route.model).toBe("codex:gpt-5.5:xhigh");
     expect(client.commands[0]?.controls).toMatchObject({
       model: "gpt-5.5",
     });
+  });
+
+  it("promotes a cited main signal to lead without changing its evidence", async () => {
+    const draft = validReaderProviderDraft();
+    draft.narrativeSections = [
+      {
+        kind: "main_signal",
+        title: "Main signal",
+        text: "Agent runtime reliability is the strongest daily signal.",
+        citationIds: ["c1"],
+        storyClusterId: null,
+      },
+    ];
+    const adapter = new AgentRuntimeReaderSummaryModelAdapter({
+      client: new CapturingAgentRuntimeClient({
+        status: "completed",
+        structuredOutput: draft,
+        warnings: [],
+      }),
+      agentProvider: "codex",
+    });
+    const input = readerSummaryInput();
+    const route = adapter.route(
+      input,
+      {
+        preferredProvider: "agent-runtime",
+        maxInputTokens: 24_000,
+        maxOutputTokens: 16_000,
+        maxEstimatedCostUsd: 1,
+      },
+      { remainingTokens: 40_000, remainingCostUsd: 1 },
+    );
+
+    const attempt = await adapter.generate(input, route);
+
+    expect(attempt.draft.content?.narrativeSections).toEqual([
+      expect.objectContaining({
+        kind: "lead",
+        citationIds: ["c1"],
+        text: "Agent runtime reliability is the strongest daily signal.",
+      }),
+    ]);
+  });
+
+  it("repairs blank structural titles without another model request", async () => {
+    const draft = validReaderProviderDraft();
+    const sections = draft.narrativeSections as Record<string, unknown>[];
+    sections[0] = { ...sections[0], title: "" };
+    const client = new CapturingAgentRuntimeClient({
+      status: "completed",
+      structuredOutput: draft,
+      warnings: [],
+    });
+    const adapter = new AgentRuntimeReaderSummaryModelAdapter({
+      client,
+      agentProvider: "codex",
+    });
+    const input = readerSummaryInput();
+    const route = adapter.route(
+      input,
+      {
+        preferredProvider: "agent-runtime",
+        maxInputTokens: 24_000,
+        maxOutputTokens: 16_000,
+        maxEstimatedCostUsd: 1,
+      },
+      { remainingTokens: 40_000, remainingCostUsd: 1 },
+    );
+
+    const attempt = await adapter.generate(input, route);
+
+    expect(client.commands).toHaveLength(1);
+    expect(attempt.draft.content?.narrativeSections?.[0]?.title).toBe(
+      "Overview",
+    );
+  });
+
+  it("recovers blank narrative text from the cited normalized story", async () => {
+    const draft = validReaderProviderDraft();
+    const sections = draft.narrativeSections as Record<string, unknown>[];
+    sections[0] = { ...sections[0], text: "" };
+    const client = new CapturingAgentRuntimeClient({
+      status: "completed",
+      structuredOutput: draft,
+      warnings: [],
+    });
+    const adapter = new AgentRuntimeReaderSummaryModelAdapter({
+      client,
+      agentProvider: "codex",
+    });
+    const input = readerSummaryInput();
+    const route = adapter.route(
+      input,
+      {
+        preferredProvider: "agent-runtime",
+        maxInputTokens: 24_000,
+        maxOutputTokens: 16_000,
+        maxEstimatedCostUsd: 1,
+      },
+      { remainingTokens: 40_000, remainingCostUsd: 1 },
+    );
+
+    const attempt = await adapter.generate(input, route);
+
+    expect(client.commands).toHaveLength(1);
+    expect(attempt.draft.content?.narrativeSections?.[0]?.text).toBe(
+      "The current discussion focuses on reliability and operational control.",
+    );
+  });
+
+  it("runs one bounded repair task for an invalid narrative contract", async () => {
+    const invalidDraft = validReaderProviderDraft();
+    invalidDraft.narrativeSections = [
+      {
+        kind: "watch",
+        title: "Watch",
+        text: "Runtime reliability still needs monitoring.",
+        citationIds: ["c1"],
+        storyClusterId: null,
+      },
+    ];
+    const client = new CapturingAgentRuntimeClient([
+      {
+        status: "completed",
+        structuredOutput: invalidDraft,
+        warnings: [],
+      },
+      {
+        status: "completed",
+        structuredOutput: validReaderProviderDraft(),
+        warnings: [],
+      },
+    ]);
+    const adapter = new AgentRuntimeReaderSummaryModelAdapter({
+      client,
+      agentProvider: "codex",
+    });
+    const input = readerSummaryInput();
+    const route = adapter.route(
+      input,
+      {
+        preferredProvider: "agent-runtime",
+        maxInputTokens: 24_000,
+        maxOutputTokens: 16_000,
+        maxEstimatedCostUsd: 1,
+      },
+      { remainingTokens: 40_000, remainingCostUsd: 1 },
+    );
+
+    await adapter.generate(input, route);
+
+    expect(client.commands).toHaveLength(2);
+    expect(client.commands[1]).toMatchObject({
+      purpose: "social_monitor.reader_summary.repair",
+      metadata: expect.objectContaining({ attempt: "repair" }),
+    });
+    expect(client.commands[1]?.systemPrompt).toContain(
+      "narrativeSections[0] must have kind lead",
+    );
   });
 });
 
 class CapturingAgentRuntimeClient implements AgentRuntimeClientPort {
   readonly commands: AgentRuntimeTaskCommand[] = [];
+  private readonly results: readonly AgentRuntimeTaskResult[];
+  private resultIndex = 0;
 
-  constructor(private readonly result: AgentRuntimeTaskResult) {}
+  constructor(
+    result: AgentRuntimeTaskResult | readonly AgentRuntimeTaskResult[],
+  ) {
+    this.results = Array.isArray(result) ? result : [result];
+  }
 
   async runTask(
     command: AgentRuntimeTaskCommand,
   ): Promise<AgentRuntimeTaskResult> {
     this.commands.push(command);
-    return this.result;
+    const result = this.results[this.resultIndex] ?? this.results.at(-1);
+    this.resultIndex += 1;
+    if (result === undefined) {
+      throw new Error("No captured agent-runtime result configured");
+    }
+    return result;
   }
 
   async checkHealth(service: string): Promise<AgentRuntimeHealthResult> {
@@ -135,8 +338,7 @@ const readerSummaryInput = (): ReaderSummaryModelInput => {
       startedAt: new Date("2026-06-23T00:00:00.000Z"),
       endedAt: new Date("2026-06-24T00:00:00.000Z"),
       timezone: "UTC",
-      periodKey:
-        "daily:2026-06-23T00:00:00.000Z:2026-06-24T00:00:00.000Z:UTC",
+      periodKey: "daily:2026-06-23T00:00:00.000Z:2026-06-24T00:00:00.000Z:UTC",
     },
     evidence: {
       rankingPolicyVersion: "story_ranking_v1",
@@ -185,6 +387,15 @@ const validReaderProviderDraft = (): Record<string, unknown> => ({
   headline: "Agent runtime discussions are accelerating",
   executiveSummary:
     "Developers are comparing agent runtime reliability and production tradeoffs.",
+  narrativeSections: [
+    {
+      kind: "lead",
+      title: "Overview",
+      text: "Developers are comparing agent runtime reliability and production tradeoffs.",
+      citationIds: ["c1"],
+      storyClusterId: null,
+    },
+  ],
   topStories: [
     {
       storyClusterId: "story:agent-runtime-reader",

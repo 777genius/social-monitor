@@ -35,9 +35,7 @@ describe("selectRenderedTopReadCandidates", () => {
     expect(result.map((item) => item.topRead.title)).not.toContain(
       "reddit-weak",
     );
-    expect(result.map((item) => item.topRead.title)).not.toContain(
-      "x-5",
-    );
+    expect(result.map((item) => item.topRead.title)).not.toContain("x-5");
   });
 
   it("refills with quality dominant-provider reads when no alternative source exists", () => {
@@ -89,6 +87,64 @@ describe("selectRenderedTopReadCandidates", () => {
     ]);
   });
 
+  it("rejects strong single-source reads that still have only fallback context", () => {
+    const candidates = [
+      candidate("x-raw-fallback", "x-twitter", 2.3, {
+        reason: "Source-reported: raw X post text",
+      }),
+      candidate("reddit-generic-fallback", "reddit", 2.31, {
+        reason:
+          "Reddit discussion is a current signal for monitored AI developer topics; its claims remain source-reported until independently confirmed.",
+      }),
+    ];
+
+    const result = selectRenderedTopReadCandidates({
+      candidates,
+      sourceMix: sourceMix(["x-twitter", "reddit", "hacker-news", "rss"]),
+      limit: 10,
+    });
+
+    expect(result).toEqual([]);
+  });
+
+  it("rejects cross-source reads that still have only fallback context", () => {
+    const result = selectRenderedTopReadCandidates({
+      candidates: [
+        candidate("rss-cross-source-fallback", "rss", 2.5, {
+          confirmedProviderKeys: ["rss", "hacker-news"],
+          confidenceLevel: "medium",
+          reason:
+            "The report adds timely context for evaluating monitored AI products and developer workflows.",
+        }),
+      ],
+      sourceMix: sourceMix(["x-twitter", "reddit", "hacker-news", "rss"]),
+      limit: 10,
+    });
+
+    expect(result).toEqual([]);
+  });
+
+  it("keeps provider caps during fallback refill when alternatives exist", () => {
+    const candidates = [
+      ...Array.from({ length: 5 }, (_, index) =>
+        candidate(`x-good-${index + 1}`, "x-twitter", 2.5 - index * 0.01),
+      ),
+      ...Array.from({ length: 4 }, (_, index) =>
+        candidate(`reddit-good-${index + 1}`, "reddit", 2.3 - index * 0.01),
+      ),
+      candidate("hn-good", "hacker-news", 2.1),
+    ];
+
+    const result = selectRenderedTopReadCandidates({
+      candidates,
+      sourceMix: sourceMix(["x-twitter", "reddit", "hacker-news", "rss"]),
+      limit: 10,
+    });
+
+    expect(providerCounts(result)["x-twitter"]).toBeLessThanOrEqual(4);
+    expect(result.map((item) => item.topRead.title)).not.toContain("x-good-5");
+  });
+
   it("does not treat official X fallback text as quality by default", () => {
     const candidates = [
       ...Array.from({ length: 4 }, (_, index) =>
@@ -96,7 +152,7 @@ describe("selectRenderedTopReadCandidates", () => {
           canonicalUrl: `https://x.com/OpenAI/status/${index + 1}`,
         }),
       ),
-      candidate("x-official-fallback", "x-twitter", 2.1, {
+      candidate("x-official-fallback", "x-twitter", 2.4, {
         canonicalUrl: "https://x.com/OpenAI/status/99",
         reason: "Source-reported: raw X post text",
       }),
@@ -114,6 +170,40 @@ describe("selectRenderedTopReadCandidates", () => {
       "x-official-good-3",
       "x-official-good-4",
     ]);
+  });
+
+  it("rejects normalized unverified X reports without cross-source support", () => {
+    const result = selectRenderedTopReadCandidates({
+      candidates: [
+        candidate(
+          "Unverified report: Government approves a new AI model rollout",
+          "x-twitter",
+          2.35,
+          {
+            reason:
+              "The post is an unverified rollout report and should not be treated as confirmation.",
+          },
+        ),
+      ],
+      sourceMix: sourceMix(["x-twitter", "reddit", "hacker-news", "rss"]),
+      limit: 10,
+    });
+
+    expect(result).toEqual([]);
+  });
+
+  it("rejects candidates whose reason only repeats the title", () => {
+    const result = selectRenderedTopReadCandidates({
+      candidates: [
+        candidate("OpenAI starts rolling out GPT-5.6", "x-twitter", 2.5, {
+          reason: "OpenAI starts rolling out GPT-5.6.",
+        }),
+      ],
+      sourceMix: sourceMix(["x-twitter", "reddit", "hacker-news", "rss"]),
+      limit: 10,
+    });
+
+    expect(result).toEqual([]);
   });
 
   it("orders selected reads by support quality before model order", () => {
@@ -135,6 +225,74 @@ describe("selectRenderedTopReadCandidates", () => {
       "reddit-cross-source",
       "x-single-source",
     ]);
+  });
+
+  it("orders a stronger supported read above a weak diversity refill", () => {
+    const result = selectRenderedTopReadCandidates({
+      candidates: [
+        candidate("hn-weak", "hacker-news", 1.99),
+        candidate("x-supported", "x-twitter", 2.26, {
+          confidenceLevel: "medium",
+        }),
+      ],
+      sourceMix: sourceMix(["x-twitter", "reddit", "hacker-news", "rss"]),
+      limit: 8,
+    });
+
+    expect(result.map((item) => item.topRead.title)).toEqual([
+      "x-supported",
+      "hn-weak",
+    ]);
+  });
+
+  it("drops short supplemental reasons when eight detailed reads exist", () => {
+    const detailedCandidates = [
+      ...Array.from({ length: 4 }, (_, index) =>
+        candidate(`x-detailed-${index + 1}`, "x-twitter", 2.4, {
+          reason: detailedReason(`X detailed ${index + 1}`),
+        }),
+      ),
+      ...Array.from({ length: 4 }, (_, index) =>
+        candidate(`reddit-detailed-${index + 1}`, "reddit", 2.3, {
+          reason: detailedReason(`Reddit detailed ${index + 1}`),
+        }),
+      ),
+    ];
+
+    const result = selectRenderedTopReadCandidates({
+      candidates: [
+        candidate("short-supplement", "hacker-news", 2.6, {
+          reason: "A short source excerpt that lacks a full description.",
+        }),
+        ...detailedCandidates,
+      ],
+      sourceMix: sourceMix(["x-twitter", "reddit", "hacker-news", "rss"]),
+      limit: 10,
+    });
+
+    expect(result).toHaveLength(8);
+    expect(result.map((item) => item.topRead.title)).not.toContain(
+      "short-supplement",
+    );
+  });
+
+  it("refills to eight without exceeding four reads from one provider", () => {
+    const result = selectRenderedTopReadCandidates({
+      candidates: [
+        ...Array.from({ length: 4 }, (_, index) =>
+          candidate(`x-${index + 1}`, "x-twitter", 2.5 - index * 0.01),
+        ),
+        ...Array.from({ length: 3 }, (_, index) =>
+          candidate(`reddit-${index + 1}`, "reddit", 2.3 - index * 0.01),
+        ),
+        candidate("hn-1", "hacker-news", 2.1),
+      ],
+      sourceMix: sourceMix(["x-twitter", "reddit", "hacker-news", "rss"]),
+      limit: 8,
+    });
+
+    expect(result).toHaveLength(8);
+    expect(providerCounts(result)["x-twitter"]).toBe(4);
   });
 });
 
@@ -180,7 +338,9 @@ const candidate = (
   },
 });
 
-const sourceMix = (providerKeys: readonly string[]): readonly SourceMixEntry[] =>
+const sourceMix = (
+  providerKeys: readonly string[],
+): readonly SourceMixEntry[] =>
   providerKeys.map((providerKey) => ({
     providerKey,
     itemCount: 1,
@@ -200,3 +360,6 @@ const providerCounts = (
 
     return counts;
   }, {});
+
+const detailedReason = (label: string): string =>
+  `${label} explains what happened in the monitored product update and why it matters for real user workflows. It adds concrete operational context about likely impact, adoption constraints and the decisions teams may need to revisit. The remaining uncertainty is stated clearly so readers can separate grounded evidence from early interpretation.`;

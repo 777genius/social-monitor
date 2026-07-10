@@ -61,6 +61,9 @@ export type PrismaFeedClient = {
         readonly tenantId: string;
         readonly workspaceId: string;
         readonly status: "VISIBLE";
+        readonly id?: {
+          readonly in: readonly string[];
+        };
         readonly interestId?: string;
         readonly observedAt?: {
           readonly gt?: Date;
@@ -74,6 +77,13 @@ export type PrismaFeedClient = {
       ];
       readonly skip: number;
       readonly take: number;
+      readonly include?: {
+        readonly sourceItem: {
+          readonly select: {
+            readonly body: true;
+          };
+        };
+      };
     }): Promise<readonly PrismaFeedItemRecord[]>;
     count(args: {
       readonly where: {

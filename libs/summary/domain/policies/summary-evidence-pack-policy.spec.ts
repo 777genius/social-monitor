@@ -72,7 +72,6 @@ describe("buildSummaryEvidencePack", () => {
     ]);
     expect(pack.topCommunitySignals.map((signal) => signal.feedItemId)).toEqual([
       "feed-x",
-      "feed-reddit",
     ]);
     expect(pack.emergingSignals[0]?.feedItemId).toBe("feed-x");
     expect(pack.dissentingViews.map((signal) => signal.feedItemId)).toEqual([
@@ -96,9 +95,134 @@ describe("buildSummaryEvidencePack", () => {
     });
     expect(pack.confidence).toMatchObject({
       level: "high",
-      score: 0.85,
+      score: 0.82,
     });
   });
+
+  it("keeps two-provider community repetition at medium confidence", () => {
+    const selectedEvidence = [
+      evidenceItem({ feedItemId: "feed-reddit", providerKey: "reddit" }),
+      evidenceItem({ feedItemId: "feed-x", providerKey: "x-twitter" }),
+    ];
+    const base = selection(selectedEvidence);
+    const pack = buildSummaryEvidencePack({
+      ...base,
+      sourceWindow: {
+        ...base.sourceWindow,
+        storyClusterIds: ["cluster-community"],
+      },
+      clusters: [
+        {
+          id: "cluster-community",
+          storyKey: "topic:community-repeat",
+          representativeFeedItemId: "feed-reddit",
+          duplicateFeedItemIds: ["feed-x"],
+          interestIds: ["interest-1"],
+          providerKeys: ["reddit", "x-twitter"],
+          score: 2.5,
+          observedAtRange: {
+            startedAt: new Date("2026-07-09T12:00:00.000Z"),
+            endedAt: new Date("2026-07-09T12:05:00.000Z"),
+          },
+          whyImportant: ["Repeated community discussion"],
+        },
+      ],
+    });
+
+    expect(pack.confidence).toMatchObject({
+      level: "medium",
+      score: 0.68,
+    });
+  });
+
+  it("does not count a Hacker News RSS mirror as independent support", () => {
+    const selectedEvidence = [
+      evidenceItem({
+        feedItemId: "feed-hn",
+        providerKey: "hacker-news",
+        canonicalUrl: "https://news.ycombinator.com/item?id=1",
+      }),
+      evidenceItem({
+        feedItemId: "feed-rss-mirror",
+        providerKey: "rss",
+        canonicalUrl: "https://news.ycombinator.com/item?id=1",
+      }),
+    ];
+    const base = selection(selectedEvidence);
+    const pack = buildSummaryEvidencePack({
+      ...base,
+      sourceWindow: {
+        ...base.sourceWindow,
+        storyClusterIds: ["cluster-hn-mirror"],
+      },
+      clusters: [
+        {
+          id: "cluster-hn-mirror",
+          storyKey: "url:news.ycombinator.com/item?id=1",
+          representativeFeedItemId: "feed-hn",
+          duplicateFeedItemIds: ["feed-rss-mirror"],
+          interestIds: ["interest-1"],
+          providerKeys: ["hacker-news", "rss"],
+          score: 2.2,
+          observedAtRange: {
+            startedAt: new Date("2026-07-09T12:00:00.000Z"),
+            endedAt: new Date("2026-07-09T12:01:00.000Z"),
+          },
+          whyImportant: ["Same canonical Hacker News item"],
+        },
+      ],
+    });
+
+    expect(pack.sourceCoverage.crossProviderClusterCount).toBe(0);
+    expect(pack.confidence).toMatchObject({ level: "medium", score: 0.65 });
+  });
+
+  it("does not treat RSS transport as official without source authority", () => {
+    const pack = buildSummaryEvidencePack(
+      selection([
+        evidenceItem({
+          feedItemId: "feed-rss",
+          providerKey: "rss",
+          title: "Editorial RSS coverage",
+        }),
+        evidenceItem({
+          feedItemId: "feed-official-x",
+          providerKey: "x-twitter",
+          title: "Official product announcement",
+          contentQuality: {
+            qualityScore: 1,
+            interestRelevanceScore: 1,
+            engagementIntegrityScore: 1,
+            eligibleForSummary: true,
+            eligibleForTopRead: true,
+            needsLlmReview: false,
+            decision: "promote",
+            flags: ["official_account", "trusted_author"],
+            reason: "Eligible first-party source",
+          },
+        }),
+      ]),
+    );
+
+    expect(pack.officialSignals.map((signal) => signal.feedItemId)).toEqual([
+      "feed-official-x",
+    ]);
+  });
+});
+
+const selection = (
+  selectedEvidence: readonly SummaryEvidenceItem[],
+): Parameters<typeof buildSummaryEvidencePack>[0] => ({
+  rankingPolicyVersion: "story-ranking.v1",
+  sourceWindow: {
+    windowId: "window-authority",
+    startedAt: new Date("2026-07-09T00:00:00.000Z"),
+    endedAt: new Date("2026-07-10T00:00:00.000Z"),
+    selectedFeedItemIds: selectedEvidence.map((item) => item.feedItemId),
+    storyClusterIds: [],
+  },
+  clusters: [],
+  selectedEvidence,
 });
 
 const evidenceItem = (
@@ -109,7 +233,9 @@ const evidenceItem = (
   sourceBindingId: "binding-1",
   interestId: "interest-1",
   providerKey: overrides.providerKey ?? "reddit",
-  canonicalUrl: `https://example.test/${overrides.feedItemId ?? "feed-1"}`,
+  canonicalUrl:
+    overrides.canonicalUrl ??
+    `https://example.test/${overrides.feedItemId ?? "feed-1"}`,
   title: overrides.title ?? "Evidence title",
   bodyPreview: overrides.bodyPreview,
   authorHandle: overrides.authorHandle,

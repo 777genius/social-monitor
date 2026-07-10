@@ -24,6 +24,7 @@ export type ReaderSummaryTopicNodeLabel = {
 export type ReaderSummaryTopicGroupLabel = {
   readonly id: string;
   readonly label: string;
+  readonly semanticAnchors?: readonly string[];
   readonly nodeIds?: readonly string[];
   readonly confidenceScore?: number;
   readonly rationale?: string;

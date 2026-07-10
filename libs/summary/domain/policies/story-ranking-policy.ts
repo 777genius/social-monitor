@@ -1,4 +1,8 @@
-export type StoryRankingPolicyVersion = "story_ranking_v1" | "story_ranking_v2";
+export type StoryRankingPolicyVersion =
+  | "story_ranking_v1"
+  | "story_ranking_v2"
+  | "story_ranking_v3"
+  | "story_ranking_v4";
 
 export type StoryRankingEvalThresholds = {
   readonly minTopKOrderAccuracy: number;
@@ -35,7 +39,7 @@ export type StoryRankingPolicy = {
 };
 
 export const STORY_RANKING_POLICY_V1 = {
-  version: "story_ranking_v2",
+  version: "story_ranking_v4",
   maxClusters: 200,
   maxSelectedEvidencePerCluster: 4,
   maxCrossProviderEvidence: 3,
