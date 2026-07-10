@@ -106,53 +106,6 @@ final class SummaryMapper {
     );
   }
 
-  ReaderSummaryContent _readerSummaryContentToDomain(
-    ReaderSummaryContentApiDto dto,
-  ) {
-    return ReaderSummaryContent(
-      headline: _nonEmpty(dto.headline, fallback: 'Workspace summary'),
-      oneLineTakeaway: _safeLongText(
-        dto.oneLineTakeaway,
-        fallback: 'No summary takeaway available',
-      ),
-      bullets: _safeTextList(dto.bullets),
-      mainTopics: _safeTextList(dto.mainTopics),
-      topicMap: _topicMapToDomain(this, dto.topicMap),
-      qualityState: ReaderSummaryQualityState(
-        status: _nonEmpty(dto.qualityState.status, fallback: 'ready'),
-        flags: _safeTextList(dto.qualityState.flags),
-        warnings: _safeTextList(dto.qualityState.warnings),
-        isSingleSource: dto.qualityState.isSingleSource,
-      ),
-      interestSections: dto.interestSections
-          .map(_interestSectionToDomain)
-          .toList(growable: false),
-      sourceMix: dto.sourceMix.map(_sourceMixToDomain).toList(growable: false),
-      topReads: dto.topReads.map(_readerItemToDomain).toList(growable: false),
-      selectedPosts: dto.selectedPosts
-          .map(_readerItemToDomain)
-          .toList(growable: false),
-      claimBoard: dto.claimBoard
-          .map((claim) => _summaryClaimToDomain(this, claim))
-          .toList(growable: false),
-      reliabilityReport: _summaryReliabilityToDomain(
-        this,
-        dto.reliabilityReport,
-      ),
-      trendDelta: ReaderTrendDelta(
-        newSignals: _safeTextList(dto.trendDelta.newSignals),
-        growingSignals: _safeTextList(dto.trendDelta.growingSignals),
-        repeatedSignals: _safeTextList(dto.trendDelta.repeatedSignals),
-        fadingSignals: _safeTextList(dto.trendDelta.fadingSignals),
-      ),
-      openQuestions: _safeTextList(dto.openQuestions),
-      risks: _safeTextList(dto.risks),
-      nextActions: dto.nextActions
-          .map(_nextActionToDomain)
-          .toList(growable: false),
-    );
-  }
-
   ReaderInterestSection _interestSectionToDomain(
     ReaderInterestSectionApiDto dto,
   ) {
@@ -172,7 +125,11 @@ final class SummaryMapper {
     return TopRead(
       title: _nonEmpty(dto.title, fallback: 'Untitled item'),
       providerKey: _nonEmpty(dto.providerKey, fallback: 'unknown'),
-      reason: _safeText(dto.reason, fallback: 'Selected as relevant evidence'),
+      reason: _safeText(
+        dto.reason,
+        fallback: 'Selected as relevant evidence',
+        maxLength: 720,
+      ),
       matchedInterestIds: _safeTextList(dto.matchedInterestIds),
       matchedRules: _safeTextList(dto.matchedRules),
       signalScore: SignalScore.normalized(dto.signalScore),
@@ -198,7 +155,7 @@ final class SummaryMapper {
             ),
           )
           .toList(growable: false),
-      whyImportant: _safeTextList(dto.whyImportant),
+      whyImportant: _safeTextList(dto.whyImportant, maxLength: 720),
       whyNow: _safeText(
         dto.whyNow,
         fallback: 'Selected in the current summary window',
@@ -235,6 +192,16 @@ final class SummaryMapper {
       'high' => 'high',
       'medium' => 'medium',
       _ => 'low',
+    };
+  }
+
+  ReaderSummaryNarrativeSectionKind _narrativeSectionKind(String value) {
+    return switch (value.trim().toLowerCase()) {
+      'main_signal' => ReaderSummaryNarrativeSectionKind.mainSignal,
+      'why_it_matters' => ReaderSummaryNarrativeSectionKind.whyItMatters,
+      'secondary_signal' => ReaderSummaryNarrativeSectionKind.secondarySignal,
+      'watch' => ReaderSummaryNarrativeSectionKind.watch,
+      _ => ReaderSummaryNarrativeSectionKind.lead,
     };
   }
 
@@ -319,14 +286,18 @@ final class SummaryMapper {
     };
   }
 
-  String _safeText(String raw, {required String fallback}) {
+  String _safeText(
+    String raw, {
+    required String fallback,
+    int maxLength = 240,
+  }) {
     final singleLine = _sanitizeText(raw);
     if (singleLine.isEmpty) {
       return fallback;
     }
-    return singleLine.length <= 240
+    return singleLine.length <= maxLength
         ? singleLine
-        : '${singleLine.substring(0, 237)}...';
+        : '${singleLine.substring(0, maxLength - 3)}...';
   }
 
   String _safeLongText(String raw, {required String fallback}) {
@@ -352,9 +323,9 @@ final class SummaryMapper {
     return trimmed == null || trimmed.isEmpty ? null : trimmed;
   }
 
-  List<String> _safeTextList(List<String> values) {
+  List<String> _safeTextList(List<String> values, {int maxLength = 240}) {
     return values
-        .map((value) => _safeText(value, fallback: ''))
+        .map((value) => _safeText(value, fallback: '', maxLength: maxLength))
         .where((value) => value.isNotEmpty)
         .toList(growable: false);
   }

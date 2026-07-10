@@ -1,8 +1,9 @@
 part of 'reader_summary_brief_surface.dart';
 
-class _TopicMapForceGraph extends StatelessWidget {
+class _TopicMapForceGraph extends StatefulWidget {
   const _TopicMapForceGraph({
     required this.topicMap,
+    required this.selection,
     required this.graphSize,
     required this.textColor,
     required this.mutedColor,
@@ -10,25 +11,32 @@ class _TopicMapForceGraph extends StatelessWidget {
   });
 
   final ReaderSummaryTopicMap topicMap;
+  final _TopicMapVisibleSelection selection;
   final Size graphSize;
   final Color textColor;
   final Color mutedColor;
   final Color borderColor;
 
   @override
+  State<_TopicMapForceGraph> createState() => _TopicMapForceGraphState();
+}
+
+class _TopicMapForceGraphState extends State<_TopicMapForceGraph> {
+  _TopicGraphModel? _model;
+  String? _modelCacheKey;
+
+  @override
   Widget build(BuildContext context) {
-    final model = _TopicGraphModel.fromTopicMap(
-      topicMap: topicMap,
-      graphSize: graphSize,
-    );
+    final model = _modelForCurrentInput();
 
     if (model.bubblesById.isEmpty) {
       return Center(
         child: Text(
           'No topic map data',
-          style: Theme.of(
-            context,
-          ).textTheme.bodySmall?.copyWith(color: mutedColor, letterSpacing: 0),
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: widget.mutedColor,
+            letterSpacing: 0,
+          ),
         ),
       );
     }
@@ -38,7 +46,7 @@ class _TopicMapForceGraph extends StatelessWidget {
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: Theme.of(context).colorScheme.surfaceContainerLowest,
-          border: Border.all(color: borderColor.withValues(alpha: 0.52)),
+          border: Border.all(color: widget.borderColor.withValues(alpha: 0.52)),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Stack(
@@ -60,14 +68,35 @@ class _TopicMapForceGraph extends StatelessWidget {
                 height: bubble.radius * 2,
                 child: _TopicMapBubbleNode(
                   bubble: bubble,
-                  textColor: textColor,
-                  borderColor: borderColor,
+                  textColor: widget.textColor,
+                  borderColor: widget.borderColor,
                 ),
               ),
           ],
         ),
       ),
     );
+  }
+
+  _TopicGraphModel _modelForCurrentInput() {
+    final cacheKey = [
+      widget.selection.signature,
+      widget.graphSize.width.toStringAsFixed(2),
+      widget.graphSize.height.toStringAsFixed(2),
+      _topicMapEdgeSignature(widget.topicMap.edges),
+    ].join('//');
+    if (_modelCacheKey == cacheKey && _model != null) {
+      return _model!;
+    }
+
+    _modelCacheKey = cacheKey;
+    _model = _TopicGraphModel.fromTopicMap(
+      topicMap: widget.topicMap,
+      selection: widget.selection,
+      graphSize: widget.graphSize,
+    );
+
+    return _model!;
   }
 }
 
@@ -89,6 +118,8 @@ class _TopicMapEdgesPainter extends CustomPainter {
         edge: edge,
         sourceCenter: source.center,
         targetCenter: target.center,
+        sourceRadius: source.radius,
+        targetRadius: target.radius,
       );
       final alpha = _topicEdgeAlpha(edge, source, target);
 
@@ -123,26 +154,29 @@ Path _curvedTopicEdgePath({
   required _TopicGraphEdge edge,
   required Offset sourceCenter,
   required Offset targetCenter,
+  required double sourceRadius,
+  required double targetRadius,
 }) {
   final delta = targetCenter - sourceCenter;
   final distance = math.max(1.0, delta.distance);
-  final midpoint = Offset(
-    (sourceCenter.dx + targetCenter.dx) / 2,
-    (sourceCenter.dy + targetCenter.dy) / 2,
+  final direction = delta / distance;
+  final start = sourceCenter + direction * sourceRadius;
+  final end = targetCenter - direction * targetRadius;
+  final visibleDelta = end - start;
+  final visibleDistance = math.max(1.0, visibleDelta.distance);
+  final midpoint = Offset((start.dx + end.dx) / 2, (start.dy + end.dy) / 2);
+  final normal = Offset(
+    -visibleDelta.dy / visibleDistance,
+    visibleDelta.dx / visibleDistance,
   );
-  final normal = Offset(-delta.dy / distance, delta.dx / distance);
   final bend =
-      math.min(76.0, math.max(18.0, distance * 0.22)) * _edgeCurveSign(edge);
+      math.min(76.0, math.max(1.5, visibleDistance * 0.22)) *
+      _edgeCurveSign(edge);
   final control = midpoint + normal * bend;
 
   return Path()
-    ..moveTo(sourceCenter.dx, sourceCenter.dy)
-    ..quadraticBezierTo(
-      control.dx,
-      control.dy,
-      targetCenter.dx,
-      targetCenter.dy,
-    );
+    ..moveTo(start.dx, start.dy)
+    ..quadraticBezierTo(control.dx, control.dy, end.dx, end.dy);
 }
 
 double _edgeCurveSign(_TopicGraphEdge edge) {
@@ -192,6 +226,7 @@ class _TopicMapBubbleNode extends StatelessWidget {
     );
 
     return Tooltip(
+      key: ValueKey('topic-map-bubble-${bubble.node.id}'),
       message: _topicMapBubbleTooltip(bubble),
       waitDuration: const Duration(milliseconds: 350),
       child: SizedBox.square(
@@ -217,12 +252,19 @@ class _TopicMapBubbleNode extends StatelessWidget {
               padding: padding,
               child: label == null
                   ? const SizedBox.shrink()
-                  : Text(
-                      label.text,
-                      maxLines: maxLines,
-                      overflow: TextOverflow.clip,
-                      textAlign: TextAlign.center,
-                      style: label.style,
+                  : FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        key: ValueKey(
+                          'topic-map-bubble-label-${bubble.node.id}',
+                        ),
+                        label.text,
+                        maxLines: maxLines,
+                        softWrap: false,
+                        overflow: TextOverflow.visible,
+                        textAlign: TextAlign.center,
+                        style: label.style,
+                      ),
                     ),
             ),
           ),
@@ -256,50 +298,37 @@ _VisibleTopicMapLabel? _visibleTopicMapLabel({
   required int maxLines,
 }) {
   final candidates = _topicMapLabelPolicy.candidates(label, radius);
-  for (final candidate in candidates) {
-    final style = TextStyle(
-      color: labelColor,
-      fontSize: _topicMapLabelPolicy.fontSize(candidate, radius),
-      fontWeight: FontWeight.w800,
-      height: 1.04,
-      letterSpacing: 0,
-      shadows: [
-        Shadow(color: textColor.withValues(alpha: 0.22), blurRadius: 2),
-      ],
-    );
-    final fits = _topicMapLabelPolicy.fits(
-      label: candidate,
-      style: style,
-      radius: radius,
-      padding: padding,
-      maxLines: maxLines,
-    );
-    if (fits) {
-      return _VisibleTopicMapLabel(text: candidate, style: style);
-    }
-  }
-
   if (candidates.isEmpty) {
     return null;
   }
-  final fallback = candidates.last;
+  final candidate = _topicMapLabelPolicy.selectCandidate(candidates, radius);
+  final displayText = _topicMapLabelPolicy.breakAtWordBoundaries(
+    candidate,
+    maxLines,
+  );
 
   return _VisibleTopicMapLabel(
-    text: fallback,
-    style: TextStyle(
-      color: labelColor,
-      fontSize: math
-          .max(6.0, _topicMapLabelPolicy.fontSize(fallback, radius) * 0.86)
-          .toDouble(),
-      fontWeight: FontWeight.w800,
-      height: 1.04,
-      letterSpacing: 0,
-      shadows: [
-        Shadow(color: textColor.withValues(alpha: 0.22), blurRadius: 2),
-      ],
+    text: displayText,
+    style: _topicMapBubbleLabelStyle(
+      labelColor: labelColor,
+      textColor: textColor,
+      fontSize: _topicMapLabelPolicy.fontSize(candidate, radius),
     ),
   );
 }
+
+TextStyle _topicMapBubbleLabelStyle({
+  required Color labelColor,
+  required Color textColor,
+  required double fontSize,
+}) => TextStyle(
+  color: labelColor,
+  fontSize: fontSize,
+  fontWeight: FontWeight.w800,
+  height: 1.04,
+  letterSpacing: 0,
+  shadows: [Shadow(color: textColor.withValues(alpha: 0.22), blurRadius: 2)],
+);
 
 final class _VisibleTopicMapLabel {
   const _VisibleTopicMapLabel({required this.text, required this.style});
@@ -314,11 +343,10 @@ String _topicMapBubbleTooltip(_TopicGraphBubble bubble) {
       : bubble.node.providerKeys.join(', ');
 
   return [
-    bubble.node.label,
-    'Score: ${bubble.node.popularityScore.toStringAsFixed(1)}',
-    'Weight: ${bubble.node.sizeWeight.toStringAsFixed(2)}',
+    _topicMapDisplayLabel(bubble.node),
+    'Popularity: ${bubble.node.popularityScore.toStringAsFixed(1)}',
     'Posts: ${bubble.node.evidenceCount}',
-    'Providers: $providers',
-    'Group: ${bubble.group.label}',
+    'Sources: $providers',
+    'Group: ${bubble.groupDisplayLabel}',
   ].join('\n');
 }

@@ -1,5 +1,6 @@
 import '../entities/reader_action.dart';
 import '../entities/reader_interest_section.dart';
+import '../entities/reader_summary_narrative_section.dart';
 import '../entities/reader_summary_topic_map.dart';
 import '../entities/reader_trend_delta.dart';
 import '../entities/repeated_signal.dart';
@@ -16,6 +17,7 @@ import '../value_objects/summary_window.dart';
 
 export '../entities/reader_action.dart';
 export '../entities/reader_interest_section.dart';
+export '../entities/reader_summary_narrative_section.dart';
 export '../entities/reader_summary_topic_map.dart';
 export '../entities/reader_trend_delta.dart';
 export '../entities/repeated_signal.dart';
@@ -81,6 +83,7 @@ final class ReaderSummaryContent {
     required this.headline,
     required this.oneLineTakeaway,
     required this.bullets,
+    this.narrativeSections = const [],
     this.mainTopics = const [],
     this.topicMap = emptyReaderSummaryTopicMap,
     required this.qualityState,
@@ -99,6 +102,7 @@ final class ReaderSummaryContent {
   final String headline;
   final String oneLineTakeaway;
   final List<String> bullets;
+  final List<ReaderSummaryNarrativeSection> narrativeSections;
   final List<String> mainTopics;
   final ReaderSummaryTopicMap topicMap;
   final ReaderSummaryQualityState qualityState;

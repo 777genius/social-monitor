@@ -1,5 +1,8 @@
 part of 'reader_summary_brief_surface.dart';
 
+const _topPostDescriptionMaxLines = 6;
+const _topPostDescriptionNarrowMaxLines = 5;
+
 class _TopPostContentColumn extends StatelessWidget {
   const _TopPostContentColumn({
     required this.item,
@@ -80,7 +83,7 @@ class _TopPostReasonText extends StatelessWidget {
     if (!floatPreview || media == null) {
       return Text(
         text,
-        maxLines: 2,
+        maxLines: _topPostDescriptionMaxLines,
         overflow: TextOverflow.ellipsis,
         style: style,
       );
@@ -97,7 +100,7 @@ class _TopPostReasonText extends StatelessWidget {
             children: [
               Text(
                 text,
-                maxLines: 2,
+                maxLines: _topPostDescriptionMaxLines,
                 overflow: TextOverflow.ellipsis,
                 style: style,
               ),
@@ -116,7 +119,9 @@ class _TopPostReasonText extends StatelessWidget {
           text: text,
           style: style,
           width: sideTextWidth,
-          maxLines: previewSize >= 112 ? 4 : 3,
+          maxLines: previewSize >= 112
+              ? _topPostDescriptionMaxLines
+              : _topPostDescriptionNarrowMaxLines,
         );
 
         return Column(
@@ -135,7 +140,9 @@ class _TopPostReasonText extends StatelessWidget {
                 Expanded(
                   child: Text(
                     split.leading,
-                    maxLines: previewSize >= 112 ? 4 : 3,
+                    maxLines: previewSize >= 112
+                        ? _topPostDescriptionMaxLines
+                        : _topPostDescriptionNarrowMaxLines,
                     overflow: TextOverflow.ellipsis,
                     style: style,
                   ),
@@ -146,7 +153,7 @@ class _TopPostReasonText extends StatelessWidget {
               const SizedBox(height: AppSpacing.xs),
               Text(
                 split.trailing,
-                maxLines: 2,
+                maxLines: _topPostDescriptionNarrowMaxLines,
                 overflow: TextOverflow.ellipsis,
                 style: style,
               ),

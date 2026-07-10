@@ -18,6 +18,7 @@ class ReaderSummaryClaimDto {
     required this.confidence,
     required this.evidence,
     required this.risks,
+    this.id,
   });
 
   factory ReaderSummaryClaimDto.fromJson(Map<String, Object?> json) =>
@@ -27,6 +28,7 @@ class ReaderSummaryClaimDto {
   final String claim;
   final ReaderSummaryReaderItemConfidenceDto confidence;
   final List<ReaderSummaryClaimEvidenceDto> evidence;
+  final String? id;
   final List<ReaderSummaryClaimRiskDto> risks;
 
   Map<String, Object?> toJson() => _$ReaderSummaryClaimDtoToJson(this);

@@ -136,6 +136,7 @@ ReaderSummary readerSummaryWithoutTopicMap(ReaderSummary summary) {
       headline: content.headline,
       oneLineTakeaway: content.oneLineTakeaway,
       bullets: content.bullets,
+      narrativeSections: content.narrativeSections,
       mainTopics: content.mainTopics,
       topicMap: emptyReaderSummaryTopicMap,
       qualityState: content.qualityState,
@@ -167,6 +168,7 @@ ReaderSummaryContentApiDto readerSummaryContentApiDto({
       'New AI coding tools are the clearest signal to inspect first.',
   String sourceProviderKey = 'github-repo-radar',
   List<String> mainTopics = const ['AI coding tools'],
+  List<ReaderSummaryNarrativeSectionApiDto> narrativeSections = const [],
   ReaderSummaryTopicMapApiDto topicMap = sampleTopicMapApiDto,
   List<String> newSignals = const ['1 Repo Radar item selected'],
   ReaderSummaryQualityStateApiDto? qualityState,
@@ -209,6 +211,7 @@ ReaderSummaryContentApiDto readerSummaryContentApiDto({
     bullets: const [
       'Best first cited read from Repo Radar (1 citation): AI coding tools - needs confirmation; verify citations in Top reads.',
     ],
+    narrativeSections: narrativeSections,
     mainTopics: mainTopics,
     topicMap: topicMap,
     qualityState:

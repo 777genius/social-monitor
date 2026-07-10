@@ -8,28 +8,27 @@ import 'package:social_monitor_summaries/src/presentation/components/reader_summ
 import '../../support/summaries_test_fixtures.dart';
 
 void main() {
-  testWidgets('source note links render without underline and with favicon', (
+  testWidgets('does not add a synthetic source note above evidence', (
     tester,
   ) async {
-    const linkTitle = 'X link source title for favicon test';
     final summary = const SummaryMapper().readerSummaryToDomain(
       readerSummaryApiDto(
         content: readerSummaryContentApiDto(
           topReads: const [
             TopReadApiDto(
-              title: linkTitle,
+              title: 'OpenAI product update',
               providerKey: 'x-twitter',
-              reason: 'Source note link style regression.',
+              reason: 'Official product announcement.',
               matchedInterestIds: ['ai-developer-tools'],
               signalScore: 2.1,
               canonicalUrl: 'https://x.com/acme/status/1',
-              citationIds: ['link-style-citation'],
+              citationIds: ['source-note-citation'],
             ),
           ],
         ),
         citations: [
           summaryCitationApiDto(
-            id: 'link-style-citation',
+            id: 'source-note-citation',
             providerKey: 'x-twitter',
           ),
         ],
@@ -54,40 +53,10 @@ void main() {
       ),
     );
 
+    expect(find.textContaining('Source note:'), findsNothing);
     expect(
-      find.byKey(
-        const ValueKey(
-          'reader-summary-brief-link-favicon-https://x.com/favicon.ico',
-        ),
-      ),
-      findsOneWidget,
+      find.textContaining('enough engagement for discovery'),
+      findsNothing,
     );
-    expect(_hasLinkTextDecoration(tester, linkTitle), TextDecoration.none);
   });
-}
-
-TextDecoration? _hasLinkTextDecoration(WidgetTester tester, String text) {
-  for (final richText in tester.widgetList<RichText>(find.byType(RichText))) {
-    final decoration = _findDecoration(richText.text, text);
-    if (decoration != null) {
-      return decoration;
-    }
-  }
-  return null;
-}
-
-TextDecoration? _findDecoration(InlineSpan span, String text) {
-  if (span is TextSpan) {
-    if ((span.text ?? '').contains(text)) {
-      return span.style?.decoration;
-    }
-    final children = span.children ?? const <InlineSpan>[];
-    for (final child in children) {
-      final decoration = _findDecoration(child, text);
-      if (decoration != null) {
-        return decoration;
-      }
-    }
-  }
-  return null;
 }

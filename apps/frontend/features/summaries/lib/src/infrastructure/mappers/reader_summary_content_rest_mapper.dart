@@ -11,6 +11,18 @@ final class ReaderSummaryContentRestMapper {
       headline: dto.headline,
       oneLineTakeaway: dto.oneLineTakeaway,
       bullets: dto.bullets,
+      narrativeSections: dto.narrativeSections
+          .map(
+            (section) => ReaderSummaryNarrativeSectionApiDto(
+              id: section.id,
+              kind: section.kind.json ?? 'lead',
+              title: section.title,
+              text: section.text,
+              citationIds: section.citationIds,
+              storyClusterId: section.storyClusterId,
+            ),
+          )
+          .toList(growable: false),
       mainTopics: dto.mainTopics,
       topicMap: _topicMap(dto.topicMap),
       qualityState: ReaderSummaryQualityStateApiDto(
@@ -130,6 +142,7 @@ final class ReaderSummaryContentRestMapper {
 
   SummaryClaimApiDto _claim(generated.ReaderSummaryClaimDto dto) {
     return SummaryClaimApiDto(
+      id: dto.id,
       claim: dto.claim,
       evidence: dto.evidence
           .map(

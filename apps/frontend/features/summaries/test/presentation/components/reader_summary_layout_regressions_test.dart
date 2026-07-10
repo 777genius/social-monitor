@@ -132,6 +132,61 @@ void main() {
     );
   });
 
+  testWidgets('shows up to six lines of a top post description', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    const description =
+        'The release introduces a work agent that can continue multi-step projects across connected apps and files. It matters because the workflow moves beyond isolated coding tasks into longer operational work. Teams may be able to delegate research, document updates and follow-up actions without rebuilding context for every step. Access scope and real-world reliability still need careful evaluation.';
+    final summary = const SummaryMapper().readerSummaryToDomain(
+      readerSummaryApiDto(
+        content: readerSummaryContentApiDto(
+          topReads: const [
+            TopReadApiDto(
+              title: 'A work agent for longer operational projects',
+              providerKey: 'x-twitter',
+              reason: description,
+              matchedInterestIds: ['ai-developer-tools'],
+              signalScore: 3.2,
+              citationIds: ['long-description-citation'],
+            ),
+          ],
+        ),
+        citations: [
+          summaryCitationApiDto(
+            id: 'long-description-citation',
+            providerKey: 'x-twitter',
+          ),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(_TestApp(summary: summary));
+    await tester.pumpAndSettle();
+
+    final descriptionText = tester.widget<Text>(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Text &&
+            (widget.data?.startsWith(
+                  'The release introduces a work agent that can continue',
+                ) ??
+                false),
+      ),
+    );
+    expect(
+      descriptionText.data,
+      description.substring(0, description.length - 1),
+    );
+    expect(descriptionText.maxLines, 6);
+  });
+
   testWidgets('lays provider coverage out across the expanded summary width', (
     tester,
   ) async {

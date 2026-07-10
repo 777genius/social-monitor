@@ -171,6 +171,38 @@ void main() {
     expect(summary.content.oneLineTakeaway, isNot(contains('c...')));
   });
 
+  test('keeps complete top read descriptions up to the backend limit', () {
+    const mapper = SummaryMapper();
+    final description = [
+      'OpenAI says the work agent can continue multi-step projects across connected apps and files.',
+      'The release moves the product beyond isolated coding tasks into longer operational workflows.',
+      'That matters for teams delegating research, document updates and follow-up actions without rebuilding context for every step.',
+      'Access scope and real-world reliability still need careful evaluation.',
+    ].join(' ');
+
+    final summary = mapper.readerSummaryToDomain(
+      readerSummaryApiDto(
+        content: readerSummaryContentApiDto(
+          topReads: [
+            TopReadApiDto(
+              title: 'A work agent for longer operational projects',
+              providerKey: 'x-twitter',
+              reason: description,
+              whyImportant: [description],
+              matchedInterestIds: const ['ai-developer-tools'],
+              signalScore: 3.2,
+              citationIds: const ['long-description-citation'],
+            ),
+          ],
+        ),
+      ),
+    );
+
+    expect(description.length, greaterThan(240));
+    expect(summary.content.topReads.single.reason, description);
+    expect(summary.content.topReads.single.whyImportant.single, description);
+  });
+
   test('keeps reader summary executive summary complete', () {
     const mapper = SummaryMapper();
     final executiveSummary = [

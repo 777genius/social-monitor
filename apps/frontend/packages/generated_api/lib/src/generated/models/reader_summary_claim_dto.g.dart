@@ -25,6 +25,7 @@ ReaderSummaryClaimDto _$ReaderSummaryClaimDtoFromJson(
   risks: (json['risks'] as List<dynamic>)
       .map((e) => ReaderSummaryClaimRiskDto.fromJson(e as Map<String, dynamic>))
       .toList(),
+  id: json['id'] as String?,
 );
 
 Map<String, dynamic> _$ReaderSummaryClaimDtoToJson(
@@ -34,5 +35,6 @@ Map<String, dynamic> _$ReaderSummaryClaimDtoToJson(
   'claim': instance.claim,
   'confidence': instance.confidence,
   'evidence': instance.evidence,
+  'id': instance.id,
   'risks': instance.risks,
 };

@@ -24,6 +24,13 @@ ReaderSummaryReaderBriefDto _$ReaderSummaryReaderBriefDtoFromJson(
   mainTopics: (json['mainTopics'] as List<dynamic>)
       .map((e) => e as String)
       .toList(),
+  narrativeSections: (json['narrativeSections'] as List<dynamic>)
+      .map(
+        (e) => ReaderSummaryNarrativeSectionDto.fromJson(
+          e as Map<String, dynamic>,
+        ),
+      )
+      .toList(),
   nextActions: (json['nextActions'] as List<dynamic>)
       .map(
         (e) => ReaderSummaryNextActionDto.fromJson(e as Map<String, dynamic>),
@@ -72,6 +79,7 @@ Map<String, dynamic> _$ReaderSummaryReaderBriefDtoToJson(
   'headline': instance.headline,
   'interestSections': instance.interestSections,
   'mainTopics': instance.mainTopics,
+  'narrativeSections': instance.narrativeSections,
   'nextActions': instance.nextActions,
   'oneLineTakeaway': instance.oneLineTakeaway,
   'openQuestions': instance.openQuestions,

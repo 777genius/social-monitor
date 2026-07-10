@@ -1,6 +1,5 @@
 part of 'reader_summary_brief_surface.dart';
 
-const _topicMapNamedColorLimit = 8;
 const _topicMapMaxColoredGroups = 5;
 const _topicMapGroupedColorKeys = [
   'orange',
@@ -32,21 +31,17 @@ List<ReaderSummaryTopicMapGroup> _visibleGroups(
   ], visibleNodes);
 }
 
-List<ReaderSummaryTopicMapGroup> _topicMapLegendGroups(
-  ReaderSummaryTopicMap topicMap,
-) => _visibleGroups(
-  topicMap,
-  topicMap.nodes.take(_topicMapDesktopNodeLimit).toList(growable: false),
-);
-
 List<ReaderSummaryTopicMapGroup> _groupsWithVisibleColorKeys(
   List<ReaderSummaryTopicMapGroup> groups,
   List<ReaderSummaryTopicMapNode> visibleNodes,
 ) {
   final visibleNodeIds = visibleNodes.map((node) => node.id).toSet();
+  final firstVisibleIndexByGroupId = <String, int>{};
   final visibleCountByGroupId = <String, int>{};
   final visibleNodesByGroupId = <String, List<ReaderSummaryTopicMapNode>>{};
-  for (final node in visibleNodes) {
+  for (var index = 0; index < visibleNodes.length; index++) {
+    final node = visibleNodes[index];
+    firstVisibleIndexByGroupId.putIfAbsent(node.groupId, () => index);
     visibleCountByGroupId.update(
       node.groupId,
       (value) => value + 1,
@@ -70,11 +65,23 @@ List<ReaderSummaryTopicMapGroup> _groupsWithVisibleColorKeys(
       return byCount;
     }
 
-    return _topicGroupVisualScore(
-      visibleNodesByGroupId[right.id] ?? const [],
-    ).compareTo(
-      _topicGroupVisualScore(visibleNodesByGroupId[left.id] ?? const []),
-    );
+    final byScore =
+        _topicGroupVisualScore(
+          visibleNodesByGroupId[right.id] ?? const [],
+        ).compareTo(
+          _topicGroupVisualScore(visibleNodesByGroupId[left.id] ?? const []),
+        );
+    if (byScore != 0) {
+      return byScore;
+    }
+
+    final byFirstNode = (firstVisibleIndexByGroupId[left.id] ?? 1 << 30)
+        .compareTo(firstVisibleIndexByGroupId[right.id] ?? 1 << 30);
+    if (byFirstNode != 0) {
+      return byFirstNode;
+    }
+
+    return left.id.compareTo(right.id);
   });
 
   final grouped = rankedGroups
@@ -85,16 +92,18 @@ List<ReaderSummaryTopicMapGroup> _groupsWithVisibleColorKeys(
     for (final node in visibleNodes)
       if (!groupedIds.contains(node.groupId)) node.id,
   ];
-  final result = [
-    for (var index = 0; index < grouped.length; index++)
-      _topicGroupWithColorKey(
-        grouped[index],
-        grouped.length <= _topicMapNamedColorLimit
-            ? grouped[index].colorKey
-            : _topicMapGroupedColorKeys[index %
-                  _topicMapGroupedColorKeys.length],
-      ),
-  ];
+  final usedColorKeys = <String>{};
+  final result = <ReaderSummaryTopicMapGroup>[];
+  for (var index = 0; index < grouped.length; index++) {
+    final group = grouped[index];
+    final colorKey = _uniqueTopicGroupColorKey(
+      preferredColorKey: group.colorKey,
+      usedColorKeys: usedColorKeys,
+      fallbackIndex: index,
+    );
+    usedColorKeys.add(colorKey);
+    result.add(_topicGroupWithColorKey(group, colorKey));
+  }
 
   if (ungroupedNodeIds.isNotEmpty) {
     result.add(
@@ -115,6 +124,28 @@ List<ReaderSummaryTopicMapGroup> _groupsWithVisibleColorKeys(
   }
 
   return result.isEmpty ? groups.take(1).toList(growable: false) : result;
+}
+
+String _uniqueTopicGroupColorKey({
+  required String preferredColorKey,
+  required Set<String> usedColorKeys,
+  required int fallbackIndex,
+}) {
+  if (preferredColorKey != _topicMapNeutralColorKey &&
+      !usedColorKeys.contains(preferredColorKey)) {
+    return preferredColorKey;
+  }
+
+  for (var offset = 0; offset < _topicMapGroupedColorKeys.length; offset++) {
+    final candidate =
+        _topicMapGroupedColorKeys[(fallbackIndex + offset) %
+            _topicMapGroupedColorKeys.length];
+    if (!usedColorKeys.contains(candidate)) {
+      return candidate;
+    }
+  }
+
+  return 'auto:$fallbackIndex:$preferredColorKey';
 }
 
 double _topicGroupVisualScore(List<ReaderSummaryTopicMapNode> nodes) {
@@ -323,42 +354,6 @@ Rect? _graphNodeBounds(Iterable<graphview.Node> nodes) {
   return result;
 }
 
-List<_TopicGraphBubble> _resolveBubbleCollisions(
-  List<_TopicGraphBubble> bubbles,
-  Size graphSize,
-) {
-  final centers = bubbles.map((bubble) => bubble.center).toList();
-  for (var pass = 0; pass < 24; pass++) {
-    for (var left = 0; left < bubbles.length; left++) {
-      for (var right = left + 1; right < bubbles.length; right++) {
-        final delta = centers[right] - centers[left];
-        final distance = math.max(1.0, delta.distance);
-        final overlap =
-            bubbles[left].radius + bubbles[right].radius + 0.8 - distance;
-        if (overlap <= 0) {
-          continue;
-        }
-        final shift = delta / distance * (overlap / 2);
-        centers[left] = _clampBubbleCenter(
-          centers[left] - shift,
-          bubbles[left].radius,
-          graphSize,
-        );
-        centers[right] = _clampBubbleCenter(
-          centers[right] + shift,
-          bubbles[right].radius,
-          graphSize,
-        );
-      }
-    }
-  }
-
-  return [
-    for (var index = 0; index < bubbles.length; index++)
-      bubbles[index].copyWithCenter(centers[index]),
-  ];
-}
-
 Offset _clampBubbleCenter(Offset center, double radius, Size graphSize) {
   return Offset(
     center.dx.clamp(radius + 6, graphSize.width - radius - 6).toDouble(),
@@ -372,17 +367,14 @@ String _edgePairKey(String sourceNodeId, String targetNodeId) {
   return '${ordered[0]} -> ${ordered[1]}';
 }
 
-String _topicMapGraphSignature(
-  List<ReaderSummaryTopicMapNode> nodes,
-  List<ReaderSummaryTopicMapEdge> edges,
-) {
-  final nodePart = nodes
-      .map((node) => '${node.id}:${node.groupId}:${node.sizeWeight}')
-      .join('|');
-  final edgePart = edges
-      .take(_topicMapMaxEdges)
-      .map((edge) => '${edge.sourceNodeId}:${edge.targetNodeId}:${edge.weight}')
-      .join('|');
-
-  return '$nodePart//$edgePart';
-}
+String _topicMapEdgeSignature(List<ReaderSummaryTopicMapEdge> edges) => edges
+    .take(_topicMapMaxEdges)
+    .map(
+      (edge) => [
+        edge.sourceNodeId,
+        edge.targetNodeId,
+        edge.weight,
+        edge.reason,
+      ].join(':'),
+    )
+    .join('|');

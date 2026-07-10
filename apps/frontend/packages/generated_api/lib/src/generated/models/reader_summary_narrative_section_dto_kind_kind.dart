@@ -5,22 +5,24 @@
 import 'package:json_annotation/json_annotation.dart';
 
 @JsonEnum()
-enum ReaderSummaryClaimRiskDtoKindKind {
-  @JsonValue('single_source')
-  singleSource('single_source'),
-  @JsonValue('low_confidence')
-  lowConfidence('low_confidence'),
-  @JsonValue('low_evidence')
-  lowEvidence('low_evidence'),
-  @JsonValue('unresolved')
-  unresolved('unresolved'),
+enum ReaderSummaryNarrativeSectionDtoKindKind {
+  @JsonValue('lead')
+  lead('lead'),
+  @JsonValue('main_signal')
+  mainSignal('main_signal'),
+  @JsonValue('why_it_matters')
+  whyItMatters('why_it_matters'),
+  @JsonValue('secondary_signal')
+  secondarySignal('secondary_signal'),
+  @JsonValue('watch')
+  watch('watch'),
 
   /// Default value for all unparsed values, allows backward compatibility when adding new values on the backend.
   $unknown(null);
 
-  const ReaderSummaryClaimRiskDtoKindKind(this.json);
+  const ReaderSummaryNarrativeSectionDtoKindKind(this.json);
 
-  factory ReaderSummaryClaimRiskDtoKindKind.fromJson(String json) =>
+  factory ReaderSummaryNarrativeSectionDtoKindKind.fromJson(String json) =>
       values.firstWhere((e) => e.json == json, orElse: () => $unknown);
 
   final String? json;
@@ -31,6 +33,6 @@ enum ReaderSummaryClaimRiskDtoKindKind {
   String toString() => json ?? super.toString();
 
   /// Returns all defined enum values excluding the $unknown value.
-  static List<ReaderSummaryClaimRiskDtoKindKind> get $valuesDefined =>
+  static List<ReaderSummaryNarrativeSectionDtoKindKind> get $valuesDefined =>
       values.where((value) => value != $unknown).toList();
 }

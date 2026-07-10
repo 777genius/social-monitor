@@ -19,15 +19,13 @@ final class _TopicGraphModel {
 
   static _TopicGraphModel fromTopicMap({
     required ReaderSummaryTopicMap topicMap,
+    required _TopicMapVisibleSelection selection,
     required Size graphSize,
   }) {
-    final nodeLimit = graphSize.width < 420
-        ? _topicMapCompactNodeLimit
-        : _topicMapDesktopNodeLimit;
-    final visibleNodes = topicMap.nodes.take(nodeLimit).toList();
+    final visibleNodes = selection.nodes.toList();
     final graph = graphview.Graph();
     final graphNodesById = <String, graphview.Node>{};
-    final groups = _visibleGroups(topicMap, visibleNodes);
+    final groups = selection.groups;
     final groupsById = {for (final group in groups) group.id: group};
     final bubblesById = <String, _TopicGraphBubble>{};
     final nodesByGroupId = _nodesByGroup(visibleNodes, groups);
@@ -72,6 +70,7 @@ final class _TopicGraphModel {
         bubblesById[node.id] = _TopicGraphBubble(
           node: node,
           group: group,
+          groupDisplayLabel: _topicMapLegendLabel(topicMap, group),
           radius: radius,
           center: groupCenter + _groupNodeSeedOffset(index, nodes.length),
           isPrimary: radius >= (graphSize.width < 420 ? 24 : 30),
@@ -133,7 +132,6 @@ final class _TopicGraphModel {
       if (anchor == null) {
         continue;
       }
-      final groupColor = _topicColor(groupsById[entry.key]?.colorKey ?? 'blue');
       for (final node in groupNodes.skip(1)) {
         final target = graphNodesById[node.id];
         if (target == null) {
@@ -143,20 +141,12 @@ final class _TopicGraphModel {
         if (!edgePairs.add(pairKey)) {
           continue;
         }
-        graphEdges.add(
-          _TopicGraphEdge(
-            sourceNodeId: groupNodes.first.id,
-            targetNodeId: node.id,
-            color: groupColor,
-            strokeWidth: 1.05,
-          ),
-        );
         graph.addEdge(
           anchor,
           target,
           paint: Paint()
-            ..color = groupColor.withValues(alpha: 0.16)
-            ..strokeWidth = 1.05
+            ..color = Colors.transparent
+            ..strokeWidth = 0
             ..style = PaintingStyle.stroke,
         );
       }
@@ -192,7 +182,8 @@ final class _TopicGraphModel {
       bubbles: positionedBubbles,
       bubblesById: positionedById,
       edges: graphEdges,
-      signature: _topicMapGraphSignature(visibleNodes, topicMap.edges),
+      signature:
+          '${selection.signature}//${_topicMapEdgeSignature(topicMap.edges)}',
     );
   }
 }
@@ -201,6 +192,7 @@ final class _TopicGraphBubble {
   const _TopicGraphBubble({
     required this.node,
     required this.group,
+    required this.groupDisplayLabel,
     required this.radius,
     required this.center,
     required this.isPrimary,
@@ -208,6 +200,7 @@ final class _TopicGraphBubble {
 
   final ReaderSummaryTopicMapNode node;
   final ReaderSummaryTopicMapGroup group;
+  final String groupDisplayLabel;
   final double radius;
   final Offset center;
   final bool isPrimary;
@@ -215,6 +208,7 @@ final class _TopicGraphBubble {
   _TopicGraphBubble copyWithCenter(Offset value) => _TopicGraphBubble(
     node: node,
     group: group,
+    groupDisplayLabel: groupDisplayLabel,
     radius: radius,
     center: value,
     isPrimary: isPrimary,

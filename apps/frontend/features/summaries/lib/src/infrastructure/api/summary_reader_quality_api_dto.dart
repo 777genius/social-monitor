@@ -23,6 +23,7 @@ final class SummaryClaimRiskApiDto {
 
 final class SummaryClaimApiDto {
   const SummaryClaimApiDto({
+    this.id,
     required this.claim,
     required this.evidence,
     required this.confidence,
@@ -30,6 +31,7 @@ final class SummaryClaimApiDto {
     required this.citationIds,
   });
 
+  final String? id;
   final String claim;
   final List<SummaryClaimEvidenceApiDto> evidence;
   final TopReadConfidenceApiDto confidence;

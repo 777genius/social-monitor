@@ -18,17 +18,28 @@ const _weakTopicLabelTokens = {
   'been',
   'being',
   'before',
+  'bringing',
+  'brings',
+  'built',
   'but',
   'by',
   'can',
+  'caught',
   'could',
+  'created',
+  'consuming',
   'day',
   'days',
   'did',
+  'didn',
+  'ditching',
   'do',
   'does',
+  'dropped',
   'entire',
   'every',
+  'expect',
+  'gave',
   'for',
   'from',
   'global',
@@ -37,16 +48,22 @@ const _weakTopicLabelTokens = {
   'has',
   'have',
   'having',
+  'happens',
+  'hiring',
   'hn',
   'how',
   'if',
   'in',
   'into',
+  'introducing',
   'is',
   'it',
   'its',
   'just',
+  'let',
   'many',
+  'made',
+  'me',
   'minute',
   'minutes',
   'more',
@@ -59,6 +76,7 @@ const _weakTopicLabelTokens = {
   'over',
   'post',
   'posts',
+  'presents',
   'price',
   'prompt',
   'prompts',
@@ -66,9 +84,15 @@ const _weakTopicLabelTokens = {
   'pros',
   'race',
   'racing',
+  're',
+  'rolling',
   'rely',
   'relying',
+  'replacing',
   'should',
+  'say',
+  'said',
+  'says',
   'ship',
   'shipping',
   'show',
@@ -89,6 +113,7 @@ const _weakTopicLabelTokens = {
   'top',
   'user',
   'users',
+  'we',
   'was',
   'were',
   'what',
@@ -100,6 +125,7 @@ const _weakTopicLabelTokens = {
   'without',
   'workshop',
   'would',
+  'you',
   'your',
 };
 
@@ -108,6 +134,7 @@ const _topicMapDisplayTokenLabels = {
   'api': 'API',
   'chatgpt': 'ChatGPT',
   'claude': 'Claude',
+  'cli': 'CLI',
   'codex': 'Codex',
   'github': 'GitHub',
   'llm': 'LLM',
@@ -193,7 +220,9 @@ String _compactTopicMapDisplayLabel(String value) => value
     .trim();
 
 String? _visibleTopicMapDisplayLabel(String value) {
-  final tokens = _meaningfulTopicMapLabelTokens(value).toList(growable: false);
+  final tokens = _meaningfulTopicMapLabelTokens(
+    value,
+  ).toSet().toList(growable: false);
   if (tokens.isEmpty) {
     return null;
   }
@@ -213,7 +242,7 @@ String? _visibleTopicMapDisplayLabel(String value) {
     return _topicMapDisplayTitle(tokens.take(4).join(' '));
   }
 
-  return value;
+  return _topicMapDisplayTitle(value);
 }
 
 bool _isWeakTopicMapLabel(String value) =>
@@ -249,11 +278,23 @@ Iterable<String> _meaningfulTopicMapLabelTokens(String value) => value
     .where((token) => int.tryParse(token) == null)
     .where((token) => !_weakTopicLabelTokens.contains(token));
 
-String _topicMapDisplayTitle(String value) => value
-    .split(RegExp(r'\s+'))
-    .where((part) => part.isNotEmpty)
-    .map(_topicMapDisplayToken)
-    .join(' ');
+String _topicMapDisplayTitle(String value) {
+  final normalized = value
+      .replaceAllMapped(
+        RegExp(r'\bgpt[\s_-]*(\d+)[\s._-]+(\d+)\b', caseSensitive: false),
+        (match) => 'GPT-${match.group(1)}.${match.group(2)}',
+      )
+      .replaceAllMapped(
+        RegExp(r'\bgpt[\s_-]*(\d+)\b', caseSensitive: false),
+        (match) => 'GPT-${match.group(1)}',
+      );
+
+  return normalized
+      .split(RegExp(r'\s+'))
+      .where((part) => part.isNotEmpty)
+      .map(_topicMapDisplayToken)
+      .join(' ');
+}
 
 String _topicMapDisplayToken(String value) {
   final normalized = value.toLowerCase();
@@ -268,6 +309,18 @@ String _topicMapLegendLabel(
 ) {
   if (group.id == _topicMapNeutralGroupId) {
     return group.label;
+  }
+  final rawGroupId = group.id.split(':').last.replaceAll(RegExp(r'[-_]+'), ' ');
+  final useSemanticLabel =
+      topicMap.generatedBy == 'deterministic' ||
+      group.nodeIds.length >= 3 ||
+      (group.id.startsWith('group:') &&
+          _meaningfulTopicMapLabelTokens(rawGroupId).length >= 2);
+  final semanticLabel = useSemanticLabel
+      ? _topicMapGroupIdDisplayLabel(group.id)
+      : null;
+  if (semanticLabel != null) {
+    return semanticLabel;
   }
   final groupNodeIds = group.nodeIds.toSet();
   final nodes =
@@ -301,8 +354,21 @@ String _topicMapLegendLabel(
       group.label;
 }
 
-String _topicMapSemanticLabel(ReaderSummaryTopicMap topicMap) {
-  final labels = topicMap.nodes
+String? _topicMapGroupIdDisplayLabel(String groupId) {
+  final raw = groupId.split(':').last.replaceAll(RegExp(r'[-_]+'), ' ').trim();
+  if (raw.isEmpty ||
+      RegExp(
+        r'^[0-9a-f]{8}(?:\s+[0-9a-f]{4}){3}',
+        caseSensitive: false,
+      ).hasMatch(raw)) {
+    return null;
+  }
+
+  return _visibleTopicMapDisplayLabel(raw);
+}
+
+String _topicMapSemanticLabel(List<ReaderSummaryTopicMapNode> visibleNodes) {
+  final labels = visibleNodes
       .take(5)
       .map(
         (node) =>

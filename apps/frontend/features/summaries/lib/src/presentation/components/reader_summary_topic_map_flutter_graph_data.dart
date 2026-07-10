@@ -13,13 +13,11 @@ final class _TopicMapFlutterGraphData {
 
   static _TopicMapFlutterGraphData fromTopicMap({
     required ReaderSummaryTopicMap topicMap,
+    required _TopicMapVisibleSelection selection,
     required Size graphSize,
   }) {
-    final nodeLimit = graphSize.width < _topicMapCompactWidthBreakpoint
-        ? _topicMapCompactNodeLimit
-        : _topicMapDesktopNodeLimit;
-    final visibleNodes = topicMap.nodes.take(nodeLimit).toList();
-    final groups = _visibleGroups(topicMap, visibleNodes);
+    final visibleNodes = selection.nodes.toList();
+    final groups = selection.groups;
     final groupsById = {for (final group in groups) group.id: group};
     final nodesByGroupId = _nodesByGroup(visibleNodes, groups);
     final radiiByNodeId = _topicMapSizingPolicy.radiiByNodeId(
@@ -53,6 +51,7 @@ final class _TopicMapFlutterGraphData {
           _TopicMapFlutterGraphVertex(
             node: node,
             group: group,
+            groupDisplayLabel: _topicMapLegendLabel(topicMap, group),
             color: color,
             radius: radius,
             center: center,
@@ -73,7 +72,8 @@ final class _TopicMapFlutterGraphData {
     return _TopicMapFlutterGraphData(
       vertices: vertices,
       edges: edges,
-      signature: _topicMapGraphSignature(visibleNodes, topicMap.edges),
+      signature:
+          '${selection.signature}//${_topicMapEdgeSignature(topicMap.edges)}',
     );
   }
 }
@@ -97,6 +97,7 @@ List<_TopicMapFlutterGraphEdge> _flutterGraphEdges({
     required String targetNodeId,
     required Color color,
     required double strokeWidth,
+    required bool isLayoutOnly,
   }) {
     if (!visibleNodeIds.contains(sourceNodeId) ||
         !visibleNodeIds.contains(targetNodeId)) {
@@ -112,6 +113,7 @@ List<_TopicMapFlutterGraphEdge> _flutterGraphEdges({
         targetNodeId: targetNodeId,
         color: color,
         strokeWidth: strokeWidth,
+        isLayoutOnly: isLayoutOnly,
         ranking: ranking++,
       ),
     );
@@ -134,6 +136,7 @@ List<_TopicMapFlutterGraphEdge> _flutterGraphEdges({
       targetNodeId: edge.targetNodeId,
       color: groupColor.withValues(alpha: 0.12 + edge.weight * 0.20),
       strokeWidth: 0.8 + edge.weight * 2.1,
+      isLayoutOnly: false,
     );
   }
 
@@ -152,6 +155,7 @@ List<_TopicMapFlutterGraphEdge> _flutterGraphEdges({
         targetNodeId: node.id,
         color: groupColor.withValues(alpha: 0.16),
         strokeWidth: 1.05,
+        isLayoutOnly: true,
       );
     }
   }
@@ -163,6 +167,7 @@ final class _TopicMapFlutterGraphVertex {
   const _TopicMapFlutterGraphVertex({
     required this.node,
     required this.group,
+    required this.groupDisplayLabel,
     required this.color,
     required this.radius,
     required this.center,
@@ -171,6 +176,7 @@ final class _TopicMapFlutterGraphVertex {
 
   final ReaderSummaryTopicMapNode node;
   final ReaderSummaryTopicMapGroup group;
+  final String groupDisplayLabel;
   final Color color;
   final double radius;
   final Offset center;
@@ -183,6 +189,7 @@ final class _TopicMapFlutterGraphEdge {
     required this.targetNodeId,
     required this.color,
     required this.strokeWidth,
+    required this.isLayoutOnly,
     required this.ranking,
   });
 
@@ -190,6 +197,7 @@ final class _TopicMapFlutterGraphEdge {
   final String targetNodeId;
   final Color color;
   final double strokeWidth;
+  final bool isLayoutOnly;
   final int ranking;
 }
 

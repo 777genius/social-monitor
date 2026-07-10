@@ -12,17 +12,15 @@ final class _TopicMapSizingPolicy {
     required List<ReaderSummaryTopicMapNode> nodes,
     required Size graphSize,
   }) {
-    final weights = _visualWeightsByNodeId(nodes);
     final radii = {
       for (final node in nodes)
         node.id: radius(
           node: node,
           graphSize: graphSize,
           visibleNodeCount: nodes.length,
-          visualWeight: weights[node.id],
         ),
     };
-    final scale = _areaScale(radii.values, graphSize);
+    final scale = _areaScale(radii.values, graphSize, nodes.length);
     if (scale >= 0.995) {
       return radii;
     }
@@ -37,7 +35,6 @@ final class _TopicMapSizingPolicy {
     required ReaderSummaryTopicMapNode node,
     required Size graphSize,
     required int visibleNodeCount,
-    double? visualWeight,
   }) {
     final areaPerNode =
         (graphSize.width * graphSize.height) / math.max(1, visibleNodeCount);
@@ -47,19 +44,27 @@ final class _TopicMapSizingPolicy {
         .clamp(compact ? 30.0 : 35.0, compact ? 48.0 : 70.0)
         .toDouble();
     final minRadius = math.max(compact ? 10.5 : 12.0, maxRadius * 0.32);
-    final weight = visualWeight ?? _backendPopularityWeight(node);
+    final normalizedArea = _backendPopularityArea(node);
+    final radiusSquared =
+        minRadius * minRadius +
+        normalizedArea * (maxRadius * maxRadius - minRadius * minRadius);
 
-    return minRadius + math.pow(weight, 1.52) * (maxRadius - minRadius);
+    return math.sqrt(radiusSquared);
   }
 
-  double _areaScale(Iterable<double> radii, Size graphSize) {
+  double _areaScale(
+    Iterable<double> radii,
+    Size graphSize,
+    int visibleNodeCount,
+  ) {
     final totalBubbleArea = radii.fold<double>(
       0,
       (sum, radius) => sum + math.pi * radius * radius,
     );
     final graphArea = graphSize.width * graphSize.height;
     final compact = graphSize.width < _topicMapCompactWidthBreakpoint;
-    final targetCoverage = compact ? 0.62 : 0.68;
+    final dense = visibleNodeCount >= 24;
+    final targetCoverage = dense ? (compact ? 0.58 : 0.62) : 0.68;
     final maxBubbleArea = graphArea * targetCoverage;
     if (totalBubbleArea <= maxBubbleArea || totalBubbleArea <= 0) {
       return 1;
@@ -68,92 +73,14 @@ final class _TopicMapSizingPolicy {
     return math.sqrt(maxBubbleArea / totalBubbleArea);
   }
 
-  double _backendPopularityWeight(ReaderSummaryTopicMapNode node) {
-    final popularityWeight = (node.popularityScore / 100)
-        .clamp(0.0, 1.0)
-        .toDouble();
-    if (popularityWeight > 0) {
-      return popularityWeight;
-    }
-
+  double _backendPopularityArea(ReaderSummaryTopicMapNode node) {
     final sizeWeight = node.sizeWeight.clamp(0.0, 1.0).toDouble();
-    return math.pow(sizeWeight, 2).clamp(0.0, 1.0).toDouble();
-  }
-
-  Map<String, double> _visualWeightsByNodeId(
-    List<ReaderSummaryTopicMapNode> nodes,
-  ) {
-    if (nodes.isEmpty) {
-      return const {};
+    if (sizeWeight > 0) {
+      return math.pow(sizeWeight, 2).clamp(0.0, 1.0).toDouble();
     }
 
-    final ranked =
-        [
-          for (var index = 0; index < nodes.length; index++)
-            _TopicMapRankedWeight(
-              nodeId: nodes[index].id,
-              backendWeight: _backendPopularityWeight(nodes[index]),
-              index: index,
-            ),
-        ]..sort((left, right) {
-          final byWeight = right.backendWeight.compareTo(left.backendWeight);
-          if (byWeight != 0) {
-            return byWeight;
-          }
-
-          return left.index.compareTo(right.index);
-        });
-
-    final backendWeights = ranked.map((item) => item.backendWeight);
-    final minWeight = backendWeights.reduce(math.min);
-    final maxWeight = backendWeights.reduce(math.max);
-    final spread = maxWeight - minWeight;
-    final backendShare = switch (spread) {
-      >= 0.24 => 0.62,
-      >= 0.12 => 0.48,
-      >= 0.06 => 0.36,
-      _ => 0.26,
-    };
-    final maxRank = math.max(1, ranked.length - 1);
-
-    return {
-      for (var rank = 0; rank < ranked.length; rank++)
-        ranked[rank].nodeId: _visualWeight(
-          backendWeight: ranked[rank].backendWeight,
-          rank: rank,
-          maxRank: maxRank,
-          backendShare: backendShare,
-        ),
-    };
+    return (node.popularityScore / 100).clamp(0.0, 1.0).toDouble();
   }
-
-  double _visualWeight({
-    required double backendWeight,
-    required int rank,
-    required int maxRank,
-    required double backendShare,
-  }) {
-    final rankRatio = rank / maxRank;
-    final rankWeight = (1 - math.pow(rankRatio, 0.72) * 0.82)
-        .clamp(0.18, 1.0)
-        .toDouble();
-
-    return (backendWeight * backendShare + rankWeight * (1 - backendShare))
-        .clamp(0.16, 1.0)
-        .toDouble();
-  }
-}
-
-final class _TopicMapRankedWeight {
-  const _TopicMapRankedWeight({
-    required this.nodeId,
-    required this.backendWeight,
-    required this.index,
-  });
-
-  final String nodeId;
-  final double backendWeight;
-  final int index;
 }
 
 final class _TopicMapLabelPolicy {
@@ -169,7 +96,7 @@ final class _TopicMapLabelPolicy {
     if (normalized.isEmpty) {
       return const [];
     }
-    if (normalized.length <= 22 || radius < 18) {
+    if (normalized.length <= 22) {
       return [normalized];
     }
 
@@ -191,6 +118,44 @@ final class _TopicMapLabelPolicy {
     return candidates.toSet().toList(growable: false);
   }
 
+  String selectCandidate(List<String> candidates, double radius) {
+    final maxCharacters = switch (radius) {
+      < 14 => 8,
+      < 18 => 12,
+      < 24 => 16,
+      < 34 => 22,
+      _ => 32,
+    };
+
+    return candidates.firstWhere(
+      (candidate) => candidate.length <= maxCharacters,
+      orElse: () => candidates.last,
+    );
+  }
+
+  String breakAtWordBoundaries(String label, int maxLines) {
+    final words = label.split(RegExp(r'\s+')).where((word) => word.isNotEmpty);
+    final values = words.toList(growable: false);
+    if (maxLines < 2 || values.length < 2) {
+      return label;
+    }
+
+    var bestSplit = 1;
+    var bestDifference = 1 << 30;
+    for (var split = 1; split < values.length; split++) {
+      final firstLength = values.take(split).join(' ').length;
+      final secondLength = values.skip(split).join(' ').length;
+      final difference = (firstLength - secondLength).abs();
+      if (difference < bestDifference) {
+        bestDifference = difference;
+        bestSplit = split;
+      }
+    }
+
+    return '${values.take(bestSplit).join(' ')}\n'
+        '${values.skip(bestSplit).join(' ')}';
+  }
+
   double fontSize(String label, double radius) {
     final lengthFactor = switch (label.length) {
       > 30 => 0.80,
@@ -207,31 +172,6 @@ final class _TopicMapLabelPolicy {
     };
 
     return (radius * radiusFactor * lengthFactor).clamp(6.2, 15.8).toDouble();
-  }
-
-  bool fits({
-    required String label,
-    required TextStyle style,
-    required double radius,
-    required EdgeInsets padding,
-    required int maxLines,
-  }) {
-    final maxWidth = math.max(1.0, radius * 2 - padding.horizontal);
-    final maxHeight = math.max(1.0, radius * 2 - padding.vertical);
-    final painter = TextPainter(
-      text: TextSpan(text: label, style: style),
-      maxLines: maxLines,
-      textAlign: TextAlign.center,
-      textDirection: TextDirection.ltr,
-    )..layout(maxWidth: maxWidth);
-
-    final result =
-        !painter.didExceedMaxLines &&
-        painter.width <= maxWidth &&
-        painter.height <= maxHeight;
-    painter.dispose();
-
-    return result;
   }
 }
 

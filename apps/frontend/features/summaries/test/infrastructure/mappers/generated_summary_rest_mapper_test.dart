@@ -254,6 +254,7 @@ generated.ReaderSummaryArtifactResponseDto _readerSummaryArtifact() {
       oneLineTakeaway:
           'calesthio/OpenMontage is the clearest repository signal.',
       bullets: ['calesthio/OpenMontage is worth reading first.'],
+      narrativeSections: [],
       mainTopics: ['AI developer tools'],
       topicMap: generatedReaderSummaryTopicMapDto,
       qualityState: generated.ReaderSummaryReaderQualityStateDto(

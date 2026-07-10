@@ -1,14 +1,5 @@
 part of 'reader_summary_brief_surface.dart';
 
-TopRead? _firstReadForProvider(List<TopRead> reads, String providerKey) {
-  for (final read in reads) {
-    if (read.providerKey == providerKey) {
-      return read;
-    }
-  }
-  return null;
-}
-
 String _ensureSentence(String value) {
   final trimmed = value.trim();
   if (trimmed.isEmpty) {

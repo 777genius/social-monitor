@@ -5,7 +5,7 @@ import 'package:social_monitor_summaries/src/domain/entities/reader_summary_topi
 import 'package:social_monitor_summaries/src/presentation/components/reader_summary_brief_surface.dart';
 
 void main() {
-  testWidgets('spreads bubble sizes when backend topic weights are tied', (
+  testWidgets('keeps bubble sizes equal when backend topic weights are tied', (
     tester,
   ) async {
     final topicMap = _tiedTopicMap();
@@ -26,10 +26,10 @@ void main() {
     );
     await tester.pump();
 
-    final firstDiameter = _bubbleDiameterFor(tester, 'Topic 1');
-    final lastDiameter = _bubbleDiameterFor(tester, 'Topic 8');
+    final firstDiameter = _bubbleDiameterForId(tester, 'topic:0');
+    final lastDiameter = _bubbleDiameterForId(tester, 'topic:7');
 
-    expect(firstDiameter, greaterThan(lastDiameter + 24));
+    expect(firstDiameter, closeTo(lastDiameter, 0.01));
   });
 
   testWidgets('keeps flutter graph view renderer available as opt-in', (
@@ -105,7 +105,7 @@ void main() {
     await tester.pump();
 
     expect(find.text('Why'), findsNothing);
-    expect(find.text('Claude Code'), findsOneWidget);
+    expect(_bubbleLabelFor(tester, 'topic:why'), 'Claude Code');
     expect(find.text('show'), findsNothing);
     expect(find.text('ungrouped'), findsOneWidget);
   });
@@ -156,7 +156,8 @@ void main() {
       find.text('The productivity stack many professionals rely on every'),
       findsNothing,
     );
-    expect(find.text('Productivity Stack'), findsAtLeastNWidgets(2));
+    expect(find.text('Productivity Stack'), findsOneWidget);
+    expect(_bubbleLabelFor(tester, 'topic:productivity'), 'Productivity Stack');
   });
 }
 
@@ -203,34 +204,13 @@ ReaderSummaryTopicMap _tiedTopicMap() {
   );
 }
 
-double _bubbleDiameterFor(WidgetTester tester, String label) {
-  double? diameter;
-  for (final element in tester.elementList(find.text(label))) {
-    element.visitAncestorElements((ancestor) {
-      final widget = ancestor.widget;
-      if (widget is SizedBox &&
-          widget.width != null &&
-          widget.height != null &&
-          widget.width == widget.height &&
-          widget.width! > 16) {
-        diameter = widget.width;
-        return false;
-      }
+double _bubbleDiameterForId(WidgetTester tester, String nodeId) =>
+    tester.getSize(find.byKey(ValueKey('topic-map-bubble-$nodeId'))).width;
 
-      return true;
-    });
-    if (diameter != null) {
-      break;
-    }
-  }
-
-  final resolved = diameter;
-  if (resolved == null) {
-    throw StateError('Bubble diameter for "$label" was not found.');
-  }
-
-  return resolved;
-}
+String? _bubbleLabelFor(WidgetTester tester, String nodeId) => tester
+    .widget<Text>(find.byKey(ValueKey('topic-map-bubble-label-$nodeId')))
+    .data
+    ?.replaceAll('\n', ' ');
 
 ReaderSummaryTopicMap _mixedGroupedTopicMap() {
   const looseGroups = [

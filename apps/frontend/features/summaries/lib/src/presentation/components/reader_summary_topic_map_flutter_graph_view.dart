@@ -6,6 +6,7 @@ const _topicMapFlutterGraphKey = ValueKey('topic-map-flutter-graph-view');
 class _TopicMapFlutterGraphView extends StatefulWidget {
   const _TopicMapFlutterGraphView({
     required this.topicMap,
+    required this.selection,
     required this.graphSize,
     required this.textColor,
     required this.mutedColor,
@@ -13,6 +14,7 @@ class _TopicMapFlutterGraphView extends StatefulWidget {
   });
 
   final ReaderSummaryTopicMap topicMap;
+  final _TopicMapVisibleSelection selection;
   final Size graphSize;
   final Color textColor;
   final Color mutedColor;
@@ -38,6 +40,7 @@ class _TopicMapFlutterGraphViewState extends State<_TopicMapFlutterGraphView> {
   Widget build(BuildContext context) {
     final model = _TopicMapFlutterGraphData.fromTopicMap(
       topicMap: widget.topicMap,
+      selection: widget.selection,
       graphSize: widget.graphSize,
     );
 

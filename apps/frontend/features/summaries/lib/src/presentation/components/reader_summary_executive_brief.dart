@@ -1,7 +1,7 @@
 part of 'reader_summary_brief_surface.dart';
 
 /// Center column of the executive summary board: title, lede, body markdown,
-/// citation trail, source note and topic chips.
+/// citation trail and topic chips.
 class ReaderSummaryExecutiveBrief extends StatelessWidget {
   const ReaderSummaryExecutiveBrief({
     super.key,
@@ -20,33 +20,6 @@ class ReaderSummaryExecutiveBrief extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
     final headline = _headlineCopy(_primaryTheme(content));
     final citationSourceById = _citationSourceById(content.topReads);
-    final xRead = _firstReadForProvider(content.topReads, 'x-twitter');
-    final redditRead = _firstReadForProvider(content.topReads, 'reddit');
-    final sourceNoteSpans = xRead == null
-        ? const [
-            _BriefText(
-              'Keep claims as hypotheses until a second source confirms them.',
-            ),
-          ]
-        : [
-            const _BriefText('Source note: '),
-            _BriefText.link(_shortTitle(xRead.title), xRead.canonicalUrl),
-            const _BriefText(
-              ' has enough engagement for discovery, but keep the claim unconfirmed until a second source confirms it.',
-            ),
-            if (redditRead != null) ...[
-              const _BriefText(' Reddit adds practical context through '),
-              _BriefText.link(
-                _shortTitle(redditRead.title),
-                redditRead.canonicalUrl,
-              ),
-              const _BriefText('.'),
-            ],
-          ];
-    final sourceNoteCitationIds = _uniqueCitationIds([
-      ...?xRead?.citationIds,
-      ...?redditRead?.citationIds,
-    ]);
     final topics = _topicChipLabels(content.mainTopics);
 
     return Column(
@@ -60,28 +33,28 @@ class ReaderSummaryExecutiveBrief extends StatelessWidget {
           ),
         ),
         const SizedBox(height: AppSpacing.sm + 4),
-        _MarkdownBriefText(
-          markdown: _summaryMarkdown(summary),
-          onOpenUrl: onOpenUrl,
-        ),
-        const SizedBox(height: AppSpacing.sm),
-        _BriefCitationTrail(
-          keyBase: 'reader-summary-lede',
-          citationIds: _summaryCitationIds(content),
-          citationsById: citationsById,
-          citationSourceById: citationSourceById,
-          onOpenUrl: onOpenUrl,
-        ),
-        const SizedBox(height: AppSpacing.sm + 4),
-        _CitedBriefText(
-          keyBase: 'reader-summary-source-note',
-          spans: sourceNoteSpans,
-          citationIds: sourceNoteCitationIds,
-          citationsById: citationsById,
-          citationSourceById: citationSourceById,
-          onOpenUrl: onOpenUrl,
-          muted: true,
-        ),
+        if (content.narrativeSections.isNotEmpty)
+          _ReaderSummaryNarrative(
+            sections: content.narrativeSections,
+            claims: content.claimBoard,
+            citationsById: citationsById,
+            citationSourceById: citationSourceById,
+            onOpenUrl: onOpenUrl,
+          )
+        else ...[
+          _MarkdownBriefText(
+            markdown: _summaryMarkdown(summary),
+            onOpenUrl: onOpenUrl,
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          _BriefCitationTrail(
+            keyBase: 'reader-summary-lede',
+            citationIds: _summaryCitationIds(content),
+            citationsById: citationsById,
+            citationSourceById: citationSourceById,
+            onOpenUrl: onOpenUrl,
+          ),
+        ],
         if (topics.isNotEmpty) ...[
           const SizedBox(height: AppSpacing.md),
           Wrap(

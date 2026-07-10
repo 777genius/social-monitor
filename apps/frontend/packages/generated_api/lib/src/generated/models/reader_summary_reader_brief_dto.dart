@@ -5,6 +5,7 @@
 import 'package:json_annotation/json_annotation.dart';
 
 import 'reader_summary_claim_dto.dart';
+import 'reader_summary_narrative_section_dto.dart';
 import 'reader_summary_next_action_dto.dart';
 import 'reader_summary_reader_interest_section_dto.dart';
 import 'reader_summary_reader_item_dto.dart';
@@ -24,6 +25,7 @@ class ReaderSummaryReaderBriefDto {
     required this.headline,
     required this.interestSections,
     required this.mainTopics,
+    required this.narrativeSections,
     required this.nextActions,
     required this.oneLineTakeaway,
     required this.openQuestions,
@@ -45,6 +47,7 @@ class ReaderSummaryReaderBriefDto {
   final String headline;
   final List<ReaderSummaryReaderInterestSectionDto> interestSections;
   final List<String> mainTopics;
+  final List<ReaderSummaryNarrativeSectionDto> narrativeSections;
   final List<ReaderSummaryNextActionDto> nextActions;
   final String oneLineTakeaway;
   final List<String> openQuestions;

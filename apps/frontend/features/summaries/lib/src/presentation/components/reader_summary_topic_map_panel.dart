@@ -22,19 +22,24 @@ class ReaderSummaryTopicMapPanel extends StatelessWidget {
         ? AppColors.darkBorder
         : AppColors.border;
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final width = constraints.maxWidth.isFinite
-                ? constraints.maxWidth
-                : 640.0;
-            final height = width < 420 ? 320.0 : 380.0;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : 640.0;
+        final height = width < 420 ? 320.0 : 380.0;
+        final graphSize = Size(width, height);
+        final selection = _TopicMapVisibleSelection.fromTopicMap(
+          topicMap: topicMap,
+          graphSize: graphSize,
+        );
 
-            return Semantics(
-              label: _topicMapSemanticLabel(topicMap),
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Semantics(
+              label: _topicMapSemanticLabel(selection.nodes),
               child: ExcludeFocusTraversal(
                 child: SizedBox(
                   width: width,
@@ -43,7 +48,8 @@ class ReaderSummaryTopicMapPanel extends StatelessWidget {
                     ReaderSummaryTopicMapRenderer.graphView =>
                       _TopicMapForceGraph(
                         topicMap: topicMap,
-                        graphSize: Size(width, height),
+                        selection: selection,
+                        graphSize: graphSize,
                         textColor: colorScheme.onSurface,
                         mutedColor: muted,
                         borderColor: borderColor,
@@ -51,7 +57,8 @@ class ReaderSummaryTopicMapPanel extends StatelessWidget {
                     ReaderSummaryTopicMapRenderer.flutterGraphView =>
                       _TopicMapFlutterGraphView(
                         topicMap: topicMap,
-                        graphSize: Size(width, height),
+                        selection: selection,
+                        graphSize: graphSize,
                         textColor: colorScheme.onSurface,
                         mutedColor: muted,
                         borderColor: borderColor,
@@ -59,22 +66,22 @@ class ReaderSummaryTopicMapPanel extends StatelessWidget {
                   },
                 ),
               ),
-            );
-          },
-        ),
-        const SizedBox(height: AppSpacing.sm),
-        Wrap(
-          spacing: AppSpacing.sm,
-          runSpacing: AppSpacing.xs,
-          children: [
-            for (final group in _topicMapLegendGroups(topicMap).take(6))
-              _TopicGroupLegendChip(
-                group: group,
-                label: _topicMapLegendLabel(topicMap, group),
-              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            Wrap(
+              spacing: AppSpacing.sm,
+              runSpacing: AppSpacing.xs,
+              children: [
+                for (final group in selection.groups.take(6))
+                  _TopicGroupLegendChip(
+                    group: group,
+                    label: _topicMapLegendLabel(topicMap, group),
+                  ),
+              ],
+            ),
           ],
-        ),
-      ],
+        );
+      },
     );
   }
 }
@@ -91,6 +98,7 @@ class _TopicGroupLegendChip extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
 
     return DecoratedBox(
+      key: ValueKey('topic-map-legend-${group.id}'),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
         border: Border.all(color: color.withValues(alpha: 0.32)),

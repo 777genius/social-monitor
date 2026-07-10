@@ -5,6 +5,7 @@ final class ReaderSummaryContentApiDto {
     required this.headline,
     required this.oneLineTakeaway,
     required this.bullets,
+    this.narrativeSections = const [],
     this.mainTopics = const [],
     this.topicMap = emptyReaderSummaryTopicMapApiDto,
     required this.interestSections,
@@ -28,6 +29,7 @@ final class ReaderSummaryContentApiDto {
   final String headline;
   final String oneLineTakeaway;
   final List<String> bullets;
+  final List<ReaderSummaryNarrativeSectionApiDto> narrativeSections;
   final List<String> mainTopics;
   final ReaderSummaryTopicMapApiDto topicMap;
   final ReaderSummaryQualityStateApiDto qualityState;
@@ -41,6 +43,24 @@ final class ReaderSummaryContentApiDto {
   final List<String> openQuestions;
   final List<String> risks;
   final List<ReaderActionApiDto> nextActions;
+}
+
+final class ReaderSummaryNarrativeSectionApiDto {
+  const ReaderSummaryNarrativeSectionApiDto({
+    required this.id,
+    required this.kind,
+    required this.title,
+    required this.text,
+    required this.citationIds,
+    this.storyClusterId,
+  });
+
+  final String id;
+  final String kind;
+  final String title;
+  final String text;
+  final List<String> citationIds;
+  final String? storyClusterId;
 }
 
 final class ReaderSummaryTopicMapApiDto {

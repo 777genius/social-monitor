@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_graph_view/flutter_graph_view.dart'
@@ -28,6 +27,7 @@ import 'reader_summary_reason_text.dart';
 
 part 'reader_summary_ai_brief.dart';
 part 'reader_summary_citation_chip.dart';
+part 'reader_summary_claim_indicator.dart';
 part 'reader_summary_executive_brief.dart';
 part 'reader_summary_feedback_bar.dart';
 part 'reader_summary_coverage_by_source_band.dart';
@@ -37,15 +37,18 @@ part 'reader_summary_evidence_read_card.dart';
 part 'reader_summary_brief_helpers.dart';
 part 'reader_summary_insight_rail.dart';
 part 'reader_summary_metric_badges.dart';
+part 'reader_summary_narrative.dart';
 part 'reader_summary_provider_coverage_rows.dart';
 part 'reader_summary_topic_map_flutter_graph_data.dart';
 part 'reader_summary_topic_map_flutter_graph_shapes.dart';
 part 'reader_summary_topic_map_graph.dart';
 part 'reader_summary_topic_map_flutter_graph_view.dart';
+part 'reader_summary_topic_map_collision_layout.dart';
 part 'reader_summary_topic_map_graph_layout.dart';
 part 'reader_summary_topic_map_graph_model.dart';
 part 'reader_summary_topic_map_panel.dart';
 part 'reader_summary_topic_map_policies.dart';
+part 'reader_summary_topic_map_selection.dart';
 part 'reader_summary_topic_map_visuals.dart';
 part 'reader_summary_top_post_dense_row.dart';
 part 'reader_summary_top_post_evidence_source_row.dart';

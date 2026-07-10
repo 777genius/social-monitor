@@ -23,6 +23,7 @@ final class SummaryClaimRisk {
 
 final class SummaryClaim {
   const SummaryClaim({
+    this.id,
     required this.claim,
     required this.evidence,
     required this.confidence,
@@ -30,6 +31,7 @@ final class SummaryClaim {
     required this.citationIds,
   });
 
+  final String? id;
   final String claim;
   final List<SummaryClaimEvidence> evidence;
   final TopReadConfidence confidence;

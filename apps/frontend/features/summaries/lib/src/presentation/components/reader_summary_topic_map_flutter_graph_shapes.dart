@@ -49,11 +49,11 @@ String _topicMapFlutterGraphTooltip(_TopicMapFlutterGraphVertex vertex) {
       : vertex.node.providerKeys.join(', ');
 
   return [
-    vertex.node.label,
-    'Score: ${vertex.node.popularityScore.toStringAsFixed(1)}',
+    _topicMapDisplayLabel(vertex.node),
+    'Popularity: ${vertex.node.popularityScore.toStringAsFixed(1)}',
     'Posts: ${vertex.node.evidenceCount}',
-    'Providers: $providers',
-    'Group: ${vertex.group.label}',
+    'Sources: $providers',
+    'Group: ${vertex.groupDisplayLabel}',
   ].join('\n');
 }
 
@@ -175,6 +175,11 @@ final class _TopicMapFlutterGraphEdgeShape
   @override
   Paint getPaint(flutter_graph_view.Edge edge) {
     final data = edge.data;
+    if (data is _TopicMapFlutterGraphEdge && data.isLayoutOnly) {
+      return Paint()
+        ..color = Colors.transparent
+        ..strokeWidth = 0;
+    }
     final strokeWidth = data is _TopicMapFlutterGraphEdge
         ? data.strokeWidth
         : 1.0;
@@ -194,6 +199,9 @@ final class _TopicMapFlutterGraphEdgeShape
   @override
   double height(flutter_graph_view.Edge edge) {
     final data = edge.data;
+    if (data is _TopicMapFlutterGraphEdge && data.isLayoutOnly) {
+      return 0;
+    }
 
     return data is _TopicMapFlutterGraphEdge ? data.strokeWidth + 1.2 : 3;
   }
