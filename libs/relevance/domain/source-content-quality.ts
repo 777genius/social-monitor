@@ -20,6 +20,7 @@ export type SourceContentQualityFlag =
   | "promo_offer"
   | "prediction_market_rumor"
   | "rumor_only"
+  | "speculative_financial_challenge"
   | "trusted_author"
   | "tco_only"
   | "url_only"
@@ -118,6 +119,9 @@ export class SourceContentQualityPolicy {
     if (normalized.rumorOnly) {
       flags.add("rumor_only");
     }
+    if (normalized.speculativeFinancialChallenge) {
+      flags.add("speculative_financial_challenge");
+    }
 
     if (normalized.personalMedicalAnecdote) {
       flags.add("personal_medical_anecdote");
@@ -143,6 +147,7 @@ export class SourceContentQualityPolicy {
         (normalized.genericQuestion ? 0.12 : 0) -
         (normalized.predictionMarketRumor ? 0.18 : 0) -
         (normalized.rumorOnly ? 0.24 : 0) -
+        (normalized.speculativeFinancialChallenge ? 0.34 : 0) -
         (normalized.personalMedicalAnecdote ? 0.34 : 0),
     );
     const interestRelevanceScore = clampScore(
@@ -161,6 +166,7 @@ export class SourceContentQualityPolicy {
         (normalized.promoOffer ? 0.5 : 0) -
         (normalized.predictionMarketRumor ? 0.34 : 0) -
         (normalized.rumorOnly ? 0.32 : 0) -
+        (normalized.speculativeFinancialChallenge ? 0.36 : 0) -
         (normalized.personalMedicalAnecdote ? 0.42 : 0) -
         (normalized.weakTopicMatch ? 0.24 : 0),
     );
@@ -271,6 +277,9 @@ const evaluateNonXSource = (
   if (normalized.rumorOnly) {
     flags.add("rumor_only");
   }
+  if (normalized.speculativeFinancialChallenge) {
+    flags.add("speculative_financial_challenge");
+  }
   if (normalized.personalMedicalAnecdote) {
     flags.add("personal_medical_anecdote");
   }
@@ -282,6 +291,7 @@ const evaluateNonXSource = (
       (normalized.promoOffer ? 0.42 : 0) -
       (normalized.predictionMarketRumor ? 0.22 : 0) -
       (normalized.rumorOnly ? 0.28 : 0) -
+      (normalized.speculativeFinancialChallenge ? 0.34 : 0) -
       (normalized.personalMedicalAnecdote ? 0.42 : 0),
   );
   const interestRelevanceScore = clampScore(
@@ -298,6 +308,7 @@ const evaluateNonXSource = (
       (normalized.predictionMarketRumor ? 0.28 : 0) -
       (normalized.promoOffer ? 0.5 : 0) -
       (normalized.rumorOnly ? 0.34 : 0) -
+      (normalized.speculativeFinancialChallenge ? 0.36 : 0) -
       (normalized.personalMedicalAnecdote ? 0.46 : 0),
   );
   const decision = normalized.promoOffer
@@ -306,6 +317,7 @@ const evaluateNonXSource = (
         normalized.weakTopicMatch ||
         normalized.predictionMarketRumor ||
         normalized.rumorOnly ||
+        normalized.speculativeFinancialChallenge ||
         normalized.personalMedicalAnecdote
       ? "downrank"
       : "promote";
@@ -320,6 +332,7 @@ const evaluateNonXSource = (
       normalized.weakTopicMatch ||
       normalized.predictionMarketRumor ||
       normalized.rumorOnly ||
+      normalized.speculativeFinancialChallenge ||
       normalized.personalMedicalAnecdote,
     reason:
       flags.size === 0
@@ -364,6 +377,7 @@ const decide = (params: {
     params.normalized.genericQuestion ||
     params.normalized.predictionMarketRumor ||
     params.normalized.rumorOnly ||
+    params.normalized.speculativeFinancialChallenge ||
     params.normalized.personalMedicalAnecdote
   ) {
     return "downrank";
@@ -401,6 +415,7 @@ const finalizeVerdict = (params: {
     !flags.includes("generic_question") &&
     !flags.includes("prediction_market_rumor") &&
     !flags.includes("rumor_only") &&
+    !flags.includes("speculative_financial_challenge") &&
     !flags.includes("personal_medical_anecdote");
 
   return {
@@ -432,9 +447,11 @@ const needsLlmReview = (params: {
     params.normalized.weakTopicMatch ||
     params.normalized.predictionMarketRumor ||
     params.normalized.rumorOnly ||
+    params.normalized.speculativeFinancialChallenge ||
     params.normalized.personalMedicalAnecdote ||
     (params.qualityScore >= 0.35 && params.qualityScore < 0.76) ||
-    (params.interestRelevanceScore >= 0.25 && params.interestRelevanceScore < 0.62) ||
+    (params.interestRelevanceScore >= 0.25 &&
+      params.interestRelevanceScore < 0.62) ||
     params.engagementIntegrityScore < 0.68
   );
 };

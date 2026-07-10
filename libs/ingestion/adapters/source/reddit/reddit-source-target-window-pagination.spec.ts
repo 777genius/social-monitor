@@ -8,14 +8,71 @@ import type {
   RedditClientPort,
   RedditCommentPage,
   RedditListingPage,
-  RedditListPostCommentsRequest,
   RedditListSubredditPostsRequest,
-  RedditSearchPostsRequest,
 } from "./reddit-client.port";
 import { RedditSourceProvider } from "./reddit-source.provider";
 import type { RedditTokenProviderPort } from "./reddit-token-provider.port";
 
 describe("RedditSourceProvider target window pagination", () => {
+  it("keeps top/day for an open target day instead of widening to week", async () => {
+    const client = new CapturingRedditClient(
+      new Map<string, RedditListingPage>([
+        [
+          "ClaudeAI:top:day|after:",
+          {
+            posts: [
+              redditPost({
+                id: "today",
+                createdUtc: Date.parse("2026-07-09T12:00:00Z") / 1000,
+              }),
+            ],
+          },
+        ],
+      ]),
+    );
+    const provider = new RedditSourceProvider(
+      client,
+      new StaticTokenProvider(),
+    );
+    const context = scanContext({
+      maxItems: 2,
+      targetPublishedWindow: {
+        startInclusive: "2026-07-09T00:00:00.000Z",
+        endExclusive: "2026-07-10T00:00:00.000Z",
+        observedAt: "2026-07-09T18:00:00.000Z",
+      },
+      scanPasses: [
+        {
+          mode: "listing",
+          subreddit: "ClaudeAI",
+          listing: "top",
+          topTime: "day",
+          maxItems: 2,
+        },
+      ],
+      adaptivePagination: {
+        enabled: true,
+        targetItems: 2,
+        maxPages: 2,
+        minNewItemsPerPage: 1,
+        maxDuplicateRate: 0.75,
+      },
+    });
+    const plan = provider.planScan(
+      { mode: "search", query: "ClaudeAI top" },
+      context,
+    );
+
+    const result = await provider.scan(plan, context);
+
+    expect(client.listingRequests.map((request) => request.topTime)).toEqual([
+      "day",
+    ]);
+    expect(result.items.map((item) => item.externalId)).toEqual([
+      "reddit:t3_today",
+    ]);
+  });
+
   it("continues past newer Reddit pages and counts only target-window posts", async () => {
     const client = new CapturingRedditClient(
       new Map<string, RedditListingPage>([
@@ -116,15 +173,11 @@ class CapturingRedditClient implements RedditClientPort {
     return this.listingResponses.get(listingPageKey(request)) ?? { posts: [] };
   }
 
-  async searchPosts(
-    _request: RedditSearchPostsRequest,
-  ): Promise<RedditListingPage> {
+  async searchPosts(): Promise<RedditListingPage> {
     return { posts: [] };
   }
 
-  async listPostComments(
-    _request: RedditListPostCommentsRequest,
-  ): Promise<RedditCommentPage> {
+  async listPostComments(): Promise<RedditCommentPage> {
     return { comments: [] };
   }
 }

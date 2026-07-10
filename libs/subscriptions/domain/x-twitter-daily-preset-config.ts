@@ -15,6 +15,14 @@ export const xTwitterDailyConfig = {
     minNewItemsPerPage: 10,
     maxDuplicateRate: 0.65,
   },
+  sourceQueryPlanner: {
+    enabled: true,
+    rollout: "real_binding_canary",
+    maxLanesPerSource: 8,
+    maxItemsPerLane: 25,
+    includeEnrichment: false,
+    maxSearchQueries: 8,
+  },
   searchQueries: [
     '"Claude Code" OR "OpenAI Codex" OR Cursor OR "Cursor AI" OR "AI coding" OR "coding agent"',
     'MCP OR "MCP server" OR "model context protocol" OR "AI agent"',

@@ -52,7 +52,7 @@ const redditSearchSorts: readonly RedditSearchSort[] = [
   "comments",
 ];
 
-const maxConfiguredRedditScanPasses = 32;
+const maxConfiguredRedditScanPasses = 48;
 
 export {
   normalizePost,

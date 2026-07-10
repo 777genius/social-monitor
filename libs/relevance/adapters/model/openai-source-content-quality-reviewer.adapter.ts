@@ -316,6 +316,7 @@ const allowedFlags = new Set<SourceContentQualityFlag>([
   "promo_offer",
   "prediction_market_rumor",
   "rumor_only",
+  "speculative_financial_challenge",
   "trusted_author",
   "tco_only",
   "url_only",

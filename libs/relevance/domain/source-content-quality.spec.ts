@@ -90,6 +90,41 @@ describe("SourceContentQualityPolicy", () => {
     );
   });
 
+  it("downranks speculative financial challenges on community sources", () => {
+    const verdict = policy.evaluate({
+      providerKey: "reddit",
+      title:
+        "Day 1 of giving Fable 5 an $80 crypto account with instructions to turn it into 5k",
+      bodyPreview:
+        "A trading experiment asks the model to grow the account before the next release.",
+      canonicalUrl: "https://www.reddit.com/r/ClaudeAI/comments/example",
+      providerMetadata: {
+        kind: "reddit_post",
+        subreddit: "ClaudeAI",
+      },
+    });
+
+    expect(verdict.decision).toBe("downrank");
+    expect(verdict.eligibleForSummary).toBe(true);
+    expect(verdict.eligibleForTopRead).toBe(false);
+    expect(verdict.flags).toContain("speculative_financial_challenge");
+  });
+
+  it("keeps ordinary AI token-cost analysis eligible", () => {
+    const verdict = policy.evaluate({
+      providerKey: "hacker-news",
+      title: "Measuring token pricing and agent cost in production",
+      bodyPreview:
+        "A reproducible analysis compares model token rates and infrastructure costs.",
+      canonicalUrl: "https://news.ycombinator.com/item?id=1",
+      providerMetadata: { kind: "hacker_news_story" },
+    });
+
+    expect(verdict.decision).toBe("promote");
+    expect(verdict.eligibleForTopRead).toBe(true);
+    expect(verdict.flags).not.toContain("speculative_financial_challenge");
+  });
+
   it("keeps resource-bait X lists out of top reads even with engagement", () => {
     const verdict = policy.evaluate({
       providerKey: "x-twitter",

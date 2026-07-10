@@ -35,6 +35,14 @@ describe("aiDeveloperSignalSourcePreset", () => {
           minNewItemsPerPage: 2,
           maxDuplicateRate: 0.75,
         },
+        sourceQueryPlanner: {
+          enabled: true,
+          rollout: "real_binding_canary",
+          topic: expect.stringContaining("Claude Code"),
+          maxLanesPerSource: 8,
+          maxItemsPerLane: 25,
+          includeEnrichment: true,
+        },
       },
     });
 
@@ -43,6 +51,7 @@ describe("aiDeveloperSignalSourcePreset", () => {
           readonly scanPasses: readonly {
             readonly mode: "listing" | "search";
             readonly subreddit?: string;
+            readonly listing?: string;
             readonly query?: string;
             readonly allowedSubreddits?: readonly string[];
           }[];
@@ -51,14 +60,33 @@ describe("aiDeveloperSignalSourcePreset", () => {
     const scanPasses = redditConfig?.scanPasses as readonly {
       readonly mode: "listing" | "search";
       readonly subreddit?: string;
+      readonly listing?: string;
       readonly query?: string;
       readonly allowedSubreddits?: readonly string[];
     }[];
 
-    expect(scanPasses).toHaveLength(32);
+    expect(scanPasses).toHaveLength(44);
     expect(
       scanPasses
-        .filter((pass) => pass.mode === "listing")
+        .filter((pass) => pass.mode === "listing" && pass.listing === "new")
+        .map((pass) => pass.subreddit),
+    ).toEqual([
+      "ArtificialInteligence",
+      "OpenAI",
+      "ClaudeAI",
+      "ClaudeCode",
+      "codex",
+      "LocalLLaMA",
+      "MachineLearning",
+      "cybersecurity",
+      "programming",
+      "webdev",
+      "CursorAI",
+      "MCPservers",
+    ]);
+    expect(
+      scanPasses
+        .filter((pass) => pass.mode === "listing" && pass.listing === "top")
         .map((pass) => pass.subreddit),
     ).toEqual([
       "ArtificialInteligence",
@@ -211,6 +239,16 @@ describe("aiDeveloperSignalSourcePreset", () => {
       maxPages: 2,
       minNewItemsPerPage: 10,
       maxDuplicateRate: 0.65,
+    });
+    expect(xEntry?.targetConfig).toMatchObject({
+      sourceQueryPlanner: {
+        enabled: true,
+        rollout: "real_binding_canary",
+        maxLanesPerSource: 8,
+        maxItemsPerLane: 25,
+        includeEnrichment: false,
+        maxSearchQueries: 8,
+      },
     });
     expect(xConfig?.searchQueries).toEqual([
       '"Claude Code" OR "OpenAI Codex" OR Cursor OR "Cursor AI" OR "AI coding" OR "coding agent"',

@@ -528,6 +528,7 @@ const formatScanPassWarning = (
 type TargetPublishedWindow = {
   readonly startInclusive: Date;
   readonly endExclusive: Date;
+  readonly observedAt?: Date;
 };
 
 type TargetWindowStats = {
@@ -551,7 +552,13 @@ const readTargetPublishedWindow = (
     return undefined;
   }
 
-  return { startInclusive: start, endExclusive: end };
+  const observedAt = dateFromUnknown(record.observedAt);
+
+  return {
+    startInclusive: start,
+    endExclusive: end,
+    ...(observedAt === undefined ? {} : { observedAt }),
+  };
 };
 
 const dateFromUnknown = (value: unknown): Date | undefined => {
@@ -568,9 +575,18 @@ const redditTopTimeForTargetWindow = (
   requested: RedditTopTime,
   targetPublishedWindow: TargetPublishedWindow | undefined,
 ): RedditTopTime =>
-  targetPublishedWindow !== undefined && requested === "day"
+  targetPublishedWindow !== undefined &&
+  requested === "day" &&
+  !isOpenTargetPublishedWindow(targetPublishedWindow)
     ? "week"
     : requested;
+
+const isOpenTargetPublishedWindow = (
+  targetPublishedWindow: TargetPublishedWindow,
+): boolean =>
+  targetPublishedWindow.observedAt !== undefined &&
+  targetPublishedWindow.observedAt >= targetPublishedWindow.startInclusive &&
+  targetPublishedWindow.observedAt < targetPublishedWindow.endExclusive;
 
 const isInsideTargetPublishedWindow = (
   item: { readonly publishedAt: Date },

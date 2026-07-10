@@ -21,6 +21,7 @@ export type NormalizedSourceContentQualityInput = {
   readonly genericQuestion: boolean;
   readonly predictionMarketRumor: boolean;
   readonly rumorOnly: boolean;
+  readonly speculativeFinancialChallenge: boolean;
   readonly personalMedicalAnecdote: boolean;
   readonly weakTopicMatch: boolean;
   readonly missingTopicContext: boolean;
@@ -60,9 +61,8 @@ export const normalizeSourceContentQualityInput = (
       sourceCommunityTerms,
     });
   const missingTopicContext = topicTerms.length === 0;
-  const legacyCoreTopicSignal = legacyCoreTopicSignalPattern.test(
-    textWithoutUrls,
-  );
+  const legacyCoreTopicSignal =
+    legacyCoreTopicSignalPattern.test(textWithoutUrls);
   const cryptoPromo = cryptoPromoPattern.test(text);
   const promoOffer = promoOfferPattern.test(text);
   const engagementBait = engagementBaitPattern.test(text) || promoOffer;
@@ -71,6 +71,11 @@ export const normalizeSourceContentQualityInput = (
     rumorOrPoliticalClaimPattern.test(text);
   const rumorOnly =
     rumorOnlyPattern.test(text) && unreleasedAiModelPattern.test(text);
+  const speculativeFinancialChallenge =
+    speculativeFinancialChallengePattern.test(textWithoutUrls) &&
+    financialAssetPattern.test(textWithoutUrls) &&
+    financialGrowthPattern.test(textWithoutUrls) &&
+    moneyTargetPattern.test(textWithoutUrls);
   const personalMedicalAnecdote =
     personalExperiencePattern.test(text) &&
     aiCodingToolPattern.test(text) &&
@@ -98,6 +103,7 @@ export const normalizeSourceContentQualityInput = (
     genericQuestion,
     predictionMarketRumor,
     rumorOnly,
+    speculativeFinancialChallenge,
     personalMedicalAnecdote,
     weakTopicMatch,
     missingTopicContext,
@@ -342,6 +348,14 @@ const urlPresencePattern = /https?:\/\/\S+/iu;
 const tcoUrlPattern = /https?:\/\/t\.co\/[a-z0-9_-]+/iu;
 const cryptoPromoPattern =
   /\b(?:bingx|airdrop|crypto|web3|defi|trading|trade|token|coin|memecoin|giveaway|prize|rewards?)\b|\$[a-z]{2,12}\b/iu;
+const speculativeFinancialChallengePattern =
+  /\b(?:day\s*\d+|challenge|experiment|instructions?\s+to)\b/iu;
+const financialAssetPattern =
+  /\b(?:crypto|trading|futures?|portfolio|financial|money|account|balance)\b/iu;
+const financialGrowthPattern =
+  /\b(?:turn|grow|flip|multiply|make|profit)\b.{0,40}\b(?:into|to|from|before)\b/iu;
+const moneyTargetPattern =
+  /(?:\$\s*\d[\d,.]*|\d[\d,.]*\s*\$|\b\d+(?:\.\d+)?\s*(?:k|usd|dollars?)\b)/iu;
 const engagementBaitPattern =
   /\b(?:drop\s+your|share\s+your|comment\s+below|reply\s+with|retweet|repost|like\s+and|follow\s+for|top\s+\d+|stop\s+wasting\s+hours?|i\s+have\s+already\s+done\s+it\s+for\s+you|with\s+one\s+list|zero\s+confusion|no\s+fluff)\b/iu;
 const promoOfferPattern =

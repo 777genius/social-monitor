@@ -33,16 +33,56 @@ const redditSearchAllowedSubreddits = [
   "SaaS",
 ] as const;
 
+const redditFreshListingSubreddits = [
+  "ArtificialInteligence",
+  "OpenAI",
+  "ClaudeAI",
+  "ClaudeCode",
+  "codex",
+  "LocalLLaMA",
+  "MachineLearning",
+  "cybersecurity",
+  "programming",
+  "webdev",
+  "CursorAI",
+  "MCPservers",
+] as const;
+
+const redditFreshListingPasses = redditFreshListingSubreddits.map(
+  (subreddit) =>
+    ({
+      mode: "listing",
+      subreddit,
+      listing: "new",
+      maxItems: 8,
+      minScore: 0,
+      includeComments: true,
+      maxCommentsPerPost: 2,
+    }) as const,
+);
+
+const redditPrimarySearchQuery =
+  '"Claude Code" OR "OpenAI Codex" OR "AI agents" OR Anthropic OR LocalLLaMA OR LLM OR MCP';
+
 export const redditDailyMultiPassConfig = {
   maxItems: 100,
-    adaptivePagination: {
-      enabled: true,
-      targetItems: 100,
-      maxPages: 4,
-      minNewItemsPerPage: 2,
-      maxDuplicateRate: 0.75,
-    },
+  adaptivePagination: {
+    enabled: true,
+    targetItems: 100,
+    maxPages: 4,
+    minNewItemsPerPage: 2,
+    maxDuplicateRate: 0.75,
+  },
+  sourceQueryPlanner: {
+    enabled: true,
+    rollout: "real_binding_canary",
+    topic: redditPrimarySearchQuery,
+    maxLanesPerSource: 8,
+    maxItemsPerLane: 25,
+    includeEnrichment: true,
+  },
   scanPasses: [
+    ...redditFreshListingPasses,
     {
       mode: "listing",
       subreddit: "ArtificialInteligence",
@@ -331,8 +371,7 @@ export const redditDailyMultiPassConfig = {
     },
     {
       mode: "search",
-      query:
-        '"Claude Code" OR "OpenAI Codex" OR "AI agents" OR Anthropic OR LocalLLaMA OR LLM OR MCP',
+      query: redditPrimarySearchQuery,
       maxItems: 10,
       minScore: 5,
       allowedSubreddits: redditSearchAllowedSubreddits,
