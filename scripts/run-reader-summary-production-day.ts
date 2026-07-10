@@ -4,6 +4,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -42,10 +43,15 @@ type ProductionDayReport = {
   readonly schemaVersion: 1;
   readonly artifactFormat: "reader-summary-production-day-run-v1";
   readonly generatedBy: string;
+  readonly requestedDate: string;
   readonly collectionDate: string;
   readonly model: {
     readonly liveCollection: boolean;
-    readonly summaryModel: "agent-runtime" | "openai-responses" | "deterministic";
+    readonly summaryModel:
+      "agent-runtime" | "openai-responses" | "deterministic";
+    readonly physicalModel: "gpt-5.5";
+    readonly reasoningEffort: "xhigh";
+    readonly topicLabeler: "agent-runtime" | "deterministic";
     readonly writesProductionData: true;
     readonly allowDegraded: boolean;
     readonly allowHistorical: boolean;
@@ -109,6 +115,12 @@ const allowDegraded = process.argv.includes("--allow-degraded");
 const allowHistorical = process.argv.includes("--allow-historical");
 const collectionDate = artifactOnly ? "1970-01-01" : resolveCollectionDate();
 const summaryModel = resolveSummaryModel();
+if (!artifactOnly && summaryModel !== "agent-runtime") {
+  throw new Error(
+    "Production reader summaries must use subscription runtime (agent-runtime)",
+  );
+}
+const topicLabeler = resolveTopicLabeler();
 const periodStartedAt = `${collectionDate}T00:00:00.000Z`;
 const periodEndedAt = nextDate(collectionDate);
 const runtimeArtifactDirectory = resolve(
@@ -128,6 +140,12 @@ const frontendFixturePath = join(
   runtimeArtifactDirectory,
   `frontend-reader-summary-${collectionDate}.fixture.v1.json`,
 );
+const nextEvidencePath = evidencePath.replace(/\.json$/u, ".next.json");
+const nextFrontendFixturePath = frontendFixturePath.replace(
+  /\.json$/u,
+  ".next.json",
+);
+const datedOutputPath = `ops/evals/reader-summary-production-day-run.${collectionDate}.v1.json`;
 
 void main().catch((error) => {
   console.error(error);
@@ -144,12 +162,13 @@ async function main(): Promise<void> {
   const steps: StepReport[] = [];
 
   steps.push(runNpm("migrate", ["run", "migrate:deploy"]));
-  const scope = await readDominantPublishedScope();
+  const scope = await readProductionDayScope();
 
   if (skipLiveCollection) {
     steps.push({
       id: "collect",
-      command: "npm run run:reader-summary-clean-real-day-collection -- skipped",
+      command:
+        "npm run run:reader-summary-clean-real-day-collection -- skipped",
       status: "skipped",
       durationMs: 0,
       exitCode: null,
@@ -168,8 +187,8 @@ async function main(): Promise<void> {
   }
 
   mkdirSync(runtimeArtifactDirectory, { recursive: true });
-  rmSync(evidencePath, { force: true });
-  rmSync(frontendFixturePath, { force: true });
+  rmSync(nextEvidencePath, { force: true });
+  rmSync(nextFrontendFixturePath, { force: true });
 
   steps.push(
     runNpm("collection-quality", [
@@ -184,25 +203,41 @@ async function main(): Promise<void> {
     ]),
   );
 
-  steps.push(
-    runNpm(
-      "durable-reader-summary",
-      ["run", "capture:durable-reader-summary"],
-      {
-        DATABASE_URL: yesterdaySocialQualityDatabaseUrl(),
-        DURABLE_READER_SUMMARY_MODEL: summaryModel,
-        DURABLE_READER_SUMMARY_TENANT_ID: scope.tenantId,
-        DURABLE_READER_SUMMARY_WORKSPACE_ID: scope.workspaceId,
-        DURABLE_READER_SUMMARY_CADENCE: "daily",
-        DURABLE_READER_SUMMARY_PERIOD_STARTED_AT: periodStartedAt,
-        DURABLE_READER_SUMMARY_PERIOD_ENDED_AT: periodEndedAt,
-        DURABLE_READER_SUMMARY_MAX_EVIDENCE_ITEMS: "120",
-        DURABLE_READER_SUMMARY_MAX_STORIES: "15",
-        DURABLE_READER_SUMMARY_EVIDENCE_PATH: evidencePath,
-        DURABLE_READER_SUMMARY_FRONTEND_FIXTURE_PATH: frontendFixturePath,
-      },
-    ),
+  const summaryStep = runNpm(
+    "durable-reader-summary",
+    ["run", "capture:durable-reader-summary"],
+    {
+      DATABASE_URL: yesterdaySocialQualityDatabaseUrl(),
+      DURABLE_READER_SUMMARY_MODEL: summaryModel,
+      AGENT_RUNTIME_READER_SUMMARY_MODEL: "gpt-5.5",
+      AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT: "xhigh",
+      AGENT_RUNTIME_READER_SUMMARY_TIMEOUT_MS: "600000",
+      AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_TIMEOUT_MS: "600000",
+      AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_MAX_CANDIDATES: "30",
+      DURABLE_READER_SUMMARY_TOPIC_LABELER: topicLabeler,
+      DURABLE_READER_SUMMARY_TENANT_ID: scope.tenantId,
+      DURABLE_READER_SUMMARY_WORKSPACE_ID: scope.workspaceId,
+      DURABLE_READER_SUMMARY_CADENCE: "daily",
+      DURABLE_READER_SUMMARY_PERIOD_STARTED_AT: periodStartedAt,
+      DURABLE_READER_SUMMARY_PERIOD_ENDED_AT: periodEndedAt,
+      DURABLE_READER_SUMMARY_MAX_EVIDENCE_ITEMS: "120",
+      DURABLE_READER_SUMMARY_MAX_STORIES: "15",
+      DURABLE_READER_SUMMARY_EVIDENCE_PATH: nextEvidencePath,
+      DURABLE_READER_SUMMARY_FRONTEND_FIXTURE_PATH: nextFrontendFixturePath,
+      DURABLE_READER_SUMMARY_REJECTED_TOPIC_MAP_PATH: join(
+        runtimeArtifactDirectory,
+        `rejected-topic-map-${collectionDate}.v1.json`,
+      ),
+    },
   );
+  steps.push(summaryStep);
+  if (summaryStep.status === "passed") {
+    replaceArtifact(nextEvidencePath, evidencePath);
+    replaceArtifact(nextFrontendFixturePath, frontendFixturePath);
+  } else {
+    rmSync(nextEvidencePath, { force: true });
+    rmSync(nextFrontendFixturePath, { force: true });
+  }
 
   steps.push(
     runNpm("artifact-quality", [
@@ -281,9 +316,13 @@ async function main(): Promise<void> {
 
   mkdirSync(dirname(outputPath), { recursive: true });
   writeFileSync(outputPath, serialized);
+  if (!artifactOnly) {
+    writeFileSync(datedOutputPath, serialized);
+  }
 
   if (update) {
     console.log(`Updated ${outputPath}`);
+    console.log(`Updated ${datedOutputPath}`);
   }
   printStats(report);
 
@@ -313,7 +352,19 @@ function runNpm(
   };
 }
 
+function replaceArtifact(sourcePath: string, targetPath: string): void {
+  if (!existsSync(sourcePath)) {
+    return;
+  }
+
+  rmSync(targetPath, { force: true });
+  renameSync(sourcePath, targetPath);
+}
+
 function shouldRunCleanDayE2e(): boolean {
+  if (skipLiveCollection) {
+    return false;
+  }
   if (!allowHistorical) {
     return true;
   }
@@ -390,18 +441,24 @@ function buildReport(params: {
     durableSummaryPersisted:
       typeof durableEvidence?.result?.readerSummaryId === "string" &&
       durableEvidence.result.readerSummaryId.length > 0,
-    xAccountPoolReported: collectionQuality?.xAccountPool?.accountCount !==
-      undefined,
+    xAccountPoolReported:
+      collectionQuality?.xAccountPool?.accountCount !== undefined,
+    reportDateMatchesRequestedDate:
+      collectionDate === periodStartedAt.slice(0, 10),
     noRawSecretFragments: true,
   };
   const reportWithoutSecretGate = {
     schemaVersion: 1,
     artifactFormat: "reader-summary-production-day-run-v1",
     generatedBy: "npm run run:reader-summary-production-day",
+    requestedDate: collectionDate,
     collectionDate,
     model: {
       liveCollection: !skipLiveCollection,
       summaryModel,
+      physicalModel: "gpt-5.5",
+      reasoningEffort: "xhigh",
+      topicLabeler,
       writesProductionData: true,
       allowDegraded,
       allowHistorical,
@@ -449,7 +506,8 @@ function buildReport(params: {
       topReadCount: durableEvidence?.result?.topReadCount ?? null,
       providerCounts,
       xAccountCount: collectionQuality?.xAccountPool?.accountCount ?? null,
-      xAccountUsageEventCount: collectionQuality?.xAccountPool?.eventCount ?? null,
+      xAccountUsageEventCount:
+        collectionQuality?.xAccountPool?.eventCount ?? null,
       xAccounts:
         collectionQuality?.xAccountPool?.accounts?.flatMap((account) =>
           account.accountFingerprint === undefined ||
@@ -495,7 +553,7 @@ function stepPassedOrAllowedDegraded(step: StepReport): boolean {
   return allowDegraded && degradedQualityStepIds.has(step.id);
 }
 
-async function readDominantPublishedScope(): Promise<{
+async function readProductionDayScope(): Promise<{
   readonly tenantId: string;
   readonly workspaceId: string;
 }> {
@@ -526,17 +584,55 @@ async function readDominantPublishedScope(): Promise<{
       [periodStartedAt, periodEndedAt],
     );
     const row = result.rows[0];
-    if (row === undefined || Number.parseInt(row.itemCount, 10) === 0) {
-      throw new Error(`No published feed items found for ${collectionDate}`);
+    if (row !== undefined && Number.parseInt(row.itemCount, 10) > 0) {
+      return {
+        tenantId: row.tenantId,
+        workspaceId: row.workspaceId,
+      };
     }
 
-    return {
-      tenantId: row.tenantId,
-      workspaceId: row.workspaceId,
-    };
+    return await readDominantConfiguredScope(pool);
   } finally {
     await pool.end().catch(() => undefined);
   }
+}
+
+async function readDominantConfiguredScope(pool: Pool): Promise<{
+  readonly tenantId: string;
+  readonly workspaceId: string;
+}> {
+  const result = await pool.query<{
+    readonly tenantId: string;
+    readonly workspaceId: string;
+    readonly bindingCount: string;
+  }>(
+    `
+      select
+        tenant_id::text as "tenantId",
+        workspace_id::text as "workspaceId",
+        count(*)::text as "bindingCount"
+      from source_bindings
+      where deleted_at is null
+        and status = 'ENABLED'
+      group by tenant_id, workspace_id
+      order by count(*) desc
+      limit 1
+    `,
+  );
+  const row = result.rows[0];
+  if (row === undefined || Number.parseInt(row.bindingCount, 10) === 0) {
+    throw new Error(
+      `No published feed items or enabled source bindings found for ${collectionDate}`,
+    );
+  }
+
+  console.warn(
+    `No published feed items found for ${collectionDate}; using enabled source binding scope before live collection.`,
+  );
+  return {
+    tenantId: row.tenantId,
+    workspaceId: row.workspaceId,
+  };
 }
 
 function printStats(report: ProductionDayReport): void {
@@ -588,7 +684,9 @@ function resolveCollectionDate(): string {
     return new Date().toISOString().slice(0, 10);
   }
   if (process.argv.includes("--yesterday")) {
-    return new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    return new Date(Date.now() - 24 * 60 * 60 * 1000)
+      .toISOString()
+      .slice(0, 10);
   }
 
   throw new Error("Provide --date YYYY-MM-DD, --today or --yesterday");
@@ -607,6 +705,15 @@ function resolveSummaryModel(): ProductionDayReport["model"]["summaryModel"] {
   throw new Error(
     "--summary-model must be agent-runtime, openai-responses or deterministic",
   );
+}
+
+function resolveTopicLabeler(): ProductionDayReport["model"]["topicLabeler"] {
+  const value = readOption("--topic-labeler") ?? "agent-runtime";
+  if (value === "agent-runtime" || value === "deterministic") {
+    return value;
+  }
+
+  throw new Error("--topic-labeler must be agent-runtime or deterministic");
 }
 
 function validateExistingReport(): void {

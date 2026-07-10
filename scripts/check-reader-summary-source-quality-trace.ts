@@ -7,6 +7,7 @@ import { PrismaFeedConnection } from "../libs/feed/adapters/persistence/prisma/p
 import { PrismaFeedItemReadRepository } from "../libs/feed/adapters/persistence/prisma/prisma-feed-item-read.repository";
 import { InMemoryUserRelevanceProfileRepository } from "../libs/relevance/adapters/persistence/in-memory-user-relevance-profile.repository";
 import { SourceContentQualityPolicy } from "../libs/relevance/domain";
+import { hasReaderSummaryEvidenceHardBlock } from "../libs/summary/domain/policies/reader-summary-evidence-eligibility-policy";
 import { RankFeedItemsUseCase } from "../libs/relevance/features/rank-feed-items/rank-feed-items.use-case";
 import { readerSummaryArtifactFromPrisma } from "../libs/summary/adapters/persistence/prisma/prisma-reader-summary-records";
 import {
@@ -27,18 +28,18 @@ import {
   yesterdaySocialQualityDatabaseUrl,
 } from "./lib/yesterday-social-replay-support";
 import {
-  asRecord,
   dayEnd,
   dayStart,
   isDefined,
   isLocalDataSourceUnavailable,
   readDominantReaderSummaryQualityScope,
   readLatestReaderSummaryArtifact,
-  readMetadataString,
   type ReaderSummaryQualityScope as Scope,
 } from "./lib/reader-summary-quality-eval-support";
-
-type ProviderKey = "reddit" | "x-twitter";
+import {
+  sourceQualityLaneDescriptor as laneDescriptor,
+  type ReaderSummaryTraceProviderKey as ProviderKey,
+} from "./lib/reader-summary-source-quality-lanes";
 
 type FeedItemRow = {
   readonly id: string;
@@ -104,6 +105,10 @@ type SourceTrace = {
   readonly topReadCount: number;
   readonly topReadEligibleCount: number;
   readonly weakTopicMatchCount: number;
+  readonly selectedWeakTopicMatchCount: number;
+  readonly selectedSummaryIneligibleCount: number;
+  readonly selectedHardBlockedCount: number;
+  readonly selectedDownrankedCount: number;
   readonly ineligibleTopReadCount: number;
   readonly weakTopicMatchTopReadCount: number;
   readonly ineligibleActualTopReadCount: number;
@@ -119,6 +124,10 @@ type LaneFamilyTrace = {
   readonly selectedCount: number;
   readonly topReadCount: number;
   readonly weakTopicMatchCount: number;
+  readonly selectedWeakTopicMatchCount: number;
+  readonly selectedSummaryIneligibleCount: number;
+  readonly selectedHardBlockedCount: number;
+  readonly selectedDownrankedCount: number;
   readonly weakTopicMatchTopReadCount: number;
   readonly ineligibleActualTopReadCount: number;
   readonly averageRankScore: number;
@@ -134,6 +143,10 @@ type LaneTrace = {
   readonly topReadCount: number;
   readonly topReadEligibleCount: number;
   readonly weakTopicMatchCount: number;
+  readonly selectedWeakTopicMatchCount: number;
+  readonly selectedSummaryIneligibleCount: number;
+  readonly selectedHardBlockedCount: number;
+  readonly selectedDownrankedCount: number;
   readonly ineligibleTopReadCount: number;
   readonly weakTopicMatchTopReadCount: number;
   readonly ineligibleActualTopReadCount: number;
@@ -157,6 +170,7 @@ type ItemTrace = {
 };
 
 const rankLimit = 200;
+const readerSources = ["hacker-news", "reddit", "rss", "x-twitter"] as const;
 const primarySources = ["reddit", "x-twitter"] as const;
 const xTwitterLaneFamilies = [
   "fallback",
@@ -279,8 +293,22 @@ async function buildReport(pool: Pool): Promise<SourceQualityTraceReport> {
   const selectedFeedItemIds = new Set(view.sourceWindow.selectedFeedItemIds);
   const topReadFeedItemIds = topReadCitationFeedItemIds(view);
   const sources = {
+    "hacker-news": buildSourceTrace({
+      providerKey: "hacker-news",
+      feedItems,
+      rankedById,
+      selectedFeedItemIds,
+      topReadFeedItemIds,
+    }),
     reddit: buildSourceTrace({
       providerKey: "reddit",
+      feedItems,
+      rankedById,
+      selectedFeedItemIds,
+      topReadFeedItemIds,
+    }),
+    rss: buildSourceTrace({
+      providerKey: "rss",
       feedItems,
       rankedById,
       selectedFeedItemIds,
@@ -310,6 +338,15 @@ async function buildReport(pool: Pool): Promise<SourceQualityTraceReport> {
     ),
     primarySourcesReachTopReads: primarySources.every(
       (source) => sources[source].topReadCount > 0,
+    ),
+    selectedEvidenceIsSummaryEligibleAcrossSources: readerSources.every(
+      (source) => sources[source].selectedSummaryIneligibleCount === 0,
+    ),
+    selectedEvidenceHasStrongTopicMatchAcrossSources: readerSources.every(
+      (source) => sources[source].selectedWeakTopicMatchCount === 0,
+    ),
+    selectedEvidenceHasNoHardQualityFlagsAcrossSources: readerSources.every(
+      (source) => sources[source].selectedHardBlockedCount === 0,
     ),
     redditTopReadsAreQualityEligible:
       sources.reddit.ineligibleActualTopReadCount === 0 &&
@@ -372,6 +409,13 @@ async function buildReport(pool: Pool): Promise<SourceQualityTraceReport> {
       xTwitterIneligibleCollected:
         sources["x-twitter"].ineligibleTopReadCount >
         sources["x-twitter"].weakTopicMatchCount,
+      hackerNewsDownrankedEvidenceSelected:
+        sources["hacker-news"].selectedDownrankedCount > 0,
+      redditDownrankedEvidenceSelected:
+        sources.reddit.selectedDownrankedCount > 0,
+      rssDownrankedEvidenceSelected: sources.rss.selectedDownrankedCount > 0,
+      xTwitterDownrankedEvidenceSelected:
+        sources["x-twitter"].selectedDownrankedCount > 0,
       xTwitterNoFromLaneObserved: !Object.keys(
         sources["x-twitter"].laneFamilies,
       ).some((family) => family.includes("from")),
@@ -444,6 +488,22 @@ function buildSourceTrace(params: {
     ),
     weakTopicMatchCount: laneHealth.reduce(
       (sum, lane) => sum + lane.weakTopicMatchCount,
+      0,
+    ),
+    selectedWeakTopicMatchCount: laneHealth.reduce(
+      (sum, lane) => sum + lane.selectedWeakTopicMatchCount,
+      0,
+    ),
+    selectedSummaryIneligibleCount: laneHealth.reduce(
+      (sum, lane) => sum + lane.selectedSummaryIneligibleCount,
+      0,
+    ),
+    selectedHardBlockedCount: laneHealth.reduce(
+      (sum, lane) => sum + lane.selectedHardBlockedCount,
+      0,
+    ),
+    selectedDownrankedCount: laneHealth.reduce(
+      (sum, lane) => sum + lane.selectedDownrankedCount,
       0,
     ),
     ineligibleTopReadCount: laneHealth.reduce(
@@ -530,6 +590,18 @@ function buildLaneTrace(params: {
     weakTopicMatchCount: itemTraces.filter((item) =>
       item.flags.includes("weak_topic_match"),
     ).length,
+    selectedWeakTopicMatchCount: itemTraces.filter(
+      (item) => item.selected && item.flags.includes("weak_topic_match"),
+    ).length,
+    selectedSummaryIneligibleCount: itemTraces.filter(
+      (item) => item.selected && !item.eligibleForSummary,
+    ).length,
+    selectedHardBlockedCount: itemTraces.filter(
+      (item) => item.selected && hasReaderSummaryEvidenceHardBlock(item.flags),
+    ).length,
+    selectedDownrankedCount: itemTraces.filter(
+      (item) => item.selected && item.qualityDecision === "downrank",
+    ).length,
     ineligibleTopReadCount: itemTraces.filter(
       (item) => !item.eligibleForTopRead,
     ).length,
@@ -609,7 +681,7 @@ async function readFeedItems(
         and status = 'VISIBLE'
         and published_at >= $3::timestamptz
         and published_at < $4::timestamptz
-        and provider_key in ('reddit', 'x-twitter')
+        and provider_key in ('hacker-news', 'reddit', 'rss', 'x-twitter')
       order by provider_key, observed_at, id
     `,
     [
@@ -665,106 +737,6 @@ function topReadCitationFeedItemIds(
   );
 }
 
-function laneDescriptor(
-  providerKey: ProviderKey,
-  metadataValue: unknown,
-): {
-  readonly key: string;
-  readonly family: string;
-  readonly queryFingerprint: string;
-} {
-  const metadata = asRecord(metadataValue);
-  const lane = asRecord(metadata.sourceQueryLane);
-  const query =
-    readMetadataString(lane, "query") ??
-    readMetadataString(metadata, "searchQuery") ??
-    sourceProduct(metadata) ??
-    providerSourceKey(providerKey, metadata);
-  const family =
-    providerKey === "reddit"
-      ? redditLaneFamily({ metadata, lane, query })
-      : xTwitterLaneFamily({ lane, query });
-
-  return {
-    key: `${providerKey}:${family}:${query.toLowerCase()}`,
-    family,
-    queryFingerprint: fingerprint(`${providerKey}:${query.toLowerCase()}`),
-  };
-}
-
-function redditLaneFamily(params: {
-  readonly metadata: Record<string, unknown>;
-  readonly lane: Record<string, unknown>;
-  readonly query: string;
-}): string {
-  const mode = readMetadataString(params.lane, "mode");
-  const searchSort =
-    readMetadataString(params.lane, "searchSort") ??
-    readMetadataString(params.metadata, "searchSort");
-  const searchTime =
-    readMetadataString(params.lane, "searchTime") ??
-    readMetadataString(params.metadata, "searchTime");
-  const product = sourceProduct(params.metadata);
-
-  if (mode === "listing" || product === "hot" || product === "top") {
-    return `community_listing:${product ?? "listing"}`;
-  }
-
-  if (searchSort !== undefined) {
-    return `search:${searchSort}:${searchTime ?? "any"}`;
-  }
-
-  return params.query.includes(":")
-    ? "community_listing:unknown"
-    : "search:general";
-}
-
-function xTwitterLaneFamily(params: {
-  readonly lane: Record<string, unknown>;
-  readonly query: string;
-}): string {
-  const kind = readMetadataString(params.lane, "kind");
-  const operation = readMetadataString(params.lane, "operation");
-  const query = params.query.toLowerCase();
-  const descriptor = `${kind ?? ""}:${operation ?? ""}`.toLowerCase();
-
-  if (descriptor.includes("account_posts") || /\bfrom:/u.test(query)) {
-    return "from";
-  }
-  if (descriptor.includes("account_mentions") || /(^|\s)@[\w_]+/u.test(query)) {
-    return "mention";
-  }
-  if (descriptor.includes("product_or_group") || /\sor\s/u.test(query)) {
-    return "product_or_group";
-  }
-  if (descriptor.includes("fallback")) {
-    return "fallback";
-  }
-
-  return "search:general";
-}
-
-function sourceProduct(metadata: Record<string, unknown>): string | undefined {
-  const value =
-    readMetadataString(metadata, "sourceProduct") ??
-    readMetadataString(metadata, "sort") ??
-    readMetadataString(metadata, "searchSort") ??
-    readMetadataString(metadata, "timeline");
-
-  return value?.trim().toLowerCase();
-}
-
-function providerSourceKey(
-  providerKey: ProviderKey,
-  metadata: Record<string, unknown>,
-): string {
-  if (providerKey === "reddit") {
-    return readMetadataString(metadata, "subreddit") ?? "unknown";
-  }
-
-  return readMetadataString(metadata, "authorHandle") ?? "unknown";
-}
-
 function itemFilterReasons(params: {
   readonly ranked: RankedTrace | undefined;
   readonly selected: boolean;
@@ -785,10 +757,21 @@ function itemFilterReasons(params: {
 
 function compareItemTraceForSample(left: ItemTrace, right: ItemTrace): number {
   return (
+    Number(hasSelectedQualityConcern(right)) -
+      Number(hasSelectedQualityConcern(left)) ||
     Number(right.topRead) - Number(left.topRead) ||
     Number(right.selected) - Number(left.selected) ||
     (right.rankScore ?? -1) - (left.rankScore ?? -1) ||
     left.itemFingerprint.localeCompare(right.itemFingerprint)
+  );
+}
+
+function hasSelectedQualityConcern(item: ItemTrace): boolean {
+  return (
+    item.selected &&
+    (item.qualityDecision === "downrank" ||
+      !item.eligibleForSummary ||
+      item.flags.includes("weak_topic_match"))
   );
 }
 
@@ -817,6 +800,18 @@ function buildLaneFamilyHealth(
           topReadCount: sumNumbers(lanes.map((lane) => lane.topReadCount)),
           weakTopicMatchCount: sumNumbers(
             lanes.map((lane) => lane.weakTopicMatchCount),
+          ),
+          selectedWeakTopicMatchCount: sumNumbers(
+            lanes.map((lane) => lane.selectedWeakTopicMatchCount),
+          ),
+          selectedSummaryIneligibleCount: sumNumbers(
+            lanes.map((lane) => lane.selectedSummaryIneligibleCount),
+          ),
+          selectedHardBlockedCount: sumNumbers(
+            lanes.map((lane) => lane.selectedHardBlockedCount),
+          ),
+          selectedDownrankedCount: sumNumbers(
+            lanes.map((lane) => lane.selectedDownrankedCount),
           ),
           weakTopicMatchTopReadCount: sumNumbers(
             lanes.map((lane) => lane.weakTopicMatchTopReadCount),

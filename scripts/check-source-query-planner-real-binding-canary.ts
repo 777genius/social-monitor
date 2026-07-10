@@ -293,6 +293,7 @@ function withCanaryPlannerConfig(
 ): Record<string, unknown> {
   const config = asRecord(value);
   const planner = asRecord(config.sourceQueryPlanner);
+  const topic = plannerTopic(config, planner);
 
   return {
     ...config,
@@ -300,12 +301,41 @@ function withCanaryPlannerConfig(
       ...planner,
       enabled: true,
       rollout: "real_binding_canary",
+      ...(topic === undefined ? {} : { topic }),
       maxLanesPerSource: 8,
       maxItemsPerLane: 25,
       includeEnrichment: providerKey === "reddit",
       ...(providerKey === "x-twitter" ? { maxSearchQueries: 8 } : {}),
     },
   };
+}
+
+function plannerTopic(
+  config: Readonly<Record<string, unknown>>,
+  planner: Readonly<Record<string, unknown>>,
+): string | undefined {
+  const configured = nonEmptyString(planner.topic);
+  if (configured !== undefined) {
+    return configured;
+  }
+
+  const scanPassTopic = Array.isArray(config.scanPasses)
+    ? config.scanPasses.map(asRecord).find((pass) => pass.mode === "search")
+    : undefined;
+
+  return (
+    nonEmptyString(scanPassTopic?.query) ??
+    (Array.isArray(config.searchQueries)
+      ? config.searchQueries.map(nonEmptyString).find(Boolean)
+      : undefined) ??
+    nonEmptyString(config.query)
+  );
+}
+
+function nonEmptyString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : undefined;
 }
 
 function rolloutValue(

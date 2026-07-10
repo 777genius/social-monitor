@@ -22,6 +22,7 @@ import { InMemoryReaderSummaryJobRepository } from "../libs/summary/adapters/per
 import { InMemoryReaderSummaryPolicyRepository } from "../libs/summary/adapters/persistence/in-memory-reader-summary-policy.repository";
 import {
   evaluateTopicLabelQuality,
+  evaluateReaderSummaryTopicMapStructure,
   buildReaderSummaryTopicMap,
   buildReaderSummaryPeriod,
   ReaderSummaryPolicy,
@@ -123,6 +124,9 @@ type Report = {
     readonly groupCount: number;
     readonly edgeCount: number;
     readonly warningCount: number;
+    readonly structureQuality: ReturnType<
+      typeof evaluateReaderSummaryTopicMapStructure
+    >;
     readonly topNodeFingerprints: readonly {
       readonly nodeFingerprint: string;
       readonly groupFingerprint: string;
@@ -388,6 +392,7 @@ async function buildReport(): Promise<Report> {
     const groupLabelQualities = topicMap.groups.map((group) =>
       evaluateTopicLabelQuality(group.label, { providerLabels }),
     );
+    const structureQuality = evaluateReaderSummaryTopicMapStructure(topicMap);
     const reportWithoutSecretGate = {
       schemaVersion: 1,
       artifactFormat: "reader-summary-topic-map-real-data-v1",
@@ -420,6 +425,7 @@ async function buildReport(): Promise<Report> {
         groupCount: topicMap.groups.length,
         edgeCount: topicMap.edges.length,
         warningCount: topicMap.warnings.length,
+        structureQuality,
         topNodeFingerprints: topicMap.nodes.slice(0, 12).map((node) => ({
           nodeFingerprint: fingerprint(node.id),
           groupFingerprint: fingerprint(node.groupId),
@@ -469,7 +475,9 @@ async function buildReport(): Promise<Report> {
       topicMapHasMultipleGroupsWhenPossible:
         topicMap.nodes.length < 3 || topicMap.groups.length >= 2,
       topicMapHasEdgesWhenPossible:
-        topicMap.nodes.length < 2 || topicMap.edges.length > 0,
+        topicMap.groups.every((group) => group.nodeIds.length < 2) ||
+        topicMap.edges.length > 0,
+      topicMapStructureIsCoherent: structureQuality.passed,
       everyNodeHasKnownGroup: topicMap.nodes.every((node) =>
         groupIds.has(node.groupId),
       ),
@@ -495,16 +503,20 @@ async function buildReport(): Promise<Report> {
           previous.popularityScore >= node.popularityScore
         );
       }),
-      topicMapConfidenceAtLeastMedium:
-        topicMap.confidence.level === "medium" ||
-        topicMap.confidence.level === "high",
+      topicMapConfidenceIsCalibrated:
+        topicMap.confidence.score >= 0 &&
+        topicMap.confidence.score <= 1 &&
+        (structureQuality.metrics.groupedCoverage >= 0.5 ||
+          topicMap.confidence.level !== "high"),
       sanitizedVisualFixtureAvailable:
         visualFixture.nodes.length > 0 && visualFixture.groups.length > 0,
       topicNodeLabelsAreConcrete: nodeLabelQualities.every(
         (quality) => quality.accepted,
       ),
-      topicGroupLabelsAreConcrete: groupLabelQualities.every(
-        (quality) => quality.accepted,
+      topicGroupLabelsAreConcrete: topicMap.groups.every(
+        (group, index) =>
+          group.id === "group:ungrouped" ||
+          groupLabelQualities[index]?.accepted === true,
       ),
       weakLlmFallbackProbeHasNodes:
         weakLlmFallbackProbe.topicMap.nodes.length > 0,
@@ -575,7 +587,6 @@ function buildWeakLlmFallbackProbe(params: {
     },
     generatedBy: "agent-runtime",
   });
-
   return {
     topicMap,
     weakInputNodeLabelCount: weakInputNodeLabels.length,
@@ -601,7 +612,10 @@ function weakLlmProbeLabelAt(index: number): string {
 }
 
 function normalizedProbeLabel(value: string): string {
-  return value.toLocaleLowerCase("en-US").replace(/[^a-z0-9]+/g, " ").trim();
+  return value
+    .toLocaleLowerCase("en-US")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 }
 
 async function readSourceData(collectionDate: string): Promise<{

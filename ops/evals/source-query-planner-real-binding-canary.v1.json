@@ -31,7 +31,7 @@
       "maxItemsPerLane": 25,
       "maxSearchQueries": null,
       "includeEnrichment": true,
-      "scanPassCount": 32,
+      "scanPassCount": 44,
       "searchQueryCount": 0,
       "searchQueryBudgetCount": 0
     },

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "artifactFormat": "reader-summary-top-read-ranking-v1",
-  "collectionDate": "2026-07-08",
+  "collectionDate": "2026-07-09",
   "generatedBy": "npm run check:reader-summary-top-read-ranking",
   "model": {
     "liveNetwork": false,
@@ -9,25 +9,28 @@
     "rawPostTextPersistedInReport": false
   },
   "artifact": {
-    "artifactFingerprint": "dc1facbd",
-    "periodStartedAt": "2026-07-08T00:00:00.000Z",
-    "periodEndedAt": "2026-07-09T00:00:00.000Z",
+    "artifactFingerprint": "0be0fa34",
+    "periodStartedAt": "2026-07-09T00:00:00.000Z",
+    "periodEndedAt": "2026-07-10T00:00:00.000Z",
     "status": "COMPLETED"
   },
   "ranking": {
-    "topReadCount": 8,
-    "topReadWithCitationCount": 8,
-    "topReadWithinWindowCount": 8,
+    "topReadCount": 7,
+    "topReadWithCitationCount": 7,
+    "topReadWithinWindowCount": 7,
     "unknownCitationCount": 0,
-    "crossSourceTopReadCount": 2,
-    "dominantProviderTopReadCount": 3,
+    "unsupportedConfirmedProviderCount": 0,
+    "crossSourceTopReadCount": 5,
+    "dominantProviderTopReadCount": 4,
     "providerDiversityCap": 4,
     "materialSignalInversionCount": 0,
     "unexplainedSignalInversionCount": 0,
     "unexplainedSignalInversions": [],
     "materialSameProviderMissedCandidateCount": 0,
     "severeSameProviderMissedCandidateCount": 0,
-    "materialSameProviderMissedCandidates": []
+    "materialSameProviderMissedCandidates": [],
+    "unpolishedTopReadTitleCount": 0,
+    "fallbackTopReadReasonCount": 0
   },
   "qualityGates": {
     "artifactPeriodMatchesRequestedDate": true,
@@ -35,10 +38,13 @@
     "topReadsExist": true,
     "topReadsHaveCitations": true,
     "topReadCitationsResolve": true,
+    "confirmedProvidersHaveVisibleCitations": true,
     "topReadsStayInsideRequestedWindow": true,
     "materialSignalInversionsAreExplained": true,
     "dominantProviderWithinDiversityCap": true,
     "severeSameProviderMissedCandidatesAreAbsent": true,
+    "topReadTitlesAreReaderFacing": true,
+    "topReadReasonsAreReaderFacing": true,
     "noRawSecretFragments": true
   },
   "blockingPassed": true

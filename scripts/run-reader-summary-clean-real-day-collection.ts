@@ -52,7 +52,6 @@ import {
   message,
   nextDate,
   noRawSecretFragments,
-  normalizeLineEndings,
   yesterdaySocialQualityDatabaseUrl,
 } from "./lib/yesterday-social-replay-support";
 import {
@@ -159,6 +158,10 @@ const { collectionDate: targetCollectionDate } =
 const targetPublishedWindow = {
   startInclusive: `${targetCollectionDate}T00:00:00.000Z`,
   endExclusive: nextDate(targetCollectionDate),
+};
+const targetPublishedWindowConfig = {
+  ...targetPublishedWindow,
+  observedAt: new Date().toISOString(),
 };
 
 void main();
@@ -461,7 +464,7 @@ function configForTargetPublishedWindow(
     ...(providerKey === "x-twitter"
       ? { windowEnd: targetPublishedWindow.endExclusive }
       : {}),
-    targetPublishedWindow,
+    targetPublishedWindow: targetPublishedWindowConfig,
   };
 }
 

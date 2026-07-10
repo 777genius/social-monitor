@@ -38,6 +38,8 @@ import type {
   EnqueueReaderSummaryJobCommand,
   ReaderSummaryJobQueuePort,
   ReaderSummaryModelPort,
+  ReaderSummaryTopicMapPublicationAuditPort,
+  ReaderSummaryTopicMapPublicationRejection,
   ReserveSummaryJobQuotaCommand,
   ReserveSummaryJobQuotaResult,
   SummaryQuotaPort,
@@ -60,6 +62,8 @@ import { writeLiveEvidenceArtifactAtomically } from "./lib/live-evidence-artifac
 const databaseUrlEnv = "DATABASE_URL";
 const evidencePathEnv = "DURABLE_READER_SUMMARY_EVIDENCE_PATH";
 const frontendFixturePathEnv = "DURABLE_READER_SUMMARY_FRONTEND_FIXTURE_PATH";
+const rejectedTopicMapPathEnv =
+  "DURABLE_READER_SUMMARY_REJECTED_TOPIC_MAP_PATH";
 const defaultTenantId = "11111111-1111-4111-8111-111111111111";
 const defaultWorkspaceId = "22222222-2222-4222-8222-222222222222";
 const periodStartedAtEnv = "DURABLE_READER_SUMMARY_PERIOD_STARTED_AT";
@@ -69,6 +73,7 @@ const cadenceEnv = "DURABLE_READER_SUMMARY_CADENCE";
 loadDotenvIfPresent(".env");
 type DurableReaderSummaryModelMode =
   "deterministic" | "openai-responses" | "agent-runtime";
+type DurableReaderSummaryTopicLabelerMode = "deterministic" | "agent-runtime";
 type DurableReaderSummaryCadence = "daily" | "weekly" | "monthly" | "custom";
 
 type FeedInventoryRow = {
@@ -112,8 +117,11 @@ async function main(): Promise<void> {
     20,
   );
   const modelMode = readModelMode();
+  const topicLabelerMode = readTopicLabelerMode();
   const agentRuntimeClient =
-    modelMode === "agent-runtime" ? buildAgentRuntimeClient() : null;
+    modelMode === "agent-runtime" || topicLabelerMode === "agent-runtime"
+      ? buildAgentRuntimeClient()
+      : null;
 
   const feedConnection = new PrismaFeedConnection(databaseUrl);
   const summaryConnection = new PrismaSummaryConnection(databaseUrl);
@@ -135,12 +143,9 @@ async function main(): Promise<void> {
 
     await readerSummaryPolicies.save(
       ReaderSummaryPolicy.create({
-        id: deterministicUuid([
-          "reader-summary-policy",
-          tenant,
-          workspace,
-          scope.type,
-        ].join(":")),
+        id: deterministicUuid(
+          ["reader-summary-policy", tenant, workspace, scope.type].join(":"),
+        ),
         tenantId: tenant,
         workspaceId: workspace,
         scope,
@@ -212,7 +217,7 @@ async function main(): Promise<void> {
       clock,
       undefined,
       undefined,
-      buildTopicMapBuilder(modelMode, agentRuntimeClient),
+      buildTopicMapBuilder(topicLabelerMode, agentRuntimeClient),
     );
     const execution = await executeReaderSummary.execute({
       tenantId: tenant,
@@ -370,12 +375,15 @@ const buildReaderSummaryModel = (
 };
 
 const buildTopicMapBuilder = (
-  mode: DurableReaderSummaryModelMode,
+  mode: DurableReaderSummaryTopicLabelerMode,
   agentRuntimeClient: GrpcAgentRuntimeClient | null,
-): BuildReaderSummaryTopicMapUseCase =>
-  mode === "agent-runtime"
+): BuildReaderSummaryTopicMapUseCase => {
+  const publicationAudit = buildTopicMapPublicationAudit();
+
+  return mode === "agent-runtime"
     ? new BuildReaderSummaryTopicMapUseCase({
         mode: "agent-runtime",
+        publicationAudit,
         labeler: new AgentRuntimeReaderSummaryTopicLabeler(
           resolveAgentRuntimeReaderSummaryTopicLabelerOptions(
             process.env,
@@ -383,7 +391,47 @@ const buildTopicMapBuilder = (
           ),
         ),
       })
-    : new BuildReaderSummaryTopicMapUseCase();
+    : new BuildReaderSummaryTopicMapUseCase({ publicationAudit });
+};
+
+const buildTopicMapPublicationAudit =
+  (): ReaderSummaryTopicMapPublicationAuditPort | null => {
+    const path = readEnv(rejectedTopicMapPathEnv);
+
+    return path === undefined
+      ? null
+      : new FileTopicMapPublicationAudit(path);
+  };
+
+class FileTopicMapPublicationAudit implements ReaderSummaryTopicMapPublicationAuditPort {
+  constructor(private readonly path: string) {}
+
+  async recordRejectedCandidate(
+    rejection: ReaderSummaryTopicMapPublicationRejection,
+  ): Promise<void> {
+    writeLiveEvidenceArtifactAtomically(
+      this.path,
+      `${JSON.stringify(
+        {
+          schemaVersion: 1,
+          format: "reader-summary-topic-map-publication-rejection-v1",
+          generatedAt: new Date().toISOString(),
+          minimumGroupedCoverage: rejection.minimumGroupedCoverage,
+          structureQuality: rejection.structureQuality,
+          topicMap: rejection.topicMap,
+          redaction: {
+            secretsIncluded: false,
+            rawProviderPayloadIncluded: false,
+            tokenValuesIncluded: false,
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      rejectedTopicMapPathEnv,
+    );
+  }
+}
 
 const buildAgentRuntimeClient = (): GrpcAgentRuntimeClient =>
   GrpcAgentRuntimeClient.connect({
@@ -494,7 +542,7 @@ const readDateEnv = (name: string): Date | undefined => {
 };
 
 const readModelMode = (): DurableReaderSummaryModelMode => {
-  const value = readEnv("DURABLE_READER_SUMMARY_MODEL") ?? "openai-responses";
+  const value = readEnv("DURABLE_READER_SUMMARY_MODEL") ?? "agent-runtime";
   if (
     value === "deterministic" ||
     value === "openai-responses" ||
@@ -505,6 +553,18 @@ const readModelMode = (): DurableReaderSummaryModelMode => {
 
   throw new Error(
     "DURABLE_READER_SUMMARY_MODEL must be deterministic, openai-responses or agent-runtime",
+  );
+};
+
+const readTopicLabelerMode = (): DurableReaderSummaryTopicLabelerMode => {
+  const value =
+    readEnv("DURABLE_READER_SUMMARY_TOPIC_LABELER") ?? "agent-runtime";
+  if (value === "deterministic" || value === "agent-runtime") {
+    return value;
+  }
+
+  throw new Error(
+    "DURABLE_READER_SUMMARY_TOPIC_LABELER must be deterministic or agent-runtime",
   );
 };
 
@@ -541,10 +601,9 @@ const readEnv = (name: string): string | undefined => {
 };
 
 const deterministicUuid = (value: string): string => {
-  const bytes = Buffer.from(createHash("sha256").update(value).digest()).subarray(
-    0,
-    16,
-  );
+  const bytes = Buffer.from(
+    createHash("sha256").update(value).digest(),
+  ).subarray(0, 16);
   bytes[6] = (bytes[6]! & 0x0f) | 0x40;
   bytes[8] = (bytes[8]! & 0x3f) | 0x80;
   const hex = bytes.toString("hex");

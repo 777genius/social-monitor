@@ -13,7 +13,6 @@ import type {
   SourceQueryMode,
   SourceRuntimeConfig,
 } from "@social-monitor/ingestion/ports";
-import { isDefaultReaderSummaryEvidenceProvider } from "@social-monitor/summary/adapters/evidence/reader-summary-evidence-provider-filter";
 import {
   readerSummaryArtifactFromPrisma,
   type PrismaReaderSummaryArtifactRecord,
@@ -36,12 +35,20 @@ import {
 } from "./lib/yesterday-social-replay-support";
 import {
   type DashboardFeedItemRow as FeedItemRow,
-  type DashboardRatingRow as RatingRow,
   readDashboardCollectedCoverage,
   readDashboardCollectionDates,
   readDashboardFeedItems,
   readDashboardRatings,
 } from "./lib/reader-summary-quality-dashboard-published-window";
+import {
+  buildReaderSummaryClaimQuality,
+  type ReaderSummaryClaimQualityReport,
+} from "./lib/reader-summary-claim-quality";
+import {
+  isEligiblePrimaryTopReadInput,
+  primarySummaryRepresentationEnough,
+  readerFacingPrimaryCandidateCount,
+} from "./lib/reader-summary-primary-source-quality";
 import {
   asRecord,
   averageMetric,
@@ -132,15 +139,7 @@ type ReaderSummaryQualityDayReport = {
     readonly primaryTopReadCounts: Record<string, number>;
   };
   readonly topReadQuality: TopReadQualityReport;
-  readonly claimQuality: {
-    readonly claimCount: number;
-    readonly claimsWithTwoEvidenceOrRisk: number;
-    readonly missingStructuredClaimBoard: boolean;
-    readonly singleSourceConfidentClaimCount: number;
-    readonly socialOnlyConfidentClaimCount: number;
-    readonly highConfidenceWithoutCrossSourceEvidence: boolean;
-    readonly gates: Record<string, boolean>;
-  };
+  readonly claimQuality: ReaderSummaryClaimQualityReport;
   readonly collectionStrategy: {
     readonly primarySources: Record<string, PrimarySourceStrategyReport>;
     readonly plannerCanary: PlannerCanaryReport;
@@ -243,6 +242,7 @@ type PrimarySourceStrategyReport = {
   readonly queryLaneCount: number;
   readonly productLaneCount: number;
   readonly eligibleTopReadCandidateCount: number;
+  readonly readerFacingTopReadCandidateCount: number;
   readonly sourceSkewRatio: number;
   readonly topSourceFingerprints: readonly string[];
 };
@@ -534,7 +534,7 @@ async function buildDayReport(
     feedItems,
     view,
   });
-  const claimQuality = buildClaimQuality(view);
+  const claimQuality = buildReaderSummaryClaimQuality({ view, feedItems });
   const feedbackShadow = await buildFeedbackShadow(pool, {
     scope,
     collectionDate,
@@ -893,9 +893,9 @@ function weakTopReadOutrankingStrongSocialRows(
       return false;
     }
 
-    return rows.slice(index + 1).some((candidate) =>
-      isStrongSocialReadBelowWeakRead(candidate, row),
-    );
+    return rows
+      .slice(index + 1)
+      .some((candidate) => isStrongSocialReadBelowWeakRead(candidate, row));
   });
 }
 
@@ -1061,82 +1061,6 @@ function ratio(value: number, total: number): number {
   return total <= 0 ? 0 : roundMetric(value / total);
 }
 
-function buildClaimQuality(
-  view: ReaderSummaryArtifactView | undefined,
-): ReaderSummaryQualityDayReport["claimQuality"] {
-  const content = view?.content;
-  const claims = content?.claimBoard ?? [];
-  const citationProviderById = new Map(
-    (view?.citations ?? []).map((citation) => [
-      citation.citationId,
-      citation.providerKey,
-    ]),
-  );
-  let claimsWithTwoEvidenceOrRisk = 0;
-  let singleSourceConfidentClaimCount = 0;
-  let socialOnlyConfidentClaimCount = 0;
-
-  for (const claim of claims) {
-    const evidenceProviderKeys = new Set(
-      [
-        ...claim.evidence.map((item) => item.providerKey),
-        ...claim.citationIds
-          .map((citationId) => citationProviderById.get(citationId))
-          .filter(isDefined),
-      ].map((providerKey) => providerKey.trim().toLowerCase()),
-    );
-    const hasExplicitRisk = claim.risks.length > 0;
-    if (claim.evidence.length >= 2 || hasExplicitRisk) {
-      claimsWithTwoEvidenceOrRisk += 1;
-    }
-    if (
-      evidenceProviderKeys.size <= 1 &&
-      claim.confidence.level === "high" &&
-      !hasExplicitRisk
-    ) {
-      singleSourceConfidentClaimCount += 1;
-    }
-    if (
-      evidenceProviderKeys.size > 0 &&
-      [...evidenceProviderKeys].every((providerKey) =>
-        primarySources.includes(providerKey as (typeof primarySources)[number]),
-      ) &&
-      claim.confidence.level === "high" &&
-      !hasExplicitRisk
-    ) {
-      socialOnlyConfidentClaimCount += 1;
-    }
-  }
-
-  const highConfidenceWithoutCrossSourceEvidence =
-    view !== undefined &&
-    view.coverage.crossSourceClusterCount === 0 &&
-    view.confidence.level === "high";
-  const missingStructuredClaimBoard =
-    view !== undefined &&
-    view.content.topReads.length > 0 &&
-    claims.length === 0;
-  const gates = {
-    structuredClaimBoardPresent: !missingStructuredClaimBoard,
-    everyClaimHasTwoEvidenceOrExplicitRisk:
-      claims.length > 0 && claimsWithTwoEvidenceOrRisk === claims.length,
-    noSingleSourceConfidentClaims: singleSourceConfidentClaimCount === 0,
-    noSocialOnlyConfidentClaims: socialOnlyConfidentClaimCount === 0,
-    confidenceDropsWithoutCrossSourceEvidence:
-      !highConfidenceWithoutCrossSourceEvidence,
-  };
-
-  return {
-    claimCount: claims.length,
-    claimsWithTwoEvidenceOrRisk,
-    missingStructuredClaimBoard,
-    singleSourceConfidentClaimCount,
-    socialOnlyConfidentClaimCount,
-    highConfidenceWithoutCrossSourceEvidence,
-    gates,
-  };
-}
-
 async function buildCollectionStrategy(params: {
   readonly pool: Pool;
   readonly scope: Scope;
@@ -1169,8 +1093,10 @@ async function buildCollectionStrategy(params: {
     redditEligibleCandidatesEnough: reddit.eligibleTopReadCandidateCount >= 8,
     xTwitterEligibleCandidatesEnough:
       xTwitter.eligibleTopReadCandidateCount >= 8,
-    redditSummaryRepresentationEnough: summaryRepresentationEnough(reddit),
-    xTwitterSummaryRepresentationEnough: summaryRepresentationEnough(xTwitter),
+    redditSummaryRepresentationEnough:
+      primarySummaryRepresentationEnough(reddit),
+    xTwitterSummaryRepresentationEnough:
+      primarySummaryRepresentationEnough(xTwitter),
     redditSourceSkewControlled: reddit.sourceSkewRatio <= 0.75,
     xTwitterSourceSkewControlled: xTwitter.sourceSkewRatio <= 0.75,
   };
@@ -1189,12 +1115,6 @@ async function buildCollectionStrategy(params: {
     gates,
     warningSignals,
   };
-}
-
-function summaryRepresentationEnough(
-  report: PrimarySourceStrategyReport,
-): boolean {
-  return report.selectedCount >= 5 && report.topReadCount >= 2;
 }
 
 function curatedTopReadCountPasses(params: {
@@ -1409,8 +1329,11 @@ function buildPrimarySourceStrategy(
   ).size;
   const queryLaneCount = new Set(
     providerItems
-      .map((item) => sourceQueryLaneQuery(asRecord(item.providerMetadata)) ??
-        readMetadataString(item.providerMetadata, "searchQuery"))
+      .map(
+        (item) =>
+          sourceQueryLaneQuery(asRecord(item.providerMetadata)) ??
+          readMetadataString(item.providerMetadata, "searchQuery"),
+      )
       .filter(isDefined),
   ).size;
   const productLaneCount = new Set(
@@ -1428,6 +1351,10 @@ function buildPrimarySourceStrategy(
   const topReadCount =
     view?.content.topReads.filter((item) => item.providerKey === providerKey)
       .length ?? 0;
+  const readerFacingTopReadCandidateCount = readerFacingPrimaryCandidateCount({
+    providerKey,
+    selectedPosts: view?.content.selectedPosts ?? [],
+  });
 
   return {
     collectedCount: providerItems.length,
@@ -1452,8 +1379,10 @@ function buildPrimarySourceStrategy(
     sourceBindingCount,
     queryLaneCount: Math.max(queryLaneCount, sourceBindingCount),
     productLaneCount,
-    eligibleTopReadCandidateCount: providerItems.filter(isEligibleTopReadInput)
-      .length,
+    eligibleTopReadCandidateCount: providerItems.filter(
+      isEligiblePrimaryTopReadInput,
+    ).length,
+    readerFacingTopReadCandidateCount,
     sourceSkewRatio: providerSkew(sourceCounts.map((item) => item.count)),
     topSourceFingerprints: sourceCounts
       .slice(0, 5)
@@ -2032,39 +1961,6 @@ function countTechnicalLeaks(values: readonly string[]): number {
   return values.filter((value) =>
     technicalLeakPatterns.some((pattern) => pattern.test(value)),
   ).length;
-}
-
-function isEligibleTopReadInput(item: FeedItemRow): boolean {
-  if (!isDefaultReaderSummaryEvidenceProvider(item.providerKey)) {
-    return false;
-  }
-  if (
-    !/^https?:\/\//i.test(item.canonicalUrl) ||
-    item.title.trim().length < 8
-  ) {
-    return false;
-  }
-  const metadata = asRecord(item.providerMetadata);
-  const score = readMetadataNumber(metadata, "score");
-  const likes =
-    readMetadataNumber(metadata, "likes") ??
-    readMetadataNumber(asRecord(metadata.publicMetrics), "like_count");
-  const comments =
-    readMetadataNumber(metadata, "numComments") ??
-    readMetadataNumber(metadata, "replies") ??
-    readMetadataNumber(asRecord(metadata.publicMetrics), "reply_count");
-  const reposts =
-    readMetadataNumber(metadata, "retweets") ??
-    readMetadataNumber(asRecord(metadata.publicMetrics), "retweet_count");
-
-  if (item.providerKey === "reddit") {
-    return (score ?? 0) >= 20 || (comments ?? 0) >= 5;
-  }
-  if (item.providerKey === "x-twitter") {
-    return (likes ?? 0) >= 20 || (comments ?? 0) + (reposts ?? 0) >= 5;
-  }
-
-  return true;
 }
 
 function providerSourceKey(

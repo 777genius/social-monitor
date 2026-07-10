@@ -8,13 +8,17 @@ import {
   topReadPrimaryMinimumForLimit,
   topReadProviderCapForLimit,
 } from "@social-monitor/summary/domain/policies/top-read-provider-diversity-policy";
+import {
+  isFallbackReaderReason,
+  isUnpolishedReaderTitle,
+} from "@social-monitor/summary/domain/policies/reader-summary-reader-facing-text-policy";
 import { presentReaderSummaryArtifact } from "@social-monitor/summary/features/shared/reader-summary-artifact-presenter";
+import { readerSummaryProviderIdentity } from "@social-monitor/summary/domain/value-objects/reader-summary-provider-identity";
 
 import {
   collectionDateOptionOrDefault,
   defaultYesterdaySocialQualityDatabaseUrl,
   fingerprint,
-  nextDate,
   noRawSecretFragments,
   normalizeLineEndings,
   readDominantFeedScope,
@@ -57,6 +61,7 @@ type TopReadRankingReport = {
     readonly topReadWithCitationCount: number;
     readonly topReadWithinWindowCount: number;
     readonly unknownCitationCount: number;
+    readonly unsupportedConfirmedProviderCount: number;
     readonly crossSourceTopReadCount: number;
     readonly dominantProviderTopReadCount: number;
     readonly providerDiversityCap: number;
@@ -66,6 +71,8 @@ type TopReadRankingReport = {
     readonly materialSameProviderMissedCandidateCount: number;
     readonly severeSameProviderMissedCandidateCount: number;
     readonly materialSameProviderMissedCandidates: readonly MissedSameProviderCandidate[];
+    readonly unpolishedTopReadTitleCount: number;
+    readonly fallbackTopReadReasonCount: number;
   };
   readonly qualityGates: Record<string, boolean>;
   readonly blockingPassed: boolean;
@@ -202,6 +209,12 @@ async function buildReportFromDatabase(
       primaryMinimum: topReadPrimaryMinimumForLimit(configuredTopReadLimit),
     });
     const citationIds = new Set(view.citations.map((item) => item.citationId));
+    const citationProviderById = new Map(
+      view.citations.map((citation) => [
+        citation.citationId,
+        readerSummaryProviderIdentity(citation).providerKey,
+      ]),
+    );
     const windowStart = dayStart(collectionDate);
     const windowEnd = dayEnd(collectionDate);
     const unexplainedSignalInversions =
@@ -217,6 +230,20 @@ async function buildReportFromDatabase(
           .length,
       0,
     );
+    const unsupportedConfirmedProviderCount = topReads.reduce((count, item) => {
+      const visibleProviders = new Set(
+        item.citationIds
+          .map((citationId) => citationProviderById.get(citationId))
+          .filter((providerKey): providerKey is string => Boolean(providerKey)),
+      );
+
+      return (
+        count +
+        item.confirmedProviderKeys.filter(
+          (providerKey) => !visibleProviders.has(providerKey),
+        ).length
+      );
+    }, 0);
     const reportWithoutSecretGate = {
       schemaVersion: 1,
       artifactFormat: "reader-summary-top-read-ranking-v1",
@@ -242,6 +269,7 @@ async function buildReportFromDatabase(
           isPublishedInsideWindow(item, windowStart, windowEnd),
         ).length,
         unknownCitationCount,
+        unsupportedConfirmedProviderCount,
         crossSourceTopReadCount: topReads.filter(
           (item) => item.confirmedProviderKeys.length > 1,
         ).length,
@@ -257,6 +285,12 @@ async function buildReportFromDatabase(
             .length,
         materialSameProviderMissedCandidates:
           missedSameProviderCandidates.slice(0, 20),
+        unpolishedTopReadTitleCount: topReads.filter((item) =>
+          isUnpolishedReaderTitle(item.title),
+        ).length,
+        fallbackTopReadReasonCount: topReads.filter((item) =>
+          isFallbackReaderReason(item.reason),
+        ).length,
       },
       qualityGates: {
         artifactPeriodMatchesRequestedDate:
@@ -268,6 +302,8 @@ async function buildReportFromDatabase(
           (item) => item.citationIds.length > 0,
         ),
         topReadCitationsResolve: unknownCitationCount === 0,
+        confirmedProvidersHaveVisibleCitations:
+          unsupportedConfirmedProviderCount === 0,
         topReadsStayInsideRequestedWindow: topReads.every((item) =>
           isPublishedInsideWindow(item, windowStart, windowEnd),
         ),
@@ -278,6 +314,12 @@ async function buildReportFromDatabase(
         severeSameProviderMissedCandidatesAreAbsent:
           severeSameProviderMissedCandidates(missedSameProviderCandidates)
             .length === 0,
+        topReadTitlesAreReaderFacing: topReads.every(
+          (item) => !isUnpolishedReaderTitle(item.title),
+        ),
+        topReadReasonsAreReaderFacing: topReads.every(
+          (item) => !isFallbackReaderReason(item.reason),
+        ),
         noRawSecretFragments: true,
       },
       blockingPassed: false,
@@ -333,6 +375,9 @@ function validateExistingReport(): void {
     report.qualityGates.noRawSecretFragments === true &&
     report.qualityGates.materialSignalInversionsAreExplained === true &&
     report.qualityGates.severeSameProviderMissedCandidatesAreAbsent === true &&
+    report.qualityGates.topReadTitlesAreReaderFacing === true &&
+    report.qualityGates.topReadReasonsAreReaderFacing === true &&
+    report.qualityGates.confirmedProvidersHaveVisibleCitations === true &&
     noRawSecretFragments(report);
 
   if (!valid) {

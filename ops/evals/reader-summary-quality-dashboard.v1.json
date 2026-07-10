@@ -15,15 +15,15 @@
     "dirtyDayCount": 0
   },
   "aggregate": {
-    "latestCleanDate": "2026-07-08",
+    "latestCleanDate": "2026-07-09",
     "cleanBlockingPassed": true,
     "degradedCleanDates": [],
     "dirtyDates": [],
     "plannerRolloutProof": {
       "status": "ready",
-      "latestEligibleCleanDate": "2026-07-08",
+      "latestEligibleCleanDate": "2026-07-09",
       "eligibleCleanDates": [
-        "2026-07-08"
+        "2026-07-09"
       ],
       "blockedDates": [],
       "gates": {
@@ -32,13 +32,13 @@
         "dirtyDaysExcludedFromRolloutProof": true
       }
     },
-    "averageCleanCrossSourceClusterRate": 0.017,
-    "averageCleanTopReadProviderSkew": 0.375,
+    "averageCleanCrossSourceClusterRate": 0.065,
+    "averageCleanTopReadProviderSkew": 0.571,
     "averageCleanUnexplainedTopReadRate": 0,
-    "averageCleanLowConfidenceWithoutRiskRate": 0.25,
+    "averageCleanLowConfidenceWithoutRiskRate": 0,
     "totalPrimaryCollected": {
-      "reddit": 171,
-      "x-twitter": 77
+      "reddit": 234,
+      "x-twitter": 51
     },
     "totalPrimarySelected": {
       "reddit": 30,
@@ -46,12 +46,12 @@
     },
     "totalPrimaryTopReads": {
       "reddit": 2,
-      "x-twitter": 2
+      "x-twitter": 4
     }
   },
   "days": [
     {
-      "collectionDate": "2026-07-08",
+      "collectionDate": "2026-07-09",
       "collectionIntegrity": {
         "status": "clean"
       },
@@ -60,121 +60,162 @@
         "workspaceFingerprint": "88237c6c"
       },
       "feed": {
-        "collectedFeedItemCount": 536,
+        "collectedFeedItemCount": 564,
         "providerCounts": [
           {
             "providerKey": "reddit",
-            "count": 171
-          },
-          {
-            "providerKey": "hacker-news",
-            "count": 130
-          },
-          {
-            "providerKey": "github-trending-page",
-            "count": 102
-          },
-          {
-            "providerKey": "x-twitter",
-            "count": 77
+            "count": 234
           },
           {
             "providerKey": "rss",
-            "count": 56
+            "count": 129
+          },
+          {
+            "providerKey": "hacker-news",
+            "count": 79
+          },
+          {
+            "providerKey": "github-trending-page",
+            "count": 71
+          },
+          {
+            "providerKey": "x-twitter",
+            "count": 51
           }
         ],
         "interestCount": 2
       },
       "summary": {
         "artifactStatus": "present",
-        "artifactFingerprint": "dc1facbd",
-        "confidenceLevel": "low",
-        "confidenceScore": 0.55,
-        "selectedFeedItemCount": 120,
-        "storyClusterCount": 118,
-        "crossSourceClusterRate": 0.017,
-        "topReadCount": 8,
-        "lowConfidenceTopReadCount": 6,
-        "lowConfidenceTopReadRate": 0.75,
+        "artifactFingerprint": "0be0fa34",
+        "confidenceLevel": "high",
+        "confidenceScore": 0.82,
+        "selectedFeedItemCount": 118,
+        "storyClusterCount": 108,
+        "crossSourceClusterRate": 0.065,
+        "topReadCount": 7,
+        "lowConfidenceTopReadCount": 2,
+        "lowConfidenceTopReadRate": 0.286,
         "technicalLeakCount": 0,
-        "topReadProviderSkew": 0.375,
+        "topReadProviderSkew": 0.571,
         "primarySelectedCounts": {
           "reddit": 30,
           "x-twitter": 30
         },
         "primaryTopReadCounts": {
           "reddit": 2,
-          "x-twitter": 2
+          "x-twitter": 4
         }
       },
       "topReadQuality": {
-        "rowCount": 8,
+        "rowCount": 7,
         "unexplainedTopReadCount": 0,
         "unexplainedTopReadRate": 0,
-        "lowConfidenceWithoutRiskCount": 2,
-        "lowConfidenceWithoutRiskRate": 0.25,
+        "lowConfidenceWithoutRiskCount": 0,
+        "lowConfidenceWithoutRiskRate": 0,
         "weakTopReadOutrankingStrongSocialCount": 0,
         "weakTopReadOutrankingStrongSocialRate": 0,
         "selectionSignalCounts": {
-          "has_why_important": 8,
-          "has_why_now": 8,
-          "high_signal_score": 8,
+          "has_why_important": 7,
+          "has_why_now": 7,
+          "high_signal_score": 7,
           "provider_metrics": 7,
-          "low_confidence": 6,
-          "multi_citation_evidence": 4,
-          "cross_provider_confirmation": 2,
-          "high_confidence": 2
+          "cross_provider_confirmation": 5,
+          "multi_citation_evidence": 5,
+          "high_confidence": 3,
+          "low_confidence": 2,
+          "medium_confidence": 2
         },
         "riskSignalCounts": {
-          "low_confidence": 6,
-          "low_evidence": 4,
-          "single_source": 4,
-          "weak_provider_metrics": 1
+          "low_confidence": 2,
+          "low_evidence": 2,
+          "single_source": 2
         },
         "reliabilityRiskCounts": {
-          "duplicate_risk:low": 1,
-          "weak_source:medium": 1
+          "duplicate_risk:high": 1
         },
         "providerContribution": [
           {
             "providerKey": "reddit",
             "selectedCount": 30,
             "topReadCount": 2,
-            "selectedShare": 0.25,
-            "topReadShare": 0.25,
-            "topReadLift": 1
+            "selectedShare": 0.254,
+            "topReadShare": 0.286,
+            "topReadLift": 1.126
+          },
+          {
+            "providerKey": "rss",
+            "selectedCount": 28,
+            "topReadCount": 0,
+            "selectedShare": 0.237,
+            "topReadShare": 0,
+            "topReadLift": 0
           },
           {
             "providerKey": "hacker-news",
             "selectedCount": 30,
-            "topReadCount": 3,
-            "selectedShare": 0.25,
-            "topReadShare": 0.375,
-            "topReadLift": 1.5
+            "topReadCount": 1,
+            "selectedShare": 0.254,
+            "topReadShare": 0.143,
+            "topReadLift": 0.563
           },
           {
             "providerKey": "x-twitter",
             "selectedCount": 30,
-            "topReadCount": 2,
-            "selectedShare": 0.25,
-            "topReadShare": 0.25,
-            "topReadLift": 1
-          },
-          {
-            "providerKey": "rss",
-            "selectedCount": 30,
-            "topReadCount": 1,
-            "selectedShare": 0.25,
-            "topReadShare": 0.125,
-            "topReadLift": 0.5
+            "topReadCount": 4,
+            "selectedShare": 0.254,
+            "topReadShare": 0.571,
+            "topReadLift": 2.248
           }
         ],
         "rows": [
           {
             "index": 1,
-            "providerKey": "reddit",
-            "sourceFingerprint": "0280180f",
-            "signalScore": 2.472,
+            "providerKey": "x-twitter",
+            "sourceFingerprint": "7383b30e",
+            "signalScore": 2.96,
+            "confidenceLevel": "high",
+            "citationCount": 2,
+            "confirmedProviderCount": 2,
+            "matchedRuleCount": 0,
+            "providerMetricCount": 8,
+            "selectionSignals": [
+              "high_signal_score",
+              "high_confidence",
+              "provider_metrics",
+              "cross_provider_confirmation",
+              "multi_citation_evidence",
+              "has_why_now",
+              "has_why_important"
+            ],
+            "riskSignals": []
+          },
+          {
+            "index": 2,
+            "providerKey": "x-twitter",
+            "sourceFingerprint": "59202610",
+            "signalScore": 2.917,
+            "confidenceLevel": "high",
+            "citationCount": 4,
+            "confirmedProviderCount": 2,
+            "matchedRuleCount": 0,
+            "providerMetricCount": 4,
+            "selectionSignals": [
+              "high_signal_score",
+              "high_confidence",
+              "provider_metrics",
+              "cross_provider_confirmation",
+              "multi_citation_evidence",
+              "has_why_now",
+              "has_why_important"
+            ],
+            "riskSignals": []
+          },
+          {
+            "index": 3,
+            "providerKey": "x-twitter",
+            "sourceFingerprint": "9de5f384",
+            "signalScore": 2.699,
             "confidenceLevel": "high",
             "citationCount": 2,
             "confirmedProviderCount": 2,
@@ -192,99 +233,52 @@
             "riskSignals": []
           },
           {
-            "index": 2,
-            "providerKey": "rss",
-            "sourceFingerprint": "3c99206a",
-            "signalScore": 2.364,
-            "confidenceLevel": "high",
-            "citationCount": 1,
+            "index": 4,
+            "providerKey": "x-twitter",
+            "sourceFingerprint": "fa722c9b",
+            "signalScore": 2.765,
+            "confidenceLevel": "medium",
+            "citationCount": 3,
             "confirmedProviderCount": 2,
             "matchedRuleCount": 0,
-            "providerMetricCount": 0,
+            "providerMetricCount": 12,
             "selectionSignals": [
               "high_signal_score",
-              "high_confidence",
+              "medium_confidence",
+              "provider_metrics",
               "cross_provider_confirmation",
-              "has_why_now",
-              "has_why_important"
-            ],
-            "riskSignals": [
-              "low_evidence",
-              "weak_provider_metrics"
-            ]
-          },
-          {
-            "index": 3,
-            "providerKey": "x-twitter",
-            "sourceFingerprint": "a6223a3c",
-            "signalScore": 2.297,
-            "confidenceLevel": "low",
-            "citationCount": 2,
-            "confirmedProviderCount": 1,
-            "matchedRuleCount": 0,
-            "providerMetricCount": 4,
-            "selectionSignals": [
-              "high_signal_score",
-              "low_confidence",
-              "provider_metrics",
               "multi_citation_evidence",
               "has_why_now",
               "has_why_important"
             ],
-            "riskSignals": [
-              "low_confidence",
-              "single_source"
-            ]
-          },
-          {
-            "index": 4,
-            "providerKey": "hacker-news",
-            "sourceFingerprint": "71ce6427",
-            "signalScore": 2.278,
-            "confidenceLevel": "low",
-            "citationCount": 2,
-            "confirmedProviderCount": 1,
-            "matchedRuleCount": 0,
-            "providerMetricCount": 3,
-            "selectionSignals": [
-              "high_signal_score",
-              "low_confidence",
-              "provider_metrics",
-              "multi_citation_evidence",
-              "has_why_now",
-              "has_why_important"
-            ],
-            "riskSignals": [
-              "low_confidence"
-            ]
+            "riskSignals": []
           },
           {
             "index": 5,
             "providerKey": "hacker-news",
-            "sourceFingerprint": "71cfab99",
-            "signalScore": 2.258,
-            "confidenceLevel": "low",
+            "sourceFingerprint": "71e98cfc",
+            "signalScore": 2.632,
+            "confidenceLevel": "medium",
             "citationCount": 2,
-            "confirmedProviderCount": 1,
+            "confirmedProviderCount": 2,
             "matchedRuleCount": 0,
-            "providerMetricCount": 3,
+            "providerMetricCount": 4,
             "selectionSignals": [
               "high_signal_score",
-              "low_confidence",
+              "medium_confidence",
               "provider_metrics",
+              "cross_provider_confirmation",
               "multi_citation_evidence",
               "has_why_now",
               "has_why_important"
             ],
-            "riskSignals": [
-              "low_confidence"
-            ]
+            "riskSignals": []
           },
           {
             "index": 6,
             "providerKey": "reddit",
-            "sourceFingerprint": "1a30d516",
-            "signalScore": 2.271,
+            "sourceFingerprint": "1c2ed685",
+            "signalScore": 2.107,
             "confidenceLevel": "low",
             "citationCount": 1,
             "confirmedProviderCount": 1,
@@ -305,37 +299,14 @@
           },
           {
             "index": 7,
-            "providerKey": "x-twitter",
-            "sourceFingerprint": "165b1cf3",
-            "signalScore": 2.257,
+            "providerKey": "reddit",
+            "sourceFingerprint": "ba14ea6b",
+            "signalScore": 2.096,
             "confidenceLevel": "low",
             "citationCount": 1,
             "confirmedProviderCount": 1,
             "matchedRuleCount": 0,
             "providerMetricCount": 4,
-            "selectionSignals": [
-              "high_signal_score",
-              "low_confidence",
-              "provider_metrics",
-              "has_why_now",
-              "has_why_important"
-            ],
-            "riskSignals": [
-              "low_confidence",
-              "low_evidence",
-              "single_source"
-            ]
-          },
-          {
-            "index": 8,
-            "providerKey": "hacker-news",
-            "sourceFingerprint": "71c1a663",
-            "signalScore": 2.182,
-            "confidenceLevel": "low",
-            "citationCount": 1,
-            "confirmedProviderCount": 1,
-            "matchedRuleCount": 0,
-            "providerMetricCount": 3,
             "selectionSignals": [
               "high_signal_score",
               "low_confidence",
@@ -357,8 +328,8 @@
         }
       },
       "claimQuality": {
-        "claimCount": 7,
-        "claimsWithTwoEvidenceOrRisk": 7,
+        "claimCount": 5,
+        "claimsWithTwoEvidenceOrRisk": 5,
         "missingStructuredClaimBoard": false,
         "singleSourceConfidentClaimCount": 0,
         "socialOnlyConfidentClaimCount": 0,
@@ -374,43 +345,45 @@
       "collectionStrategy": {
         "primarySources": {
           "reddit": {
-            "collectedCount": 171,
+            "collectedCount": 234,
             "selectedCount": 30,
             "topReadCount": 2,
             "interestCount": 1,
             "collectedForEveryInterest": false,
             "minCollectedPerInterest": 0,
             "sourceBindingCount": 1,
-            "queryLaneCount": 25,
+            "queryLaneCount": 40,
             "productLaneCount": 2,
-            "eligibleTopReadCandidateCount": 85,
-            "sourceSkewRatio": 0.07,
+            "eligibleTopReadCandidateCount": 139,
+            "readerFacingTopReadCandidateCount": 2,
+            "sourceSkewRatio": 0.115,
             "topSourceFingerprints": [
               "d0b9e1e2",
               "7f101c0f",
               "777c388e",
-              "e67e47a8",
-              "6aabc915"
+              "89c9fd27",
+              "519690a9"
             ]
           },
           "x-twitter": {
-            "collectedCount": 77,
+            "collectedCount": 51,
             "selectedCount": 30,
-            "topReadCount": 2,
+            "topReadCount": 4,
             "interestCount": 1,
             "collectedForEveryInterest": false,
             "minCollectedPerInterest": 0,
             "sourceBindingCount": 1,
-            "queryLaneCount": 2,
+            "queryLaneCount": 4,
             "productLaneCount": 2,
-            "eligibleTopReadCandidateCount": 70,
-            "sourceSkewRatio": 0.052,
+            "eligibleTopReadCandidateCount": 50,
+            "readerFacingTopReadCandidateCount": 4,
+            "sourceSkewRatio": 0.059,
             "topSourceFingerprints": [
               "915120ce",
-              "bfb3a348",
-              "b5c00e36",
-              "62eb5caa",
-              "08c94fa6"
+              "4f4708cc",
+              "c8f5ba22",
+              "e7b55689",
+              "94f9c54a"
             ]
           }
         },
@@ -422,75 +395,90 @@
               "canaryEnabledBindingCount": 1,
               "plannedLaneCount": 4,
               "executableLaneCount": 3,
-              "executedLaneCount": 3,
-              "observedLaneFingerprintCount": 25,
+              "executedLaneCount": 4,
+              "observedLaneFingerprintCount": 40,
               "plannedBudget": 59,
               "compiledAppliedCount": 1,
               "compiledSearchQueryCount": 0,
-              "compiledScanPassCount": 35,
-              "collectedCount": 171,
+              "compiledScanPassCount": 47,
+              "collectedCount": 234,
               "selectedCount": 30,
               "topReadCount": 2,
               "lanes": [
                 {
-                  "laneFingerprint": "bc26913e",
+                  "laneFingerprint": "beefcb13",
                   "kind": "general",
                   "operation": "search",
                   "maxItems": 25,
-                  "queryFingerprint": "a05936a2",
+                  "queryFingerprint": "640d7d77",
                   "executionState": "executed"
                 },
                 {
-                  "laneFingerprint": "23a11f40",
+                  "laneFingerprint": "cd162595",
                   "kind": "search_variant",
                   "operation": "search",
                   "maxItems": 12,
-                  "queryFingerprint": "a05936a2",
+                  "queryFingerprint": "640d7d77",
                   "executionState": "executed"
                 },
                 {
-                  "laneFingerprint": "e4905569",
+                  "laneFingerprint": "d866fbfe",
                   "kind": "thread_enrichment",
                   "operation": "enrichment",
                   "maxItems": 10,
-                  "queryFingerprint": "a05936a2",
+                  "queryFingerprint": "640d7d77",
                   "executionState": "executed"
                 },
                 {
-                  "laneFingerprint": "1a0eddc6",
+                  "laneFingerprint": "c7dc44ea",
                   "kind": "fallback_short_query",
                   "operation": "search",
                   "maxItems": 12,
-                  "queryFingerprint": "7c4237aa",
-                  "executionState": "not_seen_in_feed"
+                  "queryFingerprint": "8fc6fdce",
+                  "executionState": "executed"
                 }
               ],
               "executedLaneFingerprints": [
-                "8de7e4c0",
-                "68e740d4",
-                "2e3a1e9c",
-                "a3623de7",
-                "207cdbae",
-                "2bf69dcd",
-                "32f0aeb1",
-                "be192186",
-                "a6c91be6",
-                "17880120",
-                "1d5f8628",
-                "999b4691",
+                "479e81b7",
                 "3a3b24bf",
                 "3b7db421",
-                "037b0a48",
+                "a6c91be6",
+                "bc78dde3",
+                "82e42660",
+                "32f0aeb1",
                 "5244c185",
-                "15a56b34",
+                "207cdbae",
+                "a3623de7",
+                "17880120",
+                "0919ea15",
+                "b89bccf4",
+                "999b2edc",
+                "2bf69dcd",
                 "6a27cbfb",
-                "a9cb79c8",
-                "fe26e0e0",
-                "fdec066f",
-                "42e4fbdd",
-                "a05936a2",
+                "1d5f8628",
                 "1bec66ee",
-                "b89bccf4"
+                "615a5ddb",
+                "68e740d4",
+                "a129e892",
+                "a9cb79c8",
+                "ae3d7a24",
+                "15a56b34",
+                "be192186",
+                "2e3a06e7",
+                "15a5537f",
+                "640d7d77",
+                "037b0a48",
+                "5244a9d0",
+                "b89bb53f",
+                "8de7cd0b",
+                "a05936a2",
+                "3b7d9c6c",
+                "a6c90431",
+                "2bf68618",
+                "be1909d1",
+                "1787e96b",
+                "2e3a1e9c",
+                "8fc6fdce"
               ],
               "warnings": []
             },
@@ -500,35 +488,37 @@
               "plannedLaneCount": 2,
               "executableLaneCount": 2,
               "executedLaneCount": 2,
-              "observedLaneFingerprintCount": 2,
+              "observedLaneFingerprintCount": 4,
               "plannedBudget": 37,
               "compiledAppliedCount": 1,
               "compiledSearchQueryCount": 2,
               "compiledScanPassCount": 0,
-              "collectedCount": 77,
+              "collectedCount": 51,
               "selectedCount": 30,
-              "topReadCount": 2,
+              "topReadCount": 4,
               "lanes": [
                 {
-                  "laneFingerprint": "79ba900e",
+                  "laneFingerprint": "bb3de1c2",
                   "kind": "general",
                   "operation": "search",
                   "maxItems": 25,
-                  "queryFingerprint": "be0b9f32",
+                  "queryFingerprint": "9651fee6",
                   "executionState": "executed"
                 },
                 {
-                  "laneFingerprint": "09580f31",
+                  "laneFingerprint": "dfe4bd2a",
                   "kind": "fallback_short_query",
                   "operation": "search",
                   "maxItems": 12,
-                  "queryFingerprint": "d3985c0d",
+                  "queryFingerprint": "8fc6fdce",
                   "executionState": "executed"
                 }
               ],
               "executedLaneFingerprints": [
-                "be0b9f32",
-                "d3985c0d"
+                "8fc6fdce",
+                "9651fee6",
+                "d3985c0d",
+                "be0b9f32"
               ],
               "warnings": [
                 "x-twitter runtimeReadiness=deferred; execution policy may deny provider reads."
@@ -615,13 +605,13 @@
       "warningSignals": {
         "dirtyCollection": false,
         "lowConfidenceTopReadsPresent": true,
-        "topReadProviderSkewAboveHalf": false,
+        "topReadProviderSkewAboveHalf": true,
         "redditMissingFromTopReads": false,
         "xTwitterMissingFromTopReads": false,
         "queryLaneWeaknessDetected": false,
         "plannerCanaryExecutionGap": false,
         "unexplainedTopReadsPresent": false,
-        "lowConfidenceTopReadsWithoutRisk": true,
+        "lowConfidenceTopReadsWithoutRisk": false,
         "feedbackInsufficientForLearning": true
       },
       "blockingPassed": true
