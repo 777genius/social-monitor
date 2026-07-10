@@ -71,6 +71,7 @@ Keep this test green before claiming frontend architecture work is done.
 
 - If the live local frontend is running and you change ordinary Dart UI files, run `npm run frontend:hot-reload` before asking the user to refresh.
 - Use `npm run frontend:hot-restart` for changes that must re-run app startup, such as `main`, app composition, web assets or pubspec changes.
+- On Flutter web, never call Marionette MCP `hot_restart` directly. DWDS can dispose the VM service before Flutter completes the restart and terminate the live dev runtime. Use `npm run frontend:hot-restart`, then reconnect Marionette to the exact new VM service URI if the URI changes.
 - For multi-agent work, keep `npm run frontend:watch-hot-reload` running next to `npm run frontend:run-connected-marionette`; it watches frontend Dart/web/package files and sends hot reload by default, escalating to restart for startup/web/package changes.
 - Do not start another frontend server on a neighboring port just to see changes. Reuse the existing `127.0.0.1:53217` dev runtime unless the user explicitly asks otherwise.
 

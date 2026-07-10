@@ -11,6 +11,7 @@ Read it before changing frontend code, then read the nearest feature or package 
 - `../../.claude/rules/flutter-frontend-quality.md` - Flutter frontend quality, responsive and package-boundary rules.
 - `../../.claude/rules/flutter-clean-disk-deep-lessons.md` - failure modes from `clean_disk`.
 - `docs/README.md` - frontend UX, design-system, state, API, testing, observability and privacy playbooks.
+- `docs/frontend-live-development.md` - canonical Flutter web runtime and Marionette/DWDS lifecycle workflow.
 
 ## Feature Architecture
 
@@ -60,6 +61,7 @@ Run the smallest checks that prove the frontend change:
 
 - When the user is viewing `http://127.0.0.1:53217`, apply ordinary Dart UI changes with `npm run frontend:hot-reload`.
 - Use `npm run frontend:hot-restart` only when app startup, `initState`, web assets or pubspec changes require a restart.
+- Never call Marionette MCP `hot_restart` directly on Flutter web. Use the Flutter-tool command `npm run frontend:hot-restart`; reconnect Marionette to the newly printed VM service URI when DWDS changes it.
 - During multi-agent frontend work, prefer leaving `npm run frontend:watch-hot-reload` running so Dart changes trigger safe Flutter hot reload and startup/web/package changes trigger restart automatically.
 - Do not launch duplicate frontend instances on nearby ports unless the user explicitly asks for a separate instance.
 
