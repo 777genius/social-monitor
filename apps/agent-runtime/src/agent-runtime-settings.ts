@@ -10,7 +10,8 @@ export type AgentRuntimeSettings = {
     readonly localEncryptionKey?: string;
     readonly codexAuthJsonPath?: string;
     readonly claudeTokenEnv?: string;
-    readonly model?: string;
+    readonly model: string;
+    readonly reasoningEffort: "xhigh";
   };
 };
 
@@ -22,7 +23,7 @@ export const resolveAgentRuntimeSettings = (
   cli: {
     command: nonEmptyOrFallback(
       env.AGENT_RUNTIME_CLI_PATH,
-      "node_modules/.bin/subscription-runtime-run-agent-task",
+      "apps/agent-runtime/bin/run-codex-subscription-runtime-agent-task.mjs",
     ),
     stateRoot: nonEmptyOptional(env.AGENT_RUNTIME_STATE_ROOT),
     ephemeral: parseBoolean(env.AGENT_RUNTIME_EPHEMERAL),
@@ -34,9 +35,21 @@ export const resolveAgentRuntimeSettings = (
       env.AGENT_RUNTIME_CLAUDE_TOKEN_ENV,
       "CLAUDE_CODE_OAUTH_TOKEN",
     ),
-    model: nonEmptyOptional(env.AGENT_RUNTIME_MODEL),
+    model: nonEmptyOrFallback(env.AGENT_RUNTIME_MODEL, "gpt-5.5"),
+    reasoningEffort: resolveReasoningEffort(env.AGENT_RUNTIME_REASONING_EFFORT),
   },
 });
+
+const resolveReasoningEffort = (value: string | undefined): "xhigh" => {
+  const resolved = nonEmptyOrFallback(value, "xhigh");
+  if (resolved !== "xhigh") {
+    throw new Error(
+      "AGENT_RUNTIME_REASONING_EFFORT must be xhigh for production summaries",
+    );
+  }
+
+  return resolved;
+};
 
 const nonEmptyOrFallback = (
   value: string | undefined,

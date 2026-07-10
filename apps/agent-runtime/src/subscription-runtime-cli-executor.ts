@@ -21,6 +21,7 @@ export type SubscriptionRuntimeCliExecutorOptions = {
   readonly codexAuthJsonPath?: string;
   readonly claudeTokenEnv?: string;
   readonly model?: string;
+  readonly reasoningEffort?: "xhigh";
 };
 
 export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort {
@@ -181,17 +182,16 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
   }
 
   private executionEnvPatch(): Readonly<Record<string, string>> {
-    if (
-      this.options.ephemeral ||
-      this.options.localEncryptionKey === undefined
-    ) {
-      return {};
+    const patch: Record<string, string> = {};
+    if (!this.options.ephemeral && this.options.localEncryptionKey !== undefined) {
+      patch.SUBSCRIPTION_RUNTIME_LOCAL_ENCRYPTION_KEY =
+        this.options.localEncryptionKey;
+    }
+    if (this.options.reasoningEffort !== undefined) {
+      patch.AGENT_RUNTIME_REASONING_EFFORT = this.options.reasoningEffort;
     }
 
-    return {
-      SUBSCRIPTION_RUNTIME_LOCAL_ENCRYPTION_KEY:
-        this.options.localEncryptionKey,
-    };
+    return patch;
   }
 }
 

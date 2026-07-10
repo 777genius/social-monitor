@@ -38,4 +38,21 @@ describe("resolveAgentRuntimeSettings", () => {
 
     expect(settings.cli.localEncryptionKey).toBe("env-key");
   });
+
+  it("defaults production Codex execution to gpt-5.5 with xhigh reasoning", () => {
+    const settings = resolveAgentRuntimeSettings({});
+
+    expect(settings.cli).toMatchObject({
+      command:
+        "apps/agent-runtime/bin/run-codex-subscription-runtime-agent-task.mjs",
+      model: "gpt-5.5",
+      reasoningEffort: "xhigh",
+    });
+  });
+
+  it("rejects a weaker reasoning effort", () => {
+    expect(() =>
+      resolveAgentRuntimeSettings({ AGENT_RUNTIME_REASONING_EFFORT: "high" }),
+    ).toThrow("AGENT_RUNTIME_REASONING_EFFORT must be xhigh");
+  });
 });

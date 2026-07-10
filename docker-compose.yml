@@ -22,13 +22,19 @@ x-app-common: &app-common
     SUMMARY_PERSISTENCE: prisma
     SUMMARY_JOB_QUEUE_MODE: rabbitmq
     SUMMARY_MODEL_PROVIDER: ${SUMMARY_MODEL_PROVIDER:-deterministic}
-    READER_SUMMARY_MODEL_PROVIDER: ${READER_SUMMARY_MODEL_PROVIDER:-deterministic}
+    READER_SUMMARY_MODEL_PROVIDER: ${READER_SUMMARY_MODEL_PROVIDER:-agent-runtime}
+    READER_SUMMARY_TOPIC_LABELER: ${READER_SUMMARY_TOPIC_LABELER:-agent-runtime}
     AGENT_RUNTIME_GRPC_ADDRESS: ${AGENT_RUNTIME_GRPC_ADDRESS:-agent-runtime:50052}
     AGENT_RUNTIME_SERVICE_TOKEN: ${AGENT_RUNTIME_SERVICE_TOKEN:-}
     AGENT_RUNTIME_PROVIDER: ${AGENT_RUNTIME_PROVIDER:-codex}
+    AGENT_RUNTIME_READER_SUMMARY_MODEL: ${AGENT_RUNTIME_READER_SUMMARY_MODEL:-gpt-5.5}
+    AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT: ${AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT:-xhigh}
     AGENT_RUNTIME_TIMEOUT_MS: ${AGENT_RUNTIME_TIMEOUT_MS:-120000}
     AGENT_RUNTIME_SUMMARY_TIMEOUT_MS: ${AGENT_RUNTIME_SUMMARY_TIMEOUT_MS:-120000}
-    AGENT_RUNTIME_READER_SUMMARY_TIMEOUT_MS: ${AGENT_RUNTIME_READER_SUMMARY_TIMEOUT_MS:-180000}
+    AGENT_RUNTIME_READER_SUMMARY_TIMEOUT_MS: ${AGENT_RUNTIME_READER_SUMMARY_TIMEOUT_MS:-600000}
+    AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_TIMEOUT_MS: ${AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_TIMEOUT_MS:-600000}
+    AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_MAX_CANDIDATES: ${AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_MAX_CANDIDATES:-30}
+    AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_PROMPT_VERSION: ${AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_PROMPT_VERSION:-reader_summary.topic_map.agent_runtime.v4}
     OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     OPENAI_SUMMARY_MODEL: ${OPENAI_SUMMARY_MODEL:-}
     OPENAI_SUMMARY_PROMPT_VERSION: ${OPENAI_SUMMARY_PROMPT_VERSION:-}
@@ -145,7 +151,11 @@ services:
     volumes:
       - kafka-data:/tmp/kraft-combined-logs
     healthcheck:
-      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"]
+      test:
+        [
+          "CMD-SHELL",
+          "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1",
+        ]
       interval: 10s
       timeout: 10s
       retries: 30
@@ -166,7 +176,7 @@ services:
       [
         "sh",
         "-c",
-        "attempt=1; until npm run migrate:deploy; do if [ \"$$attempt\" -ge 30 ]; then exit 1; fi; attempt=$$((attempt + 1)); sleep 2; done; npm run seed",
+        'attempt=1; until npm run migrate:deploy; do if [ "$$attempt" -ge 30 ]; then exit 1; fi; attempt=$$((attempt + 1)); sleep 2; done; npm run seed',
       ]
     depends_on:
       postgres:
@@ -239,10 +249,11 @@ services:
       SOCIAL_MONITOR_RUNTIME_PROFILE: ${SOCIAL_MONITOR_RUNTIME_PROFILE:-beta}
       AGENT_RUNTIME_GRPC_BIND: 0.0.0.0:50052
       AGENT_RUNTIME_SERVICE_TOKEN: ${AGENT_RUNTIME_SERVICE_TOKEN:-}
-      AGENT_RUNTIME_CLI_PATH: ${AGENT_RUNTIME_CLI_PATH:-node_modules/.bin/subscription-runtime-run-agent-task}
+      AGENT_RUNTIME_CLI_PATH: ${AGENT_RUNTIME_CLI_PATH:-apps/agent-runtime/bin/run-codex-subscription-runtime-agent-task.mjs}
       AGENT_RUNTIME_STATE_ROOT: /var/lib/subscription-runtime
       AGENT_RUNTIME_PROVIDER: ${AGENT_RUNTIME_PROVIDER:-codex}
-      AGENT_RUNTIME_MODEL: ${AGENT_RUNTIME_MODEL:-}
+      AGENT_RUNTIME_MODEL: ${AGENT_RUNTIME_MODEL:-gpt-5.5}
+      AGENT_RUNTIME_REASONING_EFFORT: ${AGENT_RUNTIME_REASONING_EFFORT:-xhigh}
       AGENT_RUNTIME_CODEX_AUTH_JSON_PATH: ${AGENT_RUNTIME_CODEX_AUTH_JSON_PATH:-}
       AGENT_RUNTIME_CLAUDE_TOKEN_ENV: ${AGENT_RUNTIME_CLAUDE_TOKEN_ENV:-CLAUDE_CODE_OAUTH_TOKEN}
       DATABASE_URL: postgresql://social_monitor:social_monitor_local_password@postgres:5432/social_monitor

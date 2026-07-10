@@ -18,15 +18,16 @@ This service only executes a generic agent task and returns structured output.
 
 ## Runtime Bridge
 
-The default executor calls:
+The production executor calls the checked-in subscription-runtime bridge:
 
 ```sh
-node_modules/.bin/subscription-runtime-run-agent-task --provider codex --input request.json --format result-json
+apps/agent-runtime/bin/run-codex-subscription-runtime-agent-task.mjs --provider codex --input request.json --format result-json
 ```
 
-The CLI path defaults to
-`node_modules/.bin/subscription-runtime-run-agent-task` and can be overridden
-through `AGENT_RUNTIME_CLI_PATH`. Docker stores runtime session state in
+The bridge delegates lifecycle, durable sessions and task execution to
+`@vioxen/subscription-runtime`, while enforcing `gpt-5.5` and `xhigh` reasoning
+before constructing the Codex worker. The CLI path can be overridden through
+`AGENT_RUNTIME_CLI_PATH`. Docker stores runtime session state in
 `/var/lib/subscription-runtime` via `AGENT_RUNTIME_STATE_ROOT`.
 
 Important env:
@@ -38,6 +39,8 @@ Important env:
 - `AGENT_RUNTIME_LOCAL_ENCRYPTION_KEY_FILE`, local file containing the base64
   32-byte key used to decrypt durable subscription-runtime sessions
 - `AGENT_RUNTIME_PROVIDER`, `codex` or `claude`, selected by Social Monitor
+- `AGENT_RUNTIME_MODEL`, required production model (`gpt-5.5`)
+- `AGENT_RUNTIME_REASONING_EFFORT`, required production effort (`xhigh`)
 - `AGENT_RUNTIME_TIMEOUT_MS`, generic Social Monitor task timeout fallback
 - `AGENT_RUNTIME_CODEX_AUTH_JSON_PATH`
 - `AGENT_RUNTIME_CLAUDE_TOKEN_ENV`, default `CLAUDE_CODE_OAUTH_TOKEN`
