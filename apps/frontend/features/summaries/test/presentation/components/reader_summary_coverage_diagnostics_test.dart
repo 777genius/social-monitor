@@ -47,13 +47,16 @@ void main() {
     await tester.pumpWidget(_TestApp(summary: summary));
     await tester.pumpAndSettle();
 
-    expect(find.text('Coverage by source'), findsOneWidget);
-    expect(find.text('Coverage signals'), findsNothing);
-    expect(find.text('7 low rel.'), findsNothing);
-    expect(find.text('3 muted'), findsNothing);
-    expect(find.text('2 rated'), findsNothing);
-    expect(find.text('AI agents'), findsNothing);
-    expect(find.text('claude code OR codex'), findsNothing);
+    expect(find.text('Coverage by source', skipOffstage: false), findsNothing);
+    expect(find.text('Coverage signals', skipOffstage: false), findsNothing);
+    expect(find.text('7 low rel.', skipOffstage: false), findsNothing);
+    expect(find.text('3 muted', skipOffstage: false), findsNothing);
+    expect(find.text('2 rated', skipOffstage: false), findsNothing);
+    expect(find.text('AI agents', skipOffstage: false), findsNothing);
+    expect(
+      find.text('claude code OR codex', skipOffstage: false),
+      findsNothing,
+    );
   });
 }
 

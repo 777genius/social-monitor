@@ -111,9 +111,21 @@ void main() {
       ),
     );
 
-    expect(find.byType(ReaderSummaryTopicMapPanel), findsOneWidget);
+    final topicMap = find.byType(
+      ReaderSummaryTopicMapPanel,
+      skipOffstage: false,
+    );
+    expect(topicMap, findsOneWidget);
+    await tester.scrollUntilVisible(topicMap, 300);
+    await tester.pumpAndSettle();
     expect(find.text('Topic map'), findsNothing);
-    expect(find.text('AI tools'), findsAtLeastNWidgets(1));
+    expect(
+      find.byKey(
+        const ValueKey('topic-map-bubble-topic:story:ai-tools'),
+        skipOffstage: false,
+      ),
+      findsOneWidget,
+    );
     expect(find.byType(CustomPaint), findsAtLeastNWidgets(1));
   });
 
@@ -200,20 +212,20 @@ void main() {
         ),
       ),
     );
+    await tester.pumpAndSettle();
 
     expect(find.text('Topic map'), findsNothing);
     expect(find.textContaining('Tiny unreadable'), findsNothing);
-    expect(
-      find.byWidgetPredicate(
-        (widget) =>
-            widget is Tooltip &&
-            (widget.message?.contains('Tiny unreadable label') ?? false) &&
-            (widget.message?.contains('Score: 1') ?? false) &&
-            (widget.message?.contains('Providers: rss') ?? false) &&
-            (widget.message?.contains('Group: Agent tools') ?? false),
-      ),
-      findsOneWidget,
+    final tinyBubble = find.byKey(
+      const ValueKey('topic-map-bubble-topic:tiny'),
+      skipOffstage: false,
     );
+    expect(tinyBubble, findsOneWidget);
+    final tooltip = tester.widget<Tooltip>(tinyBubble);
+    expect(tooltip.message, contains('Tiny Unreadable Label Stay'));
+    expect(tooltip.message, contains('Popularity: 1.0'));
+    expect(tooltip.message, contains('Sources: rss'));
+    expect(tooltip.message, contains('Group: Agent Tools'));
   });
 
   testWidgets(

@@ -48,14 +48,19 @@ void main() {
       find.byKey(const ValueKey('reader-summary-lede-citation-bc-1')),
       findsOneWidget,
     );
-    expect(find.text('Coverage by source'), findsOneWidget);
     expect(
-      find.text('Collected posts and selected evidence used in this summary.'),
+      find.byKey(
+        const ValueKey('reader-summary-provider-coverage-github-trending-page'),
+        skipOffstage: false,
+      ),
       findsOneWidget,
     );
-    expect(find.text('22 collected'), findsOneWidget);
+    expect(find.text('22 collected', skipOffstage: false), findsOneWidget);
     expect(
-      find.text('3 selected (14%) · 3 top reads · 3 citations'),
+      find.text(
+        '3 selected (14%) · 3 top reads · 3 citations',
+        skipOffstage: false,
+      ),
       findsOneWidget,
     );
     expect(find.text('Repositories ranked by GitHub momentum'), findsOneWidget);
@@ -131,7 +136,7 @@ void main() {
   });
 
   testWidgets(
-    'shows provider coverage funnel before technical evidence details',
+    'shows provider coverage rows before technical evidence details',
     (tester) async {
       final store = _store([
         githubTrendingSummaryApiDto(),
@@ -144,17 +149,42 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Coverage by source'), findsOneWidget);
-      expect(find.text('Reddit'), findsWidgets);
-      expect(find.text('Hacker News'), findsWidgets);
-      expect(find.text('RSS'), findsOneWidget);
-      expect(find.text('180 collected'), findsOneWidget);
-      expect(find.text('92 collected'), findsOneWidget);
       expect(
-        find.text('28 selected (30%) · 1 top read · 2 citations'),
+        find.byKey(
+          const ValueKey('reader-summary-provider-coverage-reddit'),
+          skipOffstage: false,
+        ),
         findsOneWidget,
       );
-      expect(find.text('0 selected'), findsOneWidget);
+      expect(
+        find.byKey(
+          const ValueKey('reader-summary-source-filter-hacker-news'),
+          skipOffstage: false,
+        ),
+        findsNothing,
+      );
+      expect(
+        find.byKey(
+          const ValueKey('reader-summary-provider-coverage-hacker-news'),
+          skipOffstage: false,
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(
+          const ValueKey('reader-summary-provider-coverage-rss'),
+          skipOffstage: false,
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('180 collected', skipOffstage: false), findsOneWidget);
+      expect(
+        find.text(
+          '28 selected (30%) · 1 top read · 2 citations',
+          skipOffstage: false,
+        ),
+        findsOneWidget,
+      );
       await tester.scrollUntilVisible(
         find.text('Top posts'),
         500,

@@ -10,6 +10,7 @@ import 'package:social_monitor_summaries/src/domain/entities/reader_summary_topi
 import 'package:social_monitor_summaries/src/domain/value_objects/reader_action_target.dart';
 import 'package:social_monitor_summaries/src/infrastructure/api/summary_api_dto.dart';
 import 'package:social_monitor_summaries/src/infrastructure/mappers/summary_mapper.dart';
+import 'package:social_monitor_summaries/src/presentation/components/reader_summary_brief_surface.dart';
 import 'package:social_monitor_summaries/src/presentation/components/reader_summary_view.dart';
 
 import '../../support/summaries_test_fixtures.dart';
@@ -23,9 +24,17 @@ void main() {
     await tester.pumpWidget(_TestApp(summary: summary, showTopicMap: true));
     await tester.pumpAndSettle();
 
+    final topicMap = find.byType(
+      ReaderSummaryTopicMapPanel,
+      skipOffstage: false,
+    );
+    expect(topicMap, findsOneWidget);
     expect(find.text('Topic map'), findsNothing);
     expect(
-      find.bySemanticsLabel(RegExp(r'Topic map: .*AI tools')),
+      find.byKey(
+        const ValueKey('topic-map-bubble-topic:story:ai-tools'),
+        skipOffstage: false,
+      ),
       findsOneWidget,
     );
   });
