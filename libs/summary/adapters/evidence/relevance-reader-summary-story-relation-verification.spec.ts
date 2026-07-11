@@ -80,6 +80,48 @@ describe("RelevanceReaderSummaryEvidenceSelector story verification", () => {
       approvedCount: 0,
     });
   });
+
+  it("reserves a verified cross-provider partner before provider quotas", async () => {
+    const hn = ranked("hn", "hacker-news", 2.2);
+    const unrelatedRss = {
+      ...ranked("rss-unrelated", "rss", 2.1),
+      title: "Database maintenance release notes",
+      bodyPreview: "A routine database patch changes backup defaults.",
+    };
+    const relatedRss = ranked("rss-related", "rss", 1.9);
+    const selector = new RelevanceReaderSummaryEvidenceSelector(
+      ranker([hn, unrelatedRss, relatedRss]),
+      emptyFeedRepository(),
+      { now: () => now },
+      new CapturingMetrics(),
+      {
+        verify: async (input) =>
+          input.candidates.map((candidate) => ({
+            leftFeedItemId: candidate.leftFeedItemId,
+            rightFeedItemId: candidate.rightFeedItemId,
+            sameStory:
+              candidate.leftFeedItemId === "rss-related" ||
+              candidate.rightFeedItemId === "rss-related",
+            confidenceScore: 0.97,
+          })),
+      },
+    );
+
+    const selection = await selector.select({
+      tenantId: tenantId("tenant-story-reserve"),
+      workspaceId: workspaceId("workspace-story-reserve"),
+      scope: { type: "workspace" },
+      period,
+      maxItems: 2,
+    });
+
+    expect(selection.selectedEvidence.map((item) => item.feedItemId)).toEqual([
+      "hn",
+      "rss-related",
+    ]);
+    expect(selection.clusters).toHaveLength(1);
+    expect(selection.clusters[0]?.providerKeys).toEqual(["hacker-news", "rss"]);
+  });
 });
 
 const ranker = (items: readonly RankedFeedItemView[]): RankFeedItemsUseCase =>
