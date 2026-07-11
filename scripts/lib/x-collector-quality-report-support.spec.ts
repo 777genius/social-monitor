@@ -8,8 +8,22 @@ import {
   buildXCollectorLedgerReport,
 } from "./x-collector-quality-report-support";
 
+jest.mock("node:child_process", () => {
+  const actual = jest.requireActual("node:child_process") as Record<
+    string,
+    unknown
+  > & {
+    readonly execFileSync: typeof execFileSync;
+  };
+
+  return {
+    ...actual,
+    execFileSync: jest.fn(actual.execFileSync),
+  };
+});
+
 describe("x collector quality report support", () => {
-  it("counts historical backfill runs by target search window", () => {
+  it("reads the ledger in read-only mode and counts target search windows", () => {
     const directory = mkdtempSync(join(tmpdir(), "x-collector-quality-"));
     const dbPath = join(directory, "scweet_state.db");
 
@@ -143,6 +157,7 @@ describe("x collector quality report support", () => {
         accepted: 99,
       });
 
+      jest.mocked(execFileSync).mockClear();
       const ledger = buildXCollectorLedgerReport({
         ledgerPath: dbPath,
         collectionDate: "2026-07-07",
@@ -165,6 +180,14 @@ describe("x collector quality report support", () => {
       expect(accountPool.accounts[0]?.fetchedCount).toBe(31);
       expect(accountPool.accounts[0]?.dailyRequestsLimit).toBeNull();
       expect(accountPool.accounts[0]?.dailyTweetsLimit).toBeNull();
+      expect(jest.mocked(execFileSync)).toHaveBeenCalled();
+      for (const [command, args] of jest.mocked(execFileSync).mock.calls) {
+        expect(command).toBe("sqlite3");
+        expect(Array.isArray(args) ? args.slice(0, 2) : args).toEqual([
+          "-readonly",
+          "-json",
+        ]);
+      }
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
