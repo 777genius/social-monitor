@@ -11,6 +11,7 @@ import {
   isWeakTopicId,
   meaningfulTopicLabelTokens,
 } from "./reader-summary-topic-map-label-quality";
+import { topicIdIsTooBroadForLabel } from "./reader-summary-topic-label-selection";
 import {
   compactId,
   compactLabel,
@@ -150,56 +151,6 @@ const readerFacingTopicEvidenceText = (
     ?.replace(/^x\s+post\s+by\s+@[^:]+:\s*/iu, "")
     .replace(/^(?:ask|show)\s+hn:\s*/iu, "");
 
-export const selectReaderSummaryTopicLabel = (params: {
-  readonly proposedLabel?: string;
-  readonly labelCandidates: readonly ReaderSummaryTopicLabelCandidateOption[];
-  readonly evidenceTexts: readonly string[];
-  readonly providerLabels: readonly string[];
-}): string => {
-  const bestCandidate = params.labelCandidates[0];
-  const proposed = compactOptional(params.proposedLabel);
-  if (proposed === undefined) {
-    return bestCandidate?.label ?? "Other topic";
-  }
-
-  const quality = evaluateTopicLabelQuality(proposed, {
-    evidenceTexts: params.evidenceTexts,
-    providerLabels: params.providerLabels,
-    candidateLabels: params.labelCandidates.map((candidate) => candidate.label),
-  });
-  if (!quality.accepted) {
-    return bestCandidate?.label ?? "Other topic";
-  }
-  if (bestCandidate === undefined) {
-    return quality.label;
-  }
-  const bestQuality = evaluateTopicLabelQuality(bestCandidate.label, {
-    evidenceTexts: params.evidenceTexts,
-    providerLabels: params.providerLabels,
-    candidateLabels: params.labelCandidates.map((candidate) => candidate.label),
-  });
-  const broadSingletonToken = quality.meaningfulTokens[0];
-  const broadSingleton =
-    quality.meaningfulTokens.length <= 1 &&
-    bestQuality.meaningfulTokens.length >= 2 &&
-    broadSingletonToken !== undefined &&
-    broadTopicFamilyTokens.has(broadSingletonToken);
-
-  const concreteSingleton =
-    quality.meaningfulTokens.length === 1 &&
-    broadSingletonToken !== undefined &&
-    concreteSingletonTopicTokens.has(broadSingletonToken);
-
-  if (
-    !broadSingleton &&
-    (quality.meaningfulTokens.length >= 2 || concreteSingleton)
-  ) {
-    return quality.label;
-  }
-
-  return bestCandidate.label;
-};
-
 export const isGroundedTopicGroupLabel = (params: {
   readonly groupLabel: string;
   readonly evidenceTexts: readonly string[];
@@ -209,43 +160,6 @@ export const isGroundedTopicGroupLabel = (params: {
     evidenceTexts: params.evidenceTexts,
     providerLabels: params.providerLabels,
   }).accepted;
-
-export const topicIdIsTooBroadForLabel = (params: {
-  readonly topicId: string;
-  readonly selectedLabel: string;
-}): boolean => {
-  const [, rawValue = params.topicId] = params.topicId.split(":");
-  const topicTokens = meaningfulTopicLabelTokens(humanizeSlug(rawValue));
-  const labelTokens = meaningfulTopicLabelTokens(params.selectedLabel);
-
-  return (
-    topicTokens.length <= 1 &&
-    labelTokens.length >= 3 &&
-    topicTokens[0] !== undefined &&
-    broadTopicFamilyTokens.has(topicTokens[0])
-  );
-};
-
-const broadTopicFamilyTokens = new Set([
-  "anthropic",
-  "claude",
-  "github",
-  "google",
-  "meta",
-  "microsoft",
-  "openai",
-]);
-
-const concreteSingletonTopicTokens = new Set([
-  "chatgpt",
-  "codex",
-  "cursor",
-  "fable",
-  "gemini",
-  "grok",
-  "mcp",
-  "palantir",
-]);
 
 export const groundReaderSummaryTopicNodeLabel = (params: {
   readonly nodeLabel?: ReaderSummaryTopicNodeLabel;

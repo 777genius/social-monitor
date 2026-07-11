@@ -51,8 +51,9 @@ import {
   extractReaderSummaryTopicLabelCandidates,
   groundReaderSummaryTopicNodeLabel,
   readerSummaryTopicLabelEvidenceTexts,
-  selectReaderSummaryTopicLabel,
 } from "./reader-summary-topic-label-candidates";
+import { selectReaderSummaryTopicLabel } from "./reader-summary-topic-label-selection";
+import { enrichReaderSummaryTopicLabelVersion } from "./reader-summary-topic-label-version-enrichment";
 import {
   compactId,
   compactOptional,
@@ -123,7 +124,8 @@ export const buildReaderSummaryTopicMap = (
     scopeReaderSummaryTopicMapNodeDrafts(nodeDrafts),
   );
   const rawNodes =
-    params.generatedBy === "agent-runtime"
+    params.generatedBy === "agent-runtime" ||
+    params.preserveStoryClustersForLabeling === true
       ? aggregatedNodes
       : mergeReaderSummaryTopicMapNodesByLabel(aggregatedNodes);
   const semanticAnchorsByGroup = new Map(
@@ -198,15 +200,17 @@ const topicNodeForCluster = (params: {
   };
   const labelCandidates = extractReaderSummaryTopicLabelCandidates({
     ...labelContext,
-    fallbackLabel: params.nodeLabel?.label,
   });
   const evidenceTexts = readerSummaryTopicLabelEvidenceTexts(labelContext);
   const providerLabels = params.cluster.providerKeys.map(humanizeSlug);
-  const label = selectReaderSummaryTopicLabel({
-    proposedLabel: params.nodeLabel?.label,
-    labelCandidates,
-    evidenceTexts,
-    providerLabels,
+  const label = enrichReaderSummaryTopicLabelVersion({
+    label: selectReaderSummaryTopicLabel({
+      proposedLabel: params.nodeLabel?.label,
+      labelCandidates,
+      evidenceTexts,
+      providerLabels,
+    }),
+    candidateLabels: labelCandidates.map((candidate) => candidate.label),
   });
   if (
     !evaluateTopicLabelQuality(label, {

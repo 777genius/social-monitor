@@ -9,6 +9,7 @@ import type {
 } from "../value-objects/summary-evidence-item";
 import {
   isDeterministicCrossProviderStoryMatch,
+  isVerifiedSameAuthorStorySeriesCandidate,
   isVerifiedStoryRelationGuardEligible,
   verifiedStoryRelationPairKey,
 } from "./story-cluster-membership";
@@ -172,21 +173,32 @@ const relationCandidate = (params: {
     storyTopicSpecificProductTokens(rightTokens),
   );
   const topicSimilarity = storyTopicSimilarity(leftTokens, rightTokens);
+  const sameAuthorSeries = isVerifiedSameAuthorStorySeriesCandidate(
+    params.left,
+    params.right,
+  );
+  const sharedNonAnchorTokens = sharedTopicTokens.filter(
+    (token) => !sharedAnchorTokens.includes(token),
+  );
+  const sameAuthorSeriesContext =
+    sameAuthorSeries && sharedNonAnchorTokens.length > 0;
   const sharedConcreteSubject =
     sharedAnchorTokens.length > 0 ||
     sharedSpecificProductTokens.length > 0 ||
-    sharedTopicTokens.length >= 3;
+    sharedTopicTokens.length >= 3 ||
+    sameAuthorSeriesContext;
   const enoughContext =
-    sharedTopicTokens.length >= 2 &&
-    (sharedAnchorTokens.length >= 2 ||
-      sharedEventTokens.length > 0 ||
-      sharedSpecificProductTokens.length > 0 ||
-      sharedTopicTokens.length >= 3);
+    sameAuthorSeriesContext ||
+    (sharedTopicTokens.length >= 2 &&
+      (sharedAnchorTokens.length >= 2 ||
+        sharedEventTokens.length > 0 ||
+        sharedSpecificProductTokens.length > 0 ||
+        sharedTopicTokens.length >= 3));
 
   if (
     !sharedConcreteSubject ||
     !enoughContext ||
-    topicSimilarity < minimumCandidateSimilarity
+    (!sameAuthorSeries && topicSimilarity < minimumCandidateSimilarity)
   ) {
     return undefined;
   }

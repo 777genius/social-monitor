@@ -12,9 +12,23 @@ describe("renderReaderSummaryTopicSemanticLabel", () => {
       "GPT-5.6 Sol Benchmark",
     ],
     ["Anthropic", "security", "Spying", "Anthropic Spying"],
+    ["Anthropic", "allegation", "Spying", "Anthropic Spying Allegation"],
+    ["Enterprise AI Bills", "costs", undefined, "Enterprise AI Bills"],
+    ["Enterprise AI", "costs", "Spending", "Enterprise AI Spending"],
+    ["GPT-5 Models", "comparison", undefined, "GPT-5 Models Comparison"],
     ["Anthropic", "limits", "Usage", "Anthropic Usage Limits"],
     ["Claude Code", "education", undefined, "Claude Code Guide"],
     ["Codex", "other", "CLI", "Codex CLI"],
+    ["ChatGPT", "other", "Confused", "ChatGPT"],
+    ["Coding Train", "other", "public", "Coding Train"],
+    ["AI Content", "other", "social", "AI Content"],
+    ["AtCoder", "other", "World Tour", "AtCoder World Tour"],
+    ["GPT-5.6 Sol", "benchmark", "Index", "GPT-5.6 Sol Benchmark"],
+    ["ChatGPT", "comparison", "Confused", "ChatGPT Comparison"],
+    ["ChatGPT Work", "release", "Rebranded", "ChatGPT Work Rollout"],
+    ["Anthropic", "limits", "Hour Weekly", "Anthropic Limits"],
+    ["Anthropic Hour Weekly", "limits", undefined, "Anthropic Limits"],
+    ["Grok 4.5", "review", undefined, "Grok 4.5 Review"],
   ] as const)(
     "renders %s/%s deterministically",
     (subject, claimType, qualifier, expected) => {
@@ -41,13 +55,17 @@ describe("ensureTopicLabelExpressesClaimFacet", () => {
   });
 
   it.each([
-    ["GPT-5.6 Sol Benchmark", "benchmark"],
-    ["Claude Code Course", "education"],
-    ["Anthropic Usage Limits", "limits"],
-    ["Anthropic Spying", "security"],
-  ] as const)("keeps an explicit claim label %s", (label, facet) => {
-    expect(ensureTopicLabelExpressesClaimFacet(label, facet)).toBe(label);
-  });
+    ["GPT-5.6 Sol Benchmark", "benchmark", "GPT-5.6 Sol Benchmark"],
+    ["Claude Code Course", "education", "Claude Code Course"],
+    ["Anthropic Usage Limits", "limits", "Anthropic Usage Limits"],
+    ["Anthropic Spying", "security", "Anthropic Spying"],
+    ["Anthropic Hour Weekly Limits", "limits", "Anthropic Limits"],
+  ] as const)(
+    "normalizes an explicit claim label %s",
+    (label, facet, expected) => {
+      expect(ensureTopicLabelExpressesClaimFacet(label, facet)).toBe(expected);
+    },
+  );
 
   it("does not overwrite another explicit claim in ambiguous evidence", () => {
     expect(

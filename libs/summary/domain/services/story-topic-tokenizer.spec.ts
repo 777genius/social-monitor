@@ -3,8 +3,8 @@ import type { SummaryEvidenceItem } from "../value-objects/summary-evidence-item
 import {
   extractReaderSummaryTopicLabelCandidates,
   readerSummaryTopicLabelEvidenceTexts,
-  selectReaderSummaryTopicLabel,
 } from "./reader-summary-topic-label-candidates";
+import { selectReaderSummaryTopicLabel } from "./reader-summary-topic-label-selection";
 import {
   storyPrimaryClaimFacet,
   storyTopicTokens,
@@ -123,6 +123,8 @@ describe("story topic tokenizer", () => {
     ["GPT-5.6 is 54% more token efficient", "efficiency"],
     ["GPT-5.6 appears in Codex for Plus accounts", "availability"],
     ["GPT-5.6 Sol masterclass for business workflows", "education"],
+    ["ChatGPT vs. Codex in a side-by-side test", "comparison"],
+    ["Grok 4.5 honest first impression", "review"],
   ] as const)("classifies %s as a %s claim", (title, expected) => {
     expect(storyPrimaryClaimFacet(evidenceItem(title))).toBe(expected);
   });

@@ -9,6 +9,10 @@ import {
   type AgentRuntimeReaderSummaryTopicLabelerOptions,
 } from "../../adapters/model/agent-runtime-reader-summary-topic-labeler.adapter";
 import {
+  resolveAgentRuntimeReaderSummaryTopicRelationVerifierOptions,
+  type AgentRuntimeReaderSummaryTopicRelationVerifierOptions,
+} from "../../adapters/model/agent-runtime-reader-summary-topic-relation-verifier.adapter";
+import {
   resolveAgentRuntimeReaderSummaryStoryRelationVerifierOptions,
   type AgentRuntimeReaderSummaryStoryRelationVerifierOptions,
 } from "../../adapters/model/agent-runtime-reader-summary-story-relation-verifier.adapter";
@@ -37,6 +41,10 @@ export const SUMMARY_AGENT_RUNTIME_READER_SUMMARY_MODEL_OPTIONS = Symbol(
 );
 export const SUMMARY_AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_OPTIONS =
   Symbol("SUMMARY_AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_OPTIONS");
+export const SUMMARY_AGENT_RUNTIME_READER_SUMMARY_TOPIC_RELATION_VERIFIER_OPTIONS =
+  Symbol(
+    "SUMMARY_AGENT_RUNTIME_READER_SUMMARY_TOPIC_RELATION_VERIFIER_OPTIONS",
+  );
 export const SUMMARY_AGENT_RUNTIME_READER_SUMMARY_STORY_RELATION_VERIFIER_OPTIONS =
   Symbol(
     "SUMMARY_AGENT_RUNTIME_READER_SUMMARY_STORY_RELATION_VERIFIER_OPTIONS",
@@ -90,6 +98,18 @@ export const summaryAgentRuntimeReaderSummaryTopicLabelerOptionsProvider: Provid
     provide: SUMMARY_AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_OPTIONS,
     useFactory: (client: GrpcAgentRuntimeClient) =>
       resolveAgentRuntimeReaderSummaryTopicLabelerOptions(process.env, client),
+    inject: [GrpcAgentRuntimeClient],
+  };
+
+export const summaryAgentRuntimeReaderSummaryTopicRelationVerifierOptionsProvider: Provider<AgentRuntimeReaderSummaryTopicRelationVerifierOptions> =
+  {
+    provide:
+      SUMMARY_AGENT_RUNTIME_READER_SUMMARY_TOPIC_RELATION_VERIFIER_OPTIONS,
+    useFactory: (client: GrpcAgentRuntimeClient) =>
+      resolveAgentRuntimeReaderSummaryTopicRelationVerifierOptions(
+        process.env,
+        client,
+      ),
     inject: [GrpcAgentRuntimeClient],
   };
 

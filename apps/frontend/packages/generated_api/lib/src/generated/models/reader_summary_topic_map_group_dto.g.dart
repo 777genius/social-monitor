@@ -16,6 +16,9 @@ ReaderSummaryTopicMapGroupDto _$ReaderSummaryTopicMapGroupDtoFromJson(
   id: json['id'] as String,
   label: json['label'] as String,
   nodeIds: (json['nodeIds'] as List<dynamic>).map((e) => e as String).toList(),
+  semanticAnchors: (json['semanticAnchors'] as List<dynamic>?)
+      ?.map((e) => e as String)
+      .toList(),
 );
 
 Map<String, dynamic> _$ReaderSummaryTopicMapGroupDtoToJson(
@@ -26,4 +29,5 @@ Map<String, dynamic> _$ReaderSummaryTopicMapGroupDtoToJson(
   'id': instance.id,
   'label': instance.label,
   'nodeIds': instance.nodeIds,
+  'semanticAnchors': instance.semanticAnchors,
 };

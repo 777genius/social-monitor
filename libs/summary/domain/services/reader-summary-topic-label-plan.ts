@@ -40,4 +40,5 @@ export type BuildReaderSummaryTopicMapParams = {
   readonly labelPlan?: ReaderSummaryTopicLabelPlan;
   readonly generatedBy?: ReaderSummaryTopicMapGenerator;
   readonly warnings?: readonly string[];
+  readonly preserveStoryClustersForLabeling?: boolean;
 };

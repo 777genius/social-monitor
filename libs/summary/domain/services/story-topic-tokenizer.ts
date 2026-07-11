@@ -27,6 +27,14 @@ const stripTopicSourceEnvelope = (value: string): string =>
     .replace(/^x\s+post\s+by\s+@[^:]+:\s*/iu, "")
     .replace(/^(?:ask|show)\s+hn:\s*/iu, "");
 
+export const storyTitleIdentity = (item: SummaryEvidenceItem): string =>
+  stripTopicSourceEnvelope(item.title)
+    .normalize("NFKC")
+    .toLocaleLowerCase("en-US")
+    .replace(/[^\p{Letter}\p{Number}+#.]+/gu, " ")
+    .trim()
+    .replace(/\s+/gu, " ");
+
 export const storyTopicSimilarity = (
   left: readonly string[],
   right: readonly string[],
@@ -88,10 +96,12 @@ export const storyClaimFacetTokens = (
 export type StoryPrimaryClaimFacet =
   | "availability"
   | "benchmark"
+  | "comparison"
   | "education"
   | "efficiency"
   | "limits"
   | "release"
+  | "review"
   | "security";
 
 export const storyPrimaryClaimFacet = (
@@ -133,6 +143,10 @@ const primaryClaimFacetDefinitions = [
     "benchmark",
   ],
   [
+    /\b(?:comparison|side[\s-]?by[\s-]?side|versus|vs\.?|v\.)\b|\bcompared?\s+(?:against|to|with)\b/iu,
+    "comparison",
+  ],
+  [
     /\b(?:usage\s+limits?|weekly\s+limits?|daily\s+limits?|5[\s-]?hour\s+limits?|quota|credits?)\b/iu,
     "limits",
   ],
@@ -155,6 +169,10 @@ const primaryClaimFacetDefinitions = [
   [
     /\b(?:roll(?:s|ed|ing)?\s+out|rollouts?|releas(?:e|es|ed|ing)|launch(?:es|ed|ing)?|introduc(?:e|es|ed|ing))\b/iu,
     "release",
+  ],
+  [
+    /\b(?:first\s+impressions?|hands[\s-]?on|honest\s+(?:first\s+)?impressions?|product\s+review)\b/iu,
+    "review",
   ],
 ] as const satisfies readonly (readonly [RegExp, StoryPrimaryClaimFacet])[];
 

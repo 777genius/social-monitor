@@ -31,7 +31,7 @@
   },
   "metrics": {
     "dayCount": 5,
-    "currentGenerationArtifactCount": 5,
+    "currentGenerationArtifactCount": 0,
     "storyPairPrecision": 1,
     "storyPairRecall": 0.41,
     "crossSourcePrecision": 1,
@@ -40,9 +40,9 @@
     "rankingAccuracy": 0.8,
     "topReadPositiveRecall": 0.8,
     "excludedItemRejectionRate": 0.8,
-    "narrativeCoverage": 0.333,
+    "narrativeCoverage": 0.267,
     "leadCoverage": 0.2,
-    "secondarySignalCoverage": 0.4,
+    "secondarySignalCoverage": 0.3,
     "weakTopReadRate": 0,
     "missingExpectedFeedItemCount": 2
   },
@@ -50,7 +50,7 @@
     {
       "collectionDate": "2026-07-05",
       "metrics": {
-        "currentGenerationArtifactCount": 1,
+        "currentGenerationArtifactCount": 0,
         "storyPairPrecision": 1,
         "storyPairRecall": 0.75,
         "crossSourcePrecision": 1,
@@ -66,6 +66,7 @@
         "missingExpectedFeedItemCount": 0
       },
       "issues": [
+        "Generation profile mismatch: model=codex:gpt-5.5:xhigh prompt=reader_summary.prompt.agent_runtime.v9 ranking=story_ranking_v6",
         "False story split: 31743c05-84a6-464c-9e7c-273e93a6b530, 5056549e-72b2-474a-8cc2-5b503dddb8c6",
         "Missing cross-source cluster for zuckerberg-agent-progress",
         "Missing secondary_signal narrative for zuckerberg-agent-progress"
@@ -74,7 +75,7 @@
     {
       "collectionDate": "2026-07-06",
       "metrics": {
-        "currentGenerationArtifactCount": 1,
+        "currentGenerationArtifactCount": 0,
         "storyPairPrecision": 1,
         "storyPairRecall": 0.25,
         "crossSourcePrecision": 1,
@@ -90,6 +91,7 @@
         "missingExpectedFeedItemCount": 0
       },
       "issues": [
+        "Generation profile mismatch: model=codex:gpt-5.5:xhigh prompt=reader_summary.prompt.agent_runtime.v9 ranking=story_ranking_v6",
         "False story split: 769560c7-8ed3-4c85-9b92-c5da7c511160, 8a2fd063-3ae6-46a1-8d0e-82a5a72c15f2",
         "False story split: 769560c7-8ed3-4c85-9b92-c5da7c511160, 96539415-7816-4e17-ad04-8590c11dd4df",
         "False story split: 8a2fd063-3ae6-46a1-8d0e-82a5a72c15f2, 96539415-7816-4e17-ad04-8590c11dd4df",
@@ -101,7 +103,7 @@
     {
       "collectionDate": "2026-07-07",
       "metrics": {
-        "currentGenerationArtifactCount": 1,
+        "currentGenerationArtifactCount": 0,
         "storyPairPrecision": 1,
         "storyPairRecall": 0,
         "crossSourcePrecision": 1,
@@ -117,6 +119,7 @@
         "missingExpectedFeedItemCount": 0
       },
       "issues": [
+        "Generation profile mismatch: model=codex:gpt-5.5:xhigh prompt=reader_summary.prompt.agent_runtime.v9 ranking=story_ranking_v6",
         "False story split: 6b3182dd-716d-4d2f-9dbd-c8c35f8c23e0, d29f2d3d-6743-43e1-a6d7-6c2aba9fa726",
         "Missing cross-source cluster for typescript-go-rewrite",
         "Ranking mismatch for 6b3182dd-716d-4d2f-9dbd-c8c35f8c23e0: expected top_read",
@@ -128,7 +131,7 @@
     {
       "collectionDate": "2026-07-08",
       "metrics": {
-        "currentGenerationArtifactCount": 1,
+        "currentGenerationArtifactCount": 0,
         "storyPairPrecision": 1,
         "storyPairRecall": 0.8,
         "crossSourcePrecision": 1,
@@ -144,6 +147,7 @@
         "missingExpectedFeedItemCount": 0
       },
       "issues": [
+        "Generation profile mismatch: model=codex:gpt-5.5:xhigh prompt=reader_summary.prompt.agent_runtime.v9 ranking=story_ranking_v6",
         "False story split: 1c0b9887-9674-4eb7-9ac9-01b0e55b786c, 980d934d-a319-48f6-9aec-2b66cebbb03d",
         "Missing cross-source cluster for gpt-5.6-launch",
         "Missing lead narrative for gpt-5.6-launch"
@@ -152,7 +156,7 @@
     {
       "collectionDate": "2026-07-09",
       "metrics": {
-        "currentGenerationArtifactCount": 1,
+        "currentGenerationArtifactCount": 0,
         "storyPairPrecision": 1,
         "storyPairRecall": 0.25,
         "crossSourcePrecision": 1,
@@ -161,26 +165,28 @@
         "rankingAccuracy": 1,
         "topReadPositiveRecall": 1,
         "excludedItemRejectionRate": 1,
-        "narrativeCoverage": 0.667,
+        "narrativeCoverage": 0.333,
         "leadCoverage": 0,
-        "secondarySignalCoverage": 1,
+        "secondarySignalCoverage": 0.5,
         "weakTopReadRate": 0,
         "missingExpectedFeedItemCount": 2
       },
       "issues": [
+        "Generation profile mismatch: model=codex:gpt-5.5:xhigh prompt=reader_summary.prompt.agent_runtime.v9 ranking=story_ranking_v6",
         "Missing expected feed item 1fd84590-83d9-4f50-a372-b87fce39eb11",
         "Missing expected feed item d14bb054-99f5-4867-b17f-cc02dfa80a86",
         "False story split: d47020c2-ad62-4d93-8518-0bc38f5bb951, 1fd84590-83d9-4f50-a372-b87fce39eb11",
         "False story split: d47020c2-ad62-4d93-8518-0bc38f5bb951, d14bb054-99f5-4867-b17f-cc02dfa80a86",
         "False story split: 1fd84590-83d9-4f50-a372-b87fce39eb11, d14bb054-99f5-4867-b17f-cc02dfa80a86",
         "Missing cross-source cluster for chatgpt-work",
-        "Missing lead narrative for gpt-5.6-rollout"
+        "Missing lead narrative for gpt-5.6-rollout",
+        "Missing secondary_signal narrative for chatgpt-work"
       ]
     }
   ],
   "qualityGates": {
     "minimumRealDayCount": true,
-    "allDaysUseExpectedGenerationProfile": true,
+    "allDaysUseExpectedGenerationProfile": false,
     "storyPairPrecision": true,
     "storyPairRecall": false,
     "crossSourcePrecision": true,

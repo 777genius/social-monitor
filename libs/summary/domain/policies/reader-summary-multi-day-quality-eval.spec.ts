@@ -8,6 +8,7 @@ describe("evaluateReaderSummaryMultiDayQuality", () => {
           collectionDate: "2026-07-09",
           modelVersion: "codex:gpt-5.5:xhigh",
           promptVersion: "reader_summary.prompt.agent_runtime.v8",
+          rankingPolicyVersion: "story_ranking_v7",
           storyClusters: [
             {
               id: "cluster:launch",
@@ -92,6 +93,7 @@ describe("evaluateReaderSummaryMultiDayQuality", () => {
           collectionDate: "2026-07-08",
           modelVersion: "codex:legacy",
           promptVersion: "reader_summary.prompt.agent_runtime.v2",
+          rankingPolicyVersion: "story_ranking_v6",
           storyClusters: [
             {
               id: "cluster:wrong",
@@ -158,7 +160,7 @@ describe("evaluateReaderSummaryMultiDayQuality", () => {
         "Ranking mismatch for x-a: expected top_read",
         "Ranking mismatch for reddit-b: expected exclude",
         "Missing lead narrative for story-a",
-        "Generation profile mismatch: codex:legacy / reader_summary.prompt.agent_runtime.v2",
+        "Generation profile mismatch: model=codex:legacy prompt=reader_summary.prompt.agent_runtime.v2 ranking=story_ranking_v6",
       ]),
     );
   });
@@ -167,6 +169,7 @@ describe("evaluateReaderSummaryMultiDayQuality", () => {
 const generationProfile = {
   modelVersion: "codex:gpt-5.5:xhigh",
   promptVersion: "reader_summary.prompt.agent_runtime.v8",
+  rankingPolicyVersion: "story_ranking_v7",
 };
 
 const thresholds = () => ({

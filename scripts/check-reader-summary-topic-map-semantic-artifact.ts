@@ -6,6 +6,12 @@ import {
   type ReaderSummaryTopicSemanticExpectation,
 } from "@social-monitor/summary/domain";
 
+import {
+  assertReaderSummarySemanticCorpusMatches,
+  buildReaderSummarySemanticCorpusContract,
+  type ReaderSummarySemanticCorpusContract,
+} from "./lib/reader-summary-semantic-corpus";
+
 function main(): void {
   const artifactPath = optionValue("--path");
   if (artifactPath === undefined) {
@@ -22,6 +28,13 @@ function main(): void {
       `Semantic gold date ${gold.collectionDate} does not match artifact period ${periodDate}`,
     );
   }
+  const actualCorpus = buildReaderSummarySemanticCorpusContract(
+    artifact.selectedFeedItemIds,
+  );
+  assertReaderSummarySemanticCorpusMatches({
+    actual: actualCorpus,
+    expected: gold.corpus,
+  });
   const evaluation = evaluateReaderSummaryTopicSemantics({
     storyClusters: artifact.storyClusters,
     topicMap: artifact.topicMap,
@@ -32,6 +45,7 @@ function main(): void {
     inputPath: artifactPath,
     goldPath,
     collectionDate: gold.collectionDate,
+    corpus: actualCorpus,
     ...evaluation,
   };
 
@@ -62,6 +76,7 @@ const readArtifact = (path: string) => {
 
   return {
     periodStartedAt,
+    selectedFeedItemIds: stringArray(root.sourceWindow, "selectedFeedItemIds"),
     storyClusters: root.storyClusters.filter(isStoryCluster),
     topicMap,
   };
@@ -71,6 +86,7 @@ const readGold = (
   path: string,
 ): {
   readonly collectionDate: string;
+  readonly corpus: ReaderSummarySemanticCorpusContract;
   readonly expectations: readonly ReaderSummaryTopicSemanticExpectation[];
 } => {
   const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
@@ -81,9 +97,21 @@ const readGold = (
   if (collectionDate === undefined) {
     throw new Error("Semantic gold collectionDate is required");
   }
+  const corpus = isRecord(parsed.corpus) ? parsed.corpus : undefined;
+  const selectedFeedItemCount = numberValue(corpus?.selectedFeedItemCount);
+  const selectedFeedItemFingerprint = stringValue(
+    corpus?.selectedFeedItemFingerprint,
+  );
+  if (
+    selectedFeedItemCount === undefined ||
+    selectedFeedItemFingerprint === undefined
+  ) {
+    throw new Error("Semantic gold corpus contract is required");
+  }
 
   return {
     collectionDate,
+    corpus: { selectedFeedItemCount, selectedFeedItemFingerprint },
     expectations:
       parsed.expectations as readonly ReaderSummaryTopicSemanticExpectation[],
   };
@@ -116,6 +144,23 @@ const stringValue = (value: unknown): string | undefined =>
   typeof value === "string" && value.trim().length > 0
     ? value.trim()
     : undefined;
+
+const numberValue = (value: unknown): number | undefined =>
+  typeof value === "number" && Number.isInteger(value) && value >= 0
+    ? value
+    : undefined;
+
+const stringArray = (value: unknown, key: string): readonly string[] => {
+  if (!isRecord(value) || !Array.isArray(value[key])) {
+    throw new Error(`Input JSON does not contain sourceWindow.${key}`);
+  }
+  const items = value[key];
+  if (!items.every((item) => typeof item === "string")) {
+    throw new Error(`Input JSON sourceWindow.${key} must contain strings`);
+  }
+
+  return items;
+};
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);

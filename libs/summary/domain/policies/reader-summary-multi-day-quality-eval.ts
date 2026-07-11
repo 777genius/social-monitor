@@ -1,4 +1,9 @@
 import type { ReaderSummaryNarrativeSectionKind } from "../entities/reader-summary-narrative-section";
+import {
+  matchesReaderSummaryMultiDayGenerationProfile,
+  readerSummaryMultiDayGenerationProfileMismatch,
+  type ReaderSummaryMultiDayGenerationProfile,
+} from "./reader-summary-multi-day-generation-profile";
 
 export type ReaderSummaryMultiDayGoldDay = {
   readonly collectionDate: string;
@@ -25,6 +30,7 @@ export type ReaderSummaryMultiDayActualDay = {
   readonly collectionDate: string;
   readonly modelVersion: string;
   readonly promptVersion: string;
+  readonly rankingPolicyVersion: string;
   readonly storyClusters: readonly {
     readonly id: string;
     readonly representativeFeedItemId: string;
@@ -38,11 +44,6 @@ export type ReaderSummaryMultiDayActualDay = {
     readonly storyClusterId?: string;
     readonly citationFeedItemIds: readonly string[];
   }[];
-};
-
-export type ReaderSummaryMultiDayGenerationProfile = {
-  readonly modelVersion: string;
-  readonly promptVersion: string;
 };
 
 export type ReaderSummaryMultiDayQualityThresholds = {
@@ -193,17 +194,17 @@ const evaluateDay = (
     clusterByFeedItemId,
   });
   const usesExpectedGenerationProfile =
-    actual.modelVersion === expectedGenerationProfile.modelVersion &&
-    actual.promptVersion === expectedGenerationProfile.promptVersion;
+    matchesReaderSummaryMultiDayGenerationProfile(
+      actual,
+      expectedGenerationProfile,
+    );
   const weakTopReadCount = actual.topReadQualityEligibility.filter(
     (eligible) => !eligible,
   ).length;
   const issues = [
     ...(usesExpectedGenerationProfile
       ? []
-      : [
-          `Generation profile mismatch: ${actual.modelVersion} / ${actual.promptVersion}`,
-        ]),
+      : [readerSummaryMultiDayGenerationProfileMismatch(actual)]),
     ...missingExpectedFeedItemIds.map(
       (feedItemId) => `Missing expected feed item ${feedItemId}`,
     ),

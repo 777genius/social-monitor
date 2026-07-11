@@ -43,15 +43,16 @@ describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
       provider: "codex",
       purpose: "social_monitor.reader_summary.verify_story_relations",
       metadata: {
-        promptVersion: "reader_summary.story_relation.agent_runtime.v1",
+        promptVersion: "reader_summary.story_relation.agent_runtime.v2",
       },
     });
-    expect(
-      JSON.parse(client.commands[0]?.prompt ?? "{}").pairs[0],
-    ).toMatchObject({
+    const promptPair = JSON.parse(client.commands[0]?.prompt ?? "{}").pairs[0];
+    expect(promptPair).toMatchObject({
       leftFeedItemId: "feed:hn",
       rightFeedItemId: "feed:rss",
       retrievalSignals: {
+        sameProvider: false,
+        sameAuthor: false,
         sharedTopicTokens: ["compiler", "rewrite", "typescript"],
       },
       left: {
@@ -59,6 +60,7 @@ describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
         title: "TypeScript compiler rewrite moves to Go",
       },
     });
+    expect(promptPair.left.bodyPreview.length).toBeLessThanOrEqual(640);
   });
 
   it("rejects unknown, duplicate, or incomplete decisions", async () => {
@@ -120,7 +122,9 @@ const evidence = (feedItemId: string, providerKey: string, title: string) => ({
   providerKey,
   canonicalUrl: `https://example.test/${feedItemId}`,
   title,
-  bodyPreview: "The engineering team published implementation details.",
+  bodyPreview: "The engineering team published implementation details. ".repeat(
+    30,
+  ),
   publishedAt: new Date("2026-07-11T08:00:00.000Z"),
   observedAt: new Date("2026-07-11T08:01:00.000Z"),
   score: 2,

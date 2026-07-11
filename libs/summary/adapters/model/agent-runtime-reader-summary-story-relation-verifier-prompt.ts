@@ -8,6 +8,7 @@ export const agentRuntimeReaderSummaryStoryRelationVerifierInstructions = [
   "A shared company, model family, product, person, technology, or broad topic is not enough.",
   "Different claim facets are different stories: rollout, availability, user reaction, benchmark, comparison, pricing, limits, security, allegation, and tutorial must stay separate.",
   "A report and a reaction to that report are separate unless both primarily describe the same concrete event rather than the reaction.",
+  "Posts from one provider may be the same story only when the same author is publishing installments of one concrete thread, paper, announcement, or event.",
   "Use timing, actors, object, action, version, and outcome together. Shared terms are retrieval hints only.",
   "When uncertain, return sameStory false. confidenceScore expresses confidence in the binary decision from 0 to 1.",
 ].join("\n");
@@ -21,7 +22,7 @@ export const buildAgentRuntimeReaderSummaryStoryRelationVerifierPrompt = (
 
   return JSON.stringify(
     {
-      task: "Verify shortlisted cross-provider story pairs.",
+      task: "Verify shortlisted story pairs.",
       period: {
         startedAt: input.period.startedAt.toISOString(),
         endedAt: input.period.endedAt.toISOString(),
@@ -32,23 +33,29 @@ export const buildAgentRuntimeReaderSummaryStoryRelationVerifierPrompt = (
         sharedTermsAreHintsOnly: true,
         differentClaimFacetsStaySeparate: true,
       },
-      pairs: input.candidates.map((candidate) => ({
-        leftFeedItemId: candidate.leftFeedItemId,
-        rightFeedItemId: candidate.rightFeedItemId,
-        retrievalSignals: {
-          sharedTopicTokens: candidate.sharedTopicTokens,
-          sharedAnchorTokens: candidate.sharedAnchorTokens,
-          sharedEventTokens: candidate.sharedEventTokens,
-          sharedSpecificProductTokens: candidate.sharedSpecificProductTokens,
-          topicSimilarity: candidate.topicSimilarity,
-        },
-        left: evidenceSample(
-          requiredEvidence(evidenceById, candidate.leftFeedItemId),
-        ),
-        right: evidenceSample(
-          requiredEvidence(evidenceById, candidate.rightFeedItemId),
-        ),
-      })),
+      pairs: input.candidates.map((candidate) => {
+        const left = requiredEvidence(evidenceById, candidate.leftFeedItemId);
+        const right = requiredEvidence(evidenceById, candidate.rightFeedItemId);
+
+        return {
+          leftFeedItemId: candidate.leftFeedItemId,
+          rightFeedItemId: candidate.rightFeedItemId,
+          retrievalSignals: {
+            sameProvider: left.providerKey === right.providerKey,
+            sameAuthor:
+              normalizedAuthor(left.authorHandle) !== undefined &&
+              normalizedAuthor(left.authorHandle) ===
+                normalizedAuthor(right.authorHandle),
+            sharedTopicTokens: candidate.sharedTopicTokens,
+            sharedAnchorTokens: candidate.sharedAnchorTokens,
+            sharedEventTokens: candidate.sharedEventTokens,
+            sharedSpecificProductTokens: candidate.sharedSpecificProductTokens,
+            topicSimilarity: candidate.topicSimilarity,
+          },
+          left: evidenceSample(left),
+          right: evidenceSample(right),
+        };
+      }),
     },
     null,
     2,
@@ -94,7 +101,7 @@ const evidenceSample = (item: {
 }): Record<string, unknown> => ({
   providerKey: item.providerKey,
   title: item.title,
-  bodyPreview: item.bodyPreview?.slice(0, 1_500),
+  bodyPreview: item.bodyPreview?.slice(0, 640),
   authorHandle: item.authorHandle,
   canonicalUrl: item.canonicalUrl,
   publishedAt: item.publishedAt.toISOString(),
@@ -109,4 +116,11 @@ const requiredEvidence = <T>(
     throw new Error(`Unknown story relation evidence ${feedItemId}`);
   }
   return item;
+};
+
+const normalizedAuthor = (value: string | undefined): string | undefined => {
+  const normalized = value?.trim().toLocaleLowerCase("en-US");
+  return normalized === undefined || normalized.length === 0
+    ? undefined
+    : normalized;
 };

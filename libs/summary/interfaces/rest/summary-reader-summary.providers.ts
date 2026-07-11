@@ -32,6 +32,7 @@ import { ReaderSummaryJobQueuePublisherAdapter } from "../../adapters/messaging/
 import { AgentRuntimeReaderSummaryModelAdapter } from "../../adapters/model/agent-runtime-reader-summary-model.adapter";
 import { AgentRuntimeReaderSummaryStoryRelationVerifier } from "../../adapters/model/agent-runtime-reader-summary-story-relation-verifier.adapter";
 import { AgentRuntimeReaderSummaryTopicLabeler } from "../../adapters/model/agent-runtime-reader-summary-topic-labeler.adapter";
+import { AgentRuntimeReaderSummaryTopicRelationVerifier } from "../../adapters/model/agent-runtime-reader-summary-topic-relation-verifier.adapter";
 import { DeterministicReaderSummaryModelAdapter } from "../../adapters/model/deterministic-reader-summary-model.adapter";
 import { MeteredReaderSummaryModelAdapter } from "../../adapters/model/metered-reader-summary-model.adapter";
 import {
@@ -208,15 +209,15 @@ export const summaryReaderSummaryProviders: Provider[] = [
         feedItems,
         new SystemClock(),
         metrics,
-      ),
         modelMode === "agent-runtime" ? storyRelationVerifier : undefined,
+      ),
     inject: [
       RankFeedItemsUseCase,
       FEED_ITEM_READ_REPOSITORY,
       StoryRankingMetricsRecorder,
-    ],
       READER_SUMMARY_MODEL_PROVIDER_MODE,
       AgentRuntimeReaderSummaryStoryRelationVerifier,
+    ],
   },
   {
     provide: READER_SUMMARY_EVIDENCE_SELECTOR,
@@ -333,14 +334,18 @@ export const summaryReaderSummaryProviders: Provider[] = [
     useFactory: (
       mode: ReaderSummaryTopicLabelerMode,
       agentRuntimeTopicLabeler: AgentRuntimeReaderSummaryTopicLabeler,
+      agentRuntimeTopicRelationVerifier: AgentRuntimeReaderSummaryTopicRelationVerifier,
     ) =>
       new BuildReaderSummaryTopicMapUseCase({
         mode,
         labeler: mode === "agent-runtime" ? agentRuntimeTopicLabeler : null,
+        relationVerifier:
+          mode === "agent-runtime" ? agentRuntimeTopicRelationVerifier : null,
       }),
     inject: [
       READER_SUMMARY_TOPIC_LABELER_MODE,
       AgentRuntimeReaderSummaryTopicLabeler,
+      AgentRuntimeReaderSummaryTopicRelationVerifier,
     ],
   },
   {
