@@ -39,6 +39,7 @@ export type CleanRealDayCollectionReport = {
   readonly scans: readonly {
     readonly providerKey: CleanRealDayCollectionProviderKey;
     readonly bindingFingerprint: string;
+    readonly attemptCount: number;
     readonly status: "succeeded" | "failed" | "skipped";
     readonly fetched: number;
     readonly inserted: number;
@@ -51,6 +52,7 @@ export type CleanRealDayCollectionReport = {
   readonly freshWindow: {
     readonly feedItemCount: number;
     readonly providerCounts: Record<string, number>;
+    readonly newestItemAtByProvider: Record<string, string>;
     readonly sourceQueryLaneCoverageByProvider: Record<string, number>;
     readonly distinctSourceQueryLaneCountByProvider: Record<string, number>;
     readonly orphanInterestCount: number;

@@ -17,6 +17,7 @@ from .account_usage_observer import (
     AccountUsageObserver,
     NoopAccountUsageObserver,
 )
+from .account_usage import SearchPassUsage
 from .candidate_rejection_cache import (
     CandidateRejectionCacheError,
     CandidateRejectionPolicy,
@@ -67,6 +68,7 @@ from .sqlite_candidate_rejection_repository import (
 
 
 ScweetFactory = Callable[[], Any]
+MAX_ACCOUNT_FAILOVERS_PER_PASS = 2
 
 
 @dataclass(frozen=True)
@@ -292,35 +294,17 @@ class ScweetDailySearchCollector(DailySearchCollectorPort):
 
         for search_pass in budget.passes:
             self._prepare_account_pool()
-            usage = self._account_usage_observer.begin_pass(
-                request,
-                search_pass,
-                estimate_pass_request_cost(
-                    search_pass,
-                    api_page_size=self._scweet_api_page_size,
-                    n_splits=self._scweet_n_splits,
-                ),
-            )
             try:
-                records = run_scweet_search_pass(
-                    scweet,
-                    request=request,
-                    search_pass=search_pass,
-                    since=since,
-                    until=until,
+                records, scweet, usage, failover_count = (
+                    self._run_pass_with_failover(
+                        scweet,
+                        request=request,
+                        search_pass=search_pass,
+                        since=since,
+                        until=until,
+                    )
                 )
-            except Exception as exc:
-                classified = classify_scweet_error(
-                    exc,
-                    clock=self._clock,
-                    scweet_db_path=self._scweet_db_path,
-                )
-                self._account_usage_observer.complete_pass_failure(
-                    request,
-                    usage,
-                    failure_kind=collector_failure_kind(classified),
-                    reset_at=collector_failure_reset_at(classified),
-                )
+            except Exception as classified:
                 warning = partial_warning_for_late_failure(
                     classified,
                     search_pass.label,
@@ -330,7 +314,18 @@ class ScweetDailySearchCollector(DailySearchCollectorPort):
                     warnings.append(warning)
                     break
 
-                raise classified from exc
+                raise classified
+
+            if failover_count > 0:
+                warnings.append(
+                    XCollectorWarning(
+                        code="x_collector.account_failover",
+                        message=(
+                            f"{search_pass.label} resumed with another account "
+                            f"after {failover_count} account-scoped failure(s)"
+                        ),
+                    ),
+                )
 
             accepted_count = 0
             for rank, record in enumerate(records, start=1):
@@ -423,6 +418,81 @@ class ScweetDailySearchCollector(DailySearchCollectorPort):
                 returned_count=len(selected_posts),
                 partial=len(selected_posts) < request.max_items,
             ),
+        )
+
+    def _run_pass_with_failover(
+        self,
+        scweet: Any,
+        *,
+        request: DailySearchRequest,
+        search_pass: ScweetSearchPass,
+        since: str,
+        until: str,
+    ) -> tuple[list[Mapping[str, Any]], Any, SearchPassUsage, int]:
+        estimated_cost = estimate_pass_request_cost(
+            search_pass,
+            api_page_size=self._scweet_api_page_size,
+            n_splits=self._scweet_n_splits,
+        )
+        failover_count = 0
+
+        while True:
+            usage = self._account_usage_observer.begin_pass(
+                request,
+                search_pass,
+                estimated_cost,
+            )
+            try:
+                records = run_scweet_search_pass(
+                    scweet,
+                    request=request,
+                    search_pass=search_pass,
+                    since=since,
+                    until=until,
+                )
+                return records, scweet, usage, failover_count
+            except Exception as exc:
+                classified = classify_scweet_error(
+                    exc,
+                    clock=self._clock,
+                    scweet_db_path=self._scweet_db_path,
+                )
+                self._account_usage_observer.complete_pass_failure(
+                    request,
+                    usage,
+                    failure_kind=collector_failure_kind(classified),
+                    reset_at=collector_failure_reset_at(classified),
+                )
+                if not self._can_failover_account(
+                    classified,
+                    estimated_cost=estimated_cost,
+                    failover_count=failover_count,
+                ):
+                    raise classified from exc
+
+                failover_count += 1
+                scweet = self._scweet_factory()
+
+    def _can_failover_account(
+        self,
+        failure: Exception,
+        *,
+        estimated_cost: int,
+        failover_count: int,
+    ) -> bool:
+        if (
+            self._account_pool_ledger is None
+            or failover_count >= MAX_ACCOUNT_FAILOVERS_PER_PASS
+            or not isinstance(failure, (XCollectorRateLimitError, XCollectorAuthError))
+        ):
+            return False
+
+        self._prepare_account_pool()
+        snapshot = self._account_pool_ledger.snapshot(self._clock.now())
+        return (
+            snapshot is not None
+            and len(snapshot.eligible_accounts) > 0
+            and snapshot.total_remaining_requests >= estimated_cost
         )
 
     def _filter_cached_rank_rejections(
