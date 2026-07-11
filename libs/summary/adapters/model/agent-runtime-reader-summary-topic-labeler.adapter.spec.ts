@@ -18,7 +18,10 @@ describe("AgentRuntimeReaderSummaryTopicLabeler", () => {
           {
             nodeId: "topic:story:codex",
             topicId: "topic:codex-agents",
-            label: "Codex agents",
+            subject: "Codex",
+            claimType: "other",
+            qualifier: "agents",
+            confidenceScore: 0.92,
             groupId: "group:agent-tools",
           },
         ],
@@ -110,6 +113,12 @@ describe("AgentRuntimeReaderSummaryTopicLabeler", () => {
         nodeId: "topic:story:codex",
         topicId: "topic:codex-agents",
         label: "Codex agents",
+        semantic: {
+          subject: "Codex",
+          claimType: "other",
+          qualifier: "agents",
+          confidenceScore: 0.92,
+        },
         groupId: "group:ungrouped",
         keywords: [],
         rationale: undefined,
@@ -121,11 +130,11 @@ describe("AgentRuntimeReaderSummaryTopicLabeler", () => {
       purpose: "social_monitor.reader_summary.topic_map.label",
       timeoutMs: 600_000,
       metadata: {
-        promptVersion: "reader_summary.topic_map.agent_runtime.v5",
+        promptVersion: "reader_summary.topic_map.agent_runtime.v6",
       },
     });
     expect(client.commands[0]?.systemPrompt).toContain(
-      "Choose each node label from labelCandidates",
+      "return structured semantics",
     );
     expect(client.commands[0]?.systemPrompt).toContain("Use the same topicId");
     expect(client.commands[0]?.systemPrompt).toContain(
@@ -189,7 +198,9 @@ describe("AgentRuntimeReaderSummaryTopicLabeler", () => {
       structuredOutput: {
         nodeLabels: candidates.map((candidate, index) => ({
           nodeId: candidate.nodeId,
-          label: candidate.fallbackLabel,
+          subject: candidate.fallbackLabel,
+          claimType: "other",
+          confidenceScore: 0.9,
           groupId: index === 9 ? "topic:invalid" : `group:family-${index}`,
         })),
         groups: candidates.slice(0, 9).map((candidate, index) => ({
@@ -252,7 +263,9 @@ describe("AgentRuntimeReaderSummaryTopicLabeler", () => {
         structuredOutput: {
           nodeLabels: candidates.map((candidate) => ({
             nodeId: candidate.nodeId,
-            label: candidate.fallbackLabel,
+            subject: candidate.fallbackLabel,
+            claimType: "other",
+            confidenceScore: 0.9,
             groupId: "group:anthropic-ecosystem",
           })),
           groups: [],

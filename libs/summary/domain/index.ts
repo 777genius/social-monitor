@@ -45,6 +45,7 @@ export * from "./services/reader-summary-coverage-plan";
 export * from "./services/reader-summary-topic-map-builder";
 export * from "./services/reader-summary-topic-label-candidates";
 export * from "./services/reader-summary-topic-label-plan";
+export * from "./services/reader-summary-topic-claim-label-policy";
 export * from "./services/reader-summary-topic-map-label-quality";
 export * from "./services/reader-summary-topic-map-structure";
 export * from "./services/story-ranking-telemetry";

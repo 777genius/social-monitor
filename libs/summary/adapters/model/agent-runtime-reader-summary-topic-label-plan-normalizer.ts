@@ -1,6 +1,11 @@
 import {
   READER_SUMMARY_TOPIC_MAP_MAX_SEMANTIC_GROUPS,
   READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID,
+  READER_SUMMARY_TOPIC_SEMANTIC_CONFIDENCE_MIN,
+  readerSummaryTopicClaimTypes,
+  renderReaderSummaryTopicSemanticLabel,
+  type ReaderSummaryTopicClaimType,
+  type ReaderSummaryTopicSemanticLabel,
   type ReaderSummaryTopicLabelPlan,
 } from "../../domain";
 import type { ReaderSummaryTopicLabelerInput } from "../../ports";
@@ -17,16 +22,28 @@ export const normalizeAgentRuntimeReaderSummaryTopicLabelPlan = (
   candidates: readonly ReaderSummaryTopicLabelerInput["candidates"][number][],
 ): ReaderSummaryTopicLabelPlan => {
   const knownNodeIds = new Set(candidates.map((candidate) => candidate.nodeId));
+  const candidateByNodeId = new Map(
+    candidates.map((candidate) => [candidate.nodeId, candidate] as const),
+  );
   const parsedNodeLabels = readRecordArray(raw.nodeLabels)
-    .map((label) => ({
-      nodeId: stringValue(label.nodeId),
-      topicId: optionalString(label.topicId),
-      label: optionalString(label.label),
-      rawGroupId: optionalString(label.groupId),
-      groupId: normalizeSemanticGroupId(optionalString(label.groupId)),
-      keywords: readStringArray(label.keywords).slice(0, 8),
-      rationale: optionalString(label.rationale),
-    }))
+    .map((label) => {
+      const nodeId = stringValue(label.nodeId);
+      const semantic = semanticLabelFromRaw(
+        label,
+        candidateByNodeId.get(nodeId)?.fallbackLabel,
+      );
+
+      return {
+        nodeId,
+        topicId: optionalString(label.topicId),
+        label: renderReaderSummaryTopicSemanticLabel(semantic),
+        semantic,
+        rawGroupId: optionalString(label.groupId),
+        groupId: normalizeSemanticGroupId(optionalString(label.groupId)),
+        keywords: readStringArray(label.keywords).slice(0, 8),
+        rationale: optionalString(label.rationale),
+      };
+    })
     .filter((label) => knownNodeIds.has(label.nodeId));
   const returnedNodeIds = new Set(
     parsedNodeLabels.map((label) => label.nodeId),
@@ -47,9 +64,13 @@ export const normalizeAgentRuntimeReaderSummaryTopicLabelPlan = (
     nodeId: label.nodeId,
     topicId: label.topicId,
     label: label.label,
-    groupId: retainedGroupIds.has(label.groupId)
-      ? label.groupId
-      : READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID,
+    semantic: label.semantic,
+    groupId:
+      retainedGroupIds.has(label.groupId) &&
+      label.semantic.confidenceScore >=
+        READER_SUMMARY_TOPIC_SEMANTIC_CONFIDENCE_MIN
+        ? label.groupId
+        : READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID,
     keywords: label.keywords,
     rationale: label.rationale,
   }));
@@ -129,12 +150,22 @@ export const normalizeAgentRuntimeReaderSummaryTopicLabelPlan = (
       parsedNodeLabels.find((candidate) => candidate.nodeId === label.nodeId)
         ?.rawGroupId !== READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID,
   ).length;
+  const lowConfidenceCount = parsedNodeLabels.filter(
+    (label) =>
+      label.semantic.confidenceScore <
+      READER_SUMMARY_TOPIC_SEMANTIC_CONFIDENCE_MIN,
+  ).length;
 
   return {
     nodeLabels,
     groups,
     warnings: [
       ...readStringArray(raw.warnings),
+      ...(lowConfidenceCount > 0
+        ? [
+            `${lowConfidenceCount} low-confidence topic assignments were kept ungrouped`,
+          ]
+        : []),
       ...(normalizedAwayCount > 0
         ? [
             `${normalizedAwayCount} topic assignments exceeded the semantic group contract and were marked ungrouped`,
@@ -246,6 +277,29 @@ const optionalString = (value: unknown): string | undefined => {
 
 const numberValue = (value: unknown): number | undefined =>
   typeof value === "number" && Number.isFinite(value) ? value : undefined;
+
+const semanticLabelFromRaw = (
+  value: Record<string, unknown>,
+  fallbackSubject: string | undefined,
+): ReaderSummaryTopicSemanticLabel => ({
+  subject: optionalString(value.subject) ?? fallbackSubject ?? "Topic",
+  claimType: claimTypeValue(value.claimType),
+  qualifier: optionalString(value.qualifier),
+  confidenceScore: Math.min(
+    1,
+    Math.max(0, numberValue(value.confidenceScore) ?? 0),
+  ),
+});
+
+const claimTypeValue = (value: unknown): ReaderSummaryTopicClaimType => {
+  const candidate = optionalString(value);
+
+  return readerSummaryTopicClaimTypes.includes(
+    candidate as ReaderSummaryTopicClaimType,
+  )
+    ? (candidate as ReaderSummaryTopicClaimType)
+    : "other";
+};
 
 const recoverSemanticGroupAnchors = (params: {
   readonly groupId: string;

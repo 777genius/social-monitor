@@ -5,6 +5,7 @@ import type {
   StoryCluster,
   SummaryEvidenceItem,
 } from "../value-objects/summary-evidence-item";
+import type { ReaderSummaryTopicSemanticLabel } from "./reader-summary-topic-claim-label-policy";
 
 export type ReaderSummaryTopicLabelPlan = {
   readonly nodeLabels: readonly ReaderSummaryTopicNodeLabel[];
@@ -16,6 +17,7 @@ export type ReaderSummaryTopicNodeLabel = {
   readonly nodeId: string;
   readonly topicId?: string;
   readonly label?: string;
+  readonly semantic?: ReaderSummaryTopicSemanticLabel;
   readonly groupId?: string;
   readonly keywords?: readonly string[];
   readonly rationale?: string;

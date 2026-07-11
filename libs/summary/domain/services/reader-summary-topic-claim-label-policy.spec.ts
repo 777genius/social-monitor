@@ -1,4 +1,34 @@
-import { ensureTopicLabelExpressesClaimFacet } from "./reader-summary-topic-claim-label-policy";
+import {
+  ensureTopicLabelExpressesClaimFacet,
+  renderReaderSummaryTopicSemanticLabel,
+} from "./reader-summary-topic-claim-label-policy";
+
+describe("renderReaderSummaryTopicSemanticLabel", () => {
+  it.each([
+    [
+      "GPT-5.6 Sol",
+      "benchmark",
+      "Artificial Analysis",
+      "GPT-5.6 Sol Benchmark",
+    ],
+    ["Anthropic", "security", "Spying", "Anthropic Spying"],
+    ["Anthropic", "limits", "Usage", "Anthropic Usage Limits"],
+    ["Claude Code", "education", undefined, "Claude Code Guide"],
+    ["Codex", "other", "CLI", "Codex CLI"],
+  ] as const)(
+    "renders %s/%s deterministically",
+    (subject, claimType, qualifier, expected) => {
+      expect(
+        renderReaderSummaryTopicSemanticLabel({
+          subject,
+          claimType,
+          qualifier,
+          confidenceScore: 0.9,
+        }),
+      ).toBe(expected);
+    },
+  );
+});
 
 describe("ensureTopicLabelExpressesClaimFacet", () => {
   it.each([
