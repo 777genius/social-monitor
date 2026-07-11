@@ -965,8 +965,19 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
 
 class FakeStoryRankingMetrics implements StoryRankingMetricsPort {
   readonly recorded: SummaryEvidenceSelection[] = [];
+  readonly storyRelationMetrics: Parameters<
+    StoryRankingMetricsPort["recordStoryRelationVerification"]
+  >[0][] = [];
 
   recordStoryRanking(selection: SummaryEvidenceSelection): void {
     this.recorded.push(selection);
+  }
+
+  recordStoryRelationVerification(
+    metric: Parameters<
+      StoryRankingMetricsPort["recordStoryRelationVerification"]
+    >[0],
+  ): void {
+    this.storyRelationMetrics.push(metric);
   }
 }

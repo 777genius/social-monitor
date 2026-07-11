@@ -30,6 +30,7 @@ import { SummaryMemoryReaderSummaryContextProvider } from "../../adapters/memory
 import { StoryRankingMetricsRecorder } from "../../adapters/metrics/story-ranking-metrics.recorder";
 import { ReaderSummaryJobQueuePublisherAdapter } from "../../adapters/messaging/reader-summary-job-queue.adapter";
 import { AgentRuntimeReaderSummaryModelAdapter } from "../../adapters/model/agent-runtime-reader-summary-model.adapter";
+import { AgentRuntimeReaderSummaryStoryRelationVerifier } from "../../adapters/model/agent-runtime-reader-summary-story-relation-verifier.adapter";
 import { AgentRuntimeReaderSummaryTopicLabeler } from "../../adapters/model/agent-runtime-reader-summary-topic-labeler.adapter";
 import { DeterministicReaderSummaryModelAdapter } from "../../adapters/model/deterministic-reader-summary-model.adapter";
 import { MeteredReaderSummaryModelAdapter } from "../../adapters/model/metered-reader-summary-model.adapter";
@@ -199,6 +200,8 @@ export const summaryReaderSummaryProviders: Provider[] = [
       rankFeedItems: RankFeedItemsUseCase,
       feedItems: FeedItemReadRepositoryPort,
       metrics: StoryRankingMetricsPort,
+      modelMode: ReaderSummaryModelProviderMode,
+      storyRelationVerifier: AgentRuntimeReaderSummaryStoryRelationVerifier,
     ) =>
       new RelevanceReaderSummaryEvidenceSelector(
         rankFeedItems,
@@ -206,11 +209,14 @@ export const summaryReaderSummaryProviders: Provider[] = [
         new SystemClock(),
         metrics,
       ),
+        modelMode === "agent-runtime" ? storyRelationVerifier : undefined,
     inject: [
       RankFeedItemsUseCase,
       FEED_ITEM_READ_REPOSITORY,
       StoryRankingMetricsRecorder,
     ],
+      READER_SUMMARY_MODEL_PROVIDER_MODE,
+      AgentRuntimeReaderSummaryStoryRelationVerifier,
   },
   {
     provide: READER_SUMMARY_EVIDENCE_SELECTOR,

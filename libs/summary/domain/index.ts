@@ -43,6 +43,8 @@ export * from "./policies/summary-feedback-eval-backlog-policy";
 export * from "./policies/story-ranking-policy";
 export * from "./policies/top-read-selection-policy";
 export * from "./services/story-clustering.service";
+export * from "./services/story-cluster-membership";
+export * from "./services/story-relation-candidates";
 export * from "./services/reader-summary-claim-board";
 export * from "./services/reader-summary-coverage-plan";
 export * from "./services/reader-summary-topic-map-builder";

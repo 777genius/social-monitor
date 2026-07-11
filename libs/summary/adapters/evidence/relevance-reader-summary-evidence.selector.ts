@@ -8,6 +8,8 @@ import {
 import type { Clock } from "@social-monitor/shared-kernel";
 
 import {
+  approvedStoryRelationPairs,
+  buildStoryRelationCandidates,
   StoryClusteringService,
   type SummaryEvidenceItem,
   type SummaryEvidenceSelection,
@@ -16,6 +18,7 @@ import { isTopReadEligibleEvidence } from "../../domain/policies/top-read-eligib
 import {
   NOOP_STORY_RANKING_METRICS,
   type ReaderSummaryEvidenceSelectorPort,
+  type ReaderSummaryStoryRelationVerifierPort,
   type StoryRankingMetricsPort,
 } from "../../ports";
 import { isDefaultReaderSummaryEvidenceProvider } from "./reader-summary-evidence-provider-filter";
@@ -42,6 +45,7 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
     private readonly feedItems: FeedItemReadRepositoryPort,
     private readonly clock: Clock,
     private readonly storyRankingMetrics: StoryRankingMetricsPort = NOOP_STORY_RANKING_METRICS,
+    private readonly storyRelationVerifier?: ReaderSummaryStoryRelationVerifierPort,
   ) {
     this.clusterer = new StoryClusteringService(clock);
   }
@@ -78,7 +82,7 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
       params.maxItems,
     );
 
-    const selection = this.clusterer.cluster({
+    const deterministicSelection = this.clusterer.cluster({
       identity: {
         tenantId: params.tenantId,
         workspaceId: params.workspaceId,
@@ -87,6 +91,11 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
       items,
       limit: params.maxItems,
     });
+    const selection = await this.withVerifiedStoryRelations(
+      params,
+      items,
+      deterministicSelection,
+    );
     const personalizedSelection = {
       ...selection,
       personalization:
@@ -108,6 +117,68 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
     this.storyRankingMetrics.recordStoryRanking(personalizedSelection);
 
     return this.withOriginalSourceText(params, personalizedSelection);
+  }
+
+  private async withVerifiedStoryRelations(
+    params: Parameters<ReaderSummaryEvidenceSelectorPort["select"]>[0],
+    evidence: readonly SummaryEvidenceItem[],
+    deterministicSelection: SummaryEvidenceSelection,
+  ): Promise<SummaryEvidenceSelection> {
+    const candidates = buildStoryRelationCandidates({
+      selection: deterministicSelection,
+      evidence,
+    });
+    if (this.storyRelationVerifier === undefined || candidates.length === 0) {
+      this.storyRankingMetrics.recordStoryRelationVerification({
+        status: "skipped",
+        candidateCount: candidates.length,
+        approvedCount: 0,
+      });
+      return deterministicSelection;
+    }
+
+    try {
+      const decisions = await this.storyRelationVerifier.verify({
+        tenantId: params.tenantId,
+        workspaceId: params.workspaceId,
+        scope: params.scope,
+        period: params.period,
+        requestedAt: this.clock.now(),
+        clusters: deterministicSelection.clusters,
+        evidence,
+        candidates,
+      });
+      const approvedPairs = approvedStoryRelationPairs({
+        candidates,
+        decisions,
+      });
+      this.storyRankingMetrics.recordStoryRelationVerification({
+        status: "completed",
+        candidateCount: candidates.length,
+        approvedCount: approvedPairs.size,
+      });
+      if (approvedPairs.size === 0) {
+        return deterministicSelection;
+      }
+
+      return this.clusterer.cluster({
+        identity: {
+          tenantId: params.tenantId,
+          workspaceId: params.workspaceId,
+          scope: params.scope,
+        },
+        items: evidence,
+        limit: params.maxItems,
+        verifiedStoryRelationPairs: approvedPairs,
+      });
+    } catch {
+      this.storyRankingMetrics.recordStoryRelationVerification({
+        status: "failed_closed",
+        candidateCount: candidates.length,
+        approvedCount: 0,
+      });
+      return deterministicSelection;
+    }
   }
 
   private async withOriginalSourceText(
@@ -191,7 +262,10 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
         });
         itemsById.set(duplicateFeedItemId, {
           ...supplement,
-          score: Math.min(supplement.score, Math.max(0, rankedItem.score - 0.001)),
+          score: Math.min(
+            supplement.score,
+            Math.max(0, rankedItem.score - 0.001),
+          ),
           storyKeyHint: rankedItem.clusterId,
         });
       }
@@ -349,10 +423,7 @@ const countTopReadEligibleItemsForProvider = (
   let count = 0;
 
   for (const item of items) {
-    if (
-      item.providerKey === providerKey &&
-      isTopReadEligibleEvidence(item)
-    ) {
+    if (item.providerKey === providerKey && isTopReadEligibleEvidence(item)) {
       count += 1;
     }
   }

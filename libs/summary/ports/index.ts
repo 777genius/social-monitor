@@ -12,6 +12,7 @@ export * from "./reader-summary-model.port";
 export * from "./reader-summary-policy-repository.port";
 export * from "./reader-summary-preview-media-enricher.port";
 export * from "./reader-summary-provider-collection-health.port";
+export * from "./reader-summary-story-relation-verifier.port";
 export * from "./reader-summary-topic-collection-metrics.port";
 export * from "./reader-summary-topic-labeler.port";
 export * from "./reader-summary-topic-map-publication-audit.port";

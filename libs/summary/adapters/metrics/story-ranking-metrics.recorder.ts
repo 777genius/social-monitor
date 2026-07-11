@@ -5,7 +5,10 @@ import {
   readerSummaryReliabilityRiskKinds,
   summaryEvidenceCoverageWarnings,
 } from "../../domain";
-import type { StoryRankingMetricsPort } from "../../ports";
+import type {
+  StoryRankingMetricsPort,
+  StoryRelationVerificationMetric,
+} from "../../ports";
 import type { SummaryEvidenceSelection } from "../../domain";
 
 export class StoryRankingMetricsRecorder implements StoryRankingMetricsPort {
@@ -114,7 +117,9 @@ export class StoryRankingMetricsRecorder implements StoryRankingMetricsPort {
     });
 
     const activeRisks = new Map(
-      snapshot.reliabilityReport.risks.map((risk) => [risk.kind, risk] as const),
+      snapshot.reliabilityReport.risks.map(
+        (risk) => [risk.kind, risk] as const,
+      ),
     );
     for (const riskKind of readerSummaryReliabilityRiskKinds) {
       const risk = activeRisks.get(riskKind);
@@ -136,5 +141,21 @@ export class StoryRankingMetricsRecorder implements StoryRankingMetricsPort {
         },
       });
     }
+  }
+
+  recordStoryRelationVerification(
+    metric: StoryRelationVerificationMetric,
+  ): void {
+    const labels = { status: metric.status };
+    this.metrics.recordGauge({
+      name: "summary_story_relation_candidates_total",
+      value: metric.candidateCount,
+      labels,
+    });
+    this.metrics.recordGauge({
+      name: "summary_story_relation_approved_total",
+      value: metric.approvedCount,
+      labels,
+    });
   }
 }
