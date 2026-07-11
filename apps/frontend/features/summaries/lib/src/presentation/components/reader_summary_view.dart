@@ -9,6 +9,7 @@ import '../../domain/entities/summary_citation.dart';
 import '../../domain/value_objects/reader_action_target.dart';
 import 'reader_summary_brief_surface.dart';
 import 'reader_summary_next_actions.dart';
+import 'reader_summary_top_posts_section_sliver.dart';
 import 'reader_summary_topic_recommendations_panel.dart';
 import 'reader_summary_trust_panel.dart';
 
@@ -20,40 +21,62 @@ class ReaderSummaryView extends StatelessWidget {
     required this.summary,
     required this.isRefreshing,
     required this.readerActionState,
-    required this.topicRecommendationState,
+    this.topicRecommendationState,
     required this.activeReaderActionIdempotencyKey,
     required this.lastReaderActionIdempotencyKey,
     required this.onGenerate,
     required this.intentForAction,
     required this.onAction,
-    required this.topPostRatingFor,
-    required this.onTopPostRating,
-    required this.onTopicRecommendationDecision,
+    this.topPostRatingFor,
+    this.onTopPostRating,
+    this.onTopicRecommendationDecision,
     required this.onOpenUrl,
     this.includeTopPosts = true,
   });
 
+  factory ReaderSummaryView.readOnly({
+    Key? key,
+    required ReaderSummary summary,
+    required bool isRefreshing,
+    required ValueChanged<String> onOpenUrl,
+    bool includeTopPosts = true,
+  }) {
+    return ReaderSummaryView(
+      key: key,
+      summary: summary,
+      isRefreshing: isRefreshing,
+      readerActionState: const InitialViewState<ReaderActionResult>(),
+      activeReaderActionIdempotencyKey: null,
+      lastReaderActionIdempotencyKey: null,
+      onGenerate: _ignoreGenerate,
+      intentForAction: _readOnlyIntent,
+      onAction: _ignoreReaderAction,
+      onOpenUrl: onOpenUrl,
+      includeTopPosts: includeTopPosts,
+    );
+  }
+
   final ReaderSummary summary;
   final bool isRefreshing;
   final AsyncViewState<ReaderActionResult> readerActionState;
-  final AsyncViewState<ReaderSummaryTopicRecommendationQueue>
+  final AsyncViewState<ReaderSummaryTopicRecommendationQueue>?
   topicRecommendationState;
   final String? activeReaderActionIdempotencyKey;
   final String? lastReaderActionIdempotencyKey;
   final VoidCallback onGenerate;
   final UserActionIntent Function(ReaderAction action) intentForAction;
   final ReaderActionSelected onAction;
-  final int? Function(TopRead item) topPostRatingFor;
+  final int? Function(TopRead item)? topPostRatingFor;
   final Future<bool> Function(
     TopRead item,
     int rating,
     PostRatingReason? reason,
-  )
+  )?
   onTopPostRating;
   final Future<void> Function(
     ReaderSummaryTopicRecommendation recommendation,
     ReaderSummaryTopicRecommendationDecisionStatus status,
-  )
+  )?
   onTopicRecommendationDecision;
   final ValueChanged<String> onOpenUrl;
   final bool includeTopPosts;
@@ -79,10 +102,12 @@ class ReaderSummaryView extends StatelessWidget {
             onAction: onAction,
             onOpenUrl: onOpenUrl,
           ),
-          ReaderSummaryTopicRecommendationsPanel(
-            state: topicRecommendationState,
-            onDecision: onTopicRecommendationDecision,
-          ),
+          if (topicRecommendationState case final state?)
+            if (onTopicRecommendationDecision case final onDecision?)
+              ReaderSummaryTopicRecommendationsPanel(
+                state: state,
+                onDecision: onDecision,
+              ),
           if (summary.content.claimBoard.isNotEmpty ||
               summary.content.reliabilityReport.risks.isNotEmpty) ...[
             const SizedBox(height: AppSpacing.md + 2),
@@ -112,10 +137,16 @@ class ReaderSummaryView extends StatelessWidget {
   }
 }
 
-List<TopRead> readerSummaryTopPostItems(ReaderSummary summary) =>
-    summary.content.selectedPosts.isNotEmpty
-    ? summary.content.selectedPosts
-    : summary.content.topReads;
+void _ignoreGenerate() {}
+
+UserActionIntent _readOnlyIntent(ReaderAction action) {
+  return const UserActionIntent(id: 'reader-summary-read-only');
+}
+
+void _ignoreReaderAction(
+  ReaderAction action, [
+  ReaderFeedbackReason? feedbackReason,
+]) {}
 
 class _ExecutiveBoardCard extends StatelessWidget {
   const _ExecutiveBoardCard({

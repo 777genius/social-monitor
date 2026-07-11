@@ -4,6 +4,8 @@ import 'package:social_monitor_app/src/app/social_monitor_app.dart';
 import 'package:social_monitor_app/src/composition/app_composition_root.dart';
 import 'package:social_monitor_app/src/composition/app_frontend_runtime_config.dart';
 import 'package:social_monitor_app/src/composition/app_runtime.dart';
+import 'package:social_monitor_app/src/composition/app_theme_mode_controller.dart';
+import 'package:social_monitor_app/src/routing/app_shell_page.dart';
 import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
@@ -109,6 +111,46 @@ void main() {
       controller.runtime.capabilities.capability('settings').isEnabled,
       isFalse,
     );
+  });
+
+  testWidgets('shows repository link only in guest sidebar footer', (
+    tester,
+  ) async {
+    const workspace = AppWorkspaceSnapshot(
+      tenantName: 'Public',
+      workspaceName: 'Daily stories',
+      workspaceRole: 'viewer',
+      statusLabel: 'Active',
+      scope: WorkspaceScope(tenantId: 'tenant-1', workspaceId: 'workspace-1'),
+    );
+    final runtimeController = AppRuntimeController(
+      AppShellRuntime.connected(
+        workspace: workspace,
+        generatedApiRuntime: Object(),
+        session: const AppSessionSnapshot(
+          isSignedIn: true,
+          isRestoring: false,
+          userId: 'guest-1',
+          userLabel: 'Guest',
+          userRole: 'user',
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AppShellPage(
+          features: const [],
+          runtimeController: runtimeController,
+          themeModeController: AppThemeModeController(),
+          location: '/summaries',
+          child: const SizedBox(),
+        ),
+      ),
+    );
+
+    expect(find.byKey(const ValueKey('guest-github-link')), findsOneWidget);
+    expect(find.text('GitHub'), findsOneWidget);
   });
 
   test('feature descriptors reflect restored runtime status', () {

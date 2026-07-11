@@ -26,12 +26,12 @@ class ReaderSummaryTopPosts extends StatefulWidget {
   final int selectedPostCount;
   final SummaryPeriod period;
   final Map<String, SummaryCitation> citationsById;
-  final int? Function(TopRead item) ratingFor;
+  final int? Function(TopRead item)? ratingFor;
   final Future<bool> Function(
     TopRead item,
     int rating,
     PostRatingReason? reason,
-  )
+  )?
   onRated;
   final ValueChanged<String> onOpenUrl;
 
@@ -141,7 +141,7 @@ class _ReaderSummaryTopPostsState extends State<ReaderSummaryTopPosts> {
                     citationsById: widget.citationsById,
                     dense: _denseView,
                     reservePreviewSpace: reservePreviewSpace,
-                    rating: widget.ratingFor(item),
+                    rating: widget.ratingFor?.call(item),
                     onRated: widget.onRated,
                     onOpenUrl: widget.onOpenUrl,
                   );

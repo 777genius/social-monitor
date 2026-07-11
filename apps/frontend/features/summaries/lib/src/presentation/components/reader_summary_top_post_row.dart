@@ -23,7 +23,7 @@ class _TopPostRow extends StatefulWidget {
     TopRead item,
     int rating,
     PostRatingReason? reason,
-  )
+  )?
   onRated;
   final ValueChanged<String> onOpenUrl;
   final bool dense;
@@ -45,11 +45,12 @@ class _TopPostRowState extends State<_TopPostRow> {
   bool _evidenceExpanded = false;
 
   bool get _showRating =>
-      _hovered ||
-      _focused ||
-      _ratingInFlight ||
-      _ratedInSession ||
-      widget.rating != null;
+      widget.onRated != null &&
+      (_hovered ||
+          _focused ||
+          _ratingInFlight ||
+          _ratedInSession ||
+          widget.rating != null);
 
   @override
   void didUpdateWidget(covariant _TopPostRow oldWidget) {
@@ -105,14 +106,16 @@ class _TopPostRowState extends State<_TopPostRow> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final wide = constraints.maxWidth >= 980;
-        final rating = _TopPostRatingSlot(
-          visible: _showRating,
-          child: _TopPostRatingControl(
-            dense: widget.dense,
-            rating: widget.rating,
-            onRated: _submitRating,
-          ),
-        );
+        final rating = widget.onRated == null
+            ? const SizedBox.shrink()
+            : _TopPostRatingSlot(
+                visible: _showRating,
+                child: _TopPostRatingControl(
+                  dense: widget.dense,
+                  rating: widget.rating,
+                  onRated: _submitRating,
+                ),
+              );
 
         if (widget.dense) {
           final supportSignal = _topPostSupportSignal(
@@ -249,9 +252,13 @@ class _TopPostRowState extends State<_TopPostRow> {
   }
 
   Future<bool> _submitRating(int rating, PostRatingReason? reason) async {
+    final onRated = widget.onRated;
+    if (onRated == null) {
+      return false;
+    }
     setState(() => _ratingInFlight = true);
     try {
-      final submitted = await widget.onRated(widget.item, rating, reason);
+      final submitted = await onRated(widget.item, rating, reason);
       if (!mounted) {
         return submitted;
       }

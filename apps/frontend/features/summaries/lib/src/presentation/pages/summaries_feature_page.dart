@@ -7,10 +7,8 @@ import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 import '../../application/commands/decide_topic_recommendation_command.dart';
 import '../../domain/aggregates/reader_summary.dart';
 import '../../domain/entities/generated_summary.dart';
-import '../../domain/entities/post_rating.dart';
 import '../../domain/entities/reader_summary_topic_recommendation.dart';
-import '../components/reader_summary_brief_surface.dart';
-import '../components/reader_summary_view.dart';
+import '../components/reader_summary_top_posts_section_sliver.dart';
 import '../components/summary_detail_panel.dart';
 import '../components/summary_generation_status_presenter.dart';
 import '../components/workspace_summary_panel.dart';
@@ -150,12 +148,6 @@ class _SummariesBody extends StatelessWidget {
     final reviewStore = store;
 
     final topPostsSummary = _summaryForTopPosts(workspaceSummaryState);
-    final topPostItems = topPostsSummary == null
-        ? const <TopRead>[]
-        : readerSummaryTopPostItems(topPostsSummary);
-    final selectedPostCount =
-        topPostsSummary?.coverage?.selectedFeedItemCount ?? topPostItems.length;
-
     return SliverMainAxisGroup(
       slivers: [
         SliverToBoxAdapter(
@@ -208,37 +200,25 @@ class _SummariesBody extends StatelessWidget {
             contentPadding: contentPadding,
           ),
         ),
-        if (topPostsSummary != null && topPostItems.isNotEmpty) ...[
-          const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.md + 2)),
-          SliverPadding(
-            padding: horizontalPadding,
-            sliver: ReaderSummaryTopPostsSliver(
-              items: topPostItems,
-              curatedTopPostCount: topPostsSummary.content.topReads.length,
-              selectedPostCount: selectedPostCount,
-              period: topPostsSummary.period,
-              citationsById: {
-                for (final citation in topPostsSummary.citations)
-                  citation.id: citation,
-              },
-              ratingFor: (TopRead item) =>
-                  reviewStore.topPostRatingFor(topPostsSummary, item),
-              onRated: (TopRead item, int rating, PostRatingReason? reason) =>
-                  reviewStore.submitTopPostRating(
-                    topPostsSummary,
-                    item,
-                    rating,
-                    reason,
-                  ),
-              onOpenUrl: (String url) => unawaited(
-                store.openReaderSourceUrl(
-                  summaryId: topPostsSummary.id,
-                  canonicalUrl: url,
-                ),
+        if (topPostsSummary != null)
+          ReaderSummaryTopPostsSectionSliver(
+            summary: topPostsSummary,
+            contentPadding: horizontalPadding,
+            ratingFor: (item) =>
+                reviewStore.topPostRatingFor(topPostsSummary, item),
+            onRated: (item, rating, reason) => reviewStore.submitTopPostRating(
+              topPostsSummary,
+              item,
+              rating,
+              reason,
+            ),
+            onOpenUrl: (url) => unawaited(
+              store.openReaderSourceUrl(
+                summaryId: topPostsSummary.id,
+                canonicalUrl: url,
               ),
             ),
           ),
-        ],
         if (showSummaryHistory)
           SliverPadding(
             padding: EdgeInsets.fromLTRB(

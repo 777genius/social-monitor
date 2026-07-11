@@ -7,6 +7,7 @@ import '../composition/app_theme_mode_controller.dart';
 import 'app_feature_access.dart';
 import 'app_shell_theme_menu_card.dart';
 import 'feature_catalog.dart';
+import 'guest_github_sidebar_card.dart';
 
 class AppShellPage extends StatelessWidget {
   const AppShellPage({
@@ -56,6 +57,7 @@ class AppShellPage extends StatelessWidget {
           ],
           sidebarFooter: [
             AppShellThemeMenuCard(controller: themeModeController),
+            if (runtime.isGuest) const GuestGitHubSidebarCard(),
           ],
           child: child,
         );
