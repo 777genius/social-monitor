@@ -10,7 +10,7 @@ Social Monitor collects posts and signals from across social networks, news, and
 
 It ranks everything and builds a top-posts feed, so the most important and relevant content rises to the top automatically. And all of it is driven by your interests - you tell it what you care about, and it tunes what you see around that.
 
-<img width="1312" height="737" alt="image" src="https://github.com/user-attachments/assets/3270f730-5020-440f-9726-9e3ae2f692c5" />
+<img width="2178" height="1157" alt="image" src="https://github.com/user-attachments/assets/926b1651-0a48-496e-9d29-201d22edc7a6" />
 
 ## Summaries on your schedule
 
@@ -22,7 +22,7 @@ Don't want to check it constantly? Get a digest instead:
 
 Stop consuming noise. See what's important.
 
-<img width="1312" height="736" alt="image" src="https://github.com/user-attachments/assets/6dd81456-963f-45ad-b7be-7ae283cd2d54" />
+<img width="1777" height="1157" alt="image" src="https://github.com/user-attachments/assets/39247c45-867c-4935-b4cc-114a17739627" />
 
 ## What Is In This Repo
 
