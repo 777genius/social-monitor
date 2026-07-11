@@ -208,13 +208,13 @@ async function readSourceObservations(
         and i.tenant_id = sb.tenant_id
         and i.workspace_id = sb.workspace_id
       where si.provider_key = $1
-        and si.observed_at >= $2
-        and si.observed_at < $3
+        and si.published_at >= $2
+        and si.published_at < $3
         and sb.status = 'ENABLED'
         and sb.deleted_at is null
         and i.status = 'ENABLED'
         and i.deleted_at is null
-      order by si.source_binding_id, si.observed_at, si.id
+      order by si.source_binding_id, si.published_at, si.observed_at, si.id
     `,
     [providerKey, window.start, window.endExclusive],
   );
