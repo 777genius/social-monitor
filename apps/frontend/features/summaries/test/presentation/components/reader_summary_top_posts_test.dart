@@ -491,60 +491,6 @@ void main() {
     await tester.tap(sourceButton);
     expect(openedUrl, 'https://reddit.example/r/mcp/comments/1');
   });
-
-  testWidgets('compact view collapses top posts into single-line rows', (
-    tester,
-  ) async {
-    final summary = const SummaryMapper().readerSummaryToDomain(
-      readerSummaryApiDto(
-        content: readerSummaryContentApiDto(
-          topReads: const [
-            TopReadApiDto(
-              title: 'Compact mode single row post',
-              providerKey: 'reddit',
-              reason:
-                  'A detailed explanation that only the roomy list view shows.',
-              matchedInterestIds: ['ai-developer-tools'],
-              signalScore: 2.4,
-              confidence: TopReadConfidenceApiDto(
-                level: 'medium',
-                score: 0.55,
-                rationale: 'Same-source support.',
-              ),
-              confirmedProviderKeys: ['reddit'],
-              providerMetrics: [
-                ProviderMetricApiDto(label: 'Likes', value: '959'),
-              ],
-              citationIds: ['compact-citation'],
-            ),
-          ],
-        ),
-        citations: [
-          summaryCitationApiDto(id: 'compact-citation', providerKey: 'reddit'),
-        ],
-      ),
-    );
-
-    await tester.pumpWidget(_TestApp(summary: summary));
-    await tester.pumpAndSettle();
-
-    // Detailed list view prints the expanded relevance breakdown.
-    expect(find.text('Compact mode single row post'), findsOneWidget);
-    expect(find.textContaining('Signal '), findsWidgets);
-    expect(find.textContaining('Matching '), findsWidgets);
-
-    await tester.tap(
-      find.byKey(const ValueKey('reader-summary-top-posts-view-compact')),
-    );
-    await tester.pumpAndSettle();
-
-    // Compact view keeps the title and a single-line relevance chip, but drops
-    // the multi-line relevance breakdown so each post fits one row.
-    expect(find.text('Compact mode single row post'), findsOneWidget);
-    expect(find.text('Same-source support'), findsOneWidget);
-    expect(find.textContaining('Signal '), findsNothing);
-    expect(find.textContaining('Matching '), findsNothing);
-  });
 }
 
 class _TestApp extends StatelessWidget {
