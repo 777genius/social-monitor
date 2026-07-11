@@ -28,6 +28,7 @@ else
   RELEASES=${SOCIAL_MONITOR_DEPLOY_RELEASES:-$ROOT/runtime/frontend-releases}
   PROJECT=${SOCIAL_MONITOR_DEPLOY_PROJECT:-social-monitor-prod}
 fi
+unset DATABASE_URL
 PUBLIC_LINK=$ROOT/runtime/frontend-public-web
 ADMIN_LINK=$ROOT/runtime/frontend-admin-web
 DEPLOY_LOCK=$CONTROL/production-deploy.lock
@@ -502,8 +503,8 @@ backup_database() (
     -v "$ROOT/secrets/db/ca-certificate.crt:/run/social-monitor-db/ca-certificate.crt:ro" \
     "$backup_image" \
     sh -lc 'psql "$DATABASE_URL" -Atc "SELECT current_database()"')
-  [[ $database_name == social_monitor || $database_name == defaultdb ]] || \
-    fail 'effective production database name is outside the project allowlist'
+  [[ $database_name == social_monitor ]] || \
+    fail 'effective production database is not social_monitor'
   schema_table_count=$(docker run --rm \
     --env-file "$env_file" \
     -v "$ROOT/secrets/db/ca-certificate.crt:/run/social-monitor-db/ca-certificate.crt:ro" \
@@ -587,7 +588,7 @@ deploy_backend() {
     [[ $service == x-collector || $service == daily-runner ]] || needs_migrate=true
   done
   if [[ $needs_migrate == true ]]; then
-    "${COMPOSE[@]}" --profile app run --rm --no-deps migrate npm run migrate:deploy
+    "${COMPOSE[@]}" --profile app run -T --rm --no-deps migrate npm run migrate:deploy
   fi
 
   local -a persistent=()
