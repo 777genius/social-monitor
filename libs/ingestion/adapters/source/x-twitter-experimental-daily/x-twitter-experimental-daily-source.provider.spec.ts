@@ -8,6 +8,17 @@ import type {
 } from "./x-daily-collector-client.port";
 
 describe("XTwitterSourceProvider", () => {
+  it("declares that daily snapshot scans do not support cursor resume", () => {
+    const provider = new XTwitterSourceProvider(new RecordingCollector(), {
+      now: () => new Date("2026-06-27T00:00:00.000Z"),
+    });
+
+    expect(provider.capabilityProfile()).toMatchObject({
+      providerKey: "x-twitter",
+      cursorModel: "none",
+    });
+  });
+
   it("plans and scans through the collector client without leaking gRPC details", async () => {
     const collector = new RecordingCollector();
     const provider = new XTwitterSourceProvider(collector, {

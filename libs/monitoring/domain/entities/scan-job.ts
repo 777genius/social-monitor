@@ -1,7 +1,14 @@
-import { emptyJsonObjectAsUndefined, normalizeJsonObject, type JsonObject, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
+import {
+  emptyJsonObjectAsUndefined,
+  normalizeJsonObject,
+  type JsonObject,
+  type TenantId,
+  type WorkspaceId,
+} from '@social-monitor/shared-kernel';
 
 export type ScanJobStatus = 'requested' | 'enqueued' | 'succeeded' | 'failed';
 export type ScanJobFailureMetadata = JsonObject;
+export type ScanJobExecutionMetadata = JsonObject;
 
 export type ScanJobProps = {
   readonly id: string;
@@ -16,6 +23,7 @@ export type ScanJobProps = {
   readonly completedAt?: Date;
   readonly failureReason?: string;
   readonly failureMetadata?: ScanJobFailureMetadata;
+  readonly executionMetadata?: ScanJobExecutionMetadata;
 };
 
 export class ScanJob {
@@ -29,6 +37,7 @@ export class ScanJob {
       status: 'requested',
       failureReason: props.failureReason?.trim(),
       failureMetadata: normalizeFailureMetadata(props.failureMetadata),
+      executionMetadata: normalizeExecutionMetadata(props.executionMetadata),
     });
   }
 
@@ -39,15 +48,24 @@ export class ScanJob {
       throw new Error('Enqueued scan jobs must have enqueue time');
     }
 
-    if ((props.status === 'succeeded' || props.status === 'failed') && props.completedAt === undefined) {
+    if (
+      (props.status === 'succeeded' || props.status === 'failed') &&
+      props.completedAt === undefined
+    ) {
       throw new Error('Completed scan jobs must have completion time');
     }
 
-    if (props.status === 'failed' && (props.failureReason ?? '').trim().length === 0) {
+    if (
+      props.status === 'failed' &&
+      (props.failureReason ?? '').trim().length === 0
+    ) {
       throw new Error('Failed scan jobs must have failure reason');
     }
 
-    if (props.enqueuedAt !== undefined && props.enqueuedAt.getTime() < props.requestedAt.getTime()) {
+    if (
+      props.enqueuedAt !== undefined &&
+      props.enqueuedAt.getTime() < props.requestedAt.getTime()
+    ) {
       throw new Error('Scan job enqueue time cannot be before request time');
     }
 
@@ -63,6 +81,7 @@ export class ScanJob {
       ...props,
       failureReason: props.failureReason?.trim(),
       failureMetadata: normalizeFailureMetadata(props.failureMetadata),
+      executionMetadata: normalizeExecutionMetadata(props.executionMetadata),
     });
   }
 
@@ -82,7 +101,10 @@ export class ScanJob {
     });
   }
 
-  markSucceeded(params: { readonly completedAt: Date }): ScanJob {
+  markSucceeded(params: {
+    readonly completedAt: Date;
+    readonly executionMetadata?: ScanJobExecutionMetadata;
+  }): ScanJob {
     this.assertCanComplete(params.completedAt);
 
     return new ScanJob({
@@ -91,6 +113,7 @@ export class ScanJob {
       completedAt: params.completedAt,
       failureReason: undefined,
       failureMetadata: undefined,
+      executionMetadata: normalizeExecutionMetadata(params.executionMetadata),
     });
   }
 
@@ -98,6 +121,7 @@ export class ScanJob {
     readonly completedAt: Date;
     readonly failureReason: string;
     readonly failureMetadata?: ScanJobFailureMetadata;
+    readonly executionMetadata?: ScanJobExecutionMetadata;
   }): ScanJob {
     this.assertCanComplete(params.completedAt);
 
@@ -111,6 +135,7 @@ export class ScanJob {
       completedAt: params.completedAt,
       failureReason: params.failureReason.trim(),
       failureMetadata: normalizeFailureMetadata(params.failureMetadata),
+      executionMetadata: normalizeExecutionMetadata(params.executionMetadata),
     });
   }
 
@@ -123,12 +148,18 @@ export class ScanJob {
       throw new Error('Only enqueued scan jobs can complete');
     }
 
-    if (this.props.enqueuedAt !== undefined && completedAt.getTime() < this.props.enqueuedAt.getTime()) {
+    if (
+      this.props.enqueuedAt !== undefined &&
+      completedAt.getTime() < this.props.enqueuedAt.getTime()
+    ) {
       throw new Error('Scan job completion time cannot be before enqueue time');
     }
   }
 
-  private static assertRequiredIds(sourceBindingId: string, scanPolicyId: string): void {
+  private static assertRequiredIds(
+    sourceBindingId: string,
+    scanPolicyId: string,
+  ): void {
     if (sourceBindingId.trim().length === 0) {
       throw new Error('Source binding id must be non-empty');
     }
@@ -142,4 +173,9 @@ export class ScanJob {
 const normalizeFailureMetadata = (
   metadata: ScanJobFailureMetadata | undefined,
 ): ScanJobFailureMetadata | undefined =>
+  emptyJsonObjectAsUndefined(normalizeJsonObject(metadata));
+
+const normalizeExecutionMetadata = (
+  metadata: ScanJobExecutionMetadata | undefined,
+): ScanJobExecutionMetadata | undefined =>
   emptyJsonObjectAsUndefined(normalizeJsonObject(metadata));

@@ -192,7 +192,9 @@ export type PrismaMonitoringClient = {
     upsert(args: {
       readonly where: { readonly id: string };
       readonly update: PrismaSourceCredentialSecretWriteData;
-      readonly create: { readonly id: string } & PrismaSourceCredentialSecretWriteData;
+      readonly create: {
+        readonly id: string;
+      } & PrismaSourceCredentialSecretWriteData;
     }): Promise<PrismaSourceCredentialSecretRecord>;
     findUnique(args: {
       readonly where: { readonly id: string };
@@ -249,6 +251,7 @@ export type PrismaMonitoringClient = {
         readonly completedAt?: Date | null;
         readonly failureReason?: string | null;
         readonly failureMetadata?: Readonly<Record<string, unknown>> | null;
+        readonly executionMetadata?: Readonly<Record<string, unknown>> | null;
       };
       readonly create: {
         readonly id: string;
@@ -263,6 +266,7 @@ export type PrismaMonitoringClient = {
         readonly completedAt?: Date | null;
         readonly failureReason?: string | null;
         readonly failureMetadata?: Readonly<Record<string, unknown>> | null;
+        readonly executionMetadata?: Readonly<Record<string, unknown>> | null;
       };
     }): Promise<PrismaScanJobRecord>;
     findFirst(args: {
@@ -272,7 +276,9 @@ export type PrismaMonitoringClient = {
         readonly id?: string;
         readonly idempotencyKey?: string;
         readonly sourceBindingId?: string;
-        readonly status?: { readonly in: readonly ('REQUESTED' | 'ENQUEUED')[] };
+        readonly status?: {
+          readonly in: readonly ('REQUESTED' | 'ENQUEUED')[];
+        };
       };
       readonly orderBy?: { readonly requestedAt: 'asc' | 'desc' };
     }): Promise<PrismaScanJobRecord | null>;

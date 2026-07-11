@@ -1,6 +1,6 @@
-import type { Provider } from '@nestjs/common';
-import { CircuitBreakerSourceFetcherAdapter } from '@social-monitor/ingestion/adapters/source/circuit-breaker-source-fetcher.adapter';
-import { ExecuteScanUseCase } from '@social-monitor/ingestion/features/execute-scan/execute-scan.use-case';
+import type { Provider } from "@nestjs/common";
+import { CircuitBreakerSourceFetcherAdapter } from "@social-monitor/ingestion/adapters/source/circuit-breaker-source-fetcher.adapter";
+import { ExecuteScanUseCase } from "@social-monitor/ingestion/features/execute-scan/execute-scan.use-case";
 import type {
   ConversationProjectionPort,
   FeedProjectionPort,
@@ -9,13 +9,14 @@ import type {
   ScanExecutionReporterPort,
   ScanFailureQueuePort,
   ScanLeasePort,
+  SourceCandidateMemoryPort,
   SourceItemEnrichmentPort,
   SourceItemMetadataProjectionPort,
   SourceItemRepositoryPort,
-} from '@social-monitor/ingestion/ports';
-import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
+} from "@social-monitor/ingestion/ports";
+import { CryptoIdGenerator, SystemClock } from "@social-monitor/shared-kernel";
 
-import { ArticleContentSourceItemEnrichmentAdapter } from './article-content-enrichment.module';
+import { ArticleContentSourceItemEnrichmentAdapter } from "./article-content-enrichment.module";
 import {
   INGESTION_CONVERSATION_PROJECTION,
   INGESTION_FEED_PROJECTION,
@@ -24,9 +25,10 @@ import {
   INGESTION_SCAN_EXECUTION_REPORTER,
   INGESTION_SCAN_FAILURE_QUEUE,
   INGESTION_SCAN_LEASE,
+  INGESTION_SOURCE_CANDIDATE_MEMORY,
   INGESTION_SOURCE_ITEM_METADATA_PROJECTION,
   INGESTION_SOURCE_ITEM_REPOSITORY,
-} from './ingestion-worker-provider-tokens';
+} from "./ingestion-worker-provider-tokens";
 
 export const executeScanProviders: Provider[] = [
   {
@@ -43,6 +45,7 @@ export const executeScanProviders: Provider[] = [
       sourceItemMetadataProjection: SourceItemMetadataProjectionPort,
       sourceItemEnrichment: SourceItemEnrichmentPort,
       conversationProjection: ConversationProjectionPort,
+      candidateMemory: SourceCandidateMemoryPort,
     ) =>
       new ExecuteScanUseCase(
         sourceFetcher,
@@ -58,6 +61,7 @@ export const executeScanProviders: Provider[] = [
         sourceItemMetadataProjection,
         sourceItemEnrichment,
         conversationProjection,
+        candidateMemory,
       ),
     inject: [
       CircuitBreakerSourceFetcherAdapter,
@@ -71,6 +75,7 @@ export const executeScanProviders: Provider[] = [
       INGESTION_SOURCE_ITEM_METADATA_PROJECTION,
       ArticleContentSourceItemEnrichmentAdapter,
       INGESTION_CONVERSATION_PROJECTION,
+      INGESTION_SOURCE_CANDIDATE_MEMORY,
     ],
   },
 ];

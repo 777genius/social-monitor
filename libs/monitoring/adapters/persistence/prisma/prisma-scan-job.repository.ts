@@ -9,43 +9,52 @@ import type {
   ScanJobRepositoryPort,
 } from '../../../ports';
 import type { PrismaMonitoringClient } from './prisma-monitoring-client';
-import { scanJobFromPrisma, scanJobStatusToPrisma } from './prisma-monitoring-records';
+import {
+  scanJobFromPrisma,
+  scanJobStatusToPrisma,
+} from './prisma-monitoring-records';
 
 const ACTIVE_SCAN_JOB_STATUSES = ['REQUESTED', 'ENQUEUED'] as const;
 
-export class PrismaScanJobRepository implements ScanJobRepositoryPort, ScanJobHistoryReadPort {
+export class PrismaScanJobRepository
+  implements ScanJobRepositoryPort, ScanJobHistoryReadPort
+{
   constructor(private readonly prisma: PrismaMonitoringClient) {}
 
   async save(job: ScanJob): Promise<void> {
     const snapshot = job.toSnapshot();
     const status = scanJobStatusToPrisma(snapshot.status);
 
-    await withPrismaWriteRetry(() => this.prisma.scanJob.upsert({
-      where: { id: snapshot.id },
-      update: {
-        status,
-        idempotencyKey: snapshot.idempotencyKey,
-        requestedAt: snapshot.requestedAt,
-        enqueuedAt: snapshot.enqueuedAt ?? null,
-        completedAt: snapshot.completedAt ?? null,
-        failureReason: snapshot.failureReason ?? null,
-        failureMetadata: snapshot.failureMetadata ?? null,
-      },
-      create: {
-        id: snapshot.id,
-        tenantId: snapshot.tenantId,
-        workspaceId: snapshot.workspaceId,
-        sourceBindingId: snapshot.sourceBindingId,
-        scanPolicyId: snapshot.scanPolicyId,
-        status,
-        idempotencyKey: snapshot.idempotencyKey,
-        requestedAt: snapshot.requestedAt,
-        enqueuedAt: snapshot.enqueuedAt ?? null,
-        completedAt: snapshot.completedAt ?? null,
-        failureReason: snapshot.failureReason ?? null,
-        failureMetadata: snapshot.failureMetadata ?? null,
-      },
-    }));
+    await withPrismaWriteRetry(() =>
+      this.prisma.scanJob.upsert({
+        where: { id: snapshot.id },
+        update: {
+          status,
+          idempotencyKey: snapshot.idempotencyKey,
+          requestedAt: snapshot.requestedAt,
+          enqueuedAt: snapshot.enqueuedAt ?? null,
+          completedAt: snapshot.completedAt ?? null,
+          failureReason: snapshot.failureReason ?? null,
+          failureMetadata: snapshot.failureMetadata ?? null,
+          executionMetadata: snapshot.executionMetadata ?? null,
+        },
+        create: {
+          id: snapshot.id,
+          tenantId: snapshot.tenantId,
+          workspaceId: snapshot.workspaceId,
+          sourceBindingId: snapshot.sourceBindingId,
+          scanPolicyId: snapshot.scanPolicyId,
+          status,
+          idempotencyKey: snapshot.idempotencyKey,
+          requestedAt: snapshot.requestedAt,
+          enqueuedAt: snapshot.enqueuedAt ?? null,
+          completedAt: snapshot.completedAt ?? null,
+          failureReason: snapshot.failureReason ?? null,
+          failureMetadata: snapshot.failureMetadata ?? null,
+          executionMetadata: snapshot.executionMetadata ?? null,
+        },
+      }),
+    );
   }
 
   async findById(params: {
@@ -116,10 +125,7 @@ export class PrismaScanJobRepository implements ScanJobRepositoryPort, ScanJobHi
           ? {}
           : { status: { in: params.statuses.map(scanJobStatusToPrisma) } }),
       },
-      orderBy: [
-        { requestedAt: 'desc' },
-        { id: 'desc' },
-      ],
+      orderBy: [{ requestedAt: 'desc' }, { id: 'desc' }],
       take: params.limit + 1,
       ...(params.cursor === undefined
         ? {}
@@ -155,10 +161,7 @@ export class PrismaScanJobRepository implements ScanJobRepositoryPort, ScanJobHi
           lt: params.windowEndedAt,
         },
       },
-      orderBy: [
-        { requestedAt: 'desc' },
-        { id: 'desc' },
-      ],
+      orderBy: [{ requestedAt: 'desc' }, { id: 'desc' }],
       take: params.limit + 1,
     });
     const page = records.slice(0, params.limit);

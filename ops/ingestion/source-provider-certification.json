@@ -575,7 +575,7 @@
         "minimumScanIntervalSeconds": 86400,
         "skipRecentlyScanned": true,
         "scanHistoryRequired": true,
-        "cursorResumeRequired": true,
+        "cursorResumeRequired": false,
         "rateLimitBackoffRequired": true,
         "staleReadModelState": "stale",
         "providerFailureHealthState": "down",

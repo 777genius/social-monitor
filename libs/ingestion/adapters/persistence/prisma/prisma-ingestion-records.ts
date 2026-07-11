@@ -1,11 +1,11 @@
-import { createHash } from 'node:crypto';
+import { createHash } from "node:crypto";
 
 import {
   emptyJsonObjectAsUndefined,
   normalizeJsonObject,
   tenantId,
   workspaceId,
-} from '@social-monitor/shared-kernel';
+} from "@social-monitor/shared-kernel";
 
 import {
   ScanAttempt,
@@ -13,8 +13,14 @@ import {
   type ScanAttemptStatus,
   SourceItem,
   type SourceItemProps,
-} from '../../../domain';
-import type { FailedScanCommand, ScanCursorRecord, ScanLease, SourceQuery, SourceQueryMode } from '../../../ports';
+} from "../../../domain";
+import type {
+  FailedScanCommand,
+  ScanCursorRecord,
+  ScanLease,
+  SourceQuery,
+  SourceQueryMode,
+} from "../../../ports";
 
 export type PrismaSourceItemRecord = {
   readonly id: string;
@@ -33,6 +39,25 @@ export type PrismaSourceItemRecord = {
   readonly metadata: unknown;
 };
 
+export type PrismaSourceCandidateMemoryRecord = {
+  readonly id: string;
+  readonly tenantId: string;
+  readonly workspaceId: string;
+  readonly interestId: string;
+  readonly sourceBindingId: string;
+  readonly providerKey: string;
+  readonly providerItemId: string;
+  readonly scopeFingerprint: string;
+  readonly fingerprint: string;
+  readonly policyVersion: string;
+  readonly decision: string;
+  readonly reasonCode: string;
+  readonly expiresAt: Date;
+  readonly firstSeenAt: Date;
+  readonly lastSeenAt: Date;
+  readonly seenCount: number;
+};
+
 export type PrismaCursorCheckpointRecord = {
   readonly id: string;
   readonly tenantId: string;
@@ -42,7 +67,7 @@ export type PrismaCursorCheckpointRecord = {
   readonly updatedAt: Date;
 };
 
-export type PrismaScanFailureQueueStatus = 'RETRY_ENQUEUED' | 'DEAD_LETTERED';
+export type PrismaScanFailureQueueStatus = "RETRY_ENQUEUED" | "DEAD_LETTERED";
 
 export type PrismaScanFailureQueueEntryRecord = {
   readonly id: string;
@@ -64,7 +89,7 @@ export type PrismaScanFailureQueueEntryRecord = {
   readonly createdAt: Date;
 };
 
-export type PrismaScanAttemptStatus = 'RUNNING' | 'SUCCEEDED' | 'FAILED';
+export type PrismaScanAttemptStatus = "RUNNING" | "SUCCEEDED" | "FAILED";
 
 export type PrismaScanAttemptRecord = {
   readonly scanJobId: string;
@@ -92,7 +117,9 @@ export type PrismaScanLeaseEntryRecord = {
   readonly expiresAt: Date;
 };
 
-export const sourceItemFromPrisma = (record: PrismaSourceItemRecord): SourceItem =>
+export const sourceItemFromPrisma = (
+  record: PrismaSourceItemRecord,
+): SourceItem =>
   SourceItem.rehydrate({
     id: record.id,
     tenantId: tenantId(record.tenantId),
@@ -108,7 +135,9 @@ export const sourceItemFromPrisma = (record: PrismaSourceItemRecord): SourceItem
     metadata: normalizeJsonObject(record.metadata),
   } satisfies SourceItemProps);
 
-export const cursorFromPrisma = (record: PrismaCursorCheckpointRecord): ScanCursorRecord | null => {
+export const cursorFromPrisma = (
+  record: PrismaCursorCheckpointRecord,
+): ScanCursorRecord | null => {
   const payload = normalizeCursorPayload(record.cursorPayload);
 
   if (payload === null) {
@@ -125,17 +154,19 @@ export const cursorFromPrisma = (record: PrismaCursorCheckpointRecord): ScanCurs
 };
 
 export const contentHashForSourceItem = (snapshot: SourceItemProps): string =>
-  createHash('sha256')
-    .update([
-      snapshot.sourceBindingId,
-      snapshot.externalId,
-      snapshot.canonicalUrl,
-      snapshot.title,
-      snapshot.body,
-      snapshot.authorHandle ?? '',
-      snapshot.publishedAt.toISOString(),
-    ].join('\u001f'))
-    .digest('hex');
+  createHash("sha256")
+    .update(
+      [
+        snapshot.sourceBindingId,
+        snapshot.externalId,
+        snapshot.canonicalUrl,
+        snapshot.title,
+        snapshot.body,
+        snapshot.authorHandle ?? "",
+        snapshot.publishedAt.toISOString(),
+      ].join("\u001f"),
+    )
+    .digest("hex");
 
 export const failedScanCommandFromPrisma = (
   record: PrismaScanFailureQueueEntryRecord,
@@ -155,21 +186,30 @@ export const failedScanCommandFromPrisma = (
   failureReason: record.failureReason,
 });
 
-const sourceQueryModes: readonly SourceQueryMode[] = ['search', 'listing', 'account_feed', 'thread', 'url'];
+const sourceQueryModes: readonly SourceQueryMode[] = [
+  "search",
+  "listing",
+  "account_feed",
+  "thread",
+  "url",
+];
 
 const sourceQueryFromPrisma = (value: unknown): SourceQuery => {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    throw new Error('Scan failure source query must be an object');
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error("Scan failure source query must be an object");
   }
 
   const payload = value as Readonly<Record<string, unknown>>;
 
-  if (typeof payload.mode !== 'string' || !sourceQueryModes.includes(payload.mode as SourceQueryMode)) {
-    throw new Error('Scan failure source query mode is unsupported');
+  if (
+    typeof payload.mode !== "string" ||
+    !sourceQueryModes.includes(payload.mode as SourceQueryMode)
+  ) {
+    throw new Error("Scan failure source query mode is unsupported");
   }
 
-  if (typeof payload.query !== 'string' || payload.query.trim().length === 0) {
-    throw new Error('Scan failure source query must be non-empty');
+  if (typeof payload.query !== "string" || payload.query.trim().length === 0) {
+    throw new Error("Scan failure source query must be non-empty");
   }
 
   const parameters = sourceQueryParametersFromPrisma(payload.parameters);
@@ -183,19 +223,21 @@ const sourceQueryFromPrisma = (value: unknown): SourceQuery => {
 
 const sourceQueryParametersFromPrisma = (
   value: unknown,
-): SourceQuery['parameters'] => {
+): SourceQuery["parameters"] => {
   if (value === undefined) {
     return undefined;
   }
 
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    throw new Error('Scan failure source query parameters must be an object');
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error("Scan failure source query parameters must be an object");
   }
 
   return emptyJsonObjectAsUndefined(normalizeJsonObject(value));
 };
 
-export const scanAttemptFromPrisma = (record: PrismaScanAttemptRecord): ScanAttempt =>
+export const scanAttemptFromPrisma = (
+  record: PrismaScanAttemptRecord,
+): ScanAttempt =>
   ScanAttempt.rehydrate({
     scanJobId: record.scanJobId,
     tenantId: tenantId(record.tenantId),
@@ -211,19 +253,23 @@ export const scanAttemptFromPrisma = (record: PrismaScanAttemptRecord): ScanAtte
     failureReason: record.failureReason ?? undefined,
   } satisfies ScanAttemptProps);
 
-export const scanAttemptStatusToPrisma = (status: ScanAttemptStatus): PrismaScanAttemptStatus => {
-  if (status === 'running') {
-    return 'RUNNING';
+export const scanAttemptStatusToPrisma = (
+  status: ScanAttemptStatus,
+): PrismaScanAttemptStatus => {
+  if (status === "running") {
+    return "RUNNING";
   }
 
-  if (status === 'succeeded') {
-    return 'SUCCEEDED';
+  if (status === "succeeded") {
+    return "SUCCEEDED";
   }
 
-  return 'FAILED';
+  return "FAILED";
 };
 
-export const scanLeaseFromPrisma = (record: PrismaScanLeaseEntryRecord): ScanLease => ({
+export const scanLeaseFromPrisma = (
+  record: PrismaScanLeaseEntryRecord,
+): ScanLease => ({
   tenantId: tenantId(record.tenantId),
   workspaceId: workspaceId(record.workspaceId),
   scanJobId: record.scanJobId,
@@ -233,23 +279,31 @@ export const scanLeaseFromPrisma = (record: PrismaScanLeaseEntryRecord): ScanLea
   expiresAt: record.expiresAt,
 });
 
-const scanAttemptStatusFromPrisma = (status: PrismaScanAttemptStatus): ScanAttemptStatus => {
-  if (status === 'RUNNING') {
-    return 'running';
+const scanAttemptStatusFromPrisma = (
+  status: PrismaScanAttemptStatus,
+): ScanAttemptStatus => {
+  if (status === "RUNNING") {
+    return "running";
   }
 
-  if (status === 'SUCCEEDED') {
-    return 'succeeded';
+  if (status === "SUCCEEDED") {
+    return "succeeded";
   }
 
-  return 'failed';
+  return "failed";
 };
 
-const normalizeCursorPayload = (payload: unknown): { readonly cursor: string } | null => {
-  if (payload !== null && typeof payload === 'object' && !Array.isArray(payload)) {
+const normalizeCursorPayload = (
+  payload: unknown,
+): { readonly cursor: string } | null => {
+  if (
+    payload !== null &&
+    typeof payload === "object" &&
+    !Array.isArray(payload)
+  ) {
     const cursor = (payload as { readonly cursor?: unknown }).cursor;
 
-    if (typeof cursor === 'string' && cursor.trim().length > 0) {
+    if (typeof cursor === "string" && cursor.trim().length > 0) {
       return { cursor };
     }
   }
