@@ -31,7 +31,7 @@ python3 -m venv .venv
 pip install -e ".[dev]"
 
 X_COLLECTOR_SCWEET_COOKIES_FILE=/secure/path/cookies.json \
-X_COLLECTOR_SERVICE_TOKEN=<local-dev-token> \
+X_COLLECTOR_SERVICE_TOKEN=local-dev-token \
 python -m x_collector
 ```
 
@@ -40,7 +40,7 @@ Enable the TypeScript ingestion adapter:
 ```sh
 X_COLLECTOR_ENABLED=1
 X_COLLECTOR_GRPC_ADDRESS=127.0.0.1:50051
-X_COLLECTOR_SERVICE_TOKEN=<local-dev-token>
+X_COLLECTOR_SERVICE_TOKEN=local-dev-token
 ```
 
 `X_COLLECTOR_EXPERIMENTAL_ENABLED=1` is still accepted as a legacy alias.

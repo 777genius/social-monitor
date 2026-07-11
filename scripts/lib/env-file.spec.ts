@@ -6,7 +6,7 @@ describe("env-file", () => {
       parseDotenv(
         Buffer.from(
           [
-            "DATABASE_URL=postgresql://user:pass@127.0.0.1:54329/social_monitor",
+            "DATABASE_URL=postgresql://user:password@127.0.0.1:54329/social_monitor",
             "AGENT_RUNTIME_GRPC_ADDRESS='127.0.0.1:50052'",
             'X_COLLECTOR_GRPC_ADDRESS="127.0.0.1:50051"',
             "POSTGRES_PORT=54329 # local docker postgres",
@@ -16,7 +16,7 @@ describe("env-file", () => {
       ),
     ).toEqual({
       DATABASE_URL:
-        "postgresql://user:pass@127.0.0.1:54329/social_monitor",
+        "postgresql://user:password@127.0.0.1:54329/social_monitor",
       AGENT_RUNTIME_GRPC_ADDRESS: "127.0.0.1:50052",
       X_COLLECTOR_GRPC_ADDRESS: "127.0.0.1:50051",
       POSTGRES_PORT: "54329",
