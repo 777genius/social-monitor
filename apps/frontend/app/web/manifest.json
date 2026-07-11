@@ -1,11 +1,11 @@
 {
-    "name": "social_monitor_app",
-    "short_name": "social_monitor_app",
+    "name": "Social Monitor",
+    "short_name": "Social Monitor",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#08111F",
+    "theme_color": "#2443AC",
+    "description": "Social monitoring and reader summaries without the noise.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
