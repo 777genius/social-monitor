@@ -1,6 +1,7 @@
 import {
   READER_SUMMARY_TOPIC_MAP_MAX_SEMANTIC_GROUPS,
   READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID,
+  READER_SUMMARY_TOPIC_SEMANTIC_CONFIDENCE_MIN,
   type ReaderSummaryTopicNodeLabel,
 } from "../../domain";
 import type { ReaderSummaryTopicLabelerInput } from "../../ports";
@@ -122,6 +123,13 @@ const recoverIntoExistingGroups = (params: {
     if (label.groupId !== READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID) {
       return label;
     }
+    if (
+      label.semantic !== undefined &&
+      label.semantic.confidenceScore <
+        READER_SUMMARY_TOPIC_SEMANTIC_CONFIDENCE_MIN
+    ) {
+      return label;
+    }
     const nodeAnchors = params.anchorsByNodeId.get(label.nodeId);
     const labelAnchors = new Set(anchorKeys(label.label ?? ""));
     const matchingGroupIds = [...anchorsByGroup]
@@ -241,7 +249,13 @@ const sharedUngroupedAnchors = (
   readonly score: number;
 }[] => {
   const ungroupedIds = labels
-    .filter((label) => label.groupId === READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID)
+    .filter(
+      (label) =>
+        label.groupId === READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID &&
+        (label.semantic === undefined ||
+          label.semantic.confidenceScore >=
+            READER_SUMMARY_TOPIC_SEMANTIC_CONFIDENCE_MIN),
+    )
     .map((label) => label.nodeId);
   const support = anchorSupport(ungroupedIds, anchorsByNodeId);
 

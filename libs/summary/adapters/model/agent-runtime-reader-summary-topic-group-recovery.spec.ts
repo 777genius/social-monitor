@@ -58,13 +58,14 @@ describe("recoverGroundedTopicGroups", () => {
       nodeLabels: candidates.map((item) => ({
         nodeId: item.nodeId,
         label: item.fallbackLabel,
-        groupId: item.nodeId.includes("openai-gpt") ||
+        groupId:
+          item.nodeId.includes("openai-gpt") ||
           item.nodeId.includes("openai-chatgpt")
-          ? "group:openai"
-          : item.nodeId.includes("anthropic-course") ||
-              item.nodeId.includes("anthropic-code")
-            ? "group:anthropic"
-            : READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID,
+            ? "group:openai"
+            : item.nodeId.includes("anthropic-course") ||
+                item.nodeId.includes("anthropic-code")
+              ? "group:anthropic"
+              : READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID,
         keywords: item.keywords,
       })),
       candidates,
@@ -88,6 +89,38 @@ describe("recoverGroundedTopicGroups", () => {
       result.nodeLabels.find((item) => item.nodeId === "topic:ai-content")
         ?.groupId,
     ).toBe(READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID);
+  });
+
+  it("never recovers a low-confidence semantic assignment", () => {
+    const candidates = [
+      candidate("openai-gpt", "OpenAI GPT", ["OpenAI", "GPT"]),
+      candidate("openai-codex", "OpenAI Codex", ["OpenAI", "Codex"]),
+      candidate("openai-rumor", "OpenAI Rumor", ["OpenAI", "rumor"]),
+    ];
+    const result = recoverGroundedTopicGroups({
+      nodeLabels: candidates.map((item) => ({
+        nodeId: item.nodeId,
+        label: item.fallbackLabel,
+        groupId:
+          item.nodeId === "topic:openai-rumor"
+            ? READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID
+            : "group:openai",
+        keywords: item.keywords,
+        semantic: {
+          subject: item.fallbackLabel,
+          claimType: "other" as const,
+          confidenceScore: item.nodeId === "topic:openai-rumor" ? 0.4 : 0.9,
+        },
+      })),
+      candidates,
+      explicitAnchorsByGroup: new Map(),
+    });
+
+    expect(
+      result.nodeLabels.find((item) => item.nodeId === "topic:openai-rumor")
+        ?.groupId,
+    ).toBe(READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID);
+    expect(result.recoveredNodeCount).toBe(0);
   });
 });
 

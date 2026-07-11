@@ -21,6 +21,8 @@ export type ReaderSummaryTopicSemanticLabel = {
   readonly confidenceScore: number;
 };
 
+export const READER_SUMMARY_TOPIC_SEMANTIC_CONFIDENCE_MIN = 0.55;
+
 type ClaimLabelRule = {
   readonly marker: RegExp;
   readonly suffix: string;
