@@ -140,6 +140,33 @@ describe("StoryClusteringService claim facets", () => {
     ).toBe(2);
   });
 
+  it("keeps an official rollout separate from a subjective user reaction", () => {
+    expect(
+      clusterCount([
+        evidenceItem({
+          feedItemId: "x-gpt-56-family-rollout",
+          sourceItemId: "x-gpt-56-family-rollout",
+          providerKey: "x-twitter",
+          canonicalUrl: "https://x.com/OpenAI/status/2075271421149020426",
+          title:
+            "OpenAI says GPT-5.6 Sol, Terra and Luna are starting to roll out",
+          bodyPreview:
+            "The GPT-5.6 family is rolling out in ChatGPT, Codex and the API.",
+        }),
+        evidenceItem({
+          feedItemId: "reddit-gpt-56-user-reaction",
+          sourceItemId: "reddit-gpt-56-user-reaction",
+          providerKey: "reddit",
+          canonicalUrl:
+            "https://reddit.com/r/codex/comments/gpt-56-sol-feels-awesome",
+          title: "GPT 5.6 Sol feels awesome!",
+          bodyPreview:
+            "I tried it for a refactor and my first experience was positive.",
+        }),
+      ]),
+    ).toBe(2);
+  });
+
   it("keeps a Fable promo-window story separate from a limit reset", () => {
     expect(
       clusterCount([
