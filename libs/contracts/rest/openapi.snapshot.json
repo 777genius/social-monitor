@@ -3476,8 +3476,23 @@
           "collectedFeedItemCount": {
             "type": "number"
           },
+          "collectionCoverageState": {
+            "enum": [
+              "complete",
+              "partial",
+              "degraded",
+              "unavailable"
+            ],
+            "type": "string"
+          },
           "crossSourceClusterCount": {
             "type": "number"
+          },
+          "degradedProviderKeys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "duplicateFeedItemCount": {
             "type": "number"
@@ -4022,6 +4037,84 @@
         ],
         "type": "object"
       },
+      "ReaderSummaryProviderCollectionHealthDto": {
+        "properties": {
+          "acceptedItemCount": {
+            "type": "number"
+          },
+          "collectedItemCount": {
+            "type": "number"
+          },
+          "failureKinds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "insertedItemCount": {
+            "type": "number"
+          },
+          "newestAcceptedPublishedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "oldestAcceptedPublishedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "outsideWindowItemCount": {
+            "type": "number"
+          },
+          "pageCount": {
+            "type": "number"
+          },
+          "paginationDuplicateItemCount": {
+            "type": "number"
+          },
+          "paginationStopReasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "rateLimitEventCount": {
+            "type": "number"
+          },
+          "scanCount": {
+            "type": "number"
+          },
+          "state": {
+            "enum": [
+              "complete",
+              "partial",
+              "degraded",
+              "unavailable"
+            ],
+            "type": "string"
+          },
+          "storageDuplicateItemCount": {
+            "type": "number"
+          },
+          "targetItemCount": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "state",
+          "scanCount",
+          "collectedItemCount",
+          "acceptedItemCount",
+          "insertedItemCount",
+          "outsideWindowItemCount",
+          "paginationDuplicateItemCount",
+          "storageDuplicateItemCount",
+          "pageCount",
+          "paginationStopReasons",
+          "failureKinds",
+          "rateLimitEventCount"
+        ],
+        "type": "object"
+      },
       "ReaderSummaryProviderCoverageDto": {
         "properties": {
           "citationCount": {
@@ -4029,6 +4122,9 @@
           },
           "collectedFeedItemCount": {
             "type": "number"
+          },
+          "collectionHealth": {
+            "$ref": "#/components/schemas/ReaderSummaryProviderCollectionHealthDto"
           },
           "lowRelevanceFeedItemCount": {
             "type": "number"

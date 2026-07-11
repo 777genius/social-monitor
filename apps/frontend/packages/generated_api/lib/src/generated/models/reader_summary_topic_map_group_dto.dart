@@ -16,6 +16,7 @@ class ReaderSummaryTopicMapGroupDto {
     required this.id,
     required this.label,
     required this.nodeIds,
+    this.semanticAnchors,
   });
 
   factory ReaderSummaryTopicMapGroupDto.fromJson(Map<String, Object?> json) =>
@@ -26,6 +27,7 @@ class ReaderSummaryTopicMapGroupDto {
   final String id;
   final String label;
   final List<String> nodeIds;
+  final List<String>? semanticAnchors;
 
   Map<String, Object?> toJson() => _$ReaderSummaryTopicMapGroupDtoToJson(this);
 }

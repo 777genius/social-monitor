@@ -27,6 +27,14 @@ const stripTopicSourceEnvelope = (value: string): string =>
     .replace(/^x\s+post\s+by\s+@[^:]+:\s*/iu, "")
     .replace(/^(?:ask|show)\s+hn:\s*/iu, "");
 
+export const storyTitleIdentity = (item: SummaryEvidenceItem): string =>
+  stripTopicSourceEnvelope(item.title)
+    .normalize("NFKC")
+    .toLocaleLowerCase("en-US")
+    .replace(/[^\p{Letter}\p{Number}+#.]+/gu, " ")
+    .trim()
+    .replace(/\s+/gu, " ");
+
 export const storyTopicSimilarity = (
   left: readonly string[],
   right: readonly string[],
@@ -88,10 +96,12 @@ export const storyClaimFacetTokens = (
 export type StoryPrimaryClaimFacet =
   | "availability"
   | "benchmark"
+  | "comparison"
   | "education"
   | "efficiency"
   | "limits"
   | "release"
+  | "review"
   | "security";
 
 export const storyPrimaryClaimFacet = (
@@ -111,6 +121,10 @@ const claimFacetDefinitions = [
   [/\bartificial\s+analysis\b/iu, "benchmark:artificial-analysis"],
   [/\barc[\s-]?agi\b/iu, "benchmark:arc-agi"],
   [/\bchatgpt\s+work\b/iu, "feature:chatgpt-work"],
+  [
+    /\b(?:first\s+impressions?|hands[\s-]?on|my\s+(?:first\s+)?experience|i\s+(?:tried|tested|used))\b|\bfeel(?:s|t)?\s+(?:amazing|awesome|bad|fast|good|great|slow|terrible)\b/iu,
+    "perspective:user-experience",
+  ],
   [/\bcodex\s+(?:cli|command[\s-]?line)\b/iu, "feature:codex-cli"],
   [/\bclaude\s+reflect\b/iu, "feature:claude-reflect"],
   [
@@ -129,6 +143,10 @@ const primaryClaimFacetDefinitions = [
     "benchmark",
   ],
   [
+    /\b(?:comparison|side[\s-]?by[\s-]?side|versus|vs\.?)\b|\bv\.(?=\s|$)|\bcompared?\s+(?:against|to|with)\b|\b(?:same|identical)\b[\s\S]{0,64}\b(?:brief|prompt|task|test)\b/iu,
+    "comparison",
+  ],
+  [
     /\b(?:usage\s+limits?|weekly\s+limits?|daily\s+limits?|5[\s-]?hour\s+limits?|quota|credits?)\b/iu,
     "limits",
   ],
@@ -145,12 +163,16 @@ const primaryClaimFacetDefinitions = [
     "security",
   ],
   [
-    /\b(?:availability|available|access|appear(?:s|ed|ing)?\s+in|account\s+tier|subscription\s+tier|plus\s+subscription|rolling\s+out\s+incrementally|not\s+everyone\s+will\s+see)\b/iu,
+    /\b(?:availability|access|appear(?:s|ed|ing)?\s+in|account\s+tier|subscription\s+tier|plus\s+subscription|rolling\s+out\s+incrementally|not\s+everyone\s+will\s+see)\b|\b(?:is|now)\s+(?:now\s+)?available\b|\bavailable\s+(?:for|in|on|to)\b/iu,
     "availability",
   ],
   [
     /\b(?:roll(?:s|ed|ing)?\s+out|rollouts?|releas(?:e|es|ed|ing)|launch(?:es|ed|ing)?|introduc(?:e|es|ed|ing))\b/iu,
     "release",
+  ],
+  [
+    /\b(?:first\s+impressions?|hands[\s-]?on|honest\s+(?:first\s+)?impressions?|product\s+review)\b/iu,
+    "review",
   ],
 ] as const satisfies readonly (readonly [RegExp, StoryPrimaryClaimFacet])[];
 

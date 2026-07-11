@@ -22,7 +22,6 @@ import { CryptoIdGenerator, SystemClock } from "@social-monitor/shared-kernel";
 import { ReaderSummaryArtifactContextProvider } from "../../adapters/context/reader-summary-artifact-context.provider";
 import { ConversationEvidenceContextReader } from "../../adapters/evidence/conversation-evidence-context.reader";
 import { ConversationReaderSummaryEvidenceSelector } from "../../adapters/evidence/conversation-reader-summary-evidence.selector";
-import { FeedReaderSummaryCoverageCounter } from "../../adapters/evidence/feed-reader-summary-coverage.counter";
 import { FeedReaderSummaryFreshnessProbe } from "../../adapters/evidence/feed-reader-summary-freshness.probe";
 import { FeedReaderSummaryPreviewMediaEnricher } from "../../adapters/evidence/feed-reader-summary-preview-media.enricher";
 import { FeedReaderSummaryTopicCollectionMetricsReader } from "../../adapters/evidence/feed-reader-summary-topic-collection-metrics.reader";
@@ -31,7 +30,9 @@ import { SummaryMemoryReaderSummaryContextProvider } from "../../adapters/memory
 import { StoryRankingMetricsRecorder } from "../../adapters/metrics/story-ranking-metrics.recorder";
 import { ReaderSummaryJobQueuePublisherAdapter } from "../../adapters/messaging/reader-summary-job-queue.adapter";
 import { AgentRuntimeReaderSummaryModelAdapter } from "../../adapters/model/agent-runtime-reader-summary-model.adapter";
+import { AgentRuntimeReaderSummaryStoryRelationVerifier } from "../../adapters/model/agent-runtime-reader-summary-story-relation-verifier.adapter";
 import { AgentRuntimeReaderSummaryTopicLabeler } from "../../adapters/model/agent-runtime-reader-summary-topic-labeler.adapter";
+import { AgentRuntimeReaderSummaryTopicRelationVerifier } from "../../adapters/model/agent-runtime-reader-summary-topic-relation-verifier.adapter";
 import { DeterministicReaderSummaryModelAdapter } from "../../adapters/model/deterministic-reader-summary-model.adapter";
 import { MeteredReaderSummaryModelAdapter } from "../../adapters/model/metered-reader-summary-model.adapter";
 import {
@@ -100,6 +101,7 @@ import {
   type SummaryJobQueueMode,
   type SummaryPersistenceMode,
 } from "./summary-provider-tokens";
+import { readerSummaryCoverageProvider } from "./summary-reader-summary-coverage.provider";
 
 export const summaryReaderSummaryProviders: Provider[] = [
   InMemoryReaderSummaryJobRepository,
@@ -199,17 +201,22 @@ export const summaryReaderSummaryProviders: Provider[] = [
       rankFeedItems: RankFeedItemsUseCase,
       feedItems: FeedItemReadRepositoryPort,
       metrics: StoryRankingMetricsPort,
+      modelMode: ReaderSummaryModelProviderMode,
+      storyRelationVerifier: AgentRuntimeReaderSummaryStoryRelationVerifier,
     ) =>
       new RelevanceReaderSummaryEvidenceSelector(
         rankFeedItems,
         feedItems,
         new SystemClock(),
         metrics,
+        modelMode === "agent-runtime" ? storyRelationVerifier : undefined,
       ),
     inject: [
       RankFeedItemsUseCase,
       FEED_ITEM_READ_REPOSITORY,
       StoryRankingMetricsRecorder,
+      READER_SUMMARY_MODEL_PROVIDER_MODE,
+      AgentRuntimeReaderSummaryStoryRelationVerifier,
     ],
   },
   {
@@ -239,14 +246,7 @@ export const summaryReaderSummaryProviders: Provider[] = [
       new FeedReaderSummaryFreshnessProbe(feedItems, new SystemClock()),
     inject: [FEED_ITEM_READ_REPOSITORY],
   },
-  {
-    provide: READER_SUMMARY_COVERAGE_COUNTER,
-    useFactory: (
-      feedItems: FeedItemReadRepositoryPort,
-    ): ReaderSummaryCoverageCounterPort =>
-      new FeedReaderSummaryCoverageCounter(feedItems),
-    inject: [FEED_ITEM_READ_REPOSITORY],
-  },
+  readerSummaryCoverageProvider,
   {
     provide: READER_SUMMARY_TOPIC_COLLECTION_METRICS_READER,
     useFactory: (
@@ -334,14 +334,18 @@ export const summaryReaderSummaryProviders: Provider[] = [
     useFactory: (
       mode: ReaderSummaryTopicLabelerMode,
       agentRuntimeTopicLabeler: AgentRuntimeReaderSummaryTopicLabeler,
+      agentRuntimeTopicRelationVerifier: AgentRuntimeReaderSummaryTopicRelationVerifier,
     ) =>
       new BuildReaderSummaryTopicMapUseCase({
         mode,
         labeler: mode === "agent-runtime" ? agentRuntimeTopicLabeler : null,
+        relationVerifier:
+          mode === "agent-runtime" ? agentRuntimeTopicRelationVerifier : null,
       }),
     inject: [
       READER_SUMMARY_TOPIC_LABELER_MODE,
       AgentRuntimeReaderSummaryTopicLabeler,
+      AgentRuntimeReaderSummaryTopicRelationVerifier,
     ],
   },
   {

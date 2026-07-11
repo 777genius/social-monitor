@@ -105,6 +105,74 @@ describe("FeedReaderSummaryCoverageCounter", () => {
     });
   });
 
+  it("merges durable provider collection health and keeps unavailable providers visible", async () => {
+    const feedItems = new FakeFeedItems([["reddit"]]);
+    const counter = new FeedReaderSummaryCoverageCounter(feedItems, {
+      async readProviderCollectionHealth() {
+        return [
+          {
+            providerKey: "reddit",
+            state: "partial" as const,
+            scanCount: 1,
+            targetItemCount: 80,
+            collectedItemCount: 24,
+            acceptedItemCount: 20,
+            insertedItemCount: 18,
+            outsideWindowItemCount: 4,
+            paginationDuplicateItemCount: 2,
+            storageDuplicateItemCount: 2,
+            pageCount: 2,
+            paginationStopReasons: ["max_pages"],
+            failureKinds: [],
+            rateLimitEventCount: 0,
+          },
+          {
+            providerKey: "x-twitter",
+            state: "unavailable" as const,
+            scanCount: 1,
+            collectedItemCount: 0,
+            acceptedItemCount: 0,
+            insertedItemCount: 0,
+            outsideWindowItemCount: 0,
+            paginationDuplicateItemCount: 0,
+            storageDuplicateItemCount: 0,
+            pageCount: 0,
+            paginationStopReasons: ["failed"],
+            failureKinds: ["rate_limited"],
+            rateLimitEventCount: 1,
+          },
+        ];
+      },
+    });
+
+    const result = await counter.countCollectedFeedItemCoverage({
+      tenantId: tenant,
+      workspaceId: workspace,
+      scope: { type: "workspace" },
+      period,
+    });
+
+    expect(result?.providerBreakdown).toEqual([
+      expect.objectContaining({
+        providerKey: "reddit",
+        collectedFeedItemCount: 1,
+        collectionHealth: expect.objectContaining({
+          state: "partial",
+          targetItemCount: 80,
+          acceptedItemCount: 20,
+        }),
+      }),
+      expect.objectContaining({
+        providerKey: "x-twitter",
+        collectedFeedItemCount: 0,
+        collectionHealth: expect.objectContaining({
+          state: "unavailable",
+          rateLimitEventCount: 1,
+        }),
+      }),
+    ]);
+  });
+
   it("returns quality, topic and query coverage for collection diagnostics", async () => {
     const feedItems = new FakeFeedItems([
       [

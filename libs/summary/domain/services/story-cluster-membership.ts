@@ -10,24 +10,31 @@ import {
   storyTopicSimilarity,
   storyTopicSpecificProductTokens,
   storyTopicTokens,
+  storyTitleIdentity,
 } from "./story-topic-tokenizer";
 
-export const belongsToCrossProviderCluster = (
+export const belongsToVerifiedStoryCluster = (
   item: SummaryEvidenceItem,
   clusterItems: readonly SummaryEvidenceItem[],
   policy: StoryRankingPolicy,
-): boolean => {
-  const crossProviderItems = clusterItems.filter(
-    (candidate) => candidate.providerKey !== item.providerKey,
-  );
+  verifiedStoryRelationPairs?: ReadonlySet<string>,
+): boolean =>
+  clusterItems.length > 0 &&
+  clusterItems.every((candidate) => {
+    if (
+      candidate.providerKey !== item.providerKey &&
+      isDeterministicCrossProviderStoryMatch(item, candidate, policy)
+    ) {
+      return true;
+    }
 
-  return (
-    crossProviderItems.length > 0 &&
-    crossProviderItems.every((candidate) =>
-      belongsToCrossProviderStory(item, candidate, policy),
-    )
-  );
-};
+    return (
+      verifiedStoryRelationPairs?.has(
+        verifiedStoryRelationPairKey(item.feedItemId, candidate.feedItemId),
+      ) === true &&
+      isVerifiedStoryRelationGuardEligible(item, candidate, policy)
+    );
+  });
 
 export const hasCrossProviderClaimFacetConflict = (
   item: SummaryEvidenceItem,
@@ -37,21 +44,28 @@ export const hasCrossProviderClaimFacetConflict = (
   clusterItems.some(
     (candidate) =>
       candidate.providerKey !== item.providerKey &&
-      !claimFacetsAreCompatible(item, candidate, policy),
+      !storyClaimFacetsAreCompatible(item, candidate, policy),
   );
 
-const belongsToCrossProviderStory = (
+export const isDeterministicCrossProviderStoryMatch = (
   item: SummaryEvidenceItem,
   head: SummaryEvidenceItem,
   policy: StoryRankingPolicy,
 ): boolean => {
+  if (item.providerKey === head.providerKey) {
+    return false;
+  }
   const itemKey = storyKey(item, policy);
   const headKey = storyKey(head, policy);
   if (itemKey !== headKey && canonicalStoryKeysConflict(itemKey, headKey)) {
     return false;
   }
 
-  if (!claimFacetsAreCompatible(item, head, policy)) {
+  if (hasStrongExactTitleIdentity(item, head)) {
+    return true;
+  }
+
+  if (!storyClaimFacetsAreCompatible(item, head, policy)) {
     return false;
   }
 
@@ -83,7 +97,7 @@ const belongsToCrossProviderStory = (
   return semanticMatch || productEventMatch;
 };
 
-const claimFacetsAreCompatible = (
+export const storyClaimFacetsAreCompatible = (
   item: SummaryEvidenceItem,
   head: SummaryEvidenceItem,
   policy: StoryRankingPolicy,
@@ -121,8 +135,119 @@ const claimFacetsAreCompatible = (
   );
 };
 
-const canonicalStoryKeysConflict = (left: string, right: string): boolean =>
+export const canonicalStoryKeysConflict = (
+  left: string,
+  right: string,
+): boolean =>
   (left.startsWith("github-repo:") && right.startsWith("github-repo:")) ||
   (left.startsWith("url:") &&
     right.startsWith("url:") &&
     left.slice(4).split("/").at(0) === right.slice(4).split("/").at(0));
+
+export const verifiedStoryRelationPairKey = (
+  leftFeedItemId: string,
+  rightFeedItemId: string,
+): string => [leftFeedItemId, rightFeedItemId].sort().join("\u0000");
+
+export const isVerifiedStoryRelationGuardEligible = (
+  item: SummaryEvidenceItem,
+  candidate: SummaryEvidenceItem,
+  policy: StoryRankingPolicy,
+): boolean => {
+  const sameAuthorSeries =
+    item.providerKey === candidate.providerKey &&
+    isVerifiedSameAuthorStorySeriesCandidate(item, candidate);
+  if (item.providerKey === candidate.providerKey && !sameAuthorSeries) {
+    return false;
+  }
+  const itemKey = storyKey(item, policy);
+  const candidateKey = storyKey(candidate, policy);
+  if (
+    itemKey !== candidateKey &&
+    canonicalStoryKeysConflict(itemKey, candidateKey) &&
+    !(
+      sameAuthorSeries &&
+      itemKey.startsWith("url:") &&
+      candidateKey.startsWith("url:")
+    )
+  ) {
+    return false;
+  }
+  if (!storyClaimFacetsAreCompatible(item, candidate, policy)) {
+    return false;
+  }
+  if (
+    Math.abs(item.publishedAt.getTime() - candidate.publishedAt.getTime()) >
+    VERIFIED_STORY_RELATION_MAX_TIME_DISTANCE_MS
+  ) {
+    return false;
+  }
+
+  const itemTokens = storyTopicTokens(item, policy);
+  const candidateTokens = storyTopicTokens(candidate, policy);
+  const sharedTopicTokens = sharedStoryTopicTokenCount(
+    itemTokens,
+    candidateTokens,
+  );
+  const candidateTokenSet = new Set(candidateTokens);
+  const sharedNonAnchorTokenCount = new Set(
+    itemTokens.filter(
+      (token) =>
+        candidateTokenSet.has(token) &&
+        storyTopicAnchorTokens([token]).length === 0,
+    ),
+  ).size;
+  return (
+    sharedStoryTopicTokenCount(
+      storyTopicAnchorTokens(itemTokens),
+      storyTopicAnchorTokens(candidateTokens),
+    ) > 0 ||
+    sharedStoryTopicTokenCount(
+      storyTopicSpecificProductTokens(itemTokens),
+      storyTopicSpecificProductTokens(candidateTokens),
+    ) > 0 ||
+    sharedTopicTokens >= 3 ||
+    (sameAuthorSeries && sharedNonAnchorTokenCount > 0)
+  );
+};
+
+const VERIFIED_STORY_RELATION_MAX_TIME_DISTANCE_MS = 30 * 60 * 60 * 1000;
+const VERIFIED_SAME_AUTHOR_SERIES_MAX_TIME_DISTANCE_MS = 2 * 60 * 60 * 1000;
+const STRONG_EXACT_TITLE_MIN_TOKEN_COUNT = 5;
+
+const hasStrongExactTitleIdentity = (
+  left: SummaryEvidenceItem,
+  right: SummaryEvidenceItem,
+): boolean => {
+  const leftTitle = storyTitleIdentity(left);
+  const rightTitle = storyTitleIdentity(right);
+
+  return (
+    leftTitle === rightTitle &&
+    leftTitle.split(" ").length >= STRONG_EXACT_TITLE_MIN_TOKEN_COUNT
+  );
+};
+
+export const isVerifiedSameAuthorStorySeriesCandidate = (
+  left: SummaryEvidenceItem,
+  right: SummaryEvidenceItem,
+): boolean => {
+  const leftAuthor = normalizedAuthorHandle(left.authorHandle);
+  const rightAuthor = normalizedAuthorHandle(right.authorHandle);
+
+  return (
+    leftAuthor !== undefined &&
+    leftAuthor === rightAuthor &&
+    Math.abs(left.publishedAt.getTime() - right.publishedAt.getTime()) <=
+      VERIFIED_SAME_AUTHOR_SERIES_MAX_TIME_DISTANCE_MS
+  );
+};
+
+const normalizedAuthorHandle = (
+  value: string | undefined,
+): string | undefined => {
+  const normalized = value?.trim().toLocaleLowerCase("en-US");
+  return normalized === undefined || normalized.length === 0
+    ? undefined
+    : normalized;
+};

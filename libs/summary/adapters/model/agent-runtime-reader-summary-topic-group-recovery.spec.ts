@@ -108,6 +108,7 @@ describe("recoverGroundedTopicGroups", () => {
         keywords: item.keywords,
         semantic: {
           subject: item.fallbackLabel,
+          parentSubject: "OpenAI",
           claimType: "other" as const,
           confidenceScore: item.nodeId === "topic:openai-rumor" ? 0.4 : 0.9,
         },
@@ -121,6 +122,48 @@ describe("recoverGroundedTopicGroups", () => {
         ?.groupId,
     ).toBe(READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID);
     expect(result.recoveredNodeCount).toBe(0);
+  });
+
+  it("rejects a group supported only by incidental evidence mentions", () => {
+    const candidates = [
+      candidate("openai-gpt", "GPT-5.6", ["OpenAI", "GPT-5.6"]),
+      candidate("openai-codex", "Codex", ["OpenAI", "Codex"]),
+      candidate("openknowledge", "OpenKnowledge Markdown IDE", [
+        "OpenKnowledge",
+        "Codex",
+        "Claude",
+      ]),
+    ];
+    const result = recoverGroundedTopicGroups({
+      nodeLabels: candidates.map((item) => ({
+        nodeId: item.nodeId,
+        label: item.fallbackLabel,
+        groupId: "group:openai-platform",
+        keywords: item.keywords,
+        semantic: {
+          subject: item.fallbackLabel,
+          parentSubject: item.nodeId.includes("openknowledge")
+            ? "OpenKnowledge"
+            : "OpenAI",
+          claimType: "other" as const,
+          confidenceScore: 0.9,
+        },
+      })),
+      candidates,
+      explicitAnchorsByGroup: new Map([
+        ["group:openai-platform", ["OpenAI", "GPT-5.6", "Codex"]],
+      ]),
+    });
+
+    expect(
+      result.nodeLabels.find((item) => item.nodeId === "topic:openknowledge")
+        ?.groupId,
+    ).toBe(READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID);
+    expect(
+      result.nodeLabels.filter(
+        (item) => item.groupId === "group:openai-platform",
+      ),
+    ).toHaveLength(2);
   });
 });
 

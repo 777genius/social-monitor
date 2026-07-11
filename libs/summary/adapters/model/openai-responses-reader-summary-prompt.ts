@@ -1,7 +1,7 @@
 import {
-  buildReaderSummaryCoveragePlan,
   buildSummaryEvidencePack,
   buildSummaryEvidenceProfile,
+  type ReaderSummaryCoveragePlanItem,
 } from "../../domain";
 import type { ReaderSummaryModelInput } from "../../ports";
 import { buildAdaptiveReaderSummaryEvidence } from "./openai-responses-reader-summary-adaptive-evidence";
@@ -36,7 +36,7 @@ export const buildOpenAiReaderSummaryInstructions = (
     "For secondary_signal, copy the exact storyClusterId from coveragePlan and cite only citationIds listed for that planned cluster.",
     "Keep the lead focused on coveragePlan.lead. Other signals today must remain concise and must not displace the lead.",
     "Explain unfamiliar product, model or project names on first mention with a short reader-facing description when the evidence defines them. If the evidence does not explain a name, omit it instead of listing unexplained names.",
-    "Do not use internal workflow language such as source note, enough engagement for discovery, selected evidence, providerKeys, model budget, quality gate or keep the claim unconfirmed. Express uncertainty naturally and specifically for the reader.",
+    "Do not use internal workflow language such as source item, source note, enough engagement for discovery, selected evidence, providerKeys, model budget, quality gate or keep the claim unconfirmed. Express uncertainty naturally and specifically for the reader.",
     "Use lightweight Markdown in executiveSummary and content.oneLineTakeaway when it improves readability: bold key product/model names, claims and bullet labels. Do not use HTML, tables or Markdown links.",
     "Keep the JSON response focused. Do not restate the same item in content, topStories, interestHighlights and risks. Prefer concrete synthesis over long explanations.",
     "Length limits: headline under 120 characters; the complete narrative 220-320 words when the coverage plan has secondary signals and shorter when it does not; lead 70-110 words; each secondary signal 25-55 words; each topStories title under 140 characters; each topStories summary 420-650 characters when supported and under 720 characters always.",
@@ -81,7 +81,7 @@ export const buildOpenAiReaderSummaryPromptPayload = (
       (item, index) => [item.feedItemId, `c${index + 1}`] as const,
     ),
   );
-  const coveragePlan = buildReaderSummaryCoveragePlan(input.evidence);
+  const coveragePlan = input.coveragePlan;
 
   return JSON.stringify({
     scope: input.scope,
@@ -130,7 +130,7 @@ export const buildOpenAiReaderSummaryPromptPayload = (
 };
 
 const promptCoverageItem = (
-  item: ReturnType<typeof buildReaderSummaryCoveragePlan>["secondary"][number],
+  item: ReaderSummaryCoveragePlanItem,
   citationIdByFeedItemId: ReadonlyMap<string, string>,
 ) => ({
   role: item.role,

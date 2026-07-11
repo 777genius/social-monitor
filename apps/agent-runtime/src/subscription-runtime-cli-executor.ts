@@ -44,44 +44,42 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
         "utf8",
       );
 
-      const result = await runCli({
-        command: this.options.command,
-        args: this.buildArgs(request, inputPath),
-        env: this.executionEnvPatch(),
-        timeoutMs: request.timeoutMs,
-      });
-
-      const parsedResult = tryParseCliResult(result.stdout);
-
-      if (parsedResult !== undefined && !result.timedOut) {
-        return parsedResult;
+      const startedAt = Date.now();
+      const initialResult = cliExecutionResult(
+        await runCli({
+          command: this.options.command,
+          args: this.buildArgs(request, inputPath),
+          env: this.executionEnvPatch(this.options.ephemeral),
+          timeoutMs: request.timeoutMs,
+        }),
+      );
+      if (!shouldRetryWithEphemeral(initialResult, this.options)) {
+        return initialResult;
       }
+      const remainingTimeoutMs = request.timeoutMs - (Date.now() - startedAt);
+      if (remainingTimeoutMs <= 0) {
+        return initialResult;
+      }
+      const recovered = cliExecutionResult(
+        await runCli({
+          command: this.options.command,
+          args: this.buildArgs(request, inputPath, true),
+          env: this.executionEnvPatch(true),
+          timeoutMs: remainingTimeoutMs,
+        }),
+      );
 
-      if (result.timedOut || result.exitCode !== 0) {
-        return {
-          status: "failed",
-          warnings: [],
-          failure: {
-            code: result.timedOut
-              ? "agent_runtime.cli_timeout"
-              : "agent_runtime.cli_exit",
-            safeMessage: result.timedOut
-              ? "Agent runtime task timed out"
-              : "Agent runtime CLI task failed",
-            retryable: true,
-            reconnectRequired: false,
-            causeCategory: "subscription_runtime_cli",
-            details: {
-              exitCode:
-                result.exitCode === null ? "null" : String(result.exitCode),
-              signal: result.signal ?? "",
-              stderrBytes: String(Buffer.byteLength(result.stderr)),
-            },
+      return {
+        ...recovered,
+        warnings: [
+          ...recovered.warnings,
+          {
+            code: "agent_runtime.session_recovered_ephemeral",
+            message:
+              "Durable provider session was unavailable; retried in an isolated session",
           },
-        };
-      }
-
-      return invalidCliResult(result.stdout);
+        ],
+      };
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
@@ -144,6 +142,7 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
   private buildArgs(
     request: AgentRuntimeExecutionRequest,
     inputPath: string,
+    ephemeral = this.options.ephemeral,
   ): readonly string[] {
     const args = [
       "--provider",
@@ -159,7 +158,7 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
     if (this.options.stateRoot !== undefined) {
       args.push("--state-root", this.options.stateRoot);
     }
-    if (this.options.ephemeral) {
+    if (ephemeral) {
       args.push("--ephemeral");
     }
     if (
@@ -181,9 +180,11 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
     return args;
   }
 
-  private executionEnvPatch(): Readonly<Record<string, string>> {
+  private executionEnvPatch(
+    ephemeral: boolean,
+  ): Readonly<Record<string, string>> {
     const patch: Record<string, string> = {};
-    if (!this.options.ephemeral && this.options.localEncryptionKey !== undefined) {
+    if (!ephemeral && this.options.localEncryptionKey !== undefined) {
       patch.SUBSCRIPTION_RUNTIME_LOCAL_ENCRYPTION_KEY =
         this.options.localEncryptionKey;
     }
@@ -233,6 +234,16 @@ const toSubscriptionRuntimeRequest = (
   };
 };
 
+const shouldRetryWithEphemeral = (
+  result: AgentRuntimeExecutionResult,
+  options: SubscriptionRuntimeCliExecutorOptions,
+): boolean =>
+  !options.ephemeral &&
+  result.status === "failed" &&
+  (result.failure?.code === "provider_session_invalid" ||
+    result.failure?.code === "needs_reconnect") &&
+  result.failure.reconnectRequired;
+
 const parseCliResult = (stdout: string): AgentRuntimeExecutionResult => {
   const parsed = readJsonObject(stdout, "subscription-runtime result");
   const status = parseStatus(parsed.status);
@@ -255,6 +266,41 @@ const tryParseCliResult = (
   } catch {
     return undefined;
   }
+};
+
+type CliExecution = Awaited<ReturnType<typeof runCli>>;
+
+const cliExecutionResult = (
+  result: CliExecution,
+): AgentRuntimeExecutionResult => {
+  const parsedResult = tryParseCliResult(result.stdout);
+  if (parsedResult !== undefined && !result.timedOut) {
+    return parsedResult;
+  }
+  if (result.timedOut || result.exitCode !== 0) {
+    return {
+      status: "failed",
+      warnings: [],
+      failure: {
+        code: result.timedOut
+          ? "agent_runtime.cli_timeout"
+          : "agent_runtime.cli_exit",
+        safeMessage: result.timedOut
+          ? "Agent runtime task timed out"
+          : "Agent runtime CLI task failed",
+        retryable: true,
+        reconnectRequired: false,
+        causeCategory: "subscription_runtime_cli",
+        details: {
+          exitCode: result.exitCode === null ? "null" : String(result.exitCode),
+          signal: result.signal ?? "",
+          stderrBytes: String(Buffer.byteLength(result.stderr)),
+        },
+      },
+    };
+  }
+
+  return invalidCliResult(result.stdout);
 };
 
 const invalidCliResult = (stdout: string): AgentRuntimeExecutionResult => ({

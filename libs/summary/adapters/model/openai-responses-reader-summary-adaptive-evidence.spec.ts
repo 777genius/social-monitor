@@ -1,9 +1,10 @@
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
-import type {
-  ReaderSummaryCoveragePlan,
-  SummaryEvidenceItem,
-  SummaryEvidenceSelection,
+import {
+  buildReaderSummaryCoveragePlan,
+  type ReaderSummaryCoveragePlan,
+  type SummaryEvidenceItem,
+  type SummaryEvidenceSelection,
 } from "../../domain";
 import type { ReaderSummaryModelInput } from "../../ports";
 import { buildAdaptiveReaderSummaryEvidence } from "./openai-responses-reader-summary-adaptive-evidence";
@@ -71,9 +72,7 @@ describe("adaptive reader summary evidence", () => {
     expect(Number(rssSource.includedCharacterCount)).toBeGreaterThanOrEqual(
       1_500,
     );
-    expect(Number(rssSource.includedCharacterCount)).toBeLessThanOrEqual(
-      2_500,
-    );
+    expect(Number(rssSource.includedCharacterCount)).toBeLessThanOrEqual(2_500);
     expect(fragments.join(" ").length).toBeLessThanOrEqual(2_500);
     expect(fragments.some((fragment) => fragment.includes("Sol 5 Ultra"))).toBe(
       true,
@@ -220,6 +219,7 @@ const modelInput = (
     periodKey: "daily:adaptive-evidence",
   },
   evidence,
+  coveragePlan: buildReaderSummaryCoveragePlan(evidence),
   contextArtifacts: [],
   policy: {
     language: "auto",

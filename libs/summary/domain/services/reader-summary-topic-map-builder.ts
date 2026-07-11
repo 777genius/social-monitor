@@ -21,7 +21,11 @@ import {
   storyTopicTokens,
   type StoryPrimaryClaimFacet,
 } from "./story-topic-tokenizer";
-import { ensureTopicLabelExpressesClaimFacet } from "./reader-summary-topic-claim-label-policy";
+import {
+  alignReaderSummaryTopicSemanticLabelToEvidence,
+  ensureTopicLabelExpressesClaimFacet,
+  renderReaderSummaryTopicSemanticLabel,
+} from "./reader-summary-topic-claim-label-policy";
 import {
   aggregateReaderSummaryTopicMapNodes,
   mergeReaderSummaryTopicMapNodesByLabel,
@@ -40,8 +44,8 @@ import {
   hasUsableTopicNodeLabel,
   isUsableTopicGroupLabel,
   isWeakTopicLabel,
-  sanitizeTopicNodeLabel,
 } from "./reader-summary-topic-map-label-quality";
+import { sanitizeTopicNodeLabel } from "./reader-summary-topic-node-label-sanitizer";
 import {
   buildReaderSummaryTopicMapGroups,
   readerSummaryTopicMapConfidence,
@@ -51,8 +55,9 @@ import {
   extractReaderSummaryTopicLabelCandidates,
   groundReaderSummaryTopicNodeLabel,
   readerSummaryTopicLabelEvidenceTexts,
-  selectReaderSummaryTopicLabel,
 } from "./reader-summary-topic-label-candidates";
+import { selectReaderSummaryTopicLabel } from "./reader-summary-topic-label-selection";
+import { enrichReaderSummaryTopicLabelVersion } from "./reader-summary-topic-label-version-enrichment";
 import {
   compactId,
   compactOptional,
@@ -123,7 +128,8 @@ export const buildReaderSummaryTopicMap = (
     scopeReaderSummaryTopicMapNodeDrafts(nodeDrafts),
   );
   const rawNodes =
-    params.generatedBy === "agent-runtime"
+    params.generatedBy === "agent-runtime" ||
+    params.preserveStoryClustersForLabeling === true
       ? aggregatedNodes
       : mergeReaderSummaryTopicMapNodesByLabel(aggregatedNodes);
   const semanticAnchorsByGroup = new Map(
@@ -198,15 +204,28 @@ const topicNodeForCluster = (params: {
   };
   const labelCandidates = extractReaderSummaryTopicLabelCandidates({
     ...labelContext,
-    fallbackLabel: params.nodeLabel?.label,
   });
   const evidenceTexts = readerSummaryTopicLabelEvidenceTexts(labelContext);
   const providerLabels = params.cluster.providerKeys.map(humanizeSlug);
-  const label = selectReaderSummaryTopicLabel({
-    proposedLabel: params.nodeLabel?.label,
-    labelCandidates,
-    evidenceTexts,
-    providerLabels,
+  const primaryClaimFacet = primaryClaimFacetFor(evidence);
+  const proposedLabel = params.nodeLabel?.semantic
+    ? renderReaderSummaryTopicSemanticLabel(
+        alignReaderSummaryTopicSemanticLabelToEvidence({
+          semantic: params.nodeLabel.semantic,
+          primaryFacet: primaryClaimFacet,
+          evidenceTexts,
+        }),
+      )
+    : params.nodeLabel?.label;
+  const label = enrichReaderSummaryTopicLabelVersion({
+    label: selectReaderSummaryTopicLabel({
+      proposedLabel,
+      preferProposedLabel: params.nodeLabel?.semantic !== undefined,
+      labelCandidates,
+      evidenceTexts,
+      providerLabels,
+    }),
+    candidateLabels: labelCandidates.map((candidate) => candidate.label),
   });
   if (
     !evaluateTopicLabelQuality(label, {
@@ -242,7 +261,6 @@ const topicNodeForCluster = (params: {
       ? fallbackTopicFamilyGroupId(fallbackTopicId)
       : fallbackTopicId);
   const rawScore = Math.max(0, params.cluster.score);
-  const primaryClaimFacet = primaryClaimFacetFor(evidence);
   const readerFacingLabel = ensureTopicLabelExpressesClaimFacet(
     label,
     primaryClaimFacet,

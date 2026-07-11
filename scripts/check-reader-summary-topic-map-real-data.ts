@@ -24,6 +24,7 @@ import {
   evaluateTopicLabelQuality,
   evaluateReaderSummaryTopicMapStructure,
   buildReaderSummaryTopicMap,
+  buildReaderSummaryTopicMapEdges,
   buildReaderSummaryPeriod,
   ReaderSummaryPolicy,
   topicNodeId,
@@ -474,9 +475,11 @@ async function buildReport(): Promise<Report> {
         topicMap.nodes.length >= Math.min(8, replay.storyClusterCount),
       topicMapHasMultipleGroupsWhenPossible:
         topicMap.nodes.length < 3 || topicMap.groups.length >= 2,
-      topicMapHasEdgesWhenPossible:
-        topicMap.groups.every((group) => group.nodeIds.length < 2) ||
-        topicMap.edges.length > 0,
+      topicMapEdgesMatchEvidencePolicy:
+        JSON.stringify(topicMap.edges) ===
+        JSON.stringify(
+          buildReaderSummaryTopicMapEdges(topicMap.nodes, topicMap.groups),
+        ),
       topicMapStructureIsCoherent: structureQuality.passed,
       everyNodeHasKnownGroup: topicMap.nodes.every((node) =>
         groupIds.has(node.groupId),

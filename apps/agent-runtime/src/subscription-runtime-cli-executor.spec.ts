@@ -108,6 +108,57 @@ describe("SubscriptionRuntimeCliExecutor", () => {
     expect(captured.codexThreadId).toBe("");
     expect(captured.reasoningEffort).toBe("xhigh");
   });
+
+  it.each([
+    ["provider_session_invalid", "Codex session is invalid."],
+    ["needs_reconnect", "Provider session is missing."],
+  ])(
+    "retries one unavailable durable Codex session as ephemeral (%s)",
+    async (failureCode, safeMessage) => {
+      tempDir = await mkdtemp(join(tmpdir(), "agent-runtime-cli-test-"));
+      const attemptsPath = join(tempDir, "attempts.json");
+      const cliPath = join(tempDir, "fake-cli.mjs");
+
+      await writeFile(
+        cliPath,
+        [
+          "#!/usr/bin/env node",
+          'import { readFile, writeFile } from "node:fs/promises";',
+          `const attemptsPath = ${JSON.stringify(attemptsPath)};`,
+          "let attempts = [];",
+          "try { attempts = JSON.parse(await readFile(attemptsPath, 'utf8')); } catch {}",
+          "const ephemeral = process.argv.includes('--ephemeral');",
+          "attempts.push({ ephemeral });",
+          "await writeFile(attemptsPath, JSON.stringify(attempts), 'utf8');",
+          "const result = ephemeral",
+          "  ? { status: 'completed', outputText: '{}', warnings: [] }",
+          `  : { status: 'failed', warnings: [], failure: { code: ${JSON.stringify(failureCode)}, safeMessage: ${JSON.stringify(safeMessage)}, retryable: true, reconnectRequired: true, causeCategory: ${JSON.stringify(failureCode)} } };`,
+          "process.stdout.write(JSON.stringify(result));",
+        ].join("\n"),
+        "utf8",
+      );
+      await chmod(cliPath, 0o755);
+      const executor = new SubscriptionRuntimeCliExecutor({
+        command: cliPath,
+        ephemeral: false,
+        stateRoot: join(tempDir, "state"),
+        localEncryptionKey: "test-key",
+      });
+
+      const result = await executor.execute(validExecutionRequest());
+      const attempts = JSON.parse(
+        await readFile(attemptsPath, "utf8"),
+      ) as readonly { readonly ephemeral: boolean }[];
+
+      expect(result.status).toBe("completed");
+      expect(result.warnings).toContainEqual({
+        code: "agent_runtime.session_recovered_ephemeral",
+        message:
+          "Durable provider session was unavailable; retried in an isolated session",
+      });
+      expect(attempts).toEqual([{ ephemeral: false }, { ephemeral: true }]);
+    },
+  );
 });
 
 type CapturedCliRequest = {

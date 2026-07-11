@@ -210,6 +210,10 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
       rulesVersion:
         "reader_summary.rules.policy.v1+summary.rules.user-preference.v1",
     });
+    expect(model.observedCoveragePlans()).toContainEqual({
+      lead: expect.objectContaining({ clusterId: "cluster-1" }),
+      secondary: [],
+    });
     expect(events.all()).toContainEqual(
       expect.objectContaining({
         eventType: "reader_summary.ready",
@@ -230,7 +234,9 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
     const jobs = new FakeReaderSummaryJobRepository();
     const artifacts = new FakeReaderSummaryArtifactRepository();
     let observedPreferenceQuery:
-      | Parameters<UserSummaryPreferenceReaderPort["findEffectivePreference"]>[0]
+      | Parameters<
+          UserSummaryPreferenceReaderPort["findEffectivePreference"]
+        >[0]
       | undefined;
 
     await jobs.save(
@@ -312,22 +318,19 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
           return makeReaderEvidenceSelection();
         },
       },
-      new CapturingReaderSummaryModel(
-        {
-          topReads: [{ title: "Untrusted model top read" }],
-          narrativeSections: [
-            {
-              id: "lead",
-              kind: "lead",
-              title: "Overview",
-              text: "Runtime regression discussion is the main signal.",
-              citationIds: ["c1"],
-              storyClusterId: "cluster-1",
-            },
-          ],
-        } as unknown as
-          ProviderReaderSummaryAttempt["draft"]["content"],
-      ),
+      new CapturingReaderSummaryModel({
+        topReads: [{ title: "Untrusted model top read" }],
+        narrativeSections: [
+          {
+            id: "lead",
+            kind: "lead",
+            title: "Overview",
+            text: "Runtime regression discussion is the main signal.",
+            citationIds: ["c1"],
+            storyClusterId: "cluster-1",
+          },
+        ],
+      } as unknown as ProviderReaderSummaryAttempt["draft"]["content"]),
       new CapturingSummaryEventPublisher(),
       new StaticIdGenerator(),
       new FixedClock(new Date("2026-06-26T08:05:00.000Z")),
@@ -341,21 +344,21 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
     });
 
     expect(result.ok).toBe(true);
-    expect(
-      artifacts.all()[0]?.toSnapshot().content?.topReads[0]?.title,
-    ).toBe("Runtime regression discussion");
-    expect(
-      artifacts.all()[0]?.toSnapshot().content?.narrativeSections,
-    ).toEqual([
-      {
-        id: "lead",
-        kind: "lead",
-        title: "Overview",
-        text: "Runtime regression discussion is the main signal.",
-        citationIds: ["c1"],
-        storyClusterId: "cluster-1",
-      },
-    ]);
+    expect(artifacts.all()[0]?.toSnapshot().content?.topReads[0]?.title).toBe(
+      "Runtime regression discussion",
+    );
+    expect(artifacts.all()[0]?.toSnapshot().content?.narrativeSections).toEqual(
+      [
+        {
+          id: "lead",
+          kind: "lead",
+          title: "Overview",
+          text: "Runtime regression discussion is the main signal.",
+          citationIds: ["c1"],
+          storyClusterId: "cluster-1",
+        },
+      ],
+    );
   });
 
   it("rejects a generated artifact before publish when top reads fail source quality", async () => {
@@ -435,9 +438,7 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
     ).toMatchObject({
       status: "quality_rejected",
       readerSummaryId: "reader-summary-id-1",
-      failureReason: expect.stringContaining(
-        "pre-publish quality gate",
-      ),
+      failureReason: expect.stringContaining("pre-publish quality gate"),
     });
     expect(events.all()).toEqual([]);
   });
@@ -571,6 +572,9 @@ class CapturingReaderSummaryModel implements ReaderSummaryModelPort {
   private readonly generationPolicies: Parameters<
     ReaderSummaryModelPort["generate"]
   >[0]["policy"][] = [];
+  private readonly coveragePlans: Parameters<
+    ReaderSummaryModelPort["generate"]
+  >[0]["coveragePlan"][] = [];
 
   constructor(
     private readonly generatedContent?: ProviderReaderSummaryAttempt["draft"]["content"],
@@ -610,6 +614,7 @@ class CapturingReaderSummaryModel implements ReaderSummaryModelPort {
     selectedRoute: ReaderSummaryModelRoute,
   ): Promise<ProviderReaderSummaryAttempt> {
     this.generationPolicies.push(input.policy);
+    this.coveragePlans.push(input.coveragePlan);
     const firstItem = input.evidence.selectedEvidence[0];
     const firstCluster = input.evidence.clusters[0];
     if (firstItem === undefined || firstCluster === undefined) {
@@ -696,11 +701,19 @@ class CapturingReaderSummaryModel implements ReaderSummaryModelPort {
   >[0]["policy"][] {
     return this.generationPolicies;
   }
+
+  observedCoveragePlans(): readonly Parameters<
+    ReaderSummaryModelPort["generate"]
+  >[0]["coveragePlan"][] {
+    return this.coveragePlans;
+  }
 }
 
-const makeReaderEvidenceSelection = (overrides: {
-  readonly firstContentQuality?: SummaryEvidenceSelection["selectedEvidence"][number]["contentQuality"];
-} = {}): SummaryEvidenceSelection => ({
+const makeReaderEvidenceSelection = (
+  overrides: {
+    readonly firstContentQuality?: SummaryEvidenceSelection["selectedEvidence"][number]["contentQuality"];
+  } = {},
+): SummaryEvidenceSelection => ({
   rankingPolicyVersion: "story-ranking.v1",
   personalization: {
     memoryGuidanceStatus: "available",

@@ -96,6 +96,7 @@ export async function readLatestReaderSummaryArtifact(
         and scope_type = 'workspace'
         and cadence = 'daily'
         and period_key = $3
+        and status = 'COMPLETED'
       order by created_at desc, id desc
       limit 1
     `,
@@ -237,9 +238,7 @@ export function isLocalDataSourceUnavailable(error: unknown): boolean {
   const text = message(error).toLowerCase();
 
   return (
-    ["ECONNREFUSED", "ENOTFOUND", "ETIMEDOUT", "EHOSTUNREACH"].includes(
-      code,
-    ) ||
+    ["ECONNREFUSED", "ENOTFOUND", "ETIMEDOUT", "EHOSTUNREACH"].includes(code) ||
     text.includes("connect econnrefused") ||
     text.includes("connection terminated") ||
     text.includes("timeout exceeded") ||

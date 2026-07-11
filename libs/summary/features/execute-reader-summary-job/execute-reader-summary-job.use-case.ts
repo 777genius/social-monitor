@@ -12,6 +12,7 @@ import {
 
 import {
   assertReaderSummaryCitationsAgainstEvidence,
+  buildReaderSummaryCoveragePlan,
   buildReaderSummary,
   defaultReaderSummaryGenerationPolicy,
   ReaderSummaryArtifact,
@@ -296,6 +297,7 @@ export class ExecuteReaderSummaryJobUseCase {
       userId: snapshot.userId,
       subscriptionId: snapshot.subscriptionId,
       evidence,
+      coveragePlan: buildReaderSummaryCoveragePlan(evidence),
       contextArtifacts: context.artifacts,
       policy: resolveEffectiveReaderSummaryPolicy(basePolicy, userPreference),
       requestedAt: snapshot.requestedAt,

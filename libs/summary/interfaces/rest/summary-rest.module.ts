@@ -91,7 +91,9 @@ import {
 import {
   summaryAgentRuntimeClientOptionsProvider,
   summaryAgentRuntimeReaderSummaryModelOptionsProvider,
+  summaryAgentRuntimeReaderSummaryStoryRelationVerifierOptionsProvider,
   summaryAgentRuntimeReaderSummaryTopicLabelerOptionsProvider,
+  summaryAgentRuntimeReaderSummaryTopicRelationVerifierOptionsProvider,
   summaryAgentRuntimeSummaryModelOptionsProvider,
 } from "./summary-agent-runtime-provider-tokens";
 import { summaryAgentRuntimeProviders } from "./summary-agent-runtime.providers";
@@ -132,7 +134,9 @@ import { SummaryController } from "./summary.controller";
     summaryAgentRuntimeClientOptionsProvider,
     summaryAgentRuntimeSummaryModelOptionsProvider,
     summaryAgentRuntimeReaderSummaryModelOptionsProvider,
+    summaryAgentRuntimeReaderSummaryStoryRelationVerifierOptionsProvider,
     summaryAgentRuntimeReaderSummaryTopicLabelerOptionsProvider,
+    summaryAgentRuntimeReaderSummaryTopicRelationVerifierOptionsProvider,
     summaryMemoryModeProvider,
     summaryYoutubeVideoSummaryProviderModeProvider,
     summaryRabbitMqJobQueueOptionsProvider,

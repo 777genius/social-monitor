@@ -79,6 +79,36 @@ describe("PrismaReaderSummaryArtifactRepository", () => {
     expect(prisma.statusFor("reader-summary-runtime")).toBe("COMPLETED");
     expect(prisma.statusFor("reader-summary-deterministic")).toBe("SUPERSEDED");
   });
+
+  it("keeps the newer requested generation visible when an older run finishes last", async () => {
+    const prisma = new FakeReaderSummaryPrisma();
+    const repository = new PrismaReaderSummaryArtifactRepository(prisma.client);
+
+    await repository.save(readerSummaryArtifact("reader-summary-newer"), {
+      generationRequestedAt: new Date("2026-07-09T10:05:00.000Z"),
+    });
+    await repository.save(readerSummaryArtifact("reader-summary-older"), {
+      generationRequestedAt: new Date("2026-07-09T10:00:00.000Z"),
+    });
+
+    expect(prisma.statusFor("reader-summary-newer")).toBe("COMPLETED");
+    expect(prisma.statusFor("reader-summary-older")).toBe("SUPERSEDED");
+  });
+
+  it("publishes a newer requested generation after an older run", async () => {
+    const prisma = new FakeReaderSummaryPrisma();
+    const repository = new PrismaReaderSummaryArtifactRepository(prisma.client);
+
+    await repository.save(readerSummaryArtifact("reader-summary-older"), {
+      generationRequestedAt: new Date("2026-07-09T10:00:00.000Z"),
+    });
+    await repository.save(readerSummaryArtifact("reader-summary-newer"), {
+      generationRequestedAt: new Date("2026-07-09T10:05:00.000Z"),
+    });
+
+    expect(prisma.statusFor("reader-summary-older")).toBe("SUPERSEDED");
+    expect(prisma.statusFor("reader-summary-newer")).toBe("COMPLETED");
+  });
 });
 
 const tenant = tenantId("tenant-reader-summary-prisma");

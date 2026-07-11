@@ -291,21 +291,6 @@ const headlineClauseTokens = new Set([
   "says",
 ]);
 
-export const sanitizeTopicNodeLabel = (
-  label: ReaderSummaryTopicNodeLabel,
-): ReaderSummaryTopicNodeLabel => ({
-  nodeId: label.nodeId,
-  topicId: sanitizeTopicId(label.topicId),
-  label: sanitizeTopicLabel(label.label),
-  groupId: sanitizeTopicId(label.groupId),
-  keywords: (label.keywords ?? [])
-    .map(compactOptional)
-    .filter((keyword): keyword is string => keyword !== undefined)
-    .filter((keyword) => !isWeakTopicLabel(keyword))
-    .slice(0, 8),
-  rationale: compactOptional(label.rationale),
-});
-
 export const hasUsableTopicNodeLabel = (
   label: ReaderSummaryTopicNodeLabel,
 ): boolean =>
@@ -438,13 +423,17 @@ export const hasConcreteSingleTokenSignal = (value: string): boolean => {
   );
 };
 
-const sanitizeTopicId = (value: string | undefined): string | undefined => {
+export const sanitizeTopicId = (
+  value: string | undefined,
+): string | undefined => {
   const compact = compactId(value);
 
   return compact === undefined || isWeakTopicId(compact) ? undefined : compact;
 };
 
-const sanitizeTopicLabel = (value: string | undefined): string | undefined => {
+export const sanitizeTopicLabel = (
+  value: string | undefined,
+): string | undefined => {
   const compact = compactOptional(value);
 
   return compact === undefined || isWeakTopicLabel(compact)

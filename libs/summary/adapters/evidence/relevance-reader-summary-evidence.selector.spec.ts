@@ -189,7 +189,7 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
       altText: "rss story 4",
     });
     expect(storyRankingMetrics.recorded[0]?.rankingPolicyVersion).toBe(
-      "story_ranking_v6",
+      "story_ranking_v7",
     );
     expect(selection.personalization).toEqual({
       memoryGuidanceStatus: "available",
@@ -965,8 +965,19 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
 
 class FakeStoryRankingMetrics implements StoryRankingMetricsPort {
   readonly recorded: SummaryEvidenceSelection[] = [];
+  readonly storyRelationMetrics: Parameters<
+    StoryRankingMetricsPort["recordStoryRelationVerification"]
+  >[0][] = [];
 
   recordStoryRanking(selection: SummaryEvidenceSelection): void {
     this.recorded.push(selection);
+  }
+
+  recordStoryRelationVerification(
+    metric: Parameters<
+      StoryRankingMetricsPort["recordStoryRelationVerification"]
+    >[0],
+  ): void {
+    this.storyRelationMetrics.push(metric);
   }
 }

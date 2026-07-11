@@ -132,7 +132,7 @@ describe("OpenAiResponsesReaderSummaryModelAdapter", () => {
     });
     expect(JSON.parse(capturedCalls[0]?.init?.body as string)).toMatchObject({
       instructions: expect.stringContaining(
-        "Do not use internal workflow language such as source note",
+        "Do not use internal workflow language such as source item",
       ),
     });
     expect(JSON.parse(capturedCalls[0]?.init?.body as string)).toMatchObject({
@@ -157,7 +157,7 @@ describe("OpenAiResponsesReaderSummaryModelAdapter", () => {
       },
     });
     expect(route.promptVersion).toBe(
-      "reader_summary.prompt.openai.responses.v8",
+      "reader_summary.prompt.openai.responses.v9",
     );
     expect(adapter.estimate(input, route).outputTokens).toBe(3_200);
     expect(attempt.draft).toMatchObject({
@@ -810,6 +810,7 @@ const readerSummaryInput = (
     timezone: "UTC",
     periodKey: "daily:2026-06-23T00:00:00.000Z:2026-06-24T00:00:00.000Z:UTC",
   },
+  coveragePlan: { secondary: [] },
   evidence: {
     rankingPolicyVersion: "story_ranking_v1",
     sourceWindow: {

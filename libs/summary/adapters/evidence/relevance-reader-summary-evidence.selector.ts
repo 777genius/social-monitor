@@ -8,6 +8,8 @@ import {
 import type { Clock } from "@social-monitor/shared-kernel";
 
 import {
+  approvedStoryRelationPairs,
+  buildStoryRelationCandidates,
   StoryClusteringService,
   type SummaryEvidenceItem,
   type SummaryEvidenceSelection,
@@ -16,6 +18,7 @@ import { isTopReadEligibleEvidence } from "../../domain/policies/top-read-eligib
 import {
   NOOP_STORY_RANKING_METRICS,
   type ReaderSummaryEvidenceSelectorPort,
+  type ReaderSummaryStoryRelationVerifierPort,
   type StoryRankingMetricsPort,
 } from "../../ports";
 import { isDefaultReaderSummaryEvidenceProvider } from "./reader-summary-evidence-provider-filter";
@@ -31,6 +34,13 @@ import {
   readerSummaryProviderDiversityOrder,
   selectRankedEvidence,
 } from "./relevance-reader-summary-evidence-support";
+import {
+  countTopReadEligibleItemsForProvider,
+  crossProviderReserveIds,
+  promoteTopReadCandidatesWithinProviders,
+  topReadCandidateReserveProviders,
+  topReadCandidateSupplementTargetForLimit,
+} from "./relevance-reader-summary-top-read-reserve";
 
 export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvidenceSelectorPort {
   private readonly clusterer: StoryClusteringService;
@@ -42,6 +52,7 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
     private readonly feedItems: FeedItemReadRepositoryPort,
     private readonly clock: Clock,
     private readonly storyRankingMetrics: StoryRankingMetricsPort = NOOP_STORY_RANKING_METRICS,
+    private readonly storyRelationVerifier?: ReaderSummaryStoryRelationVerifierPort,
   ) {
     this.clusterer = new StoryClusteringService(clock);
   }
@@ -70,14 +81,42 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
       ),
       params.period,
     );
-    const items = selectRankedEvidence(
-      await this.withTopReadCandidateSupplements(
-        params,
-        await this.withProviderDiversitySupplements(params, rankedItems),
-      ),
-      params.maxItems,
+    const candidateItems = await this.withTopReadCandidateSupplements(
+      params,
+      await this.withProviderDiversitySupplements(params, rankedItems),
     );
-
+    const candidateSelection = this.clusterer.cluster({
+      identity: {
+        tenantId: params.tenantId,
+        workspaceId: params.workspaceId,
+        scope: params.scope,
+      },
+      items: candidateItems,
+      limit: candidateItems.length,
+    });
+    const approvedPairs = await this.verifiedStoryRelationPairs(
+      params,
+      candidateItems,
+      candidateSelection,
+    );
+    const verifiedCandidateSelection =
+      approvedPairs.size === 0
+        ? candidateSelection
+        : this.clusterer.cluster({
+            identity: {
+              tenantId: params.tenantId,
+              workspaceId: params.workspaceId,
+              scope: params.scope,
+            },
+            items: candidateItems,
+            limit: candidateItems.length,
+            verifiedStoryRelationPairs: approvedPairs,
+          });
+    const items = selectRankedEvidence(
+      candidateItems,
+      params.maxItems,
+      crossProviderReserveIds(verifiedCandidateSelection),
+    );
     const selection = this.clusterer.cluster({
       identity: {
         tenantId: params.tenantId,
@@ -86,6 +125,7 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
       },
       items,
       limit: params.maxItems,
+      verifiedStoryRelationPairs: approvedPairs,
     });
     const personalizedSelection = {
       ...selection,
@@ -108,6 +148,55 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
     this.storyRankingMetrics.recordStoryRanking(personalizedSelection);
 
     return this.withOriginalSourceText(params, personalizedSelection);
+  }
+
+  private async verifiedStoryRelationPairs(
+    params: Parameters<ReaderSummaryEvidenceSelectorPort["select"]>[0],
+    evidence: readonly SummaryEvidenceItem[],
+    deterministicSelection: SummaryEvidenceSelection,
+  ): Promise<ReadonlySet<string>> {
+    const candidates = buildStoryRelationCandidates({
+      selection: deterministicSelection,
+      evidence,
+    });
+    if (this.storyRelationVerifier === undefined || candidates.length === 0) {
+      this.storyRankingMetrics.recordStoryRelationVerification({
+        status: "skipped",
+        candidateCount: candidates.length,
+        approvedCount: 0,
+      });
+      return new Set();
+    }
+
+    try {
+      const decisions = await this.storyRelationVerifier.verify({
+        tenantId: params.tenantId,
+        workspaceId: params.workspaceId,
+        scope: params.scope,
+        period: params.period,
+        requestedAt: this.clock.now(),
+        clusters: deterministicSelection.clusters,
+        evidence,
+        candidates,
+      });
+      const approvedPairs = approvedStoryRelationPairs({
+        candidates,
+        decisions,
+      });
+      this.storyRankingMetrics.recordStoryRelationVerification({
+        status: "completed",
+        candidateCount: candidates.length,
+        approvedCount: approvedPairs.size,
+      });
+      return approvedPairs;
+    } catch {
+      this.storyRankingMetrics.recordStoryRelationVerification({
+        status: "failed_closed",
+        candidateCount: candidates.length,
+        approvedCount: 0,
+      });
+      return new Set();
+    }
   }
 
   private async withOriginalSourceText(
@@ -191,7 +280,10 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
         });
         itemsById.set(duplicateFeedItemId, {
           ...supplement,
-          score: Math.min(supplement.score, Math.max(0, rankedItem.score - 0.001)),
+          score: Math.min(
+            supplement.score,
+            Math.max(0, rankedItem.score - 0.001),
+          ),
           storyKeyHint: rankedItem.clusterId,
         });
       }
@@ -327,77 +419,3 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
     return promoteTopReadCandidatesWithinProviders([...itemsById.values()]);
   }
 }
-
-const topReadCandidateReserveProviders = ["x-twitter", "reddit"] as const;
-
-const topReadCandidateSupplementTargetForLimit = (limit: number): number => {
-  if (limit >= 80) {
-    return 10;
-  }
-
-  if (limit >= 40) {
-    return 6;
-  }
-
-  return 3;
-};
-
-const countTopReadEligibleItemsForProvider = (
-  items: Iterable<SummaryEvidenceItem>,
-  providerKey: string,
-): number => {
-  let count = 0;
-
-  for (const item of items) {
-    if (
-      item.providerKey === providerKey &&
-      isTopReadEligibleEvidence(item)
-    ) {
-      count += 1;
-    }
-  }
-
-  return count;
-};
-
-const promoteTopReadCandidatesWithinProviders = (
-  items: readonly SummaryEvidenceItem[],
-): readonly SummaryEvidenceItem[] => {
-  const rankedByProvider = new Map<string, SummaryEvidenceItem[]>();
-  for (const item of items) {
-    rankedByProvider.set(item.providerKey, [
-      ...(rankedByProvider.get(item.providerKey) ?? []),
-      item,
-    ]);
-  }
-
-  for (const [providerKey, providerItems] of rankedByProvider.entries()) {
-    rankedByProvider.set(
-      providerKey,
-      [...providerItems].sort(compareTopReadFit),
-    );
-  }
-
-  return items.map(
-    (item) => rankedByProvider.get(item.providerKey)?.shift() ?? item,
-  );
-};
-
-const compareTopReadFit = (
-  left: SummaryEvidenceItem,
-  right: SummaryEvidenceItem,
-): number => {
-  const eligibilityDiff =
-    Number(isTopReadEligibleEvidence(right)) -
-    Number(isTopReadEligibleEvidence(left));
-  if (eligibilityDiff !== 0) {
-    return eligibilityDiff;
-  }
-
-  const scoreDiff = right.score - left.score;
-  if (scoreDiff !== 0) {
-    return scoreDiff;
-  }
-
-  return right.observedAt.getTime() - left.observedAt.getTime();
-};

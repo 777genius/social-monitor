@@ -12,21 +12,31 @@
   "inputs": {
     "database": "local-postgres",
     "providerKeys": [
+      "hacker-news",
       "reddit",
+      "rss",
       "x-twitter"
     ],
     "xCollectorConfigured": true,
     "targetPublishedWindow": {
-      "startInclusive": "2026-07-09T00:00:00.000Z",
-      "endExclusive": "2026-07-10T00:00:00.000Z"
+      "startInclusive": "2026-07-10T00:00:00.000Z",
+      "endExclusive": "2026-07-11T00:00:00.000Z"
     }
   },
   "run": {
-    "startedAt": "2026-07-10T01:08:50.420Z",
-    "completedAt": "2026-07-10T01:09:48.857Z",
-    "collectionDate": "2026-07-09"
+    "startedAt": "2026-07-11T15:44:28.981Z",
+    "completedAt": "2026-07-11T15:46:33.878Z",
+    "collectionDate": "2026-07-10"
   },
   "targets": [
+    {
+      "providerKey": "hacker-news",
+      "bindingFingerprint": "5b7bc348",
+      "interestFingerprint": "76a4b2fd",
+      "workspaceFingerprint": "88237c6c",
+      "plannerEnabled": false,
+      "canaryRollout": false
+    },
     {
       "providerKey": "reddit",
       "bindingFingerprint": "0c450737",
@@ -34,6 +44,14 @@
       "workspaceFingerprint": "88237c6c",
       "plannerEnabled": true,
       "canaryRollout": true
+    },
+    {
+      "providerKey": "rss",
+      "bindingFingerprint": "50739cc3",
+      "interestFingerprint": "76a4b2fd",
+      "workspaceFingerprint": "88237c6c",
+      "plannerEnabled": false,
+      "canaryRollout": false
     },
     {
       "providerKey": "x-twitter",
@@ -46,71 +64,238 @@
   ],
   "scans": [
     {
+      "providerKey": "hacker-news",
+      "bindingFingerprint": "5b7bc348",
+      "status": "succeeded",
+      "fetched": 76,
+      "inserted": 0,
+      "projected": 76,
+      "skippedDuplicates": 76,
+      "warningCount": 1,
+      "observability": {
+        "targetItemCount": 100,
+        "collectedItemCount": 79,
+        "acceptedItemCount": 76,
+        "insertedItemCount": 0,
+        "outsideWindowItemCount": 3,
+        "paginationDuplicateItemCount": 0,
+        "storageDuplicateItemCount": 76,
+        "totalDuplicateItemCount": 76,
+        "pageCount": 1,
+        "paginationStopReason": "single_page",
+        "rateLimitEventCount": 0,
+        "coverageState": "partial",
+        "slo": {
+          "met": false,
+          "targetItemCount": 100,
+          "evaluatedItemCount": 93,
+          "coverageRatio": 0.93,
+          "freshnessLagSeconds": 3270,
+          "maxFreshnessLagSeconds": 21600,
+          "reasons": [
+            "target_shortfall"
+          ],
+          "retryDisposition": "immediate"
+        },
+        "freshness": {
+          "oldestAcceptedPublishedAt": "2026-07-10T00:14:57.000Z",
+          "newestAcceptedPublishedAt": "2026-07-10T23:05:30.000Z",
+          "lagToWindowEndSeconds": 3270
+        }
+      },
+      "attemptCount": 3
+    },
+    {
       "providerKey": "reddit",
       "bindingFingerprint": "0c450737",
       "status": "succeeded",
       "fetched": 100,
-      "inserted": 67,
+      "inserted": 0,
       "projected": 100,
-      "skippedDuplicates": 33,
-      "warningCount": 22
+      "skippedDuplicates": 100,
+      "warningCount": 25,
+      "observability": {
+        "targetItemCount": 100,
+        "collectedItemCount": 100,
+        "acceptedItemCount": 100,
+        "insertedItemCount": 0,
+        "outsideWindowItemCount": 0,
+        "paginationDuplicateItemCount": 0,
+        "storageDuplicateItemCount": 100,
+        "totalDuplicateItemCount": 100,
+        "pageCount": 1,
+        "paginationStopReason": "target_items",
+        "rateLimitEventCount": 0,
+        "coverageState": "complete",
+        "slo": {
+          "met": true,
+          "targetItemCount": 100,
+          "evaluatedItemCount": 341,
+          "coverageRatio": 1,
+          "freshnessLagSeconds": 55,
+          "maxFreshnessLagSeconds": 21600,
+          "reasons": [],
+          "retryDisposition": "none"
+        },
+        "freshness": {
+          "oldestAcceptedPublishedAt": "2026-07-10T00:00:06.000Z",
+          "newestAcceptedPublishedAt": "2026-07-10T23:38:09.000Z",
+          "lagToWindowEndSeconds": 1311
+        }
+      },
+      "attemptCount": 1
+    },
+    {
+      "providerKey": "rss",
+      "bindingFingerprint": "50739cc3",
+      "status": "succeeded",
+      "fetched": 100,
+      "inserted": 2,
+      "projected": 100,
+      "skippedDuplicates": 98,
+      "warningCount": 12,
+      "observability": {
+        "targetItemCount": 100,
+        "collectedItemCount": 100,
+        "acceptedItemCount": 100,
+        "insertedItemCount": 2,
+        "outsideWindowItemCount": 0,
+        "paginationDuplicateItemCount": 0,
+        "storageDuplicateItemCount": 98,
+        "totalDuplicateItemCount": 98,
+        "pageCount": 1,
+        "paginationStopReason": "single_page",
+        "rateLimitEventCount": 0,
+        "coverageState": "complete",
+        "slo": {
+          "met": true,
+          "targetItemCount": 100,
+          "evaluatedItemCount": 318,
+          "coverageRatio": 1,
+          "freshnessLagSeconds": 217,
+          "maxFreshnessLagSeconds": 21600,
+          "reasons": [],
+          "retryDisposition": "none"
+        },
+        "freshness": {
+          "oldestAcceptedPublishedAt": "2026-07-10T20:54:33.000Z",
+          "newestAcceptedPublishedAt": "2026-07-10T23:56:23.000Z",
+          "lagToWindowEndSeconds": 217
+        }
+      },
+      "attemptCount": 1
     },
     {
       "providerKey": "x-twitter",
       "bindingFingerprint": "ea231a0a",
-      "status": "succeeded",
-      "fetched": 24,
-      "inserted": 9,
-      "projected": 24,
-      "skippedDuplicates": 15,
-      "warningCount": 5
+      "status": "failed",
+      "fetched": 0,
+      "inserted": 0,
+      "projected": 0,
+      "skippedDuplicates": 0,
+      "warningCount": 0,
+      "observability": {
+        "targetItemCount": 210,
+        "collectedItemCount": 0,
+        "acceptedItemCount": 0,
+        "insertedItemCount": 0,
+        "outsideWindowItemCount": 0,
+        "paginationDuplicateItemCount": 0,
+        "storageDuplicateItemCount": 0,
+        "totalDuplicateItemCount": 0,
+        "pageCount": 0,
+        "paginationStopReason": "failed",
+        "rateLimitEventCount": 1,
+        "failureKind": "rate_limited",
+        "coverageState": "degraded",
+        "slo": {
+          "met": false,
+          "targetItemCount": 210,
+          "evaluatedItemCount": 79,
+          "coverageRatio": 0.3761904761904762,
+          "freshnessLagSeconds": 113,
+          "maxFreshnessLagSeconds": 21600,
+          "reasons": [
+            "target_shortfall",
+            "rate_limited"
+          ],
+          "retryDisposition": "deferred"
+        },
+        "freshness": {}
+      },
+      "failureFingerprint": "cb5ad0d2",
+      "attemptCount": 2
     }
   ],
   "freshWindow": {
-    "feedItemCount": 124,
+    "feedItemCount": 288,
     "providerCounts": {
+      "hacker-news": 76,
       "reddit": 100,
-      "x-twitter": 24
+      "rss": 90,
+      "x-twitter": 22
+    },
+    "newestItemAtByProvider": {
+      "hacker-news": "2026-07-11 15:46:33.496+00",
+      "reddit": "2026-07-11 15:45:41.861+00",
+      "rss": "2026-07-11 15:45:52.256+00",
+      "x-twitter": "2026-07-11 15:46:01.576+00"
     },
     "sourceQueryLaneCoverageByProvider": {
+      "hacker-news": 0,
       "reddit": 1,
+      "rss": 0,
       "x-twitter": 1
     },
     "distinctSourceQueryLaneCountByProvider": {
-      "reddit": 27,
+      "hacker-news": 0,
+      "reddit": 24,
+      "rss": 0,
       "x-twitter": 2
     },
     "orphanInterestCount": 0,
     "orphanSourceBindingCount": 0,
     "interestSnapshotCoverage": 1,
     "sourceBindingSnapshotCoverage": 1,
-    "sourceQueryLaneCoverage": 1,
-    "distinctSourceQueryLaneCount": 29
+    "sourceQueryLaneCoverage": 0.424,
+    "distinctSourceQueryLaneCount": 26
   },
   "targetWindow": {
-    "feedItemCount": 279,
+    "feedItemCount": 831,
     "providerCounts": {
-      "reddit": 228,
-      "x-twitter": 51
+      "hacker-news": 93,
+      "reddit": 341,
+      "rss": 318,
+      "x-twitter": 79
+    },
+    "newestItemAtByProvider": {
+      "hacker-news": "2026-07-10 23:05:30+00",
+      "reddit": "2026-07-10 23:59:05+00",
+      "rss": "2026-07-10 23:56:23+00",
+      "x-twitter": "2026-07-10 23:58:07+00"
     },
     "sourceQueryLaneCoverageByProvider": {
+      "hacker-news": 0,
       "reddit": 1,
+      "rss": 0,
       "x-twitter": 1
     },
     "distinctSourceQueryLaneCountByProvider": {
-      "reddit": 40,
-      "x-twitter": 4
+      "hacker-news": 0,
+      "reddit": 39,
+      "rss": 0,
+      "x-twitter": 6
     },
     "orphanInterestCount": 0,
     "orphanSourceBindingCount": 0,
     "interestSnapshotCoverage": 1,
     "sourceBindingSnapshotCoverage": 1,
-    "sourceQueryLaneCoverage": 1,
-    "distinctSourceQueryLaneCount": 44
+    "sourceQueryLaneCoverage": 0.505,
+    "distinctSourceQueryLaneCount": 45
   },
   "qualityGates": {
     "targetBindingsPresent": true,
-    "everyRequestedProviderSucceeded": true,
+    "everyRequestedProviderSucceeded": false,
     "targetWindowFeedItemsAvailable": true,
     "everyRequestedProviderHasTargetItems": true,
     "noFreshOrphanInterestReferences": true,
@@ -121,7 +306,11 @@
     "freshMultipleQueryLanesObserved": true,
     "targetSourceQueryLaneCoverageComplete": true,
     "targetMultipleQueryLanesObserved": true,
+    "providerCollectionObservabilityComplete": true,
+    "everyRequestedProviderMeetsCollectionSlo": false,
+    "providerRetriesAreBounded": true,
+    "partialProviderCoverageIsExplicit": true,
     "noRawSecretFragments": true
   },
-  "blockingPassed": true
+  "blockingPassed": false
 }

@@ -79,6 +79,7 @@ describe("GetReaderSummaryUseCase", () => {
           windowStartedAt: "2026-06-23T08:00:00.000Z",
           windowEndedAt: "2026-06-23T08:30:00.000Z",
           freshnessStatus: "fresh",
+          degradedProviderKeys: [],
           providerBreakdown: [
             {
               providerKey: "reddit",
@@ -179,6 +180,88 @@ describe("GetReaderSummaryUseCase", () => {
         (provider) => provider.providerKey === "reddit",
       )?.collectedFeedItemCount,
     ).toBe(1);
+  });
+
+  it("exposes degraded provider collection coverage without hiding selected evidence", async () => {
+    const useCase = new GetReaderSummaryUseCase(
+      new FakeReaderSummaryArtifactRepository([
+        readerSummaryArtifact("reader-summary-1"),
+      ]),
+      new FakeReaderSummaryFreshnessProbe(),
+      undefined,
+      {
+        async countCollectedFeedItems() {
+          return 1;
+        },
+        async countCollectedFeedItemCoverage() {
+          return {
+            collectedFeedItemCount: 1,
+            lowRelevanceFeedItemCount: 0,
+            mutedFeedItemCount: 0,
+            userRatedFeedItemCount: 0,
+            providerBreakdown: [
+              {
+                providerKey: "reddit",
+                collectedFeedItemCount: 1,
+                lowRelevanceFeedItemCount: 0,
+                mutedFeedItemCount: 0,
+                userRatedFeedItemCount: 0,
+                collectionHealth: {
+                  state: "degraded" as const,
+                  scanCount: 1,
+                  targetItemCount: 80,
+                  collectedItemCount: 20,
+                  acceptedItemCount: 18,
+                  insertedItemCount: 17,
+                  outsideWindowItemCount: 2,
+                  paginationDuplicateItemCount: 1,
+                  storageDuplicateItemCount: 1,
+                  pageCount: 2,
+                  paginationStopReasons: ["partial_retryable_failure"],
+                  failureKinds: ["rate_limited"],
+                  rateLimitEventCount: 1,
+                  newestAcceptedPublishedAt: new Date(
+                    "2026-06-23T07:30:00.000Z",
+                  ),
+                },
+              },
+            ],
+            topicBreakdown: [],
+            queryBreakdown: [],
+          };
+        },
+      },
+    );
+
+    const result = await useCase.execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      readerSummaryId: "reader-summary-1",
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.value.coverage).toMatchObject({
+      collectedFeedItemCount: 1,
+      collectionCoverageState: "degraded",
+      degradedProviderKeys: ["reddit"],
+    });
+    expect(
+      result.value.coverage.providerBreakdown.find(
+        (provider) => provider.providerKey === "reddit",
+      ),
+    ).toMatchObject({
+      providerKey: "reddit",
+      collectionHealth: {
+        state: "degraded",
+        targetItemCount: 80,
+        acceptedItemCount: 18,
+        rateLimitEventCount: 1,
+        newestAcceptedPublishedAt: "2026-06-23T07:30:00.000Z",
+      },
+    });
   });
 });
 

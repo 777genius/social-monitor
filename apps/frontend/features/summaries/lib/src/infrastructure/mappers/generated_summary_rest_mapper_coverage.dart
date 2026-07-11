@@ -21,6 +21,8 @@ ReaderSummaryCoverageApiDto? _readerSummaryCoverage(
     selectedFeedItemCount: _safeGeneratedCount(coverage.selectedFeedItemCount),
     topReadCount: _safeGeneratedCount(coverage.topReadCount),
     citationCount: _safeGeneratedCount(coverage.citationCount),
+    collectionCoverageState: coverage.collectionCoverageState?.json,
+    degradedProviderKeys: coverage.degradedProviderKeys ?? const [],
     providerBreakdown:
         coverage.providerBreakdown
             ?.map(_readerSummaryProviderCoverage)
@@ -57,6 +59,38 @@ ReaderSummaryProviderCoverageApiDto _readerSummaryProviderCoverage(
     selectedFeedItemCount: _safeGeneratedCount(provider.selectedFeedItemCount),
     topReadCount: _safeGeneratedCount(provider.topReadCount),
     citationCount: _safeGeneratedCount(provider.citationCount),
+    collectionHealth: provider.collectionHealth == null
+        ? null
+        : _readerSummaryProviderCollectionHealth(provider.collectionHealth!),
+  );
+}
+
+ReaderSummaryProviderCollectionHealthApiDto
+_readerSummaryProviderCollectionHealth(
+  generated.ReaderSummaryProviderCollectionHealthDto health,
+) {
+  return ReaderSummaryProviderCollectionHealthApiDto(
+    state: health.state.json ?? 'unknown',
+    scanCount: _safeGeneratedCount(health.scanCount),
+    targetItemCount: health.targetItemCount == null
+        ? null
+        : _safeGeneratedCount(health.targetItemCount!),
+    collectedItemCount: _safeGeneratedCount(health.collectedItemCount),
+    acceptedItemCount: _safeGeneratedCount(health.acceptedItemCount),
+    insertedItemCount: _safeGeneratedCount(health.insertedItemCount),
+    outsideWindowItemCount: _safeGeneratedCount(health.outsideWindowItemCount),
+    paginationDuplicateItemCount: _safeGeneratedCount(
+      health.paginationDuplicateItemCount,
+    ),
+    storageDuplicateItemCount: _safeGeneratedCount(
+      health.storageDuplicateItemCount,
+    ),
+    pageCount: _safeGeneratedCount(health.pageCount),
+    paginationStopReasons: health.paginationStopReasons,
+    failureKinds: health.failureKinds,
+    rateLimitEventCount: _safeGeneratedCount(health.rateLimitEventCount),
+    oldestAcceptedPublishedAt: health.oldestAcceptedPublishedAt,
+    newestAcceptedPublishedAt: health.newestAcceptedPublishedAt,
   );
 }
 

@@ -7,7 +7,9 @@ export type ReaderSummaryTopicSemanticExpectation = {
   readonly expectedStoryKey: string;
   readonly expectedTopicKey?: string;
   readonly expectedClaimType?: ReaderSummaryTopicClaimType;
+  readonly acceptableClaimTypes?: readonly ReaderSummaryTopicClaimType[];
   readonly expectedSubjectTokens?: readonly string[];
+  readonly forbiddenLabelTokens?: readonly string[];
   readonly requiredInTopicMap?: boolean;
 };
 
@@ -25,6 +27,8 @@ export type ReaderSummaryTopicSemanticEvalResult = {
   readonly passed: boolean;
   readonly metrics: {
     readonly expectationCount: number;
+    readonly evaluatedExpectationCount: number;
+    readonly skippedOptionalCount: number;
     readonly requiredTopicCount: number;
     readonly storyCoverage: number;
     readonly topicCoverage: number;
@@ -34,6 +38,7 @@ export type ReaderSummaryTopicSemanticEvalResult = {
     readonly topicPairRecall: number;
     readonly claimAccuracy: number;
     readonly subjectAccuracy: number;
+    readonly labelQualityAccuracy: number;
   };
   readonly issues: readonly string[];
 };
@@ -70,26 +75,40 @@ export const evaluateReaderSummaryTopicSemantics = (
       ? undefined
       : nodeByClusterId.get(clusterId)?.id;
   };
+  const observedExpectations = input.expectations.filter(
+    (expectation) => predictedStoryKey(expectation) !== undefined,
+  );
+  const observedTopicExpectations = input.expectations.filter(
+    (expectation) => predictedTopicKey(expectation) !== undefined,
+  );
   const storyPairs = pairMetrics(
-    input.expectations,
+    observedExpectations,
     (expectation) => expectation.expectedStoryKey,
     predictedStoryKey,
   );
   const topicPairs = pairMetrics(
-    requiredTopicExpectations,
+    observedTopicExpectations.filter(
+      (expectation) => expectation.expectedTopicKey !== undefined,
+    ),
     (expectation) => expectation.expectedTopicKey,
     predictedTopicKey,
   );
-  const missingStory = input.expectations.filter(
+  const missingStory = requiredTopicExpectations.filter(
     (expectation) => predictedStoryKey(expectation) === undefined,
   );
   const missingTopic = requiredTopicExpectations.filter(
     (expectation) => predictedTopicKey(expectation) === undefined,
   );
-  const claimMismatches = requiredTopicExpectations.filter((expectation) => {
-    if (expectation.expectedClaimType === undefined) {
-      return false;
-    }
+  const claimExpectations = input.expectations.filter(
+    (expectation) => expectedClaimTypes(expectation).length > 0,
+  );
+  const evaluatedClaimExpectations = claimExpectations.filter(
+    (expectation) =>
+      expectation.requiredInTopicMap === true ||
+      predictedTopicKey(expectation) !== undefined,
+  );
+  const claimMismatches = evaluatedClaimExpectations.filter((expectation) => {
+    const expectedTypes = expectedClaimTypes(expectation);
     const clusterId = predictedStoryKey(expectation);
     const label =
       clusterId === undefined
@@ -97,26 +116,63 @@ export const evaluateReaderSummaryTopicSemantics = (
         : nodeByClusterId.get(clusterId)?.label;
 
     return (
-      label === undefined ||
-      !topicLabelExpressesClaimType(label, expectation.expectedClaimType)
+      label !== undefined &&
+      !expectedTypes.some((claimType) =>
+        topicLabelExpressesClaimType(label, claimType),
+      )
     );
   });
-  const subjectMismatches = requiredTopicExpectations.filter((expectation) => {
-    const expectedTokens = expectation.expectedSubjectTokens ?? [];
-    if (expectedTokens.length === 0) {
-      return false;
-    }
-    const clusterId = predictedStoryKey(expectation);
-    const label =
-      clusterId === undefined
-        ? undefined
-        : nodeByClusterId.get(clusterId)?.label;
-    const labelTokens = normalizedTokens(label ?? "");
+  const subjectExpectations = input.expectations.filter(
+    (expectation) => (expectation.expectedSubjectTokens?.length ?? 0) > 0,
+  );
+  const evaluatedSubjectExpectations = subjectExpectations.filter(
+    (expectation) =>
+      expectation.requiredInTopicMap === true ||
+      predictedTopicKey(expectation) !== undefined,
+  );
+  const subjectMismatches = evaluatedSubjectExpectations.filter(
+    (expectation) => {
+      const clusterId = predictedStoryKey(expectation);
+      const label =
+        clusterId === undefined
+          ? undefined
+          : nodeByClusterId.get(clusterId)?.label;
+      if (label === undefined) {
+        return false;
+      }
+      const expectedTokens = expectation.expectedSubjectTokens ?? [];
+      const labelTokens = normalizedTokens(label);
 
-    return expectedTokens.some(
-      (token) => !labelTokens.has(normalizeToken(token)),
-    );
-  });
+      return expectedTokens.some(
+        (token) => !labelTokens.has(normalizeToken(token)),
+      );
+    },
+  );
+  const labelQualityExpectations = input.expectations.filter(
+    (expectation) => (expectation.forbiddenLabelTokens?.length ?? 0) > 0,
+  );
+  const evaluatedLabelQualityExpectations = labelQualityExpectations.filter(
+    (expectation) =>
+      expectation.requiredInTopicMap === true ||
+      predictedTopicKey(expectation) !== undefined,
+  );
+  const labelQualityMismatches = evaluatedLabelQualityExpectations.filter(
+    (expectation) => {
+      const clusterId = predictedStoryKey(expectation);
+      const label =
+        clusterId === undefined
+          ? undefined
+          : nodeByClusterId.get(clusterId)?.label;
+      if (label === undefined) {
+        return false;
+      }
+      const labelTokens = normalizedTokens(label);
+
+      return (expectation.forbiddenLabelTokens ?? []).some((token) =>
+        labelTokens.has(normalizeToken(token)),
+      );
+    },
+  );
   const issues = [
     ...missingStory.map(
       (item) => `Missing story cluster for feed item ${item.feedItemId}`,
@@ -142,16 +198,25 @@ export const evaluateReaderSummaryTopicSemantics = (
     ...subjectMismatches.map(
       (item) => `Subject label mismatch for feed item ${item.feedItemId}`,
     ),
+    ...labelQualityMismatches.map(
+      (item) => `Forbidden label token for feed item ${item.feedItemId}`,
+    ),
   ];
 
   return {
     passed: issues.length === 0,
     metrics: {
       expectationCount: input.expectations.length,
+      evaluatedExpectationCount: observedExpectations.length,
+      skippedOptionalCount: input.expectations.filter(
+        (expectation) =>
+          expectation.requiredInTopicMap !== true &&
+          predictedStoryKey(expectation) === undefined,
+      ).length,
       requiredTopicCount: requiredTopicExpectations.length,
       storyCoverage: ratio(
-        input.expectations.length - missingStory.length,
-        input.expectations.length,
+        requiredTopicExpectations.length - missingStory.length,
+        requiredTopicExpectations.length,
       ),
       topicCoverage: ratio(
         requiredTopicExpectations.length - missingTopic.length,
@@ -162,17 +227,56 @@ export const evaluateReaderSummaryTopicSemantics = (
       topicPairPrecision: topicPairs.precision,
       topicPairRecall: topicPairs.recall,
       claimAccuracy: ratio(
-        requiredTopicExpectations.length - claimMismatches.length,
-        requiredTopicExpectations.length,
+        evaluatedClaimExpectations.length -
+          countRequiredMissingTopic(
+            evaluatedClaimExpectations,
+            predictedTopicKey,
+          ) -
+          claimMismatches.length,
+        evaluatedClaimExpectations.length,
       ),
       subjectAccuracy: ratio(
-        requiredTopicExpectations.length - subjectMismatches.length,
-        requiredTopicExpectations.length,
+        evaluatedSubjectExpectations.length -
+          countRequiredMissingTopic(
+            evaluatedSubjectExpectations,
+            predictedTopicKey,
+          ) -
+          subjectMismatches.length,
+        evaluatedSubjectExpectations.length,
+      ),
+      labelQualityAccuracy: ratio(
+        evaluatedLabelQualityExpectations.length -
+          countRequiredMissingTopic(
+            evaluatedLabelQualityExpectations,
+            predictedTopicKey,
+          ) -
+          labelQualityMismatches.length,
+        evaluatedLabelQualityExpectations.length,
       ),
     },
     issues,
   };
 };
+
+const expectedClaimTypes = (
+  expectation: ReaderSummaryTopicSemanticExpectation,
+): readonly ReaderSummaryTopicClaimType[] =>
+  expectation.acceptableClaimTypes ??
+  (expectation.expectedClaimType === undefined
+    ? []
+    : [expectation.expectedClaimType]);
+
+const countRequiredMissingTopic = (
+  expectations: readonly ReaderSummaryTopicSemanticExpectation[],
+  predictedTopicKey: (
+    expectation: ReaderSummaryTopicSemanticExpectation,
+  ) => string | undefined,
+): number =>
+  expectations.filter(
+    (expectation) =>
+      expectation.requiredInTopicMap === true &&
+      predictedTopicKey(expectation) === undefined,
+  ).length;
 
 const pairMetrics = <T>(
   values: readonly T[],

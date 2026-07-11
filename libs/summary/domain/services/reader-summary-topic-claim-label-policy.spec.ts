@@ -1,7 +1,58 @@
 import {
+  alignReaderSummaryTopicSemanticLabelToEvidence,
   ensureTopicLabelExpressesClaimFacet,
   renderReaderSummaryTopicSemanticLabel,
 } from "./reader-summary-topic-claim-label-policy";
+
+describe("alignReaderSummaryTopicSemanticLabelToEvidence", () => {
+  it("removes a relational role and demotes an unsupported claim facet", () => {
+    expect(
+      alignReaderSummaryTopicSemanticLabelToEvidence({
+        semantic: {
+          subject: "Codex core",
+          claimType: "availability",
+          confidenceScore: 0.9,
+        },
+        primaryFacet: undefined,
+        evidenceTexts: [
+          "Codex is the core of our new work product and is not going anywhere.",
+        ],
+      }),
+    ).toEqual({
+      subject: "Codex",
+      claimType: "other",
+      confidenceScore: 0.9,
+    });
+  });
+
+  it("preserves a proper name without evidence of a relational role", () => {
+    expect(
+      alignReaderSummaryTopicSemanticLabelToEvidence({
+        semantic: {
+          subject: "Bitcoin Core",
+          claimType: "other",
+          confidenceScore: 0.9,
+        },
+        primaryFacet: undefined,
+        evidenceTexts: ["Bitcoin Core 31.0 has been released."],
+      }).subject,
+    ).toBe("Bitcoin Core");
+  });
+
+  it("promotes an uncertain claim when evidence has a concrete facet", () => {
+    expect(
+      alignReaderSummaryTopicSemanticLabelToEvidence({
+        semantic: {
+          subject: "ChatGPT",
+          claimType: "other",
+          confidenceScore: 0.7,
+        },
+        primaryFacet: "comparison",
+        evidenceTexts: ["ChatGPT v. ChatGPT Work v. Claude"],
+      }).claimType,
+    ).toBe("comparison");
+  });
+});
 
 describe("renderReaderSummaryTopicSemanticLabel", () => {
   it.each([
@@ -12,9 +63,23 @@ describe("renderReaderSummaryTopicSemanticLabel", () => {
       "GPT-5.6 Sol Benchmark",
     ],
     ["Anthropic", "security", "Spying", "Anthropic Spying"],
+    ["Anthropic", "allegation", "Spying", "Anthropic Spying Allegation"],
+    ["Enterprise AI Bills", "costs", undefined, "Enterprise AI Bills"],
+    ["Enterprise AI", "costs", "Spending", "Enterprise AI Spending"],
+    ["GPT-5 Models", "comparison", undefined, "GPT-5 Models Comparison"],
     ["Anthropic", "limits", "Usage", "Anthropic Usage Limits"],
     ["Claude Code", "education", undefined, "Claude Code Guide"],
     ["Codex", "other", "CLI", "Codex CLI"],
+    ["ChatGPT", "other", "Confused", "ChatGPT"],
+    ["Coding Train", "other", "public", "Coding Train"],
+    ["AI Content", "other", "social", "AI Content"],
+    ["AtCoder", "other", "World Tour", "AtCoder World Tour"],
+    ["GPT-5.6 Sol", "benchmark", "Index", "GPT-5.6 Sol Benchmark"],
+    ["ChatGPT", "comparison", "Confused", "ChatGPT Comparison"],
+    ["ChatGPT Work", "release", "Rebranded", "ChatGPT Work Rollout"],
+    ["Anthropic", "limits", "Hour Weekly", "Anthropic Limits"],
+    ["Anthropic Hour Weekly", "limits", undefined, "Anthropic Limits"],
+    ["Grok 4.5", "review", undefined, "Grok 4.5 Review"],
   ] as const)(
     "renders %s/%s deterministically",
     (subject, claimType, qualifier, expected) => {
@@ -41,13 +106,17 @@ describe("ensureTopicLabelExpressesClaimFacet", () => {
   });
 
   it.each([
-    ["GPT-5.6 Sol Benchmark", "benchmark"],
-    ["Claude Code Course", "education"],
-    ["Anthropic Usage Limits", "limits"],
-    ["Anthropic Spying", "security"],
-  ] as const)("keeps an explicit claim label %s", (label, facet) => {
-    expect(ensureTopicLabelExpressesClaimFacet(label, facet)).toBe(label);
-  });
+    ["GPT-5.6 Sol Benchmark", "benchmark", "GPT-5.6 Sol Benchmark"],
+    ["Claude Code Course", "education", "Claude Code Course"],
+    ["Anthropic Usage Limits", "limits", "Anthropic Usage Limits"],
+    ["Anthropic Spying", "security", "Anthropic Spying"],
+    ["Anthropic Hour Weekly Limits", "limits", "Anthropic Limits"],
+  ] as const)(
+    "normalizes an explicit claim label %s",
+    (label, facet, expected) => {
+      expect(ensureTopicLabelExpressesClaimFacet(label, facet)).toBe(expected);
+    },
+  );
 
   it("does not overwrite another explicit claim in ambiguous evidence", () => {
     expect(

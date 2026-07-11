@@ -28,7 +28,9 @@ export const readerSummaryProviderDiversityOrder = [
   "github-repo-radar",
 ];
 
-export const mapRankedItem = (item: RankedFeedItemView): SummaryEvidenceItem => ({
+export const mapRankedItem = (
+  item: RankedFeedItemView,
+): SummaryEvidenceItem => ({
   feedItemId: item.feedItemId,
   sourceItemId: item.sourceItemId,
   sourceBindingId: item.sourceBindingId,
@@ -127,16 +129,22 @@ export const expandedCandidateLimit = (limit: number): number => {
 export const selectRankedEvidence = (
   items: readonly SummaryEvidenceItem[],
   limit: number,
+  priorityFeedItemIds: ReadonlySet<string> = new Set(),
 ): readonly SummaryEvidenceItem[] => {
   const normalizedLimit = normalizeSelectionLimit(limit);
   const eligibleItems = items.filter(isEligibleForEvidence);
 
-  return selectProviderDiverseEvidence(eligibleItems, normalizedLimit);
+  return selectProviderDiverseEvidence(
+    eligibleItems,
+    normalizedLimit,
+    priorityFeedItemIds,
+  );
 };
 
 export const selectProviderDiverseEvidence = (
   items: readonly SummaryEvidenceItem[],
   limit: number,
+  priorityFeedItemIds: ReadonlySet<string> = new Set(),
 ): readonly SummaryEvidenceItem[] => {
   const selectedIds = new Set<string>();
   const activeProviders = readerSummaryProviderDiversityOrder.filter(
@@ -154,7 +162,7 @@ export const selectProviderDiverseEvidence = (
   for (const providerKey of activeProviders) {
     let providerCount = 0;
 
-    for (const item of items) {
+    for (const item of prioritizeProviderItems(items, priorityFeedItemIds)) {
       if (
         providerCount >= providerQuota ||
         normalizeProviderKey(item.providerKey) !== providerKey ||
@@ -172,6 +180,20 @@ export const selectProviderDiverseEvidence = (
   const backfill = items.filter((item) => !selectedIds.has(item.feedItemId));
 
   return [...selected, ...backfill].slice(0, limit);
+};
+
+const prioritizeProviderItems = (
+  items: readonly SummaryEvidenceItem[],
+  priorityFeedItemIds: ReadonlySet<string>,
+): readonly SummaryEvidenceItem[] => {
+  if (priorityFeedItemIds.size === 0) {
+    return items;
+  }
+
+  return [
+    ...items.filter((item) => priorityFeedItemIds.has(item.feedItemId)),
+    ...items.filter((item) => !priorityFeedItemIds.has(item.feedItemId)),
+  ];
 };
 
 export const isEligibleForEvidence = (item: SummaryEvidenceItem): boolean =>
@@ -337,7 +359,8 @@ export const mapSupplementFeedItem = (params: {
       providerKey: params.snapshot.providerKey,
       providerMetadata: params.snapshot.providerMetadata,
       title: safety.sanitizedTitle,
-      canonicalUrl: safety.sanitizedCanonicalUrl ?? params.snapshot.canonicalUrl,
+      canonicalUrl:
+        safety.sanitizedCanonicalUrl ?? params.snapshot.canonicalUrl,
     }),
   };
 };
@@ -399,7 +422,9 @@ export const supplementWhyImportant = (params: {
   }
 
   if (params.quality?.decision === "downrank") {
-    reasons.push(`Down-ranked by source quality gate: ${params.quality.reason}`);
+    reasons.push(
+      `Down-ranked by source quality gate: ${params.quality.reason}`,
+    );
   }
 
   if (params.safetyStatus === "sanitized") {
@@ -411,4 +436,5 @@ export const supplementWhyImportant = (params: {
   return reasons;
 };
 
-export const roundScore = (value: number): number => Math.round(value * 1000) / 1000;
+export const roundScore = (value: number): number =>
+  Math.round(value * 1000) / 1000;

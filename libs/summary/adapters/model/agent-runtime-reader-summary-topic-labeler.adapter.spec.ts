@@ -19,6 +19,7 @@ describe("AgentRuntimeReaderSummaryTopicLabeler", () => {
             nodeId: "topic:story:codex",
             topicId: "topic:codex-agents",
             subject: "Codex",
+            parentSubject: "OpenAI",
             claimType: "other",
             qualifier: "agents",
             confidenceScore: 0.92,
@@ -115,6 +116,7 @@ describe("AgentRuntimeReaderSummaryTopicLabeler", () => {
         label: "Codex agents",
         semantic: {
           subject: "Codex",
+          parentSubject: "OpenAI",
           claimType: "other",
           qualifier: "agents",
           confidenceScore: 0.92,
@@ -130,13 +132,22 @@ describe("AgentRuntimeReaderSummaryTopicLabeler", () => {
       purpose: "social_monitor.reader_summary.topic_map.label",
       timeoutMs: 600_000,
       metadata: {
-        promptVersion: "reader_summary.topic_map.agent_runtime.v6",
+        promptVersion: "reader_summary.topic_map.agent_runtime.v13",
       },
     });
     expect(client.commands[0]?.systemPrompt).toContain(
       "return structured semantics",
     );
     expect(client.commands[0]?.systemPrompt).toContain("Use the same topicId");
+    expect(client.commands[0]?.systemPrompt).toContain(
+      "Treat coordinated coverage of one announcement as one topic",
+    );
+    expect(client.commands[0]?.systemPrompt).toContain(
+      "subject must name the shared family and include Family",
+    );
+    expect(client.commands[0]?.systemPrompt).toContain(
+      "Do not append relational role words",
+    );
     expect(client.commands[0]?.systemPrompt).toContain(
       "Rollout, availability, benchmark results",
     );
@@ -199,6 +210,7 @@ describe("AgentRuntimeReaderSummaryTopicLabeler", () => {
         nodeLabels: candidates.map((candidate, index) => ({
           nodeId: candidate.nodeId,
           subject: candidate.fallbackLabel,
+          parentSubject: `Family ${index}`,
           claimType: "other",
           confidenceScore: 0.9,
           groupId: index === 9 ? "topic:invalid" : `group:family-${index}`,
@@ -264,6 +276,7 @@ describe("AgentRuntimeReaderSummaryTopicLabeler", () => {
           nodeLabels: candidates.map((candidate) => ({
             nodeId: candidate.nodeId,
             subject: candidate.fallbackLabel,
+            parentSubject: "Anthropic",
             claimType: "other",
             confidenceScore: 0.9,
             groupId: "group:anthropic-ecosystem",

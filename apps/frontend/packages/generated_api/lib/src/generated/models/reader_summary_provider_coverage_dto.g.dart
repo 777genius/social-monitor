@@ -17,6 +17,11 @@ ReaderSummaryProviderCoverageDto _$ReaderSummaryProviderCoverageDtoFromJson(
   topReadCount: json['topReadCount'] as num,
   userRatedFeedItemCount: json['userRatedFeedItemCount'] as num,
   collectedFeedItemCount: json['collectedFeedItemCount'] as num?,
+  collectionHealth: json['collectionHealth'] == null
+      ? null
+      : ReaderSummaryProviderCollectionHealthDto.fromJson(
+          json['collectionHealth'] as Map<String, dynamic>,
+        ),
 );
 
 Map<String, dynamic> _$ReaderSummaryProviderCoverageDtoToJson(
@@ -24,6 +29,7 @@ Map<String, dynamic> _$ReaderSummaryProviderCoverageDtoToJson(
 ) => <String, dynamic>{
   'citationCount': instance.citationCount,
   'collectedFeedItemCount': instance.collectedFeedItemCount,
+  'collectionHealth': instance.collectionHealth,
   'lowRelevanceFeedItemCount': instance.lowRelevanceFeedItemCount,
   'mutedFeedItemCount': instance.mutedFeedItemCount,
   'providerKey': instance.providerKey,

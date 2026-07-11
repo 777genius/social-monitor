@@ -16,7 +16,7 @@ import {
 } from "../policies/story-ranking-policy";
 import { compareRepresentativeEvidenceItems } from "../policies/representative-evidence-selection-policy";
 import {
-  belongsToCrossProviderCluster,
+  belongsToVerifiedStoryCluster,
   hasCrossProviderClaimFacetConflict,
 } from "./story-cluster-membership";
 import { storyKey } from "./story-key-normalizer";
@@ -31,10 +31,16 @@ export class StoryClusteringService {
     readonly identity: ReaderSummaryScopeIdentity;
     readonly items: readonly SummaryEvidenceItem[];
     readonly limit: number;
+    readonly verifiedStoryRelationPairs?: ReadonlySet<string>;
   }): SummaryEvidenceSelection {
     const limit = normalizeLimit(params.limit, this.policy);
     const clusters = [
-      ...buildClusters(params.items, this.clock.now(), this.policy),
+      ...buildClusters(
+        params.items,
+        this.clock.now(),
+        this.policy,
+        params.verifiedStoryRelationPairs,
+      ),
     ]
       .sort(compareStoryClusters)
       .slice(0, limit);
@@ -62,6 +68,7 @@ const buildClusters = (
   items: readonly SummaryEvidenceItem[],
   now: Date,
   policy: StoryRankingPolicy,
+  verifiedStoryRelationPairs: ReadonlySet<string> | undefined,
 ): readonly StoryCluster[] => {
   const groups: {
     readonly key: string;
@@ -74,7 +81,12 @@ const buildClusters = (
       (candidate) =>
         (candidate.key === key &&
           !hasCrossProviderClaimFacetConflict(item, candidate.items, policy)) ||
-        belongsToCrossProviderCluster(item, candidate.items, policy),
+        belongsToVerifiedStoryCluster(
+          item,
+          candidate.items,
+          policy,
+          verifiedStoryRelationPairs,
+        ),
     );
 
     if (group === undefined) {

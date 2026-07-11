@@ -1,6 +1,7 @@
 import type { TenantId, WorkspaceId } from "@social-monitor/shared-kernel";
 
 import type { ReaderSummaryPeriod, ReaderSummaryScope } from "../domain";
+import type { ReaderSummaryProviderCollectionHealth } from "./reader-summary-provider-collection-health.port";
 
 export const READER_SUMMARY_COVERAGE_COUNTER = Symbol(
   "READER_SUMMARY_COVERAGE_COUNTER",
@@ -19,6 +20,10 @@ export type ReaderSummaryCollectedProviderCoverage = {
   readonly lowRelevanceFeedItemCount: number;
   readonly mutedFeedItemCount: number;
   readonly userRatedFeedItemCount: number;
+  readonly collectionHealth?: Omit<
+    ReaderSummaryProviderCollectionHealth,
+    "providerKey"
+  >;
 };
 
 export type ReaderSummaryCollectedTopicCoverage = {

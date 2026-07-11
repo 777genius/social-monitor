@@ -36,6 +36,7 @@ import type {
   SourceQueryMode,
   SourceRuntimeConfig,
 } from "@social-monitor/ingestion/ports";
+import { SourceFetchError } from "@social-monitor/ingestion/ports";
 import { InMemoryMetricsRecorder } from "@social-monitor/platform-metrics";
 import {
   CryptoIdGenerator,
@@ -61,9 +62,17 @@ import {
 } from "./lib/reader-summary-quality-eval-support";
 import { loadDotenvIfPresent } from "./lib/env-file";
 import { allQualityGatesPassed } from "./lib/quality-gates";
-
-type ProviderKey =
-  "github-trending-page" | "hacker-news" | "reddit" | "rss" | "x-twitter";
+import type {
+  CleanRealDayCollectionProviderKey as ProviderKey,
+  CleanRealDayCollectionReport,
+} from "./lib/clean-real-day-collection-report";
+import {
+  configuredProviderCollectionTargetItemCount,
+  successfulProviderCollectionObservation,
+  unavailableProviderCollectionObservation,
+  withProviderCollectionWindowProof,
+} from "./lib/provider-collection-observability";
+import { runTargetedProviderCollection } from "./lib/targeted-provider-collection";
 
 type SourceBindingTarget = {
   readonly tenantId: string;
@@ -85,76 +94,22 @@ type ScanProofRow = {
   readonly sourceBindingSnapshotCount: string;
   readonly sourceQueryLaneCount: string;
   readonly distinctSourceQueryLaneCount: string;
+  readonly newestItemAt: string | null;
 };
 
-type CleanRealDayCollectionReport = {
-  readonly schemaVersion: 1;
-  readonly artifactFormat: "reader-summary-clean-real-day-collection-v1";
-  readonly generatedBy: string;
-  readonly model: {
-    readonly mode: "targeted_real_binding_collection";
-    readonly liveNetwork: true;
-    readonly rawProviderPayloadPersistedInReport: false;
-    readonly rawPostTextPersistedInReport: false;
-    readonly rawProviderConfigPersistedInReport: false;
-  };
-  readonly inputs: {
-    readonly database: "local-postgres";
-    readonly providerKeys: readonly ProviderKey[];
-    readonly xCollectorConfigured: boolean;
-    readonly targetPublishedWindow: {
-      readonly startInclusive: string;
-      readonly endExclusive: string;
-    };
-  };
-  readonly run: {
-    readonly startedAt: string;
-    readonly completedAt: string;
-    readonly collectionDate: string;
-  };
-  readonly targets: readonly {
-    readonly providerKey: ProviderKey;
-    readonly bindingFingerprint: string;
-    readonly interestFingerprint: string;
-    readonly workspaceFingerprint: string;
-    readonly plannerEnabled: boolean;
-    readonly canaryRollout: boolean;
-  }[];
-  readonly scans: readonly {
-    readonly providerKey: ProviderKey;
-    readonly bindingFingerprint: string;
-    readonly status: "succeeded" | "failed" | "skipped";
-    readonly fetched: number;
-    readonly inserted: number;
-    readonly projected: number;
-    readonly skippedDuplicates: number;
-    readonly warningCount: number;
-    readonly failureFingerprint?: string;
-  }[];
-  readonly freshWindow: {
-    readonly feedItemCount: number;
-    readonly providerCounts: Record<string, number>;
-    readonly sourceQueryLaneCoverageByProvider: Record<string, number>;
-    readonly distinctSourceQueryLaneCountByProvider: Record<string, number>;
-    readonly orphanInterestCount: number;
-    readonly orphanSourceBindingCount: number;
-    readonly interestSnapshotCoverage: number;
-    readonly sourceBindingSnapshotCoverage: number;
-    readonly sourceQueryLaneCoverage: number;
-    readonly distinctSourceQueryLaneCount: number;
-  };
-  readonly targetWindow: CleanRealDayCollectionReport["freshWindow"];
-  readonly qualityGates: Record<string, boolean>;
-  readonly blockingPassed: boolean;
-};
+type ProviderScanResult = Omit<
+  CleanRealDayCollectionReport["scans"][number],
+  "attemptCount"
+>;
 
 const outputPath = "ops/evals/reader-summary-clean-real-day-collection.v1.json";
 const databaseUrl = yesterdaySocialQualityDatabaseUrl();
 const providerKeys = readProviderKeys();
 const update = process.argv.includes("--update");
 const artifactOnly = process.argv.includes("--artifact-only");
-const { collectionDate: targetCollectionDate } =
-  collectionDateOptionOrDefault(dateOnly(new Date()));
+const { collectionDate: targetCollectionDate } = collectionDateOptionOrDefault(
+  dateOnly(new Date()),
+);
 const targetPublishedWindow = {
   startInclusive: `${targetCollectionDate}T00:00:00.000Z`,
   endExclusive: nextDate(targetCollectionDate),
@@ -294,69 +249,108 @@ async function executeTargetScans(
       ids,
     ),
   );
-  const results: CleanRealDayCollectionReport["scans"][number][] = [];
+  const outcomes = await runTargetedProviderCollection({
+    targets,
+    retryBudget: 2,
+    collect: (target) => executeTargetScan(target, executeScan),
+    retryDisposition: (result) => result.observability.slo.retryDisposition,
+  });
 
-  for (const target of targets) {
-    const bindingFingerprint = fingerprint(target.sourceBindingId);
-    if (target.providerKey === "x-twitter" && !xCollectorConfigured()) {
-      results.push({
-        providerKey: target.providerKey,
-        bindingFingerprint,
-        status: "skipped",
-        fetched: 0,
-        inserted: 0,
-        projected: 0,
-        skippedDuplicates: 0,
-        warningCount: 0,
-        failureFingerprint: fingerprint("x_collector_not_configured"),
-      });
-      continue;
-    }
+  return outcomes.map((outcome) => ({
+    ...outcome.result,
+    attemptCount: outcome.attempts.length,
+  }));
+}
 
-    const result = await executeScan.execute({
-      tenantId: tenantId(target.tenantId),
-      workspaceId: workspaceId(target.workspaceId),
-      scanJobId: randomUUID(),
-      interestId: target.interestId,
-      sourceBindingId: target.sourceBindingId,
-      scanPolicyId: randomUUID(),
-      providerKey: target.providerKey,
-      sourceQuery: target.sourceQuery,
-      interestQuerySnapshot: target.interestQuery,
-      correlationId: "reader-summary-clean-real-day-collection",
-      causationId: "manual-clean-real-day-proof",
-      retryBudget: 0,
-      leaseTtlSeconds: 600,
-    });
-
-    if (!result.ok) {
-      results.push({
-        providerKey: target.providerKey,
-        bindingFingerprint,
-        status: "failed",
-        fetched: 0,
-        inserted: 0,
-        projected: 0,
-        skippedDuplicates: 0,
-        warningCount: 0,
-        failureFingerprint: fingerprint(message(result.error)),
-      });
-      continue;
-    }
-
-    results.push({
+async function executeTargetScan(
+  target: SourceBindingTarget,
+  executeScan: ExecuteScanUseCase,
+): Promise<ProviderScanResult> {
+  const bindingFingerprint = fingerprint(target.sourceBindingId);
+  const targetWindowEndedAt = new Date(targetPublishedWindow.endExclusive);
+  if (target.providerKey === "x-twitter" && !xCollectorConfigured()) {
+    return {
       providerKey: target.providerKey,
       bindingFingerprint,
-      status: "succeeded",
-      fetched: result.value.fetched,
-      inserted: result.value.inserted,
-      projected: result.value.projected,
-      skippedDuplicates: result.value.skippedDuplicates,
-      warningCount: result.value.warnings.length,
-    });
+      status: "skipped",
+      fetched: 0,
+      inserted: 0,
+      projected: 0,
+      skippedDuplicates: 0,
+      warningCount: 0,
+      observability: unavailableProviderCollectionObservation({
+        targetItemCount: configuredProviderCollectionTargetItemCount(
+          target.config,
+        ),
+        status: "skipped",
+        targetWindowEndedAt,
+      }),
+      failureFingerprint: fingerprint("x_collector_not_configured"),
+    };
   }
 
-  return results;
+  const result = await executeScan.execute({
+    tenantId: tenantId(target.tenantId),
+    workspaceId: workspaceId(target.workspaceId),
+    scanJobId: randomUUID(),
+    interestId: target.interestId,
+    sourceBindingId: target.sourceBindingId,
+    scanPolicyId: randomUUID(),
+    providerKey: target.providerKey,
+    sourceQuery: target.sourceQuery,
+    interestQuerySnapshot: target.interestQuery,
+    correlationId: "reader-summary-clean-real-day-collection",
+    causationId: "manual-clean-real-day-proof",
+    retryBudget: 0,
+    leaseTtlSeconds: 600,
+  });
+
+  if (!result.ok) {
+    const rateLimited =
+      result.error instanceof SourceFetchError &&
+      result.error.kind === "rate_limited";
+    return {
+      providerKey: target.providerKey,
+      bindingFingerprint,
+      status: "failed",
+      fetched: 0,
+      inserted: 0,
+      projected: 0,
+      skippedDuplicates: 0,
+      warningCount: 0,
+      observability: unavailableProviderCollectionObservation({
+        targetItemCount: configuredProviderCollectionTargetItemCount(
+          target.config,
+        ),
+        status: "failed",
+        rateLimited,
+        failureKind:
+          result.error instanceof SourceFetchError
+            ? result.error.kind
+            : "unknown",
+        targetWindowEndedAt,
+      }),
+      failureFingerprint: fingerprint(message(result.error)),
+    };
+  }
+
+  return {
+    providerKey: target.providerKey,
+    bindingFingerprint,
+    status: "succeeded",
+    fetched: result.value.fetched,
+    inserted: result.value.inserted,
+    projected: result.value.projected,
+    skippedDuplicates: result.value.skippedDuplicates,
+    warningCount: result.value.warnings.length,
+    observability: successfulProviderCollectionObservation({
+      telemetry: result.value.telemetry,
+      fetched: result.value.fetched,
+      inserted: result.value.inserted,
+      storageDuplicates: result.value.skippedDuplicates,
+      targetWindowEndedAt,
+    }),
+  };
 }
 
 function buildProviders(clock: SystemClock): readonly SourceProviderPort[] {
@@ -517,7 +511,8 @@ async function readFeedWindowProof(
         count(*) filter (where fi.provider_metadata ? 'interestQuerySnapshot')::text as "interestSnapshotCount",
         count(*) filter (where fi.provider_metadata ? 'sourceBindingSnapshot')::text as "sourceBindingSnapshotCount",
         count(*) filter (where fi.provider_metadata ? 'sourceQueryLane')::text as "sourceQueryLaneCount",
-        count(distinct fi.provider_metadata->'sourceQueryLane') filter (where fi.provider_metadata ? 'sourceQueryLane')::text as "distinctSourceQueryLaneCount"
+        count(distinct fi.provider_metadata->'sourceQueryLane') filter (where fi.provider_metadata ? 'sourceQueryLane')::text as "distinctSourceQueryLaneCount",
+        max(fi.${params.timestampColumn})::text as "newestItemAt"
       from feed_items fi
       left join interests i on i.id = fi.interest_id
       left join source_bindings sb on sb.id = fi.source_binding_id
@@ -527,11 +522,7 @@ async function readFeedWindowProof(
       group by fi.provider_key
       order by fi.provider_key
     `,
-    [
-      params.startInclusive.toISOString(),
-      end.toISOString(),
-      providerKeys,
-    ],
+    [params.startInclusive.toISOString(), end.toISOString(), providerKeys],
   );
   const totals = result.rows.reduce(
     (accumulator, row) => {
@@ -543,6 +534,12 @@ async function readFeedWindowProof(
         providerCounts: {
           ...accumulator.providerCounts,
           [row.providerKey]: feedItemCount,
+        },
+        newestItemAtByProvider: {
+          ...accumulator.newestItemAtByProvider,
+          ...(row.newestItemAt === null
+            ? {}
+            : { [row.providerKey]: row.newestItemAt }),
         },
         sourceQueryLaneCoverageByProvider: {
           ...accumulator.sourceQueryLaneCoverageByProvider,
@@ -574,6 +571,7 @@ async function readFeedWindowProof(
     {
       feedItemCount: 0,
       providerCounts: {} as Record<string, number>,
+      newestItemAtByProvider: {} as Record<string, string>,
       sourceQueryLaneCoverageByProvider: {} as Record<string, number>,
       distinctSourceQueryLaneCountByProvider: {} as Record<string, number>,
       orphanInterestCount: 0,
@@ -588,6 +586,7 @@ async function readFeedWindowProof(
   return {
     feedItemCount: totals.feedItemCount,
     providerCounts: totals.providerCounts,
+    newestItemAtByProvider: totals.newestItemAtByProvider,
     sourceQueryLaneCoverageByProvider: totals.sourceQueryLaneCoverageByProvider,
     distinctSourceQueryLaneCountByProvider:
       totals.distinctSourceQueryLaneCountByProvider,
@@ -617,8 +616,26 @@ function buildReport(params: {
   readonly freshWindow: CleanRealDayCollectionReport["freshWindow"];
   readonly targetWindow: CleanRealDayCollectionReport["freshWindow"];
 }): CleanRealDayCollectionReport {
+  const targetWindowEndedAt = new Date(targetPublishedWindow.endExclusive);
+  const finalScanResults = params.scanResults.map((scan) => {
+    const newestItemAt =
+      params.targetWindow.newestItemAtByProvider[scan.providerKey];
+
+    return {
+      ...scan,
+      observability: withProviderCollectionWindowProof({
+        observation: scan.observability,
+        windowItemCount:
+          params.targetWindow.providerCounts[scan.providerKey] ?? 0,
+        ...(newestItemAt === undefined
+          ? {}
+          : { newestPublishedAt: new Date(newestItemAt) }),
+        targetWindowEndedAt,
+      }),
+    };
+  });
   const succeededProviders = new Set(
-    params.scanResults
+    finalScanResults
       .filter((scan) => scan.status === "succeeded")
       .map((scan) => scan.providerKey),
   );
@@ -629,12 +646,10 @@ function buildReport(params: {
     .filter((target) => asRecord(target.config.sourceQueryPlanner).enabled)
     .map((target) => target.providerKey);
   const plannerProviderKeysWithFreshItems = plannerProviderKeys.filter(
-    (providerKey) =>
-      (params.freshWindow.providerCounts[providerKey] ?? 0) > 0,
+    (providerKey) => (params.freshWindow.providerCounts[providerKey] ?? 0) > 0,
   );
   const plannerProviderKeysWithTargetItems = plannerProviderKeys.filter(
-    (providerKey) =>
-      (params.targetWindow.providerCounts[providerKey] ?? 0) > 0,
+    (providerKey) => (params.targetWindow.providerCounts[providerKey] ?? 0) > 0,
   );
   const plannerLaneCoverageComplete = plannerProviderKeysWithFreshItems.every(
     (providerKey) =>
@@ -643,13 +658,15 @@ function buildReport(params: {
   const targetPlannerLaneCoverageComplete =
     plannerProviderKeysWithTargetItems.every(
       (providerKey) =>
-        params.targetWindow.sourceQueryLaneCoverageByProvider[providerKey] === 1,
+        params.targetWindow.sourceQueryLaneCoverageByProvider[providerKey] ===
+        1,
     );
   const plannerMultipleQueryLanesObserved =
     plannerProviderKeysWithFreshItems.every(
-    (providerKey) =>
-      (params.freshWindow.distinctSourceQueryLaneCountByProvider[providerKey] ??
-        0) >= 1,
+      (providerKey) =>
+        (params.freshWindow.distinctSourceQueryLaneCountByProvider[
+          providerKey
+        ] ?? 0) >= 1,
     );
   const targetPlannerMultipleQueryLanesObserved =
     plannerProviderKeysWithTargetItems.every(
@@ -663,7 +680,8 @@ function buildReport(params: {
     everyRequestedProviderSucceeded: allRequestedProvidersSucceeded,
     targetWindowFeedItemsAvailable: params.targetWindow.feedItemCount > 0,
     everyRequestedProviderHasTargetItems: providerKeys.every(
-      (providerKey) => (params.targetWindow.providerCounts[providerKey] ?? 0) > 0,
+      (providerKey) =>
+        (params.targetWindow.providerCounts[providerKey] ?? 0) > 0,
     ),
     noFreshOrphanInterestReferences:
       params.freshWindow.orphanInterestCount === 0,
@@ -685,6 +703,26 @@ function buildReport(params: {
     targetMultipleQueryLanesObserved:
       plannerProviderKeysWithTargetItems.length === 0 ||
       targetPlannerMultipleQueryLanesObserved,
+    providerCollectionObservabilityComplete: finalScanResults.every(
+      (scan) =>
+        scan.observability.targetItemCount !== null &&
+        scan.observability.collectedItemCount >= 0 &&
+        scan.observability.acceptedItemCount >= 0 &&
+        scan.observability.outsideWindowItemCount >= 0 &&
+        scan.observability.totalDuplicateItemCount >= 0 &&
+        scan.observability.rateLimitEventCount >= 0,
+    ),
+    everyRequestedProviderMeetsCollectionSlo: finalScanResults.every(
+      (scan) => scan.observability.slo.met,
+    ),
+    providerRetriesAreBounded: finalScanResults.every(
+      (scan) => scan.attemptCount >= 1 && scan.attemptCount <= 3,
+    ),
+    partialProviderCoverageIsExplicit: finalScanResults.every((scan) =>
+      ["complete", "partial", "degraded", "unavailable"].includes(
+        scan.observability.coverageState,
+      ),
+    ),
     noRawSecretFragments: true,
   };
 
@@ -722,7 +760,7 @@ function buildReport(params: {
         canaryRollout: planner.rollout === "real_binding_canary",
       };
     }),
-    scans: params.scanResults,
+    scans: finalScanResults,
     freshWindow: params.freshWindow,
     targetWindow: params.targetWindow,
     qualityGates,
@@ -784,13 +822,7 @@ function sourceQueryModeFromValue(value: unknown): SourceQueryMode {
 function readProviderKeys(): readonly ProviderKey[] {
   const option = readOption("--providers");
   if (option === undefined) {
-    return [
-      "github-trending-page",
-      "hacker-news",
-      "reddit",
-      "rss",
-      "x-twitter",
-    ];
+    return ["hacker-news", "reddit", "rss", "x-twitter"];
   }
 
   const providers = option
@@ -846,6 +878,14 @@ function validateExistingReport(): void {
     report.model.rawProviderPayloadPersistedInReport === false &&
     report.model.rawPostTextPersistedInReport === false &&
     report.model.rawProviderConfigPersistedInReport === false &&
+    report.qualityGates.everyRequestedProviderMeetsCollectionSlo === true &&
+    report.qualityGates.providerRetriesAreBounded === true &&
+    report.scans.every(
+      (scan) =>
+        scan.attemptCount >= 1 &&
+        scan.attemptCount <= 3 &&
+        scan.observability.slo.met,
+    ) &&
     report.qualityGates.noRawSecretFragments === true &&
     report.blockingPassed === true &&
     noRawSecretFragments(report);

@@ -3,8 +3,8 @@ import type { SummaryEvidenceItem } from "../value-objects/summary-evidence-item
 import {
   extractReaderSummaryTopicLabelCandidates,
   readerSummaryTopicLabelEvidenceTexts,
-  selectReaderSummaryTopicLabel,
 } from "./reader-summary-topic-label-candidates";
+import { selectReaderSummaryTopicLabel } from "./reader-summary-topic-label-selection";
 import {
   storyPrimaryClaimFacet,
   storyTopicTokens,
@@ -123,8 +123,43 @@ describe("story topic tokenizer", () => {
     ["GPT-5.6 is 54% more token efficient", "efficiency"],
     ["GPT-5.6 appears in Codex for Plus accounts", "availability"],
     ["GPT-5.6 Sol masterclass for business workflows", "education"],
+    ["ChatGPT vs. Codex in a side-by-side test", "comparison"],
+    ["Grok 4.5 honest first impression", "review"],
   ] as const)("classifies %s as a %s claim", (title, expected) => {
     expect(storyPrimaryClaimFacet(evidenceItem(title))).toBe(expected);
+  });
+
+  it("recognizes a shared evaluation brief as a comparison", () => {
+    expect(
+      storyPrimaryClaimFacet(
+        evidenceItem(
+          "I gave GPT-5.4, GPT-5.5, GPT-5.6 Sol, Terra and Luna the same 35-word Coca-Cola Zero brief",
+          "The models received the prompt at the highest available setting.",
+        ),
+      ),
+    ).toBe("comparison");
+  });
+
+  it("recognizes period-delimited versus shorthand as a comparison", () => {
+    expect(
+      storyPrimaryClaimFacet(
+        evidenceItem(
+          "I am confused by ChatGPT v. ChatGPT Codex v. ChatGPT Work v. Claude",
+          "The post compares the current product lineup.",
+        ),
+      ),
+    ).toBe("comparison");
+  });
+
+  it("does not confuse an available reasoning setting with product availability", () => {
+    expect(
+      storyPrimaryClaimFacet(
+        evidenceItem(
+          "GPT-5.6 completed the frontend task",
+          "Reasoning was set to the highest available setting.",
+        ),
+      ),
+    ).toBeUndefined();
   });
 
   it.each([
