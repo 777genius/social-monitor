@@ -174,6 +174,62 @@ export const combineReaderSummaryTopicRelations = (
   return [...combined.values()].slice(0, Math.max(0, limit));
 };
 
+export const buildReaderSummaryTopicRelationVerificationForest = (
+  existing: readonly ReaderSummaryTopicRelationCandidate[],
+  semantic: readonly ReaderSummaryTopicRelationCandidate[],
+): readonly ReaderSummaryTopicRelationCandidate[] => {
+  const rankedByPair = new Map<
+    string,
+    {
+      readonly priority: number;
+      readonly relation: ReaderSummaryTopicRelationCandidate;
+    }
+  >();
+  const addRelations = (
+    relations: readonly ReaderSummaryTopicRelationCandidate[],
+    priority: number,
+  ): void => {
+    for (const relation of relations) {
+      const canonical = canonicalRelation(relation);
+      if (canonical.sourceNodeId === canonical.targetNodeId) {
+        continue;
+      }
+      const key = relationPairKey(canonical);
+      const current = rankedByPair.get(key);
+      rankedByPair.set(key, {
+        priority: Math.min(current?.priority ?? priority, priority),
+        relation: {
+          ...canonical,
+          sharedTerms: canonicalSharedTerms([
+            ...(current?.relation.sharedTerms ?? []),
+            ...canonical.sharedTerms,
+          ]),
+        },
+      });
+    }
+  };
+
+  addRelations(existing, 0);
+  addRelations(semantic, 1);
+  const ranked = [...rankedByPair.values()].sort(compareVerificationEdges);
+  const parents = new Map<string, string>();
+  const forest: ReaderSummaryTopicRelationCandidate[] = [];
+  for (const edge of ranked) {
+    const sourceRoot = findRelationRoot(parents, edge.relation.sourceNodeId);
+    const targetRoot = findRelationRoot(parents, edge.relation.targetNodeId);
+    if (sourceRoot === targetRoot) {
+      continue;
+    }
+    parents.set(
+      sourceRoot.localeCompare(targetRoot) <= 0 ? targetRoot : sourceRoot,
+      sourceRoot.localeCompare(targetRoot) <= 0 ? sourceRoot : targetRoot,
+    );
+    forest.push(edge.relation);
+  }
+
+  return forest;
+};
+
 const candidateRelationshipTerms = (
   candidate: ReaderSummaryTopicRelationSource,
 ): ReadonlySet<string> =>
@@ -201,6 +257,52 @@ const relationshipNoiseTerms = new Set([
   "release",
   "rollout",
 ]);
+
+const canonicalRelation = (
+  relation: ReaderSummaryTopicRelationCandidate,
+): ReaderSummaryTopicRelationCandidate =>
+  relation.sourceNodeId.localeCompare(relation.targetNodeId) <= 0
+    ? { ...relation, sharedTerms: canonicalSharedTerms(relation.sharedTerms) }
+    : {
+        sourceNodeId: relation.targetNodeId,
+        targetNodeId: relation.sourceNodeId,
+        sharedTerms: canonicalSharedTerms(relation.sharedTerms),
+      };
+
+const canonicalSharedTerms = (terms: readonly string[]): readonly string[] =>
+  [...new Set(terms.map((term) => term.trim()).filter(Boolean))].sort();
+
+const compareVerificationEdges = (
+  left: {
+    readonly priority: number;
+    readonly relation: ReaderSummaryTopicRelationCandidate;
+  },
+  right: {
+    readonly priority: number;
+    readonly relation: ReaderSummaryTopicRelationCandidate;
+  },
+): number =>
+  left.priority - right.priority ||
+  right.relation.sharedTerms.length - left.relation.sharedTerms.length ||
+  left.relation.sharedTerms.join("\u0000").localeCompare(
+    right.relation.sharedTerms.join("\u0000"),
+  ) ||
+  left.relation.sourceNodeId.localeCompare(right.relation.sourceNodeId) ||
+  left.relation.targetNodeId.localeCompare(right.relation.targetNodeId);
+
+const findRelationRoot = (
+  parents: Map<string, string>,
+  nodeId: string,
+): string => {
+  const parent = parents.get(nodeId) ?? nodeId;
+  if (parent === nodeId) {
+    parents.set(nodeId, nodeId);
+    return nodeId;
+  }
+  const root = findRelationRoot(parents, parent);
+  parents.set(nodeId, root);
+  return root;
+};
 
 const relationPairKey = (relation: {
   readonly sourceNodeId: string;

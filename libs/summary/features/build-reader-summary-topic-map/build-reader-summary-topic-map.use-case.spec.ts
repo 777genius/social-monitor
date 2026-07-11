@@ -181,6 +181,49 @@ describe("BuildReaderSummaryTopicMapUseCase", () => {
       "topic:story:work-1",
     ]);
   });
+
+  it("verifies a ten-node proposed merge with a minimal relation tree", async () => {
+    const verifier = new AcceptingTopicRelationVerifier();
+    const result = await new BuildReaderSummaryTopicMapUseCase({
+      mode: "agent-runtime",
+      labeler: new MergedRelatedTopicLabeler(),
+      relationVerifier: verifier,
+    }).execute(manyTopicCommand(10));
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      throw result.error;
+    }
+    expect(verifier.inputs[0]?.relations).toHaveLength(24);
+    expect(
+      new Set(
+        verifier.inputs[0]?.relations
+          .slice(0, 9)
+          .flatMap((relation) => [
+            relation.sourceNodeId,
+            relation.targetNodeId,
+          ]),
+      ).size,
+    ).toBe(10);
+    expect(result.value.nodes).toHaveLength(1);
+  });
+
+  it("keeps the hard limit for a genuinely oversized verification tree", async () => {
+    const verifier = new AcceptingTopicRelationVerifier();
+    const result = await new BuildReaderSummaryTopicMapUseCase({
+      mode: "agent-runtime",
+      labeler: new MergedRelatedTopicLabeler(),
+      relationVerifier: verifier,
+    }).execute(manyTopicCommand(26));
+
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      throw new Error("Expected oversized topic verification to fail");
+    }
+    expect(result.error.message).toContain("25 checks");
+    expect(result.error.message).toContain("safe limit of 24");
+    expect(verifier.inputs).toHaveLength(0);
+  });
 });
 
 class CapturingTopicLabeler implements ReaderSummaryTopicLabelerPort {
@@ -480,5 +523,27 @@ const relatedTopicCommand = (): ReturnType<typeof command> => {
       field: "title" as const,
       canonicalUrl: item.canonicalUrl,
     })),
+  };
+};
+
+const manyTopicCommand = (count: number): ReturnType<typeof command> => {
+  const base = command();
+  const selectedEvidence = Array.from({ length: count }, (_, index) => ({
+    ...base.selectedEvidence[0]!,
+    feedItemId: `feed-many-${index}`,
+    sourceItemId: `source-many-${index}`,
+    title: `Shared work topic ${index}`,
+  }));
+  return {
+    ...base,
+    clusters: selectedEvidence.map((item, index) => ({
+      ...base.clusters[0]!,
+      id: `story:many-${index}`,
+      storyKey: `many-${index}`,
+      representativeFeedItemId: item.feedItemId,
+    })),
+    selectedEvidence,
+    topStories: [],
+    citationMap: [],
   };
 };
