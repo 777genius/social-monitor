@@ -81,6 +81,47 @@ void main() {
     expect(find.text('Feed'), findsOneWidget);
   });
 
+  testWidgets('keeps the full brand title visible at medium sidebar width', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(720, 780);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: AppAdaptiveShell(
+          title: 'Social Monitor',
+          selectedPath: '/',
+          destinations: const [
+            AppShellDestination(
+              label: 'Overview',
+              path: '/',
+              icon: Icons.monitor_heart_outlined,
+            ),
+          ],
+          onDestinationSelected: (_) {},
+          child: const SizedBox(),
+        ),
+      ),
+    );
+
+    final titleFinder = find.byKey(const ValueKey('app-shell-brand-title'));
+    final fitFinder = find.byKey(const ValueKey('app-shell-brand-title-fit'));
+    expect(titleFinder, findsOneWidget);
+    expect(fitFinder, findsOneWidget);
+    final title = tester.widget<Text>(titleFinder);
+    expect(title.data, 'Social Monitor');
+    expect(title.overflow, isNot(TextOverflow.ellipsis));
+    expect(
+      tester.getRect(titleFinder).width,
+      lessThanOrEqualTo(tester.getRect(fitFinder).width + 0.01),
+      reason: 'The fitted brand title must stay inside the sidebar.',
+    );
+  });
+
   testWidgets('selects persistent destinations through stable keys', (
     tester,
   ) async {
