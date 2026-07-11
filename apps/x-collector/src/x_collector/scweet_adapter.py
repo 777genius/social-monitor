@@ -17,6 +17,12 @@ from .account_usage_observer import (
     AccountUsageObserver,
     NoopAccountUsageObserver,
 )
+from .candidate_rejection_cache import (
+    CandidateRejectionCacheError,
+    CandidateRejectionPolicy,
+    CandidateRejectionScope,
+    candidate_rejection_scope,
+)
 from .config import XCollectorSettings
 from .domain import (
     DailySearchRequest,
@@ -34,10 +40,11 @@ from .domain import (
 from .ports import (
     AccountPoolLedgerPort,
     AccountUsageObserverPort,
+    CandidateRejectionRepositoryPort,
     Clock,
     DailySearchCollectorPort,
 )
-from .scoring import CandidateSignal, rank_candidates
+from .scoring import CandidateSignal, aggregate_candidates, rank_candidates
 from .search_budget import (
     SearchBudgetDecision,
     budget_search_passes,
@@ -53,6 +60,9 @@ from .scweet_errors import classify_scweet_error
 from .search_plan import ScweetSearchPass, plan_scweet_search_passes
 from .sqlite_account_usage_event_repository import (
     SqliteAccountUsageEventRepository,
+)
+from .sqlite_candidate_rejection_repository import (
+    SqliteCandidateRejectionRepository,
 )
 
 
@@ -132,6 +142,8 @@ class ScweetDailySearchCollector(DailySearchCollectorPort):
         scweet_api_page_size: int = 20,
         scweet_n_splits: int = 5,
         account_usage_observer: AccountUsageObserverPort | None = None,
+        candidate_rejection_repository: CandidateRejectionRepositoryPort | None = None,
+        candidate_rejection_policy: CandidateRejectionPolicy | None = None,
     ) -> None:
         self._scweet_factory = scweet_factory
         self._clock = clock or SystemClock()
@@ -141,6 +153,10 @@ class ScweetDailySearchCollector(DailySearchCollectorPort):
         self._scweet_n_splits = scweet_n_splits
         self._account_usage_observer = (
             account_usage_observer or NoopAccountUsageObserver()
+        )
+        self._candidate_rejection_repository = candidate_rejection_repository
+        self._candidate_rejection_policy = (
+            candidate_rejection_policy or CandidateRejectionPolicy()
         )
 
     @classmethod
@@ -234,6 +250,9 @@ class ScweetDailySearchCollector(DailySearchCollectorPort):
             settings.scweet_api_page_size,
             settings.scweet_n_splits,
             account_usage_observer,
+            candidate_rejection_repository=SqliteCandidateRejectionRepository(
+                settings.scweet_db_path,
+            ),
         )
 
     def collect_daily_search(
@@ -366,13 +385,29 @@ class ScweetDailySearchCollector(DailySearchCollectorPort):
                 )
                 break
 
+        ranking_posts, rejection_scope, rejection_cache_ready = (
+            self._filter_cached_rank_rejections(
+                request,
+                fetched_posts,
+                started_at,
+                warnings,
+            )
+        )
         selected_posts = rank_candidates(
-            fetched_posts,
+            ranking_posts,
             query=request.query,
             window_end=request.window_end,
             max_items=request.max_items,
         )
         completed_at = self._clock.now()
+        if rejection_cache_ready and rejection_scope is not None:
+            self._record_ranking_outcomes(
+                rejection_scope,
+                ranking_posts,
+                selected_posts,
+                completed_at,
+                warnings,
+            )
 
         return DailySearchResult(
             posts=tuple(selected_posts),
@@ -389,6 +424,91 @@ class ScweetDailySearchCollector(DailySearchCollectorPort):
                 partial=len(selected_posts) < request.max_items,
             ),
         )
+
+    def _filter_cached_rank_rejections(
+        self,
+        request: DailySearchRequest,
+        fetched_posts: list[tuple[XCollectedPost, CandidateSignal]],
+        now: datetime,
+        warnings: list[XCollectorWarning],
+    ) -> tuple[
+        list[tuple[XCollectedPost, CandidateSignal]],
+        CandidateRejectionScope | None,
+        bool,
+    ]:
+        repository = self._candidate_rejection_repository
+        if repository is None or not fetched_posts:
+            return fetched_posts, None, False
+
+        scope = candidate_rejection_scope(request)
+        unique_candidates = aggregate_candidates(fetched_posts)
+        try:
+            rejections = repository.load_rejections(
+                scope,
+                tuple(candidate.post.tweet_id for candidate in unique_candidates),
+            )
+            suppressed_ids = tuple(
+                candidate.post.tweet_id
+                for candidate in unique_candidates
+                if (
+                    (rejection := rejections.get(candidate.post.tweet_id))
+                    is not None
+                    and self._candidate_rejection_policy.should_suppress(
+                        rejection,
+                        candidate.post,
+                        request,
+                        now,
+                    )
+                )
+            )
+            maximum_suppressed_count = max(
+                0,
+                len(unique_candidates) - request.max_items,
+            )
+            suppressed_ids = suppressed_ids[:maximum_suppressed_count]
+            repository.mark_seen(scope, suppressed_ids, now)
+        except CandidateRejectionCacheError:
+            append_rejection_cache_warning(warnings)
+            return fetched_posts, scope, False
+
+        suppressed = set(suppressed_ids)
+        return (
+            [item for item in fetched_posts if item[0].tweet_id not in suppressed],
+            scope,
+            True,
+        )
+
+    def _record_ranking_outcomes(
+        self,
+        scope: CandidateRejectionScope,
+        ranking_posts: list[tuple[XCollectedPost, CandidateSignal]],
+        selected_posts: list[XCollectedPost],
+        now: datetime,
+        warnings: list[XCollectorWarning],
+    ) -> None:
+        repository = self._candidate_rejection_repository
+        if repository is None:
+            return
+
+        selected_ids = tuple(post.tweet_id for post in selected_posts)
+        selected_id_set = set(selected_ids)
+        rejected_posts = tuple(
+            candidate.post
+            for candidate in aggregate_candidates(ranking_posts)
+            if candidate.post.tweet_id not in selected_id_set
+        )
+        try:
+            repository.record_outcomes(
+                scope,
+                selected_ids,
+                tuple(
+                    self._candidate_rejection_policy.new_rejection(post, now)
+                    for post in rejected_posts
+                ),
+                now,
+            )
+        except CandidateRejectionCacheError:
+            append_rejection_cache_warning(warnings)
 
     def _budget_search_passes(
         self,
@@ -421,6 +541,25 @@ class ScweetDailySearchCollector(DailySearchCollectorPort):
         now = self._clock.now()
         self._account_pool_ledger.apply_profile_cooldowns(now)
         self._account_pool_ledger.apply_collection_priorities(now)
+
+
+def append_rejection_cache_warning(
+    warnings: list[XCollectorWarning],
+) -> None:
+    if any(
+        warning.code == "x_collector.rejection_cache_unavailable"
+        for warning in warnings
+    ):
+        return
+    warnings.append(
+        XCollectorWarning(
+            code="x_collector.rejection_cache_unavailable",
+            message=(
+                "The derived candidate rejection cache was unavailable; "
+                "collection continued without cached suppression"
+            ),
+        ),
+    )
 
 
 def partial_warning_for_late_failure(

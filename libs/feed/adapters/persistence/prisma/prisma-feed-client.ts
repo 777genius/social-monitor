@@ -35,7 +35,6 @@ export type PrismaFeedClient = {
         readonly publishedAt: Date;
         readonly observedAt: Date;
         readonly providerMetadata?: Readonly<Record<string, unknown>> | null;
-        readonly status: "VISIBLE";
       };
       readonly create: {
         readonly id: string;

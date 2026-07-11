@@ -3,8 +3,9 @@ import type {
   PrismaScanAttemptRecord,
   PrismaScanFailureQueueEntryRecord,
   PrismaScanLeaseEntryRecord,
+  PrismaSourceCandidateMemoryRecord,
   PrismaSourceItemRecord,
-} from './prisma-ingestion-records';
+} from "./prisma-ingestion-records";
 
 type GitHubRepositoryTrendCandidateKey = {
   readonly tenantId: string;
@@ -48,8 +49,85 @@ type GitHubRepositoryTrendData = {
   readonly metadata?: Readonly<Record<string, unknown>>;
 };
 
+export type PrismaSourceCandidateMemoryClient = {
+  readonly sourceCandidateMemory: {
+    deleteMany(args: {
+      readonly where: {
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly id: { readonly in: readonly string[] };
+      };
+    }): Promise<{ readonly count: number }>;
+    findMany(args: {
+      readonly where: {
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly interestId?: string;
+        readonly sourceBindingId?: string;
+        readonly providerKey?: string;
+        readonly scopeFingerprint?: string;
+        readonly policyVersion?: string;
+        readonly providerItemId?: { readonly in: readonly string[] };
+        readonly expiresAt: {
+          readonly gt?: Date;
+          readonly lte?: Date;
+        };
+      };
+      readonly orderBy?: { readonly expiresAt: "asc" };
+      readonly take?: number;
+    }): Promise<readonly PrismaSourceCandidateMemoryRecord[]>;
+    upsert(args: {
+      readonly where: {
+        readonly tenantId_workspaceId_interestId_sourceBindingId_providerKey_scopeFingerprint_providerItemId: {
+          readonly tenantId: string;
+          readonly workspaceId: string;
+          readonly interestId: string;
+          readonly sourceBindingId: string;
+          readonly providerKey: string;
+          readonly scopeFingerprint: string;
+          readonly providerItemId: string;
+        };
+      };
+      readonly update: {
+        readonly fingerprint: string;
+        readonly policyVersion: string;
+        readonly decision: string;
+        readonly reasonCode: string;
+        readonly expiresAt: Date;
+        readonly lastSeenAt: Date;
+        readonly seenCount: { readonly increment: number };
+      };
+      readonly create: {
+        readonly id: string;
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly interestId: string;
+        readonly sourceBindingId: string;
+        readonly providerKey: string;
+        readonly providerItemId: string;
+        readonly scopeFingerprint: string;
+        readonly fingerprint: string;
+        readonly policyVersion: string;
+        readonly decision: string;
+        readonly reasonCode: string;
+        readonly expiresAt: Date;
+        readonly firstSeenAt: Date;
+        readonly lastSeenAt: Date;
+      };
+    }): Promise<PrismaSourceCandidateMemoryRecord>;
+  };
+};
+
 export type PrismaIngestionClient = {
   readonly sourceItem: {
+    findMany?(args: {
+      readonly where: {
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly providerKey: string;
+        readonly providerItemId: { readonly in: readonly string[] };
+      };
+    }): Promise<readonly PrismaSourceItemRecord[]>;
     findFirst(args: {
       readonly where: {
         readonly tenantId: string;
@@ -79,7 +157,12 @@ export type PrismaIngestionClient = {
   };
   readonly cursorCheckpoint: {
     upsert(args: {
-      readonly where: { readonly tenantId_sourceBindingId: { readonly tenantId: string; readonly sourceBindingId: string } };
+      readonly where: {
+        readonly tenantId_sourceBindingId: {
+          readonly tenantId: string;
+          readonly sourceBindingId: string;
+        };
+      };
       readonly update: {
         readonly cursorPayload: Readonly<Record<string, unknown>>;
       };
@@ -117,16 +200,16 @@ export type PrismaIngestionClient = {
         readonly retryBudget: number;
         readonly nextAttemptNumber?: number | null;
         readonly failureReason: string;
-        readonly status: 'RETRY_ENQUEUED' | 'DEAD_LETTERED';
+        readonly status: "RETRY_ENQUEUED" | "DEAD_LETTERED";
       };
     }): Promise<PrismaScanFailureQueueEntryRecord>;
     findMany(args: {
       readonly where: {
         readonly tenantId?: string;
         readonly workspaceId?: string;
-        readonly status: 'RETRY_ENQUEUED' | 'DEAD_LETTERED';
+        readonly status: "RETRY_ENQUEUED" | "DEAD_LETTERED";
       };
-      readonly orderBy: { readonly createdAt: 'asc' | 'desc' };
+      readonly orderBy: { readonly createdAt: "asc" | "desc" };
       readonly take: number;
     }): Promise<readonly PrismaScanFailureQueueEntryRecord[]>;
     deleteMany(args: {
@@ -138,7 +221,7 @@ export type PrismaIngestionClient = {
       readonly where: {
         readonly tenantId: string;
         readonly workspaceId: string;
-        readonly status: 'RETRY_ENQUEUED' | 'DEAD_LETTERED';
+        readonly status: "RETRY_ENQUEUED" | "DEAD_LETTERED";
       };
     }): Promise<number>;
   };
@@ -146,7 +229,7 @@ export type PrismaIngestionClient = {
     upsert(args: {
       readonly where: { readonly scanJobId: string };
       readonly update: {
-        readonly status: 'RUNNING' | 'SUCCEEDED' | 'FAILED';
+        readonly status: "RUNNING" | "SUCCEEDED" | "FAILED";
         readonly startedAt: Date;
         readonly finishedAt?: Date | null;
         readonly fetched: number;
@@ -160,7 +243,7 @@ export type PrismaIngestionClient = {
         readonly tenantId: string;
         readonly workspaceId: string;
         readonly sourceBindingId: string;
-        readonly status: 'RUNNING' | 'SUCCEEDED' | 'FAILED';
+        readonly status: "RUNNING" | "SUCCEEDED" | "FAILED";
         readonly startedAt: Date;
         readonly finishedAt?: Date | null;
         readonly fetched: number;

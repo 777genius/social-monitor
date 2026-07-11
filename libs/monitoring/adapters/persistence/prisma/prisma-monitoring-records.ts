@@ -1,4 +1,8 @@
-import { normalizeJsonObject, tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import {
+  normalizeJsonObject,
+  tenantId,
+  workspaceId,
+} from '@social-monitor/shared-kernel';
 
 import {
   ScanJob,
@@ -101,13 +105,15 @@ export type PrismaScanJobRecord = {
   readonly workspaceId: string;
   readonly sourceBindingId: string;
   readonly scanPolicyId: string;
-  readonly status: 'REQUESTED' | 'ENQUEUED' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
+  readonly status:
+    'REQUESTED' | 'ENQUEUED' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
   readonly idempotencyKey: string;
   readonly requestedAt: Date;
   readonly enqueuedAt: Date | null;
   readonly completedAt: Date | null;
   readonly failureReason: string | null;
   readonly failureMetadata: unknown;
+  readonly executionMetadata?: unknown;
   readonly createdAt: Date;
 };
 
@@ -204,7 +210,9 @@ export const sourceBindingFromPrisma = (
     createdAt: record.createdAt,
   } satisfies SourceBindingProps);
 
-export const scanPolicyFromPrisma = (record: PrismaScanPolicyRecord): ScanPolicy =>
+export const scanPolicyFromPrisma = (
+  record: PrismaScanPolicyRecord,
+): ScanPolicy =>
   ScanPolicy.rehydrate({
     id: record.id,
     tenantId: tenantId(record.tenantId),
@@ -217,7 +225,9 @@ export const scanPolicyFromPrisma = (record: PrismaScanPolicyRecord): ScanPolicy
     createdAt: record.createdAt,
   } satisfies ScanPolicyProps);
 
-export const sourceCredentialFromPrisma = (record: PrismaSourceCredentialRecord): SourceCredential =>
+export const sourceCredentialFromPrisma = (
+  record: PrismaSourceCredentialRecord,
+): SourceCredential =>
   SourceCredential.rehydrate({
     id: record.id,
     tenantId: tenantId(record.tenantId),
@@ -249,6 +259,7 @@ export const scanJobFromPrisma = (record: PrismaScanJobRecord): ScanJob =>
     completedAt: record.completedAt ?? undefined,
     failureReason: record.failureReason ?? undefined,
     failureMetadata: normalizeJsonObject(record.failureMetadata),
+    executionMetadata: normalizeJsonObject(record.executionMetadata),
   } satisfies ScanJobProps);
 
 export const scanSchedulerDecisionFromPrisma = (
@@ -268,18 +279,29 @@ export const scanSchedulerDecisionFromPrisma = (
   evaluatedAt: record.evaluatedAt,
   nextRunAt: record.nextRunAt,
   configuredIntervalSeconds: record.configuredIntervalSeconds,
-  ...(record.effectiveIntervalSeconds === null ? {} : { effectiveIntervalSeconds: record.effectiveIntervalSeconds }),
-  ...(record.freshnessSeconds === null ? {} : { freshnessSeconds: record.freshnessSeconds }),
+  ...(record.effectiveIntervalSeconds === null
+    ? {}
+    : { effectiveIntervalSeconds: record.effectiveIntervalSeconds }),
+  ...(record.freshnessSeconds === null
+    ? {}
+    : { freshnessSeconds: record.freshnessSeconds }),
   ...(record.providerMinimumIntervalEnforced === null
     ? {}
-    : { providerMinimumIntervalEnforced: record.providerMinimumIntervalEnforced }),
-  ...(record.backoffUntil === null ? {} : { backoffUntil: record.backoffUntil }),
-  ...(record.correlationId === null ? {} : { correlationId: record.correlationId }),
+    : {
+        providerMinimumIntervalEnforced: record.providerMinimumIntervalEnforced,
+      }),
+  ...(record.backoffUntil === null
+    ? {}
+    : { backoffUntil: record.backoffUntil }),
+  ...(record.correlationId === null
+    ? {}
+    : { correlationId: record.correlationId }),
   ...(record.causationId === null ? {} : { causationId: record.causationId }),
 });
 
-export const sourceBindingStatusToPrisma = (status: SourceBindingStatus): 'ENABLED' | 'PAUSED' =>
-  status === 'enabled' ? 'ENABLED' : 'PAUSED';
+export const sourceBindingStatusToPrisma = (
+  status: SourceBindingStatus,
+): 'ENABLED' | 'PAUSED' => (status === 'enabled' ? 'ENABLED' : 'PAUSED');
 
 export const scanJobStatusToPrisma = (
   status: ScanJobStatus,
@@ -328,7 +350,9 @@ export const sourceCredentialStatusToPrisma = (
   return 'EXPIRED';
 };
 
-const sourceBindingStatusFromPrisma = (status: PrismaSourceBindingRecord['status']): SourceBindingStatus => {
+const sourceBindingStatusFromPrisma = (
+  status: PrismaSourceBindingRecord['status'],
+): SourceBindingStatus => {
   if (status === 'ENABLED') {
     return 'enabled';
   }
@@ -337,10 +361,14 @@ const sourceBindingStatusFromPrisma = (status: PrismaSourceBindingRecord['status
     return 'paused';
   }
 
-  throw new Error(`Cannot rehydrate unsupported source binding status "${status}"`);
+  throw new Error(
+    `Cannot rehydrate unsupported source binding status "${status}"`,
+  );
 };
 
-const sourceCredentialKindFromPrisma = (kind: PrismaSourceCredentialRecord['kind']): SourceCredentialKind => {
+const sourceCredentialKindFromPrisma = (
+  kind: PrismaSourceCredentialRecord['kind'],
+): SourceCredentialKind => {
   if (kind === 'OAUTH2') {
     return 'oauth2';
   }
@@ -367,7 +395,9 @@ const sourceCredentialStatusFromPrisma = (
   return 'expired';
 };
 
-const scanJobStatusFromPrisma = (status: PrismaScanJobRecord['status']): ScanJobStatus => {
+const scanJobStatusFromPrisma = (
+  status: PrismaScanJobRecord['status'],
+): ScanJobStatus => {
   if (status === 'REQUESTED') {
     return 'requested';
   }
@@ -387,7 +417,9 @@ const scanJobStatusFromPrisma = (status: PrismaScanJobRecord['status']): ScanJob
   throw new Error(`Cannot rehydrate unsupported scan job status "${status}"`);
 };
 
-const scanSchedulerDecisionReasonFromPrisma = (reason: string): ScanSchedulerDecisionReason => {
+const scanSchedulerDecisionReasonFromPrisma = (
+  reason: string,
+): ScanSchedulerDecisionReason => {
   if (
     reason === 'scan_policy_due_now' ||
     reason === 'active_scan' ||
@@ -401,10 +433,14 @@ const scanSchedulerDecisionReasonFromPrisma = (reason: string): ScanSchedulerDec
     return reason;
   }
 
-  throw new Error(`Cannot rehydrate unsupported scan scheduler decision reason "${reason}"`);
+  throw new Error(
+    `Cannot rehydrate unsupported scan scheduler decision reason "${reason}"`,
+  );
 };
 
-const normalizeRecordObject = (value: unknown): Readonly<Record<string, unknown>> => {
+const normalizeRecordObject = (
+  value: unknown,
+): Readonly<Record<string, unknown>> => {
   if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
     return value as Readonly<Record<string, unknown>>;
   }

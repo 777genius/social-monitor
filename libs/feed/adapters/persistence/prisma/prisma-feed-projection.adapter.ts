@@ -69,7 +69,6 @@ export class PrismaFeedProjectionAdapter implements FeedProjectionPort {
             publishedAt: snapshot.publishedAt,
             observedAt: snapshot.ingestedAt,
             providerMetadata,
-            status: "VISIBLE",
           },
           create: {
             id: feedItemId,

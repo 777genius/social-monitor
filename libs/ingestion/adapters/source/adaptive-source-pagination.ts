@@ -1,4 +1,4 @@
-import { redactSensitiveText } from '@social-monitor/shared-kernel';
+import { redactSensitiveText } from "@social-monitor/shared-kernel";
 
 import type {
   FetchedConversationUnit,
@@ -6,7 +6,8 @@ import type {
   SourceCursorModel,
   SourceProviderScanResult,
   SourceRuntimeConfig,
-} from '../../ports';
+  SourcePaginationStopReason,
+} from "../../ports";
 
 export type AdaptivePaginationPolicy = {
   readonly enabled: true;
@@ -30,18 +31,14 @@ export type AdaptivePaginationState = {
   readonly stopReason: AdaptivePaginationStopReason;
 };
 
-export type AdaptivePaginationStopReason =
-  | 'target_items'
-  | 'no_next_cursor'
-  | 'cursor_not_advanced'
-  | 'low_new_item_yield'
-  | 'high_duplicate_rate'
-  | 'max_pages'
-  | 'partial_retryable_failure';
+export type AdaptivePaginationStopReason = Exclude<
+  SourcePaginationStopReason,
+  "single_page"
+>;
 
 const supportedCursorModels: readonly SourceCursorModel[] = [
-  'opaque',
-  'page_token',
+  "opaque",
+  "page_token",
 ];
 
 export const readAdaptivePaginationPolicy = (params: {
@@ -142,12 +139,12 @@ export const adaptivePaginationStatsWarning = (
   state: AdaptivePaginationState,
 ): string =>
   [
-    'adaptive_pagination.stats',
+    "adaptive_pagination.stats",
     `pages=${state.pageCount}`,
     `items=${state.uniqueItemCount}`,
     `duplicates=${state.duplicateItemCount}`,
     `stop=${state.stopReason}`,
-  ].join(';');
+  ].join(";");
 
 export const adaptivePaginationFailureWarning = (params: {
   readonly kind: string;
@@ -164,7 +161,7 @@ const conversationUnitKey = (unit: FetchedConversationUnit): string =>
 const readRecord = (
   value: unknown,
 ): Readonly<Record<string, unknown>> | undefined => {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
     return undefined;
   }
 
@@ -172,7 +169,7 @@ const readRecord = (
 };
 
 const readBoolean = (value: unknown, fallback: boolean): boolean =>
-  typeof value === 'boolean' ? value : fallback;
+  typeof value === "boolean" ? value : fallback;
 
 const readInteger = (
   value: unknown,
@@ -184,7 +181,7 @@ const readInteger = (
     return fallback;
   }
 
-  return typeof value === 'number' &&
+  return typeof value === "number" &&
     Number.isInteger(value) &&
     value >= min &&
     value <= max
@@ -197,7 +194,7 @@ const readRatio = (value: unknown, fallback: number): number => {
     return fallback;
   }
 
-  return typeof value === 'number' && value >= 0 && value <= 1
+  return typeof value === "number" && value >= 0 && value <= 1
     ? value
     : fallback;
 };
