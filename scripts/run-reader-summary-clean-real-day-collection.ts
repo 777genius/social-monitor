@@ -251,7 +251,7 @@ async function executeTargetScans(
   );
   const outcomes = await runTargetedProviderCollection({
     targets,
-    retryBudget: 1,
+    retryBudget: 2,
     collect: (target) => executeTargetScan(target, executeScan),
     retryDisposition: (result) => result.observability.slo.retryDisposition,
   });
@@ -716,7 +716,7 @@ function buildReport(params: {
       (scan) => scan.observability.slo.met,
     ),
     providerRetriesAreBounded: finalScanResults.every(
-      (scan) => scan.attemptCount >= 1 && scan.attemptCount <= 2,
+      (scan) => scan.attemptCount >= 1 && scan.attemptCount <= 3,
     ),
     partialProviderCoverageIsExplicit: finalScanResults.every((scan) =>
       ["complete", "partial", "degraded", "unavailable"].includes(
@@ -822,13 +822,7 @@ function sourceQueryModeFromValue(value: unknown): SourceQueryMode {
 function readProviderKeys(): readonly ProviderKey[] {
   const option = readOption("--providers");
   if (option === undefined) {
-    return [
-      "github-trending-page",
-      "hacker-news",
-      "reddit",
-      "rss",
-      "x-twitter",
-    ];
+    return ["hacker-news", "reddit", "rss", "x-twitter"];
   }
 
   const providers = option
@@ -889,7 +883,7 @@ function validateExistingReport(): void {
     report.scans.every(
       (scan) =>
         scan.attemptCount >= 1 &&
-        scan.attemptCount <= 2 &&
+        scan.attemptCount <= 3 &&
         scan.observability.slo.met,
     ) &&
     report.qualityGates.noRawSecretFragments === true &&
