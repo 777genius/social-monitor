@@ -28,6 +28,11 @@ export type GrpcAgentRuntimeClientOptions = {
 };
 
 const schemaVersion = 1;
+const taskTransportGraceMs = 5_000;
+
+export const agentRuntimeTaskDeadlineTimeoutMs = (
+  taskTimeoutMs: number,
+): number => taskTimeoutMs + taskTransportGraceMs;
 
 export class GrpcAgentRuntimeClient implements AgentRuntimeClientPort {
   static connect(params: {
@@ -63,7 +68,10 @@ export class GrpcAgentRuntimeClient implements AgentRuntimeClientPort {
       correlationId: command.correlationId,
       serviceToken: this.options.serviceToken,
     });
-    const deadline = createGrpcDeadline(this.clock, command.timeoutMs);
+    const deadline = createGrpcDeadline(
+      this.clock,
+      agentRuntimeTaskDeadlineTimeoutMs(command.timeoutMs),
+    );
 
     return new Promise((resolve, reject) => {
       this.client.runAgentTask(
