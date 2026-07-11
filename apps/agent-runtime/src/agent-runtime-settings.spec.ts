@@ -45,9 +45,20 @@ describe("resolveAgentRuntimeSettings", () => {
     expect(settings.cli).toMatchObject({
       command:
         "apps/agent-runtime/bin/run-codex-subscription-runtime-agent-task.mjs",
+      stateRoot: expect.stringMatching(
+        /\.local\/state\/social-monitor\/subscription-runtime$/,
+      ),
       model: "gpt-5.5",
       reasoningEffort: "xhigh",
     });
+  });
+
+  it("accepts the subscription runtime state-root alias", () => {
+    const settings = resolveAgentRuntimeSettings({
+      SUBSCRIPTION_RUNTIME_STATE_ROOT: "/tmp/runtime-state",
+    });
+
+    expect(settings.cli.stateRoot).toBe("/tmp/runtime-state");
   });
 
   it("rejects a weaker reasoning effort", () => {

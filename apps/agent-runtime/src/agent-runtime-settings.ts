@@ -1,4 +1,6 @@
 import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 
 export type AgentRuntimeSettings = {
   readonly bindAddress: string;
@@ -25,7 +27,7 @@ export const resolveAgentRuntimeSettings = (
       env.AGENT_RUNTIME_CLI_PATH,
       "apps/agent-runtime/bin/run-codex-subscription-runtime-agent-task.mjs",
     ),
-    stateRoot: nonEmptyOptional(env.AGENT_RUNTIME_STATE_ROOT),
+    stateRoot: resolveStateRoot(env),
     ephemeral: parseBoolean(env.AGENT_RUNTIME_EPHEMERAL),
     localEncryptionKey: resolveLocalEncryptionKey(env),
     codexAuthJsonPath: nonEmptyOptional(
@@ -68,6 +70,21 @@ const nonEmptyOptional = (value: string | undefined): string | undefined => {
 
 const parseBoolean = (value: string | undefined): boolean =>
   value === "1" || value?.toLowerCase() === "true";
+
+const resolveStateRoot = (env: NodeJS.ProcessEnv): string => {
+  const configured = nonEmptyOptional(
+    env.AGENT_RUNTIME_STATE_ROOT ?? env.SUBSCRIPTION_RUNTIME_STATE_ROOT,
+  );
+  if (configured !== undefined) {
+    return configured;
+  }
+
+  const stateHome = nonEmptyOrFallback(
+    env.XDG_STATE_HOME,
+    join(homedir(), ".local", "state"),
+  );
+  return join(stateHome, "social-monitor", "subscription-runtime");
+};
 
 const resolveLocalEncryptionKey = (
   env: NodeJS.ProcessEnv,
