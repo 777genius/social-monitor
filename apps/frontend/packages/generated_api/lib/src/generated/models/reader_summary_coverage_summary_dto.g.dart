@@ -35,6 +35,14 @@ ReaderSummaryCoverageSummaryDto _$ReaderSummaryCoverageSummaryDtoFromJson(
   windowEndedAt: DateTime.parse(json['windowEndedAt'] as String),
   windowStartedAt: DateTime.parse(json['windowStartedAt'] as String),
   collectedFeedItemCount: json['collectedFeedItemCount'] as num?,
+  collectionCoverageState: json['collectionCoverageState'] == null
+      ? null
+      : ReaderSummaryCoverageSummaryDtoCollectionCoverageStateCollectionCoverageState.fromJson(
+          json['collectionCoverageState'] as String,
+        ),
+  degradedProviderKeys: (json['degradedProviderKeys'] as List<dynamic>?)
+      ?.map((e) => e as String)
+      .toList(),
   providerBreakdown: (json['providerBreakdown'] as List<dynamic>?)
       ?.map(
         (e) => ReaderSummaryProviderCoverageDto.fromJson(
@@ -61,7 +69,9 @@ Map<String, dynamic> _$ReaderSummaryCoverageSummaryDtoToJson(
 ) => <String, dynamic>{
   'citationCount': instance.citationCount,
   'collectedFeedItemCount': instance.collectedFeedItemCount,
+  'collectionCoverageState': instance.collectionCoverageState,
   'crossSourceClusterCount': instance.crossSourceClusterCount,
+  'degradedProviderKeys': instance.degradedProviderKeys,
   'duplicateFeedItemCount': instance.duplicateFeedItemCount,
   'freshnessStatus': instance.freshnessStatus,
   'hasCrossProviderEvidence': instance.hasCrossProviderEvidence,

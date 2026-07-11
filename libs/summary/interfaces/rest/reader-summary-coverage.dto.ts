@@ -1,5 +1,52 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 
+export class ReaderSummaryProviderCollectionHealthDto {
+  @ApiProperty({ enum: ["complete", "partial", "degraded", "unavailable"] })
+  declare readonly state: "complete" | "partial" | "degraded" | "unavailable";
+
+  @ApiProperty()
+  declare readonly scanCount: number;
+
+  @ApiPropertyOptional()
+  declare readonly targetItemCount?: number;
+
+  @ApiProperty()
+  declare readonly collectedItemCount: number;
+
+  @ApiProperty()
+  declare readonly acceptedItemCount: number;
+
+  @ApiProperty()
+  declare readonly insertedItemCount: number;
+
+  @ApiProperty()
+  declare readonly outsideWindowItemCount: number;
+
+  @ApiProperty()
+  declare readonly paginationDuplicateItemCount: number;
+
+  @ApiProperty()
+  declare readonly storageDuplicateItemCount: number;
+
+  @ApiProperty()
+  declare readonly pageCount: number;
+
+  @ApiProperty({ type: [String] })
+  declare readonly paginationStopReasons: readonly string[];
+
+  @ApiProperty({ type: [String] })
+  declare readonly failureKinds: readonly string[];
+
+  @ApiProperty()
+  declare readonly rateLimitEventCount: number;
+
+  @ApiPropertyOptional({ format: "date-time" })
+  declare readonly oldestAcceptedPublishedAt?: string;
+
+  @ApiPropertyOptional({ format: "date-time" })
+  declare readonly newestAcceptedPublishedAt?: string;
+}
+
 export class ReaderSummaryProviderCoverageDto {
   @ApiProperty()
   declare readonly providerKey: string;
@@ -24,6 +71,9 @@ export class ReaderSummaryProviderCoverageDto {
 
   @ApiProperty()
   declare readonly citationCount: number;
+
+  @ApiPropertyOptional({ type: () => ReaderSummaryProviderCollectionHealthDto })
+  declare readonly collectionHealth?: ReaderSummaryProviderCollectionHealthDto;
 }
 
 export class ReaderSummaryTopicCoverageDto {
@@ -120,6 +170,15 @@ export class ReaderSummaryCoverageSummaryDto {
 
   @ApiProperty({ enum: ["fresh", "stale"] })
   declare readonly freshnessStatus: "fresh" | "stale";
+
+  @ApiPropertyOptional({
+    enum: ["complete", "partial", "degraded", "unavailable"],
+  })
+  declare readonly collectionCoverageState?:
+    "complete" | "partial" | "degraded" | "unavailable";
+
+  @ApiPropertyOptional({ type: [String] })
+  declare readonly degradedProviderKeys: readonly string[];
 
   @ApiPropertyOptional({ type: () => [ReaderSummaryProviderCoverageDto] })
   declare readonly providerBreakdown?: readonly ReaderSummaryProviderCoverageDto[];

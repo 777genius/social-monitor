@@ -368,8 +368,8 @@ async function main(): Promise<void> {
   await sourceCredentialVault.put({
     secretKeyId: 'source-credential-secret-prisma-smoke',
     secret: {
-      accessToken: 'prisma-source-access-token',
-      refreshToken: 'prisma-source-refresh-token',
+      accessToken: 'smoke-access',
+      refreshToken: 'smoke-refresh',
     },
   });
   await sourceCredentials.save(SourceCredential.create({
@@ -408,7 +408,7 @@ async function main(): Promise<void> {
     secretKeyId: 'source-credential-secret-prisma-smoke',
   });
   assert(
-    sourceCredentialSecret?.accessToken === 'prisma-source-access-token',
+    sourceCredentialSecret?.accessToken === 'smoke-access',
     'source credential secret must decrypt from Prisma vault',
   );
   await sourceCredentialVault.delete({ secretKeyId: 'source-credential-secret-prisma-smoke' });

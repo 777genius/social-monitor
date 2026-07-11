@@ -4,6 +4,7 @@
 
 import 'package:json_annotation/json_annotation.dart';
 
+import 'reader_summary_coverage_summary_dto_collection_coverage_state_collection_coverage_state.dart';
 import 'reader_summary_coverage_summary_dto_freshness_status_freshness_status.dart';
 import 'reader_summary_provider_coverage_dto.dart';
 import 'reader_summary_query_coverage_dto.dart';
@@ -33,6 +34,8 @@ class ReaderSummaryCoverageSummaryDto {
     required this.windowEndedAt,
     required this.windowStartedAt,
     this.collectedFeedItemCount,
+    this.collectionCoverageState,
+    this.degradedProviderKeys,
     this.providerBreakdown,
     this.queryBreakdown,
     this.topicBreakdown,
@@ -43,7 +46,10 @@ class ReaderSummaryCoverageSummaryDto {
 
   final num citationCount;
   final num? collectedFeedItemCount;
+  final ReaderSummaryCoverageSummaryDtoCollectionCoverageStateCollectionCoverageState?
+  collectionCoverageState;
   final num crossSourceClusterCount;
+  final List<String>? degradedProviderKeys;
   final num duplicateFeedItemCount;
   final ReaderSummaryCoverageSummaryDtoFreshnessStatusFreshnessStatus
   freshnessStatus;
