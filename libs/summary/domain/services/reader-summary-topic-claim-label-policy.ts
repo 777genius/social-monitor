@@ -28,6 +28,58 @@ export type ReaderSummaryTopicSemanticLabel = {
 
 export const READER_SUMMARY_TOPIC_SEMANTIC_CONFIDENCE_MIN = 0.55;
 
+const evidenceAlignedClaimTypes = new Set<ReaderSummaryTopicClaimType>([
+  "availability",
+  "benchmark",
+  "comparison",
+  "education",
+  "efficiency",
+  "limits",
+  "release",
+  "review",
+  "security",
+]);
+
+export const alignReaderSummaryTopicSemanticLabelToEvidence = (params: {
+  readonly semantic: ReaderSummaryTopicSemanticLabel;
+  readonly primaryFacet: StoryPrimaryClaimFacet | undefined;
+  readonly evidenceTexts: readonly string[];
+}): ReaderSummaryTopicSemanticLabel => ({
+  ...params.semantic,
+  subject: removeRelationalRoleSuffix(
+    normalizeSemanticPart(params.semantic.subject),
+    params.evidenceTexts,
+  ),
+  claimType: evidenceAlignedClaimTypes.has(params.semantic.claimType)
+    ? (params.primaryFacet ?? "other")
+    : params.semantic.claimType,
+});
+
+export const sanitizeReaderSummaryTopicSemanticLabel = (
+  semantic: ReaderSummaryTopicSemanticLabel | undefined,
+): ReaderSummaryTopicSemanticLabel | undefined => {
+  if (semantic === undefined) {
+    return undefined;
+  }
+  const subject = normalizeSemanticPart(semantic.subject);
+  if (subject.length === 0) {
+    return undefined;
+  }
+  const parentSubject = normalizeSemanticPart(semantic.parentSubject);
+  const qualifier = normalizeSemanticPart(semantic.qualifier);
+  const confidenceScore = Number.isFinite(semantic.confidenceScore)
+    ? Math.min(1, Math.max(0, semantic.confidenceScore))
+    : 0;
+
+  return {
+    subject,
+    ...(parentSubject.length > 0 ? { parentSubject } : {}),
+    claimType: semantic.claimType,
+    ...(qualifier.length > 0 ? { qualifier } : {}),
+    confidenceScore,
+  };
+};
+
 type ClaimLabelRule = {
   readonly marker: RegExp;
   readonly suffix: string;
@@ -146,6 +198,32 @@ export const topicLabelExpressesClaimType = (
 
 const normalizeSemanticPart = (value: string | undefined): string =>
   value?.replace(/\s+/gu, " ").trim() ?? "";
+
+const removeRelationalRoleSuffix = (
+  subject: string,
+  evidenceTexts: readonly string[],
+): string => {
+  const match = subject.match(/^(.*\S)\s+(basis|core|foundation)$/iu);
+  if (match === null) {
+    return subject;
+  }
+  const baseSubject = match[1]?.trim() ?? "";
+  const role = match[2] ?? "";
+  if (baseSubject.length === 0 || role.length === 0) {
+    return subject;
+  }
+  const relationalRole = new RegExp(
+    `\\b${escapeRegExp(baseSubject)}\\s+is\\s+(?:the\\s+)?${escapeRegExp(role)}\\s+of\\b`,
+    "iu",
+  );
+
+  return evidenceTexts.some((text) => relationalRole.test(text))
+    ? baseSubject
+    : subject;
+};
+
+const escapeRegExp = (value: string): string =>
+  value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 
 const appendDistinctPart = (subject: string, qualifier: string): string => {
   if (qualifier.length === 0) {
