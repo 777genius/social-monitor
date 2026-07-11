@@ -76,7 +76,7 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
           {
             code: "agent_runtime.session_recovered_ephemeral",
             message:
-              "Durable provider session was invalid; retried in an isolated session",
+              "Durable provider session was unavailable; retried in an isolated session",
           },
         ],
       };
@@ -240,7 +240,8 @@ const shouldRetryWithEphemeral = (
 ): boolean =>
   !options.ephemeral &&
   result.status === "failed" &&
-  result.failure?.code === "provider_session_invalid" &&
+  (result.failure?.code === "provider_session_invalid" ||
+    result.failure?.code === "needs_reconnect") &&
   result.failure.reconnectRequired;
 
 const parseCliResult = (stdout: string): AgentRuntimeExecutionResult => {
