@@ -16,6 +16,7 @@ export const belongsToCrossProviderCluster = (
   item: SummaryEvidenceItem,
   clusterItems: readonly SummaryEvidenceItem[],
   policy: StoryRankingPolicy,
+  verifiedStoryRelationPairs?: ReadonlySet<string>,
 ): boolean => {
   const crossProviderItems = clusterItems.filter(
     (candidate) => candidate.providerKey !== item.providerKey,
@@ -23,8 +24,13 @@ export const belongsToCrossProviderCluster = (
 
   return (
     crossProviderItems.length > 0 &&
-    crossProviderItems.every((candidate) =>
-      belongsToCrossProviderStory(item, candidate, policy),
+    crossProviderItems.every(
+      (candidate) =>
+        isDeterministicCrossProviderStoryMatch(item, candidate, policy) ||
+        (verifiedStoryRelationPairs?.has(
+          verifiedStoryRelationPairKey(item.feedItemId, candidate.feedItemId),
+        ) === true &&
+          isVerifiedStoryRelationGuardEligible(item, candidate, policy)),
     )
   );
 };
@@ -37,10 +43,10 @@ export const hasCrossProviderClaimFacetConflict = (
   clusterItems.some(
     (candidate) =>
       candidate.providerKey !== item.providerKey &&
-      !claimFacetsAreCompatible(item, candidate, policy),
+      !storyClaimFacetsAreCompatible(item, candidate, policy),
   );
 
-const belongsToCrossProviderStory = (
+export const isDeterministicCrossProviderStoryMatch = (
   item: SummaryEvidenceItem,
   head: SummaryEvidenceItem,
   policy: StoryRankingPolicy,
@@ -51,7 +57,7 @@ const belongsToCrossProviderStory = (
     return false;
   }
 
-  if (!claimFacetsAreCompatible(item, head, policy)) {
+  if (!storyClaimFacetsAreCompatible(item, head, policy)) {
     return false;
   }
 
@@ -83,7 +89,7 @@ const belongsToCrossProviderStory = (
   return semanticMatch || productEventMatch;
 };
 
-const claimFacetsAreCompatible = (
+export const storyClaimFacetsAreCompatible = (
   item: SummaryEvidenceItem,
   head: SummaryEvidenceItem,
   policy: StoryRankingPolicy,
@@ -121,8 +127,63 @@ const claimFacetsAreCompatible = (
   );
 };
 
-const canonicalStoryKeysConflict = (left: string, right: string): boolean =>
+export const canonicalStoryKeysConflict = (
+  left: string,
+  right: string,
+): boolean =>
   (left.startsWith("github-repo:") && right.startsWith("github-repo:")) ||
   (left.startsWith("url:") &&
     right.startsWith("url:") &&
     left.slice(4).split("/").at(0) === right.slice(4).split("/").at(0));
+
+export const verifiedStoryRelationPairKey = (
+  leftFeedItemId: string,
+  rightFeedItemId: string,
+): string => [leftFeedItemId, rightFeedItemId].sort().join("\u0000");
+
+export const isVerifiedStoryRelationGuardEligible = (
+  item: SummaryEvidenceItem,
+  candidate: SummaryEvidenceItem,
+  policy: StoryRankingPolicy,
+): boolean => {
+  if (item.providerKey === candidate.providerKey) {
+    return false;
+  }
+  const itemKey = storyKey(item, policy);
+  const candidateKey = storyKey(candidate, policy);
+  if (
+    itemKey !== candidateKey &&
+    canonicalStoryKeysConflict(itemKey, candidateKey)
+  ) {
+    return false;
+  }
+  if (!storyClaimFacetsAreCompatible(item, candidate, policy)) {
+    return false;
+  }
+  if (
+    Math.abs(item.publishedAt.getTime() - candidate.publishedAt.getTime()) >
+    VERIFIED_STORY_RELATION_MAX_TIME_DISTANCE_MS
+  ) {
+    return false;
+  }
+
+  const itemTokens = storyTopicTokens(item, policy);
+  const candidateTokens = storyTopicTokens(candidate, policy);
+  const sharedTopicTokens = sharedStoryTopicTokenCount(
+    itemTokens,
+    candidateTokens,
+  );
+  return (
+    sharedStoryTopicTokenCount(
+      storyTopicAnchorTokens(itemTokens),
+      storyTopicAnchorTokens(candidateTokens),
+    ) > 0 ||
+    sharedStoryTopicTokenCount(
+      storyTopicSpecificProductTokens(itemTokens),
+      storyTopicSpecificProductTokens(candidateTokens),
+    ) > 0 ||
+    sharedTopicTokens >= 3
+  );
+};
+
+const VERIFIED_STORY_RELATION_MAX_TIME_DISTANCE_MS = 30 * 60 * 60 * 1000;

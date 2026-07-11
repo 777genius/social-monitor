@@ -9,6 +9,10 @@ import {
   type AgentRuntimeReaderSummaryTopicLabelerOptions,
 } from "../../adapters/model/agent-runtime-reader-summary-topic-labeler.adapter";
 import {
+  resolveAgentRuntimeReaderSummaryStoryRelationVerifierOptions,
+  type AgentRuntimeReaderSummaryStoryRelationVerifierOptions,
+} from "../../adapters/model/agent-runtime-reader-summary-story-relation-verifier.adapter";
+import {
   resolveAgentRuntimeSummaryModelOptions,
   type AgentRuntimeSummaryModelAdapterOptions,
 } from "../../adapters/model/agent-runtime-summary-model.adapter";
@@ -33,6 +37,10 @@ export const SUMMARY_AGENT_RUNTIME_READER_SUMMARY_MODEL_OPTIONS = Symbol(
 );
 export const SUMMARY_AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_OPTIONS =
   Symbol("SUMMARY_AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_OPTIONS");
+export const SUMMARY_AGENT_RUNTIME_READER_SUMMARY_STORY_RELATION_VERIFIER_OPTIONS =
+  Symbol(
+    "SUMMARY_AGENT_RUNTIME_READER_SUMMARY_STORY_RELATION_VERIFIER_OPTIONS",
+  );
 
 export type SummaryAgentRuntimeClientOptions = {
   readonly address: string;
@@ -82,6 +90,18 @@ export const summaryAgentRuntimeReaderSummaryTopicLabelerOptionsProvider: Provid
     provide: SUMMARY_AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_OPTIONS,
     useFactory: (client: GrpcAgentRuntimeClient) =>
       resolveAgentRuntimeReaderSummaryTopicLabelerOptions(process.env, client),
+    inject: [GrpcAgentRuntimeClient],
+  };
+
+export const summaryAgentRuntimeReaderSummaryStoryRelationVerifierOptionsProvider: Provider<AgentRuntimeReaderSummaryStoryRelationVerifierOptions> =
+  {
+    provide:
+      SUMMARY_AGENT_RUNTIME_READER_SUMMARY_STORY_RELATION_VERIFIER_OPTIONS,
+    useFactory: (client: GrpcAgentRuntimeClient) =>
+      resolveAgentRuntimeReaderSummaryStoryRelationVerifierOptions(
+        process.env,
+        client,
+      ),
     inject: [GrpcAgentRuntimeClient],
   };
 

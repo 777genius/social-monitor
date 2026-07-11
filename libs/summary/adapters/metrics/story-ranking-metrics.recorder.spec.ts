@@ -7,6 +7,28 @@ import {
 import { StoryRankingMetricsRecorder } from "./story-ranking-metrics.recorder";
 
 describe("StoryRankingMetricsRecorder", () => {
+  it("records bounded semantic verification without raw evidence labels", () => {
+    const metrics = new InMemoryMetricsRecorder();
+    const recorder = new StoryRankingMetricsRecorder(metrics);
+
+    recorder.recordStoryRelationVerification({
+      status: "completed",
+      candidateCount: 7,
+      approvedCount: 2,
+    });
+
+    const labels = { status: "completed" };
+    expect(
+      metrics.latestGaugeValue(
+        "summary_story_relation_candidates_total",
+        labels,
+      ),
+    ).toBe(7);
+    expect(
+      metrics.latestGaugeValue("summary_story_relation_approved_total", labels),
+    ).toBe(2);
+  });
+
   it("records production ranking and dedup gauges with the policy version label", () => {
     const metrics = new InMemoryMetricsRecorder();
     const recorder = new StoryRankingMetricsRecorder(metrics);

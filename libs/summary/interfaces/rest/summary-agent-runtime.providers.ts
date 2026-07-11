@@ -10,6 +10,10 @@ import {
   type AgentRuntimeReaderSummaryTopicLabelerOptions,
 } from "../../adapters/model/agent-runtime-reader-summary-topic-labeler.adapter";
 import {
+  AgentRuntimeReaderSummaryStoryRelationVerifier,
+  type AgentRuntimeReaderSummaryStoryRelationVerifierOptions,
+} from "../../adapters/model/agent-runtime-reader-summary-story-relation-verifier.adapter";
+import {
   AgentRuntimeSummaryModelAdapter,
   type AgentRuntimeSummaryModelAdapterOptions,
 } from "../../adapters/model/agent-runtime-summary-model.adapter";
@@ -18,6 +22,7 @@ import {
   SUMMARY_AGENT_RUNTIME_CLIENT_OPTIONS,
   SUMMARY_AGENT_RUNTIME_READER_SUMMARY_MODEL_OPTIONS,
   SUMMARY_AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_OPTIONS,
+  SUMMARY_AGENT_RUNTIME_READER_SUMMARY_STORY_RELATION_VERIFIER_OPTIONS,
   SUMMARY_AGENT_RUNTIME_SUMMARY_MODEL_OPTIONS,
   type SummaryAgentRuntimeClientOptions,
 } from "./summary-agent-runtime-provider-tokens";
@@ -55,5 +60,14 @@ export const summaryAgentRuntimeProviders: readonly Provider[] = [
     useFactory: (options: AgentRuntimeReaderSummaryTopicLabelerOptions) =>
       new AgentRuntimeReaderSummaryTopicLabeler(options),
     inject: [SUMMARY_AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_OPTIONS],
+  },
+  {
+    provide: AgentRuntimeReaderSummaryStoryRelationVerifier,
+    useFactory: (
+      options: AgentRuntimeReaderSummaryStoryRelationVerifierOptions,
+    ) => new AgentRuntimeReaderSummaryStoryRelationVerifier(options),
+    inject: [
+      SUMMARY_AGENT_RUNTIME_READER_SUMMARY_STORY_RELATION_VERIFIER_OPTIONS,
+    ],
   },
 ];
