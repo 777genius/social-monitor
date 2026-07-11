@@ -547,10 +547,14 @@ function readSqliteJson<TValue>(
       readonly error: string;
     } {
   try {
-    const output = execFileSync("sqlite3", ["-json", ledgerPath, sql], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    const output = execFileSync(
+      "sqlite3",
+      ["-readonly", "-json", ledgerPath, sql],
+      {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
     const normalized = output.trim();
 
     return {
