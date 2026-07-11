@@ -9,20 +9,20 @@
     "rawPostTextPersistedInReport": false
   },
   "artifact": {
-    "artifactFingerprint": "0be0fa34",
+    "artifactFingerprint": "9abec416",
     "periodStartedAt": "2026-07-09T00:00:00.000Z",
     "periodEndedAt": "2026-07-10T00:00:00.000Z",
     "status": "COMPLETED"
   },
   "ranking": {
-    "topReadCount": 7,
-    "topReadWithCitationCount": 7,
-    "topReadWithinWindowCount": 7,
+    "topReadCount": 6,
+    "topReadWithCitationCount": 6,
+    "topReadWithinWindowCount": 6,
     "unknownCitationCount": 0,
     "unsupportedConfirmedProviderCount": 0,
-    "crossSourceTopReadCount": 5,
+    "crossSourceTopReadCount": 2,
     "dominantProviderTopReadCount": 4,
-    "providerDiversityCap": 4,
+    "providerDiversityCap": 6,
     "materialSignalInversionCount": 0,
     "unexplainedSignalInversionCount": 0,
     "unexplainedSignalInversions": [],

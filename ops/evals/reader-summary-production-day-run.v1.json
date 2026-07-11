@@ -25,21 +25,21 @@
     "frontendFixturePath": "/var/folders/7b/ydmc_b0n251bc4hss4tz8y880000gn/T/social-monitor/reader-summary-production-day/2026-07-09/frontend-reader-summary-2026-07-09.fixture.v1.json"
   },
   "run": {
-    "startedAt": "2026-07-10T19:34:32.892Z",
-    "completedAt": "2026-07-10T19:43:56.592Z"
+    "startedAt": "2026-07-10T21:53:13.039Z",
+    "completedAt": "2026-07-10T22:02:53.770Z"
   },
   "summary": {
     "evidenceArtifactId": "durable-reader-summary-postgres-evidence-v1",
-    "readerSummaryId": "b6bf604a-c886-470b-80ea-52826e45e40a",
-    "readerSummaryJobId": "3f673df7-9633-4be4-89a8-b6fad3ddce31",
-    "headline": "GPT-5.6 rollout dominates AI tool chatter as agents move deeper into daily work"
+    "readerSummaryId": "45d5f8cd-d85b-4357-9704-9d985abb7202",
+    "readerSummaryJobId": "1254bc48-ae10-411f-b337-efb3bbd47da4",
+    "headline": "OpenAI rolls out GPT-5.6 and ChatGPT Work as agent workflows take center stage"
   },
   "steps": [
     {
       "id": "migrate",
       "command": "npm run migrate:deploy",
       "status": "passed",
-      "durationMs": 4774,
+      "durationMs": 5773,
       "exitCode": 0
     },
     {
@@ -53,42 +53,42 @@
       "id": "collection-quality",
       "command": "npm run check:yesterday-social-collection-quality -- --update --date 2026-07-09 --write-failed-report",
       "status": "passed",
-      "durationMs": 1614,
+      "durationMs": 1881,
       "exitCode": 0
     },
     {
       "id": "durable-reader-summary",
       "command": "npm run capture:durable-reader-summary",
       "status": "passed",
-      "durationMs": 542725,
+      "durationMs": 560402,
       "exitCode": 0
     },
     {
       "id": "artifact-quality",
       "command": "npm run check:yesterday-reader-summary-artifact-quality -- --update --date 2026-07-09",
       "status": "passed",
-      "durationMs": 5512,
+      "durationMs": 5328,
       "exitCode": 0
     },
     {
       "id": "quality-dashboard",
       "command": "npm run check:reader-summary-quality-dashboard -- --update --date 2026-07-09",
       "status": "passed",
-      "durationMs": 3059,
+      "durationMs": 2258,
       "exitCode": 0
     },
     {
       "id": "top-read-ranking",
       "command": "npm run check:reader-summary-top-read-ranking -- --update --date 2026-07-09",
       "status": "passed",
-      "durationMs": 2250,
+      "durationMs": 1878,
       "exitCode": 0
     },
     {
       "id": "source-quality-trace",
       "command": "npm run check:reader-summary-source-quality-trace -- --update --date 2026-07-09",
       "status": "passed",
-      "durationMs": 3717,
+      "durationMs": 3181,
       "exitCode": 0
     },
     {
@@ -105,13 +105,13 @@
     "observedButPublishedOutsideWindowFeedItemCount": 285,
     "duplicateFeedItemCount": 0,
     "lowRelevanceFeedItemCount": 0,
-    "summaryCandidateFeedItemCount": 493,
-    "selectedFeedItemCount": 118,
-    "topReadCount": 7,
+    "summaryCandidateFeedItemCount": 494,
+    "selectedFeedItemCount": 117,
+    "topReadCount": 6,
     "providerCounts": {
-      "github-trending-page": 71,
+      "github-trending-page": 70,
       "hacker-news": 79,
-      "reddit": 234,
+      "reddit": 235,
       "rss": 129,
       "x-twitter": 51
     },

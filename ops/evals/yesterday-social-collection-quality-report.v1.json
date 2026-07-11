@@ -29,21 +29,21 @@
   "providerReports": [
     {
       "providerKey": "github-trending-page",
-      "feedItemCount": 71,
-      "visibleFeedItemCount": 71,
+      "feedItemCount": 70,
+      "visibleFeedItemCount": 70,
       "hiddenFeedItemCount": 0,
       "sourceItemCount": 200,
-      "distinctDedupeKeyCount": 71,
+      "distinctDedupeKeyCount": 70,
       "duplicateRate": 0,
       "textCoverage": 1,
       "canonicalUrlCoverage": 1,
       "providerMetadataCoverage": 1,
       "engagementMetadataCoverage": 0,
-      "queryTermHitRate": 0.254,
+      "queryTermHitRate": 0.257,
       "publishedOnTargetDateRate": 1,
       "medianObservedAgeHours": 0.001,
       "p90ObservedAgeHours": 0.001,
-      "averageBodyPreviewLength": 162.592,
+      "averageBodyPreviewLength": 162.986,
       "rankInputReadinessScore": 0.8
     },
     {
@@ -67,21 +67,21 @@
     },
     {
       "providerKey": "reddit",
-      "feedItemCount": 234,
-      "visibleFeedItemCount": 234,
+      "feedItemCount": 235,
+      "visibleFeedItemCount": 235,
       "hiddenFeedItemCount": 0,
       "sourceItemCount": 319,
-      "distinctDedupeKeyCount": 234,
+      "distinctDedupeKeyCount": 235,
       "duplicateRate": 0,
       "textCoverage": 1,
       "canonicalUrlCoverage": 1,
       "providerMetadataCoverage": 1,
       "engagementMetadataCoverage": 1,
-      "queryTermHitRate": 0.5,
+      "queryTermHitRate": 0.502,
       "publishedOnTargetDateRate": 1,
-      "medianObservedAgeHours": 6.149,
-      "p90ObservedAgeHours": 23.073,
-      "averageBodyPreviewLength": 222.791,
+      "medianObservedAgeHours": 6.446,
+      "p90ObservedAgeHours": 23.25,
+      "averageBodyPreviewLength": 222.357,
       "rankInputReadinessScore": 1
     },
     {
@@ -99,7 +99,7 @@
       "queryTermHitRate": 0.519,
       "publishedOnTargetDateRate": 1,
       "medianObservedAgeHours": 1.094,
-      "p90ObservedAgeHours": 26.835,
+      "p90ObservedAgeHours": 28.834,
       "averageBodyPreviewLength": 481.628,
       "rankInputReadinessScore": 0.8
     },
@@ -145,7 +145,7 @@
       "startInclusive": "2026-07-09T00:00:00.000Z",
       "endExclusive": "2026-07-10T00:00:00.000Z"
     },
-    "observedInsideWindowFeedItemCount": 675,
+    "observedInsideWindowFeedItemCount": 674,
     "observedOutsideWindowFeedItemCount": 0,
     "observedButPublishedOutsideWindowFeedItemCount": 285,
     "publishedInsideWindowFeedItemCount": 564,
@@ -154,12 +154,12 @@
     "lowRelevanceFeedItemCount": 0,
     "mutedFeedItemCount": 0,
     "userRatedFeedItemCount": 0,
-    "summaryCandidateFeedItemCount": 493,
+    "summaryCandidateFeedItemCount": 494,
     "providerBreakdown": [
       {
         "providerKey": "github-trending-page",
-        "observedInsideWindowFeedItemCount": 71,
-        "publishedInsideWindowFeedItemCount": 71,
+        "observedInsideWindowFeedItemCount": 70,
+        "publishedInsideWindowFeedItemCount": 70,
         "observedButPublishedOutsideWindowFeedItemCount": 0,
         "publishedOutsideWindowFeedItemCount": 0,
         "duplicateFeedItemCount": 0,
@@ -181,7 +181,7 @@
       {
         "providerKey": "reddit",
         "observedInsideWindowFeedItemCount": 272,
-        "publishedInsideWindowFeedItemCount": 234,
+        "publishedInsideWindowFeedItemCount": 235,
         "observedButPublishedOutsideWindowFeedItemCount": 154,
         "publishedOutsideWindowFeedItemCount": 0,
         "duplicateFeedItemCount": 0,
@@ -221,9 +221,9 @@
       "interestFingerprint": "b935f4783b43",
       "feedItemCount": 513,
       "providerCounts": {
-        "github-trending-page": 71,
+        "github-trending-page": 70,
         "hacker-news": 79,
-        "reddit": 234,
+        "reddit": 235,
         "rss": 129
       },
       "containsAllPrimarySources": false
@@ -358,11 +358,11 @@
     "readError": null
   },
   "summaryArtifactCoverage": {
-    "artifactCount": 49,
-    "jobCount": 84,
+    "artifactCount": 58,
+    "jobCount": 93,
     "statusCounts": {
       "COMPLETED": 1,
-      "SUPERSEDED": 48
+      "SUPERSEDED": 57
     },
     "verificationStatus": "verified_from_summary_artifacts"
   },
