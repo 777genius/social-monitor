@@ -183,10 +183,14 @@ describe("x collector quality report support", () => {
       expect(jest.mocked(execFileSync)).toHaveBeenCalled();
       for (const [command, args] of jest.mocked(execFileSync).mock.calls) {
         expect(command).toBe("sqlite3");
-        expect(Array.isArray(args) ? args.slice(0, 2) : args).toEqual([
-          "-readonly",
-          "-json",
-        ]);
+        expect(Array.isArray(args)).toBe(true);
+        if (!Array.isArray(args)) {
+          continue;
+        }
+        expect(args.slice(0, 2)).toEqual(["-readonly", "-json"]);
+        const ledgerUri = new URL(String(args[2]));
+        expect(ledgerUri.protocol).toBe("file:");
+        expect(ledgerUri.searchParams.get("immutable")).toBe("1");
       }
     } finally {
       rmSync(directory, { recursive: true, force: true });
