@@ -103,6 +103,12 @@ export const ensureTopicLabelExpressesClaimFacet = (
   return alreadyExpressesClaim ? label : `${label} ${rule.suffix}`;
 };
 
+export const topicLabelExpressesClaimType = (
+  label: string,
+  claimType: ReaderSummaryTopicClaimType,
+): boolean =>
+  claimType === "other" || claimLabelRules[claimType].marker.test(label);
+
 const normalizeSemanticPart = (value: string | undefined): string =>
   value?.replace(/\s+/gu, " ").trim() ?? "";
 

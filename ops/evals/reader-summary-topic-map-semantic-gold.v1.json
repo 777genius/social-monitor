@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "artifactFormat": "reader-summary-topic-map-semantic-gold-v1",
+  "collectionDate": "2026-07-09",
+  "expectations": [
+    {
+      "feedItemId": "e3531c7c-ee85-4265-bc03-c5869b20aace",
+      "expectedStoryKey": "gpt-5.6-family-rollout",
+      "expectedTopicKey": "gpt-5.6-family-rollout",
+      "expectedClaimType": "release",
+      "expectedSubjectTokens": ["gpt-5.6", "family"],
+      "requiredInTopicMap": true
+    },
+    {
+      "feedItemId": "574f53f6-1de3-480a-8553-396d4201cf3c",
+      "expectedStoryKey": "gpt-5.6-codex-availability",
+      "requiredInTopicMap": false
+    },
+    {
+      "feedItemId": "a0ea3e63-50e3-42a1-91fc-2c52f7854fdc",
+      "expectedStoryKey": "gpt-5.6-sol-benchmark",
+      "expectedTopicKey": "gpt-5.6-sol-benchmark",
+      "expectedClaimType": "benchmark",
+      "expectedSubjectTokens": ["gpt-5.6", "sol"],
+      "requiredInTopicMap": true
+    },
+    {
+      "feedItemId": "e73cb40d-8b18-408a-9373-ae974255739d",
+      "expectedStoryKey": "bun-rewrite",
+      "requiredInTopicMap": false
+    },
+    {
+      "feedItemId": "0b97f58d-4e7c-46d0-89cf-4be3eecd037c",
+      "expectedStoryKey": "fable-availability",
+      "requiredInTopicMap": false
+    },
+    {
+      "feedItemId": "d47020c2-ad62-4d93-8518-0bc38f5bb951",
+      "expectedStoryKey": "chatgpt-work-openai",
+      "expectedTopicKey": "chatgpt-work",
+      "expectedClaimType": "release",
+      "expectedSubjectTokens": ["chatgpt", "work"],
+      "requiredInTopicMap": true
+    },
+    {
+      "feedItemId": "1fd84590-83d9-4f50-a372-b87fce39eb11",
+      "expectedStoryKey": "chatgpt-work-openai",
+      "expectedTopicKey": "chatgpt-work",
+      "expectedClaimType": "release",
+      "expectedSubjectTokens": ["chatgpt", "work"],
+      "requiredInTopicMap": true
+    },
+    {
+      "feedItemId": "d9ea12d5-3513-458e-9ede-6321468a3233",
+      "expectedStoryKey": "chatgpt-work-sama",
+      "expectedTopicKey": "chatgpt-work",
+      "expectedClaimType": "release",
+      "expectedSubjectTokens": ["chatgpt", "work"],
+      "requiredInTopicMap": true
+    },
+    {
+      "feedItemId": "025c1450-d7f2-4d18-b7e4-e90edad864ba",
+      "expectedStoryKey": "chatgpt-work-gdb",
+      "expectedTopicKey": "chatgpt-work",
+      "expectedClaimType": "release",
+      "expectedSubjectTokens": ["chatgpt", "work"],
+      "requiredInTopicMap": true
+    }
+  ]
+}
