@@ -38,10 +38,18 @@ class ReaderSummaryTopPostsSliver extends StatefulWidget {
 class _ReaderSummaryTopPostsSliverState
     extends State<ReaderSummaryTopPostsSliver> {
   _TopPostSort _sort = _TopPostSort.relevance;
-  _TopPostBoard _board = _TopPostBoard.posts;
+  late _TopPostBoard _board;
   final Set<String> _hiddenProviders = {};
   int _visibleItemLimit = _topPostsInitialVisibleCount;
   bool _denseView = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _board = widget.items.any((item) => !_isGithubTrendingTopRead(item))
+        ? _TopPostBoard.posts
+        : _TopPostBoard.githubTrending;
+  }
 
   @override
   void didUpdateWidget(covariant ReaderSummaryTopPostsSliver oldWidget) {
@@ -60,10 +68,7 @@ class _ReaderSummaryTopPostsSliverState
     final githubTrendingItems = widget.items
         .where(_isGithubTrendingTopRead)
         .toList(growable: false);
-    final activeBoard = _resolveBoard(
-      hasPosts: postItems.isNotEmpty,
-      hasGithubTrending: githubTrendingItems.isNotEmpty,
-    );
+    final activeBoard = _board;
     final boardItems = switch (activeBoard) {
       _TopPostBoard.posts => postItems,
       _TopPostBoard.githubTrending => githubTrendingItems,
@@ -88,8 +93,6 @@ class _ReaderSummaryTopPostsSliverState
           child: _TopPostsHeader(
             board: activeBoard,
             sort: _sort,
-            showBoardToggle:
-                postItems.isNotEmpty && githubTrendingItems.isNotEmpty,
             postCount: postItems.length,
             githubTrendingCount: githubTrendingItems.length,
             curatedTopPostCount: widget.curatedTopPostCount,
@@ -181,22 +184,6 @@ class _ReaderSummaryTopPostsSliverState
     }
 
     return topPostEngagementScore(b).compareTo(topPostEngagementScore(a));
-  }
-
-  _TopPostBoard _resolveBoard({
-    required bool hasPosts,
-    required bool hasGithubTrending,
-  }) {
-    if (_board == _TopPostBoard.githubTrending && hasGithubTrending) {
-      return _TopPostBoard.githubTrending;
-    }
-    if (_board == _TopPostBoard.posts && hasPosts) {
-      return _TopPostBoard.posts;
-    }
-    if (hasGithubTrending && !hasPosts) {
-      return _TopPostBoard.githubTrending;
-    }
-    return _TopPostBoard.posts;
   }
 
   void _setBoard(_TopPostBoard board) {

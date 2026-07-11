@@ -63,6 +63,7 @@ part 'reader_summary_top_post_row.dart';
 part 'reader_summary_top_posts.dart';
 part 'reader_summary_top_posts_sliver.dart';
 part 'reader_summary_top_posts_controls.dart';
+part 'reader_summary_top_posts_tabs.dart';
 
 class ReaderSummaryBriefSurface extends StatefulWidget {
   const ReaderSummaryBriefSurface({

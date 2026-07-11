@@ -224,7 +224,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('GitHub Trending'), findsWidgets);
+    expect(find.text('GitHub trends'), findsOneWidget);
     expect(find.text('Repositories ranked by GitHub momentum'), findsOneWidget);
     expect(find.text('calesthio/OpenMontage'), findsOneWidget);
     expect(find.text('Reddit thread on agent reliability'), findsNothing);
