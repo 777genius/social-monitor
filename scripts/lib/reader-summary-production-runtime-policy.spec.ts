@@ -10,6 +10,9 @@ import {
 describe("reader summary production runtime policy", () => {
   it("budgets capture and outer orchestration for every sequential LLM stage", () => {
     expect(
+      READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.topicLabelerTimeoutMs,
+    ).toBeGreaterThanOrEqual(900_000);
+    expect(
       READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.captureTimeoutMs,
     ).toBeGreaterThanOrEqual(readerSummaryProductionMinimumCaptureTimeoutMs());
     expect(

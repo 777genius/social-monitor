@@ -1,12 +1,12 @@
 export const READER_SUMMARY_PRODUCTION_RUNTIME_POLICY = {
   storyRelationTimeoutMs: 900_000,
   summaryModelTimeoutMs: 900_000,
-  topicLabelerTimeoutMs: 600_000,
+  topicLabelerTimeoutMs: 900_000,
   topicRelationTimeoutMs: 300_000,
   captureGraceMs: 60_000,
-  captureTimeoutMs: 2_760_000,
+  captureTimeoutMs: 3_060_000,
   orchestrationGraceMs: 120_000,
-  orchestrationTimeoutMs: 2_880_000,
+  orchestrationTimeoutMs: 3_180_000,
 } as const;
 
 export const readerSummaryProductionMinimumCaptureTimeoutMs = (): number =>
