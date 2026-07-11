@@ -21,8 +21,21 @@ export const isConversationalOrTruncatedReaderTitle = (
 
 export const isUnpolishedReaderTitle = (value: string): boolean =>
   /^X post by @[^:]+:/iu.test(value.trim()) ||
+  isLowInformationReaderTitle(value) ||
   isConversationalOrTruncatedReaderTitle(value) ||
   isTechnicalReaderTitle(value);
+
+const isLowInformationReaderTitle = (value: string): boolean => {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]+/gu, "")
+    .replace(/\s+/gu, " ");
+
+  return /^(?:check (?:this|it) out|take a look|look at this|watch this)$/u.test(
+    normalized,
+  );
+};
 
 export const isTechnicalReaderTitle = (value: string): boolean => {
   const normalized = value.trim().toLowerCase();
@@ -144,6 +157,38 @@ export const isReaderTitleReasonDuplicate = (
   title: string,
   reason: string,
 ): boolean => normalizeReaderText(title) === normalizeReaderText(reason);
+
+const readerProviderMentions = [
+  { providerKey: "reddit", pattern: /\b(?:reddit|subreddit)\b/iu },
+  { providerKey: "hacker-news", pattern: /\b(?:hacker news|hn)\b/iu },
+  { providerKey: "rss", pattern: /\brss\b/iu },
+  {
+    providerKey: "x-twitter",
+    pattern: /\b(?:x\/twitter|twitter|x post|posts? on x)\b/iu,
+  },
+  { providerKey: "github", pattern: /\bgithub\b/iu },
+] as const;
+
+export const mentionsUnsupportedReaderProvider = (
+  value: string,
+  supportedProviderKeys: readonly string[],
+): boolean => {
+  const supported = new Set(
+    supportedProviderKeys.map(normalizeReaderProviderFamily),
+  );
+
+  return readerProviderMentions.some(
+    ({ providerKey, pattern }) =>
+      pattern.test(value) && !supported.has(providerKey),
+  );
+};
+
+const normalizeReaderProviderFamily = (providerKey: string): string => {
+  if (providerKey.startsWith("github")) {
+    return "github";
+  }
+  return providerKey;
+};
 
 const normalizeReaderText = (value: string): string =>
   value

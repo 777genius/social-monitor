@@ -7,6 +7,13 @@ import {
 } from "./reader-summary-reader-facing-text-policy";
 
 describe("reader summary reader-facing text policy", () => {
+  it("rejects low-information teaser titles", () => {
+    expect(isUnpolishedReaderTitle("Check this out")).toBe(true);
+    expect(isUnpolishedReaderTitle("Take a look!")).toBe(true);
+    expect(
+      isUnpolishedReaderTitle("Codex powers OpenAI's new work product"),
+    ).toBe(false);
+  });
   it("detects copied social hooks and truncated titles", () => {
     expect(
       isConversationalOrTruncatedReaderTitle(

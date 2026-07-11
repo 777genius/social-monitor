@@ -123,10 +123,43 @@ const cleanPreviewTitle = (value: string): string => {
   const withoutUrls = value.replace(/\s+https?:\/\/\S+/giu, "").trim();
 
   return compactReaderTitle(
-    sentenceCaseTitle(firstSentenceForTitle(withoutUrls)).replace(
+    sentenceCaseTitle(previewSentenceForTitle(withoutUrls)).replace(
       /[.!?]+$/u,
       "",
     ),
+  );
+};
+
+const previewSentenceForTitle = (value: string): string => {
+  const sentences = value
+    .trim()
+    .split(/(?<=[.!?])\s+/u)
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence.length > 0);
+
+  return (
+    sentences.find(
+      (sentence) => sentence.length >= 24 && !isLowInformationTeaser(sentence),
+    ) ??
+    sentences[0] ??
+    value
+  );
+};
+
+const isLowInformationTeaser = (value: string): boolean => {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]+/gu, "")
+    .replace(/\s+/gu, " ");
+
+  return (
+    /^(?:check (?:this|it) out|take a look|look at this|watch this)$/u.test(
+      normalized,
+    ) ||
+    /^(?:you can )?(?:get|do|make) (?:some )?(?:amazing|great|incredible) (?:things|stuff)(?: done)?$/u.test(
+      normalized,
+    )
   );
 };
 

@@ -19,6 +19,7 @@ import { hasFirstPartyOfficialEvidence } from "../policies/reader-summary-source
 import {
   isFallbackReaderReason,
   isReaderTitleReasonDuplicate,
+  mentionsUnsupportedReaderProvider,
   readerFacingEvidenceExcerpt,
 } from "../policies/reader-summary-reader-facing-text-policy";
 import {
@@ -73,16 +74,17 @@ export const storyToTopRead = (
       ? []
       : [cluster.representativeFeedItemId, ...cluster.duplicateFeedItemIds],
   );
-  const eligibleModelCitationIds = modelCitations
+  const eligibleModelCitations = modelCitations.filter((citation) =>
+    isTopReadEligibleEvidence(evidenceByFeedItemId.get(citation.feedItemId)),
+  );
+  const eligibleModelCitationIds = eligibleModelCitations
     .filter(
       (citation) =>
-        (cluster === undefined ||
-          clusterFeedItemIds.has(citation.feedItemId)) &&
-        isTopReadEligibleEvidence(
-          evidenceByFeedItemId.get(citation.feedItemId),
-        ),
+        cluster === undefined || clusterFeedItemIds.has(citation.feedItemId),
     )
     .map((citation) => citation.citationId);
+  const modelCitationsWereFiltered =
+    eligibleModelCitationIds.length < eligibleModelCitations.length;
   const clusterEvidence =
     cluster === undefined
       ? modelCitedEvidence
@@ -132,11 +134,6 @@ export const storyToTopRead = (
     ...(cluster?.interestIds ?? []),
     ...supportEvidence.map((item) => item.interestId),
   ]);
-  const whyImportant = buildTopReadUserFacingReasons({
-    story,
-    cluster,
-    evidence: supportEvidence,
-  });
   const signalScore = normalizeSignalScore(
     cluster?.score ?? evidence?.score ?? 0,
   );
@@ -144,6 +141,13 @@ export const storyToTopRead = (
     cluster: undefined,
     evidence: supportEvidence,
     providerKey: readerProviderKey,
+  });
+  const whyImportant = buildTopReadUserFacingReasons({
+    story,
+    cluster,
+    evidence: supportEvidence,
+    includeStorySummary: !modelCitationsWereFiltered,
+    supportedProviderKeys: confirmedProviders,
   });
   const title = buildTopReadTitle({
     storyTitle: story.title,
@@ -198,15 +202,23 @@ const buildTopReadUserFacingReasons = (params: {
   readonly story: TopReadCandidate;
   readonly cluster: StoryCluster | undefined;
   readonly evidence: readonly SummaryEvidenceItem[];
+  readonly includeStorySummary: boolean;
+  readonly supportedProviderKeys: readonly string[];
 }): readonly string[] => {
   const candidates = compactUnique([
-    readerFacingStorySummary(params.story),
+    ...(params.includeStorySummary
+      ? [readerFacingStorySummary(params.story)]
+      : []),
     ...(params.cluster?.whyImportant ?? []),
     ...params.evidence.flatMap((item) => item.whyImportant),
-    params.story.summary,
+    ...(params.includeStorySummary ? [params.story.summary] : []),
   ]).filter(
     (reason) =>
       isUserFacingTopReadReason(reason) &&
+      !mentionsUnsupportedReaderProvider(
+        reason,
+        params.supportedProviderKeys,
+      ) &&
       !isReaderTitleReasonDuplicate(params.story.title, reason),
   );
 

@@ -405,7 +405,8 @@ describe("reader summary top read builder", () => {
     const story: TopReadCandidate = {
       storyClusterId: "story:benchmark",
       title: "Artificial Analysis benchmark update",
-      summary: "Artificial Analysis published a model benchmark update.",
+      summary:
+        "Artificial Analysis and an unrelated Reddit post jointly confirm a model benchmark update.",
       interestIds: ["ai-agents"],
       providerKeys: ["x-twitter", "reddit"],
       citationIds: ["citation-x", "citation-unrelated-reddit"],
@@ -414,6 +415,8 @@ describe("reader summary top read builder", () => {
       feedItemId: "feed-x-benchmark",
       providerKey: "x-twitter",
       title: "Artificial Analysis compares GPT-5.6 and Claude",
+      bodyPreview:
+        "Artificial Analysis published a benchmark comparing GPT-5.6 and Claude. The result remains benchmark-specific.",
     });
     const unrelated = evidenceItem({
       feedItemId: "feed-reddit-bun",
@@ -463,6 +466,96 @@ describe("reader summary top read builder", () => {
 
     expect(topRead.citationIds).toEqual(["citation-x"]);
     expect(topRead.confirmedProviderKeys).toEqual(["x-twitter"]);
+    expect(topRead.reason).not.toContain("unrelated Reddit post");
+  });
+
+  it("rejects reason text that names a provider without visible evidence", () => {
+    const story: TopReadCandidate = {
+      storyClusterId: "story:token-efficiency",
+      title: "GPT-5.6 token efficiency claim",
+      summary:
+        "A Reddit post and a Hacker News item both carried the claim that GPT-5.6 is 54% more token efficient on agentic coding. The claim may affect operating cost, but the benchmark method is not described in the excerpt.",
+      interestIds: ["ai-agents"],
+      providerKeys: ["reddit"],
+      citationIds: ["citation-reddit"],
+    };
+    const reddit = evidenceItem({
+      feedItemId: "feed-reddit-efficiency",
+      providerKey: "reddit",
+      title: "GPT-5.6 is 54% more token efficient on agentic coding",
+      bodyPreview:
+        "A Reddit discussion cites a 54% token-efficiency claim for agentic coding. The excerpt does not describe the benchmark method.",
+      whyImportant: [],
+    });
+    const cluster: StoryCluster = {
+      id: story.storyClusterId,
+      storyKey: "url:reddit.com/token-efficiency",
+      representativeFeedItemId: reddit.feedItemId,
+      duplicateFeedItemIds: [],
+      interestIds: story.interestIds,
+      providerKeys: ["reddit"],
+      score: 2.1,
+      observedAtRange: {
+        startedAt: reddit.observedAt,
+        endedAt: new Date(reddit.observedAt.getTime() + 1),
+      },
+      whyImportant: [],
+    };
+    const evidenceCitation = citation({
+      citationId: "citation-reddit",
+      feedItemId: reddit.feedItemId,
+      sourceItemId: reddit.sourceItemId,
+      providerKey: reddit.providerKey,
+    });
+
+    const topRead = storyToTopRead(
+      story,
+      new Map([[evidenceCitation.citationId, evidenceCitation]]),
+      new Map([[reddit.feedItemId, reddit]]),
+      new Map([[cluster.id, cluster]]),
+      evidenceClusterMap([cluster], new Map([[reddit.feedItemId, reddit]])),
+    );
+
+    expect(topRead.confirmedProviderKeys).toEqual(["reddit"]);
+    expect(topRead.reason).not.toContain("Hacker News");
+    expect(topRead.reason).toContain("Reddit");
+  });
+
+  it("skips teaser sentences when a truncated X post has a useful title", () => {
+    const story: TopReadCandidate = {
+      storyClusterId: "story:codex-work",
+      title: "Check this out",
+      summary: "First-party product announcement.",
+      interestIds: ["ai-agents"],
+      providerKeys: ["x-twitter"],
+      citationIds: ["citation-x"],
+    };
+    const evidence = evidenceItem({
+      feedItemId: "feed-x-work",
+      providerKey: "x-twitter",
+      title:
+        "X post by @sama: check this out! you can get some amazing things done. codex is the core of our new work produ...",
+      bodyPreview:
+        "check this out! you can get some amazing things done. codex is the core of our new work product and what makes it so good. codex is not going anywhere.",
+    });
+    const evidenceCitation = citation({
+      citationId: "citation-x",
+      feedItemId: evidence.feedItemId,
+      sourceItemId: evidence.sourceItemId,
+      providerKey: evidence.providerKey,
+    });
+
+    const topRead = storyToTopRead(
+      story,
+      new Map([[evidenceCitation.citationId, evidenceCitation]]),
+      new Map([[evidence.feedItemId, evidence]]),
+      new Map(),
+      new Map(),
+    );
+
+    expect(topRead.title).toBe(
+      "Codex is the core of our new work product and what makes it so good",
+    );
   });
 
   it("keeps internal provider-coverage fallback text out of the reason", () => {
