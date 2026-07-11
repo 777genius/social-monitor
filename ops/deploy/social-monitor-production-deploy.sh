@@ -483,7 +483,7 @@ verify_migration_compatibility() {
 backup_database() (
   local sha=$1
   local output
-  local partial env_file listing api_id database_url database_name
+  local partial env_file listing api_id database_url database_name schema_table_count
   output=$ROOT/backups/pre-autodeploy-${sha:0:12}-$(date -u +%Y%m%dT%H%M%SZ).dump
   partial=$output.partial
   env_file=$STATE/database-backup.$$.env
@@ -502,7 +502,15 @@ backup_database() (
     -v "$ROOT/secrets/db/ca-certificate.crt:/run/social-monitor-db/ca-certificate.crt:ro" \
     "$backup_image" \
     sh -lc 'psql "$DATABASE_URL" -Atc "SELECT current_database()"')
-  [[ $database_name == social_monitor ]] || fail 'effective production database is not social_monitor'
+  [[ $database_name == social_monitor || $database_name == defaultdb ]] || \
+    fail 'effective production database name is outside the project allowlist'
+  schema_table_count=$(docker run --rm \
+    --env-file "$env_file" \
+    -v "$ROOT/secrets/db/ca-certificate.crt:/run/social-monitor-db/ca-certificate.crt:ro" \
+    "$backup_image" \
+    sh -c 'psql "$DATABASE_URL" -Atc "$1"' _ \
+    "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('_prisma_migrations', 'source_items', 'feed_items', 'reader_summary_artifacts')")
+  [[ $schema_table_count == 4 ]] || fail 'effective database is missing the Social Monitor schema fingerprint'
   docker run --rm \
     --env-file "$env_file" \
     -v "$ROOT/secrets/db/ca-certificate.crt:/run/social-monitor-db/ca-certificate.crt:ro" \
