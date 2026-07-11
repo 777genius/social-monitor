@@ -8,21 +8,17 @@ import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
 void main() {
-  test(
-    'production config starts auth session discovery without workspace env',
-    () {
-      final runtime = const AppFrontendRuntimeConfig(
-        apiBaseUrl: 'http://localhost:3000',
-        bearerToken: 'jwt.header.signature',
-        correlationId: 'test-correlation',
-      ).createRuntimeOrNull();
+  test('production config starts proxy auth session discovery', () {
+    final runtime = const AppFrontendRuntimeConfig(
+      apiBaseUrl: 'http://localhost:3000',
+      correlationId: 'test-correlation',
+    ).createRuntimeOrNull();
 
-      expect(runtime, isNotNull);
-      expect(runtime?.session.isRestoring, isTrue);
-      expect(runtime?.workspace.isAvailable, isFalse);
-      expect(runtime?.generatedApiRuntime, isNotNull);
-    },
-  );
+    expect(runtime, isNotNull);
+    expect(runtime?.session.isRestoring, isTrue);
+    expect(runtime?.workspace.isAvailable, isFalse);
+    expect(runtime?.generatedApiRuntime, isNotNull);
+  });
 
   test(
     'production config can start connected workspace runtime without bearer',
@@ -207,6 +203,24 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Route not found'), findsOneWidget);
+  });
+
+  testWidgets('preserves a public summary deep link while restoring', (
+    tester,
+  ) async {
+    const deepLink = '/summaries/reader-summary-1';
+    final composition = AppCompositionRoot.production(
+      runtime: AppShellRuntime.restoring(generatedApiRuntime: Object()),
+      initialLocation: deepLink,
+    );
+
+    await tester.pumpWidget(SocialMonitorApp(composition: composition));
+    await tester.pump();
+
+    expect(
+      composition.router.routeInformationProvider.value.uri.path,
+      deepLink,
+    );
   });
 
   testWidgets('honors configured initial route for visual e2e', (tester) async {

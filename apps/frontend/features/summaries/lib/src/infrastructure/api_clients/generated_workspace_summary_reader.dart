@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:social_monitor_generated_api/social_monitor_generated_api.dart'
     as generated;
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
@@ -33,8 +35,9 @@ final class GeneratedWorkspaceSummaryReader {
         );
     return result.fold(
       onSuccess: (dto) {
+        final artifactJson = jsonDecode(jsonEncode(dto.toJson()));
         final artifact = generated.ReaderSummaryArtifactResponseDto.fromJson(
-          dto.toJson(),
+          (artifactJson as Map<String, dynamic>).cast<String, Object?>(),
         );
         final current = _mapper.readerSummary(artifact);
         return Result.success(

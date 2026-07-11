@@ -25,6 +25,10 @@ GoRouter createAppRouter({
         return AppRoutes.auth;
       }
 
+      if (runtime.session.isRestoring) {
+        return null;
+      }
+
       if (runtime.session.isSignedIn && runtime.isGuest && path == '/') {
         return AppRoutes.summaries;
       }
@@ -70,7 +74,11 @@ GoRouter createAppRouter({
               path: feature.route.path,
               pageBuilder: (context, state) => NoTransitionPage<void>(
                 key: state.pageKey,
-                child: feature.buildPage(context, state.uri),
+                child: _RuntimeFeaturePage(
+                  feature: feature,
+                  uri: state.uri,
+                  runtimeController: runtimeController,
+                ),
               ),
             ),
           GoRoute(
@@ -81,7 +89,11 @@ GoRouter createAppRouter({
               );
               return NoTransitionPage<void>(
                 key: state.pageKey,
-                child: summaries.buildPage(context, state.uri),
+                child: _RuntimeFeaturePage(
+                  feature: summaries,
+                  uri: state.uri,
+                  runtimeController: runtimeController,
+                ),
               );
             },
           ),
@@ -89,6 +101,76 @@ GoRouter createAppRouter({
       ),
     ],
   );
+}
+
+class _RuntimeFeaturePage extends StatefulWidget {
+  const _RuntimeFeaturePage({
+    required this.feature,
+    required this.uri,
+    required this.runtimeController,
+  });
+
+  final AppFeatureDescriptor feature;
+  final Uri uri;
+  final AppRuntimeController runtimeController;
+
+  @override
+  State<_RuntimeFeaturePage> createState() => _RuntimeFeaturePageState();
+}
+
+class _RuntimeFeaturePageState extends State<_RuntimeFeaturePage> {
+  Widget? _child;
+  String? _runtimeKey;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.runtimeController.addListener(_handleRuntimeChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant _RuntimeFeaturePage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.runtimeController != widget.runtimeController) {
+      oldWidget.runtimeController.removeListener(_handleRuntimeChanged);
+      widget.runtimeController.addListener(_handleRuntimeChanged);
+    }
+    if (oldWidget.feature != widget.feature || oldWidget.uri != widget.uri) {
+      _child = null;
+      _runtimeKey = null;
+    }
+  }
+
+  void _handleRuntimeChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final runtime = widget.runtimeController.runtime;
+    final scope = runtime.workspace.scope;
+    final runtimeKey = [
+      runtime.session.isSignedIn,
+      runtime.session.isRestoring,
+      runtime.session.userId,
+      runtime.session.userRole,
+      scope?.tenantId,
+      scope?.workspaceId,
+    ].join('|');
+    if (_child == null || _runtimeKey != runtimeKey) {
+      _runtimeKey = runtimeKey;
+      _child = widget.feature.buildPage(context, widget.uri);
+    }
+    return _child!;
+  }
+
+  @override
+  void dispose() {
+    widget.runtimeController.removeListener(_handleRuntimeChanged);
+    super.dispose();
+  }
 }
 
 abstract final class AppRoutes {

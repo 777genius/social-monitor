@@ -62,9 +62,7 @@ final class AppFrontendRuntimeConfig {
   final String? bearerToken;
 
   bool get isConfigured {
-    return apiBaseUrl.trim().isNotEmpty &&
-        ((bearerToken?.trim().isNotEmpty ?? false) ||
-            _workspaceScopeOrNull() != null);
+    return apiBaseUrl.trim().isNotEmpty;
   }
 
   AppShellRuntime? createRuntimeOrNull() {
