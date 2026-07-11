@@ -111,6 +111,10 @@ const claimFacetDefinitions = [
   [/\bartificial\s+analysis\b/iu, "benchmark:artificial-analysis"],
   [/\barc[\s-]?agi\b/iu, "benchmark:arc-agi"],
   [/\bchatgpt\s+work\b/iu, "feature:chatgpt-work"],
+  [
+    /\b(?:first\s+impressions?|hands[\s-]?on|my\s+(?:first\s+)?experience|i\s+(?:tried|tested|used))\b|\bfeel(?:s|t)?\s+(?:amazing|awesome|bad|fast|good|great|slow|terrible)\b/iu,
+    "perspective:user-experience",
+  ],
   [/\bcodex\s+(?:cli|command[\s-]?line)\b/iu, "feature:codex-cli"],
   [/\bclaude\s+reflect\b/iu, "feature:claude-reflect"],
   [
