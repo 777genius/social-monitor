@@ -80,6 +80,41 @@ void main() {
     );
   });
 
+  test('viewer session keeps only public summaries enabled', () {
+    final controller = AppRuntimeController(
+      AppShellRuntime.restoring(generatedApiRuntime: Object()),
+    );
+    const workspace = AppWorkspaceSnapshot(
+      tenantName: 'Public',
+      workspaceName: 'Daily stories',
+      workspaceRole: 'viewer',
+      statusLabel: 'Active',
+      scope: WorkspaceScope(tenantId: 'tenant-1', workspaceId: 'workspace-1'),
+    );
+
+    controller.restoreAuthSession(
+      userId: 'guest-1',
+      userLabel: 'Guest',
+      userRole: 'user',
+      selectedWorkspace: workspace,
+      availableWorkspaces: const [workspace],
+    );
+
+    expect(controller.runtime.isGuest, isTrue);
+    expect(
+      controller.runtime.capabilities.capability('summaries').isEnabled,
+      isTrue,
+    );
+    expect(
+      controller.runtime.capabilities.capability('feed').isEnabled,
+      isFalse,
+    );
+    expect(
+      controller.runtime.capabilities.capability('settings').isEnabled,
+      isFalse,
+    );
+  });
+
   test('feature descriptors reflect restored runtime status', () {
     final composition = AppCompositionRoot.production(
       runtime: AppShellRuntime.restoring(generatedApiRuntime: Object()),

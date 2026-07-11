@@ -78,6 +78,14 @@ final class GeneratedSummariesApiClient implements SummariesApiClient {
   ).load(request);
 
   @override
+  Future<Result<WorkspaceSummaryApiDto>> loadPublishedSummary(
+    LoadPublishedSummaryApiRequest request,
+  ) => GeneratedWorkspaceSummaryReader(
+    runtime: _runtime,
+    mapper: _mapper,
+  ).loadById(request);
+
+  @override
   Future<Result<WorkspaceSummaryApiDto>> loadWorkspaceSummaryHistory(
     LoadWorkspaceSummaryApiRequest request,
   ) => GeneratedWorkspaceSummaryReader(

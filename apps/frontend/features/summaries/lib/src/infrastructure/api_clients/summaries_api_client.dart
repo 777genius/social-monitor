@@ -8,6 +8,7 @@ import '../../application/commands/submit_reader_action_command.dart';
 import '../../application/commands/submit_summary_feedback_command.dart';
 import '../../application/queries/list_summaries_query.dart';
 import '../../application/queries/load_post_ratings_query.dart';
+import '../../application/queries/load_published_summary_query.dart';
 import '../../application/queries/load_summary_detail_query.dart';
 import '../../application/queries/load_topic_recommendations_query.dart';
 import '../../application/queries/load_workspace_summary_job_status_query.dart';
@@ -52,6 +53,10 @@ abstract interface class SummariesApiClient {
 
   Future<Result<WorkspaceSummaryApiDto>> loadWorkspaceSummary(
     LoadWorkspaceSummaryApiRequest request,
+  );
+
+  Future<Result<WorkspaceSummaryApiDto>> loadPublishedSummary(
+    LoadPublishedSummaryApiRequest request,
   );
 
   Future<Result<WorkspaceSummaryApiDto>> loadWorkspaceSummaryHistory(
@@ -133,6 +138,25 @@ final class LoadWorkspaceSummaryApiRequest {
   final WorkspaceScope scope;
   final SummaryPeriod period;
   final bool allowLatestFallback;
+}
+
+final class LoadPublishedSummaryApiRequest {
+  const LoadPublishedSummaryApiRequest({
+    required this.scope,
+    required this.summaryId,
+  });
+
+  factory LoadPublishedSummaryApiRequest.fromQuery(
+    LoadPublishedSummaryQuery query,
+  ) {
+    return LoadPublishedSummaryApiRequest(
+      scope: query.scope,
+      summaryId: query.summaryId.trim(),
+    );
+  }
+
+  final WorkspaceScope scope;
+  final String summaryId;
 }
 
 final class LoadTopicRecommendationsApiRequest {

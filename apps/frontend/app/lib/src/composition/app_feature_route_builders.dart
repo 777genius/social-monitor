@@ -36,7 +36,9 @@ AppRouteWidgetBuilder authFeatureBuilder({
           ),
     ];
     return AuthFeatureRoute.runtime(
-      generatedApiRuntime: workspaces.isEmpty ? runtime.generatedApiRuntime : null,
+      generatedApiRuntime: workspaces.isEmpty
+          ? runtime.generatedApiRuntime
+          : null,
       userId: runtime.session.userId,
       userLabel: runtime.session.userLabel,
       userRole: runtime.session.userRole,
@@ -210,6 +212,16 @@ AppRouteWidgetBuilder summariesFeatureBuilder({
     final generatedApiRuntime = runtime.generatedApiRuntime;
     final capability = runtime.capabilities.capability('summaries');
     if (scope != null && generatedApiRuntime != null && capability.isEnabled) {
+      if (runtime.isGuest) {
+        final summaryId = uri.pathSegments.length > 1
+            ? uri.pathSegments.last.trim()
+            : null;
+        return PublishedSummariesFeatureRoute.generatedApi(
+          generatedApiRuntime: generatedApiRuntime,
+          scope: scope,
+          summaryId: summaryId == null || summaryId.isEmpty ? null : summaryId,
+        );
+      }
       return SummariesFeatureRoute.generatedApi(
         generatedApiRuntime: generatedApiRuntime,
         scope: scope,

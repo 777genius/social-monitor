@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../composition/app_runtime.dart';
 import '../composition/app_theme_mode_controller.dart';
+import 'app_feature_access.dart';
 import 'app_shell_page.dart';
 import 'feature_catalog.dart';
 
@@ -24,7 +25,14 @@ GoRouter createAppRouter({
         return AppRoutes.auth;
       }
 
+      if (runtime.session.isSignedIn && runtime.isGuest && path == '/') {
+        return AppRoutes.summaries;
+      }
+
       final feature = _featureForPath(features, path);
+      if (feature != null && !isAppFeatureVisible(runtime, feature)) {
+        return runtime.isGuest ? AppRoutes.summaries : AppRoutes.dashboard;
+      }
       if (feature != null &&
           feature.route.requiresWorkspace &&
           !runtime.workspace.isAvailable) {
@@ -40,6 +48,7 @@ GoRouter createAppRouter({
         builder: (context, state, child) {
           return AppShellPage(
             features: features,
+            runtimeController: runtimeController,
             themeModeController: themeModeController,
             location: state.uri.path,
             child: child,
@@ -64,6 +73,18 @@ GoRouter createAppRouter({
                 child: feature.buildPage(context, state.uri),
               ),
             ),
+          GoRoute(
+            path: AppRoutes.summaryDetail,
+            pageBuilder: (context, state) {
+              final summaries = features.firstWhere(
+                (feature) => feature.id == 'summaries',
+              );
+              return NoTransitionPage<void>(
+                key: state.pageKey,
+                child: summaries.buildPage(context, state.uri),
+              );
+            },
+          ),
         ],
       ),
     ],
@@ -73,6 +94,8 @@ GoRouter createAppRouter({
 abstract final class AppRoutes {
   static const dashboard = '/';
   static const auth = '/auth';
+  static const summaries = '/summaries';
+  static const summaryDetail = '/summaries/:summaryId';
   static const initialFromEnvironment = String.fromEnvironment(
     'SOCIAL_MONITOR_INITIAL_ROUTE',
     defaultValue: dashboard,
@@ -84,7 +107,8 @@ AppFeatureDescriptor? _featureForPath(
   String path,
 ) {
   for (final feature in features) {
-    if (feature.route.path == path) {
+    if (feature.route.path == path ||
+        (feature.id == 'summaries' && path.startsWith('/summaries/'))) {
       return feature;
     }
   }

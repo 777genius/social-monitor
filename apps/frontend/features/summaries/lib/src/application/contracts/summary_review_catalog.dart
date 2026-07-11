@@ -11,6 +11,7 @@ import '../commands/request_workspace_summary_command.dart';
 import '../commands/submit_reader_action_command.dart';
 import '../commands/submit_summary_feedback_command.dart';
 import '../queries/list_summaries_query.dart';
+import '../queries/load_published_summary_query.dart';
 import '../queries/load_summary_detail_query.dart';
 import '../queries/load_topic_recommendations_query.dart';
 import '../queries/load_workspace_summary_job_status_query.dart';
@@ -40,6 +41,10 @@ abstract interface class SummaryReviewCatalog implements PostRatingCatalog {
 
   Future<Result<WorkspaceSummarySnapshot>> loadWorkspaceSummary(
     LoadWorkspaceSummaryQuery query,
+  );
+
+  Future<Result<WorkspaceSummarySnapshot>> loadPublishedSummary(
+    LoadPublishedSummaryQuery query,
   );
 
   Future<Result<WorkspaceSummarySnapshot>> loadWorkspaceSummaryHistory(

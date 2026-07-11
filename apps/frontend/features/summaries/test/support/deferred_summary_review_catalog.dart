@@ -10,6 +10,7 @@ import 'package:social_monitor_summaries/src/application/commands/submit_summary
 import 'package:social_monitor_summaries/src/application/contracts/summary_review_catalog.dart';
 import 'package:social_monitor_summaries/src/application/queries/list_summaries_query.dart';
 import 'package:social_monitor_summaries/src/application/queries/load_post_ratings_query.dart';
+import 'package:social_monitor_summaries/src/application/queries/load_published_summary_query.dart';
 import 'package:social_monitor_summaries/src/application/queries/load_summary_detail_query.dart';
 import 'package:social_monitor_summaries/src/application/queries/load_topic_recommendations_query.dart';
 import 'package:social_monitor_summaries/src/application/queries/load_workspace_summary_job_status_query.dart';
@@ -116,6 +117,11 @@ final class DeferredSummaryReviewCatalog implements SummaryReviewCatalog {
     }
     return Future.value(Result.success(workspaceSummarySnapshot));
   }
+
+  @override
+  Future<Result<WorkspaceSummarySnapshot>> loadPublishedSummary(
+    LoadPublishedSummaryQuery query,
+  ) => Future.value(Result.success(workspaceSummarySnapshot));
 
   @override
   Future<Result<WorkspaceSummarySnapshot>> loadWorkspaceSummaryHistory(

@@ -19,6 +19,35 @@ final class GeneratedWorkspaceSummaryReader {
   final generated.GeneratedApiRuntime _runtime;
   final GeneratedSummaryRestMapper _mapper;
 
+  Future<Result<WorkspaceSummaryApiDto>> loadById(
+    LoadPublishedSummaryApiRequest request,
+  ) async {
+    final result = await _runtime.client
+        .send<generated.ReaderSummaryResponseDto>(
+          generated.WorkspaceRequest(scope: request.scope),
+          () => _runtime.rest.readerSummaries.readerSummaryControllerGet(
+            readerSummaryId: request.summaryId,
+            xWorkspaceId: request.scope.workspaceId,
+            xTenantId: request.scope.tenantId,
+          ),
+        );
+    return result.fold(
+      onSuccess: (dto) {
+        final artifact = generated.ReaderSummaryArtifactResponseDto.fromJson(
+          dto.toJson(),
+        );
+        final current = _mapper.readerSummary(artifact);
+        return Result.success(
+          WorkspaceSummaryApiDto(
+            current: current,
+            availablePeriods: [current.period],
+          ),
+        );
+      },
+      onFailure: Result<WorkspaceSummaryApiDto>.failure,
+    );
+  }
+
   Future<Result<WorkspaceSummaryApiDto>> load(
     LoadWorkspaceSummaryApiRequest request,
   ) async {

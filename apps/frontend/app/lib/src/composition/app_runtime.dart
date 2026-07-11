@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
+import 'app_runtime_capabilities.dart';
+
 final class AppShellRuntime {
   const AppShellRuntime({
     required this.session,
@@ -20,6 +22,14 @@ final class AppShellRuntime {
   final String correlationId;
   final Object? generatedApiRuntime;
 
+  bool get isAdmin => session.userRole == 'admin';
+
+  bool get isGuest =>
+      session.isSignedIn &&
+      !session.isRestoring &&
+      workspace.isAvailable &&
+      !isAdmin;
+
   factory AppShellRuntime.connected({
     required AppWorkspaceSnapshot workspace,
     required Object generatedApiRuntime,
@@ -30,7 +40,7 @@ final class AppShellRuntime {
       userLabel: 'MVP Operator',
       userRole: 'user',
     ),
-    FeatureFlagSet capabilities = _enabledRuntimeCapabilities,
+    FeatureFlagSet? capabilities,
     FrontendObservability observability = const NoopFrontendObservability(),
     String correlationId = 'frontend-generated-api-session',
   }) {
@@ -40,7 +50,7 @@ final class AppShellRuntime {
       availableWorkspaces: workspace.isAvailable
           ? List<AppWorkspaceSnapshot>.unmodifiable([workspace])
           : const [],
-      capabilities: capabilities,
+      capabilities: capabilities ?? capabilitiesForUserRole(session.userRole),
       observability: observability,
       correlationId: correlationId,
       generatedApiRuntime: generatedApiRuntime,
@@ -61,7 +71,7 @@ final class AppShellRuntime {
       ),
       workspace: const AppWorkspaceSnapshot.missing(),
       availableWorkspaces: const [],
-      capabilities: _disabledRuntimeCapabilities('session_restoring'),
+      capabilities: disabledRuntimeCapabilities('session_restoring'),
       observability: const NoopFrontendObservability(),
       correlationId: correlationId,
       generatedApiRuntime: generatedApiRuntime,
@@ -222,7 +232,7 @@ final class AppRuntimeController extends ChangeNotifier {
       availableWorkspaces: List<AppWorkspaceSnapshot>.unmodifiable(
         availableWorkspaces,
       ),
-      capabilities: _enabledRuntimeCapabilities,
+      capabilities: capabilitiesForUserRole(userRole),
     );
     notifyListeners();
   }
@@ -277,42 +287,4 @@ final class AppWorkspaceSnapshot {
   final WorkspaceScope? scope;
 
   bool get isAvailable => scope != null;
-}
-
-const _enabledRuntimeCapabilities = FeatureFlagSet({
-  'interests': FeatureCapability(key: 'interests', isEnabled: true),
-  'sources': FeatureCapability(key: 'sources', isEnabled: true),
-  'feed': FeatureCapability(key: 'feed', isEnabled: true),
-  'summaries': FeatureCapability(key: 'summaries', isEnabled: true),
-  'settings': FeatureCapability(key: 'settings', isEnabled: true),
-});
-
-FeatureFlagSet _disabledRuntimeCapabilities(String reasonCode) {
-  return FeatureFlagSet({
-    'interests': FeatureCapability(
-      key: 'interests',
-      isEnabled: false,
-      disabledReasonCode: reasonCode,
-    ),
-    'sources': FeatureCapability(
-      key: 'sources',
-      isEnabled: false,
-      disabledReasonCode: reasonCode,
-    ),
-    'feed': FeatureCapability(
-      key: 'feed',
-      isEnabled: false,
-      disabledReasonCode: reasonCode,
-    ),
-    'summaries': FeatureCapability(
-      key: 'summaries',
-      isEnabled: false,
-      disabledReasonCode: reasonCode,
-    ),
-    'settings': FeatureCapability(
-      key: 'settings',
-      isEnabled: false,
-      disabledReasonCode: reasonCode,
-    ),
-  });
 }

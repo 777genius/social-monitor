@@ -4,6 +4,7 @@ import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 
 import '../composition/app_runtime.dart';
 import '../composition/app_theme_mode_controller.dart';
+import 'app_feature_access.dart';
 import 'app_shell_theme_menu_card.dart';
 import 'feature_catalog.dart';
 
@@ -11,38 +12,54 @@ class AppShellPage extends StatelessWidget {
   const AppShellPage({
     super.key,
     required this.features,
+    required this.runtimeController,
     required this.themeModeController,
     required this.location,
     required this.child,
   });
 
   final List<AppFeatureDescriptor> features;
+  final AppRuntimeController runtimeController;
   final AppThemeModeController themeModeController;
   final String location;
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
-    return AppAdaptiveShell(
-      title: 'Social Monitor',
-      destinations: [
-        const AppShellDestination(
-          label: 'Overview',
-          path: '/',
-          icon: Icons.monitor_heart_outlined,
-        ),
-        for (final feature in features)
-          AppShellDestination(
-            label: feature.title,
-            path: feature.route.path,
-            icon: feature.icon,
-          ),
-      ],
-      selectedPath: location,
-      onDestinationSelected: (path) => context.go(path),
-      appBarActions: [_CompactThemeModeMenu(controller: themeModeController)],
-      sidebarFooter: [AppShellThemeMenuCard(controller: themeModeController)],
-      child: child,
+    return AnimatedBuilder(
+      animation: runtimeController,
+      builder: (context, _) {
+        final runtime = runtimeController.runtime;
+        final visibleFeatures = visibleAppFeatures(runtime, features);
+        return AppAdaptiveShell(
+          title: runtime.isGuest ? 'Social Monitor Stories' : 'Social Monitor',
+          destinations: [
+            if (runtime.isAdmin)
+              const AppShellDestination(
+                label: 'Overview',
+                path: '/',
+                icon: Icons.monitor_heart_outlined,
+              ),
+            for (final feature in visibleFeatures)
+              AppShellDestination(
+                label: runtime.isGuest && feature.id == 'summaries'
+                    ? 'Latest summary'
+                    : feature.title,
+                path: feature.route.path,
+                icon: feature.icon,
+              ),
+          ],
+          selectedPath: location,
+          onDestinationSelected: (path) => context.go(path),
+          appBarActions: [
+            _CompactThemeModeMenu(controller: themeModeController),
+          ],
+          sidebarFooter: [
+            AppShellThemeMenuCard(controller: themeModeController),
+          ],
+          child: child,
+        );
+      },
     );
   }
 }

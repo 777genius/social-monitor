@@ -4,6 +4,8 @@ import '../../domain/value_objects/reader_action_target.dart';
 import '../api/post_rating_api_dto.dart';
 import '../api/summary_api_dto.dart';
 import '../api/topic_recommendation_api_dto.dart';
+import 'in_memory_post_rating_learning_effect.dart';
+import 'in_memory_published_summary_reader.dart';
 import 'in_memory_topic_recommendation_reader.dart';
 import 'in_memory_workspace_summary_reader.dart';
 import 'summaries_api_client.dart';
@@ -28,6 +30,7 @@ final class InMemorySummariesApiClient implements SummariesApiClient {
   final TopicRecommendationQueueApiDto? _topicRecommendations;
   final Map<String, ReaderSummaryJobApiDto> _summaryJobs = {};
   final List<LoadWorkspaceSummaryApiRequest> loadWorkspaceSummaryRequests = [];
+  final List<LoadPublishedSummaryApiRequest> loadPublishedSummaryRequests = [];
   final List<LoadWorkspaceSummaryApiRequest>
   loadWorkspaceSummaryHistoryRequests = [];
   final List<RequestWorkspaceSummaryApiRequest>
@@ -76,6 +79,17 @@ final class InMemorySummariesApiClient implements SummariesApiClient {
   ) {
     loadWorkspaceSummaryRequests.add(request);
     return _workspaceSummaryReader().load(request);
+  }
+
+  @override
+  Future<Result<WorkspaceSummaryApiDto>> loadPublishedSummary(
+    LoadPublishedSummaryApiRequest request,
+  ) {
+    loadPublishedSummaryRequests.add(request);
+    return InMemoryPublishedSummaryReader(
+      workspaceSummary: _workspaceSummary,
+      workspaceFailure: _workspaceFailure,
+    ).load(request);
   }
 
   @override
@@ -315,7 +329,7 @@ final class InMemorySummariesApiClient implements SummariesApiClient {
       feedbackId: feedbackId,
       userId: userId,
       rating: rating,
-      learningEffect: _postRatingLearningEffect(rating),
+      learningEffect: inMemoryPostRatingLearningEffect(rating),
       reason: reason,
       feedItemId: feedItemId,
       sourceItemId: sourceItemId,
@@ -379,14 +393,4 @@ final class InMemorySummariesApiClient implements SummariesApiClient {
       workspaceFailure: _workspaceFailure,
     );
   }
-}
-
-String _postRatingLearningEffect(int rating) {
-  if (rating <= 2) {
-    return 'negative';
-  }
-  if (rating == 3) {
-    return 'neutral';
-  }
-  return 'positive';
 }
