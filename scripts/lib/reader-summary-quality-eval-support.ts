@@ -238,9 +238,7 @@ export function isLocalDataSourceUnavailable(error: unknown): boolean {
   const text = message(error).toLowerCase();
 
   return (
-    ["ECONNREFUSED", "ENOTFOUND", "ETIMEDOUT", "EHOSTUNREACH"].includes(
-      code,
-    ) ||
+    ["ECONNREFUSED", "ENOTFOUND", "ETIMEDOUT", "EHOSTUNREACH"].includes(code) ||
     text.includes("connect econnrefused") ||
     text.includes("connection terminated") ||
     text.includes("timeout exceeded") ||
