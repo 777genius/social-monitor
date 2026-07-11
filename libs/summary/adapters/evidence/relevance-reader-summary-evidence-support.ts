@@ -25,6 +25,7 @@ export const readerSummaryProviderDiversityOrder = [
   "reddit",
   "hacker-news",
   "rss",
+  "github-trending-page",
   "github-repo-radar",
 ];
 

@@ -62,9 +62,10 @@ import {
 } from "./lib/reader-summary-quality-eval-support";
 import { loadDotenvIfPresent } from "./lib/env-file";
 import { allQualityGatesPassed } from "./lib/quality-gates";
-import type {
-  CleanRealDayCollectionProviderKey as ProviderKey,
-  CleanRealDayCollectionReport,
+import {
+  defaultCleanRealDayCollectionProviderKeys,
+  type CleanRealDayCollectionProviderKey as ProviderKey,
+  type CleanRealDayCollectionReport,
 } from "./lib/clean-real-day-collection-report";
 import {
   configuredProviderCollectionTargetItemCount,
@@ -822,7 +823,7 @@ function sourceQueryModeFromValue(value: unknown): SourceQueryMode {
 function readProviderKeys(): readonly ProviderKey[] {
   const option = readOption("--providers");
   if (option === undefined) {
-    return ["hacker-news", "reddit", "rss", "x-twitter"];
+    return defaultCleanRealDayCollectionProviderKeys;
   }
 
   const providers = option

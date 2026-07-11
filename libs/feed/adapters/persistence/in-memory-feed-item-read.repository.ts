@@ -37,6 +37,7 @@ export class InMemoryFeedItemReadRepository
       snapshot.interestId,
       feedDedupeKeyForItem({
         canonicalUrl: snapshot.canonicalUrl,
+        sourceBindingId: snapshot.sourceBindingId,
         providerMetadata: snapshot.providerMetadata,
       }),
     ].join(":");

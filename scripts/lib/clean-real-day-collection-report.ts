@@ -3,6 +3,14 @@ import type { ProviderCollectionObservation } from "./provider-collection-observ
 export type CleanRealDayCollectionProviderKey =
   "github-trending-page" | "hacker-news" | "reddit" | "rss" | "x-twitter";
 
+export const defaultCleanRealDayCollectionProviderKeys = [
+  "github-trending-page",
+  "hacker-news",
+  "reddit",
+  "rss",
+  "x-twitter",
+] as const satisfies readonly CleanRealDayCollectionProviderKey[];
+
 export type CleanRealDayCollectionReport = {
   readonly schemaVersion: 1;
   readonly artifactFormat: "reader-summary-clean-real-day-collection-v1";

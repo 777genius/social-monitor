@@ -37,6 +37,7 @@ export class PrismaFeedProjectionAdapter implements FeedProjectionPort {
       assertFeedProjectionSourceItemBinding(command, snapshot);
       const dedupeKey = feedDedupeKeyForItem({
         canonicalUrl: snapshot.canonicalUrl,
+        sourceBindingId: snapshot.sourceBindingId,
         providerMetadata: snapshot.metadata,
       });
       const bodyPreview = feedBodyPreviewForProjection({
