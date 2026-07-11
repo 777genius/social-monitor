@@ -45,6 +45,12 @@ Important env:
 - `AGENT_RUNTIME_CODEX_AUTH_JSON_PATH`
 - `AGENT_RUNTIME_CLAUDE_TOKEN_ENV`, default `CLAUDE_CODE_OAUTH_TOKEN`
 
+For local development, `npm run start:agent-runtime` loads only the runtime
+allowlist above from the repository `.env`; unrelated application credentials
+are not copied into the child process. It also uses the standard local durable
+state root under `XDG_STATE_HOME` (or `~/.local/state`) and the current
+`~/.codex/auth.json` when no explicit Codex auth path is configured.
+
 ## Local Codex Compose
 
 For a local production-like Codex runtime, use the checked-in auth override
