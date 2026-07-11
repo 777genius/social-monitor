@@ -74,15 +74,43 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
       ),
       params.period,
     );
-    const items = selectRankedEvidence(
-      await this.withTopReadCandidateSupplements(
-        params,
-        await this.withProviderDiversitySupplements(params, rankedItems),
-      ),
-      params.maxItems,
+    const candidateItems = await this.withTopReadCandidateSupplements(
+      params,
+      await this.withProviderDiversitySupplements(params, rankedItems),
     );
-
-    const deterministicSelection = this.clusterer.cluster({
+    const candidateSelection = this.clusterer.cluster({
+      identity: {
+        tenantId: params.tenantId,
+        workspaceId: params.workspaceId,
+        scope: params.scope,
+      },
+      items: candidateItems,
+      limit: candidateItems.length,
+    });
+    const approvedPairs = await this.verifiedStoryRelationPairs(
+      params,
+      candidateItems,
+      candidateSelection,
+    );
+    const verifiedCandidateSelection =
+      approvedPairs.size === 0
+        ? candidateSelection
+        : this.clusterer.cluster({
+            identity: {
+              tenantId: params.tenantId,
+              workspaceId: params.workspaceId,
+              scope: params.scope,
+            },
+            items: candidateItems,
+            limit: candidateItems.length,
+            verifiedStoryRelationPairs: approvedPairs,
+          });
+    const items = selectRankedEvidence(
+      candidateItems,
+      params.maxItems,
+      crossProviderReserveIds(verifiedCandidateSelection),
+    );
+    const selection = this.clusterer.cluster({
       identity: {
         tenantId: params.tenantId,
         workspaceId: params.workspaceId,
@@ -90,12 +118,8 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
       },
       items,
       limit: params.maxItems,
+      verifiedStoryRelationPairs: approvedPairs,
     });
-    const selection = await this.withVerifiedStoryRelations(
-      params,
-      items,
-      deterministicSelection,
-    );
     const personalizedSelection = {
       ...selection,
       personalization:
@@ -119,11 +143,11 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
     return this.withOriginalSourceText(params, personalizedSelection);
   }
 
-  private async withVerifiedStoryRelations(
+  private async verifiedStoryRelationPairs(
     params: Parameters<ReaderSummaryEvidenceSelectorPort["select"]>[0],
     evidence: readonly SummaryEvidenceItem[],
     deterministicSelection: SummaryEvidenceSelection,
-  ): Promise<SummaryEvidenceSelection> {
+  ): Promise<ReadonlySet<string>> {
     const candidates = buildStoryRelationCandidates({
       selection: deterministicSelection,
       evidence,
@@ -134,7 +158,7 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
         candidateCount: candidates.length,
         approvedCount: 0,
       });
-      return deterministicSelection;
+      return new Set();
     }
 
     try {
@@ -157,27 +181,14 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
         candidateCount: candidates.length,
         approvedCount: approvedPairs.size,
       });
-      if (approvedPairs.size === 0) {
-        return deterministicSelection;
-      }
-
-      return this.clusterer.cluster({
-        identity: {
-          tenantId: params.tenantId,
-          workspaceId: params.workspaceId,
-          scope: params.scope,
-        },
-        items: evidence,
-        limit: params.maxItems,
-        verifiedStoryRelationPairs: approvedPairs,
-      });
+      return approvedPairs;
     } catch {
       this.storyRankingMetrics.recordStoryRelationVerification({
         status: "failed_closed",
         candidateCount: candidates.length,
         approvedCount: 0,
       });
-      return deterministicSelection;
+      return new Set();
     }
   }
 
@@ -401,6 +412,27 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
     return promoteTopReadCandidatesWithinProviders([...itemsById.values()]);
   }
 }
+
+const crossProviderReserveIds = (
+  selection: SummaryEvidenceSelection,
+): ReadonlySet<string> => {
+  const result = new Set<string>();
+  for (const cluster of selection.clusters) {
+    if (cluster.providerKeys.length < 2) {
+      continue;
+    }
+    const clusterIds = new Set([
+      cluster.representativeFeedItemId,
+      ...cluster.duplicateFeedItemIds,
+    ]);
+    for (const item of selection.selectedEvidence) {
+      if (clusterIds.has(item.feedItemId)) {
+        result.add(item.feedItemId);
+      }
+    }
+  }
+  return result;
+};
 
 const topReadCandidateReserveProviders = ["x-twitter", "reddit"] as const;
 
