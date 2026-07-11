@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "artifactFormat": "reader-summary-production-day-run-v1",
   "generatedBy": "npm run run:reader-summary-production-day",
-  "requestedDate": "2026-07-09",
-  "collectionDate": "2026-07-09",
+  "requestedDate": "2026-07-10",
+  "collectionDate": "2026-07-10",
   "model": {
     "liveCollection": false,
     "summaryModel": "agent-runtime",
@@ -12,34 +12,34 @@
     "topicLabeler": "agent-runtime",
     "writesProductionData": true,
     "allowDegraded": false,
-    "allowHistorical": true,
+    "allowHistorical": false,
     "rawProviderPayloadPersistedInReport": false,
     "rawPostTextPersistedInReport": false
   },
   "inputs": {
-    "periodStartedAt": "2026-07-09T00:00:00.000Z",
-    "periodEndedAt": "2026-07-10T00:00:00.000Z",
+    "periodStartedAt": "2026-07-10T00:00:00.000Z",
+    "periodEndedAt": "2026-07-11T00:00:00.000Z",
     "tenantFingerprint": "ec29f9d19b2f",
     "workspaceFingerprint": "c27aefd6f61b",
-    "evidencePath": "/var/folders/7b/ydmc_b0n251bc4hss4tz8y880000gn/T/social-monitor/reader-summary-production-day/2026-07-09/durable-reader-summary-2026-07-09.v1.json",
-    "frontendFixturePath": "/var/folders/7b/ydmc_b0n251bc4hss4tz8y880000gn/T/social-monitor/reader-summary-production-day/2026-07-09/frontend-reader-summary-2026-07-09.fixture.v1.json"
+    "evidencePath": "/var/folders/7b/ydmc_b0n251bc4hss4tz8y880000gn/T/social-monitor/reader-summary-production-day/2026-07-10/durable-reader-summary-2026-07-10.v1.json",
+    "frontendFixturePath": "/var/folders/7b/ydmc_b0n251bc4hss4tz8y880000gn/T/social-monitor/reader-summary-production-day/2026-07-10/frontend-reader-summary-2026-07-10.fixture.v1.json"
   },
   "run": {
-    "startedAt": "2026-07-11T16:39:01.815Z",
-    "completedAt": "2026-07-11T16:51:03.895Z"
+    "startedAt": "2026-07-11T15:58:28.114Z",
+    "completedAt": "2026-07-11T16:06:05.446Z"
   },
   "summary": {
-    "evidenceArtifactId": "durable-reader-summary-postgres-evidence-v1",
-    "readerSummaryId": "95a15d7f-18fe-4ba1-b6c9-9610866bf008",
-    "readerSummaryJobId": "36a721cb-e8ea-4742-899a-701455684af5",
-    "headline": "Claude adds Reflect usage recaps as AI-agent products, costs and trust questions intensify"
+    "evidenceArtifactId": null,
+    "readerSummaryId": null,
+    "readerSummaryJobId": null,
+    "headline": null
   },
   "steps": [
     {
       "id": "migrate",
       "command": "npm run migrate:deploy",
       "status": "passed",
-      "durationMs": 6453,
+      "durationMs": 2463,
       "exitCode": 0
     },
     {
@@ -51,44 +51,44 @@
     },
     {
       "id": "collection-quality",
-      "command": "npm run check:yesterday-social-collection-quality -- --update --date 2026-07-09 --write-failed-report --allow-historical",
+      "command": "npm run check:yesterday-social-collection-quality -- --update --date 2026-07-10 --write-failed-report",
       "status": "passed",
-      "durationMs": 1785,
+      "durationMs": 1647,
       "exitCode": 0
     },
     {
       "id": "durable-reader-summary",
       "command": "npm run capture:durable-reader-summary",
-      "status": "passed",
-      "durationMs": 701561,
-      "exitCode": 0
+      "status": "failed",
+      "durationMs": 438076,
+      "exitCode": 1
     },
     {
       "id": "artifact-quality",
-      "command": "npm run check:yesterday-reader-summary-artifact-quality -- --update --date 2026-07-09 --allow-historical",
+      "command": "npm run check:yesterday-reader-summary-artifact-quality -- --update --date 2026-07-10",
       "status": "passed",
-      "durationMs": 3926,
+      "durationMs": 5778,
       "exitCode": 0
     },
     {
       "id": "quality-dashboard",
-      "command": "npm run check:reader-summary-quality-dashboard -- --update --date 2026-07-09 --allow-historical",
+      "command": "npm run check:reader-summary-quality-dashboard -- --update --date 2026-07-10",
       "status": "passed",
-      "durationMs": 2414,
+      "durationMs": 2928,
       "exitCode": 0
     },
     {
       "id": "top-read-ranking",
-      "command": "npm run check:reader-summary-top-read-ranking -- --update --date 2026-07-09",
+      "command": "npm run check:reader-summary-top-read-ranking -- --update --date 2026-07-10",
       "status": "passed",
-      "durationMs": 2178,
+      "durationMs": 2261,
       "exitCode": 0
     },
     {
       "id": "source-quality-trace",
-      "command": "npm run check:reader-summary-source-quality-trace -- --update --date 2026-07-09",
+      "command": "npm run check:reader-summary-source-quality-trace -- --update --date 2026-07-10",
       "status": "passed",
-      "durationMs": 3725,
+      "durationMs": 4155,
       "exitCode": 0
     },
     {
@@ -100,31 +100,31 @@
     }
   ],
   "stats": {
-    "collectedFeedItemCount": 738,
-    "publishedInsideWindowFeedItemCount": 738,
-    "observedButPublishedOutsideWindowFeedItemCount": 285,
+    "collectedFeedItemCount": 840,
+    "publishedInsideWindowFeedItemCount": 840,
+    "observedButPublishedOutsideWindowFeedItemCount": 403,
     "duplicateFeedItemCount": 0,
     "lowRelevanceFeedItemCount": 0,
-    "summaryCandidateFeedItemCount": 668,
-    "selectedFeedItemCount": 120,
-    "topReadCount": 8,
+    "summaryCandidateFeedItemCount": 831,
+    "selectedFeedItemCount": null,
+    "topReadCount": null,
     "providerCounts": {
-      "github-trending-page": 70,
-      "hacker-news": 136,
-      "reddit": 262,
-      "rss": 207,
-      "x-twitter": 63
+      "github-trending-page": 9,
+      "hacker-news": 93,
+      "reddit": 341,
+      "rss": 318,
+      "x-twitter": 79
     },
     "xAccountCount": 2,
-    "xAccountUsageEventCount": 533,
+    "xAccountUsageEventCount": 110,
     "xAccounts": [
       {
         "accountFingerprint": "305b9c91ff51",
-        "priorityRank": 0,
+        "priorityRank": 100,
         "prioritySource": "account_profile",
         "dailyRequests": 29,
         "dailyTweets": 387,
-        "passSucceededCount": 148,
+        "passSucceededCount": 29,
         "passFailedCount": 0,
         "rateLimitCount": 0,
         "cooldownObservedCount": 0,
@@ -137,9 +137,9 @@
         "prioritySource": "account_profile",
         "dailyRequests": 26,
         "dailyTweets": 317,
-        "passSucceededCount": 99,
+        "passSucceededCount": 26,
         "passFailedCount": 0,
-        "rateLimitCount": 26,
+        "rateLimitCount": 2,
         "cooldownObservedCount": 0,
         "lastUsedAt": "2026-07-11 15:46:00",
         "cooldownUntil": null
@@ -147,14 +147,14 @@
     ]
   },
   "qualityGates": {
-    "allRequiredStepsPassed": true,
-    "degradedFailuresAreExplicitlyAllowed": true,
+    "allRequiredStepsPassed": false,
+    "degradedFailuresAreExplicitlyAllowed": false,
     "collectionQualityReported": true,
-    "durableSummaryCaptured": true,
-    "durableSummaryPersisted": true,
+    "durableSummaryCaptured": false,
+    "durableSummaryPersisted": false,
     "xAccountPoolReported": true,
     "reportDateMatchesRequestedDate": true,
     "noRawSecretFragments": true
   },
-  "blockingPassed": true
+  "blockingPassed": false
 }

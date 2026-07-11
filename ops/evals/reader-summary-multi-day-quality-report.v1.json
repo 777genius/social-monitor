@@ -31,7 +31,7 @@
   },
   "metrics": {
     "dayCount": 5,
-    "currentGenerationArtifactCount": 0,
+    "currentGenerationArtifactCount": 1,
     "storyPairPrecision": 1,
     "storyPairRecall": 0.41,
     "crossSourcePrecision": 1,
@@ -156,7 +156,7 @@
     {
       "collectionDate": "2026-07-09",
       "metrics": {
-        "currentGenerationArtifactCount": 0,
+        "currentGenerationArtifactCount": 1,
         "storyPairPrecision": 1,
         "storyPairRecall": 0.25,
         "crossSourcePrecision": 1,
@@ -172,7 +172,6 @@
         "missingExpectedFeedItemCount": 2
       },
       "issues": [
-        "Generation profile mismatch: model=codex:gpt-5.5:xhigh prompt=reader_summary.prompt.agent_runtime.v9 ranking=story_ranking_v6",
         "Missing expected feed item 1fd84590-83d9-4f50-a372-b87fce39eb11",
         "Missing expected feed item d14bb054-99f5-4867-b17f-cc02dfa80a86",
         "False story split: d47020c2-ad62-4d93-8518-0bc38f5bb951, 1fd84590-83d9-4f50-a372-b87fce39eb11",
