@@ -132,7 +132,7 @@ describe("AgentRuntimeReaderSummaryTopicLabeler", () => {
       purpose: "social_monitor.reader_summary.topic_map.label",
       timeoutMs: 600_000,
       metadata: {
-        promptVersion: "reader_summary.topic_map.agent_runtime.v12",
+        promptVersion: "reader_summary.topic_map.agent_runtime.v13",
       },
     });
     expect(client.commands[0]?.systemPrompt).toContain(
@@ -144,6 +144,9 @@ describe("AgentRuntimeReaderSummaryTopicLabeler", () => {
     );
     expect(client.commands[0]?.systemPrompt).toContain(
       "subject must name the shared family and include Family",
+    );
+    expect(client.commands[0]?.systemPrompt).toContain(
+      "Do not append relational role words",
     );
     expect(client.commands[0]?.systemPrompt).toContain(
       "Rollout, availability, benchmark results",
