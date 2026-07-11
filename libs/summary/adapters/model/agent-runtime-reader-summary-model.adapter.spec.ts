@@ -1,5 +1,6 @@
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
+import { buildReaderSummaryCoveragePlan } from "../../domain";
 import type {
   AgentRuntimeClientPort,
   AgentRuntimeHealthResult,
@@ -329,6 +330,34 @@ const readerSummaryInput = (): ReaderSummaryModelInput => {
     },
   ];
 
+  const evidence = {
+    rankingPolicyVersion: "story_ranking_v1",
+    sourceWindow: {
+      windowId: "workspace:agent-runtime-reader-summary",
+      startedAt: observedAt,
+      endedAt: observedAt,
+      selectedFeedItemIds: selectedEvidence.map((item) => item.feedItemId),
+      storyClusterIds: ["story:agent-runtime-reader"],
+    },
+    clusters: [
+      {
+        id: "story:agent-runtime-reader",
+        storyKey: "url:example.test/reddit/agent-runtime",
+        representativeFeedItemId: "feed-reddit",
+        duplicateFeedItemIds: [],
+        interestIds: ["interest-ai"],
+        providerKeys: ["reddit"],
+        score: 2.4,
+        observedAtRange: {
+          startedAt: observedAt,
+          endedAt: observedAt,
+        },
+        whyImportant: ["Fresh item"],
+      },
+    ],
+    selectedEvidence,
+  };
+
   return {
     tenantId: tenantId("tenant-agent-runtime-reader-summary-adapter"),
     workspaceId: workspaceId("workspace-agent-runtime-reader-summary-adapter"),
@@ -340,33 +369,8 @@ const readerSummaryInput = (): ReaderSummaryModelInput => {
       timezone: "UTC",
       periodKey: "daily:2026-06-23T00:00:00.000Z:2026-06-24T00:00:00.000Z:UTC",
     },
-    evidence: {
-      rankingPolicyVersion: "story_ranking_v1",
-      sourceWindow: {
-        windowId: "workspace:agent-runtime-reader-summary",
-        startedAt: observedAt,
-        endedAt: observedAt,
-        selectedFeedItemIds: selectedEvidence.map((item) => item.feedItemId),
-        storyClusterIds: ["story:agent-runtime-reader"],
-      },
-      clusters: [
-        {
-          id: "story:agent-runtime-reader",
-          storyKey: "url:example.test/reddit/agent-runtime",
-          representativeFeedItemId: "feed-reddit",
-          duplicateFeedItemIds: [],
-          interestIds: ["interest-ai"],
-          providerKeys: ["reddit"],
-          score: 2.4,
-          observedAtRange: {
-            startedAt: observedAt,
-            endedAt: observedAt,
-          },
-          whyImportant: ["Fresh item"],
-        },
-      ],
-      selectedEvidence,
-    },
+    evidence,
+    coveragePlan: buildReaderSummaryCoveragePlan(evidence),
     contextArtifacts: [],
     policy: {
       language: "auto",

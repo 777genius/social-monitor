@@ -1,5 +1,6 @@
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
+import { buildReaderSummaryCoveragePlan } from "../../domain";
 import type { ReaderSummaryModelInput } from "../../ports";
 import { DeterministicReaderSummaryModelAdapter } from "./deterministic-reader-summary-model.adapter";
 
@@ -91,6 +92,22 @@ const readerSummaryInput = (): ReaderSummaryModelInput => {
     whyImportant: item.whyImportant,
   }));
 
+  const evidence = {
+    rankingPolicyVersion: "story_ranking_v1",
+    sourceWindow: {
+      windowId: "workspace:deterministic-reader-summary",
+      startedAt:
+        selectedEvidence[0]?.observedAt ?? new Date("2026-06-23T08:00:00.000Z"),
+      endedAt:
+        selectedEvidence.at(-1)?.observedAt ??
+        new Date("2026-06-23T08:30:00.000Z"),
+      selectedFeedItemIds: selectedEvidence.map((item) => item.feedItemId),
+      storyClusterIds: clusters.map((cluster) => cluster.id),
+    },
+    clusters,
+    selectedEvidence,
+  };
+
   return {
     tenantId: tenantId("tenant-deterministic-reader-summary-adapter"),
     workspaceId: workspaceId("workspace-deterministic-reader-summary-adapter"),
@@ -102,22 +119,8 @@ const readerSummaryInput = (): ReaderSummaryModelInput => {
       timezone: "UTC",
       periodKey: "daily:2026-06-23T00:00:00.000Z:2026-06-24T00:00:00.000Z:UTC",
     },
-    evidence: {
-      rankingPolicyVersion: "story_ranking_v1",
-      sourceWindow: {
-        windowId: "workspace:deterministic-reader-summary",
-        startedAt:
-          selectedEvidence[0]?.observedAt ??
-          new Date("2026-06-23T08:00:00.000Z"),
-        endedAt:
-          selectedEvidence.at(-1)?.observedAt ??
-          new Date("2026-06-23T08:30:00.000Z"),
-        selectedFeedItemIds: selectedEvidence.map((item) => item.feedItemId),
-        storyClusterIds: clusters.map((cluster) => cluster.id),
-      },
-      clusters,
-      selectedEvidence,
-    },
+    evidence,
+    coveragePlan: buildReaderSummaryCoveragePlan(evidence),
     contextArtifacts: [],
     policy: {
       language: "auto",

@@ -810,6 +810,7 @@ const readerSummaryInput = (
     timezone: "UTC",
     periodKey: "daily:2026-06-23T00:00:00.000Z:2026-06-24T00:00:00.000Z:UTC",
   },
+  coveragePlan: { secondary: [] },
   evidence: {
     rankingPolicyVersion: "story_ranking_v1",
     sourceWindow: {

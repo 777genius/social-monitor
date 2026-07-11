@@ -1,7 +1,7 @@
 import {
-  buildReaderSummaryCoveragePlan,
   buildSummaryEvidencePack,
   buildSummaryEvidenceProfile,
+  type ReaderSummaryCoveragePlanItem,
 } from "../../domain";
 import type { ReaderSummaryModelInput } from "../../ports";
 import { buildAdaptiveReaderSummaryEvidence } from "./openai-responses-reader-summary-adaptive-evidence";
@@ -81,7 +81,7 @@ export const buildOpenAiReaderSummaryPromptPayload = (
       (item, index) => [item.feedItemId, `c${index + 1}`] as const,
     ),
   );
-  const coveragePlan = buildReaderSummaryCoveragePlan(input.evidence);
+  const coveragePlan = input.coveragePlan;
 
   return JSON.stringify({
     scope: input.scope,
@@ -130,7 +130,7 @@ export const buildOpenAiReaderSummaryPromptPayload = (
 };
 
 const promptCoverageItem = (
-  item: ReturnType<typeof buildReaderSummaryCoveragePlan>["secondary"][number],
+  item: ReaderSummaryCoveragePlanItem,
   citationIdByFeedItemId: ReadonlyMap<string, string>,
 ) => ({
   role: item.role,
