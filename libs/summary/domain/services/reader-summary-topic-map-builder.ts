@@ -17,12 +17,16 @@ import type {
 import { compactUnique, uniqueNonEmpty } from "../value-objects/summary-text";
 import {
   storyTopicAnchorTokens,
+  storyPrimaryClaimFacet,
   storyTopicTokens,
+  type StoryPrimaryClaimFacet,
 } from "./story-topic-tokenizer";
+import { ensureTopicLabelExpressesClaimFacet } from "./reader-summary-topic-claim-label-policy";
 import {
   aggregateReaderSummaryTopicMapNodes,
   mergeReaderSummaryTopicMapNodesByLabel,
   readerSummaryTopicMapAggregateKey,
+  scopeReaderSummaryTopicMapNodeDrafts,
   type ReaderSummaryTopicMapNodeDraft,
 } from "./reader-summary-topic-map-aggregation";
 import type {
@@ -115,9 +119,13 @@ export const buildReaderSummaryTopicMap = (
     return emptyReaderSummaryTopicMap(params.warnings ?? []);
   }
 
-  const rawNodes = mergeReaderSummaryTopicMapNodesByLabel(
-    aggregateReaderSummaryTopicMapNodes(nodeDrafts),
+  const aggregatedNodes = aggregateReaderSummaryTopicMapNodes(
+    scopeReaderSummaryTopicMapNodeDrafts(nodeDrafts),
   );
+  const rawNodes =
+    params.generatedBy === "agent-runtime"
+      ? aggregatedNodes
+      : mergeReaderSummaryTopicMapNodesByLabel(aggregatedNodes);
   const semanticAnchorsByGroup = new Map(
     [...labelGroups].map(([groupId, group]) => [
       groupId,
@@ -234,10 +242,15 @@ const topicNodeForCluster = (params: {
       ? fallbackTopicFamilyGroupId(fallbackTopicId)
       : fallbackTopicId);
   const rawScore = Math.max(0, params.cluster.score);
+  const primaryClaimFacet = primaryClaimFacetFor(evidence);
+  const readerFacingLabel = ensureTopicLabelExpressesClaimFacet(
+    label,
+    primaryClaimFacet,
+  );
 
   return {
     id: nodeId,
-    label,
+    label: readerFacingLabel,
     groupId,
     storyClusterIds: [params.cluster.id],
     popularityScore: rawScore,
@@ -267,7 +280,26 @@ const topicNodeForCluster = (params: {
     }),
     aggregateLabel,
     aggregateRankScore: rawScore,
+    primaryClaimFacet,
   };
+};
+
+const primaryClaimFacetFor = (
+  evidence: readonly SummaryEvidenceItem[],
+): StoryPrimaryClaimFacet | undefined => {
+  const support = new Map<StoryPrimaryClaimFacet, number>();
+  for (const item of evidence) {
+    const facet = storyPrimaryClaimFacet(item);
+    if (facet !== undefined) {
+      support.set(facet, (support.get(facet) ?? 0) + 1);
+    }
+  }
+
+  return [...support]
+    .sort(
+      (left, right) => right[1] - left[1] || left[0].localeCompare(right[0]),
+    )
+    .at(0)?.[0];
 };
 
 const acceptedAggregateLabel = (params: {

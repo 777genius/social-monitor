@@ -39,7 +39,7 @@ export type AgentRuntimeReaderSummaryTopicLabelerOptions = {
 
 const defaultAgentProvider: AgentRuntimeProvider = "codex";
 const defaultModel = "agent-runtime-reader-summary-topic-labeler";
-const defaultPromptVersion = "reader_summary.topic_map.agent_runtime.v4";
+const defaultPromptVersion = "reader_summary.topic_map.agent_runtime.v5";
 const defaultTimeoutMs = 600_000;
 const defaultMaxOutputTokens = 6_000;
 const defaultMaxCandidates = 30;

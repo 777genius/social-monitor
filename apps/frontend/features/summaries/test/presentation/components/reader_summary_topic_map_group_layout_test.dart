@@ -90,6 +90,10 @@ void main() {
     );
     expect(find.text('Codex CLI Say'), findsNothing);
     expect(find.text('Grok Grok Created'), findsNothing);
+    expect(
+      _bubbleLabelForNode(tester, 'topic:gpt-sol-masterclass'),
+      'GPT-5.6 Sol Masterclass',
+    );
 
     final anthropicText = find.byKey(
       const ValueKey('topic-map-bubble-label-topic:anthropic'),
@@ -290,6 +294,13 @@ ReaderSummaryTopicMap _labelQualityTopicMap() {
     _node('codex-cli', 'Codex CLI Say', 'codex-cli', 55, 2),
     _node('grok', 'Grok Grok Created', 'grok', 50, 2),
     _node('openai-chatgpt', 'OpenAI Brings ChatGPT', 'openai-chatgpt', 45, 2),
+    _node(
+      'gpt-sol-masterclass',
+      'GPT-5.6 Sol Masterclass',
+      'gpt-sol-masterclass',
+      45,
+      1,
+    ),
   ];
 
   return ReaderSummaryTopicMap(
@@ -309,6 +320,7 @@ ReaderSummaryTopicMap _labelQualityTopicMap() {
             'blue',
             'orange',
             'teal',
+            'blue',
           ][index],
           nodeIds: [nodes[index].id],
           confidence: confidence,

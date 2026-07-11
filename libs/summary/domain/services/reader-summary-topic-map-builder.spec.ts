@@ -191,6 +191,80 @@ describe("buildReaderSummaryTopicMap", () => {
     expect(claude?.sizeWeight).toBeGreaterThan(0.7);
   });
 
+  it("keeps different claims separate when the LLM reuses one topic id", () => {
+    const cases = [
+      {
+        id: "rollout",
+        label: "GPT-5.6 Family",
+        expectedLabel: "GPT-5.6 Family Rollout",
+        title: "OpenAI starts the GPT-5.6 family rollout",
+      },
+      {
+        id: "benchmark",
+        label: "GPT-5.6 Sol",
+        expectedLabel: "GPT-5.6 Sol Benchmark",
+        title: "GPT-5.6 Sol leads the Artificial Analysis benchmark",
+      },
+      {
+        id: "efficiency",
+        label: "GPT-5.6 Token Efficiency",
+        expectedLabel: "GPT-5.6 Token Efficiency",
+        title: "GPT-5.6 is 54% more token efficient",
+      },
+      {
+        id: "availability",
+        label: "GPT-5.6 Codex",
+        expectedLabel: "GPT-5.6 Codex Availability",
+        title: "GPT-5.6 appears in Codex for Plus accounts",
+      },
+    ] as const;
+    const map = buildReaderSummaryTopicMap({
+      clusters: cases.map((item, index) =>
+        storyCluster({
+          id: `story:${item.id}`,
+          representativeFeedItemId: `feed-${item.id}`,
+          score: 1 - index / 10,
+        }),
+      ),
+      selectedEvidence: cases.map((item) =>
+        evidenceItem({
+          feedItemId: `feed-${item.id}`,
+          title: item.title,
+          providerKey: "x-twitter",
+        }),
+      ),
+      topStories: [],
+      citationMap: cases.map((item, index) =>
+        citation(`c${index + 1}`, `feed-${item.id}`, "x-twitter"),
+      ),
+      labelPlan: {
+        nodeLabels: cases.map((item) => ({
+          nodeId: `topic:story:${item.id}`,
+          topicId: "topic:gpt-5-6",
+          label: item.label,
+          groupId: "group:openai-ecosystem",
+          keywords: ["OpenAI", "GPT-5.6"],
+        })),
+        groups: [
+          {
+            id: "group:openai-ecosystem",
+            label: "OpenAI Ecosystem",
+            semanticAnchors: ["OpenAI", "GPT-5.6"],
+          },
+        ],
+      },
+      generatedBy: "agent-runtime",
+    });
+
+    expect(map.nodes).toHaveLength(4);
+    expect(map.nodes.map((node) => node.label)).toEqual(
+      expect.arrayContaining(cases.map((item) => item.expectedLabel)),
+    );
+    expect(map.nodes.every((node) => node.storyClusterIds.length === 1)).toBe(
+      true,
+    );
+  });
+
   it("aggregates deterministic groups when agent-runtime labeling returns no usable labels", () => {
     const map = buildReaderSummaryTopicMap({
       clusters: [
@@ -814,7 +888,7 @@ const storyCluster = (
   overrides: Partial<StoryCluster> & Pick<StoryCluster, "id">,
 ): StoryCluster => ({
   storyKey: overrides.id,
-  rankingPolicyVersion: "story_ranking_v5",
+  rankingPolicyVersion: "story_ranking_v6",
   representativeFeedItemId: "feed-1",
   duplicateFeedItemIds: [],
   interestIds: ["interest-1"],

@@ -121,13 +121,16 @@ describe("AgentRuntimeReaderSummaryTopicLabeler", () => {
       purpose: "social_monitor.reader_summary.topic_map.label",
       timeoutMs: 600_000,
       metadata: {
-        promptVersion: "reader_summary.topic_map.agent_runtime.v4",
+        promptVersion: "reader_summary.topic_map.agent_runtime.v5",
       },
     });
     expect(client.commands[0]?.systemPrompt).toContain(
       "Choose each node label from labelCandidates",
     );
     expect(client.commands[0]?.systemPrompt).toContain("Use the same topicId");
+    expect(client.commands[0]?.systemPrompt).toContain(
+      "Rollout, availability, benchmark results",
+    );
     expect(client.commands[0]?.systemPrompt).toContain(
       "exactly one nodeLabels entry for every input node",
     );

@@ -12,6 +12,36 @@ export type ReaderSummaryTopicMapNodeDraft = ReaderSummaryTopicMapNode & {
   readonly aggregateKey: string;
   readonly aggregateLabel?: string;
   readonly aggregateRankScore: number;
+  readonly primaryClaimFacet?: string;
+};
+
+export const scopeReaderSummaryTopicMapNodeDrafts = (
+  drafts: readonly ReaderSummaryTopicMapNodeDraft[],
+): readonly ReaderSummaryTopicMapNodeDraft[] => {
+  const facetsByAggregateKey = new Map<string, Set<string>>();
+  for (const draft of drafts) {
+    const facet = compactOptional(draft.primaryClaimFacet);
+    if (facet === undefined) {
+      continue;
+    }
+    const facets = facetsByAggregateKey.get(draft.aggregateKey) ?? new Set();
+    facets.add(facet);
+    facetsByAggregateKey.set(draft.aggregateKey, facets);
+  }
+
+  return drafts.map((draft) => {
+    const facets = facetsByAggregateKey.get(draft.aggregateKey);
+    if (facets === undefined || facets.size <= 1) {
+      return draft;
+    }
+    const facet = compactOptional(draft.primaryClaimFacet);
+    const scope = facet === undefined ? `unspecified-${slug(draft.id)}` : facet;
+
+    return {
+      ...draft,
+      aggregateKey: `${draft.aggregateKey}:claim:${slug(scope)}`,
+    };
+  });
 };
 
 export const aggregateReaderSummaryTopicMapNodes = (
