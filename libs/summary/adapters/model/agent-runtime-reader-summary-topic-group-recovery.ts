@@ -33,6 +33,9 @@ export const recoverGroundedTopicGroups = (params: {
       groundedNodeAnchors(label, candidateByNodeId.get(label.nodeId)),
     ]),
   );
+  const identityAnchorsByNodeId = new Map(
+    params.nodeLabels.map((label) => [label.nodeId, identityAnchors(label)]),
+  );
   let nodeLabels = normalizeExistingGroups({
     nodeLabels: params.nodeLabels,
     anchorsByNodeId,
@@ -65,7 +68,7 @@ export const recoverGroundedTopicGroups = (params: {
   );
   const recoveryCandidates = sharedUngroupedAnchors(
     nodeLabels,
-    anchorsByNodeId,
+    identityAnchorsByNodeId,
     candidateByNodeId,
   );
 
@@ -75,7 +78,7 @@ export const recoverGroundedTopicGroups = (params: {
         (label) =>
           label.groupId === READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID &&
           !recoveredNodeIds.has(label.nodeId) &&
-          anchorsByNodeId.get(label.nodeId)?.has(recovery.key) === true,
+          identityAnchorsByNodeId.get(label.nodeId)?.has(recovery.key) === true,
       )
       .map((label) => label.nodeId);
     if (matchingNodeIds.length < 2) {
@@ -172,7 +175,8 @@ const normalizeExistingGroups = (params: {
     );
     labels = labels.map((label) =>
       label.groupId === groupId &&
-      !intersects(params.anchorsByNodeId.get(label.nodeId), supported)
+      (!intersects(params.anchorsByNodeId.get(label.nodeId), supported) ||
+        !intersects(identityAnchors(label), supported))
         ? { ...label, groupId: READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID }
         : label,
     );
@@ -301,10 +305,23 @@ const groundedNodeAnchors = (
   new Set(
     [
       label.label,
+      label.semantic?.parentSubject,
       ...(label.keywords ?? []),
       candidate?.fallbackLabel,
       ...(candidate?.keywords ?? []),
       ...(candidate?.labelCandidates.map((item) => item.label) ?? []),
+    ].flatMap((value) => (value === undefined ? [] : anchorKeys(value))),
+  );
+
+const identityAnchors = (
+  label: ReaderSummaryTopicNodeLabel,
+): ReadonlySet<string> =>
+  new Set(
+    [
+      label.label,
+      label.semantic?.subject,
+      label.semantic?.parentSubject,
+      label.semantic?.qualifier,
     ].flatMap((value) => (value === undefined ? [] : anchorKeys(value))),
   );
 

@@ -10,30 +10,31 @@ import {
   storyTopicSimilarity,
   storyTopicSpecificProductTokens,
   storyTopicTokens,
+  storyTitleIdentity,
 } from "./story-topic-tokenizer";
 
-export const belongsToCrossProviderCluster = (
+export const belongsToVerifiedStoryCluster = (
   item: SummaryEvidenceItem,
   clusterItems: readonly SummaryEvidenceItem[],
   policy: StoryRankingPolicy,
   verifiedStoryRelationPairs?: ReadonlySet<string>,
-): boolean => {
-  const crossProviderItems = clusterItems.filter(
-    (candidate) => candidate.providerKey !== item.providerKey,
-  );
+): boolean =>
+  clusterItems.length > 0 &&
+  clusterItems.every((candidate) => {
+    if (
+      candidate.providerKey !== item.providerKey &&
+      isDeterministicCrossProviderStoryMatch(item, candidate, policy)
+    ) {
+      return true;
+    }
 
-  return (
-    crossProviderItems.length > 0 &&
-    crossProviderItems.every(
-      (candidate) =>
-        isDeterministicCrossProviderStoryMatch(item, candidate, policy) ||
-        (verifiedStoryRelationPairs?.has(
-          verifiedStoryRelationPairKey(item.feedItemId, candidate.feedItemId),
-        ) === true &&
-          isVerifiedStoryRelationGuardEligible(item, candidate, policy)),
-    )
-  );
-};
+    return (
+      verifiedStoryRelationPairs?.has(
+        verifiedStoryRelationPairKey(item.feedItemId, candidate.feedItemId),
+      ) === true &&
+      isVerifiedStoryRelationGuardEligible(item, candidate, policy)
+    );
+  });
 
 export const hasCrossProviderClaimFacetConflict = (
   item: SummaryEvidenceItem,
@@ -51,10 +52,17 @@ export const isDeterministicCrossProviderStoryMatch = (
   head: SummaryEvidenceItem,
   policy: StoryRankingPolicy,
 ): boolean => {
+  if (item.providerKey === head.providerKey) {
+    return false;
+  }
   const itemKey = storyKey(item, policy);
   const headKey = storyKey(head, policy);
   if (itemKey !== headKey && canonicalStoryKeysConflict(itemKey, headKey)) {
     return false;
+  }
+
+  if (hasStrongExactTitleIdentity(item, head)) {
+    return true;
   }
 
   if (!storyClaimFacetsAreCompatible(item, head, policy)) {
@@ -146,14 +154,22 @@ export const isVerifiedStoryRelationGuardEligible = (
   candidate: SummaryEvidenceItem,
   policy: StoryRankingPolicy,
 ): boolean => {
-  if (item.providerKey === candidate.providerKey) {
+  const sameAuthorSeries =
+    item.providerKey === candidate.providerKey &&
+    isVerifiedSameAuthorStorySeriesCandidate(item, candidate);
+  if (item.providerKey === candidate.providerKey && !sameAuthorSeries) {
     return false;
   }
   const itemKey = storyKey(item, policy);
   const candidateKey = storyKey(candidate, policy);
   if (
     itemKey !== candidateKey &&
-    canonicalStoryKeysConflict(itemKey, candidateKey)
+    canonicalStoryKeysConflict(itemKey, candidateKey) &&
+    !(
+      sameAuthorSeries &&
+      itemKey.startsWith("url:") &&
+      candidateKey.startsWith("url:")
+    )
   ) {
     return false;
   }
@@ -173,6 +189,14 @@ export const isVerifiedStoryRelationGuardEligible = (
     itemTokens,
     candidateTokens,
   );
+  const candidateTokenSet = new Set(candidateTokens);
+  const sharedNonAnchorTokenCount = new Set(
+    itemTokens.filter(
+      (token) =>
+        candidateTokenSet.has(token) &&
+        storyTopicAnchorTokens([token]).length === 0,
+    ),
+  ).size;
   return (
     sharedStoryTopicTokenCount(
       storyTopicAnchorTokens(itemTokens),
@@ -182,8 +206,48 @@ export const isVerifiedStoryRelationGuardEligible = (
       storyTopicSpecificProductTokens(itemTokens),
       storyTopicSpecificProductTokens(candidateTokens),
     ) > 0 ||
-    sharedTopicTokens >= 3
+    sharedTopicTokens >= 3 ||
+    (sameAuthorSeries && sharedNonAnchorTokenCount > 0)
   );
 };
 
 const VERIFIED_STORY_RELATION_MAX_TIME_DISTANCE_MS = 30 * 60 * 60 * 1000;
+const VERIFIED_SAME_AUTHOR_SERIES_MAX_TIME_DISTANCE_MS = 2 * 60 * 60 * 1000;
+const STRONG_EXACT_TITLE_MIN_TOKEN_COUNT = 5;
+
+const hasStrongExactTitleIdentity = (
+  left: SummaryEvidenceItem,
+  right: SummaryEvidenceItem,
+): boolean => {
+  const leftTitle = storyTitleIdentity(left);
+  const rightTitle = storyTitleIdentity(right);
+
+  return (
+    leftTitle === rightTitle &&
+    leftTitle.split(" ").length >= STRONG_EXACT_TITLE_MIN_TOKEN_COUNT
+  );
+};
+
+export const isVerifiedSameAuthorStorySeriesCandidate = (
+  left: SummaryEvidenceItem,
+  right: SummaryEvidenceItem,
+): boolean => {
+  const leftAuthor = normalizedAuthorHandle(left.authorHandle);
+  const rightAuthor = normalizedAuthorHandle(right.authorHandle);
+
+  return (
+    leftAuthor !== undefined &&
+    leftAuthor === rightAuthor &&
+    Math.abs(left.publishedAt.getTime() - right.publishedAt.getTime()) <=
+      VERIFIED_SAME_AUTHOR_SERIES_MAX_TIME_DISTANCE_MS
+  );
+};
+
+const normalizedAuthorHandle = (
+  value: string | undefined,
+): string | undefined => {
+  const normalized = value?.trim().toLocaleLowerCase("en-US");
+  return normalized === undefined || normalized.length === 0
+    ? undefined
+    : normalized;
+};

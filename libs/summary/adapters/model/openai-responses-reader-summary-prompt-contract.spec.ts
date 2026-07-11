@@ -23,6 +23,9 @@ describe("OpenAI reader summary prompt contract", () => {
     expect(instructions).toContain(
       "Keep source validation out of topStories summary prose",
     );
+    expect(instructions).toContain(
+      "internal workflow language such as source item",
+    );
     expect(instructions).toContain("return 12-15 topStories");
   });
 

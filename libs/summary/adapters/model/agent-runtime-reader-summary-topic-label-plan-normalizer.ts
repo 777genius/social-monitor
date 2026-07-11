@@ -283,6 +283,7 @@ const semanticLabelFromRaw = (
   fallbackSubject: string | undefined,
 ): ReaderSummaryTopicSemanticLabel => ({
   subject: optionalString(value.subject) ?? fallbackSubject ?? "Topic",
+  parentSubject: optionalString(value.parentSubject),
   claimType: claimTypeValue(value.claimType),
   qualifier: optionalString(value.qualifier),
   confidenceScore: Math.min(

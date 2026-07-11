@@ -16,6 +16,10 @@ import {
   AgentRuntimeReaderSummaryTopicLabeler,
   resolveAgentRuntimeReaderSummaryTopicLabelerOptions,
 } from "@social-monitor/summary/adapters/model/agent-runtime-reader-summary-topic-labeler.adapter";
+import {
+  AgentRuntimeReaderSummaryTopicRelationVerifier,
+  resolveAgentRuntimeReaderSummaryTopicRelationVerifierOptions,
+} from "@social-monitor/summary/adapters/model/agent-runtime-reader-summary-topic-relation-verifier.adapter";
 import { DeterministicReaderSummaryModelAdapter } from "@social-monitor/summary/adapters/model/deterministic-reader-summary-model.adapter";
 import { GrpcAgentRuntimeClient } from "@social-monitor/summary/adapters/model/grpc-agent-runtime-client";
 import {
@@ -234,6 +238,40 @@ async function main(): Promise<void> {
       );
     }
 
+    const persistedJob = await readerSummaryJobs.findById({
+      tenantId: tenant,
+      workspaceId: workspace,
+      readerSummaryJobId: execution.value.readerSummaryJobId,
+    });
+    if (persistedJob === null) {
+      throw new Error("Durable reader summary job was not persisted");
+    }
+    const persistedJobSnapshot = persistedJob.toSnapshot();
+    if (
+      persistedJobSnapshot.status !== execution.value.status ||
+      persistedJobSnapshot.readerSummaryId !== execution.value.readerSummaryId
+    ) {
+      throw new Error(
+        "Durable reader summary job and execution result are inconsistent",
+      );
+    }
+    if (execution.value.status === "quality_rejected") {
+      const rejectedArtifact =
+        await readerSummaryArtifacts.findRejectedDebugById({
+          tenantId: tenant,
+          workspaceId: workspace,
+          readerSummaryId: execution.value.readerSummaryId,
+        });
+      if (rejectedArtifact === null) {
+        throw new Error(
+          "Durable reader summary quality-rejected artifact was not persisted",
+        );
+      }
+      throw new Error(
+        `Durable reader summary failed publication quality: ${persistedJobSnapshot.failureReason ?? "unknown quality rejection"}`,
+      );
+    }
+
     const artifact = await readerSummaryArtifacts.findById({
       tenantId: tenant,
       workspaceId: workspace,
@@ -390,6 +428,12 @@ const buildTopicMapBuilder = (
             requireAgentRuntimeClient(agentRuntimeClient),
           ),
         ),
+        relationVerifier: new AgentRuntimeReaderSummaryTopicRelationVerifier(
+          resolveAgentRuntimeReaderSummaryTopicRelationVerifierOptions(
+            process.env,
+            requireAgentRuntimeClient(agentRuntimeClient),
+          ),
+        ),
       })
     : new BuildReaderSummaryTopicMapUseCase({ publicationAudit });
 };
@@ -398,9 +442,7 @@ const buildTopicMapPublicationAudit =
   (): ReaderSummaryTopicMapPublicationAuditPort | null => {
     const path = readEnv(rejectedTopicMapPathEnv);
 
-    return path === undefined
-      ? null
-      : new FileTopicMapPublicationAudit(path);
+    return path === undefined ? null : new FileTopicMapPublicationAudit(path);
   };
 
 class FileTopicMapPublicationAudit implements ReaderSummaryTopicMapPublicationAuditPort {

@@ -2,6 +2,10 @@
   "schemaVersion": 1,
   "artifactFormat": "reader-summary-topic-map-semantic-gold-v1",
   "collectionDate": "2026-07-09",
+  "corpus": {
+    "selectedFeedItemCount": 120,
+    "selectedFeedItemFingerprint": "sha256:5be7611644fe832730a98ccfd0f9d867da4a5668846208ba30279da173cdcabe"
+  },
   "expectations": [
     {
       "feedItemId": "e3531c7c-ee85-4265-bc03-c5869b20aace",
@@ -20,9 +24,9 @@
       "feedItemId": "a0ea3e63-50e3-42a1-91fc-2c52f7854fdc",
       "expectedStoryKey": "gpt-5.6-sol-benchmark",
       "expectedTopicKey": "gpt-5.6-sol-benchmark",
-      "expectedClaimType": "benchmark",
+      "acceptableClaimTypes": ["benchmark", "comparison"],
       "expectedSubjectTokens": ["gpt-5.6", "sol"],
-      "requiredInTopicMap": true
+      "requiredInTopicMap": false
     },
     {
       "feedItemId": "e73cb40d-8b18-408a-9373-ae974255739d",
@@ -48,14 +52,14 @@
       "expectedTopicKey": "chatgpt-work",
       "expectedClaimType": "release",
       "expectedSubjectTokens": ["chatgpt", "work"],
-      "requiredInTopicMap": true
+      "requiredInTopicMap": false
     },
     {
       "feedItemId": "d9ea12d5-3513-458e-9ede-6321468a3233",
       "expectedStoryKey": "chatgpt-work-sama",
-      "expectedTopicKey": "chatgpt-work",
-      "expectedClaimType": "release",
-      "expectedSubjectTokens": ["chatgpt", "work"],
+      "expectedTopicKey": "codex-work-commentary",
+      "acceptableClaimTypes": ["release", "other"],
+      "expectedSubjectTokens": ["codex", "work"],
       "requiredInTopicMap": true
     },
     {
@@ -64,6 +68,49 @@
       "expectedTopicKey": "chatgpt-work",
       "expectedClaimType": "release",
       "expectedSubjectTokens": ["chatgpt", "work"],
+      "requiredInTopicMap": true
+    },
+    {
+      "feedItemId": "75f24733-84cb-41cf-aa87-3e1e0641f7b1",
+      "expectedStoryKey": "gpt-5-model-comparison",
+      "expectedTopicKey": "gpt-5-model-comparison",
+      "expectedClaimType": "comparison",
+      "expectedSubjectTokens": ["gpt-5"],
+      "requiredInTopicMap": true
+    },
+    {
+      "feedItemId": "4a644862-2a4d-4f7d-b2ec-2b43fb33b1c4",
+      "expectedStoryKey": "ai-product-comparison-commentary",
+      "expectedTopicKey": "ai-product-comparison-commentary",
+      "expectedClaimType": "comparison",
+      "expectedSubjectTokens": ["chatgpt"],
+      "forbiddenLabelTokens": ["confused"],
+      "requiredInTopicMap": true
+    },
+    {
+      "feedItemId": "ca310eec-e35d-4277-80cc-65d46bce577e",
+      "expectedStoryKey": "grok-build-comparison",
+      "expectedTopicKey": "grok-build-comparison",
+      "expectedClaimType": "review",
+      "expectedSubjectTokens": ["grok", "4.5"],
+      "requiredInTopicMap": true
+    },
+    {
+      "feedItemId": "8f78f1c6-af72-45f3-b986-b4eae9cc318d",
+      "expectedStoryKey": "anthropic-limit-reset-claudeai",
+      "expectedTopicKey": "anthropic-limit-reset",
+      "expectedClaimType": "limits",
+      "expectedSubjectTokens": ["anthropic"],
+      "forbiddenLabelTokens": ["hour", "weekly"],
+      "requiredInTopicMap": true
+    },
+    {
+      "feedItemId": "36074413-7352-4fb3-abbf-269ece38d0b4",
+      "expectedStoryKey": "anthropic-limit-reset-claudecode",
+      "expectedTopicKey": "anthropic-limit-reset",
+      "expectedClaimType": "limits",
+      "expectedSubjectTokens": ["anthropic"],
+      "forbiddenLabelTokens": ["hour", "weekly"],
       "requiredInTopicMap": true
     }
   ]

@@ -79,6 +79,129 @@ describe("evaluateReaderSummaryTopicSemantics", () => {
       ]),
     );
   });
+
+  it("skips missing optional rows but still blocks missing required rows", () => {
+    const optionalOnly = evaluateReaderSummaryTopicSemantics({
+      storyClusters: [],
+      topicMap: topicMap([]),
+      expectations: [
+        {
+          feedItemId: "feed:optional",
+          expectedStoryKey: "optional",
+          requiredInTopicMap: false,
+        },
+      ],
+    });
+    const required = evaluateReaderSummaryTopicSemantics({
+      storyClusters: [],
+      topicMap: topicMap([]),
+      expectations: [
+        expectation("feed:required", "required", "required", "release", [
+          "product",
+        ]),
+      ],
+    });
+
+    expect(optionalOnly).toMatchObject({
+      passed: true,
+      issues: [],
+      metrics: {
+        evaluatedExpectationCount: 0,
+        skippedOptionalCount: 1,
+      },
+    });
+    expect(required.issues).toEqual([
+      "Missing story cluster for feed item feed:required",
+      "Missing required topic node for feed item feed:required",
+    ]);
+    expect(required.metrics).toMatchObject({
+      claimAccuracy: 0,
+      subjectAccuracy: 0,
+    });
+  });
+
+  it("evaluates optional semantic expectations when their topic is present", () => {
+    const result = evaluateReaderSummaryTopicSemantics({
+      storyClusters: [cluster("story:optional", "feed:optional")],
+      topicMap: topicMap([
+        node("topic:optional", "GPT-5 Models Benchmark", ["story:optional"]),
+      ]),
+      expectations: [
+        {
+          feedItemId: "feed:optional",
+          expectedStoryKey: "optional",
+          expectedTopicKey: "optional",
+          expectedClaimType: "comparison",
+          expectedSubjectTokens: ["gpt-5"],
+          requiredInTopicMap: false,
+        },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      passed: false,
+      metrics: {
+        evaluatedExpectationCount: 1,
+        skippedOptionalCount: 0,
+        claimAccuracy: 0,
+        subjectAccuracy: 1,
+      },
+      issues: ["Claim label mismatch for feed item feed:optional"],
+    });
+  });
+
+  it("accepts reviewed multi-label claim ambiguity", () => {
+    const result = evaluateReaderSummaryTopicSemantics({
+      storyClusters: [cluster("story:comparison", "feed:comparison")],
+      topicMap: topicMap([
+        node("topic:comparison", "GPT-5 Sol Comparison", ["story:comparison"]),
+      ]),
+      expectations: [
+        {
+          feedItemId: "feed:comparison",
+          expectedStoryKey: "comparison",
+          expectedTopicKey: "comparison",
+          acceptableClaimTypes: ["benchmark", "comparison"],
+          expectedSubjectTokens: ["gpt-5", "sol"],
+          requiredInTopicMap: true,
+        },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      passed: true,
+      metrics: { claimAccuracy: 1 },
+      issues: [],
+    });
+  });
+
+  it("rejects reviewed reader-facing fragment tokens", () => {
+    const result = evaluateReaderSummaryTopicSemantics({
+      storyClusters: [cluster("story:commentary", "feed:commentary")],
+      topicMap: topicMap([
+        node("topic:commentary", "ChatGPT Confused Comparison", [
+          "story:commentary",
+        ]),
+      ]),
+      expectations: [
+        {
+          feedItemId: "feed:commentary",
+          expectedStoryKey: "commentary",
+          expectedTopicKey: "commentary",
+          expectedClaimType: "comparison",
+          expectedSubjectTokens: ["chatgpt"],
+          forbiddenLabelTokens: ["confused"],
+          requiredInTopicMap: true,
+        },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      passed: false,
+      metrics: { labelQualityAccuracy: 0 },
+      issues: ["Forbidden label token for feed item feed:commentary"],
+    });
+  });
 });
 
 const cluster = (

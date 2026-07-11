@@ -22,7 +22,7 @@
     "status": "clean"
   },
   "sourceData": {
-    "feedItemCount": 748,
+    "feedItemCount": 727,
     "providerCounts": [
       {
         "providerKey": "hacker-news",
@@ -30,7 +30,7 @@
       },
       {
         "providerKey": "reddit",
-        "count": 201
+        "count": 200
       },
       {
         "providerKey": "rss",
@@ -42,7 +42,7 @@
       },
       {
         "providerKey": "github-trending-page",
-        "count": 87
+        "count": 67
       }
     ]
   },
@@ -78,10 +78,10 @@
     "schemaVersion": "reader_summary.topic_map.v1",
     "generatedBy": "deterministic",
     "confidenceLevel": "low",
-    "confidenceScore": 0.503,
+    "confidenceScore": 0.519,
     "nodeCount": 36,
     "groupCount": 3,
-    "edgeCount": 22,
+    "edgeCount": 0,
     "warningCount": 0,
     "structureQuality": {
       "passed": true,
@@ -89,8 +89,8 @@
       "metrics": {
         "nodeCount": 36,
         "semanticGroupCount": 2,
-        "ungroupedNodeCount": 27,
-        "groupedCoverage": 0.25,
+        "ungroupedNodeCount": 25,
+        "groupedCoverage": 0.306,
         "singletonSemanticGroupCount": 0,
         "invalidGroupIdCount": 0,
         "misalignedGroupLabelCount": 0,
@@ -105,20 +105,20 @@
     "topNodeFingerprints": [
       {
         "nodeFingerprint": "e34d04bb",
-        "groupFingerprint": "9f43276a",
+        "groupFingerprint": "d3957e41",
         "popularityScore": 100,
         "sizeWeight": 1,
         "evidenceCount": 3,
         "providerCount": 2,
-        "interestCount": 3,
+        "interestCount": 2,
         "citationCount": 3,
         "keywordCount": 8
       },
       {
         "nodeFingerprint": "6e989ef5",
         "groupFingerprint": "9f43276a",
-        "popularityScore": 73.029,
-        "sizeWeight": 0.855,
+        "popularityScore": 84.099,
+        "sizeWeight": 0.917,
         "evidenceCount": 2,
         "providerCount": 1,
         "interestCount": 1,
@@ -128,8 +128,8 @@
       {
         "nodeFingerprint": "0dd86f79",
         "groupFingerprint": "d3957e41",
-        "popularityScore": 51.882,
-        "sizeWeight": 0.72,
+        "popularityScore": 68.456,
+        "sizeWeight": 0.827,
         "evidenceCount": 2,
         "providerCount": 2,
         "interestCount": 2,
@@ -137,10 +137,21 @@
         "keywordCount": 8
       },
       {
+        "nodeFingerprint": "aa8dbf5d",
+        "groupFingerprint": "9f43276a",
+        "popularityScore": 44.043,
+        "sizeWeight": 0.664,
+        "evidenceCount": 1,
+        "providerCount": 1,
+        "interestCount": 1,
+        "citationCount": 1,
+        "keywordCount": 8
+      },
+      {
         "nodeFingerprint": "b92a48a7",
         "groupFingerprint": "d3957e41",
-        "popularityScore": 20.825,
-        "sizeWeight": 0.456,
+        "popularityScore": 40.903,
+        "sizeWeight": 0.64,
         "evidenceCount": 1,
         "providerCount": 1,
         "interestCount": 1,
@@ -150,8 +161,8 @@
       {
         "nodeFingerprint": "b9412cb6",
         "groupFingerprint": "9f43276a",
-        "popularityScore": 19.894,
-        "sizeWeight": 0.446,
+        "popularityScore": 39.969,
+        "sizeWeight": 0.632,
         "evidenceCount": 1,
         "providerCount": 1,
         "interestCount": 1,
@@ -161,8 +172,8 @@
       {
         "nodeFingerprint": "2deb8969",
         "groupFingerprint": "9f43276a",
-        "popularityScore": 19.537,
-        "sizeWeight": 0.442,
+        "popularityScore": 39.608,
+        "sizeWeight": 0.629,
         "evidenceCount": 1,
         "providerCount": 1,
         "interestCount": 1,
@@ -172,8 +183,8 @@
       {
         "nodeFingerprint": "220eb1a0",
         "groupFingerprint": "9f43276a",
-        "popularityScore": 19.393,
-        "sizeWeight": 0.44,
+        "popularityScore": 39.463,
+        "sizeWeight": 0.628,
         "evidenceCount": 1,
         "providerCount": 1,
         "interestCount": 1,
@@ -183,8 +194,8 @@
       {
         "nodeFingerprint": "0dcc4492",
         "groupFingerprint": "9f43276a",
-        "popularityScore": 19.322,
-        "sizeWeight": 0.44,
+        "popularityScore": 39.391,
+        "sizeWeight": 0.628,
         "evidenceCount": 1,
         "providerCount": 1,
         "interestCount": 1,
@@ -194,8 +205,8 @@
       {
         "nodeFingerprint": "f06b5850",
         "groupFingerprint": "a78fa21f",
-        "popularityScore": 18.714,
-        "sizeWeight": 0.433,
+        "popularityScore": 38.773,
+        "sizeWeight": 0.623,
         "evidenceCount": 1,
         "providerCount": 1,
         "interestCount": 1,
@@ -203,10 +214,10 @@
         "keywordCount": 8
       },
       {
-        "nodeFingerprint": "0dd78e7a",
+        "nodeFingerprint": "ce720021",
         "groupFingerprint": "d3957e41",
-        "popularityScore": 18.678,
-        "sizeWeight": 0.432,
+        "popularityScore": 38.262,
+        "sizeWeight": 0.619,
         "evidenceCount": 1,
         "providerCount": 1,
         "interestCount": 1,
@@ -216,19 +227,8 @@
       {
         "nodeFingerprint": "d7a7c16a",
         "groupFingerprint": "9f43276a",
-        "popularityScore": 18,
-        "sizeWeight": 0.424,
-        "evidenceCount": 1,
-        "providerCount": 1,
-        "interestCount": 1,
-        "citationCount": 1,
-        "keywordCount": 8
-      },
-      {
-        "nodeFingerprint": "47e97263",
-        "groupFingerprint": "d3957e41",
-        "popularityScore": 18,
-        "sizeWeight": 0.424,
+        "popularityScore": 36.679,
+        "sizeWeight": 0.606,
         "evidenceCount": 1,
         "providerCount": 1,
         "interestCount": 1,
@@ -239,14 +239,14 @@
     "groupFingerprints": [
       {
         "groupFingerprint": "9f43276a",
-        "nodeCount": 27,
+        "nodeCount": 25,
         "colorKey": "slate",
         "confidenceScore": 0.35
       },
       {
         "groupFingerprint": "d3957e41",
-        "nodeCount": 7,
-        "colorKey": "green",
+        "nodeCount": 9,
+        "colorKey": "blue",
         "confidenceScore": 0.72
       },
       {
@@ -259,11 +259,11 @@
   },
   "weakLlmFallbackProbe": {
     "generatedBy": "agent-runtime",
-    "nodeCount": 27,
-    "groupCount": 2,
+    "nodeCount": 28,
+    "groupCount": 3,
     "weakInputNodeLabelCount": 38,
-    "acceptedNodeLabelCount": 27,
-    "acceptedGroupLabelCount": 2,
+    "acceptedNodeLabelCount": 28,
+    "acceptedGroupLabelCount": 3,
     "rawPostTextPersistedInReport": false
   },
   "visualFixture": {
@@ -273,14 +273,13 @@
         "label": "Group 1",
         "colorKey": "slate",
         "nodeIds": [
-          "n1",
           "n2",
-          "n5",
+          "n4",
           "n6",
           "n7",
           "n8",
-          "n11",
-          "n13",
+          "n9",
+          "n12",
           "n14",
           "n15"
         ]
@@ -288,12 +287,13 @@
       {
         "id": "g2",
         "label": "Group 2",
-        "colorKey": "green",
+        "colorKey": "blue",
         "nodeIds": [
+          "n1",
           "n3",
-          "n4",
-          "n10",
-          "n12",
+          "n5",
+          "n11",
+          "n13",
           "n16"
         ]
       },
@@ -302,7 +302,7 @@
         "label": "Group 3",
         "colorKey": "pink",
         "nodeIds": [
-          "n9"
+          "n10"
         ]
       }
     ],
@@ -310,7 +310,7 @@
       {
         "id": "n1",
         "label": "Topic 1",
-        "groupId": "g1",
+        "groupId": "g2",
         "popularityScore": 100,
         "sizeWeight": 1,
         "evidenceCount": 3
@@ -319,175 +319,124 @@
         "id": "n2",
         "label": "Topic 2",
         "groupId": "g1",
-        "popularityScore": 73.029,
-        "sizeWeight": 0.855,
+        "popularityScore": 84.099,
+        "sizeWeight": 0.917,
         "evidenceCount": 2
       },
       {
         "id": "n3",
         "label": "Topic 3",
         "groupId": "g2",
-        "popularityScore": 51.882,
-        "sizeWeight": 0.72,
+        "popularityScore": 68.456,
+        "sizeWeight": 0.827,
         "evidenceCount": 2
       },
       {
         "id": "n4",
         "label": "Topic 4",
-        "groupId": "g2",
-        "popularityScore": 20.825,
-        "sizeWeight": 0.456,
+        "groupId": "g1",
+        "popularityScore": 44.043,
+        "sizeWeight": 0.664,
         "evidenceCount": 1
       },
       {
         "id": "n5",
         "label": "Topic 5",
-        "groupId": "g1",
-        "popularityScore": 19.894,
-        "sizeWeight": 0.446,
+        "groupId": "g2",
+        "popularityScore": 40.903,
+        "sizeWeight": 0.64,
         "evidenceCount": 1
       },
       {
         "id": "n6",
         "label": "Topic 6",
         "groupId": "g1",
-        "popularityScore": 19.537,
-        "sizeWeight": 0.442,
+        "popularityScore": 39.969,
+        "sizeWeight": 0.632,
         "evidenceCount": 1
       },
       {
         "id": "n7",
         "label": "Topic 7",
         "groupId": "g1",
-        "popularityScore": 19.393,
-        "sizeWeight": 0.44,
+        "popularityScore": 39.608,
+        "sizeWeight": 0.629,
         "evidenceCount": 1
       },
       {
         "id": "n8",
         "label": "Topic 8",
         "groupId": "g1",
-        "popularityScore": 19.322,
-        "sizeWeight": 0.44,
+        "popularityScore": 39.463,
+        "sizeWeight": 0.628,
         "evidenceCount": 1
       },
       {
         "id": "n9",
         "label": "Topic 9",
-        "groupId": "g3",
-        "popularityScore": 18.714,
-        "sizeWeight": 0.433,
+        "groupId": "g1",
+        "popularityScore": 39.391,
+        "sizeWeight": 0.628,
         "evidenceCount": 1
       },
       {
         "id": "n10",
         "label": "Topic 10",
-        "groupId": "g2",
-        "popularityScore": 18.678,
-        "sizeWeight": 0.432,
+        "groupId": "g3",
+        "popularityScore": 38.773,
+        "sizeWeight": 0.623,
         "evidenceCount": 1
       },
       {
         "id": "n11",
         "label": "Topic 11",
-        "groupId": "g1",
-        "popularityScore": 18,
-        "sizeWeight": 0.424,
+        "groupId": "g2",
+        "popularityScore": 38.262,
+        "sizeWeight": 0.619,
         "evidenceCount": 1
       },
       {
         "id": "n12",
         "label": "Topic 12",
-        "groupId": "g2",
-        "popularityScore": 18,
-        "sizeWeight": 0.424,
+        "groupId": "g1",
+        "popularityScore": 36.679,
+        "sizeWeight": 0.606,
         "evidenceCount": 1
       },
       {
         "id": "n13",
         "label": "Topic 13",
-        "groupId": "g1",
-        "popularityScore": 18,
-        "sizeWeight": 0.424,
+        "groupId": "g2",
+        "popularityScore": 35.487,
+        "sizeWeight": 0.596,
         "evidenceCount": 1
       },
       {
         "id": "n14",
         "label": "Topic 14",
         "groupId": "g1",
-        "popularityScore": 18,
-        "sizeWeight": 0.424,
+        "popularityScore": 35.262,
+        "sizeWeight": 0.594,
         "evidenceCount": 1
       },
       {
         "id": "n15",
         "label": "Topic 15",
         "groupId": "g1",
-        "popularityScore": 18,
-        "sizeWeight": 0.424,
+        "popularityScore": 34.886,
+        "sizeWeight": 0.591,
         "evidenceCount": 1
       },
       {
         "id": "n16",
         "label": "Topic 16",
         "groupId": "g2",
-        "popularityScore": 18,
-        "sizeWeight": 0.424,
+        "popularityScore": 34.207,
+        "sizeWeight": 0.585,
         "evidenceCount": 1
       }
     ],
-    "edges": [
-      {
-        "sourceNodeId": "n4",
-        "targetNodeId": "n12",
-        "weight": 0.96
-      },
-      {
-        "sourceNodeId": "n3",
-        "targetNodeId": "n4",
-        "weight": 0.9
-      },
-      {
-        "sourceNodeId": "n3",
-        "targetNodeId": "n10",
-        "weight": 0.9
-      },
-      {
-        "sourceNodeId": "n3",
-        "targetNodeId": "n12",
-        "weight": 0.9
-      },
-      {
-        "sourceNodeId": "n10",
-        "targetNodeId": "n16",
-        "weight": 0.88
-      },
-      {
-        "sourceNodeId": "n3",
-        "targetNodeId": "n16",
-        "weight": 0.82
-      },
-      {
-        "sourceNodeId": "n4",
-        "targetNodeId": "n10",
-        "weight": 0.7
-      },
-      {
-        "sourceNodeId": "n4",
-        "targetNodeId": "n16",
-        "weight": 0.7
-      },
-      {
-        "sourceNodeId": "n10",
-        "targetNodeId": "n12",
-        "weight": 0.7
-      },
-      {
-        "sourceNodeId": "n12",
-        "targetNodeId": "n16",
-        "weight": 0.7
-      }
-    ]
+    "edges": []
   },
   "qualityGates": {
     "collectionIntegrityCleanForEval": true,
@@ -500,7 +449,7 @@
     "topicMapGeneratedByKnownPipeline": true,
     "topicMapHasNodes": true,
     "topicMapHasMultipleGroupsWhenPossible": true,
-    "topicMapHasEdgesWhenPossible": true,
+    "topicMapEdgesMatchEvidencePolicy": true,
     "topicMapStructureIsCoherent": true,
     "everyNodeHasKnownGroup": true,
     "everyGroupReferencesKnownNodes": true,

@@ -16,7 +16,7 @@ import {
 } from "../policies/story-ranking-policy";
 import { compareRepresentativeEvidenceItems } from "../policies/representative-evidence-selection-policy";
 import {
-  belongsToCrossProviderCluster,
+  belongsToVerifiedStoryCluster,
   hasCrossProviderClaimFacetConflict,
 } from "./story-cluster-membership";
 import { storyKey } from "./story-key-normalizer";
@@ -81,7 +81,7 @@ const buildClusters = (
       (candidate) =>
         (candidate.key === key &&
           !hasCrossProviderClaimFacetConflict(item, candidate.items, policy)) ||
-        belongsToCrossProviderCluster(
+        belongsToVerifiedStoryCluster(
           item,
           candidate.items,
           policy,

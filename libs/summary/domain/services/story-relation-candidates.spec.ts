@@ -95,6 +95,89 @@ describe("story relation candidate verification", () => {
     ).toEqual([]);
   });
 
+  it("shortlists a nearby same-author series for semantic verification", () => {
+    const first = evidence({
+      id: "j-space-audit",
+      providerKey: "x-twitter",
+      authorHandle: "@AnthropicAI",
+      title: "The J-space lets us audit what Claude is thinking",
+      bodyPreview:
+        "The J-space research exposes hidden model goals during coding.",
+    });
+    const second = evidence({
+      id: "j-space-sabotage",
+      providerKey: "x-twitter",
+      authorHandle: "@anthropicai",
+      title: "The J-space exposes hidden goals in Claude",
+      bodyPreview:
+        "The same J-space research finds sabotage signals during coding.",
+      publishedAt: "2026-07-11T08:20:00.000Z",
+    });
+
+    expect(
+      buildStoryRelationCandidates({
+        selection: splitSelection(first, second),
+        evidence: [first, second],
+      }),
+    ).toHaveLength(1);
+  });
+
+  it("does not shortlist a same-author series outside the bounded window", () => {
+    const first = evidence({
+      id: "series-now",
+      providerKey: "x-twitter",
+      authorHandle: "@publisher",
+      title: "J-space research explains hidden model goals",
+      bodyPreview: "The J-space paper studies hidden model goals.",
+    });
+    const distant = evidence({
+      id: "series-later",
+      providerKey: "x-twitter",
+      authorHandle: "@publisher",
+      title: "J-space research finds hidden model goals",
+      bodyPreview: "The J-space paper studies hidden model goals.",
+      publishedAt: "2026-07-11T11:00:01.000Z",
+    });
+
+    expect(
+      buildStoryRelationCandidates({
+        selection: splitSelection(first, distant),
+        evidence: [first, distant],
+      }),
+    ).toEqual([]);
+  });
+
+  it("clusters strong exact syndicated titles despite noisy wrapper bodies", () => {
+    const headline =
+      "Mark Zuckerberg tells staff that AI agents have not progressed enough";
+    const first = evidence({
+      id: "headline-hn",
+      providerKey: "hacker-news",
+      title: headline,
+      bodyPreview: "",
+    });
+    const second = evidence({
+      id: "headline-rss",
+      providerKey: "rss",
+      title: headline,
+      bodyPreview:
+        "Article URL comments URL points discussion metadata and wrapper markup unrelated to the headline.",
+    });
+
+    const selection = new StoryClusteringService(clock).cluster({
+      identity: {
+        tenantId: tenantId("tenant-syndicated-title"),
+        workspaceId: workspaceId("workspace-syndicated-title"),
+        scope: { type: "workspace" },
+      },
+      items: [first, second],
+      limit: 10,
+    });
+
+    expect(selection.clusters).toHaveLength(1);
+    expect(selection.clusters[0]?.duplicateFeedItemIds).toHaveLength(1);
+  });
+
   it("accepts only complete high-confidence verifier decisions", () => {
     const left = evidence({
       id: "left",
@@ -186,6 +269,39 @@ describe("story relation candidate verification", () => {
       ),
     ).toBe(true);
   });
+
+  it("merges a same-author series only when every pair is approved", () => {
+    const items = ["audit", "sabotage", "awareness"].map((id, index) =>
+      evidence({
+        id,
+        providerKey: "x-twitter",
+        authorHandle: "@AnthropicAI",
+        title: `J-space Claude research ${id}`,
+        bodyPreview: `The J-space paper studies hidden Claude goals ${id}.`,
+        publishedAt: `2026-07-11T08:${String(index * 10).padStart(2, "0")}:00.000Z`,
+      }),
+    );
+    const service = new StoryClusteringService(clock);
+    const verifiedStoryRelationPairs = new Set([
+      verifiedStoryRelationPairKey("audit", "sabotage"),
+      verifiedStoryRelationPairKey("audit", "awareness"),
+      verifiedStoryRelationPairKey("sabotage", "awareness"),
+    ]);
+
+    const selection = service.cluster({
+      identity: {
+        tenantId: tenantId("tenant-same-author-series"),
+        workspaceId: workspaceId("workspace-same-author-series"),
+        scope: { type: "workspace" },
+      },
+      items,
+      limit: 10,
+      verifiedStoryRelationPairs,
+    });
+
+    expect(selection.clusters).toHaveLength(1);
+    expect(selection.clusters[0]?.duplicateFeedItemIds).toHaveLength(2);
+  });
 });
 
 const evidence = (params: {
@@ -194,6 +310,7 @@ const evidence = (params: {
   readonly title: string;
   readonly bodyPreview: string;
   readonly publishedAt?: string;
+  readonly authorHandle?: string;
 }): SummaryEvidenceItem => ({
   feedItemId: params.id,
   sourceItemId: `source-${params.id}`,
@@ -203,6 +320,7 @@ const evidence = (params: {
   canonicalUrl: `https://${params.providerKey}.example.test/${params.id}`,
   title: params.title,
   bodyPreview: params.bodyPreview,
+  authorHandle: params.authorHandle,
   publishedAt: new Date(params.publishedAt ?? "2026-07-11T08:00:00.000Z"),
   observedAt: new Date("2026-07-11T08:05:00.000Z"),
   score: 1.5,

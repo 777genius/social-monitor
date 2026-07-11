@@ -84,7 +84,10 @@ describe("buildReaderSummaryTopicMap", () => {
     });
 
     expect(map.generatedBy).toBe("agent-runtime");
-    expect(map.nodes.map((node) => node.label)).toEqual(["AI agents", "Codex"]);
+    expect(map.nodes.map((node) => node.label)).toEqual([
+      "AI agents",
+      "Codex Agent Workflows",
+    ]);
     expect(map.nodes[0]?.popularityScore).toBeGreaterThan(
       map.nodes[1]?.popularityScore ?? 0,
     );
@@ -881,6 +884,36 @@ describe("buildReaderSummaryTopicMap", () => {
     expect(map.nodes.map((node) => node.label)).not.toEqual(
       expect.arrayContaining(["The", "Show"]),
     );
+  });
+
+  it("does not let an LLM label ground itself as evidence", () => {
+    const map = buildReaderSummaryTopicMap({
+      clusters: [storyCluster({ id: "story:claude-release" })],
+      selectedEvidence: [
+        evidenceItem({
+          feedItemId: "feed-1",
+          title: "Claude Code release for terminal workflows",
+          providerKey: "rss",
+        }),
+      ],
+      topStories: [],
+      citationMap: [citation("c1", "feed-1", "rss")],
+      labelPlan: {
+        nodeLabels: [
+          {
+            nodeId: "topic:story:claude-release",
+            label: "Quantum Orchard",
+            groupId: "group:ungrouped",
+          },
+        ],
+        groups: [],
+      },
+      generatedBy: "agent-runtime",
+    });
+
+    expect(map.nodes).toHaveLength(1);
+    expect(map.nodes[0]?.label).toContain("Claude");
+    expect(map.nodes[0]?.label).not.toBe("Quantum Orchard");
   });
 });
 

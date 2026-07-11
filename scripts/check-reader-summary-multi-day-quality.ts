@@ -156,6 +156,8 @@ async function tryReadActualDays(
         collectionDate: gold.collectionDate,
         modelVersion: record.modelVersion,
         promptVersion: record.promptVersion,
+        rankingPolicyVersion:
+          snapshot.lineage.rankingPolicyVersion ?? "unknown",
         storyClusters: snapshot.storyClusters.map((cluster) => ({
           id: cluster.id,
           representativeFeedItemId: cluster.representativeFeedItemId,
