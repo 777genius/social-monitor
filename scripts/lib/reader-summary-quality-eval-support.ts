@@ -96,6 +96,7 @@ export async function readLatestReaderSummaryArtifact(
         and scope_type = 'workspace'
         and cadence = 'daily'
         and period_key = $3
+        and status = 'COMPLETED'
       order by created_at desc, id desc
       limit 1
     `,

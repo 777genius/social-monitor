@@ -26,6 +26,7 @@ export * from "./policies/reader-action-policy";
 export * from "./policies/reader-summary-reliability-calibration-policy";
 export * from "./policies/reader-summary-evidence-eligibility-policy";
 export * from "./policies/reader-summary-model-authority-policy";
+export * from "./policies/reader-summary-multi-day-quality-eval";
 export * from "./policies/reader-summary-publication-policy";
 export * from "./policies/reader-summary-publication-generation-policy";
 export * from "./policies/reader-summary-schedule-window-policy";
