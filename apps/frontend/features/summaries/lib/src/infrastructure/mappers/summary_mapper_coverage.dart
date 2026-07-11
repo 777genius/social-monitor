@@ -19,6 +19,14 @@ ReaderSummaryCoverage? _readerSummaryCoverageToDomainHelper(
     collectedFeedItemCount: _safeNullableCoverageCount(
       dto.collectedFeedItemCount,
     ),
+    collectionCoverageState: _collectionCoverageState(
+      dto.collectionCoverageState,
+    ),
+    degradedProviderKeys: dto.degradedProviderKeys
+        .map(_nonEmptyProviderKey)
+        .where((providerKey) => providerKey != 'unknown')
+        .toSet()
+        .toList(growable: false),
     providerBreakdown: dto.providerBreakdown
         .map(_readerSummaryProviderCoverageToDomain)
         .toList(growable: false),
@@ -47,6 +55,46 @@ ReaderSummaryProviderCoverage _readerSummaryProviderCoverageToDomain(
     collectedFeedItemCount: _safeNullableCoverageCount(
       dto.collectedFeedItemCount,
     ),
+    collectionHealth: dto.collectionHealth == null
+        ? null
+        : _readerSummaryProviderCollectionHealthToDomain(dto.collectionHealth!),
+  );
+}
+
+ReaderSummaryProviderCollectionHealth
+_readerSummaryProviderCollectionHealthToDomain(
+  ReaderSummaryProviderCollectionHealthApiDto dto,
+) {
+  return ReaderSummaryProviderCollectionHealth(
+    state:
+        _collectionCoverageState(dto.state) ??
+        ReaderSummaryCollectionCoverageState.unknown,
+    scanCount: _safeCoverageCount(dto.scanCount),
+    targetItemCount: _safeNullableCoverageCount(dto.targetItemCount),
+    collectedItemCount: _safeCoverageCount(dto.collectedItemCount),
+    acceptedItemCount: _safeCoverageCount(dto.acceptedItemCount),
+    insertedItemCount: _safeCoverageCount(dto.insertedItemCount),
+    outsideWindowItemCount: _safeCoverageCount(dto.outsideWindowItemCount),
+    paginationDuplicateItemCount: _safeCoverageCount(
+      dto.paginationDuplicateItemCount,
+    ),
+    storageDuplicateItemCount: _safeCoverageCount(
+      dto.storageDuplicateItemCount,
+    ),
+    pageCount: _safeCoverageCount(dto.pageCount),
+    paginationStopReasons: dto.paginationStopReasons
+        .map((reason) => reason.trim())
+        .where((reason) => reason.isNotEmpty)
+        .toSet()
+        .toList(growable: false),
+    failureKinds: dto.failureKinds
+        .map((kind) => kind.trim())
+        .where((kind) => kind.isNotEmpty)
+        .toSet()
+        .toList(growable: false),
+    rateLimitEventCount: _safeCoverageCount(dto.rateLimitEventCount),
+    oldestAcceptedPublishedAt: dto.oldestAcceptedPublishedAt,
+    newestAcceptedPublishedAt: dto.newestAcceptedPublishedAt,
   );
 }
 
@@ -100,4 +148,15 @@ String _nonEmptyCoverageLabel(String value) {
 String? _nullableCoverageLabel(String? value) {
   final trimmed = value?.trim();
   return trimmed == null || trimmed.isEmpty ? null : trimmed;
+}
+
+ReaderSummaryCollectionCoverageState? _collectionCoverageState(String? value) {
+  return switch (value?.trim().toLowerCase()) {
+    'complete' => ReaderSummaryCollectionCoverageState.complete,
+    'partial' => ReaderSummaryCollectionCoverageState.partial,
+    'degraded' => ReaderSummaryCollectionCoverageState.degraded,
+    'unavailable' => ReaderSummaryCollectionCoverageState.unavailable,
+    null || '' => null,
+    _ => ReaderSummaryCollectionCoverageState.unknown,
+  };
 }

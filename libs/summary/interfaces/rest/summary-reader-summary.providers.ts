@@ -22,7 +22,6 @@ import { CryptoIdGenerator, SystemClock } from "@social-monitor/shared-kernel";
 import { ReaderSummaryArtifactContextProvider } from "../../adapters/context/reader-summary-artifact-context.provider";
 import { ConversationEvidenceContextReader } from "../../adapters/evidence/conversation-evidence-context.reader";
 import { ConversationReaderSummaryEvidenceSelector } from "../../adapters/evidence/conversation-reader-summary-evidence.selector";
-import { FeedReaderSummaryCoverageCounter } from "../../adapters/evidence/feed-reader-summary-coverage.counter";
 import { FeedReaderSummaryFreshnessProbe } from "../../adapters/evidence/feed-reader-summary-freshness.probe";
 import { FeedReaderSummaryPreviewMediaEnricher } from "../../adapters/evidence/feed-reader-summary-preview-media.enricher";
 import { FeedReaderSummaryTopicCollectionMetricsReader } from "../../adapters/evidence/feed-reader-summary-topic-collection-metrics.reader";
@@ -100,6 +99,7 @@ import {
   type SummaryJobQueueMode,
   type SummaryPersistenceMode,
 } from "./summary-provider-tokens";
+import { readerSummaryCoverageProvider } from "./summary-reader-summary-coverage.provider";
 
 export const summaryReaderSummaryProviders: Provider[] = [
   InMemoryReaderSummaryJobRepository,
@@ -239,14 +239,7 @@ export const summaryReaderSummaryProviders: Provider[] = [
       new FeedReaderSummaryFreshnessProbe(feedItems, new SystemClock()),
     inject: [FEED_ITEM_READ_REPOSITORY],
   },
-  {
-    provide: READER_SUMMARY_COVERAGE_COUNTER,
-    useFactory: (
-      feedItems: FeedItemReadRepositoryPort,
-    ): ReaderSummaryCoverageCounterPort =>
-      new FeedReaderSummaryCoverageCounter(feedItems),
-    inject: [FEED_ITEM_READ_REPOSITORY],
-  },
+  readerSummaryCoverageProvider,
   {
     provide: READER_SUMMARY_TOPIC_COLLECTION_METRICS_READER,
     useFactory: (

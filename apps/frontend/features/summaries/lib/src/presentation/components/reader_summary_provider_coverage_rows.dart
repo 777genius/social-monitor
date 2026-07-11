@@ -11,6 +11,7 @@ final class _ProviderCoverageRowData {
     required this.userRatedFeedItemCount,
     required this.color,
     this.collectedFeedItemCount,
+    this.collectionHealth,
   });
 
   final String providerKey;
@@ -22,6 +23,7 @@ final class _ProviderCoverageRowData {
   final int mutedFeedItemCount;
   final int userRatedFeedItemCount;
   final Color color;
+  final ReaderSummaryProviderCollectionHealth? collectionHealth;
 
   int get scaleCount {
     final collected = collectedFeedItemCount;
@@ -32,6 +34,10 @@ final class _ProviderCoverageRowData {
   }
 
   String get primaryCountText {
+    if (collectionHealth?.state ==
+        ReaderSummaryCollectionCoverageState.unavailable) {
+      return 'Unavailable';
+    }
     final collected = collectedFeedItemCount;
     if (collected != null) {
       return '${formatCompactCount(collected)} collected';
@@ -41,6 +47,11 @@ final class _ProviderCoverageRowData {
 
   String get detailText {
     final parts = <String>[];
+    final health = collectionHealth;
+    if (health != null &&
+        health.state != ReaderSummaryCollectionCoverageState.complete) {
+      parts.add(_collectionHealthText(health));
+    }
     if (collectedFeedItemCount != null) {
       parts.add(_selectedCoverageText());
     }
@@ -70,7 +81,8 @@ final class _ProviderCoverageRowData {
   }
 
   bool get hasEvidence {
-    return (collectedFeedItemCount ?? 0) > 0 ||
+    return collectionHealth != null ||
+        (collectedFeedItemCount ?? 0) > 0 ||
         selectedFeedItemCount > 0 ||
         topReadCount > 0 ||
         citationCount > 0;
@@ -100,6 +112,7 @@ List<_ProviderCoverageRowData> _providerCoverageRows(ReaderSummary summary) {
           userRatedFeedItemCount: _safeCoverageCount(
             provider.userRatedFeedItemCount,
           ),
+          collectionHealth: provider.collectionHealth,
           color: _providerCoverageColor(provider.providerKey),
         ),
     ]);
@@ -149,6 +162,24 @@ List<_ProviderCoverageRowData> _providerCoverageRows(ReaderSummary summary) {
   }
 
   return _sortProviderCoverageRows(rowsByProvider.values.toList());
+}
+
+String _collectionHealthText(ReaderSummaryProviderCollectionHealth health) {
+  final target = health.targetItemCount;
+  final accepted = formatCompactCount(health.acceptedItemCount);
+  final progress = target == null
+      ? '$accepted accepted'
+      : '$accepted of ${formatCompactCount(target)} accepted';
+  return switch (health.state) {
+    ReaderSummaryCollectionCoverageState.partial =>
+      'Partial collection: $progress',
+    ReaderSummaryCollectionCoverageState.degraded =>
+      'Degraded collection: $progress',
+    ReaderSummaryCollectionCoverageState.unavailable =>
+      'Collection unavailable',
+    ReaderSummaryCollectionCoverageState.unknown => 'Collection status unknown',
+    ReaderSummaryCollectionCoverageState.complete => progress,
+  };
 }
 
 List<_ProviderCoverageRowData> _sortProviderCoverageRows(

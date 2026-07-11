@@ -146,6 +146,80 @@ void main() {
     );
   });
 
+  test('maps degraded provider collection health into domain coverage', () {
+    const mapper = SummaryMapper();
+
+    final summary = mapper.readerSummaryToDomain(
+      readerSummaryApiDto(
+        coverage: ReaderSummaryCoverageApiDto(
+          selectedFeedItemCount: 18,
+          topReadCount: 7,
+          citationCount: 30,
+          collectedFeedItemCount: 52,
+          collectionCoverageState: 'degraded',
+          degradedProviderKeys: const ['x-twitter'],
+          providerBreakdown: [
+            ReaderSummaryProviderCoverageApiDto(
+              providerKey: 'x-twitter',
+              selectedFeedItemCount: 8,
+              topReadCount: 2,
+              citationCount: 10,
+              collectedFeedItemCount: 12,
+              collectionHealth: ReaderSummaryProviderCollectionHealthApiDto(
+                state: 'degraded',
+                scanCount: 1,
+                targetItemCount: 80,
+                collectedItemCount: 16,
+                acceptedItemCount: 12,
+                insertedItemCount: 10,
+                outsideWindowItemCount: 4,
+                paginationDuplicateItemCount: 2,
+                storageDuplicateItemCount: 2,
+                pageCount: 2,
+                paginationStopReasons: const ['partial_retryable_failure'],
+                failureKinds: const ['rate_limited'],
+                rateLimitEventCount: 1,
+                newestAcceptedPublishedAt: DateTime.utc(2026, 7, 9, 22),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    expect(
+      summary.coverage?.collectionCoverageState,
+      ReaderSummaryCollectionCoverageState.degraded,
+    );
+    expect(summary.coverage?.degradedProviderKeys, ['x-twitter']);
+    expect(
+      summary.coverage?.providerBreakdown.single.collectionHealth?.state,
+      ReaderSummaryCollectionCoverageState.degraded,
+    );
+    expect(
+      summary
+          .coverage
+          ?.providerBreakdown
+          .single
+          .collectionHealth
+          ?.targetItemCount,
+      80,
+    );
+    expect(
+      summary
+          .coverage
+          ?.providerBreakdown
+          .single
+          .collectionHealth
+          ?.rateLimitEventCount,
+      1,
+    );
+    expect(
+      summary.coverage?.providerBreakdown.single.collectionHealth?.failureKinds,
+      ['rate_limited'],
+    );
+  });
+
   test('keeps reader summary takeaway readable without truncating words', () {
     const mapper = SummaryMapper();
     final longTakeaway = [

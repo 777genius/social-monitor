@@ -4,6 +4,8 @@
 
 import 'package:json_annotation/json_annotation.dart';
 
+import 'reader_summary_provider_collection_health_dto.dart';
+
 part 'reader_summary_provider_coverage_dto.g.dart';
 
 @JsonSerializable()
@@ -17,6 +19,7 @@ class ReaderSummaryProviderCoverageDto {
     required this.topReadCount,
     required this.userRatedFeedItemCount,
     this.collectedFeedItemCount,
+    this.collectionHealth,
   });
 
   factory ReaderSummaryProviderCoverageDto.fromJson(
@@ -25,6 +28,7 @@ class ReaderSummaryProviderCoverageDto {
 
   final num citationCount;
   final num? collectedFeedItemCount;
+  final ReaderSummaryProviderCollectionHealthDto? collectionHealth;
   final num lowRelevanceFeedItemCount;
   final num mutedFeedItemCount;
   final String providerKey;

@@ -7,7 +7,10 @@ import type {
   ReaderSummaryCollectedQueryCoverage,
   ReaderSummaryCollectedTopicCoverage,
   ReaderSummaryCoverageCounterPort,
+  ReaderSummaryProviderCollectionHealth,
+  ReaderSummaryProviderCollectionHealthReaderPort,
 } from "../../ports";
+import { NOOP_READER_SUMMARY_PROVIDER_COLLECTION_HEALTH_READER } from "../../ports";
 import { statsForFeedItemMetadata } from "./feed-item-collection-stats";
 import { isDefaultReaderSummaryEvidenceProvider } from "./reader-summary-evidence-provider-filter";
 
@@ -15,7 +18,10 @@ const PAGE_LIMIT = 100;
 const MAX_PAGES = 1000;
 
 export class FeedReaderSummaryCoverageCounter implements ReaderSummaryCoverageCounterPort {
-  constructor(private readonly feedItems: FeedItemReadRepositoryPort) {}
+  constructor(
+    private readonly feedItems: FeedItemReadRepositoryPort,
+    private readonly collectionHealth: ReaderSummaryProviderCollectionHealthReaderPort = NOOP_READER_SUMMARY_PROVIDER_COLLECTION_HEALTH_READER,
+  ) {}
 
   async countCollectedFeedItems(
     query: CountReaderSummaryCollectedFeedItemsQuery,
@@ -33,6 +39,8 @@ export class FeedReaderSummaryCoverageCounter implements ReaderSummaryCoverageCo
     const providerCounts = new Map<string, CoverageBucket>();
     const topicCounts = new Map<string, CoverageBucket>();
     const queryCounts = new Map<string, CoverageBucket>();
+    const collectionHealthPromise =
+      this.collectionHealth.readProviderCollectionHealth(query);
 
     for (let page = 0; page < MAX_PAGES; page += 1) {
       const result = await this.feedItems.list({
@@ -70,14 +78,17 @@ export class FeedReaderSummaryCoverageCounter implements ReaderSummaryCoverageCo
           lowRelevanceFeedItemCount: totals.lowRelevanceFeedItemCount,
           mutedFeedItemCount: totals.mutedFeedItemCount,
           userRatedFeedItemCount: totals.userRatedFeedItemCount,
-          providerBreakdown: coverageRows(providerCounts).map(
-            ([
-              providerKey,
-              bucket,
-            ]): ReaderSummaryCollectedProviderCoverage => ({
-              providerKey,
-              ...bucket,
-            }),
+          providerBreakdown: mergeProviderCollectionHealth(
+            coverageRows(providerCounts).map(
+              ([
+                providerKey,
+                bucket,
+              ]): ReaderSummaryCollectedProviderCoverage => ({
+                providerKey,
+                ...bucket,
+              }),
+            ),
+            await collectionHealthPromise,
           ),
           topicBreakdown: coverageRows(topicCounts).map(
             ([topicKey, bucket]): ReaderSummaryCollectedTopicCoverage => ({
@@ -169,3 +180,35 @@ const coverageRows = (
       right[1].collectedFeedItemCount - left[1].collectedFeedItemCount;
     return countDiff === 0 ? left[0].localeCompare(right[0]) : countDiff;
   });
+
+const mergeProviderCollectionHealth = (
+  coverage: readonly ReaderSummaryCollectedProviderCoverage[],
+  health: readonly ReaderSummaryProviderCollectionHealth[],
+): readonly ReaderSummaryCollectedProviderCoverage[] => {
+  const byProvider = new Map(
+    coverage.map((provider) => [provider.providerKey, provider]),
+  );
+  for (const providerHealth of health) {
+    const providerKey = providerHealth.providerKey.trim();
+    if (!isDefaultReaderSummaryEvidenceProvider(providerKey)) {
+      continue;
+    }
+    const current = byProvider.get(providerKey) ?? {
+      providerKey,
+      collectedFeedItemCount: 0,
+      lowRelevanceFeedItemCount: 0,
+      mutedFeedItemCount: 0,
+      userRatedFeedItemCount: 0,
+    };
+    const { providerKey: _ignored, ...collectionHealth } = providerHealth;
+    byProvider.set(providerKey, { ...current, collectionHealth });
+  }
+
+  return [...byProvider.values()].sort((left, right) => {
+    const countDiff =
+      right.collectedFeedItemCount - left.collectedFeedItemCount;
+    return countDiff === 0
+      ? left.providerKey.localeCompare(right.providerKey)
+      : countDiff;
+  });
+};

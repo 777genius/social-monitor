@@ -138,6 +138,10 @@ class _ProviderCoverageRow extends StatelessWidget {
                   ),
                 ),
               ),
+              if (row.collectionHealth case final health?) ...[
+                _ProviderCollectionHealthIndicator(health: health),
+                const SizedBox(width: AppSpacing.xs),
+              ],
               const SizedBox(width: AppSpacing.sm),
               Text(
                 row.primaryCountText,
@@ -170,6 +174,69 @@ class _ProviderCoverageRow extends StatelessWidget {
       ),
     );
   }
+}
+
+class _ProviderCollectionHealthIndicator extends StatelessWidget {
+  const _ProviderCollectionHealthIndicator({required this.health});
+
+  final ReaderSummaryProviderCollectionHealth health;
+
+  @override
+  Widget build(BuildContext context) {
+    if (health.state == ReaderSummaryCollectionCoverageState.complete) {
+      return const SizedBox.shrink();
+    }
+
+    final colorScheme = Theme.of(context).colorScheme;
+    final (icon, color) = switch (health.state) {
+      ReaderSummaryCollectionCoverageState.partial => (
+        Icons.info_outline_rounded,
+        colorScheme.primary,
+      ),
+      ReaderSummaryCollectionCoverageState.degraded => (
+        Icons.warning_amber_rounded,
+        colorScheme.tertiary,
+      ),
+      ReaderSummaryCollectionCoverageState.unavailable => (
+        Icons.error_outline_rounded,
+        colorScheme.error,
+      ),
+      ReaderSummaryCollectionCoverageState.unknown => (
+        Icons.help_outline_rounded,
+        colorScheme.onSurfaceVariant,
+      ),
+      ReaderSummaryCollectionCoverageState.complete => (
+        Icons.check_circle_outline_rounded,
+        colorScheme.primary,
+      ),
+    };
+
+    return Tooltip(
+      message: _providerCollectionHealthTooltip(health),
+      child: SizedBox.square(
+        dimension: 18,
+        child: Icon(icon, size: 16, color: color),
+      ),
+    );
+  }
+}
+
+String _providerCollectionHealthTooltip(
+  ReaderSummaryProviderCollectionHealth health,
+) {
+  final details = <String>[_collectionHealthText(health)];
+  if (health.rateLimitEventCount > 0) {
+    details.add(
+      '${health.rateLimitEventCount} rate-limit ${health.rateLimitEventCount == 1 ? 'event' : 'events'}',
+    );
+  }
+  if (health.failureKinds.isNotEmpty) {
+    details.add('Failure: ${health.failureKinds.join(', ')}');
+  }
+  if (health.paginationStopReasons.isNotEmpty) {
+    details.add('Stopped: ${health.paginationStopReasons.join(', ')}');
+  }
+  return details.join('. ');
 }
 
 class _ProviderCoverageBar extends StatelessWidget {
