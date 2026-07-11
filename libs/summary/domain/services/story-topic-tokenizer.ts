@@ -85,6 +85,27 @@ export const storyClaimFacetTokens = (
   );
 };
 
+export type StoryPrimaryClaimFacet =
+  | "availability"
+  | "benchmark"
+  | "education"
+  | "efficiency"
+  | "limits"
+  | "release"
+  | "security";
+
+export const storyPrimaryClaimFacet = (
+  item: SummaryEvidenceItem,
+): StoryPrimaryClaimFacet | undefined => {
+  const text = `${stripTopicSourceEnvelope(item.title)} ${
+    item.bodyPreview ?? ""
+  }`;
+
+  return primaryClaimFacetDefinitions.find(([pattern]) =>
+    pattern.test(text),
+  )?.[1];
+};
+
 const claimFacetDefinitions = [
   [/\bagents?[\s'’]+last\s+exam\b/iu, "benchmark:agents-last-exam"],
   [/\bartificial\s+analysis\b/iu, "benchmark:artificial-analysis"],
@@ -101,6 +122,37 @@ const claimFacetDefinitions = [
     "issue:usage-limit-reset",
   ],
 ] as const;
+
+const primaryClaimFacetDefinitions = [
+  [
+    /\b(?:benchmark|index|eval(?:uation)?|agents?[\s'’]+last\s+exam|arc[\s-]?agi|artificial\s+analysis|score[ds]?\s+\d)\b/iu,
+    "benchmark",
+  ],
+  [
+    /\b(?:usage\s+limits?|weekly\s+limits?|daily\s+limits?|5[\s-]?hour\s+limits?|quota|credits?)\b/iu,
+    "limits",
+  ],
+  [
+    /\b(?:course|masterclass|tutorial|workshop|curriculum|how\s+to\s+(?:use|build|master))\b/iu,
+    "education",
+  ],
+  [
+    /\b(?:token\s+efficien|cost[\s-]?efficien|price[\s-]?efficien|lower\s+cost|cheaper|cost\s+per\s+task|pareto\s+frontier)\w*/iu,
+    "efficiency",
+  ],
+  [
+    /\b(?:security|vulnerabilit|exploit|prompt\s+leak|data\s+leak|spying|surveillance)\w*/iu,
+    "security",
+  ],
+  [
+    /\b(?:availability|available|access|appear(?:s|ed|ing)?\s+in|account\s+tier|subscription\s+tier|plus\s+subscription|rolling\s+out\s+incrementally|not\s+everyone\s+will\s+see)\b/iu,
+    "availability",
+  ],
+  [
+    /\b(?:roll(?:s|ed|ing)?\s+out|rollouts?|releas(?:e|es|ed|ing)|launch(?:es|ed|ing)?|introduc(?:e|es|ed|ing))\b/iu,
+    "release",
+  ],
+] as const satisfies readonly (readonly [RegExp, StoryPrimaryClaimFacet])[];
 
 const topicAliasDefinitions = [
   [/\bchatgpt\s+work\b/iu, "chatgpt-work"],

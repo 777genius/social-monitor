@@ -77,7 +77,7 @@ describe("StoryClusteringService claim facets", () => {
           title:
             "GPT-5.6 Sol comes close second to Claude Fable 5 in the Artificial Analysis Intelligence Index",
           bodyPreview:
-            "Artificial Analysis compares model intelligence, cost and coding agent performance.",
+            "Artificial Analysis supported OpenAI with pre-release evaluation and compares model intelligence, cost and coding agent performance.",
         }),
         evidenceItem({
           feedItemId: "reddit-fable-cost",
@@ -109,6 +109,32 @@ describe("StoryClusteringService claim facets", () => {
           canonicalUrl: "https://reddit.com/r/OpenAI/codex-cli",
           title: "GPT-5.6 changes the Codex CLI workflow",
           bodyPreview: "Users compare Codex command-line behavior.",
+        }),
+      ]),
+    ).toBe(2);
+  });
+
+  it("keeps a family rollout separate from Codex CLI availability", () => {
+    expect(
+      clusterCount([
+        evidenceItem({
+          feedItemId: "x-gpt-56-family-rollout",
+          sourceItemId: "x-gpt-56-family-rollout",
+          providerKey: "x-twitter",
+          canonicalUrl: "https://x.com/OpenAI/status/gpt-56-family",
+          title:
+            "OpenAI says GPT-5.6 Sol, Terra and Luna are starting to roll out",
+          bodyPreview:
+            "The GPT-5.6 model family is rolling out in ChatGPT, Codex and the API.",
+        }),
+        evidenceItem({
+          feedItemId: "reddit-codex-cli-availability",
+          sourceItemId: "reddit-codex-cli-availability",
+          providerKey: "reddit",
+          canonicalUrl: "https://reddit.com/r/codex/gpt-56-availability",
+          title: "GPT 5.6 is here on Codex CLI",
+          bodyPreview:
+            "Plus subscription. Probably rolling out incrementally so not everyone will see it right now.",
         }),
       ]),
     ).toBe(2);

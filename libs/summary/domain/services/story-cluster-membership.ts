@@ -4,6 +4,7 @@ import { storyKey } from "./story-key-normalizer";
 import {
   sharedStoryTopicTokenCount,
   storyClaimFacetTokens,
+  storyPrimaryClaimFacet,
   storyTopicAnchorTokens,
   storyTopicEventTokens,
   storyTopicSimilarity,
@@ -87,6 +88,15 @@ const claimFacetsAreCompatible = (
   head: SummaryEvidenceItem,
   policy: StoryRankingPolicy,
 ): boolean => {
+  const itemPrimaryFacet = storyPrimaryClaimFacet(item);
+  const headPrimaryFacet = storyPrimaryClaimFacet(head);
+  if (
+    itemPrimaryFacet !== undefined &&
+    headPrimaryFacet !== undefined &&
+    itemPrimaryFacet !== headPrimaryFacet
+  ) {
+    return false;
+  }
   const itemFacets = storyClaimFacetTokens(item);
   const headFacets = storyClaimFacetTokens(head);
   if (itemFacets.length === 0 && headFacets.length === 0) {
@@ -97,8 +107,12 @@ const claimFacetsAreCompatible = (
   }
 
   const facetedItem = itemFacets.length > 0 ? item : head;
+  const facetedClaims = itemFacets.length > 0 ? itemFacets : headFacets;
   const otherFacets = itemFacets.length > 0 ? headFacets : itemFacets;
   if (otherFacets.length > 0) {
+    return false;
+  }
+  if (!facetedClaims.every((facet) => facet.startsWith("feature:"))) {
     return false;
   }
 

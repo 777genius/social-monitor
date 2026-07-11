@@ -189,7 +189,7 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
       altText: "rss story 4",
     });
     expect(storyRankingMetrics.recorded[0]?.rankingPolicyVersion).toBe(
-      "story_ranking_v5",
+      "story_ranking_v6",
     );
     expect(selection.personalization).toEqual({
       memoryGuidanceStatus: "available",

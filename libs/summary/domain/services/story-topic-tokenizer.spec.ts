@@ -5,7 +5,10 @@ import {
   readerSummaryTopicLabelEvidenceTexts,
   selectReaderSummaryTopicLabel,
 } from "./reader-summary-topic-label-candidates";
-import { storyTopicTokens } from "./story-topic-tokenizer";
+import {
+  storyPrimaryClaimFacet,
+  storyTopicTokens,
+} from "./story-topic-tokenizer";
 
 describe("story topic tokenizer", () => {
   it("extracts a concrete versioned model candidate from opinion headlines", () => {
@@ -112,6 +115,16 @@ describe("story topic tokenizer", () => {
     expect(storyTopicTokens(evidence, STORY_RANKING_POLICY_V1)).toEqual(
       expect.arrayContaining(["xai", "grok", "grok-4.5"]),
     );
+  });
+
+  it.each([
+    ["OpenAI starts the GPT-5.6 family rollout", "release"],
+    ["GPT-5.6 Sol leads the Artificial Analysis benchmark", "benchmark"],
+    ["GPT-5.6 is 54% more token efficient", "efficiency"],
+    ["GPT-5.6 appears in Codex for Plus accounts", "availability"],
+    ["GPT-5.6 Sol masterclass for business workflows", "education"],
+  ] as const)("classifies %s as a %s claim", (title, expected) => {
+    expect(storyPrimaryClaimFacet(evidenceItem(title))).toBe(expected);
   });
 
   it.each([
