@@ -2,12 +2,6 @@ import {
   type Clock,
   DomainError,
   type IdGenerator,
-  type JsonObject,
-  emptyJsonObjectAsUndefined,
-  isSensitiveKey,
-  normalizeJsonObject,
-  redactSensitiveRecord,
-  redactSensitiveText,
   err,
   ok,
   type Result,
@@ -23,7 +17,7 @@ import {
   noopConversationProjection,
   noopSourceItemMetadataProjection,
   noopSourceItemEnrichment,
-  SourceFetchError,
+  NOOP_SOURCE_CANDIDATE_MEMORY,
   SourceItemPersistenceContractError,
   type ConversationProjectionPort,
   type FeedProjectionPort,
@@ -34,14 +28,33 @@ import {
   type ScanLeasePort,
   type SavedSourceItemRef,
   type SourceFetcherPort,
+  type SourceCandidateMemoryPort,
   type SourceItemEnrichmentPort,
   type SourceItemMetadataProjectionPort,
   type SourceItemRepositoryPort,
-  type FetchedConversationUnit,
-  type FetchedSourceItem,
 } from "../../ports";
 import type { ExecuteScanCommand } from "./execute-scan.command";
 import type { ExecuteScanResult } from "./execute-scan.result";
+import {
+  failedScanCollectionExecutionMetadata,
+  successfulScanCollectionExecutionMetadata,
+} from "./scan-collection-execution-metadata";
+import {
+  buildScanFailureMetadata,
+  formatScanFailureReason,
+  isProviderRateLimitFailure,
+  providerFailureKind,
+  shouldEnqueueScanRetry,
+} from "./scan-execution-failure";
+import {
+  sanitizeFetchedConversationUnit,
+  sanitizeFetchedSourceItem,
+  sanitizeSourceWarnings,
+} from "./scan-source-sanitization";
+import {
+  rememberProcessedSourceCandidates,
+  screenSourceCandidates,
+} from "./source-candidate-memory-coordinator";
 
 type ExecuteScanFailure = DomainError | Error;
 
@@ -60,6 +73,7 @@ export class ExecuteScanUseCase {
     private readonly sourceItemMetadataProjection: SourceItemMetadataProjectionPort = noopSourceItemMetadataProjection,
     private readonly sourceItemEnrichment: SourceItemEnrichmentPort = noopSourceItemEnrichment,
     private readonly conversationProjection: ConversationProjectionPort = noopConversationProjection,
+    private readonly candidateMemory: SourceCandidateMemoryPort = NOOP_SOURCE_CANDIDATE_MEMORY,
   ) {}
 
   async execute(
@@ -138,9 +152,29 @@ export class ExecuteScanUseCase {
         correlationId: command.correlationId,
         cursor: existingCursor?.cursor,
       });
-      const scanWarnings = sanitizeSourceWarnings(fetched.warnings);
+      const scanWarnings = [...sanitizeSourceWarnings(fetched.warnings)];
 
       const ingestedAt = this.clock.now();
+      const sanitizedFetchedItems = fetched.items.map(
+        sanitizeFetchedSourceItem,
+      );
+      const candidateScreening = await screenSourceCandidates({
+        memory: this.candidateMemory,
+        scope: {
+          tenantId: command.tenantId,
+          workspaceId: command.workspaceId,
+          interestId: sourceBinding.interestId,
+          sourceBindingId: sourceBinding.sourceBindingId,
+          providerKey: sourceBinding.providerKey,
+          interestQuery: command.interestQuerySnapshot,
+          sourceQuery: command.sourceQuery,
+        },
+        items: sanitizedFetchedItems,
+        screenedAt: ingestedAt,
+      });
+      if (candidateScreening.warning !== undefined) {
+        scanWarnings.push(candidateScreening.warning);
+      }
       const enriched = await this.sourceItemEnrichment.enrich({
         tenantId: command.tenantId,
         workspaceId: command.workspaceId,
@@ -148,7 +182,7 @@ export class ExecuteScanUseCase {
         scanJobId: command.scanJobId,
         providerKey: sourceBinding.providerKey,
         correlationId: command.correlationId,
-        items: fetched.items,
+        items: candidateScreening.itemsToProcess,
       });
       const items = enriched.items.map(sanitizeFetchedSourceItem).map((item) =>
         SourceItem.ingest({
@@ -233,11 +267,26 @@ export class ExecuteScanUseCase {
           committedAt: this.clock.now(),
         });
       }
+      const candidateMemoryWriteWarning =
+        await rememberProcessedSourceCandidates({
+          memory: this.candidateMemory,
+          screening: candidateScreening,
+          processedExternalIds: new Set(
+            items.map((item) => item.toSnapshot().externalId),
+          ),
+          rememberedAt: this.clock.now(),
+        });
+      if (candidateMemoryWriteWarning !== undefined) {
+        scanWarnings.push(candidateMemoryWriteWarning);
+      }
+      const skippedDuplicates =
+        saveResult.skippedDuplicates +
+        candidateScreening.suppressedExternalIds.length;
       attempt = attempt.succeed({
         finishedAt: this.clock.now(),
         fetched: fetched.items.length,
         inserted: saveResult.inserted,
-        skippedDuplicates: saveResult.skippedDuplicates,
+        skippedDuplicates,
         projected: projectionResult.projected,
       });
       await this.scanAttempts.save(attempt);
@@ -247,15 +296,25 @@ export class ExecuteScanUseCase {
         scanJobId: command.scanJobId,
         completedAt: this.clock.now(),
         warnings: scanWarnings,
+        collectionTelemetry: successfulScanCollectionExecutionMetadata({
+          providerKey: sourceBinding.providerKey,
+          sourceQuery: command.sourceQuery,
+          telemetry: fetched.telemetry,
+          insertedItemCount: saveResult.inserted,
+          storageDuplicateItemCount: saveResult.skippedDuplicates,
+          candidateMemorySuppressedItemCount:
+            candidateScreening.suppressedExternalIds.length,
+        }),
       });
 
       return ok({
         scanJobId: command.scanJobId,
         fetched: fetched.items.length,
         inserted: saveResult.inserted,
-        skippedDuplicates: saveResult.skippedDuplicates,
+        skippedDuplicates,
         projected: projectionResult.projected,
         warnings: scanWarnings,
+        telemetry: fetched.telemetry,
       });
     } catch (error) {
       const safeFailureReason = formatScanFailureReason(error);
@@ -272,6 +331,12 @@ export class ExecuteScanUseCase {
         completedAt: this.clock.now(),
         failureReason: safeFailureReason,
         failureMetadata,
+        collectionTelemetry: failedScanCollectionExecutionMetadata({
+          providerKey: sourceBinding.providerKey,
+          sourceQuery: command.sourceQuery,
+          rateLimited: isProviderRateLimitFailure(error),
+          failureKind: providerFailureKind(error),
+        }),
       });
       const failedCommand = {
         tenantId: command.tenantId,
@@ -311,35 +376,6 @@ export class ExecuteScanUseCase {
     }
   }
 }
-
-const isRetryableScanFailure = (error: unknown): boolean =>
-  error instanceof SourceFetchError ? error.retryable : true;
-
-const shouldEnqueueScanRetry = (error: unknown): boolean =>
-  isRetryableScanFailure(error) && !isProviderRateLimitFailure(error);
-
-const isProviderRateLimitFailure = (error: unknown): boolean =>
-  error instanceof SourceFetchError && error.kind === "rate_limited";
-
-const buildScanFailureMetadata = (error: unknown): JsonObject | undefined => {
-  if (!(error instanceof SourceFetchError)) {
-    return undefined;
-  }
-
-  return emptyJsonObjectAsUndefined(
-    normalizeJsonObject({
-      providerKey: error.providerKey,
-      kind: error.kind,
-      retryable: error.retryable,
-      ...(error.retryAfterMs === undefined
-        ? {}
-        : { retryAfterMs: error.retryAfterMs }),
-      ...(error.rateLimitResetAt === undefined
-        ? {}
-        : { rateLimitResetAt: error.rateLimitResetAt.toISOString() }),
-    }),
-  );
-};
 
 const createDomainValue = <T>(factory: () => T): Result<T, DomainError> => {
   try {
@@ -396,91 +432,3 @@ const rehydratePersistedSourceItems = (
     });
   });
 };
-
-const formatScanFailureReason = (error: unknown): string => {
-  if (error instanceof SourceFetchError) {
-    return [
-      `provider=${error.providerKey}`,
-      `kind=${error.kind}`,
-      `retryable=${String(error.retryable)}`,
-      `message=${error.message}`,
-    ].join(" ");
-  }
-
-  return error instanceof Error
-    ? error.message
-    : "Unknown scan execution failure";
-};
-
-const sanitizeFetchedSourceItem = (
-  item: FetchedSourceItem,
-): FetchedSourceItem => ({
-  ...item,
-  externalId: redactSensitiveText(item.externalId),
-  canonicalUrl: sanitizeFetchedSourceUrl(item.canonicalUrl),
-  title: redactSensitiveText(item.title),
-  body: redactSensitiveText(item.body),
-  authorHandle:
-    item.authorHandle === undefined
-      ? undefined
-      : redactSensitiveText(item.authorHandle),
-  metadata:
-    item.metadata === undefined
-      ? undefined
-      : (redactSensitiveRecord(item.metadata) as JsonObject),
-});
-
-const sanitizeFetchedSourceUrl = (value: string): string => {
-  const redacted = redactSensitiveText(value);
-
-  try {
-    const parsed = new URL(redacted);
-    parsed.username = "";
-    parsed.password = "";
-    parsed.hash = "";
-
-    for (const key of [...parsed.searchParams.keys()]) {
-      if (isSensitiveKey(key)) {
-        parsed.searchParams.delete(key);
-      }
-    }
-
-    return parsed.toString();
-  } catch {
-    return redacted;
-  }
-};
-
-const sanitizeFetchedConversationUnit = (
-  unit: FetchedConversationUnit,
-): FetchedConversationUnit => ({
-  ...unit,
-  rootExternalId: redactSensitiveText(unit.rootExternalId),
-  rootProviderItemId: redactSensitiveText(unit.rootProviderItemId),
-  providerUnitId: redactSensitiveText(unit.providerUnitId),
-  canonicalUrl: sanitizeFetchedSourceUrl(unit.canonicalUrl),
-  body: redactSensitiveText(unit.body),
-  authorHandle:
-    unit.authorHandle === undefined
-      ? undefined
-      : redactSensitiveText(unit.authorHandle),
-  threadExternalId: redactSensitiveText(unit.threadExternalId),
-  parentProviderUnitId:
-    unit.parentProviderUnitId === undefined
-      ? undefined
-      : redactSensitiveText(unit.parentProviderUnitId),
-  metadata:
-    unit.metadata === undefined
-      ? undefined
-      : (redactSensitiveRecord(unit.metadata) as JsonObject),
-});
-
-const sanitizeSourceWarnings = (
-  warnings: readonly string[] | undefined,
-): readonly string[] => [
-  ...new Set(
-    (warnings ?? [])
-      .map((warning) => redactSensitiveText(warning).trim())
-      .filter((warning) => warning.length > 0),
-  ),
-];

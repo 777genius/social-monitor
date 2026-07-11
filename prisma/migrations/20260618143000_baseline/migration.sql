@@ -250,6 +250,7 @@ CREATE TABLE "scan_jobs" (
     "completed_at" TIMESTAMPTZ(6),
     "failure_reason" TEXT,
     "failure_metadata" JSONB,
+    "execution_metadata" JSONB,
     "correlation_id" TEXT,
     "causation_id" TEXT,
     "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -321,6 +322,31 @@ CREATE TABLE "source_items" (
     "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "source_items_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "source_candidate_memory" (
+    "id" UUID NOT NULL,
+    "tenant_id" UUID NOT NULL,
+    "workspace_id" UUID NOT NULL,
+    "interest_id" UUID NOT NULL,
+    "source_binding_id" UUID NOT NULL,
+    "provider_key" TEXT NOT NULL,
+    "provider_item_id" TEXT NOT NULL,
+    "scope_fingerprint" TEXT NOT NULL,
+    "fingerprint" TEXT NOT NULL,
+    "policy_version" TEXT NOT NULL,
+    "decision" TEXT NOT NULL,
+    "reason_code" TEXT NOT NULL,
+    "expires_at" TIMESTAMPTZ(6) NOT NULL,
+    "first_seen_at" TIMESTAMPTZ(6) NOT NULL,
+    "last_seen_at" TIMESTAMPTZ(6) NOT NULL,
+    "seen_count" INTEGER NOT NULL DEFAULT 1,
+    "schema_version" INTEGER NOT NULL DEFAULT 1,
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMPTZ(6) NOT NULL,
+
+    CONSTRAINT "source_candidate_memory_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -1208,6 +1234,15 @@ CREATE INDEX "source_items_tenant_id_workspace_id_source_binding_id_obser_idx" O
 
 -- CreateIndex
 CREATE UNIQUE INDEX "source_items_tenant_workspace_provider_item_key" ON "source_items"("tenant_id", "workspace_id", "provider_key", "provider_item_id");
+
+-- CreateIndex
+CREATE INDEX "source_candidate_memory_active_lookup_idx" ON "source_candidate_memory"("tenant_id", "workspace_id", "source_binding_id", "provider_key", "scope_fingerprint", "expires_at");
+
+-- CreateIndex
+CREATE INDEX "source_candidate_memory_expiry_idx" ON "source_candidate_memory"("expires_at");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "source_candidate_memory_scope_item_key" ON "source_candidate_memory"("tenant_id", "workspace_id", "interest_id", "source_binding_id", "provider_key", "scope_fingerprint", "provider_item_id");
 
 -- CreateIndex
 CREATE INDEX "scan_failure_queue_entries_tenant_id_workspace_id_status_cr_idx" ON "scan_failure_queue_entries"("tenant_id", "workspace_id", "status", "created_at");

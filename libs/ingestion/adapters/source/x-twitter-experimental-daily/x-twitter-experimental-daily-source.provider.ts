@@ -51,7 +51,7 @@ export const xTwitterCapabilityProfile: SourceCapabilityProfile = {
   productionSafe: true,
   supportedContentUnits: ["post", "link", "media"],
   supportedQueryModes: ["search"],
-  cursorModel: "opaque",
+  cursorModel: "none",
   stableIdentity: ["providerId", "canonicalUrl"],
   quotaModel: "per_credential",
   limitations: [

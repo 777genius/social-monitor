@@ -803,7 +803,7 @@ class FakePrismaIngestionFeedClient
                 args.update.providerMetadata === undefined
                   ? existing.providerMetadata
                   : (args.update.providerMetadata ?? null),
-              status: args.update.status,
+              status: existing.status,
             };
       this.feedItems.set(key, record);
 

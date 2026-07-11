@@ -245,6 +245,11 @@ async function main(): Promise<void> {
 
   const succeededScanJob = enqueuedScanJob.markSucceeded({
     completedAt: new Date('2026-06-06T00:00:10.000Z'),
+    executionMetadata: {
+      schemaVersion: 1,
+      providerKey: 'fake-source',
+      acceptedItemCount: 20,
+    },
   });
   await scanJobs.save(succeededScanJob);
 
@@ -261,6 +266,10 @@ async function main(): Promise<void> {
     scanJobId: scanJob.toSnapshot().id,
   });
   assert(completedById?.toSnapshot().status === 'succeeded', 'scan job completion state must persist');
+  assert(
+    completedById?.toSnapshot().executionMetadata?.acceptedItemCount === 20,
+    'scan job collection telemetry must round-trip through Prisma',
+  );
 
   await schedulerDecisions.recordBatch({
     records: [{
@@ -660,6 +669,7 @@ class FakePrismaMonitoringClient implements PrismaMonitoringClient {
         completedAt: args.update.completedAt ?? null,
         failureReason: args.update.failureReason ?? null,
         failureMetadata: args.update.failureMetadata ?? null,
+        executionMetadata: args.update.executionMetadata ?? null,
         createdAt: existing?.createdAt ?? clock.now(),
       };
       this.scanJobs.set(record.id, record);

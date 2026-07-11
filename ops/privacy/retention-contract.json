@@ -54,14 +54,14 @@
       "purgeTrigger": "api_key_revoked_and_retention_window_expired"
     },
     {
-      "table": "topics",
+      "table": "interests",
       "dataClass": "user_configuration",
       "owner": "monitoring-owner",
       "retentionDays": 365,
       "deleteMode": "soft_delete_then_hard_delete",
       "exportable": true,
       "legalHoldAware": true,
-      "purgeTrigger": "topic_deleted_or_workspace_offboarding_completed"
+      "purgeTrigger": "interest_deleted_or_workspace_offboarding_completed"
     },
     {
       "table": "source_catalog_entries",
@@ -162,6 +162,16 @@
       "exportable": true,
       "legalHoldAware": true,
       "purgeTrigger": "source_item_age_expired_or_topic_deleted"
+    },
+    {
+      "table": "source_candidate_memory",
+      "dataClass": "derived_ingestion_deduplication_signal",
+      "owner": "ingestion-owner",
+      "retentionDays": 30,
+      "deleteMode": "hard_delete_after_candidate_memory_expiry",
+      "exportable": false,
+      "legalHoldAware": false,
+      "purgeTrigger": "candidate_memory_expires_at_elapsed"
     },
     {
       "table": "scan_failure_queue_entries",
@@ -532,6 +542,46 @@
       "exportable": false,
       "legalHoldAware": true,
       "purgeTrigger": "idempotency_key_expired"
+    },
+    {
+      "table": "conversation_units",
+      "dataClass": "third_party_public_conversation_content",
+      "owner": "ingestion-owner",
+      "retentionDays": 180,
+      "deleteMode": "hard_delete_or_tombstone_if_referenced",
+      "exportable": true,
+      "legalHoldAware": true,
+      "purgeTrigger": "conversation_unit_age_expired_or_interest_deleted"
+    },
+    {
+      "table": "conversation_signal_baseline_samples",
+      "dataClass": "derived_conversation_signal",
+      "owner": "ingestion-owner",
+      "retentionDays": 180,
+      "deleteMode": "hard_delete_after_conversation_or_interest_retention",
+      "exportable": false,
+      "legalHoldAware": true,
+      "purgeTrigger": "conversation_unit_age_expired_or_interest_deleted"
+    },
+    {
+      "table": "reader_summary_topic_recommendation_decisions",
+      "dataClass": "ai_generated_topic_recommendation_decision",
+      "owner": "summary-owner",
+      "retentionDays": 365,
+      "deleteMode": "hard_delete_after_summary_policy_retention",
+      "exportable": true,
+      "legalHoldAware": true,
+      "purgeTrigger": "summary_retention_expired_or_workspace_offboarding_completed"
+    },
+    {
+      "table": "social_research_result_cache_entries",
+      "dataClass": "derived_social_research_cache",
+      "owner": "ingestion-owner",
+      "retentionDays": 30,
+      "deleteMode": "hard_delete_after_cache_expiry",
+      "exportable": false,
+      "legalHoldAware": false,
+      "purgeTrigger": "cache_entry_expires_at_elapsed"
     }
   ]
 }

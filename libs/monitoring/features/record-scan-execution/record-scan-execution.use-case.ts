@@ -1,4 +1,9 @@
-import { DomainError, err, ok, type Result } from '@social-monitor/shared-kernel';
+import {
+  DomainError,
+  err,
+  ok,
+  type Result,
+} from '@social-monitor/shared-kernel';
 
 import type { ScanJobRepositoryPort } from '../../ports';
 import type { RecordScanExecutionCommand } from './record-scan-execution.command';
@@ -19,16 +24,24 @@ export class RecordScanExecutionUseCase {
     });
 
     if (job === null) {
-      return err(new DomainError('resource.not_found', 'Scan job not found', { scanJobId: command.scanJobId }));
+      return err(
+        new DomainError('resource.not_found', 'Scan job not found', {
+          scanJobId: command.scanJobId,
+        }),
+      );
     }
 
     const updated =
       command.status === 'succeeded'
-        ? job.markSucceeded({ completedAt: command.completedAt })
+        ? job.markSucceeded({
+            completedAt: command.completedAt,
+            executionMetadata: command.executionMetadata,
+          })
         : job.markFailed({
             completedAt: command.completedAt,
             failureReason: command.failureReason,
             failureMetadata: command.failureMetadata,
+            executionMetadata: command.executionMetadata,
           });
     await this.scanJobs.save(updated);
     const snapshot = updated.toSnapshot();

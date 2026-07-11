@@ -1,4 +1,4 @@
-import { redactSensitiveText } from '@social-monitor/shared-kernel';
+import { redactSensitiveText } from "@social-monitor/shared-kernel";
 
 import type {
   FetchSourceItemsCommand,
@@ -12,33 +12,44 @@ import type {
   SourceProviderPort,
   SourceProviderScanPlan,
   SourceProviderScanResult,
+  SourceFetchTelemetry,
+  SourcePaginationStopReason,
   SourceRuntimeConfig,
-} from '../../ports';
-import { SourceFetchError } from '../../ports';
+} from "../../ports";
+import { SourceFetchError } from "../../ports";
 import {
   adaptivePaginationFailureWarning,
   adaptivePaginationStatsWarning,
   createAdaptivePaginationAccumulator,
   readAdaptivePaginationPolicy,
   type AdaptivePaginationStopReason,
-} from './adaptive-source-pagination';
+} from "./adaptive-source-pagination";
 import {
   DefaultSourceQueryPlanRuntimeCompiler,
   isSourceQueryPlannerEnabled,
   sourceQueryPlannerIntentFromConfig,
   type SourceQueryPlanRuntimeCompiler,
-} from './source-query-plan-runtime-compiler';
+} from "./source-query-plan-runtime-compiler";
+
+type ScanWithTelemetryResult = {
+  readonly result: SourceProviderScanResult;
+  readonly targetItemCount: number;
+  readonly pageCount: number;
+  readonly paginationDuplicateItemCount: number;
+  readonly paginationStopReason: SourcePaginationStopReason;
+};
 
 export class RegistrySourceFetcherAdapter implements SourceFetcherPort {
   constructor(
     private readonly registry: SourceProviderRegistryPort,
     private readonly sourceConfigs?: SourceConfigReaderPort,
     private readonly sourceQueryPlanner?: SourceQueryPlannerPort,
-    private readonly sourceQueryPlanCompiler: SourceQueryPlanRuntimeCompiler =
-      new DefaultSourceQueryPlanRuntimeCompiler(),
+    private readonly sourceQueryPlanCompiler: SourceQueryPlanRuntimeCompiler = new DefaultSourceQueryPlanRuntimeCompiler(),
   ) {}
 
-  async fetch(command: FetchSourceItemsCommand): Promise<FetchSourceItemsResult> {
+  async fetch(
+    command: FetchSourceItemsCommand,
+  ): Promise<FetchSourceItemsResult> {
     const provider = await this.registry.getProvider(command.providerKey);
 
     if (!provider) {
@@ -49,7 +60,7 @@ export class RegistrySourceFetcherAdapter implements SourceFetcherPort {
     if (!validation.ok) {
       throw new SourceFetchError({
         providerKey: command.providerKey,
-        kind: 'invalid_query',
+        kind: "invalid_query",
         retryable: false,
         message: validation.reason,
       });
@@ -65,7 +76,7 @@ export class RegistrySourceFetcherAdapter implements SourceFetcherPort {
     if (!plannedValidation.ok) {
       throw new SourceFetchError({
         providerKey: command.providerKey,
-        kind: 'invalid_query',
+        kind: "invalid_query",
         retryable: false,
         message: plannedValidation.reason,
       });
@@ -81,12 +92,15 @@ export class RegistrySourceFetcherAdapter implements SourceFetcherPort {
         ...provider.planScan(planned.sourceQuery, context),
         cursor: command.cursor,
       };
-      const result = await this.scanWithAdaptivePagination(
+      const scanned = await this.scanWithAdaptivePagination(
         provider,
         plan,
         context,
       );
-      const filteredResult = filterByTargetPublishedWindow(result, context);
+      const filteredResult = filterByTargetPublishedWindow(
+        scanned.result,
+        context,
+      );
 
       return {
         items: filteredResult.items,
@@ -96,6 +110,11 @@ export class RegistrySourceFetcherAdapter implements SourceFetcherPort {
           ...planned.warnings,
           ...(filteredResult.warnings ?? []),
         ]),
+        telemetry: buildSourceFetchTelemetry({
+          scanned,
+          filteredResult,
+          context,
+        }),
       };
     } catch (error) {
       const failure = provider.classifyError(error, context);
@@ -115,7 +134,7 @@ export class RegistrySourceFetcherAdapter implements SourceFetcherPort {
     provider: SourceProviderPort,
     initialPlan: SourceProviderScanPlan,
     context: SourceProviderScanContext,
-  ): Promise<SourceProviderScanResult> {
+  ): Promise<ScanWithTelemetryResult> {
     const policyResult = readAdaptivePaginationPolicy({
       config: context.config,
       cursorModel: provider.capabilityProfile().cursorModel,
@@ -124,19 +143,30 @@ export class RegistrySourceFetcherAdapter implements SourceFetcherPort {
 
     if (!policyResult.enabled) {
       const result = await provider.scan(initialPlan, context);
+      const resultWithWarning =
+        policyResult.warning === undefined
+          ? result
+          : {
+              ...result,
+              warnings: compactUnique([
+                ...result.warnings,
+                policyResult.warning,
+              ]),
+            };
 
-      return policyResult.warning === undefined
-        ? result
-        : {
-            ...result,
-            warnings: compactUnique([...result.warnings, policyResult.warning]),
-          };
+      return {
+        result: resultWithWarning,
+        targetItemCount: initialPlan.maxItems,
+        pageCount: 1,
+        paginationDuplicateItemCount: 0,
+        paginationStopReason: "single_page",
+      };
     }
 
     const accumulator = createAdaptivePaginationAccumulator();
     let cursor = initialPlan.cursor;
     let nextCursor: string | undefined;
-    let stopReason: AdaptivePaginationStopReason = 'max_pages';
+    let stopReason: AdaptivePaginationStopReason = "max_pages";
 
     for (let page = 0; page < policyResult.policy.maxPages; page += 1) {
       let result: SourceProviderScanResult;
@@ -153,20 +183,26 @@ export class RegistrySourceFetcherAdapter implements SourceFetcherPort {
           throw error;
         }
 
-        stopReason = 'partial_retryable_failure';
+        stopReason = "partial_retryable_failure";
         const state = accumulator.state(stopReason);
         return {
-          items: state.items,
-          conversationUnits: state.conversationUnits,
-          nextCursor: cursor,
-          warnings: compactUnique([
-            ...state.warnings,
-            adaptivePaginationFailureWarning({
-              kind: failure.kind,
-              message: failure.message,
-            }),
-            adaptivePaginationStatsWarning(state),
-          ]),
+          result: {
+            items: state.items,
+            conversationUnits: state.conversationUnits,
+            nextCursor: cursor,
+            warnings: compactUnique([
+              ...state.warnings,
+              adaptivePaginationFailureWarning({
+                kind: failure.kind,
+                message: failure.message,
+              }),
+              adaptivePaginationStatsWarning(state),
+            ]),
+          },
+          targetItemCount: policyResult.policy.targetItems,
+          pageCount: state.pageCount,
+          paginationDuplicateItemCount: state.duplicateItemCount,
+          paginationStopReason: state.stopReason,
         };
       }
 
@@ -174,27 +210,27 @@ export class RegistrySourceFetcherAdapter implements SourceFetcherPort {
       nextCursor = result.nextCursor;
 
       if (accumulator.uniqueItemCount() >= policyResult.policy.targetItems) {
-        stopReason = 'target_items';
+        stopReason = "target_items";
         break;
       }
 
       if (nextCursor === undefined) {
-        stopReason = 'no_next_cursor';
+        stopReason = "no_next_cursor";
         break;
       }
 
       if (nextCursor === cursor) {
-        stopReason = 'cursor_not_advanced';
+        stopReason = "cursor_not_advanced";
         break;
       }
 
       if (pageStats.newItemCount < policyResult.policy.minNewItemsPerPage) {
-        stopReason = 'low_new_item_yield';
+        stopReason = "low_new_item_yield";
         break;
       }
 
       if (pageStats.duplicateRate > policyResult.policy.maxDuplicateRate) {
-        stopReason = 'high_duplicate_rate';
+        stopReason = "high_duplicate_rate";
         break;
       }
 
@@ -204,13 +240,19 @@ export class RegistrySourceFetcherAdapter implements SourceFetcherPort {
     const state = accumulator.state(stopReason);
 
     return {
-      items: state.items,
-      conversationUnits: state.conversationUnits,
-      nextCursor,
-      warnings: compactUnique([
-        ...state.warnings,
-        adaptivePaginationStatsWarning(state),
-      ]),
+      result: {
+        items: state.items,
+        conversationUnits: state.conversationUnits,
+        nextCursor,
+        warnings: compactUnique([
+          ...state.warnings,
+          adaptivePaginationStatsWarning(state),
+        ]),
+      },
+      targetItemCount: policyResult.policy.targetItems,
+      pageCount: state.pageCount,
+      paginationDuplicateItemCount: state.duplicateItemCount,
+      paginationStopReason: state.stopReason,
     };
   }
 
@@ -262,7 +304,7 @@ export class RegistrySourceFetcherAdapter implements SourceFetcherPort {
       };
     } catch (error) {
       const message = redactSensitiveText(
-        error instanceof Error ? error.message : 'Unknown planner error',
+        error instanceof Error ? error.message : "Unknown planner error",
       );
 
       return {
@@ -284,9 +326,7 @@ export class RegistrySourceFetcherAdapter implements SourceFetcherPort {
       correlationId: command.correlationId,
     };
 
-    return config === undefined
-      ? baseContext
-      : { ...baseContext, config };
+    return config === undefined ? baseContext : { ...baseContext, config };
   }
 }
 
@@ -311,6 +351,53 @@ const mergeSourceQueryParameters = (
 const compactUnique = (values: readonly string[]): readonly string[] => [
   ...new Set(values),
 ];
+
+const buildSourceFetchTelemetry = (params: {
+  readonly scanned: ScanWithTelemetryResult;
+  readonly filteredResult: SourceProviderScanResult;
+  readonly context: SourceProviderScanContext;
+}): SourceFetchTelemetry => {
+  const publishedTimes = params.filteredResult.items
+    .map((item) => item.publishedAt.getTime())
+    .filter(Number.isFinite);
+  const targetPublishedWindow = readTargetPublishedWindow(
+    params.context.config,
+  );
+
+  return {
+    targetItemCount: params.scanned.targetItemCount,
+    collectedItemCount: params.scanned.result.items.length,
+    acceptedItemCount: params.filteredResult.items.length,
+    outsideWindowItemCount:
+      params.scanned.result.items.length - params.filteredResult.items.length,
+    pageCount: params.scanned.pageCount,
+    paginationDuplicateItemCount: params.scanned.paginationDuplicateItemCount,
+    paginationStopReason: params.scanned.paginationStopReason,
+    rateLimitEventCount: countRateLimitWarnings(params.scanned.result.warnings),
+    ...(targetPublishedWindow === undefined
+      ? {}
+      : {
+          targetPublishedWindowStartedAt: targetPublishedWindow.start,
+          targetPublishedWindowEndedAt: targetPublishedWindow.end,
+        }),
+    ...(publishedTimes.length === 0
+      ? {}
+      : {
+          oldestAcceptedPublishedAt: new Date(Math.min(...publishedTimes)),
+          newestAcceptedPublishedAt: new Date(Math.max(...publishedTimes)),
+        }),
+  };
+};
+
+const countRateLimitWarnings = (warnings: readonly string[]): number =>
+  warnings.filter((warning) => {
+    const normalized = warning.toLowerCase();
+
+    return (
+      normalized.includes("partial_rate_limit") ||
+      normalized.includes("partial:rate_limited")
+    );
+  }).length;
 
 const filterByTargetPublishedWindow = (
   result: SourceProviderScanResult,
@@ -341,10 +428,10 @@ const filterByTargetPublishedWindow = (
     warnings: compactUnique([
       ...result.warnings,
       [
-        'target_published_window.filtered',
+        "target_published_window.filtered",
         `kept=${items.length}`,
         `dropped=${result.items.length - items.length}`,
-      ].join(';'),
+      ].join(";"),
     ]),
   };
 };
@@ -364,12 +451,12 @@ const readTargetPublishedWindow = (
 const readRecord = (
   value: unknown,
 ): Readonly<Record<string, unknown>> | undefined =>
-  value !== null && typeof value === 'object' && !Array.isArray(value)
+  value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as Readonly<Record<string, unknown>>)
     : undefined;
 
 const readDate = (value: unknown): Date | undefined => {
-  if (typeof value !== 'string') {
+  if (typeof value !== "string") {
     return undefined;
   }
 
