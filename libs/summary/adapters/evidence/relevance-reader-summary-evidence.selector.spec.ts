@@ -170,13 +170,21 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
     );
     expect(
       selection.selectedEvidence.map((item) => item.providerKey).sort(),
-    ).toEqual(["hacker-news", "reddit", "rss"]);
-    expect(selection.selectedEvidence.map((item) => item.providerKey)).toEqual([
+    ).toEqual([
+      "github-trending-page",
+      "github-trending-page",
       "hacker-news",
       "reddit",
       "rss",
     ]);
-    expect(selection.sourceWindow.selectedFeedItemIds).not.toContain(
+    expect(selection.selectedEvidence.map((item) => item.providerKey)).toEqual([
+      "github-trending-page",
+      "hacker-news",
+      "reddit",
+      "rss",
+      "github-trending-page",
+    ]);
+    expect(selection.sourceWindow.selectedFeedItemIds).toContain(
       "feed-trending-2",
     );
     expect(
@@ -205,7 +213,7 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
     );
   });
 
-  it("excludes GitHub technical providers from default reader summary evidence", async () => {
+  it("includes GitHub Trending while excluding technical issue events", async () => {
     const rankedItems = [
       ...Array.from({ length: 80 }, (_, index) =>
         rankedItem({
@@ -263,13 +271,13 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
     ).not.toContain("feed-github-deep");
     expect(
       selection.selectedEvidence.map((item) => item.feedItemId),
-    ).not.toContain("feed-github-trending");
+    ).toContain("feed-github-trending");
     expect(
-      selection.selectedEvidence.every((item) => item.providerKey === "reddit"),
-    ).toBe(true);
+      selection.selectedEvidence.map((item) => item.feedItemId),
+    ).not.toContain("feed-github-deep");
   });
 
-  it("preserves ranked GitHub repo providers while excluding technical-only providers", async () => {
+  it("preserves GitHub trend and repo providers while excluding technical-only providers", async () => {
     const rankedItems = [
       rankedItem({
         feedItemId: "feed-github-trending",
@@ -337,10 +345,10 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
     });
 
     expect(selection.selectedEvidence.map((item) => item.providerKey)).toEqual([
+      "github-trending-page",
       "github-repo-radar",
       "reddit",
       "hacker-news",
-      "rss",
     ]);
   });
 
@@ -958,6 +966,7 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
     });
 
     expect(selection.selectedEvidence.map((item) => item.feedItemId)).toEqual([
+      "feed-github",
       "feed-reddit",
     ]);
   });
