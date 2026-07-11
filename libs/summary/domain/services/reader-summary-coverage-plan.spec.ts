@@ -46,6 +46,18 @@ describe("buildReaderSummaryCoveragePlan", () => {
       "news-secondary",
     ]);
   });
+
+  it("prefers an independent secondary topic inside the quality threshold", () => {
+    const selection = buildSelection([
+      cluster("lead", 4, "openai-a", ["reddit"]),
+      cluster("same-provider", 3, "openai-cost", ["reddit"]),
+      cluster("independent", 2.9, "security-a", ["hacker-news"]),
+    ]);
+
+    const plan = buildReaderSummaryCoveragePlan(selection);
+
+    expect(plan.secondary[0]?.clusterId).toBe("independent");
+  });
 });
 
 const buildSelection = (
@@ -113,6 +125,9 @@ const cluster = (
 
 const titleFor = (feedItemId: string): string => {
   if (feedItemId.startsWith("openai")) {
+    if (feedItemId === "openai-cost") {
+      return "OpenAI users debate pricing and usage limits";
+    }
     return "OpenAI GPT rollout changes coding workflows";
   }
   if (feedItemId.startsWith("security")) {

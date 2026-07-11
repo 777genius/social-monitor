@@ -2,6 +2,7 @@ import type { TenantId, WorkspaceId } from "@social-monitor/shared-kernel";
 
 import type {
   GeneratedReaderSummaryDraft,
+  ReaderSummaryCoveragePlan,
   ReaderSummaryContextArtifact,
   ReaderSummaryGenerationPolicy,
   ReaderSummaryLineage,
@@ -38,6 +39,7 @@ export type ReaderSummaryModelInput = {
   readonly userId?: string;
   readonly subscriptionId?: string;
   readonly evidence: SummaryEvidenceSelection;
+  readonly coveragePlan: ReaderSummaryCoveragePlan;
   readonly contextArtifacts: readonly ReaderSummaryContextArtifact[];
   readonly policy: ReaderSummaryGenerationPolicy;
   readonly requestedAt: Date;

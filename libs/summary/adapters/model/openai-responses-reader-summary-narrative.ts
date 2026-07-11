@@ -1,5 +1,4 @@
 import {
-  buildReaderSummaryCoveragePlan,
   readerSummaryNarrativeSectionKinds,
   type ReaderSummaryCitation,
   type ReaderSummaryNarrativeSection,
@@ -33,6 +32,11 @@ export const normalizeOpenAiReaderSummaryNarrative = (params: {
         .filter((value): value is Record<string, unknown> => value !== null)
     : [];
   if (rawSections.length === 0) {
+    if (params.input.coveragePlan.secondary.length > 0) {
+      throw new Error(
+        "Reader summary narrative must include the planned cited lead and secondary signals",
+      );
+    }
     return fallbackNarrative(params);
   }
 
@@ -113,7 +117,7 @@ export const normalizeOpenAiReaderSummaryNarrative = (params: {
   );
   assertNarrativeCoverage(
     bounded,
-    coverage.secondaryCitationIds.size,
+    coverage.secondaryCitationIds,
     narrativeDiagnostics({
       rawSections,
       validSections: sections,
@@ -187,7 +191,11 @@ const fallbackNarrative = (params: {
   readonly input: ReaderSummaryModelInput;
   readonly citationMap: readonly ReaderSummaryCitation[];
 }): readonly ReaderSummaryNarrativeSection[] => {
+  const plannedFeedItemIds = new Set(
+    params.input.coveragePlan.lead?.feedItemIds ?? [],
+  );
   const citationIds = params.citationMap
+    .filter((item) => plannedFeedItemIds.has(item.feedItemId))
     .slice(0, 3)
     .map((item) => item.citationId);
   if (citationIds.length === 0) {
@@ -243,7 +251,7 @@ const coverageCitationPlan = (
       (citation) => [citation.feedItemId, citation.citationId] as const,
     ),
   );
-  const plan = buildReaderSummaryCoveragePlan(input.evidence);
+  const plan = input.coveragePlan;
   const citationIdsFor = (feedItemIds: readonly string[]) =>
     new Set(
       feedItemIds
@@ -300,7 +308,7 @@ const validSecondarySection = (
 
 const assertNarrativeCoverage = (
   sections: readonly ReaderSummaryNarrativeSection[],
-  plannedSecondaryCount: number,
+  plannedSecondaryCitations: ReadonlyMap<string, ReadonlySet<string>>,
   diagnostics: string,
 ): void => {
   if (!sections.some((section) => section.kind === "lead")) {
@@ -308,16 +316,25 @@ const assertNarrativeCoverage = (
       `Reader summary narrative must include a cited lead (${diagnostics})`,
     );
   }
-  const expectedSecondaryCount = Math.min(
-    plannedSecondaryCount,
+  const secondarySections = sections.filter(
+    (section) => section.kind === "secondary_signal",
+  );
+  const plannedClusterIds = [...plannedSecondaryCitations.keys()].slice(
+    0,
     maxSecondarySections,
   );
-  const actualSecondaryCount = sections.filter(
-    (section) => section.kind === "secondary_signal",
-  ).length;
-  if (actualSecondaryCount < expectedSecondaryCount) {
+  const actualClusterIds = secondarySections
+    .map((section) => section.storyClusterId)
+    .filter((clusterId): clusterId is string => clusterId !== undefined);
+  const missingClusterIds = plannedClusterIds.filter(
+    (clusterId) => !actualClusterIds.includes(clusterId),
+  );
+  const duplicatedClusterIds = actualClusterIds.filter(
+    (clusterId, index) => actualClusterIds.indexOf(clusterId) !== index,
+  );
+  if (missingClusterIds.length > 0 || duplicatedClusterIds.length > 0) {
     throw new Error(
-      `Reader summary narrative covered ${actualSecondaryCount} of ${expectedSecondaryCount} planned secondary signals`,
+      `Reader summary narrative does not exactly cover planned secondary signals (missing=${missingClusterIds.join(",") || "none"}, duplicated=${[...new Set(duplicatedClusterIds)].join(",") || "none"})`,
     );
   }
 };

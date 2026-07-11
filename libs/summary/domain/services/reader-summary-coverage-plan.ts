@@ -58,22 +58,29 @@ export const buildReaderSummaryCoveragePlan = (
     lead.score * relativeSecondaryScoreFloor,
   );
   const secondary: CoverageCandidate[] = [];
-  for (const candidate of eligibleCandidates.slice(1)) {
-    if (candidate.score < minimumScore || candidate.qualityScore < 0.45) {
-      continue;
-    }
-    if (
-      [lead, ...secondary].some((selected) =>
-        nearDuplicate(selected, candidate),
+  const remaining = eligibleCandidates
+    .slice(1)
+    .filter(
+      (candidate) =>
+        candidate.score >= minimumScore && candidate.qualityScore >= 0.45,
+    );
+  while (secondary.length < maxSecondarySignals && remaining.length > 0) {
+    const selected = [lead, ...secondary];
+    const next = remaining
+      .filter(
+        (candidate) => !selected.some((item) => nearDuplicate(item, candidate)),
       )
-    ) {
-      continue;
-    }
-
-    secondary.push(candidate);
-    if (secondary.length === maxSecondarySignals) {
+      .sort(
+        (left, right) =>
+          marginalCoverageScore(right, selected, lead.score) -
+            marginalCoverageScore(left, selected, lead.score) ||
+          compareCoverageCandidates(left, right),
+      )[0];
+    if (next === undefined) {
       break;
     }
+    secondary.push(next);
+    remaining.splice(remaining.indexOf(next), 1);
   }
 
   return {
@@ -158,6 +165,63 @@ const nearDuplicate = (
   const similarity = union === 0 ? 0 : shared / union;
 
   return shared >= 2 && similarity >= nearDuplicateSimilarity;
+};
+
+const marginalCoverageScore = (
+  candidate: CoverageCandidate,
+  selected: readonly CoverageCandidate[],
+  leadScore: number,
+): number => {
+  const selectedProviders = new Set(
+    selected.flatMap((item) => item.providerKeys),
+  );
+  const selectedInterests = new Set(
+    selected.flatMap((item) => item.interestIds),
+  );
+  const relevance =
+    leadScore <= 0 ? 0 : Math.min(1, candidate.score / leadScore);
+  const providerNovelty = candidate.providerKeys.some(
+    (provider) => !selectedProviders.has(provider),
+  )
+    ? 1
+    : 0;
+  const interestNovelty = candidate.interestIds.some(
+    (interest) => !selectedInterests.has(interest),
+  )
+    ? 1
+    : 0;
+  const topicNovelty = 1 - maximumTopicSimilarity(candidate, selected);
+
+  return (
+    relevance * 0.55 +
+    candidate.qualityScore * 0.2 +
+    topicNovelty * 0.15 +
+    providerNovelty * 0.06 +
+    interestNovelty * 0.04
+  );
+};
+
+const maximumTopicSimilarity = (
+  candidate: CoverageCandidate,
+  selected: readonly CoverageCandidate[],
+): number =>
+  selected.reduce(
+    (maximum, item) => Math.max(maximum, topicSimilarity(candidate, item)),
+    0,
+  );
+
+const topicSimilarity = (
+  left: CoverageCandidate,
+  right: CoverageCandidate,
+): number => {
+  const leftTokens = new Set(left.topicTokens);
+  const rightTokens = new Set(right.topicTokens);
+  const shared = [...leftTokens].filter((token) =>
+    rightTokens.has(token),
+  ).length;
+  const union = new Set([...leftTokens, ...rightTokens]).size;
+
+  return union === 0 ? 0 : shared / union;
 };
 
 const topicTokens = (
