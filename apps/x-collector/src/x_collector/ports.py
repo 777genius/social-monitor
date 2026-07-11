@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Protocol
+from typing import Mapping, Protocol
 
 from .account_pool import AccountPoolSnapshot
 from .account_usage import AccountUsageEvent, SearchPassUsage
+from .candidate_rejection_cache import (
+    CandidateRejection,
+    CandidateRejectionScope,
+)
 from .domain import DailySearchRequest, DailySearchResult
 from .search_budget import SearchBudgetDecision
 from .search_plan import ScweetSearchPass
@@ -22,6 +26,31 @@ class DailySearchCollectorPort(Protocol):
     ) -> DailySearchResult:
         raise NotImplementedError
 
+
+class CandidateRejectionRepositoryPort(Protocol):
+    def load_rejections(
+        self,
+        scope: CandidateRejectionScope,
+        tweet_ids: tuple[str, ...],
+    ) -> Mapping[str, CandidateRejection]:
+        raise NotImplementedError
+
+    def record_outcomes(
+        self,
+        scope: CandidateRejectionScope,
+        selected_tweet_ids: tuple[str, ...],
+        rejections: tuple[CandidateRejection, ...],
+        now: datetime,
+    ) -> None:
+        raise NotImplementedError
+
+    def mark_seen(
+        self,
+        scope: CandidateRejectionScope,
+        tweet_ids: tuple[str, ...],
+        now: datetime,
+    ) -> None:
+        raise NotImplementedError
 
 class AccountPoolLedgerPort(Protocol):
     def snapshot(self, now: datetime) -> AccountPoolSnapshot | None:

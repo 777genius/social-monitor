@@ -324,25 +324,26 @@ model ScanPolicy {
 }
 
 model ScanJob {
-  id              String        @id @db.Uuid
-  tenantId        String        @map("tenant_id") @db.Uuid
-  workspaceId     String        @map("workspace_id") @db.Uuid
-  sourceBindingId String        @map("source_binding_id") @db.Uuid
-  scanPolicyId    String        @map("scan_policy_id") @db.Uuid
-  status          ScanJobStatus @default(REQUESTED)
-  idempotencyKey  String        @map("idempotency_key")
-  leasedUntil     DateTime?     @map("leased_until") @db.Timestamptz(6)
-  retryCount      Int           @default(0) @map("retry_count")
-  failureClass    String?       @map("failure_class")
-  requestedAt     DateTime      @map("requested_at") @db.Timestamptz(6)
-  enqueuedAt      DateTime?     @map("enqueued_at") @db.Timestamptz(6)
-  completedAt     DateTime?     @map("completed_at") @db.Timestamptz(6)
-  failureReason   String?       @map("failure_reason")
-  failureMetadata Json?         @map("failure_metadata")
-  correlationId   String?       @map("correlation_id")
-  causationId     String?       @map("causation_id")
-  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id                String        @id @db.Uuid
+  tenantId          String        @map("tenant_id") @db.Uuid
+  workspaceId       String        @map("workspace_id") @db.Uuid
+  sourceBindingId   String        @map("source_binding_id") @db.Uuid
+  scanPolicyId      String        @map("scan_policy_id") @db.Uuid
+  status            ScanJobStatus @default(REQUESTED)
+  idempotencyKey    String        @map("idempotency_key")
+  leasedUntil       DateTime?     @map("leased_until") @db.Timestamptz(6)
+  retryCount        Int           @default(0) @map("retry_count")
+  failureClass      String?       @map("failure_class")
+  requestedAt       DateTime      @map("requested_at") @db.Timestamptz(6)
+  enqueuedAt        DateTime?     @map("enqueued_at") @db.Timestamptz(6)
+  completedAt       DateTime?     @map("completed_at") @db.Timestamptz(6)
+  failureReason     String?       @map("failure_reason")
+  failureMetadata   Json?         @map("failure_metadata")
+  executionMetadata Json?         @map("execution_metadata")
+  correlationId     String?       @map("correlation_id")
+  causationId       String?       @map("causation_id")
+  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@unique([tenantId, idempotencyKey])
   @@index([tenantId, workspaceId, status, createdAt])
@@ -396,28 +397,55 @@ model CursorCheckpoint {
 }
 
 model SourceItem {
-  id              String   @id @db.Uuid
-  tenantId        String   @map("tenant_id") @db.Uuid
-  workspaceId     String   @map("workspace_id") @db.Uuid
-  sourceBindingId String   @map("source_binding_id") @db.Uuid
-  providerKey     String   @map("provider_key")
-  providerItemId  String   @map("provider_item_id")
-  canonicalUrl    String   @map("canonical_url")
+  id              String     @id @db.Uuid
+  tenantId        String     @map("tenant_id") @db.Uuid
+  workspaceId     String     @map("workspace_id") @db.Uuid
+  sourceBindingId String     @map("source_binding_id") @db.Uuid
+  providerKey     String     @map("provider_key")
+  providerItemId  String     @map("provider_item_id")
+  canonicalUrl    String     @map("canonical_url")
   title           String
   body            String
-  authorHandle    String?  @map("author_handle")
-  publishedAt     DateTime @map("published_at") @db.Timestamptz(6)
-  contentHash     String   @map("content_hash")
-  observedAt      DateTime @map("observed_at") @db.Timestamptz(6)
-  rawPointer      String?  @map("raw_pointer")
+  authorHandle    String?    @map("author_handle")
+  publishedAt     DateTime   @map("published_at") @db.Timestamptz(6)
+  contentHash     String     @map("content_hash")
+  observedAt      DateTime   @map("observed_at") @db.Timestamptz(6)
+  rawPointer      String?    @map("raw_pointer")
   metadata        Json
-  schemaVersion   Int      @default(1) @map("schema_version")
-  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  schemaVersion   Int        @default(1) @map("schema_version")
+  createdAt       DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
   feedItems       FeedItem[]
 
   @@unique([tenantId, workspaceId, providerKey, providerItemId], map: "source_items_tenant_workspace_provider_item_key")
   @@index([tenantId, workspaceId, sourceBindingId, observedAt])
   @@map("source_items")
+}
+
+model SourceCandidateMemory {
+  id               String   @id @db.Uuid
+  tenantId         String   @map("tenant_id") @db.Uuid
+  workspaceId      String   @map("workspace_id") @db.Uuid
+  interestId       String   @map("interest_id") @db.Uuid
+  sourceBindingId  String   @map("source_binding_id") @db.Uuid
+  providerKey      String   @map("provider_key")
+  providerItemId   String   @map("provider_item_id")
+  scopeFingerprint String   @map("scope_fingerprint")
+  fingerprint      String   @map("fingerprint")
+  policyVersion    String   @map("policy_version")
+  decision         String
+  reasonCode       String   @map("reason_code")
+  expiresAt        DateTime @map("expires_at") @db.Timestamptz(6)
+  firstSeenAt      DateTime @map("first_seen_at") @db.Timestamptz(6)
+  lastSeenAt       DateTime @map("last_seen_at") @db.Timestamptz(6)
+  seenCount        Int      @default(1) @map("seen_count")
+  schemaVersion    Int      @default(1) @map("schema_version")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([tenantId, workspaceId, interestId, sourceBindingId, providerKey, scopeFingerprint, providerItemId], map: "source_candidate_memory_scope_item_key")
+  @@index([tenantId, workspaceId, sourceBindingId, providerKey, scopeFingerprint, expiresAt], map: "source_candidate_memory_active_lookup_idx")
+  @@index([expiresAt], map: "source_candidate_memory_expiry_idx")
+  @@map("source_candidate_memory")
 }
 
 model ScanFailureQueueEntry {

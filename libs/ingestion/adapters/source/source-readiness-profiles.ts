@@ -347,7 +347,7 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
       minimumScanIntervalSeconds: 86_400,
       skipRecentlyScanned: true,
       scanHistoryRequired: true,
-      cursorResumeRequired: true,
+      cursorResumeRequired: false,
       rateLimitBackoffRequired: true,
       staleReadModelState: 'stale',
       providerFailureHealthState: 'down',
@@ -365,7 +365,7 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
     quotaModel: 'per_credential',
     retentionNotes:
       'Store normalized public post provenance and engagement metadata; do not retain raw X payloads by default.',
-    cursorModel: 'opaque',
+    cursorModel: 'none',
     identityStrategy: ['providerId', 'canonicalUrl'],
     supportedContentUnits: ['post', 'media', 'link'],
     unsupportedContentUnits: ['comment', 'profile', 'community'],

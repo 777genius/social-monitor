@@ -13,6 +13,34 @@ import { PrismaFeedSignalBaselineRepository } from "./prisma-feed-signal-baselin
 const now = new Date("2026-06-23T12:00:00.000Z");
 
 describe("Prisma feed signal baseline materialization", () => {
+  it("preserves a hidden feed item when source metrics are refreshed", async () => {
+    const prisma = new FakePrismaFeedClient();
+    const projection = new PrismaFeedProjectionAdapter(
+      prisma,
+      new SequenceIdGenerator([
+        "feed-hidden",
+        "sample-1",
+        "unused",
+        "sample-2",
+      ]),
+    );
+    const command = {
+      tenantId: tenantId("tenant-1"),
+      workspaceId: workspaceId("workspace-1"),
+      interestId: "topic-1",
+      sourceBindingId: "binding-1",
+      providerKey: "reddit",
+      snapshots: projectionSnapshots(),
+      sourceItems: [sourceItem({ id: "source-1", externalId: "reddit-1" })],
+    };
+
+    await projection.project(command);
+    prisma.setFirstFeedStatus("HIDDEN");
+    await projection.project(command);
+
+    expect(prisma.feedItemRecords()[0]?.status).toBe("HIDDEN");
+  });
+
   it("writes lightweight baseline samples during feed projection and reads them without feed item payloads", async () => {
     const prisma = new FakePrismaFeedClient();
     const ids = new SequenceIdGenerator(["feed-1", "sample-1"]);
@@ -304,6 +332,12 @@ class FakePrismaFeedClient implements PrismaFeedClient {
     return [...this.feedItems.values()];
   }
 
+  setFirstFeedStatus(status: PrismaFeedItemRecord["status"]): void {
+    const entry = this.feedItems.entries().next().value;
+    if (entry !== undefined)
+      this.feedItems.set(entry[0], { ...entry[1], status });
+  }
+
   readonly feedItem: PrismaFeedClient["feedItem"] = {
     upsert: async (args) => {
       const key = [
@@ -348,7 +382,7 @@ class FakePrismaFeedClient implements PrismaFeedClient {
                 args.update.providerMetadata === undefined
                   ? existing.providerMetadata
                   : (args.update.providerMetadata ?? null),
-              status: args.update.status,
+              status: existing.status,
             };
       this.feedItems.set(key, record);
 

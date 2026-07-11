@@ -30,6 +30,10 @@ describe('sourceReadinessProfilesForRuntime', () => {
       state: 'provider_only',
       runtimeReadiness: 'deferred',
       liveEvidenceRequirements: [],
+      cursorModel: 'none',
+      freshnessGuard: expect.objectContaining({
+        cursorResumeRequired: false,
+      }),
     });
   });
 

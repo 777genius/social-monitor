@@ -10,12 +10,24 @@ class FakeScanJobs implements ScanJobRepositoryPort {
 
   async save(job: ScanJobEntity): Promise<void> {
     const snapshot = job.toSnapshot();
-    this.jobsById.set(`${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.id}`, job);
-    this.jobsByIdempotencyKey.set(`${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.idempotencyKey}`, job);
+    this.jobsById.set(
+      `${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.id}`,
+      job,
+    );
+    this.jobsByIdempotencyKey.set(
+      `${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.idempotencyKey}`,
+      job,
+    );
   }
 
-  async findById(params: Parameters<ScanJobRepositoryPort['findById']>[0]): Promise<ScanJobEntity | null> {
-    return this.jobsById.get(`${params.tenantId}:${params.workspaceId}:${params.scanJobId}`) ?? null;
+  async findById(
+    params: Parameters<ScanJobRepositoryPort['findById']>[0],
+  ): Promise<ScanJobEntity | null> {
+    return (
+      this.jobsById.get(
+        `${params.tenantId}:${params.workspaceId}:${params.scanJobId}`,
+      ) ?? null
+    );
   }
 
   async findActiveBySourceBinding(
@@ -48,7 +60,11 @@ class FakeScanJobs implements ScanJobRepositoryPort {
           snapshot.sourceBindingId === params.sourceBindingId
         );
       })
-      .sort((left, right) => right.toSnapshot().requestedAt.getTime() - left.toSnapshot().requestedAt.getTime());
+      .sort(
+        (left, right) =>
+          right.toSnapshot().requestedAt.getTime() -
+          left.toSnapshot().requestedAt.getTime(),
+      );
 
     return jobs[0] ?? null;
   }
@@ -56,7 +72,11 @@ class FakeScanJobs implements ScanJobRepositoryPort {
   async findByIdempotencyKey(
     params: Parameters<ScanJobRepositoryPort['findByIdempotencyKey']>[0],
   ): Promise<ScanJobEntity | null> {
-    return this.jobsByIdempotencyKey.get(`${params.tenantId}:${params.workspaceId}:${params.idempotencyKey}`) ?? null;
+    return (
+      this.jobsByIdempotencyKey.get(
+        `${params.tenantId}:${params.workspaceId}:${params.idempotencyKey}`,
+      ) ?? null
+    );
   }
 }
 
@@ -85,6 +105,11 @@ describe('RecordScanExecutionUseCase', () => {
       scanJobId: 'scan-job-1',
       status: 'succeeded',
       completedAt: new Date('2026-06-06T00:00:02.000Z'),
+      executionMetadata: {
+        schemaVersion: 1,
+        providerKey: 'reddit',
+        acceptedItemCount: 20,
+      },
     });
 
     expect(result).toEqual({
@@ -94,13 +119,22 @@ describe('RecordScanExecutionUseCase', () => {
         status: 'succeeded',
       },
     });
-    expect((await jobs.findById({
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
-      scanJobId: 'scan-job-1',
-    }))?.toSnapshot()).toMatchObject({
+    expect(
+      (
+        await jobs.findById({
+          tenantId: tenantId('tenant-1'),
+          workspaceId: workspaceId('workspace-1'),
+          scanJobId: 'scan-job-1',
+        })
+      )?.toSnapshot(),
+    ).toMatchObject({
       status: 'succeeded',
       completedAt: new Date('2026-06-06T00:00:02.000Z'),
+      executionMetadata: {
+        schemaVersion: 1,
+        providerKey: 'reddit',
+        acceptedItemCount: 20,
+      },
     });
   });
 
@@ -122,6 +156,12 @@ describe('RecordScanExecutionUseCase', () => {
         retryAfterMs: 900_000,
         rateLimitResetAt: '2026-06-06T00:15:00.000Z',
       },
+      executionMetadata: {
+        schemaVersion: 1,
+        providerKey: 'x-twitter',
+        status: 'failed',
+        rateLimitEventCount: 1,
+      },
     });
 
     expect(result).toEqual({
@@ -131,11 +171,15 @@ describe('RecordScanExecutionUseCase', () => {
         status: 'failed',
       },
     });
-    expect((await jobs.findById({
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
-      scanJobId: 'scan-job-1',
-    }))?.toSnapshot()).toMatchObject({
+    expect(
+      (
+        await jobs.findById({
+          tenantId: tenantId('tenant-1'),
+          workspaceId: workspaceId('workspace-1'),
+          scanJobId: 'scan-job-1',
+        })
+      )?.toSnapshot(),
+    ).toMatchObject({
       status: 'failed',
       failureReason: 'Provider unavailable',
       failureMetadata: {
@@ -143,6 +187,12 @@ describe('RecordScanExecutionUseCase', () => {
         kind: 'rate_limited',
         retryAfterMs: 900_000,
         rateLimitResetAt: '2026-06-06T00:15:00.000Z',
+      },
+      executionMetadata: {
+        schemaVersion: 1,
+        providerKey: 'x-twitter',
+        status: 'failed',
+        rateLimitEventCount: 1,
       },
     });
   });
