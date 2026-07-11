@@ -91,6 +91,7 @@ AppRouteWidgetBuilder settingsFeatureBuilder({
       builder: (context, _) => SettingsFeatureRoute.runtime(
         scope: scope,
         userId: runtime.session.userId,
+        workspaceRole: runtime.workspace.workspaceRole,
         generatedApiRuntime: generatedApiRuntime,
         themeMode: themeModeController.themeMode,
         onThemeModeChanged: themeModeController.setThemeMode,

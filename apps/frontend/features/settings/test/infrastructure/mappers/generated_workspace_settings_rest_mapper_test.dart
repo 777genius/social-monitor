@@ -39,6 +39,32 @@ void main() {
     expect(dto.diagnostics.traceId, 'trace-1');
   });
 
+  test('uses restored session role when production hides role headers', () {
+    const productionMapper = GeneratedWorkspaceSettingsRestMapper(
+      workspaceRoleFallback: 'owner',
+    );
+
+    final dto = productionMapper.workspaceSettings(
+      const generated.WorkspaceSettingsResponseDto(
+        workspaceRole: 'unknown',
+        digestFrequency: generated
+            .WorkspaceSettingsResponseDtoDigestFrequencyDigestFrequency
+            .weekly,
+        telemetryConsent: generated
+            .WorkspaceSettingsResponseDtoTelemetryConsentTelemetryConsent
+            .notConfigured,
+        diagnostics: generated.WorkspaceSettingsDiagnosticsDto(
+          traceId: 'trace-production',
+          routeId: 'settings',
+          releaseVersion: 'frontend-mvp',
+          featureSnapshot: 'settings',
+        ),
+      ),
+    );
+
+    expect(dto.workspaceRole, 'owner');
+  });
+
   test('maps supported digest and telemetry mutation bodies', () {
     final digest = mapper.updateDigestPreference(
       const UpdateDigestPreferenceApiRequest(

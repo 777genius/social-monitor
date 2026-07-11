@@ -12,6 +12,7 @@ import '../../infrastructure/api_clients/generated_workspace_settings_api_client
 import '../../infrastructure/api_clients/in_memory_summary_preference_api_client.dart';
 import '../../infrastructure/api_clients/in_memory_workspace_settings_api_client.dart';
 import '../../infrastructure/api_clients/summary_preference_api_client.dart';
+import '../../infrastructure/mappers/generated_workspace_settings_rest_mapper.dart';
 import '../../infrastructure/repositories/generated_summary_preference_catalog.dart';
 import '../../infrastructure/repositories/generated_workspace_settings_catalog.dart';
 import '../stores/summary_preference_store.dart';
@@ -24,17 +25,20 @@ final class SettingsFeatureModule extends Module {
         workspaceId: 'ws-demo',
       ),
       userId = 'user-demo',
+      workspaceRole = 'Owner',
       settings = _demoSettings,
       generatedApiRuntime = null;
 
   SettingsFeatureModule.runtime({
     required this.scope,
     required this.userId,
+    required this.workspaceRole,
     required this.generatedApiRuntime,
   }) : settings = _demoSettings;
 
   final WorkspaceScope scope;
   final String userId;
+  final String workspaceRole;
   final WorkspaceSettingsApiDto settings;
   final Object? generatedApiRuntime;
 
@@ -93,7 +97,12 @@ final class SettingsFeatureModule extends Module {
   WorkspaceSettingsApiClient _createApiClient() {
     final runtime = generatedApiRuntime;
     if (runtime != null) {
-      return GeneratedWorkspaceSettingsApiClient.fromRuntime(runtime: runtime);
+      return GeneratedWorkspaceSettingsApiClient.fromRuntime(
+        runtime: runtime,
+        mapper: GeneratedWorkspaceSettingsRestMapper(
+          workspaceRoleFallback: workspaceRole,
+        ),
+      );
     }
     return InMemoryWorkspaceSettingsApiClient(initialSettings: settings);
   }

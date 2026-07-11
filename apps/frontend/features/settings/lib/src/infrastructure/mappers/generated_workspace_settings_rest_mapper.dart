@@ -7,13 +7,15 @@ import '../api/workspace_settings_api_dto.dart';
 import '../api_clients/in_memory_workspace_settings_api_client.dart';
 
 final class GeneratedWorkspaceSettingsRestMapper {
-  const GeneratedWorkspaceSettingsRestMapper();
+  const GeneratedWorkspaceSettingsRestMapper({this.workspaceRoleFallback});
+
+  final String? workspaceRoleFallback;
 
   WorkspaceSettingsApiDto workspaceSettings(
     generated.WorkspaceSettingsResponseDto dto,
   ) {
     return WorkspaceSettingsApiDto(
-      workspaceRole: dto.workspaceRole,
+      workspaceRole: _workspaceRole(dto.workspaceRole),
       digestFrequency: dto.digestFrequency.toJson(),
       telemetryConsent: dto.telemetryConsent.toJson(),
       diagnostics: DiagnosticSnapshotApiDto(
@@ -23,6 +25,15 @@ final class GeneratedWorkspaceSettingsRestMapper {
         featureSnapshot: dto.diagnostics.featureSnapshot,
       ),
     );
+  }
+
+  String _workspaceRole(String value) {
+    final normalized = value.trim();
+    if (normalized.isNotEmpty && normalized.toLowerCase() != 'unknown') {
+      return normalized;
+    }
+    final fallback = workspaceRoleFallback?.trim();
+    return fallback == null || fallback.isEmpty ? value : fallback;
   }
 
   generated.UpdateWorkspaceDigestPreferenceRequestDto? updateDigestPreference(
