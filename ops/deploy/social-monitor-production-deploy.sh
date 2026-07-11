@@ -459,13 +459,21 @@ rollback_backend_images() {
   local state_file=$1
   [[ -s $state_file ]] || return 0
   local service image_id
+  local api_rolled_back=false
+  local -a rollback_services
   while read -r service image_id; do
     docker image tag "$image_id" "$(compose_image_name "$service")" || return 1
   done < "$state_file"
   mapfile -t rollback_services < <(awk '$1 != "migrate" && $1 != "daily-runner" {print $1}' "$state_file")
   if ((${#rollback_services[@]} > 0)); then
+    if printf '%s\n' "${rollback_services[@]}" | grep -qx api; then
+      api_rolled_back=true
+    fi
     "${COMPOSE[@]}" --profile app up -d --no-deps --force-recreate "${rollback_services[@]}" || return 1
     verify_backend_with_retry "${rollback_services[@]}" || return 1
+    if [[ $api_rolled_back == true ]]; then
+      refresh_frontend_api_proxy || return 1
+    fi
   fi
 }
 
@@ -558,6 +566,27 @@ verify_backend_with_retry() {
   return 1
 }
 
+verify_frontend_api_proxy() {
+  local frontend_id status oom
+  frontend_id=$("${COMPOSE[@]}" --profile app ps -q frontend)
+  [[ -n $frontend_id ]] || return 1
+  status=$(docker inspect "$frontend_id" --format '{{.State.Status}}')
+  oom=$(docker inspect "$frontend_id" --format '{{.State.OOMKilled}}')
+  [[ $status == running && $oom == false ]] || return 1
+  curl -fsS --max-time 15 \
+    -H 'Host: social-monitor.app' \
+    http://127.0.0.1:13080/auth/session >/dev/null
+}
+
+refresh_frontend_api_proxy() {
+  "${COMPOSE[@]}" --profile app up -d --no-deps --force-recreate frontend || return 1
+  for _ in {1..20}; do
+    verify_frontend_api_proxy && return 0
+    sleep 3
+  done
+  return 1
+}
+
 deploy_backend() {
   local sha=$1
   local from
@@ -603,6 +632,10 @@ deploy_backend() {
     if ! verify_backend_with_retry "${persistent[@]}"; then
       rollback_backend_images "$previous" || fail 'backend health and rollback verification both failed'
       fail 'backend health failed; previous images restored'
+    fi
+    if printf '%s\n' "${persistent[@]}" | grep -qx api && ! refresh_frontend_api_proxy; then
+      rollback_backend_images "$previous" || fail 'frontend API proxy refresh and backend rollback both failed'
+      fail 'frontend API proxy refresh failed; previous backend images restored'
     fi
   fi
   printf '%s\n' "$sha" > "$STATE/backend.sha"
