@@ -2,6 +2,7 @@ import {
   configuredProviderCollectionTargetItemCount,
   successfulProviderCollectionObservation,
   unavailableProviderCollectionObservation,
+  withProviderCollectionWindowProof,
 } from "./provider-collection-observability";
 
 describe("provider collection observability", () => {
@@ -70,6 +71,7 @@ describe("provider collection observability", () => {
         status: "failed",
         rateLimited: true,
         failureKind: "rate_limited",
+        targetWindowEndedAt: new Date("2026-07-10T00:00:00.000Z"),
       }),
     ).toMatchObject({
       targetItemCount: 25,
@@ -77,6 +79,10 @@ describe("provider collection observability", () => {
       paginationStopReason: "failed",
       rateLimitEventCount: 1,
       failureKind: "rate_limited",
+      slo: expect.objectContaining({
+        met: false,
+        retryDisposition: "deferred",
+      }),
     });
   });
 
@@ -87,5 +93,39 @@ describe("provider collection observability", () => {
         maxItems: 20,
       }),
     ).toBe(80);
+  });
+
+  it("uses authoritative window proof after a cursor retry", () => {
+    const observation = successfulProviderCollectionObservation({
+      telemetry: {
+        targetItemCount: 100,
+        collectedItemCount: 24,
+        acceptedItemCount: 24,
+        outsideWindowItemCount: 0,
+        pageCount: 1,
+        paginationDuplicateItemCount: 0,
+        paginationStopReason: "no_next_cursor",
+        rateLimitEventCount: 0,
+        newestAcceptedPublishedAt: new Date("2026-07-09T22:00:00.000Z"),
+      },
+      fetched: 24,
+      inserted: 24,
+      storageDuplicates: 0,
+      targetWindowEndedAt: new Date("2026-07-10T00:00:00.000Z"),
+    });
+
+    const final = withProviderCollectionWindowProof({
+      observation,
+      windowItemCount: 100,
+      newestPublishedAt: new Date("2026-07-09T23:00:00.000Z"),
+      targetWindowEndedAt: new Date("2026-07-10T00:00:00.000Z"),
+    });
+
+    expect(final.coverageState).toBe("complete");
+    expect(final.slo).toMatchObject({
+      met: true,
+      targetItemCount: 100,
+      evaluatedItemCount: 100,
+    });
   });
 });

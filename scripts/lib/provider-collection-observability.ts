@@ -4,6 +4,10 @@ import type {
   SourcePaginationStopReason,
   SourceRuntimeConfig,
 } from "@social-monitor/ingestion/ports";
+import {
+  evaluateProviderCollectionSlo,
+  type ProviderCollectionSloEvaluation,
+} from "@social-monitor/ingestion/features/provider-collection-slo/provider-collection-slo-policy";
 
 export type ProviderCollectionCoverageState =
   "complete" | "partial" | "degraded" | "unavailable";
@@ -23,6 +27,7 @@ export type ProviderCollectionObservation = {
   readonly rateLimitEventCount: number;
   readonly failureKind?: ProviderFailureKind;
   readonly coverageState: ProviderCollectionCoverageState;
+  readonly slo: ProviderCollectionSloEvaluation;
   readonly freshness: {
     readonly oldestAcceptedPublishedAt?: string;
     readonly newestAcceptedPublishedAt?: string;
@@ -36,6 +41,7 @@ export const successfulProviderCollectionObservation = (params: {
   readonly inserted: number;
   readonly storageDuplicates: number;
   readonly targetWindowEndedAt: Date;
+  readonly maxFreshnessLagSeconds?: number;
 }): ProviderCollectionObservation => {
   const targetItemCount = params.telemetry?.targetItemCount ?? params.fetched;
   const collectedItemCount =
@@ -49,6 +55,17 @@ export const successfulProviderCollectionObservation = (params: {
   const stopReason = params.telemetry?.paginationStopReason ?? "single_page";
   const newestAcceptedPublishedAt = params.telemetry?.newestAcceptedPublishedAt;
   const oldestAcceptedPublishedAt = params.telemetry?.oldestAcceptedPublishedAt;
+  const slo = evaluateProviderCollectionSlo({
+    targetItemCount,
+    acceptedItemCount,
+    ...(newestAcceptedPublishedAt === undefined
+      ? {}
+      : { newestAcceptedPublishedAt }),
+    targetWindowEndedAt: params.targetWindowEndedAt,
+    maxFreshnessLagSeconds: params.maxFreshnessLagSeconds ?? 21_600,
+    paginationStopReason: stopReason,
+    rateLimitEventCount,
+  });
 
   return {
     targetItemCount,
@@ -63,12 +80,8 @@ export const successfulProviderCollectionObservation = (params: {
     pageCount: params.telemetry?.pageCount ?? 1,
     paginationStopReason: stopReason,
     rateLimitEventCount,
-    coverageState: coverageState({
-      targetItemCount,
-      acceptedItemCount,
-      rateLimitEventCount,
-      stopReason,
-    }),
+    coverageState: coverageState(slo, acceptedItemCount, rateLimitEventCount),
+    slo,
     freshness: {
       ...(oldestAcceptedPublishedAt === undefined
         ? {}
@@ -97,24 +110,75 @@ export const unavailableProviderCollectionObservation = (params: {
   readonly status: "failed" | "skipped";
   readonly rateLimited?: boolean;
   readonly failureKind?: ProviderFailureKind;
-}): ProviderCollectionObservation => ({
-  targetItemCount: params.targetItemCount ?? null,
-  collectedItemCount: 0,
-  acceptedItemCount: 0,
-  insertedItemCount: 0,
-  outsideWindowItemCount: 0,
-  paginationDuplicateItemCount: 0,
-  storageDuplicateItemCount: 0,
-  totalDuplicateItemCount: 0,
-  pageCount: 0,
-  paginationStopReason: params.status,
-  rateLimitEventCount: params.rateLimited === true ? 1 : 0,
-  ...(params.failureKind === undefined
-    ? {}
-    : { failureKind: params.failureKind }),
-  coverageState: "unavailable",
-  freshness: {},
-});
+  readonly targetWindowEndedAt: Date;
+  readonly maxFreshnessLagSeconds?: number;
+}): ProviderCollectionObservation => {
+  const targetItemCount = params.targetItemCount ?? null;
+  const rateLimitEventCount = params.rateLimited === true ? 1 : 0;
+  const slo = evaluateProviderCollectionSlo({
+    targetItemCount,
+    acceptedItemCount: 0,
+    targetWindowEndedAt: params.targetWindowEndedAt,
+    maxFreshnessLagSeconds: params.maxFreshnessLagSeconds ?? 21_600,
+    paginationStopReason: params.status,
+    rateLimitEventCount,
+    ...(params.failureKind === undefined
+      ? {}
+      : { failureKind: params.failureKind }),
+  });
+
+  return {
+    targetItemCount,
+    collectedItemCount: 0,
+    acceptedItemCount: 0,
+    insertedItemCount: 0,
+    outsideWindowItemCount: 0,
+    paginationDuplicateItemCount: 0,
+    storageDuplicateItemCount: 0,
+    totalDuplicateItemCount: 0,
+    pageCount: 0,
+    paginationStopReason: params.status,
+    rateLimitEventCount,
+    ...(params.failureKind === undefined
+      ? {}
+      : { failureKind: params.failureKind }),
+    coverageState: "unavailable",
+    slo,
+    freshness: {},
+  };
+};
+
+export const withProviderCollectionWindowProof = (params: {
+  readonly observation: ProviderCollectionObservation;
+  readonly windowItemCount: number;
+  readonly newestPublishedAt?: Date;
+  readonly targetWindowEndedAt: Date;
+}): ProviderCollectionObservation => {
+  const slo = evaluateProviderCollectionSlo({
+    targetItemCount: params.observation.targetItemCount,
+    acceptedItemCount: params.windowItemCount,
+    ...(params.newestPublishedAt === undefined
+      ? {}
+      : { newestAcceptedPublishedAt: params.newestPublishedAt }),
+    targetWindowEndedAt: params.targetWindowEndedAt,
+    maxFreshnessLagSeconds: params.observation.slo.maxFreshnessLagSeconds,
+    paginationStopReason: params.observation.paginationStopReason,
+    rateLimitEventCount: params.observation.rateLimitEventCount,
+    ...(params.observation.failureKind === undefined
+      ? {}
+      : { failureKind: params.observation.failureKind }),
+  });
+
+  return {
+    ...params.observation,
+    coverageState: coverageState(
+      slo,
+      params.windowItemCount,
+      params.observation.rateLimitEventCount,
+    ),
+    slo,
+  };
+};
 
 export const configuredProviderCollectionTargetItemCount = (
   config: SourceRuntimeConfig,
@@ -128,25 +192,22 @@ export const configuredProviderCollectionTargetItemCount = (
   ]);
 };
 
-const coverageState = (params: {
-  readonly targetItemCount: number;
-  readonly acceptedItemCount: number;
-  readonly rateLimitEventCount: number;
-  readonly stopReason: SourcePaginationStopReason;
-}): ProviderCollectionCoverageState => {
-  if (params.acceptedItemCount === 0) {
+const coverageState = (
+  slo: ProviderCollectionSloEvaluation,
+  acceptedItemCount: number,
+  rateLimitEventCount: number,
+): ProviderCollectionCoverageState => {
+  if (acceptedItemCount === 0) {
     return "unavailable";
   }
   if (
-    params.rateLimitEventCount > 0 ||
-    params.stopReason === "partial_retryable_failure"
+    rateLimitEventCount > 0 ||
+    slo.reasons.includes("partial_retryable_failure")
   ) {
     return "degraded";
   }
 
-  return params.acceptedItemCount >= params.targetItemCount
-    ? "complete"
-    : "partial";
+  return slo.met ? "complete" : "partial";
 };
 
 const recordValue = (
