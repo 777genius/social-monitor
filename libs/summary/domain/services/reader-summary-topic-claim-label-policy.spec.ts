@@ -1,7 +1,44 @@
 import {
+  alignReaderSummaryTopicSemanticLabelToEvidence,
   ensureTopicLabelExpressesClaimFacet,
   renderReaderSummaryTopicSemanticLabel,
 } from "./reader-summary-topic-claim-label-policy";
+
+describe("alignReaderSummaryTopicSemanticLabelToEvidence", () => {
+  it("removes a relational role and demotes an unsupported claim facet", () => {
+    expect(
+      alignReaderSummaryTopicSemanticLabelToEvidence({
+        semantic: {
+          subject: "Codex core",
+          claimType: "availability",
+          confidenceScore: 0.9,
+        },
+        primaryFacet: undefined,
+        evidenceTexts: [
+          "Codex is the core of our new work product and is not going anywhere.",
+        ],
+      }),
+    ).toEqual({
+      subject: "Codex",
+      claimType: "other",
+      confidenceScore: 0.9,
+    });
+  });
+
+  it("preserves a proper name without evidence of a relational role", () => {
+    expect(
+      alignReaderSummaryTopicSemanticLabelToEvidence({
+        semantic: {
+          subject: "Bitcoin Core",
+          claimType: "other",
+          confidenceScore: 0.9,
+        },
+        primaryFacet: undefined,
+        evidenceTexts: ["Bitcoin Core 31.0 has been released."],
+      }).subject,
+    ).toBe("Bitcoin Core");
+  });
+});
 
 describe("renderReaderSummaryTopicSemanticLabel", () => {
   it.each([

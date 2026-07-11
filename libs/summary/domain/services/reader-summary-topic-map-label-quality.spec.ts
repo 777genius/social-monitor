@@ -1,4 +1,28 @@
 import { evaluateTopicLabelQuality } from "./reader-summary-topic-map-label-quality";
+import { sanitizeTopicNodeLabel } from "./reader-summary-topic-node-label-sanitizer";
+
+describe("sanitizeTopicNodeLabel", () => {
+  it("preserves normalized structured semantics for evidence alignment", () => {
+    expect(
+      sanitizeTopicNodeLabel({
+        nodeId: "topic:codex",
+        label: "Codex core Availability",
+        semantic: {
+          subject: "  Codex core ",
+          parentSubject: "  OpenAI ",
+          claimType: "availability",
+          qualifier: " ",
+          confidenceScore: 1.4,
+        },
+      }).semantic,
+    ).toEqual({
+      subject: "Codex core",
+      parentSubject: "OpenAI",
+      claimType: "availability",
+      confidenceScore: 1,
+    });
+  });
+});
 
 describe("evaluateTopicLabelQuality", () => {
   it("rejects generic capitalized one-word labels even when evidence contains them", () => {

@@ -59,7 +59,8 @@
       "expectedStoryKey": "chatgpt-work-sama",
       "expectedTopicKey": "codex-work-commentary",
       "acceptableClaimTypes": ["release", "other"],
-      "expectedSubjectTokens": ["codex", "work"],
+      "expectedSubjectTokens": ["codex"],
+      "forbiddenLabelTokens": ["availability", "core"],
       "requiredInTopicMap": true
     },
     {

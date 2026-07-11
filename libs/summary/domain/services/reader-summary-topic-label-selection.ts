@@ -7,6 +7,7 @@ import { compactOptional, humanizeSlug } from "./reader-summary-topic-map-text";
 
 export const selectReaderSummaryTopicLabel = (params: {
   readonly proposedLabel?: string;
+  readonly preferProposedLabel?: boolean;
   readonly labelCandidates: readonly ReaderSummaryTopicLabelCandidateOption[];
   readonly evidenceTexts: readonly string[];
   readonly providerLabels: readonly string[];
@@ -26,6 +27,9 @@ export const selectReaderSummaryTopicLabel = (params: {
   });
   if (!quality.accepted) {
     return bestCandidate?.label ?? "Other topic";
+  }
+  if (params.preferProposedLabel === true) {
+    return quality.label;
   }
   if (bestCandidate === undefined) {
     return quality.label;

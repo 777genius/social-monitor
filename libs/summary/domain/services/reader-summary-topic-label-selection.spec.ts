@@ -12,6 +12,18 @@ describe("selectReaderSummaryTopicLabel", () => {
     ).toBe("Codex Work Product");
   });
 
+  it("keeps an evidence-aligned structured semantic label", () => {
+    expect(
+      selectReaderSummaryTopicLabel({
+        proposedLabel: "Codex",
+        preferProposedLabel: true,
+        labelCandidates: [candidate("Codex Check Out")],
+        evidenceTexts: ["Check this out. Codex is core of the work product."],
+        providerLabels: ["x-twitter"],
+      }),
+    ).toBe("Codex");
+  });
+
   it("keeps a singleton when the candidate describes another subject", () => {
     expect(
       selectReaderSummaryTopicLabel({

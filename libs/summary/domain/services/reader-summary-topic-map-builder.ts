@@ -21,7 +21,11 @@ import {
   storyTopicTokens,
   type StoryPrimaryClaimFacet,
 } from "./story-topic-tokenizer";
-import { ensureTopicLabelExpressesClaimFacet } from "./reader-summary-topic-claim-label-policy";
+import {
+  alignReaderSummaryTopicSemanticLabelToEvidence,
+  ensureTopicLabelExpressesClaimFacet,
+  renderReaderSummaryTopicSemanticLabel,
+} from "./reader-summary-topic-claim-label-policy";
 import {
   aggregateReaderSummaryTopicMapNodes,
   mergeReaderSummaryTopicMapNodesByLabel,
@@ -40,8 +44,8 @@ import {
   hasUsableTopicNodeLabel,
   isUsableTopicGroupLabel,
   isWeakTopicLabel,
-  sanitizeTopicNodeLabel,
 } from "./reader-summary-topic-map-label-quality";
+import { sanitizeTopicNodeLabel } from "./reader-summary-topic-node-label-sanitizer";
 import {
   buildReaderSummaryTopicMapGroups,
   readerSummaryTopicMapConfidence,
@@ -203,9 +207,20 @@ const topicNodeForCluster = (params: {
   });
   const evidenceTexts = readerSummaryTopicLabelEvidenceTexts(labelContext);
   const providerLabels = params.cluster.providerKeys.map(humanizeSlug);
+  const primaryClaimFacet = primaryClaimFacetFor(evidence);
+  const proposedLabel = params.nodeLabel?.semantic
+    ? renderReaderSummaryTopicSemanticLabel(
+        alignReaderSummaryTopicSemanticLabelToEvidence({
+          semantic: params.nodeLabel.semantic,
+          primaryFacet: primaryClaimFacet,
+          evidenceTexts,
+        }),
+      )
+    : params.nodeLabel?.label;
   const label = enrichReaderSummaryTopicLabelVersion({
     label: selectReaderSummaryTopicLabel({
-      proposedLabel: params.nodeLabel?.label,
+      proposedLabel,
+      preferProposedLabel: params.nodeLabel?.semantic !== undefined,
       labelCandidates,
       evidenceTexts,
       providerLabels,
@@ -246,7 +261,6 @@ const topicNodeForCluster = (params: {
       ? fallbackTopicFamilyGroupId(fallbackTopicId)
       : fallbackTopicId);
   const rawScore = Math.max(0, params.cluster.score);
-  const primaryClaimFacet = primaryClaimFacetFor(evidence);
   const readerFacingLabel = ensureTopicLabelExpressesClaimFacet(
     label,
     primaryClaimFacet,
