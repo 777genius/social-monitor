@@ -9,6 +9,50 @@ import 'package:social_monitor_summaries/src/presentation/components/reader_summ
 import '../../support/summaries_test_fixtures.dart';
 
 void main() {
+  testWidgets('shows both tabs and keeps top posts selected by default', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 700);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    final summary = const SummaryMapper().readerSummaryToDomain(
+      readerSummaryApiDto(
+        content: readerSummaryContentApiDto(topReads: _topReads(1)),
+        citations: _citations(1),
+      ),
+    );
+
+    await tester.pumpWidget(_TestApp(summary: summary));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('reader-summary-top-posts-board-posts')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('reader-summary-top-posts-board-github')),
+      findsOneWidget,
+    );
+    expect(find.text('Lazy top post 0'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(
+      find.byKey(const ValueKey('reader-summary-top-posts-board-github')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Lazy top post 0'), findsNothing);
+    expect(
+      find.text('No GitHub Trending repositories in this summary window.'),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('reveals more top posts as the user scrolls', (tester) async {
     tester.view.physicalSize = const Size(1100, 700);
     tester.view.devicePixelRatio = 1;

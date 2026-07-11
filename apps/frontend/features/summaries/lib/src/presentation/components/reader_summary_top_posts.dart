@@ -41,10 +41,18 @@ class ReaderSummaryTopPosts extends StatefulWidget {
 
 class _ReaderSummaryTopPostsState extends State<ReaderSummaryTopPosts> {
   _TopPostSort _sort = _TopPostSort.relevance;
-  _TopPostBoard _board = _TopPostBoard.posts;
+  late _TopPostBoard _board;
   final Set<String> _hiddenProviders = {};
   final ScrollController _postsScrollController = ScrollController();
   bool _denseView = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _board = widget.items.any((item) => !_isGithubTrendingTopRead(item))
+        ? _TopPostBoard.posts
+        : _TopPostBoard.githubTrending;
+  }
 
   @override
   void dispose() {
@@ -61,10 +69,7 @@ class _ReaderSummaryTopPostsState extends State<ReaderSummaryTopPosts> {
     final githubTrendingItems = widget.items
         .where(_isGithubTrendingTopRead)
         .toList(growable: false);
-    final activeBoard = _resolveBoard(
-      hasPosts: postItems.isNotEmpty,
-      hasGithubTrending: githubTrendingItems.isNotEmpty,
-    );
+    final activeBoard = _board;
     final boardItems = switch (activeBoard) {
       _TopPostBoard.posts => postItems,
       _TopPostBoard.githubTrending => githubTrendingItems,
@@ -85,8 +90,6 @@ class _ReaderSummaryTopPostsState extends State<ReaderSummaryTopPosts> {
         _TopPostsHeader(
           board: activeBoard,
           sort: _sort,
-          showBoardToggle:
-              postItems.isNotEmpty && githubTrendingItems.isNotEmpty,
           postCount: postItems.length,
           githubTrendingCount: githubTrendingItems.length,
           curatedTopPostCount: widget.curatedTopPostCount,
@@ -178,22 +181,6 @@ class _ReaderSummaryTopPostsState extends State<ReaderSummaryTopPosts> {
     return topPostEngagementScore(b).compareTo(topPostEngagementScore(a));
   }
 
-  _TopPostBoard _resolveBoard({
-    required bool hasPosts,
-    required bool hasGithubTrending,
-  }) {
-    if (_board == _TopPostBoard.githubTrending && hasGithubTrending) {
-      return _TopPostBoard.githubTrending;
-    }
-    if (_board == _TopPostBoard.posts && hasPosts) {
-      return _TopPostBoard.posts;
-    }
-    if (hasGithubTrending && !hasPosts) {
-      return _TopPostBoard.githubTrending;
-    }
-    return _TopPostBoard.posts;
-  }
-
   void _setBoard(_TopPostBoard board) {
     setState(() {
       _board = board;
@@ -248,7 +235,6 @@ class _TopPostsHeader extends StatelessWidget {
   const _TopPostsHeader({
     required this.board,
     required this.sort,
-    required this.showBoardToggle,
     required this.postCount,
     required this.githubTrendingCount,
     required this.curatedTopPostCount,
@@ -264,7 +250,6 @@ class _TopPostsHeader extends StatelessWidget {
 
   final _TopPostBoard board;
   final _TopPostSort sort;
-  final bool showBoardToggle;
   final int postCount;
   final int githubTrendingCount;
   final int curatedTopPostCount;
@@ -281,43 +266,23 @@ class _TopPostsHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
-    final titles = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          _topPostBoardTitle(board),
-          style: textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w800,
-            letterSpacing: 0,
-          ),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          _topPostBoardSubtitle(
-            board,
-            curatedTopPostCount: curatedTopPostCount,
-            selectedPostCount: selectedPostCount,
-          ),
-          style: textTheme.labelSmall?.copyWith(
-            color: colorScheme.onSurfaceVariant,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 0,
-          ),
-        ),
-      ],
+    final subtitle = Text(
+      _topPostBoardSubtitle(
+        board,
+        curatedTopPostCount: curatedTopPostCount,
+        selectedPostCount: selectedPostCount,
+      ),
+      style: textTheme.labelSmall?.copyWith(
+        color: colorScheme.onSurfaceVariant,
+        fontWeight: FontWeight.w600,
+        letterSpacing: 0,
+      ),
     );
     final controls = Wrap(
       spacing: AppSpacing.sm + 4,
       runSpacing: AppSpacing.sm,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        if (showBoardToggle)
-          _TopPostBoardToggle(
-            board: board,
-            postCount: postCount,
-            githubTrendingCount: githubTrendingCount,
-            onChanged: onBoardChanged,
-          ),
         Text(
           'Sort by',
           style: textTheme.labelSmall?.copyWith(
@@ -327,38 +292,54 @@ class _TopPostsHeader extends StatelessWidget {
           ),
         ),
         _TopPostSortMenu(sort: sort, onSortChanged: onSortChanged),
-        _TopPostFilterMenu(
-          providerKeys: providerKeys,
-          hiddenProviders: hiddenProviders,
-          onProviderToggled: onProviderToggled,
-        ),
+        if (providerKeys.isNotEmpty)
+          _TopPostFilterMenu(
+            providerKeys: providerKeys,
+            hiddenProviders: hiddenProviders,
+            onProviderToggled: onProviderToggled,
+          ),
         _TopPostViewToggle(
           denseView: denseView,
           onDenseViewChanged: onDenseViewChanged,
         ),
       ],
     );
+    final hasBoardItems = providerKeys.isNotEmpty;
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        if (constraints.maxWidth < 640) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              titles,
-              const SizedBox(height: AppSpacing.sm),
-              controls,
-            ],
-          );
-        }
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Expanded(child: titles),
-            controls,
-          ],
-        );
-      },
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _TopPostBoardToggle(
+          board: board,
+          postCount: postCount,
+          githubTrendingCount: githubTrendingCount,
+          onChanged: onBoardChanged,
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            if (constraints.maxWidth < 640) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  subtitle,
+                  if (hasBoardItems) ...[
+                    const SizedBox(height: AppSpacing.sm),
+                    controls,
+                  ],
+                ],
+              );
+            }
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(child: subtitle),
+                if (hasBoardItems) controls,
+              ],
+            );
+          },
+        ),
+      ],
     );
   }
 }
@@ -373,13 +354,6 @@ String _topPostDateLabel(TopRead item, SummaryPeriod fallbackPeriod) {
   }
 
   return summaryPublishedDayLabel(publishedAt);
-}
-
-String _topPostBoardTitle(_TopPostBoard board) {
-  return switch (board) {
-    _TopPostBoard.posts => 'Top posts',
-    _TopPostBoard.githubTrending => 'GitHub Trending',
-  };
 }
 
 String _topPostBoardSubtitle(

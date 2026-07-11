@@ -93,6 +93,29 @@ void main() {
     );
   });
 
+  testWidgets('keeps the post provider avatar away from the row border', (
+    tester,
+  ) async {
+    final summary = const SummaryMapper().readerSummaryToDomain(
+      readerSummaryApiDto(),
+    );
+
+    await tester.pumpWidget(_TestApp(summary: summary));
+    await tester.pumpAndSettle();
+
+    final rowFinder = find.byKey(const ValueKey('reader-summary-top-post-0'));
+    final providerLogoFinder = find.descendant(
+      of: rowFinder,
+      matching: find.byType(AppProviderLogo),
+    );
+
+    expect(providerLogoFinder, findsOneWidget);
+    final leftInset =
+        tester.getTopLeft(providerLogoFinder).dx -
+        tester.getTopLeft(rowFinder).dx;
+    expect(leftInset, greaterThanOrEqualTo(AppSpacing.sm));
+  });
+
   testWidgets('ranks supported and engaged posts above single-source ties', (
     tester,
   ) async {
