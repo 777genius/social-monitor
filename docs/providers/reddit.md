@@ -26,7 +26,7 @@ Set runtime env:
 
 ```sh
 REDDIT_APP_CLIENT_ID=<client-id>
-REDDIT_APP_CLIENT_SECRET=<client-secret>
+REDDIT_APP_CLIENT_SECRET=secret-token
 REDDIT_APP_USER_AGENT=social-monitor-mvp/0.1 reddit-app-only
 ```
 
@@ -129,4 +129,3 @@ npm run check:live-reddit-oauth
 - Keep Reddit secrets out of tracked files and screenshots.
 - Respect subreddit rules, Reddit API policy, rate limits and tenant consent.
 - The readiness profile uses a 900 second minimum scan interval.
-

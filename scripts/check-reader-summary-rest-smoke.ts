@@ -644,7 +644,7 @@ async function main(): Promise<void> {
       .get(`/reader-summary-jobs/${rejectedJobId}/quality-rejection`)
       .set({
         ...headers,
-        authorization: 'Bearer smk_readerSummary_quality_rejection_reader_key',
+        authorization: 'Bearer smk_test_quality_rejection_reader_key',
         'x-workspace-role': 'admin',
       })
       .expect(403);

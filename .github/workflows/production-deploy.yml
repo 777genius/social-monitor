@@ -1,0 +1,292 @@
+name: Production deploy
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .dockerignore
+      - .github/workflows/production-deploy.yml
+      - apps/api-gateway/**
+      - apps/agent-runtime/**
+      - apps/delivery-service/**
+      - apps/event-relay/**
+      - apps/frontend/**
+      - apps/ingestion-worker/**
+      - apps/intelligence-worker/**
+      - apps/social-research-grpc/**
+      - apps/social-research-mcp/**
+      - apps/social-research-runtime/**
+      - apps/x-collector/**
+      - libs/**
+      - ops/deploy/**
+      - ops/evals/**
+      - prisma/**
+      - scripts/**
+      - test/**
+      - vendor/**
+      - Dockerfile
+      - docker-compose.yml
+      - package.json
+      - package-lock.json
+      - prisma.config.ts
+      - tsconfig.json
+      - tsconfig.build.json
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: social-monitor-production
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Plan changed production components
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    outputs:
+      backend: ${{ steps.plan.outputs.backend }}
+      backend_base: ${{ steps.plan.outputs.backend_base }}
+      control: ${{ steps.plan.outputs.control }}
+      frontend: ${{ steps.plan.outputs.frontend }}
+      x_collector: ${{ steps.plan.outputs.x_collector }}
+
+    steps:
+      - name: Check out the release commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          fetch-depth: 0
+
+      - name: Configure restricted production SSH
+        env:
+          DEPLOY_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
+          KNOWN_HOSTS: ${{ secrets.PRODUCTION_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          install -d -m 0700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_KEY" > "$HOME/.ssh/social-monitor-production"
+          chmod 0600 "$HOME/.ssh/social-monitor-production"
+          printf '%s\n' "$KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 0600 "$HOME/.ssh/known_hosts"
+
+      - name: Read durable component markers
+        id: plan
+        env:
+          DEPLOY_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
+          DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
+        run: |
+          set -euo pipefail
+          plan=$(ssh -i "$HOME/.ssh/social-monitor-production" \
+            -o BatchMode=yes -o IdentitiesOnly=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST" "plan $GITHUB_SHA")
+          printf '%s\n' "$plan"
+          for component in frontend backend control x_collector; do
+            value=$(printf '%s\n' "$plan" | awk -F= -v key="$component" '$1 == key { print $2 }')
+            [[ $value =~ ^(true|false)$ ]]
+            printf '%s=%s\n' "$component" "$value" >> "$GITHUB_OUTPUT"
+          done
+          backend_base=$(printf '%s\n' "$plan" | awk -F= '$1 == "backend_base" { print $2 }')
+          [[ $backend_base =~ ^[0-9a-f]{40}$ ]]
+          printf 'backend_base=%s\n' "$backend_base" >> "$GITHUB_OUTPUT"
+
+      - name: Remove production SSH material
+        if: always()
+        run: rm -f "$HOME/.ssh/social-monitor-production" "$HOME/.ssh/known_hosts"
+
+  verify_backend:
+    name: Verify backend, collector and deploy control
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Check out the release commit
+        if: needs.plan.outputs.backend == 'true' || needs.plan.outputs.control == 'true' || needs.plan.outputs.x_collector == 'true'
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        if: needs.plan.outputs.backend == 'true' || needs.plan.outputs.control == 'true'
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Verify backend and deployment contract
+        if: needs.plan.outputs.backend == 'true' || needs.plan.outputs.control == 'true'
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run check:architecture
+          npm run check:source-line-cap
+          npm run check:secrets
+          npm run check:dependencies
+          npm run check:container
+          npm run check:runtime-compose
+          npm run check:runtime-profile-guards
+          npm run check:migrations
+          npm run build
+          bash -n ops/deploy/social-monitor-production-deploy.sh \
+            ops/deploy/social-monitor-production-ssh-wrapper.sh
+          shellcheck -x ops/deploy/social-monitor-production-deploy.sh \
+            ops/deploy/social-monitor-production-ssh-wrapper.sh
+          bash ops/deploy/social-monitor-production-deploy.test.sh
+
+      - name: Test affected backend modules
+        if: needs.plan.outputs.backend == 'true'
+        env:
+          BACKEND_BASE: ${{ needs.plan.outputs.backend_base }}
+        run: |
+          base=$BACKEND_BASE
+          if [[ $base == 0000000000000000000000000000000000000000 ]]; then
+            base=$(git rev-list --max-parents=0 "$GITHUB_SHA" | tail -n 1)
+          fi
+          npm test -- --runInBand --changedSince="$base"
+
+      - name: Set up Python for X collector verification
+        if: needs.plan.outputs.x_collector == 'true'
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.13'
+
+      - name: Verify X collector
+        if: needs.plan.outputs.x_collector == 'true'
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -e 'apps/x-collector[dev]'
+          python -m pytest -m 'not real_e2e' apps/x-collector/tests
+
+  build_frontend:
+    name: Verify and package frontend
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out the release commit
+        if: needs.plan.outputs.frontend == 'true'
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+
+      - name: Set up Flutter
+        if: needs.plan.outputs.frontend == 'true'
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          channel: stable
+          flutter-version-file: apps/frontend/.fvmrc
+          cache: false
+          pub-cache: false
+
+      - name: Verify frontend
+        if: needs.plan.outputs.frontend == 'true'
+        working-directory: apps/frontend
+        run: |
+          set -euo pipefail
+          flutter pub get
+          flutter analyze
+          flutter test app
+          flutter test packages/design_system
+          flutter test features/auth features/feed features/interests \
+            features/settings features/sources features/summaries
+          dart test packages/shared_kernel
+          dart test packages/generated_api
+
+      - name: Build public and admin frontend bundles
+        if: needs.plan.outputs.frontend == 'true'
+        working-directory: apps/frontend/app
+        run: |
+          set -euo pipefail
+          release="$RUNNER_TEMP/social-monitor-frontend-release"
+          rm -rf "$release"
+          install -d -m 0755 "$release/public" "$release/admin"
+          flutter build web --release \
+            --dart-define=SOCIAL_MONITOR_API_BASE_URL=https://social-monitor.app
+          cp -R build/web/. "$release/public/"
+          flutter build web --release \
+            --dart-define=SOCIAL_MONITOR_API_BASE_URL=https://admin.social-monitor.app
+          cp -R build/web/. "$release/admin/"
+          printf '%s\n' "$GITHUB_SHA" > "$release/public/release-sha.txt"
+          printf '%s\n' "$GITHUB_SHA" > "$release/admin/release-sha.txt"
+          grep -F 'https://social-monitor.app' "$release/public/main.dart.js" >/dev/null
+          if grep -F 'https://admin.social-monitor.app' "$release/public/main.dart.js" >/dev/null; then
+            echo 'public bundle contains admin origin' >&2
+            exit 1
+          fi
+          grep -F 'https://admin.social-monitor.app' "$release/admin/main.dart.js" >/dev/null
+          if grep -R -E 'nip\.io' "$release" >/dev/null; then
+            echo 'frontend bundle contains a nip.io origin' >&2
+            exit 1
+          fi
+          grep -F 'self.registration.unregister()' \
+            "$release/public/flutter_service_worker.js" >/dev/null
+          grep -F 'self.registration.unregister()' \
+            "$release/admin/flutter_service_worker.js" >/dev/null
+          tar -C "$release" -czf "$RUNNER_TEMP/social-monitor-frontend-release.tgz" public admin
+
+      - name: Store immutable frontend artifact
+        if: needs.plan.outputs.frontend == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: social-monitor-frontend-${{ github.sha }}
+          path: ${{ runner.temp }}/social-monitor-frontend-release.tgz
+          if-no-files-found: error
+          retention-days: 3
+
+  deploy:
+    name: Deploy with host locks and rollback
+    needs:
+      - plan
+      - verify_backend
+      - build_frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    environment: production
+
+    steps:
+      - name: Download immutable frontend artifact
+        if: needs.plan.outputs.frontend == 'true'
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          name: social-monitor-frontend-${{ github.sha }}
+          path: ${{ runner.temp }}/frontend-artifact
+
+      - name: Configure restricted production SSH
+        env:
+          DEPLOY_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
+          KNOWN_HOSTS: ${{ secrets.PRODUCTION_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          install -d -m 0700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_KEY" > "$HOME/.ssh/social-monitor-production"
+          chmod 0600 "$HOME/.ssh/social-monitor-production"
+          printf '%s\n' "$KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 0600 "$HOME/.ssh/known_hosts"
+
+      - name: Upload immutable frontend release
+        if: needs.plan.outputs.frontend == 'true'
+        env:
+          DEPLOY_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
+          DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
+        run: |
+          set -euo pipefail
+          cat "$RUNNER_TEMP/frontend-artifact/social-monitor-frontend-release.tgz" | \
+            ssh -i "$HOME/.ssh/social-monitor-production" \
+              -o BatchMode=yes -o IdentitiesOnly=yes \
+              "$DEPLOY_USER@$DEPLOY_HOST" "upload $GITHUB_SHA"
+
+      - name: Deploy changed components
+        env:
+          DEPLOY_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
+          DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i "$HOME/.ssh/social-monitor-production" \
+            -o BatchMode=yes -o IdentitiesOnly=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST" "deploy $GITHUB_SHA"
+
+      - name: Remove production SSH material
+        if: always()
+        run: rm -f "$HOME/.ssh/social-monitor-production" "$HOME/.ssh/known_hosts"
