@@ -50,10 +50,25 @@ export const alignReaderSummaryTopicSemanticLabelToEvidence = (params: {
     normalizeSemanticPart(params.semantic.subject),
     params.evidenceTexts,
   ),
-  claimType: evidenceAlignedClaimTypes.has(params.semantic.claimType)
-    ? (params.primaryFacet ?? "other")
-    : params.semantic.claimType,
+  claimType: alignClaimTypeToEvidence(
+    params.semantic.claimType,
+    params.primaryFacet,
+  ),
 });
+
+const alignClaimTypeToEvidence = (
+  claimType: ReaderSummaryTopicClaimType,
+  primaryFacet: StoryPrimaryClaimFacet | undefined,
+): ReaderSummaryTopicClaimType => {
+  if (
+    primaryFacet !== undefined &&
+    (claimType === "other" || evidenceAlignedClaimTypes.has(claimType))
+  ) {
+    return primaryFacet;
+  }
+
+  return evidenceAlignedClaimTypes.has(claimType) ? "other" : claimType;
+};
 
 export const sanitizeReaderSummaryTopicSemanticLabel = (
   semantic: ReaderSummaryTopicSemanticLabel | undefined,

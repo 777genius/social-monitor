@@ -143,7 +143,7 @@ const primaryClaimFacetDefinitions = [
     "benchmark",
   ],
   [
-    /\b(?:comparison|side[\s-]?by[\s-]?side|versus|vs\.?|v\.)\b|\bcompared?\s+(?:against|to|with)\b/iu,
+    /\b(?:comparison|side[\s-]?by[\s-]?side|versus|vs\.?|v\.)\b|\bcompared?\s+(?:against|to|with)\b|\b(?:same|identical)\b[\s\S]{0,64}\b(?:brief|prompt|task|test)\b/iu,
     "comparison",
   ],
   [
@@ -163,7 +163,7 @@ const primaryClaimFacetDefinitions = [
     "security",
   ],
   [
-    /\b(?:availability|available|access|appear(?:s|ed|ing)?\s+in|account\s+tier|subscription\s+tier|plus\s+subscription|rolling\s+out\s+incrementally|not\s+everyone\s+will\s+see)\b/iu,
+    /\b(?:availability|access|appear(?:s|ed|ing)?\s+in|account\s+tier|subscription\s+tier|plus\s+subscription|rolling\s+out\s+incrementally|not\s+everyone\s+will\s+see)\b|\b(?:is|now)\s+(?:now\s+)?available\b|\bavailable\s+(?:for|in|on|to)\b/iu,
     "availability",
   ],
   [

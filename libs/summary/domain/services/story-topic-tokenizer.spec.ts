@@ -129,6 +129,28 @@ describe("story topic tokenizer", () => {
     expect(storyPrimaryClaimFacet(evidenceItem(title))).toBe(expected);
   });
 
+  it("recognizes a shared evaluation brief as a comparison", () => {
+    expect(
+      storyPrimaryClaimFacet(
+        evidenceItem(
+          "I gave GPT-5.4, GPT-5.5, GPT-5.6 Sol, Terra and Luna the same 35-word Coca-Cola Zero brief",
+          "The models received the prompt at the highest available setting.",
+        ),
+      ),
+    ).toBe("comparison");
+  });
+
+  it("does not confuse an available reasoning setting with product availability", () => {
+    expect(
+      storyPrimaryClaimFacet(
+        evidenceItem(
+          "GPT-5.6 completed the frontend task",
+          "Reasoning was set to the highest available setting.",
+        ),
+      ),
+    ).toBeUndefined();
+  });
+
   it.each([
     [
       "Biggest scam humanity accepted as normal according to ChatGPT",

@@ -38,6 +38,20 @@ describe("alignReaderSummaryTopicSemanticLabelToEvidence", () => {
       }).subject,
     ).toBe("Bitcoin Core");
   });
+
+  it("promotes an uncertain claim when evidence has a concrete facet", () => {
+    expect(
+      alignReaderSummaryTopicSemanticLabelToEvidence({
+        semantic: {
+          subject: "ChatGPT",
+          claimType: "other",
+          confidenceScore: 0.7,
+        },
+        primaryFacet: "comparison",
+        evidenceTexts: ["ChatGPT v. ChatGPT Work v. Claude"],
+      }).claimType,
+    ).toBe("comparison");
+  });
 });
 
 describe("renderReaderSummaryTopicSemanticLabel", () => {
