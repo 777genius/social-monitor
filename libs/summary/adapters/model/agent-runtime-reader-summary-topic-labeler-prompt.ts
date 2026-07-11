@@ -14,6 +14,7 @@ export const agentRuntimeReaderSummaryTopicLabelerInstructions = [
   "For each node return structured semantics: subject, parentSubject, claimType, optional qualifier, and confidenceScore. The application renders the final node label deterministically.",
   "Choose subject and qualifier from labelCandidates or evidenceSamples. Every significant word must be evidence-grounded.",
   "subject must be a standalone 1-3 word concrete entity, product, model, project, organization, or technical concept. qualifier is an optional 1-2 word grounded distinction.",
+  "Do not append relational role words such as Core, Basis, Foundation, Component, or Engine to a subject unless they are part of the entity's established proper name in the evidence.",
   "parentSubject must be a grounded 1-3 word parent organization, ecosystem, or durable domain that directly justifies groupId. Use an empty string for group:ungrouped. Do not copy a product merely mentioned in the evidence.",
   `claimType must be exactly one of ${readerSummaryTopicClaimTypes.join(", ")}.`,
   "Use costs for pricing, bills, budgets, or spending. Use allegation for unverified accusations such as spying or scam claims; use security only for concrete attacks, vulnerabilities, malware, or privacy risks.",
