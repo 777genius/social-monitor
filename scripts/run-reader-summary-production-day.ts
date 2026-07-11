@@ -20,6 +20,7 @@ import {
   yesterdaySocialQualityDatabaseUrl,
 } from "./lib/yesterday-social-replay-support";
 import { loadDotenvIfPresent } from "./lib/env-file";
+import { READER_SUMMARY_PRODUCTION_RUNTIME_POLICY } from "./lib/reader-summary-production-runtime-policy";
 
 type StepStatus = "passed" | "failed" | "skipped";
 
@@ -211,8 +212,18 @@ async function main(): Promise<void> {
       DURABLE_READER_SUMMARY_MODEL: summaryModel,
       AGENT_RUNTIME_READER_SUMMARY_MODEL: "gpt-5.5",
       AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT: "xhigh",
-      AGENT_RUNTIME_READER_SUMMARY_TIMEOUT_MS: "600000",
-      AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_TIMEOUT_MS: "600000",
+      AGENT_RUNTIME_READER_SUMMARY_TIMEOUT_MS: String(
+        READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.summaryModelTimeoutMs,
+      ),
+      AGENT_RUNTIME_READER_SUMMARY_STORY_RELATION_VERIFIER_TIMEOUT_MS: String(
+        READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.storyRelationTimeoutMs,
+      ),
+      AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_TIMEOUT_MS: String(
+        READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.topicLabelerTimeoutMs,
+      ),
+      AGENT_RUNTIME_READER_SUMMARY_TOPIC_RELATION_VERIFIER_TIMEOUT_MS: String(
+        READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.topicRelationTimeoutMs,
+      ),
       AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_MAX_CANDIDATES: "30",
       DURABLE_READER_SUMMARY_TOPIC_LABELER: topicLabeler,
       DURABLE_READER_SUMMARY_TENANT_ID: scope.tenantId,
