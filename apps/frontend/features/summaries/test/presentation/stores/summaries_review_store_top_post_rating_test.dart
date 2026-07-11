@@ -19,6 +19,7 @@ import 'package:social_monitor_summaries/src/domain/aggregates/reader_summary.da
 import 'package:social_monitor_summaries/src/domain/entities/post_rating.dart';
 import 'package:social_monitor_summaries/src/domain/value_objects/reader_action_target.dart';
 import 'package:social_monitor_summaries/src/infrastructure/api/post_rating_api_dto.dart';
+import 'package:social_monitor_summaries/src/infrastructure/api/summary_api_dto.dart';
 import 'package:social_monitor_summaries/src/infrastructure/api_clients/in_memory_summaries_api_client.dart';
 import 'package:social_monitor_summaries/src/infrastructure/repositories/generated_summary_review_catalog.dart';
 import 'package:social_monitor_summaries/src/presentation/stores/summaries_review_store.dart';
@@ -61,6 +62,68 @@ void main() {
       apiClient.loadPostRatingsRequests.single.targets.single.feedItemId,
       'feed-c-1',
     );
+  });
+
+  test('loads selected post ratings in API-sized batches', () async {
+    final topReads = List<TopReadApiDto>.generate(
+      101,
+      (index) => TopReadApiDto(
+        title: 'Post $index',
+        providerKey: 'reddit',
+        reason: 'Relevant post $index',
+        citationIds: ['citation-$index'],
+        matchedInterestIds: const ['ai-developer-tools'],
+        canonicalUrl: 'https://reddit.com/comments/$index',
+      ),
+    );
+    final ratings = [0, 100]
+        .map(
+          (index) => PostRatingApiDto(
+            feedbackId: 'rating-$index',
+            userId: 'user-demo',
+            rating: index == 0 ? 4 : 5,
+            learningEffect: 'positive',
+            feedItemId: 'feed-$index',
+            sourceItemId: 'source-$index',
+            interestId: 'ai-developer-tools',
+            ratedAt: DateTime.utc(2026, 7, 4, 10),
+          ),
+        )
+        .toList(growable: false);
+    final apiClient = InMemorySummariesApiClient(
+      items: [summaryApiDto()],
+      workspaceSummary: readerSummaryApiDto(
+        content: readerSummaryContentApiDto(topReads: topReads),
+        citations: List.generate(
+          101,
+          (index) => summaryCitationApiDto(
+            id: 'citation-$index',
+            feedItemId: 'feed-$index',
+            sourceItemId: 'source-$index',
+          ),
+        ),
+      ),
+      postRatings: ratings,
+    );
+    final store = _store(apiClient);
+
+    await store.loadWorkspaceSummary();
+    await Future<void>.delayed(Duration.zero);
+
+    final summary =
+        (store.workspaceSummaryState
+                as ReadyViewState<WorkspaceSummarySnapshot>)
+            .value
+            .current!;
+
+    expect(
+      apiClient.loadPostRatingsRequests.map(
+        (request) => request.targets.length,
+      ),
+      [100, 1],
+    );
+    expect(store.topPostRatingFor(summary, summary.content.topReads.first), 4);
+    expect(store.topPostRatingFor(summary, summary.content.topReads.last), 5);
   });
 
   test('submits top post star rating as recorded post feedback', () async {

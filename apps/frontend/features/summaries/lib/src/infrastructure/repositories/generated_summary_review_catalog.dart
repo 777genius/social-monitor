@@ -27,6 +27,8 @@ import '../mappers/summary_mapper.dart';
 import '../mappers/topic_recommendation_mapper.dart';
 
 final class GeneratedSummaryReviewCatalog implements SummaryReviewCatalog {
+  static const _postRatingLookupBatchSize = 100;
+
   const GeneratedSummaryReviewCatalog({
     required SummariesApiClient apiClient,
     SummaryMapper mapper = const SummaryMapper(),
@@ -122,15 +124,33 @@ final class GeneratedSummaryReviewCatalog implements SummaryReviewCatalog {
   Future<Result<List<PostRating>>> loadPostRatings(
     LoadPostRatingsQuery query,
   ) async {
-    final result = await _apiClient.loadPostRatings(
-      LoadPostRatingsApiRequest.fromQuery(query),
-    );
-    return result.fold(
-      onSuccess: (ratings) => Result.success(
-        ratings.map(_postRatingFromApi).toList(growable: false),
-      ),
-      onFailure: Result<List<PostRating>>.failure,
-    );
+    final ratings = <PostRating>[];
+    for (
+      var offset = 0;
+      offset < query.targets.length;
+      offset += _postRatingLookupBatchSize
+    ) {
+      final end = (offset + _postRatingLookupBatchSize).clamp(
+        0,
+        query.targets.length,
+      );
+      final result = await _apiClient.loadPostRatings(
+        LoadPostRatingsApiRequest.fromQuery(
+          LoadPostRatingsQuery(
+            scope: query.scope,
+            userId: query.userId,
+            targets: query.targets.sublist(offset, end),
+          ),
+        ),
+      );
+      switch (result) {
+        case ResultSuccess(:final value):
+          ratings.addAll(value.map(_postRatingFromApi));
+        case ResultFailure(:final failure):
+          return Result.failure(failure);
+      }
+    }
+    return Result.success(ratings);
   }
 
   @override
