@@ -1,5 +1,7 @@
 # Social Monitor
 
+<a href="https://discord.gg/MWmrv57Qkt"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fdiscord.com%2Fapi%2Fv10%2Finvites%2FqtqSZSyuEc%3Fwith_counts%3Dtrue&query=%24.approximate_member_count&label=Discord&logo=discord&logoColor=white&color=5865F2&style=flat-square&suffix=%20members" alt="Discord" /></a>
+
 Tired of scrolling through hundreds of near-identical posts across every social network just to find the few that actually matter?
 
 I built Social Monitor because I was sick of the noise. Instead of drowning in duplicate takes, reposts, and filler from X, Reddit, news sites, and the rest, I wanted one tool that surfaces the posts that are genuinely interesting and tells me what actually happened.

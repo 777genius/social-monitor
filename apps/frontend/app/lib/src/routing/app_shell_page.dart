@@ -7,7 +7,7 @@ import '../composition/app_theme_mode_controller.dart';
 import 'app_feature_access.dart';
 import 'app_shell_theme_menu_card.dart';
 import 'feature_catalog.dart';
-import 'guest_github_sidebar_card.dart';
+import 'guest_community_destinations.dart';
 
 class AppShellPage extends StatelessWidget {
   const AppShellPage({
@@ -49,15 +49,15 @@ class AppShellPage extends StatelessWidget {
                 path: feature.route.path,
                 icon: feature.icon,
               ),
+            if (runtime.isGuest) ...guestCommunityDestinations,
           ],
           selectedPath: location,
-          onDestinationSelected: (path) => context.go(path),
+          onDestinationSelected: appDestinationHandler(context),
           appBarActions: [
             _CompactThemeModeMenu(controller: themeModeController),
           ],
           sidebarFooter: [
             AppShellThemeMenuCard(controller: themeModeController),
-            if (runtime.isGuest) const GuestGitHubSidebarCard(),
           ],
           child: child,
         );

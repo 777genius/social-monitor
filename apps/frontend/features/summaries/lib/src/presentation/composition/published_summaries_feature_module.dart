@@ -2,6 +2,7 @@ import 'package:modularity_flutter/modularity_flutter.dart';
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
 import '../../application/use_cases/load_published_summary_use_case.dart';
+import '../../application/use_cases/load_workspace_summary_history_use_case.dart';
 import '../../application/use_cases/load_workspace_summary_use_case.dart';
 import '../../application/use_cases/open_reader_source_use_case.dart';
 import '../../infrastructure/api_clients/generated_summaries_api_client.dart';
@@ -14,11 +15,13 @@ final class PublishedSummariesFeatureModule extends Module {
     required this.generatedApiRuntime,
     required this.scope,
     this.summaryId,
+    this.onSummarySelected,
   });
 
   final Object generatedApiRuntime;
   final WorkspaceScope scope;
   final String? summaryId;
+  final void Function(String summaryId)? onSummarySelected;
 
   Object get retentionKey =>
       'published-summary-${scope.tenantId}-${scope.workspaceId}-${summaryId ?? 'latest'}';
@@ -35,7 +38,9 @@ final class PublishedSummariesFeatureModule extends Module {
     return PublishedSummaryStore(
       scope: scope,
       summaryId: summaryId,
+      onSummarySelected: onSummarySelected,
       loadLatest: LoadWorkspaceSummaryUseCase(catalog),
+      loadHistory: LoadWorkspaceSummaryHistoryUseCase(catalog),
       loadPublished: LoadPublishedSummaryUseCase(catalog),
       openReaderSource: OpenReaderSourceUseCase(
         const UrlLauncherReaderSourceLauncher(),

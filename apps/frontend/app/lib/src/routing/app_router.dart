@@ -150,6 +150,12 @@ class _RuntimeFeaturePageState extends State<_RuntimeFeaturePage> {
   @override
   Widget build(BuildContext context) {
     final runtime = widget.runtimeController.runtime;
+    if (runtime.session.isRestoring) {
+      return const Center(
+        key: ValueKey('app-session-restoring'),
+        child: CircularProgressIndicator(),
+      );
+    }
     final scope = runtime.workspace.scope;
     final runtimeKey = [
       runtime.session.isSignedIn,

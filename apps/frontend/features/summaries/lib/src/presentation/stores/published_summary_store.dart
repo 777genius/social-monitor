@@ -5,32 +5,69 @@ import '../../application/commands/open_reader_source_command.dart';
 import '../../application/queries/load_published_summary_query.dart';
 import '../../application/queries/load_workspace_summary_query.dart';
 import '../../application/use_cases/load_published_summary_use_case.dart';
+import '../../application/use_cases/load_workspace_summary_history_use_case.dart';
 import '../../application/use_cases/load_workspace_summary_use_case.dart';
 import '../../application/use_cases/open_reader_source_use_case.dart';
 import '../../domain/aggregates/reader_summary.dart';
+import '../workflows/summary_period_navigation.dart';
 
 final class PublishedSummaryStore extends ChangeNotifier {
   PublishedSummaryStore({
     required WorkspaceScope scope,
     required LoadWorkspaceSummaryUseCase loadLatest,
+    required LoadWorkspaceSummaryHistoryUseCase loadHistory,
     required LoadPublishedSummaryUseCase loadPublished,
     required OpenReaderSourceUseCase openReaderSource,
     this.summaryId,
+    void Function(String summaryId)? onSummarySelected,
     OperationGenerationGuard? generationGuard,
+    OperationGenerationGuard? historyGenerationGuard,
   }) : _scope = scope,
        _loadLatest = loadLatest,
+       _loadHistory = loadHistory,
        _loadPublished = loadPublished,
        _openReaderSource = openReaderSource,
-       _generationGuard = generationGuard ?? OperationGenerationGuard();
+       _onSummarySelected = onSummarySelected,
+       _generationGuard = generationGuard ?? OperationGenerationGuard(),
+       _historyGenerationGuard =
+           historyGenerationGuard ?? OperationGenerationGuard();
 
   final WorkspaceScope _scope;
   final LoadWorkspaceSummaryUseCase _loadLatest;
+  final LoadWorkspaceSummaryHistoryUseCase _loadHistory;
   final LoadPublishedSummaryUseCase _loadPublished;
   final OpenReaderSourceUseCase _openReaderSource;
+  final void Function(String summaryId)? _onSummarySelected;
   final OperationGenerationGuard _generationGuard;
+  final OperationGenerationGuard _historyGenerationGuard;
   final String? summaryId;
 
   AsyncViewState<ReaderSummary> state = const InitialViewState<ReaderSummary>();
+  SummaryPeriodPreset selectedPeriodPreset = SummaryPeriodPreset.daily;
+  List<SummaryPeriod> availablePeriods = const [];
+  DateTime? _selectedPeriodEndedAt;
+
+  SummaryPeriod get selectedPeriod =>
+      selectedPeriodPreset.resolve(periodEndedAt: _selectedPeriodEndedAt);
+
+  List<SummaryPeriod> get availablePeriodsForPreset =>
+      availablePeriods
+          .where(
+            (period) =>
+                summaryPeriodMatchesPreset(period, selectedPeriodPreset),
+          )
+          .toList(growable: false)
+        ..sort((left, right) => left.endedAt.compareTo(right.endedAt));
+
+  bool get canNavigateToPreviousPeriod => _adjacentAvailablePeriod(-1) != null;
+
+  bool get canNavigateToNextPeriod => _adjacentAvailablePeriod(1) != null;
+
+  bool get isCurrentPeriod {
+    final periods = availablePeriodsForPreset;
+    return periods.isEmpty ||
+        sameSummaryPeriodWindow(selectedPeriod, periods.last);
+  }
 
   Future<void> load() async {
     final generation = _generationGuard.markOperationStarted();
@@ -56,9 +93,17 @@ final class PublishedSummaryStore extends ChangeNotifier {
     if (!_generationGuard.isCurrent(generation)) {
       return;
     }
+    WorkspaceSummarySnapshot? loadedSnapshot;
     state = result.fold(
       onSuccess: (snapshot) {
+        loadedSnapshot = snapshot;
         final summary = snapshot.current;
+        if (summary != null) {
+          _selectPeriod(summary.period);
+          availablePeriods = mergeSummaryPeriods(snapshot.availablePeriods, [
+            summary.period,
+          ]);
+        }
         return summary == null
             ? const EmptyViewState<ReaderSummary>(
                 reason: 'No published daily summary is available yet.',
@@ -71,6 +116,165 @@ final class PublishedSummaryStore extends ChangeNotifier {
       onFailure: (failure) => FailureViewState<ReaderSummary>(failure: failure),
     );
     notifyListeners();
+    final snapshot = loadedSnapshot;
+    final current = snapshot?.current;
+    if (current != null) {
+      await _refreshAvailablePeriods();
+    }
+  }
+
+  Future<void> selectPeriodPreset(SummaryPeriodPreset preset) async {
+    if (preset == selectedPeriodPreset) {
+      return;
+    }
+    final previousPreset = selectedPeriodPreset;
+    final previousPeriodEndedAt = _selectedPeriodEndedAt;
+    selectedPeriodPreset = preset;
+    _selectedPeriodEndedAt = null;
+    notifyListeners();
+    await _refreshAvailablePeriods();
+    final periods = availablePeriodsForPreset;
+    if (periods.isEmpty) {
+      selectedPeriodPreset = previousPreset;
+      _selectedPeriodEndedAt = previousPeriodEndedAt;
+      notifyListeners();
+      return;
+    }
+    _selectedPeriodEndedAt = periods.last.endedAt;
+    await _loadSelectedPeriod();
+  }
+
+  Future<void> showPreviousPeriod() => _showAdjacentPeriod(-1);
+
+  Future<void> showNextPeriod() => _showAdjacentPeriod(1);
+
+  Future<void> showCurrentPeriod() async {
+    final periods = availablePeriodsForPreset;
+    if (periods.isEmpty) {
+      return;
+    }
+    _selectedPeriodEndedAt = periods.last.endedAt;
+    await _loadSelectedPeriod();
+  }
+
+  Future<void> selectCalendarDate(DateTime date) async {
+    final requested = selectedPeriodPreset.resolveForCalendarDate(date);
+    final available = availablePeriodsForPreset.where(
+      (period) => sameSummaryPeriodWindow(period, requested),
+    );
+    if (available.isEmpty) {
+      return;
+    }
+    _selectedPeriodEndedAt = available.first.endedAt;
+    await _loadSelectedPeriod();
+  }
+
+  Future<void> _showAdjacentPeriod(int offset) async {
+    final adjacent = _adjacentAvailablePeriod(offset);
+    if (adjacent == null) {
+      return;
+    }
+    _selectedPeriodEndedAt = adjacent.endedAt;
+    await _loadSelectedPeriod();
+  }
+
+  SummaryPeriod? _adjacentAvailablePeriod(int offset) {
+    final periods = availablePeriodsForPreset;
+    final index = periods.indexWhere(
+      (period) => sameSummaryPeriodWindow(period, selectedPeriod),
+    );
+    final nextIndex = index + offset;
+    return index < 0 || nextIndex < 0 || nextIndex >= periods.length
+        ? null
+        : periods[nextIndex];
+  }
+
+  Future<void> _loadSelectedPeriod() async {
+    final generation = _generationGuard.markOperationStarted();
+    final previous = switch (state) {
+      ReadyViewState<ReaderSummary>(:final value) => value,
+      LoadingViewState<ReaderSummary>(:final previousValue) => previousValue,
+      _ => null,
+    };
+    state = LoadingViewState<ReaderSummary>(previousValue: previous);
+    notifyListeners();
+    final result = await _loadLatest(
+      LoadWorkspaceSummaryQuery(
+        scope: _scope,
+        period: selectedPeriod,
+        allowLatestFallback: false,
+      ),
+    );
+    if (!_generationGuard.isCurrent(generation)) {
+      return;
+    }
+    ReaderSummary? selectedSummary;
+    state = result.fold(
+      onSuccess: (snapshot) {
+        final summary = snapshot.current;
+        if (summary == null) {
+          if (previous != null) {
+            _selectPeriod(previous.period);
+            return ReadyViewState<ReaderSummary>(
+              previous,
+              isDegraded: previous.isDegraded,
+            );
+          }
+          return const EmptyViewState<ReaderSummary>(
+            reason: 'No published summary exists for this period.',
+          );
+        }
+        selectedSummary = summary;
+        _selectPeriod(summary.period);
+        availablePeriods = mergeSummaryPeriods(availablePeriods, [
+          summary.period,
+        ]);
+        return ReadyViewState<ReaderSummary>(
+          summary,
+          isDegraded: summary.isDegraded,
+        );
+      },
+      onFailure: (failure) {
+        if (previous != null) {
+          _selectPeriod(previous.period);
+          return ReadyViewState<ReaderSummary>(
+            previous,
+            isDegraded: previous.isDegraded,
+          );
+        }
+        return FailureViewState<ReaderSummary>(failure: failure);
+      },
+    );
+    notifyListeners();
+    final selected = selectedSummary;
+    if (selected != null && selected.id != previous?.id) {
+      _onSummarySelected?.call(selected.id);
+    }
+  }
+
+  Future<void> _refreshAvailablePeriods() async {
+    final generation = _historyGenerationGuard.markOperationStarted();
+    final result = await _loadHistory(
+      LoadWorkspaceSummaryQuery(scope: _scope, period: selectedPeriod),
+    );
+    if (!_historyGenerationGuard.isCurrent(generation)) {
+      return;
+    }
+    result.fold(
+      onSuccess: (snapshot) {
+        availablePeriods = mergeSummaryPeriods(
+          availablePeriods,
+          snapshot.availablePeriods,
+        );
+        notifyListeners();
+      },
+      onFailure: (_) {},
+    );
+  }
+
+  void _selectPeriod(SummaryPeriod period) {
+    selectedPeriodPreset = summaryPeriodPresetFor(period);
+    _selectedPeriodEndedAt = period.endedAt;
   }
 
   Future<void> openUrl(String canonicalUrl) async {
@@ -95,6 +299,7 @@ final class PublishedSummaryStore extends ChangeNotifier {
   @override
   void dispose() {
     _generationGuard.invalidate();
+    _historyGenerationGuard.invalidate();
     super.dispose();
   }
 }

@@ -7,6 +7,7 @@ import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 import '../../domain/aggregates/reader_summary.dart';
 import '../components/reader_summary_top_posts_section_sliver.dart';
 import '../components/reader_summary_view.dart';
+import '../components/workspace_summary_period_shell.dart';
 import '../stores/published_summary_store.dart';
 
 class PublishedSummaryPage extends StatefulWidget {
@@ -39,6 +40,7 @@ class _PublishedSummaryPageState extends State<PublishedSummaryPage> {
         };
         if (summary != null) {
           return _PublishedSummaryArticle(
+            store: widget.store,
             summary: summary,
             isRefreshing: state is LoadingViewState<ReaderSummary>,
             onOpenUrl: (url) => unawaited(widget.store.openUrl(url)),
@@ -86,11 +88,13 @@ class _PublishedSummaryPageState extends State<PublishedSummaryPage> {
 
 class _PublishedSummaryArticle extends StatelessWidget {
   const _PublishedSummaryArticle({
+    required this.store,
     required this.summary,
     required this.isRefreshing,
     required this.onOpenUrl,
   });
 
+  final PublishedSummaryStore store;
   final ReaderSummary summary;
   final bool isRefreshing;
   final ValueChanged<String> onOpenUrl;
@@ -113,9 +117,24 @@ class _PublishedSummaryArticle extends StatelessWidget {
     return CustomScrollView(
       key: const PageStorageKey<String>('published-summary-scroll-view'),
       slivers: [
-        SliverPadding(
-          padding: articlePadding,
-          sliver: SliverToBoxAdapter(
+        SliverToBoxAdapter(
+          child: WorkspaceSummaryPeriodShell(
+            selectedPeriod: store.selectedPeriod,
+            selectedPreset: store.selectedPeriodPreset,
+            availableSummaryPeriods: store.availablePeriods,
+            canNavigateToPreviousPeriod: store.canNavigateToPreviousPeriod,
+            canNavigateToNextPeriod: store.canNavigateToNextPeriod,
+            isCurrentPeriod: store.isCurrentPeriod,
+            onPeriodChanged: (preset) =>
+                unawaited(store.selectPeriodPreset(preset)),
+            onPreviousPeriod: () => unawaited(store.showPreviousPeriod()),
+            onCurrentPeriod: () => unawaited(store.showCurrentPeriod()),
+            onNextPeriod: () => unawaited(store.showNextPeriod()),
+            onCalendarDateSelected: (date) =>
+                unawaited(store.selectCalendarDate(date)),
+            isGenerating: false,
+            exportSummary: summary,
+            contentPadding: articlePadding,
             child: ReaderSummaryView.readOnly(
               key: const ValueKey('published-reader-summary-view'),
               summary: summary,

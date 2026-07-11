@@ -6,6 +6,7 @@ import 'package:social_monitor_app/src/composition/app_frontend_runtime_config.d
 import 'package:social_monitor_app/src/composition/app_runtime.dart';
 import 'package:social_monitor_app/src/composition/app_theme_mode_controller.dart';
 import 'package:social_monitor_app/src/routing/app_shell_page.dart';
+import 'package:social_monitor_app/src/routing/guest_community_destinations.dart';
 import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
@@ -113,7 +114,7 @@ void main() {
     );
   });
 
-  testWidgets('shows repository link only in guest sidebar footer', (
+  testWidgets('shows community links as guest navigation destinations', (
     tester,
   ) async {
     const workspace = AppWorkspaceSnapshot(
@@ -149,8 +150,34 @@ void main() {
       ),
     );
 
-    expect(find.byKey(const ValueKey('guest-github-link')), findsOneWidget);
     expect(find.text('GitHub'), findsOneWidget);
+    expect(find.text('Discord'), findsOneWidget);
+
+    const adminWorkspace = AppWorkspaceSnapshot(
+      tenantName: 'Private',
+      workspaceName: 'Admin workspace',
+      workspaceRole: 'admin',
+      statusLabel: 'Active',
+      scope: WorkspaceScope(tenantId: 'tenant-1', workspaceId: 'workspace-1'),
+    );
+    runtimeController.restoreAuthSession(
+      userId: 'admin-1',
+      userLabel: 'Admin',
+      userRole: 'admin',
+      selectedWorkspace: adminWorkspace,
+      availableWorkspaces: const [adminWorkspace],
+    );
+    await tester.pump();
+
+    expect(find.text('GitHub'), findsNothing);
+    expect(find.text('Discord'), findsNothing);
+  });
+
+  test('guest community destinations use the public project URLs', () {
+    expect(guestCommunityDestinations.map((destination) => destination.path), [
+      'https://github.com/777genius/social-monitor',
+      'https://discord.gg/MWmrv57Qkt',
+    ]);
   });
 
   test('feature descriptors reflect restored runtime status', () {
@@ -251,7 +278,7 @@ void main() {
     tester,
   ) async {
     const deepLink = '/summaries/reader-summary-1';
-    final composition = AppCompositionRoot.production(
+    final composition = AppCompositionRoot.demo(
       runtime: AppShellRuntime.restoring(generatedApiRuntime: Object()),
       initialLocation: deepLink,
     );
@@ -263,6 +290,31 @@ void main() {
       composition.router.routeInformationProvider.value.uri.path,
       deepLink,
     );
+    expect(find.byKey(const ValueKey('app-session-restoring')), findsOneWidget);
+    expect(find.text('Runtime unavailable'), findsNothing);
+
+    const workspace = AppWorkspaceSnapshot(
+      tenantName: 'Public',
+      workspaceName: 'Daily stories',
+      workspaceRole: 'viewer',
+      statusLabel: 'Active',
+      scope: WorkspaceScope(tenantId: 'tenant-1', workspaceId: 'workspace-1'),
+    );
+    composition.runtimeController.restoreAuthSession(
+      userId: 'guest-1',
+      userLabel: 'Guest',
+      userRole: 'user',
+      selectedWorkspace: workspace,
+      availableWorkspaces: const [workspace],
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('app-session-restoring')), findsNothing);
+    expect(
+      composition.router.routeInformationProvider.value.uri.path,
+      deepLink,
+    );
+    expect(find.text('Runtime unavailable'), findsNothing);
   });
 
   testWidgets('honors configured initial route for visual e2e', (tester) async {

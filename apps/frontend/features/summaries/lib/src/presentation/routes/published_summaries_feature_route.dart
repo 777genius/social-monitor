@@ -11,10 +11,12 @@ class PublishedSummariesFeatureRoute extends StatelessWidget {
     required Object generatedApiRuntime,
     required WorkspaceScope scope,
     String? summaryId,
+    void Function(String summaryId)? onSummarySelected,
   }) : _module = PublishedSummariesFeatureModule(
          generatedApiRuntime: generatedApiRuntime,
          scope: scope,
          summaryId: summaryId,
+         onSummarySelected: onSummarySelected,
        );
 
   final PublishedSummariesFeatureModule _module;

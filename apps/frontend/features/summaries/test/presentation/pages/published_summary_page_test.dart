@@ -4,6 +4,7 @@ import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 import 'package:social_monitor_summaries/src/application/contracts/reader_source_launcher.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/load_published_summary_use_case.dart';
+import 'package:social_monitor_summaries/src/application/use_cases/load_workspace_summary_history_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/load_workspace_summary_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/open_reader_source_use_case.dart';
 import 'package:social_monitor_summaries/src/domain/aggregates/reader_summary.dart';
@@ -30,6 +31,7 @@ void main() {
     final store = PublishedSummaryStore(
       scope: summaryWorkspaceScope,
       loadLatest: LoadWorkspaceSummaryUseCase(catalog),
+      loadHistory: LoadWorkspaceSummaryHistoryUseCase(catalog),
       loadPublished: LoadPublishedSummaryUseCase(catalog),
       openReaderSource: const OpenReaderSourceUseCase(_SourceLauncher()),
       summaryId: summary.id,
@@ -51,6 +53,10 @@ void main() {
 
     expect(
       find.byKey(const ValueKey('published-reader-summary-view')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('workspace-summary-header-band')),
       findsOneWidget,
     );
     expect(find.byType(ReaderSummaryView), findsOneWidget);

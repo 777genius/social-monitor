@@ -28,6 +28,7 @@ import '../../domain/value_objects/summary_generation_status.dart';
 import '../../domain/value_objects/summary_id.dart';
 import '../../domain/value_objects/top_read_feedback_target.dart';
 import '../workflows/summaries_review_store_dependencies.dart';
+import '../workflows/summary_period_navigation.dart';
 
 part 'summaries_review_store_workspace_summary_workflow.dart';
 part 'summaries_review_store_post_rating_workflow.dart';

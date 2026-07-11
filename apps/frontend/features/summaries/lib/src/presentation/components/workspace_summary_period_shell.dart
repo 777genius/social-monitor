@@ -22,7 +22,7 @@ class WorkspaceSummaryPeriodShell extends StatelessWidget {
     required this.onCurrentPeriod,
     required this.onNextPeriod,
     required this.onCalendarDateSelected,
-    required this.onGenerate,
+    this.onGenerate,
     required this.isGenerating,
     required this.exportSummary,
     required this.child,
@@ -40,7 +40,7 @@ class WorkspaceSummaryPeriodShell extends StatelessWidget {
   final VoidCallback onCurrentPeriod;
   final VoidCallback onNextPeriod;
   final ValueChanged<DateTime> onCalendarDateSelected;
-  final VoidCallback onGenerate;
+  final VoidCallback? onGenerate;
   final bool isGenerating;
   final ReaderSummary? exportSummary;
   final Widget child;
