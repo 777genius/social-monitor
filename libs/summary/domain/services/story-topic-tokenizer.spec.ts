@@ -140,6 +140,17 @@ describe("story topic tokenizer", () => {
     ).toBe("comparison");
   });
 
+  it("recognizes period-delimited versus shorthand as a comparison", () => {
+    expect(
+      storyPrimaryClaimFacet(
+        evidenceItem(
+          "I am confused by ChatGPT v. ChatGPT Codex v. ChatGPT Work v. Claude",
+          "The post compares the current product lineup.",
+        ),
+      ),
+    ).toBe("comparison");
+  });
+
   it("does not confuse an available reasoning setting with product availability", () => {
     expect(
       storyPrimaryClaimFacet(

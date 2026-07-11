@@ -143,7 +143,7 @@ const primaryClaimFacetDefinitions = [
     "benchmark",
   ],
   [
-    /\b(?:comparison|side[\s-]?by[\s-]?side|versus|vs\.?|v\.)\b|\bcompared?\s+(?:against|to|with)\b|\b(?:same|identical)\b[\s\S]{0,64}\b(?:brief|prompt|task|test)\b/iu,
+    /\b(?:comparison|side[\s-]?by[\s-]?side|versus|vs\.?)\b|\bv\.(?=\s|$)|\bcompared?\s+(?:against|to|with)\b|\b(?:same|identical)\b[\s\S]{0,64}\b(?:brief|prompt|task|test)\b/iu,
     "comparison",
   ],
   [
