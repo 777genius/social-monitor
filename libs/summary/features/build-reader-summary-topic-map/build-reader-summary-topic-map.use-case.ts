@@ -9,6 +9,7 @@ import {
   buildExistingReaderSummaryTopicRelations,
   buildReaderSummaryTopicMap,
   buildReaderSummaryTopicRelationCandidates,
+  buildReaderSummaryTopicRelationVerificationForest,
   buildSemanticallyEquivalentReaderSummaryTopicRelations,
   combineReaderSummaryTopicRelations,
   evaluateReaderSummaryTopicMapStructure,
@@ -213,13 +214,12 @@ export class BuildReaderSummaryTopicMapUseCase {
             ),
           );
     }
-    const requiredRelations = combineReaderSummaryTopicRelations(
+    const requiredRelations = buildReaderSummaryTopicRelationVerificationForest(
       existingRelations,
       buildSemanticallyEquivalentReaderSummaryTopicRelations(
         reviewedCandidates,
         labelPlan.nodeLabels,
       ),
-      Number.MAX_SAFE_INTEGER,
     );
     if (
       requiredRelations.length > READER_SUMMARY_TOPIC_RELATION_MAX_CANDIDATES

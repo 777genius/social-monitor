@@ -1,6 +1,7 @@
 import {
   buildExistingReaderSummaryTopicRelations,
   buildReaderSummaryTopicRelationCandidates,
+  buildReaderSummaryTopicRelationVerificationForest,
   buildSemanticallyEquivalentReaderSummaryTopicRelations,
 } from "./reader-summary-topic-relation-candidates";
 
@@ -62,6 +63,67 @@ describe("buildReaderSummaryTopicRelationCandidates", () => {
       },
     ]);
   });
+
+  it("reduces a ten-node merge clique to a deterministic spanning tree", () => {
+    const candidates = Array.from({ length: 10 }, (_, index) =>
+      candidate(`node:${index}`, [`Shared topic ${index}`]),
+    );
+    const existing = buildExistingReaderSummaryTopicRelations(
+      candidates,
+      candidates.map((item) => ({
+        nodeId: item.nodeId,
+        topicId: "topic:shared",
+      })),
+    );
+
+    expect(existing).toHaveLength(45);
+    const forest = buildReaderSummaryTopicRelationVerificationForest(
+      existing,
+      [],
+    );
+    expect(forest).toHaveLength(9);
+    expect(
+      new Set(
+        forest.flatMap((relation) => [
+          relation.sourceNodeId,
+          relation.targetNodeId,
+        ]),
+      ).size,
+    ).toBe(10);
+    expect(
+      buildReaderSummaryTopicRelationVerificationForest(
+        existing
+          .slice()
+          .reverse()
+          .map((relation) => ({
+            ...relation,
+            sourceNodeId: relation.targetNodeId,
+            targetNodeId: relation.sourceNodeId,
+          })),
+        [],
+      ),
+    ).toEqual(forest);
+  });
+
+  it("deduplicates edges and preserves disconnected components", () => {
+    const forest = buildReaderSummaryTopicRelationVerificationForest(
+      [
+        relation("node:a", "node:b", ["existing"]),
+        relation("node:b", "node:a", ["duplicate"]),
+        relation("node:b", "node:c", ["bridge"]),
+        relation("node:a", "node:c", ["cycle"]),
+        relation("node:d", "node:d", ["self"]),
+      ],
+      [relation("node:x", "node:y", ["semantic"])],
+    );
+
+    expect(forest).toHaveLength(3);
+    expect(
+      new Set(
+        forest.flatMap((item) => [item.sourceNodeId, item.targetNodeId]),
+      ),
+    ).toEqual(new Set(["node:a", "node:b", "node:c", "node:x", "node:y"]));
+  });
 });
 
 const candidate = (nodeId: string, keywords: readonly string[]) => ({
@@ -83,3 +145,9 @@ const semanticLabel = (
     confidenceScore: 0.9,
   },
 });
+
+const relation = (
+  sourceNodeId: string,
+  targetNodeId: string,
+  sharedTerms: readonly string[],
+) => ({ sourceNodeId, targetNodeId, sharedTerms });
