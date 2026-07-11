@@ -93,6 +93,7 @@ export interface ReaderSummaryArtifactRepositoryPort {
     artifact: ReaderSummaryArtifact,
     options?: {
       readonly publicationDecision?: ReaderSummaryPublicationDecision;
+      readonly generationRequestedAt?: Date;
     },
   ): Promise<void>;
   list(

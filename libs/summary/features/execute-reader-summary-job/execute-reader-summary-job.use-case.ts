@@ -180,6 +180,7 @@ export class ExecuteReaderSummaryJobUseCase {
       });
       await this.readerSummaryArtifacts.save(result.value.artifact, {
         publicationDecision,
+        generationRequestedAt: runningJob.toSnapshot().requestedAt,
       });
 
       if (publicationDecision.status === "rejected") {

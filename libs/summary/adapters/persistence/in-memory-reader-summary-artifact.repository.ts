@@ -1,5 +1,5 @@
 import {
-  canReaderSummaryModelSupersede,
+  canReaderSummaryGenerationSupersede,
   readerSummaryScopeKey,
   type ReaderSummaryArtifact,
 } from "../../domain";
@@ -27,6 +27,7 @@ export class InMemoryReaderSummaryArtifactRepository implements ReaderSummaryArt
     string,
     ReaderSummaryPublicationDecisionForPersistence
   >();
+  private readonly generationRequestedAtById = new Map<string, Date>();
 
   async save(
     artifact: ReaderSummaryArtifact,
@@ -43,13 +44,23 @@ export class InMemoryReaderSummaryArtifactRepository implements ReaderSummaryArt
         : "visible";
 
     if (visibility === "visible") {
-      visibility = this.resolvePublicationVisibility(snapshot, key);
+      visibility = this.resolvePublicationVisibility(
+        snapshot,
+        key,
+        options?.generationRequestedAt,
+      );
     }
 
     this.artifactsById.set(key, artifact);
     this.statusesById.set(key, visibility);
     if (options?.publicationDecision !== undefined) {
       this.publicationDecisionsById.set(key, options.publicationDecision);
+    }
+    if (options?.generationRequestedAt !== undefined) {
+      this.generationRequestedAtById.set(
+        key,
+        new Date(options.generationRequestedAt.getTime()),
+      );
     }
   }
 
@@ -161,6 +172,7 @@ export class InMemoryReaderSummaryArtifactRepository implements ReaderSummaryArt
   private resolvePublicationVisibility(
     snapshot: ReturnType<ReaderSummaryArtifact["toSnapshot"]>,
     currentKey: string,
+    generationRequestedAt: Date | undefined,
   ): ReaderSummaryArtifactVisibility {
     let blockedByHigherAuthority = false;
     for (const [key, artifact] of this.artifactsById.entries()) {
@@ -173,10 +185,12 @@ export class InMemoryReaderSummaryArtifactRepository implements ReaderSummaryArt
         continue;
       }
       if (
-        canReaderSummaryModelSupersede(
-          snapshot.lineage.modelVersion,
-          visibleSnapshot.lineage.modelVersion,
-        )
+        canReaderSummaryGenerationSupersede({
+          incomingModelVersion: snapshot.lineage.modelVersion,
+          visibleModelVersion: visibleSnapshot.lineage.modelVersion,
+          incomingRequestedAt: generationRequestedAt,
+          visibleRequestedAt: this.generationRequestedAtById.get(key),
+        })
       ) {
         this.statusesById.set(key, "superseded");
       } else {

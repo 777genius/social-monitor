@@ -168,6 +168,42 @@ describe("InMemoryReaderSummaryArtifactRepository", () => {
       result.items.map((item) => item.toSnapshot().readerSummaryId),
     ).toEqual(["reader-summary-runtime"]);
   });
+
+  it("does not let an older equal-authority generation replace latest", async () => {
+    const repository = new InMemoryReaderSummaryArtifactRepository();
+
+    await repository.save(
+      artifact("reader-summary-newer-run", "Newer requested run"),
+      { generationRequestedAt: new Date("2026-07-09T10:05:00.000Z") },
+    );
+    await repository.save(
+      artifact("reader-summary-older-run", "Older slow run"),
+      { generationRequestedAt: new Date("2026-07-09T10:00:00.000Z") },
+    );
+
+    const result = await repository.list(listQuery());
+    expect(
+      result.items.map((item) => item.toSnapshot().readerSummaryId),
+    ).toEqual(["reader-summary-newer-run"]);
+  });
+
+  it("allows a newer equal-authority generation to replace visible", async () => {
+    const repository = new InMemoryReaderSummaryArtifactRepository();
+
+    await repository.save(
+      artifact("reader-summary-older-run", "Older requested run"),
+      { generationRequestedAt: new Date("2026-07-09T10:00:00.000Z") },
+    );
+    await repository.save(
+      artifact("reader-summary-newer-run", "Newer requested run"),
+      { generationRequestedAt: new Date("2026-07-09T10:05:00.000Z") },
+    );
+
+    const result = await repository.list(listQuery());
+    expect(
+      result.items.map((item) => item.toSnapshot().readerSummaryId),
+    ).toEqual(["reader-summary-newer-run"]);
+  });
 });
 
 const listQuery = () => ({

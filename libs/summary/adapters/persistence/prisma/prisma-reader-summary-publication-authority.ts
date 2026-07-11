@@ -1,17 +1,19 @@
 import {
-  canReaderSummaryModelSupersede,
+  canReaderSummaryGenerationSupersede,
   readerSummaryScopeKey,
   type ReaderSummaryArtifact,
 } from "../../../domain";
-import type { PrismaSummaryClient } from "./prisma-summary-client";
+import type { PrismaReaderSummaryClient } from "./prisma-reader-summary-client";
+import { readerSummaryPublicationGenerationRequestedAt } from "./prisma-reader-summary-publication-generation";
 import type { PrismaSummaryStatus } from "./prisma-summary-records";
 
 const visibleStatuses = ["COMPLETED"] as const;
 
 export const readerSummaryStatusAfterModelAuthorityCheck = async (params: {
-  readonly prisma: PrismaSummaryClient;
+  readonly prisma: PrismaReaderSummaryClient;
   readonly proposedStatus: PrismaSummaryStatus;
   readonly snapshot: ReturnType<ReaderSummaryArtifact["toSnapshot"]>;
+  readonly generationRequestedAt?: Date;
 }): Promise<PrismaSummaryStatus> => {
   if (params.proposedStatus !== "COMPLETED") {
     return params.proposedStatus;
@@ -38,10 +40,14 @@ export const readerSummaryStatusAfterModelAuthorityCheck = async (params: {
   });
   const blocked = visiblePeers.some(
     (peer) =>
-      !canReaderSummaryModelSupersede(
-        snapshot.lineage.modelVersion,
-        peer.modelVersion,
-      ),
+      !canReaderSummaryGenerationSupersede({
+        incomingModelVersion: snapshot.lineage.modelVersion,
+        visibleModelVersion: peer.modelVersion,
+        incomingRequestedAt: params.generationRequestedAt,
+        visibleRequestedAt: readerSummaryPublicationGenerationRequestedAt(
+          peer.qualitySignals,
+        ),
+      }),
   );
 
   return blocked ? "SUPERSEDED" : params.proposedStatus;

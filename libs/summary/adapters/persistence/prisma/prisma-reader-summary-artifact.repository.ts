@@ -28,6 +28,8 @@ import {
 } from "./prisma-reader-summary-records";
 import { readerSummaryScopeFromPrisma } from "./prisma-reader-summary-artifact-payload";
 import { readerSummaryStatusAfterModelAuthorityCheck } from "./prisma-reader-summary-publication-authority";
+import { readerSummaryPublicationGenerationSignals } from "./prisma-reader-summary-publication-generation";
+import { runSerializableReaderSummaryTransaction } from "./prisma-summary-transaction";
 import {
   encodeSummaryCursor,
   parseSummaryCursor,
@@ -75,79 +77,85 @@ export class PrismaReaderSummaryArtifactRepository implements ReaderSummaryArtif
     const qualitySignals = {
       ...readerSummaryQualitySignalsToPrisma(artifact),
       ...(publicationDecision === undefined ? {} : { publicationDecision }),
+      ...readerSummaryPublicationGenerationSignals(
+        options?.generationRequestedAt,
+      ),
     };
     const scopeFields = readerSummaryScopeToPrisma(snapshot.scope);
 
-    await withPrismaWriteRetry(async () => {
-      const status = await readerSummaryStatusAfterModelAuthorityCheck({
-        prisma: this.prisma,
-        proposedStatus,
-        snapshot,
-      });
+    await withPrismaWriteRetry(() =>
+      runSerializableReaderSummaryTransaction(this.prisma, async (prisma) => {
+        const status = await readerSummaryStatusAfterModelAuthorityCheck({
+          prisma,
+          proposedStatus,
+          snapshot,
+          generationRequestedAt: options?.generationRequestedAt,
+        });
 
-      await this.prisma.readerSummaryArtifact.upsert({
-        where: { id: snapshot.readerSummaryId },
-        update: {
-          ...scopeFields,
-          cadence: snapshot.period.cadence,
-          periodStartedAt: snapshot.period.startedAt,
-          periodEndedAt: snapshot.period.endedAt,
-          periodTimezone: snapshot.period.timezone,
-          periodKey: snapshot.period.periodKey,
-          status,
-          userId: snapshot.userId ?? null,
-          subscriptionId: snapshot.subscriptionId ?? null,
-          modelVersion: snapshot.lineage.modelVersion,
-          promptVersion: snapshot.lineage.promptVersion,
-          headline: snapshot.headline,
-          summaryText: snapshot.executiveSummary,
-          artifactPayload,
-          citations,
-          qualitySignals,
-        },
-        create: {
-          id: snapshot.readerSummaryId,
-          tenantId: snapshot.tenantId,
-          workspaceId: snapshot.workspaceId,
-          ...scopeFields,
-          cadence: snapshot.period.cadence,
-          periodStartedAt: snapshot.period.startedAt,
-          periodEndedAt: snapshot.period.endedAt,
-          periodTimezone: snapshot.period.timezone,
-          periodKey: snapshot.period.periodKey,
-          userId: snapshot.userId ?? null,
-          subscriptionId: snapshot.subscriptionId ?? null,
-          status,
-          schemaVersion: 1,
-          modelVersion: snapshot.lineage.modelVersion,
-          promptVersion: snapshot.lineage.promptVersion,
-          headline: snapshot.headline,
-          summaryText: snapshot.executiveSummary,
-          artifactPayload,
-          citations,
-          qualitySignals,
-        },
-      });
+        await prisma.readerSummaryArtifact.upsert({
+          where: { id: snapshot.readerSummaryId },
+          update: {
+            ...scopeFields,
+            cadence: snapshot.period.cadence,
+            periodStartedAt: snapshot.period.startedAt,
+            periodEndedAt: snapshot.period.endedAt,
+            periodTimezone: snapshot.period.timezone,
+            periodKey: snapshot.period.periodKey,
+            status,
+            userId: snapshot.userId ?? null,
+            subscriptionId: snapshot.subscriptionId ?? null,
+            modelVersion: snapshot.lineage.modelVersion,
+            promptVersion: snapshot.lineage.promptVersion,
+            headline: snapshot.headline,
+            summaryText: snapshot.executiveSummary,
+            artifactPayload,
+            citations,
+            qualitySignals,
+          },
+          create: {
+            id: snapshot.readerSummaryId,
+            tenantId: snapshot.tenantId,
+            workspaceId: snapshot.workspaceId,
+            ...scopeFields,
+            cadence: snapshot.period.cadence,
+            periodStartedAt: snapshot.period.startedAt,
+            periodEndedAt: snapshot.period.endedAt,
+            periodTimezone: snapshot.period.timezone,
+            periodKey: snapshot.period.periodKey,
+            userId: snapshot.userId ?? null,
+            subscriptionId: snapshot.subscriptionId ?? null,
+            status,
+            schemaVersion: 1,
+            modelVersion: snapshot.lineage.modelVersion,
+            promptVersion: snapshot.lineage.promptVersion,
+            headline: snapshot.headline,
+            summaryText: snapshot.executiveSummary,
+            artifactPayload,
+            citations,
+            qualitySignals,
+          },
+        });
 
-      if (!isVisibleReaderSummaryStatus(status)) {
-        return;
-      }
+        if (!isVisibleReaderSummaryStatus(status)) {
+          return;
+        }
 
-      await this.prisma.readerSummaryArtifact.updateMany({
-        where: {
-          id: { not: snapshot.readerSummaryId },
-          tenantId: snapshot.tenantId,
-          workspaceId: snapshot.workspaceId,
-          scopeKey: readerSummaryScopeKey(snapshot.scope),
-          cadence: snapshot.period.cadence,
-          periodStartedAt: snapshot.period.startedAt,
-          periodEndedAt: snapshot.period.endedAt,
-          periodTimezone: snapshot.period.timezone,
-          status: { in: VISIBLE_READER_SUMMARY_STATUSES },
-        },
-        data: { status: "SUPERSEDED" },
-      });
-    });
+        await prisma.readerSummaryArtifact.updateMany({
+          where: {
+            id: { not: snapshot.readerSummaryId },
+            tenantId: snapshot.tenantId,
+            workspaceId: snapshot.workspaceId,
+            scopeKey: readerSummaryScopeKey(snapshot.scope),
+            cadence: snapshot.period.cadence,
+            periodStartedAt: snapshot.period.startedAt,
+            periodEndedAt: snapshot.period.endedAt,
+            periodTimezone: snapshot.period.timezone,
+            status: { in: VISIBLE_READER_SUMMARY_STATUSES },
+          },
+          data: { status: "SUPERSEDED" },
+        });
+      }),
+    );
   }
 
   async list(
