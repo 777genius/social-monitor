@@ -1,4 +1,4 @@
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:modularity_flutter/modularity_flutter.dart';
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
@@ -28,7 +28,10 @@ class PublishedSummariesFeatureRoute extends StatelessWidget {
       module: _module,
       retentionPolicy: ModuleRetentionPolicy.routeBound,
       retentionKey: _module.retentionKey,
-      loadingBuilder: (context) => host,
+      loadingBuilder: (context) => const Center(
+        key: ValueKey('published-summary-module-loading'),
+        child: CircularProgressIndicator(),
+      ),
       child: host,
     );
   }

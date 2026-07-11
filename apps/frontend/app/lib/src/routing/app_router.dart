@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../composition/app_runtime.dart';
 import '../composition/app_theme_mode_controller.dart';
 import 'app_feature_access.dart';
+import 'app_session_restoring_gate.dart';
 import 'app_shell_page.dart';
 import 'feature_catalog.dart';
 
@@ -50,12 +51,15 @@ GoRouter createAppRouter({
     routes: [
       ShellRoute(
         builder: (context, state, child) {
-          return AppShellPage(
-            features: features,
+          return AppSessionRestoringGate(
             runtimeController: runtimeController,
-            themeModeController: themeModeController,
-            location: state.uri.path,
-            child: child,
+            child: AppShellPage(
+              features: features,
+              runtimeController: runtimeController,
+              themeModeController: themeModeController,
+              location: state.uri.path,
+              child: child,
+            ),
           );
         },
         routes: [
