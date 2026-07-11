@@ -67,6 +67,13 @@ if SSH_ORIGINAL_COMMAND=$'plan '"$TARGET_SHA"$'\ndeploy '"$TARGET_SHA" \
   exit 1
 fi
 
+grep -F "if printf '%s\\n' \"\${persistent[@]}\" | grep -qx api && ! refresh_frontend_api_proxy; then" \
+  "$ENTRYPOINT" >/dev/null
+grep -F "if [[ \$api_rolled_back == true ]]; then" "$ENTRYPOINT" >/dev/null
+grep -F 'refresh_frontend_api_proxy || return 1' \
+  "$ENTRYPOINT" >/dev/null
+grep -F 'http://127.0.0.1:13080/auth/session' "$ENTRYPOINT" >/dev/null
+
 RELEASE_FIXTURE=$FIXTURE/frontend-release
 install -d "$RELEASE_FIXTURE/public" "$RELEASE_FIXTURE/admin"
 printf '<html>public</html>\n' > "$RELEASE_FIXTURE/public/index.html"
