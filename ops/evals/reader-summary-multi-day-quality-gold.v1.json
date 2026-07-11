@@ -1,0 +1,399 @@
+{
+  "schemaVersion": 1,
+  "artifactFormat": "reader-summary-multi-day-quality-gold-v1",
+  "generationProfile": {
+    "modelVersion": "codex:gpt-5.5:xhigh",
+    "promptVersion": "reader_summary.prompt.agent_runtime.v9"
+  },
+  "thresholds": {
+    "minimumDayCount": 5,
+    "minimumStoryPairPrecision": 0.95,
+    "minimumStoryPairRecall": 0.8,
+    "minimumCrossSourcePrecision": 0.9,
+    "minimumCrossSourceRecall": 0.7,
+    "minimumRankingAccuracy": 0.8,
+    "minimumNarrativeCoverage": 0.8,
+    "maximumWeakTopReadRate": 0.55
+  },
+  "days": [
+    {
+      "collectionDate": "2026-07-05",
+      "storyExpectations": [
+        {
+          "feedItemId": "eb1c7103-cef0-49a6-8591-a8274fda0d52",
+          "expectedStoryKey": "t3mp3st-security",
+          "providerKey": "x-twitter"
+        },
+        {
+          "feedItemId": "ba352b87-8e41-4f62-acac-cfd29c36049a",
+          "expectedStoryKey": "t3mp3st-security",
+          "providerKey": "x-twitter"
+        },
+        {
+          "feedItemId": "ed572f2a-2b11-4c28-a1cf-51fd3968dd15",
+          "expectedStoryKey": "t3mp3st-security",
+          "providerKey": "reddit"
+        },
+        {
+          "feedItemId": "31743c05-84a6-464c-9e7c-273e93a6b530",
+          "expectedStoryKey": "zuckerberg-agent-progress",
+          "providerKey": "hacker-news"
+        },
+        {
+          "feedItemId": "5056549e-72b2-474a-8cc2-5b503dddb8c6",
+          "expectedStoryKey": "zuckerberg-agent-progress",
+          "providerKey": "rss"
+        },
+        {
+          "feedItemId": "430fdec4-6ecd-4435-a44a-6d490b4fbe10",
+          "expectedStoryKey": "sqlite-utils-fable",
+          "providerKey": "hacker-news"
+        },
+        {
+          "feedItemId": "6c9d1231-dd67-440d-af26-9e2bf5412962",
+          "expectedStoryKey": "wuthering-waves",
+          "providerKey": "x-twitter"
+        }
+      ],
+      "crossSourceExpectations": [
+        {
+          "expectedStoryKey": "t3mp3st-security",
+          "expected": true
+        },
+        {
+          "expectedStoryKey": "zuckerberg-agent-progress",
+          "expected": true
+        },
+        {
+          "expectedStoryKey": "sqlite-utils-fable",
+          "expected": false
+        },
+        {
+          "expectedStoryKey": "wuthering-waves",
+          "expected": false
+        }
+      ],
+      "rankingExpectations": [
+        {
+          "feedItemId": "eb1c7103-cef0-49a6-8591-a8274fda0d52",
+          "expected": "top_read"
+        },
+        {
+          "feedItemId": "430fdec4-6ecd-4435-a44a-6d490b4fbe10",
+          "expected": "top_read"
+        },
+        {
+          "feedItemId": "6c9d1231-dd67-440d-af26-9e2bf5412962",
+          "expected": "exclude"
+        }
+      ],
+      "narrativeExpectations": [
+        { "expectedStoryKey": "t3mp3st-security", "expectedKind": "lead" },
+        {
+          "expectedStoryKey": "zuckerberg-agent-progress",
+          "expectedKind": "secondary_signal"
+        }
+      ]
+    },
+    {
+      "collectionDate": "2026-07-06",
+      "storyExpectations": [
+        {
+          "feedItemId": "e186dac0-deb5-4f3a-be46-e20f272bfbeb",
+          "expectedStoryKey": "claude-tracking",
+          "providerKey": "hacker-news"
+        },
+        {
+          "feedItemId": "42068e60-ed4a-491b-9023-538ef1eab48b",
+          "expectedStoryKey": "claude-tracking",
+          "providerKey": "rss"
+        },
+        {
+          "feedItemId": "769560c7-8ed3-4c85-9b92-c5da7c511160",
+          "expectedStoryKey": "claude-j-space",
+          "providerKey": "x-twitter"
+        },
+        {
+          "feedItemId": "8a2fd063-3ae6-46a1-8d0e-82a5a72c15f2",
+          "expectedStoryKey": "claude-j-space",
+          "providerKey": "x-twitter"
+        },
+        {
+          "feedItemId": "96539415-7816-4e17-ad04-8590c11dd4df",
+          "expectedStoryKey": "claude-j-space",
+          "providerKey": "x-twitter"
+        },
+        {
+          "feedItemId": "f6f31b2c-239e-487d-9b62-27dcc0a24511",
+          "expectedStoryKey": "servicenow-rant",
+          "providerKey": "reddit"
+        }
+      ],
+      "crossSourceExpectations": [
+        {
+          "expectedStoryKey": "claude-tracking",
+          "expected": true
+        },
+        {
+          "expectedStoryKey": "claude-j-space",
+          "expected": false
+        },
+        {
+          "expectedStoryKey": "servicenow-rant",
+          "expected": false
+        }
+      ],
+      "rankingExpectations": [
+        {
+          "feedItemId": "e186dac0-deb5-4f3a-be46-e20f272bfbeb",
+          "expected": "top_read"
+        },
+        {
+          "feedItemId": "769560c7-8ed3-4c85-9b92-c5da7c511160",
+          "expected": "top_read"
+        },
+        {
+          "feedItemId": "f6f31b2c-239e-487d-9b62-27dcc0a24511",
+          "expected": "exclude"
+        }
+      ],
+      "narrativeExpectations": [
+        { "expectedStoryKey": "claude-tracking", "expectedKind": "lead" },
+        {
+          "expectedStoryKey": "claude-j-space",
+          "expectedKind": "secondary_signal"
+        }
+      ]
+    },
+    {
+      "collectionDate": "2026-07-07",
+      "storyExpectations": [
+        {
+          "feedItemId": "6b3182dd-716d-4d2f-9dbd-c8c35f8c23e0",
+          "expectedStoryKey": "typescript-go-rewrite",
+          "providerKey": "hacker-news"
+        },
+        {
+          "feedItemId": "d29f2d3d-6743-43e1-a6d7-6c2aba9fa726",
+          "expectedStoryKey": "typescript-go-rewrite",
+          "providerKey": "rss"
+        },
+        {
+          "feedItemId": "a751cc84-f48a-41e4-929d-696e7d12d30e",
+          "expectedStoryKey": "fable-access-extension",
+          "providerKey": "x-twitter"
+        },
+        {
+          "feedItemId": "9521e82b-b0a4-4229-9540-8544fa1f4cee",
+          "expectedStoryKey": "davit-containers",
+          "providerKey": "hacker-news"
+        }
+      ],
+      "crossSourceExpectations": [
+        {
+          "expectedStoryKey": "typescript-go-rewrite",
+          "expected": true
+        },
+        {
+          "expectedStoryKey": "fable-access-extension",
+          "expected": false
+        },
+        {
+          "expectedStoryKey": "davit-containers",
+          "expected": false
+        }
+      ],
+      "rankingExpectations": [
+        {
+          "feedItemId": "6b3182dd-716d-4d2f-9dbd-c8c35f8c23e0",
+          "expected": "top_read"
+        },
+        {
+          "feedItemId": "a751cc84-f48a-41e4-929d-696e7d12d30e",
+          "expected": "top_read"
+        },
+        {
+          "feedItemId": "9521e82b-b0a4-4229-9540-8544fa1f4cee",
+          "expected": "exclude"
+        }
+      ],
+      "narrativeExpectations": [
+        {
+          "expectedStoryKey": "fable-access-extension",
+          "expectedKind": "lead"
+        },
+        {
+          "expectedStoryKey": "typescript-go-rewrite",
+          "expectedKind": "secondary_signal"
+        }
+      ]
+    },
+    {
+      "collectionDate": "2026-07-08",
+      "storyExpectations": [
+        {
+          "feedItemId": "cc9c4726-ef89-4246-937b-78925d75591f",
+          "expectedStoryKey": "gpt-5.6-restrictions",
+          "providerKey": "reddit"
+        },
+        {
+          "feedItemId": "6e0a0a15-9a08-42db-91aa-2f6887f4ebe1",
+          "expectedStoryKey": "gpt-5.6-restrictions",
+          "providerKey": "hacker-news"
+        },
+        {
+          "feedItemId": "9bddfcbb-c622-4781-a641-e795ecc17aab",
+          "expectedStoryKey": "gpt-5.6-restrictions",
+          "providerKey": "rss"
+        },
+        {
+          "feedItemId": "1c0b9887-9674-4eb7-9ac9-01b0e55b786c",
+          "expectedStoryKey": "gpt-5.6-launch",
+          "providerKey": "x-twitter"
+        },
+        {
+          "feedItemId": "980d934d-a319-48f6-9aec-2b66cebbb03d",
+          "expectedStoryKey": "gpt-5.6-launch",
+          "providerKey": "reddit"
+        },
+        {
+          "feedItemId": "510a0bfa-2c7e-42ca-91be-2a1c63a807fd",
+          "expectedStoryKey": "microsoft-flint",
+          "providerKey": "hacker-news"
+        },
+        {
+          "feedItemId": "366b17bb-bfa0-45d0-b61c-1e4c38d6b8c8",
+          "expectedStoryKey": "microsoft-flint",
+          "providerKey": "rss"
+        }
+      ],
+      "crossSourceExpectations": [
+        {
+          "expectedStoryKey": "gpt-5.6-restrictions",
+          "expected": true
+        },
+        {
+          "expectedStoryKey": "gpt-5.6-launch",
+          "expected": true
+        },
+        {
+          "expectedStoryKey": "microsoft-flint",
+          "expected": true
+        }
+      ],
+      "rankingExpectations": [
+        {
+          "feedItemId": "cc9c4726-ef89-4246-937b-78925d75591f",
+          "expected": "top_read"
+        },
+        {
+          "feedItemId": "1c0b9887-9674-4eb7-9ac9-01b0e55b786c",
+          "expected": "top_read"
+        },
+        {
+          "feedItemId": "510a0bfa-2c7e-42ca-91be-2a1c63a807fd",
+          "expected": "top_read"
+        }
+      ],
+      "narrativeExpectations": [
+        { "expectedStoryKey": "gpt-5.6-launch", "expectedKind": "lead" },
+        {
+          "expectedStoryKey": "microsoft-flint",
+          "expectedKind": "secondary_signal"
+        }
+      ]
+    },
+    {
+      "collectionDate": "2026-07-09",
+      "storyExpectations": [
+        {
+          "feedItemId": "d47020c2-ad62-4d93-8518-0bc38f5bb951",
+          "expectedStoryKey": "chatgpt-work",
+          "providerKey": "x-twitter"
+        },
+        {
+          "feedItemId": "1fd84590-83d9-4f50-a372-b87fce39eb11",
+          "expectedStoryKey": "chatgpt-work",
+          "providerKey": "rss"
+        },
+        {
+          "feedItemId": "d14bb054-99f5-4867-b17f-cc02dfa80a86",
+          "expectedStoryKey": "chatgpt-work",
+          "providerKey": "rss"
+        },
+        {
+          "feedItemId": "f654f907-71bc-4d14-bfec-f40580b92fe7",
+          "expectedStoryKey": "gpt-5.6-token-efficiency",
+          "providerKey": "reddit"
+        },
+        {
+          "feedItemId": "89e0dcc2-5440-4bd4-84ed-4ae078301a18",
+          "expectedStoryKey": "gpt-5.6-token-efficiency",
+          "providerKey": "hacker-news"
+        },
+        {
+          "feedItemId": "e3531c7c-ee85-4265-bc03-c5869b20aace",
+          "expectedStoryKey": "gpt-5.6-rollout",
+          "providerKey": "x-twitter"
+        },
+        {
+          "feedItemId": "7e3e739f-1d8e-494b-abb3-06130070f1d5",
+          "expectedStoryKey": "gpt-5.6-user-reaction",
+          "providerKey": "reddit"
+        },
+        {
+          "feedItemId": "11a4096a-5078-46b6-af73-70e85051b3ac",
+          "expectedStoryKey": "coding-train",
+          "providerKey": "reddit"
+        }
+      ],
+      "crossSourceExpectations": [
+        {
+          "expectedStoryKey": "chatgpt-work",
+          "expected": true
+        },
+        {
+          "expectedStoryKey": "gpt-5.6-token-efficiency",
+          "expected": true
+        },
+        {
+          "expectedStoryKey": "gpt-5.6-rollout",
+          "expected": false
+        },
+        {
+          "expectedStoryKey": "gpt-5.6-user-reaction",
+          "expected": false
+        },
+        {
+          "expectedStoryKey": "coding-train",
+          "expected": false
+        }
+      ],
+      "rankingExpectations": [
+        {
+          "feedItemId": "d47020c2-ad62-4d93-8518-0bc38f5bb951",
+          "expected": "top_read"
+        },
+        {
+          "feedItemId": "e3531c7c-ee85-4265-bc03-c5869b20aace",
+          "expected": "top_read"
+        },
+        {
+          "feedItemId": "11a4096a-5078-46b6-af73-70e85051b3ac",
+          "expected": "exclude"
+        }
+      ],
+      "narrativeExpectations": [
+        { "expectedStoryKey": "gpt-5.6-rollout", "expectedKind": "lead" },
+        {
+          "expectedStoryKey": "gpt-5.6-token-efficiency",
+          "expectedKind": "secondary_signal"
+        },
+        {
+          "expectedStoryKey": "chatgpt-work",
+          "expectedKind": "secondary_signal"
+        }
+      ]
+    }
+  ]
+}
