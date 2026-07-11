@@ -43,14 +43,20 @@ class AppShellBrandLogo extends StatelessWidget {
         mark,
         const SizedBox(width: AppSpacing.sm + 2),
         Expanded(
-          child: Text(
-            title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-              color: AppColors.sidebarText,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.2,
+          child: FittedBox(
+            key: const ValueKey('app-shell-brand-title-fit'),
+            fit: BoxFit.scaleDown,
+            alignment: AlignmentDirectional.centerStart,
+            child: Text(
+              key: const ValueKey('app-shell-brand-title'),
+              title,
+              maxLines: 1,
+              softWrap: false,
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                color: AppColors.sidebarText,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.2,
+              ),
             ),
           ),
         ),

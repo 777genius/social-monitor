@@ -92,6 +92,7 @@ class _TopPostRowState extends State<_TopPostRow> {
             hoverColor: colorScheme.primary.withValues(alpha: 0.03),
             child: Padding(
               padding: EdgeInsets.symmetric(
+                horizontal: AppSpacing.sm,
                 vertical: widget.dense ? AppSpacing.sm + 2 : AppSpacing.md,
               ),
               child: _buildRow(context, metrics),
