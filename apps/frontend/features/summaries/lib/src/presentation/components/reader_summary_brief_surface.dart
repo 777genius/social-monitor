@@ -46,6 +46,7 @@ part 'reader_summary_topic_map_flutter_graph_view.dart';
 part 'reader_summary_topic_map_collision_layout.dart';
 part 'reader_summary_topic_map_graph_layout.dart';
 part 'reader_summary_topic_map_graph_model.dart';
+part 'reader_summary_topic_map_label_normalization.dart';
 part 'reader_summary_topic_map_panel.dart';
 part 'reader_summary_topic_map_policies.dart';
 part 'reader_summary_topic_map_selection.dart';

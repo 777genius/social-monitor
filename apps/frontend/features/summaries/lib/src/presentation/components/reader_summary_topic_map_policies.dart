@@ -96,21 +96,18 @@ final class _TopicMapLabelPolicy {
     if (normalized.isEmpty) {
       return const [];
     }
-    if (normalized.length <= 22) {
-      return [normalized];
-    }
 
     final words = normalized
         .split(' ')
         .where((word) => word.trim().isNotEmpty)
         .toList(growable: false);
     final candidates = <String>[normalized];
-    for (final wordCount in [4, 3, 2]) {
+    for (final wordCount in [4, 3, 2, 1]) {
       if (words.length < wordCount) {
         continue;
       }
       final phrase = words.take(wordCount).join(' ');
-      if (phrase.length >= 8 && phrase.length < normalized.length) {
+      if (phrase.length < normalized.length) {
         candidates.add(phrase);
       }
     }
@@ -127,10 +124,12 @@ final class _TopicMapLabelPolicy {
       _ => 32,
     };
 
-    return candidates.firstWhere(
-      (candidate) => candidate.length <= maxCharacters,
+    final selected = candidates.firstWhere(
+      (candidate) => candidate.runes.length <= maxCharacters,
       orElse: () => candidates.last,
     );
+
+    return _ellipsize(selected, maxCharacters);
   }
 
   String breakAtWordBoundaries(String label, int maxLines) {
@@ -171,7 +170,16 @@ final class _TopicMapLabelPolicy {
       _ => 0.37,
     };
 
-    return (radius * radiusFactor * lengthFactor).clamp(6.2, 15.8).toDouble();
+    return (radius * radiusFactor * lengthFactor).clamp(8.2, 15.8).toDouble();
+  }
+
+  String _ellipsize(String value, int maxCharacters) {
+    final codePoints = value.runes.toList(growable: false);
+    if (codePoints.length <= maxCharacters) {
+      return value;
+    }
+
+    return '${String.fromCharCodes(codePoints.take(maxCharacters - 1))}…';
   }
 }
 
