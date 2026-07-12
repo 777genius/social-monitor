@@ -115,6 +115,7 @@ describe("GitHubTrendingPageSourceProvider", () => {
     });
     const scanContext = context({
       languages: ["overall", "Python", "Swift", "Python"],
+      spokenLanguage: "en",
       maxItems: 5,
       maxItemsPerLanguage: 2,
       fixtureMode: true,
@@ -131,6 +132,82 @@ describe("GitHubTrendingPageSourceProvider", () => {
       "https://github.com/apple/container",
       "https://github.com/ZhuLinsen/daily_stock_analysis",
     ]);
+    const firstMetadata = parseGitHubTrendingPageRepositoryMetadata(
+      result.items[0]?.metadata,
+    );
+    expect(firstMetadata?.trending).toMatchObject({
+      rank: 1,
+      capturedAt: "2026-06-24T12:00:00.000Z",
+      scope: { spokenLanguage: "en" },
+    });
+    expect(
+      firstMetadata?.trending.appearances.map((appearance) => ({
+        rank: appearance.rank,
+        starsGained: appearance.starsGained,
+        scope: appearance.scope,
+      })),
+    ).toEqual([
+      {
+        rank: 1,
+        starsGained: 3703,
+        scope: { spokenLanguage: "en" },
+      },
+      {
+        rank: 1,
+        starsGained: 3703,
+        scope: {
+          programmingLanguage: "Python",
+          spokenLanguage: "en",
+        },
+      },
+    ]);
+  });
+
+  it("orders repositories by GitHub rank within the requested source scope", async () => {
+    const provider = new GitHubTrendingPageSourceProvider(
+      new RankContradictsStarsGitHubTrendingPageClient(),
+      { now: () => new Date("2026-06-24T12:00:00.000Z") },
+    );
+    const scanContext = context({ maxItems: 2 });
+
+    const result = await provider.scan(
+      provider.planScan({ mode: "listing", query: "daily" }, scanContext),
+      scanContext,
+    );
+
+    expect(result.items.map((item) => item.title)).toEqual([
+      "example/source-rank-one is #1 on GitHub Trending",
+      "example/source-rank-two is #2 on GitHub Trending",
+    ]);
+  });
+
+  it("gives later configured scopes a fair chance within the total item limit", async () => {
+    const provider = new GitHubTrendingPageSourceProvider(
+      new ScopeFairnessGitHubTrendingPageClient(),
+      { now: () => new Date("2026-06-24T12:00:00.000Z") },
+    );
+    const scanContext = context({
+      languages: ["overall", "Python"],
+      maxItems: 2,
+      maxItemsPerLanguage: 2,
+    });
+
+    const result = await provider.scan(
+      provider.planScan({ mode: "listing", query: "daily" }, scanContext),
+      scanContext,
+    );
+
+    expect(result.items.map((item) => item.canonicalUrl)).toEqual([
+      "https://github.com/example/overall-one",
+      "https://github.com/example/shared",
+    ]);
+    expect(result.items[1]?.title).toBe(
+      "example/shared is #1 on GitHub Trending",
+    );
+    expect(
+      parseGitHubTrendingPageRepositoryMetadata(result.items[1]?.metadata)
+        ?.trending.scope,
+    ).toEqual({ programmingLanguage: "Python" });
   });
 
   it("keeps broad configured language coverage beyond the old ten-language cap", async () => {
@@ -234,6 +311,58 @@ class CapturingGitHubTrendingPageClient implements GitHubTrendingPageClientPort 
     this.languages.push(query.language);
 
     return this.inner.listTrendingRepositories(query);
+  }
+}
+
+class RankContradictsStarsGitHubTrendingPageClient implements GitHubTrendingPageClientPort {
+  async listTrendingRepositories(): Promise<
+    readonly GitHubTrendingPageRepository[]
+  > {
+    return [
+      {
+        fullName: "example/source-rank-two",
+        url: "https://github.com/example/source-rank-two",
+        totalStars: 12000,
+        forksCount: 120,
+        starsGained: 900,
+        rank: 2,
+      },
+      {
+        fullName: "example/source-rank-one",
+        url: "https://github.com/example/source-rank-one",
+        totalStars: 1200,
+        forksCount: 12,
+        starsGained: 9,
+        rank: 1,
+      },
+    ];
+  }
+}
+
+class ScopeFairnessGitHubTrendingPageClient implements GitHubTrendingPageClientPort {
+  async listTrendingRepositories(
+    query: GitHubTrendingPageQuery,
+  ): Promise<readonly GitHubTrendingPageRepository[]> {
+    const repositories =
+      query.language === "Python"
+        ? [
+            { name: "shared", rank: 1 },
+            { name: "python-two", rank: 2 },
+          ]
+        : [
+            { name: "overall-one", rank: 1 },
+            { name: "shared", rank: 2 },
+          ];
+
+    return repositories.map(({ name, rank }) => ({
+      fullName: `example/${name}`,
+      url: `https://github.com/example/${name}`,
+      language: query.language,
+      totalStars: 1000 - rank,
+      forksCount: 10,
+      starsGained: 100 - rank,
+      rank,
+    }));
   }
 }
 

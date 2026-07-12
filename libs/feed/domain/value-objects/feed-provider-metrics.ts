@@ -1,12 +1,23 @@
 import type { JsonObject, JsonValue } from '@social-monitor/shared-kernel';
 import {
-  githubRepositoryProviderSourceKey,
-  githubTrendingPageProviderSourceKey,
+  githubRepositoryMetricsFromMetadata,
+  githubTrendingRepositoryMetricsFromMetadata,
+  type GitHubRepositoryMetrics,
+  type GitHubTrendingRepositoryMetrics,
+} from './github-feed-provider-metrics';
+import {
   hackerNewsProviderSourceKey,
   redditProviderSourceKey,
   xProviderSourceKey,
-  type GitHubTrendingPageWindow,
 } from './feed-provider-source-keys';
+
+export type {
+  FeedMetricDelta,
+  GitHubRepositoryMetrics,
+  GitHubTrendingRepositoryAppearanceMetrics,
+  GitHubTrendingRepositoryMetrics,
+  GitHubTrendingRepositoryScope,
+} from './github-feed-provider-metrics';
 
 export type FeedProviderMetrics =
   | RedditPostMetrics
@@ -16,11 +27,6 @@ export type FeedProviderMetrics =
   | HackerNewsStoryMetrics
   | HackerNewsCommentMetrics
   | XPostMetrics;
-
-export type FeedMetricDelta = {
-  readonly window: string;
-  readonly value: number;
-};
 
 export type RedditPostMetrics = {
   readonly kind: 'reddit_post';
@@ -46,33 +52,6 @@ export type RedditCommentMetrics = {
   readonly depth: number;
   readonly role: RedditCommentRole;
   readonly scoreConfidence: RedditCommentScoreConfidence;
-};
-
-export type GitHubRepositoryMetrics = {
-  readonly kind: 'github_repository';
-  readonly providerKey: 'github-repo-radar';
-  readonly sourceKey: string;
-  readonly contentType: 'repository';
-  readonly evidenceSource: 'gh_archive_watch_event';
-  readonly evidenceLabel: string;
-  readonly stars: number;
-  readonly forks: number;
-  readonly checkedAt?: string;
-  readonly source?: string;
-  readonly trendingDelta: FeedMetricDelta;
-  readonly trendDeltas: readonly FeedMetricDelta[];
-};
-
-export type GitHubTrendingRepositoryMetrics = {
-  readonly kind: 'github_trending_repository';
-  readonly providerKey: 'github-trending-page';
-  readonly sourceKey: string;
-  readonly contentType: 'repository';
-  readonly stars: number;
-  readonly forks: number;
-  readonly rank: number;
-  readonly starsGained: number;
-  readonly window: 'daily' | 'weekly' | 'monthly';
 };
 
 export type HackerNewsStoryMetrics = {
@@ -118,9 +97,11 @@ export const feedProviderMetricsFromMetadata = (params: {
     case 'reddit':
       return redditMetrics(params.providerMetadata);
     case 'github-repo-radar':
-      return githubRepositoryMetrics(params.providerMetadata);
+      return githubRepositoryMetricsFromMetadata(params.providerMetadata);
     case 'github-trending-page':
-      return githubTrendingRepositoryMetrics(params.providerMetadata);
+      return githubTrendingRepositoryMetricsFromMetadata(
+        params.providerMetadata,
+      );
     case 'hacker-news':
       return hackerNewsMetrics(params.providerMetadata);
     case 'x-twitter':
@@ -149,7 +130,10 @@ export const feedProviderMetricStrength = (
     }
     case 'reddit_comment': {
       const roleBoost = metrics.role === 'top_level_comment' ? 0.18 : 0;
-      const depthPenalty = Math.min(0.75, Math.max(0, metrics.depth - 1) * 0.18);
+      const depthPenalty = Math.min(
+        0.75,
+        Math.max(0, metrics.depth - 1) * 0.18,
+      );
 
       return Math.max(
         0,
@@ -250,7 +234,9 @@ const redditCommentMetrics = (
   metadata: JsonObject | undefined,
 ): RedditCommentMetrics | undefined => {
   const score = readInteger(metadata?.score ?? metadata?.providerScore);
-  const replies = readNonNegativeInteger(metadata?.replies ?? metadata?.replyCount);
+  const replies = readNonNegativeInteger(
+    metadata?.replies ?? metadata?.replyCount,
+  );
   const depth = readNonNegativeInteger(metadata?.depth);
 
   if (score === undefined && replies === undefined && depth === undefined) {
@@ -269,101 +255,6 @@ const redditCommentMetrics = (
     scoreConfidence: 'provider_reported',
   };
 };
-
-const githubRepositoryMetrics = (
-  metadata: JsonObject | undefined,
-): GitHubRepositoryMetrics | undefined => {
-  if (metadata?.kind !== 'github_repository_trend') {
-    return undefined;
-  }
-
-  const repository = readObject(metadata.repository);
-  const trend = readObject(metadata.trend);
-  const sourceCohort = readObject(metadata.sourceCohort);
-
-  if (repository === undefined || trend === undefined) {
-    return undefined;
-  }
-
-  const primaryWindow = readString(trend.primaryWindow) ?? '48h';
-  const delta = githubTrendDelta(trend, primaryWindow);
-
-  return {
-    kind: 'github_repository',
-    providerKey: 'github-repo-radar',
-    sourceKey: githubRepositoryProviderSourceKey({
-      primaryWindow,
-      query: readString(sourceCohort?.query),
-      languages: readStringArray(sourceCohort?.languages),
-      fallbackLanguage: readString(repository.language),
-      topics: readStringArray(sourceCohort?.topics),
-      fallbackTopics: readStringArray(repository.topics),
-    }),
-    contentType: 'repository',
-    evidenceSource: 'gh_archive_watch_event',
-    evidenceLabel: 'GH Archive WatchEvent - hourly updated',
-    stars: readNonNegativeInteger(trend.totalStars) ?? 0,
-    forks: readNonNegativeInteger(repository.forksCount) ?? 0,
-    checkedAt: readString(trend.checkedAt),
-    source: readString(trend.source),
-    trendingDelta: {
-      window: primaryWindow,
-      value: delta,
-    },
-    trendDeltas: githubTrendDeltas(trend),
-  };
-};
-
-const githubTrendingRepositoryMetrics = (
-  metadata: JsonObject | undefined,
-): GitHubTrendingRepositoryMetrics | undefined => {
-  if (metadata?.kind !== 'github_trending_page_repository') {
-    return undefined;
-  }
-
-  const repository = readObject(metadata.repository);
-  const trending = readObject(metadata.trending);
-
-  if (repository === undefined || trending === undefined) {
-    return undefined;
-  }
-
-  const window = readTrendingPageWindow(trending.window);
-
-  return {
-    kind: 'github_trending_repository',
-    providerKey: 'github-trending-page',
-    sourceKey: githubTrendingPageProviderSourceKey({
-      window,
-      language: readString(repository.language),
-    }),
-    contentType: 'repository',
-    stars: readNonNegativeInteger(repository.totalStars) ?? 0,
-    forks: readNonNegativeInteger(repository.forksCount) ?? 0,
-    rank: readPositiveInteger(trending.rank) ?? 1,
-    starsGained: readNonNegativeInteger(trending.starsGained) ?? 0,
-    window,
-  };
-};
-
-const githubTrendDeltas = (trend: JsonObject): readonly FeedMetricDelta[] =>
-  (
-    [
-      ['24h', 'stars24h'],
-      ['48h', 'stars48h'],
-      ['7d', 'stars7d'],
-      ['30d', 'stars30d'],
-      ['90d', 'stars90d'],
-    ] as const
-  ).map(([window, field]) => ({
-    window,
-    value: readNonNegativeInteger(trend[field]) ?? 0,
-  }));
-
-const readTrendingPageWindow = (
-  value: JsonValue | undefined,
-): GitHubTrendingPageWindow =>
-  value === 'weekly' || value === 'monthly' ? value : 'daily';
 
 const hackerNewsMetrics = (
   metadata: JsonObject | undefined,
@@ -399,8 +290,12 @@ const hackerNewsStoryMetrics = (
 const hackerNewsCommentMetrics = (
   metadata: JsonObject | undefined,
 ): HackerNewsCommentMetrics | undefined => {
-  const score = readNonNegativeInteger(metadata?.score ?? metadata?.providerScore);
-  const replies = readNonNegativeInteger(metadata?.replies ?? metadata?.replyCount);
+  const score = readNonNegativeInteger(
+    metadata?.score ?? metadata?.providerScore,
+  );
+  const replies = readNonNegativeInteger(
+    metadata?.replies ?? metadata?.replyCount,
+  );
   const depth = readNonNegativeInteger(metadata?.depth);
   const rank = readPositiveInteger(metadata?.rank);
 
@@ -423,7 +318,8 @@ const hackerNewsCommentMetrics = (
     depth: depth ?? 0,
     ...(rank === undefined ? {} : { rank }),
     role: readRedditCommentRole(metadata?.role),
-    scoreConfidence: score === undefined ? 'not_available' : 'provider_reported',
+    scoreConfidence:
+      score === undefined ? 'not_available' : 'provider_reported',
   };
 };
 
@@ -492,26 +388,6 @@ const xPostMetrics = (
   };
 };
 
-const githubTrendDelta = (trend: JsonObject, primaryWindow: string): number => {
-  const trendField =
-    {
-      '24h': 'stars24h',
-      '48h': 'stars48h',
-      '7d': 'stars7d',
-      '30d': 'stars30d',
-      '90d': 'stars90d',
-    }[primaryWindow] ?? 'stars48h';
-
-  return readNonNegativeInteger(trend[trendField]) ?? 0;
-};
-
-const readStringArray = (value: JsonValue | undefined): readonly string[] =>
-  Array.isArray(value)
-    ? value
-        .map((item) => readString(item))
-        .filter((item): item is string => item !== undefined)
-    : [];
-
 const readObject = (value: JsonValue | undefined): JsonObject | undefined =>
   value !== null && typeof value === 'object' && !Array.isArray(value)
     ? (value as JsonObject)
@@ -555,5 +431,4 @@ const readRatio = (value: JsonValue | undefined): number | undefined =>
 
 const readRedditCommentRole = (
   value: JsonValue | undefined,
-): RedditCommentRole =>
-  value === 'reply' ? 'reply' : 'top_level_comment';
+): RedditCommentRole => (value === 'reply' ? 'reply' : 'top_level_comment');

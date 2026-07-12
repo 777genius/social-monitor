@@ -37,6 +37,8 @@ export const formatFeedProviderMetrics = (
             metrics.window,
           ),
         ),
+        metric("Trending scope", formatGitHubTrendingScope(metrics.scope)),
+        metric("Captured", formatCheckedAt(metrics.capturedAt)),
         metric("Stars", metrics.stars),
         metric("Forks", metrics.forks),
       ]);
@@ -180,6 +182,19 @@ const formatTrendingPageSignal = (
   window: string,
 ): string =>
   `${formatRank(rank)}, ${formatSigned(starsGained)} stars ${trendingWindowLabel(window)}`;
+
+const formatGitHubTrendingScope = (scope: {
+  readonly programmingLanguage?: string;
+  readonly spokenLanguage?: string;
+}): string =>
+  [
+    scope.programmingLanguage ?? "overall",
+    scope.spokenLanguage === undefined
+      ? undefined
+      : `spoken ${scope.spokenLanguage}`,
+  ]
+    .filter((part): part is string => part !== undefined)
+    .join(" / ");
 
 const trendingWindowLabel = (window: string): string => {
   switch (window) {

@@ -4,6 +4,7 @@ import {
   GITHUB_TRENDING_PAGE_PROVIDER_KEY,
   githubTrendingPageRepositoryMetadata,
   githubTrendingPageWindows,
+  type GitHubTrendingPageAppearanceInput,
   type GitHubTrendingPageRepositoryMetadataInput,
   type GitHubTrendingPageWindow,
 } from "../../../domain";
@@ -22,6 +23,11 @@ import type {
   GitHubTrendingPageClientPort,
   GitHubTrendingPageRepository,
 } from "./github-trending-page-client.port";
+import {
+  githubTrendingPageScope,
+  rankGitHubTrendingRepositoriesBySourceScope,
+  type RankedGitHubTrendingRepository,
+} from "./github-trending-page-source-ranking";
 
 const capabilityProfile: SourceCapabilityProfile = {
   providerKey: GITHUB_TRENDING_PAGE_PROVIDER_KEY,
@@ -35,7 +41,9 @@ const capabilityProfile: SourceCapabilityProfile = {
     "canonicalUrl",
     "providerMetadata.repository.fullName",
     "providerMetadata.trending.window",
+    "providerMetadata.trending.scope",
     "providerMetadata.trending.rank",
+    "providerMetadata.trending.capturedAt",
   ],
   quotaModel: "per_app",
   limitations: [
@@ -89,37 +97,51 @@ export class GitHubTrendingPageSourceProvider implements SourceProviderPort {
     context: SourceProviderScanContext,
   ): Promise<SourceProviderScanResult> {
     const config = parseConfig(plan.query, context, plan.maxItems);
-    const checkedAt = this.clock.now();
-    const repositories = (
+    const capturedAt = this.clock.now();
+    const occurrences = (
       await Promise.all(
-        config.languages.map((language) =>
-          this.client.listTrendingRepositories({
+        config.languages.map(async (programmingLanguage, scopeIndex) => {
+          const repositories = await this.client.listTrendingRepositories({
             window: config.window,
-            language,
+            language: programmingLanguage,
             spokenLanguage: config.spokenLanguage,
             limit: config.maxItemsPerLanguage,
             userAgent: config.userAgent,
-          }),
-        ),
+          });
+
+          return repositories.map((repository) => ({
+            repository,
+            scope: githubTrendingPageScope({
+              programmingLanguage,
+              spokenLanguage: config.spokenLanguage,
+            }),
+            scopeIndex,
+          }));
+        }),
       )
     ).flat();
-    const validRepositories = dedupeRepositories(
-      repositories.filter(isUsableTrendingRepository),
-    ).slice(0, plan.maxItems);
+    const validOccurrences = occurrences.filter(({ repository }) =>
+      isUsableTrendingRepository(repository),
+    );
+    const rankedRepositories = rankGitHubTrendingRepositoriesBySourceScope(
+      validOccurrences,
+      config.languages.length,
+      plan.maxItems,
+    );
 
     return {
-      items: validRepositories.map((repository) =>
+      items: rankedRepositories.map((candidate) =>
         normalizeRepository({
-          repository,
+          candidate,
           window: config.window,
-          checkedAt,
+          capturedAt,
           source: config.source,
         }),
       ),
-      nextCursor: checkedAt.toISOString(),
+      nextCursor: capturedAt.toISOString(),
       warnings: githubTrendingPageWarnings({
-        fetchedCount: repositories.length,
-        validCount: validRepositories.length,
+        fetchedCount: occurrences.length,
+        validCount: validOccurrences.length,
       }),
     };
   }
@@ -198,12 +220,13 @@ const parseConfig = (
 };
 
 const normalizeRepository = (params: {
-  readonly repository: GitHubTrendingPageRepository;
+  readonly candidate: RankedGitHubTrendingRepository;
   readonly window: GitHubTrendingPageWindow;
-  readonly checkedAt: Date;
+  readonly capturedAt: Date;
   readonly source: GitHubTrendingPageRepositoryMetadataInput["trending"]["source"];
 }): FetchedSourceItem => {
-  const { repository, window, checkedAt, source } = params;
+  const { candidate, window, capturedAt, source } = params;
+  const { repository, scope } = candidate.primary;
   const metadata = githubTrendingPageRepositoryMetadata({
     repository: {
       fullName: repository.fullName,
@@ -217,7 +240,18 @@ const normalizeRepository = (params: {
       rank: repository.rank,
       starsGained: repository.starsGained,
       window,
-      checkedAt,
+      checkedAt: capturedAt,
+      capturedAt,
+      scope,
+      appearances: candidate.occurrences.map(
+        (occurrence): GitHubTrendingPageAppearanceInput => ({
+          rank: occurrence.repository.rank,
+          starsGained: occurrence.repository.starsGained,
+          window,
+          capturedAt,
+          scope: occurrence.scope,
+        }),
+      ),
       source,
     },
   });
@@ -225,12 +259,12 @@ const normalizeRepository = (params: {
     repository.description ?? "No GitHub Trending description available.";
 
   return {
-    externalId: `github-trending-page:${window}:${repository.fullName}:${checkedAt.toISOString()}`,
+    externalId: `github-trending-page:${window}:${repository.fullName}:${capturedAt.toISOString()}`,
     canonicalUrl: repository.url,
     title: `${repository.fullName} is #${repository.rank} on GitHub Trending`,
     body: `${description}\nGitHub Trending ${window}: #${repository.rank}, +${repository.starsGained} stars. Total stars: ${repository.totalStars}.`,
     authorHandle: repository.fullName.split("/")[0],
-    publishedAt: checkedAt,
+    publishedAt: capturedAt,
     metadata,
   };
 };
@@ -248,36 +282,6 @@ const isUsableTrendingRepository = (
   repository.forksCount >= 0 &&
   Number.isInteger(repository.starsGained) &&
   repository.starsGained > 0;
-
-const dedupeRepositories = (
-  repositories: readonly GitHubTrendingPageRepository[],
-): readonly GitHubTrendingPageRepository[] => {
-  const byFullName = new Map<string, GitHubTrendingPageRepository>();
-
-  for (const repository of repositories) {
-    const key = repository.fullName.toLocaleLowerCase("en-US");
-    const existing = byFullName.get(key);
-
-    if (
-      existing === undefined ||
-      repository.starsGained > existing.starsGained ||
-      (repository.starsGained === existing.starsGained &&
-        repository.rank < existing.rank)
-    ) {
-      byFullName.set(key, repository);
-    }
-  }
-
-  return [...byFullName.values()].sort((left, right) => {
-    const starsGainedDiff = right.starsGained - left.starsGained;
-
-    if (starsGainedDiff !== 0) {
-      return starsGainedDiff;
-    }
-
-    return left.rank - right.rank;
-  });
-};
 
 const githubTrendingPageWarnings = (params: {
   readonly fetchedCount: number;

@@ -16,6 +16,27 @@ export const githubTrendingPageWindows = [
 export type GitHubTrendingPageWindow =
   (typeof githubTrendingPageWindows)[number];
 
+export type GitHubTrendingPageScope = {
+  readonly programmingLanguage?: string;
+  readonly spokenLanguage?: string;
+};
+
+export type GitHubTrendingPageAppearanceInput = {
+  readonly rank: number;
+  readonly starsGained: number;
+  readonly window: GitHubTrendingPageWindow;
+  readonly capturedAt: Date;
+  readonly scope: GitHubTrendingPageScope;
+};
+
+export type GitHubTrendingPageAppearance = {
+  readonly rank: number;
+  readonly starsGained: number;
+  readonly window: GitHubTrendingPageWindow;
+  readonly capturedAt: string;
+  readonly scope: GitHubTrendingPageScope;
+};
+
 export type GitHubTrendingPageRepositoryMetadataInput = {
   readonly repository: {
     readonly fullName: string;
@@ -30,6 +51,9 @@ export type GitHubTrendingPageRepositoryMetadataInput = {
     readonly starsGained: number;
     readonly window: GitHubTrendingPageWindow;
     readonly checkedAt: Date;
+    readonly capturedAt?: Date;
+    readonly scope?: GitHubTrendingPageScope;
+    readonly appearances?: readonly GitHubTrendingPageAppearanceInput[];
     readonly source: 'github_trending_html' | 'fixture_github_trending_html';
   };
 };
@@ -49,6 +73,9 @@ export type GitHubTrendingPageRepositoryMetadata = {
     readonly starsGained: number;
     readonly window: GitHubTrendingPageWindow;
     readonly checkedAt: string;
+    readonly capturedAt: string;
+    readonly scope: GitHubTrendingPageScope;
+    readonly appearances: readonly GitHubTrendingPageAppearance[];
     readonly source: string;
   };
 };
@@ -75,6 +102,19 @@ export const githubTrendingPageRepositoryMetadata = (
       starsGained: input.trending.starsGained,
       window: input.trending.window,
       checkedAt: input.trending.checkedAt.toISOString(),
+      capturedAt: (
+        input.trending.capturedAt ?? input.trending.checkedAt
+      ).toISOString(),
+      scope: input.trending.scope ?? {},
+      appearances: (
+        input.trending.appearances ?? [primaryAppearance(input.trending)]
+      ).map((appearance) => ({
+        rank: appearance.rank,
+        starsGained: appearance.starsGained,
+        window: appearance.window,
+        capturedAt: appearance.capturedAt.toISOString(),
+        scope: appearance.scope,
+      })),
       source: input.trending.source,
     },
   });
@@ -95,17 +135,23 @@ export const parseGitHubTrendingPageRepositoryMetadata = (
 
   const fullName = readString(repository.fullName);
   const url = readString(repository.url);
-  const checkedAt = readString(trending.checkedAt);
+  const capturedAt =
+    readString(trending.capturedAt) ?? readString(trending.checkedAt);
   const window = readWindow(trending.window);
 
   if (
     fullName === undefined ||
     url === undefined ||
-    checkedAt === undefined ||
+    capturedAt === undefined ||
     window === undefined
   ) {
     return null;
   }
+
+  const scope = readScope(trending.scope);
+  const rank = readPositiveInteger(trending.rank);
+  const starsGained = readNonNegativeInteger(trending.starsGained);
+  const appearances = readAppearances(trending.appearances);
 
   return {
     kind: GITHUB_TRENDING_PAGE_REPOSITORY_METADATA_KIND,
@@ -118,12 +164,64 @@ export const parseGitHubTrendingPageRepositoryMetadata = (
       forksCount: readNonNegativeInteger(repository.forksCount),
     },
     trending: {
-      rank: readPositiveInteger(trending.rank),
-      starsGained: readNonNegativeInteger(trending.starsGained),
+      rank,
+      starsGained,
       window,
-      checkedAt,
+      checkedAt: readString(trending.checkedAt) ?? capturedAt,
+      capturedAt,
+      scope,
+      appearances:
+        appearances.length === 0
+          ? [{ rank, starsGained, window, capturedAt, scope }]
+          : appearances,
       source: readString(trending.source) ?? 'unknown',
     },
+  };
+};
+
+const primaryAppearance = (
+  trending: GitHubTrendingPageRepositoryMetadataInput['trending'],
+): GitHubTrendingPageAppearanceInput => ({
+  rank: trending.rank,
+  starsGained: trending.starsGained,
+  window: trending.window,
+  capturedAt: trending.capturedAt ?? trending.checkedAt,
+  scope: trending.scope ?? {},
+});
+
+const readAppearances = (
+  value: unknown,
+): readonly GitHubTrendingPageAppearance[] =>
+  Array.isArray(value)
+    ? value.flatMap((candidate) => {
+        const appearance = readRecord(candidate);
+        const window = readWindow(appearance?.window);
+        const capturedAt = readString(appearance?.capturedAt);
+
+        return appearance === null ||
+          window === undefined ||
+          capturedAt === undefined
+          ? []
+          : [
+              {
+                rank: readPositiveInteger(appearance.rank),
+                starsGained: readNonNegativeInteger(appearance.starsGained),
+                window,
+                capturedAt,
+                scope: readScope(appearance.scope),
+              },
+            ];
+      })
+    : [];
+
+const readScope = (value: unknown): GitHubTrendingPageScope => {
+  const scope = readRecord(value);
+  const programmingLanguage = readString(scope?.programmingLanguage);
+  const spokenLanguage = readString(scope?.spokenLanguage);
+
+  return {
+    ...(programmingLanguage === undefined ? {} : { programmingLanguage }),
+    ...(spokenLanguage === undefined ? {} : { spokenLanguage }),
   };
 };
 

@@ -30,13 +30,17 @@ export const githubRepositoryProviderSourceKey = (params: {
 
 export const githubTrendingPageProviderSourceKey = (params: {
   readonly window: GitHubTrendingPageWindow;
-  readonly language?: string;
+  readonly programmingLanguage?: string;
+  readonly spokenLanguage?: string;
 }): string =>
   [
     'github-trending-page',
     normalizeSourceSegment(params.window),
     'language',
-    normalizeSourceSegment(params.language ?? 'any'),
+    normalizeSourceSegment(params.programmingLanguage ?? 'any'),
+    ...(params.spokenLanguage === undefined
+      ? []
+      : ['spoken-language', normalizeSourceSegment(params.spokenLanguage)]),
   ].join(':');
 
 export const hackerNewsProviderSourceKey = (

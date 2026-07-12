@@ -349,6 +349,23 @@ describe("feedProviderMetricsFromMetadata", () => {
           rank: 1,
           starsGained: 3703,
           window: "daily",
+          capturedAt: "2026-07-12T09:00:00.000Z",
+          scope: {
+            programmingLanguage: "Python",
+            spokenLanguage: "en",
+          },
+          appearances: [
+            {
+              rank: 1,
+              starsGained: 3703,
+              window: "daily",
+              capturedAt: "2026-07-12T09:00:00.000Z",
+              scope: {
+                programmingLanguage: "Python",
+                spokenLanguage: "en",
+              },
+            },
+          ],
         },
       },
     });
@@ -356,17 +373,99 @@ describe("feedProviderMetricsFromMetadata", () => {
     expect(metrics).toEqual({
       kind: "github_trending_repository",
       providerKey: "github-trending-page",
-      sourceKey: "github-trending-page:daily:language:python",
+      sourceKey:
+        "github-trending-page:daily:language:python:spoken-language:en",
       contentType: "repository",
       stars: 18398,
       forks: 2113,
       rank: 1,
       starsGained: 3703,
       window: "daily",
+      capturedAt: "2026-07-12T09:00:00.000Z",
+      scope: {
+        programmingLanguage: "Python",
+        spokenLanguage: "en",
+      },
+      appearances: [
+        {
+          rank: 1,
+          starsGained: 3703,
+          window: "daily",
+          capturedAt: "2026-07-12T09:00:00.000Z",
+          scope: {
+            programmingLanguage: "Python",
+            spokenLanguage: "en",
+          },
+        },
+      ],
     });
+    expect(formatFeedProviderMetrics(metrics)).toEqual([
+      { label: "GitHub Trending today", value: "#1, +3,703 stars today" },
+      { label: "Trending scope", value: "Python / spoken en" },
+      { label: "Captured", value: "2026-07-12T09:00:00.000Z" },
+      { label: "Stars", value: "18,398" },
+      { label: "Forks", value: "2,113" },
+    ]);
     expect(
       metrics === undefined ? undefined : feedProviderMetricStrength(metrics),
     ).toBeGreaterThan(0);
+  });
+
+  it("keeps legacy GitHub Trending metadata usable without explicit scope", () => {
+    const metrics = feedProviderMetricsFromMetadata({
+      providerKey: "github-trending-page",
+      providerMetadata: {
+        kind: "github_trending_page_repository",
+        repository: {
+          language: "Rust",
+          totalStars: 900,
+          forksCount: 40,
+        },
+        trending: {
+          rank: 3,
+          starsGained: 80,
+          window: "weekly",
+        },
+      },
+    });
+
+    expect(metrics).toMatchObject({
+      sourceKey: "github-trending-page:weekly:language:rust",
+      scope: { programmingLanguage: "Rust" },
+      appearances: [
+        {
+          rank: 3,
+          starsGained: 80,
+          window: "weekly",
+          scope: { programmingLanguage: "Rust" },
+        },
+      ],
+    });
+  });
+
+  it("does not reinterpret an explicit overall scope as repository language", () => {
+    const metrics = feedProviderMetricsFromMetadata({
+      providerKey: "github-trending-page",
+      providerMetadata: {
+        kind: "github_trending_page_repository",
+        repository: {
+          language: "Rust",
+          totalStars: 900,
+          forksCount: 40,
+        },
+        trending: {
+          rank: 1,
+          starsGained: 80,
+          window: "daily",
+          scope: {},
+        },
+      },
+    });
+
+    expect(metrics).toMatchObject({
+      sourceKey: "github-trending-page:daily:language:any",
+      scope: {},
+    });
   });
 
   it("maps Hacker News story points and comments", () => {
