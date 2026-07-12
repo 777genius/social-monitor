@@ -3,6 +3,7 @@ import {
   buildGitHubTrendingNarrativeAppendix,
   githubTrendingStarsGained,
   selectGitHubTrendingHighlights,
+  withGitHubTrendingNarrativeAppendix,
 } from "./reader-summary-github-trending-policy";
 
 describe("reader summary GitHub Trending policy", () => {
@@ -74,6 +75,43 @@ describe("reader summary GitHub Trending policy", () => {
       text: "- **owner/repo**: +1,234 stars today.",
       citationIds: ["c9"],
     });
+  });
+
+  it("replaces an existing deterministic appendix instead of duplicating it", () => {
+    const staleAppendix = {
+      id: "github-trending",
+      kind: "watch" as const,
+      title: "GitHub Trending",
+      text: "Stale repository list.",
+      citationIds: ["old-citation"],
+    };
+    const currentAppendix = {
+      ...staleAppendix,
+      text: "Current repository list.",
+      citationIds: ["current-citation"],
+    };
+
+    expect(
+      withGitHubTrendingNarrativeAppendix({
+        narrativeSections: [
+          {
+            id: "lead",
+            kind: "lead",
+            title: "Lead",
+            text: "Primary summary.",
+            citationIds: ["lead-citation"],
+          },
+          staleAppendix,
+        ],
+        appendix: currentAppendix,
+      }),
+    ).toEqual([
+      expect.objectContaining({ id: "lead" }),
+      expect.objectContaining({
+        id: "github-trending",
+        text: "Current repository list.",
+      }),
+    ]);
   });
 });
 

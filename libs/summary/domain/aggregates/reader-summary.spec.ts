@@ -1143,54 +1143,6 @@ describe("buildReaderSummary", () => {
     expect(readerSummary.selectedPosts).toHaveLength(1);
   });
 
-  it("keeps the deterministic GitHub Trending appendix idempotent", () => {
-    const input = readerTopReadFixture(1);
-    const githubEvidence = {
-      feedItemId: "github-feed",
-      sourceItemId: "github-source",
-      sourceBindingId: "github-binding",
-      interestId: "ai-developer-tools",
-      providerKey: "github-trending-page",
-      providerName: "GitHub Trending",
-      canonicalUrl: "https://github.com/example/repository",
-      title: "example/repository",
-      publishedAt: new Date("2026-06-23T08:00:00.000Z"),
-      observedAt: new Date("2026-06-23T09:00:00.000Z"),
-      score: 1.5,
-      readerActionKind: "watch_repository",
-      whyImportant: ["Repository gained more than 1,000 stars today."],
-      providerMetricSummary: "#1, +1,500 stars today",
-      providerMetricLabels: [
-        { label: "GitHub Trending today", value: "#1, +1,500 stars today" },
-      ],
-    } satisfies SummaryEvidenceItem;
-    const githubCitation = {
-      citationId: "github-citation",
-      feedItemId: githubEvidence.feedItemId,
-      sourceItemId: githubEvidence.sourceItemId,
-      providerKey: githubEvidence.providerKey,
-      field: "title",
-      canonicalUrl: githubEvidence.canonicalUrl,
-    } satisfies ReaderSummaryCitation;
-    const withGitHub = {
-      ...input,
-      selectedEvidence: [...input.selectedEvidence, githubEvidence],
-      citationMap: [...input.citationMap, githubCitation],
-    };
-
-    const first = buildReaderSummary(withGitHub);
-    const second = buildReaderSummary({
-      ...withGitHub,
-      narrativeSections: first.narrativeSections,
-    });
-
-    expect(
-      second.narrativeSections?.filter(
-        (section) => section.id === "github-trending",
-      ),
-    ).toHaveLength(1);
-  });
-
   it("marks cross-source source mix when multiple providers confirm one story cluster", () => {
     const readerSummary = buildReaderSummary({
       headline: "AI agent pain signal",
