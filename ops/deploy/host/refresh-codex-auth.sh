@@ -46,6 +46,15 @@ else
 fi
 
 install -d -m 0750 -o "$TARGET_DIR_OWNER" -g "$TARGET_GROUP" "$TARGET_DIR"
+if [[ -e $TARGET_DIR/auth.json ]]; then
+  [[ -f $TARGET_DIR/auth.json && ! -L $TARGET_DIR/auth.json ]] || {
+    echo 'auth-refresh-error: existing target auth is not a regular file' >&2
+    exit 1
+  }
+  chown "$TARGET_OWNER:$TARGET_GROUP" "$TARGET_DIR/auth.json"
+  chmod "$TARGET_MODE" "$TARGET_DIR/auth.json"
+fi
+rm -f "$TARGET_DIR/auth.json.next"
 install -d -m 0750 "$PROBE_WORKSPACE"
 install -d -m 0700 "$PROBE_TMP_ROOT"
 exec 9>"$CURSOR_FILE.lock"
