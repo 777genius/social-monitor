@@ -54,6 +54,7 @@ class _TopicMapForceGraphState extends State<_TopicMapForceGraph> {
           children: [
             Positioned.fill(
               child: CustomPaint(
+                key: const ValueKey('topic-map-edges'),
                 painter: _TopicMapEdgesPainter(
                   edges: model.edges,
                   bubblesById: model.bubblesById,
@@ -121,10 +122,10 @@ class _TopicMapEdgesPainter extends CustomPainter {
         sourceRadius: source.radius,
         targetRadius: target.radius,
       );
-      final alpha = _topicEdgeAlpha(edge, source, target);
+      final alpha = _topicEdgeAlpha(edge);
 
-      canvas
-        ..drawPath(
+      if (edge.kind == ReaderSummaryTopicMapVisualLinkKind.semantic) {
+        canvas.drawPath(
           path,
           Paint()
             ..color = edge.color.withValues(alpha: alpha * 0.42)
@@ -132,16 +133,17 @@ class _TopicMapEdgesPainter extends CustomPainter {
             ..style = PaintingStyle.stroke
             ..strokeCap = StrokeCap.round
             ..strokeJoin = StrokeJoin.round,
-        )
-        ..drawPath(
-          path,
-          Paint()
-            ..color = edge.color.withValues(alpha: alpha)
-            ..strokeWidth = edge.strokeWidth
-            ..style = PaintingStyle.stroke
-            ..strokeCap = StrokeCap.round
-            ..strokeJoin = StrokeJoin.round,
         );
+      }
+      canvas.drawPath(
+        path,
+        Paint()
+          ..color = edge.color.withValues(alpha: alpha)
+          ..strokeWidth = edge.strokeWidth
+          ..style = PaintingStyle.stroke
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round,
+      );
     }
   }
 
@@ -165,12 +167,12 @@ Path _curvedTopicEdgePath({
   final visibleDelta = end - start;
   final visibleDistance = math.max(1.0, visibleDelta.distance);
   final midpoint = Offset((start.dx + end.dx) / 2, (start.dy + end.dy) / 2);
-  final normal = Offset(
-    -visibleDelta.dy / visibleDistance,
-    visibleDelta.dx / visibleDistance,
-  );
+  final normal = Offset(-direction.dy, direction.dx);
+  final minimumBend = edge.kind == ReaderSummaryTopicMapVisualLinkKind.semantic
+      ? 14.0
+      : 8.0;
   final bend =
-      math.min(76.0, math.max(1.5, visibleDistance * 0.22)) *
+      math.min(64.0, math.max(minimumBend, visibleDistance * 0.22)) *
       _edgeCurveSign(edge);
   final control = midpoint + normal * bend;
 
@@ -188,15 +190,12 @@ double _edgeCurveSign(_TopicGraphEdge edge) {
   return seed.isEven ? 1 : -1;
 }
 
-double _topicEdgeAlpha(
-  _TopicGraphEdge edge,
-  _TopicGraphBubble source,
-  _TopicGraphBubble target,
-) {
-  final sameGroup = source.group.id == target.group.id;
-  final base = sameGroup ? 0.24 : 0.18;
+double _topicEdgeAlpha(_TopicGraphEdge edge) {
+  if (edge.kind == ReaderSummaryTopicMapVisualLinkKind.groupMembership) {
+    return 0.16;
+  }
 
-  return math.min(0.34, base + edge.strokeWidth * 0.035);
+  return math.min(0.42, 0.28 + edge.strokeWidth * 0.04);
 }
 
 class _TopicMapBubbleNode extends StatelessWidget {

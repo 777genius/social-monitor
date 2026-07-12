@@ -63,8 +63,10 @@ final class _TopicMapFlutterGraphData {
 
     final visibleNodeIds = vertices.map((vertex) => vertex.node.id).toSet();
     final edges = _flutterGraphEdges(
-      topicMap: topicMap,
-      nodesByGroupId: nodesByGroupId,
+      visualLinks: _topicMapVisualLinkPolicy.build(
+        topicMap: topicMap,
+        nodesByGroupId: nodesByGroupId,
+      ),
       groupsById: groupsById,
       visibleNodeIds: visibleNodeIds,
     );
@@ -79,32 +81,22 @@ final class _TopicMapFlutterGraphData {
 }
 
 List<_TopicMapFlutterGraphEdge> _flutterGraphEdges({
-  required ReaderSummaryTopicMap topicMap,
-  required Map<String, List<ReaderSummaryTopicMapNode>> nodesByGroupId,
+  required List<ReaderSummaryTopicMapVisualLink> visualLinks,
   required Map<String, ReaderSummaryTopicMapGroup> groupsById,
   required Set<String> visibleNodeIds,
 }) {
-  final edgePairs = <String>{};
   final result = <_TopicMapFlutterGraphEdge>[];
   var ranking = 0;
-  final groupIdByNodeId = {
-    for (final entry in nodesByGroupId.entries)
-      for (final node in entry.value) node.id: entry.key,
-  };
 
   void addEdge({
     required String sourceNodeId,
     required String targetNodeId,
     required Color color,
     required double strokeWidth,
-    required bool isLayoutOnly,
+    required ReaderSummaryTopicMapVisualLinkKind kind,
   }) {
     if (!visibleNodeIds.contains(sourceNodeId) ||
         !visibleNodeIds.contains(targetNodeId)) {
-      return;
-    }
-    final pairKey = _edgePairKey(sourceNodeId, targetNodeId);
-    if (!edgePairs.add(pairKey)) {
       return;
     }
     result.add(
@@ -113,51 +105,26 @@ List<_TopicMapFlutterGraphEdge> _flutterGraphEdges({
         targetNodeId: targetNodeId,
         color: color,
         strokeWidth: strokeWidth,
-        isLayoutOnly: isLayoutOnly,
+        kind: kind,
         ranking: ranking++,
       ),
     );
   }
 
-  for (final edge in topicMap.edges.take(_topicMapMaxEdges)) {
-    final sourceGroupId = groupIdByNodeId[edge.sourceNodeId];
-    final targetGroupId = groupIdByNodeId[edge.targetNodeId];
-    if (sourceGroupId == null ||
-        targetGroupId == null ||
-        sourceGroupId != targetGroupId ||
-        sourceGroupId == _topicMapNeutralGroupId) {
-      continue;
-    }
+  for (final link in visualLinks) {
     final groupColor = _topicColor(
-      groupsById[sourceGroupId]?.colorKey ?? 'blue',
+      groupsById[link.groupId]?.colorKey ?? 'blue',
     );
+    final semantic = link.kind == ReaderSummaryTopicMapVisualLinkKind.semantic;
     addEdge(
-      sourceNodeId: edge.sourceNodeId,
-      targetNodeId: edge.targetNodeId,
-      color: groupColor.withValues(alpha: 0.12 + edge.weight * 0.20),
-      strokeWidth: 0.8 + edge.weight * 2.1,
-      isLayoutOnly: false,
+      sourceNodeId: link.sourceNodeId,
+      targetNodeId: link.targetNodeId,
+      color: groupColor.withValues(
+        alpha: semantic ? 0.18 + link.weight * 0.22 : 0.16,
+      ),
+      strokeWidth: semantic ? 0.8 + link.weight * 2.1 : 0.9,
+      kind: link.kind,
     );
-  }
-
-  for (final entry in nodesByGroupId.entries) {
-    if (entry.key == _topicMapNeutralGroupId) {
-      continue;
-    }
-    final groupNodes = entry.value;
-    if (groupNodes.length < 2) {
-      continue;
-    }
-    final groupColor = _topicColor(groupsById[entry.key]?.colorKey ?? 'blue');
-    for (final node in groupNodes.skip(1)) {
-      addEdge(
-        sourceNodeId: groupNodes.first.id,
-        targetNodeId: node.id,
-        color: groupColor.withValues(alpha: 0.16),
-        strokeWidth: 1.05,
-        isLayoutOnly: true,
-      );
-    }
   }
 
   return result;
@@ -189,7 +156,7 @@ final class _TopicMapFlutterGraphEdge {
     required this.targetNodeId,
     required this.color,
     required this.strokeWidth,
-    required this.isLayoutOnly,
+    required this.kind,
     required this.ranking,
   });
 
@@ -197,7 +164,7 @@ final class _TopicMapFlutterGraphEdge {
   final String targetNodeId;
   final Color color;
   final double strokeWidth;
-  final bool isLayoutOnly;
+  final ReaderSummaryTopicMapVisualLinkKind kind;
   final int ranking;
 }
 

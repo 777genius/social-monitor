@@ -39,6 +39,7 @@ part 'reader_summary_insight_rail.dart';
 part 'reader_summary_metric_badges.dart';
 part 'reader_summary_narrative.dart';
 part 'reader_summary_provider_coverage_rows.dart';
+part 'reader_summary_topic_map_edge_policy.dart';
 part 'reader_summary_topic_map_flutter_graph_data.dart';
 part 'reader_summary_topic_map_flutter_graph_shapes.dart';
 part 'reader_summary_topic_map_graph.dart';
