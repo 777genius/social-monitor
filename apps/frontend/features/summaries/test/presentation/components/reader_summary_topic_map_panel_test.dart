@@ -158,6 +158,27 @@ void main() {
     );
     expect(find.text('Productivity Stack'), findsOneWidget);
     expect(_bubbleLabelFor(tester, 'topic:productivity'), 'Productivity Stack');
+    expect(find.textContaining('DesktopCommanderMCP'), findsNothing);
+    expect(
+      _bubbleLabelFor(tester, 'topic:desktop-commander'),
+      'Desktop Commander MCP',
+    );
+    final technicalBubble = tester.widget<Tooltip>(
+      find.byKey(const ValueKey('topic-map-bubble-topic:desktop-commander')),
+    );
+    expect(technicalBubble.message, contains('Desktop Commander MCP Server'));
+    final technicalLabel = tester.widget<Text>(
+      find.byKey(
+        const ValueKey('topic-map-bubble-label-topic:desktop-commander'),
+      ),
+    );
+    expect(technicalLabel.style?.fontSize, greaterThanOrEqualTo(8.2));
+    final longIdentifierLabel = _bubbleLabelFor(
+      tester,
+      'topic:long-identifier',
+    );
+    expect(longIdentifierLabel, endsWith('…'));
+    expect(longIdentifierLabel!.runes.length, lessThanOrEqualTo(16));
   });
 }
 
@@ -425,6 +446,34 @@ ReaderSummaryTopicMap _headlineLikeLabelTopicMap() {
         keywords: ['productivity-stack'],
         rationale: 'Stored headline-like label from an older artifact.',
       ),
+      ReaderSummaryTopicMapNode(
+        id: 'topic:desktop-commander',
+        label: 'DesktopCommanderMCP MCP Server',
+        groupId: 'group:technical-tools',
+        storyClusterIds: ['story:desktop-commander'],
+        popularityScore: 30,
+        sizeWeight: 0.2,
+        evidenceCount: 1,
+        providerKeys: ['github'],
+        interestIds: ['developer-tools'],
+        citationIds: ['citation:desktop-commander'],
+        keywords: ['DesktopCommanderMCP'],
+        rationale: 'Technical identifier label fixture.',
+      ),
+      ReaderSummaryTopicMapNode(
+        id: 'topic:long-identifier',
+        label: 'SUPERCALIFRAGILISTICEXPIALIDOCIOUS',
+        groupId: 'group:technical-tools',
+        storyClusterIds: ['story:long-identifier'],
+        popularityScore: 5,
+        sizeWeight: 0.05,
+        evidenceCount: 1,
+        providerKeys: ['github'],
+        interestIds: ['developer-tools'],
+        citationIds: ['citation:long-identifier'],
+        keywords: ['SUPERCALIFRAGILISTICEXPIALIDOCIOUS'],
+        rationale: 'Long single-token label fixture.',
+      ),
     ],
     groups: const [
       ReaderSummaryTopicMapGroup(
@@ -432,6 +481,17 @@ ReaderSummaryTopicMap _headlineLikeLabelTopicMap() {
         label: 'productivity',
         colorKey: 'green',
         nodeIds: ['topic:productivity'],
+        confidence: ReaderSummaryTopicMapConfidence(
+          level: 'medium',
+          score: 0.7,
+          rationale: 'Synthetic group.',
+        ),
+      ),
+      ReaderSummaryTopicMapGroup(
+        id: 'group:technical-tools',
+        label: 'technical tools',
+        colorKey: 'violet',
+        nodeIds: ['topic:desktop-commander', 'topic:long-identifier'],
         confidence: ReaderSummaryTopicMapConfidence(
           level: 'medium',
           score: 0.7,

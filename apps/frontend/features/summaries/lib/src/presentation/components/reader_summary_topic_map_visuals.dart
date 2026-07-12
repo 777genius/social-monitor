@@ -206,19 +206,6 @@ String _topicMapDisplayLabel(ReaderSummaryTopicMapNode node) {
   return keyword == null ? '' : _topicMapDisplayTitle(keyword);
 }
 
-String _compactTopicMapDisplayLabel(String value) => value
-    .replaceFirst(RegExp(r'^(?:\[\d+\]\s*)+'), '')
-    .replaceFirst(RegExp(r'^(?:ask|show)\s+hn:\s*', caseSensitive: false), '')
-    .replaceFirst(
-      RegExp(
-        r'^(?:why|how|what|when|where|who|should|could|would)\s+',
-        caseSensitive: false,
-      ),
-      '',
-    )
-    .replaceAll(RegExp(r'\s+'), ' ')
-    .trim();
-
 String? _visibleTopicMapDisplayLabel(String value) {
   final tokens = _meaningfulTopicMapLabelTokens(
     value,
