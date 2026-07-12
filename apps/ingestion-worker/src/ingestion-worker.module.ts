@@ -4,6 +4,7 @@ import { InMemoryConversationUnitRepository } from "@social-monitor/conversation
 import { PrismaConversationUnitRepository } from "@social-monitor/conversation/adapters/persistence/prisma/prisma-conversation-unit.repository";
 import { InMemoryFeedItemReadRepository } from "@social-monitor/feed/adapters/persistence/in-memory-feed-item-read.repository";
 import { PrismaFeedProjectionAdapter } from "@social-monitor/feed/adapters/persistence/prisma/prisma-feed-projection.adapter";
+import { PrismaSourceEngagementProjectionAdapter } from "@social-monitor/feed/adapters/persistence/prisma/prisma-source-engagement-projection.adapter";
 import { MonitoringScanExecutionReporterAdapter } from "@social-monitor/monitoring/adapters/reporting/monitoring-scan-execution-reporter.adapter";
 import { RecordScanExecutionUseCase } from "@social-monitor/monitoring/features/record-scan-execution/record-scan-execution.use-case";
 import { ScheduleDueScansUseCase } from "@social-monitor/monitoring/features/schedule-due-scans/schedule-due-scans.use-case";
@@ -36,7 +37,10 @@ import { RegistrySourceFetcherAdapter } from "@social-monitor/ingestion/adapters
 import { ExecuteScanUseCase } from "@social-monitor/ingestion/features/execute-scan/execute-scan.use-case";
 import { ExecuteScanCommandHandler } from "@social-monitor/ingestion/interfaces/queue/execute-scan-command.handler";
 import { sourceProviderRegistryProviders } from "@social-monitor/ingestion/interfaces/source/source-provider-registry.providers";
-import type { ScanExecutionReporterPort } from "@social-monitor/ingestion/ports";
+import {
+  noopSourceEngagementProjection,
+  type ScanExecutionReporterPort,
+} from "@social-monitor/ingestion/ports";
 import type {
   ConversationProjectionPort,
   FeedProjectionPort,
@@ -46,6 +50,7 @@ import type {
   ScanRetryQueuePort,
   ScanLeasePort,
   SourceCandidateMemoryPort,
+  SourceEngagementProjectionPort,
   SourceItemRepositoryPort,
 } from "@social-monitor/ingestion/ports";
 import { InMemoryFeedProjectionAdapter } from "./adapters/feed/in-memory-feed-projection.adapter";
@@ -70,6 +75,7 @@ import {
   INGESTION_SCAN_REPORTER_MODE,
   INGESTION_SCAN_SCHEDULER_LOOP_OPTIONS,
   INGESTION_SOURCE_CANDIDATE_MEMORY,
+  INGESTION_SOURCE_ENGAGEMENT_PROJECTION,
   INGESTION_SOURCE_ITEM_REPOSITORY,
   INGESTION_WORKER_PERSISTENCE_MODE,
   INGESTION_WORKER_PRISMA_CLIENT,
@@ -227,6 +233,23 @@ const INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL = Symbol(
         INGESTION_WORKER_PERSISTENCE_MODE,
         INGESTION_WORKER_PRISMA_CLIENT,
         InMemorySourceCandidateMemoryRepository,
+      ],
+    },
+    {
+      provide: INGESTION_SOURCE_ENGAGEMENT_PROJECTION,
+      useFactory: (
+        mode: IngestionWorkerPersistenceMode,
+        prisma: PrismaIngestionWorkerClient | null,
+      ): SourceEngagementProjectionPort =>
+        mode === "prisma"
+          ? new PrismaSourceEngagementProjectionAdapter(
+              requirePrismaIngestionWorkerClient(prisma),
+              new CryptoIdGenerator(),
+            )
+          : noopSourceEngagementProjection,
+      inject: [
+        INGESTION_WORKER_PERSISTENCE_MODE,
+        INGESTION_WORKER_PRISMA_CLIENT,
       ],
     },
     {

@@ -15,6 +15,7 @@ import type {
   ScanRetryQueuePort,
   ScanLeasePort,
   SourceCandidateMemoryPort,
+  SourceEngagementProjectionPort,
   SourceItemMetadataProjectionPort,
   SourceItemRepositoryPort,
   GitHubRepositoryTrendHistoryRepositoryPort,
@@ -74,6 +75,9 @@ export const INGESTION_SOURCE_CANDIDATE_MEMORY = Symbol(
 export const INGESTION_SOURCE_ITEM_REPOSITORY = Symbol(
   "INGESTION_SOURCE_ITEM_REPOSITORY",
 );
+export const INGESTION_SOURCE_ENGAGEMENT_PROJECTION = Symbol(
+  "INGESTION_SOURCE_ENGAGEMENT_PROJECTION",
+);
 export const INGESTION_SOURCE_ITEM_METADATA_PROJECTION = Symbol(
   "INGESTION_SOURCE_ITEM_METADATA_PROJECTION",
 );
@@ -106,6 +110,7 @@ export type IngestionWorkerProviderTokenMap = {
   readonly [INGESTION_SCAN_EXECUTION_REPORTER]: ScanExecutionReporterPort;
   readonly [INGESTION_SOURCE_CANDIDATE_MEMORY]: SourceCandidateMemoryPort;
   readonly [INGESTION_SOURCE_ITEM_REPOSITORY]: SourceItemRepositoryPort;
+  readonly [INGESTION_SOURCE_ENGAGEMENT_PROJECTION]: SourceEngagementProjectionPort;
   readonly [INGESTION_SOURCE_ITEM_METADATA_PROJECTION]: SourceItemMetadataProjectionPort;
   readonly [INGESTION_GITHUB_REPOSITORY_TREND_HISTORY_REPOSITORY]: GitHubRepositoryTrendHistoryRepositoryPort;
   readonly [INGESTION_SCAN_ATTEMPT_REPOSITORY]: ScanAttemptRepositoryPort;

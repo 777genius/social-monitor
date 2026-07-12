@@ -1,4 +1,8 @@
 import { withPrismaWriteRetry } from "@social-monitor/platform-persistence";
+import {
+  sourceItemProviderContentHash,
+  type SourceItemProps,
+} from "../../../domain";
 import type {
   SavedSourceItemRef,
   SourceItemRepositoryPort,
@@ -6,7 +10,9 @@ import type {
   SaveSourceItemsResult,
 } from "../../../ports";
 import type { PrismaIngestionClient } from "./prisma-ingestion-client";
-import { contentHashForSourceItem } from "./prisma-ingestion-records";
+import {
+  contentHashForSourceItem,
+} from "./prisma-ingestion-records";
 import type { PrismaSourceItemRecord } from "./prisma-ingestion-records";
 
 export class PrismaSourceItemRepository implements SourceItemRepositoryPort {
@@ -16,6 +22,7 @@ export class PrismaSourceItemRepository implements SourceItemRepositoryPort {
     command: SaveSourceItemsCommand,
   ): Promise<SaveSourceItemsResult> {
     let inserted = 0;
+    let contentUpdated = 0;
     let skippedDuplicates = 0;
     const savedItems: SavedSourceItemRef[] = [];
     const existingByProviderItemId =
@@ -24,13 +31,30 @@ export class PrismaSourceItemRepository implements SourceItemRepositoryPort {
     for (const item of command.items) {
       const snapshot = item.toSnapshot();
       const existing = existingByProviderItemId.get(snapshot.externalId);
+      const providerContentHash = sourceItemProviderContentHash({
+        providerKey: command.providerKey,
+        snapshot,
+      });
 
       if (existing !== undefined) {
-        skippedDuplicates += 1;
+        const update = await this.updateExisting({
+          existing,
+          snapshot,
+          providerContentHash,
+        });
+        existingByProviderItemId.set(snapshot.externalId, update.record);
+        if (update.contentChanged) {
+          contentUpdated += 1;
+        } else {
+          skippedDuplicates += 1;
+        }
         savedItems.push({
           externalId: snapshot.externalId,
           sourceItemId: existing.id,
           inserted: false,
+          mutationKind: update.contentChanged
+            ? "content_updated"
+            : "unchanged",
         });
         continue;
       }
@@ -51,7 +75,10 @@ export class PrismaSourceItemRepository implements SourceItemRepositoryPort {
               authorHandle: snapshot.authorHandle ?? null,
               publishedAt: snapshot.publishedAt,
               contentHash: contentHashForSourceItem(snapshot),
+              providerContentHash,
               observedAt: snapshot.ingestedAt,
+              lastObservedAt: snapshot.ingestedAt,
+              contentUpdatedAt: snapshot.ingestedAt,
               metadata: snapshot.metadata ?? {},
             },
           }),
@@ -61,6 +88,7 @@ export class PrismaSourceItemRepository implements SourceItemRepositoryPort {
           externalId: snapshot.externalId,
           sourceItemId: created.id,
           inserted: true,
+          mutationKind: "inserted",
         });
         existingByProviderItemId.set(snapshot.externalId, created);
       } catch (error) {
@@ -78,17 +106,70 @@ export class PrismaSourceItemRepository implements SourceItemRepositoryPort {
           throw error;
         }
 
-        skippedDuplicates += 1;
+        const update = await this.updateExisting({
+          existing: duplicate,
+          snapshot,
+          providerContentHash,
+        });
+        if (update.contentChanged) {
+          contentUpdated += 1;
+        } else {
+          skippedDuplicates += 1;
+        }
         savedItems.push({
           externalId: snapshot.externalId,
           sourceItemId: duplicate.id,
           inserted: false,
+          mutationKind: update.contentChanged
+            ? "content_updated"
+            : "unchanged",
         });
-        existingByProviderItemId.set(snapshot.externalId, duplicate);
+        existingByProviderItemId.set(snapshot.externalId, update.record);
       }
     }
 
-    return { inserted, skippedDuplicates, items: savedItems };
+    return { inserted, contentUpdated, skippedDuplicates, items: savedItems };
+  }
+
+  private async updateExisting(params: {
+    readonly existing: PrismaSourceItemRecord;
+    readonly snapshot: SourceItemProps;
+    readonly providerContentHash: string;
+  }): Promise<{
+    readonly record: PrismaSourceItemRecord;
+    readonly contentChanged: boolean;
+  }> {
+    const updateSourceItem = this.prisma.sourceItem.update;
+    if (updateSourceItem === undefined) {
+      throw new Error("Source item repository requires scoped update support");
+    }
+    const contentChanged =
+      params.existing.providerContentHash === null ||
+      params.existing.providerContentHash !== params.providerContentHash;
+    const record = await withPrismaWriteRetry(() =>
+      updateSourceItem({
+        where: { id: params.existing.id },
+        data: contentChanged
+          ? {
+              sourceBindingId: params.snapshot.sourceBindingId,
+              canonicalUrl: params.snapshot.canonicalUrl,
+              title: params.snapshot.title,
+              body: params.snapshot.body,
+              authorHandle: params.snapshot.authorHandle ?? null,
+              publishedAt: params.snapshot.publishedAt,
+              contentHash: contentHashForSourceItem(params.snapshot),
+              providerContentHash: params.providerContentHash,
+              lastObservedAt: params.snapshot.ingestedAt,
+              contentUpdatedAt: params.snapshot.ingestedAt,
+              metadata: params.snapshot.metadata ?? {},
+            }
+          : {
+              providerContentHash: params.providerContentHash,
+              lastObservedAt: params.snapshot.ingestedAt,
+            },
+      }),
+    );
+    return { record, contentChanged };
   }
 
   private async findExistingSourceItems(

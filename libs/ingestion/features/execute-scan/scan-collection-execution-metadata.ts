@@ -17,6 +17,10 @@ export const successfulScanCollectionExecutionMetadata = (params: {
   readonly sourceQuery: SourceQuery;
   readonly telemetry: SourceFetchTelemetry | undefined;
   readonly insertedItemCount: number;
+  readonly contentUpdatedItemCount?: number;
+  readonly engagementMetricChangedItemCount?: number;
+  readonly engagementObservationItemCount?: number;
+  readonly engagementRetentionPurgeDeferred?: boolean;
   readonly storageDuplicateItemCount: number;
   readonly candidateMemorySuppressedItemCount?: number;
 }): JsonObject | undefined => {
@@ -32,6 +36,13 @@ export const successfulScanCollectionExecutionMetadata = (params: {
       telemetry === undefined
         ? {
             insertedItemCount: params.insertedItemCount,
+            contentUpdatedItemCount: params.contentUpdatedItemCount ?? 0,
+            engagementMetricChangedItemCount:
+              params.engagementMetricChangedItemCount ?? 0,
+            engagementObservationItemCount:
+              params.engagementObservationItemCount ?? 0,
+            engagementRetentionPurgeDeferred:
+              params.engagementRetentionPurgeDeferred ?? false,
             storageDuplicateItemCount: params.storageDuplicateItemCount,
             candidateMemorySuppressedItemCount:
               params.candidateMemorySuppressedItemCount ?? 0,
@@ -41,6 +52,13 @@ export const successfulScanCollectionExecutionMetadata = (params: {
             collectedItemCount: telemetry.collectedItemCount,
             acceptedItemCount: telemetry.acceptedItemCount,
             insertedItemCount: params.insertedItemCount,
+            contentUpdatedItemCount: params.contentUpdatedItemCount ?? 0,
+            engagementMetricChangedItemCount:
+              params.engagementMetricChangedItemCount ?? 0,
+            engagementObservationItemCount:
+              params.engagementObservationItemCount ?? 0,
+            engagementRetentionPurgeDeferred:
+              params.engagementRetentionPurgeDeferred ?? false,
             outsideWindowItemCount: telemetry.outsideWindowItemCount,
             paginationDuplicateItemCount:
               telemetry.paginationDuplicateItemCount,

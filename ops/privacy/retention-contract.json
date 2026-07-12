@@ -164,6 +164,36 @@
       "purgeTrigger": "source_item_age_expired_or_topic_deleted"
     },
     {
+      "table": "source_item_engagement_snapshots",
+      "dataClass": "third_party_public_engagement_snapshot",
+      "owner": "ingestion-owner",
+      "retentionDays": 180,
+      "deleteMode": "hard_delete_after_source_item_retention",
+      "exportable": false,
+      "legalHoldAware": true,
+      "purgeTrigger": "source_item_deleted_or_workspace_offboarding_completed"
+    },
+    {
+      "table": "source_item_engagement_observations",
+      "dataClass": "third_party_public_engagement_history",
+      "owner": "ingestion-owner",
+      "retentionDays": 30,
+      "deleteMode": "roll_up_then_hard_delete_after_retention",
+      "exportable": false,
+      "legalHoldAware": false,
+      "purgeTrigger": "verified_daily_rollup_exists_and_observation_retention_expired"
+    },
+    {
+      "table": "source_item_engagement_daily_rollups",
+      "dataClass": "derived_engagement_analytics",
+      "owner": "ingestion-owner",
+      "retentionDays": 365,
+      "deleteMode": "hard_delete_after_analytics_retention",
+      "exportable": false,
+      "legalHoldAware": false,
+      "purgeTrigger": "rollup_retention_expired_or_workspace_offboarding_completed"
+    },
+    {
       "table": "source_candidate_memory",
       "dataClass": "derived_ingestion_deduplication_signal",
       "owner": "ingestion-owner",

@@ -14,6 +14,7 @@ describe("InMemorySourceCandidateMemoryRepository", () => {
         {
           externalId: "x-twitter:1",
           fingerprint: "fingerprint-1",
+          contentFingerprint: "content-1",
           decision: "rejected",
           reasonCode: "ranked_out",
           expiresAt: new Date("2026-07-11T06:00:00.000Z"),
@@ -26,8 +27,16 @@ describe("InMemorySourceCandidateMemoryRepository", () => {
         ...scope,
         screenedAt: new Date("2026-07-11T01:00:00.000Z"),
         candidates: [
-          { externalId: "x-twitter:1", fingerprint: "fingerprint-1" },
-          { externalId: "x-twitter:2", fingerprint: "fingerprint-2" },
+          {
+            externalId: "x-twitter:1",
+            fingerprint: "fingerprint-1",
+            contentFingerprint: "content-1",
+          },
+          {
+            externalId: "x-twitter:2",
+            fingerprint: "fingerprint-2",
+            contentFingerprint: "content-2",
+          },
         ],
       }),
     ).resolves.toMatchObject({
@@ -38,17 +47,33 @@ describe("InMemorySourceCandidateMemoryRepository", () => {
         ...scope,
         screenedAt: new Date("2026-07-11T06:00:00.000Z"),
         candidates: [
-          { externalId: "x-twitter:1", fingerprint: "fingerprint-1" },
+          {
+            externalId: "x-twitter:1",
+            fingerprint: "fingerprint-1",
+            contentFingerprint: "content-1",
+          },
         ],
       }),
-    ).resolves.toEqual({ suppressedExternalIds: [], activeRecords: [] });
+    ).resolves.toMatchObject({
+      suppressedExternalIds: [],
+      activeRecords: [],
+    });
     await expect(
       repository.screen({
         ...scope,
         screenedAt: new Date("2026-07-11T01:00:00.000Z"),
-        candidates: [{ externalId: "x-twitter:1", fingerprint: "changed" }],
+        candidates: [
+          {
+            externalId: "x-twitter:1",
+            fingerprint: "changed",
+            contentFingerprint: "changed",
+          },
+        ],
       }),
-    ).resolves.toEqual({ suppressedExternalIds: [], activeRecords: [] });
+    ).resolves.toMatchObject({
+      suppressedExternalIds: [],
+      activeRecords: [],
+    });
   });
 
   it("isolates tenants and refreshes records without losing first seen time", async () => {
@@ -59,6 +84,7 @@ describe("InMemorySourceCandidateMemoryRepository", () => {
     const candidate = {
       externalId: "x-twitter:1",
       fingerprint: "fingerprint-1",
+      contentFingerprint: "content-1",
       decision: "processed" as const,
       reasonCode: "already_processed" as const,
       expiresAt: new Date("2026-07-14T00:00:00.000Z"),
@@ -80,6 +106,9 @@ describe("InMemorySourceCandidateMemoryRepository", () => {
         firstSeenAt,
         lastSeenAt: refreshedAt,
         seenCount: 2,
+        contentFingerprint: "content-1",
+        engagementFingerprint: null,
+        schemaVersion: 2,
       }),
     ]);
     await expect(
@@ -89,7 +118,10 @@ describe("InMemorySourceCandidateMemoryRepository", () => {
         screenedAt: refreshedAt,
         candidates: [candidate],
       }),
-    ).resolves.toEqual({ suppressedExternalIds: [], activeRecords: [] });
+    ).resolves.toMatchObject({
+      suppressedExternalIds: [],
+      activeRecords: [],
+    });
   });
 });
 

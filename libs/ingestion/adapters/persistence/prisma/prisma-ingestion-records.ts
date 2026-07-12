@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-
 import {
   emptyJsonObjectAsUndefined,
   normalizeJsonObject,
@@ -13,6 +11,7 @@ import {
   type ScanAttemptStatus,
   SourceItem,
   type SourceItemProps,
+  sourceItemContentHash,
 } from "../../../domain";
 import type {
   FailedScanCommand,
@@ -34,7 +33,11 @@ export type PrismaSourceItemRecord = {
   readonly body: string;
   readonly authorHandle: string | null;
   readonly publishedAt: Date;
+  readonly contentHash: string;
+  readonly providerContentHash: string | null;
   readonly observedAt: Date;
+  readonly lastObservedAt: Date | null;
+  readonly contentUpdatedAt: Date | null;
   readonly createdAt: Date;
   readonly metadata: unknown;
 };
@@ -49,6 +52,8 @@ export type PrismaSourceCandidateMemoryRecord = {
   readonly providerItemId: string;
   readonly scopeFingerprint: string;
   readonly fingerprint: string;
+  readonly contentFingerprint: string | null;
+  readonly engagementFingerprint: string | null;
   readonly policyVersion: string;
   readonly decision: string;
   readonly reasonCode: string;
@@ -56,6 +61,7 @@ export type PrismaSourceCandidateMemoryRecord = {
   readonly firstSeenAt: Date;
   readonly lastSeenAt: Date;
   readonly seenCount: number;
+  readonly schemaVersion: number;
 };
 
 export type PrismaCursorCheckpointRecord = {
@@ -154,19 +160,7 @@ export const cursorFromPrisma = (
 };
 
 export const contentHashForSourceItem = (snapshot: SourceItemProps): string =>
-  createHash("sha256")
-    .update(
-      [
-        snapshot.sourceBindingId,
-        snapshot.externalId,
-        snapshot.canonicalUrl,
-        snapshot.title,
-        snapshot.body,
-        snapshot.authorHandle ?? "",
-        snapshot.publishedAt.toISOString(),
-      ].join("\u001f"),
-    )
-    .digest("hex");
+  sourceItemContentHash(snapshot);
 
 export const failedScanCommandFromPrisma = (
   record: PrismaScanFailureQueueEntryRecord,

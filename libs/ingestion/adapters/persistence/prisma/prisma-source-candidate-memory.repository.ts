@@ -39,18 +39,17 @@ export class PrismaSourceCandidateMemoryRepository implements SourceCandidateMem
         providerItemId: {
           in: command.candidates.map((candidate) => candidate.externalId),
         },
-        expiresAt: { gt: command.screenedAt },
       },
     });
     const candidateByExternalId = new Map(
       command.candidates.map((candidate) => [candidate.externalId, candidate]),
     );
-    const activeRecords = records.flatMap((record) => {
-      const candidate = candidateByExternalId.get(record.providerItemId);
+    const memoryRecords = records.map(sourceCandidateMemoryFromPrisma);
+    const activeRecords = memoryRecords.flatMap((memoryRecord) => {
+      const candidate = candidateByExternalId.get(memoryRecord.externalId);
       if (candidate === undefined) {
         return [];
       }
-      const memoryRecord = sourceCandidateMemoryFromPrisma(record);
 
       return sourceCandidateMemoryRecordIsActive({
         record: memoryRecord,
@@ -65,6 +64,7 @@ export class PrismaSourceCandidateMemoryRepository implements SourceCandidateMem
     return {
       suppressedExternalIds: activeRecords.map((record) => record.externalId),
       activeRecords,
+      records: memoryRecords,
     };
   }
 
@@ -107,23 +107,29 @@ export class PrismaSourceCandidateMemoryRepository implements SourceCandidateMem
           },
           update: {
             fingerprint: candidate.fingerprint,
+            contentFingerprint: candidate.contentFingerprint,
+            engagementFingerprint: candidate.engagementFingerprint ?? null,
             policyVersion: command.policyVersion,
             decision: candidate.decision,
             reasonCode: candidate.reasonCode,
             expiresAt: candidate.expiresAt,
             lastSeenAt: command.rememberedAt,
             seenCount: { increment: 1 },
+            schemaVersion: 2,
           },
           create: {
             id: this.ids.generate(),
             ...scopeKey,
             fingerprint: candidate.fingerprint,
+            contentFingerprint: candidate.contentFingerprint,
+            engagementFingerprint: candidate.engagementFingerprint ?? null,
             policyVersion: command.policyVersion,
             decision: candidate.decision,
             reasonCode: candidate.reasonCode,
             expiresAt: candidate.expiresAt,
             firstSeenAt: command.rememberedAt,
             lastSeenAt: command.rememberedAt,
+            schemaVersion: 2,
           },
         }),
       );
@@ -143,12 +149,15 @@ const sourceCandidateMemoryFromPrisma = (
   policyVersion: record.policyVersion,
   externalId: record.providerItemId,
   fingerprint: record.fingerprint,
+  contentFingerprint: record.contentFingerprint,
+  engagementFingerprint: record.engagementFingerprint,
   decision: readDecision(record.decision),
   reasonCode: readReasonCode(record.reasonCode),
   expiresAt: record.expiresAt,
   firstSeenAt: record.firstSeenAt,
   lastSeenAt: record.lastSeenAt,
   seenCount: record.seenCount,
+  schemaVersion: record.schemaVersion,
 });
 
 const readDecision = (value: string): SourceCandidateMemoryDecision => {

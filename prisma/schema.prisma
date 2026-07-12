@@ -127,6 +127,13 @@ enum ScanAttemptStatus {
   FAILED
 }
 
+enum EngagementObservationReason {
+  INITIAL
+  CADENCE
+  FINAL
+  LEGACY_BACKFILL
+}
+
 enum ApiKeyCredentialStatus {
   ACTIVE
   REVOKED
@@ -397,55 +404,167 @@ model CursorCheckpoint {
 }
 
 model SourceItem {
-  id              String     @id @db.Uuid
-  tenantId        String     @map("tenant_id") @db.Uuid
-  workspaceId     String     @map("workspace_id") @db.Uuid
-  sourceBindingId String     @map("source_binding_id") @db.Uuid
-  providerKey     String     @map("provider_key")
-  providerItemId  String     @map("provider_item_id")
-  canonicalUrl    String     @map("canonical_url")
-  title           String
-  body            String
-  authorHandle    String?    @map("author_handle")
-  publishedAt     DateTime   @map("published_at") @db.Timestamptz(6)
-  contentHash     String     @map("content_hash")
-  observedAt      DateTime   @map("observed_at") @db.Timestamptz(6)
-  rawPointer      String?    @map("raw_pointer")
-  metadata        Json
-  schemaVersion   Int        @default(1) @map("schema_version")
-  createdAt       DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
-  feedItems       FeedItem[]
+  id                     String                            @id @db.Uuid
+  tenantId               String                            @map("tenant_id") @db.Uuid
+  workspaceId            String                            @map("workspace_id") @db.Uuid
+  sourceBindingId        String                            @map("source_binding_id") @db.Uuid
+  providerKey            String                            @map("provider_key")
+  providerItemId         String                            @map("provider_item_id")
+  canonicalUrl           String                            @map("canonical_url")
+  title                  String
+  body                   String
+  authorHandle           String?                           @map("author_handle")
+  publishedAt            DateTime                          @map("published_at") @db.Timestamptz(6)
+  contentHash            String                            @map("content_hash")
+  providerContentHash    String?                           @map("provider_content_hash")
+  observedAt             DateTime                          @map("observed_at") @db.Timestamptz(6)
+  lastObservedAt         DateTime?                         @map("last_observed_at") @db.Timestamptz(6)
+  contentUpdatedAt       DateTime?                         @map("content_updated_at") @db.Timestamptz(6)
+  rawPointer             String?                           @map("raw_pointer")
+  metadata               Json
+  schemaVersion          Int                               @default(1) @map("schema_version")
+  createdAt              DateTime                          @default(now()) @map("created_at") @db.Timestamptz(6)
+  feedItems              FeedItem[]
+  engagementSnapshot     SourceItemEngagementSnapshot?
+  engagementObservations SourceItemEngagementObservation[]
+  engagementDailyRollups SourceItemEngagementDailyRollup[]
 
   @@unique([tenantId, workspaceId, providerKey, providerItemId], map: "source_items_tenant_workspace_provider_item_key")
+  @@unique([tenantId, workspaceId, id], map: "source_items_tenant_workspace_id_key")
   @@index([tenantId, workspaceId, sourceBindingId, observedAt])
   @@map("source_items")
 }
 
 model SourceCandidateMemory {
-  id               String   @id @db.Uuid
-  tenantId         String   @map("tenant_id") @db.Uuid
-  workspaceId      String   @map("workspace_id") @db.Uuid
-  interestId       String   @map("interest_id") @db.Uuid
-  sourceBindingId  String   @map("source_binding_id") @db.Uuid
-  providerKey      String   @map("provider_key")
-  providerItemId   String   @map("provider_item_id")
-  scopeFingerprint String   @map("scope_fingerprint")
-  fingerprint      String   @map("fingerprint")
-  policyVersion    String   @map("policy_version")
-  decision         String
-  reasonCode       String   @map("reason_code")
-  expiresAt        DateTime @map("expires_at") @db.Timestamptz(6)
-  firstSeenAt      DateTime @map("first_seen_at") @db.Timestamptz(6)
-  lastSeenAt       DateTime @map("last_seen_at") @db.Timestamptz(6)
-  seenCount        Int      @default(1) @map("seen_count")
-  schemaVersion    Int      @default(1) @map("schema_version")
-  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id                    String   @id @db.Uuid
+  tenantId              String   @map("tenant_id") @db.Uuid
+  workspaceId           String   @map("workspace_id") @db.Uuid
+  interestId            String   @map("interest_id") @db.Uuid
+  sourceBindingId       String   @map("source_binding_id") @db.Uuid
+  providerKey           String   @map("provider_key")
+  providerItemId        String   @map("provider_item_id")
+  scopeFingerprint      String   @map("scope_fingerprint")
+  fingerprint           String   @map("fingerprint")
+  contentFingerprint    String?  @map("content_fingerprint")
+  engagementFingerprint String?  @map("engagement_fingerprint")
+  policyVersion         String   @map("policy_version")
+  decision              String
+  reasonCode            String   @map("reason_code")
+  expiresAt             DateTime @map("expires_at") @db.Timestamptz(6)
+  firstSeenAt           DateTime @map("first_seen_at") @db.Timestamptz(6)
+  lastSeenAt            DateTime @map("last_seen_at") @db.Timestamptz(6)
+  seenCount             Int      @default(1) @map("seen_count")
+  schemaVersion         Int      @default(1) @map("schema_version")
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@unique([tenantId, workspaceId, interestId, sourceBindingId, providerKey, scopeFingerprint, providerItemId], map: "source_candidate_memory_scope_item_key")
   @@index([tenantId, workspaceId, sourceBindingId, providerKey, scopeFingerprint, expiresAt], map: "source_candidate_memory_active_lookup_idx")
   @@index([expiresAt], map: "source_candidate_memory_expiry_idx")
   @@map("source_candidate_memory")
+}
+
+model SourceItemEngagementSnapshot {
+  tenantId             String     @map("tenant_id") @db.Uuid
+  workspaceId          String     @map("workspace_id") @db.Uuid
+  sourceItemId         String     @map("source_item_id") @db.Uuid
+  providerKey          String     @map("provider_key")
+  score                BigInt?
+  comments             BigInt?
+  likes                BigInt?
+  reposts              BigInt?
+  replies              BigInt?
+  quotes               BigInt?
+  bookmarks            BigInt?
+  impressions          BigInt?
+  views                BigInt?
+  points               BigInt?
+  stars                BigInt?
+  forks                BigInt?
+  starsGained          BigInt?    @map("stars_gained")
+  providerRank         Int?       @map("provider_rank")
+  upvoteRatioBps       Int?       @map("upvote_ratio_bps")
+  metricsHash          String     @map("metrics_hash")
+  firstObservedAt      DateTime   @map("first_observed_at") @db.Timestamptz(6)
+  lastObservedAt       DateTime   @map("last_observed_at") @db.Timestamptz(6)
+  lastChangedAt        DateTime   @map("last_changed_at") @db.Timestamptz(6)
+  lastObservationAt    DateTime   @map("last_observation_at") @db.Timestamptz(6)
+  nextObservationDueAt DateTime   @map("next_observation_due_at") @db.Timestamptz(6)
+  schemaVersion        Int        @default(1) @map("schema_version")
+  createdAt            DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+  sourceItem           SourceItem @relation(fields: [tenantId, workspaceId, sourceItemId], references: [tenantId, workspaceId, id], onDelete: Cascade, map: "source_item_engagement_snapshots_source_item_scope_fkey")
+
+  @@id([tenantId, workspaceId, sourceItemId], map: "source_item_engagement_snapshots_pkey")
+  @@index([tenantId, workspaceId, providerKey, lastObservedAt(sort: Desc)], map: "source_item_engagement_snapshots_provider_observed_idx")
+  @@index([tenantId, workspaceId, nextObservationDueAt], map: "source_item_engagement_snapshots_due_idx")
+  @@map("source_item_engagement_snapshots")
+}
+
+model SourceItemEngagementObservation {
+  id              String                      @id @db.Uuid
+  tenantId        String                      @map("tenant_id") @db.Uuid
+  workspaceId     String                      @map("workspace_id") @db.Uuid
+  sourceItemId    String                      @map("source_item_id") @db.Uuid
+  providerKey     String                      @map("provider_key")
+  sourceBindingId String?                     @map("source_binding_id") @db.Uuid
+  scanJobId       String?                     @map("scan_job_id") @db.Uuid
+  score           BigInt?
+  comments        BigInt?
+  likes           BigInt?
+  reposts         BigInt?
+  replies         BigInt?
+  quotes          BigInt?
+  bookmarks       BigInt?
+  impressions     BigInt?
+  views           BigInt?
+  points          BigInt?
+  stars           BigInt?
+  forks           BigInt?
+  starsGained     BigInt?                     @map("stars_gained")
+  providerRank    Int?                        @map("provider_rank")
+  upvoteRatioBps  Int?                        @map("upvote_ratio_bps")
+  metricsHash     String                      @map("metrics_hash")
+  observedAt      DateTime                    @map("observed_at") @db.Timestamptz(6)
+  bucketStartedAt DateTime                    @map("bucket_started_at") @db.Timestamptz(6)
+  reason          EngagementObservationReason
+  metricsChanged  Boolean                     @map("metrics_changed")
+  hasRegression   Boolean                     @default(false) @map("has_regression")
+  schemaVersion   Int                         @default(1) @map("schema_version")
+  createdAt       DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
+  sourceItem      SourceItem                  @relation(fields: [tenantId, workspaceId, sourceItemId], references: [tenantId, workspaceId, id], onDelete: Cascade, map: "source_item_engagement_observations_source_item_scope_fkey")
+
+  @@unique([tenantId, workspaceId, sourceItemId, bucketStartedAt], map: "source_item_engagement_observations_bucket_key")
+  @@index([tenantId, workspaceId, sourceItemId, observedAt(sort: Desc)], map: "source_item_engagement_observations_item_observed_idx")
+  @@index([tenantId, workspaceId, providerKey, observedAt(sort: Desc)], map: "source_item_engagement_observations_provider_observed_idx")
+  @@index([tenantId, workspaceId, observedAt(sort: Desc)], map: "source_item_engagement_observations_retention_idx")
+  @@map("source_item_engagement_observations")
+}
+
+model SourceItemEngagementDailyRollup {
+  tenantId           String     @map("tenant_id") @db.Uuid
+  workspaceId        String     @map("workspace_id") @db.Uuid
+  sourceItemId       String     @map("source_item_id") @db.Uuid
+  providerKey        String     @map("provider_key")
+  day                DateTime   @db.Date
+  sampleCount        Int        @map("sample_count")
+  changedSampleCount Int        @map("changed_sample_count")
+  regressionCount    Int        @map("regression_count")
+  firstObservedAt    DateTime   @map("first_observed_at") @db.Timestamptz(6)
+  lastObservedAt     DateTime   @map("last_observed_at") @db.Timestamptz(6)
+  compactedThroughAt DateTime   @map("compacted_through_at") @db.Timestamptz(6)
+  openingMetrics     Json       @map("opening_metrics")
+  closingMetrics     Json       @map("closing_metrics")
+  peakMetrics        Json       @map("peak_metrics")
+  schemaVersion      Int        @default(1) @map("schema_version")
+  createdAt          DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+  sourceItem         SourceItem @relation(fields: [tenantId, workspaceId, sourceItemId], references: [tenantId, workspaceId, id], onDelete: Cascade, map: "source_item_engagement_daily_rollups_source_item_scope_fkey")
+
+  @@id([tenantId, workspaceId, sourceItemId, day], map: "source_item_engagement_daily_rollups_pkey")
+  @@index([tenantId, workspaceId, providerKey, day(sort: Desc)], map: "source_item_engagement_daily_rollups_provider_day_idx")
+  @@index([tenantId, workspaceId, day(sort: Desc)], map: "source_item_engagement_daily_rollups_retention_idx")
+  @@map("source_item_engagement_daily_rollups")
 }
 
 model ScanFailureQueueEntry {

@@ -17,6 +17,12 @@ export class InMemorySourceCandidateMemoryRepository implements SourceCandidateM
   async screen(
     command: ScreenSourceCandidatesCommand,
   ): Promise<ScreenSourceCandidatesResult> {
+    const records = command.candidates.flatMap((candidate) => {
+      const record = this.recordsByKey.get(
+        memoryKey(command, candidate.externalId),
+      );
+      return record === undefined ? [] : [record];
+    });
     const activeRecords = command.candidates.flatMap((candidate) => {
       const record = this.recordsByKey.get(
         memoryKey(command, candidate.externalId),
@@ -36,6 +42,7 @@ export class InMemorySourceCandidateMemoryRepository implements SourceCandidateM
     return {
       suppressedExternalIds: activeRecords.map((record) => record.externalId),
       activeRecords,
+      records,
     };
   }
 
@@ -53,12 +60,15 @@ export class InMemorySourceCandidateMemoryRepository implements SourceCandidateM
         policyVersion: command.policyVersion,
         externalId: candidate.externalId,
         fingerprint: candidate.fingerprint,
+        contentFingerprint: candidate.contentFingerprint,
+        engagementFingerprint: candidate.engagementFingerprint ?? null,
         decision: candidate.decision,
         reasonCode: candidate.reasonCode,
         expiresAt: candidate.expiresAt,
         firstSeenAt: existing?.firstSeenAt ?? command.rememberedAt,
         lastSeenAt: command.rememberedAt,
         seenCount: (existing?.seenCount ?? 0) + 1,
+        schemaVersion: 2,
       });
     }
   }

@@ -8,5 +8,8 @@ export * from "./policies/source-query-plan-eval-policy";
 export * from "./policies/source-ranking-eval-policy";
 export * from "./policies/source-item-ranking-policy";
 export * from "./policies/source-candidate-memory-policy";
+export * from "./value-objects/source-engagement-metrics";
+export * from "./value-objects/source-item-content-fingerprint";
+export * from "./policies/source-engagement-observation-policy";
 export * from "./value-objects/github-repository-trend";
 export * from "./value-objects/github-trending-page";

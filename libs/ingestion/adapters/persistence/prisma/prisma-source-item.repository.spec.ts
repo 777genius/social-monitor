@@ -25,9 +25,25 @@ describe("PrismaSourceItemRepository", () => {
       },
       create: async (args) => {
         createCalls += 1;
-        const created = record(args.data.providerItemId, args.data.id);
+        const created: PrismaSourceItemRecord = {
+          ...args.data,
+          authorHandle: args.data.authorHandle ?? null,
+          createdAt: new Date("2026-07-11T00:00:00.000Z"),
+        };
         records.set(created.providerItemId, created);
         return created;
+      },
+      update: async (args) => {
+        const existingRecord = records.get(
+          [...records.values()].find((entry) => entry.id === args.where.id)
+            ?.providerItemId ?? "",
+        );
+        if (existingRecord === undefined) {
+          throw new Error("missing source record");
+        }
+        const updated = { ...existingRecord, ...args.data };
+        records.set(updated.providerItemId, updated);
+        return updated;
       },
     };
     const repository = new PrismaSourceItemRepository({
@@ -45,7 +61,11 @@ describe("PrismaSourceItemRepository", () => {
       ],
     });
 
-    expect(result).toMatchObject({ inserted: 1, skippedDuplicates: 2 });
+    expect(result).toMatchObject({
+      inserted: 1,
+      contentUpdated: 1,
+      skippedDuplicates: 1,
+    });
     expect(findManyCalls).toBe(1);
     expect(findFirstCalls).toBe(0);
     expect(createCalls).toBe(1);
@@ -81,7 +101,11 @@ const record = (
   body: `Body ${providerItemId}`,
   authorHandle: "builder",
   publishedAt: new Date("2026-07-10T12:00:00.000Z"),
+  contentHash: "legacy-content-hash",
+  providerContentHash: null,
   observedAt: new Date("2026-07-11T00:00:00.000Z"),
+  lastObservedAt: null,
+  contentUpdatedAt: null,
   createdAt: new Date("2026-07-11T00:00:00.000Z"),
   metadata: {},
 });
