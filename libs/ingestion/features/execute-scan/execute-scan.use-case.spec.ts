@@ -687,12 +687,12 @@ describe("ExecuteScanUseCase", () => {
         fetched: 2,
         inserted: 0,
         skippedDuplicates: 2,
-        projected: 0,
+        projected: 2,
         warnings: [],
       },
     });
     expect(repository.all()).toHaveLength(2);
-    expect(projection.commands).toHaveLength(1);
+    expect(projection.commands).toHaveLength(2);
   });
 
   it("enriches fetched source items before persistence and feed projection", async () => {

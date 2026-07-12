@@ -45,13 +45,17 @@ export const readAdaptivePaginationPolicy = (params: {
   readonly config: SourceRuntimeConfig | undefined;
   readonly cursorModel: SourceCursorModel;
   readonly firstPageLimit: number;
+  readonly providerManagesPagination?: boolean;
 }): AdaptivePaginationReadResult => {
   const raw = readRecord(params.config?.adaptivePagination);
   if (raw === undefined || readBoolean(raw.enabled, false) !== true) {
     return { enabled: false };
   }
 
-  if (!supportedCursorModels.includes(params.cursorModel)) {
+  if (
+    !supportedCursorModels.includes(params.cursorModel) &&
+    params.providerManagesPagination !== true
+  ) {
     return {
       enabled: false,
       warning: `adaptive_pagination.disabled:unsupported_cursor_model:${params.cursorModel}`,
