@@ -21,6 +21,10 @@ export const normalizeTopStories = (
   input: ReaderSummaryModelInput,
   citationMap: readonly ReaderSummaryCitation[],
 ): readonly ReaderSummaryTopStory[] => {
+  if (input.coveragePlan.lead === undefined) {
+    return [];
+  }
+
   const knownClusterIds = new Set(
     input.evidence.clusters.map((cluster) => cluster.id),
   );
@@ -41,7 +45,10 @@ export const normalizeTopStories = (
         return [];
       }
 
-      const citationIds = knownStringSubset(story.citationIds, knownCitationIds);
+      const citationIds = knownStringSubset(
+        story.citationIds,
+        knownCitationIds,
+      );
       if (citationIds.length === 0) {
         return [];
       }
@@ -65,11 +72,18 @@ export const normalizeTopStories = (
       ];
     });
 
-  return topUpTopStories(
-    repaired.length === 0 ? fallbackTopStories(input, citationMap) : repaired,
+  const normalized =
+    repaired.length === 0 ? fallbackTopStories(input, citationMap) : repaired;
+  const coverageComplete = ensureCoveragePlanStories(
+    normalized,
     input,
     citationMap,
-  ).slice(0, input.policy.maxStories);
+  );
+
+  return topUpTopStories(coverageComplete, input, citationMap).slice(
+    0,
+    input.policy.maxStories,
+  );
 };
 
 export const clusterIdFromCitations = (
@@ -108,9 +122,18 @@ const normalizeTopStory = (
     optionalString(value.summary) ??
     optionalString(value.description) ??
     "Selected evidence supports this story.",
-  interestIds: normalizeStringArrayLike(value.interestIds, "top story interests"),
-  providerKeys: normalizeStringArrayLike(value.providerKeys, "top story providers"),
-  citationIds: normalizeStringArrayLike(value.citationIds, "top story citations"),
+  interestIds: normalizeStringArrayLike(
+    value.interestIds,
+    "top story interests",
+  ),
+  providerKeys: normalizeStringArrayLike(
+    value.providerKeys,
+    "top story providers",
+  ),
+  citationIds: normalizeStringArrayLike(
+    value.citationIds,
+    "top story citations",
+  ),
 });
 
 const normalizeStringArrayLike = (
@@ -214,4 +237,41 @@ const topUpTopStories = (
   );
 
   return [...stories, ...topUps].slice(0, targetCount);
+};
+
+const ensureCoveragePlanStories = (
+  stories: readonly ReaderSummaryTopStory[],
+  input: ReaderSummaryModelInput,
+  citationMap: readonly ReaderSummaryCitation[],
+): readonly ReaderSummaryTopStory[] => {
+  const plannedClusterIds = [
+    input.coveragePlan.lead?.clusterId,
+    ...input.coveragePlan.secondary.map((item) => item.clusterId),
+  ].filter((clusterId): clusterId is string => clusterId !== undefined);
+  if (plannedClusterIds.length === 0) {
+    return stories;
+  }
+
+  const storyByClusterId = new Map(
+    stories.map((story) => [story.storyClusterId, story] as const),
+  );
+  const fallbackByClusterId = new Map(
+    fallbackTopStories(input, citationMap).map(
+      (story) => [story.storyClusterId, story] as const,
+    ),
+  );
+  const plannedStories = plannedClusterIds.flatMap((clusterId) => {
+    const story =
+      storyByClusterId.get(clusterId) ?? fallbackByClusterId.get(clusterId);
+
+    return story === undefined ? [] : [story];
+  });
+  const plannedSet = new Set(
+    plannedStories.map((story) => story.storyClusterId),
+  );
+
+  return [
+    ...plannedStories,
+    ...stories.filter((story) => !plannedSet.has(story.storyClusterId)),
+  ];
 };

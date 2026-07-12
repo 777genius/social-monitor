@@ -3,8 +3,8 @@
   "artifactFormat": "reader-summary-multi-day-quality-gold-v1",
   "generationProfile": {
     "modelVersion": "codex:gpt-5.5:xhigh",
-    "promptVersion": "reader_summary.prompt.agent_runtime.v9",
-    "rankingPolicyVersion": "story_ranking_v7"
+    "promptVersion": "reader_summary.prompt.agent_runtime.v10",
+    "rankingPolicyVersion": "story_ranking_v8"
   },
   "thresholds": {
     "minimumDayCount": 5,

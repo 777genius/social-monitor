@@ -41,6 +41,10 @@ export const mapRankedItem = (
     canonicalUrl: item.canonicalUrl,
   }),
   canonicalUrl: item.canonicalUrl,
+  sourceOriginUrl: sourceOriginUrlFromProviderMetadata({
+    providerKey: item.providerKey,
+    providerMetadata: item.providerMetadata,
+  }),
   title: item.title,
   bodyPreview: item.bodyPreview,
   authorHandle: item.authorHandle,
@@ -76,6 +80,29 @@ export const providerMetricFacts = (params: {
     providerMetricLabels: formatFeedProviderMetrics(metrics),
     providerMetricSummary: summarizeFeedProviderMetrics(metrics),
   };
+};
+
+export const sourceOriginUrlFromProviderMetadata = (params: {
+  readonly providerKey: string;
+  readonly providerMetadata?: JsonObject;
+}): string | undefined => {
+  const providerKey = normalizeProviderKey(params.providerKey);
+  if (providerKey !== "hacker-news" && providerKey !== "hn") {
+    return undefined;
+  }
+  const externalUrl = params.providerMetadata?.externalUrl;
+  if (typeof externalUrl !== "string") {
+    return undefined;
+  }
+
+  try {
+    const url = new URL(externalUrl);
+    return url.protocol === "http:" || url.protocol === "https:"
+      ? url.toString()
+      : undefined;
+  } catch {
+    return undefined;
+  }
 };
 
 export const readerActionKindForProvider = (
@@ -338,6 +365,10 @@ export const mapSupplementFeedItem = (params: {
         safety.sanitizedCanonicalUrl ?? params.snapshot.canonicalUrl,
     }),
     canonicalUrl: safety.sanitizedCanonicalUrl ?? params.snapshot.canonicalUrl,
+    sourceOriginUrl: sourceOriginUrlFromProviderMetadata({
+      providerKey: params.snapshot.providerKey,
+      providerMetadata: params.snapshot.providerMetadata,
+    }),
     title: safety.sanitizedTitle,
     bodyPreview: safety.sanitizedBodyPreview,
     authorHandle: params.snapshot.authorHandle,

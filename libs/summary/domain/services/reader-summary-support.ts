@@ -7,7 +7,6 @@ import type {
   StoryCluster,
   SummaryEvidenceItem,
 } from "../value-objects/summary-evidence-item";
-import { readerSummaryProviderIdentity } from "../value-objects/reader-summary-provider-identity";
 import {
   clampConfidenceScore,
   normalizeSignalScore,
@@ -23,106 +22,11 @@ import {
 
 export { plural } from "../value-objects/summary-text";
 
-export const buildMatchedRules = (
-  evidence: readonly SummaryEvidenceItem[],
-  interestIds: readonly string[],
-  providerKey: string,
-): readonly string[] => {
-  const explicitRules = evidence.flatMap((item) => item.matchedRules ?? []);
-  const fallbackRules = [
-    ...interestIds.map((interestId) => `interest:${interestId}`),
-    ...evidence.map((item) => `source-binding:${item.sourceBindingId}`),
-    `provider:${providerKey}`,
-  ];
-
-  return compactUnique([...explicitRules, ...fallbackRules]);
-};
-
-export const buildWhyNow = (
-  cluster: StoryCluster | undefined,
-  providerKeys: readonly string[],
-  evidence: readonly SummaryEvidenceItem[],
-): string => {
-  const evidenceIdentities = evidence.map((item) =>
-    readerSummaryProviderIdentity(item),
-  );
-  const normalizedPrimaryProviderKeys = providerKeys.map((providerKey) => {
-    const matchingProviderKeys = uniqueNonEmpty(
-      evidence.flatMap((item, index) =>
-        item.providerKey === providerKey
-          ? [evidenceIdentities[index]?.providerKey ?? providerKey]
-          : [],
-      ),
-    );
-
-    return matchingProviderKeys.length === 1
-      ? (matchingProviderKeys[0] ?? providerKey)
-      : providerKey;
-  });
-  const clusterProviderKeys = multiProviderClusterKeys(cluster);
-  const providerNamesByKey = new Map(
-    evidenceIdentities.map(
-      (identity) => [identity.providerKey, identity.providerName] as const,
-    ),
-  );
-  const providers = uniqueNonEmpty(
-    evidenceIdentities.length > 0 || clusterProviderKeys.length > 0
-      ? [
-          ...normalizedPrimaryProviderKeys,
-          ...evidenceIdentities.map((identity) => identity.providerKey),
-          ...clusterProviderKeys,
-        ]
-      : [...(cluster?.providerKeys ?? []), ...providerKeys],
-  ).map((providerKey) => providerNamesByKey.get(providerKey) ?? providerKey);
-  const duplicateCount = cluster?.duplicateFeedItemIds.length ?? 0;
-  const interestCount =
-    cluster?.interestIds.length ??
-    uniqueNonEmpty(evidence.map((item) => item.interestId)).length;
-  const coverage =
-    providers.length > 1
-      ? `Current summary window has cross-source coverage from ${providers.slice(0, 3).join(", ")}`
-      : `Current summary window has ${providers[0] ?? "source"} coverage`;
-  const duplicateText =
-    duplicateCount === 0
-      ? ""
-      : ` and linked ${duplicateCount} related item${plural(duplicateCount)}`;
-  const interestText =
-    interestCount > 1 ? ` across ${interestCount} interests` : "";
-
-  return `${coverage}${interestText}${duplicateText}.`;
-};
-
 export { normalizeSignalScore };
-
-export const confirmedProviderKeys = (params: {
-  readonly cluster: StoryCluster | undefined;
-  readonly evidence: readonly SummaryEvidenceItem[];
-  readonly providerKey: string;
-}): readonly string[] => {
-  const evidenceProviderKeys = params.evidence.map(
-    (item) => readerSummaryProviderIdentity(item).providerKey,
-  );
-  const clusterProviderKeys = multiProviderClusterKeys(params.cluster);
-  const providerKeys = uniqueNonEmpty(
-    evidenceProviderKeys.length > 0 || clusterProviderKeys.length > 0
-      ? [...evidenceProviderKeys, ...clusterProviderKeys]
-      : [params.providerKey],
-  );
-
-  return providerKeys.length > 0 ? providerKeys : [params.providerKey];
-};
-
-const multiProviderClusterKeys = (
-  cluster: StoryCluster | undefined,
-): readonly string[] => {
-  const providerKeys = compactUnique(cluster?.providerKeys ?? []);
-
-  return providerKeys.length > 1 ? providerKeys : [];
-};
 
 export const readerItemConfidence = (params: {
   readonly cluster: StoryCluster | undefined;
-  readonly evidenceCount: number;
+  readonly independentEvidenceCount: number;
   readonly confirmedProviderCount: number;
   readonly signalScore: number;
   readonly firstPartyOfficial?: boolean;
@@ -131,7 +35,7 @@ export const readerItemConfidence = (params: {
   const crossProviderSupport = breakdown?.crossProviderSupport ?? 0;
   const providerDiversityBoost = breakdown?.providerDiversityBoost ?? 0;
   const sameProviderSupport = breakdown?.sameProviderSupport ?? 0;
-  const evidenceSupport = params.evidenceCount > 1 ? 0.08 : 0;
+  const evidenceSupport = params.independentEvidenceCount > 1 ? 0.08 : 0;
   const firstPartySupport = params.firstPartyOfficial === true ? 0.12 : 0;
   const normalizedSignal = Math.min(params.signalScore / 4, 0.42);
   const crossProviderFallbackSupport =
@@ -165,7 +69,7 @@ export const readerItemConfidence = (params: {
           rawScore,
           params.firstPartyOfficial === true
             ? 0.62
-            : params.evidenceCount > 1
+            : params.independentEvidenceCount > 1
               ? 0.55
               : 0.42,
         );
@@ -184,8 +88,8 @@ export const readerItemConfidence = (params: {
           : `${params.confirmedProviderCount} monitored source groups surface this story, but repetition across platforms does not independently verify every claim.`
       : params.firstPartyOfficial === true
         ? "This is a first-party official source for the announcement; product performance and comparative claims remain source-reported until independently verified."
-        : params.evidenceCount > 1
-          ? `${params.evidenceCount} cited items support this story, but they are not independent cross-source confirmation.`
+        : params.independentEvidenceCount > 1
+          ? `${params.independentEvidenceCount} independent cited items support this story, but they are not cross-provider confirmation.`
           : "This story has not been independently confirmed across monitored source groups yet.";
 
   return {

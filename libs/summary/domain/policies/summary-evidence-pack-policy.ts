@@ -3,8 +3,9 @@ import type {
   SummaryEvidenceSelection,
   StoryCluster,
 } from "../value-objects/summary-evidence-item";
-import { readerSummaryProviderIdentity } from "../value-objects/reader-summary-provider-identity";
+import { independentEvidenceProviderKeys } from "../value-objects/reader-summary-provider-identity";
 import { hasFirstPartyOfficialEvidence } from "./reader-summary-source-authority-policy";
+import { isReaderSummaryLeadEligibleEvidence } from "./reader-summary-lead-eligibility-policy";
 
 export type SummaryEvidencePackSignal = {
   readonly feedItemId: string;
@@ -86,19 +87,21 @@ export const buildSummaryEvidencePack = (
   return {
     officialSignals: topSignals(
       selection.selectedEvidence.filter(
-        (item) => isOfficialSignal(item) && isQualityLeadSignal(item),
+        (item) =>
+          isOfficialSignal(item) && isReaderSummaryLeadEligibleEvidence(item),
       ),
       5,
     ),
     topCommunitySignals: topSignals(
       selection.selectedEvidence.filter(
-        (item) => isCommunitySignal(item) && isQualityLeadSignal(item),
+        (item) =>
+          isCommunitySignal(item) && isReaderSummaryLeadEligibleEvidence(item),
       ),
       8,
     ),
     emergingSignals: orderedSignals(
       selection.selectedEvidence
-        .filter(isQualityLeadSignal)
+        .filter(isReaderSummaryLeadEligibleEvidence)
         .sort(
           (left, right) =>
             right.observedAt.getTime() - left.observedAt.getTime(),
@@ -135,9 +138,7 @@ const countIndependentCrossProviderClusters = (
       .filter((item): item is SummaryEvidenceItem => item !== undefined);
     const providerKeys =
       clusterEvidence.length >= 2
-        ? clusterEvidence.map(
-            (item) => readerSummaryProviderIdentity(item).providerKey,
-          )
+        ? independentEvidenceProviderKeys(clusterEvidence)
         : cluster.providerKeys;
 
     return new Set(providerKeys).size > 1;
@@ -161,9 +162,12 @@ const topSignals = (
 const orderedSignals = (
   items: readonly SummaryEvidenceItem[],
   limit: number,
-): readonly SummaryEvidencePackSignal[] => items.slice(0, limit).map(toPackSignal);
+): readonly SummaryEvidencePackSignal[] =>
+  items.slice(0, limit).map(toPackSignal);
 
-const toPackSignal = (item: SummaryEvidenceItem): SummaryEvidencePackSignal => ({
+const toPackSignal = (
+  item: SummaryEvidenceItem,
+): SummaryEvidencePackSignal => ({
   feedItemId: item.feedItemId,
   sourceItemId: item.sourceItemId,
   providerKey: item.providerKey,
@@ -172,9 +176,7 @@ const toPackSignal = (item: SummaryEvidenceItem): SummaryEvidencePackSignal => (
   reasonCodes: signalReasonCodes(item),
 });
 
-const signalReasonCodes = (
-  item: SummaryEvidenceItem,
-): readonly string[] => {
+const signalReasonCodes = (item: SummaryEvidenceItem): readonly string[] => {
   const reasonCodes = [`provider:${item.providerKey}`];
 
   if (isOfficialSignal(item)) {
@@ -215,14 +217,7 @@ const hasDissentSignal = (item: SummaryEvidenceItem): boolean => {
 };
 
 const isHighEngagementLowConfidence = (item: SummaryEvidenceItem): boolean =>
-  hasHighEngagementMetric(item) && !isQualityLeadSignal(item);
-
-const isQualityLeadSignal = (item: SummaryEvidenceItem): boolean =>
-  item.contentQuality?.eligibleForSummary !== false &&
-  item.contentQuality?.needsLlmReview !== true &&
-  item.contentQuality?.decision !== "downrank" &&
-  (item.contentQuality?.interestRelevanceScore ?? 1) >= 0.5 &&
-  (item.contentQuality?.engagementIntegrityScore ?? 1) >= 0.5;
+  hasHighEngagementMetric(item) && !isReaderSummaryLeadEligibleEvidence(item);
 
 const hasHighEngagementMetric = (item: SummaryEvidenceItem): boolean =>
   (item.providerMetricLabels ?? []).some((metric) => {

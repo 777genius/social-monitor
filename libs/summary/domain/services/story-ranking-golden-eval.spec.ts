@@ -95,9 +95,9 @@ describe("story ranking golden eval", () => {
       selection,
       expectedTopReadTitles: [
         "openai/codex",
-        "Weak Reddit discussion about calesthio/OpenMontage",
-        "Same subreddit browser-agent duplicate 1",
         "Viral Reddit pricing backlash",
+        "Same subreddit browser-agent duplicate 1",
+        "Weak Reddit discussion about calesthio/OpenMontage",
         "Anthropic launches developer agents",
         "Anthropic launches developer agents",
       ],
@@ -116,9 +116,9 @@ describe("story ranking golden eval", () => {
 
     expect(readerSummary.topReads.map((item) => item.title)).toEqual([
       "openai/codex",
-      "Weak Reddit discussion about calesthio/OpenMontage",
-      "Same subreddit browser-agent duplicate 1",
       "Viral Reddit pricing backlash",
+      "Same subreddit browser-agent duplicate 1",
+      "Weak Reddit discussion about calesthio/OpenMontage",
       "Anthropic launches developer agents",
       "Anthropic launches developer agents",
     ]);
@@ -134,7 +134,12 @@ describe("story ranking golden eval", () => {
         },
       ]),
     );
-    expect(readerSummary.topReads[1]?.providerMetrics).toEqual(
+    expect(
+      readerSummary.topReads.find(
+        (item) =>
+          item.title === "Weak Reddit discussion about calesthio/OpenMontage",
+      )?.providerMetrics,
+    ).toEqual(
       expect.arrayContaining([
         {
           label: "Reddit evidence",
@@ -308,6 +313,17 @@ describe("story ranking golden eval", () => {
         title: "Viral AI agent rumor thread",
         score: 2.6,
         ...xMetricFacts(140000, 21000, 3500),
+        contentQuality: {
+          qualityScore: 0.45,
+          interestRelevanceScore: 0.8,
+          engagementIntegrityScore: 0.4,
+          eligibleForSummary: true,
+          eligibleForTopRead: true,
+          needsLlmReview: true,
+          decision: "downrank",
+          flags: ["unverified_claim"],
+          reason: "Viral claim needs corroboration",
+        },
       }),
       evidence({
         feedItemId: "github-codex-fork",

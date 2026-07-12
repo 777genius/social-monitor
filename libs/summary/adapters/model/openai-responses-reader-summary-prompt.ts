@@ -1,7 +1,6 @@
 import {
   buildSummaryEvidencePack,
   buildSummaryEvidenceProfile,
-  buildReaderSummaryCoveragePlan,
   primaryReaderSummaryEvidence,
   type ReaderSummaryCoveragePlanItem,
 } from "../../domain";
@@ -33,10 +32,8 @@ export const buildOpenAiReaderSummaryInstructions = (
     "The backend derives the final reader content, claim board and reliability shadow report from narrativeSections, topStories, citations and risks. Keep raw content compact: set content.headline to the same meaning as headline, content.oneLineTakeaway to one short sentence, and keep content arrays empty unless a field is impossible to leave empty.",
     "Write headline, executiveSummary and content.oneLineTakeaway like a useful short article summary of the best source items, not a telemetry report, checklist or process note.",
     "Return narrativeSections as the canonical reader narrative. executiveSummary must be a faithful Markdown rendering of the same sections and must not add claims of its own.",
-    "The first narrativeSections item must be kind lead and cite one or more citationIds from coveragePlan.lead. Follow it with optional main_signal and why_it_matters sections, one secondary_signal for every entry in coveragePlan.secondary, and an optional watch section. Never fill a missing section with generic prose.",
+    ...readerSummaryLeadInstructions(input),
     "Each narrative section must add information not already stated elsewhere. Do not paraphrase the lead under Main signal or repeat the same caveat in multiple sections.",
-    "For secondary_signal, copy the exact storyClusterId from coveragePlan and cite only citationIds listed for that planned cluster.",
-    "Keep the lead focused on coveragePlan.lead. Other signals today must remain concise and must not displace the lead.",
     "Explain unfamiliar product, model or project names on first mention with a short reader-facing description when the evidence defines them. If the evidence does not explain a name, omit it instead of listing unexplained names.",
     "Do not use internal workflow language such as source item, source note, enough engagement for discovery, selected evidence, providerKeys, model budget, quality gate or keep the claim unconfirmed. Express uncertainty naturally and specifically for the reader.",
     "Use lightweight Markdown in executiveSummary and content.oneLineTakeaway when it improves readability: bold key product/model names, claims and bullet labels. Do not use HTML, tables or Markdown links.",
@@ -75,6 +72,19 @@ export const buildOpenAiReaderSummaryInstructions = (
     .filter((line) => line.length > 0)
     .join("\n");
 
+const readerSummaryLeadInstructions = (
+  input: ReaderSummaryModelInput,
+): readonly string[] =>
+  input.coveragePlan?.lead === undefined
+    ? [
+        "coveragePlan.lead is null because no evidence passed the editorial lead gate. Return an honest no-signal response: topStories and narrativeSections must be empty, set noSignalReason, and do not promote a watch-only or down-ranked item into the headline.",
+      ]
+    : [
+        "The first narrativeSections item must be kind lead and cite one or more citationIds from coveragePlan.lead. Follow it with optional main_signal and why_it_matters sections, one secondary_signal for every entry in coveragePlan.secondary, and an optional watch section. Never fill a missing section with generic prose.",
+        "For secondary_signal, copy the exact storyClusterId from coveragePlan and cite only citationIds listed for that planned cluster.",
+        "Keep the lead focused on coveragePlan.lead. Other signals today must remain concise and must not displace the lead.",
+      ];
+
 export const buildOpenAiReaderSummaryPromptPayload = (
   input: ReaderSummaryModelInput,
 ): string => {
@@ -84,7 +94,7 @@ export const buildOpenAiReaderSummaryPromptPayload = (
       (item, index) => [item.feedItemId, `c${index + 1}`] as const,
     ),
   );
-  const coveragePlan = buildReaderSummaryCoveragePlan(primaryEvidence);
+  const coveragePlan = input.coveragePlan;
 
   return JSON.stringify({
     scope: input.scope,

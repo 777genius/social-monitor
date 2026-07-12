@@ -39,7 +39,7 @@ describe("AgentRuntimeReaderSummaryModelAdapter", () => {
     await adapter.generate(input, route);
 
     expect(route.model).toBe("codex:gpt-5.5:xhigh");
-    expect(route.promptVersion).toBe("reader_summary.prompt.agent_runtime.v9");
+    expect(route.promptVersion).toBe("reader_summary.prompt.agent_runtime.v10");
     expect(client.commands).toHaveLength(1);
     expect(adapter.estimate(input, route).outputTokens).toBe(3_200);
     expect(client.commands[0]?.systemPrompt).toContain(

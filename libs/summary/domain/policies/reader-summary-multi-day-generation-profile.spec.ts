@@ -5,8 +5,8 @@ import {
 
 const current = {
   modelVersion: "codex:gpt-5.5:xhigh",
-  promptVersion: "reader_summary.prompt.agent_runtime.v9",
-  rankingPolicyVersion: "story_ranking_v7",
+  promptVersion: "reader_summary.prompt.agent_runtime.v10",
+  rankingPolicyVersion: "story_ranking_v8",
 };
 
 describe("reader summary multi-day generation profile", () => {
@@ -24,7 +24,7 @@ describe("reader summary multi-day generation profile", () => {
 
   it("describes every provenance component on mismatch", () => {
     expect(readerSummaryMultiDayGenerationProfileMismatch(current)).toBe(
-      "Generation profile mismatch: model=codex:gpt-5.5:xhigh prompt=reader_summary.prompt.agent_runtime.v9 ranking=story_ranking_v7",
+      "Generation profile mismatch: model=codex:gpt-5.5:xhigh prompt=reader_summary.prompt.agent_runtime.v10 ranking=story_ranking_v8",
     );
   });
 });

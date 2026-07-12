@@ -3,6 +3,12 @@ import type {
   SummaryEvidenceItem,
   SummaryEvidenceSelection,
 } from "../value-objects/summary-evidence-item";
+import {
+  buildReaderSummaryEditorialPriorityProfile,
+  compareReaderSummaryEditorialPriority,
+  type ReaderSummaryEditorialPriorityProfile,
+} from "../policies/reader-summary-editorial-priority-policy";
+import { independentEvidenceProviderKeys } from "../value-objects/reader-summary-provider-identity";
 
 export type ReaderSummaryCoverageRole = "lead" | "secondary";
 
@@ -24,6 +30,7 @@ export type ReaderSummaryCoveragePlan = {
 type CoverageCandidate = ReaderSummaryCoveragePlanItem & {
   readonly topicTokens: readonly string[];
   readonly qualityScore: number;
+  readonly editorialPriority: ReaderSummaryEditorialPriorityProfile;
 };
 
 const maxSecondarySignals = 3;
@@ -48,7 +55,9 @@ export const buildReaderSummaryCoveragePlan = (
   );
   const eligibleCandidates =
     primaryCandidates.length > 0 ? primaryCandidates : candidates;
-  const lead = eligibleCandidates[0];
+  const lead = eligibleCandidates.find(
+    (candidate) => candidate.editorialPriority.leadEligible,
+  );
   if (lead === undefined) {
     return { secondary: [] };
   }
@@ -120,17 +129,19 @@ const coverageCandidate = (
       ? 0.6
       : qualityScores.reduce((sum, score) => sum + score, 0) /
         qualityScores.length;
+  const editorialPriority = buildReaderSummaryEditorialPriorityProfile({
+    cluster,
+    evidence,
+  });
 
   return {
     role: "secondary",
     clusterId: cluster.id,
     score: cluster.score,
     qualityScore,
+    editorialPriority,
     feedItemIds: evidence.map((item) => item.feedItemId),
-    providerKeys: unique([
-      ...cluster.providerKeys,
-      ...evidence.map((item) => item.providerKey),
-    ]),
+    providerKeys: independentEvidenceProviderKeys(evidence),
     interestIds: unique([
       ...cluster.interestIds,
       ...evidence.map((item) => item.interestId),
@@ -147,6 +158,10 @@ const compareCoverageCandidates = (
   left: CoverageCandidate,
   right: CoverageCandidate,
 ): number =>
+  compareReaderSummaryEditorialPriority(
+    left.editorialPriority,
+    right.editorialPriority,
+  ) ||
   right.score - left.score ||
   right.qualityScore - left.qualityScore ||
   right.providerKeys.length - left.providerKeys.length ||

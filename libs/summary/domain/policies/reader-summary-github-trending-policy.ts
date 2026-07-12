@@ -160,9 +160,16 @@ export const buildGitHubTrendingNarrativeAppendix = (params: {
   };
 };
 
+export const isSupplementalTrendEvidence = isGitHubTrendingEvidence;
+export const selectSupplementalTrendHighlights = selectGitHubTrendingHighlights;
+export const buildSupplementalTrendNarrativeAppendix =
+  buildGitHubTrendingNarrativeAppendix;
+export const withSupplementalTrendNarrativeAppendix =
+  withGitHubTrendingNarrativeAppendix;
+
 const compactRepositoryTitle = (title: string): string => {
   const normalized = title
-    .replace(/[*_`\[\]<>]/gu, "")
+    .replace(/[*_`[\]<>]/gu, "")
     .replace(/\s+/gu, " ")
     .trim();
   const repositoryName = normalized.split(/\s+[—-]\s+/u)[0]?.trim();

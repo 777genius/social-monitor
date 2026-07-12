@@ -10,6 +10,7 @@ import {
 } from "../policies/summary-evidence-profile-policy";
 import { buildReaderSummaryReliabilityReport } from "../policies/reader-summary-reliability-calibration-policy";
 import type { ReaderSummaryReliabilityReport } from "../entities/reader-summary-reliability";
+import { independentEvidenceProviderKeys } from "../value-objects/reader-summary-provider-identity";
 
 export type StoryRankingTelemetrySnapshot = {
   readonly rankingPolicyVersion: string;
@@ -50,7 +51,15 @@ export const buildStoryRankingTelemetrySnapshot = (
       clusterCount,
     ),
     crossProviderClusterShare: ratio(
-      clusters.filter((cluster) => cluster.providerKeys.length > 1).length,
+      clusters.filter((cluster) => {
+        const evidence = clusterEvidence(cluster, evidenceById);
+
+        return (
+          (evidence.length >= 2
+            ? independentEvidenceProviderKeys(evidence).length
+            : cluster.providerKeys.length) > 1
+        );
+      }).length,
       clusterCount,
     ),
     titleOnlyClusterShare: ratio(

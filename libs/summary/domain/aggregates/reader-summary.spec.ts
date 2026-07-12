@@ -585,7 +585,7 @@ describe("buildReaderSummary", () => {
 
     expect(
       readerSummary.topReads.slice(0, 3).map((read) => read.providerKey),
-    ).toEqual(["hacker-news", "x-twitter", "reddit"]);
+    ).toEqual(["x-twitter", "hacker-news", "reddit"]);
     expect(readerSummary.headline).not.toContain("Key signals across");
     expect(readerSummary.headline).toContain("Claude Code skills");
     expect(readerSummary.headline).not.toContain("Source watch");
@@ -624,7 +624,8 @@ describe("buildReaderSummary", () => {
           sourceItemId: "source-1",
           providerKey: "github-repo-radar",
           field: "title",
-          canonicalUrl: "https://github.com/openai/codex",
+          canonicalUrl:
+            "https://reddit.com/r/programming/comments/codex/discussion",
         },
         {
           citationId: "citation-2",
@@ -659,7 +660,8 @@ describe("buildReaderSummary", () => {
           interestId: "ai-developer-tools",
           providerKey: "github-repo-radar",
           providerName: "Repo Radar",
-          canonicalUrl: "https://github.com/openai/codex",
+          canonicalUrl:
+            "https://reddit.com/r/programming/comments/codex/discussion",
           title: "openai/codex",
           publishedAt: new Date("2026-06-23T08:00:00.000Z"),
           observedAt: new Date("2026-06-23T09:00:00.000Z"),
@@ -1176,7 +1178,8 @@ describe("buildReaderSummary", () => {
           sourceItemId: "source-reddit",
           providerKey: "reddit",
           field: "canonicalUrl",
-          canonicalUrl: "https://github.com/openai/codex",
+          canonicalUrl:
+            "https://reddit.com/r/programming/comments/codex/discussion",
         },
       ],
       storyClusters: [
@@ -1228,7 +1231,8 @@ describe("buildReaderSummary", () => {
           interestId: "ai-agents",
           providerKey: "reddit",
           providerName: "Reddit",
-          canonicalUrl: "https://github.com/openai/codex",
+          canonicalUrl:
+            "https://reddit.com/r/programming/comments/codex/discussion",
           title: "Reddit discusses openai/codex",
           publishedAt: new Date("2026-06-23T08:10:00.000Z"),
           observedAt: new Date("2026-06-23T08:20:00.000Z"),

@@ -10,7 +10,7 @@ describe("readerItemConfidence", () => {
     expect(
       readerItemConfidence({
         cluster: undefined,
-        evidenceCount: 1,
+        independentEvidenceCount: 1,
         confirmedProviderCount: 1,
         signalScore: 4,
       }),
@@ -26,7 +26,7 @@ describe("readerItemConfidence", () => {
     expect(
       readerItemConfidence({
         cluster: undefined,
-        evidenceCount: 2,
+        independentEvidenceCount: 2,
         confirmedProviderCount: 2,
         signalScore: 1,
       }),
@@ -42,7 +42,7 @@ describe("readerItemConfidence", () => {
     expect(
       readerItemConfidence({
         cluster: undefined,
-        evidenceCount: 1,
+        independentEvidenceCount: 1,
         confirmedProviderCount: 1,
         signalScore: 2.4,
         firstPartyOfficial: true,
@@ -59,7 +59,7 @@ describe("readerItemConfidence", () => {
     expect(
       readerItemConfidence({
         cluster: crossProviderCluster(),
-        evidenceCount: 2,
+        independentEvidenceCount: 2,
         confirmedProviderCount: 2,
         signalScore: 4,
       }),
@@ -75,7 +75,7 @@ describe("readerItemConfidence", () => {
     expect(
       readerItemConfidence({
         cluster: crossProviderCluster(),
-        evidenceCount: 2,
+        independentEvidenceCount: 2,
         confirmedProviderCount: 2,
         signalScore: 4,
         firstPartyOfficial: true,

@@ -104,9 +104,12 @@ describe("reader summary top read builder", () => {
     );
     expect(topRead.whyImportant.join(" ")).not.toContain("Confirmed by");
     expect(topRead.whyImportant.join(" ")).not.toContain("cross-provider");
-    expect(topRead.confirmedProviderKeys).toEqual(["hacker-news", "rss"]);
+    expect(topRead.confirmedProviderKeys).toEqual(["hacker-news"]);
+    expect(topRead.confidence).toEqual(
+      expect.objectContaining({ level: "low", score: 0.42 }),
+    );
     expect(topRead.whyNow).toBe(
-      "Current summary window has cross-source coverage from Hacker News, RSS.",
+      "Current summary window has Hacker News coverage.",
     );
   });
 

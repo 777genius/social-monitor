@@ -8,8 +8,8 @@ import {
 import type {
   SummaryEvidenceItem,
   SummaryEvidenceSelection,
-  StoryCluster,
 } from "../value-objects/summary-evidence-item";
+import { independentEvidenceProviderKeys } from "../value-objects/reader-summary-provider-identity";
 
 export const buildReaderSummaryReliabilityReport = (
   selection: SummaryEvidenceSelection | undefined,
@@ -26,10 +26,7 @@ export const buildReaderSummaryReliabilityReport = (
     lowEvidenceDiversityRisk(selection),
   ]);
   const riskScore = roundRatio(
-    Math.min(
-      1,
-      risks.reduce((total, risk) => total + risk.score, 0) / 2.5,
-    ),
+    Math.min(1, risks.reduce((total, risk) => total + risk.score, 0) / 2.5),
   );
 
   return {
@@ -108,9 +105,21 @@ const singleSourceRisk = (
   selection: SummaryEvidenceSelection,
 ): ReaderSummaryReliabilityRisk | undefined => {
   const providerCount = providerKeys(selection.selectedEvidence).size;
-  const crossProviderClusterCount = selection.clusters.filter(
-    (cluster) => new Set(cluster.providerKeys).size > 1,
-  ).length;
+  const evidenceByFeedItemId = new Map(
+    selection.selectedEvidence.map((item) => [item.feedItemId, item] as const),
+  );
+  const crossProviderClusterCount = selection.clusters.filter((cluster) => {
+    const evidence = [
+      cluster.representativeFeedItemId,
+      ...cluster.duplicateFeedItemIds,
+    ].flatMap((feedItemId) => evidenceByFeedItemId.get(feedItemId) ?? []);
+
+    return (
+      (evidence.length >= 2
+        ? independentEvidenceProviderKeys(evidence).length
+        : new Set(cluster.providerKeys).size) > 1
+    );
+  }).length;
 
   if (providerCount > 1 && crossProviderClusterCount > 0) {
     return undefined;
@@ -147,7 +156,11 @@ const weakSourceRisk = (
     Math.max(qualityItems.length, selection.selectedEvidence.length),
   );
 
-  if (downrankedCount === 0 && weakQualityCount === 0 && topReadEligibleCount > 0) {
+  if (
+    downrankedCount === 0 &&
+    weakQualityCount === 0 &&
+    topReadEligibleCount > 0
+  ) {
     return undefined;
   }
 

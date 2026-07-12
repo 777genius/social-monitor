@@ -73,11 +73,10 @@ class _ReaderSummaryTopPostsSliverState
       _TopPostBoard.posts => postItems,
       _TopPostBoard.githubTrending => githubTrendingItems,
     };
-    final filtered =
-        boardItems
-            .where((item) => !_hiddenProviders.contains(item.providerKey))
-            .toList(growable: false)
-          ..sort(_compare);
+    final filtered = orderTopPosts(
+      boardItems.where((item) => !_hiddenProviders.contains(item.providerKey)),
+      byEngagement: _sort == _TopPostSort.engagement,
+    );
     final reservePreviewSpace = filtered.any(
       (item) => item.previewMedia != null,
     );
@@ -159,31 +158,6 @@ class _ReaderSummaryTopPostsSliverState
           ),
       ],
     );
-  }
-
-  int _compare(TopRead a, TopRead b) {
-    return switch (_sort) {
-      _TopPostSort.relevance => _compareRelevance(a, b),
-      _TopPostSort.engagement => topPostEngagementScore(
-        b,
-      ).compareTo(topPostEngagementScore(a)),
-    };
-  }
-
-  int _compareRelevance(TopRead a, TopRead b) {
-    final relevanceDiff = topPostRelevanceSortScore(
-      b,
-    ).compareTo(topPostRelevanceSortScore(a));
-    if (relevanceDiff != 0) {
-      return relevanceDiff;
-    }
-
-    final signalDiff = b.signalScore.value.compareTo(a.signalScore.value);
-    if (signalDiff != 0) {
-      return signalDiff;
-    }
-
-    return topPostEngagementScore(b).compareTo(topPostEngagementScore(a));
   }
 
   void _setBoard(_TopPostBoard board) {

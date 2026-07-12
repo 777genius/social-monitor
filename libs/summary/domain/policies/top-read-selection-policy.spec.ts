@@ -153,8 +153,8 @@ describe("selectUniqueTopReadCandidates", () => {
     );
 
     expect(result.map((item) => item.title)).toEqual([
-      "HN discussion",
       "X rollout",
+      "HN discussion",
     ]);
   });
 
@@ -397,7 +397,7 @@ describe("selectUniqueTopReadCandidates", () => {
     ]);
   });
 
-  it("does not treat RSS as strong discussion evidence when ordering top reads", () => {
+  it("lets a stronger cross-source article lead a weak standalone HN discussion", () => {
     const result = selectUniqueTopReadCandidates(
       [
         story("hn", "Eligible HN discussion", "c-hn", ["hacker-news"]),
@@ -438,8 +438,8 @@ describe("selectUniqueTopReadCandidates", () => {
     );
 
     expect(result.map((item) => item.title)).toEqual([
-      "Eligible HN discussion",
       "RSS cross-source article",
+      "Eligible HN discussion",
     ]);
   });
 

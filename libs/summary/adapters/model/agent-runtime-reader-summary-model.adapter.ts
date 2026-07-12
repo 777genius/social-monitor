@@ -56,7 +56,7 @@ const provider = "agent-runtime";
 const defaultAgentProvider: AgentRuntimeProvider = "codex";
 const defaultModel = "gpt-5.5";
 const defaultReasoningEffort = "xhigh" as const;
-const defaultPromptVersion = "reader_summary.prompt.agent_runtime.v9";
+const defaultPromptVersion = "reader_summary.prompt.agent_runtime.v10";
 const defaultEvalDatasetVersion = "reader_summary.eval.mvp.v1";
 const defaultTimeoutMs = 600_000;
 const defaultMaxOutputTokens = 16_000;
@@ -341,7 +341,7 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
 }
 
 const narrativeRepairInstruction =
-  "Repair the complete JSON response. Every narrativeSections item must use the non-empty string fields title and text, never summary, body or description. narrativeSections[0] must have kind lead and cite at least one citationId listed in coveragePlan.lead. Include exactly one secondary_signal for every coveragePlan.secondary entry, copying its storyClusterId and one of its citationIds. Do not change facts or invent citations.";
+  "Repair the complete JSON response. Every narrativeSections item must use the non-empty string fields title and text, never summary, body or description. If coveragePlan.lead is null, return empty topStories and narrativeSections plus a concrete noSignalReason. Otherwise narrativeSections[0] must have kind lead and cite at least one citationId listed in coveragePlan.lead, with exactly one secondary_signal for every coveragePlan.secondary entry. Do not change facts or invent citations.";
 
 const isRepairableNarrativeError = (error: unknown): boolean =>
   error instanceof Error &&

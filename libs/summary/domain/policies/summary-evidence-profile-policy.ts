@@ -1,6 +1,8 @@
 import type {
+  SummaryEvidenceItem,
   SummaryEvidenceSelection,
 } from "../value-objects/summary-evidence-item";
+import { independentEvidenceProviderKeys } from "../value-objects/reader-summary-provider-identity";
 
 export type SummaryEvidenceCoverageWarning =
   | "no_evidence"
@@ -28,6 +30,7 @@ export type SummaryEvidenceProfile = {
   readonly selectedEvidenceCount: number;
   readonly storyClusterCount: number;
   readonly providerCount: number;
+  readonly independentProviderCount: number;
   readonly providerCounts: readonly SummaryEvidenceProviderCount[];
   readonly crossProviderClusterCount: number;
   readonly topReadEligibleCount: number;
@@ -40,6 +43,9 @@ export const buildSummaryEvidenceProfile = (
   selection: SummaryEvidenceSelection,
 ): SummaryEvidenceProfile => {
   const providerCounts = providerEvidenceCounts(selection);
+  const independentProviderCount = independentEvidenceProviderKeys(
+    selection.selectedEvidence,
+  ).length;
   const topReadEligibleCount = selection.selectedEvidence.filter(
     (item) => item.contentQuality?.eligibleForTopRead !== false,
   ).length;
@@ -52,10 +58,9 @@ export const buildSummaryEvidenceProfile = (
     selectedEvidenceCount: selection.selectedEvidence.length,
     storyClusterCount: selection.clusters.length,
     providerCount: providerCounts.length,
+    independentProviderCount,
     providerCounts,
-    crossProviderClusterCount: selection.clusters.filter(
-      (cluster) => new Set(cluster.providerKeys).size > 1,
-    ).length,
+    crossProviderClusterCount: independentCrossProviderClusterCount(selection),
     topReadEligibleCount,
     downrankedEvidenceCount,
     conversationContextItemCount: selection.selectedEvidence.filter(
@@ -63,11 +68,34 @@ export const buildSummaryEvidenceProfile = (
     ).length,
     coverageWarnings: evidenceCoverageWarnings({
       selectedEvidenceCount: selection.selectedEvidence.length,
-      providerCount: providerCounts.length,
+      providerCount: independentProviderCount,
       topReadEligibleCount,
       downrankedEvidenceCount,
     }),
   };
+};
+
+const independentCrossProviderClusterCount = (
+  selection: SummaryEvidenceSelection,
+): number => {
+  const evidenceByFeedItemId = new Map(
+    selection.selectedEvidence.map((item) => [item.feedItemId, item] as const),
+  );
+
+  return selection.clusters.filter((cluster) => {
+    const evidence = [
+      cluster.representativeFeedItemId,
+      ...cluster.duplicateFeedItemIds,
+    ]
+      .map((feedItemId) => evidenceByFeedItemId.get(feedItemId))
+      .filter((item): item is SummaryEvidenceItem => item !== undefined);
+
+    return (
+      (evidence.length >= 2
+        ? independentEvidenceProviderKeys(evidence).length
+        : cluster.providerKeys.length) > 1
+    );
+  }).length;
 };
 
 const providerEvidenceCounts = (

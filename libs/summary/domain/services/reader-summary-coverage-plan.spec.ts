@@ -32,6 +32,31 @@ describe("buildReaderSummaryCoveragePlan", () => {
     expect(buildReaderSummaryCoveragePlan(selection).secondary).toEqual([]);
   });
 
+  it("does not force a down-ranked item into the headline when no lead is eligible", () => {
+    const base = buildSelection([
+      cluster("unverified", 3.8, "unverified-a", ["x-twitter"]),
+    ]);
+    const item = evidenceById(base, "unverified-a");
+    const selection: SummaryEvidenceSelection = {
+      ...base,
+      selectedEvidence: [
+        {
+          ...item,
+          contentQuality: {
+            ...item.contentQuality!,
+            decision: "downrank",
+            needsLlmReview: true,
+            reason: "Unverified viral claim",
+          },
+        },
+      ],
+    };
+
+    expect(buildReaderSummaryCoveragePlan(selection)).toEqual({
+      secondary: [],
+    });
+  });
+
   it("keeps GitHub-only clusters out when social or news coverage exists", () => {
     const selection = buildSelection([
       cluster("github-trend", 8.4, "github-a", ["github-trending-page"]),
@@ -45,6 +70,94 @@ describe("buildReaderSummaryCoveragePlan", () => {
     expect(plan.secondary.map((item) => item.clusterId)).toEqual([
       "news-secondary",
     ]);
+  });
+
+  it("prefers a highly engaged relevant discussion over a marginally higher down-ranked launch", () => {
+    const antCluster = {
+      ...cluster("ant", 2.65, "ant-hn", ["hacker-news", "rss"]),
+      duplicateFeedItemIds: ["ant-rss"],
+      signalBreakdown: {
+        baseScore: 2.023,
+        crossProviderSupport: 0.257,
+        sameProviderSupport: 0,
+        providerDiversityBoost: 0.25,
+        interestDiversityBoost: 0,
+        freshnessBoost: 0.12,
+        totalScore: 2.65,
+      },
+    } satisfies StoryCluster;
+    const usageCluster = {
+      ...cluster("usage-limits", 2.625, "usage-x", ["x-twitter"]),
+      signalBreakdown: {
+        baseScore: 2.505,
+        crossProviderSupport: 0,
+        sameProviderSupport: 0,
+        providerDiversityBoost: 0,
+        interestDiversityBoost: 0,
+        freshnessBoost: 0.12,
+        totalScore: 2.625,
+      },
+    } satisfies StoryCluster;
+    const base = buildSelection([antCluster, usageCluster]);
+    const antHn = evidenceById(base, "ant-hn");
+    const usageX = evidenceById(base, "usage-x");
+    const selection: SummaryEvidenceSelection = {
+      ...base,
+      selectedEvidence: [
+        {
+          ...antHn,
+          title: "Show HN: Ant JavaScript ecosystem",
+          canonicalUrl: "https://news.ycombinator.com/item?id=123",
+          sourceOriginUrl: "https://ant.example/",
+          providerMetricLabels: [
+            { label: "Points", value: "155" },
+            { label: "Comments", value: "67" },
+          ],
+          contentQuality: {
+            ...antHn.contentQuality!,
+            qualityScore: 0.55,
+            decision: "downrank",
+            flags: ["missing_topic_context"],
+            reason: "Early launch lacks broader topic context",
+          },
+        },
+        {
+          ...antHn,
+          feedItemId: "ant-rss",
+          sourceItemId: "ant-rss",
+          providerKey: "rss",
+          canonicalUrl: "https://ant.example/",
+          score: 1.71,
+          providerMetricLabels: [],
+          contentQuality: {
+            ...antHn.contentQuality!,
+            qualityScore: 0.55,
+            decision: "downrank",
+            flags: ["missing_topic_context"],
+            reason: "Same early launch publication",
+          },
+        },
+        {
+          ...usageX,
+          title: "Agent-heavy usage is stressing product limits",
+          providerMetricLabels: [
+            { label: "Likes", value: "7,821" },
+            { label: "Reposts", value: "410" },
+            { label: "Replies", value: "1,139" },
+          ],
+          contentQuality: {
+            ...usageX.contentQuality!,
+            qualityScore: 0.9,
+            interestRelevanceScore: 0.95,
+          },
+        },
+      ],
+    };
+
+    const plan = buildReaderSummaryCoveragePlan(selection);
+
+    expect(plan.lead?.clusterId).toBe("usage-limits");
+    expect(plan.secondary.map((item) => item.clusterId)).toContain("ant");
   });
 
   it("prefers an independent secondary topic inside the quality threshold", () => {
@@ -146,4 +259,18 @@ const titleFor = (feedItemId: string): string => {
     return "GitHub project gains stars for a terminal theme";
   }
   return "Small unrelated discussion";
+};
+
+const evidenceById = (
+  selection: SummaryEvidenceSelection,
+  feedItemId: string,
+): SummaryEvidenceItem => {
+  const item = selection.selectedEvidence.find(
+    (candidate) => candidate.feedItemId === feedItemId,
+  );
+  if (item === undefined) {
+    throw new Error(`Missing test evidence ${feedItemId}`);
+  }
+
+  return item;
 };

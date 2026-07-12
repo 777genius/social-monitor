@@ -62,6 +62,33 @@ describe("OpenAI reader summary prompt contract", () => {
     expect(payload).not.toContain("owner/private-prompt-influence");
     expect(payload).toContain("reddit-main-signal");
   });
+
+  it("uses the coverage plan already approved by the execution use case", () => {
+    const base = promptInputWithGitHubTrending();
+    const input: ReaderSummaryModelInput = {
+      ...base,
+      coveragePlan: {
+        lead: {
+          role: "lead",
+          clusterId: "approved-editorial-lead",
+          score: 1,
+          feedItemIds: ["feed-1"],
+          providerKeys: ["reddit"],
+          interestIds: ["interest-ai"],
+          whyImportant: ["Approved by the shared editorial policy"],
+        },
+        secondary: [],
+      },
+    };
+
+    const payload = JSON.parse(
+      buildOpenAiReaderSummaryPromptPayload(input),
+    ) as { coveragePlan: { lead: { storyClusterId: string } | null } };
+
+    expect(payload.coveragePlan.lead?.storyClusterId).toBe(
+      "approved-editorial-lead",
+    );
+  });
 });
 
 const promptInputWithGitHubTrending = (): ReaderSummaryModelInput => {

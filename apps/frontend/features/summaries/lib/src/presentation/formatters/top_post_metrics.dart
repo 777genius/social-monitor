@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import '../../domain/aggregates/reader_summary.dart';
 
 /// One display metric slot in a top post row, e.g. `2.0K Likes`.
@@ -166,37 +164,20 @@ num topPostEngagementScore(TopRead read) {
   return total;
 }
 
-/// Reader-facing relevance sort score for the Top posts board.
-///
-/// `signalScore` remains the primary summary signal, while confirmation and
-/// native engagement break close calls so single-source low-confidence items do
-/// not float above stronger supported posts.
-num topPostRelevanceSortScore(TopRead read) {
-  final signal = read.signalScore.value;
-  final confidence = read.confidence.score.clamp(0, 1);
-  final confirmedProviderCount = _confirmedProviderCount(read);
-  final confirmationBoost = confirmedProviderCount > 1
-      ? math.min(0.75, 0.38 + confirmedProviderCount * 0.12)
-      : switch (read.confidence.level.trim().toLowerCase()) {
-          'high' => 0.34,
-          'medium' => 0.22,
-          _ => 0,
-        };
-  final engagementBoost = math.min(
-    0.48,
-    math.log(1 + topPostEngagementScore(read).toDouble()) / 20,
-  );
+/// Keeps the backend editorial order for relevance and applies a local sort
+/// only when the reader explicitly chooses engagement.
+List<TopRead> orderTopPosts(
+  Iterable<TopRead> items, {
+  required bool byEngagement,
+}) {
+  final ordered = items.toList(growable: false);
+  if (byEngagement) {
+    ordered.sort(
+      (a, b) => topPostEngagementScore(b).compareTo(topPostEngagementScore(a)),
+    );
+  }
 
-  return signal + confidence * 0.55 + confirmationBoost + engagementBoost;
-}
-
-int _confirmedProviderCount(TopRead read) {
-  final keys = {
-    for (final key in read.confirmedProviderKeys)
-      if (key.trim().isNotEmpty) key.trim().toLowerCase(),
-  };
-
-  return keys.isEmpty ? 1 : keys.length;
+  return ordered;
 }
 
 num _rawMetricNumber(String raw) {

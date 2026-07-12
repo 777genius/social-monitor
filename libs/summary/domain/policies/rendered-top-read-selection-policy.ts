@@ -10,10 +10,15 @@ import {
   isReaderTitleReasonDuplicate,
   isUnpolishedReaderTitle,
 } from "./reader-summary-reader-facing-text-policy";
+import {
+  compareReaderSummaryEditorialPriority,
+  type ReaderSummaryEditorialPriorityProfile,
+} from "./reader-summary-editorial-priority-policy";
 
 export type RenderedTopReadCandidate = {
   readonly story: TopReadCandidate;
   readonly topRead: TopRead;
+  readonly editorialPriority?: ReaderSummaryEditorialPriorityProfile;
 };
 
 export type ReaderFacingTopReadQualityInput = Pick<
@@ -149,6 +154,18 @@ const rankedCandidatePool = (
   candidates
     .map((candidate, index) => ({ candidate, index }))
     .sort((left, right) => {
+      if (
+        left.candidate.editorialPriority !== undefined &&
+        right.candidate.editorialPriority !== undefined
+      ) {
+        const editorialDifference = compareReaderSummaryEditorialPriority(
+          left.candidate.editorialPriority,
+          right.candidate.editorialPriority,
+        );
+        if (editorialDifference !== 0) {
+          return editorialDifference;
+        }
+      }
       const scoreDelta =
         topReadRankScore(right.candidate.topRead) -
         topReadRankScore(left.candidate.topRead);

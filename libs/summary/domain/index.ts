@@ -33,6 +33,7 @@ export * from "./policies/reader-summary-publication-policy";
 export * from "./policies/reader-summary-publication-generation-policy";
 export * from "./policies/reader-summary-schedule-window-policy";
 export * from "./policies/reader-summary-source-authority-policy";
+export * from "./policies/reader-summary-lead-eligibility-policy";
 export * from "./policies/rendered-top-read-selection-policy";
 export * from "./policies/reader-summary-topic-recommendation-policy";
 export * from "./policies/reader-summary-topic-map-grouping-policy";

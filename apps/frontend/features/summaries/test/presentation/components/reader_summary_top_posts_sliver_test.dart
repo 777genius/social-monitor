@@ -83,7 +83,83 @@ void main() {
 
     expect(find.text('Lazy top post 30'), findsOneWidget);
   });
+
+  testWidgets(
+    'keeps backend editorial order for relevance and sorts only on engagement request',
+    (tester) async {
+      tester.view.physicalSize = const Size(1100, 700);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      final summary = const SummaryMapper().readerSummaryToDomain(
+        readerSummaryApiDto(
+          content: readerSummaryContentApiDto(
+            topReads: _editorialOrderTopReads(),
+          ),
+          citations: _citations(2),
+        ),
+      );
+
+      await tester.pumpWidget(_TestApp(summary: summary));
+      await tester.pumpAndSettle();
+
+      final editorialWinner = find.text('Backend editorial winner');
+      final engagementWinner = find.text('Higher engagement runner-up');
+      expect(
+        tester.getTopLeft(editorialWinner).dy,
+        lessThan(tester.getTopLeft(engagementWinner).dy),
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey('reader-summary-top-posts-sort')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Engagement').last);
+      await tester.pumpAndSettle();
+
+      expect(
+        tester.getTopLeft(engagementWinner).dy,
+        lessThan(tester.getTopLeft(editorialWinner).dy),
+      );
+    },
+  );
 }
+
+List<TopReadApiDto> _editorialOrderTopReads() => [
+  const TopReadApiDto(
+    title: 'Backend editorial winner',
+    providerKey: 'x-twitter',
+    reason: 'Backend ranking selected this relevant verified workflow signal.',
+    matchedInterestIds: ['ai-developer-tools'],
+    signalScore: 2.2,
+    confidence: TopReadConfidenceApiDto(
+      level: 'medium',
+      score: 0.62,
+      rationale: 'Relevant source evidence.',
+    ),
+    confirmedProviderKeys: ['x-twitter'],
+    providerMetrics: [ProviderMetricApiDto(label: 'Likes', value: '100')],
+    citationIds: ['lazy-c-0'],
+  ),
+  const TopReadApiDto(
+    title: 'Higher engagement runner-up',
+    providerKey: 'hacker-news',
+    reason: 'Useful secondary evidence with higher native engagement.',
+    matchedInterestIds: ['ai-developer-tools'],
+    signalScore: 2.6,
+    confidence: TopReadConfidenceApiDto(
+      level: 'high',
+      score: 0.82,
+      rationale: 'Multiple source groups surfaced the item.',
+    ),
+    confirmedProviderKeys: ['hacker-news', 'reddit'],
+    providerMetrics: [ProviderMetricApiDto(label: 'Points', value: '10,000')],
+    citationIds: ['lazy-c-1'],
+  ),
+];
 
 List<TopReadApiDto> _topReads(int count) {
   return List<TopReadApiDto>.generate(count, (index) {

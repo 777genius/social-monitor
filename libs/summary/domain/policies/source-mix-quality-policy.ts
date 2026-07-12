@@ -9,7 +9,8 @@ import type {
   ReaderSummaryQualityState,
 } from "../value-objects/summary-quality";
 import { compactUnique, uniqueNonEmpty } from "../value-objects/summary-text";
-import { isGitHubTrendingEvidence } from "./reader-summary-github-trending-policy";
+import { independentEvidenceProviderKeys } from "../value-objects/reader-summary-provider-identity";
+import { isSupplementalTrendEvidence } from "./reader-summary-github-trending-policy";
 
 export type SourceMixQualityPolicyInput = {
   readonly selectedEvidence?: readonly SummaryEvidenceItem[];
@@ -20,6 +21,11 @@ export type SourceMixQualityPolicyInput = {
 export const buildSourceMix = (
   input: SourceMixQualityPolicyInput,
 ): readonly SourceMixEntry[] => {
+  const evidenceByFeedItemId = new Map(
+    (input.selectedEvidence ?? []).map(
+      (item) => [item.feedItemId, item] as const,
+    ),
+  );
   const counts = new Map<
     string,
     {
@@ -32,7 +38,7 @@ export const buildSourceMix = (
   >();
 
   for (const item of input.selectedEvidence ?? []) {
-    if (isGitHubTrendingEvidence(item)) {
+    if (isSupplementalTrendEvidence(item)) {
       continue;
     }
     const current = sourceMixCount(counts, item.providerKey);
@@ -41,7 +47,7 @@ export const buildSourceMix = (
   }
 
   for (const citation of input.citationMap) {
-    if (isGitHubTrendingEvidence(citation)) {
+    if (isSupplementalTrendEvidence(citation)) {
       continue;
     }
     const current = sourceMixCount(counts, citation.providerKey);
@@ -50,9 +56,18 @@ export const buildSourceMix = (
   }
 
   for (const cluster of input.storyClusters) {
-    const isCrossSource = cluster.providerKeys.length > 1;
+    const clusterEvidence = [
+      cluster.representativeFeedItemId,
+      ...cluster.duplicateFeedItemIds,
+    ]
+      .map((feedItemId) => evidenceByFeedItemId.get(feedItemId))
+      .filter((item): item is SummaryEvidenceItem => item !== undefined);
+    const isCrossSource =
+      (clusterEvidence.length >= 2
+        ? independentEvidenceProviderKeys(clusterEvidence).length
+        : cluster.providerKeys.length) > 1;
     for (const providerKey of cluster.providerKeys) {
-      if (isGitHubTrendingEvidence({ providerKey })) {
+      if (isSupplementalTrendEvidence({ providerKey })) {
         continue;
       }
       const current = sourceMixCount(counts, providerKey);

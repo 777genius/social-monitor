@@ -31,7 +31,7 @@ const evidenceItem = (
 });
 
 describe("StoryClusteringService", () => {
-  it("clusters the same canonical URL across interests and providers", () => {
+  it("clusters the same canonical URL without treating distribution as independent support", () => {
     const service = new StoryClusteringService(clock);
 
     const selection = service.cluster({
@@ -71,21 +71,72 @@ describe("StoryClusteringService", () => {
       providerKeys: ["github", "reddit"],
       signalBreakdown: {
         baseScore: 2.2,
-        crossProviderSupport: 0.3,
+        crossProviderSupport: 0,
         sameProviderSupport: 0,
-        providerDiversityBoost: 0.25,
+        providerDiversityBoost: 0,
         interestDiversityBoost: 0.12,
         freshnessBoost: 0.18,
-        totalScore: 3.05,
+        totalScore: 2.5,
       },
     });
-    expect(selection.clusters[0]?.score).toBe(3.05);
-    expect(selection.clusters[0]?.whyImportant).toContain(
+    expect(selection.clusters[0]?.score).toBe(2.5);
+    expect(selection.clusters[0]?.whyImportant).not.toContain(
       "Confirmed by 2 source groups: github, reddit",
     );
     expect(selection.sourceWindow.selectedFeedItemIds).toEqual([
       "feed-github",
       "feed-reddit",
+    ]);
+  });
+
+  it("does not boost an HN discussion and RSS item from the same publication origin", () => {
+    const service = new StoryClusteringService(clock);
+
+    const selection = service.cluster({
+      identity: {
+        tenantId: tenantId("tenant-1"),
+        workspaceId: workspaceId("workspace-1"),
+        scope: { type: "workspace" },
+      },
+      limit: 10,
+      items: [
+        evidenceItem({
+          feedItemId: "hn-ant",
+          sourceItemId: "hn-ant",
+          providerKey: "hacker-news",
+          canonicalUrl: "https://news.ycombinator.com/item?id=123",
+          sourceOriginUrl: "https://ant.example/",
+          title: "Show HN: Ant complete JavaScript runtime ecosystem",
+          score: 2.023,
+          providerMetricLabels: [
+            { label: "Points", value: "155" },
+            { label: "Comments", value: "67" },
+          ],
+        }),
+        evidenceItem({
+          feedItemId: "rss-ant",
+          sourceItemId: "rss-ant",
+          providerKey: "rss",
+          canonicalUrl: "https://ant.example/",
+          title: "Show HN: Ant complete JavaScript runtime ecosystem",
+          score: 1.71,
+        }),
+      ],
+    });
+
+    expect(selection.clusters).toHaveLength(1);
+    expect(selection.clusters[0]?.signalBreakdown).toEqual(
+      expect.objectContaining({
+        crossProviderSupport: 0,
+        providerDiversityBoost: 0,
+      }),
+    );
+    expect(selection.clusters[0]?.whyImportant).not.toContain(
+      "Confirmed by 2 source groups: hacker-news, rss",
+    );
+    expect(selection.sourceWindow.selectedFeedItemIds).toEqual([
+      "hn-ant",
+      "rss-ant",
     ]);
   });
 
@@ -114,21 +165,24 @@ describe("StoryClusteringService", () => {
         }),
         evidenceItem({
           feedItemId: "feed-hn-main",
-          canonicalUrl: "https://example.com/stories/cross-source",
+          canonicalUrl: "https://news.ycombinator.com/item?id=987",
           providerKey: "hacker-news",
+          title: "Developers debate a major AI tooling launch today",
           score: 1.8,
         }),
         evidenceItem({
           feedItemId: "feed-reddit-cross",
-          canonicalUrl: "https://example.com/stories/cross-source",
+          canonicalUrl:
+            "https://reddit.com/r/programming/comments/987/ai_tooling_launch",
           providerKey: "reddit",
+          title: "Developers debate a major AI tooling launch today",
           score: 1.7,
         }),
       ],
     });
 
     const crossProvider = selection.clusters.find(
-      (cluster) => cluster.storyKey === "url:example.com/stories/cross-source",
+      (cluster) => cluster.representativeFeedItemId === "feed-hn-main",
     );
     const sameProvider = selection.clusters.find(
       (cluster) => cluster.storyKey === "url:example.com/stories/main",

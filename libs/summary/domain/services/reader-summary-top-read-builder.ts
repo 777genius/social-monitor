@@ -4,18 +4,24 @@ import type {
   StoryCluster,
   SummaryEvidenceItem,
 } from "../value-objects/summary-evidence-item";
-import { readerSummaryProviderIdentity } from "../value-objects/reader-summary-provider-identity";
+import {
+  independentEvidenceItems,
+  readerSummaryProviderIdentity,
+} from "../value-objects/reader-summary-provider-identity";
 import { normalizeSignalScore } from "../value-objects/signal-score";
 import { compactUnique, uniqueNonEmpty } from "../value-objects/summary-text";
+import {
+  readerItemConfidence,
+  storyProviderMetricLabels,
+} from "./reader-summary-support";
 import {
   buildMatchedRules,
   buildWhyNow,
   confirmedProviderKeys,
-  readerItemConfidence,
-  storyProviderMetricLabels,
-} from "./reader-summary-support";
+} from "./reader-summary-source-lineage";
 import { isTopReadEligibleEvidence } from "../policies/top-read-eligibility-policy";
 import { hasFirstPartyOfficialEvidence } from "../policies/reader-summary-source-authority-policy";
+import { compareRepresentativeEvidenceItems } from "../policies/representative-evidence-selection-policy";
 import {
   isFallbackReaderReason,
   isReaderTitleReasonDuplicate,
@@ -89,17 +95,19 @@ export const storyToTopRead = (
     cluster === undefined
       ? modelCitedEvidence
       : (evidenceByClusterId.get(cluster.id) ?? modelCitedEvidence);
-  const topReadEvidence = clusterEvidence.filter(isTopReadEligibleEvidence);
+  const topReadEvidence = clusterEvidence
+    .filter(isTopReadEligibleEvidence)
+    .sort(compareRepresentativeEvidenceItems);
   const citationIdByFeedItemId = new Map(
     [...citationById.values()].map(
       (citation) => [citation.feedItemId, citation.citationId] as const,
     ),
   );
   const citationIds = compactUnique([
-    ...eligibleModelCitationIds,
     ...topReadEvidence.map((item) =>
       citationIdByFeedItemId.get(item.feedItemId),
     ),
+    ...eligibleModelCitationIds,
   ]).slice(0, maxTopReadCitationIds);
   const citations = citationIds
     .map((citationId) => citationById.get(citationId))
@@ -112,8 +120,9 @@ export const storyToTopRead = (
       (item): item is SummaryEvidenceItem =>
         item !== undefined && isTopReadEligibleEvidence(item),
     );
-  const supportEvidence =
-    citedEvidence.length > 0 ? citedEvidence : topReadEvidence;
+  const supportEvidence = [
+    ...(citedEvidence.length > 0 ? citedEvidence : topReadEvidence),
+  ].sort(compareRepresentativeEvidenceItems);
   const citation = citations[0];
   const evidence = supportEvidence[0] ?? clusterEvidence[0];
   const providerKey =
@@ -172,7 +181,8 @@ export const storyToTopRead = (
     signalScore,
     confidence: readerItemConfidence({
       cluster,
-      evidenceCount: supportEvidence.length,
+      independentEvidenceCount:
+        independentEvidenceItems(supportEvidence).length,
       confirmedProviderCount: confirmedProviders.length,
       signalScore,
       firstPartyOfficial: hasFirstPartyOfficialEvidence(supportEvidence),

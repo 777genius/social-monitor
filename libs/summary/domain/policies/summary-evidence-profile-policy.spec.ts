@@ -10,6 +10,7 @@ describe("buildSummaryEvidenceProfile", () => {
       selectedEvidenceCount: 3,
       storyClusterCount: 2,
       providerCount: 2,
+      independentProviderCount: 1,
       providerCounts: [
         { providerKey: "reddit", count: 2 },
         { providerKey: "x-twitter", count: 1 },
@@ -18,7 +19,7 @@ describe("buildSummaryEvidenceProfile", () => {
       topReadEligibleCount: 2,
       downrankedEvidenceCount: 1,
       conversationContextItemCount: 1,
-      coverageWarnings: ["downranked_evidence_present"],
+      coverageWarnings: ["single_provider", "downranked_evidence_present"],
     });
   });
 

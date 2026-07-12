@@ -10,6 +10,7 @@ import {
   resolveOpenAiResponsesReaderSummaryModelOptions,
 } from "./openai-responses-reader-summary-model.adapter";
 import { buildOpenAiReaderSummaryPromptPayload } from "./openai-responses-reader-summary-prompt";
+import { coveragePlanLeadFixture } from "./reader-summary-coverage-plan-test-fixture";
 
 describe("OpenAiResponsesReaderSummaryModelAdapter", () => {
   it("calls the Responses API and normalizes a cited reader summary draft", async () => {
@@ -157,7 +158,7 @@ describe("OpenAiResponsesReaderSummaryModelAdapter", () => {
       },
     });
     expect(route.promptVersion).toBe(
-      "reader_summary.prompt.openai.responses.v9",
+      "reader_summary.prompt.openai.responses.v10",
     );
     expect(adapter.estimate(input, route).outputTokens).toBe(3_200);
     expect(attempt.draft).toMatchObject({
@@ -810,7 +811,12 @@ const readerSummaryInput = (
     timezone: "UTC",
     periodKey: "daily:2026-06-23T00:00:00.000Z:2026-06-24T00:00:00.000Z:UTC",
   },
-  coveragePlan: { secondary: [] },
+  coveragePlan: params.empty
+    ? { secondary: [] }
+    : {
+        lead: coveragePlanLeadFixture("story:ai-tooling", "feed-reddit", 2.4),
+        secondary: [],
+      },
   evidence: {
     rankingPolicyVersion: "story_ranking_v1",
     sourceWindow: {
@@ -928,6 +934,10 @@ const multiStoryReaderSummaryInput = (
 
   return {
     ...readerSummaryInput({ empty: true }),
+    coveragePlan: {
+      lead: coveragePlanLeadFixture("story:ai-tooling-1", "feed-reddit-1", 2.4),
+      secondary: [],
+    },
     evidence: {
       rankingPolicyVersion: "story_ranking_v1",
       sourceWindow: {

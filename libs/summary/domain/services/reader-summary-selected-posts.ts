@@ -4,10 +4,8 @@ import type { TopRead } from "../entities/top-read";
 import type { SummaryEvidenceItem } from "../value-objects/summary-evidence-item";
 import { normalizeSignalScore } from "../value-objects/signal-score";
 import { compactUnique } from "../value-objects/summary-text";
-import {
-  buildMatchedRules,
-  readerItemConfidence,
-} from "./reader-summary-support";
+import { readerItemConfidence } from "./reader-summary-support";
+import { buildMatchedRules } from "./reader-summary-source-lineage";
 import { hasFirstPartyOfficialEvidence } from "../policies/reader-summary-source-authority-policy";
 
 export const buildReaderSummarySelectedPosts = (params: {
@@ -76,7 +74,7 @@ const evidenceToSelectedPost = (
     signalScore,
     confidence: readerItemConfidence({
       cluster: undefined,
-      evidenceCount: 1,
+      independentEvidenceCount: 1,
       confirmedProviderCount: 1,
       signalScore,
       firstPartyOfficial: hasFirstPartyOfficialEvidence([item]),

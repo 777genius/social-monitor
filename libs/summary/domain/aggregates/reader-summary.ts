@@ -26,13 +26,14 @@ import {
   selectUniqueTopReadCandidates,
 } from "../policies/top-read-selection-policy";
 import { selectRenderedTopReadCandidates } from "../policies/rendered-top-read-selection-policy";
+import { buildReaderSummaryEditorialPriorityProfile } from "../policies/reader-summary-editorial-priority-policy";
 import { enrichTopReadCandidateDescriptions } from "../policies/reader-summary-top-read-description-policy";
 import { buildReaderSummaryReliabilityReport } from "../policies/reader-summary-reliability-calibration-policy";
 import {
-  buildGitHubTrendingNarrativeAppendix,
-  isGitHubTrendingEvidence,
-  selectGitHubTrendingHighlights,
-  withGitHubTrendingNarrativeAppendix,
+  buildSupplementalTrendNarrativeAppendix,
+  isSupplementalTrendEvidence,
+  selectSupplementalTrendHighlights,
+  withSupplementalTrendNarrativeAppendix,
 } from "../policies/reader-summary-github-trending-policy";
 import type {
   SummaryEvidenceSelection,
@@ -99,7 +100,7 @@ export class ReaderSummary {
     }
 
     const primarySelectedEvidence = (input.selectedEvidence ?? []).filter(
-      (item) => !isGitHubTrendingEvidence(item),
+      (item) => !isSupplementalTrendEvidence(item),
     );
     const primaryInput = {
       ...input,
@@ -160,6 +161,12 @@ export class ReaderSummary {
         clusterById,
         evidenceByClusterId,
       ),
+      editorialPriority: buildReaderSummaryEditorialPriorityProfile({
+        story,
+        cluster: clusterById.get(story.storyClusterId),
+        evidence: evidenceByClusterId.get(story.storyClusterId) ?? [],
+        citationCount: story.citationIds.length,
+      }),
     }));
     const readerTopReadCandidates = selectRenderedTopReadCandidates({
       candidates: renderedTopReadCandidates,
@@ -185,7 +192,7 @@ export class ReaderSummary {
       selectedEvidence: input.selectedEvidence,
       citationById,
     });
-    const githubTrendingAppendix = buildGitHubTrendingNarrativeAppendix({
+    const githubTrendingAppendix = buildSupplementalTrendNarrativeAppendix({
       evidence: input.selectedEvidence ?? [],
       citations: input.citationMap,
     });
@@ -202,7 +209,7 @@ export class ReaderSummary {
         sourceMix,
       }),
       bullets: buildReaderSummaryBullets(readerInput, topReads),
-      narrativeSections: withGitHubTrendingNarrativeAppendix({
+      narrativeSections: withSupplementalTrendNarrativeAppendix({
         narrativeSections: input.narrativeSections ?? [],
         appendix: githubTrendingAppendix,
       }),
@@ -298,7 +305,7 @@ const buildNoSignalReaderSummary = (
   const reason =
     input.noSignalReason ??
     "No eligible evidence was selected for this summary window.";
-  const githubTrendingHighlights = selectGitHubTrendingHighlights(
+  const githubTrendingHighlights = selectSupplementalTrendHighlights(
     input.selectedEvidence ?? [],
   );
   const citationById = new Map(
@@ -306,7 +313,7 @@ const buildNoSignalReaderSummary = (
       (citation) => [citation.citationId, citation] as const,
     ),
   );
-  const githubTrendingAppendix = buildGitHubTrendingNarrativeAppendix({
+  const githubTrendingAppendix = buildSupplementalTrendNarrativeAppendix({
     evidence: githubTrendingHighlights,
     citations: input.citationMap,
   });

@@ -20,6 +20,7 @@ import {
   hasCrossProviderClaimFacetConflict,
 } from "./story-cluster-membership";
 import { storyKey } from "./story-key-normalizer";
+import { storyClusterSignal } from "./story-cluster-signal";
 
 export class StoryClusteringService {
   constructor(
@@ -218,131 +219,6 @@ const selectedClusterEvidenceIds = (
   return selected;
 };
 
-const storyClusterSignal = (
-  items: readonly SummaryEvidenceItem[],
-  now: Date,
-  policy: StoryRankingPolicy,
-): {
-  readonly score: number;
-  readonly breakdown: StoryCluster["signalBreakdown"];
-  readonly reasons: readonly string[];
-} => {
-  const sorted = [...items].sort(compareSignalEvidenceItems);
-  const signalLeader = sorted[0];
-  if (signalLeader === undefined) {
-    return {
-      score: 0,
-      breakdown: zeroSignalBreakdown(),
-      reasons: [],
-    };
-  }
-
-  const providerKeys = uniqueSorted(sorted.map((item) => item.providerKey));
-  const interestIds = uniqueSorted(sorted.map((item) => item.interestId));
-  const strongestByProvider = new Map<string, number>();
-
-  for (const item of sorted) {
-    const current = strongestByProvider.get(item.providerKey) ?? 0;
-    strongestByProvider.set(item.providerKey, Math.max(current, item.score));
-  }
-
-  const otherProviderSupport = [...strongestByProvider.entries()]
-    .filter(([providerKey]) => providerKey !== signalLeader.providerKey)
-    .map(([, score]) => Math.max(0, score))
-    .sort((left, right) => right - left)
-    .slice(0, policy.maxCrossProviderEvidence)
-    .reduce(
-      (total, score) =>
-        total +
-        Math.min(
-          policy.crossProviderContributionCap,
-          score * policy.crossProviderScoreWeight,
-        ),
-      0,
-    );
-  const sameProviderDuplicateCount =
-    sorted.filter((item) => item.providerKey === signalLeader.providerKey)
-      .length - 1;
-  const sameProviderSupport = Math.min(
-    policy.sameProviderSupportCap,
-    Math.log1p(Math.max(0, sameProviderDuplicateCount)) *
-      policy.sameProviderDuplicateWeight,
-  );
-  const providerDiversityBoost = Math.min(
-    policy.providerDiversityCap,
-    (providerKeys.length - 1) * policy.providerDiversityWeight,
-  );
-  const interestDiversityBoost = Math.min(
-    policy.interestDiversityCap,
-    (interestIds.length - 1) * policy.interestDiversityWeight,
-  );
-  const freshnessBoost = freshnessBoostFor(
-    signalLeader.observedAt,
-    now,
-    policy,
-  );
-  const breakdown = {
-    baseScore: roundScore(signalLeader.score),
-    crossProviderSupport: roundScore(otherProviderSupport),
-    sameProviderSupport: roundScore(sameProviderSupport),
-    providerDiversityBoost: roundScore(providerDiversityBoost),
-    interestDiversityBoost: roundScore(interestDiversityBoost),
-    freshnessBoost: roundScore(freshnessBoost),
-    totalScore: 0,
-  };
-  const score = roundScore(
-    Object.values({
-      baseScore: breakdown.baseScore,
-      crossProviderSupport: breakdown.crossProviderSupport,
-      sameProviderSupport: breakdown.sameProviderSupport,
-      providerDiversityBoost: breakdown.providerDiversityBoost,
-      interestDiversityBoost: breakdown.interestDiversityBoost,
-      freshnessBoost: breakdown.freshnessBoost,
-    }).reduce((total, value) => total + value, 0),
-  );
-  const completeBreakdown = { ...breakdown, totalScore: score };
-
-  return {
-    score,
-    breakdown: completeBreakdown,
-    reasons: storyClusterReasons({
-      providerKeys,
-      interestIds,
-      evidenceCount: sorted.length,
-      score,
-    }),
-  };
-};
-
-const storyClusterReasons = (params: {
-  readonly providerKeys: readonly string[];
-  readonly interestIds: readonly string[];
-  readonly evidenceCount: number;
-  readonly score: number;
-}): readonly string[] => {
-  const reasons: string[] = [];
-
-  if (params.providerKeys.length > 1) {
-    reasons.push(
-      `Confirmed by ${params.providerKeys.length} source groups: ${params.providerKeys.slice(0, 3).join(", ")}`,
-    );
-  }
-
-  if (params.evidenceCount > 1) {
-    reasons.push(`Clustered ${params.evidenceCount} related source items`);
-  }
-
-  if (params.interestIds.length > 1) {
-    reasons.push(
-      `Appears across ${params.interestIds.length} monitored interests`,
-    );
-  }
-
-  reasons.push(`Story signal score ${formatScore(params.score)}`);
-
-  return reasons;
-};
-
 const buildSourceWindow = (
   identity: ReaderSummaryScopeIdentity,
   clusters: readonly StoryCluster[],
@@ -384,18 +260,6 @@ const buildSourceWindow = (
     selectedFeedItemIds: selectedEvidence.map((item) => item.feedItemId),
     storyClusterIds: clusters.map((cluster) => cluster.id),
   };
-};
-
-const compareSignalEvidenceItems = (
-  left: SummaryEvidenceItem,
-  right: SummaryEvidenceItem,
-): number => {
-  const scoreDiff = right.score - left.score;
-  if (scoreDiff !== 0) {
-    return scoreDiff;
-  }
-
-  return right.observedAt.getTime() - left.observedAt.getTime();
 };
 
 const compareStoryClusters = (
@@ -448,39 +312,3 @@ const normalizeLimit = (value: number, policy: StoryRankingPolicy): number => {
 
   return Math.min(value, policy.maxClusters);
 };
-
-const zeroSignalBreakdown = (): NonNullable<
-  StoryCluster["signalBreakdown"]
-> => ({
-  baseScore: 0,
-  crossProviderSupport: 0,
-  sameProviderSupport: 0,
-  providerDiversityBoost: 0,
-  interestDiversityBoost: 0,
-  freshnessBoost: 0,
-  totalScore: 0,
-});
-
-const freshnessBoostFor = (
-  observedAt: Date,
-  now: Date,
-  policy: StoryRankingPolicy,
-): number => {
-  const ageHours = Math.max(
-    0,
-    (now.getTime() - observedAt.getTime()) / 3_600_000,
-  );
-
-  const boost = policy.freshnessBoosts.find(
-    (candidate) => ageHours <= candidate.maxAgeHours,
-  );
-
-  return boost?.boost ?? 0;
-};
-
-const roundScore = (value: number): number => Math.round(value * 1000) / 1000;
-
-const formatScore = (value: number): string =>
-  Number.isInteger(value)
-    ? String(value)
-    : value.toFixed(3).replace(/0+$/u, "").replace(/\.$/u, "");

@@ -2,8 +2,7 @@ import type { ProviderMetric } from "./provider-metric-label";
 import type { PreviewMedia } from "./preview-media";
 
 export type SummaryEvidenceReaderActionKind =
-  | "read_source"
-  | "watch_repository";
+  "read_source" | "watch_repository";
 
 export type SummaryEvidenceContentQuality = {
   readonly qualityScore: number;
@@ -25,6 +24,7 @@ export type SummaryEvidenceItem = {
   readonly providerKey: string;
   readonly providerName?: string;
   readonly canonicalUrl: string;
+  readonly sourceOriginUrl?: string;
   readonly title: string;
   readonly bodyPreview?: string;
   readonly sourceText?: string;
@@ -123,10 +123,7 @@ export type SummaryEvidenceSelection = {
 
 export type SummaryEvidencePersonalization = {
   readonly memoryGuidanceStatus:
-    | "disabled"
-    | "available"
-    | "empty"
-    | "unavailable";
+    "disabled" | "available" | "empty" | "unavailable";
   readonly memoryGuidanceApplied: boolean;
   readonly providerPreferenceCount: number;
   readonly keywordPreferenceCount: number;
