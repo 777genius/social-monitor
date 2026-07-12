@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../tokens/app_colors.dart';
 import '../../tokens/app_spacing.dart';
 
-/// Brand logo row: gradient mark plus product title.
+/// Brand logo row: product mark plus title.
 ///
 /// When [showLabel] is false only the gradient mark is rendered, which suits
 /// the collapsed icon-only sidebar rail.
@@ -19,23 +19,20 @@ class AppShellBrandLogo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const mark = DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF3B6BF0), AppColors.sidebarActive],
+    final mark = SizedBox.square(
+      dimension: 36,
+      child: Semantics(
+        label: 'Social Monitor',
+        image: true,
+        child: CustomPaint(
+          key: ValueKey('app-shell-brand-mark'),
+          painter: const _SocialMonitorBrandMarkPainter(),
         ),
-        borderRadius: BorderRadius.all(Radius.circular(10)),
-      ),
-      child: SizedBox.square(
-        dimension: 36,
-        child: Icon(Icons.donut_large_rounded, size: 20, color: Colors.white),
       ),
     );
 
     if (!showLabel) {
-      return const Center(child: mark);
+      return Center(child: mark);
     }
 
     return Row(
@@ -63,4 +60,42 @@ class AppShellBrandLogo extends StatelessWidget {
       ],
     );
   }
+}
+
+class _SocialMonitorBrandMarkPainter extends CustomPainter {
+  const _SocialMonitorBrandMarkPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final bounds = Offset.zero & size;
+    final circlePaint = Paint()
+      ..shader = const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0xFF13A8FF), Color(0xFF0877F9)],
+      ).createShader(bounds);
+    canvas.drawCircle(bounds.center, size.shortestSide * 0.45, circlePaint);
+
+    final markPaint = Paint()..color = Colors.white;
+    final horizontal = Rect.fromLTWH(
+      size.width * 0.19,
+      size.height * 0.39,
+      size.width * 0.62,
+      size.height * 0.22,
+    );
+    final vertical = Rect.fromLTWH(
+      size.width * 0.39,
+      size.height * 0.19,
+      size.width * 0.22,
+      size.height * 0.62,
+    );
+    final armRadius = Radius.circular(size.shortestSide * 0.11);
+    canvas
+      ..drawCircle(bounds.center, size.shortestSide * 0.17, markPaint)
+      ..drawRRect(RRect.fromRectAndRadius(horizontal, armRadius), markPaint)
+      ..drawRRect(RRect.fromRectAndRadius(vertical, armRadius), markPaint);
+  }
+
+  @override
+  bool shouldRepaint(_SocialMonitorBrandMarkPainter oldDelegate) => false;
 }

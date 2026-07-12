@@ -4,7 +4,7 @@
     "start_url": ".",
     "display": "standalone",
     "background_color": "#08111F",
-    "theme_color": "#2443AC",
+    "theme_color": "#0877F9",
     "description": "Social monitoring and reader summaries without the noise.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
