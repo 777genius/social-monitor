@@ -25,7 +25,11 @@ cannot silently skip an earlier component change.
   TTY or forwarding, and may sudo only the root-owned deploy entrypoint;
 - production and daily work are serialized with separate `flock` locks;
 - integration advances only by fast-forward from a clean worktree;
-- backend deploys create a managed PostgreSQL custom-format backup first;
+- backend deploys create and validate a managed PostgreSQL custom-format backup first;
+- every live PostgreSQL base table must appear in the new dump TOC, while CI
+  separately keeps the reviewed backup/restore contract aligned with Prisma;
+- only the 10 newest verified `pre-autodeploy` dumps are retained; manual,
+  incident, partial and unknown backup artifacts are never pruned automatically;
 - previous container image IDs are retained and restored on runtime failure;
 - frontend releases are immutable directories switched through symlinks;
 - failed frontend health checks restore the previous symlink targets;

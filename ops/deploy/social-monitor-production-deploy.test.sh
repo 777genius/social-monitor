@@ -19,7 +19,8 @@ git -C "$REPO" config user.name 'Deploy Contract Test'
 git -C "$REPO" config user.email deploy-contract@example.invalid
 git -C "$REPO" remote add origin "$ORIGIN"
 install -d "$REPO/apps/frontend" "$REPO/apps/api-gateway" \
-  "$REPO/apps/x-collector" "$REPO/ops/deploy" "$STATE" "$STAGING"
+  "$REPO/apps/x-collector" "$REPO/ops/deploy" "$REPO/ops/recovery" \
+  "$STATE" "$STAGING"
 printf 'base\n' > "$REPO/README.md"
 git -C "$REPO" add README.md
 git -C "$REPO" commit -qm 'test: base'
@@ -67,12 +68,35 @@ if SSH_ORIGINAL_COMMAND=$'plan '"$TARGET_SHA"$'\ndeploy '"$TARGET_SHA" \
   exit 1
 fi
 
+printf '{"schemaVersion":1}\n' > "$REPO/ops/recovery/backup-restore-contract.json"
+git -C "$REPO" add ops/recovery/backup-restore-contract.json
+git -C "$REPO" commit -qm 'test: backup contract control change'
+git -C "$REPO" push -q origin main
+CONTROL_TARGET_SHA=$(git -C "$REPO" rev-parse HEAD)
+plan=$(run_entrypoint plan "$CONTROL_TARGET_SHA")
+grep -Fx 'frontend=false' <<< "$plan" >/dev/null
+grep -Fx 'backend=false' <<< "$plan" >/dev/null
+grep -Fx 'control=true' <<< "$plan" >/dev/null
+
 grep -F "if printf '%s\\n' \"\${persistent[@]}\" | grep -qx api && ! refresh_frontend_api_proxy; then" \
   "$ENTRYPOINT" >/dev/null
 grep -F "if [[ \$api_rolled_back == true ]]; then" "$ENTRYPOINT" >/dev/null
 grep -F 'refresh_frontend_api_proxy || return 1' \
   "$ENTRYPOINT" >/dev/null
 grep -F 'http://127.0.0.1:13080/auth/session' "$ENTRYPOINT" >/dev/null
+# shellcheck disable=SC2016
+grep -F '[[ ! -e $output && ! -L $output && ! -e $partial && ! -L $partial ]]' \
+  "$ENTRYPOINT" >/dev/null
+# shellcheck disable=SC2016
+grep -F '"$ROOT/backups" 10 "$output"' \
+  "$ENTRYPOINT" >/dev/null
+grep -F 'verify-postgres-backup-coverage.sh' "$ENTRYPOINT" >/dev/null
+# shellcheck disable=SC2016
+backup_move_line=$(grep -nF 'mv "$partial" "$output"' "$ENTRYPOINT" | cut -d: -f1)
+# shellcheck disable=SC2016
+backup_prune_line=$(grep -nF 'prune-pre-autodeploy-backups.sh' \
+  "$ENTRYPOINT" | cut -d: -f1)
+((backup_move_line < backup_prune_line))
 grep -F 'ops/deploy/host/refresh-codex-auth.sh' "$ENTRYPOINT" >/dev/null
 # shellcheck disable=SC2016
 grep -F 'install -m 0700 -o root -g root "$auth_refresh_source" "$auth_refresh_destination.next"' \
@@ -117,3 +141,5 @@ fi
 
 echo 'Production deploy contract tests passed'
 bash "$SCRIPT_DIR/refresh-codex-auth.test.sh"
+bash "$SCRIPT_DIR/prune-pre-autodeploy-backups.test.sh"
+bash "$SCRIPT_DIR/verify-postgres-backup-coverage.test.sh"
