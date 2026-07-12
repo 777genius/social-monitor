@@ -3,31 +3,16 @@ import type { FeedItemReadRepositoryPort } from "@social-monitor/feed/ports";
 import type { RankFeedItemsCommand } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.command";
 import type { RankFeedItemsUseCase } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.use-case";
 import type { RankedFeedItemView } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.result";
-import {
-  ok,
-  tenantId,
-  workspaceId,
-  type Clock,
-} from "@social-monitor/shared-kernel";
+import { ok, tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
 import { RelevanceReaderSummaryEvidenceSelector } from "./relevance-reader-summary-evidence.selector";
-import type {
-  ReaderSummaryPeriod,
-  SummaryEvidenceSelection,
-} from "../../domain";
+import {
+  githubTrendingMetadataFixture,
+  readerSummaryEvidenceTestClock as clock,
+  readerSummaryEvidenceTestPeriod as readerSummaryPeriod,
+} from "./relevance-reader-summary-evidence-test-fixtures";
+import type { SummaryEvidenceSelection } from "../../domain";
 import type { StoryRankingMetricsPort } from "../../ports";
-
-const clock: Clock = {
-  now: () => new Date("2026-06-23T12:00:00.000Z"),
-};
-
-const readerSummaryPeriod: ReaderSummaryPeriod = {
-  cadence: "daily",
-  startedAt: new Date("2026-06-23T00:00:00.000Z"),
-  endedAt: new Date("2026-06-24T00:00:00.000Z"),
-  timezone: "UTC",
-  periodKey: "daily:2026-06-23T00:00:00.000Z:2026-06-24T00:00:00.000Z:UTC",
-};
 
 const rankedItem = (
   overrides: Partial<RankedFeedItemView> & {
@@ -87,6 +72,7 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
         providerKey: "github-trending-page",
         rank: 1,
         score: 2.5,
+        providerMetadata: githubTrendingMetadataFixture(2_500),
       }),
       rankedItem({
         feedItemId: "feed-hn",
@@ -115,6 +101,7 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
         providerKey: "github-trending-page",
         rank: 5,
         score: 2.1,
+        providerMetadata: githubTrendingMetadataFixture(1_500),
       }),
       rankedItem({
         feedItemId: "feed-issues",
@@ -142,7 +129,11 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
       ),
     } as unknown as RankFeedItemsUseCase;
     const feedItems: FeedItemReadRepositoryPort = {
-      list: jest.fn(async () => ({ items: [] })),
+      list: jest.fn(async ({ cursor }) =>
+        cursor === undefined
+          ? { items: [], nextCursor: "github-page-2" }
+          : { items: [] },
+      ),
       findById: jest.fn(async () => null),
     };
     const storyRankingMetrics = new FakeStoryRankingMetrics();
@@ -168,6 +159,12 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
         limit: 200,
       }),
     );
+    expect(feedItems.list).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providerKey: "github-trending-page",
+        cursor: "github-page-2",
+      }),
+    );
     expect(
       selection.selectedEvidence.map((item) => item.providerKey).sort(),
     ).toEqual([
@@ -178,10 +175,10 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
       "rss",
     ]);
     expect(selection.selectedEvidence.map((item) => item.providerKey)).toEqual([
-      "github-trending-page",
       "hacker-news",
       "reddit",
       "rss",
+      "github-trending-page",
       "github-trending-page",
     ]);
     expect(selection.sourceWindow.selectedFeedItemIds).toContain(
@@ -228,6 +225,7 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
         providerKey: "github-trending-page",
         rank: 81,
         score: 1.6,
+        providerMetadata: githubTrendingMetadataFixture(1_500),
       }),
       rankedItem({
         feedItemId: "feed-github-deep",
@@ -266,12 +264,9 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
     expect(rankFeedItems.execute).toHaveBeenCalledWith(
       expect.objectContaining({ limit: 200 }),
     );
-    expect(
-      selection.selectedEvidence.map((item) => item.feedItemId),
-    ).not.toContain("feed-github-deep");
-    expect(
-      selection.selectedEvidence.map((item) => item.feedItemId),
-    ).toContain("feed-github-trending");
+    expect(selection.selectedEvidence.map((item) => item.feedItemId)).toContain(
+      "feed-github-trending",
+    );
     expect(
       selection.selectedEvidence.map((item) => item.feedItemId),
     ).not.toContain("feed-github-deep");
@@ -284,6 +279,7 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
         providerKey: "github-trending-page",
         rank: 1,
         score: 3.0,
+        providerMetadata: githubTrendingMetadataFixture(1_500),
       }),
       rankedItem({
         feedItemId: "feed-github-repo",
@@ -345,10 +341,11 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
     });
 
     expect(selection.selectedEvidence.map((item) => item.providerKey)).toEqual([
-      "github-trending-page",
       "github-repo-radar",
       "reddit",
       "hacker-news",
+      "rss",
+      "github-trending-page",
     ]);
   });
 
@@ -911,6 +908,7 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
         providerKey: "github-trending-page",
         rank: 1,
         score: 3,
+        providerMetadata: githubTrendingMetadataFixture(1_500),
       }),
       rankedItem({
         feedItemId: "feed-x-url-only",
@@ -966,8 +964,8 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
     });
 
     expect(selection.selectedEvidence.map((item) => item.feedItemId)).toEqual([
-      "feed-github",
       "feed-reddit",
+      "feed-github",
     ]);
   });
 });

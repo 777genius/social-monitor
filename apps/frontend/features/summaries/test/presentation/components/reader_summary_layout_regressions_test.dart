@@ -225,12 +225,11 @@ void main() {
     expect(hackerNews, findsOneWidget);
     expect(rss, findsOneWidget);
     expect(reddit, findsOneWidget);
-    expect(github, findsOneWidget);
+    expect(github, findsNothing);
 
     final firstTop = tester.getTopLeft(hackerNews).dy;
     expect((tester.getTopLeft(rss).dy - firstTop).abs(), lessThan(1));
     expect((tester.getTopLeft(reddit).dy - firstTop).abs(), lessThan(1));
-    expect((tester.getTopLeft(github).dy - firstTop).abs(), lessThan(1));
     expect(
       tester.getTopLeft(rss).dx,
       greaterThan(tester.getTopLeft(hackerNews).dx),
@@ -238,10 +237,6 @@ void main() {
     expect(
       tester.getTopLeft(reddit).dx,
       greaterThan(tester.getTopLeft(rss).dx),
-    );
-    expect(
-      tester.getTopLeft(github).dx,
-      greaterThan(tester.getTopLeft(reddit).dx),
     );
   });
 }

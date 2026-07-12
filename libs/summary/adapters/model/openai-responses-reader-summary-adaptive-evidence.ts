@@ -15,11 +15,17 @@ const maxRelevantFragments = 3;
 export const buildAdaptiveReaderSummaryEvidence = (
   selection: SummaryEvidenceSelection,
   coveragePlan: ReaderSummaryCoveragePlan,
+  citationIdByFeedItemId?: ReadonlyMap<string, string>,
 ): readonly Record<string, unknown>[] => {
   const expandedIds = expandedEvidenceIds(selection, coveragePlan);
 
   return selection.selectedEvidence.map((item, index) =>
-    promptEvidenceItem(item, index, expandedIds.has(item.feedItemId)),
+    promptEvidenceItem(
+      item,
+      index,
+      expandedIds.has(item.feedItemId),
+      citationIdByFeedItemId?.get(item.feedItemId) ?? `c${index + 1}`,
+    ),
   );
 };
 
@@ -75,12 +81,13 @@ const promptEvidenceItem = (
   item: SummaryEvidenceItem,
   index: number,
   expanded: boolean,
+  citationId: string,
 ): Record<string, unknown> => {
   const baselineSource = item.sourceText ?? item.bodyPreview;
 
   return {
     index: index + 1,
-    citationId: `c${index + 1}`,
+    citationId,
     feedItemId: item.feedItemId,
     sourceItemId: item.sourceItemId,
     providerKey: item.providerKey,

@@ -287,7 +287,7 @@ describe('SetScanPolicyUseCase', () => {
   });
 
   it.each([
-    ['github-trending-page', 3_600],
+    ['github-trending-page', 86_400],
     ['github-repo-radar', 21_600],
   ])(
     'rejects scan intervals below %s provider cadence minimum',

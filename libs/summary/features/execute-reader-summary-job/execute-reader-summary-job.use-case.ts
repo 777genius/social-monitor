@@ -17,6 +17,7 @@ import {
   defaultReaderSummaryGenerationPolicy,
   ReaderSummaryArtifact,
   ReaderSummaryPublicationPolicy,
+  primaryReaderSummaryEvidence,
   resolveEffectiveReaderSummaryPolicy,
   type ReaderSummaryContextArtifact,
   type ReaderSummaryJob,
@@ -271,6 +272,7 @@ export class ExecuteReaderSummaryJobUseCase {
       subscriptionId: snapshot.subscriptionId,
       maxItems: maxEvidenceItems,
     });
+    const primaryEvidence = primaryReaderSummaryEvidence(evidence);
     const policy = await this.readerSummaryPolicies.findByScope({
       tenantId: snapshot.tenantId,
       workspaceId: snapshot.workspaceId,
@@ -286,7 +288,7 @@ export class ExecuteReaderSummaryJobUseCase {
             subscriptionId: snapshot.subscriptionId,
             interestId: readerSummaryPreferenceInterestId(snapshot),
           });
-    const context = await this.safeBuildContext(snapshot, evidence);
+    const context = await this.safeBuildContext(snapshot, primaryEvidence);
     const basePolicy =
       policy?.toGenerationPolicy() ?? defaultReaderSummaryGenerationPolicy();
     const input = {
@@ -297,7 +299,7 @@ export class ExecuteReaderSummaryJobUseCase {
       userId: snapshot.userId,
       subscriptionId: snapshot.subscriptionId,
       evidence,
-      coveragePlan: buildReaderSummaryCoveragePlan(evidence),
+      coveragePlan: buildReaderSummaryCoveragePlan(primaryEvidence),
       contextArtifacts: context.artifacts,
       policy: resolveEffectiveReaderSummaryPolicy(basePolicy, userPreference),
       requestedAt: snapshot.requestedAt,
@@ -357,14 +359,15 @@ export class ExecuteReaderSummaryJobUseCase {
     evidence: SummaryEvidenceSelection,
     draft: ProviderReaderSummaryAttempt["draft"],
   ): Promise<Result<ProviderReaderSummaryAttempt["draft"], DomainError>> {
+    const primaryEvidence = primaryReaderSummaryEvidence(evidence);
     const topicMapResult = await this.topicMapBuilder.execute({
       tenantId: snapshot.tenantId,
       workspaceId: snapshot.workspaceId,
       scope: snapshot.scope,
       period: snapshot.period,
       requestedAt: snapshot.requestedAt,
-      clusters: evidence.clusters,
-      selectedEvidence: evidence.selectedEvidence,
+      clusters: primaryEvidence.clusters,
+      selectedEvidence: primaryEvidence.selectedEvidence,
       topStories: draft.topStories,
       citationMap: draft.citationMap,
     });

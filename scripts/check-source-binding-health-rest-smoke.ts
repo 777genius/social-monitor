@@ -646,7 +646,7 @@ async function main(): Promise<void> {
       'too-fast GitHub Trending page scan policy problem must expose configured interval',
     );
     assert(
-      tooFastTrendingPagePolicy.body.details.minimumIntervalSeconds === 3_600,
+      tooFastTrendingPagePolicy.body.details.minimumIntervalSeconds === 86_400,
       'too-fast GitHub Trending page scan policy problem must expose provider minimum interval',
     );
 
@@ -671,7 +671,7 @@ async function main(): Promise<void> {
       headers: viewerHeaders,
     });
     assert(
-      trendingPageHealth.body.scanPolicy.cadence.minimumIntervalSeconds === 3_600,
+      trendingPageHealth.body.scanPolicy.cadence.minimumIntervalSeconds === 86_400,
       'GitHub Trending page scan policy must expose provider minimum interval',
     );
     assert(
@@ -679,7 +679,7 @@ async function main(): Promise<void> {
       'GitHub Trending page scan policy must expose legacy configured interval',
     );
     assert(
-      trendingPageHealth.body.scanPolicy.cadence.effectiveIntervalSeconds === 3_600,
+      trendingPageHealth.body.scanPolicy.cadence.effectiveIntervalSeconds === 86_400,
       'GitHub Trending page scan policy must expose provider-capped effective interval',
     );
     assert(
@@ -687,11 +687,11 @@ async function main(): Promise<void> {
       'GitHub Trending page scan policy must mark provider minimum enforcement',
     );
     assert(
-      trendingPageHealth.body.schedulerDecision.minimumIntervalSeconds === 3_600,
+      trendingPageHealth.body.schedulerDecision.minimumIntervalSeconds === 86_400,
       'GitHub Trending page health decision must expose provider minimum interval',
     );
     assert(
-      trendingPageHealth.body.schedulerDecision.effectiveIntervalSeconds === 3_600,
+      trendingPageHealth.body.schedulerDecision.effectiveIntervalSeconds === 86_400,
       'GitHub Trending page health decision must use provider-capped effective interval',
     );
     assert(

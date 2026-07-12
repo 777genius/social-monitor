@@ -95,26 +95,27 @@ List<_ProviderCoverageRowData> _providerCoverageRows(ReaderSummary summary) {
   if (coverageRows.isNotEmpty) {
     return _sortProviderCoverageRows([
       for (final provider in coverageRows)
-        _ProviderCoverageRowData(
-          providerKey: provider.providerKey,
-          collectedFeedItemCount: _safeNullableCoverageCount(
-            provider.collectedFeedItemCount,
+        if (!_isGitHubProvider(provider.providerKey))
+          _ProviderCoverageRowData(
+            providerKey: provider.providerKey,
+            collectedFeedItemCount: _safeNullableCoverageCount(
+              provider.collectedFeedItemCount,
+            ),
+            selectedFeedItemCount: _safeCoverageCount(
+              provider.selectedFeedItemCount,
+            ),
+            topReadCount: _safeCoverageCount(provider.topReadCount),
+            citationCount: _safeCoverageCount(provider.citationCount),
+            lowRelevanceFeedItemCount: _safeCoverageCount(
+              provider.lowRelevanceFeedItemCount,
+            ),
+            mutedFeedItemCount: _safeCoverageCount(provider.mutedFeedItemCount),
+            userRatedFeedItemCount: _safeCoverageCount(
+              provider.userRatedFeedItemCount,
+            ),
+            collectionHealth: provider.collectionHealth,
+            color: _providerCoverageColor(provider.providerKey),
           ),
-          selectedFeedItemCount: _safeCoverageCount(
-            provider.selectedFeedItemCount,
-          ),
-          topReadCount: _safeCoverageCount(provider.topReadCount),
-          citationCount: _safeCoverageCount(provider.citationCount),
-          lowRelevanceFeedItemCount: _safeCoverageCount(
-            provider.lowRelevanceFeedItemCount,
-          ),
-          mutedFeedItemCount: _safeCoverageCount(provider.mutedFeedItemCount),
-          userRatedFeedItemCount: _safeCoverageCount(
-            provider.userRatedFeedItemCount,
-          ),
-          collectionHealth: provider.collectionHealth,
-          color: _providerCoverageColor(provider.providerKey),
-        ),
     ]);
   }
 
@@ -130,7 +131,7 @@ List<_ProviderCoverageRowData> _providerCoverageRows(ReaderSummary summary) {
   final rowsByProvider = <String, _ProviderCoverageRowData>{};
   for (final source in summary.content.sourceMix) {
     final key = source.providerKey.trim();
-    if (key.isEmpty) {
+    if (key.isEmpty || _isGitHubProvider(key)) {
       continue;
     }
     rowsByProvider[key] = _ProviderCoverageRowData(
@@ -146,6 +147,9 @@ List<_ProviderCoverageRowData> _providerCoverageRows(ReaderSummary summary) {
   }
 
   for (final entry in topReadCounts.entries) {
+    if (_isGitHubProvider(entry.key)) {
+      continue;
+    }
     rowsByProvider.putIfAbsent(
       entry.key,
       () => _ProviderCoverageRowData(
@@ -162,6 +166,16 @@ List<_ProviderCoverageRowData> _providerCoverageRows(ReaderSummary summary) {
   }
 
   return _sortProviderCoverageRows(rowsByProvider.values.toList());
+}
+
+bool _isGitHubProvider(String providerKey) {
+  return switch (providerKey.trim().toLowerCase()) {
+    'github' ||
+    'github-issues' ||
+    'github-trending-page' ||
+    'github-repo-radar' => true,
+    _ => false,
+  };
 }
 
 String _collectionHealthText(ReaderSummaryProviderCollectionHealth health) {

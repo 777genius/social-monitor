@@ -1,4 +1,8 @@
-import { buildReaderSummary, readerSummaryScopeKey } from "../../domain";
+import {
+  buildReaderSummary,
+  primaryReaderSummaryEvidence,
+  readerSummaryScopeKey,
+} from "../../domain";
 import type {
   AgentRuntimeClientPort,
   AgentRuntimeProvider,
@@ -134,7 +138,7 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
         this.inputTokenDivisor,
     );
     const outputTokens =
-      input.evidence.selectedEvidence.length === 0
+      primaryReaderSummaryEvidence(input.evidence).selectedEvidence.length === 0
         ? 128
         : Math.min(
             this.maxOutputTokens,
@@ -152,7 +156,9 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
     input: ReaderSummaryModelInput,
     selectedRoute: ReaderSummaryModelRoute,
   ): Promise<ProviderReaderSummaryAttempt> {
-    if (input.evidence.selectedEvidence.length === 0) {
+    if (
+      primaryReaderSummaryEvidence(input.evidence).selectedEvidence.length === 0
+    ) {
       return this.buildNoSignalAttempt(input, selectedRoute);
     }
 

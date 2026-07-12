@@ -9,7 +9,7 @@ import type {
   ReaderSummaryModelValidationResult,
   ProviderReaderSummaryAttempt,
 } from "../../ports";
-import { buildReaderSummary } from "../../domain";
+import { buildReaderSummary, primaryReaderSummaryEvidence } from "../../domain";
 import {
   normalizeReaderSummaryStoryLimit,
   selectProviderDiverseRankedEvidence,
@@ -50,7 +50,9 @@ export class DeterministicReaderSummaryModelAdapter implements ReaderSummaryMode
   ): ReaderSummaryModelEstimate {
     void selectedRoute;
 
-    const evidenceTextLength = input.evidence.selectedEvidence.reduce(
+    const evidenceTextLength = primaryReaderSummaryEvidence(
+      input.evidence,
+    ).selectedEvidence.reduce(
       (total, item) =>
         total + item.title.length + (item.bodyPreview?.length ?? 0),
       0,
@@ -61,7 +63,9 @@ export class DeterministicReaderSummaryModelAdapter implements ReaderSummaryMode
     );
     const inputTokens = Math.ceil((evidenceTextLength + contextTextLength) / 4);
     const outputTokens =
-      input.evidence.selectedEvidence.length === 0 ? 64 : 260;
+      primaryReaderSummaryEvidence(input.evidence).selectedEvidence.length === 0
+        ? 64
+        : 260;
 
     return {
       inputTokens,
@@ -84,7 +88,8 @@ export class DeterministicReaderSummaryModelAdapter implements ReaderSummaryMode
       evalDatasetVersion: "reader_summary.eval.mvp.v1",
       rankingPolicyVersion: input.evidence.rankingPolicyVersion,
     } as const;
-    const firstItem = input.evidence.selectedEvidence[0];
+    const primaryEvidence = primaryReaderSummaryEvidence(input.evidence);
+    const firstItem = primaryEvidence.selectedEvidence[0];
 
     if (firstItem === undefined) {
       const noSignalDraft = {
@@ -130,7 +135,7 @@ export class DeterministicReaderSummaryModelAdapter implements ReaderSummaryMode
 
     const citedEvidence = input.evidence.selectedEvidence;
     const selectedEvidence = selectRankedEvidence(
-      input.evidence.selectedEvidence,
+      primaryEvidence.selectedEvidence,
       input.policy.maxStories,
     );
     const citationMap = citedEvidence.map((item, index) => ({

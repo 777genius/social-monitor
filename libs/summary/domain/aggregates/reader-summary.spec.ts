@@ -1056,7 +1056,7 @@ describe("buildReaderSummary", () => {
     ]);
   });
 
-  it("keeps GitHub Trending page summaries distinct from Repo Radar", () => {
+  it("does not let a GitHub Trending-only signal become the main summary", () => {
     const readerSummary = buildReaderSummary({
       headline: "GitHub Trending today",
       executiveSummary:
@@ -1134,40 +1134,13 @@ describe("buildReaderSummary", () => {
       qualityFlags: [],
     });
 
-    expect(readerSummary.sourceMix).toEqual([
-      expect.objectContaining({
-        providerKey: "github-trending-page",
-        itemCount: 1,
-      }),
+    expect(readerSummary.sourceMix).toEqual([]);
+    expect(readerSummary.topReads).toEqual([]);
+    expect(readerSummary.qualityState.flags).toContain("no_signal");
+    expect(readerSummary.narrativeSections).toEqual([
+      expect.objectContaining({ id: "github-trending", kind: "watch" }),
     ]);
-    expect(readerSummary.trendDelta.newSignals).toEqual([
-      "1 GitHub Trending item selected",
-    ]);
-    expect(readerSummary.openQuestions).toContain(
-      "Is this signal confirmed outside GitHub Trending?",
-    );
-    expect(readerSummary.topReads[0]).toMatchObject({
-      providerKey: "github-trending-page",
-      whyNow: "Current summary window has GitHub Trending coverage.",
-      providerMetrics: [
-        {
-          label: "GitHub Trending evidence",
-          value: "#1, +3,703 stars today",
-        },
-        {
-          label: "GitHub Trending today",
-          value: "#1, +3,703 stars today",
-        },
-        { label: "Stars", value: "18,398" },
-        { label: "Forks", value: "2,113" },
-      ],
-    });
-    expect(readerSummary.nextActions[0]).toEqual(
-      expect.objectContaining({
-        kind: "watch_repository",
-        label: "Watch calesthio/OpenMontage",
-      }),
-    );
+    expect(readerSummary.selectedPosts).toHaveLength(1);
   });
 
   it("marks cross-source source mix when multiple providers confirm one story cluster", () => {
