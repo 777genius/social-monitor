@@ -116,7 +116,7 @@ Scan status API responses expose support-safe fields for beta triage:
 
 - Use `ops/recovery/backup-restore-contract.json` as the beta recovery contract for RPO/RTO and included tables.
 - Backup must include operational replay/idempotency state: `outbox_events`, `inbox_records`, `idempotency_keys`, `scan_jobs` and `cursor_checkpoints`.
-- After restore, run validation queries for tenant/workspace counts plus outbox, inbox and idempotency state before resuming workers.
+- After restore, require the exact source/restored base-table sets to match and run every canonical count query from `restoreValidationQueries` before resuming workers.
 - Keep workers paused during restore validation; resume only after migration version, replay state and idempotency state are consistent.
 - Required local durable drill: run `docker compose --profile app up -d --build`, then `npm run capture:docker-staging-reliability-evidence`, then load the printed env file and run `npm run check:staging-reliability-evidence`.
 - Treat restore as unsafe unless the Postgres artifact includes `postgres-outbox-inbox-idempotency`, `postgres-worker-pause-resume` and `postgres-no-duplicate-side-effects` with matching counts and fingerprints.
