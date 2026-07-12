@@ -33,6 +33,7 @@ import {
   dailyPeriodKey,
   isLocalDataSourceUnavailable,
 } from "./lib/reader-summary-quality-eval-support";
+import { selectedCoverageMatchesProviderBreakdown } from "./lib/reader-summary-artifact-coverage";
 
 type ProviderCountRow = {
   readonly providerKey: string;
@@ -432,10 +433,6 @@ async function buildReport(): Promise<ArtifactQualityReport> {
           item.confidence.level === "low" && hasHighEngagementMetric(item),
       ).length,
     };
-    const coverageSelectedProviderSum = coverage.providerBreakdown.reduce(
-      (sum, item) => sum + item.selectedFeedItemCount,
-      0,
-    );
     const reportWithoutSecretGate = {
       schemaVersion: 1,
       artifactFormat: "yesterday-reader-summary-artifact-quality-v1",
@@ -548,7 +545,7 @@ async function buildReport(): Promise<ArtifactQualityReport> {
           coverage.selectedFeedItemCount ===
           view.sourceWindow.selectedFeedItemIds.length,
         coverageSelectedMatchesProviderBreakdown:
-          coverage.selectedFeedItemCount === coverageSelectedProviderSum,
+          selectedCoverageMatchesProviderBreakdown(coverage, selectedPosts),
         selectedPostsMismatchIsExplained: selectedPostsMismatchDocumented,
         topReadsHaveCanonicalUrls:
           topReads.length > 0 &&
