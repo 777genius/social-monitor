@@ -6,6 +6,7 @@ import type { ReaderSummaryCitation } from "../entities/citation";
 import type { ReaderSummaryNarrativeSection } from "../entities/reader-summary-narrative-section";
 
 export const githubTrendingProviderKey = "github-trending-page";
+export const githubTrendingNarrativeSectionId = "github-trending";
 export const minimumGitHubTrendingStarsGained = 1_000;
 export const maxGitHubTrendingHighlights = 3;
 
@@ -136,7 +137,7 @@ export const buildGitHubTrendingNarrativeAppendix = (params: {
   }
 
   return {
-    id: "github-trending",
+    id: githubTrendingNarrativeSectionId,
     kind: "watch",
     title: "GitHub Trending",
     text: citedHighlights
