@@ -165,13 +165,10 @@ class _SummariesBody extends StatelessWidget {
             availableSummaryPeriods: store.availableWorkspaceSummaryPeriods,
             canNavigateToPreviousPeriod: store.canShowPreviousSummaryPeriod,
             canNavigateToNextPeriod: store.canShowNextSummaryPeriod,
-            isCurrentPeriod: store.isSelectedSummaryPeriodCurrent,
             onPeriodChanged: (preset) =>
                 unawaited(store.selectWorkspaceSummaryPeriod(preset)),
             onPreviousPeriod: () =>
                 unawaited(store.showPreviousWorkspaceSummaryPeriod()),
-            onCurrentPeriod: () =>
-                unawaited(store.showCurrentWorkspaceSummaryPeriod()),
             onNextPeriod: () =>
                 unawaited(store.showNextWorkspaceSummaryPeriod()),
             onCalendarDateSelected: (date) =>

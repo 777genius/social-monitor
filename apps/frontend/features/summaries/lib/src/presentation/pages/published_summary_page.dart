@@ -124,11 +124,9 @@ class _PublishedSummaryArticle extends StatelessWidget {
             availableSummaryPeriods: store.availablePeriods,
             canNavigateToPreviousPeriod: store.canNavigateToPreviousPeriod,
             canNavigateToNextPeriod: store.canNavigateToNextPeriod,
-            isCurrentPeriod: store.isCurrentPeriod,
             onPeriodChanged: (preset) =>
                 unawaited(store.selectPeriodPreset(preset)),
             onPreviousPeriod: () => unawaited(store.showPreviousPeriod()),
-            onCurrentPeriod: () => unawaited(store.showCurrentPeriod()),
             onNextPeriod: () => unawaited(store.showNextPeriod()),
             onCalendarDateSelected: (date) =>
                 unawaited(store.selectCalendarDate(date)),

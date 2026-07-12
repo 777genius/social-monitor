@@ -23,10 +23,8 @@ class WorkspaceSummaryPeriodToolbar extends StatelessWidget {
     required this.availableSummaryPeriods,
     required this.canNavigateToPreviousPeriod,
     required this.canNavigateToNextPeriod,
-    required this.isCurrentPeriod,
     required this.onPeriodChanged,
     required this.onPreviousPeriod,
-    required this.onCurrentPeriod,
     required this.onNextPeriod,
     required this.onCalendarDateSelected,
     this.isGenerating = false,
@@ -41,10 +39,8 @@ class WorkspaceSummaryPeriodToolbar extends StatelessWidget {
   final List<SummaryPeriod> availableSummaryPeriods;
   final bool canNavigateToPreviousPeriod;
   final bool canNavigateToNextPeriod;
-  final bool isCurrentPeriod;
   final ValueChanged<SummaryPeriodPreset> onPeriodChanged;
   final VoidCallback onPreviousPeriod;
-  final VoidCallback onCurrentPeriod;
   final VoidCallback onNextPeriod;
   final ValueChanged<DateTime> onCalendarDateSelected;
   final bool isGenerating;
@@ -63,17 +59,15 @@ class WorkspaceSummaryPeriodToolbar extends StatelessWidget {
         final screen = AppScreenClass.of(context);
         final compact =
             screen.isCompact || maxWidth < _toolbarSingleRowMinWidth;
-        final navigation = _PeriodNavigationGroup(
+        final dateNavigation = _PeriodDateNavigation(
+          key: const ValueKey('workspace-summary-period-navigation'),
           canNavigateToPreviousPeriod: canNavigateToPreviousPeriod,
           canNavigateToNextPeriod: canNavigateToNextPeriod,
-          isCurrentPeriod: isCurrentPeriod,
+          showToday: _showsTodayLabel(),
+          dateLabel: _periodNavigationLabel(),
           onPreviousPeriod: onPreviousPeriod,
-          onCurrentPeriod: onCurrentPeriod,
           onNextPeriod: onNextPeriod,
-        );
-        final dateButton = _PeriodDateButton(
-          label: summaryPeriodToolbarLabel(selectedPeriod),
-          onPressed: () => _choosePeriodDate(context),
+          onDatePressed: () => _choosePeriodDate(context),
         );
         final presetSelector = _SummaryPeriodPresetSelector(
           selectedPreset: selectedPreset,
@@ -110,13 +104,7 @@ class WorkspaceSummaryPeriodToolbar extends StatelessWidget {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  navigation,
-                  const SizedBox(width: AppSpacing.sm + 4),
-                  Flexible(child: dateButton),
-                ],
-              ),
+              Row(children: [Expanded(child: dateNavigation)]),
               const SizedBox(height: AppSpacing.sm),
               Row(
                 children: [
@@ -135,11 +123,12 @@ class WorkspaceSummaryPeriodToolbar extends StatelessWidget {
 
         return Row(
           children: [
-            navigation,
-            const SizedBox(width: AppSpacing.sm + 4),
             ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: _toolbarDateMaxWidth),
-              child: dateButton,
+              constraints: const BoxConstraints(
+                minWidth: _toolbarDateMaxWidth,
+                maxWidth: _toolbarDateMaxWidth,
+              ),
+              child: dateNavigation,
             ),
             const SizedBox(width: AppSpacing.md),
             Flexible(
@@ -193,6 +182,23 @@ class WorkspaceSummaryPeriodToolbar extends StatelessWidget {
     if (picked != null) {
       onCalendarDateSelected(picked);
     }
+  }
+
+  bool _showsTodayLabel() {
+    if (selectedPreset != SummaryPeriodPreset.daily) {
+      return false;
+    }
+    final selectedDate = _datePickerDate(selectedPeriod.calendarFocusDate);
+    final latestDate = _datePickerDate(
+      selectedPreset.latestSelectableCalendarDate(now: calendarNow),
+    );
+    return selectedDate == latestDate;
+  }
+
+  String _periodNavigationLabel() {
+    return selectedPreset == SummaryPeriodPreset.daily
+        ? summaryPeriodDayLabel(selectedPeriod)
+        : summaryPeriodToolbarLabel(selectedPeriod);
   }
 }
 

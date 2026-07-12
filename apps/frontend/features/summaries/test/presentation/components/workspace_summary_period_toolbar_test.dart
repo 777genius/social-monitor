@@ -31,11 +31,9 @@ void main() {
               availableSummaryPeriods: const [],
               canNavigateToPreviousPeriod: false,
               canNavigateToNextPeriod: false,
-              isCurrentPeriod: true,
               calendarNow: DateTime.utc(2026, 6, 27, 12),
               onPeriodChanged: (_) {},
               onPreviousPeriod: () {},
-              onCurrentPeriod: () {},
               onNextPeriod: () {},
               onCalendarDateSelected: (_) {},
             ),
@@ -45,8 +43,55 @@ void main() {
     );
 
     expect(tester.takeException(), isNull);
+    expect(find.text('Today'), findsOneWidget);
+    expect(find.textContaining('Jun 26'), findsNothing);
+    final navigationRect = tester.getRect(
+      find.byKey(const ValueKey('workspace-summary-period-navigation')),
+    );
+    for (final finder in [
+      find.byTooltip('Previous period'),
+      find.byKey(const ValueKey('workspace-summary-period-calendar')),
+      find.byTooltip('Next period'),
+    ]) {
+      final rect = tester.getRect(finder);
+      expect(rect.left, greaterThanOrEqualTo(navigationRect.left));
+      expect(rect.right, lessThanOrEqualTo(navigationRect.right));
+    }
     final monthRect = tester.getRect(find.text('Month'));
     expect(monthRect.right, lessThanOrEqualTo(390));
+  });
+
+  testWidgets('shows the selected date in the merged navigation when past', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: Scaffold(
+          body: SizedBox(
+            width: 1024,
+            child: WorkspaceSummaryPeriodToolbar(
+              selectedPeriod: SummaryPeriodPreset.daily.resolveForCalendarDate(
+                DateTime(2026, 6, 15),
+                now: DateTime.utc(2026, 6, 27, 12),
+              ),
+              selectedPreset: SummaryPeriodPreset.daily,
+              availableSummaryPeriods: const [],
+              canNavigateToPreviousPeriod: true,
+              canNavigateToNextPeriod: true,
+              calendarNow: DateTime.utc(2026, 6, 27, 12),
+              onPeriodChanged: (_) {},
+              onPreviousPeriod: () {},
+              onNextPeriod: () {},
+              onCalendarDateSelected: (_) {},
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Jun 15, 2026'), findsOneWidget);
+    expect(find.text('Today'), findsNothing);
   });
 
   testWidgets('keeps period controls, stats and actions in one expanded row', (
@@ -82,14 +127,12 @@ void main() {
               availableSummaryPeriods: const [],
               canNavigateToPreviousPeriod: false,
               canNavigateToNextPeriod: false,
-              isCurrentPeriod: true,
               calendarNow: DateTime.utc(2026, 7, 5, 12),
               collectionStatsSummary: summary,
               onGenerate: () {},
               onExport: () {},
               onPeriodChanged: (_) {},
               onPreviousPeriod: () {},
-              onCurrentPeriod: () {},
               onNextPeriod: () {},
               onCalendarDateSelected: (_) {},
             ),
@@ -137,11 +180,9 @@ void main() {
             availableSummaryPeriods: const [],
             canNavigateToPreviousPeriod: false,
             canNavigateToNextPeriod: false,
-            isCurrentPeriod: true,
             calendarNow: DateTime.utc(2026, 6, 27, 12),
             onPeriodChanged: (_) {},
             onPreviousPeriod: () {},
-            onCurrentPeriod: () {},
             onNextPeriod: () {},
             onCalendarDateSelected: (date) {
               selectedDate = date;
@@ -192,11 +233,9 @@ void main() {
             availableSummaryPeriods: [availablePeriod],
             canNavigateToPreviousPeriod: false,
             canNavigateToNextPeriod: false,
-            isCurrentPeriod: true,
             calendarNow: DateTime.utc(2026, 6, 27, 12),
             onPeriodChanged: (_) {},
             onPreviousPeriod: () {},
-            onCurrentPeriod: () {},
             onNextPeriod: () {},
             onCalendarDateSelected: (date) {
               selectedDate = date;
@@ -239,11 +278,9 @@ void main() {
             availableSummaryPeriods: const [],
             canNavigateToPreviousPeriod: false,
             canNavigateToNextPeriod: false,
-            isCurrentPeriod: true,
             calendarNow: DateTime.utc(2026, 6, 27, 12),
             onPeriodChanged: (_) {},
             onPreviousPeriod: () {},
-            onCurrentPeriod: () {},
             onNextPeriod: () {},
             onCalendarDateSelected: (_) {},
           ),
@@ -284,11 +321,9 @@ void main() {
             availableSummaryPeriods: [availablePeriod],
             canNavigateToPreviousPeriod: false,
             canNavigateToNextPeriod: false,
-            isCurrentPeriod: true,
             calendarNow: DateTime.utc(2026, 6, 27, 12),
             onPeriodChanged: (_) {},
             onPreviousPeriod: () {},
-            onCurrentPeriod: () {},
             onNextPeriod: () {},
             onCalendarDateSelected: (_) {},
           ),
