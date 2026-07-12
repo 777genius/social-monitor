@@ -328,9 +328,9 @@ describe("ListInterestSourceDailyHistoryUseCase", () => {
               unscannedSourceBindingCount: 0,
               scanCoverageState: "complete",
               cadenceSummary: expect.objectContaining({
-                minimumIntervalSeconds: 3600,
+                minimumIntervalSeconds: 86400,
                 minConfiguredIntervalSeconds: 300,
-                maxEffectiveIntervalSeconds: 3600,
+                maxEffectiveIntervalSeconds: 86400,
                 providerMinimumIntervalEnforced: true,
               }),
               failedScans: 1,
