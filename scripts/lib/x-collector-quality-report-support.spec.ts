@@ -286,6 +286,95 @@ describe("x collector quality report support", () => {
     }
   });
 
+  it("treats failed Scweet runs with collected tweets as usable partial runs", () => {
+    const directory = mkdtempSync(join(tmpdir(), "x-collector-quality-"));
+    const dbPath = join(directory, "scweet_state.db");
+
+    try {
+      execSql(
+        dbPath,
+        `
+          create table runs (
+            id integer primary key,
+            run_id text not null,
+            status text not null,
+            started_at real not null,
+            finished_at real,
+            query_hash text not null,
+            tweets_count integer not null,
+            input_json text,
+            stats_json text
+          );
+        `,
+      );
+      insertRun({
+        dbPath,
+        id: 1,
+        displayType: "Top",
+        startedAt: "2026-07-12T00:01:00Z",
+        finishedAt: "2026-07-12T00:02:00Z",
+        tweets: 20,
+        since: "2026-07-11",
+        until: "2026-07-12",
+      });
+      insertRun({
+        dbPath,
+        id: 2,
+        displayType: "Latest",
+        startedAt: "2026-07-12T00:02:00Z",
+        finishedAt: "2026-07-12T00:03:00Z",
+        tweets: 9,
+        since: "2026-07-11",
+        until: "2026-07-12",
+        status: "failed",
+      });
+      insertRun({
+        dbPath,
+        id: 4,
+        displayType: "Top",
+        startedAt: "2026-07-12T00:04:00Z",
+        finishedAt: "2026-07-12T00:05:00Z",
+        tweets: 99,
+        since: "2026-07-11",
+        until: "2026-07-12",
+        status: "running",
+      });
+      insertRun({
+        dbPath,
+        id: 3,
+        displayType: "Latest",
+        startedAt: "2026-07-12T00:03:00Z",
+        finishedAt: "2026-07-12T00:04:00Z",
+        tweets: 0,
+        since: "2026-07-11",
+        until: "2026-07-12",
+        status: "failed",
+      });
+
+      const ledger = buildXCollectorLedgerReport({
+        ledgerPath: dbPath,
+        collectionDate: "2026-07-11",
+      });
+
+      expect(ledger).toMatchObject({
+        runCount: 4,
+        completedRunCount: 1,
+        failedRunCount: 2,
+        partialUsableRunCount: 1,
+        partialUsableReturnedTweetCount: 9,
+        hardFailedRunCount: 1,
+        nonTerminalOrUnknownRunCount: 1,
+        usableRunCount: 2,
+        completedRunRate: 0.25,
+        usableRunRate: 0.5,
+        failedReturnedTweetCount: 9,
+        returnedTweetCount: 128,
+      });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("reports observed per-account budget limit profiles", () => {
     const directory = mkdtempSync(join(tmpdir(), "x-collector-quality-"));
     const dbPath = join(directory, "scweet_state.db");
@@ -406,7 +495,7 @@ function insertRun(params: {
   readonly tweets: number;
   readonly since?: string;
   readonly until?: string;
-  readonly status?: "completed" | "failed";
+  readonly status?: string;
 }): void {
   const input = JSON.stringify({
     since: params.since ?? "2026-07-07_00:00:00_UTC",
