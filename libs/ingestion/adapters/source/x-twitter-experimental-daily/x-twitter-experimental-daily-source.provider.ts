@@ -127,6 +127,7 @@ export class XTwitterSourceProvider implements SourceProviderPort {
       config: context.config,
       cursorModel: xTwitterCapabilityProfile.cursorModel,
       firstPageLimit: plan.maxItems,
+      providerManagesPagination: true,
     });
     const paginationPolicy = pagination.enabled ? pagination.policy : undefined;
 
