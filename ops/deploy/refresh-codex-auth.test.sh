@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-((EUID != 0)) || {
-  echo 'Subscription auth refresh fixture must run as an unprivileged user' >&2
-  exit 1
-}
+if ((EUID == 0)); then
+  command -v setpriv >/dev/null || {
+    echo 'Subscription auth refresh fixture requires setpriv when run as root' >&2
+    exit 1
+  }
+  exec setpriv --reuid=65534 --regid=65534 --clear-groups \
+    env PATH="$PATH" TMPDIR=/tmp bash "$0" "$@"
+fi
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 ENTRYPOINT=$SCRIPT_DIR/host/refresh-codex-auth.sh
