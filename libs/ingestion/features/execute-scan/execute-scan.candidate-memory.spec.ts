@@ -81,9 +81,9 @@ describe("ExecuteScanUseCase candidate replay memory", () => {
     expect(fixture.enrichment.itemCounts).toEqual([1]);
     expect(fixture.sourceItems.itemCounts).toEqual([1]);
     expect(fixture.projection.itemCounts).toEqual([1]);
-    expect(fixture.engagementProjection.sampleCounts).toEqual([1, 1]);
+    expect(fixture.engagementProjection.sampleCounts).toEqual([1, 0, 1]);
     expect(
-      fixture.engagementProjection.commands[1]?.samples[0]?.refreshReadModels,
+      fixture.engagementProjection.commands[2]?.samples[0]?.refreshReadModels,
     ).toBe(true);
     expect(fixture.memory.all()).toEqual([
       expect.objectContaining({ seenCount: 2, decision: "processed" }),

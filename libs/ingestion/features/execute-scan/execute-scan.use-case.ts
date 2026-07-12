@@ -231,22 +231,16 @@ export class ExecuteScanUseCase {
           savedItems: saveResult.items,
           candidateScreening,
         });
-      const engagementProjectionResult = engagementSamples.length === 0
-        ? {
-            currentSnapshotsUpdated: 0,
-            observationsAppended: 0,
-            metricChanges: 0,
-            regressionsObserved: 0,
-          }
-        : await this.sourceEngagementProjection.project({
-            tenantId: command.tenantId,
-            workspaceId: command.workspaceId,
-            sourceBindingId: sourceBinding.sourceBindingId,
-            scanJobId: command.scanJobId,
-            providerKey: sourceBinding.providerKey,
-            observedAt: ingestedAt,
-            samples: engagementSamples,
-          });
+      const engagementProjectionResult =
+        await this.sourceEngagementProjection.project({
+          tenantId: command.tenantId,
+          workspaceId: command.workspaceId,
+          sourceBindingId: sourceBinding.sourceBindingId,
+          scanJobId: command.scanJobId,
+          providerKey: sourceBinding.providerKey,
+          observedAt: ingestedAt,
+          samples: engagementSamples,
+        });
       const projectionResult = sourceItemsForFullProjection.length === 0
         ? { projected: 0, projectedItems: [] }
         : await this.feedProjection.project({

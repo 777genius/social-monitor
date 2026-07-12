@@ -124,10 +124,14 @@ CREATE INDEX IF NOT EXISTS "source_item_engagement_observations_item_observed_id
   ON "source_item_engagement_observations"("tenant_id", "workspace_id", "source_item_id", "observed_at" DESC);
 CREATE INDEX IF NOT EXISTS "source_item_engagement_observations_provider_observed_idx"
   ON "source_item_engagement_observations"("tenant_id", "workspace_id", "provider_key", "observed_at" DESC);
+CREATE INDEX IF NOT EXISTS "source_item_engagement_observations_retention_idx"
+  ON "source_item_engagement_observations"("tenant_id", "workspace_id", "observed_at" DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS "source_item_engagement_observations_bucket_key"
   ON "source_item_engagement_observations"("tenant_id", "workspace_id", "source_item_id", "bucket_started_at");
 CREATE INDEX IF NOT EXISTS "source_item_engagement_daily_rollups_provider_day_idx"
   ON "source_item_engagement_daily_rollups"("tenant_id", "workspace_id", "provider_key", "day" DESC);
+CREATE INDEX IF NOT EXISTS "source_item_engagement_daily_rollups_retention_idx"
+  ON "source_item_engagement_daily_rollups"("tenant_id", "workspace_id", "day" DESC);
 
 DO $$
 BEGIN

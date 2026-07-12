@@ -43,7 +43,10 @@ export class PrismaSourceEngagementProjectionAdapter
     command: ProjectSourceEngagementCommand,
   ): Promise<ProjectSourceEngagementResult> {
     if (command.samples.length === 0) {
-      return emptyResult();
+      return {
+        ...emptyResult(),
+        ...(await this.purgeRetentionIfDue(command)),
+      };
     }
 
     let result = emptyResult();

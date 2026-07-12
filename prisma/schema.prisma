@@ -537,6 +537,7 @@ model SourceItemEngagementObservation {
   @@unique([tenantId, workspaceId, sourceItemId, bucketStartedAt], map: "source_item_engagement_observations_bucket_key")
   @@index([tenantId, workspaceId, sourceItemId, observedAt(sort: Desc)], map: "source_item_engagement_observations_item_observed_idx")
   @@index([tenantId, workspaceId, providerKey, observedAt(sort: Desc)], map: "source_item_engagement_observations_provider_observed_idx")
+  @@index([tenantId, workspaceId, observedAt(sort: Desc)], map: "source_item_engagement_observations_retention_idx")
   @@map("source_item_engagement_observations")
 }
 
@@ -562,6 +563,7 @@ model SourceItemEngagementDailyRollup {
 
   @@id([tenantId, workspaceId, sourceItemId, day], map: "source_item_engagement_daily_rollups_pkey")
   @@index([tenantId, workspaceId, providerKey, day(sort: Desc)], map: "source_item_engagement_daily_rollups_provider_day_idx")
+  @@index([tenantId, workspaceId, day(sort: Desc)], map: "source_item_engagement_daily_rollups_retention_idx")
   @@map("source_item_engagement_daily_rollups")
 }
 

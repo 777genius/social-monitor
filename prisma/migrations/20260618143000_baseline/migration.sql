@@ -1361,10 +1361,16 @@ CREATE INDEX "source_item_engagement_observations_item_observed_idx" ON "source_
 CREATE INDEX "source_item_engagement_observations_provider_observed_idx" ON "source_item_engagement_observations"("tenant_id", "workspace_id", "provider_key", "observed_at" DESC);
 
 -- CreateIndex
+CREATE INDEX "source_item_engagement_observations_retention_idx" ON "source_item_engagement_observations"("tenant_id", "workspace_id", "observed_at" DESC);
+
+-- CreateIndex
 CREATE UNIQUE INDEX "source_item_engagement_observations_bucket_key" ON "source_item_engagement_observations"("tenant_id", "workspace_id", "source_item_id", "bucket_started_at");
 
 -- CreateIndex
 CREATE INDEX "source_item_engagement_daily_rollups_provider_day_idx" ON "source_item_engagement_daily_rollups"("tenant_id", "workspace_id", "provider_key", "day" DESC);
+
+-- CreateIndex
+CREATE INDEX "source_item_engagement_daily_rollups_retention_idx" ON "source_item_engagement_daily_rollups"("tenant_id", "workspace_id", "day" DESC);
 
 -- CreateIndex
 CREATE INDEX "scan_failure_queue_entries_tenant_id_workspace_id_status_cr_idx" ON "scan_failure_queue_entries"("tenant_id", "workspace_id", "status", "created_at");
