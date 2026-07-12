@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { Buffer } from 'node:buffer';
 import { createHash, randomUUID } from 'node:crypto';
-import { chmodSync, mkdirSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { URL } from 'node:url';
 
@@ -12,6 +12,24 @@ import {
   validateEvidenceJsonFilePath,
   writeEvidenceEnvFile,
 } from './lib/evidence-env-file.mjs';
+import {
+  compileBackupRestoreDrillContract,
+  restoreDrillContractFingerprints,
+} from './lib/backup-restore-drill-contract.mjs';
+import {
+  cleanupPostgresDrillResources,
+  executeRestoreValidationCounts,
+  finalizePostgresCleanupEvidence,
+  proveRestoredTableCoverage,
+  readPostgresTableNames,
+} from './lib/postgres-restore-drill-runtime.mjs';
+
+const backupRestoreContract = compileBackupRestoreDrillContract(
+  JSON.parse(readFileSync('ops/recovery/backup-restore-contract.json', 'utf8')),
+);
+const backupRestoreContractFingerprints = restoreDrillContractFingerprints(
+  backupRestoreContract,
+);
 
 const artifactDir = process.env.STAGING_RELIABILITY_ARTIFACT_DIR ?? '/tmp/social-monitor-evidence';
 const artifactRoot = resolve(artifactDir);
@@ -294,10 +312,50 @@ function capturePostgresArtifact() {
   const releaseCommitSha = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
 
   pauseWorkerServices();
+  let artifact;
+  let primaryError;
+  try {
+    artifact = capturePostgresArtifactWithResources({
+      startedAt,
+      postgresContainer,
+      restoreDatabase,
+      backupId,
+      backupPath,
+      releaseCommitSha,
+    });
+  } catch (error) {
+    primaryError = error;
+  }
+  let cleanupError;
+  try {
+    cleanupPostgresDrillResources(postgresContainer, restoreDatabase, backupPath);
+  } catch (error) {
+    cleanupError = error;
+  }
+  if (primaryError !== undefined) {
+    if (cleanupError !== undefined) {
+      console.error('Postgres drill cleanup also failed after the primary drill failure.');
+    }
+    throw primaryError;
+  }
+  if (cleanupError !== undefined) {
+    throw cleanupError;
+  }
+  return finalizePostgresCleanupEvidence(artifact, nowIso());
+}
+
+function capturePostgresArtifactWithResources({
+  startedAt,
+  postgresContainer,
+  restoreDatabase,
+  backupId,
+  backupPath,
+  releaseCommitSha,
+}) {
   const seed = seedPostgresDrillRows(postgresContainer, backupId);
   const beforeCounts = operationalCounts(postgresContainer, 'social_monitor');
   const beforeFingerprints = operationalFingerprints(postgresContainer, 'social_monitor', seed);
-  const tableCount = Number(psql(postgresContainer, 'social_monitor', tableCountSql()));
+  const sourceTableNames = readPostgresTableNames(psql, postgresContainer, 'social_monitor');
   const appliedMigrationIds = psql(postgresContainer, 'social_monitor', migrationSql())
     .split('\n')
     .map((line) => line.trim())
@@ -319,10 +377,20 @@ function capturePostgresArtifact() {
     stdio: 'ignore',
   });
   const restoreCompletedAt = nowIso();
+  const restoredTableNames = readPostgresTableNames(psql, postgresContainer, restoreDatabase);
+  const tableCoverage = proveRestoredTableCoverage(
+    sourceTableNames,
+    restoredTableNames,
+    backupRestoreContract,
+  );
   const duplicateProbe = proveRestoredDeliveryDuplicateSuppression(postgresContainer, restoreDatabase, seed);
   const afterCounts = operationalCounts(postgresContainer, restoreDatabase);
   const afterFingerprints = operationalFingerprints(postgresContainer, restoreDatabase, seed);
-  const validation = validationCounts(postgresContainer, restoreDatabase);
+  const validation = executeRestoreValidationCounts(
+    postgresContainer,
+    restoreDatabase,
+    backupRestoreContract.restoreValidationTables,
+  );
   const validationHash = hashJson(validation);
 
   startWorkerServices();
@@ -331,11 +399,6 @@ function capturePostgresArtifact() {
   }
   const beforeResumeCounts = drillSideEffectCounts(postgresContainer, 'social_monitor', seed);
   const afterResumeCounts = drillSideEffectCounts(postgresContainer, 'social_monitor', seed);
-
-  execFileSync('docker', ['exec', postgresContainer, 'dropdb', '-U', 'social_monitor', '--if-exists', restoreDatabase], {
-    stdio: 'ignore',
-  });
-  execFileSync('docker', ['exec', postgresContainer, 'rm', '-f', backupPath], { stdio: 'ignore' });
 
   const idempotencyKeys = Object.values(seed.idempotencyKeys);
   const completedAt = nowIso();
@@ -351,9 +414,17 @@ function capturePostgresArtifact() {
         backupId,
         schemaVersion,
         backupFormat: 'pg_dump custom',
-        includedTableCount: tableCount,
-        operationalTablesIncluded: tableCount >= 30,
-        backupArtifactCleanedUp: true,
+        includedTableCount: tableCoverage.verifiedBackupIncludeCount,
+        sourceTableCount: sourceTableNames.length,
+        restoredTableCount: restoredTableNames.length,
+        operationalTablesIncluded: tableCoverage.operationalTablesIncluded,
+        backupIncludesMatched: tableCoverage.backupIncludesMatched,
+        expectedBackupIncludeCount: backupRestoreContract.backupIncludes.length,
+        verifiedBackupIncludeCount: tableCoverage.verifiedBackupIncludeCount,
+        missingBackupIncludeCount: tableCoverage.missingBackupIncludeCount,
+        backupIncludesHash: backupRestoreContractFingerprints.backupIncludesHash,
+        sourceTableNamesHash: tableCoverage.sourceTableNamesHash,
+        restoredTableNamesHash: tableCoverage.restoredTableNamesHash,
       }, signalObservedAt),
       signalResult('postgres-restore-rpo-rto', {
         summary: 'restore completed inside Docker drill RPO and RTO envelope',
@@ -373,8 +444,11 @@ function capturePostgresArtifact() {
       signalResult('postgres-validation-queries', {
         summary: 'validation query groups passed against restored Docker database',
         queryNames: Object.keys(validation),
-        checkedTableGroups: ['tenancy', 'ingestion', 'summary', 'delivery', 'audit', 'usage'],
-        failedQueryCount: Object.values(validation).filter((value) => value < 0).length,
+        checkedTableGroups: ['contract-defined-table-counts', 'full-restored-schema'],
+        executedQueryCount: Object.keys(validation).length,
+        failedQueryCount: 0,
+        restoreValidationContractHash:
+          backupRestoreContractFingerprints.restoreValidationContractHash,
         queryResultsHash: validationHash,
       }, signalObservedAt),
       signalResult('postgres-outbox-inbox-idempotency', {
@@ -757,29 +831,8 @@ function proveRestoredDeliveryDuplicateSuppression(containerId, database, seed) 
   };
 }
 
-function validationCounts(containerId, database) {
-  return JSON.parse(psql(containerId, database, `
-    select json_build_object(
-      'tenant_count', (select count(*)::int from tenants),
-      'workspace_count', (select count(*)::int from workspaces),
-      'job_count', (select count(*)::int from scan_jobs),
-      'delivery_count', (select count(*)::int from delivery_attempts),
-      'audit_count', (select count(*)::int from public_api_audit_events),
-      'quota_count', (select count(*)::int from usage_quota_buckets)
-    )::text;
-  `));
-}
-
 function hashJson(value) {
   return createHash('sha256').update(JSON.stringify(value)).digest('hex');
-}
-
-function tableCountSql() {
-  return `
-    select count(*)::int
-    from information_schema.tables
-    where table_schema = 'public' and table_type = 'BASE TABLE';
-  `;
 }
 
 function migrationSql() {

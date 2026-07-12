@@ -1,5 +1,10 @@
 import { existsSync, readFileSync } from 'node:fs';
 
+import {
+  compileBackupRestoreDrillContract,
+  parseRestoreValidationTable,
+} from './lib/backup-restore-drill-contract.mjs';
+
 const contractPath = 'ops/recovery/backup-restore-contract.json';
 const stagingReliabilityPath = 'ops/drills/staging-reliability-evidence.json';
 const schemaPath = 'prisma/schema.prisma';
@@ -7,6 +12,12 @@ const contract = JSON.parse(readFileSync(contractPath, 'utf8'));
 const stagingReliability = JSON.parse(readFileSync(stagingReliabilityPath, 'utf8'));
 const schema = readFileSync(schemaPath, 'utf8');
 const violations = [];
+
+try {
+  compileBackupRestoreDrillContract(contract);
+} catch (error) {
+  violations.push(`${contractPath}: ${error instanceof Error ? error.message : String(error)}`);
+}
 
 if (contract.schemaVersion !== 1) {
   violations.push(`${contractPath}: schemaVersion must be 1`);
@@ -50,6 +61,27 @@ for (const required of ['outbox_events', 'inbox_records', 'idempotency_keys']) {
 
 if (!Array.isArray(contract.restoreValidationQueries) || contract.restoreValidationQueries.length < 3) {
   violations.push(`${contractPath}: restoreValidationQueries must include core validation queries`);
+} else {
+  const validationTables = new Set();
+  for (const query of contract.restoreValidationQueries) {
+    const table = parseRestoreValidationTable(query);
+    if (table === null) {
+      violations.push(`${contractPath}: restore validation query must match the reviewed count grammar`);
+      continue;
+    }
+    if (validationTables.has(table)) {
+      violations.push(`${contractPath}: duplicate restore validation query for table "${table}"`);
+    }
+    validationTables.add(table);
+    if (!backupIncludes.has(table)) {
+      violations.push(`${contractPath}: restore validation query references non-backup table "${table}"`);
+    }
+  }
+  for (const table of contract.operationalStateTables ?? []) {
+    if (!validationTables.has(table)) {
+      violations.push(`${contractPath}: operational state table "${table}" needs a restore validation query`);
+    }
+  }
 }
 
 validateRestoreReplayProof();
