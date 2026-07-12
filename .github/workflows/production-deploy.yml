@@ -131,9 +131,13 @@ jobs:
           npm run check:migrations
           npm run build
           bash -n ops/deploy/social-monitor-production-deploy.sh \
-            ops/deploy/social-monitor-production-ssh-wrapper.sh
+            ops/deploy/social-monitor-production-ssh-wrapper.sh \
+            ops/deploy/host/refresh-codex-auth.sh \
+            ops/deploy/refresh-codex-auth.test.sh
           shellcheck -x ops/deploy/social-monitor-production-deploy.sh \
-            ops/deploy/social-monitor-production-ssh-wrapper.sh
+            ops/deploy/social-monitor-production-ssh-wrapper.sh \
+            ops/deploy/host/refresh-codex-auth.sh \
+            ops/deploy/refresh-codex-auth.test.sh
           bash ops/deploy/social-monitor-production-deploy.test.sh
 
       - name: Test affected backend modules
@@ -281,11 +285,17 @@ jobs:
         env:
           DEPLOY_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
           DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
+          CONTROL_CHANGED: ${{ needs.plan.outputs.control }}
         run: |
           set -euo pipefail
           ssh -i "$HOME/.ssh/social-monitor-production" \
             -o BatchMode=yes -o IdentitiesOnly=yes \
             "$DEPLOY_USER@$DEPLOY_HOST" "deploy $GITHUB_SHA"
+          if [[ $CONTROL_CHANGED == true ]]; then
+            ssh -i "$HOME/.ssh/social-monitor-production" \
+              -o BatchMode=yes -o IdentitiesOnly=yes \
+              "$DEPLOY_USER@$DEPLOY_HOST" "deploy $GITHUB_SHA"
+          fi
 
       - name: Remove production SSH material
         if: always()

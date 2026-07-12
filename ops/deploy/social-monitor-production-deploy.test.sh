@@ -73,6 +73,23 @@ grep -F "if [[ \$api_rolled_back == true ]]; then" "$ENTRYPOINT" >/dev/null
 grep -F 'refresh_frontend_api_proxy || return 1' \
   "$ENTRYPOINT" >/dev/null
 grep -F 'http://127.0.0.1:13080/auth/session' "$ENTRYPOINT" >/dev/null
+grep -F 'ops/deploy/host/refresh-codex-auth.sh' "$ENTRYPOINT" >/dev/null
+# shellcheck disable=SC2016
+grep -F 'install -m 0700 -o root -g root "$auth_refresh_source" "$auth_refresh_destination.next"' \
+  "$ENTRYPOINT" >/dev/null
+# shellcheck disable=SC2016
+grep -F 'mv -f "$auth_refresh_destination.next" "$auth_refresh_destination"' \
+  "$ENTRYPOINT" >/dev/null
+# shellcheck disable=SC2016
+grep -F 'install -m 0755 -o root -g root "$source" "$destination.next"' \
+  "$ENTRYPOINT" >/dev/null
+# shellcheck disable=SC2016
+auth_sync_line=$(grep -nF 'install -m 0700 -o root -g root "$auth_refresh_source"' \
+  "$ENTRYPOINT" | cut -d: -f1)
+# shellcheck disable=SC2016
+entrypoint_sync_line=$(grep -nF 'install -m 0755 -o root -g root "$source"' \
+  "$ENTRYPOINT" | tail -1 | cut -d: -f1)
+((auth_sync_line < entrypoint_sync_line))
 
 RELEASE_FIXTURE=$FIXTURE/frontend-release
 install -d "$RELEASE_FIXTURE/public" "$RELEASE_FIXTURE/admin"
@@ -99,3 +116,4 @@ if run_entrypoint upload "$TARGET_SHA" < "$FIXTURE/bad-frontend.tgz" >/dev/null 
 fi
 
 echo 'Production deploy contract tests passed'
+bash "$SCRIPT_DIR/refresh-codex-auth.test.sh"
