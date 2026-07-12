@@ -10,6 +10,16 @@ export const githubTrendingNarrativeSectionId = "github-trending";
 export const minimumGitHubTrendingStarsGained = 1_000;
 export const maxGitHubTrendingHighlights = 3;
 
+export const withGitHubTrendingNarrativeAppendix = (params: {
+  readonly narrativeSections: readonly ReaderSummaryNarrativeSection[];
+  readonly appendix: ReaderSummaryNarrativeSection | undefined;
+}): readonly ReaderSummaryNarrativeSection[] => [
+  ...params.narrativeSections.filter(
+    (section) => section.id !== githubTrendingNarrativeSectionId,
+  ),
+  ...(params.appendix === undefined ? [] : [params.appendix]),
+];
+
 export const isGitHubTrendingEvidence = (
   item: Pick<SummaryEvidenceItem, "providerKey">,
 ): boolean =>

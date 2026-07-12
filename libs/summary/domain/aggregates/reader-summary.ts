@@ -30,9 +30,9 @@ import { enrichTopReadCandidateDescriptions } from "../policies/reader-summary-t
 import { buildReaderSummaryReliabilityReport } from "../policies/reader-summary-reliability-calibration-policy";
 import {
   buildGitHubTrendingNarrativeAppendix,
-  githubTrendingNarrativeSectionId,
   isGitHubTrendingEvidence,
   selectGitHubTrendingHighlights,
+  withGitHubTrendingNarrativeAppendix,
 } from "../policies/reader-summary-github-trending-policy";
 import type {
   SummaryEvidenceSelection,
@@ -202,14 +202,10 @@ export class ReaderSummary {
         sourceMix,
       }),
       bullets: buildReaderSummaryBullets(readerInput, topReads),
-      narrativeSections: [
-        ...(input.narrativeSections ?? []).filter(
-          (section) => section.id !== githubTrendingNarrativeSectionId,
-        ),
-        ...(githubTrendingAppendix === undefined
-          ? []
-          : [githubTrendingAppendix]),
-      ],
+      narrativeSections: withGitHubTrendingNarrativeAppendix({
+        narrativeSections: input.narrativeSections ?? [],
+        appendix: githubTrendingAppendix,
+      }),
       mainTopics: buildReaderSummaryMainTopics({
         headline: input.headline,
         executiveSummary: input.executiveSummary,
