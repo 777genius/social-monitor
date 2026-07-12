@@ -25,7 +25,7 @@ void main() {
             padding: const EdgeInsets.all(AppSpacing.md),
             child: WorkspaceSummaryPeriodToolbar(
               selectedPeriod: SummaryPeriodPreset.daily.resolve(
-                now: DateTime.utc(2026, 6, 27, 12),
+                periodEndedAt: DateTime.utc(2026, 6, 28),
               ),
               selectedPreset: SummaryPeriodPreset.daily,
               availableSummaryPeriods: const [],
@@ -72,14 +72,14 @@ void main() {
             width: 1024,
             child: WorkspaceSummaryPeriodToolbar(
               selectedPeriod: SummaryPeriodPreset.daily.resolveForCalendarDate(
-                DateTime(2026, 6, 15),
-                now: DateTime.utc(2026, 6, 27, 12),
+                DateTime(2026, 7, 11),
+                now: DateTime.utc(2026, 7, 13, 12),
               ),
               selectedPreset: SummaryPeriodPreset.daily,
               availableSummaryPeriods: const [],
               canNavigateToPreviousPeriod: true,
               canNavigateToNextPeriod: true,
-              calendarNow: DateTime.utc(2026, 6, 27, 12),
+              calendarNow: DateTime(2026, 7, 13, 12),
               onPeriodChanged: (_) {},
               onPreviousPeriod: () {},
               onNextPeriod: () {},
@@ -90,7 +90,7 @@ void main() {
       ),
     );
 
-    expect(find.text('Jun 15, 2026'), findsOneWidget);
+    expect(find.text('Jul 11, 2026'), findsOneWidget);
     expect(find.text('Today'), findsNothing);
   });
 

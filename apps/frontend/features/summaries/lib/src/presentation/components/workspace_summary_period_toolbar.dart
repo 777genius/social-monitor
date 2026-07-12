@@ -188,11 +188,11 @@ class WorkspaceSummaryPeriodToolbar extends StatelessWidget {
     if (selectedPreset != SummaryPeriodPreset.daily) {
       return false;
     }
-    final selectedDate = _datePickerDate(selectedPeriod.calendarFocusDate);
-    final latestDate = _datePickerDate(
-      selectedPreset.latestSelectableCalendarDate(now: calendarNow),
-    );
-    return selectedDate == latestDate;
+    final selectedDate = selectedPeriod.calendarFocusDate;
+    final today = calendarNow ?? DateTime.now();
+    return selectedDate.year == today.year &&
+        selectedDate.month == today.month &&
+        selectedDate.day == today.day;
   }
 
   String _periodNavigationLabel() {
