@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+((EUID != 0)) || {
+  echo 'Subscription auth refresh fixture must run as an unprivileged user' >&2
+  exit 1
+}
+
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 ENTRYPOINT=$SCRIPT_DIR/host/refresh-codex-auth.sh
 FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/social-monitor-auth-refresh-test.XXXXXX")
@@ -10,6 +15,7 @@ AUTH_ROOT=$FIXTURE/auth
 TARGET_DIR=$FIXTURE/target
 REGISTRY_ROOT=$FIXTURE/registry
 CURSOR_FILE=$FIXTURE/cursor
+ACCOUNT_NAME_FILE=$FIXTURE/account-name
 PROBE_WORKSPACE=$FIXTURE/workspace
 CHANGED_MARKER=$FIXTURE/changed
 PROBE_TMP_ROOT=$FIXTURE/tmp
@@ -29,7 +35,8 @@ cat > "$BIN/codex" <<'SH'
 #!/usr/bin/env bash
 while (($#)); do
   if [[ $1 == --output-last-message ]]; then
-    if [[ ${SOCIAL_MONITOR_TEST_FAIL_A:-} == 1 ]] && grep -F '"a"' "$CODEX_HOME/auth.json" >/dev/null; then
+    if [[ -n ${SOCIAL_MONITOR_TEST_FAIL_ACCOUNT:-} ]] \
+      && grep -F "\"$SOCIAL_MONITOR_TEST_FAIL_ACCOUNT\"" "$CODEX_HOME/auth.json" >/dev/null; then
       exit 43
     fi
     printf '%s\n' "${SOCIAL_MONITOR_TEST_RESULT:-AUTH_OK}" > "$2"
@@ -52,6 +59,7 @@ SOCIAL_MONITOR_AUTH_ROOT="$AUTH_ROOT" \
 SOCIAL_MONITOR_AUTH_TARGET_DIR="$TARGET_DIR" \
 SOCIAL_MONITOR_AUTH_REGISTRY_ROOT="$REGISTRY_ROOT" \
 SOCIAL_MONITOR_AUTH_CURSOR_FILE="$CURSOR_FILE" \
+SOCIAL_MONITOR_AUTH_ACCOUNT_NAME_FILE="$ACCOUNT_NAME_FILE" \
 SOCIAL_MONITOR_AUTH_PROBE_WORKSPACE="$PROBE_WORKSPACE" \
 SOCIAL_MONITOR_AUTH_CHANGED_MARKER="$CHANGED_MARKER" \
 SOCIAL_MONITOR_AUTH_PROBE_TMP_ROOT="$PROBE_TMP_ROOT" \
@@ -62,12 +70,21 @@ run_refresh >/dev/null
 
 cmp "$AUTH_ROOT/account-a/auth.json" "$TARGET_DIR/auth.json"
 [[ $(cat "$CURSOR_FILE") == 0 ]]
+[[ $(cat "$ACCOUNT_NAME_FILE") == account-a ]]
 [[ $(stat -f '%Lp' "$TARGET_DIR/auth.json" 2>/dev/null || stat -c '%a' "$TARGET_DIR/auth.json") == 400 ]]
 [[ ! -e $CHANGED_MARKER ]]
 
-SOCIAL_MONITOR_TEST_FAIL_A=1 run_refresh >/dev/null
+SOCIAL_MONITOR_TEST_ACCOUNTS='["account-b"]' run_refresh >/dev/null
 cmp "$AUTH_ROOT/account-b/auth.json" "$TARGET_DIR/auth.json"
-[[ $(cat "$CURSOR_FILE") == 1 ]]
+[[ $(cat "$CURSOR_FILE") == 0 ]]
+[[ $(cat "$ACCOUNT_NAME_FILE") == account-b ]]
+[[ -f $CHANGED_MARKER ]]
+
+rm -f "$CHANGED_MARKER"
+SOCIAL_MONITOR_TEST_FAIL_ACCOUNT=b run_refresh >/dev/null
+cmp "$AUTH_ROOT/account-a/auth.json" "$TARGET_DIR/auth.json"
+[[ $(cat "$CURSOR_FILE") == 0 ]]
+[[ $(cat "$ACCOUNT_NAME_FILE") == account-a ]]
 [[ -f $CHANGED_MARKER ]]
 
 old_hash=$(cksum < "$TARGET_DIR/auth.json")
