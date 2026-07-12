@@ -29,10 +29,6 @@ final class _TopicGraphModel {
     final groupsById = {for (final group in groups) group.id: group};
     final bubblesById = <String, _TopicGraphBubble>{};
     final nodesByGroupId = _nodesByGroup(visibleNodes, groups);
-    final groupIdByNodeId = {
-      for (final entry in nodesByGroupId.entries)
-        for (final node in entry.value) node.id: entry.key,
-    };
     final radiiByNodeId = _topicMapSizingPolicy.radiiByNodeId(
       nodes: visibleNodes,
       graphSize: graphSize,
@@ -78,36 +74,31 @@ final class _TopicGraphModel {
       }
     }
 
-    final edgePairs = <String>{};
     final graphEdges = <_TopicGraphEdge>[];
-    for (final edge in topicMap.edges.take(_topicMapMaxEdges)) {
-      final source = graphNodesById[edge.sourceNodeId];
-      final target = graphNodesById[edge.targetNodeId];
+    final visualLinks = _topicMapVisualLinkPolicy.build(
+      topicMap: topicMap,
+      nodesByGroupId: nodesByGroupId,
+    );
+    for (final link in visualLinks) {
+      final source = graphNodesById[link.sourceNodeId];
+      final target = graphNodesById[link.targetNodeId];
       if (source == null || target == null) {
         continue;
       }
-      final sourceGroupId = groupIdByNodeId[edge.sourceNodeId];
-      final targetGroupId = groupIdByNodeId[edge.targetNodeId];
-      if (sourceGroupId == null ||
-          targetGroupId == null ||
-          sourceGroupId != targetGroupId ||
-          sourceGroupId == _topicMapNeutralGroupId) {
-        continue;
-      }
-      final pairKey = _edgePairKey(edge.sourceNodeId, edge.targetNodeId);
-      if (!edgePairs.add(pairKey)) {
-        continue;
-      }
       final groupColor = _topicColor(
-        groupsById[sourceGroupId]?.colorKey ?? 'blue',
+        groupsById[link.groupId]?.colorKey ?? 'blue',
       );
-      final edgeAlpha = 0.12 + edge.weight * 0.20;
+      final semantic =
+          link.kind == ReaderSummaryTopicMapVisualLinkKind.semantic;
+      final strokeWidth = semantic ? 0.8 + link.weight * 2.1 : 0.9;
+      final edgeAlpha = semantic ? 0.18 + link.weight * 0.22 : 0.12;
       graphEdges.add(
         _TopicGraphEdge(
-          sourceNodeId: edge.sourceNodeId,
-          targetNodeId: edge.targetNodeId,
+          sourceNodeId: link.sourceNodeId,
+          targetNodeId: link.targetNodeId,
           color: groupColor,
-          strokeWidth: 0.8 + edge.weight * 2.1,
+          strokeWidth: strokeWidth,
+          kind: link.kind,
         ),
       );
       graph.addEdge(
@@ -115,41 +106,9 @@ final class _TopicGraphModel {
         target,
         paint: Paint()
           ..color = groupColor.withValues(alpha: edgeAlpha)
-          ..strokeWidth = 0.8 + edge.weight * 2.1
+          ..strokeWidth = strokeWidth
           ..style = PaintingStyle.stroke,
       );
-    }
-
-    for (final entry in nodesByGroupId.entries) {
-      if (entry.key == _topicMapNeutralGroupId) {
-        continue;
-      }
-      final groupNodes = entry.value;
-      if (groupNodes.length < 2) {
-        continue;
-      }
-      final anchor = graphNodesById[groupNodes.first.id];
-      if (anchor == null) {
-        continue;
-      }
-      for (final node in groupNodes.skip(1)) {
-        final target = graphNodesById[node.id];
-        if (target == null) {
-          continue;
-        }
-        final pairKey = _edgePairKey(groupNodes.first.id, node.id);
-        if (!edgePairs.add(pairKey)) {
-          continue;
-        }
-        graph.addEdge(
-          anchor,
-          target,
-          paint: Paint()
-            ..color = Colors.transparent
-            ..strokeWidth = 0
-            ..style = PaintingStyle.stroke,
-        );
-      }
     }
 
     final configuration = graphview.FruchtermanReingoldConfiguration(
@@ -221,10 +180,12 @@ final class _TopicGraphEdge {
     required this.targetNodeId,
     required this.color,
     required this.strokeWidth,
+    required this.kind,
   });
 
   final String sourceNodeId;
   final String targetNodeId;
   final Color color;
   final double strokeWidth;
+  final ReaderSummaryTopicMapVisualLinkKind kind;
 }

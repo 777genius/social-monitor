@@ -28,10 +28,8 @@ class WorkspaceSummaryPanel extends StatelessWidget {
     required this.availableSummaryPeriods,
     required this.canNavigateToPreviousPeriod,
     required this.canNavigateToNextPeriod,
-    required this.isCurrentPeriod,
     required this.onPeriodChanged,
     required this.onPreviousPeriod,
-    required this.onCurrentPeriod,
     required this.onNextPeriod,
     required this.onCalendarDateSelected,
     required this.onRetry,
@@ -58,10 +56,8 @@ class WorkspaceSummaryPanel extends StatelessWidget {
   final List<SummaryPeriod> availableSummaryPeriods;
   final bool canNavigateToPreviousPeriod;
   final bool canNavigateToNextPeriod;
-  final bool isCurrentPeriod;
   final ValueChanged<SummaryPeriodPreset> onPeriodChanged;
   final VoidCallback onPreviousPeriod;
-  final VoidCallback onCurrentPeriod;
   final VoidCallback onNextPeriod;
   final ValueChanged<DateTime> onCalendarDateSelected;
   final VoidCallback onRetry;
@@ -242,10 +238,8 @@ class WorkspaceSummaryPanel extends StatelessWidget {
       availableSummaryPeriods: availableSummaryPeriods,
       canNavigateToPreviousPeriod: canNavigateToPreviousPeriod,
       canNavigateToNextPeriod: canNavigateToNextPeriod,
-      isCurrentPeriod: isCurrentPeriod,
       onPeriodChanged: onPeriodChanged,
       onPreviousPeriod: onPreviousPeriod,
-      onCurrentPeriod: onCurrentPeriod,
       onNextPeriod: onNextPeriod,
       onCalendarDateSelected: onCalendarDateSelected,
       onGenerate: onGenerate,

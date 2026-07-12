@@ -1,52 +1,39 @@
 part of 'workspace_summary_period_toolbar.dart';
 
-class _PeriodNavigationGroup extends StatelessWidget {
-  const _PeriodNavigationGroup({
+class _PeriodDateNavigation extends StatelessWidget {
+  const _PeriodDateNavigation({
+    super.key,
     required this.canNavigateToPreviousPeriod,
     required this.canNavigateToNextPeriod,
-    required this.isCurrentPeriod,
+    required this.showToday,
+    required this.dateLabel,
     required this.onPreviousPeriod,
-    required this.onCurrentPeriod,
     required this.onNextPeriod,
+    required this.onDatePressed,
   });
 
   final bool canNavigateToPreviousPeriod;
   final bool canNavigateToNextPeriod;
-  final bool isCurrentPeriod;
+  final bool showToday;
+  final String dateLabel;
   final VoidCallback onPreviousPeriod;
-  final VoidCallback onCurrentPeriod;
   final VoidCallback onNextPeriod;
+  final VoidCallback onDatePressed;
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
     return _ToolbarSurface(
       child: Row(
-        mainAxisSize: MainAxisSize.min,
         children: [
           _ToolbarIconButton(
             tooltip: 'Previous period',
             icon: Icons.chevron_left_rounded,
             onPressed: canNavigateToPreviousPeriod ? onPreviousPeriod : null,
           ),
-          InkWell(
-            onTap: isCurrentPeriod ? null : onCurrentPeriod,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.sm + 4,
-              ),
-              child: Center(
-                child: Text(
-                  'Today',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: isCurrentPeriod
-                        ? colorScheme.onSurfaceVariant.withValues(alpha: 0.55)
-                        : colorScheme.onSurface,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0,
-                  ),
-                ),
-              ),
+          Expanded(
+            child: _PeriodDateButton(
+              label: showToday ? 'Today' : dateLabel,
+              onPressed: onDatePressed,
             ),
           ),
           _ToolbarIconButton(
@@ -69,40 +56,38 @@ class _PeriodDateButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    return _ToolbarSurface(
-      child: InkWell(
-        key: const ValueKey('workspace-summary-period-calendar'),
-        onTap: onPressed,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm + 4),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.calendar_today_outlined,
-                size: 16,
-                color: colorScheme.onSurfaceVariant,
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              Flexible(
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0,
-                  ),
+    return InkWell(
+      key: const ValueKey('workspace-summary-period-calendar'),
+      onTap: onPressed,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.calendar_today_outlined,
+              size: 16,
+              color: colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0,
                 ),
               ),
-              const SizedBox(width: AppSpacing.xs),
-              Icon(
-                Icons.keyboard_arrow_down_rounded,
-                size: 18,
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ],
-          ),
+            ),
+            const SizedBox(width: AppSpacing.xs),
+            Icon(
+              Icons.keyboard_arrow_down_rounded,
+              size: 18,
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ],
         ),
       ),
     );

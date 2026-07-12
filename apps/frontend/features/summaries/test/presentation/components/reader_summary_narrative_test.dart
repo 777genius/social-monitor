@@ -153,8 +153,10 @@ void main() {
         const ValueKey('reader-summary-narrative-secondary-security-trail'),
       ),
     );
-    expect((textRect.top - trailRect.top).abs(), lessThanOrEqualTo(4));
-    expect(trailRect.right, greaterThan(textRect.right));
+    expect(trailRect.left, greaterThanOrEqualTo(textRect.left));
+    expect(trailRect.right, lessThanOrEqualTo(textRect.right));
+    expect(trailRect.top, greaterThanOrEqualTo(textRect.top));
+    expect(trailRect.bottom, lessThanOrEqualTo(textRect.bottom));
 
     await tester.tap(indicator);
     await tester.pumpAndSettle();
