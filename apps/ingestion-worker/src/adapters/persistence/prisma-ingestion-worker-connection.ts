@@ -5,11 +5,16 @@ import type {
   PrismaIngestionClient,
   PrismaSourceCandidateMemoryClient,
 } from "@social-monitor/ingestion/adapters/persistence/prisma/prisma-ingestion-client";
+import type {
+  PrismaSourceEngagementClient,
+  PrismaSourceEngagementTransactionClient,
+} from "@social-monitor/feed/adapters/persistence/prisma/prisma-source-engagement-client";
 import { loadPrismaRuntimeClient } from "@social-monitor/platform-persistence/prisma-runtime-client";
 import { Pool } from "pg";
 
 export type PrismaIngestionWorkerClient = PrismaIngestionClient &
   PrismaSourceCandidateMemoryClient &
+  PrismaSourceEngagementClient &
   PrismaFeedClient &
   PrismaConversationClient;
 
@@ -33,6 +38,9 @@ export class PrismaIngestionWorkerConnection implements PrismaIngestionWorkerCli
   readonly gitHubRepositoryTrendResult: PrismaIngestionClient["gitHubRepositoryTrendResult"];
   readonly feedItem: PrismaFeedClient["feedItem"];
   readonly feedSignalBaselineSample: PrismaFeedClient["feedSignalBaselineSample"];
+  readonly sourceItemEngagementSnapshot: PrismaSourceEngagementClient["sourceItemEngagementSnapshot"];
+  readonly sourceItemEngagementObservation: PrismaSourceEngagementClient["sourceItemEngagementObservation"];
+  readonly sourceItemEngagementDailyRollup: PrismaSourceEngagementClient["sourceItemEngagementDailyRollup"];
   readonly conversationUnit: PrismaConversationClient["conversationUnit"];
   readonly conversationSignalBaselineSample: PrismaConversationClient["conversationSignalBaselineSample"];
 
@@ -64,9 +72,28 @@ export class PrismaIngestionWorkerConnection implements PrismaIngestionWorkerCli
     this.gitHubRepositoryTrendResult = this.client.gitHubRepositoryTrendResult;
     this.feedItem = this.client.feedItem;
     this.feedSignalBaselineSample = this.client.feedSignalBaselineSample;
+    this.sourceItemEngagementSnapshot =
+      this.client.sourceItemEngagementSnapshot;
+    this.sourceItemEngagementObservation =
+      this.client.sourceItemEngagementObservation;
+    this.sourceItemEngagementDailyRollup =
+      this.client.sourceItemEngagementDailyRollup;
     this.conversationUnit = this.client.conversationUnit;
     this.conversationSignalBaselineSample =
       this.client.conversationSignalBaselineSample;
+  }
+
+  $transaction<T>(
+    operation: (
+      client: PrismaSourceEngagementTransactionClient,
+    ) => Promise<T>,
+    options?: {
+      readonly maxWait?: number;
+      readonly timeout?: number;
+      readonly isolationLevel?: "ReadCommitted" | "Serializable";
+    },
+  ): Promise<T> {
+    return this.client.$transaction(operation, options);
   }
 
   async close(): Promise<void> {

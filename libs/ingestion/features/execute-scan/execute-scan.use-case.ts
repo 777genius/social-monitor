@@ -17,6 +17,7 @@ import {
   noopConversationProjection,
   noopSourceItemMetadataProjection,
   noopSourceItemEnrichment,
+  noopSourceEngagementProjection,
   NOOP_SOURCE_CANDIDATE_MEMORY,
   SourceItemPersistenceContractError,
   type ConversationProjectionPort,
@@ -32,6 +33,7 @@ import {
   type SourceItemEnrichmentPort,
   type SourceItemMetadataProjectionPort,
   type SourceItemRepositoryPort,
+  type SourceEngagementProjectionPort,
 } from "../../ports";
 import type { ExecuteScanCommand } from "./execute-scan.command";
 import type { ExecuteScanResult } from "./execute-scan.result";
@@ -55,6 +57,7 @@ import {
   rememberProcessedSourceCandidates,
   screenSourceCandidates,
 } from "./source-candidate-memory-coordinator";
+import { prepareSourceEngagementSamples } from "./source-engagement-sample-coordinator";
 
 type ExecuteScanFailure = DomainError | Error;
 
@@ -74,6 +77,7 @@ export class ExecuteScanUseCase {
     private readonly sourceItemEnrichment: SourceItemEnrichmentPort = noopSourceItemEnrichment,
     private readonly conversationProjection: ConversationProjectionPort = noopConversationProjection,
     private readonly candidateMemory: SourceCandidateMemoryPort = NOOP_SOURCE_CANDIDATE_MEMORY,
+    private readonly sourceEngagementProjection: SourceEngagementProjectionPort = noopSourceEngagementProjection,
   ) {}
 
   async execute(
@@ -175,15 +179,17 @@ export class ExecuteScanUseCase {
       if (candidateScreening.warning !== undefined) {
         scanWarnings.push(candidateScreening.warning);
       }
-      const enriched = await this.sourceItemEnrichment.enrich({
-        tenantId: command.tenantId,
-        workspaceId: command.workspaceId,
-        sourceBindingId: sourceBinding.sourceBindingId,
-        scanJobId: command.scanJobId,
-        providerKey: sourceBinding.providerKey,
-        correlationId: command.correlationId,
-        items: candidateScreening.itemsToProcess,
-      });
+      const enriched = candidateScreening.itemsToEnrich.length === 0
+        ? { items: [], enriched: 0, skipped: 0, failed: 0 }
+        : await this.sourceItemEnrichment.enrich({
+            tenantId: command.tenantId,
+            workspaceId: command.workspaceId,
+            sourceBindingId: sourceBinding.sourceBindingId,
+            scanJobId: command.scanJobId,
+            providerKey: sourceBinding.providerKey,
+            correlationId: command.correlationId,
+            items: candidateScreening.itemsToEnrich,
+          });
       const items = enriched.items.map(sanitizeFetchedSourceItem).map((item) =>
         SourceItem.ingest({
           id: this.ids.generate(),
@@ -201,17 +207,49 @@ export class ExecuteScanUseCase {
         }),
       );
 
-      const saveResult = await this.sourceItems.saveBatch({
-        tenantId: command.tenantId,
-        workspaceId: command.workspaceId,
-        providerKey: sourceBinding.providerKey,
-        items,
-      });
+      const saveResult = items.length === 0
+        ? {
+            inserted: 0,
+            contentUpdated: 0,
+            skippedDuplicates: 0,
+            items: [],
+          }
+        : await this.sourceItems.saveBatch({
+            tenantId: command.tenantId,
+            workspaceId: command.workspaceId,
+            providerKey: sourceBinding.providerKey,
+            items,
+          });
       const persistedItems = rehydratePersistedSourceItems(
         items,
         saveResult.items,
       );
-      const projectionResult = await this.feedProjection.project({
+      const { sourceItemsForFullProjection, engagementSamples } =
+        prepareSourceEngagementSamples({
+          providerKey: sourceBinding.providerKey,
+          persistedItems,
+          savedItems: saveResult.items,
+          candidateScreening,
+        });
+      const engagementProjectionResult = engagementSamples.length === 0
+        ? {
+            currentSnapshotsUpdated: 0,
+            observationsAppended: 0,
+            metricChanges: 0,
+            regressionsObserved: 0,
+          }
+        : await this.sourceEngagementProjection.project({
+            tenantId: command.tenantId,
+            workspaceId: command.workspaceId,
+            sourceBindingId: sourceBinding.sourceBindingId,
+            scanJobId: command.scanJobId,
+            providerKey: sourceBinding.providerKey,
+            observedAt: ingestedAt,
+            samples: engagementSamples,
+          });
+      const projectionResult = sourceItemsForFullProjection.length === 0
+        ? { projected: 0, projectedItems: [] }
+        : await this.feedProjection.project({
         tenantId: command.tenantId,
         workspaceId: command.workspaceId,
         interestId: sourceBinding.interestId,
@@ -235,29 +273,31 @@ export class ExecuteScanUseCase {
             workspaceId: command.workspaceId,
           },
         },
-        sourceItems: persistedItems,
-      });
-      await this.conversationProjection.project({
-        tenantId: command.tenantId,
-        workspaceId: command.workspaceId,
-        interestId: sourceBinding.interestId,
-        sourceBindingId: sourceBinding.sourceBindingId,
-        providerKey: sourceBinding.providerKey,
-        observedAt: ingestedAt,
-        conversationUnits: (fetched.conversationUnits ?? []).map(
-          sanitizeFetchedConversationUnit,
-        ),
-        projectedFeedItems: projectionResult.projectedItems,
-      });
-      await this.sourceItemMetadataProjection.project({
-        tenantId: command.tenantId,
-        workspaceId: command.workspaceId,
-        interestId: sourceBinding.interestId,
-        sourceBindingId: sourceBinding.sourceBindingId,
-        scanJobId: command.scanJobId,
-        providerKey: sourceBinding.providerKey,
-        sourceItems: persistedItems,
-      });
+        sourceItems: sourceItemsForFullProjection,
+          });
+      if (sourceItemsForFullProjection.length > 0) {
+        await this.conversationProjection.project({
+          tenantId: command.tenantId,
+          workspaceId: command.workspaceId,
+          interestId: sourceBinding.interestId,
+          sourceBindingId: sourceBinding.sourceBindingId,
+          providerKey: sourceBinding.providerKey,
+          observedAt: ingestedAt,
+          conversationUnits: (fetched.conversationUnits ?? []).map(
+            sanitizeFetchedConversationUnit,
+          ),
+          projectedFeedItems: projectionResult.projectedItems,
+        });
+        await this.sourceItemMetadataProjection.project({
+          tenantId: command.tenantId,
+          workspaceId: command.workspaceId,
+          interestId: sourceBinding.interestId,
+          sourceBindingId: sourceBinding.sourceBindingId,
+          scanJobId: command.scanJobId,
+          providerKey: sourceBinding.providerKey,
+          sourceItems: sourceItemsForFullProjection,
+        });
+      }
       if (fetched.nextCursor !== undefined) {
         await this.scanCursors.save({
           tenantId: command.tenantId,
@@ -272,7 +312,10 @@ export class ExecuteScanUseCase {
           memory: this.candidateMemory,
           screening: candidateScreening,
           processedExternalIds: new Set(
-            items.map((item) => item.toSnapshot().externalId),
+            [
+              ...items.map((item) => item.toSnapshot().externalId),
+              ...engagementSamples.map((sample) => sample.externalId),
+            ],
           ),
           rememberedAt: this.clock.now(),
         });
@@ -301,6 +344,13 @@ export class ExecuteScanUseCase {
           sourceQuery: command.sourceQuery,
           telemetry: fetched.telemetry,
           insertedItemCount: saveResult.inserted,
+          contentUpdatedItemCount: saveResult.contentUpdated,
+          engagementMetricChangedItemCount:
+            engagementProjectionResult.metricChanges,
+          engagementObservationItemCount:
+            engagementProjectionResult.observationsAppended,
+          engagementRetentionPurgeDeferred:
+            engagementProjectionResult.retentionPurgeDeferred ?? false,
           storageDuplicateItemCount: saveResult.skippedDuplicates,
           candidateMemorySuppressedItemCount:
             candidateScreening.suppressedExternalIds.length,
@@ -314,7 +364,9 @@ export class ExecuteScanUseCase {
         skippedDuplicates,
         projected: projectionResult.projected,
         warnings: scanWarnings,
-        telemetry: fetched.telemetry,
+        ...(fetched.telemetry === undefined
+          ? {}
+          : { telemetry: fetched.telemetry }),
       });
     } catch (error) {
       const safeFailureReason = formatScanFailureReason(error);

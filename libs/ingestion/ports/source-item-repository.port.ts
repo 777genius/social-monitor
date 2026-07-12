@@ -13,10 +13,12 @@ export type SavedSourceItemRef = {
   readonly externalId: string;
   readonly sourceItemId: string;
   readonly inserted: boolean;
+  readonly mutationKind: "inserted" | "content_updated" | "unchanged";
 };
 
 export type SaveSourceItemsResult = {
   readonly inserted: number;
+  readonly contentUpdated: number;
   readonly skippedDuplicates: number;
   readonly items: readonly SavedSourceItemRef[];
 };

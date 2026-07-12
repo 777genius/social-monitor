@@ -20,6 +20,7 @@ describe("PrismaSourceCandidateMemoryRepository", () => {
         {
           externalId: "x-twitter:1",
           fingerprint: "fingerprint-1",
+          contentFingerprint: "content-1",
           decision: "processed",
           reasonCode: "already_processed",
           expiresAt: new Date("2026-07-11T12:00:00.000Z"),
@@ -32,8 +33,16 @@ describe("PrismaSourceCandidateMemoryRepository", () => {
         ...scope,
         screenedAt: new Date("2026-07-11T01:00:00.000Z"),
         candidates: [
-          { externalId: "x-twitter:1", fingerprint: "fingerprint-1" },
-          { externalId: "x-twitter:2", fingerprint: "fingerprint-2" },
+          {
+            externalId: "x-twitter:1",
+            fingerprint: "fingerprint-1",
+            contentFingerprint: "content-1",
+          },
+          {
+            externalId: "x-twitter:2",
+            fingerprint: "fingerprint-2",
+            contentFingerprint: "content-2",
+          },
         ],
       }),
     ).resolves.toMatchObject({
@@ -45,10 +54,17 @@ describe("PrismaSourceCandidateMemoryRepository", () => {
         tenantId: tenantId("00000000-0000-7000-8000-000000000999"),
         screenedAt: new Date("2026-07-11T01:00:00.000Z"),
         candidates: [
-          { externalId: "x-twitter:1", fingerprint: "fingerprint-1" },
+          {
+            externalId: "x-twitter:1",
+            fingerprint: "fingerprint-1",
+            contentFingerprint: "content-1",
+          },
         ],
       }),
-    ).resolves.toEqual({ suppressedExternalIds: [], activeRecords: [] });
+    ).resolves.toMatchObject({
+      suppressedExternalIds: [],
+      activeRecords: [],
+    });
   });
 
   it("refreshes a record without replacing its first-seen timestamp", async () => {
@@ -63,6 +79,7 @@ describe("PrismaSourceCandidateMemoryRepository", () => {
         {
           externalId: "x-twitter:1",
           fingerprint: "fingerprint-1",
+          contentFingerprint: "content-1",
           decision: "rejected" as const,
           reasonCode: "ranked_out" as const,
           expiresAt: new Date("2026-07-11T06:00:00.000Z"),
@@ -84,8 +101,56 @@ describe("PrismaSourceCandidateMemoryRepository", () => {
         firstSeenAt: new Date("2026-07-11T00:00:00.000Z"),
         lastSeenAt: new Date("2026-07-11T02:00:00.000Z"),
         seenCount: 2,
+        contentFingerprint: "content-1",
+        engagementFingerprint: null,
+        schemaVersion: 2,
       }),
     ]);
+  });
+
+  it("returns an expired split record for due classification without suppressing it", async () => {
+    const fake = new FakeCandidateMemoryClient();
+    const repository = new PrismaSourceCandidateMemoryRepository(
+      fake.client(),
+      { generate: () => "00000000-0000-7000-8000-000000000904" },
+    );
+    const scope = memoryScope();
+    const candidate = {
+      externalId: "x-twitter:due",
+      fingerprint: "legacy-due",
+      contentFingerprint: "content-due",
+      engagementFingerprint: "engagement-due",
+      observationIntervalMs: 30 * 60 * 1_000,
+    };
+    await repository.remember({
+      ...scope,
+      rememberedAt: new Date("2026-07-11T00:00:00.000Z"),
+      candidates: [
+        {
+          ...candidate,
+          decision: "processed",
+          reasonCode: "already_processed",
+          expiresAt: new Date("2026-07-11T00:30:00.000Z"),
+        },
+      ],
+    });
+
+    await expect(
+      repository.screen({
+        ...scope,
+        screenedAt: new Date("2026-07-11T00:30:00.000Z"),
+        candidates: [candidate],
+      }),
+    ).resolves.toMatchObject({
+      suppressedExternalIds: [],
+      activeRecords: [],
+      records: [
+        expect.objectContaining({
+          externalId: "x-twitter:due",
+          schemaVersion: 2,
+        }),
+      ],
+    });
   });
 
   it("purges expired replay memory before recording new decisions", async () => {
@@ -102,6 +167,7 @@ describe("PrismaSourceCandidateMemoryRepository", () => {
         {
           externalId: "expired",
           fingerprint: "expired-fingerprint",
+          contentFingerprint: "expired-content",
           decision: "processed",
           reasonCode: "already_processed",
           expiresAt: new Date("2026-07-11T01:00:00.000Z"),
@@ -115,6 +181,7 @@ describe("PrismaSourceCandidateMemoryRepository", () => {
         {
           externalId: "active",
           fingerprint: "active-fingerprint",
+          contentFingerprint: "active-content",
           decision: "processed",
           reasonCode: "already_processed",
           expiresAt: new Date("2026-07-11T14:00:00.000Z"),
@@ -175,9 +242,9 @@ class FakeCandidateMemoryClient {
                 record.policyVersion === args.where.policyVersion) &&
               (args.where.providerItemId === undefined ||
                 args.where.providerItemId.in.includes(record.providerItemId)) &&
-              (args.where.expiresAt.gt === undefined ||
+              (args.where.expiresAt?.gt === undefined ||
                 record.expiresAt > args.where.expiresAt.gt) &&
-              (args.where.expiresAt.lte === undefined ||
+              (args.where.expiresAt?.lte === undefined ||
                 record.expiresAt <= args.where.expiresAt.lte),
           );
           return records.slice(0, args.take ?? records.length);

@@ -15,6 +15,8 @@ import type {
   FetchSourceItemsResult,
   ProjectFeedItemsCommand,
   ProjectFeedItemsResult,
+  ProjectSourceEngagementCommand,
+  ProjectSourceEngagementResult,
   RememberSourceCandidatesCommand,
   ReportScanFailedCommand,
   ReportScanSucceededCommand,
@@ -33,12 +35,13 @@ import type {
   SourceFetcherPort,
   SourceItemEnrichmentPort,
   SourceItemRepositoryPort,
+  SourceEngagementProjectionPort,
 } from "../../ports";
 import type { ExecuteScanCommand } from "./execute-scan.command";
 import { ExecuteScanUseCase } from "./execute-scan.use-case";
 
 describe("ExecuteScanUseCase candidate replay memory", () => {
-  it("suppresses an unchanged replay and reprocesses changed metrics", async () => {
+  it("suppresses unchanged replay and routes changed metrics away from enrichment", async () => {
     const fixture = candidateMemoryFixture();
 
     const first = await fixture.execute.execute(scanCommand("scan-memory-1"));
@@ -70,14 +73,18 @@ describe("ExecuteScanUseCase candidate replay memory", () => {
       ok: true,
       value: expect.objectContaining({
         inserted: 0,
-        skippedDuplicates: 1,
-        projected: 1,
+        skippedDuplicates: 0,
+        projected: 0,
         warnings: [],
       }),
     });
-    expect(fixture.enrichment.itemCounts).toEqual([1, 0, 1]);
-    expect(fixture.sourceItems.itemCounts).toEqual([1, 0, 1]);
-    expect(fixture.projection.itemCounts).toEqual([1, 0, 1]);
+    expect(fixture.enrichment.itemCounts).toEqual([1]);
+    expect(fixture.sourceItems.itemCounts).toEqual([1]);
+    expect(fixture.projection.itemCounts).toEqual([1]);
+    expect(fixture.engagementProjection.sampleCounts).toEqual([1, 1]);
+    expect(
+      fixture.engagementProjection.commands[1]?.samples[0]?.refreshReadModels,
+    ).toBe(true);
     expect(fixture.memory.all()).toEqual([
       expect.objectContaining({ seenCount: 2, decision: "processed" }),
     ]);
@@ -131,6 +138,7 @@ const candidateMemoryFixture = (
   const projection = new CountingFeedProjection();
   const enrichment = new CountingEnrichment();
   const reporter = new RecordingReporter();
+  const engagementProjection = new CountingEngagementProjection();
 
   return {
     fetcher,
@@ -138,6 +146,7 @@ const candidateMemoryFixture = (
     projection,
     enrichment,
     reporter,
+    engagementProjection,
     memory: replayMemory,
     execute: new ExecuteScanUseCase(
       fetcher,
@@ -154,6 +163,7 @@ const candidateMemoryFixture = (
       enrichment,
       undefined,
       resolvedCandidateMemory,
+      engagementProjection,
     ),
   };
 };
@@ -241,6 +251,7 @@ class CountingSourceItemRepository implements SourceItemRepositoryPort {
           externalId: snapshot.externalId,
           sourceItemId: existingId,
           inserted: false,
+          mutationKind: "unchanged" as const,
         };
       }
 
@@ -250,10 +261,11 @@ class CountingSourceItemRepository implements SourceItemRepositoryPort {
         externalId: snapshot.externalId,
         sourceItemId: snapshot.id,
         inserted: true,
+        mutationKind: "inserted" as const,
       };
     });
 
-    return { inserted, skippedDuplicates, items };
+    return { inserted, contentUpdated: 0, skippedDuplicates, items };
   }
 }
 
@@ -274,6 +286,24 @@ class CountingFeedProjection implements FeedProjectionPort {
           feedItemId: `feed:${snapshot.externalId}`,
         };
       }),
+    };
+  }
+}
+
+class CountingEngagementProjection implements SourceEngagementProjectionPort {
+  readonly commands: ProjectSourceEngagementCommand[] = [];
+  readonly sampleCounts: number[] = [];
+
+  async project(
+    command: ProjectSourceEngagementCommand,
+  ): Promise<ProjectSourceEngagementResult> {
+    this.commands.push(command);
+    this.sampleCounts.push(command.samples.length);
+    return {
+      currentSnapshotsUpdated: command.samples.length,
+      observationsAppended: command.samples.length,
+      metricChanges: command.samples.length,
+      regressionsObserved: 0,
     };
   }
 }
@@ -328,6 +358,12 @@ class TestCandidateMemory implements SourceCandidateMemoryPort {
   async screen(
     command: ScreenSourceCandidatesCommand,
   ): Promise<ScreenSourceCandidatesResult> {
+    const records = command.candidates.flatMap((candidate) => {
+      const record = this.recordsByKey.get(
+        memoryKey(command, candidate.externalId),
+      );
+      return record === undefined ? [] : [record];
+    });
     const activeRecords = command.candidates.flatMap((candidate) => {
       const record = this.recordsByKey.get(
         memoryKey(command, candidate.externalId),
@@ -343,6 +379,7 @@ class TestCandidateMemory implements SourceCandidateMemoryPort {
     return {
       suppressedExternalIds: activeRecords.map((record) => record.externalId),
       activeRecords,
+      records,
     };
   }
 
@@ -360,12 +397,15 @@ class TestCandidateMemory implements SourceCandidateMemoryPort {
         policyVersion: command.policyVersion,
         externalId: candidate.externalId,
         fingerprint: candidate.fingerprint,
+        contentFingerprint: candidate.contentFingerprint,
+        engagementFingerprint: candidate.engagementFingerprint ?? null,
         decision: candidate.decision,
         reasonCode: candidate.reasonCode,
         expiresAt: candidate.expiresAt,
         firstSeenAt: existing?.firstSeenAt ?? command.rememberedAt,
         lastSeenAt: command.rememberedAt,
         seenCount: (existing?.seenCount ?? 0) + 1,
+        schemaVersion: 2,
       });
     }
   }

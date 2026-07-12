@@ -10,6 +10,7 @@ import type {
   ScanFailureQueuePort,
   ScanLeasePort,
   SourceCandidateMemoryPort,
+  SourceEngagementProjectionPort,
   SourceItemEnrichmentPort,
   SourceItemMetadataProjectionPort,
   SourceItemRepositoryPort,
@@ -26,6 +27,7 @@ import {
   INGESTION_SCAN_FAILURE_QUEUE,
   INGESTION_SCAN_LEASE,
   INGESTION_SOURCE_CANDIDATE_MEMORY,
+  INGESTION_SOURCE_ENGAGEMENT_PROJECTION,
   INGESTION_SOURCE_ITEM_METADATA_PROJECTION,
   INGESTION_SOURCE_ITEM_REPOSITORY,
 } from "./ingestion-worker-provider-tokens";
@@ -46,6 +48,7 @@ export const executeScanProviders: Provider[] = [
       sourceItemEnrichment: SourceItemEnrichmentPort,
       conversationProjection: ConversationProjectionPort,
       candidateMemory: SourceCandidateMemoryPort,
+      sourceEngagementProjection: SourceEngagementProjectionPort,
     ) =>
       new ExecuteScanUseCase(
         sourceFetcher,
@@ -62,6 +65,7 @@ export const executeScanProviders: Provider[] = [
         sourceItemEnrichment,
         conversationProjection,
         candidateMemory,
+        sourceEngagementProjection,
       ),
     inject: [
       CircuitBreakerSourceFetcherAdapter,
@@ -76,6 +80,7 @@ export const executeScanProviders: Provider[] = [
       ArticleContentSourceItemEnrichmentAdapter,
       INGESTION_CONVERSATION_PROJECTION,
       INGESTION_SOURCE_CANDIDATE_MEMORY,
+      INGESTION_SOURCE_ENGAGEMENT_PROJECTION,
     ],
   },
 ];

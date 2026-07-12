@@ -192,17 +192,17 @@
             "backupId": "backup-staging-example",
             "schemaVersion": "20260618002000",
             "backupFormat": "pg_dump custom",
-            "includedTableCount": 58,
-            "sourceTableCount": 59,
-            "restoredTableCount": 59,
+            "includedTableCount": 61,
+            "sourceTableCount": 62,
+            "restoredTableCount": 62,
             "operationalTablesIncluded": true,
             "backupIncludesMatched": true,
-            "expectedBackupIncludeCount": 58,
-            "verifiedBackupIncludeCount": 58,
+            "expectedBackupIncludeCount": 61,
+            "verifiedBackupIncludeCount": 61,
             "missingBackupIncludeCount": 0,
-            "backupIncludesHash": "1f1b7b986963d1136b6d8a821f07be4058a8975501fd57cc3581ed62760d06a4",
-            "sourceTableNamesHash": "9f3f3632ad14f9b40c7293d2cedc482e5b129944d60f40ca43f37d6a7d4d06cf",
-            "restoredTableNamesHash": "9f3f3632ad14f9b40c7293d2cedc482e5b129944d60f40ca43f37d6a7d4d06cf",
+            "backupIncludesHash": "be6241fa7aa2b72bbb41a370c4c137559c64dae8e13d4567fc2c9167788b3882",
+            "sourceTableNamesHash": "0400b7c4bfb7c371f2f70c216084d8c5f3e42b9e0ac95f9a4d385a1f1d9ea44c",
+            "restoredTableNamesHash": "0400b7c4bfb7c371f2f70c216084d8c5f3e42b9e0ac95f9a4d385a1f1d9ea44c",
             "backupArtifactCleanedUp": true
           }
         },
@@ -280,16 +280,19 @@
               "restore_count_41",
               "restore_count_42",
               "restore_count_43",
-              "restore_count_44"
+              "restore_count_44",
+              "restore_count_45",
+              "restore_count_46",
+              "restore_count_47"
             ],
             "checkedTableGroups": [
               "contract-defined-table-counts",
               "full-restored-schema"
             ],
-            "executedQueryCount": 44,
+            "executedQueryCount": 47,
             "failedQueryCount": 0,
-            "restoreValidationContractHash": "2c65c24e5f3b66375318cecb42497877c3f52454358742d591feccaead8f5c0f",
-            "queryResultsHash": "9f3f3632ad14f9b40c7293d2cedc482e5b129944d60f40ca43f37d6a7d4d06cf"
+            "restoreValidationContractHash": "d52c477fe30f124ce6c922ff11ab0d65fe1d62a9feb7842a3798d5681f93d786",
+            "queryResultsHash": "1b7ecd8fe7a978295af8a20726d9a3d6334d6531eaae70c94a3c3c9d91051206"
           }
         },
         {

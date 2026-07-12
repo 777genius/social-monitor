@@ -28,6 +28,7 @@ export type PrismaFeedClient = {
         readonly sourceItemId: string;
         readonly sourceBindingId: string;
         readonly providerKey: string;
+        readonly dedupeKey: string;
         readonly canonicalUrl: string;
         readonly title: string;
         readonly bodyPreview: string;
@@ -55,6 +56,22 @@ export type PrismaFeedClient = {
         readonly status: "VISIBLE";
       };
     }): Promise<PrismaFeedItemRecord>;
+    update?(args: {
+      readonly where: { readonly id: string };
+      readonly data: {
+        readonly sourceItemId?: string;
+        readonly sourceBindingId?: string;
+        readonly providerKey?: string;
+        readonly dedupeKey?: string;
+        readonly canonicalUrl?: string;
+        readonly title?: string;
+        readonly bodyPreview?: string;
+        readonly authorHandle?: string | null;
+        readonly publishedAt?: Date;
+        readonly observedAt?: Date;
+        readonly providerMetadata?: Readonly<Record<string, unknown>> | null;
+      };
+    }): Promise<PrismaFeedItemRecord>;
     findMany(args: {
       readonly where: {
         readonly tenantId: string;
@@ -64,6 +81,7 @@ export type PrismaFeedClient = {
           readonly in: readonly string[];
         };
         readonly interestId?: string;
+        readonly sourceItemId?: string;
         readonly observedAt?: {
           readonly gt?: Date;
           readonly lt?: Date;
@@ -101,7 +119,9 @@ export type PrismaFeedClient = {
       readonly where: {
         readonly tenantId: string;
         readonly workspaceId: string;
-        readonly id: string;
+        readonly id?: string;
+        readonly interestId?: string;
+        readonly sourceItemId?: string;
         readonly status: "VISIBLE";
       };
     }): Promise<PrismaFeedItemRecord | null>;

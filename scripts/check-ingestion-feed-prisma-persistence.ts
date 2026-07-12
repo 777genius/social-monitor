@@ -6,7 +6,6 @@ import {
   workspaceId,
 } from "@social-monitor/shared-kernel";
 import { InMemoryMetricsRecorder } from "@social-monitor/platform-metrics";
-
 import { PrismaFeedItemReadRepository } from "../libs/feed/adapters/persistence/prisma/prisma-feed-item-read.repository";
 import { PrismaFeedProjectionAdapter } from "../libs/feed/adapters/persistence/prisma/prisma-feed-projection.adapter";
 import type {
@@ -32,13 +31,13 @@ import { PrismaScanFailureQueueAdapter } from "../libs/ingestion/adapters/persis
 import { PrismaScanLeaseAdapter } from "../libs/ingestion/adapters/persistence/prisma/prisma-scan-lease.adapter";
 import { resolveIngestionSupportPersistenceMode } from "../libs/ingestion/interfaces/rest/ingestion-provider-tokens";
 import { resolveIngestionWorkerPersistenceMode } from "../apps/ingestion-worker/src/ingestion-worker-provider-tokens";
+import { updateFakeSourceItem } from "./support/update-fake-source-item";
 
 const clock = new FixedClock(new Date("2026-06-07T00:00:00.000Z"));
 const tenant = tenantId("00000000-0000-7000-8000-000000000101");
 const workspace = workspaceId("00000000-0000-7000-8000-000000000102");
 const sourceBindingId = "00000000-0000-7000-8000-000000000103";
 const interestId = "00000000-0000-7000-8000-000000000104";
-
 const projectionSnapshots = (providerKey: string) => ({
   interestQuerySnapshot: {
     interestId,
@@ -160,8 +159,8 @@ async function main(): Promise<void> {
     "source item repository must insert first provider item",
   );
   assert(
-    saveResult.skippedDuplicates === 1,
-    "source item repository must skip duplicate provider item",
+    saveResult.contentUpdated === 1 && saveResult.skippedDuplicates === 0,
+    "source item repository must update changed provider content",
   );
   assert(
     saveResult.items.map((item) => item.sourceItemId).join(",") ===
@@ -574,6 +573,7 @@ class FakePrismaIngestionFeedClient
 
       return record;
     },
+    update: async (args) => updateFakeSourceItem(this.sourceItems, args),
   };
 
   readonly cursorCheckpoint: PrismaIngestionClient["cursorCheckpoint"] = {

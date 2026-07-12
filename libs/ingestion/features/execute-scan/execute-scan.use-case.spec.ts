@@ -223,6 +223,7 @@ class FakeSourceItemRepository implements SourceItemRepositoryPort {
           externalId: snapshot.externalId,
           sourceItemId: existing.toSnapshot().id,
           inserted: false,
+          mutationKind: "unchanged",
         });
         continue;
       }
@@ -233,10 +234,11 @@ class FakeSourceItemRepository implements SourceItemRepositoryPort {
         externalId: snapshot.externalId,
         sourceItemId: snapshot.id,
         inserted: true,
+        mutationKind: "inserted",
       });
     }
 
-    return { inserted, skippedDuplicates, items: savedItems };
+    return { inserted, contentUpdated: 0, skippedDuplicates, items: savedItems };
   }
 
   all(): readonly SourceItem[] {
@@ -685,15 +687,12 @@ describe("ExecuteScanUseCase", () => {
         fetched: 2,
         inserted: 0,
         skippedDuplicates: 2,
-        projected: 2,
+        projected: 0,
         warnings: [],
       },
     });
     expect(repository.all()).toHaveLength(2);
-    expect(projection.commands).toHaveLength(2);
-    expect(
-      projection.commands[1]?.sourceItems.map((item) => item.toSnapshot().id),
-    ).toEqual(["source-item-1", "source-item-2"]);
+    expect(projection.commands).toHaveLength(1);
   });
 
   it("enriches fetched source items before persistence and feed projection", async () => {

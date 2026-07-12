@@ -51,7 +51,34 @@ export class PrismaFeedProjectionAdapter implements FeedProjectionPort {
       const feedItemId = this.ids.generate();
 
       await withPrismaWriteRetry(async () => {
-        const feedItem = await this.prisma.feedItem.upsert({
+        const existingFeedItem = await this.prisma.feedItem.findFirst({
+          where: {
+            tenantId: command.tenantId,
+            workspaceId: command.workspaceId,
+            interestId: command.interestId,
+            sourceItemId: snapshot.id,
+            status: "VISIBLE",
+          },
+        });
+        const update = {
+          sourceItemId: snapshot.id,
+          sourceBindingId: command.sourceBindingId,
+          providerKey: command.providerKey,
+          dedupeKey,
+          canonicalUrl: snapshot.canonicalUrl,
+          title: snapshot.title,
+          bodyPreview,
+          authorHandle: snapshot.authorHandle ?? null,
+          publishedAt: snapshot.publishedAt,
+          observedAt: snapshot.ingestedAt,
+          providerMetadata,
+        };
+        const feedItem = existingFeedItem !== null && this.prisma.feedItem.update !== undefined
+          ? await this.prisma.feedItem.update({
+              where: { id: existingFeedItem.id },
+              data: update,
+            })
+          : await this.prisma.feedItem.upsert({
           where: {
             tenantId_interestId_dedupeKey: {
               tenantId: command.tenantId,
@@ -59,18 +86,7 @@ export class PrismaFeedProjectionAdapter implements FeedProjectionPort {
               dedupeKey,
             },
           },
-          update: {
-            sourceItemId: snapshot.id,
-            sourceBindingId: command.sourceBindingId,
-            providerKey: command.providerKey,
-            canonicalUrl: snapshot.canonicalUrl,
-            title: snapshot.title,
-            bodyPreview,
-            authorHandle: snapshot.authorHandle ?? null,
-            publishedAt: snapshot.publishedAt,
-            observedAt: snapshot.ingestedAt,
-            providerMetadata,
-          },
+          update,
           create: {
             id: feedItemId,
             tenantId: command.tenantId,

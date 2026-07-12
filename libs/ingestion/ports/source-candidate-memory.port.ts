@@ -8,6 +8,8 @@ import type {
 
 export type {
   SourceCandidateMemoryCandidate,
+  SourceCandidateChangeClassification,
+  SourceCandidateChangeKind,
   SourceCandidateMemoryDecision,
   SourceCandidateMemoryReasonCode,
   SourceCandidateMemoryRecord,
@@ -22,6 +24,7 @@ export type ScreenSourceCandidatesCommand = SourceCandidateMemoryScope & {
 export type ScreenSourceCandidatesResult = {
   readonly suppressedExternalIds: readonly string[];
   readonly activeRecords: readonly SourceCandidateMemoryRecord[];
+  readonly records?: readonly SourceCandidateMemoryRecord[];
 };
 
 export type RememberSourceCandidate = SourceCandidateMemoryCandidate & {

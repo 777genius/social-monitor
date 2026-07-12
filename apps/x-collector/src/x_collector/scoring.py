@@ -9,6 +9,13 @@ from statistics import median
 from .domain import SearchProduct, XCollectedPost, XPostMetrics
 
 
+ROBUST_Z_SATURATION = 2.5
+MAX_ABSOLUTE_ENGAGEMENT_CONTRIBUTION = 10.0
+MAX_AGE_ADJUSTED_ENGAGEMENT_CONTRIBUTION = 5.0
+SOURCE_CONFIDENCE_WEIGHT = 16.0
+RELEVANCE_WEIGHT = 32.0
+
+
 @dataclass(frozen=True)
 class CandidateSignal:
     pass_label: str
@@ -35,8 +42,8 @@ def rank_candidates(
         return []
 
     engagements = [engagement_score(candidate.post.metrics) for candidate in candidates]
-    velocities = [
-        velocity_score(candidate.post, window_end)
+    age_adjusted_engagements = [
+        age_adjusted_engagement_score(candidate.post, window_end)
         for candidate in candidates
     ]
     ranked = [
@@ -45,7 +52,10 @@ def rank_candidates(
             query=query,
             window_end=window_end,
             engagement_z=robust_z(engagements[index], engagements),
-            velocity_z=robust_z(velocities[index], velocities),
+            age_adjusted_engagement_z=robust_z(
+                age_adjusted_engagements[index],
+                age_adjusted_engagements,
+            ),
         )
         for index, candidate in enumerate(candidates)
     ]
@@ -104,14 +114,14 @@ def rank_candidate(
     query: str,
     window_end: datetime,
     engagement_z: float,
-    velocity_z: float,
+    age_adjusted_engagement_z: float,
 ) -> RankedCandidate:
     score = (
         50.0
-        + 16.0 * clamp(engagement_z, -2.5, 2.5)
-        + 12.0 * clamp(velocity_z, -2.5, 2.5)
-        + 16.0 * source_confidence(candidate.signals)
-        + 10.0 * relevance_score(candidate.post, query)
+        + absolute_engagement_contribution(engagement_z)
+        + age_adjusted_engagement_contribution(age_adjusted_engagement_z)
+        + SOURCE_CONFIDENCE_WEIGHT * source_confidence(candidate.signals)
+        + RELEVANCE_WEIGHT * relevance_score(candidate.post, query)
         - penalties(candidate.post, window_end)
     )
 
@@ -126,12 +136,43 @@ def engagement_score(metrics: XPostMetrics) -> float:
     )
 
 
-def velocity_score(post: XCollectedPost, window_end: datetime) -> float:
+def age_adjusted_engagement_score(
+    post: XCollectedPost,
+    window_end: datetime,
+) -> float:
     age_hours = max(
         (window_end - post.published_at).total_seconds() / 3600,
         0.25,
     )
     return engagement_score(post.metrics) / math.pow(age_hours + 2.0, 0.35)
+
+
+def absolute_engagement_contribution(engagement_z: float) -> float:
+    return bounded_standardized_contribution(
+        engagement_z,
+        MAX_ABSOLUTE_ENGAGEMENT_CONTRIBUTION,
+    )
+
+
+def age_adjusted_engagement_contribution(
+    age_adjusted_engagement_z: float,
+) -> float:
+    return bounded_standardized_contribution(
+        age_adjusted_engagement_z,
+        MAX_AGE_ADJUSTED_ENGAGEMENT_CONTRIBUTION,
+    )
+
+
+def bounded_standardized_contribution(
+    standardized_value: float,
+    max_magnitude: float,
+) -> float:
+    bounded_value = clamp(
+        standardized_value,
+        -ROBUST_Z_SATURATION,
+        ROBUST_Z_SATURATION,
+    )
+    return max_magnitude * bounded_value / ROBUST_Z_SATURATION
 
 
 def source_confidence(signals: tuple[CandidateSignal, ...]) -> float:
@@ -247,4 +288,3 @@ def normalize_text(value: str) -> str:
 
 def clamp(value: float, minimum: float, maximum: float) -> float:
     return min(max(value, minimum), maximum)
-

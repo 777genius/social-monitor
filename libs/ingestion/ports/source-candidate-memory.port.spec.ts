@@ -13,7 +13,13 @@ describe("NOOP_SOURCE_CANDIDATE_MEMORY", () => {
       scopeFingerprint: "scope-v1",
       policyVersion: "policy-v1",
       screenedAt: new Date("2026-07-11T00:00:00.000Z"),
-      candidates: [{ externalId: "x-twitter:1", fingerprint: "fingerprint-1" }],
+      candidates: [
+        {
+          externalId: "x-twitter:1",
+          fingerprint: "fingerprint-1",
+          contentFingerprint: "content-1",
+        },
+      ],
     });
 
     expect(result).toEqual({

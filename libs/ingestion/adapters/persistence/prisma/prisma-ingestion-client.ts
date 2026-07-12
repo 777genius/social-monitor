@@ -68,7 +68,7 @@ export type PrismaSourceCandidateMemoryClient = {
         readonly scopeFingerprint?: string;
         readonly policyVersion?: string;
         readonly providerItemId?: { readonly in: readonly string[] };
-        readonly expiresAt: {
+        readonly expiresAt?: {
           readonly gt?: Date;
           readonly lte?: Date;
         };
@@ -90,12 +90,15 @@ export type PrismaSourceCandidateMemoryClient = {
       };
       readonly update: {
         readonly fingerprint: string;
+        readonly contentFingerprint: string;
+        readonly engagementFingerprint: string | null;
         readonly policyVersion: string;
         readonly decision: string;
         readonly reasonCode: string;
         readonly expiresAt: Date;
         readonly lastSeenAt: Date;
         readonly seenCount: { readonly increment: number };
+        readonly schemaVersion: number;
       };
       readonly create: {
         readonly id: string;
@@ -107,12 +110,15 @@ export type PrismaSourceCandidateMemoryClient = {
         readonly providerItemId: string;
         readonly scopeFingerprint: string;
         readonly fingerprint: string;
+        readonly contentFingerprint: string;
+        readonly engagementFingerprint: string | null;
         readonly policyVersion: string;
         readonly decision: string;
         readonly reasonCode: string;
         readonly expiresAt: Date;
         readonly firstSeenAt: Date;
         readonly lastSeenAt: Date;
+        readonly schemaVersion: number;
       };
     }): Promise<PrismaSourceCandidateMemoryRecord>;
   };
@@ -150,8 +156,27 @@ export type PrismaIngestionClient = {
         readonly authorHandle?: string | null;
         readonly publishedAt: Date;
         readonly contentHash: string;
+        readonly providerContentHash: string;
         readonly observedAt: Date;
+        readonly lastObservedAt: Date;
+        readonly contentUpdatedAt: Date;
         readonly metadata: Readonly<Record<string, unknown>>;
+      };
+    }): Promise<PrismaSourceItemRecord>;
+    update?(args: {
+      readonly where: { readonly id: string };
+      readonly data: {
+        readonly sourceBindingId?: string;
+        readonly canonicalUrl?: string;
+        readonly title?: string;
+        readonly body?: string;
+        readonly authorHandle?: string | null;
+        readonly publishedAt?: Date;
+        readonly contentHash?: string;
+        readonly providerContentHash?: string;
+        readonly lastObservedAt: Date;
+        readonly contentUpdatedAt?: Date;
+        readonly metadata?: Readonly<Record<string, unknown>>;
       };
     }): Promise<PrismaSourceItemRecord>;
   };

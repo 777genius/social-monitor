@@ -56,6 +56,9 @@ CREATE TYPE "ScanFailureQueueStatus" AS ENUM ('RETRY_ENQUEUED', 'DEAD_LETTERED')
 CREATE TYPE "ScanAttemptStatus" AS ENUM ('RUNNING', 'SUCCEEDED', 'FAILED');
 
 -- CreateEnum
+CREATE TYPE "EngagementObservationReason" AS ENUM ('INITIAL', 'CADENCE', 'FINAL', 'LEGACY_BACKFILL');
+
+-- CreateEnum
 CREATE TYPE "ApiKeyCredentialStatus" AS ENUM ('ACTIVE', 'REVOKED');
 
 -- CreateTable
@@ -315,7 +318,10 @@ CREATE TABLE "source_items" (
     "author_handle" TEXT,
     "published_at" TIMESTAMPTZ(6) NOT NULL,
     "content_hash" TEXT NOT NULL,
+    "provider_content_hash" TEXT,
     "observed_at" TIMESTAMPTZ(6) NOT NULL,
+    "last_observed_at" TIMESTAMPTZ(6),
+    "content_updated_at" TIMESTAMPTZ(6),
     "raw_pointer" TEXT,
     "metadata" JSONB NOT NULL,
     "schema_version" INTEGER NOT NULL DEFAULT 1,
@@ -335,6 +341,8 @@ CREATE TABLE "source_candidate_memory" (
     "provider_item_id" TEXT NOT NULL,
     "scope_fingerprint" TEXT NOT NULL,
     "fingerprint" TEXT NOT NULL,
+    "content_fingerprint" TEXT,
+    "engagement_fingerprint" TEXT,
     "policy_version" TEXT NOT NULL,
     "decision" TEXT NOT NULL,
     "reason_code" TEXT NOT NULL,
@@ -347,6 +355,99 @@ CREATE TABLE "source_candidate_memory" (
     "updated_at" TIMESTAMPTZ(6) NOT NULL,
 
     CONSTRAINT "source_candidate_memory_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "source_item_engagement_snapshots" (
+    "tenant_id" UUID NOT NULL,
+    "workspace_id" UUID NOT NULL,
+    "source_item_id" UUID NOT NULL,
+    "provider_key" TEXT NOT NULL,
+    "score" BIGINT,
+    "comments" BIGINT,
+    "likes" BIGINT,
+    "reposts" BIGINT,
+    "replies" BIGINT,
+    "quotes" BIGINT,
+    "bookmarks" BIGINT,
+    "impressions" BIGINT,
+    "views" BIGINT,
+    "points" BIGINT,
+    "stars" BIGINT,
+    "forks" BIGINT,
+    "stars_gained" BIGINT,
+    "provider_rank" INTEGER,
+    "upvote_ratio_bps" INTEGER,
+    "metrics_hash" TEXT NOT NULL,
+    "first_observed_at" TIMESTAMPTZ(6) NOT NULL,
+    "last_observed_at" TIMESTAMPTZ(6) NOT NULL,
+    "last_changed_at" TIMESTAMPTZ(6) NOT NULL,
+    "last_observation_at" TIMESTAMPTZ(6) NOT NULL,
+    "next_observation_due_at" TIMESTAMPTZ(6) NOT NULL,
+    "schema_version" INTEGER NOT NULL DEFAULT 1,
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMPTZ(6) NOT NULL,
+
+    CONSTRAINT "source_item_engagement_snapshots_pkey" PRIMARY KEY ("tenant_id","workspace_id","source_item_id")
+);
+
+-- CreateTable
+CREATE TABLE "source_item_engagement_observations" (
+    "id" UUID NOT NULL,
+    "tenant_id" UUID NOT NULL,
+    "workspace_id" UUID NOT NULL,
+    "source_item_id" UUID NOT NULL,
+    "provider_key" TEXT NOT NULL,
+    "source_binding_id" UUID,
+    "scan_job_id" UUID,
+    "score" BIGINT,
+    "comments" BIGINT,
+    "likes" BIGINT,
+    "reposts" BIGINT,
+    "replies" BIGINT,
+    "quotes" BIGINT,
+    "bookmarks" BIGINT,
+    "impressions" BIGINT,
+    "views" BIGINT,
+    "points" BIGINT,
+    "stars" BIGINT,
+    "forks" BIGINT,
+    "stars_gained" BIGINT,
+    "provider_rank" INTEGER,
+    "upvote_ratio_bps" INTEGER,
+    "metrics_hash" TEXT NOT NULL,
+    "observed_at" TIMESTAMPTZ(6) NOT NULL,
+    "bucket_started_at" TIMESTAMPTZ(6) NOT NULL,
+    "reason" "EngagementObservationReason" NOT NULL,
+    "metrics_changed" BOOLEAN NOT NULL,
+    "has_regression" BOOLEAN NOT NULL DEFAULT false,
+    "schema_version" INTEGER NOT NULL DEFAULT 1,
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "source_item_engagement_observations_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "source_item_engagement_daily_rollups" (
+    "tenant_id" UUID NOT NULL,
+    "workspace_id" UUID NOT NULL,
+    "source_item_id" UUID NOT NULL,
+    "provider_key" TEXT NOT NULL,
+    "day" DATE NOT NULL,
+    "sample_count" INTEGER NOT NULL,
+    "changed_sample_count" INTEGER NOT NULL,
+    "regression_count" INTEGER NOT NULL,
+    "first_observed_at" TIMESTAMPTZ(6) NOT NULL,
+    "last_observed_at" TIMESTAMPTZ(6) NOT NULL,
+    "compacted_through_at" TIMESTAMPTZ(6) NOT NULL,
+    "opening_metrics" JSONB NOT NULL,
+    "closing_metrics" JSONB NOT NULL,
+    "peak_metrics" JSONB NOT NULL,
+    "schema_version" INTEGER NOT NULL DEFAULT 1,
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMPTZ(6) NOT NULL,
+
+    CONSTRAINT "source_item_engagement_daily_rollups_pkey" PRIMARY KEY ("tenant_id","workspace_id","source_item_id","day")
 );
 
 -- CreateTable
@@ -1236,6 +1337,9 @@ CREATE INDEX "source_items_tenant_id_workspace_id_source_binding_id_obser_idx" O
 CREATE UNIQUE INDEX "source_items_tenant_workspace_provider_item_key" ON "source_items"("tenant_id", "workspace_id", "provider_key", "provider_item_id");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "source_items_tenant_workspace_id_key" ON "source_items"("tenant_id", "workspace_id", "id");
+
+-- CreateIndex
 CREATE INDEX "source_candidate_memory_active_lookup_idx" ON "source_candidate_memory"("tenant_id", "workspace_id", "source_binding_id", "provider_key", "scope_fingerprint", "expires_at");
 
 -- CreateIndex
@@ -1243,6 +1347,24 @@ CREATE INDEX "source_candidate_memory_expiry_idx" ON "source_candidate_memory"("
 
 -- CreateIndex
 CREATE UNIQUE INDEX "source_candidate_memory_scope_item_key" ON "source_candidate_memory"("tenant_id", "workspace_id", "interest_id", "source_binding_id", "provider_key", "scope_fingerprint", "provider_item_id");
+
+-- CreateIndex
+CREATE INDEX "source_item_engagement_snapshots_provider_observed_idx" ON "source_item_engagement_snapshots"("tenant_id", "workspace_id", "provider_key", "last_observed_at" DESC);
+
+-- CreateIndex
+CREATE INDEX "source_item_engagement_snapshots_due_idx" ON "source_item_engagement_snapshots"("tenant_id", "workspace_id", "next_observation_due_at");
+
+-- CreateIndex
+CREATE INDEX "source_item_engagement_observations_item_observed_idx" ON "source_item_engagement_observations"("tenant_id", "workspace_id", "source_item_id", "observed_at" DESC);
+
+-- CreateIndex
+CREATE INDEX "source_item_engagement_observations_provider_observed_idx" ON "source_item_engagement_observations"("tenant_id", "workspace_id", "provider_key", "observed_at" DESC);
+
+-- CreateIndex
+CREATE UNIQUE INDEX "source_item_engagement_observations_bucket_key" ON "source_item_engagement_observations"("tenant_id", "workspace_id", "source_item_id", "bucket_started_at");
+
+-- CreateIndex
+CREATE INDEX "source_item_engagement_daily_rollups_provider_day_idx" ON "source_item_engagement_daily_rollups"("tenant_id", "workspace_id", "provider_key", "day" DESC);
 
 -- CreateIndex
 CREATE INDEX "scan_failure_queue_entries_tenant_id_workspace_id_status_cr_idx" ON "scan_failure_queue_entries"("tenant_id", "workspace_id", "status", "created_at");
@@ -1516,6 +1638,15 @@ ALTER TABLE "interests" ADD CONSTRAINT "interests_workspace_id_fkey" FOREIGN KEY
 
 -- AddForeignKey
 ALTER TABLE "capability_profiles" ADD CONSTRAINT "capability_profiles_source_id_fkey" FOREIGN KEY ("source_id") REFERENCES "source_catalog_entries"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "source_item_engagement_snapshots" ADD CONSTRAINT "source_item_engagement_snapshots_source_item_scope_fkey" FOREIGN KEY ("tenant_id", "workspace_id", "source_item_id") REFERENCES "source_items"("tenant_id", "workspace_id", "id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "source_item_engagement_observations" ADD CONSTRAINT "source_item_engagement_observations_source_item_scope_fkey" FOREIGN KEY ("tenant_id", "workspace_id", "source_item_id") REFERENCES "source_items"("tenant_id", "workspace_id", "id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "source_item_engagement_daily_rollups" ADD CONSTRAINT "source_item_engagement_daily_rollups_source_item_scope_fkey" FOREIGN KEY ("tenant_id", "workspace_id", "source_item_id") REFERENCES "source_items"("tenant_id", "workspace_id", "id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "feed_items" ADD CONSTRAINT "feed_items_source_item_id_fkey" FOREIGN KEY ("source_item_id") REFERENCES "source_items"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

@@ -14,6 +14,7 @@ export * from "./ranking-candidate-provider.port";
 export * from "./ranking-eval-dataset-repository.port";
 export * from "./source-query-planner.port";
 export * from "./source-item-enrichment.port";
+export * from "./source-engagement-projection.port";
 export * from "./source-item-metadata-projection.port";
 export * from "./source-provider.port";
 export * from "./source-provider-registry.port";

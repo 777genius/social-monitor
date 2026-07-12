@@ -1,11 +1,13 @@
 import {
   SOURCE_CANDIDATE_MEMORY_POLICY_VERSION,
-  sourceCandidateFingerprint,
+  classifySourceCandidateChange,
+  sourceCandidateFingerprintSet,
   sourceCandidateRefreshExpiresAt,
   sourceCandidateScopeFingerprint,
 } from "../../domain";
 import type {
   FetchedSourceItem,
+  SourceCandidateChangeClassification,
   SourceCandidateMemoryCandidate,
   SourceCandidateMemoryPort,
   SourceQuery,
@@ -36,8 +38,14 @@ export type SourceCandidateScreening = {
     readonly policyVersion: string;
   };
   readonly candidates: readonly SourceCandidateMemoryCandidate[];
+  readonly classifications: readonly SourceCandidateChangeClassification[];
+  readonly previousExpiresAtByExternalId: ReadonlyMap<string, Date>;
+  readonly itemsToEnrich: readonly FetchedSourceItem[];
+  readonly itemsForEngagementRefresh: readonly FetchedSourceItem[];
   readonly itemsToProcess: readonly FetchedSourceItem[];
   readonly suppressedExternalIds: readonly string[];
+  readonly legacyFallbackExternalIds: readonly string[];
+  readonly classificationReliable: boolean;
   readonly warning?: string;
 };
 
@@ -67,15 +75,16 @@ export const screenSourceCandidates = async (params: {
   };
   const candidates = params.items.map((item) => ({
     externalId: item.externalId,
-    fingerprint: sourceCandidateFingerprint({
+    ...sourceCandidateFingerprintSet({
       candidate: item,
+      providerKey: params.scope.providerKey,
       policyVersion: SOURCE_CANDIDATE_MEMORY_POLICY_VERSION,
+      observedAt: params.screenedAt,
     }),
   }));
-  const candidateExternalIds = new Set(
-    candidates.map((candidate) => candidate.externalId),
-  );
-  let suppressedExternalIds: readonly string[] = [];
+  let classifications: readonly SourceCandidateChangeClassification[] = [];
+  let previousExpiresAtByExternalId: ReadonlyMap<string, Date> = new Map();
+  let classificationReliable = true;
   let warning: string | undefined;
   try {
     const screened = await params.memory.screen({
@@ -83,25 +92,68 @@ export const screenSourceCandidates = async (params: {
       candidates,
       screenedAt: params.screenedAt,
     });
-    suppressedExternalIds = [
-      ...new Set(
-        screened.suppressedExternalIds.filter((externalId) =>
-          candidateExternalIds.has(externalId),
-        ),
-      ),
-    ];
+    const recordsByExternalId = new Map(
+      (screened.records ?? screened.activeRecords).map((record) => [
+        record.externalId,
+        record,
+      ]),
+    );
+    previousExpiresAtByExternalId = new Map(
+      [...recordsByExternalId].map(([externalId, record]) => [
+        externalId,
+        record.expiresAt,
+      ]),
+    );
+    classifications = candidates.map((candidate) =>
+      classifySourceCandidateChange({
+        scope: memoryScope,
+        candidate,
+        record: recordsByExternalId.get(candidate.externalId),
+        now: params.screenedAt,
+      }),
+    );
   } catch {
     warning = "source_candidate_memory.read_failed";
+    classificationReliable = false;
+    classifications = candidates.map((candidate) => ({
+      externalId: candidate.externalId,
+      kind: "new" as const,
+      legacyFallback: false,
+    }));
   }
-  const suppressed = new Set(suppressedExternalIds);
+  const classifiedItems = params.items.map((item, index) => ({
+    item,
+    classification: classifications[index]!,
+  }));
+  const itemsToEnrich = classifiedItems
+    .filter(({ classification }) =>
+      ["new", "content_changed"].includes(classification.kind),
+    )
+    .map(({ item }) => item);
+  const itemsForEngagementRefresh = classifiedItems
+    .filter(({ classification }) =>
+      ["engagement_changed", "observation_due"].includes(classification.kind),
+    )
+    .map(({ item }) => item);
+  const suppressedExternalIds = classifications
+    .filter((classification) => classification.kind === "unchanged")
+    .map((classification) => classification.externalId);
 
   return {
     memoryScope,
     candidates,
-    itemsToProcess: params.items.filter(
-      (item) => !suppressed.has(item.externalId),
-    ),
+    classifications,
+    previousExpiresAtByExternalId,
+    itemsToEnrich,
+    itemsForEngagementRefresh,
+    itemsToProcess: classifiedItems
+      .filter(({ classification }) => classification.kind !== "unchanged")
+      .map(({ item }) => item),
     suppressedExternalIds,
+    legacyFallbackExternalIds: classifications
+      .filter((classification) => classification.legacyFallback)
+      .map((classification) => classification.externalId),
+    classificationReliable,
     ...(warning === undefined ? {} : { warning }),
   };
 };
@@ -113,6 +165,12 @@ export const rememberProcessedSourceCandidates = async (params: {
   readonly rememberedAt: Date;
 }): Promise<string | undefined> => {
   try {
+    const classificationByExternalId = new Map(
+      params.screening.classifications.map((classification) => [
+        classification.externalId,
+        classification,
+      ]),
+    );
     await params.memory.remember({
       ...params.screening.memoryScope,
       rememberedAt: params.rememberedAt,
@@ -124,14 +182,16 @@ export const rememberProcessedSourceCandidates = async (params: {
           ...candidate,
           decision: "processed" as const,
           reasonCode: "already_processed" as const,
-          expiresAt: sourceCandidateRefreshExpiresAt({
-            decision: "processed",
-            refreshedAt: params.rememberedAt,
-            policy: {
-              policyVersion: SOURCE_CANDIDATE_MEMORY_POLICY_VERSION,
-              processedRefreshTtlMs: 12 * 60 * 60 * 1_000,
-              rejectedRefreshTtlMs: 6 * 60 * 60 * 1_000,
-            },
+          expiresAt: anchoredCandidateExpiry({
+            candidate,
+            classificationKind: classificationByExternalId.get(
+              candidate.externalId,
+            )?.kind,
+            previousExpiresAt:
+              params.screening.previousExpiresAtByExternalId.get(
+                candidate.externalId,
+              ),
+            rememberedAt: params.rememberedAt,
           }),
         })),
     });
@@ -139,4 +199,33 @@ export const rememberProcessedSourceCandidates = async (params: {
   } catch {
     return "source_candidate_memory.write_failed";
   }
+};
+
+const anchoredCandidateExpiry = (params: {
+  readonly candidate: SourceCandidateMemoryCandidate;
+  readonly classificationKind?: SourceCandidateChangeClassification["kind"];
+  readonly previousExpiresAt?: Date;
+  readonly rememberedAt: Date;
+}): Date => {
+  if (
+    params.classificationKind === "engagement_changed" &&
+    params.previousExpiresAt !== undefined &&
+    params.previousExpiresAt.getTime() > params.rememberedAt.getTime()
+  ) {
+    return params.previousExpiresAt;
+  }
+  return params.candidate.observationIntervalMs === undefined
+    ? sourceCandidateRefreshExpiresAt({
+        decision: "processed",
+        refreshedAt: params.rememberedAt,
+        policy: {
+          policyVersion: SOURCE_CANDIDATE_MEMORY_POLICY_VERSION,
+          processedRefreshTtlMs: 12 * 60 * 60 * 1_000,
+          rejectedRefreshTtlMs: 6 * 60 * 60 * 1_000,
+        },
+      })
+    : new Date(
+        params.rememberedAt.getTime() +
+          params.candidate.observationIntervalMs,
+      );
 };
