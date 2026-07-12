@@ -37,7 +37,7 @@ const readinessProfiles: readonly SourceReadinessProfile[] = [
     liveEvidenceRequirements: [],
     freshnessGuard: makeFreshnessGuard({
       maxStalenessSeconds: 86_400,
-      minimumScanIntervalSeconds: 3_600,
+      minimumScanIntervalSeconds: 86_400,
       skipRecentlyScanned: false,
     }),
     acquisitionMode: 'api',

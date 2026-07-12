@@ -35,25 +35,16 @@ describe("DeterministicReaderSummaryModelAdapter", () => {
     ).toBe(true);
     expect(attempt.draft.content).toBeDefined();
     expect(attempt.draft.headline).toBe(
-      "Workspace readerSummary: 10 stories across 5 sources (RSS, GitHub Trending, Hacker News + 2 more)",
+      "Workspace readerSummary: 9 stories across 4 sources (RSS, Hacker News, Reddit + 1 more)",
     );
     expect(attempt.draft.content?.headline).toBe(attempt.draft.headline);
     expect(attempt.draft.headline).not.toBe("rss story 1");
     expect(
       attempt.draft.content?.topReads.map((item) => item.providerKey),
-    ).not.toContain("github-issues");
+    ).toContain("github-issues");
     expect(
       attempt.draft.content?.topReads.map((item) => item.providerKey),
-    ).toEqual([
-      "github-trending-page",
-      "github-trending-page",
-      "github-trending-page",
-      "rss",
-      "rss",
-      "rss",
-      "hacker-news",
-      "reddit",
-    ]);
+    ).not.toContain("github-trending-page");
     expect(attempt.draft.executiveSummary).toContain(
       "Current executive summary covers 12 selected stories for workspace in an analytical tone.",
     );

@@ -53,15 +53,14 @@ void main() {
         const ValueKey('reader-summary-provider-coverage-github-trending-page'),
         skipOffstage: false,
       ),
-      findsOneWidget,
+      findsNothing,
     );
-    expect(find.text('22 collected', skipOffstage: false), findsOneWidget);
     expect(
-      find.text(
-        '3 selected (14%) · 3 top reads · 3 citations',
+      find.byKey(
+        const ValueKey('reader-summary-coverage-by-source'),
         skipOffstage: false,
       ),
-      findsOneWidget,
+      findsNothing,
     );
     expect(find.text('Repositories ranked by GitHub momentum'), findsOneWidget);
     await tester.scrollUntilVisible(

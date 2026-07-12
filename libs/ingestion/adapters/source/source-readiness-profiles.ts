@@ -240,8 +240,8 @@ export const sourceReadinessProfiles: readonly SourceReadinessProfile[] = [
     ],
     liveEvidenceRequirements: githubTrendingPageLiveEvidenceRequirements,
     freshnessGuard: {
-      maxStalenessSeconds: 3_600,
-      minimumScanIntervalSeconds: 3_600,
+      maxStalenessSeconds: 86_400,
+      minimumScanIntervalSeconds: 86_400,
       skipRecentlyScanned: true,
       scanHistoryRequired: true,
       cursorResumeRequired: true,

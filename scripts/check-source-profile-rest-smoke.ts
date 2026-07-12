@@ -320,12 +320,12 @@ async function main(): Promise<void> {
     );
     const githubTrendingGuard = requireFreshnessGuard(githubTrendingPage);
     assert(
-      githubTrendingGuard.maxStalenessSeconds === 3_600,
-      'GitHub Trending page must expose hourly freshness guard',
+      githubTrendingGuard.maxStalenessSeconds === 86_400,
+      'GitHub Trending page must expose daily freshness guard',
     );
     assert(
-      githubTrendingGuard.minimumScanIntervalSeconds === 3_600,
-      'GitHub Trending page must expose hourly minimum scan interval',
+      githubTrendingGuard.minimumScanIntervalSeconds === 86_400,
+      'GitHub Trending page must expose daily minimum scan interval',
     );
     assert(
       githubTrendingGuard.skipRecentlyScanned === true,

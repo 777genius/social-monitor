@@ -72,9 +72,9 @@ const providerScanCadenceProfiles = new Map<string, ProviderScanCadenceProfile>(
   [
     'github-trending-page',
     {
-      minimumIntervalSeconds: 3_600,
-      defaultIntervalSeconds: 3_600,
-      defaultFreshnessSeconds: 3_600,
+      minimumIntervalSeconds: 86_400,
+      defaultIntervalSeconds: 86_400,
+      defaultFreshnessSeconds: 86_400,
       defaultRetryBudget: 1,
     },
   ],

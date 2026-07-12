@@ -9,7 +9,7 @@ import type {
   ReaderSummaryModelValidationResult,
   ProviderReaderSummaryAttempt,
 } from "../../ports";
-import { buildReaderSummary } from "../../domain";
+import { buildReaderSummary, primaryReaderSummaryEvidence } from "../../domain";
 import {
   asRecord,
   assertOpenAiReaderSummaryDraftShape,
@@ -144,7 +144,7 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
         this.inputTokenDivisor,
     );
     const outputTokens =
-      input.evidence.selectedEvidence.length === 0
+      primaryReaderSummaryEvidence(input.evidence).selectedEvidence.length === 0
         ? 128
         : Math.min(
             this.maxOutputTokens,
@@ -166,7 +166,9 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
     input: ReaderSummaryModelInput,
     selectedRoute: ReaderSummaryModelRoute,
   ): Promise<ProviderReaderSummaryAttempt> {
-    if (input.evidence.selectedEvidence.length === 0) {
+    if (
+      primaryReaderSummaryEvidence(input.evidence).selectedEvidence.length === 0
+    ) {
       return this.buildNoSignalAttempt(input, selectedRoute);
     }
 

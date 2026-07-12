@@ -31,9 +31,9 @@ describe('scan cadence policy', () => {
       defaultRetryBudget: 3,
     });
     expect(providerScanCadenceProfile('github-trending-page')).toEqual({
-      minimumIntervalSeconds: 3_600,
-      defaultIntervalSeconds: 3_600,
-      defaultFreshnessSeconds: 3_600,
+      minimumIntervalSeconds: 86_400,
+      defaultIntervalSeconds: 86_400,
+      defaultFreshnessSeconds: 86_400,
       defaultRetryBudget: 1,
     });
     expect(providerScanCadenceProfile('unknown-provider')).toEqual({

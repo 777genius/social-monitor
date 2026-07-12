@@ -10,6 +10,8 @@ import type { Clock } from "@social-monitor/shared-kernel";
 import {
   approvedStoryRelationPairs,
   buildStoryRelationCandidates,
+  isGitHubTrendingEvidence,
+  selectGitHubTrendingHighlights,
   StoryClusteringService,
   type SummaryEvidenceItem,
   type SummaryEvidenceSelection,
@@ -81,22 +83,30 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
       ),
       params.period,
     );
-    const candidateItems = await this.withTopReadCandidateSupplements(
+    const candidateItems = await this.withGitHubTrendingCandidates(
       params,
-      await this.withProviderDiversitySupplements(params, rankedItems),
+      await this.withTopReadCandidateSupplements(
+        params,
+        await this.withProviderDiversitySupplements(params, rankedItems),
+      ),
     );
+    const primaryCandidateItems = candidateItems.filter(
+      (item) => !isGitHubTrendingEvidence(item),
+    );
+    const githubTrendingHighlights =
+      selectGitHubTrendingHighlights(candidateItems);
     const candidateSelection = this.clusterer.cluster({
       identity: {
         tenantId: params.tenantId,
         workspaceId: params.workspaceId,
         scope: params.scope,
       },
-      items: candidateItems,
-      limit: candidateItems.length,
+      items: primaryCandidateItems,
+      limit: primaryCandidateItems.length,
     });
     const approvedPairs = await this.verifiedStoryRelationPairs(
       params,
-      candidateItems,
+      primaryCandidateItems,
       candidateSelection,
     );
     const verifiedCandidateSelection =
@@ -108,12 +118,12 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
               workspaceId: params.workspaceId,
               scope: params.scope,
             },
-            items: candidateItems,
-            limit: candidateItems.length,
+            items: primaryCandidateItems,
+            limit: primaryCandidateItems.length,
             verifiedStoryRelationPairs: approvedPairs,
           });
     const items = selectRankedEvidence(
-      candidateItems,
+      primaryCandidateItems,
       params.maxItems,
       crossProviderReserveIds(verifiedCandidateSelection),
     );
@@ -127,8 +137,17 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
       limit: params.maxItems,
       verifiedStoryRelationPairs: approvedPairs,
     });
+    const selectedEvidence = [
+      ...selection.selectedEvidence,
+      ...githubTrendingHighlights,
+    ];
     const personalizedSelection = {
       ...selection,
+      sourceWindow: {
+        ...selection.sourceWindow,
+        selectedFeedItemIds: selectedEvidence.map((item) => item.feedItemId),
+      },
+      selectedEvidence,
       personalization:
         ranked.value.memoryGuidance === undefined
           ? undefined
@@ -352,6 +371,49 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
         providerCount += 1;
       }
     }
+
+    return [...itemsById.values()];
+  }
+
+  private async withGitHubTrendingCandidates(
+    params: Parameters<ReaderSummaryEvidenceSelectorPort["select"]>[0],
+    rankedItems: readonly SummaryEvidenceItem[],
+  ): Promise<readonly SummaryEvidenceItem[]> {
+    const itemsById = new Map(
+      rankedItems.map((item) => [item.feedItemId, item] as const),
+    );
+    let cursor: string | undefined;
+    do {
+      const page = await this.feedItems.list({
+        tenantId: params.tenantId,
+        workspaceId: params.workspaceId,
+        interestId:
+          params.scope.type === "interest"
+            ? params.scope.interestId
+            : undefined,
+        providerKey: "github-trending-page",
+        publishedAtOrAfter: params.period.startedAt,
+        publishedBefore: params.period.endedAt,
+        limit: 100,
+        cursor,
+      });
+      for (const feedItem of page.items) {
+        const snapshot = feedItem.toSnapshot();
+        if (itemsById.has(snapshot.id)) {
+          continue;
+        }
+        itemsById.set(
+          snapshot.id,
+          mapSupplementFeedItem({
+            snapshot,
+            qualityPolicy: this.qualityPolicy,
+            safetyPolicy: this.safetyPolicy,
+            now: this.clock.now(),
+          }),
+        );
+      }
+      cursor = page.nextCursor;
+    } while (cursor !== undefined);
 
     return [...itemsById.values()];
   }

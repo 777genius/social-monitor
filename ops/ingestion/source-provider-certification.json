@@ -258,8 +258,8 @@
         }
       ],
       "freshnessGuard": {
-        "maxStalenessSeconds": 3600,
-        "minimumScanIntervalSeconds": 3600,
+        "maxStalenessSeconds": 86400,
+        "minimumScanIntervalSeconds": 86400,
         "skipRecentlyScanned": true,
         "scanHistoryRequired": true,
         "cursorResumeRequired": true,

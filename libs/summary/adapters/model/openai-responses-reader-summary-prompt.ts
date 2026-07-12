@@ -1,6 +1,8 @@
 import {
   buildSummaryEvidencePack,
   buildSummaryEvidenceProfile,
+  buildReaderSummaryCoveragePlan,
+  primaryReaderSummaryEvidence,
   type ReaderSummaryCoveragePlanItem,
 } from "../../domain";
 import type { ReaderSummaryModelInput } from "../../ports";
@@ -76,20 +78,21 @@ export const buildOpenAiReaderSummaryInstructions = (
 export const buildOpenAiReaderSummaryPromptPayload = (
   input: ReaderSummaryModelInput,
 ): string => {
+  const primaryEvidence = primaryReaderSummaryEvidence(input.evidence);
   const citationIdByFeedItemId = new Map(
     input.evidence.selectedEvidence.map(
       (item, index) => [item.feedItemId, `c${index + 1}`] as const,
     ),
   );
-  const coveragePlan = input.coveragePlan;
+  const coveragePlan = buildReaderSummaryCoveragePlan(primaryEvidence);
 
   return JSON.stringify({
     scope: input.scope,
     requestedAt: input.requestedAt.toISOString(),
     policy: input.policy,
     personalization: input.evidence.personalization,
-    evidenceProfile: buildSummaryEvidenceProfile(input.evidence),
-    evidencePack: buildSummaryEvidencePack(input.evidence),
+    evidenceProfile: buildSummaryEvidenceProfile(primaryEvidence),
+    evidencePack: buildSummaryEvidencePack(primaryEvidence),
     coveragePlan: {
       lead:
         coveragePlan.lead === undefined
@@ -104,7 +107,7 @@ export const buildOpenAiReaderSummaryPromptPayload = (
       startedAt: input.evidence.sourceWindow.startedAt.toISOString(),
       endedAt: input.evidence.sourceWindow.endedAt.toISOString(),
     },
-    storyClusters: input.evidence.clusters.map((cluster) => ({
+    storyClusters: primaryEvidence.clusters.map((cluster) => ({
       id: cluster.id,
       storyKey: cluster.storyKey,
       representativeFeedItemId: cluster.representativeFeedItemId,
@@ -125,7 +128,11 @@ export const buildOpenAiReaderSummaryPromptPayload = (
       generatedAt: artifact.generatedAt.toISOString(),
       freshness: artifact.freshness,
     })),
-    evidence: buildAdaptiveReaderSummaryEvidence(input.evidence, coveragePlan),
+    evidence: buildAdaptiveReaderSummaryEvidence(
+      primaryEvidence,
+      coveragePlan,
+      citationIdByFeedItemId,
+    ),
   });
 };
 

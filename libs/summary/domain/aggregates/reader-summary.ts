@@ -28,6 +28,11 @@ import {
 import { selectRenderedTopReadCandidates } from "../policies/rendered-top-read-selection-policy";
 import { enrichTopReadCandidateDescriptions } from "../policies/reader-summary-top-read-description-policy";
 import { buildReaderSummaryReliabilityReport } from "../policies/reader-summary-reliability-calibration-policy";
+import {
+  buildGitHubTrendingNarrativeAppendix,
+  isGitHubTrendingEvidence,
+  selectGitHubTrendingHighlights,
+} from "../policies/reader-summary-github-trending-policy";
 import type {
   SummaryEvidenceSelection,
   StoryCluster,
@@ -92,15 +97,20 @@ export class ReaderSummary {
       return ReaderSummary.create(buildNoSignalReaderSummary(input));
     }
 
+    const primarySelectedEvidence = (input.selectedEvidence ?? []).filter(
+      (item) => !isGitHubTrendingEvidence(item),
+    );
+    const primaryInput = {
+      ...input,
+      selectedEvidence: primarySelectedEvidence,
+    };
     const citationById = new Map(
       input.citationMap.map(
         (citation) => [citation.citationId, citation] as const,
       ),
     );
     const evidenceByFeedItemId = new Map(
-      (input.selectedEvidence ?? []).map(
-        (item) => [item.feedItemId, item] as const,
-      ),
+      primarySelectedEvidence.map((item) => [item.feedItemId, item] as const),
     );
     const clusterById = new Map(
       input.storyClusters.map((cluster) => [cluster.id, cluster] as const),
@@ -109,7 +119,7 @@ export class ReaderSummary {
       input.storyClusters,
       evidenceByFeedItemId,
     );
-    const sourceMix = buildSourceMix(input);
+    const sourceMix = buildSourceMix(primaryInput);
     const curatedReaderTopStories = selectUniqueTopReadCandidates(
       input.topStories,
       citationById,
@@ -162,7 +172,7 @@ export class ReaderSummary {
       (candidate) => candidate.topRead,
     );
     const readerInput = {
-      ...input,
+      ...primaryInput,
       topStories: readerTopStories,
     };
     const qualityState = buildReaderSummaryQualityState(
@@ -173,6 +183,10 @@ export class ReaderSummary {
       topReads,
       selectedEvidence: input.selectedEvidence,
       citationById,
+    });
+    const githubTrendingAppendix = buildGitHubTrendingNarrativeAppendix({
+      evidence: input.selectedEvidence ?? [],
+      citations: input.citationMap,
     });
 
     return ReaderSummary.create({
@@ -187,7 +201,12 @@ export class ReaderSummary {
         sourceMix,
       }),
       bullets: buildReaderSummaryBullets(readerInput, topReads),
-      narrativeSections: [...(input.narrativeSections ?? [])],
+      narrativeSections: [
+        ...(input.narrativeSections ?? []),
+        ...(githubTrendingAppendix === undefined
+          ? []
+          : [githubTrendingAppendix]),
+      ],
       mainTopics: buildReaderSummaryMainTopics({
         headline: input.headline,
         executiveSummary: input.executiveSummary,
@@ -195,7 +214,7 @@ export class ReaderSummary {
         topStories: readerTopStories,
         interestHighlights: input.interestHighlights,
         repeatedSignals: input.repeatedSignals,
-        selectedEvidence: input.selectedEvidence,
+        selectedEvidence: primarySelectedEvidence,
       }),
       topicMap: input.topicMap ?? emptyReaderSummaryTopicMap(),
       qualityState,
@@ -208,10 +227,10 @@ export class ReaderSummary {
         narrativeSections: input.narrativeSections,
         risksAndUnknowns: input.risksAndUnknowns,
         citationMap: input.citationMap,
-        selectedEvidence: input.selectedEvidence,
+        selectedEvidence: primarySelectedEvidence,
       }),
       reliabilityReport: buildReaderSummaryReliabilityReport(
-        reliabilitySelectionFromInput(input),
+        reliabilitySelectionFromInput(primaryInput),
       ),
       trendDelta: buildTrendDelta(readerInput, topReads, sourceMix),
       openQuestions: buildOpenQuestions(
@@ -280,12 +299,25 @@ const buildNoSignalReaderSummary = (
   const reason =
     input.noSignalReason ??
     "No eligible evidence was selected for this summary window.";
+  const githubTrendingHighlights = selectGitHubTrendingHighlights(
+    input.selectedEvidence ?? [],
+  );
+  const citationById = new Map(
+    input.citationMap.map(
+      (citation) => [citation.citationId, citation] as const,
+    ),
+  );
+  const githubTrendingAppendix = buildGitHubTrendingNarrativeAppendix({
+    evidence: githubTrendingHighlights,
+    citations: input.citationMap,
+  });
 
   return {
     headline: nonEmpty(input.headline, "No reliable workspace signal yet"),
     oneLineTakeaway: reason,
     bullets: [reason],
-    narrativeSections: [],
+    narrativeSections:
+      githubTrendingAppendix === undefined ? [] : [githubTrendingAppendix],
     qualityState: {
       status: "no_signal",
       flags: uniqueNonEmpty([
@@ -293,7 +325,7 @@ const buildNoSignalReaderSummary = (
         "no_signal",
       ]) as readonly ReaderSummaryQualityFlag[],
       warnings: [
-        "No cited source evidence passed the summary selection policy.",
+        "No primary cited source evidence passed the summary selection policy.",
       ],
       isSingleSource: false,
     },
@@ -302,7 +334,11 @@ const buildNoSignalReaderSummary = (
     interestSections: [],
     sourceMix: [],
     topReads: [],
-    selectedPosts: [],
+    selectedPosts: buildReaderSummarySelectedPosts({
+      topReads: [],
+      selectedEvidence: githubTrendingHighlights,
+      citationById,
+    }),
     claimBoard: [],
     reliabilityReport: emptyReaderSummaryReliabilityReport(),
     trendDelta: {
