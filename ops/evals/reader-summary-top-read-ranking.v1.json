@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "artifactFormat": "reader-summary-top-read-ranking-v1",
-  "collectionDate": "2026-07-09",
+  "collectionDate": "2026-07-05",
   "generatedBy": "npm run check:reader-summary-top-read-ranking",
   "model": {
     "liveNetwork": false,
@@ -9,19 +9,19 @@
     "rawPostTextPersistedInReport": false
   },
   "artifact": {
-    "artifactFingerprint": "6f182990",
-    "periodStartedAt": "2026-07-09T00:00:00.000Z",
-    "periodEndedAt": "2026-07-10T00:00:00.000Z",
+    "artifactFingerprint": "99255861",
+    "periodStartedAt": "2026-07-05T00:00:00.000Z",
+    "periodEndedAt": "2026-07-06T00:00:00.000Z",
     "status": "COMPLETED"
   },
   "ranking": {
-    "topReadCount": 8,
-    "topReadWithCitationCount": 8,
-    "topReadWithinWindowCount": 8,
+    "topReadCount": 4,
+    "topReadWithCitationCount": 4,
+    "topReadWithinWindowCount": 4,
     "unknownCitationCount": 0,
     "unsupportedConfirmedProviderCount": 0,
-    "crossSourceTopReadCount": 2,
-    "dominantProviderTopReadCount": 4,
+    "crossSourceTopReadCount": 0,
+    "dominantProviderTopReadCount": 2,
     "providerDiversityCap": 4,
     "materialSignalInversionCount": 0,
     "unexplainedSignalInversionCount": 0,
