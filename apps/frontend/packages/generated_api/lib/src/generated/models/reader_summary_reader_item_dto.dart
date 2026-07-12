@@ -4,6 +4,7 @@
 
 import 'package:json_annotation/json_annotation.dart';
 
+import 'reader_summary_git_hub_trending_ranking_dto.dart';
 import 'reader_summary_preview_media_dto.dart';
 import 'reader_summary_provider_metric_dto.dart';
 import 'reader_summary_reader_item_confidence_dto.dart';
@@ -30,6 +31,7 @@ class ReaderSummaryReaderItemDto {
     required this.whyNow,
     this.canonicalUrl,
     this.previewMedia,
+    this.providerRanking,
     this.publishedAt,
   });
 
@@ -48,6 +50,7 @@ class ReaderSummaryReaderItemDto {
   final String providerKey;
   final List<ReaderSummaryProviderMetricDto> providerMetrics;
   final String providerName;
+  final ReaderSummaryGitHubTrendingRankingDto? providerRanking;
   final DateTime? publishedAt;
   final String reason;
   final num signalScore;

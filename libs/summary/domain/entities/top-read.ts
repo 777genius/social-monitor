@@ -1,5 +1,6 @@
 import type { ReaderActionKind } from "./reader-action";
 import type { ProviderMetric } from "../value-objects/provider-metric-label";
+import type { ProviderRanking } from "../value-objects/provider-ranking";
 import type { PreviewMedia } from "../value-objects/preview-media";
 import type { SignalScore } from "../value-objects/signal-score";
 
@@ -26,6 +27,7 @@ export type TopRead = {
   readonly confidence: TopReadConfidence;
   readonly confirmedProviderKeys: readonly string[];
   readonly providerMetrics: readonly ProviderMetric[];
+  readonly providerRanking?: ProviderRanking;
   readonly whyImportant: readonly string[];
   readonly whyNow: string;
   readonly publishedAt?: Date;

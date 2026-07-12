@@ -328,6 +328,9 @@ const assertReaderItem = (
       throw new Error(`${label} provider metrics must include label and value`);
     }
   }
+  if (item.providerRanking !== undefined) {
+    assertProviderRanking(item.providerRanking, item.providerKey, label);
+  }
   if (item.previewMedia !== undefined) {
     assertPreviewMedia(item.previewMedia, label);
   }
@@ -338,6 +341,28 @@ const assertReaderItem = (
     knownProviderKeys,
     label,
   );
+};
+
+const assertProviderRanking = (
+  ranking: ReaderSummaryItem["providerRanking"],
+  providerKey: string,
+  label: string,
+): void => {
+  if (ranking === undefined) {
+    return;
+  }
+  if (
+    ranking.kind !== "github_trending" ||
+    providerKey !== "github-trending-page" ||
+    !Number.isInteger(ranking.position) ||
+    ranking.position < 1 ||
+    !Number.isInteger(ranking.starsGained) ||
+    ranking.starsGained < 0 ||
+    !["daily", "weekly", "monthly"].includes(ranking.window) ||
+    !Number.isFinite(Date.parse(ranking.capturedAt))
+  ) {
+    throw new Error(`${label} provider ranking is invalid`);
+  }
 };
 
 const assertReaderItemProviderMatchesEvidence = (

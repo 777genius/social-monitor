@@ -1,4 +1,7 @@
-import { providerNameForEvidence } from "./relevance-reader-summary-evidence-support";
+import {
+  providerMetricFacts,
+  providerNameForEvidence,
+} from "./relevance-reader-summary-evidence-support";
 
 describe("relevance reader summary evidence support", () => {
   it("labels Hacker News canonical items received through RSS at the adapter boundary", () => {
@@ -14,5 +17,37 @@ describe("relevance reader summary evidence support", () => {
         canonicalUrl: "https://example.com/editorial-story",
       }),
     ).toBe("RSS");
+  });
+
+  it("preserves the captured GitHub Trending position and scope", () => {
+    const facts = providerMetricFacts({
+      providerKey: "github-trending-page",
+      providerMetadata: {
+        kind: "github_trending_page_repository",
+        repository: { totalStars: 1200, forksCount: 90 },
+        trending: {
+          rank: 2,
+          starsGained: 180,
+          window: "daily",
+          capturedAt: "2026-07-12T09:00:00.000Z",
+          scope: {
+            programmingLanguage: "TypeScript",
+            spokenLanguage: "en",
+          },
+        },
+      },
+    });
+
+    expect(facts.providerRanking).toEqual({
+      kind: "github_trending",
+      position: 2,
+      starsGained: 180,
+      window: "daily",
+      capturedAt: "2026-07-12T09:00:00.000Z",
+      scope: {
+        programmingLanguage: "TypeScript",
+        spokenLanguage: "en",
+      },
+    });
   });
 });

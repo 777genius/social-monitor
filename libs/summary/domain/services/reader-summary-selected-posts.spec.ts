@@ -152,6 +152,33 @@ describe("buildReaderSummarySelectedPosts", () => {
     expect(posts[0]?.confidence.level).toBe("medium");
     expect(posts[0]?.confidence.rationale).toContain("first-party official");
   });
+
+  it("keeps provider-owned GitHub Trending ranking on selected posts", () => {
+    const providerRanking = {
+      kind: "github_trending" as const,
+      position: 4,
+      starsGained: 240,
+      window: "daily" as const,
+      capturedAt: "2026-07-12T09:00:00.000Z",
+      scope: { programmingLanguage: "TypeScript" },
+    };
+    const posts = buildReaderSummarySelectedPosts({
+      topReads: [],
+      citationById: new Map([
+        ["c1", { ...citation(), providerKey: "github-trending-page" }],
+      ]),
+      selectedEvidence: [
+        {
+          ...evidence(),
+          providerKey: "github-trending-page",
+          providerName: "GitHub Trending",
+          providerRanking,
+        },
+      ],
+    });
+
+    expect(posts[0]?.providerRanking).toEqual(providerRanking);
+  });
 });
 
 const citation = (): ReaderSummaryCitation => ({

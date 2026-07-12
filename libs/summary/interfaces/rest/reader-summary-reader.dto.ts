@@ -15,6 +15,34 @@ export class ReaderSummaryProviderMetricDto {
   declare readonly value: string;
 }
 
+export class ReaderSummaryGitHubTrendingScopeDto {
+  @ApiPropertyOptional()
+  declare readonly programmingLanguage?: string;
+
+  @ApiPropertyOptional()
+  declare readonly spokenLanguage?: string;
+}
+
+export class ReaderSummaryGitHubTrendingRankingDto {
+  @ApiProperty({ enum: ["github_trending"] })
+  declare readonly kind: "github_trending";
+
+  @ApiProperty({ minimum: 1 })
+  declare readonly position: number;
+
+  @ApiProperty({ minimum: 0 })
+  declare readonly starsGained: number;
+
+  @ApiProperty({ enum: ["daily", "weekly", "monthly"] })
+  declare readonly window: "daily" | "weekly" | "monthly";
+
+  @ApiProperty({ format: "date-time" })
+  declare readonly capturedAt: string;
+
+  @ApiProperty({ type: () => ReaderSummaryGitHubTrendingScopeDto })
+  declare readonly scope: ReaderSummaryGitHubTrendingScopeDto;
+}
+
 export class ReaderSummaryReaderItemConfidenceDto {
   @ApiProperty({ enum: ["low", "medium", "high"] })
   declare readonly level: "low" | "medium" | "high";
@@ -73,6 +101,9 @@ export class ReaderSummaryReaderItemDto {
 
   @ApiProperty({ type: () => [ReaderSummaryProviderMetricDto] })
   declare readonly providerMetrics: readonly ReaderSummaryProviderMetricDto[];
+
+  @ApiPropertyOptional({ type: () => ReaderSummaryGitHubTrendingRankingDto })
+  declare readonly providerRanking?: ReaderSummaryGitHubTrendingRankingDto;
 
   @ApiProperty({ type: [String] })
   declare readonly whyImportant: readonly string[];

@@ -49,6 +49,11 @@ ReaderSummaryReaderItemDto _$ReaderSummaryReaderItemDtoFromJson(
       : ReaderSummaryPreviewMediaDto.fromJson(
           json['previewMedia'] as Map<String, dynamic>,
         ),
+  providerRanking: json['providerRanking'] == null
+      ? null
+      : ReaderSummaryGitHubTrendingRankingDto.fromJson(
+          json['providerRanking'] as Map<String, dynamic>,
+        ),
   publishedAt: json['publishedAt'] == null
       ? null
       : DateTime.parse(json['publishedAt'] as String),
@@ -68,6 +73,7 @@ Map<String, dynamic> _$ReaderSummaryReaderItemDtoToJson(
   'providerKey': instance.providerKey,
   'providerMetrics': instance.providerMetrics,
   'providerName': instance.providerName,
+  'providerRanking': instance.providerRanking,
   'publishedAt': instance.publishedAt?.toIso8601String(),
   'reason': instance.reason,
   'signalScore': instance.signalScore,

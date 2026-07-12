@@ -1,4 +1,5 @@
 import type { ProviderMetric } from "./provider-metric-label";
+import type { ProviderRanking } from "./provider-ranking";
 import type { PreviewMedia } from "./preview-media";
 
 export type SummaryEvidenceReaderActionKind =
@@ -35,6 +36,7 @@ export type SummaryEvidenceItem = {
   readonly whyImportant: readonly string[];
   readonly providerMetricLabels?: readonly ProviderMetric[];
   readonly providerMetricSummary?: string;
+  readonly providerRanking?: ProviderRanking;
   readonly previewMedia?: PreviewMedia;
   readonly conversationContext?: SummaryEvidenceConversationContext;
   readonly contentQuality?: SummaryEvidenceContentQuality;

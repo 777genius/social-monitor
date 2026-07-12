@@ -3635,6 +3635,59 @@
         ],
         "type": "object"
       },
+      "ReaderSummaryGitHubTrendingRankingDto": {
+        "properties": {
+          "capturedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "github_trending"
+            ],
+            "type": "string"
+          },
+          "position": {
+            "minimum": 1,
+            "type": "number"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/ReaderSummaryGitHubTrendingScopeDto"
+          },
+          "starsGained": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "window": {
+            "enum": [
+              "daily",
+              "weekly",
+              "monthly"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "position",
+          "starsGained",
+          "window",
+          "capturedAt",
+          "scope"
+        ],
+        "type": "object"
+      },
+      "ReaderSummaryGitHubTrendingScopeDto": {
+        "properties": {
+          "programmingLanguage": {
+            "type": "string"
+          },
+          "spokenLanguage": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "ReaderSummaryInterestHighlightDto": {
         "properties": {
           "citationIds": {
@@ -4621,6 +4674,9 @@
           },
           "providerName": {
             "type": "string"
+          },
+          "providerRanking": {
+            "$ref": "#/components/schemas/ReaderSummaryGitHubTrendingRankingDto"
           },
           "publishedAt": {
             "format": "date-time",

@@ -62,6 +62,7 @@ export * from "./services/reader-summary-topic-map-label-quality";
 export * from "./services/reader-summary-topic-map-structure";
 export * from "./services/story-ranking-telemetry";
 export * from "./value-objects/provider-metric-label";
+export * from "./value-objects/provider-ranking";
 export * from "./value-objects/preview-media";
 export * from "./value-objects/reader-summary-period";
 export * from "./value-objects/reader-summary-scope";

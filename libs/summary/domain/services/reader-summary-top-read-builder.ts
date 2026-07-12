@@ -182,6 +182,7 @@ export const storyToTopRead = (
       evidence: supportEvidence,
       representativeMetricLabels: evidence?.providerMetricLabels,
     }),
+    providerRanking: evidence?.providerRanking,
     whyImportant,
     whyNow: buildWhyNow(undefined, confirmedProviders, supportEvidence),
     publishedAt: evidence?.publishedAt,

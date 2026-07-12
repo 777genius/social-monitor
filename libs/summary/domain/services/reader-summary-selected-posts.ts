@@ -83,6 +83,7 @@ const evidenceToSelectedPost = (
     }),
     confirmedProviderKeys: [item.providerKey],
     providerMetrics: item.providerMetricLabels ?? [],
+    providerRanking: item.providerRanking,
     whyImportant: whyImportant.length > 0 ? whyImportant : [item.title],
     whyNow: `Selected from ${item.providerName ?? item.providerKey} evidence for this summary.`,
     publishedAt: item.publishedAt,

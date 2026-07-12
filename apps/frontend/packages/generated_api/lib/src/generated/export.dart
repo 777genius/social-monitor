@@ -94,6 +94,8 @@ export 'models/reader_summary_confidence_dto.dart';
 export 'models/reader_summary_context_artifact_dto.dart';
 export 'models/reader_summary_coverage_summary_dto.dart';
 export 'models/reader_summary_freshness_dto.dart';
+export 'models/reader_summary_git_hub_trending_ranking_dto.dart';
+export 'models/reader_summary_git_hub_trending_scope_dto.dart';
 export 'models/reader_summary_interest_highlight_dto.dart';
 export 'models/reader_summary_job_status_response_dto.dart';
 export 'models/reader_summary_job_timeline_event_dto.dart';
@@ -277,6 +279,8 @@ export 'models/reader_summary_coverage_summary_dto_collection_coverage_state_col
 export 'models/reader_summary_coverage_summary_dto_freshness_status_freshness_status.dart';
 export 'models/reader_summary_freshness_dto_reason_reason.dart';
 export 'models/reader_summary_freshness_dto_status_status.dart';
+export 'models/reader_summary_git_hub_trending_ranking_dto_kind_kind.dart';
+export 'models/reader_summary_git_hub_trending_ranking_dto_window_window.dart';
 export 'models/reader_summary_job_status_response_dto_failure_class_failure_class.dart';
 export 'models/reader_summary_job_status_response_dto_status_status.dart';
 export 'models/reader_summary_job_timeline_event_dto_status_status.dart';

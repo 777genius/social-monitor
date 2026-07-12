@@ -68,13 +68,25 @@ export const providerMetricFacts = (params: {
   readonly providerMetadata?: JsonObject;
 }): Pick<
   SummaryEvidenceItem,
-  "providerMetricLabels" | "providerMetricSummary"
+  "providerMetricLabels" | "providerMetricSummary" | "providerRanking"
 > => {
   const metrics = feedProviderMetricsFromMetadata(params);
 
   return {
     providerMetricLabels: formatFeedProviderMetrics(metrics),
     providerMetricSummary: summarizeFeedProviderMetrics(metrics),
+    providerRanking:
+      metrics?.kind === "github_trending_repository" &&
+      metrics.capturedAt !== undefined
+        ? {
+            kind: "github_trending",
+            position: metrics.rank,
+            starsGained: metrics.starsGained,
+            window: metrics.window,
+            capturedAt: metrics.capturedAt,
+            scope: metrics.scope,
+          }
+        : undefined,
   };
 };
 
