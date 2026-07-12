@@ -444,7 +444,7 @@ function readXAccountUsageEventRows(params: BuildParams):
   if (!runRows.ok) {
     return runRows;
   }
-  const runWindow = executionWindow(
+  const runWindows = executionWindows(
     runRows.rows.filter((row) =>
       runTargetsCollectionDate(row, params.collectionDate),
     ),
@@ -496,10 +496,8 @@ function readXAccountUsageEventRows(params: BuildParams):
 
   return {
     ok: true,
-    rows: events.rows.filter(
-      (event) =>
-        eventDate(event.occurred_at) === params.collectionDate ||
-        eventFallsInsideWindow(event, runWindow),
+    rows: events.rows.filter((event) =>
+      eventFallsInsideWindows(event, runWindows),
     ),
   };
 }
@@ -596,10 +594,6 @@ function runTargetsCollectionDate(
   row: XRunRow,
   collectionDate: string,
 ): boolean {
-  if (eventDate(row.started_at) === collectionDate) {
-    return true;
-  }
-
   const input = parseJson<XRunInput>(row.input_json);
   if (input === undefined) {
     return false;
@@ -613,52 +607,71 @@ function scweetWindowContainsDate(
   until: string | undefined,
   collectionDate: string,
 ): boolean {
-  const sinceDate = scweetDatePart(since);
-  const untilDate = scweetDatePart(until);
-  if (sinceDate === collectionDate || untilDate === collectionDate) {
-    return true;
-  }
-  if (sinceDate === undefined || untilDate === undefined) {
+  const sinceAt = parseScweetTimestamp(since);
+  const untilAt = parseScweetTimestamp(until);
+  const dayStartedAt = Date.parse(`${collectionDate}T00:00:00.000Z`);
+  if (
+    sinceAt === undefined ||
+    untilAt === undefined ||
+    !Number.isFinite(dayStartedAt)
+  ) {
     return false;
   }
 
-  return sinceDate <= collectionDate && collectionDate <= untilDate;
+  const dayEndedAt = dayStartedAt + 24 * 60 * 60 * 1000;
+  return sinceAt < dayEndedAt && untilAt > dayStartedAt;
 }
 
-function executionWindow(
+function executionWindows(
   rows: readonly XRunRow[],
-): { readonly startedAt: number; readonly finishedAt: number } | undefined {
-  const times = rows.flatMap((row) => [
-    parseTimestamp(row.started_at),
-    parseTimestamp(row.finished_at),
-  ]);
-  const finiteTimes = times.filter(
-    (time): time is number => time !== undefined,
-  );
-  if (finiteTimes.length === 0) {
-    return undefined;
-  }
-
+): readonly { readonly startedAt: number; readonly finishedAt: number }[] {
   const marginMs = 5 * 60 * 1000;
-  return {
-    startedAt: Math.min(...finiteTimes) - marginMs,
-    finishedAt: Math.max(...finiteTimes) + marginMs,
-  };
+  return rows.flatMap((row) => {
+    const times = [
+      parseTimestamp(row.started_at),
+      parseTimestamp(row.finished_at),
+    ].filter((time): time is number => time !== undefined);
+    if (times.length === 0) {
+      return [];
+    }
+
+    return [
+      {
+        startedAt: Math.min(...times) - marginMs,
+        finishedAt: Math.max(...times) + marginMs,
+      },
+    ];
+  });
 }
 
-function eventFallsInsideWindow(
+function eventFallsInsideWindows(
   event: XAccountUsageEventRow,
-  window:
-    { readonly startedAt: number; readonly finishedAt: number } | undefined,
+  windows: readonly {
+    readonly startedAt: number;
+    readonly finishedAt: number;
+  }[],
 ): boolean {
   const occurredAt = parseTimestamp(event.occurred_at);
 
   return (
     occurredAt !== undefined &&
-    window !== undefined &&
-    window.startedAt <= occurredAt &&
-    occurredAt <= window.finishedAt
+    windows.some(
+      (window) =>
+        window.startedAt <= occurredAt && occurredAt <= window.finishedAt,
+    )
   );
+}
+
+function parseScweetTimestamp(value: string | undefined): number | undefined {
+  const match = value?.match(
+    /^(\d{4}-\d{2}-\d{2})(?:[T_ ](\d{2}:\d{2}:\d{2})(?:\.\d+)?(?:Z|_UTC)?)?$/u,
+  );
+  if (match === null || match === undefined) {
+    return undefined;
+  }
+
+  const parsed = Date.parse(`${match[1]}T${match[2] ?? "00:00:00"}Z`);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 function parseTimestamp(value: string | undefined): number | undefined {
@@ -672,14 +685,6 @@ function parseTimestamp(value: string | undefined): number | undefined {
   const parsed = Date.parse(normalized);
 
   return Number.isFinite(parsed) ? parsed : undefined;
-}
-
-function eventDate(value: string | undefined): string | undefined {
-  return value?.slice(0, 10);
-}
-
-function scweetDatePart(value: string | undefined): string | undefined {
-  return value?.slice(0, 10);
 }
 
 function accountBucketKey(
