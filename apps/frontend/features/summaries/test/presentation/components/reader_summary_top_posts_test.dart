@@ -116,9 +116,7 @@ void main() {
     expect(leftInset, greaterThanOrEqualTo(AppSpacing.sm));
   });
 
-  testWidgets('ranks supported and engaged posts above single-source ties', (
-    tester,
-  ) async {
+  testWidgets('keeps backend editorial order for relevance', (tester) async {
     final summary = const SummaryMapper().readerSummaryToDomain(
       readerSummaryApiDto(
         content: readerSummaryContentApiDto(
@@ -210,13 +208,11 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(const ValueKey('reader-summary-top-post-0')),
-        matching: find.text('Cross-source workflow story'),
+        matching: find.text('HN single-source low-engagement debate'),
       ),
       findsOneWidget,
     );
-    expect(find.text('Cross-source'), findsOneWidget);
-    expect(find.text('Same-source support'), findsOneWidget);
-    expect(find.text('Single source'), findsNothing);
+    expect(find.text('Single source'), findsOneWidget);
     expect(find.text('Low relevance'), findsNothing);
     expect(find.text('Shares'), findsNothing);
     expect(find.text('Views'), findsNothing);
