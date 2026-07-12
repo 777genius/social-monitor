@@ -129,15 +129,24 @@ jobs:
           npm run check:runtime-compose
           npm run check:runtime-profile-guards
           npm run check:migrations
+          npm run check:backup-restore
           npm run build
           bash -n ops/deploy/social-monitor-production-deploy.sh \
             ops/deploy/social-monitor-production-ssh-wrapper.sh \
             ops/deploy/host/refresh-codex-auth.sh \
-            ops/deploy/refresh-codex-auth.test.sh
+            ops/deploy/refresh-codex-auth.test.sh \
+            ops/deploy/prune-pre-autodeploy-backups.sh \
+            ops/deploy/prune-pre-autodeploy-backups.test.sh \
+            ops/deploy/verify-postgres-backup-coverage.sh \
+            ops/deploy/verify-postgres-backup-coverage.test.sh
           shellcheck -x ops/deploy/social-monitor-production-deploy.sh \
             ops/deploy/social-monitor-production-ssh-wrapper.sh \
             ops/deploy/host/refresh-codex-auth.sh \
-            ops/deploy/refresh-codex-auth.test.sh
+            ops/deploy/refresh-codex-auth.test.sh \
+            ops/deploy/prune-pre-autodeploy-backups.sh \
+            ops/deploy/prune-pre-autodeploy-backups.test.sh \
+            ops/deploy/verify-postgres-backup-coverage.sh \
+            ops/deploy/verify-postgres-backup-coverage.test.sh
           bash ops/deploy/social-monitor-production-deploy.test.sh
 
       - name: Test affected backend modules

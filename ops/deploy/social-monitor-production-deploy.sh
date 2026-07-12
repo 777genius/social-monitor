@@ -69,6 +69,7 @@ BACKEND_PATHS=(
 CONTROL_PATHS=(
   .github/workflows/production-deploy.yml
   ops/deploy
+  ops/recovery/backup-restore-contract.json
 )
 
 COMPOSE=(
@@ -492,18 +493,21 @@ verify_migration_compatibility() {
 backup_database() (
   local sha=$1
   local output
-  local partial env_file listing api_id database_url database_name schema_table_count
+  local partial env_file listing schema_tables api_id database_url database_name
   output=$ROOT/backups/pre-autodeploy-${sha:0:12}-$(date -u +%Y%m%dT%H%M%SZ).dump
   partial=$output.partial
+  [[ ! -e $output && ! -L $output && ! -e $partial && ! -L $partial ]] || \
+    fail 'database backup output already exists'
   env_file=$STATE/database-backup.$$.env
   listing=$STATE/database-backup.$$.list
+  schema_tables=$STATE/database-backup.$$.tables
   api_id=$("${COMPOSE[@]}" --profile app ps -q api)
   [[ -n $api_id ]] || fail 'production API container is unavailable for database discovery'
   database_url=$(docker inspect "$api_id" --format '{{range .Config.Env}}{{println .}}{{end}}' | \
     awk -F= '$1 == "DATABASE_URL" {sub(/^[^=]*=/, ""); print; exit}')
   [[ -n $database_url ]] || fail 'production API has no effective database URL'
   umask 077
-  trap 'rm -f "$partial" "$env_file" "$listing"' EXIT
+  trap 'rm -f "$partial" "$env_file" "$listing" "$schema_tables"' EXIT
   printf 'DATABASE_URL=%s\n' "$database_url" > "$env_file"
   local backup_image=postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15
   database_name=$(docker run --rm \
@@ -513,13 +517,14 @@ backup_database() (
     sh -lc 'psql "$DATABASE_URL" -Atc "SELECT current_database()"')
   [[ $database_name == social_monitor ]] || \
     fail 'effective production database is not social_monitor'
-  schema_table_count=$(docker run --rm \
+  docker run --rm \
     --env-file "$env_file" \
     -v "$ROOT/secrets/db/ca-certificate.crt:/run/social-monitor-db/ca-certificate.crt:ro" \
     "$backup_image" \
     sh -c 'psql "$DATABASE_URL" -Atc "$1"' _ \
-    "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('_prisma_migrations', 'source_items', 'feed_items', 'reader_summary_artifacts')")
-  [[ $schema_table_count == 4 ]] || fail 'effective database is missing the Social Monitor schema fingerprint'
+    "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' ORDER BY table_name" \
+    > "$schema_tables"
+  bash "$REPO/ops/deploy/verify-postgres-backup-coverage.sh" "$schema_tables"
   docker run --rm \
     --env-file "$env_file" \
     -v "$ROOT/secrets/db/ca-certificate.crt:/run/social-monitor-db/ca-certificate.crt:ro" \
@@ -530,11 +535,12 @@ backup_database() (
     -v "$ROOT/backups:/backups:ro" \
     "$backup_image" \
     pg_restore -l "/backups/$(basename "$partial")" > "$listing"
-  for relation in _prisma_migrations source_items feed_items reader_summary_artifacts; do
-    grep -Eq "TABLE DATA public $relation( |$)" "$listing" || fail "database backup is missing $relation"
-  done
+  bash "$REPO/ops/deploy/verify-postgres-backup-coverage.sh" \
+    "$schema_tables" "$listing"
   chmod 600 "$partial"
   mv "$partial" "$output"
+  bash "$REPO/ops/deploy/prune-pre-autodeploy-backups.sh" \
+    "$ROOT/backups" 10 "$output"
   printf 'database-backup=%s\n' "$output"
 )
 
