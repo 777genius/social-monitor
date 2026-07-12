@@ -75,7 +75,12 @@ run_refresh >/dev/null
 cmp "$AUTH_ROOT/account-a/auth.json" "$TARGET_DIR/auth.json"
 [[ $(cat "$CURSOR_FILE") == 0 ]]
 [[ $(cat "$ACCOUNT_NAME_FILE") == account-a ]]
-[[ $(stat -f '%Lp' "$TARGET_DIR/auth.json" 2>/dev/null || stat -c '%a' "$TARGET_DIR/auth.json") == 400 ]]
+if stat -c '%a' "$TARGET_DIR/auth.json" >/dev/null 2>&1; then
+  target_mode=$(stat -c '%a' "$TARGET_DIR/auth.json")
+else
+  target_mode=$(stat -f '%Lp' "$TARGET_DIR/auth.json")
+fi
+[[ $target_mode == 400 ]]
 [[ ! -e $CHANGED_MARKER ]]
 
 SOCIAL_MONITOR_TEST_ACCOUNTS='["account-b"]' run_refresh >/dev/null
