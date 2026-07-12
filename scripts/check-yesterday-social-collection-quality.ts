@@ -168,6 +168,10 @@ type Report = {
   };
   readonly operationalWarnings: {
     readonly xCollectorFailedRunCount: number;
+    readonly xCollectorPartialUsableRunCount: number;
+    readonly xCollectorHardFailedRunCount: number;
+    readonly xCollectorNonTerminalOrUnknownRunCount: number;
+    readonly xCollectorPartialUsableReturnedTweetCount: number;
     readonly xCollectorTaskFailureCount: number;
     readonly primarySourcesSplitAcrossInterests: boolean;
     readonly summaryArtifactMissing: boolean;
@@ -367,9 +371,18 @@ async function tryBuildReport(): Promise<Report | undefined> {
       xCollectorLedgerAvailable: xCollectorLedger.available,
       xCollectorRunCountAtLeast20: xCollectorLedger.runCount >= 20,
       xCollectorCompletedRunRateAtLeast94Percent:
-        xCollectorLedger.completedRunRate >= 0.94,
-      xCollectorFailedRunsReturnedNoTweets:
-        xCollectorLedger.failedReturnedTweetCount === 0,
+        runRateAtLeast(
+          xCollectorLedger.completedRunCount,
+          xCollectorLedger.runCount,
+          94,
+        ),
+      xCollectorUsableRunRateAtLeast94Percent: runRateAtLeast(
+        xCollectorLedger.usableRunCount,
+        xCollectorLedger.runCount,
+        94,
+      ),
+      xCollectorNoNonTerminalOrUnknownRuns:
+        xCollectorLedger.nonTerminalOrUnknownRunCount === 0,
       xCollectorLedgerJsonValid: xCollectorLedger.invalidJsonFieldCount === 0,
       xCollectorReturnedAtLeast500Tweets:
         xCollectorLedger.returnedTweetCount >= 500,
@@ -440,6 +453,13 @@ async function tryBuildReport(): Promise<Report | undefined> {
       summaryArtifactCoverage,
       operationalWarnings: {
         xCollectorFailedRunCount: xCollectorLedger.failedRunCount,
+        xCollectorPartialUsableRunCount:
+          xCollectorLedger.partialUsableRunCount,
+        xCollectorHardFailedRunCount: xCollectorLedger.hardFailedRunCount,
+        xCollectorNonTerminalOrUnknownRunCount:
+          xCollectorLedger.nonTerminalOrUnknownRunCount,
+        xCollectorPartialUsableReturnedTweetCount:
+          xCollectorLedger.partialUsableReturnedTweetCount,
         xCollectorTaskFailureCount: xCollectorLedger.taskFailureCount,
         primarySourcesSplitAcrossInterests:
           !primarySourcesCoLocatedInSingleInterest,
@@ -1069,6 +1089,17 @@ function providerFeedItemCountAtLeast(
   return (
     (reports.find((item) => item.providerKey === providerKey)
       ?.visibleFeedItemCount ?? 0) >= threshold
+  );
+}
+
+function runRateAtLeast(
+  acceptedRunCount: number,
+  totalRunCount: number,
+  thresholdPercent: number,
+): boolean {
+  return (
+    totalRunCount > 0 &&
+    acceptedRunCount * 100 >= totalRunCount * thresholdPercent
   );
 }
 

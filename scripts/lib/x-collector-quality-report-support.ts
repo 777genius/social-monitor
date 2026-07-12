@@ -99,6 +99,10 @@ export function buildXCollectorLedgerReport(params: BuildParams) {
   const invalidJsonFields: XCollectorJsonWarning[] = [];
   let completedRunCount = 0;
   let failedRunCount = 0;
+  let partialUsableRunCount = 0;
+  let partialUsableReturnedTweetCount = 0;
+  let hardFailedRunCount = 0;
+  let nonTerminalOrUnknownRunCount = 0;
   let failedReturnedTweetCount = 0;
   let returnedTweetCount = 0;
   let strictEngagementRunCount = 0;
@@ -126,13 +130,22 @@ export function buildXCollectorLedgerReport(params: BuildParams) {
     const minReplies = input?.min_replies ?? 0;
     const query = input?.search_query ?? "";
 
+    const tweetCount = normalizedTweetCount(row.tweets_count);
     if (row.status === "completed") {
       completedRunCount += 1;
-    } else {
+    } else if (row.status === "failed") {
       failedRunCount += 1;
-      failedReturnedTweetCount += row.tweets_count ?? 0;
+      failedReturnedTweetCount += tweetCount;
+      if (tweetCount > 0) {
+        partialUsableRunCount += 1;
+        partialUsableReturnedTweetCount += tweetCount;
+      } else {
+        hardFailedRunCount += 1;
+      }
+    } else {
+      nonTerminalOrUnknownRunCount += 1;
     }
-    returnedTweetCount += row.tweets_count ?? 0;
+    returnedTweetCount += tweetCount;
     if (row.query_hash !== undefined && row.query_hash.length > 0) {
       queryHashes.add(row.query_hash);
     }
@@ -164,8 +177,19 @@ export function buildXCollectorLedgerReport(params: BuildParams) {
     runCount: rows.length,
     completedRunCount,
     failedRunCount,
+    partialUsableRunCount,
+    partialUsableReturnedTweetCount,
+    hardFailedRunCount,
+    nonTerminalOrUnknownRunCount,
+    usableRunCount: completedRunCount + partialUsableRunCount,
     completedRunRate:
       rows.length === 0 ? 0 : roundMetric(completedRunCount / rows.length),
+    usableRunRate:
+      rows.length === 0
+        ? 0
+        : roundMetric(
+            (completedRunCount + partialUsableRunCount) / rows.length,
+          ),
     failedReturnedTweetCount,
     returnedTweetCount,
     distinctQueryHashCount: queryHashes.size,
@@ -285,7 +309,13 @@ function emptyXCollectorLedgerReport(
     runCount: 0,
     completedRunCount: 0,
     failedRunCount: 0,
+    partialUsableRunCount: 0,
+    partialUsableReturnedTweetCount: 0,
+    hardFailedRunCount: 0,
+    nonTerminalOrUnknownRunCount: 0,
+    usableRunCount: 0,
     completedRunRate: 0,
+    usableRunRate: 0,
     failedReturnedTweetCount: 0,
     returnedTweetCount: 0,
     distinctQueryHashCount: 0,
@@ -866,6 +896,12 @@ function fingerprint(value: string): string {
 
 function roundMetric(value: number): number {
   return Number(value.toFixed(3));
+}
+
+function normalizedTweetCount(value: number | undefined): number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0
+    ? value
+    : 0;
 }
 
 function errorMessage(error: unknown): string {
