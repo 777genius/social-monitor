@@ -107,6 +107,17 @@ describe("x collector quality report support", () => {
         since: "2026-07-08_00:00:00_UTC",
         until: "2026-07-08_23:59:59_UTC",
       });
+      insertRun({
+        dbPath,
+        id: 4,
+        displayType: "Top",
+        startedAt: "2026-07-07T04:40:00Z",
+        finishedAt: "2026-07-07T04:41:00Z",
+        tweets: 99,
+        since: "2026-07-06",
+        until: "2026-07-07",
+        status: "failed",
+      });
       execSql(
         dbPath,
         `
@@ -156,6 +167,15 @@ describe("x collector quality report support", () => {
         fetched: 99,
         accepted: 99,
       });
+      insertEvent({
+        dbPath,
+        id: "event-old-target-date-failure",
+        type: "pass_failed",
+        occurredAt: "2026-07-07T12:00:00.000Z",
+        accountId: 1,
+        fetched: null,
+        accepted: null,
+      });
 
       jest.mocked(execFileSync).mockClear();
       const ledger = buildXCollectorLedgerReport({
@@ -168,6 +188,7 @@ describe("x collector quality report support", () => {
       });
 
       expect(ledger.runCount).toBe(2);
+      expect(ledger.failedRunCount).toBe(0);
       expect(ledger.returnedTweetCount).toBe(51);
       expect(ledger.hasTopAndLatest).toBe(true);
       expect(accountPool.eventCount).toBe(3);
@@ -192,6 +213,74 @@ describe("x collector quality report support", () => {
         expect(ledgerUri.protocol).toBe("file:");
         expect(ledgerUri.searchParams.get("immutable")).toBe("1");
       }
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("uses the target UTC window instead of run execution date", () => {
+    const directory = mkdtempSync(join(tmpdir(), "x-collector-quality-"));
+    const dbPath = join(directory, "scweet_state.db");
+
+    try {
+      execSql(
+        dbPath,
+        `
+          create table runs (
+            id integer primary key,
+            run_id text not null,
+            status text not null,
+            started_at real not null,
+            finished_at real,
+            query_hash text not null,
+            tweets_count integer not null,
+            input_json text,
+            stats_json text
+          );
+        `,
+      );
+      insertRun({
+        dbPath,
+        id: 1,
+        displayType: "Top",
+        startedAt: "2026-07-11T04:00:00Z",
+        finishedAt: "2026-07-11T04:01:00Z",
+        tweets: 99,
+        since: "2026-07-10",
+        until: "2026-07-11",
+        status: "failed",
+      });
+      insertRun({
+        dbPath,
+        id: 2,
+        displayType: "Top",
+        startedAt: "2026-07-12T00:02:00Z",
+        finishedAt: "2026-07-12T00:03:00Z",
+        tweets: 31,
+        since: "2026-07-11",
+        until: "2026-07-12",
+      });
+      insertRun({
+        dbPath,
+        id: 3,
+        displayType: "Latest",
+        startedAt: "2026-07-12T00:03:00Z",
+        finishedAt: "2026-07-12T00:04:00Z",
+        tweets: 20,
+        since: "2026-07-11_00:00:00_UTC",
+        until: "2026-07-11_23:59:59_UTC",
+      });
+
+      const ledger = buildXCollectorLedgerReport({
+        ledgerPath: dbPath,
+        collectionDate: "2026-07-11",
+      });
+
+      expect(ledger.runCount).toBe(2);
+      expect(ledger.completedRunCount).toBe(2);
+      expect(ledger.failedRunCount).toBe(0);
+      expect(ledger.returnedTweetCount).toBe(51);
+      expect(ledger.hasTopAndLatest).toBe(true);
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
@@ -317,6 +406,7 @@ function insertRun(params: {
   readonly tweets: number;
   readonly since?: string;
   readonly until?: string;
+  readonly status?: "completed" | "failed";
 }): void {
   const input = JSON.stringify({
     since: params.since ?? "2026-07-07_00:00:00_UTC",
@@ -336,7 +426,7 @@ function insertRun(params: {
         id, run_id, status, started_at, finished_at, query_hash,
         tweets_count, input_json, stats_json
       ) values (
-        ${params.id}, 'run-${params.id}', 'completed',
+        ${params.id}, 'run-${params.id}', ${sqlString(params.status ?? "completed")},
         ${epochSeconds(params.startedAt)}, ${epochSeconds(params.finishedAt)},
         'hash-${params.id}', ${params.tweets},
         ${sqlString(input)}, ${sqlString(stats)}
