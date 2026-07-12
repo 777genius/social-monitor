@@ -131,9 +131,13 @@ jobs:
           npm run check:migrations
           npm run build
           bash -n ops/deploy/social-monitor-production-deploy.sh \
-            ops/deploy/social-monitor-production-ssh-wrapper.sh
+            ops/deploy/social-monitor-production-ssh-wrapper.sh \
+            ops/deploy/host/refresh-codex-auth.sh \
+            ops/deploy/refresh-codex-auth.test.sh
           shellcheck -x ops/deploy/social-monitor-production-deploy.sh \
-            ops/deploy/social-monitor-production-ssh-wrapper.sh
+            ops/deploy/social-monitor-production-ssh-wrapper.sh \
+            ops/deploy/host/refresh-codex-auth.sh \
+            ops/deploy/refresh-codex-auth.test.sh
           bash ops/deploy/social-monitor-production-deploy.test.sh
 
       - name: Test affected backend modules

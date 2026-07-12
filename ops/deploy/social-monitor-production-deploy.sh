@@ -90,6 +90,10 @@ verify_host_policy() {
     fail 'root deploy entrypoint ownership or mode is invalid'
   [[ $(stat -c '%U:%G:%a' "$CONTROL/github-production-deploy-wrapper.sh") == root:root:755 ]] || \
     fail 'SSH deploy wrapper ownership or mode is invalid'
+  if [[ -f $REPO/ops/deploy/host/refresh-codex-auth.sh ]]; then
+    [[ $(stat -c '%U:%G:%a' "$CONTROL/refresh-codex-auth.sh") == root:root:700 ]] || \
+      fail 'subscription auth refresh ownership or mode is invalid'
+  fi
   if id -nG social-monitor-deploy | tr ' ' '\n' | grep -qx docker; then
     fail 'deploy user must not belong to the docker group'
   fi
@@ -703,12 +707,18 @@ sync_control_script() {
   local destination=$CONTROL/github-production-deploy.sh
   local wrapper_source=$REPO/ops/deploy/social-monitor-production-ssh-wrapper.sh
   local wrapper_destination=$CONTROL/github-production-deploy-wrapper.sh
+  local auth_refresh_source=$REPO/ops/deploy/host/refresh-codex-auth.sh
+  local auth_refresh_destination=$CONTROL/refresh-codex-auth.sh
   [[ -f $source ]] || return 0
   install -m 0755 -o root -g root "$source" "$destination.next"
   mv -f "$destination.next" "$destination"
   if [[ -f $wrapper_source ]]; then
     install -m 0755 -o root -g root "$wrapper_source" "$wrapper_destination.next"
     mv -f "$wrapper_destination.next" "$wrapper_destination"
+  fi
+  if [[ -f $auth_refresh_source ]]; then
+    install -m 0700 -o root -g root "$auth_refresh_source" "$auth_refresh_destination.next"
+    mv -f "$auth_refresh_destination.next" "$auth_refresh_destination"
   fi
 }
 
