@@ -105,6 +105,7 @@ class _BriefCitationTrail extends StatelessWidget {
     required this.citationSourceById,
     required this.onOpenUrl,
     this.claim,
+    this.inline = false,
   });
 
   final String keyBase;
@@ -113,6 +114,7 @@ class _BriefCitationTrail extends StatelessWidget {
   final Map<String, _CitationSourceContext> citationSourceById;
   final ValueChanged<String> onOpenUrl;
   final SummaryClaim? claim;
+  final bool inline;
 
   @override
   Widget build(BuildContext context) {
@@ -122,19 +124,29 @@ class _BriefCitationTrail extends StatelessWidget {
     }
 
     final primaryCitation = citations.first;
+    final children = <Widget>[
+      _CitationChip(
+        key: ValueKey('$keyBase-citation-${primaryCitation.id}'),
+        citation: primaryCitation,
+        relatedCitations: citations,
+        citationSourceById: citationSourceById,
+        onOpenUrl: onOpenUrl,
+      ),
+      if (claim != null) _ClaimTrustIndicator(claim: claim!),
+    ];
+    if (inline) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          children.first,
+          if (children.length > 1) ...[const SizedBox(width: 3), children.last],
+        ],
+      );
+    }
     return Wrap(
       spacing: AppSpacing.xs,
       runSpacing: AppSpacing.xs,
-      children: [
-        _CitationChip(
-          key: ValueKey('$keyBase-citation-${primaryCitation.id}'),
-          citation: primaryCitation,
-          relatedCitations: citations,
-          citationSourceById: citationSourceById,
-          onOpenUrl: onOpenUrl,
-        ),
-        if (claim != null) _ClaimTrustIndicator(claim: claim!),
-      ],
+      children: children,
     );
   }
 }

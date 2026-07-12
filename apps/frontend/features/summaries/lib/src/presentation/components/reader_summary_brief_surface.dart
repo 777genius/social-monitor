@@ -14,6 +14,7 @@ import '../../domain/aggregates/reader_summary.dart';
 import '../../domain/entities/post_rating.dart';
 import '../../domain/entities/summary_citation.dart';
 import '../../domain/value_objects/reader_action_target.dart';
+import '../formatters/reader_summary_claim_anchor_resolver.dart';
 import '../formatters/summary_period_formats.dart';
 import '../formatters/top_post_metrics.dart';
 import '../formatters/top_post_source_label.dart';
