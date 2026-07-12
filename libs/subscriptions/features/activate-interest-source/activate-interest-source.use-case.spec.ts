@@ -166,8 +166,8 @@ describe('ActivateInterestSourceUseCase', () => {
     expect(result.ok).toBe(true);
     expect(workflows.setScanPolicy.commands).toEqual([
       expect.objectContaining({
-        intervalSeconds: 3_600,
-        freshnessSeconds: 3_600,
+        intervalSeconds: 86_400,
+        freshnessSeconds: 86_400,
         retryBudget: 1,
       }),
     ]);

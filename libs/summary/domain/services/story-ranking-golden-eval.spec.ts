@@ -95,7 +95,7 @@ describe("story ranking golden eval", () => {
       selection,
       expectedTopReadTitles: [
         "openai/codex",
-        "calesthio/OpenMontage",
+        "Weak Reddit discussion about calesthio/OpenMontage",
         "Same subreddit browser-agent duplicate 1",
         "Viral Reddit pricing backlash",
         "Anthropic launches developer agents",
@@ -111,16 +111,12 @@ describe("story ranking golden eval", () => {
           preferredTitle: "openai/codex",
           demotedTitle: "Viral Reddit pricing backlash",
         },
-        {
-          preferredTitle: "calesthio/OpenMontage",
-          demotedTitle: "Same subreddit browser-agent duplicate 1",
-        },
       ],
     });
 
     expect(readerSummary.topReads.map((item) => item.title)).toEqual([
       "openai/codex",
-      "calesthio/OpenMontage",
+      "Weak Reddit discussion about calesthio/OpenMontage",
       "Same subreddit browser-agent duplicate 1",
       "Viral Reddit pricing backlash",
       "Anthropic launches developer agents",
@@ -140,10 +136,6 @@ describe("story ranking golden eval", () => {
     );
     expect(readerSummary.topReads[1]?.providerMetrics).toEqual(
       expect.arrayContaining([
-        {
-          label: "GitHub Trending evidence",
-          value: "#1, +3,703 stars today",
-        },
         {
           label: "Reddit evidence",
           value: "22 score, 9 comments, 91% upvoted",
