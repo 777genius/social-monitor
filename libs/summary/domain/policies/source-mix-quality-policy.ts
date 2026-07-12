@@ -9,6 +9,7 @@ import type {
   ReaderSummaryQualityState,
 } from "../value-objects/summary-quality";
 import { compactUnique, uniqueNonEmpty } from "../value-objects/summary-text";
+import { isGitHubTrendingEvidence } from "./reader-summary-github-trending-policy";
 
 export type SourceMixQualityPolicyInput = {
   readonly selectedEvidence?: readonly SummaryEvidenceItem[];
@@ -31,12 +32,18 @@ export const buildSourceMix = (
   >();
 
   for (const item of input.selectedEvidence ?? []) {
+    if (isGitHubTrendingEvidence(item)) {
+      continue;
+    }
     const current = sourceMixCount(counts, item.providerKey);
     current.itemIds.add(item.feedItemId);
     current.interestIds.add(item.interestId);
   }
 
   for (const citation of input.citationMap) {
+    if (isGitHubTrendingEvidence(citation)) {
+      continue;
+    }
     const current = sourceMixCount(counts, citation.providerKey);
     current.itemIds.add(citation.feedItemId);
     current.citationIds.add(citation.citationId);
@@ -45,6 +52,9 @@ export const buildSourceMix = (
   for (const cluster of input.storyClusters) {
     const isCrossSource = cluster.providerKeys.length > 1;
     for (const providerKey of cluster.providerKeys) {
+      if (isGitHubTrendingEvidence({ providerKey })) {
+        continue;
+      }
       const current = sourceMixCount(counts, providerKey);
       current.storyClusterIds.add(cluster.id);
       if (isCrossSource) {

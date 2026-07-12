@@ -9,7 +9,7 @@ import type {
 } from "../value-objects/summary-evidence-item";
 
 describe("buildSourceMix", () => {
-  it("orders social and news sources before GitHub supporting evidence", () => {
+  it("excludes GitHub Trending from the reader-facing source mix", () => {
     const sourceMix = buildSourceMix({
       selectedEvidence: [
         evidenceItem("github-trending-page", 1),
@@ -41,9 +41,8 @@ describe("buildSourceMix", () => {
       "x-twitter",
       "reddit",
       "hacker-news",
-      "github-trending-page",
     ]);
-    expect(sourceMix.map((entry) => entry.itemCount)).toEqual([1, 1, 1, 3]);
+    expect(sourceMix.map((entry) => entry.itemCount)).toEqual([1, 1, 1]);
   });
 
   it("does not label multi-provider source-local coverage as a single source", () => {
