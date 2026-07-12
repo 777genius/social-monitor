@@ -17,6 +17,7 @@ import '../../domain/value_objects/reader_action_target.dart';
 import '../formatters/summary_period_formats.dart';
 import '../formatters/top_post_metrics.dart';
 import '../formatters/top_post_source_label.dart';
+import '../view_models/reader_summary_top_post_sorting.dart';
 import 'reader_summary_citation_text.dart';
 import 'reader_summary_confirmation.dart';
 import 'reader_summary_next_actions.dart';

@@ -1,3 +1,4 @@
+import '../value_objects/github_trending_ranking.dart';
 import '../value_objects/preview_media.dart';
 import '../value_objects/provider_metric_label.dart';
 import '../value_objects/signal_score.dart';
@@ -19,6 +20,7 @@ final class TopRead {
     this.publishedAt,
     this.canonicalUrl,
     this.previewMedia,
+    this.providerRanking,
   });
 
   final String title;
@@ -36,6 +38,7 @@ final class TopRead {
   final DateTime? publishedAt;
   final String? canonicalUrl;
   final PreviewMedia? previewMedia;
+  final GitHubTrendingRanking? providerRanking;
 }
 
 final class TopReadConfidence {

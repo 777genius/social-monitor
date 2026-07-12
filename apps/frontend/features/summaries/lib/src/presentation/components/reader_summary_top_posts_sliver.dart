@@ -37,7 +37,9 @@ class ReaderSummaryTopPostsSliver extends StatefulWidget {
 
 class _ReaderSummaryTopPostsSliverState
     extends State<ReaderSummaryTopPostsSliver> {
-  _TopPostSort _sort = _TopPostSort.relevance;
+  ReaderSummaryTopPostSort _postSort = ReaderSummaryTopPostSort.relevance;
+  ReaderSummaryTopPostSort _githubTrendingSort =
+      ReaderSummaryTopPostSort.githubPosition;
   late _TopPostBoard _board;
   final Set<String> _hiddenProviders = {};
   int _visibleItemLimit = _topPostsInitialVisibleCount;
@@ -69,6 +71,7 @@ class _ReaderSummaryTopPostsSliverState
         .where(_isGithubTrendingTopRead)
         .toList(growable: false);
     final activeBoard = _board;
+    final activeSort = _sortFor(activeBoard);
     final boardItems = switch (activeBoard) {
       _TopPostBoard.posts => postItems,
       _TopPostBoard.githubTrending => githubTrendingItems,
@@ -77,7 +80,9 @@ class _ReaderSummaryTopPostsSliverState
         boardItems
             .where((item) => !_hiddenProviders.contains(item.providerKey))
             .toList(growable: false)
-          ..sort(_compare);
+          ..sort((first, second) {
+            return compareReaderSummaryTopPosts(first, second, activeSort);
+          });
     final reservePreviewSpace = filtered.any(
       (item) => item.previewMedia != null,
     );
@@ -92,7 +97,7 @@ class _ReaderSummaryTopPostsSliverState
         SliverToBoxAdapter(
           child: _TopPostsHeader(
             board: activeBoard,
-            sort: _sort,
+            sort: activeSort,
             postCount: postItems.length,
             githubTrendingCount: githubTrendingItems.length,
             curatedTopPostCount: widget.curatedTopPostCount,
@@ -161,31 +166,6 @@ class _ReaderSummaryTopPostsSliverState
     );
   }
 
-  int _compare(TopRead a, TopRead b) {
-    return switch (_sort) {
-      _TopPostSort.relevance => _compareRelevance(a, b),
-      _TopPostSort.engagement => topPostEngagementScore(
-        b,
-      ).compareTo(topPostEngagementScore(a)),
-    };
-  }
-
-  int _compareRelevance(TopRead a, TopRead b) {
-    final relevanceDiff = topPostRelevanceSortScore(
-      b,
-    ).compareTo(topPostRelevanceSortScore(a));
-    if (relevanceDiff != 0) {
-      return relevanceDiff;
-    }
-
-    final signalDiff = b.signalScore.value.compareTo(a.signalScore.value);
-    if (signalDiff != 0) {
-      return signalDiff;
-    }
-
-    return topPostEngagementScore(b).compareTo(topPostEngagementScore(a));
-  }
-
   void _setBoard(_TopPostBoard board) {
     if (_board == board) {
       return;
@@ -196,12 +176,24 @@ class _ReaderSummaryTopPostsSliverState
     });
   }
 
-  void _setSort(_TopPostSort sort) {
-    if (_sort == sort) {
+  ReaderSummaryTopPostSort _sortFor(_TopPostBoard board) {
+    return switch (board) {
+      _TopPostBoard.posts => _postSort,
+      _TopPostBoard.githubTrending => _githubTrendingSort,
+    };
+  }
+
+  void _setSort(ReaderSummaryTopPostSort sort) {
+    if (_sortFor(_board) == sort) {
       return;
     }
     setState(() {
-      _sort = sort;
+      switch (_board) {
+        case _TopPostBoard.posts:
+          _postSort = sort;
+        case _TopPostBoard.githubTrending:
+          _githubTrendingSort = sort;
+      }
       _visibleItemLimit = _topPostsInitialVisibleCount;
     });
   }

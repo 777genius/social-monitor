@@ -26,6 +26,7 @@ export '../entities/summary_claim.dart';
 export '../entities/summary_reliability.dart';
 export '../entities/summary_story.dart';
 export '../entities/top_read.dart';
+export '../value_objects/github_trending_ranking.dart';
 export '../value_objects/preview_media.dart';
 export '../value_objects/provider_metric_label.dart';
 export '../value_objects/reader_summary_coverage.dart';

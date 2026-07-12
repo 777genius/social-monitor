@@ -24,6 +24,9 @@ language.
   selection logic. It is not a Reddit score, HN points, GitHub stars or X likes.
 - Provider Metric: readable native provider metric such as Reddit score, HN
   points, GitHub stars, X likes, comments or upvote ratio.
+- GitHub Trending Ranking: provider-owned position captured for one GitHub
+  Trending snapshot, window and language scope. Positions from different
+  snapshots or scopes are not directly comparable.
 - Source Mix: provider coverage summary for the workspace summary.
 - Trust & evidence: compact reader-facing summary of confidence, monitored
   source-group diversity, citations and reliability risks for a Summary. It
@@ -44,6 +47,7 @@ language.
   `Cross-source support`, `Confirmed by` or `Evidence items` into
   `ProviderMetric[]`.
 - Do not let Reddit/HN/GitHub/X scoring rules leak into the Summary context.
+- Do not reinterpret GitHub Trending position as a global quality score.
 
 ## Rename Backlog
 

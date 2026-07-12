@@ -1,27 +1,32 @@
 part of 'reader_summary_brief_surface.dart';
 
 class _TopPostSortMenu extends StatelessWidget {
-  const _TopPostSortMenu({required this.sort, required this.onSortChanged});
+  const _TopPostSortMenu({
+    required this.sort,
+    required this.options,
+    required this.onSortChanged,
+  });
 
-  final _TopPostSort sort;
-  final ValueChanged<_TopPostSort> onSortChanged;
+  final ReaderSummaryTopPostSort sort;
+  final List<ReaderSummaryTopPostSort> options;
+  final ValueChanged<ReaderSummaryTopPostSort> onSortChanged;
 
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
-    return PopupMenuButton<_TopPostSort>(
+    return PopupMenuButton<ReaderSummaryTopPostSort>(
       key: const ValueKey('reader-summary-top-posts-sort'),
       tooltip: 'Sort top posts',
       position: PopupMenuPosition.under,
       onSelected: onSortChanged,
       itemBuilder: (context) => [
-        for (final option in _TopPostSort.values)
-          PopupMenuItem<_TopPostSort>(
+        for (final option in options)
+          PopupMenuItem<ReaderSummaryTopPostSort>(
             value: option,
             child: Row(
               children: [
-                Expanded(child: Text(_sortLabel(option))),
+                Expanded(child: Text(option.label)),
                 if (option == sort) const Icon(Icons.check, size: 18),
               ],
             ),
@@ -32,7 +37,7 @@ class _TopPostSortMenu extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              _sortLabel(sort),
+              sort.label,
               style: textTheme.bodySmall?.copyWith(
                 fontWeight: FontWeight.w600,
                 letterSpacing: 0,
@@ -48,13 +53,6 @@ class _TopPostSortMenu extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  String _sortLabel(_TopPostSort value) {
-    return switch (value) {
-      _TopPostSort.relevance => 'Relevance',
-      _TopPostSort.engagement => 'Engagement',
-    };
   }
 }
 

@@ -166,6 +166,52 @@ num topPostEngagementScore(TopRead read) {
   return total;
 }
 
+/// Position supplied by the GitHub Trending snapshot, where 1 ranks first.
+int? githubTrendingPosition(TopRead read) {
+  final providerPosition = read.providerRanking?.position;
+  if (providerPosition != null && providerPosition > 0) {
+    return providerPosition;
+  }
+
+  for (final metric in read.providerMetrics) {
+    final match = RegExp(r'#\s*(\d+)').firstMatch(metric.value);
+    final position = match == null ? null : int.tryParse(match.group(1)!);
+    if (position != null && position > 0) {
+      return position;
+    }
+  }
+  return null;
+}
+
+/// Stars gained in the GitHub Trending snapshot window.
+num? githubTrendingStarsGained(TopRead read) {
+  final providerStarsGained = read.providerRanking?.starsGained;
+  if (providerStarsGained != null && providerStarsGained >= 0) {
+    return providerStarsGained;
+  }
+
+  for (final metric in read.providerMetrics) {
+    final label = metric.label.trim().toLowerCase();
+    if (label.contains('stars today') || label.contains('stars gained')) {
+      final value = RegExp(
+        r'[+]?\s*([\d][\d,.]*[kKmM]?)',
+      ).firstMatch(metric.value)?.group(1);
+      if (value != null) {
+        return _rawMetricNumber(value);
+      }
+    }
+
+    final value = RegExp(
+      r'[+]?\s*([\d][\d,.]*[kKmM]?)\s+stars today',
+      caseSensitive: false,
+    ).firstMatch(metric.value)?.group(1);
+    if (value != null) {
+      return _rawMetricNumber(value);
+    }
+  }
+  return null;
+}
+
 /// Reader-facing relevance sort score for the Top posts board.
 ///
 /// `signalScore` remains the primary summary signal, while confirmation and

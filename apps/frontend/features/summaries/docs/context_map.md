@@ -29,5 +29,8 @@
   user-facing presentation copy.
 - Summary domain consumes `signalScore` and `providerMetrics`; it must not know
   Reddit score, HN points, GitHub stars or X likes calculation rules.
+- Ingestion owns GitHub Trending acquisition scope and snapshot identity;
+  Summary receives only the captured provider ranking needed for display and
+  source-aware ordering.
 - `ReaderSummary*Dto -> ReaderSummary` is an anti-corruption mapper until the backend
   REST contract is renamed.

@@ -277,6 +277,39 @@ void main() {
     expect(summary.content.topReads.single.whyImportant.single, description);
   });
 
+  test('maps typed GitHub Trending ranking and language scope', () {
+    const mapper = SummaryMapper();
+    final summary = mapper.readerSummaryToDomain(
+      readerSummaryApiDto(
+        content: readerSummaryContentApiDto(
+          topReads: [
+            TopReadApiDto(
+              title: 'example/repository',
+              providerKey: 'github-trending-page',
+              reason: 'Trending repository.',
+              citationIds: const ['github-trending-citation'],
+              providerRanking: GitHubTrendingRankingApiDto(
+                position: 3,
+                starsGained: 420,
+                window: 'daily',
+                capturedAt: DateTime.parse('2026-07-12T09:00:00.000Z'),
+                programmingLanguage: 'TypeScript',
+                spokenLanguage: 'en',
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    final ranking = summary.content.topReads.single.providerRanking;
+    expect(ranking?.position, 3);
+    expect(ranking?.starsGained, 420);
+    expect(ranking?.window, GitHubTrendingWindow.daily);
+    expect(ranking?.scope.programmingLanguage, 'TypeScript');
+    expect(ranking?.scope.spokenLanguage, 'en');
+  });
+
   test('keeps reader summary executive summary complete', () {
     const mapper = SummaryMapper();
     final executiveSummary = [

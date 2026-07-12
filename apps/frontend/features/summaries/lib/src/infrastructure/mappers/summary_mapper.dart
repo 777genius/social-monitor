@@ -164,6 +164,31 @@ final class SummaryMapper {
       citationIds: dto.citationIds,
       canonicalUrl: _safeUrl(dto.canonicalUrl),
       previewMedia: _previewMediaToDomain(dto.previewMedia),
+      providerRanking: _githubTrendingRankingToDomain(dto.providerRanking),
+    );
+  }
+
+  GitHubTrendingRanking? _githubTrendingRankingToDomain(
+    GitHubTrendingRankingApiDto? dto,
+  ) {
+    if (dto == null || dto.position < 1 || dto.starsGained < 0) {
+      return null;
+    }
+
+    return GitHubTrendingRanking(
+      position: dto.position,
+      starsGained: dto.starsGained,
+      window: switch (dto.window.trim().toLowerCase()) {
+        'daily' => GitHubTrendingWindow.daily,
+        'weekly' => GitHubTrendingWindow.weekly,
+        'monthly' => GitHubTrendingWindow.monthly,
+        _ => GitHubTrendingWindow.unknown,
+      },
+      capturedAt: dto.capturedAt,
+      scope: GitHubTrendingScope(
+        programmingLanguage: dto.programmingLanguage,
+        spokenLanguage: dto.spokenLanguage,
+      ),
     );
   }
 

@@ -210,7 +210,25 @@ final class ReaderSummaryContentRestMapper {
       publishedAt: dto.publishedAt,
       canonicalUrl: dto.canonicalUrl,
       previewMedia: _previewMedia(dto.previewMedia),
+      providerRanking: _providerRanking(dto.providerRanking),
       citationIds: dto.citationIds,
+    );
+  }
+
+  GitHubTrendingRankingApiDto? _providerRanking(
+    generated.ReaderSummaryGitHubTrendingRankingDto? dto,
+  ) {
+    if (dto == null || dto.kind.json != 'github_trending') {
+      return null;
+    }
+
+    return GitHubTrendingRankingApiDto(
+      position: dto.position.toInt(),
+      starsGained: dto.starsGained.toInt(),
+      window: dto.window.json ?? 'unknown',
+      capturedAt: dto.capturedAt,
+      programmingLanguage: dto.scope.programmingLanguage,
+      spokenLanguage: dto.scope.spokenLanguage,
     );
   }
 

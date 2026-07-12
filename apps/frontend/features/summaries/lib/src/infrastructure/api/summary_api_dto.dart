@@ -101,6 +101,7 @@ final class TopReadApiDto {
     this.publishedAt,
     this.canonicalUrl,
     this.previewMedia,
+    this.providerRanking,
   });
 
   final String title;
@@ -120,6 +121,25 @@ final class TopReadApiDto {
   final List<String> citationIds;
   final String? canonicalUrl;
   final PreviewMediaApiDto? previewMedia;
+  final GitHubTrendingRankingApiDto? providerRanking;
+}
+
+final class GitHubTrendingRankingApiDto {
+  const GitHubTrendingRankingApiDto({
+    required this.position,
+    required this.starsGained,
+    required this.window,
+    required this.capturedAt,
+    this.programmingLanguage,
+    this.spokenLanguage,
+  });
+
+  final int position;
+  final int starsGained;
+  final String window;
+  final DateTime capturedAt;
+  final String? programmingLanguage;
+  final String? spokenLanguage;
 }
 
 final class PreviewMediaApiDto {

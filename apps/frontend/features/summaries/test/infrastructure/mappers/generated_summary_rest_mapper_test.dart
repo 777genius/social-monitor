@@ -75,6 +75,19 @@ void main() {
         '#1, +3,703 stars today',
       );
       expect(
+        readerSummary.content.selectedPosts.single.providerRanking?.position,
+        1,
+      );
+      expect(
+        readerSummary
+            .content
+            .selectedPosts
+            .single
+            .providerRanking
+            ?.programmingLanguage,
+        'Python',
+      );
+      expect(
         readerSummary.content.sourceMix.single.providerKey,
         'github-trending-page',
       );
@@ -249,7 +262,7 @@ generated.ReaderSummaryArtifactResponseDto _readerSummaryArtifact() {
       schemaVersion: 'reader_summary.artifact.v1',
     ),
     qualityFlags: const [],
-    readerBrief: const generated.ReaderSummaryReaderBriefDto(
+    readerBrief: generated.ReaderSummaryReaderBriefDto(
       headline: 'GitHub daily radar',
       oneLineTakeaway:
           'calesthio/OpenMontage is the clearest repository signal.',
@@ -292,6 +305,20 @@ generated.ReaderSummaryArtifactResponseDto _readerSummaryArtifact() {
               value: '#1, +3,703 stars today',
             ),
           ],
+          providerRanking: generated.ReaderSummaryGitHubTrendingRankingDto(
+            capturedAt: DateTime.parse('2026-06-23T10:00:00.000Z'),
+            kind: generated
+                .ReaderSummaryGitHubTrendingRankingDtoKindKind
+                .githubTrending,
+            position: 1,
+            scope: const generated.ReaderSummaryGitHubTrendingScopeDto(
+              programmingLanguage: 'Python',
+            ),
+            starsGained: 3703,
+            window: generated
+                .ReaderSummaryGitHubTrendingRankingDtoWindowWindow
+                .daily,
+          ),
           whyImportant: ['It is #1 on GitHub Trending today.'],
           whyNow:
               'Current summary window has github.com/trending page coverage.',
