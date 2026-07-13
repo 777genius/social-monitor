@@ -77,6 +77,98 @@ describe("story relation candidate verification", () => {
     ).toEqual([]);
   });
 
+  it("verifies short paraphrases that share an operational incident facet", () => {
+    const outage = evidence({
+      id: "claude-code-outage",
+      providerKey: "x-twitter",
+      title: "Claude Code outage",
+      bodyPreview: "",
+    });
+    const unavailable = evidence({
+      id: "claude-code-unavailable",
+      providerKey: "rss",
+      title: "Claude Code unavailable",
+      bodyPreview: "",
+    });
+    const service = new StoryClusteringService(clock);
+    const identity = {
+      tenantId: tenantId("tenant-short-incident"),
+      workspaceId: workspaceId("workspace-short-incident"),
+      scope: { type: "workspace" as const },
+    };
+    const deterministic = service.cluster({
+      identity,
+      items: [outage, unavailable],
+      limit: 10,
+    });
+    const candidates = buildStoryRelationCandidates({
+      selection: deterministic,
+      evidence: [outage, unavailable],
+    });
+
+    expect(deterministic.clusters).toHaveLength(2);
+    expect(candidates).toHaveLength(1);
+    const verified = service.cluster({
+      identity,
+      items: [outage, unavailable],
+      limit: 10,
+      verifiedStoryRelationPairs: approvedStoryRelationPairs({
+        candidates,
+        decisions: [
+          {
+            leftFeedItemId: outage.feedItemId,
+            rightFeedItemId: unavailable.feedItemId,
+            sameStory: true,
+            confidenceScore: 0.97,
+          },
+        ],
+      }),
+    });
+
+    expect(verified.clusters).toHaveLength(1);
+    expect(verified.clusters[0]?.providerKeys).toEqual(["rss", "x-twitter"]);
+  });
+
+  it("keeps an outage separate from ordinary product access", () => {
+    const outage = evidence({
+      id: "claude-code-outage",
+      providerKey: "x-twitter",
+      title: "Claude Code outage",
+      bodyPreview: "",
+    });
+    const planAccess = evidence({
+      id: "claude-code-plus-access",
+      providerKey: "rss",
+      title: "Claude Code available in Plus",
+      bodyPreview: "Access was extended for subscribers.",
+    });
+
+    expect(
+      buildStoryRelationCandidates({
+        selection: splitSelection(outage, planAccess),
+        evidence: [outage, planAccess],
+      }),
+    ).toEqual([]);
+
+    const verified = new StoryClusteringService(clock).cluster({
+      identity: {
+        tenantId: tenantId("tenant-incident-vs-access"),
+        workspaceId: workspaceId("workspace-incident-vs-access"),
+        scope: { type: "workspace" },
+      },
+      items: [outage, planAccess],
+      limit: 10,
+      verifiedStoryRelationPairs: new Set([
+        verifiedStoryRelationPairKey(outage.feedItemId, planAccess.feedItemId),
+      ]),
+    });
+
+    expect(verified.clusters).toHaveLength(2);
+    expect(
+      verified.clusters.flatMap((cluster) => cluster.duplicateFeedItemIds),
+    ).toEqual([]);
+  });
+
   it("does not shortlist same-provider or distant evidence", () => {
     const first = evidence({
       id: "first",

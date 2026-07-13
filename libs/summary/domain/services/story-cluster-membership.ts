@@ -140,6 +140,22 @@ export const storyClaimFacetsAreCompatible = (
   );
 };
 
+export const hasSharedStoryEventFacet = (
+  item: SummaryEvidenceItem,
+  candidate: SummaryEvidenceItem,
+): boolean => {
+  const itemEventFacets = storyClaimFacetTokens(item).filter((facet) =>
+    facet.startsWith("event:"),
+  );
+  const candidateEventFacets = new Set(
+    storyClaimFacetTokens(candidate).filter((facet) =>
+      facet.startsWith("event:"),
+    ),
+  );
+
+  return itemEventFacets.some((facet) => candidateEventFacets.has(facet));
+};
+
 export const canonicalStoryKeysConflict = (
   left: string,
   right: string,
@@ -219,15 +235,23 @@ export const isVerifiedStoryRelationGuardEligible = (
       storyTopicSpecificProductTokens(candidateTokens),
     ) > 0 ||
     sharedNonAnchorTokenCount >= MIN_VERIFIED_SHARED_SUBJECT_TOKENS;
+  const sharedStoryEventFacet = hasSharedStoryEventFacet(
+    item,
+    candidate,
+  );
   const hasConcreteContext =
     sharedEventTokens.size > 0 ||
-    sharedNonAnchorTokenCount >= MIN_VERIFIED_SHARED_CONTEXT_TOKENS;
+    sharedNonAnchorTokenCount >= MIN_VERIFIED_SHARED_CONTEXT_TOKENS ||
+    sharedStoryEventFacet;
+  const minimumSharedTopicTokens = sharedStoryEventFacet
+    ? MIN_VERIFIED_SHARED_EVENT_FACET_TOPIC_TOKENS
+    : MIN_VERIFIED_SHARED_TOPIC_TOKENS;
 
   return sameAuthorSeries
     ? sharedNonAnchorTokenCount > 0
     : hasConcreteSubject &&
         hasConcreteContext &&
-        sharedTopicTokens >= MIN_VERIFIED_SHARED_TOPIC_TOKENS;
+        sharedTopicTokens >= minimumSharedTopicTokens;
 };
 
 const VERIFIED_STORY_RELATION_MAX_TIME_DISTANCE_MS = 30 * 60 * 60 * 1000;
@@ -235,6 +259,7 @@ const VERIFIED_SAME_AUTHOR_SERIES_MAX_TIME_DISTANCE_MS = 2 * 60 * 60 * 1000;
 const STRONG_EXACT_TITLE_MIN_TOKEN_COUNT = 5;
 const MIN_DETERMINISTIC_SHARED_CONTEXT_TOKENS = 2;
 const MIN_VERIFIED_SHARED_CONTEXT_TOKENS = 2;
+const MIN_VERIFIED_SHARED_EVENT_FACET_TOPIC_TOKENS = 2;
 const MIN_VERIFIED_SHARED_SUBJECT_TOKENS = 3;
 const MIN_VERIFIED_SHARED_TOPIC_TOKENS = 3;
 

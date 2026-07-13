@@ -6,6 +6,7 @@ import {
 } from "./reader-summary-topic-label-candidates";
 import { selectReaderSummaryTopicLabel } from "./reader-summary-topic-label-selection";
 import {
+  storyClaimFacetTokens,
   storyPrimaryClaimFacet,
   storyTopicTokens,
 } from "./story-topic-tokenizer";
@@ -126,11 +127,25 @@ describe("story topic tokenizer", () => {
     ["GPT-5.6 Sol leads the Artificial Analysis benchmark", "benchmark"],
     ["GPT-5.6 is 54% more token efficient", "efficiency"],
     ["GPT-5.6 appears in Codex for Plus accounts", "availability"],
+    ["Claude Code outage", "availability"],
+    ["Claude Code unavailable", "availability"],
     ["GPT-5.6 Sol masterclass for business workflows", "education"],
     ["ChatGPT vs. Codex in a side-by-side test", "comparison"],
     ["Grok 4.5 honest first impression", "review"],
   ] as const)("classifies %s as a %s claim", (title, expected) => {
     expect(storyPrimaryClaimFacet(evidenceItem(title))).toBe(expected);
+  });
+
+  it("separates operational unavailability from ordinary product access", () => {
+    expect(storyClaimFacetTokens(evidenceItem("Claude Code outage"))).toContain(
+      "event:service-unavailability",
+    );
+    expect(
+      storyClaimFacetTokens(evidenceItem("Claude Code unavailable")),
+    ).toContain("event:service-unavailability");
+    expect(
+      storyClaimFacetTokens(evidenceItem("Claude Code available in Plus")),
+    ).not.toContain("event:service-unavailability");
   });
 
   it("recognizes a shared evaluation brief as a comparison", () => {

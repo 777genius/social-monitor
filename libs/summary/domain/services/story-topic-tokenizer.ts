@@ -116,10 +116,14 @@ export const storyPrimaryClaimFacet = (
   )?.[1];
 };
 
+const operationalUnavailabilityPattern =
+  /\b(?:downtime|offline|outage|service\s+disruption|unavailable)\b/iu;
+
 const claimFacetDefinitions = [
   [/\bagents?[\s'’]+last\s+exam\b/iu, "benchmark:agents-last-exam"],
   [/\bartificial\s+analysis\b/iu, "benchmark:artificial-analysis"],
   [/\barc[\s-]?agi\b/iu, "benchmark:arc-agi"],
+  [operationalUnavailabilityPattern, "event:service-unavailability"],
   [/\bchatgpt\s+work\b/iu, "feature:chatgpt-work"],
   [
     /\b(?:first\s+impressions?|hands[\s-]?on|my\s+(?:first\s+)?experience|i\s+(?:tried|tested|used))\b|\bfeel(?:s|t)?\s+(?:amazing|awesome|bad|fast|good|great|slow|terrible)\b/iu,
@@ -162,6 +166,7 @@ const primaryClaimFacetDefinitions = [
     /\b(?:security|vulnerabilit|exploit|prompt\s+leak|data\s+leak|spying|surveillance)\w*/iu,
     "security",
   ],
+  [operationalUnavailabilityPattern, "availability"],
   [
     /\b(?:availability|access|appear(?:s|ed|ing)?\s+in|account\s+tier|subscription\s+tier|plus\s+subscription|rolling\s+out\s+incrementally|not\s+everyone\s+will\s+see)\b|\b(?:is|now)\s+(?:now\s+)?available\b|\bavailable\s+(?:for|in|on|to)\b/iu,
     "availability",

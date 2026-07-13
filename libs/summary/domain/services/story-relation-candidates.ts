@@ -8,6 +8,7 @@ import type {
   SummaryEvidenceSelection,
 } from "../value-objects/summary-evidence-item";
 import {
+  hasSharedStoryEventFacet,
   isDeterministicCrossProviderStoryMatch,
   isVerifiedSameAuthorStorySeriesCandidate,
   isVerifiedStoryRelationGuardEligible,
@@ -182,6 +183,10 @@ const relationCandidate = (params: {
   );
   const sameAuthorSeriesContext =
     sameAuthorSeries && sharedNonAnchorTokens.length > 0;
+  const sharedStoryEventFacet = hasSharedStoryEventFacet(
+    params.left,
+    params.right,
+  );
   const sharedEntityAnchorTokens = sharedAnchorTokens.filter(
     (token) => !sharedEventTokens.includes(token),
   );
@@ -192,9 +197,13 @@ const relationCandidate = (params: {
     sameAuthorSeriesContext;
   const enoughContext =
     sameAuthorSeriesContext ||
-    (sharedTopicTokens.length >= minimumSharedTopicTokens &&
+    (sharedTopicTokens.length >=
+      (sharedStoryEventFacet
+        ? minimumSharedEventFacetTopicTokens
+        : minimumSharedTopicTokens) &&
       (sharedEventTokens.length > 0 ||
-        sharedNonAnchorTokens.length >= minimumSharedContextTokens));
+        sharedNonAnchorTokens.length >= minimumSharedContextTokens ||
+        sharedStoryEventFacet));
 
   if (
     !sharedConcreteSubject ||
@@ -218,6 +227,7 @@ const relationCandidate = (params: {
 };
 
 const minimumSharedContextTokens = 2;
+const minimumSharedEventFacetTopicTokens = 2;
 const minimumSharedSubjectTokens = 3;
 const minimumSharedTopicTokens = 3;
 
