@@ -27,6 +27,20 @@ export const nonEmpty = (value: string, fallback: string): string => {
   return trimmed.length === 0 ? fallback : trimmed;
 };
 
+export const readerSummaryHeadline = (
+  value: string,
+  fallback = "Workspace summary",
+): string => {
+  const headline = nonEmpty(value, fallback);
+  const withoutTerminalFullStop = headline
+    .replace(/[.\u2026\u3002]+$/u, "")
+    .trimEnd();
+
+  return withoutTerminalFullStop.length === 0
+    ? nonEmpty(fallback, "Workspace summary")
+    : withoutTerminalFullStop;
+};
+
 export const firstSentence = (value: string): string | undefined => {
   const trimmed = value.replace(/\s+/g, " ").trim();
   if (trimmed.length === 0) {

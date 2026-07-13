@@ -17,6 +17,7 @@ import {
   nonEmpty,
   plural,
   interestTitle,
+  readerSummaryHeadline,
   uniqueNonEmpty,
 } from "../value-objects/summary-text";
 
@@ -104,7 +105,7 @@ export const groundedReaderHeadline = (params: {
   readonly sourceMix: readonly SourceMixEntry[];
   readonly topReads: readonly TopRead[];
 }): string => {
-  const fallback = nonEmpty(params.headline, "Workspace summary");
+  const fallback = readerSummaryHeadline(params.headline);
 
   if (params.topReads.length === 0) {
     return fallback;
@@ -136,8 +137,8 @@ export const groundedReaderHeadline = (params: {
         : `${providerNames.slice(0, 3).join(", ")}${
             providerNames.length > 3 ? ` +${providerNames.length - 3}` : ""
           }`;
-  return (
-    buildHumanReaderHeadline(params.topReads) ?? `${providerSummary} summary`
+  return readerSummaryHeadline(
+    buildHumanReaderHeadline(params.topReads) ?? `${providerSummary} summary`,
   );
 };
 
@@ -302,20 +303,31 @@ const isExplicitlySourceFramedText = (
 const buildHumanReaderHeadline = (
   topReads: readonly TopRead[],
 ): string | undefined => {
-  const leadReads = uniqueNonEmpty(
-    topReads
-      .slice(0, 3)
-      .map((read) =>
-        compactHeadlinePart(sourceLocalReadLabel(read) || read.title),
-      )
-      .filter((value) => value.length > 0),
-  );
+  const lead = topReads[0];
+  if (lead === undefined) {
+    return undefined;
+  }
+  if (
+    lead.confirmedProviderKeys.length <= 1 &&
+    lead.confidence.level === "low"
+  ) {
+    const cautiousReason = [lead.reason, ...lead.whyImportant].find((value) =>
+      /\b(?:allegation|needs? confirmation|not (?:independently )?confirmed|should not be treated as confirmation|uncertain|unverified)\b/iu.test(
+        value,
+      ),
+    );
 
-  if (leadReads.length === 0) {
+    return compactHeadlinePart(
+      cautiousReason ?? `${lead.providerName} discussion needs confirmation`,
+    );
+  }
+
+  const leadTitle = lead.title.trim();
+  if (leadTitle.length === 0) {
     return undefined;
   }
 
-  return leadReads.join("; ");
+  return compactHeadlinePart(leadTitle);
 };
 
 const compactHeadlinePart = (value: string): string => {

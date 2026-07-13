@@ -587,7 +587,8 @@ describe("buildReaderSummary", () => {
       readerSummary.topReads.slice(0, 3).map((read) => read.providerKey),
     ).toEqual(["hacker-news", "x-twitter", "reddit"]);
     expect(readerSummary.headline).not.toContain("Key signals across");
-    expect(readerSummary.headline).toContain("Claude Code skills");
+    expect(readerSummary.headline).toContain("cybersecurity discussion");
+    expect(readerSummary.headline).not.toContain(";");
     expect(readerSummary.headline).not.toContain("Source watch");
   });
 

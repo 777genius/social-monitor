@@ -109,6 +109,19 @@ describe("buildGroundedOneLineTakeaway", () => {
 });
 
 describe("groundedReaderHeadline", () => {
+  it("removes terminal full stops while preserving article headline text", () => {
+    expect(
+      groundedReaderHeadline({
+        headline:
+          "Developers route GPT-5.6 Sol through Claude Code as costs dominate.",
+        topReads: [topRead()],
+        sourceMix: [],
+      }),
+    ).toBe(
+      "Developers route GPT-5.6 Sol through Claude Code as costs dominate",
+    );
+  });
+
   it("does not let unrelated cross-source coverage validate a single-source lead", () => {
     const lead = {
       ...topRead(),
@@ -138,7 +151,39 @@ describe("groundedReaderHeadline", () => {
           },
         ],
       }),
-    ).toBe("Official and community sources describe the rollout");
+    ).toBe("X/Twitter discussion needs confirmation");
+  });
+
+  it("uses one clean lead title instead of joining source-framed reasons", () => {
+    const lead = {
+      ...topRead(),
+      title: "Apple sues OpenAI over alleged trade secret theft",
+      providerKey: "reddit",
+      providerName: "Reddit",
+      reason:
+        "The Reddit post reports: Apple sues OpenAI over alleged trade secret theft.",
+      confidence: {
+        level: "low" as const,
+        score: 0.42,
+        rationale: "Single source",
+      },
+      confirmedProviderKeys: ["reddit"],
+    };
+
+    expect(
+      groundedReaderHeadline({
+        headline: "AI product chatter leads the day",
+        topReads: [
+          lead,
+          {
+            ...lead,
+            title: "Claude Code token overhead draws scrutiny",
+          },
+          { ...lead, title: "AI changes research career incentives" },
+        ],
+        sourceMix: [],
+      }),
+    ).toBe("Reddit discussion needs confirmation");
   });
 
   it("preserves an explicitly source-framed single-source headline", () => {
