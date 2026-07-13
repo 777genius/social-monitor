@@ -123,6 +123,31 @@ describe("reader summary top-read description policy", () => {
 
     expect(enriched).toBe(limitReset);
   });
+
+  it("marks only exact model-selected story clusters as editorially curated", () => {
+    const curated = story({
+      id: "story:curated",
+      title: "Agent cache comparison",
+      summary:
+        "A detailed model-written explanation compares cache behavior across two coding-agent harnesses, describes the test setup and explains why the result matters for cost-sensitive teams. It keeps the finding source-scoped, notes that one workload is not a universal benchmark and gives readers enough context to inspect the original evidence before acting.",
+      citationIds: ["c1"],
+    });
+    const supplemental = story({
+      id: "story:supplemental",
+      title: "Related cache discussion",
+      summary: "A related source note.",
+      citationIds: ["c2"],
+    });
+
+    const [enrichedCurated, enrichedSupplemental] =
+      enrichTopReadCandidateDescriptions({
+        candidates: [curated, supplemental],
+        modelStories: [curated],
+      });
+
+    expect(enrichedCurated?.editoriallyCurated).toBe(true);
+    expect(enrichedSupplemental?.editoriallyCurated).toBeUndefined();
+  });
 });
 
 const story = (params: {

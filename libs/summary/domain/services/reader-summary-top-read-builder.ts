@@ -23,6 +23,7 @@ import {
 import { isTopReadEligibleEvidence } from "../policies/top-read-eligibility-policy";
 import { hasFirstPartyOfficialEvidence } from "../policies/reader-summary-source-authority-policy";
 import { compareRepresentativeEvidenceItems } from "../policies/representative-evidence-selection-policy";
+import { readerSummaryEditorialCurationRules } from "../policies/reader-summary-editorial-curation-policy";
 import {
   isFallbackReaderReason,
   isReaderTitleReasonDuplicate,
@@ -189,11 +190,14 @@ export const storyToTopRead = (
     reason,
     matchedInterestIds:
       matchedInterestIds.length > 0 ? matchedInterestIds : ["unknown-interest"],
-    matchedRules: buildMatchedRules(
-      supportEvidence,
-      matchedInterestIds,
-      readerProviderKey,
-    ),
+    matchedRules: compactUnique([
+      ...buildMatchedRules(
+        supportEvidence,
+        matchedInterestIds,
+        readerProviderKey,
+      ),
+      ...readerSummaryEditorialCurationRules(story),
+    ]),
     signalScore,
     confidence,
     confirmedProviderKeys: confirmedProviders,

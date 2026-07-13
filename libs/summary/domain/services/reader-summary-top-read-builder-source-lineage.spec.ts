@@ -8,6 +8,10 @@ import {
   evidenceClusterMap,
   storyToTopRead,
 } from "./reader-summary-top-read-builder";
+import {
+  readerSummaryEditorialCurationRule,
+  withReaderSummaryEditorialCuration,
+} from "../policies/reader-summary-editorial-curation-policy";
 
 describe("reader summary top read source lineage", () => {
   it("salvages useful model context after removing unsupported provider sentences", () => {
@@ -49,6 +53,42 @@ describe("reader summary top read source lineage", () => {
       "Reports say Apple sued OpenAI over alleged trade secret theft",
     );
     expect(topRead.reason).not.toMatch(/Hacker News|RSS/u);
+  });
+
+  it("persists editorial curation provenance as a non-public matched rule", () => {
+    const baseStory: TopReadCandidate = {
+      storyClusterId: "story:curated-comparison",
+      title: "Coding-agent cost comparison",
+      summary:
+        "A detailed same-task comparison reports materially different cost and quota use across two coding-agent harnesses. It matters because teams increasingly choose tools by workflow economics, not only model quality. Treat the numbers as one source-scoped test until the setup is reproduced independently.",
+      interestIds: ["ai-agents"],
+      providerKeys: ["reddit"],
+      citationIds: ["citation-reddit"],
+    };
+    const story = withReaderSummaryEditorialCuration(baseStory, true);
+    const evidence = redditEvidence();
+    const cluster = storyCluster(story, evidence);
+    const citation: ReaderSummaryCitation = {
+      citationId: "citation-reddit",
+      feedItemId: evidence.feedItemId,
+      sourceItemId: evidence.sourceItemId,
+      providerKey: evidence.providerKey,
+      field: "title",
+      canonicalUrl: evidence.canonicalUrl,
+    };
+    const evidenceByFeedItemId = new Map([
+      [evidence.feedItemId, evidence] as const,
+    ]);
+
+    const topRead = storyToTopRead(
+      story,
+      new Map([[citation.citationId, citation]]),
+      evidenceByFeedItemId,
+      new Map([[cluster.id, cluster]]),
+      evidenceClusterMap([cluster], evidenceByFeedItemId),
+    );
+
+    expect(topRead.matchedRules).toContain(readerSummaryEditorialCurationRule);
   });
 });
 

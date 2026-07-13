@@ -1,4 +1,8 @@
 import type { TopReadCandidate } from "../entities/top-read";
+import {
+  type EditoriallyCuratedTopReadCandidate,
+  withReaderSummaryEditorialCuration,
+} from "./reader-summary-editorial-curation-policy";
 
 const detailedDescriptionMinimumLength = 280;
 const minimumDistinctiveTitleTermMatches = 3;
@@ -6,19 +10,29 @@ const minimumDistinctiveTitleTermMatches = 3;
 export const enrichTopReadCandidateDescriptions = (params: {
   readonly candidates: readonly TopReadCandidate[];
   readonly modelStories: readonly TopReadCandidate[];
-}): readonly TopReadCandidate[] =>
-  params.candidates.map((candidate) => {
+}): readonly EditoriallyCuratedTopReadCandidate[] => {
+  return params.candidates.map((candidate) => {
+    const editoriallyCurated = params.modelStories.some(
+      (story) =>
+        story.storyClusterId === candidate.storyClusterId &&
+        candidate.citationIds.some((citationId) =>
+          story.citationIds.includes(citationId),
+        ),
+    );
     const citedModelDescription = bestRelatedModelDescription(
       candidate,
       params.modelStories,
       exactCitationMatchScore,
     );
     if (citedModelDescription !== undefined) {
-      return { ...candidate, summary: citedModelDescription };
+      return withReaderSummaryEditorialCuration(
+        { ...candidate, summary: citedModelDescription },
+        editoriallyCurated,
+      );
     }
 
     if (candidate.summary.trim().length >= detailedDescriptionMinimumLength) {
-      return candidate;
+      return withReaderSummaryEditorialCuration(candidate, editoriallyCurated);
     }
 
     const description = bestRelatedModelDescription(
@@ -26,10 +40,14 @@ export const enrichTopReadCandidateDescriptions = (params: {
       params.modelStories,
     );
 
-    return description === undefined
-      ? candidate
-      : { ...candidate, summary: description };
+    return withReaderSummaryEditorialCuration(
+      description === undefined
+        ? candidate
+        : { ...candidate, summary: description },
+      editoriallyCurated,
+    );
   });
+};
 
 const bestRelatedModelDescription = (
   candidate: TopReadCandidate,

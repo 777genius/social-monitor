@@ -247,7 +247,7 @@ const sanitizeTopReadForPresentation = (
 ): ReaderSummaryTopReadView => ({
   ...item,
   publishedAt: presentTopReadPublishedAt(item.publishedAt),
-  matchedRules: item.matchedRules.filter(isPublicMatchedRule),
+  matchedRules: publicReaderSummaryMatchedRules(item.matchedRules),
 });
 
 const presentTopReadPublishedAt = (
@@ -269,6 +269,10 @@ const isPublicMatchedRule = (rule: string): boolean => {
     normalized.startsWith(prefix),
   );
 };
+
+export const publicReaderSummaryMatchedRules = (
+  matchedRules: readonly string[],
+): readonly string[] => matchedRules.filter(isPublicMatchedRule);
 
 const technicalMatchedRulePrefixes = [
   "interest:",

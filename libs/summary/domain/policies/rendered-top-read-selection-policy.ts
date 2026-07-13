@@ -25,6 +25,7 @@ import {
   compareReaderSummaryEditorialPriority,
   type ReaderSummaryEditorialPriorityProfile,
 } from "./reader-summary-editorial-priority-policy";
+import { hasReaderSummaryEditorialCurationRule } from "./reader-summary-editorial-curation-policy";
 
 export type RenderedTopReadCandidate = {
   readonly story: TopReadCandidate;
@@ -42,6 +43,7 @@ export type ReaderFacingTopReadQualityInput = Pick<
   | "signalScore"
   | "confidence"
   | "confirmedProviderKeys"
+  | "matchedRules"
 >;
 
 export const selectRenderedTopReadCandidates = (params: {
@@ -365,9 +367,20 @@ export const isReaderFacingQualityTopRead = (
   if (read.signalScore >= usefulSingleSourceSignalScore) {
     return true;
   }
+  if (isDetailedCuratedDiscussion(read)) {
+    return true;
+  }
 
   return false;
 };
+
+const isDetailedCuratedDiscussion = (
+  read: ReaderFacingTopReadQualityInput,
+): boolean =>
+  hasReaderSummaryEditorialCurationRule(read.matchedRules) &&
+  curatedDiscussionProviderKeys.has(read.providerKey) &&
+  read.signalScore >= minimumCuratedSingleSourceSignalScore &&
+  read.reason.trim().length >= minimumCuratedReasonLength;
 
 const isTrustedOfficialXPost = (
   read: ReaderFacingTopReadQualityInput,
@@ -465,10 +478,13 @@ const trustedXUsernames = new Set([
 ]);
 const strongSingleSourceSignalScore = 2.2;
 const usefulSingleSourceSignalScore = 1.9;
+const minimumCuratedSingleSourceSignalScore = 1.65;
+const minimumCuratedReasonLength = 280;
 const maxRenderedSocialProviderCount = 4;
 const minimumSharedEditorialTokens = 3;
 const minimumEditorialTopicSimilarity = 0.25;
 const minimumDuplicateReasonLength = 80;
+const curatedDiscussionProviderKeys = new Set(["reddit", "hacker-news"]);
 
 const normalizeLimit = (value: number): number => {
   if (!Number.isFinite(value) || !Number.isInteger(value) || value < 1) {

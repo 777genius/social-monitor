@@ -6,6 +6,7 @@ import {
   selectRenderedTopReadCandidates,
   type RenderedTopReadCandidate,
 } from "./rendered-top-read-selection-policy";
+import { readerSummaryEditorialCurationRule } from "./reader-summary-editorial-curation-policy";
 
 describe("selectRenderedTopReadCandidates", () => {
   it("rejects an unrepaired agreement error through the rendered quality gate", () => {
@@ -107,6 +108,30 @@ describe("selectRenderedTopReadCandidates", () => {
       "x-good-2",
       "x-good-3",
       "x-good-4",
+    ]);
+  });
+
+  it("admits detailed curated discussions without admitting raw or X fallbacks", () => {
+    const result = selectRenderedTopReadCandidates({
+      candidates: [
+        candidate("curated-reddit-comparison", "reddit", 1.69, {
+          editoriallyCurated: true,
+          reason: detailedReason("Curated Reddit comparison"),
+        }),
+        candidate("uncurated-hn-comparison", "hacker-news", 1.75, {
+          reason: detailedReason("Uncurated HN comparison"),
+        }),
+        candidate("curated-x-claim", "x-twitter", 1.8, {
+          editoriallyCurated: true,
+          reason: detailedReason("Curated X claim"),
+        }),
+      ],
+      sourceMix: sourceMix(["x-twitter", "reddit", "hacker-news", "rss"]),
+      limit: 8,
+    });
+
+    expect(result.map((item) => item.topRead.title)).toEqual([
+      "curated-reddit-comparison",
     ]);
   });
 
@@ -665,6 +690,7 @@ const candidate = (
     readonly canonicalUrl?: string;
     readonly reason?: string;
     readonly evidence?: readonly SummaryEvidenceItem[];
+    readonly editoriallyCurated?: boolean;
   } = {},
 ): RenderedTopReadCandidate => {
   const reason = overrides.reason ?? `${title} reason`;
@@ -685,7 +711,12 @@ const candidate = (
       primaryActionKind: "read_source",
       reason,
       matchedInterestIds: ["ai-agents"],
-      matchedRules: ["interest:ai-agents"],
+      matchedRules: [
+        "interest:ai-agents",
+        ...(overrides.editoriallyCurated === true
+          ? [readerSummaryEditorialCurationRule]
+          : []),
+      ],
       signalScore,
       confidence: {
         level: overrides.confidenceLevel ?? "low",
