@@ -52,7 +52,7 @@ class _TopPostSortMenu extends StatelessWidget {
 
   String _sortLabel(_TopPostSort value) {
     return switch (value) {
-      _TopPostSort.relevance => 'Relevance',
+      _TopPostSort.editorial => 'Editorial',
       _TopPostSort.engagement => 'Engagement',
     };
   }

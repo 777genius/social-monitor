@@ -93,18 +93,27 @@ export class InMemoryFeedItemReadRepository
     tenantId: string;
     workspaceId: string;
     feedItemId: string;
+    observedBefore?: Date;
   }): Promise<FeedItem | null> {
     const item = this.itemsById.get(
       [query.tenantId, query.workspaceId, query.feedItemId].join(":"),
     );
 
-    return item ?? null;
+    if (item === undefined) {
+      return null;
+    }
+    const snapshot = item.toSnapshot();
+    return query.observedBefore !== undefined &&
+      snapshot.observedAt.getTime() >= query.observedBefore.getTime()
+      ? null
+      : item;
   }
 
   async readSourceContent(query: {
     readonly tenantId: string;
     readonly workspaceId: string;
     readonly feedItemIds: readonly string[];
+    readonly observedBefore?: Date;
   }) {
     const requestedIds = new Set(query.feedItemIds);
 
@@ -112,7 +121,9 @@ export class InMemoryFeedItemReadRepository
       const snapshot = item.toSnapshot();
       return snapshot.tenantId === query.tenantId &&
         snapshot.workspaceId === query.workspaceId &&
-        requestedIds.has(snapshot.id)
+        requestedIds.has(snapshot.id) &&
+        (query.observedBefore === undefined ||
+          snapshot.observedAt.getTime() < query.observedBefore.getTime())
         ? [
             {
               feedItemId: snapshot.id,

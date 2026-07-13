@@ -108,6 +108,26 @@ void main() {
     );
   });
 
+  testWidgets('deduplicates exact normalized labels and keeps the next topic', (
+    tester,
+  ) async {
+    await _pumpTopicMap(tester, _duplicateLabelTopicMap(), width: 480);
+
+    expect(
+      find.byKey(const ValueKey('topic-map-bubble-topic:claude-primary')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('topic-map-bubble-topic:claude-duplicate')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('topic-map-bubble-topic:codex')),
+      findsOneWidget,
+    );
+    expect(_bubbleLabelForNode(tester, 'topic:claude-primary'), 'Claude Code');
+  });
+
   testWidgets('uses reader-facing labels and metrics in tooltips', (
     tester,
   ) async {
@@ -323,6 +343,37 @@ ReaderSummaryTopicMap _labelQualityTopicMap() {
             'blue',
           ][index],
           nodeIds: [nodes[index].id],
+          confidence: confidence,
+        ),
+    ],
+    edges: const [],
+    warnings: const [],
+  );
+}
+
+ReaderSummaryTopicMap _duplicateLabelTopicMap() {
+  const confidence = ReaderSummaryTopicMapConfidence(
+    level: 'high',
+    score: 0.9,
+    rationale: 'Exact normalized-label dedupe fixture.',
+  );
+  final nodes = [
+    _node('claude-primary', 'ClaudeCode', 'claude', 100, 8),
+    _node('claude-duplicate', 'Claude Code', 'duplicate', 90, 7),
+    _node('codex', 'Codex', 'codex', 80, 6),
+  ];
+
+  return ReaderSummaryTopicMap(
+    generatedBy: 'agent-runtime',
+    confidence: confidence,
+    nodes: nodes,
+    groups: [
+      for (final node in nodes)
+        ReaderSummaryTopicMapGroup(
+          id: node.groupId,
+          label: node.label,
+          colorKey: 'blue',
+          nodeIds: [node.id],
           confidence: confidence,
         ),
     ],

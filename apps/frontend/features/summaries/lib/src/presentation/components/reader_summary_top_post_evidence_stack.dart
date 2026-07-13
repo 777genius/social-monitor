@@ -73,24 +73,20 @@ _TopPostSupportSignal _topPostSupportSignal({
     );
   }
 
-  if (allItems.length >= 2) {
+  if (allItems.length <= 1) {
     return (
-      kind: _TopPostSupportKind.sameSource,
-      evidenceItems: supportItems,
+      kind: _TopPostSupportKind.singleSource,
+      evidenceItems: const [],
       providerCount: 1,
       itemCount: allItems.length,
     );
   }
 
-  final confidenceLevel = item.confidence.level.trim().toLowerCase();
-  final supported = confidenceLevel == 'high' || confidenceLevel == 'medium';
   return (
-    kind: supported
-        ? _TopPostSupportKind.sameSource
-        : _TopPostSupportKind.singleSource,
-    evidenceItems: const [],
+    kind: _TopPostSupportKind.sameSource,
+    evidenceItems: supportItems,
     providerCount: 1,
-    itemCount: 0,
+    itemCount: allItems.length,
   );
 }
 

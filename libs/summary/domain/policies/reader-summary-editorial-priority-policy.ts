@@ -29,6 +29,8 @@ export type ReaderSummaryEditorialPriorityProfile = {
   readonly confidenceLevel: "low" | "medium" | "high";
   readonly citationCount: number;
   readonly confirmedProviderCount: number;
+  readonly firstPartyOfficial: boolean;
+  readonly authoritativeLead: boolean;
   readonly leadEligible: boolean;
 };
 
@@ -83,25 +85,29 @@ export const buildReaderSummaryEditorialPriorityProfile = (params: {
     cluster: profileCluster,
     evidence: profileEvidence,
   });
+  const firstPartyOfficial = hasFirstPartyOfficialEvidence(profileEvidence);
   const confidence = readerItemConfidence({
     cluster: profileCluster,
     independentEvidenceCount: independentEvidence.length,
     confirmedProviderCount,
     signalScore,
-    firstPartyOfficial: hasFirstPartyOfficialEvidence(profileEvidence),
+    firstPartyOfficial,
   });
   const leadEligible = leadEligibleEvidence.length > 0;
+  const authoritativeLead =
+    leadEligible && (confirmedProviderCount > 1 || firstPartyOfficial);
   const freshnessBoost = profileCluster?.signalBreakdown?.freshnessBoost ?? 0;
   const editorialScore =
     baseSignalScore +
-    Math.min(metricStrength, 24) * 0.07 +
-    qualityScore * 0.5 +
+    Math.min(metricStrength, 12) * 0.035 +
+    qualityScore * 0.45 +
     coreTopicStrength * 0.08 +
-    confidenceRank(confidence.level) * 0.08 +
-    Math.min(Math.max(0, confirmedProviderCount - 1), 2) * 0.1 +
-    freshnessBoost * 0.5 +
-    (primaryDiscussionProviders.has(providerKey) ? 0.12 : 0) +
-    (leadEligible ? 0.35 : 0);
+    confidenceRank(confidence.level) * 0.1 +
+    Math.min(Math.max(0, confirmedProviderCount - 1), 2) * 0.35 +
+    (firstPartyOfficial ? 0.4 : 0) +
+    freshnessBoost * 0.35 +
+    (primaryDiscussionProviders.has(providerKey) ? 0.08 : 0) +
+    (authoritativeLead ? 0.2 : leadEligible ? 0.05 : 0);
 
   return {
     providerKey,
@@ -114,6 +120,8 @@ export const buildReaderSummaryEditorialPriorityProfile = (params: {
     confidenceLevel: confidence.level,
     citationCount: params.citationCount ?? rankedEvidence.length,
     confirmedProviderCount,
+    firstPartyOfficial,
+    authoritativeLead,
     leadEligible,
   };
 };
@@ -122,6 +130,7 @@ export const compareReaderSummaryEditorialPriority = (
   left: ReaderSummaryEditorialPriorityProfile,
   right: ReaderSummaryEditorialPriorityProfile,
 ): number =>
+  Number(right.authoritativeLead) - Number(left.authoritativeLead) ||
   Number(right.leadEligible) - Number(left.leadEligible) ||
   right.editorialScore - left.editorialScore ||
   right.baseSignalScore - left.baseSignalScore ||

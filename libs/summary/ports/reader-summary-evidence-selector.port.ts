@@ -15,5 +15,6 @@ export interface ReaderSummaryEvidenceSelectorPort {
     readonly userId?: string;
     readonly subscriptionId?: string;
     readonly maxItems: number;
+    readonly observedThrough?: Date;
   }): Promise<SummaryEvidenceSelection>;
 }

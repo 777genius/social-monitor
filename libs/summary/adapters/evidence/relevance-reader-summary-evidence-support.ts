@@ -249,6 +249,9 @@ const isInsidePeriod = (
 export const inclusiveObservedAfter = (startedAt: Date): Date =>
   new Date(startedAt.getTime() - 1);
 
+export const inclusiveObservedBefore = (endedAt: Date): Date =>
+  new Date(endedAt.getTime() + 1);
+
 export const normalizeSelectionLimit = (limit: number): number => {
   if (!Number.isInteger(limit) || limit < 1) {
     return 1;

@@ -19,6 +19,7 @@ export type ListConversationUnitsByRootQuery = {
   readonly workspaceId: WorkspaceId;
   readonly rootFeedItemIds: readonly string[];
   readonly limitPerRoot: number;
+  readonly observedBefore?: Date;
 };
 
 export interface ConversationUnitRepositoryPort {

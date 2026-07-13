@@ -37,7 +37,7 @@ class ReaderSummaryTopPostsSliver extends StatefulWidget {
 
 class _ReaderSummaryTopPostsSliverState
     extends State<ReaderSummaryTopPostsSliver> {
-  _TopPostSort _sort = _TopPostSort.relevance;
+  _TopPostSort _sort = _TopPostSort.editorial;
   late _TopPostBoard _board;
   final Set<String> _hiddenProviders = {};
   int _visibleItemLimit = _topPostsInitialVisibleCount;
@@ -46,9 +46,7 @@ class _ReaderSummaryTopPostsSliverState
   @override
   void initState() {
     super.initState();
-    _board = widget.items.any((item) => !_isGithubTrendingTopRead(item))
-        ? _TopPostBoard.posts
-        : _TopPostBoard.githubTrending;
+    _board = _availableTopPostBoard(widget.items);
   }
 
   @override
@@ -56,6 +54,7 @@ class _ReaderSummaryTopPostsSliverState
     super.didUpdateWidget(oldWidget);
     if (widget.items != oldWidget.items) {
       _visibleItemLimit = _topPostsInitialVisibleCount;
+      _board = _availableTopPostBoard(widget.items, preferred: _board);
     }
   }
 

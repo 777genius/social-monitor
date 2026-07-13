@@ -84,11 +84,13 @@ describe("PrismaFeedItemReadRepository", () => {
     const repository = new PrismaFeedItemReadRepository(
       prisma as unknown as PrismaFeedClient,
     );
+    const observedBefore = new Date("2026-07-02T12:01:00.001Z");
 
     const result = await repository.readSourceContent({
       tenantId: tenantId("00000000-0000-7000-8000-000000000901"),
       workspaceId: workspaceId("00000000-0000-7000-8000-000000000902"),
       feedItemIds: [record.id],
+      observedBefore,
     });
 
     expect(result).toEqual([
@@ -100,7 +102,10 @@ describe("PrismaFeedItemReadRepository", () => {
     ]);
     expect(prisma.feedItem.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ id: { in: [record.id] } }),
+        where: expect.objectContaining({
+          id: { in: [record.id] },
+          observedAt: { lt: observedBefore },
+        }),
         include: { sourceItem: { select: { body: true } } },
       }),
     );

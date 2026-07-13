@@ -54,6 +54,7 @@ export type PrismaReaderSummaryArtifactPayloadFallback = {
   readonly subscriptionId: string | null;
   readonly headline: string;
   readonly summaryText: string | null;
+  readonly createdAt: Date;
 };
 
 export const readerSummaryScopeFromPrisma = (record: {
@@ -113,6 +114,10 @@ export const normalizeReaderSummaryArtifactPayload = (
       normalizeOptionalString(value.subscriptionId) ??
       fallback.subscriptionId ??
       undefined,
+    generatedAt: requireDate(
+      value.generatedAt ?? fallback.createdAt,
+      "Reader summary generation date",
+    ),
     sourceWindow: {
       windowId: requireString(
         serializedSourceWindow.windowId,

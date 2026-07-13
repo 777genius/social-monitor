@@ -11,7 +11,7 @@ import {
 } from "../services/reader-summary-topic-map-text";
 
 export const READER_SUMMARY_TOPIC_MAP_MAX_SEMANTIC_GROUPS = 8;
-export const READER_SUMMARY_TOPIC_MAP_MAX_NODES = 40;
+export const READER_SUMMARY_TOPIC_MAP_MAX_NODES = 18;
 
 export type ReaderSummaryTopicMapGroupingPolicyOptions = {
   readonly semanticAnchorsByGroup?: ReadonlyMap<string, readonly string[]>;

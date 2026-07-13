@@ -95,6 +95,7 @@ export class PrismaFeedItemReadRepository implements FeedItemReadRepositoryPort 
     tenantId: string;
     workspaceId: string;
     feedItemId: string;
+    observedBefore?: Date;
   }): Promise<FeedItem | null> {
     const record = await this.prisma.feedItem.findFirst({
       where: {
@@ -102,6 +103,10 @@ export class PrismaFeedItemReadRepository implements FeedItemReadRepositoryPort 
         workspaceId: query.workspaceId,
         id: query.feedItemId,
         status: "VISIBLE",
+        observedAt:
+          query.observedBefore === undefined
+            ? undefined
+            : { lt: query.observedBefore },
       },
     });
 
@@ -112,6 +117,7 @@ export class PrismaFeedItemReadRepository implements FeedItemReadRepositoryPort 
     readonly tenantId: string;
     readonly workspaceId: string;
     readonly feedItemIds: readonly string[];
+    readonly observedBefore?: Date;
   }) {
     if (query.feedItemIds.length === 0) {
       return [];
@@ -123,6 +129,10 @@ export class PrismaFeedItemReadRepository implements FeedItemReadRepositoryPort 
         workspaceId: query.workspaceId,
         status: "VISIBLE",
         id: { in: query.feedItemIds },
+        observedAt:
+          query.observedBefore === undefined
+            ? undefined
+            : { lt: query.observedBefore },
       },
       orderBy: [{ publishedAt: "desc" }, { id: "desc" }],
       skip: 0,

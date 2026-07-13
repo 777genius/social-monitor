@@ -75,7 +75,7 @@ void main() {
     expect(find.text('calesthio/OpenMontage'), findsWidgets);
     expect(find.text('Stars'), findsWidgets);
     expect(find.text('18K'), findsWidgets);
-    expect(find.text('Same-source support'), findsWidgets);
+    expect(find.text('Single source'), findsWidgets);
     expect(find.text('Matching 1 interest'), findsWidgets);
     expect(
       find.byKey(const ValueKey('workspace-summary-toolbar-generate')),

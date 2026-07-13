@@ -45,6 +45,7 @@ export class PrismaReaderSummaryProviderCollectionHealthReader implements Reader
   ): Promise<readonly ReaderSummaryProviderCollectionHealth[]> {
     const interestId =
       query.scope.type === "interest" ? query.scope.interestId : null;
+    const observedThrough = query.observedThrough ?? null;
     const rows = await this.prisma.$queryRaw<ProviderCollectionHealthRow[]>`
       with latest_binding_scans as (
         select distinct on (sj.source_binding_id)
@@ -63,8 +64,10 @@ export class PrismaReaderSummaryProviderCollectionHealthReader implements Reader
           and sj.workspace_id = ${query.workspaceId}::uuid
           and (${interestId}::uuid is null or sb.interest_id = ${interestId}::uuid)
           and sj.execution_metadata is not null
+          and sj.status in ('SUCCEEDED', 'FAILED')
           and sj.execution_metadata->>'targetPublishedWindowStartedAt' = ${query.period.startedAt.toISOString()}
           and sj.execution_metadata->>'targetPublishedWindowEndedAt' = ${query.period.endedAt.toISOString()}
+          and (${observedThrough}::timestamptz is null or sj.completed_at <= ${observedThrough}::timestamptz)
         order by
           sj.source_binding_id,
           sj.completed_at desc nulls last,

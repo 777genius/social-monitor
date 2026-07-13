@@ -232,7 +232,7 @@ async function main(): Promise<void> {
             String(
               READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.topicRelationTimeoutMs,
             ),
-          AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_MAX_CANDIDATES: "30",
+          AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_MAX_CANDIDATES: "18",
           DURABLE_READER_SUMMARY_TOPIC_LABELER: topicLabeler,
           DURABLE_READER_SUMMARY_TENANT_ID: scope.tenantId,
           DURABLE_READER_SUMMARY_WORKSPACE_ID: scope.workspaceId,

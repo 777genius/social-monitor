@@ -116,7 +116,9 @@ void main() {
     expect(leftInset, greaterThanOrEqualTo(AppSpacing.sm));
   });
 
-  testWidgets('keeps backend editorial order for relevance', (tester) async {
+  testWidgets('keeps backend editorial order for editorial sorting', (
+    tester,
+  ) async {
     final summary = const SummaryMapper().readerSummaryToDomain(
       readerSummaryApiDto(
         content: readerSummaryContentApiDto(
@@ -212,7 +214,13 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(find.text('Single source'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('reader-summary-top-post-0')),
+        matching: find.text('Single source'),
+      ),
+      findsOneWidget,
+    );
     expect(find.text('Low relevance'), findsNothing);
     expect(find.text('Shares'), findsNothing);
     expect(find.text('Views'), findsNothing);

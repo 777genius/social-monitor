@@ -2,12 +2,12 @@ part of 'reader_summary_brief_surface.dart';
 
 const _githubTrendingProviderKey = 'github-trending-page';
 
-enum _TopPostSort { relevance, engagement }
+enum _TopPostSort { editorial, engagement }
 
 enum _TopPostBoard { posts, githubTrending }
 
-/// "Top posts" board: sortable, filterable evidence list ranked by relevance
-/// and engagement.
+/// "Top posts" board: sortable, filterable editorial picks with an optional
+/// engagement view.
 class ReaderSummaryTopPosts extends StatefulWidget {
   const ReaderSummaryTopPosts({
     super.key,
@@ -40,7 +40,7 @@ class ReaderSummaryTopPosts extends StatefulWidget {
 }
 
 class _ReaderSummaryTopPostsState extends State<ReaderSummaryTopPosts> {
-  _TopPostSort _sort = _TopPostSort.relevance;
+  _TopPostSort _sort = _TopPostSort.editorial;
   late _TopPostBoard _board;
   final Set<String> _hiddenProviders = {};
   final ScrollController _postsScrollController = ScrollController();
@@ -49,9 +49,15 @@ class _ReaderSummaryTopPostsState extends State<ReaderSummaryTopPosts> {
   @override
   void initState() {
     super.initState();
-    _board = widget.items.any((item) => !_isGithubTrendingTopRead(item))
-        ? _TopPostBoard.posts
-        : _TopPostBoard.githubTrending;
+    _board = _availableTopPostBoard(widget.items);
+  }
+
+  @override
+  void didUpdateWidget(covariant ReaderSummaryTopPosts oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.items != oldWidget.items) {
+      _board = _availableTopPostBoard(widget.items, preferred: _board);
+    }
   }
 
   @override
@@ -325,6 +331,35 @@ class _TopPostsHeader extends StatelessWidget {
 bool _isGithubTrendingTopRead(TopRead item) =>
     item.providerKey.trim().toLowerCase() == _githubTrendingProviderKey;
 
+_TopPostBoard _availableTopPostBoard(
+  Iterable<TopRead> items, {
+  _TopPostBoard? preferred,
+}) {
+  var hasPosts = false;
+  var hasGitHubTrending = false;
+  for (final item in items) {
+    if (_isGithubTrendingTopRead(item)) {
+      hasGitHubTrending = true;
+    } else {
+      hasPosts = true;
+    }
+  }
+
+  if (preferred == _TopPostBoard.posts && hasPosts) {
+    return _TopPostBoard.posts;
+  }
+  if (preferred == _TopPostBoard.githubTrending && hasGitHubTrending) {
+    return _TopPostBoard.githubTrending;
+  }
+  if (hasPosts) {
+    return _TopPostBoard.posts;
+  }
+  if (hasGitHubTrending) {
+    return _TopPostBoard.githubTrending;
+  }
+  return preferred ?? _TopPostBoard.githubTrending;
+}
+
 String _topPostDateLabel(TopRead item, SummaryPeriod fallbackPeriod) {
   final publishedAt = item.publishedAt;
   if (publishedAt == null) {
@@ -341,9 +376,10 @@ String _topPostBoardSubtitle(
 }) {
   return switch (board) {
     _TopPostBoard.posts =>
-      selectedPostCount > curatedTopPostCount && curatedTopPostCount > 0
-          ? '$curatedTopPostCount top posts from $selectedPostCount selected'
-          : 'Ranked by relevance and engagement',
+      curatedTopPostCount == 1
+          ? '1 editorial pick from $selectedPostCount selected'
+          : '$curatedTopPostCount editorial picks from '
+                '$selectedPostCount selected',
     _TopPostBoard.githubTrending =>
       'Top 10 repositories in GitHub Trending order',
   };

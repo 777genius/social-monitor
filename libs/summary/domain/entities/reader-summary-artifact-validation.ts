@@ -19,6 +19,13 @@ export const assertReaderSummaryArtifactValid = (
   assertReaderSummaryPeriod(props.period);
 
   if (
+    props.generatedAt !== undefined &&
+    Number.isNaN(props.generatedAt.getTime())
+  ) {
+    throw new Error("Reader summary generation date must be valid");
+  }
+
+  if (
     (props.userId ?? "").trim().length === 0 &&
     props.subscriptionId !== undefined
   ) {

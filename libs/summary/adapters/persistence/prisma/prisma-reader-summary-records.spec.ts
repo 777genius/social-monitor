@@ -23,9 +23,9 @@ const artifactProps = (
     startedAt: new Date("2026-07-03T00:00:00.000Z"),
     endedAt: new Date("2026-07-04T00:00:00.000Z"),
     timezone: "UTC",
-    periodKey:
-      "daily:2026-07-03T00:00:00.000Z:2026-07-04T00:00:00.000Z:UTC",
+    periodKey: "daily:2026-07-03T00:00:00.000Z:2026-07-04T00:00:00.000Z:UTC",
   },
+  generatedAt: new Date("2026-07-04T00:05:00.000Z"),
   sourceWindow: {
     windowId: "window-json",
     startedAt: new Date("2026-07-03T08:00:00.000Z"),
@@ -98,7 +98,9 @@ const artifactProps = (
   ...overrides,
 });
 
-const readerContent = (): NonNullable<ReaderSummaryArtifactProps["content"]> => {
+const readerContent = (): NonNullable<
+  ReaderSummaryArtifactProps["content"]
+> => {
   const item = {
     title: "AI source signal",
     providerKey: "reddit",
@@ -170,6 +172,7 @@ describe("prisma reader summary records", () => {
     expect(JSON.stringify(payload)).not.toContain("previewMedia");
     expect(JSON.stringify(payload)).not.toContain("\\u0000");
     expect(payload).toMatchObject({
+      generatedAt: "2026-07-04T00:05:00.000Z",
       period: {
         startedAt: "2026-07-03T00:00:00.000Z",
         endedAt: "2026-07-04T00:00:00.000Z",

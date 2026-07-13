@@ -88,6 +88,7 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
     const model = new CapturingReaderSummaryModel();
     const requestedAt = new Date("2026-06-26T08:00:00.000Z");
     let observedMaxEvidenceItems: number | undefined;
+    let observedThrough: Date | undefined;
 
     await jobs.save(
       ReaderSummaryJob.request({
@@ -110,6 +111,7 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
       {
         async select(params) {
           observedMaxEvidenceItems = params.maxItems;
+          observedThrough = params.observedThrough;
           return makeReaderEvidenceSelection();
         },
       },
@@ -192,6 +194,8 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
     });
     expect(snapshot?.topStories).toHaveLength(1);
     expect(observedMaxEvidenceItems).toBe(120);
+    expect(observedThrough).toEqual(new Date("2026-06-26T08:05:00.000Z"));
+    expect(snapshot?.generatedAt).toEqual(observedThrough);
     expect(model.observedPolicies()).toContainEqual(
       expect.objectContaining({
         maxOutputTokens: 16_000,

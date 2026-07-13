@@ -428,7 +428,7 @@ describe("buildReaderSummary", () => {
     });
 
     expect(readerSummary.oneLineTakeaway).toBe(
-      "Social sources point to AI infrastructure, rollout chatter and biomedical AI research.",
+      "Developer rollout chatter is drawing X/Twitter engagement; AI infrastructure discussion around custom chips is getting practical; Biomedical AI research is drawing Hacker News discussion. Confirm important claims with another monitored source before acting.",
     );
     expect(readerSummary.oneLineTakeaway).not.toContain("Review 3 cited");
     expect(readerSummary.topReads.map((read) => read.reason)).toEqual([
@@ -585,7 +585,7 @@ describe("buildReaderSummary", () => {
 
     expect(
       readerSummary.topReads.slice(0, 3).map((read) => read.providerKey),
-    ).toEqual(["x-twitter", "hacker-news", "reddit"]);
+    ).toEqual(["hacker-news", "x-twitter", "reddit"]);
     expect(readerSummary.headline).not.toContain("Key signals across");
     expect(readerSummary.headline).toContain("Claude Code skills");
     expect(readerSummary.headline).not.toContain("Source watch");

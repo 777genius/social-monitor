@@ -24,6 +24,7 @@ export class ConversationReaderSummaryEvidenceSelector
       workspaceId: params.workspaceId,
       interestId: interestIdForConversationContext(params.scope, selection),
       rootFeedItemIds: selection.selectedEvidence.map((item) => item.feedItemId),
+      observedThrough: params.observedThrough,
     });
 
     if (contextByRoot.size === 0) {

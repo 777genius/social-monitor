@@ -87,6 +87,7 @@ class ReaderSummaryView extends StatelessWidget {
       for (final citation in summary.citations) citation.id: citation,
     };
     final topPostItems = readerSummaryTopPostItems(summary);
+    final editorialTopPostCount = readerSummaryEditorialTopPostCount(summary);
     final selectedPostCount =
         summary.coverage?.selectedFeedItemCount ?? topPostItems.length;
 
@@ -122,7 +123,7 @@ class ReaderSummaryView extends StatelessWidget {
             const SizedBox(height: AppSpacing.md + 2),
             ReaderSummaryTopPosts(
               items: topPostItems,
-              curatedTopPostCount: summary.content.topReads.length,
+              curatedTopPostCount: editorialTopPostCount,
               selectedPostCount: selectedPostCount,
               period: summary.period,
               citationsById: citationsById,

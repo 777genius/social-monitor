@@ -123,6 +123,9 @@ export type PrismaFeedClient = {
         readonly interestId?: string;
         readonly sourceItemId?: string;
         readonly status: "VISIBLE";
+        readonly observedAt?: {
+          readonly lt?: Date;
+        };
       };
     }): Promise<PrismaFeedItemRecord | null>;
   };

@@ -42,6 +42,24 @@ describe("FeedReaderSummaryCoverageCounter", () => {
     expect(feedItems.queries[0]?.observedBefore).toBeUndefined();
   });
 
+  it("freezes coverage at the artifact observation cutoff", async () => {
+    const feedItems = new FakeFeedItems([7]);
+    const counter = new FeedReaderSummaryCoverageCounter(feedItems);
+    const observedThrough = new Date("2026-07-03T00:05:00.000Z");
+
+    await counter.countCollectedFeedItems({
+      tenantId: tenant,
+      workspaceId: workspace,
+      scope: { type: "workspace" },
+      period,
+      observedThrough,
+    });
+
+    expect(feedItems.queries[0]?.observedBefore).toEqual(
+      new Date("2026-07-03T00:05:00.001Z"),
+    );
+  });
+
   it("scopes collected feed item counts to interest summaries", async () => {
     const feedItems = new FakeFeedItems([7]);
     const counter = new FeedReaderSummaryCoverageCounter(feedItems);

@@ -58,7 +58,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Compact mode single row post'), findsOneWidget);
-    expect(find.text('Same-source support'), findsOneWidget);
+    expect(find.text('Single source'), findsOneWidget);
     expect(find.textContaining('Signal '), findsNothing);
     expect(find.textContaining('Matching '), findsNothing);
   });

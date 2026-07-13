@@ -30,6 +30,7 @@ import {
   expandedCandidateLimit,
   filterItemsByDefaultReaderSummaryProviders,
   filterItemsByReaderSummaryPeriod,
+  inclusiveObservedBefore,
   mapRankedItem,
   mapSupplementFeedItem,
   providerSupplementTargetForLimit,
@@ -62,6 +63,10 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
   async select(
     params: Parameters<ReaderSummaryEvidenceSelectorPort["select"]>[0],
   ) {
+    const observedBefore =
+      params.observedThrough === undefined
+        ? undefined
+        : inclusiveObservedBefore(params.observedThrough);
     const ranked = await this.rankFeedItems.execute({
       tenantId: params.tenantId,
       workspaceId: params.workspaceId,
@@ -70,6 +75,7 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
       userId: params.userId,
       publishedAtOrAfter: params.period.startedAt,
       publishedBefore: params.period.endedAt,
+      observedBefore,
       limit: expandedCandidateLimit(params.maxItems),
     });
 
@@ -235,6 +241,7 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
         tenantId: params.tenantId,
         workspaceId: params.workspaceId,
         feedItemIds: selection.selectedEvidence.map((item) => item.feedItemId),
+        observedBefore: observedBeforeFor(params.observedThrough),
       });
       const sourceTextByFeedItemId = new Map(
         sourceContent.map((item) => [item.feedItemId, item] as const),
@@ -285,6 +292,7 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
           tenantId: params.tenantId,
           workspaceId: params.workspaceId,
           feedItemId: duplicateFeedItemId,
+          observedBefore: observedBeforeFor(params.observedThrough),
         });
 
         if (duplicate === null) {
@@ -343,6 +351,7 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
         providerKey,
         publishedAtOrAfter: params.period.startedAt,
         publishedBefore: params.period.endedAt,
+        observedBefore: observedBeforeFor(params.observedThrough),
         limit: target * 2,
       });
 
@@ -394,6 +403,7 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
         providerKey: "github-trending-page",
         publishedAtOrAfter: params.period.startedAt,
         publishedBefore: params.period.endedAt,
+        observedBefore: observedBeforeFor(params.observedThrough),
         limit: 100,
         cursor,
       });
@@ -446,6 +456,7 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
         providerKey,
         publishedAtOrAfter: params.period.startedAt,
         publishedBefore: params.period.endedAt,
+        observedBefore: observedBeforeFor(params.observedThrough),
         limit: target * 4,
       });
 
@@ -481,3 +492,10 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
     return promoteTopReadCandidatesWithinProviders([...itemsById.values()]);
   }
 }
+
+const observedBeforeFor = (
+  observedThrough: Date | undefined,
+): Date | undefined =>
+  observedThrough === undefined
+    ? undefined
+    : inclusiveObservedBefore(observedThrough);

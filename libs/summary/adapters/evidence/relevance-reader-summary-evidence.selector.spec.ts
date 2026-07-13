@@ -143,6 +143,7 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
       clock,
       storyRankingMetrics,
     );
+    const observedThrough = clock.now();
 
     const selection = await selector.select({
       tenantId: tenantId("tenant-1"),
@@ -150,12 +151,14 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
       scope: { type: "workspace" },
       period: readerSummaryPeriod,
       maxItems: 5,
+      observedThrough,
     });
 
     expect(rankFeedItems.execute).toHaveBeenCalledWith(
       expect.objectContaining({
         publishedAtOrAfter: readerSummaryPeriod.startedAt,
         publishedBefore: readerSummaryPeriod.endedAt,
+        observedBefore: new Date(observedThrough.getTime() + 1),
         limit: 200,
       }),
     );
@@ -163,6 +166,7 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
       expect.objectContaining({
         providerKey: "github-trending-page",
         cursor: "github-page-2",
+        observedBefore: new Date(observedThrough.getTime() + 1),
       }),
     );
     expect(
@@ -800,12 +804,14 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
       scope: { type: "workspace" },
       period: readerSummaryPeriod,
       maxItems: 3,
+      observedThrough: clock.now(),
     });
 
     expect(feedItems.findById).toHaveBeenCalledWith({
       tenantId: tenant,
       workspaceId: workspace,
       feedItemId: "feed-reddit-codex",
+      observedBefore: new Date(clock.now().getTime() + 1),
     });
     expect(selection.selectedEvidence.map((item) => item.feedItemId)).toEqual([
       "feed-github-codex",

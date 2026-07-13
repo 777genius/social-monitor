@@ -85,10 +85,14 @@ describe("RelevanceReaderSummaryEvidenceSelector adaptive source content", () =>
         periodKey: "daily:adaptive-source",
       },
       maxItems: 1,
+      observedThrough: new Date("2026-07-09T09:00:00.000Z"),
     });
 
     expect(readSourceContent).toHaveBeenCalledWith(
-      expect.objectContaining({ feedItemIds: ["feed-ultra"] }),
+      expect.objectContaining({
+        feedItemIds: ["feed-ultra"],
+        observedBefore: new Date("2026-07-09T09:00:00.001Z"),
+      }),
     );
     expect(readSourceContent).toHaveBeenCalledTimes(1);
     expect(selection.selectedEvidence[0]?.sourceText).toContain(

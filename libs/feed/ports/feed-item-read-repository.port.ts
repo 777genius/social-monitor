@@ -38,10 +38,12 @@ export interface FeedItemReadRepositoryPort {
     tenantId: TenantId;
     workspaceId: WorkspaceId;
     feedItemId: string;
+    observedBefore?: Date;
   }): Promise<FeedItem | null>;
   readSourceContent?(query: {
     readonly tenantId: TenantId;
     readonly workspaceId: WorkspaceId;
     readonly feedItemIds: readonly string[];
+    readonly observedBefore?: Date;
   }): Promise<readonly FeedSourceContentItem[]>;
 }

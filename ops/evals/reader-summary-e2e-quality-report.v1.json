@@ -13,7 +13,7 @@
     "evidenceReplayPath": "ops/evals/yesterday-reader-summary-evidence-replay.v1.json",
     "finalReplayPath": "ops/evals/yesterday-reader-summary-final-replay.v1.json"
   },
-  "collectionDate": "2026-07-03",
+  "collectionDate": "2026-07-09",
   "ranking": {
     "blockingPassed": true,
     "precisionAt10": 0.858,
@@ -28,8 +28,8 @@
       "reddit",
       "x-twitter"
     ],
-    "redditFeedItemCount": 201,
-    "xTwitterFeedItemCount": 98,
+    "redditFeedItemCount": 262,
+    "xTwitterFeedItemCount": 63,
     "redditRankInputReadinessScore": 1,
     "xTwitterRankInputReadinessScore": 1
   },

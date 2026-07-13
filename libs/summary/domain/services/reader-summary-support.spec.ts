@@ -1,6 +1,7 @@
 import type { TopRead } from "../entities/top-read";
 import {
   buildGroundedOneLineTakeaway,
+  groundedReaderHeadline,
   readerItemConfidence,
 } from "./reader-summary-support";
 import type { StoryCluster } from "../value-objects/summary-evidence-item";
@@ -104,6 +105,61 @@ describe("buildGroundedOneLineTakeaway", () => {
         sourceMix: [],
       }),
     ).toBe(executiveSummary);
+  });
+});
+
+describe("groundedReaderHeadline", () => {
+  it("does not let unrelated cross-source coverage validate a single-source lead", () => {
+    const lead = {
+      ...topRead(),
+      confidence: {
+        level: "low" as const,
+        score: 0.42,
+        rationale: "Single source",
+      },
+      confirmedProviderKeys: ["x-twitter"],
+      citationIds: ["c1"],
+    };
+
+    expect(
+      groundedReaderHeadline({
+        headline:
+          "Developers are routing GPT 5.6 Sol through Claude Code as costs dominate",
+        topReads: [lead, topRead()],
+        sourceMix: [
+          {
+            providerKey: "reddit",
+            itemCount: 2,
+            citationCount: 2,
+            storyClusterCount: 1,
+            crossSourceClusterCount: 1,
+            singleSourceOnly: false,
+            interestIds: ["ai-agents"],
+          },
+        ],
+      }),
+    ).toBe("Official and community sources describe the rollout");
+  });
+
+  it("preserves an explicitly source-framed single-source headline", () => {
+    const lead = {
+      ...topRead(),
+      confidence: {
+        level: "low" as const,
+        score: 0.42,
+        rationale: "Single source",
+      },
+      confirmedProviderKeys: ["x-twitter"],
+    };
+
+    expect(
+      groundedReaderHeadline({
+        headline:
+          "X/Twitter discussion highlights a Claude Code proxy workflow",
+        topReads: [lead],
+        sourceMix: [],
+      }),
+    ).toBe("X/Twitter discussion highlights a Claude Code proxy workflow");
   });
 });
 

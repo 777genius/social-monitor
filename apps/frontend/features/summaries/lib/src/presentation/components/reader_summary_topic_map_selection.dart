@@ -10,9 +10,10 @@ final class _TopicMapVisibleSelection {
     required ReaderSummaryTopicMap topicMap,
     required Size graphSize,
   }) {
-    final nodes = topicMap.nodes
-        .take(_topicMapVisibleNodeLimit(graphSize))
-        .toList(growable: false);
+    final nodes = _uniqueVisibleTopicMapNodes(
+      topicMap.nodes,
+      limit: _topicMapVisibleNodeLimit(graphSize),
+    );
 
     return _TopicMapVisibleSelection(
       nodes: nodes,
@@ -48,6 +49,33 @@ final class _TopicMapVisibleSelection {
 
     return '$nodePart//$groupPart';
   }
+}
+
+List<ReaderSummaryTopicMapNode> _uniqueVisibleTopicMapNodes(
+  List<ReaderSummaryTopicMapNode> nodes, {
+  required int limit,
+}) {
+  final visibleNodes = <ReaderSummaryTopicMapNode>[];
+  final seenLabels = <String>{};
+  for (final node in nodes) {
+    final displayLabel = _topicMapDisplayLabel(node);
+    final normalizedLabel = displayLabel
+        .toLowerCase()
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    final identity = normalizedLabel.isEmpty
+        ? 'node:${node.id}'
+        : 'label:$normalizedLabel';
+    if (!seenLabels.add(identity)) {
+      continue;
+    }
+    visibleNodes.add(node);
+    if (visibleNodes.length == limit) {
+      break;
+    }
+  }
+
+  return visibleNodes;
 }
 
 int _topicMapVisibleNodeLimit(Size graphSize) =>

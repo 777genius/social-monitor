@@ -60,6 +60,8 @@ export class GetReaderSummaryUseCase {
       workspaceId: snapshot.workspaceId,
       scope: snapshot.scope,
       sourceWindow: snapshot.sourceWindow,
+      period: snapshot.period,
+      observedThrough: snapshot.generatedAt,
     });
 
     const content = await this.previewMediaEnricher.enrich({
@@ -72,6 +74,7 @@ export class GetReaderSummaryUseCase {
         workspaceId: snapshot.workspaceId,
         scope: snapshot.scope,
         period: snapshot.period,
+        observedThrough: snapshot.generatedAt,
       });
 
     return ok(

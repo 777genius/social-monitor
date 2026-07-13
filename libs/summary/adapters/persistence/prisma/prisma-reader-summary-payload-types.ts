@@ -41,6 +41,7 @@ export type SerializedReaderSummaryArtifactPayload = {
   readonly period?: unknown;
   readonly userId?: unknown;
   readonly subscriptionId?: unknown;
+  readonly generatedAt?: unknown;
   readonly sourceWindow?: SerializedReaderSummarySourceWindow | unknown;
   readonly storyClusters?: unknown;
   readonly contextArtifacts?: unknown;

@@ -263,6 +263,7 @@ export class ExecuteReaderSummaryJobUseCase {
     maxEvidenceItems: number,
   ): Promise<ReaderSummaryModelPipelineResult> {
     const snapshot = job.toSnapshot();
+    const generatedAt = this.clock.now();
     const evidence = await this.evidenceSelector.select({
       tenantId: snapshot.tenantId,
       workspaceId: snapshot.workspaceId,
@@ -271,6 +272,7 @@ export class ExecuteReaderSummaryJobUseCase {
       userId: snapshot.userId,
       subscriptionId: snapshot.subscriptionId,
       maxItems: maxEvidenceItems,
+      observedThrough: generatedAt,
     });
     const primaryEvidence = primaryReaderSummaryEvidence(evidence);
     const policy = await this.readerSummaryPolicies.findByScope({
@@ -344,6 +346,7 @@ export class ExecuteReaderSummaryJobUseCase {
       period: snapshot.period,
       userId: snapshot.userId,
       subscriptionId: snapshot.subscriptionId,
+      generatedAt,
       sourceWindow: evidence.sourceWindow,
       storyClusters: evidence.clusters,
       contextArtifacts: context.artifacts,

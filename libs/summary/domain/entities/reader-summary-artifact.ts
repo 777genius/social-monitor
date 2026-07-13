@@ -83,6 +83,7 @@ export type ReaderSummaryArtifactProps = {
   readonly period: ReaderSummaryPeriod;
   readonly userId?: string;
   readonly subscriptionId?: string;
+  readonly generatedAt?: Date;
   readonly sourceWindow: SummarySourceWindow;
   readonly storyClusters: readonly StoryCluster[];
   readonly contextArtifacts: readonly ReaderSummaryContextArtifact[];

@@ -55,9 +55,13 @@ export const buildReaderSummaryCoveragePlan = (
   );
   const eligibleCandidates =
     primaryCandidates.length > 0 ? primaryCandidates : candidates;
-  const lead = eligibleCandidates.find(
-    (candidate) => candidate.editorialPriority.leadEligible,
-  );
+  const lead =
+    eligibleCandidates.find(
+      (candidate) => candidate.editorialPriority.authoritativeLead,
+    ) ??
+    eligibleCandidates.find(
+      (candidate) => candidate.editorialPriority.leadEligible,
+    );
   if (lead === undefined) {
     return { secondary: [] };
   }

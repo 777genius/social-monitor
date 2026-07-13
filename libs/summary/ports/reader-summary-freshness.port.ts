@@ -1,6 +1,10 @@
 import type { TenantId, WorkspaceId } from "@social-monitor/shared-kernel";
 
-import type { ReaderSummaryScope, ReaderSummarySourceWindow } from "../domain";
+import type {
+  ReaderSummaryPeriod,
+  ReaderSummaryScope,
+  ReaderSummarySourceWindow,
+} from "../domain";
 
 export type ReaderSummaryFreshness =
   | {
@@ -26,5 +30,7 @@ export interface ReaderSummaryFreshnessProbePort {
     readonly workspaceId: WorkspaceId;
     readonly scope: ReaderSummaryScope;
     readonly sourceWindow: ReaderSummarySourceWindow;
+    readonly period?: ReaderSummaryPeriod;
+    readonly observedThrough?: Date;
   }): Promise<ReaderSummaryFreshness>;
 }

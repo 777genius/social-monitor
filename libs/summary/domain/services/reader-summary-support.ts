@@ -110,12 +110,12 @@ export const groundedReaderHeadline = (params: {
     return fallback;
   }
 
-  const hasCrossProviderEvidence =
-    params.sourceMix.some((source) => source.crossSourceClusterCount > 0) ||
-    params.topReads.some((item) => item.confirmedProviderKeys.length > 1);
+  const lead = params.topReads[0]!;
+  const hasGroundedLead =
+    lead.confirmedProviderKeys.length > 1 || lead.confidence.level === "high";
   const safeSemanticHeadline =
     !isTechnicalReaderHeadline(fallback) &&
-    (hasCrossProviderEvidence || !isUnconfirmedModelClaimText(fallback));
+    (hasGroundedLead || isExplicitlySourceFramedText(fallback, lead));
 
   if (safeSemanticHeadline) {
     return fallback;
@@ -151,15 +151,17 @@ export const buildGroundedOneLineTakeaway = (params: {
     firstSentence(executiveSummary) ??
     params.topReads[0]?.reason ??
     "Review the latest monitored signals.";
-  const hasGroundedSupport = params.topReads.some(
-    (read) =>
-      read.confirmedProviderKeys.length > 1 || read.confidence.level === "high",
-  );
+  const lead = params.topReads[0];
+  const hasGroundedSupport =
+    lead !== undefined &&
+    (lead.confirmedProviderKeys.length > 1 || lead.confidence.level === "high");
 
   if (
     params.topReads.length === 0 ||
     (!isTechnicalReaderHeadline(fallback) &&
-      (hasGroundedSupport || !isUnconfirmedModelClaimText(executiveSummary)))
+      (hasGroundedSupport ||
+        (lead !== undefined &&
+          isExplicitlySourceFramedText(executiveSummary, lead))))
   ) {
     return compactExecutiveSummary(executiveSummary) || fallback;
   }
@@ -169,13 +171,13 @@ export const buildGroundedOneLineTakeaway = (params: {
     .slice(0, 3)
     .map(sourceLocalReadLabel)
     .filter((label) => label.length > 0);
-  const lead =
+  const summaryLead =
     leadReads.length === 0
       ? `${topReadCount} monitored read${plural(topReadCount)} need${topReadCount === 1 ? "s" : ""} confirmation.`
       : `${leadReads.join("; ")}.`;
 
   return [
-    lead,
+    summaryLead,
     "Confirm important claims with another monitored source before acting.",
   ].join(" ");
 };
@@ -275,14 +277,23 @@ const isTechnicalReaderHeadline = (value: string): boolean => {
   );
 };
 
-const isUnconfirmedModelClaimText = (value: string): boolean => {
-  const normalized = value.trim().toLowerCase();
+const isExplicitlySourceFramedText = (
+  value: string,
+  lead: TopRead,
+): boolean => {
+  const normalized = value.trim().toLocaleLowerCase("en-US");
+  const provider = lead.providerName.trim().toLocaleLowerCase("en-US");
+  const providerPrefixes = [
+    provider,
+    `a ${provider}`,
+    `an ${provider}`,
+    `the ${provider}`,
+  ];
 
   return (
-    /\b(?:alleged|claim(?:s|ed)?|confirms?|confirmed|launch(?:es|ed)?|release(?:s|d)?|beats?|outperforms?|leadership|available|pricing|preview|rumou?r|ships?|announces?)\b/iu.test(
-      normalized,
-    ) &&
-    /\b(?:gpt[-\s]?\d+(?:\.\d+)?|claude\s*\d+(?:\.\d+)?|gemini\s*\d+(?:\.\d+)?|benchmark|preview|model|pricing|availability|launch|release)\b/iu.test(
+    (provider.length > 0 &&
+      providerPrefixes.some((prefix) => normalized.startsWith(prefix))) ||
+    /^(?:a |an |the )?(?:post|discussion|thread|report|chatter)\b/iu.test(
       normalized,
     )
   );
@@ -291,12 +302,14 @@ const isUnconfirmedModelClaimText = (value: string): boolean => {
 const buildHumanReaderHeadline = (
   topReads: readonly TopRead[],
 ): string | undefined => {
-  const leadReads = topReads
-    .slice(0, 3)
-    .map((read) =>
-      compactHeadlinePart(sourceLocalReadLabel(read) || read.title),
-    )
-    .filter((value) => value.length > 0);
+  const leadReads = uniqueNonEmpty(
+    topReads
+      .slice(0, 3)
+      .map((read) =>
+        compactHeadlinePart(sourceLocalReadLabel(read) || read.title),
+      )
+      .filter((value) => value.length > 0),
+  );
 
   if (leadReads.length === 0) {
     return undefined;

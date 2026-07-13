@@ -29,6 +29,7 @@ export type ReadReaderSummaryProviderCollectionHealthQuery = {
   readonly workspaceId: WorkspaceId;
   readonly scope: ReaderSummaryScope;
   readonly period: ReaderSummaryPeriod;
+  readonly observedThrough?: Date;
 };
 
 export interface ReaderSummaryProviderCollectionHealthReaderPort {

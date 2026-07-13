@@ -141,6 +141,9 @@ export class PrismaConversationUnitRepository
         tenantId: query.tenantId,
         workspaceId: query.workspaceId,
         rootFeedItemId: { in: query.rootFeedItemIds },
+        ...(query.observedBefore === undefined
+          ? {}
+          : { observedAt: { lt: query.observedBefore } }),
       },
       orderBy: [
         { rootFeedItemId: 'asc' },
@@ -171,7 +174,12 @@ export class PrismaConversationUnitRepository
         tenantId: query.tenantId,
         workspaceId: query.workspaceId,
         ...(query.interestId === undefined ? {} : { interestId: query.interestId }),
-        observedAt: { gt: query.observedAfter },
+        observedAt: {
+          gt: query.observedAfter,
+          ...(query.observedBefore === undefined
+            ? {}
+            : { lt: query.observedBefore }),
+        },
         ...(query.cohortFilters === undefined || query.cohortFilters.length === 0
           ? {}
           : {

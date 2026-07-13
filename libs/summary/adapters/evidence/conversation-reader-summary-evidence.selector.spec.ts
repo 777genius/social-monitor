@@ -48,6 +48,13 @@ describe('ConversationReaderSummaryEvidenceSelector', () => {
           score: 180,
           replies: 9,
         }),
+        conversationUnit({
+          id: 'conversation-after-cutoff',
+          providerUnitId: 't1_after_cutoff',
+          body: 'Late high-score comment.',
+          score: 999,
+          observedAt: new Date('2026-06-05T12:10:00.001Z'),
+        }),
       ],
     });
     const selector = new ConversationReaderSummaryEvidenceSelector(
@@ -68,6 +75,7 @@ describe('ConversationReaderSummaryEvidenceSelector', () => {
       scope: { type: 'workspace' },
       period,
       maxItems: 5,
+      observedThrough: new Date('2026-06-05T12:10:00.000Z'),
     });
 
     expect(result.selectedEvidence[0]?.conversationContext).toMatchObject({
@@ -141,6 +149,7 @@ const conversationUnit = (
     readonly body: string;
     readonly score: number;
     readonly replies?: number;
+    readonly observedAt?: Date;
   },
 ): ConversationUnit => {
   const props: ConversationUnitProps = {
@@ -156,7 +165,8 @@ const conversationUnit = (
     canonicalUrl: `https://reddit.test/r/topic/comments/post_1/_/${overrides.providerUnitId}`,
     body: overrides.body,
     publishedAt: new Date('2026-06-05T12:05:00.000Z'),
-    observedAt: new Date('2026-06-05T12:10:00.000Z'),
+    observedAt:
+      overrides.observedAt ?? new Date('2026-06-05T12:10:00.000Z'),
     threadExternalId: 't3_post_1',
     parentProviderUnitId: undefined,
     depth: 0,

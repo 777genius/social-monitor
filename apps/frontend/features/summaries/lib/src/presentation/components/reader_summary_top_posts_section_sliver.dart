@@ -29,6 +29,7 @@ class ReaderSummaryTopPostsSectionSliver extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final items = readerSummaryTopPostItems(summary);
+    final editorialTopPostCount = readerSummaryEditorialTopPostCount(summary);
     if (items.isEmpty) {
       return const SliverToBoxAdapter(child: SizedBox.shrink());
     }
@@ -39,7 +40,7 @@ class ReaderSummaryTopPostsSectionSliver extends StatelessWidget {
           padding: contentPadding,
           sliver: ReaderSummaryTopPostsSliver(
             items: items,
-            curatedTopPostCount: summary.content.topReads.length,
+            curatedTopPostCount: editorialTopPostCount,
             selectedPostCount:
                 summary.coverage?.selectedFeedItemCount ?? items.length,
             period: summary.period,
@@ -56,7 +57,27 @@ class ReaderSummaryTopPostsSectionSliver extends StatelessWidget {
   }
 }
 
-List<TopRead> readerSummaryTopPostItems(ReaderSummary summary) =>
-    summary.content.selectedPosts.isNotEmpty
-    ? summary.content.selectedPosts
-    : summary.content.topReads;
+const _githubTrendingTopPostProviderKey = 'github-trending-page';
+
+List<TopRead> readerSummaryTopPostItems(ReaderSummary summary) {
+  final githubSource = summary.content.selectedPosts.isNotEmpty
+      ? summary.content.selectedPosts
+      : summary.content.topReads;
+  final editorialPosts = summary.content.topReads
+      .where((item) => !_isGitHubTrendingPost(item))
+      .toList(growable: false);
+  final githubTrendingPosts = githubSource
+      .where(_isGitHubTrendingPost)
+      .toList(growable: false);
+
+  return [...editorialPosts, ...githubTrendingPosts];
+}
+
+int readerSummaryEditorialTopPostCount(ReaderSummary summary) {
+  return summary.content.topReads
+      .where((item) => !_isGitHubTrendingPost(item))
+      .length;
+}
+
+bool _isGitHubTrendingPost(TopRead item) =>
+    item.providerKey.trim().toLowerCase() == _githubTrendingTopPostProviderKey;

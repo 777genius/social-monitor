@@ -1,5 +1,6 @@
 import type { SourceMixEntry } from "../entities/source-mix-entry";
 import type { TopRead, TopReadCandidate } from "../entities/top-read";
+import type { SummaryEvidenceItem } from "../value-objects/summary-evidence-item";
 import {
   selectRenderedTopReadCandidates,
   type RenderedTopReadCandidate,
@@ -227,6 +228,76 @@ describe("selectRenderedTopReadCandidates", () => {
     ]);
   });
 
+  it("keeps near-duplicate model-routing posts out of the first four reads", () => {
+    const result = selectRenderedTopReadCandidates({
+      candidates: [
+        candidate(
+          "Developers mix Claude, Codex and OpenCode for GPT 5.6 Sol",
+          "x-twitter",
+          2.35,
+          {
+            reason:
+              "A Claude Code workflow points at GPT 5.6 Sol through a proxy while comparing Codex and OpenCode.",
+          },
+        ),
+        candidate(
+          "Run GPT 5.6 Sol inside Claude Code through CLIProxyAPI",
+          "x-twitter",
+          2.3,
+          {
+            reason:
+              "The setup routes Claude Code to GPT 5.6 Sol with CLIProxyAPI and a shell alias.",
+          },
+        ),
+        candidate(
+          "AI research careers narrow explored ideas",
+          "hacker-news",
+          2.25,
+        ),
+        candidate("Apple files an OpenAI trade-secret lawsuit", "reddit", 2.2),
+        candidate("Coding assistant token overhead comparison", "rss", 2.15),
+      ],
+      sourceMix: sourceMix(["x-twitter", "reddit", "hacker-news", "rss"]),
+      limit: 5,
+    });
+
+    expect(result.map((item) => item.topRead.title)).toEqual([
+      "Developers mix Claude, Codex and OpenCode for GPT 5.6 Sol",
+      "AI research careers narrow explored ideas",
+      "Apple files an OpenAI trade-secret lawsuit",
+      "Coding assistant token overhead comparison",
+      "Run GPT 5.6 Sol inside Claude Code through CLIProxyAPI",
+    ]);
+  });
+
+  it("keeps different Claude Code events in the editorial window", () => {
+    const result = selectRenderedTopReadCandidates({
+      candidates: [
+        candidate(
+          "Claude Code weekly usage limits reset for subscribers",
+          "reddit",
+          2.35,
+        ),
+        candidate(
+          "Claude Code releases a desktop extension",
+          "hacker-news",
+          2.3,
+        ),
+        candidate("Apple files an OpenAI trade-secret lawsuit", "rss", 2.2),
+        candidate("AI research careers narrow explored ideas", "reddit", 2.1),
+      ],
+      sourceMix: sourceMix(["reddit", "hacker-news", "rss"]),
+      limit: 4,
+    });
+
+    expect(result.map((item) => item.topRead.title)).toEqual([
+      "Claude Code weekly usage limits reset for subscribers",
+      "Claude Code releases a desktop extension",
+      "Apple files an OpenAI trade-secret lawsuit",
+      "AI research careers narrow explored ideas",
+    ]);
+  });
+
   it("does not let editorial priority invert a materially stronger read", () => {
     const weakEditorialLead = candidate("weak-editorial-lead", "reddit", 2.05);
     const strongSupportedRead = candidate(
@@ -257,6 +328,38 @@ describe("selectRenderedTopReadCandidates", () => {
     expect(result.map((item) => item.topRead.title)).toEqual([
       "strong-supported",
       "weak-editorial-lead",
+    ]);
+  });
+
+  it("keeps the authoritative coverage lead first despite viral engagement", () => {
+    const authoritative = candidate("official-supported-update", "rss", 2.1, {
+      confirmedProviderKeys: ["rss", "hacker-news"],
+      confidenceLevel: "high",
+    });
+    const viralSingleSource = candidate(
+      "viral-single-source",
+      "x-twitter",
+      3.2,
+    );
+
+    const result = selectRenderedTopReadCandidates({
+      candidates: [
+        {
+          ...viralSingleSource,
+          editorialPriority: editorialPriority(3.2, true),
+        },
+        {
+          ...authoritative,
+          editorialPriority: editorialPriority(2.8, true, true),
+        },
+      ],
+      sourceMix: sourceMix(["x-twitter", "rss", "hacker-news"]),
+      limit: 8,
+    });
+
+    expect(result.map((item) => item.topRead.title)).toEqual([
+      "official-supported-update",
+      "viral-single-source",
     ]);
   });
 
@@ -338,37 +441,62 @@ const candidate = (
     readonly confidenceLevel?: TopRead["confidence"]["level"];
     readonly canonicalUrl?: string;
     readonly reason?: string;
+    readonly evidence?: readonly SummaryEvidenceItem[];
   } = {},
-): RenderedTopReadCandidate => ({
-  story: {
-    storyClusterId: `story:${title}`,
-    title,
-    summary: `${title} summary`,
-    interestIds: ["ai-agents"],
-    providerKeys: [providerKey],
-    citationIds: [`citation:${title}`],
-  } satisfies TopReadCandidate,
-  topRead: {
-    title,
-    providerKey,
-    providerName: providerKey,
-    primaryActionKind: "read_source",
-    reason: overrides.reason ?? `${title} reason`,
-    matchedInterestIds: ["ai-agents"],
-    matchedRules: ["interest:ai-agents"],
-    signalScore,
-    confidence: {
-      level: overrides.confidenceLevel ?? "low",
-      score: 0.42,
-      rationale: "test",
+): RenderedTopReadCandidate => {
+  const reason = overrides.reason ?? `${title} reason`;
+
+  return {
+    story: {
+      storyClusterId: `story:${title}`,
+      title,
+      summary: `${title} summary`,
+      interestIds: ["ai-agents"],
+      providerKeys: [providerKey],
+      citationIds: [`citation:${title}`],
+    } satisfies TopReadCandidate,
+    topRead: {
+      title,
+      providerKey,
+      providerName: providerKey,
+      primaryActionKind: "read_source",
+      reason,
+      matchedInterestIds: ["ai-agents"],
+      matchedRules: ["interest:ai-agents"],
+      signalScore,
+      confidence: {
+        level: overrides.confidenceLevel ?? "low",
+        score: 0.42,
+        rationale: "test",
+      },
+      confirmedProviderKeys: overrides.confirmedProviderKeys ?? [providerKey],
+      providerMetrics: [],
+      whyImportant: [`${title} matters`],
+      whyNow: "test",
+      canonicalUrl: overrides.canonicalUrl,
+      citationIds: [`citation:${title}`],
     },
-    confirmedProviderKeys: overrides.confirmedProviderKeys ?? [providerKey],
-    providerMetrics: [],
-    whyImportant: [`${title} matters`],
-    whyNow: "test",
-    canonicalUrl: overrides.canonicalUrl,
-    citationIds: [`citation:${title}`],
-  },
+    evidence: overrides.evidence ?? [evidenceItem(title, providerKey, reason)],
+  };
+};
+
+const evidenceItem = (
+  title: string,
+  providerKey: string,
+  bodyPreview: string,
+): SummaryEvidenceItem => ({
+  feedItemId: `feed:${providerKey}:${title}`,
+  sourceItemId: `source:${providerKey}:${title}`,
+  sourceBindingId: `binding:${providerKey}`,
+  interestId: "ai-agents",
+  providerKey,
+  canonicalUrl: `https://example.test/${encodeURIComponent(title)}`,
+  title,
+  bodyPreview,
+  publishedAt: new Date("2026-07-12T12:00:00.000Z"),
+  observedAt: new Date("2026-07-12T12:01:00.000Z"),
+  score: 1,
+  whyImportant: [`${title} matters`],
 });
 
 const sourceMix = (
@@ -397,6 +525,7 @@ const providerCounts = (
 const editorialPriority = (
   editorialScore: number,
   leadEligible: boolean,
+  authoritativeLead = false,
 ): NonNullable<RenderedTopReadCandidate["editorialPriority"]> => ({
   providerKey: "test",
   editorialScore,
@@ -408,6 +537,8 @@ const editorialPriority = (
   confidenceLevel: "medium",
   citationCount: 1,
   confirmedProviderCount: 1,
+  firstPartyOfficial: false,
+  authoritativeLead,
   leadEligible,
 });
 

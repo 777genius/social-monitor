@@ -55,7 +55,9 @@ export class InMemoryConversationUnitRepository
       if (
         snapshot.tenantId !== query.tenantId ||
         snapshot.workspaceId !== query.workspaceId ||
-        !rootIds.has(snapshot.rootFeedItemId)
+        !rootIds.has(snapshot.rootFeedItemId) ||
+        (query.observedBefore !== undefined &&
+          snapshot.observedAt.getTime() >= query.observedBefore.getTime())
       ) {
         continue;
       }
@@ -83,7 +85,11 @@ export class InMemoryConversationUnitRepository
             snapshot.interestId === query.interestId) &&
           snapshot.observedAt.getTime() > query.observedAfter.getTime();
 
-        if (!inScope) {
+        const beforeCutoff =
+          query.observedBefore === undefined ||
+          snapshot.observedAt.getTime() < query.observedBefore.getTime();
+
+        if (!inScope || !beforeCutoff) {
           return [];
         }
 

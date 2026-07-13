@@ -134,6 +134,8 @@ export class ListReaderSummariesUseCase {
       workspaceId: snapshot.workspaceId,
       scope: snapshot.scope,
       sourceWindow: snapshot.sourceWindow,
+      period: snapshot.period,
+      observedThrough: snapshot.generatedAt,
     });
 
     const content = await this.previewMediaEnricher.enrich({
@@ -146,6 +148,7 @@ export class ListReaderSummariesUseCase {
         workspaceId: snapshot.workspaceId,
         scope: snapshot.scope,
         period: snapshot.period,
+        observedThrough: snapshot.generatedAt,
       });
 
     return presentReaderSummaryArtifact(readerSummary, freshness, {

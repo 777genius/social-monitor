@@ -95,6 +95,8 @@ describe("PrismaReaderSummaryProviderCollectionHealthReader", () => {
       null,
       query.period.startedAt.toISOString(),
       query.period.endedAt.toISOString(),
+      null,
+      null,
     ]);
   });
 
@@ -129,6 +131,21 @@ describe("PrismaReaderSummaryProviderCollectionHealthReader", () => {
         failureKinds: [],
       }),
     ]);
+  });
+
+  it("freezes scan health at the artifact observation cutoff", async () => {
+    const prisma = new FakeRawQueryClient([]);
+    const reader = new PrismaReaderSummaryProviderCollectionHealthReader(
+      prisma,
+    );
+    const observedThrough = new Date("2026-07-10T00:05:00.000Z");
+
+    await reader.readProviderCollectionHealth({
+      ...query,
+      observedThrough,
+    });
+
+    expect(prisma.values.slice(-2)).toEqual([observedThrough, observedThrough]);
   });
 });
 

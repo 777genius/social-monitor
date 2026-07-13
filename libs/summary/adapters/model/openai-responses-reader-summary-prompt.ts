@@ -81,6 +81,11 @@ const readerSummaryLeadInstructions = (
       ]
     : [
         "The first narrativeSections item must be kind lead and cite one or more citationIds from coveragePlan.lead. Follow it with optional main_signal and why_it_matters sections, one secondary_signal for every entry in coveragePlan.secondary, and an optional watch section. Never fill a missing section with generic prose.",
+        ...(input.coveragePlan.lead.providerKeys.length <= 1
+          ? [
+              "coveragePlan.lead has one provider group. Frame the headline and opening sentence explicitly as that provider's discussion, report or first-party announcement. Do not generalize it into what developers, users or the industry are doing.",
+            ]
+          : []),
         "For secondary_signal, copy the exact storyClusterId from coveragePlan and cite only citationIds listed for that planned cluster.",
         "Keep the lead focused on coveragePlan.lead. Other signals today must remain concise and must not displace the lead.",
       ];

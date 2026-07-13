@@ -7,14 +7,14 @@ import type {
 import { selectUniqueTopReadCandidates } from "./top-read-selection-policy";
 
 describe("top read editorial priority", () => {
-  it("puts materially stronger engagement ahead when story scores are nearly equal", () => {
+  it("prefers independently supported coverage over a viral single-source post", () => {
     const stories = [
       story("ant", "Ant JavaScript ecosystem", ["c-ant-hn", "c-ant-rss"]),
       story("usage", "Agent workflow usage limits", ["c-usage-x"]),
     ];
     const citations = citationMap([
       citation("c-ant-hn", "ant-hn", "hacker-news"),
-      citation("c-ant-rss", "ant-rss", "rss"),
+      citation("c-ant-rss", "ant-rss", "reddit"),
       citation("c-usage-x", "usage-x", "x-twitter"),
     ]);
     const evidence = evidenceMap([
@@ -32,8 +32,8 @@ describe("top read editorial priority", () => {
       }),
       evidenceItem({
         feedItemId: "ant-rss",
-        providerKey: "rss",
-        canonicalUrl: "https://ant.example/",
+        providerKey: "reddit",
+        canonicalUrl: "https://reddit.example/r/javascript/ant-review",
         score: 1.71,
         metrics: [],
         qualityScore: 0.55,
@@ -56,7 +56,7 @@ describe("top read editorial priority", () => {
         id: "ant",
         representativeFeedItemId: "ant-hn",
         duplicateFeedItemIds: ["ant-rss"],
-        providerKeys: ["hacker-news", "rss"],
+        providerKeys: ["hacker-news", "reddit"],
         score: 2.65,
         baseScore: 2.023,
       }),
@@ -78,8 +78,8 @@ describe("top read editorial priority", () => {
     );
 
     expect(result.map((item) => item.title)).toEqual([
-      "Agent workflow usage limits",
       "Ant JavaScript ecosystem",
+      "Agent workflow usage limits",
     ]);
   });
 

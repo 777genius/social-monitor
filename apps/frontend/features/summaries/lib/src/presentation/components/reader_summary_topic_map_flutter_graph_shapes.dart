@@ -108,7 +108,7 @@ final class _TopicMapFlutterGraphNodeShape
     final padding = _topicMapLabelPolicy.padding(radius);
     final maxLines = _topicMapLabelPolicy.maxLines(radius);
     final label = _visibleTopicMapLabel(
-      label: data.node.label,
+      label: _topicMapDisplayLabel(data.node),
       radius: radius,
       labelColor: labelColor,
       textColor: textColor,

@@ -234,7 +234,7 @@ num topPostEngagementScore(TopRead read) {
   return total;
 }
 
-/// Keeps the backend editorial order for relevance and applies a local sort
+/// Keeps the backend editorial order for editorial view and applies a local sort
 /// only when the reader explicitly chooses engagement.
 List<TopRead> orderTopPosts(
   Iterable<TopRead> items, {

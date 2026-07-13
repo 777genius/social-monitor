@@ -1,5 +1,16 @@
 import type { SourceMixEntry } from "../entities/source-mix-entry";
 import type { TopRead, TopReadCandidate } from "../entities/top-read";
+import { STORY_RANKING_POLICY_V1 } from "./story-ranking-policy";
+import {
+  sharedStoryTopicTokenCount,
+  storyPrimaryClaimFacet,
+  storyTopicEventTokens,
+  storyTopicSimilarity,
+  storyTopicSpecificProductTokens,
+  storyTopicTokens,
+  type StoryPrimaryClaimFacet,
+} from "../services/story-topic-tokenizer";
+import type { SummaryEvidenceItem } from "../value-objects/summary-evidence-item";
 import { compactUnique } from "../value-objects/summary-text";
 import {
   topReadPrimaryMinimumForLimit,
@@ -18,6 +29,7 @@ import {
 export type RenderedTopReadCandidate = {
   readonly story: TopReadCandidate;
   readonly topRead: TopRead;
+  readonly evidence: readonly SummaryEvidenceItem[];
   readonly editorialPriority?: ReaderSummaryEditorialPriorityProfile;
 };
 
@@ -65,6 +77,12 @@ export const selectRenderedTopReadCandidates = (params: {
       break;
     }
     if (!isReaderFacingQualityTopRead(candidate.topRead)) {
+      continue;
+    }
+    if (
+      selected.length < editorialDiversityWindow &&
+      selected.some((item) => areEditorialNearDuplicates(item, candidate))
+    ) {
       continue;
     }
     const providerKey = candidate.topRead.providerKey;
@@ -116,7 +134,103 @@ export const selectRenderedTopReadCandidates = (params: {
     select(candidate);
   }
 
-  return rankedCandidatePool(selected);
+  return selected;
+};
+
+const areEditorialNearDuplicates = (
+  left: RenderedTopReadCandidate,
+  right: RenderedTopReadCandidate,
+): boolean => {
+  const leftProfile = editorialStoryProfile(left);
+  const rightProfile = editorialStoryProfile(right);
+  if (
+    leftProfile === undefined ||
+    rightProfile === undefined ||
+    !claimFacetsAreCompatible(leftProfile.claimFacets, rightProfile.claimFacets)
+  ) {
+    return false;
+  }
+  const sharedProductTokens = sharedStoryTopicTokenCount(
+    leftProfile.productTokens,
+    rightProfile.productTokens,
+  );
+  if (sharedProductTokens === 0) {
+    return false;
+  }
+  const hasEventContext =
+    leftProfile.eventTokens.length > 0 || rightProfile.eventTokens.length > 0;
+  if (
+    hasEventContext &&
+    sharedStoryTopicTokenCount(
+      leftProfile.eventTokens,
+      rightProfile.eventTokens,
+    ) === 0
+  ) {
+    return false;
+  }
+  const sharedTopicTokens = sharedStoryTopicTokenCount(
+    leftProfile.topicTokens,
+    rightProfile.topicTokens,
+  );
+
+  return (
+    sharedTopicTokens >= minimumSharedEditorialTokens &&
+    storyTopicSimilarity(leftProfile.topicTokens, rightProfile.topicTokens) >=
+      minimumEditorialTopicSimilarity
+  );
+};
+
+type EditorialStoryProfile = {
+  readonly topicTokens: readonly string[];
+  readonly productTokens: readonly string[];
+  readonly eventTokens: readonly string[];
+  readonly claimFacets: readonly StoryPrimaryClaimFacet[];
+};
+
+const editorialStoryProfile = (
+  candidate: RenderedTopReadCandidate,
+): EditorialStoryProfile | undefined => {
+  if (candidate.evidence.length === 0) {
+    return undefined;
+  }
+  const topicTokens = compactUnique(
+    candidate.evidence.flatMap((item) =>
+      storyTopicTokens(item, STORY_RANKING_POLICY_V1),
+    ),
+  );
+
+  return {
+    topicTokens,
+    productTokens: compactUnique(storyTopicSpecificProductTokens(topicTokens)),
+    eventTokens: compactUnique(storyTopicEventTokens(topicTokens)),
+    claimFacets: uniqueClaimFacets(candidate.evidence),
+  };
+};
+
+const uniqueClaimFacets = (
+  evidence: readonly SummaryEvidenceItem[],
+): readonly StoryPrimaryClaimFacet[] => [
+  ...new Set(
+    evidence.flatMap((item) => {
+      const facet = storyPrimaryClaimFacet(item);
+      return facet === undefined ? [] : [facet];
+    }),
+  ),
+];
+
+const claimFacetsAreCompatible = (
+  left: readonly StoryPrimaryClaimFacet[],
+  right: readonly StoryPrimaryClaimFacet[],
+): boolean => {
+  if (left.length === 0 && right.length === 0) {
+    return true;
+  }
+  if (left.length === 0 || right.length === 0) {
+    return false;
+  }
+
+  const rightFacets = new Set(right);
+  return left.some((facet) => rightFacets.has(facet));
 };
 
 const qualityCandidatePool = (
@@ -154,19 +268,28 @@ const rankedCandidatePool = (
   candidates
     .map((candidate, index) => ({ candidate, index }))
     .sort((left, right) => {
+      const leftEditorial = left.candidate.editorialPriority;
+      const rightEditorial = right.candidate.editorialPriority;
+      if (
+        leftEditorial !== undefined &&
+        rightEditorial !== undefined &&
+        leftEditorial.authoritativeLead !== rightEditorial.authoritativeLead
+      ) {
+        return compareReaderSummaryEditorialPriority(
+          leftEditorial,
+          rightEditorial,
+        );
+      }
       const scoreDelta =
         topReadRankScore(right.candidate.topRead) -
         topReadRankScore(left.candidate.topRead);
       if (Math.abs(scoreDelta) >= materialRankScoreOverride) {
         return scoreDelta;
       }
-      if (
-        left.candidate.editorialPriority !== undefined &&
-        right.candidate.editorialPriority !== undefined
-      ) {
+      if (leftEditorial !== undefined && rightEditorial !== undefined) {
         const editorialDifference = compareReaderSummaryEditorialPriority(
-          left.candidate.editorialPriority,
-          right.candidate.editorialPriority,
+          leftEditorial,
+          rightEditorial,
         );
         if (editorialDifference !== 0) {
           return editorialDifference;
@@ -322,6 +445,9 @@ const strongSingleSourceSignalScore = 2.2;
 const usefulSingleSourceSignalScore = 1.9;
 const minimumDetailedReasonLength = 240;
 const maxRenderedSocialProviderCount = 4;
+const editorialDiversityWindow = 4;
+const minimumSharedEditorialTokens = 3;
+const minimumEditorialTopicSimilarity = 0.25;
 
 const normalizeLimit = (value: number): number => {
   if (!Number.isFinite(value) || !Number.isInteger(value) || value < 1) {

@@ -152,22 +152,27 @@ export class ReaderSummary {
       ]),
       modelStories: input.topStories,
     });
-    const renderedTopReadCandidates = readerTopStoryPool.map((story) => ({
-      story,
-      topRead: storyToTopRead(
+    const renderedTopReadCandidates = readerTopStoryPool.map((story) => {
+      const evidence = evidenceByClusterId.get(story.storyClusterId) ?? [];
+
+      return {
         story,
-        citationById,
-        evidenceByFeedItemId,
-        clusterById,
-        evidenceByClusterId,
-      ),
-      editorialPriority: buildReaderSummaryEditorialPriorityProfile({
-        story,
-        cluster: clusterById.get(story.storyClusterId),
-        evidence: evidenceByClusterId.get(story.storyClusterId) ?? [],
-        citationCount: story.citationIds.length,
-      }),
-    }));
+        topRead: storyToTopRead(
+          story,
+          citationById,
+          evidenceByFeedItemId,
+          clusterById,
+          evidenceByClusterId,
+        ),
+        evidence,
+        editorialPriority: buildReaderSummaryEditorialPriorityProfile({
+          story,
+          cluster: clusterById.get(story.storyClusterId),
+          evidence,
+          citationCount: story.citationIds.length,
+        }),
+      };
+    });
     const readerTopReadCandidates = selectRenderedTopReadCandidates({
       candidates: renderedTopReadCandidates,
       sourceMix,

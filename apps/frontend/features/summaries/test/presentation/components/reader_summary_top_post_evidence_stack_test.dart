@@ -116,114 +116,123 @@ void main() {
     },
   );
 
-  testWidgets(
-    'keeps cross-source support visible when citation rows are incomplete',
-    (tester) async {
-      tester.view.physicalSize = const Size(1280, 900);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(() {
-        tester.view.resetPhysicalSize();
-        tester.view.resetDevicePixelRatio();
-      });
+  testWidgets('keeps confirmed cross-source support with one resolved citation', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
 
-      final summary = const SummaryMapper().readerSummaryToDomain(
-        readerSummaryApiDto(
-          content: readerSummaryContentApiDto(
-            topReads: const [
-              TopReadApiDto(
-                title: 'Claude Code tracker raises telemetry questions',
-                providerKey: 'rss',
-                reason:
-                    'The post explains why Claude Code tracking concerns matter for developer teams.',
-                matchedInterestIds: ['ai-developer-tools'],
-                signalScore: 2.69,
-                confidence: TopReadConfidenceApiDto(
-                  level: 'high',
-                  score: 0.74,
-                  rationale: 'Two providers support this story signal.',
-                ),
-                confirmedProviderKeys: ['hacker-news', 'rss'],
-                citationIds: ['missing-cross-source-citation'],
-              ),
-              TopReadApiDto(
-                title: 'Token pricing and agent cost measurement get scrutiny',
-                providerKey: 'hacker-news',
-                reason:
-                    'HN and RSS surfaced a concrete cost-analysis angle for AI product teams.',
-                matchedInterestIds: ['ai-developer-tools'],
-                signalScore: 2.18,
-                confidence: TopReadConfidenceApiDto(
-                  level: 'high',
-                  score: 0.72,
-                  rationale: 'Two providers support this story signal.',
-                ),
-                confirmedProviderKeys: ['hacker-news', 'rss'],
-                citationIds: ['pricing-hn', 'pricing-rss'],
-              ),
-            ],
-          ),
-          citations: [
-            summaryCitationApiDto(
-              id: 'pricing-hn',
-              sourceLabel: 'Hacker News pricing discussion',
-              providerKey: 'hacker-news',
-              canonicalUrl: 'https://news.ycombinator.com/item?id=42',
-            ),
-            summaryCitationApiDto(
-              id: 'pricing-rss',
-              sourceLabel: 'RSS post about token pricing',
+    final summary = const SummaryMapper().readerSummaryToDomain(
+      readerSummaryApiDto(
+        content: readerSummaryContentApiDto(
+          topReads: const [
+            TopReadApiDto(
+              title: 'Claude Code tracker raises telemetry questions',
               providerKey: 'rss',
-              canonicalUrl: 'https://rss.example/token-pricing',
+              reason:
+                  'The post explains why Claude Code tracking concerns matter for developer teams.',
+              matchedInterestIds: ['ai-developer-tools'],
+              signalScore: 2.69,
+              confidence: TopReadConfidenceApiDto(
+                level: 'high',
+                score: 0.74,
+                rationale: 'Two providers support this story signal.',
+              ),
+              confirmedProviderKeys: ['hacker-news', 'rss'],
+              citationIds: ['missing-cross-source-citation'],
+            ),
+            TopReadApiDto(
+              title: 'Token pricing and agent cost measurement get scrutiny',
+              providerKey: 'hacker-news',
+              reason:
+                  'HN and RSS surfaced a concrete cost-analysis angle for AI product teams.',
+              matchedInterestIds: ['ai-developer-tools'],
+              signalScore: 2.18,
+              confidence: TopReadConfidenceApiDto(
+                level: 'high',
+                score: 0.72,
+                rationale: 'Two providers support this story signal.',
+              ),
+              confirmedProviderKeys: ['hacker-news', 'rss'],
+              citationIds: ['pricing-hn', 'pricing-rss'],
             ),
           ],
         ),
-      );
-
-      await tester.pumpWidget(_TestApp(summary: summary));
-      await tester.pumpAndSettle();
-
-      final firstRow = find.byKey(const ValueKey('reader-summary-top-post-0'));
-      expect(
-        find.descendant(
-          of: firstRow,
-          matching: find.text('Claude Code tracker raises telemetry questions'),
-        ),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(
-          of: firstRow,
-          matching: find.text('Cross-source · 2 sources'),
-        ),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(
-          of: firstRow,
-          matching: find.textContaining('Show evidence'),
-        ),
-        findsNothing,
-      );
-
-      final secondRow = find.byKey(const ValueKey('reader-summary-top-post-1'));
-      expect(
-        find.descendant(
-          of: secondRow,
-          matching: find.text(
-            'Token pricing and agent cost measurement get scrutiny',
+        citations: [
+          summaryCitationApiDto(
+            id: 'missing-cross-source-citation',
+            sourceLabel: 'RSS telemetry report',
+            providerKey: 'rss',
+            canonicalUrl: 'https://rss.example/telemetry-report',
           ),
+          summaryCitationApiDto(
+            id: 'pricing-hn',
+            sourceLabel: 'Hacker News pricing discussion',
+            providerKey: 'hacker-news',
+            canonicalUrl: 'https://news.ycombinator.com/item?id=42',
+          ),
+          summaryCitationApiDto(
+            id: 'pricing-rss',
+            sourceLabel: 'RSS post about token pricing',
+            providerKey: 'rss',
+            canonicalUrl: 'https://rss.example/token-pricing',
+          ),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(_TestApp(summary: summary));
+    await tester.pumpAndSettle();
+
+    final firstRow = find.byKey(const ValueKey('reader-summary-top-post-0'));
+    expect(
+      find.descendant(
+        of: firstRow,
+        matching: find.text('Claude Code tracker raises telemetry questions'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: firstRow,
+        matching: find.text('Cross-source · 2 sources'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: firstRow, matching: find.text('High confidence')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: firstRow,
+        matching: find.textContaining('Show evidence'),
+      ),
+      findsNothing,
+    );
+
+    final secondRow = find.byKey(const ValueKey('reader-summary-top-post-1'));
+    expect(
+      find.descendant(
+        of: secondRow,
+        matching: find.text(
+          'Token pricing and agent cost measurement get scrutiny',
         ),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(
-          of: secondRow,
-          matching: find.text('Cross-source · 2 sources · Show evidence'),
-        ),
-        findsOneWidget,
-      );
-    },
-  );
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: secondRow,
+        matching: find.text('Cross-source · 2 sources · Show evidence'),
+      ),
+      findsOneWidget,
+    );
+  });
 
   testWidgets('keeps same-source evidence labeled as same-source support', (
     tester,
@@ -305,6 +314,81 @@ void main() {
     expect(find.text('Reddit thread about agent workflows'), findsNothing);
     expect(find.text('Reddit follow-up on workflow costs'), findsOneWidget);
   });
+
+  testWidgets(
+    'keeps one citation single-source and shows confidence separately',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      final summary = const SummaryMapper().readerSummaryToDomain(
+        readerSummaryApiDto(
+          content: readerSummaryContentApiDto(
+            topReads: const [
+              TopReadApiDto(
+                title: 'One medium-confidence source',
+                providerKey: 'hacker-news',
+                reason: 'One source can be plausible without corroboration.',
+                matchedInterestIds: ['ai-developer-tools'],
+                signalScore: 2.1,
+                confidence: TopReadConfidenceApiDto(
+                  level: 'medium',
+                  score: 0.64,
+                  rationale: 'The source is credible but not corroborated.',
+                ),
+                confirmedProviderKeys: ['hacker-news'],
+                citationIds: ['only-citation'],
+              ),
+            ],
+          ),
+          citations: [
+            summaryCitationApiDto(
+              id: 'only-citation',
+              sourceLabel: 'Hacker News discussion',
+              providerKey: 'hacker-news',
+              canonicalUrl: 'https://news.ycombinator.com/item?id=7',
+            ),
+          ],
+        ),
+      );
+
+      await tester.pumpWidget(_TestApp(summary: summary));
+      await tester.pumpAndSettle();
+
+      final rowFinder = find.byKey(const ValueKey('reader-summary-top-post-0'));
+      expect(
+        find.descendant(of: rowFinder, matching: find.text('Single source')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: rowFinder,
+          matching: find.text('Medium confidence'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: rowFinder,
+          matching: find.text('Same-source support'),
+        ),
+        findsNothing,
+      );
+
+      final confidenceTooltip = tester.widget<Tooltip>(
+        find.ancestor(
+          of: find.text('Medium confidence'),
+          matching: find.byType(Tooltip),
+        ),
+      );
+      expect(confidenceTooltip.message, contains('64%'));
+      expect(confidenceTooltip.message, contains('not corroborated'));
+    },
+  );
 }
 
 class _TestApp extends StatelessWidget {

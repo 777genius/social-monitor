@@ -20,13 +20,15 @@ import { GetReaderSummaryUseCase } from "./get-reader-summary.use-case";
 
 describe("GetReaderSummaryUseCase", () => {
   it("loads a reader summary artifact by id with freshness projection", async () => {
+    const freshness = new FakeReaderSummaryFreshnessProbe();
+    const coverage = new FakeReaderSummaryCoverageCounter(4);
     const useCase = new GetReaderSummaryUseCase(
       new FakeReaderSummaryArtifactRepository([
         readerSummaryArtifact("reader-summary-1"),
       ]),
-      new FakeReaderSummaryFreshnessProbe(),
+      freshness,
       undefined,
-      new FakeReaderSummaryCoverageCounter(4),
+      coverage,
     );
 
     const result = await useCase.execute({
@@ -105,6 +107,11 @@ describe("GetReaderSummaryUseCase", () => {
           queryBreakdown: [],
         },
       }),
+    });
+    expect(coverage.queries[0]?.observedThrough).toEqual(generatedAt);
+    expect(freshness.queries[0]).toMatchObject({
+      period,
+      observedThrough: generatedAt,
     });
   });
 
@@ -274,6 +281,7 @@ const period = {
   timezone: "UTC",
   periodKey: "daily:2026-06-23T00:00:00.000Z:2026-06-24T00:00:00.000Z:UTC",
 };
+const generatedAt = new Date("2026-06-24T00:05:00.000Z");
 
 const readerSummaryArtifact = (
   readerSummaryId: string,
@@ -285,6 +293,7 @@ const readerSummaryArtifact = (
     workspaceId: workspace,
     scope: { type: "workspace" },
     period,
+    generatedAt,
     sourceWindow: {
       windowId: "workspace:get",
       startedAt: new Date("2026-06-23T08:00:00.000Z"),
@@ -467,7 +476,14 @@ class FakeReaderSummaryArtifactRepository implements ReaderSummaryArtifactReposi
 }
 
 class FakeReaderSummaryFreshnessProbe implements ReaderSummaryFreshnessProbePort {
-  async evaluate(): Promise<ReaderSummaryFreshness> {
+  readonly queries: Parameters<
+    ReaderSummaryFreshnessProbePort["evaluate"]
+  >[0][] = [];
+
+  async evaluate(
+    query: Parameters<ReaderSummaryFreshnessProbePort["evaluate"]>[0],
+  ): Promise<ReaderSummaryFreshness> {
+    this.queries.push(query);
     return {
       status: "fresh",
       checkedAt: new Date("2026-06-23T08:40:00.000Z"),
@@ -495,13 +511,22 @@ class FakeReaderSummaryPreviewMediaEnricher implements ReaderSummaryPreviewMedia
 }
 
 class FakeReaderSummaryCoverageCounter implements ReaderSummaryCoverageCounterPort {
+  readonly queries: Parameters<
+    ReaderSummaryCoverageCounterPort["countCollectedFeedItemCoverage"]
+  >[0][] = [];
+
   constructor(private readonly collectedFeedItemCount: number) {}
 
   async countCollectedFeedItems(): Promise<number> {
     return this.collectedFeedItemCount;
   }
 
-  async countCollectedFeedItemCoverage() {
+  async countCollectedFeedItemCoverage(
+    query: Parameters<
+      ReaderSummaryCoverageCounterPort["countCollectedFeedItemCoverage"]
+    >[0],
+  ) {
+    this.queries.push(query);
     return {
       collectedFeedItemCount: this.collectedFeedItemCount,
       lowRelevanceFeedItemCount: 0,
