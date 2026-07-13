@@ -94,6 +94,66 @@ describe("alignReaderSummaryTopicSemanticLabelToEvidence", () => {
     });
   });
 
+  it("recovers the missing defendant from an incomplete lawsuit action label", () => {
+    expect(
+      alignReaderSummaryTopicSemanticLabelToEvidence({
+        semantic: {
+          subject: "Apple reportedly sues",
+          claimType: "allegation",
+          confidenceScore: 0.9,
+        },
+        primaryFacet: undefined,
+        evidenceTexts: [
+          "Apple reportedly sues OpenAI over alleged trade secret theft",
+        ],
+      }),
+    ).toEqual({
+      subject: "Apple OpenAI",
+      claimType: "allegation",
+      qualifier: "Lawsuit",
+      confidenceScore: 0.9,
+    });
+  });
+
+  it.each([
+    [
+      "Apple Inc reportedly sues",
+      "Apple Inc reportedly sues OpenAI over alleged trade secret theft",
+      "Apple Inc OpenAI",
+    ],
+    [
+      "Times reportedly sues",
+      "The New York Times sues OpenAI over training data",
+      "New York Times",
+    ],
+    [
+      "Apple reportedly sues",
+      "Apple sued OpenAI Research Labs over training data",
+      "OpenAI Research Labs",
+    ],
+  ])(
+    "keeps a multi-word claimant grounded for %s",
+    (subject, evidenceText, expectedSubject) => {
+      const aligned = alignReaderSummaryTopicSemanticLabelToEvidence({
+        semantic: {
+          subject,
+          claimType: "allegation",
+          confidenceScore: 0.9,
+        },
+        primaryFacet: undefined,
+        evidenceTexts: [evidenceText],
+      });
+
+      expect(aligned).toMatchObject({
+        subject: expectedSubject,
+        qualifier: "Lawsuit",
+      });
+      expect(
+        renderReaderSummaryTopicSemanticLabel(aligned).split(/\s+/u),
+      ).toHaveLength(4);
+    },
+  );
+
   it("does not preserve an ungrounded lawsuit qualifier", () => {
     expect(
       alignReaderSummaryTopicSemanticLabelToEvidence({

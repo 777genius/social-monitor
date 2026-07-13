@@ -128,7 +128,6 @@ export const buildReaderSummaryTopicMap = (
     scopeReaderSummaryTopicMapNodeDrafts(nodeDrafts),
   );
   const rawNodes =
-    params.generatedBy === "agent-runtime" ||
     params.preserveStoryClustersForLabeling === true
       ? aggregatedNodes
       : mergeReaderSummaryTopicMapNodesByLabel(aggregatedNodes);
