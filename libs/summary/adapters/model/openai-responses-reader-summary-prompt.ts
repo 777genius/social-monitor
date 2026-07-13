@@ -21,10 +21,10 @@ export type ReaderSummaryPromptRelease = {
  * duplicate history without explaining why a release exists.
  */
 export const currentReaderSummaryPromptRelease = {
-  id: "reader_summary.prompt.2026-07-13.primary_leads_planned_narrative",
+  id: "reader_summary.prompt.2026-07-13.lead_aligned_narrative",
   releasedOn: "2026-07-13",
   changeSummary:
-    "Secondary legal reports cannot lead, optional watch sections require strong self-contained evidence, and vague topic labels are normalized or rejected.",
+    "Headlines and top-read order follow the planned narrative lead; secondary legal reports cannot lead, and optional watch sections require strong self-contained evidence.",
 } as const satisfies ReaderSummaryPromptRelease;
 
 export const assertNoReaderSummaryPromptReleaseOverride = (params: {
@@ -68,6 +68,7 @@ export const buildOpenAiReaderSummaryInstructions = (
     "Write headline and content.headline in concise sentence-style article headline form. Use sentence case and never end either headline with a period or full stop.",
     "State the lead event and its concrete consequence directly. Do not use meta-headline formulas such as one item leads or tops a day of chatter, debate or signals.",
     "Return narrativeSections as the canonical reader narrative. executiveSummary must be a faithful Markdown rendering of the same sections and must not add claims of its own.",
+    "headline, content.headline and content.oneLineTakeaway must describe coveragePlan.lead and the first lead narrative section. Never headline a secondary signal, even when it has higher raw engagement.",
     ...readerSummaryLeadInstructions(input),
     "Each narrative section must add information not already stated elsewhere. Do not paraphrase the lead under Main signal or repeat the same caveat in multiple sections.",
     "Explain unfamiliar product, model or project names on first mention with a short reader-facing description when the evidence defines them. If the evidence does not explain a name, omit it instead of listing unexplained names.",

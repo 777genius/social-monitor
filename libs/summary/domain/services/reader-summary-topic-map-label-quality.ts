@@ -311,6 +311,7 @@ const broadProductFamilyTokens = new Set([
   "anthropic",
   "chatgpt",
   "claude",
+  "code",
   "codex",
   "copilot",
   "gemini",

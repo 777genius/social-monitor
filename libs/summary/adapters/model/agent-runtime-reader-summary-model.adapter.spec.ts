@@ -83,7 +83,7 @@ describe("AgentRuntimeReaderSummaryModelAdapter", () => {
     });
   });
 
-  it("normalizes terminal full stops from generated headlines", async () => {
+  it("replaces an inconsistent generated headline with the planned lead", async () => {
     const providerDraft = validReaderProviderDraft();
     providerDraft.headline =
       "Reddit discussion highlights developers routing GPT-5.6 Sol through Claude Code.";
@@ -110,7 +110,7 @@ describe("AgentRuntimeReaderSummaryModelAdapter", () => {
     const attempt = await adapter.generate(input, route);
 
     expect(attempt.draft.headline).toBe(
-      "Reddit discussion highlights developers routing GPT-5.6 Sol through Claude Code",
+      "Reddit discussion: Agent runtime reliability tradeoffs",
     );
     expect(attempt.draft.content?.headline).not.toMatch(/[.\u2026\u3002]$/u);
   });
@@ -250,7 +250,7 @@ describe("AgentRuntimeReaderSummaryModelAdapter", () => {
 
     expect(client.commands).toHaveLength(1);
     expect(attempt.draft.content?.narrativeSections?.[0]?.title).toBe(
-      "Overview",
+      "Agent runtime reliability tradeoffs",
     );
   });
 

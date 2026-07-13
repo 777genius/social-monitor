@@ -221,6 +221,53 @@ describe("groundedReaderHeadline", () => {
     ).toBe("Reports say Acme sued Example Labs over alleged model theft");
   });
 
+  it("does not double-prefix an already source-framed legal top-read title", () => {
+    const lead = {
+      ...topRead(),
+      title: "Reports say Apple sued OpenAI over alleged trade secret theft",
+      reason: "No primary court filing is available.",
+      confidence: {
+        level: "medium" as const,
+        score: 0.68,
+        rationale:
+          "Two monitored source groups surface this story, but repetition does not independently verify the allegation.",
+      },
+      confirmedProviderKeys: ["reddit", "hacker-news"],
+    };
+
+    expect(
+      groundedReaderHeadline({
+        headline: "A vague daily wrap",
+        topReads: [lead],
+        sourceMix: [],
+      }),
+    ).toBe("Reports say Apple sued OpenAI over alleged trade secret theft");
+  });
+
+  it("collapses an already duplicated legal report prefix", () => {
+    const lead = {
+      ...topRead(),
+      title:
+        "Reports say Reports say Apple sued OpenAI over alleged trade secret theft",
+      reason: "No primary court filing is available.",
+      confidence: {
+        level: "medium" as const,
+        score: 0.68,
+        rationale:
+          "Two monitored source groups surface this story, but repetition does not independently verify the allegation.",
+      },
+      confirmedProviderKeys: ["reddit", "hacker-news"],
+    };
+
+    expect(
+      groundedReaderHeadline({
+        headline: "A vague daily wrap",
+        topReads: [lead],
+        sourceMix: [],
+      }),
+    ).toBe("Reports say Apple sued OpenAI over alleged trade secret theft");
+  });
+
   it("keeps a first-party legal action concrete", () => {
     const lead = {
       ...topRead(),

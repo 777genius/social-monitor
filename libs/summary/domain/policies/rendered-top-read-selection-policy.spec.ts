@@ -402,6 +402,62 @@ describe("selectRenderedTopReadCandidates", () => {
     ]);
   });
 
+  it("pins the narrative lead without retaining its editorial near-duplicate", () => {
+    const pinned = candidate(
+      "Run GPT 5.6 Sol inside Claude Code through CLIProxyAPI",
+      "hacker-news",
+      2.3,
+      {
+        reason:
+          "The setup routes Claude Code to GPT 5.6 Sol with CLIProxyAPI and a shell alias.",
+      },
+    );
+    const duplicate = candidate(
+      "Developers mix Claude, Codex and OpenCode for GPT 5.6 Sol",
+      "x-twitter",
+      2.7,
+      {
+        reason:
+          "A Claude Code workflow points at GPT 5.6 Sol through a proxy while comparing Codex and OpenCode.",
+      },
+    );
+    const result = selectRenderedTopReadCandidates({
+      candidates: [
+        duplicate,
+        candidate(
+          "AI research careers narrow explored ideas",
+          "hacker-news",
+          2.6,
+        ),
+        pinned,
+      ],
+      sourceMix: sourceMix(["x-twitter", "hacker-news"]),
+      limit: 3,
+      pinnedStoryClusterId: pinned.story.storyClusterId,
+    });
+
+    expect(result[0]?.story.storyClusterId).toBe(pinned.story.storyClusterId);
+    expect(result.map((item) => item.story.storyClusterId)).not.toContain(
+      duplicate.story.storyClusterId,
+    );
+  });
+
+  it("does not select a concise pinned candidate twice", () => {
+    const pinned = candidate("Token overhead", "hacker-news", 2.3, {
+      reason: "Short reason",
+      evidence: [],
+    });
+    const result = selectRenderedTopReadCandidates({
+      candidates: [pinned],
+      sourceMix: sourceMix(["hacker-news"]),
+      limit: 2,
+      pinnedStoryClusterId: pinned.story.storyClusterId,
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0]?.story.storyClusterId).toBe(pinned.story.storyClusterId);
+  });
+
   it("keeps different Claude Code events in the editorial window", () => {
     const result = selectRenderedTopReadCandidates({
       candidates: [

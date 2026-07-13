@@ -48,6 +48,7 @@ export const selectRenderedTopReadCandidates = (params: {
   readonly candidates: readonly RenderedTopReadCandidate[];
   readonly sourceMix: readonly SourceMixEntry[];
   readonly limit: number;
+  readonly pinnedStoryClusterId?: string;
 }): readonly RenderedTopReadCandidate[] => {
   const limit = normalizeLimit(params.limit);
   const activeProviders = activeProviderKeys(params);
@@ -69,12 +70,23 @@ export const selectRenderedTopReadCandidates = (params: {
     const providerKey = candidate.topRead.providerKey;
     providerCounts.set(providerKey, (providerCounts.get(providerKey) ?? 0) + 1);
   };
+  const pinnedCandidate = pool.find(
+    (candidate) =>
+      candidate.story.storyClusterId === params.pinnedStoryClusterId &&
+      isReaderFacingQualityTopRead(candidate.topRead),
+  );
+  if (pinnedCandidate !== undefined) {
+    select(pinnedCandidate);
+  }
 
   for (const candidate of pool) {
     if (selected.length >= limit) {
       break;
     }
-    if (!isReaderFacingQualityTopRead(candidate.topRead)) {
+    if (
+      selectedStoryIds.has(candidate.story.storyClusterId) ||
+      !isReaderFacingQualityTopRead(candidate.topRead)
+    ) {
       continue;
     }
     if (hasSelectedRenderedDuplicate(selected, candidate)) {

@@ -25,6 +25,10 @@ import {
   selectUniqueTopReadCandidatePool,
   selectUniqueTopReadCandidates,
 } from "../policies/top-read-selection-policy";
+import {
+  citationMapByFeedItemId,
+  storyWithTopReadEligibleCitations,
+} from "../policies/top-read-candidate-identity-policy";
 import { selectRenderedTopReadCandidates } from "../policies/rendered-top-read-selection-policy";
 import { buildReaderSummaryEditorialPriorityProfile } from "../policies/reader-summary-editorial-priority-policy";
 import { enrichTopReadCandidateDescriptions } from "../policies/reader-summary-top-read-description-policy";
@@ -122,6 +126,35 @@ export class ReaderSummary {
       evidenceByFeedItemId,
     );
     const sourceMix = buildSourceMix(primaryInput);
+    const narrativeLeadClusterId = input.narrativeSections?.find(
+      (section) => section.kind === "lead",
+    )?.storyClusterId;
+    const authoredNarrativeLeadStory = input.topStories.find(
+      (story) => story.storyClusterId === narrativeLeadClusterId,
+    );
+    const narrativeLeadStory =
+      authoredNarrativeLeadStory === undefined
+        ? undefined
+        : storyWithTopReadEligibleCitations(
+            authoredNarrativeLeadStory,
+            citationById,
+            evidenceByFeedItemId,
+            clusterById,
+            citationMapByFeedItemId(citationById),
+          );
+    if (
+      narrativeLeadClusterId !== undefined &&
+      narrativeLeadStory === undefined
+    ) {
+      return ReaderSummary.create(
+        buildNoSignalReaderSummary({
+          ...input,
+          headline: "No reliable workspace signal yet",
+          noSignalReason:
+            "The planned narrative lead did not pass the top-read evidence gate.",
+        }),
+      );
+    }
     const curatedReaderTopStories = selectUniqueTopReadCandidates(
       input.topStories,
       citationById,
@@ -141,6 +174,7 @@ export class ReaderSummary {
     }
     const readerTopStoryPool = enrichTopReadCandidateDescriptions({
       candidates: uniqueTopReadStoryPool([
+        ...(narrativeLeadStory === undefined ? [] : [narrativeLeadStory]),
         ...curatedReaderTopStories,
         ...selectUniqueTopReadCandidatePool(
           input.topStories,
@@ -173,11 +207,31 @@ export class ReaderSummary {
         }),
       };
     });
-    const readerTopReadCandidates = selectRenderedTopReadCandidates({
+    const selectedReaderTopReadCandidates = selectRenderedTopReadCandidates({
       candidates: renderedTopReadCandidates,
       sourceMix,
       limit: maxReaderTopReads,
+      ...(narrativeLeadStory === undefined
+        ? {}
+        : { pinnedStoryClusterId: narrativeLeadStory.storyClusterId }),
     });
+    if (
+      narrativeLeadStory !== undefined &&
+      !selectedReaderTopReadCandidates.some(
+        (candidate) =>
+          candidate.story.storyClusterId === narrativeLeadStory.storyClusterId,
+      )
+    ) {
+      return ReaderSummary.create(
+        buildNoSignalReaderSummary({
+          ...input,
+          headline: "No reliable workspace signal yet",
+          noSignalReason:
+            "The planned narrative lead did not pass the reader-facing quality gate.",
+        }),
+      );
+    }
+    const readerTopReadCandidates = selectedReaderTopReadCandidates;
     const readerTopStories = readerTopReadCandidates.map(
       (candidate) => candidate.story,
     );
@@ -201,10 +255,20 @@ export class ReaderSummary {
       evidence: input.selectedEvidence ?? [],
       citations: input.citationMap,
     });
+    const narrativeLead = readerTopReadCandidates.find(
+      (candidate) => candidate.story.storyClusterId === narrativeLeadClusterId,
+    );
+    const headline =
+      narrativeLead === undefined
+        ? input.headline
+        : readerHeadlineForNarrativeLead(
+            narrativeLead.story.title,
+            narrativeLead.topRead,
+          );
 
     return ReaderSummary.create({
       headline: groundedReaderHeadline({
-        headline: input.headline,
+        headline,
         sourceMix,
         topReads,
       }),
@@ -219,7 +283,7 @@ export class ReaderSummary {
         appendix: githubTrendingAppendix,
       }),
       mainTopics: buildReaderSummaryMainTopics({
-        headline: input.headline,
+        headline,
         executiveSummary: input.executiveSummary,
         topReads,
         topStories: readerTopStories,
@@ -282,6 +346,21 @@ export class ReaderSummary {
     };
   }
 }
+
+const readerHeadlineForNarrativeLead = (
+  storyTitle: string,
+  topRead: TopRead,
+): string => {
+  if (
+    topRead.confirmedProviderKeys.length > 1 ||
+    topRead.confidence.level !== "low"
+  ) {
+    return storyTitle;
+  }
+  const providerName = `${topRead.providerName.charAt(0).toLocaleUpperCase("en-US")}${topRead.providerName.slice(1)}`;
+
+  return `${providerName} discussion: ${storyTitle}`;
+};
 
 const uniqueTopReadStoryPool = (
   stories: readonly TopReadCandidate[],

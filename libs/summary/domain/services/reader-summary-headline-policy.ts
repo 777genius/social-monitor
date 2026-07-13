@@ -181,7 +181,18 @@ const isUnverifiedLegalTopRead = (
 };
 
 const sourceFramedLegalTitle = (title: string): string => {
-  const normalizedTitle = stripTrailingQuestion(title.replace(/\s+/gu, " "));
+  const normalizedTitle = stripTrailingQuestion(
+    title
+      .replace(/\s+/gu, " ")
+      .replace(/^(Reports say)(?:\s+Reports say)+\b/iu, "$1"),
+  );
+  if (
+    /^(?:reports? (?:say|allege|report|discuss)|reported|alleged)\b/iu.test(
+      normalizedTitle,
+    )
+  ) {
+    return normalizedTitle;
+  }
   if (
     normalizedTitle.length > 0 &&
     (/^(?:who|what|when|where|which|did|does|do|is|are|was|were|has|have|can|could|should|may|might|must|will|would)\b/iu.test(

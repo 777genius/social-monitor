@@ -39,7 +39,11 @@ export const canonicalizeReaderSummaryTopicAcronyms = (value: string): string =>
       const normalized = normalizeTopicLabel(token).replace(/\s+/gu, "");
       return canonicalTopicTokens[normalized] ?? token;
     })
-    .join("");
+    .join("")
+    .replace(
+      /\b((?:GPT|Grok)\s+\d+(?:\.\d+)*(?:\s+(?!AI\b)[A-Za-z0-9.-]+)?)\s+AI\s+(Costs?|Efficiency|Limits?|Performance)\b/gu,
+      "$1 $2",
+    );
 
 export const formatReaderSummaryTopicToken = (value: string): string => {
   const normalized = normalizeTopicLabel(value).replace(/\s+/gu, "");
@@ -106,6 +110,7 @@ const canonicalTopicTokens: Readonly<Record<string, string>> = {
   ai: "AI",
   chatgpt: "ChatGPT",
   github: "GitHub",
+  gpt: "GPT",
   llm: "LLM",
   llms: "LLM",
   mcp: "MCP",

@@ -41,6 +41,113 @@ describe("normalizeOpenAiReaderSummaryNarrative", () => {
     ]);
   });
 
+  it("binds a lead section to the planned cluster when the model omits it", () => {
+    const result = normalize([
+      {
+        kind: "lead",
+        title: "Planned lead",
+        text: "The planned lead explains the primary signal.",
+        citationIds: ["c1"],
+      },
+      section("secondary_signal", "security", "c2"),
+      section("secondary_signal", "database", "c3"),
+    ]);
+
+    expect(result[0]).toMatchObject({
+      kind: "lead",
+      storyClusterId: "lead",
+    });
+  });
+
+  it("binds a promoted main signal to the planned lead cluster", () => {
+    const result = normalize([
+      {
+        kind: "main_signal",
+        title: "Main signal",
+        text: "The planned lead explains the primary signal.",
+        citationIds: ["c1"],
+      },
+      section("secondary_signal", "security", "c2"),
+      section("secondary_signal", "database", "c3"),
+    ]);
+
+    expect(result[0]).toMatchObject({
+      kind: "lead",
+      title: "Lead",
+      storyClusterId: "lead",
+    });
+  });
+
+  it("rejects promotion of a main signal with mixed citations", () => {
+    expect(() =>
+      normalize([
+        {
+          kind: "main_signal",
+          title: "Mixed signal",
+          text: "This section mixes the lead with a secondary story.",
+          citationIds: ["c1", "c2"],
+        },
+        section("secondary_signal", "security", "c2"),
+        section("secondary_signal", "database", "c3"),
+      ]),
+    ).toThrow("must include a cited lead");
+  });
+
+  it("rejects promotion of a main signal bound to another cluster", () => {
+    expect(() =>
+      normalize([
+        section("main_signal", "security", "c1"),
+        section("secondary_signal", "security", "c2"),
+        section("secondary_signal", "database", "c3"),
+      ]),
+    ).toThrow("must include a cited lead");
+  });
+
+  it("binds the fallback narrative to the planned lead cluster", () => {
+    const input = modelInput();
+    const result = normalizeOpenAiReaderSummaryNarrative({
+      rawSections: undefined,
+      legacyExecutiveSummary: "Legacy summary",
+      input: {
+        ...input,
+        coveragePlan: { ...input.coveragePlan, secondary: [] },
+      },
+      citationMap: citations,
+      storyTitlesByClusterId: new Map([["lead", "Lead"]]),
+      storySummariesByClusterId: new Map(),
+      storySummariesByCitationId: new Map(),
+    });
+
+    expect(result[0]).toMatchObject({
+      kind: "lead",
+      title: "Lead",
+      storyClusterId: "lead",
+    });
+  });
+
+  it("rejects an explicit lead cluster that disagrees with the plan", () => {
+    expect(() =>
+      normalize([
+        section("lead", "wrong-lead", "c1"),
+        section("secondary_signal", "security", "c2"),
+        section("secondary_signal", "database", "c3"),
+      ]),
+    ).toThrow("must include a cited lead");
+  });
+
+  it("rejects a lead section that mixes planned and secondary citations", () => {
+    expect(() =>
+      normalize([
+        {
+          ...section("lead", "lead", "c1"),
+          citationIds: ["c1", "c2"],
+        },
+        section("secondary_signal", "security", "c2"),
+        section("secondary_signal", "database", "c3"),
+      ]),
+    ).toThrow("must include a cited lead");
+  });
+
   it("drops watch sections without eligible supporting evidence", () => {
     const result = normalize([
       section("lead", "lead", "c1"),

@@ -134,6 +134,7 @@ describe("evaluateTopicLabelQuality", () => {
     "Codex Tool",
     "OpenAI Update",
     "Anthropic Claude Extension",
+    "Claude Code Extension",
     "GitHub Copilot Tool",
   ])("rejects underspecified product artifact label %s", (label) => {
     expect(

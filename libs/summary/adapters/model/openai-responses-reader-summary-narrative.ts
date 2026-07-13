@@ -58,7 +58,11 @@ export const normalizeOpenAiReaderSummaryNarrative = (params: {
         narrativeKinds,
         "reader summary narrative kind",
       );
-      const storyClusterId = optionalString(value.storyClusterId);
+      const authoredStoryClusterId = optionalString(value.storyClusterId);
+      const storyClusterId =
+        kind === "lead"
+          ? (coverage.leadClusterId ?? authoredStoryClusterId)
+          : authoredStoryClusterId;
       const title =
         optionalString(value.title) ??
         defaultNarrativeTitle(
@@ -91,6 +95,13 @@ export const normalizeOpenAiReaderSummaryNarrative = (params: {
         return [];
       }
       if (
+        kind === "lead" &&
+        authoredStoryClusterId !== undefined &&
+        authoredStoryClusterId !== coverage.leadClusterId
+      ) {
+        return [];
+      }
+      if (
         kind === "watch" &&
         !citationIds.every((id) => eligibleWatchCitationIds.has(id))
       ) {
@@ -108,7 +119,7 @@ export const normalizeOpenAiReaderSummaryNarrative = (params: {
       }
       if (
         kind === "lead" &&
-        !citationIds.some((id) => coverage.leadCitationIds.has(id))
+        !citationIds.every((id) => coverage.leadCitationIds.has(id))
       ) {
         return [];
       }
@@ -125,7 +136,12 @@ export const normalizeOpenAiReaderSummaryNarrative = (params: {
       ];
     });
   const bounded = canonicalNarrativeOrder(
-    ensureCitedLead(sections, coverage.leadCitationIds),
+    ensureCitedLead(
+      sections,
+      coverage.leadCitationIds,
+      coverage.leadClusterId,
+      params.storyTitlesByClusterId,
+    ),
   );
   assertNarrativeCoverage(
     bounded,
@@ -249,6 +265,7 @@ const fallbackNarrative = (params: {
   readonly legacyExecutiveSummary: string;
   readonly input: ReaderSummaryModelInput;
   readonly citationMap: readonly ReaderSummaryCitation[];
+  readonly storyTitlesByClusterId: ReadonlyMap<string, string>;
 }): readonly ReaderSummaryNarrativeSection[] => {
   const plannedFeedItemIds = new Set(
     params.input.coveragePlan.lead?.feedItemIds ?? [],
@@ -265,12 +282,20 @@ const fallbackNarrative = (params: {
     {
       id: "narrative-1",
       kind: "lead",
-      title: "Overview",
+      title:
+        (params.input.coveragePlan.lead?.clusterId === undefined
+          ? undefined
+          : params.storyTitlesByClusterId.get(
+              params.input.coveragePlan.lead.clusterId,
+            )) ?? "Overview",
       text: requiredString(
         params.legacyExecutiveSummary,
         "reader summary executive summary",
       ),
       citationIds,
+      ...(params.input.coveragePlan.lead?.clusterId === undefined
+        ? {}
+        : { storyClusterId: params.input.coveragePlan.lead.clusterId }),
     },
   ];
 };
@@ -282,7 +307,11 @@ const defaultNarrativeTitle = (
 ): string | undefined => {
   switch (kind) {
     case "lead":
-      return "Overview";
+      return (
+        (storyClusterId === undefined
+          ? undefined
+          : storyTitlesByClusterId.get(storyClusterId)) ?? "Overview"
+      );
     case "main_signal":
       return "Main signal";
     case "why_it_matters":
@@ -302,6 +331,7 @@ const coverageCitationPlan = (
   input: ReaderSummaryModelInput,
   citationMap: readonly ReaderSummaryCitation[],
 ): {
+  readonly leadClusterId: string | undefined;
   readonly leadCitationIds: ReadonlySet<string>;
   readonly secondaryCitationIds: ReadonlyMap<string, ReadonlySet<string>>;
 } => {
@@ -319,6 +349,7 @@ const coverageCitationPlan = (
     );
 
   return {
+    leadClusterId: plan.lead?.clusterId,
     leadCitationIds: citationIdsFor(plan.lead?.feedItemIds ?? []),
     secondaryCitationIds: new Map(
       plan.secondary.map((item) => [
@@ -332,6 +363,8 @@ const coverageCitationPlan = (
 const ensureCitedLead = (
   sections: readonly ReaderSummaryNarrativeSection[],
   leadCitationIds: ReadonlySet<string>,
+  leadClusterId: string | undefined,
+  storyTitlesByClusterId: ReadonlyMap<string, string>,
 ): readonly ReaderSummaryNarrativeSection[] => {
   if (sections.some((section) => section.kind === "lead")) {
     return sections;
@@ -339,7 +372,10 @@ const ensureCitedLead = (
   const candidate = sections.find(
     (section) =>
       section.kind === "main_signal" &&
-      section.citationIds.some((id) => leadCitationIds.has(id)),
+      (section.storyClusterId === undefined ||
+        section.storyClusterId === leadClusterId) &&
+      section.citationIds.length > 0 &&
+      section.citationIds.every((id) => leadCitationIds.has(id)),
   );
   if (candidate === undefined) {
     return sections;
@@ -347,7 +383,17 @@ const ensureCitedLead = (
 
   return sections.map((section) =>
     section === candidate
-      ? { ...section, kind: "lead", title: "Overview" }
+      ? {
+          ...section,
+          kind: "lead",
+          title:
+            (leadClusterId === undefined
+              ? undefined
+              : storyTitlesByClusterId.get(leadClusterId)) ?? "Overview",
+          ...(leadClusterId === undefined
+            ? { storyClusterId: undefined }
+            : { storyClusterId: leadClusterId }),
+        }
       : section,
   );
 };

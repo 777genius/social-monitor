@@ -5,9 +5,11 @@ import {
 
 describe("canonicalizeReaderSummaryTopicAcronyms", () => {
   it.each([
-    ["GPT 5.6 Ai Efficiency", "GPT 5.6 AI Efficiency"],
+    ["GPT 5.6 Ai Efficiency", "GPT 5.6 Efficiency"],
+    ["GPT 5.6 Sol AI Costs", "GPT 5.6 Sol Costs"],
     ["LLMs Hype", "LLM Hype"],
     ["Openai MCP tools", "OpenAI MCP tools"],
+    ["Gpt 5.6 Sol", "GPT 5.6 Sol"],
   ])("normalizes %s", (value, expected) => {
     expect(canonicalizeReaderSummaryTopicAcronyms(value)).toBe(expected);
   });
