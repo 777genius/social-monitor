@@ -6,20 +6,48 @@ import {
 } from "./production-collection-quality-policy";
 
 describe("production collection quality policy", () => {
-  it("accepts a complete daily GitHub snapshot independently of repository timestamps", () => {
+  it("accepts at least ten GitHub repositories inside the requested day", () => {
     expect(
       providerMeetsProductionBlockingPolicy({
         providerKey: "github-trending-page",
         status: "succeeded",
         observability: observation({
-          target: 100,
-          collected: 100,
-          evaluated: 0,
-          coverageRatio: 0,
-          reasons: ["target_shortfall", "freshness_lag_exceeded"],
+          target: 25,
+          collected: 10,
+          evaluated: 10,
+          coverageRatio: 0.4,
+          reasons: ["target_shortfall"],
         }),
       }),
     ).toBe(true);
+  });
+
+  it("blocks GitHub snapshots outside the requested day or below top ten", () => {
+    for (const observability of [
+      observation({
+        target: 25,
+        collected: 25,
+        evaluated: 0,
+        outsideWindow: 25,
+        coverageRatio: 0,
+        reasons: ["target_shortfall", "freshness_lag_exceeded"],
+      }),
+      observation({
+        target: 25,
+        collected: 9,
+        evaluated: 9,
+        coverageRatio: 0.36,
+        reasons: ["target_shortfall"],
+      }),
+    ]) {
+      expect(
+        providerMeetsProductionBlockingPolicy({
+          providerKey: "github-trending-page",
+          status: "succeeded",
+          observability,
+        }),
+      ).toBe(false);
+    }
   });
 
   it("accepts bounded HN and X inventories without treating desired depth as an exact minimum", () => {
@@ -93,8 +121,9 @@ describe("production collection quality policy", () => {
     ).toBe(false);
   });
 
-  it("keeps the X day minimum aligned with the accepted scan policy", () => {
+  it("keeps provider minimums aligned with accepted scan policies", () => {
     expect(productionCollectionThresholds).toMatchObject({
+      githubTrendingFeedItems: 10,
       xTwitterVisibleFeedItems: 20,
       xTwitterCollectedFeedItems: 20,
       xCollectorCompletedRunRatePercent: 80,
@@ -136,6 +165,7 @@ const observation = (params: {
   readonly target: number;
   readonly collected: number;
   readonly evaluated: number;
+  readonly outsideWindow?: number;
   readonly coverageRatio: number;
   readonly reasons: ProviderCollectionObservation["slo"]["reasons"];
 }): ProviderCollectionObservation => ({
@@ -143,7 +173,7 @@ const observation = (params: {
   collectedItemCount: params.collected,
   acceptedItemCount: params.evaluated,
   insertedItemCount: params.evaluated,
-  outsideWindowItemCount: 0,
+  outsideWindowItemCount: params.outsideWindow ?? 0,
   paginationDuplicateItemCount: 0,
   storageDuplicateItemCount: 0,
   totalDuplicateItemCount: 0,

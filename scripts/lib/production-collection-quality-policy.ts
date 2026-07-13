@@ -2,6 +2,7 @@ import type { CleanRealDayCollectionProviderKey } from "./clean-real-day-collect
 import type { ProviderCollectionObservation } from "./provider-collection-observability";
 
 export const productionCollectionThresholds = {
+  githubTrendingFeedItems: 10,
   xTwitterVisibleFeedItems: 20,
   xTwitterCollectedFeedItems: 20,
   xCollectorCompletedRunRatePercent: 80,
@@ -48,7 +49,14 @@ export const providerMeetsProductionBlockingPolicy = (
   }
 
   if (scan.providerKey === "github-trending-page") {
-    return observation.collectedItemCount >= target;
+    return (
+      observation.collectedItemCount >=
+        productionCollectionThresholds.githubTrendingFeedItems &&
+      observation.slo.evaluatedItemCount >=
+        productionCollectionThresholds.githubTrendingFeedItems &&
+      observation.outsideWindowItemCount === 0 &&
+      observation.slo.reasons.every((reason) => reason === "target_shortfall")
+    );
   }
 
   if (scan.providerKey === "hacker-news") {
