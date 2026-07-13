@@ -1,4 +1,5 @@
 import type { StoryPrimaryClaimFacet } from "./story-topic-tokenizer";
+import { formatReaderSummaryTopicToken } from "./reader-summary-topic-map-text";
 
 export const readerSummaryTopicClaimTypes = [
   "allegation",
@@ -44,17 +45,28 @@ export const alignReaderSummaryTopicSemanticLabelToEvidence = (params: {
   readonly semantic: ReaderSummaryTopicSemanticLabel;
   readonly primaryFacet: StoryPrimaryClaimFacet | undefined;
   readonly evidenceTexts: readonly string[];
-}): ReaderSummaryTopicSemanticLabel => ({
-  ...params.semantic,
-  subject: removeRelationalRoleSuffix(
+}): ReaderSummaryTopicSemanticLabel => {
+  const subject = removeRelationalRoleSuffix(
     normalizeSemanticPart(params.semantic.subject),
     params.evidenceTexts,
-  ),
-  claimType: alignClaimTypeToEvidence(
-    params.semantic.claimType,
-    params.primaryFacet,
-  ),
-});
+  );
+  const evidenceAlignedSemantic =
+    params.semantic.claimType === "allegation"
+      ? alignAllegationSemanticToEvidence(
+          params.semantic,
+          subject,
+          params.evidenceTexts,
+        )
+      : { ...params.semantic, subject };
+
+  return {
+    ...evidenceAlignedSemantic,
+    claimType: alignClaimTypeToEvidence(
+      params.semantic.claimType,
+      params.primaryFacet,
+    ),
+  };
+};
 
 const alignClaimTypeToEvidence = (
   claimType: ReaderSummaryTopicClaimType,
@@ -161,9 +173,11 @@ export const renderReaderSummaryTopicSemanticLabel = (
     semantic.claimType,
     normalizeSemanticPart(semantic.subject),
   );
-  const qualifier = sanitizeClaimQualifier(
-    semantic.claimType,
-    normalizeSemanticPart(semantic.qualifier),
+  const qualifier = formatSemanticDisplayPart(
+    sanitizeClaimQualifier(
+      semantic.claimType,
+      normalizeSemanticPart(semantic.qualifier),
+    ),
   );
   if (subject.length === 0) {
     return qualifier;
@@ -222,6 +236,95 @@ export const topicLabelExpressesClaimType = (
 
 const normalizeSemanticPart = (value: string | undefined): string =>
   value?.replace(/\s+/gu, " ").trim() ?? "";
+
+const formatSemanticDisplayPart = (value: string): string =>
+  value
+    .split(/\s+/u)
+    .filter(Boolean)
+    .map(formatReaderSummaryTopicToken)
+    .join(" ");
+
+const alignAllegationSemanticToEvidence = (
+  semantic: ReaderSummaryTopicSemanticLabel,
+  subject: string,
+  evidenceTexts: readonly string[],
+): ReaderSummaryTopicSemanticLabel => {
+  const groundedLawsuit = evidenceTexts.some((text) =>
+    lawsuitEvidenceMarker.test(text),
+  );
+  const allegationSubject = normalizeSemanticPart(
+    subject.replace(/\blawsuits?\b/giu, " "),
+  );
+  const alignedSubject = groundedLawsuit
+    ? alignTwoEntityLawsuitSubject(allegationSubject, evidenceTexts)
+    : allegationSubject;
+  const qualifier = normalizeSemanticPart(semantic.qualifier);
+  const alignedQualifier = groundedLawsuit
+    ? "Lawsuit"
+    : lawsuitQualifierMarker.test(qualifier)
+      ? ""
+      : qualifier;
+
+  return {
+    subject: alignedSubject.length > 0 ? alignedSubject : subject,
+    ...(semantic.parentSubject === undefined
+      ? {}
+      : { parentSubject: semantic.parentSubject }),
+    claimType: semantic.claimType,
+    ...(alignedQualifier.length > 0 ? { qualifier: alignedQualifier } : {}),
+    confidenceScore: semantic.confidenceScore,
+  };
+};
+
+const alignTwoEntityLawsuitSubject = (
+  subject: string,
+  evidenceTexts: readonly string[],
+): string => {
+  const tokens = subject.split(/\s+/u).filter(Boolean);
+  if (tokens.length !== 2 || !tokens.every(isEntityLikeTopicToken)) {
+    return subject;
+  }
+  const [first, second] = tokens as [string, string];
+  if (
+    evidenceTexts.some((text) =>
+      hasExplicitLawsuitRelation(text, first, second),
+    )
+  ) {
+    return subject;
+  }
+  if (
+    evidenceTexts.some((text) =>
+      hasExplicitLawsuitRelation(text, second, first),
+    )
+  ) {
+    return `${second} ${first}`;
+  }
+
+  return subject;
+};
+
+const hasExplicitLawsuitRelation = (
+  evidenceText: string,
+  claimant: string,
+  defendant: string,
+): boolean => {
+  const claimantPattern = escapeRegExp(claimant);
+  const defendantPattern = escapeRegExp(defendant);
+  const relation = new RegExp(
+    `\\b${claimantPattern}\\b(?:\\s+(?:has\\s+)?(?:sues|sued)\\s+${defendantPattern}\\b|(?:['’]s)?\\s+lawsuit\\s+against\\s+${defendantPattern}\\b)`,
+    "iu",
+  );
+
+  return relation.test(evidenceText);
+};
+
+const isEntityLikeTopicToken = (value: string): boolean =>
+  /^(?:\p{Lu}[\p{Letter}\p{Number}.+#'\-’]*|\p{Ll}[\p{Letter}\p{Number}.+#'\-’]*\p{Lu}[\p{Letter}\p{Number}.+#'\-’]*)$/u.test(
+    value,
+  );
+
+const lawsuitEvidenceMarker = /\b(?:lawsuits?|sued|sues)\b/iu;
+const lawsuitQualifierMarker = /\blawsuits?\b/iu;
 
 const removeRelationalRoleSuffix = (
   subject: string,

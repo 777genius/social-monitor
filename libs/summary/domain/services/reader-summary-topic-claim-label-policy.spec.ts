@@ -52,6 +52,66 @@ describe("alignReaderSummaryTopicSemanticLabelToEvidence", () => {
       }).claimType,
     ).toBe("comparison");
   });
+
+  it.each([
+    ["Northstar sued Boreal after the audit."],
+    ["Northstar's lawsuit against Boreal followed the audit."],
+  ])("grounds and orders a lawsuit label from an explicit relation", (text) => {
+    expect(
+      alignReaderSummaryTopicSemanticLabelToEvidence({
+        semantic: {
+          subject: "Boreal Northstar lawsuit",
+          claimType: "allegation",
+          confidenceScore: 0.9,
+        },
+        primaryFacet: undefined,
+        evidenceTexts: [text],
+      }),
+    ).toEqual({
+      subject: "Northstar Boreal",
+      claimType: "allegation",
+      qualifier: "Lawsuit",
+      confidenceScore: 0.9,
+    });
+  });
+
+  it("preserves entity order when lawsuit evidence has no explicit relation", () => {
+    expect(
+      alignReaderSummaryTopicSemanticLabelToEvidence({
+        semantic: {
+          subject: "Boreal Northstar lawsuit",
+          claimType: "allegation",
+          confidenceScore: 0.9,
+        },
+        primaryFacet: undefined,
+        evidenceTexts: [
+          "A lawsuit involving Boreal and Northstar was announced.",
+        ],
+      }),
+    ).toMatchObject({
+      subject: "Boreal Northstar",
+      qualifier: "Lawsuit",
+    });
+  });
+
+  it("does not preserve an ungrounded lawsuit qualifier", () => {
+    expect(
+      alignReaderSummaryTopicSemanticLabelToEvidence({
+        semantic: {
+          subject: "Boreal Northstar lawsuit",
+          claimType: "allegation",
+          qualifier: "speculative lawsuit",
+          confidenceScore: 0.9,
+        },
+        primaryFacet: undefined,
+        evidenceTexts: ["Boreal disputed Northstar's allegation."],
+      }),
+    ).toEqual({
+      subject: "Boreal Northstar",
+      claimType: "allegation",
+      confidenceScore: 0.9,
+    });
+  });
 });
 
 describe("renderReaderSummaryTopicSemanticLabel", () => {
@@ -97,6 +157,7 @@ describe("renderReaderSummaryTopicSemanticLabel", () => {
     ["Grok 4.5", "benchmark", "best", "Grok 4.5 Benchmark"],
     ["Grok 4.5", "benchmark", "latest", "Grok 4.5 Benchmark"],
     ["GPT 5.6", "other", "Migrating Production AI", "GPT 5.6"],
+    ["GPT 5.6", "efficiency", "production", "GPT 5.6 Production Efficiency"],
   ] as const)(
     "renders %s/%s deterministically",
     (subject, claimType, qualifier, expected) => {
