@@ -77,6 +77,9 @@ export const selectRenderedTopReadCandidates = (params: {
     if (!isReaderFacingQualityTopRead(candidate.topRead)) {
       continue;
     }
+    if (selected.some((item) => hasDuplicateRenderedReason(item, candidate))) {
+      continue;
+    }
     if (
       selected.length < editorialDiversityWindow &&
       selected.some((item) => areEditorialNearDuplicates(item, candidate))
@@ -97,7 +100,8 @@ export const selectRenderedTopReadCandidates = (params: {
     }
     if (
       selectedStoryIds.has(candidate.story.storyClusterId) ||
-      !isReaderFacingQualityTopRead(candidate.topRead)
+      !isReaderFacingQualityTopRead(candidate.topRead) ||
+      selected.some((item) => hasDuplicateRenderedReason(item, candidate))
     ) {
       continue;
     }
@@ -118,7 +122,8 @@ export const selectRenderedTopReadCandidates = (params: {
     }
     if (
       selectedStoryIds.has(candidate.story.storyClusterId) ||
-      !isReaderFacingQualityTopRead(candidate.topRead)
+      !isReaderFacingQualityTopRead(candidate.topRead) ||
+      selected.some((item) => hasDuplicateRenderedReason(item, candidate))
     ) {
       continue;
     }
@@ -134,6 +139,26 @@ export const selectRenderedTopReadCandidates = (params: {
 
   return selected;
 };
+
+const hasDuplicateRenderedReason = (
+  left: RenderedTopReadCandidate,
+  right: RenderedTopReadCandidate,
+): boolean => {
+  const leftReason = normalizedRenderedReason(left.topRead.reason);
+  const rightReason = normalizedRenderedReason(right.topRead.reason);
+
+  return (
+    leftReason.length >= minimumDuplicateReasonLength &&
+    leftReason === rightReason
+  );
+};
+
+const normalizedRenderedReason = (value: string): string =>
+  value
+    .replace(/https?:\/\/\S+/giu, " ")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
 
 const areEditorialNearDuplicates = (
   left: RenderedTopReadCandidate,
@@ -408,6 +433,7 @@ const maxRenderedSocialProviderCount = 4;
 const editorialDiversityWindow = 4;
 const minimumSharedEditorialTokens = 3;
 const minimumEditorialTopicSimilarity = 0.25;
+const minimumDuplicateReasonLength = 80;
 
 const normalizeLimit = (value: number): number => {
   if (!Number.isFinite(value) || !Number.isInteger(value) || value < 1) {

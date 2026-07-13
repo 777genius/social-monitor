@@ -475,6 +475,41 @@ describe("selectRenderedTopReadCandidates", () => {
     expect(result).toHaveLength(8);
     expect(providerCounts(result)["x-twitter"]).toBe(4);
   });
+
+  it("does not repeat an identical detailed reason outside the diversity window", () => {
+    const repeatedReason =
+      "The temporary access extension changes how teams schedule long coding-agent work and creates lock-in risk when projects depend on a short-lived quota shape.";
+    const result = selectRenderedTopReadCandidates({
+      candidates: [
+        candidate("Apple legal risk", "reddit", 2.7, {
+          reason: detailedReason("Apple legal risk"),
+        }),
+        candidate("Token overhead", "hacker-news", 2.6, {
+          reason: detailedReason("Token overhead"),
+        }),
+        candidate("Obsidian skills", "x-twitter", 2.5, {
+          reason: detailedReason("Obsidian skills"),
+        }),
+        candidate("Research careers", "hacker-news", 2.4, {
+          reason: detailedReason("Research careers"),
+        }),
+        candidate("Claude limit promotion", "x-twitter", 2.3, {
+          reason: repeatedReason,
+        }),
+        candidate("Claude weekly limits", "hacker-news", 2.2, {
+          reason: repeatedReason,
+        }),
+      ],
+      sourceMix: sourceMix(["x-twitter", "reddit", "hacker-news", "rss"]),
+      limit: 8,
+    });
+
+    expect(
+      result
+        .map((item) => item.topRead.title)
+        .filter((title) => title.startsWith("Claude")),
+    ).toEqual(["Claude limit promotion"]);
+  });
 });
 
 const candidate = (
