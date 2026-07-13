@@ -10,8 +10,8 @@ type XRunRow = {
   readonly finished_at?: string | null;
   readonly tweets_count?: number;
   readonly query_hash?: string;
-  readonly input_json?: string;
-  readonly stats_json?: string;
+  readonly input_json?: string | null;
+  readonly stats_json?: string | null;
 };
 
 type XRunInput = {
@@ -846,8 +846,10 @@ function groupBy<TKey, TValue>(
   return grouped;
 }
 
-function parseJson<TValue>(value: string | undefined): TValue | undefined {
-  if (value === undefined || value.trim().length === 0) {
+function parseJson<TValue>(
+  value: string | null | undefined,
+): TValue | undefined {
+  if (value === null || value === undefined || value.trim().length === 0) {
     return undefined;
   }
 
@@ -879,9 +881,9 @@ function parseJsonField<TValue>(
 }
 
 function parseJsonStrict<TValue>(
-  value: string | undefined,
+  value: string | null | undefined,
 ): TValue | undefined {
-  if (value === undefined || value.trim().length === 0) {
+  if (value === null || value === undefined || value.trim().length === 0) {
     return undefined;
   }
 

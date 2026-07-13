@@ -118,6 +118,16 @@ describe("x collector quality report support", () => {
         until: "2026-07-07",
         status: "failed",
       });
+      insertRun({
+        dbPath,
+        id: 5,
+        displayType: "Top",
+        startedAt: "2026-07-09T04:50:00Z",
+        finishedAt: null,
+        tweets: 0,
+        status: "running",
+        statsJson: null,
+      });
       execSql(
         dbPath,
         `
@@ -187,8 +197,10 @@ describe("x collector quality report support", () => {
         collectionDate: "2026-07-07",
       });
 
-      expect(ledger.runCount).toBe(2);
+      expect(ledger.runCount).toBe(3);
       expect(ledger.failedRunCount).toBe(0);
+      expect(ledger.nonTerminalOrUnknownRunCount).toBe(1);
+      expect(ledger.invalidJsonFieldCount).toBe(0);
       expect(ledger.returnedTweetCount).toBe(51);
       expect(ledger.hasTopAndLatest).toBe(true);
       expect(accountPool.eventCount).toBe(3);
@@ -496,6 +508,7 @@ function insertRun(params: {
   readonly since?: string;
   readonly until?: string;
   readonly status?: string;
+  readonly statsJson?: string | null;
 }): void {
   const input = JSON.stringify({
     since: params.since ?? "2026-07-07_00:00:00_UTC",
@@ -506,7 +519,10 @@ function insertRun(params: {
     min_retweets: params.displayType === "Top" ? 10 : null,
     min_replies: params.displayType === "Top" ? 5 : null,
   });
-  const stats = JSON.stringify({ tasks_failed: 0, retries: 0 });
+  const stats =
+    params.statsJson === undefined
+      ? JSON.stringify({ tasks_failed: 0, retries: 0 })
+      : params.statsJson;
 
   execSql(
     params.dbPath,
@@ -520,7 +536,7 @@ function insertRun(params: {
           params.finishedAt === null ? "null" : epochSeconds(params.finishedAt)
         },
         'hash-${params.id}', ${params.tweets},
-        ${sqlString(input)}, ${sqlString(stats)}
+        ${sqlString(input)}, ${sqlNullableString(stats)}
       );
     `,
   );

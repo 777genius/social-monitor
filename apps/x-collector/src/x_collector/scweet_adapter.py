@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from email.utils import parsedate_to_datetime
@@ -58,6 +59,7 @@ from .scweet_account_pool_ledger import (
     ScweetAccountPoolLedger,
 )
 from .scweet_errors import classify_scweet_error
+from .scweet_run_maintenance import reconcile_stale_scweet_runs
 from .search_plan import ScweetSearchPass, plan_scweet_search_passes
 from .sqlite_account_usage_event_repository import (
     SqliteAccountUsageEventRepository,
@@ -69,6 +71,7 @@ from .sqlite_candidate_rejection_repository import (
 
 ScweetFactory = Callable[[], Any]
 MAX_ACCOUNT_FAILOVERS_PER_PASS = 2
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -191,8 +194,20 @@ class ScweetDailySearchCollector(DailySearchCollectorPort):
             effective_account_pool_limits,
         )
 
+        def reconcile_runs() -> None:
+            reconciled = reconcile_stale_scweet_runs(
+                settings.scweet_db_path,
+                collector_clock.now(),
+            )
+            if reconciled > 0:
+                LOGGER.warning("Reconciled %s stale Scweet run(s)", reconciled)
+
+        reconcile_runs()
+
         def create_scweet() -> Any:
             from Scweet import Scweet, ScweetConfig
+
+            reconcile_runs()
 
             config = ScweetConfig(
                 daily_requests_limit=runtime_limits.daily_requests,
