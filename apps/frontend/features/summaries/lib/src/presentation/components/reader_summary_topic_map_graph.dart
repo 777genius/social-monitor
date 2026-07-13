@@ -164,15 +164,16 @@ Path _curvedTopicEdgePath({
   final direction = delta / distance;
   final start = sourceCenter + direction * sourceRadius;
   final end = targetCenter - direction * targetRadius;
-  final visibleDelta = end - start;
-  final visibleDistance = math.max(1.0, visibleDelta.distance);
   final midpoint = Offset((start.dx + end.dx) / 2, (start.dy + end.dy) / 2);
   final normal = Offset(-direction.dy, direction.dx);
-  final minimumBend = edge.kind == ReaderSummaryTopicMapVisualLinkKind.semantic
-      ? 14.0
-      : 8.0;
+  final visibleGap = math.max(0.0, distance - sourceRadius - targetRadius);
   final bend =
-      math.min(64.0, math.max(minimumBend, visibleDistance * 0.22)) *
+      _topicMapEdgeCurvePolicy.bendFor(
+        kind: edge.kind,
+        visibleGap: visibleGap,
+        sourceRadius: sourceRadius,
+        targetRadius: targetRadius,
+      ) *
       _edgeCurveSign(edge);
   final control = midpoint + normal * bend;
 

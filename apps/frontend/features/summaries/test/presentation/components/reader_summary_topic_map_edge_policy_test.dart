@@ -4,6 +4,46 @@ import 'package:social_monitor_summaries/src/presentation/components/reader_summ
 
 void main() {
   const policy = ReaderSummaryTopicMapVisualLinkPolicy();
+  const curvePolicy = ReaderSummaryTopicMapEdgeCurvePolicy();
+
+  test('keeps edges nearly straight when bubbles are close', () {
+    final bend = curvePolicy.bendFor(
+      kind: ReaderSummaryTopicMapVisualLinkKind.semantic,
+      visibleGap: 8,
+      sourceRadius: 36,
+      targetRadius: 36,
+    );
+
+    expect(bend, lessThan(0.2));
+  });
+
+  test('adds a moderate curve as the visible gap grows', () {
+    final bend = curvePolicy.bendFor(
+      kind: ReaderSummaryTopicMapVisualLinkKind.semantic,
+      visibleGap: 160,
+      sourceRadius: 36,
+      targetRadius: 36,
+    );
+
+    expect(bend, closeTo(28.8, 0.01));
+  });
+
+  test('keeps structural group links straighter than semantic links', () {
+    final semanticBend = curvePolicy.bendFor(
+      kind: ReaderSummaryTopicMapVisualLinkKind.semantic,
+      visibleGap: 80,
+      sourceRadius: 30,
+      targetRadius: 30,
+    );
+    final membershipBend = curvePolicy.bendFor(
+      kind: ReaderSummaryTopicMapVisualLinkKind.groupMembership,
+      visibleGap: 80,
+      sourceRadius: 30,
+      targetRadius: 30,
+    );
+
+    expect(membershipBend, lessThan(semanticBend));
+  });
 
   test('creates a sparse visible tree when a semantic group has no edges', () {
     final fixture = _fixture(groupedNodeCount: 4);

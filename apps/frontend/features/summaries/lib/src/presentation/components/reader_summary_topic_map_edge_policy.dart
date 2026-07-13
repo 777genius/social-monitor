@@ -18,6 +18,41 @@ final class ReaderSummaryTopicMapVisualLink {
   final double weight;
 }
 
+final class ReaderSummaryTopicMapEdgeCurvePolicy {
+  const ReaderSummaryTopicMapEdgeCurvePolicy();
+
+  double bendFor({
+    required ReaderSummaryTopicMapVisualLinkKind kind,
+    required double visibleGap,
+    required double sourceRadius,
+    required double targetRadius,
+  }) {
+    final gap = math.max(0.0, visibleGap);
+    final averageRadius = math.max(
+      1.0,
+      (sourceRadius.abs() + targetRadius.abs()) / 2,
+    );
+    final activationDistance = averageRadius * 1.6;
+    final normalizedProximity = (gap / activationDistance)
+        .clamp(0.0, 1.0)
+        .toDouble();
+    final smoothProximity =
+        normalizedProximity *
+        normalizedProximity *
+        (3 - 2 * normalizedProximity);
+    final bendRatio = switch (kind) {
+      ReaderSummaryTopicMapVisualLinkKind.semantic => 0.18,
+      ReaderSummaryTopicMapVisualLinkKind.groupMembership => 0.12,
+    };
+    final maximumBend = switch (kind) {
+      ReaderSummaryTopicMapVisualLinkKind.semantic => 52.0,
+      ReaderSummaryTopicMapVisualLinkKind.groupMembership => 36.0,
+    };
+
+    return math.min(maximumBend, gap * bendRatio * smoothProximity);
+  }
+}
+
 final class ReaderSummaryTopicMapVisualLinkPolicy {
   const ReaderSummaryTopicMapVisualLinkPolicy();
 
@@ -91,6 +126,7 @@ final class ReaderSummaryTopicMapVisualLinkPolicy {
 }
 
 const _topicMapVisualLinkPolicy = ReaderSummaryTopicMapVisualLinkPolicy();
+const _topicMapEdgeCurvePolicy = ReaderSummaryTopicMapEdgeCurvePolicy();
 
 final class _TopicMapLinkComponents {
   _TopicMapLinkComponents(Iterable<String> nodeIds)
