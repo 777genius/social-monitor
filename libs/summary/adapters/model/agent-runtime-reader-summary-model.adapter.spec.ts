@@ -9,6 +9,7 @@ import type {
   ReaderSummaryModelInput,
 } from "../../ports";
 import { AgentRuntimeReaderSummaryModelAdapter } from "./agent-runtime-reader-summary-model.adapter";
+import { currentReaderSummaryPromptRelease } from "./openai-responses-reader-summary-prompt";
 
 describe("AgentRuntimeReaderSummaryModelAdapter", () => {
   it("uses the strict production Codex model and effort by default", async () => {
@@ -39,7 +40,7 @@ describe("AgentRuntimeReaderSummaryModelAdapter", () => {
     await adapter.generate(input, route);
 
     expect(route.model).toBe("codex:gpt-5.5:xhigh");
-    expect(route.promptVersion).toBe("reader_summary.prompt.agent_runtime.v10");
+    expect(route.promptVersion).toBe(currentReaderSummaryPromptRelease.id);
     expect(client.commands).toHaveLength(1);
     expect(adapter.estimate(input, route).outputTokens).toBe(3_200);
     expect(client.commands[0]?.systemPrompt).toContain(
@@ -80,6 +81,38 @@ describe("AgentRuntimeReaderSummaryModelAdapter", () => {
     expect(client.commands[0]?.metadata).toMatchObject({
       reasoningEffort: "xhigh",
     });
+  });
+
+  it("normalizes terminal full stops from generated headlines", async () => {
+    const providerDraft = validReaderProviderDraft();
+    providerDraft.headline =
+      "Developers route GPT-5.6 Sol through Claude Code as costs dominate.";
+    const adapter = new AgentRuntimeReaderSummaryModelAdapter({
+      client: new CapturingAgentRuntimeClient({
+        status: "completed",
+        structuredOutput: providerDraft,
+        warnings: [],
+      }),
+      agentProvider: "codex",
+    });
+    const input = readerSummaryInput();
+    const route = adapter.route(
+      input,
+      {
+        preferredProvider: "agent-runtime",
+        maxInputTokens: 24_000,
+        maxOutputTokens: 16_000,
+        maxEstimatedCostUsd: 1,
+      },
+      { remainingTokens: 40_000, remainingCostUsd: 1 },
+    );
+
+    const attempt = await adapter.generate(input, route);
+
+    expect(attempt.draft.headline).toBe(
+      "Developers route GPT-5.6 Sol through Claude Code as costs dominate",
+    );
+    expect(attempt.draft.content?.headline).not.toMatch(/[.\u2026\u3002]$/u);
   });
 
   it("passes an explicit real runtime model through controls", async () => {

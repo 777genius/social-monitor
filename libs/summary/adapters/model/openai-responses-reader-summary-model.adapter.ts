@@ -28,8 +28,10 @@ import {
   resolveOpenAiApiKey,
 } from "./openai-api-key-source";
 import {
+  assertNoReaderSummaryPromptReleaseOverride,
   buildOpenAiReaderSummaryInstructions,
   buildOpenAiReaderSummaryPromptPayload,
+  currentReaderSummaryPromptRelease,
 } from "./openai-responses-reader-summary-prompt";
 
 type FetchLike = (input: string | URL, init?: RequestInit) => Promise<Response>;
@@ -38,7 +40,6 @@ export type OpenAiResponsesReaderSummaryModelAdapterOptions = {
   readonly apiKey?: string;
   readonly endpointUrl?: string;
   readonly model?: string;
-  readonly promptVersion?: string;
   readonly evalDatasetVersion?: string;
   readonly timeoutMs?: number;
   readonly maxOutputTokens?: number;
@@ -50,7 +51,6 @@ export type OpenAiResponsesReaderSummaryModelAdapterOptions = {
 
 const provider = "openai-responses";
 const defaultModel = "gpt-5.4-mini";
-const defaultPromptVersion = "reader_summary.prompt.openai.responses.v10";
 const defaultEvalDatasetVersion = "reader_summary.eval.mvp.v1";
 const defaultEndpointUrl = "https://api.openai.com/v1/responses";
 const defaultTimeoutMs = 180_000;
@@ -61,7 +61,6 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
   private readonly apiKey: string;
   private readonly endpointUrl: string;
   private readonly model: string;
-  private readonly promptVersion: string;
   private readonly evalDatasetVersion: string;
   private readonly timeoutMs: number;
   private readonly maxOutputTokens: number;
@@ -77,10 +76,6 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
       defaultEndpointUrl,
     );
     this.model = nonEmptyOrFallback(options.model, defaultModel);
-    this.promptVersion = nonEmptyOrFallback(
-      options.promptVersion,
-      defaultPromptVersion,
-    );
     this.evalDatasetVersion = nonEmptyOrFallback(
       options.evalDatasetVersion,
       defaultEvalDatasetVersion,
@@ -297,7 +292,7 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
     return {
       provider,
       model: this.model,
-      promptVersion: this.promptVersion,
+      promptVersion: currentReaderSummaryPromptRelease.id,
       schemaVersion: "reader_summary.artifact.v1",
     };
   }
@@ -411,6 +406,10 @@ export const resolveOpenAiResponsesReaderSummaryModelOptions = (
   env: NodeJS.ProcessEnv,
   params: { readonly requireApiKey: boolean },
 ): OpenAiResponsesReaderSummaryModelAdapterOptions => {
+  assertNoReaderSummaryPromptReleaseOverride({
+    environmentName: "OPENAI_READER_SUMMARY_PROMPT_VERSION",
+    value: env.OPENAI_READER_SUMMARY_PROMPT_VERSION,
+  });
   const apiKey = resolveOpenAiApiKey(env);
 
   if (params.requireApiKey && apiKey.length === 0) {
@@ -426,9 +425,6 @@ export const resolveOpenAiResponsesReaderSummaryModelOptions = (
       env.OPENAI_READER_SUMMARY_MODEL ??
       env.OPENAI_READER_SUMMARY_MODEL ??
       env.OPENAI_SUMMARY_MODEL,
-    promptVersion:
-      env.OPENAI_READER_SUMMARY_PROMPT_VERSION ??
-      env.OPENAI_READER_SUMMARY_PROMPT_VERSION,
     evalDatasetVersion:
       env.READER_SUMMARY_EVAL_DATASET_VERSION ??
       env.READER_SUMMARY_EVAL_DATASET_VERSION,

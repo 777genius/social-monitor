@@ -7,7 +7,7 @@ import type {
   ReaderSummaryRisk,
   ReaderSummaryInterestHighlight,
 } from "../../domain";
-import { buildReaderSummary } from "../../domain";
+import { buildReaderSummary, readerSummaryHeadline } from "../../domain";
 import type {
   ReaderSummaryModelInput,
   ReaderSummaryModelRoute,
@@ -23,7 +23,6 @@ import {
   normalizeSetValue,
   optionalString,
   requiredOptionalStringArray,
-  requiredRecord,
   requiredString,
   requiredStringArray,
   uniqueNonEmptyStrings,
@@ -57,7 +56,9 @@ export const normalizeOpenAiReaderSummaryDraft = (
   const citationMap = canonicalCitationMapFromEvidence(
     input.evidence.selectedEvidence,
   );
-  const headline = requiredString(raw.headline, "reader summary headline");
+  const headline = readerSummaryHeadline(
+    requiredString(raw.headline, "reader summary headline"),
+  );
   const legacyExecutiveSummary = requiredString(
     raw.executiveSummary,
     "reader summary executive summary",
@@ -84,10 +85,9 @@ export const normalizeOpenAiReaderSummaryDraft = (
     ),
     storySummariesByCitationId: new Map(
       normalizedTopStories.flatMap((story) =>
-        story.citationIds.map((citationId) => [
-          citationId,
-          story.summary,
-        ] as const),
+        story.citationIds.map(
+          (citationId) => [citationId, story.summary] as const,
+        ),
       ),
     ),
   });

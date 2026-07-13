@@ -3,12 +3,44 @@ import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 import { buildReaderSummaryCoveragePlan } from "../../domain";
 import type { ReaderSummaryModelInput } from "../../ports";
 import {
+  assertNoReaderSummaryPromptReleaseOverride,
   buildOpenAiReaderSummaryInstructions,
   buildOpenAiReaderSummaryPromptPayload,
+  currentReaderSummaryPromptRelease,
 } from "./openai-responses-reader-summary-prompt";
 import { openAiReaderSummaryJsonSchema } from "./openai-responses-reader-summary-schema";
 
 describe("OpenAI reader summary prompt contract", () => {
+  it("uses one meaningful provider-neutral prompt release", () => {
+    expect(currentReaderSummaryPromptRelease).toMatchObject({
+      id: expect.stringMatching(
+        /^reader_summary\.prompt\.\d{4}-\d{2}-\d{2}\.[a-z_]+$/,
+      ),
+      releasedOn: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+    });
+    expect(currentReaderSummaryPromptRelease.id).not.toMatch(/\.v\d+$/);
+    expect(currentReaderSummaryPromptRelease.id).not.toMatch(
+      /agent_runtime|openai/,
+    );
+    expect(currentReaderSummaryPromptRelease.id).toContain(
+      currentReaderSummaryPromptRelease.releasedOn,
+    );
+    expect(
+      currentReaderSummaryPromptRelease.changeSummary.trim().length,
+    ).toBeGreaterThan(20);
+  });
+
+  it("rejects labels that can diverge from the compiled prompt", () => {
+    expect(() =>
+      assertNoReaderSummaryPromptReleaseOverride({
+        environmentName: "READER_SUMMARY_PROMPT_VERSION",
+        value: "reader_summary.prompt.fake_release",
+      }),
+    ).toThrow(
+      "READER_SUMMARY_PROMPT_VERSION is no longer supported; the Reader Summary prompt release is owned by the compiled prompt contract",
+    );
+  });
+
   it("requests detailed candidate descriptions for the final top-eight ranking", () => {
     const instructions = buildOpenAiReaderSummaryInstructions({
       policy: {
@@ -31,6 +63,16 @@ describe("OpenAI reader summary prompt contract", () => {
     );
     expect(instructions).toContain(
       "internal workflow language such as source item",
+    );
+    expect(instructions).toContain(
+      "never end either headline with a period or full stop",
+    );
+    expect(instructions).toContain("Do not use meta-headline formulas");
+    expect(instructions).toContain(
+      "Otherwise source-frame the headline as reports of, reported or alleged",
+    );
+    expect(instructions).toContain(
+      "Never combine different story clusters into one thematic story",
     );
     expect(instructions).toContain("return 12-15 topStories");
   });

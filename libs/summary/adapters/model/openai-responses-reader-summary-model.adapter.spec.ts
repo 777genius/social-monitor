@@ -9,7 +9,10 @@ import {
   OpenAiResponsesReaderSummaryModelAdapter,
   resolveOpenAiResponsesReaderSummaryModelOptions,
 } from "./openai-responses-reader-summary-model.adapter";
-import { buildOpenAiReaderSummaryPromptPayload } from "./openai-responses-reader-summary-prompt";
+import {
+  buildOpenAiReaderSummaryPromptPayload,
+  currentReaderSummaryPromptRelease,
+} from "./openai-responses-reader-summary-prompt";
 import { coveragePlanLeadFixture } from "./reader-summary-coverage-plan-test-fixture";
 
 describe("OpenAiResponsesReaderSummaryModelAdapter", () => {
@@ -157,9 +160,7 @@ describe("OpenAiResponsesReaderSummaryModelAdapter", () => {
         },
       },
     });
-    expect(route.promptVersion).toBe(
-      "reader_summary.prompt.openai.responses.v10",
-    );
+    expect(route.promptVersion).toBe(currentReaderSummaryPromptRelease.id);
     expect(adapter.estimate(input, route).outputTokens).toBe(3_200);
     expect(attempt.draft).toMatchObject({
       headline: "Workspace AI tooling signal",

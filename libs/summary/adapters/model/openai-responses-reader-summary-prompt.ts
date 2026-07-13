@@ -7,6 +7,37 @@ import {
 import type { ReaderSummaryModelInput } from "../../ports";
 import { buildAdaptiveReaderSummaryEvidence } from "./openai-responses-reader-summary-adaptive-evidence";
 
+export type ReaderSummaryPromptRelease = {
+  readonly id: string;
+  readonly releasedOn: string;
+  readonly changeSummary: string;
+};
+
+/**
+ * The current provider-neutral release of the prompt defined in this file.
+ *
+ * Keep only the current release here. Historical IDs already live in persisted
+ * lineage, eval artifacts and Git, so a growing manual vN registry would only
+ * duplicate history without explaining why a release exists.
+ */
+export const currentReaderSummaryPromptRelease = {
+  id: "reader_summary.prompt.2026-07-13.source_grounded_article_headlines",
+  releasedOn: "2026-07-13",
+  changeSummary:
+    "Legal and single-provider claims stay source-framed, article headlines avoid meta-wraps, and each top story stays within one evidence cluster.",
+} as const satisfies ReaderSummaryPromptRelease;
+
+export const assertNoReaderSummaryPromptReleaseOverride = (params: {
+  readonly environmentName: string;
+  readonly value: string | undefined;
+}): void => {
+  if (params.value?.trim()) {
+    throw new Error(
+      `${params.environmentName} is no longer supported; the Reader Summary prompt release is owned by the compiled prompt contract`,
+    );
+  }
+};
+
 export const buildOpenAiReaderSummaryInstructions = (
   input: ReaderSummaryModelInput,
 ): string =>
@@ -29,8 +60,11 @@ export const buildOpenAiReaderSummaryInstructions = (
     "Do not turn a single source title into a confirmed product, model, launch, benchmark, pricing or availability claim.",
     "Only put a product/version/benchmark/launch claim in the headline when it is supported by citations from at least two distinct providerKeys.",
     "If a claim is supported by one provider only, keep the headline neutral and phrase the item as source-reported or source-discussed.",
+    "For lawsuits, accusations and other legal claims, do not present filing or liability as established unless the evidence includes a primary court document or first-party statement. Otherwise source-frame the headline as reports of, reported or alleged.",
     "The backend derives the final reader content, claim board and reliability shadow report from narrativeSections, topStories, citations and risks. Keep raw content compact: set content.headline to the same meaning as headline, content.oneLineTakeaway to one short sentence, and keep content arrays empty unless a field is impossible to leave empty.",
     "Write headline, executiveSummary and content.oneLineTakeaway like a useful short article summary of the best source items, not a telemetry report, checklist or process note.",
+    "Write headline and content.headline in concise sentence-style article headline form. Use sentence case and never end either headline with a period or full stop.",
+    "State the lead event and its concrete consequence directly. Do not use meta-headline formulas such as one item leads or tops a day of chatter, debate or signals.",
     "Return narrativeSections as the canonical reader narrative. executiveSummary must be a faithful Markdown rendering of the same sections and must not add claims of its own.",
     ...readerSummaryLeadInstructions(input),
     "Each narrative section must add information not already stated elsewhere. Do not paraphrase the lead under Main signal or repeat the same caveat in multiple sections.",
@@ -40,6 +74,7 @@ export const buildOpenAiReaderSummaryInstructions = (
     "Keep the JSON response focused. Do not restate the same item in content, topStories, interestHighlights and risks. Prefer concrete synthesis over long explanations.",
     "Length limits: headline under 120 characters; the complete narrative 220-320 words when the coverage plan has secondary signals and shorter when it does not; lead 70-110 words; each secondary signal 25-55 words; each topStories title under 140 characters; each topStories summary 420-650 characters when supported and under 720 characters always.",
     "Each topStories title must name the concrete post, project or topic. Do not use Cross-source, cross-provider attention, source coverage or confirmed by N sources as a topStories title; keep that support in evidence/confidence language.",
+    "Each topStories entry must describe exactly one storyClusterId and may cite only evidence attached to that cluster. Never combine different story clusters into one thematic story, and never reuse a citationId across topStories; thematic synthesis belongs in narrativeSections.",
     "Rewrite conversational, question-style or truncated source titles into concise neutral titles that state the concrete topic or result. Do not copy lowercase post fragments, first-person hooks or trailing ellipses as topStories titles.",
     "Preserve material qualifiers exactly as stated in the cited evidence, including model, variant, mode and tier names such as Ultra, Pro, Max, Preview or Thinking. If a claim is specific to one variant or mode, name it in both the topStories title and summary; never generalize it to the whole model family.",
     "Each topStories summary must explain why the item matters and should use 3-5 concise sentences covering what happened, the concrete product or workflow impact, and any evidence-backed uncertainty. Do not merely repeat the title, prefix the source text with Source-reported, pad weak evidence or invent missing details.",

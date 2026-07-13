@@ -23,8 +23,10 @@ import {
   normalizeOpenAiReaderSummaryDraft,
 } from "./openai-responses-reader-summary-draft-normalizer";
 import {
+  assertNoReaderSummaryPromptReleaseOverride,
   buildOpenAiReaderSummaryInstructions,
   buildOpenAiReaderSummaryPromptPayload,
+  currentReaderSummaryPromptRelease,
 } from "./openai-responses-reader-summary-prompt";
 import { parseOpenAiReaderSummaryJsonObject } from "./openai-responses-reader-summary-response-parser";
 import { openAiReaderSummaryJsonSchema } from "./openai-responses-reader-summary-schema";
@@ -45,7 +47,6 @@ export type AgentRuntimeReaderSummaryModelAdapterOptions = {
   readonly providerInstanceId?: string;
   readonly model?: string;
   readonly reasoningEffort?: "xhigh";
-  readonly promptVersion?: string;
   readonly evalDatasetVersion?: string;
   readonly timeoutMs?: number;
   readonly maxOutputTokens?: number;
@@ -56,7 +57,6 @@ const provider = "agent-runtime";
 const defaultAgentProvider: AgentRuntimeProvider = "codex";
 const defaultModel = "gpt-5.5";
 const defaultReasoningEffort = "xhigh" as const;
-const defaultPromptVersion = "reader_summary.prompt.agent_runtime.v10";
 const defaultEvalDatasetVersion = "reader_summary.eval.mvp.v1";
 const defaultTimeoutMs = 600_000;
 const defaultMaxOutputTokens = 16_000;
@@ -68,7 +68,6 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
   private readonly providerInstanceId?: string;
   private readonly model: string;
   private readonly reasoningEffort: "xhigh";
-  private readonly promptVersion: string;
   private readonly evalDatasetVersion: string;
   private readonly timeoutMs: number;
   private readonly maxOutputTokens: number;
@@ -80,10 +79,6 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
     this.providerInstanceId = options.providerInstanceId;
     this.model = nonEmptyOrFallback(options.model, defaultModel);
     this.reasoningEffort = options.reasoningEffort ?? defaultReasoningEffort;
-    this.promptVersion = nonEmptyOrFallback(
-      options.promptVersion,
-      defaultPromptVersion,
-    );
     this.evalDatasetVersion = nonEmptyOrFallback(
       options.evalDatasetVersion,
       defaultEvalDatasetVersion,
@@ -285,7 +280,7 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
     return {
       provider,
       model: `${this.agentProvider}:${this.model}:${this.reasoningEffort}`,
-      promptVersion: this.promptVersion,
+      promptVersion: currentReaderSummaryPromptRelease.id,
       schemaVersion: "reader_summary.artifact.v1",
     };
   }
@@ -350,24 +345,31 @@ const isRepairableNarrativeError = (error: unknown): boolean =>
 export const resolveAgentRuntimeReaderSummaryModelOptions = (
   env: NodeJS.ProcessEnv,
   client: AgentRuntimeClientPort,
-): AgentRuntimeReaderSummaryModelAdapterOptions => ({
-  client,
-  agentProvider: parseAgentRuntimeProvider(env.AGENT_RUNTIME_PROVIDER),
-  providerInstanceId: env.AGENT_RUNTIME_PROVIDER_INSTANCE_ID,
-  model: env.AGENT_RUNTIME_READER_SUMMARY_MODEL,
-  reasoningEffort: parseReaderSummaryReasoningEffort(
-    env.AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT ??
-      env.AGENT_RUNTIME_REASONING_EFFORT,
-  ),
-  promptVersion: env.AGENT_RUNTIME_READER_SUMMARY_PROMPT_VERSION,
-  evalDatasetVersion: env.READER_SUMMARY_EVAL_DATASET_VERSION,
-  timeoutMs: parsePositiveInteger(
-    env.AGENT_RUNTIME_READER_SUMMARY_TIMEOUT_MS ?? env.AGENT_RUNTIME_TIMEOUT_MS,
-  ),
-  maxOutputTokens: parsePositiveInteger(
-    env.AGENT_RUNTIME_READER_SUMMARY_MAX_OUTPUT_TOKENS,
-  ),
-});
+): AgentRuntimeReaderSummaryModelAdapterOptions => {
+  assertNoReaderSummaryPromptReleaseOverride({
+    environmentName: "AGENT_RUNTIME_READER_SUMMARY_PROMPT_VERSION",
+    value: env.AGENT_RUNTIME_READER_SUMMARY_PROMPT_VERSION,
+  });
+
+  return {
+    client,
+    agentProvider: parseAgentRuntimeProvider(env.AGENT_RUNTIME_PROVIDER),
+    providerInstanceId: env.AGENT_RUNTIME_PROVIDER_INSTANCE_ID,
+    model: env.AGENT_RUNTIME_READER_SUMMARY_MODEL,
+    reasoningEffort: parseReaderSummaryReasoningEffort(
+      env.AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT ??
+        env.AGENT_RUNTIME_REASONING_EFFORT,
+    ),
+    evalDatasetVersion: env.READER_SUMMARY_EVAL_DATASET_VERSION,
+    timeoutMs: parsePositiveInteger(
+      env.AGENT_RUNTIME_READER_SUMMARY_TIMEOUT_MS ??
+        env.AGENT_RUNTIME_TIMEOUT_MS,
+    ),
+    maxOutputTokens: parsePositiveInteger(
+      env.AGENT_RUNTIME_READER_SUMMARY_MAX_OUTPUT_TOKENS,
+    ),
+  };
+};
 
 const parseReaderSummaryReasoningEffort = (
   value: string | undefined,
