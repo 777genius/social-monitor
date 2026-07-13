@@ -116,7 +116,7 @@ describe("AgentRuntimeReaderSummaryTopicLabeler", () => {
       {
         nodeId: "topic:story:codex",
         topicId: "topic:codex-agents",
-        label: "Codex agents",
+        label: "Codex Agents",
         semantic: {
           subject: "Codex",
           parentSubject: "OpenAI",
