@@ -232,16 +232,19 @@ export class DeterministicReaderSummaryModelAdapter implements ReaderSummaryMode
       usage,
     };
 
+    const content = buildReaderSummary({
+      ...draft,
+      storyClusters: input.evidence.clusters,
+      sourceWindow: input.evidence.sourceWindow,
+      selectedEvidence: citedEvidence,
+    });
+
     return {
       route: selectedRoute,
       draft: {
         ...draft,
-        content: buildReaderSummary({
-          ...draft,
-          storyClusters: input.evidence.clusters,
-          sourceWindow: input.evidence.sourceWindow,
-          selectedEvidence: citedEvidence,
-        }),
+        headline: content.headline,
+        content,
       },
     };
   }

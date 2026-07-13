@@ -96,8 +96,8 @@ describe("story ranking golden eval", () => {
       expectedTopReadTitles: [
         "openai/codex",
         "Viral Reddit pricing backlash",
-        "Same subreddit browser-agent duplicate 1",
         "Weak Reddit discussion about calesthio/OpenMontage",
+        "Same subreddit browser-agent duplicate 1",
         "Anthropic launches developer agents",
         "Anthropic launches developer agents",
       ],
@@ -117,8 +117,8 @@ describe("story ranking golden eval", () => {
     expect(readerSummary.topReads.map((item) => item.title)).toEqual([
       "openai/codex",
       "Viral Reddit pricing backlash",
-      "Same subreddit browser-agent duplicate 1",
       "Weak Reddit discussion about calesthio/OpenMontage",
+      "Same subreddit browser-agent duplicate 1",
       "Anthropic launches developer agents",
       "Anthropic launches developer agents",
     ]);

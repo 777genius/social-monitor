@@ -208,7 +208,7 @@ describe("BuildReaderSummaryTopicMapUseCase", () => {
     expect(result.value.nodes).toHaveLength(1);
   });
 
-  it("keeps the hard limit for a genuinely oversized verification tree", async () => {
+  it("bounds an oversized topic set before relation verification", async () => {
     const verifier = new AcceptingTopicRelationVerifier();
     const result = await new BuildReaderSummaryTopicMapUseCase({
       mode: "agent-runtime",
@@ -216,13 +216,13 @@ describe("BuildReaderSummaryTopicMapUseCase", () => {
       relationVerifier: verifier,
     }).execute(manyTopicCommand(26));
 
-    expect(result.ok).toBe(false);
-    if (result.ok) {
-      throw new Error("Expected oversized topic verification to fail");
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      throw result.error;
     }
-    expect(result.error.message).toContain("25 checks");
-    expect(result.error.message).toContain("safe limit of 24");
-    expect(verifier.inputs).toHaveLength(0);
+    expect(verifier.inputs).toHaveLength(1);
+    expect(verifier.inputs[0]?.relations).toHaveLength(24);
+    expect(result.value.nodes).toHaveLength(1);
   });
 });
 

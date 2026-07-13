@@ -74,8 +74,8 @@ describe("selectUniqueTopReadCandidates core-topic ordering", () => {
     );
 
     expect(result.map((item) => item.title)).toEqual([
-      "AI data center construction sites face theft risk",
       "Claude Fable 5 access extended through July 12",
+      "AI data center construction sites face theft risk",
     ]);
   });
 

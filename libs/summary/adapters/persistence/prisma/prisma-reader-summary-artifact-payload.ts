@@ -114,10 +114,10 @@ export const normalizeReaderSummaryArtifactPayload = (
       normalizeOptionalString(value.subscriptionId) ??
       fallback.subscriptionId ??
       undefined,
-    generatedAt: requireDate(
-      value.generatedAt ?? fallback.createdAt,
-      "Reader summary generation date",
-    ),
+    generatedAt:
+      value.generatedAt === undefined
+        ? fallback.createdAt
+        : requireDate(value.generatedAt, "Reader summary generation date"),
     sourceWindow: {
       windowId: requireString(
         serializedSourceWindow.windowId,

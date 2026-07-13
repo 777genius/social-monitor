@@ -153,8 +153,8 @@ describe("selectUniqueTopReadCandidates", () => {
     );
 
     expect(result.map((item) => item.title)).toEqual([
-      "X rollout",
       "HN discussion",
+      "X rollout",
     ]);
   });
 
