@@ -1,7 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { pathToFileURL } from "node:url";
 
 type XRunRow = {
   readonly run_id?: string;
@@ -581,7 +580,7 @@ function readSqliteJson<TValue>(
       [
         "-readonly",
         "-json",
-        `${pathToFileURL(ledgerPath).href}?mode=ro`,
+        ledgerPath,
         sql,
       ],
       {
