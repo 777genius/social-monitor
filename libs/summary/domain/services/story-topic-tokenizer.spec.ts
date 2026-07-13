@@ -45,7 +45,7 @@ describe("story topic tokenizer", () => {
     );
   });
 
-  it("offers the benchmark name with its primary model identity", () => {
+  it("keeps the primary model identity when a benchmark name is too long", () => {
     const evidence = evidenceItem(
       "On Agents Last Exam, GPT-5.6 Sol sets a new high, eclipsing Claude Fable 5",
     );
@@ -54,9 +54,13 @@ describe("story topic tokenizer", () => {
       fallbackKeywords: storyTopicTokens(evidence, STORY_RANKING_POLICY_V1),
     });
 
-    expect(candidates.map((candidate) => candidate.label)).toContain(
-      "GPT 5.6 Agents Last Exam",
-    );
+    expect(candidates.map((candidate) => candidate.label)).toContain("GPT 5.6");
+    expect(
+      candidates.every(
+        (candidate) =>
+          candidate.label.split(/\s+/u).filter(Boolean).length <= 4,
+      ),
+    ).toBe(true);
   });
 
   it("does not treat a source author handle as topic evidence", () => {
