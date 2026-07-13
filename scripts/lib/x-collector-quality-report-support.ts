@@ -581,7 +581,7 @@ function readSqliteJson<TValue>(
       [
         "-readonly",
         "-json",
-        `${pathToFileURL(ledgerPath).href}?immutable=1`,
+        `${pathToFileURL(ledgerPath).href}?mode=ro`,
         sql,
       ],
       {

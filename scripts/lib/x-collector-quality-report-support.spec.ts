@@ -223,7 +223,8 @@ describe("x collector quality report support", () => {
         expect(args.slice(0, 2)).toEqual(["-readonly", "-json"]);
         const ledgerUri = new URL(String(args[2]));
         expect(ledgerUri.protocol).toBe("file:");
-        expect(ledgerUri.searchParams.get("immutable")).toBe("1");
+        expect(ledgerUri.searchParams.get("mode")).toBe("ro");
+        expect(ledgerUri.searchParams.has("immutable")).toBe(false);
       }
     } finally {
       rmSync(directory, { recursive: true, force: true });
