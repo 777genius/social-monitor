@@ -62,7 +62,10 @@ void main() {
       ),
       findsNothing,
     );
-    expect(find.text('Repositories ranked by GitHub momentum'), findsOneWidget);
+    expect(
+      find.text('Top 10 repositories in GitHub Trending order'),
+      findsOneWidget,
+    );
     await tester.scrollUntilVisible(
       find.byKey(const ValueKey('reader-summary-top-post-0')),
       500,
@@ -224,7 +227,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('GitHub trends'), findsOneWidget);
-    expect(find.text('Repositories ranked by GitHub momentum'), findsOneWidget);
+    expect(
+      find.text('Top 10 repositories in GitHub Trending order'),
+      findsOneWidget,
+    );
     expect(find.text('calesthio/OpenMontage'), findsOneWidget);
     expect(find.text('Reddit thread on agent reliability'), findsNothing);
 
