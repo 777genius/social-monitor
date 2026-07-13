@@ -128,17 +128,12 @@ export const selectGitHubTrendingDisplayRepositories = (
     )
     .sort(
       (left, right) =>
+        right.item.observedAt.getTime() - left.item.observedAt.getTime() ||
         left.rank - right.rank ||
         left.item.feedItemId.localeCompare(right.item.feedItemId),
     );
-  const latestObservedAt = Math.max(
-    ...candidates.map((candidate) => candidate.item.observedAt.getTime()),
-  );
   const byRepository = new Map<string, (typeof candidates)[number]>();
   for (const candidate of candidates) {
-    if (candidate.item.observedAt.getTime() !== latestObservedAt) {
-      continue;
-    }
     const key = candidate.item.canonicalUrl.trim().toLocaleLowerCase("en-US");
     if (!byRepository.has(key)) {
       byRepository.set(key, candidate);

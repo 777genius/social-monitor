@@ -42,9 +42,15 @@ describe("reader summary GitHub Trending policy", () => {
   });
 
   it("selects exactly the first ten repositories in GitHub rank order", () => {
-    const items = [12, 2, 10, 1, 8, 5, 11, 4, 9, 3, 7, 6].map((rank) =>
-      evidence(`repo-${rank}`, 100 + rank, "github-trending-page", rank),
-    );
+    const items = [12, 2, 10, 1, 8, 5, 11, 4, 9, 3, 7, 6].map((rank) => ({
+      ...evidence(
+        `repo-${rank}`,
+        100 + rank,
+        "github-trending-page",
+        rank,
+      ),
+      observedAt: new Date(Date.UTC(2026, 6, 10, 12, 0, rank)),
+    }));
 
     expect(
       selectGitHubTrendingDisplayRepositories(items).map(
