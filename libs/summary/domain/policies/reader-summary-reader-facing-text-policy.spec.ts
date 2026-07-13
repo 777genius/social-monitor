@@ -141,6 +141,14 @@ describe("reader summary reader-facing text policy", () => {
     ).toBe(
       "I built Context.dev to make structured web data easier for AI agents.",
     );
+    expect(
+      readerFacingEvidenceExcerpt(
+        "This started based off of a hunch. Claude Code sent 33k tokens before reading the prompt, while OpenCode sent materially fewer harness tokens.",
+        "Claude Code token overhead comparison",
+      ),
+    ).toBe(
+      "Claude Code sent 33k tokens before reading the prompt, while OpenCode sent materially fewer harness tokens.",
+    );
   });
 
   it("detects duplicated title and reason text", () => {

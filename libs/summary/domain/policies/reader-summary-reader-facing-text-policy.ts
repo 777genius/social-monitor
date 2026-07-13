@@ -123,9 +123,19 @@ export const readerFacingEvidenceExcerpt = (
     return undefined;
   }
 
-  const firstRelevantIndex = hasReaderFacingTopicSignal(topicContext)
-    ? 0
-    : completeSentences.findIndex(hasReaderFacingTopicSignal);
+  const firstTopicSentenceIndex = completeSentences.findIndex(
+    (sentence) =>
+      hasReaderFacingTopicSignal(sentence) &&
+      !isNarrativePreambleSentence(sentence),
+  );
+  const firstRelevantIndex =
+    firstTopicSentenceIndex >= 0
+      ? firstTopicSentenceIndex
+      : hasReaderFacingTopicSignal(topicContext)
+        ? completeSentences.findIndex(
+            (sentence) => !isNarrativePreambleSentence(sentence),
+          )
+        : -1;
   if (firstRelevantIndex < 0) {
     return undefined;
   }
@@ -167,6 +177,11 @@ const hasReaderFacingTopicSignal = (value: string): boolean =>
 const isLowInformationEvidenceExcerpt = (value: string): boolean =>
   /\b(?:cooked by ai|locked tf in|no matter what|nothing else like|public productivity)\b/iu.test(
     value,
+  );
+
+const isNarrativePreambleSentence = (value: string): boolean =>
+  /^(?:this (?:all )?started (?:out )?(?:based (?:off )?of|with) (?:a|an|the|my|our)\b|(?:i|we) (?:had a hunch|was curious|were curious|started wondering|wondered (?:if|whether)|wanted to see)\b)/iu.test(
+    value.trim(),
   );
 
 export const isReaderTitleReasonDuplicate = (

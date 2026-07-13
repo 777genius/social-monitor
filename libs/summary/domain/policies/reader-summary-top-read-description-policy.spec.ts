@@ -50,6 +50,33 @@ describe("reader summary top-read description policy", () => {
     expect(enriched?.summary).toBe(detailedSummary);
   });
 
+  it("prefers a cited model explanation over a long raw source excerpt", () => {
+    const detailedSummary =
+      "A measured comparison found materially different pre-prompt token overhead between two coding-agent harnesses. The result matters because wrapper behavior can change cost before model reasoning begins. Treat the exact ratio as workload-specific until the setup is reproduced, but include harness traffic when teams compare coding-agent economics.";
+    const rawSourceExcerpt =
+      "This started based off of a hunch. We usually use OpenCode, but were forced to use Claude Code for a while due to issues with another tool. We logged every request and response while testing the same workflow, then exported the transcript and wrote down what happened in the session so other people could inspect the setup and compare the numbers for themselves.";
+    const candidate = story({
+      id: "story:token-overhead-source",
+      title: "Claude Code sends 33k tokens before reading the prompt",
+      summary: rawSourceExcerpt,
+      citationIds: ["c6"],
+    });
+    const modelStory = story({
+      id: "story:coding-agent-costs",
+      title: "Coding-agent cost comparisons move beyond model labels",
+      summary: detailedSummary,
+      citationIds: ["c6", "c47"],
+    });
+
+    const [enriched] = enrichTopReadCandidateDescriptions({
+      candidates: [candidate],
+      modelStories: [candidate, modelStory],
+    });
+
+    expect(rawSourceExcerpt.length).toBeGreaterThanOrEqual(280);
+    expect(enriched?.summary).toBe(detailedSummary);
+  });
+
   it("keeps a short description when no model story is clearly related", () => {
     const supplementalStory = story({
       id: "story:shared-cluster",

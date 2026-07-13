@@ -8,6 +8,15 @@ export const enrichTopReadCandidateDescriptions = (params: {
   readonly modelStories: readonly TopReadCandidate[];
 }): readonly TopReadCandidate[] =>
   params.candidates.map((candidate) => {
+    const citedModelDescription = bestRelatedModelDescription(
+      candidate,
+      params.modelStories,
+      exactCitationMatchScore,
+    );
+    if (citedModelDescription !== undefined) {
+      return { ...candidate, summary: citedModelDescription };
+    }
+
     if (candidate.summary.trim().length >= detailedDescriptionMinimumLength) {
       return candidate;
     }
@@ -25,6 +34,7 @@ export const enrichTopReadCandidateDescriptions = (params: {
 const bestRelatedModelDescription = (
   candidate: TopReadCandidate,
   modelStories: readonly TopReadCandidate[],
+  minimumScore = 1,
 ): string | undefined =>
   modelStories
     .filter(
@@ -34,9 +44,30 @@ const bestRelatedModelDescription = (
     .map((story) => ({
       story,
       score: relatedStoryScore(candidate, story),
+      strictCitationSuperset: isStrictCitationSuperset(candidate, story),
     }))
-    .filter((entry) => entry.score > 0)
-    .sort((left, right) => right.score - left.score)[0]?.story.summary;
+    .filter((entry) => entry.score >= minimumScore)
+    .sort(
+      (left, right) =>
+        right.score - left.score ||
+        Number(right.strictCitationSuperset) -
+          Number(left.strictCitationSuperset) ||
+        right.story.citationIds.length - left.story.citationIds.length,
+    )[0]?.story.summary;
+
+const isStrictCitationSuperset = (
+  candidate: TopReadCandidate,
+  modelStory: TopReadCandidate,
+): boolean => {
+  if (modelStory.citationIds.length <= candidate.citationIds.length) {
+    return false;
+  }
+  const modelCitationIds = new Set(modelStory.citationIds);
+
+  return candidate.citationIds.every((citationId) =>
+    modelCitationIds.has(citationId),
+  );
+};
 
 const relatedStoryScore = (
   candidate: TopReadCandidate,
@@ -60,6 +91,8 @@ const relatedStoryScore = (
     ? sharedTokens.length
     : 0;
 };
+
+const exactCitationMatchScore = 1_000;
 
 const distinctiveTitleTokens = (value: string): readonly string[] =>
   [

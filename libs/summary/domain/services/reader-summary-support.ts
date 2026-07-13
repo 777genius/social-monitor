@@ -17,11 +17,15 @@ import {
   nonEmpty,
   plural,
   interestTitle,
-  readerSummaryHeadline,
   uniqueNonEmpty,
 } from "../value-objects/summary-text";
+import {
+  isExplicitlySourceFramedText,
+  isTechnicalReaderHeadline,
+} from "./reader-summary-headline-policy";
 
 export { plural } from "../value-objects/summary-text";
+export { groundedReaderHeadline } from "./reader-summary-headline-policy";
 
 export { normalizeSignalScore };
 
@@ -98,48 +102,6 @@ export const readerItemConfidence = (params: {
     score: Number(score.toFixed(2)),
     rationale,
   };
-};
-
-export const groundedReaderHeadline = (params: {
-  readonly headline: string;
-  readonly sourceMix: readonly SourceMixEntry[];
-  readonly topReads: readonly TopRead[];
-}): string => {
-  const fallback = readerSummaryHeadline(params.headline);
-
-  if (params.topReads.length === 0) {
-    return fallback;
-  }
-
-  const lead = params.topReads[0]!;
-  const hasGroundedLead =
-    lead.confirmedProviderKeys.length > 1 || lead.confidence.level === "high";
-  const safeSemanticHeadline =
-    !isTechnicalReaderHeadline(fallback) &&
-    (hasGroundedLead || isExplicitlySourceFramedText(fallback, lead));
-
-  if (safeSemanticHeadline) {
-    return fallback;
-  }
-
-  const providerNames = uniqueNonEmpty(
-    params.sourceMix.length === 0
-      ? params.topReads.map((item) => item.providerName)
-      : params.sourceMix.map((source) =>
-          providerNameForSource(source.providerKey, params.topReads),
-        ),
-  );
-  const providerSummary =
-    providerNames.length === 0
-      ? "monitored sources"
-      : providerNames.length === 1
-        ? (providerNames[0] ?? "monitored sources")
-        : `${providerNames.slice(0, 3).join(", ")}${
-            providerNames.length > 3 ? ` +${providerNames.length - 3}` : ""
-          }`;
-  return readerSummaryHeadline(
-    buildHumanReaderHeadline(params.topReads) ?? `${providerSummary} summary`,
-  );
 };
 
 export const buildGroundedOneLineTakeaway = (params: {
@@ -222,13 +184,6 @@ export const buildBestFirstReadBullet = (topRead: TopRead): string => {
   ].join(" ");
 };
 
-const providerNameForSource = (
-  providerKey: string,
-  topReads: readonly TopRead[],
-): string =>
-  topReads.find((item) => item.providerKey === providerKey)?.providerName ??
-  providerKey;
-
 const sourceLocalReadLabel = (read: TopRead): string => {
   const reason = [read.reason, ...read.whyImportant].find(
     (value) => !isWeakReaderReason(value),
@@ -252,101 +207,6 @@ const stripTrailingPeriod = (value: string): string => {
   const trimmed = value.trim();
 
   return trimmed.endsWith(".") ? trimmed.slice(0, -1) : trimmed;
-};
-
-const isTechnicalReaderHeadline = (value: string): boolean => {
-  const normalized = value.trim().toLowerCase();
-
-  return (
-    normalized.length === 0 ||
-    normalized.startsWith("key signals across") ||
-    normalized.startsWith("strongest reads across") ||
-    normalized.startsWith("strongest read across") ||
-    normalized.startsWith("summary:") ||
-    normalized.startsWith("source watch") ||
-    normalized.includes("source watch across") ||
-    normalized.includes("cited top read") ||
-    [
-      "review ",
-      "check ",
-      "read ",
-      "use ",
-      "treat ",
-      "inspect ",
-      "start with ",
-    ].some((prefix) => normalized.startsWith(prefix))
-  );
-};
-
-const isExplicitlySourceFramedText = (
-  value: string,
-  lead: TopRead,
-): boolean => {
-  const normalized = value.trim().toLocaleLowerCase("en-US");
-  const provider = lead.providerName.trim().toLocaleLowerCase("en-US");
-  const providerPrefixes = [
-    provider,
-    `a ${provider}`,
-    `an ${provider}`,
-    `the ${provider}`,
-  ];
-
-  return (
-    (provider.length > 0 &&
-      providerPrefixes.some((prefix) => normalized.startsWith(prefix))) ||
-    /^(?:a |an |the )?(?:post|discussion|thread|report|chatter)\b/iu.test(
-      normalized,
-    )
-  );
-};
-
-const buildHumanReaderHeadline = (
-  topReads: readonly TopRead[],
-): string | undefined => {
-  const lead = topReads[0];
-  if (lead === undefined) {
-    return undefined;
-  }
-  if (
-    lead.confirmedProviderKeys.length <= 1 &&
-    lead.confidence.level === "low"
-  ) {
-    const cautiousReason = [lead.reason, ...lead.whyImportant].find((value) =>
-      /\b(?:allegation|needs? confirmation|not (?:independently )?confirmed|should not be treated as confirmation|uncertain|unverified)\b/iu.test(
-        value,
-      ),
-    );
-
-    return compactHeadlinePart(
-      cautiousReason ?? `${lead.providerName} discussion needs confirmation`,
-    );
-  }
-
-  const leadTitle = lead.title.trim();
-  if (leadTitle.length === 0) {
-    return undefined;
-  }
-
-  return compactHeadlinePart(leadTitle);
-};
-
-const compactHeadlinePart = (value: string): string => {
-  const sentence = firstSentence(value) ?? value;
-  const compact = stripTrailingPeriod(sentence.replace(/\s+/gu, " "));
-  const maxLength = 82;
-
-  if (compact.length <= maxLength) {
-    return compact;
-  }
-
-  const shortened = compact
-    .slice(0, maxLength)
-    .replace(/\s+\S*$/u, "")
-    .trim();
-
-  return shortened.length === 0
-    ? compact.slice(0, maxLength).trim()
-    : shortened;
 };
 
 export const storyProviderMetricLabels = (params: {

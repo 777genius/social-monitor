@@ -122,6 +122,100 @@ describe("groundedReaderHeadline", () => {
     );
   });
 
+  it("replaces a vague daily wrap headline with the concrete lead title", () => {
+    const lead = {
+      ...topRead(),
+      title: "Acme launches a lower-cost coding model",
+    };
+
+    expect(
+      groundedReaderHeadline({
+        headline: "Acme's release tops a day of model-cost and access chatter",
+        topReads: [lead],
+        sourceMix: [],
+      }),
+    ).toBe("Acme launches a lower-cost coding model");
+  });
+
+  it("source-frames an unverified legal lead when replacing a vague headline", () => {
+    const lead = {
+      ...topRead(),
+      title: "Acme sues Example Labs over alleged model theft",
+      reason:
+        "Community reports repeat the alleged dispute, but the filings are not available and the merits remain unknown.",
+      confidence: {
+        level: "medium" as const,
+        score: 0.68,
+        rationale:
+          "Two monitored source groups surface this story, but repetition does not independently verify the allegation.",
+      },
+      confirmedProviderKeys: ["reddit", "hacker-news"],
+    };
+
+    expect(
+      groundedReaderHeadline({
+        headline: "Acme's lawsuit tops a day of model-cost and access chatter",
+        topReads: [lead],
+        sourceMix: [],
+      }),
+    ).toBe("Reports say Acme sued Example Labs over alleged model theft");
+  });
+
+  it("source-frames a direct legal headline when community reports do not include a filing", () => {
+    const lead = {
+      ...topRead(),
+      title: "Acme sues Example Labs over alleged model theft",
+      reason:
+        "Community reports repeat the alleged dispute, but the filings are not available and the merits remain unknown.",
+      confidence: {
+        level: "medium" as const,
+        score: 0.68,
+        rationale:
+          "Two monitored source groups surface this story, but repetition does not independently verify the allegation.",
+      },
+      confirmedProviderKeys: ["reddit", "hacker-news"],
+    };
+
+    expect(
+      groundedReaderHeadline({
+        headline: "Acme sues Example Labs over alleged model theft",
+        topReads: [lead],
+        sourceMix: [],
+      }),
+    ).toBe("Reports say Acme sued Example Labs over alleged model theft");
+
+    expect(
+      groundedReaderHeadline({
+        headline: "Reports say Acme sued Example Labs over alleged model theft",
+        topReads: [lead],
+        sourceMix: [],
+      }),
+    ).toBe("Reports say Acme sued Example Labs over alleged model theft");
+  });
+
+  it("keeps a first-party legal action concrete", () => {
+    const lead = {
+      ...topRead(),
+      title: "Acme sues Example Labs over alleged model theft",
+      reason:
+        "Acme's first-party filing announces the lawsuit; the underlying theft allegation remains unverified.",
+      confidence: {
+        level: "high" as const,
+        score: 0.9,
+        rationale:
+          "Two monitored source groups support this story, including an eligible first-party source.",
+      },
+    };
+
+    expect(
+      groundedReaderHeadline({
+        headline: "Acme's lawsuit tops a day of model-cost and access chatter",
+        topReads: [lead],
+        sourceMix: [],
+      }),
+    ).toBe("Acme sues Example Labs over alleged model theft");
+  });
+
   it("does not let unrelated cross-source coverage validate a single-source lead", () => {
     const lead = {
       ...topRead(),
@@ -205,6 +299,26 @@ describe("groundedReaderHeadline", () => {
         sourceMix: [],
       }),
     ).toBe("X/Twitter discussion highlights a Claude Code proxy workflow");
+  });
+
+  it("does not treat generic chatter as explicit source framing", () => {
+    const lead = {
+      ...topRead(),
+      confidence: {
+        level: "low" as const,
+        score: 0.42,
+        rationale: "Single source",
+      },
+      confirmedProviderKeys: ["x-twitter"],
+    };
+
+    expect(
+      groundedReaderHeadline({
+        headline: "Chatter highlights a Claude Code proxy workflow",
+        topReads: [lead],
+        sourceMix: [],
+      }),
+    ).toBe("X/Twitter discussion needs confirmation");
   });
 });
 
