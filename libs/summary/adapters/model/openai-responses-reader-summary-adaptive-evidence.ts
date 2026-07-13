@@ -103,6 +103,7 @@ const promptEvidenceItem = (
     publishedAt: item.publishedAt.toISOString(),
     observedAt: item.observedAt.toISOString(),
     score: item.score,
+    providerMetrics: item.providerMetricLabels?.slice(0, 8),
     whyImportant: compactStringArray(item.whyImportant, 3, 160),
     contentQuality:
       item.contentQuality === undefined

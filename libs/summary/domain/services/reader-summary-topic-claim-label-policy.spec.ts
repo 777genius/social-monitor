@@ -218,6 +218,7 @@ describe("renderReaderSummaryTopicSemanticLabel", () => {
     ["Grok 4.5", "benchmark", "latest", "Grok 4.5 Benchmark"],
     ["GPT 5.6", "other", "Migrating Production AI", "GPT 5.6"],
     ["GPT 5.6", "efficiency", "production", "GPT 5.6 Production Efficiency"],
+    ["GPT 5.6 Ai", "efficiency", undefined, "GPT 5.6 Efficiency"],
   ] as const)(
     "renders %s/%s deterministically",
     (subject, claimType, qualifier, expected) => {

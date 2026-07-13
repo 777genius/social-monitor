@@ -336,7 +336,7 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
 }
 
 const narrativeRepairInstruction =
-  "Repair the complete JSON response. Every narrativeSections item must use the non-empty string fields title and text, never summary, body or description. If coveragePlan.lead is null, return empty topStories and narrativeSections plus a concrete noSignalReason. Otherwise narrativeSections[0] must have kind lead and cite at least one citationId listed in coveragePlan.lead, with exactly one secondary_signal for every coveragePlan.secondary entry. Do not change facts or invent citations.";
+  "Repair the complete JSON response. Every narrativeSections item must use the non-empty string fields title and text, never summary, body or description. If coveragePlan.lead is null, return empty topStories and narrativeSections plus a concrete noSignalReason. Otherwise narrativeSections[0] must have kind lead and cite at least one citationId listed in coveragePlan.lead, with exactly one secondary_signal for every coveragePlan.secondary entry. Omit any watch that is not self-contained and backed by high engagement, first-party authority or cross-provider support. Do not change facts or invent citations.";
 
 const isRepairableNarrativeError = (error: unknown): boolean =>
   error instanceof Error &&

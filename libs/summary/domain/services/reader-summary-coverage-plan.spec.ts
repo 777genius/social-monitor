@@ -57,6 +57,138 @@ describe("buildReaderSummaryCoveragePlan", () => {
     });
   });
 
+  it("keeps secondary legal reports out of the lead without first-party evidence", () => {
+    const base = buildSelection([
+      cluster("legal-report", 5.2, "legal-report-a", ["reddit", "rss"]),
+      cluster("engineering", 3.1, "engineering-a", ["hacker-news"]),
+    ]);
+    const legal = evidenceById(base, "legal-report-a");
+    const engineering = evidenceById(base, "engineering-a");
+    const selection: SummaryEvidenceSelection = {
+      ...base,
+      selectedEvidence: [
+        {
+          ...legal,
+          title: "Reports say Acme sued Example Labs over alleged model theft",
+          bodyPreview:
+            "Community posts discuss the lawsuit, but no primary court filing is available.",
+        },
+        engineering,
+      ],
+    };
+
+    const plan = buildReaderSummaryCoveragePlan(selection);
+
+    expect(plan.lead?.clusterId).toBe("engineering");
+    expect(plan.secondary.map((item) => item.clusterId)).toContain(
+      "legal-report",
+    );
+  });
+
+  it("allows a first-party legal filing to lead", () => {
+    const base = buildSelection([
+      cluster("official-filing", 5.2, "official-filing-a", ["rss"]),
+      cluster("engineering", 3.1, "engineering-a", ["hacker-news"]),
+    ]);
+    const filing = evidenceById(base, "official-filing-a");
+    const engineering = evidenceById(base, "engineering-a");
+    const selection: SummaryEvidenceSelection = {
+      ...base,
+      selectedEvidence: [
+        {
+          ...filing,
+          title: "Acme files lawsuit against Example Labs",
+          contentQuality: {
+            ...filing.contentQuality!,
+            flags: ["official_account", "trusted_author"],
+          },
+        },
+        engineering,
+      ],
+    };
+
+    expect(buildReaderSummaryCoveragePlan(selection).lead?.clusterId).toBe(
+      "official-filing",
+    );
+  });
+
+  it("allows an explicitly classified primary court document to lead", () => {
+    const base = buildSelection([
+      cluster("court-filing", 5.2, "court-filing-a", ["rss"]),
+      cluster("engineering", 3.1, "engineering-a", ["hacker-news"]),
+    ]);
+    const filing = evidenceById(base, "court-filing-a");
+    const engineering = evidenceById(base, "engineering-a");
+    const selection: SummaryEvidenceSelection = {
+      ...base,
+      selectedEvidence: [
+        {
+          ...filing,
+          title: "Court filing records Acme lawsuit against Example Labs",
+          contentQuality: {
+            ...filing.contentQuality!,
+            flags: ["primary_document"],
+          },
+        },
+        engineering,
+      ],
+    };
+
+    expect(buildReaderSummaryCoveragePlan(selection).lead?.clusterId).toBe(
+      "court-filing",
+    );
+  });
+
+  it.each([
+    "Acme accuses Example Labs of trade-secret misappropriation",
+    "Acme files a complaint alleging model theft",
+    "Regulators bring an antitrust case against Example Labs",
+  ])("keeps a secondary legal allegation out of the lead: %s", (title) => {
+    const base = buildSelection([
+      cluster("legal-report", 5.2, "legal-report-a", ["rss"]),
+      cluster("engineering", 3.1, "engineering-a", ["hacker-news"]),
+    ]);
+    const legal = evidenceById(base, "legal-report-a");
+    const engineering = evidenceById(base, "engineering-a");
+
+    expect(
+      buildReaderSummaryCoveragePlan({
+        ...base,
+        selectedEvidence: [
+          {
+            ...legal,
+            title,
+            bodyPreview: "A secondary publication reports the claim.",
+          },
+          engineering,
+        ],
+      }).lead?.clusterId,
+    ).toBe("engineering");
+  });
+
+  it("recognizes an eligible official court document without an enrichment flag", () => {
+    const base = buildSelection([
+      cluster("court-order", 5.2, "court-order-a", ["rss"]),
+      cluster("engineering", 3.1, "engineering-a", ["hacker-news"]),
+    ]);
+    const filing = evidenceById(base, "court-order-a");
+    const engineering = evidenceById(base, "engineering-a");
+
+    expect(
+      buildReaderSummaryCoveragePlan({
+        ...base,
+        selectedEvidence: [
+          {
+            ...filing,
+            canonicalUrl: "https://example.uscourts.gov/cases/order-42.pdf",
+            title: "Court order in civil action No. 42",
+          },
+          engineering,
+        ],
+      }).lead?.clusterId,
+    ).toBe("court-order");
+  });
+
   it("keeps GitHub-only clusters out when social or news coverage exists", () => {
     const selection = buildSelection([
       cluster("github-trend", 8.4, "github-a", ["github-trending-page"]),

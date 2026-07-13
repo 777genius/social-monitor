@@ -57,6 +57,23 @@ describe("selectReaderSummaryTopicLabel", () => {
       }),
     ).toBe("LLM Hype");
   });
+
+  it("replaces an underspecified product artifact with a grounded purpose", () => {
+    expect(
+      selectReaderSummaryTopicLabel({
+        proposedLabel: "Claude Extension",
+        preferProposedLabel: true,
+        labelCandidates: [
+          candidate("Claude Extension"),
+          candidate("Claude Access Extension"),
+        ],
+        evidenceTexts: [
+          "Anthropic extended Claude Code access with a Claude access extension.",
+        ],
+        providerLabels: ["hacker-news"],
+      }),
+    ).toBe("Claude Access Extension");
+  });
 });
 
 const candidate = (label: string) => ({

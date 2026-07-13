@@ -307,6 +307,25 @@ const headlineClauseTokens = new Set([
   "says",
 ]);
 
+const broadProductFamilyTokens = new Set([
+  "anthropic",
+  "chatgpt",
+  "claude",
+  "codex",
+  "copilot",
+  "gemini",
+  "github",
+  "openai",
+]);
+
+const genericArtifactTokens = new Set([
+  "extension",
+  "feature",
+  "plugin",
+  "tool",
+  "update",
+]);
+
 export const hasUsableTopicNodeLabel = (
   label: ReaderSummaryTopicNodeLabel,
 ): boolean =>
@@ -380,6 +399,9 @@ export const evaluateTopicLabelQuality = (
   }
   if (hasTruncatedContractionToken(label)) {
     reasons.push("label contains a truncated sentence contraction");
+  }
+  if (isUnderspecifiedProductArtifactLabel(label)) {
+    reasons.push("label names a product and generic artifact without purpose");
   }
   if (meaningfulTokens.length === 1 && !hasConcreteSingleTokenSignal(label)) {
     reasons.push("single-word label is not a concrete entity signal");
@@ -501,6 +523,16 @@ const hasTruncatedContractionToken = (value: string): boolean =>
       token,
     ),
   );
+
+const isUnderspecifiedProductArtifactLabel = (value: string): boolean => {
+  const tokens = topicLabelTokens(value);
+
+  return (
+    tokens.length >= 2 &&
+    genericArtifactTokens.has(tokens.at(-1) ?? "") &&
+    tokens.slice(0, -1).every((token) => broadProductFamilyTokens.has(token))
+  );
+};
 
 const roundQualityScore = (value: number): number =>
   Math.round(Math.min(1, Math.max(0, value)) * 1000) / 1000;

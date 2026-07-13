@@ -91,6 +91,10 @@ describe("adaptive reader summary evidence", () => {
     const instructions = buildOpenAiReaderSummaryInstructions(input);
 
     expect(payload.evidence).toHaveLength(120);
+    expect(payload.evidence[0]?.providerMetrics).toEqual([
+      { label: "Points", value: "30" },
+      { label: "Comments", value: "10" },
+    ]);
     expect(
       payload.evidence.filter(
         (item) => item.evidenceTier === "expanded_candidate",
@@ -178,6 +182,13 @@ const evidenceItem = (index: number): SummaryEvidenceItem => {
     ),
     score: index,
     whyImportant: ["Sol 5 Ultra usage limits and agent workflows"],
+    providerMetricLabels:
+      index === 0
+        ? [
+            { label: "Points", value: "30" },
+            { label: "Comments", value: "10" },
+          ]
+        : undefined,
   };
 };
 

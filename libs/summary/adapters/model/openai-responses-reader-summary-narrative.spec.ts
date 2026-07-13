@@ -40,13 +40,82 @@ describe("normalizeOpenAiReaderSummaryNarrative", () => {
       ["secondary_signal", "database"],
     ]);
   });
+
+  it("drops watch sections without eligible supporting evidence", () => {
+    const result = normalize([
+      section("lead", "lead", "c1"),
+      section("secondary_signal", "security", "c2"),
+      section("secondary_signal", "database", "c3"),
+      section("watch", "weak-rumor", "c1"),
+    ]);
+
+    expect(result.some((item) => item.kind === "watch")).toBe(false);
+  });
+
+  it("keeps a self-contained high-engagement watch", () => {
+    const result = normalize(
+      [
+        section("lead", "lead", "c1"),
+        section("secondary_signal", "security", "c2"),
+        section("secondary_signal", "database", "c3"),
+        section("watch", "emerging", "c4"),
+      ],
+      modelInput([strongWatchEvidence]),
+    );
+
+    expect(result).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "watch", citationIds: ["c4"] }),
+      ]),
+    );
+  });
+
+  it("drops a watch when any cited evidence is ineligible", () => {
+    const result = normalize(
+      [
+        section("lead", "lead", "c1"),
+        section("secondary_signal", "security", "c2"),
+        section("secondary_signal", "database", "c3"),
+        {
+          ...section("watch", "emerging", "c4"),
+          citationIds: ["c4", "c5"],
+        },
+      ],
+      modelInput([strongWatchEvidence, weakWatchEvidence]),
+    );
+
+    expect(result.some((item) => item.kind === "watch")).toBe(false);
+  });
+
+  it("does not treat an RSS mirror as independent cross-provider support", () => {
+    const result = normalize(
+      [
+        section("lead", "lead", "c1"),
+        section("secondary_signal", "security", "c2"),
+        section("secondary_signal", "database", "c3"),
+        {
+          ...section("watch", "mirrored", "c4"),
+          citationIds: ["c4", "c6"],
+        },
+      ],
+      modelInput(
+        [lowEngagementWatchEvidence, rssMirrorWatchEvidence],
+        [mirrorCluster],
+      ),
+    );
+
+    expect(result.some((item) => item.kind === "watch")).toBe(false);
+  });
 });
 
-const normalize = (rawSections: readonly Record<string, unknown>[]) =>
+const normalize = (
+  rawSections: readonly Record<string, unknown>[],
+  input = modelInput(),
+) =>
   normalizeOpenAiReaderSummaryNarrative({
     rawSections,
     legacyExecutiveSummary: "Legacy summary",
-    input: modelInput(),
+    input,
     citationMap: citations,
     storyTitlesByClusterId: new Map([
       ["lead", "Lead"],
@@ -69,6 +138,9 @@ const citations: readonly ReaderSummaryCitation[] = [
   citation("c1", "feed-lead"),
   citation("c2", "feed-security"),
   citation("c3", "feed-database"),
+  citation("c4", "feed-watch"),
+  citation("c5", "feed-weak-watch"),
+  citation("c6", "feed-rss-mirror"),
 ];
 
 function citation(
@@ -85,11 +157,14 @@ function citation(
   };
 }
 
-const modelInput = (): ReaderSummaryModelInput =>
+const modelInput = (
+  selectedEvidence: readonly Record<string, unknown>[] = [],
+  clusters: readonly Record<string, unknown>[] = [],
+): ReaderSummaryModelInput =>
   ({
     evidence: {
-      selectedEvidence: [],
-      clusters: [],
+      selectedEvidence,
+      clusters,
     },
     coveragePlan: {
       lead: planItem("lead", "feed-lead", "lead"),
@@ -99,6 +174,84 @@ const modelInput = (): ReaderSummaryModelInput =>
       ],
     },
   }) as unknown as ReaderSummaryModelInput;
+
+const strongWatchEvidence = {
+  feedItemId: "feed-watch",
+  sourceItemId: "source-watch",
+  sourceBindingId: "binding-watch",
+  interestId: "interest-ai",
+  providerKey: "hacker-news",
+  canonicalUrl: "https://news.ycombinator.com/item?id=4",
+  title: "Developers test a new coding-agent routing workflow",
+  bodyPreview:
+    "The discussion explains the complete setup, its trade-offs, and why engineering teams are evaluating the workflow now.",
+  publishedAt: new Date("2026-07-12T12:00:00.000Z"),
+  observedAt: new Date("2026-07-12T12:05:00.000Z"),
+  score: 1.8,
+  whyImportant: ["Relevant emerging workflow"],
+  providerMetricLabels: [
+    { label: "Points", value: "30" },
+    { label: "Comments", value: "10" },
+  ],
+  contentQuality: {
+    qualityScore: 0.8,
+    interestRelevanceScore: 0.8,
+    engagementIntegrityScore: 0.8,
+    eligibleForSummary: true,
+    eligibleForTopRead: true,
+    needsLlmReview: false,
+    decision: "eligible",
+    flags: [],
+    reason: "Relevant evidence",
+  },
+};
+
+const weakWatchEvidence = {
+  ...strongWatchEvidence,
+  feedItemId: "feed-weak-watch",
+  sourceItemId: "source-weak-watch",
+  sourceBindingId: "binding-weak-watch",
+  title: "A short emerging claim",
+  bodyPreview: "A fragment that does not explain the claim...",
+  providerMetricLabels: [
+    { label: "Points", value: "3" },
+    { label: "Comments", value: "1" },
+  ],
+};
+
+const lowEngagementWatchEvidence = {
+  ...strongWatchEvidence,
+  sourceOriginUrl: "https://example.test/original-story",
+  providerMetricLabels: [
+    { label: "Points", value: "3" },
+    { label: "Comments", value: "1" },
+  ],
+};
+
+const rssMirrorWatchEvidence = {
+  ...lowEngagementWatchEvidence,
+  feedItemId: "feed-rss-mirror",
+  sourceItemId: "source-rss-mirror",
+  sourceBindingId: "binding-rss-mirror",
+  providerKey: "rss",
+  canonicalUrl: "https://news.ycombinator.com/item?id=4",
+  providerMetricLabels: [],
+};
+
+const mirrorCluster = {
+  id: "mirrored",
+  storyKey: "mirrored-story",
+  representativeFeedItemId: "feed-watch",
+  duplicateFeedItemIds: ["feed-rss-mirror"],
+  interestIds: ["interest-ai"],
+  providerKeys: ["hacker-news", "rss"],
+  score: 1.8,
+  observedAtRange: {
+    startedAt: new Date("2026-07-12T12:00:00.000Z"),
+    endedAt: new Date("2026-07-12T12:05:00.000Z"),
+  },
+  whyImportant: ["Relevant emerging workflow"],
+};
 
 const planItem = (
   role: "lead" | "secondary",

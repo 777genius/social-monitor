@@ -129,6 +129,36 @@ describe("evaluateTopicLabelQuality", () => {
     },
   );
 
+  it.each([
+    "Claude Extension",
+    "Codex Tool",
+    "OpenAI Update",
+    "Anthropic Claude Extension",
+    "GitHub Copilot Tool",
+  ])("rejects underspecified product artifact label %s", (label) => {
+    expect(
+      evaluateTopicLabelQuality(label, {
+        evidenceTexts: [`${label} appears in collected evidence.`],
+      }),
+    ).toMatchObject({
+      accepted: false,
+      reasons: expect.arrayContaining([
+        "label names a product and generic artifact without purpose",
+      ]),
+    });
+  });
+
+  it.each(["Claude Reasoning Extension", "VS Code Extension"])(
+    "keeps a specific artifact label %s",
+    (label) => {
+      expect(
+        evaluateTopicLabelQuality(label, {
+          evidenceTexts: [`${label} appears in collected evidence.`],
+        }),
+      ).toMatchObject({ accepted: true });
+    },
+  );
+
   it("rejects an ungrounded qualifier attached to a grounded entity", () => {
     expect(
       evaluateTopicLabelQuality("Grok Kunchenguid", {

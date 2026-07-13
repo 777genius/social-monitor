@@ -21,10 +21,10 @@ export type ReaderSummaryPromptRelease = {
  * duplicate history without explaining why a release exists.
  */
 export const currentReaderSummaryPromptRelease = {
-  id: "reader_summary.prompt.2026-07-13.source_grounded_article_headlines",
+  id: "reader_summary.prompt.2026-07-13.primary_leads_planned_narrative",
   releasedOn: "2026-07-13",
   changeSummary:
-    "Legal and single-provider claims stay source-framed, article headlines avoid meta-wraps, and each top story stays within one evidence cluster.",
+    "Secondary legal reports cannot lead, optional watch sections require strong self-contained evidence, and vague topic labels are normalized or rejected.",
 } as const satisfies ReaderSummaryPromptRelease;
 
 export const assertNoReaderSummaryPromptReleaseOverride = (params: {
@@ -52,6 +52,7 @@ export const buildOpenAiReaderSummaryInstructions = (
     "Every top story, interest highlight and repeated signal must cite one or more citation IDs from citationMap.",
     "Use evidenceProfile as the authoritative coverage summary for source mix, confidence caveats and low-evidence warnings.",
     "Use evidencePack to balance official signals, community signals, emerging signals, dissenting views and high-engagement low-confidence items.",
+    "Use each evidence item's providerMetrics, not the model score alone, when judging whether a social or discussion item has enough engagement for an optional watch.",
     "Every evidence item contains an original title and a baseline bodyPreview. Items marked expanded_candidate also contain sourceContent selected deterministically from the original source, never an LLM paraphrase.",
     "For sourceContent mode full_social_post or full_source_text, use the complete provided text. For rss_relevant_fragments or relevant_fragments, treat the 2-3 fragments as separate original excerpts from the same source.",
     "Prefer sourceContent over bodyPreview when resolving exact model variants, modes, tiers, limits, benchmark values and other material qualifiers.",
@@ -61,6 +62,7 @@ export const buildOpenAiReaderSummaryInstructions = (
     "Only put a product/version/benchmark/launch claim in the headline when it is supported by citations from at least two distinct providerKeys.",
     "If a claim is supported by one provider only, keep the headline neutral and phrase the item as source-reported or source-discussed.",
     "For lawsuits, accusations and other legal claims, do not present filing or liability as established unless the evidence includes a primary court document or first-party statement. Otherwise source-frame the headline as reports of, reported or alleged.",
+    "A lawsuit, accusation or legal action without an eligible first-party source or primary filing may appear only as a secondary signal. Never make it the headline, lead section or oneLineTakeaway.",
     "The backend derives the final reader content, claim board and reliability shadow report from narrativeSections, topStories, citations and risks. Keep raw content compact: set content.headline to the same meaning as headline, content.oneLineTakeaway to one short sentence, and keep content arrays empty unless a field is impossible to leave empty.",
     "Write headline, executiveSummary and content.oneLineTakeaway like a useful short article summary of the best source items, not a telemetry report, checklist or process note.",
     "Write headline and content.headline in concise sentence-style article headline form. Use sentence case and never end either headline with a period or full stop.",
@@ -76,6 +78,7 @@ export const buildOpenAiReaderSummaryInstructions = (
     "Each topStories title must name the concrete post, project or topic. Do not use Cross-source, cross-provider attention, source coverage or confirmed by N sources as a topStories title; keep that support in evidence/confidence language.",
     "Each topStories entry must describe exactly one storyClusterId and may cite only evidence attached to that cluster. Never combine different story clusters into one thematic story, and never reuse a citationId across topStories; thematic synthesis belongs in narrativeSections.",
     "Rewrite conversational, question-style or truncated source titles into concise neutral titles that state the concrete topic or result. Do not copy lowercase post fragments, first-person hooks or trailing ellipses as topStories titles.",
+    "Topic labels must preserve the distinguishing purpose or capability. Avoid vague product-plus-artifact labels such as Claude Extension, Codex Tool or OpenAI Update; use a grounded specific phrase or omit the topic.",
     "Preserve material qualifiers exactly as stated in the cited evidence, including model, variant, mode and tier names such as Ultra, Pro, Max, Preview or Thinking. If a claim is specific to one variant or mode, name it in both the topStories title and summary; never generalize it to the whole model family.",
     "Each topStories summary must explain why the item matters and should use 3-5 concise sentences covering what happened, the concrete product or workflow impact, and any evidence-backed uncertainty. Do not merely repeat the title, prefix the source text with Source-reported, pad weak evidence or invent missing details.",
     "Keep source validation out of topStories summary prose: do not mention cross-provider support, source coverage, selected evidence or provider counts there. Put those details in confidence and citations instead.",
@@ -115,7 +118,7 @@ const readerSummaryLeadInstructions = (
         "coveragePlan.lead is null because no evidence passed the editorial lead gate. Return an honest no-signal response: topStories and narrativeSections must be empty, set noSignalReason, and do not promote a watch-only or down-ranked item into the headline.",
       ]
     : [
-        "The first narrativeSections item must be kind lead and cite one or more citationIds from coveragePlan.lead. Follow it with optional main_signal and why_it_matters sections, one secondary_signal for every entry in coveragePlan.secondary, and an optional watch section. Never fill a missing section with generic prose.",
+        "The first narrativeSections item must be kind lead and cite one or more citationIds from coveragePlan.lead. Follow it with optional main_signal and why_it_matters sections and one secondary_signal for every entry in coveragePlan.secondary. An optional watch may cite only self-contained evidence that is high-engagement, eligible first-party, or independently supported across providers; never promote a truncated low-engagement fragment. Never fill a missing section with generic prose.",
         ...(input.coveragePlan.lead.providerKeys.length <= 1
           ? [
               "coveragePlan.lead has one provider group. Frame the headline and opening sentence explicitly as that provider's discussion, report or first-party announcement. Do not generalize it into what developers, users or the industry are doing.",

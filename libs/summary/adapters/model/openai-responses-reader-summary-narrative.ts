@@ -1,4 +1,6 @@
 import {
+  independentEvidenceProviderKeys,
+  isReaderSummaryWatchEligibleEvidence,
   readerSummaryNarrativeSectionKinds,
   type ReaderSummaryCitation,
   type ReaderSummaryNarrativeSection,
@@ -44,6 +46,10 @@ export const normalizeOpenAiReaderSummaryNarrative = (params: {
     params.citationMap.map((citation) => citation.citationId),
   );
   const coverage = coverageCitationPlan(params.input, params.citationMap);
+  const eligibleWatchCitationIds = watchEligibleCitationIds(
+    params.input,
+    params.citationMap,
+  );
   const sections = rawSections
     .slice(0, maxNarrativeSections)
     .flatMap((value, index): readonly ReaderSummaryNarrativeSection[] => {
@@ -81,6 +87,12 @@ export const normalizeOpenAiReaderSummaryNarrative = (params: {
         text === undefined ||
         title === undefined ||
         citationIds.length === 0
+      ) {
+        return [];
+      }
+      if (
+        kind === "watch" &&
+        !citationIds.every((id) => eligibleWatchCitationIds.has(id))
       ) {
         return [];
       }
@@ -127,6 +139,53 @@ export const normalizeOpenAiReaderSummaryNarrative = (params: {
   );
 
   return bounded;
+};
+
+const watchEligibleCitationIds = (
+  input: ReaderSummaryModelInput,
+  citationMap: readonly ReaderSummaryCitation[],
+): ReadonlySet<string> => {
+  const evidenceById = new Map(
+    input.evidence.selectedEvidence.map(
+      (evidence) => [evidence.feedItemId, evidence] as const,
+    ),
+  );
+  const crossProviderEvidenceIds = new Set<string>();
+
+  for (const cluster of input.evidence.clusters) {
+    const clusterEvidence = [
+      cluster.representativeFeedItemId,
+      ...cluster.duplicateFeedItemIds,
+    ].flatMap((feedItemId) => {
+      const evidence = evidenceById.get(feedItemId);
+
+      return evidence === undefined ? [] : [evidence];
+    });
+
+    if (independentEvidenceProviderKeys(clusterEvidence).length > 1) {
+      for (const evidence of clusterEvidence) {
+        crossProviderEvidenceIds.add(evidence.feedItemId);
+      }
+    }
+  }
+
+  return new Set(
+    citationMap
+      .filter((citation) => {
+        const evidence = evidenceById.get(citation.feedItemId);
+
+        return (
+          evidence !== undefined &&
+          isReaderSummaryWatchEligibleEvidence({
+            evidence,
+            crossProviderSupported: crossProviderEvidenceIds.has(
+              evidence.feedItemId,
+            ),
+          })
+        );
+      })
+      .map((citation) => citation.citationId),
+  );
 };
 
 const narrativeSectionText = (params: {

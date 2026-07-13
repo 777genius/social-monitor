@@ -3,7 +3,11 @@ import {
   evaluateTopicLabelQuality,
   meaningfulTopicLabelTokens,
 } from "./reader-summary-topic-map-label-quality";
-import { compactOptional, humanizeSlug } from "./reader-summary-topic-map-text";
+import {
+  canonicalizeReaderSummaryTopicAcronyms,
+  compactOptional,
+  humanizeSlug,
+} from "./reader-summary-topic-map-text";
 
 export const selectReaderSummaryTopicLabel = (params: {
   readonly proposedLabel?: string;
@@ -25,7 +29,9 @@ export const selectReaderSummaryTopicLabel = (params: {
       }).accepted,
   );
   if (proposed === undefined) {
-    return bestCandidate?.label ?? "Other topic";
+    return canonicalizeReaderSummaryTopicAcronyms(
+      bestCandidate?.label ?? "Other topic",
+    );
   }
   const quality = evaluateTopicLabelQuality(proposed, {
     evidenceTexts: params.evidenceTexts,
@@ -33,13 +39,15 @@ export const selectReaderSummaryTopicLabel = (params: {
     candidateLabels,
   });
   if (!quality.accepted) {
-    return bestCandidate?.label ?? "Other topic";
+    return canonicalizeReaderSummaryTopicAcronyms(
+      bestCandidate?.label ?? "Other topic",
+    );
   }
   if (params.preferProposedLabel === true) {
-    return quality.label;
+    return canonicalizeReaderSummaryTopicAcronyms(quality.label);
   }
   if (bestCandidate === undefined) {
-    return quality.label;
+    return canonicalizeReaderSummaryTopicAcronyms(quality.label);
   }
   const singletonToken = quality.meaningfulTokens[0];
   const bestCandidateLabel = readerFacingCandidateExtension(
@@ -63,9 +71,11 @@ export const selectReaderSummaryTopicLabel = (params: {
     singletonToken !== undefined &&
     broadTopicFamilyTokens.has(singletonToken);
 
-  return broadSingleton || richerGroundedExtension
-    ? bestCandidateLabel
-    : quality.label;
+  return canonicalizeReaderSummaryTopicAcronyms(
+    broadSingleton || richerGroundedExtension
+      ? bestCandidateLabel
+      : quality.label,
+  );
 };
 
 export const topicIdIsTooBroadForLabel = (params: {

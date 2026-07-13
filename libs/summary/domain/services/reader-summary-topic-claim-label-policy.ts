@@ -1,5 +1,8 @@
 import type { StoryPrimaryClaimFacet } from "./story-topic-tokenizer";
-import { formatReaderSummaryTopicToken } from "./reader-summary-topic-map-text";
+import {
+  canonicalizeReaderSummaryTopicAcronyms,
+  formatReaderSummaryTopicToken,
+} from "./reader-summary-topic-map-text";
 import { alignAllegationSemanticToEvidence } from "./reader-summary-topic-lawsuit-alignment";
 
 export { alignAllegationSemanticToEvidence } from "./reader-summary-topic-lawsuit-alignment";
@@ -172,9 +175,11 @@ const claimLabelRules: Readonly<
 export const renderReaderSummaryTopicSemanticLabel = (
   semantic: ReaderSummaryTopicSemanticLabel,
 ): string => {
-  const subject = sanitizeClaimSubject(
-    semantic.claimType,
-    normalizeSemanticPart(semantic.subject),
+  const subject = canonicalizeReaderSummaryTopicAcronyms(
+    sanitizeClaimSubject(
+      semantic.claimType,
+      normalizeSemanticPart(semantic.subject),
+    ),
   );
   const qualifier = formatSemanticDisplayPart(
     sanitizeClaimQualifier(
@@ -342,17 +347,25 @@ const sanitizeClaimSubject = (
   claimType: ReaderSummaryTopicClaimType,
   subject: string,
 ): string => {
+  const withoutVersionedAiFiller = normalizeSemanticPart(
+    subject.replace(
+      /^(.*\b(?:claude|gemini|gpt|grok)[\s-]*\d+(?:\.\d+)*(?:\s+[a-z0-9.-]+)?)\s+ai$/iu,
+      "$1",
+    ),
+  );
   if (claimType !== "limits") {
-    return subject;
+    return withoutVersionedAiFiller;
   }
   const withoutTemporalCadence = normalizeSemanticPart(
-    subject.replace(
+    withoutVersionedAiFiller.replace(
       /\b(?:\d+[\s-]?)?(?:daily|hour|hours|monthly|week|weekly)\b/giu,
       " ",
     ),
   );
 
-  return withoutTemporalCadence.length > 0 ? withoutTemporalCadence : subject;
+  return withoutTemporalCadence.length > 0
+    ? withoutTemporalCadence
+    : withoutVersionedAiFiller;
 };
 
 const descriptiveParticipleQualifier = /^\p{Letter}{3,}(?:ed|ing)$/iu;

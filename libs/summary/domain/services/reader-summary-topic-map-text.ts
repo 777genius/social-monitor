@@ -32,6 +32,15 @@ export const readerSummaryTopicLabelFromSlug = (value: string): string =>
     .map(formatReaderSummaryTopicToken)
     .join(" ");
 
+export const canonicalizeReaderSummaryTopicAcronyms = (value: string): string =>
+  value
+    .split(/(\s+)/u)
+    .map((token) => {
+      const normalized = normalizeTopicLabel(token).replace(/\s+/gu, "");
+      return canonicalTopicTokens[normalized] ?? token;
+    })
+    .join("");
+
 export const formatReaderSummaryTopicToken = (value: string): string => {
   const normalized = normalizeTopicLabel(value).replace(/\s+/gu, "");
   const canonical = canonicalTopicTokens[normalized];
@@ -97,6 +106,8 @@ const canonicalTopicTokens: Readonly<Record<string, string>> = {
   ai: "AI",
   chatgpt: "ChatGPT",
   github: "GitHub",
+  llm: "LLM",
+  llms: "LLM",
   mcp: "MCP",
   openai: "OpenAI",
   xai: "xAI",
