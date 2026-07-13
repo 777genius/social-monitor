@@ -6,8 +6,8 @@ import { pathToFileURL } from "node:url";
 type XRunRow = {
   readonly run_id?: string;
   readonly status?: string;
-  readonly started_at?: string;
-  readonly finished_at?: string;
+  readonly started_at?: string | null;
+  readonly finished_at?: string | null;
   readonly tweets_count?: number;
   readonly query_hash?: string;
   readonly input_json?: string;
@@ -714,8 +714,10 @@ function parseScweetTimestamp(value: string | undefined): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-function parseTimestamp(value: string | undefined): number | undefined {
-  if (value === undefined || value.trim().length === 0) {
+function parseTimestamp(
+  value: string | null | undefined,
+): number | undefined {
+  if (value === null || value === undefined || value.trim().length === 0) {
     return undefined;
   }
 

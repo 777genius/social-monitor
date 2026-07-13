@@ -94,7 +94,7 @@ describe("x collector quality report support", () => {
         id: 2,
         displayType: "Latest",
         startedAt: "2026-07-09T04:23:25Z",
-        finishedAt: "2026-07-09T04:23:29Z",
+        finishedAt: null,
         tweets: 20,
       });
       insertRun({
@@ -491,7 +491,7 @@ function insertRun(params: {
   readonly id: number;
   readonly displayType: "Top" | "Latest";
   readonly startedAt: string;
-  readonly finishedAt: string;
+  readonly finishedAt: string | null;
   readonly tweets: number;
   readonly since?: string;
   readonly until?: string;
@@ -516,7 +516,9 @@ function insertRun(params: {
         tweets_count, input_json, stats_json
       ) values (
         ${params.id}, 'run-${params.id}', ${sqlString(params.status ?? "completed")},
-        ${epochSeconds(params.startedAt)}, ${epochSeconds(params.finishedAt)},
+        ${epochSeconds(params.startedAt)}, ${
+          params.finishedAt === null ? "null" : epochSeconds(params.finishedAt)
+        },
         'hash-${params.id}', ${params.tweets},
         ${sqlString(input)}, ${sqlString(stats)}
       );
