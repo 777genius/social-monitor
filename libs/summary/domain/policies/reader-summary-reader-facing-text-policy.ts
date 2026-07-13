@@ -13,6 +13,10 @@ export const isConversationalOrTruncatedReaderTitle = (
     /\bis\s+here[.!?]*$/iu.test(sourceTitle) ||
     /^keep\s+(?:building|going|shipping)\b/iu.test(sourceTitle) ||
     /\bno\s+matter\s+what\b/iu.test(sourceTitle) ||
+    (sourceTitle.length >= 120 &&
+      /\b(?:a|an|and|as|at|by|either|for|from|in|including|of|on|or|such|that|the|to|using|via|which|while|with)$/iu.test(
+        sourceTitle,
+      )) ||
     /^(?:what happens when|what if|today i|just\b|here(?:'s| is)\b|i(?:'m| am| have| just)?\b|we(?:'re| are| have| just)?\b)/iu.test(
       sourceTitle,
     )
@@ -21,9 +25,15 @@ export const isConversationalOrTruncatedReaderTitle = (
 
 export const isUnpolishedReaderTitle = (value: string): boolean =>
   /^X post by @[^:]+:/iu.test(value.trim()) ||
+  isSourceReportedReaderTitle(value) ||
   isLowInformationReaderTitle(value) ||
   isConversationalOrTruncatedReaderTitle(value) ||
   isTechnicalReaderTitle(value);
+
+const isSourceReportedReaderTitle = (value: string): boolean =>
+  /^(?:(?:the|an?|this)\s+)?(?:(?:x(?:\/twitter)?|twitter|reddit|hacker\s+news|hn|rss|github(?:\s+trending)?)\s+)?(?:post|item|story|discussion|source|report)\s+(?:reports?|says?|states?|describes?)\b/iu.test(
+    value.trim(),
+  );
 
 const isLowInformationReaderTitle = (value: string): boolean => {
   const normalized = value

@@ -35,6 +35,16 @@ describe("reader summary reader-facing text policy", () => {
     );
     expect(isUnpolishedReaderTitle("Current AI product discussion")).toBe(true);
     expect(
+      isUnpolishedReaderTitle(
+        "An X post says GPT-5.6 Sol can be used inside Claude Code through either an OpenAI Codex plugin or a proxy alias, and names commands such",
+      ),
+    ).toBe(true);
+    expect(
+      isConversationalOrTruncatedReaderTitle(
+        "Developers compare GPT-5.6 Sol and Claude Code across production review workflows, token budgets, proxy aliases and deployment commands such",
+      ),
+    ).toBe(true);
+    expect(
       isUnpolishedReaderTitle("Superhuman competitive programming AI is here"),
     ).toBe(true);
     expect(
