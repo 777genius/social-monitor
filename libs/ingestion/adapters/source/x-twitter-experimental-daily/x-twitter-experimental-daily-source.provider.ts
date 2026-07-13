@@ -1,14 +1,9 @@
 import { status } from "@grpc/grpc-js";
 import { grpcStatusCodeOf } from "@social-monitor/platform-grpc";
-import {
-  normalizeJsonObject,
-  redactSensitiveText,
-  type JsonObject,
-} from "@social-monitor/shared-kernel";
+import { redactSensitiveText } from "@social-monitor/shared-kernel";
 import { rankSourceItems } from "../../../domain";
 
 import type {
-  FetchedSourceItem,
   ProviderFailure,
   SourceCapabilityProfile,
   SourceProviderPort,
@@ -32,12 +27,18 @@ import {
   readPositiveInteger,
   type XExperimentalDailyScanConfig,
 } from "./x-twitter-experimental-daily-config";
+import {
+  compareXCollectedPosts,
+  formatXCollectorWarning,
+  normalizeXPost,
+  xPostMatchesMetricThresholds,
+  xPostSignalScore,
+} from "./x-twitter-experimental-daily-item";
 import type {
   XDailyCollectedPost,
   XDailyCollectorClientPort,
   XDailyCollectorRequest,
   XDailyCollectorWarning,
-  XDailyPostMetrics,
 } from "./x-daily-collector-client.port";
 
 export const X_TWITTER_PROVIDER_KEY = "x-twitter";
@@ -151,7 +152,7 @@ export class XTwitterSourceProvider implements SourceProviderPort {
         });
 
         for (const post of result.posts.filter((item) =>
-          matchesMetricThresholds(item.metrics, config),
+          xPostMatchesMetricThresholds(item.metrics, config),
         )) {
           const externalId = `${X_TWITTER_PROVIDER_KEY}:${post.tweetId}`;
           const existing = postsByExternalId.get(externalId);
@@ -175,9 +176,9 @@ export class XTwitterSourceProvider implements SourceProviderPort {
         warnings.push(
           ...result.warnings.map((warning) =>
             config.searchQueries.length === 1
-              ? formatWarning(warning)
+              ? formatXCollectorWarning(warning)
               : redactSensitiveText(
-                  `${searchQuery}: ${formatWarning(warning)}`,
+                  `${searchQuery}: ${formatXCollectorWarning(warning)}`,
                 ),
           ),
         );
@@ -197,13 +198,20 @@ export class XTwitterSourceProvider implements SourceProviderPort {
     }
 
     const normalizedItems = [...postsByExternalId.values()]
-      .sort((left, right) => compareCollectedPosts(left.post, right.post))
-      .map((item) => normalizePost(item.post, item.searchQuery, item.maxItems));
+      .sort((left, right) => compareXCollectedPosts(left.post, right.post))
+      .map((item) =>
+        normalizeXPost(item.post, item.searchQuery, item.maxItems),
+      );
+
+    const outputItemLimit = Math.max(
+      plan.maxItems,
+      paginationPolicy?.targetItems ?? 0,
+    );
 
     return {
       items: rankSourceItems(normalizedItems, rankingPlan).slice(
         0,
-        plan.maxItems,
+        outputItemLimit,
       ),
       nextCursor: nextCursorForQueries(
         config.searchQueries,
@@ -379,122 +387,4 @@ export class XTwitterSourceProvider implements SourceProviderPort {
   }
 }
 
-const normalizePost = (
-  post: XDailyCollectedPost,
-  searchQuery: string,
-  maxItems: number,
-): FetchedSourceItem => ({
-  externalId: `${X_TWITTER_PROVIDER_KEY}:${post.tweetId}`,
-  canonicalUrl: post.canonicalUrl,
-  title: titleForPost(post),
-  body: post.text,
-  authorHandle: post.authorHandle,
-  publishedAt: post.publishedAt,
-  metadata: normalizeJsonObject({
-    kind: "x_post",
-    provider: X_TWITTER_PROVIDER_KEY,
-    tweetId: post.tweetId,
-    ...(post.authorHandle === undefined
-      ? {}
-      : { authorHandle: post.authorHandle }),
-    searchQuery,
-    sourceQueryLane: {
-      providerKey: X_TWITTER_PROVIDER_KEY,
-      mode: "search",
-      query: searchQuery,
-      maxItems,
-    },
-    sourceProduct: post.sourceProduct,
-    trendScore: post.trendScore,
-    likes: post.metrics.likes,
-    retweets: post.metrics.retweets,
-    replies: post.metrics.replies,
-    ...(post.metrics.quotes === undefined
-      ? {}
-      : { quotes: post.metrics.quotes }),
-    ...(post.metrics.views === undefined
-      ? {}
-      : { impressions: post.metrics.views }),
-    publicMetrics: {
-      like_count: post.metrics.likes,
-      retweet_count: post.metrics.retweets,
-      reply_count: post.metrics.replies,
-      ...(post.metrics.quotes === undefined
-        ? {}
-        : { quote_count: post.metrics.quotes }),
-      ...(post.metrics.views === undefined
-        ? {}
-        : { impression_count: post.metrics.views }),
-    },
-    metrics: xPostMetricsMetadata(post.metrics),
-    mediaUrls: post.mediaUrls,
-  }),
-});
-
 export { XTwitterSourceProvider as XTwitterExperimentalDailySourceProvider };
-
-const xPostMetricsMetadata = (metrics: XDailyPostMetrics): JsonObject =>
-  normalizeJsonObject({
-    likes: metrics.likes,
-    retweets: metrics.retweets,
-    replies: metrics.replies,
-    ...(metrics.quotes === undefined ? {} : { quotes: metrics.quotes }),
-    ...(metrics.views === undefined ? {} : { views: metrics.views }),
-  });
-
-const matchesMetricThresholds = (
-  metrics: XDailyPostMetrics,
-  config: XExperimentalDailyScanConfig,
-): boolean => {
-  if (config.minLikes !== undefined && metrics.likes < config.minLikes) {
-    return false;
-  }
-
-  if (
-    config.minRetweets !== undefined &&
-    metrics.retweets < config.minRetweets
-  ) {
-    return false;
-  }
-
-  if (config.minReplies !== undefined && metrics.replies < config.minReplies) {
-    return false;
-  }
-
-  return true;
-};
-
-const compareCollectedPosts = (
-  left: XDailyCollectedPost,
-  right: XDailyCollectedPost,
-): number => {
-  const scoreDiff = xPostSignalScore(right) - xPostSignalScore(left);
-
-  if (scoreDiff !== 0) {
-    return scoreDiff;
-  }
-
-  return right.publishedAt.getTime() - left.publishedAt.getTime();
-};
-
-const xPostSignalScore = (post: XDailyCollectedPost): number =>
-  post.trendScore +
-  post.metrics.likes +
-  post.metrics.retweets * 2 +
-  post.metrics.replies * 1.5 +
-  (post.metrics.quotes ?? 0) * 2;
-
-const titleForPost = (post: XDailyCollectedPost): string => {
-  const author = post.authorHandle ?? "unknown";
-  const text = post.text.replace(/\s+/gu, " ").trim();
-  const preview = text.length > 96 ? `${text.slice(0, 93)}...` : text;
-
-  return `X post by @${author}: ${preview}`;
-};
-
-const formatWarning = (warning: XDailyCollectorWarning): string => {
-  const code = redactSensitiveText(warning.code).trim();
-  const message = redactSensitiveText(warning.message);
-
-  return code.length === 0 ? message : `${code}: ${message}`;
-};

@@ -17,6 +17,7 @@ import type {
   SourceProviderScanResult,
   SourceProviderValidationResult,
   SourceQuery,
+  SourceRuntimeConfig,
 } from "../../../ports";
 import type {
   GitHubTrendingPageClientPort,
@@ -90,6 +91,7 @@ export class GitHubTrendingPageSourceProvider implements SourceProviderPort {
   ): Promise<SourceProviderScanResult> {
     const config = parseConfig(plan.query, context, plan.maxItems);
     const checkedAt = this.clock.now();
+    const snapshotAt = targetSnapshotAt(context.config, checkedAt);
     const repositories = (
       await Promise.all(
         config.languages.map((language) =>
@@ -113,6 +115,7 @@ export class GitHubTrendingPageSourceProvider implements SourceProviderPort {
           repository,
           window: config.window,
           checkedAt,
+          snapshotAt,
           source: config.source,
         }),
       ),
@@ -201,9 +204,10 @@ const normalizeRepository = (params: {
   readonly repository: GitHubTrendingPageRepository;
   readonly window: GitHubTrendingPageWindow;
   readonly checkedAt: Date;
+  readonly snapshotAt: Date;
   readonly source: GitHubTrendingPageRepositoryMetadataInput["trending"]["source"];
 }): FetchedSourceItem => {
-  const { repository, window, checkedAt, source } = params;
+  const { repository, window, checkedAt, snapshotAt, source } = params;
   const metadata = githubTrendingPageRepositoryMetadata({
     repository: {
       fullName: repository.fullName,
@@ -225,14 +229,37 @@ const normalizeRepository = (params: {
     repository.description ?? "No GitHub Trending description available.";
 
   return {
-    externalId: `github-trending-page:${window}:${repository.fullName}:${checkedAt.toISOString()}`,
+    externalId: `github-trending-page:${window}:${repository.fullName}:${snapshotAt.toISOString()}`,
     canonicalUrl: repository.url,
     title: `${repository.fullName} is #${repository.rank} on GitHub Trending`,
     body: `${description}\nGitHub Trending ${window}: #${repository.rank}, +${repository.starsGained} stars. Total stars: ${repository.totalStars}.`,
     authorHandle: repository.fullName.split("/")[0],
-    publishedAt: checkedAt,
+    publishedAt: snapshotAt,
     metadata,
   };
+};
+
+const targetSnapshotAt = (
+  config: SourceRuntimeConfig | undefined,
+  checkedAt: Date,
+): Date => {
+  const rawWindow = config?.targetPublishedWindow;
+  if (
+    rawWindow === null ||
+    typeof rawWindow !== "object" ||
+    Array.isArray(rawWindow)
+  ) {
+    return checkedAt;
+  }
+
+  const endExclusive = (rawWindow as Readonly<Record<string, unknown>>)
+    .endExclusive;
+  if (typeof endExclusive !== "string") {
+    return checkedAt;
+  }
+
+  const end = new Date(endExclusive);
+  return Number.isNaN(end.getTime()) ? checkedAt : new Date(end.getTime() - 1);
 };
 
 const isUsableTrendingRepository = (

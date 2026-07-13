@@ -84,6 +84,37 @@ describe("GitHubTrendingPageSourceProvider", () => {
     );
   });
 
+  it("assigns a post-midnight daily snapshot to the requested collection day", async () => {
+    const provider = new GitHubTrendingPageSourceProvider(
+      new FixtureGitHubTrendingPageClient(),
+      { now: () => new Date("2026-07-13T00:00:25.000Z") },
+    );
+    const scanContext = context({
+      maxItems: 1,
+      fixtureMode: true,
+      targetPublishedWindow: {
+        startInclusive: "2026-07-12T00:00:00.000Z",
+        endExclusive: "2026-07-13T00:00:00.000Z",
+      },
+    });
+
+    const result = await provider.scan(
+      provider.planScan({ mode: "listing", query: "daily" }, scanContext),
+      scanContext,
+    );
+
+    expect(result.items[0]).toMatchObject({
+      externalId:
+        "github-trending-page:daily:calesthio/OpenMontage:2026-07-12T23:59:59.999Z",
+      publishedAt: new Date("2026-07-12T23:59:59.999Z"),
+      metadata: {
+        trending: {
+          checkedAt: "2026-07-13T00:00:25.000Z",
+        },
+      },
+    });
+  });
+
   it("skips repositories with incomplete trending metrics instead of polluting feed evidence", async () => {
     const provider = new GitHubTrendingPageSourceProvider(
       new PartiallyInvalidGitHubTrendingPageClient(),

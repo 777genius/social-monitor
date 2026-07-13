@@ -61,12 +61,12 @@ import {
   providerSkew,
   readDominantReaderSummaryQualityScope,
   readLatestReaderSummaryArtifact,
-  readMetadataNumber,
   readMetadataString,
   type ReaderSummaryQualityScope as Scope,
   stringValue,
   sumPrimaryCounts as sumPrimaryCountsForSources,
 } from "./lib/reader-summary-quality-eval-support";
+import { productionCollectionThresholds } from "./lib/production-collection-quality-policy";
 
 type SourceBindingRow = {
   readonly id: string;
@@ -1089,7 +1089,9 @@ async function buildCollectionStrategy(params: {
   });
   const gates = {
     redditCollectedEnough: reddit.collectedCount >= 25,
-    xTwitterCollectedEnough: xTwitter.collectedCount >= 25,
+    xTwitterCollectedEnough:
+      xTwitter.collectedCount >=
+      productionCollectionThresholds.xTwitterCollectedFeedItems,
     redditEligibleCandidatesEnough: reddit.eligibleTopReadCandidateCount >= 8,
     xTwitterEligibleCandidatesEnough:
       xTwitter.eligibleTopReadCandidateCount >= 8,

@@ -19,6 +19,7 @@ import {
   type XAccountPoolReport,
   type XCollectorLedgerReport,
 } from "./lib/x-collector-quality-report-support";
+import { productionCollectionThresholds } from "./lib/production-collection-quality-policy";
 
 type FeedRow = {
   readonly interestId: string;
@@ -348,11 +349,12 @@ async function tryBuildReport(): Promise<Report | undefined> {
         "reddit",
         50,
       ),
-      xTwitterVisibleFeedItemsAtLeast40: providerFeedItemCountAtLeast(
-        providerReports,
-        "x-twitter",
-        40,
-      ),
+      xTwitterVisibleFeedItemsMeetProductionMinimum:
+        providerFeedItemCountAtLeast(
+          providerReports,
+          "x-twitter",
+          productionCollectionThresholds.xTwitterVisibleFeedItems,
+        ),
       everyPrimaryItemHasText: primaryReports.every(
         (item) => item.textCoverage === 1,
       ),
@@ -370,16 +372,15 @@ async function tryBuildReport(): Promise<Report | undefined> {
         primaryReports.every((item) => item.p90ObservedAgeHours <= 48),
       xCollectorLedgerAvailable: xCollectorLedger.available,
       xCollectorRunCountAtLeast20: xCollectorLedger.runCount >= 20,
-      xCollectorCompletedRunRateAtLeast94Percent:
-        runRateAtLeast(
-          xCollectorLedger.completedRunCount,
-          xCollectorLedger.runCount,
-          94,
-        ),
-      xCollectorUsableRunRateAtLeast94Percent: runRateAtLeast(
+      xCollectorCompletedRunRateMeetsProductionMinimum: runRateAtLeast(
+        xCollectorLedger.completedRunCount,
+        xCollectorLedger.runCount,
+        productionCollectionThresholds.xCollectorCompletedRunRatePercent,
+      ),
+      xCollectorUsableRunRateMeetsProductionMinimum: runRateAtLeast(
         xCollectorLedger.usableRunCount,
         xCollectorLedger.runCount,
-        94,
+        productionCollectionThresholds.xCollectorUsableRunRatePercent,
       ),
       xCollectorNoNonTerminalOrUnknownRuns:
         xCollectorLedger.nonTerminalOrUnknownRunCount === 0,
@@ -453,8 +454,7 @@ async function tryBuildReport(): Promise<Report | undefined> {
       summaryArtifactCoverage,
       operationalWarnings: {
         xCollectorFailedRunCount: xCollectorLedger.failedRunCount,
-        xCollectorPartialUsableRunCount:
-          xCollectorLedger.partialUsableRunCount,
+        xCollectorPartialUsableRunCount: xCollectorLedger.partialUsableRunCount,
         xCollectorHardFailedRunCount: xCollectorLedger.hardFailedRunCount,
         xCollectorNonTerminalOrUnknownRunCount:
           xCollectorLedger.nonTerminalOrUnknownRunCount,
@@ -1061,10 +1061,6 @@ function readJson<TValue>(path: string): TValue {
 
 function hashText(value: string): string {
   return createHash("sha256").update(value).digest("hex");
-}
-
-function fingerprint(value: string): string {
-  return hashText(value).slice(0, 12);
 }
 
 function fingerprints(values: readonly string[]): readonly string[] {

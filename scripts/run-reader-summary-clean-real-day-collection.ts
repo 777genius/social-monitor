@@ -74,6 +74,7 @@ import {
   withProviderCollectionWindowProof,
 } from "./lib/provider-collection-observability";
 import { runTargetedProviderCollection } from "./lib/targeted-provider-collection";
+import { providerMeetsProductionBlockingPolicy } from "./lib/production-collection-quality-policy";
 
 type SourceBindingTarget = {
   readonly tenantId: string;
@@ -254,7 +255,10 @@ async function executeTargetScans(
     targets,
     retryBudget: 2,
     collect: (target) => executeTargetScan(target, executeScan),
-    retryDisposition: (result) => result.observability.slo.retryDisposition,
+    retryDisposition: (result) =>
+      providerMeetsProductionBlockingPolicy(result)
+        ? "none"
+        : result.observability.slo.retryDisposition,
   });
 
   return outcomes.map((outcome) => ({
@@ -713,8 +717,8 @@ function buildReport(params: {
         scan.observability.totalDuplicateItemCount >= 0 &&
         scan.observability.rateLimitEventCount >= 0,
     ),
-    everyRequestedProviderMeetsCollectionSlo: finalScanResults.every(
-      (scan) => scan.observability.slo.met,
+    everyRequestedProviderMeetsBlockingCoveragePolicy: finalScanResults.every(
+      providerMeetsProductionBlockingPolicy,
     ),
     providerRetriesAreBounded: finalScanResults.every(
       (scan) => scan.attemptCount >= 1 && scan.attemptCount <= 3,
@@ -879,13 +883,14 @@ function validateExistingReport(): void {
     report.model.rawProviderPayloadPersistedInReport === false &&
     report.model.rawPostTextPersistedInReport === false &&
     report.model.rawProviderConfigPersistedInReport === false &&
-    report.qualityGates.everyRequestedProviderMeetsCollectionSlo === true &&
+    report.qualityGates.everyRequestedProviderMeetsBlockingCoveragePolicy ===
+      true &&
     report.qualityGates.providerRetriesAreBounded === true &&
     report.scans.every(
       (scan) =>
         scan.attemptCount >= 1 &&
         scan.attemptCount <= 3 &&
-        scan.observability.slo.met,
+        providerMeetsProductionBlockingPolicy(scan),
     ) &&
     report.qualityGates.noRawSecretFragments === true &&
     report.blockingPassed === true &&
