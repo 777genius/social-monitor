@@ -110,8 +110,9 @@ bool _isSourceInventoryHeadline(String value) {
 }
 
 String _headlineCopy(String primaryTheme) {
-  final value = _cleanSentence(primaryTheme);
-  return value.endsWith('.') ? value : '$value.';
+  return _cleanSentence(
+    primaryTheme,
+  ).replaceFirst(RegExp(r'[.\u2026\u3002]+$'), '').trimRight();
 }
 
 String? _citationSnippet(SummaryCitation citation) {
