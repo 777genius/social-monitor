@@ -1,4 +1,5 @@
 import { fingerprint } from "./yesterday-social-replay-support";
+import { isUnverifiedLegalTopRead } from "@social-monitor/summary/domain/services/reader-summary-headline-policy";
 
 export type RankingAuditTopRead = {
   readonly title: string;
@@ -134,6 +135,14 @@ export function rankingItemFingerprint(item: RankingAuditTopRead): string {
     ].join("|"),
   );
 }
+
+export const isEditorialSafetyExplainedLeadInversion = (params: {
+  readonly earlierRank: number;
+  readonly later: RankingAuditTopRead | undefined;
+}): boolean =>
+  params.earlierRank === 1 &&
+  params.later !== undefined &&
+  isUnverifiedLegalTopRead(params.later);
 
 const groupByProvider = (
   items: readonly RankingAuditTopRead[],

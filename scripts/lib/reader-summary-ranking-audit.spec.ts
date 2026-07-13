@@ -1,5 +1,6 @@
 import {
   type RankingAuditTopRead,
+  isEditorialSafetyExplainedLeadInversion,
   materialSameProviderMissedCandidates,
   severeSameProviderMissedCandidates,
 } from "./reader-summary-ranking-audit";
@@ -107,6 +108,28 @@ describe("reader summary ranking audit", () => {
     expect(
       materialSameProviderMissedCandidates({ topReads, selectedPosts }),
     ).toHaveLength(0);
+  });
+
+  it("explains a lead inversion when the stronger story is unverified legal reporting", () => {
+    const legalReport = item({
+      title: "Reports say Apple sued OpenAI over alleged trade secret theft",
+      providerKey: "reddit",
+      signalScore: 2.9,
+      reason: "The evidence does not include a primary court filing.",
+    });
+
+    expect(
+      isEditorialSafetyExplainedLeadInversion({
+        earlierRank: 1,
+        later: legalReport,
+      }),
+    ).toBe(true);
+    expect(
+      isEditorialSafetyExplainedLeadInversion({
+        earlierRank: 2,
+        later: legalReport,
+      }),
+    ).toBe(false);
   });
 });
 

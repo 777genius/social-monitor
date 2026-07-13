@@ -155,18 +155,24 @@ const buildHumanReaderHeadline = (
   return compactHeadlinePart(leadTitle);
 };
 
-const isUnverifiedLegalTopRead = (
-  lead: Pick<TopRead, "title" | "reason" | "whyImportant" | "confidence">,
-): boolean => {
+export const isUnverifiedLegalTopRead = (lead: {
+  readonly title: string;
+  readonly reason?: string;
+  readonly whyImportant?: readonly string[];
+  readonly confidence?: {
+    readonly level?: string;
+    readonly rationale?: string;
+  };
+}): boolean => {
   const supportingText = [
     lead.title,
-    lead.reason,
-    ...lead.whyImportant,
-    lead.confidence.rationale,
+    lead.reason ?? "",
+    ...(lead.whyImportant ?? []),
+    lead.confidence?.rationale ?? "",
   ].join(" ");
   const hasEligibleFirstPartySupport =
     /\b(?:eligible first-party source|first-party official source)\b/iu.test(
-      lead.confidence.rationale,
+      lead.confidence?.rationale ?? "",
     );
 
   return (

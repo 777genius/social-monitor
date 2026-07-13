@@ -1,4 +1,7 @@
-import { groundedTopReadTitle } from "./reader-summary-headline-policy";
+import {
+  groundedTopReadTitle,
+  isUnverifiedLegalTopRead,
+} from "./reader-summary-headline-policy";
 
 describe("reader summary top read headline policy", () => {
   it("source-frames and compacts an unverified legal source title", () => {
@@ -110,5 +113,26 @@ describe("reader summary top read headline policy", () => {
         },
       }),
     ).toBe("Acme sues Example Labs over alleged model theft");
+  });
+
+  it("exposes unverified legal lead eligibility to ranking audits", () => {
+    expect(
+      isUnverifiedLegalTopRead({
+        title: "Reports say Apple sued OpenAI over alleged trade secret theft",
+        reason: "The evidence does not include a primary court filing.",
+        confidence: {
+          rationale: "Two source groups repeat the report.",
+        },
+      }),
+    ).toBe(true);
+    expect(
+      isUnverifiedLegalTopRead({
+        title: "Acme sues Example Labs over alleged model theft",
+        reason: "Acme's first-party filing announces the lawsuit.",
+        confidence: {
+          rationale: "Supported by an eligible first-party source.",
+        },
+      }),
+    ).toBe(false);
   });
 });

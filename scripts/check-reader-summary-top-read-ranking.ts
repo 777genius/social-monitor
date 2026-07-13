@@ -38,6 +38,7 @@ import {
   rankingItemFingerprint,
   rankingSupportScore,
   severeSameProviderMissedCandidates,
+  isEditorialSafetyExplainedLeadInversion,
 } from "./lib/reader-summary-ranking-audit";
 
 type TopReadRankingReport = {
@@ -395,7 +396,11 @@ function unexplainedMaterialSignalInversions(
   return materialSignalInversions(topReads).filter(
     (inversion) =>
       inversion.earlierSupportScore + supportExplanationMargin <
-      inversion.laterSupportScore,
+        inversion.laterSupportScore &&
+      !isEditorialSafetyExplainedLeadInversion({
+        earlierRank: inversion.earlierRank,
+        later: topReads[inversion.laterRank - 1],
+      }),
   );
 }
 

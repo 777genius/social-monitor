@@ -67,6 +67,7 @@ import {
   sumPrimaryCounts as sumPrimaryCountsForSources,
 } from "./lib/reader-summary-quality-eval-support";
 import { productionCollectionThresholds } from "./lib/production-collection-quality-policy";
+import { weakTopReadOutrankingStrongSocialRows } from "./lib/reader-summary-top-read-order-audit";
 
 type SourceBindingRow = {
   readonly id: string;
@@ -847,7 +848,10 @@ function buildTopReadQuality(
       !row.riskSignals.some((signal) => signal !== "low_confidence"),
   ).length;
   const weakTopReadOutrankingStrongSocialCount =
-    weakTopReadOutrankingStrongSocialRows(rows).length;
+    weakTopReadOutrankingStrongSocialRows({
+      rows,
+      topReads: view.content.topReads,
+    }).length;
 
   return {
     rowCount: rows.length,
@@ -883,47 +887,6 @@ function buildTopReadQuality(
         weakTopReadOutrankingStrongSocialCount === 0,
     },
   };
-}
-
-function weakTopReadOutrankingStrongSocialRows(
-  rows: readonly TopReadQualityRow[],
-): readonly TopReadQualityRow[] {
-  return rows.filter((row, index) => {
-    if (!isWeakTopReadWithoutClearReason(row)) {
-      return false;
-    }
-
-    return rows
-      .slice(index + 1)
-      .some((candidate) => isStrongSocialReadBelowWeakRead(candidate, row));
-  });
-}
-
-function isWeakTopReadWithoutClearReason(row: TopReadQualityRow): boolean {
-  const weak =
-    row.confidenceLevel === "low" ||
-    row.signalScore < 0.7 ||
-    row.riskSignals.includes("low_signal_score") ||
-    row.riskSignals.includes("low_evidence");
-  const hasClearReason =
-    row.selectionSignals.includes("cross_provider_confirmation") ||
-    row.selectionSignals.includes("multi_citation_evidence") ||
-    row.confirmedProviderCount > 1 ||
-    row.citationCount > 1;
-
-  return weak && !hasClearReason;
-}
-
-function isStrongSocialReadBelowWeakRead(
-  candidate: TopReadQualityRow,
-  weakRow: TopReadQualityRow,
-): boolean {
-  return (
-    ["reddit", "x-twitter", "rss"].includes(candidate.providerKey) &&
-    candidate.signalScore >= Math.max(1, weakRow.signalScore + 0.25) &&
-    candidate.confidenceLevel !== "low" &&
-    !candidate.riskSignals.includes("low_signal_score")
-  );
 }
 
 function buildTopReadProviderContribution(
