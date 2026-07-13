@@ -35,8 +35,9 @@ describe("DeterministicReaderSummaryModelAdapter", () => {
     ).toBe(true);
     expect(attempt.draft.content).toBeDefined();
     expect(attempt.draft.headline).toBe(
-      "hacker-news story 8 appeared across 1 interest(s) and 1 provider(s); reddit story 9 appeared across 1 interest(s) and 1 provider(s); rss story 1 appeared across 1 interest(s) and 1 provider(s)",
+      "hacker-news discussion needs confirmation",
     );
+    expect(attempt.draft.headline).not.toContain(";");
     expect(attempt.draft.content?.headline).toBe(attempt.draft.headline);
     expect(attempt.draft.headline).not.toBe("rss story 1");
     expect(
