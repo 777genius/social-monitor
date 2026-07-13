@@ -14,6 +14,26 @@ type ProviderScanProof = {
   readonly observability: ProviderCollectionObservation;
 };
 
+export const recalculateProductionBlockingPolicyGates = (
+  qualityGates: Readonly<Record<string, boolean>>,
+  scans: readonly ProviderScanProof[],
+): Record<string, boolean> => {
+  const preservedGates = Object.fromEntries(
+    Object.entries(qualityGates).filter(
+      ([key]) =>
+        key !== "everyRequestedProviderMeetsCollectionSlo" &&
+        key !== "everyRequestedProviderMeetsBlockingCoveragePolicy",
+    ),
+  );
+
+  return {
+    ...preservedGates,
+    everyRequestedProviderMeetsBlockingCoveragePolicy: scans.every(
+      providerMeetsProductionBlockingPolicy,
+    ),
+  };
+};
+
 export const providerMeetsProductionBlockingPolicy = (
   scan: ProviderScanProof,
 ): boolean => {

@@ -2,6 +2,7 @@ import type { ProviderCollectionObservation } from "./provider-collection-observ
 import {
   productionCollectionThresholds,
   providerMeetsProductionBlockingPolicy,
+  recalculateProductionBlockingPolicyGates,
 } from "./production-collection-quality-policy";
 
 describe("production collection quality policy", () => {
@@ -98,6 +99,35 @@ describe("production collection quality policy", () => {
       xTwitterCollectedFeedItems: 20,
       xCollectorCompletedRunRatePercent: 80,
       xCollectorUsableRunRatePercent: 80,
+    });
+  });
+
+  it("replaces the legacy exact-target gate when recalculating persisted proof", () => {
+    const scans = [
+      {
+        providerKey: "hacker-news" as const,
+        status: "succeeded" as const,
+        observability: observation({
+          target: 100,
+          collected: 71,
+          evaluated: 71,
+          coverageRatio: 0.71,
+          reasons: ["target_shortfall"],
+        }),
+      },
+    ];
+
+    expect(
+      recalculateProductionBlockingPolicyGates(
+        {
+          everyRequestedProviderMeetsCollectionSlo: false,
+          providerRetriesAreBounded: true,
+        },
+        scans,
+      ),
+    ).toEqual({
+      everyRequestedProviderMeetsBlockingCoveragePolicy: true,
+      providerRetriesAreBounded: true,
     });
   });
 });

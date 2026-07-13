@@ -74,7 +74,10 @@ import {
   withProviderCollectionWindowProof,
 } from "./lib/provider-collection-observability";
 import { runTargetedProviderCollection } from "./lib/targeted-provider-collection";
-import { providerMeetsProductionBlockingPolicy } from "./lib/production-collection-quality-policy";
+import {
+  providerMeetsProductionBlockingPolicy,
+  recalculateProductionBlockingPolicyGates,
+} from "./lib/production-collection-quality-policy";
 
 type SourceBindingTarget = {
   readonly tenantId: string;
@@ -109,6 +112,7 @@ const databaseUrl = yesterdaySocialQualityDatabaseUrl();
 const providerKeys = readProviderKeys();
 const update = process.argv.includes("--update");
 const artifactOnly = process.argv.includes("--artifact-only");
+const recalculateExisting = process.argv.includes("--recalculate-existing");
 const { collectionDate: targetCollectionDate } = collectionDateOptionOrDefault(
   dateOnly(new Date()),
 );
@@ -124,6 +128,10 @@ const targetPublishedWindowConfig = {
 void main();
 
 async function main(): Promise<void> {
+  if (recalculateExisting) {
+    recalculateExistingReport();
+    return;
+  }
   if (artifactOnly) {
     validateExistingReport();
     return;
@@ -158,6 +166,32 @@ async function main(): Promise<void> {
       `Reader summary clean real-day collection OK (${report.freshWindow.feedItemCount} fresh items)`,
     );
   }
+}
+
+function recalculateExistingReport(): void {
+  if (!update) {
+    throw new Error("--recalculate-existing requires --update");
+  }
+  if (!existsSync(outputPath)) {
+    throw new Error(`${outputPath} is missing.`);
+  }
+
+  const report = JSON.parse(
+    readFileSync(outputPath, "utf8"),
+  ) as CleanRealDayCollectionReport;
+  const qualityGates = recalculateProductionBlockingPolicyGates(
+    report.qualityGates,
+    report.scans,
+  );
+  const recalculated = {
+    ...report,
+    qualityGates,
+    blockingPassed: allQualityGatesPassed(qualityGates),
+  } satisfies CleanRealDayCollectionReport;
+
+  writeFileSync(outputPath, `${JSON.stringify(recalculated, null, 2)}\n`);
+  validateExistingReport();
+  console.log(`Recalculated ${outputPath} without live collection`);
 }
 
 async function tryRunCollection(): Promise<
