@@ -7,6 +7,7 @@ import type {
   AgentRuntimeProvider,
   ReaderSummaryTopicLabelerInput,
   ReaderSummaryTopicLabelerPort,
+  ReaderSummaryTopicMapAttemptContext,
 } from "../../ports";
 import {
   buildAgentRuntimeRequestId,
@@ -79,6 +80,7 @@ export class AgentRuntimeReaderSummaryTopicLabeler implements ReaderSummaryTopic
 
   async label(
     input: ReaderSummaryTopicLabelerInput,
+    attemptContext: ReaderSummaryTopicMapAttemptContext = defaultAttemptContext,
   ): Promise<ReaderSummaryTopicLabelPlan> {
     const candidates = selectAgentRuntimeReaderSummaryTopicCandidates(
       input,
@@ -86,7 +88,7 @@ export class AgentRuntimeReaderSummaryTopicLabeler implements ReaderSummaryTopic
     );
     const result = await this.client.runTask({
       requestId: buildAgentRuntimeRequestId(
-        "reader-summary-topic-map",
+        `reader-summary-topic-map-attempt-${attemptContext.attemptNumber}`,
         input.tenantId,
         input.workspaceId,
         readerSummaryScopeKey(input.scope),
@@ -118,6 +120,8 @@ export class AgentRuntimeReaderSummaryTopicLabeler implements ReaderSummaryTopic
       metadata: {
         adapter: "agent-runtime-reader-summary-topic-labeler",
         promptVersion: this.promptVersion,
+        attemptNumber: String(attemptContext.attemptNumber),
+        totalAttempts: String(attemptContext.totalAttempts),
       },
     });
     const raw = readAgentRuntimeObjectOutput(
@@ -129,6 +133,11 @@ export class AgentRuntimeReaderSummaryTopicLabeler implements ReaderSummaryTopic
     return normalizeAgentRuntimeReaderSummaryTopicLabelPlan(raw, candidates);
   }
 }
+
+const defaultAttemptContext: ReaderSummaryTopicMapAttemptContext = {
+  attemptNumber: 1,
+  totalAttempts: 1,
+};
 
 export const resolveAgentRuntimeReaderSummaryTopicLabelerOptions = (
   env: NodeJS.ProcessEnv,

@@ -107,7 +107,10 @@ describe("AgentRuntimeReaderSummaryTopicLabeler", () => {
         },
       ],
     } satisfies ReaderSummaryTopicLabelerInput;
-    const result = await labeler.label(input);
+    const result = await labeler.label(input, {
+      attemptNumber: 1,
+      totalAttempts: 2,
+    });
 
     expect(result.nodeLabels).toEqual([
       {
@@ -133,6 +136,8 @@ describe("AgentRuntimeReaderSummaryTopicLabeler", () => {
       timeoutMs: 600_000,
       metadata: {
         promptVersion: "reader_summary.topic_map.agent_runtime.v13",
+        attemptNumber: "1",
+        totalAttempts: "2",
       },
     });
     expect(client.commands[0]?.systemPrompt).toContain(
@@ -178,6 +183,18 @@ describe("AgentRuntimeReaderSummaryTopicLabeler", () => {
           source: "evidence-title",
         },
       ],
+    });
+
+    await labeler.label(input, { attemptNumber: 2, totalAttempts: 2 });
+    expect(client.commands[1]?.requestId).not.toBe(
+      client.commands[0]?.requestId,
+    );
+    expect(client.commands[1]?.correlationId).toBe(
+      client.commands[0]?.correlationId,
+    );
+    expect(client.commands[1]?.metadata).toMatchObject({
+      attemptNumber: "2",
+      totalAttempts: "2",
     });
 
     const incompleteLabeler = new AgentRuntimeReaderSummaryTopicLabeler({

@@ -459,6 +459,10 @@ class FileTopicMapPublicationAudit implements ReaderSummaryTopicMapPublicationAu
           format: "reader-summary-topic-map-publication-rejection-v1",
           generatedAt: new Date().toISOString(),
           minimumGroupedCoverage: rejection.minimumGroupedCoverage,
+          attemptNumber: rejection.attemptNumber,
+          totalAttempts: rejection.totalAttempts,
+          willRetry: rejection.willRetry,
+          retryReason: rejection.retryReason,
           structureQuality: rejection.structureQuality,
           topicMap: rejection.topicMap,
           redaction: {

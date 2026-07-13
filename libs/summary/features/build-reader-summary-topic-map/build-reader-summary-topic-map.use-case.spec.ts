@@ -5,6 +5,7 @@ import type {
   ReaderSummaryTopicLabelerInput,
   ReaderSummaryTopicMapPublicationAuditPort,
   ReaderSummaryTopicMapPublicationRejection,
+  ReaderSummaryTopicMapAttemptContext,
   ReaderSummaryTopicRelationVerifierInput,
   ReaderSummaryTopicRelationVerifierPort,
 } from "../../ports";
@@ -39,9 +40,10 @@ describe("BuildReaderSummaryTopicMapUseCase", () => {
   });
 
   it("fails instead of silently downgrading when agent-runtime labeling fails", async () => {
+    const labeler = new FailingTopicLabeler();
     const result = await new BuildReaderSummaryTopicMapUseCase({
       mode: "agent-runtime",
-      labeler: new FailingTopicLabeler(),
+      labeler,
     }).execute(command());
 
     expect(result.ok).toBe(false);
@@ -49,6 +51,7 @@ describe("BuildReaderSummaryTopicMapUseCase", () => {
       throw new Error("Expected topic map labeling to fail");
     }
     expect(result.error.message).toContain("agent runtime unavailable");
+    expect(labeler.calls).toBe(1);
   });
 
   it("uses deterministic labels only in deterministic mode", async () => {
@@ -78,9 +81,10 @@ describe("BuildReaderSummaryTopicMapUseCase", () => {
 
   it("rejects an LLM map whose proposed groups have no shared evidence anchors", async () => {
     const publicationAudit = new RecordingTopicMapPublicationAudit();
+    const labeler = new UnsupportedGroupTopicLabeler();
     const result = await new BuildReaderSummaryTopicMapUseCase({
       mode: "agent-runtime",
-      labeler: new UnsupportedGroupTopicLabeler(),
+      labeler,
       publicationAudit,
     }).execute(multiTopicCommand());
 
@@ -90,11 +94,89 @@ describe("BuildReaderSummaryTopicMapUseCase", () => {
     }
     expect(result.error.message).toContain("failed publication quality");
     expect(result.error.message).toContain("supported semantic groups");
-    expect(publicationAudit.rejections).toHaveLength(1);
-    expect(publicationAudit.rejections[0]).toMatchObject({
-      minimumGroupedCoverage: 0.5,
-      structureQuality: { passed: false },
-    });
+    expect(labeler.calls).toBe(2);
+    expect(publicationAudit.rejections).toEqual([
+      expect.objectContaining({
+        minimumGroupedCoverage: 0.5,
+        structureQuality: expect.objectContaining({ passed: false }),
+        attemptNumber: 1,
+        totalAttempts: 2,
+        willRetry: true,
+        retryReason: "agent-runtime grouped coverage is below 0.5",
+      }),
+      expect.objectContaining({
+        minimumGroupedCoverage: 0.5,
+        structureQuality: expect.objectContaining({ passed: false }),
+        attemptNumber: 2,
+        totalAttempts: 2,
+        willRetry: false,
+        retryReason: "agent-runtime grouped coverage is below 0.5",
+      }),
+    ]);
+  });
+
+  it("retries the complete agent-runtime flow once after a coverage-only rejection", async () => {
+    const labeler = new CoverageSequenceTopicLabeler(["low", "good"]);
+    const verifier = new CapturingCoverageTopicRelationVerifier();
+    const publicationAudit = new RecordingTopicMapPublicationAudit();
+    const result = await new BuildReaderSummaryTopicMapUseCase({
+      mode: "agent-runtime",
+      labeler,
+      relationVerifier: verifier,
+      publicationAudit,
+    }).execute(multiTopicCommand());
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      throw result.error;
+    }
+    expect(
+      result.value.nodes.filter((node) => node.groupId !== "group:ungrouped")
+        .length / result.value.nodes.length,
+    ).toBeGreaterThanOrEqual(0.5);
+    expect(labeler.attempts).toEqual([
+      { attemptNumber: 1, totalAttempts: 2 },
+      { attemptNumber: 2, totalAttempts: 2 },
+    ]);
+    expect(verifier.attempts).toEqual(labeler.attempts);
+    expect(publicationAudit.rejections).toEqual([
+      expect.objectContaining({
+        attemptNumber: 1,
+        totalAttempts: 2,
+        willRetry: true,
+        retryReason: "agent-runtime grouped coverage is below 0.5",
+      }),
+    ]);
+  });
+
+  it("stops after exactly two low-coverage agent-runtime attempts", async () => {
+    const labeler = new CoverageSequenceTopicLabeler(["low", "low"]);
+    const verifier = new CapturingCoverageTopicRelationVerifier();
+    const publicationAudit = new RecordingTopicMapPublicationAudit();
+    const result = await new BuildReaderSummaryTopicMapUseCase({
+      mode: "agent-runtime",
+      labeler,
+      relationVerifier: verifier,
+      publicationAudit,
+    }).execute(multiTopicCommand());
+
+    expect(result.ok).toBe(false);
+    expect(labeler.attempts).toHaveLength(2);
+    expect(verifier.attempts).toHaveLength(2);
+    expect(publicationAudit.rejections).toEqual([
+      expect.objectContaining({
+        attemptNumber: 1,
+        totalAttempts: 2,
+        willRetry: true,
+        retryReason: "agent-runtime grouped coverage is below 0.5",
+      }),
+      expect.objectContaining({
+        attemptNumber: 2,
+        totalAttempts: 2,
+        willRetry: false,
+        retryReason: "agent-runtime grouped coverage is below 0.5",
+      }),
+    ]);
   });
 
   it("applies only focused relation-verifier decisions to topic aggregation", async () => {
@@ -248,15 +330,21 @@ class CapturingTopicLabeler implements ReaderSummaryTopicLabelerPort {
 }
 
 class FailingTopicLabeler implements ReaderSummaryTopicLabelerPort {
+  calls = 0;
+
   async label(): Promise<never> {
+    this.calls += 1;
     throw new Error("agent runtime unavailable");
   }
 }
 
 class UnsupportedGroupTopicLabeler implements ReaderSummaryTopicLabelerPort {
+  calls = 0;
+
   async label(
     input: ReaderSummaryTopicLabelerInput,
   ): Promise<Awaited<ReturnType<ReaderSummaryTopicLabelerPort["label"]>>> {
+    this.calls += 1;
     return {
       nodeLabels: input.candidates.map((candidate) => ({
         nodeId: candidate.nodeId,
@@ -271,6 +359,71 @@ class UnsupportedGroupTopicLabeler implements ReaderSummaryTopicLabelerPort {
         },
       ],
     };
+  }
+}
+
+class CoverageSequenceTopicLabeler implements ReaderSummaryTopicLabelerPort {
+  readonly attempts: ReaderSummaryTopicMapAttemptContext[] = [];
+
+  constructor(private readonly outcomes: readonly ("low" | "good")[]) {}
+
+  async label(
+    input: ReaderSummaryTopicLabelerInput,
+    attemptContext: ReaderSummaryTopicMapAttemptContext = {
+      attemptNumber: 1,
+      totalAttempts: 1,
+    },
+  ): Promise<Awaited<ReturnType<ReaderSummaryTopicLabelerPort["label"]>>> {
+    this.attempts.push(attemptContext);
+    const outcome = this.outcomes[attemptContext.attemptNumber - 1] ?? "low";
+
+    return {
+      nodeLabels: input.candidates.map((candidate, index) => ({
+        nodeId: candidate.nodeId,
+        topicId: `topic:runtime-${index}`,
+        label: candidate.fallbackLabel,
+        semantic: {
+          subject: candidate.fallbackLabel,
+          parentSubject: "Runtime",
+          claimType: "other",
+          confidenceScore: 0.9,
+        },
+        groupId:
+          outcome === "good" ? "group:runtime-ecosystem" : "group:ungrouped",
+      })),
+      groups:
+        outcome === "good"
+          ? [
+              {
+                id: "group:runtime-ecosystem",
+                label: "Runtime Ecosystem",
+                semanticAnchors: ["Runtime"],
+              },
+            ]
+          : [],
+    };
+  }
+}
+
+class CapturingCoverageTopicRelationVerifier implements ReaderSummaryTopicRelationVerifierPort {
+  readonly attempts: ReaderSummaryTopicMapAttemptContext[] = [];
+
+  async verify(
+    input: ReaderSummaryTopicRelationVerifierInput,
+    attemptContext: ReaderSummaryTopicMapAttemptContext = {
+      attemptNumber: 1,
+      totalAttempts: 1,
+    },
+  ): Promise<
+    Awaited<ReturnType<ReaderSummaryTopicRelationVerifierPort["verify"]>>
+  > {
+    this.attempts.push(attemptContext);
+
+    return input.relations.map((relation) => ({
+      ...relation,
+      sameTopic: false,
+      confidenceScore: 0.95,
+    }));
   }
 }
 

@@ -30,7 +30,9 @@ describe("AgentRuntimeReaderSummaryTopicRelationVerifier", () => {
       client,
     });
 
-    await expect(verifier.verify(input())).resolves.toEqual([
+    await expect(
+      verifier.verify(input(), { attemptNumber: 1, totalAttempts: 2 }),
+    ).resolves.toEqual([
       {
         sourceNodeId: "node:a",
         targetNodeId: "node:b",
@@ -44,6 +46,8 @@ describe("AgentRuntimeReaderSummaryTopicRelationVerifier", () => {
       purpose: "social_monitor.reader_summary.topic_map.verify_relations",
       metadata: {
         promptVersion: "reader_summary.topic_relation.agent_runtime.v3",
+        attemptNumber: "1",
+        totalAttempts: "2",
       },
     });
     expect(
@@ -58,6 +62,18 @@ describe("AgentRuntimeReaderSummaryTopicRelationVerifier", () => {
         semanticConfidenceScore: 0.9,
         evidenceSamples: [expect.objectContaining({ authorHandle: "openai" })],
       },
+    });
+
+    await verifier.verify(input(), { attemptNumber: 2, totalAttempts: 2 });
+    expect(client.commands[1]?.requestId).not.toBe(
+      client.commands[0]?.requestId,
+    );
+    expect(client.commands[1]?.correlationId).toBe(
+      client.commands[0]?.correlationId,
+    );
+    expect(client.commands[1]?.metadata).toMatchObject({
+      attemptNumber: "2",
+      totalAttempts: "2",
     });
   });
 

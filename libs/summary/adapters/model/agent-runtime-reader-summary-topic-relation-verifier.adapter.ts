@@ -5,6 +5,7 @@ import {
 import type {
   AgentRuntimeClientPort,
   AgentRuntimeProvider,
+  ReaderSummaryTopicMapAttemptContext,
   ReaderSummaryTopicRelationVerifierInput,
   ReaderSummaryTopicRelationVerifierPort,
 } from "../../ports";
@@ -70,13 +71,14 @@ export class AgentRuntimeReaderSummaryTopicRelationVerifier implements ReaderSum
 
   async verify(
     input: ReaderSummaryTopicRelationVerifierInput,
+    attemptContext: ReaderSummaryTopicMapAttemptContext = defaultAttemptContext,
   ): Promise<readonly ReaderSummaryTopicRelationDecision[]> {
     if (input.relations.length === 0) {
       return [];
     }
     const result = await this.client.runTask({
       requestId: buildAgentRuntimeRequestId(
-        "reader-summary-topic-relations",
+        `reader-summary-topic-relations-attempt-${attemptContext.attemptNumber}`,
         input.tenantId,
         input.workspaceId,
         readerSummaryScopeKey(input.scope),
@@ -108,6 +110,8 @@ export class AgentRuntimeReaderSummaryTopicRelationVerifier implements ReaderSum
       metadata: {
         adapter: "agent-runtime-reader-summary-topic-relation-verifier",
         promptVersion: this.promptVersion,
+        attemptNumber: String(attemptContext.attemptNumber),
+        totalAttempts: String(attemptContext.totalAttempts),
       },
     });
     const raw = readAgentRuntimeObjectOutput(
@@ -119,6 +123,11 @@ export class AgentRuntimeReaderSummaryTopicRelationVerifier implements ReaderSum
     return normalizeDecisions(raw, input.relations);
   }
 }
+
+const defaultAttemptContext: ReaderSummaryTopicMapAttemptContext = {
+  attemptNumber: 1,
+  totalAttempts: 1,
+};
 
 export const resolveAgentRuntimeReaderSummaryTopicRelationVerifierOptions = (
   env: NodeJS.ProcessEnv,

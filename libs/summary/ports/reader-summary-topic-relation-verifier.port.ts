@@ -9,7 +9,10 @@ import type {
   StoryCluster,
   SummaryEvidenceItem,
 } from "../domain";
-import type { ReaderSummaryTopicLabelCandidate } from "./reader-summary-topic-labeler.port";
+import type {
+  ReaderSummaryTopicLabelCandidate,
+  ReaderSummaryTopicMapAttemptContext,
+} from "./reader-summary-topic-labeler.port";
 
 export type ReaderSummaryTopicRelationVerifierInput = {
   readonly tenantId: TenantId;
@@ -27,5 +30,6 @@ export type ReaderSummaryTopicRelationVerifierInput = {
 export interface ReaderSummaryTopicRelationVerifierPort {
   verify(
     input: ReaderSummaryTopicRelationVerifierInput,
+    attemptContext?: ReaderSummaryTopicMapAttemptContext,
   ): Promise<readonly ReaderSummaryTopicRelationDecision[]>;
 }

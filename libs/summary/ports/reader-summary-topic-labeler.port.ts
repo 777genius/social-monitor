@@ -35,8 +35,14 @@ export type ReaderSummaryTopicLabelerInput = {
   readonly candidates: readonly ReaderSummaryTopicLabelCandidate[];
 };
 
+export type ReaderSummaryTopicMapAttemptContext = {
+  readonly attemptNumber: number;
+  readonly totalAttempts: number;
+};
+
 export interface ReaderSummaryTopicLabelerPort {
   label(
     input: ReaderSummaryTopicLabelerInput,
+    attemptContext?: ReaderSummaryTopicMapAttemptContext,
   ): Promise<ReaderSummaryTopicLabelPlan>;
 }

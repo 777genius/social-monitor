@@ -25,6 +25,7 @@ import type {
   ReaderSummaryTopicMapPublicationAuditPort,
   ReaderSummaryTopicRelationVerifierPort,
   ReaderSummaryTopicLabelerInput,
+  ReaderSummaryTopicMapAttemptContext,
 } from "../../ports";
 import type { BuildReaderSummaryTopicMapCommand } from "./build-reader-summary-topic-map.command";
 
@@ -67,7 +68,12 @@ export class BuildReaderSummaryTopicMapUseCase {
     });
 
     if (this.mode === "deterministic" || deterministic.nodes.length === 0) {
-      return publishableTopicMap(deterministic, this.publicationAudit);
+      return (
+        await publishableTopicMap(deterministic, this.publicationAudit, {
+          attemptNumber: 1,
+          totalAttempts: 1,
+        })
+      ).result;
     }
 
     if (this.labeler === null) {
@@ -78,38 +84,57 @@ export class BuildReaderSummaryTopicMapUseCase {
       );
     }
 
-    const labelPlanResult = await this.labelWithAgentRuntime(
-      command,
-      deterministic,
-    );
-    if (!labelPlanResult.ok) {
-      return labelPlanResult;
+    for (
+      let attemptNumber = 1;
+      attemptNumber <= agentRuntimeTotalAttempts;
+      attemptNumber += 1
+    ) {
+      const attemptContext = {
+        attemptNumber,
+        totalAttempts: agentRuntimeTotalAttempts,
+      } satisfies ReaderSummaryTopicMapAttemptContext;
+      const labelPlanResult = await this.labelWithAgentRuntime(
+        command,
+        deterministic,
+        attemptContext,
+      );
+      if (!labelPlanResult.ok) {
+        return labelPlanResult;
+      }
+
+      const verifiedPlanResult = await this.verifyTopicRelations(
+        labelPlanResult.value.input,
+        labelPlanResult.value.labelPlan,
+        attemptContext,
+      );
+      if (!verifiedPlanResult.ok) {
+        return verifiedPlanResult;
+      }
+
+      const publication = await publishableTopicMap(
+        buildReaderSummaryTopicMap({
+          clusters: command.clusters,
+          selectedEvidence: command.selectedEvidence,
+          topStories: command.topStories,
+          citationMap: command.citationMap,
+          labelPlan: verifiedPlanResult.value,
+          generatedBy: "agent-runtime",
+        }),
+        this.publicationAudit,
+        attemptContext,
+      );
+      if (publication.result.ok || !publication.willRetry) {
+        return publication.result;
+      }
     }
 
-    const verifiedPlanResult = await this.verifyTopicRelations(
-      labelPlanResult.value.input,
-      labelPlanResult.value.labelPlan,
-    );
-    if (!verifiedPlanResult.ok) {
-      return verifiedPlanResult;
-    }
-
-    return publishableTopicMap(
-      buildReaderSummaryTopicMap({
-        clusters: command.clusters,
-        selectedEvidence: command.selectedEvidence,
-        topStories: command.topStories,
-        citationMap: command.citationMap,
-        labelPlan: verifiedPlanResult.value,
-        generatedBy: "agent-runtime",
-      }),
-      this.publicationAudit,
-    );
+    return err(topicMapFailure("Reader summary topic map attempts exhausted"));
   }
 
   private async labelWithAgentRuntime(
     command: BuildReaderSummaryTopicMapCommand,
     deterministic: ReaderSummaryTopicMap,
+    attemptContext: ReaderSummaryTopicMapAttemptContext,
   ): Promise<
     Result<
       {
@@ -185,7 +210,10 @@ export class BuildReaderSummaryTopicMapUseCase {
         }),
       } satisfies ReaderSummaryTopicLabelerInput;
 
-      return ok({ labelPlan: await this.labeler!.label(input), input });
+      return ok({
+        labelPlan: await this.labeler!.label(input, attemptContext),
+        input,
+      });
     } catch (error) {
       return err(topicMapFailure(topicLabelerFailureMessage(error)));
     }
@@ -194,6 +222,7 @@ export class BuildReaderSummaryTopicMapUseCase {
   private async verifyTopicRelations(
     input: ReaderSummaryTopicLabelerInput,
     labelPlan: ReaderSummaryTopicLabelPlan,
+    attemptContext: ReaderSummaryTopicMapAttemptContext,
   ): Promise<Result<ReaderSummaryTopicLabelPlan, DomainError>> {
     const reviewedNodeIds = new Set(
       labelPlan.nodeLabels.map((label) => label.nodeId),
@@ -240,11 +269,14 @@ export class BuildReaderSummaryTopicMapUseCase {
     }
 
     try {
-      const decisions = await this.relationVerifier.verify({
-        ...input,
-        labelPlan,
-        relations,
-      });
+      const decisions = await this.relationVerifier.verify(
+        {
+          ...input,
+          labelPlan,
+          relations,
+        },
+        attemptContext,
+      );
 
       return ok(
         reconcileVerifiedReaderSummaryTopicRelations({
@@ -267,6 +299,8 @@ export class BuildReaderSummaryTopicMapUseCase {
   }
 }
 
+const agentRuntimeTotalAttempts = 2;
+
 const topicMapFailure = (message: string): DomainError =>
   new DomainError("external.dependency_unavailable", message, {
     dependency: "reader_summary_topic_labeler",
@@ -275,7 +309,11 @@ const topicMapFailure = (message: string): DomainError =>
 const publishableTopicMap = async (
   topicMap: ReaderSummaryTopicMap,
   publicationAudit: ReaderSummaryTopicMapPublicationAuditPort | null,
-): Promise<BuildReaderSummaryTopicMapResult> => {
+  attemptContext: ReaderSummaryTopicMapAttemptContext,
+): Promise<{
+  readonly result: BuildReaderSummaryTopicMapResult;
+  readonly willRetry: boolean;
+}> => {
   const structure = evaluateReaderSummaryTopicMapStructure(topicMap);
   const minimumGroupedCoverage =
     topicMap.generatedBy === "agent-runtime" && topicMap.nodes.length >= 4
@@ -285,25 +323,62 @@ const publishableTopicMap = async (
     structure.passed &&
     structure.metrics.groupedCoverage >= minimumGroupedCoverage
   ) {
-    return ok(topicMap);
+    return { result: ok(topicMap), willRetry: false };
   }
+
+  const retryReason = topicMapCoverageRetryReason(
+    topicMap,
+    structure,
+    minimumGroupedCoverage,
+  );
+  const willRetry =
+    retryReason !== null &&
+    attemptContext.attemptNumber < attemptContext.totalAttempts;
 
   await publicationAudit?.recordRejectedCandidate({
     topicMap,
     structureQuality: structure,
     minimumGroupedCoverage,
+    attemptNumber: attemptContext.attemptNumber,
+    totalAttempts: attemptContext.totalAttempts,
+    willRetry,
+    retryReason,
   });
 
-  return err(
-    topicMapFailure(
-      `Reader summary topic map failed publication quality: ${[
-        ...structure.issues,
-        ...(structure.metrics.groupedCoverage < minimumGroupedCoverage
-          ? ["agent-runtime grouped coverage is below 0.5"]
-          : []),
-      ].join("; ")}`,
+  return {
+    result: err(
+      topicMapFailure(
+        `Reader summary topic map failed publication quality: ${[
+          ...structure.issues,
+          ...(structure.metrics.groupedCoverage < minimumGroupedCoverage
+            ? ["agent-runtime grouped coverage is below 0.5"]
+            : []),
+        ].join("; ")}`,
+      ),
     ),
+    willRetry,
+  };
+};
+
+const coverageRelatedStructureIssues = new Set([
+  "map has no supported semantic groups",
+]);
+
+const topicMapCoverageRetryReason = (
+  topicMap: ReaderSummaryTopicMap,
+  structure: ReturnType<typeof evaluateReaderSummaryTopicMapStructure>,
+  minimumGroupedCoverage: number,
+): string | null => {
+  const hasUnrelatedStructureIssue = structure.issues.some(
+    (issue) => !coverageRelatedStructureIssues.has(issue),
   );
+
+  return topicMap.generatedBy === "agent-runtime" &&
+    minimumGroupedCoverage === 0.5 &&
+    structure.metrics.groupedCoverage < minimumGroupedCoverage &&
+    !hasUnrelatedStructureIssue
+    ? "agent-runtime grouped coverage is below 0.5"
+    : null;
 };
 
 const topicLabelerFailureMessage = (error: unknown): string =>
