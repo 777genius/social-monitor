@@ -13,10 +13,8 @@ export const isConversationalOrTruncatedReaderTitle = (
     /\bis\s+here[.!?]*$/iu.test(sourceTitle) ||
     /^keep\s+(?:building|going|shipping)\b/iu.test(sourceTitle) ||
     /\bno\s+matter\s+what\b/iu.test(sourceTitle) ||
-    (sourceTitle.length >= 120 &&
-      /\b(?:a|an|and|as|at|by|either|for|from|in|including|of|on|or|such|that|the|to|using|via|which|while|with)$/iu.test(
-        sourceTitle,
-      )) ||
+    /\bwe\s+all\s+know\b/iu.test(sourceTitle) ||
+    sourceTitle.length >= 120 ||
     /^(?:what happens when|what if|today i|just\b|here(?:'s| is)\b|i(?:'m| am| have| just)?\b|we(?:'re| are| have| just)?\b)/iu.test(
       sourceTitle,
     )
@@ -206,6 +204,10 @@ const normalizeReaderText = (value: string): string =>
     .replace(/^X post by @[^:]+:\s*/iu, "")
     .replace(
       /^(?:the\s+)?(?:(?:x(?:\/twitter)?|twitter|reddit|hacker\s+news|hn|rss|github(?:\s+trending)?)\s+)?(?:post|item|story|discussion|source|report)\s+(?:reports?|says?|states?|describes?):\s*/iu,
+      "",
+    )
+    .replace(
+      /^(?:(?:this is interesting|here we go again|interesting|check this out|take a look|look at this)[.!?:\s]+)+/iu,
       "",
     )
     .toLowerCase()

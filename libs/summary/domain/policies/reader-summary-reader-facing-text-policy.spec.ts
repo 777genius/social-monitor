@@ -45,6 +45,11 @@ describe("reader summary reader-facing text policy", () => {
       ),
     ).toBe(true);
     expect(
+      isConversationalOrTruncatedReaderTitle(
+        "Claude's limits are crap, and we all know that once you start building something, you can quickly get kicked out because of the rate",
+      ),
+    ).toBe(true);
+    expect(
       isUnpolishedReaderTitle("Superhuman competitive programming AI is here"),
     ).toBe(true);
     expect(
@@ -165,5 +170,11 @@ describe("reader summary reader-facing text policy", () => {
         "The report states: Anthropic extends Fable access. This matters because the access window changes team planning.",
       ),
     ).toBe(false);
+    expect(
+      isReaderTitleReasonDuplicate(
+        "OpenAI encourages developers to run GPT-5.6 inside Claude Code",
+        "The X post reports: This is interesting. OpenAI encourages developers to run GPT-5.6 inside Claude Code.",
+      ),
+    ).toBe(true);
   });
 });
