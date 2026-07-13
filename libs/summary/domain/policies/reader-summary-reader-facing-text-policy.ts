@@ -37,11 +37,19 @@ const isLowInformationReaderTitle = (value: string): boolean => {
   const normalized = value
     .trim()
     .toLowerCase()
+    .replace(/https?:\/\/\S+/giu, " ")
     .replace(/[^\p{L}\p{N}\s]+/gu, "")
-    .replace(/\s+/gu, " ");
+    .replace(/\s+/gu, " ")
+    .trim();
 
-  return /^(?:check (?:this|it) out|take a look|look at this|watch this)$/u.test(
-    normalized,
+  return (
+    /^(?:check (?:this|it) out|take a look|look at this|watch this)$/u.test(
+      normalized,
+    ) ||
+    /^(?:happy|good) (?:coding|building|shipping)(?: this weekend)?(?: [\p{L}\p{N} ]+ fans)?$/u.test(
+      normalized,
+    ) ||
+    /\bmegathread\b/u.test(normalized)
   );
 };
 
@@ -164,7 +172,30 @@ const isLowInformationEvidenceExcerpt = (value: string): boolean =>
 export const isReaderTitleReasonDuplicate = (
   title: string,
   reason: string,
-): boolean => normalizeReaderText(title) === normalizeReaderText(reason);
+): boolean => {
+  const normalizedTitle = normalizeReaderText(title);
+  const normalizedReason = normalizeReaderText(reason);
+  if (normalizedTitle === normalizedReason) {
+    return true;
+  }
+  if (
+    !isSourceReportedReaderTitle(reason) ||
+    normalizedTitle.length < 20 ||
+    !normalizedReason.startsWith(`${normalizedTitle} `)
+  ) {
+    return false;
+  }
+
+  const remainder = normalizedReason.slice(normalizedTitle.length).trim();
+  const remainderTokens = remainder.split(/\s+/u).filter(Boolean);
+
+  return (
+    remainderTokens.length < 8 ||
+    !/\b(?:because|but|changes?|enables?|helps?|increases?|limits?|matters?|means?|reduces?|risk|shows?|so|therefore|uncertain|whereas|which)\b/iu.test(
+      remainder,
+    )
+  );
+};
 
 const readerProviderMentions = [
   { providerKey: "reddit", pattern: /\b(?:reddit|subreddit)\b/iu },
@@ -203,13 +234,14 @@ const normalizeReaderText = (value: string): string =>
     .trim()
     .replace(/^X post by @[^:]+:\s*/iu, "")
     .replace(
-      /^(?:the\s+)?(?:(?:x(?:\/twitter)?|twitter|reddit|hacker\s+news|hn|rss|github(?:\s+trending)?)\s+)?(?:post|item|story|discussion|source|report)\s+(?:reports?|says?|states?|describes?):\s*/iu,
+      /^(?:the\s+)?(?:(?:x(?:\/twitter)?|twitter|reddit|hacker\s+news|hn|rss|github(?:\s+trending)?)\s+)?(?:post|item|story|discussion|source|report)\s+(?:reports?|says?|states?|describes?)\s*[:,-]?\s+/iu,
       "",
     )
     .replace(
       /^(?:(?:this is interesting|here we go again|interesting|check this out|take a look|look at this)[.!?:\s]+)+/iu,
       "",
     )
+    .replace(/https?:\/\/\S+/giu, " ")
     .toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .trim();

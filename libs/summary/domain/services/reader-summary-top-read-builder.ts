@@ -38,6 +38,7 @@ import {
 
 const maxTopReadCitationIds = 4;
 const minimumDetailedStorySummaryLength = 240;
+const minimumSalvagedStorySummaryLength = 80;
 
 export const evidenceClusterMap = (
   clusters: readonly StoryCluster[],
@@ -217,7 +218,12 @@ const buildTopReadUserFacingReasons = (params: {
 }): readonly string[] => {
   const candidates = compactUnique([
     ...(params.includeStorySummary
-      ? [readerFacingStorySummary(params.story)]
+      ? [
+          readerFacingStorySummary(
+            params.story,
+            params.supportedProviderKeys,
+          ),
+        ]
       : []),
     ...(params.cluster?.whyImportant ?? []),
     ...params.evidence.flatMap((item) => item.whyImportant),
@@ -256,12 +262,14 @@ const buildTopReadUserFacingReasons = (params: {
 
 const readerFacingStorySummary = (
   story: TopReadCandidate,
+  supportedProviderKeys: readonly string[],
 ): string | undefined => {
   const summary = story.summary.trim();
   if (
     summary.length >= minimumDetailedStorySummaryLength &&
     isUserFacingTopReadReason(summary) &&
-    !isReaderTitleReasonDuplicate(story.title, summary)
+    !isReaderTitleReasonDuplicate(story.title, summary) &&
+    !mentionsUnsupportedReaderProvider(summary, supportedProviderKeys)
   ) {
     return summary;
   }
@@ -271,11 +279,12 @@ const readerFacingStorySummary = (
     .filter(
       (sentence) =>
         isUserFacingTopReadReason(sentence) &&
-        !isReaderTitleReasonDuplicate(story.title, sentence),
+        !isReaderTitleReasonDuplicate(story.title, sentence) &&
+        !mentionsUnsupportedReaderProvider(sentence, supportedProviderKeys),
     );
   const cleaned = readerSentences.join(" ").trim();
 
-  return cleaned.length >= minimumDetailedStorySummaryLength
+  return cleaned.length >= minimumSalvagedStorySummaryLength
     ? cleaned
     : undefined;
 };

@@ -11,6 +11,16 @@ describe("reader summary reader-facing text policy", () => {
     expect(isUnpolishedReaderTitle("Check this out")).toBe(true);
     expect(isUnpolishedReaderTitle("Take a look!")).toBe(true);
     expect(
+      isUnpolishedReaderTitle(
+        "Happy coding this weekend, Claude Code fans! https://t.co/example",
+      ),
+    ).toBe(true);
+    expect(
+      isUnpolishedReaderTitle(
+        "Fable vs Opus vs GPT-5.6 Sol vs Gemini 3.5 megathread",
+      ),
+    ).toBe(true);
+    expect(
       isUnpolishedReaderTitle("Codex powers OpenAI's new work product"),
     ).toBe(false);
   });
@@ -174,6 +184,18 @@ describe("reader summary reader-facing text policy", () => {
       isReaderTitleReasonDuplicate(
         "OpenAI encourages developers to run GPT-5.6 inside Claude Code",
         "The X post reports: This is interesting. OpenAI encourages developers to run GPT-5.6 inside Claude Code.",
+      ),
+    ).toBe(true);
+    expect(
+      isReaderTitleReasonDuplicate(
+        "Claude Code is one of the best coding harnesses out there",
+        "The X post reports: Claude Code is one of the best coding harnesses out there. @thsottiaux suggested pointing it at GPT-5.6.",
+      ),
+    ).toBe(true);
+    expect(
+      isReaderTitleReasonDuplicate(
+        "Happy coding this weekend, Claude Code fans!",
+        "The X post reports: Happy coding this weekend, Claude Code fans!",
       ),
     ).toBe(true);
   });

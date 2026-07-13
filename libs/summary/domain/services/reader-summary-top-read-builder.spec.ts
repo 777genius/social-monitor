@@ -521,7 +521,60 @@ describe("reader summary top read builder", () => {
 
     expect(topRead.confirmedProviderKeys).toEqual(["reddit"]);
     expect(topRead.reason).not.toContain("Hacker News");
-    expect(topRead.reason).toContain("Reddit");
+    expect(topRead.reason).toContain("operating cost");
+  });
+
+  it("salvages useful model context after removing unsupported provider sentences", () => {
+    const story: TopReadCandidate = {
+      storyClusterId: "story:apple-openai-lawsuit",
+      title: "Apple trade-secret lawsuit against OpenAI draws attention",
+      summary:
+        "Reddit and Hacker News titles framed the dispute as a trade-secret theft claim. An RSS headline added unrelated leadership context. The useful takeaway is not that the allegations are proven, but that the dispute matters for AI platform strategy, hiring and intellectual-property risk.",
+      interestIds: ["ai-agents"],
+      providerKeys: ["reddit"],
+      citationIds: ["citation-reddit"],
+    };
+    const reddit = evidenceItem({
+      feedItemId: "feed-reddit-lawsuit",
+      providerKey: "reddit",
+      providerName: "Reddit",
+      title: "Apple sues OpenAI over alleged trade secret theft",
+      bodyPreview: "",
+      whyImportant: [],
+    });
+    const cluster: StoryCluster = {
+      id: story.storyClusterId,
+      storyKey: "url:reddit.com/apple-openai-lawsuit",
+      representativeFeedItemId: reddit.feedItemId,
+      duplicateFeedItemIds: [],
+      interestIds: story.interestIds,
+      providerKeys: ["reddit"],
+      score: 2.4,
+      observedAtRange: {
+        startedAt: reddit.observedAt,
+        endedAt: new Date(reddit.observedAt.getTime() + 1),
+      },
+      whyImportant: [],
+    };
+    const evidenceCitation = citation({
+      citationId: "citation-reddit",
+      feedItemId: reddit.feedItemId,
+      sourceItemId: reddit.sourceItemId,
+      providerKey: reddit.providerKey,
+    });
+
+    const topRead = storyToTopRead(
+      story,
+      new Map([[evidenceCitation.citationId, evidenceCitation]]),
+      new Map([[reddit.feedItemId, reddit]]),
+      new Map([[cluster.id, cluster]]),
+      evidenceClusterMap([cluster], new Map([[reddit.feedItemId, reddit]])),
+    );
+
+    expect(topRead.reason).toBe(
+      "The useful takeaway is not that the allegations are proven, but that the dispute matters for AI platform strategy, hiring and intellectual-property risk.",
+    );
+    expect(topRead.reason).not.toMatch(/Hacker News|RSS/u);
   });
 
   it("skips teaser sentences when a truncated X post has a useful title", () => {
