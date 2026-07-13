@@ -59,9 +59,7 @@ export const selectRenderedTopReadCandidates = (params: {
   const selected: RenderedTopReadCandidate[] = [];
   const selectedStoryIds = new Set<string>();
   const providerCounts = new Map<string, number>();
-  const pool = rankedCandidatePool(
-    qualityCandidatePool(params.candidates, limit),
-  );
+  const pool = rankedCandidatePool(params.candidates);
   const fallbackShouldRespectProviderCap =
     compactUnique(pool.map((candidate) => candidate.topRead.providerKey))
       .length > 1;
@@ -233,35 +231,6 @@ const claimFacetsAreCompatible = (
   return left.some((facet) => rightFacets.has(facet));
 };
 
-const qualityCandidatePool = (
-  candidates: readonly RenderedTopReadCandidate[],
-  limit: number,
-): readonly RenderedTopReadCandidate[] => {
-  if (!isSocialNewsDominant(candidates, limit)) {
-    return candidates;
-  }
-
-  const qualityCandidates = candidates.filter((candidate) =>
-    isReaderFacingQualityTopRead(candidate.topRead),
-  );
-  const detailedQualityCandidates = qualityCandidates.filter(
-    (candidate) =>
-      candidate.topRead.reason.trim().length >= minimumDetailedReasonLength,
-  );
-
-  if (detailedQualityCandidates.length >= Math.min(limit, 8)) {
-    return detailedQualityCandidates;
-  }
-
-  if (candidates.length <= limit) {
-    return candidates;
-  }
-
-  return qualityCandidates.length >= Math.min(limit, 6)
-    ? qualityCandidates
-    : candidates;
-};
-
 const rankedCandidatePool = (
   candidates: readonly RenderedTopReadCandidate[],
 ): readonly RenderedTopReadCandidate[] =>
@@ -323,14 +292,6 @@ const crossSourceRankBoost = (read: TopRead): number =>
 
 const citationRankBoost = (read: TopRead): number =>
   Math.min(read.citationIds.length, 3) * 0.03;
-
-const isSocialNewsDominant = (
-  candidates: readonly RenderedTopReadCandidate[],
-  limit: number,
-): boolean =>
-  candidates.filter((candidate) =>
-    socialNewsProviderKeys.has(candidate.topRead.providerKey),
-  ).length >= Math.min(limit, candidates.length);
 
 export const isReaderFacingQualityTopRead = (
   read: ReaderFacingTopReadQualityInput,
@@ -443,7 +404,6 @@ const trustedXUsernames = new Set([
 ]);
 const strongSingleSourceSignalScore = 2.2;
 const usefulSingleSourceSignalScore = 1.9;
-const minimumDetailedReasonLength = 240;
 const maxRenderedSocialProviderCount = 4;
 const editorialDiversityWindow = 4;
 const minimumSharedEditorialTokens = 3;

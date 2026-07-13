@@ -207,6 +207,51 @@ describe("selectRenderedTopReadCandidates", () => {
     expect(result).toEqual([]);
   });
 
+  it("rejects source-framed restatements without dropping concise evidence", () => {
+    const result = selectRenderedTopReadCandidates({
+      candidates: [
+        candidate("A viral prediction dominates tonight", "x-twitter", 2.45, {
+          reason:
+            "The X post reports: A viral prediction dominates tonight.",
+        }),
+        candidate("A generic Reddit reaction", "reddit", 2.35, {
+          reason: "The Reddit post states: A generic Reddit reaction.",
+        }),
+        candidate("Production agent migration cuts cost", "hacker-news", 2.1, {
+          reason:
+            "A production team reports lower cost and faster completion after migration.",
+        }),
+        candidate("Official model access window changes", "x-twitter", 2.05, {
+          canonicalUrl: "https://x.com/OpenAI/status/42",
+          reason:
+            "The first-party update gives teams a concrete date for changing usage plans.",
+        }),
+        candidate("Independent release coverage", "rss", 2.0, {
+          confirmedProviderKeys: ["rss", "hacker-news"],
+          confidenceLevel: "medium",
+          reason:
+            "Independent coverage adds release details and operational context.",
+        }),
+      ],
+      sourceMix: sourceMix(["x-twitter", "reddit", "hacker-news", "rss"]),
+      limit: 8,
+    });
+
+    expect(result.map((item) => item.topRead.title)).toEqual(
+      expect.arrayContaining([
+        "Production agent migration cuts cost",
+        "Official model access window changes",
+        "Independent release coverage",
+      ]),
+    );
+    expect(result.map((item) => item.topRead.title)).not.toEqual(
+      expect.arrayContaining([
+        "A viral prediction dominates tonight",
+        "A generic Reddit reaction",
+      ]),
+    );
+  });
+
   it("orders selected reads by support quality before model order", () => {
     const candidates = [
       candidate("x-single-source", "x-twitter", 2.3),
@@ -381,7 +426,7 @@ describe("selectRenderedTopReadCandidates", () => {
     ]);
   });
 
-  it("drops short supplemental reasons when eight detailed reads exist", () => {
+  it("keeps a concise high-signal read when eight verbose reads exist", () => {
     const detailedCandidates = [
       ...Array.from({ length: 4 }, (_, index) =>
         candidate(`x-detailed-${index + 1}`, "x-twitter", 2.4, {
@@ -403,11 +448,11 @@ describe("selectRenderedTopReadCandidates", () => {
         ...detailedCandidates,
       ],
       sourceMix: sourceMix(["x-twitter", "reddit", "hacker-news", "rss"]),
-      limit: 10,
+      limit: 8,
     });
 
     expect(result).toHaveLength(8);
-    expect(result.map((item) => item.topRead.title)).not.toContain(
+    expect(result.map((item) => item.topRead.title)).toContain(
       "short-supplement",
     );
   });

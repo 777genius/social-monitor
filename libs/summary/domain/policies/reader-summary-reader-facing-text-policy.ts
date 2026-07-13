@@ -194,6 +194,10 @@ const normalizeReaderText = (value: string): string =>
   value
     .trim()
     .replace(/^X post by @[^:]+:\s*/iu, "")
+    .replace(
+      /^(?:the\s+)?(?:(?:x(?:\/twitter)?|twitter|reddit|hacker\s+news|hn|rss|github(?:\s+trending)?)\s+)?(?:post|item|story|discussion|source|report)\s+(?:reports?|says?|states?|describes?):\s*/iu,
+      "",
+    )
     .toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .trim();

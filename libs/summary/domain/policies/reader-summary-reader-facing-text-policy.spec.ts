@@ -131,5 +131,29 @@ describe("reader summary reader-facing text policy", () => {
         "The rollout matters for long-running coding agents.",
       ),
     ).toBe(false);
+    expect(
+      isReaderTitleReasonDuplicate(
+        "Half of Claude Code subscriptions could be wiped out tonight",
+        "The X post reports: Half of Claude Code subscriptions could be wiped out tonight.",
+      ),
+    ).toBe(true);
+    expect(
+      isReaderTitleReasonDuplicate(
+        "Claude Code sends 33k tokens before reading the prompt",
+        "The Hacker News source says: Claude Code sends 33k tokens before reading the prompt.",
+      ),
+    ).toBe(true);
+    expect(
+      isReaderTitleReasonDuplicate(
+        "Developers compare Claude and Codex on the same task",
+        "The Reddit post states: Developers compare Claude and Codex on the same task.",
+      ),
+    ).toBe(true);
+    expect(
+      isReaderTitleReasonDuplicate(
+        "Anthropic extends Fable access",
+        "The report states: Anthropic extends Fable access. This matters because the access window changes team planning.",
+      ),
+    ).toBe(false);
   });
 });
