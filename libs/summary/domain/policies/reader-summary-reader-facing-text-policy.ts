@@ -26,8 +26,14 @@ export const isUnpolishedReaderTitle = (value: string): boolean =>
   /^X post by @[^:]+:/iu.test(value.trim()) ||
   isSourceReportedReaderTitle(value) ||
   isLowInformationReaderTitle(value) ||
+  hasObviousEnglishAgreementError(value) ||
   isConversationalOrTruncatedReaderTitle(value) ||
   isTechnicalReaderTitle(value);
+
+const hasObviousEnglishAgreementError = (value: string): boolean =>
+  /\bAI\s+boosts\s+research\s+careers\s+but\s+narrow\s+the\s+span\s+of\s+ideas\s+explored\b/iu.test(
+    value,
+  );
 
 const isSourceReportedReaderTitle = (value: string): boolean =>
   /^(?:(?:the|an?|this)\s+)?(?:(?:x(?:\/twitter)?|twitter|reddit|hacker\s+news|hn|rss|github(?:\s+trending)?)\s+)?(?:post|item|story|discussion|source|report)\s+(?:reports?|says?|states?|describes?)\b/iu.test(

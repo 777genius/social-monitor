@@ -2,11 +2,33 @@ import type { SourceMixEntry } from "../entities/source-mix-entry";
 import type { TopRead, TopReadCandidate } from "../entities/top-read";
 import type { SummaryEvidenceItem } from "../value-objects/summary-evidence-item";
 import {
+  isReaderFacingQualityTopRead,
   selectRenderedTopReadCandidates,
   type RenderedTopReadCandidate,
 } from "./rendered-top-read-selection-policy";
 
 describe("selectRenderedTopReadCandidates", () => {
+  it("rejects an unrepaired agreement error through the rendered quality gate", () => {
+    expect(
+      isReaderFacingQualityTopRead(
+        candidate(
+          "AI boosts research careers but narrow the span of ideas explored: study",
+          "hacker-news",
+          2.13,
+        ).topRead,
+      ),
+    ).toBe(false);
+    expect(
+      isReaderFacingQualityTopRead(
+        candidate(
+          "AI boosts research careers but narrows the span of ideas explored: study",
+          "hacker-news",
+          2.13,
+        ).topRead,
+      ),
+    ).toBe(true);
+  });
+
   it("caps the final rendered provider after story candidates are converted", () => {
     const candidates = [
       ...Array.from({ length: 6 }, (_, index) =>

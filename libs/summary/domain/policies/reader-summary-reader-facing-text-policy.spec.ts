@@ -23,6 +23,21 @@ describe("reader summary reader-facing text policy", () => {
     expect(
       isUnpolishedReaderTitle("Codex powers OpenAI's new work product"),
     ).toBe(false);
+    expect(
+      isUnpolishedReaderTitle(
+        "AI boosts research careers but narrow the span of ideas explored: study",
+      ),
+    ).toBe(true);
+    expect(
+      isUnpolishedReaderTitle(
+        "AI boosts research careers but narrows the span of ideas explored: study",
+      ),
+    ).toBe(false);
+    expect(
+      isUnpolishedReaderTitle(
+        "AI boosts productivity, but narrow the scope before deployment",
+      ),
+    ).toBe(false);
   });
   it("detects copied social hooks and truncated titles", () => {
     expect(

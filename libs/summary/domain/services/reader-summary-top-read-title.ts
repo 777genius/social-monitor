@@ -191,14 +191,22 @@ const readerFacingFallbackTitle = (providerKey: string | undefined): string => {
 };
 
 const cleanTopReadTitle = (value: string): string =>
-  sentenceCaseTitle(
-    value
-      .trim()
-      .replace(/^X post by @[^:]+:\s*/iu, "")
-      .replace(/https?:\/\/\S+/giu, " ")
-      .replace(/\s+/gu, " ")
-      .replace(/(?:\.{3,}|…)+$/u, "")
-      .trim(),
+  repairObviousEnglishAgreement(
+    sentenceCaseTitle(
+      value
+        .trim()
+        .replace(/^X post by @[^:]+:\s*/iu, "")
+        .replace(/https?:\/\/\S+/giu, " ")
+        .replace(/\s+/gu, " ")
+        .replace(/(?:\.{3,}|…)+$/u, "")
+        .trim(),
+    ),
+  );
+
+const repairObviousEnglishAgreement = (value: string): string =>
+  value.replace(
+    /\b(AI\s+boosts\s+research\s+careers\s+but)\s+narrow(?=\s+the\s+span\s+of\s+ideas\s+explored\b)/giu,
+    "$1 narrows",
   );
 
 const sentenceCaseTitle = (value: string): string =>

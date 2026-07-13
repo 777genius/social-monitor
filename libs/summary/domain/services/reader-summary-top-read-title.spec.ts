@@ -74,6 +74,41 @@ describe("reader summary top read title", () => {
     expect(title).toBe("Claude Code users question another access extension");
   });
 
+  it("repairs an obvious agreement error in a native English title", () => {
+    const title = buildTopReadTitle({
+      storyTitle: "AI research productivity study",
+      storySummary:
+        "A study says AI boosts research careers while narrowing the span of ideas explored.",
+      primaryEvidence: evidence({
+        providerKey: "hacker-news",
+        title:
+          "AI boosts research careers but narrow the span of ideas explored: study",
+      }),
+      evidence: [],
+    });
+
+    expect(title).toBe(
+      "AI boosts research careers but narrows the span of ideas explored: study",
+    );
+  });
+
+  it("does not rewrite an imperative title with a different subject", () => {
+    const title = buildTopReadTitle({
+      storyTitle: "AI deployment scope guidance",
+      storySummary:
+        "The guidance says AI boosts productivity but recommends narrowing deployment scope.",
+      primaryEvidence: evidence({
+        providerKey: "hacker-news",
+        title: "AI boosts productivity, but narrow the scope before deployment",
+      }),
+      evidence: [],
+    });
+
+    expect(title).toBe(
+      "AI boosts productivity, but narrow the scope before deployment",
+    );
+  });
+
   it.each([
     {
       storyTitle: "Anthropic продлила доступ к Claude Code до 19 июля",
