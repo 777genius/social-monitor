@@ -147,8 +147,21 @@ export const selectGitHubTrendingDisplayRepositories = (
   }
 
   return [...byRank.values()]
-    .filter((sameRank) => sameRank.length === 1)
-    .map((sameRank) => sameRank[0]!)
+    .map(
+      (sameRank) =>
+        [...sameRank].sort(
+          (left, right) =>
+            (githubTrendingStarsGained(right.item) ?? -1) -
+              (githubTrendingStarsGained(left.item) ?? -1) ||
+            right.item.score - left.item.score ||
+            right.item.observedAt.getTime() - left.item.observedAt.getTime() ||
+            left.item.feedItemId.localeCompare(right.item.feedItemId),
+        )[0],
+    )
+    .filter(
+      (candidate): candidate is (typeof candidates)[number] =>
+        candidate !== undefined,
+    )
     .sort((left, right) => left.rank - right.rank)
     .slice(0, maxGitHubTrendingDisplayRepositories)
     .map((candidate) => candidate.item);

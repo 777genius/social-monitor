@@ -154,6 +154,12 @@ const rankedCandidatePool = (
   candidates
     .map((candidate, index) => ({ candidate, index }))
     .sort((left, right) => {
+      const scoreDelta =
+        topReadRankScore(right.candidate.topRead) -
+        topReadRankScore(left.candidate.topRead);
+      if (Math.abs(scoreDelta) >= materialRankScoreOverride) {
+        return scoreDelta;
+      }
       if (
         left.candidate.editorialPriority !== undefined &&
         right.candidate.editorialPriority !== undefined
@@ -166,10 +172,6 @@ const rankedCandidatePool = (
           return editorialDifference;
         }
       }
-      const scoreDelta =
-        topReadRankScore(right.candidate.topRead) -
-        topReadRankScore(left.candidate.topRead);
-
       return scoreDelta === 0 ? left.index - right.index : scoreDelta;
     })
     .map((entry) => entry.candidate);
@@ -179,6 +181,8 @@ const topReadRankScore = (read: TopRead): number =>
   confidenceRankBoost(read) +
   crossSourceRankBoost(read) +
   citationRankBoost(read);
+
+const materialRankScoreOverride = 0.75;
 
 const confidenceRankBoost = (read: TopRead): number => {
   if (read.confidence.level === "high") {

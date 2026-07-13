@@ -227,6 +227,39 @@ describe("selectRenderedTopReadCandidates", () => {
     ]);
   });
 
+  it("does not let editorial priority invert a materially stronger read", () => {
+    const weakEditorialLead = candidate("weak-editorial-lead", "reddit", 2.05);
+    const strongSupportedRead = candidate(
+      "strong-supported",
+      "hacker-news",
+      2.3,
+      {
+        confirmedProviderKeys: ["hacker-news", "rss"],
+        confidenceLevel: "high",
+      },
+    );
+
+    const result = selectRenderedTopReadCandidates({
+      candidates: [
+        {
+          ...weakEditorialLead,
+          editorialPriority: editorialPriority(4.5, true),
+        },
+        {
+          ...strongSupportedRead,
+          editorialPriority: editorialPriority(3.5, false),
+        },
+      ],
+      sourceMix: sourceMix(["reddit", "hacker-news", "rss"]),
+      limit: 8,
+    });
+
+    expect(result.map((item) => item.topRead.title)).toEqual([
+      "strong-supported",
+      "weak-editorial-lead",
+    ]);
+  });
+
   it("orders a stronger supported read above a weak diversity refill", () => {
     const result = selectRenderedTopReadCandidates({
       candidates: [
@@ -360,6 +393,23 @@ const providerCounts = (
 
     return counts;
   }, {});
+
+const editorialPriority = (
+  editorialScore: number,
+  leadEligible: boolean,
+): NonNullable<RenderedTopReadCandidate["editorialPriority"]> => ({
+  providerKey: "test",
+  editorialScore,
+  signalScore: editorialScore,
+  baseSignalScore: editorialScore,
+  metricStrength: 1,
+  qualityScore: 1,
+  coreTopicStrength: 1,
+  confidenceLevel: "medium",
+  citationCount: 1,
+  confirmedProviderCount: 1,
+  leadEligible,
+});
 
 const detailedReason = (label: string): string =>
   `${label} explains what happened in the monitored product update and why it matters for real user workflows. It adds concrete operational context about likely impact, adoption constraints and the decisions teams may need to revisit. The remaining uncertainty is stated clearly so readers can separate grounded evidence from early interpretation.`;

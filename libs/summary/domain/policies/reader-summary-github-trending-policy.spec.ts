@@ -43,12 +43,7 @@ describe("reader summary GitHub Trending policy", () => {
 
   it("selects exactly the first ten repositories in GitHub rank order", () => {
     const items = [12, 2, 10, 1, 8, 5, 11, 4, 9, 3, 7, 6].map((rank) => ({
-      ...evidence(
-        `repo-${rank}`,
-        100 + rank,
-        "github-trending-page",
-        rank,
-      ),
+      ...evidence(`repo-${rank}`, 100 + rank, "github-trending-page", rank),
       observedAt: new Date(Date.UTC(2026, 6, 10, 12, 0, rank)),
     }));
 
@@ -99,7 +94,7 @@ describe("reader summary GitHub Trending policy", () => {
     ]);
   });
 
-  it("deduplicates snapshots and rejects ambiguous rank collisions", () => {
+  it("deduplicates snapshots and recovers the strongest multi-scope rank", () => {
     const olderDuplicate = {
       ...evidence("repo-duplicate-old", 200, "github-trending-page", 1),
       canonicalUrl: "https://github.com/owner/duplicate",
@@ -111,12 +106,7 @@ describe("reader summary GitHub Trending policy", () => {
       observedAt: new Date("2026-07-10T13:00:00.000Z"),
     };
     const ambiguousRank = {
-      ...evidence(
-        "repo-other-at-rank-2",
-        100,
-        "github-trending-page",
-        2,
-      ),
+      ...evidence("repo-other-at-rank-2", 100, "github-trending-page", 2),
       observedAt: new Date("2026-07-10T13:00:00.000Z"),
     };
     const rankThree = {
@@ -131,7 +121,7 @@ describe("reader summary GitHub Trending policy", () => {
         ambiguousRank,
         rankThree,
       ]).map((item) => item.feedItemId),
-    ).toEqual(["repo-3"]);
+    ).toEqual(["repo-duplicate-latest", "repo-3"]);
   });
 
   it("rejects non-daily Trending windows", () => {
