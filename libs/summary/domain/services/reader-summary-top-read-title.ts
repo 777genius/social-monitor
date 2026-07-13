@@ -10,7 +10,10 @@ export const buildTopReadTitle = (params: {
   readonly primaryEvidence: SummaryEvidenceItem | undefined;
   readonly evidence: readonly SummaryEvidenceItem[];
 }): string => {
-  const sourceTitle = nativeSourceTitle(params.primaryEvidence);
+  const sourceTitle = nativeSourceTitle(
+    params.primaryEvidence,
+    params.storySummary,
+  );
   if (sourceTitle !== undefined) {
     return sourceTitle;
   }
@@ -18,6 +21,7 @@ export const buildTopReadTitle = (params: {
   const storyTitle = cleanTopReadTitle(params.storyTitle);
   if (
     isReaderFacingTopReadTitle(storyTitle) &&
+    matchesSummaryOutputScript(storyTitle, params.storySummary) &&
     !isConversationalOrTruncatedReaderTitle(params.storyTitle)
   ) {
     return storyTitle;
@@ -33,12 +37,13 @@ export const buildTopReadTitle = (params: {
     .find(
       (item) =>
         isReaderFacingTopReadTitle(item.cleaned) &&
+        matchesSummaryOutputScript(item.cleaned, params.storySummary) &&
         (item.normalizedBreaking ||
           item.normalizedTruncation ||
           !isConversationalOrTruncatedReaderTitle(item.original)),
     )?.cleaned;
   const summaryTitle = compactReaderTitle(
-    cleanTopReadTitle(firstSentenceForTitle(params.storySummary)),
+    cleanTopReadTitle(summarySentenceForTitle(params.storySummary)),
   );
 
   return (
@@ -50,6 +55,7 @@ export const buildTopReadTitle = (params: {
 
 const nativeSourceTitle = (
   evidence: SummaryEvidenceItem | undefined,
+  storySummary: string,
 ): string | undefined => {
   if (
     evidence === undefined ||
@@ -62,7 +68,10 @@ const nativeSourceTitle = (
   const nativeTitle = evidenceReaderTitle(evidence).trim();
   const title =
     nativeTitle.length <= 140 ? nativeTitle : compactReaderTitle(nativeTitle);
-  return isReaderFacingTopReadTitle(title) ? title : undefined;
+  return isReaderFacingTopReadTitle(title) &&
+    matchesSummaryOutputScript(title, storySummary)
+    ? title
+    : undefined;
 };
 
 export const evidenceReaderTitle = (evidence: SummaryEvidenceItem): string => {
@@ -186,6 +195,8 @@ const cleanTopReadTitle = (value: string): string =>
     value
       .trim()
       .replace(/^X post by @[^:]+:\s*/iu, "")
+      .replace(/https?:\/\/\S+/giu, " ")
+      .replace(/\s+/gu, " ")
       .replace(/(?:\.{3,}|…)+$/u, "")
       .trim(),
   );
@@ -196,8 +207,21 @@ const sentenceCaseTitle = (value: string): string =>
 const firstSentenceForTitle = (value: string): string =>
   value.trim().split(/(?<=[.!?])\s+/u)[0] ?? value;
 
+const summarySentenceForTitle = (value: string): string =>
+  firstSentenceForTitle(value)
+    .replace(
+      /^(?:(?:the|an?|another|this)\s+)?(?:(?:x(?:\/twitter)?|twitter|reddit|hacker\s+news|hn|rss|github(?:\s+trending)?)\s+)?(?:post|item|story|discussion|source|report)\s+(?:reports?|says?|states?|describes?|points?\s+to)\s*:?\s*/iu,
+      "",
+    )
+    .replace(/\s+https?:\/\/\S+/giu, " ")
+    .trim();
+
 const compactReaderTitle = (value: string): string => {
-  const normalized = value.trim().replace(/[.!?]+$/u, "");
+  const normalized = value
+    .replace(/https?:\/\/\S+/giu, " ")
+    .replace(/\s+/gu, " ")
+    .trim()
+    .replace(/[.!?]+$/u, "");
   if (normalized.length <= 140) {
     return normalized;
   }
@@ -220,6 +244,57 @@ export const isReaderFacingTopReadTitle = (value: string): boolean => {
     !isSourceCoverageFramingText(lower)
   );
 };
+
+type ReaderScriptFamily =
+  "arabic" | "cjk" | "cyrillic" | "devanagari" | "hangul" | "hebrew" | "latin";
+
+const matchesSummaryOutputScript = (
+  candidate: string,
+  storySummary: string,
+): boolean => {
+  const outputScript = dominantReaderScript(storySummary);
+  const candidateCounts = readerScriptCounts(candidate);
+  const candidateLetterCount = Object.values(candidateCounts).reduce(
+    (total, count) => total + count,
+    0,
+  );
+  if (outputScript === undefined || candidateLetterCount < 8) {
+    return true;
+  }
+
+  const outputScriptCount = candidateCounts[outputScript];
+  return outputScript === "latin"
+    ? outputScriptCount / candidateLetterCount >= 0.72
+    : outputScriptCount >= 4;
+};
+
+const dominantReaderScript = (
+  value: string,
+): ReaderScriptFamily | undefined => {
+  const counts = readerScriptCounts(value);
+  const ranked = Object.entries(counts).sort(
+    (left, right) => right[1] - left[1],
+  );
+  const [family, count] = ranked[0] ?? [];
+  return count !== undefined && count >= 4
+    ? (family as ReaderScriptFamily)
+    : undefined;
+};
+
+const readerScriptCounts = (
+  value: string,
+): Readonly<Record<ReaderScriptFamily, number>> => ({
+  arabic: value.match(/\p{Script=Arabic}/gu)?.length ?? 0,
+  cjk:
+    (value.match(/\p{Script=Han}/gu)?.length ?? 0) +
+    (value.match(/\p{Script=Hiragana}/gu)?.length ?? 0) +
+    (value.match(/\p{Script=Katakana}/gu)?.length ?? 0),
+  cyrillic: value.match(/\p{Script=Cyrillic}/gu)?.length ?? 0,
+  devanagari: value.match(/\p{Script=Devanagari}/gu)?.length ?? 0,
+  hangul: value.match(/\p{Script=Hangul}/gu)?.length ?? 0,
+  hebrew: value.match(/\p{Script=Hebrew}/gu)?.length ?? 0,
+  latin: value.match(/\p{Script=Latin}/gu)?.length ?? 0,
+});
 
 export const isSourceCoverageFramingText = (lower: string): boolean =>
   lower.startsWith("confirmed by ") ||
