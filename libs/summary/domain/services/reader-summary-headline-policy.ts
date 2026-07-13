@@ -51,6 +51,13 @@ export const groundedReaderHeadline = (params: {
   );
 };
 
+export const groundedTopReadTitle = (
+  topRead: Pick<TopRead, "title" | "reason" | "whyImportant" | "confidence">,
+): string =>
+  isUnverifiedLegalTopRead(topRead)
+    ? compactHeadlinePart(sourceFramedLegalTitle(topRead.title))
+    : topRead.title;
+
 const providerNameForSource = (
   providerKey: string,
   topReads: readonly TopRead[],
@@ -148,29 +155,49 @@ const buildHumanReaderHeadline = (
   return compactHeadlinePart(leadTitle);
 };
 
-const isUnverifiedLegalTopRead = (lead: TopRead): boolean => {
+const isUnverifiedLegalTopRead = (
+  lead: Pick<TopRead, "title" | "reason" | "whyImportant" | "confidence">,
+): boolean => {
   const supportingText = [
+    lead.title,
     lead.reason,
     ...lead.whyImportant,
     lead.confidence.rationale,
   ].join(" ");
-  const hasEligibleFirstPartySupport = /\bfirst-party\b/iu.test(
-    lead.confidence.rationale,
-  );
+  const hasEligibleFirstPartySupport =
+    /\b(?:eligible first-party source|first-party official source)\b/iu.test(
+      lead.confidence.rationale,
+    );
 
   return (
     !hasEligibleFirstPartySupport &&
     /\b(?:lawsuit|legal action|sues?|sued|suing|trade[ -]secret)\b/iu.test(
       lead.title,
     ) &&
-    /\b(?:alleged|allegation|filings? (?:are |were )?(?:not|unavailable)|merits? (?:are |remain |were )?(?:unknown|unverified)|not (?:independently )?confirmed|unverified)\b/iu.test(
+    /\b(?:alleged|allegations?|no (?:primary )?(?:court )?filing|(?:evidence|reports?) (?:does|do) not include (?:a )?(?:primary )?(?:court )?filing|filings? (?:is |are |was |were |remain )?(?:not available|unavailable|missing)|merits? (?:are |remain |were )?(?:unknown|unverified)|not (?:independently )?(?:confirmed|verified)|could not be (?:independently )?(?:confirmed|verified)|unverified)\b/iu.test(
       supportingText,
     )
   );
 };
 
 const sourceFramedLegalTitle = (title: string): string => {
-  const reportedAction = title.match(/^(.*?)\s+(?:sues?|sued|suing)\s+(.+)$/iu);
+  const normalizedTitle = stripTrailingQuestion(title.replace(/\s+/gu, " "));
+  if (
+    normalizedTitle.length > 0 &&
+    (/^(?:who|what|when|where|which|did|does|do|is|are|was|were|has|have|can|could|should|may|might|must|will|would)\b/iu.test(
+      normalizedTitle,
+    ) ||
+      title.trim().endsWith("?"))
+  ) {
+    return `Source asks: ${normalizedTitle}`;
+  }
+  if (/^(?:why|how|whether)\b/iu.test(normalizedTitle)) {
+    return `Source explainer: ${normalizedTitle}`;
+  }
+
+  const reportedAction = normalizedTitle.match(
+    /^(.*?)\s+(?:sues?|sued|suing)\s+(.+)$/iu,
+  );
   if (reportedAction !== null) {
     const reportedObject = reportedAction[2]
       ?.trim()
@@ -180,7 +207,7 @@ const sourceFramedLegalTitle = (title: string): string => {
     return `Reports say ${reportedAction[1]?.trim()} sued ${reportedObject}`;
   }
 
-  return `Reports discuss the ${title.replace(/^the\s+/iu, "")}`;
+  return `Reports discuss the ${normalizedTitle.replace(/^the\s+/iu, "")}`;
 };
 
 const compactHeadlinePart = (value: string): string => {
@@ -207,3 +234,6 @@ const stripTrailingPeriod = (value: string): string => {
 
   return trimmed.endsWith(".") ? trimmed.slice(0, -1) : trimmed;
 };
+
+const stripTrailingQuestion = (value: string): string =>
+  value.trim().replace(/\?+$/u, "").trim();

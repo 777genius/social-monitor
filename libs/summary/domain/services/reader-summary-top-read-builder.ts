@@ -14,6 +14,7 @@ import {
   readerItemConfidence,
   storyProviderMetricLabels,
 } from "./reader-summary-support";
+import { groundedTopReadTitle } from "./reader-summary-headline-policy";
 import {
   buildMatchedRules,
   buildWhyNow,
@@ -159,11 +160,25 @@ export const storyToTopRead = (
     includeStorySummary: !modelCitationsWereFiltered,
     supportedProviderKeys: confirmedProviders,
   });
-  const title = buildTopReadTitle({
+  const rawTitle = buildTopReadTitle({
     storyTitle: story.title,
     storySummary: story.summary,
     primaryEvidence: evidence,
     evidence: supportEvidence.length > 0 ? supportEvidence : clusterEvidence,
+  });
+  const reason = whyImportant[0] ?? story.summary;
+  const confidence = readerItemConfidence({
+    cluster,
+    independentEvidenceCount: independentEvidenceItems(supportEvidence).length,
+    confirmedProviderCount: confirmedProviders.length,
+    signalScore,
+    firstPartyOfficial: hasFirstPartyOfficialEvidence(supportEvidence),
+  });
+  const title = groundedTopReadTitle({
+    title: rawTitle,
+    reason,
+    whyImportant,
+    confidence,
   });
 
   return {
@@ -171,7 +186,7 @@ export const storyToTopRead = (
     providerKey: readerProviderKey,
     providerName,
     primaryActionKind: evidence?.readerActionKind ?? "read_source",
-    reason: whyImportant[0] ?? story.summary,
+    reason,
     matchedInterestIds:
       matchedInterestIds.length > 0 ? matchedInterestIds : ["unknown-interest"],
     matchedRules: buildMatchedRules(
@@ -180,14 +195,7 @@ export const storyToTopRead = (
       readerProviderKey,
     ),
     signalScore,
-    confidence: readerItemConfidence({
-      cluster,
-      independentEvidenceCount:
-        independentEvidenceItems(supportEvidence).length,
-      confirmedProviderCount: confirmedProviders.length,
-      signalScore,
-      firstPartyOfficial: hasFirstPartyOfficialEvidence(supportEvidence),
-    }),
+    confidence,
     confirmedProviderKeys: confirmedProviders,
     providerMetrics: storyProviderMetricLabels({
       evidence: supportEvidence,
@@ -218,12 +226,7 @@ const buildTopReadUserFacingReasons = (params: {
 }): readonly string[] => {
   const candidates = compactUnique([
     ...(params.includeStorySummary
-      ? [
-          readerFacingStorySummary(
-            params.story,
-            params.supportedProviderKeys,
-          ),
-        ]
+      ? [readerFacingStorySummary(params.story, params.supportedProviderKeys)]
       : []),
     ...(params.cluster?.whyImportant ?? []),
     ...params.evidence.flatMap((item) => item.whyImportant),

@@ -45,6 +45,9 @@ describe("reader summary top read source lineage", () => {
     expect(topRead.reason).toBe(
       "The useful takeaway is not that the allegations are proven, but that the dispute matters for AI platform strategy, hiring and intellectual-property risk.",
     );
+    expect(topRead.title).toBe(
+      "Reports say Apple sued OpenAI over alleged trade secret theft",
+    );
     expect(topRead.reason).not.toMatch(/Hacker News|RSS/u);
   });
 });
