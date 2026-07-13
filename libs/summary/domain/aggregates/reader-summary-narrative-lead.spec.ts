@@ -31,6 +31,64 @@ describe("ReaderSummary narrative lead projection", () => {
     expect(summary.headline).toBe(`Hacker News discussion: ${storyTitle(12)}`);
   });
 
+  it("refills eight unique reader-facing top reads after authored candidates are filtered", () => {
+    const fixture = summaryFixture(33);
+    const fallbackTitle = "Independent benchmark compares agent cache overhead";
+    const summary = buildReaderSummary({
+      ...fixture,
+      narrativeSections: [leadSection(1)],
+      topStories: fixture.topStories.slice(0, 32).map((story, index) =>
+        index < 7
+          ? story
+          : {
+              ...story,
+              title: "Current AI product discussion",
+              summary: "Source-reported: current signal",
+            },
+      ),
+      selectedEvidence: fixture.selectedEvidence.map((evidence, index) =>
+        index === 32
+          ? {
+              ...evidence,
+              title: fallbackTitle,
+              whyImportant: [
+                "The benchmark provides a concrete cache-efficiency comparison.",
+              ],
+            }
+          : index >= 7
+            ? {
+                ...evidence,
+                title: "Current AI product discussion",
+                whyImportant: ["Source-reported: current signal"],
+              }
+            : evidence,
+      ),
+    });
+
+    expect(summary.topReads).toHaveLength(8);
+    expect(summary.topReads[0]?.title).toBe(storyTitle(1));
+    expect(
+      summary.topReads.filter((item) =>
+        item.citationIds.includes("citation-33"),
+      ),
+    ).toHaveLength(1);
+    const citationIds = summary.topReads.flatMap((item) => item.citationIds);
+    const canonicalUrls = summary.topReads.flatMap((item) =>
+      item.canonicalUrl === undefined ? [] : [item.canonicalUrl],
+    );
+    const providerCounts = summary.topReads.reduce<Record<string, number>>(
+      (counts, item) => ({
+        ...counts,
+        [item.providerKey]: (counts[item.providerKey] ?? 0) + 1,
+      }),
+      {},
+    );
+
+    expect(new Set(citationIds).size).toBe(citationIds.length);
+    expect(new Set(canonicalUrls).size).toBe(canonicalUrls.length);
+    expect(Math.max(...Object.values(providerCounts))).toBeLessThanOrEqual(4);
+  });
+
   it("fails closed when the narrative lead evidence is top-read ineligible", () => {
     const fixture = summaryFixture(3);
     const summary = buildReaderSummary({

@@ -84,6 +84,8 @@ const supplementTopReadCandidates = (params: {
   const primaryMinimum = topReadPrimaryMinimumForLimit(params.limit);
   const targetMinimum = Math.min(params.limit, 8);
   const result: TopReadCandidate[] = [...params.stories];
+  const evidenceSupplementLimit =
+    result.length + Math.max(params.limit * 4, targetMinimum);
   const usedStoryClusterIds = new Set(
     result.map((story) => story.storyClusterId),
   );
@@ -183,7 +185,7 @@ const supplementTopReadCandidates = (params: {
   }
 
   for (const candidate of evidence) {
-    if (result.length >= Math.max(params.limit * 4, targetMinimum)) {
+    if (result.length >= evidenceSupplementLimit) {
       break;
     }
 

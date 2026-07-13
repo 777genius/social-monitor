@@ -196,9 +196,7 @@ describe("selectUniqueTopReadCandidates provider diversity", () => {
       story("hn-pool-1", "Claude HN pool signal", "c-hn-pool-1", [
         "hacker-news",
       ]),
-      story("rss-pool-1", "Claude RSS pool signal", "c-rss-pool-1", [
-        "rss",
-      ]),
+      story("rss-pool-1", "Claude RSS pool signal", "c-rss-pool-1", ["rss"]),
     ];
     const allStories = [...xStories, ...secondaryStories];
     const pool = selectUniqueTopReadCandidatePool(
@@ -231,6 +229,55 @@ describe("selectUniqueTopReadCandidates provider diversity", () => {
 
     expect(providerCounts(pool)["hacker-news"]).toBe(1);
     expect(providerCounts(pool).rss).toBe(1);
+  });
+
+  it("reserves evidence fallback capacity beyond a full authored story pool", () => {
+    const authoredStories = Array.from({ length: 32 }, (_, index) =>
+      story(
+        `x-authored-${index + 1}`,
+        `Claude authored X signal ${index + 1}`,
+        `c-x-authored-${index + 1}`,
+        ["x-twitter"],
+      ),
+    );
+    const fallbackStory = story(
+      "x-fallback",
+      "Claude evidence-only fallback",
+      "c-x-fallback",
+      ["x-twitter"],
+    );
+    const allStories = [...authoredStories, fallbackStory];
+    const pool = selectUniqueTopReadCandidatePool(
+      authoredStories,
+      citations(
+        allStories.map((item) =>
+          citation(
+            item.citationIds[0] ?? "",
+            feedItemId(item),
+            item.providerKeys[0] ?? "unknown",
+          ),
+        ),
+      ),
+      evidence(
+        allStories.map((item, index) =>
+          evidenceItem(
+            feedItemId(item),
+            item.providerKeys[0] ?? "unknown",
+            index,
+          ),
+        ),
+      ),
+      new Map(
+        allStories.map((item, index) =>
+          cluster(item, item.providerKeys[0] ?? "unknown", 2.4 - index * 0.005),
+        ),
+      ),
+      8,
+    );
+
+    expect(pool.map((item) => item.storyClusterId)).toContain(
+      fallbackStory.storyClusterId,
+    );
   });
 });
 
