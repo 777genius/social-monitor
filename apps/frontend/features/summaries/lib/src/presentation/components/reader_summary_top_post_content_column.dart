@@ -43,7 +43,9 @@ class _TopPostTextBody extends StatelessWidget {
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
           style: textTheme.bodyMedium?.copyWith(
-            fontWeight: FontWeight.w700,
+            fontWeight: isGitHubTrendingBreakout(item)
+                ? FontWeight.w900
+                : FontWeight.w700,
             letterSpacing: 0,
             height: 1.35,
           ),

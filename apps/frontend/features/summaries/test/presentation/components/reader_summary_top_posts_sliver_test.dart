@@ -126,7 +126,88 @@ void main() {
       );
     },
   );
+
+  testWidgets('shows GitHub top ten in rank order and hides local sorting', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1100, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    final summary = const SummaryMapper().readerSummaryToDomain(
+      readerSummaryApiDto(
+        content: readerSummaryContentApiDto(
+          topReads: _githubTopReads(),
+          sourceProviderKey: 'github-trending-page',
+        ),
+        citations: _githubCitations(),
+      ),
+    );
+
+    await tester.pumpWidget(_TestApp(summary: summary));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('reader-summary-top-posts-board-github')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.bySemanticsLabel('GitHub trends, 10 items'), findsOneWidget);
+    expect(
+      find.text('Top 10 repositories in GitHub Trending order'),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('reader-summary-top-posts-sort')),
+      findsNothing,
+    );
+    expect(find.text('owner/repo-11'), findsNothing);
+    expect(find.text('owner/repo-12'), findsNothing);
+    expect(
+      tester.getTopLeft(find.text('owner/repo-1')).dy,
+      lessThan(tester.getTopLeft(find.text('owner/repo-2')).dy),
+    );
+    expect(
+      tester.widget<Text>(find.text('owner/repo-1')).style?.fontWeight,
+      FontWeight.w900,
+    );
+    expect(tester.takeException(), isNull);
+  });
 }
+
+List<TopReadApiDto> _githubTopReads() => [12, 2, 10, 1, 8, 5, 11, 4, 9, 3, 7, 6]
+    .map(
+      (rank) => TopReadApiDto(
+        title: 'owner/repo-$rank is #$rank on GitHub Trending',
+        providerKey: 'github-trending-page',
+        reason: 'Repository $rank is trending on GitHub today.',
+        matchedInterestIds: const ['ai-developer-tools'],
+        signalScore: (13 - rank).toDouble(),
+        confirmedProviderKeys: const ['github-trending-page'],
+        providerMetrics: [
+          const ProviderMetricApiDto(label: 'Stars', value: '12,000'),
+          ProviderMetricApiDto(
+            label: 'GitHub Trending today',
+            value: '#$rank, +${rank == 1 ? 1200 : 100} stars today',
+          ),
+        ],
+        canonicalUrl: 'https://github.com/owner/repo-$rank',
+        citationIds: ['github-c-$rank'],
+      ),
+    )
+    .toList(growable: false);
+
+List<SummaryCitationApiDto> _githubCitations() => List.generate(
+  12,
+  (index) => summaryCitationApiDto(
+    id: 'github-c-${index + 1}',
+    sourceLabel: 'GitHub Trending',
+    providerKey: 'github-trending-page',
+    canonicalUrl: 'https://github.com/owner/repo-${index + 1}',
+  ),
+);
 
 List<TopReadApiDto> _editorialOrderTopReads() => [
   const TopReadApiDto(

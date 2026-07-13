@@ -1,8 +1,11 @@
 import type { SummaryEvidenceItem } from "../value-objects/summary-evidence-item";
 import {
   buildGitHubTrendingNarrativeAppendix,
+  githubTrendingRank,
   githubTrendingStarsGained,
+  selectGitHubTrendingDisplayRepositories,
   selectGitHubTrendingHighlights,
+  selectGitHubTrendingSupplementalEvidence,
   withGitHubTrendingNarrativeAppendix,
 } from "./reader-summary-github-trending-policy";
 
@@ -35,6 +38,94 @@ describe("reader summary GitHub Trending policy", () => {
     };
 
     expect(githubTrendingStarsGained(item)).toBe(3_703);
+    expect(githubTrendingRank(item)).toBe(1);
+  });
+
+  it("selects exactly the first ten repositories in GitHub rank order", () => {
+    const items = [12, 2, 10, 1, 8, 5, 11, 4, 9, 3, 7, 6].map((rank) =>
+      evidence(`repo-${rank}`, 100 + rank, "github-trending-page", rank),
+    );
+
+    expect(
+      selectGitHubTrendingDisplayRepositories(items).map(
+        (item) => item.feedItemId,
+      ),
+    ).toEqual([
+      "repo-1",
+      "repo-2",
+      "repo-3",
+      "repo-4",
+      "repo-5",
+      "repo-6",
+      "repo-7",
+      "repo-8",
+      "repo-9",
+      "repo-10",
+    ]);
+  });
+
+  it("keeps high-momentum appendix evidence outside the display top ten", () => {
+    const items = Array.from({ length: 12 }, (_, index) =>
+      evidence(
+        `repo-${index + 1}`,
+        index === 11 ? 1_500 : 100,
+        "github-trending-page",
+        index + 1,
+      ),
+    );
+
+    expect(
+      selectGitHubTrendingSupplementalEvidence(items).map(
+        (item) => item.feedItemId,
+      ),
+    ).toEqual([
+      "repo-1",
+      "repo-2",
+      "repo-3",
+      "repo-4",
+      "repo-5",
+      "repo-6",
+      "repo-7",
+      "repo-8",
+      "repo-9",
+      "repo-10",
+      "repo-12",
+    ]);
+  });
+
+  it("deduplicates snapshots and rejects ambiguous rank collisions", () => {
+    const olderDuplicate = {
+      ...evidence("repo-duplicate-old", 200, "github-trending-page", 1),
+      canonicalUrl: "https://github.com/owner/duplicate",
+      observedAt: new Date("2026-07-10T12:00:00.000Z"),
+    };
+    const latestDuplicate = {
+      ...evidence("repo-duplicate-latest", 300, "github-trending-page", 2),
+      canonicalUrl: "https://github.com/owner/duplicate",
+      observedAt: new Date("2026-07-10T13:00:00.000Z"),
+    };
+    const ambiguousRank = {
+      ...evidence(
+        "repo-other-at-rank-2",
+        100,
+        "github-trending-page",
+        2,
+      ),
+      observedAt: new Date("2026-07-10T13:00:00.000Z"),
+    };
+    const rankThree = {
+      ...evidence("repo-3", 100, "github-trending-page", 3),
+      observedAt: new Date("2026-07-10T13:00:00.000Z"),
+    };
+
+    expect(
+      selectGitHubTrendingDisplayRepositories([
+        olderDuplicate,
+        latestDuplicate,
+        ambiguousRank,
+        rankThree,
+      ]).map((item) => item.feedItemId),
+    ).toEqual(["repo-3"]);
   });
 
   it("rejects non-daily Trending windows", () => {
@@ -119,6 +210,7 @@ const evidence = (
   feedItemId: string,
   starsGained: number,
   providerKey = "github-trending-page",
+  rank = 1,
 ): SummaryEvidenceItem => ({
   feedItemId,
   sourceItemId: `source-${feedItemId}`,
@@ -134,7 +226,7 @@ const evidence = (
   providerMetricLabels: [
     {
       label: "GitHub Trending today",
-      value: `#1, +${starsGained.toLocaleString("en-US")} stars today`,
+      value: `#${rank}, +${starsGained.toLocaleString("en-US")} stars today`,
     },
     { label: "Stars", value: "500,000" },
   ],

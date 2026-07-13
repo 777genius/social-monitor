@@ -9,6 +9,7 @@ export const githubTrendingProviderKey = "github-trending-page";
 export const githubTrendingNarrativeSectionId = "github-trending";
 export const minimumGitHubTrendingStarsGained = 1_000;
 export const maxGitHubTrendingHighlights = 3;
+export const maxGitHubTrendingDisplayRepositories = 10;
 
 export const withGitHubTrendingNarrativeAppendix = (params: {
   readonly narrativeSections: readonly ReaderSummaryNarrativeSection[];
@@ -109,6 +110,71 @@ export const selectGitHubTrendingHighlights = (
     .slice(0, maxGitHubTrendingHighlights)
     .map((candidate) => candidate.item);
 
+export const selectGitHubTrendingDisplayRepositories = (
+  items: readonly SummaryEvidenceItem[],
+): readonly SummaryEvidenceItem[] => {
+  const candidates = items
+    .map((item) => ({ item, rank: githubTrendingRank(item) }))
+    .filter(
+      (
+        candidate,
+      ): candidate is {
+        readonly item: SummaryEvidenceItem;
+        readonly rank: number;
+      } =>
+        isGitHubTrendingEvidence(candidate.item) &&
+        candidate.rank !== undefined &&
+        candidate.item.contentQuality?.eligibleForSummary !== false,
+    )
+    .sort(
+      (left, right) =>
+        left.rank - right.rank ||
+        left.item.feedItemId.localeCompare(right.item.feedItemId),
+    );
+  const latestObservedAt = Math.max(
+    ...candidates.map((candidate) => candidate.item.observedAt.getTime()),
+  );
+  const byRepository = new Map<string, (typeof candidates)[number]>();
+  for (const candidate of candidates) {
+    if (candidate.item.observedAt.getTime() !== latestObservedAt) {
+      continue;
+    }
+    const key = candidate.item.canonicalUrl.trim().toLocaleLowerCase("en-US");
+    if (!byRepository.has(key)) {
+      byRepository.set(key, candidate);
+    }
+  }
+  const byRank = new Map<number, (typeof candidates)[number][]>();
+  for (const candidate of byRepository.values()) {
+    const sameRank = byRank.get(candidate.rank) ?? [];
+    sameRank.push(candidate);
+    byRank.set(candidate.rank, sameRank);
+  }
+
+  return [...byRank.values()]
+    .filter((sameRank) => sameRank.length === 1)
+    .map((sameRank) => sameRank[0]!)
+    .sort((left, right) => left.rank - right.rank)
+    .slice(0, maxGitHubTrendingDisplayRepositories)
+    .map((candidate) => candidate.item);
+};
+
+export const selectGitHubTrendingSupplementalEvidence = (
+  items: readonly SummaryEvidenceItem[],
+): readonly SummaryEvidenceItem[] => {
+  const displayRepositories = selectGitHubTrendingDisplayRepositories(items);
+  const displayIds = new Set(
+    displayRepositories.map((item) => item.feedItemId),
+  );
+
+  return [
+    ...displayRepositories,
+    ...selectGitHubTrendingHighlights(items).filter(
+      (item) => !displayIds.has(item.feedItemId),
+    ),
+  ];
+};
+
 export const githubTrendingStarsGained = (
   item: Pick<SummaryEvidenceItem, "providerMetricLabels">,
 ): number | undefined => {
@@ -123,6 +189,22 @@ export const githubTrendingStarsGained = (
 
   const value = Number(match[1]?.replaceAll(",", ""));
   return Number.isSafeInteger(value) && value >= 0 ? value : undefined;
+};
+
+export const githubTrendingRank = (
+  item: Pick<SummaryEvidenceItem, "providerMetricLabels">,
+): number | undefined => {
+  const metric = item.providerMetricLabels?.find(
+    (candidate) =>
+      candidate.label.toLocaleLowerCase("en-US") === "github trending today",
+  );
+  const match = metric?.value.match(/#([\d,]+)\b/u);
+  if (match === null || match === undefined) {
+    return undefined;
+  }
+
+  const value = Number(match[1]?.replaceAll(",", ""));
+  return Number.isSafeInteger(value) && value > 0 ? value : undefined;
 };
 
 export const buildGitHubTrendingNarrativeAppendix = (params: {
@@ -173,5 +255,7 @@ const compactRepositoryTitle = (title: string): string => {
     .replace(/\s+/gu, " ")
     .trim();
   const repositoryName = normalized.split(/\s+[—-]\s+/u)[0]?.trim();
-  return (repositoryName ?? normalized).slice(0, 120);
+  return (repositoryName ?? normalized)
+    .replace(/\s+is\s+#\d+\s+on\s+GitHub\s+Trending\s*$/iu, "")
+    .slice(0, 120);
 };

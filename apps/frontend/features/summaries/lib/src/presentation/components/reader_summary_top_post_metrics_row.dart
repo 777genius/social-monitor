@@ -38,13 +38,18 @@ class _TopPostMetricTile extends StatelessWidget {
             Icon(
               _topPostMetricIcon(metric.label),
               size: 14,
-              color: colorScheme.onSurfaceVariant,
+              color: metric.emphasized
+                  ? colorScheme.primary
+                  : colorScheme.onSurfaceVariant,
             ),
             const SizedBox(width: AppSpacing.xs),
             Text(
               metric.value,
               style: textTheme.bodySmall?.copyWith(
-                fontWeight: FontWeight.w700,
+                color: metric.emphasized ? colorScheme.primary : null,
+                fontWeight: metric.emphasized
+                    ? FontWeight.w900
+                    : FontWeight.w700,
                 letterSpacing: 0,
               ),
             ),
@@ -54,8 +59,10 @@ class _TopPostMetricTile extends StatelessWidget {
         Text(
           metric.label,
           style: textTheme.labelSmall?.copyWith(
-            color: colorScheme.onSurfaceVariant,
-            fontWeight: FontWeight.w600,
+            color: metric.emphasized
+                ? colorScheme.primary
+                : colorScheme.onSurfaceVariant,
+            fontWeight: metric.emphasized ? FontWeight.w800 : FontWeight.w600,
             letterSpacing: 0,
           ),
         ),

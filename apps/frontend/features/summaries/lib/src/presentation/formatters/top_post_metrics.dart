@@ -2,10 +2,15 @@ import '../../domain/aggregates/reader_summary.dart';
 
 /// One display metric slot in a top post row, e.g. `2.0K Likes`.
 final class TopPostMetric {
-  const TopPostMetric({required this.value, required this.label});
+  const TopPostMetric({
+    required this.value,
+    required this.label,
+    this.emphasized = false,
+  });
 
   final String value;
   final String label;
+  final bool emphasized;
 
   bool get isMissing => value == '-';
 }
@@ -66,8 +71,73 @@ List<TopPostMetric> topPostMetricsFor(TopRead read) {
   return [
     for (final label in slots)
       if (found[label] != null)
-        TopPostMetric(value: found[label]!, label: label),
+        TopPostMetric(
+          value: found[label]!,
+          label: label,
+          emphasized: label == 'Stars today' && isGitHubTrendingBreakout(read),
+        ),
   ];
+}
+
+/// GitHub Trending repositories only become breakout signals above 1,000
+/// stars gained today. Exactly 1,000 remains a regular trend.
+bool isGitHubTrendingBreakout(TopRead read) =>
+    read.providerKey.trim().toLowerCase() == 'github-trending-page' &&
+    (_githubTrendingStarsToday(read) ?? 0) > 1000;
+
+/// Orders the GitHub board by the rank reported by GitHub and caps it at ten.
+List<TopRead> orderGitHubTrendingPosts(
+  Iterable<TopRead> items, {
+  int limit = 10,
+}) {
+  final indexed = items.indexed.toList(growable: false);
+  indexed.sort((left, right) {
+    final leftRank = _githubTrendingRank(left.$2);
+    final rightRank = _githubTrendingRank(right.$2);
+    if (leftRank == null && rightRank == null) {
+      return left.$1.compareTo(right.$1);
+    }
+    if (leftRank == null) {
+      return 1;
+    }
+    if (rightRank == null) {
+      return -1;
+    }
+    final rankOrder = leftRank.compareTo(rightRank);
+    return rankOrder != 0 ? rankOrder : left.$1.compareTo(right.$1);
+  });
+
+  return indexed.take(limit).map((entry) => entry.$2).toList(growable: false);
+}
+
+int? _githubTrendingRank(TopRead read) {
+  for (final metric in read.providerMetrics) {
+    if (!metric.label.toLowerCase().contains('trending today')) {
+      continue;
+    }
+    final rawRank = RegExp(r'#([\d,]+)').firstMatch(metric.value)?.group(1);
+    final rank = int.tryParse(rawRank?.replaceAll(',', '') ?? '');
+    if (rank != null && rank > 0) {
+      return rank;
+    }
+  }
+  return null;
+}
+
+num? _githubTrendingStarsToday(TopRead read) {
+  for (final metric in read.providerMetrics) {
+    if (!metric.label.toLowerCase().contains('trending today')) {
+      continue;
+    }
+    final rawStars = RegExp(
+      r'\+([\d,.]+[kKmM]?)\s+stars today',
+      caseSensitive: false,
+    ).firstMatch(metric.value)?.group(1);
+    if (rawStars != null) {
+      return _rawMetricNumber(rawStars);
+    }
+  }
+  return null;
 }
 
 Map<String, String> _parsedMetrics(TopRead read) {

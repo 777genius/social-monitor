@@ -11,7 +11,7 @@ import {
   approvedStoryRelationPairs,
   buildStoryRelationCandidates,
   isGitHubTrendingEvidence,
-  selectGitHubTrendingHighlights,
+  selectGitHubTrendingSupplementalEvidence,
   StoryClusteringService,
   type SummaryEvidenceItem,
   type SummaryEvidenceSelection,
@@ -93,8 +93,8 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
     const primaryCandidateItems = candidateItems.filter(
       (item) => !isGitHubTrendingEvidence(item),
     );
-    const githubTrendingHighlights =
-      selectGitHubTrendingHighlights(candidateItems);
+    const githubTrendingEvidence =
+      selectGitHubTrendingSupplementalEvidence(candidateItems);
     const candidateSelection = this.clusterer.cluster({
       identity: {
         tenantId: params.tenantId,
@@ -139,7 +139,7 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
     });
     const selectedEvidence = [
       ...selection.selectedEvidence,
-      ...githubTrendingHighlights,
+      ...githubTrendingEvidence,
     ];
     const personalizedSelection = {
       ...selection,

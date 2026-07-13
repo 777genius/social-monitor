@@ -65,9 +65,9 @@ class _ReaderSummaryTopPostsSliverState
     final postItems = widget.items
         .where((item) => !_isGithubTrendingTopRead(item))
         .toList(growable: false);
-    final githubTrendingItems = widget.items
-        .where(_isGithubTrendingTopRead)
-        .toList(growable: false);
+    final githubTrendingItems = orderGitHubTrendingPosts(
+      widget.items.where(_isGithubTrendingTopRead),
+    );
     final activeBoard = _board;
     final boardItems = switch (activeBoard) {
       _TopPostBoard.posts => postItems,
@@ -75,7 +75,9 @@ class _ReaderSummaryTopPostsSliverState
     };
     final filtered = orderTopPosts(
       boardItems.where((item) => !_hiddenProviders.contains(item.providerKey)),
-      byEngagement: _sort == _TopPostSort.engagement,
+      byEngagement:
+          activeBoard == _TopPostBoard.posts &&
+          _sort == _TopPostSort.engagement,
     );
     final reservePreviewSpace = filtered.any(
       (item) => item.previewMedia != null,

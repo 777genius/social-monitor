@@ -18,6 +18,12 @@ Widget _denseTopPostRow(
   final textTheme = Theme.of(context).textTheme;
   final showMetric = width >= 680 && metrics.isNotEmpty;
   final showChip = width >= 520;
+  final primaryMetric = metrics.isEmpty
+      ? null
+      : metrics.firstWhere(
+          (metric) => metric.emphasized,
+          orElse: () => metrics.first,
+        );
 
   return Row(
     crossAxisAlignment: CrossAxisAlignment.center,
@@ -30,14 +36,16 @@ Widget _denseTopPostRow(
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: textTheme.bodyMedium?.copyWith(
-            fontWeight: FontWeight.w700,
+            fontWeight: isGitHubTrendingBreakout(item)
+                ? FontWeight.w900
+                : FontWeight.w700,
             letterSpacing: 0,
           ),
         ),
       ),
-      if (showMetric) ...[
+      if (showMetric && primaryMetric != null) ...[
         const SizedBox(width: AppSpacing.md),
-        _DensePrimaryMetric(metric: metrics.first),
+        _DensePrimaryMetric(metric: primaryMetric),
       ],
       if (showChip) ...[
         const SizedBox(width: AppSpacing.md),
@@ -68,13 +76,16 @@ class _DensePrimaryMetric extends StatelessWidget {
           Icon(
             _topPostMetricIcon(metric.label),
             size: 14,
-            color: colorScheme.onSurfaceVariant,
+            color: metric.emphasized
+                ? colorScheme.primary
+                : colorScheme.onSurfaceVariant,
           ),
           const SizedBox(width: AppSpacing.xs),
           Text(
             metric.value,
             style: textTheme.bodySmall?.copyWith(
-              fontWeight: FontWeight.w700,
+              color: metric.emphasized ? colorScheme.primary : null,
+              fontWeight: metric.emphasized ? FontWeight.w900 : FontWeight.w700,
               letterSpacing: 0,
             ),
           ),

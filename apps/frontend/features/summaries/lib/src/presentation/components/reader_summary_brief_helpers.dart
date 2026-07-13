@@ -147,8 +147,7 @@ String _cleanSentence(String value) {
 String _shortTitle(String value) {
   return value
       .replaceFirst(RegExp(r'^X post by @[^:]+:\s*'), '')
-      .replaceFirst(' is #1 on GitHub Trending', '')
-      .replaceFirst(' is #5 on GitHub Trending', '')
+      .replaceFirst(RegExp(r' is #\d+ on GitHub Trending$'), '')
       .trim();
 }
 
