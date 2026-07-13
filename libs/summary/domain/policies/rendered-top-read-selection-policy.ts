@@ -77,13 +77,7 @@ export const selectRenderedTopReadCandidates = (params: {
     if (!isReaderFacingQualityTopRead(candidate.topRead)) {
       continue;
     }
-    if (selected.some((item) => hasDuplicateRenderedReason(item, candidate))) {
-      continue;
-    }
-    if (
-      selected.length < editorialDiversityWindow &&
-      selected.some((item) => areEditorialNearDuplicates(item, candidate))
-    ) {
+    if (hasSelectedRenderedDuplicate(selected, candidate)) {
       continue;
     }
     const providerKey = candidate.topRead.providerKey;
@@ -101,7 +95,7 @@ export const selectRenderedTopReadCandidates = (params: {
     if (
       selectedStoryIds.has(candidate.story.storyClusterId) ||
       !isReaderFacingQualityTopRead(candidate.topRead) ||
-      selected.some((item) => hasDuplicateRenderedReason(item, candidate))
+      hasSelectedRenderedDuplicate(selected, candidate)
     ) {
       continue;
     }
@@ -123,7 +117,7 @@ export const selectRenderedTopReadCandidates = (params: {
     if (
       selectedStoryIds.has(candidate.story.storyClusterId) ||
       !isReaderFacingQualityTopRead(candidate.topRead) ||
-      selected.some((item) => hasDuplicateRenderedReason(item, candidate))
+      hasSelectedRenderedDuplicate(selected, candidate)
     ) {
       continue;
     }
@@ -139,6 +133,16 @@ export const selectRenderedTopReadCandidates = (params: {
 
   return selected;
 };
+
+const hasSelectedRenderedDuplicate = (
+  selected: readonly RenderedTopReadCandidate[],
+  candidate: RenderedTopReadCandidate,
+): boolean =>
+  selected.some(
+    (item) =>
+      hasDuplicateRenderedReason(item, candidate) ||
+      areEditorialNearDuplicates(item, candidate),
+  );
 
 const hasDuplicateRenderedReason = (
   left: RenderedTopReadCandidate,
@@ -430,7 +434,6 @@ const trustedXUsernames = new Set([
 const strongSingleSourceSignalScore = 2.2;
 const usefulSingleSourceSignalScore = 1.9;
 const maxRenderedSocialProviderCount = 4;
-const editorialDiversityWindow = 4;
 const minimumSharedEditorialTokens = 3;
 const minimumEditorialTopicSimilarity = 0.25;
 const minimumDuplicateReasonLength = 80;

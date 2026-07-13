@@ -273,7 +273,7 @@ describe("selectRenderedTopReadCandidates", () => {
     ]);
   });
 
-  it("keeps near-duplicate model-routing posts out of the first four reads", () => {
+  it("keeps cross-source semantic duplicates out of the entire top-read list", () => {
     const result = selectRenderedTopReadCandidates({
       candidates: [
         candidate(
@@ -287,7 +287,7 @@ describe("selectRenderedTopReadCandidates", () => {
         ),
         candidate(
           "Run GPT 5.6 Sol inside Claude Code through CLIProxyAPI",
-          "x-twitter",
+          "hacker-news",
           2.3,
           {
             reason:
@@ -311,7 +311,6 @@ describe("selectRenderedTopReadCandidates", () => {
       "AI research careers narrow explored ideas",
       "Apple files an OpenAI trade-secret lawsuit",
       "Coding assistant token overhead comparison",
-      "Run GPT 5.6 Sol inside Claude Code through CLIProxyAPI",
     ]);
   });
 
