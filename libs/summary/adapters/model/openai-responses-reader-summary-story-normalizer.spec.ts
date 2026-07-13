@@ -55,6 +55,85 @@ describe("normalizeTopStories coverage alignment", () => {
       ),
     ).toEqual([]);
   });
+
+  it("replaces a model story that combines citations from unrelated clusters", () => {
+    const input = modelInput(2);
+    const citations = citationMap(2);
+    const rawStories = [
+      {
+        storyClusterId: "model-merged-story",
+        title: "Research careers and a coding tool launch move together",
+        summary:
+          "The model combined two independent items into one unsupported story.",
+        interestIds: ["ai-developer-tools"],
+        providerKeys: ["reddit", "hacker-news"],
+        citationIds: ["c1", "c2"],
+      },
+    ];
+
+    const normalized = normalizeTopStories(rawStories, input, citations);
+
+    expect(normalized).toHaveLength(2);
+    expect(normalized[0]?.storyClusterId).toBe("story:2");
+    expect(normalized).not.toContainEqual(
+      expect.objectContaining({
+        title: "Research careers and a coding tool launch move together",
+      }),
+    );
+    expect(normalized).toContainEqual(
+      expect.objectContaining({
+        storyClusterId: "story:1",
+        title: "Evidence story 1",
+        citationIds: ["c1"],
+      }),
+    );
+    expect(normalized).toContainEqual(
+      expect.objectContaining({
+        storyClusterId: "story:2",
+        title: "Evidence story 2",
+        citationIds: ["c2"],
+      }),
+    );
+  });
+
+  it("retains cross-provider citations when they belong to one cluster", () => {
+    const input = modelInputWithCrossProviderDuplicate();
+    const citations: readonly ReaderSummaryCitation[] = [
+      ...citationMap(1),
+      {
+        citationId: "c2",
+        feedItemId: "feed-1-hn",
+        sourceItemId: "source-1-hn",
+        providerKey: "hacker-news",
+        field: "title",
+        canonicalUrl: "https://news.ycombinator.com/item?id=1",
+      },
+    ];
+
+    const normalized = normalizeTopStories(
+      [
+        {
+          storyClusterId: "model-invented-cluster",
+          title: "One product update appears on Reddit and Hacker News",
+          summary: "Both citations discuss the same concrete product update.",
+          interestIds: ["ai-developer-tools"],
+          providerKeys: ["reddit", "hacker-news"],
+          citationIds: ["c1", "c2"],
+        },
+      ],
+      input,
+      citations,
+    );
+
+    expect(normalized).toEqual([
+      expect.objectContaining({
+        storyClusterId: "story:1",
+        summary: "Both citations discuss the same concrete product update.",
+        providerKeys: ["reddit", "hacker-news"],
+        citationIds: ["c1", "c2"],
+      }),
+    ]);
+  });
 });
 
 const modelInput = (count: number): ReaderSummaryModelInput => {
@@ -114,9 +193,9 @@ const modelInput = (count: number): ReaderSummaryModelInput => {
     coveragePlan: {
       lead: {
         role: "lead",
-        clusterId: "story:9",
-        score: clusters[8]?.score ?? 1,
-        feedItemIds: ["feed-9"],
+        clusterId: `story:${count}`,
+        score: clusters[count - 1]?.score ?? 1,
+        feedItemIds: [`feed-${count}`],
         providerKeys: ["reddit"],
         interestIds: ["ai-developer-tools"],
         whyImportant: ["Approved editorial lead"],
@@ -148,3 +227,48 @@ const citationMap = (count: number): readonly ReaderSummaryCitation[] =>
     field: "title",
     canonicalUrl: `https://reddit.example/post/${index + 1}`,
   }));
+
+const modelInputWithCrossProviderDuplicate = (): ReaderSummaryModelInput => {
+  const input = modelInput(1);
+  const leadEvidence = input.evidence.selectedEvidence[0];
+  const cluster = input.evidence.clusters[0];
+  if (leadEvidence === undefined || cluster === undefined) {
+    throw new Error("Expected one evidence item and story cluster");
+  }
+
+  const duplicateEvidence = {
+    ...leadEvidence,
+    feedItemId: "feed-1-hn",
+    sourceItemId: "source-1-hn",
+    sourceBindingId: "binding-hacker-news",
+    providerKey: "hacker-news",
+    canonicalUrl: "https://news.ycombinator.com/item?id=1",
+  };
+
+  return {
+    ...input,
+    evidence: {
+      ...input.evidence,
+      sourceWindow: {
+        ...input.evidence.sourceWindow,
+        selectedFeedItemIds: [leadEvidence.feedItemId, "feed-1-hn"],
+      },
+      clusters: [
+        {
+          ...cluster,
+          duplicateFeedItemIds: ["feed-1-hn"],
+          providerKeys: ["reddit", "hacker-news"],
+        },
+      ],
+      selectedEvidence: [leadEvidence, duplicateEvidence],
+    },
+    coveragePlan: {
+      lead: {
+        ...input.coveragePlan.lead!,
+        feedItemIds: [leadEvidence.feedItemId, "feed-1-hn"],
+        providerKeys: ["reddit", "hacker-news"],
+      },
+      secondary: [],
+    },
+  };
+};

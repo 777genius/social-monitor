@@ -35,21 +35,41 @@ export const normalizeTopStories = (
     citationMap.map((citation) => [citation.citationId, citation] as const),
   );
   const knownCitationIds = new Set(citationById.keys());
+  const clusterByFeedItemId = clusterIdByFeedItemId(input);
   const repaired = values
     .map(normalizeTopStory)
     .flatMap((story): readonly ReaderSummaryTopStory[] => {
-      const storyClusterId = knownClusterIds.has(story.storyClusterId)
-        ? story.storyClusterId
-        : clusterIdFromCitations(story.citationIds, citationById, input);
-      if (storyClusterId === undefined) {
-        return [];
-      }
-
       const citationIds = knownStringSubset(
         story.citationIds,
         knownCitationIds,
       );
       if (citationIds.length === 0) {
+        return [];
+      }
+
+      const citedClusterIds = clusterIdsFromCitations(
+        citationIds,
+        citationById,
+        clusterByFeedItemId,
+      );
+      if (citedClusterIds.length > 1) {
+        return [];
+      }
+
+      const declaredClusterId = knownClusterIds.has(story.storyClusterId)
+        ? story.storyClusterId
+        : undefined;
+      const citedClusterId = citedClusterIds[0];
+      if (
+        declaredClusterId !== undefined &&
+        citedClusterId !== undefined &&
+        declaredClusterId !== citedClusterId
+      ) {
+        return [];
+      }
+
+      const storyClusterId = declaredClusterId ?? citedClusterId;
+      if (storyClusterId === undefined) {
         return [];
       }
 
@@ -90,8 +110,17 @@ export const clusterIdFromCitations = (
   citationIds: readonly string[],
   citationById: ReadonlyMap<string, ReaderSummaryCitation>,
   input: ReaderSummaryModelInput,
-): string | undefined => {
-  const clusterByFeedItemId = new Map(
+): string | undefined =>
+  clusterIdsFromCitations(
+    citationIds,
+    citationById,
+    clusterIdByFeedItemId(input),
+  )[0];
+
+const clusterIdByFeedItemId = (
+  input: ReaderSummaryModelInput,
+): ReadonlyMap<string, string> =>
+  new Map(
     input.evidence.clusters.flatMap((cluster) =>
       [cluster.representativeFeedItemId, ...cluster.duplicateFeedItemIds].map(
         (feedItemId) => [feedItemId, cluster.id] as const,
@@ -99,19 +128,22 @@ export const clusterIdFromCitations = (
     ),
   );
 
-  for (const citationId of citationIds) {
-    const citation = citationById.get(citationId);
-    const clusterId =
-      citation === undefined
-        ? undefined
-        : clusterByFeedItemId.get(citation.feedItemId);
-    if (clusterId !== undefined) {
-      return clusterId;
-    }
-  }
+const clusterIdsFromCitations = (
+  citationIds: readonly string[],
+  citationById: ReadonlyMap<string, ReaderSummaryCitation>,
+  clusterByFeedItemId: ReadonlyMap<string, string>,
+): readonly string[] =>
+  uniqueNonEmptyStrings(
+    citationIds.flatMap((citationId) => {
+      const citation = citationById.get(citationId);
+      const clusterId =
+        citation === undefined
+          ? undefined
+          : clusterByFeedItemId.get(citation.feedItemId);
 
-  return undefined;
-};
+      return clusterId === undefined ? [] : [clusterId];
+    }),
+  );
 
 const normalizeTopStory = (
   value: Record<string, unknown>,
