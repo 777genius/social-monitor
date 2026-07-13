@@ -182,18 +182,19 @@ const relationCandidate = (params: {
   );
   const sameAuthorSeriesContext =
     sameAuthorSeries && sharedNonAnchorTokens.length > 0;
+  const sharedEntityAnchorTokens = sharedAnchorTokens.filter(
+    (token) => !sharedEventTokens.includes(token),
+  );
   const sharedConcreteSubject =
-    sharedAnchorTokens.length > 0 ||
+    sharedEntityAnchorTokens.length > 0 ||
     sharedSpecificProductTokens.length > 0 ||
-    sharedTopicTokens.length >= 3 ||
+    sharedNonAnchorTokens.length >= minimumSharedSubjectTokens ||
     sameAuthorSeriesContext;
   const enoughContext =
     sameAuthorSeriesContext ||
-    (sharedTopicTokens.length >= 2 &&
-      (sharedAnchorTokens.length >= 2 ||
-        sharedEventTokens.length > 0 ||
-        sharedSpecificProductTokens.length > 0 ||
-        sharedTopicTokens.length >= 3));
+    (sharedTopicTokens.length >= minimumSharedTopicTokens &&
+      (sharedEventTokens.length > 0 ||
+        sharedNonAnchorTokens.length >= minimumSharedContextTokens));
 
   if (
     !sharedConcreteSubject ||
@@ -215,6 +216,10 @@ const relationCandidate = (params: {
     topicSimilarity,
   };
 };
+
+const minimumSharedContextTokens = 2;
+const minimumSharedSubjectTokens = 3;
+const minimumSharedTopicTokens = 3;
 
 const boundedCandidates = (
   candidates: readonly StoryRelationCandidate[],

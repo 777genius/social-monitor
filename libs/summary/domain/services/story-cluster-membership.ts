@@ -84,8 +84,13 @@ export const isDeterministicCrossProviderStoryMatch = (
     storyTopicEventTokens(itemTokens),
     storyTopicEventTokens(headTokens),
   );
+  const sharedNonAnchorTokens = sharedNonAnchorStoryTopicTokenCount(
+    itemTokens,
+    headTokens,
+  );
   const semanticMatch =
     sharedAnchorTokens > 0 &&
+    sharedNonAnchorTokens >= MIN_DETERMINISTIC_SHARED_CONTEXT_TOKENS &&
     sharedTokens >= policy.crossSourceMinSharedTopicTokens &&
     storyTopicSimilarity(itemTokens, headTokens) >=
       policy.crossSourceTopicSimilarityThreshold;
@@ -190,30 +195,63 @@ export const isVerifiedStoryRelationGuardEligible = (
     candidateTokens,
   );
   const candidateTokenSet = new Set(candidateTokens);
-  const sharedNonAnchorTokenCount = new Set(
-    itemTokens.filter(
-      (token) =>
-        candidateTokenSet.has(token) &&
-        storyTopicAnchorTokens([token]).length === 0,
+  const sharedAnchorTokens = new Set(
+    storyTopicAnchorTokens(itemTokens).filter((token) =>
+      candidateTokenSet.has(token),
     ),
+  );
+  const sharedEventTokens = new Set(
+    storyTopicEventTokens(itemTokens).filter((token) =>
+      candidateTokenSet.has(token),
+    ),
+  );
+  const sharedEntityAnchorTokenCount = new Set(
+    [...sharedAnchorTokens].filter((token) => !sharedEventTokens.has(token)),
   ).size;
-  return (
-    sharedStoryTopicTokenCount(
-      storyTopicAnchorTokens(itemTokens),
-      storyTopicAnchorTokens(candidateTokens),
-    ) > 0 ||
+  const sharedNonAnchorTokenCount = sharedNonAnchorStoryTopicTokenCount(
+    itemTokens,
+    candidateTokens,
+  );
+  const hasConcreteSubject =
+    sharedEntityAnchorTokenCount > 0 ||
     sharedStoryTopicTokenCount(
       storyTopicSpecificProductTokens(itemTokens),
       storyTopicSpecificProductTokens(candidateTokens),
     ) > 0 ||
-    sharedTopicTokens >= 3 ||
-    (sameAuthorSeries && sharedNonAnchorTokenCount > 0)
-  );
+    sharedNonAnchorTokenCount >= MIN_VERIFIED_SHARED_SUBJECT_TOKENS;
+  const hasConcreteContext =
+    sharedEventTokens.size > 0 ||
+    sharedNonAnchorTokenCount >= MIN_VERIFIED_SHARED_CONTEXT_TOKENS;
+
+  return sameAuthorSeries
+    ? sharedNonAnchorTokenCount > 0
+    : hasConcreteSubject &&
+        hasConcreteContext &&
+        sharedTopicTokens >= MIN_VERIFIED_SHARED_TOPIC_TOKENS;
 };
 
 const VERIFIED_STORY_RELATION_MAX_TIME_DISTANCE_MS = 30 * 60 * 60 * 1000;
 const VERIFIED_SAME_AUTHOR_SERIES_MAX_TIME_DISTANCE_MS = 2 * 60 * 60 * 1000;
 const STRONG_EXACT_TITLE_MIN_TOKEN_COUNT = 5;
+const MIN_DETERMINISTIC_SHARED_CONTEXT_TOKENS = 2;
+const MIN_VERIFIED_SHARED_CONTEXT_TOKENS = 2;
+const MIN_VERIFIED_SHARED_SUBJECT_TOKENS = 3;
+const MIN_VERIFIED_SHARED_TOPIC_TOKENS = 3;
+
+const sharedNonAnchorStoryTopicTokenCount = (
+  leftTokens: readonly string[],
+  rightTokens: readonly string[],
+): number => {
+  const rightTokenSet = new Set(rightTokens);
+
+  return new Set(
+    leftTokens.filter(
+      (token) =>
+        rightTokenSet.has(token) &&
+        storyTopicAnchorTokens([token]).length === 0,
+    ),
+  ).size;
+};
 
 const hasStrongExactTitleIdentity = (
   left: SummaryEvidenceItem,

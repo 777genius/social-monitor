@@ -279,12 +279,19 @@ describe("selectRenderedTopReadCandidates", () => {
         candidate(
           "Developers mix Claude, Codex and OpenCode for GPT 5.6 Sol",
           "x-twitter",
-          2.35,
+          2.7,
           {
             reason:
               "A Claude Code workflow points at GPT 5.6 Sol through a proxy while comparing Codex and OpenCode.",
           },
         ),
+        candidate(
+          "AI research careers narrow explored ideas",
+          "hacker-news",
+          2.6,
+        ),
+        candidate("Apple files an OpenAI trade-secret lawsuit", "reddit", 2.5),
+        candidate("Coding assistant token overhead comparison", "rss", 2.4),
         candidate(
           "Run GPT 5.6 Sol inside Claude Code through CLIProxyAPI",
           "hacker-news",
@@ -294,13 +301,6 @@ describe("selectRenderedTopReadCandidates", () => {
               "The setup routes Claude Code to GPT 5.6 Sol with CLIProxyAPI and a shell alias.",
           },
         ),
-        candidate(
-          "AI research careers narrow explored ideas",
-          "hacker-news",
-          2.25,
-        ),
-        candidate("Apple files an OpenAI trade-secret lawsuit", "reddit", 2.2),
-        candidate("Coding assistant token overhead comparison", "rss", 2.15),
       ],
       sourceMix: sourceMix(["x-twitter", "reddit", "hacker-news", "rss"]),
       limit: 5,

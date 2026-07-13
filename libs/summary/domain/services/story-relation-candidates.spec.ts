@@ -66,6 +66,17 @@ describe("story relation candidate verification", () => {
     ).toEqual([]);
   });
 
+  it("does not shortlist unrelated events that share only product entities", () => {
+    const [freeAccess, simulator] = unrelatedFableEvidence();
+
+    expect(
+      buildStoryRelationCandidates({
+        selection: splitSelection(freeAccess, simulator),
+        evidence: [freeAccess, simulator],
+      }),
+    ).toEqual([]);
+  });
+
   it("does not shortlist same-provider or distant evidence", () => {
     const first = evidence({
       id: "first",
@@ -270,6 +281,59 @@ describe("story relation candidate verification", () => {
     ).toBe(true);
   });
 
+  it("does not merge unrelated product facets even with a verified pair", () => {
+    const [freeAccess, simulator] = unrelatedFableEvidence();
+
+    const selection = new StoryClusteringService(clock).cluster({
+      identity: {
+        tenantId: tenantId("tenant-unrelated-fable-facets"),
+        workspaceId: workspaceId("workspace-unrelated-fable-facets"),
+        scope: { type: "workspace" },
+      },
+      items: [freeAccess, simulator],
+      limit: 10,
+      verifiedStoryRelationPairs: new Set([
+        verifiedStoryRelationPairKey(
+          freeAccess.feedItemId,
+          simulator.feedItemId,
+        ),
+      ]),
+    });
+
+    expect(selection.clusters).toHaveLength(2);
+    expect(
+      selection.clusters.flatMap((cluster) => cluster.duplicateFeedItemIds),
+    ).toEqual([]);
+  });
+
+  it("preserves cross-provider merging for the same concrete event", () => {
+    const announcement = evidence({
+      id: "fable-access-announcement",
+      providerKey: "x-twitter",
+      title: "Anthropic extends Fable 5 free access through July 19",
+      bodyPreview: "The free access window remains open through July 19.",
+    });
+    const coverage = evidence({
+      id: "fable-access-coverage",
+      providerKey: "rss",
+      title: "Fable 5 free access extended by Anthropic through July 19",
+      bodyPreview: "The free access extension lasts through July 19.",
+    });
+
+    const selection = new StoryClusteringService(clock).cluster({
+      identity: {
+        tenantId: tenantId("tenant-fable-access-event"),
+        workspaceId: workspaceId("workspace-fable-access-event"),
+        scope: { type: "workspace" },
+      },
+      items: [announcement, coverage],
+      limit: 10,
+    });
+
+    expect(selection.clusters).toHaveLength(1);
+    expect(selection.clusters[0]?.providerKeys).toEqual(["rss", "x-twitter"]);
+  });
+
   it("merges a same-author series only when every pair is approved", () => {
     const items = ["audit", "sabotage", "awareness"].map((id, index) =>
       evidence({
@@ -326,6 +390,27 @@ const evidence = (params: {
   score: 1.5,
   whyImportant: ["Relevant"],
 });
+
+const unrelatedFableEvidence = (): readonly [
+  SummaryEvidenceItem,
+  SummaryEvidenceItem,
+] => [
+  evidence({
+    id: "fable-free-access",
+    providerKey: "x-twitter",
+    title:
+      "X post by @publisher: Anthropic extends Fable 5 free access and a 50% Claude Code usage-limit increase through July 19",
+    bodyPreview:
+      "Anthropic extended the Fable 5 access window and Claude Code usage limit promotion.",
+  }),
+  evidence({
+    id: "fable-simulator",
+    providerKey: "reddit",
+    title: "Fun Reddit simulator built with Claude Code",
+    bodyPreview:
+      "The client was designed with Claude Fable 5 and built as a web app on an existing backend.",
+  }),
+];
 
 const splitSelection = (
   ...items: readonly SummaryEvidenceItem[]
