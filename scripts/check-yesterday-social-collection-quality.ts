@@ -538,7 +538,7 @@ async function queryFeedRowsByWindow(
         (sb.id is not null) as "sourceBindingExists",
         f.canonical_url as "canonicalUrl",
         f.title as "title",
-        f.body_preview as "bodyPreview",
+        coalesce(f.body_preview, '') as "bodyPreview",
         f.observed_at as "observedAt",
         f.published_at as "publishedAt",
         (f.provider_metadata is not null) as "hasProviderMetadata",
