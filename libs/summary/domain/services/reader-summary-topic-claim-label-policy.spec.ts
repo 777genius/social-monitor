@@ -80,6 +80,23 @@ describe("renderReaderSummaryTopicSemanticLabel", () => {
     ["Anthropic", "limits", "Hour Weekly", "Anthropic Limits"],
     ["Anthropic Hour Weekly", "limits", undefined, "Anthropic Limits"],
     ["Grok 4.5", "review", undefined, "Grok 4.5 Review"],
+    ["OpenAI Apple lawsuit", "allegation", undefined, "OpenAI Apple lawsuit"],
+    [
+      "Apple OpenAI civil suit",
+      "allegation",
+      undefined,
+      "Apple OpenAI civil suit",
+    ],
+    [
+      "OpenAI trade-secret case",
+      "allegation",
+      undefined,
+      "OpenAI trade-secret case",
+    ],
+    ["Grok 4.5", "benchmark", "top", "Grok 4.5 Benchmark"],
+    ["Grok 4.5", "benchmark", "best", "Grok 4.5 Benchmark"],
+    ["Grok 4.5", "benchmark", "latest", "Grok 4.5 Benchmark"],
+    ["GPT 5.6", "other", "Migrating Production AI", "GPT 5.6"],
   ] as const)(
     "renders %s/%s deterministically",
     (subject, claimType, qualifier, expected) => {
@@ -103,6 +120,21 @@ describe("ensureTopicLabelExpressesClaimFacet", () => {
     ["Sol High", "efficiency", "Sol High Efficiency"],
   ] as const)("adds a missing claim facet to %s", (label, facet, expected) => {
     expect(ensureTopicLabelExpressesClaimFacet(label, facet)).toBe(expected);
+  });
+
+  it("keeps the final reader-facing label within four words", () => {
+    expect(
+      ensureTopicLabelExpressesClaimFacet(
+        "GPT 5.6 Production AI",
+        "efficiency",
+      ),
+    ).toBe("GPT 5.6 Production Efficiency");
+  });
+
+  it("does not mistake a technical use case for a legal allegation", () => {
+    expect(
+      ensureTopicLabelExpressesClaimFacet("Codex Use Case", "release"),
+    ).toBe("Codex Use Case Rollout");
   });
 
   it.each([

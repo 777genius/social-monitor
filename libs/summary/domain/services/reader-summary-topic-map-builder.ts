@@ -265,6 +265,15 @@ const topicNodeForCluster = (params: {
     label,
     primaryClaimFacet,
   );
+  if (
+    !evaluateTopicLabelQuality(readerFacingLabel, {
+      evidenceTexts,
+      providerLabels,
+      candidateLabels: labelCandidates.map((candidate) => candidate.label),
+    }).accepted
+  ) {
+    return null;
+  }
 
   return {
     id: nodeId,

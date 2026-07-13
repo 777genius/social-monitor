@@ -203,10 +203,14 @@ const genericActionTokens = new Set([
   "gives",
   "happens",
   "hiring",
+  "hate",
+  "increase",
+  "decrease",
   "introduce",
   "introduced",
   "introducing",
   "let",
+  "love",
   "just",
   "lead",
   "leads",
@@ -218,6 +222,10 @@ const genericActionTokens = new Set([
   "made",
   "makes",
   "many",
+  "migrate",
+  "migrated",
+  "migrates",
+  "migrating",
   "race",
   "races",
   "racing",
@@ -277,9 +285,17 @@ const headlineClauseTokens = new Set([
   "gave",
   "happens",
   "hiring",
+  "hate",
+  "increase",
+  "decrease",
   "here",
   "introducing",
+  "love",
   "made",
+  "migrate",
+  "migrated",
+  "migrates",
+  "migrating",
   "normal",
   "presents",
   "replacing",
@@ -351,8 +367,8 @@ export const evaluateTopicLabelQuality = (
   if (isMetaTopicLabel(label, providerLabels)) {
     reasons.push("label is a source or UI meta label");
   }
-  if (meaningfulTokens.length > 5) {
-    reasons.push("label is longer than five significant words");
+  if (topicLabelWordCount(label) > 4) {
+    reasons.push("label is longer than four words");
   }
   if (
     topicLabelTokens(label).some((token) => headlineClauseTokens.has(token))
@@ -467,6 +483,9 @@ const semanticTokenFamily = (token: string): string =>
 
 const topicLabelTokens = (value: string): readonly string[] =>
   normalizeTopicLabel(value).split(/\s+/u).filter(Boolean);
+
+const topicLabelWordCount = (value: string): number =>
+  value.split(/\s+/u).filter(Boolean).length;
 
 const hasRepeatedTopicToken = (value: string): boolean => {
   const tokens = topicLabelTokens(value).filter(

@@ -45,6 +45,18 @@ describe("selectReaderSummaryTopicLabel", () => {
       }),
     ).toBe("Codex Agent Workflows");
   });
+
+  it("skips a headline-fragment candidate for a grounded noun phrase", () => {
+    expect(
+      selectReaderSummaryTopicLabel({
+        proposedLabel: "Love LLMs Hate",
+        preferProposedLabel: true,
+        labelCandidates: [candidate("Love LLMs Hate"), candidate("LLM Hype")],
+        evidenceTexts: ["I love LLMs but hate the hype"],
+        providerLabels: ["hacker-news"],
+      }),
+    ).toBe("LLM Hype");
+  });
 });
 
 const candidate = (label: string) => ({

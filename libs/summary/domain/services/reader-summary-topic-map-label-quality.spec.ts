@@ -106,6 +106,10 @@ describe("evaluateTopicLabelQuality", () => {
     "Scam Humanity Normal",
     "Claude Any AI",
     "OpenKnowledge Best Markdown",
+    "Love LLMs Hate",
+    "GPT 5.6 Migrating Production AI",
+    "Claude Code 50% increase",
+    "Model Usage decrease",
   ])("rejects headline fragment label %s", (label) => {
     expect(
       evaluateTopicLabelQuality(label, {
@@ -136,6 +140,17 @@ describe("evaluateTopicLabelQuality", () => {
       reasons: expect.arrayContaining([
         "label is not grounded in collected evidence",
       ]),
+    });
+  });
+
+  it("rejects a reader-facing label longer than four words", () => {
+    expect(
+      evaluateTopicLabelQuality("GPT 5.6 Production AI Efficiency", {
+        evidenceTexts: ["GPT 5.6 production AI efficiency"],
+      }),
+    ).toMatchObject({
+      accepted: false,
+      reasons: expect.arrayContaining(["label is longer than four words"]),
     });
   });
 });

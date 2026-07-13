@@ -12,14 +12,21 @@ export const selectReaderSummaryTopicLabel = (params: {
   readonly evidenceTexts: readonly string[];
   readonly providerLabels: readonly string[];
 }): string => {
-  const bestCandidate = params.labelCandidates[0];
   const proposed = compactOptional(params.proposedLabel);
-  if (proposed === undefined) {
-    return bestCandidate?.label ?? "Other topic";
-  }
   const candidateLabels = params.labelCandidates.map(
     (candidate) => candidate.label,
   );
+  const bestCandidate = params.labelCandidates.find(
+    (candidate) =>
+      evaluateTopicLabelQuality(candidate.label, {
+        evidenceTexts: params.evidenceTexts,
+        providerLabels: params.providerLabels,
+        candidateLabels,
+      }).accepted,
+  );
+  if (proposed === undefined) {
+    return bestCandidate?.label ?? "Other topic";
+  }
   const quality = evaluateTopicLabelQuality(proposed, {
     evidenceTexts: params.evidenceTexts,
     providerLabels: params.providerLabels,

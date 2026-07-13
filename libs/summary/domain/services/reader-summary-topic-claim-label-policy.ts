@@ -105,7 +105,8 @@ const claimLabelRules: Readonly<
   Record<Exclude<ReaderSummaryTopicClaimType, "other">, ClaimLabelRule>
 > = {
   allegation: {
-    marker: /\b(?:allegation|allegations|alleged|accusation|accusations)\b/iu,
+    marker:
+      /\b(?:allegation|allegations|alleged|accusation|accusations|lawsuit|lawsuits|(?:antitrust|civil|copyright|legal|patent|trade[\s-]secret)\s+(?:case|cases|suit|suits)|court\s+(?:case|cases))\b/iu,
     suffix: "Allegation",
   },
   availability: {
@@ -168,7 +169,14 @@ export const renderReaderSummaryTopicSemanticLabel = (
     return qualifier;
   }
   if (semantic.claimType === "other") {
-    return appendDistinctPart(subject, durableOtherQualifier(qualifier));
+    const qualified = appendDistinctPart(
+      subject,
+      durableOtherQualifier(qualifier),
+    );
+
+    return topicLabelWordCount(qualified) <= 4
+      ? qualified
+      : boundedTopicLabel(subject);
   }
   const rule = claimLabelRules[semantic.claimType];
   if (rule.marker.test(subject)) {
@@ -200,9 +208,10 @@ export const ensureTopicLabelExpressesClaimFacet = (
     (candidate) => candidate.marker.test(sanitizedLabel),
   );
 
-  return alreadyExpressesClaim
-    ? sanitizedLabel
-    : `${sanitizedLabel} ${rule.suffix}`;
+  return boundedTopicLabel(
+    alreadyExpressesClaim ? sanitizedLabel : `${sanitizedLabel} ${rule.suffix}`,
+    true,
+  );
 };
 
 export const topicLabelExpressesClaimType = (
@@ -285,6 +294,9 @@ const sanitizeClaimQualifier = (
   claimType: ReaderSummaryTopicClaimType,
   qualifier: string,
 ): string => {
+  if (claimType === "benchmark" && /^(?:best|latest|top)$/iu.test(qualifier)) {
+    return "";
+  }
   if (
     (claimType === "comparison" || claimType === "release") &&
     descriptiveParticipleQualifier.test(qualifier) &&
@@ -339,3 +351,15 @@ const sanitizeLabelForClaimFacet = (
 
 const topicLabelWordCount = (value: string): number =>
   value.split(/\s+/u).filter(Boolean).length;
+
+const boundedTopicLabel = (value: string, preserveLastWord = false): string => {
+  const words = value.split(/\s+/u).filter(Boolean);
+  if (words.length <= 4) {
+    return words.join(" ");
+  }
+  if (!preserveLastWord) {
+    return words.slice(0, 4).join(" ");
+  }
+
+  return [...words.slice(0, 3), words.at(-1)!].join(" ");
+};
