@@ -59,6 +59,21 @@ describe("reader summary top read title", () => {
     expect(title).toBe("Anthropic extends Claude Code access through July 19");
   });
 
+  it("replaces a generic native social hook with the grounded story title", () => {
+    const title = buildTopReadTitle({
+      storyTitle: "Claude Code users question another access extension",
+      storySummary:
+        "Claude Code users questioned whether another temporary access extension changes their long-term subscription plans.",
+      primaryEvidence: evidence({
+        providerKey: "reddit",
+        title: "Here we go again!!!",
+      }),
+      evidence: [],
+    });
+
+    expect(title).toBe("Claude Code users question another access extension");
+  });
+
   it.each([
     {
       storyTitle: "Anthropic продлила доступ к Claude Code до 19 июля",

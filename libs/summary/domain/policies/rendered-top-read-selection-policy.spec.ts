@@ -193,6 +193,73 @@ describe("selectRenderedTopReadCandidates", () => {
     expect(result).toEqual([]);
   });
 
+  it.each([
+    "There is no supporting evidence for the claimed subscription deadline.",
+    "The claim remains rumor-like and should not guide subscription decisions.",
+    "Treat the claim as unverified unless corroborated by another source.",
+    "The claimed deadline needs stronger confirmation before publication.",
+    "The claim is based on one post and cannot be verified independently.",
+    "The claim is not independently confirmed.",
+    "The post does not provide supporting evidence.",
+  ])(
+    "rejects an explicitly unsupported single-source X claim: %s",
+    (reason) => {
+      const result = selectRenderedTopReadCandidates({
+        candidates: [
+          candidate(
+            "Half of Claude Code subscriptions could be disabled tonight",
+            "x-twitter",
+            3.2,
+            { reason },
+          ),
+        ],
+        sourceMix: sourceMix(["x-twitter", "reddit", "hacker-news", "rss"]),
+        limit: 10,
+      });
+
+      expect(result).toEqual([]);
+    },
+  );
+
+  it("does not reject a source-backed post that contrasts itself with rumor", () => {
+    const result = selectRenderedTopReadCandidates({
+      candidates: [
+        candidate("A reproducible coding-agent benchmark", "x-twitter", 2.35, {
+          reason:
+            "The post provides reproducible logs rather than rumor-like speculation.",
+        }),
+      ],
+      sourceMix: sourceMix(["x-twitter", "reddit", "hacker-news", "rss"]),
+      limit: 10,
+    });
+
+    expect(result.map((item) => item.topRead.title)).toEqual([
+      "A reproducible coding-agent benchmark",
+    ]);
+  });
+
+  it("keeps a substantive single-source X report without unsupported markers", () => {
+    const result = selectRenderedTopReadCandidates({
+      candidates: [
+        candidate(
+          "Developers route GPT-5.6 through Claude Code",
+          "x-twitter",
+          2.35,
+          {
+            reason:
+              "The post documents a concrete proxy configuration and clearly identifies it as a practitioner workflow.",
+          },
+        ),
+      ],
+      sourceMix: sourceMix(["x-twitter", "reddit", "hacker-news", "rss"]),
+      limit: 10,
+    });
+
+    expect(result.map((item) => item.topRead.title)).toEqual([
+      "Developers route GPT-5.6 through Claude Code",
+    ]);
+  });
+
   it("rejects candidates whose reason only repeats the title", () => {
     const result = selectRenderedTopReadCandidates({
       candidates: [
@@ -211,8 +278,7 @@ describe("selectRenderedTopReadCandidates", () => {
     const result = selectRenderedTopReadCandidates({
       candidates: [
         candidate("A viral prediction dominates tonight", "x-twitter", 2.45, {
-          reason:
-            "The X post reports: A viral prediction dominates tonight.",
+          reason: "The X post reports: A viral prediction dominates tonight.",
         }),
         candidate("A generic Reddit reaction", "reddit", 2.35, {
           reason: "The Reddit post states: A generic Reddit reaction.",

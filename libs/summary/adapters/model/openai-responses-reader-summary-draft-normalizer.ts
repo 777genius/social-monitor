@@ -149,7 +149,7 @@ export const normalizeOpenAiReaderSummaryDraft = (
     noSignalReason,
   });
   const draft: GeneratedReaderSummaryDraft = {
-    headline,
+    headline: content.headline,
     executiveSummary,
     content,
     topStories: normalizedTopStories,

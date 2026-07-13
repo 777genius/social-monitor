@@ -68,6 +68,14 @@ describe("reader summary reader-facing text policy", () => {
       ),
     ).toBe(true);
     expect(isUnpolishedReaderTitle("Keep going. No matter what.")).toBe(true);
+    expect(isConversationalOrTruncatedReaderTitle("Here we go again!!!")).toBe(
+      true,
+    );
+    expect(
+      isConversationalOrTruncatedReaderTitle(
+        "Claude Code users question another access extension",
+      ),
+    ).toBe(false);
   });
 
   it("detects technical and generated fallback reasons", () => {

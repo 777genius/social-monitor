@@ -96,7 +96,7 @@ describe("normalizeTopStories coverage alignment", () => {
     );
   });
 
-  it("retains cross-provider citations when they belong to one cluster", () => {
+  it("completes cross-provider citation coverage from the same cluster", () => {
     const input = modelInputWithCrossProviderDuplicate();
     const citations: readonly ReaderSummaryCitation[] = [
       ...citationMap(1),
@@ -108,16 +108,25 @@ describe("normalizeTopStories coverage alignment", () => {
         field: "title",
         canonicalUrl: "https://news.ycombinator.com/item?id=1",
       },
+      {
+        citationId: "c3",
+        feedItemId: "feed-1-rss",
+        sourceItemId: "source-1-rss",
+        providerKey: "rss",
+        field: "title",
+        canonicalUrl: "https://example.com/product-update",
+      },
     ];
 
     const normalized = normalizeTopStories(
       [
         {
           storyClusterId: "model-invented-cluster",
-          title: "One product update appears on Reddit and Hacker News",
-          summary: "Both citations discuss the same concrete product update.",
+          title: "One product update appears across three providers",
+          summary:
+            "All three citations discuss the same concrete product update.",
           interestIds: ["ai-developer-tools"],
-          providerKeys: ["reddit", "hacker-news"],
+          providerKeys: ["reddit", "hacker-news", "rss"],
           citationIds: ["c1", "c2"],
         },
       ],
@@ -128,9 +137,10 @@ describe("normalizeTopStories coverage alignment", () => {
     expect(normalized).toEqual([
       expect.objectContaining({
         storyClusterId: "story:1",
-        summary: "Both citations discuss the same concrete product update.",
-        providerKeys: ["reddit", "hacker-news"],
-        citationIds: ["c1", "c2"],
+        summary:
+          "All three citations discuss the same concrete product update.",
+        providerKeys: ["reddit", "hacker-news", "rss"],
+        citationIds: ["c1", "c2", "c3"],
       }),
     ]);
   });
@@ -244,6 +254,14 @@ const modelInputWithCrossProviderDuplicate = (): ReaderSummaryModelInput => {
     providerKey: "hacker-news",
     canonicalUrl: "https://news.ycombinator.com/item?id=1",
   };
+  const rssEvidence = {
+    ...leadEvidence,
+    feedItemId: "feed-1-rss",
+    sourceItemId: "source-1-rss",
+    sourceBindingId: "binding-rss",
+    providerKey: "rss",
+    canonicalUrl: "https://example.com/product-update",
+  };
 
   return {
     ...input,
@@ -251,22 +269,26 @@ const modelInputWithCrossProviderDuplicate = (): ReaderSummaryModelInput => {
       ...input.evidence,
       sourceWindow: {
         ...input.evidence.sourceWindow,
-        selectedFeedItemIds: [leadEvidence.feedItemId, "feed-1-hn"],
+        selectedFeedItemIds: [
+          leadEvidence.feedItemId,
+          "feed-1-hn",
+          "feed-1-rss",
+        ],
       },
       clusters: [
         {
           ...cluster,
-          duplicateFeedItemIds: ["feed-1-hn"],
-          providerKeys: ["reddit", "hacker-news"],
+          duplicateFeedItemIds: ["feed-1-hn", "feed-1-rss"],
+          providerKeys: ["reddit", "hacker-news", "rss"],
         },
       ],
-      selectedEvidence: [leadEvidence, duplicateEvidence],
+      selectedEvidence: [leadEvidence, duplicateEvidence, rssEvidence],
     },
     coveragePlan: {
       lead: {
         ...input.coveragePlan.lead!,
-        feedItemIds: [leadEvidence.feedItemId, "feed-1-hn"],
-        providerKeys: ["reddit", "hacker-news"],
+        feedItemIds: [leadEvidence.feedItemId, "feed-1-hn", "feed-1-rss"],
+        providerKeys: ["reddit", "hacker-news", "rss"],
       },
       secondary: [],
     },

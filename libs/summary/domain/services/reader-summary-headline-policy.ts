@@ -172,7 +172,12 @@ const isUnverifiedLegalTopRead = (lead: TopRead): boolean => {
 const sourceFramedLegalTitle = (title: string): string => {
   const reportedAction = title.match(/^(.*?)\s+(?:sues?|sued|suing)\s+(.+)$/iu);
   if (reportedAction !== null) {
-    return `Reports say ${reportedAction[1]?.trim()} sued ${reportedAction[2]?.trim()}`;
+    const reportedObject = reportedAction[2]
+      ?.trim()
+      .replace(/\s*,\s*(?:says?|according to)\b.*$/iu, "")
+      .replace(/\s*,?\s+(?:alleging|alleges?)\s+/iu, " over alleged ");
+
+    return `Reports say ${reportedAction[1]?.trim()} sued ${reportedObject}`;
   }
 
   return `Reports discuss the ${title.replace(/^the\s+/iu, "")}`;

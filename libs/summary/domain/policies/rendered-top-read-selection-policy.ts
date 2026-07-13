@@ -332,6 +332,9 @@ export const isReaderFacingQualityTopRead = (
   ) {
     return false;
   }
+  if (isUnsupportedSingleSourceXClaim(read)) {
+    return false;
+  }
   if (!socialNewsProviderKeys.has(read.providerKey)) {
     return true;
   }
@@ -345,10 +348,10 @@ export const isReaderFacingQualityTopRead = (
     return true;
   }
   if (read.signalScore >= strongSingleSourceSignalScore) {
-    return !isUnverifiedBreakingXPost(read);
+    return true;
   }
   if (read.signalScore >= usefulSingleSourceSignalScore) {
-    return !isUnverifiedBreakingXPost(read);
+    return true;
   }
 
   return false;
@@ -365,12 +368,29 @@ const isTrustedOfficialXPost = (
   return username !== undefined && trustedXUsernames.has(username);
 };
 
-const isUnverifiedBreakingXPost = (
+const isUnsupportedSingleSourceXClaim = (
   read: ReaderFacingTopReadQualityInput,
 ): boolean =>
   read.providerKey === "x-twitter" &&
   read.confirmedProviderKeys.length <= 1 &&
-  /^(?:unverified report:)|\b(?:breaking|just\s+in)\b/iu.test(read.title);
+  (/(?:^(?:unverified report:)|\b(?:breaking|just\s+in)\b)/iu.test(
+    read.title,
+  ) ||
+    unsupportedClaimLanguage(`${read.title} ${read.reason}`));
+
+const unsupportedClaimLanguage = (value: string): boolean =>
+  unsupportedClaimPatterns.some((pattern) => pattern.test(value));
+
+const unsupportedClaimPatterns = [
+  /\b(?:there\s+(?:is|was)|(?:the|this|that)\s+(?:claim|report|story|post|assertion)\s+(?:has|provides|includes))\s+no\s+supporting\s+evidence\b/iu,
+  /\b(?:claim|report|story|post|assertion)\s+(?:remains|is|appears|seems)\s+(?:an?\s+)?rumou?r[-\s]+like\b/iu,
+  /\b(?:treat|consider)\s+(?:the|this|that)?\s*(?:claim|report|story|post|assertion)\s+as\s+unverified\b/iu,
+  /\b(?:claim|report|story|post|assertion)\b.{0,80}\bunless\s+corroborated\b/iu,
+  /\b(?:claim|report|story|post|assertion|deadline)\s+needs?\s+stronger\s+confirmation\b/iu,
+  /\b(?:claim|report|story|post|assertion)\b.{0,80}\b(?:(?:cannot|could\s+not)\s+be|has\s+not\s+been|is\s+not)\s+(?:independently\s+verified|verified(?:\s+independently)?)\b/iu,
+  /\b(?:claim|report|story|post|assertion)\s+(?:is|remains|was)\s+not\s+(?:independently\s+)?(?:confirmed|corroborated|verified)\b/iu,
+  /\b(?:claim|report|story|post|assertion)\s+(?:does|did)\s+not\s+(?:provide|include|cite)\s+(?:any\s+)?supporting\s+evidence\b/iu,
+] as const;
 
 const hasFallbackReason = (read: ReaderFacingTopReadQualityInput): boolean =>
   isFallbackReaderReason(read.reason);

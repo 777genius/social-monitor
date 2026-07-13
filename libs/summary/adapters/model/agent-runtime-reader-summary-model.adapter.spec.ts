@@ -86,7 +86,7 @@ describe("AgentRuntimeReaderSummaryModelAdapter", () => {
   it("normalizes terminal full stops from generated headlines", async () => {
     const providerDraft = validReaderProviderDraft();
     providerDraft.headline =
-      "Developers route GPT-5.6 Sol through Claude Code as costs dominate.";
+      "Reddit discussion highlights developers routing GPT-5.6 Sol through Claude Code.";
     const adapter = new AgentRuntimeReaderSummaryModelAdapter({
       client: new CapturingAgentRuntimeClient({
         status: "completed",
@@ -110,9 +110,39 @@ describe("AgentRuntimeReaderSummaryModelAdapter", () => {
     const attempt = await adapter.generate(input, route);
 
     expect(attempt.draft.headline).toBe(
-      "Developers route GPT-5.6 Sol through Claude Code as costs dominate",
+      "Reddit discussion highlights developers routing GPT-5.6 Sol through Claude Code",
     );
     expect(attempt.draft.content?.headline).not.toMatch(/[.\u2026\u3002]$/u);
+  });
+
+  it("publishes the final grounded content headline at the draft top level", async () => {
+    const providerDraft = validReaderProviderDraft();
+    providerDraft.headline =
+      "Agent runtime reports lead a day of reliability signals";
+    const adapter = new AgentRuntimeReaderSummaryModelAdapter({
+      client: new CapturingAgentRuntimeClient({
+        status: "completed",
+        structuredOutput: providerDraft,
+        warnings: [],
+      }),
+      agentProvider: "codex",
+    });
+    const input = readerSummaryInput();
+    const route = adapter.route(
+      input,
+      {
+        preferredProvider: "agent-runtime",
+        maxInputTokens: 24_000,
+        maxOutputTokens: 16_000,
+        maxEstimatedCostUsd: 1,
+      },
+      { remainingTokens: 40_000, remainingCostUsd: 1 },
+    );
+
+    const attempt = await adapter.generate(input, route);
+
+    expect(attempt.draft.headline).toBe(attempt.draft.content?.headline);
+    expect(attempt.draft.headline).not.toBe(providerDraft.headline);
   });
 
   it("passes an explicit real runtime model through controls", async () => {

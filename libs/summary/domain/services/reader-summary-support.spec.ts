@@ -161,6 +161,34 @@ describe("groundedReaderHeadline", () => {
     ).toBe("Reports say Acme sued Example Labs over alleged model theft");
   });
 
+  it("removes a trailing quote-bearing report clause before compacting a legal headline", () => {
+    const lead = {
+      ...topRead(),
+      title:
+        "Apple sued OpenAI alleging trade secret theft, says scheme was 'at every level'",
+      reason:
+        "Community reports repeat the alleged dispute, but the filings are not available and the merits remain unknown.",
+      confidence: {
+        level: "medium" as const,
+        score: 0.68,
+        rationale:
+          "Two monitored source groups surface this story, but repetition does not independently verify the allegation.",
+      },
+      confirmedProviderKeys: ["reddit", "hacker-news"],
+    };
+
+    const headline = groundedReaderHeadline({
+      headline: "Apple lawsuit reports lead a day of AI coding signals",
+      topReads: [lead],
+      sourceMix: [],
+    });
+
+    expect(headline).toBe(
+      "Reports say Apple sued OpenAI over alleged trade secret theft",
+    );
+    expect(headline).not.toMatch(/['‘’“”]/u);
+  });
+
   it("source-frames a direct legal headline when community reports do not include a filing", () => {
     const lead = {
       ...topRead(),

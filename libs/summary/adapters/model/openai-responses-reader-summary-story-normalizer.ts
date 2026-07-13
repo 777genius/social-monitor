@@ -12,9 +12,11 @@ import {
 } from "./openai-responses-reader-summary-json";
 
 const minimumUsefulTopStoryCount = 8;
+const maximumTopStoryCitationCount = 4;
 
 type SelectedEvidenceItem =
   ReaderSummaryModelInput["evidence"]["selectedEvidence"][number];
+type StoryCluster = ReaderSummaryModelInput["evidence"]["clusters"][number];
 
 export const normalizeTopStories = (
   values: readonly Record<string, unknown>[],
@@ -74,6 +76,22 @@ export const normalizeTopStories = (
       }
 
       const cluster = clusterById.get(storyClusterId);
+      if (cluster === undefined) {
+        return [];
+      }
+      const providerKeys = uniqueNonEmptyStrings([
+        ...story.providerKeys,
+        ...cluster.providerKeys,
+      ]);
+      const completedCitationIds = completeClusterCitationCoverage({
+        citationIds,
+        providerKeys,
+        cluster,
+        citationById,
+      });
+      if (completedCitationIds.length === 0) {
+        return [];
+      }
 
       return [
         {
@@ -81,13 +99,14 @@ export const normalizeTopStories = (
           storyClusterId,
           interestIds: uniqueNonEmptyStrings([
             ...story.interestIds,
-            ...(cluster?.interestIds ?? []),
+            ...cluster.interestIds,
           ]),
-          providerKeys: uniqueNonEmptyStrings([
-            ...story.providerKeys,
-            ...(cluster?.providerKeys ?? []),
-          ]),
-          citationIds,
+          providerKeys: providerKeysCoveredByCitations(
+            providerKeys,
+            completedCitationIds,
+            citationById,
+          ),
+          citationIds: completedCitationIds,
         },
       ];
     });
@@ -144,6 +163,58 @@ const clusterIdsFromCitations = (
       return clusterId === undefined ? [] : [clusterId];
     }),
   );
+
+const completeClusterCitationCoverage = (params: {
+  readonly citationIds: readonly string[];
+  readonly providerKeys: readonly string[];
+  readonly cluster: StoryCluster;
+  readonly citationById: ReadonlyMap<string, ReaderSummaryCitation>;
+}): readonly string[] => {
+  const clusterFeedItemIds = new Set([
+    params.cluster.representativeFeedItemId,
+    ...params.cluster.duplicateFeedItemIds,
+  ]);
+  const clusterCitationIds = [...params.citationById.values()]
+    .filter((citation) => clusterFeedItemIds.has(citation.feedItemId))
+    .map((citation) => citation.citationId);
+  const candidateCitationIds = uniqueNonEmptyStrings([
+    ...params.citationIds.filter((citationId) =>
+      clusterCitationIds.includes(citationId),
+    ),
+    ...clusterCitationIds,
+  ]);
+  const coverageCitationIds = params.providerKeys.flatMap((providerKey) => {
+    const citationId = candidateCitationIds.find(
+      (candidateId) =>
+        params.citationById.get(candidateId)?.providerKey === providerKey,
+    );
+
+    return citationId === undefined ? [] : [citationId];
+  });
+
+  return uniqueNonEmptyStrings([
+    ...coverageCitationIds,
+    ...candidateCitationIds,
+  ]).slice(0, maximumTopStoryCitationCount);
+};
+
+const providerKeysCoveredByCitations = (
+  providerKeys: readonly string[],
+  citationIds: readonly string[],
+  citationById: ReadonlyMap<string, ReaderSummaryCitation>,
+): readonly string[] => {
+  const citedProviderKeys = new Set(
+    citationIds.flatMap((citationId) => {
+      const providerKey = citationById.get(citationId)?.providerKey;
+
+      return providerKey === undefined ? [] : [providerKey];
+    }),
+  );
+
+  return providerKeys.filter((providerKey) =>
+    citedProviderKeys.has(providerKey),
+  );
+};
 
 const normalizeTopStory = (
   value: Record<string, unknown>,
@@ -231,7 +302,10 @@ const fallbackTopStories = (
             ...cluster.providerKeys,
             leadEvidence.providerKey,
           ]),
-          citationIds: uniqueNonEmptyStrings(citationIds).slice(0, 4),
+          citationIds: uniqueNonEmptyStrings(citationIds).slice(
+            0,
+            maximumTopStoryCitationCount,
+          ),
         },
       ];
     })
