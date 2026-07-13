@@ -111,7 +111,11 @@ type ProductionDayReport = {
 const outputPath = "ops/evals/reader-summary-production-day-run.v1.json";
 const update = process.argv.includes("--update");
 const artifactOnly = process.argv.includes("--artifact-only");
-const skipLiveCollection = process.argv.includes("--skip-live-collection");
+const reuseExistingArtifacts = process.argv.includes(
+  "--reuse-existing-artifacts",
+);
+const skipLiveCollection =
+  process.argv.includes("--skip-live-collection") || reuseExistingArtifacts;
 const allowDegraded = process.argv.includes("--allow-degraded");
 const allowHistorical = process.argv.includes("--allow-historical");
 const collectionDate = artifactOnly ? "1970-01-01" : resolveCollectionDate();
@@ -204,45 +208,49 @@ async function main(): Promise<void> {
     ]),
   );
 
-  const summaryStep = runNpm(
-    "durable-reader-summary",
-    ["run", "capture:durable-reader-summary"],
-    {
-      DATABASE_URL: yesterdaySocialQualityDatabaseUrl(),
-      DURABLE_READER_SUMMARY_MODEL: summaryModel,
-      AGENT_RUNTIME_READER_SUMMARY_MODEL: "gpt-5.5",
-      AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT: "xhigh",
-      AGENT_RUNTIME_READER_SUMMARY_TIMEOUT_MS: String(
-        READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.summaryModelTimeoutMs,
-      ),
-      AGENT_RUNTIME_READER_SUMMARY_STORY_RELATION_VERIFIER_TIMEOUT_MS: String(
-        READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.storyRelationTimeoutMs,
-      ),
-      AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_TIMEOUT_MS: String(
-        READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.topicLabelerTimeoutMs,
-      ),
-      AGENT_RUNTIME_READER_SUMMARY_TOPIC_RELATION_VERIFIER_TIMEOUT_MS: String(
-        READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.topicRelationTimeoutMs,
-      ),
-      AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_MAX_CANDIDATES: "30",
-      DURABLE_READER_SUMMARY_TOPIC_LABELER: topicLabeler,
-      DURABLE_READER_SUMMARY_TENANT_ID: scope.tenantId,
-      DURABLE_READER_SUMMARY_WORKSPACE_ID: scope.workspaceId,
-      DURABLE_READER_SUMMARY_CADENCE: "daily",
-      DURABLE_READER_SUMMARY_PERIOD_STARTED_AT: periodStartedAt,
-      DURABLE_READER_SUMMARY_PERIOD_ENDED_AT: periodEndedAt,
-      DURABLE_READER_SUMMARY_MAX_EVIDENCE_ITEMS: "120",
-      DURABLE_READER_SUMMARY_MAX_STORIES: "15",
-      DURABLE_READER_SUMMARY_EVIDENCE_PATH: nextEvidencePath,
-      DURABLE_READER_SUMMARY_FRONTEND_FIXTURE_PATH: nextFrontendFixturePath,
-      DURABLE_READER_SUMMARY_REJECTED_TOPIC_MAP_PATH: join(
-        runtimeArtifactDirectory,
-        `rejected-topic-map-${collectionDate}.v1.json`,
-      ),
-    },
-  );
+  const summaryStep = reuseExistingArtifacts
+    ? existingSummaryArtifactStep()
+    : runNpm(
+        "durable-reader-summary",
+        ["run", "capture:durable-reader-summary"],
+        {
+          DATABASE_URL: yesterdaySocialQualityDatabaseUrl(),
+          DURABLE_READER_SUMMARY_MODEL: summaryModel,
+          AGENT_RUNTIME_READER_SUMMARY_MODEL: "gpt-5.5",
+          AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT: "xhigh",
+          AGENT_RUNTIME_READER_SUMMARY_TIMEOUT_MS: String(
+            READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.summaryModelTimeoutMs,
+          ),
+          AGENT_RUNTIME_READER_SUMMARY_STORY_RELATION_VERIFIER_TIMEOUT_MS:
+            String(
+              READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.storyRelationTimeoutMs,
+            ),
+          AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_TIMEOUT_MS: String(
+            READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.topicLabelerTimeoutMs,
+          ),
+          AGENT_RUNTIME_READER_SUMMARY_TOPIC_RELATION_VERIFIER_TIMEOUT_MS:
+            String(
+              READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.topicRelationTimeoutMs,
+            ),
+          AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_MAX_CANDIDATES: "30",
+          DURABLE_READER_SUMMARY_TOPIC_LABELER: topicLabeler,
+          DURABLE_READER_SUMMARY_TENANT_ID: scope.tenantId,
+          DURABLE_READER_SUMMARY_WORKSPACE_ID: scope.workspaceId,
+          DURABLE_READER_SUMMARY_CADENCE: "daily",
+          DURABLE_READER_SUMMARY_PERIOD_STARTED_AT: periodStartedAt,
+          DURABLE_READER_SUMMARY_PERIOD_ENDED_AT: periodEndedAt,
+          DURABLE_READER_SUMMARY_MAX_EVIDENCE_ITEMS: "120",
+          DURABLE_READER_SUMMARY_MAX_STORIES: "15",
+          DURABLE_READER_SUMMARY_EVIDENCE_PATH: nextEvidencePath,
+          DURABLE_READER_SUMMARY_FRONTEND_FIXTURE_PATH: nextFrontendFixturePath,
+          DURABLE_READER_SUMMARY_REJECTED_TOPIC_MAP_PATH: join(
+            runtimeArtifactDirectory,
+            `rejected-topic-map-${collectionDate}.v1.json`,
+          ),
+        },
+      );
   steps.push(summaryStep);
-  if (summaryStep.status === "passed") {
+  if (!reuseExistingArtifacts && summaryStep.status === "passed") {
     replaceArtifact(nextEvidencePath, evidencePath);
     replaceArtifact(nextFrontendFixturePath, frontendFixturePath);
   } else {
@@ -373,6 +381,9 @@ function replaceArtifact(sourcePath: string, targetPath: string): void {
 }
 
 function shouldRunCleanDayE2e(): boolean {
+  if (reuseExistingArtifacts) {
+    return true;
+  }
   if (skipLiveCollection) {
     return false;
   }
@@ -380,6 +391,18 @@ function shouldRunCleanDayE2e(): boolean {
     return true;
   }
   return collectionDate >= new Date().toISOString().slice(0, 10);
+}
+
+function existingSummaryArtifactStep(): StepReport {
+  const artifactExists = existsSync(evidencePath);
+
+  return {
+    id: "durable-reader-summary",
+    command: "reuse persisted durable reader summary artifact",
+    status: artifactExists ? "skipped" : "failed",
+    durationMs: 0,
+    exitCode: artifactExists ? null : 1,
+  };
 }
 
 function buildReport(params: {
