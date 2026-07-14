@@ -236,4 +236,84 @@ describe("DefaultSourceQueryPlanRuntimeCompiler", () => {
       },
     });
   });
+
+  it("keeps configured X query lanes when the planner adds narrower lanes", () => {
+    const compiler = new DefaultSourceQueryPlanRuntimeCompiler();
+
+    const result = compiler.compile({
+      providerKey: "x-twitter",
+      originalSourceQuery: { mode: "search", query: "AI coding agents" },
+      runtimeConfig: {
+        maxItems: 80,
+        maxItemsPerQuery: 15,
+        searchQueries: ["AI coding agents", "MCP OR RAG", "TypeScript OR Rust"],
+        searchQueryBudgets: [{ query: "MCP OR RAG", maxItems: 20 }],
+        sourceQueryPlanner: { maxSearchQueries: 4 },
+      },
+      plan: {
+        plannerId: "test-planner",
+        intent: {
+          topic: "AI coding agents",
+          sourceKeys: ["x-twitter"],
+        },
+        warnings: [],
+        lanes: [
+          {
+            laneId: "x-twitter:general:ai-coding-agents",
+            sourceKey: "x-twitter",
+            kind: "general",
+            operation: "search",
+            query: "  ai   coding agents ",
+            priority: 100,
+            maxItems: 40,
+            reason: "primary topic search",
+          },
+          {
+            laneId: "x-twitter:search-variant:claude-codex",
+            sourceKey: "x-twitter",
+            kind: "search_variant",
+            operation: "search",
+            query: '"Claude Code" OR "OpenAI Codex"',
+            priority: 90,
+            maxItems: 10,
+            reason: "planner expansion",
+          },
+          {
+            laneId: "x-twitter:search-variant:security",
+            sourceKey: "x-twitter",
+            kind: "search_variant",
+            operation: "search",
+            query: '"AI security" OR cybersecurity',
+            priority: 80,
+            maxItems: 10,
+            reason: "planner expansion beyond the configured cap",
+          },
+        ],
+      },
+    });
+
+    expect(result).toMatchObject({
+      applied: true,
+      warnings: ["source_query_planner.x_search_queries_capped"],
+      sourceQuery: {
+        query: "AI coding agents",
+        parameters: {
+          maxItems: 80,
+          maxSearchQueries: 4,
+          searchQueries: [
+            "AI coding agents",
+            "MCP OR RAG",
+            "TypeScript OR Rust",
+            '"Claude Code" OR "OpenAI Codex"',
+          ],
+          searchQueryBudgets: [
+            { query: "AI coding agents", maxItems: 40 },
+            { query: "MCP OR RAG", maxItems: 20 },
+            { query: "TypeScript OR Rust", maxItems: 15 },
+            { query: '"Claude Code" OR "OpenAI Codex"', maxItems: 10 },
+          ],
+        },
+      },
+    });
+  });
 });

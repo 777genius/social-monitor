@@ -48,6 +48,48 @@ describe("runTargetedProviderCollection", () => {
     expect(calls).toBe(3);
   });
 
+  it("stops a successful provider before repeating an identical retry plan", async () => {
+    let calls = 0;
+    const outcomes = await runTargetedProviderCollection({
+      targets: ["x-twitter"],
+      retryBudget: 2,
+      async collect(provider): Promise<Result> {
+        calls += 1;
+        return { provider, disposition: "immediate", accepted: 17 };
+      },
+      retryDisposition: (result) => result.disposition,
+      retryPlanKey: () => "same-x-plan",
+      stopDuplicatePlanRetry: (result) => (result.accepted ?? 0) > 0,
+    });
+
+    expect(calls).toBe(1);
+    expect(outcomes[0]?.attempts).toHaveLength(1);
+    expect(outcomes[0]?.retryStopReason).toBe("duplicate_plan");
+  });
+
+  it("allows one identical-plan retry after a failed attempt", async () => {
+    let calls = 0;
+    const outcomes = await runTargetedProviderCollection({
+      targets: ["x-twitter"],
+      retryBudget: 2,
+      async collect(provider, attemptNumber): Promise<Result> {
+        calls += 1;
+        return {
+          provider,
+          disposition: "immediate",
+          accepted: attemptNumber === 1 ? 0 : 17,
+        };
+      },
+      retryDisposition: (result) => result.disposition,
+      retryPlanKey: () => "same-x-plan",
+      stopDuplicatePlanRetry: (result) => (result.accepted ?? 0) > 0,
+    });
+
+    expect(calls).toBe(2);
+    expect(outcomes[0]?.attempts).toHaveLength(2);
+    expect(outcomes[0]?.retryStopReason).toBe("duplicate_plan");
+  });
+
   it("lets callers keep a useful result when a later retry is rate limited", async () => {
     const outcomes = await runTargetedProviderCollection({
       targets: ["x-twitter"],

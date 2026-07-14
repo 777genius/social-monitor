@@ -76,6 +76,10 @@ import {
 import { runTargetedProviderCollection } from "./lib/targeted-provider-collection";
 import { selectPreferredProviderScanResult } from "./lib/provider-scan-result-selection";
 import {
+  successfulXCollectionRetryPlanKey,
+  shouldStopSuccessfulDuplicateXRetry,
+} from "./lib/x-collection-retry-policy";
+import {
   providerMeetsProductionBlockingPolicy,
   recalculateProductionBlockingPolicyGates,
 } from "./lib/production-collection-quality-policy";
@@ -295,11 +299,16 @@ async function executeTargetScans(
         ? "none"
         : result.observability.slo.retryDisposition,
     selectPreferredResult: selectPreferredProviderScanResult,
+    retryPlanKey: ({ target }) => successfulXCollectionRetryPlanKey(target),
+    stopDuplicatePlanRetry: shouldStopSuccessfulDuplicateXRetry,
   });
 
   return outcomes.map((outcome) => ({
     ...outcome.result,
     attemptCount: outcome.attempts.length,
+    ...(outcome.retryStopReason === undefined
+      ? {}
+      : { retryStopReason: outcome.retryStopReason }),
   }));
 }
 

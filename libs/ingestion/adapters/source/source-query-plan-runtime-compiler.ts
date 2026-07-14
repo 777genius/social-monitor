@@ -16,6 +16,7 @@ import {
   readRecord,
   readString,
 } from "./source-runtime-config-readers";
+import { mergeXRuntimeQueryBudgets } from "./x-source-query-plan-runtime-budget";
 
 export type SourceQueryPlannerRuntimeCompilation = {
   readonly sourceQuery: SourceQuery;
@@ -147,9 +148,7 @@ const compileRedditPlannedQuery = (params: {
     params.runtimeConfig,
   );
   const scanPasses = mergeRedditScanPasses(
-    scanLanes.flatMap((lane) =>
-      redditScanPassForLane(lane, allowedSubreddits),
-    ),
+    scanLanes.flatMap((lane) => redditScanPassForLane(lane, allowedSubreddits)),
     baselineScanPasses,
   );
   const primaryLane = scanLanes[0];
@@ -184,12 +183,23 @@ const compileXTwitterPlannedQuery = (params: {
   const sourceLanes = executableLanes(params.plan, "x-twitter").filter((lane) =>
     ["search", "account_feed", "mention_search"].includes(lane.operation),
   );
-  const maxQueries =
+  const maxQueries = Math.min(
     readOptionalPositiveInteger(
       readRecord(params.runtimeConfig?.sourceQueryPlanner)?.maxSearchQueries ??
         params.runtimeConfig?.maxSearchQueries,
-    ) ?? 16;
-  const queryBudgets = xSearchQueryBudgets(sourceLanes, maxQueries);
+    ) ?? 16,
+    16,
+  );
+  const plannedQueryBudgets = xSearchQueryBudgets(
+    sourceLanes,
+    sourceLanes.length,
+  );
+  const mergedQueryBudgets = mergeXRuntimeQueryBudgets(
+    plannedQueryBudgets,
+    params.runtimeConfig,
+    maxQueries,
+  );
+  const queryBudgets = mergedQueryBudgets.budgets;
   const searchQueries = queryBudgets.map((budget) => budget.query);
   const primaryLane = sourceLanes[0];
 
@@ -203,9 +213,9 @@ const compileXTwitterPlannedQuery = (params: {
   return {
     sourceQuery: {
       mode: "search",
-      query: primaryLane.query,
+      query: queryBudgets[0]?.query ?? primaryLane.query,
       parameters: compactRuntimeConfig({
-        maxItems: totalMaxItems(sourceLanes),
+        maxItems: mergedQueryBudgets.maxItems,
         maxSearchQueries: searchQueries.length,
         searchQueries,
         searchQueryBudgets: queryBudgets.map((budget) => ({
@@ -214,10 +224,9 @@ const compileXTwitterPlannedQuery = (params: {
         })),
       }),
     },
-    warnings:
-      sourceLanes.length > searchQueries.length
-        ? ["source_query_planner.x_search_queries_capped"]
-        : [],
+    warnings: mergedQueryBudgets.capped
+      ? ["source_query_planner.x_search_queries_capped"]
+      : [],
     applied: true,
   };
 };

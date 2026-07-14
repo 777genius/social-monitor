@@ -48,6 +48,7 @@ export type CleanRealDayCollectionReport = {
     readonly providerKey: CleanRealDayCollectionProviderKey;
     readonly bindingFingerprint: string;
     readonly attemptCount: number;
+    readonly retryStopReason?: "duplicate_plan";
     readonly status: "succeeded" | "failed" | "skipped";
     readonly fetched: number;
     readonly inserted: number;
