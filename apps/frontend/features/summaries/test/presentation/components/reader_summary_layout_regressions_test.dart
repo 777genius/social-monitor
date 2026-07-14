@@ -14,7 +14,7 @@ import '../../support/mixed_source_summaries_test_fixtures.dart';
 import '../../support/summaries_test_fixtures.dart';
 
 void main() {
-  testWidgets('wraps top post preview media at the start of the summary text', (
+  testWidgets('lays top post preview beside the full text body on desktop', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(1280, 900);
@@ -24,40 +24,7 @@ void main() {
       tester.view.resetDevicePixelRatio();
     });
 
-    final summary = const SummaryMapper().readerSummaryToDomain(
-      readerSummaryApiDto(
-        content: readerSummaryContentApiDto(
-          topReads: const [
-            TopReadApiDto(
-              title: 'X post with launch screenshot',
-              providerKey: 'x-twitter',
-              reason: 'The original source includes a real post image.',
-              matchedInterestIds: ['ai-developer-tools'],
-              signalScore: 3.2,
-              confidence: TopReadConfidenceApiDto(
-                level: 'high',
-                score: 0.81,
-                rationale: 'Source item has direct media evidence.',
-              ),
-              providerMetrics: [
-                ProviderMetricApiDto(label: 'Likes', value: '2,351'),
-              ],
-              canonicalUrl: 'https://x.com/example/status/123',
-              previewMedia: PreviewMediaApiDto(
-                kind: 'image',
-                url: 'https://cdn.example.test/post-image.jpg',
-                sourceUrl: 'https://x.com/example/status/123',
-                altText: 'Launch screenshot',
-              ),
-              citationIds: ['media-citation'],
-            ),
-          ],
-        ),
-        citations: [
-          summaryCitationApiDto(id: 'media-citation', providerKey: 'x-twitter'),
-        ],
-      ),
-    );
+    final summary = _summaryWithPreview();
 
     await tester.pumpWidget(_TestApp(summary: summary));
     await tester.pumpAndSettle();
@@ -69,22 +36,84 @@ void main() {
       findsOneWidget,
     );
 
-    final wrapFinder = find.byKey(
-      const ValueKey('reader-summary-top-post-preview-wrap'),
+    final inlineFinder = find.byKey(
+      const ValueKey('reader-summary-top-post-preview-inline'),
     );
-    expect(wrapFinder, findsOneWidget);
+    expect(inlineFinder, findsOneWidget);
 
     final imageTopLeft = tester.getTopLeft(
-      find.descendant(of: wrapFinder, matching: find.byType(Image)),
+      find.descendant(of: inlineFinder, matching: find.byType(Image)),
+    );
+    final titleTopLeft = tester.getTopLeft(
+      find.descendant(
+        of: inlineFinder,
+        matching: find.text('X post with launch screenshot'),
+      ),
     );
     final reasonTopLeft = tester.getTopLeft(
       find.descendant(
-        of: wrapFinder,
+        of: inlineFinder,
         matching: find.text('The original source includes a real post image'),
       ),
     );
+    expect(imageTopLeft.dx, lessThan(titleTopLeft.dx));
     expect(imageTopLeft.dx, lessThan(reasonTopLeft.dx));
-    expect((imageTopLeft.dy - reasonTopLeft.dy).abs(), lessThan(8));
+    expect((imageTopLeft.dy - titleTopLeft.dy).abs(), lessThan(8));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('stacks top post preview below text on a narrow viewport', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    final summary = _summaryWithPreview();
+
+    await tester.pumpWidget(_TestApp(summary: summary));
+    await tester.pumpAndSettle();
+
+    final stackedFinder = find.byKey(
+      const ValueKey('reader-summary-top-post-preview-stacked'),
+    );
+    expect(stackedFinder, findsOneWidget);
+
+    final reasonBottom = tester.getBottomLeft(
+      find.descendant(
+        of: stackedFinder,
+        matching: find.text('The original source includes a real post image'),
+      ),
+    );
+    final imageTop = tester.getTopLeft(
+      find.descendant(of: stackedFinder, matching: find.byType(Image)),
+    );
+    expect(imageTop.dy, greaterThan(reasonBottom.dy));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('keeps the top post row stable at the desktop breakpoint', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1024, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    await tester.pumpWidget(_TestApp(summary: _summaryWithPreview()));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('reader-summary-top-post-0')),
+      findsOneWidget,
+    );
+    expect(find.byType(Image), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('uses selected evidence when collected coverage is stale zero', (
@@ -239,6 +268,43 @@ void main() {
       greaterThan(tester.getTopLeft(rss).dx),
     );
   });
+}
+
+ReaderSummary _summaryWithPreview() {
+  return const SummaryMapper().readerSummaryToDomain(
+    readerSummaryApiDto(
+      content: readerSummaryContentApiDto(
+        topReads: const [
+          TopReadApiDto(
+            title: 'X post with launch screenshot',
+            providerKey: 'x-twitter',
+            reason: 'The original source includes a real post image.',
+            matchedInterestIds: ['ai-developer-tools'],
+            signalScore: 3.2,
+            confidence: TopReadConfidenceApiDto(
+              level: 'high',
+              score: 0.81,
+              rationale: 'Source item has direct media evidence.',
+            ),
+            providerMetrics: [
+              ProviderMetricApiDto(label: 'Likes', value: '2,351'),
+            ],
+            canonicalUrl: 'https://x.com/example/status/123',
+            previewMedia: PreviewMediaApiDto(
+              kind: 'image',
+              url: 'https://cdn.example.test/post-image.jpg',
+              sourceUrl: 'https://x.com/example/status/123',
+              altText: 'Launch screenshot',
+            ),
+            citationIds: ['media-citation'],
+          ),
+        ],
+      ),
+      citations: [
+        summaryCitationApiDto(id: 'media-citation', providerKey: 'x-twitter'),
+      ],
+    ),
+  );
 }
 
 class _TestApp extends StatelessWidget {

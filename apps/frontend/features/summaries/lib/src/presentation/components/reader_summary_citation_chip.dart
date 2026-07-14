@@ -336,7 +336,7 @@ class _TopPostReferenceCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    _TopPostTextBody(item: read, floatPreview: false),
+                    _TopPostTextBody(item: read),
                     if (snippet != null) ...[
                       const SizedBox(height: AppSpacing.xs),
                       Text(
