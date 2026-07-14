@@ -486,8 +486,6 @@ function buildReport(params: {
     xAccountPoolReported:
       collectionQuality?.xAccountPool?.totalAccountCount !== undefined &&
       collectionQuality.xAccountPool.eligibleAccountCount !== undefined,
-    xAccountPoolHasEligibleAccount:
-      (collectionQuality?.xAccountPool?.eligibleAccountCount ?? 0) > 0,
     reportDateMatchesRequestedDate:
       collectionDate === periodStartedAt.slice(0, 10),
     noRawSecretFragments: true,
