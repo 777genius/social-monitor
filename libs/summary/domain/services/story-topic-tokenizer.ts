@@ -75,6 +75,10 @@ export const storyTopicSpecificProductTokens = (
       specificProductAnchorTokens.has(token) || isModelVersionToken(token),
   );
 
+export const storyTopicModelVersionTokens = (
+  tokens: readonly string[],
+): readonly string[] => tokens.filter(isModelVersionToken);
+
 export const storyTopicEventTokens = (
   tokens: readonly string[],
 ): readonly string[] => tokens.filter((token) => eventAnchorTokens.has(token));

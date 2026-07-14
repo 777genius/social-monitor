@@ -7,6 +7,7 @@ import {
   storyPrimaryClaimFacet,
   storyTopicAnchorTokens,
   storyTopicEventTokens,
+  storyTopicModelVersionTokens,
   storyTopicSimilarity,
   storyTopicSpecificProductTokens,
   storyTopicTokens,
@@ -84,6 +85,10 @@ export const isDeterministicCrossProviderStoryMatch = (
     storyTopicEventTokens(itemTokens),
     storyTopicEventTokens(headTokens),
   );
+  const sharedModelVersionTokens = sharedStoryTopicTokenCount(
+    storyTopicModelVersionTokens(itemTokens),
+    storyTopicModelVersionTokens(headTokens),
+  );
   const sharedNonAnchorTokens = sharedNonAnchorStoryTopicTokenCount(
     itemTokens,
     headTokens,
@@ -97,6 +102,7 @@ export const isDeterministicCrossProviderStoryMatch = (
   const productEventMatch =
     sharedSpecificProductTokens > 0 &&
     sharedEventTokens > 0 &&
+    (sharedNonAnchorTokens > 0 || sharedModelVersionTokens > 0) &&
     sharedTokens >= policy.crossSourceMinSharedTopicTokens;
 
   return semanticMatch || productEventMatch;
@@ -228,6 +234,10 @@ export const isVerifiedStoryRelationGuardEligible = (
     itemTokens,
     candidateTokens,
   );
+  const sharedModelVersionTokenCount = sharedStoryTopicTokenCount(
+    storyTopicModelVersionTokens(itemTokens),
+    storyTopicModelVersionTokens(candidateTokens),
+  );
   const hasConcreteSubject =
     sharedEntityAnchorTokenCount > 0 ||
     sharedStoryTopicTokenCount(
@@ -235,13 +245,10 @@ export const isVerifiedStoryRelationGuardEligible = (
       storyTopicSpecificProductTokens(candidateTokens),
     ) > 0 ||
     sharedNonAnchorTokenCount >= MIN_VERIFIED_SHARED_SUBJECT_TOKENS;
-  const sharedStoryEventFacet = hasSharedStoryEventFacet(
-    item,
-    candidate,
-  );
+  const sharedStoryEventFacet = hasSharedStoryEventFacet(item, candidate);
   const hasConcreteContext =
-    sharedEventTokens.size > 0 ||
     sharedNonAnchorTokenCount >= MIN_VERIFIED_SHARED_CONTEXT_TOKENS ||
+    (sharedEventTokens.size > 0 && sharedModelVersionTokenCount > 0) ||
     sharedStoryEventFacet;
   const minimumSharedTopicTokens = sharedStoryEventFacet
     ? MIN_VERIFIED_SHARED_EVENT_FACET_TOPIC_TOKENS

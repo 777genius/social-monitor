@@ -3,7 +3,11 @@ import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 import type { SummaryEvidenceItem } from "../value-objects/summary-evidence-item";
 import { STORY_RANKING_POLICY_V1 } from "../policies/story-ranking-policy";
 import { StoryClusteringService } from "./story-clustering.service";
-import { isVerifiedStoryRelationGuardEligible } from "./story-cluster-membership";
+import {
+  isDeterministicCrossProviderStoryMatch,
+  isVerifiedStoryRelationGuardEligible,
+  verifiedStoryRelationPairKey,
+} from "./story-cluster-membership";
 import {
   approvedStoryRelationPairs,
   buildStoryRelationCandidates,
@@ -96,6 +100,53 @@ describe("real reader-summary clustering regressions", () => {
     expect(verified.clusters).toHaveLength(1);
     expect(verified.clusters[0]?.duplicateFeedItemIds).toHaveLength(2);
   });
+
+  it("keeps unrelated Jul 13 Claude Code releases in separate stories", () => {
+    const items = jul13ClaudeCodeReleaseEvidence();
+    const clusterer = new StoryClusteringService({
+      now: () => new Date("2026-07-14T00:05:00.000Z"),
+    });
+    const deterministic = clusterer.cluster({ identity, items, limit: 10 });
+    const pairs = itemPairs(items);
+
+    expect(
+      pairs.map(([left, right]) =>
+        isDeterministicCrossProviderStoryMatch(
+          left,
+          right,
+          STORY_RANKING_POLICY_V1,
+        ),
+      ),
+    ).toEqual([false, false, false]);
+    expect(
+      pairs.map(([left, right]) =>
+        isVerifiedStoryRelationGuardEligible(
+          left,
+          right,
+          STORY_RANKING_POLICY_V1,
+        ),
+      ),
+    ).toEqual([false, false, false]);
+    expect(deterministic.clusters).toHaveLength(3);
+    expect(
+      buildStoryRelationCandidates({
+        selection: deterministic,
+        evidence: items,
+      }),
+    ).toEqual([]);
+
+    const forced = clusterer.cluster({
+      identity,
+      items,
+      limit: 10,
+      verifiedStoryRelationPairs: new Set(
+        pairs.map(([left, right]) =>
+          verifiedStoryRelationPairKey(left.feedItemId, right.feedItemId),
+        ),
+      ),
+    });
+    expect(forced.clusters).toHaveLength(3);
+  });
 });
 
 const itemPairs = (
@@ -136,6 +187,38 @@ const jSpaceEvidence = (): readonly SummaryEvidenceItem[] => [
       "X post by @AnthropicAI: The J-space lets us read audit and shape what Claude is actively thinking about",
     bodyPreview:
       "The J-space provides tools for keeping models trustworthy. Read the full paper.",
+  }),
+];
+
+const jul13ClaudeCodeReleaseEvidence = (): readonly SummaryEvidenceItem[] => [
+  evidence({
+    id: "2ce5373f-6539-47d9-8965-7b6dd0eefde5",
+    providerKey: "x-twitter",
+    authorHandle: "cblakerouse",
+    publishedAt: "2026-07-13T15:59:18.000Z",
+    title:
+      "X post by @cblakerouse: Introducing Keystroke: an n8n alternative built for Cursor, Claude Code, Codex. Here's how it...",
+    bodyPreview:
+      "Introducing Keystroke: an n8n alternative built for Cursor, Claude Code, Codex. Here's how it works.",
+  }),
+  evidence({
+    id: "a2ba5b0b-f37e-41e4-a409-65adaf23d0fc",
+    providerKey: "reddit",
+    authorHandle: "Shinoken__",
+    publishedAt: "2026-07-13T21:56:04.000Z",
+    title:
+      "10 days ago I posted my first Claude-built FPS here. 90 releases later, this is what it looks like.",
+    bodyPreview:
+      "Ten days ago I shared the first playable version of Voxstrike here. Since release 2026.4.0, Claude and Claude Code have shipped 90 releases across 277 commits.",
+  }),
+  evidence({
+    id: "d7d2d5d2-22d6-495b-92d9-ed79037cbe1c",
+    providerKey: "hacker-news",
+    authorHandle: "softwaredoug",
+    publishedAt: "2026-07-13T21:43:51.000Z",
+    title:
+      "A Study of Microsoft's Early 2026 Rollout of Claude Code and GitHub Copilot CLI",
+    bodyPreview: "",
   }),
 ];
 
