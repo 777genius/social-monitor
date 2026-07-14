@@ -1,0 +1,178 @@
+{
+  "schemaVersion": 1,
+  "artifactFormat": "reader-summary-editorial-quality-fixture-v1",
+  "fixtureKind": "sanitized_public_artifact",
+  "days": [
+    {
+      "collectionDate": "2026-07-12",
+      "input": {
+        "headline": "AI coding tools face cost and access scrutiny as builders test cross-agent workflows",
+        "coverageMode": "daily_synthesis",
+        "topPostTitles": [
+          "Reports say Apple sued OpenAI over alleged trade secret theft",
+          "Reddit debate over a Claude access extension",
+          "Claude Code sends 33k tokens before reading the prompt; OpenCode sends 7k",
+          "Obsidian founder's Claude Code skills for file-based notes",
+          "CLIProxyAPI route from Claude Code to GPT-5.6 Sol",
+          "AI boosts research careers but narrows the span of ideas explored: study",
+          "Migrating a production AI agent to GPT-5.6: 2.2x faster, 27% cheaper",
+          "Claude Code May–July 2026 weekly limits promotion"
+        ],
+        "citations": [
+          {
+            "citationId": "c1",
+            "providerKey": "reddit",
+            "storyClusterId": "story:url:news.ycombinator.com/item/48882495"
+          },
+          {
+            "citationId": "c131",
+            "providerKey": "github-trending-page"
+          },
+          {
+            "citationId": "c3",
+            "providerKey": "rss",
+            "storyClusterId": "story:url:news.ycombinator.com/item/48882495"
+          },
+          {
+            "citationId": "c6",
+            "providerKey": "hacker-news",
+            "storyClusterId": "story:url:news.ycombinator.com/item/48883275"
+          },
+          {
+            "citationId": "c7",
+            "providerKey": "hacker-news",
+            "storyClusterId": "story:url:news.ycombinator.com/item/48881043"
+          },
+          {
+            "citationId": "c9",
+            "providerKey": "x-twitter",
+            "storyClusterId": "story:url:x.com/thsottiaux/status/2076119366647894371"
+          }
+        ],
+        "narrativeSections": [
+          {
+            "kind": "lead",
+            "title": "Cost and workflow pressure",
+            "text": "AI coding workflows are being judged less by raw capability and more by usage economics, setup friction and downstream quality. A Hacker News discussion amplified a measured claim that Claude Code sent 33k tokens before reading a prompt while OpenCode sent 7k, framing agent harness overhead as a real cost issue for daily builders. At the same time, X/Twitter posts showed developers routing GPT-5.6 Sol into Claude Code, and a research-career study discussion kept attention on whether AI productivity narrows the ideas users explore, not just how fast it ships.",
+            "citationIds": ["c6", "c9", "c7"]
+          },
+          {
+            "kind": "secondary_signal",
+            "title": "Apple/OpenAI allegation",
+            "text": "Reports and community threads also circulated allegations that Apple sued OpenAI over trade-secret theft, with multiple discussion surfaces reflecting the story. The available evidence here is headlines and discussion, not a primary filing, so the useful signal is market attention to the allegation rather than a confirmed legal finding.",
+            "citationIds": ["c1", "c3"],
+            "storyClusterId": "story:url:news.ycombinator.com/item/48882495"
+          },
+          {
+            "kind": "secondary_signal",
+            "title": "Claude Code interoperability",
+            "text": "Developer chatter around Claude Code also centered on interoperability: one high-engagement X post gave steps for pointing Claude Code at GPT-5.6 Sol through CLIProxyAPI and an alias. Treat it as a workflow experiment that people are trying in public, not confirmation of official support or long-term compatibility.",
+            "citationIds": ["c9"],
+            "storyClusterId": "story:url:x.com/thsottiaux/status/2076119366647894371"
+          },
+          {
+            "kind": "secondary_signal",
+            "title": "Research tradeoff",
+            "text": "The research thread widened the lens beyond coding tools. Hacker News engagement around a study titled \"AI boosts research careers but narrow the span of ideas explored\" points to a broader product question: whether AI systems lift output while making teams converge on fewer ideas.",
+            "citationIds": ["c7"],
+            "storyClusterId": "story:url:news.ycombinator.com/item/48881043"
+          },
+          {
+            "kind": "watch",
+            "title": "GitHub Trending",
+            "text": "- **mattpocock/skills**: +1,161 stars today.",
+            "citationIds": ["c131"]
+          }
+        ],
+        "renderedMarkdown": "AI coding tools face cost and access scrutiny as builders test cross-agent workflows\n\nCost and workflow pressure\n\nAI coding workflows are being judged less by raw capability and more by usage economics, setup friction and downstream quality. A Hacker News discussion amplified a measured claim that Claude Code sent 33k tokens before reading a prompt while OpenCode sent 7k, framing agent harness overhead as a real cost issue for daily builders. At the same time, X/Twitter posts showed developers routing GPT-5.6 Sol into Claude Code, and a research-career study discussion kept attention on whether AI productivity narrows the ideas users explore, not just how fast it ships.\n\nApple/OpenAI allegation\n\nReports and community threads also circulated allegations that Apple sued OpenAI over trade-secret theft, with multiple discussion surfaces reflecting the story. The available evidence here is headlines and discussion, not a primary filing, so the useful signal is market attention to the allegation rather than a confirmed legal finding.\n\nClaude Code interoperability\n\nDeveloper chatter around Claude Code also centered on interoperability: one high-engagement X post gave steps for pointing Claude Code at GPT-5.6 Sol through CLIProxyAPI and an alias. Treat it as a workflow experiment that people are trying in public, not confirmation of official support or long-term compatibility.\n\nResearch tradeoff\n\nThe research thread widened the lens beyond coding tools. Hacker News engagement around a study titled \"AI boosts research careers but narrow the span of ideas explored\" points to a broader product question: whether AI systems lift output while making teams converge on fewer ideas.\n\nGitHub Trending\n\n- **mattpocock/skills**: +1,161 stars today."
+      }
+    },
+    {
+      "collectionDate": "2026-07-13",
+      "input": {
+        "headline": "AI coding workflows expand while pricing and usage limits test trust",
+        "coverageMode": "daily_synthesis",
+        "topPostTitles": [
+          "Dear Anthropic, This Has to STOP.",
+          "Show HN: Clawk – Give coding agents a disposable Linux VM, not your laptop",
+          "ClaudeDevs says Claude Artifacts add public sharing and multiplayer editing",
+          "Current coding models' useful work is under-explained",
+          "Claude Fable theoretical physics problem claim",
+          "Show HN: Nobie – an Excel-compatible runtime for agents and humans",
+          "Samsung Health app threatens data deletion if users opt out AI training",
+          "Reddit user warns 5.6 Sol account flag followed an Excel task"
+        ],
+        "citations": [
+          {
+            "citationId": "c1",
+            "providerKey": "reddit",
+            "storyClusterId": "story:url:reddit.com/r/technology/comments/1uvrko1/anthropic_starts_localizing_claude_pricing_for"
+          },
+          {
+            "citationId": "c121",
+            "providerKey": "github-trending-page"
+          },
+          {
+            "citationId": "c122",
+            "providerKey": "github-trending-page"
+          },
+          {
+            "citationId": "c127",
+            "providerKey": "github-trending-page"
+          },
+          {
+            "citationId": "c4",
+            "providerKey": "hacker-news",
+            "storyClusterId": "story:url:news.ycombinator.com/item/48892859"
+          },
+          {
+            "citationId": "c5",
+            "providerKey": "reddit",
+            "storyClusterId": "story:url:reddit.com/r/claudecode/comments/1uv6ns4/dear_anthropic_this_has_to_stop"
+          },
+          {
+            "citationId": "c6",
+            "providerKey": "x-twitter",
+            "storyClusterId": "story:url:x.com/claudedevs/status/2076789349145092230"
+          }
+        ],
+        "narrativeSections": [
+          {
+            "kind": "lead",
+            "title": "Main signal",
+            "text": "AI coding tools are moving from solo assistant experiments into shared, managed workflows. Hacker News attention around Clawk, a disposable Linux VM for coding agents, points to demand for isolating agent work from personal machines; ClaudeDevs' note that Artifacts now support public sharing and multiplayer editing points the same workflow toward collaboration. At the same time, a high-engagement Claude Code complaint shows user trust is constrained by changing credits, 5-hour limits and weekly quotas. The shared pressure is operational: make agents useful, shareable, predictable and easier to audit without making users manage invisible costs.",
+            "citationIds": ["c4", "c6", "c5"]
+          },
+          {
+            "kind": "secondary_signal",
+            "title": "Claude Artifacts become shareable work objects",
+            "text": "ClaudeDevs said Artifacts can now be publicly shared, edited multiplayer in Claude Code and created with Claude Tag. That makes artifacts less like personal outputs and more like collaborative work objects for handoffs inside teams, though availability details are not expanded in the post.",
+            "citationIds": ["c6"],
+            "storyClusterId": "story:url:x.com/claudedevs/status/2076789349145092230"
+          },
+          {
+            "kind": "secondary_signal",
+            "title": "Claude Code users push back on quota complexity",
+            "text": "The Reddit complaint is customer-experience evidence, not a product announcement. The post objects to changing credits, Sonnet, Opus and Fable usage, 5-hour limits and weekly limits, framing quota tracking as daily stress for paid work and a reason to rethink paid-plan UX.",
+            "citationIds": ["c5"],
+            "storyClusterId": "story:url:reddit.com/r/claudecode/comments/1uv6ns4/dear_anthropic_this_has_to_stop"
+          },
+          {
+            "kind": "secondary_signal",
+            "title": "Claude pricing localization enters the adoption story",
+            "text": "The India pricing item adds a market-expansion angle. The discussion was modest, but the reported claim that India is Claude's biggest market after the US makes localized pricing a practical adoption lever rather than a cosmetic change; final tiers and user impact remain unstated here.",
+            "citationIds": ["c1"],
+            "storyClusterId": "story:url:reddit.com/r/technology/comments/1uvrko1/anthropic_starts_localizing_claude_pricing_for"
+          },
+          {
+            "kind": "watch",
+            "title": "GitHub Trending",
+            "text": "- **OpenCut-app/OpenCut**: +1,229 stars today.\n- **HKUDS/Vibe-Trading**: +1,153 stars today.\n- **Graphify-Labs/graphify**: +1,095 stars today.",
+            "citationIds": ["c121", "c122", "c127"]
+          }
+        ],
+        "renderedMarkdown": "AI coding workflows expand while pricing and usage limits test trust\n\nMain signal\n\nAI coding tools are moving from solo assistant experiments into shared, managed workflows. Hacker News attention around Clawk, a disposable Linux VM for coding agents, points to demand for isolating agent work from personal machines; ClaudeDevs' note that Artifacts now support public sharing and multiplayer editing points the same workflow toward collaboration. At the same time, a high-engagement Claude Code complaint shows user trust is constrained by changing credits, 5-hour limits and weekly quotas. The shared pressure is operational: make agents useful, shareable, predictable and easier to audit without making users manage invisible costs.\n\nClaude Artifacts become shareable work objects\n\nClaudeDevs said Artifacts can now be publicly shared, edited multiplayer in Claude Code and created with Claude Tag. That makes artifacts less like personal outputs and more like collaborative work objects for handoffs inside teams, though availability details are not expanded in the post.\n\nClaude Code users push back on quota complexity\n\nThe Reddit complaint is customer-experience evidence, not a product announcement. The post objects to changing credits, Sonnet, Opus and Fable usage, 5-hour limits and weekly limits, framing quota tracking as daily stress for paid work and a reason to rethink paid-plan UX.\n\nClaude pricing localization enters the adoption story\n\nThe India pricing item adds a market-expansion angle. The discussion was modest, but the reported claim that India is Claude's biggest market after the US makes localized pricing a practical adoption lever rather than a cosmetic change; final tiers and user impact remain unstated here.\n\nGitHub Trending\n\n- **OpenCut-app/OpenCut**: +1,229 stars today.\n- **HKUDS/Vibe-Trading**: +1,153 stars today.\n- **Graphify-Labs/graphify**: +1,095 stars today."
+      }
+    }
+  ]
+}

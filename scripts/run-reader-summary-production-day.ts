@@ -21,6 +21,10 @@ import {
 } from "./lib/yesterday-social-replay-support";
 import { loadDotenvIfPresent } from "./lib/env-file";
 import { READER_SUMMARY_PRODUCTION_RUNTIME_POLICY } from "./lib/reader-summary-production-runtime-policy";
+import {
+  blockedProductionDaySteps,
+  collectionIsReadyForProductionSummary,
+} from "./lib/reader-summary-production-day-collection-barrier";
 
 type StepStatus = "passed" | "failed" | "skipped";
 
@@ -71,6 +75,10 @@ type ProductionDayReport = {
     readonly startedAt: string;
     readonly completedAt: string;
   };
+  readonly failure: {
+    readonly code: "collection_quality_failed";
+    readonly safeMessage: string;
+  } | null;
   readonly summary: {
     readonly evidenceArtifactId: string | null;
     readonly readerSummaryId: string | null;
@@ -173,44 +181,64 @@ async function main(): Promise<void> {
   steps.push(runNpm("migrate", ["run", "migrate:deploy"]));
   const scope = await readProductionDayScope();
 
-  if (skipLiveCollection) {
-    steps.push({
-      id: "collect",
-      command:
-        "npm run run:reader-summary-clean-real-day-collection -- skipped",
-      status: "skipped",
-      durationMs: 0,
-      exitCode: null,
-    });
-  } else {
-    steps.push(
-      runNpm("collect", [
+  const collectionStep: StepReport = skipLiveCollection
+    ? {
+        id: "collect",
+        command:
+          "npm run run:reader-summary-clean-real-day-collection -- skipped",
+        status: "skipped",
+        durationMs: 0,
+        exitCode: null,
+      }
+    : runNpm("collect", [
         "run",
         "run:reader-summary-clean-real-day-collection",
         "--",
         "--update",
         "--date",
         collectionDate,
-      ]),
-    );
-  }
+        ...(allowHistorical ? [] : ["--wait-for-x-readiness"]),
+      ]);
+  steps.push(collectionStep);
 
   mkdirSync(runtimeArtifactDirectory, { recursive: true });
   rmSync(nextEvidencePath, { force: true });
   rmSync(nextFrontendFixturePath, { force: true });
 
-  steps.push(
-    runNpm("collection-quality", [
-      "run",
-      "check:yesterday-social-collection-quality",
-      "--",
-      "--update",
-      "--date",
-      collectionDate,
-      "--write-failed-report",
-      ...(allowHistorical ? ["--allow-historical"] : []),
-    ]),
-  );
+  const collectionQualityStep = runNpm("collection-quality", [
+    "run",
+    "check:yesterday-social-collection-quality",
+    "--",
+    "--update",
+    "--date",
+    collectionDate,
+    "--write-failed-report",
+    ...(allowHistorical ? ["--allow-historical"] : []),
+  ]);
+  steps.push(collectionQualityStep);
+  if (
+    !collectionIsReadyForProductionSummary({
+      liveCollection: !skipLiveCollection,
+      collectionStepStatus: collectionStep.status,
+      collectionQualityStepStatus: collectionQualityStep.status,
+    })
+  ) {
+    const safeMessage =
+      "Production collection quality failed; AI summary was not started";
+    steps.push(...blockedProductionDaySteps(safeMessage));
+    persistProductionDayReport({
+      startedAt,
+      completedAt: new Date(),
+      steps,
+      scope,
+      includeSummaryEvidence: false,
+      failure: {
+        code: "collection_quality_failed",
+        safeMessage,
+      },
+    });
+    throw new Error(safeMessage);
+  }
 
   const summaryStep = reuseExistingArtifacts
     ? existingSummaryArtifactStep()
@@ -328,30 +356,40 @@ async function main(): Promise<void> {
     });
   }
 
-  const completedAt = new Date();
-  const report = buildReport({
+  const report = persistProductionDayReport({
     startedAt,
-    completedAt,
+    completedAt: new Date(),
     steps,
     scope,
+    includeSummaryEvidence: true,
+    failure: null,
   });
+
+  if (!report.blockingPassed) {
+    throw new Error("Reader summary production day run gates failed");
+  }
+}
+
+function persistProductionDayReport(params: {
+  readonly startedAt: Date;
+  readonly completedAt: Date;
+  readonly steps: readonly StepReport[];
+  readonly scope: { readonly tenantId: string; readonly workspaceId: string };
+  readonly includeSummaryEvidence: boolean;
+  readonly failure: ProductionDayReport["failure"];
+}): ProductionDayReport {
+  const report = buildReport(params);
   const serialized = `${JSON.stringify(report, null, 2)}\n`;
 
   mkdirSync(dirname(outputPath), { recursive: true });
   writeFileSync(outputPath, serialized);
-  if (!artifactOnly) {
-    writeFileSync(datedOutputPath, serialized);
-  }
-
+  writeFileSync(datedOutputPath, serialized);
   if (update) {
     console.log(`Updated ${outputPath}`);
     console.log(`Updated ${datedOutputPath}`);
   }
   printStats(report);
-
-  if (!report.blockingPassed) {
-    throw new Error("Reader summary production day run gates failed");
-  }
+  return report;
 }
 
 function runNpm(
@@ -414,6 +452,8 @@ function buildReport(params: {
   readonly completedAt: Date;
   readonly steps: readonly StepReport[];
   readonly scope: { readonly tenantId: string; readonly workspaceId: string };
+  readonly includeSummaryEvidence: boolean;
+  readonly failure: ProductionDayReport["failure"];
 }): ProductionDayReport {
   const collectionQuality = readJsonIfExists<{
     readonly dayWindowAudit?: {
@@ -450,16 +490,18 @@ function buildReport(params: {
       }[];
     };
   }>("ops/evals/yesterday-social-collection-quality-report.v1.json");
-  const durableEvidence = readJsonIfExists<{
-    readonly artifactId?: string;
-    readonly result?: {
-      readonly readerSummaryId?: string;
-      readonly readerSummaryJobId?: string;
-      readonly headline?: string;
-      readonly selectedFeedItemCount?: number;
-      readonly topReadCount?: number;
-    };
-  }>(evidencePath);
+  const durableEvidence = params.includeSummaryEvidence
+    ? readJsonIfExists<{
+        readonly artifactId?: string;
+        readonly result?: {
+          readonly readerSummaryId?: string;
+          readonly readerSummaryJobId?: string;
+          readonly headline?: string;
+          readonly selectedFeedItemCount?: number;
+          readonly topReadCount?: number;
+        };
+      }>(evidencePath)
+    : null;
   const providerCounts = Object.fromEntries(
     collectionQuality?.dayWindowAudit?.providerBreakdown?.map((provider) => [
       provider.providerKey,
@@ -489,6 +531,7 @@ function buildReport(params: {
     reportDateMatchesRequestedDate:
       collectionDate === periodStartedAt.slice(0, 10),
     noRawSecretFragments: true,
+    productionFailureAbsent: params.failure === null,
   };
   const reportWithoutSecretGate = {
     schemaVersion: 1,
@@ -520,6 +563,7 @@ function buildReport(params: {
       startedAt: params.startedAt.toISOString(),
       completedAt: params.completedAt.toISOString(),
     },
+    failure: params.failure,
     summary: {
       evidenceArtifactId: durableEvidence?.artifactId ?? null,
       readerSummaryId: durableEvidence?.result?.readerSummaryId ?? null,
@@ -701,14 +745,14 @@ function printStats(report: ProductionDayReport): void {
       `xAccountEvents=${report.stats.xAccountUsageEventCount ?? "n/a"}`,
     ].join(" | "),
   );
-  for (const account of report.stats.xAccounts) {
+  for (const account of report.stats.xAccounts ?? []) {
     console.log(
       [
         `xAccount=${account.accountFingerprint}`,
         `priority=${account.priorityRank}`,
         `prioritySource=${account.prioritySource}`,
-        `eligible=${account.eligible}`,
-        `ineligibleReasons=${account.ineligibilityReasonCodes.join(",") || "none"}`,
+        `eligible=${account.eligible ?? "n/a"}`,
+        `ineligibleReasons=${account.ineligibilityReasonCodes?.join(",") || "none"}`,
         `requests=${account.dailyRequests}`,
         `tweets=${account.dailyTweets}`,
         `success=${account.passSucceededCount}`,

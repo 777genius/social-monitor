@@ -15,6 +15,7 @@ import {
   selectProviderDiverseRankedEvidence,
 } from "./deterministic-reader-summary-evidence-selection";
 import { buildReaderHeadline } from "./deterministic-reader-summary-headline";
+import { buildDeterministicReaderSummaryNarrative } from "./deterministic-reader-summary-narrative";
 
 const route: ReaderSummaryModelRoute = {
   provider: "deterministic-local",
@@ -150,6 +151,12 @@ export class DeterministicReaderSummaryModelAdapter implements ReaderSummaryMode
       input.evidence.clusters,
       selectedEvidence,
       input.policy.maxStories,
+      [
+        ...(input.coveragePlan.lead === undefined
+          ? []
+          : [input.coveragePlan.lead.clusterId]),
+        ...input.coveragePlan.secondary.map((item) => item.clusterId),
+      ],
     );
     const topStories = topStoryClusters.map((cluster, index) => {
       const representative =
@@ -202,9 +209,17 @@ export class DeterministicReaderSummaryModelAdapter implements ReaderSummaryMode
           })
       : [];
 
+    const headline = buildReaderHeadline(input, selectedEvidence);
+    const executiveSummary = buildExecutiveSummary(input);
+    const narrativeSections = buildDeterministicReaderSummaryNarrative({
+      input,
+      executiveSummary,
+      citationMap,
+      topStories,
+    });
     const draft = {
-      headline: buildReaderHeadline(input, selectedEvidence),
-      executiveSummary: buildExecutiveSummary(input),
+      headline,
+      executiveSummary,
       topStories,
       interestHighlights,
       repeatedSignals,
@@ -234,6 +249,7 @@ export class DeterministicReaderSummaryModelAdapter implements ReaderSummaryMode
 
     const content = buildReaderSummary({
       ...draft,
+      narrativeSections,
       storyClusters: input.evidence.clusters,
       sourceWindow: input.evidence.sourceWindow,
       selectedEvidence: citedEvidence,
@@ -375,6 +391,7 @@ const selectClustersForEvidence = (
   clusters: ReaderSummaryModelInput["evidence"]["clusters"],
   evidence: ReaderSummaryModelInput["evidence"]["selectedEvidence"],
   limit: number,
+  pinnedClusterIds: readonly string[],
 ): ReaderSummaryModelInput["evidence"]["clusters"] => {
   const normalizedLimit = normalizeReaderSummaryStoryLimit(limit);
   const clusterByRepresentative = new Map(
@@ -382,29 +399,40 @@ const selectClustersForEvidence = (
       (cluster) => [cluster.representativeFeedItemId, cluster] as const,
     ),
   );
-  const selectedClusters = evidence
-    .map((item) => clusterByRepresentative.get(item.feedItemId))
-    .filter(
-      (
-        cluster,
-      ): cluster is ReaderSummaryModelInput["evidence"]["clusters"][number] =>
-        cluster !== undefined,
-    );
-  const selectedClusterIds = new Set(
-    selectedClusters.map((cluster) => cluster.id),
+  const clusterById = new Map(
+    clusters.map((cluster) => [cluster.id, cluster] as const),
   );
+  const selectedClusters: ReaderSummaryModelInput["evidence"]["clusters"][number][] =
+    [];
+  const selectedClusterIds = new Set<string>();
+  const addCluster = (
+    cluster:
+      ReaderSummaryModelInput["evidence"]["clusters"][number] | undefined,
+  ): void => {
+    if (
+      cluster === undefined ||
+      selectedClusters.length >= normalizedLimit ||
+      selectedClusterIds.has(cluster.id)
+    ) {
+      return;
+    }
+    selectedClusters.push(cluster);
+    selectedClusterIds.add(cluster.id);
+  };
+
+  for (const pinnedClusterId of pinnedClusterIds) {
+    addCluster(clusterById.get(pinnedClusterId));
+  }
+  for (const item of evidence) {
+    addCluster(clusterByRepresentative.get(item.feedItemId));
+  }
 
   for (const cluster of clusters) {
     if (selectedClusters.length >= normalizedLimit) {
       break;
     }
 
-    if (selectedClusterIds.has(cluster.id)) {
-      continue;
-    }
-
-    selectedClusters.push(cluster);
-    selectedClusterIds.add(cluster.id);
+    addCluster(cluster);
   }
 
   return selectedClusters.slice(0, normalizedLimit);

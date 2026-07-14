@@ -52,6 +52,10 @@ type ReaderSummaryModelPipelineResult = Result<
   },
   ReaderSummaryModelFailure
 >;
+type ReaderSummaryDraft = ProviderReaderSummaryAttempt["draft"];
+type ReaderSummaryDraftWithContent = Omit<ReaderSummaryDraft, "content"> & {
+  readonly content: NonNullable<ReaderSummaryDraft["content"]>;
+};
 type ReaderSummaryContextBuildResult = {
   readonly artifacts: readonly ReaderSummaryContextArtifact[];
   readonly unavailable: boolean;
@@ -327,32 +331,46 @@ export class ExecuteReaderSummaryJobUseCase {
     const draftWithContext = context.unavailable
       ? withContextUnavailableFlag(attempt.draft)
       : attempt.draft;
+    const draftWithContent = this.withReaderContent(
+      evidence,
+      draftWithContext,
+    );
+    const readerSummaryId = this.ids.generate();
+    const createArtifact = (draft: ReaderSummaryDraft): ReaderSummaryArtifact =>
+      ReaderSummaryArtifact.create({
+        schemaVersion: "reader_summary.artifact.v1",
+        readerSummaryId,
+        tenantId: snapshot.tenantId,
+        workspaceId: snapshot.workspaceId,
+        scope: snapshot.scope,
+        period: snapshot.period,
+        userId: snapshot.userId,
+        subscriptionId: snapshot.subscriptionId,
+        generatedAt,
+        sourceWindow: evidence.sourceWindow,
+        storyClusters: evidence.clusters,
+        contextArtifacts: context.artifacts,
+        personalization: evidence.personalization,
+        ...draft,
+      });
+    const preflightArtifact = createArtifact(draftWithContent);
+    if (
+      this.publicationPolicy.evaluate({
+        artifact: preflightArtifact,
+        evidence,
+      }).status === "rejected"
+    ) {
+      return ok({ artifact: preflightArtifact, evidence });
+    }
     const draftResult = await this.withTopicMap(
       snapshot,
       evidence,
-      draftWithContext,
+      draftWithContent,
     );
     if (!draftResult.ok) {
       return err(this.readerSummaryModel.classifyError(draftResult.error));
     }
-    const draft = draftResult.value;
-
-    const artifact = ReaderSummaryArtifact.create({
-      schemaVersion: "reader_summary.artifact.v1",
-      readerSummaryId: this.ids.generate(),
-      tenantId: snapshot.tenantId,
-      workspaceId: snapshot.workspaceId,
-      scope: snapshot.scope,
-      period: snapshot.period,
-      userId: snapshot.userId,
-      subscriptionId: snapshot.subscriptionId,
-      generatedAt,
-      sourceWindow: evidence.sourceWindow,
-      storyClusters: evidence.clusters,
-      contextArtifacts: context.artifacts,
-      personalization: evidence.personalization,
-      ...draft,
-    });
+    const artifact = createArtifact(draftResult.value);
 
     return ok({ artifact, evidence });
   }
@@ -360,8 +378,8 @@ export class ExecuteReaderSummaryJobUseCase {
   private async withTopicMap(
     snapshot: ReturnType<ReaderSummaryJob["toSnapshot"]>,
     evidence: SummaryEvidenceSelection,
-    draft: ProviderReaderSummaryAttempt["draft"],
-  ): Promise<Result<ProviderReaderSummaryAttempt["draft"], DomainError>> {
+    draft: ReaderSummaryDraftWithContent,
+  ): Promise<Result<ReaderSummaryDraftWithContent, DomainError>> {
     const primaryEvidence = primaryReaderSummaryEvidence(evidence);
     const topicMapResult = await this.topicMapBuilder.execute({
       tenantId: snapshot.tenantId,
@@ -377,7 +395,19 @@ export class ExecuteReaderSummaryJobUseCase {
     if (!topicMapResult.ok) {
       return err(topicMapResult.error);
     }
-    const topicMap = topicMapResult.value;
+    return ok({
+      ...draft,
+      content: {
+        ...draft.content,
+        topicMap: topicMapResult.value,
+      },
+    });
+  }
+
+  private withReaderContent(
+    evidence: SummaryEvidenceSelection,
+    draft: ReaderSummaryDraft,
+  ): ReaderSummaryDraftWithContent {
     const content = buildReaderSummary({
       headline: draft.headline,
       executiveSummary: draft.executiveSummary,
@@ -394,13 +424,10 @@ export class ExecuteReaderSummaryJobUseCase {
       noSignalReason: draft.noSignalReason,
     });
 
-    return ok({
+    return {
       ...draft,
-      content: {
-        ...content,
-        topicMap,
-      },
-    });
+      content,
+    };
   }
 
   private async safeBuildContext(

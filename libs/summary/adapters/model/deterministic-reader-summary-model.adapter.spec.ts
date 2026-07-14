@@ -1,13 +1,20 @@
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
-import { buildReaderSummaryCoveragePlan } from "../../domain";
-import type { ReaderSummaryModelInput } from "../../ports";
+import {
+  buildReaderSummaryCoveragePlan,
+  ReaderSummaryArtifact,
+  ReaderSummaryPublicationPolicy,
+} from "../../domain";
+import type {
+  ProviderReaderSummaryAttempt,
+  ReaderSummaryModelInput,
+} from "../../ports";
 import { DeterministicReaderSummaryModelAdapter } from "./deterministic-reader-summary-model.adapter";
 
 describe("DeterministicReaderSummaryModelAdapter", () => {
   it("keeps a provider-diverse first page while preserving ranked order", async () => {
     const adapter = new DeterministicReaderSummaryModelAdapter();
-    const input = readerSummaryInput();
+    const input = dailySynthesisReaderSummaryInput();
     const route = adapter.route(
       input,
       {
@@ -35,11 +42,12 @@ describe("DeterministicReaderSummaryModelAdapter", () => {
     ).toBe(true);
     expect(attempt.draft.content).toBeDefined();
     expect(attempt.draft.headline).toBe(
-      "hacker-news discussion needs confirmation",
+      "4 monitored stories emerge across Hacker News, Reddit, RSS + 1 more",
     );
+    expect(attempt.draft.headline).not.toMatch(/^(?:Hacker News|Reddit|X)\b/u);
     expect(attempt.draft.headline).not.toContain(";");
     expect(attempt.draft.content?.headline).toBe(attempt.draft.headline);
-    expect(attempt.draft.headline).not.toBe("rss story 1");
+    expect(attempt.draft.headline).not.toContain("disposable Linux VM");
     expect(
       attempt.draft.content?.topReads.map((item) => item.providerKey),
     ).toContain("github-issues");
@@ -47,12 +55,140 @@ describe("DeterministicReaderSummaryModelAdapter", () => {
       attempt.draft.content?.topReads.map((item) => item.providerKey),
     ).not.toContain("github-trending-page");
     expect(attempt.draft.executiveSummary).toContain(
-      "Current executive summary covers 12 selected stories for workspace in an analytical tone.",
+      "Current executive summary covers 4 selected stories for workspace in an analytical tone.",
     );
     expect(attempt.draft.executiveSummary).not.toContain("story/stories");
     expect(attempt.draft.content?.bullets.join(" ")).not.toContain("Top links");
+    expect(input.coveragePlan.mode).toBe("daily_synthesis");
+    const narrativeSections = attempt.draft.content?.narrativeSections ?? [];
+    const lead = narrativeSections.find((section) => section.kind === "lead");
+    expect(lead).toMatchObject({ title: "Daily synthesis" });
+    expect(lead?.storyClusterId).toBeUndefined();
+    expect(citedClusterIds(input, attempt, lead?.citationIds ?? [])).toEqual(
+      new Set([
+        ...(input.coveragePlan.lead === undefined
+          ? []
+          : [input.coveragePlan.lead.clusterId]),
+        ...input.coveragePlan.secondary.map((item) => item.clusterId),
+      ]),
+    );
+    expect(
+      narrativeSections.filter(
+        (section) => section.kind === "secondary_signal",
+      ),
+    ).toHaveLength(input.coveragePlan.secondary.length);
+    expectPublished(input, attempt);
+  });
+
+  it("creates a cluster-bound lead for single-story coverage", async () => {
+    const adapter = new DeterministicReaderSummaryModelAdapter();
+    const dailyInput = readerSummaryInput();
+    const plannedLead = dailyInput.coveragePlan.lead;
+    expect(plannedLead).toBeDefined();
+    if (plannedLead === undefined) {
+      throw new Error("Single-story test requires a planned coverage lead");
+    }
+    const input: ReaderSummaryModelInput = {
+      ...dailyInput,
+      coveragePlan: {
+        mode: "single_story",
+        lead: plannedLead,
+        secondary: [],
+      },
+    };
+    const selectedRoute = adapter.route(
+      input,
+      {
+        preferredProvider: "deterministic-local",
+        maxInputTokens: 24_000,
+        maxOutputTokens: 2_500,
+        maxEstimatedCostUsd: 1,
+      },
+      {
+        remainingTokens: 32_000,
+        remainingCostUsd: 2,
+      },
+    );
+
+    const attempt = await adapter.generate(input, selectedRoute);
+    const narrativeSections = attempt.draft.content?.narrativeSections ?? [];
+    const lead = narrativeSections.find((section) => section.kind === "lead");
+
+    expect(lead).toMatchObject({
+      kind: "lead",
+      storyClusterId: plannedLead.clusterId,
+    });
+    expect(
+      narrativeSections.filter(
+        (section) => section.kind === "secondary_signal",
+      ),
+    ).toHaveLength(0);
+    expect(citedClusterIds(input, attempt, lead?.citationIds ?? [])).toEqual(
+      new Set([plannedLead.clusterId]),
+    );
+    expect(attempt.draft.headline).toMatch(/^Reports discuss /u);
+    expectPublished(input, attempt);
   });
 });
+
+const expectPublished = (
+  input: ReaderSummaryModelInput,
+  attempt: ProviderReaderSummaryAttempt,
+): void => {
+  const artifact = ReaderSummaryArtifact.create({
+    schemaVersion: "reader_summary.artifact.v1",
+    readerSummaryId: "reader-summary-deterministic-test",
+    tenantId: input.tenantId,
+    workspaceId: input.workspaceId,
+    scope: input.scope,
+    period: input.period,
+    sourceWindow: input.evidence.sourceWindow,
+    storyClusters: input.evidence.clusters,
+    contextArtifacts: input.contextArtifacts,
+    ...attempt.draft,
+  });
+  const decision = new ReaderSummaryPublicationPolicy().evaluate({
+    artifact,
+    evidence: input.evidence,
+  });
+
+  if (decision.status === "rejected") {
+    throw new Error(decision.reasons.join("; "));
+  }
+
+  expect(decision).toMatchObject({
+    status: "published",
+    qualityPassed: true,
+  });
+};
+
+const citedClusterIds = (
+  input: ReaderSummaryModelInput,
+  attempt: ProviderReaderSummaryAttempt,
+  citationIds: readonly string[],
+): ReadonlySet<string> => {
+  const feedItemIdByCitationId = new Map(
+    attempt.draft.citationMap.map(
+      (citation) => [citation.citationId, citation.feedItemId] as const,
+    ),
+  );
+  const clusterIdByFeedItemId = new Map(
+    input.evidence.clusters.flatMap((cluster) =>
+      [cluster.representativeFeedItemId, ...cluster.duplicateFeedItemIds].map(
+        (feedItemId) => [feedItemId, cluster.id] as const,
+      ),
+    ),
+  );
+
+  return new Set(
+    citationIds.flatMap((citationId) => {
+      const clusterId = clusterIdByFeedItemId.get(
+        feedItemIdByCitationId.get(citationId) ?? "",
+      );
+      return clusterId === undefined ? [] : [clusterId];
+    }),
+  );
+};
 
 const readerSummaryInput = (): ReaderSummaryModelInput => {
   const selectedEvidence = [
@@ -69,6 +205,46 @@ const readerSummaryInput = (): ReaderSummaryModelInput => {
     evidenceItem("reddit", 11, 1),
     evidenceItem("github-issues", 12, 1),
   ];
+  const evidence = readerSummaryEvidence(selectedEvidence);
+
+  return readerSummaryInputForEvidence(evidence);
+};
+
+const dailySynthesisReaderSummaryInput = (): ReaderSummaryModelInput => {
+  const selectedEvidence = [
+    {
+      ...evidenceItem("hacker-news", 1, 3),
+      title: "Disposable Linux VMs isolate coding agents",
+      bodyPreview:
+        "A sandboxing project gives coding agents short-lived Linux machines.",
+    },
+    {
+      ...evidenceItem("reddit", 2, 2.8),
+      title: "Developers compare subscription quota tradeoffs",
+      bodyPreview:
+        "Teams compare model access, token budgets and predictable pricing.",
+    },
+    {
+      ...evidenceItem("rss", 3, 2.6),
+      title: "Local inference orchestration reaches more workstations",
+      bodyPreview:
+        "A release routes local inference across independently managed devices.",
+    },
+    {
+      ...evidenceItem("github-issues", 4, 2.4),
+      title: "Agent tool maintainers document safer defaults",
+      bodyPreview:
+        "Maintainers discuss permission boundaries and safer execution defaults.",
+    },
+  ];
+  const evidence = readerSummaryEvidence(selectedEvidence);
+
+  return readerSummaryInputForEvidence(evidence);
+};
+
+const readerSummaryEvidence = (
+  selectedEvidence: ReaderSummaryModelInput["evidence"]["selectedEvidence"],
+): ReaderSummaryModelInput["evidence"] => {
   const clusters = selectedEvidence.map((item) => ({
     id: `story:${item.feedItemId}`,
     storyKey: `story-key:${item.feedItemId}`,
@@ -84,7 +260,7 @@ const readerSummaryInput = (): ReaderSummaryModelInput => {
     whyImportant: item.whyImportant,
   }));
 
-  const evidence = {
+  return {
     rankingPolicyVersion: "story_ranking_v1",
     sourceWindow: {
       windowId: "workspace:deterministic-reader-summary",
@@ -99,35 +275,37 @@ const readerSummaryInput = (): ReaderSummaryModelInput => {
     clusters,
     selectedEvidence,
   };
-
-  return {
-    tenantId: tenantId("tenant-deterministic-reader-summary-adapter"),
-    workspaceId: workspaceId("workspace-deterministic-reader-summary-adapter"),
-    scope: { type: "workspace" },
-    period: {
-      cadence: "daily",
-      startedAt: new Date("2026-06-23T00:00:00.000Z"),
-      endedAt: new Date("2026-06-24T00:00:00.000Z"),
-      timezone: "UTC",
-      periodKey: "daily:2026-06-23T00:00:00.000Z:2026-06-24T00:00:00.000Z:UTC",
-    },
-    evidence,
-    coveragePlan: buildReaderSummaryCoveragePlan(evidence),
-    contextArtifacts: [],
-    policy: {
-      language: "auto",
-      format: "executive_brief",
-      tone: "analytical",
-      maxStories: 10,
-      includeRisks: true,
-      includeInterestHighlights: true,
-      includeRepeatedSignals: true,
-      dedupeStrategy: "canonical_url_then_title",
-      rulesVersion: "reader_summary.rules.test.v1",
-    },
-    requestedAt: new Date("2026-06-23T08:31:00.000Z"),
-  };
 };
+
+const readerSummaryInputForEvidence = (
+  evidence: ReaderSummaryModelInput["evidence"],
+): ReaderSummaryModelInput => ({
+  tenantId: tenantId("tenant-deterministic-reader-summary-adapter"),
+  workspaceId: workspaceId("workspace-deterministic-reader-summary-adapter"),
+  scope: { type: "workspace" },
+  period: {
+    cadence: "daily",
+    startedAt: new Date("2026-06-23T00:00:00.000Z"),
+    endedAt: new Date("2026-06-24T00:00:00.000Z"),
+    timezone: "UTC",
+    periodKey: "daily:2026-06-23T00:00:00.000Z:2026-06-24T00:00:00.000Z:UTC",
+  },
+  evidence,
+  coveragePlan: buildReaderSummaryCoveragePlan(evidence),
+  contextArtifacts: [],
+  policy: {
+    language: "auto",
+    format: "executive_brief",
+    tone: "analytical",
+    maxStories: 10,
+    includeRisks: true,
+    includeInterestHighlights: true,
+    includeRepeatedSignals: true,
+    dedupeStrategy: "canonical_url_then_title",
+    rulesVersion: "reader_summary.rules.test.v1",
+  },
+  requestedAt: new Date("2026-06-23T08:31:00.000Z"),
+});
 
 const evidenceItem = (
   providerKey: string,

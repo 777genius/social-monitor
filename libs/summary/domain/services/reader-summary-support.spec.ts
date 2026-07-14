@@ -203,7 +203,7 @@ describe("groundedReaderHeadline", () => {
         sourceMix: [],
         thematicSynthesisSupport: { clusterCount: 2, providerCount: 1 },
       }),
-    ).toBe("X/Twitter discussion needs confirmation");
+    ).toBe("Reports discuss Agent tooling expands across apps");
   });
 
   it("source-frames an unverified legal lead when replacing a vague headline", () => {
@@ -389,7 +389,7 @@ describe("groundedReaderHeadline", () => {
           },
         ],
       }),
-    ).toBe("X/Twitter discussion needs confirmation");
+    ).toBe("Reports discuss Agent tooling expands across apps");
   });
 
   it("uses one clean lead title instead of joining source-framed reasons", () => {
@@ -421,7 +421,9 @@ describe("groundedReaderHeadline", () => {
         ],
         sourceMix: [],
       }),
-    ).toBe("Reddit discussion needs confirmation");
+    ).toBe(
+      "Reports discuss Apple sues OpenAI over alleged trade secret theft",
+    );
   });
 
   it("preserves an explicitly source-framed single-source headline", () => {
@@ -462,7 +464,7 @@ describe("groundedReaderHeadline", () => {
         topReads: [lead],
         sourceMix: [],
       }),
-    ).toBe("X/Twitter discussion needs confirmation");
+    ).toBe("Reports discuss Agent tooling expands across apps");
   });
 });
 

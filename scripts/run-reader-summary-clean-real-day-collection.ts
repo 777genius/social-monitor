@@ -78,6 +78,7 @@ import { selectPreferredProviderScanResult } from "./lib/provider-scan-result-se
 import {
   successfulXCollectionRetryPlanKey,
   shouldStopSuccessfulDuplicateXRetry,
+  xCollectionReadinessRetryPolicy,
 } from "./lib/x-collection-retry-policy";
 import {
   providerMeetsProductionBlockingPolicy,
@@ -118,6 +119,7 @@ const providerKeys = readProviderKeys();
 const update = process.argv.includes("--update");
 const artifactOnly = process.argv.includes("--artifact-only");
 const recalculateExisting = process.argv.includes("--recalculate-existing");
+const waitForXReadiness = process.argv.includes("--wait-for-x-readiness");
 const { collectionDate: targetCollectionDate } = collectionDateOptionOrDefault(
   dateOnly(new Date()),
 );
@@ -301,6 +303,7 @@ async function executeTargetScans(
     selectPreferredResult: selectPreferredProviderScanResult,
     retryPlanKey: ({ target }) => successfulXCollectionRetryPlanKey(target),
     stopDuplicatePlanRetry: shouldStopSuccessfulDuplicateXRetry,
+    readinessRetry: xCollectionReadinessRetryPolicy(waitForXReadiness),
   });
 
   return outcomes.map((outcome) => ({

@@ -10,6 +10,12 @@ import {
 describe("reader summary production runtime policy", () => {
   it("budgets capture and outer orchestration for every sequential LLM stage", () => {
     expect(
+      READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.summaryModelMaximumAttempts,
+    ).toBe(2);
+    expect(
+      READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.topicMapMaximumAttempts,
+    ).toBe(2);
+    expect(
       READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.topicLabelerTimeoutMs,
     ).toBeGreaterThanOrEqual(900_000);
     expect(
@@ -32,12 +38,19 @@ describe("reader summary production runtime policy", () => {
     const orchestrationTimeout = readScriptTimeout(
       packageJson.scripts?.["run:reader-summary-production-day"],
     );
+    const collectionTimeout = readScriptTimeout(
+      packageJson.scripts?.["run:reader-summary-clean-real-day-collection"],
+    );
 
     expect(captureTimeout).toBe(
       READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.captureTimeoutMs,
     );
     expect(orchestrationTimeout).toBe(
       READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.orchestrationTimeoutMs,
+    );
+    expect(collectionTimeout).toBeGreaterThanOrEqual(
+      READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.collectionReadinessDelayMs +
+        READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.collectionExecutionGraceMs,
     );
   });
 });

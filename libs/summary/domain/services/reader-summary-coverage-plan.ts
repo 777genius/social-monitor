@@ -9,9 +9,11 @@ import {
   type ReaderSummaryEditorialPriorityProfile,
 } from "../policies/reader-summary-editorial-priority-policy";
 import { independentEvidenceProviderKeys } from "../value-objects/reader-summary-provider-identity";
+import type { ReaderSummaryCoverageMode } from "../value-objects/reader-summary-coverage-mode";
+
+export type { ReaderSummaryCoverageMode } from "../value-objects/reader-summary-coverage-mode";
 
 export type ReaderSummaryCoverageRole = "lead" | "secondary";
-export type ReaderSummaryCoverageMode = "single_story" | "daily_synthesis";
 
 export type ReaderSummaryCoveragePlanItem = {
   readonly role: ReaderSummaryCoverageRole;

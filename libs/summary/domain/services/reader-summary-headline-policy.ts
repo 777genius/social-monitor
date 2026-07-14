@@ -148,7 +148,7 @@ const buildHumanReaderHeadline = (
     );
 
     return compactHeadlinePart(
-      cautiousReason ?? `${lead.providerName} discussion needs confirmation`,
+      cautiousReason ?? `Reports discuss ${lead.title}`,
     );
   }
 

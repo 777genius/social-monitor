@@ -7,6 +7,18 @@ export type TargetedProviderCollectionOutcome<TTarget, TResult> = {
   readonly retryStopReason?: "duplicate_plan";
 };
 
+export type ProviderCollectionReadinessRetryPolicy<TTarget, TResult> = {
+  readonly delaysMs: readonly number[];
+  readonly maxTotalAttempts: number;
+  readonly shouldRetry: (target: TTarget, result: TResult) => boolean;
+  readonly wait?: (delayMs: number) => Promise<void>;
+  readonly onWait?: (params: {
+    readonly target: TTarget;
+    readonly delayMs: number;
+    readonly attemptNumber: number;
+  }) => void;
+};
+
 export const runTargetedProviderCollection = async <TTarget, TResult>(params: {
   readonly targets: readonly TTarget[];
   readonly retryBudget: number;
@@ -26,6 +38,10 @@ export const runTargetedProviderCollection = async <TTarget, TResult>(params: {
     readonly attemptNumber: number;
   }) => string | undefined;
   readonly stopDuplicatePlanRetry?: (latestAttempt: TResult) => boolean;
+  readonly readinessRetry?: ProviderCollectionReadinessRetryPolicy<
+    TTarget,
+    TResult
+  >;
 }): Promise<readonly TargetedProviderCollectionOutcome<TTarget, TResult>[]> => {
   const outcomes = await initialRound(
     params.targets,
@@ -72,6 +88,8 @@ export const runTargetedProviderCollection = async <TTarget, TResult>(params: {
     }
   }
 
+  await runReadinessRetries(outcomes, params);
+
   return outcomes.map((outcome) => ({
     target: outcome.target,
     attempts: outcome.attempts,
@@ -81,6 +99,54 @@ export const runTargetedProviderCollection = async <TTarget, TResult>(params: {
       : { retryStopReason: outcome.retryStopReason }),
   }));
 };
+
+const runReadinessRetries = async <TTarget, TResult>(
+  outcomes: readonly MutableOutcome<TTarget, TResult>[],
+  params: {
+    readonly collect: (
+      target: TTarget,
+      attemptNumber: number,
+    ) => Promise<TResult>;
+    readonly selectPreferredResult?: (
+      current: TResult,
+      candidate: TResult,
+    ) => TResult;
+    readonly readinessRetry?: ProviderCollectionReadinessRetryPolicy<
+      TTarget,
+      TResult
+    >;
+  },
+): Promise<void> => {
+  const policy = params.readinessRetry;
+  if (policy === undefined) {
+    return;
+  }
+
+  for (const outcome of outcomes) {
+    const remainingAttempts = Math.max(
+      0,
+      policy.maxTotalAttempts - outcome.attempts.length,
+    );
+    const delays = policy.delaysMs.slice(-remainingAttempts);
+    for (const delayMs of delays) {
+      if (!policy.shouldRetry(outcome.target, outcome.result)) {
+        break;
+      }
+      const attemptNumber = outcome.attempts.length + 1;
+      policy.onWait?.({ target: outcome.target, delayMs, attemptNumber });
+      await (policy.wait ?? wait)(delayMs);
+      const result = await params.collect(outcome.target, attemptNumber);
+      outcome.attempts.push(result);
+      outcome.latestAttempt = result;
+      outcome.result =
+        params.selectPreferredResult?.(outcome.result, result) ?? result;
+      outcome.retryStopReason = undefined;
+    }
+  }
+};
+
+const wait = async (delayMs: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, delayMs));
 
 type MutableOutcome<TTarget, TResult> = {
   readonly target: TTarget;

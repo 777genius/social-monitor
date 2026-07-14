@@ -17,18 +17,7 @@ export const readerHeadlineForNarrativeLead = (
   ) {
     return storyTitle;
   }
-  const providerName = `${topRead.providerName.charAt(0).toLocaleUpperCase("en-US")}${topRead.providerName.slice(1)}`;
-  const normalizedStoryTitle = storyTitle.toLocaleLowerCase("en-US");
-  const normalizedProviderName = providerName.toLocaleLowerCase("en-US");
-  if (
-    normalizedStoryTitle === normalizedProviderName ||
-    normalizedStoryTitle.startsWith(`${normalizedProviderName} `) ||
-    normalizedStoryTitle.startsWith(`${normalizedProviderName}:`)
-  ) {
-    return storyTitle;
-  }
-
-  return `${providerName} discussion: ${storyTitle}`;
+  return `Reports discuss ${storyTitle}`;
 };
 
 export const buildThematicSynthesisSupport = (params: {

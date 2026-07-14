@@ -9,18 +9,18 @@ export const buildReaderHeadline = (
   input: ReaderSummaryModelInput,
   selectedEvidence: ReaderSummaryModelInput["evidence"]["selectedEvidence"],
 ): string => {
-  const scopeLabel = input.scope.type === "workspace" ? "Workspace" : "Interest";
+  void input;
   const storyCount = selectedEvidence.length;
   const providerLabels = uniqueStrings(selectedEvidence.map(providerLabel));
 
   if (storyCount === 0 || providerLabels.length === 0) {
-    return `${scopeLabel} readerSummary`;
+    return "No reliable monitored signal yet";
   }
 
   const storyLabel = storyCount === 1 ? "story" : "stories";
-  const sourceLabel = providerLabels.length === 1 ? "source" : "sources";
+  const verb = storyCount === 1 ? "emerges" : "emerge";
 
-  return `${scopeLabel} readerSummary: ${storyCount} ${storyLabel} across ${providerLabels.length} ${sourceLabel} (${summarizeProviderLabels(providerLabels)})`;
+  return `${storyCount} monitored ${storyLabel} ${verb} across ${summarizeProviderLabels(providerLabels)}`;
 };
 
 const providerLabel = (

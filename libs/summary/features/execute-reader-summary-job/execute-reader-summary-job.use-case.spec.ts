@@ -412,7 +412,7 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
       new FixedClock(new Date("2026-06-26T08:05:00.000Z")),
       undefined,
       undefined,
-      emptyTopicMapBuilder(),
+      throwingTopicMapBuilder(),
     ).execute({
       tenantId: tenant,
       workspaceId: workspace,
@@ -430,7 +430,7 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
     expect(artifacts.all()).toHaveLength(1);
     expect(artifacts.decisions()[0]).toMatchObject({
       status: "rejected",
-      reasonCodes: ["top_read_ineligible_source"],
+      reasonCodes: ["editorial_quality", "top_read_ineligible_source"],
     });
     expect(
       (
@@ -455,6 +455,15 @@ const emptyTopicMapBuilder = (): BuildReaderSummaryTopicMapUseCase =>
   ({
     async execute() {
       return { ok: true, value: emptyReaderSummaryTopicMap() };
+    },
+  }) as unknown as BuildReaderSummaryTopicMapUseCase;
+
+const throwingTopicMapBuilder = (): BuildReaderSummaryTopicMapUseCase =>
+  ({
+    async execute() {
+      throw new Error(
+        "Topic-map generation must not run for a preflight-rejected summary",
+      );
     },
   }) as unknown as BuildReaderSummaryTopicMapUseCase;
 
@@ -582,7 +591,8 @@ class CapturingReaderSummaryModel implements ReaderSummaryModelPort {
   >[0]["coveragePlan"][] = [];
 
   constructor(
-    private readonly generatedContent?: ProviderReaderSummaryAttempt["draft"]["content"],
+    private readonly generatedContent: ProviderReaderSummaryAttempt["draft"]["content"] =
+      defaultGeneratedContent(),
   ) {}
 
   route(
@@ -713,6 +723,22 @@ class CapturingReaderSummaryModel implements ReaderSummaryModelPort {
     return this.coveragePlans;
   }
 }
+
+const defaultGeneratedContent =
+  (): ProviderReaderSummaryAttempt["draft"]["content"] =>
+    ({
+      headline: "Developers evaluate a reported runtime regression",
+      narrativeSections: [
+        {
+          id: "narrative-test-lead",
+          kind: "lead",
+          title: "Main signal",
+          text: "Developers are evaluating a reported runtime regression.",
+          citationIds: ["c1"],
+          storyClusterId: "cluster-1",
+        },
+      ],
+    }) as unknown as ProviderReaderSummaryAttempt["draft"]["content"];
 
 const makeReaderEvidenceSelection = (
   overrides: {

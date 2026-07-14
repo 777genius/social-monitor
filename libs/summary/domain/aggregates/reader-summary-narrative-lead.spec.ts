@@ -16,7 +16,7 @@ describe("ReaderSummary narrative lead projection", () => {
     });
 
     expect(summary.topReads[0]?.title).toBe(storyTitle(2));
-    expect(summary.headline).toBe(`Hacker News discussion: ${storyTitle(2)}`);
+    expect(summary.headline).toBe(`Reports discuss ${storyTitle(2)}`);
     expect(summary.headline).not.toContain("legal");
   });
 
@@ -28,10 +28,10 @@ describe("ReaderSummary narrative lead projection", () => {
 
     expect(summary.topReads).toHaveLength(8);
     expect(summary.topReads[0]?.title).toBe(storyTitle(12));
-    expect(summary.headline).toBe(`Hacker News discussion: ${storyTitle(12)}`);
+    expect(summary.headline).toBe(`Reports discuss ${storyTitle(12)}`);
   });
 
-  it("does not repeat the provider when the lead title already names it", () => {
+  it("keeps cautious report framing when the lead title names a provider", () => {
     const fixture = summaryFixture(2);
     const leadTitle =
       "Hacker News debates Claude Code token use versus OpenCode";
@@ -51,7 +51,7 @@ describe("ReaderSummary narrative lead projection", () => {
     });
 
     expect(summary.topReads[0]?.title).toBe(leadTitle);
-    expect(summary.headline).toBe(leadTitle);
+    expect(summary.headline).toBe(`Reports discuss ${leadTitle}`);
   });
 
   it("keeps a validated multi-cluster daily synthesis instead of replacing it with one top read", () => {

@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "artifactFormat": "reader-summary-editorial-quality-report-v1",
+  "generatedBy": "npm run check:reader-summary-editorial-quality",
+  "model": {
+    "liveNetwork": false,
+    "tokenFree": true,
+    "rawPostTextPersistedInReport": false,
+    "rawProviderPayloadPersistedInReport": false,
+    "finalSummaryTextPersistedInReport": false
+  },
+  "inputs": {
+    "fixturePath": "ops/evals/reader-summary-editorial-quality-fixture.v1.json",
+    "fixtureKind": "sanitized_public_artifact",
+    "collectionDates": [
+      "2026-07-12",
+      "2026-07-13"
+    ]
+  },
+  "days": [
+    {
+      "collectionDate": "2026-07-12",
+      "metrics": {
+        "leadCount": 1,
+        "leadClusterCount": 3,
+        "leadProviderCount": 2,
+        "secondarySignalCount": 3,
+        "unresolvedCitationCount": 0,
+        "mainNarrativeProviderCount": 4,
+        "dominantProviderShare": 0.4,
+        "malformedMarkdownPatternCount": 0
+      },
+      "qualityGates": {
+        "exactlyOneLead": true,
+        "dailySynthesisLeadHasMultipleClusters": true,
+        "dailySynthesisLeadHasMultipleProviders": true,
+        "secondarySignalsUseUniqueClusters": true,
+        "narrativeCitationsResolve": true,
+        "headlineIsNotProviderPrefixed": true,
+        "headlineIsNotCopiedFromTopPost": true,
+        "mainNarrativeProviderDominanceControlled": true,
+        "singleStoryLeadIsHonestlyClusterBound": true,
+        "renderedMarkdownIsWellFormed": true
+      },
+      "issues": [],
+      "blockingPassed": true
+    },
+    {
+      "collectionDate": "2026-07-13",
+      "metrics": {
+        "leadCount": 1,
+        "leadClusterCount": 3,
+        "leadProviderCount": 3,
+        "secondarySignalCount": 3,
+        "unresolvedCitationCount": 0,
+        "mainNarrativeProviderCount": 3,
+        "dominantProviderShare": 0.5,
+        "malformedMarkdownPatternCount": 0
+      },
+      "qualityGates": {
+        "exactlyOneLead": true,
+        "dailySynthesisLeadHasMultipleClusters": true,
+        "dailySynthesisLeadHasMultipleProviders": true,
+        "secondarySignalsUseUniqueClusters": true,
+        "narrativeCitationsResolve": true,
+        "headlineIsNotProviderPrefixed": true,
+        "headlineIsNotCopiedFromTopPost": true,
+        "mainNarrativeProviderDominanceControlled": true,
+        "singleStoryLeadIsHonestlyClusterBound": true,
+        "renderedMarkdownIsWellFormed": true
+      },
+      "issues": [],
+      "blockingPassed": true
+    }
+  ],
+  "qualityGates": {
+    "fixtureHasAtLeastTwoDays": true,
+    "collectionDatesAreUnique": true,
+    "everyDayPassesEditorialPolicy": true,
+    "noRawSecretFragments": true
+  },
+  "blockingPassed": true
+}
