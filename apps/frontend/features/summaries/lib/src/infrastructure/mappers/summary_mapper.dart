@@ -181,10 +181,23 @@ final class SummaryMapper {
         'video' => PreviewMediaKind.video,
         _ => PreviewMediaKind.image,
       },
-      url: url,
+      url: _stablePreviewMediaUrl(url),
       sourceUrl: _safeUrl(dto.sourceUrl),
       altText: _safeTextOrNull(dto.altText),
     );
+  }
+
+  String _stablePreviewMediaUrl(String url) {
+    final parsed = Uri.tryParse(url);
+    if (parsed == null || parsed.host.toLowerCase() != 'preview.redd.it') {
+      return url;
+    }
+
+    return Uri(
+      scheme: 'https',
+      host: 'i.redd.it',
+      path: parsed.path,
+    ).toString();
   }
 
   String _readerItemConfidenceLevel(String value) {

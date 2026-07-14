@@ -146,6 +146,36 @@ void main() {
     );
   });
 
+  test('uses stable Reddit originals for preview media', () {
+    const mapper = SummaryMapper();
+
+    final summary = mapper.readerSummaryToDomain(
+      readerSummaryApiDto(
+        content: readerSummaryContentApiDto(
+          topReads: const [
+            TopReadApiDto(
+              title: 'Reddit image post',
+              providerKey: 'reddit',
+              reason: 'The source includes a preview image.',
+              signalScore: 1,
+              previewMedia: PreviewMediaApiDto(
+                kind: 'image',
+                url:
+                    'https://preview.redd.it/example.jpg?width=140&height=140&auto=webp',
+              ),
+              citationIds: [],
+            ),
+          ],
+        ),
+      ),
+    );
+
+    expect(
+      summary.content.topReads.single.previewMedia?.url,
+      'https://i.redd.it/example.jpg',
+    );
+  });
+
   test('maps degraded provider collection health into domain coverage', () {
     const mapper = SummaryMapper();
 
