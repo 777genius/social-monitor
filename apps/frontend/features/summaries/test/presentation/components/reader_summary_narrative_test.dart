@@ -167,4 +167,67 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets('formats GitHub watch markdown as bold bullet rows', (
+    tester,
+  ) async {
+    final summary = const SummaryMapper().readerSummaryToDomain(
+      readerSummaryApiDto(
+        content: readerSummaryContentApiDto(
+          narrativeSections: const [
+            ReaderSummaryNarrativeSectionApiDto(
+              id: 'watch',
+              kind: 'watch',
+              title: 'GitHub Trending',
+              text:
+                  '- **OpenCut-app/OpenCut**: +1,229 stars today.\n'
+                  '- **HKUDS/Vibe-Trading**: +1,153 stars today.',
+              citationIds: [],
+            ),
+          ],
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: Scaffold(
+          body: ReaderSummaryExecutiveBrief(
+            summary: summary,
+            citationsById: const {},
+            onOpenUrl: (_) {},
+          ),
+        ),
+      ),
+    );
+
+    final narrative = find.byKey(
+      const ValueKey('reader-summary-narrative-watch-text'),
+    );
+    final richText = tester.widget<RichText>(
+      find.descendant(of: narrative, matching: find.byType(RichText)),
+    );
+    final rootSpan = richText.text as TextSpan;
+    expect(
+      rootSpan.toPlainText(),
+      contains('Watch:\n\u2022 OpenCut-app/OpenCut'),
+    );
+    expect(rootSpan.toPlainText(), isNot(contains('**')));
+
+    final repoSpans = _textSpans(
+      rootSpan,
+    ).where((span) => span.text == 'OpenCut-app/OpenCut');
+    expect(repoSpans, hasLength(1));
+    expect(repoSpans.single.style?.fontWeight, FontWeight.w900);
+  });
+}
+
+Iterable<TextSpan> _textSpans(TextSpan root) sync* {
+  yield root;
+  for (final child in root.children ?? const <InlineSpan>[]) {
+    if (child case final TextSpan span) {
+      yield* _textSpans(span);
+    }
+  }
 }

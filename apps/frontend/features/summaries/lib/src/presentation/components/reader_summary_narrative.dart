@@ -147,6 +147,7 @@ class _InlineNarrativeText extends StatelessWidget {
     final bodyStyle = Theme.of(
       context,
     ).textTheme.bodyLarge?.copyWith(height: 1.45, letterSpacing: 0);
+    final hasMarkdownList = _hasNarrativeMarkdownList(text);
     final anchorEnd = showTrail
         ? ReaderSummaryClaimAnchorResolver.resolveEnd(
             text: text,
@@ -161,11 +162,14 @@ class _InlineNarrativeText extends StatelessWidget {
           if (label != null) ...[
             const TextSpan(text: '\u2022 '),
             TextSpan(
-              text: '$label: ',
+              text: '$label:${hasMarkdownList ? '\n' : ' '}',
               style: bodyStyle?.copyWith(fontWeight: FontWeight.w900),
             ),
           ],
-          TextSpan(text: text.substring(0, anchorEnd)),
+          ..._narrativeMarkdownSpans(
+            text.substring(0, anchorEnd),
+            bodyStyle: bodyStyle,
+          ),
           if (showTrail)
             WidgetSpan(
               alignment: PlaceholderAlignment.aboveBaseline,
@@ -184,9 +188,47 @@ class _InlineNarrativeText extends StatelessWidget {
                 ),
               ),
             ),
-          TextSpan(text: text.substring(anchorEnd)),
+          ..._narrativeMarkdownSpans(
+            text.substring(anchorEnd),
+            bodyStyle: bodyStyle,
+          ),
         ],
       ),
     );
   }
+}
+
+bool _hasNarrativeMarkdownList(String value) {
+  return RegExp(r'(^|\n)\s*-\s+').hasMatch(value);
+}
+
+List<InlineSpan> _narrativeMarkdownSpans(
+  String value, {
+  required TextStyle? bodyStyle,
+}) {
+  final normalized = value.replaceAllMapped(
+    RegExp(r'(^|\n)\s*-\s+'),
+    (match) => '${match.group(1) ?? ''}\u2022 ',
+  );
+  final strongPattern = RegExp(r'\*\*([^*\n]+)\*\*');
+  final spans = <InlineSpan>[];
+  var offset = 0;
+
+  for (final match in strongPattern.allMatches(normalized)) {
+    if (match.start > offset) {
+      spans.add(TextSpan(text: normalized.substring(offset, match.start)));
+    }
+    spans.add(
+      TextSpan(
+        text: match.group(1),
+        style: bodyStyle?.copyWith(fontWeight: FontWeight.w900),
+      ),
+    );
+    offset = match.end;
+  }
+
+  if (offset < normalized.length) {
+    spans.add(TextSpan(text: normalized.substring(offset)));
+  }
+  return spans;
 }

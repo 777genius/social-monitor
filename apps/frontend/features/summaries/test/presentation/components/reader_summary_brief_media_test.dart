@@ -61,5 +61,30 @@ void main() {
 
     expect(find.byType(Image), findsOneWidget);
     expect(find.byIcon(Icons.play_arrow_rounded), findsOneWidget);
+
+    final cardImage = tester.widget<Image>(find.byType(Image));
+    expect(cardImage.image, isA<NetworkImage>());
+    expect(
+      (cardImage.image as NetworkImage).webHtmlElementStrategy,
+      WebHtmlElementStrategy.fallback,
+    );
+
+    await tester.ensureVisible(find.byType(Image));
+    await tester.pumpAndSettle();
+    final previewGesture = find.ancestor(
+      of: find.byType(Image),
+      matching: find.byType(GestureDetector),
+    );
+    expect(previewGesture, findsOneWidget);
+    await tester.tap(previewGesture);
+    await tester.pumpAndSettle();
+
+    final previewStrategies = tester
+        .widgetList<Image>(find.byType(Image))
+        .map((image) => image.image)
+        .whereType<NetworkImage>()
+        .map((image) => image.webHtmlElementStrategy);
+    expect(previewStrategies, hasLength(2));
+    expect(previewStrategies, everyElement(WebHtmlElementStrategy.fallback));
   });
 }
