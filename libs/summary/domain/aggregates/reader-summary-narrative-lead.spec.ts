@@ -31,6 +31,29 @@ describe("ReaderSummary narrative lead projection", () => {
     expect(summary.headline).toBe(`Hacker News discussion: ${storyTitle(12)}`);
   });
 
+  it("does not repeat the provider when the lead title already names it", () => {
+    const fixture = summaryFixture(2);
+    const leadTitle =
+      "Hacker News debates Claude Code token use versus OpenCode";
+    const summary = buildReaderSummary({
+      ...fixture,
+      narrativeSections: [leadSection(2)],
+      topStories: fixture.topStories.map((story) =>
+        story.storyClusterId === "cluster-2"
+          ? { ...story, title: leadTitle }
+          : story,
+      ),
+      selectedEvidence: fixture.selectedEvidence.map((evidence) =>
+        evidence.feedItemId === "feed-2"
+          ? { ...evidence, title: leadTitle }
+          : evidence,
+      ),
+    });
+
+    expect(summary.topReads[0]?.title).toBe(leadTitle);
+    expect(summary.headline).toBe(leadTitle);
+  });
+
   it("refills eight unique reader-facing top reads after authored candidates are filtered", () => {
     const fixture = summaryFixture(33);
     const fallbackTitle = "Independent benchmark compares agent cache overhead";
