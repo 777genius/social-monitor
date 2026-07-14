@@ -90,6 +90,92 @@ describe("SourceContentQualityPolicy", () => {
     );
   });
 
+  it("rejects training pitches that promise a high-income job outcome", () => {
+    const verdict = policy.evaluate({
+      providerKey: "x-twitter",
+      authorHandle: "ajitcodes",
+      title:
+        "Anthropic released a 4-hour course to getting a $500k AI engineering job",
+      bodyPreview:
+        "The course covers prompting Claude, coding workflows and fixes for better results.",
+      canonicalUrl: "https://x.com/ajitcodes/status/example",
+      providerMetadata: {
+        kind: "x_post",
+        searchQuery: "Claude Code OpenAI Codex",
+        likes: 1853,
+        reposts: 402,
+        replies: 55,
+      },
+    });
+
+    expect(verdict.decision).toBe("reject");
+    expect(verdict.eligibleForSummary).toBe(false);
+    expect(verdict.eligibleForTopRead).toBe(false);
+    expect(verdict.flags).toEqual(
+      expect.arrayContaining(["engagement_bait", "promo_offer"]),
+    );
+  });
+
+  it("keeps technical courses without income promises eligible", () => {
+    const verdict = policy.evaluate({
+      providerKey: "x-twitter",
+      authorHandle: "engineering_team",
+      title: "A four-hour course on reliable Claude Code workflows",
+      bodyPreview:
+        "The lessons cover prompting, repository context and debugging agent output.",
+      canonicalUrl: "https://x.com/engineering_team/status/example",
+      providerMetadata: {
+        kind: "x_post",
+        searchQuery: "Claude Code workflows",
+        likes: 850,
+        reposts: 120,
+        replies: 34,
+      },
+    });
+
+    expect(verdict.eligibleForSummary).toBe(true);
+    expect(verdict.eligibleForTopRead).toBe(true);
+    expect(verdict.flags).not.toContain("promo_offer");
+  });
+
+  it("keeps evidence-based salary analysis even when it mentions a course", () => {
+    const verdict = policy.evaluate({
+      providerKey: "x-twitter",
+      authorHandle: "engineering_research",
+      title: "Course data challenges $500k AI engineering salary claims",
+      bodyPreview:
+        "The analysis compares public compensation records and does not promise a job outcome.",
+      canonicalUrl: "https://x.com/engineering_research/status/example",
+      providerMetadata: {
+        kind: "x_post",
+        searchQuery: "AI engineering compensation research",
+        likes: 850,
+        reposts: 120,
+        replies: 34,
+      },
+    });
+
+    expect(verdict.eligibleForSummary).toBe(true);
+    expect(verdict.eligibleForTopRead).toBe(true);
+    expect(verdict.flags).not.toContain("promo_offer");
+  });
+
+  it("keeps non-X editorial reporting about bootcamp salary outcomes", () => {
+    const verdict = policy.evaluate({
+      providerKey: "hacker-news",
+      title:
+        "Study tracks whether an AI engineering bootcamp helps graduates land $120k jobs",
+      bodyPreview:
+        "The longitudinal report compares placement claims with verified employment records.",
+      canonicalUrl: "https://news.ycombinator.com/item?id=example",
+      providerMetadata: { kind: "hacker_news_story" },
+    });
+
+    expect(verdict.eligibleForSummary).toBe(true);
+    expect(verdict.eligibleForTopRead).toBe(true);
+    expect(verdict.flags).not.toContain("promo_offer");
+  });
+
   it("downranks speculative financial challenges on community sources", () => {
     const verdict = policy.evaluate({
       providerKey: "reddit",

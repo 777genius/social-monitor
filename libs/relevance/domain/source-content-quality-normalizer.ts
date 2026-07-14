@@ -64,7 +64,9 @@ export const normalizeSourceContentQualityInput = (
   const legacyCoreTopicSignal =
     legacyCoreTopicSignalPattern.test(textWithoutUrls);
   const cryptoPromo = cryptoPromoPattern.test(text);
-  const promoOffer = promoOfferPattern.test(text);
+  const promoOffer =
+    promoOfferPattern.test(text) ||
+    (isXProvider(input.providerKey) && trainingIncomePromisePattern.test(text));
   const engagementBait = engagementBaitPattern.test(text) || promoOffer;
   const predictionMarketRumor =
     predictionMarketPattern.test(text) &&
@@ -360,6 +362,8 @@ const engagementBaitPattern =
   /\b(?:drop\s+your|share\s+your|comment\s+below|reply\s+with|retweet|repost|like\s+and|follow\s+for|top\s+\d+|stop\s+wasting\s+hours?|i\s+have\s+already\s+done\s+it\s+for\s+you|with\s+one\s+list|zero\s+confusion|no\s+fluff)\b/iu;
 const promoOfferPattern =
   /\b(?:all\s+paid\s+courses?|paid\s+courses?|free\s+courses?|free\s+for\s+(?:the\s+)?first|first\s+\d{2,6}\s+people|limited\s+spots?|claim\s+(?:your\s+)?free|course\s+giveaway|free\s+access)\b/iu;
+const trainingIncomePromisePattern =
+  /\b(?:course|bootcamp|masterclass|training)\b[\s\S]{0,120}\b(?:get(?:ting)?|land(?:ing)?|secure|earn(?:ing)?|make|reach|become|guarantee(?:d)?)\b[\s\S]{0,80}(?:\$\s*\d[\d,.]*\s*[km]?|\d[\d,.]*\s*k\b)[\s\S]{0,60}\b(?:job|salary|income|career|earnings?)\b|\b(?:get(?:ting)?|land(?:ing)?|secure|earn(?:ing)?|make|reach|become|guarantee(?:d)?)\b[\s\S]{0,80}(?:\$\s*\d[\d,.]*\s*[km]?|\d[\d,.]*\s*k\b)[\s\S]{0,60}\b(?:job|salary|income|career|earnings?)\b[\s\S]{0,120}\b(?:course|bootcamp|masterclass|training)\b/iu;
 const predictionMarketPattern =
   /\b(?:polymarket|kalshi|prediction\s+market|market\s+odds|betting\s+odds)\b/iu;
 const rumorOrPoliticalClaimPattern =
