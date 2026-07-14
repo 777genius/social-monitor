@@ -19,10 +19,12 @@ void main() {
 
     await tester.pumpWidget(
       _TestApp(
-        job: const ReaderSummaryJobSnapshot(
-          id: 'summary-job-quality-rejected',
-          status: ReaderSummaryJobStatus.qualityRejected,
-          failureReason: 'Rejected by pre-publish quality gate',
+        jobState: const ReadyViewState<ReaderSummaryJobSnapshot>(
+          ReaderSummaryJobSnapshot(
+            id: 'summary-job-quality-rejected',
+            status: ReaderSummaryJobStatus.qualityRejected,
+            failureReason: 'Rejected by pre-publish quality gate',
+          ),
         ),
       ),
     );
@@ -31,12 +33,39 @@ void main() {
     expect(find.text('Summary quality rejected'), findsOneWidget);
     expect(find.text('Rejected by pre-publish quality gate'), findsOneWidget);
   });
+
+  testWidgets('names weekly and monthly summaries that are not ready yet', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 820);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      const _TestApp(selectedPeriodPreset: SummaryPeriodPreset.weekly),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Weekly summary is not ready yet'), findsOneWidget);
+
+    await tester.pumpWidget(
+      const _TestApp(selectedPeriodPreset: SummaryPeriodPreset.monthly),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Monthly summary is not ready yet'), findsOneWidget);
+  });
 }
 
 class _TestApp extends StatelessWidget {
-  const _TestApp({required this.job});
+  const _TestApp({
+    this.jobState = const InitialViewState<ReaderSummaryJobSnapshot>(),
+    this.selectedPeriodPreset = SummaryPeriodPreset.daily,
+  });
 
-  final ReaderSummaryJobSnapshot job;
+  final AsyncViewState<ReaderSummaryJobSnapshot> jobState;
+  final SummaryPeriodPreset selectedPeriodPreset;
 
   @override
   Widget build(BuildContext context) {
@@ -54,8 +83,10 @@ class _TestApp extends StatelessWidget {
               child: SizedBox(
                 height: 820,
                 child: WorkspaceSummaryPanel(
-                  state: const InitialViewState<WorkspaceSummarySnapshot>(),
-                  jobState: ReadyViewState<ReaderSummaryJobSnapshot>(job),
+                  state: const ReadyViewState<WorkspaceSummarySnapshot>(
+                    WorkspaceSummarySnapshot(),
+                  ),
+                  jobState: jobState,
                   readerActionState:
                       const InitialViewState<ReaderActionResult>(),
                   topicRecommendationState:
@@ -69,7 +100,7 @@ class _TestApp extends StatelessWidget {
                   activeReaderActionIdempotencyKey: null,
                   lastReaderActionIdempotencyKey: null,
                   selectedPeriod: _period,
-                  selectedPeriodPreset: SummaryPeriodPreset.daily,
+                  selectedPeriodPreset: selectedPeriodPreset,
                   availableSummaryPeriods: [_period],
                   canNavigateToPreviousPeriod: false,
                   canNavigateToNextPeriod: false,

@@ -3,8 +3,13 @@ import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 
 /// Friendly empty state shown when the selected period has no summary yet.
 class WorkspaceSummaryEmptyCard extends StatelessWidget {
-  const WorkspaceSummaryEmptyCard({super.key, required this.onGenerate});
+  const WorkspaceSummaryEmptyCard({
+    super.key,
+    this.title = 'No workspace summary',
+    required this.onGenerate,
+  });
 
+  final String title;
   final VoidCallback onGenerate;
 
   @override
@@ -31,7 +36,7 @@ class WorkspaceSummaryEmptyCard extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.md),
           Text(
-            'No workspace summary',
+            title,
             textAlign: TextAlign.center,
             style: textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.w800,

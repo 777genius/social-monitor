@@ -174,7 +174,10 @@ class WorkspaceSummaryPanel extends StatelessWidget {
     final body = switch (state) {
       ReadyViewState<WorkspaceSummarySnapshot>(:final value) =>
         value.current == null
-            ? _EmptySummary(onGenerate: onGenerate)
+            ? _EmptySummary(
+                selectedPeriodPreset: selectedPeriodPreset,
+                onGenerate: onGenerate,
+              )
             : _ReadySummary(
                 summary: value.current!,
                 readerActionState: readerActionState,
@@ -220,6 +223,7 @@ class WorkspaceSummaryPanel extends StatelessWidget {
           onAction: onRetry,
         ),
       EmptyViewState<WorkspaceSummarySnapshot>() => _EmptySummary(
+        selectedPeriodPreset: selectedPeriodPreset,
         onGenerate: onGenerate,
       ),
       _ => const SizedBox.shrink(),
@@ -307,13 +311,22 @@ class WorkspaceSummaryPanel extends StatelessWidget {
 }
 
 class _EmptySummary extends StatelessWidget {
-  const _EmptySummary({required this.onGenerate});
+  const _EmptySummary({
+    required this.selectedPeriodPreset,
+    required this.onGenerate,
+  });
 
+  final SummaryPeriodPreset selectedPeriodPreset;
   final VoidCallback onGenerate;
 
   @override
   Widget build(BuildContext context) {
-    return WorkspaceSummaryEmptyCard(onGenerate: onGenerate);
+    final title = switch (selectedPeriodPreset) {
+      SummaryPeriodPreset.weekly => 'Weekly summary is not ready yet',
+      SummaryPeriodPreset.monthly => 'Monthly summary is not ready yet',
+      _ => 'No workspace summary',
+    };
+    return WorkspaceSummaryEmptyCard(title: title, onGenerate: onGenerate);
   }
 }
 
