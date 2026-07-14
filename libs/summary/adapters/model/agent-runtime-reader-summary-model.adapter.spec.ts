@@ -110,7 +110,7 @@ describe("AgentRuntimeReaderSummaryModelAdapter", () => {
     const attempt = await adapter.generate(input, route);
 
     expect(attempt.draft.headline).toBe(
-      "Reddit discussion: Agent runtime reliability tradeoffs",
+      "Reports discuss Agent runtime reliability tradeoffs",
     );
     expect(attempt.draft.content?.headline).not.toMatch(/[.\u2026\u3002]$/u);
   });
