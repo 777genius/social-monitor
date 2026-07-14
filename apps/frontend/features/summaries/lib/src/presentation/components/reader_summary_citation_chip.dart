@@ -62,14 +62,13 @@ class _CitationChipState extends State<_CitationChip> {
 
   @override
   Widget build(BuildContext context) {
-    final url = widget.citation.canonicalUrl;
-    final canOpen = url != null && url.trim().isNotEmpty;
-    final relatedCitations = widget.relatedCitations.isEmpty
+    final rawRelatedCitations = widget.relatedCitations.isEmpty
         ? [widget.citation]
         : widget.relatedCitations;
-    final sourceCount = _citationSourceCount(
-      relatedCitations,
-      widget.citationSourceById,
+    final relatedCitations = _uniqueCitationSources(rawRelatedCitations);
+    final sourceCount = relatedCitations.length;
+    final canOpen = relatedCitations.any(
+      (citation) => citation.canonicalUrl?.trim().isNotEmpty == true,
     );
     final colorScheme = Theme.of(context).colorScheme;
     return MenuAnchor(
@@ -150,20 +149,6 @@ class _CitationChipState extends State<_CitationChip> {
       ),
     );
   }
-}
-
-final class _CitationSourceContext {
-  const _CitationSourceContext({
-    required this.title,
-    required this.providerKey,
-    required this.read,
-    this.canonicalUrl,
-  });
-
-  final String title;
-  final String providerKey;
-  final TopRead read;
-  final String? canonicalUrl;
 }
 
 class _CitationSourcePreview extends StatelessWidget {
@@ -274,13 +259,13 @@ String _providerKeyForCitation(
   SummaryCitation citation,
   _CitationSourceContext? source,
 ) {
-  final sourceProvider = source?.providerKey.trim();
-  if (sourceProvider != null && sourceProvider.isNotEmpty) {
-    return sourceProvider;
-  }
   final citationProvider = citation.providerKey?.trim();
   if (citationProvider != null && citationProvider.isNotEmpty) {
     return citationProvider;
+  }
+  final sourceProvider = source?.providerKey.trim();
+  if (sourceProvider != null && sourceProvider.isNotEmpty) {
+    return sourceProvider;
   }
   final haystack =
       '${citation.sourceLabel} ${citation.safeSnippet} ${citation.canonicalUrl ?? ''}'
@@ -312,24 +297,6 @@ String _citationSemanticsLabel(
     return '${citation.sourceLabel} source citation';
   }
   return '${citation.sourceLabel} source citation, $count sources available';
-}
-
-int _citationSourceCount(
-  List<SummaryCitation> citations,
-  Map<String, _CitationSourceContext> citationSourceById,
-) {
-  final sources = <String>{};
-  for (final citation in citations) {
-    final source = citationSourceById[citation.id];
-    final identity =
-        source?.canonicalUrl?.trim() ??
-        citation.canonicalUrl?.trim() ??
-        citation.id.trim();
-    if (identity.isNotEmpty) {
-      sources.add(identity.toLowerCase());
-    }
-  }
-  return sources.isEmpty ? citations.length : sources.length;
 }
 
 class _TopPostReferenceCard extends StatelessWidget {

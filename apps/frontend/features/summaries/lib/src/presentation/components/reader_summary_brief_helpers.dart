@@ -62,24 +62,6 @@ List<SummaryCitation> _citationsForIds(
       .toList(growable: false);
 }
 
-Map<String, _CitationSourceContext> _citationSourceById(List<TopRead> reads) {
-  final sources = <String, _CitationSourceContext>{};
-  for (final read in reads) {
-    for (final citationId in read.citationIds) {
-      sources.putIfAbsent(
-        citationId,
-        () => _CitationSourceContext(
-          title: _shortTitle(read.title),
-          providerKey: read.providerKey,
-          canonicalUrl: read.canonicalUrl,
-          read: read,
-        ),
-      );
-    }
-  }
-  return sources;
-}
-
 String _primaryTheme(ReaderSummaryContent content) {
   final headline = content.headline.trim();
   if (headline.isNotEmpty && !_isSourceInventoryHeadline(headline)) {

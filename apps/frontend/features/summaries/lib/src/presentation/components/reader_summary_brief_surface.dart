@@ -28,6 +28,7 @@ import 'reader_summary_reason_text.dart';
 
 part 'reader_summary_ai_brief.dart';
 part 'reader_summary_citation_chip.dart';
+part 'reader_summary_citation_source_projection.dart';
 part 'reader_summary_claim_indicator.dart';
 part 'reader_summary_executive_brief.dart';
 part 'reader_summary_feedback_bar.dart';

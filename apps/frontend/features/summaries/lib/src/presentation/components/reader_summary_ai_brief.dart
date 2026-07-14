@@ -15,7 +15,7 @@ class _AiBriefCopy extends StatelessWidget {
   Widget build(BuildContext context) {
     final content = summary.content;
     final primaryTheme = _primaryTheme(content);
-    final citationSourceById = _citationSourceById(content.topReads);
+    final citationSourceById = _primaryCitationSourceById(content.topReads);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
