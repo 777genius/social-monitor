@@ -89,11 +89,15 @@ type ProductionDayReport = {
     readonly topReadCount: number | null;
     readonly providerCounts: Record<string, number>;
     readonly xAccountCount: number | null;
+    readonly xAccountTotalCount: number | null;
+    readonly xAccountEligibleCount: number | null;
     readonly xAccountUsageEventCount: number | null;
     readonly xAccounts: readonly {
       readonly accountFingerprint: string;
       readonly priorityRank: number;
       readonly prioritySource: string;
+      readonly eligible: boolean;
+      readonly ineligibilityReasonCodes: readonly string[];
       readonly dailyRequests: number;
       readonly dailyTweets: number;
       readonly passSucceededCount: number;
@@ -426,11 +430,15 @@ function buildReport(params: {
     };
     readonly xAccountPool?: {
       readonly accountCount?: number;
+      readonly totalAccountCount?: number;
+      readonly eligibleAccountCount?: number;
       readonly eventCount?: number;
       readonly accounts?: readonly {
         readonly accountFingerprint?: string;
         readonly priorityRank?: number;
         readonly prioritySource?: string;
+        readonly eligible?: boolean;
+        readonly ineligibilityReasonCodes?: readonly string[];
         readonly dailyRequests?: number;
         readonly dailyTweets?: number;
         readonly passSucceededCount?: number;
@@ -476,7 +484,10 @@ function buildReport(params: {
       typeof durableEvidence?.result?.readerSummaryId === "string" &&
       durableEvidence.result.readerSummaryId.length > 0,
     xAccountPoolReported:
-      collectionQuality?.xAccountPool?.accountCount !== undefined,
+      collectionQuality?.xAccountPool?.totalAccountCount !== undefined &&
+      collectionQuality.xAccountPool.eligibleAccountCount !== undefined,
+    xAccountPoolHasEligibleAccount:
+      (collectionQuality?.xAccountPool?.eligibleAccountCount ?? 0) > 0,
     reportDateMatchesRequestedDate:
       collectionDate === periodStartedAt.slice(0, 10),
     noRawSecretFragments: true,
@@ -539,7 +550,11 @@ function buildReport(params: {
         durableEvidence?.result?.selectedFeedItemCount ?? null,
       topReadCount: durableEvidence?.result?.topReadCount ?? null,
       providerCounts,
-      xAccountCount: collectionQuality?.xAccountPool?.accountCount ?? null,
+      xAccountCount: collectionQuality?.xAccountPool?.totalAccountCount ?? null,
+      xAccountTotalCount:
+        collectionQuality?.xAccountPool?.totalAccountCount ?? null,
+      xAccountEligibleCount:
+        collectionQuality?.xAccountPool?.eligibleAccountCount ?? null,
       xAccountUsageEventCount:
         collectionQuality?.xAccountPool?.eventCount ?? null,
       xAccounts:
@@ -552,6 +567,9 @@ function buildReport(params: {
                   accountFingerprint: account.accountFingerprint,
                   priorityRank: account.priorityRank,
                   prioritySource: account.prioritySource ?? "unknown",
+                  eligible: account.eligible === true,
+                  ineligibilityReasonCodes:
+                    account.ineligibilityReasonCodes ?? [],
                   dailyRequests: account.dailyRequests ?? 0,
                   dailyTweets: account.dailyTweets ?? 0,
                   passSucceededCount: account.passSucceededCount ?? 0,
@@ -681,7 +699,7 @@ function printStats(report: ProductionDayReport): void {
       `candidates=${report.stats.summaryCandidateFeedItemCount ?? "n/a"}`,
       `selected=${report.stats.selectedFeedItemCount ?? "n/a"}`,
       `topReads=${report.stats.topReadCount ?? "n/a"}`,
-      `xAccounts=${report.stats.xAccountCount ?? "n/a"}`,
+      `xAccountsEligible=${report.stats.xAccountEligibleCount ?? "n/a"}/${report.stats.xAccountTotalCount ?? "n/a"}`,
       `xAccountEvents=${report.stats.xAccountUsageEventCount ?? "n/a"}`,
     ].join(" | "),
   );
@@ -691,6 +709,8 @@ function printStats(report: ProductionDayReport): void {
         `xAccount=${account.accountFingerprint}`,
         `priority=${account.priorityRank}`,
         `prioritySource=${account.prioritySource}`,
+        `eligible=${account.eligible}`,
+        `ineligibleReasons=${account.ineligibilityReasonCodes.join(",") || "none"}`,
         `requests=${account.dailyRequests}`,
         `tweets=${account.dailyTweets}`,
         `success=${account.passSucceededCount}`,

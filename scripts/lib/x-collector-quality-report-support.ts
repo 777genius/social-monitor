@@ -2,6 +2,8 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 
+import { evaluateXAccountHealth } from "./x-account-pool-health";
+
 type XRunRow = {
   readonly run_id?: string;
   readonly status?: string;
@@ -72,6 +74,7 @@ type XAccountStateRow = {
 type BuildParams = {
   readonly ledgerPath: string;
   readonly collectionDate: string;
+  readonly observedAt?: Date;
 };
 
 export type XCollectorLedgerReport = ReturnType<
@@ -217,18 +220,29 @@ export function buildXCollectorLedgerReport(params: BuildParams) {
 }
 
 export function buildXAccountPoolReport(params: BuildParams) {
+  const observedAt = params.observedAt ?? new Date();
   if (!existsSync(params.ledgerPath)) {
-    return emptyXAccountPoolReport(false, "ledger_file_missing");
+    return emptyXAccountPoolReport(
+      false,
+      "ledger_file_missing",
+      [],
+      observedAt,
+    );
   }
 
   const stateResult = readXAccountStateRows(params.ledgerPath);
   if (!stateResult.ok) {
-    return emptyXAccountPoolReport(false, stateResult.error);
+    return emptyXAccountPoolReport(false, stateResult.error, [], observedAt);
   }
 
   const eventResult = readXAccountUsageEventRows(params);
   if (!eventResult.ok) {
-    return emptyXAccountPoolReport(true, eventResult.error, stateResult.rows);
+    return emptyXAccountPoolReport(
+      true,
+      eventResult.error,
+      stateResult.rows,
+      observedAt,
+    );
   }
 
   const events = eventResult.rows;
@@ -262,6 +276,7 @@ export function buildXAccountPoolReport(params: BuildParams) {
         accountKey,
         state: stateByAccount.get(accountKey),
         events: eventsByAccount.get(accountKey) ?? [],
+        observedAt,
       }),
     )
     .sort(
@@ -273,6 +288,11 @@ export function buildXAccountPoolReport(params: BuildParams) {
   return {
     available: true,
     accountCount: accounts.length,
+    totalAccountCount: accounts.length,
+    eligibleAccountCount: accounts.filter((account) => account.eligible).length,
+    ineligibleAccountCount: accounts.filter((account) => !account.eligible)
+      .length,
+    observedAt: observedAt.toISOString(),
     eventCount: events.length,
     passStartedCount: countEvents(events, "pass_started"),
     passSucceededCount: countEvents(events, "pass_succeeded"),
@@ -340,10 +360,24 @@ function emptyXAccountPoolReport(
   available: boolean,
   readError: string | null,
   stateRows: readonly XAccountStateRow[] = [],
+  observedAt: Date = new Date(),
 ) {
+  const accounts = stateRows.map((state) =>
+    buildXAccountReport({
+      accountKey: accountBucketKey(state.id, state.username),
+      state,
+      events: [],
+      observedAt,
+    }),
+  );
   return {
     available,
     accountCount: stateRows.length,
+    totalAccountCount: stateRows.length,
+    eligibleAccountCount: accounts.filter((account) => account.eligible).length,
+    ineligibleAccountCount: accounts.filter((account) => !account.eligible)
+      .length,
+    observedAt: observedAt.toISOString(),
     eventCount: 0,
     passStartedCount: 0,
     passSucceededCount: 0,
@@ -355,13 +389,7 @@ function emptyXAccountPoolReport(
     totalRequestDelta: 0,
     totalTweetDelta: 0,
     totalReturnedCount: 0,
-    accounts: stateRows.map((state) =>
-      buildXAccountReport({
-        accountKey: accountBucketKey(state.id, state.username),
-        state,
-        events: [],
-      }),
-    ),
+    accounts,
     readError,
   } as const;
 }
@@ -370,6 +398,7 @@ function buildXAccountReport(params: {
   readonly accountKey: string;
   readonly state: XAccountStateRow | undefined;
   readonly events: readonly XAccountUsageEventRow[];
+  readonly observedAt: Date;
 }) {
   const username = params.state?.username ?? params.events[0]?.username ?? "";
   const accountId = params.state?.id ?? params.events[0]?.account_id ?? null;
@@ -389,6 +418,27 @@ function buildXAccountReport(params: {
     params.events,
     (event) => event.account_priority,
   );
+  const status = params.state?.status ?? null;
+  const busy =
+    params.state?.busy === undefined ? null : params.state.busy === 1;
+  const dailyRequests = params.state?.daily_requests ?? null;
+  const dailyTweets = params.state?.daily_tweets ?? null;
+  const lastResetDate = params.state?.last_reset_date ?? null;
+  const cooldownUntil = params.state?.available_until ?? null;
+  const health = evaluateXAccountHealth(
+    {
+      stateAvailable: params.state !== undefined,
+      status,
+      busy,
+      dailyRequests,
+      dailyTweets,
+      dailyRequestsLimit: latestDailyRequestsLimit,
+      dailyTweetsLimit: latestDailyTweetsLimit,
+      lastResetDate,
+      cooldownUntil,
+    },
+    params.observedAt,
+  );
 
   return {
     accountFingerprint: fingerprint(
@@ -399,16 +449,17 @@ function buildXAccountReport(params: {
     priorityRank: latestAccountPriority ?? accountId ?? 9999,
     prioritySource:
       latestAccountPriority === null ? "account_order" : "account_profile",
-    status: params.state?.status ?? null,
-    busy: params.state?.busy === undefined ? null : params.state.busy === 1,
-    dailyRequests: params.state?.daily_requests ?? null,
-    dailyTweets: params.state?.daily_tweets ?? null,
+    ...health,
+    status,
+    busy,
+    dailyRequests,
+    dailyTweets,
     dailyRequestsLimit: latestDailyRequestsLimit,
     dailyTweetsLimit: latestDailyTweetsLimit,
-    lastResetDate: params.state?.last_reset_date ?? null,
+    lastResetDate,
     lastUsedAt: params.state?.last_used_at ?? latestEventAt,
     latestEventAt,
-    cooldownUntil: params.state?.available_until ?? null,
+    cooldownUntil,
     cooldownReasonFingerprint:
       params.state?.cooldown_reason === null ||
       params.state?.cooldown_reason === undefined
@@ -577,12 +628,7 @@ function readSqliteJson<TValue>(
   try {
     const output = execFileSync(
       "sqlite3",
-      [
-        "-readonly",
-        "-json",
-        ledgerPath,
-        sql,
-      ],
+      ["-readonly", "-json", ledgerPath, sql],
       {
         encoding: "utf8",
         stdio: ["ignore", "pipe", "pipe"],
@@ -713,9 +759,7 @@ function parseScweetTimestamp(value: string | undefined): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-function parseTimestamp(
-  value: string | null | undefined,
-): number | undefined {
+function parseTimestamp(value: string | null | undefined): number | undefined {
   if (value === null || value === undefined || value.trim().length === 0) {
     return undefined;
   }

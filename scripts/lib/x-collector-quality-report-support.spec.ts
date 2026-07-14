@@ -494,6 +494,89 @@ describe("x collector quality report support", () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
+
+  it("distinguishes total accounts from accounts eligible to collect", () => {
+    const directory = mkdtempSync(join(tmpdir(), "x-collector-quality-"));
+    const dbPath = join(directory, "scweet_state.db");
+
+    try {
+      execSql(
+        dbPath,
+        `
+          create table runs (
+            id integer primary key, run_id text not null, status text not null,
+            started_at real not null, finished_at real, query_hash text not null,
+            tweets_count integer not null, input_json text, stats_json text
+          );
+          create table accounts (
+            id integer primary key, username text not null, status integer not null,
+            available_til real, busy integer not null, daily_requests integer not null,
+            daily_tweets integer not null, last_reset_date text, last_used real,
+            cooldown_reason text
+          );
+          create table account_usage_events (
+            event_id text primary key, event_type text not null, provider text not null,
+            occurred_at text not null, account_id integer, username text,
+            request_id text not null, scan_job_id text not null,
+            source_binding_id text not null, query text not null, pass_label text,
+            product text, estimated_request_cost integer, requests_before integer,
+            requests_after integer, tweets_before integer, tweets_after integer,
+            fetched_count integer, accepted_count integer, returned_count integer,
+            failure_kind text, cooldown_reason text, reset_at text
+          );
+        `,
+      );
+      insertRun({
+        dbPath,
+        id: 1,
+        displayType: "Top",
+        startedAt: "2026-07-14T00:01:00Z",
+        finishedAt: "2026-07-14T00:02:00Z",
+        tweets: 1,
+        since: "2026-07-13",
+        until: "2026-07-14",
+      });
+      execSql(
+        dbPath,
+        `
+          insert into accounts (
+            id, username, status, available_til, busy, daily_requests,
+            daily_tweets, last_reset_date, last_used, cooldown_reason
+          ) values
+            (1, 'active_account', 1, null, 0, 1, 10, '2026-07-14', null, null),
+            (2, 'manually_disabled_account', 0, null, 0, 0, 0, '2026-07-14', null, null);
+        `,
+      );
+
+      const accountPool = buildXAccountPoolReport({
+        ledgerPath: dbPath,
+        collectionDate: "2026-07-13",
+        observedAt: new Date("2026-07-14T00:03:00.000Z"),
+      });
+
+      expect(accountPool).toMatchObject({
+        accountCount: 2,
+        totalAccountCount: 2,
+        eligibleAccountCount: 1,
+        ineligibleAccountCount: 1,
+        observedAt: "2026-07-14T00:03:00.000Z",
+      });
+      expect(
+        accountPool.accounts.find((account) => account.status === 1),
+      ).toMatchObject({
+        eligible: true,
+        ineligibilityReasonCodes: [],
+      });
+      expect(
+        accountPool.accounts.find((account) => account.status === 0),
+      ).toMatchObject({
+        eligible: false,
+        ineligibilityReasonCodes: ["status_not_reusable"],
+      });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
 });
 
 function insertRun(params: {

@@ -16,12 +16,17 @@ export const runTargetedProviderCollection = async <TTarget, TResult>(params: {
   readonly retryDisposition: (
     result: TResult,
   ) => ProviderCollectionRetryDisposition;
+  readonly selectPreferredResult?: (
+    current: TResult,
+    candidate: TResult,
+  ) => TResult;
 }): Promise<readonly TargetedProviderCollectionOutcome<TTarget, TResult>[]> => {
   const outcomes = await initialRound(params.targets, params.collect);
 
   for (let retry = 0; retry < params.retryBudget; retry += 1) {
     const retryable = outcomes.filter(
-      (outcome) => params.retryDisposition(outcome.result) === "immediate",
+      (outcome) =>
+        params.retryDisposition(outcome.latestAttempt) === "immediate",
     );
     if (retryable.length === 0) {
       break;
@@ -33,7 +38,12 @@ export const runTargetedProviderCollection = async <TTarget, TResult>(params: {
         outcome.attempts.length + 1,
       );
       outcome.attempts.push(result);
-      outcome.result = result;
+      if (params.selectPreferredResult !== undefined) {
+        outcome.result = params.selectPreferredResult(outcome.result, result);
+      } else {
+        outcome.result = result;
+      }
+      outcome.latestAttempt = result;
     }
   }
 
@@ -44,6 +54,7 @@ type MutableOutcome<TTarget, TResult> = {
   readonly target: TTarget;
   readonly attempts: TResult[];
   result: TResult;
+  latestAttempt: TResult;
 };
 
 const initialRound = async <TTarget, TResult>(
@@ -53,7 +64,12 @@ const initialRound = async <TTarget, TResult>(
   const outcomes: MutableOutcome<TTarget, TResult>[] = [];
   for (const target of targets) {
     const result = await collect(target, 1);
-    outcomes.push({ target, attempts: [result], result });
+    outcomes.push({
+      target,
+      attempts: [result],
+      result,
+      latestAttempt: result,
+    });
   }
 
   return outcomes;

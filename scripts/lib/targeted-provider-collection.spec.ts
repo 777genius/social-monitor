@@ -3,6 +3,7 @@ import { runTargetedProviderCollection } from "./targeted-provider-collection";
 type Result = {
   readonly provider: string;
   readonly disposition: "none" | "immediate" | "deferred";
+  readonly accepted?: number;
 };
 
 describe("runTargetedProviderCollection", () => {
@@ -45,5 +46,70 @@ describe("runTargetedProviderCollection", () => {
     });
 
     expect(calls).toBe(3);
+  });
+
+  it("lets callers keep a useful result when a later retry is rate limited", async () => {
+    const outcomes = await runTargetedProviderCollection({
+      targets: ["x-twitter"],
+      retryBudget: 2,
+      async collect(provider, attemptNumber): Promise<Result> {
+        return attemptNumber === 1
+          ? { provider, disposition: "immediate", accepted: 17 }
+          : { provider, disposition: "deferred", accepted: 0 };
+      },
+      retryDisposition: (result) => result.disposition,
+      selectPreferredResult: (current, candidate) =>
+        (candidate.accepted ?? 0) > (current.accepted ?? 0)
+          ? candidate
+          : current,
+    });
+
+    expect(outcomes[0]?.attempts).toHaveLength(2);
+    expect(outcomes[0]?.result).toEqual({
+      provider: "x-twitter",
+      disposition: "immediate",
+      accepted: 17,
+    });
+  });
+
+  it("lets callers retain a better result after a failed immediate retry", async () => {
+    const outcomes = await runTargetedProviderCollection({
+      targets: ["x-twitter"],
+      retryBudget: 1,
+      async collect(provider, attemptNumber): Promise<Result> {
+        return attemptNumber === 1
+          ? { provider, disposition: "immediate", accepted: 17 }
+          : { provider, disposition: "immediate", accepted: 0 };
+      },
+      retryDisposition: (result) => result.disposition,
+      selectPreferredResult: (current, candidate) =>
+        (candidate.accepted ?? 0) > (current.accepted ?? 0)
+          ? candidate
+          : current,
+    });
+
+    expect(outcomes[0]?.attempts).toHaveLength(2);
+    expect(outcomes[0]?.result.accepted).toBe(17);
+  });
+
+  it("replaces a retryable result when the retry meets its SLO", async () => {
+    const outcomes = await runTargetedProviderCollection({
+      targets: ["reddit"],
+      retryBudget: 1,
+      async collect(provider, attemptNumber): Promise<Result> {
+        return {
+          provider,
+          disposition: attemptNumber === 1 ? "immediate" : "none",
+          accepted: attemptNumber === 1 ? 10 : 25,
+        };
+      },
+      retryDisposition: (result) => result.disposition,
+    });
+
+    expect(outcomes[0]?.result).toEqual({
+      provider: "reddit",
+      disposition: "none",
+      accepted: 25,
+    });
   });
 });

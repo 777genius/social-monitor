@@ -74,6 +74,7 @@ import {
   withProviderCollectionWindowProof,
 } from "./lib/provider-collection-observability";
 import { runTargetedProviderCollection } from "./lib/targeted-provider-collection";
+import { selectPreferredProviderScanResult } from "./lib/provider-scan-result-selection";
 import {
   providerMeetsProductionBlockingPolicy,
   recalculateProductionBlockingPolicyGates,
@@ -293,6 +294,7 @@ async function executeTargetScans(
       providerMeetsProductionBlockingPolicy(result)
         ? "none"
         : result.observability.slo.retryDisposition,
+    selectPreferredResult: selectPreferredProviderScanResult,
   });
 
   return outcomes.map((outcome) => ({
