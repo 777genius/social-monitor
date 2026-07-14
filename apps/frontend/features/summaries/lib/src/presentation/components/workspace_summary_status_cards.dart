@@ -67,8 +67,8 @@ class WorkspaceSummaryEmptyCard extends StatelessWidget {
   }
 
   String get _title => switch (periodPreset) {
-    SummaryPeriodPreset.weekly => 'No weekly summary for this period',
-    SummaryPeriodPreset.monthly => 'No monthly summary for this period',
+    SummaryPeriodPreset.weekly => 'Weekly summary is not ready yet',
+    SummaryPeriodPreset.monthly => 'Monthly summary is not ready yet',
     SummaryPeriodPreset.daily ||
     SummaryPeriodPreset.twoWeeks ||
     SummaryPeriodPreset.threeWeeks => 'No workspace summary',
