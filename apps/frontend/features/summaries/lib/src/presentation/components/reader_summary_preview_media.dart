@@ -44,7 +44,7 @@ class ReaderSummaryPreviewMedia extends StatelessWidget {
                 media.url,
                 fit: BoxFit.cover,
                 filterQuality: FilterQuality.low,
-                webHtmlElementStrategy: WebHtmlElementStrategy.fallback,
+                webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
                 loadingBuilder: (context, child, loadingProgress) {
                   if (loadingProgress == null) {
                     return child;
@@ -108,7 +108,7 @@ class _PreviewLightbox extends StatelessWidget {
                 media.url,
                 fit: BoxFit.contain,
                 filterQuality: FilterQuality.medium,
-                webHtmlElementStrategy: WebHtmlElementStrategy.fallback,
+                webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
                 errorBuilder: (context, error, stackTrace) =>
                     _PreviewFallback(kind: media.kind),
               ),

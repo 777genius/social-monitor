@@ -66,7 +66,7 @@ void main() {
     expect(cardImage.image, isA<NetworkImage>());
     expect(
       (cardImage.image as NetworkImage).webHtmlElementStrategy,
-      WebHtmlElementStrategy.fallback,
+      WebHtmlElementStrategy.prefer,
     );
 
     await tester.ensureVisible(find.byType(Image));
@@ -85,6 +85,6 @@ void main() {
         .whereType<NetworkImage>()
         .map((image) => image.webHtmlElementStrategy);
     expect(previewStrategies, hasLength(2));
-    expect(previewStrategies, everyElement(WebHtmlElementStrategy.fallback));
+    expect(previewStrategies, everyElement(WebHtmlElementStrategy.prefer));
   });
 }
