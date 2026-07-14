@@ -24,7 +24,7 @@ class _TrustSummaryLine extends StatelessWidget {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const _TrustPanelTitle(),
+              const _TrustPanelTitle(constrainText: true),
               const SizedBox(height: AppSpacing.xs),
               _TrustVerdict(snapshot: snapshot),
               const SizedBox(height: AppSpacing.xs),
@@ -83,24 +83,27 @@ class _TrustSummaryLine extends StatelessWidget {
 }
 
 class _TrustPanelTitle extends StatelessWidget {
-  const _TrustPanelTitle();
+  const _TrustPanelTitle({this.constrainText = false});
+
+  final bool constrainText;
 
   @override
   Widget build(BuildContext context) {
+    final title = Text(
+      'Trust & evidence',
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+        fontWeight: FontWeight.w900,
+        letterSpacing: 0,
+      ),
+    );
     return Row(
-      mainAxisSize: MainAxisSize.min,
+      mainAxisSize: constrainText ? MainAxisSize.max : MainAxisSize.min,
       children: [
         const Icon(Icons.verified_outlined, size: 18),
         const SizedBox(width: AppSpacing.xs),
-        Text(
-          'Trust & evidence',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: Theme.of(context).textTheme.labelLarge?.copyWith(
-            fontWeight: FontWeight.w900,
-            letterSpacing: 0,
-          ),
-        ),
+        if (constrainText) Expanded(child: title) else title,
       ],
     );
   }

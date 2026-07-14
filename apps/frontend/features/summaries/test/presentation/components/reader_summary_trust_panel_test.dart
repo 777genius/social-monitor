@@ -64,6 +64,24 @@ void main() {
       findsNothing,
     );
   });
+
+  testWidgets('keeps compact trust title within scaled text constraints', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(375, 800);
+    tester.platformDispatcher.textScaleFactorTestValue = 1.5;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(
+      tester.platformDispatcher.clearTextScaleFactorTestValue,
+    );
+
+    await tester.pumpWidget(_TestApp(summary: _trustSummary()));
+
+    expect(find.text('Trust & evidence'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }
 
 ReaderSummary _trustSummary() {
