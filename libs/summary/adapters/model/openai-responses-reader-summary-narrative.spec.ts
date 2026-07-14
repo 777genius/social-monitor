@@ -148,6 +148,49 @@ describe("normalizeOpenAiReaderSummaryNarrative", () => {
     ).toThrow("must include a cited lead");
   });
 
+  it("accepts a multi-cluster synthesis lead without binding it to one story", () => {
+    const input = modelInput();
+    const result = normalize(
+      [
+        {
+          ...section("lead", "lead", "c1"),
+          title: "Daily synthesis",
+          citationIds: ["c1", "c2"],
+        },
+        section("secondary_signal", "security", "c2"),
+        section("secondary_signal", "database", "c3"),
+      ],
+      {
+        ...input,
+        coveragePlan: { ...input.coveragePlan, mode: "daily_synthesis" },
+      },
+    );
+
+    expect(result[0]).toMatchObject({
+      kind: "lead",
+      citationIds: ["c1", "c2"],
+    });
+    expect(result[0]?.storyClusterId).toBeUndefined();
+  });
+
+  it("rejects a daily synthesis lead backed by only one planned cluster", () => {
+    const input = modelInput();
+
+    expect(() =>
+      normalize(
+        [
+          section("lead", "lead", "c1"),
+          section("secondary_signal", "security", "c2"),
+          section("secondary_signal", "database", "c3"),
+        ],
+        {
+          ...input,
+          coveragePlan: { ...input.coveragePlan, mode: "daily_synthesis" },
+        },
+      ),
+    ).toThrow("must include a cited lead");
+  });
+
   it("drops watch sections without eligible supporting evidence", () => {
     const result = normalize([
       section("lead", "lead", "c1"),
@@ -274,6 +317,7 @@ const modelInput = (
       clusters,
     },
     coveragePlan: {
+      mode: "single_story",
       lead: planItem("lead", "feed-lead", "lead"),
       secondary: [
         planItem("secondary", "feed-security", "security"),

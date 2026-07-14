@@ -21,10 +21,10 @@ export type ReaderSummaryPromptRelease = {
  * duplicate history without explaining why a release exists.
  */
 export const currentReaderSummaryPromptRelease = {
-  id: "reader_summary.prompt.2026-07-13.lead_aligned_narrative",
-  releasedOn: "2026-07-13",
+  id: "reader_summary.prompt.2026-07-14.daily_synthesis",
+  releasedOn: "2026-07-14",
   changeSummary:
-    "Headlines and top-read order follow the planned narrative lead; secondary legal reports cannot lead, and optional watch sections require strong self-contained evidence.",
+    "Daily digests synthesize several strong distinct signals unless one authoritative event clearly dominates; single-story summaries remain strictly lead-aligned.",
 } as const satisfies ReaderSummaryPromptRelease;
 
 export const assertNoReaderSummaryPromptReleaseOverride = (params: {
@@ -68,7 +68,7 @@ export const buildOpenAiReaderSummaryInstructions = (
     "Write headline and content.headline in concise sentence-style article headline form. Use sentence case and never end either headline with a period or full stop.",
     "State the lead event and its concrete consequence directly. Do not use meta-headline formulas such as one item leads or tops a day of chatter, debate or signals.",
     "Return narrativeSections as the canonical reader narrative. executiveSummary must be a faithful Markdown rendering of the same sections and must not add claims of its own.",
-    "headline, content.headline and content.oneLineTakeaway must describe coveragePlan.lead and the first lead narrative section. Never headline a secondary signal, even when it has higher raw engagement.",
+    "headline, content.headline and content.oneLineTakeaway must follow coveragePlan.mode and the first lead narrative section. Never let one secondary signal silently replace the approved coverage mode.",
     ...readerSummaryLeadInstructions(input),
     "Each narrative section must add information not already stated elsewhere. Do not paraphrase the lead under Main signal or repeat the same caveat in multiple sections.",
     "Explain unfamiliar product, model or project names on first mention with a short reader-facing description when the evidence defines them. If the evidence does not explain a name, omit it instead of listing unexplained names.",
@@ -118,16 +118,23 @@ const readerSummaryLeadInstructions = (
     ? [
         "coveragePlan.lead is null because no evidence passed the editorial lead gate. Return an honest no-signal response: topStories and narrativeSections must be empty, set noSignalReason, and do not promote a watch-only or down-ranked item into the headline.",
       ]
-    : [
-        "The first narrativeSections item must be kind lead and cite one or more citationIds from coveragePlan.lead. Follow it with optional main_signal and why_it_matters sections and one secondary_signal for every entry in coveragePlan.secondary. An optional watch may cite only self-contained evidence that is high-engagement, eligible first-party, or independently supported across providers; never promote a truncated low-engagement fragment. Never fill a missing section with generic prose.",
-        ...(input.coveragePlan.lead.providerKeys.length <= 1
-          ? [
-              "coveragePlan.lead has one provider group. Frame the headline and opening sentence explicitly as that provider's discussion, report or first-party announcement. Do not generalize it into what developers, users or the industry are doing.",
-            ]
-          : []),
-        "For secondary_signal, copy the exact storyClusterId from coveragePlan and cite only citationIds listed for that planned cluster.",
-        "Keep the lead focused on coveragePlan.lead. Other signals today must remain concise and must not displace the lead.",
-      ];
+    : input.coveragePlan.mode === "daily_synthesis"
+      ? [
+          "coveragePlan.mode is daily_synthesis. Write a thematic daily digest, not an article about one source item. The headline and opening sentence must synthesize the shared reader-relevant situation across coveragePlan.lead and at least one coveragePlan.secondary cluster.",
+          "The first narrativeSections item must be kind lead, set storyClusterId to null, and cite 2-3 planned citations including at least one citation from coveragePlan.lead and at least one from coveragePlan.secondary. Do not start the headline with a provider name or copy any single source title.",
+          "Follow the synthesis lead with exactly one secondary_signal for every coveragePlan.secondary entry. Each secondary_signal must copy its exact storyClusterId and cite only that cluster's citationIds. Keep these sections concrete and avoid repeating the synthesis wording.",
+          "A daily_synthesis headline may name the common product or workflow pressure supported across the planned clusters, but must not merge unrelated facts into one event or claim that all sources discuss the same story.",
+        ]
+      : [
+          "The first narrativeSections item must be kind lead and cite one or more citationIds from coveragePlan.lead. Follow it with optional main_signal and why_it_matters sections and one secondary_signal for every entry in coveragePlan.secondary. An optional watch may cite only self-contained evidence that is high-engagement, eligible first-party, or independently supported across providers; never promote a truncated low-engagement fragment. Never fill a missing section with generic prose.",
+          ...(input.coveragePlan.lead.providerKeys.length <= 1
+            ? [
+                "coveragePlan.lead has one provider group. Frame the headline and opening sentence explicitly as that provider's discussion, report or first-party announcement. Do not generalize it into what developers, users or the industry are doing.",
+              ]
+            : []),
+          "For secondary_signal, copy the exact storyClusterId from coveragePlan and cite only citationIds listed for that planned cluster.",
+          "Keep the lead focused on coveragePlan.lead. Other signals today must remain concise and must not displace the lead.",
+        ];
 
 export const buildOpenAiReaderSummaryPromptPayload = (
   input: ReaderSummaryModelInput,
@@ -148,6 +155,7 @@ export const buildOpenAiReaderSummaryPromptPayload = (
     evidenceProfile: buildSummaryEvidenceProfile(primaryEvidence),
     evidencePack: buildSummaryEvidencePack(primaryEvidence),
     coveragePlan: {
+      mode: coveragePlan.mode,
       lead:
         coveragePlan.lead === undefined
           ? null

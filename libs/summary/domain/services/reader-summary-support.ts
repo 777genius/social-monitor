@@ -108,6 +108,10 @@ export const buildGroundedOneLineTakeaway = (params: {
   readonly executiveSummary: string;
   readonly topReads: readonly TopRead[];
   readonly sourceMix: readonly SourceMixEntry[];
+  readonly thematicSynthesisSupport?: {
+    readonly clusterCount: number;
+    readonly providerCount: number;
+  };
 }): string => {
   const executiveSummary = params.executiveSummary.trim();
   const fallback =
@@ -118,11 +122,15 @@ export const buildGroundedOneLineTakeaway = (params: {
   const hasGroundedSupport =
     lead !== undefined &&
     (lead.confirmedProviderKeys.length > 1 || lead.confidence.level === "high");
+  const hasGroundedThematicSynthesis =
+    (params.thematicSynthesisSupport?.clusterCount ?? 0) >= 2 &&
+    (params.thematicSynthesisSupport?.providerCount ?? 0) >= 2;
 
   if (
     params.topReads.length === 0 ||
     (!isTechnicalReaderHeadline(fallback) &&
-      (hasGroundedSupport ||
+      (hasGroundedThematicSynthesis ||
+        hasGroundedSupport ||
         (lead !== undefined &&
           isExplicitlySourceFramedText(executiveSummary, lead))))
   ) {

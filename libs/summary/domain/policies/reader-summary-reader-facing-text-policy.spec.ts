@@ -88,6 +88,11 @@ describe("reader summary reader-facing text policy", () => {
     );
     expect(
       isConversationalOrTruncatedReaderTitle(
+        "Bye Claude..it was nice while it lasted, until it wasn't.",
+      ),
+    ).toBe(true);
+    expect(
+      isConversationalOrTruncatedReaderTitle(
         "Claude Code users question another access extension",
       ),
     ).toBe(false);

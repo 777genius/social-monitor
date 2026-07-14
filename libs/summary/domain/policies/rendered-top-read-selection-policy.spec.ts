@@ -30,6 +30,22 @@ describe("selectRenderedTopReadCandidates", () => {
     ).toBe(true);
   });
 
+  it("rejects copied clickbait titles with broken double-dot punctuation", () => {
+    expect(
+      isReaderFacingQualityTopRead(
+        candidate(
+          "Bye Claude..it was nice while it lasted, until it wasn't.",
+          "reddit",
+          2.12,
+          {
+            reason:
+              "The post describes frustration with changing Claude usage limits but does not provide a concrete product update.",
+          },
+        ).topRead,
+      ),
+    ).toBe(false);
+  });
+
   it("caps the final rendered provider after story candidates are converted", () => {
     const candidates = [
       ...Array.from({ length: 6 }, (_, index) =>

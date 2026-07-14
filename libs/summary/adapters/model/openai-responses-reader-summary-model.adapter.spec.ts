@@ -813,8 +813,9 @@ const readerSummaryInput = (
     periodKey: "daily:2026-06-23T00:00:00.000Z:2026-06-24T00:00:00.000Z:UTC",
   },
   coveragePlan: params.empty
-    ? { secondary: [] }
+    ? { mode: "single_story", secondary: [] }
     : {
+        mode: "single_story",
         lead: coveragePlanLeadFixture("story:ai-tooling", "feed-reddit", 2.4),
         secondary: [],
       },
@@ -936,6 +937,7 @@ const multiStoryReaderSummaryInput = (
   return {
     ...readerSummaryInput({ empty: true }),
     coveragePlan: {
+      mode: "single_story",
       lead: coveragePlanLeadFixture("story:ai-tooling-1", "feed-reddit-1", 2.4),
       secondary: [],
     },

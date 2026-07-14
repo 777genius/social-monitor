@@ -193,6 +193,7 @@ const evidenceItem = (index: number): SummaryEvidenceItem => {
 };
 
 const coveragePlan = (): ReaderSummaryCoveragePlan => ({
+  mode: "single_story",
   lead: {
     role: "lead",
     clusterId: "cluster-0",

@@ -16,6 +16,7 @@ describe("buildReaderSummaryCoveragePlan", () => {
 
     const plan = buildReaderSummaryCoveragePlan(selection);
 
+    expect(plan.mode).toBe("daily_synthesis");
     expect(plan.lead?.clusterId).toBe("openai");
     expect(plan.secondary.map((item) => item.clusterId)).toEqual([
       "security",
@@ -53,6 +54,7 @@ describe("buildReaderSummaryCoveragePlan", () => {
     };
 
     expect(buildReaderSummaryCoveragePlan(selection)).toEqual({
+      mode: "single_story",
       secondary: [],
     });
   });
@@ -302,6 +304,151 @@ describe("buildReaderSummaryCoveragePlan", () => {
     const plan = buildReaderSummaryCoveragePlan(selection);
 
     expect(plan.secondary[0]?.clusterId).toBe("independent");
+  });
+
+  it("does not let one viral first-party HN item displace a similarly strong cross-source story", () => {
+    const clawk = {
+      ...cluster("clawk", 2.284, "clawk-hn", ["hacker-news"]),
+      signalBreakdown: {
+        baseScore: 2.164,
+        crossProviderSupport: 0,
+        sameProviderSupport: 0,
+        providerDiversityBoost: 0,
+        interestDiversityBoost: 0,
+        freshnessBoost: 0.12,
+        totalScore: 2.284,
+      },
+    } satisfies StoryCluster;
+    const broaderStory = {
+      ...cluster("localized-pricing", 2.366, "pricing-reddit", [
+        "reddit",
+        "rss",
+      ]),
+      duplicateFeedItemIds: ["pricing-rss"],
+      signalBreakdown: {
+        baseScore: 1.839,
+        crossProviderSupport: 0.257,
+        sameProviderSupport: 0,
+        providerDiversityBoost: 0.15,
+        interestDiversityBoost: 0,
+        freshnessBoost: 0.12,
+        totalScore: 2.366,
+      },
+    } satisfies StoryCluster;
+    const base = buildSelection([clawk, broaderStory]);
+    const clawkEvidence = evidenceById(base, "clawk-hn");
+    const pricingReddit = evidenceById(base, "pricing-reddit");
+    const selection: SummaryEvidenceSelection = {
+      ...base,
+      selectedEvidence: [
+        {
+          ...clawkEvidence,
+          title:
+            "Show HN: Clawk - Give coding agents a disposable Linux VM, not your laptop",
+          sourceOriginUrl: "https://github.com/clawkwork/clawk",
+          providerMetricLabels: [
+            { label: "Points", value: "191" },
+            { label: "Comments", value: "150" },
+          ],
+          contentQuality: {
+            ...clawkEvidence.contentQuality!,
+            flags: ["official_account", "trusted_author"],
+          },
+        },
+        {
+          ...pricingReddit,
+          title: "Anthropic adds localized Claude pricing in India",
+        },
+        {
+          ...pricingReddit,
+          feedItemId: "pricing-rss",
+          sourceItemId: "pricing-rss",
+          providerKey: "rss",
+          canonicalUrl: "https://example.news/claude-india-pricing",
+          title: "Claude launches localized subscription pricing in India",
+        },
+      ],
+    };
+
+    const plan = buildReaderSummaryCoveragePlan(selection);
+
+    expect(plan.lead?.clusterId).toBe("localized-pricing");
+    expect(plan.mode).toBe("daily_synthesis");
+    expect(plan.secondary.map((item) => item.clusterId)).toContain("clawk");
+  });
+
+  it("keeps a single-source first-party lead when its signal is materially stronger", () => {
+    const official = {
+      ...cluster("official-launch", 4.5, "official-hn", ["hacker-news"]),
+      signalBreakdown: {
+        baseScore: 4.38,
+        crossProviderSupport: 0,
+        sameProviderSupport: 0,
+        providerDiversityBoost: 0,
+        interestDiversityBoost: 0,
+        freshnessBoost: 0.12,
+        totalScore: 4.5,
+      },
+    } satisfies StoryCluster;
+    const confirmed = {
+      ...cluster("confirmed-story", 3, "confirmed-reddit", ["reddit", "rss"]),
+      duplicateFeedItemIds: ["confirmed-rss"],
+    } satisfies StoryCluster;
+    const base = buildSelection([official, confirmed]);
+    const officialEvidence = evidenceById(base, "official-hn");
+    const confirmedReddit = evidenceById(base, "confirmed-reddit");
+
+    const plan = buildReaderSummaryCoveragePlan({
+      ...base,
+      selectedEvidence: [
+        {
+          ...officialEvidence,
+          title: "Show HN: Major first-party coding agent release",
+          providerMetricLabels: [{ label: "Points", value: "1200" }],
+          contentQuality: {
+            ...officialEvidence.contentQuality!,
+            flags: ["official_account", "trusted_author"],
+          },
+        },
+        confirmedReddit,
+        {
+          ...confirmedReddit,
+          feedItemId: "confirmed-rss",
+          sourceItemId: "confirmed-rss",
+          providerKey: "rss",
+          canonicalUrl: "https://example.news/confirmed-story",
+        },
+      ],
+    });
+
+    expect(plan.lead?.clusterId).toBe("official-launch");
+    expect(plan.mode).toBe("single_story");
+    expect(plan.secondary.map((item) => item.clusterId)).toContain(
+      "confirmed-story",
+    );
+  });
+
+  it("uses a daily synthesis for several strong unrelated Jul 12-like signals", () => {
+    const selection = buildSelection([
+      cluster("model-routing", 2.45, "openai-routing", ["x-twitter"]),
+      cluster("token-overhead", 2.25, "security-tokens", ["hacker-news"]),
+      cluster("research-careers", 2.05, "database-research", ["rss"]),
+    ]);
+
+    const plan = buildReaderSummaryCoveragePlan(selection);
+
+    expect(plan.mode).toBe("daily_synthesis");
+    expect(plan.lead).toBeDefined();
+    expect(plan.secondary).toHaveLength(2);
+  });
+
+  it("does not label several stories from one provider as a cross-provider synthesis", () => {
+    const selection = buildSelection([
+      cluster("model-routing", 2.45, "openai-routing", ["reddit"]),
+      cluster("token-overhead", 2.25, "security-tokens", ["reddit"]),
+    ]);
+
+    expect(buildReaderSummaryCoveragePlan(selection).mode).toBe("single_story");
   });
 });
 

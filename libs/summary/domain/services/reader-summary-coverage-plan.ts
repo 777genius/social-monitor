@@ -11,6 +11,7 @@ import {
 import { independentEvidenceProviderKeys } from "../value-objects/reader-summary-provider-identity";
 
 export type ReaderSummaryCoverageRole = "lead" | "secondary";
+export type ReaderSummaryCoverageMode = "single_story" | "daily_synthesis";
 
 export type ReaderSummaryCoveragePlanItem = {
   readonly role: ReaderSummaryCoverageRole;
@@ -23,6 +24,7 @@ export type ReaderSummaryCoveragePlanItem = {
 };
 
 export type ReaderSummaryCoveragePlan = {
+  readonly mode: ReaderSummaryCoverageMode;
   readonly lead?: ReaderSummaryCoveragePlanItem;
   readonly secondary: readonly ReaderSummaryCoveragePlanItem[];
 };
@@ -37,6 +39,10 @@ const maxSecondarySignals = 3;
 const minimumSecondaryScore = 0.65;
 const relativeSecondaryScoreFloor = 0.3;
 const nearDuplicateSimilarity = 0.62;
+const materiallyStrongerSingleSourceSignalRatio = 1.25;
+const dailySynthesisMinimumSignalScore = 1.25;
+const dailySynthesisRelativeSignalFloor = 0.45;
+const dominantMajorEventSignalRatio = 1.5;
 
 export const buildReaderSummaryCoveragePlan = (
   selection: SummaryEvidenceSelection,
@@ -55,15 +61,9 @@ export const buildReaderSummaryCoveragePlan = (
   );
   const eligibleCandidates =
     primaryCandidates.length > 0 ? primaryCandidates : candidates;
-  const lead =
-    eligibleCandidates.find(
-      (candidate) => candidate.editorialPriority.authoritativeLead,
-    ) ??
-    eligibleCandidates.find(
-      (candidate) => candidate.editorialPriority.leadEligible,
-    );
+  const lead = selectCoverageLead(eligibleCandidates);
   if (lead === undefined) {
-    return { secondary: [] };
+    return { mode: "single_story", secondary: [] };
   }
 
   const minimumScore = Math.max(
@@ -72,7 +72,7 @@ export const buildReaderSummaryCoveragePlan = (
   );
   const secondary: CoverageCandidate[] = [];
   const remaining = eligibleCandidates
-    .slice(1)
+    .filter((candidate) => candidate.clusterId !== lead.clusterId)
     .filter(
       (candidate) =>
         candidate.score >= minimumScore && candidate.qualityScore >= 0.45,
@@ -97,11 +97,84 @@ export const buildReaderSummaryCoveragePlan = (
   }
 
   return {
+    mode: coverageMode(lead, secondary),
     lead: publicPlanItem(lead, "lead"),
     secondary: secondary.map((candidate) =>
       publicPlanItem(candidate, "secondary"),
     ),
   };
+};
+
+const coverageMode = (
+  lead: CoverageCandidate,
+  secondary: readonly CoverageCandidate[],
+): ReaderSummaryCoverageMode => {
+  const strongestDistinctSignal = [...secondary]
+    .filter(
+      (candidate) =>
+        candidate.qualityScore >= 0.6 &&
+        hasProviderDiversity(lead, candidate) &&
+        candidate.editorialPriority.signalScore >=
+          dailySynthesisMinimumSignalScore &&
+        candidate.editorialPriority.signalScore >=
+          lead.editorialPriority.signalScore *
+            dailySynthesisRelativeSignalFloor,
+    )
+    .sort(
+      (left, right) =>
+        right.editorialPriority.signalScore -
+        left.editorialPriority.signalScore,
+    )[0];
+  if (strongestDistinctSignal === undefined) {
+    return "single_story";
+  }
+
+  const hasDominantMajorEvent =
+    lead.editorialPriority.authoritativeLead &&
+    lead.editorialPriority.signalScore >=
+      strongestDistinctSignal.editorialPriority.signalScore *
+        dominantMajorEventSignalRatio;
+
+  return hasDominantMajorEvent ? "single_story" : "daily_synthesis";
+};
+
+const hasProviderDiversity = (
+  left: CoverageCandidate,
+  right: CoverageCandidate,
+): boolean => new Set([...left.providerKeys, ...right.providerKeys]).size >= 2;
+
+const selectCoverageLead = (
+  candidates: readonly CoverageCandidate[],
+): CoverageCandidate | undefined => {
+  const authoritativeCandidates = candidates.filter(
+    (candidate) => candidate.editorialPriority.authoritativeLead,
+  );
+  const eligibleCandidates =
+    authoritativeCandidates.length > 0
+      ? authoritativeCandidates
+      : candidates.filter(
+          (candidate) => candidate.editorialPriority.leadEligible,
+        );
+  const highestPriority = eligibleCandidates[0];
+  if (
+    highestPriority === undefined ||
+    highestPriority.editorialPriority.confirmedProviderCount > 1
+  ) {
+    return highestPriority;
+  }
+
+  const independentlyConfirmed = eligibleCandidates.find(
+    (candidate) => candidate.editorialPriority.confirmedProviderCount > 1,
+  );
+  if (independentlyConfirmed === undefined) {
+    return highestPriority;
+  }
+
+  return highestPriority.editorialPriority.signalScore >=
+    independentlyConfirmed.editorialPriority.signalScore *
+      materiallyStrongerSingleSourceSignalRatio
+    ? highestPriority
+    : independentlyConfirmed;
 };
 
 const isGitHubOnlyCandidate = (candidate: CoverageCandidate): boolean =>

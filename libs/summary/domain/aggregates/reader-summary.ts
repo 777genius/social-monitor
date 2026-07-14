@@ -69,6 +69,10 @@ import {
   providerNameForKey,
 } from "./reader-summary-open-questions";
 import { buildReaderSummaryClaimBoard } from "../services/reader-summary-claim-board";
+import {
+  buildThematicSynthesisSupport,
+  readerHeadlineForNarrativeLead,
+} from "../policies/reader-summary-narrative-headline-policy";
 
 export type ReaderSummaryFactoryInput = {
   readonly headline: string;
@@ -126,9 +130,20 @@ export class ReaderSummary {
       evidenceByFeedItemId,
     );
     const sourceMix = buildSourceMix(primaryInput);
-    const narrativeLeadClusterId = input.narrativeSections?.find(
+    const narrativeLeadSection = input.narrativeSections?.find(
       (section) => section.kind === "lead",
-    )?.storyClusterId;
+    );
+    const narrativeLeadClusterId = narrativeLeadSection?.storyClusterId;
+    const thematicSynthesisSupport =
+      narrativeLeadSection === undefined ||
+      narrativeLeadSection.storyClusterId !== undefined
+        ? undefined
+        : buildThematicSynthesisSupport({
+            section: narrativeLeadSection,
+            citations: citationById,
+            evidence: evidenceByFeedItemId,
+            clusters: input.storyClusters,
+          });
     const authoredNarrativeLeadStory = input.topStories.find(
       (story) => story.storyClusterId === narrativeLeadClusterId,
     );
@@ -271,11 +286,13 @@ export class ReaderSummary {
         headline,
         sourceMix,
         topReads,
+        thematicSynthesisSupport,
       }),
       oneLineTakeaway: buildGroundedOneLineTakeaway({
         executiveSummary: input.executiveSummary,
         topReads,
         sourceMix,
+        thematicSynthesisSupport,
       }),
       bullets: buildReaderSummaryBullets(readerInput, topReads),
       narrativeSections: withSupplementalTrendNarrativeAppendix({
@@ -346,30 +363,6 @@ export class ReaderSummary {
     };
   }
 }
-
-const readerHeadlineForNarrativeLead = (
-  storyTitle: string,
-  topRead: TopRead,
-): string => {
-  if (
-    topRead.confirmedProviderKeys.length > 1 ||
-    topRead.confidence.level !== "low"
-  ) {
-    return storyTitle;
-  }
-  const providerName = `${topRead.providerName.charAt(0).toLocaleUpperCase("en-US")}${topRead.providerName.slice(1)}`;
-  const normalizedStoryTitle = storyTitle.toLocaleLowerCase("en-US");
-  const normalizedProviderName = providerName.toLocaleLowerCase("en-US");
-  if (
-    normalizedStoryTitle === normalizedProviderName ||
-    normalizedStoryTitle.startsWith(`${normalizedProviderName} `) ||
-    normalizedStoryTitle.startsWith(`${normalizedProviderName}:`)
-  ) {
-    return storyTitle;
-  }
-
-  return `${providerName} discussion: ${storyTitle}`;
-};
 
 const uniqueTopReadStoryPool = (
   stories: readonly TopReadCandidate[],

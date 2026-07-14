@@ -110,6 +110,7 @@ describe("OpenAI reader summary prompt contract", () => {
     const input: ReaderSummaryModelInput = {
       ...base,
       coveragePlan: {
+        mode: "single_story",
         lead: {
           role: "lead",
           clusterId: "approved-editorial-lead",
@@ -130,6 +131,27 @@ describe("OpenAI reader summary prompt contract", () => {
     expect(payload.coveragePlan.lead?.storyClusterId).toBe(
       "approved-editorial-lead",
     );
+  });
+
+  it("tells the model to synthesize the day when the approved plan requires it", () => {
+    const base = promptInputWithGitHubTrending();
+    const input: ReaderSummaryModelInput = {
+      ...base,
+      coveragePlan: { ...base.coveragePlan, mode: "daily_synthesis" },
+    };
+
+    const instructions = buildOpenAiReaderSummaryInstructions(input);
+    const payload = JSON.parse(
+      buildOpenAiReaderSummaryPromptPayload(input),
+    ) as { coveragePlan: { mode: string } };
+
+    expect(instructions).toContain(
+      "Write a thematic daily digest, not an article about one source item",
+    );
+    expect(instructions).toContain(
+      "set storyClusterId to null, and cite 2-3 planned citations",
+    );
+    expect(payload.coveragePlan.mode).toBe("daily_synthesis");
   });
 });
 

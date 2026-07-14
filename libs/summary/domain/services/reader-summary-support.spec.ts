@@ -106,6 +106,53 @@ describe("buildGroundedOneLineTakeaway", () => {
       }),
     ).toBe(executiveSummary);
   });
+
+  it("preserves synthesis prose grounded by multiple clusters and provider groups", () => {
+    const executiveSummary =
+      "AI coding teams are balancing agent isolation, runtime efficiency and infrastructure cost across several distinct developments.";
+    const lead = {
+      ...topRead(),
+      confidence: {
+        level: "low" as const,
+        score: 0.42,
+        rationale: "Single source",
+      },
+      confirmedProviderKeys: ["x-twitter"],
+    };
+
+    expect(
+      buildGroundedOneLineTakeaway({
+        executiveSummary,
+        topReads: [lead],
+        sourceMix: [],
+        thematicSynthesisSupport: { clusterCount: 2, providerCount: 2 },
+      }),
+    ).toBe(executiveSummary);
+  });
+
+  it("rejects synthesis prose when all cited clusters resolve to one provider group", () => {
+    const executiveSummary =
+      "AI coding teams are balancing agent isolation, runtime efficiency and infrastructure cost across several distinct developments.";
+    const lead = {
+      ...topRead(),
+      confidence: {
+        level: "low" as const,
+        score: 0.42,
+        rationale: "Single source",
+      },
+      confirmedProviderKeys: ["x-twitter"],
+    };
+
+    const result = buildGroundedOneLineTakeaway({
+      executiveSummary,
+      topReads: [lead],
+      sourceMix: [],
+      thematicSynthesisSupport: { clusterCount: 2, providerCount: 1 },
+    });
+
+    expect(result).not.toBe(executiveSummary);
+    expect(result).toContain("Confirm important claims");
+  });
 });
 
 describe("groundedReaderHeadline", () => {
@@ -135,6 +182,28 @@ describe("groundedReaderHeadline", () => {
         sourceMix: [],
       }),
     ).toBe("Acme launches a lower-cost coding model");
+  });
+
+  it("does not trust a thematic headline when its citations come from one provider group", () => {
+    const lead = {
+      ...topRead(),
+      confidence: {
+        level: "low" as const,
+        score: 0.42,
+        rationale: "Single source",
+      },
+      confirmedProviderKeys: ["x-twitter"],
+    };
+
+    expect(
+      groundedReaderHeadline({
+        headline:
+          "AI coding teams weigh sandboxing, runtime performance and memory costs",
+        topReads: [lead],
+        sourceMix: [],
+        thematicSynthesisSupport: { clusterCount: 2, providerCount: 1 },
+      }),
+    ).toBe("X/Twitter discussion needs confirmation");
   });
 
   it("source-frames an unverified legal lead when replacing a vague headline", () => {

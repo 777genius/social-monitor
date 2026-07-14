@@ -36,7 +36,10 @@ describe("normalizeTopStories coverage alignment", () => {
   });
 
   it("keeps top stories empty when no evidence passes the lead gate", () => {
-    const input = { ...modelInput(1), coveragePlan: { secondary: [] } };
+    const input = {
+      ...modelInput(1),
+      coveragePlan: { mode: "single_story" as const, secondary: [] },
+    };
 
     expect(
       normalizeTopStories(
@@ -201,6 +204,7 @@ const modelInput = (count: number): ReaderSummaryModelInput => {
     },
     evidence,
     coveragePlan: {
+      mode: "single_story",
       lead: {
         role: "lead",
         clusterId: `story:${count}`,
@@ -285,6 +289,7 @@ const modelInputWithCrossProviderDuplicate = (): ReaderSummaryModelInput => {
       selectedEvidence: [leadEvidence, duplicateEvidence, rssEvidence],
     },
     coveragePlan: {
+      mode: "single_story",
       lead: {
         ...input.coveragePlan.lead!,
         feedItemIds: [leadEvidence.feedItemId, "feed-1-hn", "feed-1-rss"],

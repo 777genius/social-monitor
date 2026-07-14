@@ -54,6 +54,37 @@ describe("ReaderSummary narrative lead projection", () => {
     expect(summary.headline).toBe(leadTitle);
   });
 
+  it("keeps a validated multi-cluster daily synthesis instead of replacing it with one top read", () => {
+    const fixture = summaryFixture(3);
+    const synthesisHeadline =
+      "AI coding teams weigh sandboxing, runtime performance and memory costs";
+    const synthesisSummary =
+      "Several distinct engineering signals point to tighter control over agent isolation, runtime efficiency and infrastructure cost.";
+    const summary = buildReaderSummary({
+      ...fixture,
+      headline: synthesisHeadline,
+      executiveSummary: synthesisSummary,
+      narrativeSections: [
+        {
+          id: "narrative-1",
+          kind: "lead",
+          title: "Daily synthesis",
+          text: synthesisSummary,
+          citationIds: ["citation-1", "citation-2"],
+        },
+      ],
+    });
+
+    expect(summary.headline).toBe(synthesisHeadline);
+    expect(summary.oneLineTakeaway).toBe(synthesisSummary);
+    expect(summary.narrativeSections?.[0]).toMatchObject({
+      kind: "lead",
+      citationIds: ["citation-1", "citation-2"],
+    });
+    expect(summary.narrativeSections?.[0]?.storyClusterId).toBeUndefined();
+    expect(summary.headline).not.toBe(summary.topReads[0]?.title);
+  });
+
   it("refills eight unique reader-facing top reads after authored candidates are filtered", () => {
     const fixture = summaryFixture(33);
     const fallbackTitle = "Independent benchmark compares agent cache overhead";

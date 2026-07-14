@@ -215,6 +215,7 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
         "reader_summary.rules.policy.v1+summary.rules.user-preference.v1",
     });
     expect(model.observedCoveragePlans()).toContainEqual({
+      mode: "single_story",
       lead: expect.objectContaining({ clusterId: "cluster-1" }),
       secondary: [],
     });

@@ -3,6 +3,7 @@ import {
   isReaderSummaryWatchEligibleEvidence,
   readerSummaryNarrativeSectionKinds,
   type ReaderSummaryCitation,
+  type ReaderSummaryCoverageMode,
   type ReaderSummaryNarrativeSection,
 } from "../../domain";
 import type { ReaderSummaryModelInput } from "../../ports";
@@ -14,6 +15,11 @@ import {
   requiredString,
   requiredStringArray,
 } from "./openai-responses-reader-summary-json";
+import {
+  buildReaderSummaryNarrativeCoverage,
+  isValidReaderSummaryNarrativeLead,
+  type ReaderSummaryNarrativeCoverage,
+} from "./openai-responses-reader-summary-narrative-coverage";
 
 const narrativeKinds = new Set(readerSummaryNarrativeSectionKinds);
 const maxNarrativeSections = 7;
@@ -45,7 +51,10 @@ export const normalizeOpenAiReaderSummaryNarrative = (params: {
   const knownCitationIds = new Set(
     params.citationMap.map((citation) => citation.citationId),
   );
-  const coverage = coverageCitationPlan(params.input, params.citationMap);
+  const coverage = buildReaderSummaryNarrativeCoverage(
+    params.input,
+    params.citationMap,
+  );
   const eligibleWatchCitationIds = watchEligibleCitationIds(
     params.input,
     params.citationMap,
@@ -61,7 +70,9 @@ export const normalizeOpenAiReaderSummaryNarrative = (params: {
       const authoredStoryClusterId = optionalString(value.storyClusterId);
       const storyClusterId =
         kind === "lead"
-          ? (coverage.leadClusterId ?? authoredStoryClusterId)
+          ? coverage.mode === "daily_synthesis"
+            ? undefined
+            : (coverage.leadClusterId ?? authoredStoryClusterId)
           : authoredStoryClusterId;
       const title =
         optionalString(value.title) ??
@@ -69,6 +80,7 @@ export const normalizeOpenAiReaderSummaryNarrative = (params: {
           kind,
           storyClusterId,
           params.storyTitlesByClusterId,
+          coverage.mode,
         );
       const citationIds = knownStringSubset(
         requiredStringArray(
@@ -96,6 +108,7 @@ export const normalizeOpenAiReaderSummaryNarrative = (params: {
       }
       if (
         kind === "lead" &&
+        coverage.mode === "single_story" &&
         authoredStoryClusterId !== undefined &&
         authoredStoryClusterId !== coverage.leadClusterId
       ) {
@@ -119,7 +132,7 @@ export const normalizeOpenAiReaderSummaryNarrative = (params: {
       }
       if (
         kind === "lead" &&
-        !citationIds.every((id) => coverage.leadCitationIds.has(id))
+        !isValidReaderSummaryNarrativeLead(citationIds, coverage)
       ) {
         return [];
       }
@@ -136,12 +149,7 @@ export const normalizeOpenAiReaderSummaryNarrative = (params: {
       ];
     });
   const bounded = canonicalNarrativeOrder(
-    ensureCitedLead(
-      sections,
-      coverage.leadCitationIds,
-      coverage.leadClusterId,
-      params.storyTitlesByClusterId,
-    ),
+    ensureCitedLead(sections, coverage, params.storyTitlesByClusterId),
   );
   assertNarrativeCoverage(
     bounded,
@@ -150,7 +158,7 @@ export const normalizeOpenAiReaderSummaryNarrative = (params: {
       rawSections,
       validSections: sections,
       knownCitationIds,
-      leadCitationIds: coverage.leadCitationIds,
+      leadCitationIds: coverage.allowedLeadCitationIds,
     }),
   );
 
@@ -268,7 +276,12 @@ const fallbackNarrative = (params: {
   readonly storyTitlesByClusterId: ReadonlyMap<string, string>;
 }): readonly ReaderSummaryNarrativeSection[] => {
   const plannedFeedItemIds = new Set(
-    params.input.coveragePlan.lead?.feedItemIds ?? [],
+    [
+      params.input.coveragePlan.lead,
+      ...(params.input.coveragePlan.mode === "daily_synthesis"
+        ? params.input.coveragePlan.secondary
+        : []),
+    ].flatMap((item) => item?.feedItemIds ?? []),
   );
   const citationIds = params.citationMap
     .filter((item) => plannedFeedItemIds.has(item.feedItemId))
@@ -283,17 +296,20 @@ const fallbackNarrative = (params: {
       id: "narrative-1",
       kind: "lead",
       title:
-        (params.input.coveragePlan.lead?.clusterId === undefined
-          ? undefined
-          : params.storyTitlesByClusterId.get(
-              params.input.coveragePlan.lead.clusterId,
-            )) ?? "Overview",
+        (params.input.coveragePlan.mode === "daily_synthesis"
+          ? "Daily synthesis"
+          : params.input.coveragePlan.lead?.clusterId === undefined
+            ? undefined
+            : params.storyTitlesByClusterId.get(
+                params.input.coveragePlan.lead.clusterId,
+              )) ?? "Overview",
       text: requiredString(
         params.legacyExecutiveSummary,
         "reader summary executive summary",
       ),
       citationIds,
-      ...(params.input.coveragePlan.lead?.clusterId === undefined
+      ...(params.input.coveragePlan.mode === "daily_synthesis" ||
+      params.input.coveragePlan.lead?.clusterId === undefined
         ? {}
         : { storyClusterId: params.input.coveragePlan.lead.clusterId }),
     },
@@ -304,9 +320,13 @@ const defaultNarrativeTitle = (
   kind: ReaderSummaryNarrativeSection["kind"] | undefined,
   storyClusterId: string | undefined,
   storyTitlesByClusterId: ReadonlyMap<string, string>,
+  coverageMode: ReaderSummaryCoverageMode,
 ): string | undefined => {
   switch (kind) {
     case "lead":
+      if (coverageMode === "daily_synthesis") {
+        return "Daily synthesis";
+      }
       return (
         (storyClusterId === undefined
           ? undefined
@@ -327,43 +347,9 @@ const defaultNarrativeTitle = (
   }
 };
 
-const coverageCitationPlan = (
-  input: ReaderSummaryModelInput,
-  citationMap: readonly ReaderSummaryCitation[],
-): {
-  readonly leadClusterId: string | undefined;
-  readonly leadCitationIds: ReadonlySet<string>;
-  readonly secondaryCitationIds: ReadonlyMap<string, ReadonlySet<string>>;
-} => {
-  const citationByFeedItemId = new Map(
-    citationMap.map(
-      (citation) => [citation.feedItemId, citation.citationId] as const,
-    ),
-  );
-  const plan = input.coveragePlan;
-  const citationIdsFor = (feedItemIds: readonly string[]) =>
-    new Set(
-      feedItemIds
-        .map((feedItemId) => citationByFeedItemId.get(feedItemId))
-        .filter((id): id is string => id !== undefined),
-    );
-
-  return {
-    leadClusterId: plan.lead?.clusterId,
-    leadCitationIds: citationIdsFor(plan.lead?.feedItemIds ?? []),
-    secondaryCitationIds: new Map(
-      plan.secondary.map((item) => [
-        item.clusterId,
-        citationIdsFor(item.feedItemIds),
-      ]),
-    ),
-  };
-};
-
 const ensureCitedLead = (
   sections: readonly ReaderSummaryNarrativeSection[],
-  leadCitationIds: ReadonlySet<string>,
-  leadClusterId: string | undefined,
+  coverage: ReaderSummaryNarrativeCoverage,
   storyTitlesByClusterId: ReadonlyMap<string, string>,
 ): readonly ReaderSummaryNarrativeSection[] => {
   if (sections.some((section) => section.kind === "lead")) {
@@ -372,10 +358,11 @@ const ensureCitedLead = (
   const candidate = sections.find(
     (section) =>
       section.kind === "main_signal" &&
-      (section.storyClusterId === undefined ||
-        section.storyClusterId === leadClusterId) &&
-      section.citationIds.length > 0 &&
-      section.citationIds.every((id) => leadCitationIds.has(id)),
+      (coverage.mode === "daily_synthesis"
+        ? section.storyClusterId === undefined
+        : section.storyClusterId === undefined ||
+          section.storyClusterId === coverage.leadClusterId) &&
+      isValidReaderSummaryNarrativeLead(section.citationIds, coverage),
   );
   if (candidate === undefined) {
     return sections;
@@ -387,12 +374,16 @@ const ensureCitedLead = (
           ...section,
           kind: "lead",
           title:
-            (leadClusterId === undefined
-              ? undefined
-              : storyTitlesByClusterId.get(leadClusterId)) ?? "Overview",
-          ...(leadClusterId === undefined
+            (coverage.mode === "daily_synthesis"
+              ? "Daily synthesis"
+              : coverage.leadClusterId === undefined
+                ? undefined
+                : storyTitlesByClusterId.get(coverage.leadClusterId)) ??
+            "Overview",
+          ...(coverage.mode === "daily_synthesis" ||
+          coverage.leadClusterId === undefined
             ? { storyClusterId: undefined }
-            : { storyClusterId: leadClusterId }),
+            : { storyClusterId: coverage.leadClusterId }),
         }
       : section,
   );

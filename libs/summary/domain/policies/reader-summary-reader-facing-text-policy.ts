@@ -7,7 +7,8 @@ export const isConversationalOrTruncatedReaderTitle = (
     .trim();
 
   return (
-    /(?:\.{3,}|…)\s*$/u.test(sourceTitle) ||
+    /\.{2,}/u.test(sourceTitle) ||
+    /…\s*$/u.test(sourceTitle) ||
     /^(?:well[,\s]+)?here\s+we\s+go\s+again[.!?…]*$/iu.test(sourceTitle) ||
     /\bjust\s+dropped\b/iu.test(sourceTitle) ||
     /\b(?:it(?:'s| is)\s+)?got\s+me\s+thinking\b/iu.test(sourceTitle) ||

@@ -10,6 +10,10 @@ export const groundedReaderHeadline = (params: {
   readonly headline: string;
   readonly sourceMix: readonly SourceMixEntry[];
   readonly topReads: readonly TopRead[];
+  readonly thematicSynthesisSupport?: {
+    readonly clusterCount: number;
+    readonly providerCount: number;
+  };
 }): string => {
   const fallback = readerSummaryHeadline(params.headline);
 
@@ -21,10 +25,14 @@ export const groundedReaderHeadline = (params: {
   const hasGroundedLead =
     lead.confirmedProviderKeys.length > 1 || lead.confidence.level === "high";
   const explicitlySourceFramed = isExplicitlySourceFramedText(fallback, lead);
+  const safelySupportedThematicSynthesis =
+    (params.thematicSynthesisSupport?.clusterCount ?? 0) >= 2 &&
+    (params.thematicSynthesisSupport?.providerCount ?? 0) >= 2;
   const safeSemanticHeadline =
     !isTechnicalReaderHeadline(fallback) &&
     !isVagueDailyWrapHeadline(fallback) &&
-    (explicitlySourceFramed ||
+    (safelySupportedThematicSynthesis ||
+      explicitlySourceFramed ||
       (hasGroundedLead && !isUnverifiedLegalTopRead(lead)));
 
   if (safeSemanticHeadline) {
