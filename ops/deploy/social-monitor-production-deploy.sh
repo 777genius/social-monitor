@@ -3,7 +3,19 @@ set -euo pipefail
 
 PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 
-if ((EUID == 0)); then
+if [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} == 1 ]]; then
+  ROOT=${SOCIAL_MONITOR_DEPLOY_ROOT:?test root is required}
+  REPO=${SOCIAL_MONITOR_DEPLOY_REPO:?test repo is required}
+  CONTROL=${SOCIAL_MONITOR_DEPLOY_CONTROL:?test control root is required}
+  [[ $ROOT == /tmp/* ]] || {
+    echo 'deploy-error: test root must be below /tmp' >&2
+    exit 1
+  }
+  STATE=${SOCIAL_MONITOR_DEPLOY_STATE:-$CONTROL/deploy-state}
+  STAGING=${SOCIAL_MONITOR_DEPLOY_STAGING:-$ROOT/runtime/deploy-staging}
+  RELEASES=${SOCIAL_MONITOR_DEPLOY_RELEASES:-$ROOT/runtime/frontend-releases}
+  PROJECT=${SOCIAL_MONITOR_DEPLOY_PROJECT:-social-monitor-prod}
+elif ((EUID == 0)); then
   ROOT=/var/data/social-monitor
   REPO=$ROOT/integration
   CONTROL=$ROOT/control
@@ -16,23 +28,26 @@ if ((EUID == 0)); then
     SOCIAL_MONITOR_DEPLOY_STAGING SOCIAL_MONITOR_DEPLOY_RELEASES \
     SOCIAL_MONITOR_DEPLOY_PROJECT SOCIAL_MONITOR_DEPLOY_TEST_MODE
 else
-  [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} == 1 ]] || {
-    echo 'deploy-error: production entrypoint requires root' >&2
-    exit 1
-  }
-  ROOT=${SOCIAL_MONITOR_DEPLOY_ROOT:?test root is required}
-  REPO=${SOCIAL_MONITOR_DEPLOY_REPO:?test repo is required}
-  CONTROL=${SOCIAL_MONITOR_DEPLOY_CONTROL:?test control root is required}
-  STATE=${SOCIAL_MONITOR_DEPLOY_STATE:-$CONTROL/deploy-state}
-  STAGING=${SOCIAL_MONITOR_DEPLOY_STAGING:-$ROOT/runtime/deploy-staging}
-  RELEASES=${SOCIAL_MONITOR_DEPLOY_RELEASES:-$ROOT/runtime/frontend-releases}
-  PROJECT=${SOCIAL_MONITOR_DEPLOY_PROJECT:-social-monitor-prod}
+  echo 'deploy-error: production entrypoint requires root' >&2
+  exit 1
 fi
 unset DATABASE_URL
+POSTGRES_POOL_BOOTSTRAP_VERSION=postgres-pool-v1
 PUBLIC_LINK=$ROOT/runtime/frontend-public-web
 ADMIN_LINK=$ROOT/runtime/frontend-admin-web
 DEPLOY_LOCK=$CONTROL/production-deploy.lock
-DAILY_LOCK=$CONTROL/daily-run.lock
+# Deployment, the control-owned daily runner, and every manual production DB
+# command use this one admission lock. The daily lock filename is retained so
+# the existing control runner and this repository converge on the same inode.
+POSTGRES_ADMISSION_LOCK=$CONTROL/daily-run.lock
+POSTGRES_RUNTIME_RELEASES=$CONTROL/postgres-runtime-releases
+POSTGRES_RUNTIME_CURRENT=$CONTROL/postgres-runtime-current
+POSTGRES_ROLLOUT_SOAK_SECONDS=300
+if ((EUID == 0)) && [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} != 1 ]]; then
+  SYSTEMD_UNIT_DIR=/etc/systemd/system
+else
+  SYSTEMD_UNIT_DIR=$ROOT/runtime/systemd
+fi
 
 FRONTEND_PATHS=(
   apps/frontend
@@ -79,6 +94,11 @@ COMPOSE=(
   -f "$CONTROL/compose.production.yml"
   -f "$CONTROL/compose.managed-db.yml"
 )
+if [[ -f $POSTGRES_RUNTIME_CURRENT/compose.postgres-runtime.yml ]]; then
+  COMPOSE+=(
+    -f "$POSTGRES_RUNTIME_CURRENT/compose.postgres-runtime.yml"
+  )
+fi
 
 fail() {
   printf 'deploy-error: %s\n' "$*" >&2
@@ -86,6 +106,7 @@ fail() {
 }
 
 verify_host_policy() {
+  [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} == 1 ]] && return 0
   ((EUID == 0)) || return 0
   [[ $(stat -c '%U:%G:%a' "$CONTROL/github-production-deploy.sh") == root:root:755 ]] || \
     fail 'root deploy entrypoint ownership or mode is invalid'
@@ -135,10 +156,19 @@ validate_main_commit() {
   git -C "$REPO" merge-base --is-ancestor "$sha" origin/main || fail 'commit is not on origin/main'
 }
 
+# shellcheck source=postgres-runtime-deploy-lib.sh
+source "$REPO/ops/deploy/postgres-runtime-deploy-lib.sh"
+
 verify_compose_scope() (
   local rendered=$STATE/rendered-compose.$$.json
   trap 'rm -f "$rendered"' EXIT
+  umask 077
   "${COMPOSE[@]}" --profile app --profile daily config --format json > "$rendered"
+  if [[ -f $POSTGRES_RUNTIME_CURRENT/compose.postgres-runtime.yml ]]; then
+    if ((EUID == 0)) && [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} != 1 ]]; then
+      verify_effective_postgres_daily_topology
+    fi
+  fi
   python3 - "$rendered" "$ROOT" "$REPO" "$CONTROL" <<'PY'
 import json
 import pathlib
@@ -287,8 +317,31 @@ print_plan() {
   component_changed backend "$sha" "${BACKEND_PATHS[@]}" && backend=true
   component_changed control "$sha" "${CONTROL_PATHS[@]}" && control=true
   component_changed backend "$sha" apps/x-collector && x_collector=true
-  printf 'frontend=%s\nbackend=%s\nbackend_base=%s\ncontrol=%s\nx_collector=%s\n' \
-    "$frontend" "$backend" "$backend_base" "$control" "$x_collector"
+  local postgres_pool_bootstrap=uninstalled
+  local postgres_pool_bootstrap_sha=0000000000000000000000000000000000000000
+  if postgres_pool_bootstrap_installed "$sha"; then
+    postgres_pool_bootstrap=$POSTGRES_POOL_BOOTSTRAP_VERSION
+    postgres_pool_bootstrap_sha=$(tr -d '\n' < "$STATE/postgres-pool-bootstrap.sha")
+  fi
+  printf 'frontend=%s\nbackend=%s\nbackend_base=%s\ncontrol=%s\nx_collector=%s\npostgres_pool_bootstrap=%s\npostgres_pool_bootstrap_sha=%s\n' \
+    "$frontend" "$backend" "$backend_base" "$control" "$x_collector" \
+    "$postgres_pool_bootstrap" "$postgres_pool_bootstrap_sha"
+}
+
+postgres_pool_bootstrap_installed() {
+  local target=$1
+  local marker=$STATE/postgres-pool-bootstrap.sha
+  local installed=$CONTROL/github-production-deploy.sh
+  local marker_sha
+  [[ -s $marker && -f $installed ]] || return 1
+  marker_sha=$(tr -d '\n' < "$marker")
+  [[ $marker_sha =~ ^[0-9a-f]{40}$ ]] || return 1
+  git -C "$REPO" cat-file -e "$marker_sha^{commit}" 2>/dev/null || return 1
+  git -C "$REPO" merge-base --is-ancestor "$marker_sha" "$target" || return 1
+  cmp -s "$installed" "$REPO/ops/deploy/social-monitor-production-deploy.sh" || return 1
+  [[ -f $REPO/ops/deploy/postgres-runtime-deploy-lib.sh ]] || return 1
+  [[ -f $REPO/ops/deploy/verify-postgres-runtime-topology.py ]] || return 1
+  [[ -f $REPO/ops/deploy/production-runtime/compose.postgres-runtime.yml ]] || return 1
 }
 
 validate_frontend_archive() {
@@ -437,6 +490,36 @@ compose_image_name() {
   printf '%s-%s:latest\n' "$PROJECT" "$1"
 }
 
+stop_and_remove_database_services() {
+  local service
+  local -a database_services=() container_ids remaining_container_ids
+  for service in "$@"; do
+    case $service in
+      api|ingestion-worker|intelligence-worker|delivery-service|event-relay)
+        database_services+=("$service")
+        ;;
+    esac
+  done
+  ((${#database_services[@]} > 0)) || return 0
+  for service in "${database_services[@]}"; do
+    mapfile -t container_ids < <(
+      docker ps -aq \
+        --filter "label=com.docker.compose.project=$PROJECT" \
+        --filter "label=com.docker.compose.service=$service"
+    )
+    if ((${#container_ids[@]} > 0)); then
+      docker stop -t 120 "${container_ids[@]}" || return 1
+      docker rm -f "${container_ids[@]}" || return 1
+    fi
+    mapfile -t remaining_container_ids < <(
+      docker ps -aq \
+        --filter "label=com.docker.compose.project=$PROJECT" \
+        --filter "label=com.docker.compose.service=$service"
+    )
+    ((${#remaining_container_ids[@]} == 0)) || return 1
+  done
+}
+
 capture_previous_images() {
   local state_file=$1
   shift
@@ -456,20 +539,27 @@ capture_previous_images() {
   done
 }
 
-rollback_backend_images() {
+restore_previous_image_tags() {
   local state_file=$1
   [[ -s $state_file ]] || return 0
   local service image_id
-  local api_rolled_back=false
-  local -a rollback_services
   while read -r service image_id; do
     docker image tag "$image_id" "$(compose_image_name "$service")" || return 1
   done < "$state_file"
+}
+
+rollback_backend_images() {
+  local state_file=$1
+  [[ -s $state_file ]] || return 0
+  local api_rolled_back=false
+  local -a rollback_services
+  restore_previous_image_tags "$state_file" || return 1
   mapfile -t rollback_services < <(awk '$1 != "migrate" && $1 != "daily-runner" {print $1}' "$state_file")
   if ((${#rollback_services[@]} > 0)); then
     if printf '%s\n' "${rollback_services[@]}" | grep -qx api; then
       api_rolled_back=true
     fi
+    stop_and_remove_database_services "${rollback_services[@]}" || return 1
     "${COMPOSE[@]}" --profile app up -d --no-deps --force-recreate "${rollback_services[@]}" || return 1
     verify_backend_with_retry "${rollback_services[@]}" || return 1
     if [[ $api_rolled_back == true ]]; then
@@ -552,7 +642,7 @@ verify_backend() {
   for service in "$@"; do
     [[ $service == migrate || $service == daily-runner ]] && continue
     mapfile -t container_ids < <("${COMPOSE[@]}" --profile app ps -q "$service")
-    ((${#container_ids[@]} > 0)) || return 1
+    ((${#container_ids[@]} == 1)) || return 1
     for container in "${container_ids[@]}"; do
       status=$(docker inspect "$container" --format '{{.State.Status}}')
       oom=$(docker inspect "$container" --format '{{.State.OOMKilled}}')
@@ -571,6 +661,36 @@ verify_backend_with_retry() {
   done
   return 1
 }
+
+verify_backend_proxy_readiness() {
+  local status
+  status=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 \
+    -H 'Host: social-monitor.app' \
+    http://127.0.0.1:13080/ready 2>/dev/null || true)
+  [[ $status == 200 ]]
+}
+
+soak_backend_release() (
+  local -a services=("$@")
+  local baseline=$STATE/backend-soak-baseline.$$.txt
+  local started_at now
+  trap 'rm -f "$baseline"' EXIT
+  capture_backend_soak_baseline "$baseline" "${services[@]}" || return 1
+  started_at=$(date +%s)
+  while true; do
+    verify_backend "${services[@]}" || return 1
+    verify_backend_proxy_readiness || return 1
+    verify_concurrent_backend_readiness || return 1
+    verify_backend_soak_state "$baseline" || return 1
+    verify_backend_soak_logs "$baseline" || return 1
+    now=$(date +%s)
+    if ((now - started_at >= POSTGRES_ROLLOUT_SOAK_SECONDS)); then
+      verify_ingestion_queue_recovery "$baseline"
+      return
+    fi
+    sleep 5
+  done
+)
 
 verify_frontend_api_proxy() {
   local frontend_id status oom
@@ -593,9 +713,12 @@ refresh_frontend_api_proxy() {
   return 1
 }
 
-deploy_backend() {
+deploy_backend() (
+  set -euo pipefail
   local sha=$1
   local from
+  local postgres_env=$STATE/postgres-admission.$$.env
+  trap 'rm -f "$postgres_env"' EXIT
   from=$(marker_value backend)
   mapfile -t services < <(backend_services "$from" "$sha")
   if ((${#services[@]} == 0)); then
@@ -603,13 +726,36 @@ deploy_backend() {
     return 0
   fi
 
+  local -a persistent=()
+  local service database_replacement=false
+  for service in "${services[@]}"; do
+    [[ $service == migrate || $service == daily-runner ]] || \
+      persistent+=("$service")
+    case $service in
+      api|ingestion-worker|intelligence-worker|delivery-service|event-relay)
+        database_replacement=true
+        ;;
+    esac
+  done
+  if [[ $database_replacement == true ]]; then
+    persistent+=(
+      api ingestion-worker intelligence-worker delivery-service event-relay
+    )
+    mapfile -t persistent < <(
+      printf '%s\n' "${persistent[@]}" | awk 'NF && !seen[$0]++'
+    )
+  fi
+  local -a captured_services
+  mapfile -t captured_services < <(
+    printf '%s\n' "${services[@]}" "${persistent[@]}" | awk 'NF && !seen[$0]++'
+  )
+
   local previous=$STATE/previous-images-${sha:0:12}.txt
-  capture_previous_images "$previous" "${services[@]}"
+  capture_previous_images "$previous" "${captured_services[@]}"
   verify_migration_compatibility "$from" "$sha"
   backup_database "$sha"
 
   local -a primary_build=()
-  local service
   for service in "${services[@]}"; do
     [[ $service == daily-runner ]] || primary_build+=("$service")
   done
@@ -626,11 +772,17 @@ deploy_backend() {
     "${COMPOSE[@]}" --profile app run -T --rm --no-deps migrate npm run migrate:deploy
   fi
 
-  local -a persistent=()
-  for service in "${services[@]}"; do
-    [[ $service == migrate || $service == daily-runner ]] || persistent+=("$service")
-  done
   if ((${#persistent[@]} > 0)); then
+    if [[ $database_replacement == true ]]; then
+      umask 077
+      capture_effective_postgres_environment "$postgres_env"
+      if ! stop_and_remove_database_services "${persistent[@]}"; then
+        rollback_backend_images "$previous" || fail 'database service removal and backend rollback both failed'
+        fail 'database service removal failed; previous images restored'
+      fi
+      verify_live_postgres_admission "$postgres_env"
+      probe_postgres_maximum_envelope "$postgres_env"
+    fi
     if ! "${COMPOSE[@]}" --profile app up -d --no-deps --force-recreate "${persistent[@]}"; then
       rollback_backend_images "$previous" || fail 'backend recreate and rollback both failed'
       fail 'backend recreate failed; previous images restored'
@@ -643,9 +795,14 @@ deploy_backend() {
       rollback_backend_images "$previous" || fail 'frontend API proxy refresh and backend rollback both failed'
       fail 'frontend API proxy refresh failed; previous backend images restored'
     fi
+    if [[ $database_replacement == true ]] && \
+      ! soak_backend_release "${persistent[@]}" frontend caddy; then
+      rollback_backend_images "$previous" || fail 'backend soak and rollback verification both failed'
+      fail 'backend restart/readiness/502 soak failed; previous images restored'
+    fi
   fi
   printf '%s\n' "$sha" > "$STATE/backend.sha"
-}
+)
 
 switch_link() {
   local link=$1
@@ -724,14 +881,25 @@ sync_control_script() {
   fi
   install -m 0755 -o root -g root "$source" "$destination.next"
   mv -f "$destination.next" "$destination"
+  cmp -s "$source" "$destination" || fail 'installed deploy entrypoint differs from reviewed source'
+}
+
+commit_postgres_pool_bootstrap() {
+  local sha=$1
+  postgres_pool_bootstrap_installed "$sha" && return 0
+  printf '%s\n' "$sha" > "$STATE/postgres-pool-bootstrap.sha.next"
+  mv -f "$STATE/postgres-pool-bootstrap.sha.next" \
+    "$STATE/postgres-pool-bootstrap.sha"
+  postgres_pool_bootstrap_installed "$sha" || \
+    fail 'PostgreSQL bootstrap marker did not commit the installed entrypoint'
 }
 
 deploy_release() {
   local sha=$1
   exec 9>"$DEPLOY_LOCK"
   flock -w 3600 9 || fail 'timed out waiting for deployment lock'
-  exec 8>"$DAILY_LOCK"
-  flock -w 3600 8 || fail 'timed out waiting for daily-run lock'
+  exec 8>"$POSTGRES_ADMISSION_LOCK"
+  flock -w 3600 8 || fail 'timed out waiting for PostgreSQL admission lock'
   fetch_main
   validate_main_commit "$sha"
   install -d -m 0755 "$STATE" "$STAGING" "$RELEASES"
@@ -748,13 +916,44 @@ deploy_release() {
   component_changed backend "$sha" "${BACKEND_PATHS[@]}" && backend=true
   component_changed control "$sha" "${CONTROL_PATHS[@]}" && control=true
   advance_integration "$sha"
-  verify_compose_scope
-  [[ $backend == false ]] || deploy_backend "$sha"
-  [[ $frontend == false ]] || deploy_frontend "$sha"
-  if [[ $control == true ]]; then
-    printf '%s\n' "$sha" > "$STATE/control.sha"
+  sync_control_script "$sha"
+  if [[ $backend == true ]]; then
+    local runtime_control_backup previous_images
+    runtime_control_backup=$(snapshot_postgres_runtime_control "$sha")
+    previous_images=$STATE/previous-images-${sha:0:12}.txt
+    rm -f "$previous_images"
+    local backend_release_status
+    set +e
+    (
+      set -euo pipefail
+      activate_postgres_runtime_control "$sha"
+      verify_compose_scope
+      deploy_backend "$sha"
+    )
+    backend_release_status=$?
+    set -e
+    if ((backend_release_status != 0)); then
+      rollback_backend_images "$previous_images" || \
+        fail 'backend release failed and previous containers could not be restored'
+      restore_postgres_runtime_control "$runtime_control_backup" || \
+        fail 'backend release and PostgreSQL runtime-control rollback both failed'
+      fail 'backend release failed; previous runtime control and containers restored'
+    fi
+    rm -rf "$runtime_control_backup"
+    if [[ ${COMPOSE[-1]} != "$POSTGRES_RUNTIME_CURRENT/compose.postgres-runtime.yml" ]]; then
+      COMPOSE+=(
+        -f "$POSTGRES_RUNTIME_CURRENT/compose.postgres-runtime.yml"
+      )
+    fi
+  else
+    verify_compose_scope
   fi
-  sync_control_script
+  [[ $frontend == false ]] || deploy_frontend "$sha"
+  commit_postgres_pool_bootstrap "$sha"
+  if [[ $control == true ]]; then
+    printf '%s\n' "$sha" > "$STATE/control.sha.next"
+    mv -f "$STATE/control.sha.next" "$STATE/control.sha"
+  fi
   printf 'deployed=%s frontend=%s backend=%s control=%s\n' "$sha" "$frontend" "$backend" "$control"
 }
 

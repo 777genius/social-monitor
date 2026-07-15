@@ -52,6 +52,8 @@ jobs:
       backend_base: ${{ steps.plan.outputs.backend_base }}
       control: ${{ steps.plan.outputs.control }}
       frontend: ${{ steps.plan.outputs.frontend }}
+      postgres_pool_bootstrap: ${{ steps.plan.outputs.postgres_pool_bootstrap }}
+      postgres_pool_bootstrap_sha: ${{ steps.plan.outputs.postgres_pool_bootstrap_sha }}
       x_collector: ${{ steps.plan.outputs.x_collector }}
 
     steps:
@@ -91,6 +93,20 @@ jobs:
           backend_base=$(printf '%s\n' "$plan" | awk -F= '$1 == "backend_base" { print $2 }')
           [[ $backend_base =~ ^[0-9a-f]{40}$ ]]
           printf 'backend_base=%s\n' "$backend_base" >> "$GITHUB_OUTPUT"
+          backend=$(printf '%s\n' "$plan" | awk -F= '$1 == "backend" { print $2 }')
+          postgres_pool_bootstrap=$(printf '%s\n' "$plan" | awk -F= '$1 == "postgres_pool_bootstrap" { print $2 }')
+          postgres_pool_bootstrap=${postgres_pool_bootstrap:-uninstalled}
+          [[ $postgres_pool_bootstrap =~ ^(uninstalled|postgres-pool-v1)$ ]]
+          printf 'postgres_pool_bootstrap=%s\n' "$postgres_pool_bootstrap" >> "$GITHUB_OUTPUT"
+          postgres_pool_bootstrap_sha=$(printf '%s\n' "$plan" | awk -F= '$1 == "postgres_pool_bootstrap_sha" { print $2 }')
+          postgres_pool_bootstrap_sha=${postgres_pool_bootstrap_sha:-0000000000000000000000000000000000000000}
+          [[ $postgres_pool_bootstrap_sha =~ ^[0-9a-f]{40}$ ]]
+          printf 'postgres_pool_bootstrap_sha=%s\n' "$postgres_pool_bootstrap_sha" >> "$GITHUB_OUTPUT"
+          if [[ $backend == true && $postgres_pool_bootstrap != postgres-pool-v1 ]]; then
+            echo 'The installed deploy entrypoint is not overlap-safe for the PostgreSQL pool rollout.' >&2
+            echo 'Deploy a control-only bootstrap commit before any pool/backend release.' >&2
+            exit 1
+          fi
 
       - name: Remove production SSH material
         if: always()
@@ -101,6 +117,20 @@ jobs:
     needs: plan
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    services:
+      postgres:
+        image: postgres:18.4-alpine
+        env:
+          POSTGRES_USER: social_monitor_pool_ci
+          POSTGRES_PASSWORD: social_monitor_local_password
+          POSTGRES_DB: social_monitor_pool_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U social_monitor_pool_ci -d social_monitor_pool_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
 
     steps:
       - name: Check out the release commit
@@ -118,6 +148,13 @@ jobs:
 
       - name: Verify backend and deployment contract
         if: needs.plan.outputs.backend == 'true' || needs.plan.outputs.control == 'true'
+        env:
+          BACKEND_CHANGED: ${{ needs.plan.outputs.backend }}
+          BACKEND_BASE: ${{ needs.plan.outputs.backend_base }}
+          CONTROL_CHANGED: ${{ needs.plan.outputs.control }}
+          DATABASE_URL: postgresql://social_monitor_pool_ci:social_monitor_local_password@127.0.0.1:5432/social_monitor_pool_ci
+          POSTGRES_POOL_BOOTSTRAP: ${{ needs.plan.outputs.postgres_pool_bootstrap }}
+          POSTGRES_POOL_BOOTSTRAP_SHA: ${{ needs.plan.outputs.postgres_pool_bootstrap_sha }}
         run: |
           set -euo pipefail
           npm ci
@@ -130,24 +167,51 @@ jobs:
           npm run check:runtime-profile-guards
           npm run check:migrations
           npm run check:backup-restore
+          npm run prisma:generate
           npm run build
+          if [[ $BACKEND_CHANGED == true ]]; then
+            npm run check:postgres-runtime-pool-inventory
+            npm run check:postgres-runtime-pool-unit
+            POSTGRES_POOL_PRISMA_TEST_DATABASE_URL=postgresql://social_monitor_pool_ci:social_monitor_local_password@127.0.0.1:5432/social_monitor_pool_ci \
+              npm run check:postgres-runtime-pool-prisma-concurrency
+          fi
           bash -n ops/deploy/social-monitor-production-deploy.sh \
+            ops/deploy/postgres-runtime-deploy-lib.sh \
             ops/deploy/social-monitor-production-ssh-wrapper.sh \
+            ops/deploy/production-runtime/daily-run.sh \
+            ops/deploy/postgres-pool-bootstrap-transition.test.sh \
             ops/deploy/host/refresh-codex-auth.sh \
             ops/deploy/refresh-codex-auth.test.sh \
             ops/deploy/prune-pre-autodeploy-backups.sh \
             ops/deploy/prune-pre-autodeploy-backups.test.sh \
             ops/deploy/verify-postgres-backup-coverage.sh \
-            ops/deploy/verify-postgres-backup-coverage.test.sh
+            ops/deploy/verify-postgres-backup-coverage.test.sh \
+            ops/deploy/postgres-runtime-deploy-lib.test.sh \
+            ops/deploy/verify-postgres-runtime-topology.test.sh
           shellcheck -x ops/deploy/social-monitor-production-deploy.sh \
+            ops/deploy/postgres-runtime-deploy-lib.sh \
             ops/deploy/social-monitor-production-ssh-wrapper.sh \
+            ops/deploy/production-runtime/daily-run.sh \
+            ops/deploy/postgres-pool-bootstrap-transition.test.sh \
             ops/deploy/host/refresh-codex-auth.sh \
             ops/deploy/refresh-codex-auth.test.sh \
             ops/deploy/prune-pre-autodeploy-backups.sh \
             ops/deploy/prune-pre-autodeploy-backups.test.sh \
             ops/deploy/verify-postgres-backup-coverage.sh \
-            ops/deploy/verify-postgres-backup-coverage.test.sh
+            ops/deploy/verify-postgres-backup-coverage.test.sh \
+            ops/deploy/postgres-runtime-deploy-lib.test.sh \
+            ops/deploy/verify-postgres-runtime-topology.test.sh
+          python3 -m py_compile ops/deploy/verify-postgres-runtime-topology.py
+          python3 -m py_compile ops/deploy/verify-postgres-pool-release-contract.py
+          python3 ops/deploy/verify-postgres-pool-release-contract.py ci \
+            --target "$GITHUB_SHA" \
+            --backend-base "$BACKEND_BASE" \
+            --backend "$BACKEND_CHANGED" \
+            --control "$CONTROL_CHANGED" \
+            --bootstrap "$POSTGRES_POOL_BOOTSTRAP" \
+            --bootstrap-sha "$POSTGRES_POOL_BOOTSTRAP_SHA"
           bash ops/deploy/social-monitor-production-deploy.test.sh
+          bash ops/deploy/postgres-pool-bootstrap-transition.test.sh
 
       - name: Test affected backend modules
         if: needs.plan.outputs.backend == 'true'
@@ -295,16 +359,41 @@ jobs:
           DEPLOY_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
           DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
           CONTROL_CHANGED: ${{ needs.plan.outputs.control }}
+          POSTGRES_POOL_BOOTSTRAP: ${{ needs.plan.outputs.postgres_pool_bootstrap }}
         run: |
           set -euo pipefail
-          ssh -i "$HOME/.ssh/social-monitor-production" \
-            -o BatchMode=yes -o IdentitiesOnly=yes \
-            "$DEPLOY_USER@$DEPLOY_HOST" "deploy $GITHUB_SHA"
-          if [[ $CONTROL_CHANGED == true ]]; then
+          deploy_once() {
             ssh -i "$HOME/.ssh/social-monitor-production" \
               -o BatchMode=yes -o IdentitiesOnly=yes \
               "$DEPLOY_USER@$DEPLOY_HOST" "deploy $GITHUB_SHA"
+          }
+          if [[ $CONTROL_CHANGED == true && $POSTGRES_POOL_BOOTSTRAP == uninstalled ]]; then
+            # Attempt 1 is handled by the installed legacy entrypoint. Attempt
+            # 2 normally runs the new entrypoint. Attempt 3 repairs the exact
+            # legacy poison window where an earlier call wrote control.sha but
+            # failed before its atomic entrypoint rename. Only the post-plan
+            # bootstrap marker below commits this transaction.
+            for bootstrap_attempt in 1 2 3; do
+              set +e
+              deploy_once
+              bootstrap_status=$?
+              set -e
+              if ((bootstrap_status != 0)); then
+                echo "PostgreSQL bootstrap attempt $bootstrap_attempt requires repair." >&2
+              fi
+            done
+          else
+            deploy_once
           fi
+          post_plan=$(ssh -i "$HOME/.ssh/social-monitor-production" \
+            -o BatchMode=yes -o IdentitiesOnly=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST" "plan $GITHUB_SHA")
+          printf '%s\n' "$post_plan"
+          post_bootstrap=$(printf '%s\n' "$post_plan" | awk -F= '$1 == "postgres_pool_bootstrap" { print $2 }')
+          [[ $post_bootstrap == postgres-pool-v1 ]] || {
+            echo 'Post-deploy PostgreSQL bootstrap verification failed.' >&2
+            exit 1
+          }
 
       - name: Remove production SSH material
         if: always()

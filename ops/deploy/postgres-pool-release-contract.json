@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "adoptionBaseCommit": "29a247f802ab61d90e31b24bf60436045dbdd9f4",
+  "bootstrapVersion": "postgres-pool-v1",
+  "releaseAManifest": "ops/deploy/postgres-pool-release-a.files",
+  "releaseBManifest": "ops/deploy/postgres-pool-release-b.files",
+  "releaseAFileCount": 17,
+  "releaseBFileCount": 98,
+  "releaseAIntent": "Install and durably verify the overlap-safe deploy entrypoint without changing backend runtime files or activating its dormant PostgreSQL runtime assets.",
+  "releaseADormantAssetRule": "Release A checks in the runtime library, Compose overlay, daily runner, systemd unit and topology verifier only as bootstrap prerequisites; backend.sha, postgres-runtime-current, installed units, the installed daily runner and running runtimes remain untouched until Release B.",
+  "releaseBIntent": "Install the bounded Prisma pool and exact runtime topology only after Release A is proven on the host.",
+  "dailyTimerOwner": "daily-readiness-v6b",
+  "dailyTimerRule": "This release installs pool topology and a guarded launcher but never creates or enables a daily timer.",
+  "dailyV6bRunnerSource": "ops/deploy/host/run-reader-summary-production-day.sh",
+  "dailyV6bRequiredComposeOverlay": "/var/data/social-monitor/control/postgres-runtime-current/compose.postgres-runtime.yml",
+  "dailyV6bRequiredReleaseMarkers": [
+    "/var/data/social-monitor/control/postgres-runtime-current/READY",
+    "/var/data/social-monitor/control/deploy-state/backend.sha"
+  ]
+}

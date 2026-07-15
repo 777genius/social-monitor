@@ -35,6 +35,54 @@ cannot silently skip an earlier component change.
 - failed frontend health checks restore the previous symlink targets;
 - database migrations are forward-only and are never automatically reversed.
 
+## PostgreSQL pool bootstrap
+
+The first bounded-pool rollout must be two main-branch releases. The exact
+sorted sets are pinned to 17 Release A paths and 98 Release B paths in
+`postgres-pool-release-a.files` and
+`postgres-pool-release-b.files`; `verify-postgres-pool-release-contract.py`
+makes the split executable for the integration broker, the A-only producer
+workspace, and release CI. Release A is control-only. It runs the actual
+legacy-main transition twice and does not succeed until the new entrypoint
+writes its independent bootstrap marker. Release B is backend-only and is
+refused until that marker is proven.
+
+Release A deliberately checks in the PostgreSQL runtime library, Compose
+overlay, daily runner, systemd unit, and topology verifier as dormant bootstrap
+assets. They let the atomically installed entrypoint be complete before Release
+B, but Release A contains no backend-classified path, so it never enters the
+backend transaction. It does not advance `backend.sha`, create or switch
+`postgres-runtime-current`, install a systemd unit or daily runner, or touch a
+running container/runtime. The legacy-main transition test byte-compares those
+pre-existing surfaces and their sentinels after every Release A attempt. The
+assets become active only when the exact backend-only Release B path set is
+accepted after the independent bootstrap marker is durable.
+
+The second release installs `production-runtime` as a versioned control release
+and atomically switches `postgres-runtime-current`. The deploy command, boot
+unit, and systemd daily runner then use the same Compose overlay. The pool
+release does not own a timer; daily-readiness-v6b is the sole timer owner, and
+the topology gate requires exactly one effective reviewed timer. Deploy
+snapshots the running API's database URL without printing it. After old database
+containers stop and before replacements start, the gate queries live PostgreSQL
+capacity, reserved/role/database limits, and attributed external occupancy. It rejects operator-only
+capacity claims, requires stopped persistent runtime occupancy to be zero,
+enforces absolute and proportional headroom, and stops/removes
+old DB containers before starting replacements. Previous image IDs remain the
+rollback source. The old runtime-control symlink and systemd units are
+snapshotted around the complete backend transaction; any backup, build,
+migration, replacement, or health failure restores those files and the prior
+containers from captured image IDs. A 16-connection read-only held-transaction
+probe proves the maximum declared envelope before start. API readiness executes
+a real query through the bounded Prisma pool, and deployment holds a five-minute
+restart/proxy soak before advancing `backend.sha`. The soak captures per-service
+log cursors, runs concurrent direct/proxy readiness, rejects handled SQLSTATE
+53300/TooManyConnections/upstream 502 entries even with stable container ids,
+and requires an ingestion queue tick with `failed=0`. The release-owned daily script also
+refuses to start until its
+release SHA equals the durable backend marker, which fences a host crash during
+the switch.
+
 ## GitHub environment
 
 The `production` environment owns:

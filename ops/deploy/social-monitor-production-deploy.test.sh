@@ -21,8 +21,12 @@ git -C "$REPO" remote add origin "$ORIGIN"
 install -d "$REPO/apps/frontend" "$REPO/apps/api-gateway" \
   "$REPO/apps/x-collector" "$REPO/ops/deploy" "$REPO/ops/recovery" \
   "$STATE" "$STAGING"
+cp "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" "$REPO/ops/deploy/"
+cp "$ENTRYPOINT" "$REPO/ops/deploy/"
+cp "$SCRIPT_DIR/verify-postgres-runtime-topology.py" "$REPO/ops/deploy/"
+cp -R "$SCRIPT_DIR/production-runtime" "$REPO/ops/deploy/"
 printf 'base\n' > "$REPO/README.md"
-git -C "$REPO" add README.md
+git -C "$REPO" add README.md ops/deploy
 git -C "$REPO" commit -qm 'test: base'
 git -C "$REPO" push -q -u origin main
 BASE_SHA=$(git -C "$REPO" rev-parse HEAD)
@@ -36,6 +40,8 @@ TARGET_SHA=$(git -C "$REPO" rev-parse HEAD)
 for component in frontend backend control; do
   printf '%s\n' "$BASE_SHA" > "$STATE/$component.sha"
 done
+cp "$ENTRYPOINT" "$CONTROL/github-production-deploy.sh"
+printf '%s\n' "$BASE_SHA" > "$STATE/postgres-pool-bootstrap.sha"
 
 run_entrypoint() {
   SOCIAL_MONITOR_DEPLOY_TEST_MODE=1 \
@@ -53,6 +59,8 @@ grep -Fx 'backend=false' <<< "$plan" >/dev/null
 grep -Fx "backend_base=$BASE_SHA" <<< "$plan" >/dev/null
 grep -Fx 'control=false' <<< "$plan" >/dev/null
 grep -Fx 'x_collector=false' <<< "$plan" >/dev/null
+grep -Fx 'postgres_pool_bootstrap=postgres-pool-v1' <<< "$plan" >/dev/null
+grep -Fx "postgres_pool_bootstrap_sha=$BASE_SHA" <<< "$plan" >/dev/null
 
 printf '%s\n' "$TARGET_SHA" > "$STATE/frontend.sha"
 plan=$(run_entrypoint plan "$TARGET_SHA")
@@ -114,6 +122,44 @@ auth_sync_line=$(grep -nF 'install -m 0700 -o root -g root "$auth_refresh_source
 entrypoint_sync_line=$(grep -nF 'install -m 0755 -o root -g root "$source"' \
   "$ENTRYPOINT" | tail -1 | cut -d: -f1)
 ((auth_sync_line < entrypoint_sync_line))
+# shellcheck disable=SC2016
+bootstrap_commit_line=$(grep -nF 'commit_postgres_pool_bootstrap "$sha"' \
+  "$ENTRYPOINT" | cut -d: -f1)
+# shellcheck disable=SC2016
+control_marker_line=$(grep -nF 'printf '\''%s\n'\'' "$sha" > "$STATE/control.sha.next"' \
+  "$ENTRYPOINT" | cut -d: -f1)
+((entrypoint_sync_line < bootstrap_commit_line))
+((bootstrap_commit_line < control_marker_line))
+
+grep -F 'activate_postgres_runtime_control "$sha"' "$ENTRYPOINT" >/dev/null
+grep -F 'snapshot_postgres_runtime_control "$sha"' "$ENTRYPOINT" >/dev/null
+grep -F 'restore_postgres_runtime_control "$runtime_control_backup"' \
+  "$ENTRYPOINT" >/dev/null
+grep -F 'rollback_backend_images "$previous_images"' "$ENTRYPOINT" >/dev/null
+grep -F 'verify_live_postgres_admission "$postgres_env"' "$ENTRYPOINT" >/dev/null
+grep -F 'probe_postgres_maximum_envelope "$postgres_env"' "$ENTRYPOINT" >/dev/null
+grep -F "'externalConnectionOccupancy'" \
+  "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" >/dev/null
+grep -F "'stoppedRuntimeConnectionOccupancy'" \
+  "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" >/dev/null
+grep -F 'capture_backend_soak_baseline' \
+  "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" >/dev/null
+grep -F 'verify_backend_soak_logs' "$ENTRYPOINT" >/dev/null
+grep -F 'verify_ingestion_queue_recovery' "$ENTRYPOINT" >/dev/null
+grep -F 'verify-postgres-runtime-topology.py' "$ENTRYPOINT" >/dev/null
+grep -F 'install -m 0644 "$source/social-monitor-prod.service"' \
+  "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" >/dev/null
+grep -F 'DropInPaths' "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" >/dev/null
+grep -F 'postgres-runtime-current/compose.postgres-runtime.yml' \
+  "$SCRIPT_DIR/production-runtime/daily-run.sh" >/dev/null
+if find "$SCRIPT_DIR/production-runtime" -name '*.timer' -print -quit | grep -q .; then
+  echo 'PostgreSQL runtime release unexpectedly owns a timer' >&2
+  exit 1
+fi
+grep -F 'dailyTimerOwner' \
+  "$SCRIPT_DIR/postgres-pool-release-contract.json" >/dev/null
+grep -F 'runtime_release != "$backend_release"' \
+  "$SCRIPT_DIR/production-runtime/daily-run.sh" >/dev/null
 
 RELEASE_FIXTURE=$FIXTURE/frontend-release
 install -d "$RELEASE_FIXTURE/public" "$RELEASE_FIXTURE/admin"
@@ -140,6 +186,8 @@ if run_entrypoint upload "$TARGET_SHA" < "$FIXTURE/bad-frontend.tgz" >/dev/null 
 fi
 
 echo 'Production deploy contract tests passed'
+bash "$SCRIPT_DIR/postgres-runtime-deploy-lib.test.sh"
+bash "$SCRIPT_DIR/verify-postgres-runtime-topology.test.sh"
 bash "$SCRIPT_DIR/refresh-codex-auth.test.sh"
 bash "$SCRIPT_DIR/prune-pre-autodeploy-backups.test.sh"
 bash "$SCRIPT_DIR/verify-postgres-backup-coverage.test.sh"

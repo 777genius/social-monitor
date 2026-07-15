@@ -1,0 +1,17 @@
+.github/workflows/production-deploy.yml
+ops/deploy/README.md
+ops/deploy/evidence/postgres-runtime-incident-2026-07-14.json
+ops/deploy/postgres-pool-bootstrap-transition.test.sh
+ops/deploy/postgres-pool-release-a.files
+ops/deploy/postgres-pool-release-b.files
+ops/deploy/postgres-pool-release-contract.json
+ops/deploy/postgres-runtime-deploy-lib.sh
+ops/deploy/postgres-runtime-deploy-lib.test.sh
+ops/deploy/production-runtime/compose.postgres-runtime.yml
+ops/deploy/production-runtime/daily-run.sh
+ops/deploy/production-runtime/social-monitor-prod.service
+ops/deploy/social-monitor-production-deploy.sh
+ops/deploy/social-monitor-production-deploy.test.sh
+ops/deploy/verify-postgres-pool-release-contract.py
+ops/deploy/verify-postgres-runtime-topology.py
+ops/deploy/verify-postgres-runtime-topology.test.sh

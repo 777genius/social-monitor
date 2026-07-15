@@ -1,0 +1,8 @@
+services:
+  daily-runner:
+    environment:
+      POSTGRES_RUNTIME_PROCESS: daily-runner
+      POSTGRES_RUNTIME_POOL_MIN: "0"
+      POSTGRES_RUNTIME_POOL_MAX: "2"
+    deploy:
+      replicas: 1
