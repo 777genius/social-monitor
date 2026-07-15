@@ -1,4 +1,5 @@
 .github/workflows/production-deploy.yml
+docs/architecture-memory/173-postgres-connection-pooling.md
 ops/deploy/README.md
 ops/deploy/evidence/postgres-runtime-incident-2026-07-14.json
 ops/deploy/postgres-pool-bootstrap-transition.test.sh

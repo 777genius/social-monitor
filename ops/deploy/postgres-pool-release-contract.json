@@ -4,7 +4,7 @@
   "bootstrapVersion": "postgres-pool-v1",
   "releaseAManifest": "ops/deploy/postgres-pool-release-a.files",
   "releaseBManifest": "ops/deploy/postgres-pool-release-b.files",
-  "releaseAFileCount": 17,
+  "releaseAFileCount": 18,
   "releaseBFileCount": 98,
   "releaseAIntent": "Install and durably verify the overlap-safe deploy entrypoint without changing backend runtime files or activating its dormant PostgreSQL runtime assets.",
   "releaseADormantAssetRule": "Release A checks in the runtime library, Compose overlay, daily runner, systemd unit and topology verifier only as bootstrap prerequisites; backend.sha, postgres-runtime-current, installed units, the installed daily runner and running runtimes remain untouched until Release B.",

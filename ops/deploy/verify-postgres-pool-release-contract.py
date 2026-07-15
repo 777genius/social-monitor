@@ -14,8 +14,13 @@ from typing import Any
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 CONTRACT_PATH = ROOT / "ops/deploy/postgres-pool-release-contract.json"
 ZERO_SHA = "0" * 40
-EXPECTED_RELEASE_A_COUNT = 17
+EXPECTED_RELEASE_A_COUNT = 18
 EXPECTED_RELEASE_B_COUNT = 98
+# Release A owns the historical EOF normalization; Release B owns the later
+# substantive pool-budget documentation at the same non-runtime path.
+EXPECTED_RELEASE_OVERLAP = (
+    "docs/architecture-memory/173-postgres-connection-pooling.md",
+)
 # These roots intentionally mirror BACKEND_PATHS and CONTROL_PATHS in the
 # production deploy entrypoint; the one-time split must obey that classifier.
 BACKEND_PATH_ROOTS = (
@@ -145,8 +150,11 @@ def manifests(contract: dict[str, Any]) -> tuple[list[str], list[str]]:
             f"{EXPECTED_RELEASE_B_COUNT} paths"
         )
     overlap = sorted(set(release_a) & set(release_b))
-    if overlap:
-        fail(f"Release A and Release B manifests overlap: {overlap}")
+    if overlap != list(EXPECTED_RELEASE_OVERLAP):
+        fail(
+            "Release A and Release B manifest overlap must remain pinned to "
+            f"exactly {list(EXPECTED_RELEASE_OVERLAP)}; actual={overlap}"
+        )
     backend_in_release_a = paths_under_roots(release_a, BACKEND_PATH_ROOTS)
     if backend_in_release_a:
         fail(f"Release A contains backend paths: {backend_in_release_a}")
