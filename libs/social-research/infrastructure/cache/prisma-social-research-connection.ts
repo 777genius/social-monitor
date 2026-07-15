@@ -1,10 +1,6 @@
-import {
-  createPrismaPgRuntimeConnection,
-  type PostgresRuntimePoolConfig,
-  type PrismaPgRuntimeClientConstructor,
-  type PrismaPgRuntimeConnectionLease,
-} from '@social-monitor/platform-persistence';
+import { PrismaPg } from '@prisma/adapter-pg';
 import { loadPrismaRuntimeClient } from '@social-monitor/platform-persistence/prisma-runtime-client';
+import { Pool } from 'pg';
 
 import type { PrismaSocialResearchResultCacheClient } from './prisma-social-research-client';
 
@@ -13,34 +9,28 @@ type PrismaSocialResearchRuntimeClient =
     $disconnect(): Promise<void>;
   };
 
+type PrismaSocialResearchRuntimeClientConstructor = new (args: {
+  readonly adapter: PrismaPg;
+}) => PrismaSocialResearchRuntimeClient;
+
 export class PrismaSocialResearchConnection
   implements PrismaSocialResearchResultCacheClient
 {
   readonly $queryRaw: PrismaSocialResearchResultCacheClient['$queryRaw'];
   readonly $executeRaw: PrismaSocialResearchResultCacheClient['$executeRaw'];
 
-  private readonly runtime: PrismaPgRuntimeConnectionLease<PrismaSocialResearchRuntimeClient>;
+  private readonly pool: Pool;
   private readonly client: PrismaSocialResearchRuntimeClient;
 
-  static create(
-    config: PostgresRuntimePoolConfig,
-  ): Promise<PrismaSocialResearchConnection> {
-    const PrismaClient =
-      loadPrismaRuntimeClient<
-        PrismaPgRuntimeClientConstructor<PrismaSocialResearchRuntimeClient>
-      >();
-    return createPrismaPgRuntimeConnection(
-      config,
-      PrismaClient,
-      (runtime) => new PrismaSocialResearchConnection(runtime),
-    );
-  }
+  constructor(databaseUrl: string) {
+    if (databaseUrl.trim().length === 0) {
+      throw new Error('DATABASE_URL is required for Prisma social research cache');
+    }
 
-  private constructor(
-    runtime: PrismaPgRuntimeConnectionLease<PrismaSocialResearchRuntimeClient>,
-  ) {
-    this.runtime = runtime;
-    this.client = this.runtime.client;
+    this.pool = new Pool({ connectionString: databaseUrl });
+    const PrismaClient =
+      loadPrismaRuntimeClient<PrismaSocialResearchRuntimeClientConstructor>();
+    this.client = new PrismaClient({ adapter: new PrismaPg(this.pool) });
     this.$queryRaw = this.client.$queryRaw.bind(
       this.client,
     ) as PrismaSocialResearchResultCacheClient['$queryRaw'];
@@ -49,11 +39,12 @@ export class PrismaSocialResearchConnection
     ) as PrismaSocialResearchResultCacheClient['$executeRaw'];
   }
 
-  close(): Promise<void> {
-    return this.runtime.close();
+  async close(): Promise<void> {
+    await this.client.$disconnect();
+    await this.pool.end();
   }
 
-  onApplicationShutdown(): Promise<void> {
-    return this.close();
+  async onModuleDestroy(): Promise<void> {
+    await this.close();
   }
 }

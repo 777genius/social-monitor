@@ -156,7 +156,8 @@ validate_main_commit() {
   git -C "$REPO" merge-base --is-ancestor "$sha" origin/main || fail 'commit is not on origin/main'
 }
 
-# shellcheck source=postgres-runtime-deploy-lib.sh
+: "$POSTGRES_RUNTIME_RELEASES" "$SYSTEMD_UNIT_DIR"
+# shellcheck source=ops/deploy/postgres-runtime-deploy-lib.sh
 source "$REPO/ops/deploy/postgres-runtime-deploy-lib.sh"
 
 verify_compose_scope() (

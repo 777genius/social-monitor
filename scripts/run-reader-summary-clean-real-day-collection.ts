@@ -45,7 +45,6 @@ import {
   workspaceId,
 } from "@social-monitor/shared-kernel";
 import { Pool } from "pg";
-import { defaultPostgresRuntimePoolConfig } from "@social-monitor/platform-persistence";
 
 import { PrismaIngestionWorkerConnection } from "../apps/ingestion-worker/src/adapters/persistence/prisma-ingestion-worker-connection";
 import {
@@ -208,13 +207,10 @@ async function tryRunCollection(): Promise<
   const startedAt = new Date();
   const pool = new Pool({
     connectionString: databaseUrl,
-    min: 0,
     max: 1,
     connectionTimeoutMillis: 2_000,
   });
-  const connection = await PrismaIngestionWorkerConnection.create(
-    defaultPostgresRuntimePoolConfig(databaseUrl, "daily-runner"),
-  );
+  const connection = new PrismaIngestionWorkerConnection(databaseUrl);
 
   try {
     const targets = await readTargets(pool);

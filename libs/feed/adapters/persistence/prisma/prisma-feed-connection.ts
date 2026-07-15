@@ -1,10 +1,6 @@
-import {
-  createPrismaPgRuntimeConnection,
-  type PostgresRuntimePoolConfig,
-  type PrismaPgRuntimeClientConstructor,
-  type PrismaPgRuntimeConnectionLease,
-} from '@social-monitor/platform-persistence';
+import { PrismaPg } from '@prisma/adapter-pg';
 import { loadPrismaRuntimeClient } from '@social-monitor/platform-persistence/prisma-runtime-client';
+import { Pool } from 'pg';
 
 import type { PrismaFeedClient } from './prisma-feed-client';
 
@@ -12,38 +8,35 @@ type PrismaFeedRuntimeClient = PrismaFeedClient & {
   $disconnect(): Promise<void>;
 };
 
+type PrismaFeedRuntimeClientConstructor = new (args: {
+  readonly adapter: PrismaPg;
+}) => PrismaFeedRuntimeClient;
+
 export class PrismaFeedConnection implements PrismaFeedClient {
   readonly feedItem: PrismaFeedClient['feedItem'];
   readonly feedSignalBaselineSample: PrismaFeedClient['feedSignalBaselineSample'];
 
-  private readonly runtime: PrismaPgRuntimeConnectionLease<PrismaFeedRuntimeClient>;
+  private readonly pool: Pool;
   private readonly client: PrismaFeedRuntimeClient;
 
-  static create(config: PostgresRuntimePoolConfig): Promise<PrismaFeedConnection> {
-    const PrismaClient = loadPrismaRuntimeClient<
-      PrismaPgRuntimeClientConstructor<PrismaFeedRuntimeClient>
-    >();
-    return createPrismaPgRuntimeConnection(
-      config,
-      PrismaClient,
-      (runtime) => new PrismaFeedConnection(runtime),
-    );
-  }
+  constructor(databaseUrl: string) {
+    if (databaseUrl.trim().length === 0) {
+      throw new Error('DATABASE_URL is required for Prisma feed persistence');
+    }
 
-  private constructor(
-    runtime: PrismaPgRuntimeConnectionLease<PrismaFeedRuntimeClient>,
-  ) {
-    this.runtime = runtime;
-    this.client = this.runtime.client;
+    this.pool = new Pool({ connectionString: databaseUrl });
+    const PrismaClient = loadPrismaRuntimeClient<PrismaFeedRuntimeClientConstructor>();
+    this.client = new PrismaClient({ adapter: new PrismaPg(this.pool) });
     this.feedItem = this.client.feedItem;
     this.feedSignalBaselineSample = this.client.feedSignalBaselineSample;
   }
 
-  close(): Promise<void> {
-    return this.runtime.close();
+  async close(): Promise<void> {
+    await this.client.$disconnect();
+    await this.pool.end();
   }
 
-  onApplicationShutdown(): Promise<void> {
-    return this.close();
+  async onModuleDestroy(): Promise<void> {
+    await this.close();
   }
 }

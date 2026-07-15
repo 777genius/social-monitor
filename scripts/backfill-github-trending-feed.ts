@@ -1,5 +1,4 @@
 import { PrismaFeedProjectionAdapter } from "@social-monitor/feed/adapters/persistence/prisma/prisma-feed-projection.adapter";
-import { defaultPostgresRuntimePoolConfig } from "@social-monitor/platform-persistence";
 import { SourceItem } from "@social-monitor/ingestion/domain";
 import {
   CryptoIdGenerator,
@@ -46,7 +45,7 @@ async function main(): Promise<void> {
     throw new Error("DATABASE_URL is required");
   }
 
-  const pool = new Pool({ connectionString: databaseUrl, min: 0, max: 1 });
+  const pool = new Pool({ connectionString: databaseUrl });
   try {
     const rows = await readSourceObservations(pool, options.date);
     const selection = strongestGitHubTrendingObservations(rows);
@@ -75,9 +74,7 @@ async function main(): Promise<void> {
       return;
     }
 
-    const connection = await PrismaIngestionWorkerConnection.create(
-      defaultPostgresRuntimePoolConfig(databaseUrl, "admin-tool"),
-    );
+    const connection = new PrismaIngestionWorkerConnection(databaseUrl);
     try {
       const projection = new PrismaFeedProjectionAdapter(
         connection,

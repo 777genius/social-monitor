@@ -1,7 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
-import { defaultPostgresRuntimePoolConfig } from "@social-monitor/platform-persistence";
 import { PrismaFeedConnection } from "../libs/feed/adapters/persistence/prisma/prisma-feed-connection";
 import { PrismaFeedItemReadRepository } from "../libs/feed/adapters/persistence/prisma/prisma-feed-item-read.repository";
 import { InMemoryUserRelevanceProfileRepository } from "../libs/relevance/adapters/persistence/in-memory-user-relevance-profile.repository";
@@ -209,9 +208,7 @@ async function tryBuildReport(): Promise<Report | undefined> {
     return undefined;
   }
 
-  const connection = await PrismaFeedConnection.create(
-    defaultPostgresRuntimePoolConfig(localDatabaseUrl, "admin-tool"),
-  );
+  const connection = new PrismaFeedConnection(localDatabaseUrl);
 
   try {
     const feedItems = new PrismaFeedItemReadRepository(connection);

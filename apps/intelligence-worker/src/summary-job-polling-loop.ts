@@ -1,4 +1,4 @@
-import { Inject, Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, type OnApplicationShutdown, type OnModuleInit } from '@nestjs/common';
 import { NestStructuredLogger, type StructuredLogger } from '@social-monitor/platform-logging';
 import { WorkerCommandIdFactory } from '@social-monitor/platform-worker';
 import { ExecuteSummaryJobCommandHandler } from '@social-monitor/summary/interfaces/queue/execute-summary-job-command.handler';
@@ -12,7 +12,7 @@ import {
 } from './intelligence-worker-provider-tokens';
 
 @Injectable()
-export class SummaryJobPollingLoop implements OnModuleInit, OnModuleDestroy {
+export class SummaryJobPollingLoop implements OnModuleInit, OnApplicationShutdown {
   private readonly logger: StructuredLogger = new NestStructuredLogger(SummaryJobPollingLoop.name);
   private timer: NodeJS.Timeout | undefined;
   private currentTick: Promise<void> | undefined;
@@ -49,11 +49,7 @@ export class SummaryJobPollingLoop implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  async onModuleDestroy(): Promise<void> {
-    if (this.shuttingDown) {
-      await this.currentTick;
-      return;
-    }
+  async onApplicationShutdown(signal?: string): Promise<void> {
     this.shuttingDown = true;
 
     if (this.timer !== undefined) {
@@ -62,12 +58,7 @@ export class SummaryJobPollingLoop implements OnModuleInit, OnModuleDestroy {
     }
 
     await this.currentTick;
-    this.logger.info('summary job polling loop stopped', { worker: 'intelligence-worker' });
-  }
-
-  onApplicationShutdown(signal?: string): Promise<void> {
-    void signal;
-    return this.onModuleDestroy();
+    this.logger.info('summary job polling loop stopped', { signal, worker: 'intelligence-worker' });
   }
 
   private async runTick(trigger: 'startup' | 'interval'): Promise<void> {

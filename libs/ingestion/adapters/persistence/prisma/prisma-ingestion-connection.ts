@@ -1,16 +1,16 @@
-import {
-  createPrismaPgRuntimeConnection,
-  type PostgresRuntimePoolConfig,
-  type PrismaPgRuntimeClientConstructor,
-  type PrismaPgRuntimeConnectionLease,
-} from '@social-monitor/platform-persistence';
+import { PrismaPg } from '@prisma/adapter-pg';
 import { loadPrismaRuntimeClient } from '@social-monitor/platform-persistence/prisma-runtime-client';
+import { Pool } from 'pg';
 
 import type { PrismaIngestionClient } from './prisma-ingestion-client';
 
 type PrismaIngestionRuntimeClient = PrismaIngestionClient & {
   $disconnect(): Promise<void>;
 };
+
+type PrismaIngestionRuntimeClientConstructor = new (args: {
+  readonly adapter: PrismaPg;
+}) => PrismaIngestionRuntimeClient;
 
 export class PrismaIngestionConnection implements PrismaIngestionClient {
   readonly sourceItem: PrismaIngestionClient['sourceItem'];
@@ -22,27 +22,17 @@ export class PrismaIngestionConnection implements PrismaIngestionClient {
   readonly gitHubRepositoryTrendSnapshot: PrismaIngestionClient['gitHubRepositoryTrendSnapshot'];
   readonly gitHubRepositoryTrendResult: PrismaIngestionClient['gitHubRepositoryTrendResult'];
 
-  private readonly runtime: PrismaPgRuntimeConnectionLease<PrismaIngestionRuntimeClient>;
+  private readonly pool: Pool;
   private readonly client: PrismaIngestionRuntimeClient;
 
-  static create(
-    config: PostgresRuntimePoolConfig,
-  ): Promise<PrismaIngestionConnection> {
-    const PrismaClient = loadPrismaRuntimeClient<
-      PrismaPgRuntimeClientConstructor<PrismaIngestionRuntimeClient>
-    >();
-    return createPrismaPgRuntimeConnection(
-      config,
-      PrismaClient,
-      (runtime) => new PrismaIngestionConnection(runtime),
-    );
-  }
+  constructor(databaseUrl: string) {
+    if (databaseUrl.trim().length === 0) {
+      throw new Error('DATABASE_URL is required for Prisma ingestion persistence');
+    }
 
-  private constructor(
-    runtime: PrismaPgRuntimeConnectionLease<PrismaIngestionRuntimeClient>,
-  ) {
-    this.runtime = runtime;
-    this.client = this.runtime.client;
+    this.pool = new Pool({ connectionString: databaseUrl });
+    const PrismaClient = loadPrismaRuntimeClient<PrismaIngestionRuntimeClientConstructor>();
+    this.client = new PrismaClient({ adapter: new PrismaPg(this.pool) });
 
     this.sourceItem = this.client.sourceItem;
     this.cursorCheckpoint = this.client.cursorCheckpoint;
@@ -54,11 +44,12 @@ export class PrismaIngestionConnection implements PrismaIngestionClient {
     this.gitHubRepositoryTrendResult = this.client.gitHubRepositoryTrendResult;
   }
 
-  close(): Promise<void> {
-    return this.runtime.close();
+  async close(): Promise<void> {
+    await this.client.$disconnect();
+    await this.pool.end();
   }
 
-  onApplicationShutdown(): Promise<void> {
-    return this.close();
+  async onModuleDestroy(): Promise<void> {
+    await this.close();
   }
 }

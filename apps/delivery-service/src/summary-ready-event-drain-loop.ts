@@ -1,9 +1,9 @@
-import { Inject, Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, type OnApplicationShutdown, type OnModuleInit } from '@nestjs/common';
 import { ProjectSummaryReadyEventHandler } from '@social-monitor/delivery/interfaces/events/project-summary-ready-event.handler';
 import { NestStructuredLogger, type StructuredLogger } from '@social-monitor/platform-logging';
 import type { MetricsRecorderPort } from '@social-monitor/platform-metrics';
 import { queueCommandDeliveryLagSeconds } from '@social-monitor/platform-queue';
-import { DomainError, type Clock } from '@social-monitor/shared-kernel';
+import type { Clock } from '@social-monitor/shared-kernel';
 
 import {
   DELIVERY_SUMMARY_READY_EVENT_DRAIN_LOOP_OPTIONS,
@@ -17,7 +17,7 @@ import {
 export type SummaryReadyEventHandlerPort = Pick<ProjectSummaryReadyEventHandler, 'handle'>;
 
 @Injectable()
-export class SummaryReadyEventDrainLoop implements OnModuleInit, OnModuleDestroy {
+export class SummaryReadyEventDrainLoop implements OnModuleInit, OnApplicationShutdown {
   private readonly logger: StructuredLogger = new NestStructuredLogger(SummaryReadyEventDrainLoop.name);
   private timer: NodeJS.Timeout | undefined;
   private currentTick: Promise<void> | undefined;
@@ -55,11 +55,7 @@ export class SummaryReadyEventDrainLoop implements OnModuleInit, OnModuleDestroy
     });
   }
 
-  async onModuleDestroy(): Promise<void> {
-    if (this.shuttingDown) {
-      await this.currentTick;
-      return;
-    }
+  async onApplicationShutdown(signal?: string): Promise<void> {
     this.shuttingDown = true;
 
     if (this.timer !== undefined) {
@@ -67,20 +63,8 @@ export class SummaryReadyEventDrainLoop implements OnModuleInit, OnModuleDestroy
       this.timer = undefined;
     }
 
-    try {
-      await this.currentTick;
-    } catch (error) {
-      this.logger.error('summary ready event drain failed while stopping; RabbitMQ will requeue unacknowledged deliveries on channel close', {
-        error: error instanceof Error ? error.message : String(error),
-        worker: 'delivery-service',
-      });
-    }
-    this.logger.info('summary ready event drain loop stopped', { worker: 'delivery-service' });
-  }
-
-  onApplicationShutdown(signal?: string): Promise<void> {
-    void signal;
-    return this.onModuleDestroy();
+    await this.currentTick;
+    this.logger.info('summary ready event drain loop stopped', { signal, worker: 'delivery-service' });
   }
 
   private async runTick(trigger: 'startup' | 'interval'): Promise<void> {
@@ -98,29 +82,15 @@ export class SummaryReadyEventDrainLoop implements OnModuleInit, OnModuleDestroy
     const deliveries = await this.queue.drain({ limit: this.options.limit });
     let completed = 0;
     let failed = 0;
-    let requeued = 0;
 
     for (const delivery of deliveries) {
-      if (this.shuttingDown) {
-        await delivery.nack({ requeue: true });
-        requeued += 1;
-        continue;
-      }
       this.recordDeliveryLag(delivery);
       try {
         await this.handler.handle(delivery.event);
         await delivery.ack();
         completed += 1;
       } catch (error) {
-        const requeue =
-          this.shuttingDown ||
-          (error instanceof DomainError &&
-            error.code === 'operation.backpressure');
-        await delivery.nack({ requeue });
-        if (requeue) {
-          requeued += 1;
-          continue;
-        }
+        await delivery.nack({ requeue: false });
         failed += 1;
         this.logger.error('summary ready event drain loop item failed', {
           trigger,
@@ -139,7 +109,6 @@ export class SummaryReadyEventDrainLoop implements OnModuleInit, OnModuleDestroy
       evaluated: deliveries.length,
       completed,
       failed,
-      requeued,
       worker: 'delivery-service',
     });
   }

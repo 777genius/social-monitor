@@ -8,8 +8,6 @@ import { resolveSourceProviderRuntimeScope } from '@social-monitor/ingestion/ada
 import { IngestionRestModule } from '@social-monitor/ingestion/interfaces/rest/ingestion-rest.module';
 import { LaunchRestModule } from '@social-monitor/launch/interfaces/rest/launch-rest.module';
 import { MonitoringRestModule } from '@social-monitor/monitoring/interfaces/rest/monitoring-rest.module';
-import { resolveMonitoringPersistenceMode } from '@social-monitor/monitoring/interfaces/rest/monitoring-provider-tokens';
-import { probePostgresRuntimePoolConnectivity } from '@social-monitor/platform-persistence';
 import { RelevanceRestModule } from '@social-monitor/relevance/interfaces/rest/relevance-rest.module';
 import { SystemClock } from '@social-monitor/shared-kernel';
 import { SummaryRestModule } from '@social-monitor/summary/interfaces/rest/summary-rest.module';
@@ -18,13 +16,11 @@ import { SubscriptionsRestModule } from '@social-monitor/subscriptions/interface
 import { DomainErrorFilter } from './domain-error.filter';
 import { HealthController } from './health.controller';
 import {
-  API_GATEWAY_DATABASE_READINESS,
   API_GATEWAY_HEALTH_CLOCK,
   API_GATEWAY_HEALTH_ENV,
   API_GATEWAY_SOURCE_READINESS_PROFILES,
   API_GATEWAY_UPTIME_SECONDS,
   ApiGatewayHealthReporter,
-  type ApiGatewayDatabaseReadiness,
 } from './health-reporter';
 import { RequestContextMiddleware } from './request-context.middleware';
 import { SocialResearchApiModule } from './social-research-api.module';
@@ -63,15 +59,6 @@ import { SocialResearchApiModule } from './social-research-api.module';
         sourceReadinessProfilesForRuntime(
           resolveSourceProviderRuntimeScope(process.env),
         ),
-    },
-    {
-      provide: API_GATEWAY_DATABASE_READINESS,
-      useFactory: (): ApiGatewayDatabaseReadiness => ({
-        check: () =>
-          resolveMonitoringPersistenceMode(process.env) === 'prisma'
-            ? probePostgresRuntimePoolConnectivity()
-            : Promise.resolve(),
-      }),
     },
     {
       provide: APP_FILTER,

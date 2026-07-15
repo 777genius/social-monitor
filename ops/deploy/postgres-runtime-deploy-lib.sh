@@ -467,9 +467,9 @@ assert_backend_soak_log_is_clean() {
 verify_backend_soak_logs() (
   local baseline=$1
   local log=$STATE/backend-soak-log.$$.txt
-  local service container restarts cursor
+  local service container _restarts cursor
   trap 'rm -f "$log"' EXIT
-  while read -r service container restarts cursor; do
+  while read -r service container _restarts cursor; do
     docker logs --since "$cursor" "$container" > "$log" 2>&1 || return 1
     assert_backend_soak_log_is_clean "$log" "$service" || return 1
   done < "$baseline"
@@ -478,9 +478,9 @@ verify_backend_soak_logs() (
 verify_ingestion_queue_recovery() (
   local baseline=$1
   local log=$STATE/backend-soak-ingestion.$$.txt
-  local service container restarts cursor
+  local service container _restarts cursor
   trap 'rm -f "$log"' EXIT
-  while read -r service container restarts cursor; do
+  while read -r service container _restarts cursor; do
     [[ $service == ingestion-worker ]] || continue
     docker logs --since "$cursor" "$container" > "$log" 2>&1 || return 1
     grep -E 'scan queue drain loop tick completed.*failed=0' "$log" >/dev/null || {

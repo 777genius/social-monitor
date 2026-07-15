@@ -81,7 +81,7 @@ source = source.replace(
 )
 path.write_text(source, encoding="utf-8")
 PY
-legacy_marker_line=$(grep -nF 'printf '\''%s\n'\'' "$sha" > "$STATE/control.sha"' \
+legacy_marker_line=$(grep -nF "printf '%s\n' \"\$sha\" > \"\$STATE/control.sha\"" \
   "$FIXTURE/legacy-entrypoint.sh" | cut -d: -f1)
 legacy_sync_line=$(grep -nF 'sync_control_script' "$FIXTURE/legacy-entrypoint.sh" | tail -1 | cut -d: -f1)
 ((legacy_marker_line < legacy_sync_line))

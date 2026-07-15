@@ -522,7 +522,9 @@ const createLivePersistence = async (params: {
   await prepareLiveE2eDatabase(params.config);
 
   process.env.DATABASE_URL = params.config.databaseUrl;
-  const connection = await PrismaIngestionWorkerConnection.createForProcess(params.config.databaseUrl, "admin-tool");
+  const connection = new PrismaIngestionWorkerConnection(
+    params.config.databaseUrl,
+  );
   const ids = new RandomUuidGenerator();
   const conversationUnits = new PrismaConversationUnitRepository(
     connection,

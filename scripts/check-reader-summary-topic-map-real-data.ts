@@ -3,7 +3,6 @@ import { dirname } from "node:path";
 
 import { Pool } from "pg";
 import { InMemoryMetricsRecorder } from "@social-monitor/platform-metrics";
-import { defaultPostgresRuntimePoolConfig } from "@social-monitor/platform-persistence";
 import {
   FixedClock,
   type IdGenerator,
@@ -248,9 +247,7 @@ async function buildReport(): Promise<Report> {
     collectionDate,
   });
   const sourceData = await readSourceData(collectionDate);
-  const connection = await PrismaFeedConnection.create(
-    defaultPostgresRuntimePoolConfig(localDatabaseUrl, "admin-tool"),
-  );
+  const connection = new PrismaFeedConnection(localDatabaseUrl);
 
   try {
     const feedItems = new PrismaFeedItemReadRepository(connection);
@@ -630,7 +627,6 @@ async function readSourceData(collectionDate: string): Promise<{
 }> {
   const pool = new Pool({
     connectionString: localDatabaseUrl,
-    min: 0,
     max: 1,
     connectionTimeoutMillis: 2_000,
   });

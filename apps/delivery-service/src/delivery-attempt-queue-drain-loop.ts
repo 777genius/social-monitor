@@ -1,9 +1,9 @@
-import { Inject, Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, type OnApplicationShutdown, type OnModuleInit } from '@nestjs/common';
 import { NestStructuredLogger, type StructuredLogger } from '@social-monitor/platform-logging';
 import type { MetricsRecorderPort } from '@social-monitor/platform-metrics';
 import { queueCommandDeliveryLagSeconds } from '@social-monitor/platform-queue';
 import { SendDeliveryAttemptCommandHandler } from '@social-monitor/delivery/interfaces/queue/send-delivery-attempt-command.handler';
-import { DomainError, type Clock } from '@social-monitor/shared-kernel';
+import type { Clock } from '@social-monitor/shared-kernel';
 
 import {
   DELIVERY_ATTEMPT_QUEUE_DRAIN_LOOP_OPTIONS,
@@ -15,7 +15,7 @@ import {
 } from './delivery-attempt-queue-reader';
 
 @Injectable()
-export class DeliveryAttemptQueueDrainLoop implements OnModuleInit, OnModuleDestroy {
+export class DeliveryAttemptQueueDrainLoop implements OnModuleInit, OnApplicationShutdown {
   private readonly logger: StructuredLogger = new NestStructuredLogger(DeliveryAttemptQueueDrainLoop.name);
   private timer: NodeJS.Timeout | undefined;
   private currentTick: Promise<void> | undefined;
@@ -52,11 +52,7 @@ export class DeliveryAttemptQueueDrainLoop implements OnModuleInit, OnModuleDest
     });
   }
 
-  async onModuleDestroy(): Promise<void> {
-    if (this.shuttingDown) {
-      await this.currentTick;
-      return;
-    }
+  async onApplicationShutdown(signal?: string): Promise<void> {
     this.shuttingDown = true;
 
     if (this.timer !== undefined) {
@@ -64,20 +60,8 @@ export class DeliveryAttemptQueueDrainLoop implements OnModuleInit, OnModuleDest
       this.timer = undefined;
     }
 
-    try {
-      await this.currentTick;
-    } catch (error) {
-      this.logger.error('delivery attempt queue drain failed while stopping; RabbitMQ will requeue unacknowledged deliveries on channel close', {
-        error: error instanceof Error ? error.message : String(error),
-        worker: 'delivery-service',
-      });
-    }
-    this.logger.info('delivery attempt queue drain loop stopped', { worker: 'delivery-service' });
-  }
-
-  onApplicationShutdown(signal?: string): Promise<void> {
-    void signal;
-    return this.onModuleDestroy();
+    await this.currentTick;
+    this.logger.info('delivery attempt queue drain loop stopped', { signal, worker: 'delivery-service' });
   }
 
   private async runTick(trigger: 'startup' | 'interval'): Promise<void> {
@@ -98,30 +82,16 @@ export class DeliveryAttemptQueueDrainLoop implements OnModuleInit, OnModuleDest
     });
     let completed = 0;
     let failed = 0;
-    let requeued = 0;
 
     for (const delivery of deliveries) {
       const { command } = delivery;
-      if (this.shuttingDown) {
-        await delivery.nack({ requeue: true });
-        requeued += 1;
-        continue;
-      }
       this.recordDeliveryLag(delivery);
       try {
         await this.handler.handle(command);
         await delivery.ack();
         completed += 1;
       } catch (error) {
-        const requeue =
-          this.shuttingDown ||
-          (error instanceof DomainError &&
-            error.code === 'operation.backpressure');
-        await delivery.nack({ requeue });
-        if (requeue) {
-          requeued += 1;
-          continue;
-        }
+        await delivery.nack({ requeue: false });
         failed += 1;
         this.logger.error('delivery attempt queue drain loop item failed', {
           commandId: command.commandId,
@@ -141,7 +111,6 @@ export class DeliveryAttemptQueueDrainLoop implements OnModuleInit, OnModuleDest
       evaluated: deliveries.length,
       completed,
       failed,
-      requeued,
       worker: 'delivery-service',
     });
   }

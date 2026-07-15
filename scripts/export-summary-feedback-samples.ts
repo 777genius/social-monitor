@@ -1,7 +1,6 @@
 import { chmodSync, existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 
-import { defaultPostgresRuntimePoolConfig } from '@social-monitor/platform-persistence';
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import { PrismaSummaryConnection } from '../libs/summary/adapters/persistence/prisma/prisma-summary-connection';
 import { PrismaSummaryFeedbackRepository } from '../libs/summary/adapters/persistence/prisma/prisma-summary-feedback.repository';
@@ -18,9 +17,7 @@ const forbiddenPathFragments = ['/fixtures/', '\\fixtures\\', '.example.', '-exa
 async function main(): Promise<void> {
   const outputPath = validateEvidenceJsonFilePath(requiredEnv(outputPathEnv), outputPathEnv);
   const envFilePath = validateEvidenceEnvFilePath(optionalEnv(envFilePathEnv) ?? `${outputPath}.env`);
-  const connection = await PrismaSummaryConnection.create(
-    defaultPostgresRuntimePoolConfig(requiredEnv('DATABASE_URL'), 'admin-tool'),
-  );
+  const connection = new PrismaSummaryConnection(requiredEnv('DATABASE_URL'));
 
   try {
     const result = await new ExportSummaryFeedbackSamplesUseCase(

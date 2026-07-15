@@ -173,7 +173,6 @@ async function buildReportFromDatabase(
 ): Promise<TopReadRankingReport> {
   const pool = new Pool({
     connectionString,
-    min: 0,
     max: 1,
     connectionTimeoutMillis: 2_000,
   });

@@ -1,3 +1,4 @@
+import { PrismaPg } from "@prisma/adapter-pg";
 import type { PrismaConversationClient } from "@social-monitor/conversation/adapters/persistence/prisma/prisma-conversation-client";
 import type { PrismaFeedClient } from "@social-monitor/feed/adapters/persistence/prisma/prisma-feed-client";
 import type {
@@ -8,15 +9,8 @@ import type {
   PrismaSourceEngagementClient,
   PrismaSourceEngagementTransactionClient,
 } from "@social-monitor/feed/adapters/persistence/prisma/prisma-source-engagement-client";
-import {
-  createPrismaPgRuntimeConnection,
-  defaultPostgresRuntimePoolConfig,
-  type PostgresRuntimePoolConfig,
-  type PostgresRuntimeProcessId,
-  type PrismaPgRuntimeClientConstructor,
-  type PrismaPgRuntimeConnectionLease,
-} from "@social-monitor/platform-persistence";
 import { loadPrismaRuntimeClient } from "@social-monitor/platform-persistence/prisma-runtime-client";
+import { Pool } from "pg";
 
 export type PrismaIngestionWorkerClient = PrismaIngestionClient &
   PrismaSourceCandidateMemoryClient &
@@ -27,6 +21,10 @@ export type PrismaIngestionWorkerClient = PrismaIngestionClient &
 type PrismaIngestionWorkerRuntimeClient = PrismaIngestionWorkerClient & {
   $disconnect(): Promise<void>;
 };
+
+type PrismaIngestionWorkerRuntimeClientConstructor = new (args: {
+  readonly adapter: PrismaPg;
+}) => PrismaIngestionWorkerRuntimeClient;
 
 export class PrismaIngestionWorkerConnection implements PrismaIngestionWorkerClient {
   readonly sourceCandidateMemory: PrismaSourceCandidateMemoryClient["sourceCandidateMemory"];
@@ -46,37 +44,20 @@ export class PrismaIngestionWorkerConnection implements PrismaIngestionWorkerCli
   readonly conversationUnit: PrismaConversationClient["conversationUnit"];
   readonly conversationSignalBaselineSample: PrismaConversationClient["conversationSignalBaselineSample"];
 
-  private readonly runtime: PrismaPgRuntimeConnectionLease<PrismaIngestionWorkerRuntimeClient>;
+  private readonly pool: Pool;
   private readonly client: PrismaIngestionWorkerRuntimeClient;
 
-  static create(
-    config: PostgresRuntimePoolConfig,
-  ): Promise<PrismaIngestionWorkerConnection> {
+  constructor(databaseUrl: string) {
+    if (databaseUrl.trim().length === 0) {
+      throw new Error(
+        "DATABASE_URL is required for Prisma ingestion worker persistence",
+      );
+    }
+
+    this.pool = new Pool({ connectionString: databaseUrl });
     const PrismaClient =
-      loadPrismaRuntimeClient<
-        PrismaPgRuntimeClientConstructor<PrismaIngestionWorkerRuntimeClient>
-      >();
-    return createPrismaPgRuntimeConnection(
-      config,
-      PrismaClient,
-      (runtime) => new PrismaIngestionWorkerConnection(runtime),
-    );
-  }
-
-  static createForProcess(
-    connectionString: string,
-    processId: PostgresRuntimeProcessId,
-  ): Promise<PrismaIngestionWorkerConnection> {
-    return this.create(
-      defaultPostgresRuntimePoolConfig(connectionString, processId),
-    );
-  }
-
-  private constructor(
-    runtime: PrismaPgRuntimeConnectionLease<PrismaIngestionWorkerRuntimeClient>,
-  ) {
-    this.runtime = runtime;
-    this.client = this.runtime.client;
+      loadPrismaRuntimeClient<PrismaIngestionWorkerRuntimeClientConstructor>();
+    this.client = new PrismaClient({ adapter: new PrismaPg(this.pool) });
 
     this.sourceCandidateMemory = this.client.sourceCandidateMemory;
     this.sourceItem = this.client.sourceItem;
@@ -115,11 +96,12 @@ export class PrismaIngestionWorkerConnection implements PrismaIngestionWorkerCli
     return this.client.$transaction(operation, options);
   }
 
-  close(): Promise<void> {
-    return this.runtime.close();
+  async close(): Promise<void> {
+    await this.client.$disconnect();
+    await this.pool.end();
   }
 
-  onApplicationShutdown(): Promise<void> {
-    return this.close();
+  async onModuleDestroy(): Promise<void> {
+    await this.close();
   }
 }

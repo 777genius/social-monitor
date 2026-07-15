@@ -5,7 +5,6 @@ import {
   tenantId,
   workspaceId,
 } from "@social-monitor/shared-kernel";
-import { defaultPostgresRuntimePoolConfig } from "@social-monitor/platform-persistence";
 import { Pool } from "pg";
 import request from "supertest";
 import type { Response } from "supertest";
@@ -59,7 +58,7 @@ async function main(): Promise<void> {
 
   const runId = Date.now().toString(36);
   const recommendationId = `rest-prisma-topic-rec:${runId}`;
-  const pool = new Pool({ connectionString: databaseUrl, min: 0, max: 1 });
+  const pool = new Pool({ connectionString: databaseUrl });
 
   await seedWorkspaceScope(pool);
   await seedSourceCatalog(pool);
@@ -94,9 +93,6 @@ async function main(): Promise<void> {
 
 function configureLivePrismaRuntime(databaseUrl: string): void {
   process.env.DATABASE_URL = databaseUrl;
-  process.env.POSTGRES_RUNTIME_PROCESS = "api-gateway";
-  process.env.POSTGRES_RUNTIME_POOL_MIN = "0";
-  process.env.POSTGRES_RUNTIME_POOL_MAX = "2";
   process.env.SOCIAL_MONITOR_RUNTIME_PROFILE = "local-dev";
   process.env.SUMMARY_PERSISTENCE = "prisma";
   process.env.MONITORING_PERSISTENCE = "prisma";
@@ -359,9 +355,7 @@ async function assertPersistedDecision(
   recommendationId: string,
   status: "accepted" | "rejected",
 ): Promise<void> {
-  const connection = await PrismaSummaryConnection.create(
-    defaultPostgresRuntimePoolConfig(databaseUrl, "api-gateway"),
-  );
+  const connection = new PrismaSummaryConnection(databaseUrl);
   try {
     const repository =
       new PrismaReaderSummaryTopicRecommendationDecisionRepository(
@@ -393,9 +387,7 @@ async function assertDecisionDeleted(
   databaseUrl: string,
   recommendationId: string,
 ): Promise<void> {
-  const connection = await PrismaSummaryConnection.create(
-    defaultPostgresRuntimePoolConfig(databaseUrl, "api-gateway"),
-  );
+  const connection = new PrismaSummaryConnection(databaseUrl);
   try {
     const repository =
       new PrismaReaderSummaryTopicRecommendationDecisionRepository(

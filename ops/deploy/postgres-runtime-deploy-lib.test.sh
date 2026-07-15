@@ -60,7 +60,7 @@ systemctl() {
   esac
 }
 
-# shellcheck source=postgres-runtime-deploy-lib.sh
+# shellcheck source=ops/deploy/postgres-runtime-deploy-lib.sh
 source "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh"
 
 rollback_snapshot=$(snapshot_postgres_runtime_control "$SHA")

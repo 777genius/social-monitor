@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { resolvePostgresRuntimePoolConfig } from '@social-monitor/platform-persistence';
 import { IdentityUserAuthModule } from '@social-monitor/identity/interfaces/authorization/identity-user-auth.module';
 import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
 
@@ -37,14 +36,8 @@ import { PublicApiAuditEventsController } from './public-api-audit-events.contro
     },
     {
       provide: USAGE_PRISMA_CLIENT,
-      useFactory: async (
-        mode: UsagePersistenceMode,
-      ): Promise<PrismaUsageClient | null> =>
-        mode === 'prisma'
-          ? PrismaUsageConnection.create(
-              resolvePostgresRuntimePoolConfig(process.env),
-            )
-          : null,
+      useFactory: (mode: UsagePersistenceMode): PrismaUsageClient | null =>
+        mode === 'prisma' ? new PrismaUsageConnection(process.env.DATABASE_URL ?? '') : null,
       inject: [USAGE_PERSISTENCE_MODE],
     },
     InMemoryPublicApiAuditLog,

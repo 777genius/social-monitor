@@ -1,11 +1,10 @@
-import { Inject, Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, type OnApplicationShutdown, type OnModuleInit } from '@nestjs/common';
 import { NestStructuredLogger, type StructuredLogger } from '@social-monitor/platform-logging';
 import type { MetricsRecorderPort } from '@social-monitor/platform-metrics';
 import { queueCommandDeliveryLagSeconds } from '@social-monitor/platform-queue';
-import { classifyWorkerRuntimeFailure } from '@social-monitor/platform-worker';
 import { ExecuteScanCommandHandler } from '@social-monitor/ingestion/interfaces/queue/execute-scan-command.handler';
 import type { RetryScanCommand, ScanRetryQueuePort } from '@social-monitor/ingestion/ports';
-import { DomainError, type Clock } from '@social-monitor/shared-kernel';
+import type { Clock } from '@social-monitor/shared-kernel';
 
 import {
   INGESTION_SCAN_FAILURE_QUEUE,
@@ -19,7 +18,7 @@ import {
 } from './scan-command-queue-reader';
 
 @Injectable()
-export class ScanQueueDrainLoop implements OnModuleInit, OnModuleDestroy {
+export class ScanQueueDrainLoop implements OnModuleInit, OnApplicationShutdown {
   private readonly logger: StructuredLogger = new NestStructuredLogger(ScanQueueDrainLoop.name);
   private timer: NodeJS.Timeout | undefined;
   private currentTick: Promise<void> | undefined;
@@ -58,11 +57,7 @@ export class ScanQueueDrainLoop implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  async onModuleDestroy(): Promise<void> {
-    if (this.shuttingDown) {
-      await this.currentTick;
-      return;
-    }
+  async onApplicationShutdown(signal?: string): Promise<void> {
     this.shuttingDown = true;
 
     if (this.timer !== undefined) {
@@ -70,20 +65,8 @@ export class ScanQueueDrainLoop implements OnModuleInit, OnModuleDestroy {
       this.timer = undefined;
     }
 
-    try {
-      await this.currentTick;
-    } catch (error) {
-      this.logger.error('scan queue drain failed while stopping; RabbitMQ will requeue unacknowledged deliveries on channel close', {
-        error: error instanceof Error ? error.message : String(error),
-        worker: 'ingestion-worker',
-      });
-    }
-    this.logger.info('scan queue drain loop stopped', { worker: 'ingestion-worker' });
-  }
-
-  onApplicationShutdown(signal?: string): Promise<void> {
-    void signal;
-    return this.onModuleDestroy();
+    await this.currentTick;
+    this.logger.info('scan queue drain loop stopped', { signal, worker: 'ingestion-worker' });
   }
 
   private async runTick(trigger: 'startup' | 'interval'): Promise<void> {
@@ -101,38 +84,21 @@ export class ScanQueueDrainLoop implements OnModuleInit, OnModuleDestroy {
     const { deliveries, primaryCount, retryCount } = await this.drainExecutableCommands();
     let completed = 0;
     let failed = 0;
-    let requeued = 0;
 
     for (const delivery of deliveries) {
       const { command } = delivery;
-      if (this.shuttingDown) {
-        await delivery.nack({ requeue: true });
-        requeued += 1;
-        continue;
-      }
       this.recordDeliveryLag(delivery);
       try {
         await this.handler.handle(command);
         await delivery.ack();
         completed += 1;
       } catch (error) {
-        const failure = classifyWorkerRuntimeFailure(error);
-        const requeue =
-          this.shuttingDown ||
-          (error instanceof DomainError &&
-            error.code === 'operation.backpressure');
-        await delivery.nack({ requeue });
-        if (requeue) {
-          requeued += 1;
-          continue;
-        }
+        await delivery.nack({ requeue: false });
         failed += 1;
         this.logger.error('scan queue drain loop item failed', {
           commandId: command.commandId,
           trigger,
-          error: failure.message,
-          errorClassification: failure.classification,
-          errorCode: failure.code,
+          error: error instanceof Error ? error.message : String(error),
           redelivered: delivery.diagnostics.redelivered,
           deadLetterCount: delivery.diagnostics.deadLetterCount,
           deadLetterReason: delivery.diagnostics.deadLetterReason,
@@ -149,7 +115,6 @@ export class ScanQueueDrainLoop implements OnModuleInit, OnModuleDestroy {
       retry: retryCount,
       completed,
       failed,
-      requeued,
       worker: 'ingestion-worker',
     });
   }

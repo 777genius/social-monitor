@@ -11,7 +11,6 @@ import { ScheduleDueScansUseCase } from "@social-monitor/monitoring/features/sch
 import { ScheduleDueScansCommandHandler } from "@social-monitor/monitoring/interfaces/queue/schedule-due-scans-command.handler";
 import { MonitoringRestModule } from "@social-monitor/monitoring/interfaces/rest/monitoring-rest.module";
 import { InMemoryMetricsRecorder } from "@social-monitor/platform-metrics";
-import { resolvePostgresRuntimePoolConfig } from "@social-monitor/platform-persistence";
 import { InMemoryQueuePublisher } from "@social-monitor/platform-queue/adapters/in-memory";
 import { AmqplibRabbitMqChannel } from "@social-monitor/platform-queue/adapters/rabbitmq";
 import { CryptoIdGenerator, SystemClock } from "@social-monitor/shared-kernel";
@@ -115,13 +114,11 @@ const INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL = Symbol(
     },
     {
       provide: INGESTION_WORKER_PRISMA_CLIENT,
-      useFactory: async (
+      useFactory: (
         mode: IngestionWorkerPersistenceMode,
-      ): Promise<PrismaIngestionWorkerClient | null> =>
+      ): PrismaIngestionWorkerClient | null =>
         mode === "prisma"
-          ? PrismaIngestionWorkerConnection.create(
-              resolvePostgresRuntimePoolConfig(process.env),
-            )
+          ? new PrismaIngestionWorkerConnection(process.env.DATABASE_URL ?? "")
           : null,
       inject: [INGESTION_WORKER_PERSISTENCE_MODE],
     },

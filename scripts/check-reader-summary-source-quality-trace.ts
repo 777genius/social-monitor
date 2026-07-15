@@ -2,7 +2,6 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 import { Pool } from "pg";
-import { defaultPostgresRuntimePoolConfig } from "@social-monitor/platform-persistence";
 
 import { PrismaFeedConnection } from "../libs/feed/adapters/persistence/prisma/prisma-feed-connection";
 import { PrismaFeedItemReadRepository } from "../libs/feed/adapters/persistence/prisma/prisma-feed-item-read.repository";
@@ -241,7 +240,6 @@ async function main(): Promise<void> {
 async function tryBuildReport(): Promise<SourceQualityTraceReport | undefined> {
   const pool = new Pool({
     connectionString: databaseUrl,
-    min: 0,
     max: 1,
     connectionTimeoutMillis: 2_000,
   });
@@ -633,9 +631,7 @@ async function rankFeedItems(
     readonly whyImportant: readonly string[];
   }[]
 > {
-  const connection = await PrismaFeedConnection.create(
-    defaultPostgresRuntimePoolConfig(databaseUrl, "daily-runner"),
-  );
+  const connection = new PrismaFeedConnection(databaseUrl);
   try {
     const useCase = new RankFeedItemsUseCase(
       new PrismaFeedItemReadRepository(connection),

@@ -104,17 +104,11 @@ export type ReadinessResponse = HealthResponse & {
 };
 
 export type UptimeSecondsReader = () => number;
-export type ApiGatewayDatabaseReadiness = {
-  check(): Promise<void>;
-};
 
 export const API_GATEWAY_HEALTH_ENV = Symbol('API_GATEWAY_HEALTH_ENV');
 export const API_GATEWAY_HEALTH_CLOCK = Symbol('API_GATEWAY_HEALTH_CLOCK');
 export const API_GATEWAY_UPTIME_SECONDS = Symbol('API_GATEWAY_UPTIME_SECONDS');
 export const API_GATEWAY_SOURCE_READINESS_PROFILES = Symbol('API_GATEWAY_SOURCE_READINESS_PROFILES');
-export const API_GATEWAY_DATABASE_READINESS = Symbol(
-  'API_GATEWAY_DATABASE_READINESS',
-);
 
 @Injectable()
 export class ApiGatewayHealthReporter {
@@ -127,16 +121,13 @@ export class ApiGatewayHealthReporter {
     private readonly uptimeSeconds: UptimeSecondsReader,
     @Inject(API_GATEWAY_SOURCE_READINESS_PROFILES)
     private readonly sourceReadinessProfiles: readonly SourceReadinessProfile[],
-    @Inject(API_GATEWAY_DATABASE_READINESS)
-    private readonly databaseReadiness: ApiGatewayDatabaseReadiness,
   ) {}
 
   health(): HealthResponse {
     return this.ok();
   }
 
-  async ready(): Promise<ReadinessResponse> {
-    await this.databaseReadiness.check();
+  ready(): ReadinessResponse {
     return {
       ...this.ok(),
       runtime: {
@@ -214,9 +205,9 @@ export class ApiGatewayHealthReporter {
           detail: 'Source readiness profiles loaded.',
         },
         {
-          name: 'postgres_runtime_pool',
+          name: 'operator_contract',
           status: 'ok',
-          detail: 'A query completed through the bounded shared Prisma pool.',
+          detail: 'Readiness metadata is available without database or provider network calls.',
         },
       ],
     };

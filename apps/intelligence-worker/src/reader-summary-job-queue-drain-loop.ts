@@ -1,7 +1,7 @@
 import {
   Inject,
   Injectable,
-  type OnModuleDestroy,
+  type OnApplicationShutdown,
   type OnModuleInit,
 } from "@nestjs/common";
 import {
@@ -12,7 +12,7 @@ import type { MetricsRecorderPort } from "@social-monitor/platform-metrics";
 import { queueCommandDeliveryLagSeconds } from "@social-monitor/platform-queue";
 import { EXECUTE_READER_SUMMARY_JOB_COMMAND_TYPE } from "@social-monitor/summary/ports";
 import { ExecuteReaderSummaryJobCommandHandler } from "@social-monitor/summary/interfaces/queue/execute-reader-summary-job-command.handler";
-import { DomainError, type Clock } from "@social-monitor/shared-kernel";
+import type { Clock } from "@social-monitor/shared-kernel";
 
 import {
   INTELLIGENCE_READER_SUMMARY_QUEUE_DRAIN_LOOP_OPTIONS,
@@ -25,7 +25,7 @@ import {
 
 @Injectable()
 export class ReaderSummaryJobQueueDrainLoop
-  implements OnModuleInit, OnModuleDestroy
+  implements OnModuleInit, OnApplicationShutdown
 {
   private readonly logger: StructuredLogger = new NestStructuredLogger(
     ReaderSummaryJobQueueDrainLoop.name,
@@ -67,11 +67,7 @@ export class ReaderSummaryJobQueueDrainLoop
     });
   }
 
-  async onModuleDestroy(): Promise<void> {
-    if (this.shuttingDown) {
-      await this.currentTick;
-      return;
-    }
+  async onApplicationShutdown(signal?: string): Promise<void> {
     this.shuttingDown = true;
 
     if (this.timer !== undefined) {
@@ -79,25 +75,11 @@ export class ReaderSummaryJobQueueDrainLoop
       this.timer = undefined;
     }
 
-    try {
-      await this.currentTick;
-    } catch (error) {
-      this.logger.error(
-        "readerSummary queue drain failed while stopping; RabbitMQ will requeue unacknowledged deliveries on channel close",
-        {
-          error: error instanceof Error ? error.message : String(error),
-          worker: "intelligence-worker",
-        },
-      );
-    }
+    await this.currentTick;
     this.logger.info("readerSummary queue drain loop stopped", {
+      signal,
       worker: "intelligence-worker",
     });
-  }
-
-  onApplicationShutdown(signal?: string): Promise<void> {
-    void signal;
-    return this.onModuleDestroy();
   }
 
   private async runTick(trigger: "startup" | "interval"): Promise<void> {
@@ -118,30 +100,16 @@ export class ReaderSummaryJobQueueDrainLoop
     });
     let completed = 0;
     let failed = 0;
-    let requeued = 0;
 
     for (const delivery of deliveries) {
       const { command } = delivery;
-      if (this.shuttingDown) {
-        await delivery.nack({ requeue: true });
-        requeued += 1;
-        continue;
-      }
       this.recordDeliveryLag(delivery);
       try {
         await this.handler.handle(command);
         await delivery.ack();
         completed += 1;
       } catch (error) {
-        const requeue =
-          this.shuttingDown ||
-          (error instanceof DomainError &&
-            error.code === "operation.backpressure");
-        await delivery.nack({ requeue });
-        if (requeue) {
-          requeued += 1;
-          continue;
-        }
+        await delivery.nack({ requeue: false });
         failed += 1;
         this.logger.error("readerSummary queue drain loop item failed", {
           commandId: command.commandId,
@@ -161,7 +129,6 @@ export class ReaderSummaryJobQueueDrainLoop
       evaluated: deliveries.length,
       completed,
       failed,
-      requeued,
       worker: "intelligence-worker",
     });
   }

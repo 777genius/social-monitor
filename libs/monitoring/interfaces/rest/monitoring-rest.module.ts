@@ -5,6 +5,7 @@ import { RequestCorrelationIdFactory } from "@social-monitor/platform-request-co
 import { CryptoIdGenerator, SystemClock } from "@social-monitor/shared-kernel";
 import { ReserveUsageQuotaUseCase } from "@social-monitor/usage/features/reserve-usage-quota/reserve-usage-quota.use-case";
 import { UsageRestModule } from "@social-monitor/usage/interfaces/rest/usage-rest.module";
+
 import { InMemoryIdempotencyAdapter } from "../../adapters/idempotency/in-memory-idempotency.adapter";
 import { OAuth2SourceCredentialRefresher } from "../../adapters/credentials/oauth2-source-credential-refresher";
 import { PrismaIdempotencyAdapter } from "../../adapters/idempotency/prisma/prisma-idempotency.adapter";
@@ -15,6 +16,7 @@ import { InMemoryScanPolicyRepository } from "../../adapters/persistence/in-memo
 import { InMemorySourceBindingRepository } from "../../adapters/persistence/in-memory-source-binding.repository";
 import { InMemorySourceCredentialRepository } from "../../adapters/persistence/in-memory-source-credential.repository";
 import { InMemoryInterestRepository } from "../../adapters/persistence/in-memory-interest.repository";
+import { PrismaMonitoringConnection } from "../../adapters/persistence/prisma/prisma-monitoring-connection";
 import type { PrismaMonitoringClient } from "../../adapters/persistence/prisma/prisma-monitoring-client";
 import { PrismaScanJobRepository } from "../../adapters/persistence/prisma/prisma-scan-job.repository";
 import { PrismaScanExecutionAttemptReadModel } from "../../adapters/persistence/prisma/prisma-scan-execution-attempt-read-model";
@@ -96,10 +98,10 @@ import {
   MONITORING_SOURCE_CREDENTIAL_VAULT,
   MONITORING_INTEREST_REPOSITORY,
   type MonitoringPersistenceMode,
+  monitoringPersistenceModeProvider,
   monitoringScanQueueModeProvider,
   resolveManualScanRequestQuotaPerHour,
 } from "./monitoring-provider-tokens";
-import { MonitoringPrismaClientModule } from "./monitoring-prisma-client.module";
 import {
   parseOptionalPositiveInteger,
   resolveMonitoringCapacityLimits,
@@ -117,11 +119,7 @@ type MonitoringScanJobStorePort = ScanJobRepositoryPort &
   ScanJobHistoryReadPort;
 
 @Module({
-  imports: [
-    UsageRestModule,
-    IdentityRestModule,
-    MonitoringPrismaClientModule,
-  ],
+  imports: [UsageRestModule, IdentityRestModule],
   controllers: [
     InterestController,
     SourceBindingController,
@@ -132,7 +130,18 @@ type MonitoringScanJobStorePort = ScanJobRepositoryPort &
     InterestCoveragePlanController,
   ],
   providers: [
+    monitoringPersistenceModeProvider,
     monitoringScanQueueModeProvider,
+    {
+      provide: MONITORING_PRISMA_CLIENT,
+      useFactory: (
+        mode: MonitoringPersistenceMode,
+      ): PrismaMonitoringClient | null =>
+        mode === "prisma"
+          ? new PrismaMonitoringConnection(process.env.DATABASE_URL ?? "")
+          : null,
+      inject: [MONITORING_PERSISTENCE_MODE],
+    },
     {
       provide: MONITORING_INTEREST_REPOSITORY,
       useFactory: (

@@ -142,7 +142,7 @@ const ids: RuntimeIds = {
   userId: randomUUID(),
   membershipId: randomUUID(),
 };
-const pool = new Pool({ connectionString: config.databaseUrl, min: 0, max: 2 });
+const pool = new Pool({ connectionString: config.databaseUrl });
 const startedAt = nowIso();
 const DIGEST_EVIDENCE_FIRST_RUN_DELAY_MS = 3_000;
 const DIGEST_EVIDENCE_WINDOW_PADDING_MS = 30_000;

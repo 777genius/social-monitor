@@ -4,7 +4,6 @@ import { InMemorySourceProviderRegistry } from '@social-monitor/ingestion/adapte
 import { sourceProviderRegistryProviders } from '@social-monitor/ingestion/interfaces/source/source-provider-registry.providers';
 import type { SourceProviderRegistryPort } from '@social-monitor/ingestion/ports';
 import { MonitoringRestModule } from '@social-monitor/monitoring/interfaces/rest/monitoring-rest.module';
-import { resolvePostgresRuntimePoolConfig } from '@social-monitor/platform-persistence';
 import {
   DefaultSocialResearchExecutionPolicy,
   type SocialSearchPlannerOptions,
@@ -44,13 +43,11 @@ import {
     ...sourceProviderRegistryProviders,
     {
       provide: SOCIAL_RESEARCH_RUNTIME_PRISMA_CLIENT,
-      useFactory: async (
+      useFactory: (
         settings: SocialResearchRuntimeSettings,
-      ): Promise<PrismaSocialResearchResultCacheClient | undefined> =>
+      ): PrismaSocialResearchResultCacheClient | undefined =>
         settings.resultCache.mode === 'prisma'
-          ? PrismaSocialResearchConnection.create(
-              resolvePostgresRuntimePoolConfig(process.env),
-            )
+          ? new PrismaSocialResearchConnection(process.env.DATABASE_URL ?? '')
           : undefined,
       inject: [SOCIAL_RESEARCH_RUNTIME_SETTINGS],
     },

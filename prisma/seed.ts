@@ -6,8 +6,8 @@ import { PrismaClient, type Prisma } from "./generated/client/client";
 const connectionString =
   process.env.DATABASE_URL ??
   "postgresql://social_monitor:social_monitor_local_password@localhost:5432/social_monitor";
-const pool = new Pool({ connectionString, min: 0, max: 1 });
-const adapter = new PrismaPg(pool, { disposeExternalPool: false });
+const pool = new Pool({ connectionString });
+const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
 async function main(): Promise<void> {
@@ -214,30 +214,14 @@ const sourceCatalogEntries: readonly SourceCatalogSeedEntry[] = [
   },
 ];
 
-async function run(): Promise<void> {
-  let failed = false;
-  try {
-    await main();
-  } catch (error: unknown) {
-    failed = true;
+void main()
+  .then(async () => {
+    await prisma.$disconnect();
+    await pool.end();
+  })
+  .catch(async (error: unknown) => {
     console.error(error);
-  } finally {
-    try {
-      await prisma.$disconnect();
-    } catch (error: unknown) {
-      failed = true;
-      console.error(error);
-    }
-    try {
-      await pool.end();
-    } catch (error: unknown) {
-      failed = true;
-      console.error(error);
-    }
-  }
-  if (failed) {
-    process.exitCode = 1;
-  }
-}
-
-void run();
+    await prisma.$disconnect();
+    await pool.end();
+    process.exit(1);
+  });

@@ -119,7 +119,6 @@ async function tryReadActualDays(
 ): Promise<readonly ReaderSummaryMultiDayActualDay[] | undefined> {
   const pool = new Pool({
     connectionString: yesterdaySocialQualityDatabaseUrl(),
-    min: 0,
     max: 2,
     connectionTimeoutMillis: 2_000,
   });

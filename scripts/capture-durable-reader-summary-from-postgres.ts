@@ -3,7 +3,6 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
 import { PrismaFeedConnection } from "@social-monitor/feed/adapters/persistence/prisma/prisma-feed-connection";
-import { defaultPostgresRuntimePoolConfig } from "@social-monitor/platform-persistence";
 import { PrismaFeedItemReadRepository } from "@social-monitor/feed/adapters/persistence/prisma/prisma-feed-item-read.repository";
 import { InMemoryMetricsRecorder } from "@social-monitor/platform-metrics";
 import { PrismaSummaryConnection } from "@social-monitor/summary/adapters/persistence/prisma/prisma-summary-connection";
@@ -128,14 +127,8 @@ async function main(): Promise<void> {
       ? buildAgentRuntimeClient()
       : null;
 
-  const runtimePoolConfig = defaultPostgresRuntimePoolConfig(
-    databaseUrl,
-    "daily-runner",
-  );
-  const feedConnection = await PrismaFeedConnection.create(runtimePoolConfig);
-  const summaryConnection = await PrismaSummaryConnection.create(
-    runtimePoolConfig,
-  );
+  const feedConnection = new PrismaFeedConnection(databaseUrl);
+  const summaryConnection = new PrismaSummaryConnection(databaseUrl);
 
   try {
     const feedItems = new PrismaFeedItemReadRepository(feedConnection);

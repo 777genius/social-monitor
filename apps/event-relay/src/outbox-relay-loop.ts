@@ -1,4 +1,4 @@
-import { Inject, Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, type OnApplicationShutdown, type OnModuleInit } from '@nestjs/common';
 import { NestStructuredLogger, type StructuredLogger } from '@social-monitor/platform-logging';
 import { OutboxDispatcher } from '@social-monitor/platform-events';
 
@@ -8,7 +8,7 @@ import {
 } from './event-relay-provider-tokens';
 
 @Injectable()
-export class OutboxRelayLoop implements OnModuleInit, OnModuleDestroy {
+export class OutboxRelayLoop implements OnModuleInit, OnApplicationShutdown {
   private readonly logger: StructuredLogger = new NestStructuredLogger(OutboxRelayLoop.name);
   private timer: NodeJS.Timeout | undefined;
   private currentTick: Promise<void> | undefined;
@@ -41,11 +41,7 @@ export class OutboxRelayLoop implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  async onModuleDestroy(): Promise<void> {
-    if (this.shuttingDown) {
-      await this.currentTick;
-      return;
-    }
+  async onApplicationShutdown(signal?: string): Promise<void> {
     this.shuttingDown = true;
 
     if (this.timer !== undefined) {
@@ -54,12 +50,7 @@ export class OutboxRelayLoop implements OnModuleInit, OnModuleDestroy {
     }
 
     await this.currentTick;
-    this.logger.info('outbox relay loop stopped', { worker: 'event-relay' });
-  }
-
-  onApplicationShutdown(signal?: string): Promise<void> {
-    void signal;
-    return this.onModuleDestroy();
+    this.logger.info('outbox relay loop stopped', { signal, worker: 'event-relay' });
   }
 
   private async runTick(trigger: 'startup' | 'interval'): Promise<void> {
