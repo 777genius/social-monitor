@@ -1,6 +1,28 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if ((EUID != 0)); then
+  if [[ ${POSTGRES_RUNTIME_DEPLOY_LIB_TEST_ROOT_REEXEC:-} == 1 ]]; then
+    echo 'PostgreSQL runtime deploy library tests require root; sudo re-exec did not obtain root privileges' >&2
+    exit 1
+  fi
+
+  sudo_path=$(type -P sudo || true)
+  if [[ -z $sudo_path ]]; then
+    echo 'PostgreSQL runtime deploy library tests require root; sudo is unavailable' >&2
+    exit 1
+  fi
+  if ! "$sudo_path" --non-interactive true; then
+    echo 'PostgreSQL runtime deploy library tests require root; passwordless sudo elevation is unavailable' >&2
+    exit 1
+  fi
+
+  export POSTGRES_RUNTIME_DEPLOY_LIB_TEST_ROOT_REEXEC=1
+  exec "$sudo_path" --non-interactive \
+    --preserve-env=POSTGRES_RUNTIME_DEPLOY_LIB_TEST_ROOT_REEXEC \
+    /bin/bash "${BASH_SOURCE[0]}" "$@"
+fi
+
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO=$(cd "$SCRIPT_DIR/../.." && pwd)
 FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/postgres-runtime-deploy-lib-test.XXXXXX")
