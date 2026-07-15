@@ -10,6 +10,16 @@ BASE=$(
 FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/postgres-pool-bootstrap-transition.XXXXXX")
 trap 'rm -rf "$FIXTURE"' EXIT
 
+TEST_PHASE=fixture-setup
+report_error() {
+  local status=$1
+  local line=$2
+  local command=$3
+  printf 'bootstrap-transition-error: phase=%s line=%s status=%s command=%q\n' \
+    "$TEST_PHASE" "$line" "$status" "$command" >&2
+}
+trap 'report_error "$?" "$LINENO" "$BASH_COMMAND"' ERR
+
 REPO=$FIXTURE/repo
 ORIGIN=$FIXTURE/origin.git
 ROOT=$FIXTURE/root
@@ -27,9 +37,9 @@ NON_ACTIVATING_SNAPSHOT=$FIXTURE/release-a-non-activating-before
 git -C "$PROJECT_ROOT" show "$BASE:ops/deploy/social-monitor-production-deploy.sh" \
   > "$FIXTURE/legacy-entrypoint.sh"
 # Adapt only the legacy entrypoint's root-vs-test path selection so this
-# production-free contract test can run in rootful CI sandboxes. All planning,
-# marker, component, and sync behavior below that preamble remains byte-for-byte
-# from the recorded main commit.
+# production-free contract test can run in rootful CI sandboxes. Planning,
+# marker, component, and atomic sync ordering remain from the recorded main
+# commit; the fixture-only ownership adaptation is explicit below.
 python3 - "$FIXTURE/legacy-entrypoint.sh" <<'PY'
 import pathlib
 import sys
@@ -77,6 +87,17 @@ source = source.replace(
     + "    : > $STATE/legacy-sync-failed-once\n"
     + "    return 91\n"
     + "  fi\n",
+    1,
+)
+# The production entrypoint must retain its root-owned install. This fixture
+# executes that same atomic sync as the unprivileged GitHub runner, so remove
+# only the ownership request from the generated test copy.
+root_install = 'install -m 0755 -o root -g root "$source" "$destination.next"'
+if source.count(root_install) != 1:
+    raise SystemExit("legacy root-owned control install was not found exactly once")
+source = source.replace(
+    root_install,
+    'install -m 0755 "$source" "$destination.next"',
     1,
 )
 path.write_text(source, encoding="utf-8")
@@ -151,6 +172,18 @@ path.write_text(
     ),
     encoding="utf-8",
 )
+source = path.read_text(encoding="utf-8")
+root_install = 'install -m 0755 -o root -g root "$source" "$destination.next"'
+if source.count(root_install) != 1:
+    raise SystemExit("new root-owned control install was not found exactly once")
+path.write_text(
+    source.replace(
+        root_install,
+        'install -m 0755 "$source" "$destination.next"',
+        1,
+    ),
+    encoding="utf-8",
+)
 PY
 git -C "$REPO" add ops/deploy
 git -C "$REPO" commit -qm 'test: Release A control bootstrap'
@@ -192,6 +225,7 @@ run_entrypoint() {
     "$action" "$TARGET_SHA"
 }
 
+TEST_PHASE=legacy-plan
 legacy_plan=$(run_entrypoint "$FIXTURE/legacy-entrypoint.sh" plan)
 grep -Fx 'backend=false' <<< "$legacy_plan" >/dev/null
 grep -Fx 'control=true' <<< "$legacy_plan" >/dev/null
@@ -202,10 +236,13 @@ fi
 
 # Attempt 1 executes the actual old main entrypoint. The injected one-shot
 # process failure occurs at its real marker-before-sync boundary.
+TEST_PHASE=legacy-poison-window
+trap - ERR
 set +e
 run_entrypoint "$FIXTURE/legacy-entrypoint.sh" deploy >/dev/null
 first_status=$?
 set -e
+trap 'report_error "$?" "$LINENO" "$BASH_COMMAND"' ERR
 ((first_status == 91))
 [[ $(cat "$STATE/control.sha") == "$TARGET_SHA" ]]
 [[ ! -e $INSTALLED && ! -e $STATE/postgres-pool-bootstrap.sha ]]
@@ -213,20 +250,24 @@ assert_release_a_non_activation
 
 # Attempt 2 executes old main again. Because integration and control.sha already
 # advanced, it repairs the old poison window by reaching the real atomic sync.
+TEST_PHASE=legacy-repair
 run_entrypoint "$FIXTURE/legacy-entrypoint.sh" deploy >/dev/null
 cmp -s "$INSTALLED" "$REPO/ops/deploy/social-monitor-production-deploy.sh"
+[[ $(stat -c '%a' "$INSTALLED") == 755 ]]
 assert_release_a_non_activation
 uncommitted_plan=$(run_entrypoint "$INSTALLED" plan)
 grep -Fx 'postgres_pool_bootstrap=uninstalled' <<< "$uncommitted_plan" >/dev/null
 
 # Attempt 3 executes the new entrypoint and atomically commits the independent
 # bootstrap marker. Only now may a later Release B be planned.
+TEST_PHASE=bootstrap-commit
 run_entrypoint "$INSTALLED" deploy >/dev/null
 assert_release_a_non_activation
 committed_plan=$(run_entrypoint "$INSTALLED" plan)
 grep -Fx 'postgres_pool_bootstrap=postgres-pool-v1' <<< "$committed_plan" >/dev/null
 grep -Fx "postgres_pool_bootstrap_sha=$TARGET_SHA" <<< "$committed_plan" >/dev/null
 
+TEST_PHASE=workflow-contract
 WORKFLOW=$PROJECT_ROOT/.github/workflows/production-deploy.yml
 grep -F 'for bootstrap_attempt in 1 2 3' "$WORKFLOW" >/dev/null
 grep -F 'post_bootstrap == postgres-pool-v1' "$WORKFLOW" >/dev/null

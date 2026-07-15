@@ -211,7 +211,17 @@ jobs:
             --bootstrap "$POSTGRES_POOL_BOOTSTRAP" \
             --bootstrap-sha "$POSTGRES_POOL_BOOTSTRAP_SHA"
           bash ops/deploy/social-monitor-production-deploy.test.sh
-          bash ops/deploy/postgres-pool-bootstrap-transition.test.sh
+
+      - name: Verify legacy-main PostgreSQL bootstrap transition
+        if: needs.plan.outputs.backend == 'true' || needs.plan.outputs.control == 'true'
+        run: |
+          set -euo pipefail
+          bootstrap_status=0
+          bash ops/deploy/postgres-pool-bootstrap-transition.test.sh || bootstrap_status=$?
+          if ((bootstrap_status != 0)); then
+            echo "::error title=PostgreSQL bootstrap transition failed::The fixture failed with status $bootstrap_status; see bootstrap-transition-error for its phase, line and command."
+            exit "$bootstrap_status"
+          fi
 
       - name: Test affected backend modules
         if: needs.plan.outputs.backend == 'true'
