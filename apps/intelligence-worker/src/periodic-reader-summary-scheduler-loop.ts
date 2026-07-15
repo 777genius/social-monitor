@@ -2,7 +2,7 @@ import {
   Inject,
   Injectable,
   Optional,
-  type OnApplicationShutdown,
+  type OnModuleDestroy,
   type OnModuleInit,
 } from "@nestjs/common";
 import {
@@ -25,7 +25,7 @@ import {
 
 @Injectable()
 export class PeriodicReaderSummarySchedulerLoop
-  implements OnModuleInit, OnApplicationShutdown
+  implements OnModuleInit, OnModuleDestroy
 {
   private readonly logger: StructuredLogger = new NestStructuredLogger(
     PeriodicReaderSummarySchedulerLoop.name,
@@ -69,7 +69,11 @@ export class PeriodicReaderSummarySchedulerLoop
     });
   }
 
-  async onApplicationShutdown(signal?: string): Promise<void> {
+  async onModuleDestroy(): Promise<void> {
+    if (this.shuttingDown) {
+      await this.currentTick;
+      return;
+    }
     this.shuttingDown = true;
 
     if (this.timer !== undefined) {
@@ -79,9 +83,13 @@ export class PeriodicReaderSummarySchedulerLoop
 
     await this.currentTick;
     this.logger.info("periodic reader summary scheduler loop stopped", {
-      signal,
       worker: "intelligence-worker",
     });
+  }
+
+  onApplicationShutdown(signal?: string): Promise<void> {
+    void signal;
+    return this.onModuleDestroy();
   }
 
   private async runTick(trigger: "startup" | "interval"): Promise<void> {

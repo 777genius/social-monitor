@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { resolvePostgresRuntimePoolConfig } from '@social-monitor/platform-persistence';
 import { IdentityRestModule } from '@social-monitor/identity/interfaces/rest/identity-rest.module';
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
@@ -134,8 +135,14 @@ const DELIVERY_WEBHOOK_PROVIDER_MODE = Symbol('DELIVERY_WEBHOOK_PROVIDER_MODE');
     },
     {
       provide: DELIVERY_PRISMA_CLIENT,
-      useFactory: (mode: DeliveryPersistenceMode): PrismaDeliveryClient | null =>
-        mode === 'prisma' ? new PrismaDeliveryConnection(process.env.DATABASE_URL ?? '') : null,
+      useFactory: async (
+        mode: DeliveryPersistenceMode,
+      ): Promise<PrismaDeliveryClient | null> =>
+        mode === 'prisma'
+          ? PrismaDeliveryConnection.create(
+              resolvePostgresRuntimePoolConfig(process.env),
+            )
+          : null,
       inject: [DELIVERY_PERSISTENCE_MODE],
     },
     InMemoryDeliveryAttemptRepository,

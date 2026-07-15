@@ -1,9 +1,9 @@
-import { Inject, Injectable, type OnApplicationShutdown, type OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { NestStructuredLogger, type StructuredLogger } from '@social-monitor/platform-logging';
 import type { MetricsRecorderPort } from '@social-monitor/platform-metrics';
 import { queueCommandDeliveryLagSeconds } from '@social-monitor/platform-queue';
 import { ExecuteSummaryJobCommandHandler } from '@social-monitor/summary/interfaces/queue/execute-summary-job-command.handler';
-import type { Clock } from '@social-monitor/shared-kernel';
+import { DomainError, type Clock } from '@social-monitor/shared-kernel';
 
 import {
   INTELLIGENCE_SUMMARY_QUEUE_DRAIN_LOOP_OPTIONS,
@@ -15,7 +15,7 @@ import {
 } from './summary-job-queue-reader';
 
 @Injectable()
-export class SummaryJobQueueDrainLoop implements OnModuleInit, OnApplicationShutdown {
+export class SummaryJobQueueDrainLoop implements OnModuleInit, OnModuleDestroy {
   private readonly logger: StructuredLogger = new NestStructuredLogger(SummaryJobQueueDrainLoop.name);
   private timer: NodeJS.Timeout | undefined;
   private currentTick: Promise<void> | undefined;
@@ -52,7 +52,11 @@ export class SummaryJobQueueDrainLoop implements OnModuleInit, OnApplicationShut
     });
   }
 
-  async onApplicationShutdown(signal?: string): Promise<void> {
+  async onModuleDestroy(): Promise<void> {
+    if (this.shuttingDown) {
+      await this.currentTick;
+      return;
+    }
     this.shuttingDown = true;
 
     if (this.timer !== undefined) {
@@ -60,8 +64,20 @@ export class SummaryJobQueueDrainLoop implements OnModuleInit, OnApplicationShut
       this.timer = undefined;
     }
 
-    await this.currentTick;
-    this.logger.info('summary queue drain loop stopped', { signal, worker: 'intelligence-worker' });
+    try {
+      await this.currentTick;
+    } catch (error) {
+      this.logger.error('summary queue drain failed while stopping; RabbitMQ will requeue unacknowledged deliveries on channel close', {
+        error: error instanceof Error ? error.message : String(error),
+        worker: 'intelligence-worker',
+      });
+    }
+    this.logger.info('summary queue drain loop stopped', { worker: 'intelligence-worker' });
+  }
+
+  onApplicationShutdown(signal?: string): Promise<void> {
+    void signal;
+    return this.onModuleDestroy();
   }
 
   private async runTick(trigger: 'startup' | 'interval'): Promise<void> {
@@ -82,16 +98,30 @@ export class SummaryJobQueueDrainLoop implements OnModuleInit, OnApplicationShut
     });
     let completed = 0;
     let failed = 0;
+    let requeued = 0;
 
     for (const delivery of deliveries) {
       const { command } = delivery;
+      if (this.shuttingDown) {
+        await delivery.nack({ requeue: true });
+        requeued += 1;
+        continue;
+      }
       this.recordDeliveryLag(delivery);
       try {
         await this.handler.handle(command);
         await delivery.ack();
         completed += 1;
       } catch (error) {
-        await delivery.nack({ requeue: false });
+        const requeue =
+          this.shuttingDown ||
+          (error instanceof DomainError &&
+            error.code === 'operation.backpressure');
+        await delivery.nack({ requeue });
+        if (requeue) {
+          requeued += 1;
+          continue;
+        }
         failed += 1;
         this.logger.error('summary queue drain loop item failed', {
           commandId: command.commandId,
@@ -111,6 +141,7 @@ export class SummaryJobQueueDrainLoop implements OnModuleInit, OnApplicationShut
       evaluated: deliveries.length,
       completed,
       failed,
+      requeued,
       worker: 'intelligence-worker',
     });
   }

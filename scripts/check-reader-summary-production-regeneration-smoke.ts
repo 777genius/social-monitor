@@ -4,6 +4,7 @@ import { dirname } from "node:path";
 import { Pool } from "pg";
 
 import { InMemoryMetricsRecorder } from "@social-monitor/platform-metrics";
+import { defaultPostgresRuntimePoolConfig } from "@social-monitor/platform-persistence";
 import {
   FixedClock,
   type IdGenerator,
@@ -27,7 +28,6 @@ import {
 import {
   buildReaderSummaryPeriod,
   ReaderSummaryPolicy,
-  type ReaderSummaryContent,
 } from "../libs/summary/domain";
 import { ExecuteReaderSummaryJobUseCase } from "../libs/summary/features/execute-reader-summary-job/execute-reader-summary-job.use-case";
 import { RequestReaderSummaryUseCase } from "../libs/summary/features/request-reader-summary/request-reader-summary.use-case";
@@ -214,6 +214,7 @@ async function main(): Promise<void> {
 async function tryBuildReport(): Promise<SmokeReport | undefined> {
   const pool = new Pool({
     connectionString: databaseUrl,
+    min: 0,
     max: 1,
     connectionTimeoutMillis: 2_000,
   });
@@ -355,7 +356,9 @@ async function regenerateSummary(
   readonly queuedCommandCount: number;
   readonly publishedEventCount: number;
 }> {
-  const connection = new PrismaFeedConnection(databaseUrl);
+  const connection = await PrismaFeedConnection.create(
+    defaultPostgresRuntimePoolConfig(databaseUrl, "admin-tool"),
+  );
   const clock = new FixedClock(new Date(`${collectionDate}T23:59:59.000Z`));
 
   try {

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
+import { defaultPostgresRuntimePoolConfig } from '@social-monitor/platform-persistence';
 import { CryptoIdGenerator, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import { Pool } from 'pg';
 
@@ -82,8 +83,10 @@ const main = async (): Promise<void> => {
   }
 
   const databaseUrl = readOptionalEnv('DATABASE_URL') ?? defaultDatabaseUrl;
-  const connection = new PrismaIngestionWorkerConnection(databaseUrl);
-  const pool = new Pool({ connectionString: databaseUrl });
+  const connection = await PrismaIngestionWorkerConnection.create(
+    defaultPostgresRuntimePoolConfig(databaseUrl, 'admin-tool'),
+  );
+  const pool = new Pool({ connectionString: databaseUrl, min: 0, max: 1 });
 
   try {
     const ids = new CryptoIdGenerator();

@@ -10,6 +10,7 @@ import {
   type FeedItemReadRepositoryPort,
 } from "@social-monitor/feed/ports";
 import { InMemoryMetricsRecorder } from "@social-monitor/platform-metrics";
+import { resolvePostgresRuntimePoolConfig } from "@social-monitor/platform-persistence";
 import { InMemoryQueuePublisher } from "@social-monitor/platform-queue/adapters/in-memory";
 import {
   AmqplibRabbitMqChannel,
@@ -112,9 +113,13 @@ import { summaryConversationPersistenceProviders } from "./summary-conversation-
 export const summaryRestInfrastructureProviders = [
   {
     provide: SUMMARY_PRISMA_CLIENT,
-    useFactory: (mode: SummaryPersistenceMode): PrismaSummaryClient | null =>
+    useFactory: async (
+      mode: SummaryPersistenceMode,
+    ): Promise<PrismaSummaryClient | null> =>
       mode === "prisma"
-        ? new PrismaSummaryConnection(process.env.DATABASE_URL ?? "")
+        ? PrismaSummaryConnection.create(
+            resolvePostgresRuntimePoolConfig(process.env),
+          )
         : null,
     inject: [SUMMARY_PERSISTENCE_MODE],
   },

@@ -1,21 +1,19 @@
 import {
   CryptoIdGenerator,
-  type EventEnvelope,
   FixedClock,
   ok,
   tenantId,
   workspaceId,
 } from "@social-monitor/shared-kernel";
+import { defaultPostgresRuntimePoolConfig } from "@social-monitor/platform-persistence";
 
 import { PrismaSummaryConnection } from "../libs/summary/adapters/persistence/prisma/prisma-summary-connection";
 import { PrismaReaderSummaryTopicRecommendationDecisionRepository } from "../libs/summary/adapters/persistence/prisma/prisma-reader-summary-topic-recommendation-decision.repository";
 import { DecideReaderSummaryTopicRecommendationUseCase } from "../libs/summary/features/decide-reader-summary-topic-recommendation/decide-reader-summary-topic-recommendation.use-case";
 import { resolveSummaryPersistenceMode } from "../libs/summary/interfaces/rest/summary-provider-tokens";
 import type {
-  ApplyReaderSummaryAcceptedTopicCommand,
   ReaderSummaryAcceptedTopicApplierPort,
   SummaryEventPublisherPort,
-  RevertReaderSummaryAcceptedTopicCommand,
 } from "../libs/summary/ports";
 
 const clock = new FixedClock(new Date("2026-07-05T12:00:00.000Z"));
@@ -56,7 +54,9 @@ async function decide(
   action: "accept" | "reject" | "undo",
   note: string,
 ): Promise<void> {
-  const connection = new PrismaSummaryConnection(databaseUrl);
+  const connection = await PrismaSummaryConnection.create(
+    defaultPostgresRuntimePoolConfig(databaseUrl, "admin-tool"),
+  );
   try {
     const repository =
       new PrismaReaderSummaryTopicRecommendationDecisionRepository(
@@ -91,7 +91,9 @@ async function assertDecision(
   expectedStatus: "accepted" | "rejected",
   expectedNote: string,
 ): Promise<void> {
-  const connection = new PrismaSummaryConnection(databaseUrl);
+  const connection = await PrismaSummaryConnection.create(
+    defaultPostgresRuntimePoolConfig(databaseUrl, "admin-tool"),
+  );
   try {
     const repository =
       new PrismaReaderSummaryTopicRecommendationDecisionRepository(
@@ -129,7 +131,9 @@ async function assertDecision(
 }
 
 async function assertDecisionDeleted(databaseUrl: string): Promise<void> {
-  const connection = new PrismaSummaryConnection(databaseUrl);
+  const connection = await PrismaSummaryConnection.create(
+    defaultPostgresRuntimePoolConfig(databaseUrl, "admin-tool"),
+  );
   try {
     const repository =
       new PrismaReaderSummaryTopicRecommendationDecisionRepository(
@@ -151,7 +155,7 @@ async function assertDecisionDeleted(databaseUrl: string): Promise<void> {
 class LiveGateAcceptedTopicApplier
   implements ReaderSummaryAcceptedTopicApplierPort
 {
-  async apply(_command: ApplyReaderSummaryAcceptedTopicCommand) {
+  async apply() {
     return ok({
       status: "applied",
       changedSourceBindingCount: 1,
@@ -171,7 +175,7 @@ class LiveGateAcceptedTopicApplier
     } as const);
   }
 
-  async revert(_command: RevertReaderSummaryAcceptedTopicCommand) {
+  async revert() {
     return ok({
       status: "reverted",
       revertedSourceBindingCount: 1,
@@ -189,9 +193,7 @@ class LiveGateAcceptedTopicApplier
 }
 
 class LiveGateSummaryEvents implements SummaryEventPublisherPort {
-  async publish(
-    _event: EventEnvelope<Readonly<Record<string, unknown>>>,
-  ): Promise<void> {}
+  async publish(): Promise<void> {}
 }
 
 function requiredEnv(name: string): string {

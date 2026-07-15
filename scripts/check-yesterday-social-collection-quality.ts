@@ -284,6 +284,7 @@ async function main(): Promise<void> {
 async function tryBuildReport(): Promise<Report | undefined> {
   const pool = new Pool({
     connectionString: localDatabaseUrl,
+    min: 0,
     max: 1,
     connectionTimeoutMillis: 2_000,
   });

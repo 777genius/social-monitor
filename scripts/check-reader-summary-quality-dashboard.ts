@@ -380,6 +380,7 @@ async function tryBuildReport(): Promise<
 > {
   const pool = new Pool({
     connectionString: databaseUrl,
+    min: 0,
     max: 2,
     connectionTimeoutMillis: 2_000,
   });

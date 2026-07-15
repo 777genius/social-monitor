@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { chmodSync, mkdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 
+import { defaultPostgresRuntimePoolConfig } from '@social-monitor/platform-persistence';
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import { PrismaSummaryConnection } from '../libs/summary/adapters/persistence/prisma/prisma-summary-connection';
 import { PrismaSummaryFeedbackRepository } from '../libs/summary/adapters/persistence/prisma/prisma-summary-feedback.repository';
@@ -60,7 +61,9 @@ const source = {
 };
 
 async function main(): Promise<void> {
-  const connection = new PrismaSummaryConnection(requiredEnv('DATABASE_URL'));
+  const connection = await PrismaSummaryConnection.create(
+    defaultPostgresRuntimePoolConfig(requiredEnv('DATABASE_URL'), 'admin-tool'),
+  );
 
   try {
     const feedback = new PrismaSummaryFeedbackRepository(connection);

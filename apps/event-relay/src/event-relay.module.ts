@@ -8,6 +8,7 @@ import {
   type RabbitMqEventPublisherOptions,
 } from '@social-monitor/platform-events/adapters/rabbitmq';
 import { OutboxDispatcher } from '@social-monitor/platform-events';
+import { resolvePostgresRuntimePoolConfig } from '@social-monitor/platform-persistence';
 import {
   AmqplibRabbitMqChannel,
   type RabbitMqQueueChannelPort,
@@ -37,10 +38,12 @@ import { OutboxRelayLoop } from './outbox-relay-loop';
     },
     {
       provide: PrismaEventStoreConnection,
-      useFactory: () => {
+      useFactory: async () => {
         requireEventRelayRuntimeEnv(process.env);
 
-        return new PrismaEventStoreConnection(process.env.DATABASE_URL ?? '');
+        return PrismaEventStoreConnection.create(
+          resolvePostgresRuntimePoolConfig(process.env),
+        );
       },
     },
     {

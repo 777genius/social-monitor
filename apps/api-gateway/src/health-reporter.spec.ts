@@ -3,6 +3,8 @@ import { FixedClock } from '@social-monitor/shared-kernel';
 
 import { ApiGatewayHealthReporter } from './health-reporter';
 
+const databaseReady = { check: jest.fn(async () => undefined) };
+
 const readinessProfiles: readonly SourceReadinessProfile[] = [
   {
     providerKey: 'reddit',
@@ -102,6 +104,7 @@ describe('ApiGatewayHealthReporter', () => {
       new FixedClock(new Date('2026-01-02T03:04:05.000Z')),
       () => 12.7,
       readinessProfiles,
+      databaseReady,
     );
 
     expect(reporter.health()).toEqual({
@@ -112,7 +115,8 @@ describe('ApiGatewayHealthReporter', () => {
     });
   });
 
-  it('builds readiness metadata from injected environment without globals', () => {
+  it('builds readiness metadata only after the bounded database probe succeeds', async () => {
+    databaseReady.check.mockClear();
     const reporter = new ApiGatewayHealthReporter(
       {
         ...betaDurableEnv,
@@ -121,54 +125,61 @@ describe('ApiGatewayHealthReporter', () => {
       new FixedClock(new Date('2026-01-02T03:04:05.000Z')),
       () => 3,
       readinessProfiles,
+      databaseReady,
     );
 
-    expect(reporter.ready()).toEqual(expect.objectContaining({
-      runtime: expect.objectContaining({
-        nodeEnv: 'production',
-        runtimeProfile: 'beta',
-        persistence: {
-          monitoring: 'prisma',
-          feed: 'prisma',
-          ingestionSupport: 'prisma',
-          summary: 'prisma',
-          delivery: 'prisma',
-          identity: 'prisma',
-          usage: 'prisma',
-        },
-        queues: expect.objectContaining({
-          monitoringScanPublisher: 'rabbitmq',
-          deliveryAttemptReader: 'rabbitmq',
+    await expect(reporter.ready()).resolves.toEqual(
+      expect.objectContaining({
+        runtime: expect.objectContaining({
+          nodeEnv: 'production',
+          runtimeProfile: 'beta',
+          persistence: {
+            monitoring: 'prisma',
+            feed: 'prisma',
+            ingestionSupport: 'prisma',
+            summary: 'prisma',
+            delivery: 'prisma',
+            identity: 'prisma',
+            usage: 'prisma',
+          },
+          queues: expect.objectContaining({
+            monitoringScanPublisher: 'rabbitmq',
+            deliveryAttemptReader: 'rabbitmq',
+          }),
+          providers: {
+            deliveryWebhook: 'http',
+            deliveryEnabledChannels: 'webhook',
+          },
         }),
-        providers: {
-          deliveryWebhook: 'http',
-          deliveryEnabledChannels: 'webhook',
-        },
+        capabilities: expect.objectContaining({
+          rest: 'enabled',
+          websocket: 'enabled',
+          openapi: 'enabled',
+          enabledBetaSources: ['reddit'],
+          fixtureReadySources: ['reddit'],
+          liveBetaReadySources: [],
+          deferredSources: ['mastodon'],
+        }),
       }),
-      capabilities: expect.objectContaining({
-        rest: 'enabled',
-        websocket: 'enabled',
-        openapi: 'enabled',
-        enabledBetaSources: ['reddit'],
-        fixtureReadySources: ['reddit'],
-        liveBetaReadySources: [],
-        deferredSources: ['mastodon'],
-      }),
-    }));
+    );
+    expect(databaseReady.check).toHaveBeenCalledTimes(1);
   });
 
-  it('reports resolved beta delivery channels when the selector is omitted', () => {
+  it('reports resolved beta delivery channels when the selector is omitted', async () => {
     const reporter = new ApiGatewayHealthReporter(
       betaDurableEnv,
       new FixedClock(new Date('2026-01-02T03:04:05.000Z')),
       () => 3,
       readinessProfiles,
+      databaseReady,
     );
 
-    expect(reporter.ready().runtime.providers.deliveryEnabledChannels).toBe('webhook');
+    await expect(reporter.ready()).resolves.toMatchObject({
+      runtime: { providers: { deliveryEnabledChannels: 'webhook' } },
+    });
   });
 
-  it('rejects beta readiness when durable selectors would fall back to in-memory', () => {
+  it('rejects beta readiness when durable selectors would fall back to in-memory', async () => {
     const reporter = new ApiGatewayHealthReporter(
       {
         NODE_ENV: 'production',
@@ -179,10 +190,23 @@ describe('ApiGatewayHealthReporter', () => {
       new FixedClock(new Date('2026-01-02T03:04:05.000Z')),
       () => 3,
       readinessProfiles,
+      databaseReady,
     );
 
-    expect(() => reporter.ready()).toThrow(
+    await expect(reporter.ready()).rejects.toThrow(
       'MONITORING_PERSISTENCE=in-memory is not allowed when SOCIAL_MONITOR_RUNTIME_PROFILE=beta',
     );
+  });
+
+  it('fails readiness when the bounded database probe fails', async () => {
+    const reporter = new ApiGatewayHealthReporter(
+      betaDurableEnv,
+      new FixedClock(new Date('2026-01-02T03:04:05.000Z')),
+      () => 3,
+      readinessProfiles,
+      { check: async () => Promise.reject(new Error('SQLSTATE 53300')) },
+    );
+
+    await expect(reporter.ready()).rejects.toThrow('SQLSTATE 53300');
   });
 });
