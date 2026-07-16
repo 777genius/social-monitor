@@ -1,16 +1,16 @@
-import { PrismaPg } from '@prisma/adapter-pg';
+import {
+  createPrismaPgRuntimeConnection,
+  type PostgresRuntimePoolConfig,
+  type PrismaPgRuntimeClientConstructor,
+  type PrismaPgRuntimeConnectionLease,
+} from '@social-monitor/platform-persistence';
 import { loadPrismaRuntimeClient } from '@social-monitor/platform-persistence/prisma-runtime-client';
-import { Pool } from 'pg';
 
 import type { PrismaDeliveryClient } from './prisma-delivery-client';
 
 type PrismaDeliveryRuntimeClient = PrismaDeliveryClient & {
   $disconnect(): Promise<void>;
 };
-
-type PrismaDeliveryRuntimeClientConstructor = new (args: {
-  readonly adapter: PrismaPg;
-}) => PrismaDeliveryRuntimeClient;
 
 export class PrismaDeliveryConnection implements PrismaDeliveryClient {
   readonly deliveryAttempt: PrismaDeliveryClient['deliveryAttempt'];
@@ -24,17 +24,27 @@ export class PrismaDeliveryConnection implements PrismaDeliveryClient {
   readonly summaryArtifact: PrismaDeliveryClient['summaryArtifact'];
   readonly feedItem: PrismaDeliveryClient['feedItem'];
 
-  private readonly pool: Pool;
+  private readonly runtime: PrismaPgRuntimeConnectionLease<PrismaDeliveryRuntimeClient>;
   private readonly client: PrismaDeliveryRuntimeClient;
 
-  constructor(databaseUrl: string) {
-    if (databaseUrl.trim().length === 0) {
-      throw new Error('DATABASE_URL is required for Prisma delivery persistence');
-    }
+  static create(
+    config: PostgresRuntimePoolConfig,
+  ): Promise<PrismaDeliveryConnection> {
+    const PrismaClient = loadPrismaRuntimeClient<
+      PrismaPgRuntimeClientConstructor<PrismaDeliveryRuntimeClient>
+    >();
+    return createPrismaPgRuntimeConnection(
+      config,
+      PrismaClient,
+      (runtime) => new PrismaDeliveryConnection(runtime),
+    );
+  }
 
-    this.pool = new Pool({ connectionString: databaseUrl });
-    const PrismaClient = loadPrismaRuntimeClient<PrismaDeliveryRuntimeClientConstructor>();
-    this.client = new PrismaClient({ adapter: new PrismaPg(this.pool) });
+  private constructor(
+    runtime: PrismaPgRuntimeConnectionLease<PrismaDeliveryRuntimeClient>,
+  ) {
+    this.runtime = runtime;
+    this.client = this.runtime.client;
 
     this.deliveryAttempt = this.client.deliveryAttempt;
     this.digest = this.client.digest;
@@ -48,12 +58,11 @@ export class PrismaDeliveryConnection implements PrismaDeliveryClient {
     this.feedItem = this.client.feedItem;
   }
 
-  async close(): Promise<void> {
-    await this.client.$disconnect();
-    await this.pool.end();
+  close(): Promise<void> {
+    return this.runtime.close();
   }
 
-  async onModuleDestroy(): Promise<void> {
-    await this.close();
+  onApplicationShutdown(): Promise<void> {
+    return this.close();
   }
 }

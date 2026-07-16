@@ -4,6 +4,7 @@ import {
   tenantId,
   workspaceId,
 } from '@social-monitor/shared-kernel';
+import { defaultPostgresRuntimePoolConfig } from '@social-monitor/platform-persistence';
 
 import { PrismaSourceTargetRepository } from '../libs/subscriptions/adapters/persistence/prisma/prisma-source-target.repository';
 import { PrismaSubscriptionsConnection } from '../libs/subscriptions/adapters/persistence/prisma/prisma-subscriptions-connection';
@@ -20,7 +21,9 @@ const main = async (): Promise<void> => {
   const workspace = workspaceId(readRequiredEnv('WORKSPACE_ID'));
   const userId = readRequiredEnv('USER_ID');
   const recipientKey = readOptionalEnv('RECIPIENT_KEY') ?? userId;
-  const connection = new PrismaSubscriptionsConnection(databaseUrl);
+  const connection = await PrismaSubscriptionsConnection.create(
+    defaultPostgresRuntimePoolConfig(databaseUrl, 'admin-tool'),
+  );
 
   try {
     const useCase = new CreateUserSubscriptionUseCase(

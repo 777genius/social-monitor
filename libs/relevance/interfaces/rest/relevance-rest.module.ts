@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { resolvePostgresRuntimePoolConfig } from '@social-monitor/platform-persistence';
 import { FeedRestModule } from '@social-monitor/feed/interfaces/rest/feed-rest.module';
 import { FEED_ITEM_READ_REPOSITORY, type FeedItemReadRepositoryPort } from '@social-monitor/feed/ports';
 import { IdentityRestModule } from '@social-monitor/identity/interfaces/rest/identity-rest.module';
@@ -81,8 +82,14 @@ import {
     relevanceContentQualityOpenAiOptionsProvider,
     {
       provide: RELEVANCE_PRISMA_CLIENT,
-      useFactory: (mode: RelevancePersistenceMode): PrismaRelevanceClient | null =>
-        mode === 'prisma' ? new PrismaRelevanceConnection(process.env.DATABASE_URL ?? '') : null,
+      useFactory: async (
+        mode: RelevancePersistenceMode,
+      ): Promise<PrismaRelevanceClient | null> =>
+        mode === 'prisma'
+          ? PrismaRelevanceConnection.create(
+              resolvePostgresRuntimePoolConfig(process.env),
+            )
+          : null,
       inject: [RELEVANCE_PERSISTENCE_MODE],
     },
     InMemoryUserRelevanceProfileRepository,

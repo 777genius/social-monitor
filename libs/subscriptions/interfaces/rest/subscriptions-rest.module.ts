@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { resolvePostgresRuntimePoolConfig } from '@social-monitor/platform-persistence';
 import { IdentityRestModule } from '@social-monitor/identity/interfaces/rest/identity-rest.module';
 import { BindSourceUseCase } from '@social-monitor/monitoring/features/bind-source/bind-source.use-case';
 import { CreateInterestUseCase } from '@social-monitor/monitoring/features/create-interest/create-interest.use-case';
@@ -59,8 +60,14 @@ import { UserSubscriptionsController } from './user-subscriptions.controller';
     userSummaryPreferenceMemoryProjectorModeProvider,
     {
       provide: SUBSCRIPTIONS_PRISMA_CLIENT,
-      useFactory: (mode: SubscriptionsPersistenceMode): PrismaSubscriptionsClient | null =>
-        mode === 'prisma' ? new PrismaSubscriptionsConnection(process.env.DATABASE_URL ?? '') : null,
+      useFactory: async (
+        mode: SubscriptionsPersistenceMode,
+      ): Promise<PrismaSubscriptionsClient | null> =>
+        mode === 'prisma'
+          ? PrismaSubscriptionsConnection.create(
+              resolvePostgresRuntimePoolConfig(process.env),
+            )
+          : null,
       inject: [SUBSCRIPTIONS_PERSISTENCE_MODE],
     },
     InMemorySourceTargetRepository,

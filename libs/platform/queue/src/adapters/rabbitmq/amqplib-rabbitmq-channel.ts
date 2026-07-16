@@ -104,7 +104,7 @@ export class AmqplibRabbitMqChannel implements RabbitMqQueueChannelPort {
     this.connectionPromise = undefined;
   }
 
-  async onModuleDestroy(): Promise<void> {
+  async onApplicationShutdown(): Promise<void> {
     await this.close();
   }
 

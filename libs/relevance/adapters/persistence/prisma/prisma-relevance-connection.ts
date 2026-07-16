@@ -1,6 +1,10 @@
-import { PrismaPg } from '@prisma/adapter-pg';
+import {
+  createPrismaPgRuntimeConnection,
+  type PostgresRuntimePoolConfig,
+  type PrismaPgRuntimeClientConstructor,
+  type PrismaPgRuntimeConnectionLease,
+} from '@social-monitor/platform-persistence';
 import { loadPrismaRuntimeClient } from '@social-monitor/platform-persistence/prisma-runtime-client';
-import { Pool } from 'pg';
 
 import type {
   PrismaRelevanceClient,
@@ -12,26 +16,32 @@ type PrismaRelevanceRuntimeClient = PrismaRelevanceClient & {
   $disconnect(): Promise<void>;
 };
 
-type PrismaRelevanceRuntimeClientConstructor = new (args: {
-  readonly adapter: PrismaPg;
-}) => PrismaRelevanceRuntimeClient;
-
 export class PrismaRelevanceConnection implements PrismaRelevanceClient {
   readonly userRelevanceProfile: PrismaRelevanceClient['userRelevanceProfile'];
   readonly relevanceFeedbackSignal: PrismaRelevanceClient['relevanceFeedbackSignal'];
   readonly relevanceMemoryProjection: PrismaRelevanceClient['relevanceMemoryProjection'];
 
-  private readonly pool: Pool;
+  private readonly runtime: PrismaPgRuntimeConnectionLease<PrismaRelevanceRuntimeClient>;
   private readonly client: PrismaRelevanceRuntimeClient;
 
-  constructor(databaseUrl: string) {
-    if (databaseUrl.trim().length === 0) {
-      throw new Error('DATABASE_URL is required for Prisma relevance persistence');
-    }
+  static create(
+    config: PostgresRuntimePoolConfig,
+  ): Promise<PrismaRelevanceConnection> {
+    const PrismaClient = loadPrismaRuntimeClient<
+      PrismaPgRuntimeClientConstructor<PrismaRelevanceRuntimeClient>
+    >();
+    return createPrismaPgRuntimeConnection(
+      config,
+      PrismaClient,
+      (runtime) => new PrismaRelevanceConnection(runtime),
+    );
+  }
 
-    this.pool = new Pool({ connectionString: databaseUrl });
-    const PrismaClient = loadPrismaRuntimeClient<PrismaRelevanceRuntimeClientConstructor>();
-    this.client = new PrismaClient({ adapter: new PrismaPg(this.pool) });
+  private constructor(
+    runtime: PrismaPgRuntimeConnectionLease<PrismaRelevanceRuntimeClient>,
+  ) {
+    this.runtime = runtime;
+    this.client = this.runtime.client;
     this.userRelevanceProfile = this.client.userRelevanceProfile;
     this.relevanceFeedbackSignal = this.client.relevanceFeedbackSignal;
     this.relevanceMemoryProjection = this.client.relevanceMemoryProjection;
@@ -47,12 +57,11 @@ export class PrismaRelevanceConnection implements PrismaRelevanceClient {
     );
   }
 
-  async close(): Promise<void> {
-    await this.client.$disconnect();
-    await this.pool.end();
+  close(): Promise<void> {
+    return this.runtime.close();
   }
 
-  async onModuleDestroy(): Promise<void> {
-    await this.close();
+  onApplicationShutdown(): Promise<void> {
+    return this.close();
   }
 }

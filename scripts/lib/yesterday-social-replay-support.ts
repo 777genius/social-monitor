@@ -101,6 +101,7 @@ export async function readDominantFeedScope(params: {
 }> {
   const pool = new Pool({
     connectionString: params.databaseUrl,
+    min: 0,
     max: 1,
     connectionTimeoutMillis: 2_000,
   });

@@ -653,6 +653,7 @@ async function readProductionDayScope(): Promise<{
 }> {
   const pool = new Pool({
     connectionString: yesterdaySocialQualityDatabaseUrl(),
+    min: 0,
     max: 1,
     connectionTimeoutMillis: 2_000,
   });

@@ -1,4 +1,4 @@
-import { Inject, Injectable, type OnApplicationShutdown, type OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { NestStructuredLogger, type StructuredLogger } from '@social-monitor/platform-logging';
 import { WorkerCommandIdFactory } from '@social-monitor/platform-worker';
 
@@ -10,7 +10,7 @@ import {
 } from './ingestion-worker-provider-tokens';
 
 @Injectable()
-export class ScanSchedulerLoop implements OnModuleInit, OnApplicationShutdown {
+export class ScanSchedulerLoop implements OnModuleInit, OnModuleDestroy {
   private readonly logger: StructuredLogger = new NestStructuredLogger(ScanSchedulerLoop.name);
   private timer: NodeJS.Timeout | undefined;
   private currentTick: Promise<void> | undefined;
@@ -45,7 +45,11 @@ export class ScanSchedulerLoop implements OnModuleInit, OnApplicationShutdown {
     });
   }
 
-  async onApplicationShutdown(signal?: string): Promise<void> {
+  async onModuleDestroy(): Promise<void> {
+    if (this.shuttingDown) {
+      await this.currentTick;
+      return;
+    }
     this.shuttingDown = true;
 
     if (this.timer !== undefined) {
@@ -54,7 +58,12 @@ export class ScanSchedulerLoop implements OnModuleInit, OnApplicationShutdown {
     }
 
     await this.currentTick;
-    this.logger.info('scan scheduler loop stopped', { signal, worker: 'ingestion-worker' });
+    this.logger.info('scan scheduler loop stopped', { worker: 'ingestion-worker' });
+  }
+
+  onApplicationShutdown(signal?: string): Promise<void> {
+    void signal;
+    return this.onModuleDestroy();
   }
 
   private async runTick(trigger: 'startup' | 'interval'): Promise<void> {

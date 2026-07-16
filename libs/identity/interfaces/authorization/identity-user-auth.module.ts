@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { resolvePostgresRuntimePoolConfig } from '@social-monitor/platform-persistence';
 import { SystemClock } from '@social-monitor/shared-kernel';
 
 import { ClaimUserWorkspaceMembershipVerifier } from '../../adapters/authorization/claim-user-workspace-membership.verifier';
@@ -46,8 +47,14 @@ import { UserWorkspaceRequestAuthorizer } from './user-workspace-request.authori
     },
     {
       provide: IDENTITY_PRISMA_CLIENT,
-      useFactory: (mode: IdentityPersistenceMode): PrismaIdentityClient | null =>
-        mode === 'prisma' ? new PrismaIdentityConnection(process.env.DATABASE_URL ?? '') : null,
+      useFactory: async (
+        mode: IdentityPersistenceMode,
+      ): Promise<PrismaIdentityClient | null> =>
+        mode === 'prisma'
+          ? PrismaIdentityConnection.create(
+              resolvePostgresRuntimePoolConfig(process.env),
+            )
+          : null,
       inject: [IDENTITY_PERSISTENCE_MODE],
     },
     {

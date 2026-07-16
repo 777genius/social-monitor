@@ -1,4 +1,4 @@
-import { Inject, Injectable, type OnApplicationShutdown, type OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { NestStructuredLogger, type StructuredLogger } from '@social-monitor/platform-logging';
 import { RequestCorrelationIdFactory } from '@social-monitor/platform-request-context';
 import { ScheduleAutoSummariesUseCase } from '@social-monitor/summary/features/schedule-auto-summaries/schedule-auto-summaries.use-case';
@@ -10,7 +10,7 @@ import {
 } from './intelligence-worker-provider-tokens';
 
 @Injectable()
-export class AutoSummarySchedulerLoop implements OnModuleInit, OnApplicationShutdown {
+export class AutoSummarySchedulerLoop implements OnModuleInit, OnModuleDestroy {
   private readonly logger: StructuredLogger = new NestStructuredLogger(AutoSummarySchedulerLoop.name);
   private readonly correlationIds = new RequestCorrelationIdFactory();
   private readonly clock = new SystemClock();
@@ -46,7 +46,11 @@ export class AutoSummarySchedulerLoop implements OnModuleInit, OnApplicationShut
     });
   }
 
-  async onApplicationShutdown(signal?: string): Promise<void> {
+  async onModuleDestroy(): Promise<void> {
+    if (this.shuttingDown) {
+      await this.currentTick;
+      return;
+    }
     this.shuttingDown = true;
 
     if (this.timer !== undefined) {
@@ -55,7 +59,12 @@ export class AutoSummarySchedulerLoop implements OnModuleInit, OnApplicationShut
     }
 
     await this.currentTick;
-    this.logger.info('auto-summary scheduler loop stopped', { signal, worker: 'intelligence-worker' });
+    this.logger.info('auto-summary scheduler loop stopped', { worker: 'intelligence-worker' });
+  }
+
+  onApplicationShutdown(signal?: string): Promise<void> {
+    void signal;
+    return this.onModuleDestroy();
   }
 
   private async runTick(trigger: 'startup' | 'interval'): Promise<void> {
