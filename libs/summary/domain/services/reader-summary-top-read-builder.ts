@@ -14,7 +14,10 @@ import {
   readerItemConfidence,
   storyProviderMetricLabels,
 } from "./reader-summary-support";
-import { groundedTopReadTitle } from "./reader-summary-headline-policy";
+import {
+  groundedTopReadTitle,
+  isUnverifiedLegalTopRead,
+} from "./reader-summary-headline-policy";
 import {
   buildMatchedRules,
   buildWhyNow,
@@ -23,7 +26,11 @@ import {
 import { isTopReadEligibleEvidence } from "../policies/top-read-eligibility-policy";
 import { hasFirstPartyOfficialEvidence } from "../policies/reader-summary-source-authority-policy";
 import { compareRepresentativeEvidenceItems } from "../policies/representative-evidence-selection-policy";
-import { readerSummaryEditorialCurationRules } from "../policies/reader-summary-editorial-curation-policy";
+import {
+  readerSummaryEditorialCurationRules,
+  readerSummaryUnverifiedLegalSafetyDemotionRules,
+  withoutReaderSummaryUnverifiedLegalSafetyDemotionRule,
+} from "../policies/reader-summary-editorial-curation-policy";
 import {
   isFallbackReaderReason,
   isReaderTitleReasonDuplicate,
@@ -181,6 +188,13 @@ export const storyToTopRead = (
     whyImportant,
     confidence,
   });
+  const builderConfirmedUnverifiedLegalSafetyDemotion =
+    isUnverifiedLegalTopRead({
+      title,
+      reason,
+      whyImportant,
+      confidence,
+    });
 
   return {
     title,
@@ -191,12 +205,17 @@ export const storyToTopRead = (
     matchedInterestIds:
       matchedInterestIds.length > 0 ? matchedInterestIds : ["unknown-interest"],
     matchedRules: compactUnique([
-      ...buildMatchedRules(
-        supportEvidence,
-        matchedInterestIds,
-        readerProviderKey,
+      ...withoutReaderSummaryUnverifiedLegalSafetyDemotionRule(
+        buildMatchedRules(
+          supportEvidence,
+          matchedInterestIds,
+          readerProviderKey,
+        ),
       ),
       ...readerSummaryEditorialCurationRules(story),
+      ...readerSummaryUnverifiedLegalSafetyDemotionRules(
+        builderConfirmedUnverifiedLegalSafetyDemotion,
+      ),
     ]),
     signalScore,
     confidence,

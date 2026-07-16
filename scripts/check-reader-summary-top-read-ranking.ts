@@ -1,4 +1,11 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname } from "node:path";
 
 import { Pool } from "pg";
@@ -12,7 +19,10 @@ import {
   isFallbackReaderReason,
   isUnpolishedReaderTitle,
 } from "@social-monitor/summary/domain/policies/reader-summary-reader-facing-text-policy";
-import { presentReaderSummaryArtifact } from "@social-monitor/summary/features/shared/reader-summary-artifact-presenter";
+import {
+  presentReaderSummaryArtifact,
+  readerSummaryContentForArtifact,
+} from "@social-monitor/summary/features/shared/reader-summary-artifact-presenter";
 import { readerSummaryProviderIdentity } from "@social-monitor/summary/domain/value-objects/reader-summary-provider-identity";
 
 import {
@@ -89,16 +99,25 @@ type SignalInversion = {
   readonly laterFingerprint: string;
 };
 
+export type AtomicTopReadRankingReportOperations = {
+  readonly makeDirectory: (path: string) => void;
+  readonly writeFile: (path: string, value: string) => void;
+  readonly renameFile: (sourcePath: string, targetPath: string) => void;
+  readonly removeFile: (path: string) => void;
+};
+
 const outputPath = "ops/evals/reader-summary-top-read-ranking.v1.json";
 const update = process.argv.includes("--update");
+const writeFailedReport = process.argv.includes("--write-failed-report");
 const artifactOnly = process.argv.includes("--artifact-only");
 const { collectionDate } = collectionDateOptionOrDefault(previousUtcDate());
-const databaseUrl = yesterdaySocialQualityDatabaseUrl();
 const materialSignalGap = 0.3;
 const supportExplanationMargin = 0.4;
 const configuredTopReadLimit = 10;
 
-void main();
+if (require.main === module) {
+  void main();
+}
 
 async function main(): Promise<void> {
   if (artifactOnly) {
@@ -120,12 +139,18 @@ async function main(): Promise<void> {
   const serialized = `${JSON.stringify(report, null, 2)}\n`;
   if (!report.blockingPassed) {
     console.error(serialized);
-    throw new Error("Reader summary top-read ranking gates failed");
+    failTopReadRankingReport({
+      update,
+      writeFailedReport,
+      persistFailedReport: () => {
+        writeSanitizedReportAtomically(report, serialized);
+        console.log(`Updated failed report ${outputPath}`);
+      },
+    });
   }
 
   if (update) {
-    mkdirSync(dirname(outputPath), { recursive: true });
-    writeFileSync(outputPath, serialized);
+    writeSanitizedReportAtomically(report, serialized);
     console.log(`Updated ${outputPath}`);
     return;
   }
@@ -147,8 +172,9 @@ async function main(): Promise<void> {
 }
 
 async function tryBuildReport(): Promise<TopReadRankingReport | undefined> {
+  const databaseUrl = yesterdaySocialQualityDatabaseUrl();
   let fallbackError: unknown;
-  for (const candidateUrl of candidateDatabaseUrls()) {
+  for (const candidateUrl of candidateDatabaseUrls(databaseUrl)) {
     try {
       return await buildReportFromDatabase(candidateUrl);
     } catch (error) {
@@ -194,12 +220,14 @@ async function buildReportFromDatabase(
       );
     }
 
+    const artifact = readerSummaryArtifactFromPrisma(record);
     const view = presentReaderSummaryArtifact(
-      readerSummaryArtifactFromPrisma(record),
+      artifact,
       { status: "fresh", checkedAt: new Date() },
     );
-    const topReads = view.content.topReads;
-    const selectedPosts = view.content.selectedPosts;
+    const domainContent = readerSummaryContentForArtifact(artifact);
+    const topReads = domainContent.topReads;
+    const selectedPosts = domainContent.selectedPosts ?? domainContent.topReads;
     const providerCounts = topReadProviderCounts(topReads);
     const dominantProviderTopReadCount = Math.max(
       0,
@@ -343,7 +371,7 @@ async function buildReportFromDatabase(
   }
 }
 
-function candidateDatabaseUrls(): readonly string[] {
+function candidateDatabaseUrls(databaseUrl: string): readonly string[] {
   return [...new Set([databaseUrl, defaultYesterdaySocialQualityDatabaseUrl])];
 }
 
@@ -400,6 +428,8 @@ function unexplainedMaterialSignalInversions(
         inversion.laterSupportScore &&
       !isEditorialSafetyExplainedLeadInversion({
         earlierRank: inversion.earlierRank,
+        laterRank: inversion.laterRank,
+        earlier: topReads[inversion.earlierRank - 1],
         later: topReads[inversion.laterRank - 1],
       }),
   );
@@ -460,13 +490,73 @@ function isPublishedInsideWindow(
   startInclusive: string,
   endExclusive: string,
 ): boolean {
-  const publishedAt = item.publishedAt;
-  if (publishedAt === undefined) {
+  const publishedAt =
+    item.publishedAt instanceof Date
+      ? item.publishedAt.toISOString()
+      : item.publishedAt;
+  if (publishedAt === undefined || publishedAt.trim().length === 0) {
     return false;
   }
 
   return publishedAt >= startInclusive && publishedAt < endExclusive;
 }
+
+export const shouldPersistFailedTopReadRankingReport = (params: {
+  readonly update: boolean;
+  readonly writeFailedReport: boolean;
+}): boolean => params.update && params.writeFailedReport;
+
+export function failTopReadRankingReport(params: {
+  readonly update: boolean;
+  readonly writeFailedReport: boolean;
+  readonly persistFailedReport: () => void;
+}): never {
+  if (shouldPersistFailedTopReadRankingReport(params)) {
+    params.persistFailedReport();
+  }
+
+  throw new Error("Reader summary top-read ranking gates failed");
+}
+
+function writeSanitizedReportAtomically(
+  report: TopReadRankingReport,
+  serialized: string,
+): void {
+  if (
+    report.model.rawPostTextPersistedInReport !== false ||
+    !noRawSecretFragments(report)
+  ) {
+    throw new Error(
+      "Reader summary top-read ranking report failed sanitization; refusing to persist it.",
+    );
+  }
+
+  writeTopReadRankingReportAtomically({ outputPath, serialized });
+}
+
+export function writeTopReadRankingReportAtomically(params: {
+  readonly outputPath: string;
+  readonly serialized: string;
+  readonly operations?: AtomicTopReadRankingReportOperations;
+}): void {
+  const operations = params.operations ?? defaultAtomicReportOperations;
+  operations.makeDirectory(dirname(params.outputPath));
+  const temporaryPath = `${params.outputPath}.${process.pid}.${Date.now()}.tmp`;
+  try {
+    operations.writeFile(temporaryPath, params.serialized);
+    operations.renameFile(temporaryPath, params.outputPath);
+  } finally {
+    operations.removeFile(temporaryPath);
+  }
+}
+
+const defaultAtomicReportOperations: AtomicTopReadRankingReportOperations = {
+  makeDirectory: (path) => mkdirSync(path, { recursive: true }),
+  writeFile: (path, value) => writeFileSync(path, value, { flag: "wx" }),
+  renameFile: (sourcePath, targetPath) =>
+    renameSync(sourcePath, targetPath),
+  removeFile: (path) => rmSync(path, { force: true }),
+};
 
 function rounded(value: number): number {
   return Number(value.toFixed(3));

@@ -1,4 +1,16 @@
 import {
+  readerSummaryEditorialCurationRule,
+  readerSummaryUnverifiedLegalSafetyDemotionRule,
+} from "@social-monitor/summary/domain/policies/reader-summary-editorial-curation-policy";
+import { publicReaderSummaryMatchedRules } from "@social-monitor/summary/features/shared/reader-summary-artifact-presenter";
+
+import {
+  type AtomicTopReadRankingReportOperations,
+  failTopReadRankingReport,
+  writeTopReadRankingReportAtomically,
+} from "../check-reader-summary-top-read-ranking";
+
+import {
   type RankingAuditTopRead,
   isEditorialSafetyExplainedLeadInversion,
   materialSameProviderMissedCandidates,
@@ -110,7 +122,12 @@ describe("reader summary ranking audit", () => {
     ).toHaveLength(0);
   });
 
-  it("explains a lead inversion when the stronger story is unverified legal reporting", () => {
+  it("rejects forged legal wording without the builder safety marker", () => {
+    const safeLead = item({
+      title: "Claude Code token overhead compared with OpenCode",
+      providerKey: "hacker-news",
+      signalScore: 2.2,
+    });
     const legalReport = item({
       title: "Reports say Apple sued OpenAI over alleged trade secret theft",
       providerKey: "reddit",
@@ -121,15 +138,178 @@ describe("reader summary ranking audit", () => {
     expect(
       isEditorialSafetyExplainedLeadInversion({
         earlierRank: 1,
-        later: legalReport,
-      }),
-    ).toBe(true);
-    expect(
-      isEditorialSafetyExplainedLeadInversion({
-        earlierRank: 2,
+        laterRank: 2,
+        earlier: safeLead,
         later: legalReport,
       }),
     ).toBe(false);
+  });
+
+  it("accepts only the marker on the stronger later safety-demoted candidate", () => {
+    const safeLead = item({
+      title: "Claude Code token overhead compared with OpenCode",
+      providerKey: "hacker-news",
+      signalScore: 2.2,
+    });
+    const safetyDemotedLegalReport = item({
+      title: "Reports say Apple sued OpenAI over alleged trade secret theft",
+      providerKey: "reddit",
+      signalScore: 2.9,
+      matchedRules: [readerSummaryUnverifiedLegalSafetyDemotionRule],
+    });
+
+    expect(
+      isEditorialSafetyExplainedLeadInversion({
+        earlierRank: 1,
+        laterRank: 2,
+        earlier: safeLead,
+        later: safetyDemotedLegalReport,
+      }),
+    ).toBe(true);
+  });
+
+  it("does not treat generic editorial provenance as a safety demotion", () => {
+    const safeLead = item({
+      title: "Claude Code token overhead compared with OpenCode",
+      providerKey: "hacker-news",
+      signalScore: 2.2,
+    });
+    const curatedRead = item({
+      title: "Developers compare coding-agent costs",
+      providerKey: "reddit",
+      signalScore: 2.9,
+      matchedRules: [readerSummaryEditorialCurationRule],
+    });
+
+    expect(
+      isEditorialSafetyExplainedLeadInversion({
+        earlierRank: 1,
+        laterRank: 2,
+        earlier: safeLead,
+        later: curatedRead,
+      }),
+    ).toBe(false);
+  });
+
+  it("rejects the safety marker in the wrong direction, rank, or strength", () => {
+    const markedLead = item({
+      title: "Marked first read",
+      providerKey: "reddit",
+      signalScore: 2.9,
+      matchedRules: [readerSummaryUnverifiedLegalSafetyDemotionRule],
+    });
+    const ordinaryLaterRead = item({
+      title: "Ordinary later read",
+      providerKey: "hacker-news",
+      signalScore: 3.2,
+    });
+    const markedWeakerLaterRead = item({
+      title: "Marked weaker later read",
+      providerKey: "reddit",
+      signalScore: 1.9,
+      matchedRules: [readerSummaryUnverifiedLegalSafetyDemotionRule],
+    });
+
+    expect(
+      isEditorialSafetyExplainedLeadInversion({
+        earlierRank: 1,
+        laterRank: 2,
+        earlier: markedLead,
+        later: ordinaryLaterRead,
+      }),
+    ).toBe(false);
+    expect(
+      isEditorialSafetyExplainedLeadInversion({
+        earlierRank: 2,
+        laterRank: 3,
+        earlier: ordinaryLaterRead,
+        later: markedLead,
+      }),
+    ).toBe(false);
+    expect(
+      isEditorialSafetyExplainedLeadInversion({
+        earlierRank: 1,
+        laterRank: 2,
+        earlier: markedLead,
+        later: markedWeakerLaterRead,
+      }),
+    ).toBe(false);
+  });
+
+  it("strips the reserved safety marker from public reader content", () => {
+    expect(
+      publicReaderSummaryMatchedRules([
+        readerSummaryUnverifiedLegalSafetyDemotionRule,
+        readerSummaryEditorialCurationRule,
+        "reader-visible-topic",
+      ]),
+    ).toEqual(["reader-visible-topic"]);
+  });
+});
+
+describe("reader summary top-read ranking failed-report CLI", () => {
+  it.each([
+    { label: "neither flag", update: false, writeFailedReport: false },
+    { label: "--update only", update: true, writeFailedReport: false },
+    { label: "--write-failed-report only", update: false, writeFailedReport: true },
+  ])("does not write a failed report with $label", (flags) => {
+    const persistFailedReport = jest.fn();
+
+    expect(() =>
+      failTopReadRankingReport({ ...flags, persistFailedReport }),
+    ).toThrow("Reader summary top-read ranking gates failed");
+    expect(persistFailedReport).not.toHaveBeenCalled();
+  });
+
+  it("writes with both flags and still fails the ranking gate", () => {
+    const persistFailedReport = jest.fn();
+
+    expect(() =>
+      failTopReadRankingReport({
+        update: true,
+        writeFailedReport: true,
+        persistFailedReport,
+      }),
+    ).toThrow("Reader summary top-read ranking gates failed");
+    expect(persistFailedReport).toHaveBeenCalledTimes(1);
+  });
+
+  it("propagates temporary-write errors and does not rename", () => {
+    const writeError = new Error("temporary write failed");
+    const operations = atomicOperations({
+      writeFile: jest.fn(() => {
+        throw writeError;
+      }),
+    });
+
+    expect(() =>
+      writeTopReadRankingReportAtomically({
+        outputPath: "ops/evals/test-report.json",
+        serialized: "{}\n",
+        operations,
+      }),
+    ).toThrow(writeError);
+    expect(operations.renameFile).not.toHaveBeenCalled();
+    expect(operations.removeFile).toHaveBeenCalledTimes(1);
+  });
+
+  it("propagates rename errors and removes the temporary file", () => {
+    const renameError = new Error("rename failed");
+    const operations = atomicOperations({
+      renameFile: jest.fn(() => {
+        throw renameError;
+      }),
+    });
+
+    expect(() =>
+      writeTopReadRankingReportAtomically({
+        outputPath: "ops/evals/test-report.json",
+        serialized: "{}\n",
+        operations,
+      }),
+    ).toThrow(renameError);
+    expect(operations.writeFile).toHaveBeenCalledTimes(1);
+    expect(operations.removeFile).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -144,6 +324,18 @@ function item(
     confidence: { level: "medium" },
     confirmedProviderKeys: [overrides.providerKey],
     citationIds: [],
+    ...overrides,
+  };
+}
+
+function atomicOperations(
+  overrides: Partial<AtomicTopReadRankingReportOperations> = {},
+): AtomicTopReadRankingReportOperations {
+  return {
+    makeDirectory: jest.fn(),
+    writeFile: jest.fn(),
+    renameFile: jest.fn(),
+    removeFile: jest.fn(),
     ...overrides,
   };
 }

@@ -1,4 +1,4 @@
-import { isUnverifiedLegalTopRead } from "@social-monitor/summary/domain/services/reader-summary-headline-policy";
+import { hasReaderSummaryUnverifiedLegalSafetyDemotionRule } from "@social-monitor/summary/domain/policies/reader-summary-editorial-curation-policy";
 import type { RankingAuditTopRead } from "./reader-summary-ranking-audit";
 
 export type TopReadOrderAuditRow = {
@@ -15,20 +15,48 @@ export type TopReadOrderAuditRow = {
 export const weakTopReadOutrankingStrongSocialRows = (params: {
   readonly rows: readonly TopReadOrderAuditRow[];
   readonly topReads: readonly RankingAuditTopRead[];
+  readonly persistedTopReads?: readonly RankingAuditTopRead[];
 }): readonly TopReadOrderAuditRow[] =>
-  params.rows.filter((row, index) => {
+  params.rows.filter((row) => {
     if (!isWeakTopReadWithoutClearReason(row)) {
       return false;
     }
 
-    return params.rows.slice(index + 1).some((candidate) =>
-      isStrongSocialReadBelowWeakRead({
-        candidate,
-        candidateRead: params.topReads[candidate.index - 1],
-        weakRow: row,
-      }),
+    return params.rows.some(
+      (candidate) =>
+        candidate.index > row.index &&
+        isStrongSocialReadBelowWeakRead({
+          candidate,
+          candidateRank: candidate.index,
+          candidateRead: alignedPersistedTopRead({
+            candidate,
+            persistedRead: params.persistedTopReads?.[candidate.index - 1],
+            presentedRead: params.topReads[candidate.index - 1],
+          }),
+          weakRank: row.index,
+          weakRow: row,
+        }),
     );
   });
+
+const alignedPersistedTopRead = (params: {
+  readonly candidate: TopReadOrderAuditRow;
+  readonly persistedRead: RankingAuditTopRead | undefined;
+  readonly presentedRead: RankingAuditTopRead | undefined;
+}): RankingAuditTopRead | undefined => {
+  if (
+    params.persistedRead === undefined ||
+    params.presentedRead === undefined ||
+    params.persistedRead.providerKey !== params.candidate.providerKey ||
+    params.presentedRead.providerKey !== params.candidate.providerKey ||
+    params.persistedRead.signalScore !== params.presentedRead.signalScore ||
+    params.persistedRead.title !== params.presentedRead.title
+  ) {
+    return undefined;
+  }
+
+  return params.persistedRead;
+};
 
 const isWeakTopReadWithoutClearReason = (
   row: TopReadOrderAuditRow,
@@ -49,7 +77,9 @@ const isWeakTopReadWithoutClearReason = (
 
 const isStrongSocialReadBelowWeakRead = (params: {
   readonly candidate: TopReadOrderAuditRow;
+  readonly candidateRank: number;
   readonly candidateRead: RankingAuditTopRead | undefined;
+  readonly weakRank: number;
   readonly weakRow: TopReadOrderAuditRow;
 }): boolean =>
   ["reddit", "x-twitter", "rss"].includes(params.candidate.providerKey) &&
@@ -58,7 +88,10 @@ const isStrongSocialReadBelowWeakRead = (params: {
   params.candidate.confidenceLevel !== "low" &&
   !params.candidate.riskSignals.includes("low_signal_score") &&
   !(
-    params.weakRow.index === 1 &&
+    params.weakRank === 1 &&
+    params.candidateRank > params.weakRank &&
     params.candidateRead !== undefined &&
-    isUnverifiedLegalTopRead(params.candidateRead)
+    hasReaderSummaryUnverifiedLegalSafetyDemotionRule(
+      params.candidateRead.matchedRules,
+    )
   );

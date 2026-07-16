@@ -10,6 +10,7 @@ import {
 } from "./reader-summary-top-read-builder";
 import {
   readerSummaryEditorialCurationRule,
+  readerSummaryUnverifiedLegalSafetyDemotionRule,
   withReaderSummaryEditorialCuration,
 } from "../policies/reader-summary-editorial-curation-policy";
 
@@ -53,6 +54,12 @@ describe("reader summary top read source lineage", () => {
       "Reports say Apple sued OpenAI over alleged trade secret theft",
     );
     expect(topRead.reason).not.toMatch(/Hacker News|RSS/u);
+    expect(topRead.matchedRules).toContain(
+      readerSummaryUnverifiedLegalSafetyDemotionRule,
+    );
+    expect(topRead.matchedRules).not.toContain(
+      readerSummaryEditorialCurationRule,
+    );
   });
 
   it("persists editorial curation provenance as a non-public matched rule", () => {
@@ -66,7 +73,12 @@ describe("reader summary top read source lineage", () => {
       citationIds: ["citation-reddit"],
     };
     const story = withReaderSummaryEditorialCuration(baseStory, true);
-    const evidence = redditEvidence();
+    const evidence = redditEvidence({
+      feedItemId: "feed-reddit-comparison",
+      sourceItemId: "source-reddit-comparison",
+      canonicalUrl: "https://reddit.com/r/ai/cost-comparison",
+      title: "Coding-agent cost comparison across two harnesses",
+    });
     const cluster = storyCluster(story, evidence);
     const citation: ReaderSummaryCitation = {
       citationId: "citation-reddit",
@@ -89,10 +101,58 @@ describe("reader summary top read source lineage", () => {
     );
 
     expect(topRead.matchedRules).toContain(readerSummaryEditorialCurationRule);
+    expect(topRead.matchedRules).not.toContain(
+      readerSummaryUnverifiedLegalSafetyDemotionRule,
+    );
+  });
+
+  it("rejects an inherited safety marker without builder confirmation", () => {
+    const story: TopReadCandidate = {
+      storyClusterId: "story:ordinary-comparison",
+      title: "Developers compare coding-agent costs",
+      summary:
+        "A detailed discussion compares two coding-agent workflows and their cost trade-offs for engineering teams.",
+      interestIds: ["ai-agents"],
+      providerKeys: ["reddit"],
+      citationIds: ["citation-reddit"],
+    };
+    const evidence = redditEvidence({
+      feedItemId: "feed-reddit-ordinary",
+      sourceItemId: "source-reddit-ordinary",
+      canonicalUrl: "https://reddit.com/r/ai/ordinary-comparison",
+      title: "Developers compare coding-agent costs",
+      matchedRules: [readerSummaryUnverifiedLegalSafetyDemotionRule],
+    });
+    const cluster = storyCluster(story, evidence);
+    const citation: ReaderSummaryCitation = {
+      citationId: "citation-reddit",
+      feedItemId: evidence.feedItemId,
+      sourceItemId: evidence.sourceItemId,
+      providerKey: evidence.providerKey,
+      field: "title",
+      canonicalUrl: evidence.canonicalUrl,
+    };
+    const evidenceByFeedItemId = new Map([
+      [evidence.feedItemId, evidence] as const,
+    ]);
+
+    const topRead = storyToTopRead(
+      story,
+      new Map([[citation.citationId, citation]]),
+      evidenceByFeedItemId,
+      new Map([[cluster.id, cluster]]),
+      evidenceClusterMap([cluster], evidenceByFeedItemId),
+    );
+
+    expect(topRead.matchedRules).not.toContain(
+      readerSummaryUnverifiedLegalSafetyDemotionRule,
+    );
   });
 });
 
-const redditEvidence = (): SummaryEvidenceItem => ({
+const redditEvidence = (
+  overrides: Partial<SummaryEvidenceItem> = {},
+): SummaryEvidenceItem => ({
   feedItemId: "feed-reddit-lawsuit",
   sourceItemId: "source-reddit-lawsuit",
   sourceBindingId: "binding-ai",
@@ -106,6 +166,7 @@ const redditEvidence = (): SummaryEvidenceItem => ({
   observedAt: new Date("2026-07-12T09:05:00.000Z"),
   score: 2.4,
   whyImportant: [],
+  ...overrides,
 });
 
 const storyCluster = (
