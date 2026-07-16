@@ -66,51 +66,18 @@ jobs:
         env:
           DEPLOY_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
           KNOWN_HOSTS: ${{ secrets.PRODUCTION_SSH_KNOWN_HOSTS }}
-        run: |
-          set -euo pipefail
-          install -d -m 0700 "$HOME/.ssh"
-          printf '%s\n' "$DEPLOY_KEY" > "$HOME/.ssh/social-monitor-production"
-          chmod 0600 "$HOME/.ssh/social-monitor-production"
-          printf '%s\n' "$KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
-          chmod 0600 "$HOME/.ssh/known_hosts"
+        run: bash ops/deploy/github-production-deploy-client.sh configure
 
       - name: Read durable component markers
         id: plan
         env:
           DEPLOY_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
           DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
-        run: |
-          set -euo pipefail
-          plan=$(ssh -i "$HOME/.ssh/social-monitor-production" \
-            -o BatchMode=yes -o IdentitiesOnly=yes \
-            "$DEPLOY_USER@$DEPLOY_HOST" "plan $GITHUB_SHA")
-          printf '%s\n' "$plan"
-          for component in frontend backend control x_collector; do
-            value=$(printf '%s\n' "$plan" | awk -F= -v key="$component" '$1 == key { print $2 }')
-            [[ $value =~ ^(true|false)$ ]]
-            printf '%s=%s\n' "$component" "$value" >> "$GITHUB_OUTPUT"
-          done
-          backend_base=$(printf '%s\n' "$plan" | awk -F= '$1 == "backend_base" { print $2 }')
-          [[ $backend_base =~ ^[0-9a-f]{40}$ ]]
-          printf 'backend_base=%s\n' "$backend_base" >> "$GITHUB_OUTPUT"
-          backend=$(printf '%s\n' "$plan" | awk -F= '$1 == "backend" { print $2 }')
-          postgres_pool_bootstrap=$(printf '%s\n' "$plan" | awk -F= '$1 == "postgres_pool_bootstrap" { print $2 }')
-          postgres_pool_bootstrap=${postgres_pool_bootstrap:-uninstalled}
-          [[ $postgres_pool_bootstrap =~ ^(uninstalled|postgres-pool-v1)$ ]]
-          printf 'postgres_pool_bootstrap=%s\n' "$postgres_pool_bootstrap" >> "$GITHUB_OUTPUT"
-          postgres_pool_bootstrap_sha=$(printf '%s\n' "$plan" | awk -F= '$1 == "postgres_pool_bootstrap_sha" { print $2 }')
-          postgres_pool_bootstrap_sha=${postgres_pool_bootstrap_sha:-0000000000000000000000000000000000000000}
-          [[ $postgres_pool_bootstrap_sha =~ ^[0-9a-f]{40}$ ]]
-          printf 'postgres_pool_bootstrap_sha=%s\n' "$postgres_pool_bootstrap_sha" >> "$GITHUB_OUTPUT"
-          if [[ $backend == true && $postgres_pool_bootstrap != postgres-pool-v1 ]]; then
-            echo 'The installed deploy entrypoint is not overlap-safe for the PostgreSQL pool rollout.' >&2
-            echo 'Deploy a control-only bootstrap commit before any pool/backend release.' >&2
-            exit 1
-          fi
+        run: bash ops/deploy/github-production-deploy-client.sh plan "$GITHUB_SHA"
 
       - name: Remove production SSH material
         if: always()
-        run: rm -f "$HOME/.ssh/social-monitor-production" "$HOME/.ssh/known_hosts"
+        run: bash ops/deploy/github-production-deploy-client.sh cleanup
 
   verify_backend:
     name: Verify backend, collector and deploy control
@@ -176,6 +143,8 @@ jobs:
               npm run check:postgres-runtime-pool-prisma-concurrency
           fi
           bash -n ops/deploy/social-monitor-production-deploy.sh \
+            ops/deploy/github-production-deploy-client.sh \
+            ops/deploy/github-production-deploy-client.test.sh \
             ops/deploy/postgres-runtime-deploy-lib.sh \
             ops/deploy/social-monitor-production-ssh-wrapper.sh \
             ops/deploy/production-runtime/daily-run.sh \
@@ -189,6 +158,8 @@ jobs:
             ops/deploy/postgres-runtime-deploy-lib.test.sh \
             ops/deploy/verify-postgres-runtime-topology.test.sh
           shellcheck -x ops/deploy/social-monitor-production-deploy.sh \
+            ops/deploy/github-production-deploy-client.sh \
+            ops/deploy/github-production-deploy-client.test.sh \
             ops/deploy/postgres-runtime-deploy-lib.sh \
             ops/deploy/social-monitor-production-ssh-wrapper.sh \
             ops/deploy/production-runtime/daily-run.sh \
@@ -211,6 +182,7 @@ jobs:
             --bootstrap "$POSTGRES_POOL_BOOTSTRAP" \
             --bootstrap-sha "$POSTGRES_POOL_BOOTSTRAP_SHA"
           bash ops/deploy/social-monitor-production-deploy.test.sh
+          bash ops/deploy/github-production-deploy-client.test.sh
 
       - name: Verify legacy-main PostgreSQL bootstrap transition
         if: needs.plan.outputs.backend == 'true' || needs.plan.outputs.control == 'true'
@@ -333,6 +305,9 @@ jobs:
     environment: production
 
     steps:
+      - name: Check out the release commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+
       - name: Download immutable frontend artifact
         if: needs.plan.outputs.frontend == 'true'
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
@@ -344,25 +319,16 @@ jobs:
         env:
           DEPLOY_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
           KNOWN_HOSTS: ${{ secrets.PRODUCTION_SSH_KNOWN_HOSTS }}
-        run: |
-          set -euo pipefail
-          install -d -m 0700 "$HOME/.ssh"
-          printf '%s\n' "$DEPLOY_KEY" > "$HOME/.ssh/social-monitor-production"
-          chmod 0600 "$HOME/.ssh/social-monitor-production"
-          printf '%s\n' "$KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
-          chmod 0600 "$HOME/.ssh/known_hosts"
+        run: bash ops/deploy/github-production-deploy-client.sh configure
 
       - name: Upload immutable frontend release
         if: needs.plan.outputs.frontend == 'true'
         env:
           DEPLOY_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
           DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
-        run: |
-          set -euo pipefail
-          cat "$RUNNER_TEMP/frontend-artifact/social-monitor-frontend-release.tgz" | \
-            ssh -i "$HOME/.ssh/social-monitor-production" \
-              -o BatchMode=yes -o IdentitiesOnly=yes \
-              "$DEPLOY_USER@$DEPLOY_HOST" "upload $GITHUB_SHA"
+        run: >-
+          bash ops/deploy/github-production-deploy-client.sh upload "$GITHUB_SHA"
+          "$RUNNER_TEMP/frontend-artifact/social-monitor-frontend-release.tgz"
 
       - name: Deploy changed components
         env:
@@ -370,41 +336,12 @@ jobs:
           DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
           CONTROL_CHANGED: ${{ needs.plan.outputs.control }}
           POSTGRES_POOL_BOOTSTRAP: ${{ needs.plan.outputs.postgres_pool_bootstrap }}
-        run: |
-          set -euo pipefail
-          deploy_once() {
-            ssh -i "$HOME/.ssh/social-monitor-production" \
-              -o BatchMode=yes -o IdentitiesOnly=yes \
-              "$DEPLOY_USER@$DEPLOY_HOST" "deploy $GITHUB_SHA"
-          }
-          if [[ $CONTROL_CHANGED == true && $POSTGRES_POOL_BOOTSTRAP == uninstalled ]]; then
-            # Attempt 1 is handled by the installed legacy entrypoint. Attempt
-            # 2 normally runs the new entrypoint. Attempt 3 repairs the exact
-            # legacy poison window where an earlier call wrote control.sha but
-            # failed before its atomic entrypoint rename. Only the post-plan
-            # bootstrap marker below commits this transaction.
-            for bootstrap_attempt in 1 2 3; do
-              set +e
-              deploy_once
-              bootstrap_status=$?
-              set -e
-              if ((bootstrap_status != 0)); then
-                echo "PostgreSQL bootstrap attempt $bootstrap_attempt requires repair." >&2
-              fi
-            done
-          else
-            deploy_once
-          fi
-          post_plan=$(ssh -i "$HOME/.ssh/social-monitor-production" \
-            -o BatchMode=yes -o IdentitiesOnly=yes \
-            "$DEPLOY_USER@$DEPLOY_HOST" "plan $GITHUB_SHA")
-          printf '%s\n' "$post_plan"
-          post_bootstrap=$(printf '%s\n' "$post_plan" | awk -F= '$1 == "postgres_pool_bootstrap" { print $2 }')
-          [[ $post_bootstrap == postgres-pool-v1 ]] || {
-            echo 'Post-deploy PostgreSQL bootstrap verification failed.' >&2
-            exit 1
-          }
+        # The client owns bounded legacy bootstrap repair and fail-closed
+        # post-deploy reconciliation without repeating an ambiguous SSH call.
+        run: >-
+          bash ops/deploy/github-production-deploy-client.sh deploy "$GITHUB_SHA"
+          "$CONTROL_CHANGED" "$POSTGRES_POOL_BOOTSTRAP"
 
       - name: Remove production SSH material
         if: always()
-        run: rm -f "$HOME/.ssh/social-monitor-production" "$HOME/.ssh/known_hosts"
+        run: bash ops/deploy/github-production-deploy-client.sh cleanup

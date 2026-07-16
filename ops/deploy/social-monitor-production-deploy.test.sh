@@ -146,6 +146,46 @@ grep -F 'capture_backend_soak_baseline' \
   "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" >/dev/null
 grep -F 'verify_backend_soak_logs' "$ENTRYPOINT" >/dev/null
 grep -F 'verify_ingestion_queue_recovery' "$ENTRYPOINT" >/dev/null
+SOAK_TIME_STATE=$FIXTURE/soak-time
+printf '0\n' > "$SOAK_TIME_STATE"
+heartbeat_output=$(
+  ENTRYPOINT="$ENTRYPOINT" \
+  SOAK_TIME_STATE="$SOAK_TIME_STATE" \
+  SOCIAL_MONITOR_DEPLOY_TEST_MODE=1 \
+  SOCIAL_MONITOR_DEPLOY_ROOT="$ROOT" \
+  SOCIAL_MONITOR_DEPLOY_REPO="$REPO" \
+  SOCIAL_MONITOR_DEPLOY_CONTROL="$CONTROL" \
+  SOCIAL_MONITOR_DEPLOY_STATE="$STATE" \
+    bash -c '
+      source "$ENTRYPOINT"
+      ((POSTGRES_ROLLOUT_SOAK_SECONDS == 300))
+      ((POSTGRES_ROLLOUT_SOAK_HEARTBEAT_SECONDS == 30))
+      POSTGRES_ROLLOUT_SOAK_SECONDS=65
+      POSTGRES_ROLLOUT_SOAK_HEARTBEAT_SECONDS=30
+      capture_backend_soak_baseline() { : > "$1"; }
+      verify_backend() { return 0; }
+      verify_backend_proxy_readiness() { return 0; }
+      verify_concurrent_backend_readiness() { return 0; }
+      verify_backend_soak_state() { return 0; }
+      verify_backend_soak_logs() { return 0; }
+      verify_ingestion_queue_recovery() { return 0; }
+      sleep() { :; }
+      date() {
+        local now
+        read -r now < "$SOAK_TIME_STATE"
+        printf "%s\n" "$((now + 5))" > "$SOAK_TIME_STATE"
+        printf "%s\n" "$now"
+      }
+      soak_backend_release api
+    '
+)
+grep -Fx 'backend-soak-heartbeat elapsed_seconds=0 target_seconds=65' \
+  <<< "$heartbeat_output" >/dev/null
+grep -Fx 'backend-soak-heartbeat elapsed_seconds=30 remaining_seconds=35' \
+  <<< "$heartbeat_output" >/dev/null
+grep -Fx 'backend-soak-heartbeat elapsed_seconds=60 remaining_seconds=5' \
+  <<< "$heartbeat_output" >/dev/null
+[[ $(grep -c '^backend-soak-heartbeat ' <<< "$heartbeat_output") == 3 ]]
 grep -F 'verify-postgres-runtime-topology.py' "$ENTRYPOINT" >/dev/null
 grep -F 'install -m 0644 "$source/social-monitor-prod.service"' \
   "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" >/dev/null

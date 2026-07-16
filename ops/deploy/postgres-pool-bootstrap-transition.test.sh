@@ -269,6 +269,46 @@ grep -Fx "postgres_pool_bootstrap_sha=$TARGET_SHA" <<< "$committed_plan" >/dev/n
 
 TEST_PHASE=workflow-contract
 WORKFLOW=$PROJECT_ROOT/.github/workflows/production-deploy.yml
-grep -F 'for bootstrap_attempt in 1 2 3' "$WORKFLOW" >/dev/null
-grep -F 'post_bootstrap == postgres-pool-v1' "$WORKFLOW" >/dev/null
+python3 - "$WORKFLOW" <<'PY'
+import pathlib
+import sys
+
+workflow = pathlib.Path(sys.argv[1])
+lines = workflow.read_text(encoding="utf-8").splitlines()
+step_header = "      - name: Deploy changed components"
+step_indexes = [index for index, line in enumerate(lines) if line == step_header]
+if len(step_indexes) != 1:
+    raise SystemExit("workflow must contain exactly one deploy-components step")
+
+step_start = step_indexes[0]
+step_end = next(
+    (
+        index
+        for index in range(step_start + 1, len(lines))
+        if lines[index].startswith("      - name: ")
+    ),
+    len(lines),
+)
+step = lines[step_start:step_end]
+run_indexes = [index for index, line in enumerate(step) if line == "        run: >-"]
+if len(run_indexes) != 1:
+    raise SystemExit("deploy-components step must contain exactly one folded run command")
+
+command_lines = []
+for line in step[run_indexes[0] + 1 :]:
+    if not line.startswith("          "):
+        break
+    stripped = line.strip()
+    if stripped:
+        command_lines.append(stripped)
+command = " ".join(command_lines)
+expected = (
+    'bash ops/deploy/github-production-deploy-client.sh deploy "$GITHUB_SHA" '
+    '"$CONTROL_CHANGED" "$POSTGRES_POOL_BOOTSTRAP"'
+)
+if command != expected:
+    raise SystemExit(
+        f"deploy-components step does not delegate the exact bootstrap contract: {command!r}"
+    )
+PY
 echo 'Legacy-main to overlap-safe bootstrap transition tests passed'

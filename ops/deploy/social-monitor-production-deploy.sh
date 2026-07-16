@@ -43,6 +43,7 @@ POSTGRES_ADMISSION_LOCK=$CONTROL/daily-run.lock
 POSTGRES_RUNTIME_RELEASES=$CONTROL/postgres-runtime-releases
 POSTGRES_RUNTIME_CURRENT=$CONTROL/postgres-runtime-current
 POSTGRES_ROLLOUT_SOAK_SECONDS=300
+POSTGRES_ROLLOUT_SOAK_HEARTBEAT_SECONDS=30
 if ((EUID == 0)) && [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} != 1 ]]; then
   SYSTEMD_UNIT_DIR=/etc/systemd/system
 else
@@ -674,10 +675,13 @@ verify_backend_proxy_readiness() {
 soak_backend_release() (
   local -a services=("$@")
   local baseline=$STATE/backend-soak-baseline.$$.txt
-  local started_at now
+  local started_at now elapsed remaining next_heartbeat_at
   trap 'rm -f "$baseline"' EXIT
   capture_backend_soak_baseline "$baseline" "${services[@]}" || return 1
   started_at=$(date +%s)
+  next_heartbeat_at=$((started_at + POSTGRES_ROLLOUT_SOAK_HEARTBEAT_SECONDS))
+  printf 'backend-soak-heartbeat elapsed_seconds=0 target_seconds=%d\n' \
+    "$POSTGRES_ROLLOUT_SOAK_SECONDS"
   while true; do
     verify_backend "${services[@]}" || return 1
     verify_backend_proxy_readiness || return 1
@@ -685,9 +689,16 @@ soak_backend_release() (
     verify_backend_soak_state "$baseline" || return 1
     verify_backend_soak_logs "$baseline" || return 1
     now=$(date +%s)
-    if ((now - started_at >= POSTGRES_ROLLOUT_SOAK_SECONDS)); then
+    elapsed=$((now - started_at))
+    if ((elapsed >= POSTGRES_ROLLOUT_SOAK_SECONDS)); then
       verify_ingestion_queue_recovery "$baseline"
       return
+    fi
+    if ((now >= next_heartbeat_at)); then
+      remaining=$((POSTGRES_ROLLOUT_SOAK_SECONDS - elapsed))
+      printf 'backend-soak-heartbeat elapsed_seconds=%d remaining_seconds=%d\n' \
+        "$elapsed" "$remaining"
+      next_heartbeat_at=$((now + POSTGRES_ROLLOUT_SOAK_HEARTBEAT_SECONDS))
     fi
     sleep 5
   done
@@ -957,6 +968,8 @@ deploy_release() {
   fi
   printf 'deployed=%s frontend=%s backend=%s control=%s\n' "$sha" "$frontend" "$backend" "$control"
 }
+
+[[ ${BASH_SOURCE[0]} == "$0" ]] || return 0
 
 read -r action sha extra <<< "${SSH_ORIGINAL_COMMAND:-${*:-}}"
 command_text=${SSH_ORIGINAL_COMMAND:-${*:-}}
