@@ -34,7 +34,6 @@ export type PrismaFeedClient = {
         readonly bodyPreview: string;
         readonly authorHandle?: string | null;
         readonly publishedAt: Date;
-        readonly observedAt: Date;
         readonly providerMetadata?: Readonly<Record<string, unknown>> | null;
       };
       readonly create: {
@@ -68,7 +67,6 @@ export type PrismaFeedClient = {
         readonly bodyPreview?: string;
         readonly authorHandle?: string | null;
         readonly publishedAt?: Date;
-        readonly observedAt?: Date;
         readonly providerMetadata?: Readonly<Record<string, unknown>> | null;
       };
     }): Promise<PrismaFeedItemRecord>;
