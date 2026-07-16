@@ -444,15 +444,18 @@ describe("selectRenderedTopReadCandidates", () => {
   });
 
   it("pins the narrative lead without retaining its editorial near-duplicate", () => {
-    const pinned = candidate(
-      "Run GPT 5.6 Sol inside Claude Code through CLIProxyAPI",
-      "hacker-news",
-      2.3,
-      {
-        reason:
-          "The setup routes Claude Code to GPT 5.6 Sol with CLIProxyAPI and a shell alias.",
-      },
-    );
+    const pinned = {
+      ...candidate(
+        "Run GPT 5.6 Sol inside Claude Code through CLIProxyAPI",
+        "hacker-news",
+        2.3,
+        {
+          reason:
+            "The setup routes Claude Code to GPT 5.6 Sol with CLIProxyAPI and a shell alias.",
+        },
+      ),
+      editorialPriority: editorialPriority(2.8, true, true),
+    };
     const duplicate = candidate(
       "Developers mix Claude, Codex and OpenCode for GPT 5.6 Sol",
       "x-twitter",
@@ -497,6 +500,61 @@ describe("selectRenderedTopReadCandidates", () => {
 
     expect(result).toHaveLength(1);
     expect(result[0]?.story.storyClusterId).toBe(pinned.story.storyClusterId);
+  });
+
+  it("does not reorder for missing-profile or non-authoritative pin ids", () => {
+    const stronger = candidate("stronger-reader-facing", "rss", 2.6);
+    const requested = candidate("requested-narrative", "rss", 0);
+    const withoutProfile = selectRenderedTopReadCandidates({
+      candidates: [stronger, requested],
+      sourceMix: sourceMix(["rss"]),
+      limit: 2,
+      pinnedStoryClusterId: requested.story.storyClusterId,
+    });
+    const withNonAuthoritativeProfile = selectRenderedTopReadCandidates({
+      candidates: [
+        stronger,
+        {
+          ...requested,
+          editorialPriority: editorialPriority(0, true, false),
+        },
+      ],
+      sourceMix: sourceMix(["rss"]),
+      limit: 2,
+      pinnedStoryClusterId: requested.story.storyClusterId,
+    });
+
+    expect(withoutProfile[0]?.story.storyClusterId).toBe(
+      stronger.story.storyClusterId,
+    );
+    expect(withNonAuthoritativeProfile[0]?.story.storyClusterId).toBe(
+      stronger.story.storyClusterId,
+    );
+  });
+
+  it("keeps an official high-engagement authority above a zero-score narrative pin", () => {
+    const official = {
+      ...candidate("official-high-engagement", "rss", 2.8, {
+        confirmedProviderKeys: ["rss", "hacker-news"],
+        confidenceLevel: "high",
+      }),
+      editorialPriority: editorialPriority(3.2, true, true),
+    };
+    const narrative = {
+      ...candidate("zero-score-narrative", "rss", 0, {
+        reason:
+          "The authored narrative is a readable but unsupported alternative lead.",
+      }),
+      editorialPriority: editorialPriority(0, true, false),
+    };
+    const result = selectRenderedTopReadCandidates({
+      candidates: [narrative, official],
+      sourceMix: sourceMix(["rss", "hacker-news"]),
+      limit: 2,
+      pinnedStoryClusterId: narrative.story.storyClusterId,
+    });
+
+    expect(result[0]?.topRead.title).toBe("official-high-engagement");
   });
 
   it("keeps different Claude Code events in the editorial window", () => {
@@ -806,8 +864,8 @@ const editorialPriority = (
   coreTopicStrength: 1,
   confidenceLevel: "medium",
   citationCount: 1,
-  confirmedProviderCount: 1,
-  firstPartyOfficial: false,
+  confirmedProviderCount: authoritativeLead ? 2 : 1,
+  firstPartyOfficial: authoritativeLead,
   authoritativeLead,
   leadEligible,
 });

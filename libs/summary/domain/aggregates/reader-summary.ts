@@ -25,12 +25,13 @@ import {
   selectUniqueTopReadCandidatePool,
   selectUniqueTopReadCandidates,
 } from "../policies/top-read-selection-policy";
-import {
-  citationMapByFeedItemId,
-  storyWithTopReadEligibleCitations,
-} from "../policies/top-read-candidate-identity-policy";
 import { selectRenderedTopReadCandidates } from "../policies/rendered-top-read-selection-policy";
 import { buildReaderSummaryEditorialPriorityProfile } from "../policies/reader-summary-editorial-priority-policy";
+import {
+  reconcileReaderSummaryNarrativeLead,
+  resolveReaderSummaryNarrativeLead,
+  uniqueReaderSummaryStoryPool,
+} from "../policies/reader-summary-story-identity-policy";
 import { enrichTopReadCandidateDescriptions } from "../policies/reader-summary-top-read-description-policy";
 import { buildReaderSummaryReliabilityReport } from "../policies/reader-summary-reliability-calibration-policy";
 import {
@@ -69,10 +70,6 @@ import {
   providerNameForKey,
 } from "./reader-summary-open-questions";
 import { buildReaderSummaryClaimBoard } from "../services/reader-summary-claim-board";
-import {
-  buildThematicSynthesisSupport,
-  readerHeadlineForNarrativeLead,
-} from "../policies/reader-summary-narrative-headline-policy";
 
 export type ReaderSummaryFactoryInput = {
   readonly headline: string;
@@ -92,21 +89,16 @@ export type ReaderSummaryFactoryInput = {
 };
 
 const maxReaderTopReads = 8;
-
 export class ReaderSummary {
   private constructor(private readonly snapshot: ReaderSummarySnapshot) {}
-
   static create(snapshot: ReaderSummarySnapshot): ReaderSummary {
     assertReaderSummaryValid(snapshot);
-
     return new ReaderSummary(snapshot);
   }
-
   static fromEvidence(input: ReaderSummaryFactoryInput): ReaderSummary {
     if (input.topStories.length === 0) {
       return ReaderSummary.create(buildNoSignalReaderSummary(input));
     }
-
     const primarySelectedEvidence = (input.selectedEvidence ?? []).filter(
       (item) => !isSupplementalTrendEvidence(item),
     );
@@ -130,46 +122,18 @@ export class ReaderSummary {
       evidenceByFeedItemId,
     );
     const sourceMix = buildSourceMix(primaryInput);
-    const narrativeLeadSection = input.narrativeSections?.find(
-      (section) => section.kind === "lead",
-    );
-    const narrativeLeadClusterId = narrativeLeadSection?.storyClusterId;
-    const thematicSynthesisSupport =
-      narrativeLeadSection === undefined ||
-      narrativeLeadSection.storyClusterId !== undefined
-        ? undefined
-        : buildThematicSynthesisSupport({
-            section: narrativeLeadSection,
-            citations: citationById,
-            evidence: evidenceByFeedItemId,
-            clusters: input.storyClusters,
-          });
-    const authoredNarrativeLeadStory = input.topStories.find(
-      (story) => story.storyClusterId === narrativeLeadClusterId,
-    );
-    const narrativeLeadStory =
-      authoredNarrativeLeadStory === undefined
-        ? undefined
-        : storyWithTopReadEligibleCitations(
-            authoredNarrativeLeadStory,
-            citationById,
-            evidenceByFeedItemId,
-            clusterById,
-            citationMapByFeedItemId(citationById),
-          );
-    if (
-      narrativeLeadClusterId !== undefined &&
-      narrativeLeadStory === undefined
-    ) {
-      return ReaderSummary.create(
-        buildNoSignalReaderSummary({
-          ...input,
-          headline: "No reliable workspace signal yet",
-          noSignalReason:
-            "The planned narrative lead did not pass the top-read evidence gate.",
-        }),
-      );
-    }
+    const {
+      section: narrativeLeadSection,
+      story: narrativeLeadStory,
+      thematicSynthesisSupport,
+    } = resolveReaderSummaryNarrativeLead({
+      sections: input.narrativeSections ?? [],
+      stories: input.topStories,
+      citations: citationById,
+      evidence: evidenceByFeedItemId,
+      clusters: input.storyClusters,
+      clusterById,
+    });
     const curatedReaderTopStories = selectUniqueTopReadCandidates(
       input.topStories,
       citationById,
@@ -177,7 +141,6 @@ export class ReaderSummary {
       clusterById,
       maxReaderTopReads,
     );
-
     if (curatedReaderTopStories.length === 0) {
       return ReaderSummary.create(
         buildNoSignalReaderSummary({
@@ -188,7 +151,7 @@ export class ReaderSummary {
       );
     }
     const readerTopStoryPool = enrichTopReadCandidateDescriptions({
-      candidates: uniqueTopReadStoryPool([
+      candidates: uniqueReaderSummaryStoryPool([
         ...(narrativeLeadStory === undefined ? [] : [narrativeLeadStory]),
         ...curatedReaderTopStories,
         ...selectUniqueTopReadCandidatePool(
@@ -230,23 +193,15 @@ export class ReaderSummary {
         ? {}
         : { pinnedStoryClusterId: narrativeLeadStory.storyClusterId }),
     });
-    if (
-      narrativeLeadStory !== undefined &&
-      !selectedReaderTopReadCandidates.some(
-        (candidate) =>
-          candidate.story.storyClusterId === narrativeLeadStory.storyClusterId,
-      )
-    ) {
-      return ReaderSummary.create(
-        buildNoSignalReaderSummary({
-          ...input,
-          headline: "No reliable workspace signal yet",
-          noSignalReason:
-            "The planned narrative lead did not pass the reader-facing quality gate.",
-        }),
-      );
-    }
-    const readerTopReadCandidates = selectedReaderTopReadCandidates;
+    const narrativeProjection = reconcileReaderSummaryNarrativeLead({
+      selected: selectedReaderTopReadCandidates,
+      rendered: renderedTopReadCandidates,
+      narrativeStory: narrativeLeadStory,
+      narrativeSection: narrativeLeadSection,
+      narrativeSections: input.narrativeSections ?? [],
+      inputHeadline: input.headline,
+    });
+    const readerTopReadCandidates = narrativeProjection.candidates;
     const readerTopStories = readerTopReadCandidates.map(
       (candidate) => candidate.story,
     );
@@ -270,17 +225,7 @@ export class ReaderSummary {
       evidence: input.selectedEvidence ?? [],
       citations: input.citationMap,
     });
-    const narrativeLead = readerTopReadCandidates.find(
-      (candidate) => candidate.story.storyClusterId === narrativeLeadClusterId,
-    );
-    const headline =
-      narrativeLead === undefined
-        ? input.headline
-        : readerHeadlineForNarrativeLead(
-            narrativeLead.story.title,
-            narrativeLead.topRead,
-          );
-
+    const { headline, narrativeSections } = narrativeProjection;
     return ReaderSummary.create({
       headline: groundedReaderHeadline({
         headline,
@@ -296,7 +241,7 @@ export class ReaderSummary {
       }),
       bullets: buildReaderSummaryBullets(readerInput, topReads),
       narrativeSections: withSupplementalTrendNarrativeAppendix({
-        narrativeSections: input.narrativeSections ?? [],
+        narrativeSections,
         appendix: githubTrendingAppendix,
       }),
       mainTopics: buildReaderSummaryMainTopics({
@@ -316,7 +261,7 @@ export class ReaderSummary {
       selectedPosts,
       claimBoard: buildReaderSummaryClaimBoard({
         topReads,
-        narrativeSections: input.narrativeSections,
+        narrativeSections,
         risksAndUnknowns: input.risksAndUnknowns,
         citationMap: input.citationMap,
         selectedEvidence: primarySelectedEvidence,
@@ -363,24 +308,6 @@ export class ReaderSummary {
     };
   }
 }
-
-const uniqueTopReadStoryPool = (
-  stories: readonly TopReadCandidate[],
-): readonly TopReadCandidate[] => {
-  const seen = new Set<string>();
-  const result: TopReadCandidate[] = [];
-
-  for (const story of stories) {
-    if (seen.has(story.storyClusterId)) {
-      continue;
-    }
-    seen.add(story.storyClusterId);
-    result.push(story);
-  }
-
-  return result;
-};
-
 export const buildReaderSummary = (
   input: ReaderSummaryFactoryInput,
 ): ReaderSummarySnapshot => ReaderSummary.fromEvidence(input).toSnapshot();
@@ -403,7 +330,6 @@ const buildNoSignalReaderSummary = (
     evidence: githubTrendingHighlights,
     citations: input.citationMap,
   });
-
   return {
     headline: nonEmpty(input.headline, "No reliable workspace signal yet"),
     oneLineTakeaway: reason,
@@ -452,7 +378,6 @@ const buildNoSignalReaderSummary = (
     ],
   };
 };
-
 const reliabilitySelectionFromInput = (
   input: ReaderSummaryFactoryInput,
 ): SummaryEvidenceSelection | undefined => {
@@ -470,7 +395,6 @@ const reliabilitySelectionFromInput = (
     selectedEvidence: input.selectedEvidence,
   };
 };
-
 const fallbackSourceWindow = (
   selectedEvidence: readonly SummaryEvidenceItem[],
   storyClusters: readonly StoryCluster[],
@@ -512,7 +436,6 @@ const buildReaderSummaryBullets = (
     ? compacted.slice(0, 5)
     : [input.executiveSummary];
 };
-
 const buildTrendDelta = (
   input: ReaderSummaryFactoryInput,
   topReads: readonly TopRead[],

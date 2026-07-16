@@ -75,6 +75,7 @@ export const selectRenderedTopReadCandidates = (params: {
   const pinnedCandidate = pool.find(
     (candidate) =>
       candidate.story.storyClusterId === params.pinnedStoryClusterId &&
+      candidate.editorialPriority?.authoritativeLead === true &&
       isReaderFacingQualityTopRead(candidate.topRead),
   );
   if (pinnedCandidate !== undefined) {

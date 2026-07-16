@@ -4,6 +4,7 @@ import type {
   StoryCluster,
   SummaryEvidenceItem,
 } from "../value-objects/summary-evidence-item";
+import { buildReaderSummaryEditorialPriorityProfile } from "./reader-summary-editorial-priority-policy";
 import { selectUniqueTopReadCandidates } from "./top-read-selection-policy";
 
 describe("top read editorial priority", () => {
@@ -29,6 +30,7 @@ describe("top read editorial priority", () => {
           ["Comments", "67"],
         ],
         qualityScore: 0.55,
+        flags: ["official_account", "trusted_author"],
       }),
       evidenceItem({
         feedItemId: "ant-rss",
@@ -152,6 +154,84 @@ describe("top read editorial priority", () => {
 
     expect(result[0]?.title).toBe("Verified workflow discussion");
   });
+
+  it("requires every authority conjunct for an authoritative lead", () => {
+    const official = evidenceItem({
+      feedItemId: "official",
+      providerKey: "x-twitter",
+      canonicalUrl: "https://x.com/example/status/official",
+      score: 2.6,
+      metrics: [["Likes", "4,200"]],
+      qualityScore: 0.9,
+      flags: ["official_account", "trusted_author"],
+    });
+    const independent = evidenceItem({
+      feedItemId: "independent",
+      providerKey: "rss",
+      canonicalUrl: "https://example.test/independent",
+      score: 2.2,
+      metrics: [],
+      qualityScore: 0.85,
+    });
+    const profile = (evidence: readonly SummaryEvidenceItem[]) =>
+      buildReaderSummaryEditorialPriorityProfile({
+        cluster: undefined,
+        evidence,
+      });
+
+    expect(profile([official, independent])).toMatchObject({
+      leadEligible: true,
+      firstPartyOfficial: true,
+      confirmedProviderCount: 2,
+      authoritativeLead: true,
+    });
+    expect(profile([official])).toMatchObject({
+      leadEligible: true,
+      firstPartyOfficial: true,
+      confirmedProviderCount: 1,
+      authoritativeLead: false,
+    });
+    expect(
+      profile([
+        {
+          ...official,
+          contentQuality: {
+            ...official.contentQuality!,
+            flags: [],
+          },
+        },
+        independent,
+      ]),
+    ).toMatchObject({
+      leadEligible: true,
+      firstPartyOfficial: false,
+      confirmedProviderCount: 2,
+      authoritativeLead: false,
+    });
+    expect(
+      profile([
+        {
+          ...official,
+          contentQuality: {
+            ...official.contentQuality!,
+            decision: "downrank",
+          },
+        },
+        {
+          ...independent,
+          contentQuality: {
+            ...independent.contentQuality!,
+            decision: "downrank",
+          },
+        },
+      ]),
+    ).toMatchObject({
+      leadEligible: false,
+      firstPartyOfficial: true,
+      confirmedProviderCount: 2,
+      authoritativeLead: false,
+    });
+  });
 });
 
 const story = (
@@ -190,6 +270,7 @@ const evidenceItem = (params: {
   readonly qualityScore: number;
   readonly decision?: string;
   readonly needsLlmReview?: boolean;
+  readonly flags?: readonly string[];
 }): SummaryEvidenceItem => ({
   feedItemId: params.feedItemId,
   sourceItemId: `source-${params.feedItemId}`,
@@ -216,7 +297,7 @@ const evidenceItem = (params: {
     eligibleForTopRead: true,
     needsLlmReview: params.needsLlmReview ?? false,
     decision: params.decision ?? "eligible",
-    flags: [],
+    flags: params.flags ?? [],
     reason: "Relevant test evidence",
   },
 });

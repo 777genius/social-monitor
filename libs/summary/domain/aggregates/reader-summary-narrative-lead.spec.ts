@@ -20,15 +20,19 @@ describe("ReaderSummary narrative lead projection", () => {
     expect(summary.headline).not.toContain("legal");
   });
 
-  it("keeps an eligible lead when it falls outside the ranked limit", () => {
+  it("does not treat an unrelated authored candidate that survives selection as the lead", () => {
     const summary = buildReaderSummary({
       ...summaryFixture(12),
       narrativeSections: [leadSection(12)],
     });
 
     expect(summary.topReads).toHaveLength(8);
-    expect(summary.topReads[0]?.title).toBe(storyTitle(12));
-    expect(summary.headline).toBe(`Reports discuss ${storyTitle(12)}`);
+    expect(summary.topReads[0]?.title).toBe(storyTitle(2));
+    expect(
+      summary.topReads.findIndex((item) => item.title === storyTitle(12)),
+    ).toBeGreaterThan(0);
+    expect(summary.headline).toBe(`Reports discuss ${storyTitle(2)}`);
+    expect(summary.narrativeSections).toEqual([]);
   });
 
   it("keeps cautious report framing when the lead title names a provider", () => {
@@ -37,14 +41,14 @@ describe("ReaderSummary narrative lead projection", () => {
       "Hacker News debates Claude Code token use versus OpenCode";
     const summary = buildReaderSummary({
       ...fixture,
-      narrativeSections: [leadSection(2)],
+      narrativeSections: [leadSection(1)],
       topStories: fixture.topStories.map((story) =>
-        story.storyClusterId === "cluster-2"
+        story.storyClusterId === "cluster-1"
           ? { ...story, title: leadTitle }
           : story,
       ),
       selectedEvidence: fixture.selectedEvidence.map((evidence) =>
-        evidence.feedItemId === "feed-2"
+        evidence.feedItemId === "feed-1"
           ? { ...evidence, title: leadTitle }
           : evidence,
       ),
@@ -85,6 +89,156 @@ describe("ReaderSummary narrative lead projection", () => {
     expect(summary.headline).not.toBe(summary.topReads[0]?.title);
   });
 
+  it("replaces selected #1 only for one strict evidence pair and keeps publication lineage", () => {
+    const fixture = summaryFixture(2);
+    const selectedTitle =
+      "OpenAI releases Codex terminal sandbox controls security update";
+    const narrativeTitle =
+      "Codex release adds terminal sandbox controls security update";
+    const narrativePublishedAt = new Date("2026-06-23T08:30:00.000Z");
+    const summary = buildReaderSummary({
+      ...fixture,
+      headline: "An unrelated authored headline",
+      narrativeSections: [leadSection(2)],
+      topStories: fixture.topStories.map((story) => ({
+        ...story,
+        title:
+          story.storyClusterId === "cluster-1"
+            ? selectedTitle
+            : narrativeTitle,
+      })),
+      storyClusters: fixture.storyClusters.map((cluster) => ({
+        ...cluster,
+        score: cluster.id === "cluster-1" ? 3.4 : 2.1,
+      })),
+      selectedEvidence: fixture.selectedEvidence.map((evidence) => ({
+        ...evidence,
+        title:
+          evidence.feedItemId === "feed-1"
+            ? selectedTitle
+            : narrativeTitle,
+        publishedAt:
+          evidence.feedItemId === "feed-2"
+            ? narrativePublishedAt
+            : evidence.publishedAt,
+        score: evidence.feedItemId === "feed-1" ? 3.4 : 2.1,
+        contentQuality: eligibleQuality(),
+      })),
+    });
+
+    expect(summary.topReads[0]).toMatchObject({
+      title: narrativeTitle,
+      canonicalUrl: "https://example.test/story-2",
+      citationIds: ["citation-2"],
+      publishedAt: narrativePublishedAt,
+    });
+    expect(summary.headline).toBe(`Reports discuss ${narrativeTitle}`);
+    expect(summary.topReads[0]?.citationIds).not.toContain("citation-1");
+    expect(summary.narrativeSections?.[0]).toMatchObject({
+      storyClusterId: "cluster-2",
+      citationIds: ["citation-2"],
+    });
+  });
+
+  it("does not replace selected #1 when only the rendered reason matches", () => {
+    const fixture = summaryFixture(2);
+    const exactReason =
+      "The same editorial explanation describes concrete operational impact while preserving the source uncertainty for readers.";
+    const summary = buildReaderSummary({
+      ...fixture,
+      headline: "An unrelated authored headline",
+      narrativeSections: [leadSection(1)],
+      topStories: fixture.topStories.map((story) => ({
+        ...story,
+        summary: exactReason,
+      })),
+      storyClusters: fixture.storyClusters.map((cluster) => ({
+        ...cluster,
+        whyImportant: [exactReason],
+      })),
+      selectedEvidence: fixture.selectedEvidence.map((evidence) => ({
+        ...evidence,
+        whyImportant: [exactReason],
+        contentQuality: eligibleQuality(),
+      })),
+    });
+
+    expect(summary.topReads[0]?.title).toBe(storyTitle(2));
+    expect(summary.headline).toBe(`Reports discuss ${storyTitle(2)}`);
+    expect(summary.narrativeSections).toEqual([]);
+  });
+
+  it("keeps an authoritative article above a zero-score narrative without collapsing", () => {
+    const fixture = summaryFixture(2);
+    const primary = fixture.selectedEvidence[0]!;
+    const narrative = fixture.selectedEvidence[1]!;
+    const independentSupport: SummaryEvidenceItem = {
+      ...primary,
+      feedItemId: "feed-1-support",
+      sourceItemId: "source-1-support",
+      sourceBindingId: "binding-rss",
+      providerKey: "rss",
+      providerName: "RSS",
+      canonicalUrl: "https://example.test/story-1-support",
+      contentQuality: eligibleQuality(),
+    };
+    const summary = buildReaderSummary({
+      ...fixture,
+      headline: "An unrelated authored headline",
+      narrativeSections: [leadSection(2)],
+      citationMap: [
+        ...fixture.citationMap.map((citation) =>
+          citation.citationId === "citation-2"
+            ? { ...citation, providerKey: "rss" }
+            : citation,
+        ),
+        {
+          citationId: "citation-1-support",
+          feedItemId: independentSupport.feedItemId,
+          sourceItemId: independentSupport.sourceItemId,
+          providerKey: "rss",
+          field: "title",
+          canonicalUrl: independentSupport.canonicalUrl,
+        },
+      ],
+      storyClusters: fixture.storyClusters.map((cluster) =>
+        cluster.id === "cluster-1"
+          ? {
+              ...cluster,
+              duplicateFeedItemIds: [independentSupport.feedItemId],
+              providerKeys: ["reddit", "rss"],
+              score: 3.2,
+            }
+          : { ...cluster, providerKeys: ["rss"], score: 0 },
+      ),
+      selectedEvidence: [
+        {
+          ...primary,
+          contentQuality: eligibleQuality([
+            "official_account",
+            "trusted_author",
+          ]),
+        },
+        independentSupport,
+        {
+          ...narrative,
+          providerKey: "rss",
+          providerName: "RSS",
+          score: 0,
+          contentQuality: eligibleQuality(),
+        },
+      ],
+    });
+
+    expect(summary.topReads[0]?.title).toBe(storyTitle(1));
+    expect(summary.topReads[0]?.citationIds).toEqual(
+      expect.arrayContaining(["citation-1", "citation-1-support"]),
+    );
+    expect(summary.headline).toBe(storyTitle(1));
+    expect(summary.qualityState.status).not.toBe("no_signal");
+    expect(summary.narrativeSections).toEqual([]);
+  });
+
   it("refills eight unique reader-facing top reads after authored candidates are filtered", () => {
     const fixture = summaryFixture(33);
     const fallbackTitle = "Independent benchmark compares agent cache overhead";
@@ -120,7 +274,7 @@ describe("ReaderSummary narrative lead projection", () => {
     });
 
     expect(summary.topReads).toHaveLength(8);
-    expect(summary.topReads[0]?.title).toBe(storyTitle(1));
+    expect(summary.topReads[0]?.title).toBe(storyTitle(2));
     expect(
       summary.topReads.filter((item) =>
         item.citationIds.includes("citation-33"),
@@ -143,7 +297,7 @@ describe("ReaderSummary narrative lead projection", () => {
     expect(Math.max(...Object.values(providerCounts))).toBeLessThanOrEqual(4);
   });
 
-  it("fails closed when the narrative lead evidence is top-read ineligible", () => {
+  it("retains a valid article when the narrative lead is top-read ineligible", () => {
     const fixture = summaryFixture(3);
     const summary = buildReaderSummary({
       ...fixture,
@@ -169,17 +323,13 @@ describe("ReaderSummary narrative lead projection", () => {
       ),
     });
 
-    expect(summary).toMatchObject({
-      headline: "No reliable workspace signal yet",
-      topReads: [],
-      narrativeSections: [],
-      oneLineTakeaway:
-        "The planned narrative lead did not pass the top-read evidence gate.",
-      qualityState: { status: "no_signal" },
-    });
+    expect(summary.topReads[0]?.title).toBe(storyTitle(2));
+    expect(summary.headline).toBe(`Reports discuss ${storyTitle(2)}`);
+    expect(summary.qualityState.status).not.toBe("no_signal");
+    expect(summary.narrativeSections).toEqual([]);
   });
 
-  it("fails closed when the narrative lead is not reader-facing", () => {
+  it("retains a valid article when the narrative lead is not reader-facing", () => {
     const fixture = summaryFixture(3);
     const summary = buildReaderSummary({
       ...fixture,
@@ -205,16 +355,23 @@ describe("ReaderSummary narrative lead projection", () => {
       ),
     });
 
-    expect(summary).toMatchObject({
-      headline: "No reliable workspace signal yet",
-      topReads: [],
-      narrativeSections: [],
-      oneLineTakeaway:
-        "The planned narrative lead did not pass the reader-facing quality gate.",
-      qualityState: { status: "no_signal" },
-    });
-    expect(summary.headline).not.toContain("Current AI product discussion");
+    expect(summary.topReads[0]?.title).toBe(storyTitle(2));
+    expect(summary.headline).toBe(`Reports discuss ${storyTitle(2)}`);
+    expect(summary.qualityState.status).not.toBe("no_signal");
+    expect(summary.narrativeSections).toEqual([]);
   });
+});
+
+const eligibleQuality = (flags: readonly string[] = []) => ({
+  qualityScore: 0.9,
+  interestRelevanceScore: 0.9,
+  engagementIntegrityScore: 0.9,
+  eligibleForSummary: true,
+  eligibleForTopRead: true,
+  needsLlmReview: false,
+  decision: "eligible",
+  flags,
+  reason: "Eligible narrative identity fixture.",
 });
 
 const leadSection = (index: number) => ({

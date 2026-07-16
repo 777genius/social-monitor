@@ -206,6 +206,35 @@ describe("buildReaderSummaryCoveragePlan", () => {
     ]);
   });
 
+  it("keeps first-party official material in coverage planning", () => {
+    const base = buildSelection([
+      cluster("official-release", 4.1, "github-official", [
+        "github-repo-radar",
+      ]),
+      cluster("social-lead", 3.4, "social-a", ["reddit", "rss"]),
+    ]);
+    const official = evidenceById(base, "github-official");
+    const plan = buildReaderSummaryCoveragePlan({
+      ...base,
+      selectedEvidence: [
+        {
+          ...official,
+          title: "Codex releases official terminal sandbox controls",
+          contentQuality: {
+            ...official.contentQuality!,
+            flags: ["official_account", "trusted_author"],
+          },
+        },
+        evidenceById(base, "social-a"),
+      ],
+    });
+
+    expect([
+      plan.lead?.clusterId,
+      ...plan.secondary.map((item) => item.clusterId),
+    ]).toContain("official-release");
+  });
+
   it("prefers a highly engaged relevant discussion over a marginally higher down-ranked launch", () => {
     const antCluster = {
       ...cluster("ant", 2.65, "ant-hn", ["hacker-news", "rss"]),
@@ -377,7 +406,7 @@ describe("buildReaderSummaryCoveragePlan", () => {
     expect(plan.secondary.map((item) => item.clusterId)).toContain("clawk");
   });
 
-  it("keeps a single-source first-party lead when its signal is materially stronger", () => {
+  it("does not call a single-source first-party lead authoritative", () => {
     const official = {
       ...cluster("official-launch", 4.5, "official-hn", ["hacker-news"]),
       signalBreakdown: {
@@ -422,7 +451,7 @@ describe("buildReaderSummaryCoveragePlan", () => {
     });
 
     expect(plan.lead?.clusterId).toBe("official-launch");
-    expect(plan.mode).toBe("single_story");
+    expect(plan.mode).toBe("daily_synthesis");
     expect(plan.secondary.map((item) => item.clusterId)).toContain(
       "confirmed-story",
     );

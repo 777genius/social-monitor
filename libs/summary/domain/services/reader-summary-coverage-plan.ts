@@ -59,7 +59,9 @@ export const buildReaderSummaryCoveragePlan = (
     )
     .sort(compareCoverageCandidates);
   const primaryCandidates = candidates.filter(
-    (candidate) => !isGitHubOnlyCandidate(candidate),
+    (candidate) =>
+      candidate.editorialPriority.firstPartyOfficial ||
+      !isGitHubOnlyCandidate(candidate),
   );
   const eligibleCandidates =
     primaryCandidates.length > 0 ? primaryCandidates : candidates;

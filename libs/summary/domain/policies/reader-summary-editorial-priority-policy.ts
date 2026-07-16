@@ -95,7 +95,7 @@ export const buildReaderSummaryEditorialPriorityProfile = (params: {
   });
   const leadEligible = leadEligibleEvidence.length > 0;
   const authoritativeLead =
-    leadEligible && (confirmedProviderCount > 1 || firstPartyOfficial);
+    leadEligible && firstPartyOfficial && confirmedProviderCount > 1;
   const freshnessBoost = profileCluster?.signalBreakdown?.freshnessBoost ?? 0;
   const editorialScore =
     baseSignalScore +
