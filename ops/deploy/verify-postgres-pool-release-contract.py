@@ -105,6 +105,20 @@ def changed_between(base: str, target: str) -> list[str]:
     return sorted(git_lines("diff", "--name-only", base, target, "--"))
 
 
+def assert_ancestor(ancestor: str, target: str, failure_message: str) -> None:
+    result = subprocess.run(
+        ["git", "-C", str(ROOT), "merge-base", "--is-ancestor", ancestor, target],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode == 0:
+        return
+    if result.returncode == 1:
+        fail(failure_message)
+    fail(result.stderr.strip() or "git merge-base --is-ancestor failed")
+
+
 def workspace_changes(base: str) -> list[str]:
     tracked = git_lines("diff", "--name-only", base, "--")
     untracked = git_lines("ls-files", "--others", "--exclude-standard")
@@ -128,6 +142,23 @@ def paths_under_roots(files: list[str], roots: tuple[str, ...]) -> list[str]:
         for file in files
         if any(file == root or file.startswith(f"{root}/") for root in roots)
     )
+
+
+def assert_completed_adoption(
+    base: str,
+    backend_base: str,
+    release_a: list[str],
+    release_b: list[str],
+) -> None:
+    assert_ancestor(
+        base,
+        backend_base,
+        "PostgreSQL adoption base is not an ancestor of durable backend marker",
+    )
+    adopted = set(changed_between(base, backend_base))
+    missing = sorted(set(release_a + release_b) - adopted)
+    if missing:
+        fail(f"durable backend marker does not contain completed adoption: {missing}")
 
 
 def manifests(contract: dict[str, Any]) -> tuple[list[str], list[str]]:
@@ -192,9 +223,45 @@ def verify_ci(arguments: argparse.Namespace, contract: dict[str, Any]) -> None:
     if arguments.bootstrap == "uninstalled":
         if arguments.backend != "false" or arguments.control != "true":
             fail("first PostgreSQL adoption release must be control-only")
-        if arguments.backend_base != base or arguments.bootstrap_sha != ZERO_SHA:
-            fail("first PostgreSQL adoption release has an unexpected durable base")
-        assert_exact(changed_between(base, arguments.target), release_a, "Release A")
+        if arguments.bootstrap_sha != ZERO_SHA:
+            fail("uninstalled PostgreSQL bootstrap has a nonzero durable release SHA")
+        if arguments.backend_base == base:
+            assert_exact(changed_between(base, arguments.target), release_a, "Release A")
+            return
+
+        # A legacy deploy may have durably advanced through both adoption
+        # releases without writing the independent bootstrap marker. Permit
+        # only a control-path repair after proving that its durable backend
+        # marker contains the full A+B adoption and that every path in the
+        # target delta is control-classified.
+        assert_ancestor(
+            arguments.backend_base,
+            arguments.target,
+            "legacy PostgreSQL bootstrap repair durable backend marker "
+            "is not an ancestor of target",
+        )
+        assert_completed_adoption(
+            base,
+            arguments.backend_base,
+            release_a,
+            release_b,
+        )
+        target_delta = changed_between(arguments.backend_base, arguments.target)
+        backend_delta = paths_under_roots(target_delta, BACKEND_PATH_ROOTS)
+        if backend_delta:
+            fail(
+                "legacy PostgreSQL bootstrap repair contains backend paths: "
+                f"{backend_delta}"
+            )
+        control_delta = paths_under_roots(target_delta, CONTROL_PATH_ROOTS)
+        non_control_delta = sorted(set(target_delta) - set(control_delta))
+        if non_control_delta:
+            fail(
+                "legacy PostgreSQL bootstrap repair contains non-control paths: "
+                f"{non_control_delta}"
+            )
+        if not control_delta:
+            fail("legacy PostgreSQL bootstrap repair contains no control paths")
         return
     if arguments.bootstrap != contract["bootstrapVersion"]:
         fail("PostgreSQL adoption has an unsupported bootstrap state")
@@ -216,10 +283,7 @@ def verify_ci(arguments: argparse.Namespace, contract: dict[str, Any]) -> None:
     # durable backend marker must still contain every A+B path; later releases
     # may add paths, but cannot masquerade as a completed adoption without the
     # bootstrap and bounded-runtime surfaces.
-    adopted = set(changed_between(base, arguments.backend_base))
-    missing = sorted(set(release_a + release_b) - adopted)
-    if missing:
-        fail(f"durable backend marker does not contain completed adoption: {missing}")
+    assert_completed_adoption(base, arguments.backend_base, release_a, release_b)
 
 
 def parse_arguments() -> argparse.Namespace:
