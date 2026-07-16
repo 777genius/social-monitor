@@ -322,6 +322,7 @@ async function main(): Promise<void> {
       "--update",
       "--date",
       collectionDate,
+      "--write-failed-report",
     ]),
   );
   steps.push(

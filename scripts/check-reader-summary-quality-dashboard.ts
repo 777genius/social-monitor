@@ -19,6 +19,7 @@ import {
 } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-records";
 import {
   presentReaderSummaryArtifact,
+  readerSummaryContentForArtifact,
   type ReaderSummaryArtifactView,
 } from "@social-monitor/summary/features/shared/reader-summary-artifact-presenter";
 
@@ -521,14 +522,22 @@ async function buildDayReport(
     scope,
     collectionDate,
   );
-  const view =
+  const artifact =
     artifactRecord === null
       ? undefined
+      : readerSummaryArtifactFromPrisma(artifactRecord);
+  const view =
+    artifact === undefined
+      ? undefined
       : presentReaderSummaryArtifact(
-          readerSummaryArtifactFromPrisma(artifactRecord),
+          artifact,
           { status: "fresh", checkedAt: new Date() },
           { collectedCoverage },
         );
+  const domainContent =
+    artifact === undefined
+      ? undefined
+      : readerSummaryContentForArtifact(artifact);
   const providerCounts = countBy(feedItems, (item) => item.providerKey);
   const strategy = await buildCollectionStrategy({
     pool,
@@ -544,7 +553,10 @@ async function buildDayReport(
     feedItems,
   });
   const summary = buildSummaryMetrics(view, artifactRecord);
-  const topReadQuality = buildTopReadQuality(view);
+  const topReadQuality = buildTopReadQuality(
+    view,
+    domainContent?.topReads,
+  );
   const feed = {
     collectedFeedItemCount: feedItems.length,
     providerCounts,
@@ -786,6 +798,9 @@ function buildSummaryMetrics(
 
 function buildTopReadQuality(
   view: ReaderSummaryArtifactView | undefined,
+  persistedTopReads:
+    | ReturnType<typeof readerSummaryContentForArtifact>["topReads"]
+    | undefined,
 ): TopReadQualityReport {
   if (view === undefined) {
     return {
@@ -852,6 +867,7 @@ function buildTopReadQuality(
     weakTopReadOutrankingStrongSocialRows({
       rows,
       topReads: view.content.topReads,
+      persistedTopReads,
     }).length;
 
   return {

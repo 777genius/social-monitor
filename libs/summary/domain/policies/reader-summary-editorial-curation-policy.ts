@@ -7,6 +7,9 @@ export type EditoriallyCuratedTopReadCandidate = TopReadCandidate & {
 export const readerSummaryEditorialCurationRule =
   "rule:reader-summary-model-curated";
 
+export const readerSummaryUnverifiedLegalSafetyDemotionRule =
+  "rule:reader-summary-unverified-legal-safety-demotion";
+
 export const withReaderSummaryEditorialCuration = (
   candidate: TopReadCandidate,
   editoriallyCurated: boolean,
@@ -26,6 +29,24 @@ export const readerSummaryEditorialCurationRules = (
 export const hasReaderSummaryEditorialCurationRule = (
   matchedRules: Pick<TopRead, "matchedRules">["matchedRules"],
 ): boolean => matchedRules.includes(readerSummaryEditorialCurationRule);
+
+export const readerSummaryUnverifiedLegalSafetyDemotionRules = (
+  builderConfirmed: boolean,
+): readonly string[] =>
+  builderConfirmed ? [readerSummaryUnverifiedLegalSafetyDemotionRule] : [];
+
+export const withoutReaderSummaryUnverifiedLegalSafetyDemotionRule = (
+  matchedRules: readonly string[],
+): readonly string[] =>
+  matchedRules.filter(
+    (rule) => rule !== readerSummaryUnverifiedLegalSafetyDemotionRule,
+  );
+
+export const hasReaderSummaryUnverifiedLegalSafetyDemotionRule = (
+  matchedRules: readonly string[] | undefined,
+): boolean =>
+  matchedRules?.includes(readerSummaryUnverifiedLegalSafetyDemotionRule) ===
+  true;
 
 const isReaderSummaryEditoriallyCuratedCandidate = (
   candidate: TopReadCandidate,

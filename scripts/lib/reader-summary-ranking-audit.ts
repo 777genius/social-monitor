@@ -1,5 +1,5 @@
 import { fingerprint } from "./yesterday-social-replay-support";
-import { isUnverifiedLegalTopRead } from "@social-monitor/summary/domain/services/reader-summary-headline-policy";
+import { hasReaderSummaryUnverifiedLegalSafetyDemotionRule } from "@social-monitor/summary/domain/policies/reader-summary-editorial-curation-policy";
 
 export type RankingAuditTopRead = {
   readonly title: string;
@@ -13,7 +13,7 @@ export type RankingAuditTopRead = {
   readonly reason?: string;
   readonly whyImportant?: readonly string[];
   readonly matchedRules?: readonly string[];
-  readonly publishedAt?: string;
+  readonly publishedAt?: string | Date;
   readonly canonicalUrl?: string;
 };
 
@@ -126,23 +126,35 @@ export function rankingSupportScore(item: RankingAuditTopRead): number {
 }
 
 export function rankingItemFingerprint(item: RankingAuditTopRead): string {
+  const publishedAt =
+    item.publishedAt instanceof Date
+      ? item.publishedAt.toISOString()
+      : (item.publishedAt ?? "");
+
   return fingerprint(
     [
       item.providerKey,
       item.canonicalUrl ?? "",
       item.title,
-      item.publishedAt ?? "",
+      publishedAt,
     ].join("|"),
   );
 }
 
 export const isEditorialSafetyExplainedLeadInversion = (params: {
   readonly earlierRank: number;
+  readonly laterRank: number;
+  readonly earlier: RankingAuditTopRead | undefined;
   readonly later: RankingAuditTopRead | undefined;
 }): boolean =>
   params.earlierRank === 1 &&
+  params.laterRank > params.earlierRank &&
+  params.earlier !== undefined &&
   params.later !== undefined &&
-  isUnverifiedLegalTopRead(params.later);
+  params.later.signalScore > params.earlier.signalScore &&
+  hasReaderSummaryUnverifiedLegalSafetyDemotionRule(
+    params.later.matchedRules,
+  );
 
 const groupByProvider = (
   items: readonly RankingAuditTopRead[],
