@@ -798,7 +798,7 @@ class FakePrismaIngestionFeedClient
               bodyPreview: args.update.bodyPreview,
               authorHandle: args.update.authorHandle ?? null,
               publishedAt: args.update.publishedAt,
-              observedAt: args.update.observedAt,
+              observedAt: existing.observedAt,
               providerMetadata:
                 args.update.providerMetadata === undefined
                   ? existing.providerMetadata

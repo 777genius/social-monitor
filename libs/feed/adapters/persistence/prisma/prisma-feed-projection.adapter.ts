@@ -70,7 +70,6 @@ export class PrismaFeedProjectionAdapter implements FeedProjectionPort {
           bodyPreview,
           authorHandle: snapshot.authorHandle ?? null,
           publishedAt: snapshot.publishedAt,
-          observedAt: snapshot.ingestedAt,
           providerMetadata,
         };
         const feedItem = existingFeedItem !== null && this.prisma.feedItem.update !== undefined
@@ -134,7 +133,7 @@ export class PrismaFeedProjectionAdapter implements FeedProjectionPort {
               contentType: signalSample.contentType,
               strength: signalSample.strength,
               publishedAt: signalSample.publishedAt,
-              observedAt: signalSample.observedAt,
+              observedAt: snapshot.ingestedAt,
             },
             create: {
               id: this.ids.generate(),
@@ -147,7 +146,7 @@ export class PrismaFeedProjectionAdapter implements FeedProjectionPort {
               contentType: signalSample.contentType,
               strength: signalSample.strength,
               publishedAt: signalSample.publishedAt,
-              observedAt: signalSample.observedAt,
+              observedAt: snapshot.ingestedAt,
             },
           });
         }
