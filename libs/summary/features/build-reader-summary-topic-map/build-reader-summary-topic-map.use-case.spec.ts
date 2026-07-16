@@ -9,7 +9,11 @@ import type {
   ReaderSummaryTopicRelationVerifierInput,
   ReaderSummaryTopicRelationVerifierPort,
 } from "../../ports";
-import type { StoryCluster, SummaryEvidenceItem } from "../../domain";
+import {
+  emptyReaderSummaryTopicMap,
+  type StoryCluster,
+  type SummaryEvidenceItem,
+} from "../../domain";
 import { BuildReaderSummaryTopicMapUseCase } from "./build-reader-summary-topic-map.use-case";
 
 describe("BuildReaderSummaryTopicMapUseCase", () => {
@@ -39,6 +43,101 @@ describe("BuildReaderSummaryTopicMapUseCase", () => {
     expect(result.value.nodes[0]?.popularityScore).toBeGreaterThan(0);
   });
 
+  it("removes rejected representative metadata before labeler and output", async () => {
+    const labeler = new CapturingTopicLabeler();
+    const base = command();
+    const accepted = base.selectedEvidence[0]!;
+    const rejectedSentinel = "REJECTED_REPRESENTATIVE_SENTINEL";
+    const rejected = {
+      ...accepted,
+      feedItemId: "feed-rejected",
+      sourceItemId: "source-rejected",
+      providerKey: rejectedSentinel,
+      title: rejectedSentinel,
+      canonicalUrl: "https://rejected.example.test/sentinel",
+      contentQuality: {
+        ...accepted.contentQuality!,
+        interestRelevanceScore: 0.559,
+      },
+    };
+    const result = await new BuildReaderSummaryTopicMapUseCase({
+      mode: "agent-runtime",
+      labeler,
+    }).execute({
+      ...base,
+      selectedEvidence: [rejected, accepted],
+      clusters: [
+        {
+          ...base.clusters[0]!,
+          storyKey: rejectedSentinel,
+          representativeFeedItemId: rejected.feedItemId,
+          duplicateFeedItemIds: [accepted.feedItemId],
+          providerKeys: [rejectedSentinel, accepted.providerKey],
+          whyImportant: [rejectedSentinel],
+        },
+      ],
+      topStories: [
+        {
+          ...base.topStories[0]!,
+          title: rejectedSentinel,
+          providerKeys: [rejectedSentinel],
+          citationIds: ["c-rejected", "c1"],
+        },
+      ],
+      citationMap: [
+        {
+          citationId: "c-rejected",
+          feedItemId: rejected.feedItemId,
+          sourceItemId: rejected.sourceItemId,
+          providerKey: rejected.providerKey,
+          field: "title",
+          canonicalUrl: rejected.canonicalUrl,
+        },
+        ...base.citationMap,
+      ],
+    });
+
+    expect(result.ok).toBe(true);
+    expect(labeler.inputs).toHaveLength(1);
+    expect(labeler.inputs[0]?.clusters[0]).toMatchObject({
+      storyKey: "url:example.test/runtime",
+      representativeFeedItemId: "feed-runtime",
+      providerKeys: ["rss"],
+    });
+    expect(JSON.stringify(labeler.inputs)).not.toContain(rejectedSentinel);
+    expect(JSON.stringify(result)).not.toContain(rejectedSentinel);
+  });
+
+  it("returns deterministic empty output without external calls when all topic evidence is rejected", async () => {
+    const labeler = new CapturingTopicLabeler();
+    const verifier = new AcceptingTopicRelationVerifier();
+    const publicationAudit = new RecordingTopicMapPublicationAudit();
+    const base = command();
+    const result = await new BuildReaderSummaryTopicMapUseCase({
+      mode: "agent-runtime",
+      labeler,
+      relationVerifier: verifier,
+      publicationAudit,
+    }).execute({
+      ...base,
+      selectedEvidence: base.selectedEvidence.map((item) => ({
+        ...item,
+        contentQuality: {
+          ...item.contentQuality!,
+          interestRelevanceScore: Number.NaN,
+        },
+      })),
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: emptyReaderSummaryTopicMap(),
+    });
+    expect(labeler.inputs).toEqual([]);
+    expect(verifier.inputs).toEqual([]);
+    expect(publicationAudit.rejections).toEqual([]);
+  });
+
   it("fails instead of silently downgrading when agent-runtime labeling fails", async () => {
     const labeler = new FailingTopicLabeler();
     const result = await new BuildReaderSummaryTopicMapUseCase({
@@ -65,6 +164,31 @@ describe("BuildReaderSummaryTopicMapUseCase", () => {
     }
     expect(result.value.generatedBy).toBe("deterministic");
     expect(result.value.nodes[0]?.label).toBe("Runtime Signal");
+  });
+
+  it("keeps deterministic output stable for evidence rejected only by agent mode", async () => {
+    const base = command();
+    const baseline = await new BuildReaderSummaryTopicMapUseCase().execute(
+      base,
+    );
+    const acceptedQuality = base.selectedEvidence[0]!.contentQuality!;
+    const rejectedQualities = [
+      { ...acceptedQuality, interestRelevanceScore: 0.559 },
+      undefined,
+      { ...acceptedQuality, interestRelevanceScore: Number.NaN },
+    ];
+
+    for (const contentQuality of rejectedQualities) {
+      const result = await new BuildReaderSummaryTopicMapUseCase().execute({
+        ...base,
+        selectedEvidence: base.selectedEvidence.map((item) => ({
+          ...item,
+          contentQuality,
+        })),
+      });
+
+      expect(result).toEqual(baseline);
+    }
   });
 
   it("requires a topic labeler in agent-runtime mode", async () => {
@@ -584,6 +708,17 @@ const command = () => ({
       observedAt: new Date("2026-06-01T01:10:00.000Z"),
       score: 0.9,
       whyImportant: ["Selected by ranking"],
+      contentQuality: {
+        qualityScore: 0.9,
+        interestRelevanceScore: 0.9,
+        engagementIntegrityScore: 0.9,
+        eligibleForSummary: true,
+        eligibleForTopRead: true,
+        needsLlmReview: false,
+        decision: "keep",
+        flags: [],
+        reason: "Eligible topic evidence",
+      },
     } satisfies SummaryEvidenceItem,
   ],
   topStories: [

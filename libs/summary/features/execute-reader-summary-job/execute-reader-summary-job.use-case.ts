@@ -14,6 +14,7 @@ import {
   assertReaderSummaryCitationsAgainstEvidence,
   buildReaderSummaryCoveragePlan,
   buildReaderSummary,
+  calibrateReaderSummaryConfidence,
   defaultReaderSummaryGenerationPolicy,
   ReaderSummaryArtifact,
   ReaderSummaryPublicationPolicy,
@@ -329,12 +330,19 @@ export class ExecuteReaderSummaryJobUseCase {
       return err(this.readerSummaryModel.classifyError(error));
     }
     const draftWithContext = context.unavailable
-      ? withContextUnavailableFlag(attempt.draft)
+      ? withReaderSummaryContextUnavailable(attempt.draft)
       : attempt.draft;
     const draftWithContent = this.withReaderContent(
       evidence,
       draftWithContext,
     );
+    const calibratedDraft = {
+      ...draftWithContent,
+      confidence: calibrateReaderSummaryConfidence({
+        confidence: draftWithContent.confidence,
+        topReads: draftWithContent.content.topReads,
+      }),
+    };
     const readerSummaryId = this.ids.generate();
     const createArtifact = (draft: ReaderSummaryDraft): ReaderSummaryArtifact =>
       ReaderSummaryArtifact.create({
@@ -353,7 +361,7 @@ export class ExecuteReaderSummaryJobUseCase {
         personalization: evidence.personalization,
         ...draft,
       });
-    const preflightArtifact = createArtifact(draftWithContent);
+    const preflightArtifact = createArtifact(calibratedDraft);
     if (
       this.publicationPolicy.evaluate({
         artifact: preflightArtifact,
@@ -365,7 +373,7 @@ export class ExecuteReaderSummaryJobUseCase {
     const draftResult = await this.withTopicMap(
       snapshot,
       evidence,
-      draftWithContent,
+      calibratedDraft,
     );
     if (!draftResult.ok) {
       return err(this.readerSummaryModel.classifyError(draftResult.error));
@@ -453,9 +461,9 @@ export class ExecuteReaderSummaryJobUseCase {
   }
 }
 
-const withContextUnavailableFlag = (
-  draft: ProviderReaderSummaryAttempt["draft"],
-): ProviderReaderSummaryAttempt["draft"] => ({
+const withReaderSummaryContextUnavailable = (
+  draft: ReaderSummaryDraft,
+): ReaderSummaryDraft => ({
   ...draft,
   qualityFlags: unique([...draft.qualityFlags, "context_unavailable"]),
   content:

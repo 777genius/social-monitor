@@ -10,6 +10,7 @@ import {
   emptyReaderSummaryTopicMap,
   type ReaderSummaryArtifact,
   type ReaderSummaryPublicationDecision,
+  ReaderSummaryPublicationPolicy,
   ReaderSummaryJob,
   type ReaderSummaryPeriod,
   type ReaderSummaryPolicy,
@@ -86,6 +87,7 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
     const artifacts = new FakeReaderSummaryArtifactRepository();
     const events = new CapturingSummaryEventPublisher();
     const model = new CapturingReaderSummaryModel();
+    const publicationPolicy = new CapturingReaderSummaryPublicationPolicy();
     const requestedAt = new Date("2026-06-26T08:00:00.000Z");
     let observedMaxEvidenceItems: number | undefined;
     let observedThrough: Date | undefined;
@@ -147,6 +149,8 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
           };
         },
       } satisfies UserSummaryPreferenceReaderPort,
+      undefined,
+      publicationPolicy,
     ).execute({
       tenantId: tenant,
       workspaceId: workspace,
@@ -196,6 +200,16 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
     expect(observedMaxEvidenceItems).toBe(120);
     expect(observedThrough).toEqual(new Date("2026-06-26T08:05:00.000Z"));
     expect(snapshot?.generatedAt).toEqual(observedThrough);
+    expect(snapshot?.confidence).toMatchObject({ level: "low", score: 0.42 });
+    expect(
+      snapshot?.confidence.rationale.match(
+        /capped by the weakest published top read/gu,
+      ),
+    ).toHaveLength(1);
+    expect(publicationPolicy.confidences).toEqual([
+      snapshot?.confidence,
+      snapshot?.confidence,
+    ]);
     expect(model.observedPolicies()).toContainEqual(
       expect.objectContaining({
         maxOutputTokens: 16_000,
@@ -432,6 +446,10 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
       status: "rejected",
       reasonCodes: ["editorial_quality", "top_read_ineligible_source"],
     });
+    expect(artifacts.all()[0]?.toSnapshot().confidence).toMatchObject({
+      level: "low",
+      score: 0,
+    });
     expect(
       (
         await jobs.findById({
@@ -446,6 +464,63 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
       failureReason: expect.stringContaining("pre-publish quality gate"),
     });
     expect(events.all()).toEqual([]);
+  });
+
+  it("calibrates confidence before a preflight rejection and skips topic-map calls", async () => {
+    const tenant = tenantId("tenant-reader-summary-use-case");
+    const workspace = workspaceId("workspace-reader-summary-use-case");
+    const jobs = new FakeReaderSummaryJobRepository();
+    const artifacts = new FakeReaderSummaryArtifactRepository();
+    const publicationPolicy = new CapturingReaderSummaryPublicationPolicy(
+      forcedRejectionDecision(),
+    );
+
+    await jobs.save(
+      ReaderSummaryJob.request({
+        id: "reader-job-calibrated-rejection",
+        tenantId: tenant,
+        workspaceId: workspace,
+        scope: interestReaderSummaryScope("interest-reader-ai"),
+        period: readerSummaryPeriod,
+        idempotencyKey: "reader-job-key-calibrated-rejection",
+        requestedAt: new Date("2026-06-26T08:00:00.000Z"),
+      }),
+    );
+
+    const result = await new ExecuteReaderSummaryJobUseCase(
+      jobs,
+      artifacts,
+      new EmptyReaderSummaryPolicyRepository(),
+      {
+        async select() {
+          return makeReaderEvidenceSelection();
+        },
+      },
+      new CapturingReaderSummaryModel(),
+      new CapturingSummaryEventPublisher(),
+      new StaticIdGenerator(),
+      new FixedClock(new Date("2026-06-26T08:05:00.000Z")),
+      undefined,
+      undefined,
+      throwingTopicMapBuilder(),
+      publicationPolicy,
+    ).execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      readerSummaryJobId: "reader-job-calibrated-rejection",
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: { status: "quality_rejected" },
+    });
+    expect(publicationPolicy.confidences).toEqual([
+      expect.objectContaining({ level: "low", score: 0.42 }),
+      expect.objectContaining({ level: "low", score: 0.42 }),
+    ]);
+    expect(artifacts.all()[0]?.toSnapshot().confidence).toEqual(
+      publicationPolicy.confidences[1],
+    );
   });
 });
 
@@ -579,6 +654,46 @@ class CapturingSummaryEventPublisher implements SummaryEventPublisherPort {
     return this.events;
   }
 }
+
+class CapturingReaderSummaryPublicationPolicy extends ReaderSummaryPublicationPolicy {
+  readonly confidences: ReturnType<
+    ReaderSummaryArtifact["toSnapshot"]
+  >["confidence"][] = [];
+
+  constructor(
+    private readonly forcedDecision?: ReaderSummaryPublicationDecision,
+  ) {
+    super();
+  }
+
+  override evaluate(
+    params: Parameters<ReaderSummaryPublicationPolicy["evaluate"]>[0],
+  ): ReaderSummaryPublicationDecision {
+    this.confidences.push(params.artifact.toSnapshot().confidence);
+
+    return this.forcedDecision ?? super.evaluate(params);
+  }
+}
+
+const forcedRejectionDecision = (): ReaderSummaryPublicationDecision => ({
+  status: "rejected",
+  qualityPassed: false,
+  canonicalScore: 0,
+  shadow: {
+    mode: "shadow",
+    policyVersion: "reader_summary_publication_shadow_v1",
+    riskScore: 0,
+    signals: [],
+  },
+  reasonCodes: ["editorial_quality"],
+  reasons: ["Forced preflight rejection for confidence regression coverage."],
+  findings: [
+    {
+      code: "editorial_quality",
+      reason: "Forced preflight rejection for confidence regression coverage.",
+    },
+  ],
+});
 
 class CapturingReaderSummaryModel implements ReaderSummaryModelPort {
   private readonly policies: Parameters<ReaderSummaryModelPort["route"]>[1][] =
@@ -807,7 +922,8 @@ const makeReaderEvidenceSelection = (
       observedAt: new Date("2026-06-26T07:20:00.000Z"),
       score: 2.2,
       whyImportant: ["Matches user preference"],
-      contentQuality: overrides.firstContentQuality,
+      contentQuality:
+        overrides.firstContentQuality ?? eligibleReaderEvidenceQuality(),
     },
     {
       feedItemId: "feed-2",
@@ -822,6 +938,19 @@ const makeReaderEvidenceSelection = (
       observedAt: new Date("2026-06-26T07:30:00.000Z"),
       score: 0.9,
       whyImportant: ["Strong source engagement signal"],
+      contentQuality: eligibleReaderEvidenceQuality(),
     },
   ],
+});
+
+const eligibleReaderEvidenceQuality = () => ({
+  qualityScore: 0.9,
+  interestRelevanceScore: 0.9,
+  engagementIntegrityScore: 0.9,
+  eligibleForSummary: true,
+  eligibleForTopRead: true,
+  needsLlmReview: false,
+  decision: "keep",
+  flags: [],
+  reason: "Eligible reader summary evidence.",
 });

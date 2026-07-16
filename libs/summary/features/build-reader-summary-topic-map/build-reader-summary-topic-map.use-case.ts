@@ -7,6 +7,7 @@ import {
 
 import {
   buildExistingReaderSummaryTopicRelations,
+  buildReaderSummaryAgentTopicEvidence,
   buildReaderSummaryTopicMap,
   buildReaderSummaryTopicRelationCandidates,
   buildReaderSummaryTopicRelationVerificationForest,
@@ -58,11 +59,15 @@ export class BuildReaderSummaryTopicMapUseCase {
   async execute(
     command: BuildReaderSummaryTopicMapCommand,
   ): Promise<BuildReaderSummaryTopicMapResult> {
+    const topicEvidence =
+      this.mode === "agent-runtime"
+        ? buildReaderSummaryAgentTopicEvidence(command)
+        : command;
     const deterministic = buildReaderSummaryTopicMap({
-      clusters: command.clusters,
-      selectedEvidence: command.selectedEvidence,
-      topStories: command.topStories,
-      citationMap: command.citationMap,
+      clusters: topicEvidence.clusters,
+      selectedEvidence: topicEvidence.selectedEvidence,
+      topStories: topicEvidence.topStories,
+      citationMap: topicEvidence.citationMap,
       generatedBy: "deterministic",
       preserveStoryClustersForLabeling: this.mode === "agent-runtime",
     });
@@ -94,7 +99,7 @@ export class BuildReaderSummaryTopicMapUseCase {
         totalAttempts: agentRuntimeTotalAttempts,
       } satisfies ReaderSummaryTopicMapAttemptContext;
       const labelPlanResult = await this.labelWithAgentRuntime(
-        command,
+        { ...command, ...topicEvidence },
         deterministic,
         attemptContext,
       );
@@ -113,10 +118,10 @@ export class BuildReaderSummaryTopicMapUseCase {
 
       const publication = await publishableTopicMap(
         buildReaderSummaryTopicMap({
-          clusters: command.clusters,
-          selectedEvidence: command.selectedEvidence,
-          topStories: command.topStories,
-          citationMap: command.citationMap,
+          clusters: topicEvidence.clusters,
+          selectedEvidence: topicEvidence.selectedEvidence,
+          topStories: topicEvidence.topStories,
+          citationMap: topicEvidence.citationMap,
           labelPlan: verifiedPlanResult.value,
           generatedBy: "agent-runtime",
         }),

@@ -23,6 +23,7 @@ export * from "./events/reader-summary-generated.event";
 export * from "./events/reader-summary-ready.event";
 export * from "./events/summary-ready.event";
 export * from "./policies/reader-action-policy";
+export * from "./policies/reader-summary-agent-topic-evidence-policy";
 export * from "./policies/reader-summary-reliability-calibration-policy";
 export * from "./policies/reader-summary-artifact-editorial-quality-policy";
 export * from "./policies/reader-summary-evidence-eligibility-policy";

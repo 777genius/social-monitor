@@ -1,6 +1,9 @@
 import {
   buildReaderSummaryReliabilityReport,
+  calibrateReaderSummaryConfidence,
   STORY_RANKING_POLICY_V1,
+  type ReaderSummaryConfidence,
+  type ReaderSummaryItem,
   type SummaryEvidenceItem,
   type SummaryEvidenceSelection,
 } from "../../domain";
@@ -66,6 +69,66 @@ describe("buildReaderSummaryReliabilityReport", () => {
     expect(report.riskLevel).toBe("low");
     expect(report.riskScore).toBe(0);
     expect(report.risks).toEqual([]);
+  });
+});
+
+describe("calibrateReaderSummaryConfidence", () => {
+  it("caps confidence at the weakest final top read without reordering or changing citation ids", () => {
+    const confidence: ReaderSummaryConfidence = {
+      level: "high",
+      score: 0.91,
+      rationale: "Model confidence before final evidence projection.",
+    };
+    const topReads = [
+      topRead("first", 0.68, "medium"),
+      topRead("second", 0.42, "low"),
+    ];
+    const originalProjection = topReads.map((read) => ({
+      title: read.title,
+      citationIds: [...read.citationIds],
+    }));
+
+    expect(calibrateReaderSummaryConfidence({ confidence, topReads })).toEqual({
+      level: "low",
+      score: 0.42,
+      rationale: expect.stringContaining(
+        "capped by the weakest published top read",
+      ),
+    });
+    expect(
+      topReads.map((read) => ({
+        title: read.title,
+        citationIds: [...read.citationIds],
+      })),
+    ).toEqual(originalProjection);
+  });
+
+  it("never increases an already lower confidence", () => {
+    const confidence: ReaderSummaryConfidence = {
+      level: "low",
+      score: 0.31,
+      rationale: "Already conservative.",
+    };
+
+    expect(
+      calibrateReaderSummaryConfidence({
+        confidence,
+        topReads: [topRead("stronger", 0.68, "medium")],
+      }),
+    ).toBe(confidence);
+  });
+
+  it("caps a rejected projection with no final top reads at zero", () => {
+    expect(
+      calibrateReaderSummaryConfidence({
+        confidence: {
+          level: "medium",
+          score: 0.7,
+          rationale: "Model confidence before publication preflight.",
+        },
+        topReads: [],
+      }),
+    ).toMatchObject({ level: "low", score: 0 });
   });
 });
 
@@ -141,4 +204,25 @@ const evidence = (
     flags: [],
     reason: "Strong evidence",
   },
+});
+
+const topRead = (
+  title: string,
+  score: number,
+  level: ReaderSummaryItem["confidence"]["level"],
+): ReaderSummaryItem => ({
+  title,
+  providerKey: "rss",
+  providerName: "RSS",
+  primaryActionKind: "read_source",
+  reason: `${title} reason`,
+  matchedInterestIds: ["interest-runtime"],
+  matchedRules: ["provider:rss"],
+  signalScore: 1,
+  confidence: { level, score, rationale: `${title} confidence` },
+  confirmedProviderKeys: ["rss"],
+  providerMetrics: [],
+  whyImportant: [`${title} reason`],
+  whyNow: `${title} is current`,
+  citationIds: [`citation-${title}`],
 });

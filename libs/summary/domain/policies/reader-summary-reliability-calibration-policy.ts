@@ -6,10 +6,53 @@ import {
   type ReaderSummaryReliabilityRiskLevel,
 } from "../entities/reader-summary-reliability";
 import type {
+  ReaderSummaryConfidence,
+  ReaderSummaryItem,
+} from "../entities/reader-summary-artifact";
+import type {
   SummaryEvidenceItem,
   SummaryEvidenceSelection,
 } from "../value-objects/summary-evidence-item";
 import { independentEvidenceProviderKeys } from "../value-objects/reader-summary-provider-identity";
+
+export const calibrateReaderSummaryConfidence = (params: {
+  readonly confidence: ReaderSummaryConfidence;
+  readonly topReads: readonly ReaderSummaryItem[];
+}): ReaderSummaryConfidence => {
+  const topReadScoreCeiling =
+    params.topReads.length === 0
+      ? 0
+      : Math.min(...params.topReads.map((read) => read.confidence.score));
+  const topReadLevelCeiling =
+    params.topReads.length === 0
+      ? "low"
+      : params.topReads.reduce<ReaderSummaryItem["confidence"]["level"]>(
+          (current, read) =>
+            confidenceRank(read.confidence.level) < confidenceRank(current)
+              ? read.confidence.level
+              : current,
+          "high",
+        );
+  const score = Math.min(params.confidence.score, topReadScoreCeiling);
+  const level = lowerConfidenceLevel(
+    params.confidence.level,
+    topReadLevelCeiling,
+    score,
+  );
+  if (score === params.confidence.score && level === params.confidence.level) {
+    return params.confidence;
+  }
+
+  return {
+    level,
+    score,
+    rationale: `${params.confidence.rationale} ${
+      params.topReads.length === 0
+        ? "Final summary confidence is capped because no top read passed the reader projection."
+        : "Final summary confidence is capped by the weakest published top read."
+    }`,
+  };
+};
 
 export const buildReaderSummaryReliabilityReport = (
   selection: SummaryEvidenceSelection | undefined,
@@ -246,3 +289,24 @@ const riskLevel = (score: number): ReaderSummaryReliabilityRiskLevel => {
 
   return "low";
 };
+
+const lowerConfidenceLevel = (
+  current: ReaderSummaryConfidence["level"],
+  topRead: ReaderSummaryItem["confidence"]["level"],
+  score: number,
+): ReaderSummaryConfidence["level"] => {
+  const scoreLevel = score >= 0.72 ? "high" : score >= 0.5 ? "medium" : "low";
+  const rank = Math.min(
+    confidenceRank(current),
+    confidenceRank(topRead),
+    confidenceRank(scoreLevel),
+  );
+
+  return confidenceLevels[rank] ?? "none";
+};
+
+const confidenceLevels = ["none", "low", "medium", "high"] as const;
+
+const confidenceRank = (
+  level: ReaderSummaryConfidence["level"],
+): number => confidenceLevels.indexOf(level);
