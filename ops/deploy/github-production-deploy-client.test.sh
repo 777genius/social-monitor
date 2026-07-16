@@ -180,12 +180,12 @@ assert_fails() {
 }
 
 assert_call_count() {
-  local expected=$1
-  local command=$2
+  local expected_count=$1
+  local command_text=$2
   local actual
-  actual=$(grep -cFx "$command" "$FAKE_SSH_LOG" || true)
-  [[ $actual == "$expected" ]] || {
-    printf 'expected %s calls to %s, received %s\n' "$expected" "$command" "$actual" >&2
+  actual=$(grep -cFx "$command_text" "$FAKE_SSH_LOG" || true)
+  [[ $actual == "$expected_count" ]] || {
+    printf 'expected %s calls to %s, received %s\n' "$expected_count" "$command_text" "$actual" >&2
     exit 1
   }
 }
