@@ -18,13 +18,46 @@ export const createSocialResearchMcpRuntime =
       SocialResearchMcpRuntimeModule,
       { logger: ['error', 'warn'] },
     );
-    const handlers = app.get(SocialResearchToolHandlers);
+    let server: McpServer;
+    try {
+      const handlers = app.get(SocialResearchToolHandlers);
+      server = buildSocialResearchMcpServer({ handlers });
+    } catch (constructionError) {
+      try {
+        await app.close();
+      } catch (cleanupError) {
+        throw new AggregateError(
+          [constructionError, cleanupError],
+          'social research MCP construction and cleanup failed',
+        );
+      }
+      throw constructionError;
+    }
 
     return {
       app,
-      server: buildSocialResearchMcpServer({ handlers }),
+      server,
       close: async () => {
-        await app.close();
+        const errors: unknown[] = [];
+        try {
+          await server.close();
+        } catch (error) {
+          errors.push(error);
+        }
+        try {
+          await app.close();
+        } catch (error) {
+          errors.push(error);
+        }
+        if (errors.length === 1) {
+          throw errors[0];
+        }
+        if (errors.length > 1) {
+          throw new AggregateError(
+            errors,
+            'social research MCP shutdown failed',
+          );
+        }
       },
     };
   };

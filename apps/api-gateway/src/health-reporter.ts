@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import {
   resolveDeliveryEnabledChannels,
   resolveDeliveryPersistenceMode,
@@ -13,7 +13,9 @@ import {
   resolveMonitoringScanQueueMode,
 } from '@social-monitor/monitoring/interfaces/rest/monitoring-provider-tokens';
 import { resolveRuntimeProfile } from '@social-monitor/platform-config';
+import { resolveRelevancePersistenceMode } from '@social-monitor/relevance/interfaces/rest/relevance-provider-tokens';
 import type { Clock } from '@social-monitor/shared-kernel';
+import { resolveSubscriptionsPersistenceMode } from '@social-monitor/subscriptions/interfaces/rest/subscriptions-provider-tokens';
 import {
   resolveSummaryJobQueueMode,
   resolveSummaryPersistenceMode,
@@ -40,6 +42,7 @@ import {
   resolveIntelligenceSummaryQueueDrainLoopOptions,
   resolveIntelligenceSummaryQueueReaderMode,
 } from '../../intelligence-worker/src/intelligence-worker-provider-tokens';
+import { resolveSocialResearchRuntimeSettings } from '../../social-research-runtime/src/social-research-runtime-settings';
 
 export type HealthResponse = {
   readonly status: 'ok';
@@ -104,11 +107,48 @@ export type ReadinessResponse = HealthResponse & {
 };
 
 export type UptimeSecondsReader = () => number;
+export type ApiGatewayDatabaseReadinessResult = 'queried' | 'skipped';
+export type ApiGatewayDatabaseReadiness = {
+  check(): Promise<ApiGatewayDatabaseReadinessResult>;
+};
 
 export const API_GATEWAY_HEALTH_ENV = Symbol('API_GATEWAY_HEALTH_ENV');
 export const API_GATEWAY_HEALTH_CLOCK = Symbol('API_GATEWAY_HEALTH_CLOCK');
 export const API_GATEWAY_UPTIME_SECONDS = Symbol('API_GATEWAY_UPTIME_SECONDS');
 export const API_GATEWAY_SOURCE_READINESS_PROFILES = Symbol('API_GATEWAY_SOURCE_READINESS_PROFILES');
+export const API_GATEWAY_DATABASE_READINESS = Symbol(
+  'API_GATEWAY_DATABASE_READINESS',
+);
+
+export function createApiGatewayDatabaseReadiness(
+  env: NodeJS.ProcessEnv,
+  probe: () => Promise<void>,
+): ApiGatewayDatabaseReadiness {
+  return {
+    check: async (): Promise<ApiGatewayDatabaseReadinessResult> => {
+      if (!apiGatewayUsesPrismaPersistence(env)) {
+        return 'skipped';
+      }
+      await probe();
+      return 'queried';
+    },
+  };
+}
+
+function apiGatewayUsesPrismaPersistence(env: NodeJS.ProcessEnv): boolean {
+  return [
+    resolveMonitoringPersistenceMode(env),
+    resolveFeedPersistenceMode(env),
+    resolveIngestionSupportPersistenceMode(env),
+    resolveSummaryPersistenceMode(env),
+    resolveDeliveryPersistenceMode(env),
+    resolveIdentityPersistenceMode(env),
+    resolveUsagePersistenceMode(env),
+    resolveRelevancePersistenceMode(env),
+    resolveSubscriptionsPersistenceMode(env),
+    resolveSocialResearchRuntimeSettings(env).resultCache.mode,
+  ].includes('prisma');
+}
 
 @Injectable()
 export class ApiGatewayHealthReporter {
@@ -121,13 +161,17 @@ export class ApiGatewayHealthReporter {
     private readonly uptimeSeconds: UptimeSecondsReader,
     @Inject(API_GATEWAY_SOURCE_READINESS_PROFILES)
     private readonly sourceReadinessProfiles: readonly SourceReadinessProfile[],
+    @Inject(API_GATEWAY_DATABASE_READINESS)
+    @Optional()
+    private readonly databaseReadiness?: ApiGatewayDatabaseReadiness,
   ) {}
 
   health(): HealthResponse {
     return this.ok();
   }
 
-  ready(): ReadinessResponse {
+  async ready(): Promise<ReadinessResponse> {
+    const databaseReadiness = await this.checkDatabaseReadiness();
     return {
       ...this.ok(),
       runtime: {
@@ -205,9 +249,12 @@ export class ApiGatewayHealthReporter {
           detail: 'Source readiness profiles loaded.',
         },
         {
-          name: 'operator_contract',
+          name: 'postgres_runtime_pool',
           status: 'ok',
-          detail: 'Readiness metadata is available without database or provider network calls.',
+          detail:
+            databaseReadiness === 'queried'
+              ? 'A query completed through the bounded shared Prisma pool.'
+              : 'Database dependency not required: all API gateway Prisma persistence selectors are disabled; PostgreSQL probe was not executed.',
         },
       ],
     };
@@ -220,6 +267,18 @@ export class ApiGatewayHealthReporter {
       checkedAt: this.clock.now().toISOString(),
       uptimeSeconds: Math.floor(this.uptimeSeconds()),
     };
+  }
+
+  private async checkDatabaseReadiness(): Promise<ApiGatewayDatabaseReadinessResult> {
+    if (this.databaseReadiness !== undefined) {
+      return this.databaseReadiness.check();
+    }
+    if (apiGatewayUsesPrismaPersistence(this.env)) {
+      throw new Error(
+        'API gateway PostgreSQL readiness probe is not configured',
+      );
+    }
+    return 'skipped';
   }
 
   private loopMode(enabled: boolean): 'enabled' | 'disabled' {

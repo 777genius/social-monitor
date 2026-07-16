@@ -1,4 +1,4 @@
-import { Inject, Injectable, type OnApplicationShutdown, type OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { NestStructuredLogger, type StructuredLogger } from '@social-monitor/platform-logging';
 import { WorkerCommandIdFactory } from '@social-monitor/platform-worker';
 import type { DeliveryAttemptProps } from '@social-monitor/delivery/domain';
@@ -14,7 +14,7 @@ import {
 } from './delivery-service-provider-tokens';
 
 @Injectable()
-export class DeliveryAttemptDispatchLoop implements OnModuleInit, OnApplicationShutdown {
+export class DeliveryAttemptDispatchLoop implements OnModuleInit, OnModuleDestroy {
   private readonly logger: StructuredLogger = new NestStructuredLogger(DeliveryAttemptDispatchLoop.name);
   private timer: NodeJS.Timeout | undefined;
   private currentTick: Promise<void> | undefined;
@@ -53,7 +53,11 @@ export class DeliveryAttemptDispatchLoop implements OnModuleInit, OnApplicationS
     });
   }
 
-  async onApplicationShutdown(signal?: string): Promise<void> {
+  async onModuleDestroy(): Promise<void> {
+    if (this.shuttingDown) {
+      await this.currentTick;
+      return;
+    }
     this.shuttingDown = true;
 
     if (this.timer !== undefined) {
@@ -62,7 +66,12 @@ export class DeliveryAttemptDispatchLoop implements OnModuleInit, OnApplicationS
     }
 
     await this.currentTick;
-    this.logger.info('delivery attempt dispatch loop stopped', { signal, worker: 'delivery-service' });
+    this.logger.info('delivery attempt dispatch loop stopped', { worker: 'delivery-service' });
+  }
+
+  onApplicationShutdown(signal?: string): Promise<void> {
+    void signal;
+    return this.onModuleDestroy();
   }
 
   private async runTick(trigger: 'startup' | 'interval'): Promise<void> {

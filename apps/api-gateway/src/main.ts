@@ -2,12 +2,15 @@ import { ValidationPipe } from '@nestjs/common';
 import type { CorsOptions } from '@nestjs/common/interfaces/external/cors-options.interface';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { bindPostgresRuntimeProcessIdentity } from '@social-monitor/platform-persistence';
 import 'reflect-metadata';
 
 import { AppModule } from './app.module';
 
 async function bootstrap(): Promise<void> {
+  bindPostgresRuntimeProcessIdentity(process.env, 'api-gateway');
   const app = await NestFactory.create(AppModule);
+  app.enableShutdownHooks();
   const corsOptions = resolveCorsOptions(process.env);
   if (corsOptions !== undefined) {
     app.enableCors(corsOptions);

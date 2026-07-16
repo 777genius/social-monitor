@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
 
 import { InfinityContextClient } from "@infinity-context/sdk";
+import { defaultPostgresRuntimePoolConfig } from "@social-monitor/platform-persistence";
 import { MemoStackRelevanceMemoryProjector } from "@social-monitor/relevance/adapters/memory/memo-stack-relevance-memory.projector";
 import { InMemoryRelevanceFeedbackLearningStore } from "@social-monitor/relevance/adapters/persistence/in-memory-relevance-feedback-learning.store";
 import { InMemoryRelevanceFeedbackRepository } from "@social-monitor/relevance/adapters/persistence/in-memory-relevance-feedback.repository";
@@ -45,7 +46,7 @@ const space = spaceSlug(tenant, workspace);
 async function main(): Promise<void> {
   const clock = new FixedClock(now);
   const ids = new SequenceIdGenerator(runId);
-  const persistence = createPersistence();
+  const persistence = await createPersistence();
 
   try {
     const record = await new RecordRelevanceFeedbackUseCase(
@@ -426,10 +427,13 @@ function resolvePersistenceMode(): PersistenceMode {
   );
 }
 
-function createPersistence(): CanaryPersistence {
+async function createPersistence(): Promise<CanaryPersistence> {
   if (persistenceMode === "prisma") {
-    const connection = new PrismaRelevanceConnection(
-      requiredEnv("DATABASE_URL"),
+    const connection = await PrismaRelevanceConnection.create(
+      defaultPostgresRuntimePoolConfig(
+        requiredEnv("DATABASE_URL"),
+        "admin-tool",
+      ),
     );
 
     return {

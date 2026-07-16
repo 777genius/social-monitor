@@ -273,6 +273,7 @@ async function buildReport(): Promise<ArtifactQualityReport> {
   });
   const pool = new Pool({
     connectionString: databaseUrl,
+    min: 0,
     max: 1,
     connectionTimeoutMillis: 2_000,
   });

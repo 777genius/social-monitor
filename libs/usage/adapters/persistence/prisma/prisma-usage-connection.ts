@@ -1,6 +1,10 @@
-import { PrismaPg } from '@prisma/adapter-pg';
+import {
+  createPrismaPgRuntimeConnection,
+  type PostgresRuntimePoolConfig,
+  type PrismaPgRuntimeClientConstructor,
+  type PrismaPgRuntimeConnectionLease,
+} from '@social-monitor/platform-persistence';
 import { loadPrismaRuntimeClient } from '@social-monitor/platform-persistence/prisma-runtime-client';
-import { Pool } from 'pg';
 
 import type { PrismaUsageClient, PrismaUsageTransactionClient, PrismaUsageTransactionOptions } from './prisma-usage-client';
 
@@ -8,26 +12,32 @@ type PrismaUsageRuntimeClient = PrismaUsageClient & {
   $disconnect(): Promise<void>;
 };
 
-type PrismaUsageRuntimeClientConstructor = new (args: {
-  readonly adapter: PrismaPg;
-}) => PrismaUsageRuntimeClient;
-
 export class PrismaUsageConnection implements PrismaUsageClient {
   readonly publicApiAuditEvent: PrismaUsageClient['publicApiAuditEvent'];
   readonly rateLimitBucket: PrismaUsageClient['rateLimitBucket'];
   readonly usageQuotaBucket: PrismaUsageClient['usageQuotaBucket'];
 
-  private readonly pool: Pool;
+  private readonly runtime: PrismaPgRuntimeConnectionLease<PrismaUsageRuntimeClient>;
   private readonly client: PrismaUsageRuntimeClient;
 
-  constructor(databaseUrl: string) {
-    if (databaseUrl.trim().length === 0) {
-      throw new Error('DATABASE_URL is required for Prisma usage persistence');
-    }
+  static create(
+    config: PostgresRuntimePoolConfig,
+  ): Promise<PrismaUsageConnection> {
+    const PrismaClient = loadPrismaRuntimeClient<
+      PrismaPgRuntimeClientConstructor<PrismaUsageRuntimeClient>
+    >();
+    return createPrismaPgRuntimeConnection(
+      config,
+      PrismaClient,
+      (runtime) => new PrismaUsageConnection(runtime),
+    );
+  }
 
-    this.pool = new Pool({ connectionString: databaseUrl });
-    const PrismaClient = loadPrismaRuntimeClient<PrismaUsageRuntimeClientConstructor>();
-    this.client = new PrismaClient({ adapter: new PrismaPg(this.pool) });
+  private constructor(
+    runtime: PrismaPgRuntimeConnectionLease<PrismaUsageRuntimeClient>,
+  ) {
+    this.runtime = runtime;
+    this.client = this.runtime.client;
 
     this.publicApiAuditEvent = this.client.publicApiAuditEvent;
     this.rateLimitBucket = this.client.rateLimitBucket;
@@ -44,12 +54,11 @@ export class PrismaUsageConnection implements PrismaUsageClient {
     );
   }
 
-  async close(): Promise<void> {
-    await this.client.$disconnect();
-    await this.pool.end();
+  close(): Promise<void> {
+    return this.runtime.close();
   }
 
-  async onModuleDestroy(): Promise<void> {
-    await this.close();
+  onApplicationShutdown(): Promise<void> {
+    return this.close();
   }
 }

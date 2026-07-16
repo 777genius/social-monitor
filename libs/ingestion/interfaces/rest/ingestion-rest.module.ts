@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { resolvePostgresRuntimePoolConfig } from '@social-monitor/platform-persistence';
 import { IdentityRestModule } from '@social-monitor/identity/interfaces/rest/identity-rest.module';
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { SystemClock, CryptoIdGenerator } from '@social-monitor/shared-kernel';
@@ -53,11 +54,13 @@ import { SourceProfileController } from './source-profile.controller';
     ingestionSupportPersistenceModeProvider,
     {
       provide: INGESTION_SUPPORT_PRISMA_CLIENT,
-      useFactory: (
+      useFactory: async (
         mode: IngestionSupportPersistenceMode,
-      ): PrismaIngestionClient | null =>
+      ): Promise<PrismaIngestionClient | null> =>
         mode === 'prisma'
-          ? new PrismaIngestionConnection(process.env.DATABASE_URL ?? '')
+          ? PrismaIngestionConnection.create(
+              resolvePostgresRuntimePoolConfig(process.env),
+            )
           : null,
       inject: [INGESTION_SUPPORT_PERSISTENCE_MODE],
     },

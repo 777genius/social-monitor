@@ -1,4 +1,4 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, ServiceUnavailableException } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { ApiGatewayHealthReporter, type HealthResponse, type ReadinessResponse } from './health-reporter';
@@ -16,7 +16,11 @@ export class HealthController {
 
   @Get(['ready', 'health/ready'])
   @ApiOperation({ summary: 'Readiness probe for the API gateway.' })
-  ready(): ReadinessResponse {
-    return this.healthReporter.ready();
+  async ready(): Promise<ReadinessResponse> {
+    try {
+      return await this.healthReporter.ready();
+    } catch {
+      throw new ServiceUnavailableException('Database readiness check failed');
+    }
   }
 }

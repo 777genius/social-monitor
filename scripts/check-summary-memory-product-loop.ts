@@ -296,6 +296,7 @@ async function maybeCheckLivePostgresEvidence(params: {
     connectionString: databaseUrl,
     connectionTimeoutMillis: timeoutMs,
     idleTimeoutMillis: 1_000,
+    min: 0,
     max: 1,
   });
   try {

@@ -1,4 +1,4 @@
-import { Inject, Injectable, type OnApplicationShutdown, type OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { NestStructuredLogger, type StructuredLogger } from '@social-monitor/platform-logging';
 import { ProjectRelevanceMemoryBatchUseCase } from '@social-monitor/relevance/features/project-relevance-memory/project-relevance-memory-batch.use-case';
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
@@ -9,7 +9,7 @@ import {
 } from './intelligence-worker-provider-tokens';
 
 @Injectable()
-export class RelevanceMemoryProjectionLoop implements OnModuleInit, OnApplicationShutdown {
+export class RelevanceMemoryProjectionLoop implements OnModuleInit, OnModuleDestroy {
   private readonly logger: StructuredLogger = new NestStructuredLogger(RelevanceMemoryProjectionLoop.name);
   private timer: NodeJS.Timeout | undefined;
   private currentTick: Promise<void> | undefined;
@@ -43,7 +43,11 @@ export class RelevanceMemoryProjectionLoop implements OnModuleInit, OnApplicatio
     });
   }
 
-  async onApplicationShutdown(signal?: string): Promise<void> {
+  async onModuleDestroy(): Promise<void> {
+    if (this.shuttingDown) {
+      await this.currentTick;
+      return;
+    }
     this.shuttingDown = true;
 
     if (this.timer !== undefined) {
@@ -52,7 +56,12 @@ export class RelevanceMemoryProjectionLoop implements OnModuleInit, OnApplicatio
     }
 
     await this.currentTick;
-    this.logger.info('relevance memory projection loop stopped', { signal, worker: 'intelligence-worker' });
+    this.logger.info('relevance memory projection loop stopped', { worker: 'intelligence-worker' });
+  }
+
+  onApplicationShutdown(signal?: string): Promise<void> {
+    void signal;
+    return this.onModuleDestroy();
   }
 
   private async runTick(trigger: 'startup' | 'interval'): Promise<void> {

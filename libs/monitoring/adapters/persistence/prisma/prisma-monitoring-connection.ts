@@ -1,16 +1,16 @@
-import { PrismaPg } from '@prisma/adapter-pg';
+import {
+  createPrismaPgRuntimeConnection,
+  type PostgresRuntimePoolConfig,
+  type PrismaPgRuntimeClientConstructor,
+  type PrismaPgRuntimeConnectionLease,
+} from '@social-monitor/platform-persistence';
 import { loadPrismaRuntimeClient } from '@social-monitor/platform-persistence/prisma-runtime-client';
-import { Pool } from 'pg';
 
 import type { PrismaMonitoringClient } from './prisma-monitoring-client';
 
 type PrismaMonitoringRuntimeClient = PrismaMonitoringClient & {
   $disconnect(): Promise<void>;
 };
-
-type PrismaMonitoringRuntimeClientConstructor = new (args: {
-  readonly adapter: PrismaPg;
-}) => PrismaMonitoringRuntimeClient;
 
 export class PrismaMonitoringConnection implements PrismaMonitoringClient {
   readonly interest: PrismaMonitoringClient['interest'];
@@ -25,17 +25,27 @@ export class PrismaMonitoringConnection implements PrismaMonitoringClient {
   readonly outboxEvent: PrismaMonitoringClient['outboxEvent'];
   readonly idempotencyKey: PrismaMonitoringClient['idempotencyKey'];
 
-  private readonly pool: Pool;
+  private readonly runtime: PrismaPgRuntimeConnectionLease<PrismaMonitoringRuntimeClient>;
   private readonly client: PrismaMonitoringRuntimeClient;
 
-  constructor(databaseUrl: string) {
-    if (databaseUrl.trim().length === 0) {
-      throw new Error('DATABASE_URL is required for Prisma monitoring persistence');
-    }
+  static create(
+    config: PostgresRuntimePoolConfig,
+  ): Promise<PrismaMonitoringConnection> {
+    const PrismaClient = loadPrismaRuntimeClient<
+      PrismaPgRuntimeClientConstructor<PrismaMonitoringRuntimeClient>
+    >();
+    return createPrismaPgRuntimeConnection(
+      config,
+      PrismaClient,
+      (runtime) => new PrismaMonitoringConnection(runtime),
+    );
+  }
 
-    this.pool = new Pool({ connectionString: databaseUrl });
-    const PrismaClient = loadPrismaRuntimeClient<PrismaMonitoringRuntimeClientConstructor>();
-    this.client = new PrismaClient({ adapter: new PrismaPg(this.pool) });
+  private constructor(
+    runtime: PrismaPgRuntimeConnectionLease<PrismaMonitoringRuntimeClient>,
+  ) {
+    this.runtime = runtime;
+    this.client = this.runtime.client;
 
     this.interest = this.client.interest;
     this.sourceCatalogEntry = this.client.sourceCatalogEntry;
@@ -50,12 +60,11 @@ export class PrismaMonitoringConnection implements PrismaMonitoringClient {
     this.idempotencyKey = this.client.idempotencyKey;
   }
 
-  async close(): Promise<void> {
-    await this.client.$disconnect();
-    await this.pool.end();
+  close(): Promise<void> {
+    return this.runtime.close();
   }
 
-  async onModuleDestroy(): Promise<void> {
-    await this.close();
+  onApplicationShutdown(): Promise<void> {
+    return this.close();
   }
 }

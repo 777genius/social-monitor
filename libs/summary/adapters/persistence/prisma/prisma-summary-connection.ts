@@ -1,6 +1,10 @@
-import { PrismaPg } from "@prisma/adapter-pg";
+import {
+  createPrismaPgRuntimeConnection,
+  type PostgresRuntimePoolConfig,
+  type PrismaPgRuntimeClientConstructor,
+  type PrismaPgRuntimeConnectionLease,
+} from "@social-monitor/platform-persistence";
 import { loadPrismaRuntimeClient } from "@social-monitor/platform-persistence/prisma-runtime-client";
-import { Pool } from "pg";
 
 import type { PrismaSummaryClient } from "./prisma-summary-client";
 import type { PrismaReaderSummaryClient } from "./prisma-reader-summary-client";
@@ -12,10 +16,6 @@ import type {
 type PrismaSummaryRuntimeClient = PrismaTransactionalSummaryClient & {
   $disconnect(): Promise<void>;
 };
-
-type PrismaSummaryRuntimeClientConstructor = new (args: {
-  readonly adapter: PrismaPg;
-}) => PrismaSummaryRuntimeClient;
 
 export class PrismaSummaryConnection implements PrismaSummaryClient {
   readonly $queryRaw: PrismaSummaryClient["$queryRaw"];
@@ -31,20 +31,28 @@ export class PrismaSummaryConnection implements PrismaSummaryClient {
   readonly conversationUnit: PrismaSummaryClient["conversationUnit"];
   readonly conversationSignalBaselineSample: PrismaSummaryClient["conversationSignalBaselineSample"];
 
-  private readonly pool: Pool;
+  private readonly runtime: PrismaPgRuntimeConnectionLease<PrismaSummaryRuntimeClient>;
   private readonly client: PrismaSummaryRuntimeClient;
 
-  constructor(databaseUrl: string) {
-    if (databaseUrl.trim().length === 0) {
-      throw new Error(
-        "DATABASE_URL is required for Prisma summary persistence",
-      );
-    }
-
-    this.pool = new Pool({ connectionString: databaseUrl });
+  static create(
+    config: PostgresRuntimePoolConfig,
+  ): Promise<PrismaSummaryConnection> {
     const PrismaClient =
-      loadPrismaRuntimeClient<PrismaSummaryRuntimeClientConstructor>();
-    this.client = new PrismaClient({ adapter: new PrismaPg(this.pool) });
+      loadPrismaRuntimeClient<
+        PrismaPgRuntimeClientConstructor<PrismaSummaryRuntimeClient>
+      >();
+    return createPrismaPgRuntimeConnection(
+      config,
+      PrismaClient,
+      (runtime) => new PrismaSummaryConnection(runtime),
+    );
+  }
+
+  private constructor(
+    runtime: PrismaPgRuntimeConnectionLease<PrismaSummaryRuntimeClient>,
+  ) {
+    this.runtime = runtime;
+    this.client = this.runtime.client;
 
     this.summaryJob = this.client.summaryJob;
     this.summaryArtifact = this.client.summaryArtifact;
@@ -74,12 +82,11 @@ export class PrismaSummaryConnection implements PrismaSummaryClient {
     );
   }
 
-  async close(): Promise<void> {
-    await this.client.$disconnect();
-    await this.pool.end();
+  close(): Promise<void> {
+    return this.runtime.close();
   }
 
-  async onModuleDestroy(): Promise<void> {
-    await this.close();
+  onApplicationShutdown(): Promise<void> {
+    return this.close();
   }
 }
