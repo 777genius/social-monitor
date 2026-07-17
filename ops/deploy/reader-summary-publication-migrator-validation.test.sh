@@ -2,6 +2,12 @@
 { set +x; } 2>/dev/null
 set -euo pipefail
 
+if [[ ${PUBLICATION_MIGRATOR_VALIDATION_LINE_TRACE:-0} == 1 ]]; then
+  exec 9>&2
+  set -T
+  trap 'printf "publication-migrator-validation-line:%s\n" "$LINENO" >&9' DEBUG
+fi
+
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 LIBRARY=$SCRIPT_DIR/reader-summary-publication-deploy-lib.sh
 DEPLOY_ENTRYPOINT=$SCRIPT_DIR/social-monitor-production-deploy.sh
