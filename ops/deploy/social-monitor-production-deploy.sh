@@ -206,8 +206,6 @@ else
 fi
 # shellcheck source=ops/deploy/postgres-runtime-deploy-lib.sh
 source "$REPO/ops/deploy/postgres-runtime-deploy-lib.sh"
-# shellcheck source=ops/deploy/reader-summary-publication-deploy-lib.sh
-source "$REPO/ops/deploy/reader-summary-publication-deploy-lib.sh"
 initialize_deploy_control_bridge
 
 verify_compose_scope() (

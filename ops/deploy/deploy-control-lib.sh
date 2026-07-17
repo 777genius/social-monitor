@@ -19,6 +19,53 @@ deploy_control_git_blob_digest() {
   git -C "$REPO" show "$sha:$path" | sha256sum | awk '{print $1}'
 }
 
+load_target_reader_summary_publication_deploy_library() {
+  local sha=$1
+  local relative_path=ops/deploy/reader-summary-publication-deploy-lib.sh
+  local publication_library=$REPO/$relative_path
+  local repository_root publication_real mode reviewed_digest actual_digest
+  local target_entry target_mode target_type target_object target_path
+
+  repository_root=$(readlink -f "$REPO") || \
+    fail 'integration repository path cannot be resolved'
+  [[ -f $publication_library && ! -L $publication_library ]] || \
+    fail 'target publication deploy library is not a regular non-symlink file'
+  publication_real=$(readlink -f "$publication_library") || \
+    fail 'target publication deploy library path cannot be resolved'
+  [[ $publication_real == "$repository_root/"* ]] || \
+    fail 'target publication deploy library is outside integration'
+  [[ -r $publication_real ]] || \
+    fail 'target publication deploy library is unreadable'
+  mode=$(stat -c '%A' "$publication_real") || \
+    fail 'target publication deploy library mode cannot be read'
+  [[ ${mode:1:1} == r || ${mode:4:1} == r || ${mode:7:1} == r ]] || \
+    fail 'target publication deploy library is unreadable'
+  target_entry=$(git -C "$REPO" ls-tree "$sha" -- "$relative_path") || \
+    fail 'target commit publication deploy library cannot be inspected'
+  read -r target_mode target_type target_object target_path <<< "$target_entry"
+  [[ ($target_mode == 100644 || $target_mode == 100755) && \
+     $target_type == blob && $target_object =~ ^[0-9a-f]+$ && \
+     $target_path == "$relative_path" ]] || \
+    fail 'target commit publication deploy library is not a regular blob'
+  reviewed_digest=$(
+    deploy_control_git_blob_digest "$sha" "$relative_path"
+  ) || fail 'target commit is missing the publication deploy library'
+  actual_digest=$(deploy_control_file_digest "$publication_real") || \
+    fail 'target publication deploy library digest cannot be read'
+  [[ $actual_digest == "$reviewed_digest" ]] || \
+    fail 'target publication deploy library differs from reviewed target'
+
+  ! declare -F deploy_reader_summary_publication_migrations >/dev/null || \
+    fail 'publication migration entrypoint was loaded before target validation'
+
+  # The bridge release deliberately lacks this target-only source file.
+  # shellcheck source=/dev/null
+  source "$publication_real" || \
+    fail 'target publication deploy library could not be loaded'
+  declare -F deploy_reader_summary_publication_migrations >/dev/null || \
+    fail 'target publication deploy library is missing its migration entrypoint'
+}
+
 initialize_deploy_control_bridge() {
   local entrypoint=$REPO/ops/deploy/social-monitor-production-deploy.sh
   local deploy_library=$REPO/ops/deploy/deploy-control-lib.sh
@@ -221,6 +268,9 @@ deploy_release() {
     verify_deploy_control_bridge_target_compatibility "$sha"
   fi
   advance_integration "$sha"
+  if [[ $backend == true ]]; then
+    load_target_reader_summary_publication_deploy_library "$sha"
+  fi
   sync_control_script "$sha"
   deploy_release_runtime_transaction "$sha" "$backend" "$runtime_control"
   [[ $frontend == false ]] || deploy_frontend "$sha"
