@@ -175,16 +175,13 @@ async function main(): Promise<void> {
       adminDatabaseUrl,
       runtimeRole,
     );
-    // Diff as the fixture's server auditor. The intentionally NOINHERIT
-    // migrator cannot introspect objects owned by either protected role, and
-    // treating that restricted view as the physical schema yields a false
-    // all-tables drift report after the ACL boundary is hardened.
     assertMigrationDatabaseMatchesPrismaSchema(targetDatabaseUrl);
+    const auditorPool = new Pool({ connectionString: targetDatabaseUrl });
     const admin = new Pool({ connectionString: adminDatabaseUrl, max: 2 });
     const runtime = new Pool({ connectionString: runtimeDatabaseUrl, max: 4 });
     try {
       await grantPublicationFixtureRuntimePrivileges(admin, runtimeRole);
-      const auditor = await admin.connect();
+      const auditor = await auditorPool.connect();
       const first = await runtime.connect();
       const second = await runtime.connect();
       try {
@@ -248,6 +245,7 @@ async function main(): Promise<void> {
     } finally {
       await runtime.end();
       await admin.end();
+      await auditorPool.end();
     }
   } finally {
     rmSync(migrationWorkspace, { recursive: true, force: true });
