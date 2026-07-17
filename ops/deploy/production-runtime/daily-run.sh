@@ -112,23 +112,39 @@ fi
   dated_name="reader-summary-production-day-run.$expected_date.v1.json"
   dated_candidate="$report_dir/$dated_name"
   proof_name="reader-summary-production-day-run.$expected_date.publication-proof.v1.json"
+  if [ -n "${READER_SUMMARY_DAILY_RUN_PAUSE_WORKER:-}" ]; then
+    artifact_dir=$report_dir
+  else
+    artifact_dir=${READER_SUMMARY_PRODUCTION_DAY_ARTIFACT_DIR:-/tmp/social-monitor/reader-summary-production-day/$expected_date}
+  fi
+  evidence_artifact="$artifact_dir/durable-reader-summary-$expected_date.v1.json"
+  frontend_artifact="$artifact_dir/frontend-reader-summary-$expected_date.fixture.v1.json"
+  runtime_identity_name="runtime-live-identity-$expected_date.v1.json"
+  runtime_identity_artifact="$artifact_dir/$runtime_identity_name"
 
   mkdir -p "$public_dir"
   staging_dir=$(mktemp -d "$public_dir/.reader-summary-publication.XXXXXX")
   trap '\''rm -rf "$staging_dir"'\'' EXIT HUP INT TERM
   staged_report="$staging_dir/$dated_name"
   staged_proof="$staging_dir/$proof_name"
+  staged_runtime_identity="$staging_dir/$runtime_identity_name"
   cp "$dated_candidate" "$staged_report"
+  cp "$runtime_identity_artifact" "$staged_runtime_identity"
   chmod 0444 "$staged_report"
+  chmod 0444 "$staged_runtime_identity"
 
   node scripts/verify-reader-summary-production-day-publication.mjs \
     --latest-candidate "$latest_candidate" \
     --dated-report "$staged_report" \
     --expected-date "$expected_date" \
+    --evidence-artifact "$evidence_artifact" \
+    --frontend-artifact "$frontend_artifact" \
     --proof-out "$staged_proof"
   node scripts/verify-reader-summary-production-day-publication.mjs \
     --dated-report "$staged_report" \
     --expected-date "$expected_date" \
+    --evidence-artifact "$evidence_artifact" \
+    --frontend-artifact "$frontend_artifact" \
     --proof "$staged_proof"
 
   install_immutable() {
@@ -162,12 +178,16 @@ fi
 
   dated_public="$public_dir/$dated_name"
   proof_public="$public_dir/$proof_name"
+  runtime_identity_public="$public_dir/$runtime_identity_name"
   install_immutable "$staged_proof" "$proof_public"
+  install_immutable "$staged_runtime_identity" "$runtime_identity_public"
   pause_publication_failpoint after-proof-before-report
   install_immutable "$staged_report" "$dated_public"
   node scripts/verify-reader-summary-production-day-publication.mjs \
     --dated-report "$dated_public" \
     --expected-date "$expected_date" \
+    --evidence-artifact "$evidence_artifact" \
+    --frontend-artifact "$frontend_artifact" \
     --proof "$proof_public"
   pause_publication_failpoint after-report-before-latest
 

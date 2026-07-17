@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
@@ -13,6 +13,9 @@ import { dirname, join, resolve } from "node:path";
 
 import { Pool } from "pg";
 
+import { GrpcAgentRuntimeClient } from "@social-monitor/summary/adapters/model/grpc-agent-runtime-client";
+import { SystemClock } from "@social-monitor/shared-kernel";
+
 import {
   nextDate,
   noRawSecretFragments,
@@ -24,110 +27,47 @@ import { READER_SUMMARY_PRODUCTION_RUNTIME_POLICY } from "./lib/reader-summary-p
 import {
   blockedProductionDaySteps,
   collectionIsReadyForProductionSummary,
+  type ProductionDayStepReport,
 } from "./lib/reader-summary-production-day-collection-barrier";
+import {
+  buildProductionDayReport,
+  validateLiveProductionDayReport,
+  type HistoricalReuseProvenance,
+  type ProductionDayCollectionQuality,
+  type ProductionDayDurableEvidence,
+  type ProductionDayReport,
+} from "./lib/reader-summary-production-day-report";
+import {
+  attachCaptureExecutionEvidence,
+  inspectDurableEvidenceArtifact,
+  isRecord,
+  readRequiredFreshCaptureCandidates,
+  type DurableEvidenceBinding,
+  type ProductionDayCaptureExecution,
+  type ProductionDayRuntimeHealth,
+} from "./lib/reader-summary-production-day-provenance";
+import {
+  loadHistoricalReuseProvenance,
+  resolveProductionDayExecutionRequest,
+} from "./lib/reader-summary-production-day-reuse-provenance";
+import {
+  probeProductionRuntimeLiveIdentity,
+  runtimeLiveIdentityProofRequired,
+  serializeProductionRuntimeLiveIdentity,
+} from "./lib/reader-summary-runtime-live-identity";
 
-type StepStatus = "passed" | "failed" | "skipped";
-
-type StepReport = {
-  readonly id: string;
-  readonly command: string;
-  readonly status: StepStatus;
-  readonly durationMs: number;
-  readonly exitCode: number | null;
-};
-
-const degradedQualityStepIds = new Set([
-  "collection-quality",
-  "quality-dashboard",
-  "source-quality-trace",
-]);
+type StepReport = ProductionDayStepReport;
 
 loadDotenvIfPresent(".env");
-
-type ProductionDayReport = {
-  readonly schemaVersion: 1;
-  readonly artifactFormat: "reader-summary-production-day-run-v1";
-  readonly generatedBy: string;
-  readonly requestedDate: string;
-  readonly collectionDate: string;
-  readonly model: {
-    readonly liveCollection: boolean;
-    readonly summaryModel:
-      "agent-runtime" | "openai-responses" | "deterministic";
-    readonly physicalModel: "gpt-5.5";
-    readonly reasoningEffort: "xhigh";
-    readonly topicLabeler: "agent-runtime" | "deterministic";
-    readonly writesProductionData: true;
-    readonly allowDegraded: boolean;
-    readonly allowHistorical: boolean;
-    readonly rawProviderPayloadPersistedInReport: false;
-    readonly rawPostTextPersistedInReport: false;
-  };
-  readonly inputs: {
-    readonly periodStartedAt: string;
-    readonly periodEndedAt: string;
-    readonly tenantFingerprint: string | null;
-    readonly workspaceFingerprint: string | null;
-    readonly evidencePath: string;
-    readonly frontendFixturePath: string;
-  };
-  readonly run: {
-    readonly startedAt: string;
-    readonly completedAt: string;
-  };
-  readonly failure: {
-    readonly code: "collection_quality_failed";
-    readonly safeMessage: string;
-  } | null;
-  readonly summary: {
-    readonly evidenceArtifactId: string | null;
-    readonly readerSummaryId: string | null;
-    readonly readerSummaryJobId: string | null;
-    readonly headline: string | null;
-  };
-  readonly steps: readonly StepReport[];
-  readonly stats: {
-    readonly collectedFeedItemCount: number | null;
-    readonly publishedInsideWindowFeedItemCount: number | null;
-    readonly observedButPublishedOutsideWindowFeedItemCount: number | null;
-    readonly duplicateFeedItemCount: number | null;
-    readonly lowRelevanceFeedItemCount: number | null;
-    readonly summaryCandidateFeedItemCount: number | null;
-    readonly selectedFeedItemCount: number | null;
-    readonly topReadCount: number | null;
-    readonly providerCounts: Record<string, number>;
-    readonly xAccountCount: number | null;
-    readonly xAccountTotalCount: number | null;
-    readonly xAccountEligibleCount: number | null;
-    readonly xAccountUsageEventCount: number | null;
-    readonly xAccounts: readonly {
-      readonly accountFingerprint: string;
-      readonly priorityRank: number;
-      readonly prioritySource: string;
-      readonly eligible: boolean;
-      readonly ineligibilityReasonCodes: readonly string[];
-      readonly dailyRequests: number;
-      readonly dailyTweets: number;
-      readonly passSucceededCount: number;
-      readonly passFailedCount: number;
-      readonly rateLimitCount: number;
-      readonly cooldownObservedCount: number;
-      readonly lastUsedAt: string | null;
-      readonly cooldownUntil: string | null;
-    }[];
-  };
-  readonly qualityGates: Record<string, boolean>;
-  readonly blockingPassed: boolean;
-};
 
 const outputPath = "ops/evals/reader-summary-production-day-run.v1.json";
 const update = process.argv.includes("--update");
 const artifactOnly = process.argv.includes("--artifact-only");
-const reuseExistingArtifacts = process.argv.includes(
-  "--reuse-existing-artifacts",
+const executionRequest = resolveProductionDayExecutionRequest(
+  process.argv.slice(2),
 );
-const skipLiveCollection =
-  process.argv.includes("--skip-live-collection") || reuseExistingArtifacts;
+const reuseExistingArtifacts = executionRequest.mode === "historical-reuse";
+const skipLiveCollection = executionRequest.mode === "historical-reuse";
 const allowDegraded = process.argv.includes("--allow-degraded");
 const allowHistorical = process.argv.includes("--allow-historical");
 const collectionDate = artifactOnly ? "1970-01-01" : resolveCollectionDate();
@@ -138,6 +78,11 @@ if (!artifactOnly && summaryModel !== "agent-runtime") {
   );
 }
 const topicLabeler = resolveTopicLabeler();
+if (!artifactOnly && topicLabeler !== "agent-runtime") {
+  throw new Error(
+    "Production reader summary topics must use subscription runtime (agent-runtime)",
+  );
+}
 const periodStartedAt = `${collectionDate}T00:00:00.000Z`;
 const periodEndedAt = nextDate(collectionDate);
 const runtimeArtifactDirectory = resolve(
@@ -162,7 +107,16 @@ const nextFrontendFixturePath = frontendFixturePath.replace(
   /\.json$/u,
   ".next.json",
 );
+const runtimeIdentityPath = join(
+  runtimeArtifactDirectory,
+  `runtime-live-identity-${collectionDate}.v1.json`,
+);
+const nextRuntimeIdentityPath = runtimeIdentityPath.replace(
+  /\.json$/u,
+  ".next.json",
+);
 const datedOutputPath = `ops/evals/reader-summary-production-day-run.${collectionDate}.v1.json`;
+let liveCaptureExecution: ProductionDayCaptureExecution | null = null;
 
 void main().catch((error) => {
   console.error(error);
@@ -177,6 +131,15 @@ async function main(): Promise<void> {
 
   const startedAt = new Date();
   const steps: StepReport[] = [];
+  const historicalReuse =
+    executionRequest.mode === "historical-reuse"
+      ? loadHistoricalReuseProvenance({
+          request: executionRequest,
+          evidencePath,
+          frontendFixturePath,
+          collectionDate,
+        })
+      : null;
 
   steps.push(runNpm("migrate", ["run", "migrate:deploy"]));
   const scope = await readProductionDayScope();
@@ -202,8 +165,7 @@ async function main(): Promise<void> {
   steps.push(collectionStep);
 
   mkdirSync(runtimeArtifactDirectory, { recursive: true });
-  rmSync(nextEvidencePath, { force: true });
-  rmSync(nextFrontendFixturePath, { force: true });
+  isolateCaptureArtifacts();
 
   const collectionQualityStep = runNpm("collection-quality", [
     "run",
@@ -236,11 +198,14 @@ async function main(): Promise<void> {
         code: "collection_quality_failed",
         safeMessage,
       },
+      historicalReuseProvenance: historicalReuse?.provenance ?? null,
     });
     throw new Error(safeMessage);
   }
 
-  const summaryStep = reuseExistingArtifacts
+  const captureExecutionId = randomUUID();
+  const captureStartedAt = new Date();
+  let summaryStep = reuseExistingArtifacts
     ? existingSummaryArtifactStep()
     : runNpm(
         "durable-reader-summary",
@@ -249,6 +214,7 @@ async function main(): Promise<void> {
           DATABASE_URL: yesterdaySocialQualityDatabaseUrl(),
           DURABLE_READER_SUMMARY_MODEL: summaryModel,
           AGENT_RUNTIME_READER_SUMMARY_MODEL: "gpt-5.5",
+          AGENT_RUNTIME_PROVIDER: "codex",
           AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT: "xhigh",
           AGENT_RUNTIME_READER_SUMMARY_TIMEOUT_MS: String(
             READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.summaryModelTimeoutMs,
@@ -281,14 +247,29 @@ async function main(): Promise<void> {
           ),
         },
       );
-  steps.push(summaryStep);
   if (!reuseExistingArtifacts && summaryStep.status === "passed") {
-    replaceArtifact(nextEvidencePath, evidencePath);
-    replaceArtifact(nextFrontendFixturePath, frontendFixturePath);
+    try {
+      liveCaptureExecution = await bindAndPromoteFreshCapture({
+        executionId: captureExecutionId,
+        startedAt: captureStartedAt,
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "unknown artifact failure";
+      console.error(`Fresh durable capture binding failed: ${message}`);
+      summaryStep = {
+        ...summaryStep,
+        command: `${summaryStep.command} -- fresh artifact binding failed`,
+        status: "failed",
+        exitCode: 1,
+      };
+      removeAllLiveCaptureArtifacts();
+    }
   } else {
     rmSync(nextEvidencePath, { force: true });
     rmSync(nextFrontendFixturePath, { force: true });
   }
+  steps.push(summaryStep);
 
   steps.push(
     runNpm("artifact-quality", [
@@ -364,8 +345,18 @@ async function main(): Promise<void> {
     scope,
     includeSummaryEvidence: true,
     failure: null,
+    historicalReuseProvenance: historicalReuse?.provenance ?? null,
   });
 
+  if (
+    executionRequest.mode === "historical-reuse" &&
+    report.qualityGates.historicalReuseEvaluationPassed
+  ) {
+    console.log(
+      "Historical reader summary reuse verified as non-live; production blocking remains false",
+    );
+    return;
+  }
   if (!report.blockingPassed) {
     throw new Error("Reader summary production day run gates failed");
   }
@@ -378,6 +369,7 @@ function persistProductionDayReport(params: {
   readonly scope: { readonly tenantId: string; readonly workspaceId: string };
   readonly includeSummaryEvidence: boolean;
   readonly failure: ProductionDayReport["failure"];
+  readonly historicalReuseProvenance: HistoricalReuseProvenance | null;
 }): ProductionDayReport {
   const report = buildReport(params);
   const serialized = `${JSON.stringify(report, null, 2)}\n`;
@@ -414,13 +406,117 @@ function runNpm(
   };
 }
 
-function replaceArtifact(sourcePath: string, targetPath: string): void {
-  if (!existsSync(sourcePath)) {
-    return;
+function isolateCaptureArtifacts(): void {
+  rmSync(nextEvidencePath, { force: true });
+  rmSync(nextFrontendFixturePath, { force: true });
+  rmSync(nextRuntimeIdentityPath, { force: true });
+  if (!reuseExistingArtifacts) {
+    rmSync(evidencePath, { force: true });
+    rmSync(frontendFixturePath, { force: true });
+    rmSync(runtimeIdentityPath, { force: true });
   }
+}
 
-  rmSync(targetPath, { force: true });
-  renameSync(sourcePath, targetPath);
+function removeAllLiveCaptureArtifacts(): void {
+  for (const path of [
+    nextEvidencePath,
+    nextFrontendFixturePath,
+    evidencePath,
+    frontendFixturePath,
+    nextRuntimeIdentityPath,
+    runtimeIdentityPath,
+  ]) {
+    rmSync(path, { force: true });
+  }
+}
+
+async function bindAndPromoteFreshCapture(params: {
+  readonly executionId: string;
+  readonly startedAt: Date;
+}): Promise<ProductionDayCaptureExecution> {
+  if (!runtimeLiveIdentityProofRequired(executionRequest.mode)) {
+    throw new Error(
+      "Historical artifact reuse cannot create live runtime proof",
+    );
+  }
+  const runtimeHealth = await readActualRuntimeHealth();
+  writeFileSync(
+    nextRuntimeIdentityPath,
+    serializeProductionRuntimeLiveIdentity({
+      schemaVersion: 1,
+      format: "reader-summary-runtime-live-identity-v1",
+      checkedAt: runtimeHealth.checkedAt,
+      status: "serving",
+      runtimeEngine: "subscription-runtime-cli",
+      runtimePackageVersion: runtimeHealth.runtimeVersion,
+      launcherSha256: runtimeHealth.launcherSha256,
+    }),
+  );
+  const capture = {
+    executionId: params.executionId,
+    startedAt: params.startedAt.toISOString(),
+    completedAt: new Date().toISOString(),
+  };
+  const candidates = readRequiredFreshCaptureCandidates({
+    evidencePath: nextEvidencePath,
+    frontendPath: nextFrontendFixturePath,
+    capture,
+  });
+  const attestedEvidence = attachCaptureExecutionEvidence({
+    evidence: candidates.evidence,
+    frontendArtifact: candidates.frontendArtifact,
+    frontendBytes: candidates.frontendBytes,
+    capture,
+    runtimeHealth,
+  });
+  const evidenceBytes = Buffer.from(
+    `${JSON.stringify(attestedEvidence, null, 2)}\n`,
+    "utf8",
+  );
+  writeFileSync(nextEvidencePath, evidenceBytes);
+  const inspection = inspectDurableEvidenceArtifact({
+    evidence: attestedEvidence,
+    evidenceBytes,
+    frontendArtifact: candidates.frontendArtifact,
+    frontendBytes: candidates.frontendBytes,
+    expectedDate: collectionDate,
+    expectedCapture: capture,
+  });
+  if (inspection.binding === null) {
+    throw new Error(inspection.violations.join("; "));
+  }
+  renameSync(nextEvidencePath, evidencePath);
+  renameSync(nextFrontendFixturePath, frontendFixturePath);
+  renameSync(nextRuntimeIdentityPath, runtimeIdentityPath);
+  return capture;
+}
+
+async function readActualRuntimeHealth(): Promise<ProductionDayRuntimeHealth> {
+  const address = process.env.AGENT_RUNTIME_GRPC_ADDRESS?.trim();
+  if (address === undefined || address.length === 0) {
+    throw new Error("AGENT_RUNTIME_GRPC_ADDRESS is required for runtime proof");
+  }
+  const client = GrpcAgentRuntimeClient.connect({
+    address,
+    clock: new SystemClock(),
+    options: {
+      timeoutMs: 5_000,
+      serviceToken:
+        process.env.AGENT_RUNTIME_SERVICE_TOKEN?.trim() || undefined,
+    },
+  });
+  const checkedAt = new Date().toISOString();
+  const identity = await probeProductionRuntimeLiveIdentity({
+    client,
+    checkedAt,
+  });
+  return {
+    status: identity.status,
+    runtimeEngine: identity.runtimeEngine,
+    runtimeVersion: identity.runtimePackageVersion,
+    launcherSha256: identity.launcherSha256,
+    checkedAt,
+  };
 }
 
 function shouldRunCleanDayE2e(): boolean {
@@ -437,7 +533,8 @@ function shouldRunCleanDayE2e(): boolean {
 }
 
 function existingSummaryArtifactStep(): StepReport {
-  const artifactExists = existsSync(evidencePath);
+  const artifactExists =
+    existsSync(evidencePath) && existsSync(frontendFixturePath);
 
   return {
     id: "durable-reader-summary",
@@ -455,197 +552,65 @@ function buildReport(params: {
   readonly scope: { readonly tenantId: string; readonly workspaceId: string };
   readonly includeSummaryEvidence: boolean;
   readonly failure: ProductionDayReport["failure"];
+  readonly historicalReuseProvenance: HistoricalReuseProvenance | null;
 }): ProductionDayReport {
-  const collectionQuality = readJsonIfExists<{
-    readonly dayWindowAudit?: {
-      readonly observedInsideWindowFeedItemCount?: number;
-      readonly publishedInsideWindowFeedItemCount?: number;
-      readonly observedButPublishedOutsideWindowFeedItemCount?: number;
-      readonly duplicateFeedItemCount?: number;
-      readonly lowRelevanceFeedItemCount?: number;
-      readonly summaryCandidateFeedItemCount?: number;
-      readonly providerBreakdown?: readonly {
-        readonly providerKey: string;
-        readonly publishedInsideWindowFeedItemCount?: number;
-      }[];
-    };
-    readonly xAccountPool?: {
-      readonly accountCount?: number;
-      readonly totalAccountCount?: number;
-      readonly eligibleAccountCount?: number;
-      readonly eventCount?: number;
-      readonly accounts?: readonly {
-        readonly accountFingerprint?: string;
-        readonly priorityRank?: number;
-        readonly prioritySource?: string;
-        readonly eligible?: boolean;
-        readonly ineligibilityReasonCodes?: readonly string[];
-        readonly dailyRequests?: number;
-        readonly dailyTweets?: number;
-        readonly passSucceededCount?: number;
-        readonly passFailedCount?: number;
-        readonly rateLimitCount?: number;
-        readonly cooldownObservedCount?: number;
-        readonly lastUsedAt?: string | null;
-        readonly cooldownUntil?: string | null;
-      }[];
-    };
-  }>("ops/evals/yesterday-social-collection-quality-report.v1.json");
-  const durableEvidence = params.includeSummaryEvidence
-    ? readJsonIfExists<{
-        readonly artifactId?: string;
-        readonly result?: {
-          readonly readerSummaryId?: string;
-          readonly readerSummaryJobId?: string;
-          readonly headline?: string;
-          readonly selectedFeedItemCount?: number;
-          readonly topReadCount?: number;
-        };
-      }>(evidencePath)
-    : null;
-  const providerCounts = Object.fromEntries(
-    collectionQuality?.dayWindowAudit?.providerBreakdown?.map((provider) => [
-      provider.providerKey,
-      provider.publishedInsideWindowFeedItemCount ?? 0,
-    ]) ?? [],
+  const collectionQuality = readJsonIfExists<ProductionDayCollectionQuality>(
+    "ops/evals/yesterday-social-collection-quality-report.v1.json",
   );
-  const qualityGates = {
-    allRequiredStepsPassed: params.steps.every((step) =>
-      stepPassedOrAllowedDegraded(step),
-    ),
-    degradedFailuresAreExplicitlyAllowed: params.steps.every(
-      (step) =>
-        step.status !== "failed" ||
-        (allowDegraded && degradedQualityStepIds.has(step.id)),
-    ),
-    collectionQualityReported:
-      collectionQuality?.dayWindowAudit?.publishedInsideWindowFeedItemCount !==
-      undefined,
-    durableSummaryCaptured:
-      durableEvidence?.result?.selectedFeedItemCount !== undefined,
-    durableSummaryPersisted:
-      typeof durableEvidence?.result?.readerSummaryId === "string" &&
-      durableEvidence.result.readerSummaryId.length > 0,
-    xAccountPoolReported:
-      collectionQuality?.xAccountPool?.totalAccountCount !== undefined &&
-      collectionQuality.xAccountPool.eligibleAccountCount !== undefined,
-    reportDateMatchesRequestedDate:
-      collectionDate === periodStartedAt.slice(0, 10),
-    noRawSecretFragments: true,
-    productionFailureAbsent: params.failure === null,
-  };
-  const reportWithoutSecretGate = {
-    schemaVersion: 1,
-    artifactFormat: "reader-summary-production-day-run-v1",
-    generatedBy: "npm run run:reader-summary-production-day",
-    requestedDate: collectionDate,
-    collectionDate,
-    model: {
-      liveCollection: !skipLiveCollection,
-      summaryModel,
-      physicalModel: "gpt-5.5",
-      reasoningEffort: "xhigh",
-      topicLabeler,
-      writesProductionData: true,
-      allowDegraded,
-      allowHistorical,
-      rawProviderPayloadPersistedInReport: false,
-      rawPostTextPersistedInReport: false,
-    },
-    inputs: {
-      periodStartedAt,
-      periodEndedAt,
-      tenantFingerprint: shortFingerprint(params.scope.tenantId),
-      workspaceFingerprint: shortFingerprint(params.scope.workspaceId),
-      evidencePath,
-      frontendFixturePath,
-    },
-    run: {
-      startedAt: params.startedAt.toISOString(),
-      completedAt: params.completedAt.toISOString(),
-    },
-    failure: params.failure,
-    summary: {
-      evidenceArtifactId: durableEvidence?.artifactId ?? null,
-      readerSummaryId: durableEvidence?.result?.readerSummaryId ?? null,
-      readerSummaryJobId: durableEvidence?.result?.readerSummaryJobId ?? null,
-      headline: durableEvidence?.result?.headline ?? null,
-    },
-    steps: params.steps,
-    stats: {
-      collectedFeedItemCount:
-        collectionQuality?.dayWindowAudit?.publishedInsideWindowFeedItemCount ??
-        null,
-      publishedInsideWindowFeedItemCount:
-        collectionQuality?.dayWindowAudit?.publishedInsideWindowFeedItemCount ??
-        null,
-      observedButPublishedOutsideWindowFeedItemCount:
-        collectionQuality?.dayWindowAudit
-          ?.observedButPublishedOutsideWindowFeedItemCount ?? null,
-      duplicateFeedItemCount:
-        collectionQuality?.dayWindowAudit?.duplicateFeedItemCount ?? null,
-      lowRelevanceFeedItemCount:
-        collectionQuality?.dayWindowAudit?.lowRelevanceFeedItemCount ?? null,
-      summaryCandidateFeedItemCount:
-        collectionQuality?.dayWindowAudit?.summaryCandidateFeedItemCount ??
-        null,
-      selectedFeedItemCount:
-        durableEvidence?.result?.selectedFeedItemCount ?? null,
-      topReadCount: durableEvidence?.result?.topReadCount ?? null,
-      providerCounts,
-      xAccountCount: collectionQuality?.xAccountPool?.totalAccountCount ?? null,
-      xAccountTotalCount:
-        collectionQuality?.xAccountPool?.totalAccountCount ?? null,
-      xAccountEligibleCount:
-        collectionQuality?.xAccountPool?.eligibleAccountCount ?? null,
-      xAccountUsageEventCount:
-        collectionQuality?.xAccountPool?.eventCount ?? null,
-      xAccounts:
-        collectionQuality?.xAccountPool?.accounts?.flatMap((account) =>
-          account.accountFingerprint === undefined ||
-          account.priorityRank === undefined
-            ? []
-            : [
-                {
-                  accountFingerprint: account.accountFingerprint,
-                  priorityRank: account.priorityRank,
-                  prioritySource: account.prioritySource ?? "unknown",
-                  eligible: account.eligible === true,
-                  ineligibilityReasonCodes:
-                    account.ineligibilityReasonCodes ?? [],
-                  dailyRequests: account.dailyRequests ?? 0,
-                  dailyTweets: account.dailyTweets ?? 0,
-                  passSucceededCount: account.passSucceededCount ?? 0,
-                  passFailedCount: account.passFailedCount ?? 0,
-                  rateLimitCount: account.rateLimitCount ?? 0,
-                  cooldownObservedCount: account.cooldownObservedCount ?? 0,
-                  lastUsedAt: account.lastUsedAt ?? null,
-                  cooldownUntil: account.cooldownUntil ?? null,
-                },
-              ],
-        ) ?? [],
-    },
-    qualityGates,
-    blockingPassed: false,
-  } satisfies ProductionDayReport;
-  const finalQualityGates = {
-    ...qualityGates,
-    noRawSecretFragments: noRawSecretFragments(reportWithoutSecretGate),
-  };
+  const evidenceArtifact = params.includeSummaryEvidence
+    ? readEvidenceArtifact()
+    : { evidence: null, binding: null };
 
-  return {
-    ...reportWithoutSecretGate,
-    qualityGates: finalQualityGates,
-    blockingPassed: Object.values(finalQualityGates).every(Boolean),
-  };
+  return buildProductionDayReport({
+    executionMode: executionRequest.mode,
+    historicalReuseProvenance: params.historicalReuseProvenance,
+    collectionDate,
+    evidencePath,
+    frontendFixturePath,
+    startedAt: params.startedAt,
+    completedAt: params.completedAt,
+    steps: params.steps,
+    scope: params.scope,
+    collectionQuality,
+    durableEvidence:
+      evidenceArtifact.evidence as ProductionDayDurableEvidence | null,
+    evidenceBinding: evidenceArtifact.binding,
+    liveCaptureExecution,
+    allowDegraded,
+    allowHistorical,
+    failure: params.failure,
+  });
 }
 
-function stepPassedOrAllowedDegraded(step: StepReport): boolean {
-  if (step.status === "passed" || step.status === "skipped") {
-    return true;
+function readEvidenceArtifact(): {
+  readonly evidence: unknown;
+  readonly binding: DurableEvidenceBinding | null;
+} {
+  if (!existsSync(evidencePath) || !existsSync(frontendFixturePath)) {
+    return { evidence: null, binding: null };
   }
-
-  return allowDegraded && degradedQualityStepIds.has(step.id);
+  const bytes = readFileSync(evidencePath);
+  const frontendBytes = readFileSync(frontendFixturePath);
+  const evidence = JSON.parse(bytes.toString("utf8")) as unknown;
+  const frontendArtifact = JSON.parse(
+    frontendBytes.toString("utf8"),
+  ) as unknown;
+  const inspection = inspectDurableEvidenceArtifact({
+    evidence,
+    evidenceBytes: bytes,
+    frontendArtifact,
+    frontendBytes,
+    expectedDate: collectionDate,
+    ...(liveCaptureExecution === null
+      ? {}
+      : { expectedCapture: liveCaptureExecution }),
+  });
+  if (inspection.violations.length > 0) {
+    console.error(
+      `Durable evidence binding failed: ${inspection.violations.join("; ")}`,
+    );
+  }
+  return { evidence, binding: inspection.binding };
 }
 
 async function readProductionDayScope(): Promise<{
@@ -768,10 +733,6 @@ function printStats(report: ProductionDayReport): void {
   }
 }
 
-function shortFingerprint(value: string): string {
-  return createHash("sha256").update(value).digest("hex").slice(0, 12);
-}
-
 function resolveCollectionDate(): string {
   const explicit = readOption("--date");
   if (explicit !== undefined) {
@@ -790,7 +751,8 @@ function resolveCollectionDate(): string {
   throw new Error("Provide --date YYYY-MM-DD, --today or --yesterday");
 }
 
-function resolveSummaryModel(): ProductionDayReport["model"]["summaryModel"] {
+function resolveSummaryModel():
+  "agent-runtime" | "openai-responses" | "deterministic" {
   const value = readOption("--summary-model") ?? "agent-runtime";
   if (
     value === "agent-runtime" ||
@@ -805,7 +767,7 @@ function resolveSummaryModel(): ProductionDayReport["model"]["summaryModel"] {
   );
 }
 
-function resolveTopicLabeler(): ProductionDayReport["model"]["topicLabeler"] {
+function resolveTopicLabeler(): "agent-runtime" | "deterministic" {
   const value = readOption("--topic-labeler") ?? "agent-runtime";
   if (value === "agent-runtime" || value === "deterministic") {
     return value;
@@ -819,21 +781,46 @@ function validateExistingReport(): void {
     throw new Error(`${outputPath} is missing`);
   }
 
-  const report = readJsonIfExists<ProductionDayReport>(outputPath);
-  if (report === null) {
+  const report = readJsonIfExists<unknown>(outputPath);
+  if (
+    !isRecord(report) ||
+    !isRecord(report.inputs) ||
+    typeof report.requestedDate !== "string" ||
+    typeof report.inputs.evidencePath !== "string" ||
+    !existsSync(report.inputs.evidencePath) ||
+    typeof report.inputs.frontendFixturePath !== "string" ||
+    !existsSync(report.inputs.frontendFixturePath)
+  ) {
     throw new Error(`${outputPath} is missing`);
   }
-  const valid =
-    report.schemaVersion === 1 &&
-    report.artifactFormat === "reader-summary-production-day-run-v1" &&
-    report.blockingPassed === true &&
-    noRawSecretFragments(report);
+  const evidenceBytes = readFileSync(report.inputs.evidencePath);
+  const frontendBytes = readFileSync(report.inputs.frontendFixturePath);
+  const evidence = JSON.parse(evidenceBytes.toString("utf8")) as unknown;
+  const frontendArtifact = JSON.parse(
+    frontendBytes.toString("utf8"),
+  ) as unknown;
+  const inspection = inspectDurableEvidenceArtifact({
+    evidence,
+    evidenceBytes,
+    frontendArtifact,
+    frontendBytes,
+    expectedDate: report.requestedDate,
+  });
+  const violations =
+    inspection.binding === null
+      ? inspection.violations
+      : validateLiveProductionDayReport({
+          report,
+          binding: inspection.binding,
+          expectedDate: report.requestedDate,
+        });
+  const valid = violations.length === 0 && noRawSecretFragments(report);
 
   if (!valid) {
     throw new Error(`${outputPath} failed validation`);
   }
 
-  printStats(report);
+  printStats(report as ProductionDayReport);
 }
 
 function readJsonIfExists<TValue>(path: string): TValue | null {

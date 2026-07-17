@@ -64,6 +64,8 @@ import {
 
 import { loadDotenvIfPresent } from "./lib/env-file";
 import { writeLiveEvidenceArtifactAtomically } from "./lib/live-evidence-artifact";
+import { DurableReaderSummaryExecutionAttestationCapture } from "./lib/reader-summary-execution-attestation-capture";
+import { canonicalJsonSha256 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
 
 const databaseUrlEnv = "DATABASE_URL";
 const evidencePathEnv = "DURABLE_READER_SUMMARY_EVIDENCE_PATH";
@@ -128,15 +130,16 @@ async function main(): Promise<void> {
     modelMode === "agent-runtime" || topicLabelerMode === "agent-runtime"
       ? buildAgentRuntimeClient()
       : null;
+  const executionAttestations =
+    new DurableReaderSummaryExecutionAttestationCapture();
 
   const runtimePoolConfig = defaultPostgresRuntimePoolConfig(
     databaseUrl,
     "daily-runner",
   );
   const feedConnection = await PrismaFeedConnection.create(runtimePoolConfig);
-  const summaryConnection = await PrismaSummaryConnection.create(
-    runtimePoolConfig,
-  );
+  const summaryConnection =
+    await PrismaSummaryConnection.create(runtimePoolConfig);
 
   try {
     const feedItems = new PrismaFeedItemReadRepository(feedConnection);
@@ -223,13 +226,21 @@ async function main(): Promise<void> {
       readerSummaryArtifacts,
       readerSummaryPolicies,
       evidenceSelector,
-      buildReaderSummaryModel(modelMode, agentRuntimeClient),
+      buildReaderSummaryModel(
+        modelMode,
+        agentRuntimeClient,
+        executionAttestations,
+      ),
       new PrismaReaderSummaryPublication(summaryConnection),
       ids,
       clock,
       undefined,
       undefined,
-      buildTopicMapBuilder(topicLabelerMode, agentRuntimeClient),
+      buildTopicMapBuilder(
+        topicLabelerMode,
+        agentRuntimeClient,
+        executionAttestations,
+      ),
       undefined,
       new PrismaReaderSummaryGitHubProjectionReader(summaryConnection),
     );
@@ -295,6 +306,14 @@ async function main(): Promise<void> {
       status: "fresh",
       checkedAt: clock.now(),
     });
+    const executionAttestationRecords = executionAttestations.all();
+    const durableReadback = {
+      summaryContentSha256: canonicalJsonSha256(frontendArtifact.content),
+      topicMapSha256: canonicalJsonSha256(frontendArtifact.content.topicMap),
+      executionAttestationSetSha256: canonicalJsonSha256(
+        executionAttestationRecords,
+      ),
+    };
     const evidence = {
       schemaVersion: 1,
       artifactId: "durable-reader-summary-postgres-evidence-v1",
@@ -328,6 +347,8 @@ async function main(): Promise<void> {
         topProviderKeys: frontendArtifact.coverage.topProviderKeys,
         qualityFlags: frontendArtifact.qualityFlags,
       },
+      executionAttestations: executionAttestationRecords,
+      durableReadback,
       redaction: {
         secretsIncluded: false,
         rawProviderPayloadIncluded: false,
@@ -401,18 +422,20 @@ class AllowingSummaryQuota implements SummaryQuotaPort {
 const buildReaderSummaryModel = (
   mode: DurableReaderSummaryModelMode,
   agentRuntimeClient: GrpcAgentRuntimeClient | null,
+  executionAttestations: DurableReaderSummaryExecutionAttestationCapture,
 ): ReaderSummaryModelPort => {
   if (mode === "deterministic") {
     return new DeterministicReaderSummaryModelAdapter();
   }
 
   if (mode === "agent-runtime") {
-    return new AgentRuntimeReaderSummaryModelAdapter(
-      resolveAgentRuntimeReaderSummaryModelOptions(
+    return new AgentRuntimeReaderSummaryModelAdapter({
+      ...resolveAgentRuntimeReaderSummaryModelOptions(
         process.env,
         requireAgentRuntimeClient(agentRuntimeClient),
       ),
-    );
+      verifiedAttestationSink: executionAttestations,
+    });
   }
 
   return new OpenAiResponsesReaderSummaryModelAdapter(
@@ -425,6 +448,7 @@ const buildReaderSummaryModel = (
 const buildTopicMapBuilder = (
   mode: DurableReaderSummaryTopicLabelerMode,
   agentRuntimeClient: GrpcAgentRuntimeClient | null,
+  executionAttestations: DurableReaderSummaryExecutionAttestationCapture,
 ): BuildReaderSummaryTopicMapUseCase => {
   const publicationAudit = buildTopicMapPublicationAudit();
 
@@ -432,18 +456,20 @@ const buildTopicMapBuilder = (
     ? new BuildReaderSummaryTopicMapUseCase({
         mode: "agent-runtime",
         publicationAudit,
-        labeler: new AgentRuntimeReaderSummaryTopicLabeler(
-          resolveAgentRuntimeReaderSummaryTopicLabelerOptions(
+        labeler: new AgentRuntimeReaderSummaryTopicLabeler({
+          ...resolveAgentRuntimeReaderSummaryTopicLabelerOptions(
             process.env,
             requireAgentRuntimeClient(agentRuntimeClient),
           ),
-        ),
-        relationVerifier: new AgentRuntimeReaderSummaryTopicRelationVerifier(
-          resolveAgentRuntimeReaderSummaryTopicRelationVerifierOptions(
+          verifiedAttestationSink: executionAttestations,
+        }),
+        relationVerifier: new AgentRuntimeReaderSummaryTopicRelationVerifier({
+          ...resolveAgentRuntimeReaderSummaryTopicRelationVerifierOptions(
             process.env,
             requireAgentRuntimeClient(agentRuntimeClient),
           ),
-        ),
+          verifiedAttestationSink: executionAttestations,
+        }),
       })
     : new BuildReaderSummaryTopicMapUseCase({ publicationAudit });
 };

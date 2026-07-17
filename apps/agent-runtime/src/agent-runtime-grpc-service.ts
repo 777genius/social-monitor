@@ -1,7 +1,12 @@
-import { status, type sendUnaryData, type ServerUnaryCall } from "@grpc/grpc-js";
+import {
+  status,
+  type sendUnaryData,
+  type ServerUnaryCall,
+} from "@grpc/grpc-js";
 import {
   AgentRuntimeHealthStatus,
   AgentRuntimeProvider,
+  AgentRuntimeSelectedOutputKind,
   type AgentRuntimeHealthRequest,
   type AgentRuntimeHealthResponse,
   type AgentRuntimeServiceServer,
@@ -65,7 +70,10 @@ export const createAgentRuntimeGrpcService = (
   },
 
   checkHealth(
-    call: ServerUnaryCall<AgentRuntimeHealthRequest, AgentRuntimeHealthResponse>,
+    call: ServerUnaryCall<
+      AgentRuntimeHealthRequest,
+      AgentRuntimeHealthResponse
+    >,
     callback: sendUnaryData<AgentRuntimeHealthResponse>,
   ): void {
     if (!isAuthorized(call, options.serviceToken)) {
@@ -81,6 +89,7 @@ export const createAgentRuntimeGrpcService = (
             : AgentRuntimeHealthStatus.AGENT_RUNTIME_HEALTH_STATUS_DEGRADED,
           runtimeEngine: health.runtimeEngine,
           runtimeVersion: health.runtimeVersion,
+          launcherSha256: health.launcherSha256 ?? "",
           warnings: health.warnings.map((warning) => ({
             code: warning.code,
             message: warning.message,
@@ -92,6 +101,7 @@ export const createAgentRuntimeGrpcService = (
             AgentRuntimeHealthStatus.AGENT_RUNTIME_HEALTH_STATUS_NOT_SERVING,
           runtimeEngine: "subscription-runtime-cli",
           runtimeVersion: "unknown",
+          launcherSha256: "",
           warnings: [
             {
               code: "agent_runtime.health_failed",
@@ -180,6 +190,33 @@ const toGrpcTaskResponse = (
           causeCategory: result.failure.causeCategory,
           details: result.failure.details,
         },
+  executionAttestation:
+    result.executionAttestation === undefined
+      ? undefined
+      : {
+          schemaVersion: result.executionAttestation.schemaVersion,
+          requestId: result.executionAttestation.requestId,
+          purpose: result.executionAttestation.purpose,
+          canonicalRequestSha256:
+            result.executionAttestation.canonicalRequestSha256,
+          provider:
+            result.executionAttestation.provider === "codex"
+              ? AgentRuntimeProvider.AGENT_RUNTIME_PROVIDER_CODEX
+              : AgentRuntimeProvider.AGENT_RUNTIME_PROVIDER_CLAUDE,
+          model: result.executionAttestation.model,
+          reasoningEffort: result.executionAttestation.reasoningEffort,
+          runtimeEngine: result.executionAttestation.runtimeEngine,
+          runtimePackageVersion:
+            result.executionAttestation.runtimePackageVersion,
+          launcherSha256: result.executionAttestation.launcherSha256,
+          selectedOutputKind:
+            result.executionAttestation.selectedOutputKind ===
+            "structured_output"
+              ? AgentRuntimeSelectedOutputKind.AGENT_RUNTIME_SELECTED_OUTPUT_KIND_STRUCTURED_OUTPUT
+              : AgentRuntimeSelectedOutputKind.AGENT_RUNTIME_SELECTED_OUTPUT_KIND_OUTPUT_TEXT,
+          selectedOutputSha256:
+            result.executionAttestation.selectedOutputSha256,
+        },
 });
 
 const fromGrpcProvider = (
@@ -221,8 +258,10 @@ const isAuthorized = (
   return authorization.includes(`Bearer ${serviceToken}`);
 };
 
-const serviceError = (code: status, message: string): Error & { code: status } =>
-  Object.assign(new Error(message), { code });
+const serviceError = (
+  code: status,
+  message: string,
+): Error & { code: status } => Object.assign(new Error(message), { code });
 
 const optionalString = (value: string): string | undefined => {
   const trimmed = value.trim();

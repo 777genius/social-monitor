@@ -25,10 +25,14 @@ import {
   agentRuntimeReaderSummaryStoryRelationVerifierJsonSchema,
   buildAgentRuntimeReaderSummaryStoryRelationVerifierPrompt,
 } from "./agent-runtime-reader-summary-story-relation-verifier-prompt";
+import {
+  verifyAndRecordReaderSummaryExecution,
+  type VerifiedReaderSummaryExecutionAttestationSink,
+} from "./reader-summary-execution-attestation";
 
 export type AgentRuntimeReaderSummaryStoryRelationVerifierOptions = Pick<
   AgentRuntimeReaderSummaryModelAdapterOptions,
-  "client" | "agentProvider" | "providerInstanceId"
+  "client" | "agentProvider" | "providerInstanceId" | "verifiedAttestationSink"
 > & {
   readonly model?: string;
   readonly promptVersion?: string;
@@ -49,6 +53,7 @@ export class AgentRuntimeReaderSummaryStoryRelationVerifier implements ReaderSum
   private readonly promptVersion: string;
   private readonly timeoutMs: number;
   private readonly maxOutputTokens: number;
+  private readonly verifiedAttestationSink?: VerifiedReaderSummaryExecutionAttestationSink;
 
   constructor(options: AgentRuntimeReaderSummaryStoryRelationVerifierOptions) {
     this.client = options.client;
@@ -67,6 +72,7 @@ export class AgentRuntimeReaderSummaryStoryRelationVerifier implements ReaderSum
       options.maxOutputTokens,
       defaultMaxOutputTokens,
     );
+    this.verifiedAttestationSink = options.verifiedAttestationSink;
   }
 
   async verify(
@@ -75,7 +81,7 @@ export class AgentRuntimeReaderSummaryStoryRelationVerifier implements ReaderSum
     if (input.candidates.length === 0) {
       return [];
     }
-    const result = await this.client.runTask({
+    const command = {
       requestId: buildAgentRuntimeRequestId(
         "reader-summary-story-relations",
         input.tenantId,
@@ -110,14 +116,24 @@ export class AgentRuntimeReaderSummaryStoryRelationVerifier implements ReaderSum
         adapter: "agent-runtime-reader-summary-story-relation-verifier",
         promptVersion: this.promptVersion,
       },
-    });
+    } as const;
+    const result = await this.client.runTask(command);
     const raw = readAgentRuntimeObjectOutput(
       result,
       parseJsonObject,
       "Reader summary story relation verifier",
     );
 
-    return normalizeDecisions(raw, input);
+    const decisions = normalizeDecisions(raw, input);
+    await verifyAndRecordReaderSummaryExecution({
+      command,
+      result,
+      taskRole: "story_relation",
+      attempt: "primary",
+      normalizedOutput: decisions,
+      sink: this.verifiedAttestationSink,
+    });
+    return decisions;
   }
 }
 
