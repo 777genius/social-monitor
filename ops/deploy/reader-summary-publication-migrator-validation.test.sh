@@ -2,16 +2,10 @@
 { set +x; } 2>/dev/null
 set -euo pipefail
 
-if [[ ${PUBLICATION_MIGRATOR_VALIDATION_LINE_TRACE:-0} == 1 ]]; then
-  exec 9>&2
-  set -T
-  trap 'printf "publication-migrator-validation-line:%s\n" "$LINENO" >&9' DEBUG
-fi
-
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 LIBRARY=$SCRIPT_DIR/reader-summary-publication-deploy-lib.sh
 DEPLOY_ENTRYPOINT=$SCRIPT_DIR/social-monitor-production-deploy.sh
-FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/publication-migrator-validation.XXXXXX")
+FIXTURE=$(mktemp -d /tmp/publication-migrator-validation.XXXXXX)
 trap 'rm -rf "$FIXTURE"' EXIT
 
 ROOT=$FIXTURE/root
@@ -39,6 +33,8 @@ TEST_COUNT=0
 mkdir -p "$ROOT/secrets/db" "$REPO/ops/deploy"
 printf '%s\n' 'test-only-ca-certificate' > "$CA_CERTIFICATE"
 cp "$SCRIPT_DIR/deploy-control-lib.sh" "$REPO/ops/deploy/"
+cp "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" "$REPO/ops/deploy/"
+cp "$DEPLOY_ENTRYPOINT" "$REPO/ops/deploy/"
 
 fail() {
   printf 'deploy-error: %s\n' "$*" >&2
@@ -353,20 +349,23 @@ assert_invalid_catalog unexpected-role-membership "$(catalog_with_field 17 1)"
 assert_deploy_backend_preflight_order() {
   local mode=$1
   local expected=$2
+  local actual
+  local orchestration_output
   local orchestration_log=$FIXTURE/orchestration-$mode.log
   local counter=$FIXTURE/orchestration-$mode.count
   : > "$orchestration_log"
   printf '0\n' > "$counter"
   set +e
-  SOCIAL_MONITOR_DEPLOY_TEST_MODE=1 \
-  SOCIAL_MONITOR_DEPLOY_ROOT="$ROOT" \
-  SOCIAL_MONITOR_DEPLOY_REPO="$REPO" \
-  SOCIAL_MONITOR_DEPLOY_CONTROL="$ROOT/control" \
-  SOCIAL_MONITOR_DEPLOY_STATE="$ROOT/control/deploy-state" \
-  ORCHESTRATION_LOG="$orchestration_log" \
-  ORCHESTRATION_COUNTER="$counter" \
-  ORCHESTRATION_MODE="$mode" \
-    bash -c '
+  orchestration_output=$(
+    SOCIAL_MONITOR_DEPLOY_TEST_MODE=1 \
+    SOCIAL_MONITOR_DEPLOY_ROOT="$ROOT" \
+    SOCIAL_MONITOR_DEPLOY_REPO="$REPO" \
+    SOCIAL_MONITOR_DEPLOY_CONTROL="$ROOT/control" \
+    SOCIAL_MONITOR_DEPLOY_STATE="$ROOT/control/deploy-state" \
+    ORCHESTRATION_LOG="$orchestration_log" \
+    ORCHESTRATION_COUNTER="$counter" \
+    ORCHESTRATION_MODE="$mode" \
+      bash -c '
       set -euo pipefail
       source "$1"
       source "$2"
@@ -396,11 +395,18 @@ assert_deploy_backend_preflight_order() {
       }
       COMPOSE=(fake_compose)
       deploy_backend fedcba9876543210fedcba9876543210fedcba98
-    ' _ "$DEPLOY_ENTRYPOINT" "$LIBRARY" >/dev/null 2>&1
+      ' _ "$DEPLOY_ENTRYPOINT" "$LIBRARY" 2>&1
+  )
   local status=$?
   set -e
   ((status != 0))
-  [[ $(< "$orchestration_log") == "$expected" ]]
+  assert_redacted "$orchestration_output" "$VALID_URL"
+  actual=$(< "$orchestration_log")
+  if [[ $actual != "$expected" ]]; then
+    printf 'validation-orchestration-mismatch:%s:status=%s:actual=%q:output=%q\n' \
+      "$mode" "$status" "$actual" "$orchestration_output" >&2
+    return 1
+  fi
   TEST_COUNT=$((TEST_COUNT + 1))
 }
 
