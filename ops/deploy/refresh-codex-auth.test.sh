@@ -1,19 +1,34 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 if ((EUID == 0)); then
   command -v setpriv >/dev/null || {
     echo 'Subscription auth refresh fixture requires setpriv when run as root' >&2
     exit 1
   }
+  relocated_root=$(mktemp -d \
+    "${TMPDIR:-/tmp}/social-monitor-auth-refresh-source.XXXXXX")
+  install -d "$relocated_root/host"
+  install -m 0644 "$0" "$relocated_root/refresh-codex-auth.test.sh"
+  install -m 0755 "$SCRIPT_DIR/host/refresh-codex-auth.sh" \
+    "$relocated_root/host/refresh-codex-auth.sh"
+  chown -R 65534:65534 "$relocated_root"
   exec setpriv --reuid=65534 --regid=65534 --clear-groups \
-    env PATH="$PATH" TMPDIR=/tmp bash "$0" "$@"
+    env PATH="$PATH" TMPDIR=/tmp \
+      SOCIAL_MONITOR_AUTH_REFRESH_RELOCATED_ROOT="$relocated_root" \
+      bash "$relocated_root/refresh-codex-auth.test.sh" "$@"
 fi
 
-SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 ENTRYPOINT=$SCRIPT_DIR/host/refresh-codex-auth.sh
 FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/social-monitor-auth-refresh-test.XXXXXX")
-trap 'rm -rf "$FIXTURE"' EXIT
+cleanup() {
+  rm -rf "$FIXTURE"
+  if [[ -n ${SOCIAL_MONITOR_AUTH_REFRESH_RELOCATED_ROOT:-} ]]; then
+    rm -rf "$SOCIAL_MONITOR_AUTH_REFRESH_RELOCATED_ROOT"
+  fi
+}
+trap cleanup EXIT
 
 AUTH_ROOT=$FIXTURE/auth
 TARGET_DIR=$FIXTURE/target
