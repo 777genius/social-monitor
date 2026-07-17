@@ -525,6 +525,12 @@ backend_services() {
     if changed_between "$from" "$to" apps/social-research-runtime; then
       services+=(api)
     fi
+    if changed_between "$from" "$to" \
+      ops/deploy/reader-summary-publication-deploy-lib.sh \
+      ops/deploy/reader-summary-publication-pre-migration.sql \
+      ops/deploy/reader-summary-publication-post-migration.sql; then
+      services+=(migrate)
+    fi
     if changed_between "$from" "$to" scripts ops/evals test; then
       services+=(daily-runner)
     fi
@@ -787,6 +793,15 @@ deploy_backend() (
   mapfile -t captured_services < <(
     printf '%s\n' "${services[@]}" "${persistent[@]}" | awk 'NF && !seen[$0]++'
   )
+  local needs_migrate=false
+  for service in "${services[@]}"; do
+    [[ $service == x-collector || $service == daily-runner ]] || \
+      needs_migrate=true
+  done
+  if [[ $needs_migrate == true ]]; then
+    reader_summary_publication_migrator_preflight || \
+      fail 'reader summary publication migrator preflight failed'
+  fi
 
   local previous=$STATE/previous-images-${sha:0:12}.txt
   capture_previous_images "$previous" "${captured_services[@]}"
@@ -802,10 +817,6 @@ deploy_backend() (
     "${COMPOSE[@]}" --profile daily build daily-runner
   fi
 
-  local needs_migrate=false
-  for service in "${services[@]}"; do
-    [[ $service == x-collector || $service == daily-runner ]] || needs_migrate=true
-  done
   if [[ $needs_migrate == true ]]; then
     deploy_reader_summary_publication_migrations
   fi

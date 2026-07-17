@@ -51,10 +51,12 @@ BEGIN
     SELECT 1 FROM pg_roles
     WHERE rolname = 'social_monitor_reader_summary_publication_owner'
   ) THEN
+    PERFORM pg_catalog.set_config('createrole_self_grant', 'set', true);
     EXECUTE 'CREATE ROLE social_monitor_reader_summary_publication_owner '
       'NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT '
       'NOREPLICATION NOBYPASSRLS';
   END IF;
+  PERFORM pg_catalog.set_config('createrole_self_grant', '', true);
   SELECT * INTO v_role FROM pg_roles
   WHERE rolname = 'social_monitor_reader_summary_publication_owner';
   IF v_role.rolcanlogin OR v_role.rolsuper OR v_role.rolcreatedb
@@ -79,10 +81,6 @@ BEGIN
     RAISE EXCEPTION 'reader summary publication runtime role is unsafe';
   END IF;
 
-  EXECUTE format(
-    'GRANT social_monitor_reader_summary_publication_owner TO %I',
-    current_user
-  );
   EXECUTE format(
     'GRANT USAGE, CREATE ON SCHEMA public TO %I',
     current_user
@@ -114,7 +112,18 @@ BEGIN
   END IF;
 
   EXECUTE format(
-    'GRANT social_monitor_reader_summary_publication_runtime TO %I',
+    'GRANT social_monitor_reader_summary_publication_runtime TO %I '
+      'WITH ADMIN FALSE GRANTED BY CURRENT_USER',
+    v_runtime_role
+  );
+  EXECUTE format(
+    'GRANT social_monitor_reader_summary_publication_runtime TO %I '
+      'WITH INHERIT TRUE GRANTED BY CURRENT_USER',
+    v_runtime_role
+  );
+  EXECUTE format(
+    'GRANT social_monitor_reader_summary_publication_runtime TO %I '
+      'WITH SET FALSE GRANTED BY CURRENT_USER',
     v_runtime_role
   );
   IF EXISTS (
@@ -127,6 +136,100 @@ BEGIN
       AND member.rolname NOT IN (v_runtime_role, current_user)
   ) THEN
     RAISE EXCEPTION 'publication capability has an unreviewed member';
+  END IF;
+  IF (
+    SELECT count(*) <> 2
+      OR count(*) FILTER (
+        WHERE membership.admin_option
+          AND NOT membership.inherit_option
+          AND NOT membership.set_option
+          AND grantor.rolsuper
+      ) <> 1
+      OR count(*) FILTER (
+        WHERE NOT membership.admin_option
+          AND NOT membership.inherit_option
+          AND membership.set_option
+          AND grantor.rolname = current_user
+      ) <> 1
+    FROM pg_auth_members membership
+    JOIN pg_roles granted ON granted.oid = membership.roleid
+    JOIN pg_roles member ON member.oid = membership.member
+    JOIN pg_roles grantor ON grantor.oid = membership.grantor
+    WHERE granted.rolname =
+      'social_monitor_reader_summary_publication_owner'
+      AND member.rolname = current_user
+  ) THEN
+    RAISE EXCEPTION 'publication owner membership is unsafe';
+  END IF;
+  IF (
+    SELECT count(*) <> 1 OR NOT bool_and(
+      membership.admin_option
+      AND NOT membership.inherit_option
+      AND NOT membership.set_option
+      AND grantor.rolsuper
+    )
+    FROM pg_auth_members membership
+    JOIN pg_roles granted ON granted.oid = membership.roleid
+    JOIN pg_roles member ON member.oid = membership.member
+    JOIN pg_roles grantor ON grantor.oid = membership.grantor
+    WHERE granted.rolname =
+      'social_monitor_reader_summary_publication_runtime'
+      AND member.rolname = current_user
+  ) THEN
+    RAISE EXCEPTION 'publication capability admin membership is unsafe';
+  END IF;
+  IF (
+    SELECT count(*) <> 1 OR NOT bool_and(
+      NOT membership.admin_option
+      AND membership.inherit_option
+      AND NOT membership.set_option
+      AND grantor.rolname = current_user
+    )
+    FROM pg_auth_members membership
+    JOIN pg_roles granted ON granted.oid = membership.roleid
+    JOIN pg_roles member ON member.oid = membership.member
+    JOIN pg_roles grantor ON grantor.oid = membership.grantor
+    WHERE granted.rolname =
+      'social_monitor_reader_summary_publication_runtime'
+      AND member.rolname = v_runtime_role
+  ) THEN
+    RAISE EXCEPTION 'publication capability runtime membership is unsafe';
+  END IF;
+  IF (
+    SELECT count(*) <> 1 OR NOT bool_and(
+      membership.admin_option
+      AND NOT membership.inherit_option
+      AND membership.set_option
+      AND (
+        grantor.rolsuper OR (
+          grantor.rolcreaterole
+          AND grantor.rolname NOT IN (
+            current_user,
+            v_runtime_role,
+            'social_monitor_reader_summary_publication_owner',
+            'social_monitor_reader_summary_publication_runtime'
+          )
+          AND EXISTS (
+            SELECT 1
+            FROM pg_auth_members provisioner_membership
+            JOIN pg_roles root_grantor
+              ON root_grantor.oid = provisioner_membership.grantor
+            WHERE provisioner_membership.roleid = membership.roleid
+              AND provisioner_membership.member = membership.grantor
+              AND provisioner_membership.admin_option
+              AND root_grantor.rolsuper
+          )
+        )
+      )
+    )
+    FROM pg_auth_members membership
+    JOIN pg_roles granted ON granted.oid = membership.roleid
+    JOIN pg_roles member ON member.oid = membership.member
+    JOIN pg_roles grantor ON grantor.oid = membership.grantor
+    WHERE granted.rolname = v_runtime_role
+      AND member.rolname = current_user
+  ) THEN
+    RAISE EXCEPTION 'runtime admin membership grantor is unsafe';
   END IF;
 END
 $bootstrap$;
@@ -189,14 +292,28 @@ BEGIN
 
   IF v_artifact_owner = v_job_owner AND v_job_owner <> v_admin_role THEN
     EXECUTE format(
-      'GRANT social_monitor_reader_summary_publication_owner TO %I',
+      'GRANT social_monitor_reader_summary_publication_owner TO %I '
+        'WITH ADMIN FALSE',
+      v_job_owner
+    );
+    EXECUTE format(
+      'GRANT social_monitor_reader_summary_publication_owner TO %I '
+        'WITH INHERIT FALSE',
+      v_job_owner
+    );
+    EXECUTE format(
+      'GRANT social_monitor_reader_summary_publication_owner TO %I '
+        'WITH SET TRUE',
       v_job_owner
     );
     v_temporary_owner_membership := TRUE;
   END IF;
 
   IF v_job_owner <> v_admin_role THEN
-    EXECUTE format('GRANT %I TO %I', v_job_owner, v_admin_role);
+    IF NOT pg_has_role(v_admin_role, v_job_owner, 'SET') THEN
+      RAISE EXCEPTION
+        'migration admin lacks the pre-provisioned SET membership';
+    END IF;
     EXECUTE format('SET LOCAL ROLE %I', v_job_owner);
     v_switched_role := TRUE;
   END IF;
@@ -212,9 +329,9 @@ BEGIN
       OWNER TO social_monitor_reader_summary_publication_owner;
   END IF;
 
-  GRANT SELECT, UPDATE ON TABLE public.reader_summary_jobs
+  GRANT SELECT, UPDATE, REFERENCES ON TABLE public.reader_summary_jobs
     TO social_monitor_reader_summary_publication_owner;
-  GRANT SELECT, INSERT ON TABLE public.outbox_events
+  GRANT SELECT, INSERT, REFERENCES ON TABLE public.outbox_events
     TO social_monitor_reader_summary_publication_owner;
   EXECUTE format(
     'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE '

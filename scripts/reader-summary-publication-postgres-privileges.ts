@@ -34,6 +34,87 @@ export const grantPublicationFixtureRuntimePrivileges = async (
   );
 };
 
+export const grantLegacyMigrationOwnership = async (
+  databaseUrl: string,
+  applicationRole: string,
+): Promise<void> => {
+  const admin = new Pool({ connectionString: databaseUrl, max: 1 });
+  try {
+    await admin.query(
+      `GRANT USAGE, CREATE ON SCHEMA public
+         TO ${quoteIdentifier(applicationRole)}`,
+    );
+  } finally {
+    await admin.end();
+  }
+};
+
+export const createPublicationFixtureRuntimeRole = async (params: {
+  readonly databaseName: string;
+  readonly migrationAdminRole: string;
+  readonly runtimePassword: string;
+  readonly runtimeRole: string;
+  readonly serverAdminDatabaseUrl: string;
+}): Promise<void> => {
+  const serverAdmin = new Pool({
+    connectionString: params.serverAdminDatabaseUrl,
+    max: 1,
+  });
+  const provisionerRole = publicationFixtureProvisionerRole(params.runtimeRole);
+  const provisioner = new Pool({
+    connectionString: publicationRuntimeDatabaseUrl(
+      params.serverAdminDatabaseUrl,
+      provisionerRole,
+      params.runtimePassword,
+    ),
+    max: 1,
+  });
+  let provisionerCreated = false;
+  let runtimeCreated = false;
+  try {
+    await serverAdmin.query(
+      `CREATE ROLE ${quoteIdentifier(provisionerRole)} LOGIN PASSWORD ${quoteLiteral(params.runtimePassword)}
+       NOSUPERUSER NOCREATEDB CREATEROLE INHERIT NOREPLICATION NOBYPASSRLS`,
+    );
+    provisionerCreated = true;
+    await provisioner.query(
+      `CREATE ROLE ${quoteIdentifier(params.runtimeRole)} LOGIN PASSWORD ${quoteLiteral(params.runtimePassword)}
+       NOSUPERUSER NOCREATEDB NOCREATEROLE INHERIT NOREPLICATION NOBYPASSRLS`,
+    );
+    runtimeCreated = true;
+    await serverAdmin.query(
+      `GRANT CONNECT, CREATE ON DATABASE ${quoteIdentifier(params.databaseName)}
+         TO ${quoteIdentifier(params.runtimeRole)}`,
+    );
+    for (const membershipOption of [
+      "ADMIN TRUE",
+      "INHERIT FALSE",
+      "SET TRUE",
+    ]) {
+      await provisioner.query(
+        `GRANT ${quoteIdentifier(params.runtimeRole)}
+          TO ${quoteIdentifier(params.migrationAdminRole)}
+          WITH ${membershipOption}`,
+      );
+    }
+  } catch (error) {
+    if (runtimeCreated) {
+      await serverAdmin.query(
+        `DROP ROLE ${quoteIdentifier(params.runtimeRole)}`,
+      ).catch(() => undefined);
+    }
+    if (provisionerCreated) {
+      await serverAdmin.query(
+        `DROP ROLE ${quoteIdentifier(provisionerRole)}`,
+      ).catch(() => undefined);
+    }
+    throw error;
+  } finally {
+    await provisioner.end();
+    await serverAdmin.end();
+  }
+};
+
 export const assertPreMigrationArtifactRuntimeContinuity = async (
   runtimeDatabaseUrl: string,
 ): Promise<void> => {
@@ -160,6 +241,213 @@ export const assertPreMigrationArtifactRuntimeContinuity = async (
   }
 };
 
+export const assertPublicationRoleMemberships = async (
+  databaseUrl: string,
+  migrationAdminRole: string,
+  runtimeRole: string,
+): Promise<void> => {
+  const admin = new Pool({ connectionString: databaseUrl, max: 1 });
+  try {
+    const memberships = await admin.query<{
+      readonly admin_option: boolean;
+      readonly grantor_bootstrap_backed: boolean;
+      readonly grantor_createrole: boolean;
+      readonly grantor_role: string;
+      readonly grantor_superuser: boolean;
+      readonly granted_role: string;
+      readonly inherit_option: boolean;
+      readonly member_role: string;
+      readonly set_option: boolean;
+    }>(
+      `SELECT granted.rolname AS granted_role,
+              member.rolname AS member_role,
+              membership.admin_option,
+              membership.inherit_option,
+              membership.set_option,
+              grantor.rolname AS grantor_role,
+              grantor.rolsuper AS grantor_superuser,
+              grantor.rolcreaterole AS grantor_createrole,
+              EXISTS (
+                SELECT 1
+                  FROM pg_auth_members provisioner_membership
+                  JOIN pg_roles root_grantor
+                    ON root_grantor.oid = provisioner_membership.grantor
+                 WHERE provisioner_membership.roleid = membership.roleid
+                   AND provisioner_membership.member = membership.grantor
+                   AND provisioner_membership.admin_option
+                   AND root_grantor.rolsuper
+              ) AS grantor_bootstrap_backed
+         FROM pg_auth_members membership
+         JOIN pg_roles granted ON granted.oid = membership.roleid
+         JOIN pg_roles member ON member.oid = membership.member
+         JOIN pg_roles grantor ON grantor.oid = membership.grantor
+        WHERE member.rolname = ANY($1::text[])
+          AND granted.rolname = ANY($2::text[])
+        ORDER BY granted.rolname, member.rolname, membership.grantor`,
+      [
+        [migrationAdminRole, runtimeRole],
+        [
+          runtimeRole,
+          "social_monitor_reader_summary_publication_owner",
+          "social_monitor_reader_summary_publication_runtime",
+        ],
+      ],
+    );
+    assertDeepEqual(
+      memberships.rows
+        .map((membership) => ({
+          granted_role: membership.granted_role,
+          member_role: membership.member_role,
+          admin_option: membership.admin_option,
+          inherit_option: membership.inherit_option,
+          set_option: membership.set_option,
+        }))
+        .sort((left, right) =>
+          `${left.granted_role}\0${left.member_role}\0${Number(
+            !left.admin_option,
+          )}\0${Number(!left.inherit_option)}\0${Number(
+            !left.set_option,
+          )}`.localeCompare(
+            `${right.granted_role}\0${right.member_role}\0${Number(
+              !right.admin_option,
+            )}\0${Number(!right.inherit_option)}\0${Number(
+              !right.set_option,
+            )}`,
+          ),
+        ),
+      [
+        {
+          granted_role: "social_monitor_reader_summary_publication_owner",
+          member_role: migrationAdminRole,
+          admin_option: true,
+          inherit_option: false,
+          set_option: false,
+        },
+        {
+          granted_role: "social_monitor_reader_summary_publication_owner",
+          member_role: migrationAdminRole,
+          admin_option: false,
+          inherit_option: false,
+          set_option: true,
+        },
+        {
+          granted_role: "social_monitor_reader_summary_publication_runtime",
+          member_role: migrationAdminRole,
+          admin_option: true,
+          inherit_option: false,
+          set_option: false,
+        },
+        {
+          granted_role: "social_monitor_reader_summary_publication_runtime",
+          member_role: runtimeRole,
+          admin_option: false,
+          inherit_option: true,
+          set_option: false,
+        },
+        {
+          granted_role: runtimeRole,
+          member_role: migrationAdminRole,
+          admin_option: true,
+          inherit_option: false,
+          set_option: true,
+        },
+      ].sort((left, right) =>
+        `${left.granted_role}\0${left.member_role}\0${Number(
+          !left.admin_option,
+        )}\0${Number(!left.inherit_option)}\0${Number(
+          !left.set_option,
+        )}`.localeCompare(
+          `${right.granted_role}\0${right.member_role}\0${Number(
+            !right.admin_option,
+          )}\0${Number(!right.inherit_option)}\0${Number(
+            !right.set_option,
+          )}`,
+        ),
+      ),
+      "publication role memberships must match the exact PostgreSQL 18 boundary",
+    );
+    const ownerBootstrapGrant = memberships.rows.find(
+      (row) =>
+        row.granted_role ===
+          "social_monitor_reader_summary_publication_owner" &&
+        row.member_role === migrationAdminRole &&
+        row.grantor_superuser &&
+        row.admin_option &&
+        !row.inherit_option &&
+        !row.set_option,
+    );
+    const ownerSelfGrant = memberships.rows.find(
+      (row) =>
+        row.granted_role ===
+          "social_monitor_reader_summary_publication_owner" &&
+        row.member_role === migrationAdminRole &&
+        row.grantor_role === migrationAdminRole &&
+        !row.admin_option &&
+        !row.inherit_option &&
+        row.set_option,
+    );
+    const capabilityAdminGrant = memberships.rows.find(
+      (row) =>
+        row.granted_role ===
+          "social_monitor_reader_summary_publication_runtime" &&
+        row.member_role === migrationAdminRole,
+    );
+    const capabilityRuntimeGrant = memberships.rows.find(
+      (row) =>
+        row.granted_role ===
+          "social_monitor_reader_summary_publication_runtime" &&
+        row.member_role === runtimeRole,
+    );
+    const runtimeAdminGrant = memberships.rows.find(
+      (row) =>
+        row.granted_role === runtimeRole &&
+        row.member_role === migrationAdminRole,
+    );
+    assert(
+      ownerBootstrapGrant !== undefined,
+      "publication owner bootstrap grant is missing",
+    );
+    assert(
+      ownerSelfGrant !== undefined,
+      "publication owner self grant is missing",
+    );
+    assert(
+      capabilityAdminGrant !== undefined,
+      "publication capability admin grant is missing",
+    );
+    assert(
+      capabilityRuntimeGrant !== undefined,
+      "publication capability runtime grant is missing",
+    );
+    assert(runtimeAdminGrant !== undefined, "runtime admin grant is missing");
+    assert(
+      ownerBootstrapGrant.grantor_superuser,
+      "publication owner admin grant must use a bootstrap superuser",
+    );
+    assert(
+      ownerSelfGrant.grantor_role === migrationAdminRole,
+      "publication owner set grant must be issued by the migration admin",
+    );
+    assert(
+      capabilityAdminGrant.grantor_superuser,
+      "publication capability admin grant must use a bootstrap superuser",
+    );
+    assert(
+      capabilityRuntimeGrant.grantor_role === migrationAdminRole,
+      "runtime capability grant must be issued by the migration admin",
+    );
+    assert(
+      runtimeAdminGrant.grantor_role !== migrationAdminRole &&
+        !runtimeAdminGrant.grantor_superuser &&
+        runtimeAdminGrant.grantor_createrole &&
+        runtimeAdminGrant.grantor_bootstrap_backed,
+      "runtime admin grant must use a bootstrap-backed provisioner",
+    );
+  } finally {
+    await admin.end();
+  }
+};
+
 export const dropPublicationFixtureDatabaseAndRoles = async (params: {
   readonly serverAdmin: Pool;
   readonly databaseName: string;
@@ -180,6 +468,11 @@ export const dropPublicationFixtureDatabaseAndRoles = async (params: {
     await params.serverAdmin.query(
       `DROP ROLE ${quoteIdentifier(params.runtimeRole)}`,
     );
+    await params.serverAdmin.query(
+      `DROP ROLE ${quoteIdentifier(
+        publicationFixtureProvisionerRole(params.runtimeRole),
+      )}`,
+    );
   }
   if (!params.capabilityRolePreexisting) {
     await params.serverAdmin.query(
@@ -197,6 +490,9 @@ export const dropPublicationFixtureDatabaseAndRoles = async (params: {
     );
   }
 };
+
+const publicationFixtureProvisionerRole = (runtimeRole: string): string =>
+  `sm_publication_provisioner_${runtimeRole.slice(-20)}`;
 
 export function publicationDatabaseUrl(
   value: string,

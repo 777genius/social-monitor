@@ -6,6 +6,24 @@ SELECT set_config(
   false
 );
 
+-- Protected object ACLs can only be repaired as their NOLOGIN owner. The
+-- migrator has SET but deliberately does not inherit this role.
+SET ROLE social_monitor_reader_summary_publication_owner;
+REVOKE ALL PRIVILEGES ON TABLE
+  public.reader_summary_publications,
+  public.reader_summary_publication_slots,
+  public.reader_summary_artifacts
+FROM :"runtime_role";
+REVOKE ALL PRIVILEGES ON FUNCTION
+  public.reader_summary_model_authority_rank(text),
+  public.publish_reader_summary(jsonb),
+  public.guard_reader_summary_publication_insert(),
+  public.reject_reader_summary_publication_mutation(),
+  public.guard_published_reader_summary_artifact_update(),
+  public.guard_reader_summary_active_slot_update()
+FROM :"runtime_role";
+RESET ROLE;
+
 DO $bootstrap$
 DECLARE
   v_runtime_role NAME := current_setting(
@@ -17,30 +35,24 @@ DECLARE
 BEGIN
   -- Remove any direct authority retained from an older runtime-owned schema.
   -- The application receives only the audited capability-role grants.
-  EXECUTE format(
-    'REVOKE ALL PRIVILEGES ON TABLE '
-      'public.reader_summary_publications, '
-      'public.reader_summary_publication_slots, '
-      'public.reader_summary_artifacts FROM %I',
-    v_runtime_role
-  );
-  EXECUTE format(
-    'REVOKE ALL PRIVILEGES ON FUNCTION '
-      'public.reader_summary_model_authority_rank(text), '
-      'public.publish_reader_summary(jsonb), '
-      'public.guard_reader_summary_publication_insert(), '
-      'public.reject_reader_summary_publication_mutation(), '
-      'public.guard_published_reader_summary_artifact_update(), '
-      'public.guard_reader_summary_active_slot_update() FROM %I',
-    v_runtime_role
-  );
   EXECUTE format('REVOKE CREATE ON SCHEMA public FROM %I', v_runtime_role);
   REVOKE CREATE ON SCHEMA public
   FROM PUBLIC,
     social_monitor_reader_summary_publication_owner,
     social_monitor_reader_summary_publication_runtime;
   EXECUTE format(
-    'GRANT social_monitor_reader_summary_publication_runtime TO %I',
+    'GRANT social_monitor_reader_summary_publication_runtime TO %I '
+      'WITH ADMIN FALSE GRANTED BY CURRENT_USER',
+    v_runtime_role
+  );
+  EXECUTE format(
+    'GRANT social_monitor_reader_summary_publication_runtime TO %I '
+      'WITH INHERIT TRUE GRANTED BY CURRENT_USER',
+    v_runtime_role
+  );
+  EXECUTE format(
+    'GRANT social_monitor_reader_summary_publication_runtime TO %I '
+      'WITH SET FALSE GRANTED BY CURRENT_USER',
     v_runtime_role
   );
 
@@ -148,6 +160,100 @@ BEGIN
       'CREATE'
     ) THEN
     RAISE EXCEPTION 'runtime role can bypass publication ownership';
+  END IF;
+  IF (
+    SELECT count(*) <> 2
+      OR count(*) FILTER (
+        WHERE membership.admin_option
+          AND NOT membership.inherit_option
+          AND NOT membership.set_option
+          AND grantor.rolsuper
+      ) <> 1
+      OR count(*) FILTER (
+        WHERE NOT membership.admin_option
+          AND NOT membership.inherit_option
+          AND membership.set_option
+          AND grantor.rolname = current_user
+      ) <> 1
+    FROM pg_auth_members membership
+    JOIN pg_roles granted ON granted.oid = membership.roleid
+    JOIN pg_roles member ON member.oid = membership.member
+    JOIN pg_roles grantor ON grantor.oid = membership.grantor
+    WHERE granted.rolname =
+      'social_monitor_reader_summary_publication_owner'
+      AND member.rolname = current_user
+  ) THEN
+    RAISE EXCEPTION 'publication owner membership is unsafe';
+  END IF;
+  IF (
+    SELECT count(*) <> 1 OR NOT bool_and(
+      membership.admin_option
+      AND NOT membership.inherit_option
+      AND NOT membership.set_option
+      AND grantor.rolsuper
+    )
+    FROM pg_auth_members membership
+    JOIN pg_roles granted ON granted.oid = membership.roleid
+    JOIN pg_roles member ON member.oid = membership.member
+    JOIN pg_roles grantor ON grantor.oid = membership.grantor
+    WHERE granted.rolname =
+      'social_monitor_reader_summary_publication_runtime'
+      AND member.rolname = current_user
+  ) THEN
+    RAISE EXCEPTION 'publication capability admin membership is unsafe';
+  END IF;
+  IF (
+    SELECT count(*) <> 1 OR NOT bool_and(
+      NOT membership.admin_option
+      AND membership.inherit_option
+      AND NOT membership.set_option
+      AND grantor.rolname = current_user
+    )
+    FROM pg_auth_members membership
+    JOIN pg_roles granted ON granted.oid = membership.roleid
+    JOIN pg_roles member ON member.oid = membership.member
+    JOIN pg_roles grantor ON grantor.oid = membership.grantor
+    WHERE granted.rolname =
+      'social_monitor_reader_summary_publication_runtime'
+      AND member.rolname = v_runtime_role
+  ) THEN
+    RAISE EXCEPTION 'publication capability runtime membership is unsafe';
+  END IF;
+  IF (
+    SELECT count(*) <> 1 OR NOT bool_and(
+      membership.admin_option
+      AND NOT membership.inherit_option
+      AND membership.set_option
+      AND (
+        grantor.rolsuper OR (
+          grantor.rolcreaterole
+          AND grantor.rolname NOT IN (
+            current_user,
+            v_runtime_role,
+            'social_monitor_reader_summary_publication_owner',
+            'social_monitor_reader_summary_publication_runtime'
+          )
+          AND EXISTS (
+            SELECT 1
+            FROM pg_auth_members provisioner_membership
+            JOIN pg_roles root_grantor
+              ON root_grantor.oid = provisioner_membership.grantor
+            WHERE provisioner_membership.roleid = membership.roleid
+              AND provisioner_membership.member = membership.grantor
+              AND provisioner_membership.admin_option
+              AND root_grantor.rolsuper
+          )
+        )
+      )
+    )
+    FROM pg_auth_members membership
+    JOIN pg_roles granted ON granted.oid = membership.roleid
+    JOIN pg_roles member ON member.oid = membership.member
+    JOIN pg_roles grantor ON grantor.oid = membership.grantor
+    WHERE granted.rolname = v_runtime_role
+      AND member.rolname = current_user
+  ) THEN
+    RAISE EXCEPTION 'runtime admin membership grantor is unsafe';
   END IF;
 
   IF NOT has_table_privilege(

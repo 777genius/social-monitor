@@ -7,6 +7,11 @@ BEGIN;
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
+-- The pre-migration bootstrap grants this NOLOGIN role only the object and
+-- schema capabilities required below. Create the protected graph as its final
+-- owner so foreign-key checks never depend on broad migrator ACLs.
+SET LOCAL ROLE "social_monitor_reader_summary_publication_owner";
+
 CREATE TABLE "reader_summary_publications" (
     "id" UUID NOT NULL,
     "tenant_id" UUID NOT NULL,
@@ -881,6 +886,9 @@ REVOKE ALL PRIVILEGES ON FUNCTION
 FROM PUBLIC, "social_monitor_reader_summary_publication_runtime";
 GRANT EXECUTE ON FUNCTION "publish_reader_summary"(JSONB)
 TO "social_monitor_reader_summary_publication_runtime";
+
+RESET ROLE;
+
 GRANT USAGE ON SCHEMA public
 TO "social_monitor_reader_summary_publication_owner",
   "social_monitor_reader_summary_publication_runtime";
