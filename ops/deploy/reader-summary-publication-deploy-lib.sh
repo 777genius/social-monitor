@@ -310,6 +310,7 @@ LEFT JOIN LATERAL (
         THEN membership.admin_option
           AND NOT membership.inherit_option
           AND membership.set_option
+          AND grantor_role.rolsuper
         ELSE true END
         )
       )
@@ -337,9 +338,36 @@ LEFT JOIN LATERAL (
         THEN membership.admin_option
           AND NOT membership.inherit_option
           AND NOT membership.set_option
+          AND grantor_role.rolsuper
         ELSE true END
         )
       )
+    ) AND COUNT(DISTINCT membership.grantor) FILTER (
+      WHERE granted_role.rolname IN (
+        'social_monitor_reader_summary_publication_owner',
+        'social_monitor_reader_summary_publication_runtime'
+      )
+    ) <= 1 AND BOOL_AND(
+      CASE WHEN granted_role.rolname = :'runtime_role'
+      THEN grantor_role.rolsuper OR (
+        grantor_role.rolcreaterole
+        AND grantor_role.rolname NOT IN (
+          current_user,
+          :'runtime_role',
+          'social_monitor_reader_summary_publication_owner',
+          'social_monitor_reader_summary_publication_runtime'
+        )
+        AND EXISTS (
+          SELECT 1
+          FROM pg_catalog.pg_auth_members AS provisioner_membership
+          JOIN pg_catalog.pg_roles AS root_grantor
+            ON root_grantor.oid = provisioner_membership.grantor
+          WHERE provisioner_membership.roleid = membership.roleid
+            AND provisioner_membership.member = membership.grantor
+            AND provisioner_membership.admin_option
+            AND root_grantor.rolsuper
+        )
+      ) ELSE true END
     ) AS protected_memberships_valid,
     COUNT(*) FILTER (
       WHERE granted_role.rolname NOT IN (
@@ -353,6 +381,8 @@ LEFT JOIN LATERAL (
       ON granted_role.oid = membership.roleid
     JOIN pg_catalog.pg_roles AS member_role
       ON member_role.oid = membership.member
+    JOIN pg_catalog.pg_roles AS grantor_role
+      ON grantor_role.oid = membership.grantor
     WHERE member_role.rolname = current_user
 ) AS membership ON true
 WHERE migrator.rolname = current_user;"

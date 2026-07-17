@@ -113,17 +113,17 @@ BEGIN
 
   EXECUTE format(
     'GRANT social_monitor_reader_summary_publication_runtime TO %I '
-      'WITH ADMIN FALSE',
+      'WITH ADMIN FALSE GRANTED BY CURRENT_USER',
     v_runtime_role
   );
   EXECUTE format(
     'GRANT social_monitor_reader_summary_publication_runtime TO %I '
-      'WITH INHERIT TRUE',
+      'WITH INHERIT TRUE GRANTED BY CURRENT_USER',
     v_runtime_role
   );
   EXECUTE format(
     'GRANT social_monitor_reader_summary_publication_runtime TO %I '
-      'WITH SET FALSE',
+      'WITH SET FALSE GRANTED BY CURRENT_USER',
     v_runtime_role
   );
   IF EXISTS (
@@ -142,10 +142,12 @@ BEGIN
       membership.admin_option
       AND NOT membership.inherit_option
       AND membership.set_option
+      AND grantor.rolsuper
     )
     FROM pg_auth_members membership
     JOIN pg_roles granted ON granted.oid = membership.roleid
     JOIN pg_roles member ON member.oid = membership.member
+    JOIN pg_roles grantor ON grantor.oid = membership.grantor
     WHERE granted.rolname =
       'social_monitor_reader_summary_publication_owner'
       AND member.rolname = current_user
@@ -154,10 +156,12 @@ BEGIN
       membership.admin_option
       AND NOT membership.inherit_option
       AND NOT membership.set_option
+      AND grantor.rolsuper
     )
     FROM pg_auth_members membership
     JOIN pg_roles granted ON granted.oid = membership.roleid
     JOIN pg_roles member ON member.oid = membership.member
+    JOIN pg_roles grantor ON grantor.oid = membership.grantor
     WHERE granted.rolname =
       'social_monitor_reader_summary_publication_runtime'
       AND member.rolname = current_user
@@ -166,13 +170,57 @@ BEGIN
       NOT membership.admin_option
       AND membership.inherit_option
       AND NOT membership.set_option
+      AND grantor.rolname = current_user
     )
     FROM pg_auth_members membership
     JOIN pg_roles granted ON granted.oid = membership.roleid
     JOIN pg_roles member ON member.oid = membership.member
+    JOIN pg_roles grantor ON grantor.oid = membership.grantor
     WHERE granted.rolname =
       'social_monitor_reader_summary_publication_runtime'
       AND member.rolname = v_runtime_role
+  ) OR (
+    SELECT count(DISTINCT membership.grantor) <> 1
+    FROM pg_auth_members membership
+    JOIN pg_roles granted ON granted.oid = membership.roleid
+    JOIN pg_roles member ON member.oid = membership.member
+    WHERE granted.rolname IN (
+      'social_monitor_reader_summary_publication_owner',
+      'social_monitor_reader_summary_publication_runtime'
+    ) AND member.rolname = current_user
+  ) OR (
+    SELECT count(*) <> 1 OR NOT bool_and(
+      membership.admin_option
+      AND NOT membership.inherit_option
+      AND membership.set_option
+      AND (
+        grantor.rolsuper OR (
+          grantor.rolcreaterole
+          AND grantor.rolname NOT IN (
+            current_user,
+            v_runtime_role,
+            'social_monitor_reader_summary_publication_owner',
+            'social_monitor_reader_summary_publication_runtime'
+          )
+          AND EXISTS (
+            SELECT 1
+            FROM pg_auth_members provisioner_membership
+            JOIN pg_roles root_grantor
+              ON root_grantor.oid = provisioner_membership.grantor
+            WHERE provisioner_membership.roleid = membership.roleid
+              AND provisioner_membership.member = membership.grantor
+              AND provisioner_membership.admin_option
+              AND root_grantor.rolsuper
+          )
+        )
+      )
+    )
+    FROM pg_auth_members membership
+    JOIN pg_roles granted ON granted.oid = membership.roleid
+    JOIN pg_roles member ON member.oid = membership.member
+    JOIN pg_roles grantor ON grantor.oid = membership.grantor
+    WHERE granted.rolname = v_runtime_role
+      AND member.rolname = current_user
   ) THEN
     RAISE EXCEPTION 'publication role membership options are unsafe';
   END IF;

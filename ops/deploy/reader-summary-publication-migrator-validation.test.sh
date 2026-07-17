@@ -421,6 +421,9 @@ for catalog_token in \
   'membership.admin_option' \
   'membership.inherit_option' \
   'membership.set_option' \
+  'membership.grantor' \
+  'grantor_role.rolsuper' \
+  'provisioner_membership' \
   'pg_isready' \
   '--no-password'; do
   grep -F -- "$catalog_token" "$LIBRARY" >/dev/null
