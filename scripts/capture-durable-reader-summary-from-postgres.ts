@@ -7,7 +7,7 @@ import { defaultPostgresRuntimePoolConfig } from "@social-monitor/platform-persi
 import { PrismaFeedItemReadRepository } from "@social-monitor/feed/adapters/persistence/prisma/prisma-feed-item-read.repository";
 import { InMemoryMetricsRecorder } from "@social-monitor/platform-metrics";
 import { PrismaSummaryConnection } from "@social-monitor/summary/adapters/persistence/prisma/prisma-summary-connection";
-import { PrismaSummaryEventPublisher } from "@social-monitor/summary/adapters/persistence/prisma/prisma-summary-event.publisher";
+import { PrismaReaderSummaryPublication } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-publication";
 import { RelevanceReaderSummaryEvidenceSelector } from "@social-monitor/summary/adapters/evidence/relevance-reader-summary-evidence.selector";
 import {
   AgentRuntimeReaderSummaryModelAdapter,
@@ -223,7 +223,7 @@ async function main(): Promise<void> {
       readerSummaryPolicies,
       evidenceSelector,
       buildReaderSummaryModel(modelMode, agentRuntimeClient),
-      new PrismaSummaryEventPublisher(summaryConnection),
+      new PrismaReaderSummaryPublication(summaryConnection),
       ids,
       clock,
       undefined,

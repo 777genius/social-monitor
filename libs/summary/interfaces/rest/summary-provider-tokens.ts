@@ -23,6 +23,7 @@ import {
   type ReaderSummaryJobQueuePort,
   type ReaderSummaryPolicyRepositoryPort,
   type ReaderSummaryPreviewMediaEnricherPort,
+  type ReaderSummaryPublicationPort,
   type SummaryArtifactRepositoryPort,
   type SummaryEventPublisherPort,
   type SummaryEvidenceSelectorPort,
@@ -105,6 +106,9 @@ export const READER_SUMMARY_ARTIFACT_REPOSITORY = Symbol(
 export const READER_SUMMARY_POLICY_REPOSITORY = Symbol(
   "READER_SUMMARY_POLICY_REPOSITORY",
 );
+export const READER_SUMMARY_PUBLICATION = Symbol(
+  "READER_SUMMARY_PUBLICATION",
+);
 export const READER_SUMMARY_CONTEXT_PROVIDER = Symbol(
   "READER_SUMMARY_CONTEXT_PROVIDER",
 );
@@ -140,6 +144,7 @@ export type SummaryProviderTokenMap = {
   readonly [READER_SUMMARY_EVIDENCE_SELECTOR]: ReaderSummaryEvidenceSelectorPort;
   readonly [READER_SUMMARY_ARTIFACT_REPOSITORY]: ReaderSummaryArtifactRepositoryPort;
   readonly [READER_SUMMARY_POLICY_REPOSITORY]: ReaderSummaryPolicyRepositoryPort;
+  readonly [READER_SUMMARY_PUBLICATION]: ReaderSummaryPublicationPort;
   readonly [READER_SUMMARY_CONTEXT_PROVIDER]: ReaderSummaryContextProviderPort;
   readonly [READER_SUMMARY_COVERAGE_COUNTER]: ReaderSummaryCoverageCounterPort;
   readonly [READER_SUMMARY_PREVIEW_MEDIA_ENRICHER]: ReaderSummaryPreviewMediaEnricherPort;

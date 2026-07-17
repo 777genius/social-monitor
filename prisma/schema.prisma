@@ -891,30 +891,31 @@ model SummaryFeedback {
 }
 
 model ReaderSummaryArtifact {
-  id              String        @id @db.Uuid
-  tenantId        String        @map("tenant_id") @db.Uuid
-  workspaceId     String        @map("workspace_id") @db.Uuid
-  scopeType       String        @map("scope_type")
-  scopeKey        String        @map("scope_key")
-  interestId      String?       @map("interest_id") @db.Uuid
+  id              String                    @id @db.Uuid
+  tenantId        String                    @map("tenant_id") @db.Uuid
+  workspaceId     String                    @map("workspace_id") @db.Uuid
+  scopeType       String                    @map("scope_type")
+  scopeKey        String                    @map("scope_key")
+  interestId      String?                   @map("interest_id") @db.Uuid
   cadence         String
-  periodStartedAt DateTime      @map("period_started_at") @db.Timestamptz(6)
-  periodEndedAt   DateTime      @map("period_ended_at") @db.Timestamptz(6)
-  periodTimezone  String        @map("period_timezone")
-  periodKey       String        @map("period_key")
-  userId          String?       @map("user_id")
-  subscriptionId  String?       @map("subscription_id") @db.Uuid
-  status          SummaryStatus @default(COMPLETED)
-  schemaVersion   Int           @default(1) @map("schema_version")
-  modelVersion    String        @map("model_version")
-  promptVersion   String        @map("prompt_version")
+  periodStartedAt DateTime                  @map("period_started_at") @db.Timestamptz(6)
+  periodEndedAt   DateTime                  @map("period_ended_at") @db.Timestamptz(6)
+  periodTimezone  String                    @map("period_timezone")
+  periodKey       String                    @map("period_key")
+  userId          String?                   @map("user_id")
+  subscriptionId  String?                   @map("subscription_id") @db.Uuid
+  status          SummaryStatus             @default(COMPLETED)
+  schemaVersion   Int                       @default(1) @map("schema_version")
+  modelVersion    String                    @map("model_version")
+  promptVersion   String                    @map("prompt_version")
   headline        String
-  summaryText     String?       @map("summary_text")
-  artifactPayload Json          @map("artifact_payload")
+  summaryText     String?                   @map("summary_text")
+  artifactPayload Json                      @map("artifact_payload")
   citations       Json
-  qualitySignals  Json          @map("quality_signals")
-  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  qualitySignals  Json                      @map("quality_signals")
+  createdAt       DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  publication     ReaderSummaryPublication?
 
   @@index([tenantId, workspaceId, scopeKey, cadence, periodStartedAt], map: "reader_summary_artifacts_period_lookup_idx")
   @@index([tenantId, workspaceId, scopeKey, status, createdAt])
@@ -923,35 +924,86 @@ model ReaderSummaryArtifact {
 }
 
 model ReaderSummaryJob {
-  id                      String        @id @db.Uuid
-  tenantId                String        @map("tenant_id") @db.Uuid
-  workspaceId             String        @map("workspace_id") @db.Uuid
-  scopeType               String        @map("scope_type")
-  scopeKey                String        @map("scope_key")
-  interestId              String?       @map("interest_id") @db.Uuid
+  id                      String                    @id @db.Uuid
+  tenantId                String                    @map("tenant_id") @db.Uuid
+  workspaceId             String                    @map("workspace_id") @db.Uuid
+  scopeType               String                    @map("scope_type")
+  scopeKey                String                    @map("scope_key")
+  interestId              String?                   @map("interest_id") @db.Uuid
   cadence                 String
-  periodStartedAt         DateTime      @map("period_started_at") @db.Timestamptz(6)
-  periodEndedAt           DateTime      @map("period_ended_at") @db.Timestamptz(6)
-  periodTimezone          String        @map("period_timezone")
-  periodKey               String        @map("period_key")
-  userId                  String?       @map("user_id")
-  subscriptionId          String?       @map("subscription_id") @db.Uuid
-  status                  SummaryStatus @default(REQUESTED)
-  idempotencyKey          String        @map("idempotency_key")
-  requestedAt             DateTime      @map("requested_at") @db.Timestamptz(6)
-  startedAt               DateTime?     @map("started_at") @db.Timestamptz(6)
-  completedAt             DateTime?     @map("completed_at") @db.Timestamptz(6)
-  failedAt                DateTime?     @map("failed_at") @db.Timestamptz(6)
-  readerSummaryArtifactId String?       @map("reader_summary_artifact_id") @db.Uuid
-  failureReason           String?       @map("failure_reason")
-  createdAt               DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt               DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  periodStartedAt         DateTime                  @map("period_started_at") @db.Timestamptz(6)
+  periodEndedAt           DateTime                  @map("period_ended_at") @db.Timestamptz(6)
+  periodTimezone          String                    @map("period_timezone")
+  periodKey               String                    @map("period_key")
+  userId                  String?                   @map("user_id")
+  subscriptionId          String?                   @map("subscription_id") @db.Uuid
+  status                  SummaryStatus             @default(REQUESTED)
+  idempotencyKey          String                    @map("idempotency_key")
+  requestedAt             DateTime                  @map("requested_at") @db.Timestamptz(6)
+  startedAt               DateTime?                 @map("started_at") @db.Timestamptz(6)
+  completedAt             DateTime?                 @map("completed_at") @db.Timestamptz(6)
+  failedAt                DateTime?                 @map("failed_at") @db.Timestamptz(6)
+  readerSummaryArtifactId String?                   @map("reader_summary_artifact_id") @db.Uuid
+  failureReason           String?                   @map("failure_reason")
+  createdAt               DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  publication             ReaderSummaryPublication?
 
   @@unique([tenantId, idempotencyKey])
   @@index([tenantId, workspaceId, scopeKey, cadence, periodStartedAt], map: "reader_summary_jobs_period_lookup_idx")
   @@index([tenantId, workspaceId, scopeKey, status, createdAt])
   @@index([tenantId, workspaceId, userId, scopeKey, createdAt])
   @@map("reader_summary_jobs")
+}
+
+model ReaderSummaryPublication {
+  id                      String                        @id @db.Uuid
+  tenantId                String                        @map("tenant_id") @db.Uuid
+  workspaceId             String                        @map("workspace_id") @db.Uuid
+  scopeType               String                        @map("scope_type")
+  scopeKey                String                        @map("scope_key")
+  cadence                 String
+  periodStartedAt         DateTime                      @map("period_started_at") @db.Timestamptz(6)
+  periodEndedAt           DateTime                      @map("period_ended_at") @db.Timestamptz(6)
+  periodTimezone          String                        @map("period_timezone")
+  periodKey               String                        @map("period_key")
+  requestedUtcDate        DateTime                      @map("requested_utc_date") @db.Date
+  publicationKind         String                        @map("publication_kind")
+  readerSummaryJobId      String?                       @unique(map: "reader_summary_publications_job_key") @map("reader_summary_job_id") @db.Uuid
+  readerSummaryArtifactId String                        @unique(map: "reader_summary_publications_artifact_key") @map("reader_summary_artifact_id") @db.Uuid
+  semanticStatus          SummaryStatus                 @map("semantic_status")
+  requestedAt             DateTime                      @map("requested_at") @db.Timestamptz(6)
+  modelVersion            String                        @map("model_version")
+  modelAuthority          Int                           @map("model_authority") @db.SmallInt
+  reportSha256            String                        @map("report_sha256") @db.Char(64)
+  proofSha256             String                        @map("proof_sha256") @db.Char(64)
+  exactProof              Json                          @map("exact_proof")
+  outboxEventId           String?                       @unique(map: "reader_summary_publications_outbox_key") @map("outbox_event_id") @db.Uuid
+  publishedAt             DateTime                      @map("published_at") @db.Timestamptz(6)
+  readerSummaryJob        ReaderSummaryJob?             @relation(fields: [readerSummaryJobId], references: [id], onDelete: Restrict, map: "reader_summary_publications_job_fkey")
+  readerSummaryArtifact   ReaderSummaryArtifact         @relation(fields: [readerSummaryArtifactId], references: [id], onDelete: Restrict, map: "reader_summary_publications_artifact_fkey")
+  outboxEvent             OutboxEvent?                  @relation(fields: [outboxEventId], references: [id], onDelete: Restrict, map: "reader_summary_publications_outbox_fkey")
+  activeSlot              ReaderSummaryPublicationSlot?
+
+  @@index([tenantId, workspaceId, scopeKey, requestedAt], map: "reader_summary_publications_scope_requested_idx")
+  @@map("reader_summary_publications")
+}
+
+model ReaderSummaryPublicationSlot {
+  tenantId             String                    @map("tenant_id") @db.Uuid
+  workspaceId          String                    @map("workspace_id") @db.Uuid
+  scopeType            String                    @map("scope_type")
+  scopeKey             String                    @map("scope_key")
+  cadence              String
+  periodStartedAt      DateTime                  @map("period_started_at") @db.Timestamptz(6)
+  periodEndedAt        DateTime                  @map("period_ended_at") @db.Timestamptz(6)
+  periodTimezone       String                    @map("period_timezone")
+  currentPublicationId String?                   @unique(map: "reader_summary_publication_slots_current_key") @map("current_publication_id") @db.Uuid
+  currentPublication   ReaderSummaryPublication? @relation(fields: [currentPublicationId], references: [id], onDelete: Restrict, map: "reader_summary_publication_slots_current_fkey")
+  updatedAt            DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@id([tenantId, workspaceId, scopeType, scopeKey, cadence, periodStartedAt, periodEndedAt, periodTimezone], map: "reader_summary_publication_slots_pkey")
+  @@map("reader_summary_publication_slots")
 }
 
 model ReaderSummaryPolicy {
@@ -1354,17 +1406,18 @@ model UsageQuotaBucket {
 }
 
 model OutboxEvent {
-  id            String       @id @db.Uuid
-  tenantId      String?      @map("tenant_id") @db.Uuid
-  workspaceId   String?      @map("workspace_id") @db.Uuid
-  eventType     String       @map("event_type")
-  schemaVersion Int          @map("schema_version")
-  payload       Json
-  status        OutboxStatus @default(PENDING)
-  correlationId String       @map("correlation_id")
-  causationId   String?      @map("causation_id")
-  createdAt     DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
-  publishedAt   DateTime?    @map("published_at") @db.Timestamptz(6)
+  id                       String                    @id @db.Uuid
+  tenantId                 String?                   @map("tenant_id") @db.Uuid
+  workspaceId              String?                   @map("workspace_id") @db.Uuid
+  eventType                String                    @map("event_type")
+  schemaVersion            Int                       @map("schema_version")
+  payload                  Json
+  status                   OutboxStatus              @default(PENDING)
+  correlationId            String                    @map("correlation_id")
+  causationId              String?                   @map("causation_id")
+  createdAt                DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  publishedAt              DateTime?                 @map("published_at") @db.Timestamptz(6)
+  readerSummaryPublication ReaderSummaryPublication?
 
   @@index([tenantId, workspaceId, status, createdAt])
   @@map("outbox_events")

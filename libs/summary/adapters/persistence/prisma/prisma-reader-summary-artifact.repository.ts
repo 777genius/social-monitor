@@ -18,7 +18,6 @@ import type {
 import type { PrismaSummaryClient } from "./prisma-summary-client";
 import {
   readerSummaryArtifactFromPrisma,
-  readerSummaryArtifactStatusToPrisma,
   readerSummaryCitationsToPrisma,
   readerSummaryQualitySignalsToPrisma,
   type PrismaReaderSummaryArtifactRecord,
@@ -27,9 +26,6 @@ import {
   serializeReaderSummaryArtifact,
 } from "./prisma-reader-summary-records";
 import { readerSummaryScopeFromPrisma } from "./prisma-reader-summary-artifact-payload";
-import { readerSummaryStatusAfterModelAuthorityCheck } from "./prisma-reader-summary-publication-authority";
-import { readerSummaryPublicationGenerationSignals } from "./prisma-reader-summary-publication-generation";
-import { runSerializableReaderSummaryTransaction } from "./prisma-summary-transaction";
 import {
   encodeSummaryCursor,
   parseSummaryCursor,
@@ -40,7 +36,6 @@ const VISIBLE_READER_SUMMARY_STATUSES = ["COMPLETED"] as const;
 const PUBLISHED_READER_SUMMARY_STATUSES = [
   ...VISIBLE_READER_SUMMARY_STATUSES,
   "NO_SIGNAL",
-  "SUPERSEDED",
 ] as const;
 
 type ReaderSummaryPublicationDecisionForPersistence = NonNullable<
@@ -68,31 +63,20 @@ export class PrismaReaderSummaryArtifactRepository implements ReaderSummaryArtif
       return;
     }
     const publicationDecision = options?.publicationDecision;
-    const proposedStatus: PrismaSummaryStatus =
+    const status: PrismaSummaryStatus =
       publicationDecision?.status === "rejected"
         ? "REJECTED"
-        : readerSummaryArtifactStatusToPrisma(artifact);
+        : "RUNNING";
     const artifactPayload = serializeReaderSummaryArtifact(artifact);
     const citations = readerSummaryCitationsToPrisma(artifact);
     const qualitySignals = {
       ...readerSummaryQualitySignalsToPrisma(artifact),
       ...(publicationDecision === undefined ? {} : { publicationDecision }),
-      ...readerSummaryPublicationGenerationSignals(
-        options?.generationRequestedAt,
-      ),
     };
     const scopeFields = readerSummaryScopeToPrisma(snapshot.scope);
 
     await withPrismaWriteRetry(() =>
-      runSerializableReaderSummaryTransaction(this.prisma, async (prisma) => {
-        const status = await readerSummaryStatusAfterModelAuthorityCheck({
-          prisma,
-          proposedStatus,
-          snapshot,
-          generationRequestedAt: options?.generationRequestedAt,
-        });
-
-        await prisma.readerSummaryArtifact.upsert({
+      this.prisma.readerSummaryArtifact.upsert({
           where: { id: snapshot.readerSummaryId },
           update: {
             ...scopeFields,
@@ -134,27 +118,7 @@ export class PrismaReaderSummaryArtifactRepository implements ReaderSummaryArtif
             citations,
             qualitySignals,
           },
-        });
-
-        if (!isVisibleReaderSummaryStatus(status)) {
-          return;
-        }
-
-        await prisma.readerSummaryArtifact.updateMany({
-          where: {
-            id: { not: snapshot.readerSummaryId },
-            tenantId: snapshot.tenantId,
-            workspaceId: snapshot.workspaceId,
-            scopeKey: readerSummaryScopeKey(snapshot.scope),
-            cadence: snapshot.period.cadence,
-            periodStartedAt: snapshot.period.startedAt,
-            periodEndedAt: snapshot.period.endedAt,
-            periodTimezone: snapshot.period.timezone,
-            status: { in: VISIBLE_READER_SUMMARY_STATUSES },
-          },
-          data: { status: "SUPERSEDED" },
-        });
-      }),
+        }),
     );
   }
 
@@ -242,6 +206,7 @@ export class PrismaReaderSummaryArtifactRepository implements ReaderSummaryArtif
         workspaceId: params.workspaceId,
         id: params.readerSummaryId,
         status: { in: PUBLISHED_READER_SUMMARY_STATUSES },
+        publication: currentPublicationFilter,
       },
     });
 
@@ -278,7 +243,12 @@ const readerSummaryArtifactWhere = (
   periodEndedAt: query.periodEndedAt,
   periodTimezone: query.timezone,
   status: { in: VISIBLE_READER_SUMMARY_STATUSES },
+  publication: currentPublicationFilter,
 });
+
+const currentPublicationFilter = {
+  is: { activeSlot: { isNot: null } },
+} as const;
 
 const periodSummaryFromPrisma = (
   record: PrismaReaderSummaryPeriodSummaryRecord,
@@ -478,10 +448,3 @@ const periodStartedAtWhere = (query: ListReaderSummaryArtifactsQuery) => {
     lt: query.periodStartedBefore,
   };
 };
-
-const isVisibleReaderSummaryStatus = (
-  status: PrismaSummaryStatus,
-): status is (typeof VISIBLE_READER_SUMMARY_STATUSES)[number] =>
-  VISIBLE_READER_SUMMARY_STATUSES.some(
-    (visibleStatus) => visibleStatus === status,
-  );

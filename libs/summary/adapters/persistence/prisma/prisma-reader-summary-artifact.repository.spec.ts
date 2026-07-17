@@ -8,7 +8,7 @@ import type { PrismaSummaryClient } from "./prisma-summary-client";
 import type { PrismaSummaryStatus } from "./prisma-summary-records";
 
 describe("PrismaReaderSummaryArtifactRepository", () => {
-  it("keeps no-signal reader summaries out of user-facing lists and periods", async () => {
+  it("keeps unproved completed and no-signal candidates fail closed", async () => {
     const prisma = new FakeReaderSummaryPrisma();
     const repository = new PrismaReaderSummaryArtifactRepository(prisma.client);
 
@@ -38,78 +38,63 @@ describe("PrismaReaderSummaryArtifactRepository", () => {
       limit: 10,
     });
 
-    expect(list.items.map((item) => item.toSnapshot().readerSummaryId)).toEqual(
-      ["reader-summary-completed"],
-    );
-    expect(periods.items.map((item) => item.readerSummaryId)).toEqual([
-      "reader-summary-completed",
-    ]);
-    expect(prisma.statusFor("reader-summary-completed")).toBe("COMPLETED");
-    expect(prisma.statusFor("reader-summary-empty")).toBe("NO_SIGNAL");
+    expect(list.items).toEqual([]);
+    expect(periods.items).toEqual([]);
+    expect(prisma.statusFor("reader-summary-completed")).toBe("RUNNING");
+    expect(prisma.statusFor("reader-summary-empty")).toBe("RUNNING");
+    await expect(
+      repository.findById({
+        tenantId: tenant,
+        workspaceId: workspace,
+        readerSummaryId: "reader-summary-completed",
+      }),
+    ).resolves.toBeNull();
   });
 
-  it("does not republish an older artifact when its save is replayed", async () => {
+  it("persists failed-quality evidence as rejected without publishing it", async () => {
     const prisma = new FakeReaderSummaryPrisma();
     const repository = new PrismaReaderSummaryArtifactRepository(prisma.client);
-    const older = readerSummaryArtifact("reader-summary-older");
-    const newer = readerSummaryArtifact("reader-summary-newer");
-
-    await repository.save(older);
-    await repository.save(newer);
-    await repository.save(older);
-
-    expect(prisma.statusFor("reader-summary-older")).toBe("SUPERSEDED");
-    expect(prisma.statusFor("reader-summary-newer")).toBe("COMPLETED");
-  });
-
-  it("does not let deterministic output supersede subscription runtime output", async () => {
-    const prisma = new FakeReaderSummaryPrisma();
-    const repository = new PrismaReaderSummaryArtifactRepository(prisma.client);
-
-    await repository.save(
-      readerSummaryArtifact("reader-summary-runtime", "codex:gpt-5.5:xhigh"),
-    );
-    await repository.save(
-      readerSummaryArtifact(
-        "reader-summary-deterministic",
-        "deterministic-reader-summary-v1",
-      ),
-    );
-
-    expect(prisma.statusFor("reader-summary-runtime")).toBe("COMPLETED");
-    expect(prisma.statusFor("reader-summary-deterministic")).toBe("SUPERSEDED");
-  });
-
-  it("keeps the newer requested generation visible when an older run finishes last", async () => {
-    const prisma = new FakeReaderSummaryPrisma();
-    const repository = new PrismaReaderSummaryArtifactRepository(prisma.client);
-
-    await repository.save(readerSummaryArtifact("reader-summary-newer"), {
-      generationRequestedAt: new Date("2026-07-09T10:05:00.000Z"),
-    });
-    await repository.save(readerSummaryArtifact("reader-summary-older"), {
-      generationRequestedAt: new Date("2026-07-09T10:00:00.000Z"),
+    await repository.save(readerSummaryArtifact("reader-summary-rejected"), {
+      publicationDecision: rejectedDecision,
     });
 
-    expect(prisma.statusFor("reader-summary-newer")).toBe("COMPLETED");
-    expect(prisma.statusFor("reader-summary-older")).toBe("SUPERSEDED");
-  });
-
-  it("publishes a newer requested generation after an older run", async () => {
-    const prisma = new FakeReaderSummaryPrisma();
-    const repository = new PrismaReaderSummaryArtifactRepository(prisma.client);
-
-    await repository.save(readerSummaryArtifact("reader-summary-older"), {
-      generationRequestedAt: new Date("2026-07-09T10:00:00.000Z"),
-    });
-    await repository.save(readerSummaryArtifact("reader-summary-newer"), {
-      generationRequestedAt: new Date("2026-07-09T10:05:00.000Z"),
-    });
-
-    expect(prisma.statusFor("reader-summary-older")).toBe("SUPERSEDED");
-    expect(prisma.statusFor("reader-summary-newer")).toBe("COMPLETED");
+    expect(prisma.statusFor("reader-summary-rejected")).toBe("REJECTED");
+    await expect(
+      repository.findById({
+        tenantId: tenant,
+        workspaceId: workspace,
+        readerSummaryId: "reader-summary-rejected",
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      repository.findRejectedDebugById({
+        tenantId: tenant,
+        workspaceId: workspace,
+        readerSummaryId: "reader-summary-rejected",
+      }),
+    ).resolves.toMatchObject({ reasonCodes: ["editorial_quality"] });
   });
 });
+
+const rejectedDecision = {
+  status: "rejected" as const,
+  qualityPassed: false as const,
+  canonicalScore: 0,
+  shadow: {
+    mode: "shadow" as const,
+    policyVersion: "reader_summary_publication_shadow_v1" as const,
+    riskScore: 0,
+    signals: [],
+  },
+  reasonCodes: ["editorial_quality" as const],
+  reasons: ["Editorial proof failed."],
+  findings: [
+    {
+      code: "editorial_quality" as const,
+      reason: "Editorial proof failed.",
+    },
+  ],
+};
 
 const tenant = tenantId("tenant-reader-summary-prisma");
 const workspace = workspaceId("workspace-reader-summary-prisma");

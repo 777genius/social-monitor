@@ -22,6 +22,10 @@ install -d "$REPO/apps/frontend" "$REPO/apps/api-gateway" \
   "$REPO/apps/x-collector" "$REPO/ops/deploy" "$REPO/ops/recovery" \
   "$STATE" "$STAGING"
 cp "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" "$REPO/ops/deploy/"
+cp "$SCRIPT_DIR/reader-summary-publication-deploy-lib.sh" \
+  "$SCRIPT_DIR/reader-summary-publication-pre-migration.sql" \
+  "$SCRIPT_DIR/reader-summary-publication-post-migration.sql" \
+  "$REPO/ops/deploy/"
 cp "$ENTRYPOINT" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/verify-postgres-runtime-topology.py" "$REPO/ops/deploy/"
 cp -R "$SCRIPT_DIR/production-runtime" "$REPO/ops/deploy/"
@@ -138,6 +142,25 @@ grep -F 'restore_postgres_runtime_control "$runtime_control_backup"' \
 grep -F 'rollback_backend_images "$previous_images"' "$ENTRYPOINT" >/dev/null
 grep -F 'verify_live_postgres_admission "$postgres_env"' "$ENTRYPOINT" >/dev/null
 grep -F 'probe_postgres_maximum_envelope "$postgres_env"' "$ENTRYPOINT" >/dev/null
+grep -F 'deploy_reader_summary_publication_migrations' "$ENTRYPOINT" >/dev/null
+grep -F 'reader-summary-publication-admin-url' \
+  "$SCRIPT_DIR/reader-summary-publication-deploy-lib.sh" >/dev/null
+# The admin URL must be a mounted file, never a Docker argument or the
+# production runtime environment.
+if grep -E -- '--(env|set)[ =]DATABASE_URL' \
+  "$SCRIPT_DIR/reader-summary-publication-deploy-lib.sh" >/dev/null; then
+  echo 'publication admin URL is exposed through a container argument' >&2
+  exit 1
+fi
+grep -F 'PGDATABASE=$(cat /run/secrets/reader-summary-publication-admin-url)' \
+  "$SCRIPT_DIR/reader-summary-publication-deploy-lib.sh" >/dev/null
+if grep -F 'psql "$DATABASE_URL"' \
+  "$SCRIPT_DIR/reader-summary-publication-deploy-lib.sh" >/dev/null; then
+  echo 'publication admin URL is exposed through the psql argument list' >&2
+  exit 1
+fi
+grep -F 'social_monitor_app' \
+  "$SCRIPT_DIR/reader-summary-publication-deploy-lib.sh" >/dev/null
 grep -F "'externalConnectionOccupancy'" \
   "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" >/dev/null
 grep -F "'stoppedRuntimeConnectionOccupancy'" \
