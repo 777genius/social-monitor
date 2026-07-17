@@ -30,6 +30,7 @@ import {
 } from "./openai-responses-reader-summary-prompt";
 import { parseOpenAiReaderSummaryJsonObject } from "./openai-responses-reader-summary-response-parser";
 import { openAiReaderSummaryJsonSchema } from "./openai-responses-reader-summary-schema";
+import { buildReaderSummaryEvidenceCitationMap } from "./reader-summary-evidence-citation-map";
 import {
   AgentRuntimeModelProviderError,
   buildAgentRuntimeRequestId,
@@ -289,6 +290,9 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
     input: ReaderSummaryModelInput,
     selectedRoute: ReaderSummaryModelRoute,
   ): ProviderReaderSummaryAttempt {
+    const citationMap = buildReaderSummaryEvidenceCitationMap(
+      input.evidence.selectedEvidence,
+    );
     const noSignalDraft = {
       headline: "No reliable workspace signal yet",
       executiveSummary:
@@ -303,7 +307,7 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
           reason: "insufficient_evidence" as const,
         },
       ],
-      citationMap: [],
+      citationMap,
       qualityFlags: ["no_signal", "limited_sources"] as const,
       confidence: {
         level: "none" as const,

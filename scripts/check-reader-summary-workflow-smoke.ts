@@ -21,6 +21,7 @@ import {
 import type { ReaderSummaryItem } from "@social-monitor/summary/domain";
 import type {
   ReaderSummaryEvidenceSelectorPort,
+  ReaderSummaryGitHubProjectionReaderPort,
   SummaryQuotaPort,
   UserSummaryPreferenceReaderPort,
 } from "@social-monitor/summary/ports";
@@ -55,7 +56,12 @@ class SelectedReaderSummaryEvidenceSelector implements ReaderSummaryEvidenceSele
         windowId: "workspace:readerSummary-workflow-smoke",
         startedAt: new Date("2026-06-23T08:00:00.000Z"),
         endedAt: new Date("2026-06-23T08:30:00.000Z"),
-        selectedFeedItemIds: ["feed-reddit", "feed-github", "feed-database"],
+        selectedFeedItemIds: [
+          "feed-reddit",
+          "feed-github",
+          "feed-database",
+          ...workflowGitHubTrendingEvidence().map((item) => item.feedItemId),
+        ],
         storyClusterIds: ["story:ai-tooling", "story:database-reliability"],
       },
       clusters: [
@@ -134,6 +140,7 @@ class SelectedReaderSummaryEvidenceSelector implements ReaderSummaryEvidenceSele
           score: 2.1,
           whyImportant: ["Distinct operational signal in the same window"],
         },
+        ...workflowGitHubTrendingEvidence(),
       ],
     };
   }
@@ -211,6 +218,9 @@ async function main(): Promise<void> {
         clock,
         undefined,
         new WorkflowUserSummaryPreferenceReader(),
+        undefined,
+        undefined,
+        canonicalGitHubProjectionReader,
       ),
       metrics,
       runtime,
@@ -309,6 +319,21 @@ async function main(): Promise<void> {
     "reader summary source mix must include clustered GitHub evidence",
   );
   assert(
+    (artifact.content.selectedPosts ?? []).filter(
+      (post) => post.providerKey === "github-trending-page",
+    ).length === 10,
+    "daily reader summary must publish exactly ten canonical GitHub Trending selected posts",
+  );
+  assert(
+    artifact.content.topReads.every(
+      (post) => post.providerKey !== "github-trending-page",
+    ) &&
+      artifact.content.sourceMix.every(
+        (source) => source.providerKey !== "github-trending-page",
+      ),
+    "GitHub Trending must remain outside primary top reads and provider counters",
+  );
+  assert(
     artifact.content.sourceMix.some(
       (source) => source.providerKey === "reddit",
     ),
@@ -350,6 +375,58 @@ const readerTopReadKey = (item: ReaderSummaryItem): string =>
   item.canonicalUrl ??
   item.citationIds.join("|") ??
   `${item.providerKey}:${item.title}`;
+
+const canonicalGitHubProjectionReader: ReaderSummaryGitHubProjectionReaderPort =
+  {
+    async read() {
+      return {
+        eligibleBindingIds: ["binding-github-trending"],
+        items: workflowGitHubTrendingEvidence().map((item, index) => ({
+          feedItemId: item.feedItemId,
+          sourceItemId: item.sourceItemId,
+          sourceBindingId: item.sourceBindingId,
+          canonicalUrl: item.canonicalUrl!,
+          repositoryFullName: `workflow/repository-${index + 1}`,
+          rank: index + 1,
+          starsGained: 200 + index + 1,
+          window: "daily",
+          checkedAt: new Date("2026-06-23T08:30:00.000Z"),
+          publishedAt: item.publishedAt,
+          observedAt: item.observedAt,
+          sourceContentHash: "a".repeat(64),
+          sourceProviderContentHash: "b".repeat(64),
+        })),
+        pageCount: 2,
+      };
+    },
+  };
+
+const workflowGitHubTrendingEvidence = () =>
+  Array.from({ length: 10 }, (_, index) => {
+    const rank = index + 1;
+    return {
+      feedItemId: `feed-github-trending-${rank}`,
+      sourceItemId: `source-github-trending-${rank}`,
+      sourceBindingId: "binding-github-trending",
+      interestId: "topic-github",
+      providerKey: "github-trending-page",
+      providerName: "GitHub Trending",
+      canonicalUrl: `https://github.com/workflow/repository-${rank}`,
+      title: `workflow/repository-${rank}`,
+      bodyPreview: `Repository ${rank} appears in the canonical daily GitHub Trending board.`,
+      publishedAt: new Date("2026-06-23T08:29:00.000Z"),
+      observedAt: new Date("2026-06-23T08:30:00.000Z"),
+      score: 2 - rank / 100,
+      whyImportant: ["Canonical daily GitHub Trending repository"],
+      readerActionKind: "watch_repository" as const,
+      providerMetricLabels: [
+        {
+          label: "GitHub Trending today",
+          value: `#${rank}, +${200 + rank} stars today`,
+        },
+      ],
+    };
+  });
 
 class AllowingSummaryQuota implements SummaryQuotaPort {
   async reserveSummaryJob(): ReturnType<SummaryQuotaPort["reserveSummaryJob"]> {

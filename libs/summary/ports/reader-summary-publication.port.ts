@@ -1,5 +1,6 @@
 import type {
   ReaderSummaryArtifact,
+  ReaderSummaryGitHubProjectionAudit,
   ReaderSummaryJob,
   ReaderSummaryPublicationDecision,
   ReaderSummaryReadyEvent,
@@ -19,6 +20,7 @@ export type ReaderSummaryPublicationCommand = {
   readonly artifact: ReaderSummaryArtifact;
   readonly finalJob: ReaderSummaryJob;
   readonly publicationDecision: PublishableReaderSummaryPublicationDecision;
+  readonly githubProjectionAudit: ReaderSummaryGitHubProjectionAudit;
   readonly readyEvent: ReaderSummaryReadyEvent;
 };
 

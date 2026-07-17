@@ -1,4 +1,8 @@
-import { readerSummaryScopeKey, type ReaderSummaryArtifact } from "../../domain";
+import {
+  readerSummaryHasVerifiedGitHubProjection,
+  readerSummaryScopeKey,
+  type ReaderSummaryArtifact,
+} from "../../domain";
 import type {
   ListReaderSummaryArtifactsQuery,
   ListReaderSummaryArtifactsResult,
@@ -33,8 +37,13 @@ export class InMemoryReaderSummaryArtifactRepository implements ReaderSummaryArt
     if (this.artifactsById.has(key)) {
       return;
     }
+    const githubProjectionVerified = readerSummaryHasVerifiedGitHubProjection({
+      artifact,
+      audit: options?.githubProjectionAudit,
+    });
     const visibility: ReaderSummaryArtifactVisibility =
-      options?.publicationDecision?.status === "rejected"
+      options?.publicationDecision?.status === "rejected" ||
+      !githubProjectionVerified
         ? "rejected"
         : "candidate";
 
@@ -153,6 +162,11 @@ export class InMemoryReaderSummaryArtifactRepository implements ReaderSummaryArt
   commitPublication(artifact: ReaderSummaryArtifact): void {
     const snapshot = artifact.toSnapshot();
     const currentKey = artifactKey(snapshot);
+    if (this.statusesById.get(currentKey) !== "candidate") {
+      throw new Error(
+        "Reader summary publication requires a verified staged candidate",
+      );
+    }
     for (const [key, artifact] of this.artifactsById.entries()) {
       if (key === currentKey || this.statusesById.get(key) !== "visible") {
         continue;

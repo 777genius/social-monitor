@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
 
-import { readerSummaryScopeKey } from "../../domain";
+import {
+  readerSummaryHasVerifiedGitHubProjection,
+  readerSummaryScopeKey,
+} from "../../domain";
 import type {
   ReaderSummaryPublicationCommand,
   ReaderSummaryPublicationOutcome,
@@ -59,12 +62,23 @@ export const buildReaderSummaryPublicationPayload = (
     scopeKey,
     semanticStatus,
   });
+  if (
+    !readerSummaryHasVerifiedGitHubProjection({
+      artifact: command.artifact,
+      audit: command.githubProjectionAudit,
+    })
+  ) {
+    throw new Error(
+      "Reader summary publication requires an exact verified GitHub projection audit",
+    );
+  }
 
   const qualitySignals = publicationJsonObject({
     qualityFlags: artifact.qualityFlags,
     confidence: artifact.confidence,
     usage: artifact.usage,
     publicationDecision: command.publicationDecision,
+    githubProjectionAudit: command.githubProjectionAudit,
     publicationGeneration: { requestedAt },
   });
   const report = publicationJsonObject({

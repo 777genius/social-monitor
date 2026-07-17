@@ -3,6 +3,7 @@ import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
 import {
   buildReaderSummaryPeriod,
+  readerSummaryHasVerifiedGitHubProjection,
   readerSummaryScopeKey,
   type ReaderSummaryArtifact,
   type ReaderSummaryCadence,
@@ -63,8 +64,12 @@ export class PrismaReaderSummaryArtifactRepository implements ReaderSummaryArtif
       return;
     }
     const publicationDecision = options?.publicationDecision;
+    const githubProjectionVerified = readerSummaryHasVerifiedGitHubProjection({
+      artifact,
+      audit: options?.githubProjectionAudit,
+    });
     const status: PrismaSummaryStatus =
-      publicationDecision?.status === "rejected"
+      publicationDecision?.status === "rejected" || !githubProjectionVerified
         ? "REJECTED"
         : "RUNNING";
     const artifactPayload = serializeReaderSummaryArtifact(artifact);
@@ -72,6 +77,9 @@ export class PrismaReaderSummaryArtifactRepository implements ReaderSummaryArtif
     const qualitySignals = {
       ...readerSummaryQualitySignalsToPrisma(artifact),
       ...(publicationDecision === undefined ? {} : { publicationDecision }),
+      ...(options?.githubProjectionAudit === undefined
+        ? {}
+        : { githubProjectionAudit: options.githubProjectionAudit }),
     };
     const scopeFields = readerSummaryScopeToPrisma(snapshot.scope);
 

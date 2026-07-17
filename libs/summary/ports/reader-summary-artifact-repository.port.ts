@@ -3,6 +3,7 @@ import type { TenantId, WorkspaceId } from "@social-monitor/shared-kernel";
 import type {
   ReaderSummaryArtifact,
   ReaderSummaryCadence,
+  ReaderSummaryGitHubProjectionAudit,
   ReaderSummaryPeriod,
   ReaderSummaryPublicationDecision,
   ReaderSummaryScope,
@@ -93,6 +94,7 @@ export interface ReaderSummaryArtifactRepositoryPort {
     artifact: ReaderSummaryArtifact,
     options?: {
       readonly publicationDecision?: ReaderSummaryPublicationDecision;
+      readonly githubProjectionAudit?: ReaderSummaryGitHubProjectionAudit;
     },
   ): Promise<void>;
   list(

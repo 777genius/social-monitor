@@ -1,6 +1,9 @@
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
-import { ReaderSummaryArtifact } from "../../domain";
+import {
+  ReaderSummaryArtifact,
+  type ReaderSummaryGitHubProjectionAudit,
+} from "../../domain";
 import { emptyReaderSummaryReliabilityReport } from "../../domain/entities/reader-summary-reliability";
 import { InMemoryReaderSummaryArtifactRepository } from "./in-memory-reader-summary-artifact.repository";
 
@@ -22,7 +25,7 @@ describe("InMemoryReaderSummaryArtifactRepository", () => {
 
     await repository.save(
       artifact("reader-summary-memory-c", "Rejected summary"),
-      {
+      noEligibleGitHubBindingOptions({
         publicationDecision: {
           status: "rejected",
           qualityPassed: false,
@@ -55,7 +58,7 @@ describe("InMemoryReaderSummaryArtifactRepository", () => {
             },
           ],
         },
-      },
+      }),
     );
 
     const visibleAfterRejected = await repository.list(listQuery());
@@ -93,7 +96,7 @@ describe("InMemoryReaderSummaryArtifactRepository", () => {
         "reader-summary-memory-rejected-without-content",
         "Rejected summary without content",
       ),
-      {
+      noEligibleGitHubBindingOptions({
         publicationDecision: {
           status: "rejected",
           qualityPassed: false,
@@ -116,7 +119,7 @@ describe("InMemoryReaderSummaryArtifactRepository", () => {
             },
           ],
         },
-      },
+      }),
     );
 
     await expect(
@@ -137,6 +140,70 @@ describe("InMemoryReaderSummaryArtifactRepository", () => {
     });
   });
 
+  it("refuses to expose a GitHub candidate without an exact verified audit", async () => {
+    const repository = new InMemoryReaderSummaryArtifactRepository();
+    const candidate = artifactWithGitHubSelectedPost(
+      "reader-summary-unverified-github",
+    );
+
+    await repository.save(candidate, {
+      githubProjectionAudit: {
+        schemaVersion: "reader_summary.github_projection.v1",
+        status: "verified",
+        requestedUtcDay: "2026-07-05",
+        pageCount: 1,
+        scannedItemCount: 1,
+        eligibleBindingIds: ["github-binding"],
+        bindings: [],
+        violationCodes: [],
+        reasons: [],
+      },
+    });
+
+    expect(() => repository.commitPublication(candidate)).toThrow(
+      "verified staged candidate",
+    );
+    await expect(repository.findById({
+      tenantId: tenant,
+      workspaceId: workspace,
+      readerSummaryId: "reader-summary-unverified-github",
+    })).resolves.toBeNull();
+  });
+
+  it("requires durable zero-binding proof before staging non-GitHub output", async () => {
+    const repository = new InMemoryReaderSummaryArtifactRepository();
+    const candidate = artifact(
+      "reader-summary-missing-binding-proof",
+      "Unproven summary",
+    );
+
+    await repository.save(candidate);
+
+    expect(() => repository.commitPublication(candidate)).toThrow(
+      "verified staged candidate",
+    );
+  });
+});
+
+type ReaderSummarySaveOptions = NonNullable<
+  Parameters<InMemoryReaderSummaryArtifactRepository["save"]>[1]
+>;
+
+const noEligibleGitHubBindingOptions = (
+  options: Omit<ReaderSummarySaveOptions, "githubProjectionAudit"> = {},
+): ReaderSummarySaveOptions => ({
+  ...options,
+  githubProjectionAudit: {
+    schemaVersion: "reader_summary.github_projection.v1",
+    status: "not_required",
+    requestedUtcDay: "2026-07-05",
+    pageCount: 1,
+    scannedItemCount: 0,
+    eligibleBindingIds: [],
+    bindings: [],
+    violationCodes: [],
+    reasons: [],
+  } satisfies ReaderSummaryGitHubProjectionAudit,
 });
 
 const listQuery = () => ({
@@ -282,6 +349,53 @@ const artifactWithoutContent = (
     ...artifact(readerSummaryId, headline).toSnapshot(),
     content: undefined,
   });
+
+const artifactWithGitHubSelectedPost = (
+  readerSummaryId: string,
+): ReaderSummaryArtifact => {
+  const snapshot = artifact(readerSummaryId, "GitHub summary").toSnapshot();
+  const githubTopRead = {
+    ...topRead(),
+    title: "owner/repository",
+    providerKey: "github-trending-page",
+    providerName: "GitHub Trending",
+    primaryActionKind: "watch_repository" as const,
+    confirmedProviderKeys: ["github-trending-page"],
+    providerMetrics: [
+      {
+        label: "GitHub Trending today",
+        value: "#1, +200 stars today",
+      },
+    ],
+    canonicalUrl: "https://github.com/owner/repository",
+  };
+
+  return ReaderSummaryArtifact.create({
+    ...snapshot,
+    storyClusters: snapshot.storyClusters.map((cluster) => ({
+      ...cluster,
+      providerKeys: ["github-trending-page"],
+    })),
+    content: {
+      ...snapshot.content!,
+      sourceMix: snapshot.content!.sourceMix.map((source) => ({
+        ...source,
+        providerKey: "github-trending-page",
+      })),
+      topReads: [githubTopRead],
+      selectedPosts: [githubTopRead],
+    },
+    topStories: snapshot.topStories.map((story) => ({
+      ...story,
+      providerKeys: ["github-trending-page"],
+    })),
+    citationMap: snapshot.citationMap.map((citation) => ({
+      ...citation,
+      providerKey: "github-trending-page",
+      canonicalUrl: "https://github.com/owner/repository",
+    })),
+  });
+};
 
 const topRead = () => ({
   title: "Reader source signal",

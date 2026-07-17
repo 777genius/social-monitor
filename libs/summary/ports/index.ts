@@ -6,6 +6,7 @@ export * from "./reader-summary-context-provider.port";
 export * from "./reader-summary-coverage-counter.port";
 export * from "./reader-summary-evidence-selector.port";
 export * from "./reader-summary-freshness.port";
+export * from "./reader-summary-github-projection-reader.port";
 export * from "./reader-summary-job-queue.port";
 export * from "./reader-summary-job-repository.port";
 export * from "./reader-summary-model.port";

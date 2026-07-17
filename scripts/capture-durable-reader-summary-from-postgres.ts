@@ -28,6 +28,7 @@ import {
   resolveOpenAiResponsesReaderSummaryModelOptions,
 } from "@social-monitor/summary/adapters/model/openai-responses-reader-summary-model.adapter";
 import { PrismaReaderSummaryArtifactRepository } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-artifact.repository";
+import { PrismaReaderSummaryGitHubProjectionReader } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-github-projection.reader";
 import { PrismaReaderSummaryJobRepository } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-job.repository";
 import { PrismaReaderSummaryPolicyRepository } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-policy.repository";
 import { StoryRankingMetricsRecorder } from "@social-monitor/summary/adapters/metrics/story-ranking-metrics.recorder";
@@ -229,6 +230,8 @@ async function main(): Promise<void> {
       undefined,
       undefined,
       buildTopicMapBuilder(topicLabelerMode, agentRuntimeClient),
+      undefined,
+      new PrismaReaderSummaryGitHubProjectionReader(summaryConnection),
     );
     const execution = await executeReaderSummary.execute({
       tenantId: tenant,

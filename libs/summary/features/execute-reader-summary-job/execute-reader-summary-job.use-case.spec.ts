@@ -25,6 +25,7 @@ import type {
   ReaderSummaryArtifactRepositoryPort,
   ReaderSummaryContextProviderPort,
   ReaderSummaryEvidenceSelectorPort,
+  ReaderSummaryGitHubProjectionReaderPort,
   ReaderSummaryJobRepositoryPort,
   ReaderSummaryModelEstimate,
   ReaderSummaryModelFailure,
@@ -46,11 +47,11 @@ class StaticIdGenerator implements IdGenerator {
 }
 
 const readerSummaryPeriod: ReaderSummaryPeriod = {
-  cadence: "daily",
+  cadence: "custom",
   startedAt: new Date("2026-06-26T00:00:00.000Z"),
   endedAt: new Date("2026-06-27T00:00:00.000Z"),
   timezone: "UTC",
-  periodKey: "daily:2026-06-26T00:00:00.000Z:2026-06-27T00:00:00.000Z:UTC",
+  periodKey: "custom:2026-06-26T00:00:00.000Z:2026-06-27T00:00:00.000Z:UTC",
 };
 
 describe("ExecuteReaderSummaryJobUseCase", () => {
@@ -153,6 +154,7 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
       } satisfies UserSummaryPreferenceReaderPort,
       undefined,
       publicationPolicy,
+      zeroEligibleGitHubProjectionReader(),
     ).execute({
       tenantId: tenant,
       workspaceId: workspace,
@@ -297,6 +299,9 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
           };
         },
       } satisfies UserSummaryPreferenceReaderPort,
+      undefined,
+      undefined,
+      zeroEligibleGitHubProjectionReader(),
     ).execute({
       tenantId: tenant,
       workspaceId: workspace,
@@ -360,6 +365,8 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
       undefined,
       undefined,
       emptyTopicMapBuilder(),
+      undefined,
+      zeroEligibleGitHubProjectionReader(),
     ).execute({
       tenantId: tenant,
       workspaceId: workspace,
@@ -431,6 +438,8 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
       undefined,
       undefined,
       throwingTopicMapBuilder(),
+      undefined,
+      zeroEligibleGitHubProjectionReader(),
     ).execute({
       tenantId: tenant,
       workspaceId: workspace,
@@ -509,6 +518,7 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
       undefined,
       throwingTopicMapBuilder(),
       publicationPolicy,
+      zeroEligibleGitHubProjectionReader(),
     ).execute({
       tenantId: tenant,
       workspaceId: workspace,
@@ -530,6 +540,13 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
 });
 
 const unused = <T>(): T => ({}) as T;
+
+const zeroEligibleGitHubProjectionReader =
+  (): ReaderSummaryGitHubProjectionReaderPort => ({
+    async read() {
+      return { eligibleBindingIds: [], items: [], pageCount: 1 };
+    },
+  });
 
 const emptyTopicMapBuilder = (): BuildReaderSummaryTopicMapUseCase =>
   ({
@@ -672,6 +689,7 @@ class CapturingReaderSummaryPublication
   async publish(command: ReaderSummaryPublicationCommand) {
     await this.artifacts.save(command.artifact, {
       publicationDecision: command.publicationDecision,
+      githubProjectionAudit: command.githubProjectionAudit,
     });
     await this.jobs.save(command.finalJob);
     await this.events.publish(command.readyEvent);

@@ -1,4 +1,7 @@
-const defaultExcludedReaderSummaryProviders = new Set(["github-issues"]);
+const defaultExcludedReaderSummaryProviders = new Set([
+  "github-issues",
+  "github-trending-page",
+]);
 
 export const isDefaultReaderSummaryEvidenceProvider = (
   providerKey: string,

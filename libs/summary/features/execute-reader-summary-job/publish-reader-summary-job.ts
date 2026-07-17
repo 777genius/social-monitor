@@ -12,6 +12,7 @@ import {
 
 import type {
   ReaderSummaryArtifact,
+  ReaderSummaryGitHubProjectionAudit,
   ReaderSummaryJob,
   ReaderSummaryReadyEvent,
 } from "../../domain";
@@ -26,6 +27,7 @@ export const publishReaderSummaryJob = async (params: {
   readonly artifact: ReaderSummaryArtifact;
   readonly runningJob: ReaderSummaryJob;
   readonly publicationDecision: PublishableReaderSummaryPublicationDecision;
+  readonly githubProjectionAudit: ReaderSummaryGitHubProjectionAudit;
   readonly jobs: ReaderSummaryJobRepositoryPort;
   readonly publications: ReaderSummaryPublicationPort;
   readonly ids: IdGenerator;
@@ -69,6 +71,7 @@ export const publishReaderSummaryJob = async (params: {
     artifact: params.artifact,
     finalJob,
     publicationDecision: params.publicationDecision,
+    githubProjectionAudit: params.githubProjectionAudit,
     readyEvent,
   });
 

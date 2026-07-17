@@ -1,5 +1,13 @@
 import { eventId, tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
+import {
+  readerSummaryGitHubProjectionCollectionGraceMs,
+  readerSummaryGitHubProjectionCollectionWarningThresholdMs,
+} from "../../domain";
+import type {
+  ReaderSummaryPublicationCommand,
+  SummaryEventPublisherPort,
+} from "../../ports";
 import { InMemorySummaryEventPublisher } from "../messaging/in-memory-summary-event-publisher";
 import { InMemoryReaderSummaryArtifactRepository } from "./in-memory-reader-summary-artifact.repository";
 import { InMemoryReaderSummaryJobRepository } from "./in-memory-reader-summary-job.repository";
@@ -8,10 +16,6 @@ import {
   buildReaderSummaryPublicationPayload,
   stablePublicationJson,
 } from "./reader-summary-publication-proof";
-import type {
-  ReaderSummaryPublicationCommand,
-  SummaryEventPublisherPort,
-} from "../../ports";
 
 describe("InMemoryReaderSummaryPublication", () => {
   it.each(["COMPLETED", "NO_SIGNAL"] as const)(
@@ -89,6 +93,7 @@ describe("InMemoryReaderSummaryPublication", () => {
     const artifacts = new InMemoryReaderSummaryArtifactRepository();
     await artifacts.save(fixture.command.artifact, {
       publicationDecision: fixture.command.publicationDecision,
+      githubProjectionAudit: fixture.command.githubProjectionAudit,
     });
     const publication = new InMemoryReaderSummaryPublication(
       jobs,
@@ -118,6 +123,54 @@ describe("InMemoryReaderSummaryPublication", () => {
       readerSummaryArtifactId: fixture.identity.readerSummaryId,
       reportSha256: first.reportSha256,
     });
+    expect(first.report.qualitySignals).toMatchObject({
+      githubProjectionAudit: fixture.command.githubProjectionAudit,
+    });
+  });
+
+  it("persists GitHub collection delay warning telemetry in the report", () => {
+    const fixture = createFixture({
+      semanticStatus: "COMPLETED",
+      sequence: 8,
+      githubProjectionDelayMs:
+        readerSummaryGitHubProjectionCollectionWarningThresholdMs,
+    });
+
+    const payload = buildReaderSummaryPublicationPayload(fixture.command);
+
+    expect(payload.report.qualitySignals).toMatchObject({
+      githubProjectionAudit: {
+        status: "verified",
+        telemetry: {
+          github_projection_collection_delay_ms:
+            readerSummaryGitHubProjectionCollectionWarningThresholdMs,
+          collectionGraceMs:
+            readerSummaryGitHubProjectionCollectionGraceMs,
+          warningThresholdMs:
+            readerSummaryGitHubProjectionCollectionWarningThresholdMs,
+          qualitySignal: "github_projection_collection_delay_warning",
+        },
+      },
+    });
+  });
+
+  it("rejects a forged GitHub audit before any publication side effect", async () => {
+    const fixture = createFixture({ semanticStatus: "COMPLETED", sequence: 7 });
+    const invalid = {
+      ...fixture.command,
+      githubProjectionAudit: {
+        ...fixture.command.githubProjectionAudit,
+        requestedUtcDay: "2026-07-04",
+      },
+    };
+    const context = await createContext(fixture.command);
+
+    await expect(context.publication.publish(invalid)).rejects.toThrow(
+      "exact verified GitHub projection audit",
+    );
+    await expect(context.artifacts.findById(fixture.identity)).resolves.toBeNull();
+    expect(context.events.all()).toEqual([]);
+    expect(context.jobs.all()).toEqual([]);
   });
 });
 
@@ -130,6 +183,7 @@ const createContext = async (
   for (const command of commands) {
     await artifacts.save(command.artifact, {
       publicationDecision: command.publicationDecision,
+      githubProjectionAudit: command.githubProjectionAudit,
     });
   }
   return {
@@ -150,6 +204,7 @@ const createFixture = (params: {
   readonly semanticStatus: "COMPLETED" | "NO_SIGNAL";
   readonly sequence: number;
   readonly requestedAt?: Date;
+  readonly githubProjectionDelayMs?: number;
 }) => {
   const suffix = String(params.sequence).padStart(12, "0");
   const tenant = tenantId("00000000-0000-4000-8000-000000000001");
@@ -168,6 +223,34 @@ const createFixture = (params: {
   };
   const scope = { type: "workspace" as const };
   const noSignal = params.semanticStatus === "NO_SIGNAL";
+  const githubProjectionDelayMs = params.githubProjectionDelayMs ?? 0;
+  const githubCollectedAt = new Date(
+    period.endedAt.getTime() + githubProjectionDelayMs,
+  );
+  const githubCitations = Array.from({ length: 10 }, (_, index) => {
+    const rank = index + 1;
+    return {
+      citationId: `github-citation-${rank}`,
+      feedItemId: `github-feed-${rank}`,
+      sourceItemId: `github-source-${rank}`,
+      providerKey: "github-trending-page",
+      canonicalUrl: `https://github.com/owner/repository-${rank}`,
+    };
+  });
+  const githubSelectedPosts = githubCitations.map((citation, index) => {
+    const rank = index + 1;
+    return {
+      providerKey: "github-trending-page",
+      canonicalUrl: citation.canonicalUrl,
+      citationIds: [citation.citationId],
+      providerMetrics: [
+        {
+          label: "GitHub Trending today",
+          value: `#${rank}, +${200 + rank} stars today`,
+        },
+      ],
+    };
+  });
   const artifactSnapshot = {
     schemaVersion: "reader_summary.artifact.v1" as const,
     readerSummaryId: artifactId,
@@ -191,7 +274,8 @@ const createFixture = (params: {
     interestHighlights: [],
     repeatedSignals: [],
     risksAndUnknowns: [],
-    citationMap: [],
+    citationMap: githubCitations,
+    content: { selectedPosts: githubSelectedPosts },
     qualityFlags: noSignal ? ["no_signal"] : [],
     confidence: {
       level: noSignal ? "none" : "medium",
@@ -210,6 +294,8 @@ const createFixture = (params: {
     ...(noSignal ? { noSignalReason: "No eligible evidence." } : {}),
   };
   const finalStatus = noSignal ? "no_signal" : "completed";
+  const completedAt =
+    githubCollectedAt ?? new Date("2026-07-05T11:00:00.000Z");
   const finalJobSnapshot = {
     id: jobId,
     tenantId: tenant,
@@ -220,14 +306,14 @@ const createFixture = (params: {
     idempotencyKey: `publication-test:${jobId}`,
     requestedAt,
     startedAt: requestedAt,
-    completedAt: new Date("2026-07-05T11:00:00.000Z"),
+    completedAt,
     readerSummaryId: artifactId,
   };
   const readyEvent = {
     eventId,
     eventType: "reader_summary.ready" as const,
     schemaVersion: 1 as const,
-    occurredAt: new Date("2026-07-05T11:00:00.000Z"),
+    occurredAt: completedAt,
     tenantId: tenant,
     workspaceId: workspace,
     correlationId: jobId,
@@ -257,6 +343,50 @@ const createFixture = (params: {
       },
       reasons: [],
     },
+    githubProjectionAudit: {
+            schemaVersion: "reader_summary.github_projection.v1" as const,
+            status: "verified" as const,
+            requestedUtcDay: "2026-07-05",
+            pageCount: 1,
+            scannedItemCount: 10,
+            eligibleBindingIds: ["github-binding"],
+            observedThrough: githubCollectedAt.toISOString(),
+            projectionCheckedAt: githubCollectedAt.toISOString(),
+            telemetry: {
+              github_projection_collection_delay_ms:
+                githubProjectionDelayMs,
+              collectionGraceMs:
+                readerSummaryGitHubProjectionCollectionGraceMs,
+              warningThresholdMs:
+                readerSummaryGitHubProjectionCollectionWarningThresholdMs,
+              qualitySignal:
+                githubProjectionDelayMs >=
+                readerSummaryGitHubProjectionCollectionWarningThresholdMs
+                  ? ("github_projection_collection_delay_warning" as const)
+                  : ("within_grace" as const),
+            },
+            bindings: githubCitations.map((citation, index) => {
+              const rank = index + 1;
+              return {
+                selectedPostIndex: index,
+                rank,
+                citationId: citation.citationId,
+                feedItemId: citation.feedItemId,
+                sourceItemId: citation.sourceItemId,
+                sourceBindingId: "github-binding",
+                repositoryIdentity: `owner/repository-${rank}`,
+                canonicalUrl: citation.canonicalUrl,
+                starsGained: 200 + rank,
+                publishedAt: "2026-07-05T23:59:59.999Z",
+                checkedAt: githubCollectedAt.toISOString(),
+                observedAt: githubCollectedAt.toISOString(),
+                sourceContentHash: "a".repeat(64),
+                sourceProviderContentHash: "b".repeat(64),
+              };
+            }),
+            violationCodes: [],
+            reasons: [],
+          },
     readyEvent,
   } as unknown as ReaderSummaryPublicationCommand;
 
