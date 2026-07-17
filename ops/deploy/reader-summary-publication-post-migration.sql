@@ -6,6 +6,24 @@ SELECT set_config(
   false
 );
 
+-- Protected object ACLs can only be repaired as their NOLOGIN owner. The
+-- migrator has SET but deliberately does not inherit this role.
+SET ROLE social_monitor_reader_summary_publication_owner;
+REVOKE ALL PRIVILEGES ON TABLE
+  public.reader_summary_publications,
+  public.reader_summary_publication_slots,
+  public.reader_summary_artifacts
+FROM :"runtime_role";
+REVOKE ALL PRIVILEGES ON FUNCTION
+  public.reader_summary_model_authority_rank(text),
+  public.publish_reader_summary(jsonb),
+  public.guard_reader_summary_publication_insert(),
+  public.reject_reader_summary_publication_mutation(),
+  public.guard_published_reader_summary_artifact_update(),
+  public.guard_reader_summary_active_slot_update()
+FROM :"runtime_role";
+RESET ROLE;
+
 DO $bootstrap$
 DECLARE
   v_runtime_role NAME := current_setting(
@@ -17,23 +35,6 @@ DECLARE
 BEGIN
   -- Remove any direct authority retained from an older runtime-owned schema.
   -- The application receives only the audited capability-role grants.
-  EXECUTE format(
-    'REVOKE ALL PRIVILEGES ON TABLE '
-      'public.reader_summary_publications, '
-      'public.reader_summary_publication_slots, '
-      'public.reader_summary_artifacts FROM %I',
-    v_runtime_role
-  );
-  EXECUTE format(
-    'REVOKE ALL PRIVILEGES ON FUNCTION '
-      'public.reader_summary_model_authority_rank(text), '
-      'public.publish_reader_summary(jsonb), '
-      'public.guard_reader_summary_publication_insert(), '
-      'public.reject_reader_summary_publication_mutation(), '
-      'public.guard_published_reader_summary_artifact_update(), '
-      'public.guard_reader_summary_active_slot_update() FROM %I',
-    v_runtime_role
-  );
   EXECUTE format('REVOKE CREATE ON SCHEMA public FROM %I', v_runtime_role);
   REVOKE CREATE ON SCHEMA public
   FROM PUBLIC,

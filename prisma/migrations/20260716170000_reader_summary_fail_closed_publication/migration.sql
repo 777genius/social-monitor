@@ -859,6 +859,8 @@ ALTER FUNCTION "guard_published_reader_summary_artifact_update"()
 ALTER FUNCTION "guard_reader_summary_active_slot_update"()
   OWNER TO "social_monitor_reader_summary_publication_owner";
 
+SET LOCAL ROLE "social_monitor_reader_summary_publication_owner";
+
 REVOKE ALL PRIVILEGES ON TABLE
   "reader_summary_publications",
   "reader_summary_publication_slots",
@@ -881,6 +883,9 @@ REVOKE ALL PRIVILEGES ON FUNCTION
 FROM PUBLIC, "social_monitor_reader_summary_publication_runtime";
 GRANT EXECUTE ON FUNCTION "publish_reader_summary"(JSONB)
 TO "social_monitor_reader_summary_publication_runtime";
+
+RESET ROLE;
+
 GRANT USAGE ON SCHEMA public
 TO "social_monitor_reader_summary_publication_owner",
   "social_monitor_reader_summary_publication_runtime";
