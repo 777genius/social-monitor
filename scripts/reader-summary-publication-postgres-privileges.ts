@@ -51,11 +51,15 @@ export const grantLegacyMigrationOwnership = async (
 
 export const createPublicationFixtureRuntimeRole = async (params: {
   readonly databaseName: string;
-  readonly databaseUrl: string;
+  readonly migrationAdminRole: string;
   readonly runtimePassword: string;
   readonly runtimeRole: string;
+  readonly serverAdminDatabaseUrl: string;
 }): Promise<void> => {
-  const admin = new Pool({ connectionString: params.databaseUrl, max: 1 });
+  const admin = new Pool({
+    connectionString: params.serverAdminDatabaseUrl,
+    max: 1,
+  });
   try {
     await admin.query(
       `CREATE ROLE ${quoteIdentifier(params.runtimeRole)} LOGIN PASSWORD ${quoteLiteral(params.runtimePassword)}
@@ -71,7 +75,8 @@ export const createPublicationFixtureRuntimeRole = async (params: {
       "SET TRUE",
     ]) {
       await admin.query(
-        `GRANT ${quoteIdentifier(params.runtimeRole)} TO CURRENT_USER
+        `GRANT ${quoteIdentifier(params.runtimeRole)}
+          TO ${quoteIdentifier(params.migrationAdminRole)}
           WITH ${membershipOption}`,
       );
     }

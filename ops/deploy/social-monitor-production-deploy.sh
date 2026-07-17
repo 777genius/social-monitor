@@ -525,6 +525,12 @@ backend_services() {
     if changed_between "$from" "$to" apps/social-research-runtime; then
       services+=(api)
     fi
+    if changed_between "$from" "$to" \
+      ops/deploy/reader-summary-publication-deploy-lib.sh \
+      ops/deploy/reader-summary-publication-pre-migration.sql \
+      ops/deploy/reader-summary-publication-post-migration.sql; then
+      services+=(migrate)
+    fi
     if changed_between "$from" "$to" scripts ops/evals test; then
       services+=(daily-runner)
     fi

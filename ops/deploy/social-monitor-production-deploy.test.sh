@@ -91,6 +91,31 @@ grep -Fx 'frontend=false' <<< "$plan" >/dev/null
 grep -Fx 'backend=false' <<< "$plan" >/dev/null
 grep -Fx 'control=true' <<< "$plan" >/dev/null
 
+# Publication privilege contract changes must always select the standalone
+# migrator, even when no application source changed.
+git -C "$REPO" checkout -qb publication-mapping-test
+printf '\n-- publication mapping contract\n' >> \
+  "$REPO/ops/deploy/reader-summary-publication-pre-migration.sql"
+git -C "$REPO" add ops/deploy/reader-summary-publication-pre-migration.sql
+git -C "$REPO" commit -qm 'test: publication migration contract change'
+PUBLICATION_TARGET_SHA=$(git -C "$REPO" rev-parse HEAD)
+publication_services=$(
+  SOCIAL_MONITOR_DEPLOY_TEST_MODE=1 \
+  SOCIAL_MONITOR_DEPLOY_ROOT="$ROOT" \
+  SOCIAL_MONITOR_DEPLOY_REPO="$REPO" \
+  SOCIAL_MONITOR_DEPLOY_CONTROL="$CONTROL" \
+  SOCIAL_MONITOR_DEPLOY_STATE="$STATE" \
+  SOCIAL_MONITOR_DEPLOY_STAGING="$STAGING" \
+  CONTROL_TARGET_SHA="$CONTROL_TARGET_SHA" \
+  PUBLICATION_TARGET_SHA="$PUBLICATION_TARGET_SHA" \
+    bash -c '
+      source "$1"
+      backend_services "$CONTROL_TARGET_SHA" "$PUBLICATION_TARGET_SHA"
+    ' _ "$ENTRYPOINT"
+)
+[[ $publication_services == migrate ]]
+git -C "$REPO" checkout -q main
+
 grep -F "if printf '%s\\n' \"\${persistent[@]}\" | grep -qx api && ! refresh_frontend_api_proxy; then" \
   "$ENTRYPOINT" >/dev/null
 grep -F "if [[ \$api_rolled_back == true ]]; then" "$ENTRYPOINT" >/dev/null

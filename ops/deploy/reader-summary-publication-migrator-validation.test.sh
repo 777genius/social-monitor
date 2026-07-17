@@ -21,6 +21,7 @@ VALID_URL="postgresql://${MIGRATOR_ROLE}:${PRIVATE_PASSWORD}@${DATABASE_HOST}:25
 VALID_CATALOG="social_monitor|${MIGRATOR_ROLE}|${MIGRATOR_ROLE}|t|t|t|f|f|f|f|180004|t|1|t|f|t|t|0"
 CATALOG_RESULT=$VALID_CATALOG
 CATALOG_QUERY_STATUS=0
+AVAILABILITY_STATUS=0
 SECRET_OWNER=root
 SECRET_METADATA_STATUS=0
 CA_OWNER=root
@@ -65,6 +66,11 @@ reader_summary_publication_admin_catalog_query() {
   printf '%s\n' "$CATALOG_RESULT"
 }
 
+reader_summary_publication_admin_availability_query() {
+  printf '%s\n' availability >> "$EVENT_LOG"
+  return "$AVAILABILITY_STATUS"
+}
+
 run_reader_summary_publication_admin_sql() {
   local phase=$4
   printf 'write:%s\n' "$phase" >> "$EVENT_LOG"
@@ -97,6 +103,7 @@ reset_case() {
   : > "$WRITE_LOG"
   CATALOG_RESULT=$VALID_CATALOG
   CATALOG_QUERY_STATUS=0
+  AVAILABILITY_STATUS=0
   SECRET_OWNER=root
   SECRET_METADATA_STATUS=0
   CA_OWNER=root
@@ -156,14 +163,29 @@ assert_invalid_catalog() {
   status=$?
   set -e
   ((status != 0))
-  if ((query_status == 2)); then
-    [[ $(< "$EVENT_LOG") == $'catalog-query\ncatalog-query\ncatalog-query' ]]
-  else
-    [[ $(< "$EVENT_LOG") == catalog-query ]]
-  fi
+  [[ $(< "$EVENT_LOG") == $'availability\ncatalog-query' ]]
   [[ ! -s $WRITE_LOG ]]
   assert_redacted "$output" "$VALID_URL"
   [[ $output != *"$catalog_result"* ]]
+  TEST_COUNT=$((TEST_COUNT + 1))
+  : "$label"
+}
+
+assert_invalid_availability() {
+  local label=$1
+  local availability_status=$2
+  local expected=$3
+  local output status
+  reset_case
+  AVAILABILITY_STATUS=$availability_status
+  set +e
+  output=$(deploy_reader_summary_publication_migrations 2>&1)
+  status=$?
+  set -e
+  ((status != 0))
+  [[ $(< "$EVENT_LOG") == "$expected" ]]
+  [[ ! -s $WRITE_LOG ]]
+  assert_redacted "$output" "$VALID_URL"
   TEST_COUNT=$((TEST_COUNT + 1))
   : "$label"
 }
@@ -186,7 +208,7 @@ assert_invalid_file() {
 reset_case
 valid_output=$(deploy_reader_summary_publication_migrations 2>&1)
 [[ -z $valid_output ]]
-[[ $(< "$EVENT_LOG") == $'catalog-query\nwrite:pre\nwrite:prisma\nwrite:post' ]]
+[[ $(< "$EVENT_LOG") == $'availability\ncatalog-query\nwrite:pre\nwrite:prisma\nwrite:post' ]]
 [[ $(< "$WRITE_LOG") == $'psql:pre\nprisma-migrate\npsql:post' ]]
 TEST_COUNT=$((TEST_COUNT + 1))
 
@@ -201,16 +223,16 @@ for failed_phase in pre prisma post; do
   assert_redacted "$failure_output" "$VALID_URL"
   case $failed_phase in
     pre)
-      [[ $(< "$EVENT_LOG") == $'catalog-query\nwrite:pre' ]]
+      [[ $(< "$EVENT_LOG") == $'availability\ncatalog-query\nwrite:pre' ]]
       [[ ! -s $WRITE_LOG ]]
       ;;
     prisma)
-      [[ $(< "$EVENT_LOG") == $'catalog-query\nwrite:pre\nwrite:prisma' ]]
+      [[ $(< "$EVENT_LOG") == $'availability\ncatalog-query\nwrite:pre\nwrite:prisma' ]]
       [[ $(< "$WRITE_LOG") == psql:pre ]]
       ;;
     post)
       [[ $(< "$EVENT_LOG") == \
-        $'catalog-query\nwrite:pre\nwrite:prisma\nwrite:post' ]]
+        $'availability\ncatalog-query\nwrite:pre\nwrite:prisma\nwrite:post' ]]
       [[ $(< "$WRITE_LOG") == $'psql:pre\nprisma-migrate' ]]
       ;;
   esac
@@ -282,7 +304,13 @@ reset_case
 CA_METADATA_STATUS=42
 assert_invalid_file unreadable-ca-metadata
 
-assert_invalid_catalog transient-connection-failure "$PRIVATE_QUERY_PAYLOAD" 2
+assert_invalid_availability unavailable-rejecting 1 \
+  $'availability\navailability\navailability'
+assert_invalid_availability unavailable-no-response 2 \
+  $'availability\navailability\navailability'
+assert_invalid_availability invalid-availability-config 3 availability
+assert_invalid_catalog catalog-connection-failure-is-deterministic \
+  "$PRIVATE_QUERY_PAYLOAD" 2
 assert_invalid_catalog deterministic-query-failure "$PRIVATE_QUERY_PAYLOAD" 42
 assert_invalid_catalog malformed-query-output 'malformed'
 assert_invalid_catalog multiline-query-output \
@@ -393,6 +421,7 @@ for catalog_token in \
   'membership.admin_option' \
   'membership.inherit_option' \
   'membership.set_option' \
+  'pg_isready' \
   '--no-password'; do
   grep -F -- "$catalog_token" "$LIBRARY" >/dev/null
 done

@@ -51,10 +51,12 @@ BEGIN
     SELECT 1 FROM pg_roles
     WHERE rolname = 'social_monitor_reader_summary_publication_owner'
   ) THEN
+    PERFORM pg_catalog.set_config('createrole_self_grant', 'set', true);
     EXECUTE 'CREATE ROLE social_monitor_reader_summary_publication_owner '
       'NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT '
       'NOREPLICATION NOBYPASSRLS';
   END IF;
+  PERFORM pg_catalog.set_config('createrole_self_grant', '', true);
   SELECT * INTO v_role FROM pg_roles
   WHERE rolname = 'social_monitor_reader_summary_publication_owner';
   IF v_role.rolcanlogin OR v_role.rolsuper OR v_role.rolcreatedb
@@ -79,21 +81,6 @@ BEGIN
     RAISE EXCEPTION 'reader summary publication runtime role is unsafe';
   END IF;
 
-  EXECUTE format(
-    'GRANT social_monitor_reader_summary_publication_owner TO %I '
-      'WITH ADMIN TRUE',
-    current_user
-  );
-  EXECUTE format(
-    'GRANT social_monitor_reader_summary_publication_owner TO %I '
-      'WITH INHERIT FALSE',
-    current_user
-  );
-  EXECUTE format(
-    'GRANT social_monitor_reader_summary_publication_owner TO %I '
-      'WITH SET TRUE',
-    current_user
-  );
   EXECUTE format(
     'GRANT USAGE, CREATE ON SCHEMA public TO %I',
     current_user
@@ -124,21 +111,6 @@ BEGIN
     RAISE EXCEPTION 'publication capability can assume publication ownership';
   END IF;
 
-  EXECUTE format(
-    'GRANT social_monitor_reader_summary_publication_runtime TO %I '
-      'WITH ADMIN TRUE',
-    current_user
-  );
-  EXECUTE format(
-    'GRANT social_monitor_reader_summary_publication_runtime TO %I '
-      'WITH INHERIT FALSE',
-    current_user
-  );
-  EXECUTE format(
-    'GRANT social_monitor_reader_summary_publication_runtime TO %I '
-      'WITH SET FALSE',
-    current_user
-  );
   EXECUTE format(
     'GRANT social_monitor_reader_summary_publication_runtime TO %I '
       'WITH ADMIN FALSE',

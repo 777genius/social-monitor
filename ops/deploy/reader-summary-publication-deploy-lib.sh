@@ -103,7 +103,7 @@ validate_reader_summary_publication_migrator() (
   local server_version uses_tls membership_count membership_admin
   local membership_inherit membership_set protected_memberships_valid
   local unexpected_membership_count extra
-  local query_status
+  local query_status availability_status
 
   [[ -f $secret && ! -L $secret && -s $secret ]] || return 64
   metadata=$(reader_summary_publication_admin_secret_metadata \
@@ -120,15 +120,23 @@ validate_reader_summary_publication_migrator() (
     return 64
 
   reader_summary_publication_validate_admin_url "$secret" || return 64
+  if reader_summary_publication_admin_availability_query \
+    "$secret" "$ca_certificate" >/dev/null 2>&1; then
+    :
+  else
+    availability_status=$?
+    [[ $availability_status == 1 || $availability_status == 2 ]] && return 75
+    return 65
+  fi
   if catalog_result=$(reader_summary_publication_admin_catalog_query \
     "$secret" "$ca_certificate" "$runtime_role" 2>/dev/null); then
     :
   else
     query_status=$?
-    # psql reserves status 2 for a failed server connection. SQL, auth,
-    # privilege, TLS-policy and container-launch failures are deterministic
-    # release blockers and must not be disguised as transient retries.
-    [[ $query_status == 2 ]] && return 75
+    # Availability has already been retried separately. Any catalog failure,
+    # including authentication, TLS, SQL and privilege errors, is permanent
+    # for this release attempt.
+    : "$query_status"
     return 65
   fi
   [[ -n $catalog_result && $catalog_result != *$'\n'* ]] || return 65
@@ -278,30 +286,61 @@ LEFT JOIN LATERAL (
     BOOL_OR(membership.set_option) FILTER (
       WHERE granted_role.rolname = :'runtime_role'
     ) AS set_option,
-    COUNT(*) FILTER (
-      WHERE granted_role.rolname =
-        'social_monitor_reader_summary_publication_owner'
-    ) <= 1
-      AND COUNT(*) FILTER (
-        WHERE granted_role.rolname =
-          'social_monitor_reader_summary_publication_runtime'
-      ) <= 1
-      AND BOOL_AND(
+    (
+      (
+        NOT EXISTS (
+          SELECT 1 FROM pg_catalog.pg_roles
+          WHERE rolname =
+            'social_monitor_reader_summary_publication_owner'
+        ) AND COUNT(*) FILTER (
+          WHERE granted_role.rolname =
+            'social_monitor_reader_summary_publication_owner'
+        ) = 0
+      ) OR (
+        EXISTS (
+          SELECT 1 FROM pg_catalog.pg_roles
+          WHERE rolname =
+            'social_monitor_reader_summary_publication_owner'
+        ) AND COUNT(*) FILTER (
+          WHERE granted_role.rolname =
+            'social_monitor_reader_summary_publication_owner'
+        ) = 1 AND BOOL_AND(
         CASE WHEN granted_role.rolname =
           'social_monitor_reader_summary_publication_owner'
         THEN membership.admin_option
           AND NOT membership.inherit_option
           AND membership.set_option
         ELSE true END
+        )
       )
-      AND BOOL_AND(
+    ) AND (
+      (
+        NOT EXISTS (
+          SELECT 1 FROM pg_catalog.pg_roles
+          WHERE rolname =
+            'social_monitor_reader_summary_publication_runtime'
+        ) AND COUNT(*) FILTER (
+          WHERE granted_role.rolname =
+            'social_monitor_reader_summary_publication_runtime'
+        ) = 0
+      ) OR (
+        EXISTS (
+          SELECT 1 FROM pg_catalog.pg_roles
+          WHERE rolname =
+            'social_monitor_reader_summary_publication_runtime'
+        ) AND COUNT(*) FILTER (
+          WHERE granted_role.rolname =
+            'social_monitor_reader_summary_publication_runtime'
+        ) = 1 AND BOOL_AND(
         CASE WHEN granted_role.rolname =
           'social_monitor_reader_summary_publication_runtime'
         THEN membership.admin_option
           AND NOT membership.inherit_option
           AND NOT membership.set_option
         ELSE true END
-      ) AS protected_memberships_valid,
+        )
+      )
+    ) AS protected_memberships_valid,
     COUNT(*) FILTER (
       WHERE granted_role.rolname NOT IN (
         :'runtime_role',
@@ -332,4 +371,23 @@ WHERE migrator.rolname = current_user;"
       exec psql -X -A -t -F "|" --no-password -v ON_ERROR_STOP=1 \
         --set=runtime_role="$1" --command="$2"
     ' _ "$runtime_role" "$query"
+}
+
+reader_summary_publication_admin_availability_query() {
+  local secret=$1
+  local ca_certificate=$2
+  local postgres_image=postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15
+
+  docker run --rm \
+    --user 0:0 \
+    --env PGAPPNAME=social-monitor/publication-migrator-availability \
+    -v "$secret:/run/secrets/reader-summary-publication-admin-url:ro" \
+    -v "$ca_certificate:/run/social-monitor-db/ca-certificate.crt:ro" \
+    "$postgres_image" \
+    sh -c '
+      set -eu
+      PGDATABASE=$(cat /run/secrets/reader-summary-publication-admin-url)
+      export PGDATABASE
+      exec pg_isready -q -t 15
+    '
 }

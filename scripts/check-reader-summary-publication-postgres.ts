@@ -103,9 +103,10 @@ async function main(): Promise<void> {
     fixtureDatabaseCreated = true;
     await createPublicationFixtureRuntimeRole({
       databaseName,
-      databaseUrl: adminDatabaseUrl,
+      migrationAdminRole,
       runtimePassword,
       runtimeRole,
+      serverAdminDatabaseUrl,
     });
     fixtureRuntimeRoleCreated = true;
 
