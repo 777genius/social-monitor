@@ -101,15 +101,18 @@ jobs:
 
     steps:
       - name: Check out the release commit
+        if: needs.plan.outputs.backend == 'true'
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
 
       - name: Set up Node.js
+        if: needs.plan.outputs.backend == 'true'
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: 22
           cache: npm
 
       - name: Prove fail-closed PostgreSQL and signal publication
+        if: needs.plan.outputs.backend == 'true'
         env:
           READER_SUMMARY_PUBLICATION_TEST_ADMIN_DATABASE_URL: postgresql://social_monitor_publication_ci_admin:social_monitor_local_password@127.0.0.1:5432/social_monitor_publication_ci_admin
         run: |
@@ -181,50 +184,43 @@ jobs:
             POSTGRES_POOL_PRISMA_TEST_DATABASE_URL=postgresql://social_monitor_pool_ci:social_monitor_local_password@127.0.0.1:5432/social_monitor_pool_ci \
               npm run check:postgres-runtime-pool-prisma-concurrency
           fi
-          bash -n ops/deploy/social-monitor-production-deploy.sh \
-            ops/deploy/deploy-control-lib.sh \
-            ops/deploy/deploy-control-lib.test.sh \
-            ops/deploy/daily-deploy-lock-race.test.sh \
-            ops/deploy/github-production-deploy-client.sh \
-            ops/deploy/github-production-deploy-client.test.sh \
-            ops/deploy/postgres-runtime-deploy-lib.sh \
-            ops/deploy/reader-summary-publication-deploy-lib.sh \
-            ops/deploy/social-monitor-production-ssh-wrapper.sh \
-            ops/deploy/production-runtime/daily-run.sh \
-            ops/deploy/postgres-pool-bootstrap-transition.test.sh \
-            ops/deploy/host/refresh-codex-auth.sh \
-            ops/deploy/refresh-codex-auth.test.sh \
-            ops/deploy/prune-pre-autodeploy-backups.sh \
-            ops/deploy/prune-pre-autodeploy-backups.test.sh \
-            ops/deploy/verify-postgres-backup-coverage.sh \
-            ops/deploy/verify-postgres-backup-coverage.test.sh \
-            ops/deploy/postgres-runtime-deploy-lib.test.sh \
-            ops/deploy/reader-summary-publication-signal-regression.test.sh \
-            ops/deploy/fixtures/reader-summary-publication-fake-docker.sh \
-            ops/deploy/fixtures/reader-summary-publication-pause-worker.sh \
+          deploy_shell_files=(
+            ops/deploy/social-monitor-production-deploy.sh
+            ops/deploy/deploy-control-lib.sh
+            ops/deploy/deploy-control-lib.test.sh
+            ops/deploy/daily-deploy-lock-race.test.sh
+            ops/deploy/github-production-deploy-client.sh
+            ops/deploy/github-production-deploy-client.test.sh
+            ops/deploy/postgres-runtime-deploy-lib.sh
+            ops/deploy/reader-summary-publication-bridge-transition.test.sh
+            ops/deploy/social-monitor-production-ssh-wrapper.sh
+            ops/deploy/production-runtime/daily-run.sh
+            ops/deploy/postgres-pool-bootstrap-transition.test.sh
+            ops/deploy/host/refresh-codex-auth.sh
+            ops/deploy/refresh-codex-auth.test.sh
+            ops/deploy/prune-pre-autodeploy-backups.sh
+            ops/deploy/prune-pre-autodeploy-backups.test.sh
+            ops/deploy/verify-postgres-backup-coverage.sh
+            ops/deploy/verify-postgres-backup-coverage.test.sh
+            ops/deploy/postgres-runtime-deploy-lib.test.sh
             ops/deploy/verify-postgres-runtime-topology.test.sh
-          shellcheck -x ops/deploy/social-monitor-production-deploy.sh \
-            ops/deploy/deploy-control-lib.sh \
-            ops/deploy/deploy-control-lib.test.sh \
-            ops/deploy/daily-deploy-lock-race.test.sh \
-            ops/deploy/github-production-deploy-client.sh \
-            ops/deploy/github-production-deploy-client.test.sh \
-            ops/deploy/postgres-runtime-deploy-lib.sh \
-            ops/deploy/reader-summary-publication-deploy-lib.sh \
-            ops/deploy/social-monitor-production-ssh-wrapper.sh \
-            ops/deploy/production-runtime/daily-run.sh \
-            ops/deploy/postgres-pool-bootstrap-transition.test.sh \
-            ops/deploy/host/refresh-codex-auth.sh \
-            ops/deploy/refresh-codex-auth.test.sh \
-            ops/deploy/prune-pre-autodeploy-backups.sh \
-            ops/deploy/prune-pre-autodeploy-backups.test.sh \
-            ops/deploy/verify-postgres-backup-coverage.sh \
-            ops/deploy/verify-postgres-backup-coverage.test.sh \
-            ops/deploy/postgres-runtime-deploy-lib.test.sh \
-            ops/deploy/reader-summary-publication-signal-regression.test.sh \
-            ops/deploy/fixtures/reader-summary-publication-fake-docker.sh \
-            ops/deploy/fixtures/reader-summary-publication-pause-worker.sh \
-            ops/deploy/verify-postgres-runtime-topology.test.sh
+          )
+          final_publication_shell_files=(
+            ops/deploy/reader-summary-publication-deploy-lib.sh
+            ops/deploy/reader-summary-publication-signal-regression.test.sh
+            ops/deploy/fixtures/reader-summary-publication-fake-docker.sh
+            ops/deploy/fixtures/reader-summary-publication-pause-worker.sh
+          )
+          for publication_file in "${final_publication_shell_files[@]}"; do
+            if [[ -f $publication_file ]]; then
+              deploy_shell_files+=("$publication_file")
+            elif [[ $BACKEND_CHANGED == true ]]; then
+              echo "missing final publication shell asset: $publication_file" >&2
+              exit 1
+            fi
+          done
+          bash -n "${deploy_shell_files[@]}"
+          shellcheck -x "${deploy_shell_files[@]}"
           python3 -m py_compile ops/deploy/verify-postgres-runtime-topology.py
           python3 -m py_compile ops/deploy/verify-postgres-pool-release-contract.py
           python3 ops/deploy/verify-postgres-pool-release-contract.py ci \
@@ -239,7 +235,7 @@ jobs:
           bash ops/deploy/daily-deploy-lock-race.test.sh
           bash ops/deploy/github-production-deploy-client.test.sh
 
-      - name: Verify legacy-main PostgreSQL bootstrap transition
+      - name: Verify legacy-main deployment transitions
         if: needs.plan.outputs.backend == 'true' || needs.plan.outputs.control == 'true'
         run: |
           set -euo pipefail
@@ -248,6 +244,13 @@ jobs:
           if ((bootstrap_status != 0)); then
             echo "::error title=PostgreSQL bootstrap transition failed::The fixture failed with status $bootstrap_status; see bootstrap-transition-error for its phase, line and command."
             exit "$bootstrap_status"
+          fi
+          publication_bridge_status=0
+          bash ops/deploy/reader-summary-publication-bridge-transition.test.sh || \
+            publication_bridge_status=$?
+          if ((publication_bridge_status != 0)); then
+            echo "::error title=Publication bridge transition failed::The c071/7185 B-to-F fixture failed with status $publication_bridge_status."
+            exit "$publication_bridge_status"
           fi
 
       - name: Test affected backend modules

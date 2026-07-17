@@ -118,10 +118,14 @@ sudoers rule. Installation must copy them to
 
 ## Deploy-control self-upgrade sequence
 
-The installed entrypoint sources `deploy-control-lib.sh`,
-`postgres-runtime-deploy-lib.sh`, and the publication library from the current
-integration release before it fast-forwards integration. Runtime-control
-changes therefore use an explicit two-release sequence:
+The installed entrypoint sources `deploy-control-lib.sh` and
+`postgres-runtime-deploy-lib.sh` from the current integration release before it
+fast-forwards integration. A backend-classified target is then required to
+provide a reviewed, regular, non-symlink publication library inside the
+fast-forwarded integration tree. The bridge verifies that file against the
+target Git blob, sources it, and requires its publication-migration entrypoint
+before any runtime-control snapshot or activation. Runtime-control changes
+therefore use an explicit two-release sequence:
 
 1. Deploy a bridge release containing the final entrypoint and deploy-control
    libraries plus the bridge-focused contract test, but no change to
