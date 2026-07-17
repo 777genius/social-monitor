@@ -70,10 +70,10 @@ import {
   type ReaderSummaryJobQueuePort,
   type ReaderSummaryPolicyRepositoryPort,
   type ReaderSummaryPreviewMediaEnricherPort,
+  type ReaderSummaryPublicationPort,
   type ReaderSummaryTopicCollectionMetricsReaderPort,
   type ReaderSummaryTopicRecommendationDecisionRepositoryPort,
   type StoryRankingMetricsPort,
-  type SummaryEventPublisherPort,
   type SummaryMemoryPort,
   type UserSummaryPreferenceReaderPort,
 } from "../../ports";
@@ -86,9 +86,9 @@ import {
   READER_SUMMARY_MODEL_PROVIDER_MODE,
   READER_SUMMARY_OPENAI_RESPONSES_MODEL_OPTIONS,
   READER_SUMMARY_POLICY_REPOSITORY,
+  READER_SUMMARY_PUBLICATION,
   READER_SUMMARY_PREVIEW_MEDIA_ENRICHER,
   READER_SUMMARY_TOPIC_LABELER_MODE,
-  SUMMARY_EVENT_PUBLISHER,
   SUMMARY_MEMORY,
   SUMMARY_USER_SUMMARY_PREFERENCE_READER,
   SUMMARY_JOB_QUEUE_MODE,
@@ -102,12 +102,14 @@ import {
   type SummaryPersistenceMode,
 } from "./summary-provider-tokens";
 import { readerSummaryCoverageProvider } from "./summary-reader-summary-coverage.provider";
+import { readerSummaryPublicationProvider } from "./summary-reader-summary-publication.provider";
 
 export const summaryReaderSummaryProviders: Provider[] = [
   InMemoryReaderSummaryJobRepository,
   InMemoryReaderSummaryArtifactRepository,
   InMemoryReaderSummaryPolicyRepository,
   InMemoryReaderSummaryTopicRecommendationDecisionRepository,
+  readerSummaryPublicationProvider,
   {
     provide: StoryRankingMetricsRecorder,
     useFactory: (metrics: InMemoryMetricsRecorder): StoryRankingMetricsPort =>
@@ -376,7 +378,7 @@ export const summaryReaderSummaryProviders: Provider[] = [
       readerSummaryPolicies: ReaderSummaryPolicyRepositoryPort,
       evidenceSelector: ReaderSummaryEvidenceSelectorPort,
       readerSummaryModel: MeteredReaderSummaryModelAdapter,
-      events: SummaryEventPublisherPort,
+      publications: ReaderSummaryPublicationPort,
       contextProvider: ReaderSummaryContextProviderPort,
       userSummaryPreferences: UserSummaryPreferenceReaderPort,
       topicMapBuilder: BuildReaderSummaryTopicMapUseCase,
@@ -387,7 +389,7 @@ export const summaryReaderSummaryProviders: Provider[] = [
         readerSummaryPolicies,
         evidenceSelector,
         readerSummaryModel,
-        events,
+        publications,
         new CryptoIdGenerator(),
         new SystemClock(),
         contextProvider,
@@ -400,7 +402,7 @@ export const summaryReaderSummaryProviders: Provider[] = [
       READER_SUMMARY_POLICY_REPOSITORY,
       READER_SUMMARY_EVIDENCE_SELECTOR,
       MeteredReaderSummaryModelAdapter,
-      SUMMARY_EVENT_PUBLISHER,
+      READER_SUMMARY_PUBLICATION,
       READER_SUMMARY_CONTEXT_PROVIDER,
       SUMMARY_USER_SUMMARY_PREFERENCE_READER,
       BuildReaderSummaryTopicMapUseCase,

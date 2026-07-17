@@ -79,6 +79,45 @@ jobs:
         if: always()
         run: bash ops/deploy/github-production-deploy-client.sh cleanup
 
+  verify_reader_summary_publication:
+    name: Verify mandatory reader-summary publication boundary
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:18.4-alpine
+        env:
+          POSTGRES_USER: social_monitor_publication_ci_admin
+          POSTGRES_PASSWORD: social_monitor_local_password
+          POSTGRES_DB: social_monitor_publication_ci_admin
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U social_monitor_publication_ci_admin -d social_monitor_publication_ci_admin"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - name: Check out the release commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Prove fail-closed PostgreSQL and signal publication
+        env:
+          READER_SUMMARY_PUBLICATION_TEST_ADMIN_DATABASE_URL: postgresql://social_monitor_publication_ci_admin:social_monitor_local_password@127.0.0.1:5432/social_monitor_publication_ci_admin
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run check:reader-summary-publication-postgres
+          npm run check:reader-summary-publication-signal-regression
+
   verify_backend:
     name: Verify backend, collector and deploy control
     needs: plan
@@ -146,6 +185,7 @@ jobs:
             ops/deploy/github-production-deploy-client.sh \
             ops/deploy/github-production-deploy-client.test.sh \
             ops/deploy/postgres-runtime-deploy-lib.sh \
+            ops/deploy/reader-summary-publication-deploy-lib.sh \
             ops/deploy/social-monitor-production-ssh-wrapper.sh \
             ops/deploy/production-runtime/daily-run.sh \
             ops/deploy/postgres-pool-bootstrap-transition.test.sh \
@@ -156,11 +196,15 @@ jobs:
             ops/deploy/verify-postgres-backup-coverage.sh \
             ops/deploy/verify-postgres-backup-coverage.test.sh \
             ops/deploy/postgres-runtime-deploy-lib.test.sh \
+            ops/deploy/reader-summary-publication-signal-regression.test.sh \
+            ops/deploy/fixtures/reader-summary-publication-fake-docker.sh \
+            ops/deploy/fixtures/reader-summary-publication-pause-worker.sh \
             ops/deploy/verify-postgres-runtime-topology.test.sh
           shellcheck -x ops/deploy/social-monitor-production-deploy.sh \
             ops/deploy/github-production-deploy-client.sh \
             ops/deploy/github-production-deploy-client.test.sh \
             ops/deploy/postgres-runtime-deploy-lib.sh \
+            ops/deploy/reader-summary-publication-deploy-lib.sh \
             ops/deploy/social-monitor-production-ssh-wrapper.sh \
             ops/deploy/production-runtime/daily-run.sh \
             ops/deploy/postgres-pool-bootstrap-transition.test.sh \
@@ -171,6 +215,9 @@ jobs:
             ops/deploy/verify-postgres-backup-coverage.sh \
             ops/deploy/verify-postgres-backup-coverage.test.sh \
             ops/deploy/postgres-runtime-deploy-lib.test.sh \
+            ops/deploy/reader-summary-publication-signal-regression.test.sh \
+            ops/deploy/fixtures/reader-summary-publication-fake-docker.sh \
+            ops/deploy/fixtures/reader-summary-publication-pause-worker.sh \
             ops/deploy/verify-postgres-runtime-topology.test.sh
           python3 -m py_compile ops/deploy/verify-postgres-runtime-topology.py
           python3 -m py_compile ops/deploy/verify-postgres-pool-release-contract.py
@@ -298,6 +345,7 @@ jobs:
     name: Deploy with host locks and rollback
     needs:
       - plan
+      - verify_reader_summary_publication
       - verify_backend
       - build_frontend
     runs-on: ubuntu-latest

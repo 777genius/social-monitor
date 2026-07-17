@@ -79,6 +79,9 @@ BACKEND_PATHS=(
   apps/social-research-mcp
   scripts
   ops/evals
+  ops/deploy/reader-summary-publication-deploy-lib.sh
+  ops/deploy/reader-summary-publication-pre-migration.sql
+  ops/deploy/reader-summary-publication-post-migration.sql
   test
 )
 
@@ -160,6 +163,8 @@ validate_main_commit() {
 : "$POSTGRES_RUNTIME_RELEASES" "$SYSTEMD_UNIT_DIR"
 # shellcheck source=ops/deploy/postgres-runtime-deploy-lib.sh
 source "$REPO/ops/deploy/postgres-runtime-deploy-lib.sh"
+# shellcheck source=ops/deploy/reader-summary-publication-deploy-lib.sh
+source "$REPO/ops/deploy/reader-summary-publication-deploy-lib.sh"
 
 verify_compose_scope() (
   local rendered=$STATE/rendered-compose.$$.json
@@ -781,7 +786,7 @@ deploy_backend() (
     [[ $service == x-collector || $service == daily-runner ]] || needs_migrate=true
   done
   if [[ $needs_migrate == true ]]; then
-    "${COMPOSE[@]}" --profile app run -T --rm --no-deps migrate npm run migrate:deploy
+    deploy_reader_summary_publication_migrations
   fi
 
   if ((${#persistent[@]} > 0)); then

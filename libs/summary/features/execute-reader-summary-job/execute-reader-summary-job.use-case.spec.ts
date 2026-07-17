@@ -32,6 +32,8 @@ import type {
   ReaderSummaryModelRoute,
   ReaderSummaryModelValidationResult,
   ReaderSummaryPolicyRepositoryPort,
+  ReaderSummaryPublicationCommand,
+  ReaderSummaryPublicationPort,
   SummaryEventPublisherPort,
   UserSummaryPreferenceReaderPort,
 } from "../../ports";
@@ -118,7 +120,7 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
         },
       },
       model,
-      events,
+      new CapturingReaderSummaryPublication(jobs, artifacts, events),
       new StaticIdGenerator(),
       new FixedClock(new Date("2026-06-26T08:05:00.000Z")),
       {
@@ -252,6 +254,7 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
     const workspace = workspaceId("workspace-reader-summary-use-case");
     const jobs = new FakeReaderSummaryJobRepository();
     const artifacts = new FakeReaderSummaryArtifactRepository();
+    const events = new CapturingSummaryEventPublisher();
     let observedPreferenceQuery:
       | Parameters<
           UserSummaryPreferenceReaderPort["findEffectivePreference"]
@@ -281,7 +284,7 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
         },
       },
       new CapturingReaderSummaryModel(),
-      new CapturingSummaryEventPublisher(),
+      new CapturingReaderSummaryPublication(jobs, artifacts, events),
       new StaticIdGenerator(),
       new FixedClock(new Date("2026-06-26T08:05:00.000Z")),
       undefined,
@@ -315,6 +318,7 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
     const workspace = workspaceId("workspace-reader-summary-use-case");
     const jobs = new FakeReaderSummaryJobRepository();
     const artifacts = new FakeReaderSummaryArtifactRepository();
+    const events = new CapturingSummaryEventPublisher();
 
     await jobs.save(
       ReaderSummaryJob.request({
@@ -350,7 +354,7 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
           },
         ],
       } as unknown as ProviderReaderSummaryAttempt["draft"]["content"]),
-      new CapturingSummaryEventPublisher(),
+      new CapturingReaderSummaryPublication(jobs, artifacts, events),
       new StaticIdGenerator(),
       new FixedClock(new Date("2026-06-26T08:05:00.000Z")),
       undefined,
@@ -421,7 +425,7 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
         },
       },
       new CapturingReaderSummaryModel(),
-      events,
+      new CapturingReaderSummaryPublication(jobs, artifacts, events),
       new StaticIdGenerator(),
       new FixedClock(new Date("2026-06-26T08:05:00.000Z")),
       undefined,
@@ -471,6 +475,7 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
     const workspace = workspaceId("workspace-reader-summary-use-case");
     const jobs = new FakeReaderSummaryJobRepository();
     const artifacts = new FakeReaderSummaryArtifactRepository();
+    const events = new CapturingSummaryEventPublisher();
     const publicationPolicy = new CapturingReaderSummaryPublicationPolicy(
       forcedRejectionDecision(),
     );
@@ -497,7 +502,7 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
         },
       },
       new CapturingReaderSummaryModel(),
-      new CapturingSummaryEventPublisher(),
+      new CapturingReaderSummaryPublication(jobs, artifacts, events),
       new StaticIdGenerator(),
       new FixedClock(new Date("2026-06-26T08:05:00.000Z")),
       undefined,
@@ -652,6 +657,26 @@ class CapturingSummaryEventPublisher implements SummaryEventPublisherPort {
 
   all(): readonly EventEnvelope<Readonly<Record<string, unknown>>>[] {
     return this.events;
+  }
+}
+
+class CapturingReaderSummaryPublication
+  implements ReaderSummaryPublicationPort
+{
+  constructor(
+    private readonly jobs: FakeReaderSummaryJobRepository,
+    private readonly artifacts: FakeReaderSummaryArtifactRepository,
+    private readonly events: CapturingSummaryEventPublisher,
+  ) {}
+
+  async publish(command: ReaderSummaryPublicationCommand) {
+    await this.artifacts.save(command.artifact, {
+      publicationDecision: command.publicationDecision,
+    });
+    await this.jobs.save(command.finalJob);
+    await this.events.publish(command.readyEvent);
+
+    return "published" as const;
   }
 }
 
