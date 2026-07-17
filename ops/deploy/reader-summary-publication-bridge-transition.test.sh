@@ -83,6 +83,13 @@ git -C "$REPO" sparse-checkout set \
   .github ops/deploy apps/api-gateway apps/frontend libs/contracts/rest
 git -C "$REPO" checkout -q -B main "$LEGACY_BACKEND"
 
+# Production B is a descendant of the already deployed control marker while
+# retaining the exact backend/frontend trees recorded by their older markers.
+# Join those histories without taking 7185's tree so component ancestry and
+# component contents are both represented by the fixture.
+git -C "$REPO" merge -q --no-ff -s ours "$LEGACY_CONTROLLER" \
+  -m 'test: join deployed component histories'
+
 # Release B contains the final controller bridge and its admitted CI/docs/test
 # support. It does not carry the target-only publication library or change
 # either daily runtime asset inherited from c071.
