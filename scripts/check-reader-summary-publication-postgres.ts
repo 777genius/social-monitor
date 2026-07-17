@@ -28,6 +28,7 @@ import {
   quotePostgresLiteral,
   runReaderSummaryPublicationBootstrapSql,
 } from "./reader-summary-publication-postgres-privileges";
+import { assertReaderSummaryPublicationRuntimeGuard } from "./reader-summary-publication-postgres-runtime-guard";
 
 const serverAdminDatabaseUrl = requiredEnv(
   "READER_SUMMARY_PUBLICATION_TEST_ADMIN_DATABASE_URL",
@@ -172,6 +173,11 @@ async function main(): Promise<void> {
             "published",
           "NO_SIGNAL privilege fixture must publish through the definer function",
         );
+        await assertReaderSummaryPublicationRuntimeGuard({
+          runtime: first,
+          runtimeDatabaseUrl,
+          publishedArtifactId: privilegeFixture.artifactId,
+        });
         await assertReaderSummaryPublicationPrivilegeBoundary({
           auditor,
           runtime: first,

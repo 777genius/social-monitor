@@ -105,6 +105,17 @@ BEGIN
       'reader_summary_publications_immutable',
       'reader_summary_publication_slots_guarded'
     )
+    -- ROW | BEFORE | INSERT | UPDATE. Exact equality excludes the DELETE,
+    -- TRUNCATE, and INSTEAD OF bits from the artifact guard.
+    AND (
+      trigger.tgname <> 'reader_summary_artifacts_published_immutable'
+      OR (
+        relation.relname = 'reader_summary_artifacts'
+        AND trigger.tgtype = 23
+        AND trigger.tgfoid =
+          'public.guard_published_reader_summary_artifact_update()'::REGPROCEDURE
+      )
+    )
     AND trigger.tgenabled = 'O';
   IF v_trigger_count <> 4 THEN
     RAISE EXCEPTION 'reader summary publication triggers are not enforced';

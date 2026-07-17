@@ -783,7 +783,7 @@ RETURNS TRIGGER
 LANGUAGE plpgsql
 AS $$
 BEGIN
-  IF EXISTS (
+  IF TG_OP = 'UPDATE' AND EXISTS (
     SELECT 1
     FROM "reader_summary_publications"
     WHERE "reader_summary_artifact_id" = OLD."id"
@@ -797,12 +797,19 @@ BEGIN
     END IF;
     RAISE EXCEPTION 'published reader summary artifact is immutable';
   END IF;
+  -- Runtime and rollback binaries retain candidate INSERT/UPDATE privileges,
+  -- but only the SECURITY DEFINER publisher may create a reader-visible row.
+  IF current_user <> 'social_monitor_reader_summary_publication_owner'
+    AND NEW."status" IN ('COMPLETED', 'NO_SIGNAL') THEN
+    RAISE EXCEPTION
+      'visible reader summary artifact requires publish_reader_summary';
+  END IF;
   RETURN NEW;
 END;
 $$;
 
 CREATE TRIGGER "reader_summary_artifacts_published_immutable"
-BEFORE UPDATE ON "reader_summary_artifacts"
+BEFORE INSERT OR UPDATE ON "reader_summary_artifacts"
 FOR EACH ROW
 EXECUTE FUNCTION "guard_published_reader_summary_artifact_update"();
 
