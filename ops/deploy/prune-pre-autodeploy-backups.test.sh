@@ -6,14 +6,29 @@ if ((EUID == 0)); then
     echo 'Backup retention fixture requires setpriv when run as root' >&2
     exit 1
   }
+  script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+  relocated_root=$(mktemp -d \
+    "${TMPDIR:-/tmp}/social-monitor-backup-prune-source.XXXXXX")
+  install -m 0644 "$0" "$relocated_root/prune-pre-autodeploy-backups.test.sh"
+  install -m 0755 "$script_dir/prune-pre-autodeploy-backups.sh" \
+    "$relocated_root/prune-pre-autodeploy-backups.sh"
+  chown -R 65534:65534 "$relocated_root"
   exec setpriv --reuid=65534 --regid=65534 --clear-groups \
-    env PATH="$PATH" TMPDIR=/tmp bash "$0" "$@"
+    env PATH="$PATH" TMPDIR=/tmp \
+      SOCIAL_MONITOR_BACKUP_PRUNE_RELOCATED_ROOT="$relocated_root" \
+      bash "$relocated_root/prune-pre-autodeploy-backups.test.sh" "$@"
 fi
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 ENTRYPOINT=$SCRIPT_DIR/prune-pre-autodeploy-backups.sh
 FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/social-monitor-backup-prune-test.XXXXXX")
-trap 'rm -rf "$FIXTURE"' EXIT
+cleanup() {
+  rm -rf "$FIXTURE"
+  if [[ -n ${SOCIAL_MONITOR_BACKUP_PRUNE_RELOCATED_ROOT:-} ]]; then
+    rm -rf "$SOCIAL_MONITOR_BACKUP_PRUNE_RELOCATED_ROOT"
+  fi
+}
+trap cleanup EXIT
 
 mkdir "$FIXTURE/empty" "$FIXTURE/single"
 output=$(bash "$ENTRYPOINT" "$FIXTURE/empty" 10)
