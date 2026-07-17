@@ -24,6 +24,7 @@ deploy_reader_summary_publication_migrations() {
   run_reader_summary_publication_admin_sql \
     "$secret" "$ca_certificate" "$runtime_role" pre
 
+  # shellcheck disable=SC2016 # Expansion occurs in the child shell.
   "${COMPOSE[@]}" --profile app run -T --rm --no-deps \
     --user 0:0 \
     -v "$secret:/run/secrets/reader-summary-publication-admin-url:ro" \
