@@ -144,6 +144,19 @@ therefore use an explicit two-release sequence:
 
 A target that combines a daily runtime asset with a bridge controller or
 PostgreSQL activation-library change is rejected before control activation.
+
+The final backend release also requires a dedicated managed-PostgreSQL login
+named `social_monitor_publication_migrator`. Its connection URL lives only at
+`secrets/db/reader-summary-publication-admin-url`, owned by root with mode
+`0400`, and is pinned to the reviewed cluster, port, database, CA path and
+`sslmode=verify-full`. The login is `CREATEROLE` but not superuser, database
+creator, replication or bypass-RLS. Its membership in `social_monitor_app`
+must use PostgreSQL 18 options `ADMIN TRUE`, `INHERIT FALSE`, `SET TRUE`.
+Deployment validates that exact identity and live TLS session before creating
+a backup or building an image, then validates it again immediately before the
+first publication SQL transaction. Only transient connection failure is
+retried, three times; identity, URL and privilege mismatches fail immediately.
+
 The pool release continues to own no timer; exactly one existing reviewed daily
 timer must remain enabled. The daily service timeout is 23,400 seconds with
 `Restart=no`, which covers the bounded 7,500-second admission wait plus the
