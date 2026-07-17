@@ -7,6 +7,11 @@ BEGIN;
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
+-- The pre-migration bootstrap grants this NOLOGIN role only the object and
+-- schema capabilities required below. Create the protected graph as its final
+-- owner so foreign-key checks never depend on broad migrator ACLs.
+SET LOCAL ROLE "social_monitor_reader_summary_publication_owner";
+
 CREATE TABLE "reader_summary_publications" (
     "id" UUID NOT NULL,
     "tenant_id" UUID NOT NULL,
@@ -858,8 +863,6 @@ ALTER FUNCTION "guard_published_reader_summary_artifact_update"()
   OWNER TO "social_monitor_reader_summary_publication_owner";
 ALTER FUNCTION "guard_reader_summary_active_slot_update"()
   OWNER TO "social_monitor_reader_summary_publication_owner";
-
-SET LOCAL ROLE "social_monitor_reader_summary_publication_owner";
 
 REVOKE ALL PRIVILEGES ON TABLE
   "reader_summary_publications",

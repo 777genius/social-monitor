@@ -329,9 +329,9 @@ BEGIN
       OWNER TO social_monitor_reader_summary_publication_owner;
   END IF;
 
-  GRANT SELECT, UPDATE ON TABLE public.reader_summary_jobs
+  GRANT SELECT, UPDATE, REFERENCES ON TABLE public.reader_summary_jobs
     TO social_monitor_reader_summary_publication_owner;
-  GRANT SELECT, INSERT ON TABLE public.outbox_events
+  GRANT SELECT, INSERT, REFERENCES ON TABLE public.outbox_events
     TO social_monitor_reader_summary_publication_owner;
   EXECUTE format(
     'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE '
