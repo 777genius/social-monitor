@@ -138,12 +138,19 @@ BEGIN
     RAISE EXCEPTION 'publication capability has an unreviewed member';
   END IF;
   IF (
-    SELECT count(*) <> 1 OR NOT bool_and(
-      membership.admin_option
-      AND NOT membership.inherit_option
-      AND membership.set_option
-      AND grantor.rolsuper
-    )
+    SELECT count(*) <> 2
+      OR count(*) FILTER (
+        WHERE membership.admin_option
+          AND NOT membership.inherit_option
+          AND NOT membership.set_option
+          AND grantor.rolsuper
+      ) <> 1
+      OR count(*) FILTER (
+        WHERE NOT membership.admin_option
+          AND NOT membership.inherit_option
+          AND membership.set_option
+          AND grantor.rolname = current_user
+      ) <> 1
     FROM pg_auth_members membership
     JOIN pg_roles granted ON granted.oid = membership.roleid
     JOIN pg_roles member ON member.oid = membership.member
@@ -187,18 +194,6 @@ BEGIN
       AND member.rolname = v_runtime_role
   ) THEN
     RAISE EXCEPTION 'publication capability runtime membership is unsafe';
-  END IF;
-  IF (
-    SELECT count(DISTINCT membership.grantor) <> 1
-    FROM pg_auth_members membership
-    JOIN pg_roles granted ON granted.oid = membership.roleid
-    JOIN pg_roles member ON member.oid = membership.member
-    WHERE granted.rolname IN (
-      'social_monitor_reader_summary_publication_owner',
-      'social_monitor_reader_summary_publication_runtime'
-    ) AND member.rolname = current_user
-  ) THEN
-    RAISE EXCEPTION 'protected membership grantors are inconsistent';
   END IF;
   IF (
     SELECT count(*) <> 1 OR NOT bool_and(

@@ -294,18 +294,39 @@ export const assertPublicationRoleMemberships = async (
       ],
     );
     assertDeepEqual(
-      memberships.rows.map((membership) => ({
-        granted_role: membership.granted_role,
-        member_role: membership.member_role,
-        admin_option: membership.admin_option,
-        inherit_option: membership.inherit_option,
-        set_option: membership.set_option,
-      })),
+      memberships.rows
+        .map((membership) => ({
+          granted_role: membership.granted_role,
+          member_role: membership.member_role,
+          admin_option: membership.admin_option,
+          inherit_option: membership.inherit_option,
+          set_option: membership.set_option,
+        }))
+        .sort((left, right) =>
+          `${left.granted_role}\0${left.member_role}\0${Number(
+            !left.admin_option,
+          )}\0${Number(!left.inherit_option)}\0${Number(
+            !left.set_option,
+          )}`.localeCompare(
+            `${right.granted_role}\0${right.member_role}\0${Number(
+              !right.admin_option,
+            )}\0${Number(!right.inherit_option)}\0${Number(
+              !right.set_option,
+            )}`,
+          ),
+        ),
       [
         {
           granted_role: "social_monitor_reader_summary_publication_owner",
           member_role: migrationAdminRole,
           admin_option: true,
+          inherit_option: false,
+          set_option: false,
+        },
+        {
+          granted_role: "social_monitor_reader_summary_publication_owner",
+          member_role: migrationAdminRole,
+          admin_option: false,
           inherit_option: false,
           set_option: true,
         },
@@ -331,17 +352,39 @@ export const assertPublicationRoleMemberships = async (
           set_option: true,
         },
       ].sort((left, right) =>
-        `${left.granted_role}\0${left.member_role}`.localeCompare(
-          `${right.granted_role}\0${right.member_role}`,
+        `${left.granted_role}\0${left.member_role}\0${Number(
+          !left.admin_option,
+        )}\0${Number(!left.inherit_option)}\0${Number(
+          !left.set_option,
+        )}`.localeCompare(
+          `${right.granted_role}\0${right.member_role}\0${Number(
+            !right.admin_option,
+          )}\0${Number(!right.inherit_option)}\0${Number(
+            !right.set_option,
+          )}`,
         ),
       ),
       "publication role memberships must match the exact PostgreSQL 18 boundary",
     );
-    const ownerGrant = memberships.rows.find(
+    const ownerBootstrapGrant = memberships.rows.find(
       (row) =>
         row.granted_role ===
           "social_monitor_reader_summary_publication_owner" &&
-        row.member_role === migrationAdminRole,
+        row.member_role === migrationAdminRole &&
+        row.grantor_superuser &&
+        row.admin_option &&
+        !row.inherit_option &&
+        !row.set_option,
+    );
+    const ownerSelfGrant = memberships.rows.find(
+      (row) =>
+        row.granted_role ===
+          "social_monitor_reader_summary_publication_owner" &&
+        row.member_role === migrationAdminRole &&
+        row.grantor_role === migrationAdminRole &&
+        !row.admin_option &&
+        !row.inherit_option &&
+        row.set_option,
     );
     const capabilityAdminGrant = memberships.rows.find(
       (row) =>
@@ -360,7 +403,14 @@ export const assertPublicationRoleMemberships = async (
         row.granted_role === runtimeRole &&
         row.member_role === migrationAdminRole,
     );
-    assert(ownerGrant !== undefined, "publication owner grant is missing");
+    assert(
+      ownerBootstrapGrant !== undefined,
+      "publication owner bootstrap grant is missing",
+    );
+    assert(
+      ownerSelfGrant !== undefined,
+      "publication owner self grant is missing",
+    );
     assert(
       capabilityAdminGrant !== undefined,
       "publication capability admin grant is missing",
@@ -371,10 +421,16 @@ export const assertPublicationRoleMemberships = async (
     );
     assert(runtimeAdminGrant !== undefined, "runtime admin grant is missing");
     assert(
-      ownerGrant.grantor_superuser &&
-        capabilityAdminGrant.grantor_superuser &&
-        ownerGrant.grantor_role === capabilityAdminGrant.grantor_role,
-      "protected role grants must share the bootstrap-superuser grantor",
+      ownerBootstrapGrant.grantor_superuser,
+      "publication owner admin grant must use a bootstrap superuser",
+    );
+    assert(
+      ownerSelfGrant.grantor_role === migrationAdminRole,
+      "publication owner set grant must be issued by the migration admin",
+    );
+    assert(
+      capabilityAdminGrant.grantor_superuser,
+      "publication capability admin grant must use a bootstrap superuser",
     );
     assert(
       capabilityRuntimeGrant.grantor_role === migrationAdminRole,

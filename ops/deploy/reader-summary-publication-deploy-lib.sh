@@ -304,15 +304,21 @@ LEFT JOIN LATERAL (
         ) AND COUNT(*) FILTER (
           WHERE granted_role.rolname =
             'social_monitor_reader_summary_publication_owner'
-        ) = 1 AND BOOL_AND(
-        CASE WHEN granted_role.rolname =
-          'social_monitor_reader_summary_publication_owner'
-        THEN membership.admin_option
-          AND NOT membership.inherit_option
-          AND membership.set_option
-          AND grantor_role.rolsuper
-        ELSE true END
-        )
+        ) = 2 AND COUNT(*) FILTER (
+          WHERE granted_role.rolname =
+            'social_monitor_reader_summary_publication_owner'
+            AND membership.admin_option
+            AND NOT membership.inherit_option
+            AND NOT membership.set_option
+            AND grantor_role.rolsuper
+        ) = 1 AND COUNT(*) FILTER (
+          WHERE granted_role.rolname =
+            'social_monitor_reader_summary_publication_owner'
+            AND NOT membership.admin_option
+            AND NOT membership.inherit_option
+            AND membership.set_option
+            AND grantor_role.rolname = current_user
+        ) = 1
       )
     ) AND (
       (
@@ -342,12 +348,7 @@ LEFT JOIN LATERAL (
         ELSE true END
         )
       )
-    ) AND COUNT(DISTINCT membership.grantor) FILTER (
-      WHERE granted_role.rolname IN (
-        'social_monitor_reader_summary_publication_owner',
-        'social_monitor_reader_summary_publication_runtime'
-      )
-    ) <= 1 AND BOOL_AND(
+    ) AND BOOL_AND(
       CASE WHEN granted_role.rolname = :'runtime_role'
       THEN grantor_role.rolsuper OR (
         grantor_role.rolcreaterole
