@@ -13,6 +13,8 @@ interactive host shell.
 - `scripts/**`, `ops/evals/**` and `test/**` rebuild the daily runner only.
 - `apps/x-collector/**` rebuilds only the X collector.
 - deploy-control changes update the forced command without restarting the app.
+- control-only daily launcher or daily service changes activate the versioned
+  PostgreSQL runtime control without rebuilding application containers.
 
 The host compares the target commit with durable component markers. It does not
 trust only the immediately previous GitHub push, so a delayed or retried run
@@ -23,7 +25,8 @@ cannot silently skip an earlier component change.
 - only full commit SHAs already contained in `origin/main` are accepted;
 - the deploy account is restricted by `sshd` `ForceCommand`, has no password,
   TTY or forwarding, and may sudo only the root-owned deploy entrypoint;
-- production and daily work are serialized with separate `flock` locks;
+- deploy owns its singleton, daily owns a separate singleton, and both use one
+  shared PostgreSQL admission `flock`;
 - integration advances only by fast-forward from a clean worktree;
 - backend deploys create and validate a managed PostgreSQL custom-format backup first;
 - every live PostgreSQL base table must appear in the new dump TOC, while CI
@@ -112,3 +115,32 @@ sudoers rule. Installation must copy them to
 `/etc/ssh/sshd_config.d/social-monitor-deploy.conf` and
 `/etc/sudoers.d/social-monitor-deploy`, validate them with `sshd -t` and
 `visudo -c`, then reload SSH.
+
+## Deploy-control self-upgrade sequence
+
+The installed entrypoint sources `deploy-control-lib.sh`,
+`postgres-runtime-deploy-lib.sh`, and the publication library from the current
+integration release before it fast-forwards integration. Runtime-control
+changes therefore use an explicit two-release sequence:
+
+1. Deploy a bridge release containing the final entrypoint and deploy-control
+   libraries plus the bridge-focused contract test, but no change to
+   `production-runtime/daily-run.sh` or
+   `production-runtime/social-monitor-daily.service`. Reconcile until
+   `control.sha` records the bridge and a new plan reports no pending control
+   change.
+2. Deploy a final release that keeps the bridge entrypoint,
+   `deploy-control-lib.sh`, and `postgres-runtime-deploy-lib.sh` byte-identical
+   while changing the reviewed daily runtime assets and adding their final
+   race, unit, topology, and workflow gates. The bridge-current process
+   classifies those paths and verifies the target controller bytes before
+   integration advance, installs the versioned runtime control transactionally,
+   verifies the effective unit/topology, and rolls the complete control
+   snapshot back on failure.
+
+A target that combines a daily runtime asset with a bridge controller or
+PostgreSQL activation-library change is rejected before control activation.
+The pool release continues to own no timer; exactly one existing reviewed daily
+timer must remain enabled. The daily service timeout is 23,400 seconds with
+`Restart=no`, which covers the bounded 7,500-second admission wait plus the
+bounded production-day command without systemd starting a duplicate attempt.

@@ -182,6 +182,9 @@ jobs:
               npm run check:postgres-runtime-pool-prisma-concurrency
           fi
           bash -n ops/deploy/social-monitor-production-deploy.sh \
+            ops/deploy/deploy-control-lib.sh \
+            ops/deploy/deploy-control-lib.test.sh \
+            ops/deploy/daily-deploy-lock-race.test.sh \
             ops/deploy/github-production-deploy-client.sh \
             ops/deploy/github-production-deploy-client.test.sh \
             ops/deploy/postgres-runtime-deploy-lib.sh \
@@ -201,6 +204,9 @@ jobs:
             ops/deploy/fixtures/reader-summary-publication-pause-worker.sh \
             ops/deploy/verify-postgres-runtime-topology.test.sh
           shellcheck -x ops/deploy/social-monitor-production-deploy.sh \
+            ops/deploy/deploy-control-lib.sh \
+            ops/deploy/deploy-control-lib.test.sh \
+            ops/deploy/daily-deploy-lock-race.test.sh \
             ops/deploy/github-production-deploy-client.sh \
             ops/deploy/github-production-deploy-client.test.sh \
             ops/deploy/postgres-runtime-deploy-lib.sh \
@@ -229,6 +235,8 @@ jobs:
             --bootstrap "$POSTGRES_POOL_BOOTSTRAP" \
             --bootstrap-sha "$POSTGRES_POOL_BOOTSTRAP_SHA"
           bash ops/deploy/social-monitor-production-deploy.test.sh
+          bash ops/deploy/deploy-control-lib.test.sh
+          bash ops/deploy/daily-deploy-lock-race.test.sh
           bash ops/deploy/github-production-deploy-client.test.sh
 
       - name: Verify legacy-main PostgreSQL bootstrap transition

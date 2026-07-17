@@ -9,9 +9,12 @@ if [[ ${SOCIAL_MONITOR_DAILY_RUN_TEST_MODE:-} == 1 ]]; then
     echo 'daily production-day test root must be below /tmp' >&2
     exit 64
   }
+  POSTGRES_ADMISSION_WAIT_SECONDS=${SOCIAL_MONITOR_DAILY_RUN_TEST_ADMISSION_WAIT_SECONDS:-7500}
 else
   ROOT=/var/data/social-monitor
+  POSTGRES_ADMISSION_WAIT_SECONDS=7500
   unset SOCIAL_MONITOR_DAILY_RUN_TEST_MODE \
+    SOCIAL_MONITOR_DAILY_RUN_TEST_ADMISSION_WAIT_SECONDS \
     SOCIAL_MONITOR_DAILY_RUN_TEST_DOCKER \
     SOCIAL_MONITOR_DAILY_RUN_TEST_ROOT \
     READER_SUMMARY_DAILY_RUN_EXPECTED_DATE \
@@ -39,8 +42,19 @@ case "$DATE_FLAG" in
   *) echo "usage: $0 [--today|--yesterday]" >&2; exit 64 ;;
 esac
 
-exec 9>"$ROOT/control/daily-run.lock"
+[[ $POSTGRES_ADMISSION_WAIT_SECONDS =~ \
+   ^([0-9]+([.][0-9]+)?|[.][0-9]+)$ ]] || {
+  echo "daily production-day admission wait is invalid" >&2
+  exit 64
+}
+
+exec 9>"$ROOT/control/daily-run-singleton.lock"
 flock -n 9 || { echo "daily production-day run already active"; exit 0; }
+exec 8>"$ROOT/control/daily-run.lock"
+flock -w "$POSTGRES_ADMISSION_WAIT_SECONDS" 8 || {
+  echo "daily production-day timed out waiting for PostgreSQL admission" >&2
+  exit 75
+}
 
 runtime_release=$(cat "$ROOT/control/postgres-runtime-current/READY" 2>/dev/null || true)
 backend_release=$(cat "$ROOT/control/deploy-state/backend.sha" 2>/dev/null || true)

@@ -37,6 +37,8 @@ SYSTEMD_UNIT_DIR=$ROOT/systemd
 COMPOSE=(docker compose)
 SHA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 FAILED_SHA=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+CONTROL_ONLY_SHA=cccccccccccccccccccccccccccccccccccccccc
+BACKEND_COMPATIBLE_SHA=dddddddddddddddddddddddddddddddddddddddd
 REJECT_DROPIN=false
 install -d "$STATE" "$SYSTEMD_UNIT_DIR" "$CONTROL/old-runtime"
 printf 'old\n' > "$CONTROL/old-runtime/marker"
@@ -44,6 +46,7 @@ printf 'old-daily-runner\n' > "$CONTROL/daily-run.sh"
 ln -s "$CONTROL/old-runtime" "$POSTGRES_RUNTIME_CURRENT"
 
 units=(
+  social-monitor-daily.service
   social-monitor-prod.service
 )
 for unit in "${units[@]}"; do
@@ -65,7 +68,8 @@ systemctl() {
   fi
   if [[ $1 == cat ]]; then
     [[ $2 == social-monitor-daily.service ]] || return 1
-    printf '[Service]\nExecStart=%s/daily-run.sh --yesterday\n' "$CONTROL"
+    printf '[Service]\nExecStart=%s/daily-run.sh --yesterday\nTimeoutStartSec=23400\nRestart=no\n' \
+      "$CONTROL"
     return
   fi
   [[ $1 == show && $2 == --property=* && $3 == --value ]] || return 1
@@ -91,6 +95,7 @@ activate_postgres_runtime_control "$SHA"
 release=$POSTGRES_RUNTIME_RELEASES/$SHA
 [[ $(readlink -f "$POSTGRES_RUNTIME_CURRENT") == "$release" ]]
 [[ $(cat "$release/READY") == "$SHA" ]]
+[[ $(cat "$release/SOURCE_SHA") == "$SHA" ]]
 [[ ${COMPOSE[-1]} == "$POSTGRES_RUNTIME_CURRENT/compose.postgres-runtime.yml" ]]
 cmp -s "$release/daily-run.sh" "$CONTROL/daily-run.sh"
 for unit in "${units[@]}"; do
@@ -103,6 +108,16 @@ restore_postgres_runtime_control "$rollback_snapshot"
 for unit in "${units[@]}"; do
   [[ $(cat "$SYSTEMD_UNIT_DIR/$unit") == "old-$unit" ]]
 done
+[[ $(cat "$CONTROL/daily-run.sh") == old-daily-runner ]]
+
+control_only_snapshot=$(snapshot_postgres_runtime_control "$CONTROL_ONLY_SHA")
+activate_postgres_runtime_control \
+  "$CONTROL_ONLY_SHA" "$BACKEND_COMPATIBLE_SHA"
+control_only_release=$POSTGRES_RUNTIME_RELEASES/$CONTROL_ONLY_SHA
+[[ $(cat "$control_only_release/SOURCE_SHA") == "$CONTROL_ONLY_SHA" ]]
+[[ $(cat "$control_only_release/READY") == "$BACKEND_COMPATIBLE_SHA" ]]
+restore_postgres_runtime_control "$control_only_snapshot"
+[[ $(readlink -f "$POSTGRES_RUNTIME_CURRENT") == "$CONTROL/old-runtime" ]]
 [[ $(cat "$CONTROL/daily-run.sh") == old-daily-runner ]]
 
 REJECT_DROPIN=true
