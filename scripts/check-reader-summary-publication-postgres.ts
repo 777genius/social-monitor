@@ -19,8 +19,11 @@ import {
 } from "./reader-summary-publication-postgres-legacy";
 import {
   assertPreMigrationArtifactRuntimeContinuity,
+  assertPublicationRoleMemberships,
   assertReaderSummaryPublicationPrivilegeBoundary,
+  createPublicationFixtureRuntimeRole,
   dropPublicationFixtureDatabaseAndRoles,
+  grantLegacyMigrationOwnership,
   grantPublicationFixtureRuntimePrivileges,
   publicationDatabaseUrl,
   publicationRuntimeDatabaseUrl,
@@ -98,7 +101,13 @@ async function main(): Promise<void> {
       `CREATE DATABASE ${quotePostgresIdentifier(databaseName)} OWNER ${quotePostgresIdentifier(migrationAdminRole)}`,
     );
     fixtureDatabaseCreated = true;
-    await createFixtureRuntimeRole(adminDatabaseUrl);
+    await createPublicationFixtureRuntimeRole({
+      databaseName,
+      databaseUrl: adminDatabaseUrl,
+      runtimePassword,
+      runtimeRole,
+    });
+    fixtureRuntimeRoleCreated = true;
 
     preparePrePublicationMigrations();
     await grantLegacyMigrationOwnership(adminDatabaseUrl, runtimeRole);
@@ -113,8 +122,34 @@ async function main(): Promise<void> {
       adminDatabaseUrl,
       runtimeRole,
     );
+    await assertPublicationRoleMemberships(
+      adminDatabaseUrl,
+      migrationAdminRole,
+      runtimeRole,
+    );
     await assertPreMigrationArtifactRuntimeContinuity(runtimeDatabaseUrl);
+    // Recovery after a deploy abort immediately after the committed pre phase.
+    await runReaderSummaryPublicationBootstrapSql(
+      "pre",
+      adminDatabaseUrl,
+      runtimeRole,
+    );
+    await assertPublicationRoleMemberships(
+      adminDatabaseUrl,
+      migrationAdminRole,
+      runtimeRole,
+    );
     installPublicationMigration();
+    applyOrderedMigrations(
+      adminDatabaseUrl,
+      join(migrationWorkspace, "schema.prisma"),
+    );
+    // Recovery after Prisma committed but before the post hardening phase.
+    await runReaderSummaryPublicationBootstrapSql(
+      "pre",
+      adminDatabaseUrl,
+      runtimeRole,
+    );
     applyOrderedMigrations(
       adminDatabaseUrl,
       join(migrationWorkspace, "schema.prisma"),
@@ -122,6 +157,11 @@ async function main(): Promise<void> {
     await runReaderSummaryPublicationBootstrapSql(
       "post",
       adminDatabaseUrl,
+      runtimeRole,
+    );
+    await assertPublicationRoleMemberships(
+      adminDatabaseUrl,
+      migrationAdminRole,
       runtimeRole,
     );
     await runReaderSummaryPublicationBootstrapSql(
@@ -259,23 +299,6 @@ const assertOrderedUpgrade = async (client: PoolClient): Promise<void> => {
   );
 };
 
-const createFixtureRuntimeRole = async (databaseUrl: string): Promise<void> => {
-  const admin = new Pool({ connectionString: databaseUrl, max: 1 });
-  try {
-    await admin.query(
-      `CREATE ROLE ${quotePostgresIdentifier(runtimeRole)} LOGIN PASSWORD ${quotePostgresLiteral(runtimePassword)}
-       NOSUPERUSER NOCREATEDB NOCREATEROLE INHERIT NOREPLICATION NOBYPASSRLS`,
-    );
-    fixtureRuntimeRoleCreated = true;
-    await admin.query(
-      `GRANT CONNECT, CREATE ON DATABASE ${quotePostgresIdentifier(databaseName)}
-         TO ${quotePostgresIdentifier(runtimeRole)}`,
-    );
-  } finally {
-    await admin.end();
-  }
-};
-
 const assertLegacyTablesOwnedByRuntime = async (
   databaseUrl: string,
   applicationRole: string,
@@ -307,21 +330,6 @@ const assertLegacyTablesOwnedByRuntime = async (
         outbox_owner: applicationRole,
       },
       "ordered legacy migrations must reproduce runtime-owned production tables before bootstrap",
-    );
-  } finally {
-    await admin.end();
-  }
-};
-
-const grantLegacyMigrationOwnership = async (
-  databaseUrl: string,
-  applicationRole: string,
-): Promise<void> => {
-  const admin = new Pool({ connectionString: databaseUrl, max: 1 });
-  try {
-    await admin.query(
-      `GRANT USAGE, CREATE ON SCHEMA public
-         TO ${quotePostgresIdentifier(applicationRole)}`,
     );
   } finally {
     await admin.end();

@@ -18,7 +18,7 @@ PRIVATE_PASSWORD=redacted-test-password
 MIGRATOR_ROLE=social_monitor_publication_migrator
 DATABASE_HOST=dbaas-db-8050451-do-user-39622063-0.e.db.ondigitalocean.com
 VALID_URL="postgresql://${MIGRATOR_ROLE}:${PRIVATE_PASSWORD}@${DATABASE_HOST}:25060/social_monitor?connect_timeout=10&sslmode=verify-full&sslrootcert=%2Frun%2Fsocial-monitor-db%2Fca-certificate.crt"
-VALID_CATALOG="social_monitor|${MIGRATOR_ROLE}|${MIGRATOR_ROLE}|t|t|t|f|f|f|f|180004|t|t|f|t"
+VALID_CATALOG="social_monitor|${MIGRATOR_ROLE}|${MIGRATOR_ROLE}|t|t|t|f|f|f|f|180004|t|1|t|f|t|t|0"
 CATALOG_RESULT=$VALID_CATALOG
 CATALOG_QUERY_STATUS=0
 SECRET_OWNER=root
@@ -30,6 +30,7 @@ TEST_COUNT=0
 
 mkdir -p "$ROOT/secrets/db" "$REPO/ops/deploy"
 printf '%s\n' 'test-only-ca-certificate' > "$CA_CERTIFICATE"
+cp "$SCRIPT_DIR/deploy-control-lib.sh" "$REPO/ops/deploy/"
 
 fail() {
   printf 'deploy-error: %s\n' "$*" >&2
@@ -155,10 +156,10 @@ assert_invalid_catalog() {
   status=$?
   set -e
   ((status != 0))
-  if ((query_status == 0)); then
-    [[ $(< "$EVENT_LOG") == catalog-query ]]
-  else
+  if ((query_status == 2)); then
     [[ $(< "$EVENT_LOG") == $'catalog-query\ncatalog-query\ncatalog-query' ]]
+  else
+    [[ $(< "$EVENT_LOG") == catalog-query ]]
   fi
   [[ ! -s $WRITE_LOG ]]
   assert_redacted "$output" "$VALID_URL"
@@ -281,7 +282,8 @@ reset_case
 CA_METADATA_STATUS=42
 assert_invalid_file unreadable-ca-metadata
 
-assert_invalid_catalog query-failure "$PRIVATE_QUERY_PAYLOAD" 42
+assert_invalid_catalog transient-connection-failure "$PRIVATE_QUERY_PAYLOAD" 2
+assert_invalid_catalog deterministic-query-failure "$PRIVATE_QUERY_PAYLOAD" 42
 assert_invalid_catalog malformed-query-output 'malformed'
 assert_invalid_catalog multiline-query-output \
   "$VALID_CATALOG"$'\n'"$VALID_CATALOG"
@@ -303,11 +305,73 @@ assert_invalid_catalog createdb "$(catalog_with_field 7 t)"
 assert_invalid_catalog replication "$(catalog_with_field 8 t)"
 assert_invalid_catalog bypassrls "$(catalog_with_field 9 t)"
 assert_invalid_catalog old-postgres-major "$(catalog_with_field 10 170009)"
+assert_invalid_catalog unreviewed-postgres-major "$(catalog_with_field 10 190001)"
 assert_invalid_catalog malformed-server-version "$(catalog_with_field 10 invalid)"
 assert_invalid_catalog no-actual-tls "$(catalog_with_field 11 f)"
-assert_invalid_catalog no-runtime-admin-option "$(catalog_with_field 12 f)"
-assert_invalid_catalog inherited-runtime-role "$(catalog_with_field 13 t)"
-assert_invalid_catalog no-runtime-set-option "$(catalog_with_field 14 f)"
+assert_invalid_catalog duplicate-runtime-membership "$(catalog_with_field 12 2)"
+assert_invalid_catalog no-runtime-admin-option "$(catalog_with_field 13 f)"
+assert_invalid_catalog inherited-runtime-role "$(catalog_with_field 14 t)"
+assert_invalid_catalog no-runtime-set-option "$(catalog_with_field 15 f)"
+assert_invalid_catalog unsafe-protected-membership "$(catalog_with_field 16 f)"
+assert_invalid_catalog unexpected-role-membership "$(catalog_with_field 17 1)"
+
+assert_deploy_backend_preflight_order() {
+  local mode=$1
+  local expected=$2
+  local orchestration_log=$FIXTURE/orchestration-$mode.log
+  local counter=$FIXTURE/orchestration-$mode.count
+  : > "$orchestration_log"
+  printf '0\n' > "$counter"
+  set +e
+  SOCIAL_MONITOR_DEPLOY_TEST_MODE=1 \
+  SOCIAL_MONITOR_DEPLOY_ROOT="$ROOT" \
+  SOCIAL_MONITOR_DEPLOY_REPO="$REPO" \
+  SOCIAL_MONITOR_DEPLOY_CONTROL="$ROOT/control" \
+  SOCIAL_MONITOR_DEPLOY_STATE="$ROOT/control/deploy-state" \
+  ORCHESTRATION_LOG="$orchestration_log" \
+  ORCHESTRATION_COUNTER="$counter" \
+  ORCHESTRATION_MODE="$mode" \
+    bash -c '
+      set -euo pipefail
+      source "$1"
+      source "$2"
+      backend_services() { printf "%s\n" migrate; }
+      marker_value() { printf "%s\n" 0123456789abcdef0123456789abcdef01234567; }
+      capture_previous_images() { printf "%s\n" capture >> "$ORCHESTRATION_LOG"; }
+      verify_migration_compatibility() { printf "%s\n" compatibility >> "$ORCHESTRATION_LOG"; }
+      backup_database() { printf "%s\n" backup >> "$ORCHESTRATION_LOG"; }
+      reader_summary_publication_migrator_preflight() {
+        local count
+        read -r count < "$ORCHESTRATION_COUNTER"
+        count=$((count + 1))
+        printf "%s\n" "$count" > "$ORCHESTRATION_COUNTER"
+        printf "preflight:%s\n" "$count" >> "$ORCHESTRATION_LOG"
+        [[ $ORCHESTRATION_MODE != first-failure ]] || return 64
+        ((count < 2)) || return 65
+      }
+      run_reader_summary_publication_admin_sql() {
+        printf "write:%s\n" "$4" >> "$ORCHESTRATION_LOG"
+      }
+      fake_compose() {
+        if [[ " $* " == *" build "* ]]; then
+          printf "%s\n" build >> "$ORCHESTRATION_LOG"
+        else
+          printf "%s\n" prisma >> "$ORCHESTRATION_LOG"
+        fi
+      }
+      COMPOSE=(fake_compose)
+      deploy_backend fedcba9876543210fedcba9876543210fedcba98
+    ' _ "$DEPLOY_ENTRYPOINT" "$LIBRARY" >/dev/null 2>&1
+  local status=$?
+  set -e
+  ((status != 0))
+  [[ $(< "$orchestration_log") == "$expected" ]]
+  TEST_COUNT=$((TEST_COUNT + 1))
+}
+
+assert_deploy_backend_preflight_order first-failure 'preflight:1'
+assert_deploy_backend_preflight_order second-failure \
+  $'preflight:1\ncapture\ncompatibility\nbackup\nbuild\npreflight:2'
 
 for catalog_token in \
   'current_database()' \
@@ -323,6 +387,9 @@ for catalog_token in \
   "current_setting('server_version_num')" \
   'pg_catalog.pg_stat_ssl' \
   'pg_catalog.pg_auth_members' \
+  'expected_membership_count' \
+  'protected_memberships_valid' \
+  'unexpected_membership_count' \
   'membership.admin_option' \
   'membership.inherit_option' \
   'membership.set_option' \

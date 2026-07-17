@@ -13,19 +13,32 @@ if ((EUID == 0)); then
   install -m 0644 "$0" "$relocated_root/refresh-codex-auth.test.sh"
   install -m 0755 "$SCRIPT_DIR/host/refresh-codex-auth.sh" \
     "$relocated_root/host/refresh-codex-auth.sh"
+  : > "$relocated_root/.social-monitor-auth-refresh-relocated"
   chown -R 65534:65534 "$relocated_root"
   exec setpriv --reuid=65534 --regid=65534 --clear-groups \
-    env PATH="$PATH" TMPDIR=/tmp \
-      SOCIAL_MONITOR_AUTH_REFRESH_RELOCATED_ROOT="$relocated_root" \
+    env -u SOCIAL_MONITOR_AUTH_REFRESH_RELOCATED_ROOT \
+      PATH="$PATH" TMPDIR=/tmp \
       bash "$relocated_root/refresh-codex-auth.test.sh" "$@"
 fi
+
+RELOCATED_ROOT=
+case $SCRIPT_DIR in
+  /tmp/social-monitor-auth-refresh-source.*)
+    if [[ -f $SCRIPT_DIR/.social-monitor-auth-refresh-relocated && \
+          ! -L $SCRIPT_DIR/.social-monitor-auth-refresh-relocated && \
+          $(stat -c '%u' "$SCRIPT_DIR" 2>/dev/null || stat -f '%u' "$SCRIPT_DIR") == "$EUID" ]]; then
+      RELOCATED_ROOT=$SCRIPT_DIR
+    fi
+    ;;
+esac
+unset SOCIAL_MONITOR_AUTH_REFRESH_RELOCATED_ROOT
 
 ENTRYPOINT=$SCRIPT_DIR/host/refresh-codex-auth.sh
 FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/social-monitor-auth-refresh-test.XXXXXX")
 cleanup() {
   rm -rf "$FIXTURE"
-  if [[ -n ${SOCIAL_MONITOR_AUTH_REFRESH_RELOCATED_ROOT:-} ]]; then
-    rm -rf "$SOCIAL_MONITOR_AUTH_REFRESH_RELOCATED_ROOT"
+  if [[ -n $RELOCATED_ROOT ]]; then
+    rm -rf -- "$RELOCATED_ROOT"
   fi
 }
 trap cleanup EXIT

@@ -100,8 +100,10 @@ validate_reader_summary_publication_migrator() (
   local database_name current_identity session_identity
   local can_login can_create_role inherits_role
   local is_superuser can_create_database can_replicate can_bypass_rls
-  local server_version uses_tls membership_admin membership_inherit
-  local membership_set extra
+  local server_version uses_tls membership_count membership_admin
+  local membership_inherit membership_set protected_memberships_valid
+  local unexpected_membership_count extra
+  local query_status
 
   [[ -f $secret && ! -L $secret && -s $secret ]] || return 64
   metadata=$(reader_summary_publication_admin_secret_metadata \
@@ -118,18 +120,27 @@ validate_reader_summary_publication_migrator() (
     return 64
 
   reader_summary_publication_validate_admin_url "$secret" || return 64
-  if ! catalog_result=$(reader_summary_publication_admin_catalog_query \
+  if catalog_result=$(reader_summary_publication_admin_catalog_query \
     "$secret" "$ca_certificate" "$runtime_role" 2>/dev/null); then
-    return 75
+    :
+  else
+    query_status=$?
+    # psql reserves status 2 for a failed server connection. SQL, auth,
+    # privilege, TLS-policy and container-launch failures are deterministic
+    # release blockers and must not be disguised as transient retries.
+    [[ $query_status == 2 ]] && return 75
+    return 65
   fi
   [[ -n $catalog_result && $catalog_result != *$'\n'* ]] || return 65
   catalog_delimiters=${catalog_result//[!|]/}
-  ((${#catalog_delimiters} == 14)) || return 65
+  ((${#catalog_delimiters} == 17)) || return 65
 
   IFS='|' read -r database_name current_identity session_identity \
     can_login can_create_role inherits_role is_superuser \
     can_create_database can_replicate can_bypass_rls server_version \
-    uses_tls membership_admin membership_inherit membership_set extra \
+    uses_tls membership_count membership_admin membership_inherit \
+    membership_set protected_memberships_valid \
+    unexpected_membership_count extra \
     <<< "$catalog_result"
 
   [[ -z $extra && \
@@ -141,9 +152,12 @@ validate_reader_summary_publication_migrator() (
     return 65
   [[ $is_superuser == f && $can_create_database == f ]] || return 65
   [[ $can_replicate == f && $can_bypass_rls == f ]] || return 65
-  [[ $server_version =~ ^[0-9]+$ && $server_version -ge 180000 ]] || return 65
-  [[ $uses_tls == t && $membership_admin == t ]] || return 65
+  [[ $server_version =~ ^18[0-9]{4}$ ]] || return 65
+  [[ $uses_tls == t && $membership_count == 1 ]] || return 65
+  [[ $membership_admin == t ]] || return 65
   [[ $membership_inherit == f && $membership_set == t ]] || return 65
+  [[ $protected_memberships_valid == t ]] || return 65
+  [[ $unexpected_membership_count == 0 ]] || return 65
 )
 
 reader_summary_publication_admin_secret_metadata() {
@@ -241,23 +255,66 @@ SELECT
   migrator.rolbypassrls,
   current_setting('server_version_num')::INTEGER,
   COALESCE(connection.ssl, false),
+  COALESCE(membership.expected_membership_count, 0),
   COALESCE(membership.admin_option, false),
   COALESCE(membership.inherit_option, false),
-  COALESCE(membership.set_option, false)
+  COALESCE(membership.set_option, false),
+  COALESCE(membership.protected_memberships_valid, false),
+  COALESCE(membership.unexpected_membership_count, 0)
 FROM pg_catalog.pg_roles AS migrator
 LEFT JOIN pg_catalog.pg_stat_ssl AS connection
   ON connection.pid = pg_catalog.pg_backend_pid()
 LEFT JOIN LATERAL (
-  SELECT membership.admin_option, membership.inherit_option,
-    membership.set_option
+  SELECT
+    COUNT(*) FILTER (
+      WHERE granted_role.rolname = :'runtime_role'
+    ) AS expected_membership_count,
+    BOOL_OR(membership.admin_option) FILTER (
+      WHERE granted_role.rolname = :'runtime_role'
+    ) AS admin_option,
+    BOOL_OR(membership.inherit_option) FILTER (
+      WHERE granted_role.rolname = :'runtime_role'
+    ) AS inherit_option,
+    BOOL_OR(membership.set_option) FILTER (
+      WHERE granted_role.rolname = :'runtime_role'
+    ) AS set_option,
+    COUNT(*) FILTER (
+      WHERE granted_role.rolname =
+        'social_monitor_reader_summary_publication_owner'
+    ) <= 1
+      AND COUNT(*) FILTER (
+        WHERE granted_role.rolname =
+          'social_monitor_reader_summary_publication_runtime'
+      ) <= 1
+      AND BOOL_AND(
+        CASE WHEN granted_role.rolname =
+          'social_monitor_reader_summary_publication_owner'
+        THEN membership.admin_option
+          AND NOT membership.inherit_option
+          AND membership.set_option
+        ELSE true END
+      )
+      AND BOOL_AND(
+        CASE WHEN granted_role.rolname =
+          'social_monitor_reader_summary_publication_runtime'
+        THEN membership.admin_option
+          AND NOT membership.inherit_option
+          AND NOT membership.set_option
+        ELSE true END
+      ) AS protected_memberships_valid,
+    COUNT(*) FILTER (
+      WHERE granted_role.rolname NOT IN (
+        :'runtime_role',
+        'social_monitor_reader_summary_publication_owner',
+        'social_monitor_reader_summary_publication_runtime'
+      )
+    ) AS unexpected_membership_count
     FROM pg_catalog.pg_auth_members AS membership
     JOIN pg_catalog.pg_roles AS granted_role
       ON granted_role.oid = membership.roleid
     JOIN pg_catalog.pg_roles AS member_role
       ON member_role.oid = membership.member
-    WHERE granted_role.rolname = :'runtime_role'
-      AND member_role.rolname = current_user
-  LIMIT 1
+    WHERE member_role.rolname = current_user
 ) AS membership ON true
 WHERE migrator.rolname = current_user;"
 

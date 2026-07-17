@@ -40,7 +40,18 @@ BEGIN
     social_monitor_reader_summary_publication_owner,
     social_monitor_reader_summary_publication_runtime;
   EXECUTE format(
-    'GRANT social_monitor_reader_summary_publication_runtime TO %I',
+    'GRANT social_monitor_reader_summary_publication_runtime TO %I '
+      'WITH ADMIN FALSE',
+    v_runtime_role
+  );
+  EXECUTE format(
+    'GRANT social_monitor_reader_summary_publication_runtime TO %I '
+      'WITH INHERIT TRUE',
+    v_runtime_role
+  );
+  EXECUTE format(
+    'GRANT social_monitor_reader_summary_publication_runtime TO %I '
+      'WITH SET FALSE',
     v_runtime_role
   );
 
@@ -148,6 +159,45 @@ BEGIN
       'CREATE'
     ) THEN
     RAISE EXCEPTION 'runtime role can bypass publication ownership';
+  END IF;
+  IF (
+    SELECT count(*) <> 1 OR NOT bool_and(
+      membership.admin_option
+      AND NOT membership.inherit_option
+      AND membership.set_option
+    )
+    FROM pg_auth_members membership
+    JOIN pg_roles granted ON granted.oid = membership.roleid
+    JOIN pg_roles member ON member.oid = membership.member
+    WHERE granted.rolname =
+      'social_monitor_reader_summary_publication_owner'
+      AND member.rolname = current_user
+  ) OR (
+    SELECT count(*) <> 1 OR NOT bool_and(
+      membership.admin_option
+      AND NOT membership.inherit_option
+      AND NOT membership.set_option
+    )
+    FROM pg_auth_members membership
+    JOIN pg_roles granted ON granted.oid = membership.roleid
+    JOIN pg_roles member ON member.oid = membership.member
+    WHERE granted.rolname =
+      'social_monitor_reader_summary_publication_runtime'
+      AND member.rolname = current_user
+  ) OR (
+    SELECT count(*) <> 1 OR NOT bool_and(
+      NOT membership.admin_option
+      AND membership.inherit_option
+      AND NOT membership.set_option
+    )
+    FROM pg_auth_members membership
+    JOIN pg_roles granted ON granted.oid = membership.roleid
+    JOIN pg_roles member ON member.oid = membership.member
+    WHERE granted.rolname =
+      'social_monitor_reader_summary_publication_runtime'
+      AND member.rolname = v_runtime_role
+  ) THEN
+    RAISE EXCEPTION 'publication role membership options are unsafe';
   END IF;
 
   IF NOT has_table_privilege(

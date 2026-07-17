@@ -80,7 +80,18 @@ BEGIN
   END IF;
 
   EXECUTE format(
-    'GRANT social_monitor_reader_summary_publication_owner TO %I',
+    'GRANT social_monitor_reader_summary_publication_owner TO %I '
+      'WITH ADMIN TRUE',
+    current_user
+  );
+  EXECUTE format(
+    'GRANT social_monitor_reader_summary_publication_owner TO %I '
+      'WITH INHERIT FALSE',
+    current_user
+  );
+  EXECUTE format(
+    'GRANT social_monitor_reader_summary_publication_owner TO %I '
+      'WITH SET TRUE',
     current_user
   );
   EXECUTE format(
@@ -114,7 +125,33 @@ BEGIN
   END IF;
 
   EXECUTE format(
-    'GRANT social_monitor_reader_summary_publication_runtime TO %I',
+    'GRANT social_monitor_reader_summary_publication_runtime TO %I '
+      'WITH ADMIN TRUE',
+    current_user
+  );
+  EXECUTE format(
+    'GRANT social_monitor_reader_summary_publication_runtime TO %I '
+      'WITH INHERIT FALSE',
+    current_user
+  );
+  EXECUTE format(
+    'GRANT social_monitor_reader_summary_publication_runtime TO %I '
+      'WITH SET FALSE',
+    current_user
+  );
+  EXECUTE format(
+    'GRANT social_monitor_reader_summary_publication_runtime TO %I '
+      'WITH ADMIN FALSE',
+    v_runtime_role
+  );
+  EXECUTE format(
+    'GRANT social_monitor_reader_summary_publication_runtime TO %I '
+      'WITH INHERIT TRUE',
+    v_runtime_role
+  );
+  EXECUTE format(
+    'GRANT social_monitor_reader_summary_publication_runtime TO %I '
+      'WITH SET FALSE',
     v_runtime_role
   );
   IF EXISTS (
@@ -127,6 +164,45 @@ BEGIN
       AND member.rolname NOT IN (v_runtime_role, current_user)
   ) THEN
     RAISE EXCEPTION 'publication capability has an unreviewed member';
+  END IF;
+  IF (
+    SELECT count(*) <> 1 OR NOT bool_and(
+      membership.admin_option
+      AND NOT membership.inherit_option
+      AND membership.set_option
+    )
+    FROM pg_auth_members membership
+    JOIN pg_roles granted ON granted.oid = membership.roleid
+    JOIN pg_roles member ON member.oid = membership.member
+    WHERE granted.rolname =
+      'social_monitor_reader_summary_publication_owner'
+      AND member.rolname = current_user
+  ) OR (
+    SELECT count(*) <> 1 OR NOT bool_and(
+      membership.admin_option
+      AND NOT membership.inherit_option
+      AND NOT membership.set_option
+    )
+    FROM pg_auth_members membership
+    JOIN pg_roles granted ON granted.oid = membership.roleid
+    JOIN pg_roles member ON member.oid = membership.member
+    WHERE granted.rolname =
+      'social_monitor_reader_summary_publication_runtime'
+      AND member.rolname = current_user
+  ) OR (
+    SELECT count(*) <> 1 OR NOT bool_and(
+      NOT membership.admin_option
+      AND membership.inherit_option
+      AND NOT membership.set_option
+    )
+    FROM pg_auth_members membership
+    JOIN pg_roles granted ON granted.oid = membership.roleid
+    JOIN pg_roles member ON member.oid = membership.member
+    WHERE granted.rolname =
+      'social_monitor_reader_summary_publication_runtime'
+      AND member.rolname = v_runtime_role
+  ) THEN
+    RAISE EXCEPTION 'publication role membership options are unsafe';
   END IF;
 END
 $bootstrap$;
@@ -189,14 +265,28 @@ BEGIN
 
   IF v_artifact_owner = v_job_owner AND v_job_owner <> v_admin_role THEN
     EXECUTE format(
-      'GRANT social_monitor_reader_summary_publication_owner TO %I',
+      'GRANT social_monitor_reader_summary_publication_owner TO %I '
+        'WITH ADMIN FALSE',
+      v_job_owner
+    );
+    EXECUTE format(
+      'GRANT social_monitor_reader_summary_publication_owner TO %I '
+        'WITH INHERIT FALSE',
+      v_job_owner
+    );
+    EXECUTE format(
+      'GRANT social_monitor_reader_summary_publication_owner TO %I '
+        'WITH SET TRUE',
       v_job_owner
     );
     v_temporary_owner_membership := TRUE;
   END IF;
 
   IF v_job_owner <> v_admin_role THEN
-    EXECUTE format('GRANT %I TO %I', v_job_owner, v_admin_role);
+    IF NOT pg_has_role(v_admin_role, v_job_owner, 'SET') THEN
+      RAISE EXCEPTION
+        'migration admin lacks the pre-provisioned SET membership';
+    END IF;
     EXECUTE format('SET LOCAL ROLE %I', v_job_owner);
     v_switched_role := TRUE;
   END IF;

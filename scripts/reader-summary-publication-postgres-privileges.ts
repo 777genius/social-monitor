@@ -34,6 +34,52 @@ export const grantPublicationFixtureRuntimePrivileges = async (
   );
 };
 
+export const grantLegacyMigrationOwnership = async (
+  databaseUrl: string,
+  applicationRole: string,
+): Promise<void> => {
+  const admin = new Pool({ connectionString: databaseUrl, max: 1 });
+  try {
+    await admin.query(
+      `GRANT USAGE, CREATE ON SCHEMA public
+         TO ${quoteIdentifier(applicationRole)}`,
+    );
+  } finally {
+    await admin.end();
+  }
+};
+
+export const createPublicationFixtureRuntimeRole = async (params: {
+  readonly databaseName: string;
+  readonly databaseUrl: string;
+  readonly runtimePassword: string;
+  readonly runtimeRole: string;
+}): Promise<void> => {
+  const admin = new Pool({ connectionString: params.databaseUrl, max: 1 });
+  try {
+    await admin.query(
+      `CREATE ROLE ${quoteIdentifier(params.runtimeRole)} LOGIN PASSWORD ${quoteLiteral(params.runtimePassword)}
+       NOSUPERUSER NOCREATEDB NOCREATEROLE INHERIT NOREPLICATION NOBYPASSRLS`,
+    );
+    await admin.query(
+      `GRANT CONNECT, CREATE ON DATABASE ${quoteIdentifier(params.databaseName)}
+         TO ${quoteIdentifier(params.runtimeRole)}`,
+    );
+    for (const membershipOption of [
+      "ADMIN TRUE",
+      "INHERIT FALSE",
+      "SET TRUE",
+    ]) {
+      await admin.query(
+        `GRANT ${quoteIdentifier(params.runtimeRole)} TO CURRENT_USER
+          WITH ${membershipOption}`,
+      );
+    }
+  } finally {
+    await admin.end();
+  }
+};
+
 export const assertPreMigrationArtifactRuntimeContinuity = async (
   runtimeDatabaseUrl: string,
 ): Promise<void> => {
@@ -157,6 +203,83 @@ export const assertPreMigrationArtifactRuntimeContinuity = async (
     await client.query("ROLLBACK").catch(() => undefined);
     client.release();
     await runtime.end();
+  }
+};
+
+export const assertPublicationRoleMemberships = async (
+  databaseUrl: string,
+  migrationAdminRole: string,
+  runtimeRole: string,
+): Promise<void> => {
+  const admin = new Pool({ connectionString: databaseUrl, max: 1 });
+  try {
+    const memberships = await admin.query<{
+      readonly admin_option: boolean;
+      readonly granted_role: string;
+      readonly inherit_option: boolean;
+      readonly member_role: string;
+      readonly set_option: boolean;
+    }>(
+      `SELECT granted.rolname AS granted_role,
+              member.rolname AS member_role,
+              membership.admin_option,
+              membership.inherit_option,
+              membership.set_option
+         FROM pg_auth_members membership
+         JOIN pg_roles granted ON granted.oid = membership.roleid
+         JOIN pg_roles member ON member.oid = membership.member
+        WHERE member.rolname = ANY($1::text[])
+          AND granted.rolname = ANY($2::text[])
+        ORDER BY granted.rolname, member.rolname, membership.grantor`,
+      [
+        [migrationAdminRole, runtimeRole],
+        [
+          runtimeRole,
+          "social_monitor_reader_summary_publication_owner",
+          "social_monitor_reader_summary_publication_runtime",
+        ],
+      ],
+    );
+    assertDeepEqual(
+      memberships.rows,
+      [
+        {
+          granted_role: "social_monitor_reader_summary_publication_owner",
+          member_role: migrationAdminRole,
+          admin_option: true,
+          inherit_option: false,
+          set_option: true,
+        },
+        {
+          granted_role: "social_monitor_reader_summary_publication_runtime",
+          member_role: migrationAdminRole,
+          admin_option: true,
+          inherit_option: false,
+          set_option: false,
+        },
+        {
+          granted_role: "social_monitor_reader_summary_publication_runtime",
+          member_role: runtimeRole,
+          admin_option: false,
+          inherit_option: true,
+          set_option: false,
+        },
+        {
+          granted_role: runtimeRole,
+          member_role: migrationAdminRole,
+          admin_option: true,
+          inherit_option: false,
+          set_option: true,
+        },
+      ].sort((left, right) =>
+        `${left.granted_role}\0${left.member_role}`.localeCompare(
+          `${right.granted_role}\0${right.member_role}`,
+        ),
+      ),
+      "publication role memberships must match the exact PostgreSQL 18 boundary",
+    );
+  } finally {
+    await admin.end();
   }
 };
 

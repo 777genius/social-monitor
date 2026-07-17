@@ -12,20 +12,32 @@ if ((EUID == 0)); then
   install -m 0644 "$0" "$relocated_root/prune-pre-autodeploy-backups.test.sh"
   install -m 0755 "$script_dir/prune-pre-autodeploy-backups.sh" \
     "$relocated_root/prune-pre-autodeploy-backups.sh"
+  : > "$relocated_root/.social-monitor-backup-prune-relocated"
   chown -R 65534:65534 "$relocated_root"
   exec setpriv --reuid=65534 --regid=65534 --clear-groups \
-    env PATH="$PATH" TMPDIR=/tmp \
-      SOCIAL_MONITOR_BACKUP_PRUNE_RELOCATED_ROOT="$relocated_root" \
+    env -u SOCIAL_MONITOR_BACKUP_PRUNE_RELOCATED_ROOT \
+      PATH="$PATH" TMPDIR=/tmp \
       bash "$relocated_root/prune-pre-autodeploy-backups.test.sh" "$@"
 fi
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+RELOCATED_ROOT=
+case $SCRIPT_DIR in
+  /tmp/social-monitor-backup-prune-source.*)
+    if [[ -f $SCRIPT_DIR/.social-monitor-backup-prune-relocated && \
+          ! -L $SCRIPT_DIR/.social-monitor-backup-prune-relocated && \
+          $(stat -c '%u' "$SCRIPT_DIR" 2>/dev/null || stat -f '%u' "$SCRIPT_DIR") == "$EUID" ]]; then
+      RELOCATED_ROOT=$SCRIPT_DIR
+    fi
+    ;;
+esac
+unset SOCIAL_MONITOR_BACKUP_PRUNE_RELOCATED_ROOT
 ENTRYPOINT=$SCRIPT_DIR/prune-pre-autodeploy-backups.sh
 FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/social-monitor-backup-prune-test.XXXXXX")
 cleanup() {
   rm -rf "$FIXTURE"
-  if [[ -n ${SOCIAL_MONITOR_BACKUP_PRUNE_RELOCATED_ROOT:-} ]]; then
-    rm -rf "$SOCIAL_MONITOR_BACKUP_PRUNE_RELOCATED_ROOT"
+  if [[ -n $RELOCATED_ROOT ]]; then
+    rm -rf -- "$RELOCATED_ROOT"
   fi
 }
 trap cleanup EXIT
