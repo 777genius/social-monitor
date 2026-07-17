@@ -175,7 +175,11 @@ async function main(): Promise<void> {
       adminDatabaseUrl,
       runtimeRole,
     );
-    assertMigrationDatabaseMatchesPrismaSchema(adminDatabaseUrl);
+    // Diff as the fixture's server auditor. The intentionally NOINHERIT
+    // migrator cannot introspect objects owned by either protected role, and
+    // treating that restricted view as the physical schema yields a false
+    // all-tables drift report after the ACL boundary is hardened.
+    assertMigrationDatabaseMatchesPrismaSchema(targetDatabaseUrl);
     const admin = new Pool({ connectionString: adminDatabaseUrl, max: 2 });
     const runtime = new Pool({ connectionString: runtimeDatabaseUrl, max: 4 });
     try {
