@@ -8,6 +8,7 @@ import type {
   ReaderSummaryStoryRelationVerifierInput,
 } from "../../ports";
 import { AgentRuntimeReaderSummaryStoryRelationVerifier } from "./agent-runtime-reader-summary-story-relation-verifier.adapter";
+import { withTestExecutionAttestation } from "./reader-summary-execution-attestation.spec-support";
 
 describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
   it("uses subscription runtime and decides every shortlisted pair", async () => {
@@ -140,7 +141,7 @@ class CapturingAgentRuntimeClient implements AgentRuntimeClientPort {
     command: AgentRuntimeTaskCommand,
   ): Promise<AgentRuntimeTaskResult> {
     this.commands.push(command);
-    return this.result;
+    return withTestExecutionAttestation(command, this.result);
   }
 
   async checkHealth(): Promise<AgentRuntimeHealthResult> {

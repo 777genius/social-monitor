@@ -147,6 +147,8 @@ report_before_latest_proof=$report_before_latest_case/public/reader-summary-prod
 node "$PROJECT_ROOT/scripts/verify-reader-summary-production-day-publication.mjs" \
   --dated-report "$report_before_latest_report" \
   --expected-date "$EXPECTED_DATE" \
+  --evidence-artifact "$report_before_latest_case/reports/durable-reader-summary-$EXPECTED_DATE.v1.json" \
+  --frontend-artifact "$report_before_latest_case/reports/frontend-reader-summary-$EXPECTED_DATE.fixture.v1.json" \
   --proof "$report_before_latest_proof" >/dev/null
 
 success_case=$FIXTURE/success
@@ -154,8 +156,10 @@ prepare_case "$success_case"
 run_daily "$success_case" 30000 success >"$success_case/run.log" 2>&1
 dated_report=$success_case/public/reader-summary-production-day-run.$EXPECTED_DATE.v1.json
 proof=$success_case/public/reader-summary-production-day-run.$EXPECTED_DATE.publication-proof.v1.json
+runtime_identity=$success_case/public/runtime-live-identity-$EXPECTED_DATE.v1.json
 [[ -e $dated_report ]]
 [[ -e $proof ]]
+[[ -e $runtime_identity ]]
 cmp -s "$dated_report" "$success_case/public/latest.v1.json"
 if cmp -s "$success_case/expected-latest.v1.json" "$success_case/public/latest.v1.json"; then
   echo 'successful publication did not replace latest' >&2
@@ -164,6 +168,8 @@ fi
 node "$PROJECT_ROOT/scripts/verify-reader-summary-production-day-publication.mjs" \
   --dated-report "$dated_report" \
   --expected-date "$EXPECTED_DATE" \
+  --evidence-artifact "$success_case/reports/durable-reader-summary-$EXPECTED_DATE.v1.json" \
+  --frontend-artifact "$success_case/reports/frontend-reader-summary-$EXPECTED_DATE.fixture.v1.json" \
   --proof "$proof" >/dev/null
 
 printf 'Real daily-run timeout, invalid proof, generation/proof/report SIGKILL, and success regression OK\n'
