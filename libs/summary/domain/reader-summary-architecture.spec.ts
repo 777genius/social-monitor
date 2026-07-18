@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import ts from "typescript";
 
 const readerSummaryCoreFiles = [
   "aggregates/reader-summary.ts",
@@ -107,28 +108,31 @@ describe("ReaderSummary domain architecture", () => {
   });
 
   it("does not own provider display labels in the Summary domain", () => {
-    const forbiddenDisplayFragments = [
-      "providerLabel",
-      "Repo Radar",
-      "GitHub Trending",
-      "GitHub",
-      "Hacker News",
-      "Reddit",
-    ];
     const violations: string[] = [];
 
     for (const file of readerSummaryCoreFiles) {
-      const source = sourceFor(file);
-      for (const fragment of forbiddenDisplayFragments) {
-        if (source.includes(fragment)) {
-          violations.push(
-            `${file} contains provider display fragment ${fragment}`,
-          );
-        }
-      }
+      violations.push(...providerDisplayViolations(file, sourceFor(file)));
     }
 
     expect(violations).toEqual([]);
+  });
+
+  it("distinguishes provider identity from provider display-label ownership", () => {
+    expect(
+      providerDisplayViolations(
+        "canonical-provider-identity.ts",
+        "export const isGitHubTrendingProvider = true;",
+      ),
+    ).toEqual([]);
+    expect(
+      providerDisplayViolations(
+        "provider-display-label.ts",
+        'export const providerLabel = `GitHub ${providerKind}`;',
+      ),
+    ).toEqual([
+      "provider-display-label.ts contains provider display fragment providerLabel",
+      "provider-display-label.ts contains provider display fragment GitHub",
+    ]);
   });
 
   it("does not keep canonical ReaderSummary compatibility shims inside the domain", () => {
@@ -538,3 +542,47 @@ const sourceFor = (relativePath: string): string => {
 
 const importPaths = (source: string): readonly string[] =>
   [...source.matchAll(/from ['"]([^'"]+)['"]/g)].map((match) => match[1] ?? "");
+
+const providerDisplayViolations = (
+  file: string,
+  source: string,
+): readonly string[] => {
+  const forbiddenDisplayFragments = [
+    "providerLabel",
+    "Repo Radar",
+    "GitHub Trending",
+    "GitHub",
+    "Hacker News",
+    "Reddit",
+  ];
+  const foundFragments = new Set<string>();
+  const sourceFile = ts.createSourceFile(
+    file,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+
+  const visit = (node: ts.Node): void => {
+    if (ts.isIdentifier(node) && node.text === "providerLabel") {
+      foundFragments.add(node.text);
+    }
+
+    if (ts.isStringLiteralLike(node) || ts.isTemplateLiteralToken(node)) {
+      for (const fragment of forbiddenDisplayFragments) {
+        if (node.text.includes(fragment)) {
+          foundFragments.add(fragment);
+        }
+      }
+    }
+
+    ts.forEachChild(node, visit);
+  };
+
+  visit(sourceFile);
+
+  return [...foundFragments].map(
+    (fragment) => `${file} contains provider display fragment ${fragment}`,
+  );
+};
