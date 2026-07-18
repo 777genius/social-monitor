@@ -114,10 +114,12 @@ jobs:
       - name: Prove fail-closed PostgreSQL and signal publication
         if: needs.plan.outputs.backend == 'true'
         env:
+          DATABASE_URL: postgresql://social_monitor_publication_ci_admin:social_monitor_local_password@127.0.0.1:5432/social_monitor_publication_ci_admin
           READER_SUMMARY_PUBLICATION_TEST_ADMIN_DATABASE_URL: postgresql://social_monitor_publication_ci_admin:social_monitor_local_password@127.0.0.1:5432/social_monitor_publication_ci_admin
         run: |
           set -euo pipefail
           npm ci
+          npm run prisma:generate
           npm run check:reader-summary-publication-postgres
           npm run check:reader-summary-publication-signal-regression
 
