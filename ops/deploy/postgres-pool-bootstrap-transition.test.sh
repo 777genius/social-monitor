@@ -116,6 +116,10 @@ install -d "$REPO/ops/deploy" "$REPO/apps/api-gateway" "$STATE" \
   "$ROOT/runtime/systemd" "$LEGACY_RUNTIME" "$NON_ACTIVATING_SNAPSHOT" \
   "$FIXTURE/bin"
 cp "$FIXTURE/legacy-entrypoint.sh" "$REPO/ops/deploy/social-monitor-production-deploy.sh"
+cp "$PROJECT_ROOT/ops/deploy/reader-summary-publication-deploy-lib.sh" \
+  "$PROJECT_ROOT/ops/deploy/reader-summary-publication-pre-migration.sql" \
+  "$PROJECT_ROOT/ops/deploy/reader-summary-publication-post-migration.sql" \
+  "$REPO/ops/deploy/"
 printf 'base\n' > "$REPO/README.md"
 git -C "$REPO" add .
 git -C "$REPO" commit -qm 'test: installed legacy main'
@@ -150,6 +154,10 @@ chmod 0755 "$FIXTURE/bin/docker"
 cp "$PROJECT_ROOT/ops/deploy/social-monitor-production-deploy.sh" \
   "$REPO/ops/deploy/social-monitor-production-deploy.sh"
 cp "$PROJECT_ROOT/ops/deploy/postgres-runtime-deploy-lib.sh" "$REPO/ops/deploy/"
+cp "$PROJECT_ROOT/ops/deploy/reader-summary-publication-deploy-lib.sh" \
+  "$PROJECT_ROOT/ops/deploy/reader-summary-publication-pre-migration.sql" \
+  "$PROJECT_ROOT/ops/deploy/reader-summary-publication-post-migration.sql" \
+  "$REPO/ops/deploy/"
 cp "$PROJECT_ROOT/ops/deploy/verify-postgres-runtime-topology.py" "$REPO/ops/deploy/"
 cp -R "$PROJECT_ROOT/ops/deploy/production-runtime" "$REPO/ops/deploy/"
 # Compose rendering is an external prerequisite for this transition test. Stub

@@ -1,0 +1,175 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+PROJECT_ROOT=$(cd "$SCRIPT_DIR/../.." && pwd)
+DAILY_RUN=$SCRIPT_DIR/production-runtime/daily-run.sh
+WORKER=$SCRIPT_DIR/fixtures/reader-summary-publication-pause-worker.sh
+FAKE_DOCKER=$SCRIPT_DIR/fixtures/reader-summary-publication-fake-docker.sh
+FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/reader-summary-publication-signal.XXXXXX")
+trap 'rm -rf "$FIXTURE"' EXIT
+
+EXPECTED_DATE=2026-07-16
+RELEASE_SHA=0123456789abcdef0123456789abcdef01234567
+
+wait_for_ready() {
+  local ready=$1
+  local attempts=0
+  while [[ ! -s $ready ]]; do
+    attempts=$((attempts + 1))
+    if ((attempts > 200)); then
+      echo 'real daily-run path did not stage its candidate' >&2
+      return 1
+    fi
+    sleep 0.05
+  done
+}
+
+prepare_case() {
+  local case_dir=$1
+  local root=$case_dir/root
+  install -d \
+    "$root/control/deploy-state" \
+    "$root/control/postgres-runtime-current" \
+    "$root/runtime" \
+    "$case_dir/reports" \
+    "$case_dir/public"
+  printf '%s\n' "$RELEASE_SHA" > "$root/control/deploy-state/backend.sha"
+  printf '%s\n' "$RELEASE_SHA" > "$root/control/postgres-runtime-current/READY"
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$root/control/refresh-codex-auth.sh"
+  chmod +x "$root/control/refresh-codex-auth.sh"
+  printf 'previous-public-latest\n' > "$case_dir/public/latest.v1.json"
+  cp "$case_dir/public/latest.v1.json" "$case_dir/expected-latest.v1.json"
+}
+
+assert_previous_latest_unchanged() {
+  local case_dir=$1
+  cmp -s "$case_dir/expected-latest.v1.json" "$case_dir/public/latest.v1.json"
+  [[ -e $case_dir/reports/reader-summary-production-day-run.v1.json ]]
+  [[ -e $case_dir/reports/reader-summary-production-day-run.$EXPECTED_DATE.v1.json ]]
+  [[ ! -e $case_dir/public/reader-summary-production-day-run.$EXPECTED_DATE.v1.json ]]
+  [[ ! -e $case_dir/public/reader-summary-production-day-run.$EXPECTED_DATE.publication-proof.v1.json ]]
+}
+
+run_daily() {
+  local case_dir=$1
+  local timeout_ms=$2
+  local worker_mode=${3:-pause}
+  local failpoint=${4:-}
+  SOCIAL_MONITOR_DAILY_RUN_TEST_MODE=1 \
+  SOCIAL_MONITOR_DAILY_RUN_TEST_ROOT="$case_dir/root" \
+  SOCIAL_MONITOR_DAILY_RUN_TEST_DOCKER="$FAKE_DOCKER" \
+  READER_SUMMARY_DAILY_RUN_EXPECTED_DATE=$EXPECTED_DATE \
+  READER_SUMMARY_DAILY_RUN_PAUSE_WORKER=$WORKER \
+  READER_SUMMARY_DAILY_RUN_REPORT_DIR="$case_dir/reports" \
+  READER_SUMMARY_DAILY_RUN_PUBLIC_DIR="$case_dir/public" \
+  READER_SUMMARY_DAILY_RUN_READY_FILE="$case_dir/ready" \
+  READER_SUMMARY_DAILY_RUN_FAILPOINT=$failpoint \
+  READER_SUMMARY_DAILY_RUN_FAILPOINT_READY_FILE="$case_dir/failpoint-ready" \
+  READER_SUMMARY_DAILY_RUN_WORKER_MODE=$worker_mode \
+  READER_SUMMARY_DAILY_RUN_TIMEOUT_MS=$timeout_ms \
+    bash "$DAILY_RUN" --today
+}
+
+timeout_case=$FIXTURE/timeout
+prepare_case "$timeout_case"
+set +e
+run_daily "$timeout_case" 1000 >"$timeout_case/run.log" 2>&1
+timeout_status=$?
+set -e
+((timeout_status == 124))
+assert_previous_latest_unchanged "$timeout_case"
+
+invalid_case=$FIXTURE/invalid
+prepare_case "$invalid_case"
+set +e
+run_daily "$invalid_case" 30000 invalid >"$invalid_case/run.log" 2>&1
+invalid_status=$?
+set -e
+((invalid_status != 0))
+assert_previous_latest_unchanged "$invalid_case"
+
+sigkill_case=$FIXTURE/sigkill
+prepare_case "$sigkill_case"
+run_daily "$sigkill_case" 30000 >"$sigkill_case/run.log" 2>&1 &
+daily_pid=$!
+wait_for_ready "$sigkill_case/ready"
+worker_pid=$(<"$sigkill_case/ready")
+kill -KILL "$worker_pid"
+set +e
+wait "$daily_pid"
+sigkill_status=$?
+set -e
+((sigkill_status != 0))
+assert_previous_latest_unchanged "$sigkill_case"
+
+proof_first_case=$FIXTURE/proof-first-sigkill
+prepare_case "$proof_first_case"
+run_daily "$proof_first_case" 30000 success after-proof-before-report \
+  >"$proof_first_case/run.log" 2>&1 &
+daily_pid=$!
+wait_for_ready "$proof_first_case/failpoint-ready"
+failpoint_pid=$(<"$proof_first_case/failpoint-ready")
+kill -KILL "$failpoint_pid"
+set +e
+wait "$daily_pid"
+proof_first_status=$?
+set -e
+((proof_first_status != 0))
+cmp -s "$proof_first_case/expected-latest.v1.json" \
+  "$proof_first_case/public/latest.v1.json"
+proof_first_proof=$proof_first_case/public/reader-summary-production-day-run.$EXPECTED_DATE.publication-proof.v1.json
+proof_first_report=$proof_first_case/public/reader-summary-production-day-run.$EXPECTED_DATE.v1.json
+[[ -s $proof_first_proof ]]
+[[ ! -e $proof_first_report ]]
+node -e 'JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"))' \
+  "$proof_first_proof"
+
+report_before_latest_case=$FIXTURE/report-before-latest-sigkill
+prepare_case "$report_before_latest_case"
+run_daily "$report_before_latest_case" 30000 success after-report-before-latest \
+  >"$report_before_latest_case/run.log" 2>&1 &
+daily_pid=$!
+wait_for_ready "$report_before_latest_case/failpoint-ready"
+failpoint_pid=$(<"$report_before_latest_case/failpoint-ready")
+kill -KILL "$failpoint_pid"
+set +e
+wait "$daily_pid"
+report_before_latest_status=$?
+set -e
+((report_before_latest_status != 0))
+cmp -s "$report_before_latest_case/expected-latest.v1.json" \
+  "$report_before_latest_case/public/latest.v1.json"
+report_before_latest_report=$report_before_latest_case/public/reader-summary-production-day-run.$EXPECTED_DATE.v1.json
+report_before_latest_proof=$report_before_latest_case/public/reader-summary-production-day-run.$EXPECTED_DATE.publication-proof.v1.json
+[[ -s $report_before_latest_report ]]
+[[ -s $report_before_latest_proof ]]
+node "$PROJECT_ROOT/scripts/verify-reader-summary-production-day-publication.mjs" \
+  --dated-report "$report_before_latest_report" \
+  --expected-date "$EXPECTED_DATE" \
+  --evidence-artifact "$report_before_latest_case/reports/durable-reader-summary-$EXPECTED_DATE.v1.json" \
+  --frontend-artifact "$report_before_latest_case/reports/frontend-reader-summary-$EXPECTED_DATE.fixture.v1.json" \
+  --proof "$report_before_latest_proof" >/dev/null
+
+success_case=$FIXTURE/success
+prepare_case "$success_case"
+run_daily "$success_case" 30000 success >"$success_case/run.log" 2>&1
+dated_report=$success_case/public/reader-summary-production-day-run.$EXPECTED_DATE.v1.json
+proof=$success_case/public/reader-summary-production-day-run.$EXPECTED_DATE.publication-proof.v1.json
+runtime_identity=$success_case/public/runtime-live-identity-$EXPECTED_DATE.v1.json
+[[ -e $dated_report ]]
+[[ -e $proof ]]
+[[ -e $runtime_identity ]]
+cmp -s "$dated_report" "$success_case/public/latest.v1.json"
+if cmp -s "$success_case/expected-latest.v1.json" "$success_case/public/latest.v1.json"; then
+  echo 'successful publication did not replace latest' >&2
+  exit 1
+fi
+node "$PROJECT_ROOT/scripts/verify-reader-summary-production-day-publication.mjs" \
+  --dated-report "$dated_report" \
+  --expected-date "$EXPECTED_DATE" \
+  --evidence-artifact "$success_case/reports/durable-reader-summary-$EXPECTED_DATE.v1.json" \
+  --frontend-artifact "$success_case/reports/frontend-reader-summary-$EXPECTED_DATE.fixture.v1.json" \
+  --proof "$proof" >/dev/null
+
+printf 'Real daily-run timeout, invalid proof, generation/proof/report SIGKILL, and success regression OK\n'

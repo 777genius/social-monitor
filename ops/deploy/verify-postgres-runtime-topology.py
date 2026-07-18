@@ -194,9 +194,16 @@ def verify_daily_topology(service_path: str, runner_path: str) -> None:
     ):
         if compose_path not in runner:
             fail(f"effective daily runner omits Compose input: {compose_path}")
-    combined = service + "\n" + runner
-    if "control/daily-run.lock" not in combined:
-        fail("effective daily topology does not take the PostgreSQL admission lock")
+    if "control/daily-run-singleton.lock" not in runner:
+        fail("effective daily runner does not take its separate singleton lock")
+    if "control/daily-run.lock" not in runner or "flock -w" not in runner:
+        fail("effective daily runner does not wait on PostgreSQL admission")
+    if "POSTGRES_ADMISSION_WAIT_SECONDS=7500" not in runner:
+        fail("effective daily runner does not use the reviewed admission timeout")
+    if "TimeoutStartSec=23400" not in service:
+        fail("effective daily service does not use the reviewed start timeout")
+    if "Restart=no" not in service:
+        fail("effective daily service must not restart a completed or failed run")
     if (
         "postgres-runtime-current/READY" not in runner
         or "deploy-state/backend.sha" not in runner

@@ -1,0 +1,13 @@
+[Unit]
+Description=Social Monitor daily live collection and AI reader summary
+After=social-monitor-prod.service network-online.target
+Requires=social-monitor-prod.service
+
+[Service]
+Type=oneshot
+ExecStart=/var/data/social-monitor/control/daily-run.sh --yesterday
+TimeoutStartSec=23400
+Restart=no
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=6

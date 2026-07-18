@@ -38,11 +38,12 @@ import {
   buildSupplementalTrendNarrativeAppendix,
   isSupplementalTrendEvidence,
   selectSupplementalTrendHighlights,
+  withoutSupplementalTrendNarrativeSections,
   withSupplementalTrendNarrativeAppendix,
 } from "../policies/reader-summary-github-trending-policy";
 import type {
-  SummaryEvidenceSelection,
   StoryCluster,
+  SummaryEvidenceSelection,
   SummaryEvidenceItem,
   SummarySourceWindow,
 } from "../value-objects/summary-evidence-item";
@@ -64,7 +65,11 @@ import {
   storyToTopRead,
 } from "../services/reader-summary-top-read-builder";
 import { buildReaderSummaryMainTopics } from "../services/reader-summary-main-topics";
-import { buildReaderSummarySelectedPosts } from "../services/reader-summary-selected-posts";
+import {
+  buildReaderSummarySelectedPosts,
+  buildReaderSummarySupplementalTrendSelectedPosts,
+} from "../services/reader-summary-selected-posts";
+import { fallbackReaderSummarySourceWindow } from "../services/reader-summary-fallback-source-window";
 import {
   buildOpenQuestions,
   providerNameForKey,
@@ -241,7 +246,10 @@ export class ReaderSummary {
       }),
       bullets: buildReaderSummaryBullets(readerInput, topReads),
       narrativeSections: withSupplementalTrendNarrativeAppendix({
-        narrativeSections,
+        narrativeSections: withoutSupplementalTrendNarrativeSections(
+          narrativeSections,
+          input.citationMap,
+        ),
         appendix: githubTrendingAppendix,
       }),
       mainTopics: buildReaderSummaryMainTopics({
@@ -326,12 +334,20 @@ const buildNoSignalReaderSummary = (
       (citation) => [citation.citationId, citation] as const,
     ),
   );
+  const githubTrendingSelectedPosts =
+    buildReaderSummarySupplementalTrendSelectedPosts({
+      selectedEvidence: input.selectedEvidence ?? [],
+      citationById,
+    });
   const githubTrendingAppendix = buildSupplementalTrendNarrativeAppendix({
     evidence: githubTrendingHighlights,
     citations: input.citationMap,
   });
   return {
-    headline: nonEmpty(input.headline, "No reliable workspace signal yet"),
+    headline:
+      githubTrendingHighlights.length === 0
+        ? nonEmpty(input.headline, "No reliable workspace signal yet")
+        : "No reliable workspace signal yet",
     oneLineTakeaway: reason,
     bullets: [reason],
     narrativeSections:
@@ -352,11 +368,7 @@ const buildNoSignalReaderSummary = (
     interestSections: [],
     sourceMix: [],
     topReads: [],
-    selectedPosts: buildReaderSummarySelectedPosts({
-      topReads: [],
-      selectedEvidence: githubTrendingHighlights,
-      citationById,
-    }),
+    selectedPosts: githubTrendingSelectedPosts,
     claimBoard: [],
     reliabilityReport: emptyReaderSummaryReliabilityReport(),
     trendDelta: {
@@ -378,6 +390,7 @@ const buildNoSignalReaderSummary = (
     ],
   };
 };
+
 const reliabilitySelectionFromInput = (
   input: ReaderSummaryFactoryInput,
 ): SummaryEvidenceSelection | undefined => {
@@ -390,30 +403,11 @@ const reliabilitySelectionFromInput = (
       input.storyClusters[0]?.rankingPolicyVersion ?? "unknown",
     sourceWindow:
       input.sourceWindow ??
-      fallbackSourceWindow(input.selectedEvidence, input.storyClusters),
+      fallbackReaderSummarySourceWindow(input.selectedEvidence, input.storyClusters),
     clusters: input.storyClusters,
     selectedEvidence: input.selectedEvidence,
   };
 };
-const fallbackSourceWindow = (
-  selectedEvidence: readonly SummaryEvidenceItem[],
-  storyClusters: readonly StoryCluster[],
-): SummarySourceWindow => ({
-  windowId: "reader-summary-input",
-  startedAt:
-    selectedEvidence
-      .map((item) => item.observedAt)
-      .sort((left, right) => left.getTime() - right.getTime())
-      .at(0) ?? new Date(0),
-  endedAt:
-    selectedEvidence
-      .map((item) => item.observedAt)
-      .sort((left, right) => right.getTime() - left.getTime())
-      .at(0) ?? new Date(0),
-  selectedFeedItemIds: selectedEvidence.map((item) => item.feedItemId),
-  storyClusterIds: storyClusters.map((cluster) => cluster.id),
-});
-
 const buildReaderSummaryBullets = (
   input: ReaderSummaryFactoryInput,
   topReads: readonly TopRead[],

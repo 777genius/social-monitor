@@ -24,6 +24,7 @@ import {
   type StoryRankingMetricsPort,
 } from "../../ports";
 import { isDefaultReaderSummaryEvidenceProvider } from "./reader-summary-evidence-provider-filter";
+import { withGitHubTrendingCandidates } from "./relevance-reader-summary-github-trending-candidates";
 
 import {
   countItemsForProvider,
@@ -83,19 +84,30 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
       throw ranked.error;
     }
 
-    const rankedItems = filterItemsByReaderSummaryPeriod(
-      filterItemsByDefaultReaderSummaryProviders(
-        await this.expandRankedItems(params, ranked.value.items),
-      ),
+    const expandedRankedItems = filterItemsByReaderSummaryPeriod(
+      await this.expandRankedItems(params, ranked.value.items),
       params.period,
     );
-    const candidateItems = await this.withGitHubTrendingCandidates(
-      params,
-      await this.withTopReadCandidateSupplements(
-        params,
-        await this.withProviderDiversitySupplements(params, rankedItems),
-      ),
+    const rankedItems = filterItemsByDefaultReaderSummaryProviders(
+      expandedRankedItems,
     );
+    const rankedGitHubTrendingItems = expandedRankedItems.filter(
+      isGitHubTrendingEvidence,
+    );
+    const candidateItems = await withGitHubTrendingCandidates({
+      query: params,
+      rankedItems: [
+        ...(await this.withTopReadCandidateSupplements(
+          params,
+          await this.withProviderDiversitySupplements(params, rankedItems),
+        )),
+        ...rankedGitHubTrendingItems,
+      ],
+      feedItems: this.feedItems,
+      qualityPolicy: this.qualityPolicy,
+      safetyPolicy: this.safetyPolicy,
+      clock: this.clock,
+    });
     const primaryCandidateItems = candidateItems.filter(
       (item) => !isGitHubTrendingEvidence(item),
     );
@@ -380,50 +392,6 @@ export class RelevanceReaderSummaryEvidenceSelector implements ReaderSummaryEvid
         providerCount += 1;
       }
     }
-
-    return [...itemsById.values()];
-  }
-
-  private async withGitHubTrendingCandidates(
-    params: Parameters<ReaderSummaryEvidenceSelectorPort["select"]>[0],
-    rankedItems: readonly SummaryEvidenceItem[],
-  ): Promise<readonly SummaryEvidenceItem[]> {
-    const itemsById = new Map(
-      rankedItems.map((item) => [item.feedItemId, item] as const),
-    );
-    let cursor: string | undefined;
-    do {
-      const page = await this.feedItems.list({
-        tenantId: params.tenantId,
-        workspaceId: params.workspaceId,
-        interestId:
-          params.scope.type === "interest"
-            ? params.scope.interestId
-            : undefined,
-        providerKey: "github-trending-page",
-        publishedAtOrAfter: params.period.startedAt,
-        publishedBefore: params.period.endedAt,
-        observedBefore: observedBeforeFor(params.observedThrough),
-        limit: 100,
-        cursor,
-      });
-      for (const feedItem of page.items) {
-        const snapshot = feedItem.toSnapshot();
-        if (itemsById.has(snapshot.id)) {
-          continue;
-        }
-        itemsById.set(
-          snapshot.id,
-          mapSupplementFeedItem({
-            snapshot,
-            qualityPolicy: this.qualityPolicy,
-            safetyPolicy: this.safetyPolicy,
-            now: this.clock.now(),
-          }),
-        );
-      }
-      cursor = page.nextCursor;
-    } while (cursor !== undefined);
 
     return [...itemsById.values()];
   }

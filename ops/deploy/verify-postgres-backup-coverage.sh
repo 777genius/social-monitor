@@ -34,7 +34,9 @@ duplicate=$(printf '%s\n' "${required_relations[@]}" | LC_ALL=C sort | uniq -d |
 }
 for core_relation in \
   _prisma_migrations tenants workspaces source_items feed_items \
-  reader_summary_artifacts outbox_events inbox_records idempotency_keys; do
+  reader_summary_artifacts reader_summary_publications \
+  reader_summary_publication_slots outbox_events inbox_records \
+  idempotency_keys; do
   printf '%s\n' "${required_relations[@]}" | grep -Fx "$core_relation" >/dev/null || {
     echo "backup-coverage-error: live schema fingerprint is missing: $core_relation" >&2
     exit 1

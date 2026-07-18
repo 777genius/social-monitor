@@ -13,6 +13,8 @@ workspaces
 source_items
 feed_items
 reader_summary_artifacts
+reader_summary_publications
+reader_summary_publication_slots
 outbox_events
 inbox_records
 idempotency_keys
@@ -24,13 +26,15 @@ cat > "$FIXTURE/listing.txt" <<'TEXT'
 4; 0 4 TABLE DATA public source_items owner
 5; 0 5 TABLE DATA public feed_items owner
 6; 0 6 TABLE DATA public reader_summary_artifacts owner
-7; 0 7 TABLE DATA public outbox_events owner
-8; 0 8 TABLE DATA public inbox_records owner
-9; 0 9 TABLE DATA public idempotency_keys owner
+7; 0 7 TABLE DATA public reader_summary_publications owner
+8; 0 8 TABLE DATA public reader_summary_publication_slots owner
+9; 0 9 TABLE DATA public outbox_events owner
+10; 0 10 TABLE DATA public inbox_records owner
+11; 0 11 TABLE DATA public idempotency_keys owner
 TEXT
 
 output=$(bash "$ENTRYPOINT" "$FIXTURE/schema.txt" "$FIXTURE/listing.txt")
-grep -Fx 'database-backup-relations-verified=9' <<< "$output" >/dev/null
+grep -Fx 'database-backup-relations-verified=11' <<< "$output" >/dev/null
 
 grep -v '^feed_items$' "$FIXTURE/schema.txt" > "$FIXTURE/schema-missing.txt"
 if bash "$ENTRYPOINT" "$FIXTURE/schema-missing.txt" >/dev/null 2>&1; then
@@ -44,6 +48,27 @@ if bash "$ENTRYPOINT" "$FIXTURE/schema.txt" \
   echo 'missing dump relation was accepted' >&2
   exit 1
 fi
+
+for publication_relation in \
+  reader_summary_publications reader_summary_publication_slots; do
+  grep -v "^${publication_relation}$" "$FIXTURE/schema.txt" \
+    > "$FIXTURE/schema-missing-${publication_relation}.txt"
+  if bash "$ENTRYPOINT" \
+    "$FIXTURE/schema-missing-${publication_relation}.txt" >/dev/null 2>&1; then
+    echo "schema without $publication_relation was accepted" >&2
+    exit 1
+  fi
+
+  grep -v "TABLE DATA public ${publication_relation} " \
+    "$FIXTURE/listing.txt" \
+    > "$FIXTURE/listing-missing-${publication_relation}.txt"
+  if bash "$ENTRYPOINT" "$FIXTURE/schema.txt" \
+    "$FIXTURE/listing-missing-${publication_relation}.txt" \
+    >/dev/null 2>&1; then
+    echo "dump without $publication_relation was accepted" >&2
+    exit 1
+  fi
+done
 
 cp "$FIXTURE/schema.txt" "$FIXTURE/duplicate.txt"
 printf 'feed_items\n' >> "$FIXTURE/duplicate.txt"
