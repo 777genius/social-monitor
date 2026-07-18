@@ -1,6 +1,9 @@
 import {
   type Clock,
+  causationId,
+  correlationId,
   DomainError,
+  eventId,
   type IdGenerator,
   err,
   ok,
@@ -19,6 +22,7 @@ import {
   resolveEffectiveReaderSummaryPolicy,
   type ReaderSummaryContextArtifact,
   type ReaderSummaryJob,
+  type ReaderSummaryReadyEvent,
   type SummaryEvidenceSelection,
 } from "../../domain";
 import {
@@ -33,14 +37,13 @@ import {
   type ReaderSummaryModelPolicy,
   type ReaderSummaryModelPort,
   type ReaderSummaryPolicyRepositoryPort,
-  type ReaderSummaryPublicationPort,
+  type SummaryEventPublisherPort,
   NOOP_USER_SUMMARY_PREFERENCE_READER,
   type UserSummaryPreferenceReaderPort,
 } from "../../ports";
 import { BuildReaderSummaryTopicMapUseCase } from "../build-reader-summary-topic-map/build-reader-summary-topic-map.use-case";
 import type { ExecuteReaderSummaryJobCommand } from "./execute-reader-summary-job.command";
 import type { ExecuteReaderSummaryJobResult } from "./execute-reader-summary-job.result";
-import { publishReaderSummaryJob } from "./publish-reader-summary-job";
 
 type ExecuteReaderSummaryJobFailure = DomainError | Error;
 type ReaderSummaryModelPipelineResult = Result<
@@ -80,7 +83,7 @@ export class ExecuteReaderSummaryJobUseCase {
     private readonly readerSummaryPolicies: ReaderSummaryPolicyRepositoryPort,
     private readonly evidenceSelector: ReaderSummaryEvidenceSelectorPort,
     private readonly readerSummaryModel: ReaderSummaryModelPort,
-    private readonly publications: ReaderSummaryPublicationPort,
+    private readonly events: SummaryEventPublisherPort,
     private readonly ids: IdGenerator,
     private readonly clock: Clock,
     private readonly contextProvider: ReaderSummaryContextProviderPort = NOOP_READER_SUMMARY_CONTEXT_PROVIDER,
@@ -184,7 +187,9 @@ export class ExecuteReaderSummaryJobUseCase {
       });
       await this.readerSummaryArtifacts.save(result.value.artifact, {
         publicationDecision,
+        generationRequestedAt: runningJob.toSnapshot().requestedAt,
       });
+
       if (publicationDecision.status === "rejected") {
         const artifactSnapshot = result.value.artifact.toSnapshot();
         const rejectedJob = runningJob.rejectForQuality({
@@ -201,33 +206,49 @@ export class ExecuteReaderSummaryJobUseCase {
         });
       }
 
-      return await publishReaderSummaryJob({
-        artifact: result.value.artifact,
-        runningJob,
-        publicationDecision,
-        jobs: this.readerSummaryJobs,
-        publications: this.publications,
-        ids: this.ids,
-        clock: this.clock,
+      const artifactSnapshot = result.value.artifact.toSnapshot();
+      const finalJob = artifactSnapshot.qualityFlags.includes("no_signal")
+        ? runningJob.markNoSignal({
+            completedAt: this.clock.now(),
+            readerSummaryId: artifactSnapshot.readerSummaryId,
+          })
+        : runningJob.complete({
+            completedAt: this.clock.now(),
+            readerSummaryId: artifactSnapshot.readerSummaryId,
+          });
+      await this.readerSummaryJobs.save(finalJob);
+
+      const finalSnapshot = finalJob.toSnapshot();
+      await this.events.publish({
+        eventId: eventId(this.ids.generate()),
+        eventType: "reader_summary.ready",
+        schemaVersion: 1,
+        occurredAt: this.clock.now(),
+        tenantId: finalSnapshot.tenantId,
+        workspaceId: finalSnapshot.workspaceId,
+        correlationId: correlationId(command.readerSummaryJobId),
+        causationId: causationId(finalSnapshot.id),
+        payload: {
+          readerSummaryJobId: finalSnapshot.id,
+          readerSummaryId: artifactSnapshot.readerSummaryId,
+          tenantId: finalSnapshot.tenantId,
+          workspaceId: finalSnapshot.workspaceId,
+          scope: finalSnapshot.scope,
+          period: finalSnapshot.period,
+          userId: finalSnapshot.userId,
+          subscriptionId: finalSnapshot.subscriptionId,
+          status:
+            finalSnapshot.status === "no_signal" ? "no_signal" : "completed",
+        },
+      } satisfies ReaderSummaryReadyEvent);
+
+      return ok({
+        readerSummaryJobId: finalSnapshot.id,
+        status: finalSnapshot.status,
+        readerSummaryId: finalSnapshot.readerSummaryId,
       });
     } catch (error) {
       const failure = this.readerSummaryModel.classifyError(error);
-      const durableJob = await this.readerSummaryJobs.findById({
-        tenantId: command.tenantId,
-        workspaceId: command.workspaceId,
-        readerSummaryJobId: command.readerSummaryJobId,
-      });
-      const durableSnapshot = durableJob?.toSnapshot();
-      if (
-        durableSnapshot?.status === "completed" ||
-        durableSnapshot?.status === "no_signal"
-      ) {
-        return ok({
-          readerSummaryJobId: durableSnapshot.id,
-          status: durableSnapshot.status,
-          readerSummaryId: durableSnapshot.readerSummaryId,
-        });
-      }
       const failedJob = runningJob.fail({
         failedAt: this.clock.now(),
         failureReason: failure.message,

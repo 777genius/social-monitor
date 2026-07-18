@@ -354,17 +354,16 @@ async function main(): Promise<void> {
     limit: 10,
   });
   assert(
-    visibleReaderSummaries.items.length === 0,
-    "reader summary artifact candidates must remain hidden before exact publication",
+    visibleReaderSummaries.items.length === 1 &&
+      visibleReaderSummaries.items[0]?.toSnapshot().readerSummaryId ===
+        "00000000-0000-7000-8000-000000000b02",
+    "reader summary artifact save must supersede older visible same-period artifacts",
   );
   assert(
     prisma.readerSummaryArtifactStatus(
       "00000000-0000-7000-8000-000000000b01",
-    ) === "RUNNING" &&
-      prisma.readerSummaryArtifactStatus(
-        "00000000-0000-7000-8000-000000000b02",
-      ) === "RUNNING",
-    "reader summary artifact saves must persist only hidden candidates",
+    ) === "SUPERSEDED",
+    "superseded reader summary artifact must use SUPERSEDED status",
   );
 
   await readerSummaryArtifacts.save(
@@ -416,8 +415,10 @@ async function main(): Promise<void> {
     limit: 10,
   });
   assert(
-    visibleAfterRejected.items.length === 0,
-    "rejected reader summary artifact must not expose hidden candidates",
+    visibleAfterRejected.items.length === 1 &&
+      visibleAfterRejected.items[0]?.toSnapshot().readerSummaryId ===
+        "00000000-0000-7000-8000-000000000b02",
+    "rejected reader summary artifact must not supersede the current visible canonical artifact",
   );
   assert(
     prisma.readerSummaryArtifactStatus(

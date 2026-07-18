@@ -37,9 +37,10 @@ PUBLIC_LINK=$ROOT/runtime/frontend-public-web
 ADMIN_LINK=$ROOT/runtime/frontend-admin-web
 DEPLOY_LOCK=$CONTROL/production-deploy.lock
 # Deployment, the control-owned daily runner, and every manual production DB
-# command use this one admission lock. The daily lock filename is retained so
-# the existing control runner and this repository converge on the same inode.
+# command use this admission lock. Daily separately owns a singleton lock so it
+# can announce priority without deployment holding that singleton while it runs.
 POSTGRES_ADMISSION_LOCK=$CONTROL/daily-run.lock
+DAILY_SINGLETON_LOCK=$CONTROL/daily-run-singleton.lock
 POSTGRES_RUNTIME_RELEASES=$CONTROL/postgres-runtime-releases
 POSTGRES_RUNTIME_CURRENT=$CONTROL/postgres-runtime-current
 POSTGRES_ROLLOUT_SOAK_SECONDS=300
@@ -89,6 +90,11 @@ CONTROL_PATHS=(
   .github/workflows/production-deploy.yml
   ops/deploy
   ops/recovery/backup-restore-contract.json
+)
+
+RUNTIME_CONTROL_PATHS=(
+  ops/deploy/production-runtime/daily-run.sh
+  ops/deploy/production-runtime/social-monitor-daily.service
 )
 
 COMPOSE=(
@@ -160,11 +166,47 @@ validate_main_commit() {
   git -C "$REPO" merge-base --is-ancestor "$sha" origin/main || fail 'commit is not on origin/main'
 }
 
-: "$POSTGRES_RUNTIME_RELEASES" "$SYSTEMD_UNIT_DIR"
+: "$POSTGRES_RUNTIME_RELEASES" "$SYSTEMD_UNIT_DIR" "$DAILY_SINGLETON_LOCK"
+# The installed entrypoint intentionally loads the current integration
+# libraries before advance_integration. A bridge release must install these
+# control functions before a later release changes runtime-control assets.
+DEPLOY_CONTROL_LIBRARY_AVAILABLE=false
+if [[ -f $REPO/ops/deploy/deploy-control-lib.sh ]]; then
+  # shellcheck source=ops/deploy/deploy-control-lib.sh
+  source "$REPO/ops/deploy/deploy-control-lib.sh"
+  DEPLOY_CONTROL_LIBRARY_AVAILABLE=true
+else
+  acquire_postgres_admission_with_daily_priority() {
+    local admission_fd=$1
+    flock -w 3600 "$admission_fd" || \
+      fail 'timed out waiting for PostgreSQL admission lock'
+  }
+  initialize_deploy_control_bridge() { :; }
+  deploy_release() {
+    local sha=$1
+    exec 9>"$DEPLOY_LOCK"
+    flock -w 3600 9 || fail 'timed out waiting for deployment lock'
+    exec 8>"$POSTGRES_ADMISSION_LOCK"
+    acquire_postgres_admission_with_daily_priority 8
+    fetch_main
+    validate_main_commit "$sha"
+    install -d -m 0755 "$STATE" "$STAGING" "$RELEASES"
+    component_changed backend "$sha" "${BACKEND_PATHS[@]}" && \
+      fail 'deploy control bridge library is required for backend activation'
+    component_changed frontend "$sha" "${FRONTEND_PATHS[@]}" && \
+      fail 'deploy control bridge library is required for frontend activation'
+    component_changed control "$sha" "${RUNTIME_CONTROL_PATHS[@]}" && \
+      fail 'deploy control bridge library is required for runtime activation'
+    advance_integration "$sha"
+    sync_control_script "$sha"
+    verify_compose_scope
+    commit_postgres_pool_bootstrap "$sha"
+    printf 'deployed=%s frontend=false backend=false control=false\n' "$sha"
+  }
+fi
 # shellcheck source=ops/deploy/postgres-runtime-deploy-lib.sh
 source "$REPO/ops/deploy/postgres-runtime-deploy-lib.sh"
-# shellcheck source=ops/deploy/reader-summary-publication-deploy-lib.sh
-source "$REPO/ops/deploy/reader-summary-publication-deploy-lib.sh"
+initialize_deploy_control_bridge
 
 verify_compose_scope() (
   local rendered=$STATE/rendered-compose.$$.json
@@ -483,6 +525,12 @@ backend_services() {
     if changed_between "$from" "$to" apps/social-research-runtime; then
       services+=(api)
     fi
+    if changed_between "$from" "$to" \
+      ops/deploy/reader-summary-publication-deploy-lib.sh \
+      ops/deploy/reader-summary-publication-pre-migration.sql \
+      ops/deploy/reader-summary-publication-post-migration.sql; then
+      services+=(migrate)
+    fi
     if changed_between "$from" "$to" scripts ops/evals test; then
       services+=(daily-runner)
     fi
@@ -709,27 +757,6 @@ soak_backend_release() (
   done
 )
 
-verify_frontend_api_proxy() {
-  local frontend_id status oom
-  frontend_id=$("${COMPOSE[@]}" --profile app ps -q frontend)
-  [[ -n $frontend_id ]] || return 1
-  status=$(docker inspect "$frontend_id" --format '{{.State.Status}}')
-  oom=$(docker inspect "$frontend_id" --format '{{.State.OOMKilled}}')
-  [[ $status == running && $oom == false ]] || return 1
-  curl -fsS --max-time 15 \
-    -H 'Host: social-monitor.app' \
-    http://127.0.0.1:13080/auth/session >/dev/null
-}
-
-refresh_frontend_api_proxy() {
-  "${COMPOSE[@]}" --profile app up -d --no-deps --force-recreate frontend || return 1
-  for _ in {1..20}; do
-    verify_frontend_api_proxy && return 0
-    sleep 3
-  done
-  return 1
-}
-
 deploy_backend() (
   set -euo pipefail
   local sha=$1
@@ -766,6 +793,15 @@ deploy_backend() (
   mapfile -t captured_services < <(
     printf '%s\n' "${services[@]}" "${persistent[@]}" | awk 'NF && !seen[$0]++'
   )
+  local needs_migrate=false
+  for service in "${services[@]}"; do
+    [[ $service == x-collector || $service == daily-runner ]] || \
+      needs_migrate=true
+  done
+  if [[ $needs_migrate == true ]]; then
+    reader_summary_publication_migrator_preflight || \
+      fail 'reader summary publication migrator preflight failed'
+  fi
 
   local previous=$STATE/previous-images-${sha:0:12}.txt
   capture_previous_images "$previous" "${captured_services[@]}"
@@ -781,10 +817,6 @@ deploy_backend() (
     "${COMPOSE[@]}" --profile daily build daily-runner
   fi
 
-  local needs_migrate=false
-  for service in "${services[@]}"; do
-    [[ $service == x-collector || $service == daily-runner ]] || needs_migrate=true
-  done
   if [[ $needs_migrate == true ]]; then
     deploy_reader_summary_publication_migrations
   fi
@@ -829,53 +861,69 @@ switch_link() {
   mv -Tf "$next" "$link"
 }
 
-deploy_frontend() {
+# deploy_release is sourced from deploy-control-lib.sh and invokes this
+# transaction callback after the entrypoint has finished loading.
+# shellcheck disable=SC2329
+deploy_release_runtime_transaction() {
   local sha=$1
-  local staged=$STAGING/$sha/frontend
-  local release=$RELEASES/$sha
-  local upload_lock=$STAGING/$sha/upload.lock
-  local previous_public previous_admin
-  previous_public=$(readlink -f "$PUBLIC_LINK" || true)
-  previous_admin=$(readlink -f "$ADMIN_LINK" || true)
-  [[ -n $previous_public && -n $previous_admin ]] || fail 'frontend rollback links are not initialized'
-  exec 7>"$upload_lock"
-  flock -w 600 7 || fail 'timed out waiting for frontend upload lock'
-  install -d -m 0755 "$RELEASES"
-  if [[ -f $release/READY ]] && [[ $(cat "$release/READY") == "$sha" ]]; then
-    :
-  else
-    [[ ! -e $release ]] || fail 'immutable frontend release exists without a valid marker'
-    [[ -f $staged/READY ]] || fail 'frontend artifact is not uploaded'
-    [[ $(cat "$staged/READY") == "$sha" ]] || fail 'frontend artifact marker mismatch'
-    mv "$staged" "$release"
+  local backend=$2
+  local runtime_control=$3
+  local compatible_backend_sha=$sha
+  local runtime_control_backup previous_images activation_status
+
+  [[ $backend =~ ^(true|false)$ && $runtime_control =~ ^(true|false)$ ]] || \
+    fail 'runtime-control deployment classification is invalid'
+  if [[ $DEPLOY_CONTROL_LIBRARY_AVAILABLE != true && \
+        ( $backend == true || $runtime_control == true ) ]]; then
+    fail 'deploy control bridge library is required for runtime activation'
+  fi
+  if [[ $backend == false && $runtime_control == false ]]; then
+    verify_compose_scope
+    return
+  fi
+  if [[ $runtime_control == true ]]; then
+    verify_deploy_control_bridge_compatibility
+  fi
+  if [[ $backend == false ]]; then
+    compatible_backend_sha=$(marker_value backend)
+    [[ $compatible_backend_sha =~ ^[0-9a-f]{40}$ ]] || \
+      fail 'control-only runtime activation requires a committed backend marker'
   fi
 
-  switch_link "$PUBLIC_LINK" "$release/public"
-  switch_link "$ADMIN_LINK" "$release/admin"
-  if ! "${COMPOSE[@]}" --profile app up -d --no-deps --force-recreate frontend; then
-    switch_link "$PUBLIC_LINK" "$previous_public"
-    switch_link "$ADMIN_LINK" "$previous_admin"
-    "${COMPOSE[@]}" --profile app up -d --no-deps --force-recreate frontend
-    fail 'frontend recreate failed; previous release restored'
+  runtime_control_backup=$(snapshot_postgres_runtime_control "$sha")
+  previous_images=$STATE/previous-images-${sha:0:12}.txt
+  if [[ $backend == true ]]; then
+    rm -f "$previous_images"
   fi
 
-  local public_code admin_code favicon_code release_sha
-  for _ in $(seq 1 20); do
-    public_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 https://social-monitor.app/ || true)
-    admin_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 https://admin.social-monitor.app/ || true)
-    favicon_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 https://social-monitor.app/favicon.svg || true)
-    release_sha=$(curl -fsS --max-time 10 \
-      "https://social-monitor.app/release-sha.txt?release=$sha" 2>/dev/null || true)
-    [[ $public_code == 200 && $admin_code == 401 && $favicon_code == 200 && $release_sha == "$sha" ]] && break
-    sleep 2
-  done
-  if [[ $public_code != 200 || $admin_code != 401 || $favicon_code != 200 || $release_sha != "$sha" ]]; then
-    switch_link "$PUBLIC_LINK" "$previous_public"
-    switch_link "$ADMIN_LINK" "$previous_admin"
-    "${COMPOSE[@]}" --profile app up -d --no-deps --force-recreate frontend
-    fail 'frontend health failed; previous release restored'
+  set +e
+  (
+    set -euo pipefail
+    activate_postgres_runtime_control "$sha" "$compatible_backend_sha"
+    verify_compose_scope
+    if [[ $backend == true ]]; then
+      deploy_backend "$sha"
+    fi
+  )
+  activation_status=$?
+  set -e
+  if ((activation_status != 0)); then
+    if [[ $backend == true ]]; then
+      rollback_backend_images "$previous_images" || \
+        fail 'backend release failed and previous containers could not be restored'
+    fi
+    restore_postgres_runtime_control "$runtime_control_backup" || \
+      fail 'release failed and PostgreSQL runtime-control rollback also failed'
+    fail 'release failed; previous PostgreSQL runtime control was restored'
   fi
-  printf '%s\n' "$sha" > "$STATE/frontend.sha"
+
+  rm -rf "$runtime_control_backup"
+  if [[ ${COMPOSE[-1]} != \
+        "$POSTGRES_RUNTIME_CURRENT/compose.postgres-runtime.yml" ]]; then
+    COMPOSE+=(
+      -f "$POSTGRES_RUNTIME_CURRENT/compose.postgres-runtime.yml"
+    )
+  fi
 }
 
 sync_control_script() {
@@ -909,69 +957,6 @@ commit_postgres_pool_bootstrap() {
     "$STATE/postgres-pool-bootstrap.sha"
   postgres_pool_bootstrap_installed "$sha" || \
     fail 'PostgreSQL bootstrap marker did not commit the installed entrypoint'
-}
-
-deploy_release() {
-  local sha=$1
-  exec 9>"$DEPLOY_LOCK"
-  flock -w 3600 9 || fail 'timed out waiting for deployment lock'
-  exec 8>"$POSTGRES_ADMISSION_LOCK"
-  flock -w 3600 8 || fail 'timed out waiting for PostgreSQL admission lock'
-  fetch_main
-  validate_main_commit "$sha"
-  install -d -m 0755 "$STATE" "$STAGING" "$RELEASES"
-
-  local current
-  current=$(git -C "$REPO" rev-parse HEAD)
-  if [[ $sha != "$current" ]] && git -C "$REPO" merge-base --is-ancestor "$sha" "$current"; then
-    printf 'already-deployed-or-newer=%s\n' "$current"
-    return 0
-  fi
-
-  local frontend=false backend=false control=false
-  component_changed frontend "$sha" "${FRONTEND_PATHS[@]}" && frontend=true
-  component_changed backend "$sha" "${BACKEND_PATHS[@]}" && backend=true
-  component_changed control "$sha" "${CONTROL_PATHS[@]}" && control=true
-  advance_integration "$sha"
-  sync_control_script "$sha"
-  if [[ $backend == true ]]; then
-    local runtime_control_backup previous_images
-    runtime_control_backup=$(snapshot_postgres_runtime_control "$sha")
-    previous_images=$STATE/previous-images-${sha:0:12}.txt
-    rm -f "$previous_images"
-    local backend_release_status
-    set +e
-    (
-      set -euo pipefail
-      activate_postgres_runtime_control "$sha"
-      verify_compose_scope
-      deploy_backend "$sha"
-    )
-    backend_release_status=$?
-    set -e
-    if ((backend_release_status != 0)); then
-      rollback_backend_images "$previous_images" || \
-        fail 'backend release failed and previous containers could not be restored'
-      restore_postgres_runtime_control "$runtime_control_backup" || \
-        fail 'backend release and PostgreSQL runtime-control rollback both failed'
-      fail 'backend release failed; previous runtime control and containers restored'
-    fi
-    rm -rf "$runtime_control_backup"
-    if [[ ${COMPOSE[-1]} != "$POSTGRES_RUNTIME_CURRENT/compose.postgres-runtime.yml" ]]; then
-      COMPOSE+=(
-        -f "$POSTGRES_RUNTIME_CURRENT/compose.postgres-runtime.yml"
-      )
-    fi
-  else
-    verify_compose_scope
-  fi
-  [[ $frontend == false ]] || deploy_frontend "$sha"
-  commit_postgres_pool_bootstrap "$sha"
-  if [[ $control == true ]]; then
-    printf '%s\n' "$sha" > "$STATE/control.sha.next"
-    mv -f "$STATE/control.sha.next" "$STATE/control.sha"
-  fi
-  printf 'deployed=%s frontend=%s backend=%s control=%s\n' "$sha" "$frontend" "$backend" "$control"
 }
 
 [[ ${BASH_SOURCE[0]} == "$0" ]] || return 0

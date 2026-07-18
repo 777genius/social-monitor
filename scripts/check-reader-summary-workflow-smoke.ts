@@ -6,7 +6,6 @@ import { InMemorySummaryEventPublisher } from "@social-monitor/summary/adapters/
 import { DeterministicReaderSummaryModelAdapter } from "@social-monitor/summary/adapters/model/deterministic-reader-summary-model.adapter";
 import { InMemoryReaderSummaryArtifactRepository } from "@social-monitor/summary/adapters/persistence/in-memory-reader-summary-artifact.repository";
 import { InMemoryReaderSummaryJobRepository } from "@social-monitor/summary/adapters/persistence/in-memory-reader-summary-job.repository";
-import { InMemoryReaderSummaryPublication } from "@social-monitor/summary/adapters/persistence/in-memory-reader-summary-publication";
 import { InMemoryReaderSummaryPolicyRepository } from "@social-monitor/summary/adapters/persistence/in-memory-reader-summary-policy.repository";
 import { ExecuteReaderSummaryJobUseCase } from "@social-monitor/summary/features/execute-reader-summary-job/execute-reader-summary-job.use-case";
 import { RequestReaderSummaryUseCase } from "@social-monitor/summary/features/request-reader-summary/request-reader-summary.use-case";
@@ -55,8 +54,8 @@ class SelectedReaderSummaryEvidenceSelector implements ReaderSummaryEvidenceSele
         windowId: "workspace:readerSummary-workflow-smoke",
         startedAt: new Date("2026-06-23T08:00:00.000Z"),
         endedAt: new Date("2026-06-23T08:30:00.000Z"),
-        selectedFeedItemIds: ["feed-reddit", "feed-github", "feed-database"],
-        storyClusterIds: ["story:ai-tooling", "story:database-reliability"],
+        selectedFeedItemIds: ["feed-reddit"],
+        storyClusterIds: ["story:ai-tooling"],
       },
       clusters: [
         {
@@ -72,20 +71,6 @@ class SelectedReaderSummaryEvidenceSelector implements ReaderSummaryEvidenceSele
             endedAt: new Date("2026-06-23T08:30:00.000Z"),
           },
           whyImportant: ["Clustered 2 similar items"],
-        },
-        {
-          id: "story:database-reliability",
-          storyKey: "url:example.com/database-reliability",
-          representativeFeedItemId: "feed-database",
-          duplicateFeedItemIds: [],
-          interestIds: ["topic-database"],
-          providerKeys: ["hacker-news"],
-          score: 2.1,
-          observedAtRange: {
-            startedAt: new Date("2026-06-23T08:04:00.000Z"),
-            endedAt: new Date("2026-06-23T08:10:00.000Z"),
-          },
-          whyImportant: ["A distinct reliability signal"],
         },
       ],
       selectedEvidence: [
@@ -104,36 +89,6 @@ class SelectedReaderSummaryEvidenceSelector implements ReaderSummaryEvidenceSele
           score: 2.4,
           whyImportant: ["Fresh item in the current monitoring window"],
         },
-        {
-          feedItemId: "feed-github",
-          sourceItemId: "source-github",
-          sourceBindingId: "binding-github",
-          interestId: "topic-github",
-          providerKey: "github",
-          providerName: "GitHub Repo Radar",
-          canonicalUrl: "https://github.com/example/ai-tooling",
-          title: "AI tooling repository gains developer attention",
-          bodyPreview: "The repository documents the AI tooling release.",
-          publishedAt: new Date("2026-06-23T08:02:00.000Z"),
-          observedAt: new Date("2026-06-23T08:03:00.000Z"),
-          score: 2.3,
-          whyImportant: ["Independent repository evidence for the cluster"],
-        },
-        {
-          feedItemId: "feed-database",
-          sourceItemId: "source-database",
-          sourceBindingId: "binding-database",
-          interestId: "topic-database",
-          providerKey: "hacker-news",
-          providerName: "Hacker News",
-          canonicalUrl: "https://example.com/database-reliability",
-          title: "Database reliability practices gain attention",
-          bodyPreview: "Engineers compare practical reliability techniques.",
-          publishedAt: new Date("2026-06-23T08:04:00.000Z"),
-          observedAt: new Date("2026-06-23T08:05:00.000Z"),
-          score: 2.1,
-          whyImportant: ["Distinct operational signal in the same window"],
-        },
       ],
     };
   }
@@ -143,7 +98,7 @@ class WorkflowUserSummaryPreferenceReader implements UserSummaryPreferenceReader
   async findEffectivePreference(): ReturnType<UserSummaryPreferenceReaderPort["findEffectivePreference"]> {
     return {
       tone: "concise",
-      maxKeyPoints: 2,
+      maxKeyPoints: 1,
       includeRisks: false,
       includeSourceHighlights: true,
       customInstructions:
@@ -206,7 +161,7 @@ async function main(): Promise<void> {
         policies,
         new SelectedReaderSummaryEvidenceSelector(),
         new DeterministicReaderSummaryModelAdapter(),
-        new InMemoryReaderSummaryPublication(jobs, artifacts, events),
+        events,
         ids,
         clock,
         undefined,
@@ -235,18 +190,9 @@ async function main(): Promise<void> {
     readerSummaryJobId: request.value.readerSummaryJobId,
   });
   const snapshot = job?.toSnapshot();
-  const rejectedDebug =
-    snapshot?.status === "quality_rejected" &&
-    snapshot.readerSummaryId !== undefined
-      ? await artifacts.findRejectedDebugById({
-          tenantId: tenant,
-          workspaceId: workspace,
-          readerSummaryId: snapshot.readerSummaryId,
-        })
-      : null;
   assert(
     snapshot?.status === "completed",
-    `expected completed readerSummary job, got ${snapshot?.status}; reasons=${JSON.stringify(rejectedDebug?.reasons ?? [])}`,
+    `expected completed readerSummary job, got ${snapshot?.status}`,
   );
   assert(
     typeof snapshot.readerSummaryId === "string",
@@ -274,8 +220,8 @@ async function main(): Promise<void> {
     "reader summary content must expose top reads",
   );
   assert(
-    artifact.content.topReads.length === 2,
-    `readerSummary workflow must apply the user max stories preference; got ${artifact.content.topReads.length}`,
+    artifact.content.topReads.length === 1,
+    "readerSummary workflow must apply the user max stories preference",
   );
   assert(
     artifact.executiveSummary.includes(

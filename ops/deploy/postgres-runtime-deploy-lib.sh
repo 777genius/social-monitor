@@ -6,7 +6,8 @@
 
 activate_postgres_runtime_control() {
   local sha=$1
-  activate_postgres_runtime_control_transaction "$sha"
+  local compatible_backend_sha=${2:-$sha}
+  activate_postgres_runtime_control_transaction "$sha" "$compatible_backend_sha"
   local activation_status=$?
   ((activation_status == 0)) || return "$activation_status"
   if [[ ${COMPOSE[-1]} != "$POSTGRES_RUNTIME_CURRENT/compose.postgres-runtime.yml" ]]; then
@@ -25,6 +26,7 @@ rollback_postgres_runtime_control_activation() {
   local unit_directory=$6
   local unit
   local -a units=(
+    social-monitor-daily.service
     social-monitor-prod.service
   )
 
@@ -56,6 +58,7 @@ rollback_postgres_runtime_control_activation() {
 activate_postgres_runtime_control_transaction() (
   set -euo pipefail
   local sha=$1
+  local compatible_backend_sha=${2:-$sha}
   local source=$REPO/ops/deploy/production-runtime
   local release=$POSTGRES_RUNTIME_RELEASES/$sha
   local staged_release=$release.next.$$
@@ -65,8 +68,13 @@ activate_postgres_runtime_control_transaction() (
   local cleanup_command
   local unit
   local -a units=(
+    social-monitor-daily.service
     social-monitor-prod.service
   )
+
+  [[ $sha =~ ^[0-9a-f]{40}$ && \
+     $compatible_backend_sha =~ ^[0-9a-f]{40}$ ]] || \
+    fail 'PostgreSQL runtime control release markers are invalid'
 
   previous_target=$(readlink "$POSTGRES_RUNTIME_CURRENT" 2>/dev/null || true)
   install -d -m 0700 "$backup"
@@ -91,16 +99,21 @@ activate_postgres_runtime_control_transaction() (
   trap "$cleanup_command" EXIT
 
   install -d -m 0755 "$POSTGRES_RUNTIME_RELEASES" "$SYSTEMD_UNIT_DIR"
-  if [[ ! -f $release/READY ]] || [[ $(cat "$release/READY") != "$sha" ]]; then
+  if [[ ! -f $release/SOURCE_SHA || $(cat "$release/SOURCE_SHA") != "$sha" || \
+        ! -f $release/READY || \
+        $(cat "$release/READY") != "$compatible_backend_sha" ]]; then
     [[ ! -e $release ]] || fail 'PostgreSQL runtime control release is incomplete'
     [[ ! -e $staged_release ]] || fail 'PostgreSQL runtime control staging path exists'
     install -d -m 0755 "$staged_release"
     install -m 0644 "$source/compose.postgres-runtime.yml" \
       "$staged_release/compose.postgres-runtime.yml"
     install -m 0755 "$source/daily-run.sh" "$staged_release/daily-run.sh"
+    install -m 0644 "$source/social-monitor-daily.service" \
+      "$staged_release/social-monitor-daily.service"
     install -m 0644 "$source/social-monitor-prod.service" \
       "$staged_release/social-monitor-prod.service"
-    printf '%s\n' "$sha" > "$staged_release/READY"
+    printf '%s\n' "$sha" > "$staged_release/SOURCE_SHA"
+    printf '%s\n' "$compatible_backend_sha" > "$staged_release/READY"
     mv "$staged_release" "$release"
   fi
 
@@ -115,24 +128,29 @@ activate_postgres_runtime_control_transaction() (
   if ((EUID == 0)) && [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} != 1 ]]; then
     systemctl daemon-reload
   fi
-  verify_installed_postgres_runtime_control "$sha"
+  verify_installed_postgres_runtime_control "$sha" "$compatible_backend_sha"
   trap - EXIT
   rm -rf "$backup"
 )
 
 verify_installed_postgres_runtime_control() {
   local sha=$1
+  local compatible_backend_sha=${2:-$sha}
   local source=$REPO/ops/deploy/production-runtime
   local release=$POSTGRES_RUNTIME_RELEASES/$sha
   local unit
   local -a units=(
+    social-monitor-daily.service
     social-monitor-prod.service
   )
 
   [[ $(readlink -f "$POSTGRES_RUNTIME_CURRENT") == "$release" ]] || \
     fail 'PostgreSQL runtime control symlink is not on the release'
-  [[ -f $release/READY && $(cat "$release/READY") == "$sha" ]] || \
-    fail 'PostgreSQL runtime control release marker is invalid'
+  [[ -f $release/SOURCE_SHA && $(cat "$release/SOURCE_SHA") == "$sha" ]] || \
+    fail 'PostgreSQL runtime control source marker is invalid'
+  [[ -f $release/READY && \
+     $(cat "$release/READY") == "$compatible_backend_sha" ]] || \
+    fail 'PostgreSQL runtime control backend-compatibility marker is invalid'
   cmp -s "$source/compose.postgres-runtime.yml" \
     "$POSTGRES_RUNTIME_CURRENT/compose.postgres-runtime.yml" || \
     fail 'installed PostgreSQL Compose overlay differs from the release'
@@ -163,6 +181,7 @@ snapshot_postgres_runtime_control() {
   local backup=$STATE/postgres-runtime-release-rollback-${sha:0:12}.$$
   local target unit
   local -a units=(
+    social-monitor-daily.service
     social-monitor-prod.service
   )
 
@@ -195,6 +214,7 @@ restore_postgres_runtime_control() {
   local next_link=$POSTGRES_RUNTIME_CURRENT.rollback.$$
   local target unit
   local -a units=(
+    social-monitor-daily.service
     social-monitor-prod.service
   )
 
@@ -508,4 +528,26 @@ verify_concurrent_backend_readiness() {
     wait "$pid" || status=1
   done
   ((status == 0))
+}
+
+verify_frontend_api_proxy() {
+  local frontend_id status oom
+  frontend_id=$("${COMPOSE[@]}" --profile app ps -q frontend)
+  [[ -n $frontend_id ]] || return 1
+  status=$(docker inspect "$frontend_id" --format '{{.State.Status}}')
+  oom=$(docker inspect "$frontend_id" --format '{{.State.OOMKilled}}')
+  [[ $status == running && $oom == false ]] || return 1
+  curl -fsS --max-time 15 \
+    -H 'Host: social-monitor.app' \
+    http://127.0.0.1:13080/auth/session >/dev/null
+}
+
+refresh_frontend_api_proxy() {
+  "${COMPOSE[@]}" --profile app up -d --no-deps \
+    --force-recreate frontend || return 1
+  for _ in {1..20}; do
+    verify_frontend_api_proxy && return 0
+    sleep 3
+  done
+  return 1
 }

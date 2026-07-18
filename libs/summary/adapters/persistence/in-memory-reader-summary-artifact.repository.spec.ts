@@ -8,7 +8,7 @@ const tenant = tenantId("tenant-reader-summary-memory-artifact");
 const workspace = workspaceId("workspace-reader-summary-memory-artifact");
 
 describe("InMemoryReaderSummaryArtifactRepository", () => {
-  it("keeps candidates hidden and preserves rejected debug evidence", async () => {
+  it("keeps only latest published canonical artifact visible and hides rejected artifacts", async () => {
     const repository = new InMemoryReaderSummaryArtifactRepository();
 
     await repository.save(artifact("reader-summary-memory-a", "Older summary"));
@@ -18,7 +18,11 @@ describe("InMemoryReaderSummaryArtifactRepository", () => {
     await repository.save(artifact("reader-summary-memory-a", "Older summary"));
 
     const visibleBeforeRejected = await repository.list(listQuery());
-    expect(visibleBeforeRejected.items).toEqual([]);
+    expect(
+      visibleBeforeRejected.items.map(
+        (item) => item.toSnapshot().readerSummaryId,
+      ),
+    ).toEqual(["reader-summary-memory-b"]);
 
     await repository.save(
       artifact("reader-summary-memory-c", "Rejected summary"),
@@ -59,7 +63,11 @@ describe("InMemoryReaderSummaryArtifactRepository", () => {
     );
 
     const visibleAfterRejected = await repository.list(listQuery());
-    expect(visibleAfterRejected.items).toEqual([]);
+    expect(
+      visibleAfterRejected.items.map(
+        (item) => item.toSnapshot().readerSummaryId,
+      ),
+    ).toEqual(["reader-summary-memory-b"]);
     await expect(
       repository.findById({
         tenantId: tenant,
@@ -137,6 +145,65 @@ describe("InMemoryReaderSummaryArtifactRepository", () => {
     });
   });
 
+  it("keeps subscription runtime output visible when deterministic output arrives later", async () => {
+    const repository = new InMemoryReaderSummaryArtifactRepository();
+
+    await repository.save(
+      artifact(
+        "reader-summary-runtime",
+        "Runtime summary",
+        "codex:gpt-5.5:xhigh",
+      ),
+    );
+    await repository.save(
+      artifact(
+        "reader-summary-deterministic",
+        "Deterministic summary",
+        "deterministic-reader-summary-v1",
+      ),
+    );
+
+    const result = await repository.list(listQuery());
+    expect(
+      result.items.map((item) => item.toSnapshot().readerSummaryId),
+    ).toEqual(["reader-summary-runtime"]);
+  });
+
+  it("does not let an older equal-authority generation replace latest", async () => {
+    const repository = new InMemoryReaderSummaryArtifactRepository();
+
+    await repository.save(
+      artifact("reader-summary-newer-run", "Newer requested run"),
+      { generationRequestedAt: new Date("2026-07-09T10:05:00.000Z") },
+    );
+    await repository.save(
+      artifact("reader-summary-older-run", "Older slow run"),
+      { generationRequestedAt: new Date("2026-07-09T10:00:00.000Z") },
+    );
+
+    const result = await repository.list(listQuery());
+    expect(
+      result.items.map((item) => item.toSnapshot().readerSummaryId),
+    ).toEqual(["reader-summary-newer-run"]);
+  });
+
+  it("allows a newer equal-authority generation to replace visible", async () => {
+    const repository = new InMemoryReaderSummaryArtifactRepository();
+
+    await repository.save(
+      artifact("reader-summary-older-run", "Older requested run"),
+      { generationRequestedAt: new Date("2026-07-09T10:00:00.000Z") },
+    );
+    await repository.save(
+      artifact("reader-summary-newer-run", "Newer requested run"),
+      { generationRequestedAt: new Date("2026-07-09T10:05:00.000Z") },
+    );
+
+    const result = await repository.list(listQuery());
+    expect(
+      result.items.map((item) => item.toSnapshot().readerSummaryId),
+    ).toEqual(["reader-summary-newer-run"]);
+  });
 });
 
 const listQuery = () => ({
