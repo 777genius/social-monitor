@@ -192,7 +192,6 @@ jobs:
             ops/deploy/deploy-control-lib.sh
             ops/deploy/deploy-control-lib.test.sh
             ops/deploy/postgres-runtime-deploy-lib.sh
-            ops/deploy/postgres-runtime-deploy-lib.test.sh
             ops/deploy/reader-summary-publication-bridge-transition.test.sh
             ops/deploy/social-monitor-production-deploy.sh
           )
@@ -305,11 +304,11 @@ jobs:
             --bootstrap-sha "$POSTGRES_POOL_BOOTSTRAP_SHA"
           if [[ $bridge_phase == true ]]; then
             bash ops/deploy/deploy-control-lib.test.sh
-            bash ops/deploy/postgres-runtime-deploy-lib.test.sh
           else
             bash ops/deploy/social-monitor-production-deploy.test.sh
             bash ops/deploy/deploy-control-lib.test.sh
             bash ops/deploy/daily-deploy-lock-race.test.sh
+            bash ops/deploy/postgres-runtime-deploy-lib.test.sh
           fi
           bash ops/deploy/github-production-deploy-client.test.sh
 

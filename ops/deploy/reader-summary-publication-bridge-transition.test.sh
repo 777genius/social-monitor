@@ -63,7 +63,6 @@ BRIDGE_RELEASE_PATHS=(
   .github/workflows/production-deploy.yml
   ops/deploy/README.md
   ops/deploy/deploy-control-lib.test.sh
-  ops/deploy/postgres-runtime-deploy-lib.test.sh
   ops/deploy/reader-summary-publication-bridge-transition.test.sh
 )
 
@@ -101,7 +100,6 @@ cp "$PROJECT_ROOT/.github/workflows/production-deploy.yml" \
   "$REPO/.github/workflows/production-deploy.yml"
 cp "$SCRIPT_DIR/README.md" \
   "$SCRIPT_DIR/deploy-control-lib.test.sh" \
-  "$SCRIPT_DIR/postgres-runtime-deploy-lib.test.sh" \
   "$SCRIPT_DIR/reader-summary-publication-bridge-transition.test.sh" \
   "$REPO/ops/deploy/"
 git -C "$REPO" add "${BRIDGE_RELEASE_PATHS[@]}"
