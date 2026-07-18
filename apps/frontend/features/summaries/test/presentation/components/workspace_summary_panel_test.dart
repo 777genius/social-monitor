@@ -32,7 +32,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Weekly summary is not ready yet'), findsOneWidget);
+    expect(find.text('No weekly summary for this period'), findsOneWidget);
     expect(find.text('Summary generation failed'), findsNothing);
   });
 
@@ -59,7 +59,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Monthly summary is not ready yet'), findsOneWidget);
+    expect(find.text('No monthly summary for this period'), findsOneWidget);
     expect(find.text('Summary generation failed'), findsNothing);
   });
 
@@ -73,12 +73,10 @@ void main() {
 
     await tester.pumpWidget(
       _TestApp(
-        jobState: const ReadyViewState<ReaderSummaryJobSnapshot>(
-          ReaderSummaryJobSnapshot(
-            id: 'summary-job-quality-rejected',
-            status: ReaderSummaryJobStatus.qualityRejected,
-            failureReason: 'Rejected by pre-publish quality gate',
-          ),
+        job: const ReaderSummaryJobSnapshot(
+          id: 'summary-job-quality-rejected',
+          status: ReaderSummaryJobStatus.qualityRejected,
+          failureReason: 'Rejected by pre-publish quality gate',
         ),
       ),
     );
@@ -86,29 +84,6 @@ void main() {
 
     expect(find.text('Summary quality rejected'), findsOneWidget);
     expect(find.text('Rejected by pre-publish quality gate'), findsOneWidget);
-  });
-
-  testWidgets('names weekly and monthly summaries that are not ready yet', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(1280, 820);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-
-    await tester.pumpWidget(
-      const _TestApp(selectedPeriodPreset: SummaryPeriodPreset.weekly),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('Weekly summary is not ready yet'), findsOneWidget);
-
-    await tester.pumpWidget(
-      const _TestApp(selectedPeriodPreset: SummaryPeriodPreset.monthly),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('Monthly summary is not ready yet'), findsOneWidget);
   });
 }
 

@@ -26,7 +26,7 @@ class _TrustSummaryLine extends StatelessWidget {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const _TrustPanelTitle(constrainText: true),
+              const _TrustPanelTitle(),
               const SizedBox(height: AppSpacing.xs),
               _TrustVerdict(snapshot: snapshot),
               const SizedBox(height: AppSpacing.xs),
