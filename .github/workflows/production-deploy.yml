@@ -161,6 +161,7 @@ jobs:
           BACKEND_CHANGED: ${{ needs.plan.outputs.backend }}
           BACKEND_BASE: ${{ needs.plan.outputs.backend_base }}
           CONTROL_CHANGED: ${{ needs.plan.outputs.control }}
+          FRONTEND_CHANGED: ${{ needs.plan.outputs.frontend }}
           DATABASE_URL: postgresql://social_monitor_pool_ci:social_monitor_local_password@127.0.0.1:5432/social_monitor_pool_ci
           POSTGRES_POOL_BOOTSTRAP: ${{ needs.plan.outputs.postgres_pool_bootstrap }}
           POSTGRES_POOL_BOOTSTRAP_SHA: ${{ needs.plan.outputs.postgres_pool_bootstrap_sha }}
@@ -184,11 +185,84 @@ jobs:
             POSTGRES_POOL_PRISMA_TEST_DATABASE_URL=postgresql://social_monitor_pool_ci:social_monitor_local_password@127.0.0.1:5432/social_monitor_pool_ci \
               npm run check:postgres-runtime-pool-prisma-concurrency
           fi
+          legacy_publication_bridge_base=7185a5d02366437b5ad9146c3ae178d62c50101d
+          bridge_release_paths=(
+            .github/workflows/production-deploy.yml
+            ops/deploy/README.md
+            ops/deploy/deploy-control-lib.sh
+            ops/deploy/deploy-control-lib.test.sh
+            ops/deploy/postgres-runtime-deploy-lib.sh
+            ops/deploy/postgres-runtime-deploy-lib.test.sh
+            ops/deploy/reader-summary-publication-bridge-transition.test.sh
+            ops/deploy/social-monitor-production-deploy.sh
+          )
+          final_publication_assets=(
+            ops/deploy/reader-summary-publication-deploy-lib.sh
+            ops/deploy/reader-summary-publication-migrator-validation.test.sh
+            ops/deploy/reader-summary-publication-signal-regression.test.sh
+            ops/deploy/fixtures/reader-summary-publication-fake-docker.sh
+            ops/deploy/fixtures/reader-summary-publication-pause-worker.sh
+            ops/deploy/reader-summary-publication-pre-migration.sql
+            ops/deploy/reader-summary-publication-post-migration.sql
+            prisma/migrations/20260716170000_reader_summary_fail_closed_publication/migration.sql
+          )
+          git_path_mode() {
+            git ls-tree "$GITHUB_SHA" -- "$1" | awk 'NR == 1 { print $1 }'
+          }
+          require_regular_blob() {
+            local path=$1 mode
+            mode=$(git_path_mode "$path")
+            [[ $mode == 100644 || $mode == 100755 ]] || {
+              echo "required release path is not a regular file: $path" >&2
+              exit 1
+            }
+            [[ $(git cat-file -t "$GITHUB_SHA:$path") == blob ]] || {
+              echo "required release path is not a blob: $path" >&2
+              exit 1
+            }
+          }
+          bridge_phase=false
+          publication_library_mode=$(git_path_mode \
+            ops/deploy/reader-summary-publication-deploy-lib.sh)
+          if [[ -z $publication_library_mode ]]; then
+            if [[ $BACKEND_CHANGED != false || $CONTROL_CHANGED != true || \
+                  $FRONTEND_CHANGED != false ]]; then
+              echo 'publication bridge must be control-only' >&2
+              exit 1
+            fi
+            git merge-base --is-ancestor \
+              "$legacy_publication_bridge_base" "$GITHUB_SHA" || {
+              echo 'publication bridge does not descend from the deployed controller base' >&2
+              exit 1
+            }
+            expected_bridge_paths=$(printf '%s\n' "${bridge_release_paths[@]}" | LC_ALL=C sort)
+            actual_bridge_paths=$(git diff --name-only \
+              "$legacy_publication_bridge_base" "$GITHUB_SHA" -- | LC_ALL=C sort)
+            [[ $actual_bridge_paths == "$expected_bridge_paths" ]] || {
+              echo 'publication bridge changed paths outside its exact manifest' >&2
+              diff -u <(printf '%s\n' "$expected_bridge_paths") \
+                <(printf '%s\n' "$actual_bridge_paths") || true
+              exit 1
+            }
+            for bridge_path in "${bridge_release_paths[@]}"; do
+              require_regular_blob "$bridge_path"
+            done
+            for publication_asset in "${final_publication_assets[@]}"; do
+              [[ -z $(git_path_mode "$publication_asset") ]] || {
+                echo "publication bridge contains final-only asset: $publication_asset" >&2
+                exit 1
+              }
+            done
+            bridge_phase=true
+          else
+            for publication_asset in "${final_publication_assets[@]}"; do
+              require_regular_blob "$publication_asset"
+            done
+          fi
           deploy_shell_files=(
             ops/deploy/social-monitor-production-deploy.sh
             ops/deploy/deploy-control-lib.sh
             ops/deploy/deploy-control-lib.test.sh
-            ops/deploy/daily-deploy-lock-race.test.sh
             ops/deploy/github-production-deploy-client.sh
             ops/deploy/github-production-deploy-client.test.sh
             ops/deploy/postgres-runtime-deploy-lib.sh
@@ -205,6 +279,9 @@ jobs:
             ops/deploy/postgres-runtime-deploy-lib.test.sh
             ops/deploy/verify-postgres-runtime-topology.test.sh
           )
+          if [[ $bridge_phase == false ]]; then
+            deploy_shell_files+=(ops/deploy/daily-deploy-lock-race.test.sh)
+          fi
           final_publication_shell_files=(
             ops/deploy/reader-summary-publication-deploy-lib.sh
             ops/deploy/reader-summary-publication-migrator-validation.test.sh
@@ -212,14 +289,9 @@ jobs:
             ops/deploy/fixtures/reader-summary-publication-fake-docker.sh
             ops/deploy/fixtures/reader-summary-publication-pause-worker.sh
           )
-          for publication_file in "${final_publication_shell_files[@]}"; do
-            if [[ -f $publication_file ]]; then
-              deploy_shell_files+=("$publication_file")
-            elif [[ $BACKEND_CHANGED == true ]]; then
-              echo "missing final publication shell asset: $publication_file" >&2
-              exit 1
-            fi
-          done
+          if [[ $bridge_phase == false ]]; then
+            deploy_shell_files+=("${final_publication_shell_files[@]}")
+          fi
           bash -n "${deploy_shell_files[@]}"
           shellcheck -x "${deploy_shell_files[@]}"
           python3 -m py_compile ops/deploy/verify-postgres-runtime-topology.py
@@ -231,20 +303,29 @@ jobs:
             --control "$CONTROL_CHANGED" \
             --bootstrap "$POSTGRES_POOL_BOOTSTRAP" \
             --bootstrap-sha "$POSTGRES_POOL_BOOTSTRAP_SHA"
-          bash ops/deploy/social-monitor-production-deploy.test.sh
-          bash ops/deploy/deploy-control-lib.test.sh
-          bash ops/deploy/daily-deploy-lock-race.test.sh
+          if [[ $bridge_phase == true ]]; then
+            bash ops/deploy/deploy-control-lib.test.sh
+            bash ops/deploy/postgres-runtime-deploy-lib.test.sh
+          else
+            bash ops/deploy/social-monitor-production-deploy.test.sh
+            bash ops/deploy/deploy-control-lib.test.sh
+            bash ops/deploy/daily-deploy-lock-race.test.sh
+          fi
           bash ops/deploy/github-production-deploy-client.test.sh
 
       - name: Verify legacy-main deployment transitions
         if: needs.plan.outputs.backend == 'true' || needs.plan.outputs.control == 'true'
         run: |
           set -euo pipefail
-          bootstrap_status=0
-          bash ops/deploy/postgres-pool-bootstrap-transition.test.sh || bootstrap_status=$?
-          if ((bootstrap_status != 0)); then
-            echo "::error title=PostgreSQL bootstrap transition failed::The fixture failed with status $bootstrap_status; see bootstrap-transition-error for its phase, line and command."
-            exit "$bootstrap_status"
+          if git cat-file -e \
+            "$GITHUB_SHA:ops/deploy/reader-summary-publication-deploy-lib.sh" \
+            2>/dev/null; then
+            bootstrap_status=0
+            bash ops/deploy/postgres-pool-bootstrap-transition.test.sh || bootstrap_status=$?
+            if ((bootstrap_status != 0)); then
+              echo "::error title=PostgreSQL bootstrap transition failed::The fixture failed with status $bootstrap_status; see bootstrap-transition-error for its phase, line and command."
+              exit "$bootstrap_status"
+            fi
           fi
           publication_bridge_status=0
           bash ops/deploy/reader-summary-publication-bridge-transition.test.sh || \

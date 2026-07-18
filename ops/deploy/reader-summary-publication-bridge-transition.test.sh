@@ -62,6 +62,8 @@ BRIDGE_RELEASE_PATHS=(
   "${BRIDGE_PATHS[@]}"
   .github/workflows/production-deploy.yml
   ops/deploy/README.md
+  ops/deploy/deploy-control-lib.test.sh
+  ops/deploy/postgres-runtime-deploy-lib.test.sh
   ops/deploy/reader-summary-publication-bridge-transition.test.sh
 )
 
@@ -73,7 +75,7 @@ git -C "$PROJECT_ROOT" show \
   > "$LEGACY_ENTRYPOINT"
 
 git clone --bare --shared -q "$PROJECT_ROOT" "$ORIGIN"
-git --git-dir="$ORIGIN" update-ref refs/heads/main "$LEGACY_BACKEND"
+git --git-dir="$ORIGIN" update-ref refs/heads/main "$LEGACY_CONTROLLER"
 git --git-dir="$ORIGIN" symbolic-ref HEAD refs/heads/main
 git clone --no-checkout --shared -q "$ORIGIN" "$REPO"
 git -C "$REPO" config user.name 'Publication Bridge Contract'
@@ -81,18 +83,15 @@ git -C "$REPO" config user.email publication-bridge@example.invalid
 git -C "$REPO" sparse-checkout init --cone
 git -C "$REPO" sparse-checkout set \
   .github ops/deploy apps/api-gateway apps/frontend libs/contracts/rest
-git -C "$REPO" checkout -q -B main "$LEGACY_BACKEND"
+git -C "$REPO" checkout -q -B main "$LEGACY_CONTROLLER"
 
-# Production B is a descendant of the already deployed control marker while
-# retaining the exact backend/frontend trees recorded by their older markers.
-# Join those histories without taking 7185's tree so component ancestry and
-# component contents are both represented by the fixture.
-git -C "$REPO" merge -q --no-ff -s ours "$LEGACY_CONTROLLER" \
-  -m 'test: join deployed component histories'
+# Production B starts from the deployed controller tree. That commit already
+# descends from the older backend/frontend markers and is byte-identical to
+# them on their component paths.
 
 # Release B contains the final controller bridge and its admitted CI/docs/test
 # support. It does not carry the target-only publication library or change
-# either daily runtime asset inherited from c071.
+# either daily runtime asset inherited from 7185.
 cp "$SCRIPT_DIR/social-monitor-production-deploy.sh" \
   "$SCRIPT_DIR/deploy-control-lib.sh" \
   "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" \
@@ -101,11 +100,30 @@ install -d "$REPO/.github/workflows"
 cp "$PROJECT_ROOT/.github/workflows/production-deploy.yml" \
   "$REPO/.github/workflows/production-deploy.yml"
 cp "$SCRIPT_DIR/README.md" \
+  "$SCRIPT_DIR/deploy-control-lib.test.sh" \
+  "$SCRIPT_DIR/postgres-runtime-deploy-lib.test.sh" \
   "$SCRIPT_DIR/reader-summary-publication-bridge-transition.test.sh" \
   "$REPO/ops/deploy/"
 git -C "$REPO" add "${BRIDGE_RELEASE_PATHS[@]}"
 git -C "$REPO" commit -qm 'test: control-only publication bridge B'
 BRIDGE_SHA=$(git -C "$REPO" rev-parse HEAD)
+
+expected_bridge_paths=$(printf '%s\n' "${BRIDGE_RELEASE_PATHS[@]}" | LC_ALL=C sort)
+actual_bridge_paths=$(git -C "$REPO" diff --name-only \
+  "$LEGACY_CONTROLLER" "$BRIDGE_SHA" -- | LC_ALL=C sort)
+[[ $actual_bridge_paths == "$expected_bridge_paths" ]] || {
+  echo 'Release B changed paths outside its exact manifest' >&2
+  diff -u <(printf '%s\n' "$expected_bridge_paths") \
+    <(printf '%s\n' "$actual_bridge_paths") || true
+  exit 1
+}
+grep -F \
+  "legacy_publication_bridge_base=$LEGACY_CONTROLLER" \
+  "$REPO/.github/workflows/production-deploy.yml" >/dev/null
+for bridge_path in "${BRIDGE_RELEASE_PATHS[@]}"; do
+  grep -F "$bridge_path" \
+    "$REPO/.github/workflows/production-deploy.yml" >/dev/null
+done
 
 # Bind the synthetic bridge to the exact component markers currently deployed
 # in production. This proves the real divergent-marker plan, not a simplified
