@@ -124,17 +124,22 @@ fi
 
 daily_service=$FIXTURE/daily.service
 daily_runner=$FIXTURE/daily-run.sh
-printf '[Service]\nExecStart=%s --yesterday\n' "$daily_runner" > "$daily_service"
+printf '[Service]\nExecStart=%s --yesterday\nTimeoutStartSec=23400\nRestart=no\n' \
+  "$daily_runner" > "$daily_service"
 cat > "$daily_runner" <<'SH'
 #!/usr/bin/env bash
 ROOT=/var/data/social-monitor
+POSTGRES_ADMISSION_WAIT_SECONDS=7500
 COMPOSE=(
   -f "$ROOT/integration/docker-compose.yml"
   -f "$ROOT/control/compose.production.yml"
   -f "$ROOT/control/compose.managed-db.yml"
   -f "$ROOT/control/postgres-runtime-current/compose.postgres-runtime.yml"
 )
-exec 9>"$ROOT/control/daily-run.lock"
+exec 9>"$ROOT/control/daily-run-singleton.lock"
+flock -n 9
+exec 8>"$ROOT/control/daily-run.lock"
+flock -w "$POSTGRES_ADMISSION_WAIT_SECONDS" 8
 runtime_release=$(cat "$ROOT/control/postgres-runtime-current/READY")
 backend_release=$(cat "$ROOT/control/deploy-state/backend.sha")
 [[ $runtime_release == "$backend_release" ]]

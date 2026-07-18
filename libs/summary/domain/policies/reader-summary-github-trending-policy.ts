@@ -4,8 +4,12 @@ import type {
 } from "../value-objects/summary-evidence-item";
 import type { ReaderSummaryCitation } from "../entities/citation";
 import type { ReaderSummaryNarrativeSection } from "../entities/reader-summary-narrative-section";
+import {
+  githubTrendingProviderKey,
+  isGitHubTrendingProvider,
+} from "../value-objects/reader-summary-provider-identity";
 
-export const githubTrendingProviderKey = "github-trending-page";
+export { githubTrendingProviderKey };
 export const githubTrendingNarrativeSectionId = "github-trending";
 export const minimumGitHubTrendingStarsGained = 1_000;
 export const maxGitHubTrendingHighlights = 3;
@@ -23,9 +27,7 @@ export const withGitHubTrendingNarrativeAppendix = (params: {
 
 export const isGitHubTrendingEvidence = (
   item: Pick<SummaryEvidenceItem, "providerKey">,
-): boolean =>
-  item.providerKey.trim().toLocaleLowerCase("en-US") ===
-  githubTrendingProviderKey;
+): boolean => isGitHubTrendingProvider(item);
 
 export const primaryReaderSummaryEvidence = (
   selection: SummaryEvidenceSelection,
@@ -88,15 +90,22 @@ export const selectGitHubTrendingHighlights = (
   items: readonly SummaryEvidenceItem[],
 ): readonly SummaryEvidenceItem[] =>
   items
-    .map((item) => ({ item, starsGained: githubTrendingStarsGained(item) }))
+    .map((item) => ({
+      item,
+      rank: githubTrendingRank(item),
+      starsGained: githubTrendingStarsGained(item),
+    }))
     .filter(
       (
         candidate,
       ): candidate is {
         readonly item: SummaryEvidenceItem;
+        readonly rank: number;
         readonly starsGained: number;
       } =>
         isGitHubTrendingEvidence(candidate.item) &&
+        candidate.rank !== undefined &&
+        candidate.rank > maxGitHubTrendingDisplayRepositories &&
         candidate.starsGained !== undefined &&
         candidate.starsGained > minimumGitHubTrendingStarsGained &&
         candidate.item.contentQuality?.eligibleForSummary !== false,
@@ -124,7 +133,7 @@ export const selectGitHubTrendingDisplayRepositories = (
       } =>
         isGitHubTrendingEvidence(candidate.item) &&
         candidate.rank !== undefined &&
-        candidate.item.contentQuality?.eligibleForSummary !== false,
+        candidate.rank <= maxGitHubTrendingDisplayRepositories,
     )
     .sort(
       (left, right) =>
@@ -251,6 +260,24 @@ export const buildGitHubTrendingNarrativeAppendix = (params: {
 };
 
 export const isSupplementalTrendEvidence = isGitHubTrendingEvidence;
+export const withoutSupplementalTrendNarrativeSections = (
+  sections: readonly ReaderSummaryNarrativeSection[],
+  citations: readonly ReaderSummaryCitation[],
+): readonly ReaderSummaryNarrativeSection[] => {
+  const supplementalCitationIds = new Set(
+    citations
+      .filter((citation) =>
+        isSupplementalTrendEvidence({ providerKey: citation.providerKey }),
+      )
+      .map((citation) => citation.citationId),
+  );
+  return sections.filter(
+    (section) =>
+      !section.citationIds.some((citationId) =>
+        supplementalCitationIds.has(citationId),
+      ),
+  );
+};
 export const selectSupplementalTrendHighlights = selectGitHubTrendingHighlights;
 export const buildSupplementalTrendNarrativeAppendix =
   buildGitHubTrendingNarrativeAppendix;

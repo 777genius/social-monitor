@@ -12,13 +12,14 @@ import {
 describe("reader summary GitHub Trending policy", () => {
   it("keeps at most three repositories with more than 1,000 gained stars", () => {
     const selected = selectGitHubTrendingHighlights([
-      evidence("repo-low", 999),
-      evidence("repo-boundary", 1_000),
-      evidence("repo-third", 1_050),
-      evidence("repo-first", 4_200),
-      evidence("repo-fourth", 1_001),
-      evidence("repo-second", 2_500),
-      evidence("reddit", 50_000, "reddit"),
+      evidence("repo-top-ten", 50_000, "github-trending-page", 1),
+      evidence("repo-low", 999, "github-trending-page", 11),
+      evidence("repo-boundary", 1_000, "github-trending-page", 12),
+      evidence("repo-third", 1_050, "github-trending-page", 13),
+      evidence("repo-first", 4_200, "github-trending-page", 14),
+      evidence("repo-fourth", 1_001, "github-trending-page", 15),
+      evidence("repo-second", 2_500, "github-trending-page", 16),
+      evidence("reddit", 50_000, "reddit", 17),
     ]);
 
     expect(selected.map((item) => item.feedItemId)).toEqual([
@@ -94,6 +95,33 @@ describe("reader summary GitHub Trending policy", () => {
     ]);
   });
 
+  it("keeps safe Top 10 entries despite generic eligibility and filters ineligible Watch entries", () => {
+    const ineligibleForSummary = {
+      qualityScore: 0,
+      interestRelevanceScore: 0,
+      engagementIntegrityScore: 1,
+      eligibleForSummary: false,
+      eligibleForTopRead: false,
+      needsLlmReview: false,
+      decision: "excluded",
+      flags: ["generic_summary_exclusion"],
+      reason: "Generic editorial eligibility does not govern the native board.",
+    };
+    const topTen = {
+      ...evidence("repo-1", 100, "github-trending-page", 1),
+      contentQuality: ineligibleForSummary,
+    };
+    const watch = {
+      ...evidence("repo-11", 1_001, "github-trending-page", 11),
+      contentQuality: ineligibleForSummary,
+    };
+
+    expect(selectGitHubTrendingDisplayRepositories([topTen, watch])).toEqual([
+      topTen,
+    ]);
+    expect(selectGitHubTrendingHighlights([topTen, watch])).toEqual([]);
+  });
+
   it("deduplicates snapshots and recovers the strongest multi-scope rank", () => {
     const olderDuplicate = {
       ...evidence("repo-duplicate-old", 200, "github-trending-page", 1),
@@ -139,7 +167,12 @@ describe("reader summary GitHub Trending policy", () => {
   });
 
   it("builds a compact deterministic appendix from cited highlights", () => {
-    const item = evidence("owner/repo - useful developer tool", 1_234);
+    const item = evidence(
+      "owner/repo - useful developer tool",
+      1_234,
+      "github-trending-page",
+      11,
+    );
 
     expect(
       buildGitHubTrendingNarrativeAppendix({

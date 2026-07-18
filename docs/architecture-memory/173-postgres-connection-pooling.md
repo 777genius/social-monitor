@@ -101,12 +101,21 @@ consumers are counted even when the admission lock should exclude them, so a
 missed operator serialization does not consume the provider reserve. The
 configured manual allowance remains a hard operational ceiling; production DB
 commands share the control-owned `daily-run.lock` with deployment and the daily
-runner rather than starting a second manual pool group. The budget guard scans
-every direct script pool and centralized script runtime so one admitted process
-cannot exceed that three-connection group.
+runner rather than starting a second manual pool group. Daily also takes the
+separate `daily-run-singleton.lock` nonblocking, so a duplicate daily exits zero
+while the first invocation can announce admission priority. It waits at most
+7,500 seconds on `daily-run.lock` and exits with `EX_TEMPFAIL` (`75`) before auth
+refresh, Docker, or database work if admission does not become available. The
+budget guard scans every direct script pool and centralized script runtime so
+one admitted process cannot exceed that three-connection group.
 
 Deployment holds that PostgreSQL admission lock for backup, migration and
-replacement. It also stops and removes every changed database container,
+replacement, but never retains the daily singleton. Its bounded nonblocking
+admission loop probes and releases the singleton before every attempt and
+probes it again immediately after admission acquisition. If daily claims the
+singleton in that exact gap, deploy releases admission and fails before fetch,
+auth-control refresh, Docker, or database work. Deployment also stops and
+removes every changed database container,
 verifies no old container remains, and only then starts its replacement. Old
 and new DB pools therefore have zero overlap; this is enforced rather than
 budgeted as a hoped-for rolling-restart assumption. Backup, migration and
@@ -139,7 +148,7 @@ containers under their previous configuration. No new pool can overlap an old
 pool in either the forward or rollback direction.
 
 The complete backend operation also snapshots the old runtime-control symlink,
-the boot unit, and the control-owned daily launcher. Any live-capacity, backup, build, migration,
+the boot and daily units, and the control-owned daily launcher. Any live-capacity, backup, build, migration,
 replacement, or health failure restores that control snapshot and every prior
 container from captured image IDs. A release-owned daily runner additionally
 compares its immutable
@@ -148,8 +157,8 @@ host crash between control activation and backend commit therefore fails the
 daily run closed instead of starting a mismatched pool.
 
 The versioned runtime-control release contains the daily runner Compose
-identity/min/max, its exact lock-taking and backend-marker-guarded launcher, and
-the production boot unit. One symlink switch installs the daily runner topology
+identity/min/max, its exact lock-taking and backend-marker-guarded launcher, the
+daily service, and the production boot unit. One symlink switch installs the daily runner topology
 with the backend release. Timer creation and enablement remain solely owned by
 the daily-readiness-v6b release. The pool release creates no timer and fails
 unless exactly one legacy-or-v6b daily timer is enabled. The verifier reads the
@@ -157,6 +166,15 @@ effective systemd service and its actual runner, requires the same Compose file
 chain used by deploy and boot, and rejects drop-ins. This closes the previous
 gap between a hypothetical Compose service and the systemd-triggered runner
 without competing with the daily release for timer ownership.
+
+Control-only changes to the daily launcher or daily service activate through
+the same snapshot, staged immutable release, atomic file replacement,
+`daemon-reload`, effective-topology verification, and rollback path. Their
+runtime `SOURCE_SHA` records the control release while `READY` retains the
+durable backend SHA, so a control-only activation does not trip the launcher's
+backend-compatibility fence. The reviewed daily unit has
+`TimeoutStartSec=23400` and `Restart=no`; timer ownership remains exactly one
+effective reviewed timer.
 
 Production success is not inferred from process liveness. `/ready` executes
 `SELECT 1` through the already-owned bounded Prisma client. Deployment requires

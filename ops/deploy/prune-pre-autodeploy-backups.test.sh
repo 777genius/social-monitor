@@ -6,14 +6,41 @@ if ((EUID == 0)); then
     echo 'Backup retention fixture requires setpriv when run as root' >&2
     exit 1
   }
+  script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+  relocated_root=$(mktemp -d \
+    "${TMPDIR:-/tmp}/social-monitor-backup-prune-source.XXXXXX")
+  install -m 0644 "$0" "$relocated_root/prune-pre-autodeploy-backups.test.sh"
+  install -m 0755 "$script_dir/prune-pre-autodeploy-backups.sh" \
+    "$relocated_root/prune-pre-autodeploy-backups.sh"
+  : > "$relocated_root/.social-monitor-backup-prune-relocated"
+  chown -R 65534:65534 "$relocated_root"
   exec setpriv --reuid=65534 --regid=65534 --clear-groups \
-    env PATH="$PATH" TMPDIR=/tmp bash "$0" "$@"
+    env -u SOCIAL_MONITOR_BACKUP_PRUNE_RELOCATED_ROOT \
+      PATH="$PATH" TMPDIR=/tmp \
+      bash "$relocated_root/prune-pre-autodeploy-backups.test.sh" "$@"
 fi
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+RELOCATED_ROOT=
+case $SCRIPT_DIR in
+  /tmp/social-monitor-backup-prune-source.*)
+    if [[ -f $SCRIPT_DIR/.social-monitor-backup-prune-relocated && \
+          ! -L $SCRIPT_DIR/.social-monitor-backup-prune-relocated && \
+          $(stat -c '%u' "$SCRIPT_DIR" 2>/dev/null || stat -f '%u' "$SCRIPT_DIR") == "$EUID" ]]; then
+      RELOCATED_ROOT=$SCRIPT_DIR
+    fi
+    ;;
+esac
+unset SOCIAL_MONITOR_BACKUP_PRUNE_RELOCATED_ROOT
 ENTRYPOINT=$SCRIPT_DIR/prune-pre-autodeploy-backups.sh
 FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/social-monitor-backup-prune-test.XXXXXX")
-trap 'rm -rf "$FIXTURE"' EXIT
+cleanup() {
+  rm -rf "$FIXTURE"
+  if [[ -n $RELOCATED_ROOT ]]; then
+    rm -rf -- "$RELOCATED_ROOT"
+  fi
+}
+trap cleanup EXIT
 
 mkdir "$FIXTURE/empty" "$FIXTURE/single"
 output=$(bash "$ENTRYPOINT" "$FIXTURE/empty" 10)

@@ -1,9 +1,6 @@
 import {
   type Clock,
-  causationId,
-  correlationId,
   DomainError,
-  eventId,
   type IdGenerator,
   err,
   ok,
@@ -22,7 +19,6 @@ import {
   resolveEffectiveReaderSummaryPolicy,
   type ReaderSummaryContextArtifact,
   type ReaderSummaryJob,
-  type ReaderSummaryReadyEvent,
   type SummaryEvidenceSelection,
 } from "../../domain";
 import {
@@ -32,18 +28,23 @@ import {
   type ReaderSummaryContextProviderPort,
   type ReaderSummaryEvidenceSelectorPort,
   type ReaderSummaryJobRepositoryPort,
+  type ReaderSummaryGitHubProjectionReaderPort,
   type ReaderSummaryModelBudget,
   type ReaderSummaryModelFailure,
   type ReaderSummaryModelPolicy,
   type ReaderSummaryModelPort,
   type ReaderSummaryPolicyRepositoryPort,
-  type SummaryEventPublisherPort,
+  type ReaderSummaryPublicationPort,
   NOOP_USER_SUMMARY_PREFERENCE_READER,
   type UserSummaryPreferenceReaderPort,
+  UNAVAILABLE_READER_SUMMARY_GITHUB_PROJECTION_READER,
 } from "../../ports";
 import { BuildReaderSummaryTopicMapUseCase } from "../build-reader-summary-topic-map/build-reader-summary-topic-map.use-case";
+import { withReaderSummaryContextUnavailable } from "./reader-summary-context-unavailable";
+import { evaluateReaderSummaryPrepublication } from "./reader-summary-prepublication-gate";
 import type { ExecuteReaderSummaryJobCommand } from "./execute-reader-summary-job.command";
 import type { ExecuteReaderSummaryJobResult } from "./execute-reader-summary-job.result";
+import { publishReaderSummaryJob } from "./publish-reader-summary-job";
 
 type ExecuteReaderSummaryJobFailure = DomainError | Error;
 type ReaderSummaryModelPipelineResult = Result<
@@ -83,13 +84,14 @@ export class ExecuteReaderSummaryJobUseCase {
     private readonly readerSummaryPolicies: ReaderSummaryPolicyRepositoryPort,
     private readonly evidenceSelector: ReaderSummaryEvidenceSelectorPort,
     private readonly readerSummaryModel: ReaderSummaryModelPort,
-    private readonly events: SummaryEventPublisherPort,
+    private readonly publications: ReaderSummaryPublicationPort,
     private readonly ids: IdGenerator,
     private readonly clock: Clock,
     private readonly contextProvider: ReaderSummaryContextProviderPort = NOOP_READER_SUMMARY_CONTEXT_PROVIDER,
     private readonly userSummaryPreferences: UserSummaryPreferenceReaderPort = NOOP_USER_SUMMARY_PREFERENCE_READER,
     private readonly topicMapBuilder: BuildReaderSummaryTopicMapUseCase = new BuildReaderSummaryTopicMapUseCase(),
     private readonly publicationPolicy: ReaderSummaryPublicationPolicy = new ReaderSummaryPublicationPolicy(),
+    private readonly githubProjectionReader: ReaderSummaryGitHubProjectionReaderPort = UNAVAILABLE_READER_SUMMARY_GITHUB_PROJECTION_READER,
   ) {}
 
   async execute(
@@ -181,21 +183,23 @@ export class ExecuteReaderSummaryJobUseCase {
         );
       }
 
-      const publicationDecision = this.publicationPolicy.evaluate({
+      const prepublication = await evaluateReaderSummaryPrepublication({
         artifact: result.value.artifact,
         evidence: result.value.evidence,
+        publicationPolicy: this.publicationPolicy,
+        githubProjectionReader: this.githubProjectionReader,
+        observedThrough: this.clock.now(),
       });
       await this.readerSummaryArtifacts.save(result.value.artifact, {
-        publicationDecision,
-        generationRequestedAt: runningJob.toSnapshot().requestedAt,
+        publicationDecision: prepublication.publicationDecision,
+        githubProjectionAudit: prepublication.githubProjectionAudit,
       });
-
-      if (publicationDecision.status === "rejected") {
+      if (prepublication.publicationDecision.status === "rejected") {
         const artifactSnapshot = result.value.artifact.toSnapshot();
         const rejectedJob = runningJob.rejectForQuality({
           rejectedAt: this.clock.now(),
           readerSummaryId: artifactSnapshot.readerSummaryId,
-          failureReason: `Reader summary artifact failed pre-publish quality gate: ${publicationDecision.reasons.join("; ")}`,
+          failureReason: `Reader summary artifact failed pre-publish quality gate: ${prepublication.publicationDecision.reasons.join("; ")}`,
         });
         await this.readerSummaryJobs.save(rejectedJob);
 
@@ -206,49 +210,34 @@ export class ExecuteReaderSummaryJobUseCase {
         });
       }
 
-      const artifactSnapshot = result.value.artifact.toSnapshot();
-      const finalJob = artifactSnapshot.qualityFlags.includes("no_signal")
-        ? runningJob.markNoSignal({
-            completedAt: this.clock.now(),
-            readerSummaryId: artifactSnapshot.readerSummaryId,
-          })
-        : runningJob.complete({
-            completedAt: this.clock.now(),
-            readerSummaryId: artifactSnapshot.readerSummaryId,
-          });
-      await this.readerSummaryJobs.save(finalJob);
-
-      const finalSnapshot = finalJob.toSnapshot();
-      await this.events.publish({
-        eventId: eventId(this.ids.generate()),
-        eventType: "reader_summary.ready",
-        schemaVersion: 1,
-        occurredAt: this.clock.now(),
-        tenantId: finalSnapshot.tenantId,
-        workspaceId: finalSnapshot.workspaceId,
-        correlationId: correlationId(command.readerSummaryJobId),
-        causationId: causationId(finalSnapshot.id),
-        payload: {
-          readerSummaryJobId: finalSnapshot.id,
-          readerSummaryId: artifactSnapshot.readerSummaryId,
-          tenantId: finalSnapshot.tenantId,
-          workspaceId: finalSnapshot.workspaceId,
-          scope: finalSnapshot.scope,
-          period: finalSnapshot.period,
-          userId: finalSnapshot.userId,
-          subscriptionId: finalSnapshot.subscriptionId,
-          status:
-            finalSnapshot.status === "no_signal" ? "no_signal" : "completed",
-        },
-      } satisfies ReaderSummaryReadyEvent);
-
-      return ok({
-        readerSummaryJobId: finalSnapshot.id,
-        status: finalSnapshot.status,
-        readerSummaryId: finalSnapshot.readerSummaryId,
+      return await publishReaderSummaryJob({
+        artifact: result.value.artifact,
+        runningJob,
+        publicationDecision: prepublication.publicationDecision,
+        githubProjectionAudit: prepublication.githubProjectionAudit,
+        jobs: this.readerSummaryJobs,
+        publications: this.publications,
+        ids: this.ids,
+        clock: this.clock,
       });
     } catch (error) {
       const failure = this.readerSummaryModel.classifyError(error);
+      const durableJob = await this.readerSummaryJobs.findById({
+        tenantId: command.tenantId,
+        workspaceId: command.workspaceId,
+        readerSummaryJobId: command.readerSummaryJobId,
+      });
+      const durableSnapshot = durableJob?.toSnapshot();
+      if (
+        durableSnapshot?.status === "completed" ||
+        durableSnapshot?.status === "no_signal"
+      ) {
+        return ok({
+          readerSummaryJobId: durableSnapshot.id,
+          status: durableSnapshot.status,
+          readerSummaryId: durableSnapshot.readerSummaryId,
+        });
+      }
       const failedJob = runningJob.fail({
         failedAt: this.clock.now(),
         failureReason: failure.message,
@@ -460,52 +449,6 @@ export class ExecuteReaderSummaryJobUseCase {
     }
   }
 }
-
-const withReaderSummaryContextUnavailable = (
-  draft: ReaderSummaryDraft,
-): ReaderSummaryDraft => ({
-  ...draft,
-  qualityFlags: unique([...draft.qualityFlags, "context_unavailable"]),
-  content:
-    draft.content === undefined
-      ? undefined
-      : {
-          ...draft.content,
-          qualityState: {
-            ...draft.content.qualityState,
-            status:
-              draft.content.qualityState.status === "ready"
-                ? "partial"
-                : draft.content.qualityState.status,
-            flags: unique([
-              ...draft.content.qualityState.flags,
-              "context_unavailable",
-            ]),
-            warnings: unique([
-              ...draft.content.qualityState.warnings,
-              "Additional reader summary context was unavailable during generation.",
-            ]),
-          },
-          openQuestions: unique([
-            ...draft.content.openQuestions,
-            "Did missing context change the interpretation of this reader summary?",
-          ]),
-          risks: unique([
-            ...draft.content.risks,
-            "Additional reader summary context was unavailable during generation.",
-          ]),
-        },
-  risksAndUnknowns: [
-    ...draft.risksAndUnknowns,
-    {
-      description:
-        "Additional reader summary context was unavailable during generation.",
-      reason: "provider_outage",
-    },
-  ],
-});
-
-const unique = <T>(values: readonly T[]): readonly T[] => [...new Set(values)];
 
 const readerSummaryPreferenceInterestId = (
   snapshot: ReturnType<ReaderSummaryJob["toSnapshot"]>,

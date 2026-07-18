@@ -117,7 +117,7 @@ describe('hostile PostgreSQL pool budget review', () => {
     );
   });
 
-  it('requires a control-only bootstrap before the first pool/backend release', () => {
+  it('requires the fail-closed bridge transition before the first backend release', () => {
     const workflow = readFileSync(
       join(process.cwd(), '.github/workflows/production-deploy.yml'),
       'utf8',
@@ -126,19 +126,52 @@ describe('hostile PostgreSQL pool budget review', () => {
       join(process.cwd(), 'ops/deploy/social-monitor-production-deploy.sh'),
       'utf8',
     );
+    const deployClient = readFileSync(
+      join(process.cwd(), 'ops/deploy/github-production-deploy-client.sh'),
+      'utf8',
+    );
+    const transitionTest = readFileSync(
+      join(
+        process.cwd(),
+        'ops/deploy/postgres-pool-bootstrap-transition.test.sh',
+      ),
+      'utf8',
+    );
 
     expect(deploy).toContain(
       'POSTGRES_POOL_BOOTSTRAP_VERSION=postgres-pool-v1',
     );
     expect(deploy).toContain('postgres_pool_bootstrap=%s');
     expect(workflow).toContain(
-      'postgres_pool_bootstrap != postgres-pool-v1',
+      'bash ops/deploy/github-production-deploy-client.test.sh',
     );
     expect(workflow).toContain(
-      'Deploy a control-only bootstrap commit before any pool/backend release.',
+      'bash ops/deploy/postgres-pool-bootstrap-transition.test.sh || bootstrap_status=$?',
     );
-    expect(workflow).toContain('for bootstrap_attempt in 1 2 3');
-    expect(workflow).toContain('post_bootstrap == postgres-pool-v1');
+    expect(workflow).toContain(
+      'bash ops/deploy/github-production-deploy-client.sh deploy "$GITHUB_SHA"',
+    );
+    expect(workflow).toContain(
+      '"$CONTROL_CHANGED" "$POSTGRES_POOL_BOOTSTRAP"',
+    );
+    expect(deployClient).toMatch(
+      /if \[\[ \$PLAN_BACKEND == true &&[\s\S]*?\$PLAN_POSTGRES_POOL_BOOTSTRAP != "\$POSTGRES_POOL_BOOTSTRAP_VERSION" \]\]; then[\s\S]*?fail /,
+    );
+    expect(deployClient).toMatch(
+      /if \[\[ \$control_changed == true && \$bootstrap == uninstalled \]\]; then\s+for attempt in 1 2 3; do/,
+    );
+    expect(deployClient).toMatch(
+      /plan_is_fully_reconciled\(\) \{[\s\S]*?\$PLAN_BACKEND == false[\s\S]*?\$PLAN_CONTROL == false[\s\S]*?\$PLAN_POSTGRES_POOL_BOOTSTRAP == "\$POSTGRES_POOL_BOOTSTRAP_VERSION"[\s\S]*?\$PLAN_POSTGRES_POOL_BOOTSTRAP_SHA != "\$ZERO_SHA"/,
+    );
+    expect(transitionTest.indexOf('TEST_PHASE=legacy-poison-window')).toBeLessThan(
+      transitionTest.indexOf('TEST_PHASE=legacy-repair'),
+    );
+    expect(transitionTest.indexOf('TEST_PHASE=legacy-repair')).toBeLessThan(
+      transitionTest.indexOf('TEST_PHASE=bootstrap-commit'),
+    );
+    expect(transitionTest.match(/assert_release_a_non_activation/g)).toHaveLength(
+      4,
+    );
     expect(workflow).toContain(
       'verify-postgres-pool-release-contract.py ci',
     );

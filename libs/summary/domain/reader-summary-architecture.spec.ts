@@ -499,7 +499,7 @@ describe("ReaderSummary domain architecture", () => {
   it("keeps reader summary events and DTO fields canonical", () => {
     const requiredFragments: ReadonlyArray<readonly [string, string]> = [
       [
-        sourceFor("../features/execute-reader-summary-job/execute-reader-summary-job.use-case.ts"),
+        sourceFor("../features/execute-reader-summary-job/publish-reader-summary-job.ts"),
         "reader_summary.ready",
       ],
       [

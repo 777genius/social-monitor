@@ -16,6 +16,7 @@ import {
 } from "./deterministic-reader-summary-evidence-selection";
 import { buildReaderHeadline } from "./deterministic-reader-summary-headline";
 import { buildDeterministicReaderSummaryNarrative } from "./deterministic-reader-summary-narrative";
+import { buildReaderSummaryEvidenceCitationMap } from "./reader-summary-evidence-citation-map";
 
 const route: ReaderSummaryModelRoute = {
   provider: "deterministic-local",
@@ -107,7 +108,9 @@ export class DeterministicReaderSummaryModelAdapter implements ReaderSummaryMode
             reason: "insufficient_evidence" as const,
           },
         ],
-        citationMap: [],
+        citationMap: buildReaderSummaryEvidenceCitationMap(
+          input.evidence.selectedEvidence,
+        ),
         qualityFlags: ["no_signal", "limited_sources"] as const,
         confidence: {
           level: "none" as const,
