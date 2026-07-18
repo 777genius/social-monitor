@@ -14,12 +14,15 @@ SECRET=$ROOT/secrets/db/reader-summary-publication-admin-url
 CA_CERTIFICATE=$ROOT/secrets/db/ca-certificate.crt
 EVENT_LOG=$FIXTURE/events.log
 WRITE_LOG=$FIXTURE/writes.log
+TRANSPORT_LOG=$FIXTURE/transport.log
+TRANSPORT_PGPASS_PATH_LOG=$FIXTURE/transport-pgpass-path.log
+FAKE_BIN=$FIXTURE/bin
 PRIVATE_QUERY_PAYLOAD=private-query-output-must-stay-redacted
 PRIVATE_PASSWORD=redacted-test-password
 MIGRATOR_ROLE=social_monitor_publication_migrator
 DATABASE_HOST=dbaas-db-8050451-do-user-39622063-0.e.db.ondigitalocean.com
 VALID_URL="postgresql://${MIGRATOR_ROLE}:${PRIVATE_PASSWORD}@${DATABASE_HOST}:25060/social_monitor?connect_timeout=10&sslmode=verify-full&sslrootcert=%2Frun%2Fsocial-monitor-db%2Fca-certificate.crt"
-VALID_CATALOG="social_monitor|${MIGRATOR_ROLE}|${MIGRATOR_ROLE}|t|t|t|f|f|f|f|180004|t|1|t|f|t|t|0"
+VALID_CATALOG="social_monitor|${MIGRATOR_ROLE}|${MIGRATOR_ROLE}|t|t|t|f|f|f|f|180004|t|1|t|f|t|t|0|0"
 CATALOG_RESULT=$VALID_CATALOG
 CATALOG_QUERY_STATUS=0
 AVAILABILITY_STATUS=0
@@ -30,11 +33,41 @@ CA_METADATA_STATUS=0
 FAIL_PHASE=
 TEST_COUNT=0
 
-mkdir -p "$ROOT/secrets/db" "$REPO/ops/deploy"
+mkdir -p "$ROOT/secrets/db" "$REPO/ops/deploy" "$FAKE_BIN"
 printf '%s\n' 'test-only-ca-certificate' > "$CA_CERTIFICATE"
 cp "$SCRIPT_DIR/deploy-control-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" "$REPO/ops/deploy/"
 cp "$DEPLOY_ENTRYPOINT" "$REPO/ops/deploy/"
+
+cat > "$FAKE_BIN/psql" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ -f $PGPASSFILE && ! -L $PGPASSFILE && -s $PGPASSFILE ]]
+mode=$(stat -c '%a' "$PGPASSFILE")
+[[ $mode == 600 ]]
+[[ $* != *postgresql://* && $* != *redacted-test-password* ]]
+if env | grep -F 'redacted-test-password' >/dev/null; then
+  exit 91
+fi
+printf '%s\n' "$PGPASSFILE" > "$TRANSPORT_PGPASS_PATH_LOG"
+printf 'client:psql:mode=%s\n' "$mode" >> "$TRANSPORT_LOG"
+exit "$TRANSPORT_CLIENT_STATUS"
+SH
+cat > "$FAKE_BIN/pg_isready" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ -f $PGPASSFILE && ! -L $PGPASSFILE && -s $PGPASSFILE ]]
+mode=$(stat -c '%a' "$PGPASSFILE")
+[[ $mode == 600 ]]
+[[ $* != *postgresql://* && $* != *redacted-test-password* ]]
+if env | grep -F 'redacted-test-password' >/dev/null; then
+  exit 91
+fi
+printf '%s\n' "$PGPASSFILE" > "$TRANSPORT_PGPASS_PATH_LOG"
+printf 'client:pg_isready:mode=%s\n' "$mode" >> "$TRANSPORT_LOG"
+exit "$TRANSPORT_CLIENT_STATUS"
+SH
+chmod 0755 "$FAKE_BIN/psql" "$FAKE_BIN/pg_isready"
 
 fail() {
   printf 'deploy-error: %s\n' "$*" >&2
@@ -87,6 +120,47 @@ fake_compose() {
   printf '%s\n' prisma-migrate >> "$WRITE_LOG"
 }
 
+docker() {
+  local stdin_payload arguments script status pgpass_path index position
+  local -a docker_arguments=("$@") child_arguments
+  stdin_payload=$(cat)
+  arguments=${docker_arguments[*]}
+  [[ $arguments != *postgresql://* ]] || return 93
+  [[ $arguments != *"$PRIVATE_PASSWORD"* ]] || return 94
+  [[ $arguments != *reader-summary-publication-admin-url* ]] || return 95
+  [[ " $arguments " == *' run --rm -i '* ]] || return 96
+  [[ $stdin_payload == "$TRANSPORT_EXPECTED_PGPASS" ]] || return 97
+  if env | grep -F "$TRANSPORT_FORBIDDEN_ENV_VALUE" >/dev/null; then
+    return 92
+  fi
+
+  index=-1
+  for ((position = 0; position < ${#docker_arguments[@]}; position++)); do
+    if [[ ${docker_arguments[position]} == sh && \
+      ${docker_arguments[position + 1]:-} == -c ]]; then
+      index=$position
+      break
+    fi
+  done
+  ((index >= 0)) || return 98
+  script=${docker_arguments[index + 2]}
+  child_arguments=("${docker_arguments[@]:index + 3}")
+  : > "$TRANSPORT_PGPASS_PATH_LOG"
+  set +e
+  printf '%s\n' "$stdin_payload" | \
+    env PATH="$FAKE_BIN:$PATH" \
+      TRANSPORT_CLIENT_STATUS="$TRANSPORT_CLIENT_STATUS" \
+      TRANSPORT_LOG="$TRANSPORT_LOG" \
+      TRANSPORT_PGPASS_PATH_LOG="$TRANSPORT_PGPASS_PATH_LOG" \
+      sh -c "$script" "${child_arguments[@]}"
+  status=${PIPESTATUS[1]}
+  set -e
+  pgpass_path=$(< "$TRANSPORT_PGPASS_PATH_LOG")
+  [[ -n $pgpass_path && ! -e $pgpass_path ]] || return 99
+  printf 'docker:status=%s:pgpass-removed\n' "$status" >> "$TRANSPORT_LOG"
+  return "$status"
+}
+
 sleep() {
   :
 }
@@ -100,10 +174,19 @@ write_admin_url() {
   chmod 0400 "$SECRET"
 }
 
+publication_url_with_password() {
+  local password=$1
+  printf '%s%s:%s@%s:25060/social_monitor?%s\n' \
+    'postgresql://' "$MIGRATOR_ROLE" "$password" "$DATABASE_HOST" \
+    'connect_timeout=10&sslmode=verify-full&sslrootcert=%2Frun%2Fsocial-monitor-db%2Fca-certificate.crt'
+}
+
 reset_case() {
   rm -f "$SECRET" "$CA_CERTIFICATE"
   : > "$EVENT_LOG"
   : > "$WRITE_LOG"
+  : > "$TRANSPORT_LOG"
+  : > "$TRANSPORT_PGPASS_PATH_LOG"
   CATALOG_RESULT=$VALID_CATALOG
   CATALOG_QUERY_STATUS=0
   AVAILABILITY_STATUS=0
@@ -114,6 +197,50 @@ reset_case() {
   FAIL_PHASE=
   printf '%s\n' 'test-only-ca-certificate' > "$CA_CERTIFICATE"
   write_admin_url "$VALID_URL"
+}
+
+assert_pgpass_transport() {
+  local operation=$1
+  local expected_client=$2
+  local expected_status=${3:-0}
+  local actual_status
+  reset_case
+  TRANSPORT_FORBIDDEN_ENV_VALUE="${PRIVATE_PASSWORD}:with\\delimiters"
+  TRANSPORT_EXPECTED_PGPASS="${DATABASE_HOST}:25060:social_monitor:${MIGRATOR_ROLE}:redacted-test-password\\:with\\\\delimiters"
+  write_admin_url "$(publication_url_with_password \
+    "${PRIVATE_PASSWORD}%3Awith%5Cdelimiters")"
+  [[ $(reader_summary_publication_admin_pgpass "$SECRET") == \
+    "$TRANSPORT_EXPECTED_PGPASS" ]]
+  TRANSPORT_CLIENT_STATUS=$expected_status
+  set +e
+  case $operation in
+    bootstrap)
+      reader_summary_publication_run_postgres_client \
+        "$SECRET" "$CA_CERTIFICATE" publication-transport-test \
+        bootstrap "$READER_SUMMARY_PUBLICATION_RUNTIME_ROLE" '' \
+        "$SCRIPT_DIR/reader-summary-publication-pre-migration.sql"
+      actual_status=$?
+      ;;
+    catalog)
+      reader_summary_publication_run_postgres_client \
+        "$SECRET" "$CA_CERTIFICATE" publication-transport-test \
+        catalog "$READER_SUMMARY_PUBLICATION_RUNTIME_ROLE" 'SELECT 1'
+      actual_status=$?
+      ;;
+    availability)
+      reader_summary_publication_run_postgres_client \
+        "$SECRET" "$CA_CERTIFICATE" publication-transport-test \
+        availability '' ''
+      actual_status=$?
+      ;;
+  esac
+  set -e
+  ((actual_status == expected_status))
+  grep -Fx "client:${expected_client}:mode=600" "$TRANSPORT_LOG" >/dev/null
+  grep -Fx "docker:status=${expected_status}:pgpass-removed" \
+    "$TRANSPORT_LOG" >/dev/null
+  [[ ! -e $ROOT/production.env ]]
+  TEST_COUNT=$((TEST_COUNT + 1))
 }
 
 catalog_with_field() {
@@ -215,6 +342,11 @@ valid_output=$(deploy_reader_summary_publication_migrations 2>&1)
 [[ $(< "$WRITE_LOG") == $'psql:pre\nprisma-migrate\npsql:post' ]]
 TEST_COUNT=$((TEST_COUNT + 1))
 
+assert_pgpass_transport bootstrap psql
+assert_pgpass_transport catalog psql
+assert_pgpass_transport availability pg_isready
+assert_pgpass_transport catalog psql 37
+
 for failed_phase in pre prisma post; do
   reset_case
   FAIL_PHASE=$failed_phase
@@ -245,6 +377,8 @@ done
 assert_invalid_url malformed-url 'not-a-postgresql-url'
 assert_invalid_url malformed-percent \
   'postgresql://publication_migrator@db.invalid/social_monitor?sslmode=verify-full&sslrootcert=%ZZ'
+assert_invalid_url encoded-password-newline \
+  "$(publication_url_with_password "${PRIVATE_PASSWORD}%0A")"
 assert_invalid_url missing-user \
   'postgresql://db.invalid/social_monitor?sslmode=verify-full&sslrootcert=%2Frun%2Fsocial-monitor-db%2Fca-certificate.crt'
 assert_invalid_url fragment \
@@ -345,6 +479,8 @@ assert_invalid_catalog inherited-runtime-role "$(catalog_with_field 14 t)"
 assert_invalid_catalog no-runtime-set-option "$(catalog_with_field 15 f)"
 assert_invalid_catalog unsafe-protected-membership "$(catalog_with_field 16 f)"
 assert_invalid_catalog unexpected-role-membership "$(catalog_with_field 17 1)"
+assert_invalid_catalog role-can-impersonate-migrator \
+  "$(catalog_with_field 18 1)"
 
 assert_deploy_backend_preflight_order() {
   local mode=$1
@@ -431,6 +567,8 @@ for catalog_token in \
   'expected_membership_count' \
   'protected_memberships_valid' \
   'unexpected_membership_count' \
+  'outgoing_memberships.membership_count' \
+  'outgoing_membership.roleid = migrator.oid' \
   'membership.admin_option' \
   'membership.inherit_option' \
   'membership.set_option' \

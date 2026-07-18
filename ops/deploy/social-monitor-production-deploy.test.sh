@@ -181,20 +181,26 @@ grep -F 'deploy_reader_summary_publication_migrations' "$ENTRYPOINT" >/dev/null
 grep -F 'reader_summary_publication_migrator_preflight' "$ENTRYPOINT" >/dev/null
 grep -F 'reader-summary-publication-admin-url' \
   "$SCRIPT_DIR/reader-summary-publication-deploy-lib.sh" >/dev/null
-# The admin URL must be a mounted file, never a Docker argument or the
-# production runtime environment.
+# The admin URL must never be a Docker argument or the production runtime
+# environment. psql receives only an escaped pgpass record over Docker stdin.
 if grep -E -- '--(env|set)[ =]DATABASE_URL' \
   "$SCRIPT_DIR/reader-summary-publication-deploy-lib.sh" >/dev/null; then
   echo 'publication admin URL is exposed through a container argument' >&2
   exit 1
 fi
-grep -F 'PGDATABASE=$(cat /run/secrets/reader-summary-publication-admin-url)' \
-  "$SCRIPT_DIR/reader-summary-publication-deploy-lib.sh" >/dev/null
-if grep -F 'psql "$DATABASE_URL"' \
+if grep -F 'PGDATABASE=' \
   "$SCRIPT_DIR/reader-summary-publication-deploy-lib.sh" >/dev/null; then
-  echo 'publication admin URL is exposed through the psql argument list' >&2
+  echo 'publication admin URL is exposed through PGDATABASE' >&2
   exit 1
 fi
+grep -F 'reader_summary_publication_admin_pgpass "$secret" |' \
+  "$SCRIPT_DIR/reader-summary-publication-deploy-lib.sh" >/dev/null
+grep -F 'PGPASSFILE=$pgpass_file' \
+  "$SCRIPT_DIR/reader-summary-publication-deploy-lib.sh" >/dev/null
+grep -F 'chmod 0600 "$pgpass_file"' \
+  "$SCRIPT_DIR/reader-summary-publication-deploy-lib.sh" >/dev/null
+grep -F 'trap cleanup_pgpass EXIT' \
+  "$SCRIPT_DIR/reader-summary-publication-deploy-lib.sh" >/dev/null
 grep -F 'social_monitor_app' \
   "$SCRIPT_DIR/reader-summary-publication-deploy-lib.sh" >/dev/null
 grep -F 'social_monitor_publication_migrator' \

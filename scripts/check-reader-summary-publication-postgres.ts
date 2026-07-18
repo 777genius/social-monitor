@@ -176,7 +176,7 @@ async function main(): Promise<void> {
       runtimeRole,
     );
     assertMigrationDatabaseMatchesPrismaSchema(targetDatabaseUrl);
-    const auditorPool = new Pool({ connectionString: targetDatabaseUrl });
+    const auditorPool = new Pool({ connectionString: targetDatabaseUrl, max: 1 });
     const admin = new Pool({ connectionString: adminDatabaseUrl, max: 2 });
     const runtime = new Pool({ connectionString: runtimeDatabaseUrl, max: 4 });
     try {

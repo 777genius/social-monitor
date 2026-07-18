@@ -378,7 +378,6 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       'scripts/check-reader-summary-publication-postgres.ts:Pool',
       'scripts/check-reader-summary-publication-postgres.ts:Pool',
       'scripts/check-reader-summary-publication-postgres.ts:Pool',
-      'scripts/check-reader-summary-publication-postgres.ts:Pool',
       'scripts/check-reader-summary-quality-dashboard.ts:Pool',
       'scripts/check-reader-summary-source-quality-trace.ts:Pool',
       'scripts/check-reader-summary-top-read-ranking.ts:Pool',
@@ -391,6 +390,10 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       'scripts/check-yesterday-social-collection-quality.ts:Pool',
       'scripts/lib/yesterday-social-replay-support.ts:Pool',
       'scripts/reader-summary-publication-postgres-legacy.ts:Pool',
+      'scripts/reader-summary-publication-postgres-privileges.ts:Pool',
+      'scripts/reader-summary-publication-postgres-privileges.ts:Pool',
+      'scripts/reader-summary-publication-postgres-privileges.ts:Pool',
+      'scripts/reader-summary-publication-postgres-privileges.ts:Pool',
       'scripts/reader-summary-publication-postgres-privileges.ts:Pool',
       'scripts/reader-summary-publication-postgres-privileges.ts:Pool',
       'scripts/run-reader-summary-clean-real-day-collection.ts:Pool',
@@ -550,10 +553,13 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
     const expectedPoolMaximums = new Map<string, readonly number[]>([
       [
         'scripts/check-reader-summary-publication-postgres.ts',
-        [1, 2, 4, 1, 1, 1],
+        [1, 1, 2, 4, 1],
       ],
       ['scripts/reader-summary-publication-postgres-legacy.ts', [1]],
-      ['scripts/reader-summary-publication-postgres-privileges.ts', [1, 1]],
+      [
+        'scripts/reader-summary-publication-postgres-privileges.ts',
+        [1, 1, 1, 1, 1, 1],
+      ],
       ['scripts/reader-summary-publication-postgres-runtime-guard.ts', []],
     ]);
     for (const [path, expectedMaximums] of expectedPoolMaximums) {

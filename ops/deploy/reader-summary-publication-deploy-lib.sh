@@ -3,7 +3,8 @@
 # Sourced by social-monitor-production-deploy.sh. Publication migrations need
 # a role-creating admin connection that is never placed in production.env or
 # in a Docker command argument. The secret file contains only the PostgreSQL
-# URL and is mounted read-only into short-lived migration/bootstrap containers.
+# URL. Prisma reads its mounted copy inside the migration container; psql gets
+# only a validated, decoded and escaped pgpass record over Docker stdin.
 
 READER_SUMMARY_PUBLICATION_MIGRATOR_ROLE=social_monitor_publication_migrator
 READER_SUMMARY_PUBLICATION_RUNTIME_ROLE=social_monitor_app
@@ -66,28 +67,16 @@ run_reader_summary_publication_admin_sql() {
   local runtime_role=$3
   local phase=$4
   local sql=$REPO/ops/deploy/reader-summary-publication-${phase}-migration.sql
-  local postgres_image=postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15
 
   [[ $phase == pre || $phase == post ]] ||
     fail 'reader summary publication bootstrap phase is invalid'
   [[ -f $sql && ! -L $sql ]] ||
     fail "reader summary publication $phase-migration SQL is unavailable"
 
-  docker run --rm \
-    --user 0:0 \
-    --env PGAPPNAME="social-monitor/publication-$phase-migration" \
-    -v "$secret:/run/secrets/reader-summary-publication-admin-url:ro" \
-    -v "$ca_certificate:/run/social-monitor-db/ca-certificate.crt:ro" \
-    -v "$sql:/run/social-monitor-db/publication-migration.sql:ro" \
-    "$postgres_image" \
-    sh -c '
-      set -eu
-      PGDATABASE=$(cat /run/secrets/reader-summary-publication-admin-url)
-      export PGDATABASE
-      exec psql -X -v ON_ERROR_STOP=1 \
-        --set=runtime_role="$1" \
-        --file=/run/social-monitor-db/publication-migration.sql
-    ' _ "$runtime_role"
+  reader_summary_publication_run_postgres_client \
+    "$secret" "$ca_certificate" \
+    "social-monitor/publication-$phase-migration" \
+    bootstrap "$runtime_role" '' "$sql"
 }
 
 validate_reader_summary_publication_migrator() (
@@ -102,7 +91,7 @@ validate_reader_summary_publication_migrator() (
   local is_superuser can_create_database can_replicate can_bypass_rls
   local server_version uses_tls membership_count membership_admin
   local membership_inherit membership_set protected_memberships_valid
-  local unexpected_membership_count extra
+  local unexpected_membership_count outgoing_membership_count extra
   local query_status availability_status
 
   [[ -f $secret && ! -L $secret && -s $secret ]] || return 64
@@ -141,14 +130,14 @@ validate_reader_summary_publication_migrator() (
   fi
   [[ -n $catalog_result && $catalog_result != *$'\n'* ]] || return 65
   catalog_delimiters=${catalog_result//[!|]/}
-  ((${#catalog_delimiters} == 17)) || return 65
+  ((${#catalog_delimiters} == 18)) || return 65
 
   IFS='|' read -r database_name current_identity session_identity \
     can_login can_create_role inherits_role is_superuser \
     can_create_database can_replicate can_bypass_rls server_version \
     uses_tls membership_count membership_admin membership_inherit \
     membership_set protected_memberships_valid \
-    unexpected_membership_count extra \
+    unexpected_membership_count outgoing_membership_count extra \
     <<< "$catalog_result"
 
   [[ -z $extra && \
@@ -166,6 +155,7 @@ validate_reader_summary_publication_migrator() (
   [[ $membership_inherit == f && $membership_set == t ]] || return 65
   [[ $protected_memberships_valid == t ]] || return 65
   [[ $unexpected_membership_count == 0 ]] || return 65
+  [[ $outgoing_membership_count == 0 ]] || return 65
 )
 
 reader_summary_publication_admin_secret_metadata() {
@@ -175,11 +165,17 @@ reader_summary_publication_admin_secret_metadata() {
 reader_summary_publication_validate_admin_url() {
   local secret=$1
 
+  reader_summary_publication_admin_pgpass "$secret" >/dev/null 2>&1
+}
+
+reader_summary_publication_admin_pgpass() {
+  local secret=$1
+
   python3 - "$secret" \
     "$READER_SUMMARY_PUBLICATION_MIGRATOR_ROLE" \
     "$READER_SUMMARY_PUBLICATION_DATABASE_HOST" \
     "$READER_SUMMARY_PUBLICATION_DATABASE_PORT" \
-    "$READER_SUMMARY_PUBLICATION_DATABASE" >/dev/null 2>&1 <<'PY'
+    "$READER_SUMMARY_PUBLICATION_DATABASE" <<'PY'
 import re
 import sys
 from pathlib import Path
@@ -201,15 +197,21 @@ try:
     if parsed.fragment or parsed.netloc.count("@") != 1:
         raise ValueError
     expected_user, expected_host, expected_port, expected_database = sys.argv[2:]
-    if unquote(parsed.username or "", errors="strict") != expected_user:
+    username = unquote(parsed.username or "", errors="strict")
+    password = unquote(parsed.password or "", errors="strict")
+    database_path = unquote(parsed.path, errors="strict")
+    if username != expected_user:
         raise ValueError
-    if parsed.password is None or not unquote(parsed.password, errors="strict"):
+    if parsed.password is None or not password:
         raise ValueError
     if parsed.hostname != expected_host or not parsed.hostname.isascii():
         raise ValueError
     if parsed.port != int(expected_port):
         raise ValueError
-    if unquote(parsed.path, errors="strict") != f"/{expected_database}":
+    if database_path != f"/{expected_database}":
+        raise ValueError
+    decoded_fields = [parsed.hostname, str(parsed.port), expected_database, username, password]
+    if any(any(ord(character) <= 0x20 for character in field) for field in decoded_fields):
         raise ValueError
     if not parsed.query or parsed.query.startswith("&") or parsed.query.endswith("&"):
         raise ValueError
@@ -239,16 +241,112 @@ try:
         "/run/social-monitor-db/ca-certificate.crt"
     ):
         raise ValueError
+    def pgpass_escape(field):
+        return field.replace("\\", "\\\\").replace(":", "\\:")
+
+    print(":".join(pgpass_escape(field) for field in decoded_fields))
 except (OSError, UnicodeError, ValueError):
     raise SystemExit(1)
 PY
 }
 
+reader_summary_publication_run_postgres_client() (
+  set -o pipefail
+  local secret=$1
+  local ca_certificate=$2
+  local application_name=$3
+  local operation=$4
+  local runtime_role=$5
+  local query=$6
+  local sql=${7:-}
+  local postgres_image=postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15
+  local -a docker_arguments=(
+    run --rm -i
+    --user 0:0
+    -v "$ca_certificate:/run/social-monitor-db/ca-certificate.crt:ro"
+  )
+
+  [[ $operation == bootstrap || $operation == catalog || \
+    $operation == availability ]] || return 64
+  if [[ $operation == bootstrap ]]; then
+    [[ -f $sql && ! -L $sql ]] || return 64
+    docker_arguments+=(
+      -v "$sql:/run/social-monitor-db/publication-migration.sql:ro"
+    )
+  else
+    [[ -z $sql ]] || return 64
+  fi
+
+  reader_summary_publication_admin_pgpass "$secret" |
+    docker "${docker_arguments[@]}" \
+      "$postgres_image" \
+      sh -c '
+        set -eu
+        host=$1
+        port=$2
+        database=$3
+        username=$4
+        application_name=$5
+        operation=$6
+        runtime_role=$7
+        query=$8
+        pgpass_file=
+        cleanup_pgpass() {
+          if [ -n "$pgpass_file" ]; then
+            rm -f -- "$pgpass_file"
+          fi
+        }
+        trap cleanup_pgpass EXIT
+        trap "exit 129" HUP
+        trap "exit 130" INT
+        trap "exit 143" TERM
+        umask 077
+        pgpass_file=$(mktemp /tmp/social-monitor-pgpass.XXXXXX)
+        cat > "$pgpass_file"
+        chmod 0600 "$pgpass_file"
+        [ -s "$pgpass_file" ]
+        PGPASSFILE=$pgpass_file
+        PGAPPNAME=$application_name
+        PGSSLMODE=verify-full
+        PGSSLROOTCERT=/run/social-monitor-db/ca-certificate.crt
+        export PGPASSFILE PGAPPNAME PGSSLMODE PGSSLROOTCERT
+
+        case $operation in
+          bootstrap)
+            psql -X --no-password -v ON_ERROR_STOP=1 \
+              --host="$host" --port="$port" --dbname="$database" \
+              --username="$username" --set=runtime_role="$runtime_role" \
+              --file=/run/social-monitor-db/publication-migration.sql
+            ;;
+          catalog)
+            PGCONNECT_TIMEOUT=15
+            export PGCONNECT_TIMEOUT
+            psql -X -A -t -F "|" --no-password -v ON_ERROR_STOP=1 \
+              --host="$host" --port="$port" --dbname="$database" \
+              --username="$username" --set=runtime_role="$runtime_role" \
+              --command="$query"
+            ;;
+          availability)
+            pg_isready -q -t 15 \
+              --host="$host" --port="$port" --dbname="$database" \
+              --username="$username"
+            ;;
+          *)
+            exit 64
+            ;;
+        esac
+      ' _ \
+      "$READER_SUMMARY_PUBLICATION_DATABASE_HOST" \
+      "$READER_SUMMARY_PUBLICATION_DATABASE_PORT" \
+      "$READER_SUMMARY_PUBLICATION_DATABASE" \
+      "$READER_SUMMARY_PUBLICATION_MIGRATOR_ROLE" \
+      "$application_name" "$operation" "$runtime_role" "$query"
+)
+
 reader_summary_publication_admin_catalog_query() {
   local secret=$1
   local ca_certificate=$2
   local runtime_role=$3
-  local postgres_image=postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15
   local query="
 SELECT
   current_database(),
@@ -268,7 +366,8 @@ SELECT
   COALESCE(membership.inherit_option, false),
   COALESCE(membership.set_option, false),
   COALESCE(membership.protected_memberships_valid, false),
-  COALESCE(membership.unexpected_membership_count, 0)
+  COALESCE(membership.unexpected_membership_count, 0),
+  COALESCE(outgoing_memberships.membership_count, 0)
 FROM pg_catalog.pg_roles AS migrator
 LEFT JOIN pg_catalog.pg_stat_ssl AS connection
   ON connection.pid = pg_catalog.pg_backend_pid()
@@ -386,39 +485,24 @@ LEFT JOIN LATERAL (
       ON grantor_role.oid = membership.grantor
     WHERE member_role.rolname = current_user
 ) AS membership ON true
+LEFT JOIN LATERAL (
+  SELECT COUNT(*) AS membership_count
+  FROM pg_catalog.pg_auth_members AS outgoing_membership
+  WHERE outgoing_membership.roleid = migrator.oid
+) AS outgoing_memberships ON true
 WHERE migrator.rolname = current_user;"
 
-  docker run --rm \
-    --user 0:0 \
-    --env PGAPPNAME=social-monitor/publication-migrator-validation \
-    -v "$secret:/run/secrets/reader-summary-publication-admin-url:ro" \
-    -v "$ca_certificate:/run/social-monitor-db/ca-certificate.crt:ro" \
-    "$postgres_image" \
-    sh -c '
-      set -eu
-      PGDATABASE=$(cat /run/secrets/reader-summary-publication-admin-url)
-      PGCONNECT_TIMEOUT=15
-      export PGDATABASE PGCONNECT_TIMEOUT
-      exec psql -X -A -t -F "|" --no-password -v ON_ERROR_STOP=1 \
-        --set=runtime_role="$1" --command="$2"
-    ' _ "$runtime_role" "$query"
+  reader_summary_publication_run_postgres_client \
+    "$secret" "$ca_certificate" \
+    social-monitor/publication-migrator-validation \
+    catalog "$runtime_role" "$query"
 }
 
 reader_summary_publication_admin_availability_query() {
   local secret=$1
   local ca_certificate=$2
-  local postgres_image=postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15
-
-  docker run --rm \
-    --user 0:0 \
-    --env PGAPPNAME=social-monitor/publication-migrator-availability \
-    -v "$secret:/run/secrets/reader-summary-publication-admin-url:ro" \
-    -v "$ca_certificate:/run/social-monitor-db/ca-certificate.crt:ro" \
-    "$postgres_image" \
-    sh -c '
-      set -eu
-      PGDATABASE=$(cat /run/secrets/reader-summary-publication-admin-url)
-      export PGDATABASE
-      exec pg_isready -q -t 15
-    '
+  reader_summary_publication_run_postgres_client \
+    "$secret" "$ca_certificate" \
+    social-monitor/publication-migrator-availability \
+    availability '' ''
 }
