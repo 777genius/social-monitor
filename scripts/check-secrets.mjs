@@ -54,6 +54,7 @@ for (const value of [
   'smk_fake-audit-reader',
   'smk_generated_secret',
   'whsec_generated_secret',
+  '${MIGRATOR_TEST_CREDENTIAL}',
 ]) {
   if (!isAllowedValue(value)) {
     violations.push(`${allowlistPath}: deterministic placeholder "${value}" must be allowed`);
@@ -64,6 +65,7 @@ for (const value of [
   ['prod', 'bearer', 'token'].join('.'),
   ['smk', 'prod', 'secret'].join('_'),
   ['whsec', 'prod', 'secret'].join('_'),
+  '${PRODUCTION_MIGRATOR_CREDENTIAL}',
 ]) {
   if (isAllowedValue(value)) {
     violations.push(`${allowlistPath}: synthetic non-placeholder secret "${value}" must not be allowed`);

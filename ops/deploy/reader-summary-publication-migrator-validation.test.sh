@@ -10,21 +10,21 @@ trap 'rm -rf "$FIXTURE"' EXIT
 
 ROOT=$FIXTURE/root
 REPO=$FIXTURE/repo
-SECRET=$ROOT/secrets/db/reader-summary-publication-admin-url
+ADMIN_URL_PATH=$ROOT/secrets/db/reader-summary-publication-admin-url
 CA_CERTIFICATE=$ROOT/secrets/db/ca-certificate.crt
 EVENT_LOG=$FIXTURE/events.log
 WRITE_LOG=$FIXTURE/writes.log
 PRIVATE_QUERY_PAYLOAD=private-query-output-must-stay-redacted
-PRIVATE_PASSWORD=redacted-test-password
+MIGRATOR_TEST_CREDENTIAL=redacted-test-password
 MIGRATOR_ROLE=social_monitor_publication_migrator
 DATABASE_HOST=dbaas-db-8050451-do-user-39622063-0.e.db.ondigitalocean.com
-VALID_URL="postgresql://${MIGRATOR_ROLE}:${PRIVATE_PASSWORD}@${DATABASE_HOST}:25060/social_monitor?connect_timeout=10&sslmode=verify-full&sslrootcert=%2Frun%2Fsocial-monitor-db%2Fca-certificate.crt"
+VALID_URL="postgresql://${MIGRATOR_ROLE}:${MIGRATOR_TEST_CREDENTIAL}@${DATABASE_HOST}:25060/social_monitor?connect_timeout=10&sslmode=verify-full&sslrootcert=%2Frun%2Fsocial-monitor-db%2Fca-certificate.crt"
 VALID_CATALOG="social_monitor|${MIGRATOR_ROLE}|${MIGRATOR_ROLE}|t|t|t|f|f|f|f|180004|t|1|t|f|t|t|0"
 CATALOG_RESULT=$VALID_CATALOG
 CATALOG_QUERY_STATUS=0
 AVAILABILITY_STATUS=0
-SECRET_OWNER=root
-SECRET_METADATA_STATUS=0
+METADATA_OWNER=root
+METADATA_STATUS=0
 CA_OWNER=root
 CA_METADATA_STATUS=0
 FAIL_PHASE=
@@ -51,9 +51,9 @@ reader_summary_publication_admin_secret_metadata() {
   else
     mode=$(command stat -f '%Lp' "$1")
   fi
-  if [[ $1 == "$SECRET" ]]; then
-    ((SECRET_METADATA_STATUS == 0)) || return "$SECRET_METADATA_STATUS"
-    printf '%s|%s\n' "$SECRET_OWNER" "$mode"
+  if [[ $1 == "$ADMIN_URL_PATH" ]]; then
+    ((METADATA_STATUS == 0)) || return "$METADATA_STATUS"
+    printf '%s|%s\n' "$METADATA_OWNER" "$mode"
     return
   fi
   ((CA_METADATA_STATUS == 0)) || return "$CA_METADATA_STATUS"
@@ -95,20 +95,20 @@ COMPOSE=(fake_compose)
 
 write_admin_url() {
   local value=$1
-  chmod 0600 "$SECRET" 2>/dev/null || true
-  printf '%s' "$value" > "$SECRET"
-  chmod 0400 "$SECRET"
+  chmod 0600 "$ADMIN_URL_PATH" 2>/dev/null || true
+  printf '%s' "$value" > "$ADMIN_URL_PATH"
+  chmod 0400 "$ADMIN_URL_PATH"
 }
 
 reset_case() {
-  rm -f "$SECRET" "$CA_CERTIFICATE"
+  rm -f "$ADMIN_URL_PATH" "$CA_CERTIFICATE"
   : > "$EVENT_LOG"
   : > "$WRITE_LOG"
   CATALOG_RESULT=$VALID_CATALOG
   CATALOG_QUERY_STATUS=0
   AVAILABILITY_STATUS=0
-  SECRET_OWNER=root
-  SECRET_METADATA_STATUS=0
+  METADATA_OWNER=root
+  METADATA_STATUS=0
   CA_OWNER=root
   CA_METADATA_STATUS=0
   FAIL_PHASE=
@@ -130,7 +130,7 @@ assert_redacted() {
   local output=$1
   local admin_url=$2
   [[ $output != *"$admin_url"* ]]
-  [[ $output != *"$PRIVATE_PASSWORD"* ]]
+  [[ $output != *"$MIGRATOR_TEST_CREDENTIAL"* ]]
   [[ $output != *"$PRIVATE_QUERY_PAYLOAD"* ]]
   [[ $output != *publication_migrator* ]]
 }
@@ -262,37 +262,37 @@ assert_invalid_url wrong-ca-path \
 assert_invalid_url duplicate-sslmode \
   'postgresql://publication_migrator@db.invalid/social_monitor?sslmode=verify-full&sslmode=disable&sslrootcert=%2Frun%2Fsocial-monitor-db%2Fca-certificate.crt'
 assert_invalid_url wrong-migrator-role \
-  "postgresql://doadmin:${PRIVATE_PASSWORD}@${DATABASE_HOST}:25060/social_monitor?sslmode=verify-full&sslrootcert=%2Frun%2Fsocial-monitor-db%2Fca-certificate.crt"
+  "postgresql://doadmin:${MIGRATOR_TEST_CREDENTIAL}@${DATABASE_HOST}:25060/social_monitor?sslmode=verify-full&sslrootcert=%2Frun%2Fsocial-monitor-db%2Fca-certificate.crt"
 assert_invalid_url missing-password \
   "postgresql://${MIGRATOR_ROLE}@${DATABASE_HOST}:25060/social_monitor?sslmode=verify-full&sslrootcert=%2Frun%2Fsocial-monitor-db%2Fca-certificate.crt"
 assert_invalid_url wrong-cluster-host \
-  "postgresql://${MIGRATOR_ROLE}:${PRIVATE_PASSWORD}@db.invalid:25060/social_monitor?sslmode=verify-full&sslrootcert=%2Frun%2Fsocial-monitor-db%2Fca-certificate.crt"
+  "postgresql://${MIGRATOR_ROLE}:${MIGRATOR_TEST_CREDENTIAL}@db.invalid:25060/social_monitor?sslmode=verify-full&sslrootcert=%2Frun%2Fsocial-monitor-db%2Fca-certificate.crt"
 assert_invalid_url wrong-cluster-port \
-  "postgresql://${MIGRATOR_ROLE}:${PRIVATE_PASSWORD}@${DATABASE_HOST}:5432/social_monitor?sslmode=verify-full&sslrootcert=%2Frun%2Fsocial-monitor-db%2Fca-certificate.crt"
+  "postgresql://${MIGRATOR_ROLE}:${MIGRATOR_TEST_CREDENTIAL}@${DATABASE_HOST}:5432/social_monitor?sslmode=verify-full&sslrootcert=%2Frun%2Fsocial-monitor-db%2Fca-certificate.crt"
 assert_invalid_url unknown-query-parameter \
   "${VALID_URL}&application_name=unsafe"
 assert_invalid_url excessive-connect-timeout \
   "${VALID_URL/connect_timeout=10/connect_timeout=60}"
 
 reset_case
-rm "$SECRET"
+rm "$ADMIN_URL_PATH"
 assert_invalid_file missing-secret
 reset_case
-chmod 0600 "$SECRET"
-: > "$SECRET"
-chmod 0400 "$SECRET"
+chmod 0600 "$ADMIN_URL_PATH"
+: > "$ADMIN_URL_PATH"
+chmod 0400 "$ADMIN_URL_PATH"
 assert_invalid_file empty-secret
 reset_case
-chmod 0644 "$SECRET"
+chmod 0644 "$ADMIN_URL_PATH"
 assert_invalid_file unsafe-secret-mode
 reset_case
-chmod 0600 "$SECRET"
+chmod 0600 "$ADMIN_URL_PATH"
 assert_invalid_file relaxed-secret-mode
 reset_case
-SECRET_OWNER=deploy-user
+METADATA_OWNER=deploy-user
 assert_invalid_file unsafe-secret-owner
 reset_case
-SECRET_METADATA_STATUS=41
+METADATA_STATUS=41
 assert_invalid_file unreadable-secret-metadata
 reset_case
 rm "$CA_CERTIFICATE"
