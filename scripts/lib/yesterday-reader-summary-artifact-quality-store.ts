@@ -23,6 +23,12 @@ type ArtifactStatusCountRow = {
   readonly count: string;
 };
 
+const escapePostgresIlikeLiteral = (value: string): string =>
+  value
+    .replaceAll("\\", "\\\\")
+    .replaceAll("%", "\\%")
+    .replaceAll("_", "\\_");
+
 export type TopReadFeedItemQualityRow = {
   readonly id: string;
   readonly providerKey: string;
@@ -181,14 +187,14 @@ export class YesterdayReaderSummaryArtifactQualityStore {
         from reader_summary_artifacts
         where tenant_id = $1::uuid
           and workspace_id = $2::uuid
-          and artifact_payload::text ilike $3
+          and artifact_payload::text ilike $3 escape E'\\\\'
         group by status
         order by status
       `,
       [
         scope.tenantId,
         scope.workspaceId,
-        `%${this.badGamingFalsePositiveNeedle}%`,
+        `%${escapePostgresIlikeLiteral(this.badGamingFalsePositiveNeedle)}%`,
       ],
     );
 
@@ -265,12 +271,12 @@ export class YesterdayReaderSummaryArtifactQualityStore {
         where tenant_id = $1::uuid
           and workspace_id = $2::uuid
           and status in ('COMPLETED', 'NO_SIGNAL')
-          and artifact_payload::text ilike $3
+          and artifact_payload::text ilike $3 escape E'\\\\'
       `,
       [
         scope.tenantId,
         scope.workspaceId,
-        `%${this.badGamingFalsePositiveNeedle}%`,
+        `%${escapePostgresIlikeLiteral(this.badGamingFalsePositiveNeedle)}%`,
       ],
     );
 
