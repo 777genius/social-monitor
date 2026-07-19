@@ -138,6 +138,8 @@ capture_reader_summary_publication_migration_state() (
   local sql
   sql_file=
 
+  # Invoked through the EXIT trap below.
+  # shellcheck disable=SC2317
   cleanup_migration_state_sql() {
     if [[ -n $sql_file ]]; then
       rm -f -- "$sql_file"
