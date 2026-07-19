@@ -38,6 +38,13 @@ printf '%s\n' 'test-only-ca-certificate' > "$CA_CERTIFICATE"
 cp "$SCRIPT_DIR/deploy-control-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" "$REPO/ops/deploy/"
 cp "$DEPLOY_ENTRYPOINT" "$REPO/ops/deploy/"
+cp "$SCRIPT_DIR/postgres-backup-deploy-lib.sh" "$REPO/ops/deploy/"
+git init -q -b main "$REPO"
+git -C "$REPO" config user.name 'Publication Migrator Validation'
+git -C "$REPO" config user.email publication-validation@example.invalid
+git -C "$REPO" add ops/deploy
+git -C "$REPO" commit -qm 'test: reviewed target backup helper'
+TARGET_LIBRARY_SHA=$(git -C "$REPO" rev-parse HEAD)
 
 cat > "$FAKE_BIN/psql" <<'SH'
 #!/usr/bin/env bash
@@ -74,8 +81,30 @@ fail() {
   exit 1
 }
 
+deploy_control_file_digest() {
+  sha256sum "$1" | awk '{print $1}'
+}
+
+deploy_control_git_blob_digest() {
+  git -C "$REPO" show "$1:$2" | sha256sum | awk '{print $1}'
+}
+
+stat() {
+  local last_argument=${!#}
+  if [[ $1 == -c && $2 == '%u %a' && \
+        $last_argument == "$REPO/ops/deploy/postgres-backup-deploy-lib.sh" ]]; then
+    printf '0 %s\n' "$(command stat -c '%a' "$last_argument")"
+  else
+    command stat "$@"
+  fi
+}
+
+sha=$TARGET_LIBRARY_SHA
 # shellcheck source=ops/deploy/reader-summary-publication-deploy-lib.sh
 source "$LIBRARY"
+declare -F create_pre_migration_database_backup >/dev/null
+declare -f backup_database | \
+  grep -F 'create_pre_migration_database_backup "$@"' >/dev/null
 
 reader_summary_publication_admin_secret_metadata() {
   local mode
@@ -501,10 +530,25 @@ assert_deploy_backend_preflight_order() {
     ORCHESTRATION_LOG="$orchestration_log" \
     ORCHESTRATION_COUNTER="$counter" \
     ORCHESTRATION_MODE="$mode" \
+    TARGET_LIBRARY_SHA="$TARGET_LIBRARY_SHA" \
       bash -c '
       set -euo pipefail
       source "$1"
+      helper_path=$SOCIAL_MONITOR_DEPLOY_REPO/ops/deploy/postgres-backup-deploy-lib.sh
+      stat() {
+        local last_argument=${!#}
+        if [[ $1 == -c && $2 == "%u %a" && \
+              $last_argument == "$helper_path" ]]; then
+          printf "0 %s\n" "$(command stat -c "%a" "$last_argument")"
+        else
+          command stat "$@"
+        fi
+      }
+      sha=$TARGET_LIBRARY_SHA
       source "$2"
+      declare -F create_pre_migration_database_backup >/dev/null
+      declare -f backup_database | \
+        grep -F "create_pre_migration_database_backup \"\$@\"" >/dev/null
       backend_services() { printf "%s\n" migrate; }
       marker_value() { printf "%s\n" 0123456789abcdef0123456789abcdef01234567; }
       capture_previous_images() { printf "%s\n" capture >> "$ORCHESTRATION_LOG"; }

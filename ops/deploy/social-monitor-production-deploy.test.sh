@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 ENTRYPOINT=$SCRIPT_DIR/social-monitor-production-deploy.sh
+BACKUP_LIBRARY=$SCRIPT_DIR/postgres-backup-deploy-lib.sh
 FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/social-monitor-deploy-test.XXXXXX")
 trap 'rm -rf "$FIXTURE"' EXIT
 
@@ -20,6 +21,7 @@ git -C "$REPO" config user.email deploy-contract@example.invalid
 git -C "$REPO" remote add origin "$ORIGIN"
 install -d "$REPO/apps/frontend" "$REPO/apps/api-gateway" \
   "$REPO/apps/x-collector" "$REPO/ops/deploy" "$REPO/ops/recovery" \
+  "$REPO/prisma/migrations/20260716170000_reader_summary_fail_closed_publication" \
   "$STATE" "$STAGING"
 cp "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/deploy-control-lib.sh" "$REPO/ops/deploy/"
@@ -27,11 +29,17 @@ cp "$SCRIPT_DIR/reader-summary-publication-deploy-lib.sh" \
   "$SCRIPT_DIR/reader-summary-publication-pre-migration.sql" \
   "$SCRIPT_DIR/reader-summary-publication-post-migration.sql" \
   "$REPO/ops/deploy/"
+cp "$SCRIPT_DIR/verify-postgres-backup-coverage.sh" \
+  "$SCRIPT_DIR/prune-pre-autodeploy-backups.sh" \
+  "$BACKUP_LIBRARY" \
+  "$REPO/ops/deploy/"
 cp "$ENTRYPOINT" "$REPO/ops/deploy/"
+cp "$SCRIPT_DIR/../../prisma/migrations/20260716170000_reader_summary_fail_closed_publication/migration.sql" \
+  "$REPO/prisma/migrations/20260716170000_reader_summary_fail_closed_publication/"
 cp "$SCRIPT_DIR/verify-postgres-runtime-topology.py" "$REPO/ops/deploy/"
 cp -R "$SCRIPT_DIR/production-runtime" "$REPO/ops/deploy/"
 printf 'base\n' > "$REPO/README.md"
-git -C "$REPO" add README.md ops/deploy
+git -C "$REPO" add README.md ops/deploy prisma/migrations
 git -C "$REPO" commit -qm 'test: base'
 git -C "$REPO" push -q -u origin main
 BASE_SHA=$(git -C "$REPO" rev-parse HEAD)
@@ -125,17 +133,177 @@ grep -F 'http://127.0.0.1:13080/auth/session' \
   "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" >/dev/null
 # shellcheck disable=SC2016
 grep -F '[[ ! -e $output && ! -L $output && ! -e $partial && ! -L $partial ]]' \
-  "$ENTRYPOINT" >/dev/null
+  "$BACKUP_LIBRARY" >/dev/null
 # shellcheck disable=SC2016
 grep -F '"$ROOT/backups" 10 "$output"' \
-  "$ENTRYPOINT" >/dev/null
-grep -F 'verify-postgres-backup-coverage.sh' "$ENTRYPOINT" >/dev/null
+  "$BACKUP_LIBRARY" >/dev/null
+grep -F 'verify-postgres-backup-coverage.sh' "$BACKUP_LIBRARY" >/dev/null
 # shellcheck disable=SC2016
-backup_move_line=$(grep -nF 'mv "$partial" "$output"' "$ENTRYPOINT" | cut -d: -f1)
+backup_move_line=$(grep -nF 'mv -T -- "$partial" "$output"' \
+  "$BACKUP_LIBRARY" | cut -d: -f1)
 # shellcheck disable=SC2016
 backup_prune_line=$(grep -nF 'prune-pre-autodeploy-backups.sh' \
-  "$ENTRYPOINT" | cut -d: -f1)
+  "$BACKUP_LIBRARY" | cut -d: -f1)
 ((backup_move_line < backup_prune_line))
+backup_integrity_line=$(grep -nF \
+  'pg_restore --file=/dev/null --no-owner --no-privileges' \
+  "$BACKUP_LIBRARY" | cut -d: -f1)
+backup_listing_line=$(grep -nF 'pg_restore -l ' \
+  "$BACKUP_LIBRARY" | cut -d: -f1)
+post_dump_snapshot_line=$(grep -nF \
+  '"$post_dump_migration_state"' "$BACKUP_LIBRARY" | tail -1 | cut -d: -f1)
+((backup_integrity_line < backup_listing_line))
+((backup_listing_line < post_dump_snapshot_line))
+((post_dump_snapshot_line < backup_move_line))
+
+# Exercise the real target wrapper and backup transaction with a fake
+# PostgreSQL client container. Empty, corrupt, failed, wrong-database, and
+# raced archives never escape their partial name or retain credential files.
+BACKUP_SCHEMA=$FIXTURE/backup-schema.txt
+BACKUP_LISTING=$FIXTURE/backup-listing.txt
+BACKUP_MIGRATION_STATE=$FIXTURE/backup-migration-state.txt
+BACKUP_DOCKER_LOG=$FIXTURE/backup-docker.log
+install -d "$ROOT/backups" "$ROOT/secrets/db"
+printf '%s\n' fixture-ca > "$ROOT/secrets/db/ca-certificate.crt"
+cat > "$BACKUP_SCHEMA" <<'TEXT'
+_prisma_migrations
+tenants
+workspaces
+source_items
+feed_items
+reader_summary_artifacts
+outbox_events
+inbox_records
+idempotency_keys
+TEXT
+cat > "$BACKUP_LISTING" <<'TEXT'
+1; 0 1 TABLE DATA public _prisma_migrations owner
+2; 0 2 TABLE DATA public tenants owner
+3; 0 3 TABLE DATA public workspaces owner
+4; 0 4 TABLE DATA public source_items owner
+5; 0 5 TABLE DATA public feed_items owner
+6; 0 6 TABLE DATA public reader_summary_artifacts owner
+7; 0 7 TABLE DATA public outbox_events owner
+8; 0 8 TABLE DATA public inbox_records owner
+9; 0 9 TABLE DATA public idempotency_keys owner
+TEXT
+printf 'reader-summary-publication-migration-state-v1\t0\t0\t0\t0\t0\t0\nexact-hex=5b5d\n' \
+  > "$BACKUP_MIGRATION_STATE"
+
+run_backup_fixture() {
+  local dump_mode=$1
+  local backup_timestamp=$2
+  # Fixture values expand only inside this isolated child shell.
+  # shellcheck disable=SC2016
+  BACKUP_DUMP_MODE=$dump_mode BACKUP_SHA=$BASE_SHA \
+  BACKUP_TIMESTAMP=$backup_timestamp BACKUP_SCHEMA=$BACKUP_SCHEMA \
+  BACKUP_LISTING=$BACKUP_LISTING BACKUP_DOCKER_LOG=$BACKUP_DOCKER_LOG \
+  BACKUP_MIGRATION_STATE=$BACKUP_MIGRATION_STATE \
+  SOCIAL_MONITOR_DEPLOY_TEST_MODE=1 \
+  SOCIAL_MONITOR_DEPLOY_ROOT="$ROOT" \
+  SOCIAL_MONITOR_DEPLOY_REPO="$REPO" \
+  SOCIAL_MONITOR_DEPLOY_CONTROL="$CONTROL" \
+  SOCIAL_MONITOR_DEPLOY_STATE="$STATE" \
+  SOCIAL_MONITOR_DEPLOY_STAGING="$STAGING" \
+  ENTRYPOINT=$ENTRYPOINT bash -c '
+    source "$ENTRYPOINT"
+    helper_path=$SOCIAL_MONITOR_DEPLOY_REPO/ops/deploy/postgres-backup-deploy-lib.sh
+    stat() {
+      local last_argument=${!#}
+      if [[ $1 == -c && $2 == "%u %a" && \
+            $last_argument == "$helper_path" ]]; then
+        printf "0 %s\n" "$(command stat -c "%a" "$last_argument")"
+      else
+        command stat "$@"
+      fi
+    }
+    sha=$BACKUP_SHA
+    source "$SOCIAL_MONITOR_DEPLOY_REPO/ops/deploy/reader-summary-publication-deploy-lib.sh"
+    declare -F create_pre_migration_database_backup >/dev/null
+    declare -f backup_database | \
+      grep -F "create_pre_migration_database_backup \"\$@\"" >/dev/null
+    COMPOSE=(fake_compose)
+    fake_compose() {
+      [[ $* == "--profile app ps -q api" ]] || return 90
+      printf "%s\n" fixture-api
+    }
+    date() {
+      [[ $* == "-u +%Y%m%dT%H%M%SZ" ]] || return 91
+      printf "%s\n" "$BACKUP_TIMESTAMP"
+    }
+    docker() {
+      printf "%s\n" "$*" >> "$BACKUP_DOCKER_LOG"
+      if [[ $1 == inspect ]]; then
+        printf "%s\n" \
+          "DATABASE_URL=postgresql://fixture@db.invalid/social_monitor"
+      elif [[ $* == *"SELECT current_database()"* ]]; then
+        if [[ $BACKUP_DUMP_MODE == wrong-database ]]; then
+          printf "%s\n" postgres
+        else
+          printf "%s\n" social_monitor
+        fi
+      elif [[ $* == *"information_schema.tables"* ]]; then
+        command cat "$BACKUP_SCHEMA"
+      elif [[ $* == *"reader-summary-publication-migration-state-v1"* ]]; then
+        command cat "$BACKUP_MIGRATION_STATE"
+      elif [[ $* == *"pg_dump --format=custom"* ]]; then
+        [[ $BACKUP_DUMP_MODE != dump-failure ]] || return 72
+        [[ $BACKUP_DUMP_MODE != empty ]] && printf "%s\n" fixture-archive
+      elif [[ $* == *"pg_restore --file=/dev/null"* ]]; then
+        [[ $BACKUP_DUMP_MODE != corrupt ]] || return 73
+      elif [[ $* == *"pg_restore -l"* ]]; then
+        command cat "$BACKUP_LISTING"
+      else
+        return 92
+      fi
+    }
+    backup_database "$BACKUP_SHA"
+  '
+}
+
+: > "$BACKUP_DOCKER_LOG"
+valid_backup_output=$(run_backup_fixture valid 20260719T120000Z)
+BACKUP_PREFIX=${BASE_SHA:0:12}
+VALID_BACKUP=$ROOT/backups/pre-autodeploy-${BACKUP_PREFIX}-20260719T120000Z.dump
+[[ -s $VALID_BACKUP ]]
+[[ $(stat -c '%a' "$VALID_BACKUP") == 600 ]]
+grep -F "database-backup=$VALID_BACKUP" <<< "$valid_backup_output" >/dev/null
+grep -F 'pg_restore --file=/dev/null --no-owner --no-privileges' \
+  "$BACKUP_DOCKER_LOG" >/dev/null
+grep -F '20260716170000_reader_summary_fail_closed_publication' \
+  "$BACKUP_DOCKER_LOG" >/dev/null
+grep -F "checksum = :'migration_checksum'" "$BACKUP_DOCKER_LOG" >/dev/null
+mapfile -t migration_snapshot_lines < <(
+  grep -nF 'reader-summary-publication-migration-state-v1' \
+    "$BACKUP_DOCKER_LOG" | cut -d: -f1
+)
+((${#migration_snapshot_lines[@]} == 2))
+dump_capture_line=$(grep -nF 'pg_dump --format=custom' \
+  "$BACKUP_DOCKER_LOG" | cut -d: -f1)
+((migration_snapshot_lines[0] < dump_capture_line && \
+  dump_capture_line < migration_snapshot_lines[1]))
+
+assert_backup_failure_clean() {
+  local mode=$1 timestamp=$2
+  local expected=$ROOT/backups/pre-autodeploy-${BACKUP_PREFIX}-${timestamp}.dump
+  local status
+  set +e
+  run_backup_fixture "$mode" "$timestamp" >/dev/null 2>&1
+  status=$?
+  set -e
+  ((status != 0))
+  [[ ! -e $expected && ! -L $expected ]]
+  [[ ! -e $expected.partial && ! -L $expected.partial ]]
+  if compgen -G "$STATE/database-backup.*" >/dev/null; then
+    echo "$mode retained a temporary or credential-bearing backup file" >&2
+    exit 1
+  fi
+}
+
+assert_backup_failure_clean corrupt 20260719T120001Z
+assert_backup_failure_clean empty 20260719T120002Z
+assert_backup_failure_clean dump-failure 20260719T120003Z
+assert_backup_failure_clean wrong-database 20260719T120004Z
 grep -F 'ops/deploy/host/refresh-codex-auth.sh' "$ENTRYPOINT" >/dev/null
 # shellcheck disable=SC2016
 grep -F 'install -m 0700 -o root -g root "$auth_refresh_source" "$auth_refresh_destination.next"' \
