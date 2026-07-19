@@ -130,12 +130,24 @@ capture_pre_migration_schema_tables() {
     "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' ORDER BY table_name"
 }
 
-capture_reader_summary_publication_migration_state() {
+capture_reader_summary_publication_migration_state() (
   local env_file=$1
   local backup_image=$2
   local migration_checksum=$3
   local migration_id=$READER_SUMMARY_PUBLICATION_MIGRATION_ID
   local sql
+  sql_file=
+
+  cleanup_migration_state_sql() {
+    if [[ -n $sql_file ]]; then
+      rm -f -- "$sql_file"
+    fi
+  }
+  trap cleanup_migration_state_sql EXIT
+  trap 'exit 129' HUP
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  umask 077
 
   # The summary classifies every Prisma lifecycle. The second record is a
   # canonical hex encoding of every target row, including logs and timestamps,
@@ -220,11 +232,21 @@ SELECT 'exact-hex=' || exact_hex
 FROM exact_state;
 SQL
 
+  sql_file=$(mktemp "$STATE/database-backup.XXXXXX.migration-state.sql") || \
+    fail 'database backup migration query file cannot be created'
+  printf '%s\n' "$sql" > "$sql_file" || \
+    fail 'database backup migration query file cannot be written'
+  chmod 0600 "$sql_file" || \
+    fail 'database backup migration query file cannot be secured'
+  [[ -f $sql_file && ! -L $sql_file && -s $sql_file ]] || \
+    fail 'database backup migration query file is invalid'
+
   # shellcheck disable=SC2016 # Expansion occurs in the child shell.
   docker run --rm \
     --env-file "$env_file" \
     -v "$ROOT/secrets/db/ca-certificate.crt:/run/social-monitor-db/ca-certificate.crt:ro" \
+    -v "$sql_file:/run/social-monitor-db/migration-state.sql:ro" \
     "$backup_image" \
-    sh -c 'exec psql "$DATABASE_URL" -X -A -t -v ON_ERROR_STOP=1 -v "migration_id=$1" -v "migration_checksum=$2" -c "$3"' \
-      _ "$migration_id" "$migration_checksum" "$sql"
-}
+    sh -c 'exec psql "$DATABASE_URL" -X -A -t -v ON_ERROR_STOP=1 -v "migration_id=$1" -v "migration_checksum=$2" --file=/run/social-monitor-db/migration-state.sql' \
+      _ "$migration_id" "$migration_checksum"
+)
