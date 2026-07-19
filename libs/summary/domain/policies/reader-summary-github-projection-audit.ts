@@ -3,6 +3,7 @@ import type {
   ReaderSummaryItem,
 } from "../entities/reader-summary-artifact";
 import type { ReaderSummaryCitation } from "../entities/citation";
+import { normalizeGitHubRepositoryFullName } from "../value-objects/github-repository-identity";
 import {
   githubTrendingNarrativeSectionId,
   githubTrendingProviderKey,
@@ -394,22 +395,12 @@ export const canonicalGitHubRepositoryIdentity = (
   );
   return match === null
     ? undefined
-    : normalizeRepositoryFullName(`${match[1]}/${match[2]}`);
+    : normalizeGitHubRepositoryFullName(`${match[1]}/${match[2]}`);
 };
 
 export const normalizeRepositoryFullName = (
   value: string | undefined,
-): string | undefined => {
-  const match = value?.match(/^([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)$/u);
-  return match === null ||
-    match === undefined ||
-    match[1] === "." ||
-    match[1] === ".." ||
-    match[2] === "." ||
-    match[2] === ".."
-    ? undefined
-    : `${match[1]}/${match[2]}`.toLocaleLowerCase("en-US");
-};
+): string | undefined => normalizeGitHubRepositoryFullName(value);
 
 export const nonEmpty = (value: string): boolean => value.trim().length > 0;
 
