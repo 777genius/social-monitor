@@ -70,8 +70,10 @@ initialize_deploy_control_bridge() {
   local entrypoint=$REPO/ops/deploy/social-monitor-production-deploy.sh
   local deploy_library=$REPO/ops/deploy/deploy-control-lib.sh
   local postgres_library=$REPO/ops/deploy/postgres-runtime-deploy-lib.sh
+  local image_rescue_library=$REPO/ops/deploy/backend-image-rescue-lib.sh
 
-  [[ -f $entrypoint && -f $deploy_library && -f $postgres_library ]] || \
+  [[ -f $entrypoint && -f $deploy_library && -f $postgres_library && \
+     -f $image_rescue_library ]] || \
     fail 'current integration is missing deploy control bridge sources'
   DEPLOY_CONTROL_BRIDGE_ENTRYPOINT_DIGEST=$(
     deploy_control_file_digest "$entrypoint"
@@ -82,25 +84,33 @@ initialize_deploy_control_bridge() {
   DEPLOY_CONTROL_BRIDGE_POSTGRES_LIBRARY_DIGEST=$(
     deploy_control_file_digest "$postgres_library"
   )
+  DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_DIGEST=$(
+    deploy_control_file_digest "$image_rescue_library"
+  )
 }
 
 verify_deploy_control_bridge_compatibility() {
   local entrypoint=$REPO/ops/deploy/social-monitor-production-deploy.sh
   local deploy_library=$REPO/ops/deploy/deploy-control-lib.sh
   local postgres_library=$REPO/ops/deploy/postgres-runtime-deploy-lib.sh
+  local image_rescue_library=$REPO/ops/deploy/backend-image-rescue-lib.sh
 
   [[ -n ${DEPLOY_CONTROL_BRIDGE_ENTRYPOINT_DIGEST:-} && \
      -n ${DEPLOY_CONTROL_BRIDGE_LIBRARY_DIGEST:-} && \
-     -n ${DEPLOY_CONTROL_BRIDGE_POSTGRES_LIBRARY_DIGEST:-} ]] || \
+     -n ${DEPLOY_CONTROL_BRIDGE_POSTGRES_LIBRARY_DIGEST:-} && \
+     -n ${DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_DIGEST:-} ]] || \
     fail 'deploy control bridge was not initialized before integration advance'
-  [[ -f $entrypoint && -f $deploy_library && -f $postgres_library ]] || \
+  [[ -f $entrypoint && -f $deploy_library && -f $postgres_library && \
+     -f $image_rescue_library ]] || \
     fail 'target integration is missing deploy control bridge sources'
   [[ $(deploy_control_file_digest "$entrypoint") == \
      "$DEPLOY_CONTROL_BRIDGE_ENTRYPOINT_DIGEST" && \
      $(deploy_control_file_digest "$deploy_library") == \
      "$DEPLOY_CONTROL_BRIDGE_LIBRARY_DIGEST" && \
      $(deploy_control_file_digest "$postgres_library") == \
-     "$DEPLOY_CONTROL_BRIDGE_POSTGRES_LIBRARY_DIGEST" ]] || \
+       "$DEPLOY_CONTROL_BRIDGE_POSTGRES_LIBRARY_DIGEST" && \
+     $(deploy_control_file_digest "$image_rescue_library") == \
+       "$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_DIGEST" ]] || \
     fail 'deploy control changed with runtime assets; deploy the bridge release first'
 }
 
@@ -109,11 +119,14 @@ verify_deploy_control_bridge_target_compatibility() {
   local entrypoint_path=ops/deploy/social-monitor-production-deploy.sh
   local deploy_library_path=ops/deploy/deploy-control-lib.sh
   local postgres_library_path=ops/deploy/postgres-runtime-deploy-lib.sh
+  local image_rescue_library_path=ops/deploy/backend-image-rescue-lib.sh
   local entrypoint_digest deploy_library_digest postgres_library_digest
+  local image_rescue_library_digest
 
   [[ -n ${DEPLOY_CONTROL_BRIDGE_ENTRYPOINT_DIGEST:-} && \
      -n ${DEPLOY_CONTROL_BRIDGE_LIBRARY_DIGEST:-} && \
-     -n ${DEPLOY_CONTROL_BRIDGE_POSTGRES_LIBRARY_DIGEST:-} ]] || \
+     -n ${DEPLOY_CONTROL_BRIDGE_POSTGRES_LIBRARY_DIGEST:-} && \
+     -n ${DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_DIGEST:-} ]] || \
     fail 'deploy control bridge was not initialized before target verification'
   entrypoint_digest=$(
     deploy_control_git_blob_digest "$sha" "$entrypoint_path"
@@ -124,10 +137,15 @@ verify_deploy_control_bridge_target_compatibility() {
   postgres_library_digest=$(
     deploy_control_git_blob_digest "$sha" "$postgres_library_path"
   ) || fail 'target integration is missing the PostgreSQL control bridge library'
+  image_rescue_library_digest=$(
+    deploy_control_git_blob_digest "$sha" "$image_rescue_library_path"
+  ) || fail 'target integration is missing the backend image rescue bridge library'
   [[ $entrypoint_digest == "$DEPLOY_CONTROL_BRIDGE_ENTRYPOINT_DIGEST" && \
      $deploy_library_digest == "$DEPLOY_CONTROL_BRIDGE_LIBRARY_DIGEST" && \
      $postgres_library_digest == \
-       "$DEPLOY_CONTROL_BRIDGE_POSTGRES_LIBRARY_DIGEST" ]] || \
+       "$DEPLOY_CONTROL_BRIDGE_POSTGRES_LIBRARY_DIGEST" && \
+     $image_rescue_library_digest == \
+       "$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_DIGEST" ]] || \
     fail 'deploy control changed with runtime assets; deploy the bridge release first'
 }
 
@@ -249,6 +267,10 @@ deploy_release() {
   fetch_main
   validate_main_commit "$sha"
   install -d -m 0755 "$STATE" "$STAGING" "$RELEASES"
+  if declare -F reconcile_completed_backend_image_rescues >/dev/null; then
+    reconcile_completed_backend_image_rescues || \
+      fail 'completed backend image rescue cleanup could not be reconciled'
+  fi
 
   local current
   current=$(git -C "$REPO" rev-parse HEAD)

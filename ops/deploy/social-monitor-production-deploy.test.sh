@@ -25,6 +25,7 @@ install -d "$REPO/apps/frontend" "$REPO/apps/api-gateway" \
   "$STATE" "$STAGING"
 cp "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/deploy-control-lib.sh" "$REPO/ops/deploy/"
+cp "$SCRIPT_DIR/backend-image-rescue-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/reader-summary-publication-deploy-lib.sh" \
   "$SCRIPT_DIR/reader-summary-publication-pre-migration.sql" \
   "$SCRIPT_DIR/reader-summary-publication-post-migration.sql" \
@@ -126,9 +127,10 @@ git -C "$REPO" checkout -q main
 
 grep -F "if printf '%s\\n' \"\${persistent[@]}\" | grep -qx api && ! refresh_frontend_api_proxy; then" \
   "$ENTRYPOINT" >/dev/null
-grep -F "if [[ \$api_rolled_back == true ]]; then" "$ENTRYPOINT" >/dev/null
+grep -F "if [[ \$api_rolled_back == true ]]; then" \
+  "$SCRIPT_DIR/backend-image-rescue-lib.sh" >/dev/null
 grep -F 'refresh_frontend_api_proxy || return 1' \
-  "$ENTRYPOINT" >/dev/null
+  "$SCRIPT_DIR/backend-image-rescue-lib.sh" >/dev/null
 grep -F 'http://127.0.0.1:13080/auth/session' \
   "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" >/dev/null
 # shellcheck disable=SC2016
@@ -378,9 +380,304 @@ grep -F 'activate_postgres_runtime_control "$sha" "$compatible_backend_sha"' \
 grep -F 'snapshot_postgres_runtime_control "$sha"' \
   "$ENTRYPOINT" >/dev/null
 grep -F 'restore_postgres_runtime_control "$runtime_control_backup"' \
+  "$SCRIPT_DIR/backend-image-rescue-lib.sh" >/dev/null
+grep -F 'rollback_backend_and_runtime_control' "$ENTRYPOINT" >/dev/null
+grep -F 'rollback_backend_images "$state_file" || backend_status=$?' \
+  "$SCRIPT_DIR/backend-image-rescue-lib.sh" >/dev/null
+grep -F 'restore_postgres_runtime_control "$runtime_control_backup" || runtime_status=$?' \
+  "$SCRIPT_DIR/backend-image-rescue-lib.sh" >/dev/null
+grep -F 'backend_image_rescue_prepare "$sha" "$previous"' \
   "$ENTRYPOINT" >/dev/null
-grep -F 'rollback_backend_images "$previous_images"' \
-  "$ENTRYPOINT" >/dev/null
+rescue_prepare_line=$(grep -nF \
+  'backend_image_rescue_prepare "$sha" "$previous"' "$ENTRYPOINT" | cut -d: -f1)
+backend_build_line=$(grep -nF \
+  '"${COMPOSE[@]}" --profile app --profile daily build' \
+  "$ENTRYPOINT" | cut -d: -f1)
+((rescue_prepare_line < backend_build_line))
+
+# A rescue-pin failure exits deploy_backend before preflight, backup, or build.
+BUILD_GUARD_LOG=$FIXTURE/backend-build-guard.log
+set +e
+build_guard_error=$(
+  ENTRYPOINT="$ENTRYPOINT" BUILD_GUARD_LOG="$BUILD_GUARD_LOG" \
+  SOCIAL_MONITOR_DEPLOY_TEST_MODE=1 \
+  SOCIAL_MONITOR_DEPLOY_ROOT="$ROOT" \
+  SOCIAL_MONITOR_DEPLOY_REPO="$REPO" \
+  SOCIAL_MONITOR_DEPLOY_CONTROL="$CONTROL" \
+  SOCIAL_MONITOR_DEPLOY_STATE="$STATE" \
+  SOCIAL_MONITOR_DEPLOY_STAGING="$STAGING" \
+    bash -c '
+      source "$ENTRYPOINT"
+      backend_services() { printf "%s\n" api; }
+      marker_value() { printf "%s\n" 0123456789abcdef0123456789abcdef01234567; }
+      backend_image_rescue_prepare() { return 77; }
+      reader_summary_publication_migrator_preflight() {
+        printf "preflight\n" >> "$BUILD_GUARD_LOG"
+      }
+      backup_database() { printf "backup\n" >> "$BUILD_GUARD_LOG"; }
+      fake_compose() { printf "compose:%s\n" "$*" >> "$BUILD_GUARD_LOG"; }
+      COMPOSE=(fake_compose)
+      deploy_backend fedcba9876543210fedcba9876543210fedcba98
+    ' 2>&1
+)
+build_guard_status=$?
+set -e
+((build_guard_status != 0))
+grep -F 'required rollback images could not be pinned before build' \
+  <<< "$build_guard_error" >/dev/null
+[[ ! -s $BUILD_GUARD_LOG ]]
+
+# The replacement phase is a durable inner/outer transaction seam. Failures in
+# preflight, backup, build, and migration all reach outer rollback as prepared;
+# no healthy service is stopped or recreated in any of those paths.
+assert_pre_replacement_failure() {
+  local stage=$1
+  local expected=$2
+  local log=$FIXTURE/pre-replacement-$stage.log
+  local output status actual
+  : > "$log"
+  set +e
+  output=$(
+    ENTRYPOINT="$ENTRYPOINT" FAILURE_STAGE="$stage" FAILURE_LOG="$log" \
+    SOCIAL_MONITOR_DEPLOY_TEST_MODE=1 \
+    SOCIAL_MONITOR_DEPLOY_ROOT="$ROOT" \
+    SOCIAL_MONITOR_DEPLOY_REPO="$REPO" \
+    SOCIAL_MONITOR_DEPLOY_CONTROL="$CONTROL" \
+    SOCIAL_MONITOR_DEPLOY_STATE="$STATE" \
+    SOCIAL_MONITOR_DEPLOY_STAGING="$STAGING" \
+      bash -c '
+        set -euo pipefail
+        source "$ENTRYPOINT"
+        backend_services() { printf "%s\n" api; }
+        marker_value() {
+          printf "%s\n" 0123456789abcdef0123456789abcdef01234567
+        }
+        backend_image_rescue_prepare() {
+          printf "prepared\n" > "$(backend_image_rescue_phase_file "$2")"
+          printf "prepare\n" >> "$FAILURE_LOG"
+        }
+        backend_image_rescue_mark_replacement_started() {
+          printf "replacement-started\n" > \
+            "$(backend_image_rescue_phase_file "$1")"
+          printf "mark-replacement\n" >> "$FAILURE_LOG"
+        }
+        reader_summary_publication_migrator_preflight() {
+          printf "preflight\n" >> "$FAILURE_LOG"
+          [[ $FAILURE_STAGE != preflight ]]
+        }
+        verify_migration_compatibility() {
+          printf "compatibility\n" >> "$FAILURE_LOG"
+        }
+        backup_database() {
+          printf "backup\n" >> "$FAILURE_LOG"
+          [[ $FAILURE_STAGE != backup ]]
+        }
+        deploy_reader_summary_publication_migrations() {
+          printf "migration\n" >> "$FAILURE_LOG"
+          [[ $FAILURE_STAGE != migration ]]
+        }
+        fake_compose() {
+          if [[ " $* " == *" build "* ]]; then
+            printf "build\n" >> "$FAILURE_LOG"
+            [[ $FAILURE_STAGE != build ]]
+          else
+            printf "compose-up\n" >> "$FAILURE_LOG"
+            return 90
+          fi
+        }
+        COMPOSE=(fake_compose)
+        stop_and_remove_database_services() {
+          printf "stop\n" >> "$FAILURE_LOG"
+          return 91
+        }
+        snapshot_postgres_runtime_control() {
+          printf "%s/runtime-backup\n" "$STATE"
+        }
+        activate_postgres_runtime_control() { :; }
+        verify_compose_scope() { :; }
+        rollback_backend_and_runtime_control() {
+          local phase_file
+          phase_file=$(backend_image_rescue_phase_file "$2")
+          printf "rollback:%s\n" "$(< "$phase_file")" >> "$FAILURE_LOG"
+        }
+        deploy_release_runtime_transaction \
+          fedcba9876543210fedcba9876543210fedcba98 true false
+      ' 2>&1
+  )
+  status=$?
+  set -e
+  ((status != 0))
+  actual=$(< "$log")
+  if [[ $actual != "$expected" ]]; then
+    printf 'pre-replacement-failure-mismatch:%s:actual=%q:output=%q\n' \
+      "$stage" "$actual" "$output" >&2
+    return 1
+  fi
+}
+
+assert_pre_replacement_failure preflight \
+  $'prepare\npreflight\nrollback:prepared'
+assert_pre_replacement_failure backup \
+  $'prepare\npreflight\ncompatibility\nbackup\nrollback:prepared'
+assert_pre_replacement_failure build \
+  $'prepare\npreflight\ncompatibility\nbackup\nbuild\nrollback:prepared'
+assert_pre_replacement_failure migration \
+  $'prepare\npreflight\ncompatibility\nbackup\nbuild\nmigration\nrollback:prepared'
+
+# Every failure after the durable replacement transition is aggregated by the
+# outer transaction. Legacy inner rollback calls would add `inner-rollback`
+# here and cause a second backend rollback from the outer transaction.
+assert_post_replacement_failure() {
+  local stage=$1
+  local log=$FIXTURE/post-replacement-$stage.log
+  local output status
+  : > "$log"
+  set +e
+  output=$(
+    ENTRYPOINT="$ENTRYPOINT" FAILURE_STAGE="$stage" FAILURE_LOG="$log" \
+    SOCIAL_MONITOR_DEPLOY_TEST_MODE=1 \
+    SOCIAL_MONITOR_DEPLOY_ROOT="$ROOT" \
+    SOCIAL_MONITOR_DEPLOY_REPO="$REPO" \
+    SOCIAL_MONITOR_DEPLOY_CONTROL="$CONTROL" \
+    SOCIAL_MONITOR_DEPLOY_STATE="$STATE" \
+    SOCIAL_MONITOR_DEPLOY_STAGING="$STAGING" \
+      bash -c '
+        set -euo pipefail
+        source "$ENTRYPOINT"
+        backend_services() { printf "%s\n" api; }
+        marker_value() {
+          printf "%s\n" 0123456789abcdef0123456789abcdef01234567
+        }
+        backend_image_rescue_prepare() {
+          printf "prepared\n" > "$(backend_image_rescue_phase_file "$2")"
+        }
+        backend_image_rescue_mark_replacement_started() {
+          printf "replacement-started\n" > \
+            "$(backend_image_rescue_phase_file "$1")"
+          printf "mark-replacement\n" >> "$FAILURE_LOG"
+        }
+        reader_summary_publication_migrator_preflight() { :; }
+        verify_migration_compatibility() { :; }
+        backup_database() { :; }
+        deploy_reader_summary_publication_migrations() { :; }
+        capture_effective_postgres_environment() { : > "$1"; }
+        verify_live_postgres_admission() { :; }
+        probe_postgres_maximum_envelope() { :; }
+        fake_compose() {
+          if [[ " $* " == *" build "* ]]; then
+            return 0
+          fi
+          printf "recreate\n" >> "$FAILURE_LOG"
+          [[ $FAILURE_STAGE != recreate ]] || {
+            printf "fail-stage:recreate\n" >> "$FAILURE_LOG"
+            return 72
+          }
+        }
+        COMPOSE=(fake_compose)
+        stop_and_remove_database_services() {
+          printf "stop\n" >> "$FAILURE_LOG"
+          [[ $FAILURE_STAGE != stop ]] || {
+            printf "fail-stage:stop\n" >> "$FAILURE_LOG"
+            return 71
+          }
+        }
+        verify_backend_with_retry() {
+          printf "verify\n" >> "$FAILURE_LOG"
+          [[ $FAILURE_STAGE != health ]] || {
+            printf "fail-stage:health\n" >> "$FAILURE_LOG"
+            return 73
+          }
+        }
+        refresh_frontend_api_proxy() {
+          printf "proxy\n" >> "$FAILURE_LOG"
+          [[ $FAILURE_STAGE != proxy ]] || {
+            printf "fail-stage:proxy\n" >> "$FAILURE_LOG"
+            return 74
+          }
+        }
+        soak_backend_release() {
+          printf "soak\n" >> "$FAILURE_LOG"
+          [[ $FAILURE_STAGE != soak ]] || {
+            printf "fail-stage:soak\n" >> "$FAILURE_LOG"
+            return 75
+          }
+        }
+        snapshot_postgres_runtime_control() {
+          printf "%s/runtime-backup\n" "$STATE"
+        }
+        activate_postgres_runtime_control() { :; }
+        verify_compose_scope() { :; }
+        rollback_backend_images() {
+          printf "inner-rollback\n" >> "$FAILURE_LOG"
+        }
+        rollback_backend_and_runtime_control() {
+          local phase_file
+          phase_file=$(backend_image_rescue_phase_file "$2")
+          printf "outer-rollback:%s\n" "$(< "$phase_file")" \
+            >> "$FAILURE_LOG"
+        }
+        deploy_release_runtime_transaction \
+          fedcba9876543210fedcba9876543210fedcba98 true false
+      ' 2>&1
+  )
+  status=$?
+  set -e
+  ((status != 0))
+  grep -Fx "fail-stage:$stage" "$log" >/dev/null
+  [[ $(grep -c '^mark-replacement$' "$log") == 1 ]]
+  [[ $(grep -c '^outer-rollback:replacement-started$' "$log") == 1 ]]
+  if grep -F 'inner-rollback' "$log" >/dev/null; then
+    printf 'post-replacement failure ran inner and outer rollback: %s: %q\n' \
+      "$stage" "$output" >&2
+    return 1
+  fi
+}
+
+assert_post_replacement_failure stop
+assert_post_replacement_failure recreate
+assert_post_replacement_failure health
+assert_post_replacement_failure proxy
+assert_post_replacement_failure soak
+
+# A process retry cannot snapshot over the runtime-control evidence associated
+# with an interrupted replacement. It fails closed before activation or a new
+# rollback transaction begins.
+INTERRUPTED_RETRY_LOG=$FIXTURE/interrupted-retry.log
+: > "$INTERRUPTED_RETRY_LOG"
+set +e
+interrupted_retry_output=$(
+  ENTRYPOINT="$ENTRYPOINT" FAILURE_LOG="$INTERRUPTED_RETRY_LOG" \
+  SOCIAL_MONITOR_DEPLOY_TEST_MODE=1 \
+  SOCIAL_MONITOR_DEPLOY_ROOT="$ROOT" \
+  SOCIAL_MONITOR_DEPLOY_REPO="$REPO" \
+  SOCIAL_MONITOR_DEPLOY_CONTROL="$CONTROL" \
+  SOCIAL_MONITOR_DEPLOY_STATE="$STATE" \
+  SOCIAL_MONITOR_DEPLOY_STAGING="$STAGING" \
+    bash -c '
+      set -euo pipefail
+      source "$ENTRYPOINT"
+      target=fedcba9876543210fedcba9876543210fedcba98
+      : > "$(backend_image_rescue_state_file "$target")"
+      backend_image_rescue_read_phase() { printf "replacement-started\n"; }
+      snapshot_postgres_runtime_control() {
+        printf "snapshot\n" >> "$FAILURE_LOG"
+      }
+      activate_postgres_runtime_control() {
+        printf "activate\n" >> "$FAILURE_LOG"
+      }
+      rollback_backend_and_runtime_control() {
+        printf "rollback\n" >> "$FAILURE_LOG"
+      }
+      deploy_release_runtime_transaction "$target" true false
+    ' 2>&1
+)
+interrupted_retry_status=$?
+set -e
+((interrupted_retry_status != 0))
+grep -F 'unfinished backend rollback requires operator recovery before retry' \
+  <<< "$interrupted_retry_output" >/dev/null
+[[ ! -s $INTERRUPTED_RETRY_LOG ]]
+rm -f "$STATE/backend-image-rescue-fedcba9876543210fedcba9876543210fedcba98.tsv"
 grep -F 'verify_live_postgres_admission "$postgres_env"' "$ENTRYPOINT" >/dev/null
 grep -F 'probe_postgres_maximum_envelope "$postgres_env"' "$ENTRYPOINT" >/dev/null
 grep -F 'deploy_reader_summary_publication_migrations' "$ENTRYPOINT" >/dev/null
@@ -609,6 +906,7 @@ if run_entrypoint upload "$TARGET_SHA" < "$FIXTURE/bad-frontend.tgz" >/dev/null 
 fi
 
 echo 'Production deploy contract tests passed'
+bash "$SCRIPT_DIR/backend-image-rescue-lib.test.sh"
 bash "$SCRIPT_DIR/postgres-runtime-deploy-lib.test.sh"
 bash "$SCRIPT_DIR/verify-postgres-runtime-topology.test.sh"
 bash "$SCRIPT_DIR/reader-summary-publication-migrator-validation.test.sh"

@@ -206,6 +206,8 @@ else
 fi
 # shellcheck source=ops/deploy/postgres-runtime-deploy-lib.sh
 source "$REPO/ops/deploy/postgres-runtime-deploy-lib.sh"
+# shellcheck source=ops/deploy/backend-image-rescue-lib.sh
+source "$REPO/ops/deploy/backend-image-rescue-lib.sh"
 initialize_deploy_control_bridge
 
 verify_compose_scope() (
@@ -575,54 +577,6 @@ stop_and_remove_database_services() {
   done
 }
 
-capture_previous_images() {
-  local state_file=$1
-  shift
-  : > "$state_file"
-  local service image_id
-  local -a container_ids
-  for service in "$@"; do
-    mapfile -t container_ids < <("${COMPOSE[@]}" --profile app --profile daily ps -q "$service")
-    image_id=''
-    if ((${#container_ids[@]} > 0)); then
-      image_id=$(docker inspect "${container_ids[0]}" --format '{{.Image}}' 2>/dev/null || true)
-    fi
-    if [[ -z $image_id ]]; then
-      image_id=$(docker image inspect "$(compose_image_name "$service")" --format '{{.Id}}' 2>/dev/null || true)
-    fi
-    [[ -n $image_id ]] && printf '%s %s\n' "$service" "$image_id" >> "$state_file"
-  done
-}
-
-restore_previous_image_tags() {
-  local state_file=$1
-  [[ -s $state_file ]] || return 0
-  local service image_id
-  while read -r service image_id; do
-    docker image tag "$image_id" "$(compose_image_name "$service")" || return 1
-  done < "$state_file"
-}
-
-rollback_backend_images() {
-  local state_file=$1
-  [[ -s $state_file ]] || return 0
-  local api_rolled_back=false
-  local -a rollback_services
-  restore_previous_image_tags "$state_file" || return 1
-  mapfile -t rollback_services < <(awk '$1 != "migrate" && $1 != "daily-runner" {print $1}' "$state_file")
-  if ((${#rollback_services[@]} > 0)); then
-    if printf '%s\n' "${rollback_services[@]}" | grep -qx api; then
-      api_rolled_back=true
-    fi
-    stop_and_remove_database_services "${rollback_services[@]}" || return 1
-    "${COMPOSE[@]}" --profile app up -d --no-deps --force-recreate "${rollback_services[@]}" || return 1
-    verify_backend_with_retry "${rollback_services[@]}" || return 1
-    if [[ $api_rolled_back == true ]]; then
-      refresh_frontend_api_proxy || return 1
-    fi
-  fi
-}
-
 verify_migration_compatibility() {
   local from=$1
   local to=$2
@@ -766,7 +720,6 @@ deploy_backend() (
   from=$(marker_value backend)
   mapfile -t services < <(backend_services "$from" "$sha")
   if ((${#services[@]} == 0)); then
-    printf '%s\n' "$sha" > "$STATE/backend.sha"
     return 0
   fi
 
@@ -793,6 +746,10 @@ deploy_backend() (
   mapfile -t captured_services < <(
     printf '%s\n' "${services[@]}" "${persistent[@]}" | awk 'NF && !seen[$0]++'
   )
+  local previous
+  previous=$(backend_image_rescue_state_file "$sha")
+  backend_image_rescue_prepare "$sha" "$previous" "${captured_services[@]}" || \
+    fail 'required rollback images could not be pinned before build'
   local needs_migrate=false
   for service in "${services[@]}"; do
     [[ $service == x-collector || $service == daily-runner ]] || \
@@ -803,8 +760,6 @@ deploy_backend() (
       fail 'reader summary publication migrator preflight failed'
   fi
 
-  local previous=$STATE/previous-images-${sha:0:12}.txt
-  capture_previous_images "$previous" "${captured_services[@]}"
   verify_migration_compatibility "$from" "$sha"
   backup_database "$sha"
 
@@ -825,32 +780,31 @@ deploy_backend() (
     if [[ $database_replacement == true ]]; then
       umask 077
       capture_effective_postgres_environment "$postgres_env"
+      backend_image_rescue_mark_replacement_started "$previous" || \
+        fail 'backend replacement phase could not be persisted'
       if ! stop_and_remove_database_services "${persistent[@]}"; then
-        rollback_backend_images "$previous" || fail 'database service removal and backend rollback both failed'
-        fail 'database service removal failed; previous images restored'
+        fail 'database service removal failed'
       fi
       verify_live_postgres_admission "$postgres_env"
       probe_postgres_maximum_envelope "$postgres_env"
+    else
+      backend_image_rescue_mark_replacement_started "$previous" || \
+        fail 'backend replacement phase could not be persisted'
     fi
     if ! "${COMPOSE[@]}" --profile app up -d --no-deps --force-recreate "${persistent[@]}"; then
-      rollback_backend_images "$previous" || fail 'backend recreate and rollback both failed'
-      fail 'backend recreate failed; previous images restored'
+      fail 'backend recreate failed'
     fi
     if ! verify_backend_with_retry "${persistent[@]}"; then
-      rollback_backend_images "$previous" || fail 'backend health and rollback verification both failed'
-      fail 'backend health failed; previous images restored'
+      fail 'backend health failed'
     fi
     if printf '%s\n' "${persistent[@]}" | grep -qx api && ! refresh_frontend_api_proxy; then
-      rollback_backend_images "$previous" || fail 'frontend API proxy refresh and backend rollback both failed'
-      fail 'frontend API proxy refresh failed; previous backend images restored'
+      fail 'frontend API proxy refresh failed'
     fi
     if [[ $database_replacement == true ]] && \
       ! soak_backend_release "${persistent[@]}" frontend caddy; then
-      rollback_backend_images "$previous" || fail 'backend soak and rollback verification both failed'
-      fail 'backend restart/readiness/502 soak failed; previous images restored'
+      fail 'backend restart/readiness/502 soak failed'
     fi
   fi
-  printf '%s\n' "$sha" > "$STATE/backend.sha"
 )
 
 switch_link() {
@@ -869,7 +823,8 @@ deploy_release_runtime_transaction() {
   local backend=$2
   local runtime_control=$3
   local compatible_backend_sha=$sha
-  local runtime_control_backup previous_images activation_status
+  local runtime_control_backup previous_images previous_phase activation_status
+  local transaction_signal= rollback_status=0
 
   [[ $backend =~ ^(true|false)$ && $runtime_control =~ ^(true|false)$ ]] || \
     fail 'runtime-control deployment classification is invalid'
@@ -890,12 +845,18 @@ deploy_release_runtime_transaction() {
       fail 'control-only runtime activation requires a committed backend marker'
   fi
 
-  runtime_control_backup=$(snapshot_postgres_runtime_control "$sha")
-  previous_images=$STATE/previous-images-${sha:0:12}.txt
-  if [[ $backend == true ]]; then
-    rm -f "$previous_images"
+  previous_images=$(backend_image_rescue_state_file "$sha")
+  if [[ $backend == true && ( -e $previous_images || -L $previous_images ) ]]; then
+    previous_phase=$(backend_image_rescue_read_phase "$previous_images") || \
+      fail 'existing backend image rescue phase is invalid'
+    [[ $previous_phase == prepared ]] || \
+      fail 'unfinished backend rollback requires operator recovery before retry'
   fi
+  runtime_control_backup=$(snapshot_postgres_runtime_control "$sha")
 
+  trap 'transaction_signal=HUP' HUP
+  trap 'transaction_signal=INT' INT
+  trap 'transaction_signal=TERM' TERM
   set +e
   (
     set -euo pipefail
@@ -907,17 +868,28 @@ deploy_release_runtime_transaction() {
   )
   activation_status=$?
   set -e
+  if [[ -n $transaction_signal && $activation_status -eq 0 ]]; then
+    activation_status=1
+  fi
+  trap - HUP INT TERM
   if ((activation_status != 0)); then
-    if [[ $backend == true ]]; then
-      rollback_backend_images "$previous_images" || \
-        fail 'backend release failed and previous containers could not be restored'
+    rollback_backend_and_runtime_control \
+      "$backend" "$previous_images" "$runtime_control_backup" || rollback_status=$?
+    if ((rollback_status != 0)); then
+      fail 'release failed; rollback is incomplete and rescue tags were preserved'
     fi
-    restore_postgres_runtime_control "$runtime_control_backup" || \
-      fail 'release failed and PostgreSQL runtime-control rollback also failed'
-    fail 'release failed; previous PostgreSQL runtime control was restored'
+    fail 'release failed; backend images and PostgreSQL runtime control were restored'
   fi
 
+  if [[ $backend == true ]]; then
+    printf '%s\n' "$sha" > "$STATE/backend.sha.next"
+    mv -f "$STATE/backend.sha.next" "$STATE/backend.sha"
+  fi
   rm -rf "$runtime_control_backup"
+  if [[ $backend == true ]]; then
+    backend_image_rescue_cleanup "$previous_images" || \
+      fail 'release succeeded but exact backend rescue-tag cleanup failed'
+  fi
   if [[ ${COMPOSE[-1]} != \
         "$POSTGRES_RUNTIME_CURRENT/compose.postgres-runtime.yml" ]]; then
     COMPOSE+=(

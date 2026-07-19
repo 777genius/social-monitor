@@ -7,6 +7,7 @@ BASE=$(
   python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["adoptionBaseCommit"])' \
     "$SCRIPT_DIR/postgres-pool-release-contract.json"
 )
+RELEASE_A_COMMIT=83f6932eaaa87a49c64b9f8b07ada5052d47a7b4
 FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/postgres-pool-bootstrap-transition.XXXXXX")
 trap 'rm -rf "$FIXTURE"' EXIT
 
@@ -151,8 +152,11 @@ readlink "$POSTGRES_RUNTIME_CURRENT" \
 printf '#!/usr/bin/env bash\nexit 98\n' > "$FIXTURE/bin/docker"
 chmod 0755 "$FIXTURE/bin/docker"
 
-cp "$PROJECT_ROOT/ops/deploy/social-monitor-production-deploy.sh" \
-  "$REPO/ops/deploy/social-monitor-production-deploy.sh"
+# This is a historical Release A transition. Later control bridges must not be
+# spliced into its exact 18-path producer fixture.
+git -C "$PROJECT_ROOT" show \
+  "$RELEASE_A_COMMIT:ops/deploy/social-monitor-production-deploy.sh" \
+  > "$REPO/ops/deploy/social-monitor-production-deploy.sh"
 cp "$PROJECT_ROOT/ops/deploy/postgres-runtime-deploy-lib.sh" "$REPO/ops/deploy/"
 cp "$PROJECT_ROOT/ops/deploy/reader-summary-publication-deploy-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/reader-summary-publication-pre-migration.sql" \

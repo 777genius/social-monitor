@@ -17,6 +17,7 @@ install -d "$REPO/ops/deploy" "$CONTROL" "$STATE"
 cp "$SCRIPT_DIR/social-monitor-production-deploy.sh" \
   "$SCRIPT_DIR/deploy-control-lib.sh" \
   "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" \
+  "$SCRIPT_DIR/backend-image-rescue-lib.sh" \
   "$REPO/ops/deploy/"
 
 fail() {
@@ -107,6 +108,20 @@ set -e
 grep -F 'deploy the bridge release first' <<< "$bridge_error" >/dev/null
 cp "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" \
   "$REPO/ops/deploy/postgres-runtime-deploy-lib.sh"
+verify_deploy_control_bridge_compatibility
+
+# The image-rescue controller is part of the same control-only bridge digest;
+# a publication/runtime target cannot replace it under the running controller.
+printf '# target rescue mutation\n' >> \
+  "$REPO/ops/deploy/backend-image-rescue-lib.sh"
+set +e
+rescue_bridge_error=$(verify_deploy_control_bridge_compatibility 2>&1)
+rescue_bridge_status=$?
+set -e
+((rescue_bridge_status != 0))
+grep -F 'deploy the bridge release first' <<< "$rescue_bridge_error" >/dev/null
+cp "$SCRIPT_DIR/backend-image-rescue-lib.sh" \
+  "$REPO/ops/deploy/backend-image-rescue-lib.sh"
 verify_deploy_control_bridge_compatibility
 
 echo 'Deploy control library tests passed'

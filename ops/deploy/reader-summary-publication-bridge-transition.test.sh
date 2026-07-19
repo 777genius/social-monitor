@@ -20,13 +20,6 @@ SYNTHESIS_REPO=$FIXTURE/synthesis
 INSTALLED_ENTRYPOINT=$FIXTURE/installed-c59-entrypoint.sh
 
 git -C "$PROJECT_ROOT" cat-file -e "$INSTALLED_CONTROLLER^{commit}"
-for bridge_path in "${BRIDGE_PATHS[@]}"; do
-  cmp -s "$PROJECT_ROOT/$bridge_path" \
-    <(git -C "$PROJECT_ROOT" show "$INSTALLED_CONTROLLER:$bridge_path") || {
-    echo "current bridge differs from c59: $bridge_path" >&2
-    exit 1
-  }
-done
 git -C "$PROJECT_ROOT" show \
   "$INSTALLED_CONTROLLER:ops/deploy/social-monitor-production-deploy.sh" \
   > "$INSTALLED_ENTRYPOINT"
@@ -390,8 +383,8 @@ run_target_case "$FINAL_SHA" helper-preloaded \
   'PostgreSQL backup entrypoint was loaded before target validation' failure
 run_target_case "$FINAL_SHA" correct '' success
 
-# The literal c59 sequence is the authenticated seam: advance, source target,
-# then sync and enter the runtime transaction.
+# The current controller preserves the authenticated c59 seam ordering:
+# advance, source target, then sync and enter the runtime transaction.
 # shellcheck disable=SC2016
 advance_line=$(grep -nF 'advance_integration "$sha"' \
   "$PROJECT_ROOT/ops/deploy/deploy-control-lib.sh" | tail -1 | cut -d: -f1)
