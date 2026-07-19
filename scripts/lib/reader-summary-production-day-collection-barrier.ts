@@ -45,6 +45,20 @@ export const exactProductionDayStepsPassed = (
   });
 };
 
+export const artifactQualityIsReadyForCleanDayE2e = (
+  status: ProductionDayStepStatus,
+): boolean => status === "passed";
+
+export const blockedCleanDayE2eStep = (
+  reason: string,
+): ProductionDayStepReport => ({
+  id: "clean-day-e2e",
+  command: `clean-day-e2e -- skipped: ${reason}`,
+  status: "skipped",
+  durationMs: 0,
+  exitCode: null,
+});
+
 const blockedStepIds = [
   "durable-reader-summary",
   "artifact-quality",
