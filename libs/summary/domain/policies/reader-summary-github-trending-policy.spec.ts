@@ -29,6 +29,90 @@ describe("reader summary GitHub Trending policy", () => {
     ]);
   });
 
+  it("deduplicates normalized repository snapshots before top-three selection", () => {
+    const strongestSnapshot = {
+      ...evidence("build-your-own-x-strong", 1_126, undefined, 11),
+      canonicalUrl:
+        "https://github.com/Codecrafters-io/build-your-own-x/?ref=daily",
+      title: "codecrafters-io/build-your-own-x",
+      observedAt: new Date("2026-07-18T11:00:00.000Z"),
+    };
+    const currentWeakerSnapshot = {
+      ...evidence("build-your-own-x-current", 1_068, undefined, 12),
+      canonicalUrl:
+        "https://github.com/codecrafters-io/build-your-own-x.git",
+      title: "codecrafters-io/build-your-own-x",
+      observedAt: new Date("2026-07-18T12:00:00.000Z"),
+    };
+    const olderEqualSnapshot = {
+      ...evidence("equal-old", 1_100, undefined, 13),
+      canonicalUrl: "https://github.com/example/equal-repo",
+      observedAt: new Date("2026-07-18T10:00:00.000Z"),
+    };
+    const currentEqualSnapshot = {
+      ...evidence("equal-current", 1_100, undefined, 14),
+      canonicalUrl: "https://github.com/example/equal-repo/",
+      observedAt: new Date("2026-07-18T12:00:00.000Z"),
+    };
+    const thirdRepository = evidence("third-repository", 1_050, undefined, 15);
+    const fourthRepository = evidence(
+      "fourth-repository",
+      1_040,
+      undefined,
+      16,
+    );
+
+    const selected = selectGitHubTrendingHighlights([
+      currentWeakerSnapshot,
+      fourthRepository,
+      olderEqualSnapshot,
+      strongestSnapshot,
+      thirdRepository,
+      currentEqualSnapshot,
+    ]);
+
+    expect(selected.map((item) => item.feedItemId)).toEqual([
+      "build-your-own-x-strong",
+      "equal-current",
+      "third-repository",
+    ]);
+    const appendix = buildGitHubTrendingNarrativeAppendix({
+      evidence: [
+        currentWeakerSnapshot,
+        fourthRepository,
+        olderEqualSnapshot,
+        strongestSnapshot,
+        thirdRepository,
+        currentEqualSnapshot,
+      ],
+      citations: [
+        currentWeakerSnapshot,
+        fourthRepository,
+        olderEqualSnapshot,
+        strongestSnapshot,
+        thirdRepository,
+        currentEqualSnapshot,
+      ].map((item) => ({
+        citationId: `citation-${item.feedItemId}`,
+        feedItemId: item.feedItemId,
+        sourceItemId: item.sourceItemId,
+        providerKey: item.providerKey,
+        field: "canonicalUrl" as const,
+        canonicalUrl: item.canonicalUrl,
+      })),
+    });
+
+    expect(appendix?.text).toContain(
+      "codecrafters-io/build-your-own-x**: +1,126 stars today",
+    );
+    expect(appendix?.text).not.toContain("+1,068 stars today");
+    expect(appendix?.citationIds).toEqual([
+      "citation-build-your-own-x-strong",
+      "citation-equal-current",
+      "citation-third-repository",
+    ]);
+  });
+
   it("reads comma-formatted stars gained without confusing total stars", () => {
     const item = {
       ...evidence("repo", 3_703),
@@ -167,12 +251,15 @@ describe("reader summary GitHub Trending policy", () => {
   });
 
   it("builds a compact deterministic appendix from cited highlights", () => {
-    const item = evidence(
-      "owner/repo - useful developer tool",
-      1_234,
-      "github-trending-page",
-      11,
-    );
+    const item = {
+      ...evidence(
+        "owner/repo - useful developer tool",
+        1_234,
+        "github-trending-page",
+        11,
+      ),
+      canonicalUrl: "https://github.com/owner/repo",
+    };
 
     expect(
       buildGitHubTrendingNarrativeAppendix({
@@ -246,7 +333,7 @@ const evidence = (
   sourceBindingId: `binding-${providerKey}`,
   interestId: "interest-ai",
   providerKey,
-  canonicalUrl: `https://example.test/${feedItemId}`,
+  canonicalUrl: `https://github.com/fixture/${feedItemId.replace(/[^A-Za-z0-9_.-]/gu, "-")}`,
   title: feedItemId,
   publishedAt: new Date("2026-07-10T12:00:00.000Z"),
   observedAt: new Date("2026-07-10T12:05:00.000Z"),

@@ -8,6 +8,7 @@ import {
   githubTrendingProviderKey,
   isGitHubTrendingProvider,
 } from "../value-objects/reader-summary-provider-identity";
+import { normalizedGitHubRepositoryIdentity } from "../value-objects/github-repository-identity";
 
 export { githubTrendingProviderKey };
 export const githubTrendingNarrativeSectionId = "github-trending";
@@ -88,10 +89,13 @@ export const primaryReaderSummaryEvidence = (
 
 export const selectGitHubTrendingHighlights = (
   items: readonly SummaryEvidenceItem[],
-): readonly SummaryEvidenceItem[] =>
-  items
+): readonly SummaryEvidenceItem[] => {
+  const candidates = items
     .map((item) => ({
       item,
+      repositoryIdentity: normalizedGitHubRepositoryIdentity(
+        item.canonicalUrl,
+      ),
       rank: githubTrendingRank(item),
       starsGained: githubTrendingStarsGained(item),
     }))
@@ -100,24 +104,37 @@ export const selectGitHubTrendingHighlights = (
         candidate,
       ): candidate is {
         readonly item: SummaryEvidenceItem;
+        readonly repositoryIdentity: string;
         readonly rank: number;
         readonly starsGained: number;
       } =>
         isGitHubTrendingEvidence(candidate.item) &&
+        candidate.repositoryIdentity !== undefined &&
         candidate.rank !== undefined &&
         candidate.rank > maxGitHubTrendingDisplayRepositories &&
         candidate.starsGained !== undefined &&
         candidate.starsGained > minimumGitHubTrendingStarsGained &&
         candidate.item.contentQuality?.eligibleForSummary !== false,
-    )
-    .sort(
-      (left, right) =>
-        right.starsGained - left.starsGained ||
-        right.item.score - left.item.score ||
-        left.item.feedItemId.localeCompare(right.item.feedItemId),
-    )
+    );
+  const strongestByRepository = new Map<
+    string,
+    (typeof candidates)[number]
+  >();
+  for (const candidate of candidates) {
+    const current = strongestByRepository.get(candidate.repositoryIdentity);
+    if (
+      current === undefined ||
+      compareGitHubTrendingHighlightCandidates(candidate, current) < 0
+    ) {
+      strongestByRepository.set(candidate.repositoryIdentity, candidate);
+    }
+  }
+
+  return [...strongestByRepository.values()]
+    .sort(compareGitHubTrendingHighlightCandidates)
     .slice(0, maxGitHubTrendingHighlights)
     .map((candidate) => candidate.item);
+};
 
 export const selectGitHubTrendingDisplayRepositories = (
   items: readonly SummaryEvidenceItem[],
@@ -143,7 +160,9 @@ export const selectGitHubTrendingDisplayRepositories = (
     );
   const byRepository = new Map<string, (typeof candidates)[number]>();
   for (const candidate of candidates) {
-    const key = candidate.item.canonicalUrl.trim().toLocaleLowerCase("en-US");
+    const key =
+      normalizedGitHubRepositoryIdentity(candidate.item.canonicalUrl) ??
+      candidate.item.canonicalUrl.trim().toLocaleLowerCase("en-US");
     if (!byRepository.has(key)) {
       byRepository.set(key, candidate);
     }
@@ -175,6 +194,24 @@ export const selectGitHubTrendingDisplayRepositories = (
     .slice(0, maxGitHubTrendingDisplayRepositories)
     .map((candidate) => candidate.item);
 };
+
+const compareGitHubTrendingHighlightCandidates = (
+  left: {
+    readonly item: SummaryEvidenceItem;
+    readonly repositoryIdentity: string;
+    readonly starsGained: number;
+  },
+  right: {
+    readonly item: SummaryEvidenceItem;
+    readonly repositoryIdentity: string;
+    readonly starsGained: number;
+  },
+): number =>
+  right.starsGained - left.starsGained ||
+  right.item.observedAt.getTime() - left.item.observedAt.getTime() ||
+  right.item.score - left.item.score ||
+  left.repositoryIdentity.localeCompare(right.repositoryIdentity) ||
+  left.item.feedItemId.localeCompare(right.item.feedItemId);
 
 export const selectGitHubTrendingSupplementalEvidence = (
   items: readonly SummaryEvidenceItem[],
