@@ -318,12 +318,6 @@ describe('deployment PostgreSQL budget', () => {
 });
 
 describe('production PostgreSQL construction and entrypoint inventory', () => {
-  const publicationPostgresTestOnlyFiles = new Set([
-    'scripts/check-reader-summary-publication-postgres.ts',
-    'scripts/reader-summary-publication-postgres-legacy.ts',
-    'scripts/reader-summary-publication-postgres-privileges.ts',
-    'scripts/reader-summary-publication-postgres-runtime-guard.ts',
-  ]);
   const sourceFiles = [...runtimeSourceFiles('apps'), ...runtimeSourceFiles('libs')];
   const completeDatabaseSourceFiles = [
     ...sourceFiles,
@@ -373,11 +367,6 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       'scripts/check-github-repo-radar-prisma-live-e2e.ts:Pool',
       'scripts/check-reader-summary-multi-day-quality.ts:Pool',
       'scripts/check-reader-summary-production-regeneration-smoke.ts:Pool',
-      'scripts/check-reader-summary-publication-postgres.ts:Pool',
-      'scripts/check-reader-summary-publication-postgres.ts:Pool',
-      'scripts/check-reader-summary-publication-postgres.ts:Pool',
-      'scripts/check-reader-summary-publication-postgres.ts:Pool',
-      'scripts/check-reader-summary-publication-postgres.ts:Pool',
       'scripts/check-reader-summary-quality-dashboard.ts:Pool',
       'scripts/check-reader-summary-source-quality-trace.ts:Pool',
       'scripts/check-reader-summary-top-read-ranking.ts:Pool',
@@ -389,13 +378,6 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       'scripts/check-yesterday-reader-summary-artifact-quality.ts:Pool',
       'scripts/check-yesterday-social-collection-quality.ts:Pool',
       'scripts/lib/yesterday-social-replay-support.ts:Pool',
-      'scripts/reader-summary-publication-postgres-legacy.ts:Pool',
-      'scripts/reader-summary-publication-postgres-privileges.ts:Pool',
-      'scripts/reader-summary-publication-postgres-privileges.ts:Pool',
-      'scripts/reader-summary-publication-postgres-privileges.ts:Pool',
-      'scripts/reader-summary-publication-postgres-privileges.ts:Pool',
-      'scripts/reader-summary-publication-postgres-privileges.ts:Pool',
-      'scripts/reader-summary-publication-postgres-privileges.ts:Pool',
       'scripts/run-reader-summary-clean-real-day-collection.ts:Pool',
       'scripts/run-reader-summary-production-day.ts:Pool',
     ]);
@@ -428,7 +410,6 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       'scripts/check-github-repo-radar-prisma-live-e2e.ts',
       'scripts/check-reader-summary-multi-day-quality.ts',
       'scripts/check-reader-summary-production-regeneration-smoke.ts',
-      'scripts/check-reader-summary-publication-postgres.ts',
       'scripts/check-reader-summary-quality-dashboard.ts',
       'scripts/check-reader-summary-source-quality-trace.ts',
       'scripts/check-reader-summary-top-read-ranking.ts',
@@ -443,13 +424,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       'scripts/lib/reader-summary-quality-dashboard-published-window.ts',
       'scripts/lib/reader-summary-quality-eval-support.spec.ts',
       'scripts/lib/reader-summary-quality-eval-support.ts',
-      'scripts/lib/yesterday-reader-summary-artifact-quality-store.spec.ts',
-      'scripts/lib/yesterday-reader-summary-artifact-quality-store.ts',
       'scripts/lib/yesterday-social-replay-support.ts',
-      'scripts/reader-summary-publication-postgres-legacy.ts',
-      'scripts/reader-summary-publication-postgres-privileges.ts',
-      'scripts/reader-summary-publication-postgres-runtime-guard.ts',
-      'scripts/reader-summary-publication-postgres18-regression.ts',
       'scripts/run-reader-summary-clean-real-day-collection.ts',
       'scripts/run-reader-summary-production-day.ts',
     ]);
@@ -466,9 +441,6 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
     );
 
     for (const path of directPoolFiles) {
-      if (publicationPostgresTestOnlyFiles.has(path)) {
-        continue;
-      }
       const options = directPoolOptions(readSource(path));
       expect(options.length).toBeGreaterThan(0);
       for (const option of options) {
@@ -497,9 +469,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
 
   it('keeps every direct script and seed pool at two connections or fewer', () => {
     const scriptSources = [
-      ...runtimeSourceFiles('scripts').filter(
-        (path) => !publicationPostgresTestOnlyFiles.has(path),
-      ),
+      ...runtimeSourceFiles('scripts'),
       'prisma/seed.ts',
     ].map(readSource);
     const scriptPoolOptions = scriptSources.flatMap(directPoolOptions);
@@ -528,9 +498,6 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
 
   it('keeps one admitted manual or daily script process within the declared three-connection group', () => {
     for (const path of runtimeSourceFiles('scripts')) {
-      if (publicationPostgresTestOnlyFiles.has(path)) {
-        continue;
-      }
       const source = readSource(path);
       const directMaximum = directPoolOptions(source)
         .map((options) => Number(/\bmax:\s*([12])\b/.exec(options)?.[1] ?? 0))
@@ -550,44 +517,6 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
 
       expect(directMaximum + sharedRuntimeMaximum).toBeLessThanOrEqual(3);
     }
-  });
-
-  it('keeps the PostgreSQL publication harness test-only and explicitly bounded', () => {
-    const expectedPoolMaximums = new Map<string, readonly number[]>([
-      [
-        'scripts/check-reader-summary-publication-postgres.ts',
-        [1, 1, 2, 4, 1],
-      ],
-      ['scripts/reader-summary-publication-postgres-legacy.ts', [1]],
-      [
-        'scripts/reader-summary-publication-postgres-privileges.ts',
-        [1, 1, 1, 1, 1, 1],
-      ],
-      ['scripts/reader-summary-publication-postgres-runtime-guard.ts', []],
-    ]);
-    for (const [path, expectedMaximums] of expectedPoolMaximums) {
-      const maximums = directPoolOptions(readSource(path)).map((options) =>
-        Number(/\bmax:\s*([124])\b/.exec(options)?.[1] ?? 0),
-      );
-      expect(maximums).toEqual(expectedMaximums);
-    }
-
-    const productionImporters = completeDatabaseSourceFiles
-      .filter((path) => !publicationPostgresTestOnlyFiles.has(path))
-      .filter(
-        (path) =>
-          path !==
-          'libs/platform/persistence/src/postgres-runtime-pool-budget.spec.ts',
-      )
-      .filter((path) =>
-        /reader-summary-publication-postgres-(?:legacy|privileges|runtime-guard)/.test(
-          readSource(path),
-        ),
-      );
-    expect(productionImporters).toEqual([]);
-    expect(readSource('package.json')).toContain(
-      'check:reader-summary-publication-postgres',
-    );
   });
 
   it('keeps the production daily dispatcher sequential and within its budget', () => {
@@ -683,53 +612,23 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
     }
     expect(deploy).toContain('exec 8>"$POSTGRES_ADMISSION_LOCK"');
     expect(deploy).toContain(
-      'acquire_postgres_admission_with_daily_priority 8',
+      "flock -w 3600 8 || fail 'timed out waiting for PostgreSQL admission lock'",
     );
-    const deployControl = readSource('ops/deploy/deploy-control-lib.sh');
-    expect(deployControl).toContain('probe_daily_singleton_clear');
-    expect(deployControl).toContain('flock -n "$admission_fd"');
-    expect(deployControl).toContain('flock -u "$admission_fd"');
     expect(deploy).toContain(
-      'activate_postgres_runtime_control "$sha" "$compatible_backend_sha"',
+      'activate_postgres_runtime_control "$sha"',
     );
-    const productionDaily = readSource(
-      'ops/deploy/production-runtime/daily-run.sh',
-    );
-    expect(productionDaily).toContain('control/daily-run-singleton.lock');
-    expect(productionDaily).toContain('control/daily-run.lock');
-    expect(productionDaily).toContain(
-      'POSTGRES_ADMISSION_WAIT_SECONDS=7500',
-    );
-    const productionDailyUnit = readSource(
-      'ops/deploy/production-runtime/social-monitor-daily.service',
-    );
-    expect(productionDailyUnit).toContain('TimeoutStartSec=23400');
-    expect(productionDailyUnit).toContain('Restart=no');
     expect(deploy).toContain(
       'verify_live_postgres_admission "$postgres_env"',
     );
     expect(deploy).toContain('verify-postgres-runtime-topology.py');
     const deployBackend = deploy.slice(deploy.indexOf('deploy_backend()'));
     expect(deployBackend.indexOf('backup_database "$sha"')).toBeLessThan(
-      deployBackend.indexOf('deploy_reader_summary_publication_migrations'),
+      deployBackend.indexOf('migrate npm run migrate:deploy'),
     );
     expect(
-      deployBackend.indexOf('deploy_reader_summary_publication_migrations'),
+      deployBackend.indexOf('migrate npm run migrate:deploy'),
     ).toBeLessThan(
       deployBackend.indexOf('up -d --no-deps --force-recreate'),
-    );
-    const publicationDeploy = readSource(
-      'ops/deploy/reader-summary-publication-deploy-lib.sh',
-    );
-    expect(
-      publicationDeploy.indexOf(
-        '"$secret" "$ca_certificate" "$runtime_role" pre',
-      ),
-    ).toBeLessThan(publicationDeploy.indexOf('exec npm run migrate:deploy'));
-    expect(publicationDeploy.indexOf('exec npm run migrate:deploy')).toBeLessThan(
-      publicationDeploy.indexOf(
-        '"$secret" "$ca_certificate" "$runtime_role" post',
-      ),
     );
     expect(
       deployBackend.indexOf(

@@ -2,17 +2,10 @@ import { credentials, type ChannelCredentials } from "@grpc/grpc-js";
 import {
   AgentRuntimeHealthStatus as GrpcAgentRuntimeHealthStatus,
   AgentRuntimeProvider as GrpcAgentRuntimeProvider,
-  AgentRuntimeSelectedOutputKind as GrpcAgentRuntimeSelectedOutputKind,
   AgentRuntimeServiceClient,
   AgentRuntimeTaskStatus as GrpcAgentRuntimeTaskStatus,
   type AgentRuntimeTaskResponse,
 } from "@social-monitor/contracts/generated/grpc/agent_runtime/v1/agent_runtime";
-import {
-  executionAttestationOutputMatches,
-  isConcreteRuntimePackageVersion,
-  isSha256Hex,
-  subscriptionRuntimeEngine,
-} from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
 import {
   createGrpcDeadline,
   createGrpcRequestMetadata,
@@ -21,7 +14,6 @@ import type { Clock } from "@social-monitor/shared-kernel";
 
 import type {
   AgentRuntimeClientPort,
-  AgentRuntimeExecutionAttestation,
   AgentRuntimeHealthResult,
   AgentRuntimeHealthStatus,
   AgentRuntimeProvider,
@@ -109,7 +101,7 @@ export class GrpcAgentRuntimeClient implements AgentRuntimeClientPort {
           }
 
           try {
-            resolve(fromGrpcTaskResponse(response, command));
+            resolve(fromGrpcTaskResponse(response));
           } catch (parseError) {
             reject(parseError);
           }
@@ -141,10 +133,6 @@ export class GrpcAgentRuntimeClient implements AgentRuntimeClientPort {
               status: fromGrpcHealthStatus(response.status),
               runtimeEngine: response.runtimeEngine,
               runtimeVersion: response.runtimeVersion,
-              launcherSha256:
-                response.launcherSha256.trim().length > 0
-                  ? response.launcherSha256
-                  : undefined,
               warnings: response.warnings.map((warning) => ({
                 code: warning.code,
                 message: warning.message,
@@ -172,131 +160,35 @@ const toGrpcProvider = (
 
 const fromGrpcTaskResponse = (
   response: AgentRuntimeTaskResponse,
-  command: AgentRuntimeTaskCommand,
-): AgentRuntimeTaskResult => {
-  if (response.schemaVersion !== schemaVersion) {
-    throw new Error("Unsupported agent runtime response schema version");
-  }
-  const result: AgentRuntimeTaskResult = {
-    status: fromGrpcTaskStatus(response.status),
-    outputText: optionalOutputText(response.outputText),
-    structuredOutput: parseOptionalJsonObject(response.structuredOutputJson),
-    warnings: response.warnings.map((warning) => ({
-      code: warning.code,
-      message: warning.message,
-    })),
-    usage:
-      response.usage === undefined
-        ? undefined
-        : {
-            inputTokens: response.usage.inputTokens,
-            outputTokens: response.usage.outputTokens,
-            totalTokens: response.usage.totalTokens,
-            estimatedCostUsd: response.usage.estimatedCostUsd,
-          },
-    failure:
-      response.failure === undefined
-        ? undefined
-        : {
-            code: response.failure.code,
-            safeMessage: response.failure.safeMessage,
-            retryable: response.failure.retryable,
-            reconnectRequired: response.failure.reconnectRequired,
-            causeCategory: response.failure.causeCategory,
-            details: response.failure.details,
-          },
-    executionAttestation: readExecutionAttestation(response, command),
-  };
-  if (
-    result.status === "completed" &&
-    (result.executionAttestation === undefined ||
-      !executionAttestationOutputMatches(result.executionAttestation, result))
-  ) {
-    throw new Error(
-      "Completed agent runtime response has an invalid output attestation",
-    );
-  }
-  if (
-    result.status !== "completed" &&
-    result.executionAttestation !== undefined
-  ) {
-    throw new Error(
-      "Non-completed agent runtime response must not be attested",
-    );
-  }
-  return result;
-};
-
-const readExecutionAttestation = (
-  response: AgentRuntimeTaskResponse,
-  command: AgentRuntimeTaskCommand,
-): AgentRuntimeExecutionAttestation | undefined => {
-  const value = response.executionAttestation;
-  if (value === undefined) {
-    return undefined;
-  }
-  const provider = fromGrpcProvider(value.provider);
-  const selectedOutputKind = fromGrpcSelectedOutputKind(
-    value.selectedOutputKind,
-  );
-  if (
-    value.schemaVersion !== 1 ||
-    value.requestId !== command.requestId ||
-    value.purpose !== command.purpose ||
-    provider !== command.provider ||
-    value.model.trim().length === 0 ||
-    value.reasoningEffort.trim().length === 0 ||
-    value.runtimeEngine !== subscriptionRuntimeEngine ||
-    !isConcreteRuntimePackageVersion(value.runtimePackageVersion) ||
-    !isSha256Hex(value.canonicalRequestSha256) ||
-    !isSha256Hex(value.launcherSha256) ||
-    !isSha256Hex(value.selectedOutputSha256)
-  ) {
-    throw new Error("Agent runtime execution attestation is malformed");
-  }
-  return {
-    schemaVersion: 1,
-    requestId: value.requestId,
-    purpose: value.purpose,
-    canonicalRequestSha256: value.canonicalRequestSha256,
-    provider,
-    model: value.model,
-    reasoningEffort: value.reasoningEffort,
-    runtimeEngine: subscriptionRuntimeEngine,
-    runtimePackageVersion: value.runtimePackageVersion,
-    launcherSha256: value.launcherSha256,
-    selectedOutputKind,
-    selectedOutputSha256: value.selectedOutputSha256,
-  };
-};
-
-const fromGrpcProvider = (
-  provider: GrpcAgentRuntimeProvider,
-): AgentRuntimeProvider => {
-  switch (provider) {
-    case GrpcAgentRuntimeProvider.AGENT_RUNTIME_PROVIDER_CODEX:
-      return "codex";
-    case GrpcAgentRuntimeProvider.AGENT_RUNTIME_PROVIDER_CLAUDE:
-      return "claude";
-    case GrpcAgentRuntimeProvider.AGENT_RUNTIME_PROVIDER_UNSPECIFIED:
-    case GrpcAgentRuntimeProvider.UNRECOGNIZED:
-      throw new Error("Attested agent runtime provider is unspecified");
-  }
-};
-
-const fromGrpcSelectedOutputKind = (
-  kind: GrpcAgentRuntimeSelectedOutputKind,
-): AgentRuntimeExecutionAttestation["selectedOutputKind"] => {
-  switch (kind) {
-    case GrpcAgentRuntimeSelectedOutputKind.AGENT_RUNTIME_SELECTED_OUTPUT_KIND_STRUCTURED_OUTPUT:
-      return "structured_output";
-    case GrpcAgentRuntimeSelectedOutputKind.AGENT_RUNTIME_SELECTED_OUTPUT_KIND_OUTPUT_TEXT:
-      return "output_text";
-    case GrpcAgentRuntimeSelectedOutputKind.AGENT_RUNTIME_SELECTED_OUTPUT_KIND_UNSPECIFIED:
-    case GrpcAgentRuntimeSelectedOutputKind.UNRECOGNIZED:
-      throw new Error("Attested agent runtime output kind is unspecified");
-  }
-};
+): AgentRuntimeTaskResult => ({
+  status: fromGrpcTaskStatus(response.status),
+  outputText: optionalString(response.outputText),
+  structuredOutput: parseOptionalJsonObject(response.structuredOutputJson),
+  warnings: response.warnings.map((warning) => ({
+    code: warning.code,
+    message: warning.message,
+  })),
+  usage:
+    response.usage === undefined
+      ? undefined
+      : {
+          inputTokens: response.usage.inputTokens,
+          outputTokens: response.usage.outputTokens,
+          totalTokens: response.usage.totalTokens,
+          estimatedCostUsd: response.usage.estimatedCostUsd,
+        },
+  failure:
+    response.failure === undefined
+      ? undefined
+      : {
+          code: response.failure.code,
+          safeMessage: response.failure.safeMessage,
+          retryable: response.failure.retryable,
+          reconnectRequired: response.failure.reconnectRequired,
+          causeCategory: response.failure.causeCategory,
+          details: response.failure.details,
+        },
+});
 
 const fromGrpcTaskStatus = (
   status: GrpcAgentRuntimeTaskStatus,
@@ -328,8 +220,11 @@ const fromGrpcHealthStatus = (
   }
 };
 
-const optionalOutputText = (value: string): string | undefined =>
-  value.trim().length === 0 ? undefined : value;
+const optionalString = (value: string): string | undefined => {
+  const trimmed = value.trim();
+
+  return trimmed.length === 0 ? undefined : trimmed;
+};
 
 const parseOptionalJsonObject = (
   value: string,

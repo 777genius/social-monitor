@@ -35,7 +35,6 @@ import {
   normalizeOpenAiReaderSummaryNarrative,
   readerSummaryNarrativeMarkdown,
 } from "./openai-responses-reader-summary-narrative";
-import { buildReaderSummaryEvidenceCitationMap } from "./reader-summary-evidence-citation-map";
 
 const qualityFlags = new Set<ReaderSummaryQualityFlag>(
   openAiReaderSummaryQualityFlags,
@@ -54,7 +53,7 @@ export const normalizeOpenAiReaderSummaryDraft = (
   usage: GeneratedReaderSummaryDraft["usage"],
   evalDatasetVersion: string,
 ): GeneratedReaderSummaryDraft => {
-  const citationMap = buildReaderSummaryEvidenceCitationMap(
+  const citationMap = canonicalCitationMapFromEvidence(
     input.evidence.selectedEvidence,
   );
   const headline = readerSummaryHeadline(
@@ -389,6 +388,19 @@ const normalizeRisks = (
           : knownStringSubset(risk.citationIds, knownCitationIds),
     };
   });
+};
+
+const canonicalCitationMapFromEvidence = (
+  evidenceItems: ReaderSummaryModelInput["evidence"]["selectedEvidence"],
+): readonly ReaderSummaryCitation[] => {
+  return evidenceItems.map((item, index) => ({
+    citationId: `c${index + 1}`,
+    feedItemId: item.feedItemId,
+    sourceItemId: item.sourceItemId,
+    providerKey: item.providerKey,
+    field: item.canonicalUrl === undefined ? "title" : "canonicalUrl",
+    canonicalUrl: item.canonicalUrl,
+  }));
 };
 
 const normalizeConfidence = (

@@ -6,12 +6,6 @@ const allowlist = JSON.parse(readFileSync(allowlistPath, 'utf8'));
 const allowedLiteralValues = new Set(allowlist.allowedLiteralValues ?? []);
 const allowedValuePrefixes = allowlist.allowedValuePrefixes ?? [];
 const allowedValuePatterns = [];
-const allowedValuesByPath = new Map(
-  Object.entries(allowlist.allowedValuesByPath ?? {}).map(([path, values]) => [
-    path,
-    new Set(values),
-  ]),
-);
 const ignoredPaths = allowlist.ignoredPaths ?? [];
 const violations = [];
 
@@ -40,13 +34,12 @@ const bearerPattern = /Bearer\s+([A-Za-z0-9._~+/=-]+)/g;
 const generatedKeyPattern = /\b((?:smk|whsec)_[A-Za-z0-9._${}-]+)\b/g;
 const credentialUrlPattern = /\b(?:postgresql|postgres|mysql|redis|amqp):\/\/[^:\s/@]+:([^@\s]+)@/g;
 
-const isAllowedValue = (value, file) => {
+const isAllowedValue = (value) => {
   const normalized = value.trim().replace(/^['"]|['"]$/g, '');
   return (
     allowedLiteralValues.has(normalized) ||
     allowedValuePrefixes.some((prefix) => normalized.startsWith(prefix)) ||
     allowedValuePatterns.some((pattern) => pattern.test(normalized)) ||
-    (file !== undefined && allowedValuesByPath.get(file)?.has(normalized)) ||
     normalized.includes('...')
   );
 };
@@ -74,17 +67,6 @@ for (const value of [
 ]) {
   if (isAllowedValue(value)) {
     violations.push(`${allowlistPath}: synthetic non-placeholder secret "${value}" must not be allowed`);
-  }
-}
-
-const scopedMigratorFixture =
-  'ops/deploy/reader-summary-publication-migrator-validation.test.sh';
-for (const value of ['redacted-test-password', '${PRIVATE_PASSWORD}']) {
-  if (!isAllowedValue(value, scopedMigratorFixture)) {
-    violations.push(`${allowlistPath}: fixture placeholder "${value}" must be allowed in scope`);
-  }
-  if (isAllowedValue(value, 'scripts/check-secrets.mjs')) {
-    violations.push(`${allowlistPath}: fixture placeholder "${value}" must stay file-scoped`);
   }
 }
 
@@ -116,28 +98,28 @@ for (const file of trackedFiles) {
 
   for (const match of content.matchAll(envSecretPattern)) {
     const [, key, value] = match;
-    if (!isAllowedValue(value, file)) {
+    if (!isAllowedValue(value)) {
       report(file, `secret-like env var "${key}" must use a documented placeholder`, value);
     }
   }
 
   for (const match of content.matchAll(bearerPattern)) {
     const [, value] = match;
-    if (!isAllowedValue(value, file)) {
+    if (!isAllowedValue(value)) {
       report(file, 'bearer token literal is not allowed', value);
     }
   }
 
   for (const match of content.matchAll(generatedKeyPattern)) {
     const [, value] = match;
-    if (!isAllowedValue(value, file)) {
+    if (!isAllowedValue(value)) {
       report(file, 'generated API/webhook key literal is not allowed', value);
     }
   }
 
   for (const match of content.matchAll(credentialUrlPattern)) {
     const [, value] = match;
-    if (!isAllowedValue(value, file)) {
+    if (!isAllowedValue(value)) {
       report(file, 'credential URL password must use a documented placeholder', value);
     }
   }

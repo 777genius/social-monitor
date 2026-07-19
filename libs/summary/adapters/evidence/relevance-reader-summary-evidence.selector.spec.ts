@@ -173,6 +173,7 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
       selection.selectedEvidence.map((item) => item.providerKey).sort(),
     ).toEqual([
       "github-trending-page",
+      "github-trending-page",
       "hacker-news",
       "reddit",
       "rss",
@@ -182,11 +183,9 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
       "reddit",
       "rss",
       "github-trending-page",
+      "github-trending-page",
     ]);
     expect(selection.sourceWindow.selectedFeedItemIds).toContain(
-      "feed-trending",
-    );
-    expect(selection.sourceWindow.selectedFeedItemIds).not.toContain(
       "feed-trending-2",
     );
     expect(

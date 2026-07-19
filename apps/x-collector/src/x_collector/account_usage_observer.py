@@ -7,7 +7,6 @@ from uuid import uuid4
 
 from .account_pool import AccountCapacity, AccountPoolSnapshot
 from .account_usage import (
-    AccountUsageAttributionStatus,
     AccountUsageDelta,
     AccountUsageEvent,
     AccountUsageEventType,
@@ -195,24 +194,36 @@ class AccountUsageObserver:
         failure_kind: str | None = None,
         reset_at: datetime | None = None,
     ) -> tuple[AccountUsageEvent, ...]:
-        after_snapshot = self._snapshot_safely()
+        after_snapshot = self._snapshot()
         deltas = account_usage_deltas(usage.before_snapshot, after_snapshot)
-        # Shared pool counters can change in another gRPC request and do not
-        # prove which account executed this pass.
-        events = [
-            self._event(
-                request,
-                event_type,
-                usage=usage,
-                fetched_count=fetched_count,
-                accepted_count=accepted_count,
-                failure_kind=failure_kind,
-                reset_at=reset_at,
-                attribution_status=AccountUsageAttributionStatus.UNKNOWN,
-            ),
-        ]
 
+        if not deltas:
+            return (
+                self._event(
+                    request,
+                    event_type,
+                    usage=usage,
+                    fetched_count=fetched_count,
+                    accepted_count=accepted_count,
+                    failure_kind=failure_kind,
+                    reset_at=reset_at,
+                ),
+            )
+
+        events: list[AccountUsageEvent] = []
         for delta in deltas:
+            events.append(
+                self._event_for_delta(
+                    request,
+                    usage,
+                    delta,
+                    event_type=event_type,
+                    fetched_count=fetched_count,
+                    accepted_count=accepted_count,
+                    failure_kind=failure_kind,
+                    reset_at=reset_at,
+                ),
+            )
             if delta.cooldown_observed:
                 events.append(
                     self._event_for_delta(
@@ -238,7 +249,6 @@ class AccountUsageObserver:
         accepted_count: int | None = None,
         failure_kind: str | None = None,
         reset_at: datetime | None = None,
-        attribution_status: AccountUsageAttributionStatus | None = None,
     ) -> AccountUsageEvent:
         before = delta.before
         after = delta.after
@@ -261,7 +271,6 @@ class AccountUsageObserver:
             failure_kind=failure_kind,
             cooldown_reason=after.cooldown_reason,
             reset_at=reset_at or after.available_at,
-            attribution_status=attribution_status,
         )
 
     def _event(
@@ -284,7 +293,6 @@ class AccountUsageObserver:
         failure_kind: str | None = None,
         cooldown_reason: str | None = None,
         reset_at: datetime | None = None,
-        attribution_status: AccountUsageAttributionStatus | None = None,
     ) -> AccountUsageEvent:
         return AccountUsageEvent(
             event_id=self._event_id_factory(),
@@ -324,7 +332,6 @@ class AccountUsageObserver:
             failure_kind=failure_kind,
             cooldown_reason=cooldown_reason,
             reset_at=reset_at,
-            attribution_status=attribution_status,
         )
 
     def _append_safely(
