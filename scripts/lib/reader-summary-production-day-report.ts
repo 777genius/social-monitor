@@ -53,6 +53,14 @@ export type ProductionDayCollectionQuality = {
     readonly totalAccountCount?: number;
     readonly eligibleAccountCount?: number;
     readonly eventCount?: number;
+    readonly attributionStatus?: "known" | "partial" | "unknown";
+    readonly attributionPolicy?: "warning_only";
+    readonly attributionGateReason?: string;
+    readonly eligibleAccountZeroAttributableOutputWarningCount?: number;
+    readonly attributionWarnings?: readonly {
+      readonly code: string;
+      readonly accountFingerprint: string;
+    }[];
     readonly accounts?: readonly ProductionDayXAccount[];
   };
 };
@@ -65,12 +73,32 @@ type ProductionDayXAccount = {
   readonly ineligibilityReasonCodes?: readonly string[];
   readonly dailyRequests?: number;
   readonly dailyTweets?: number;
-  readonly passSucceededCount?: number;
-  readonly passFailedCount?: number;
+  readonly lastResetDate?: string | null;
+  readonly attributionStatus?: "known" | "partial" | "unknown";
+  readonly passSucceededCount?: number | null;
+  readonly passFailedCount?: number | null;
   readonly rateLimitCount?: number;
   readonly cooldownObservedCount?: number;
   readonly lastUsedAt?: string | null;
   readonly cooldownUntil?: string | null;
+  readonly observedAccountSnapshot?: {
+    readonly observedAt?: string;
+    readonly dailyRequests?: number | null;
+    readonly dailyTweets?: number | null;
+    readonly counterResetDate?: string | null;
+    readonly counterResetDateMatchesTargetDate?: boolean;
+  };
+  readonly targetWindowAttribution?: {
+    readonly collectionDate?: string;
+    readonly status?: "known" | "partial" | "unknown";
+    readonly requestDelta?: number | null;
+    readonly tweetDelta?: number | null;
+    readonly fetchedCount?: number | null;
+    readonly acceptedCount?: number | null;
+    readonly returnedCount?: number | null;
+    readonly passSucceededCount?: number | null;
+    readonly passFailedCount?: number | null;
+  };
 };
 
 export type ProductionDayDurableEvidence = {
@@ -514,6 +542,16 @@ function buildStats(
     xAccountTotalCount: pool?.totalAccountCount ?? null,
     xAccountEligibleCount: pool?.eligibleAccountCount ?? null,
     xAccountUsageEventCount: pool?.eventCount ?? null,
+    xAccountAttribution: {
+      status: pool?.attributionStatus ?? "unknown",
+      policy: pool?.attributionPolicy ?? "warning_only",
+      gateReason:
+        pool?.attributionGateReason ??
+        "attribution_not_reported_warning_only",
+      warningCount:
+        pool?.eligibleAccountZeroAttributableOutputWarningCount ?? null,
+      warnings: pool?.attributionWarnings ?? [],
+    },
     xAccounts:
       pool?.accounts?.flatMap((account) =>
         account.accountFingerprint === undefined ||
@@ -525,6 +563,25 @@ function buildStats(
 }
 
 function normalizedXAccount(account: ProductionDayXAccount) {
+  const observedAccountSnapshot = account.observedAccountSnapshot ?? {
+    observedAt: undefined,
+    dailyRequests: account.dailyRequests ?? null,
+    dailyTweets: account.dailyTweets ?? null,
+    counterResetDate: account.lastResetDate ?? null,
+    counterResetDateMatchesTargetDate: false,
+  };
+  const targetWindowAttribution = account.targetWindowAttribution ?? {
+    collectionDate: undefined,
+    status: account.attributionStatus ?? ("unknown" as const),
+    requestDelta: null,
+    tweetDelta: null,
+    fetchedCount: null,
+    acceptedCount: null,
+    returnedCount: null,
+    passSucceededCount: null,
+    passFailedCount: null,
+  };
+
   return {
     accountFingerprint: account.accountFingerprint as string,
     priorityRank: account.priorityRank as number,
@@ -533,12 +590,16 @@ function normalizedXAccount(account: ProductionDayXAccount) {
     ineligibilityReasonCodes: account.ineligibilityReasonCodes ?? [],
     dailyRequests: account.dailyRequests ?? 0,
     dailyTweets: account.dailyTweets ?? 0,
-    passSucceededCount: account.passSucceededCount ?? 0,
-    passFailedCount: account.passFailedCount ?? 0,
+    lastResetDate: account.lastResetDate ?? null,
+    passSucceededCount: account.passSucceededCount ?? null,
+    passFailedCount: account.passFailedCount ?? null,
     rateLimitCount: account.rateLimitCount ?? 0,
     cooldownObservedCount: account.cooldownObservedCount ?? 0,
     lastUsedAt: account.lastUsedAt ?? null,
     cooldownUntil: account.cooldownUntil ?? null,
+    attributionStatus: targetWindowAttribution.status ?? "unknown",
+    observedAccountSnapshot,
+    targetWindowAttribution,
   };
 }
 
