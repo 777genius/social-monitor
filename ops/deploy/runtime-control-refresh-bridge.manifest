@@ -129,7 +129,7 @@
 000000 - ops/deploy/reader-summary-publication-migrator-validation.test.sh
 000000 - ops/deploy/reader-summary-publication-post-migration.sql
 000000 - ops/deploy/reader-summary-publication-pre-migration.sql
-100644 92915567d82e3eb62783090da9857aedafc926a7 ops/deploy/runtime-control-refresh-bridge-transition.test.sh
+100644 d6fc585ef240dd23c84314d64c59b3d9d1fde338 ops/deploy/runtime-control-refresh-bridge-transition.test.sh
 100644 SELF ops/deploy/runtime-control-refresh-bridge.manifest
 100644 bb17fdc645e7b20ec853c257abd9df6a1fd9dc7f package.json
 000000 - prisma/migrations/20260716170000_reader_summary_fail_closed_publication/migration.sql
