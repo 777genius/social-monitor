@@ -9,6 +9,8 @@ BACKEND_IMAGE_RESCUE_PHASE_VERSION=social-monitor-backend-image-rescue-phase-v1
 
 backend_image_rescue_state_file() {
   local sha=$1
+  # STATE is provided by the production deploy entrypoint that sources this file.
+  # shellcheck disable=SC2153
   printf '%s/backend-image-rescue-%s.tsv\n' "$STATE" "$sha"
 }
 
@@ -63,6 +65,8 @@ backend_image_rescue_image_env() {
 backend_image_rescue_expected_legacy_container_config() {
   case $1 in
     api|agent-runtime|ingestion-worker|intelligence-worker|delivery-service|event-relay)
+      # The dollar expressions are part of the inspected legacy container JSON.
+      # shellcheck disable=SC2016
       printf '%s\n' \
         '["docker-entrypoint.sh"]|["sh","-c","case \"$SERVICE\" in api) exec node dist/apps/api-gateway/src/main.js ;; agent-runtime) exec node dist/apps/agent-runtime/src/main.js ;; ingestion) exec node dist/apps/ingestion-worker/src/main.js ;; intelligence) exec node dist/apps/intelligence-worker/src/main.js ;; delivery) exec node dist/apps/delivery-service/src/main.js ;; event-relay) exec node dist/apps/event-relay/src/main.js ;; *) echo \"Unknown service: $SERVICE\" >&2; exit 64 ;; esac"]|"/app"|"node"|null'
       ;;
@@ -190,6 +194,8 @@ backend_image_rescue_write_phase() (
   [[ ! -L $phase_file ]] || return 1
   next=$phase_file.next.$$
   manifest_name=${state_file##*/}
+  # Invoked through the EXIT trap below.
+  # shellcheck disable=SC2317
   cleanup_phase_next() {
     rm -f "$next"
   }
@@ -211,7 +217,7 @@ backend_image_rescue_read_phase() {
   local state_file=$1
   local phase_file manifest_name version_record version_extra
   local manifest_record manifest_value manifest_extra
-  local phase_record phase_value phase_extra trailing
+  local phase_record phase_value phase_extra _trailing
   backend_image_rescue_validate_structure "$state_file" || return 1
   phase_file=$(backend_image_rescue_phase_file "$state_file")
   [[ -f $phase_file && ! -L $phase_file && -s $phase_file ]] || return 1
@@ -221,7 +227,7 @@ backend_image_rescue_read_phase() {
     IFS=$'\t' read -r version_record version_extra || return 1
     IFS=$'\t' read -r manifest_record manifest_value manifest_extra || return 1
     IFS=$'\t' read -r phase_record phase_value phase_extra || return 1
-    ! IFS= read -r trailing || return 1
+    ! IFS= read -r _trailing || return 1
   } < "$phase_file"
   [[ $version_record == "$BACKEND_IMAGE_RESCUE_PHASE_VERSION" && \
      -z $version_extra && $manifest_record == manifest && \
@@ -296,6 +302,8 @@ backend_image_rescue_reconstruct_running_container() (
     docker container unpause "$container" >/dev/null || return 1
     paused=false
   }
+  # Invoked through the EXIT trap below.
+  # shellcheck disable=SC2317
   cleanup_paused_container() {
     unpause_container || true
   }
@@ -465,6 +473,8 @@ backend_image_rescue_prepare() (
     done
   fi
 
+  # Invoked through the EXIT trap below.
+  # shellcheck disable=SC2317
   cleanup_partial_snapshot() {
     local cleanup_service cleanup_tag phase_file
     [[ $snapshot_complete == false ]] || return 0

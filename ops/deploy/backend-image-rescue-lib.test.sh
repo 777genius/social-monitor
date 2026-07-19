@@ -18,11 +18,12 @@ ID_B=sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 ID_C=sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 ID_D=sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 ID_E=sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+# The dollar expressions are fixture data for the inspected legacy command.
+# shellcheck disable=SC2016
 LEGACY_CONFIG='["docker-entrypoint.sh"]|["sh","-c","case \"$SERVICE\" in api) exec node dist/apps/api-gateway/src/main.js ;; agent-runtime) exec node dist/apps/agent-runtime/src/main.js ;; ingestion) exec node dist/apps/ingestion-worker/src/main.js ;; intelligence) exec node dist/apps/intelligence-worker/src/main.js ;; delivery) exec node dist/apps/delivery-service/src/main.js ;; event-relay) exec node dist/apps/event-relay/src/main.js ;; *) echo \"Unknown service: $SERVICE\" >&2; exit 64 ;; esac"]|"/app"|"node"|null'
 CONFIG='["/entry"]|["node","dist/main.js"]|"/app"|"node"|null'
-SAFE_API_CONFIG='["/usr/local/bin/docker-entrypoint.sh"]|["/usr/local/bin/node","dist/apps/api-gateway/src/main.js"]|"/app"|"node"|null'
+export SAFE_API_CONFIG='["/usr/local/bin/docker-entrypoint.sh"]|["/usr/local/bin/node","dist/apps/api-gateway/src/main.js"]|"/app"|"node"|null'
 SENTINEL_ENV='["RESCUE_SENTINEL_DO_NOT_PERSIST=fixture-only-value"]'
-export SAFE_API_CONFIG
 SHA=1111111111111111111111111111111111111111
 
 FAKE_BIN=$FIXTURE/bin

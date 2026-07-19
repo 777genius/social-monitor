@@ -824,7 +824,7 @@ deploy_release_runtime_transaction() {
   local runtime_control=$3
   local compatible_backend_sha=$sha
   local runtime_control_backup previous_images previous_phase activation_status
-  local transaction_signal= rollback_status=0
+  local transaction_signal="" rollback_status=0
 
   [[ $backend =~ ^(true|false)$ && $runtime_control =~ ^(true|false)$ ]] || \
     fail 'runtime-control deployment classification is invalid'
