@@ -16,6 +16,20 @@ describe("existing yesterday social collection quality report validation", () =>
     expect(validateArtifact(candidate)).toBe(false);
   });
 
+  it("rejects a report containing a mixed-case configured forbidden fragment", () => {
+    const candidate = artifact() as Record<string, unknown>;
+    candidate.diagnostic = "aCcEsS_tOkEn";
+
+    expect(validateArtifact(candidate, ["AcCeSs_ToKeN"])).toBe(false);
+  });
+
+  it("rejects a report missing one required primary source", () => {
+    const candidate = artifact() as Record<string, unknown>;
+    candidate.primarySourceCoverage = ["reddit"];
+
+    expect(validateArtifact(candidate)).toBe(false);
+  });
+
   it.each([
     ["attribution status", contract({ xAccountAttributionStatus: undefined })],
     ["valid attribution status", contract({ xAccountAttributionStatus: "future" })],
@@ -70,11 +84,14 @@ function contract(overrides: Readonly<Record<string, unknown>> = {}) {
   };
 }
 
-function validateArtifact(report: unknown): boolean {
+function validateArtifact(
+  report: unknown,
+  configuredForbiddenFragments = forbiddenSerializedFragments,
+): boolean {
   return isValidExistingYesterdaySocialCollectionQualityReport({
     report,
     expectedCollectionDate: collectionDate,
     requiredPrimarySources,
-    forbiddenSerializedFragments,
+    forbiddenSerializedFragments: configuredForbiddenFragments,
   });
 }

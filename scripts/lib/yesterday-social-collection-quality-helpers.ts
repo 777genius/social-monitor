@@ -143,7 +143,9 @@ export function noRawSecretFragments(
   forbiddenFragments: readonly string[],
 ): boolean {
   const serialized = JSON.stringify(value).toLowerCase();
-  return forbiddenFragments.every((fragment) => !serialized.includes(fragment));
+  return forbiddenFragments.every(
+    (fragment) => !serialized.includes(fragment.toLowerCase()),
+  );
 }
 
 export function providerFeedItemCountAtLeast<
