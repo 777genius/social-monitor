@@ -25,6 +25,8 @@ import {
 import { loadDotenvIfPresent } from "./lib/env-file";
 import { READER_SUMMARY_PRODUCTION_RUNTIME_POLICY } from "./lib/reader-summary-production-runtime-policy";
 import {
+  artifactQualityIsReadyForCleanDayE2e,
+  blockedCleanDayE2eStep,
   blockedProductionDaySteps,
   collectionIsReadyForProductionSummary,
   type ProductionDayStepReport,
@@ -271,18 +273,17 @@ async function main(): Promise<void> {
   }
   steps.push(summaryStep);
 
-  steps.push(
-    runNpm("artifact-quality", [
-      "run",
-      "check:yesterday-reader-summary-artifact-quality",
-      "--",
-      "--update",
-      "--date",
-      collectionDate,
-      ...(allowDegraded ? ["--allow-dirty-collection"] : []),
-      ...(allowHistorical ? ["--allow-historical"] : []),
-    ]),
-  );
+  const artifactQualityStep = runNpm("artifact-quality", [
+    "run",
+    "check:yesterday-reader-summary-artifact-quality",
+    "--",
+    "--update",
+    "--date",
+    collectionDate,
+    ...(allowDegraded ? ["--allow-dirty-collection"] : []),
+    ...(allowHistorical ? ["--allow-historical"] : []),
+  ]);
+  steps.push(artifactQualityStep);
   steps.push(
     runNpm("quality-dashboard", [
       "run",
@@ -316,7 +317,13 @@ async function main(): Promise<void> {
       collectionDate,
     ]),
   );
-  if (shouldRunCleanDayE2e()) {
+  if (!artifactQualityIsReadyForCleanDayE2e(artifactQualityStep.status)) {
+    steps.push(
+      blockedCleanDayE2eStep(
+        "artifact-quality failed; no current-date artifact was written",
+      ),
+    );
+  } else if (shouldRunCleanDayE2e()) {
     steps.push(
       runNpm("clean-day-e2e", [
         "run",

@@ -1,4 +1,6 @@
 import {
+  artifactQualityIsReadyForCleanDayE2e,
+  blockedCleanDayE2eStep,
   blockedProductionDaySteps,
   collectionIsReadyForProductionSummary,
   exactProductionDayStepsPassed,
@@ -66,6 +68,25 @@ describe("production-day collection barrier", () => {
     expect(
       steps.every((step) => step.command.includes("collection quality failed")),
     ).toBe(true);
+  });
+
+  it("does not diagnose a stale clean-day artifact after artifact quality fails", () => {
+    expect(artifactQualityIsReadyForCleanDayE2e("failed")).toBe(false);
+    expect(artifactQualityIsReadyForCleanDayE2e("skipped")).toBe(false);
+    expect(artifactQualityIsReadyForCleanDayE2e("passed")).toBe(true);
+
+    expect(
+      blockedCleanDayE2eStep(
+        "artifact-quality failed; no current-date artifact was written",
+      ),
+    ).toEqual({
+      id: "clean-day-e2e",
+      command:
+        "clean-day-e2e -- skipped: artifact-quality failed; no current-date artifact was written",
+      status: "skipped",
+      durationMs: 0,
+      exitCode: null,
+    });
   });
 
   it("passes only the exact nine executed production steps", () => {
