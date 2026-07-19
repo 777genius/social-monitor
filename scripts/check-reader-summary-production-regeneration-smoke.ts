@@ -21,7 +21,6 @@ import { InMemorySummaryEventPublisher } from "../libs/summary/adapters/messagin
 import { DeterministicReaderSummaryModelAdapter } from "../libs/summary/adapters/model/deterministic-reader-summary-model.adapter";
 import { InMemoryReaderSummaryArtifactRepository } from "../libs/summary/adapters/persistence/in-memory-reader-summary-artifact.repository";
 import { InMemoryReaderSummaryJobRepository } from "../libs/summary/adapters/persistence/in-memory-reader-summary-job.repository";
-import { InMemoryReaderSummaryPublication } from "../libs/summary/adapters/persistence/in-memory-reader-summary-publication";
 import { InMemoryReaderSummaryPolicyRepository } from "../libs/summary/adapters/persistence/in-memory-reader-summary-policy.repository";
 import {
   readerSummaryArtifactFromPrisma,
@@ -434,7 +433,7 @@ async function regenerateSummary(
       policies,
       evidenceSelector,
       new DeterministicReaderSummaryModelAdapter(),
-      new InMemoryReaderSummaryPublication(jobs, artifacts, events),
+      events,
       ids,
       clock,
     ).execute({

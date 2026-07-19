@@ -30,11 +30,6 @@ import {
 } from "./openai-responses-reader-summary-prompt";
 import { parseOpenAiReaderSummaryJsonObject } from "./openai-responses-reader-summary-response-parser";
 import { openAiReaderSummaryJsonSchema } from "./openai-responses-reader-summary-schema";
-import { buildReaderSummaryEvidenceCitationMap } from "./reader-summary-evidence-citation-map";
-import {
-  verifyAndRecordReaderSummaryExecution,
-  type VerifiedReaderSummaryExecutionAttestationSink,
-} from "./reader-summary-execution-attestation";
 import {
   AgentRuntimeModelProviderError,
   buildAgentRuntimeRequestId,
@@ -56,7 +51,6 @@ export type AgentRuntimeReaderSummaryModelAdapterOptions = {
   readonly timeoutMs?: number;
   readonly maxOutputTokens?: number;
   readonly inputTokenDivisor?: number;
-  readonly verifiedAttestationSink?: VerifiedReaderSummaryExecutionAttestationSink;
 };
 
 const provider = "agent-runtime";
@@ -78,7 +72,6 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
   private readonly timeoutMs: number;
   private readonly maxOutputTokens: number;
   private readonly inputTokenDivisor: number;
-  private readonly verifiedAttestationSink?: VerifiedReaderSummaryExecutionAttestationSink;
 
   constructor(options: AgentRuntimeReaderSummaryModelAdapterOptions) {
     this.client = options.client;
@@ -102,7 +95,6 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
       options.inputTokenDivisor,
       defaultInputTokenDivisor,
     );
-    this.verifiedAttestationSink = options.verifiedAttestationSink;
   }
 
   route(
@@ -166,8 +158,9 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
     }
 
     for (const attempt of ["primary", "repair"] as const) {
-      const command = this.buildTaskCommand(input, selectedRoute, attempt);
-      const result = await this.client.runTask(command);
+      const result = await this.client.runTask(
+        this.buildTaskCommand(input, selectedRoute, attempt),
+      );
       try {
         const rawDraft = readAgentRuntimeObjectOutput(
           result,
@@ -185,14 +178,6 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
           usage,
           this.evalDatasetVersion,
         );
-        await verifyAndRecordReaderSummaryExecution({
-          command,
-          result,
-          taskRole: "summary",
-          attempt,
-          normalizedOutput: draft,
-          sink: this.verifiedAttestationSink,
-        });
 
         return { route: selectedRoute, draft };
       } catch (error) {
@@ -304,9 +289,6 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
     input: ReaderSummaryModelInput,
     selectedRoute: ReaderSummaryModelRoute,
   ): ProviderReaderSummaryAttempt {
-    const citationMap = buildReaderSummaryEvidenceCitationMap(
-      input.evidence.selectedEvidence,
-    );
     const noSignalDraft = {
       headline: "No reliable workspace signal yet",
       executiveSummary:
@@ -321,7 +303,7 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
           reason: "insufficient_evidence" as const,
         },
       ],
-      citationMap,
+      citationMap: [],
       qualityFlags: ["no_signal", "limited_sources"] as const,
       confidence: {
         level: "none" as const,

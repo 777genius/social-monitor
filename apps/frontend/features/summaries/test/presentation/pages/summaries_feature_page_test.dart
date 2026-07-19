@@ -66,14 +66,6 @@ void main() {
       find.text('Top 10 repositories in GitHub Trending order'),
       findsOneWidget,
     );
-    expect(
-      find.byKey(const ValueKey('workspace-summary-toolbar-generate')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey('workspace-summary-export')),
-      findsOneWidget,
-    );
     await tester.scrollUntilVisible(
       find.byKey(const ValueKey('reader-summary-top-post-0')),
       500,
@@ -85,6 +77,14 @@ void main() {
     expect(find.text('18K'), findsWidgets);
     expect(find.text('Single source'), findsWidgets);
     expect(find.text('Matching 1 interest'), findsWidgets);
+    expect(
+      find.byKey(const ValueKey('workspace-summary-toolbar-generate')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('workspace-summary-export')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('does not show source-list summary headlines as the lead', (

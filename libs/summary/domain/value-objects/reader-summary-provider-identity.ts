@@ -6,14 +6,6 @@ export type ReaderSummaryProviderIdentity = {
   readonly providerName: string;
 };
 
-export const githubTrendingProviderKey = "github-trending-page";
-
-export const isGitHubTrendingProvider = (
-  item: Readonly<Pick<ReaderSummaryProviderIdentity, "providerKey">>,
-): boolean =>
-  item.providerKey.trim().toLocaleLowerCase("en-US") ===
-  githubTrendingProviderKey;
-
 export const readerSummaryProviderIdentity = (params: {
   readonly providerKey: string;
   readonly providerName?: string;

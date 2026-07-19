@@ -35,7 +35,6 @@ describe("createAgentRuntimeGrpcService", () => {
       status: "completed",
       structuredOutput: { headline: "ok" },
       warnings: [{ code: "test.warning", message: "Heads up" }],
-      executionAttestation: executionAttestation(),
     });
     const service = createAgentRuntimeGrpcService(executor, {
       serviceToken: "secret-token",
@@ -55,10 +54,6 @@ describe("createAgentRuntimeGrpcService", () => {
       status: AgentRuntimeTaskStatus.AGENT_RUNTIME_TASK_STATUS_COMPLETED,
       structuredOutputJson: JSON.stringify({ headline: "ok" }),
       warnings: [{ code: "test.warning", message: "Heads up" }],
-      executionAttestation: expect.objectContaining({
-        requestId: "request-1",
-        runtimePackageVersion: "0.1.0-main.2",
-      }),
     });
   });
 });
@@ -123,19 +118,4 @@ const validRequest = (): AgentRuntimeTaskRequest => ({
   timeoutMs: 10_000,
   cwd: "",
   metadata: {},
-});
-
-const executionAttestation = () => ({
-  schemaVersion: 1 as const,
-  requestId: "request-1",
-  purpose: "social_monitor.summary.generate",
-  canonicalRequestSha256: "a".repeat(64),
-  provider: "codex" as const,
-  model: "gpt-5.5",
-  reasoningEffort: "xhigh",
-  runtimeEngine: "subscription-runtime-cli" as const,
-  runtimePackageVersion: "0.1.0-main.2",
-  launcherSha256: "b".repeat(64),
-  selectedOutputKind: "structured_output" as const,
-  selectedOutputSha256: "c".repeat(64),
 });

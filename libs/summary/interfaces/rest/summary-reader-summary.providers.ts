@@ -45,6 +45,9 @@ import { InMemoryReaderSummaryPolicyRepository } from "../../adapters/persistenc
 import { InMemoryReaderSummaryTopicRecommendationDecisionRepository } from "../../adapters/persistence/in-memory-reader-summary-topic-recommendation-decision.repository";
 import { UsageSummaryQuotaAdapter } from "../../adapters/quota/usage-summary-quota.adapter";
 import type { PrismaSummaryClient } from "../../adapters/persistence/prisma/prisma-summary-client";
+import { PrismaReaderSummaryArtifactRepository } from "../../adapters/persistence/prisma/prisma-reader-summary-artifact.repository";
+import { PrismaReaderSummaryJobRepository } from "../../adapters/persistence/prisma/prisma-reader-summary-job.repository";
+import { PrismaReaderSummaryPolicyRepository } from "../../adapters/persistence/prisma/prisma-reader-summary-policy.repository";
 import { PrismaReaderSummaryTopicRecommendationDecisionRepository } from "../../adapters/persistence/prisma/prisma-reader-summary-topic-recommendation-decision.repository";
 import { BuildReaderSummaryTopicMapUseCase } from "../../features/build-reader-summary-topic-map/build-reader-summary-topic-map.use-case";
 import { ExecuteReaderSummaryJobUseCase } from "../../features/execute-reader-summary-job/execute-reader-summary-job.use-case";
@@ -63,15 +66,14 @@ import {
   type ReaderSummaryContextProviderPort,
   type ReaderSummaryCoverageCounterPort,
   type ReaderSummaryEvidenceSelectorPort,
-  type ReaderSummaryGitHubProjectionReaderPort,
   type ReaderSummaryJobRepositoryPort,
   type ReaderSummaryJobQueuePort,
   type ReaderSummaryPolicyRepositoryPort,
   type ReaderSummaryPreviewMediaEnricherPort,
-  type ReaderSummaryPublicationPort,
   type ReaderSummaryTopicCollectionMetricsReaderPort,
   type ReaderSummaryTopicRecommendationDecisionRepositoryPort,
   type StoryRankingMetricsPort,
+  type SummaryEventPublisherPort,
   type SummaryMemoryPort,
   type UserSummaryPreferenceReaderPort,
 } from "../../ports";
@@ -79,15 +81,14 @@ import {
   READER_SUMMARY_ARTIFACT_REPOSITORY,
   READER_SUMMARY_CONTEXT_PROVIDER,
   READER_SUMMARY_EVIDENCE_SELECTOR,
-  READER_SUMMARY_GITHUB_PROJECTION_READER,
   READER_SUMMARY_JOB_QUEUE,
   READER_SUMMARY_JOB_REPOSITORY,
   READER_SUMMARY_MODEL_PROVIDER_MODE,
   READER_SUMMARY_OPENAI_RESPONSES_MODEL_OPTIONS,
   READER_SUMMARY_POLICY_REPOSITORY,
-  READER_SUMMARY_PUBLICATION,
   READER_SUMMARY_PREVIEW_MEDIA_ENRICHER,
   READER_SUMMARY_TOPIC_LABELER_MODE,
+  SUMMARY_EVENT_PUBLISHER,
   SUMMARY_MEMORY,
   SUMMARY_USER_SUMMARY_PREFERENCE_READER,
   SUMMARY_JOB_QUEUE_MODE,
@@ -101,16 +102,12 @@ import {
   type SummaryPersistenceMode,
 } from "./summary-provider-tokens";
 import { readerSummaryCoverageProvider } from "./summary-reader-summary-coverage.provider";
-import { summaryReaderSummaryPersistenceProviders } from "./summary-reader-summary-persistence.providers";
-import { readerSummaryPublicationProvider } from "./summary-reader-summary-publication.provider";
 
 export const summaryReaderSummaryProviders: Provider[] = [
   InMemoryReaderSummaryJobRepository,
   InMemoryReaderSummaryArtifactRepository,
   InMemoryReaderSummaryPolicyRepository,
   InMemoryReaderSummaryTopicRecommendationDecisionRepository,
-  ...summaryReaderSummaryPersistenceProviders,
-  readerSummaryPublicationProvider,
   {
     provide: StoryRankingMetricsRecorder,
     useFactory: (metrics: InMemoryMetricsRecorder): StoryRankingMetricsPort =>
@@ -142,6 +139,60 @@ export const summaryReaderSummaryProviders: Provider[] = [
       InMemoryMetricsRecorder,
       SUMMARY_RABBITMQ_QUEUE_CHANNEL,
       SUMMARY_RABBITMQ_JOB_QUEUE_OPTIONS,
+    ],
+  },
+  {
+    provide: READER_SUMMARY_JOB_REPOSITORY,
+    useFactory: (
+      mode: SummaryPersistenceMode,
+      prisma: PrismaSummaryClient | null,
+      inMemoryReaderSummaryJobs: InMemoryReaderSummaryJobRepository,
+    ): ReaderSummaryJobRepositoryPort =>
+      mode === "prisma"
+        ? new PrismaReaderSummaryJobRepository(
+            requirePrismaSummaryClient(prisma),
+          )
+        : inMemoryReaderSummaryJobs,
+    inject: [
+      SUMMARY_PERSISTENCE_MODE,
+      SUMMARY_PRISMA_CLIENT,
+      InMemoryReaderSummaryJobRepository,
+    ],
+  },
+  {
+    provide: READER_SUMMARY_ARTIFACT_REPOSITORY,
+    useFactory: (
+      mode: SummaryPersistenceMode,
+      prisma: PrismaSummaryClient | null,
+      inMemoryReaderSummaryArtifacts: InMemoryReaderSummaryArtifactRepository,
+    ): ReaderSummaryArtifactRepositoryPort =>
+      mode === "prisma"
+        ? new PrismaReaderSummaryArtifactRepository(
+            requirePrismaSummaryClient(prisma),
+          )
+        : inMemoryReaderSummaryArtifacts,
+    inject: [
+      SUMMARY_PERSISTENCE_MODE,
+      SUMMARY_PRISMA_CLIENT,
+      InMemoryReaderSummaryArtifactRepository,
+    ],
+  },
+  {
+    provide: READER_SUMMARY_POLICY_REPOSITORY,
+    useFactory: (
+      mode: SummaryPersistenceMode,
+      prisma: PrismaSummaryClient | null,
+      inMemoryReaderSummaryPolicies: InMemoryReaderSummaryPolicyRepository,
+    ): ReaderSummaryPolicyRepositoryPort =>
+      mode === "prisma"
+        ? new PrismaReaderSummaryPolicyRepository(
+            requirePrismaSummaryClient(prisma),
+          )
+        : inMemoryReaderSummaryPolicies,
+    inject: [
+      SUMMARY_PERSISTENCE_MODE,
+      SUMMARY_PRISMA_CLIENT,
+      InMemoryReaderSummaryPolicyRepository,
     ],
   },
   {
@@ -325,11 +376,10 @@ export const summaryReaderSummaryProviders: Provider[] = [
       readerSummaryPolicies: ReaderSummaryPolicyRepositoryPort,
       evidenceSelector: ReaderSummaryEvidenceSelectorPort,
       readerSummaryModel: MeteredReaderSummaryModelAdapter,
-      publications: ReaderSummaryPublicationPort,
+      events: SummaryEventPublisherPort,
       contextProvider: ReaderSummaryContextProviderPort,
       userSummaryPreferences: UserSummaryPreferenceReaderPort,
       topicMapBuilder: BuildReaderSummaryTopicMapUseCase,
-      githubProjectionReader: ReaderSummaryGitHubProjectionReaderPort,
     ) =>
       new ExecuteReaderSummaryJobUseCase(
         readerSummaryJobs,
@@ -337,14 +387,12 @@ export const summaryReaderSummaryProviders: Provider[] = [
         readerSummaryPolicies,
         evidenceSelector,
         readerSummaryModel,
-        publications,
+        events,
         new CryptoIdGenerator(),
         new SystemClock(),
         contextProvider,
         userSummaryPreferences,
         topicMapBuilder,
-        undefined,
-        githubProjectionReader,
       ),
     inject: [
       READER_SUMMARY_JOB_REPOSITORY,
@@ -352,11 +400,10 @@ export const summaryReaderSummaryProviders: Provider[] = [
       READER_SUMMARY_POLICY_REPOSITORY,
       READER_SUMMARY_EVIDENCE_SELECTOR,
       MeteredReaderSummaryModelAdapter,
-      READER_SUMMARY_PUBLICATION,
+      SUMMARY_EVENT_PUBLISHER,
       READER_SUMMARY_CONTEXT_PROVIDER,
       SUMMARY_USER_SUMMARY_PREFERENCE_READER,
       BuildReaderSummaryTopicMapUseCase,
-      READER_SUMMARY_GITHUB_PROJECTION_READER,
     ],
   },
   {
