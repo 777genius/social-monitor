@@ -232,7 +232,15 @@ run_backup_fixture() {
       printf "%s\n" "$BACKUP_TIMESTAMP"
     }
     docker() {
+      local argument migration_sql_file=
       printf "%s\n" "$*" >> "$BACKUP_DOCKER_LOG"
+      for argument in "$@"; do
+        case $argument in
+          *:/run/social-monitor-db/migration-state.sql:ro)
+            migration_sql_file=${argument%:/run/social-monitor-db/migration-state.sql:ro}
+            ;;
+        esac
+      done
       if [[ $1 == inspect ]]; then
         printf "%s\n" \
           "DATABASE_URL=postgresql://fixture@db.invalid/social_monitor"
@@ -244,7 +252,27 @@ run_backup_fixture() {
         fi
       elif [[ $* == *"information_schema.tables"* ]]; then
         command cat "$BACKUP_SCHEMA"
-      elif [[ $* == *"reader-summary-publication-migration-state-v1"* ]]; then
+      elif [[ -n $migration_sql_file ]]; then
+        [[ -f $migration_sql_file && ! -L $migration_sql_file && \
+          -s $migration_sql_file ]]
+        [[ $(command stat -c "%a" "$migration_sql_file") == 600 ]]
+        grep -F "WHERE migration_name = :" \
+          "$migration_sql_file" >/dev/null
+        grep -F "checksum = :" \
+          "$migration_sql_file" >/dev/null
+        [[ $* == *"--file=/run/social-monitor-db/migration-state.sql"* ]]
+        [[ $* == *"-v \"migration_id=\$1\""* ]]
+        [[ $* == *"-v \"migration_checksum=\$2\""* ]]
+        [[ $* != *"-c \"\$3\""* && $* != *"--command"* ]]
+        [[ ${*: -2:1} == \
+          20260716170000_reader_summary_fail_closed_publication ]]
+        [[ ${*: -1} =~ ^[0-9a-f]{64}$ ]]
+        printf "migration-state-sql-file:mode=600:variables-via-file\n" \
+          >> "$BACKUP_DOCKER_LOG"
+        if [[ $BACKUP_DUMP_MODE == signal-* ]]; then
+          kill -s "${BACKUP_DUMP_MODE#signal-}" "$BASHPID"
+          return 93
+        fi
         command cat "$BACKUP_MIGRATION_STATE"
       elif [[ $* == *"pg_dump --format=custom"* ]]; then
         [[ $BACKUP_DUMP_MODE != dump-failure ]] || return 72
@@ -272,9 +300,16 @@ grep -F 'pg_restore --file=/dev/null --no-owner --no-privileges' \
   "$BACKUP_DOCKER_LOG" >/dev/null
 grep -F '20260716170000_reader_summary_fail_closed_publication' \
   "$BACKUP_DOCKER_LOG" >/dev/null
-grep -F "checksum = :'migration_checksum'" "$BACKUP_DOCKER_LOG" >/dev/null
+[[ $(grep -cFx \
+  'migration-state-sql-file:mode=600:variables-via-file' \
+  "$BACKUP_DOCKER_LOG") == 2 ]]
+if grep -F -- '-c "$3"' "$BACKUP_DOCKER_LOG" >/dev/null || \
+  grep -F -- '--command' "$BACKUP_DOCKER_LOG" >/dev/null; then
+  echo 'migration ledger SQL used a psql command argument' >&2
+  exit 1
+fi
 mapfile -t migration_snapshot_lines < <(
-  grep -nF 'reader-summary-publication-migration-state-v1' \
+  grep -nF 'migration-state-sql-file:mode=600:variables-via-file' \
     "$BACKUP_DOCKER_LOG" | cut -d: -f1
 )
 ((${#migration_snapshot_lines[@]} == 2))
@@ -304,6 +339,9 @@ assert_backup_failure_clean corrupt 20260719T120001Z
 assert_backup_failure_clean empty 20260719T120002Z
 assert_backup_failure_clean dump-failure 20260719T120003Z
 assert_backup_failure_clean wrong-database 20260719T120004Z
+assert_backup_failure_clean signal-HUP 20260719T120005Z
+assert_backup_failure_clean signal-INT 20260719T120006Z
+assert_backup_failure_clean signal-TERM 20260719T120007Z
 grep -F 'ops/deploy/host/refresh-codex-auth.sh' "$ENTRYPOINT" >/dev/null
 # shellcheck disable=SC2016
 grep -F 'install -m 0700 -o root -g root "$auth_refresh_source" "$auth_refresh_destination.next"' \
