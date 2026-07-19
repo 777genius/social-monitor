@@ -2,7 +2,12 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 
-import { evaluateXAccountHealth } from "./x-account-pool-health";
+import {
+  buildXAccountAttributionSummary,
+  buildXAccountReport,
+  type XAccountStateRow,
+  type XAccountUsageEventRow,
+} from "./x-account-attribution-report";
 
 type XRunRow = {
   readonly run_id?: string;
@@ -34,41 +39,6 @@ type XCollectorJsonWarning = {
   readonly runId: string | null;
   readonly field: "input_json" | "stats_json";
   readonly reason: string;
-};
-
-type XAccountUsageEventRow = {
-  readonly event_id?: string;
-  readonly event_type?: string;
-  readonly occurred_at?: string;
-  readonly account_id?: number | null;
-  readonly username?: string | null;
-  readonly estimated_request_cost?: number | null;
-  readonly daily_requests_limit?: number | null;
-  readonly daily_tweets_limit?: number | null;
-  readonly account_priority?: number | null;
-  readonly requests_before?: number | null;
-  readonly requests_after?: number | null;
-  readonly tweets_before?: number | null;
-  readonly tweets_after?: number | null;
-  readonly fetched_count?: number | null;
-  readonly accepted_count?: number | null;
-  readonly returned_count?: number | null;
-  readonly failure_kind?: string | null;
-  readonly cooldown_reason?: string | null;
-  readonly reset_at?: string | null;
-};
-
-type XAccountStateRow = {
-  readonly id?: number;
-  readonly username?: string;
-  readonly status?: number;
-  readonly daily_requests?: number;
-  readonly daily_tweets?: number;
-  readonly last_reset_date?: string | null;
-  readonly available_until?: string | null;
-  readonly last_used_at?: string | null;
-  readonly cooldown_reason?: string | null;
-  readonly busy?: number;
 };
 
 type BuildParams = {
@@ -227,12 +197,29 @@ export function buildXAccountPoolReport(params: BuildParams) {
       "ledger_file_missing",
       [],
       observedAt,
+      params.collectionDate,
     );
   }
+  const targetRunsResult = readXRunRows(params.ledgerPath);
+  const targetRuns = targetRunsResult.ok
+    ? targetRunsResult.rows.filter((row) =>
+        runTargetsCollectionDate(row, params.collectionDate),
+      )
+    : [];
+  const globalCollectionSucceeded =
+    targetRuns.some((row) => row.status === "completed") &&
+    targetRuns.some((row) => normalizedTweetCount(row.tweets_count) > 0);
 
   const stateResult = readXAccountStateRows(params.ledgerPath);
   if (!stateResult.ok) {
-    return emptyXAccountPoolReport(false, stateResult.error, [], observedAt);
+    return emptyXAccountPoolReport(
+      false,
+      stateResult.error,
+      [],
+      observedAt,
+      params.collectionDate,
+      globalCollectionSucceeded,
+    );
   }
 
   const eventResult = readXAccountUsageEventRows(params);
@@ -242,6 +229,8 @@ export function buildXAccountPoolReport(params: BuildParams) {
       eventResult.error,
       stateResult.rows,
       observedAt,
+      params.collectionDate,
+      globalCollectionSucceeded,
     );
   }
 
@@ -276,6 +265,8 @@ export function buildXAccountPoolReport(params: BuildParams) {
         accountKey,
         state: stateByAccount.get(accountKey),
         events: eventsByAccount.get(accountKey) ?? [],
+        allEvents: events,
+        collectionDate: params.collectionDate,
         observedAt,
       }),
     )
@@ -284,6 +275,12 @@ export function buildXAccountPoolReport(params: BuildParams) {
         left.priorityRank - right.priorityRank ||
         left.accountFingerprint.localeCompare(right.accountFingerprint),
     );
+  const attribution = buildXAccountAttributionSummary({
+    collectionDate: params.collectionDate,
+    events,
+    accounts,
+    globalCollectionSucceeded,
+  });
 
   return {
     available: true,
@@ -295,8 +292,8 @@ export function buildXAccountPoolReport(params: BuildParams) {
     observedAt: observedAt.toISOString(),
     eventCount: events.length,
     passStartedCount: countEvents(events, "pass_started"),
-    passSucceededCount: countEvents(events, "pass_succeeded"),
-    passFailedCount: countEvents(events, "pass_failed"),
+    passSucceededCount: attribution.passSucceededCount,
+    passFailedCount: attribution.passFailedCount,
     cooldownObservedCount: countEvents(events, "cooldown_observed"),
     rateLimitCount: events.filter(isRateLimitEvent).length,
     accountLimitProfileObservedCount: accounts.filter(
@@ -308,12 +305,16 @@ export function buildXAccountPoolReport(params: BuildParams) {
       events,
       (event) => event.estimated_request_cost,
     ),
-    totalRequestDelta: sumEventNumbers(events, requestDelta),
-    totalTweetDelta: sumEventNumbers(events, tweetDelta),
-    totalReturnedCount: sumEventNumbers(
-      events,
-      (event) => event.returned_count,
-    ),
+    totalRequestDelta: attribution.requestDelta,
+    totalTweetDelta: attribution.tweetDelta,
+    totalReturnedCount: attribution.returnedCount,
+    attributionStatus: attribution.status,
+    attributionPolicy: attribution.attributionPolicy,
+    attributionGateReason: attribution.gateReason,
+    eligibleAccountZeroAttributableOutputWarningCount:
+      attribution.eligibleAccountZeroAttributableOutputWarningCount,
+    attributionWarnings: attribution.warnings,
+    targetWindowAttribution: attribution,
     accounts,
     readError: null,
   } as const;
@@ -361,15 +362,25 @@ function emptyXAccountPoolReport(
   readError: string | null,
   stateRows: readonly XAccountStateRow[] = [],
   observedAt: Date = new Date(),
+  collectionDate = "unknown",
+  globalCollectionSucceeded = false,
 ) {
   const accounts = stateRows.map((state) =>
     buildXAccountReport({
       accountKey: accountBucketKey(state.id, state.username),
       state,
       events: [],
+      allEvents: [],
+      collectionDate,
       observedAt,
     }),
   );
+  const attribution = buildXAccountAttributionSummary({
+    collectionDate,
+    events: [],
+    accounts,
+    globalCollectionSucceeded,
+  });
   return {
     available,
     accountCount: stateRows.length,
@@ -380,115 +391,24 @@ function emptyXAccountPoolReport(
     observedAt: observedAt.toISOString(),
     eventCount: 0,
     passStartedCount: 0,
-    passSucceededCount: 0,
-    passFailedCount: 0,
+    passSucceededCount: attribution.passSucceededCount,
+    passFailedCount: attribution.passFailedCount,
     cooldownObservedCount: 0,
     rateLimitCount: 0,
     accountLimitProfileObservedCount: 0,
     totalEstimatedRequestCost: 0,
-    totalRequestDelta: 0,
-    totalTweetDelta: 0,
-    totalReturnedCount: 0,
+    totalRequestDelta: attribution.requestDelta,
+    totalTweetDelta: attribution.tweetDelta,
+    totalReturnedCount: attribution.returnedCount,
+    attributionStatus: attribution.status,
+    attributionPolicy: attribution.attributionPolicy,
+    attributionGateReason: attribution.gateReason,
+    eligibleAccountZeroAttributableOutputWarningCount:
+      attribution.eligibleAccountZeroAttributableOutputWarningCount,
+    attributionWarnings: attribution.warnings,
+    targetWindowAttribution: attribution,
     accounts,
     readError,
-  } as const;
-}
-
-function buildXAccountReport(params: {
-  readonly accountKey: string;
-  readonly state: XAccountStateRow | undefined;
-  readonly events: readonly XAccountUsageEventRow[];
-  readonly observedAt: Date;
-}) {
-  const username = params.state?.username ?? params.events[0]?.username ?? "";
-  const accountId = params.state?.id ?? params.events[0]?.account_id ?? null;
-  const eventTimes = params.events
-    .map((event) => event.occurred_at)
-    .filter((value): value is string => value !== undefined);
-  const latestEventAt = eventTimes.sort().at(-1) ?? null;
-  const latestDailyRequestsLimit = latestNumber(
-    params.events,
-    (event) => event.daily_requests_limit,
-  );
-  const latestDailyTweetsLimit = latestNumber(
-    params.events,
-    (event) => event.daily_tweets_limit,
-  );
-  const latestAccountPriority = latestNumber(
-    params.events,
-    (event) => event.account_priority,
-  );
-  const status = params.state?.status ?? null;
-  const busy =
-    params.state?.busy === undefined ? null : params.state.busy === 1;
-  const dailyRequests = params.state?.daily_requests ?? null;
-  const dailyTweets = params.state?.daily_tweets ?? null;
-  const lastResetDate = params.state?.last_reset_date ?? null;
-  const cooldownUntil = params.state?.available_until ?? null;
-  const health = evaluateXAccountHealth(
-    {
-      stateAvailable: params.state !== undefined,
-      status,
-      busy,
-      dailyRequests,
-      dailyTweets,
-      dailyRequestsLimit: latestDailyRequestsLimit,
-      dailyTweetsLimit: latestDailyTweetsLimit,
-      lastResetDate,
-      cooldownUntil,
-    },
-    params.observedAt,
-  );
-
-  return {
-    accountFingerprint: fingerprint(
-      `x-account:${accountId ?? params.accountKey}`,
-    ),
-    usernameFingerprint:
-      username.trim().length === 0 ? null : fingerprint(`x-user:${username}`),
-    priorityRank: latestAccountPriority ?? accountId ?? 9999,
-    prioritySource:
-      latestAccountPriority === null ? "account_order" : "account_profile",
-    ...health,
-    status,
-    busy,
-    dailyRequests,
-    dailyTweets,
-    dailyRequestsLimit: latestDailyRequestsLimit,
-    dailyTweetsLimit: latestDailyTweetsLimit,
-    lastResetDate,
-    lastUsedAt: params.state?.last_used_at ?? latestEventAt,
-    latestEventAt,
-    cooldownUntil,
-    cooldownReasonFingerprint:
-      params.state?.cooldown_reason === null ||
-      params.state?.cooldown_reason === undefined
-        ? null
-        : fingerprint(params.state.cooldown_reason),
-    eventCount: params.events.length,
-    passStartedCount: countEvents(params.events, "pass_started"),
-    passSucceededCount: countEvents(params.events, "pass_succeeded"),
-    passFailedCount: countEvents(params.events, "pass_failed"),
-    cooldownObservedCount: countEvents(params.events, "cooldown_observed"),
-    rateLimitCount: params.events.filter(isRateLimitEvent).length,
-    estimatedRequestCost: sumEventNumbers(
-      params.events,
-      (event) => event.estimated_request_cost,
-    ),
-    requestDelta: sumEventNumbers(params.events, requestDelta),
-    tweetDelta: sumEventNumbers(params.events, tweetDelta),
-    fetchedCount: sumEventNumbers(
-      params.events,
-      (event) => event.fetched_count,
-    ),
-    acceptedCount: sumEventNumbers(
-      params.events,
-      (event) => event.accepted_count,
-    ),
-    returnedCount: sumEventNumbers(
-      params.events,
-      (event) => event.returned_count,
-    ),
   } as const;
 }
 
@@ -546,6 +466,9 @@ function readXAccountUsageEventRows(params: BuildParams):
   const accountPriority = columns.columns.has("account_priority")
     ? "account_priority"
     : "null as account_priority";
+  const attributionStatus = columns.columns.has("attribution_status")
+    ? "attribution_status"
+    : "null as attribution_status";
   const sql = `
     select
       event_id,
@@ -566,7 +489,8 @@ function readXAccountUsageEventRows(params: BuildParams):
       returned_count,
       failure_kind,
       cooldown_reason,
-      reset_at
+      reset_at,
+      ${attributionStatus}
     from account_usage_events
     order by occurred_at asc, event_id asc
   `;
@@ -834,44 +758,6 @@ function sumEventNumbers(
   }, 0);
 }
 
-function latestNumber(
-  events: readonly XAccountUsageEventRow[],
-  valueOf: (event: XAccountUsageEventRow) => number | null | undefined,
-): number | null {
-  for (let index = events.length - 1; index >= 0; index -= 1) {
-    const value = valueOf(events[index] as XAccountUsageEventRow);
-    if (typeof value === "number" && Number.isFinite(value)) {
-      return value;
-    }
-  }
-
-  return null;
-}
-
-function requestDelta(event: XAccountUsageEventRow): number {
-  return counterDelta(event.requests_before, event.requests_after);
-}
-
-function tweetDelta(event: XAccountUsageEventRow): number {
-  return counterDelta(event.tweets_before, event.tweets_after);
-}
-
-function counterDelta(
-  before: number | null | undefined,
-  after: number | null | undefined,
-): number {
-  if (
-    typeof before !== "number" ||
-    typeof after !== "number" ||
-    !Number.isFinite(before) ||
-    !Number.isFinite(after)
-  ) {
-    return 0;
-  }
-
-  return Math.max(after - before, 0);
-}
-
 function groupBy<TKey, TValue>(
   values: readonly TValue[],
   keyOf: (value: TValue) => TKey,
@@ -935,10 +821,6 @@ function parseJsonStrict<TValue>(
 
 function hashText(value: string): string {
   return createHash("sha256").update(value).digest("hex");
-}
-
-function fingerprint(value: string): string {
-  return hashText(value).slice(0, 12);
 }
 
 function roundMetric(value: number): number {

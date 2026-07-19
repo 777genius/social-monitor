@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
@@ -19,7 +18,32 @@ import {
   type XAccountPoolReport,
   type XCollectorLedgerReport,
 } from "./lib/x-collector-quality-report-support";
+import { finalizeXAccountAttributionWarningOnly } from "./lib/x-account-attribution-warning-policy";
 import { productionCollectionThresholds } from "./lib/production-collection-quality-policy";
+import {
+  isValidExistingYesterdaySocialCollectionQualityReport,
+} from "./lib/yesterday-social-collection-quality-report-validation";
+import {
+  average,
+  averageValues,
+  countBy,
+  errorMessage,
+  fingerprints,
+  groupBy,
+  hashText,
+  noRawSecretFragments,
+  normalizeLineEndings,
+  percentile,
+  providerFeedItemCountAtLeast,
+  ratio,
+  readJson,
+  roundMetric,
+  runRateAtLeast,
+  statusCounts,
+  sumCounts,
+  tokenize,
+  visibleRows,
+} from "./lib/yesterday-social-collection-quality-helpers";
 
 type FeedRow = {
   readonly interestId: string;
@@ -182,6 +206,14 @@ type Report = {
     readonly xCollectorInvalidJsonFieldCount: number;
     readonly xAccountPoolUsageEventCount: number;
     readonly xAccountPoolLimitProfileObservedCount: number;
+    readonly xAccountAttributionStatus: "known" | "partial" | "unknown";
+    readonly xAccountAttributionPolicy: "warning_only";
+    readonly xAccountAttributionGateReason: string;
+    readonly xAccountAttributionWarningCount: number;
+    readonly xAccountAttributionWarnings: readonly {
+      readonly code: string;
+      readonly accountFingerprint: string;
+    }[];
     readonly publishedOutsideWindowFeedItemCount: number;
     readonly lowRelevanceFeedItemCount: number;
   };
@@ -342,6 +374,7 @@ async function tryBuildReport(): Promise<Report | undefined> {
       return report === undefined ? [] : [report];
     });
     const qualityGates = {
+      globalXCollectionSucceeded: true as const,
       postgresFeedItemsAvailable: summaryWindowRows.length > 0,
       allExpectedPrimarySourcesPresent:
         primarySourceCoverage.length === primarySources.length,
@@ -423,6 +456,10 @@ async function tryBuildReport(): Promise<Report | undefined> {
       collectionIntegrityCleanForEval: collectionIntegrity.status === "clean",
       noRawSecretFragments: true,
     };
+    const attributionVerdict = finalizeXAccountAttributionWarningOnly({
+      qualityGates,
+      attribution: xAccountPool,
+    });
     const reportWithoutSecretGate = {
       schemaVersion: 1,
       artifactFormat: "yesterday-social-collection-quality-report-v1",
@@ -475,6 +512,7 @@ async function tryBuildReport(): Promise<Report | undefined> {
         xAccountPoolUsageEventCount: xAccountPool.eventCount,
         xAccountPoolLimitProfileObservedCount:
           xAccountPool.accountLimitProfileObservedCount,
+        ...attributionVerdict.operationalWarnings,
         publishedOutsideWindowFeedItemCount:
           dayWindowAudit.observedButPublishedOutsideWindowFeedItemCount,
         lowRelevanceFeedItemCount: dayWindowAudit.lowRelevanceFeedItemCount,
@@ -492,15 +530,20 @@ async function tryBuildReport(): Promise<Report | undefined> {
     } satisfies Report;
     const finalQualityGates = {
       ...reportWithoutSecretGate.qualityGates,
-      noRawSecretFragments: noRawSecretFragments(reportWithoutSecretGate),
+      noRawSecretFragments: noRawSecretFragments(
+        reportWithoutSecretGate,
+        forbiddenSerializedFragments,
+      ),
     };
+    const finalVerdict = finalizeXAccountAttributionWarningOnly({
+      qualityGates: finalQualityGates,
+      attribution: xAccountPool,
+    });
 
     return {
       ...reportWithoutSecretGate,
       qualityGates: finalQualityGates,
-      collectionBlockingPassed: Object.values(finalQualityGates).every(
-        (value) => value === true,
-      ),
+      collectionBlockingPassed: finalVerdict.collectionBlockingPassed,
     };
   } catch (error) {
     console.warn(
@@ -855,15 +898,12 @@ function validateExistingReport(expectedCollectionDate: string): void {
   }
 
   const report = readJson<Report>(outputPath);
-  const valid =
-    report.schemaVersion === 1 &&
-    report.artifactFormat === "yesterday-social-collection-quality-report-v1" &&
-    report.collectionDate === expectedCollectionDate &&
-    report.collectionBlockingPassed === true &&
-    primarySources.every((source) =>
-      report.primarySourceCoverage.includes(source),
-    ) &&
-    noRawSecretFragments(report);
+  const valid = isValidExistingYesterdaySocialCollectionQualityReport({
+    report,
+    expectedCollectionDate,
+    requiredPrimarySources: primarySources,
+    forbiddenSerializedFragments,
+  });
 
   if (!valid) {
     throw new Error(`${outputPath} failed existing artifact validation`);
@@ -927,191 +967,4 @@ function rankInputReadinessScore(
       freshnessScore,
     ]),
   );
-}
-
-function tokenize(value: string): readonly string[] {
-  const stopWords = new Set([
-    "about",
-    "after",
-    "and",
-    "before",
-    "for",
-    "from",
-    "how",
-    "into",
-    "that",
-    "the",
-    "this",
-    "what",
-    "when",
-    "where",
-    "which",
-    "with",
-    "your",
-  ]);
-
-  return [
-    ...new Set(
-      value
-        .toLowerCase()
-        .replace(/[^a-z0-9+#.]+/g, " ")
-        .split(/\s+/)
-        .filter((term) => term.length >= 3 && !stopWords.has(term)),
-    ),
-  ];
-}
-
-function statusCounts(
-  rows: readonly SummaryCountRow[],
-): Record<string, number> {
-  return Object.fromEntries(
-    rows.map((row) => [
-      row.status ?? "unknown",
-      Number.parseInt(row.count, 10),
-    ]),
-  );
-}
-
-function sumCounts(rows: readonly SummaryCountRow[]): number {
-  return rows.reduce((sum, row) => sum + Number.parseInt(row.count, 10), 0);
-}
-
-function groupBy<TKey, TValue>(
-  values: readonly TValue[],
-  keyOf: (value: TValue) => TKey,
-): Map<TKey, TValue[]> {
-  const grouped = new Map<TKey, TValue[]>();
-
-  for (const value of values) {
-    const key = keyOf(value);
-    const bucket = grouped.get(key) ?? [];
-
-    bucket.push(value);
-    grouped.set(key, bucket);
-  }
-
-  return grouped;
-}
-
-function countBy<TValue>(
-  values: readonly TValue[],
-  keyOf: (value: TValue) => string,
-): Record<string, number> {
-  const counts = new Map<string, number>();
-
-  for (const value of values) {
-    const key = keyOf(value);
-
-    counts.set(key, (counts.get(key) ?? 0) + 1);
-  }
-
-  return Object.fromEntries(
-    [...counts.entries()].sort(([left], [right]) => left.localeCompare(right)),
-  );
-}
-
-function ratio<TValue>(
-  values: readonly TValue[],
-  predicate: (value: TValue) => boolean,
-): number {
-  if (values.length === 0) {
-    return 0;
-  }
-
-  return roundMetric(
-    values.filter((value) => predicate(value)).length / values.length,
-  );
-}
-
-function average<TValue>(
-  values: readonly TValue[],
-  valueOf: (value: TValue) => number,
-): number {
-  if (values.length === 0) {
-    return 0;
-  }
-
-  return averageValues(values.map((value) => valueOf(value)));
-}
-
-function averageValues(values: readonly number[]): number {
-  if (values.length === 0) {
-    return 0;
-  }
-
-  return values.reduce((sum, value) => sum + value, 0) / values.length;
-}
-
-function percentile(values: readonly number[], percent: number): number {
-  if (values.length === 0) {
-    return 0;
-  }
-
-  const sorted = [...values].sort((left, right) => left - right);
-  const index = Math.min(
-    sorted.length - 1,
-    Math.max(0, Math.ceil(sorted.length * percent) - 1),
-  );
-
-  return sorted[index] ?? 0;
-}
-
-function readJson<TValue>(path: string): TValue {
-  return JSON.parse(readFileSync(path, "utf8")) as TValue;
-}
-
-function hashText(value: string): string {
-  return createHash("sha256").update(value).digest("hex");
-}
-
-function fingerprints(values: readonly string[]): readonly string[] {
-  return [...new Set(values.map((value) => hashText(value).slice(0, 12)))]
-    .sort()
-    .slice(0, 20);
-}
-
-function noRawSecretFragments(value: unknown): boolean {
-  const serialized = JSON.stringify(value).toLowerCase();
-
-  return forbiddenSerializedFragments.every(
-    (fragment) => !serialized.includes(fragment),
-  );
-}
-
-function providerFeedItemCountAtLeast(
-  reports: readonly ProviderReport[],
-  providerKey: string,
-  threshold: number,
-): boolean {
-  return (
-    (reports.find((item) => item.providerKey === providerKey)
-      ?.visibleFeedItemCount ?? 0) >= threshold
-  );
-}
-
-function runRateAtLeast(
-  acceptedRunCount: number,
-  totalRunCount: number,
-  thresholdPercent: number,
-): boolean {
-  return (
-    totalRunCount > 0 &&
-    acceptedRunCount * 100 >= totalRunCount * thresholdPercent
-  );
-}
-
-function visibleRows(rows: readonly FeedRow[]): readonly FeedRow[] {
-  return rows.filter((row) => row.status === "VISIBLE");
-}
-
-function normalizeLineEndings(value: string): string {
-  return value.replace(/\r\n/g, "\n");
-}
-
-function roundMetric(value: number): number {
-  return Number(value.toFixed(3));
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
