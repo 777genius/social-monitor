@@ -185,7 +185,16 @@ function buildLiveReport(
     collectionQuality: {
       collectionDate,
       dayWindowAudit: { publishedInsideWindowFeedItemCount: 5 },
-      xAccountPool: { totalAccountCount: 1, eligibleAccountCount: 1 },
+      xAccountPool: {
+        totalAccountCount: 1,
+        eligibleAccountCount: 1,
+        attributionStatus: "unknown",
+        attributionPolicy: "warning_only",
+        attributionGateReason:
+          "unknown_attribution_global_collection_succeeded_warning_only",
+        eligibleAccountZeroAttributableOutputWarningCount: 0,
+        attributionWarnings: [],
+      },
     },
     durableEvidence: evidence,
     evidenceBinding: binding,
