@@ -367,7 +367,15 @@ grep -F 'PGPASSFILE=$pgpass_file' \
   "$SCRIPT_DIR/reader-summary-publication-deploy-lib.sh" >/dev/null
 grep -F 'chmod 0600 "$pgpass_file"' \
   "$SCRIPT_DIR/reader-summary-publication-deploy-lib.sh" >/dev/null
-grep -F 'trap cleanup_pgpass EXIT' \
+grep -F 'cleanup_postgres_client_files() {' \
+  "$SCRIPT_DIR/reader-summary-publication-deploy-lib.sh" >/dev/null
+grep -F 'trap cleanup_postgres_client_files EXIT' \
+  "$SCRIPT_DIR/reader-summary-publication-deploy-lib.sh" >/dev/null
+grep -F 'rm -f -- "$pgpass_file"' \
+  "$SCRIPT_DIR/reader-summary-publication-deploy-lib.sh" >/dev/null
+grep -F 'chmod 0600 "$query_file"' \
+  "$SCRIPT_DIR/reader-summary-publication-deploy-lib.sh" >/dev/null
+grep -F 'rm -f -- "$query_file"' \
   "$SCRIPT_DIR/reader-summary-publication-deploy-lib.sh" >/dev/null
 grep -F 'social_monitor_app' \
   "$SCRIPT_DIR/reader-summary-publication-deploy-lib.sh" >/dev/null
