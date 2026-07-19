@@ -58,7 +58,10 @@ describe("X account attribution warning-only production verdict", () => {
 
   it("still honors unrelated blocking collection gates", () => {
     const result = finalizeXAccountAttributionWarningOnly({
-      qualityGates: { globalXCollectionSucceeded: false },
+      qualityGates: {
+        globalXCollectionSucceeded: true,
+        durableCollectionEvidencePassed: false,
+      },
       attribution: {
         attributionStatus: "unknown",
         attributionPolicy: "warning_only",
@@ -71,4 +74,28 @@ describe("X account attribution warning-only production verdict", () => {
 
     expect(result.collectionBlockingPassed).toBe(false);
   });
+
+  it.each([
+    ["missing", {}],
+    ["false", { globalXCollectionSucceeded: false }],
+  ] as const)(
+    "fails closed when global X collection success is %s at runtime",
+    (_case, runtimeQualityGates) => {
+      const result = finalizeXAccountAttributionWarningOnly({
+        qualityGates: runtimeQualityGates as unknown as Parameters<
+          typeof finalizeXAccountAttributionWarningOnly
+        >[0]["qualityGates"],
+        attribution: {
+          attributionStatus: "unknown",
+          attributionPolicy: "warning_only",
+          attributionGateReason:
+            "unknown_attribution_without_global_success_warning_only",
+          eligibleAccountZeroAttributableOutputWarningCount: 0,
+          attributionWarnings: [],
+        },
+      });
+
+      expect(result.collectionBlockingPassed).toBe(false);
+    },
+  );
 });

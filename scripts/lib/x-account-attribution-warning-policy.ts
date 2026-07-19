@@ -12,13 +12,15 @@ type XAccountAttributionReport = {
 };
 
 export function finalizeXAccountAttributionWarningOnly(params: {
-  readonly qualityGates: Readonly<Record<string, boolean>>;
+  readonly qualityGates: Readonly<Record<string, boolean>> & {
+    readonly globalXCollectionSucceeded: true;
+  };
   readonly attribution: XAccountAttributionReport;
 }) {
   return {
-    collectionBlockingPassed: Object.values(params.qualityGates).every(
-      (value) => value === true,
-    ),
+    collectionBlockingPassed:
+      params.qualityGates.globalXCollectionSucceeded === true &&
+      Object.values(params.qualityGates).every((value) => value === true),
     operationalWarnings: {
       xAccountAttributionStatus: params.attribution.attributionStatus,
       xAccountAttributionPolicy: params.attribution.attributionPolicy,

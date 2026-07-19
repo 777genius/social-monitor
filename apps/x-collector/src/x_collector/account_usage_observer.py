@@ -195,7 +195,7 @@ class AccountUsageObserver:
         failure_kind: str | None = None,
         reset_at: datetime | None = None,
     ) -> tuple[AccountUsageEvent, ...]:
-        after_snapshot = self._snapshot()
+        after_snapshot = self._snapshot_safely()
         deltas = account_usage_deltas(usage.before_snapshot, after_snapshot)
         # Shared pool counters can change in another gRPC request and do not
         # prove which account executed this pass.

@@ -274,6 +274,113 @@ describe("production-day report", () => {
     });
   });
 
+  it("normalizes partial nested X account attribution per field", () => {
+    const report = buildReport(passedSteps(), evidenceFixture(), {
+      collectionDate,
+      dayWindowAudit: {
+        publishedInsideWindowFeedItemCount: 10,
+        providerBreakdown: [],
+      },
+      xAccountPool: {
+        totalAccountCount: 1,
+        eligibleAccountCount: 1,
+        attributionStatus: "partial",
+        attributionPolicy: "warning_only",
+        attributionGateReason:
+          "partial_attribution_global_collection_succeeded_warning_only",
+        eligibleAccountZeroAttributableOutputWarningCount: 0,
+        attributionWarnings: [],
+        accounts: [
+          {
+            accountFingerprint: "account-fingerprint",
+            priorityRank: 1,
+            dailyRequests: 24,
+            dailyTweets: 5,
+            lastResetDate: "2026-07-16",
+            observedAccountSnapshot: {
+              observedAt: "2026-07-16T00:05:00.000Z",
+            },
+            targetWindowAttribution: {
+              status: "partial",
+              requestDelta: 2,
+            },
+          },
+        ],
+      },
+    });
+
+    expect(report.stats.xAccounts[0]?.observedAccountSnapshot).toStrictEqual({
+      observedAt: "2026-07-16T00:05:00.000Z",
+      dailyRequests: 24,
+      dailyTweets: 5,
+      counterResetDate: "2026-07-16",
+      counterResetDateMatchesTargetDate: false,
+    });
+    expect(report.stats.xAccounts[0]?.targetWindowAttribution).toStrictEqual({
+      collectionDate: undefined,
+      status: "partial",
+      requestDelta: 2,
+      tweetDelta: null,
+      fetchedCount: null,
+      acceptedCount: null,
+      returnedCount: null,
+      passSucceededCount: null,
+      passFailedCount: null,
+    });
+  });
+
+  it.each([
+    ["status", undefined],
+    ["status", "future"],
+    ["policy", undefined],
+    ["policy", "blocking"],
+    ["gateReason", undefined],
+    ["gateReason", "   "],
+    ["warningCount", undefined],
+    ["warningCount", 0.5],
+    ["warnings", undefined],
+    ["warnings", {}],
+  ] as const)(
+    "validator rejects an incomplete attribution contract with %s=%p",
+    (field, value) => {
+      const { report, binding } = liveReport();
+      const candidate = structuredClone(report);
+      const mutable = candidate as unknown as {
+        stats: { xAccountAttribution: Record<string, unknown> };
+      };
+      mutable.stats.xAccountAttribution[field] = value;
+
+      expect(
+        validateLiveProductionDayReport({
+          report: candidate,
+          binding,
+          expectedDate: collectionDate,
+        }),
+      ).toContain(
+        "stats.xAccountAttribution must contain a complete warning-only attribution contract",
+      );
+    },
+  );
+
+  it("validator rejects an attribution warning count inconsistent with warnings", () => {
+    const { report, binding } = liveReport();
+    const candidate = structuredClone(report);
+    const mutable = candidate as unknown as {
+      stats: { xAccountAttribution: { warningCount: number } };
+    };
+    mutable.stats.xAccountAttribution.warningCount = 1;
+
+    expect(
+      validateLiveProductionDayReport({
+        report: candidate,
+        binding,
+        expectedDate: collectionDate,
+      }),
+    ).toContain(
+      "stats.xAccountAttribution must contain a complete warning-only attribution contract",
+    );
+  });
+
   it.each([true, undefined, "false"])(
     "validator rejects nonLive=%p for a live report",
     (nonLive) => {
@@ -312,7 +419,16 @@ function buildReport(
       publishedInsideWindowFeedItemCount: 10,
       providerBreakdown: [],
     },
-    xAccountPool: { totalAccountCount: 1, eligibleAccountCount: 1 },
+    xAccountPool: {
+      totalAccountCount: 1,
+      eligibleAccountCount: 1,
+      attributionStatus: "unknown",
+      attributionPolicy: "warning_only",
+      attributionGateReason:
+        "unknown_attribution_global_collection_succeeded_warning_only",
+      eligibleAccountZeroAttributableOutputWarningCount: 0,
+      attributionWarnings: [],
+    },
   },
 ) {
   return buildProductionDayReport({

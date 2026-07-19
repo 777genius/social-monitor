@@ -371,6 +371,11 @@ export function validateLiveProductionDayReport(params: {
   if (!allQualityGatesPass(report.qualityGates)) {
     violations.push("all quality gates must exist and pass");
   }
+  if (!validXAccountAttributionContract(report.stats)) {
+    violations.push(
+      "stats.xAccountAttribution must contain a complete warning-only attribution contract",
+    );
+  }
   return violations;
 }
 
@@ -563,23 +568,39 @@ function buildStats(
 }
 
 function normalizedXAccount(account: ProductionDayXAccount) {
-  const observedAccountSnapshot = account.observedAccountSnapshot ?? {
-    observedAt: undefined,
-    dailyRequests: account.dailyRequests ?? null,
-    dailyTweets: account.dailyTweets ?? null,
-    counterResetDate: account.lastResetDate ?? null,
-    counterResetDateMatchesTargetDate: false,
+  const observedAccountSnapshot = {
+    observedAt: account.observedAccountSnapshot?.observedAt,
+    dailyRequests:
+      account.observedAccountSnapshot?.dailyRequests ??
+      account.dailyRequests ??
+      null,
+    dailyTweets:
+      account.observedAccountSnapshot?.dailyTweets ??
+      account.dailyTweets ??
+      null,
+    counterResetDate:
+      account.observedAccountSnapshot?.counterResetDate ??
+      account.lastResetDate ??
+      null,
+    counterResetDateMatchesTargetDate:
+      account.observedAccountSnapshot?.counterResetDateMatchesTargetDate ??
+      false,
   };
-  const targetWindowAttribution = account.targetWindowAttribution ?? {
-    collectionDate: undefined,
-    status: account.attributionStatus ?? ("unknown" as const),
-    requestDelta: null,
-    tweetDelta: null,
-    fetchedCount: null,
-    acceptedCount: null,
-    returnedCount: null,
-    passSucceededCount: null,
-    passFailedCount: null,
+  const targetWindowAttribution = {
+    collectionDate: account.targetWindowAttribution?.collectionDate,
+    status:
+      account.targetWindowAttribution?.status ??
+      account.attributionStatus ??
+      ("unknown" as const),
+    requestDelta: account.targetWindowAttribution?.requestDelta ?? null,
+    tweetDelta: account.targetWindowAttribution?.tweetDelta ?? null,
+    fetchedCount: account.targetWindowAttribution?.fetchedCount ?? null,
+    acceptedCount: account.targetWindowAttribution?.acceptedCount ?? null,
+    returnedCount: account.targetWindowAttribution?.returnedCount ?? null,
+    passSucceededCount:
+      account.targetWindowAttribution?.passSucceededCount ?? null,
+    passFailedCount:
+      account.targetWindowAttribution?.passFailedCount ?? null,
   };
 
   return {
@@ -731,6 +752,28 @@ function allQualityGatesPass(value: unknown): boolean {
     isRecord(value) &&
     Object.keys(value).length > 0 &&
     Object.values(value).every((gate) => gate === true)
+  );
+}
+
+function validXAccountAttributionContract(stats: unknown): boolean {
+  if (!isRecord(stats) || !isRecord(stats.xAccountAttribution)) {
+    return false;
+  }
+  const attribution = stats.xAccountAttribution;
+  const statusValid =
+    attribution.status === "known" ||
+    attribution.status === "partial" ||
+    attribution.status === "unknown";
+  return (
+    statusValid &&
+    attribution.policy === "warning_only" &&
+    typeof attribution.gateReason === "string" &&
+    attribution.gateReason.trim().length > 0 &&
+    typeof attribution.warningCount === "number" &&
+    Number.isInteger(attribution.warningCount) &&
+    attribution.warningCount >= 0 &&
+    Array.isArray(attribution.warnings) &&
+    attribution.warnings.length === attribution.warningCount
   );
 }
 

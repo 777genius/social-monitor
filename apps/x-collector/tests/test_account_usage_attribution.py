@@ -70,7 +70,83 @@ class ConcurrentMutationLedger:
             self._current = current
 
 
+class CompletionSnapshotFailureLedger:
+    def __init__(self, before: AccountPoolSnapshot) -> None:
+        self._before = before
+        self._snapshot_count = 0
+
+    def snapshot(self, now: datetime) -> AccountPoolSnapshot:
+        del now
+        self._snapshot_count += 1
+        if self._snapshot_count == 1:
+            return self._before
+        raise RuntimeError("completion snapshot unavailable")
+
+
 class AccountUsageAttributionTest(unittest.TestCase):
+    def test_success_persists_unknown_when_completion_snapshot_fails(
+        self,
+    ) -> None:
+        before = snapshot(account(1))
+        repository = CapturingRepository()
+        observer = AccountUsageObserver(
+            CompletionSnapshotFailureLedger(before),
+            repository,
+            FixedClock(before.observed_at),
+            event_id_factory=event_id_factory(),
+        )
+        usage = observer.begin_pass(request(), search_pass(), 1)
+
+        observer.complete_pass_success(
+            request(),
+            usage,
+            fetched_count=3,
+            accepted_count=2,
+        )
+
+        results = [
+            event
+            for event in repository.events
+            if event.event_type is AccountUsageEventType.PASS_SUCCEEDED
+        ]
+        self.assertEqual(len(results), 1)
+        self.assertIsNone(results[0].account_id)
+        self.assertEqual(
+            results[0].attribution_status,
+            AccountUsageAttributionStatus.UNKNOWN,
+        )
+
+    def test_failure_persists_unknown_when_completion_snapshot_fails(
+        self,
+    ) -> None:
+        before = snapshot(account(1))
+        repository = CapturingRepository()
+        observer = AccountUsageObserver(
+            CompletionSnapshotFailureLedger(before),
+            repository,
+            FixedClock(before.observed_at),
+            event_id_factory=event_id_factory(),
+        )
+        usage = observer.begin_pass(request(), search_pass(), 1)
+
+        observer.complete_pass_failure(
+            request(),
+            usage,
+            failure_kind="provider_error",
+        )
+
+        results = [
+            event
+            for event in repository.events
+            if event.event_type is AccountUsageEventType.PASS_FAILED
+        ]
+        self.assertEqual(len(results), 1)
+        self.assertIsNone(results[0].account_id)
+        self.assertEqual(
+            results[0].attribution_status,
+            AccountUsageAttributionStatus.UNKNOWN,
+        )
+
     def test_does_not_infer_known_from_unique_shared_counter_delta(self) -> None:
         before = snapshot(account(1), account(2))
         after = snapshot(

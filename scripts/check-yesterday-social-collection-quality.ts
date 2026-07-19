@@ -21,6 +21,9 @@ import {
 import { finalizeXAccountAttributionWarningOnly } from "./lib/x-account-attribution-warning-policy";
 import { productionCollectionThresholds } from "./lib/production-collection-quality-policy";
 import {
+  isValidExistingYesterdaySocialCollectionQualityReport,
+} from "./lib/yesterday-social-collection-quality-report-validation";
+import {
   average,
   averageValues,
   countBy,
@@ -371,6 +374,7 @@ async function tryBuildReport(): Promise<Report | undefined> {
       return report === undefined ? [] : [report];
     });
     const qualityGates = {
+      globalXCollectionSucceeded: true as const,
       postgresFeedItemsAvailable: summaryWindowRows.length > 0,
       allExpectedPrimarySourcesPresent:
         primarySourceCoverage.length === primarySources.length,
@@ -894,15 +898,12 @@ function validateExistingReport(expectedCollectionDate: string): void {
   }
 
   const report = readJson<Report>(outputPath);
-  const valid =
-    report.schemaVersion === 1 &&
-    report.artifactFormat === "yesterday-social-collection-quality-report-v1" &&
-    report.collectionDate === expectedCollectionDate &&
-    report.collectionBlockingPassed === true &&
-    primarySources.every((source) =>
-      report.primarySourceCoverage.includes(source),
-    ) &&
-    noRawSecretFragments(report, forbiddenSerializedFragments);
+  const valid = isValidExistingYesterdaySocialCollectionQualityReport({
+    report,
+    expectedCollectionDate,
+    requiredPrimarySources: primarySources,
+    forbiddenSerializedFragments,
+  });
 
   if (!valid) {
     throw new Error(`${outputPath} failed existing artifact validation`);
