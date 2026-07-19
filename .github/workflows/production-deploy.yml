@@ -195,9 +195,11 @@ jobs:
             ops/deploy/backend-image-rescue-lib.test.sh
             ops/deploy/deploy-control-lib.sh
             ops/deploy/deploy-control-lib.test.sh
+            ops/deploy/postgres-pool-bootstrap-transition.test.sh
             ops/deploy/postgres-runtime-deploy-lib.sh
             ops/deploy/reader-summary-publication-bridge-transition.test.sh
             ops/deploy/social-monitor-production-deploy.sh
+            ops/deploy/social-monitor-production-deploy.test.sh
           )
           final_publication_assets=(
             ops/deploy/postgres-backup-deploy-lib.sh
@@ -210,6 +212,14 @@ jobs:
             ops/deploy/reader-summary-publication-post-migration.sql
             prisma/migrations/20260716170000_reader_summary_fail_closed_publication/migration.sql
           )
+          for bridge_path in "${bridge_release_paths[@]}"; do
+            for publication_asset in "${final_publication_assets[@]}"; do
+              [[ $bridge_path != "$publication_asset" ]] || {
+                echo "release path cannot be both bridge-safe and final-only: $bridge_path" >&2
+                exit 1
+              }
+            done
+          done
           git_path_mode() {
             git ls-tree "$GITHUB_SHA" -- "$1" | awk 'NR == 1 { print $1 }'
           }
