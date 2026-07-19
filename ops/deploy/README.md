@@ -47,7 +47,8 @@ cannot silently skip an earlier component change.
   already contains tables created by the following migration;
 - only the 10 newest verified `pre-autodeploy` dumps are retained; manual,
   incident, partial and unknown backup artifacts are never pruned automatically;
-- previous container image IDs are retained and restored on runtime failure;
+- before any backend build, every rollback candidate is pinned to a validated
+  immutable `social-monitor-prod-rollback-rescue:<release>-<service>` tag;
 - frontend releases are immutable directories switched through symlinks;
 - failed frontend health checks restore the previous symlink targets;
 - database migrations are forward-only and are never automatically reversed.
@@ -85,11 +86,11 @@ containers stop and before replacements start, the gate queries live PostgreSQL
 capacity, reserved/role/database limits, and attributed external occupancy. It rejects operator-only
 capacity claims, requires stopped persistent runtime occupancy to be zero,
 enforces absolute and proportional headroom, and stops/removes
-old DB containers before starting replacements. Previous image IDs remain the
-rollback source. The old runtime-control symlink and systemd units are
+old DB containers before starting replacements. Validated project-scoped
+rescue tags remain the rollback source. The old runtime-control symlink and systemd units are
 snapshotted around the complete backend transaction; any backup, build,
 migration, replacement, or health failure restores those files and the prior
-containers from captured image IDs. A 16-connection read-only held-transaction
+containers from rescue tags. A 16-connection read-only held-transaction
 probe proves the maximum declared envelope before start. API readiness executes
 a real query through the bounded Prisma pool, and deployment holds a five-minute
 restart/proxy soak before advancing `backend.sha`. The soak captures per-service
@@ -99,6 +100,63 @@ and requires an ingestion queue tick with `failed=0`. The release-owned daily sc
 refuses to start until its
 release SHA equals the durable backend marker, which fences a host crash during
 the switch.
+
+## Backend image rescue lifecycle
+
+The rescue snapshot is a fail-closed prerequisite to every backend build. Each
+selected persistent service must have exactly one healthy running container.
+Deployment reads that container's recorded `.Image` and pins the image object
+under a full-release-SHA, project-scoped rescue tag. It validates that the tag
+resolves to the recorded image ID and never falls back to the mutable Compose
+`latest` tag for a running service.
+
+One bounded legacy-adoption exception handles Node-service containers whose
+still-running root filesystem exists after BuildKit removed their recorded
+image object. Only when `docker image inspect` of the recorded `.Image` fails,
+deployment requires the container to be running, non-restarting,
+non-OOM-killed, and healthy when a Docker healthcheck exists. The live
+entrypoint, command, working directory, user, and absent image healthcheck must
+exactly match the reviewed legacy Node image contract. Deployment then pauses
+the container, streams `docker container export` into `docker image import`,
+and rebuilds only the reviewed service-specific entrypoint, direct command,
+working directory, and user. It verifies that the reconstructed image has no
+`Config.Env`; production environment values and secrets are never copied into
+rescue image metadata.
+Compose reapplies the reviewed runtime environment and remounts the same
+external volumes during rollback. The mutable current tag is never used for
+this adoption path. The separately built `x-collector` has no reviewed legacy
+reconstruction in this bridge and therefore fails closed if its recorded image
+object is missing.
+
+`migrate` and `daily-runner` are explicit tag-only rollback candidates. They
+normally have no running container, so their current Compose image tag is
+pinned and validated before either tag can be rebuilt. Rollback restores both
+Compose tags but never recreates these one-shot containers: database migrations
+remain forward-only, and the control-owned daily runner starts only through its
+separate singleton/admission path.
+
+The atomically completed rescue manifest and its mode-`0600` phase record
+survive process interruption and are reused unchanged when the same release is
+retried. The phase is `prepared` until immediately before the first service is
+stopped or force-recreated, when it atomically becomes `replacement-started`.
+Preflight, backup, build, and migration failures therefore restore only Compose
+tags and never stop or recreate healthy containers. After replacement starts,
+rollback restores tags, recreates and verifies the captured persistent services
+once, then durably records `rollback-complete`; an outer retry caused by a
+separate runtime-control rollback failure cannot repeat the container rollback,
+and a same-release retry cannot reuse the restored rescue as a fresh snapshot.
+An interrupted or incomplete non-`prepared` rescue blocks a new runtime-control
+snapshot so the original rollback evidence remains available for operator
+recovery.
+
+A partial manifest cannot reach the build phase; HUP, INT, TERM, or the next
+locked deploy removes only that release's deterministic rescue tags. A failed
+release always attempts both backend image/container restoration and PostgreSQL
+runtime-control restoration, reports both failures, and retains rescue tags if
+either rollback is incomplete. Exact rescue tags and their state are removed
+only after the backend marker commits a successful release or after both halves
+of rollback complete. No Docker prune is used, and images or tags owned by
+other projects are never selected for cleanup.
 
 ## GitHub environment
 

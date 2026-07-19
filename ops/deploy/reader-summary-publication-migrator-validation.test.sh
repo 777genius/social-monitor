@@ -38,6 +38,7 @@ mkdir -p "$ROOT/secrets/db" "$REPO/ops/deploy" "$FAKE_BIN"
 printf '%s\n' 'test-only-ca-certificate' > "$CA_CERTIFICATE"
 cp "$SCRIPT_DIR/deploy-control-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" "$REPO/ops/deploy/"
+cp "$SCRIPT_DIR/backend-image-rescue-lib.sh" "$REPO/ops/deploy/"
 cp "$DEPLOY_ENTRYPOINT" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/postgres-backup-deploy-lib.sh" "$REPO/ops/deploy/"
 git init -q -b main "$REPO"
@@ -591,7 +592,7 @@ assert_deploy_backend_preflight_order() {
         grep -F "create_pre_migration_database_backup \"\$@\"" >/dev/null
       backend_services() { printf "%s\n" migrate; }
       marker_value() { printf "%s\n" 0123456789abcdef0123456789abcdef01234567; }
-      capture_previous_images() { printf "%s\n" capture >> "$ORCHESTRATION_LOG"; }
+      backend_image_rescue_prepare() { printf "%s\n" capture >> "$ORCHESTRATION_LOG"; }
       verify_migration_compatibility() { printf "%s\n" compatibility >> "$ORCHESTRATION_LOG"; }
       backup_database() { printf "%s\n" backup >> "$ORCHESTRATION_LOG"; }
       reader_summary_publication_migrator_preflight() {
@@ -630,9 +631,9 @@ assert_deploy_backend_preflight_order() {
   TEST_COUNT=$((TEST_COUNT + 1))
 }
 
-assert_deploy_backend_preflight_order first-failure 'preflight:1'
+assert_deploy_backend_preflight_order first-failure $'capture\npreflight:1'
 assert_deploy_backend_preflight_order second-failure \
-  $'preflight:1\ncapture\ncompatibility\nbackup\nbuild\npreflight:2'
+  $'capture\npreflight:1\ncompatibility\nbackup\nbuild\npreflight:2'
 
 for catalog_token in \
   'current_database()' \

@@ -191,6 +191,8 @@ jobs:
           bridge_release_paths=(
             .github/workflows/production-deploy.yml
             ops/deploy/README.md
+            ops/deploy/backend-image-rescue-lib.sh
+            ops/deploy/backend-image-rescue-lib.test.sh
             ops/deploy/deploy-control-lib.sh
             ops/deploy/deploy-control-lib.test.sh
             ops/deploy/postgres-runtime-deploy-lib.sh
@@ -263,6 +265,8 @@ jobs:
           fi
           deploy_shell_files=(
             ops/deploy/social-monitor-production-deploy.sh
+            ops/deploy/backend-image-rescue-lib.sh
+            ops/deploy/backend-image-rescue-lib.test.sh
             ops/deploy/deploy-control-lib.sh
             ops/deploy/deploy-control-lib.test.sh
             ops/deploy/github-production-deploy-client.sh
@@ -307,6 +311,7 @@ jobs:
             --bootstrap "$POSTGRES_POOL_BOOTSTRAP" \
             --bootstrap-sha "$POSTGRES_POOL_BOOTSTRAP_SHA"
           if [[ $bridge_phase == true ]]; then
+            bash ops/deploy/backend-image-rescue-lib.test.sh
             bash ops/deploy/deploy-control-lib.test.sh
           else
             bash ops/deploy/social-monitor-production-deploy.test.sh
