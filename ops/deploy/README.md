@@ -28,9 +28,23 @@ cannot silently skip an earlier component change.
 - deploy owns its singleton, daily owns a separate singleton, and both use one
   shared PostgreSQL admission `flock`;
 - integration advances only by fast-forward from a clean worktree;
-- backend deploys create and validate a managed PostgreSQL custom-format backup first;
-- every live PostgreSQL base table must appear in the new dump TOC, while CI
-  separately keeps the reviewed backup/restore contract aligned with Prisma;
+- backend deploys create and validate a managed PostgreSQL custom-format backup
+  before any migration;
+- pre-migration coverage is derived from two matching live-schema snapshots and
+  two byte-identical lifecycle snapshots of Prisma migration
+  `20260716170000_reader_summary_fail_closed_publication`: every public base
+  table that exists before migration must appear exactly once in the dump TOC,
+  and a full `pg_restore` stream must read the archive before its `.partial`
+  file is promoted;
+- the publication-table pair may be absent together on its first deployment
+  only when that exact migration has no history row. If the pair already
+  exists, both tables must be in the dump and the reviewed-checksum migration
+  row must be exactly one completed, non-rolled-back lifecycle. Partial schema,
+  failed, rolled-back, in-progress, duplicate, contradictory,
+  checksum-mismatched and raced states fail closed;
+- CI separately keeps the reviewed target-schema backup/restore contract aligned
+  with Prisma; that target contract does not claim a pre-migration archive
+  already contains tables created by the following migration;
 - only the 10 newest verified `pre-autodeploy` dumps are retained; manual,
   incident, partial and unknown backup artifacts are never pruned automatically;
 - previous container image IDs are retained and restored on runtime failure;
@@ -124,7 +138,13 @@ fast-forwards integration. A backend-classified target is then required to
 provide a reviewed, regular, non-symlink publication library inside the
 fast-forwarded integration tree. The bridge verifies that file against the
 target Git blob, sources it, and requires its publication-migration entrypoint
-before any runtime-control snapshot or activation. Runtime-control changes
+before any runtime-control snapshot or activation. While the target SHA remains
+dynamically scoped, that authenticated publication wrapper rejects a preloaded
+backup entrypoint and independently binds the target PostgreSQL backup library
+to its fixed canonical path, root owner, exact Git/filesystem mode and reviewed
+Git-blob digest before sourcing it. It then replaces the installed controller's
+legacy inline backup function, so the first migration release uses the hardened
+contract without changing any installed bridge file. Runtime-control changes
 therefore use an explicit two-release sequence:
 
 1. Deploy a bridge release containing the final entrypoint and deploy-control

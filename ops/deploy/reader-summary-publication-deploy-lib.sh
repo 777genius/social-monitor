@@ -14,6 +14,72 @@ READER_SUMMARY_PUBLICATION_DATABASE_PORT=25060
 READER_SUMMARY_PUBLICATION_VALIDATION_ATTEMPTS=3
 READER_SUMMARY_PUBLICATION_VALIDATION_RETRY_SECONDS=2
 
+# This file is the authenticated target-publication wrapper loaded by the
+# installed c59 deploy-control bridge. The bridge's local target SHA remains
+# Bash-dynamically scoped while this file is sourced, so validate the adjacent
+# target-only backup implementation here before returning to installed code.
+! declare -F create_pre_migration_database_backup >/dev/null || \
+  fail 'PostgreSQL backup entrypoint was loaded before target validation'
+
+load_target_postgres_backup_deploy_library() {
+  local target_sha=$1
+  local relative_path=ops/deploy/postgres-backup-deploy-lib.sh
+  local backup_library=$REPO/$relative_path
+  local backup_real metadata owner permissions reviewed_digest actual_digest
+  local target_entry target_mode target_type target_object target_path extra
+
+  [[ $target_sha =~ ^[0-9a-f]{40}$ ]] || \
+    fail 'target PostgreSQL backup deploy library SHA is invalid'
+  [[ -f $backup_library && ! -L $backup_library ]] || \
+    fail 'target PostgreSQL backup deploy library is not a regular non-symlink file'
+  backup_real=$(readlink -f -- "$backup_library") || \
+    fail 'target PostgreSQL backup deploy library path cannot be resolved'
+  [[ $backup_real == "$REPO/$relative_path" ]] || \
+    fail 'target PostgreSQL backup deploy library is outside its canonical integration path'
+  metadata=$(stat -c '%u %a' "$backup_real") || \
+    fail 'target PostgreSQL backup deploy library ownership and mode cannot be read'
+  read -r owner permissions extra <<< "$metadata"
+  [[ -z ${extra:-} && $owner == 0 ]] || \
+    fail 'target PostgreSQL backup deploy library is not root-owned'
+
+  target_entry=$(git -C "$REPO" ls-tree "$target_sha" -- "$relative_path") || \
+    fail 'target commit PostgreSQL backup deploy library cannot be inspected'
+  read -r target_mode target_type target_object target_path extra \
+    <<< "$target_entry"
+  [[ -z ${extra:-} && \
+     ($target_mode == 100644 || $target_mode == 100755) && \
+     $target_type == blob && $target_object =~ ^[0-9a-f]{40}$ && \
+     $target_path == "$relative_path" ]] || \
+    fail 'target commit PostgreSQL backup deploy library is not a regular blob'
+  if [[ $target_mode == 100644 ]]; then
+    [[ $permissions == 644 ]] || \
+      fail 'target PostgreSQL backup deploy library mode does not match its target Git mode'
+  else
+    [[ $permissions == 755 ]] || \
+      fail 'target PostgreSQL backup deploy library mode does not match its target Git mode'
+  fi
+
+  reviewed_digest=$(
+    deploy_control_git_blob_digest "$target_sha" "$relative_path"
+  ) || fail 'target commit is missing the PostgreSQL backup deploy library'
+  actual_digest=$(deploy_control_file_digest "$backup_real") || \
+    fail 'target PostgreSQL backup deploy library digest cannot be read'
+  [[ $actual_digest == "$reviewed_digest" ]] || \
+    fail 'target PostgreSQL backup deploy library differs from reviewed target'
+
+  # shellcheck source=/dev/null
+  source "$backup_real" || \
+    fail 'target PostgreSQL backup deploy library could not be loaded'
+  declare -F create_pre_migration_database_backup >/dev/null || \
+    fail 'target PostgreSQL backup deploy library is missing its backup entrypoint'
+}
+
+load_target_postgres_backup_deploy_library "${sha:-}"
+
+backup_database() {
+  create_pre_migration_database_backup "$@"
+}
+
 reader_summary_publication_migrator_preflight() {
   local secret=$ROOT/secrets/db/reader-summary-publication-admin-url
   local ca_certificate=$ROOT/secrets/db/ca-certificate.crt
