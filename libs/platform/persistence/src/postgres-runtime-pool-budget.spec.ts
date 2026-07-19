@@ -449,6 +449,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       'scripts/reader-summary-publication-postgres-legacy.ts',
       'scripts/reader-summary-publication-postgres-privileges.ts',
       'scripts/reader-summary-publication-postgres-runtime-guard.ts',
+      'scripts/reader-summary-publication-postgres18-regression.ts',
       'scripts/run-reader-summary-clean-real-day-collection.ts',
       'scripts/run-reader-summary-production-day.ts',
     ]);
