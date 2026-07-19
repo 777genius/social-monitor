@@ -8,6 +8,7 @@
 
 READER_SUMMARY_PUBLICATION_MIGRATOR_ROLE=social_monitor_publication_migrator
 READER_SUMMARY_PUBLICATION_RUNTIME_ROLE=social_monitor_app
+READER_SUMMARY_PUBLICATION_PROVISIONER_ROLE=doadmin
 READER_SUMMARY_PUBLICATION_DATABASE=social_monitor
 READER_SUMMARY_PUBLICATION_DATABASE_HOST=dbaas-db-8050451-do-user-39622063-0.e.db.ondigitalocean.com
 READER_SUMMARY_PUBLICATION_DATABASE_PORT=25060
@@ -157,7 +158,8 @@ validate_reader_summary_publication_migrator() (
   local is_superuser can_create_database can_replicate can_bypass_rls
   local server_version uses_tls membership_count membership_admin
   local membership_inherit membership_set protected_memberships_valid
-  local unexpected_membership_count outgoing_membership_count extra
+  local unexpected_membership_count outgoing_membership_count
+  local protected_creator_membership_valid extra
   local query_status availability_status
 
   [[ -f $secret && ! -L $secret && -s $secret ]] || return 64
@@ -196,14 +198,15 @@ validate_reader_summary_publication_migrator() (
   fi
   [[ -n $catalog_result && $catalog_result != *$'\n'* ]] || return 65
   catalog_delimiters=${catalog_result//[!|]/}
-  ((${#catalog_delimiters} == 18)) || return 65
+  ((${#catalog_delimiters} == 19)) || return 65
 
   IFS='|' read -r database_name current_identity session_identity \
     can_login can_create_role inherits_role is_superuser \
     can_create_database can_replicate can_bypass_rls server_version \
     uses_tls membership_count membership_admin membership_inherit \
     membership_set protected_memberships_valid \
-    unexpected_membership_count outgoing_membership_count extra \
+    unexpected_membership_count outgoing_membership_count \
+    protected_creator_membership_valid extra \
     <<< "$catalog_result"
 
   [[ -z $extra && \
@@ -221,7 +224,8 @@ validate_reader_summary_publication_migrator() (
   [[ $membership_inherit == f && $membership_set == t ]] || return 65
   [[ $protected_memberships_valid == t ]] || return 65
   [[ $unexpected_membership_count == 0 ]] || return 65
-  [[ $outgoing_membership_count == 0 ]] || return 65
+  [[ $outgoing_membership_count == 1 ]] || return 65
+  [[ $protected_creator_membership_valid == t ]] || return 65
 )
 
 reader_summary_publication_admin_secret_metadata() {
@@ -356,13 +360,18 @@ reader_summary_publication_run_postgres_client() (
         operation=$6
         runtime_role=$7
         query=$8
+        provisioner_role=$9
         pgpass_file=
-        cleanup_pgpass() {
+        query_file=
+        cleanup_postgres_client_files() {
           if [ -n "$pgpass_file" ]; then
             rm -f -- "$pgpass_file"
           fi
+          if [ -n "$query_file" ]; then
+            rm -f -- "$query_file"
+          fi
         }
-        trap cleanup_pgpass EXIT
+        trap cleanup_postgres_client_files EXIT
         trap "exit 129" HUP
         trap "exit 130" INT
         trap "exit 143" TERM
@@ -387,10 +396,15 @@ reader_summary_publication_run_postgres_client() (
           catalog)
             PGCONNECT_TIMEOUT=15
             export PGCONNECT_TIMEOUT
+            query_file=$(mktemp /tmp/social-monitor-catalog-query.XXXXXX)
+            printf "%s\n" "$query" > "$query_file"
+            chmod 0600 "$query_file"
+            [ -s "$query_file" ]
             psql -X -A -t -F "|" --no-password -v ON_ERROR_STOP=1 \
               --host="$host" --port="$port" --dbname="$database" \
               --username="$username" --set=runtime_role="$runtime_role" \
-              --command="$query"
+              --set=provisioner_role="$provisioner_role" \
+              --file="$query_file"
             ;;
           availability)
             pg_isready -q -t 15 \
@@ -406,7 +420,8 @@ reader_summary_publication_run_postgres_client() (
       "$READER_SUMMARY_PUBLICATION_DATABASE_PORT" \
       "$READER_SUMMARY_PUBLICATION_DATABASE" \
       "$READER_SUMMARY_PUBLICATION_MIGRATOR_ROLE" \
-      "$application_name" "$operation" "$runtime_role" "$query"
+      "$application_name" "$operation" "$runtime_role" "$query" \
+      "$READER_SUMMARY_PUBLICATION_PROVISIONER_ROLE"
 )
 
 reader_summary_publication_admin_catalog_query() {
@@ -433,7 +448,8 @@ SELECT
   COALESCE(membership.set_option, false),
   COALESCE(membership.protected_memberships_valid, false),
   COALESCE(membership.unexpected_membership_count, 0),
-  COALESCE(outgoing_memberships.membership_count, 0)
+  COALESCE(outgoing_memberships.membership_count, 0),
+  COALESCE(outgoing_memberships.protected_creator_membership_valid, false)
 FROM pg_catalog.pg_roles AS migrator
 LEFT JOIN pg_catalog.pg_stat_ssl AS connection
   ON connection.pid = pg_catalog.pg_backend_pid()
@@ -515,14 +531,8 @@ LEFT JOIN LATERAL (
       )
     ) AND BOOL_AND(
       CASE WHEN granted_role.rolname = :'runtime_role'
-      THEN grantor_role.rolsuper OR (
-        grantor_role.rolcreaterole
-        AND grantor_role.rolname NOT IN (
-          current_user,
-          :'runtime_role',
-          'social_monitor_reader_summary_publication_owner',
-          'social_monitor_reader_summary_publication_runtime'
-        )
+      THEN grantor_role.rolname = :'provisioner_role'
+        AND grantor_role.rolcreaterole
         AND EXISTS (
           SELECT 1
           FROM pg_catalog.pg_auth_members AS provisioner_membership
@@ -531,9 +541,11 @@ LEFT JOIN LATERAL (
           WHERE provisioner_membership.roleid = membership.roleid
             AND provisioner_membership.member = membership.grantor
             AND provisioner_membership.admin_option
+            AND NOT provisioner_membership.inherit_option
+            AND NOT provisioner_membership.set_option
             AND root_grantor.rolsuper
         )
-      ) ELSE true END
+      ELSE true END
     ) AS protected_memberships_valid,
     COUNT(*) FILTER (
       WHERE granted_role.rolname NOT IN (
@@ -552,8 +564,41 @@ LEFT JOIN LATERAL (
     WHERE member_role.rolname = current_user
 ) AS membership ON true
 LEFT JOIN LATERAL (
-  SELECT COUNT(*) AS membership_count
+  SELECT
+    COUNT(*) AS membership_count,
+    BOOL_AND(
+      member_role.rolname = :'provisioner_role'
+      AND grantor_role.rolsuper
+      AND outgoing_membership.admin_option
+      AND NOT outgoing_membership.inherit_option
+      AND NOT outgoing_membership.set_option
+      AND EXISTS (
+        SELECT 1
+        FROM pg_catalog.pg_auth_members AS runtime_membership
+        JOIN pg_catalog.pg_roles AS runtime_granted_role
+          ON runtime_granted_role.oid = runtime_membership.roleid
+        JOIN pg_catalog.pg_auth_members AS provisioner_membership
+          ON provisioner_membership.roleid = runtime_membership.roleid
+          AND provisioner_membership.member = runtime_membership.grantor
+        JOIN pg_catalog.pg_roles AS bootstrap_grantor
+          ON bootstrap_grantor.oid = provisioner_membership.grantor
+        WHERE runtime_granted_role.rolname = :'runtime_role'
+          AND runtime_membership.member = migrator.oid
+          AND runtime_membership.grantor = outgoing_membership.member
+          AND runtime_membership.admin_option
+          AND NOT runtime_membership.inherit_option
+          AND runtime_membership.set_option
+          AND provisioner_membership.admin_option
+          AND NOT provisioner_membership.inherit_option
+          AND NOT provisioner_membership.set_option
+          AND bootstrap_grantor.rolsuper
+      )
+    ) AS protected_creator_membership_valid
   FROM pg_catalog.pg_auth_members AS outgoing_membership
+  JOIN pg_catalog.pg_roles AS member_role
+    ON member_role.oid = outgoing_membership.member
+  JOIN pg_catalog.pg_roles AS grantor_role
+    ON grantor_role.oid = outgoing_membership.grantor
   WHERE outgoing_membership.roleid = migrator.oid
 ) AS outgoing_memberships ON true
 WHERE migrator.rolname = current_user;"

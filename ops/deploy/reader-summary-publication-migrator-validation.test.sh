@@ -16,13 +16,14 @@ EVENT_LOG=$FIXTURE/events.log
 WRITE_LOG=$FIXTURE/writes.log
 TRANSPORT_LOG=$FIXTURE/transport.log
 TRANSPORT_PGPASS_PATH_LOG=$FIXTURE/transport-pgpass-path.log
+TRANSPORT_QUERY_PATH_LOG=$FIXTURE/transport-query-path.log
 FAKE_BIN=$FIXTURE/bin
 PRIVATE_QUERY_PAYLOAD=private-query-output-must-stay-redacted
 PRIVATE_PASSWORD=redacted-test-password
 MIGRATOR_ROLE=social_monitor_publication_migrator
 DATABASE_HOST=dbaas-db-8050451-do-user-39622063-0.e.db.ondigitalocean.com
 VALID_URL="postgresql://${MIGRATOR_ROLE}:${PRIVATE_PASSWORD}@${DATABASE_HOST}:25060/social_monitor?connect_timeout=10&sslmode=verify-full&sslrootcert=%2Frun%2Fsocial-monitor-db%2Fca-certificate.crt"
-VALID_CATALOG="social_monitor|${MIGRATOR_ROLE}|${MIGRATOR_ROLE}|t|t|t|f|f|f|f|180004|t|1|t|f|t|t|0|0"
+VALID_CATALOG="social_monitor|${MIGRATOR_ROLE}|${MIGRATOR_ROLE}|t|t|t|f|f|f|f|180004|t|1|t|f|t|t|0|1|t"
 CATALOG_RESULT=$VALID_CATALOG
 CATALOG_QUERY_STATUS=0
 AVAILABILITY_STATUS=0
@@ -55,6 +56,26 @@ mode=$(stat -c '%a' "$PGPASSFILE")
 [[ $* != *postgresql://* && $* != *redacted-test-password* ]]
 if env | grep -F 'redacted-test-password' >/dev/null; then
   exit 91
+fi
+query_file=
+for argument in "$@"; do
+  case $argument in
+    --command=*) exit 90 ;;
+    --file=/tmp/social-monitor-catalog-query.*) query_file=${argument#--file=} ;;
+  esac
+done
+if [[ -n $query_file ]]; then
+  [[ -f $query_file && ! -L $query_file && -s $query_file ]]
+  query_mode=$(stat -c '%a' "$query_file")
+  [[ $query_mode == 600 ]]
+  query_payload=$(< "$query_file")
+  [[ $query_payload == *"WHERE granted_role.rolname = :'runtime_role'"* ]]
+  [[ $query_payload == *'FROM pg_catalog.pg_auth_members AS membership'* ]]
+  [[ " $* " == *' --set=runtime_role=social_monitor_app '* ]]
+  [[ " $* " == *' --set=provisioner_role=doadmin '* ]]
+  printf '%s\n' "$query_file" > "$TRANSPORT_QUERY_PATH_LOG"
+  printf 'client:psql:catalog-file:mode=%s\n' "$query_mode" \
+    >> "$TRANSPORT_LOG"
 fi
 printf '%s\n' "$PGPASSFILE" > "$TRANSPORT_PGPASS_PATH_LOG"
 printf 'client:psql:mode=%s\n' "$mode" >> "$TRANSPORT_LOG"
@@ -122,15 +143,6 @@ reader_summary_publication_admin_secret_metadata() {
   printf '%s|%s\n' "$CA_OWNER" "$mode"
 }
 
-reader_summary_publication_admin_catalog_query() {
-  printf '%s\n' catalog-query >> "$EVENT_LOG"
-  if ((CATALOG_QUERY_STATUS != 0)); then
-    printf '%s\n' "$PRIVATE_QUERY_PAYLOAD"
-    return "$CATALOG_QUERY_STATUS"
-  fi
-  printf '%s\n' "$CATALOG_RESULT"
-}
-
 reader_summary_publication_admin_availability_query() {
   printf '%s\n' availability >> "$EVENT_LOG"
   return "$AVAILABILITY_STATUS"
@@ -150,7 +162,8 @@ fake_compose() {
 }
 
 docker() {
-  local stdin_payload arguments script status pgpass_path index position
+  local stdin_payload arguments script status pgpass_path query_path
+  local index position
   local -a docker_arguments=("$@") child_arguments
   stdin_payload=$(cat)
   arguments=${docker_arguments[*]}
@@ -181,11 +194,19 @@ docker() {
       TRANSPORT_CLIENT_STATUS="$TRANSPORT_CLIENT_STATUS" \
       TRANSPORT_LOG="$TRANSPORT_LOG" \
       TRANSPORT_PGPASS_PATH_LOG="$TRANSPORT_PGPASS_PATH_LOG" \
+      TRANSPORT_QUERY_PATH_LOG="$TRANSPORT_QUERY_PATH_LOG" \
       sh -c "$script" "${child_arguments[@]}"
   status=${PIPESTATUS[1]}
   set -e
   pgpass_path=$(< "$TRANSPORT_PGPASS_PATH_LOG")
   [[ -n $pgpass_path && ! -e $pgpass_path ]] || return 99
+  query_path=$(< "$TRANSPORT_QUERY_PATH_LOG")
+  if [[ ${child_arguments[6]} == catalog ]]; then
+    [[ -n $query_path && ! -e $query_path ]] || return 89
+    printf 'docker:status=%s:query-removed\n' "$status" >> "$TRANSPORT_LOG"
+  else
+    [[ -z $query_path ]] || return 88
+  fi
   printf 'docker:status=%s:pgpass-removed\n' "$status" >> "$TRANSPORT_LOG"
   return "$status"
 }
@@ -216,6 +237,7 @@ reset_case() {
   : > "$WRITE_LOG"
   : > "$TRANSPORT_LOG"
   : > "$TRANSPORT_PGPASS_PATH_LOG"
+  : > "$TRANSPORT_QUERY_PATH_LOG"
   CATALOG_RESULT=$VALID_CATALOG
   CATALOG_QUERY_STATUS=0
   AVAILABILITY_STATUS=0
@@ -251,9 +273,9 @@ assert_pgpass_transport() {
       actual_status=$?
       ;;
     catalog)
-      reader_summary_publication_run_postgres_client \
-        "$SECRET" "$CA_CERTIFICATE" publication-transport-test \
-        catalog "$READER_SUMMARY_PUBLICATION_RUNTIME_ROLE" 'SELECT 1'
+      reader_summary_publication_admin_catalog_query \
+        "$SECRET" "$CA_CERTIFICATE" \
+        "$READER_SUMMARY_PUBLICATION_RUNTIME_ROLE"
       actual_status=$?
       ;;
     availability)
@@ -266,6 +288,11 @@ assert_pgpass_transport() {
   set -e
   ((actual_status == expected_status))
   grep -Fx "client:${expected_client}:mode=600" "$TRANSPORT_LOG" >/dev/null
+  if [[ $operation == catalog ]]; then
+    grep -Fx 'client:psql:catalog-file:mode=600' "$TRANSPORT_LOG" >/dev/null
+    grep -Fx "docker:status=${expected_status}:query-removed" \
+      "$TRANSPORT_LOG" >/dev/null
+  fi
   grep -Fx "docker:status=${expected_status}:pgpass-removed" \
     "$TRANSPORT_LOG" >/dev/null
   [[ ! -e $ROOT/production.env ]]
@@ -364,17 +391,26 @@ assert_invalid_file() {
   : "$label"
 }
 
+assert_pgpass_transport bootstrap psql
+assert_pgpass_transport catalog psql
+assert_pgpass_transport availability pg_isready
+assert_pgpass_transport catalog psql 37
+
+reader_summary_publication_admin_catalog_query() {
+  printf '%s\n' catalog-query >> "$EVENT_LOG"
+  if ((CATALOG_QUERY_STATUS != 0)); then
+    printf '%s\n' "$PRIVATE_QUERY_PAYLOAD"
+    return "$CATALOG_QUERY_STATUS"
+  fi
+  printf '%s\n' "$CATALOG_RESULT"
+}
+
 reset_case
 valid_output=$(deploy_reader_summary_publication_migrations 2>&1)
 [[ -z $valid_output ]]
 [[ $(< "$EVENT_LOG") == $'availability\ncatalog-query\nwrite:pre\nwrite:prisma\nwrite:post' ]]
 [[ $(< "$WRITE_LOG") == $'psql:pre\nprisma-migrate\npsql:post' ]]
 TEST_COUNT=$((TEST_COUNT + 1))
-
-assert_pgpass_transport bootstrap psql
-assert_pgpass_transport catalog psql
-assert_pgpass_transport availability pg_isready
-assert_pgpass_transport catalog psql 37
 
 for failed_phase in pre prisma post; do
   reset_case
@@ -508,8 +544,12 @@ assert_invalid_catalog inherited-runtime-role "$(catalog_with_field 14 t)"
 assert_invalid_catalog no-runtime-set-option "$(catalog_with_field 15 f)"
 assert_invalid_catalog unsafe-protected-membership "$(catalog_with_field 16 f)"
 assert_invalid_catalog unexpected-role-membership "$(catalog_with_field 17 1)"
-assert_invalid_catalog role-can-impersonate-migrator \
-  "$(catalog_with_field 18 1)"
+assert_invalid_catalog missing-protected-creator-membership \
+  "$(catalog_with_field 18 0)"
+assert_invalid_catalog additional-outgoing-member \
+  "$(catalog_with_field 18 2)"
+assert_invalid_catalog unsafe-protected-creator-membership \
+  "$(catalog_with_field 19 f)"
 
 assert_deploy_backend_preflight_order() {
   local mode=$1
@@ -612,12 +652,18 @@ for catalog_token in \
   'protected_memberships_valid' \
   'unexpected_membership_count' \
   'outgoing_memberships.membership_count' \
+  'protected_creator_membership_valid' \
   'outgoing_membership.roleid = migrator.oid' \
+  "member_role.rolname = :'provisioner_role'" \
+  'grantor_role.rolsuper' \
+  'outgoing_membership.admin_option' \
+  'NOT outgoing_membership.inherit_option' \
+  'NOT outgoing_membership.set_option' \
+  'runtime_membership.grantor = outgoing_membership.member' \
   'membership.admin_option' \
   'membership.inherit_option' \
   'membership.set_option' \
   'membership.grantor' \
-  'grantor_role.rolsuper' \
   'provisioner_membership' \
   'pg_isready' \
   '--no-password'; do

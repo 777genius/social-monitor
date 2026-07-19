@@ -2,6 +2,10 @@ import { readFileSync } from "node:fs";
 
 import { Pool, type PoolClient } from "pg";
 
+import {
+  assertPostgres18CreatorAndPsqlRegression,
+} from "./reader-summary-publication-postgres18-regression";
+
 const protectedOwner = "social_monitor_reader_summary_publication_owner";
 
 export const runReaderSummaryPublicationBootstrapSql = async (
@@ -82,6 +86,12 @@ export const createPublicationFixtureRuntimeRole = async (params: {
        NOSUPERUSER NOCREATEDB NOCREATEROLE INHERIT NOREPLICATION NOBYPASSRLS`,
     );
     runtimeCreated = true;
+    await assertPostgres18CreatorAndPsqlRegression({
+      provisionerRole,
+      runtimeRole: params.runtimeRole,
+      serverAdmin,
+      serverAdminDatabaseUrl: params.serverAdminDatabaseUrl,
+    });
     await serverAdmin.query(
       `GRANT CONNECT, CREATE ON DATABASE ${quoteIdentifier(params.databaseName)}
          TO ${quoteIdentifier(params.runtimeRole)}`,
