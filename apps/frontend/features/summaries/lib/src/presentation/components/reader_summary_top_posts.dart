@@ -1,6 +1,6 @@
 part of 'reader_summary_brief_surface.dart';
 
-const _githubTrendingProviderKey = 'github-trending-page';
+const _githubTrendingProviderKey = readerSummaryGitHubTrendingProviderKey;
 
 enum _TopPostSort { editorial, engagement }
 
@@ -11,8 +11,7 @@ enum _TopPostBoard { posts, githubTrending }
 class ReaderSummaryTopPosts extends StatefulWidget {
   const ReaderSummaryTopPosts({
     super.key,
-    required this.items,
-    required this.curatedTopPostCount,
+    required this.projection,
     required this.selectedPostCount,
     required this.period,
     required this.citationsById,
@@ -21,8 +20,7 @@ class ReaderSummaryTopPosts extends StatefulWidget {
     required this.onOpenUrl,
   });
 
-  final List<TopRead> items;
-  final int curatedTopPostCount;
+  final ReaderSummaryTopPostsProjection projection;
   final int selectedPostCount;
   final SummaryPeriod period;
   final Map<String, SummaryCitation> citationsById;
@@ -49,14 +47,17 @@ class _ReaderSummaryTopPostsState extends State<ReaderSummaryTopPosts> {
   @override
   void initState() {
     super.initState();
-    _board = _availableTopPostBoard(widget.items);
+    _board = _availableTopPostBoard(widget.projection.items);
   }
 
   @override
   void didUpdateWidget(covariant ReaderSummaryTopPosts oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.items != oldWidget.items) {
-      _board = _availableTopPostBoard(widget.items, preferred: _board);
+    if (!widget.projection.hasSameDatasetAs(oldWidget.projection)) {
+      _board = _availableTopPostBoard(
+        widget.projection.items,
+        preferred: _board,
+      );
     }
   }
 
@@ -69,12 +70,8 @@ class _ReaderSummaryTopPostsState extends State<ReaderSummaryTopPosts> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final postItems = widget.items
-        .where((item) => !_isGithubTrendingTopRead(item))
-        .toList(growable: false);
-    final githubTrendingItems = orderGitHubTrendingPosts(
-      widget.items.where(_isGithubTrendingTopRead),
-    );
+    final postItems = widget.projection.posts;
+    final githubTrendingItems = widget.projection.githubTrendingPosts;
     final activeBoard = _board;
     final boardItems = switch (activeBoard) {
       _TopPostBoard.posts => postItems,
@@ -99,7 +96,7 @@ class _ReaderSummaryTopPostsState extends State<ReaderSummaryTopPosts> {
           sort: _sort,
           postCount: postItems.length,
           githubTrendingCount: githubTrendingItems.length,
-          curatedTopPostCount: widget.curatedTopPostCount,
+          curatedTopPostCount: widget.projection.curatedPosts.length,
           selectedPostCount: widget.selectedPostCount,
           providerKeys: {
             for (final item in boardItems) item.providerKey,
@@ -143,7 +140,8 @@ class _ReaderSummaryTopPostsState extends State<ReaderSummaryTopPosts> {
                   final item = filtered[index];
                   return _TopPostRow(
                     key: ValueKey(
-                      'reader-summary-top-post-${_topPostStableId(item)}',
+                      'reader-summary-top-post-'
+                      '${readerSummaryTopPostIdentity(item)}-$index',
                     ),
                     index: index,
                     item: item,
@@ -203,14 +201,6 @@ double _topPostsListViewportHeight(BuildContext context) {
     return 620;
   }
   return (windowHeight * 0.68).clamp(360.0, 760.0).toDouble();
-}
-
-String _topPostStableId(TopRead item) {
-  final canonicalUrl = item.canonicalUrl?.trim();
-  if (canonicalUrl != null && canonicalUrl.isNotEmpty) {
-    return canonicalUrl;
-  }
-  return '${item.providerKey.trim()}:${item.title.trim()}';
 }
 
 class _TopPostsHeader extends StatelessWidget {
@@ -328,9 +318,6 @@ class _TopPostsHeader extends StatelessWidget {
   }
 }
 
-bool _isGithubTrendingTopRead(TopRead item) =>
-    item.providerKey.trim().toLowerCase() == _githubTrendingProviderKey;
-
 _TopPostBoard _availableTopPostBoard(
   Iterable<TopRead> items, {
   _TopPostBoard? preferred,
@@ -338,7 +325,7 @@ _TopPostBoard _availableTopPostBoard(
   var hasPosts = false;
   var hasGitHubTrending = false;
   for (final item in items) {
-    if (_isGithubTrendingTopRead(item)) {
+    if (isGitHubTrendingTopPost(item)) {
       hasGitHubTrending = true;
     } else {
       hasPosts = true;

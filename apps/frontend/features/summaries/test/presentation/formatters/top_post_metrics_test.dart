@@ -19,10 +19,7 @@ void main() {
       isEmpty,
     );
     expect(orderGitHubTrendingPosts(posts.take(9)), isEmpty);
-    expect(
-      orderGitHubTrendingPosts([...posts, _githubTrend(11)]),
-      isEmpty,
-    );
+    expect(orderGitHubTrendingPosts([...posts, _githubTrend(11)]), isEmpty);
   });
 
   test('rejects duplicate and invalid repository identities', () {
@@ -40,6 +37,25 @@ void main() {
     expect(orderGitHubTrendingPosts(invalid), isEmpty);
   });
 
+  test('rejects non-GitHub providers and non-canonical rank metrics', () {
+    final posts = List.generate(10, (index) => _githubTrend(index + 1));
+
+    expect(
+      orderGitHubTrendingPosts([
+        ...posts.take(9),
+        _githubTrend(10, providerKey: 'github-issues'),
+      ]),
+      isEmpty,
+    );
+    expect(
+      orderGitHubTrendingPosts([
+        ...posts.take(9),
+        _githubTrend(10, trendingMetricLabel: 'Not GitHub Trending today'),
+      ]),
+      isEmpty,
+    );
+  });
+
   test('rejects duplicate citation identity for the whole board', () {
     final posts = List.generate(10, (index) => _githubTrend(index + 1));
     final duplicateCitation = [
@@ -50,31 +66,34 @@ void main() {
     expect(orderGitHubTrendingPosts(duplicateCitation), isEmpty);
   });
 
-  test('rejects missing or ambiguous citation identity for the whole board', () {
-    final posts = List.generate(10, (index) => _githubTrend(index + 1));
+  test(
+    'rejects missing or ambiguous citation identity for the whole board',
+    () {
+      final posts = List.generate(10, (index) => _githubTrend(index + 1));
 
-    expect(
-      orderGitHubTrendingPosts([
-        ...posts.take(9),
-        _githubTrend(10, citationIds: const []),
-      ]),
-      isEmpty,
-    );
-    expect(
-      orderGitHubTrendingPosts([
-        ...posts.take(9),
-        _githubTrend(10, citationIds: const ['github-c-10', 'github-c-11']),
-      ]),
-      isEmpty,
-    );
-    expect(
-      orderGitHubTrendingPosts([
-        ...posts.take(9),
-        _githubTrend(10, citationId: '  '),
-      ]),
-      isEmpty,
-    );
-  });
+      expect(
+        orderGitHubTrendingPosts([
+          ...posts.take(9),
+          _githubTrend(10, citationIds: const []),
+        ]),
+        isEmpty,
+      );
+      expect(
+        orderGitHubTrendingPosts([
+          ...posts.take(9),
+          _githubTrend(10, citationIds: const ['github-c-10', 'github-c-11']),
+        ]),
+        isEmpty,
+      );
+      expect(
+        orderGitHubTrendingPosts([
+          ...posts.take(9),
+          _githubTrend(10, citationId: '  '),
+        ]),
+        isEmpty,
+      );
+    },
+  );
 
   for (final invalidUrl in const [
     'https://user@github.com/owner/repo-10',
@@ -114,7 +133,40 @@ void main() {
       isFalse,
     );
   });
+
+  test('changes order only for engagement and keeps source order on ties', () {
+    final first = _postWithLikes('Editorial first', 100);
+    final second = _postWithLikes('Editorial second', 100);
+    final high = _postWithLikes('Engagement winner', 500);
+    final posts = [first, second, high];
+
+    expect(orderTopPosts(posts, byEngagement: false), posts);
+    expect(orderTopPosts(posts, byEngagement: true).map((post) => post.title), [
+      'Engagement winner',
+      'Editorial first',
+      'Editorial second',
+    ]);
+  });
 }
+
+TopRead _postWithLikes(String title, int likes) => TopRead(
+  title: title,
+  providerKey: 'x-twitter',
+  reason: 'Editorial evidence.',
+  matchedInterestIds: const ['ai-developer-tools'],
+  matchedRules: const [],
+  signalScore: SignalScore.normalized(1),
+  confidence: const TopReadConfidence(
+    level: 'medium',
+    score: 0.6,
+    rationale: 'Provider evidence.',
+  ),
+  confirmedProviderKeys: const ['x-twitter'],
+  providerMetrics: [ProviderMetric(label: 'Likes', value: '$likes Likes')],
+  whyImportant: const [],
+  whyNow: 'Current window.',
+  citationIds: const [],
+);
 
 TopRead _githubTrend(
   int rank, {
@@ -122,9 +174,11 @@ TopRead _githubTrend(
   String? canonicalUrl,
   String? citationId,
   List<String>? citationIds,
+  String providerKey = 'github-trending-page',
+  String trendingMetricLabel = 'GitHub Trending today',
 }) => TopRead(
   title: 'owner/repo-$rank',
-  providerKey: 'github-trending-page',
+  providerKey: providerKey,
   reason: 'Repository ranked by GitHub Trending.',
   matchedInterestIds: const ['ai-developer-tools'],
   matchedRules: const [],
@@ -138,7 +192,7 @@ TopRead _githubTrend(
   providerMetrics: [
     const ProviderMetric(label: 'Stars', value: '12,000'),
     ProviderMetric(
-      label: 'GitHub Trending today',
+      label: trendingMetricLabel,
       value: '#$rank, +$starsToday stars today',
     ),
   ],

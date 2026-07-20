@@ -5,7 +5,7 @@ import 'package:social_monitor_summaries/src/domain/aggregates/reader_summary.da
 import 'package:social_monitor_summaries/src/infrastructure/api/summary_api_dto.dart';
 import 'package:social_monitor_summaries/src/infrastructure/mappers/summary_mapper.dart';
 import 'package:social_monitor_summaries/src/presentation/components/reader_summary_brief_surface.dart';
-import 'package:social_monitor_summaries/src/presentation/components/reader_summary_top_posts_section_sliver.dart';
+import 'package:social_monitor_summaries/src/presentation/view_models/reader_summary_top_posts_projection.dart';
 
 import '../../support/summaries_test_fixtures.dart';
 
@@ -130,7 +130,7 @@ void main() {
   );
 
   testWidgets(
-    'shows only editorial reads as top posts and keeps selected GitHub trends',
+    'continues selected posts after editorial reads and keeps GitHub separate',
     (tester) async {
       tester.view.physicalSize = const Size(1100, 900);
       tester.view.devicePixelRatio = 1;
@@ -162,12 +162,25 @@ void main() {
       await tester.pumpWidget(_TestApp(summary: summary));
       await tester.pumpAndSettle();
 
-      expect(find.bySemanticsLabel('Top posts, 2 items'), findsOneWidget);
+      expect(find.bySemanticsLabel('Top posts, 3 items'), findsOneWidget);
       expect(find.text('2 editorial picks from 3 selected'), findsOneWidget);
       expect(find.text('Backend editorial winner'), findsOneWidget);
       expect(find.text('Higher engagement runner-up'), findsOneWidget);
-      expect(find.text('Long-tail selected evidence'), findsNothing);
 
+      await tester.scrollUntilVisible(
+        find.text('Long-tail selected evidence'),
+        320,
+        scrollable: find.byType(Scrollable).first,
+        maxScrolls: 20,
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Long-tail selected evidence'), findsOneWidget);
+
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('reader-summary-top-posts-board-github')),
+      );
+      await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(const ValueKey('reader-summary-top-posts-board-github')),
       );
@@ -179,7 +192,7 @@ void main() {
     },
   );
 
-  test('rejects a partial GitHub board as a whole', () {
+  test('keeps selected continuation but rejects a partial GitHub board', () {
     final selectedPosts = [_longTailSelectedPost(), _githubTopReads().first];
     final summary = const SummaryMapper().readerSummaryToDomain(
       readerSummaryApiDto(
@@ -190,10 +203,11 @@ void main() {
       ),
     );
 
-    final items = readerSummaryTopPostItems(summary);
+    final projection = readerSummaryTopPostsProjection(summary);
 
-    expect(readerSummaryEditorialTopPostCount(summary), 0);
-    expect(items, isEmpty);
+    expect(projection.curatedPosts, isEmpty);
+    expect(projection.posts.single.title, 'Long-tail selected evidence');
+    expect(projection.githubTrendingPosts, isEmpty);
   });
 
   testWidgets('falls back when a new day changes the available board', (
@@ -249,9 +263,9 @@ void main() {
 
     final summary = const SummaryMapper().readerSummaryToDomain(
       readerSummaryApiDto(
-        content: readerSummaryContentApiDto(
-          topReads: _githubTopReads(),
-          sourceProviderKey: 'github-trending-page',
+        content: _contentWithSelectedPosts(
+          readerSummaryContentApiDto(topReads: const []),
+          _githubTopReads(),
         ),
         citations: _githubCitations(),
       ),
@@ -428,7 +442,7 @@ class _TestApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = AppTheme.light();
-    final items = readerSummaryTopPostItems(summary);
+    final projection = readerSummaryTopPostsProjection(summary);
     return AppHeadlessScope(
       theme: theme,
       appBuilder: (overlayBuilder) => MaterialApp(
@@ -440,12 +454,12 @@ class _TestApp extends StatelessWidget {
               SliverPadding(
                 padding: const EdgeInsets.all(AppSpacing.md),
                 sliver: ReaderSummaryTopPostsSliver(
-                  items: items,
-                  curatedTopPostCount: readerSummaryEditorialTopPostCount(
-                    summary,
-                  ),
+                  projection: projection,
                   selectedPostCount:
-                      summary.coverage?.selectedFeedItemCount ?? items.length,
+                      summary.coverage?.selectedFeedItemCount ??
+                      (summary.content.selectedPosts.isNotEmpty
+                          ? summary.content.selectedPosts.length
+                          : summary.content.topReads.length),
                   period: summary.period,
                   citationsById: {
                     for (final citation in summary.citations)
