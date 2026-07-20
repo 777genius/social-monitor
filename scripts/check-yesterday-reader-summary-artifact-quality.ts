@@ -5,23 +5,15 @@ import { Pool } from "pg";
 
 import { SourceContentQualityPolicy } from "@social-monitor/relevance/domain";
 import type { JsonObject } from "@social-monitor/shared-kernel";
-import { isDefaultReaderSummaryEvidenceProvider } from "@social-monitor/summary/adapters/evidence/reader-summary-evidence-provider-filter";
-import {
-  readerSummaryArtifactFromPrisma,
-  type PrismaReaderSummaryArtifactRecord,
-} from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-records";
+import { readerSummaryArtifactFromPrisma } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-records";
 import { presentReaderSummaryArtifact } from "@social-monitor/summary/features/shared/reader-summary-artifact-presenter";
-import type {
-  ReaderSummaryCollectedFeedItemCoverage,
-  ReaderSummaryFreshness,
-} from "@social-monitor/summary/ports";
+import type { ReaderSummaryFreshness } from "@social-monitor/summary/ports";
 
 import {
   collectionDateOptionOrDefault,
   type CollectionIntegrityStatus,
   fingerprint,
   message,
-  nextDate,
   noRawSecretFragments,
   normalizeLineEndings,
   readCollectionIntegrityStatus,
@@ -33,27 +25,15 @@ import {
   dailyPeriodKey,
   isLocalDataSourceUnavailable,
 } from "./lib/reader-summary-quality-eval-support";
-import { selectedCoverageMatchesProviderBreakdown } from "./lib/reader-summary-artifact-coverage";
-
-type ProviderCountRow = {
-  readonly providerKey: string;
-  readonly collectedFeedItemCount: string;
-};
-
-type TopReadFeedItemQualityRow = {
-  readonly id: string;
-  readonly providerKey: string;
-  readonly canonicalUrl: string;
-  readonly authorHandle: string | null;
-  readonly title: string;
-  readonly bodyPreview: string | null;
-  readonly providerMetadata: unknown;
-};
-
-type ArtifactStatusCountRow = {
-  readonly status: string;
-  readonly count: string;
-};
+import {
+  selectedCoverageMatchesProviderBreakdown,
+  selectedFeedItemProvenanceMatchesScope,
+} from "./lib/reader-summary-artifact-coverage";
+import {
+  artifactQualityFeedWindow,
+  type TopReadFeedItemQualityRow,
+  YesterdayReaderSummaryArtifactQualityStore,
+} from "./lib/yesterday-reader-summary-artifact-quality-store";
 
 type ArtifactQualityReport = {
   readonly schemaVersion: 1;
@@ -277,36 +257,28 @@ async function buildReport(): Promise<ArtifactQualityReport> {
     max: 1,
     connectionTimeoutMillis: 2_000,
   });
+  const artifactScope = {
+    tenantId: String(scope.tenantId),
+    workspaceId: String(scope.workspaceId),
+  };
+  const artifactStore = new YesterdayReaderSummaryArtifactQualityStore(
+    pool,
+    collectionDate,
+    badGamingFalsePositiveNeedle,
+  );
 
   try {
-    const record = await readLatestArtifact(pool, {
-      tenantId: String(scope.tenantId),
-      workspaceId: String(scope.workspaceId),
-    });
-    const latestVisible = await readLatestVisibleArtifact(pool, {
-      tenantId: String(scope.tenantId),
-      workspaceId: String(scope.workspaceId),
-    });
+    const record = await artifactStore.readLatestArtifact(artifactScope);
+    const latestVisible =
+      await artifactStore.readLatestVisibleArtifact(artifactScope);
     const visibleBadGamingArtifactCount =
-      await readVisibleBadGamingArtifactCount(pool, {
-        tenantId: String(scope.tenantId),
-        workspaceId: String(scope.workspaceId),
-      });
-    const badGamingStatusCounts = await readBadGamingArtifactStatusCounts(
-      pool,
-      {
-        tenantId: String(scope.tenantId),
-        workspaceId: String(scope.workspaceId),
-      },
-    );
-    const periodStatusCounts = await readPeriodArtifactStatusCounts(pool, {
-      tenantId: String(scope.tenantId),
-      workspaceId: String(scope.workspaceId),
-    });
-    const collectedCoverage = await readCollectedCoverage(pool, {
-      tenantId: String(scope.tenantId),
-      workspaceId: String(scope.workspaceId),
-    });
+      await artifactStore.readVisibleBadGamingArtifactCount(artifactScope);
+    const badGamingStatusCounts =
+      await artifactStore.readBadGamingArtifactStatusCounts(artifactScope);
+    const periodStatusCounts =
+      await artifactStore.readPeriodArtifactStatusCounts(artifactScope);
+    const collectedCoverage =
+      await artifactStore.readCollectedCoverage(artifactScope);
     const artifact = readerSummaryArtifactFromPrisma(record);
     const freshness: ReaderSummaryFreshness = {
       status: "fresh",
@@ -315,6 +287,20 @@ async function buildReport(): Promise<ArtifactQualityReport> {
     const view = presentReaderSummaryArtifact(artifact, freshness, {
       collectedCoverage,
     });
+    const selectedFeedItemProvenance =
+      await artifactStore.readSelectedFeedItemProvenance({
+        ...artifactScope,
+        feedItemIds: view.sourceWindow.selectedFeedItemIds,
+      });
+    const selectedFeedItemScopeEvidence = {
+      selectedFeedItemIds: view.sourceWindow.selectedFeedItemIds,
+      feedItems: selectedFeedItemProvenance,
+      scope: {
+        tenantId: record.tenantId,
+        workspaceId: record.workspaceId,
+        summaryScope: view.scope,
+      },
+    };
     const content = view.content;
     const coverage = view.coverage;
     const citationById = new Map(
@@ -330,9 +316,8 @@ async function buildReport(): Promise<ArtifactQualityReport> {
           .filter((value): value is string => value !== undefined),
       ),
     );
-    const topReadFeedItems = await readFeedItemsByIds(pool, {
-      tenantId: String(scope.tenantId),
-      workspaceId: String(scope.workspaceId),
+    const topReadFeedItems = await artifactStore.readFeedItemsByIds({
+      ...artifactScope,
       feedItemIds: topReadCitationFeedItemIds,
     });
     const sourceQuality = buildTopReadSourceQuality({
@@ -446,7 +431,7 @@ async function buildReport(): Promise<ArtifactQualityReport> {
       },
       inputs: {
         database: "local-postgres",
-        period: feedWindow(),
+        period: artifactQualityFeedWindow(collectionDate),
         scope: {
           tenantFingerprint: fingerprint(String(scope.tenantId)),
           workspaceFingerprint: fingerprint(String(scope.workspaceId)),
@@ -545,8 +530,15 @@ async function buildReport(): Promise<ArtifactQualityReport> {
         coverageSelectedMatchesSourceWindow:
           coverage.selectedFeedItemCount ===
           view.sourceWindow.selectedFeedItemIds.length,
+        selectedFeedItemProvenanceMatchesArtifactScope:
+          selectedFeedItemProvenanceMatchesScope(
+            selectedFeedItemScopeEvidence,
+          ),
         coverageSelectedMatchesProviderBreakdown:
-          selectedCoverageMatchesProviderBreakdown(coverage, selectedPosts),
+          selectedCoverageMatchesProviderBreakdown(coverage, {
+            ...selectedFeedItemScopeEvidence,
+            citations: view.citations,
+          }),
         selectedPostsMismatchIsExplained: selectedPostsMismatchDocumented,
         topReadsHaveCanonicalUrls:
           topReads.length > 0 &&
@@ -677,292 +669,6 @@ function validateExistingReport(): void {
   console.log(
     `Persisted reader summary artifact quality artifact OK (${report.collectionDate})`,
   );
-}
-
-async function readLatestArtifact(
-  pool: Pool,
-  scope: {
-    readonly tenantId: string;
-    readonly workspaceId: string;
-  },
-): Promise<PrismaReaderSummaryArtifactRecord> {
-  const result = await pool.query<PrismaReaderSummaryArtifactRecord>(
-    `
-      select
-        id::text as "id",
-        tenant_id::text as "tenantId",
-        workspace_id::text as "workspaceId",
-        scope_type as "scopeType",
-        scope_key as "scopeKey",
-        interest_id::text as "interestId",
-        cadence as "cadence",
-        period_started_at as "periodStartedAt",
-        period_ended_at as "periodEndedAt",
-        period_timezone as "periodTimezone",
-        period_key as "periodKey",
-        user_id::text as "userId",
-        subscription_id::text as "subscriptionId",
-        status::text as "status",
-        schema_version as "schemaVersion",
-        model_version as "modelVersion",
-        prompt_version as "promptVersion",
-        headline as "headline",
-        summary_text as "summaryText",
-        artifact_payload as "artifactPayload",
-        citations as "citations",
-        quality_signals as "qualitySignals",
-        created_at as "createdAt",
-        updated_at as "updatedAt"
-      from reader_summary_artifacts
-      where tenant_id = $1::uuid
-        and workspace_id = $2::uuid
-        and status in ('COMPLETED', 'NO_SIGNAL')
-        and scope_type = 'workspace'
-        and cadence = 'daily'
-        and period_key = $3
-      order by created_at desc, id desc
-      limit 1
-    `,
-    [scope.tenantId, scope.workspaceId, dailyPeriodKey(collectionDate)],
-  );
-  const row = result.rows[0];
-
-  if (row === undefined) {
-    throw new Error(
-      `No persisted reader summary artifact found for ${collectionDate}`,
-    );
-  }
-
-  return row;
-}
-
-async function readLatestVisibleArtifact(
-  pool: Pool,
-  scope: {
-    readonly tenantId: string;
-    readonly workspaceId: string;
-  },
-): Promise<PrismaReaderSummaryArtifactRecord> {
-  const result = await pool.query<PrismaReaderSummaryArtifactRecord>(
-    `
-      select
-        id::text as "id",
-        tenant_id::text as "tenantId",
-        workspace_id::text as "workspaceId",
-        scope_type as "scopeType",
-        scope_key as "scopeKey",
-        interest_id::text as "interestId",
-        cadence as "cadence",
-        period_started_at as "periodStartedAt",
-        period_ended_at as "periodEndedAt",
-        period_timezone as "periodTimezone",
-        period_key as "periodKey",
-        user_id::text as "userId",
-        subscription_id::text as "subscriptionId",
-        status::text as "status",
-        schema_version as "schemaVersion",
-        model_version as "modelVersion",
-        prompt_version as "promptVersion",
-        headline as "headline",
-        summary_text as "summaryText",
-        artifact_payload as "artifactPayload",
-        citations as "citations",
-        quality_signals as "qualitySignals",
-        created_at as "createdAt",
-        updated_at as "updatedAt"
-      from reader_summary_artifacts
-      where tenant_id = $1::uuid
-        and workspace_id = $2::uuid
-        and scope_type = 'workspace'
-        and cadence = 'daily'
-        and status in ('COMPLETED', 'NO_SIGNAL')
-      order by period_started_at desc, created_at desc, id desc
-      limit 1
-    `,
-    [scope.tenantId, scope.workspaceId],
-  );
-  const row = result.rows[0];
-
-  if (row === undefined) {
-    throw new Error("No persisted latest reader summary artifact found");
-  }
-
-  return row;
-}
-
-async function readPeriodArtifactStatusCounts(
-  pool: Pool,
-  scope: {
-    readonly tenantId: string;
-    readonly workspaceId: string;
-  },
-): Promise<Record<string, number>> {
-  const result = await pool.query<ArtifactStatusCountRow>(
-    `
-      select status::text as status, count(*)::text as count
-      from reader_summary_artifacts
-      where tenant_id = $1::uuid
-        and workspace_id = $2::uuid
-        and scope_type = 'workspace'
-        and cadence = 'daily'
-        and period_key = $3
-      group by status
-      order by status
-    `,
-    [scope.tenantId, scope.workspaceId, dailyPeriodKey(collectionDate)],
-  );
-
-  return Object.fromEntries(
-    result.rows.map((row) => [row.status, Number.parseInt(row.count, 10)]),
-  );
-}
-
-async function readBadGamingArtifactStatusCounts(
-  pool: Pool,
-  scope: {
-    readonly tenantId: string;
-    readonly workspaceId: string;
-  },
-): Promise<Record<string, number>> {
-  const result = await pool.query<ArtifactStatusCountRow>(
-    `
-      select status::text as status, count(*)::text as count
-      from reader_summary_artifacts
-      where tenant_id = $1::uuid
-        and workspace_id = $2::uuid
-        and artifact_payload::text ilike $3
-      group by status
-      order by status
-    `,
-    [scope.tenantId, scope.workspaceId, `%${badGamingFalsePositiveNeedle}%`],
-  );
-
-  return Object.fromEntries(
-    result.rows.map((row) => [row.status, Number.parseInt(row.count, 10)]),
-  );
-}
-
-async function readCollectedCoverage(
-  pool: Pool,
-  scope: {
-    readonly tenantId: string;
-    readonly workspaceId: string;
-  },
-): Promise<ReaderSummaryCollectedFeedItemCoverage> {
-  const result = await pool.query<ProviderCountRow>(
-    `
-      select
-        provider_key as "providerKey",
-        count(*)::text as "collectedFeedItemCount"
-      from feed_items
-      where tenant_id = $1::uuid
-        and workspace_id = $2::uuid
-        and published_at >= $3::timestamptz
-        and published_at < $4::timestamptz
-      group by provider_key
-      order by provider_key
-    `,
-    [
-      scope.tenantId,
-      scope.workspaceId,
-      feedWindow().startInclusive,
-      feedWindow().endExclusive,
-    ],
-  );
-  const providerBreakdown = result.rows
-    .filter((item) => isDefaultReaderSummaryEvidenceProvider(item.providerKey))
-    .map((item) => ({
-      providerKey: item.providerKey,
-      collectedFeedItemCount: Number.parseInt(item.collectedFeedItemCount, 10),
-      lowRelevanceFeedItemCount: 0,
-      mutedFeedItemCount: 0,
-      userRatedFeedItemCount: 0,
-    }))
-    .sort((left, right) => {
-      const countDiff =
-        right.collectedFeedItemCount - left.collectedFeedItemCount;
-      return countDiff === 0
-        ? left.providerKey.localeCompare(right.providerKey)
-        : countDiff;
-    });
-
-  return {
-    collectedFeedItemCount: providerBreakdown.reduce(
-      (sum, item) => sum + item.collectedFeedItemCount,
-      0,
-    ),
-    lowRelevanceFeedItemCount: 0,
-    mutedFeedItemCount: 0,
-    userRatedFeedItemCount: 0,
-    providerBreakdown,
-    topicBreakdown: [],
-    queryBreakdown: [],
-  };
-}
-
-async function readVisibleBadGamingArtifactCount(
-  pool: Pool,
-  scope: {
-    readonly tenantId: string;
-    readonly workspaceId: string;
-  },
-): Promise<number> {
-  const result = await pool.query<{ readonly count: string }>(
-    `
-      select count(*)::text as count
-      from reader_summary_artifacts
-      where tenant_id = $1::uuid
-        and workspace_id = $2::uuid
-        and status in ('COMPLETED', 'NO_SIGNAL')
-        and artifact_payload::text ilike $3
-    `,
-    [scope.tenantId, scope.workspaceId, `%${badGamingFalsePositiveNeedle}%`],
-  );
-
-  return Number.parseInt(result.rows[0]?.count ?? "0", 10);
-}
-
-async function readFeedItemsByIds(
-  pool: Pool,
-  params: {
-    readonly tenantId: string;
-    readonly workspaceId: string;
-    readonly feedItemIds: readonly string[];
-  },
-): Promise<readonly TopReadFeedItemQualityRow[]> {
-  if (params.feedItemIds.length === 0) {
-    return [];
-  }
-
-  const result = await pool.query<TopReadFeedItemQualityRow>(
-    `
-      select
-        id::text as "id",
-        provider_key as "providerKey",
-        canonical_url as "canonicalUrl",
-        author_handle as "authorHandle",
-        title,
-        body_preview as "bodyPreview",
-        provider_metadata as "providerMetadata"
-      from feed_items
-      where tenant_id = $1::uuid
-        and workspace_id = $2::uuid
-        and id = any($3::uuid[])
-    `,
-    [params.tenantId, params.workspaceId, params.feedItemIds],
-  );
-
-  return result.rows;
-}
-
-function feedWindow(): {
-  readonly startInclusive: string;
-  readonly endExclusive: string;
-} {
-  return {
-    startInclusive: `${collectionDate}T00:00:00.000Z`,
-    endExclusive: new Date(nextDate(collectionDate)).toISOString(),
-  };
 }
 
 function previousUtcDate(): string {

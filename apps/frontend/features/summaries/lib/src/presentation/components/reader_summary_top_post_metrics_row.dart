@@ -142,8 +142,6 @@ class _TopPostRelevanceColumn extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(height: AppSpacing.xs),
-        _TopPostConfidenceBadge(confidence: item.confidence),
         if (interestCount > 0) ...[
           const SizedBox(height: AppSpacing.sm),
           Text(
@@ -166,37 +164,6 @@ class _TopPostRelevanceColumn extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _TopPostConfidenceBadge extends StatelessWidget {
-  const _TopPostConfidenceBadge({required this.confidence});
-
-  final TopReadConfidence confidence;
-
-  @override
-  Widget build(BuildContext context) {
-    final level = confidence.level.trim().toLowerCase();
-    final label = switch (level) {
-      'high' => 'High confidence',
-      'medium' => 'Medium confidence',
-      _ => 'Low confidence',
-    };
-    final tone = switch (level) {
-      'high' => AppStatusTone.success,
-      'medium' => AppStatusTone.warning,
-      _ => AppStatusTone.danger,
-    };
-    final score = (confidence.score.clamp(0, 1) * 100).round();
-    final rationale = confidence.rationale.trim();
-    final tooltip = rationale.isEmpty
-        ? '$label ($score%)'
-        : '$label ($score%). $rationale';
-
-    return Tooltip(
-      message: tooltip,
-      child: AppStatusBadge(label: label, tone: tone),
     );
   }
 }

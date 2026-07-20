@@ -26,7 +26,7 @@ describe("canReaderSummaryGenerationSupersede", () => {
     ).toBe(true);
   });
 
-  it("keeps model authority stronger than generation order", () => {
+  it("requires strict generation order before stronger model authority", () => {
     expect(
       canReaderSummaryGenerationSupersede({
         incomingModelVersion: "codex:gpt-5.5:xhigh",
@@ -34,13 +34,50 @@ describe("canReaderSummaryGenerationSupersede", () => {
         incomingRequestedAt: older,
         visibleRequestedAt: newer,
       }),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       canReaderSummaryGenerationSupersede({
         incomingModelVersion: "deterministic-reader-summary-v1",
         visibleModelVersion: "codex:gpt-5.5:xhigh",
         incomingRequestedAt: newer,
         visibleRequestedAt: older,
+      }),
+    ).toBe(false);
+  });
+
+  it.each([
+    {
+      label: "missing incoming",
+      incomingRequestedAt: undefined,
+      visibleRequestedAt: older,
+    },
+    {
+      label: "missing visible",
+      incomingRequestedAt: newer,
+      visibleRequestedAt: undefined,
+    },
+    {
+      label: "equal",
+      incomingRequestedAt: older,
+      visibleRequestedAt: older,
+    },
+    {
+      label: "invalid incoming",
+      incomingRequestedAt: new Date(Number.NaN),
+      visibleRequestedAt: older,
+    },
+    {
+      label: "invalid visible",
+      incomingRequestedAt: newer,
+      visibleRequestedAt: new Date(Number.NaN),
+    },
+  ])("fails closed for $label requestedAt", (timestamps) => {
+    expect(
+      canReaderSummaryGenerationSupersede({
+        incomingModelVersion: "codex:gpt-5.5:xhigh",
+        visibleModelVersion: "deterministic-reader-summary-v1",
+        incomingRequestedAt: timestamps.incomingRequestedAt,
+        visibleRequestedAt: timestamps.visibleRequestedAt,
       }),
     ).toBe(false);
   });

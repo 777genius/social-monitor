@@ -33,6 +33,7 @@ import {
   buildOpenAiReaderSummaryPromptPayload,
   currentReaderSummaryPromptRelease,
 } from "./openai-responses-reader-summary-prompt";
+import { buildReaderSummaryEvidenceCitationMap } from "./reader-summary-evidence-citation-map";
 
 type FetchLike = (input: string | URL, init?: RequestInit) => Promise<Response>;
 
@@ -301,6 +302,9 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
     input: ReaderSummaryModelInput,
     selectedRoute: ReaderSummaryModelRoute,
   ): ProviderReaderSummaryAttempt {
+    const citationMap = buildReaderSummaryEvidenceCitationMap(
+      input.evidence.selectedEvidence,
+    );
     const noSignalDraft = {
       headline: "No reliable workspace signal yet",
       executiveSummary:
@@ -315,7 +319,7 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
           reason: "insufficient_evidence" as const,
         },
       ],
-      citationMap: [],
+      citationMap,
       qualityFlags: ["no_signal", "limited_sources"] as const,
       confidence: {
         level: "none" as const,

@@ -12,6 +12,19 @@ import type {
   AgentRuntimeExecutorHealth,
   AgentRuntimeExecutorPort,
 } from "./agent-runtime-executor.port";
+import {
+  attachExecutorOwnedExecutionAttestation,
+  canonicalSubscriptionRuntimeRequest,
+  invalidAttestationResult,
+  parseSubscriptionRuntimeJsonObject,
+  productionAgentRuntimeModel,
+  productionAgentRuntimeReasoningEffort,
+} from "./subscription-runtime-execution-attestation";
+import {
+  FileSubscriptionRuntimeInstallationInspector,
+  type SubscriptionRuntimeInstallationInspector,
+  type SubscriptionRuntimeInstallationIdentity,
+} from "./subscription-runtime-installation";
 
 export type SubscriptionRuntimeCliExecutorOptions = {
   readonly command: string;
@@ -22,39 +35,64 @@ export type SubscriptionRuntimeCliExecutorOptions = {
   readonly claudeTokenEnv?: string;
   readonly model?: string;
   readonly reasoningEffort?: "xhigh";
+  readonly installationInspector?: SubscriptionRuntimeInstallationInspector;
 };
 
 export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort {
-  constructor(
-    private readonly options: SubscriptionRuntimeCliExecutorOptions,
-  ) {}
+  private readonly installationInspector: SubscriptionRuntimeInstallationInspector;
+
+  constructor(private readonly options: SubscriptionRuntimeCliExecutorOptions) {
+    this.installationInspector =
+      options.installationInspector ??
+      new FileSubscriptionRuntimeInstallationInspector();
+  }
 
   async execute(
     request: AgentRuntimeExecutionRequest,
   ): Promise<AgentRuntimeExecutionResult> {
+    if (
+      request.provider !== "codex" ||
+      (this.options.model ?? productionAgentRuntimeModel) !==
+        productionAgentRuntimeModel ||
+      (this.options.reasoningEffort ??
+        productionAgentRuntimeReasoningEffort) !==
+        productionAgentRuntimeReasoningEffort
+    ) {
+      return invalidAttestationResult();
+    }
+    let admittedInstallation: SubscriptionRuntimeInstallationIdentity;
+    try {
+      admittedInstallation = await this.installationInspector.inspect(
+        this.options.command,
+      );
+    } catch {
+      return invalidAttestationResult();
+    }
     const tempDir = await mkdtemp(
       join(tmpdir(), "social-monitor-agent-runtime-"),
     );
     const inputPath = join(tempDir, "request.json");
 
     try {
-      await writeFile(
-        inputPath,
-        JSON.stringify(toSubscriptionRuntimeRequest(request)),
-        "utf8",
-      );
+      const canonicalRequest = canonicalSubscriptionRuntimeRequest(request);
+      await writeFile(inputPath, JSON.stringify(canonicalRequest), "utf8");
 
       const startedAt = Date.now();
       const initialResult = cliExecutionResult(
         await runCli({
-          command: this.options.command,
+          command: admittedInstallation.executablePath,
           args: this.buildArgs(request, inputPath),
           env: this.executionEnvPatch(this.options.ephemeral),
           timeoutMs: request.timeoutMs,
         }),
       );
       if (!shouldRetryWithEphemeral(initialResult, this.options)) {
-        return initialResult;
+        return this.attestCompletedResult(
+          request,
+          canonicalRequest,
+          initialResult,
+          admittedInstallation,
+        );
       }
       const remainingTimeoutMs = request.timeoutMs - (Date.now() - startedAt);
       if (remainingTimeoutMs <= 0) {
@@ -62,24 +100,29 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
       }
       const recovered = cliExecutionResult(
         await runCli({
-          command: this.options.command,
+          command: admittedInstallation.executablePath,
           args: this.buildArgs(request, inputPath, true),
           env: this.executionEnvPatch(true),
           timeoutMs: remainingTimeoutMs,
         }),
       );
 
-      return {
-        ...recovered,
-        warnings: [
-          ...recovered.warnings,
-          {
-            code: "agent_runtime.session_recovered_ephemeral",
-            message:
-              "Durable provider session was unavailable; retried in an isolated session",
-          },
-        ],
-      };
+      return this.attestCompletedResult(
+        request,
+        canonicalRequest,
+        {
+          ...recovered,
+          warnings: [
+            ...recovered.warnings,
+            {
+              code: "agent_runtime.session_recovered_ephemeral",
+              message:
+                "Durable provider session was unavailable; retried in an isolated session",
+            },
+          ],
+        },
+        admittedInstallation,
+      );
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
@@ -101,8 +144,11 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
     }
 
     try {
+      const installation = await this.installationInspector.inspect(
+        this.options.command,
+      );
       const probe = await runCli({
-        command: this.options.command,
+        command: installation.executablePath,
         args: ["--help"],
         timeoutMs: 2_000,
       });
@@ -114,7 +160,8 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
       return {
         healthy,
         runtimeEngine: "subscription-runtime-cli",
-        runtimeVersion: "unknown",
+        runtimeVersion: installation.runtimePackageVersion,
+        launcherSha256: installation.launcherSha256,
         warnings: healthy
           ? []
           : [
@@ -137,6 +184,25 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
         ],
       };
     }
+  }
+
+  private attestCompletedResult(
+    request: AgentRuntimeExecutionRequest,
+    canonicalRequest: Record<string, unknown>,
+    result: AgentRuntimeExecutionResult,
+    admittedInstallation: SubscriptionRuntimeInstallationIdentity,
+  ): Promise<AgentRuntimeExecutionResult> {
+    return attachExecutorOwnedExecutionAttestation({
+      command: admittedInstallation.executablePath,
+      request,
+      canonicalRequest,
+      result,
+      model: this.options.model ?? productionAgentRuntimeModel,
+      reasoningEffort:
+        this.options.reasoningEffort ?? productionAgentRuntimeReasoningEffort,
+      installationInspector: this.installationInspector,
+      admittedInstallation,
+    });
   }
 
   private buildArgs(
@@ -173,9 +239,7 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
     ) {
       args.push("--claude-token-env", this.options.claudeTokenEnv);
     }
-    if (this.options.model !== undefined) {
-      args.push("--model", this.options.model);
-    }
+    args.push("--model", this.options.model ?? productionAgentRuntimeModel);
 
     return args;
   }
@@ -188,51 +252,12 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
       patch.SUBSCRIPTION_RUNTIME_LOCAL_ENCRYPTION_KEY =
         this.options.localEncryptionKey;
     }
-    if (this.options.reasoningEffort !== undefined) {
-      patch.AGENT_RUNTIME_REASONING_EFFORT = this.options.reasoningEffort;
-    }
+    patch.AGENT_RUNTIME_REASONING_EFFORT =
+      this.options.reasoningEffort ?? productionAgentRuntimeReasoningEffort;
 
     return patch;
   }
 }
-
-const toSubscriptionRuntimeRequest = (
-  request: AgentRuntimeExecutionRequest,
-): Record<string, unknown> => {
-  const controls = readJsonObject(request.controlsJson, "controls_json");
-
-  return {
-    protocolVersion: 1,
-    runId: request.requestId,
-    providerInstanceId: request.providerInstanceId,
-    cwd: request.cwd,
-    timeoutMs: request.timeoutMs,
-    task: {
-      kind: "structured-prompt",
-      systemPrompt: request.systemPrompt,
-      prompt: request.prompt,
-      outputSchemaName:
-        typeof controls.outputSchemaName === "string"
-          ? controls.outputSchemaName
-          : undefined,
-      controls: {
-        ...controls,
-        responseFormat: "json",
-        outputSchemaJson: request.outputSchemaJson,
-      },
-      metadata: request.metadata,
-    },
-    context: {
-      application: "social-monitor",
-      purpose: request.purpose,
-      correlationId: request.correlationId,
-      metadata: {
-        tenantId: request.tenantId,
-        workspaceId: request.workspaceId,
-      },
-    },
-  };
-};
 
 const shouldRetryWithEphemeral = (
   result: AgentRuntimeExecutionResult,
@@ -245,12 +270,15 @@ const shouldRetryWithEphemeral = (
   result.failure.reconnectRequired;
 
 const parseCliResult = (stdout: string): AgentRuntimeExecutionResult => {
-  const parsed = readJsonObject(stdout, "subscription-runtime result");
+  const parsed = parseSubscriptionRuntimeJsonObject(
+    stdout,
+    "subscription-runtime result",
+  );
   const status = parseStatus(parsed.status);
 
   return {
     status,
-    outputText: optionalString(parsed.outputText),
+    outputText: optionalOutputText(parsed.outputText),
     structuredOutput: readOptionalRecord(parsed.structuredOutput),
     warnings: readWarnings(parsed.warnings),
     usage: readUsage(parsed.usage),
@@ -381,28 +409,6 @@ const runtimeSessionScopedEnvKeys = new Set([
 const isUsageProbeOutput = (stdout: string, stderr: string): boolean =>
   `${stdout}\n${stderr}`.includes("subscription-runtime-run-agent-task");
 
-const readJsonObject = (
-  value: string,
-  label: string,
-): Record<string, unknown> => {
-  try {
-    const parsed = JSON.parse(value);
-    if (
-      parsed === null ||
-      typeof parsed !== "object" ||
-      Array.isArray(parsed)
-    ) {
-      throw new Error(`${label} must be a JSON object`);
-    }
-
-    return parsed as Record<string, unknown>;
-  } catch (error) {
-    throw new Error(
-      error instanceof Error ? error.message : `${label} must be JSON`,
-    );
-  }
-};
-
 const parseStatus = (value: unknown): AgentRuntimeExecutionResult["status"] => {
   if (
     value === "completed" ||
@@ -419,6 +425,9 @@ const optionalString = (value: unknown): string | undefined =>
   typeof value === "string" && value.trim().length > 0
     ? value.trim()
     : undefined;
+
+const optionalOutputText = (value: unknown): string | undefined =>
+  typeof value === "string" && value.trim().length > 0 ? value : undefined;
 
 const readOptionalRecord = (
   value: unknown,

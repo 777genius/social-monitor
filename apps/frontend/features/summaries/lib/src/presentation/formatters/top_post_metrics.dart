@@ -85,29 +85,55 @@ bool isGitHubTrendingBreakout(TopRead read) =>
     read.providerKey.trim().toLowerCase() == 'github-trending-page' &&
     (_githubTrendingStarsToday(read) ?? 0) > 1000;
 
-/// Orders the GitHub board by the rank reported by GitHub and caps it at ten.
+/// Accepts only the canonical backend GitHub board in exact rank order.
+///
+/// A partial, reordered, duplicated or identity-less projection is rejected as
+/// a whole so presentation cannot make invalid selectedPosts look publishable.
 List<TopRead> orderGitHubTrendingPosts(
-  Iterable<TopRead> items, {
-  int limit = 10,
-}) {
-  final indexed = items.indexed.toList(growable: false);
-  indexed.sort((left, right) {
-    final leftRank = _githubTrendingRank(left.$2);
-    final rightRank = _githubTrendingRank(right.$2);
-    if (leftRank == null && rightRank == null) {
-      return left.$1.compareTo(right.$1);
+  Iterable<TopRead> items,
+) {
+  final canonical = items.toList(growable: false);
+  if (canonical.length != 10) {
+    return const [];
+  }
+  final repositoryIdentities = <String>{};
+  final citationIdentities = <String>{};
+  for (final (index, item) in canonical.indexed) {
+    final repositoryIdentity = _githubRepositoryIdentity(item.canonicalUrl);
+    final uniqueCitationIds = item.citationIds.toSet();
+    final citationId = item.citationIds.length == 1
+        ? item.citationIds[0].trim()
+        : null;
+    if (_githubTrendingRank(item) != index + 1 ||
+        repositoryIdentity == null ||
+        !repositoryIdentities.add(repositoryIdentity) ||
+        item.citationIds.length != 1 ||
+        citationId == null ||
+        citationId.isEmpty ||
+        uniqueCitationIds.length != item.citationIds.length ||
+        !citationIdentities.add(citationId)) {
+      return const [];
     }
-    if (leftRank == null) {
-      return 1;
-    }
-    if (rightRank == null) {
-      return -1;
-    }
-    final rankOrder = leftRank.compareTo(rightRank);
-    return rankOrder != 0 ? rankOrder : left.$1.compareTo(right.$1);
-  });
+  }
 
-  return indexed.take(limit).map((entry) => entry.$2).toList(growable: false);
+  return canonical;
+}
+
+String? _githubRepositoryIdentity(String? value) {
+  final match = RegExp(
+    r'^https://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)$',
+  ).firstMatch(value ?? '');
+  if (match == null) {
+    return null;
+  }
+  final owner = match.group(1)!;
+  final repository = match.group(2)!;
+  return owner == '.' ||
+          owner == '..' ||
+          repository == '.' ||
+          repository == '..'
+      ? null
+      : '$owner/$repository'.toLowerCase();
 }
 
 int? _githubTrendingRank(TopRead read) {

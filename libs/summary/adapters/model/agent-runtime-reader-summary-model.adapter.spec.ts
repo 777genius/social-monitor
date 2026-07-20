@@ -9,6 +9,8 @@ import type {
   ReaderSummaryModelInput,
 } from "../../ports";
 import { AgentRuntimeReaderSummaryModelAdapter } from "./agent-runtime-reader-summary-model.adapter";
+import { withTestExecutionAttestation } from "./reader-summary-execution-attestation.spec-support";
+import type { VerifiedReaderSummaryExecutionAttestation } from "./reader-summary-execution-attestation";
 import { currentReaderSummaryPromptRelease } from "./openai-responses-reader-summary-prompt";
 
 describe("AgentRuntimeReaderSummaryModelAdapter", () => {
@@ -288,6 +290,7 @@ describe("AgentRuntimeReaderSummaryModelAdapter", () => {
   });
 
   it("runs one bounded repair task for an invalid narrative contract", async () => {
+    const captured: VerifiedReaderSummaryExecutionAttestation[] = [];
     const invalidDraft = validReaderProviderDraft();
     invalidDraft.narrativeSections = [
       {
@@ -313,6 +316,11 @@ describe("AgentRuntimeReaderSummaryModelAdapter", () => {
     const adapter = new AgentRuntimeReaderSummaryModelAdapter({
       client,
       agentProvider: "codex",
+      verifiedAttestationSink: {
+        record: (value) => {
+          captured.push(value);
+        },
+      },
     });
     const input = readerSummaryInput();
     const route = adapter.route(
@@ -336,6 +344,15 @@ describe("AgentRuntimeReaderSummaryModelAdapter", () => {
     expect(client.commands[1]?.systemPrompt).toContain(
       "narrativeSections[0] must have kind lead",
     );
+    expect(captured).toHaveLength(1);
+    expect(captured[0]).toMatchObject({
+      taskRole: "summary",
+      attempt: "repair",
+      attestation: {
+        requestId: client.commands[1]?.requestId,
+        purpose: "social_monitor.reader_summary.repair",
+      },
+    });
   });
 });
 
@@ -359,7 +376,7 @@ class CapturingAgentRuntimeClient implements AgentRuntimeClientPort {
     if (result === undefined) {
       throw new Error("No captured agent-runtime result configured");
     }
-    return result;
+    return withTestExecutionAttestation(command, result);
   }
 
   async checkHealth(service: string): Promise<AgentRuntimeHealthResult> {
