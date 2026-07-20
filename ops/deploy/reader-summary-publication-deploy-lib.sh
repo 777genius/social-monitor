@@ -159,7 +159,7 @@ validate_reader_summary_publication_migrator() (
   local server_version uses_tls membership_count membership_admin
   local membership_inherit membership_set protected_memberships_valid
   local unexpected_membership_count outgoing_membership_count
-  local protected_creator_membership_valid extra
+  local protected_creator_membership_valid public_schema_boundary_valid extra
   local query_status availability_status
 
   [[ -f $secret && ! -L $secret && -s $secret ]] || return 64
@@ -198,7 +198,7 @@ validate_reader_summary_publication_migrator() (
   fi
   [[ -n $catalog_result && $catalog_result != *$'\n'* ]] || return 65
   catalog_delimiters=${catalog_result//[!|]/}
-  ((${#catalog_delimiters} == 19)) || return 65
+  ((${#catalog_delimiters} == 20)) || return 65
 
   IFS='|' read -r database_name current_identity session_identity \
     can_login can_create_role inherits_role is_superuser \
@@ -206,7 +206,7 @@ validate_reader_summary_publication_migrator() (
     uses_tls membership_count membership_admin membership_inherit \
     membership_set protected_memberships_valid \
     unexpected_membership_count outgoing_membership_count \
-    protected_creator_membership_valid extra \
+    protected_creator_membership_valid public_schema_boundary_valid extra \
     <<< "$catalog_result"
 
   [[ -z $extra && \
@@ -226,6 +226,7 @@ validate_reader_summary_publication_migrator() (
   [[ $unexpected_membership_count == 0 ]] || return 65
   [[ $outgoing_membership_count == 1 ]] || return 65
   [[ $protected_creator_membership_valid == t ]] || return 65
+  [[ $public_schema_boundary_valid == t ]] || return 65
 )
 
 reader_summary_publication_admin_secret_metadata() {
@@ -449,7 +450,8 @@ SELECT
   COALESCE(membership.protected_memberships_valid, false),
   COALESCE(membership.unexpected_membership_count, 0),
   COALESCE(outgoing_memberships.membership_count, 0),
-  COALESCE(outgoing_memberships.protected_creator_membership_valid, false)
+  COALESCE(outgoing_memberships.protected_creator_membership_valid, false),
+  COALESCE(public_schema_ownership.boundary_valid, false)
 FROM pg_catalog.pg_roles AS migrator
 LEFT JOIN pg_catalog.pg_stat_ssl AS connection
   ON connection.pid = pg_catalog.pg_backend_pid()
@@ -468,6 +470,38 @@ LEFT JOIN LATERAL (
       WHERE granted_role.rolname = :'runtime_role'
     ) AS set_option,
     (
+      (
+        NOT EXISTS (
+          SELECT 1 FROM pg_catalog.pg_roles
+          WHERE rolname = 'social_monitor_public_schema_owner'
+        ) AND COUNT(*) FILTER (
+          WHERE granted_role.rolname =
+            'social_monitor_public_schema_owner'
+        ) = 0
+      ) OR (
+        EXISTS (
+          SELECT 1 FROM pg_catalog.pg_roles
+          WHERE rolname = 'social_monitor_public_schema_owner'
+        ) AND COUNT(*) FILTER (
+          WHERE granted_role.rolname =
+            'social_monitor_public_schema_owner'
+        ) = 2 AND COUNT(*) FILTER (
+          WHERE granted_role.rolname =
+            'social_monitor_public_schema_owner'
+            AND membership.admin_option
+            AND NOT membership.inherit_option
+            AND NOT membership.set_option
+            AND grantor_role.rolsuper
+        ) = 1 AND COUNT(*) FILTER (
+          WHERE granted_role.rolname =
+            'social_monitor_public_schema_owner'
+            AND NOT membership.admin_option
+            AND NOT membership.inherit_option
+            AND membership.set_option
+            AND grantor_role.rolname = current_user
+        ) = 1
+      )
+    ) AND (
       (
         NOT EXISTS (
           SELECT 1 FROM pg_catalog.pg_roles
@@ -550,6 +584,7 @@ LEFT JOIN LATERAL (
     COUNT(*) FILTER (
       WHERE granted_role.rolname NOT IN (
         :'runtime_role',
+        'social_monitor_public_schema_owner',
         'social_monitor_reader_summary_publication_owner',
         'social_monitor_reader_summary_publication_runtime'
       )
@@ -601,6 +636,57 @@ LEFT JOIN LATERAL (
     ON grantor_role.oid = outgoing_membership.grantor
   WHERE outgoing_membership.roleid = migrator.oid
 ) AS outgoing_memberships ON true
+LEFT JOIN LATERAL (
+  SELECT (
+    (
+      schema_owner.rolname = 'pg_database_owner'
+      AND database_owner.rolname = :'runtime_role'
+      AND NOT EXISTS (
+        SELECT 1 FROM pg_catalog.pg_roles
+        WHERE rolname = 'social_monitor_public_schema_owner'
+      )
+    ) OR (
+      schema_owner.rolname = 'social_monitor_public_schema_owner'
+      AND EXISTS (
+        SELECT 1
+        FROM pg_catalog.pg_roles protected_schema_owner
+        WHERE protected_schema_owner.rolname =
+            'social_monitor_public_schema_owner'
+          AND NOT protected_schema_owner.rolcanlogin
+          AND NOT protected_schema_owner.rolsuper
+          AND NOT protected_schema_owner.rolcreatedb
+          AND NOT protected_schema_owner.rolcreaterole
+          AND NOT protected_schema_owner.rolinherit
+          AND NOT protected_schema_owner.rolreplication
+          AND NOT protected_schema_owner.rolbypassrls
+      )
+      AND NOT pg_has_role(
+        :'runtime_role',
+        'social_monitor_public_schema_owner',
+        'MEMBER'
+      )
+      AND NOT EXISTS (
+        SELECT 1
+        FROM pg_catalog.pg_auth_members schema_membership
+        JOIN pg_catalog.pg_roles schema_granted
+          ON schema_granted.oid = schema_membership.roleid
+        JOIN pg_catalog.pg_roles schema_member
+          ON schema_member.oid = schema_membership.member
+        WHERE schema_granted.rolname =
+            'social_monitor_public_schema_owner'
+          AND schema_member.rolname <> current_user
+      )
+    )
+  ) AS boundary_valid
+  FROM pg_catalog.pg_namespace namespace
+  JOIN pg_catalog.pg_roles schema_owner
+    ON schema_owner.oid = namespace.nspowner
+  JOIN pg_catalog.pg_database database
+    ON database.datname = current_database()
+  JOIN pg_catalog.pg_roles database_owner
+    ON database_owner.oid = database.datdba
+  WHERE namespace.nspname = 'public'
+) AS public_schema_ownership ON true
 WHERE migrator.rolname = current_user;"
 
   reader_summary_publication_run_postgres_client \

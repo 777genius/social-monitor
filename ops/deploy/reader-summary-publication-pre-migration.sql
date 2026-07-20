@@ -21,6 +21,7 @@ BEGIN
   END IF;
   IF v_runtime_role IN (
     current_user,
+    'social_monitor_public_schema_owner',
     'social_monitor_reader_summary_publication_owner',
     'social_monitor_reader_summary_publication_runtime'
   ) THEN
@@ -45,6 +46,24 @@ BEGIN
   IF NOT v_role.rolcanlogin OR v_role.rolsuper OR v_role.rolcreatedb OR v_role.rolcreaterole
     OR v_role.rolreplication OR v_role.rolbypassrls THEN
     RAISE EXCEPTION 'reader summary runtime role has unsafe privileges';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_roles
+    WHERE rolname = 'social_monitor_public_schema_owner'
+  ) THEN
+    PERFORM pg_catalog.set_config('createrole_self_grant', 'set', true);
+    EXECUTE 'CREATE ROLE social_monitor_public_schema_owner '
+      'NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT '
+      'NOREPLICATION NOBYPASSRLS';
+  END IF;
+  PERFORM pg_catalog.set_config('createrole_self_grant', '', true);
+  SELECT * INTO v_role FROM pg_roles
+  WHERE rolname = 'social_monitor_public_schema_owner';
+  IF v_role.rolcanlogin OR v_role.rolsuper OR v_role.rolcreatedb
+    OR v_role.rolcreaterole OR v_role.rolinherit OR v_role.rolreplication
+    OR v_role.rolbypassrls THEN
+    RAISE EXCEPTION 'public schema owner role is unsafe';
   END IF;
 
   IF NOT EXISTS (
@@ -85,6 +104,23 @@ BEGIN
     'GRANT USAGE, CREATE ON SCHEMA public TO %I',
     current_user
   );
+  IF EXISTS (
+    SELECT 1
+    FROM pg_auth_members membership
+    JOIN pg_roles granted ON granted.oid = membership.roleid
+    JOIN pg_roles member ON member.oid = membership.member
+    WHERE granted.rolname = 'social_monitor_public_schema_owner'
+      AND member.rolname <> current_user
+  ) THEN
+    RAISE EXCEPTION 'public schema owner has an unreviewed member';
+  END IF;
+  IF pg_has_role(
+    v_runtime_role,
+    'social_monitor_public_schema_owner',
+    'MEMBER'
+  ) THEN
+    RAISE EXCEPTION 'runtime role can assume public schema ownership';
+  END IF;
   IF EXISTS (
     SELECT 1
     FROM pg_auth_members membership
@@ -155,6 +191,29 @@ BEGIN
     JOIN pg_roles granted ON granted.oid = membership.roleid
     JOIN pg_roles member ON member.oid = membership.member
     JOIN pg_roles grantor ON grantor.oid = membership.grantor
+    WHERE granted.rolname = 'social_monitor_public_schema_owner'
+      AND member.rolname = current_user
+  ) THEN
+    RAISE EXCEPTION 'public schema owner membership is unsafe';
+  END IF;
+  IF (
+    SELECT count(*) <> 2
+      OR count(*) FILTER (
+        WHERE membership.admin_option
+          AND NOT membership.inherit_option
+          AND NOT membership.set_option
+          AND grantor.rolsuper
+      ) <> 1
+      OR count(*) FILTER (
+        WHERE NOT membership.admin_option
+          AND NOT membership.inherit_option
+          AND membership.set_option
+          AND grantor.rolname = current_user
+      ) <> 1
+    FROM pg_auth_members membership
+    JOIN pg_roles granted ON granted.oid = membership.roleid
+    JOIN pg_roles member ON member.oid = membership.member
+    JOIN pg_roles grantor ON grantor.oid = membership.grantor
     WHERE granted.rolname =
       'social_monitor_reader_summary_publication_owner'
       AND member.rolname = current_user
@@ -206,6 +265,7 @@ BEGIN
           AND grantor.rolname NOT IN (
             current_user,
             v_runtime_role,
+            'social_monitor_public_schema_owner',
             'social_monitor_reader_summary_publication_owner',
             'social_monitor_reader_summary_publication_runtime'
           )
@@ -240,6 +300,103 @@ $bootstrap$;
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 GRANT USAGE, CREATE ON SCHEMA public
 TO social_monitor_reader_summary_publication_owner;
+
+-- Managed PostgreSQL initially makes the application login the database owner,
+-- while public is owned by the dynamic pg_database_owner role. Direct REVOKE
+-- cannot remove an owner's implicit CREATE authority. Move public to a
+-- dedicated NOLOGIN role inside this transaction, remove the temporary upward
+-- membership before commit, and grant the migrator only the authority needed
+-- for the ordered Prisma migration.
+DO $schema_ownership_transfer$
+DECLARE
+  v_admin_role NAME := current_user;
+  v_database_owner NAME;
+  v_runtime_role NAME := current_setting(
+    'social_monitor.bootstrap_runtime_role'
+  )::NAME;
+  v_schema_owner NAME;
+BEGIN
+  SELECT owner.rolname INTO v_database_owner
+  FROM pg_database database
+  JOIN pg_roles owner ON owner.oid = database.datdba
+  WHERE database.datname = current_database();
+
+  SELECT pg_get_userbyid(namespace.nspowner) INTO v_schema_owner
+  FROM pg_namespace namespace
+  WHERE namespace.nspname = 'public';
+
+  IF v_schema_owner = 'pg_database_owner' THEN
+    IF v_database_owner <> v_runtime_role THEN
+      RAISE EXCEPTION
+        'public schema requires an explicitly reviewed ownership transfer';
+    END IF;
+    EXECUTE format(
+      'GRANT social_monitor_public_schema_owner TO %I '
+        'WITH ADMIN FALSE, INHERIT FALSE, SET TRUE GRANTED BY CURRENT_USER',
+      v_runtime_role
+    );
+    EXECUTE format('SET LOCAL ROLE %I', v_runtime_role);
+    ALTER SCHEMA public OWNER TO social_monitor_public_schema_owner;
+    EXECUTE 'RESET ROLE';
+    EXECUTE format(
+      'REVOKE social_monitor_public_schema_owner FROM %I '
+        'GRANTED BY CURRENT_USER',
+      v_runtime_role
+    );
+  ELSIF v_schema_owner <>
+    'social_monitor_public_schema_owner' THEN
+    RAISE EXCEPTION 'public schema has an unexpected owner';
+  END IF;
+
+  EXECUTE format(
+    'REVOKE CREATE ON SCHEMA public FROM %I '
+      'GRANTED BY CURRENT_USER CASCADE',
+    v_runtime_role
+  );
+  EXECUTE 'SET LOCAL ROLE social_monitor_public_schema_owner';
+  EXECUTE format(
+    'GRANT USAGE, CREATE ON SCHEMA public TO %I WITH GRANT OPTION',
+    v_admin_role
+  );
+  REVOKE CREATE ON SCHEMA public
+  FROM pg_database_owner,
+    PUBLIC,
+    social_monitor_reader_summary_publication_owner,
+    social_monitor_reader_summary_publication_runtime
+  CASCADE;
+  EXECUTE format(
+    'REVOKE CREATE ON SCHEMA public FROM %I',
+    v_runtime_role
+  );
+  EXECUTE 'RESET ROLE';
+
+  IF pg_get_userbyid((
+    SELECT namespace.nspowner
+    FROM pg_namespace namespace
+    WHERE namespace.nspname = 'public'
+  )) <> 'social_monitor_public_schema_owner'
+    OR pg_has_role(
+      v_runtime_role,
+      'social_monitor_public_schema_owner',
+      'MEMBER'
+    )
+    OR has_schema_privilege(v_runtime_role, 'public', 'CREATE') THEN
+    RAISE EXCEPTION
+      'public schema ownership transfer is unsafe (owner=%, member=%, create=%)',
+      (
+        SELECT pg_get_userbyid(namespace.nspowner)
+        FROM pg_namespace namespace
+        WHERE namespace.nspname = 'public'
+      ),
+      pg_has_role(
+        v_runtime_role,
+        'social_monitor_public_schema_owner',
+        'MEMBER'
+      ),
+      has_schema_privilege(v_runtime_role, 'public', 'CREATE');
+  END IF;
+END
+$schema_ownership_transfer$;
 
 -- Existing installations were migrated by the application login before the
 -- protected publication owner existed. Transfer the artifact table while all

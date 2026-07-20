@@ -7,6 +7,55 @@ import {
 } from "./reader-summary-publication-postgres18-regression";
 
 const protectedOwner = "social_monitor_reader_summary_publication_owner";
+const publicSchemaOwner = "social_monitor_public_schema_owner";
+
+export const publicationProtectedRolePresence = async (
+  serverAdmin: Pool,
+): Promise<{
+  readonly capability: boolean;
+  readonly owner: boolean;
+  readonly schemaOwner: boolean;
+}> => {
+  const protectedRoles = await serverAdmin.query<{
+    readonly rolname: string;
+  }>(
+    `SELECT rolname FROM pg_roles WHERE rolname = ANY($1::text[])`,
+    [[
+      publicSchemaOwner,
+      protectedOwner,
+      "social_monitor_reader_summary_publication_runtime",
+    ]],
+  );
+  const hasRole = (role: string): boolean =>
+    protectedRoles.rows.some((row) => row.rolname === role);
+  return {
+    capability: hasRole(
+      "social_monitor_reader_summary_publication_runtime",
+    ),
+    owner: hasRole(protectedOwner),
+    schemaOwner: hasRole(publicSchemaOwner),
+  };
+};
+
+export const makePublicationFixtureRuntimeDatabaseOwner = async (params: {
+  readonly databaseName: string;
+  readonly migrationAdminRole: string;
+  readonly runtimeRole: string;
+  readonly targetDatabaseUrl: string;
+}): Promise<void> => {
+  const admin = new Pool({ connectionString: params.targetDatabaseUrl, max: 1 });
+  try {
+    await admin.query(
+      `ALTER DATABASE ${quoteIdentifier(params.databaseName)}
+         OWNER TO ${quoteIdentifier(params.runtimeRole)};
+       GRANT USAGE, CREATE ON SCHEMA public
+         TO ${quoteIdentifier(params.migrationAdminRole)}
+         WITH GRANT OPTION`,
+    );
+  } finally {
+    await admin.end();
+  }
+};
 
 export const runReaderSummaryPublicationBootstrapSql = async (
   phase: "pre" | "post",
@@ -298,6 +347,7 @@ export const assertPublicationRoleMemberships = async (
         [migrationAdminRole, runtimeRole],
         [
           runtimeRole,
+          publicSchemaOwner,
           "social_monitor_reader_summary_publication_owner",
           "social_monitor_reader_summary_publication_runtime",
         ],
@@ -326,6 +376,20 @@ export const assertPublicationRoleMemberships = async (
           ),
         ),
       [
+        {
+          granted_role: publicSchemaOwner,
+          member_role: migrationAdminRole,
+          admin_option: true,
+          inherit_option: false,
+          set_option: false,
+        },
+        {
+          granted_role: publicSchemaOwner,
+          member_role: migrationAdminRole,
+          admin_option: false,
+          inherit_option: false,
+          set_option: true,
+        },
         {
           granted_role: "social_monitor_reader_summary_publication_owner",
           member_role: migrationAdminRole,
@@ -376,6 +440,24 @@ export const assertPublicationRoleMemberships = async (
       ),
       "publication role memberships must match the exact PostgreSQL 18 boundary",
     );
+    const schemaOwnerBootstrapGrant = memberships.rows.find(
+      (row) =>
+        row.granted_role === publicSchemaOwner &&
+        row.member_role === migrationAdminRole &&
+        row.grantor_superuser &&
+        row.admin_option &&
+        !row.inherit_option &&
+        !row.set_option,
+    );
+    const schemaOwnerSelfGrant = memberships.rows.find(
+      (row) =>
+        row.granted_role === publicSchemaOwner &&
+        row.member_role === migrationAdminRole &&
+        row.grantor_role === migrationAdminRole &&
+        !row.admin_option &&
+        !row.inherit_option &&
+        row.set_option,
+    );
     const ownerBootstrapGrant = memberships.rows.find(
       (row) =>
         row.granted_role ===
@@ -414,6 +496,14 @@ export const assertPublicationRoleMemberships = async (
         row.member_role === migrationAdminRole,
     );
     assert(
+      schemaOwnerBootstrapGrant !== undefined,
+      "public schema owner bootstrap grant is missing",
+    );
+    assert(
+      schemaOwnerSelfGrant !== undefined,
+      "public schema owner self grant is missing",
+    );
+    assert(
       ownerBootstrapGrant !== undefined,
       "publication owner bootstrap grant is missing",
     );
@@ -430,6 +520,14 @@ export const assertPublicationRoleMemberships = async (
       "publication capability runtime grant is missing",
     );
     assert(runtimeAdminGrant !== undefined, "runtime admin grant is missing");
+    assert(
+      schemaOwnerBootstrapGrant.grantor_superuser,
+      "public schema owner admin grant must use a bootstrap superuser",
+    );
+    assert(
+      schemaOwnerSelfGrant.grantor_role === migrationAdminRole,
+      "public schema owner set grant must be issued by the migration admin",
+    );
     assert(
       ownerBootstrapGrant.grantor_superuser,
       "publication owner admin grant must use a bootstrap superuser",
@@ -465,6 +563,7 @@ export const dropPublicationFixtureDatabaseAndRoles = async (params: {
   readonly runtimeRole: string;
   readonly ownerRolePreexisting: boolean;
   readonly capabilityRolePreexisting: boolean;
+  readonly schemaOwnerRolePreexisting: boolean;
   readonly fixtureDatabaseCreated: boolean;
   readonly fixtureMigrationAdminRoleCreated: boolean;
   readonly fixtureRuntimeRoleCreated: boolean;
@@ -492,6 +591,11 @@ export const dropPublicationFixtureDatabaseAndRoles = async (params: {
   if (!params.ownerRolePreexisting) {
     await params.serverAdmin.query(
       `DROP ROLE IF EXISTS social_monitor_reader_summary_publication_owner`,
+    );
+  }
+  if (!params.schemaOwnerRolePreexisting) {
+    await params.serverAdmin.query(
+      `DROP ROLE IF EXISTS ${publicSchemaOwner}`,
     );
   }
   if (params.fixtureMigrationAdminRoleCreated) {
@@ -542,6 +646,9 @@ export const assertReaderSummaryPublicationPrivilegeBoundary = async (params: {
   const roles = await params.auditor.query<{
     readonly owner_login: boolean;
     readonly owner_superuser: boolean;
+    readonly schema_owner_login: boolean;
+    readonly schema_owner_superuser: boolean;
+    readonly schema_owner_createrole: boolean;
     readonly migration_admin_superuser: boolean;
     readonly migration_admin_createrole: boolean;
     readonly runtime_superuser: boolean;
@@ -551,6 +658,12 @@ export const assertReaderSummaryPublicationPrivilegeBoundary = async (params: {
     `SELECT
        (SELECT rolcanlogin FROM pg_roles WHERE rolname = $2) AS owner_login,
        (SELECT rolsuper FROM pg_roles WHERE rolname = $2) AS owner_superuser,
+       (SELECT rolcanlogin FROM pg_roles WHERE rolname = $4)
+         AS schema_owner_login,
+       (SELECT rolsuper FROM pg_roles WHERE rolname = $4)
+         AS schema_owner_superuser,
+       (SELECT rolcreaterole FROM pg_roles WHERE rolname = $4)
+         AS schema_owner_createrole,
        (SELECT rolsuper FROM pg_roles WHERE rolname = $3)
          AS migration_admin_superuser,
        (SELECT rolcreaterole FROM pg_roles WHERE rolname = $3)
@@ -561,13 +674,21 @@ export const assertReaderSummaryPublicationPrivilegeBoundary = async (params: {
          AS runtime_createrole,
        (SELECT rolbypassrls FROM pg_roles WHERE rolname = $1)
          AS runtime_bypassrls`,
-    [params.runtimeRole, protectedOwner, params.migrationAdminRole],
+    [
+      params.runtimeRole,
+      protectedOwner,
+      params.migrationAdminRole,
+      publicSchemaOwner,
+    ],
   );
   assertDeepEqual(
     roles.rows[0],
     {
       owner_login: false,
       owner_superuser: false,
+      schema_owner_login: false,
+      schema_owner_superuser: false,
+      schema_owner_createrole: false,
       migration_admin_superuser: false,
       migration_admin_createrole: true,
       runtime_superuser: false,
@@ -582,6 +703,7 @@ export const assertReaderSummaryPublicationPrivilegeBoundary = async (params: {
     readonly publication_owner: string;
     readonly slot_owner: string;
     readonly function_owner: string;
+    readonly public_schema_owner: string;
     readonly security_definer: boolean;
     readonly function_config: readonly string[];
   }>(
@@ -596,6 +718,8 @@ export const assertReaderSummaryPublicationPrivilegeBoundary = async (params: {
          WHERE oid = 'reader_summary_publication_slots'::regclass))
          AS slot_owner,
        pg_get_userbyid(proowner) AS function_owner,
+       pg_get_userbyid((SELECT nspowner FROM pg_namespace
+         WHERE nspname = 'public')) AS public_schema_owner,
        prosecdef AS security_definer,
        proconfig AS function_config
      FROM pg_proc
@@ -608,6 +732,7 @@ export const assertReaderSummaryPublicationPrivilegeBoundary = async (params: {
       publication_owner: protectedOwner,
       slot_owner: protectedOwner,
       function_owner: protectedOwner,
+      public_schema_owner: publicSchemaOwner,
       security_definer: true,
       function_config: ["search_path=pg_catalog, public, pg_temp"],
     },
@@ -617,6 +742,7 @@ export const assertReaderSummaryPublicationPrivilegeBoundary = async (params: {
   const identity = await params.runtime.query<{
     readonly current_user: string;
     readonly can_assume_owner: boolean;
+    readonly can_assume_schema_owner: boolean;
     readonly can_create_public: boolean;
     readonly can_publish: boolean;
     readonly can_insert_ledger: boolean;
@@ -627,6 +753,8 @@ export const assertReaderSummaryPublicationPrivilegeBoundary = async (params: {
   }>(
     `SELECT current_user,
        pg_has_role(current_user, $1, 'MEMBER') AS can_assume_owner,
+       pg_has_role(current_user, $2, 'MEMBER')
+         AS can_assume_schema_owner,
        has_schema_privilege(current_user, 'public', 'CREATE')
          AS can_create_public,
        has_function_privilege(current_user,
@@ -641,13 +769,14 @@ export const assertReaderSummaryPublicationPrivilegeBoundary = async (params: {
          'reader_summary_artifacts', 'TRIGGER') AS can_trigger_artifacts,
        has_table_privilege(current_user,
          'reader_summary_artifacts', 'TRUNCATE') AS can_truncate_artifacts`,
-    [protectedOwner],
+    [protectedOwner, publicSchemaOwner],
   );
   assertDeepEqual(
     identity.rows[0],
     {
       current_user: params.runtimeRole,
       can_assume_owner: false,
+      can_assume_schema_owner: false,
       can_create_public: false,
       can_publish: true,
       can_insert_ledger: false,
@@ -692,6 +821,11 @@ export const assertReaderSummaryPublicationPrivilegeBoundary = async (params: {
     () => params.runtime.query(`SET ROLE ${protectedOwner}`),
     "permission denied",
     "runtime must not assume the protected owner role",
+  );
+  await assertRejectsContaining(
+    () => params.runtime.query(`SET ROLE ${publicSchemaOwner}`),
+    "permission denied",
+    "runtime must not assume the public schema owner role",
   );
   await assertRejectsContaining(
     () =>

@@ -25,6 +25,8 @@ import {
   dropPublicationFixtureDatabaseAndRoles,
   grantLegacyMigrationOwnership,
   grantPublicationFixtureRuntimePrivileges,
+  makePublicationFixtureRuntimeDatabaseOwner,
+  publicationProtectedRolePresence,
   publicationDatabaseUrl,
   publicationRuntimeDatabaseUrl,
   quotePostgresIdentifier,
@@ -67,6 +69,7 @@ const publicationMigration =
   "20260716170000_reader_summary_fail_closed_publication";
 let ownerRolePreexisting = false;
 let capabilityRolePreexisting = false;
+let schemaOwnerRolePreexisting = false;
 let fixtureDatabaseCreated = false;
 let fixtureMigrationAdminRoleCreated = false;
 let fixtureRuntimeRoleCreated = false;
@@ -76,21 +79,10 @@ async function main(): Promise<void> {
     /^reader_summary_publication_test_[0-9a-f]{20}$/.test(databaseName),
     "temporary publication database name must be bounded",
   );
-  const protectedRoles = await serverAdmin.query<{ readonly rolname: string }>(
-    `SELECT rolname FROM pg_roles WHERE rolname = ANY($1::text[])`,
-    [[
-      "social_monitor_reader_summary_publication_owner",
-      "social_monitor_reader_summary_publication_runtime",
-    ]],
-  );
-  ownerRolePreexisting = protectedRoles.rows.some(
-    (row) =>
-      row.rolname === "social_monitor_reader_summary_publication_owner",
-  );
-  capabilityRolePreexisting = protectedRoles.rows.some(
-    (row) =>
-      row.rolname === "social_monitor_reader_summary_publication_runtime",
-  );
+  const protectedRoles = await publicationProtectedRolePresence(serverAdmin);
+  ownerRolePreexisting = protectedRoles.owner;
+  capabilityRolePreexisting = protectedRoles.capability;
+  schemaOwnerRolePreexisting = protectedRoles.schemaOwner;
   try {
     await serverAdmin.query(
       `CREATE ROLE ${quotePostgresIdentifier(migrationAdminRole)} LOGIN PASSWORD ${quotePostgresLiteral(migrationAdminPassword)}
@@ -109,6 +101,12 @@ async function main(): Promise<void> {
       serverAdminDatabaseUrl,
     });
     fixtureRuntimeRoleCreated = true;
+    await makePublicationFixtureRuntimeDatabaseOwner({
+      databaseName,
+      migrationAdminRole,
+      runtimeRole,
+      targetDatabaseUrl,
+    });
 
     preparePrePublicationMigrations();
     await grantLegacyMigrationOwnership(adminDatabaseUrl, runtimeRole);
@@ -256,6 +254,7 @@ async function main(): Promise<void> {
       runtimeRole,
       ownerRolePreexisting,
       capabilityRolePreexisting,
+      schemaOwnerRolePreexisting,
       fixtureDatabaseCreated,
       fixtureMigrationAdminRoleCreated,
       fixtureRuntimeRoleCreated,
