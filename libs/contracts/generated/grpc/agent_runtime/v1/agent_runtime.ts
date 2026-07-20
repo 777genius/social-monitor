@@ -105,45 +105,6 @@ export function agentRuntimeTaskStatusToJSON(object: AgentRuntimeTaskStatus): st
   }
 }
 
-export enum AgentRuntimeSelectedOutputKind {
-  AGENT_RUNTIME_SELECTED_OUTPUT_KIND_UNSPECIFIED = 0,
-  AGENT_RUNTIME_SELECTED_OUTPUT_KIND_STRUCTURED_OUTPUT = 1,
-  AGENT_RUNTIME_SELECTED_OUTPUT_KIND_OUTPUT_TEXT = 2,
-  UNRECOGNIZED = -1,
-}
-
-export function agentRuntimeSelectedOutputKindFromJSON(object: any): AgentRuntimeSelectedOutputKind {
-  switch (object) {
-    case 0:
-    case "AGENT_RUNTIME_SELECTED_OUTPUT_KIND_UNSPECIFIED":
-      return AgentRuntimeSelectedOutputKind.AGENT_RUNTIME_SELECTED_OUTPUT_KIND_UNSPECIFIED;
-    case 1:
-    case "AGENT_RUNTIME_SELECTED_OUTPUT_KIND_STRUCTURED_OUTPUT":
-      return AgentRuntimeSelectedOutputKind.AGENT_RUNTIME_SELECTED_OUTPUT_KIND_STRUCTURED_OUTPUT;
-    case 2:
-    case "AGENT_RUNTIME_SELECTED_OUTPUT_KIND_OUTPUT_TEXT":
-      return AgentRuntimeSelectedOutputKind.AGENT_RUNTIME_SELECTED_OUTPUT_KIND_OUTPUT_TEXT;
-    case -1:
-    case "UNRECOGNIZED":
-    default:
-      return AgentRuntimeSelectedOutputKind.UNRECOGNIZED;
-  }
-}
-
-export function agentRuntimeSelectedOutputKindToJSON(object: AgentRuntimeSelectedOutputKind): string {
-  switch (object) {
-    case AgentRuntimeSelectedOutputKind.AGENT_RUNTIME_SELECTED_OUTPUT_KIND_UNSPECIFIED:
-      return "AGENT_RUNTIME_SELECTED_OUTPUT_KIND_UNSPECIFIED";
-    case AgentRuntimeSelectedOutputKind.AGENT_RUNTIME_SELECTED_OUTPUT_KIND_STRUCTURED_OUTPUT:
-      return "AGENT_RUNTIME_SELECTED_OUTPUT_KIND_STRUCTURED_OUTPUT";
-    case AgentRuntimeSelectedOutputKind.AGENT_RUNTIME_SELECTED_OUTPUT_KIND_OUTPUT_TEXT:
-      return "AGENT_RUNTIME_SELECTED_OUTPUT_KIND_OUTPUT_TEXT";
-    case AgentRuntimeSelectedOutputKind.UNRECOGNIZED:
-    default:
-      return "UNRECOGNIZED";
-  }
-}
-
 export enum AgentRuntimeHealthStatus {
   AGENT_RUNTIME_HEALTH_STATUS_UNSPECIFIED = 0,
   AGENT_RUNTIME_HEALTH_STATUS_SERVING = 1,
@@ -220,22 +181,6 @@ export interface AgentRuntimeTaskResponse {
   warnings: AgentRuntimeWarning[];
   usage: AgentRuntimeUsage | undefined;
   failure: AgentRuntimeFailure | undefined;
-  executionAttestation: AgentRuntimeExecutionAttestation | undefined;
-}
-
-export interface AgentRuntimeExecutionAttestation {
-  schemaVersion: number;
-  requestId: string;
-  purpose: string;
-  canonicalRequestSha256: string;
-  provider: AgentRuntimeProvider;
-  model: string;
-  reasoningEffort: string;
-  runtimeEngine: string;
-  runtimePackageVersion: string;
-  launcherSha256: string;
-  selectedOutputKind: AgentRuntimeSelectedOutputKind;
-  selectedOutputSha256: string;
 }
 
 export interface AgentRuntimeUsage {
@@ -273,7 +218,6 @@ export interface AgentRuntimeHealthResponse {
   runtimeEngine: string;
   runtimeVersion: string;
   warnings: AgentRuntimeWarning[];
-  launcherSha256: string;
 }
 
 function createBaseAgentRuntimeTaskRequest(): AgentRuntimeTaskRequest {
@@ -726,7 +670,6 @@ function createBaseAgentRuntimeTaskResponse(): AgentRuntimeTaskResponse {
     warnings: [],
     usage: undefined,
     failure: undefined,
-    executionAttestation: undefined,
   };
 }
 
@@ -752,9 +695,6 @@ export const AgentRuntimeTaskResponse: MessageFns<AgentRuntimeTaskResponse> = {
     }
     if (message.failure !== undefined) {
       AgentRuntimeFailure.encode(message.failure, writer.uint32(58).fork()).join();
-    }
-    if (message.executionAttestation !== undefined) {
-      AgentRuntimeExecutionAttestation.encode(message.executionAttestation, writer.uint32(66).fork()).join();
     }
     return writer;
   },
@@ -822,14 +762,6 @@ export const AgentRuntimeTaskResponse: MessageFns<AgentRuntimeTaskResponse> = {
           message.failure = AgentRuntimeFailure.decode(reader, reader.uint32());
           continue;
         }
-        case 8: {
-          if (tag !== 66) {
-            break;
-          }
-
-          message.executionAttestation = AgentRuntimeExecutionAttestation.decode(reader, reader.uint32());
-          continue;
-        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -862,11 +794,6 @@ export const AgentRuntimeTaskResponse: MessageFns<AgentRuntimeTaskResponse> = {
         : [],
       usage: isSet(object.usage) ? AgentRuntimeUsage.fromJSON(object.usage) : undefined,
       failure: isSet(object.failure) ? AgentRuntimeFailure.fromJSON(object.failure) : undefined,
-      executionAttestation: isSet(object.executionAttestation)
-        ? AgentRuntimeExecutionAttestation.fromJSON(object.executionAttestation)
-        : isSet(object.execution_attestation)
-        ? AgentRuntimeExecutionAttestation.fromJSON(object.execution_attestation)
-        : undefined,
     };
   },
 
@@ -893,9 +820,6 @@ export const AgentRuntimeTaskResponse: MessageFns<AgentRuntimeTaskResponse> = {
     if (message.failure !== undefined) {
       obj.failure = AgentRuntimeFailure.toJSON(message.failure);
     }
-    if (message.executionAttestation !== undefined) {
-      obj.executionAttestation = AgentRuntimeExecutionAttestation.toJSON(message.executionAttestation);
-    }
     return obj;
   },
 
@@ -915,294 +839,6 @@ export const AgentRuntimeTaskResponse: MessageFns<AgentRuntimeTaskResponse> = {
     message.failure = (object.failure !== undefined && object.failure !== null)
       ? AgentRuntimeFailure.fromPartial(object.failure)
       : undefined;
-    message.executionAttestation = (object.executionAttestation !== undefined && object.executionAttestation !== null)
-      ? AgentRuntimeExecutionAttestation.fromPartial(object.executionAttestation)
-      : undefined;
-    return message;
-  },
-};
-
-function createBaseAgentRuntimeExecutionAttestation(): AgentRuntimeExecutionAttestation {
-  return {
-    schemaVersion: 0,
-    requestId: "",
-    purpose: "",
-    canonicalRequestSha256: "",
-    provider: 0,
-    model: "",
-    reasoningEffort: "",
-    runtimeEngine: "",
-    runtimePackageVersion: "",
-    launcherSha256: "",
-    selectedOutputKind: 0,
-    selectedOutputSha256: "",
-  };
-}
-
-export const AgentRuntimeExecutionAttestation: MessageFns<AgentRuntimeExecutionAttestation> = {
-  encode(message: AgentRuntimeExecutionAttestation, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
-    if (message.schemaVersion !== 0) {
-      writer.uint32(8).uint32(message.schemaVersion);
-    }
-    if (message.requestId !== "") {
-      writer.uint32(18).string(message.requestId);
-    }
-    if (message.purpose !== "") {
-      writer.uint32(26).string(message.purpose);
-    }
-    if (message.canonicalRequestSha256 !== "") {
-      writer.uint32(34).string(message.canonicalRequestSha256);
-    }
-    if (message.provider !== 0) {
-      writer.uint32(40).int32(message.provider);
-    }
-    if (message.model !== "") {
-      writer.uint32(50).string(message.model);
-    }
-    if (message.reasoningEffort !== "") {
-      writer.uint32(58).string(message.reasoningEffort);
-    }
-    if (message.runtimeEngine !== "") {
-      writer.uint32(66).string(message.runtimeEngine);
-    }
-    if (message.runtimePackageVersion !== "") {
-      writer.uint32(74).string(message.runtimePackageVersion);
-    }
-    if (message.launcherSha256 !== "") {
-      writer.uint32(82).string(message.launcherSha256);
-    }
-    if (message.selectedOutputKind !== 0) {
-      writer.uint32(88).int32(message.selectedOutputKind);
-    }
-    if (message.selectedOutputSha256 !== "") {
-      writer.uint32(98).string(message.selectedOutputSha256);
-    }
-    return writer;
-  },
-
-  decode(input: BinaryReader | Uint8Array, length?: number): AgentRuntimeExecutionAttestation {
-    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
-    const end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseAgentRuntimeExecutionAttestation();
-    while (reader.pos < end) {
-      const tag = reader.uint32();
-      switch (tag >>> 3) {
-        case 1: {
-          if (tag !== 8) {
-            break;
-          }
-
-          message.schemaVersion = reader.uint32();
-          continue;
-        }
-        case 2: {
-          if (tag !== 18) {
-            break;
-          }
-
-          message.requestId = reader.string();
-          continue;
-        }
-        case 3: {
-          if (tag !== 26) {
-            break;
-          }
-
-          message.purpose = reader.string();
-          continue;
-        }
-        case 4: {
-          if (tag !== 34) {
-            break;
-          }
-
-          message.canonicalRequestSha256 = reader.string();
-          continue;
-        }
-        case 5: {
-          if (tag !== 40) {
-            break;
-          }
-
-          message.provider = reader.int32() as any;
-          continue;
-        }
-        case 6: {
-          if (tag !== 50) {
-            break;
-          }
-
-          message.model = reader.string();
-          continue;
-        }
-        case 7: {
-          if (tag !== 58) {
-            break;
-          }
-
-          message.reasoningEffort = reader.string();
-          continue;
-        }
-        case 8: {
-          if (tag !== 66) {
-            break;
-          }
-
-          message.runtimeEngine = reader.string();
-          continue;
-        }
-        case 9: {
-          if (tag !== 74) {
-            break;
-          }
-
-          message.runtimePackageVersion = reader.string();
-          continue;
-        }
-        case 10: {
-          if (tag !== 82) {
-            break;
-          }
-
-          message.launcherSha256 = reader.string();
-          continue;
-        }
-        case 11: {
-          if (tag !== 88) {
-            break;
-          }
-
-          message.selectedOutputKind = reader.int32() as any;
-          continue;
-        }
-        case 12: {
-          if (tag !== 98) {
-            break;
-          }
-
-          message.selectedOutputSha256 = reader.string();
-          continue;
-        }
-      }
-      if ((tag & 7) === 4 || tag === 0) {
-        break;
-      }
-      reader.skip(tag & 7);
-    }
-    return message;
-  },
-
-  fromJSON(object: any): AgentRuntimeExecutionAttestation {
-    return {
-      schemaVersion: isSet(object.schemaVersion)
-        ? globalThis.Number(object.schemaVersion)
-        : isSet(object.schema_version)
-        ? globalThis.Number(object.schema_version)
-        : 0,
-      requestId: isSet(object.requestId)
-        ? globalThis.String(object.requestId)
-        : isSet(object.request_id)
-        ? globalThis.String(object.request_id)
-        : "",
-      purpose: isSet(object.purpose) ? globalThis.String(object.purpose) : "",
-      canonicalRequestSha256: isSet(object.canonicalRequestSha256)
-        ? globalThis.String(object.canonicalRequestSha256)
-        : isSet(object.canonical_request_sha256)
-        ? globalThis.String(object.canonical_request_sha256)
-        : "",
-      provider: isSet(object.provider) ? agentRuntimeProviderFromJSON(object.provider) : 0,
-      model: isSet(object.model) ? globalThis.String(object.model) : "",
-      reasoningEffort: isSet(object.reasoningEffort)
-        ? globalThis.String(object.reasoningEffort)
-        : isSet(object.reasoning_effort)
-        ? globalThis.String(object.reasoning_effort)
-        : "",
-      runtimeEngine: isSet(object.runtimeEngine)
-        ? globalThis.String(object.runtimeEngine)
-        : isSet(object.runtime_engine)
-        ? globalThis.String(object.runtime_engine)
-        : "",
-      runtimePackageVersion: isSet(object.runtimePackageVersion)
-        ? globalThis.String(object.runtimePackageVersion)
-        : isSet(object.runtime_package_version)
-        ? globalThis.String(object.runtime_package_version)
-        : "",
-      launcherSha256: isSet(object.launcherSha256)
-        ? globalThis.String(object.launcherSha256)
-        : isSet(object.launcher_sha256)
-        ? globalThis.String(object.launcher_sha256)
-        : "",
-      selectedOutputKind: isSet(object.selectedOutputKind)
-        ? agentRuntimeSelectedOutputKindFromJSON(object.selectedOutputKind)
-        : isSet(object.selected_output_kind)
-        ? agentRuntimeSelectedOutputKindFromJSON(object.selected_output_kind)
-        : 0,
-      selectedOutputSha256: isSet(object.selectedOutputSha256)
-        ? globalThis.String(object.selectedOutputSha256)
-        : isSet(object.selected_output_sha256)
-        ? globalThis.String(object.selected_output_sha256)
-        : "",
-    };
-  },
-
-  toJSON(message: AgentRuntimeExecutionAttestation): unknown {
-    const obj: any = {};
-    if (message.schemaVersion !== 0) {
-      obj.schemaVersion = Math.round(message.schemaVersion);
-    }
-    if (message.requestId !== "") {
-      obj.requestId = message.requestId;
-    }
-    if (message.purpose !== "") {
-      obj.purpose = message.purpose;
-    }
-    if (message.canonicalRequestSha256 !== "") {
-      obj.canonicalRequestSha256 = message.canonicalRequestSha256;
-    }
-    if (message.provider !== 0) {
-      obj.provider = agentRuntimeProviderToJSON(message.provider);
-    }
-    if (message.model !== "") {
-      obj.model = message.model;
-    }
-    if (message.reasoningEffort !== "") {
-      obj.reasoningEffort = message.reasoningEffort;
-    }
-    if (message.runtimeEngine !== "") {
-      obj.runtimeEngine = message.runtimeEngine;
-    }
-    if (message.runtimePackageVersion !== "") {
-      obj.runtimePackageVersion = message.runtimePackageVersion;
-    }
-    if (message.launcherSha256 !== "") {
-      obj.launcherSha256 = message.launcherSha256;
-    }
-    if (message.selectedOutputKind !== 0) {
-      obj.selectedOutputKind = agentRuntimeSelectedOutputKindToJSON(message.selectedOutputKind);
-    }
-    if (message.selectedOutputSha256 !== "") {
-      obj.selectedOutputSha256 = message.selectedOutputSha256;
-    }
-    return obj;
-  },
-
-  create(base?: DeepPartial<AgentRuntimeExecutionAttestation>): AgentRuntimeExecutionAttestation {
-    return AgentRuntimeExecutionAttestation.fromPartial(base ?? {});
-  },
-  fromPartial(object: DeepPartial<AgentRuntimeExecutionAttestation>): AgentRuntimeExecutionAttestation {
-    const message = createBaseAgentRuntimeExecutionAttestation();
-    message.schemaVersion = object.schemaVersion ?? 0;
-    message.requestId = object.requestId ?? "";
-    message.purpose = object.purpose ?? "";
-    message.canonicalRequestSha256 = object.canonicalRequestSha256 ?? "";
-    message.provider = object.provider ?? 0;
-    message.model = object.model ?? "";
-    message.reasoningEffort = object.reasoningEffort ?? "";
-    message.runtimeEngine = object.runtimeEngine ?? "";
-    message.runtimePackageVersion = object.runtimePackageVersion ?? "";
-    message.launcherSha256 = object.launcherSha256 ?? "";
-    message.selectedOutputKind = object.selectedOutputKind ?? 0;
-    message.selectedOutputSha256 = object.selectedOutputSha256 ?? "";
     return message;
   },
 };
@@ -1719,7 +1355,7 @@ export const AgentRuntimeHealthRequest: MessageFns<AgentRuntimeHealthRequest> = 
 };
 
 function createBaseAgentRuntimeHealthResponse(): AgentRuntimeHealthResponse {
-  return { status: 0, runtimeEngine: "", runtimeVersion: "", warnings: [], launcherSha256: "" };
+  return { status: 0, runtimeEngine: "", runtimeVersion: "", warnings: [] };
 }
 
 export const AgentRuntimeHealthResponse: MessageFns<AgentRuntimeHealthResponse> = {
@@ -1735,9 +1371,6 @@ export const AgentRuntimeHealthResponse: MessageFns<AgentRuntimeHealthResponse> 
     }
     for (const v of message.warnings) {
       AgentRuntimeWarning.encode(v!, writer.uint32(34).fork()).join();
-    }
-    if (message.launcherSha256 !== "") {
-      writer.uint32(42).string(message.launcherSha256);
     }
     return writer;
   },
@@ -1781,14 +1414,6 @@ export const AgentRuntimeHealthResponse: MessageFns<AgentRuntimeHealthResponse> 
           message.warnings.push(AgentRuntimeWarning.decode(reader, reader.uint32()));
           continue;
         }
-        case 5: {
-          if (tag !== 42) {
-            break;
-          }
-
-          message.launcherSha256 = reader.string();
-          continue;
-        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -1814,11 +1439,6 @@ export const AgentRuntimeHealthResponse: MessageFns<AgentRuntimeHealthResponse> 
       warnings: globalThis.Array.isArray(object?.warnings)
         ? object.warnings.map((e: any) => AgentRuntimeWarning.fromJSON(e))
         : [],
-      launcherSha256: isSet(object.launcherSha256)
-        ? globalThis.String(object.launcherSha256)
-        : isSet(object.launcher_sha256)
-        ? globalThis.String(object.launcher_sha256)
-        : "",
     };
   },
 
@@ -1836,9 +1456,6 @@ export const AgentRuntimeHealthResponse: MessageFns<AgentRuntimeHealthResponse> 
     if (message.warnings?.length) {
       obj.warnings = message.warnings.map((e) => AgentRuntimeWarning.toJSON(e));
     }
-    if (message.launcherSha256 !== "") {
-      obj.launcherSha256 = message.launcherSha256;
-    }
     return obj;
   },
 
@@ -1851,7 +1468,6 @@ export const AgentRuntimeHealthResponse: MessageFns<AgentRuntimeHealthResponse> 
     message.runtimeEngine = object.runtimeEngine ?? "";
     message.runtimeVersion = object.runtimeVersion ?? "";
     message.warnings = object.warnings?.map((e) => AgentRuntimeWarning.fromPartial(e)) || [];
-    message.launcherSha256 = object.launcherSha256 ?? "";
     return message;
   },
 };

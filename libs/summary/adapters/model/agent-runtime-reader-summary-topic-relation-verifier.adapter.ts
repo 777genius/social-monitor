@@ -25,14 +25,10 @@ import {
   agentRuntimeReaderSummaryTopicRelationVerifierJsonSchema,
   buildAgentRuntimeReaderSummaryTopicRelationVerifierPrompt,
 } from "./agent-runtime-reader-summary-topic-relation-verifier-prompt";
-import {
-  verifyAndRecordReaderSummaryExecution,
-  type VerifiedReaderSummaryExecutionAttestationSink,
-} from "./reader-summary-execution-attestation";
 
 export type AgentRuntimeReaderSummaryTopicRelationVerifierOptions = Pick<
   AgentRuntimeReaderSummaryTopicLabelerOptions,
-  "client" | "agentProvider" | "providerInstanceId" | "verifiedAttestationSink"
+  "client" | "agentProvider" | "providerInstanceId"
 > & {
   readonly model?: string;
   readonly promptVersion?: string;
@@ -53,7 +49,6 @@ export class AgentRuntimeReaderSummaryTopicRelationVerifier implements ReaderSum
   private readonly promptVersion: string;
   private readonly timeoutMs: number;
   private readonly maxOutputTokens: number;
-  private readonly verifiedAttestationSink?: VerifiedReaderSummaryExecutionAttestationSink;
 
   constructor(options: AgentRuntimeReaderSummaryTopicRelationVerifierOptions) {
     this.client = options.client;
@@ -72,7 +67,6 @@ export class AgentRuntimeReaderSummaryTopicRelationVerifier implements ReaderSum
       options.maxOutputTokens,
       defaultMaxOutputTokens,
     );
-    this.verifiedAttestationSink = options.verifiedAttestationSink;
   }
 
   async verify(
@@ -82,7 +76,7 @@ export class AgentRuntimeReaderSummaryTopicRelationVerifier implements ReaderSum
     if (input.relations.length === 0) {
       return [];
     }
-    const command = {
+    const result = await this.client.runTask({
       requestId: buildAgentRuntimeRequestId(
         `reader-summary-topic-relations-attempt-${attemptContext.attemptNumber}`,
         input.tenantId,
@@ -119,24 +113,14 @@ export class AgentRuntimeReaderSummaryTopicRelationVerifier implements ReaderSum
         attemptNumber: String(attemptContext.attemptNumber),
         totalAttempts: String(attemptContext.totalAttempts),
       },
-    } as const;
-    const result = await this.client.runTask(command);
+    });
     const raw = readAgentRuntimeObjectOutput(
       result,
       parseJsonObject,
       "Reader summary topic relation verifier",
     );
 
-    const decisions = normalizeDecisions(raw, input.relations);
-    await verifyAndRecordReaderSummaryExecution({
-      command,
-      result,
-      taskRole: "topic_relation",
-      attempt: String(attemptContext.attemptNumber),
-      normalizedOutput: decisions,
-      sink: this.verifiedAttestationSink,
-    });
-    return decisions;
+    return normalizeDecisions(raw, input.relations);
   }
 }
 

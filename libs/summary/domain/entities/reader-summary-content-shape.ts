@@ -1,5 +1,4 @@
 import type { ReaderSummaryContent } from "./reader-summary-artifact";
-import { isGitHubTrendingProvider } from "../value-objects/reader-summary-provider-identity";
 
 export const assertReaderSummaryContentShape = (
   content: ReaderSummaryContent,
@@ -14,13 +13,9 @@ export const assertReaderSummaryContentShape = (
         "No-signal reader summary content must not include top reads",
       );
     }
-    if (
-      (content.selectedPosts ?? []).some(
-        (item) => !isGitHubTrendingProvider(item),
-      )
-    ) {
+    if ((content.selectedPosts ?? []).length > 0) {
       throw new Error(
-        "No-signal reader summary content may include only supplemental GitHub selected posts",
+        "No-signal reader summary content must not include selected posts",
       );
     }
     if (content.sourceMix.length > 0) {

@@ -1,7 +1,4 @@
-import type {
-  AgentRuntimeExecutionAttestation,
-  AgentRuntimeProvider,
-} from "@social-monitor/summary/ports";
+import type { AgentRuntimeProvider } from "@social-monitor/summary/ports";
 
 export type AgentRuntimeExecutionRequest = {
   readonly requestId: string;
@@ -48,14 +45,12 @@ export type AgentRuntimeExecutionResult = {
   readonly warnings: readonly AgentRuntimeExecutionWarning[];
   readonly usage?: AgentRuntimeExecutionUsage;
   readonly failure?: AgentRuntimeExecutionFailure;
-  readonly executionAttestation?: AgentRuntimeExecutionAttestation;
 };
 
 export type AgentRuntimeExecutorHealth = {
   readonly healthy: boolean;
   readonly runtimeEngine: string;
   readonly runtimeVersion: string;
-  readonly launcherSha256?: string;
   readonly warnings: readonly AgentRuntimeExecutionWarning[];
 };
 

@@ -6,7 +6,6 @@ import { InMemorySummaryEventPublisher } from "@social-monitor/summary/adapters/
 import { DeterministicReaderSummaryModelAdapter } from "@social-monitor/summary/adapters/model/deterministic-reader-summary-model.adapter";
 import { InMemoryReaderSummaryArtifactRepository } from "@social-monitor/summary/adapters/persistence/in-memory-reader-summary-artifact.repository";
 import { InMemoryReaderSummaryJobRepository } from "@social-monitor/summary/adapters/persistence/in-memory-reader-summary-job.repository";
-import { InMemoryReaderSummaryPublication } from "@social-monitor/summary/adapters/persistence/in-memory-reader-summary-publication";
 import { InMemoryReaderSummaryPolicyRepository } from "@social-monitor/summary/adapters/persistence/in-memory-reader-summary-policy.repository";
 import {
   ReaderSummaryPolicy,
@@ -210,7 +209,7 @@ async function main(): Promise<void> {
         policies,
         new ScheduledReaderSummaryEvidenceSelector(),
         new DeterministicReaderSummaryModelAdapter(),
-        new InMemoryReaderSummaryPublication(jobs, artifacts, events),
+        events,
         ids,
         new FixedClock(new Date("2026-07-15T06:05:00.000Z")),
       ),

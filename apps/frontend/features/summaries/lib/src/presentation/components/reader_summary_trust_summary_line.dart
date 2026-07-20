@@ -14,14 +14,12 @@ class _TrustSummaryLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final screen = AppScreenClass.of(context);
-    final textScale = MediaQuery.textScalerOf(context).scale(1);
     return LayoutBuilder(
       builder: (context, constraints) {
         final singleLine =
             !screen.isCompact &&
             constraints.maxWidth.isFinite &&
-            constraints.maxWidth >= 760 &&
-            textScale <= 1.3;
+            constraints.maxWidth >= 760;
         if (!singleLine) {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -39,7 +37,7 @@ class _TrustSummaryLine extends StatelessWidget {
 
         return Row(
           children: [
-            const Flexible(flex: 2, child: _TrustPanelTitle()),
+            const _TrustPanelTitle(),
             const SizedBox(width: AppSpacing.md),
             Flexible(
               flex: 2,
@@ -90,18 +88,17 @@ class _TrustPanelTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
         const Icon(Icons.verified_outlined, size: 18),
         const SizedBox(width: AppSpacing.xs),
-        Flexible(
-          child: Text(
-            'Trust & evidence',
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.labelLarge?.copyWith(
-              fontWeight: FontWeight.w900,
-              letterSpacing: 0,
-            ),
+        Text(
+          'Trust & evidence',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.labelLarge?.copyWith(
+            fontWeight: FontWeight.w900,
+            letterSpacing: 0,
           ),
         ),
       ],

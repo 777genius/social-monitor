@@ -52,11 +52,6 @@ type PrismaReaderSummaryArtifactWhere = {
   readonly periodEndedAt?: Date;
   readonly periodTimezone?: string;
   readonly status?: { readonly in: readonly PrismaSummaryStatus[] };
-  readonly publication?: {
-    readonly is: {
-      readonly activeSlot: { readonly isNot: null };
-    };
-  };
 };
 
 type PrismaReaderSummaryArtifactOrderBy = readonly [
@@ -129,10 +124,6 @@ export type PrismaReaderSummaryTopicRecommendationDecisionCreate =
   };
 
 export type PrismaReaderSummaryClient = {
-  readonly $queryRaw: <T = unknown>(
-    query: TemplateStringsArray,
-    ...values: readonly unknown[]
-  ) => Promise<T>;
   readonly readerSummaryJob: {
     upsert(args: {
       readonly where: { readonly id: string };
@@ -238,11 +229,6 @@ export type PrismaReaderSummaryClient = {
         readonly workspaceId: string;
         readonly id: string;
         readonly status?: { readonly in: readonly PrismaSummaryStatus[] };
-        readonly publication?: {
-          readonly is: {
-            readonly activeSlot: { readonly isNot: null };
-          };
-        };
       };
     }): Promise<PrismaReaderSummaryArtifactRecord | null>;
     findMany(args: {
