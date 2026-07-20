@@ -6,6 +6,7 @@ import type {
   ReaderSummaryPublicationPolicy,
   SummaryEvidenceSelection,
 } from "../../domain";
+import { readerSummaryHasVerifiedGitHubProjection } from "../../domain";
 import type {
   ReadReaderSummaryGitHubProjectionQuery,
   ReaderSummaryGitHubProjectionReaderPort,
@@ -171,6 +172,12 @@ describe("evaluateReaderSummaryPrepublication", () => {
       },
       violationCodes: [],
     });
+    expect(
+      readerSummaryHasVerifiedGitHubProjection({
+        artifact,
+        audit: decision.githubProjectionAudit,
+      }),
+    ).toBe(true);
   });
 
   it("rejects a partial GitHub selectedPosts board before persistence", async () => {
