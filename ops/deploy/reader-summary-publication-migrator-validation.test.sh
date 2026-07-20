@@ -23,7 +23,7 @@ PRIVATE_PASSWORD=redacted-test-password
 MIGRATOR_ROLE=social_monitor_publication_migrator
 DATABASE_HOST=dbaas-db-8050451-do-user-39622063-0.e.db.ondigitalocean.com
 VALID_URL="postgresql://${MIGRATOR_ROLE}:${PRIVATE_PASSWORD}@${DATABASE_HOST}:25060/social_monitor?connect_timeout=10&sslmode=verify-full&sslrootcert=%2Frun%2Fsocial-monitor-db%2Fca-certificate.crt"
-VALID_CATALOG="social_monitor|${MIGRATOR_ROLE}|${MIGRATOR_ROLE}|t|t|t|f|f|f|f|180004|t|1|t|f|t|t|0|1|t"
+VALID_CATALOG="social_monitor|${MIGRATOR_ROLE}|${MIGRATOR_ROLE}|t|t|t|f|f|f|f|180004|t|1|t|f|t|t|0|1|t|t"
 CATALOG_RESULT=$VALID_CATALOG
 CATALOG_QUERY_STATUS=0
 AVAILABILITY_STATUS=0
@@ -72,6 +72,13 @@ if [[ -n $query_file ]]; then
   query_payload=$(< "$query_file")
   [[ $query_payload == *"WHERE granted_role.rolname = :'runtime_role'"* ]]
   [[ $query_payload == *'FROM pg_catalog.pg_auth_members AS membership'* ]]
+  [[ $query_payload == *'social_monitor_public_schema_owner'* ]]
+  [[ $query_payload == *'pg_catalog.pg_namespace namespace'* ]]
+  [[ $query_payload == *'public_schema_ownership.boundary_valid'* ]]
+  [[ $query_payload == *'schema_grantee.rolname NOT IN ('* ]]
+  [[ $query_payload == *"'social_monitor_public_schema_owner',"* ]]
+  [[ $query_payload == *"current_user,"* ]]
+  [[ $query_payload == *"'social_monitor_reader_summary_publication_owner'"* ]]
   [[ " $* " == *' --set=runtime_role=social_monitor_app '* ]]
   [[ " $* " == *' --set=provisioner_role=doadmin '* ]]
   printf '%s\n' "$query_file" > "$TRANSPORT_QUERY_PATH_LOG"
@@ -551,6 +558,8 @@ assert_invalid_catalog additional-outgoing-member \
   "$(catalog_with_field 18 2)"
 assert_invalid_catalog unsafe-protected-creator-membership \
   "$(catalog_with_field 19 f)"
+assert_invalid_catalog unsafe-public-schema-owner-boundary \
+  "$(catalog_with_field 20 f)"
 
 assert_deploy_backend_preflight_order() {
   local mode=$1
@@ -654,6 +663,15 @@ for catalog_token in \
   'unexpected_membership_count' \
   'outgoing_memberships.membership_count' \
   'protected_creator_membership_valid' \
+  'public_schema_ownership.boundary_valid' \
+  'social_monitor_public_schema_owner' \
+  'pg_catalog.pg_namespace namespace' \
+  'pg_catalog.aclexplode' \
+  'namespace.nspacl' \
+  "schema_privilege.privilege_type = 'CREATE'" \
+  "schema_owner.rolname = 'pg_database_owner'" \
+  "database_owner.rolname = :'runtime_role'" \
+  "pg_has_role(" \
   'outgoing_membership.roleid = migrator.oid' \
   "member_role.rolname = :'provisioner_role'" \
   'grantor_role.rolsuper' \

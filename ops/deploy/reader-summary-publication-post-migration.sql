@@ -5,6 +5,32 @@ SELECT set_config(
   :'runtime_role',
   false
 );
+SELECT set_config(
+  'social_monitor.bootstrap_migrator_role',
+  current_user,
+  false
+);
+
+-- The migrator receives CREATE WITH GRANT OPTION only inside the committed pre
+-- phase so Prisma can apply the ordered migration. Remove it as the dedicated
+-- schema owner before auditing the runtime boundary.
+SET ROLE social_monitor_public_schema_owner;
+REVOKE CREATE ON SCHEMA public
+FROM pg_database_owner,
+  PUBLIC,
+  social_monitor_reader_summary_publication_owner,
+  social_monitor_reader_summary_publication_runtime,
+  :"runtime_role"
+CASCADE;
+DO $revoke_migrator_schema_create$
+BEGIN
+  EXECUTE format(
+    'REVOKE CREATE ON SCHEMA public FROM %I CASCADE',
+    current_setting('social_monitor.bootstrap_migrator_role')::NAME
+  );
+END
+$revoke_migrator_schema_create$;
+RESET ROLE;
 
 -- Protected object ACLs can only be repaired as their NOLOGIN owner. The
 -- migrator has SET but deliberately does not inherit this role.
@@ -32,14 +58,10 @@ DECLARE
   v_owner_count INTEGER;
   v_trigger_count INTEGER;
   v_function RECORD;
+  v_role RECORD;
 BEGIN
   -- Remove any direct authority retained from an older runtime-owned schema.
   -- The application receives only the audited capability-role grants.
-  EXECUTE format('REVOKE CREATE ON SCHEMA public FROM %I', v_runtime_role);
-  REVOKE CREATE ON SCHEMA public
-  FROM PUBLIC,
-    social_monitor_reader_summary_publication_owner,
-    social_monitor_reader_summary_publication_runtime;
   EXECUTE format(
     'GRANT social_monitor_reader_summary_publication_runtime TO %I '
       'WITH ADMIN FALSE GRANTED BY CURRENT_USER',
@@ -55,6 +77,40 @@ BEGIN
       'WITH SET FALSE GRANTED BY CURRENT_USER',
     v_runtime_role
   );
+
+  SELECT * INTO v_role FROM pg_roles
+  WHERE rolname = 'social_monitor_public_schema_owner';
+  IF NOT FOUND OR v_role.rolcanlogin OR v_role.rolsuper
+    OR v_role.rolcreatedb OR v_role.rolcreaterole OR v_role.rolinherit
+    OR v_role.rolreplication OR v_role.rolbypassrls THEN
+    RAISE EXCEPTION 'public schema owner role is unsafe';
+  END IF;
+  IF (
+    SELECT pg_get_userbyid(namespace.nspowner)
+    FROM pg_namespace namespace
+    WHERE namespace.nspname = 'public'
+  ) <> 'social_monitor_public_schema_owner' THEN
+    RAISE EXCEPTION 'public schema has an unsafe owner';
+  END IF;
+  IF EXISTS (
+    SELECT 1
+    FROM pg_namespace namespace
+    CROSS JOIN LATERAL aclexplode(
+      COALESCE(
+        namespace.nspacl,
+        acldefault('n', namespace.nspowner)
+      )
+    ) privilege
+    LEFT JOIN pg_roles grantee ON grantee.oid = privilege.grantee
+    WHERE namespace.nspname = 'public'
+      AND privilege.privilege_type = 'CREATE'
+      AND (
+        privilege.grantee = 0
+        OR grantee.rolname <> 'social_monitor_public_schema_owner'
+      )
+  ) THEN
+    RAISE EXCEPTION 'public schema retains an unreviewed CREATE grant';
+  END IF;
 
   SELECT count(*) INTO v_owner_count
   FROM pg_class relation
@@ -137,6 +193,10 @@ BEGIN
     v_runtime_role,
     'social_monitor_reader_summary_publication_owner',
     'MEMBER'
+  ) OR pg_has_role(
+    v_runtime_role,
+    'social_monitor_public_schema_owner',
+    'MEMBER'
   ) OR NOT pg_has_role(
     v_runtime_role,
     'social_monitor_reader_summary_publication_runtime',
@@ -158,8 +218,41 @@ BEGIN
       'social_monitor_reader_summary_publication_owner',
       'public',
       'CREATE'
-    ) THEN
+  ) THEN
     RAISE EXCEPTION 'runtime role can bypass publication ownership';
+  END IF;
+  IF EXISTS (
+    SELECT 1
+    FROM pg_auth_members membership
+    JOIN pg_roles granted ON granted.oid = membership.roleid
+    JOIN pg_roles member ON member.oid = membership.member
+    WHERE granted.rolname = 'social_monitor_public_schema_owner'
+      AND member.rolname <> current_user
+  ) THEN
+    RAISE EXCEPTION 'public schema owner has an unreviewed member';
+  END IF;
+  IF (
+    SELECT count(*) <> 2
+      OR count(*) FILTER (
+        WHERE membership.admin_option
+          AND NOT membership.inherit_option
+          AND NOT membership.set_option
+          AND grantor.rolsuper
+      ) <> 1
+      OR count(*) FILTER (
+        WHERE NOT membership.admin_option
+          AND NOT membership.inherit_option
+          AND membership.set_option
+          AND grantor.rolname = current_user
+      ) <> 1
+    FROM pg_auth_members membership
+    JOIN pg_roles granted ON granted.oid = membership.roleid
+    JOIN pg_roles member ON member.oid = membership.member
+    JOIN pg_roles grantor ON grantor.oid = membership.grantor
+    WHERE granted.rolname = 'social_monitor_public_schema_owner'
+      AND member.rolname = current_user
+  ) THEN
+    RAISE EXCEPTION 'public schema owner membership is unsafe';
   END IF;
   IF (
     SELECT count(*) <> 2
@@ -230,6 +323,7 @@ BEGIN
           AND grantor.rolname NOT IN (
             current_user,
             v_runtime_role,
+            'social_monitor_public_schema_owner',
             'social_monitor_reader_summary_publication_owner',
             'social_monitor_reader_summary_publication_runtime'
           )
