@@ -20,7 +20,10 @@ for predicate in \
   "AND checksum <> :'migration_checksum'" 'AND logs IS NULL'; do
   grep -F "$predicate" <<< "$ROLLED_BACK_FILTER" >/dev/null
 done
-! grep -F 'btrim(logs)' <<< "$ROLLED_BACK_FILTER" >/dev/null
+if grep -F 'btrim(logs)' <<< "$ROLLED_BACK_FILTER" >/dev/null; then
+  echo 'rolled-back migration classifier must require literal NULL logs' >&2
+  exit 1
+fi
 
 cat > "$FIXTURE/first-deploy-schema.txt" <<'TEXT'
 _prisma_migrations
