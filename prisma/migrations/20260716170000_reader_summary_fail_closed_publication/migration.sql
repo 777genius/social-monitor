@@ -5,8 +5,6 @@
 
 BEGIN;
 
-CREATE EXTENSION IF NOT EXISTS "pgcrypto";
-
 -- The pre-migration bootstrap grants this NOLOGIN role only the object and
 -- schema capabilities required below. Create the protected graph as its final
 -- owner so foreign-key checks never depend on broad migrator ACLs.
@@ -237,7 +235,7 @@ BEGIN
     RAISE EXCEPTION 'reader summary canonical report is invalid JSON';
   END;
   v_report_sha256 := encode(
-    digest(convert_to(v_report_canonical, 'UTF8'), 'sha256'),
+    sha256(convert_to(v_report_canonical, 'UTF8')),
     'hex'
   );
   IF payload->>'reportSha256' IS DISTINCT FROM v_report_sha256 THEN
@@ -345,7 +343,7 @@ BEGIN
     RAISE EXCEPTION 'reader summary exact publication proof mismatch';
   END IF;
   v_proof_sha256 := encode(
-    digest(convert_to(v_proof_canonical, 'UTF8'), 'sha256'),
+    sha256(convert_to(v_proof_canonical, 'UTF8')),
     'hex'
   );
   IF payload->>'proofSha256' IS DISTINCT FROM v_proof_sha256 THEN
@@ -653,7 +651,7 @@ WITH "legacy_candidates" AS (
   SELECT
     report.*,
     encode(
-      digest(convert_to(report."legacy_report"::TEXT, 'UTF8'), 'sha256'),
+      sha256(convert_to(report."legacy_report"::TEXT, 'UTF8')),
       'hex'
     ) AS "legacy_report_sha256",
     jsonb_build_object(
@@ -690,7 +688,7 @@ WITH "legacy_candidates" AS (
       'semanticStatus', report."status"::TEXT,
       'modelVersion', report."model_version",
       'reportSha256', encode(
-        digest(convert_to(report."legacy_report"::TEXT, 'UTF8'), 'sha256'),
+        sha256(convert_to(report."legacy_report"::TEXT, 'UTF8')),
         'hex'
       )
     ) AS "legacy_proof"
@@ -714,7 +712,7 @@ SELECT
   proof."created_at", proof."model_version",
   "reader_summary_model_authority_rank"(proof."model_version"),
   proof."legacy_report_sha256",
-  encode(digest(convert_to(proof."legacy_proof"::TEXT, 'UTF8'), 'sha256'), 'hex'),
+  encode(sha256(convert_to(proof."legacy_proof"::TEXT, 'UTF8')), 'hex'),
   proof."legacy_proof", NULL, proof."updated_at"
 FROM "legacy_proofs" AS proof;
 
