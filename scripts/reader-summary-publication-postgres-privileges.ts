@@ -39,11 +39,14 @@ export const publicationProtectedRolePresence = async (
 
 export const makePublicationFixtureRuntimeDatabaseOwner = async (params: {
   readonly databaseName: string;
+  readonly migrationAdminDatabaseUrl: string;
   readonly migrationAdminRole: string;
   readonly runtimeRole: string;
   readonly targetDatabaseUrl: string;
 }): Promise<void> => {
   const admin = new Pool({ connectionString: params.targetDatabaseUrl, max: 1 });
+  const rogueRole = `sm_public_schema_rogue_${params.runtimeRole.slice(-20)}`;
+  let rogueRoleCreated = false;
   try {
     await admin.query(
       `ALTER DATABASE ${quoteIdentifier(params.databaseName)}
@@ -52,7 +55,40 @@ export const makePublicationFixtureRuntimeDatabaseOwner = async (params: {
          TO ${quoteIdentifier(params.migrationAdminRole)}
          WITH GRANT OPTION`,
     );
+    await admin.query(
+      `CREATE ROLE ${quoteIdentifier(rogueRole)}
+         NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT
+         NOREPLICATION NOBYPASSRLS;
+       GRANT CREATE ON SCHEMA public TO ${quoteIdentifier(rogueRole)}`,
+    );
+    rogueRoleCreated = true;
+    try {
+      await assertRejectsContaining(
+        () =>
+          runReaderSummaryPublicationBootstrapSql(
+            "pre",
+            params.migrationAdminDatabaseUrl,
+            params.runtimeRole,
+          ),
+        "public schema has an unreviewed CREATE grant",
+        "bootstrap must reject an unreviewed public schema creator",
+      );
+    } finally {
+      await admin.query(
+        `REVOKE CREATE ON SCHEMA public
+           FROM ${quoteIdentifier(rogueRole)} CASCADE;
+         DROP ROLE ${quoteIdentifier(rogueRole)}`,
+      );
+      rogueRoleCreated = false;
+    }
   } finally {
+    if (rogueRoleCreated) {
+      await admin.query(
+        `REASSIGN OWNED BY ${quoteIdentifier(rogueRole)} TO CURRENT_USER;
+         DROP OWNED BY ${quoteIdentifier(rogueRole)};
+         DROP ROLE ${quoteIdentifier(rogueRole)}`,
+      ).catch(() => undefined);
+    }
     await admin.end();
   }
 };

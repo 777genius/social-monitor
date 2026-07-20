@@ -645,6 +645,27 @@ LEFT JOIN LATERAL (
         SELECT 1 FROM pg_catalog.pg_roles
         WHERE rolname = 'social_monitor_public_schema_owner'
       )
+      AND NOT EXISTS (
+        SELECT 1
+        FROM pg_catalog.aclexplode(
+          COALESCE(
+            namespace.nspacl,
+            pg_catalog.acldefault('n', namespace.nspowner)
+          )
+        ) schema_privilege
+        LEFT JOIN pg_catalog.pg_roles schema_grantee
+          ON schema_grantee.oid = schema_privilege.grantee
+        WHERE schema_privilege.privilege_type = 'CREATE'
+          AND (
+            schema_privilege.grantee = 0
+            OR schema_grantee.rolname NOT IN (
+              'pg_database_owner',
+              current_user,
+              :'runtime_role',
+              'social_monitor_reader_summary_publication_owner'
+            )
+          )
+      )
     ) OR (
       schema_owner.rolname = 'social_monitor_public_schema_owner'
       AND EXISTS (
@@ -675,6 +696,26 @@ LEFT JOIN LATERAL (
         WHERE schema_granted.rolname =
             'social_monitor_public_schema_owner'
           AND schema_member.rolname <> current_user
+      )
+      AND NOT EXISTS (
+        SELECT 1
+        FROM pg_catalog.aclexplode(
+          COALESCE(
+            namespace.nspacl,
+            pg_catalog.acldefault('n', namespace.nspowner)
+          )
+        ) schema_privilege
+        LEFT JOIN pg_catalog.pg_roles schema_grantee
+          ON schema_grantee.oid = schema_privilege.grantee
+        WHERE schema_privilege.privilege_type = 'CREATE'
+          AND (
+            schema_privilege.grantee = 0
+            OR schema_grantee.rolname NOT IN (
+              'social_monitor_public_schema_owner',
+              current_user,
+              'social_monitor_reader_summary_publication_owner'
+            )
+          )
       )
     )
   ) AS boundary_valid

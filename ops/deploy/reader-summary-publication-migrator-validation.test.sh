@@ -75,6 +75,10 @@ if [[ -n $query_file ]]; then
   [[ $query_payload == *'social_monitor_public_schema_owner'* ]]
   [[ $query_payload == *'pg_catalog.pg_namespace namespace'* ]]
   [[ $query_payload == *'public_schema_ownership.boundary_valid'* ]]
+  [[ $query_payload == *'schema_grantee.rolname NOT IN ('* ]]
+  [[ $query_payload == *"'social_monitor_public_schema_owner',"* ]]
+  [[ $query_payload == *"current_user,"* ]]
+  [[ $query_payload == *"'social_monitor_reader_summary_publication_owner'"* ]]
   [[ " $* " == *' --set=runtime_role=social_monitor_app '* ]]
   [[ " $* " == *' --set=provisioner_role=doadmin '* ]]
   printf '%s\n' "$query_file" > "$TRANSPORT_QUERY_PATH_LOG"
@@ -662,6 +666,9 @@ for catalog_token in \
   'public_schema_ownership.boundary_valid' \
   'social_monitor_public_schema_owner' \
   'pg_catalog.pg_namespace namespace' \
+  'pg_catalog.aclexplode' \
+  'namespace.nspacl' \
+  "schema_privilege.privilege_type = 'CREATE'" \
   "schema_owner.rolname = 'pg_database_owner'" \
   "database_owner.rolname = :'runtime_role'" \
   "pg_has_role(" \

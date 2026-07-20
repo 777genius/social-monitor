@@ -92,6 +92,25 @@ BEGIN
   ) <> 'social_monitor_public_schema_owner' THEN
     RAISE EXCEPTION 'public schema has an unsafe owner';
   END IF;
+  IF EXISTS (
+    SELECT 1
+    FROM pg_namespace namespace
+    CROSS JOIN LATERAL aclexplode(
+      COALESCE(
+        namespace.nspacl,
+        acldefault('n', namespace.nspowner)
+      )
+    ) privilege
+    LEFT JOIN pg_roles grantee ON grantee.oid = privilege.grantee
+    WHERE namespace.nspname = 'public'
+      AND privilege.privilege_type = 'CREATE'
+      AND (
+        privilege.grantee = 0
+        OR grantee.rolname <> 'social_monitor_public_schema_owner'
+      )
+  ) THEN
+    RAISE EXCEPTION 'public schema retains an unreviewed CREATE grant';
+  END IF;
 
   SELECT count(*) INTO v_owner_count
   FROM pg_class relation

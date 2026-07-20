@@ -325,6 +325,32 @@ BEGIN
   FROM pg_namespace namespace
   WHERE namespace.nspname = 'public';
 
+  IF EXISTS (
+    SELECT 1
+    FROM pg_namespace namespace
+    CROSS JOIN LATERAL aclexplode(
+      COALESCE(
+        namespace.nspacl,
+        acldefault('n', namespace.nspowner)
+      )
+    ) privilege
+    LEFT JOIN pg_roles grantee ON grantee.oid = privilege.grantee
+    WHERE namespace.nspname = 'public'
+      AND privilege.privilege_type = 'CREATE'
+      AND (
+        privilege.grantee = 0
+        OR grantee.rolname NOT IN (
+          'pg_database_owner',
+          v_admin_role,
+          v_runtime_role,
+          'social_monitor_public_schema_owner',
+          'social_monitor_reader_summary_publication_owner'
+        )
+      )
+  ) THEN
+    RAISE EXCEPTION 'public schema has an unreviewed CREATE grant';
+  END IF;
+
   IF v_schema_owner = 'pg_database_owner' THEN
     IF v_database_owner <> v_runtime_role THEN
       RAISE EXCEPTION
@@ -380,7 +406,28 @@ BEGIN
       'social_monitor_public_schema_owner',
       'MEMBER'
     )
-    OR has_schema_privilege(v_runtime_role, 'public', 'CREATE') THEN
+    OR has_schema_privilege(v_runtime_role, 'public', 'CREATE')
+    OR EXISTS (
+      SELECT 1
+      FROM pg_namespace namespace
+      CROSS JOIN LATERAL aclexplode(
+        COALESCE(
+          namespace.nspacl,
+          acldefault('n', namespace.nspowner)
+        )
+      ) privilege
+      LEFT JOIN pg_roles grantee ON grantee.oid = privilege.grantee
+      WHERE namespace.nspname = 'public'
+        AND privilege.privilege_type = 'CREATE'
+        AND (
+          privilege.grantee = 0
+          OR grantee.rolname NOT IN (
+            'social_monitor_public_schema_owner',
+            v_admin_role,
+            'social_monitor_reader_summary_publication_owner'
+          )
+        )
+    ) THEN
     RAISE EXCEPTION
       'public schema ownership transfer is unsafe (owner=%, member=%, create=%)',
       (
