@@ -207,21 +207,22 @@ void main() {
     await tester.pumpWidget(_TestApp(summary: summary));
     await tester.pumpAndSettle();
 
+    final firstRow = find.byKey(const ValueKey('reader-summary-top-post-0'));
     expect(
       find.descendant(
-        of: find.byKey(const ValueKey('reader-summary-top-post-0')),
+        of: firstRow,
         matching: find.text('HN single-source low-engagement debate'),
       ),
       findsOneWidget,
     );
     expect(
-      find.descendant(
-        of: find.byKey(const ValueKey('reader-summary-top-post-0')),
-        matching: find.text('Single source'),
-      ),
+      find.descendant(of: firstRow, matching: find.text('Single source')),
       findsOneWidget,
     );
-    expect(find.text('Low relevance'), findsNothing);
+    expect(
+      find.descendant(of: firstRow, matching: find.text('Low confidence')),
+      findsNothing,
+    );
     expect(find.text('Shares'), findsNothing);
     expect(find.text('Views'), findsNothing);
   });

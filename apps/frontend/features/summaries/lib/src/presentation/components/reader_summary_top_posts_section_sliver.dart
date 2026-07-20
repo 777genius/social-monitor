@@ -3,6 +3,7 @@ import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 
 import '../../domain/aggregates/reader_summary.dart';
 import '../../domain/entities/post_rating.dart';
+import '../formatters/top_post_metrics.dart';
 import 'reader_summary_brief_surface.dart';
 
 class ReaderSummaryTopPostsSectionSliver extends StatelessWidget {
@@ -70,7 +71,10 @@ List<TopRead> readerSummaryTopPostItems(ReaderSummary summary) {
       .where(_isGitHubTrendingPost)
       .toList(growable: false);
 
-  return [...editorialPosts, ...githubTrendingPosts];
+  return [
+    ...editorialPosts,
+    ...orderGitHubTrendingPosts(githubTrendingPosts),
+  ];
 }
 
 int readerSummaryEditorialTopPostCount(ReaderSummary summary) {

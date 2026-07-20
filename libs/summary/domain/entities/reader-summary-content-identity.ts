@@ -1,6 +1,7 @@
 import type { SourceMixEntry } from "./source-mix-entry";
 import type { ReaderSummaryCitation } from "./citation";
 import type { TopRead } from "./top-read";
+import { normalizedGitHubRepositoryIdentity } from "../value-objects/github-repository-identity";
 
 export const assertUniqueReaderSummarySourceMixProviders = (
   sourceMix: readonly SourceMixEntry[],
@@ -116,9 +117,11 @@ const normalizeReaderCanonicalUrlKey = (
       }
     }
 
-    const githubRepositoryKey = githubRepositoryIdentityKey(parsed);
-    if (githubRepositoryKey !== undefined) {
-      return githubRepositoryKey;
+    const githubRepositoryIdentity = normalizedGitHubRepositoryIdentity(
+      parsed.toString(),
+    );
+    if (githubRepositoryIdentity !== undefined) {
+      return `github:${githubRepositoryIdentity}`;
     }
 
     parsed.pathname = normalizeIdentityPathname(parsed.pathname);
@@ -127,19 +130,6 @@ const normalizeReaderCanonicalUrlKey = (
   } catch {
     return `url:${normalizeIdentityText(trimmed)}`;
   }
-};
-
-const githubRepositoryIdentityKey = (url: URL): string | undefined => {
-  if (url.hostname !== "github.com") {
-    return undefined;
-  }
-  const [owner, repo] = url.pathname
-    .split("/")
-    .filter((segment) => segment.length > 0);
-
-  return owner === undefined || repo === undefined
-    ? undefined
-    : `github:${owner.toLowerCase()}/${repo.toLowerCase()}`;
 };
 
 const normalizeIdentityPathname = (pathname: string): string => {

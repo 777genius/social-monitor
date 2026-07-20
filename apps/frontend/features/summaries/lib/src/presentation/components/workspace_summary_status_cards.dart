@@ -1,10 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 
+import '../../domain/value_objects/summary_period.dart';
+
 /// Friendly empty state shown when the selected period has no summary yet.
 class WorkspaceSummaryEmptyCard extends StatelessWidget {
-  const WorkspaceSummaryEmptyCard({super.key, required this.onGenerate});
+  const WorkspaceSummaryEmptyCard({
+    super.key,
+    required this.periodPreset,
+    required this.onGenerate,
+  });
 
+  final SummaryPeriodPreset periodPreset;
   final VoidCallback onGenerate;
 
   @override
@@ -31,7 +38,7 @@ class WorkspaceSummaryEmptyCard extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.md),
           Text(
-            'No workspace summary',
+            _title,
             textAlign: TextAlign.center,
             style: textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.w800,
@@ -40,7 +47,7 @@ class WorkspaceSummaryEmptyCard extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.xs + 2),
           Text(
-            'Run a workspace summary after feed items are collected.',
+            _message,
             textAlign: TextAlign.center,
             style: textTheme.bodySmall?.copyWith(
               color: colorScheme.onSurfaceVariant,
@@ -58,6 +65,25 @@ class WorkspaceSummaryEmptyCard extends StatelessWidget {
       ),
     );
   }
+
+  String get _title => switch (periodPreset) {
+    SummaryPeriodPreset.weekly => 'No weekly summary for this period',
+    SummaryPeriodPreset.monthly => 'No monthly summary for this period',
+    SummaryPeriodPreset.daily ||
+    SummaryPeriodPreset.twoWeeks ||
+    SummaryPeriodPreset.threeWeeks => 'No workspace summary',
+  };
+
+  String get _message => switch (periodPreset) {
+    SummaryPeriodPreset.weekly =>
+      'Run a weekly summary after feed items are collected.',
+    SummaryPeriodPreset.monthly =>
+      'Run a monthly summary after feed items are collected.',
+    SummaryPeriodPreset.daily ||
+    SummaryPeriodPreset.twoWeeks ||
+    SummaryPeriodPreset.threeWeeks =>
+      'Run a workspace summary after feed items are collected.',
+  };
 }
 
 /// Progress card shown while a summary job is queued or running.

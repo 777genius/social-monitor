@@ -1,5 +1,16 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, globSync, readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, globSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { basename, dirname, join } from 'node:path';
+
+const immutableBaselinePath =
+  'prisma/migrations/20260618143000_baseline/migration.sql';
+const immutableBaselineSha256 =
+  'ebc492b89ddd13604ada5ad0bf3c1967e0ea42f7d5799c639571199bee4b7f77';
+const migrationDiffDirectory = mkdtempSync(join(tmpdir(), 'social-monitor-migration-diff-'));
+const migrationDiffPath = join(migrationDiffDirectory, 'migration.sql');
+process.on('exit', () => rmSync(migrationDiffDirectory, { recursive: true, force: true }));
 
 const prismaCommandEnv = {
   ...process.env,
@@ -26,15 +37,18 @@ const commands = [
       '--to-schema',
       'prisma/schema.prisma',
       '--script',
+      '--output',
+      migrationDiffPath,
     ],
-    capture: true,
   },
 ];
 
 let migrationSql = '';
 const migrationFiles = globSync('prisma/migrations/*/migration.sql').sort();
 const repairMigrationFiles = migrationFiles.filter((file) => file.includes('_repair_'));
-const canonicalMigrationFiles = migrationFiles.filter((file) => !repairMigrationFiles.includes(file));
+const forwardMigrationFiles = migrationFiles.filter(
+  (file) => file !== immutableBaselinePath && !repairMigrationFiles.includes(file),
+);
 
 for (const command of commands) {
   const result =
@@ -43,33 +57,26 @@ for (const command of commands) {
           encoding: 'utf8',
           env: prismaCommandEnv,
           shell: true,
-          stdio: command.capture ? ['ignore', 'pipe', 'pipe'] : 'inherit',
+          stdio: 'inherit',
         })
       : spawnSync('npx', command.args, {
           encoding: 'utf8',
           env: prismaCommandEnv,
-          stdio: command.capture ? ['ignore', 'pipe', 'pipe'] : 'inherit',
+          stdio: 'inherit',
         });
 
   if (result.status !== 0) {
-    if (command.capture) {
-      process.stderr.write(result.stderr);
-      process.stdout.write(result.stdout);
-    }
     console.error(`${command.label} failed`);
     process.exit(result.status ?? 1);
   }
-
-  if (command.capture) {
-    migrationSql = result.stdout;
-    process.stderr.write(result.stderr);
-  }
 }
 
+migrationSql = readFileSync(migrationDiffPath, 'utf8');
+
 const violations = [];
-const canonicalMigrationSql = canonicalMigrationFiles.map((file) => readFileSync(file, 'utf8')).join('\n');
-const repairMigrationSql = repairMigrationFiles.map((file) => readFileSync(file, 'utf8')).join('\n');
-const committedMigrationSql = [canonicalMigrationSql, repairMigrationSql].filter((sql) => sql.length > 0).join('\n');
+const committedMigrationSql = migrationFiles
+  .map((file) => readFileSync(file, 'utf8'))
+  .join('\n');
 
 if (!migrationSql.includes('CREATE TABLE')) {
   violations.push('clean migration diff must create tables from the current Prisma schema');
@@ -81,6 +88,18 @@ if (!existsSync('prisma/migrations')) {
 
 if (migrationFiles.length === 0) {
   violations.push('at least one committed Prisma migration.sql file is required');
+}
+
+if (!migrationFiles.includes(immutableBaselinePath)) {
+  violations.push(`immutable baseline is missing: ${immutableBaselinePath}`);
+} else if (sha256(readFileSync(immutableBaselinePath)) !== immutableBaselineSha256) {
+  violations.push(
+    `${immutableBaselinePath} is immutable and must retain SHA-256 ${immutableBaselineSha256}`,
+  );
+}
+
+if (new Set(migrationFiles).size !== migrationFiles.length) {
+  violations.push('migration paths must be unique and apply in lexical timestamp order');
 }
 
 for (const [label, sql] of [
@@ -101,8 +120,19 @@ for (const tableName of mappedTables()) {
   }
 }
 
-if (canonicalMigrationFiles.length > 0 && normalizeSql(canonicalMigrationSql) !== normalizeSql(migrationSql)) {
-  violations.push('committed migration history must match the current Prisma schema clean diff');
+for (const file of forwardMigrationFiles) {
+  const sql = readFileSync(file, 'utf8');
+  if (!sql.includes('@social-monitor-forward-migration')) {
+    violations.push(`${file} must include @social-monitor-forward-migration marker`);
+  }
+  if (sql.includes('reader_summary.legacy_publication_proof.v1')) {
+    const canonicalMigrationName = basename(dirname(file));
+    if (!sql.includes(`'migration', '${canonicalMigrationName}'`)) {
+      violations.push(
+        `${file} legacy publication proof must use canonical Prisma migration name ${canonicalMigrationName}`,
+      );
+    }
+  }
 }
 
 for (const file of repairMigrationFiles) {
@@ -133,10 +163,6 @@ function mappedTables() {
   return [...schema.matchAll(/@@map\("([^"]+)"\)/g)].map((match) => match[1]).sort();
 }
 
-function normalizeSql(sql) {
-  return sql
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-    .join('\n');
+function sha256(value) {
+  return createHash('sha256').update(value).digest('hex');
 }

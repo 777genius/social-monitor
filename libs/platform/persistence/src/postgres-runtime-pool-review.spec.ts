@@ -76,9 +76,21 @@ describe('hostile PostgreSQL pool budget review', () => {
       join(process.cwd(), 'ops/deploy/social-monitor-production-deploy.sh'),
       'utf8',
     );
+    const rescueLibrary = readFileSync(
+      join(process.cwd(), 'ops/deploy/backend-image-rescue-lib.sh'),
+      'utf8',
+    );
     const backend = deploy.slice(
       deploy.indexOf('deploy_backend()'),
       deploy.indexOf('switch_link()'),
+    );
+    const releaseTransaction = deploy.slice(
+      deploy.indexOf('deploy_release_runtime_transaction()'),
+      deploy.indexOf('sync_control_script()'),
+    );
+    const rollbackHelper = rescueLibrary.slice(
+      rescueLibrary.indexOf('rollback_backend_and_runtime_control()'),
+      rescueLibrary.indexOf('\nbackend_image_rescue_cleanup()'),
     );
     const removal = backend.indexOf(
       'stop_and_remove_database_services "${persistent[@]}"',
@@ -91,6 +103,21 @@ describe('hostile PostgreSQL pool budget review', () => {
     );
     const envelopeProbe = backend.indexOf(
       'probe_postgres_maximum_envelope "$postgres_env"',
+    );
+    const rollbackCall = releaseTransaction.indexOf(
+      'rollback_backend_and_runtime_control',
+    );
+    const incompleteRollbackFailure = releaseTransaction.indexOf(
+      "fail 'release failed; rollback is incomplete and rescue tags were preserved'",
+    );
+    const restoredRollbackFailure = releaseTransaction.indexOf(
+      "fail 'release failed; backend images and PostgreSQL runtime control were restored'",
+    );
+    const backendImageRollback = rollbackHelper.indexOf(
+      'rollback_backend_images "$state_file"',
+    );
+    const runtimeControlRestore = rollbackHelper.indexOf(
+      'restore_postgres_runtime_control "$runtime_control_backup"',
     );
 
     expect(deploy).toContain('POSTGRES_ADMISSION_LOCK');
@@ -109,15 +136,18 @@ describe('hostile PostgreSQL pool budget review', () => {
     expect(deploy).toContain(
       'label=com.docker.compose.service=$service',
     );
-    expect(deploy).toContain(
+    expect(rollbackCall).toBeGreaterThanOrEqual(0);
+    expect(incompleteRollbackFailure).toBeGreaterThan(rollbackCall);
+    expect(restoredRollbackFailure).toBeGreaterThan(rollbackCall);
+    expect(deploy).not.toContain(
       'restore_postgres_runtime_control "$runtime_control_backup"',
     );
-    expect(deploy).toContain(
-      'rollback_backend_images "$previous_images"',
-    );
+    expect(rollbackHelper).toContain('rollback_backend_and_runtime_control()');
+    expect(backendImageRollback).toBeGreaterThanOrEqual(0);
+    expect(runtimeControlRestore).toBeGreaterThan(backendImageRollback);
   });
 
-  it('requires a control-only bootstrap before the first pool/backend release', () => {
+  it('requires the fail-closed bridge transition before the first backend release', () => {
     const workflow = readFileSync(
       join(process.cwd(), '.github/workflows/production-deploy.yml'),
       'utf8',
@@ -126,25 +156,58 @@ describe('hostile PostgreSQL pool budget review', () => {
       join(process.cwd(), 'ops/deploy/social-monitor-production-deploy.sh'),
       'utf8',
     );
+    const deployClient = readFileSync(
+      join(process.cwd(), 'ops/deploy/github-production-deploy-client.sh'),
+      'utf8',
+    );
+    const transitionTest = readFileSync(
+      join(
+        process.cwd(),
+        'ops/deploy/postgres-pool-bootstrap-transition.test.sh',
+      ),
+      'utf8',
+    );
 
     expect(deploy).toContain(
       'POSTGRES_POOL_BOOTSTRAP_VERSION=postgres-pool-v1',
     );
     expect(deploy).toContain('postgres_pool_bootstrap=%s');
     expect(workflow).toContain(
-      'postgres_pool_bootstrap != postgres-pool-v1',
+      'bash ops/deploy/github-production-deploy-client.test.sh',
     );
     expect(workflow).toContain(
-      'Deploy a control-only bootstrap commit before any pool/backend release.',
+      'bash ops/deploy/postgres-pool-bootstrap-transition.test.sh || bootstrap_status=$?',
     );
-    expect(workflow).toContain('for bootstrap_attempt in 1 2 3');
-    expect(workflow).toContain('post_bootstrap == postgres-pool-v1');
+    expect(workflow).toContain(
+      'bash ops/deploy/github-production-deploy-client.sh deploy "$GITHUB_SHA"',
+    );
+    expect(workflow).toContain(
+      '"$CONTROL_CHANGED" "$POSTGRES_POOL_BOOTSTRAP"',
+    );
+    expect(deployClient).toMatch(
+      /if \[\[ \$PLAN_BACKEND == true &&[\s\S]*?\$PLAN_POSTGRES_POOL_BOOTSTRAP != "\$POSTGRES_POOL_BOOTSTRAP_VERSION" \]\]; then[\s\S]*?fail /,
+    );
+    expect(deployClient).toMatch(
+      /if \[\[ \$control_changed == true && \$bootstrap == uninstalled \]\]; then\s+for attempt in 1 2 3; do/,
+    );
+    expect(deployClient).toMatch(
+      /plan_is_fully_reconciled\(\) \{[\s\S]*?\$PLAN_BACKEND == false[\s\S]*?\$PLAN_CONTROL == false[\s\S]*?\$PLAN_POSTGRES_POOL_BOOTSTRAP == "\$POSTGRES_POOL_BOOTSTRAP_VERSION"[\s\S]*?\$PLAN_POSTGRES_POOL_BOOTSTRAP_SHA != "\$ZERO_SHA"/,
+    );
+    expect(transitionTest.indexOf('TEST_PHASE=legacy-poison-window')).toBeLessThan(
+      transitionTest.indexOf('TEST_PHASE=legacy-repair'),
+    );
+    expect(transitionTest.indexOf('TEST_PHASE=legacy-repair')).toBeLessThan(
+      transitionTest.indexOf('TEST_PHASE=bootstrap-commit'),
+    );
+    expect(transitionTest.match(/assert_release_a_non_activation/g)).toHaveLength(
+      4,
+    );
     expect(workflow).toContain(
       'verify-postgres-pool-release-contract.py ci',
     );
   });
 
-  it('requires database-aware readiness and a restart/proxy soak before the marker', () => {
+  it('requires database-aware readiness and an atomic marker after activation and soak', () => {
     const deploy = readFileSync(
       join(process.cwd(), 'ops/deploy/social-monitor-production-deploy.sh'),
       'utf8',
@@ -161,6 +224,31 @@ describe('hostile PostgreSQL pool budget review', () => {
       join(process.cwd(), 'libs/platform/persistence/src/postgres-runtime-pool.ts'),
       'utf8',
     );
+    const backend = deploy.slice(
+      deploy.indexOf('deploy_backend()'),
+      deploy.indexOf('switch_link()'),
+    );
+    const releaseTransaction = deploy.slice(
+      deploy.indexOf('deploy_release_runtime_transaction()'),
+      deploy.indexOf('sync_control_script()'),
+    );
+    const soak = backend.indexOf(
+      '! soak_backend_release "${persistent[@]}" frontend caddy; then',
+    );
+    const activation = releaseTransaction.indexOf(
+      'activate_postgres_runtime_control "$sha" "$compatible_backend_sha"',
+    );
+    const backendDeployment = releaseTransaction.indexOf('deploy_backend "$sha"');
+    const activationResult = releaseTransaction.indexOf('activation_status=$?');
+    const restoredRollbackFailure = releaseTransaction.indexOf(
+      "fail 'release failed; backend images and PostgreSQL runtime control were restored'",
+    );
+    const markerWrite = releaseTransaction.indexOf(
+      'printf \'%s\\n\' "$sha" > "$STATE/backend.sha.next"',
+    );
+    const markerCommit = releaseTransaction.indexOf(
+      'mv -f "$STATE/backend.sha.next" "$STATE/backend.sha"',
+    );
 
     expect(reporter).toMatch(
       /(?:await|return)\s+this\.databaseReadiness\.check\(\)/,
@@ -174,8 +262,15 @@ describe('hostile PostgreSQL pool budget review', () => {
     expect(deploy).toContain('verify_ingestion_queue_recovery');
     expect(deployLibrary).toContain('BEGIN READ ONLY; SELECT 1; SELECT pg_sleep(12); COMMIT');
     expect(deployLibrary).toContain('[ "$observed" -eq 16 ]');
-    expect(deploy.indexOf('soak_backend_release')).toBeLessThan(
-      deploy.lastIndexOf('printf \'%s\\n\' "$sha" > "$STATE/backend.sha"'),
+    expect(soak).toBeGreaterThanOrEqual(0);
+    expect(activation).toBeGreaterThanOrEqual(0);
+    expect(backendDeployment).toBeGreaterThan(activation);
+    expect(activationResult).toBeGreaterThan(backendDeployment);
+    expect(markerWrite).toBeGreaterThan(restoredRollbackFailure);
+    expect(markerWrite).toBeGreaterThan(activationResult);
+    expect(markerCommit).toBeGreaterThan(markerWrite);
+    expect(releaseTransaction).not.toContain(
+      'printf \'%s\\n\' "$sha" > "$STATE/backend.sha"',
     );
   });
 
