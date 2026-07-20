@@ -25,8 +25,14 @@ ID_E=sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
 # The dollar expressions are fixture data for the inspected legacy command.
 # shellcheck disable=SC2016
 LEGACY_CONFIG='["docker-entrypoint.sh"]|["sh","-c","case \"$SERVICE\" in api) exec node dist/apps/api-gateway/src/main.js ;; agent-runtime) exec node dist/apps/agent-runtime/src/main.js ;; ingestion) exec node dist/apps/ingestion-worker/src/main.js ;; intelligence) exec node dist/apps/intelligence-worker/src/main.js ;; delivery) exec node dist/apps/delivery-service/src/main.js ;; event-relay) exec node dist/apps/event-relay/src/main.js ;; *) echo \"Unknown service: $SERVICE\" >&2; exit 64 ;; esac"]|"/app"|"node"|null'
+# The literal quotes are opaque Docker inspect fixture JSON, not shell syntax.
+# shellcheck disable=SC2089
 CONFIG='["/entry"]|["node","dist/main.js"]|"/app"|"node"|null'
+# The literal quotes are opaque reconstructed-image fixture JSON.
+# shellcheck disable=SC2089
 export SAFE_API_CONFIG='["/usr/local/bin/docker-entrypoint.sh"]|["/usr/local/bin/node","dist/apps/api-gateway/src/main.js"]|"/app"|"node"|null'
+# The literal quotes are opaque Docker image Env fixture JSON.
+# shellcheck disable=SC2089
 SENTINEL_ENV='["RESCUE_SENTINEL_DO_NOT_PERSIST=fixture-only-value"]'
 SHA=1111111111111111111111111111111111111111
 
@@ -251,8 +257,12 @@ reset_case() {
   : > "$EVENT_LOG"
   FAKE_DOCKER_IMPORT_ID=$ID_E
   FAKE_DOCKER_IMPORT_STORED_ID=$ID_E
+  # The literal quotes are opaque Docker inspect fixture JSON, not shell syntax.
+  # shellcheck disable=SC2089
   FAKE_DOCKER_IMPORT_CONFIG=$SAFE_API_CONFIG
   FAKE_DOCKER_IMPORT_ENV='[]'
+  # Export preserves that opaque JSON for the fake docker child process.
+  # shellcheck disable=SC2090
   export FAKE_DOCKER_IMPORT_ID FAKE_DOCKER_IMPORT_STORED_ID \
     FAKE_DOCKER_IMPORT_CONFIG FAKE_DOCKER_IMPORT_ENV
   unset FAKE_DOCKER_SIGNAL_TAG FAKE_COMPOSE_UP_STATUS FAKE_STOP_STATUS \
@@ -413,6 +423,8 @@ for validation_case in id config env; do
     config) FAKE_DOCKER_IMPORT_CONFIG=$CONFIG ;;
     env) FAKE_DOCKER_IMPORT_ENV=$SENTINEL_ENV ;;
   esac
+  # Export preserves the selected opaque JSON fixtures for fake docker.
+  # shellcheck disable=SC2090
   export FAKE_DOCKER_IMPORT_STORED_ID FAKE_DOCKER_IMPORT_CONFIG \
     FAKE_DOCKER_IMPORT_ENV
   add_container api "strict-rescue-$validation_case-api" "$ID_A" \
