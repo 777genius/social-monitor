@@ -8,7 +8,6 @@ import type {
   AgentRuntimeTaskResult,
 } from "../../ports";
 import { AgentRuntimeReaderSummaryTopicLabeler } from "./agent-runtime-reader-summary-topic-labeler.adapter";
-import { withTestExecutionAttestation } from "./reader-summary-execution-attestation.spec-support";
 
 describe("AgentRuntimeReaderSummaryTopicLabeler", () => {
   it("uses the shared agent runtime client and parses structured labels", async () => {
@@ -348,7 +347,7 @@ class CapturingAgentRuntimeClient implements AgentRuntimeClientPort {
   ): Promise<AgentRuntimeTaskResult> {
     this.commands.push(command);
 
-    return withTestExecutionAttestation(command, this.result);
+    return this.result;
   }
 
   async checkHealth(): Promise<AgentRuntimeHealthResult> {

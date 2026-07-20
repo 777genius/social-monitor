@@ -3,72 +3,6 @@ import 'package:social_monitor_summaries/src/infrastructure/api/summary_api_dto.
 import 'summaries_test_fixtures.dart';
 
 ReaderSummaryApiDto mixedSourceReaderSummaryApiDto() {
-  const topReads = [
-    TopReadApiDto(
-      title: 'Reddit thread on agent reliability',
-      providerKey: 'reddit',
-      reason: 'High-engagement Reddit discussion with concrete failures.',
-      matchedInterestIds: ['ai-developer-tools'],
-      matchedRules: ['provider:reddit', 'interest:ai-developer-tools'],
-      signalScore: 0.94,
-      confirmedProviderKeys: ['reddit', githubTrendingProviderKey],
-      providerMetrics: [
-        ProviderMetricApiDto(
-          label: 'Reddit evidence',
-          value: '1,214 score, 246 comments, 71% upvoted',
-        ),
-        ProviderMetricApiDto(label: 'Score', value: '1,214'),
-      ],
-      whyImportant: ['Shows what practitioners are struggling with.'],
-      whyNow:
-          'Current summary window has cross-source Reddit and GitHub coverage.',
-      canonicalUrl: 'https://reddit.example/r/MachineLearning/comments/1',
-      citationIds: ['editorial-reddit-1', 'editorial-reddit-2'],
-    ),
-    TopReadApiDto(
-      title: 'calesthio/OpenMontage',
-      providerKey: githubTrendingProviderKey,
-      reason: 'Daily GitHub Trending repository in the AI workflow space.',
-      matchedInterestIds: ['ai-developer-tools'],
-      matchedRules: [
-        'provider:github-trending-page',
-        'interest:ai-developer-tools',
-      ],
-      signalScore: 0.89,
-      providerMetrics: [
-        ProviderMetricApiDto(label: 'Stars', value: '18,398'),
-        ProviderMetricApiDto(
-          label: 'GitHub Trending today',
-          value: '#1, +3,703 stars today',
-        ),
-      ],
-      whyImportant: ['Shows repository attention around AI workflows.'],
-      whyNow: 'Current summary window includes GitHub Trending coverage.',
-      canonicalUrl: 'https://github.com/calesthio/OpenMontage',
-      citationIds: ['bc-1'],
-    ),
-    TopReadApiDto(
-      title: 'HN discussion on model routing',
-      providerKey: 'hacker-news',
-      reason: 'Hacker News discussion adds technical review context.',
-      matchedInterestIds: ['ai-developer-tools'],
-      matchedRules: ['provider:hacker-news', 'interest:ai-developer-tools'],
-      signalScore: 0.83,
-      providerMetrics: [
-        ProviderMetricApiDto(label: 'HN points', value: '312'),
-        ProviderMetricApiDto(label: 'Comments', value: '74'),
-      ],
-      whyImportant: ['Adds engineering critique beyond repository metrics.'],
-      whyNow: 'Current summary window includes Hacker News discussion.',
-      canonicalUrl: 'https://news.ycombinator.com/item?id=1',
-      citationIds: ['editorial-hacker-news-1', 'editorial-hacker-news-2'],
-    ),
-  ];
-  final selectedPosts = [
-    ...topReads.where((item) => item.providerKey != githubTrendingProviderKey),
-    ...canonicalGitHubTrendingSelectedPostApiDtos(),
-  ];
-
   return readerSummaryApiDto(
     title: 'Mixed AI source summary',
     executiveSummary:
@@ -94,10 +28,10 @@ ReaderSummaryApiDto mixedSourceReaderSummaryApiDto() {
           interestIds: ['ai-developer-tools'],
         ),
         SourceMixEntryApiDto(
-          providerKey: githubTrendingProviderKey,
-          itemCount: 10,
-          citationCount: 10,
-          storyClusterCount: 10,
+          providerKey: 'github-trending-page',
+          itemCount: 2,
+          citationCount: 2,
+          storyClusterCount: 2,
           crossSourceClusterCount: 1,
           singleSourceOnly: false,
           interestIds: ['ai-developer-tools'],
@@ -112,45 +46,98 @@ ReaderSummaryApiDto mixedSourceReaderSummaryApiDto() {
           interestIds: ['ai-developer-tools'],
         ),
       ],
-      topReads: topReads,
-      selectedPosts: selectedPosts,
+      topReads: const [
+        TopReadApiDto(
+          title: 'Reddit thread on agent reliability',
+          providerKey: 'reddit',
+          reason: 'High-engagement Reddit discussion with concrete failures.',
+          matchedInterestIds: ['ai-developer-tools'],
+          matchedRules: ['provider:reddit', 'interest:ai-developer-tools'],
+          signalScore: 0.94,
+          confirmedProviderKeys: ['reddit', 'github-trending-page'],
+          providerMetrics: [
+            ProviderMetricApiDto(
+              label: 'Reddit evidence',
+              value: '1,214 score, 246 comments, 71% upvoted',
+            ),
+            ProviderMetricApiDto(label: 'Score', value: '1,214'),
+          ],
+          whyImportant: ['Shows what practitioners are struggling with.'],
+          whyNow:
+              'Current summary window has cross-source Reddit and GitHub coverage.',
+          canonicalUrl: 'https://reddit.example/r/MachineLearning/comments/1',
+          citationIds: ['bc-1', 'bc-2'],
+        ),
+        TopReadApiDto(
+          title: 'calesthio/OpenMontage',
+          providerKey: 'github-trending-page',
+          reason: 'Daily GitHub Trending repository in the AI workflow space.',
+          matchedInterestIds: ['ai-developer-tools'],
+          matchedRules: [
+            'provider:github-trending-page',
+            'interest:ai-developer-tools',
+          ],
+          signalScore: 0.89,
+          providerMetrics: [
+            ProviderMetricApiDto(label: 'Stars', value: '18,398'),
+            ProviderMetricApiDto(
+              label: 'GitHub Trending today',
+              value: '#1, +3,703 stars today',
+            ),
+          ],
+          whyImportant: ['Shows repository attention around AI workflows.'],
+          whyNow: 'Current summary window includes GitHub Trending coverage.',
+          canonicalUrl: 'https://github.com/calesthio/OpenMontage',
+          citationIds: ['bc-2'],
+        ),
+        TopReadApiDto(
+          title: 'HN discussion on model routing',
+          providerKey: 'hacker-news',
+          reason: 'Hacker News discussion adds technical review context.',
+          matchedInterestIds: ['ai-developer-tools'],
+          matchedRules: ['provider:hacker-news', 'interest:ai-developer-tools'],
+          signalScore: 0.83,
+          providerMetrics: [
+            ProviderMetricApiDto(label: 'HN points', value: '312'),
+            ProviderMetricApiDto(label: 'Comments', value: '74'),
+          ],
+          whyImportant: [
+            'Adds engineering critique beyond repository metrics.',
+          ],
+          whyNow: 'Current summary window includes Hacker News discussion.',
+          canonicalUrl: 'https://news.ycombinator.com/item?id=1',
+          citationIds: ['bc-3'],
+        ),
+      ],
     ),
     citations: [
       summaryCitationApiDto(
-        id: 'editorial-reddit-1',
-        sourceLabel: 'Reddit discussion evidence 1',
+        id: 'bc-1',
+        sourceLabel: 'Reddit - r/MachineLearning',
         rawSnippet: 'Practitioners compare agent reliability incidents.',
         providerKey: 'reddit',
         canonicalUrl: 'https://reddit.example/r/MachineLearning/comments/1',
       ),
       summaryCitationApiDto(
-        id: 'editorial-reddit-2',
-        sourceLabel: 'Reddit discussion evidence 2',
-        rawSnippet: 'The discussion includes concrete reliability failures.',
-        providerKey: 'reddit',
-        canonicalUrl: 'https://reddit.example/r/MachineLearning/comments/1',
+        id: 'bc-2',
+        sourceLabel: 'GitHub Trending - calesthio/OpenMontage',
+        rawSnippet: 'Repository gained rapid daily attention.',
+        providerKey: 'github-trending-page',
+        canonicalUrl: 'https://github.com/calesthio/OpenMontage',
       ),
       summaryCitationApiDto(
-        id: 'editorial-hacker-news-1',
-        sourceLabel: 'Hacker News discussion evidence 1',
+        id: 'bc-3',
+        sourceLabel: 'Hacker News',
         rawSnippet: 'Engineers discuss model routing tradeoffs.',
         providerKey: 'hacker-news',
         canonicalUrl: 'https://news.ycombinator.com/item?id=1',
       ),
-      summaryCitationApiDto(
-        id: 'editorial-hacker-news-2',
-        sourceLabel: 'Hacker News discussion evidence 2',
-        rawSnippet: 'The discussion adds technical review context.',
-        providerKey: 'hacker-news',
-        canonicalUrl: 'https://news.ycombinator.com/item?id=1',
-      ),
-      ...canonicalGitHubTrendingCitationApiDtos(),
     ],
     coverage: const ReaderSummaryCoverageApiDto(
       collectedFeedItemCount: 469,
-      selectedFeedItemCount: 68,
+      selectedFeedItemCount: 60,
       topReadCount: 3,
-      citationCount: 14,
+      citationCount: 6,
       providerBreakdown: [
         ReaderSummaryProviderCoverageApiDto(
           providerKey: 'hacker-news',
@@ -174,11 +161,11 @@ ReaderSummaryApiDto mixedSourceReaderSummaryApiDto() {
           citationCount: 2,
         ),
         ReaderSummaryProviderCoverageApiDto(
-          providerKey: githubTrendingProviderKey,
+          providerKey: 'github-trending-page',
           collectedFeedItemCount: 22,
-          selectedFeedItemCount: 10,
+          selectedFeedItemCount: 2,
           topReadCount: 1,
-          citationCount: 10,
+          citationCount: 2,
         ),
       ],
     ),

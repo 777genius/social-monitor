@@ -13,9 +13,27 @@ import {
 } from "../../adapters/model/openai-responses-reader-summary-model.adapter";
 import {
   EXECUTE_READER_SUMMARY_JOB_COMMAND_TYPE,
+  type AutoSummaryCandidateRepositoryPort,
+  type ReaderSummaryArtifactRepositoryPort,
+  type ReaderSummaryContextProviderPort,
+  type READER_SUMMARY_COVERAGE_COUNTER,
+  type ReaderSummaryCoverageCounterPort,
+  type ReaderSummaryEvidenceSelectorPort,
+  type ReaderSummaryJobRepositoryPort,
+  type ReaderSummaryJobQueuePort,
+  type ReaderSummaryPolicyRepositoryPort,
+  type ReaderSummaryPreviewMediaEnricherPort,
+  type SummaryArtifactRepositoryPort,
+  type SummaryEventPublisherPort,
+  type SummaryEvidenceSelectorPort,
+  type SummaryFeedbackRepositoryPort,
+  type SummaryJobQueuePort,
+  type SummaryJobRepositoryPort,
+  type SummaryMemoryPort,
+  type SummaryPolicyRepositoryPort,
+  type UserSummaryPreferenceReaderPort,
+  type YoutubeVideoSummaryProviderPort,
 } from "../../ports";
-
-export type { SummaryProviderTokenMap } from "./summary-provider-token-map";
 
 export type SummaryPersistenceMode = "in-memory" | "prisma";
 export type SummaryJobQueueMode = "in-memory" | "rabbitmq";
@@ -84,14 +102,8 @@ export const READER_SUMMARY_EVIDENCE_SELECTOR = Symbol(
 export const READER_SUMMARY_ARTIFACT_REPOSITORY = Symbol(
   "READER_SUMMARY_ARTIFACT_REPOSITORY",
 );
-export const READER_SUMMARY_GITHUB_PROJECTION_READER = Symbol(
-  "READER_SUMMARY_GITHUB_PROJECTION_READER",
-);
 export const READER_SUMMARY_POLICY_REPOSITORY = Symbol(
   "READER_SUMMARY_POLICY_REPOSITORY",
-);
-export const READER_SUMMARY_PUBLICATION = Symbol(
-  "READER_SUMMARY_PUBLICATION",
 );
 export const READER_SUMMARY_CONTEXT_PROVIDER = Symbol(
   "READER_SUMMARY_CONTEXT_PROVIDER",
@@ -99,6 +111,39 @@ export const READER_SUMMARY_CONTEXT_PROVIDER = Symbol(
 export const READER_SUMMARY_PREVIEW_MEDIA_ENRICHER = Symbol(
   "READER_SUMMARY_PREVIEW_MEDIA_ENRICHER",
 );
+
+export type SummaryProviderTokenMap = {
+  readonly [SUMMARY_PERSISTENCE_MODE]: SummaryPersistenceMode;
+  readonly [SUMMARY_JOB_QUEUE_MODE]: SummaryJobQueueMode;
+  readonly [SUMMARY_MODEL_PROVIDER_MODE]: SummaryModelProviderMode;
+  readonly [READER_SUMMARY_MODEL_PROVIDER_MODE]: ReaderSummaryModelProviderMode;
+  readonly [READER_SUMMARY_TOPIC_LABELER_MODE]: ReaderSummaryTopicLabelerMode;
+  readonly [READER_SUMMARY_OPENAI_RESPONSES_MODEL_OPTIONS]: OpenAiResponsesReaderSummaryModelAdapterOptions;
+  readonly [SUMMARY_MEMORY_MODE]: SummaryMemoryMode;
+  readonly [SUMMARY_YOUTUBE_VIDEO_SUMMARY_PROVIDER_MODE]: SummaryYoutubeVideoSummaryProviderMode;
+  readonly [SUMMARY_RABBITMQ_JOB_QUEUE_OPTIONS]: RabbitMqQueuePublisherOptions;
+  readonly [SUMMARY_RABBITMQ_QUEUE_CHANNEL]: unknown;
+  readonly [SUMMARY_PRISMA_CLIENT]: unknown;
+  readonly [SUMMARY_JOB_REPOSITORY]: SummaryJobRepositoryPort;
+  readonly [SUMMARY_JOB_QUEUE]: SummaryJobQueuePort;
+  readonly [SUMMARY_EVIDENCE_SELECTOR]: SummaryEvidenceSelectorPort;
+  readonly [SUMMARY_YOUTUBE_VIDEO_SUMMARY_PROVIDER]: YoutubeVideoSummaryProviderPort;
+  readonly [SUMMARY_ARTIFACT_REPOSITORY]: SummaryArtifactRepositoryPort;
+  readonly [SUMMARY_FEEDBACK_REPOSITORY]: SummaryFeedbackRepositoryPort;
+  readonly [SUMMARY_POLICY_REPOSITORY]: SummaryPolicyRepositoryPort;
+  readonly [SUMMARY_EVENT_PUBLISHER]: SummaryEventPublisherPort;
+  readonly [SUMMARY_MEMORY]: SummaryMemoryPort;
+  readonly [SUMMARY_USER_SUMMARY_PREFERENCE_READER]: UserSummaryPreferenceReaderPort;
+  readonly [SUMMARY_AUTO_SUMMARY_CANDIDATE_REPOSITORY]: AutoSummaryCandidateRepositoryPort;
+  readonly [READER_SUMMARY_JOB_REPOSITORY]: ReaderSummaryJobRepositoryPort;
+  readonly [READER_SUMMARY_JOB_QUEUE]: ReaderSummaryJobQueuePort;
+  readonly [READER_SUMMARY_EVIDENCE_SELECTOR]: ReaderSummaryEvidenceSelectorPort;
+  readonly [READER_SUMMARY_ARTIFACT_REPOSITORY]: ReaderSummaryArtifactRepositoryPort;
+  readonly [READER_SUMMARY_POLICY_REPOSITORY]: ReaderSummaryPolicyRepositoryPort;
+  readonly [READER_SUMMARY_CONTEXT_PROVIDER]: ReaderSummaryContextProviderPort;
+  readonly [READER_SUMMARY_COVERAGE_COUNTER]: ReaderSummaryCoverageCounterPort;
+  readonly [READER_SUMMARY_PREVIEW_MEDIA_ENRICHER]: ReaderSummaryPreviewMediaEnricherPort;
+};
 
 export const summaryPersistenceModeProvider: Provider<SummaryPersistenceMode> =
   {
