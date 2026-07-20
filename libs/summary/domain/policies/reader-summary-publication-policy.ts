@@ -10,61 +10,22 @@ import {
 } from "../services/reader-summary-coverage-plan";
 import { evaluateReaderSummaryArtifactEditorialQuality } from "./reader-summary-artifact-editorial-quality-policy";
 import { primaryReaderSummaryEvidence } from "./reader-summary-github-trending-policy";
+import type {
+  ReaderSummaryPublicationDecision,
+  ReaderSummaryPublicationRejectionFinding,
+} from "./reader-summary-publication-decision";
+import { publicationShadowReport } from "./reader-summary-publication-shadow";
 import { isTopReadEligibleEvidence } from "./top-read-eligibility-policy";
 
-export type ReaderSummaryPublicationRejectionCode =
-  | "no_top_reads"
-  | "top_read_missing_citation"
-  | "top_read_citation_not_found"
-  | "top_read_evidence_not_found"
-  | "top_read_ineligible_source"
-  | "editorial_quality"
-  | "technical_leakage";
-
-export type ReaderSummaryPublicationShadowSignalCode =
-  "low_confidence" | "single_source" | "provider_skew" | "stale_evidence";
-
-export type ReaderSummaryPublicationShadowSignal = {
-  readonly code: ReaderSummaryPublicationShadowSignalCode;
-  readonly score: number;
-  readonly reason: string;
-};
-
-export type ReaderSummaryPublicationShadowReport = {
-  readonly mode: "shadow";
-  readonly policyVersion: "reader_summary_publication_shadow_v1";
-  readonly riskScore: number;
-  readonly signals: readonly ReaderSummaryPublicationShadowSignal[];
-};
-
-export type ReaderSummaryPublicationRejectionFinding = {
-  readonly code: ReaderSummaryPublicationRejectionCode;
-  readonly reason: string;
-  readonly topReadTitle?: string;
-  readonly citationId?: string;
-  readonly feedItemId?: string;
-  readonly sourceItemId?: string;
-  readonly providerKey?: string;
-  readonly canonicalUrl?: string;
-};
-
-export type ReaderSummaryPublicationDecision =
-  | {
-      readonly status: "published";
-      readonly qualityPassed: true;
-      readonly canonicalScore: number;
-      readonly shadow: ReaderSummaryPublicationShadowReport;
-      readonly reasons: readonly string[];
-    }
-  | {
-      readonly status: "rejected";
-      readonly qualityPassed: false;
-      readonly canonicalScore: number;
-      readonly shadow: ReaderSummaryPublicationShadowReport;
-      readonly reasonCodes: readonly ReaderSummaryPublicationRejectionCode[];
-      readonly reasons: readonly string[];
-      readonly findings: readonly ReaderSummaryPublicationRejectionFinding[];
-    };
+export { withReaderSummaryPublicationRejections } from "./reader-summary-publication-decision";
+export type {
+  ReaderSummaryPublicationDecision,
+  ReaderSummaryPublicationRejectionCode,
+  ReaderSummaryPublicationRejectionFinding,
+  ReaderSummaryPublicationShadowReport,
+  ReaderSummaryPublicationShadowSignal,
+  ReaderSummaryPublicationShadowSignalCode,
+} from "./reader-summary-publication-decision";
 
 export class ReaderSummaryPublicationPolicy {
   evaluate(params: {
@@ -498,87 +459,8 @@ const distinctDefined = (
   ),
 ];
 
-const publicationShadowReport = (params: {
-  readonly artifact: ReaderSummaryArtifact;
-  readonly evidence: SummaryEvidenceSelection;
-}): ReaderSummaryPublicationShadowReport => {
-  const snapshot = params.artifact.toSnapshot();
-  const evidence = params.evidence.selectedEvidence;
-  const providerCounts = countBy(evidence.map((item) => item.providerKey));
-  const providerCount = providerCounts.size;
-  const maxProviderCount = Math.max(0, ...providerCounts.values());
-  const providerSkew =
-    evidence.length === 0 ? 0 : roundMetric(maxProviderCount / evidence.length);
-  const sourceWindowEndedAt = new Date(
-    params.evidence.sourceWindow.endedAt,
-  ).getTime();
-  const oldestPublishedAt = Math.min(
-    ...evidence
-      .map((item) => item.publishedAt?.getTime())
-      .filter((value): value is number => value !== undefined),
-  );
-  const staleHours = Number.isFinite(oldestPublishedAt)
-    ? roundMetric((sourceWindowEndedAt - oldestPublishedAt) / 3_600_000)
-    : 0;
-  const signals: ReaderSummaryPublicationShadowSignal[] = [];
-
-  if (snapshot.confidence.level === "low" || snapshot.confidence.score < 0.6) {
-    signals.push({
-      code: "low_confidence",
-      score: roundMetric(1 - snapshot.confidence.score),
-      reason: "Reader summary confidence is below the publish tuning target.",
-    });
-  }
-
-  if (providerCount <= 1 && evidence.length > 0) {
-    signals.push({
-      code: "single_source",
-      score: 0.7,
-      reason: "Selected evidence comes from a single provider family.",
-    });
-  }
-
-  if (providerSkew > 0.7) {
-    signals.push({
-      code: "provider_skew",
-      score: providerSkew,
-      reason: "Selected evidence is dominated by one provider family.",
-    });
-  }
-
-  if (staleHours > 72) {
-    signals.push({
-      code: "stale_evidence",
-      score: Math.min(1, roundMetric(staleHours / 168)),
-      reason: "Some selected evidence is older than the current tuning window.",
-    });
-  }
-
-  return {
-    mode: "shadow",
-    policyVersion: "reader_summary_publication_shadow_v1",
-    riskScore:
-      signals.length === 0
-        ? 0
-        : roundMetric(
-            signals.reduce((sum, signal) => sum + signal.score, 0) /
-              signals.length,
-          ),
-    signals,
-  };
-};
-
 const unique = <TValue>(values: readonly TValue[]): readonly TValue[] => [
   ...new Set(values),
 ];
 
 const roundMetric = (value: number): number => Math.round(value * 1000) / 1000;
-
-const countBy = <TValue>(values: readonly TValue[]): Map<TValue, number> => {
-  const counts = new Map<TValue, number>();
-  for (const value of values) {
-    counts.set(value, (counts.get(value) ?? 0) + 1);
-  }
-
-  return counts;
-};

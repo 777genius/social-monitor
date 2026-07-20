@@ -1,58 +1,18 @@
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 import 'package:social_monitor_summaries/src/domain/aggregates/reader_summary.dart';
-import 'package:social_monitor_summaries/src/domain/entities/generated_summary.dart';
-import 'package:social_monitor_summaries/src/domain/entities/summary_citation.dart';
-import 'package:social_monitor_summaries/src/domain/value_objects/summary_generation_status.dart';
-import 'package:social_monitor_summaries/src/domain/value_objects/summary_id.dart';
 import 'package:social_monitor_summaries/src/infrastructure/api/summary_api_dto.dart';
 
+import 'generated_summary_test_fixtures.dart';
+import 'github_trending_summary_test_fixtures.dart';
 import 'summaries_topic_map_test_fixtures.dart';
+
+export 'generated_summary_test_fixtures.dart';
+export 'github_trending_summary_test_fixtures.dart';
 
 const summaryWorkspaceScope = WorkspaceScope(
   tenantId: 'tenant-demo',
   workspaceId: 'workspace-demo',
 );
-
-SummaryCitationApiDto summaryCitationApiDto({
-  String id = 'c-1',
-  String sourceLabel = 'Reddit thread',
-  String rawSnippet = 'Users compared competitor pricing tiers.',
-  String feedItemId = 'feed-c-1',
-  String sourceItemId = 'source-c-1',
-  String? providerKey,
-  String? canonicalUrl,
-}) {
-  return SummaryCitationApiDto(
-    id: id,
-    sourceLabel: sourceLabel,
-    rawSnippet: rawSnippet,
-    feedItemId: feedItemId,
-    sourceItemId: sourceItemId,
-    providerKey: providerKey,
-    canonicalUrl: canonicalUrl,
-  );
-}
-
-SummaryApiDto summaryApiDto({
-  String id = 's-1',
-  String title = 'Weekly risk summary',
-  String status = 'ready',
-  String bodyText =
-      'Pricing pressure increased while launch sentiment stayed stable.',
-  List<SummaryCitationApiDto>? citations,
-  String freshnessLabel = 'Today',
-  bool feedbackSubmitted = false,
-}) {
-  return SummaryApiDto(
-    id: id,
-    title: title,
-    status: status,
-    bodyText: bodyText,
-    citations: citations ?? [summaryCitationApiDto()],
-    freshnessLabel: freshnessLabel,
-    feedbackSubmitted: feedbackSubmitted,
-  );
-}
 
 ReaderSummaryApiDto readerSummaryApiDto({
   String id = 'readerSummary-1',
@@ -199,6 +159,7 @@ ReaderSummaryContentApiDto readerSummaryContentApiDto({
       citationIds: ['bc-1'],
     ),
   ],
+  List<TopReadApiDto>? selectedPosts,
 }) {
   final primaryRead = topReads.isNotEmpty ? topReads.first : null;
   final primaryTitle = primaryRead?.title ?? 'source';
@@ -247,7 +208,7 @@ ReaderSummaryContentApiDto readerSummaryContentApiDto({
           ),
         ],
     topReads: topReads,
-    selectedPosts: topReads,
+    selectedPosts: selectedPosts ?? topReads,
     claimBoard: claimBoard,
     reliabilityReport: reliabilityReport,
     trendDelta: ReaderTrendDeltaApiDto(
@@ -291,35 +252,6 @@ ReaderSummaryContentApiDto readerSummaryContentApiDto({
   );
 }
 
-GeneratedSummary generatedSummary({
-  String id = 's-1',
-  String title = 'Weekly risk summary',
-  String bodyPreview =
-      'Pricing pressure increased while launch sentiment stayed stable.',
-  SummaryGenerationStatus status = SummaryGenerationStatus.ready,
-  List<SummaryCitation> citations = const [
-    SummaryCitation(
-      id: 'c-1',
-      sourceLabel: 'Reddit thread',
-      safeSnippet: 'Users compared competitor pricing tiers.',
-      feedItemId: 'feed-c-1',
-      sourceItemId: 'source-c-1',
-    ),
-  ],
-  String freshnessLabel = 'Today',
-  bool feedbackSubmitted = false,
-}) {
-  return GeneratedSummary(
-    id: SummaryId(id),
-    title: title,
-    bodyPreview: bodyPreview,
-    status: status,
-    citations: citations,
-    freshnessLabel: freshnessLabel,
-    feedbackSubmitted: feedbackSubmitted,
-  );
-}
-
 SummaryApiDto githubTrendingSummaryApiDto() {
   return summaryApiDto(
     title: 'GitHub Trending daily summary',
@@ -354,6 +286,8 @@ SummaryApiDto githubTrendingSummaryApiDto() {
 }
 
 ReaderSummaryApiDto githubTrendingReaderSummaryApiDto() {
+  final selectedPosts = canonicalGitHubTrendingSelectedPostApiDtos();
+
   return readerSummaryApiDto(
     title: 'AI signal summary',
     executiveSummary:
@@ -362,139 +296,45 @@ ReaderSummaryApiDto githubTrendingReaderSummaryApiDto() {
       headline: 'GitHub daily radar',
       oneLineTakeaway:
           'GitHub Trending is the daily radar for what is breaking out today; Repo Radar is the historical analytics layer for 7d, 30d and 90d growth.',
-      sourceProviderKey: 'github-trending-page',
-      newSignals: const ['3 GitHub Trending page items selected'],
-      topReads: const [
-        TopReadApiDto(
-          title: 'calesthio/OpenMontage',
-          providerKey: 'github-trending-page',
-          reason:
-              '#1 repository on github.com/trending today with +3.7k stars today.',
-          matchedInterestIds: ['ai-developer-tools'],
-          matchedRules: [
-            'interest:ai-developer-tools',
-            'provider:github-trending-page',
-          ],
-          signalScore: 1,
-          confidence: TopReadConfidenceApiDto(
-            level: 'medium',
-            score: 0.57,
-            rationale: 'Daily GitHub Trending signal with raw metrics.',
-          ),
-          confirmedProviderKeys: ['github-trending-page'],
-          providerMetrics: [
-            ProviderMetricApiDto(
-              label: 'GitHub Trending today',
-              value: '#1, +3,703 stars today',
-            ),
-            ProviderMetricApiDto(label: 'Stars', value: '18,398'),
-          ],
-          whyImportant: [
-            'It is the clearest daily breakout on the public GitHub Trending page.',
-          ],
-          whyNow:
-              'Current summary window has github.com/trending page coverage.',
-          canonicalUrl: 'https://github.com/calesthio/OpenMontage',
-          citationIds: ['bc-1'],
-        ),
-        TopReadApiDto(
-          title: 'apple/container',
-          providerKey: 'github-trending-page',
-          reason:
-              'Useful infrastructure follow-up from today\'s Trending page.',
-          matchedInterestIds: ['ai-developer-tools'],
-          matchedRules: [
-            'interest:ai-developer-tools',
-            'provider:github-trending-page',
-          ],
-          signalScore: 0.9,
-          providerMetrics: [
-            ProviderMetricApiDto(
-              label: 'GitHub Trending today',
-              value: '#2, +1,746 stars today',
-            ),
-            ProviderMetricApiDto(label: 'Stars', value: '41,719'),
-          ],
-          whyImportant: ['Useful infrastructure signal from Apple.'],
-          whyNow:
-              'Current summary window has github.com/trending page coverage.',
-          canonicalUrl: 'https://github.com/apple/container',
-          citationIds: ['bc-2'],
-        ),
-        TopReadApiDto(
-          title: 'ZhuLinsen/daily_stock_analysis',
-          providerKey: 'github-trending-page',
-          reason: 'Useful follow-up for LLM-assisted analysis workflows.',
-          matchedInterestIds: ['ai-developer-tools'],
-          matchedRules: [
-            'interest:ai-developer-tools',
-            'provider:github-trending-page',
-          ],
-          signalScore: 0.82,
-          providerMetrics: [
-            ProviderMetricApiDto(
-              label: 'GitHub Trending today',
-              value: '#3 daily signal',
-            ),
-            ProviderMetricApiDto(label: 'Source', value: 'github.com/trending'),
-          ],
-          whyImportant: [
-            'Shows LLM workflows breaking into daily GitHub attention.',
-          ],
-          whyNow:
-              'Current summary window has github.com/trending page coverage.',
-          canonicalUrl: 'https://github.com/ZhuLinsen/daily_stock_analysis',
-          citationIds: ['bc-3'],
+      sourceProviderKey: githubTrendingProviderKey,
+      newSignals: const ['10 GitHub Trending page items selected'],
+      sourceMix: const [
+        SourceMixEntryApiDto(
+          providerKey: githubTrendingProviderKey,
+          itemCount: 10,
+          citationCount: 10,
+          storyClusterCount: 10,
+          crossSourceClusterCount: 0,
+          singleSourceOnly: true,
+          interestIds: ['ai-developer-tools'],
         ),
       ],
+      topReads: const [],
+      selectedPosts: selectedPosts,
     ),
     topStories: const [
       SummaryStoryApiDto(
         title: 'OpenMontage leads today\'s GitHub Trending page',
         summary:
             'The daily radar is driven by the public github.com/trending page, not Repo Radar history.',
-        topicCount: 3,
+        topicCount: 10,
         providerCount: 1,
-        citationIds: ['bc-1', 'bc-2', 'bc-3'],
+        citationIds: canonicalGitHubTrendingCitationIds,
       ),
     ],
-    citations: [
-      summaryCitationApiDto(
-        id: 'bc-1',
-        sourceLabel:
-            'GitHub Trending - github.com/trending page [1] calesthio/OpenMontage',
-        rawSnippet: '18.4k stars, #1 today and +3.7k stars today.',
-        canonicalUrl: 'https://github.com/calesthio/OpenMontage',
-      ),
-      summaryCitationApiDto(
-        id: 'bc-2',
-        sourceLabel:
-            'GitHub Trending - github.com/trending page [2] apple/container',
-        rawSnippet:
-            'Apple container tooling is #2 today with +1.7k stars today.',
-        canonicalUrl: 'https://github.com/apple/container',
-      ),
-      summaryCitationApiDto(
-        id: 'bc-3',
-        sourceLabel:
-            'GitHub Trending - github.com/trending page [3] ZhuLinsen/daily_stock_analysis',
-        rawSnippet:
-            'LLM-powered stock analysis is a high-rank daily GitHub Trending project.',
-        canonicalUrl: 'https://github.com/ZhuLinsen/daily_stock_analysis',
-      ),
-    ],
+    citations: canonicalGitHubTrendingCitationApiDtos(),
     coverage: const ReaderSummaryCoverageApiDto(
       collectedFeedItemCount: 22,
-      selectedFeedItemCount: 3,
-      topReadCount: 3,
-      citationCount: 3,
+      selectedFeedItemCount: 10,
+      topReadCount: 0,
+      citationCount: 10,
       providerBreakdown: [
         ReaderSummaryProviderCoverageApiDto(
-          providerKey: 'github-trending-page',
+          providerKey: githubTrendingProviderKey,
           collectedFeedItemCount: 22,
-          selectedFeedItemCount: 3,
-          topReadCount: 3,
-          citationCount: 3,
+          selectedFeedItemCount: 10,
+          topReadCount: 0,
+          citationCount: 10,
         ),
       ],
     ),
@@ -549,11 +389,4 @@ ReaderSummaryApiDto repoRadarTopTenReaderSummaryApiDto() {
       );
     }),
   );
-}
-
-PageResult<GeneratedSummary> generatedSummaryPage(
-  List<GeneratedSummary> items, {
-  PageRequest request = const PageRequest(),
-}) {
-  return PageResult<GeneratedSummary>(items: items, request: request);
 }

@@ -1,6 +1,9 @@
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
-import { ReaderSummaryArtifact } from "../../domain";
+import {
+  ReaderSummaryArtifact,
+  type ReaderSummaryGitHubProjectionAudit,
+} from "../../domain";
 import { emptyReaderSummaryReliabilityReport } from "../../domain/entities/reader-summary-reliability";
 import { InMemoryReaderSummaryArtifactRepository } from "./in-memory-reader-summary-artifact.repository";
 
@@ -8,7 +11,7 @@ const tenant = tenantId("tenant-reader-summary-memory-artifact");
 const workspace = workspaceId("workspace-reader-summary-memory-artifact");
 
 describe("InMemoryReaderSummaryArtifactRepository", () => {
-  it("keeps only latest published canonical artifact visible and hides rejected artifacts", async () => {
+  it("keeps candidates hidden and preserves rejected debug evidence", async () => {
     const repository = new InMemoryReaderSummaryArtifactRepository();
 
     await repository.save(artifact("reader-summary-memory-a", "Older summary"));
@@ -18,15 +21,11 @@ describe("InMemoryReaderSummaryArtifactRepository", () => {
     await repository.save(artifact("reader-summary-memory-a", "Older summary"));
 
     const visibleBeforeRejected = await repository.list(listQuery());
-    expect(
-      visibleBeforeRejected.items.map(
-        (item) => item.toSnapshot().readerSummaryId,
-      ),
-    ).toEqual(["reader-summary-memory-b"]);
+    expect(visibleBeforeRejected.items).toEqual([]);
 
     await repository.save(
       artifact("reader-summary-memory-c", "Rejected summary"),
-      {
+      noEligibleGitHubBindingOptions({
         publicationDecision: {
           status: "rejected",
           qualityPassed: false,
@@ -59,15 +58,11 @@ describe("InMemoryReaderSummaryArtifactRepository", () => {
             },
           ],
         },
-      },
+      }),
     );
 
     const visibleAfterRejected = await repository.list(listQuery());
-    expect(
-      visibleAfterRejected.items.map(
-        (item) => item.toSnapshot().readerSummaryId,
-      ),
-    ).toEqual(["reader-summary-memory-b"]);
+    expect(visibleAfterRejected.items).toEqual([]);
     await expect(
       repository.findById({
         tenantId: tenant,
@@ -101,7 +96,7 @@ describe("InMemoryReaderSummaryArtifactRepository", () => {
         "reader-summary-memory-rejected-without-content",
         "Rejected summary without content",
       ),
-      {
+      noEligibleGitHubBindingOptions({
         publicationDecision: {
           status: "rejected",
           qualityPassed: false,
@@ -124,7 +119,7 @@ describe("InMemoryReaderSummaryArtifactRepository", () => {
             },
           ],
         },
-      },
+      }),
     );
 
     await expect(
@@ -145,65 +140,70 @@ describe("InMemoryReaderSummaryArtifactRepository", () => {
     });
   });
 
-  it("keeps subscription runtime output visible when deterministic output arrives later", async () => {
+  it("refuses to expose a GitHub candidate without an exact verified audit", async () => {
     const repository = new InMemoryReaderSummaryArtifactRepository();
-
-    await repository.save(
-      artifact(
-        "reader-summary-runtime",
-        "Runtime summary",
-        "codex:gpt-5.5:xhigh",
-      ),
-    );
-    await repository.save(
-      artifact(
-        "reader-summary-deterministic",
-        "Deterministic summary",
-        "deterministic-reader-summary-v1",
-      ),
+    const candidate = artifactWithGitHubSelectedPost(
+      "reader-summary-unverified-github",
     );
 
-    const result = await repository.list(listQuery());
-    expect(
-      result.items.map((item) => item.toSnapshot().readerSummaryId),
-    ).toEqual(["reader-summary-runtime"]);
+    await repository.save(candidate, {
+      githubProjectionAudit: {
+        schemaVersion: "reader_summary.github_projection.v1",
+        status: "verified",
+        requestedUtcDay: "2026-07-05",
+        pageCount: 1,
+        scannedItemCount: 1,
+        eligibleBindingIds: ["github-binding"],
+        bindings: [],
+        violationCodes: [],
+        reasons: [],
+      },
+    });
+
+    expect(() => repository.commitPublication(candidate)).toThrow(
+      "verified staged candidate",
+    );
+    await expect(repository.findById({
+      tenantId: tenant,
+      workspaceId: workspace,
+      readerSummaryId: "reader-summary-unverified-github",
+    })).resolves.toBeNull();
   });
 
-  it("does not let an older equal-authority generation replace latest", async () => {
+  it("requires durable zero-binding proof before staging non-GitHub output", async () => {
     const repository = new InMemoryReaderSummaryArtifactRepository();
-
-    await repository.save(
-      artifact("reader-summary-newer-run", "Newer requested run"),
-      { generationRequestedAt: new Date("2026-07-09T10:05:00.000Z") },
-    );
-    await repository.save(
-      artifact("reader-summary-older-run", "Older slow run"),
-      { generationRequestedAt: new Date("2026-07-09T10:00:00.000Z") },
+    const candidate = artifact(
+      "reader-summary-missing-binding-proof",
+      "Unproven summary",
     );
 
-    const result = await repository.list(listQuery());
-    expect(
-      result.items.map((item) => item.toSnapshot().readerSummaryId),
-    ).toEqual(["reader-summary-newer-run"]);
+    await repository.save(candidate);
+
+    expect(() => repository.commitPublication(candidate)).toThrow(
+      "verified staged candidate",
+    );
   });
+});
 
-  it("allows a newer equal-authority generation to replace visible", async () => {
-    const repository = new InMemoryReaderSummaryArtifactRepository();
+type ReaderSummarySaveOptions = NonNullable<
+  Parameters<InMemoryReaderSummaryArtifactRepository["save"]>[1]
+>;
 
-    await repository.save(
-      artifact("reader-summary-older-run", "Older requested run"),
-      { generationRequestedAt: new Date("2026-07-09T10:00:00.000Z") },
-    );
-    await repository.save(
-      artifact("reader-summary-newer-run", "Newer requested run"),
-      { generationRequestedAt: new Date("2026-07-09T10:05:00.000Z") },
-    );
-
-    const result = await repository.list(listQuery());
-    expect(
-      result.items.map((item) => item.toSnapshot().readerSummaryId),
-    ).toEqual(["reader-summary-newer-run"]);
-  });
+const noEligibleGitHubBindingOptions = (
+  options: Omit<ReaderSummarySaveOptions, "githubProjectionAudit"> = {},
+): ReaderSummarySaveOptions => ({
+  ...options,
+  githubProjectionAudit: {
+    schemaVersion: "reader_summary.github_projection.v1",
+    status: "not_required",
+    requestedUtcDay: "2026-07-05",
+    pageCount: 1,
+    scannedItemCount: 0,
+    eligibleBindingIds: [],
+    bindings: [],
+    violationCodes: [],
+    reasons: [],
+  } satisfies ReaderSummaryGitHubProjectionAudit,
 });
 
 const listQuery = () => ({
@@ -349,6 +349,53 @@ const artifactWithoutContent = (
     ...artifact(readerSummaryId, headline).toSnapshot(),
     content: undefined,
   });
+
+const artifactWithGitHubSelectedPost = (
+  readerSummaryId: string,
+): ReaderSummaryArtifact => {
+  const snapshot = artifact(readerSummaryId, "GitHub summary").toSnapshot();
+  const githubTopRead = {
+    ...topRead(),
+    title: "owner/repository",
+    providerKey: "github-trending-page",
+    providerName: "GitHub Trending",
+    primaryActionKind: "watch_repository" as const,
+    confirmedProviderKeys: ["github-trending-page"],
+    providerMetrics: [
+      {
+        label: "GitHub Trending today",
+        value: "#1, +200 stars today",
+      },
+    ],
+    canonicalUrl: "https://github.com/owner/repository",
+  };
+
+  return ReaderSummaryArtifact.create({
+    ...snapshot,
+    storyClusters: snapshot.storyClusters.map((cluster) => ({
+      ...cluster,
+      providerKeys: ["github-trending-page"],
+    })),
+    content: {
+      ...snapshot.content!,
+      sourceMix: snapshot.content!.sourceMix.map((source) => ({
+        ...source,
+        providerKey: "github-trending-page",
+      })),
+      topReads: [githubTopRead],
+      selectedPosts: [githubTopRead],
+    },
+    topStories: snapshot.topStories.map((story) => ({
+      ...story,
+      providerKeys: ["github-trending-page"],
+    })),
+    citationMap: snapshot.citationMap.map((citation) => ({
+      ...citation,
+      providerKey: "github-trending-page",
+      canonicalUrl: "https://github.com/owner/repository",
+    })),
+  });
+};
 
 const topRead = () => ({
   title: "Reader source signal",
