@@ -62,6 +62,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Admit only the exact one-time runtime-control refresh bridge
+        run: >-
+          bash ops/deploy/runtime-control-refresh-bridge-transition.test.sh
+          --verify-candidate "$GITHUB_SHA"
+
       - name: Configure restricted production SSH
         env:
           DEPLOY_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
@@ -74,6 +79,21 @@ jobs:
           DEPLOY_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
           DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
         run: bash ops/deploy/github-production-deploy-client.sh plan "$GITHUB_SHA"
+
+      - name: Require the exact control-only bridge plan
+        env:
+          BACKEND: ${{ steps.plan.outputs.backend }}
+          BACKEND_BASE: ${{ steps.plan.outputs.backend_base }}
+          CONTROL: ${{ steps.plan.outputs.control }}
+          FRONTEND: ${{ steps.plan.outputs.frontend }}
+          X_COLLECTOR: ${{ steps.plan.outputs.x_collector }}
+        run: |
+          set -euo pipefail
+          [[ $BACKEND == false ]]
+          [[ $BACKEND_BASE == c071bcbe2b0ef1ecab48db5bcfab281c4745f778 ]]
+          [[ $CONTROL == true ]]
+          [[ $FRONTEND == false ]]
+          [[ $X_COLLECTOR == false ]]
 
       - name: Remove production SSH material
         if: always()
@@ -169,6 +189,16 @@ jobs:
           POSTGRES_POOL_BOOTSTRAP_SHA: ${{ needs.plan.outputs.postgres_pool_bootstrap_sha }}
         run: |
           set -euo pipefail
+          bash ops/deploy/runtime-control-refresh-bridge-transition.test.sh \
+            --verify-candidate "$GITHUB_SHA"
+          runtime_control_refresh_bridge=true
+          bridge_workspace=$PWD
+          final_workspace="$RUNNER_TEMP/runtime-control-refresh-final-$GITHUB_SHA"
+          [[ ! -e $final_workspace ]]
+          git clone --quiet --no-checkout "$bridge_workspace" "$final_workspace"
+          git -C "$final_workspace" checkout --quiet --detach \
+            badd3d5a27622f03d16b80e365de00183ad64962
+          cd "$final_workspace"
           npm ci
           npm run check:architecture
           npm run check:source-line-cap
@@ -187,6 +217,7 @@ jobs:
             POSTGRES_POOL_PRISMA_TEST_DATABASE_URL=postgresql://social_monitor_pool_ci:social_monitor_local_password@127.0.0.1:5432/social_monitor_pool_ci \
               npm run check:postgres-runtime-pool-prisma-concurrency
           fi
+          cd "$bridge_workspace"
           legacy_publication_bridge_base=7185a5d02366437b5ad9146c3ae178d62c50101d
           bridge_release_paths=(
             .github/workflows/production-deploy.yml
@@ -238,7 +269,9 @@ jobs:
           bridge_phase=false
           publication_library_mode=$(git_path_mode \
             ops/deploy/reader-summary-publication-deploy-lib.sh)
-          if [[ -z $publication_library_mode ]]; then
+          if [[ $runtime_control_refresh_bridge == true ]]; then
+            bridge_phase=true
+          elif [[ -z $publication_library_mode ]]; then
             if [[ $BACKEND_CHANGED != false || $CONTROL_CHANGED != true || \
                   $FRONTEND_CHANGED != false ]]; then
               echo 'publication bridge must be control-only' >&2
@@ -283,6 +316,7 @@ jobs:
             ops/deploy/github-production-deploy-client.test.sh
             ops/deploy/postgres-runtime-deploy-lib.sh
             ops/deploy/reader-summary-publication-bridge-transition.test.sh
+            ops/deploy/runtime-control-refresh-bridge-transition.test.sh
             ops/deploy/social-monitor-production-ssh-wrapper.sh
             ops/deploy/production-runtime/daily-run.sh
             ops/deploy/postgres-pool-bootstrap-transition.test.sh
@@ -335,6 +369,18 @@ jobs:
         if: needs.plan.outputs.backend == 'true' || needs.plan.outputs.control == 'true'
         run: |
           set -euo pipefail
+          if git cat-file -e \
+            "$GITHUB_SHA:ops/deploy/runtime-control-refresh-bridge.manifest" \
+            2>/dev/null; then
+            bridge_status=0
+            bash ops/deploy/runtime-control-refresh-bridge-transition.test.sh || \
+              bridge_status=$?
+            if ((bridge_status != 0)); then
+              echo "::error title=Runtime-control refresh bridge transition failed::The exact badd/d7 B-to-F fixture failed with status $bridge_status."
+              exit "$bridge_status"
+            fi
+            exit 0
+          fi
           if git cat-file -e \
             "$GITHUB_SHA:ops/deploy/reader-summary-publication-deploy-lib.sh" \
             2>/dev/null; then

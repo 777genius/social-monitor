@@ -205,7 +205,7 @@ void main() {
     );
     expect(
       find.descendant(of: firstRow, matching: find.text('High confidence')),
-      findsNothing,
+      findsOneWidget,
     );
     expect(
       find.descendant(
@@ -316,7 +316,7 @@ void main() {
   });
 
   testWidgets(
-    'keeps one citation single-source without duplicating global confidence',
+    'keeps one citation single-source and shows confidence separately',
     (tester) async {
       tester.view.physicalSize = const Size(1280, 900);
       tester.view.devicePixelRatio = 1;
@@ -369,7 +369,7 @@ void main() {
           of: rowFinder,
           matching: find.text('Medium confidence'),
         ),
-        findsNothing,
+        findsOneWidget,
       );
       expect(
         find.descendant(
@@ -379,6 +379,14 @@ void main() {
         findsNothing,
       );
 
+      final confidenceTooltip = tester.widget<Tooltip>(
+        find.ancestor(
+          of: find.text('Medium confidence'),
+          matching: find.byType(Tooltip),
+        ),
+      );
+      expect(confidenceTooltip.message, contains('64%'));
+      expect(confidenceTooltip.message, contains('not corroborated'));
     },
   );
 }

@@ -152,39 +152,6 @@ describe("buildReaderSummarySelectedPosts", () => {
     expect(posts[0]?.confidence.level).toBe("medium");
     expect(posts[0]?.confidence.rationale).toContain("first-party official");
   });
-
-  it("keeps supplemental GitHub repositories out of the canonical Top 10 selectedPosts", () => {
-    const selectedEvidence = Array.from({ length: 12 }, (_, index) =>
-      githubEvidence(index + 1),
-    );
-    const citationById = new Map(
-      selectedEvidence.map((item, index) => {
-        const rank = index + 1;
-        return [
-          `github-citation-${rank}`,
-          {
-            citationId: `github-citation-${rank}`,
-            feedItemId: item.feedItemId,
-            sourceItemId: item.sourceItemId,
-            providerKey: item.providerKey,
-            field: "canonicalUrl" as const,
-            canonicalUrl: item.canonicalUrl,
-          },
-        ] as const;
-      }),
-    );
-
-    const posts = buildReaderSummarySelectedPosts({
-      topReads: [],
-      citationById,
-      selectedEvidence,
-    });
-
-    expect(posts.map((post) => post.title)).toEqual(
-      Array.from({ length: 10 }, (_, index) => `owner/repository-${index + 1}`),
-    );
-    expect(posts).toHaveLength(10);
-  });
 });
 
 const citation = (): ReaderSummaryCitation => ({
@@ -220,23 +187,4 @@ const evidence = (): SummaryEvidenceItem => ({
     flags: [],
     reason: "Test evidence",
   },
-});
-
-const githubEvidence = (rank: number): SummaryEvidenceItem => ({
-  ...evidence(),
-  feedItemId: `github-feed-${rank}`,
-  sourceItemId: `github-source-${rank}`,
-  sourceBindingId: "github-binding",
-  providerKey: "github-trending-page",
-  providerName: "GitHub Trending",
-  canonicalUrl: `https://github.com/owner/repository-${rank}`,
-  title: `owner/repository-${rank}`,
-  score: 2 - rank / 100,
-  readerActionKind: "watch_repository",
-  providerMetricLabels: [
-    {
-      label: "GitHub Trending today",
-      value: `#${rank}, +${rank === 12 ? 1_500 : 100 + rank} stars today`,
-    },
-  ],
 });

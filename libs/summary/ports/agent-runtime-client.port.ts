@@ -3,7 +3,9 @@ import type { TenantId, WorkspaceId } from "@social-monitor/shared-kernel";
 export type AgentRuntimeProvider = "codex" | "claude";
 
 export type AgentRuntimeTaskStatus =
-  "completed" | "failed" | "waiting_for_input";
+  | "completed"
+  | "failed"
+  | "waiting_for_input";
 
 export type AgentRuntimeTaskCommand = {
   readonly requestId: string;
@@ -43,21 +45,6 @@ export type AgentRuntimeFailure = {
   readonly details: Readonly<Record<string, string>>;
 };
 
-export type AgentRuntimeExecutionAttestation = {
-  readonly schemaVersion: 1;
-  readonly requestId: string;
-  readonly purpose: string;
-  readonly canonicalRequestSha256: string;
-  readonly provider: AgentRuntimeProvider;
-  readonly model: string;
-  readonly reasoningEffort: string;
-  readonly runtimeEngine: "subscription-runtime-cli";
-  readonly runtimePackageVersion: string;
-  readonly launcherSha256: string;
-  readonly selectedOutputKind: "structured_output" | "output_text";
-  readonly selectedOutputSha256: string;
-};
-
 export type AgentRuntimeTaskResult = {
   readonly status: AgentRuntimeTaskStatus;
   readonly outputText?: string;
@@ -65,16 +52,17 @@ export type AgentRuntimeTaskResult = {
   readonly warnings: readonly AgentRuntimeWarning[];
   readonly usage?: AgentRuntimeUsage;
   readonly failure?: AgentRuntimeFailure;
-  readonly executionAttestation?: AgentRuntimeExecutionAttestation;
 };
 
-export type AgentRuntimeHealthStatus = "serving" | "degraded" | "not_serving";
+export type AgentRuntimeHealthStatus =
+  | "serving"
+  | "degraded"
+  | "not_serving";
 
 export type AgentRuntimeHealthResult = {
   readonly status: AgentRuntimeHealthStatus;
   readonly runtimeEngine: string;
   readonly runtimeVersion: string;
-  readonly launcherSha256?: string;
   readonly warnings: readonly AgentRuntimeWarning[];
 };
 

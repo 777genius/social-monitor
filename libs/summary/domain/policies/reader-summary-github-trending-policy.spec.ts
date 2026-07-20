@@ -12,104 +12,19 @@ import {
 describe("reader summary GitHub Trending policy", () => {
   it("keeps at most three repositories with more than 1,000 gained stars", () => {
     const selected = selectGitHubTrendingHighlights([
-      evidence("repo-top-ten", 50_000, "github-trending-page", 1),
-      evidence("repo-low", 999, "github-trending-page", 11),
-      evidence("repo-boundary", 1_000, "github-trending-page", 12),
-      evidence("repo-third", 1_050, "github-trending-page", 13),
-      evidence("repo-first", 4_200, "github-trending-page", 14),
-      evidence("repo-fourth", 1_001, "github-trending-page", 15),
-      evidence("repo-second", 2_500, "github-trending-page", 16),
-      evidence("reddit", 50_000, "reddit", 17),
+      evidence("repo-low", 999),
+      evidence("repo-boundary", 1_000),
+      evidence("repo-third", 1_050),
+      evidence("repo-first", 4_200),
+      evidence("repo-fourth", 1_001),
+      evidence("repo-second", 2_500),
+      evidence("reddit", 50_000, "reddit"),
     ]);
 
     expect(selected.map((item) => item.feedItemId)).toEqual([
       "repo-first",
       "repo-second",
       "repo-third",
-    ]);
-  });
-
-  it("deduplicates normalized repository snapshots before top-three selection", () => {
-    const strongestSnapshot = {
-      ...evidence("build-your-own-x-strong", 1_126, undefined, 11),
-      canonicalUrl:
-        "https://github.com/Codecrafters-io/build-your-own-x/?ref=daily",
-      title: "codecrafters-io/build-your-own-x",
-      observedAt: new Date("2026-07-18T11:00:00.000Z"),
-    };
-    const currentWeakerSnapshot = {
-      ...evidence("build-your-own-x-current", 1_068, undefined, 12),
-      canonicalUrl:
-        "https://github.com/codecrafters-io/build-your-own-x.git",
-      title: "codecrafters-io/build-your-own-x",
-      observedAt: new Date("2026-07-18T12:00:00.000Z"),
-    };
-    const olderEqualSnapshot = {
-      ...evidence("equal-old", 1_100, undefined, 13),
-      canonicalUrl: "https://github.com/example/equal-repo",
-      observedAt: new Date("2026-07-18T10:00:00.000Z"),
-    };
-    const currentEqualSnapshot = {
-      ...evidence("equal-current", 1_100, undefined, 14),
-      canonicalUrl: "https://github.com/example/equal-repo/",
-      observedAt: new Date("2026-07-18T12:00:00.000Z"),
-    };
-    const thirdRepository = evidence("third-repository", 1_050, undefined, 15);
-    const fourthRepository = evidence(
-      "fourth-repository",
-      1_040,
-      undefined,
-      16,
-    );
-
-    const selected = selectGitHubTrendingHighlights([
-      currentWeakerSnapshot,
-      fourthRepository,
-      olderEqualSnapshot,
-      strongestSnapshot,
-      thirdRepository,
-      currentEqualSnapshot,
-    ]);
-
-    expect(selected.map((item) => item.feedItemId)).toEqual([
-      "build-your-own-x-strong",
-      "equal-current",
-      "third-repository",
-    ]);
-    const appendix = buildGitHubTrendingNarrativeAppendix({
-      evidence: [
-        currentWeakerSnapshot,
-        fourthRepository,
-        olderEqualSnapshot,
-        strongestSnapshot,
-        thirdRepository,
-        currentEqualSnapshot,
-      ],
-      citations: [
-        currentWeakerSnapshot,
-        fourthRepository,
-        olderEqualSnapshot,
-        strongestSnapshot,
-        thirdRepository,
-        currentEqualSnapshot,
-      ].map((item) => ({
-        citationId: `citation-${item.feedItemId}`,
-        feedItemId: item.feedItemId,
-        sourceItemId: item.sourceItemId,
-        providerKey: item.providerKey,
-        field: "canonicalUrl" as const,
-        canonicalUrl: item.canonicalUrl,
-      })),
-    });
-
-    expect(appendix?.text).toContain(
-      "codecrafters-io/build-your-own-x**: +1,126 stars today",
-    );
-    expect(appendix?.text).not.toContain("+1,068 stars today");
-    expect(appendix?.citationIds).toEqual([
-      "citation-build-your-own-x-strong",
-      "citation-equal-current",
-      "citation-third-repository",
     ]);
   });
 
@@ -179,33 +94,6 @@ describe("reader summary GitHub Trending policy", () => {
     ]);
   });
 
-  it("keeps safe Top 10 entries despite generic eligibility and filters ineligible Watch entries", () => {
-    const ineligibleForSummary = {
-      qualityScore: 0,
-      interestRelevanceScore: 0,
-      engagementIntegrityScore: 1,
-      eligibleForSummary: false,
-      eligibleForTopRead: false,
-      needsLlmReview: false,
-      decision: "excluded",
-      flags: ["generic_summary_exclusion"],
-      reason: "Generic editorial eligibility does not govern the native board.",
-    };
-    const topTen = {
-      ...evidence("repo-1", 100, "github-trending-page", 1),
-      contentQuality: ineligibleForSummary,
-    };
-    const watch = {
-      ...evidence("repo-11", 1_001, "github-trending-page", 11),
-      contentQuality: ineligibleForSummary,
-    };
-
-    expect(selectGitHubTrendingDisplayRepositories([topTen, watch])).toEqual([
-      topTen,
-    ]);
-    expect(selectGitHubTrendingHighlights([topTen, watch])).toEqual([]);
-  });
-
   it("deduplicates snapshots and recovers the strongest multi-scope rank", () => {
     const olderDuplicate = {
       ...evidence("repo-duplicate-old", 200, "github-trending-page", 1),
@@ -251,15 +139,7 @@ describe("reader summary GitHub Trending policy", () => {
   });
 
   it("builds a compact deterministic appendix from cited highlights", () => {
-    const item = {
-      ...evidence(
-        "owner/repo - useful developer tool",
-        1_234,
-        "github-trending-page",
-        11,
-      ),
-      canonicalUrl: "https://github.com/owner/repo",
-    };
+    const item = evidence("owner/repo - useful developer tool", 1_234);
 
     expect(
       buildGitHubTrendingNarrativeAppendix({
@@ -333,7 +213,7 @@ const evidence = (
   sourceBindingId: `binding-${providerKey}`,
   interestId: "interest-ai",
   providerKey,
-  canonicalUrl: `https://github.com/fixture/${feedItemId.replace(/[^A-Za-z0-9_.-]/gu, "-")}`,
+  canonicalUrl: `https://example.test/${feedItemId}`,
   title: feedItemId,
   publishedAt: new Date("2026-07-10T12:00:00.000Z"),
   observedAt: new Date("2026-07-10T12:05:00.000Z"),

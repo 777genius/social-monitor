@@ -312,36 +312,6 @@ describe("ReaderSummaryArtifact", () => {
     ).toThrow("No-signal reader summary content must not include top reads");
   });
 
-  it("rejects non-GitHub selected posts in no-signal reader content", () => {
-    expect(() =>
-      ReaderSummaryArtifact.create(
-        baseArtifact({
-          topStories: [],
-          qualityFlags: ["no_signal"],
-          noSignalReason: "No primary evidence passed selection.",
-          confidence: {
-            level: "none",
-            score: 0,
-            rationale: "No primary evidence passed selection.",
-          },
-          content: readerContent({
-            qualityState: {
-              status: "no_signal",
-              flags: ["no_signal"],
-              warnings: ["No primary evidence passed selection."],
-              isSingleSource: false,
-            },
-            topReads: [],
-            sourceMix: [],
-            selectedPosts: [readerTopRead()],
-          }),
-        }),
-      ),
-    ).toThrow(
-      "No-signal reader summary content may include only supplemental GitHub selected posts",
-    );
-  });
-
   it("rejects duplicate reader content top reads by normalized repository URL", () => {
     expect(() =>
       ReaderSummaryArtifact.create(

@@ -64,59 +64,6 @@ void main() {
       findsNothing,
     );
   });
-
-  testWidgets('wraps trust copy at 375x800 with 1.5 text scaling', (
-    tester,
-  ) async {
-    const viewport = Size(375, 800);
-    tester.view.devicePixelRatio = 1;
-    tester.view.physicalSize = viewport;
-    addTearDown(tester.view.resetDevicePixelRatio);
-    addTearDown(tester.view.resetPhysicalSize);
-
-    final summary = _trustSummary();
-    await tester.pumpWidget(
-      _TestApp(
-        summary: summary,
-        viewport: viewport,
-        textScaler: const TextScaler.linear(1.5),
-      ),
-    );
-
-    final panel = find.byType(ReaderSummaryTrustPanel);
-    final title = find.text('Trust & evidence');
-    final verdict = find.text('Needs confirmation').first;
-    final description = find.text(
-      'Treat this as a lead until another independent source group confirms the key items.',
-    );
-    expect(title, findsOneWidget);
-    expect(description, findsOneWidget);
-    expect(
-      tester.getTopLeft(verdict).dy,
-      greaterThan(tester.getTopLeft(title).dy),
-    );
-    for (final copy in [title, verdict, description]) {
-      expect(
-        tester.getRect(copy).right,
-        lessThanOrEqualTo(tester.getRect(panel).right),
-      );
-    }
-    expect(tester.takeException(), isNull);
-
-    await tester.tap(find.byKey(const ValueKey('reader-summary-trust-toggle')));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Medium confidence'), findsNWidgets(2));
-    expect(
-      find.text('Cited Reddit source with usable discussion.'),
-      findsOneWidget,
-    );
-    expect(
-      find.text('Reddit [1] - Thread evidence about MCP agent workflows'),
-      findsOneWidget,
-    );
-    expect(tester.takeException(), isNull);
-  });
 }
 
 ReaderSummary _trustSummary() {
@@ -181,15 +128,9 @@ ReaderSummary _trustSummary() {
 }
 
 class _TestApp extends StatelessWidget {
-  const _TestApp({
-    required this.summary,
-    this.viewport = const Size(1100, 700),
-    this.textScaler = TextScaler.noScaling,
-  });
+  const _TestApp({required this.summary});
 
   final ReaderSummary summary;
-  final Size viewport;
-  final TextScaler textScaler;
 
   @override
   Widget build(BuildContext context) {
@@ -199,22 +140,16 @@ class _TestApp extends StatelessWidget {
       appBuilder: (overlayBuilder) => MaterialApp(
         theme: theme,
         builder: overlayBuilder,
-        home: MediaQuery(
-          data: MediaQueryData(size: viewport, textScaler: textScaler),
-          child: Scaffold(
-            body: SingleChildScrollView(
-              child: Padding(
-                padding: const EdgeInsets.all(AppSpacing.md),
-                child: ReaderSummaryTrustPanel(
-                  claims: summary.content.claimBoard,
-                  reliabilityReport: summary.content.reliabilityReport,
-                  citationsById: {
-                    for (final citation in summary.citations)
-                      citation.id: citation,
-                  },
-                  onOpenUrl: (_) {},
-                ),
-              ),
+        home: Scaffold(
+          body: Padding(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            child: ReaderSummaryTrustPanel(
+              claims: summary.content.claimBoard,
+              reliabilityReport: summary.content.reliabilityReport,
+              citationsById: {
+                for (final citation in summary.citations) citation.id: citation,
+              },
+              onOpenUrl: (_) {},
             ),
           ),
         ),

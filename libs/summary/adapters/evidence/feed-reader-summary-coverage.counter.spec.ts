@@ -76,7 +76,7 @@ describe("FeedReaderSummaryCoverageCounter", () => {
     );
   });
 
-  it("excludes supplemental GitHub Trending and technical issue events from article counts", async () => {
+  it("includes GitHub Trending while excluding technical issue events", async () => {
     const feedItems = new FakeFeedItems([
       ["reddit", "github-issues", "github-trending-page", "rss"],
       ["github-issues", "github-trending-page"],
@@ -90,7 +90,7 @@ describe("FeedReaderSummaryCoverageCounter", () => {
       period,
     });
 
-    expect(result).toBe(2);
+    expect(result).toBe(4);
   });
 
   it("returns collected feed item coverage grouped by provider", async () => {
@@ -108,17 +108,18 @@ describe("FeedReaderSummaryCoverageCounter", () => {
     });
 
     expect(result).toEqual({
-      collectedFeedItemCount: 6,
+      collectedFeedItemCount: 7,
       lowRelevanceFeedItemCount: 0,
       mutedFeedItemCount: 0,
       userRatedFeedItemCount: 0,
       providerBreakdown: [
         providerCoverage("reddit", 2),
         providerCoverage("rss", 2),
+        providerCoverage("github-trending-page", 1),
         providerCoverage("hacker-news", 1),
         providerCoverage("x-twitter", 1),
       ],
-      topicBreakdown: [topicCoverage("interest-ai", 6)],
+      topicBreakdown: [topicCoverage("interest-ai", 7)],
       queryBreakdown: [],
     });
   });
