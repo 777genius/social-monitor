@@ -346,6 +346,7 @@ run_transition_test() {
   git -C "$object_repository" show \
     "$FINAL_SOURCE_SHA:ops/deploy/social-monitor-production-deploy.sh" > "$entrypoint"
   python3 - "$entrypoint" <<'PY'
+import os
 import pathlib
 import sys
 
@@ -360,6 +361,17 @@ source = source.replace(
     1,
 )
 source = source.replace(" -o root -g root", "")
+ownership_check = (
+    "[[ $(stat -c '%U:%G:%a' \"$auth_refresh_destination\") == root:root:700 ]]"
+)
+if source.count(ownership_check) != 1:
+    raise SystemExit("fixture could not find the auth refresh ownership check")
+source = source.replace(
+    ownership_check,
+    "[[ $(stat -c '%u:%g:%a' \"$auth_refresh_destination\") == "
+    f"{os.getuid()}:{os.getgid()}:700 ]]",
+    1,
+)
 path.write_text(source, encoding="utf-8")
 PY
   chmod 0755 "$entrypoint"
