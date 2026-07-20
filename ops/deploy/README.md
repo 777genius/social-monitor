@@ -36,10 +36,11 @@ cannot silently skip an earlier component change.
   table that exists before migration must appear exactly once in the dump TOC,
   and a full `pg_restore` stream must read the archive before its `.partial`
   file is promoted;
-- the publication-table pair may be absent together on its first deployment
-  only when that exact migration has no history row. If the pair already
+- the publication-table pair may be absent with no history row, or with one
+  strictly classified resolved rollback retained as retry evidence. If the pair
   exists, both tables must be in the dump and the reviewed-checksum migration
-  row must be exactly one completed, non-rolled-back lifecycle. Partial schema,
+  must have exactly one completed lifecycle, alone or after that one rollback.
+  Partial schema,
   failed, rolled-back, in-progress, duplicate, contradictory,
   checksum-mismatched and raced states fail closed;
 - CI separately keeps the reviewed target-schema backup/restore contract aligned
