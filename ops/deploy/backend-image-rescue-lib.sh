@@ -6,6 +6,10 @@
 
 BACKEND_IMAGE_RESCUE_VERSION=social-monitor-backend-image-rescue-v1
 BACKEND_IMAGE_RESCUE_PHASE_VERSION=social-monitor-backend-image-rescue-phase-v1
+# These reviewed bounds overwrite inherited environment values. Focused tests
+# shorten them only after sourcing this library.
+BACKEND_IMAGE_RESCUE_POST_UNPAUSE_TIMEOUT_SECONDS=60
+BACKEND_IMAGE_RESCUE_POST_UNPAUSE_POLL_SECONDS=3
 
 backend_image_rescue_state_file() {
   local sha=$1
@@ -101,6 +105,143 @@ backend_image_rescue_verify_running_container() {
     2>/dev/null) || return 1
   [[ $state == 'running|true|false|false|none' || \
      $state == 'running|true|false|false|healthy' ]]
+}
+
+backend_image_rescue_compose_container_id() {
+  local service=$1
+  local container
+
+  container=$(
+    "${COMPOSE[@]}" --profile app --profile daily ps -q "$service"
+  ) || return 1
+  [[ -n $container && $container != *[$'\t\r\n ']* ]] || return 1
+  printf '%s\n' "$container"
+}
+
+backend_image_rescue_decimal_increment() {
+  local value=$1
+  local result= digit next carry=1 index
+
+  [[ $value =~ ^(0|[1-9][0-9]*)$ ]] || return 1
+  for ((index = ${#value} - 1; index >= 0; index--)); do
+    digit=${value:index:1}
+    if ((carry == 1)); then
+      if [[ $digit == 9 ]]; then
+        next=0
+      else
+        next=$((digit + 1))
+        carry=0
+      fi
+    else
+      next=$digit
+    fi
+    result=$next$result
+  done
+  ((carry == 0)) || result=1$result
+  printf '%s\n' "$result"
+}
+
+backend_image_rescue_capture_container_baseline() {
+  local service=$1
+  local expected_container=$2
+  local expected_image=$3
+  local container_name=$4
+  local image_name=$5
+  local restart_count_name=$6
+  local container image restart_count
+
+  container=$(backend_image_rescue_compose_container_id "$service") || return 1
+  [[ $container == "$expected_container" ]] || return 1
+  image=$(docker inspect "$container" --format '{{.Image}}' \
+    2>/dev/null) || return 1
+  restart_count=$(docker inspect "$container" --format '{{.RestartCount}}' \
+    2>/dev/null) || return 1
+  [[ $image == "$expected_image" && \
+     $image =~ ^sha256:[0-9a-f]{64}$ && \
+     $restart_count =~ ^(0|[1-9][0-9]*)$ ]] || return 1
+
+  printf -v "$container_name" '%s' "$container"
+  printf -v "$image_name" '%s' "$image"
+  printf -v "$restart_count_name" '%s' "$restart_count"
+}
+
+backend_image_rescue_wait_running_container() {
+  local service=$1
+  local container=$2
+  local expected_image=$3
+  local baseline_restart_count=$4
+  local timeout_seconds=$BACKEND_IMAGE_RESCUE_POST_UNPAUSE_TIMEOUT_SECONDS
+  local poll_seconds=$BACKEND_IMAGE_RESCUE_POST_UNPAUSE_POLL_SECONDS
+  local elapsed_seconds=0 stable_samples=0 stable_restart_count=
+  local last_restart_count=$baseline_restart_count
+  local allowed_restart_count compose_container sample
+  local status running restarting oom_killed health image restart_count
+  local sleep_seconds
+
+  [[ $timeout_seconds =~ ^([1-9]|[1-5][0-9]|60)$ && \
+     $poll_seconds =~ ^[1-9][0-9]*$ && \
+     $baseline_restart_count =~ ^(0|[1-9][0-9]*)$ ]] || return 1
+  ((poll_seconds <= timeout_seconds)) || return 1
+  allowed_restart_count=$(
+    backend_image_rescue_decimal_increment "$baseline_restart_count"
+  ) || return 1
+
+  while true; do
+    compose_container=$(
+      backend_image_rescue_compose_container_id "$service"
+    ) || return 1
+    [[ $compose_container == "$container" ]] || return 1
+    sample=$(docker inspect "$container" --format \
+      '{{.State.Status}}|{{.State.Running}}|{{.State.Restarting}}|{{.State.OOMKilled}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}|{{.Image}}|{{.RestartCount}}' \
+      2>/dev/null) || return 1
+    IFS='|' read -r status running restarting oom_killed health image \
+      restart_count <<< "$sample"
+    [[ $running == true || $running == false ]] || return 1
+    [[ $restarting == true || $restarting == false ]] || return 1
+    [[ $oom_killed == false ]] || return 1
+    [[ $health == none || $health == healthy || $health == starting ]] || return 1
+    [[ $image == "$expected_image" ]] || return 1
+    [[ $restart_count =~ ^(0|[1-9][0-9]*)$ ]] || return 1
+    [[ $restart_count == "$baseline_restart_count" || \
+       $restart_count == "$allowed_restart_count" ]] || return 1
+    if [[ $last_restart_count == "$allowed_restart_count" && \
+          $restart_count == "$baseline_restart_count" ]]; then
+      return 1
+    fi
+    last_restart_count=$restart_count
+
+    if [[ $status == running && $running == true && \
+          $restarting == false && $health != starting ]]; then
+      if [[ $stable_restart_count == "$restart_count" ]]; then
+        stable_samples=$((stable_samples + 1))
+      else
+        stable_samples=1
+        stable_restart_count=$restart_count
+      fi
+      if ((stable_samples == 3)); then
+        compose_container=$(
+          backend_image_rescue_compose_container_id "$service"
+        ) || return 1
+        [[ $compose_container == "$container" ]] || return 1
+        return 0
+      fi
+    elif [[ $status == restarting || $status == exited || \
+            $status == starting || $restarting == true || \
+            $health == starting ]]; then
+      stable_samples=0
+      stable_restart_count=
+    else
+      return 1
+    fi
+
+    ((elapsed_seconds < timeout_seconds)) || return 1
+    sleep_seconds=$poll_seconds
+    if ((elapsed_seconds + sleep_seconds > timeout_seconds)); then
+      sleep_seconds=$((timeout_seconds - elapsed_seconds))
+    fi
+    sleep "$sleep_seconds" || return 1
+    elapsed_seconds=$((elapsed_seconds + sleep_seconds))
+  done
 }
 
 backend_image_rescue_remove_tag() {
@@ -280,6 +421,8 @@ backend_image_rescue_reconstruct_running_container() (
   local rescue_tag=$3
   local command expected_container_config actual_container_config
   local expected_image_config actual_image_config image_env imported_id inspected_id
+  local recorded_image=$4
+  local original_container baseline_image baseline_restart_count
   local paused=false unpause_status=0
 
   command=$(backend_image_rescue_reconstructed_command "$service") || {
@@ -312,13 +455,16 @@ backend_image_rescue_reconstruct_running_container() (
   trap 'exit 130' INT
   trap 'exit 143' TERM
 
+  backend_image_rescue_capture_container_baseline \
+    "$service" "$container" "$recorded_image" \
+    original_container baseline_image baseline_restart_count || return 1
   paused=true
-  if ! docker container pause "$container" >/dev/null; then
+  if ! docker container pause "$original_container" >/dev/null; then
     paused=false
     return 1
   fi
   if ! imported_id=$(
-    docker container export "$container" | \
+    docker container export "$original_container" | \
       docker image import \
         --change 'ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]' \
         --change "CMD $command" \
@@ -345,7 +491,9 @@ backend_image_rescue_reconstruct_running_container() (
   [[ $actual_image_config == "$expected_image_config" ]] || return 1
   image_env=$(backend_image_rescue_image_env "$rescue_tag") || return 1
   [[ $image_env == null || $image_env == '[]' ]] || return 1
-  backend_image_rescue_verify_running_container "$container" || return 1
+  backend_image_rescue_wait_running_container \
+    "$service" "$original_container" "$baseline_image" \
+    "$baseline_restart_count" || return 1
   printf 'backend-image-rescue: safely reconstructed missing running image for service %s\n' \
     "$service" >&2
 )
@@ -373,7 +521,7 @@ backend_image_rescue_pin_running_container() {
   # The recorded object is gone, so preserve only the paused root filesystem.
   # Rebuild metadata from a reviewed, service-specific config with no Env.
   backend_image_rescue_reconstruct_running_container \
-    "$service" "$container" "$rescue_tag" || return 1
+    "$service" "$container" "$rescue_tag" "$recorded_id" || return 1
   reconstructed_id=$(backend_image_rescue_image_id "$rescue_tag") || return 1
   [[ $reconstructed_id =~ ^sha256:[0-9a-f]{64}$ ]] || return 1
   printf -v "$source_kind_name" '%s' container-export-import

@@ -9,9 +9,13 @@ trap 'rm -rf "$FIXTURE"' EXIT
 PROJECT=fixture-project
 FAKE_DOCKER_REFS=$FIXTURE/docker-refs.tsv
 FAKE_DOCKER_CONTAINERS=$FIXTURE/docker-containers.tsv
+FAKE_DOCKER_CONTAINER_STATES=$FIXTURE/docker-container-states.tsv
 FAKE_COMPOSE_CONTAINERS=$FIXTURE/compose-containers.tsv
+FAKE_COMPOSE_CONTAINER_STATES=$FIXTURE/compose-container-states.tsv
 EVENT_LOG=$FIXTURE/events.log
-export FAKE_DOCKER_REFS FAKE_DOCKER_CONTAINERS EVENT_LOG
+export FAKE_DOCKER_REFS FAKE_DOCKER_CONTAINERS \
+  FAKE_DOCKER_CONTAINER_STATES FAKE_COMPOSE_CONTAINERS \
+  FAKE_COMPOSE_CONTAINER_STATES EVENT_LOG
 
 ID_A=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 ID_B=sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
@@ -69,6 +73,18 @@ append_docker_event() {
   } 9>> "$EVENT_LOG"
 }
 
+take_container_state() {
+  local container=$1 row next=$FAKE_DOCKER_CONTAINER_STATES.next.$$
+  row=$(awk -F '\t' -v container="$container" \
+    '$1 == container {print; exit}' "$FAKE_DOCKER_CONTAINER_STATES")
+  [[ -n $row ]] || return 1
+  awk -F '\t' -v container="$container" \
+    '$1 == container && !removed {removed=1; next} {print}' \
+    "$FAKE_DOCKER_CONTAINER_STATES" > "$next"
+  mv -f "$next" "$FAKE_DOCKER_CONTAINER_STATES"
+  printf '%s\n' "${row#*$'\t'}"
+}
+
 append_docker_event "$@"
 
 case ${1:-}:${2:-} in
@@ -102,10 +118,30 @@ case ${1:-}:${2:-} in
     row=$(awk -F '\t' -v container="$container" \
       '$1 == container {print; exit}' "$FAKE_DOCKER_CONTAINERS")
     [[ -n $row ]] || exit 1
-    IFS=$'\t' read -r _ image_id state config env <<< "$row"
+    IFS=$'\t' read -r _ image_id state config env restart_count <<< "$row"
+    restart_count=${restart_count:-0}
     case ${*: -1} in
+      *'.State.Status'*)
+        state=$(take_container_state "$container" || printf '%s\n' "$state")
+        [[ $state != missing ]] || exit 1
+        IFS='|' read -r status running restarting oom_killed health \
+          sampled_image sampled_restart_count <<< "$state"
+        sampled_image=${sampled_image:-$image_id}
+        sampled_restart_count=${sampled_restart_count:-$restart_count}
+        if [[ ${*: -1} == *'.RestartCount'* ]]; then
+          printf '%s|%s|%s|%s|%s|%s|%s\n' \
+            "$status" "$running" "$restarting" "$oom_killed" "$health" \
+            "$sampled_image" "$sampled_restart_count"
+        else
+          printf '%s|%s|%s|%s|%s\n' \
+            "$status" "$running" "$restarting" "$oom_killed" "$health"
+        fi
+        ;;
+      *'.Image'*'.RestartCount'*)
+        printf '%s|%s\n' "$image_id" "$restart_count"
+        ;;
       *'.Image'*) printf '%s\n' "$image_id" ;;
-      *'.State.Status'*) printf '%s\n' "$state" ;;
+      *'.RestartCount'*) printf '%s\n' "$restart_count" ;;
       *) printf '%s\n' "$config" ;;
     esac
     ;;
@@ -120,18 +156,36 @@ case ${1:-}:${2:-} in
     cat >/dev/null
     [[ ${FAKE_IMPORT_STATUS:-0} == 0 ]] || exit "$FAKE_IMPORT_STATUS"
     rescue_tag=${*: -1}
-    set_ref "$rescue_tag" "$FAKE_DOCKER_IMPORT_ID" \
-      "$SAFE_API_CONFIG" '[]'
+    set_ref "$rescue_tag" "$FAKE_DOCKER_IMPORT_STORED_ID" \
+      "$FAKE_DOCKER_IMPORT_CONFIG" "$FAKE_DOCKER_IMPORT_ENV"
     printf '%s\n' "$FAKE_DOCKER_IMPORT_ID"
     ;;
   *) exit 90 ;;
 esac
 SH
 chmod 0755 "$FAKE_BIN/docker"
+cat > "$FAKE_BIN/sleep" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'sleep\t%s\n' "$1" >> "$EVENT_LOG"
+SH
+chmod 0755 "$FAKE_BIN/sleep"
 PATH=$FAKE_BIN:$PATH
 
 compose_image_name() {
   printf '%s-%s:latest\n' "$PROJECT" "$1"
+}
+
+take_compose_container() {
+  local service=$1 row next=$FAKE_COMPOSE_CONTAINER_STATES.next.$$
+  row=$(awk -F '\t' -v service="$service" \
+    '$1 == service {print; exit}' "$FAKE_COMPOSE_CONTAINER_STATES")
+  [[ -n $row ]] || return 1
+  awk -F '\t' -v service="$service" \
+    '$1 == service && !removed {removed=1; next} {print}' \
+    "$FAKE_COMPOSE_CONTAINER_STATES" > "$next"
+  mv -f "$next" "$FAKE_COMPOSE_CONTAINER_STATES"
+  printf '%s\n' "${row#*$'\t'}"
 }
 
 append_compose_event() {
@@ -148,7 +202,11 @@ append_compose_event() {
 fake_compose() {
   append_compose_event "$@"
   if [[ $* == *' ps -q '* ]]; then
-    local service=${*: -1}
+    local service=${*: -1} queued_container
+    if queued_container=$(take_compose_container "$service"); then
+      [[ $queued_container == missing ]] || printf '%s\n' "$queued_container"
+      return 0
+    fi
     awk -F '\t' -v service="$service" '$1 == service {print $2}' \
       "$FAKE_COMPOSE_CONTAINERS"
     return 0
@@ -187,10 +245,16 @@ reset_case() {
   install -d "$STATE"
   : > "$FAKE_DOCKER_REFS"
   : > "$FAKE_DOCKER_CONTAINERS"
+  : > "$FAKE_DOCKER_CONTAINER_STATES"
   : > "$FAKE_COMPOSE_CONTAINERS"
+  : > "$FAKE_COMPOSE_CONTAINER_STATES"
   : > "$EVENT_LOG"
   FAKE_DOCKER_IMPORT_ID=$ID_E
-  export FAKE_DOCKER_IMPORT_ID
+  FAKE_DOCKER_IMPORT_STORED_ID=$ID_E
+  FAKE_DOCKER_IMPORT_CONFIG=$SAFE_API_CONFIG
+  FAKE_DOCKER_IMPORT_ENV='[]'
+  export FAKE_DOCKER_IMPORT_ID FAKE_DOCKER_IMPORT_STORED_ID \
+    FAKE_DOCKER_IMPORT_CONFIG FAKE_DOCKER_IMPORT_ENV
   unset FAKE_DOCKER_SIGNAL_TAG FAKE_COMPOSE_UP_STATUS FAKE_STOP_STATUS \
     FAKE_VERIFY_STATUS FAKE_PROXY_STATUS FAKE_IMPORT_STATUS
 }
@@ -201,10 +265,36 @@ add_ref() {
 }
 
 add_container() {
-  printf '%s\t%s\t%s\t%s\t%s\n' "$2" "$3" \
+  printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$2" "$3" \
     "${4:-running|true|false|false|none}" "${5:-$CONFIG}" "${6:-[]}" \
+    "${7:-0}" \
     >> "$FAKE_DOCKER_CONTAINERS"
   printf '%s\t%s\n' "$1" "$2" >> "$FAKE_COMPOSE_CONTAINERS"
+}
+
+queue_compose_containers() {
+  local service=$1 container
+  shift
+  for container in "$@"; do
+    printf '%s\t%s\n' "$service" "$container" \
+      >> "$FAKE_COMPOSE_CONTAINER_STATES"
+  done
+}
+
+queue_container_states() {
+  local container=$1 state
+  shift
+  for state in "$@"; do
+    printf '%s\t%s\n' "$container" "$state" \
+      >> "$FAKE_DOCKER_CONTAINER_STATES"
+  done
+}
+
+set_import_service_config() {
+  FAKE_DOCKER_IMPORT_CONFIG=$(
+    backend_image_rescue_reconstructed_image_config "$1"
+  )
+  export FAKE_DOCKER_IMPORT_CONFIG
 }
 
 set_ref_direct() {
@@ -226,6 +316,17 @@ assert_no_rescue_refs() {
     exit 1
   fi
 }
+
+assert_failed_rescue_cleaned() {
+  local state_file=$1
+  [[ ! -e $state_file && ! -e $state_file.partial ]]
+  assert_no_rescue_refs
+}
+
+((BACKEND_IMAGE_RESCUE_POST_UNPAUSE_TIMEOUT_SECONDS == 60))
+((BACKEND_IMAGE_RESCUE_POST_UNPAUSE_POLL_SECONDS == 3))
+BACKEND_IMAGE_RESCUE_POST_UNPAUSE_TIMEOUT_SECONDS=2
+BACKEND_IMAGE_RESCUE_POST_UNPAUSE_POLL_SECONDS=1
 
 # Running services are pinned from their recorded image IDs. The migrate and
 # daily-runner one-shot policies pin their existing Compose tags, but rollback
@@ -279,6 +380,14 @@ adopted_env=$(
 [[ $adopted_config != *RESCUE_SENTINEL_DO_NOT_PERSIST* ]]
 [[ $adopted_env == '[]' ]]
 [[ $adopted_env != *RESCUE_SENTINEL_DO_NOT_PERSIST* ]]
+[[ $(grep -c $'^sleep\t1$' "$EVENT_LOG") == 2 ]]
+baseline_line=$(grep -nF \
+  $'docker\tinspect\tadopted-api\t--format\t{{.RestartCount}}' \
+  "$EVENT_LOG" | cut -d: -f1)
+pause_line=$(grep -nF $'docker\tcontainer\tpause\tadopted-api' \
+  "$EVENT_LOG" | cut -d: -f1)
+[[ -n $baseline_line && -n $pause_line ]]
+((baseline_line < pause_line))
 if grep -F $'docker\tcommit' "$EVENT_LOG" >/dev/null; then
   echo 'safe missing-image reconstruction unexpectedly used docker commit' >&2
   exit 1
@@ -294,6 +403,236 @@ tag_count_after=$(grep -c $'docker\timage\ttag' "$EVENT_LOG" || true)
 import_count_after=$(grep -c $'docker\timage\timport' "$EVENT_LOG" || true)
 ((tag_count_before == tag_count_after && import_count_before == import_count_after))
 backend_image_rescue_cleanup "$adoption_state"
+
+# Imported rescue identity, reviewed config, and empty Env are each validated
+# after unpause and before runtime stability polling.
+for validation_case in id config env; do
+  reset_case "strict-rescue-$validation_case"
+  case $validation_case in
+    id) FAKE_DOCKER_IMPORT_STORED_ID=$ID_D ;;
+    config) FAKE_DOCKER_IMPORT_CONFIG=$CONFIG ;;
+    env) FAKE_DOCKER_IMPORT_ENV=$SENTINEL_ENV ;;
+  esac
+  export FAKE_DOCKER_IMPORT_STORED_ID FAKE_DOCKER_IMPORT_CONFIG \
+    FAKE_DOCKER_IMPORT_ENV
+  add_container api "strict-rescue-$validation_case-api" "$ID_A" \
+    'running|true|false|false|healthy' "$LEGACY_CONFIG" "$SENTINEL_ENV"
+  strict_state=$(backend_image_rescue_state_file "$SHA")
+  set +e
+  backend_image_rescue_prepare "$SHA" "$strict_state" api
+  strict_status=$?
+  set -e
+  ((strict_status != 0))
+  grep -F $'docker\tcontainer\tunpause' "$EVENT_LOG" >/dev/null
+  [[ $(grep -c $'^sleep\t1$' "$EVENT_LOG" || true) == 0 ]]
+  assert_failed_rescue_cleaned "$strict_state"
+done
+
+# One bounded restart is accepted only after transient restarting, exited, and
+# health-starting samples are followed by three stable samples at baseline+1.
+reset_case one-post-unpause-restart
+BACKEND_IMAGE_RESCUE_POST_UNPAUSE_TIMEOUT_SECONDS=5
+set_import_service_config intelligence-worker
+add_container intelligence-worker restarting-intelligence "$ID_A" \
+  'running|true|false|false|healthy' "$LEGACY_CONFIG" "$SENTINEL_ENV"
+queue_container_states restarting-intelligence \
+  "running|true|false|false|healthy|$ID_A|0" \
+  "restarting|false|true|false|none|$ID_A|1" \
+  "exited|false|false|false|none|$ID_A|1" \
+  "running|true|false|false|starting|$ID_A|1" \
+  "running|true|false|false|healthy|$ID_A|1" \
+  "running|true|false|false|healthy|$ID_A|1" \
+  "running|true|false|false|healthy|$ID_A|1"
+transient_state=$(backend_image_rescue_state_file "$SHA")
+backend_image_rescue_prepare "$SHA" "$transient_state" intelligence-worker
+grep -F $'image\tintelligence-worker\trecreate\tcontainer-export-import\trestarting-intelligence' \
+  "$transient_state" >/dev/null
+[[ $(grep -c $'^sleep\t1$' "$EVENT_LOG") == 5 ]]
+[[ $(ref_id "$(backend_image_rescue_tag "$SHA" intelligence-worker)") == \
+   "$ID_E" ]]
+backend_image_rescue_cleanup "$transient_state"
+assert_no_rescue_refs
+BACKEND_IMAGE_RESCUE_POST_UNPAUSE_TIMEOUT_SECONDS=2
+
+# Losing the original container during the wait is an immediate failure; the
+# rescue never follows a replacement container with the same Compose service.
+reset_case missing-post-unpause
+add_container intelligence-worker missing-intelligence "$ID_A" \
+  'running|true|false|false|healthy' "$LEGACY_CONFIG" "$SENTINEL_ENV"
+set_import_service_config intelligence-worker
+queue_container_states missing-intelligence \
+  'running|true|false|false|healthy' missing
+missing_post_unpause_state=$(backend_image_rescue_state_file "$SHA")
+set +e
+backend_image_rescue_prepare \
+  "$SHA" "$missing_post_unpause_state" intelligence-worker
+missing_post_unpause_status=$?
+set -e
+((missing_post_unpause_status != 0))
+[[ $(grep -c $'^sleep\t1$' "$EVENT_LOG" || true) == 0 ]]
+assert_failed_rescue_cleaned "$missing_post_unpause_state"
+
+# A malformed baseline is rejected before pause. A malformed or decreased
+# post-unpause count also fails on its first sample.
+reset_case malformed-restart-baseline
+set_import_service_config api
+add_container api malformed-baseline-api "$ID_A" \
+  'running|true|false|false|healthy' "$LEGACY_CONFIG" "$SENTINEL_ENV" bad
+malformed_baseline_state=$(backend_image_rescue_state_file "$SHA")
+set +e
+backend_image_rescue_prepare "$SHA" "$malformed_baseline_state" api
+malformed_baseline_status=$?
+set -e
+((malformed_baseline_status != 0))
+if grep -F $'docker\tcontainer\tpause\tmalformed-baseline-api' \
+  "$EVENT_LOG" >/dev/null; then
+  echo 'container was paused before a valid restart baseline was captured' >&2
+  exit 1
+fi
+assert_failed_rescue_cleaned "$malformed_baseline_state"
+
+reset_case malformed-post-unpause-restart
+set_import_service_config api
+add_container api malformed-restart-api "$ID_A" \
+  'running|true|false|false|healthy' "$LEGACY_CONFIG" "$SENTINEL_ENV"
+queue_container_states malformed-restart-api \
+  "running|true|false|false|healthy|$ID_A|0" \
+  "running|true|false|false|healthy|$ID_A|bad"
+malformed_restart_state=$(backend_image_rescue_state_file "$SHA")
+set +e
+backend_image_rescue_prepare "$SHA" "$malformed_restart_state" api
+malformed_restart_status=$?
+set -e
+((malformed_restart_status != 0))
+[[ $(grep -c $'^sleep\t1$' "$EVENT_LOG" || true) == 0 ]]
+assert_failed_rescue_cleaned "$malformed_restart_state"
+
+reset_case decreased-post-unpause-restart
+set_import_service_config api
+add_container api decreased-restart-api "$ID_A" \
+  'running|true|false|false|healthy' "$LEGACY_CONFIG" "$SENTINEL_ENV" 2
+queue_container_states decreased-restart-api \
+  "running|true|false|false|healthy|$ID_A|2" \
+  "restarting|false|true|false|none|$ID_A|3" \
+  "running|true|false|false|healthy|$ID_A|2"
+decreased_restart_state=$(backend_image_rescue_state_file "$SHA")
+set +e
+backend_image_rescue_prepare "$SHA" "$decreased_restart_state" api
+decreased_restart_status=$?
+set -e
+((decreased_restart_status != 0))
+[[ $(grep -c $'^sleep\t1$' "$EVENT_LOG") == 1 ]]
+assert_failed_rescue_cleaned "$decreased_restart_state"
+
+# Baseline+2 is never accepted, including if the container looks healthy.
+reset_case excessive-post-unpause-restart
+set_import_service_config api
+add_container api excessive-restart-api "$ID_A" \
+  'running|true|false|false|healthy' "$LEGACY_CONFIG" "$SENTINEL_ENV" 3
+queue_container_states excessive-restart-api \
+  "running|true|false|false|healthy|$ID_A|3" \
+  "running|true|false|false|healthy|$ID_A|5"
+excessive_restart_state=$(backend_image_rescue_state_file "$SHA")
+set +e
+backend_image_rescue_prepare "$SHA" "$excessive_restart_state" api
+excessive_restart_status=$?
+set -e
+((excessive_restart_status != 0))
+[[ $(grep -c $'^sleep\t1$' "$EVENT_LOG" || true) == 0 ]]
+assert_failed_rescue_cleaned "$excessive_restart_state"
+
+# A container that never returns to the strict running state times out. The
+# imported tag and partial manifest are removed, so no build can consume them.
+reset_case permanent-post-unpause-stop
+set_import_service_config ingestion-worker
+add_container ingestion-worker stopped-ingestion "$ID_A" \
+  'running|true|false|false|healthy' "$LEGACY_CONFIG" "$SENTINEL_ENV"
+queue_container_states stopped-ingestion \
+  'running|true|false|false|healthy' \
+  'exited|false|false|false|none' \
+  'exited|false|false|false|none' \
+  'exited|false|false|false|none'
+stopped_state=$(backend_image_rescue_state_file "$SHA")
+set +e
+backend_image_rescue_prepare "$SHA" "$stopped_state" ingestion-worker
+stopped_status=$?
+set -e
+((stopped_status != 0))
+[[ $(grep -c $'^sleep\t1$' "$EVENT_LOG") == 2 ]]
+assert_failed_rescue_cleaned "$stopped_state"
+
+# OOM and unhealthy states remain fail-closed even if Docker still reports the
+# same container as running for every bounded poll.
+reset_case permanent-post-unpause-oom
+set_import_service_config ingestion-worker
+add_container ingestion-worker oom-ingestion "$ID_A" \
+  'running|true|false|false|healthy' "$LEGACY_CONFIG" "$SENTINEL_ENV"
+queue_container_states oom-ingestion \
+  "running|true|false|false|healthy|$ID_A|0" \
+  "running|true|false|true|none|$ID_A|0"
+oom_state=$(backend_image_rescue_state_file "$SHA")
+set +e
+backend_image_rescue_prepare "$SHA" "$oom_state" ingestion-worker
+oom_status=$?
+set -e
+((oom_status != 0))
+[[ $(grep -c $'^sleep\t1$' "$EVENT_LOG" || true) == 0 ]]
+assert_failed_rescue_cleaned "$oom_state"
+
+reset_case permanent-post-unpause-unhealthy
+set_import_service_config intelligence-worker
+add_container intelligence-worker unhealthy-intelligence "$ID_A" \
+  'running|true|false|false|healthy' "$LEGACY_CONFIG" "$SENTINEL_ENV"
+queue_container_states unhealthy-intelligence \
+  "running|true|false|false|healthy|$ID_A|0" \
+  "running|true|false|false|unhealthy|$ID_A|0"
+post_unpause_unhealthy_state=$(backend_image_rescue_state_file "$SHA")
+set +e
+backend_image_rescue_prepare \
+  "$SHA" "$post_unpause_unhealthy_state" intelligence-worker
+post_unpause_unhealthy_status=$?
+set -e
+((post_unpause_unhealthy_status != 0))
+[[ $(grep -c $'^sleep\t1$' "$EVENT_LOG" || true) == 0 ]]
+assert_failed_rescue_cleaned "$post_unpause_unhealthy_state"
+
+# A changed container image fails before any stability wait can continue.
+reset_case post-unpause-image-mismatch
+set_import_service_config api
+add_container api image-mismatch-api "$ID_A" \
+  'running|true|false|false|healthy' "$LEGACY_CONFIG" "$SENTINEL_ENV"
+queue_container_states image-mismatch-api \
+  "running|true|false|false|healthy|$ID_A|0" \
+  "running|true|false|false|healthy|$ID_B|0"
+image_mismatch_state=$(backend_image_rescue_state_file "$SHA")
+set +e
+backend_image_rescue_prepare "$SHA" "$image_mismatch_state" api
+image_mismatch_status=$?
+set -e
+((image_mismatch_status != 0))
+[[ $(grep -c $'^sleep\t1$' "$EVENT_LOG" || true) == 0 ]]
+assert_failed_rescue_cleaned "$image_mismatch_state"
+
+# Even after three good samples, the final Compose mapping must still name the
+# exact container captured before pause.
+reset_case post-unpause-compose-replacement
+set_import_service_config api
+add_container api original-api "$ID_A" \
+  'running|true|false|false|healthy' "$LEGACY_CONFIG" "$SENTINEL_ENV"
+queue_compose_containers api \
+  original-api original-api original-api original-api original-api replacement-api
+replacement_state=$(backend_image_rescue_state_file "$SHA")
+set +e
+backend_image_rescue_prepare "$SHA" "$replacement_state" api
+replacement_status=$?
+set -e
+((replacement_status != 0))
+[[ $(grep -c $'^sleep\t1$' "$EVENT_LOG") == 2 ]]
+if grep -F $'docker\tinspect\treplacement-api' "$EVENT_LOG" >/dev/null; then
+  echo 'rescue followed the replacement instead of the original container' >&2
+  exit 1
+fi
+assert_failed_rescue_cleaned "$replacement_state"
 
 # Missing or unhealthy required persistent containers fail closed and leave no
 # tag or state that could let a build begin with a partial snapshot.
