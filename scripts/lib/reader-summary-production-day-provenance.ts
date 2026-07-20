@@ -728,6 +728,47 @@ function validateEvidenceCaptureProvenance(
     "evidence.provenance.modelMode",
     violations,
   );
+  if (provenance.datasetManifest !== undefined) {
+    validateDatasetManifestGuardEvidence(
+      provenance.datasetManifest,
+      violations,
+    );
+  }
+}
+
+function validateDatasetManifestGuardEvidence(
+  value: unknown,
+  violations: string[],
+): void {
+  const guard = recordOrViolation(
+    value,
+    "evidence.provenance.datasetManifest",
+    violations,
+  );
+  if (guard === null) {
+    return;
+  }
+  const hashesValid = [guard.manifestFileSha256, guard.datasetSha256].every(
+    (hash) => typeof hash === "string" && /^[0-9a-f]{64}$/u.test(hash),
+  );
+  const expectedPhases = [
+    "before_evidence_selection",
+    "after_evidence_selection",
+    "before_publication",
+  ];
+  if (
+    guard.manifestFormat !== "reader-summary-day-dataset-manifest-v1" ||
+    typeof guard.manifestGeneratedAt !== "string" ||
+    !hashesValid ||
+    typeof guard.feedRowCount !== "number" ||
+    typeof guard.githubEligibilityRowCount !== "number" ||
+    !isRecord(guard.providerCounts) ||
+    JSON.stringify(guard.completedPhases) !== JSON.stringify(expectedPhases)
+  ) {
+    violations.push(
+      "evidence.provenance.datasetManifest must contain a complete immutable dataset guard",
+    );
+  }
 }
 
 function captureBindingEqual(

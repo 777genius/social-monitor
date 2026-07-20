@@ -21,8 +21,11 @@ import {
 import { finalizeXAccountAttributionWarningOnly } from "./lib/x-account-attribution-warning-policy";
 import { productionCollectionThresholds } from "./lib/production-collection-quality-policy";
 import {
-  isValidExistingYesterdaySocialCollectionQualityReport,
-} from "./lib/yesterday-social-collection-quality-report-validation";
+  assertCollectionQualityMatchesRegenerationManifest,
+  resolveCollectionQualityRegenerationFreshness,
+  type CollectionQualityRegenerationFreshnessEvidence,
+} from "./lib/yesterday-social-collection-quality-regeneration";
+import { isValidExistingYesterdaySocialCollectionQualityReport } from "./lib/yesterday-social-collection-quality-report-validation";
 import {
   average,
   averageValues,
@@ -169,6 +172,7 @@ type Report = {
       readonly endExclusive: string;
     };
     readonly xCollectorLedgerPath: string;
+    readonly historicalRegenerationFreshness: CollectionQualityRegenerationFreshnessEvidence | null;
   };
   readonly sourceCoverage: readonly string[];
   readonly primarySourceCoverage: readonly string[];
@@ -236,6 +240,13 @@ const xCollectorLedgerPath =
   process.env.YESTERDAY_SOCIAL_QUALITY_X_LEDGER_PATH ??
   "apps/x-collector/var/x-collector/scweet_state.db";
 const localDatabaseUrl = yesterdaySocialQualityDatabaseUrl();
+const regenerationFreshness = resolveCollectionQualityRegenerationFreshness({
+  argv: process.argv.slice(2),
+  collectionDate,
+  now: new Date(),
+  update,
+  allowHistorical,
+});
 const primarySources = ["reddit", "x-twitter"];
 const forbiddenSerializedFragments = [
   "access_token",
@@ -279,6 +290,18 @@ async function main(): Promise<void> {
   }
 
   const serialized = `${JSON.stringify(report, null, 2)}\n`;
+
+  if (regenerationFreshness !== null) {
+    assertCollectionQualityMatchesRegenerationManifest({
+      providerCounts: Object.fromEntries(
+        report.providerReports.map((provider) => [
+          provider.providerKey,
+          provider.feedItemCount,
+        ]),
+      ),
+      freshness: regenerationFreshness,
+    });
+  }
 
   if (update && (report.collectionBlockingPassed || writeFailedReport)) {
     mkdirSync(dirname(outputPath), { recursive: true });
@@ -403,6 +426,7 @@ async function tryBuildReport(): Promise<Report | undefined> {
       ),
       primaryFreshnessP90Below48Hours:
         allowHistorical ||
+        regenerationFreshness !== null ||
         primaryReports.every((item) => item.p90ObservedAgeHours <= 48),
       xCollectorLedgerAvailable: xCollectorLedger.available,
       xCollectorRunCountAtLeast20: xCollectorLedger.runCount >= 20,
@@ -474,6 +498,8 @@ async function tryBuildReport(): Promise<Report | undefined> {
       inputs: {
         postgresFeedWindow: feedWindow(),
         xCollectorLedgerPath,
+        historicalRegenerationFreshness:
+          regenerationFreshness?.evidence ?? null,
       },
       sourceCoverage,
       primarySourceCoverage,

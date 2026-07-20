@@ -69,6 +69,12 @@ import {
   HistoricalGitHubOmissionEvidenceSelector,
   resolveHistoricalGitHubOmission,
 } from "./lib/reader-summary-historical-github-omission";
+import {
+  DatasetGuardedReaderSummaryEvidenceSelector,
+  ReaderSummaryDayDatasetGuard,
+  readReaderSummaryDayDatasetManifest,
+} from "./lib/reader-summary-day-dataset-guard";
+import { assertImmutableRecoveryInputs } from "./lib/reader-summary-recovery-files";
 import { canonicalJsonSha256 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
 
 const databaseUrlEnv = "DATABASE_URL";
@@ -83,6 +89,10 @@ const periodEndedAtEnv = "DURABLE_READER_SUMMARY_PERIOD_ENDED_AT";
 const cadenceEnv = "DURABLE_READER_SUMMARY_CADENCE";
 const historicalGitHubOmissionReasonEnv =
   "DURABLE_READER_SUMMARY_HISTORICAL_GITHUB_OMISSION_REASON";
+const datasetManifestPathEnv = "DURABLE_READER_SUMMARY_DATASET_MANIFEST_PATH";
+const datasetManifestSha256Env =
+  "DURABLE_READER_SUMMARY_DATASET_MANIFEST_SHA256";
+const datasetRecoveryRootEnv = "DURABLE_READER_SUMMARY_RECOVERY_ROOT";
 
 loadDotenvIfPresent(".env");
 type DurableReaderSummaryModelMode =
@@ -230,18 +240,47 @@ async function main(): Promise<void> {
       new InMemoryUserRelevanceProfileRepository(),
       clock,
     );
-    const relevanceEvidenceSelector = new RelevanceReaderSummaryEvidenceSelector(
-      rankFeedItems,
-      feedItems,
-      clock,
-      new StoryRankingMetricsRecorder(new InMemoryMetricsRecorder()),
-    );
-    const evidenceSelector =
+    const relevanceEvidenceSelector =
+      new RelevanceReaderSummaryEvidenceSelector(
+        rankFeedItems,
+        feedItems,
+        clock,
+        new StoryRankingMetricsRecorder(new InMemoryMetricsRecorder()),
+      );
+    const omissionAwareEvidenceSelector =
       historicalGitHubOmission === undefined
         ? relevanceEvidenceSelector
         : new HistoricalGitHubOmissionEvidenceSelector(
             relevanceEvidenceSelector,
           );
+    const datasetGuard =
+      historicalGitHubOmission === undefined
+        ? null
+        : buildDatasetGuard({
+            client: summaryConnection,
+            clock,
+            tenantId: tenant,
+            workspaceId: workspace,
+            periodStartedAt,
+            periodEndedAt,
+            now,
+          });
+    const evidenceSelector =
+      datasetGuard === null
+        ? omissionAwareEvidenceSelector
+        : new DatasetGuardedReaderSummaryEvidenceSelector(
+            omissionAwareEvidenceSelector,
+            datasetGuard,
+          );
+    const publication = new PrismaReaderSummaryPublication(
+      summaryConnection,
+      datasetGuard === null
+        ? undefined
+        : (transactionClient) =>
+            datasetGuard.assertCurrentForPublicationTransaction(
+              transactionClient,
+            ),
+    );
     const executeReaderSummary = new ExecuteReaderSummaryJobUseCase(
       readerSummaryJobs,
       readerSummaryArtifacts,
@@ -252,7 +291,7 @@ async function main(): Promise<void> {
         agentRuntimeClient,
         executionAttestations,
       ),
-      new PrismaReaderSummaryPublication(summaryConnection),
+      publication,
       ids,
       clock,
       undefined,
@@ -355,6 +394,7 @@ async function main(): Promise<void> {
                 authorizedAt:
                   historicalGitHubOmission.authorizedAt.toISOString(),
               },
+        datasetManifest: datasetGuard?.evidence(),
       },
       scope: {
         tenantId: tenant,
@@ -415,6 +455,38 @@ async function main(): Promise<void> {
   } finally {
     await Promise.all([feedConnection.close(), summaryConnection.close()]);
   }
+}
+
+function buildDatasetGuard(params: {
+  readonly client: PrismaSummaryConnection;
+  readonly clock: SystemClock;
+  readonly tenantId: string;
+  readonly workspaceId: string;
+  readonly periodStartedAt: Date;
+  readonly periodEndedAt: Date;
+  readonly now: Date;
+}): ReaderSummaryDayDatasetGuard {
+  const manifestPath = requiredEnv(datasetManifestPathEnv);
+  assertImmutableRecoveryInputs({
+    recoveryRoot: requiredEnv(datasetRecoveryRootEnv),
+    inputPaths: [manifestPath],
+    forbiddenOutputPaths: [],
+  });
+  const { manifest, fileSha256 } = readReaderSummaryDayDatasetManifest({
+    path: manifestPath,
+    expectedFileSha256: requiredEnv(datasetManifestSha256Env),
+    tenantId: params.tenantId,
+    workspaceId: params.workspaceId,
+    startedAt: params.periodStartedAt,
+    endedAt: params.periodEndedAt,
+    now: params.now,
+  });
+  return new ReaderSummaryDayDatasetGuard(
+    params.client,
+    manifest,
+    fileSha256,
+    () => params.clock.now(),
+  );
 }
 
 class CapturingReaderSummaryJobQueue implements ReaderSummaryJobQueuePort {

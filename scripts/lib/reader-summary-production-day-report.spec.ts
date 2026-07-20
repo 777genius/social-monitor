@@ -38,6 +38,66 @@ describe("production-day report", () => {
     ).toEqual([]);
   });
 
+  it("passes a fresh summary regenerated from hash-bound collection evidence", () => {
+    const artifact = evidenceFixture(true);
+    const manifest = regenerationManifest();
+    const regeneration = {
+      mode: "historical-regeneration" as const,
+      requestedUtcPeriod: productionDayUtcPeriod(collectionDate),
+      collectionUtcPeriod: productionDayUtcPeriod(collectionDate),
+      priorCollectionProof: {
+        sourceAttempt: {
+          artifactFormat: "reader-summary-production-day-run-v1",
+          sha256: "a".repeat(64),
+        },
+        collectionArtifact: {
+          artifactFormat: "reader-summary-clean-real-day-collection-v1",
+          sha256: "b".repeat(64),
+        },
+        collectionQualityReport: {
+          artifactFormat: "yesterday-social-collection-quality-report-v1",
+          sha256: "c".repeat(64),
+        },
+      },
+      regenerationInputManifest: manifest,
+      githubOmission: {
+        mode: "github_projection_unavailable_historical" as const,
+        reason:
+          "The exact end-of-day GitHub projection is unavailable for this completed UTC day.",
+      },
+      freshnessOverride: {
+        mode: "historical_regeneration_current_snapshot" as const,
+        generalAllowHistorical: false as const,
+        maxManifestAgeSeconds: 1800 as const,
+      },
+    };
+    const report = buildReport(
+      passedSteps(),
+      artifact,
+      undefined,
+      regeneration,
+    );
+
+    expect(report.blockingPassed).toBe(true);
+    expect(report.model).toMatchObject({
+      liveCollection: false,
+      reusedCollection: true,
+      freshSummaryCapture: true,
+    });
+    expect(report.qualityGates).not.toHaveProperty(
+      "liveCollectionExecutedAndPassed",
+    );
+    expect(report.provenance).toMatchObject(regeneration);
+    expect(report.qualityGates.hashBoundHistoricalRegeneration).toBe(true);
+    expect(
+      validateLiveProductionDayReport({
+        report,
+        binding: artifact.binding,
+        expectedDate: collectionDate,
+      }),
+    ).toEqual([]);
+  });
+
   it.each(requiredProductionDayStepIds)(
     "blocks when %s is missing",
     (stepId) => {
@@ -258,8 +318,7 @@ describe("production-day report", () => {
         eligibleAccountCount: 2,
         attributionStatus: "known",
         attributionPolicy: "warning_only",
-        attributionGateReason:
-          "known_attribution_zero_output_warning_only",
+        attributionGateReason: "known_attribution_zero_output_warning_only",
         eligibleAccountZeroAttributableOutputWarningCount: 1,
         attributionWarnings: [warning],
       },
@@ -413,27 +472,36 @@ function liveReport() {
 function buildReport(
   steps: readonly ProductionDayStepReport[],
   artifact = evidenceFixture(),
-  collectionQuality: ProductionDayCollectionQuality = {
-    collectionDate,
-    dayWindowAudit: {
-      publishedInsideWindowFeedItemCount: 10,
-      providerBreakdown: [],
-    },
-    xAccountPool: {
-      totalAccountCount: 1,
-      eligibleAccountCount: 1,
-      attributionStatus: "unknown",
-      attributionPolicy: "warning_only",
-      attributionGateReason:
-        "unknown_attribution_global_collection_succeeded_warning_only",
-      eligibleAccountZeroAttributableOutputWarningCount: 0,
-      attributionWarnings: [],
-    },
-  },
+  collectionQuality: ProductionDayCollectionQuality | undefined = undefined,
+  historicalRegenerationProvenance: Parameters<
+    typeof buildProductionDayReport
+  >[0]["historicalRegenerationProvenance"] = null,
 ) {
+  const resolvedCollectionQuality: ProductionDayCollectionQuality =
+    collectionQuality ?? {
+      collectionDate,
+      dayWindowAudit: {
+        publishedInsideWindowFeedItemCount: 10,
+        providerBreakdown: [],
+      },
+      xAccountPool: {
+        totalAccountCount: 1,
+        eligibleAccountCount: 1,
+        attributionStatus: "unknown",
+        attributionPolicy: "warning_only",
+        attributionGateReason:
+          "unknown_attribution_global_collection_succeeded_warning_only",
+        eligibleAccountZeroAttributableOutputWarningCount: 0,
+        attributionWarnings: [],
+      },
+    };
   return buildProductionDayReport({
-    executionMode: "live-production",
+    executionMode:
+      historicalRegenerationProvenance === null
+        ? "live-production"
+        : "historical-regeneration",
     historicalReuseProvenance: null,
+    historicalRegenerationProvenance,
     collectionDate,
     evidencePath: "/tmp/durable-reader-summary.json",
     frontendFixturePath: "/tmp/frontend-reader-summary.json",
@@ -444,7 +512,7 @@ function buildReport(
       tenantId: "33333333-3333-4333-8333-333333333333",
       workspaceId: "44444444-4444-4444-8444-444444444444",
     },
-    collectionQuality,
+    collectionQuality: resolvedCollectionQuality,
     durableEvidence: artifact.evidence,
     evidenceBinding: artifact.binding,
     liveCaptureExecution: artifact.binding.captureExecution,
@@ -464,7 +532,7 @@ function passedSteps(): readonly ProductionDayStepReport[] {
   }));
 }
 
-function evidenceFixture() {
+function evidenceFixture(withDatasetGuard = false) {
   const frontend = {
     schemaVersion: 1,
     format: "frontend-reader-summary-live-fixture-v1",
@@ -495,6 +563,7 @@ function evidenceFixture() {
       fixtureOnly: false,
       database: "postgres",
       modelMode: "agent-runtime",
+      ...(withDatasetGuard ? { datasetManifest: datasetGuardEvidence() } : {}),
     },
     period: productionDayUtcPeriod(collectionDate),
     result: {
@@ -533,4 +602,34 @@ function evidenceFixture() {
     throw new Error(inspected.violations.join("; "));
   }
   return { evidence, binding: inspected.binding };
+}
+
+function regenerationManifest() {
+  return {
+    artifactFormat: "reader-summary-day-dataset-manifest-v1",
+    sha256: "d".repeat(64),
+    generatedAt: "2026-07-16T00:59:00.000Z",
+    datasetSha256: "e".repeat(64),
+    feedRowCount: 10,
+    githubEligibilityRowCount: 1,
+    providerCounts: { reddit: 10 },
+  };
+}
+
+function datasetGuardEvidence() {
+  const manifest = regenerationManifest();
+  return {
+    manifestFormat: manifest.artifactFormat,
+    manifestFileSha256: manifest.sha256,
+    manifestGeneratedAt: manifest.generatedAt,
+    datasetSha256: manifest.datasetSha256,
+    feedRowCount: manifest.feedRowCount,
+    githubEligibilityRowCount: manifest.githubEligibilityRowCount,
+    providerCounts: manifest.providerCounts,
+    completedPhases: [
+      "before_evidence_selection",
+      "after_evidence_selection",
+      "before_publication",
+    ],
+  };
 }

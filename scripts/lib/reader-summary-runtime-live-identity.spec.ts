@@ -7,6 +7,9 @@ import {
 describe("production runtime live identity proof", () => {
   it("never treats historical reuse as a live runtime proof", () => {
     expect(runtimeLiveIdentityProofRequired("live-production")).toBe(true);
+    expect(runtimeLiveIdentityProofRequired("historical-regeneration")).toBe(
+      true,
+    );
     expect(runtimeLiveIdentityProofRequired("historical-reuse")).toBe(false);
   });
   it("accepts an exact serving runtime identity", async () => {

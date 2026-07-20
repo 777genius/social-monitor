@@ -1,0 +1,280 @@
+import {
+  chmodSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { loadHistoricalRegeneration } from "./reader-summary-production-day-regeneration";
+import { sha256Hex } from "./reader-summary-production-day-provenance";
+import type { ProductionDayExecutionRequest } from "./reader-summary-production-day-reuse-provenance";
+import { buildReaderSummaryDayDatasetManifest } from "./reader-summary-day-dataset-manifest";
+
+const tenantId = "33333333-3333-4333-8333-333333333333";
+const workspaceId = "44444444-4444-4444-8444-444444444444";
+const now = new Date("2026-07-20T00:10:00.000Z");
+
+const collectionDate = "2026-07-19";
+const omissionReason =
+  "The exact end-of-day GitHub projection is unavailable for this completed UTC day.";
+
+describe("historical production-day regeneration", () => {
+  let directory = "";
+
+  afterEach(() => {
+    if (directory.length > 0) {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("binds a passed collection attempt, artifact and quality report", () => {
+    const request = writeFixtures();
+
+    const result = loadHistoricalRegeneration(loadParams(request));
+
+    expect(result.verifiedCollectionStep).toMatchObject({
+      id: "collect",
+      status: "passed",
+      exitCode: 0,
+    });
+    expect(result.provenance).toMatchObject({
+      mode: "historical-regeneration",
+      requestedUtcPeriod: {
+        startedAt: "2026-07-19T00:00:00.000Z",
+        endedAt: "2026-07-20T00:00:00.000Z",
+      },
+      githubOmission: {
+        mode: "github_projection_unavailable_historical",
+        reason: omissionReason,
+      },
+    });
+  });
+
+  it("fails closed when any approved content hash differs", () => {
+    const request = writeFixtures();
+
+    expect(() =>
+      loadHistoricalRegeneration(
+        loadParams({
+          ...request,
+          collectionArtifactSha256: "0".repeat(64),
+        }),
+      ),
+    ).toThrow("source collection artifact content hash does not match");
+  });
+
+  it("rejects a source attempt whose collection step did not pass", () => {
+    const request = writeFixtures({ collectStatus: "failed" });
+
+    expect(() => loadHistoricalRegeneration(loadParams(request))).toThrow(
+      "Source production attempt did not pass collect",
+    );
+  });
+
+  it("rejects collection evidence from another UTC day", () => {
+    const request = writeFixtures({ collectionDate: "2026-07-18" });
+
+    expect(() => loadHistoricalRegeneration(loadParams(request))).toThrow(
+      "Source production attempt is not a strict failed run",
+    );
+  });
+
+  it("rejects provider counts that disagree across collection evidence", () => {
+    const request = writeFixtures({ qualityXCount: 89 });
+
+    expect(() => loadHistoricalRegeneration(loadParams(request))).toThrow(
+      "Collection provider counts do not match quality evidence",
+    );
+  });
+
+  it("requires a safe explicit GitHub omission reason", () => {
+    const request = writeFixtures();
+
+    expect(() =>
+      loadHistoricalRegeneration({
+        ...loadParams(request),
+        githubOmissionReason: "too short",
+      }),
+    ).toThrow("requires one safe GitHub omission reason");
+  });
+
+  function writeFixtures(
+    options: {
+      readonly collectionDate?: string;
+      readonly collectStatus?: "passed" | "failed";
+      readonly qualityXCount?: number;
+    } = {},
+  ): Extract<
+    ProductionDayExecutionRequest,
+    { readonly mode: "historical-regeneration" }
+  > {
+    directory = mkdtempSync(join(tmpdir(), "summary-regeneration-"));
+    const fixtureDate = options.collectionDate ?? collectionDate;
+    const sourceReportPath = join(directory, "source-report.json");
+    const collectionArtifactPath = join(directory, "collection.json");
+    const collectionQualityReportPath = join(directory, "quality.json");
+    const datasetManifestPath = join(directory, "dataset-manifest.json");
+    const providerCounts = {
+      "github-trending-page": 20,
+      "hacker-news": 82,
+      reddit: 161,
+      rss: 72,
+      "x-twitter": 90,
+    };
+
+    writeJson(sourceReportPath, {
+      schemaVersion: 1,
+      artifactFormat: "reader-summary-production-day-run-v1",
+      generatedBy: "npm run run:reader-summary-production-day",
+      requestedDate: fixtureDate,
+      collectionDate: fixtureDate,
+      blockingPassed: false,
+      model: {
+        liveCollection: true,
+        allowDegraded: false,
+        allowHistorical: false,
+      },
+      steps: [
+        passedStep("migrate"),
+        options.collectStatus === "failed"
+          ? { ...passedStep("collect"), status: "failed", exitCode: 1 }
+          : passedStep("collect"),
+        passedStep("collection-quality"),
+        {
+          id: "durable-reader-summary",
+          command: "npm run capture:durable-reader-summary",
+          status: "failed",
+          durationMs: 1,
+          exitCode: 1,
+        },
+      ],
+    });
+    writeJson(collectionArtifactPath, {
+      schemaVersion: 1,
+      artifactFormat: "reader-summary-clean-real-day-collection-v1",
+      generatedBy: "npm run run:reader-summary-clean-real-day-collection",
+      blockingPassed: true,
+      qualityGates: { collectionPassed: true },
+      run: { collectionDate: fixtureDate },
+      inputs: {
+        targetPublishedWindow: {
+          startInclusive: `${fixtureDate}T00:00:00.000Z`,
+          endExclusive:
+            fixtureDate === "2026-07-19"
+              ? "2026-07-20T00:00:00.000Z"
+              : "2026-07-19T00:00:00.000Z",
+        },
+      },
+      targetWindow: { providerCounts },
+      scans: Object.keys(providerCounts).map((providerKey) => ({
+        providerKey,
+        status: "succeeded",
+      })),
+    });
+    writeJson(collectionQualityReportPath, {
+      schemaVersion: 1,
+      artifactFormat: "yesterday-social-collection-quality-report-v1",
+      generatedBy: "npm run check:yesterday-social-collection-quality",
+      collectionDate: fixtureDate,
+      collectionBlockingPassed: true,
+      qualityGates: { qualityPassed: true },
+      dayWindowAudit: {
+        providerBreakdown: Object.entries(providerCounts).map(
+          ([providerKey, count]) => ({
+            providerKey,
+            publishedInsideWindowFeedItemCount:
+              providerKey === "x-twitter"
+                ? (options.qualityXCount ?? count)
+                : count,
+          }),
+        ),
+      },
+    });
+    writeJson(
+      datasetManifestPath,
+      buildReaderSummaryDayDatasetManifest({
+        tenantId,
+        workspaceId,
+        startedAt: new Date(`${fixtureDate}T00:00:00.000Z`),
+        endedAt: new Date(
+          fixtureDate === "2026-07-19"
+            ? "2026-07-20T00:00:00.000Z"
+            : "2026-07-19T00:00:00.000Z",
+        ),
+        generatedAt: new Date("2026-07-20T00:05:00.000Z"),
+        feedRows: Object.entries(providerCounts).flatMap(
+          ([providerKey, count]) =>
+            Array.from({ length: count }, (_, index) => ({
+              providerKey,
+              rowJson: `${providerKey}:${index}`,
+            })),
+        ),
+        eligibilityRows: [{ rowJson: "github-binding" }],
+      }),
+    );
+    for (const path of [
+      sourceReportPath,
+      collectionArtifactPath,
+      collectionQualityReportPath,
+      datasetManifestPath,
+    ]) {
+      chmodSync(path, 0o400);
+    }
+
+    return {
+      mode: "historical-regeneration",
+      sourceReportPath,
+      sourceReportSha256: digest(sourceReportPath),
+      collectionArtifactPath,
+      collectionArtifactSha256: digest(collectionArtifactPath),
+      collectionQualityReportPath,
+      collectionQualityReportSha256: digest(collectionQualityReportPath),
+      datasetManifestPath,
+      datasetManifestSha256: digest(datasetManifestPath),
+      allowHistoricalGitHubOmission: true,
+    };
+  }
+});
+
+function loadParams(
+  request: Extract<
+    ProductionDayExecutionRequest,
+    { readonly mode: "historical-regeneration" }
+  >,
+) {
+  return {
+    request,
+    collectionDate,
+    githubOmissionReason: omissionReason,
+    recoveryRoot: directoryFor(request.sourceReportPath),
+    forbiddenOutputPaths: [],
+    tenantId,
+    workspaceId,
+    now,
+  };
+}
+
+function directoryFor(path: string): string {
+  return path.slice(0, path.lastIndexOf("/"));
+}
+
+function passedStep(id: string) {
+  return {
+    id,
+    command: `npm run ${id}`,
+    status: "passed",
+    durationMs: 1,
+    exitCode: 0,
+  };
+}
+
+function writeJson(path: string, value: unknown): void {
+  writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+function digest(path: string): string {
+  return sha256Hex(readFileSync(path));
+}

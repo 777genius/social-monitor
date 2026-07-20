@@ -19,8 +19,9 @@ export type ProductionRuntimeLiveIdentity = {
 };
 
 export const runtimeLiveIdentityProofRequired = (
-  executionMode: "live-production" | "historical-reuse",
-): boolean => executionMode === "live-production";
+  executionMode:
+    "live-production" | "historical-regeneration" | "historical-reuse",
+): boolean => executionMode !== "historical-reuse";
 
 export const probeProductionRuntimeLiveIdentity = async (params: {
   readonly client: Pick<AgentRuntimeClientPort, "checkHealth">;

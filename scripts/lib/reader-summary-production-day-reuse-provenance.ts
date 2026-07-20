@@ -16,9 +16,29 @@ const reuseSourceArtifactIdOption = "--reuse-source-artifact-id";
 const reuseSourceArtifactSha256Option = "--reuse-source-artifact-sha256";
 const reuseEvidenceArtifactIdOption = "--reuse-evidence-artifact-id";
 const reuseEvidenceArtifactSha256Option = "--reuse-evidence-artifact-sha256";
+const reuseCollectionArtifactOption = "--reuse-collection-artifact";
+const reuseCollectionArtifactSha256Option =
+  "--reuse-collection-artifact-sha256";
+const reuseCollectionQualityReportOption = "--reuse-collection-quality-report";
+const reuseCollectionQualityReportSha256Option =
+  "--reuse-collection-quality-report-sha256";
+const reuseDatasetManifestOption = "--reuse-dataset-manifest";
+const reuseDatasetManifestSha256Option = "--reuse-dataset-manifest-sha256";
 
 export type ProductionDayExecutionRequest =
   | { readonly mode: "live-production" }
+  | {
+      readonly mode: "historical-regeneration";
+      readonly sourceReportPath: string;
+      readonly sourceReportSha256: string;
+      readonly collectionArtifactPath: string;
+      readonly collectionArtifactSha256: string;
+      readonly collectionQualityReportPath: string;
+      readonly collectionQualityReportSha256: string;
+      readonly datasetManifestPath: string;
+      readonly datasetManifestSha256: string;
+      readonly allowHistoricalGitHubOmission: true;
+    }
   | {
       readonly mode: "historical-reuse";
       readonly sourceReportPath: string;
@@ -34,6 +54,20 @@ export function resolveProductionDayExecutionRequest(
   const skipLiveCollection = args.includes("--skip-live-collection");
   const reuseExistingArtifacts = args.includes("--reuse-existing-artifacts");
   const allowHistorical = args.includes("--allow-historical");
+  const regenerateAfterPassedCollection = args.includes(
+    "--regenerate-after-passed-collection",
+  );
+  const allowHistoricalGitHubOmission = args.includes(
+    "--allow-historical-github-omission",
+  );
+  const suppliedRegenerationOption = [
+    reuseCollectionArtifactOption,
+    reuseCollectionArtifactSha256Option,
+    reuseCollectionQualityReportOption,
+    reuseCollectionQualityReportSha256Option,
+    reuseDatasetManifestOption,
+    reuseDatasetManifestSha256Option,
+  ].some((option) => args.includes(option));
   const suppliedReuseOption = [
     reuseSourceReportOption,
     reuseSourceArtifactIdOption,
@@ -44,7 +78,56 @@ export function resolveProductionDayExecutionRequest(
   const anyHistoricalIntent =
     skipLiveCollection || reuseExistingArtifacts || suppliedReuseOption;
 
+  if (regenerateAfterPassedCollection || suppliedRegenerationOption) {
+    if (
+      !regenerateAfterPassedCollection ||
+      !allowHistoricalGitHubOmission ||
+      skipLiveCollection ||
+      reuseExistingArtifacts ||
+      allowHistorical ||
+      args.includes(reuseSourceArtifactIdOption) ||
+      args.includes(reuseEvidenceArtifactIdOption) ||
+      args.includes(reuseEvidenceArtifactSha256Option)
+    ) {
+      throw new Error(
+        "Historical regeneration requires its bounded mode, GitHub omission authorization and fresh summary capture",
+      );
+    }
+    return {
+      mode: "historical-regeneration",
+      sourceReportPath: requiredOption(args, reuseSourceReportOption),
+      sourceReportSha256: requiredSha256(args, reuseSourceArtifactSha256Option),
+      collectionArtifactPath: requiredOption(
+        args,
+        reuseCollectionArtifactOption,
+      ),
+      collectionArtifactSha256: requiredSha256(
+        args,
+        reuseCollectionArtifactSha256Option,
+      ),
+      collectionQualityReportPath: requiredOption(
+        args,
+        reuseCollectionQualityReportOption,
+      ),
+      collectionQualityReportSha256: requiredSha256(
+        args,
+        reuseCollectionQualityReportSha256Option,
+      ),
+      datasetManifestPath: requiredOption(args, reuseDatasetManifestOption),
+      datasetManifestSha256: requiredSha256(
+        args,
+        reuseDatasetManifestSha256Option,
+      ),
+      allowHistoricalGitHubOmission: true,
+    };
+  }
+
   if (!anyHistoricalIntent) {
+    if (allowHistoricalGitHubOmission) {
+      throw new Error(
+        "Historical GitHub omission is restricted to historical regeneration",
+      );
+    }
     return { mode: "live-production" };
   }
   if (!skipLiveCollection || !reuseExistingArtifacts || !allowHistorical) {

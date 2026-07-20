@@ -87,4 +87,66 @@ describe("production-day execution request", () => {
       ]),
     ).toThrow("--reuse-source-report must be provided exactly once");
   });
+
+  it("accepts only a fully hash-bound historical regeneration", () => {
+    expect(
+      resolveProductionDayExecutionRequest([
+        "--regenerate-after-passed-collection",
+        "--allow-historical-github-omission",
+        "--reuse-source-report",
+        "/tmp/source-report.json",
+        "--reuse-source-artifact-sha256",
+        "a".repeat(64),
+        "--reuse-collection-artifact",
+        "/tmp/collection.json",
+        "--reuse-collection-artifact-sha256",
+        "b".repeat(64),
+        "--reuse-collection-quality-report",
+        "/tmp/collection-quality.json",
+        "--reuse-collection-quality-report-sha256",
+        "c".repeat(64),
+        "--reuse-dataset-manifest",
+        "/tmp/dataset-manifest.json",
+        "--reuse-dataset-manifest-sha256",
+        "d".repeat(64),
+      ]),
+    ).toEqual({
+      mode: "historical-regeneration",
+      sourceReportPath: "/tmp/source-report.json",
+      sourceReportSha256: "a".repeat(64),
+      collectionArtifactPath: "/tmp/collection.json",
+      collectionArtifactSha256: "b".repeat(64),
+      collectionQualityReportPath: "/tmp/collection-quality.json",
+      collectionQualityReportSha256: "c".repeat(64),
+      datasetManifestPath: "/tmp/dataset-manifest.json",
+      datasetManifestSha256: "d".repeat(64),
+      allowHistoricalGitHubOmission: true,
+    });
+  });
+
+  it.each([
+    [],
+    ["--allow-historical-github-omission"],
+    ["--skip-live-collection", "--allow-historical-github-omission"],
+    ["--allow-historical", "--allow-historical-github-omission"],
+  ])("rejects an unbounded regeneration request: %p", (...extraFlags) => {
+    expect(() =>
+      resolveProductionDayExecutionRequest([
+        "--regenerate-after-passed-collection",
+        ...extraFlags,
+      ]),
+    ).toThrow();
+  });
+
+  it("rejects GitHub omission on the normal production flow", () => {
+    expect(() =>
+      resolveProductionDayExecutionRequest([
+        "--date",
+        "2026-07-19",
+        "--allow-historical-github-omission",
+      ]),
+    ).toThrow(
+      "Historical GitHub omission is restricted to historical regeneration",
+    );
+  });
 });

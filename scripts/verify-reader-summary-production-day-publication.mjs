@@ -105,18 +105,33 @@ function validateReport(report, expectedDate, evidencePath, frontendPath) {
     frontendBytes,
     expectedPeriod,
   );
-  validateModel(report.model, binding.runtimeProvenance);
+  validateModel(report.model, binding.runtimeProvenance, report.provenance);
   validateSummary(report.summary, binding);
   validateReportIdentity(report.reportIdentity, binding, expectedDate);
-  validateLiveProvenance(report.provenance, binding, expectedPeriod);
+  validateLiveProvenance(
+    report.provenance,
+    binding,
+    expectedPeriod,
+    evidence.provenance.datasetManifest,
+  );
   validateRun(report.run, binding.captureExecution);
   return binding;
 }
 
-function validateModel(model, runtimeProvenance) {
+function validateModel(model, runtimeProvenance, provenance) {
   assertObject(model, "report.model");
+  assertObject(provenance, "report.provenance");
+  const executionFlagsMatch =
+    (provenance.mode === "live-production" &&
+      model.liveCollection === true &&
+      model.reusedCollection === false &&
+      model.freshSummaryCapture === true) ||
+    (provenance.mode === "historical-regeneration" &&
+      model.liveCollection === false &&
+      model.reusedCollection === true &&
+      model.freshSummaryCapture === true);
   if (
-    model.liveCollection !== true ||
+    !executionFlagsMatch ||
     stableJson(runtimeFields(model, runtimeProvenance)) !==
       stableJson(runtimeProvenance) ||
     !validNotExecutedModelFields(model, runtimeProvenance) ||
@@ -446,6 +461,8 @@ function validateQualityGates(qualityGates) {
     "topicLabelerProvenanceVerified",
     "provenanceMatchesExecutionMode",
     "reportUtcWindowMatchesRequestedDate",
+    "collectionInputProvenanceSatisfied",
+    "regenerationDatasetGuardVerified",
   ];
   if (
     gateNames.length === 0 ||
@@ -491,6 +508,9 @@ function validateEvidence(
   const runtimeHealth = capture.runtimeHealth;
   const frontendBinding = capture.frontendArtifact;
   const runtimeProvenance = runtimeProvenanceFromExecutorAttestations(evidence);
+  if (evidence.provenance.datasetManifest !== undefined) {
+    validateDatasetGuardEvidence(evidence.provenance.datasetManifest);
+  }
   validateFrontendRuntimeConsistency(frontend, runtimeProvenance);
   if (
     evidence.schemaVersion !== 1 ||
@@ -619,13 +639,49 @@ function validateRun(run, captureExecution) {
   }
 }
 
-function validateLiveProvenance(provenance, binding, expectedPeriod) {
+function validateLiveProvenance(
+  provenance,
+  binding,
+  expectedPeriod,
+  evidenceDatasetGuard,
+) {
   assertObject(provenance, "report.provenance");
   assertObject(provenance.sourceEvidence, "report.provenance.sourceEvidence");
+  const standardLiveProvenance =
+    provenance.mode === "live-production" && provenance.sourceReport === null;
+  const regenerationProvenance =
+    provenance.mode === "historical-regeneration" &&
+    provenance.priorCollectionProof !== null &&
+    typeof provenance.priorCollectionProof === "object" &&
+    hashBoundArtifactMatches(
+      provenance.priorCollectionProof.sourceAttempt,
+      "reader-summary-production-day-run-v1",
+    ) &&
+    hashBoundArtifactMatches(
+      provenance.priorCollectionProof.collectionArtifact,
+      "reader-summary-clean-real-day-collection-v1",
+    ) &&
+    hashBoundArtifactMatches(
+      provenance.priorCollectionProof.collectionQualityReport,
+      "yesterday-social-collection-quality-report-v1",
+    ) &&
+    datasetGuardMatchesManifest(
+      provenance.datasetGuardEvidence,
+      provenance.regenerationInputManifest,
+    ) &&
+    provenance.freshnessOverride?.mode ===
+      "historical_regeneration_current_snapshot" &&
+    provenance.freshnessOverride?.generalAllowHistorical === false &&
+    provenance.freshnessOverride?.maxManifestAgeSeconds === 1800 &&
+    stableJson(provenance.datasetGuardEvidence) ===
+      stableJson(evidenceDatasetGuard) &&
+    provenance.githubOmission?.mode ===
+      "github_projection_unavailable_historical" &&
+    typeof provenance.githubOmission?.reason === "string" &&
+    provenance.githubOmission.reason.trim().length >= 20;
   if (
-    provenance.mode !== "live-production" ||
+    (!standardLiveProvenance && !regenerationProvenance) ||
     provenance.nonLive !== false ||
-    provenance.sourceReport !== null ||
     !periodsEqual(provenance.requestedUtcPeriod, expectedPeriod) ||
     !periodsEqual(provenance.collectionUtcPeriod, expectedPeriod) ||
     stableJson(provenance.sourceEvidence) !== stableJson(binding)
@@ -634,6 +690,64 @@ function validateLiveProvenance(provenance, binding, expectedPeriod) {
       "dated production-day report must carry exact live, non-reused provenance",
     );
   }
+}
+
+function validateDatasetGuardEvidence(guard) {
+  assertObject(guard, "evidence.provenance.datasetManifest");
+  const expectedPhases = [
+    "before_evidence_selection",
+    "after_evidence_selection",
+    "before_publication",
+  ];
+  if (
+    guard.manifestFormat !== "reader-summary-day-dataset-manifest-v1" ||
+    !isSha256(guard.manifestFileSha256) ||
+    !isSha256(guard.datasetSha256) ||
+    typeof guard.manifestGeneratedAt !== "string" ||
+    typeof guard.feedRowCount !== "number" ||
+    typeof guard.githubEligibilityRowCount !== "number" ||
+    guard.providerCounts === null ||
+    typeof guard.providerCounts !== "object" ||
+    stableJson(guard.completedPhases) !== stableJson(expectedPhases)
+  ) {
+    fail("dataset manifest guard evidence is incomplete");
+  }
+}
+
+function datasetGuardMatchesManifest(guard, manifest) {
+  if (
+    guard === null ||
+    typeof guard !== "object" ||
+    manifest === null ||
+    typeof manifest !== "object"
+  ) {
+    return false;
+  }
+  return (
+    guard.manifestFormat === manifest.artifactFormat &&
+    guard.manifestFileSha256 === manifest.sha256 &&
+    guard.manifestGeneratedAt === manifest.generatedAt &&
+    guard.datasetSha256 === manifest.datasetSha256 &&
+    guard.feedRowCount === manifest.feedRowCount &&
+    guard.githubEligibilityRowCount === manifest.githubEligibilityRowCount &&
+    stableJson(guard.providerCounts) === stableJson(manifest.providerCounts) &&
+    stableJson(guard.completedPhases) ===
+      stableJson([
+        "before_evidence_selection",
+        "after_evidence_selection",
+        "before_publication",
+      ])
+  );
+}
+
+function hashBoundArtifactMatches(value, artifactFormat) {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    value.artifactFormat === artifactFormat &&
+    typeof value.sha256 === "string" &&
+    /^[0-9a-f]{64}$/u.test(value.sha256)
+  );
 }
 
 function buildProof({

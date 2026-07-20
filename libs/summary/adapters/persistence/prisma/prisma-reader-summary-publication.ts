@@ -10,12 +10,19 @@ import {
   type ReaderSummaryPublicationSqlRow,
 } from "../reader-summary-publication-proof";
 import type { PrismaSummaryClient } from "./prisma-summary-client";
+import type { PrismaReaderSummaryClient } from "./prisma-reader-summary-client";
 import { runSerializableReaderSummaryTransaction } from "./prisma-summary-transaction";
 
-export class PrismaReaderSummaryPublication
-  implements ReaderSummaryPublicationPort
-{
-  constructor(private readonly prisma: PrismaSummaryClient) {}
+export type ReaderSummaryPublicationTransactionGuard = (
+  client: PrismaReaderSummaryClient,
+  command: ReaderSummaryPublicationCommand,
+) => Promise<void>;
+
+export class PrismaReaderSummaryPublication implements ReaderSummaryPublicationPort {
+  constructor(
+    private readonly prisma: PrismaSummaryClient,
+    private readonly transactionGuard?: ReaderSummaryPublicationTransactionGuard,
+  ) {}
 
   async publish(
     command: ReaderSummaryPublicationCommand,
@@ -23,12 +30,13 @@ export class PrismaReaderSummaryPublication
     const payload = buildReaderSummaryPublicationPayload(command);
     const serialized = JSON.stringify(payload);
     const rows = await withPrismaWriteRetry(() =>
-      runSerializableReaderSummaryTransaction(this.prisma, (prisma) =>
-        prisma.$queryRaw<readonly ReaderSummaryPublicationSqlRow[]>`
+      runSerializableReaderSummaryTransaction(this.prisma, async (prisma) => {
+        await this.transactionGuard?.(prisma, command);
+        return prisma.$queryRaw<readonly ReaderSummaryPublicationSqlRow[]>`
           SELECT *
           FROM "publish_reader_summary"(${serialized}::jsonb)
-        `,
-      ),
+        `;
+      }),
     );
     const row = rows[0];
     if (rows.length !== 1 || row === undefined) {

@@ -1,0 +1,139 @@
+import {
+  durableEvidenceBindingEqual,
+  isRecord,
+  periodsEqual,
+  type DurableEvidenceBinding,
+  type ProductionDayUtcPeriod,
+} from "./reader-summary-production-day-provenance";
+import type { HistoricalRegenerationSourceProvenance } from "./reader-summary-production-day-regeneration";
+import { completeDatasetGuardPhases } from "./reader-summary-day-dataset-guard";
+
+type DurableEvidenceWithProvenance = {
+  readonly provenance?: unknown;
+};
+
+export type HistoricalRegenerationProvenance =
+  HistoricalRegenerationSourceProvenance & {
+    readonly nonLive: false;
+    readonly sourceEvidence: DurableEvidenceBinding | null;
+    readonly datasetGuardEvidence: unknown;
+  };
+
+export function buildHistoricalRegenerationProvenance(params: {
+  readonly source: HistoricalRegenerationSourceProvenance;
+  readonly durableEvidence: DurableEvidenceWithProvenance | null;
+  readonly evidenceBinding: DurableEvidenceBinding | null;
+}): HistoricalRegenerationProvenance {
+  return {
+    ...params.source,
+    nonLive: false,
+    sourceEvidence: params.evidenceBinding,
+    datasetGuardEvidence: datasetGuardEvidence(params.durableEvidence),
+  };
+}
+
+export function validHistoricalRegenerationProvenance(params: {
+  readonly value: unknown;
+  readonly expectedPeriod: ProductionDayUtcPeriod;
+  readonly evidenceBinding: DurableEvidenceBinding | null;
+}): boolean {
+  if (!isRecord(params.value) || params.evidenceBinding === null) {
+    return false;
+  }
+  const priorCollectionProof = params.value.priorCollectionProof;
+  return (
+    params.value.mode === "historical-regeneration" &&
+    params.value.nonLive === false &&
+    periodsEqual(params.value.requestedUtcPeriod, params.expectedPeriod) &&
+    periodsEqual(params.value.collectionUtcPeriod, params.expectedPeriod) &&
+    durableEvidenceBindingEqual(
+      params.value.sourceEvidence,
+      params.evidenceBinding,
+    ) &&
+    isRecord(priorCollectionProof) &&
+    hashBoundArtifactMatches(
+      priorCollectionProof.sourceAttempt,
+      "reader-summary-production-day-run-v1",
+    ) &&
+    hashBoundArtifactMatches(
+      priorCollectionProof.collectionArtifact,
+      "reader-summary-clean-real-day-collection-v1",
+    ) &&
+    hashBoundArtifactMatches(
+      priorCollectionProof.collectionQualityReport,
+      "yesterday-social-collection-quality-report-v1",
+    ) &&
+    isRecord(params.value.regenerationInputManifest) &&
+    datasetGuardMatchesManifest(
+      params.value.datasetGuardEvidence,
+      params.value.regenerationInputManifest,
+    ) &&
+    isRecord(params.value.freshnessOverride) &&
+    params.value.freshnessOverride.mode ===
+      "historical_regeneration_current_snapshot" &&
+    params.value.freshnessOverride.generalAllowHistorical === false &&
+    params.value.freshnessOverride.maxManifestAgeSeconds === 1800 &&
+    isRecord(params.value.githubOmission) &&
+    params.value.githubOmission.mode ===
+      "github_projection_unavailable_historical" &&
+    typeof params.value.githubOmission.reason === "string" &&
+    params.value.githubOmission.reason.trim().length >= 20
+  );
+}
+
+export function regenerationDatasetGuardMatches(params: {
+  readonly evidence: DurableEvidenceWithProvenance | null;
+  readonly provenance: HistoricalRegenerationSourceProvenance | null;
+}): boolean {
+  if (params.evidence === null || params.provenance === null) {
+    return false;
+  }
+  const evidenceProvenance = params.evidence.provenance;
+  if (!isRecord(evidenceProvenance)) {
+    return false;
+  }
+  return datasetGuardMatchesManifest(
+    evidenceProvenance.datasetManifest,
+    params.provenance.regenerationInputManifest,
+  );
+}
+
+function datasetGuardEvidence(
+  evidence: DurableEvidenceWithProvenance | null,
+): unknown {
+  if (!isRecord(evidence?.provenance)) {
+    return null;
+  }
+  return evidence.provenance.datasetManifest ?? null;
+}
+
+function datasetGuardMatchesManifest(
+  guard: unknown,
+  manifest: Record<string, unknown>,
+): boolean {
+  return (
+    isRecord(guard) &&
+    guard.manifestFormat === manifest.artifactFormat &&
+    guard.manifestFileSha256 === manifest.sha256 &&
+    guard.manifestGeneratedAt === manifest.generatedAt &&
+    guard.datasetSha256 === manifest.datasetSha256 &&
+    guard.feedRowCount === manifest.feedRowCount &&
+    guard.githubEligibilityRowCount === manifest.githubEligibilityRowCount &&
+    JSON.stringify(guard.providerCounts) ===
+      JSON.stringify(manifest.providerCounts) &&
+    JSON.stringify(guard.completedPhases) ===
+      JSON.stringify(completeDatasetGuardPhases)
+  );
+}
+
+function hashBoundArtifactMatches(
+  value: unknown,
+  artifactFormat: string,
+): boolean {
+  return (
+    isRecord(value) &&
+    value.artifactFormat === artifactFormat &&
+    typeof value.sha256 === "string" &&
+    /^[0-9a-f]{64}$/u.test(value.sha256)
+  );
+}

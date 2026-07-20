@@ -175,6 +175,7 @@ function buildLiveReport(
   return buildProductionDayReport({
     executionMode: "live-production",
     historicalReuseProvenance: null,
+    historicalRegenerationProvenance: null,
     collectionDate,
     evidencePath,
     frontendFixturePath,

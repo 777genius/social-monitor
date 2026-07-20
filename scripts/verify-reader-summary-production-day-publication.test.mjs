@@ -189,6 +189,45 @@ test("rejects historical provenance even when blocking is forged true", () => {
   });
 });
 
+test("accepts hash-bound historical regeneration with a fresh summary", () => {
+  withFixture(({ reportPath, proofPath, report, evidence }) => {
+    report.provenance = historicalRegenerationProvenance(
+      report.provenance.sourceEvidence,
+      evidence.provenance.datasetManifest,
+    );
+    report.model.liveCollection = false;
+    report.model.reusedCollection = true;
+    writeFileSync(reportPath, `${JSON.stringify(report)}\n`);
+    const created = runVerifier(reportPath, proofPath, "--proof-out");
+    assert.equal(created.status, 0, created.stderr);
+  });
+});
+
+test("rejects historical regeneration with an unbound collection hash", () => {
+  expectRejected(({ report }) => {
+    report.provenance = historicalRegenerationProvenance(
+      report.provenance.sourceEvidence,
+      datasetGuardEvidence(),
+    );
+    report.provenance.priorCollectionProof.collectionArtifact.sha256 =
+      "not-a-sha256";
+    report.model.liveCollection = false;
+    report.model.reusedCollection = true;
+  });
+});
+
+test("rejects historical regeneration whose dataset guard is not evidence-bound", () => {
+  expectRejected(({ report, evidence }) => {
+    report.provenance = historicalRegenerationProvenance(
+      report.provenance.sourceEvidence,
+      evidence.provenance.datasetManifest,
+    );
+    report.provenance.datasetGuardEvidence.datasetSha256 = "f".repeat(64);
+    report.model.liveCollection = false;
+    report.model.reusedCollection = true;
+  });
+});
+
 for (const options of [
   { modelVersion: "claude:gpt-5.5:xhigh" },
   { modelVersion: "codex:gpt-4:xhigh" },
@@ -306,6 +345,7 @@ function buildEvidence(frontend, frontendBytes, options) {
       fixtureOnly: false,
       database: "postgres",
       modelMode: "agent-runtime",
+      datasetManifest: datasetGuardEvidence(),
     },
     period: utcPeriod(),
     result: {
@@ -413,6 +453,8 @@ function buildReport(evidenceBytes, frontendBytes, evidence) {
     },
     model: {
       liveCollection: true,
+      reusedCollection: false,
+      freshSummaryCapture: true,
       runtimeExecution: runtimeProvenance.execution,
       runtimeExecutionReason: null,
       summaryModel: runtimeProvenance.summaryModel,
@@ -481,8 +523,77 @@ function buildReport(evidenceBytes, frontendBytes, evidence) {
       topicLabelerProvenanceVerified: true,
       provenanceMatchesExecutionMode: true,
       reportUtcWindowMatchesRequestedDate: true,
+      collectionInputProvenanceSatisfied: true,
+      regenerationDatasetGuardVerified: true,
     },
     blockingPassed: true,
+  };
+}
+
+function historicalRegenerationProvenance(sourceEvidence, datasetGuard) {
+  const period = utcPeriod();
+  return {
+    mode: "historical-regeneration",
+    nonLive: false,
+    requestedUtcPeriod: period,
+    collectionUtcPeriod: period,
+    priorCollectionProof: {
+      sourceAttempt: {
+        artifactFormat: "reader-summary-production-day-run-v1",
+        sha256: "a".repeat(64),
+      },
+      collectionArtifact: {
+        artifactFormat: "reader-summary-clean-real-day-collection-v1",
+        sha256: "b".repeat(64),
+      },
+      collectionQualityReport: {
+        artifactFormat: "yesterday-social-collection-quality-report-v1",
+        sha256: "c".repeat(64),
+      },
+    },
+    regenerationInputManifest: regenerationManifest(),
+    datasetGuardEvidence: datasetGuard,
+    githubOmission: {
+      mode: "github_projection_unavailable_historical",
+      reason:
+        "The exact end-of-day GitHub projection is unavailable for this completed UTC day.",
+    },
+    freshnessOverride: {
+      mode: "historical_regeneration_current_snapshot",
+      generalAllowHistorical: false,
+      maxManifestAgeSeconds: 1800,
+    },
+    sourceEvidence,
+  };
+}
+
+function regenerationManifest() {
+  return {
+    artifactFormat: "reader-summary-day-dataset-manifest-v1",
+    sha256: "d".repeat(64),
+    generatedAt: "2026-07-16T00:59:00.000Z",
+    datasetSha256: "e".repeat(64),
+    feedRowCount: 10,
+    githubEligibilityRowCount: 1,
+    providerCounts: { reddit: 10 },
+  };
+}
+
+function datasetGuardEvidence() {
+  const manifest = regenerationManifest();
+  return {
+    manifestFormat: manifest.artifactFormat,
+    manifestFileSha256: manifest.sha256,
+    manifestGeneratedAt: manifest.generatedAt,
+    datasetSha256: manifest.datasetSha256,
+    feedRowCount: manifest.feedRowCount,
+    githubEligibilityRowCount: manifest.githubEligibilityRowCount,
+    providerCounts: manifest.providerCounts,
+    completedPhases: [
+      "before_evidence_selection",
+      "after_evidence_selection",
+      "before_publication",
+    ],
   };
 }
 

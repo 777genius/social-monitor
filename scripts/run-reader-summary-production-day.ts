@@ -11,8 +11,6 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
-import { Pool } from "pg";
-
 import { GrpcAgentRuntimeClient } from "@social-monitor/summary/adapters/model/grpc-agent-runtime-client";
 import { SystemClock } from "@social-monitor/shared-kernel";
 
@@ -52,6 +50,9 @@ import {
   loadHistoricalReuseProvenance,
   resolveProductionDayExecutionRequest,
 } from "./lib/reader-summary-production-day-reuse-provenance";
+import { loadHistoricalRegeneration } from "./lib/reader-summary-production-day-regeneration";
+import { collectionQualityRegenerationFreshnessArgs } from "./lib/yesterday-social-collection-quality-regeneration";
+import { readProductionDayScope } from "./lib/reader-summary-production-day-scope";
 import {
   probeProductionRuntimeLiveIdentity,
   runtimeLiveIdentityProofRequired,
@@ -69,7 +70,7 @@ const executionRequest = resolveProductionDayExecutionRequest(
   process.argv.slice(2),
 );
 const reuseExistingArtifacts = executionRequest.mode === "historical-reuse";
-const skipLiveCollection = executionRequest.mode === "historical-reuse";
+const skipLiveCollection = executionRequest.mode !== "live-production";
 const allowDegraded = process.argv.includes("--allow-degraded");
 const allowHistorical = process.argv.includes("--allow-historical");
 const collectionDate = artifactOnly ? "1970-01-01" : resolveCollectionDate();
@@ -142,28 +143,60 @@ async function main(): Promise<void> {
           collectionDate,
         })
       : null;
-
   steps.push(runNpm("migrate", ["run", "migrate:deploy"]));
-  const scope = await readProductionDayScope();
+  const scope = await readProductionDayScope({
+    connectionString: yesterdaySocialQualityDatabaseUrl(),
+    periodStartedAt,
+    periodEndedAt,
+    collectionDate,
+  });
+  const historicalRegeneration =
+    executionRequest.mode === "historical-regeneration"
+      ? loadHistoricalRegeneration({
+          request: executionRequest,
+          collectionDate,
+          githubOmissionReason:
+            process.env
+              .DURABLE_READER_SUMMARY_HISTORICAL_GITHUB_OMISSION_REASON,
+          recoveryRoot:
+            process.env.READER_SUMMARY_PRODUCTION_DAY_RECOVERY_DIR ??
+            `/var/lib/social-monitor/artifacts/recovery/${collectionDate}`,
+          forbiddenOutputPaths: [
+            outputPath,
+            datedOutputPath,
+            evidencePath,
+            frontendFixturePath,
+            runtimeIdentityPath,
+            resolve(
+              "ops/evals/yesterday-social-collection-quality-report.v1.json",
+            ),
+          ],
+          tenantId: scope.tenantId,
+          workspaceId: scope.workspaceId,
+          now: new Date(),
+        })
+      : null;
 
-  const collectionStep: StepReport = skipLiveCollection
-    ? {
-        id: "collect",
-        command:
-          "npm run run:reader-summary-clean-real-day-collection -- skipped",
-        status: "skipped",
-        durationMs: 0,
-        exitCode: null,
-      }
-    : runNpm("collect", [
-        "run",
-        "run:reader-summary-clean-real-day-collection",
-        "--",
-        "--update",
-        "--date",
-        collectionDate,
-        ...(allowHistorical ? [] : ["--wait-for-x-readiness"]),
-      ]);
+  const collectionStep: StepReport = historicalRegeneration
+    ? historicalRegeneration.verifiedCollectionStep
+    : skipLiveCollection
+      ? {
+          id: "collect",
+          command:
+            "npm run run:reader-summary-clean-real-day-collection -- skipped",
+          status: "skipped",
+          durationMs: 0,
+          exitCode: null,
+        }
+      : runNpm("collect", [
+          "run",
+          "run:reader-summary-clean-real-day-collection",
+          "--",
+          "--update",
+          "--date",
+          collectionDate,
+          ...(allowHistorical ? [] : ["--wait-for-x-readiness"]),
+        ]);
   steps.push(collectionStep);
 
   mkdirSync(runtimeArtifactDirectory, { recursive: true });
@@ -177,6 +210,20 @@ async function main(): Promise<void> {
     "--date",
     collectionDate,
     "--write-failed-report",
+    ...(historicalRegeneration
+      ? collectionQualityRegenerationFreshnessArgs({
+          manifestPath:
+            executionRequest.mode === "historical-regeneration"
+              ? executionRequest.datasetManifestPath
+              : "",
+          manifestSha256:
+            executionRequest.mode === "historical-regeneration"
+              ? executionRequest.datasetManifestSha256
+              : "",
+          tenantId: scope.tenantId,
+          workspaceId: scope.workspaceId,
+        })
+      : []),
     ...(allowHistorical ? ["--allow-historical"] : []),
   ]);
   steps.push(collectionQualityStep);
@@ -201,6 +248,8 @@ async function main(): Promise<void> {
         safeMessage,
       },
       historicalReuseProvenance: historicalReuse?.provenance ?? null,
+      historicalRegenerationProvenance:
+        historicalRegeneration?.provenance ?? null,
     });
     throw new Error(safeMessage);
   }
@@ -211,7 +260,13 @@ async function main(): Promise<void> {
     ? existingSummaryArtifactStep()
     : runNpm(
         "durable-reader-summary",
-        ["run", "capture:durable-reader-summary"],
+        [
+          "run",
+          "capture:durable-reader-summary",
+          ...(executionRequest.mode === "historical-regeneration"
+            ? ["--", "--allow-historical-github-omission"]
+            : []),
+        ],
         {
           DATABASE_URL: yesterdaySocialQualityDatabaseUrl(),
           DURABLE_READER_SUMMARY_MODEL: summaryModel,
@@ -247,6 +302,17 @@ async function main(): Promise<void> {
             runtimeArtifactDirectory,
             `rejected-topic-map-${collectionDate}.v1.json`,
           ),
+          ...(executionRequest.mode === "historical-regeneration"
+            ? {
+                DURABLE_READER_SUMMARY_DATASET_MANIFEST_PATH:
+                  executionRequest.datasetManifestPath,
+                DURABLE_READER_SUMMARY_DATASET_MANIFEST_SHA256:
+                  executionRequest.datasetManifestSha256,
+                DURABLE_READER_SUMMARY_RECOVERY_ROOT:
+                  process.env.READER_SUMMARY_PRODUCTION_DAY_RECOVERY_DIR ??
+                  `/var/lib/social-monitor/artifacts/recovery/${collectionDate}`,
+              }
+            : {}),
         },
       );
   if (!reuseExistingArtifacts && summaryStep.status === "passed") {
@@ -353,6 +419,8 @@ async function main(): Promise<void> {
     includeSummaryEvidence: true,
     failure: null,
     historicalReuseProvenance: historicalReuse?.provenance ?? null,
+    historicalRegenerationProvenance:
+      historicalRegeneration?.provenance ?? null,
   });
 
   if (
@@ -377,6 +445,9 @@ function persistProductionDayReport(params: {
   readonly includeSummaryEvidence: boolean;
   readonly failure: ProductionDayReport["failure"];
   readonly historicalReuseProvenance: HistoricalReuseProvenance | null;
+  readonly historicalRegenerationProvenance: Parameters<
+    typeof buildProductionDayReport
+  >[0]["historicalRegenerationProvenance"];
 }): ProductionDayReport {
   const report = buildReport(params);
   const serialized = `${JSON.stringify(report, null, 2)}\n`;
@@ -527,7 +598,10 @@ async function readActualRuntimeHealth(): Promise<ProductionDayRuntimeHealth> {
 }
 
 function shouldRunCleanDayE2e(): boolean {
-  if (reuseExistingArtifacts) {
+  if (
+    reuseExistingArtifacts ||
+    executionRequest.mode === "historical-regeneration"
+  ) {
     return true;
   }
   if (skipLiveCollection) {
@@ -560,6 +634,9 @@ function buildReport(params: {
   readonly includeSummaryEvidence: boolean;
   readonly failure: ProductionDayReport["failure"];
   readonly historicalReuseProvenance: HistoricalReuseProvenance | null;
+  readonly historicalRegenerationProvenance: Parameters<
+    typeof buildProductionDayReport
+  >[0]["historicalRegenerationProvenance"];
 }): ProductionDayReport {
   const collectionQuality = readJsonIfExists<ProductionDayCollectionQuality>(
     "ops/evals/yesterday-social-collection-quality-report.v1.json",
@@ -571,6 +648,7 @@ function buildReport(params: {
   return buildProductionDayReport({
     executionMode: executionRequest.mode,
     historicalReuseProvenance: params.historicalReuseProvenance,
+    historicalRegenerationProvenance: params.historicalRegenerationProvenance,
     collectionDate,
     evidencePath,
     frontendFixturePath,
@@ -618,89 +696,6 @@ function readEvidenceArtifact(): {
     );
   }
   return { evidence, binding: inspection.binding };
-}
-
-async function readProductionDayScope(): Promise<{
-  readonly tenantId: string;
-  readonly workspaceId: string;
-}> {
-  const pool = new Pool({
-    connectionString: yesterdaySocialQualityDatabaseUrl(),
-    min: 0,
-    max: 1,
-    connectionTimeoutMillis: 2_000,
-  });
-
-  try {
-    const result = await pool.query<{
-      readonly tenantId: string;
-      readonly workspaceId: string;
-      readonly itemCount: string;
-    }>(
-      `
-        select
-          tenant_id::text as "tenantId",
-          workspace_id::text as "workspaceId",
-          count(*)::text as "itemCount"
-        from feed_items
-        where published_at >= $1::timestamptz
-          and published_at < $2::timestamptz
-        group by tenant_id, workspace_id
-        order by count(*) desc
-        limit 1
-      `,
-      [periodStartedAt, periodEndedAt],
-    );
-    const row = result.rows[0];
-    if (row !== undefined && Number.parseInt(row.itemCount, 10) > 0) {
-      return {
-        tenantId: row.tenantId,
-        workspaceId: row.workspaceId,
-      };
-    }
-
-    return await readDominantConfiguredScope(pool);
-  } finally {
-    await pool.end().catch(() => undefined);
-  }
-}
-
-async function readDominantConfiguredScope(pool: Pool): Promise<{
-  readonly tenantId: string;
-  readonly workspaceId: string;
-}> {
-  const result = await pool.query<{
-    readonly tenantId: string;
-    readonly workspaceId: string;
-    readonly bindingCount: string;
-  }>(
-    `
-      select
-        tenant_id::text as "tenantId",
-        workspace_id::text as "workspaceId",
-        count(*)::text as "bindingCount"
-      from source_bindings
-      where deleted_at is null
-        and status = 'ENABLED'
-      group by tenant_id, workspace_id
-      order by count(*) desc
-      limit 1
-    `,
-  );
-  const row = result.rows[0];
-  if (row === undefined || Number.parseInt(row.bindingCount, 10) === 0) {
-    throw new Error(
-      `No published feed items or enabled source bindings found for ${collectionDate}`,
-    );
-  }
-
-  console.warn(
-    `No published feed items found for ${collectionDate}; using enabled source binding scope before live collection.`,
-  );
-  return {
-    tenantId: row.tenantId,
-    workspaceId: row.workspaceId,
-  };
 }
 
 function printStats(report: ProductionDayReport): void {

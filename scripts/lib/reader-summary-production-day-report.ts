@@ -23,6 +23,12 @@ import {
   type ProductionDayRuntimeProvenance,
   type ProductionDayUtcPeriod,
 } from "./reader-summary-production-day-provenance";
+import type { HistoricalRegenerationSourceProvenance } from "./reader-summary-production-day-regeneration";
+import {
+  buildHistoricalRegenerationProvenance,
+  regenerationDatasetGuardMatches,
+  validHistoricalRegenerationProvenance,
+} from "./reader-summary-production-day-regeneration-report";
 
 export type HistoricalReuseProvenance = {
   readonly mode: "historical-reuse";
@@ -104,6 +110,7 @@ type ProductionDayXAccount = {
 export type ProductionDayDurableEvidence = {
   readonly artifactId?: string;
   readonly period?: unknown;
+  readonly provenance?: unknown;
   readonly result?: {
     readonly readerSummaryId?: string;
     readonly readerSummaryJobId?: string;
@@ -116,8 +123,10 @@ export type ProductionDayDurableEvidence = {
 export type ProductionDayReport = ReturnType<typeof buildProductionDayReport>;
 
 export function buildProductionDayReport(params: {
-  readonly executionMode: "live-production" | "historical-reuse";
+  readonly executionMode:
+    "live-production" | "historical-regeneration" | "historical-reuse";
   readonly historicalReuseProvenance: HistoricalReuseProvenance | null;
+  readonly historicalRegenerationProvenance: HistoricalRegenerationSourceProvenance | null;
   readonly collectionDate: string;
   readonly evidencePath: string;
   readonly frontendFixturePath: string;
@@ -137,7 +146,10 @@ export function buildProductionDayReport(params: {
   } | null;
 }) {
   const expectedPeriod = productionDayUtcPeriod(params.collectionDate);
-  const liveProduction = params.executionMode === "live-production";
+  const writesProductionData = params.executionMode !== "historical-reuse";
+  const liveCollection = params.executionMode === "live-production";
+  const reusedCollection = params.executionMode !== "live-production";
+  const freshSummaryCapture = params.executionMode !== "historical-reuse";
   const summary = buildSummary(params.durableEvidence, params.evidenceBinding);
   const reportIdentity =
     params.evidenceBinding === null ||
@@ -148,9 +160,11 @@ export function buildProductionDayReport(params: {
           binding: params.evidenceBinding,
         });
   const provenance = resolveProvenance({
-    liveProduction,
+    executionMode: params.executionMode,
     expectedPeriod,
     historicalReuseProvenance: params.historicalReuseProvenance,
+    historicalRegenerationProvenance: params.historicalRegenerationProvenance,
+    durableEvidence: params.durableEvidence,
     evidenceBinding: params.evidenceBinding,
   });
   const exactStepsPassed = exactProductionDayStepsPassed(params.steps);
@@ -175,7 +189,7 @@ export function buildProductionDayReport(params: {
       binding: params.evidenceBinding,
     });
   const liveCaptureBound =
-    liveProduction &&
+    freshSummaryCapture &&
     params.evidenceBinding !== null &&
     params.liveCaptureExecution !== null &&
     captureExecutionMatches(
@@ -188,12 +202,21 @@ export function buildProductionDayReport(params: {
     isProductionSubscriptionRuntimeProvenance(runtimeProvenance);
   const provenanceValid = provenanceMatches({
     provenance,
-    liveProduction,
+    executionMode: params.executionMode,
     expectedPeriod,
     evidenceBinding: params.evidenceBinding,
   });
+  const regenerationProvenanceValid =
+    params.executionMode !== "historical-regeneration" ||
+    (params.historicalRegenerationProvenance !== null && provenanceValid);
+  const regenerationDatasetGuardValid =
+    params.executionMode !== "historical-regeneration" ||
+    regenerationDatasetGuardMatches({
+      evidence: params.durableEvidence,
+      provenance: params.historicalRegenerationProvenance,
+    });
   const historicalEvaluationPassed = historicalReuseEvaluationPassed({
-    liveProduction,
+    liveProduction: writesProductionData,
     steps: params.steps,
     provenanceValid,
     evidenceBound,
@@ -222,23 +245,34 @@ export function buildProductionDayReport(params: {
     reportDateMatchesRequestedDate:
       params.collectionDate === expectedPeriod.startedAt.slice(0, 10),
     reportUtcWindowMatchesRequestedDate: provenanceValid,
-    liveCollectionExecutedAndPassed: liveProduction && exactStepsPassed,
+    collectionInputProvenanceSatisfied:
+      (liveCollection && exactStepsPassed) ||
+      (params.executionMode === "historical-regeneration" &&
+        regenerationProvenanceValid &&
+        regenerationDatasetGuardValid &&
+        requiredStepPassed(params.steps, "collect")),
     cleanDayE2eExecutedAndPassed:
-      liveProduction && requiredStepPassed(params.steps, "clean-day-e2e"),
+      writesProductionData && requiredStepPassed(params.steps, "clean-day-e2e"),
     productionDefinitionOfDoneSatisfied:
-      liveProduction && exactStepsPassed && evidenceBound && liveCaptureBound,
+      writesProductionData &&
+      exactStepsPassed &&
+      evidenceBound &&
+      liveCaptureBound &&
+      regenerationDatasetGuardValid,
     strictLiveProductionControls:
-      liveProduction && !params.allowDegraded && !params.allowHistorical,
+      writesProductionData && !params.allowDegraded && !params.allowHistorical,
     subscriptionRuntimeProvenanceVerified:
-      liveProduction && evidenceBound && runtimeProvenanceValid,
+      writesProductionData && evidenceBound && runtimeProvenanceValid,
     topicLabelerProvenanceVerified:
-      liveProduction &&
+      writesProductionData &&
       evidenceBound &&
       runtimeProvenanceValid &&
       runtimeProvenance !== null &&
       (runtimeProvenance.execution === "not_executed" ||
         runtimeProvenance.topicLabeler.mode === "agent-runtime"),
     provenanceMatchesExecutionMode: provenanceValid,
+    hashBoundHistoricalRegeneration: regenerationProvenanceValid,
+    regenerationDatasetGuardVerified: regenerationDatasetGuardValid,
     historicalReuseEvaluationPassed: historicalEvaluationPassed,
     noRawSecretFragments: true,
     productionFailureAbsent: params.failure === null,
@@ -252,9 +286,11 @@ export function buildProductionDayReport(params: {
     reportIdentity,
     provenance,
     model: {
-      liveCollection: liveProduction,
+      liveCollection,
+      reusedCollection,
+      freshSummaryCapture,
       ...runtimeModelFields(runtimeProvenance),
-      writesProductionData: true as const,
+      writesProductionData,
       allowDegraded: params.allowDegraded,
       allowHistorical: params.allowHistorical,
       rawProviderPayloadPersistedInReport: false as const,
@@ -292,7 +328,7 @@ export function buildProductionDayReport(params: {
     ...reportWithoutSecretGate,
     qualityGates: finalQualityGates,
     blockingPassed:
-      liveProduction && Object.values(finalQualityGates).every(Boolean),
+      writesProductionData && Object.values(finalQualityGates).every(Boolean),
   };
 }
 
@@ -335,7 +371,13 @@ export function validateLiveProductionDayReport(params: {
   requireReportEqual(report.failure, null, "failure", violations);
   requireReportEqual(report.blockingPassed, true, "blockingPassed", violations);
 
-  if (!validSubscriptionRuntimeModel(report.model, params.binding)) {
+  if (
+    !validSubscriptionRuntimeModel(
+      report.model,
+      params.binding,
+      report.provenance,
+    )
+  ) {
     violations.push("model must exactly identify the subscription runtime");
   }
   if (!validLiveProvenance(report.provenance, expectedPeriod, params.binding)) {
@@ -434,12 +476,15 @@ function runtimeModelFields(provenance: ProductionDayRuntimeProvenance | null) {
 }
 
 function resolveProvenance(params: {
-  readonly liveProduction: boolean;
+  readonly executionMode:
+    "live-production" | "historical-regeneration" | "historical-reuse";
   readonly expectedPeriod: ProductionDayUtcPeriod;
   readonly historicalReuseProvenance: HistoricalReuseProvenance | null;
+  readonly historicalRegenerationProvenance: HistoricalRegenerationSourceProvenance | null;
+  readonly durableEvidence: ProductionDayDurableEvidence | null;
   readonly evidenceBinding: DurableEvidenceBinding | null;
 }) {
-  if (!params.liveProduction) {
+  if (params.executionMode === "historical-reuse") {
     if (params.historicalReuseProvenance === null) {
       throw new Error("Historical reuse requires immutable provenance");
     }
@@ -447,6 +492,13 @@ function resolveProvenance(params: {
   }
   if (params.historicalReuseProvenance !== null) {
     throw new Error("Live production cannot carry historical reuse provenance");
+  }
+  if (params.historicalRegenerationProvenance !== null) {
+    return buildHistoricalRegenerationProvenance({
+      source: params.historicalRegenerationProvenance,
+      durableEvidence: params.durableEvidence,
+      evidenceBinding: params.evidenceBinding,
+    });
   }
   return {
     mode: "live-production" as const,
@@ -460,14 +512,25 @@ function resolveProvenance(params: {
 
 function provenanceMatches(params: {
   readonly provenance: ReturnType<typeof resolveProvenance>;
-  readonly liveProduction: boolean;
+  readonly executionMode:
+    "live-production" | "historical-regeneration" | "historical-reuse";
   readonly expectedPeriod: ProductionDayUtcPeriod;
   readonly evidenceBinding: DurableEvidenceBinding | null;
 }): boolean {
   const windowsMatch =
     periodsEqual(params.provenance.requestedUtcPeriod, params.expectedPeriod) &&
     periodsEqual(params.provenance.collectionUtcPeriod, params.expectedPeriod);
-  if (params.liveProduction) {
+  if (params.executionMode !== "historical-reuse") {
+    if (params.executionMode === "historical-regeneration") {
+      return (
+        windowsMatch &&
+        validHistoricalRegenerationProvenance({
+          value: params.provenance,
+          expectedPeriod: params.expectedPeriod,
+          evidenceBinding: params.evidenceBinding,
+        })
+      );
+    }
     return (
       params.provenance.mode === "live-production" &&
       params.provenance.nonLive === false &&
@@ -551,8 +614,7 @@ function buildStats(
       status: pool?.attributionStatus ?? "unknown",
       policy: pool?.attributionPolicy ?? "warning_only",
       gateReason:
-        pool?.attributionGateReason ??
-        "attribution_not_reported_warning_only",
+        pool?.attributionGateReason ?? "attribution_not_reported_warning_only",
       warningCount:
         pool?.eligibleAccountZeroAttributableOutputWarningCount ?? null,
       warnings: pool?.attributionWarnings ?? [],
@@ -599,8 +661,7 @@ function normalizedXAccount(account: ProductionDayXAccount) {
     returnedCount: account.targetWindowAttribution?.returnedCount ?? null,
     passSucceededCount:
       account.targetWindowAttribution?.passSucceededCount ?? null,
-    passFailedCount:
-      account.targetWindowAttribution?.passFailedCount ?? null,
+    passFailedCount: account.targetWindowAttribution?.passFailedCount ?? null,
   };
 
   return {
@@ -632,6 +693,7 @@ function shortFingerprint(value: string): string {
 function validSubscriptionRuntimeModel(
   value: unknown,
   binding: DurableEvidenceBinding,
+  provenance: unknown,
 ): boolean {
   if (
     !isRecord(value) ||
@@ -639,8 +701,18 @@ function validSubscriptionRuntimeModel(
   ) {
     return false;
   }
+  const mode = isRecord(provenance) ? provenance.mode : null;
+  const executionFlagsMatch =
+    (mode === "live-production" &&
+      value.liveCollection === true &&
+      value.reusedCollection === false &&
+      value.freshSummaryCapture === true) ||
+    (mode === "historical-regeneration" &&
+      value.liveCollection === false &&
+      value.reusedCollection === true &&
+      value.freshSummaryCapture === true);
   return (
-    value.liveCollection === true &&
+    executionFlagsMatch &&
     runtimeModelIdentityMatches(value, binding.runtimeProvenance) &&
     value.writesProductionData === true &&
     value.allowDegraded === false &&
@@ -711,6 +783,13 @@ function validLiveProvenance(
 ): boolean {
   if (!isRecord(value) || !isRecord(value.sourceEvidence)) {
     return false;
+  }
+  if (value.mode === "historical-regeneration") {
+    return validHistoricalRegenerationProvenance({
+      value,
+      expectedPeriod,
+      evidenceBinding: binding,
+    });
   }
   return (
     value.mode === "live-production" &&
