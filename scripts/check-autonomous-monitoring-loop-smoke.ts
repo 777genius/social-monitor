@@ -52,7 +52,6 @@ import { NoopUserSummaryPreferenceReader } from "@social-monitor/summary/adapter
 import { InMemoryAutoSummaryCandidateRepository } from "@social-monitor/summary/adapters/persistence/in-memory-auto-summary-candidate.repository";
 import { InMemoryReaderSummaryArtifactRepository } from "@social-monitor/summary/adapters/persistence/in-memory-reader-summary-artifact.repository";
 import { InMemoryReaderSummaryJobRepository } from "@social-monitor/summary/adapters/persistence/in-memory-reader-summary-job.repository";
-import { InMemoryReaderSummaryPublication } from "@social-monitor/summary/adapters/persistence/in-memory-reader-summary-publication";
 import { InMemoryReaderSummaryPolicyRepository } from "@social-monitor/summary/adapters/persistence/in-memory-reader-summary-policy.repository";
 import { InMemorySummaryArtifactRepository } from "@social-monitor/summary/adapters/persistence/in-memory-summary-artifact.repository";
 import { InMemorySummaryJobRepository } from "@social-monitor/summary/adapters/persistence/in-memory-summary-job.repository";
@@ -478,6 +477,7 @@ async function main(): Promise<void> {
     readerSummaryQueuePublisher.all().length === 1,
     "reader summary request must enqueue one worker command",
   );
+
   const readerRuntime = new WorkerRuntime({
     serviceName: "intelligence-worker",
   });
@@ -495,7 +495,7 @@ async function main(): Promise<void> {
           clock,
         ),
         new DeterministicReaderSummaryModelAdapter(),
-        new InMemoryReaderSummaryPublication(readerSummaryJobs, readerSummaryArtifacts, readerSummaryEvents),
+        readerSummaryEvents,
         ids,
         clock,
       ),

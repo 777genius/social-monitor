@@ -26,10 +26,6 @@ import {
   buildAgentRuntimeReaderSummaryTopicLabelPrompt,
   selectAgentRuntimeReaderSummaryTopicCandidates,
 } from "./agent-runtime-reader-summary-topic-labeler-prompt";
-import {
-  verifyAndRecordReaderSummaryExecution,
-  type VerifiedReaderSummaryExecutionAttestationSink,
-} from "./reader-summary-execution-attestation";
 
 export type AgentRuntimeReaderSummaryTopicLabelerOptions = {
   readonly client: AgentRuntimeClientPort;
@@ -40,7 +36,6 @@ export type AgentRuntimeReaderSummaryTopicLabelerOptions = {
   readonly timeoutMs?: number;
   readonly maxOutputTokens?: number;
   readonly maxCandidates?: number;
-  readonly verifiedAttestationSink?: VerifiedReaderSummaryExecutionAttestationSink;
 };
 
 const defaultAgentProvider: AgentRuntimeProvider = "codex";
@@ -59,7 +54,6 @@ export class AgentRuntimeReaderSummaryTopicLabeler implements ReaderSummaryTopic
   private readonly timeoutMs: number;
   private readonly maxOutputTokens: number;
   private readonly maxCandidates: number;
-  private readonly verifiedAttestationSink?: VerifiedReaderSummaryExecutionAttestationSink;
 
   constructor(options: AgentRuntimeReaderSummaryTopicLabelerOptions) {
     this.client = options.client;
@@ -82,7 +76,6 @@ export class AgentRuntimeReaderSummaryTopicLabeler implements ReaderSummaryTopic
       options.maxCandidates,
       defaultMaxCandidates,
     );
-    this.verifiedAttestationSink = options.verifiedAttestationSink;
   }
 
   async label(
@@ -93,7 +86,7 @@ export class AgentRuntimeReaderSummaryTopicLabeler implements ReaderSummaryTopic
       input,
       this.maxCandidates,
     );
-    const command = {
+    const result = await this.client.runTask({
       requestId: buildAgentRuntimeRequestId(
         `reader-summary-topic-map-attempt-${attemptContext.attemptNumber}`,
         input.tenantId,
@@ -130,27 +123,14 @@ export class AgentRuntimeReaderSummaryTopicLabeler implements ReaderSummaryTopic
         attemptNumber: String(attemptContext.attemptNumber),
         totalAttempts: String(attemptContext.totalAttempts),
       },
-    } as const;
-    const result = await this.client.runTask(command);
+    });
     const raw = readAgentRuntimeObjectOutput(
       result,
       parseAgentRuntimeReaderSummaryTopicLabelerJsonObject,
       "Reader summary topic map",
     );
 
-    const plan = normalizeAgentRuntimeReaderSummaryTopicLabelPlan(
-      raw,
-      candidates,
-    );
-    await verifyAndRecordReaderSummaryExecution({
-      command,
-      result,
-      taskRole: "topic_label",
-      attempt: String(attemptContext.attemptNumber),
-      normalizedOutput: plan,
-      sink: this.verifiedAttestationSink,
-    });
-    return plan;
+    return normalizeAgentRuntimeReaderSummaryTopicLabelPlan(raw, candidates);
   }
 }
 

@@ -1,6 +1,6 @@
 import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 
 import type { AgentRuntimeExecutionRequest } from "./agent-runtime-executor.port";
 import { SubscriptionRuntimeCliExecutor } from "./subscription-runtime-cli-executor";
@@ -46,10 +46,9 @@ describe("SubscriptionRuntimeCliExecutor", () => {
     const executor = new SubscriptionRuntimeCliExecutor({
       command: cliPath,
       ephemeral: true,
-      installationInspector,
     });
 
-    const result = await executor.execute(validExecutionRequest());
+    await executor.execute(validExecutionRequest());
 
     const captured = JSON.parse(
       await readFile(capturePath, "utf8"),
@@ -61,16 +60,6 @@ describe("SubscriptionRuntimeCliExecutor", () => {
     );
     expect(captured.request.task.prompt).toBe("Return JSON.");
     expect(captured.argv).toEqual(expect.arrayContaining(["--ephemeral"]));
-    expect(result.executionAttestation).toMatchObject({
-      requestId: "request-1",
-      purpose: "social_monitor.summary.generate",
-      provider: "codex",
-      model: "gpt-5.5",
-      reasoningEffort: "xhigh",
-      runtimeEngine: "subscription-runtime-cli",
-      runtimePackageVersion: "0.1.0-main.2",
-      selectedOutputKind: "output_text",
-    });
   });
 
   it("passes the local encryption key to durable subscription runtime tasks", async () => {
@@ -101,7 +90,6 @@ describe("SubscriptionRuntimeCliExecutor", () => {
       stateRoot: "/tmp/social-monitor-agent-runtime-test-state",
       localEncryptionKey: "test-key",
       reasoningEffort: "xhigh",
-      installationInspector,
     });
 
     await executor.execute(validExecutionRequest());
@@ -155,7 +143,6 @@ describe("SubscriptionRuntimeCliExecutor", () => {
         ephemeral: false,
         stateRoot: join(tempDir, "state"),
         localEncryptionKey: "test-key",
-        installationInspector,
       });
 
       const result = await executor.execute(validExecutionRequest());
@@ -172,63 +159,6 @@ describe("SubscriptionRuntimeCliExecutor", () => {
       expect(attempts).toEqual([{ ephemeral: false }, { ephemeral: true }]);
     },
   );
-
-  it("spawns the exact executable path admitted by the inspector", async () => {
-    tempDir = await mkdtemp(join(tmpdir(), "agent-runtime-cli-test-"));
-    const cliPath = join(tempDir, "admitted-cli.mjs");
-    await writeFile(
-      cliPath,
-      [
-        "#!/usr/bin/env node",
-        'process.stdout.write(JSON.stringify({ status: "completed", outputText: "{}", warnings: [] }));',
-      ].join("\n"),
-      "utf8",
-    );
-    await chmod(cliPath, 0o755);
-    const executor = new SubscriptionRuntimeCliExecutor({
-      command: "untrusted-path-alias",
-      ephemeral: true,
-      installationInspector: {
-        inspect: async () => installation(cliPath),
-      },
-    });
-
-    await expect(
-      executor.execute(validExecutionRequest()),
-    ).resolves.toMatchObject({ status: "completed" });
-  });
-
-  it("fails closed when the admitted installation changes after execution", async () => {
-    tempDir = await mkdtemp(join(tmpdir(), "agent-runtime-cli-test-"));
-    const cliPath = join(tempDir, "admitted-cli.mjs");
-    await writeFile(
-      cliPath,
-      [
-        "#!/usr/bin/env node",
-        'process.stdout.write(JSON.stringify({ status: "completed", outputText: "{}", warnings: [] }));',
-      ].join("\n"),
-      "utf8",
-    );
-    await chmod(cliPath, 0o755);
-    let inspections = 0;
-    const executor = new SubscriptionRuntimeCliExecutor({
-      command: cliPath,
-      ephemeral: true,
-      installationInspector: {
-        inspect: async () => ({
-          ...installation(cliPath),
-          launcherSha256: (++inspections === 1 ? "a" : "b").repeat(64),
-        }),
-      },
-    });
-
-    await expect(
-      executor.execute(validExecutionRequest()),
-    ).resolves.toMatchObject({
-      status: "failed",
-      failure: { code: "agent_runtime.execution_attestation_invalid" },
-    });
-  });
 });
 
 type CapturedCliRequest = {
@@ -260,15 +190,4 @@ const validExecutionRequest = (): AgentRuntimeExecutionRequest => ({
   controlsJson: "{}",
   timeoutMs: 10_000,
   metadata: {},
-});
-
-const installationInspector = {
-  inspect: async (command: string) => installation(command),
-};
-
-const installation = (command: string) => ({
-  executablePath: command,
-  packageRootRealpath: dirname(command),
-  runtimePackageVersion: "0.1.0-main.2",
-  launcherSha256: "a".repeat(64),
 });

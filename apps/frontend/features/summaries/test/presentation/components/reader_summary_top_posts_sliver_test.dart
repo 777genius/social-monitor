@@ -143,19 +143,16 @@ void main() {
       final selectedPosts = [
         ...editorialReads,
         _longTailSelectedPost(),
-        ..._githubTopReads(),
+        ..._githubTopReads().where((item) {
+          final title = item.title;
+          return title.contains('#1 ') || title.contains('#2 ');
+        }),
       ];
       final content = readerSummaryContentApiDto(topReads: editorialReads);
       final summary = const SummaryMapper().readerSummaryToDomain(
         readerSummaryApiDto(
           content: _contentWithSelectedPosts(content, selectedPosts),
           citations: _citations(2),
-          coverage: const ReaderSummaryCoverageApiDto(
-            collectedFeedItemCount: 3,
-            selectedFeedItemCount: 3,
-            topReadCount: 2,
-            citationCount: 2,
-          ),
         ),
       );
 
@@ -163,7 +160,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.bySemanticsLabel('Top posts, 2 items'), findsOneWidget);
-      expect(find.text('2 editorial picks from 3 selected'), findsOneWidget);
+      expect(find.text('2 editorial picks from 5 selected'), findsOneWidget);
       expect(find.text('Backend editorial winner'), findsOneWidget);
       expect(find.text('Higher engagement runner-up'), findsOneWidget);
       expect(find.text('Long-tail selected evidence'), findsNothing);
@@ -173,28 +170,33 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.bySemanticsLabel('GitHub trends, 10 items'), findsOneWidget);
+      expect(find.bySemanticsLabel('GitHub trends, 2 items'), findsOneWidget);
       expect(find.text('owner/repo-1'), findsOneWidget);
       expect(find.text('owner/repo-2'), findsOneWidget);
     },
   );
 
-  test('rejects a partial GitHub board as a whole', () {
-    final selectedPosts = [_longTailSelectedPost(), _githubTopReads().first];
-    final summary = const SummaryMapper().readerSummaryToDomain(
-      readerSummaryApiDto(
-        content: _contentWithSelectedPosts(
-          readerSummaryContentApiDto(topReads: const []),
-          selectedPosts,
+  test(
+    'does not promote selected non-GitHub posts when top reads are empty',
+    () {
+      final selectedPosts = [_longTailSelectedPost(), _githubTopReads().first];
+      final summary = const SummaryMapper().readerSummaryToDomain(
+        readerSummaryApiDto(
+          content: _contentWithSelectedPosts(
+            readerSummaryContentApiDto(topReads: const []),
+            selectedPosts,
+          ),
         ),
-      ),
-    );
+      );
 
-    final items = readerSummaryTopPostItems(summary);
+      final items = readerSummaryTopPostItems(summary);
 
-    expect(readerSummaryEditorialTopPostCount(summary), 0);
-    expect(items, isEmpty);
-  });
+      expect(readerSummaryEditorialTopPostCount(summary), 0);
+      expect(items, hasLength(1));
+      expect(items.single.providerKey, 'github-trending-page');
+      expect(items.single.title, contains('owner/repo-12'));
+    },
+  );
 
   testWidgets('falls back when a new day changes the available board', (
     tester,
@@ -216,7 +218,7 @@ void main() {
       readerSummaryApiDto(
         content: _contentWithSelectedPosts(
           readerSummaryContentApiDto(topReads: const []),
-          _githubTopReads(),
+          [_githubTopReads().first],
         ),
         citations: _githubCitations(),
       ),
@@ -228,13 +230,13 @@ void main() {
 
     await tester.pumpWidget(_TestApp(summary: githubOnly));
     await tester.pumpAndSettle();
-    expect(find.text('owner/repo-1'), findsOneWidget);
+    expect(find.text('owner/repo-12'), findsOneWidget);
     expect(find.text('Lazy top post 0'), findsNothing);
 
     await tester.pumpWidget(_TestApp(summary: postsOnly));
     await tester.pumpAndSettle();
     expect(find.text('Lazy top post 0'), findsOneWidget);
-    expect(find.text('owner/repo-1'), findsNothing);
+    expect(find.text('owner/repo-12'), findsNothing);
   });
 
   testWidgets('shows GitHub top ten in rank order and hides local sorting', (
@@ -283,15 +285,11 @@ void main() {
       tester.widget<Text>(find.text('owner/repo-1')).style?.fontWeight,
       FontWeight.w900,
     );
-    expect(
-      tester.widget<Text>(find.text('owner/repo-2')).style?.fontWeight,
-      FontWeight.w700,
-    );
     expect(tester.takeException(), isNull);
   });
 }
 
-List<TopReadApiDto> _githubTopReads() => List.generate(10, (index) => index + 1)
+List<TopReadApiDto> _githubTopReads() => [12, 2, 10, 1, 8, 5, 11, 4, 9, 3, 7, 6]
     .map(
       (rank) => TopReadApiDto(
         title: 'owner/repo-$rank is #$rank on GitHub Trending',
@@ -444,8 +442,7 @@ class _TestApp extends StatelessWidget {
                   curatedTopPostCount: readerSummaryEditorialTopPostCount(
                     summary,
                   ),
-                  selectedPostCount:
-                      summary.coverage?.selectedFeedItemCount ?? items.length,
+                  selectedPostCount: summary.content.selectedPosts.length,
                   period: summary.period,
                   citationsById: {
                     for (final citation in summary.citations)

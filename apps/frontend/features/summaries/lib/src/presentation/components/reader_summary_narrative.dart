@@ -24,11 +24,7 @@ class _ReaderSummaryNarrative extends StatelessWidget {
     final whyItMatters = _firstSection(
       ReaderSummaryNarrativeSectionKind.whyItMatters,
     );
-    final watch = sections
-        .where(
-          (section) => section.kind == ReaderSummaryNarrativeSectionKind.watch,
-        )
-        .toList(growable: false);
+    final watch = _firstSection(ReaderSummaryNarrativeSectionKind.watch);
     final secondary = sections
         .where(
           (section) =>
@@ -55,32 +51,8 @@ class _ReaderSummaryNarrative extends StatelessWidget {
           const SizedBox(height: AppSpacing.xs),
           for (final section in secondary) _sectionBlock(section),
         ],
-        for (final section in watch) _watchBlock(section),
+        if (watch != null) _sectionBlock(watch),
       ],
-    );
-  }
-
-  Widget _watchBlock(ReaderSummaryNarrativeSection section) {
-    final isGitHubTrending =
-        section.id == 'github-trending' ||
-        section.title.trim().toLowerCase() == 'github trending';
-    final lines = isGitHubTrending
-        ? formatGitHubTrendingWatchLines(section.text)
-        : const <GitHubTrendingWatchLine>[];
-    if (lines.isEmpty) {
-      return _sectionBlock(section);
-    }
-
-    return Padding(
-      key: ValueKey('reader-summary-narrative-${section.id}'),
-      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-      child: _ReaderSummaryGitHubWatchAppendix(
-        section: section,
-        lines: lines,
-        citationsById: citationsById,
-        citationSourceById: citationSourceById,
-        onOpenUrl: onOpenUrl,
-      ),
     );
   }
 

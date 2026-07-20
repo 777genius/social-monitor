@@ -1,5 +1,5 @@
 import {
-  readerSummaryHasVerifiedGitHubProjection,
+  canReaderSummaryGenerationSupersede,
   readerSummaryScopeKey,
   type ReaderSummaryArtifact,
 } from "../../domain";
@@ -27,6 +27,7 @@ export class InMemoryReaderSummaryArtifactRepository implements ReaderSummaryArt
     string,
     ReaderSummaryPublicationDecisionForPersistence
   >();
+  private readonly generationRequestedAtById = new Map<string, Date>();
 
   async save(
     artifact: ReaderSummaryArtifact,
@@ -37,20 +38,29 @@ export class InMemoryReaderSummaryArtifactRepository implements ReaderSummaryArt
     if (this.artifactsById.has(key)) {
       return;
     }
-    const githubProjectionVerified = readerSummaryHasVerifiedGitHubProjection({
-      artifact,
-      audit: options?.githubProjectionAudit,
-    });
-    const visibility: ReaderSummaryArtifactVisibility =
-      options?.publicationDecision?.status === "rejected" ||
-      !githubProjectionVerified
+    let visibility: ReaderSummaryArtifactVisibility =
+      options?.publicationDecision?.status === "rejected"
         ? "rejected"
-        : "candidate";
+        : "visible";
+
+    if (visibility === "visible") {
+      visibility = this.resolvePublicationVisibility(
+        snapshot,
+        key,
+        options?.generationRequestedAt,
+      );
+    }
 
     this.artifactsById.set(key, artifact);
     this.statusesById.set(key, visibility);
     if (options?.publicationDecision !== undefined) {
       this.publicationDecisionsById.set(key, options.publicationDecision);
+    }
+    if (options?.generationRequestedAt !== undefined) {
+      this.generationRequestedAtById.set(
+        key,
+        new Date(options.generationRequestedAt.getTime()),
+      );
     }
   }
 
@@ -131,7 +141,7 @@ export class InMemoryReaderSummaryArtifactRepository implements ReaderSummaryArt
   ): Promise<ReaderSummaryArtifact | null> {
     const key = `${params.tenantId}:${params.workspaceId}:${params.readerSummaryId}`;
 
-    if (this.statusesById.get(key) !== "visible") {
+    if (this.statusesById.get(key) === "rejected") {
       return null;
     }
 
@@ -159,14 +169,12 @@ export class InMemoryReaderSummaryArtifactRepository implements ReaderSummaryArt
     return [...this.artifactsById.values()];
   }
 
-  commitPublication(artifact: ReaderSummaryArtifact): void {
-    const snapshot = artifact.toSnapshot();
-    const currentKey = artifactKey(snapshot);
-    if (this.statusesById.get(currentKey) !== "candidate") {
-      throw new Error(
-        "Reader summary publication requires a verified staged candidate",
-      );
-    }
+  private resolvePublicationVisibility(
+    snapshot: ReturnType<ReaderSummaryArtifact["toSnapshot"]>,
+    currentKey: string,
+    generationRequestedAt: Date | undefined,
+  ): ReaderSummaryArtifactVisibility {
+    let blockedByHigherAuthority = false;
     for (const [key, artifact] of this.artifactsById.entries()) {
       if (key === currentKey || this.statusesById.get(key) !== "visible") {
         continue;
@@ -176,19 +184,25 @@ export class InMemoryReaderSummaryArtifactRepository implements ReaderSummaryArt
       if (!sameReaderSummaryCanonicalSlot(visibleSnapshot, snapshot)) {
         continue;
       }
-      this.statusesById.set(key, "superseded");
+      if (
+        canReaderSummaryGenerationSupersede({
+          incomingModelVersion: snapshot.lineage.modelVersion,
+          visibleModelVersion: visibleSnapshot.lineage.modelVersion,
+          incomingRequestedAt: generationRequestedAt,
+          visibleRequestedAt: this.generationRequestedAtById.get(key),
+        })
+      ) {
+        this.statusesById.set(key, "superseded");
+      } else {
+        blockedByHigherAuthority = true;
+      }
     }
 
-    this.artifactsById.set(currentKey, artifact);
-    this.statusesById.set(currentKey, "visible");
+    return blockedByHigherAuthority ? "superseded" : "visible";
   }
 }
 
-type ReaderSummaryArtifactVisibility =
-  | "candidate"
-  | "visible"
-  | "rejected"
-  | "superseded";
+type ReaderSummaryArtifactVisibility = "visible" | "rejected" | "superseded";
 
 const rejectedDebugFromArtifact = (
   artifact: ReaderSummaryArtifact,

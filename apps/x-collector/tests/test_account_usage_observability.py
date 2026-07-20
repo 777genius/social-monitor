@@ -49,17 +49,16 @@ def test_collect_daily_search_records_audit_only_account_usage_events(
         row for row in rows
         if row["event_type"] == "pass_succeeded"
     ]
-    assert succeeded[0]["account_id"] is None
-    assert succeeded[0]["requests_before"] is None
-    assert succeeded[0]["requests_after"] is None
-    assert succeeded[0]["daily_requests_limit"] is None
-    assert succeeded[0]["daily_tweets_limit"] is None
-    assert succeeded[0]["account_priority"] is None
-    assert succeeded[0]["tweets_before"] is None
-    assert succeeded[0]["tweets_after"] is None
+    assert succeeded[0]["account_id"] == 1
+    assert succeeded[0]["requests_before"] == 0
+    assert succeeded[0]["requests_after"] == 1
+    assert succeeded[0]["daily_requests_limit"] == 30
+    assert succeeded[0]["daily_tweets_limit"] == 600
+    assert succeeded[0]["account_priority"] == 100
+    assert succeeded[0]["tweets_before"] == 0
+    assert succeeded[0]["tweets_after"] == 2
     assert succeeded[0]["fetched_count"] == 2
     assert succeeded[0]["accepted_count"] == 2
-    assert succeeded[0]["attribution_status"] == "unknown"
 
 
 def test_account_usage_observer_failures_do_not_break_collection(
@@ -116,69 +115,12 @@ def test_collect_daily_search_records_rate_limit_cooldown_events(
         row for row in rows
         if row["event_type"] == "cooldown_observed"
     ]
-    assert failed[0]["account_id"] is None
+    assert failed[0]["account_id"] == 1
     assert failed[0]["failure_kind"] == "rate_limited"
-    assert failed[0]["cooldown_reason"] is None
+    assert failed[0]["cooldown_reason"] == "rate_limit"
     assert failed[0]["reset_at"] == reset_at.isoformat()
-    assert failed[0]["attribution_status"] == "unknown"
     assert cooldowns[0]["account_id"] == 1
     assert cooldowns[0]["cooldown_reason"] == "rate_limit"
-
-
-def test_pass_result_is_unknown_when_two_account_states_change(
-    tmp_path: Path,
-) -> None:
-    db_path = tmp_path / "scweet_state.db"
-    create_scweet_accounts_table(db_path)
-    insert_scweet_account(db_path, daily_requests=0, daily_tweets=0)
-    insert_scweet_account(
-        db_path,
-        account_id=2,
-        username="research-2",
-        daily_requests=0,
-        daily_tweets=0,
-    )
-    clock = FixedClock(datetime(2026, 6, 27, 12, tzinfo=UTC))
-    collector = collector_with_observability(
-        db_path,
-        TwoAccountStateChangeScweet(db_path),
-        clock,
-    )
-
-    collector.collect_daily_search(request(max_items=2))
-
-    succeeded = [
-        row for row in account_usage_event_rows(db_path)
-        if row["event_type"] == "pass_succeeded"
-    ]
-    assert {row["account_id"] for row in succeeded} == {None}
-    assert {row["attribution_status"] for row in succeeded} == {"unknown"}
-    assert sum(row["fetched_count"] for row in succeeded) == 6
-
-
-def test_pass_result_records_explicit_unknown_when_no_account_delta_exists(
-    tmp_path: Path,
-) -> None:
-    db_path = tmp_path / "scweet_state.db"
-    create_scweet_accounts_table(db_path)
-    insert_scweet_account(db_path, daily_requests=0, daily_tweets=0)
-    clock = FixedClock(datetime(2026, 6, 27, 12, tzinfo=UTC))
-    collector = collector_with_observability(
-        db_path,
-        NoStateChangeScweet(),
-        clock,
-    )
-
-    result = collector.collect_daily_search(request(max_items=1))
-
-    assert [post.tweet_id for post in result.posts] == ["300"]
-    succeeded = [
-        row for row in account_usage_event_rows(db_path)
-        if row["event_type"] == "pass_succeeded"
-    ]
-    assert len(succeeded) == 3
-    assert {row["account_id"] for row in succeeded} == {None}
-    assert {row["attribution_status"] for row in succeeded} == {"unknown"}
 
 
 class DbUpdatingScweet:
@@ -192,33 +134,6 @@ class DbUpdatingScweet:
         increment_account_usage(self._db_path, request_count=1, tweet_count=len(records))
 
         return records
-
-
-class TwoAccountStateChangeScweet:
-    def __init__(self, db_path: Path) -> None:
-        self._db_path = db_path
-        self._changed_secondary = False
-
-    def search(self, *_: object, **kwargs: object) -> list[dict[str, object]]:
-        records = tweets_for_product(str(kwargs["display_type"]))
-        increment_account_usage(
-            self._db_path,
-            request_count=1,
-            tweet_count=len(records),
-        )
-        if not self._changed_secondary:
-            with sqlite3.connect(self._db_path) as connection:
-                connection.execute(
-                    "UPDATE accounts SET busy = 1 WHERE id = 2",
-                )
-            self._changed_secondary = True
-
-        return records
-
-
-class NoStateChangeScweet:
-    def search(self, *_: object, **kwargs: object) -> list[dict[str, object]]:
-        return tweets_for_product(str(kwargs["display_type"]))
 
 
 class RateLimitedAfterFirstPassScweet:
@@ -366,8 +281,6 @@ def create_scweet_accounts_table(db_path: Path) -> None:
 def insert_scweet_account(
     db_path: Path,
     *,
-    account_id: int = 1,
-    username: str = "research-1",
     daily_requests: int,
     daily_tweets: int,
 ) -> None:
@@ -389,8 +302,8 @@ def insert_scweet_account(
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                account_id,
-                username,
+                1,
+                "research-1",
                 1,
                 0.0,
                 0.0,
