@@ -101,22 +101,32 @@ require_publication_schema_migration_match() {
 
   case $publication_schema in
     absent)
-      ((MIGRATION_TOTAL == 0 && MIGRATION_COMPLETED == 0 && \
+      if ((MIGRATION_TOTAL == 0 && MIGRATION_COMPLETED == 0 && \
         MIGRATION_FAILED == 0 && MIGRATION_ROLLED_BACK == 0 && \
-        MIGRATION_IN_PROGRESS == 0 && MIGRATION_CONTRADICTORY == 0)) || {
+        MIGRATION_IN_PROGRESS == 0 && MIGRATION_CONTRADICTORY == 0)); then
+        publication_migration_state=not-applied
+      elif ((MIGRATION_TOTAL == 1 && MIGRATION_COMPLETED == 0 && \
+        MIGRATION_FAILED == 0 && MIGRATION_ROLLED_BACK == 1 && \
+        MIGRATION_IN_PROGRESS == 0 && MIGRATION_CONTRADICTORY == 0)); then
+        publication_migration_state=retry-pending
+      else
         echo "backup-coverage-error: $context publication tables are absent but the exact migration is not unapplied" >&2
         return 1
-      }
-      publication_migration_state=not-applied
+      fi
       ;;
     present)
-      ((MIGRATION_TOTAL == 1 && MIGRATION_COMPLETED == 1 && \
+      if ((MIGRATION_TOTAL == 1 && MIGRATION_COMPLETED == 1 && \
         MIGRATION_FAILED == 0 && MIGRATION_ROLLED_BACK == 0 && \
-        MIGRATION_IN_PROGRESS == 0 && MIGRATION_CONTRADICTORY == 0)) || {
+        MIGRATION_IN_PROGRESS == 0 && MIGRATION_CONTRADICTORY == 0)); then
+        publication_migration_state=completed
+      elif ((MIGRATION_TOTAL == 2 && MIGRATION_COMPLETED == 1 && \
+        MIGRATION_FAILED == 0 && MIGRATION_ROLLED_BACK == 1 && \
+        MIGRATION_IN_PROGRESS == 0 && MIGRATION_CONTRADICTORY == 0)); then
+        publication_migration_state=retry-completed
+      else
         echo "backup-coverage-error: $context publication tables exist without one exact completed migration" >&2
         return 1
-      }
-      publication_migration_state=completed
+      fi
       ;;
   esac
 }

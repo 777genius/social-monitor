@@ -187,8 +187,15 @@ WITH target AS MATERIALIZED (
         AND btrim(logs) <> ''
     ) AS failed,
     count(*) FILTER (
-      WHERE finished_at IS NULL
+      WHERE started_at IS NOT NULL
+        AND finished_at IS NULL
         AND rolled_back_at IS NOT NULL
+        AND rolled_back_at >= started_at
+        AND applied_steps_count = 0
+        AND id <> ''
+        AND checksum ~ '^[0-9a-f]{64}$'
+        AND checksum <> :'migration_checksum'
+        AND logs IS NULL
     ) AS rolled_back,
     count(*) FILTER (
       WHERE finished_at IS NULL
