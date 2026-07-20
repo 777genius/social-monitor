@@ -231,6 +231,17 @@ export class ReaderSummary {
       citations: input.citationMap,
     });
     const { headline, narrativeSections } = narrativeProjection;
+    const publishedNarrativeSections = withSupplementalTrendNarrativeAppendix({
+      narrativeSections: withoutSupplementalTrendNarrativeSections(
+        narrativeSections,
+        input.citationMap,
+      ),
+      appendix: githubTrendingAppendix,
+    });
+    const primaryCitationMap = input.citationMap.filter(
+      (citation) =>
+        !isSupplementalTrendEvidence({ providerKey: citation.providerKey }),
+    );
     return ReaderSummary.create({
       headline: groundedReaderHeadline({
         headline,
@@ -245,13 +256,7 @@ export class ReaderSummary {
         thematicSynthesisSupport,
       }),
       bullets: buildReaderSummaryBullets(readerInput, topReads),
-      narrativeSections: withSupplementalTrendNarrativeAppendix({
-        narrativeSections: withoutSupplementalTrendNarrativeSections(
-          narrativeSections,
-          input.citationMap,
-        ),
-        appendix: githubTrendingAppendix,
-      }),
+      narrativeSections: publishedNarrativeSections,
       mainTopics: buildReaderSummaryMainTopics({
         headline,
         executiveSummary: input.executiveSummary,
@@ -269,9 +274,9 @@ export class ReaderSummary {
       selectedPosts,
       claimBoard: buildReaderSummaryClaimBoard({
         topReads,
-        narrativeSections,
+        narrativeSections: publishedNarrativeSections,
         risksAndUnknowns: input.risksAndUnknowns,
-        citationMap: input.citationMap,
+        citationMap: primaryCitationMap,
         selectedEvidence: primarySelectedEvidence,
       }),
       reliabilityReport: buildReaderSummaryReliabilityReport(

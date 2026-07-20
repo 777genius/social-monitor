@@ -42,6 +42,7 @@ import {
 import { BuildReaderSummaryTopicMapUseCase } from "../build-reader-summary-topic-map/build-reader-summary-topic-map.use-case";
 import { withReaderSummaryContextUnavailable } from "./reader-summary-context-unavailable";
 import { evaluateReaderSummaryPrepublication } from "./reader-summary-prepublication-gate";
+import type { ReaderSummaryHistoricalGitHubOmission } from "./reader-summary-prepublication-gate";
 import type { ExecuteReaderSummaryJobCommand } from "./execute-reader-summary-job.command";
 import type { ExecuteReaderSummaryJobResult } from "./execute-reader-summary-job.result";
 import { publishReaderSummaryJob } from "./publish-reader-summary-job";
@@ -92,6 +93,7 @@ export class ExecuteReaderSummaryJobUseCase {
     private readonly topicMapBuilder: BuildReaderSummaryTopicMapUseCase = new BuildReaderSummaryTopicMapUseCase(),
     private readonly publicationPolicy: ReaderSummaryPublicationPolicy = new ReaderSummaryPublicationPolicy(),
     private readonly githubProjectionReader: ReaderSummaryGitHubProjectionReaderPort = UNAVAILABLE_READER_SUMMARY_GITHUB_PROJECTION_READER,
+    private readonly historicalGitHubOmission?: ReaderSummaryHistoricalGitHubOmission,
   ) {}
 
   async execute(
@@ -189,6 +191,7 @@ export class ExecuteReaderSummaryJobUseCase {
         publicationPolicy: this.publicationPolicy,
         githubProjectionReader: this.githubProjectionReader,
         observedThrough: this.clock.now(),
+        historicalGitHubOmission: this.historicalGitHubOmission,
       });
       await this.readerSummaryArtifacts.save(result.value.artifact, {
         publicationDecision: prepublication.publicationDecision,

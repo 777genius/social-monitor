@@ -65,6 +65,10 @@ import {
 import { loadDotenvIfPresent } from "./lib/env-file";
 import { writeLiveEvidenceArtifactAtomically } from "./lib/live-evidence-artifact";
 import { DurableReaderSummaryExecutionAttestationCapture } from "./lib/reader-summary-execution-attestation-capture";
+import {
+  HistoricalGitHubOmissionEvidenceSelector,
+  resolveHistoricalGitHubOmission,
+} from "./lib/reader-summary-historical-github-omission";
 import { canonicalJsonSha256 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
 
 const databaseUrlEnv = "DATABASE_URL";
@@ -77,6 +81,8 @@ const defaultWorkspaceId = "22222222-2222-4222-8222-222222222222";
 const periodStartedAtEnv = "DURABLE_READER_SUMMARY_PERIOD_STARTED_AT";
 const periodEndedAtEnv = "DURABLE_READER_SUMMARY_PERIOD_ENDED_AT";
 const cadenceEnv = "DURABLE_READER_SUMMARY_CADENCE";
+const historicalGitHubOmissionReasonEnv =
+  "DURABLE_READER_SUMMARY_HISTORICAL_GITHUB_OMISSION_REASON";
 
 loadDotenvIfPresent(".env");
 type DurableReaderSummaryModelMode =
@@ -111,6 +117,15 @@ async function main(): Promise<void> {
     startedAt: periodStartedAt,
     endedAt: periodEndedAt,
     timezone,
+  });
+  const historicalGitHubOmission = resolveHistoricalGitHubOmission({
+    argv: process.argv.slice(2),
+    reason: readEnv(historicalGitHubOmissionReasonEnv),
+    cadence,
+    timezone,
+    periodStartedAt,
+    periodEndedAt,
+    now,
   });
   const maxEvidenceItems = readIntegerEnv(
     "DURABLE_READER_SUMMARY_MAX_EVIDENCE_ITEMS",
@@ -215,12 +230,18 @@ async function main(): Promise<void> {
       new InMemoryUserRelevanceProfileRepository(),
       clock,
     );
-    const evidenceSelector = new RelevanceReaderSummaryEvidenceSelector(
+    const relevanceEvidenceSelector = new RelevanceReaderSummaryEvidenceSelector(
       rankFeedItems,
       feedItems,
       clock,
       new StoryRankingMetricsRecorder(new InMemoryMetricsRecorder()),
     );
+    const evidenceSelector =
+      historicalGitHubOmission === undefined
+        ? relevanceEvidenceSelector
+        : new HistoricalGitHubOmissionEvidenceSelector(
+            relevanceEvidenceSelector,
+          );
     const executeReaderSummary = new ExecuteReaderSummaryJobUseCase(
       readerSummaryJobs,
       readerSummaryArtifacts,
@@ -243,6 +264,7 @@ async function main(): Promise<void> {
       ),
       undefined,
       new PrismaReaderSummaryGitHubProjectionReader(summaryConnection),
+      historicalGitHubOmission,
     );
     const execution = await executeReaderSummary.execute({
       tenantId: tenant,
@@ -324,6 +346,15 @@ async function main(): Promise<void> {
         fixtureOnly: false,
         database: "postgres",
         modelMode,
+        historicalGitHubOmission:
+          historicalGitHubOmission === undefined
+            ? undefined
+            : {
+                mode: "github_projection_unavailable_historical",
+                reason: historicalGitHubOmission.reason,
+                authorizedAt:
+                  historicalGitHubOmission.authorizedAt.toISOString(),
+              },
       },
       scope: {
         tenantId: tenant,

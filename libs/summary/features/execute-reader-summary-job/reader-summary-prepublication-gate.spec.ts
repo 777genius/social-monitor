@@ -139,6 +139,40 @@ describe("evaluateReaderSummaryPrepublication", () => {
     });
   });
 
+  it("permits only an explicit historical omission with no GitHub evidence", async () => {
+    let readCount = 0;
+    const artifact = artifactWithoutGitHubBoard();
+    const decision = await evaluateReaderSummaryPrepublication({
+      artifact,
+      evidence: {} as SummaryEvidenceSelection,
+      publicationPolicy: publishingPolicy(),
+      githubProjectionReader: {
+        async read() {
+          readCount += 1;
+          throw new Error("historical omission must not query projection");
+        },
+      },
+      observedThrough,
+      historicalGitHubOmission: {
+        reason: "No timestamp-valid GitHub snapshot exists for this day.",
+        authorizedAt: observedThrough,
+      },
+    });
+
+    expect(readCount).toBe(0);
+    expect(decision.publicationDecision.status).toBe("published");
+    expect(decision.githubProjectionAudit).toMatchObject({
+      status: "not_required",
+      requestedUtcDay: "2026-07-10",
+      historicalOmission: {
+        mode: "github_projection_unavailable_historical",
+        reason: "No timestamp-valid GitHub snapshot exists for this day.",
+        authorizedAt: observedThrough.toISOString(),
+      },
+      violationCodes: [],
+    });
+  });
+
   it("rejects a partial GitHub selectedPosts board before persistence", async () => {
     const decision = await evaluateReaderSummaryPrepublication({
       artifact: githubArtifact(5),

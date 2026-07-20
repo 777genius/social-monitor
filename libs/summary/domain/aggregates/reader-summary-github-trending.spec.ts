@@ -104,4 +104,135 @@ describe("reader summary GitHub Trending projection", () => {
       ),
     ]);
   });
+
+  it("keeps a removed supplemental Watch section out of the claim board", () => {
+    const readerSummary = buildReaderSummary({
+      headline: "Developers discuss a safer agent runtime",
+      executiveSummary:
+        "A Reddit discussion describes practical isolation controls for coding agents.",
+      narrativeSections: [
+        {
+          id: "lead",
+          kind: "lead",
+          title: "Safer agent runtime",
+          text: "Developers are testing stronger isolation controls for coding agents.",
+          citationIds: ["citation-primary"],
+          storyClusterId: "cluster-primary",
+        },
+        {
+          id: "authored-github-watch",
+          kind: "watch",
+          title: "GitHub Trending",
+          text: "A breakout repository gained attention on GitHub Trending.",
+          citationIds: ["citation-github"],
+        },
+      ],
+      topStories: [
+        {
+          storyClusterId: "cluster-primary",
+          title: "Developers test stronger coding-agent isolation",
+          summary:
+            "A Reddit discussion describes practical isolation controls for coding agents.",
+          interestIds: ["ai-developer-tools"],
+          providerKeys: ["reddit"],
+          citationIds: ["citation-primary"],
+        },
+      ],
+      interestHighlights: [],
+      repeatedSignals: [],
+      risksAndUnknowns: [],
+      citationMap: [
+        {
+          citationId: "citation-primary",
+          feedItemId: "feed-primary",
+          sourceItemId: "source-primary",
+          providerKey: "reddit",
+          field: "title",
+          canonicalUrl: "https://reddit.example/r/agents/comments/1",
+        },
+        {
+          citationId: "citation-github",
+          feedItemId: "feed-github",
+          sourceItemId: "source-github",
+          providerKey: "github-trending-page",
+          field: "title",
+          canonicalUrl: "https://github.com/example/agent-runtime",
+        },
+      ],
+      storyClusters: [
+        {
+          id: "cluster-primary",
+          storyKey: "reddit:agent-runtime-isolation",
+          representativeFeedItemId: "feed-primary",
+          duplicateFeedItemIds: [],
+          interestIds: ["ai-developer-tools"],
+          providerKeys: ["reddit"],
+          score: 2.4,
+          observedAtRange: {
+            startedAt: new Date("2026-07-19T08:00:00.000Z"),
+            endedAt: new Date("2026-07-19T09:00:00.000Z"),
+          },
+          whyImportant: ["Agent isolation reduces local security risk."],
+        },
+      ],
+      selectedEvidence: [
+        {
+          feedItemId: "feed-primary",
+          sourceItemId: "source-primary",
+          sourceBindingId: "binding-reddit",
+          interestId: "ai-developer-tools",
+          providerKey: "reddit",
+          providerName: "Reddit",
+          canonicalUrl: "https://reddit.example/r/agents/comments/1",
+          title: "Developers test stronger coding-agent isolation",
+          publishedAt: new Date("2026-07-19T08:00:00.000Z"),
+          observedAt: new Date("2026-07-19T09:00:00.000Z"),
+          score: 2.4,
+          whyImportant: ["Agent isolation reduces local security risk."],
+        },
+        {
+          feedItemId: "feed-github",
+          sourceItemId: "source-github",
+          sourceBindingId: "binding-github",
+          interestId: "ai-developer-tools",
+          providerKey: "github-trending-page",
+          providerName: "GitHub Trending",
+          canonicalUrl: "https://github.com/example/agent-runtime",
+          title: "example/agent-runtime",
+          publishedAt: new Date("2026-07-19T08:00:00.000Z"),
+          observedAt: new Date("2026-07-19T09:00:00.000Z"),
+          score: 1.9,
+          whyImportant: ["Repository is ranked #12 on GitHub Trending."],
+          providerMetricLabels: [
+            {
+              label: "GitHub Trending today",
+              value: "#12, +1,201 stars today",
+            },
+          ],
+        },
+      ],
+      qualityFlags: [],
+    });
+
+    expect(readerSummary.narrativeSections).toEqual([
+      expect.objectContaining({
+        id: "lead",
+        citationIds: ["citation-primary"],
+      }),
+      expect.objectContaining({
+        id: "github-trending",
+        kind: "watch",
+        citationIds: ["citation-github"],
+      }),
+    ]);
+    expect(readerSummary.claimBoard).toEqual([
+      expect.objectContaining({
+        id: "lead",
+        citationIds: ["citation-primary"],
+      }),
+    ]);
+    expect(
+      readerSummary.claimBoard.flatMap((claim) => claim.citationIds),
+    ).not.toContain("citation-github");
+  });
 });

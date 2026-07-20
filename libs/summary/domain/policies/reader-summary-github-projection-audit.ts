@@ -84,6 +84,11 @@ export type ReaderSummaryGitHubProjectionAudit = {
   readonly observedThrough?: string;
   readonly projectionCheckedAt?: string;
   readonly telemetry?: ReaderSummaryGitHubProjectionCollectionTelemetry;
+  readonly historicalOmission?: {
+    readonly mode: "github_projection_unavailable_historical";
+    readonly reason: string;
+    readonly authorizedAt: string;
+  };
   readonly bindings: readonly ReaderSummaryGitHubProjectionBinding[];
   readonly violationCodes: readonly ReaderSummaryGitHubProjectionViolationCode[];
   readonly reasons: readonly string[];
@@ -105,6 +110,17 @@ export const readerSummaryRequiresGitHubProjection = (
     snapshot.period.cadence === "daily" ||
     (snapshot.content?.selectedPosts ?? []).some(isGitHubReaderItem) ||
     snapshot.citationMap.some(isGitHubCitation)
+  );
+};
+
+export const readerSummaryHasNoGitHubEvidence = (
+  artifact: ReaderSummaryArtifact,
+): boolean => {
+  const snapshot = artifact.toSnapshot();
+  return (
+    readerSummaryHasNoPrimaryGitHubEvidence(artifact) &&
+    !(snapshot.content?.selectedPosts ?? []).some(isGitHubReaderItem) &&
+    !snapshot.citationMap.some(isGitHubCitation)
   );
 };
 
@@ -235,16 +251,33 @@ export const readerSummaryHasVerifiedGitHubProjection = (params: {
       params.audit.telemetry === undefined
     );
   }
-  if (
-    day === undefined ||
-    params.audit.requestedUtcDay !== day.day ||
-    params.audit.pageCount < 1
-  ) {
+  if (day === undefined || params.audit.requestedUtcDay !== day.day) {
     return false;
   }
 
   if (params.audit.status === "not_required") {
+    const historicalOmission = params.audit.historicalOmission;
+    if (historicalOmission !== undefined) {
+      const authorizedAt = new Date(historicalOmission.authorizedAt);
+      return (
+        snapshot.period.cadence === "daily" &&
+        historicalOmission.mode ===
+          "github_projection_unavailable_historical" &&
+        nonEmpty(historicalOmission.reason) &&
+        Number.isFinite(authorizedAt.getTime()) &&
+        authorizedAt.getTime() >= day.endedAt.getTime() &&
+        readerSummaryHasNoGitHubEvidence(params.artifact) &&
+        params.audit.pageCount === 0 &&
+        params.audit.eligibleBindingIds.length === 0 &&
+        params.audit.scannedItemCount === 0 &&
+        params.audit.bindings.length === 0 &&
+        params.audit.observedThrough === undefined &&
+        params.audit.projectionCheckedAt === undefined &&
+        params.audit.telemetry === undefined
+      );
+    }
     return (
+      params.audit.pageCount >= 1 &&
       !readerSummaryRequiresGitHubProjection(params.artifact) &&
       params.audit.eligibleBindingIds.length === 0 &&
       params.audit.scannedItemCount === 0 &&
@@ -256,6 +289,8 @@ export const readerSummaryHasVerifiedGitHubProjection = (params: {
   }
   if (
     params.audit.status !== "verified" ||
+    params.audit.historicalOmission !== undefined ||
+    params.audit.pageCount < 1 ||
     params.audit.eligibleBindingIds.length !== 1 ||
     params.audit.scannedItemCount < maxGitHubTrendingDisplayRepositories ||
     !Number.isFinite(projectionCheckedAt.getTime()) ||

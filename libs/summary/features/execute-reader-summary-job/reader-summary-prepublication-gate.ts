@@ -1,6 +1,7 @@
 import {
   evaluateReaderSummaryGitHubProjection,
   exactUtcDay,
+  historicalOmissionReaderSummaryGitHubProjectionAudit,
   notApplicableReaderSummaryGitHubProjectionAudit,
   unavailableReaderSummaryGitHubProjectionAudit,
   withReaderSummaryPublicationRejections,
@@ -18,12 +19,18 @@ export type ReaderSummaryPrepublicationDecision = {
   readonly githubProjectionAudit: ReaderSummaryGitHubProjectionAudit;
 };
 
+export type ReaderSummaryHistoricalGitHubOmission = {
+  readonly reason: string;
+  readonly authorizedAt: Date;
+};
+
 export const evaluateReaderSummaryPrepublication = async (params: {
   readonly artifact: ReaderSummaryArtifact;
   readonly evidence: SummaryEvidenceSelection;
   readonly publicationPolicy: ReaderSummaryPublicationPolicy;
   readonly githubProjectionReader: ReaderSummaryGitHubProjectionReaderPort;
   readonly observedThrough: Date;
+  readonly historicalGitHubOmission?: ReaderSummaryHistoricalGitHubOmission;
 }): Promise<ReaderSummaryPrepublicationDecision> => {
   const publicationDecision = params.publicationPolicy.evaluate({
     artifact: params.artifact,
@@ -40,6 +47,11 @@ export const evaluateReaderSummaryPrepublication = async (params: {
   ) {
     projection = notApplicableReaderSummaryGitHubProjectionAudit({
       artifact: params.artifact,
+    });
+  } else if (params.historicalGitHubOmission !== undefined) {
+    projection = historicalOmissionReaderSummaryGitHubProjectionAudit({
+      artifact: params.artifact,
+      ...params.historicalGitHubOmission,
     });
   } else {
     try {

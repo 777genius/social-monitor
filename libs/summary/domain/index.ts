@@ -28,6 +28,7 @@ export * from "./policies/reader-summary-reliability-calibration-policy";
 export * from "./policies/reader-summary-artifact-editorial-quality-policy";
 export * from "./policies/reader-summary-evidence-eligibility-policy";
 export * from "./policies/reader-summary-github-trending-policy";
+export * from "./policies/reader-summary-github-historical-omission-policy";
 export * from "./policies/reader-summary-github-projection-policy";
 export * from "./policies/reader-summary-model-authority-policy";
 export * from "./policies/reader-summary-multi-day-quality-eval";
