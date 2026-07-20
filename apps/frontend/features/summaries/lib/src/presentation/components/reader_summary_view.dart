@@ -7,9 +7,9 @@ import '../../domain/entities/post_rating.dart';
 import '../../domain/entities/reader_summary_topic_recommendation.dart';
 import '../../domain/entities/summary_citation.dart';
 import '../../domain/value_objects/reader_action_target.dart';
+import '../view_models/reader_summary_top_posts_projection.dart';
 import 'reader_summary_brief_surface.dart';
 import 'reader_summary_next_actions.dart';
-import 'reader_summary_top_posts_section_sliver.dart';
 import 'reader_summary_topic_recommendations_panel.dart';
 import 'reader_summary_trust_panel.dart';
 
@@ -86,10 +86,14 @@ class ReaderSummaryView extends StatelessWidget {
     final citationsById = {
       for (final citation in summary.citations) citation.id: citation,
     };
-    final topPostItems = readerSummaryTopPostItems(summary);
-    final editorialTopPostCount = readerSummaryEditorialTopPostCount(summary);
+    final topPostsProjection = includeTopPosts
+        ? readerSummaryTopPostsProjection(summary)
+        : null;
     final selectedPostCount =
-        summary.coverage?.selectedFeedItemCount ?? topPostItems.length;
+        summary.coverage?.selectedFeedItemCount ??
+        (summary.content.selectedPosts.isNotEmpty
+            ? summary.content.selectedPosts.length
+            : summary.content.topReads.length);
 
     return SelectionArea(
       child: Column(
@@ -119,11 +123,10 @@ class ReaderSummaryView extends StatelessWidget {
               onOpenUrl: onOpenUrl,
             ),
           ],
-          if (includeTopPosts && topPostItems.isNotEmpty) ...[
+          if (topPostsProjection != null && !topPostsProjection.isEmpty) ...[
             const SizedBox(height: AppSpacing.md + 2),
             ReaderSummaryTopPosts(
-              items: topPostItems,
-              curatedTopPostCount: editorialTopPostCount,
+              projection: topPostsProjection,
               selectedPostCount: selectedPostCount,
               period: summary.period,
               citationsById: citationsById,

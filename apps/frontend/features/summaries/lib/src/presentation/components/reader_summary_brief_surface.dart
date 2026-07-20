@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_graph_view/flutter_graph_view.dart'
     as flutter_graph_view;
@@ -18,6 +19,8 @@ import '../formatters/reader_summary_claim_anchor_resolver.dart';
 import '../formatters/summary_period_formats.dart';
 import '../formatters/top_post_metrics.dart';
 import '../formatters/top_post_source_label.dart';
+import '../view_models/reader_summary_top_posts_projection.dart';
+import '../view_models/top_posts_continuation_window.dart';
 import 'reader_summary_citation_text.dart';
 import 'reader_summary_confirmation.dart';
 import 'reader_summary_next_actions.dart';
@@ -65,6 +68,7 @@ part 'reader_summary_top_post_rating_reason_dialog.dart';
 part 'reader_summary_top_post_rating_slot.dart';
 part 'reader_summary_top_post_row.dart';
 part 'reader_summary_top_posts.dart';
+part 'reader_summary_top_posts_reveal_trigger.dart';
 part 'reader_summary_top_posts_sliver.dart';
 part 'reader_summary_top_posts_controls.dart';
 part 'reader_summary_top_posts_tabs.dart';
