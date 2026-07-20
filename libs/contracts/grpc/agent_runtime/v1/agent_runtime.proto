@@ -20,6 +20,12 @@ enum AgentRuntimeTaskStatus {
   AGENT_RUNTIME_TASK_STATUS_WAITING_FOR_INPUT = 3;
 }
 
+enum AgentRuntimeSelectedOutputKind {
+  AGENT_RUNTIME_SELECTED_OUTPUT_KIND_UNSPECIFIED = 0;
+  AGENT_RUNTIME_SELECTED_OUTPUT_KIND_STRUCTURED_OUTPUT = 1;
+  AGENT_RUNTIME_SELECTED_OUTPUT_KIND_OUTPUT_TEXT = 2;
+}
+
 enum AgentRuntimeHealthStatus {
   AGENT_RUNTIME_HEALTH_STATUS_UNSPECIFIED = 0;
   AGENT_RUNTIME_HEALTH_STATUS_SERVING = 1;
@@ -53,6 +59,22 @@ message AgentRuntimeTaskResponse {
   repeated AgentRuntimeWarning warnings = 5;
   AgentRuntimeUsage usage = 6;
   AgentRuntimeFailure failure = 7;
+  AgentRuntimeExecutionAttestation execution_attestation = 8;
+}
+
+message AgentRuntimeExecutionAttestation {
+  uint32 schema_version = 1;
+  string request_id = 2;
+  string purpose = 3;
+  string canonical_request_sha256 = 4;
+  AgentRuntimeProvider provider = 5;
+  string model = 6;
+  string reasoning_effort = 7;
+  string runtime_engine = 8;
+  string runtime_package_version = 9;
+  string launcher_sha256 = 10;
+  AgentRuntimeSelectedOutputKind selected_output_kind = 11;
+  string selected_output_sha256 = 12;
 }
 
 message AgentRuntimeUsage {
@@ -85,4 +107,5 @@ message AgentRuntimeHealthResponse {
   string runtime_engine = 2;
   string runtime_version = 3;
   repeated AgentRuntimeWarning warnings = 4;
+  string launcher_sha256 = 5;
 }

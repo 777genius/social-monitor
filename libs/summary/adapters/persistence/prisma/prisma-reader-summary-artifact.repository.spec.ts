@@ -1,6 +1,9 @@
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
-import { ReaderSummaryArtifact } from "../../../domain";
+import {
+  ReaderSummaryArtifact,
+  type ReaderSummaryGitHubProjectionAudit,
+} from "../../../domain";
 import { emptyReaderSummaryReliabilityReport } from "../../../domain/entities/reader-summary-reliability";
 import { PrismaReaderSummaryArtifactRepository } from "./prisma-reader-summary-artifact.repository";
 import type { PrismaReaderSummaryArtifactRecord } from "./prisma-reader-summary-records";
@@ -8,13 +11,17 @@ import type { PrismaSummaryClient } from "./prisma-summary-client";
 import type { PrismaSummaryStatus } from "./prisma-summary-records";
 
 describe("PrismaReaderSummaryArtifactRepository", () => {
-  it("keeps no-signal reader summaries out of user-facing lists and periods", async () => {
+  it("rejects daily completed and no-signal candidates without canonical GitHub proof", async () => {
     const prisma = new FakeReaderSummaryPrisma();
     const repository = new PrismaReaderSummaryArtifactRepository(prisma.client);
 
-    await repository.save(readerSummaryArtifact("reader-summary-completed"));
+    await repository.save(
+      readerSummaryArtifact("reader-summary-completed"),
+      noEligibleGitHubBindingOptions(),
+    );
     await repository.save(
       noSignalReaderSummaryArtifact("reader-summary-empty"),
+      noEligibleGitHubBindingOptions(),
     );
 
     const list = await repository.list({
@@ -38,78 +45,139 @@ describe("PrismaReaderSummaryArtifactRepository", () => {
       limit: 10,
     });
 
-    expect(list.items.map((item) => item.toSnapshot().readerSummaryId)).toEqual(
-      ["reader-summary-completed"],
-    );
-    expect(periods.items.map((item) => item.readerSummaryId)).toEqual([
-      "reader-summary-completed",
-    ]);
-    expect(prisma.statusFor("reader-summary-completed")).toBe("COMPLETED");
-    expect(prisma.statusFor("reader-summary-empty")).toBe("NO_SIGNAL");
+    expect(list.items).toEqual([]);
+    expect(periods.items).toEqual([]);
+    expect(prisma.statusFor("reader-summary-completed")).toBe("REJECTED");
+    expect(prisma.statusFor("reader-summary-empty")).toBe("REJECTED");
+    await expect(
+      repository.findById({
+        tenantId: tenant,
+        workspaceId: workspace,
+        readerSummaryId: "reader-summary-completed",
+      }),
+    ).resolves.toBeNull();
   });
 
-  it("does not republish an older artifact when its save is replayed", async () => {
+  it("persists failed-quality evidence as rejected without publishing it", async () => {
     const prisma = new FakeReaderSummaryPrisma();
     const repository = new PrismaReaderSummaryArtifactRepository(prisma.client);
-    const older = readerSummaryArtifact("reader-summary-older");
-    const newer = readerSummaryArtifact("reader-summary-newer");
+    await repository.save(readerSummaryArtifact("reader-summary-rejected"), {
+      publicationDecision: rejectedDecision,
+    });
 
-    await repository.save(older);
-    await repository.save(newer);
-    await repository.save(older);
-
-    expect(prisma.statusFor("reader-summary-older")).toBe("SUPERSEDED");
-    expect(prisma.statusFor("reader-summary-newer")).toBe("COMPLETED");
+    expect(prisma.statusFor("reader-summary-rejected")).toBe("REJECTED");
+    await expect(
+      repository.findById({
+        tenantId: tenant,
+        workspaceId: workspace,
+        readerSummaryId: "reader-summary-rejected",
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      repository.findRejectedDebugById({
+        tenantId: tenant,
+        workspaceId: workspace,
+        readerSummaryId: "reader-summary-rejected",
+      }),
+    ).resolves.toMatchObject({ reasonCodes: ["editorial_quality"] });
   });
 
-  it("does not let deterministic output supersede subscription runtime output", async () => {
+  it("rejects GitHub selectedPosts without an exact verified audit", async () => {
     const prisma = new FakeReaderSummaryPrisma();
     const repository = new PrismaReaderSummaryArtifactRepository(prisma.client);
 
     await repository.save(
-      readerSummaryArtifact("reader-summary-runtime", "codex:gpt-5.5:xhigh"),
+      githubReaderSummaryArtifact("reader-summary-unverified-github"),
+      {
+        githubProjectionAudit: {
+          schemaVersion: "reader_summary.github_projection.v1",
+          status: "verified",
+          requestedUtcDay: "2026-07-05",
+          pageCount: 1,
+          scannedItemCount: 1,
+          eligibleBindingIds: ["github-binding"],
+          bindings: [],
+          violationCodes: [],
+          reasons: [],
+        },
+      },
     );
+
+    expect(prisma.statusFor("reader-summary-unverified-github")).toBe(
+      "REJECTED",
+    );
+  });
+
+  it("stages and records the exact verified GitHub audit", async () => {
+    const prisma = new FakeReaderSummaryPrisma();
+    const repository = new PrismaReaderSummaryArtifactRepository(prisma.client);
+    const githubProjectionAudit = verifiedGitHubProjectionAudit();
+
     await repository.save(
-      readerSummaryArtifact(
-        "reader-summary-deterministic",
-        "deterministic-reader-summary-v1",
-      ),
+      githubReaderSummaryArtifact("reader-summary-verified-github"),
+      { githubProjectionAudit },
     );
 
-    expect(prisma.statusFor("reader-summary-runtime")).toBe("COMPLETED");
-    expect(prisma.statusFor("reader-summary-deterministic")).toBe("SUPERSEDED");
+    expect(prisma.statusFor("reader-summary-verified-github")).toBe("RUNNING");
+    expect(
+      prisma.qualitySignalsFor("reader-summary-verified-github"),
+    ).toMatchObject({ githubProjectionAudit });
   });
 
-  it("keeps the newer requested generation visible when an older run finishes last", async () => {
+  it("rejects a candidate without durable zero-binding proof", async () => {
     const prisma = new FakeReaderSummaryPrisma();
     const repository = new PrismaReaderSummaryArtifactRepository(prisma.client);
 
-    await repository.save(readerSummaryArtifact("reader-summary-newer"), {
-      generationRequestedAt: new Date("2026-07-09T10:05:00.000Z"),
-    });
-    await repository.save(readerSummaryArtifact("reader-summary-older"), {
-      generationRequestedAt: new Date("2026-07-09T10:00:00.000Z"),
-    });
+    await repository.save(
+      readerSummaryArtifact("reader-summary-missing-binding-proof"),
+    );
 
-    expect(prisma.statusFor("reader-summary-newer")).toBe("COMPLETED");
-    expect(prisma.statusFor("reader-summary-older")).toBe("SUPERSEDED");
-  });
-
-  it("publishes a newer requested generation after an older run", async () => {
-    const prisma = new FakeReaderSummaryPrisma();
-    const repository = new PrismaReaderSummaryArtifactRepository(prisma.client);
-
-    await repository.save(readerSummaryArtifact("reader-summary-older"), {
-      generationRequestedAt: new Date("2026-07-09T10:00:00.000Z"),
-    });
-    await repository.save(readerSummaryArtifact("reader-summary-newer"), {
-      generationRequestedAt: new Date("2026-07-09T10:05:00.000Z"),
-    });
-
-    expect(prisma.statusFor("reader-summary-older")).toBe("SUPERSEDED");
-    expect(prisma.statusFor("reader-summary-newer")).toBe("COMPLETED");
+    expect(prisma.statusFor("reader-summary-missing-binding-proof")).toBe(
+      "REJECTED",
+    );
   });
 });
+
+type ReaderSummarySaveOptions = NonNullable<
+  Parameters<PrismaReaderSummaryArtifactRepository["save"]>[1]
+>;
+
+const noEligibleGitHubBindingOptions = (
+  options: Omit<ReaderSummarySaveOptions, "githubProjectionAudit"> = {},
+): ReaderSummarySaveOptions => ({
+  ...options,
+  githubProjectionAudit: {
+    schemaVersion: "reader_summary.github_projection.v1",
+    status: "not_required",
+    requestedUtcDay: "2026-07-05",
+    pageCount: 1,
+    scannedItemCount: 0,
+    eligibleBindingIds: [],
+    bindings: [],
+    violationCodes: [],
+    reasons: [],
+  },
+});
+
+const rejectedDecision = {
+  status: "rejected" as const,
+  qualityPassed: false as const,
+  canonicalScore: 0,
+  shadow: {
+    mode: "shadow" as const,
+    policyVersion: "reader_summary_publication_shadow_v1" as const,
+    riskScore: 0,
+    signals: [],
+  },
+  reasonCodes: ["editorial_quality" as const],
+  reasons: ["Editorial proof failed."],
+  findings: [
+    {
+      code: "editorial_quality" as const,
+      reason: "Editorial proof failed.",
+    },
+  ],
+};
 
 const tenant = tenantId("tenant-reader-summary-prisma");
 const workspace = workspaceId("workspace-reader-summary-prisma");
@@ -289,6 +357,135 @@ const noSignalReaderSummaryArtifact = (
   });
 };
 
+const githubReaderSummaryArtifact = (
+  readerSummaryId: string,
+): ReaderSummaryArtifact => {
+  const snapshot = readerSummaryArtifact(readerSummaryId).toSnapshot();
+  const githubSelectedPosts = Array.from({ length: 10 }, (_, index) => {
+    const rank = index + 1;
+    return {
+      ...topRead(),
+      title: `owner/repository-${rank}`,
+      providerKey: "github-trending-page",
+      providerName: "GitHub Trending",
+      primaryActionKind: "watch_repository" as const,
+      confirmedProviderKeys: ["github-trending-page"],
+      providerMetrics: [
+        {
+          label: "GitHub Trending today",
+          value: `#${rank}, +${200 + rank} stars today`,
+        },
+      ],
+      canonicalUrl: `https://github.com/owner/repository-${rank}`,
+      citationIds: [`github-citation-${rank}`],
+    };
+  });
+
+  return ReaderSummaryArtifact.create({
+    ...snapshot,
+    sourceWindow: {
+      ...snapshot.sourceWindow,
+      selectedFeedItemIds: Array.from(
+        { length: 10 },
+        (_, index) => `feed-${index + 1}`,
+      ),
+      storyClusterIds: [],
+    },
+    storyClusters: [],
+    headline: "No reliable workspace signal yet",
+    executiveSummary:
+      "No primary evidence passed selection for this summary window.",
+    content: {
+      ...snapshot.content!,
+      headline: "No reliable workspace signal yet",
+      oneLineTakeaway:
+        "No primary evidence passed selection for this summary window.",
+      bullets: [
+        "No primary evidence passed selection for this summary window.",
+      ],
+      mainTopics: [],
+      qualityState: {
+        status: "no_signal",
+        flags: ["no_signal", "limited_sources"],
+        warnings: ["No primary evidence passed selection."],
+        isSingleSource: false,
+      },
+      interestSections: [],
+      sourceMix: [],
+      topReads: [],
+      selectedPosts: githubSelectedPosts,
+      claimBoard: [],
+      trendDelta: {
+        newSignals: [],
+        growingSignals: [],
+        repeatedSignals: [],
+        fadingSignals: [],
+      },
+      risks: [],
+      openQuestions: ["Collect more primary evidence before making claims."],
+      nextActions: [],
+    },
+    topStories: [],
+    interestHighlights: [],
+    repeatedSignals: [],
+    risksAndUnknowns: [],
+    citationMap: githubSelectedPosts.map((post, index) => ({
+      ...snapshot.citationMap[0]!,
+      citationId: post.citationIds[0]!,
+      feedItemId: `feed-${index + 1}`,
+      sourceItemId: `source-${index + 1}`,
+      providerKey: "github-trending-page",
+      canonicalUrl: post.canonicalUrl,
+    })),
+    qualityFlags: ["no_signal", "limited_sources"],
+    confidence: {
+      level: "none",
+      score: 0,
+      rationale: "No primary evidence passed selection.",
+    },
+    noSignalReason: "No primary evidence passed selection.",
+  });
+};
+
+const verifiedGitHubProjectionAudit =
+  (): ReaderSummaryGitHubProjectionAudit => ({
+    schemaVersion: "reader_summary.github_projection.v1",
+    status: "verified",
+    requestedUtcDay: "2026-07-05",
+    pageCount: 1,
+    scannedItemCount: 10,
+    eligibleBindingIds: ["github-binding"],
+    observedThrough: "2026-07-05T12:05:00.000Z",
+    projectionCheckedAt: "2026-07-05T12:00:00.000Z",
+    telemetry: {
+      github_projection_collection_delay_ms: 0,
+      collectionGraceMs: 300_000,
+      warningThresholdMs: 240_000,
+      qualitySignal: "within_grace",
+    },
+    bindings: Array.from({ length: 10 }, (_, index) => {
+      const rank = index + 1;
+      return {
+        selectedPostIndex: index,
+        rank,
+        citationId: `github-citation-${rank}`,
+        feedItemId: `feed-${rank}`,
+        sourceItemId: `source-${rank}`,
+        sourceBindingId: "github-binding",
+        repositoryIdentity: `owner/repository-${rank}`,
+        canonicalUrl: `https://github.com/owner/repository-${rank}`,
+        starsGained: 200 + rank,
+        publishedAt: "2026-07-05T12:00:00.000Z",
+        checkedAt: "2026-07-05T12:00:00.000Z",
+        observedAt: "2026-07-05T12:05:00.000Z",
+        sourceContentHash: "a".repeat(64),
+        sourceProviderContentHash: "b".repeat(64),
+      };
+    }),
+    violationCodes: [],
+    reasons: [],
+  });
+
 const topRead = () => ({
   storyClusterId: "story-1",
   title: "Reader source signal",
@@ -381,6 +578,10 @@ class FakeReaderSummaryPrisma {
 
   statusFor(id: string): PrismaSummaryStatus | undefined {
     return this.records.get(id)?.status;
+  }
+
+  qualitySignalsFor(id: string): unknown {
+    return this.records.get(id)?.qualitySignals;
   }
 
   private nextDate(): Date {

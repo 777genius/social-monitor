@@ -48,8 +48,9 @@ class SqliteAccountUsageEventRepository:
                   returned_count,
                   failure_kind,
                   cooldown_reason,
-                  reset_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                  reset_at,
+                  attribution_status
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [event_to_row(event) for event in events],
             )
@@ -65,6 +66,7 @@ def ensure_account_usage_events_schema(connection: sqlite3.Connection) -> None:
         "daily_requests_limit": "INTEGER",
         "daily_tweets_limit": "INTEGER",
         "account_priority": "INTEGER",
+        "attribution_status": "TEXT",
     }.items():
         if column not in columns:
             connection.execute(
@@ -100,7 +102,8 @@ def account_usage_events_schema() -> str:
       returned_count INTEGER,
       failure_kind TEXT,
       cooldown_reason TEXT,
-      reset_at TEXT
+      reset_at TEXT,
+      attribution_status TEXT
     )
     """
 
@@ -150,4 +153,5 @@ def event_to_row(event: AccountUsageEvent) -> tuple[Any, ...]:
         event.failure_kind,
         event.cooldown_reason,
         event.reset_at.isoformat() if event.reset_at else None,
+        event.attribution_status.value if event.attribution_status else None,
     )
