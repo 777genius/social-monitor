@@ -120,7 +120,7 @@ backend_image_rescue_compose_container_id() {
 
 backend_image_rescue_decimal_increment() {
   local value=$1
-  local result= digit next carry=1 index
+  local result='' digit next carry=1 index
 
   [[ $value =~ ^(0|[1-9][0-9]*)$ ]] || return 1
   for ((index = ${#value} - 1; index >= 0; index--)); do
