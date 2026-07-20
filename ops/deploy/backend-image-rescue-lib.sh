@@ -74,6 +74,10 @@ backend_image_rescue_expected_legacy_container_config() {
       printf '%s\n' \
         '["docker-entrypoint.sh"]|["sh","-c","case \"$SERVICE\" in api) exec node dist/apps/api-gateway/src/main.js ;; agent-runtime) exec node dist/apps/agent-runtime/src/main.js ;; ingestion) exec node dist/apps/ingestion-worker/src/main.js ;; intelligence) exec node dist/apps/intelligence-worker/src/main.js ;; delivery) exec node dist/apps/delivery-service/src/main.js ;; event-relay) exec node dist/apps/event-relay/src/main.js ;; *) echo \"Unknown service: $SERVICE\" >&2; exit 64 ;; esac"]|"/app"|"node"|null'
       ;;
+    x-collector)
+      printf '%s\n' \
+        "null|[\"python\",\"-m\",\"x_collector\"]|\"/app/apps/x-collector\"|\"1000:1000\"|{\"Test\":[\"CMD\",\"python\",\"-c\",\"import socket; s=socket.create_connection(('127.0.0.1',50051),2); s.close()\"],\"Interval\":15000000000,\"Timeout\":5000000000,\"StartPeriod\":30000000000,\"Retries\":20}"
+      ;;
     *) return 1 ;;
   esac
 }
@@ -86,15 +90,20 @@ backend_image_rescue_reconstructed_command() {
     intelligence-worker) printf '["/usr/local/bin/node","dist/apps/intelligence-worker/src/main.js"]\n' ;;
     delivery-service) printf '["/usr/local/bin/node","dist/apps/delivery-service/src/main.js"]\n' ;;
     event-relay) printf '["/usr/local/bin/node","dist/apps/event-relay/src/main.js"]\n' ;;
+    x-collector) printf '["python","-m","x_collector"]\n' ;;
     *) return 1 ;;
   esac
 }
 
 backend_image_rescue_reconstructed_image_config() {
-  local command
-  command=$(backend_image_rescue_reconstructed_command "$1") || return 1
-  printf '["/usr/local/bin/docker-entrypoint.sh"]|%s|"/app"|"node"|null\n' \
-    "$command"
+  local service=$1 command
+  command=$(backend_image_rescue_reconstructed_command "$service") || return 1
+  if [[ $service == x-collector ]]; then
+    printf 'null|%s|"/app/apps/x-collector"|"1000:1000"|null\n' "$command"
+  else
+    printf '["/usr/local/bin/docker-entrypoint.sh"]|%s|"/app"|"node"|null\n' \
+      "$command"
+  fi
 }
 
 backend_image_rescue_verify_running_container() {
@@ -424,6 +433,7 @@ backend_image_rescue_reconstruct_running_container() (
   local recorded_image=$4
   local original_container baseline_image baseline_restart_count
   local paused=false unpause_status=0
+  local -a import_changes
 
   command=$(backend_image_rescue_reconstructed_command "$service") || {
     printf 'deploy-error: missing-image rescue has no reviewed reconstruction for %s\n' \
@@ -438,6 +448,20 @@ backend_image_rescue_reconstruct_running_container() (
     printf 'deploy-error: missing-image rescue config is not the reviewed legacy config for %s\n' \
       "$service" >&2
     return 1
+  fi
+  if [[ $service == x-collector ]]; then
+    import_changes=(
+      --change "CMD $command"
+      --change 'WORKDIR /app/apps/x-collector'
+      --change 'USER 1000:1000'
+    )
+  else
+    import_changes=(
+      --change 'ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]'
+      --change "CMD $command"
+      --change 'WORKDIR /app'
+      --change 'USER node'
+    )
   fi
 
   unpause_container() {
@@ -466,10 +490,7 @@ backend_image_rescue_reconstruct_running_container() (
   if ! imported_id=$(
     docker container export "$original_container" | \
       docker image import \
-        --change 'ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]' \
-        --change "CMD $command" \
-        --change 'WORKDIR /app' \
-        --change 'USER node' \
+        "${import_changes[@]}" \
         - "$rescue_tag"
   ); then
     unpause_container || unpause_status=$?

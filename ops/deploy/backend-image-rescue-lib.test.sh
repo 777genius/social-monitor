@@ -31,6 +31,12 @@ CONFIG='["/entry"]|["node","dist/main.js"]|"/app"|"node"|null'
 # The literal quotes are opaque reconstructed-image fixture JSON.
 # shellcheck disable=SC2089
 export SAFE_API_CONFIG='["/usr/local/bin/docker-entrypoint.sh"]|["/usr/local/bin/node","dist/apps/api-gateway/src/main.js"]|"/app"|"node"|null'
+X_COMMAND='["python","-m","x_collector"]'
+X_WORKDIR='"/app/apps/x-collector"'
+X_USER='"1000:1000"'
+X_HEALTHCHECK="{\"Test\":[\"CMD\",\"python\",\"-c\",\"import socket; s=socket.create_connection(('127.0.0.1',50051),2); s.close()\"],\"Interval\":15000000000,\"Timeout\":5000000000,\"StartPeriod\":30000000000,\"Retries\":20}"
+SAFE_X_CONFIG="null|$X_COMMAND|$X_WORKDIR|$X_USER|null"
+LEGACY_X_CONFIG="null|$X_COMMAND|$X_WORKDIR|$X_USER|$X_HEALTHCHECK"
 # The literal quotes are opaque Docker image Env fixture JSON.
 # shellcheck disable=SC2089
 SENTINEL_ENV='["RESCUE_SENTINEL_DO_NOT_PERSIST=fixture-only-value"]'
@@ -414,24 +420,26 @@ import_count_after=$(grep -c $'docker\timage\timport' "$EVENT_LOG" || true)
 ((tag_count_before == tag_count_after && import_count_before == import_count_after))
 backend_image_rescue_cleanup "$adoption_state"
 
-# Imported rescue identity, reviewed config, and empty Env are each validated
+# Imported rescue identity, reviewed config, and non-empty Env are each validated
 # after unpause and before runtime stability polling.
-for validation_case in id config env; do
+for validation_case in id config env x-sentinel-env; do
   reset_case "strict-rescue-$validation_case"
+  validation_service=api validation_container_config=$LEGACY_CONFIG
   case $validation_case in
     id) FAKE_DOCKER_IMPORT_STORED_ID=$ID_D ;;
     config) FAKE_DOCKER_IMPORT_CONFIG=$CONFIG ;;
     env) FAKE_DOCKER_IMPORT_ENV=$SENTINEL_ENV ;;
+    x-sentinel-env) validation_service=x-collector; validation_container_config=$LEGACY_X_CONFIG; set_import_service_config x-collector; FAKE_DOCKER_IMPORT_ENV=$SENTINEL_ENV ;;
   esac
   # Export preserves the selected opaque JSON fixtures for fake docker.
   # shellcheck disable=SC2090
   export FAKE_DOCKER_IMPORT_STORED_ID FAKE_DOCKER_IMPORT_CONFIG \
     FAKE_DOCKER_IMPORT_ENV
-  add_container api "strict-rescue-$validation_case-api" "$ID_A" \
-    'running|true|false|false|healthy' "$LEGACY_CONFIG" "$SENTINEL_ENV"
+  add_container "$validation_service" "strict-rescue-$validation_case-api" "$ID_A" \
+    'running|true|false|false|healthy' "$validation_container_config" "$SENTINEL_ENV"
   strict_state=$(backend_image_rescue_state_file "$SHA")
   set +e
-  backend_image_rescue_prepare "$SHA" "$strict_state" api
+  backend_image_rescue_prepare "$SHA" "$strict_state" "$validation_service"
   strict_status=$?
   set -e
   ((strict_status != 0))
@@ -682,23 +690,77 @@ set -e
 [[ ! -e $mismatch_state && ! -e $mismatch_state.partial ]]
 assert_no_rescue_refs
 
-# The separate x-collector image has no reviewed reconstruction in this bridge.
-# Its explicit missing-image edge fails closed without pausing or exporting it.
-reset_case unsupported-missing-image
-add_container x-collector missing-x "$ID_A" 'running|true|false|false|healthy' \
-  '[]|[]|"/srv"|"collector"' "$SENTINEL_ENV"
-unsupported_state=$(backend_image_rescue_state_file "$SHA")
-set +e
-backend_image_rescue_prepare "$SHA" "$unsupported_state" x-collector
-unsupported_status=$?
-set -e
-((unsupported_status != 0))
-[[ ! -e $unsupported_state && ! -e $unsupported_state.partial ]]
-if grep -E $'docker\tcontainer\t(pause|export)\tmissing-x' "$EVENT_LOG" >/dev/null; then
-  echo 'unsupported missing image was touched before fail-closed validation' >&2
-  exit 1
-fi
-assert_no_rescue_refs
+# The legacy x-collector is reconstructed without copying container metadata.
+for x_env_case in array null; do
+  case $x_env_case in
+    array) x_empty_env='[]' ;;
+    null) x_empty_env=null ;;
+  esac
+  reset_case "x-collector-adoption-$x_env_case"
+  set_import_service_config x-collector
+  FAKE_DOCKER_IMPORT_ENV=$x_empty_env
+  export FAKE_DOCKER_IMPORT_ENV
+  add_container x-collector rescued-x "$ID_A" \
+    'running|true|false|false|healthy' "$LEGACY_X_CONFIG" "$SENTINEL_ENV"
+  x_state=$(backend_image_rescue_state_file "$SHA")
+  backend_image_rescue_prepare "$SHA" "$x_state" x-collector
+  grep -F \
+    $'image\tx-collector\trecreate\tcontainer-export-import\trescued-x' \
+    "$x_state" >/dev/null
+  x_tag=$(backend_image_rescue_tag "$SHA" x-collector)
+  [[ $(backend_image_rescue_image_config "$x_tag") == "$SAFE_X_CONFIG" ]]
+  [[ $(backend_image_rescue_image_env "$x_tag") == "$x_empty_env" ]]
+  printf -v expected_x_import '%s%s%s%s%s' \
+    $'docker\timage\timport\t--change\t' \
+    'CMD ["python","-m","x_collector"]' \
+    $'\t--change\tWORKDIR /app/apps/x-collector' \
+    $'\t--change\tUSER 1000:1000\t-\t' \
+    "$x_tag"
+  grep -Fx "$expected_x_import" "$EVENT_LOG" >/dev/null
+  grep -F $'docker\tcontainer\tpause\trescued-x' \
+    "$EVENT_LOG" >/dev/null
+  grep -F $'docker\tcontainer\texport\trescued-x' \
+    "$EVENT_LOG" >/dev/null
+  grep -F $'docker\tcontainer\tunpause\trescued-x' \
+    "$EVENT_LOG" >/dev/null
+  backend_image_rescue_mark_replacement_started "$x_state"
+  set_ref_direct "$(compose_image_name x-collector)" "$ID_D"
+  : > "$EVENT_LOG"
+  rollback_backend_images "$x_state"
+  grep -F \
+    $'compose\t--profile\tapp\tup\t-d\t--no-deps\t--force-recreate\tx-collector' \
+    "$EVENT_LOG" >/dev/null
+  [[ $(ref_id "$(compose_image_name x-collector)") == "$ID_E" ]]
+  backend_image_rescue_cleanup "$x_state"
+done
+
+# Every reviewed x-collector metadata field is validated before pause/export.
+for x_drift in entrypoint command workdir user healthcheck; do
+  reset_case "x-drift-$x_drift"
+  drift_entrypoint=null drift_command=$X_COMMAND drift_workdir=$X_WORKDIR
+  drift_user=$X_USER drift_healthcheck=$X_HEALTHCHECK
+  case $x_drift in
+    entrypoint) drift_entrypoint='["drift"]' ;;
+    command) drift_command='["drift"]' ;;
+    workdir) drift_workdir='"/drift"' ;;
+    user) drift_user='"0:0"' ;;
+    healthcheck) drift_healthcheck=null ;;
+  esac
+  drift_config="$drift_entrypoint|$drift_command|$drift_workdir|$drift_user|$drift_healthcheck"
+  add_container x-collector "drift-$x_drift" "$ID_A" \
+    'running|true|false|false|healthy' "$drift_config" "$SENTINEL_ENV"
+  drift_state=$(backend_image_rescue_state_file "$SHA")
+  set +e
+  backend_image_rescue_prepare "$SHA" "$drift_state" x-collector
+  drift_status=$?
+  set -e
+  ((drift_status != 0))
+  if grep -E $'docker\tcontainer\t(pause|export)\t' "$EVENT_LOG" >/dev/null; then
+    echo "x-collector $x_drift drift was touched before validation" >&2
+    exit 1
+  fi
+  assert_failed_rescue_cleaned "$drift_state"
+done
 
 # A failed import always unpauses the healthy container and removes the exact
 # partial rescue tag/state; it never falls back to copying container metadata.
