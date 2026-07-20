@@ -1,10 +1,7 @@
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
 import {
-  exactUtcDay,
   ReaderSummaryArtifact,
-  readerSummaryGitHubProjectionCollectionGraceMs,
-  readerSummaryGitHubProjectionCollectionWarningThresholdMs,
   type ReaderSummaryArtifactProps,
   type ReaderSummaryContextArtifact,
   type ReaderSummaryPeriod,
@@ -19,8 +16,7 @@ const scope = { type: "workspace" } as const;
 describe("ReaderSummaryArtifactContextProvider", () => {
   it("adds daily artifacts as context for weekly reader summaries", async () => {
     const repository = new InMemoryReaderSummaryArtifactRepository();
-    await publishContextArtifact(
-      repository,
+    await repository.save(
       artifact({
         readerSummaryId: "daily-context-1",
         period: period(
@@ -31,8 +27,7 @@ describe("ReaderSummaryArtifactContextProvider", () => {
         executiveSummary: "Daily signal inside the weekly period.",
       }),
     );
-    await publishContextArtifact(
-      repository,
+    await repository.save(
       artifact({
         readerSummaryId: "daily-context-outside",
         period: period(
@@ -70,8 +65,7 @@ describe("ReaderSummaryArtifactContextProvider", () => {
 
   it("adds weekly artifacts as context for monthly reader summaries and dedupes delegate artifacts", async () => {
     const repository = new InMemoryReaderSummaryArtifactRepository();
-    await publishContextArtifact(
-      repository,
+    await repository.save(
       artifact({
         readerSummaryId: "weekly-context-1",
         period: period(
@@ -82,8 +76,7 @@ describe("ReaderSummaryArtifactContextProvider", () => {
         executiveSummary: "Weekly signal inside the monthly period.",
       }),
     );
-    await publishContextArtifact(
-      repository,
+    await repository.save(
       artifact({
         readerSummaryId: "daily-context-ignored",
         period: period(
@@ -149,8 +142,7 @@ describe("ReaderSummaryArtifactContextProvider", () => {
 
   it("does not add period artifact context for daily reader summaries", async () => {
     const repository = new InMemoryReaderSummaryArtifactRepository();
-    await publishContextArtifact(
-      repository,
+    await repository.save(
       artifact({
         readerSummaryId: "daily-context-ignored",
         period: period(
@@ -191,115 +183,6 @@ const period = (
   timezone: "UTC",
   periodKey: `${cadence}:${startedAt}:${endedAt}:UTC`,
 });
-
-const publishContextArtifact = async (
-  repository: InMemoryReaderSummaryArtifactRepository,
-  artifact: ReaderSummaryArtifact,
-): Promise<void> => {
-  const snapshot = artifact.toSnapshot();
-  const day = exactUtcDay(
-    snapshot.period.startedAt,
-    snapshot.period.endedAt,
-    snapshot.period.timezone,
-  );
-  const publicationArtifact =
-    snapshot.period.cadence === "daily" && day !== undefined
-      ? artifactWithCanonicalGitHubBoard(artifact)
-      : artifact;
-  const projectionCheckedAt =
-    day === undefined
-      ? undefined
-      : new Date(day.startedAt.getTime() + 12 * 60 * 60 * 1_000);
-  await repository.save(publicationArtifact, {
-    githubProjectionAudit:
-      projectionCheckedAt === undefined
-        ? {
-            schemaVersion: "reader_summary.github_projection.v1",
-            status: "not_applicable",
-            requestedUtcDay: snapshot.period.periodKey,
-            pageCount: 0,
-            scannedItemCount: 0,
-            eligibleBindingIds: [],
-            bindings: [],
-            violationCodes: [],
-            reasons: [],
-          }
-        : {
-            schemaVersion: "reader_summary.github_projection.v1",
-            status: "verified",
-            requestedUtcDay:
-              day?.day ?? snapshot.period.startedAt.toISOString().slice(0, 10),
-            pageCount: 1,
-            scannedItemCount: 10,
-            eligibleBindingIds: ["github-context-binding"],
-            observedThrough: projectionCheckedAt.toISOString(),
-            projectionCheckedAt: projectionCheckedAt.toISOString(),
-            telemetry: {
-              github_projection_collection_delay_ms: 0,
-              collectionGraceMs:
-                readerSummaryGitHubProjectionCollectionGraceMs,
-              warningThresholdMs:
-                readerSummaryGitHubProjectionCollectionWarningThresholdMs,
-              qualitySignal: "within_grace",
-            },
-            bindings: githubContextCitations().map((citation, index) => ({
-              selectedPostIndex: index,
-              rank: index + 1,
-              citationId: citation.citationId,
-              feedItemId: citation.feedItemId,
-              sourceItemId: citation.sourceItemId,
-              sourceBindingId: "github-context-binding",
-              repositoryIdentity: `context/repository-${index + 1}`,
-              canonicalUrl: citation.canonicalUrl,
-              starsGained: 200 + index + 1,
-              publishedAt: projectionCheckedAt.toISOString(),
-              checkedAt: projectionCheckedAt.toISOString(),
-              observedAt: projectionCheckedAt.toISOString(),
-              sourceContentHash: "a".repeat(64),
-              sourceProviderContentHash: "b".repeat(64),
-            })),
-            violationCodes: [],
-            reasons: [],
-          },
-  });
-  repository.commitPublication(publicationArtifact);
-};
-
-const githubContextCitations = () =>
-  Array.from({ length: 10 }, (_, index) => ({
-    citationId: `github-context-citation-${index + 1}`,
-    feedItemId: `github-context-feed-${index + 1}`,
-    sourceItemId: `github-context-source-${index + 1}`,
-    providerKey: "github-trending-page",
-    canonicalUrl: `https://github.com/context/repository-${index + 1}`,
-  }));
-
-const artifactWithCanonicalGitHubBoard = (
-  artifact: ReaderSummaryArtifact,
-): ReaderSummaryArtifact => {
-  const snapshot = artifact.toSnapshot();
-  const citations = githubContextCitations();
-  return {
-    toSnapshot: () => ({
-      ...snapshot,
-      citationMap: [...snapshot.citationMap, ...citations],
-      content: {
-        selectedPosts: citations.map((citation, index) => ({
-          providerKey: "github-trending-page",
-          canonicalUrl: citation.canonicalUrl,
-          citationIds: [citation.citationId],
-          providerMetrics: [
-            {
-              label: "GitHub Trending today",
-              value: `#${index + 1}, +${200 + index + 1} stars today`,
-            },
-          ],
-        })),
-        narrativeSections: [],
-      },
-    }),
-  } as unknown as ReaderSummaryArtifact;
-};
 
 const artifact = (
   overrides: Partial<ReaderSummaryArtifactProps> = {},

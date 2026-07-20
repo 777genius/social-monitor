@@ -7,27 +7,6 @@ import { compactUnique } from "../value-objects/summary-text";
 import { readerItemConfidence } from "./reader-summary-support";
 import { buildMatchedRules } from "./reader-summary-source-lineage";
 import { hasFirstPartyOfficialEvidence } from "../policies/reader-summary-source-authority-policy";
-import {
-  isGitHubTrendingEvidence,
-  maxGitHubTrendingDisplayRepositories,
-  selectGitHubTrendingDisplayRepositories,
-} from "../policies/reader-summary-github-trending-policy";
-
-export const buildReaderSummarySupplementalTrendSelectedPosts = (params: {
-  readonly selectedEvidence: readonly SummaryEvidenceItem[];
-  readonly citationById: ReadonlyMap<string, ReaderSummaryCitation>;
-}): readonly TopRead[] => {
-  const displayRepositories = selectGitHubTrendingDisplayRepositories(
-    params.selectedEvidence,
-  );
-  return displayRepositories.length === maxGitHubTrendingDisplayRepositories
-    ? buildReaderSummarySelectedPosts({
-        topReads: [],
-        selectedEvidence: displayRepositories,
-        citationById: params.citationById,
-      })
-    : [];
-};
 
 export const buildReaderSummarySelectedPosts = (params: {
   readonly topReads: readonly TopRead[];
@@ -37,11 +16,6 @@ export const buildReaderSummarySelectedPosts = (params: {
   const citationByFeedItemId = new Map(
     [...params.citationById.values()].map(
       (citation) => [citation.feedItemId, citation] as const,
-    ),
-  );
-  const githubDisplayFeedItemIds = new Set(
-    selectGitHubTrendingDisplayRepositories(params.selectedEvidence ?? []).map(
-      (item) => item.feedItemId,
     ),
   );
   const posts: TopRead[] = [];
@@ -61,12 +35,6 @@ export const buildReaderSummarySelectedPosts = (params: {
     push(read);
   }
   for (const item of params.selectedEvidence ?? []) {
-    if (
-      isGitHubTrendingEvidence(item) &&
-      !githubDisplayFeedItemIds.has(item.feedItemId)
-    ) {
-      continue;
-    }
     const citation = citationByFeedItemId.get(item.feedItemId);
     if (citation === undefined) {
       continue;

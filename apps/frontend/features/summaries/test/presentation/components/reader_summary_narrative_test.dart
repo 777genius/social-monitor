@@ -168,7 +168,7 @@ void main() {
     );
   });
 
-  testWidgets('renders a unique readable GitHub Watch card with citations', (
+  testWidgets('formats GitHub watch markdown as bold bullet rows', (
     tester,
   ) async {
     final summary = const SummaryMapper().readerSummaryToDomain(
@@ -180,42 +180,14 @@ void main() {
               kind: 'watch',
               title: 'GitHub Trending',
               text:
-                  '• Watch: '
-                  '• codecrafters-io/build-your-own-x: +1,126 stars today. '
-                  '• CODECRAFTERS-IO/build-your-own-x: +1,068 stars today. '
-                  '• example/second: +1,100 stars today. '
-                  '• example/third: +1,050 stars today.',
-              citationIds: ['c-strong', 'c-weak', 'c-second', 'c-third'],
+                  '- **OpenCut-app/OpenCut**: +1,229 stars today.\n'
+                  '- **HKUDS/Vibe-Trading**: +1,153 stars today.',
+              citationIds: [],
             ),
           ],
         ),
-        citations: [
-          summaryCitationApiDto(
-            id: 'c-strong',
-            providerKey: 'github-trending-page',
-            canonicalUrl: 'https://github.com/codecrafters-io/build-your-own-x',
-          ),
-          summaryCitationApiDto(
-            id: 'c-weak',
-            providerKey: 'github-trending-page',
-            canonicalUrl: 'https://github.com/codecrafters-io/build-your-own-x',
-          ),
-          summaryCitationApiDto(
-            id: 'c-second',
-            providerKey: 'github-trending-page',
-            canonicalUrl: 'https://github.com/example/second',
-          ),
-          summaryCitationApiDto(
-            id: 'c-third',
-            providerKey: 'github-trending-page',
-            canonicalUrl: 'https://github.com/example/third',
-          ),
-        ],
       ),
     );
-    final citationsById = {
-      for (final citation in summary.citations) citation.id: citation,
-    };
 
     await tester.pumpWidget(
       MaterialApp(
@@ -223,54 +195,39 @@ void main() {
         home: Scaffold(
           body: ReaderSummaryExecutiveBrief(
             summary: summary,
-            citationsById: citationsById,
+            citationsById: const {},
             onOpenUrl: (_) {},
           ),
         ),
       ),
     );
 
-    final appendix = find.byKey(
-      const ValueKey('reader-summary-narrative-watch'),
+    final narrative = find.byKey(
+      const ValueKey('reader-summary-narrative-watch-text'),
     );
-    final visibleText = tester
-        .widgetList<RichText>(
-          find.descendant(of: appendix, matching: find.byType(RichText)),
-        )
-        .map((widget) => widget.text.toPlainText())
-        .join('\n');
+    final richText = tester.widget<RichText>(
+      find.descendant(of: narrative, matching: find.byType(RichText)),
+    );
+    final rootSpan = richText.text as TextSpan;
+    expect(
+      rootSpan.toPlainText(),
+      contains('Watch:\n\u2022 OpenCut-app/OpenCut'),
+    );
+    expect(rootSpan.toPlainText(), isNot(contains('**')));
 
-    expect(find.text('GitHub Trending'), findsOneWidget);
-    expect(find.text('Watch'), findsOneWidget);
-    expect(
-      RegExp(
-        'codecrafters-io/build-your-own-x',
-        caseSensitive: false,
-      ).allMatches(visibleText),
-      hasLength(1),
-    );
-    expect(visibleText, contains('+1,126 stars today.'));
-    expect(visibleText, isNot(contains('+1,068 stars today.')));
-    expect(visibleText, isNot(contains('•')));
-    expect(visibleText, isNot(contains('**')));
-    expect(visibleText, isNot(contains('Watch:')));
-    expect(
-      find.byKey(
-        const ValueKey('reader-summary-github-watch-row-0-citation-c-strong'),
-      ),
-      findsNothing,
-    );
-    expect(
-      find.byKey(
-        const ValueKey('reader-summary-github-watch-row-0-citation-c-weak'),
-      ),
-      findsNothing,
-    );
-    expect(
-      find.byKey(
-        const ValueKey('reader-summary-github-watch-row-1-citation-c-second'),
-      ),
-      findsOneWidget,
-    );
+    final repoSpans = _textSpans(
+      rootSpan,
+    ).where((span) => span.text == 'OpenCut-app/OpenCut');
+    expect(repoSpans, hasLength(1));
+    expect(repoSpans.single.style?.fontWeight, FontWeight.w900);
   });
+}
+
+Iterable<TextSpan> _textSpans(TextSpan root) sync* {
+  yield root;
+  for (final child in root.children ?? const <InlineSpan>[]) {
+    if (child case final TextSpan span) {
+      yield* _textSpans(span);
+    }
+  }
 }
