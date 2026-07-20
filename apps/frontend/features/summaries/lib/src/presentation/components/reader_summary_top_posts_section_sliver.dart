@@ -3,10 +3,10 @@ import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 
 import '../../domain/aggregates/reader_summary.dart';
 import '../../domain/entities/post_rating.dart';
-import '../formatters/top_post_metrics.dart';
+import '../view_models/reader_summary_top_posts_projection.dart';
 import 'reader_summary_brief_surface.dart';
 
-class ReaderSummaryTopPostsSectionSliver extends StatelessWidget {
+class ReaderSummaryTopPostsSectionSliver extends StatefulWidget {
   const ReaderSummaryTopPostsSectionSliver({
     super.key,
     required this.summary,
@@ -28,29 +28,49 @@ class ReaderSummaryTopPostsSectionSliver extends StatelessWidget {
   onRated;
 
   @override
+  State<ReaderSummaryTopPostsSectionSliver> createState() =>
+      _ReaderSummaryTopPostsSectionSliverState();
+}
+
+class _ReaderSummaryTopPostsSectionSliverState
+    extends State<ReaderSummaryTopPostsSectionSliver> {
+  late ReaderSummaryTopPostsProjection _projection;
+
+  @override
+  void initState() {
+    super.initState();
+    _projection = readerSummaryTopPostsProjection(widget.summary);
+  }
+
+  @override
+  void didUpdateWidget(covariant ReaderSummaryTopPostsSectionSliver oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(widget.summary, oldWidget.summary)) {
+      _projection = readerSummaryTopPostsProjection(widget.summary);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final items = readerSummaryTopPostItems(summary);
-    final editorialTopPostCount = readerSummaryEditorialTopPostCount(summary);
-    if (items.isEmpty) {
+    if (_projection.isEmpty) {
       return const SliverToBoxAdapter(child: SizedBox.shrink());
     }
     return SliverMainAxisGroup(
       slivers: [
         const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.md + 2)),
         SliverPadding(
-          padding: contentPadding,
+          padding: widget.contentPadding,
           sliver: ReaderSummaryTopPostsSliver(
-            items: items,
-            curatedTopPostCount: editorialTopPostCount,
-            selectedPostCount:
-                summary.coverage?.selectedFeedItemCount ?? items.length,
-            period: summary.period,
+            projection: _projection,
+            selectedPostCount: _selectedPostCount(widget.summary),
+            period: widget.summary.period,
             citationsById: {
-              for (final citation in summary.citations) citation.id: citation,
+              for (final citation in widget.summary.citations)
+                citation.id: citation,
             },
-            ratingFor: ratingFor,
-            onRated: onRated,
-            onOpenUrl: onOpenUrl,
+            ratingFor: widget.ratingFor,
+            onRated: widget.onRated,
+            onOpenUrl: widget.onOpenUrl,
           ),
         ),
       ],
@@ -58,30 +78,13 @@ class ReaderSummaryTopPostsSectionSliver extends StatelessWidget {
   }
 }
 
-const _githubTrendingTopPostProviderKey = 'github-trending-page';
-
-List<TopRead> readerSummaryTopPostItems(ReaderSummary summary) {
-  final githubSource = summary.content.selectedPosts.isNotEmpty
-      ? summary.content.selectedPosts
-      : summary.content.topReads;
-  final editorialPosts = summary.content.topReads
-      .where((item) => !_isGitHubTrendingPost(item))
-      .toList(growable: false);
-  final githubTrendingPosts = githubSource
-      .where(_isGitHubTrendingPost)
-      .toList(growable: false);
-
-  return [
-    ...editorialPosts,
-    ...orderGitHubTrendingPosts(githubTrendingPosts),
-  ];
+int _selectedPostCount(ReaderSummary summary) {
+  final coverageCount = summary.coverage?.selectedFeedItemCount;
+  if (coverageCount != null) {
+    return coverageCount;
+  }
+  final selectedPosts = summary.content.selectedPosts;
+  return selectedPosts.isNotEmpty
+      ? selectedPosts.length
+      : summary.content.topReads.length;
 }
-
-int readerSummaryEditorialTopPostCount(ReaderSummary summary) {
-  return summary.content.topReads
-      .where((item) => !_isGitHubTrendingPost(item))
-      .length;
-}
-
-bool _isGitHubTrendingPost(TopRead item) =>
-    item.providerKey.trim().toLowerCase() == _githubTrendingTopPostProviderKey;

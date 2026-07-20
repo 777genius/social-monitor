@@ -1,13 +1,9 @@
 part of 'reader_summary_brief_surface.dart';
 
-const _topPostsInitialVisibleCount = 24;
-const _topPostsRevealBatchSize = 24;
-
 class ReaderSummaryTopPostsSliver extends StatefulWidget {
   const ReaderSummaryTopPostsSliver({
     super.key,
-    required this.items,
-    required this.curatedTopPostCount,
+    required this.projection,
     required this.selectedPostCount,
     required this.period,
     required this.citationsById,
@@ -16,8 +12,7 @@ class ReaderSummaryTopPostsSliver extends StatefulWidget {
     required this.onOpenUrl,
   });
 
-  final List<TopRead> items;
-  final int curatedTopPostCount;
+  final ReaderSummaryTopPostsProjection projection;
   final int selectedPostCount;
   final SummaryPeriod period;
   final Map<String, SummaryCitation> citationsById;
@@ -39,53 +34,80 @@ class _ReaderSummaryTopPostsSliverState
     extends State<ReaderSummaryTopPostsSliver> {
   _TopPostSort _sort = _TopPostSort.editorial;
   late _TopPostBoard _board;
+  late final TopPostsContinuationWindow _continuation;
+  late List<TopRead> _boardItems;
+  late List<TopRead> _filteredItems;
+  late List<String> _providerKeys;
+  late bool _reservePreviewSpace;
   final Set<String> _hiddenProviders = {};
-  int _visibleItemLimit = _topPostsInitialVisibleCount;
+  ScrollPosition? _scrollPosition;
+  double? _lastObservedScrollPixels;
+  int _userScrollSerial = 0;
+  int _lastRevealUserScrollSerial = 0;
   bool _denseView = false;
 
   @override
   void initState() {
     super.initState();
-    _board = _availableTopPostBoard(widget.items);
+    _board = _availableTopPostBoard(widget.projection.items);
+    _continuation = TopPostsContinuationWindow(
+      initialVisibleCount: readerSummaryCuratedTopPostLimit,
+    );
+    _refreshBoardItems();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final scrollPosition = Scrollable.maybeOf(context)?.position;
+    if (identical(scrollPosition, _scrollPosition)) {
+      return;
+    }
+    _scrollPosition?.removeListener(_handleScrollPositionChanged);
+    _scrollPosition = scrollPosition;
+    _lastObservedScrollPixels = scrollPosition?.hasPixels == true
+        ? scrollPosition!.pixels
+        : null;
+    _scrollPosition?.addListener(_handleScrollPositionChanged);
   }
 
   @override
   void didUpdateWidget(covariant ReaderSummaryTopPostsSliver oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.items != oldWidget.items) {
-      _visibleItemLimit = _topPostsInitialVisibleCount;
-      _board = _availableTopPostBoard(widget.items, preferred: _board);
+    final datasetChanged = !widget.projection.hasSameDatasetAs(
+      oldWidget.projection,
+    );
+    final periodChanged = widget.period != oldWidget.period;
+    if (datasetChanged || periodChanged) {
+      _continuation.reset(
+        initialVisibleCount: readerSummaryCuratedTopPostLimit,
+      );
+      _requireFreshUserScroll();
     }
+    _board = _availableTopPostBoard(widget.projection.items, preferred: _board);
+    _refreshBoardItems();
+  }
+
+  @override
+  void dispose() {
+    _scrollPosition?.removeListener(_handleScrollPositionChanged);
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final postItems = widget.items
-        .where((item) => !_isGithubTrendingTopRead(item))
-        .toList(growable: false);
-    final githubTrendingItems = orderGitHubTrendingPosts(
-      widget.items.where(_isGithubTrendingTopRead),
-    );
     final activeBoard = _board;
-    final boardItems = switch (activeBoard) {
-      _TopPostBoard.posts => postItems,
-      _TopPostBoard.githubTrending => githubTrendingItems,
-    };
-    final filtered = orderTopPosts(
-      boardItems.where((item) => !_hiddenProviders.contains(item.providerKey)),
-      byEngagement:
-          activeBoard == _TopPostBoard.posts &&
-          _sort == _TopPostSort.engagement,
-    );
-    final reservePreviewSpace = filtered.any(
-      (item) => item.previewMedia != null,
-    );
-    final visibleItemCount = math.min(filtered.length, _visibleItemLimit);
-    final hasMoreItems = visibleItemCount < filtered.length;
+    final filtered = _filteredItems;
+    final visibleItemCount = activeBoard == _TopPostBoard.posts
+        ? _continuation.visibleItemCount(filtered.length)
+        : filtered.length;
+    final hasMoreItems =
+        activeBoard == _TopPostBoard.posts &&
+        visibleItemCount < filtered.length;
     final sliverItemCount = hasMoreItems
-        ? visibleItemCount * 2
-        : visibleItemCount * 2 - 1;
+        ? math.max(1, visibleItemCount * 2)
+        : math.max(0, visibleItemCount * 2 - 1);
 
     return SliverMainAxisGroup(
       slivers: [
@@ -93,13 +115,11 @@ class _ReaderSummaryTopPostsSliverState
           child: _TopPostsHeader(
             board: activeBoard,
             sort: _sort,
-            postCount: postItems.length,
-            githubTrendingCount: githubTrendingItems.length,
-            curatedTopPostCount: widget.curatedTopPostCount,
+            postCount: widget.projection.posts.length,
+            githubTrendingCount: widget.projection.githubTrendingPosts.length,
+            curatedTopPostCount: widget.projection.curatedPosts.length,
             selectedPostCount: widget.selectedPostCount,
-            providerKeys: {
-              for (final item in boardItems) item.providerKey,
-            }.toList(growable: false),
+            providerKeys: _providerKeys,
             hiddenProviders: _hiddenProviders,
             denseView: _denseView,
             onBoardChanged: _setBoard,
@@ -130,6 +150,7 @@ class _ReaderSummaryTopPostsSliverState
             itemBuilder: (context, index) {
               if (hasMoreItems && index == sliverItemCount - 1) {
                 return _TopPostsRevealTrigger(
+                  generation: _continuation.generation,
                   remainingCount: filtered.length - visibleItemCount,
                   onReveal: _revealMoreItems,
                 );
@@ -143,14 +164,15 @@ class _ReaderSummaryTopPostsSliverState
               final item = filtered[itemIndex];
               return _TopPostRow(
                 key: ValueKey(
-                  'reader-summary-top-post-${_topPostStableId(item)}',
+                  'reader-summary-top-post-'
+                  '${readerSummaryTopPostIdentity(item)}-$itemIndex',
                 ),
                 index: itemIndex,
                 item: item,
                 dateLabel: _topPostDateLabel(item, widget.period),
                 citationsById: widget.citationsById,
                 dense: _denseView,
-                reservePreviewSpace: reservePreviewSpace,
+                reservePreviewSpace: _reservePreviewSpace,
                 rating: widget.ratingFor?.call(item),
                 onRated: widget.onRated,
                 onOpenUrl: widget.onOpenUrl,
@@ -167,7 +189,8 @@ class _ReaderSummaryTopPostsSliverState
     }
     setState(() {
       _board = board;
-      _visibleItemLimit = _topPostsInitialVisibleCount;
+      _resetContinuation();
+      _refreshBoardItems();
     });
   }
 
@@ -177,7 +200,8 @@ class _ReaderSummaryTopPostsSliverState
     }
     setState(() {
       _sort = sort;
-      _visibleItemLimit = _topPostsInitialVisibleCount;
+      _resetContinuation();
+      _refreshBoardItems();
     });
   }
 
@@ -186,7 +210,8 @@ class _ReaderSummaryTopPostsSliverState
       if (!_hiddenProviders.remove(providerKey)) {
         _hiddenProviders.add(providerKey);
       }
-      _visibleItemLimit = _topPostsInitialVisibleCount;
+      _resetContinuation();
+      _refreshBoardItems();
     });
   }
 
@@ -196,90 +221,68 @@ class _ReaderSummaryTopPostsSliverState
     }
     setState(() {
       _denseView = dense;
-      _visibleItemLimit = _topPostsInitialVisibleCount;
     });
   }
 
-  void _revealMoreItems() {
-    if (!mounted) {
-      return;
+  bool _revealMoreItems(int generation) {
+    if (!mounted ||
+        _board != _TopPostBoard.posts ||
+        generation != _continuation.generation ||
+        _userScrollSerial <= _lastRevealUserScrollSerial ||
+        _continuation.visibleItemCount(_filteredItems.length) >=
+            _filteredItems.length) {
+      return false;
     }
+    var didReveal = false;
     setState(() {
-      _visibleItemLimit += _topPostsRevealBatchSize;
+      didReveal = _continuation.revealNext(
+        generation: generation,
+        totalItemCount: _filteredItems.length,
+      );
+      if (didReveal) {
+        _lastRevealUserScrollSerial = _userScrollSerial;
+      }
     });
-  }
-}
-
-class _TopPostsRevealTrigger extends StatefulWidget {
-  const _TopPostsRevealTrigger({
-    required this.remainingCount,
-    required this.onReveal,
-  });
-
-  final int remainingCount;
-  final VoidCallback onReveal;
-
-  @override
-  State<_TopPostsRevealTrigger> createState() => _TopPostsRevealTriggerState();
-}
-
-class _TopPostsRevealTriggerState extends State<_TopPostsRevealTrigger> {
-  int? _scheduledRemainingCount;
-
-  @override
-  void initState() {
-    super.initState();
-    _scheduleReveal();
+    return didReveal;
   }
 
-  @override
-  void didUpdateWidget(covariant _TopPostsRevealTrigger oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    _scheduleReveal();
+  void _resetContinuation() {
+    _continuation.reset(initialVisibleCount: readerSummaryCuratedTopPostLimit);
+    _requireFreshUserScroll();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
-      child: Center(
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(
-              width: 16,
-              height: 16,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: colorScheme.primary,
-              ),
-            ),
-            const SizedBox(width: AppSpacing.sm),
-            Text(
-              'Loading more top posts',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-                letterSpacing: 0,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _scheduleReveal() {
-    if (widget.remainingCount <= 0 ||
-        _scheduledRemainingCount == widget.remainingCount) {
+  void _handleScrollPositionChanged() {
+    final position = _scrollPosition;
+    if (position == null || !position.hasPixels) {
       return;
     }
-    _scheduledRemainingCount = widget.remainingCount;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) {
-        return;
-      }
-      widget.onReveal();
-    });
+    final pixels = position.pixels;
+    final pixelsChanged = _lastObservedScrollPixels != pixels;
+    _lastObservedScrollPixels = pixels;
+    if (pixelsChanged && position.userScrollDirection != ScrollDirection.idle) {
+      _userScrollSerial += 1;
+    }
+  }
+
+  void _requireFreshUserScroll() {
+    _lastRevealUserScrollSerial = _userScrollSerial;
+  }
+
+  void _refreshBoardItems() {
+    _boardItems = switch (_board) {
+      _TopPostBoard.posts => widget.projection.posts,
+      _TopPostBoard.githubTrending => widget.projection.githubTrendingPosts,
+    };
+    _providerKeys = {
+      for (final item in _boardItems) item.providerKey,
+    }.toList(growable: false);
+    _filteredItems = orderTopPosts(
+      _boardItems.where((item) => !_hiddenProviders.contains(item.providerKey)),
+      byEngagement:
+          _board == _TopPostBoard.posts && _sort == _TopPostSort.engagement,
+    );
+    _reservePreviewSpace = _filteredItems.any(
+      (item) => item.previewMedia != null,
+    );
   }
 }

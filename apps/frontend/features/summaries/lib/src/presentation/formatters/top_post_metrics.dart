@@ -1,5 +1,8 @@
 import '../../domain/aggregates/reader_summary.dart';
 
+const _githubTrendingProviderKey = 'github-trending-page';
+const _githubTrendingMetricLabel = 'github trending today';
+
 /// One display metric slot in a top post row, e.g. `2.0K Likes`.
 final class TopPostMetric {
   const TopPostMetric({
@@ -20,7 +23,7 @@ const _metricSlotsByProvider = <String, List<String>>{
   'twitter': ['Likes', 'Reposts', 'Replies', 'Views'],
   'reddit': ['Upvotes', 'Comments', 'Shares', 'Views'],
   'hacker-news': ['Points', 'Comments', 'Shares', 'Views'],
-  'github-trending-page': ['Stars', 'Stars today', 'Rank', 'Forks'],
+  _githubTrendingProviderKey: ['Stars', 'Stars today', 'Rank', 'Forks'],
   'github-issues': ['Comments', 'Reactions', 'Stars', 'Views'],
 };
 
@@ -82,16 +85,14 @@ List<TopPostMetric> topPostMetricsFor(TopRead read) {
 /// GitHub Trending repositories only become breakout signals above 1,000
 /// stars gained today. Exactly 1,000 remains a regular trend.
 bool isGitHubTrendingBreakout(TopRead read) =>
-    read.providerKey.trim().toLowerCase() == 'github-trending-page' &&
+    read.providerKey.trim().toLowerCase() == _githubTrendingProviderKey &&
     (_githubTrendingStarsToday(read) ?? 0) > 1000;
 
 /// Accepts only the canonical backend GitHub board in exact rank order.
 ///
 /// A partial, reordered, duplicated or identity-less projection is rejected as
 /// a whole so presentation cannot make invalid selectedPosts look publishable.
-List<TopRead> orderGitHubTrendingPosts(
-  Iterable<TopRead> items,
-) {
+List<TopRead> orderGitHubTrendingPosts(Iterable<TopRead> items) {
   final canonical = items.toList(growable: false);
   if (canonical.length != 10) {
     return const [];
@@ -104,7 +105,8 @@ List<TopRead> orderGitHubTrendingPosts(
     final citationId = item.citationIds.length == 1
         ? item.citationIds[0].trim()
         : null;
-    if (_githubTrendingRank(item) != index + 1 ||
+    if (item.providerKey.trim().toLowerCase() != _githubTrendingProviderKey ||
+        _githubTrendingRank(item) != index + 1 ||
         repositoryIdentity == null ||
         !repositoryIdentities.add(repositoryIdentity) ||
         item.citationIds.length != 1 ||
@@ -138,7 +140,7 @@ String? _githubRepositoryIdentity(String? value) {
 
 int? _githubTrendingRank(TopRead read) {
   for (final metric in read.providerMetrics) {
-    if (!metric.label.toLowerCase().contains('trending today')) {
+    if (!_isGitHubTrendingMetric(metric)) {
       continue;
     }
     final rawRank = RegExp(r'#([\d,]+)').firstMatch(metric.value)?.group(1);
@@ -152,7 +154,7 @@ int? _githubTrendingRank(TopRead read) {
 
 num? _githubTrendingStarsToday(TopRead read) {
   for (final metric in read.providerMetrics) {
-    if (!metric.label.toLowerCase().contains('trending today')) {
+    if (!_isGitHubTrendingMetric(metric)) {
       continue;
     }
     final rawStars = RegExp(
@@ -177,7 +179,7 @@ Map<String, String> _parsedMetrics(TopRead read) {
 }
 
 void _collectTrendingToday(ProviderMetric metric, Map<String, String> found) {
-  if (!metric.label.toLowerCase().contains('trending today')) {
+  if (!_isGitHubTrendingMetric(metric)) {
     return;
   }
   final rank = RegExp(r'#\d+').firstMatch(metric.value)?.group(0);
@@ -195,6 +197,9 @@ void _collectTrendingToday(ProviderMetric metric, Map<String, String> found) {
     );
   }
 }
+
+bool _isGitHubTrendingMetric(ProviderMetric metric) =>
+    metric.label.trim().toLowerCase() == _githubTrendingMetricLabel;
 
 final _numberWordPattern = RegExp(
   r'([\d][\d,.]*[kKmM]?)\s*(?:x\s+)?([a-zA-Z][a-zA-Z ]*)',
@@ -267,13 +272,20 @@ List<TopRead> orderTopPosts(
   required bool byEngagement,
 }) {
   final ordered = items.toList(growable: false);
-  if (byEngagement) {
-    ordered.sort(
-      (a, b) => topPostEngagementScore(b).compareTo(topPostEngagementScore(a)),
-    );
+  if (!byEngagement) {
+    return ordered;
   }
 
-  return ordered;
+  final indexed = ordered.indexed.toList(growable: false)
+    ..sort((left, right) {
+      final engagementOrder = topPostEngagementScore(
+        right.$2,
+      ).compareTo(topPostEngagementScore(left.$2));
+      return engagementOrder != 0
+          ? engagementOrder
+          : left.$1.compareTo(right.$1);
+    });
+  return indexed.map((entry) => entry.$2).toList(growable: false);
 }
 
 num _rawMetricNumber(String raw) {
