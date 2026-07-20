@@ -116,6 +116,7 @@ class FakeFeedItems implements FeedItemReadRepositoryPort {
             normalizedSignal: { score: 12 },
           }),
           item("feed-2", "github-issues", "Excluded provider"),
+          item("feed-3", "github-trending-page", "Supplemental board"),
           item("feed-4", "rss", "Open source repos signal"),
         ],
       };

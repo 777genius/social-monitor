@@ -15,6 +15,11 @@ class AccountUsageEventType(str, Enum):
     COOLDOWN_OBSERVED = "cooldown_observed"
 
 
+class AccountUsageAttributionStatus(str, Enum):
+    KNOWN = "known"
+    UNKNOWN = "unknown"
+
+
 @dataclass(frozen=True)
 class AccountUsageEvent:
     event_id: str
@@ -43,6 +48,7 @@ class AccountUsageEvent:
     failure_kind: str | None = None
     cooldown_reason: str | None = None
     reset_at: datetime | None = None
+    attribution_status: AccountUsageAttributionStatus | None = None
 
 
 @dataclass(frozen=True)
@@ -52,15 +58,21 @@ class AccountUsageDelta:
 
     @property
     def request_delta(self) -> int:
+        if self.before is None:
+            return 0
+
         return max(
-            self.after.daily_requests - (self.before.daily_requests if self.before else 0),
+            self.after.daily_requests - self.before.daily_requests,
             0,
         )
 
     @property
     def tweet_delta(self) -> int:
+        if self.before is None:
+            return 0
+
         return max(
-            self.after.daily_tweets - (self.before.daily_tweets if self.before else 0),
+            self.after.daily_tweets - self.before.daily_tweets,
             0,
         )
 
@@ -86,13 +98,13 @@ def account_usage_deltas(
     before: AccountPoolSnapshot | None,
     after: AccountPoolSnapshot | None,
 ) -> tuple[AccountUsageDelta, ...]:
-    if after is None:
+    if before is None or after is None:
         return ()
 
     before_by_id = {
         account.account_id: account
         for account in before.accounts
-    } if before is not None else {}
+    }
 
     deltas: list[AccountUsageDelta] = []
     for after_account in after.accounts:
