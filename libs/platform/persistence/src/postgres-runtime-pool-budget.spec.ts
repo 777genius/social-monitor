@@ -396,6 +396,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       'scripts/reader-summary-publication-postgres-privileges.ts:Pool',
       'scripts/reader-summary-publication-postgres-privileges.ts:Pool',
       'scripts/reader-summary-publication-postgres-privileges.ts:Pool',
+      'scripts/reader-summary-publication-postgres-privileges.ts:Pool',
       'scripts/run-reader-summary-clean-real-day-collection.ts:Pool',
       'scripts/run-reader-summary-production-day.ts:Pool',
     ]);
@@ -561,7 +562,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       ['scripts/reader-summary-publication-postgres-legacy.ts', [1]],
       [
         'scripts/reader-summary-publication-postgres-privileges.ts',
-        [1, 1, 1, 1, 1, 1],
+        [1, 1, 1, 1, 1, 1, 1],
       ],
       ['scripts/reader-summary-publication-postgres-runtime-guard.ts', []],
     ]);
