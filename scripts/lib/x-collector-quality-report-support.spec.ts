@@ -7,6 +7,7 @@ import {
   buildXAccountPoolReport,
   buildXCollectorLedgerReport,
 } from "./x-collector-quality-report-support";
+import { finalizeXAccountAttributionWarningOnly } from "./x-account-attribution-warning-policy";
 
 jest.mock("node:child_process", () => {
   const actual = jest.requireActual("node:child_process") as Record<
@@ -206,11 +207,21 @@ describe("x collector quality report support", () => {
       expect(accountPool.eventCount).toBe(3);
       expect(accountPool.accountCount).toBe(1);
       expect(accountPool.passStartedCount).toBe(1);
-      expect(accountPool.passSucceededCount).toBe(1);
-      expect(accountPool.passFailedCount).toBe(1);
+      expect(accountPool.passSucceededCount).toBeNull();
+      expect(accountPool.passFailedCount).toBeNull();
       expect(accountPool.accountLimitProfileObservedCount).toBe(0);
+      expect(accountPool.attributionStatus).toBe("unknown");
+      expect(accountPool.totalRequestDelta).toBeNull();
+      expect(accountPool.totalTweetDelta).toBeNull();
+      expect(accountPool.attributionPolicy).toBe("warning_only");
+      expect(accountPool.attributionGateReason).toBe(
+        "unknown_attribution_global_collection_succeeded_warning_only",
+      );
       expect(accountPool.accounts[0]?.passStartedCount).toBe(1);
-      expect(accountPool.accounts[0]?.fetchedCount).toBe(31);
+      expect(accountPool.accounts[0]?.fetchedCount).toBeNull();
+      expect(accountPool.accounts[0]?.targetWindowAttribution.status).toBe(
+        "unknown",
+      );
       expect(accountPool.accounts[0]?.dailyRequestsLimit).toBeNull();
       expect(accountPool.accounts[0]?.dailyTweetsLimit).toBeNull();
       expect(jest.mocked(execFileSync)).toHaveBeenCalled();
@@ -522,7 +533,8 @@ describe("x collector quality report support", () => {
             product text, estimated_request_cost integer, requests_before integer,
             requests_after integer, tweets_before integer, tweets_after integer,
             fetched_count integer, accepted_count integer, returned_count integer,
-            failure_kind text, cooldown_reason text, reset_at text
+            failure_kind text, cooldown_reason text, reset_at text,
+            attribution_status text
           );
         `,
       );
@@ -545,6 +557,17 @@ describe("x collector quality report support", () => {
           ) values
             (1, 'active_account', 1, null, 0, 1, 10, '2026-07-14', null, null),
             (2, 'manually_disabled_account', 0, null, 0, 0, 0, '2026-07-14', null, null);
+          insert into account_usage_events (
+            event_id, event_type, provider, occurred_at, account_id, username,
+            request_id, scan_job_id, source_binding_id, query, pass_label,
+            product, requests_before, requests_after, tweets_before,
+            tweets_after, fetched_count, accepted_count, attribution_status
+          ) values (
+            'event-known', 'pass_succeeded', 'x-twitter',
+            '2026-07-14T00:01:30.000Z', 1, 'active_account', 'request-1',
+            'scan-1', 'binding-1', 'AI agents', 'top_base', 'search',
+            0, 1, 0, 0, 0, 0, 'known'
+          );
         `,
       );
 
@@ -560,18 +583,49 @@ describe("x collector quality report support", () => {
         eligibleAccountCount: 1,
         ineligibleAccountCount: 1,
         observedAt: "2026-07-14T00:03:00.000Z",
+        attributionStatus: "known",
+        totalRequestDelta: 1,
+        totalTweetDelta: 0,
+        attributionPolicy: "warning_only",
+        attributionGateReason:
+          "known_attribution_zero_output_warning_only",
+        eligibleAccountZeroAttributableOutputWarningCount: 1,
       });
       expect(
         accountPool.accounts.find((account) => account.status === 1),
       ).toMatchObject({
         eligible: true,
         ineligibilityReasonCodes: [],
+        observedAccountSnapshot: {
+          counterResetDate: "2026-07-14",
+          counterResetDateMatchesTargetDate: false,
+        },
+        targetWindowAttribution: {
+          collectionDate: "2026-07-13",
+          status: "known",
+          requestDelta: 1,
+          acceptedCount: 0,
+        },
       });
       expect(
         accountPool.accounts.find((account) => account.status === 0),
       ).toMatchObject({
         eligible: false,
         ineligibilityReasonCodes: ["status_not_reusable"],
+      });
+      const verdict = finalizeXAccountAttributionWarningOnly({
+        qualityGates: { globalXCollectionSucceeded: true },
+        attribution: accountPool,
+      });
+      expect(verdict.collectionBlockingPassed).toBe(true);
+      expect(verdict.operationalWarnings).toMatchObject({
+        xAccountAttributionStatus: "known",
+        xAccountAttributionWarningCount: 1,
+        xAccountAttributionWarnings: [
+          {
+            code: "eligible_account_requests_without_attributable_output",
+          },
+        ],
       });
     } finally {
       rmSync(directory, { recursive: true, force: true });

@@ -168,7 +168,7 @@ void main() {
     );
   });
 
-  testWidgets('formats GitHub watch markdown as bold bullet rows', (
+  testWidgets('renders a unique readable GitHub Watch card with citations', (
     tester,
   ) async {
     final summary = const SummaryMapper().readerSummaryToDomain(
@@ -180,14 +180,42 @@ void main() {
               kind: 'watch',
               title: 'GitHub Trending',
               text:
-                  '- **OpenCut-app/OpenCut**: +1,229 stars today.\n'
-                  '- **HKUDS/Vibe-Trading**: +1,153 stars today.',
-              citationIds: [],
+                  '• Watch: '
+                  '• codecrafters-io/build-your-own-x: +1,126 stars today. '
+                  '• CODECRAFTERS-IO/build-your-own-x: +1,068 stars today. '
+                  '• example/second: +1,100 stars today. '
+                  '• example/third: +1,050 stars today.',
+              citationIds: ['c-strong', 'c-weak', 'c-second', 'c-third'],
             ),
           ],
         ),
+        citations: [
+          summaryCitationApiDto(
+            id: 'c-strong',
+            providerKey: 'github-trending-page',
+            canonicalUrl: 'https://github.com/codecrafters-io/build-your-own-x',
+          ),
+          summaryCitationApiDto(
+            id: 'c-weak',
+            providerKey: 'github-trending-page',
+            canonicalUrl: 'https://github.com/codecrafters-io/build-your-own-x',
+          ),
+          summaryCitationApiDto(
+            id: 'c-second',
+            providerKey: 'github-trending-page',
+            canonicalUrl: 'https://github.com/example/second',
+          ),
+          summaryCitationApiDto(
+            id: 'c-third',
+            providerKey: 'github-trending-page',
+            canonicalUrl: 'https://github.com/example/third',
+          ),
+        ],
       ),
     );
+    final citationsById = {
+      for (final citation in summary.citations) citation.id: citation,
+    };
 
     await tester.pumpWidget(
       MaterialApp(
@@ -195,39 +223,54 @@ void main() {
         home: Scaffold(
           body: ReaderSummaryExecutiveBrief(
             summary: summary,
-            citationsById: const {},
+            citationsById: citationsById,
             onOpenUrl: (_) {},
           ),
         ),
       ),
     );
 
-    final narrative = find.byKey(
-      const ValueKey('reader-summary-narrative-watch-text'),
+    final appendix = find.byKey(
+      const ValueKey('reader-summary-narrative-watch'),
     );
-    final richText = tester.widget<RichText>(
-      find.descendant(of: narrative, matching: find.byType(RichText)),
-    );
-    final rootSpan = richText.text as TextSpan;
+    final visibleText = tester
+        .widgetList<RichText>(
+          find.descendant(of: appendix, matching: find.byType(RichText)),
+        )
+        .map((widget) => widget.text.toPlainText())
+        .join('\n');
+
+    expect(find.text('GitHub Trending'), findsOneWidget);
+    expect(find.text('Watch'), findsOneWidget);
     expect(
-      rootSpan.toPlainText(),
-      contains('Watch:\n\u2022 OpenCut-app/OpenCut'),
+      RegExp(
+        'codecrafters-io/build-your-own-x',
+        caseSensitive: false,
+      ).allMatches(visibleText),
+      hasLength(1),
     );
-    expect(rootSpan.toPlainText(), isNot(contains('**')));
-
-    final repoSpans = _textSpans(
-      rootSpan,
-    ).where((span) => span.text == 'OpenCut-app/OpenCut');
-    expect(repoSpans, hasLength(1));
-    expect(repoSpans.single.style?.fontWeight, FontWeight.w900);
+    expect(visibleText, contains('+1,126 stars today.'));
+    expect(visibleText, isNot(contains('+1,068 stars today.')));
+    expect(visibleText, isNot(contains('•')));
+    expect(visibleText, isNot(contains('**')));
+    expect(visibleText, isNot(contains('Watch:')));
+    expect(
+      find.byKey(
+        const ValueKey('reader-summary-github-watch-row-0-citation-c-strong'),
+      ),
+      findsNothing,
+    );
+    expect(
+      find.byKey(
+        const ValueKey('reader-summary-github-watch-row-0-citation-c-weak'),
+      ),
+      findsNothing,
+    );
+    expect(
+      find.byKey(
+        const ValueKey('reader-summary-github-watch-row-1-citation-c-second'),
+      ),
+      findsOneWidget,
+    );
   });
-}
-
-Iterable<TextSpan> _textSpans(TextSpan root) sync* {
-  yield root;
-  for (final child in root.children ?? const <InlineSpan>[]) {
-    if (child case final TextSpan span) {
-      yield* _textSpans(span);
-    }
-  }
 }
