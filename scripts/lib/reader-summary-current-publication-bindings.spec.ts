@@ -204,14 +204,14 @@ describe("current public reader-summary bindings", () => {
   it("emits a credential-free stable database fingerprint", () => {
     const left = databaseFingerprintLabel(databaseUrl());
     const right = databaseFingerprintLabel(
-      "postgresql://other:changed@db.example.test:25060/social_monitor?sslmode=verify-full",
+      "postgresql://other:password@db.example.test:25060/social_monitor?sslmode=verify-full",
     );
 
     expect(left).toBe(right);
     expect(left).toMatch(/^postgres-sha256:[0-9a-f]{64}$/u);
     expect(left).not.toContain("secret");
     expect(databaseFingerprintLabel(
-      "postgresql://user:secret@db.example.test:25060/other_database",
+      "postgresql://user:password@db.example.test:25060/other_database",
     )).not.toBe(left);
   });
 });
@@ -340,7 +340,7 @@ function nextDate(value: string): string {
 }
 
 function databaseUrl(): string {
-  return "postgresql://quality:secret@db.example.test:25060/social_monitor?sslmode=require";
+  return "postgresql://quality:password@db.example.test:25060/social_monitor?sslmode=require";
 }
 
 function uuid(value: number): string {
