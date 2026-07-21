@@ -782,7 +782,9 @@ grep -F 'runtime_release != "$backend_release"' \
   "$SCRIPT_DIR/production-runtime/daily-run.sh" >/dev/null
 grep -F 'daily-run-singleton.lock' \
   "$SCRIPT_DIR/production-runtime/daily-run.sh" >/dev/null
-grep -F 'flock -w "$POSTGRES_ADMISSION_WAIT_SECONDS" 8' \
+# The command text is intentionally matched literally.
+# shellcheck disable=SC2016
+grep -F '"$FLOCK_COMMAND" -w "$POSTGRES_ADMISSION_WAIT_SECONDS" 8' \
   "$SCRIPT_DIR/production-runtime/daily-run.sh" >/dev/null
 grep -Fx 'TimeoutStartSec=23400' \
   "$SCRIPT_DIR/production-runtime/social-monitor-daily.service" >/dev/null

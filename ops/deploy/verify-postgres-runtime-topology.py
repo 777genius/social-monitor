@@ -196,7 +196,12 @@ def verify_daily_topology(service_path: str, runner_path: str) -> None:
             fail(f"effective daily runner omits Compose input: {compose_path}")
     if "control/daily-run-singleton.lock" not in runner:
         fail("effective daily runner does not take its separate singleton lock")
-    if "control/daily-run.lock" not in runner or "flock -w" not in runner:
+    if (
+        "control/daily-run.lock" not in runner
+        or "FLOCK_COMMAND=flock" not in runner
+        or '"$FLOCK_COMMAND" -w "$POSTGRES_ADMISSION_WAIT_SECONDS" 8'
+        not in runner
+    ):
         fail("effective daily runner does not wait on PostgreSQL admission")
     if "POSTGRES_ADMISSION_WAIT_SECONDS=7500" not in runner:
         fail("effective daily runner does not use the reviewed admission timeout")

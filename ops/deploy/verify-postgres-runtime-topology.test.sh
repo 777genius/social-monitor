@@ -130,6 +130,7 @@ cat > "$daily_runner" <<'SH'
 #!/usr/bin/env bash
 ROOT=/var/data/social-monitor
 POSTGRES_ADMISSION_WAIT_SECONDS=7500
+FLOCK_COMMAND=flock
 COMPOSE=(
   -f "$ROOT/integration/docker-compose.yml"
   -f "$ROOT/control/compose.production.yml"
@@ -139,12 +140,19 @@ COMPOSE=(
 exec 9>"$ROOT/control/daily-run-singleton.lock"
 flock -n 9
 exec 8>"$ROOT/control/daily-run.lock"
-flock -w "$POSTGRES_ADMISSION_WAIT_SECONDS" 8
+"$FLOCK_COMMAND" -w "$POSTGRES_ADMISSION_WAIT_SECONDS" 8
 runtime_release=$(cat "$ROOT/control/postgres-runtime-current/READY")
 backend_release=$(cat "$ROOT/control/deploy-state/backend.sha")
 [[ $runtime_release == "$backend_release" ]]
 SH
 python3 "$VERIFIER" daily "$daily_service" "$daily_runner"
+cp "$daily_runner" "$daily_runner.reviewed"
+sed -i '/FLOCK_COMMAND=flock/d' "$daily_runner"
+if python3 "$VERIFIER" daily "$daily_service" "$daily_runner" >/dev/null 2>&1; then
+  echo 'daily runner without the reviewed flock command was accepted' >&2
+  exit 1
+fi
+mv "$daily_runner.reviewed" "$daily_runner"
 sed -i '/compose.postgres-runtime.yml/d' "$daily_runner"
 if python3 "$VERIFIER" daily "$daily_service" "$daily_runner" >/dev/null 2>&1; then
   echo 'daily runner without the release-owned pool overlay was accepted' >&2
