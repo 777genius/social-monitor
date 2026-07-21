@@ -8,6 +8,7 @@ import type {
   PrismaSourceEngagementClient,
   PrismaSourceEngagementTransactionClient,
 } from "@social-monitor/feed/adapters/persistence/prisma/prisma-source-engagement-client";
+import type { PrismaMonitoringClient } from "@social-monitor/monitoring/adapters/persistence/prisma/prisma-monitoring-client";
 import {
   createPrismaPgRuntimeConnection,
   defaultPostgresRuntimePoolConfig,
@@ -22,7 +23,8 @@ export type PrismaIngestionWorkerClient = PrismaIngestionClient &
   PrismaSourceCandidateMemoryClient &
   PrismaSourceEngagementClient &
   PrismaFeedClient &
-  PrismaConversationClient;
+  PrismaConversationClient &
+  Pick<PrismaMonitoringClient, "scanJob">;
 
 type PrismaIngestionWorkerRuntimeClient = PrismaIngestionWorkerClient & {
   $disconnect(): Promise<void>;
@@ -35,6 +37,7 @@ export class PrismaIngestionWorkerConnection implements PrismaIngestionWorkerCli
   readonly scanFailureQueueEntry: PrismaIngestionClient["scanFailureQueueEntry"];
   readonly scanAttempt: PrismaIngestionClient["scanAttempt"];
   readonly scanLeaseEntry: PrismaIngestionClient["scanLeaseEntry"];
+  readonly scanJob: PrismaMonitoringClient["scanJob"];
   readonly gitHubRepositoryTrendCandidate: PrismaIngestionClient["gitHubRepositoryTrendCandidate"];
   readonly gitHubRepositoryTrendSnapshot: PrismaIngestionClient["gitHubRepositoryTrendSnapshot"];
   readonly gitHubRepositoryTrendResult: PrismaIngestionClient["gitHubRepositoryTrendResult"];
@@ -84,6 +87,7 @@ export class PrismaIngestionWorkerConnection implements PrismaIngestionWorkerCli
     this.scanFailureQueueEntry = this.client.scanFailureQueueEntry;
     this.scanAttempt = this.client.scanAttempt;
     this.scanLeaseEntry = this.client.scanLeaseEntry;
+    this.scanJob = this.client.scanJob;
     this.gitHubRepositoryTrendCandidate =
       this.client.gitHubRepositoryTrendCandidate;
     this.gitHubRepositoryTrendSnapshot =

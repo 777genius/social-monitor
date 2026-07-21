@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
@@ -10,7 +9,6 @@ import { PrismaScanCursorRepository } from "@social-monitor/ingestion/adapters/p
 import { PrismaScanFailureQueueAdapter } from "@social-monitor/ingestion/adapters/persistence/prisma/prisma-scan-failure-queue.adapter";
 import { PrismaScanLeaseAdapter } from "@social-monitor/ingestion/adapters/persistence/prisma/prisma-scan-lease.adapter";
 import { PrismaSourceItemRepository } from "@social-monitor/ingestion/adapters/persistence/prisma/prisma-source-item.repository";
-import { NoopScanExecutionReporterAdapter } from "@social-monitor/ingestion/adapters/reporting/noop-scan-execution-reporter.adapter";
 import { CircuitBreakerSourceFetcherAdapter } from "@social-monitor/ingestion/adapters/source/circuit-breaker-source-fetcher.adapter";
 import { HttpGitHubTrendingPageClient } from "@social-monitor/ingestion/adapters/source/github-trending-page/http-github-trending-page-client";
 import { GitHubTrendingPageSourceProvider } from "@social-monitor/ingestion/adapters/source/github-trending-page/github-trending-page-source.provider";
@@ -30,13 +28,13 @@ import { GrpcXDailyCollectorClient } from "@social-monitor/ingestion/adapters/so
 import { XTwitterSourceProvider } from "@social-monitor/ingestion/adapters/source/x-twitter-experimental-daily/x-twitter-experimental-daily-source.provider";
 import { ExecuteScanUseCase } from "@social-monitor/ingestion/features/execute-scan/execute-scan.use-case";
 import type {
-  SourceConfigReaderPort,
   SourceProviderPort,
   SourceQuery,
   SourceQueryMode,
   SourceRuntimeConfig,
 } from "@social-monitor/ingestion/ports";
 import { SourceFetchError } from "@social-monitor/ingestion/ports";
+import { PrismaScanJobRepository } from "@social-monitor/monitoring/adapters/persistence/prisma/prisma-scan-job.repository";
 import { InMemoryMetricsRecorder } from "@social-monitor/platform-metrics";
 import {
   CryptoIdGenerator,
@@ -68,6 +66,8 @@ import {
   type CleanRealDayCollectionProviderKey as ProviderKey,
   type CleanRealDayCollectionReport,
 } from "./lib/clean-real-day-collection-report";
+import { CleanRealDaySourceConfigReader } from "./lib/clean-real-day-source-config-reader";
+import { requireScanPolicyTargets } from "./lib/clean-real-day-scan-policy-targets";
 import {
   configuredProviderCollectionTargetItemCount,
   successfulProviderCollectionObservation,
@@ -85,6 +85,7 @@ import {
   providerMeetsProductionBlockingPolicy,
   recalculateProductionBlockingPolicyGates,
 } from "./lib/production-collection-quality-policy";
+import { ProductionCollectionScanJobReporter } from "./lib/production-collection-scan-job-reporter";
 
 type SourceBindingTarget = {
   readonly tenantId: string;
@@ -92,6 +93,7 @@ type SourceBindingTarget = {
   readonly interestId: string;
   readonly interestQuery: string;
   readonly sourceBindingId: string;
+  readonly scanPolicyId: string;
   readonly providerKey: ProviderKey;
   readonly config: SourceRuntimeConfig;
   readonly sourceQuery: SourceQuery;
@@ -263,6 +265,11 @@ async function executeTargetScans(
 ): Promise<CleanRealDayCollectionReport["scans"]> {
   const clock = new SystemClock();
   const ids = new CryptoIdGenerator();
+  const scanJobReporter = new ProductionCollectionScanJobReporter(
+    new PrismaScanJobRepository(connection),
+    ids,
+    clock,
+  );
   const executeScan = new ExecuteScanUseCase(
     new CircuitBreakerSourceFetcherAdapter(
       new RegistrySourceFetcherAdapter(
@@ -270,7 +277,7 @@ async function executeTargetScans(
           buildProviders(clock),
           sourceReadinessProfiles,
         ),
-        new StaticSourceConfigReader(targets),
+        new CleanRealDaySourceConfigReader(targets),
         new SocialResearchSourceQueryPlannerAdapter(),
       ),
       clock,
@@ -280,7 +287,7 @@ async function executeTargetScans(
     new PrismaFeedProjectionAdapter(connection, ids),
     new PrismaScanAttemptRepository(connection),
     new PrismaScanCursorRepository(connection, ids),
-    new NoopScanExecutionReporterAdapter(),
+    scanJobReporter,
     new PrismaScanFailureQueueAdapter(
       connection,
       new InMemoryMetricsRecorder(),
@@ -299,7 +306,8 @@ async function executeTargetScans(
   const outcomes = await runTargetedProviderCollection({
     targets,
     retryBudget: 2,
-    collect: (target) => executeTargetScan(target, executeScan),
+    collect: (target) =>
+      executeTargetScan(target, executeScan, scanJobReporter),
     retryDisposition: (result) =>
       providerMeetsProductionBlockingPolicy(result)
         ? "none"
@@ -322,6 +330,7 @@ async function executeTargetScans(
 async function executeTargetScan(
   target: SourceBindingTarget,
   executeScan: ExecuteScanUseCase,
+  scanJobReporter: ProductionCollectionScanJobReporter,
 ): Promise<ProviderScanResult> {
   const bindingFingerprint = fingerprint(target.sourceBindingId);
   const targetWindowEndedAt = new Date(targetPublishedWindow.endExclusive);
@@ -346,13 +355,21 @@ async function executeTargetScan(
     };
   }
 
+  const targetTenantId = tenantId(target.tenantId);
+  const targetWorkspaceId = workspaceId(target.workspaceId);
+  const scanJobId = scanJobReporter.beginAttempt({
+    tenantId: targetTenantId,
+    workspaceId: targetWorkspaceId,
+    sourceBindingId: target.sourceBindingId,
+    scanPolicyId: target.scanPolicyId,
+  });
   const result = await executeScan.execute({
-    tenantId: tenantId(target.tenantId),
-    workspaceId: workspaceId(target.workspaceId),
-    scanJobId: randomUUID(),
+    tenantId: targetTenantId,
+    workspaceId: targetWorkspaceId,
+    scanJobId,
     interestId: target.interestId,
     sourceBindingId: target.sourceBindingId,
-    scanPolicyId: randomUUID(),
+    scanPolicyId: target.scanPolicyId,
     providerKey: target.providerKey,
     sourceQuery: target.sourceQuery,
     interestQuerySnapshot: target.interestQuery,
@@ -468,6 +485,7 @@ async function readTargets(
     readonly interestId: string;
     readonly interestQuery: string;
     readonly sourceBindingId: string;
+    readonly scanPolicyId: string | null;
     readonly providerKey: ProviderKey;
     readonly config: unknown;
   }>(
@@ -478,11 +496,15 @@ async function readTargets(
         sb.interest_id::text as "interestId",
         i.query as "interestQuery",
         sb.id::text as "sourceBindingId",
+        sp.id::text as "scanPolicyId",
         sce.provider_key as "providerKey",
         sb.config as "config"
       from source_bindings sb
       join interests i on i.id = sb.interest_id
       join source_catalog_entries sce on sce.id = sb.source_catalog_entry_id
+      left join scan_policies sp on sp.tenant_id = sb.tenant_id
+        and sp.workspace_id = sb.workspace_id
+        and sp.source_binding_id = sb.id
       where sb.deleted_at is null
         and sb.status = 'ENABLED'
         and sce.provider_key = any($1::text[])
@@ -491,7 +513,7 @@ async function readTargets(
     [providerKeys],
   );
 
-  return result.rows.map((row) => {
+  return requireScanPolicyTargets(result.rows).map((row) => {
     const config = asRecord(row.config) as SourceRuntimeConfig;
     const runtimeConfig = configForTargetPublishedWindow(
       row.providerKey,
@@ -823,22 +845,6 @@ function buildReport(params: {
     qualityGates,
     blockingPassed: allQualityGatesPassed(qualityGates),
   };
-}
-
-class StaticSourceConfigReader implements SourceConfigReaderPort {
-  private readonly configByBinding = new Map<string, SourceRuntimeConfig>();
-
-  constructor(targets: readonly SourceBindingTarget[]) {
-    for (const target of targets) {
-      this.configByBinding.set(target.sourceBindingId, target.config);
-    }
-  }
-
-  async readConfig(params: {
-    readonly sourceBindingId: string;
-  }): Promise<SourceRuntimeConfig | null> {
-    return this.configByBinding.get(params.sourceBindingId) ?? null;
-  }
 }
 
 function sourceQueryFromConfig(

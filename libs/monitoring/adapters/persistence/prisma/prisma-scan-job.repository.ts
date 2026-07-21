@@ -19,7 +19,9 @@ const ACTIVE_SCAN_JOB_STATUSES = ['REQUESTED', 'ENQUEUED'] as const;
 export class PrismaScanJobRepository
   implements ScanJobRepositoryPort, ScanJobHistoryReadPort
 {
-  constructor(private readonly prisma: PrismaMonitoringClient) {}
+  constructor(
+    private readonly prisma: Pick<PrismaMonitoringClient, 'scanJob'>,
+  ) {}
 
   async save(job: ScanJob): Promise<void> {
     const snapshot = job.toSnapshot();
