@@ -388,6 +388,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       'scripts/check-summary-topic-recommendation-rest-prisma-live.ts:Pool',
       'scripts/check-yesterday-reader-summary-artifact-quality.ts:Pool',
       'scripts/check-yesterday-social-collection-quality.ts:Pool',
+      'scripts/lib/reader-summary-production-day-scope.ts:Pool',
       'scripts/lib/yesterday-social-replay-support.ts:Pool',
       'scripts/reader-summary-publication-postgres-legacy.ts:Pool',
       'scripts/reader-summary-publication-postgres-privileges.ts:Pool',
@@ -398,7 +399,6 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       'scripts/reader-summary-publication-postgres-privileges.ts:Pool',
       'scripts/reader-summary-publication-postgres-privileges.ts:Pool',
       'scripts/run-reader-summary-clean-real-day-collection.ts:Pool',
-      'scripts/run-reader-summary-production-day.ts:Pool',
     ]);
   });
 
@@ -440,6 +440,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       'scripts/check-summary-topic-recommendation-rest-prisma-live.ts',
       'scripts/check-yesterday-reader-summary-artifact-quality.ts',
       'scripts/check-yesterday-social-collection-quality.ts',
+      'scripts/lib/reader-summary-production-day-scope.ts',
       'scripts/lib/reader-summary-quality-dashboard-published-window.spec.ts',
       'scripts/lib/reader-summary-quality-dashboard-published-window.ts',
       'scripts/lib/reader-summary-quality-eval-support.spec.ts',
@@ -452,7 +453,6 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       'scripts/reader-summary-publication-postgres-runtime-guard.ts',
       'scripts/reader-summary-publication-postgres18-regression.ts',
       'scripts/run-reader-summary-clean-real-day-collection.ts',
-      'scripts/run-reader-summary-production-day.ts',
     ]);
     for (const path of rawDependencyFiles) {
       expect(readSource(path)).not.toMatch(
@@ -595,14 +595,18 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
     const dispatcher = readSource(
       'scripts/run-reader-summary-production-day.ts',
     );
+    const scopeReader = readSource(
+      'scripts/lib/reader-summary-production-day-scope.ts',
+    );
     const main = dispatcher.slice(dispatcher.indexOf('async function main()'));
+    const migrationIndex = main.indexOf('runNpm("migrate"');
+    const scopeIndex = main.indexOf('await readProductionDayScope({');
     expect(dispatcher).toContain('import { spawnSync }');
-    expect(main.indexOf('runNpm("migrate"')).toBeLessThan(
-      main.indexOf('await readProductionDayScope()'),
-    );
-    expect(dispatcher).toMatch(
-      /readProductionDayScope[\s\S]*?new Pool\(\{[\s\S]*?max: 1/,
-    );
+    expect(migrationIndex).toBeGreaterThanOrEqual(0);
+    expect(scopeIndex).toBeGreaterThanOrEqual(0);
+    expect(migrationIndex).toBeLessThan(scopeIndex);
+    expect(scopeReader).toMatch(/new Pool\(\{[\s\S]*?max: 1/);
+    expect(scopeReader).toContain('await pool.end()');
     for (const path of [
       'scripts/run-reader-summary-clean-real-day-collection.ts',
       'scripts/capture-durable-reader-summary-from-postgres.ts',
