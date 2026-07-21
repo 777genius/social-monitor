@@ -271,6 +271,8 @@ const report = {
   },
   model: {
     liveCollection: true,
+    reusedCollection: false,
+    freshSummaryCapture: true,
     runtimeExecution: runtimeProvenance.execution,
     runtimeExecutionReason: null,
     summaryModel: runtimeProvenance.summaryModel,
@@ -335,6 +337,8 @@ const report = {
     topicLabelerProvenanceVerified: true,
     provenanceMatchesExecutionMode: true,
     reportUtcWindowMatchesRequestedDate: true,
+    collectionInputProvenanceSatisfied: true,
+    regenerationDatasetGuardVerified: true,
     fixtureBlockingQualityPassed: true,
   },
   blockingPassed: true,
@@ -347,7 +351,7 @@ writeFileSync(
 );
 NODE
 
-printf '%s\n' "$BASHPID" > "$ready"
+printf '%s\n' "$$" > "$ready"
 
 case ${READER_SUMMARY_DAILY_RUN_WORKER_MODE:-pause} in
   success)

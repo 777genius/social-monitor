@@ -6,11 +6,15 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
+import {
+  legacyLiveQualityGateNames,
+  publicationQualityContract,
+} from "./lib/reader-summary-publication-quality-contract.mjs";
 
 const verifierPath = resolve(
   "scripts/verify-reader-summary-production-day-publication.mjs",
 );
-const collectionDate = "2026-07-15";
+const collectionDate = "2026-07-20";
 const readerSummaryId = "11111111-1111-4111-8111-111111111111";
 const readerSummaryJobId = "22222222-2222-4222-8222-222222222222";
 const evidenceArtifactId = "durable-reader-summary-postgres-evidence-v1";
@@ -25,7 +29,6 @@ const requiredStepIds = [
   "source-quality-trace",
   "clean-day-e2e",
 ];
-
 test("accepts a fully live report with all nine real steps", () => {
   withFixture(({ reportPath, proofPath }) => {
     const created = runVerifier(reportPath, proofPath, "--proof-out");
@@ -47,6 +50,46 @@ test("accepts a fully live report with all nine real steps", () => {
       launcherSha256: "b".repeat(64),
     });
   });
+});
+
+test("accepts an in-flight legacy live report with its exact quality contract", () => {
+  withFixture(({ reportPath, proofPath, report }) => {
+    delete report.model.reusedCollection;
+    delete report.model.freshSummaryCapture;
+    report.qualityGates = Object.fromEntries(
+      legacyLiveQualityGateNames.map((name) => [name, true]),
+    );
+    writeFileSync(reportPath, `${JSON.stringify(report)}\n`);
+
+    const created = runVerifier(reportPath, proofPath, "--proof-out");
+    assert.equal(created.status, 0, created.stderr);
+  });
+});
+
+test("rejects an incomplete legacy live quality contract", () => {
+  expectRejected(({ report }) => {
+    delete report.model.reusedCollection;
+    delete report.model.freshSummaryCapture;
+    report.qualityGates = Object.fromEntries(
+      legacyLiveQualityGateNames
+        .filter((name) => name !== "liveCollectionExecutedAndPassed")
+        .map((name) => [name, true]),
+    );
+  });
+});
+
+test("rejects the legacy live contract outside its in-flight date", () => {
+  assert.equal(
+    publicationQualityContract({
+      qualityGates: Object.fromEntries(
+        legacyLiveQualityGateNames.map((name) => [name, true]),
+      ),
+      provenance: { mode: "live-production" },
+      model: { liveCollection: true },
+      expectedDate: "2026-07-21",
+    }),
+    null,
+  );
 });
 
 for (const stepId of requiredStepIds) {
@@ -320,6 +363,11 @@ function buildFrontend(options) {
         providerVersion: options.providerVersion ?? "agent-runtime",
       },
       content: {
+        reliabilityReport: {
+          risks: [],
+          riskScore: 0,
+        },
+        topReads: [],
         topicMap: {
           generatedBy: options.topicGeneratedBy ?? "agent-runtime",
         },
@@ -685,7 +733,9 @@ function canonicalJsonValue(value) {
 
 function utcPeriod() {
   const startedAt = `${collectionDate}T00:00:00.000Z`;
-  const endedAt = "2026-07-16T00:00:00.000Z";
+  const endedAt = new Date(
+    Date.parse(startedAt) + 24 * 60 * 60 * 1000,
+  ).toISOString();
   return {
     cadence: "daily",
     startedAt,

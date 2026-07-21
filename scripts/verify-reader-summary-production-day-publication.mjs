@@ -2,6 +2,7 @@
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { basename } from "node:path";
+import { publicationQualityContract } from "./lib/reader-summary-publication-quality-contract.mjs";
 
 const reportArtifactFormat = "reader-summary-production-day-run-v1";
 const reportGeneratedBy = "npm run run:reader-summary-production-day";
@@ -18,7 +19,6 @@ const requiredStepIds = [
   "source-quality-trace",
   "clean-day-e2e",
 ];
-
 const options = parseOptions(process.argv.slice(2));
 const expectedDate = requiredOption(options, "--expected-date");
 const datedReportPath = requiredOption(options, "--dated-report");
@@ -92,7 +92,12 @@ function validateReport(report, expectedDate, evidencePath, frontendPath) {
 
   validateInputs(report.inputs, expectedPeriod);
   validateSteps(report.steps);
-  validateQualityGates(report.qualityGates);
+  const reportContract = validateQualityGates(
+    report.qualityGates,
+    report.provenance,
+    report.model,
+    expectedDate,
+  );
 
   const evidenceBytes = readFileSync(evidencePath);
   const frontendBytes = readFileSync(frontendPath);
@@ -105,7 +110,12 @@ function validateReport(report, expectedDate, evidencePath, frontendPath) {
     frontendBytes,
     expectedPeriod,
   );
-  validateModel(report.model, binding.runtimeProvenance, report.provenance);
+  validateModel(
+    report.model,
+    binding.runtimeProvenance,
+    report.provenance,
+    reportContract,
+  );
   validateSummary(report.summary, binding);
   validateReportIdentity(report.reportIdentity, binding, expectedDate);
   validateLiveProvenance(
@@ -118,14 +128,20 @@ function validateReport(report, expectedDate, evidencePath, frontendPath) {
   return binding;
 }
 
-function validateModel(model, runtimeProvenance, provenance) {
+function validateModel(model, runtimeProvenance, provenance, reportContract) {
   assertObject(model, "report.model");
   assertObject(provenance, "report.provenance");
   const executionFlagsMatch =
-    (provenance.mode === "live-production" &&
+    (reportContract === "current" &&
+      provenance.mode === "live-production" &&
       model.liveCollection === true &&
       model.reusedCollection === false &&
       model.freshSummaryCapture === true) ||
+    (reportContract === "legacy-live" &&
+      provenance.mode === "live-production" &&
+      model.liveCollection === true &&
+      model.reusedCollection === undefined &&
+      model.freshSummaryCapture === undefined) ||
     (provenance.mode === "historical-regeneration" &&
       model.liveCollection === false &&
       model.reusedCollection === true &&
@@ -447,30 +463,17 @@ function validateSteps(steps) {
   }
 }
 
-function validateQualityGates(qualityGates) {
-  assertObject(qualityGates, "report.qualityGates");
-  const gateNames = Object.keys(qualityGates);
-  const requiredGateNames = [
-    "exactRequiredStepsExecutedOnceAndPassed",
-    "durableSummaryPersistedAndUuidBound",
-    "evidenceArtifactContentHashBound",
-    "freshEvidenceAndFrontendArtifactsHashBound",
-    "productionDefinitionOfDoneSatisfied",
-    "strictLiveProductionControls",
-    "subscriptionRuntimeProvenanceVerified",
-    "topicLabelerProvenanceVerified",
-    "provenanceMatchesExecutionMode",
-    "reportUtcWindowMatchesRequestedDate",
-    "collectionInputProvenanceSatisfied",
-    "regenerationDatasetGuardVerified",
-  ];
-  if (
-    gateNames.length === 0 ||
-    gateNames.some((name) => qualityGates[name] !== true) ||
-    requiredGateNames.some((name) => qualityGates[name] !== true)
-  ) {
+function validateQualityGates(qualityGates, provenance, model, expectedDate) {
+  const contract = publicationQualityContract({
+    qualityGates,
+    provenance,
+    model,
+    expectedDate,
+  });
+  if (contract === null) {
     fail("dated production-day report has a missing or failed quality gate");
   }
+  return contract;
 }
 
 function validateEvidence(
@@ -826,7 +829,7 @@ function stableJson(value) {
   }
   if (isObject(value)) {
     return `{${Object.keys(value)
-      .sort()
+      .sort((left, right) => left.localeCompare(right))
       .map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`)
       .join(",")}}`;
   }

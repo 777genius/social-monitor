@@ -10,12 +10,15 @@ if [[ ${SOCIAL_MONITOR_DAILY_RUN_TEST_MODE:-} == 1 ]]; then
     exit 64
   }
   POSTGRES_ADMISSION_WAIT_SECONDS=${SOCIAL_MONITOR_DAILY_RUN_TEST_ADMISSION_WAIT_SECONDS:-7500}
+  FLOCK_COMMAND=${SOCIAL_MONITOR_DAILY_RUN_TEST_FLOCK:-flock}
 else
   ROOT=/var/data/social-monitor
   POSTGRES_ADMISSION_WAIT_SECONDS=7500
+  FLOCK_COMMAND=flock
   unset SOCIAL_MONITOR_DAILY_RUN_TEST_MODE \
     SOCIAL_MONITOR_DAILY_RUN_TEST_ADMISSION_WAIT_SECONDS \
     SOCIAL_MONITOR_DAILY_RUN_TEST_DOCKER \
+    SOCIAL_MONITOR_DAILY_RUN_TEST_FLOCK \
     SOCIAL_MONITOR_DAILY_RUN_TEST_ROOT \
     READER_SUMMARY_DAILY_RUN_EXPECTED_DATE \
     READER_SUMMARY_DAILY_RUN_FAILPOINT \
@@ -49,9 +52,12 @@ esac
 }
 
 exec 9>"$ROOT/control/daily-run-singleton.lock"
-flock -n 9 || { echo "daily production-day run already active"; exit 0; }
+"$FLOCK_COMMAND" -n 9 || {
+  echo "daily production-day run already active"
+  exit 0
+}
 exec 8>"$ROOT/control/daily-run.lock"
-flock -w "$POSTGRES_ADMISSION_WAIT_SECONDS" 8 || {
+"$FLOCK_COMMAND" -w "$POSTGRES_ADMISSION_WAIT_SECONDS" 8 || {
   echo "daily production-day timed out waiting for PostgreSQL admission" >&2
   exit 75
 }
@@ -105,7 +111,7 @@ fi
       const flag = process.argv[1];
       const offset = flag === "--yesterday" ? 86_400_000 : 0;
       process.stdout.write(new Date(Date.now() - offset).toISOString().slice(0, 10));
-    '\'' '"$DATE_FLAG"')
+    '\'' -- '"$DATE_FLAG"')
   fi
 
   latest_candidate="$report_dir/reader-summary-production-day-run.v1.json"

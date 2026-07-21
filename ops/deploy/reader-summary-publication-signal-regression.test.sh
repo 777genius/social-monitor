@@ -6,11 +6,17 @@ PROJECT_ROOT=$(cd "$SCRIPT_DIR/../.." && pwd)
 DAILY_RUN=$SCRIPT_DIR/production-runtime/daily-run.sh
 WORKER=$SCRIPT_DIR/fixtures/reader-summary-publication-pause-worker.sh
 FAKE_DOCKER=$SCRIPT_DIR/fixtures/reader-summary-publication-fake-docker.sh
-FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/reader-summary-publication-signal.XXXXXX")
+FAKE_FLOCK=$SCRIPT_DIR/fixtures/reader-summary-publication-fake-flock.sh
+FIXTURE=$(mktemp -d "/tmp/reader-summary-publication-signal.XXXXXX")
 trap 'rm -rf "$FIXTURE"' EXIT
 
 EXPECTED_DATE=2026-07-16
 RELEASE_SHA=0123456789abcdef0123456789abcdef01234567
+
+# A date flag begins with "--", so the real Node invocation must terminate
+# option parsing before forwarding it. This recreates the production failure
+# where Node rejected --yesterday after all summary gates had passed.
+grep -F "    '\\'' -- '\"\$DATE_FLAG\"')" "$DAILY_RUN" >/dev/null
 
 wait_for_ready() {
   local ready=$1
@@ -59,6 +65,7 @@ run_daily() {
   SOCIAL_MONITOR_DAILY_RUN_TEST_MODE=1 \
   SOCIAL_MONITOR_DAILY_RUN_TEST_ROOT="$case_dir/root" \
   SOCIAL_MONITOR_DAILY_RUN_TEST_DOCKER="$FAKE_DOCKER" \
+  SOCIAL_MONITOR_DAILY_RUN_TEST_FLOCK="$FAKE_FLOCK" \
   READER_SUMMARY_DAILY_RUN_EXPECTED_DATE=$EXPECTED_DATE \
   READER_SUMMARY_DAILY_RUN_PAUSE_WORKER=$WORKER \
   READER_SUMMARY_DAILY_RUN_REPORT_DIR="$case_dir/reports" \
