@@ -51,6 +51,7 @@ import {
   resolveProductionDayExecutionRequest,
 } from "./lib/reader-summary-production-day-reuse-provenance";
 import { loadHistoricalRegeneration } from "./lib/reader-summary-production-day-regeneration";
+import { productionDayQualityDateArgs } from "./lib/reader-summary-production-day-quality-date";
 import { collectionQualityRegenerationFreshnessArgs } from "./lib/yesterday-social-collection-quality-regeneration";
 import { readProductionDayScope } from "./lib/reader-summary-production-day-scope";
 import {
@@ -73,6 +74,10 @@ const reuseExistingArtifacts = executionRequest.mode === "historical-reuse";
 const skipLiveCollection = executionRequest.mode !== "live-production";
 const allowDegraded = process.argv.includes("--allow-degraded");
 const allowHistorical = process.argv.includes("--allow-historical");
+const qualityDateArgs = productionDayQualityDateArgs({
+  executionMode: executionRequest.mode,
+  allowHistorical,
+});
 const collectionDate = artifactOnly ? "1970-01-01" : resolveCollectionDate();
 const summaryModel = resolveSummaryModel();
 if (!artifactOnly && summaryModel !== "agent-runtime") {
@@ -347,7 +352,7 @@ async function main(): Promise<void> {
     "--date",
     collectionDate,
     ...(allowDegraded ? ["--allow-dirty-collection"] : []),
-    ...(allowHistorical ? ["--allow-historical"] : []),
+    ...qualityDateArgs,
   ]);
   steps.push(artifactQualityStep);
   steps.push(
@@ -359,7 +364,7 @@ async function main(): Promise<void> {
       "--date",
       collectionDate,
       ...(allowDegraded ? ["--allow-degraded"] : []),
-      ...(allowHistorical ? ["--allow-historical"] : []),
+      ...qualityDateArgs,
     ]),
   );
   steps.push(
@@ -397,7 +402,7 @@ async function main(): Promise<void> {
         "--",
         "--update",
         ...(allowDegraded ? ["--allow-degraded"] : []),
-        ...(allowHistorical ? ["--allow-historical"] : []),
+        ...qualityDateArgs,
       ]),
     );
   } else {
