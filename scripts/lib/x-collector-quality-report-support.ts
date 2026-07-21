@@ -5,9 +5,15 @@ import { existsSync } from "node:fs";
 import {
   buildXAccountAttributionSummary,
   buildXAccountReport,
+  summarizeXRateLimitObservations,
   type XAccountStateRow,
   type XAccountUsageEventRow,
 } from "./x-account-attribution-report";
+import {
+  correlateXAccountEventsToTargetRuns,
+  type XRunExecutionWindow,
+  type XTargetRunEventCorrelation,
+} from "./x-target-run-event-correlation";
 
 type XRunRow = {
   readonly run_id?: string;
@@ -222,7 +228,7 @@ export function buildXAccountPoolReport(params: BuildParams) {
     );
   }
 
-  const eventResult = readXAccountUsageEventRows(params);
+  const eventResult = readXAccountUsageEventRows(params, targetRuns);
   if (!eventResult.ok) {
     return emptyXAccountPoolReport(
       true,
@@ -281,6 +287,7 @@ export function buildXAccountPoolReport(params: BuildParams) {
     accounts,
     globalCollectionSucceeded,
   });
+  const rateLimits = summarizeXRateLimitObservations(events);
 
   return {
     available: true,
@@ -291,11 +298,17 @@ export function buildXAccountPoolReport(params: BuildParams) {
       .length,
     observedAt: observedAt.toISOString(),
     eventCount: events.length,
+    targetRunEventCorrelationStatus: eventResult.correlation.status,
+    ambiguousTargetRunEventCount:
+      eventResult.correlation.ambiguousEventCount,
     passStartedCount: countEvents(events, "pass_started"),
     passSucceededCount: attribution.passSucceededCount,
     passFailedCount: attribution.passFailedCount,
     cooldownObservedCount: countEvents(events, "cooldown_observed"),
-    rateLimitCount: events.filter(isRateLimitEvent).length,
+    rateLimitCount: rateLimits.count,
+    rateLimitObservationStatus: rateLimits.status,
+    ambiguousLegacyRateLimitEventCount:
+      rateLimits.ambiguousLegacyEventCount,
     accountLimitProfileObservedCount: accounts.filter(
       (account) =>
         account.dailyRequestsLimit !== null &&
@@ -309,6 +322,9 @@ export function buildXAccountPoolReport(params: BuildParams) {
     totalTweetDelta: attribution.tweetDelta,
     totalReturnedCount: attribution.returnedCount,
     attributionStatus: attribution.status,
+    terminalObservationStatus: attribution.terminalObservationStatus,
+    ambiguousPassObservationCount:
+      attribution.ambiguousPassObservationCount,
     attributionPolicy: attribution.attributionPolicy,
     attributionGateReason: attribution.gateReason,
     eligibleAccountZeroAttributableOutputWarningCount:
@@ -390,17 +406,24 @@ function emptyXAccountPoolReport(
       .length,
     observedAt: observedAt.toISOString(),
     eventCount: 0,
+    targetRunEventCorrelationStatus: "unknown",
+    ambiguousTargetRunEventCount: 0,
     passStartedCount: 0,
     passSucceededCount: attribution.passSucceededCount,
     passFailedCount: attribution.passFailedCount,
     cooldownObservedCount: 0,
     rateLimitCount: 0,
+    rateLimitObservationStatus: "unambiguous",
+    ambiguousLegacyRateLimitEventCount: 0,
     accountLimitProfileObservedCount: 0,
     totalEstimatedRequestCost: 0,
     totalRequestDelta: attribution.requestDelta,
     totalTweetDelta: attribution.tweetDelta,
     totalReturnedCount: attribution.returnedCount,
     attributionStatus: attribution.status,
+    terminalObservationStatus: attribution.terminalObservationStatus,
+    ambiguousPassObservationCount:
+      attribution.ambiguousPassObservationCount,
     attributionPolicy: attribution.attributionPolicy,
     attributionGateReason: attribution.gateReason,
     eligibleAccountZeroAttributableOutputWarningCount:
@@ -435,21 +458,20 @@ function readXRunRows(ledgerPath: string):
   return readSqliteJson<XRunRow>(ledgerPath, sql);
 }
 
-function readXAccountUsageEventRows(params: BuildParams):
-  | { readonly ok: true; readonly rows: readonly XAccountUsageEventRow[] }
+function readXAccountUsageEventRows(
+  params: BuildParams,
+  targetRuns: readonly XRunRow[],
+):
+  | {
+      readonly ok: true;
+      readonly rows: readonly XAccountUsageEventRow[];
+      readonly correlation: XTargetRunEventCorrelation;
+    }
   | {
       readonly ok: false;
       readonly error: string;
     } {
-  const runRows = readXRunRows(params.ledgerPath);
-  if (!runRows.ok) {
-    return runRows;
-  }
-  const runWindows = executionWindows(
-    runRows.rows.filter((row) =>
-      runTargetsCollectionDate(row, params.collectionDate),
-    ),
-  );
+  const runWindows = executionWindows(targetRuns);
   const columns = readSqliteColumnNames(
     params.ledgerPath,
     "account_usage_events",
@@ -469,11 +491,31 @@ function readXAccountUsageEventRows(params: BuildParams):
   const attributionStatus = columns.columns.has("attribution_status")
     ? "attribution_status"
     : "null as attribution_status";
+  const passObservationId = columns.columns.has("pass_observation_id")
+    ? "pass_observation_id"
+    : "null as pass_observation_id";
+  const observationRelation = columns.columns.has("observation_relation")
+    ? "observation_relation"
+    : "null as observation_relation";
+  const requestId = columns.columns.has("request_id")
+    ? "request_id"
+    : "null as request_id";
+  const scanJobId = columns.columns.has("scan_job_id")
+    ? "scan_job_id"
+    : "null as scan_job_id";
+  const collectorRunId = columns.columns.has("collector_run_id")
+    ? "collector_run_id"
+    : "null as collector_run_id";
   const sql = `
     select
       event_id,
       event_type,
       occurred_at,
+      ${passObservationId},
+      ${observationRelation},
+      ${requestId},
+      ${scanJobId},
+      ${collectorRunId},
       account_id,
       username,
       estimated_request_cost,
@@ -499,12 +541,13 @@ function readXAccountUsageEventRows(params: BuildParams):
     return events;
   }
 
-  return {
-    ok: true,
-    rows: events.rows.filter((event) =>
-      eventFallsInsideWindows(event, runWindows),
-    ),
-  };
+  const correlated = correlateXAccountEventsToTargetRuns({
+    events: events.rows,
+    targetRunIds: targetRuns.map((run) => run.run_id),
+    legacyWindows: runWindows,
+  });
+
+  return { ok: true, ...correlated };
 }
 
 function readXAccountStateRows(ledgerPath: string):
@@ -633,7 +676,7 @@ function scweetWindowContainsDate(
 
 function executionWindows(
   rows: readonly XRunRow[],
-): readonly { readonly startedAt: number; readonly finishedAt: number }[] {
+): readonly XRunExecutionWindow[] {
   const marginMs = 5 * 60 * 1000;
   return rows.flatMap((row) => {
     const times = [
@@ -651,24 +694,6 @@ function executionWindows(
       },
     ];
   });
-}
-
-function eventFallsInsideWindows(
-  event: XAccountUsageEventRow,
-  windows: readonly {
-    readonly startedAt: number;
-    readonly finishedAt: number;
-  }[],
-): boolean {
-  const occurredAt = parseTimestamp(event.occurred_at);
-
-  return (
-    occurredAt !== undefined &&
-    windows.some(
-      (window) =>
-        window.startedAt <= occurredAt && occurredAt <= window.finishedAt,
-    )
-  );
 }
 
 function parseScweetTimestamp(value: string | undefined): number | undefined {
@@ -731,19 +756,6 @@ function countEvents(
   eventType: string,
 ): number {
   return events.filter((event) => event.event_type === eventType).length;
-}
-
-function isRateLimitEvent(event: XAccountUsageEventRow): boolean {
-  const text = `${event.failure_kind ?? ""} ${event.cooldown_reason ?? ""}`
-    .trim()
-    .toLowerCase();
-
-  return (
-    text.includes("rate") ||
-    text.includes("limit") ||
-    text.includes("429") ||
-    text.includes("cooldown")
-  );
 }
 
 function sumEventNumbers(

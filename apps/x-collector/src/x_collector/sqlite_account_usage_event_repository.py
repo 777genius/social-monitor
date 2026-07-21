@@ -16,7 +16,7 @@ class SqliteAccountUsageEventRepository:
             return
 
         Path(self._db_path).parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(self._db_path) as connection:
+        with sqlite3.connect(self._db_path, timeout=30.0) as connection:
             ensure_account_usage_events_schema(connection)
             for index_schema in account_usage_events_index_schemas():
                 connection.execute(index_schema)
@@ -31,8 +31,11 @@ class SqliteAccountUsageEventRepository:
                   username,
                   request_id,
                   scan_job_id,
+                  collector_run_id,
                   source_binding_id,
                   query,
+                  pass_observation_id,
+                  observation_relation,
                   pass_label,
                   product,
                   estimated_request_cost,
@@ -50,13 +53,18 @@ class SqliteAccountUsageEventRepository:
                   cooldown_reason,
                   reset_at,
                   attribution_status
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [event_to_row(event) for event in events],
             )
 
 
 def ensure_account_usage_events_schema(connection: sqlite3.Connection) -> None:
+    # Serialize the read-then-migrate sequence. Without an immediate write
+    # lock, concurrent first writers can both observe a missing column and
+    # race the same ALTER TABLE statement.
+    if not connection.in_transaction:
+        connection.execute("BEGIN IMMEDIATE")
     connection.execute(account_usage_events_schema())
     columns = {
         row[1]
@@ -67,6 +75,9 @@ def ensure_account_usage_events_schema(connection: sqlite3.Connection) -> None:
         "daily_tweets_limit": "INTEGER",
         "account_priority": "INTEGER",
         "attribution_status": "TEXT",
+        "pass_observation_id": "TEXT",
+        "observation_relation": "TEXT",
+        "collector_run_id": "TEXT",
     }.items():
         if column not in columns:
             connection.execute(
@@ -85,8 +96,11 @@ def account_usage_events_schema() -> str:
       username TEXT,
       request_id TEXT NOT NULL,
       scan_job_id TEXT NOT NULL,
+      collector_run_id TEXT,
       source_binding_id TEXT NOT NULL,
       query TEXT NOT NULL,
+      pass_observation_id TEXT,
+      observation_relation TEXT,
       pass_label TEXT,
       product TEXT,
       estimated_request_cost INTEGER,
@@ -122,6 +136,14 @@ def account_usage_events_index_schemas() -> tuple[str, ...]:
         CREATE INDEX IF NOT EXISTS idx_account_usage_events_request
         ON account_usage_events (request_id)
         """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_account_usage_events_collector_run
+        ON account_usage_events (collector_run_id)
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_account_usage_events_pass_observation
+        ON account_usage_events (pass_observation_id, event_type)
+        """,
     )
 
 
@@ -135,8 +157,11 @@ def event_to_row(event: AccountUsageEvent) -> tuple[Any, ...]:
         event.username,
         event.request_id,
         event.scan_job_id,
+        event.collector_run_id,
         event.source_binding_id,
         event.query,
+        event.pass_observation_id,
+        event.observation_relation,
         event.pass_label,
         event.product,
         event.estimated_request_cost,

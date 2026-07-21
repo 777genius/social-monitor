@@ -59,7 +59,19 @@ export type ProductionDayCollectionQuality = {
     readonly totalAccountCount?: number;
     readonly eligibleAccountCount?: number;
     readonly eventCount?: number;
+    readonly targetRunEventCorrelationStatus?:
+      | "exact"
+      | "ambiguous"
+      | "unknown";
+    readonly ambiguousTargetRunEventCount?: number;
     readonly attributionStatus?: "known" | "partial" | "unknown";
+    readonly terminalObservationStatus?: "unambiguous" | "ambiguous";
+    readonly ambiguousPassObservationCount?: number;
+    readonly rateLimitCount?: number;
+    readonly rateLimitObservationStatus?:
+      | "unambiguous"
+      | "ambiguous_legacy_uncorrelated";
+    readonly ambiguousLegacyRateLimitEventCount?: number;
     readonly attributionPolicy?: "warning_only";
     readonly attributionGateReason?: string;
     readonly eligibleAccountZeroAttributableOutputWarningCount?: number;
@@ -77,10 +89,12 @@ type ProductionDayXAccount = {
   readonly prioritySource?: string;
   readonly eligible?: boolean;
   readonly ineligibilityReasonCodes?: readonly string[];
-  readonly dailyRequests?: number;
-  readonly dailyTweets?: number;
+  readonly dailyRequests?: number | null;
+  readonly dailyTweets?: number | null;
   readonly lastResetDate?: string | null;
   readonly attributionStatus?: "known" | "partial" | "unknown";
+  readonly terminalObservationStatus?: "unambiguous" | "ambiguous";
+  readonly ambiguousPassObservationCount?: number;
   readonly passSucceededCount?: number | null;
   readonly passFailedCount?: number | null;
   readonly rateLimitCount?: number;
@@ -97,6 +111,8 @@ type ProductionDayXAccount = {
   readonly targetWindowAttribution?: {
     readonly collectionDate?: string;
     readonly status?: "known" | "partial" | "unknown";
+    readonly terminalObservationStatus?: "unambiguous" | "ambiguous";
+    readonly ambiguousPassObservationCount?: number;
     readonly requestDelta?: number | null;
     readonly tweetDelta?: number | null;
     readonly fetchedCount?: number | null;
@@ -612,6 +628,19 @@ function buildStats(
     xAccountUsageEventCount: pool?.eventCount ?? null,
     xAccountAttribution: {
       status: pool?.attributionStatus ?? "unknown",
+      terminalObservationStatus:
+        pool?.terminalObservationStatus ?? "unambiguous",
+      ambiguousPassObservationCount:
+        pool?.ambiguousPassObservationCount ?? 0,
+      targetRunEventCorrelationStatus:
+        pool?.targetRunEventCorrelationStatus ?? "unknown",
+      ambiguousTargetRunEventCount:
+        pool?.ambiguousTargetRunEventCount ?? 0,
+      rateLimitCount: pool?.rateLimitCount ?? 0,
+      rateLimitObservationStatus:
+        pool?.rateLimitObservationStatus ?? "unambiguous",
+      ambiguousLegacyRateLimitEventCount:
+        pool?.ambiguousLegacyRateLimitEventCount ?? 0,
       policy: pool?.attributionPolicy ?? "warning_only",
       gateReason:
         pool?.attributionGateReason ?? "attribution_not_reported_warning_only",
@@ -654,6 +683,14 @@ function normalizedXAccount(account: ProductionDayXAccount) {
       account.targetWindowAttribution?.status ??
       account.attributionStatus ??
       ("unknown" as const),
+    terminalObservationStatus:
+      account.targetWindowAttribution?.terminalObservationStatus ??
+      account.terminalObservationStatus ??
+      ("unambiguous" as const),
+    ambiguousPassObservationCount:
+      account.targetWindowAttribution?.ambiguousPassObservationCount ??
+      account.ambiguousPassObservationCount ??
+      0,
     requestDelta: account.targetWindowAttribution?.requestDelta ?? null,
     tweetDelta: account.targetWindowAttribution?.tweetDelta ?? null,
     fetchedCount: account.targetWindowAttribution?.fetchedCount ?? null,
@@ -670,8 +707,8 @@ function normalizedXAccount(account: ProductionDayXAccount) {
     prioritySource: account.prioritySource ?? "unknown",
     eligible: account.eligible === true,
     ineligibilityReasonCodes: account.ineligibilityReasonCodes ?? [],
-    dailyRequests: account.dailyRequests ?? 0,
-    dailyTweets: account.dailyTweets ?? 0,
+    dailyRequests: account.dailyRequests ?? null,
+    dailyTweets: account.dailyTweets ?? null,
     lastResetDate: account.lastResetDate ?? null,
     passSucceededCount: account.passSucceededCount ?? null,
     passFailedCount: account.passFailedCount ?? null,
@@ -843,8 +880,31 @@ function validXAccountAttributionContract(stats: unknown): boolean {
     attribution.status === "known" ||
     attribution.status === "partial" ||
     attribution.status === "unknown";
+  const terminalStatusValid =
+    attribution.terminalObservationStatus === undefined ||
+    attribution.terminalObservationStatus === "unambiguous" ||
+    attribution.terminalObservationStatus === "ambiguous";
+  const rateLimitStatusValid =
+    attribution.rateLimitObservationStatus === undefined ||
+    attribution.rateLimitObservationStatus === "unambiguous" ||
+    attribution.rateLimitObservationStatus ===
+      "ambiguous_legacy_uncorrelated";
+  const targetRunCorrelationStatusValid =
+    attribution.targetRunEventCorrelationStatus === undefined ||
+    attribution.targetRunEventCorrelationStatus === "exact" ||
+    attribution.targetRunEventCorrelationStatus === "ambiguous" ||
+    attribution.targetRunEventCorrelationStatus === "unknown";
   return (
     statusValid &&
+    terminalStatusValid &&
+    optionalNonNegativeInteger(attribution.ambiguousPassObservationCount) &&
+    targetRunCorrelationStatusValid &&
+    optionalNonNegativeInteger(attribution.ambiguousTargetRunEventCount) &&
+    optionalNonNegativeInteger(attribution.rateLimitCount) &&
+    rateLimitStatusValid &&
+    optionalNonNegativeInteger(
+      attribution.ambiguousLegacyRateLimitEventCount,
+    ) &&
     attribution.policy === "warning_only" &&
     typeof attribution.gateReason === "string" &&
     attribution.gateReason.trim().length > 0 &&
@@ -853,6 +913,13 @@ function validXAccountAttributionContract(stats: unknown): boolean {
     attribution.warningCount >= 0 &&
     Array.isArray(attribution.warnings) &&
     attribution.warnings.length === attribution.warningCount
+  );
+}
+
+function optionalNonNegativeInteger(value: unknown): boolean {
+  return (
+    value === undefined ||
+    (typeof value === "number" && Number.isInteger(value) && value >= 0)
   );
 }
 

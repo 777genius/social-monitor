@@ -177,6 +177,7 @@ describe("x collector quality report support", () => {
         accountId: 1,
         fetched: 99,
         accepted: 99,
+        requestId: "run-4",
       });
       insertEvent({
         dbPath,
@@ -186,6 +187,7 @@ describe("x collector quality report support", () => {
         accountId: 1,
         fetched: null,
         accepted: null,
+        requestId: "run-4",
       });
 
       jest.mocked(execFileSync).mockClear();
@@ -207,12 +209,16 @@ describe("x collector quality report support", () => {
       expect(accountPool.eventCount).toBe(3);
       expect(accountPool.accountCount).toBe(1);
       expect(accountPool.passStartedCount).toBe(1);
-      expect(accountPool.passSucceededCount).toBeNull();
-      expect(accountPool.passFailedCount).toBeNull();
+      expect(accountPool.passSucceededCount).toBe(1);
+      expect(accountPool.passFailedCount).toBe(1);
       expect(accountPool.accountLimitProfileObservedCount).toBe(0);
       expect(accountPool.attributionStatus).toBe("unknown");
       expect(accountPool.totalRequestDelta).toBeNull();
       expect(accountPool.totalTweetDelta).toBeNull();
+      expect(accountPool.targetWindowAttribution).toMatchObject({
+        fetchedCount: 31,
+        acceptedCount: 9,
+      });
       expect(accountPool.attributionPolicy).toBe("warning_only");
       expect(accountPool.attributionGateReason).toBe(
         "unknown_attribution_global_collection_succeeded_warning_only",
@@ -484,7 +490,7 @@ describe("x collector quality report support", () => {
           ) values (
             'event-premium', 'budget_snapshot', 'x-twitter',
             '2026-07-09T04:23:22.500Z', 1, 'premium_research',
-            'request-1', 'scan-1', 'binding-1',
+            'run-1', 'scan-1', 'binding-1',
             'openai anthropic claude llm', null, null, 6, 120, 2000, 0,
             12, 12, 310, 310
           );
@@ -564,7 +570,7 @@ describe("x collector quality report support", () => {
             tweets_after, fetched_count, accepted_count, attribution_status
           ) values (
             'event-known', 'pass_succeeded', 'x-twitter',
-            '2026-07-14T00:01:30.000Z', 1, 'active_account', 'request-1',
+            '2026-07-14T00:01:30.000Z', 1, 'active_account', 'run-1',
             'scan-1', 'binding-1', 'AI agents', 'top_base', 'search',
             0, 1, 0, 0, 0, 0, 'known'
           );
@@ -631,6 +637,137 @@ describe("x collector quality report support", () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
+
+  it("derives reused-account deltas without duplicating pass or rate counts", () => {
+    const directory = mkdtempSync(join(tmpdir(), "x-collector-quality-"));
+    const dbPath = join(directory, "scweet_state.db");
+
+    try {
+      execSql(
+        dbPath,
+        `
+          create table runs (
+            id integer primary key, run_id text not null, status text not null,
+            started_at real not null, finished_at real, query_hash text not null,
+            tweets_count integer not null, input_json text, stats_json text
+          );
+          create table accounts (
+            id integer primary key, username text not null, status integer not null,
+            available_til real, busy integer not null, daily_requests integer not null,
+            daily_tweets integer not null, last_reset_date text, last_used real,
+            cooldown_reason text
+          );
+          create table account_usage_events (
+            event_id text primary key, event_type text not null, provider text not null,
+            occurred_at text not null, pass_observation_id text,
+            observation_relation text, account_id integer, username text,
+            request_id text not null, scan_job_id text not null,
+            source_binding_id text not null, query text not null, pass_label text,
+            product text, estimated_request_cost integer, requests_before integer,
+            requests_after integer, tweets_before integer, tweets_after integer,
+            fetched_count integer, accepted_count integer, returned_count integer,
+            failure_kind text, cooldown_reason text, reset_at text,
+            attribution_status text
+          );
+        `,
+      );
+      insertRun({
+        dbPath,
+        id: 1,
+        displayType: "Top",
+        startedAt: "2026-07-14T00:01:00Z",
+        finishedAt: "2026-07-14T00:02:00Z",
+        tweets: 2,
+        since: "2026-07-13",
+        until: "2026-07-14",
+      });
+      execSql(
+        dbPath,
+        `
+          insert into accounts (
+            id, username, status, available_til, busy, daily_requests,
+            daily_tweets, last_reset_date, last_used, cooldown_reason
+          ) values (
+            1, 'reused_account', 1, null, 0, 2, 2,
+            '2026-07-14', null, 'rate_limit'
+          );
+          insert into account_usage_events (
+            event_id, event_type, provider, occurred_at, pass_observation_id,
+            observation_relation, account_id, username, request_id,
+            scan_job_id, source_binding_id,
+            query, pass_label, product, requests_before, requests_after,
+            tweets_before, tweets_after, fetched_count, accepted_count,
+            failure_kind, cooldown_reason, attribution_status
+          ) values
+            ('result-1', 'pass_succeeded', 'x-twitter',
+             '2026-07-14T00:01:10.000Z', 'pass-1', null, null, null, 'run-1',
+             'scan-1', 'binding-1', 'AI agents', 'top_base', 'search',
+             null, null, null, null, 2, 2, null, null, 'unknown'),
+            ('state-delta-1', 'account_state_delta_observed', 'x-twitter',
+             '2026-07-14T00:01:10.000Z', 'pass-1',
+             'overlaps_pass_observation_window', 1, 'reused_account',
+             'run-1', 'scan-1', 'binding-1', 'AI agents', 'top_base',
+             'search', 0, 1, 0, 2, null, null, null, null, 'unknown'),
+            ('result-2', 'pass_failed', 'x-twitter',
+             '2026-07-14T00:01:20.000Z', 'pass-2', null, null, null, 'run-1',
+             'scan-1', 'binding-1', 'AI agents', 'latest_base', 'search',
+             null, null, null, null, null, null, 'rate_limited', null, 'unknown'),
+            ('state-delta-2', 'account_state_delta_observed', 'x-twitter',
+             '2026-07-14T00:01:20.000Z', 'pass-2',
+             'overlaps_pass_observation_window', 1, 'reused_account',
+             'run-1', 'scan-1', 'binding-1', 'AI agents', 'latest_base',
+             'search', 1, 2, 2, 2, null, null, null, null, 'unknown'),
+            ('cooldown-2', 'cooldown_observed', 'x-twitter',
+             '2026-07-14T00:01:20.000Z', 'pass-2',
+             'overlaps_pass_observation_window', 1, 'reused_account',
+             'run-1', 'scan-1', 'binding-1', 'AI agents', 'latest_base',
+             'search', null, null, null, null, null, null, 'rate_limited',
+             'rate_limit', null);
+        `,
+      );
+
+      const accountPool = buildXAccountPoolReport({
+        ledgerPath: dbPath,
+        collectionDate: "2026-07-13",
+        observedAt: new Date("2026-07-14T00:03:00.000Z"),
+      });
+
+      expect(accountPool).toMatchObject({
+        passSucceededCount: 1,
+        passFailedCount: 1,
+        rateLimitCount: 1,
+        rateLimitObservationStatus: "unambiguous",
+        ambiguousLegacyRateLimitEventCount: 0,
+        totalRequestDelta: 2,
+        totalTweetDelta: 2,
+        attributionStatus: "unknown",
+        attributionPolicy: "warning_only",
+        attributionGateReason:
+          "unknown_attribution_global_collection_succeeded_warning_only",
+        targetWindowAttribution: {
+          stateDeltaObservationStatus: "monotonic_lower_bound",
+          stateDeltaBasis: "non_overlapping_counter_range_envelope",
+          fetchedCount: 2,
+          acceptedCount: 2,
+          knownPassResultCount: 0,
+          unknownPassResultCount: 2,
+        },
+      });
+      expect(accountPool.accounts[0]).toMatchObject({
+        requestDelta: 2,
+        tweetDelta: 2,
+        fetchedCount: null,
+        acceptedCount: null,
+        passSucceededCount: null,
+        passFailedCount: null,
+        rateLimitCount: 1,
+        rateLimitObservationStatus: "unambiguous",
+        warningCodes: [],
+      });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
 });
 
 function insertRun(params: {
@@ -686,6 +823,7 @@ function insertEvent(params: {
   readonly username?: string | null;
   readonly fetched: number | null;
   readonly accepted: number | null;
+  readonly requestId?: string;
 }): void {
   execSql(
     params.dbPath,
@@ -700,7 +838,7 @@ function insertEvent(params: {
         ${sqlString(params.id)}, ${sqlString(params.type)}, 'x-twitter',
         ${sqlString(params.occurredAt)}, ${params.accountId ?? "null"},
         ${sqlNullableString(params.username ?? "research_account")},
-        'request-1', 'scan-1', 'binding-1',
+        ${sqlString(params.requestId ?? "run-1")}, 'scan-1', 'binding-1',
         'openai anthropic claude llm', 'top_base', 'search', 6,
         0, 1, 0, 1, ${params.fetched ?? "null"},
         ${params.accepted ?? "null"}, null, null, null, null

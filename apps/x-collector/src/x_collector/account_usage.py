@@ -12,6 +12,7 @@ class AccountUsageEventType(str, Enum):
     PASS_STARTED = "pass_started"
     PASS_SUCCEEDED = "pass_succeeded"
     PASS_FAILED = "pass_failed"
+    ACCOUNT_STATE_DELTA_OBSERVED = "account_state_delta_observed"
     COOLDOWN_OBSERVED = "cooldown_observed"
 
 
@@ -32,6 +33,9 @@ class AccountUsageEvent:
     scan_job_id: str
     source_binding_id: str
     query: str
+    collector_run_id: str | None = None
+    pass_observation_id: str | None = None
+    observation_relation: str | None = None
     pass_label: str | None = None
     product: str | None = None
     estimated_request_cost: int | None = None
@@ -78,10 +82,20 @@ class AccountUsageDelta:
 
     @property
     def cooldown_observed(self) -> bool:
+        if self.before is None:
+            return False
+
         return (
-            self.after.cooldown_reason is not None
-            or self.after.available_at is not None
+            self.before.cooldown_reason != self.after.cooldown_reason
+            or self.before.available_at != self.after.available_at
         )
+
+    @property
+    def has_state_delta_evidence(self) -> bool:
+        if self.before is None:
+            return False
+
+        return self.request_delta > 0 or self.tweet_delta > 0
 
 
 @dataclass(frozen=True)
@@ -92,6 +106,8 @@ class SearchPassUsage:
     product: str
     estimated_request_cost: int
     before_snapshot: AccountPoolSnapshot | None
+    pass_observation_id: str | None
+    collector_run_id: str | None = None
 
 
 def account_usage_deltas(

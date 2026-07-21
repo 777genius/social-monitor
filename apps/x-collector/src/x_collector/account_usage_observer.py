@@ -21,7 +21,9 @@ from .search_plan import ScweetSearchPass
 
 
 X_TWITTER_PROVIDER = "x-twitter"
+OVERLAPS_PASS_OBSERVATION_WINDOW = "overlaps_pass_observation_window"
 EventIdFactory = Callable[[], str]
+PassObservationIdFactory = Callable[[], str]
 
 
 @dataclass(frozen=True)
@@ -46,6 +48,7 @@ class NoopAccountUsageObserver:
             product=search_pass.product.value,
             estimated_request_cost=estimated_request_cost,
             before_snapshot=None,
+            pass_observation_id=None,
         )
 
     def complete_pass_success(
@@ -76,11 +79,15 @@ class AccountUsageObserver:
         repository: AccountUsageEventRepositoryPort,
         clock: Clock,
         event_id_factory: EventIdFactory | None = None,
+        pass_observation_id_factory: PassObservationIdFactory | None = None,
     ) -> None:
         self._ledger = ledger
         self._repository = repository
         self._clock = clock
         self._event_id_factory = event_id_factory or (lambda: str(uuid4()))
+        self._pass_observation_id_factory = (
+            pass_observation_id_factory or (lambda: str(uuid4()))
+        )
 
     def record_budget_decision(
         self,
@@ -131,6 +138,7 @@ class AccountUsageObserver:
             product=search_pass.product.value,
             estimated_request_cost=estimated_request_cost,
             before_snapshot=before_snapshot,
+            pass_observation_id=self._pass_observation_id_factory(),
         )
 
         self._append_safely(
@@ -213,13 +221,20 @@ class AccountUsageObserver:
         ]
 
         for delta in deltas:
-            if delta.cooldown_observed:
+            if delta.has_state_delta_evidence:
                 events.append(
-                    self._event_for_delta(
+                    self._event_for_state_delta(
                         request,
                         usage,
                         delta,
-                        event_type=AccountUsageEventType.COOLDOWN_OBSERVED,
+                    ),
+                )
+            if delta.cooldown_observed:
+                events.append(
+                    self._event_for_cooldown(
+                        request,
+                        usage,
+                        delta,
                         failure_kind=failure_kind,
                         reset_at=delta.after.available_at or reset_at,
                     ),
@@ -227,41 +242,57 @@ class AccountUsageObserver:
 
         return tuple(events)
 
-    def _event_for_delta(
+    def _event_for_state_delta(
+        self,
+        request: DailySearchRequest,
+        usage: SearchPassUsage,
+        delta: AccountUsageDelta,
+    ) -> AccountUsageEvent:
+        before = delta.before
+        after = delta.after
+        if before is None:
+            raise ValueError("state delta events require a baseline")
+
+        return self._event(
+            request,
+            AccountUsageEventType.ACCOUNT_STATE_DELTA_OBSERVED,
+            account=after,
+            usage=usage,
+            observation_relation=OVERLAPS_PASS_OBSERVATION_WINDOW,
+            daily_requests_limit=after.daily_requests_limit,
+            daily_tweets_limit=after.daily_tweets_limit,
+            account_priority=after.priority,
+            requests_before=before.daily_requests,
+            requests_after=after.daily_requests,
+            tweets_before=before.daily_tweets,
+            tweets_after=after.daily_tweets,
+            attribution_status=AccountUsageAttributionStatus.UNKNOWN,
+        )
+
+    def _event_for_cooldown(
         self,
         request: DailySearchRequest,
         usage: SearchPassUsage,
         delta: AccountUsageDelta,
         *,
-        event_type: AccountUsageEventType,
-        fetched_count: int | None = None,
-        accepted_count: int | None = None,
         failure_kind: str | None = None,
         reset_at: datetime | None = None,
-        attribution_status: AccountUsageAttributionStatus | None = None,
     ) -> AccountUsageEvent:
-        before = delta.before
         after = delta.after
 
         return self._event(
             request,
-            event_type,
+            AccountUsageEventType.COOLDOWN_OBSERVED,
             account=after,
             usage=usage,
-            estimated_request_cost=usage.estimated_request_cost,
+            observation_relation=OVERLAPS_PASS_OBSERVATION_WINDOW,
             daily_requests_limit=after.daily_requests_limit,
             daily_tweets_limit=after.daily_tweets_limit,
             account_priority=after.priority,
-            requests_before=before.daily_requests if before else None,
-            requests_after=after.daily_requests,
-            tweets_before=before.daily_tweets if before else None,
-            tweets_after=after.daily_tweets,
-            fetched_count=fetched_count,
-            accepted_count=accepted_count,
             failure_kind=failure_kind,
             cooldown_reason=after.cooldown_reason,
             reset_at=reset_at or after.available_at,
-            attribution_status=attribution_status,
+            attribution_status=AccountUsageAttributionStatus.UNKNOWN,
         )
 
     def _event(
@@ -271,6 +302,7 @@ class AccountUsageObserver:
         *,
         account: AccountCapacity | None = None,
         usage: SearchPassUsage | None = None,
+        observation_relation: str | None = None,
         estimated_request_cost: int | None = None,
         daily_requests_limit: int | None = None,
         daily_tweets_limit: int | None = None,
@@ -295,8 +327,15 @@ class AccountUsageObserver:
             username=account.username if account else None,
             request_id=request.request_id,
             scan_job_id=request.scan_job_id,
+            collector_run_id=(
+                usage.collector_run_id if usage else None
+            ),
             source_binding_id=request.source_binding_id,
             query=request.query,
+            pass_observation_id=(
+                usage.pass_observation_id if usage else None
+            ),
+            observation_relation=observation_relation,
             pass_label=usage.pass_label if usage else None,
             product=usage.product if usage else None,
             estimated_request_cost=estimated_request_cost,

@@ -235,6 +235,11 @@ describe("production-day report", () => {
         totalAccountCount: 1,
         eligibleAccountCount: 1,
         attributionStatus: "unknown",
+        terminalObservationStatus: "ambiguous",
+        ambiguousPassObservationCount: 1,
+        rateLimitCount: 1,
+        rateLimitObservationStatus: "ambiguous_legacy_uncorrelated",
+        ambiguousLegacyRateLimitEventCount: 2,
         attributionPolicy: "warning_only",
         attributionGateReason:
           "unknown_attribution_global_collection_succeeded_warning_only",
@@ -294,6 +299,13 @@ describe("production-day report", () => {
     });
     expect(report.stats.xAccountAttribution).toEqual({
       status: "unknown",
+      terminalObservationStatus: "ambiguous",
+      ambiguousPassObservationCount: 1,
+      targetRunEventCorrelationStatus: "unknown",
+      ambiguousTargetRunEventCount: 0,
+      rateLimitCount: 1,
+      rateLimitObservationStatus: "ambiguous_legacy_uncorrelated",
+      ambiguousLegacyRateLimitEventCount: 2,
       policy: "warning_only",
       gateReason:
         "unknown_attribution_global_collection_succeeded_warning_only",
@@ -326,6 +338,13 @@ describe("production-day report", () => {
 
     expect(report.stats.xAccountAttribution).toEqual({
       status: "known",
+      terminalObservationStatus: "unambiguous",
+      ambiguousPassObservationCount: 0,
+      targetRunEventCorrelationStatus: "unknown",
+      ambiguousTargetRunEventCount: 0,
+      rateLimitCount: 0,
+      rateLimitObservationStatus: "unambiguous",
+      ambiguousLegacyRateLimitEventCount: 0,
       policy: "warning_only",
       gateReason: "known_attribution_zero_output_warning_only",
       warningCount: 1,
@@ -378,6 +397,8 @@ describe("production-day report", () => {
     expect(report.stats.xAccounts[0]?.targetWindowAttribution).toStrictEqual({
       collectionDate: undefined,
       status: "partial",
+      terminalObservationStatus: "unambiguous",
+      ambiguousPassObservationCount: 0,
       requestDelta: 2,
       tweetDelta: null,
       fetchedCount: null,
@@ -388,9 +409,56 @@ describe("production-day report", () => {
     });
   });
 
+  it("keeps missing legacy account counters nullable", () => {
+    const report = buildReport(passedSteps(), evidenceFixture(), {
+      collectionDate,
+      dayWindowAudit: {
+        publishedInsideWindowFeedItemCount: 10,
+        providerBreakdown: [],
+      },
+      xAccountPool: {
+        totalAccountCount: 1,
+        eligibleAccountCount: 0,
+        attributionStatus: "unknown",
+        attributionPolicy: "warning_only",
+        attributionGateReason:
+          "unknown_attribution_global_collection_succeeded_warning_only",
+        eligibleAccountZeroAttributableOutputWarningCount: 0,
+        attributionWarnings: [],
+        accounts: [
+          {
+            accountFingerprint: "legacy-account",
+            priorityRank: 1,
+          },
+        ],
+      },
+    });
+
+    expect(report.stats.xAccounts[0]).toMatchObject({
+      dailyRequests: null,
+      dailyTweets: null,
+      observedAccountSnapshot: {
+        dailyRequests: null,
+        dailyTweets: null,
+      },
+      targetWindowAttribution: {
+        status: "unknown",
+        fetchedCount: null,
+        acceptedCount: null,
+      },
+    });
+  });
+
   it.each([
     ["status", undefined],
     ["status", "future"],
+    ["terminalObservationStatus", "future"],
+    ["ambiguousPassObservationCount", -1],
+    ["targetRunEventCorrelationStatus", "future"],
+    ["ambiguousTargetRunEventCount", -1],
+    ["rateLimitCount", 0.5],
+    ["rateLimitObservationStatus", "future"],
+    ["ambiguousLegacyRateLimitEventCount", -1],
     ["policy", undefined],
     ["policy", "blocking"],
     ["gateReason", undefined],

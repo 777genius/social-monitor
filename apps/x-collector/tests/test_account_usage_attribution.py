@@ -19,7 +19,10 @@ from x_collector.account_usage import (
     AccountUsageEventType,
     account_usage_deltas,
 )
-from x_collector.account_usage_observer import AccountUsageObserver
+from x_collector.account_usage_observer import (
+    OVERLAPS_PASS_OBSERVATION_WINDOW,
+    AccountUsageObserver,
+)
 from x_collector.domain import DailySearchRequest, SearchProduct
 from x_collector.search_plan import ScweetSearchPass
 
@@ -94,6 +97,7 @@ class AccountUsageAttributionTest(unittest.TestCase):
             repository,
             FixedClock(before.observed_at),
             event_id_factory=event_id_factory(),
+            pass_observation_id_factory=pass_observation_id_factory(),
         )
         usage = observer.begin_pass(request(), search_pass(), 1)
 
@@ -115,6 +119,7 @@ class AccountUsageAttributionTest(unittest.TestCase):
             results[0].attribution_status,
             AccountUsageAttributionStatus.UNKNOWN,
         )
+        self.assertEqual(state_delta_events(repository.events), [])
 
     def test_failure_persists_unknown_when_completion_snapshot_fails(
         self,
@@ -126,6 +131,7 @@ class AccountUsageAttributionTest(unittest.TestCase):
             repository,
             FixedClock(before.observed_at),
             event_id_factory=event_id_factory(),
+            pass_observation_id_factory=pass_observation_id_factory(),
         )
         usage = observer.begin_pass(request(), search_pass(), 1)
 
@@ -146,6 +152,7 @@ class AccountUsageAttributionTest(unittest.TestCase):
             results[0].attribution_status,
             AccountUsageAttributionStatus.UNKNOWN,
         )
+        self.assertEqual(state_delta_events(repository.events), [])
 
     def test_does_not_infer_known_from_unique_shared_counter_delta(self) -> None:
         before = snapshot(account(1), account(2))
@@ -160,7 +167,9 @@ class AccountUsageAttributionTest(unittest.TestCase):
             replace(account(2), busy=True),
         )
 
-        results = observe_success(before, after)
+        events = observe_success_events(before, after)
+        results = pass_result_events(events)
+        state_deltas = state_delta_events(events)
 
         self.assertEqual(len(results), 1)
         self.assertIsNone(results[0].account_id)
@@ -169,6 +178,26 @@ class AccountUsageAttributionTest(unittest.TestCase):
             AccountUsageAttributionStatus.UNKNOWN,
         )
         self.assertEqual(results[0].fetched_count, 3)
+        self.assertEqual(len(state_deltas), 1)
+        self.assertEqual(state_deltas[0].account_id, 1)
+        self.assertEqual(state_deltas[0].requests_before, 0)
+        self.assertEqual(state_deltas[0].requests_after, 1)
+        self.assertEqual(state_deltas[0].tweets_before, 0)
+        self.assertEqual(state_deltas[0].tweets_after, 3)
+        self.assertIsNone(state_deltas[0].fetched_count)
+        self.assertIsNone(state_deltas[0].accepted_count)
+        self.assertEqual(
+            state_deltas[0].attribution_status,
+            AccountUsageAttributionStatus.UNKNOWN,
+        )
+        self.assertEqual(
+            state_deltas[0].observation_relation,
+            OVERLAPS_PASS_OBSERVATION_WINDOW,
+        )
+        self.assertEqual(
+            state_deltas[0].pass_observation_id,
+            results[0].pass_observation_id,
+        )
 
     def test_concurrent_unrelated_account_delta_remains_unknown(self) -> None:
         before = snapshot(account(1), account(2))
@@ -179,6 +208,7 @@ class AccountUsageAttributionTest(unittest.TestCase):
             repository,
             FixedClock(before.observed_at),
             event_id_factory=event_id_factory(),
+            pass_observation_id_factory=pass_observation_id_factory(),
         )
         usage = observer.begin_pass(request(), search_pass(), 1)
         mutation_barrier = Barrier(2)
@@ -222,13 +252,22 @@ class AccountUsageAttributionTest(unittest.TestCase):
             AccountUsageAttributionStatus.UNKNOWN,
         )
         self.assertEqual(results[0].fetched_count, 3)
+        state_deltas = state_delta_events(repository.events)
+        self.assertEqual(len(state_deltas), 1)
+        self.assertEqual(state_deltas[0].account_id, 2)
+        self.assertIsNone(state_deltas[0].fetched_count)
+        self.assertEqual(
+            state_deltas[0].observation_relation,
+            OVERLAPS_PASS_OBSERVATION_WINDOW,
+        )
 
     def test_uses_explicit_unknown_when_snapshot_has_no_identity_delta(
         self,
     ) -> None:
         unchanged = snapshot(account(1), account(2))
 
-        results = observe_success(unchanged, unchanged)
+        events = observe_success_events(unchanged, unchanged)
+        results = pass_result_events(events)
 
         self.assertEqual(len(results), 1)
         self.assertIsNone(results[0].account_id)
@@ -237,6 +276,7 @@ class AccountUsageAttributionTest(unittest.TestCase):
             AccountUsageAttributionStatus.UNKNOWN,
         )
         self.assertEqual(results[0].accepted_count, 2)
+        self.assertEqual(state_delta_events(events), [])
 
     def test_does_not_duplicate_result_when_multiple_accounts_have_usage(
         self,
@@ -259,13 +299,30 @@ class AccountUsageAttributionTest(unittest.TestCase):
             ),
         )
 
-        results = observe_success(before, after)
+        events = observe_success_events(before, after)
+        results = pass_result_events(events)
+        state_deltas = state_delta_events(events)
 
         self.assertEqual(len(results), 1)
         self.assertIsNone(results[0].account_id)
         self.assertEqual(
             results[0].attribution_status,
             AccountUsageAttributionStatus.UNKNOWN,
+        )
+        self.assertEqual(
+            [event.account_id for event in state_deltas],
+            [1, 2],
+        )
+        self.assertTrue(
+            all(event.fetched_count is None for event in state_deltas),
+        )
+        self.assertEqual(
+            {event.pass_observation_id for event in state_deltas},
+            {results[0].pass_observation_id},
+        )
+        self.assertEqual(
+            {event.observation_relation for event in state_deltas},
+            {OVERLAPS_PASS_OBSERVATION_WINDOW},
         )
 
     def test_missing_baseline_does_not_treat_historical_counters_as_usage(
@@ -286,7 +343,8 @@ class AccountUsageAttributionTest(unittest.TestCase):
         self.assertEqual(delta.request_delta, 0)
         self.assertEqual(delta.tweet_delta, 0)
 
-        results = observe_success(None, after)
+        events = observe_success_events(None, after)
+        results = pass_result_events(events)
 
         self.assertEqual(len(results), 1)
         self.assertIsNone(results[0].account_id)
@@ -294,12 +352,14 @@ class AccountUsageAttributionTest(unittest.TestCase):
             results[0].attribution_status,
             AccountUsageAttributionStatus.UNKNOWN,
         )
+        self.assertEqual(state_delta_events(events), [])
 
     def test_busy_only_change_does_not_select_known_attribution(self) -> None:
         before = snapshot(account(1), account(2))
         after = snapshot(account(1), replace(account(2), busy=True))
 
-        results = observe_success(before, after)
+        events = observe_success_events(before, after)
+        results = pass_result_events(events)
 
         self.assertEqual(len(results), 1)
         self.assertIsNone(results[0].account_id)
@@ -307,9 +367,48 @@ class AccountUsageAttributionTest(unittest.TestCase):
             results[0].attribution_status,
             AccountUsageAttributionStatus.UNKNOWN,
         )
+        self.assertEqual(state_delta_events(events), [])
+
+    def test_cooldown_only_change_does_not_record_state_delta(
+        self,
+    ) -> None:
+        before = snapshot(account(1))
+        reset_at = datetime(2026, 7, 18, 0, 20, tzinfo=UTC)
+        after = snapshot(
+            replace(
+                account(1),
+                status=429,
+                available_at=reset_at,
+                cooldown_reason="rate_limit",
+            ),
+        )
+
+        events = observe_success_events(before, after)
+        cooldowns = [
+            event
+            for event in events
+            if event.event_type is AccountUsageEventType.COOLDOWN_OBSERVED
+        ]
+
+        self.assertEqual(state_delta_events(events), [])
+        self.assertEqual(len(cooldowns), 1)
+        self.assertEqual(cooldowns[0].account_id, 1)
+        self.assertEqual(cooldowns[0].cooldown_reason, "rate_limit")
+        self.assertIsNone(cooldowns[0].requests_before)
+        self.assertIsNone(cooldowns[0].requests_after)
+        self.assertIsNone(cooldowns[0].tweets_before)
+        self.assertIsNone(cooldowns[0].tweets_after)
+        self.assertEqual(
+            cooldowns[0].observation_relation,
+            OVERLAPS_PASS_OBSERVATION_WINDOW,
+        )
+        self.assertEqual(
+            cooldowns[0].attribution_status,
+            AccountUsageAttributionStatus.UNKNOWN,
+        )
 
 
-def observe_success(
+def observe_success_events(
     before: AccountPoolSnapshot | None,
     after: AccountPoolSnapshot,
 ) -> list[AccountUsageEvent]:
@@ -319,6 +418,7 @@ def observe_success(
         repository,
         FixedClock(after.observed_at),
         event_id_factory=event_id_factory(),
+        pass_observation_id_factory=pass_observation_id_factory(),
     )
     usage = observer.begin_pass(request(), search_pass(), 1)
     observer.complete_pass_success(
@@ -328,10 +428,26 @@ def observe_success(
         accepted_count=2,
     )
 
+    return repository.events
+
+
+def pass_result_events(
+    events: list[AccountUsageEvent],
+) -> list[AccountUsageEvent]:
     return [
         event
-        for event in repository.events
+        for event in events
         if event.event_type is AccountUsageEventType.PASS_SUCCEEDED
+    ]
+
+
+def state_delta_events(
+    events: list[AccountUsageEvent],
+) -> list[AccountUsageEvent]:
+    return [
+        event
+        for event in events
+        if event.event_type is AccountUsageEventType.ACCOUNT_STATE_DELTA_OBSERVED
     ]
 
 
@@ -403,6 +519,17 @@ def event_id_factory() -> Callable[[], str]:
         nonlocal next_id
         next_id += 1
         return f"event-{next_id}"
+
+    return create
+
+
+def pass_observation_id_factory() -> Callable[[], str]:
+    next_id = 0
+
+    def create() -> str:
+        nonlocal next_id
+        next_id += 1
+        return f"pass-observation-{next_id}"
 
     return create
 

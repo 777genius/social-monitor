@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from email.utils import parsedate_to_datetime
 from typing import Any, Callable, Mapping
@@ -60,6 +60,7 @@ from .scweet_account_pool_ledger import (
 )
 from .scweet_errors import classify_scweet_error
 from .scweet_run_maintenance import reconcile_stale_scweet_runs
+from .scweet_run_identity import ScweetRunIdentityTracker
 from .search_plan import ScweetSearchPass, plan_scweet_search_passes
 from .sqlite_account_usage_event_repository import (
     SqliteAccountUsageEventRepository,
@@ -457,16 +458,26 @@ class ScweetDailySearchCollector(DailySearchCollectorPort):
                 search_pass,
                 estimated_cost,
             )
+            run_identity = ScweetRunIdentityTracker(self._scweet_db_path)
             try:
-                records = run_scweet_search_pass(
-                    scweet,
-                    request=request,
-                    search_pass=search_pass,
-                    since=since,
-                    until=until,
+                with run_identity:
+                    records = run_scweet_search_pass(
+                        scweet,
+                        request=request,
+                        search_pass=search_pass,
+                        since=since,
+                        until=until,
+                    )
+                usage = replace(
+                    usage,
+                    collector_run_id=run_identity.collector_run_id,
                 )
                 return records, scweet, usage, failover_count
             except Exception as exc:
+                usage = replace(
+                    usage,
+                    collector_run_id=run_identity.collector_run_id,
+                )
                 classified = classify_scweet_error(
                     exc,
                     clock=self._clock,
