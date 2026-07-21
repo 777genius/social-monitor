@@ -21,11 +21,11 @@ class ScweetRunIdentityTracker:
     an unknown run identity.
     """
 
-    def __init__(self, db_path: str) -> None:
+    def __init__(self, db_path: str | None) -> None:
         self._db_path = db_path
         self._lock_key = (
             db_path
-            if db_path == ":memory:"
+            if db_path is None or db_path == ":memory:"
             else str(Path(db_path).resolve())
         )
         self._thread_lock: Lock | None = None
@@ -35,9 +35,10 @@ class ScweetRunIdentityTracker:
         self.collector_run_id: str | None = None
 
     def __enter__(self) -> "ScweetRunIdentityTracker":
-        if self._db_path == ":memory:":
+        if self._db_path is None or self._db_path == ":memory:":
             return self
 
+        assert self._lock_key is not None
         self._thread_lock = thread_lock_for(self._lock_key)
         self._thread_lock.acquire()
         try:
@@ -59,7 +60,7 @@ class ScweetRunIdentityTracker:
         traceback: TracebackType | None,
     ) -> bool:
         del exc_type, exc_value, traceback
-        if not self._tracking:
+        if not self._tracking or self._db_path is None:
             return False
         try:
             after = read_scweet_run_ids(self._db_path)

@@ -6,7 +6,24 @@ from multiprocessing import get_context
 from multiprocessing.connection import Connection
 from pathlib import Path
 
+import x_collector.scweet_run_identity as run_identity
 from x_collector.scweet_run_identity import ScweetRunIdentityTracker
+
+
+def test_missing_durable_path_is_side_effect_free(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    thread_locks_before = dict(run_identity._THREAD_LOCKS)
+    tracker = ScweetRunIdentityTracker(None)
+
+    with tracker:
+        assert tracker.collector_run_id is None
+
+    assert tracker.collector_run_id is None
+    assert tuple(tmp_path.iterdir()) == ()
+    assert run_identity._THREAD_LOCKS == thread_locks_before
 
 
 def test_resolves_one_new_durable_run(tmp_path: Path) -> None:
