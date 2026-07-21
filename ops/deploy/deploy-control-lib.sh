@@ -71,9 +71,10 @@ initialize_deploy_control_bridge() {
   local deploy_library=$REPO/ops/deploy/deploy-control-lib.sh
   local postgres_library=$REPO/ops/deploy/postgres-runtime-deploy-lib.sh
   local image_rescue_library=$REPO/ops/deploy/backend-image-rescue-lib.sh
+  local x_image_library=$REPO/ops/deploy/x-collector-image-deploy-lib.sh
 
   [[ -f $entrypoint && -f $deploy_library && -f $postgres_library && \
-     -f $image_rescue_library ]] || \
+     -f $image_rescue_library && -f $x_image_library ]] || \
     fail 'current integration is missing deploy control bridge sources'
   DEPLOY_CONTROL_BRIDGE_ENTRYPOINT_DIGEST=$(
     deploy_control_file_digest "$entrypoint"
@@ -87,6 +88,9 @@ initialize_deploy_control_bridge() {
   DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_DIGEST=$(
     deploy_control_file_digest "$image_rescue_library"
   )
+  DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_DIGEST=$(
+    deploy_control_file_digest "$x_image_library"
+  )
 }
 
 verify_deploy_control_bridge_compatibility() {
@@ -94,14 +98,16 @@ verify_deploy_control_bridge_compatibility() {
   local deploy_library=$REPO/ops/deploy/deploy-control-lib.sh
   local postgres_library=$REPO/ops/deploy/postgres-runtime-deploy-lib.sh
   local image_rescue_library=$REPO/ops/deploy/backend-image-rescue-lib.sh
+  local x_image_library=$REPO/ops/deploy/x-collector-image-deploy-lib.sh
 
   [[ -n ${DEPLOY_CONTROL_BRIDGE_ENTRYPOINT_DIGEST:-} && \
      -n ${DEPLOY_CONTROL_BRIDGE_LIBRARY_DIGEST:-} && \
      -n ${DEPLOY_CONTROL_BRIDGE_POSTGRES_LIBRARY_DIGEST:-} && \
-     -n ${DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_DIGEST:-} ]] || \
+     -n ${DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_DIGEST:-} && \
+     -n ${DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_DIGEST:-} ]] || \
     fail 'deploy control bridge was not initialized before integration advance'
   [[ -f $entrypoint && -f $deploy_library && -f $postgres_library && \
-     -f $image_rescue_library ]] || \
+     -f $image_rescue_library && -f $x_image_library ]] || \
     fail 'target integration is missing deploy control bridge sources'
   [[ $(deploy_control_file_digest "$entrypoint") == \
      "$DEPLOY_CONTROL_BRIDGE_ENTRYPOINT_DIGEST" && \
@@ -110,7 +116,9 @@ verify_deploy_control_bridge_compatibility() {
      $(deploy_control_file_digest "$postgres_library") == \
        "$DEPLOY_CONTROL_BRIDGE_POSTGRES_LIBRARY_DIGEST" && \
      $(deploy_control_file_digest "$image_rescue_library") == \
-       "$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_DIGEST" ]] || \
+       "$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_DIGEST" && \
+     $(deploy_control_file_digest "$x_image_library") == \
+       "$DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_DIGEST" ]] || \
     fail 'deploy control changed with runtime assets; deploy the bridge release first'
 }
 
@@ -120,13 +128,15 @@ verify_deploy_control_bridge_target_compatibility() {
   local deploy_library_path=ops/deploy/deploy-control-lib.sh
   local postgres_library_path=ops/deploy/postgres-runtime-deploy-lib.sh
   local image_rescue_library_path=ops/deploy/backend-image-rescue-lib.sh
+  local x_image_library_path=ops/deploy/x-collector-image-deploy-lib.sh
   local entrypoint_digest deploy_library_digest postgres_library_digest
-  local image_rescue_library_digest
+  local image_rescue_library_digest x_image_library_digest
 
   [[ -n ${DEPLOY_CONTROL_BRIDGE_ENTRYPOINT_DIGEST:-} && \
      -n ${DEPLOY_CONTROL_BRIDGE_LIBRARY_DIGEST:-} && \
      -n ${DEPLOY_CONTROL_BRIDGE_POSTGRES_LIBRARY_DIGEST:-} && \
-     -n ${DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_DIGEST:-} ]] || \
+     -n ${DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_DIGEST:-} && \
+     -n ${DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_DIGEST:-} ]] || \
     fail 'deploy control bridge was not initialized before target verification'
   entrypoint_digest=$(
     deploy_control_git_blob_digest "$sha" "$entrypoint_path"
@@ -140,12 +150,17 @@ verify_deploy_control_bridge_target_compatibility() {
   image_rescue_library_digest=$(
     deploy_control_git_blob_digest "$sha" "$image_rescue_library_path"
   ) || fail 'target integration is missing the backend image rescue bridge library'
+  x_image_library_digest=$(
+    deploy_control_git_blob_digest "$sha" "$x_image_library_path"
+  ) || fail 'target integration is missing the X image provenance bridge library'
   [[ $entrypoint_digest == "$DEPLOY_CONTROL_BRIDGE_ENTRYPOINT_DIGEST" && \
      $deploy_library_digest == "$DEPLOY_CONTROL_BRIDGE_LIBRARY_DIGEST" && \
      $postgres_library_digest == \
        "$DEPLOY_CONTROL_BRIDGE_POSTGRES_LIBRARY_DIGEST" && \
      $image_rescue_library_digest == \
-       "$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_DIGEST" ]] || \
+       "$DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_LIBRARY_DIGEST" && \
+     $x_image_library_digest == \
+       "$DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_DIGEST" ]] || \
     fail 'deploy control changed with runtime assets; deploy the bridge release first'
 }
 
@@ -281,12 +296,16 @@ deploy_release() {
   fi
 
   local frontend=false backend=false control=false runtime_control=false
+  local x_image_provenance_release=false
   component_changed frontend "$sha" "${FRONTEND_PATHS[@]}" && frontend=true
   component_changed backend "$sha" "${BACKEND_PATHS[@]}" && backend=true
   component_changed control "$sha" "${CONTROL_PATHS[@]}" && control=true
   component_changed control "$sha" "${RUNTIME_CONTROL_PATHS[@]}" && \
     runtime_control=true
-  if [[ $runtime_control == true ]]; then
+  component_changed backend "$sha" \
+    ops/deploy/production-runtime/x-collector.Dockerfile && \
+    x_image_provenance_release=true
+  if [[ $runtime_control == true || $x_image_provenance_release == true ]]; then
     verify_deploy_control_bridge_target_compatibility "$sha"
   fi
   advance_integration "$sha"

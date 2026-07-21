@@ -26,6 +26,7 @@ install -d "$REPO/apps/frontend" "$REPO/apps/api-gateway" \
 cp "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/deploy-control-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/backend-image-rescue-lib.sh" "$REPO/ops/deploy/"
+cp "$SCRIPT_DIR/x-collector-image-deploy-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/reader-summary-publication-deploy-lib.sh" \
   "$SCRIPT_DIR/reader-summary-publication-pre-migration.sql" \
   "$SCRIPT_DIR/reader-summary-publication-post-migration.sql" \

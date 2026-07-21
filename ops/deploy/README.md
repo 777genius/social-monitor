@@ -102,6 +102,40 @@ refuses to start until its
 release SHA equals the durable backend marker, which fences a host crash during
 the switch.
 
+## X collector image provenance rollout
+
+The first revision-labelled production X image is an explicit two-release
+rollout. Do not combine these releases:
+
+1. Release A contains the deploy controller, X image provenance library,
+   fixture tests, workflow gate, and this runbook update. It must not contain
+   `ops/deploy/production-runtime/x-collector.Dockerfile`. Reconcile Release A
+   until `control.sha` records it and a new plan has `control=false`.
+2. Release B adds only
+   `ops/deploy/production-runtime/x-collector.Dockerfile`. The Release A
+   controller must plan Release B with `backend=true`, `control=true`, and
+   `x_collector=true`; CI rejects the Dockerfile release if those durable-plan
+   classifications are absent. Release B must keep the Release A controller
+   and provenance library byte-identical.
+
+On Release B, the already-running Release A controller authenticates the
+tracked Dockerfile as a regular `0644` Git blob, byte-compares the integration
+copy with that blob, and atomically installs it as root-owned
+`control/x-collector.Dockerfile`. The X image is excluded from the shared
+Compose build and built separately with the exact full target SHA as
+`SOCIAL_MONITOR_RELEASE_SHA`. Its immutable image ID and exact
+`org.opencontainers.image.revision` label are checked before the rescue phase
+can advance to replacement. After recreate, the running container must use
+that exact candidate image ID and revision before `backend.sha` advances.
+
+A missing, symlinked, mode-drifted, digest-mismatched, unlabeled, or
+wrong-labelled candidate fails closed. Candidate failures occur while the
+rescue is still in its prepared phase, so rollback restores tags without
+recreating the healthy X container. A running image mismatch after replacement
+enters the existing exact-image rollback and does not advance the backend
+marker. The production canary continues to reject unlabelled or mismatched
+images; there is no compatibility exception.
+
 ## Backend image rescue lifecycle
 
 The rescue snapshot is a fail-closed prerequisite to every backend build. Each
@@ -179,6 +213,8 @@ the repository. Pin every third-party action to a full commit SHA.
 - upload staging: `/var/data/social-monitor/runtime/deploy-staging`;
 - frontend releases: `/var/data/social-monitor/runtime/frontend-releases`;
 - integration: `/var/data/social-monitor/integration`;
+- tracked X Dockerfile destination:
+  `/var/data/social-monitor/control/x-collector.Dockerfile`;
 - backups: `/var/data/social-monitor/backups`.
 
 The entrypoint is installed root-owned. After a successful control deployment,

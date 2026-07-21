@@ -18,6 +18,7 @@ cp "$SCRIPT_DIR/social-monitor-production-deploy.sh" \
   "$SCRIPT_DIR/deploy-control-lib.sh" \
   "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" \
   "$SCRIPT_DIR/backend-image-rescue-lib.sh" \
+  "$SCRIPT_DIR/x-collector-image-deploy-lib.sh" \
   "$REPO/ops/deploy/"
 
 fail() {
@@ -122,6 +123,20 @@ set -e
 grep -F 'deploy the bridge release first' <<< "$rescue_bridge_error" >/dev/null
 cp "$SCRIPT_DIR/backend-image-rescue-lib.sh" \
   "$REPO/ops/deploy/backend-image-rescue-lib.sh"
+verify_deploy_control_bridge_compatibility
+
+# X image provenance is also immutable across the Release A -> Release B
+# bridge so the controller that validates the candidate is already running.
+printf '# target X provenance mutation\n' >> \
+  "$REPO/ops/deploy/x-collector-image-deploy-lib.sh"
+set +e
+x_bridge_error=$(verify_deploy_control_bridge_compatibility 2>&1)
+x_bridge_status=$?
+set -e
+((x_bridge_status != 0))
+grep -F 'deploy the bridge release first' <<< "$x_bridge_error" >/dev/null
+cp "$SCRIPT_DIR/x-collector-image-deploy-lib.sh" \
+  "$REPO/ops/deploy/x-collector-image-deploy-lib.sh"
 verify_deploy_control_bridge_compatibility
 
 echo 'Deploy control library tests passed'

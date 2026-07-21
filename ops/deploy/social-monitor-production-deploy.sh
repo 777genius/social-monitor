@@ -75,6 +75,7 @@ BACKEND_PATHS=(
   apps/delivery-service
   apps/event-relay
   apps/x-collector
+  ops/deploy/production-runtime/x-collector.Dockerfile
   apps/social-research-runtime
   apps/social-research-grpc
   apps/social-research-mcp
@@ -208,6 +209,8 @@ fi
 source "$REPO/ops/deploy/postgres-runtime-deploy-lib.sh"
 # shellcheck source=ops/deploy/backend-image-rescue-lib.sh
 source "$REPO/ops/deploy/backend-image-rescue-lib.sh"
+# shellcheck source=ops/deploy/x-collector-image-deploy-lib.sh
+source "$REPO/ops/deploy/x-collector-image-deploy-lib.sh"
 initialize_deploy_control_bridge
 
 verify_compose_scope() (
@@ -244,9 +247,9 @@ expected_images = {
     "rabbitmq": "rabbitmq:4.3-management",
     "redis": "redis:8-alpine",
 }
-allowed_control_dockerfiles = {
-    f"{control}/daily-runner.Dockerfile",
-    f"{control}/x-collector.Dockerfile",
+expected_dockerfiles = {
+    "daily-runner": f"{control}/daily-runner.Dockerfile",
+    "x-collector": f"{control}/x-collector.Dockerfile",
 }
 for name, service in services.items():
     forbidden = {
@@ -276,7 +279,7 @@ for name, service in services.items():
         raise SystemExit(f"build service {name} must use the project-generated image name")
     elif not isinstance(build, dict) or build.get("context") != repo:
         raise SystemExit(f"unexpected build context for {name}")
-    elif build.get("dockerfile") not in {"Dockerfile", *allowed_control_dockerfiles}:
+    elif build.get("dockerfile") != expected_dockerfiles.get(name, "Dockerfile"):
         raise SystemExit(f"unexpected Dockerfile for {name}")
     elif not set(build).issubset({"args", "context", "dockerfile"}):
         raise SystemExit(f"unexpected build options for {name}")
@@ -367,7 +370,9 @@ print_plan() {
   component_changed frontend "$sha" "${FRONTEND_PATHS[@]}" && frontend=true
   component_changed backend "$sha" "${BACKEND_PATHS[@]}" && backend=true
   component_changed control "$sha" "${CONTROL_PATHS[@]}" && control=true
-  component_changed backend "$sha" apps/x-collector && x_collector=true
+  component_changed backend "$sha" \
+    apps/x-collector \
+    ops/deploy/production-runtime/x-collector.Dockerfile && x_collector=true
   local postgres_pool_bootstrap=uninstalled
   local postgres_pool_bootstrap_sha=0000000000000000000000000000000000000000
   if postgres_pool_bootstrap_installed "$sha"; then
@@ -537,7 +542,9 @@ backend_services() {
       services+=(daily-runner)
     fi
   fi
-  if changed_between "$from" "$to" apps/x-collector; then
+  if changed_between "$from" "$to" \
+    apps/x-collector \
+    ops/deploy/production-runtime/x-collector.Dockerfile; then
     services+=(x-collector)
   fi
   printf '%s\n' "${services[@]}" | awk 'NF && !seen[$0]++'
@@ -764,10 +771,15 @@ deploy_backend() (
   backup_database "$sha"
 
   local -a primary_build=()
+  local x_collector_candidate_image_id=
   for service in "${services[@]}"; do
-    [[ $service == daily-runner ]] || primary_build+=("$service")
+    [[ $service == daily-runner || $service == x-collector ]] || \
+      primary_build+=("$service")
   done
   ((${#primary_build[@]} == 0)) || "${COMPOSE[@]}" --profile app --profile daily build "${primary_build[@]}"
+  if printf '%s\n' "${services[@]}" | grep -qx x-collector; then
+    x_collector_build_candidate "$sha" x_collector_candidate_image_id
+  fi
   if printf '%s\n' "${services[@]}" | grep -qx daily-runner; then
     "${COMPOSE[@]}" --profile daily build daily-runner
   fi
@@ -796,6 +808,10 @@ deploy_backend() (
     fi
     if ! verify_backend_with_retry "${persistent[@]}"; then
       fail 'backend health failed'
+    fi
+    if [[ -n $x_collector_candidate_image_id ]]; then
+      x_collector_verify_running_candidate \
+        "$sha" "$x_collector_candidate_image_id"
     fi
     if printf '%s\n' "${persistent[@]}" | grep -qx api && ! refresh_frontend_api_proxy; then
       fail 'frontend API proxy refresh failed'
@@ -915,6 +931,9 @@ sync_control_script() {
     mv -f "$auth_refresh_destination.next" "$auth_refresh_destination"
     [[ $(stat -c '%U:%G:%a' "$auth_refresh_destination") == root:root:700 ]] || \
       fail 'subscription auth refresh ownership or mode is invalid after sync'
+  fi
+  if x_collector_target_has_tracked_dockerfile "$sha"; then
+    sync_x_collector_dockerfile "$sha"
   fi
   install -m 0755 -o root -g root "$source" "$destination.next"
   mv -f "$destination.next" "$destination"

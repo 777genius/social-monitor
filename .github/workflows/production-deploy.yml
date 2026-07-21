@@ -164,11 +164,29 @@ jobs:
           BACKEND_BASE: ${{ needs.plan.outputs.backend_base }}
           CONTROL_CHANGED: ${{ needs.plan.outputs.control }}
           FRONTEND_CHANGED: ${{ needs.plan.outputs.frontend }}
+          X_COLLECTOR_CHANGED: ${{ needs.plan.outputs.x_collector }}
           DATABASE_URL: postgresql://social_monitor_pool_ci:social_monitor_local_password@127.0.0.1:5432/social_monitor_pool_ci
           POSTGRES_POOL_BOOTSTRAP: ${{ needs.plan.outputs.postgres_pool_bootstrap }}
           POSTGRES_POOL_BOOTSTRAP_SHA: ${{ needs.plan.outputs.postgres_pool_bootstrap_sha }}
         run: |
           set -euo pipefail
+          x_dockerfile=ops/deploy/production-runtime/x-collector.Dockerfile
+          if git cat-file -e "$GITHUB_SHA:$x_dockerfile" 2>/dev/null; then
+            grep -Fx 'ARG SOCIAL_MONITOR_RELEASE_SHA' "$x_dockerfile" >/dev/null
+            grep -Fx 'LABEL org.opencontainers.image.revision="${SOCIAL_MONITOR_RELEASE_SHA}"' \
+              "$x_dockerfile" >/dev/null
+            if [[ $BACKEND_BASE == 0000000000000000000000000000000000000000 ]]; then
+              echo 'deploy Release A provenance controller before the X Dockerfile release' >&2
+              exit 1
+            fi
+            if ! git diff --quiet "$BACKEND_BASE" "$GITHUB_SHA" -- "$x_dockerfile"; then
+              if [[ $BACKEND_CHANGED != true || $CONTROL_CHANGED != true || \
+                    $X_COLLECTOR_CHANGED != true ]]; then
+                echo 'X Dockerfile Release B was not classified by the deployed Release A controller' >&2
+                exit 1
+              fi
+            fi
+          fi
           npm ci
           npm run check:architecture
           npm run check:source-line-cap
@@ -277,6 +295,8 @@ jobs:
             ops/deploy/social-monitor-production-deploy.sh
             ops/deploy/backend-image-rescue-lib.sh
             ops/deploy/backend-image-rescue-lib.test.sh
+            ops/deploy/x-collector-image-deploy-lib.sh
+            ops/deploy/x-collector-image-deploy-lib.test.sh
             ops/deploy/deploy-control-lib.sh
             ops/deploy/deploy-control-lib.test.sh
             ops/deploy/github-production-deploy-client.sh
@@ -329,6 +349,7 @@ jobs:
             bash ops/deploy/daily-deploy-lock-race.test.sh
             bash ops/deploy/postgres-runtime-deploy-lib.test.sh
           fi
+          bash ops/deploy/x-collector-image-deploy-lib.test.sh
           bash ops/deploy/github-production-deploy-client.test.sh
 
       - name: Verify legacy-main deployment transitions
