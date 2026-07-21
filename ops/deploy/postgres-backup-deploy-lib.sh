@@ -140,6 +140,7 @@ capture_reader_summary_publication_migration_state() (
 
   # Invoked through the EXIT trap below.
   # shellcheck disable=SC2317
+  # shellcheck disable=SC2329 # invoked indirectly by EXIT trap
   cleanup_migration_state_sql() {
     if [[ -n $sql_file ]]; then
       rm -f -- "$sql_file"

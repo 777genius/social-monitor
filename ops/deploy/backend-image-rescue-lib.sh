@@ -346,6 +346,7 @@ backend_image_rescue_write_phase() (
   manifest_name=${state_file##*/}
   # Invoked through the EXIT trap below.
   # shellcheck disable=SC2317
+  # shellcheck disable=SC2329 # invoked indirectly by EXIT trap
   cleanup_phase_next() {
     rm -f "$next"
   }
@@ -471,6 +472,7 @@ backend_image_rescue_reconstruct_running_container() (
   }
   # Invoked through the EXIT trap below.
   # shellcheck disable=SC2317
+  # shellcheck disable=SC2329 # invoked indirectly by EXIT trap
   cleanup_paused_container() {
     unpause_container || true
   }
@@ -644,6 +646,7 @@ backend_image_rescue_prepare() (
 
   # Invoked through the EXIT trap below.
   # shellcheck disable=SC2317
+  # shellcheck disable=SC2329 # invoked indirectly by EXIT trap
   cleanup_partial_snapshot() {
     local cleanup_service cleanup_tag phase_file
     [[ $snapshot_complete == false ]] || return 0
