@@ -1,13 +1,12 @@
-import { existsSync, realpathSync } from "node:fs";
+import { realpathSync } from "node:fs";
 import {
   basename,
   dirname,
-  isAbsolute,
   join,
-  relative,
   resolve,
-  sep as pathSeparator,
 } from "node:path";
+
+import { assertPathOutsideGitWorktrees } from "./private-evaluation-file";
 
 type SecretPattern = {
   readonly label: string;
@@ -109,13 +108,19 @@ export function assertPrivateCorpusOutputOutsideGitWorktree(
   cwd = process.cwd(),
 ): void {
   const resolvedOutputPath = resolveOutputPath(outputPath, cwd);
-  assertResolvedPathOutsideGitWorktree(resolvedOutputPath);
+  assertPathOutsideGitWorktrees(
+    resolvedOutputPath,
+    "Private evaluation corpus",
+  );
 }
 
 export function assertPrivateCorpusFileOutsideGitWorktree(
   corpusPath: string,
 ): void {
-  assertResolvedPathOutsideGitWorktree(realpathSync(corpusPath));
+  assertPathOutsideGitWorktrees(
+    realpathSync(corpusPath),
+    "Private evaluation corpus",
+  );
 }
 
 export function redactPrivateCorpusText(value: string): string {
@@ -218,42 +223,10 @@ function safelyDecodeUrlSegment(value: string): string {
   }
 }
 
-function findGitWorktreeRoot(startPath: string): string | undefined {
-  let current = realpathSync(startPath);
-  for (;;) {
-    if (existsSync(join(current, ".git"))) {
-      return current;
-    }
-    const parent = dirname(current);
-    if (parent === current) {
-      return undefined;
-    }
-    current = parent;
-  }
-}
-
 function resolveOutputPath(outputPath: string, cwd: string): string {
   const absoluteOutputPath = resolve(cwd, outputPath);
   return join(
     realpathSync(dirname(absoluteOutputPath)),
     basename(absoluteOutputPath),
   );
-}
-
-function assertResolvedPathOutsideGitWorktree(resolvedPath: string): void {
-  const worktreeRoot = findGitWorktreeRoot(dirname(resolvedPath));
-  if (worktreeRoot === undefined) {
-    return;
-  }
-  const relativePath = relative(worktreeRoot, resolvedPath);
-  const isInsideWorktree =
-    relativePath === "" ||
-    (!isAbsolute(relativePath) &&
-      relativePath !== ".." &&
-      !relativePath.startsWith(`..${pathSeparator}`));
-  if (isInsideWorktree) {
-    throw new Error(
-      `Private evaluation corpus must be outside Git worktree: ${worktreeRoot}`,
-    );
-  }
 }

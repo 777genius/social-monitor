@@ -1,12 +1,4 @@
-import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-
-import {
-  evaluateReaderSummaryMultiDayQuality,
-  type ReaderSummaryMultiDayActualDay,
-} from "@social-monitor/summary/domain";
+import type { ReaderSummaryMultiDayActualDay } from "@social-monitor/summary/domain";
 
 import {
   assertArtifactPayloadSha256,
@@ -14,22 +6,10 @@ import {
   projectReaderSummaryMultiDayTopReadEntries,
   type GoldFile,
   type TargetManifestV2,
-  validateExistingV2Report,
   validateGold,
   validateTargetManifestV2,
 } from "./check-reader-summary-multi-day-quality";
-import {
-  buildReaderSummaryMultiDayQualityCorpus,
-  readerSummaryMultiDayQualityCorpusFormat,
-  serializeReaderSummaryMultiDayQualityCorpus,
-  type SourceOnlyCorpusRow,
-} from "./capture-reader-summary-multi-day-quality-corpus";
-import { readerSummaryMultiDayAnnotationManifestFormat } from "./lib/reader-summary-multi-day-quality-provenance";
-import {
-  actualDayProjectionSha256,
-  readerSummaryMultiDayQualityReportGeneratedBy,
-  readerSummaryMultiDayQualityReportModel,
-} from "./lib/reader-summary-multi-day-quality-report";
+import { actualDayProjectionSha256 } from "./lib/reader-summary-multi-day-quality-report";
 import { dailyPeriodKey } from "./lib/reader-summary-quality-eval-support";
 
 describe("reader summary multi-day target manifest v2", () => {
@@ -343,212 +323,6 @@ describe("reader summary multi-day gold validation", () => {
   });
 });
 
-describe("reader summary multi-day v2 artifact validation", () => {
-  it("requires the caller-provided manifest trust root", () => {
-    const fixture = reportFixture();
-
-    expect(() =>
-      validateExistingV2Report({
-        outputPath: fixture.reportPath,
-        goldPath: fixture.goldPath,
-        targetManifestPath: `${fixture.targetPath}.different`,
-      }),
-    ).toThrow("targets a different manifest path");
-  });
-
-  it("accepts a fully hash-bound reviewed report", () => {
-    const fixture = reportFixture();
-
-    expect(() =>
-      validateExistingV2Report({
-        outputPath: fixture.reportPath,
-        goldPath: fixture.goldPath,
-        targetManifestPath: fixture.targetPath,
-      }),
-    ).not.toThrow();
-  });
-
-  it("rejects a report with the wrong actual artifact hash", () => {
-    const fixture = reportFixture();
-    fixture.report.inputs.artifactBindings[0]!.artifactPayloadSha256 =
-      "b".repeat(64);
-    writeJson(fixture.reportPath, fixture.report);
-
-    expect(() =>
-      validateExistingV2Report({
-        outputPath: fixture.reportPath,
-        goldPath: fixture.goldPath,
-        targetManifestPath: fixture.targetPath,
-      }),
-    ).toThrow("stale evaluator or input bindings");
-  });
-
-  it("rejects a stale target manifest file hash", () => {
-    const fixture = reportFixture();
-    writeFileSync(
-      fixture.targetPath,
-      `${readFileSync(fixture.targetPath, "utf8")} `,
-    );
-
-    expect(() =>
-      validateExistingV2Report({
-        outputPath: fixture.reportPath,
-        goldPath: fixture.goldPath,
-        targetManifestPath: fixture.targetPath,
-      }),
-    ).toThrow("stale evaluator or input bindings");
-  });
-
-  it("rejects stale reviewed corpus provenance", () => {
-    const fixture = reportFixture();
-    writeFileSync(fixture.corpusPath, "changed corpus\n");
-
-    expect(() =>
-      validateExistingV2Report({
-        outputPath: fixture.reportPath,
-        goldPath: fixture.goldPath,
-        targetManifestPath: fixture.targetPath,
-      }),
-    ).toThrow("corpus hash is stale");
-  });
-
-  it("rejects a stale evaluator contract version", () => {
-    const fixture = reportFixture();
-    (
-      fixture.report.inputs as unknown as {
-        evaluatorContractVersion: string;
-      }
-    ).evaluatorContractVersion = "stale-evaluator";
-    writeJson(fixture.reportPath, fixture.report);
-
-    expect(() =>
-      validateExistingV2Report({
-        outputPath: fixture.reportPath,
-        goldPath: fixture.goldPath,
-        targetManifestPath: fixture.targetPath,
-      }),
-    ).toThrow("stale evaluator or input bindings");
-  });
-  it("rejects a report that omits a required quality gate", () => {
-    const fixture = reportFixture();
-    delete (fixture.report.qualityGates as unknown as Record<string, boolean>)
-      .orderedRankingAccuracy;
-    writeJson(fixture.reportPath, fixture.report);
-
-    expect(() =>
-      validateExistingV2Report({
-        outputPath: fixture.reportPath,
-        goldPath: fixture.goldPath,
-        targetManifestPath: fixture.targetPath,
-      }),
-    ).toThrow("failed exact v2 report validation");
-  });
-});
-
-function reportFixture() {
-  const root = mkdtempSync(join(tmpdir(), "summary-multi-day-binding-"));
-  const goldPath = join(root, "gold.json");
-  const targetPath = join(root, "target.json");
-  const reportPath = join(root, "report.json");
-  const corpusPath = join(root, "corpus.json");
-  const annotationPath = join(root, "annotations.json");
-  const dates = fiveDates();
-  const corpus = buildReaderSummaryMultiDayQualityCorpus({
-    dates,
-    tenantId: "00000000-0000-7000-8000-000000000001",
-    workspaceId: "00000000-0000-7000-8000-000000000002",
-    rows: dates.flatMap(sourceRows),
-    highPerProvider: 1,
-    lowPerProvider: 2,
-  });
-  writeFileSync(
-    corpusPath,
-    serializeReaderSummaryMultiDayQualityCorpus(corpus),
-  );
-  const gold = goldFile(dates, {
-    corpusPath,
-    corpusSha256: sha256File(corpusPath),
-    annotationPath,
-    annotationSha256: "pending",
-  });
-  const annotations = {
-    schemaVersion: 2,
-    artifactFormat: readerSummaryMultiDayAnnotationManifestFormat,
-    corpus: {
-      artifactFormat: readerSummaryMultiDayQualityCorpusFormat,
-      corpusSha256: corpus.corpusSha256,
-    },
-    dates,
-    annotations: ["1", "2"].map((suffix) => ({
-      annotatorIdSha256: suffix.repeat(64),
-      independent: true,
-      blindToGeneratedOutputs: true,
-      days: structuredClone(gold.days),
-    })),
-    adjudication: {
-      strategy: "independent-review-then-consensus",
-      version: "v1",
-      adjudicatorIdSha256: "3".repeat(64),
-      days: structuredClone(gold.days),
-    },
-  };
-  writeJson(annotationPath, annotations);
-  if (gold.schemaVersion === 2) {
-    (gold.provenance.annotationManifest as { sha256: string }).sha256 =
-      sha256File(annotationPath);
-  }
-  const actualDays = dates.map(actualDay);
-  const target = targetManifest(dates, actualDays);
-  writeJson(goldPath, gold);
-  writeJson(targetPath, target);
-  const evaluation = evaluateReaderSummaryMultiDayQuality({
-    actualDays,
-    goldDays: gold.days,
-    thresholds: gold.thresholds,
-    expectedGenerationProfile: target.generationProfile,
-  });
-  const qualityGates = {
-    ...evaluation.qualityGates,
-    exactReviewedArtifactBindings: true,
-    currentInputFileHashesBound: true,
-    goldContractV2: true,
-    noRawSecretFragments: true,
-  };
-  const report = {
-    schemaVersion: 2,
-    artifactFormat: "reader-summary-multi-day-quality-report-v2",
-    generatedBy: readerSummaryMultiDayQualityReportGeneratedBy,
-    model: readerSummaryMultiDayQualityReportModel,
-    blockingPassed: true,
-    inputs: {
-      database: "local-postgres",
-      goldPath,
-      goldSha256: sha256File(goldPath),
-      goldContractVersion: 2,
-      goldProvenance: gold.schemaVersion === 2 ? gold.provenance : null,
-      targetManifestPath: targetPath,
-      targetManifestSha256: sha256File(targetPath),
-      evaluatorContractVersion: "reader-summary-multi-day-quality-evaluator-v2",
-      generationProfile: target.generationProfile,
-      collectionDates: target.targets.map((item) => item.collectionDate),
-      artifactBindings: target.targets.map((item) => ({
-        collectionDate: item.collectionDate,
-        artifactId: item.artifactId,
-        artifactPayloadSha256: item.artifactPayloadSha256,
-        actualDayProjectionSha256: item.actualDayProjectionSha256,
-      })),
-      actualDays,
-    },
-    thresholds: gold.thresholds,
-    metrics: evaluation.metrics,
-    days: evaluation.days,
-    qualityGates,
-  };
-  writeJson(reportPath, report);
-
-  return { goldPath, targetPath, reportPath, corpusPath, report };
-}
-
 function goldFile(
   dates: readonly string[],
   provenanceFiles: {
@@ -655,24 +429,6 @@ function targetManifest(
   };
 }
 
-function sourceRows(
-  collectionDate: string,
-  dayIndex: number,
-): SourceOnlyCorpusRow[] {
-  return Array.from({ length: 6 }, (_, itemIndex) => ({
-    collectionDate,
-    feedItemId: fixtureFeedItemId(dayIndex, itemIndex),
-    providerKey: `fixture-${(itemIndex % 3) + 1}`,
-    canonicalUrl: `https://example.test/${dayIndex}/${itemIndex}`,
-    title: `Story ${dayIndex}-${itemIndex}`,
-    bodyPreview: "Source-only fixture",
-    authorHandle: null,
-    publishedAt: `${collectionDate}T12:0${itemIndex}:00.000Z`,
-    observedAt: `${collectionDate}T12:1${itemIndex}:00.000Z`,
-    providerMetadata: { kind: "fixture" },
-  }));
-}
-
 function actualDay(
   collectionDate: string,
   index: number,
@@ -761,12 +517,4 @@ function generationProfile() {
     promptVersion: "reader_summary.prompt.agent_runtime.v10",
     rankingPolicyVersion: "story_ranking_v8",
   };
-}
-
-function writeJson(path: string, value: unknown): void {
-  writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
-}
-
-function sha256File(path: string): string {
-  return createHash("sha256").update(readFileSync(path)).digest("hex");
 }

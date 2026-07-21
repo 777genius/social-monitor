@@ -63,7 +63,7 @@ export function parseReaderSummaryMultiDayQualityCli(params: {
     }
     if (token === "--allow-degraded") {
       throw new Error(
-        "--allow-degraded is unsupported by the v2 blocking gate",
+        "--allow-degraded is unsupported by the v3 report / v4 evaluator blocking gate",
       );
     }
     throw new Error(`Unsupported argument: ${token}`);
@@ -103,7 +103,7 @@ export function parseReaderSummaryMultiDayQualityCli(params: {
     }
     if (targetManifestPath === undefined) {
       throw new Error(
-        "--artifact-only requires an explicit reviewed --target-manifest v2 or v3 file",
+        "--artifact-only requires an explicit reviewed --target-manifest v4 file",
       );
     }
     return {
@@ -116,7 +116,7 @@ export function parseReaderSummaryMultiDayQualityCli(params: {
 
   if (targetManifestPath === undefined) {
     throw new Error(
-      "The blocking gate requires a reviewed --target-manifest v3 file",
+      "The blocking gate requires a reviewed --target-manifest v4 file",
     );
   }
   if (migration) {
@@ -127,7 +127,7 @@ export function parseReaderSummaryMultiDayQualityCli(params: {
     }
     if (resolve(outputPath) === resolve(params.defaultOutputPath)) {
       throw new Error(
-        "--migration-diagnostic cannot write the default v2 report path",
+        "--migration-diagnostic cannot write the default v3 report path",
       );
     }
   }

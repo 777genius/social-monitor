@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import {
+  chmodSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -76,12 +77,45 @@ describe("reader summary multi-day quality provenance", () => {
   it("rejects a corpus whose real path is inside any Git worktree", () => {
     const fixture = provenanceFixture();
     mkdirSync(join(fixture.root, ".git"));
+    writeFileSync(
+      join(fixture.root, ".git", "HEAD"),
+      "ref: refs/heads/test\n",
+    );
     const aliasPath = `${fixture.root}-corpus-alias.json`;
     symlinkSync(fixture.corpusPath, aliasPath);
     fixture.gold.provenance.corpus.path = aliasPath;
 
     expect(() => validateFixture(fixture)).toThrow(
-      "must be outside Git worktree",
+      "must be outside every Git worktree",
+    );
+  });
+
+  it.each([0o640, 0o604])(
+    "rejects a group/world-readable annotation manifest mode %s",
+    (mode) => {
+      const fixture = provenanceFixture();
+      chmodSync(fixture.annotationPath, mode);
+
+      expect(() => validateFixture(fixture)).toThrow(
+        "owner-readable, owner-only private file permissions",
+      );
+    },
+  );
+
+  it("rejects symlinked and Git-worktree annotation manifests", () => {
+    const symlinked = provenanceFixture();
+    const annotationAlias = `${symlinked.annotationPath}.alias`;
+    symlinkSync(symlinked.annotationPath, annotationAlias);
+    symlinked.gold.provenance.annotationManifest.path = annotationAlias;
+    expect(() => validateFixture(symlinked)).toThrow("must not be a symlink");
+
+    const tracked = provenanceFixture();
+    tracked.gold.provenance.annotationManifest.path = join(
+      process.cwd(),
+      "package.json",
+    );
+    expect(() => validateFixture(tracked)).toThrow(
+      "must be outside every Git worktree",
     );
   });
 
@@ -522,7 +556,7 @@ function reviewedDay(
 }
 
 function writeJson(path: string, value: unknown): void {
-  writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
+  writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
 }
 
 function sha256File(path: string): string {

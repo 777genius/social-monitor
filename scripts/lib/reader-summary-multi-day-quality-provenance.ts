@@ -15,6 +15,7 @@ import {
   assertPrivateCorpusFileOutsideGitWorktree,
   assertPrivateCorpusSerializedSafe,
 } from "./reader-summary-multi-day-corpus-security";
+import { assertPrivateEvaluationFile } from "./private-evaluation-file";
 import { canonicalJson } from "./reader-summary-quality-eval-support";
 
 export const readerSummaryMultiDayAnnotationManifestFormat =
@@ -71,15 +72,20 @@ export function validateReaderSummaryMultiDayGoldProvenanceFiles(params: {
     throw new Error(`${label} corpus provenance format is invalid`);
   }
 
+  const annotationLabel = `${label} annotation manifest`;
+  const annotationRealPath = assertPrivateEvaluationFile(
+    gold.provenance.annotationManifest.path,
+    annotationLabel,
+  );
   validateAnnotationManifestV2({
     value: readSha256BoundJsonFile(
-      gold.provenance.annotationManifest.path,
+      annotationRealPath,
       gold.provenance.annotationManifest.sha256,
-      `${label} annotation manifest`,
+      annotationLabel,
     ),
     corpus,
     gold,
-    label: `${label} annotation manifest`,
+    label: annotationLabel,
   });
 }
 

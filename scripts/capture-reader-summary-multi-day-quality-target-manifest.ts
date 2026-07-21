@@ -3,7 +3,7 @@ import { Pool } from "pg";
 import { loadDotenvIfPresent } from "./lib/env-file";
 import { assertPrivateCorpusOutputOutsideGitWorktree } from "./lib/reader-summary-multi-day-corpus-security";
 import { readCurrentPublicArtifactSnapshot } from "./lib/reader-summary-current-publication-bindings";
-import type { TargetManifestV3 } from "./lib/reader-summary-multi-day-target-manifest";
+import type { TargetManifestV4 } from "./lib/reader-summary-multi-day-target-manifest";
 import { canonicalJsonSha256 } from "./lib/reader-summary-quality-eval-support";
 import { writePrivateJsonAtomically } from "./lib/private-json-artifact";
 import { yesterdaySocialQualityDatabaseUrl } from "./lib/yesterday-social-replay-support";
@@ -72,7 +72,7 @@ export function parseCaptureTargetManifestOptions(
 export async function captureTargetManifest(params: {
   readonly options: CaptureTargetManifestOptions;
   readonly databaseUrl: string;
-}): Promise<TargetManifestV3> {
+}): Promise<TargetManifestV4> {
   const pool = new Pool({
     connectionString: params.databaseUrl,
     min: 0,
@@ -92,8 +92,11 @@ export async function captureTargetManifest(params: {
       collectionDates: params.options.dates,
     });
     return {
-      schemaVersion: 3,
-      artifactFormat: "reader-summary-multi-day-quality-target-manifest-v3",
+      schemaVersion: 4,
+      artifactFormat: "reader-summary-multi-day-quality-target-manifest-v4",
+      databaseFingerprint: snapshot.databaseFingerprint,
+      capturedAt: snapshot.capturedAt,
+      currentAtCapture: true,
       generationProfile: snapshot.generationProfile,
       scope: {
         tenantId: params.options.tenantId,
@@ -122,7 +125,7 @@ async function main(): Promise<void> {
     replace: false,
   });
   console.log(
-    `Current-public target manifest captured: days=${manifest.targets.length} hash=${canonicalJsonSha256(manifest)}`,
+    `Manual captured-current target manifest written: capturedAt=${manifest.capturedAt} days=${manifest.targets.length} hash=${canonicalJsonSha256(manifest)}; CI and release status are not asserted`,
   );
 }
 

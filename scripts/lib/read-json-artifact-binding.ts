@@ -8,12 +8,13 @@ export type JsonArtifactBinding<T> = {
 
 export function readJsonArtifactBinding<T>(params: {
   readonly path: string;
+  readonly label?: string;
   readonly validate: (value: unknown, label: string) => T;
 }): JsonArtifactBinding<T> {
   const bytes = readFileSync(params.path);
   const parsed: unknown = JSON.parse(bytes.toString("utf8"));
   return {
-    value: params.validate(parsed, params.path),
+    value: params.validate(parsed, params.label ?? params.path),
     sha256: createHash("sha256").update(bytes).digest("hex"),
   };
 }

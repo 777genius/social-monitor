@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 
@@ -164,6 +164,7 @@ describe("reader summary multi-day source quality corpus", () => {
     const root = mkdtempSync(join(tmpdir(), "reader-corpus-worktree-"));
     const nested = join(root, "scripts", "capture");
     mkdirSync(join(root, ".git"));
+    writeFileSync(join(root, ".git", "HEAD"), "ref: refs/heads/test\n");
     mkdirSync(nested, { recursive: true });
     try {
       expect(() =>
@@ -171,7 +172,7 @@ describe("reader summary multi-day source quality corpus", () => {
           join(nested, "private-corpus.json"),
           nested,
         ),
-      ).toThrow("must be outside Git worktree");
+      ).toThrow("must be outside every Git worktree");
       expect(() =>
         assertOutputOutsideCurrentGitWorktree(
           join(dirname(root), `${basename(root)}-outside.json`),

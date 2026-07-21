@@ -18,7 +18,21 @@ export type TargetManifestV3 = {
   readonly targets: readonly TargetManifestV3Target[];
 };
 
-export type TargetManifest = TargetManifestV2 | TargetManifestV3;
+export type TargetManifestV4 = {
+  readonly schemaVersion: 4;
+  readonly artifactFormat: "reader-summary-multi-day-quality-target-manifest-v4";
+  readonly databaseFingerprint: string;
+  readonly capturedAt: string;
+  readonly currentAtCapture: true;
+  readonly generationProfile: ReaderSummaryMultiDayGenerationProfile;
+  readonly scope: TargetManifestScopeV4;
+  readonly targets: readonly TargetManifestV4Target[];
+};
+
+export type TargetManifest =
+  | TargetManifestV2
+  | TargetManifestV3
+  | TargetManifestV4;
 
 type TargetManifestScopeV2 = {
   readonly tenantId: string;
@@ -33,6 +47,8 @@ export type TargetManifestScopeV3 = {
   readonly scopeType: "workspace";
   readonly scopeKey: "workspace";
 };
+
+export type TargetManifestScopeV4 = TargetManifestScopeV3;
 
 export type TargetManifestV2Target = {
   readonly collectionDate: string;
@@ -54,9 +70,28 @@ export type TargetManifestV3Target = {
   readonly actualDayProjectionSha256: string;
 };
 
-const manifestKeys = [
+export type TargetManifestV4Target = TargetManifestV3Target;
+
+const v2ManifestKeys = [
   "schemaVersion",
   "artifactFormat",
+  "generationProfile",
+  "scope",
+  "targets",
+] as const;
+const v3ManifestKeys = [
+  "schemaVersion",
+  "artifactFormat",
+  "generationProfile",
+  "scope",
+  "targets",
+] as const;
+const v4ManifestKeys = [
+  "schemaVersion",
+  "artifactFormat",
+  "databaseFingerprint",
+  "capturedAt",
+  "currentAtCapture",
   "generationProfile",
   "scope",
   "targets",
@@ -88,7 +123,7 @@ export function validateTargetManifestV2(
 ): TargetManifestV2 {
   if (
     !isRecord(value) ||
-    !hasExactKeys(value, manifestKeys) ||
+    !hasExactKeys(value, v2ManifestKeys) ||
     value.schemaVersion !== 2 ||
     value.artifactFormat !== "reader-summary-multi-day-quality-target-manifest-v2" ||
     !isGenerationProfile(value.generationProfile) ||
@@ -124,7 +159,7 @@ export function validateTargetManifestV3(
 ): TargetManifestV3 {
   if (
     !isRecord(value) ||
-    !hasExactKeys(value, manifestKeys) ||
+    !hasExactKeys(value, v3ManifestKeys) ||
     value.schemaVersion !== 3 ||
     value.artifactFormat !== "reader-summary-multi-day-quality-target-manifest-v3" ||
     !isGenerationProfile(value.generationProfile) ||
@@ -161,6 +196,55 @@ export function validateTargetManifestV3(
   assertStrictlySortedDates(value.targets, label);
   assertUniqueIds(value.targets, "publicationId", "publication ids", label);
   return value as unknown as TargetManifestV3;
+}
+
+export function validateTargetManifestV4(
+  value: unknown,
+  goldDates: readonly string[],
+  label = "target manifest",
+): TargetManifestV4 {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, v4ManifestKeys) ||
+    value.schemaVersion !== 4 ||
+    value.artifactFormat !== "reader-summary-multi-day-quality-target-manifest-v4" ||
+    !isDatabaseFingerprint(value.databaseFingerprint) ||
+    !isExactTimestamp(value.capturedAt) ||
+    value.currentAtCapture !== true ||
+    !isGenerationProfile(value.generationProfile) ||
+    !isRecord(value.scope) ||
+    !hasExactKeys(value.scope, scopeKeys) ||
+    value.scope.scopeType !== "workspace" ||
+    value.scope.scopeKey !== "workspace" ||
+    !isUuid(value.scope.tenantId) ||
+    !isUuid(value.scope.workspaceId) ||
+    !Array.isArray(value.targets) ||
+    value.targets.length < 5
+  ) {
+    throw new Error(`${label} has an unsupported v4 contract`);
+  }
+  validateTargets({
+    targets: value.targets,
+    expectedKeys: v3TargetKeys,
+    goldDates,
+    label,
+    validateTarget: (target) =>
+      isDate(target.collectionDate) &&
+      isUuid(target.publicationId) &&
+      isUuid(target.artifactId) &&
+      [
+        target.reportSha256,
+        target.proofSha256,
+        target.exactProofSha256,
+        target.artifactPayloadSha256,
+        target.actualDayProjectionSha256,
+      ].every(isSha256) &&
+      target.proofSha256 === target.exactProofSha256 &&
+      target.periodKey === dailyPeriodKey(String(target.collectionDate)),
+  });
+  assertStrictlySortedDates(value.targets, label);
+  assertUniqueIds(value.targets, "publicationId", "publication ids", label);
+  return value as unknown as TargetManifestV4;
 }
 
 function validateTargets(params: {
@@ -269,6 +353,19 @@ function isUuid(value: unknown): value is string {
 
 function isSha256(value: unknown): value is string {
   return typeof value === "string" && /^[0-9a-f]{64}$/u.test(value);
+}
+
+function isDatabaseFingerprint(value: unknown): value is string {
+  return typeof value === "string" &&
+    /^postgres-sha256:[0-9a-f]{64}$/u.test(value);
+}
+
+function isExactTimestamp(value: unknown): value is string {
+  if (typeof value !== "string") {
+    return false;
+  }
+  const parsed = new Date(value);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString() === value;
 }
 
 function isNonEmptyString(value: unknown): value is string {

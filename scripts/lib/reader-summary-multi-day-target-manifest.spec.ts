@@ -1,12 +1,14 @@
 import {
   validateTargetManifestV2,
   validateTargetManifestV3,
+  validateTargetManifestV4,
   type TargetManifestV3,
+  type TargetManifestV4,
 } from "./reader-summary-multi-day-target-manifest";
 import { dailyPeriodKey } from "./reader-summary-quality-eval-support";
 import { parseCaptureTargetManifestOptions } from "../capture-reader-summary-multi-day-quality-target-manifest";
 
-describe("reader summary multi-day target manifest v3", () => {
+describe("reader summary multi-day target manifest v4", () => {
   it("derives the canonical scope key instead of accepting operator input", () => {
     const args = dates().flatMap((date) => ["--date", date]);
     const parsed = parseCaptureTargetManifestOptions([
@@ -35,24 +37,78 @@ describe("reader summary multi-day target manifest v3", () => {
   });
 
   it("accepts an exact sorted five-day current-publication manifest", () => {
-    const manifest = targetManifestV3();
+    const manifest = targetManifestV4();
 
-    expect(validateTargetManifestV3(manifest, dates())).toEqual(manifest);
+    expect(validateTargetManifestV4(manifest, dates())).toEqual(manifest);
+  });
+
+  it("requires a captured-current database identity and exact capture time", () => {
+    const manifest = targetManifestV4();
+    expect(() =>
+      validateTargetManifestV4(
+        { ...manifest, databaseFingerprint: "postgres-sha256:not-a-hash" },
+        dates(),
+      ),
+    ).toThrow("unsupported v4 contract");
+    expect(() =>
+      validateTargetManifestV4(
+        { ...manifest, capturedAt: "2026-07-21" },
+        dates(),
+      ),
+    ).toThrow("unsupported v4 contract");
+    expect(() =>
+      validateTargetManifestV4(
+        { ...manifest, currentAtCapture: false },
+        dates(),
+      ),
+    ).toThrow("unsupported v4 contract");
+  });
+
+  it("requires at least five reviewed dates", () => {
+    const manifest = targetManifestV4();
+    const fourDates = dates().slice(0, 4);
+    expect(() =>
+      validateTargetManifestV4(
+        { ...manifest, targets: manifest.targets.slice(0, 4) },
+        fourDates,
+      ),
+    ).toThrow("unsupported v4 contract");
+  });
+
+  it("requires every reviewed date to be distinct", () => {
+    const manifest = targetManifestV4();
+    expect(() =>
+      validateTargetManifestV4(
+        {
+          ...manifest,
+          targets: manifest.targets.map((target, index) =>
+            index === 1
+              ? {
+                  ...target,
+                  collectionDate: manifest.targets[0]!.collectionDate,
+                  periodKey: manifest.targets[0]!.periodKey,
+                }
+              : target,
+          ),
+        },
+        dates(),
+      ),
+    ).toThrow("duplicate collection dates");
   });
 
   it("rejects extra keys at every trust boundary", () => {
-    const manifest = targetManifestV3();
+    const manifest = targetManifestV4();
     expect(() =>
-      validateTargetManifestV3({ ...manifest, surprise: true }, dates()),
-    ).toThrow("unsupported v3 contract");
+      validateTargetManifestV4({ ...manifest, surprise: true }, dates()),
+    ).toThrow("unsupported v4 contract");
     expect(() =>
-      validateTargetManifestV3(
+      validateTargetManifestV4(
         { ...manifest, scope: { ...manifest.scope, surprise: true } },
         dates(),
       ),
-    ).toThrow("unsupported v3 contract");
+    ).toThrow("unsupported v4 contract");
     expect(() =>
-      validateTargetManifestV3(
+      validateTargetManifestV4(
         {
           ...manifest,
           targets: [
@@ -66,9 +122,9 @@ describe("reader summary multi-day target manifest v3", () => {
   });
 
   it("rejects unsorted dates and duplicate publication identities", () => {
-    const manifest = targetManifestV3();
+    const manifest = targetManifestV4();
     expect(() =>
-      validateTargetManifestV3(
+      validateTargetManifestV4(
         {
           ...manifest,
           targets: [
@@ -82,7 +138,7 @@ describe("reader summary multi-day target manifest v3", () => {
     ).toThrow("strictly sorted ascending");
 
     expect(() =>
-      validateTargetManifestV3(
+      validateTargetManifestV4(
         {
           ...manifest,
           targets: manifest.targets.map((target) => ({
@@ -95,17 +151,34 @@ describe("reader summary multi-day target manifest v3", () => {
     ).toThrow("duplicate publication ids");
   });
 
+  it("rejects duplicate artifact identities in otherwise fresh v4 bindings", () => {
+    const manifest = targetManifestV4();
+    expect(() =>
+      validateTargetManifestV4(
+        {
+          ...manifest,
+          targets: manifest.targets.map((target, index) =>
+            index === 1
+              ? { ...target, artifactId: manifest.targets[0]!.artifactId }
+              : target,
+          ),
+        },
+        dates(),
+      ),
+    ).toThrow("duplicate artifact ids");
+  });
+
   it("rejects missing proof hashes and a noncanonical workspace scope key", () => {
-    const manifest = targetManifestV3();
+    const manifest = targetManifestV4();
     const missingHash = structuredClone(manifest) as unknown as {
       targets: Array<Record<string, unknown>>;
     };
     delete missingHash.targets[0]!.exactProofSha256;
-    expect(() => validateTargetManifestV3(missingHash, dates())).toThrow(
+    expect(() => validateTargetManifestV4(missingHash, dates())).toThrow(
       "invalid target binding",
     );
     expect(() =>
-      validateTargetManifestV3(
+      validateTargetManifestV4(
         {
           ...manifest,
           targets: manifest.targets.map((target, index) =>
@@ -118,7 +191,7 @@ describe("reader summary multi-day target manifest v3", () => {
       ),
     ).toThrow("invalid target binding");
     expect(() =>
-      validateTargetManifestV3(
+      validateTargetManifestV4(
         {
           ...manifest,
           scope: {
@@ -128,20 +201,20 @@ describe("reader summary multi-day target manifest v3", () => {
         },
         dates(),
       ),
-    ).toThrow("unsupported v3 contract");
+    ).toThrow("unsupported v4 contract");
   });
 
   it("keeps v2 readable only through its explicit validator", () => {
-    const v3 = targetManifestV3();
+    const v4 = targetManifestV4();
     const v2 = {
       schemaVersion: 2,
       artifactFormat: "reader-summary-multi-day-quality-target-manifest-v2",
-      generationProfile: v3.generationProfile,
+      generationProfile: v4.generationProfile,
       scope: {
-        ...v3.scope,
-        scopeKey: `workspace:${v3.scope.workspaceId}`,
+        ...v4.scope,
+        scopeKey: `workspace:${v4.scope.workspaceId}`,
       },
-      targets: v3.targets.map((target) => ({
+      targets: v4.targets.map((target) => ({
         collectionDate: target.collectionDate,
         artifactId: target.artifactId,
         periodKey: target.periodKey,
@@ -151,18 +224,37 @@ describe("reader summary multi-day target manifest v3", () => {
     };
 
     expect(validateTargetManifestV2(v2, dates())).toEqual(v2);
-    expect(() => validateTargetManifestV3(v2, dates())).toThrow(
-      "unsupported v3 contract",
+    expect(() => validateTargetManifestV4(v2, dates())).toThrow(
+      "unsupported v4 contract",
+    );
+  });
+
+  it("keeps the immutable v3 shape readable only through its legacy validator", () => {
+    const v4 = targetManifestV4();
+    const v3: TargetManifestV3 = {
+      schemaVersion: 3,
+      artifactFormat: "reader-summary-multi-day-quality-target-manifest-v3",
+      generationProfile: v4.generationProfile,
+      scope: v4.scope,
+      targets: v4.targets,
+    };
+
+    expect(validateTargetManifestV3(v3, dates())).toEqual(v3);
+    expect(() => validateTargetManifestV4(v3, dates())).toThrow(
+      "unsupported v4 contract",
     );
   });
 });
 
-function targetManifestV3(): TargetManifestV3 {
+function targetManifestV4(): TargetManifestV4 {
   const tenantId = "00000000-0000-7000-8000-000000000001";
   const workspaceId = "00000000-0000-7000-8000-000000000002";
   return {
-    schemaVersion: 3,
-    artifactFormat: "reader-summary-multi-day-quality-target-manifest-v3",
+    schemaVersion: 4,
+    artifactFormat: "reader-summary-multi-day-quality-target-manifest-v4",
+    databaseFingerprint: `postgres-sha256:${"f".repeat(64)}`,
+    capturedAt: "2026-07-21T00:10:00.000Z",
+    currentAtCapture: true,
     generationProfile: {
       modelVersion: "codex:gpt-5.5:xhigh",
       promptVersion: "reader_summary.prompt.agent_runtime.v10",

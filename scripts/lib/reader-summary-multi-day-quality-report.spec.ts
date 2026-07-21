@@ -7,8 +7,8 @@ import {
 import {
   actualDayProjectionSha256,
   readerSummaryMultiDayQualityReportGeneratedBy,
-  readerSummaryMultiDayQualityReportModel,
-  validateReaderSummaryMultiDayQualityReportV2,
+  readerSummaryMultiDayQualityReportModelV3,
+  validateReaderSummaryMultiDayQualityReportV3,
 } from "./reader-summary-multi-day-quality-report";
 
 const dates = [
@@ -50,49 +50,29 @@ const gateNames = [
   "allDaysMeetCatastrophicQualityFloor",
   "allGoldFeedItemsPresent",
   "exactReviewedArtifactBindings",
+  "capturedCurrentPublicArtifactBindings",
   "currentInputFileHashesBound",
   "goldContractV2",
   "noRawSecretFragments",
 ] as const;
 
 describe("reader summary multi-day artifact-only report", () => {
-  it("requires the current-public-artifact gate for v3 reports", () => {
+  it("records manual-only status without a CI or release claim", () => {
+    expect(readerSummaryMultiDayQualityReportModelV3).toMatchObject({
+      executionStatus: "manual_evaluation",
+      ciEnforced: false,
+      releaseStatusAsserted: false,
+      artifactOnlyCurrentAtValidationAsserted: false,
+    });
+  });
+
+  it("requires the captured-current-artifact gate for v3 reports", () => {
     const fixture = reportFixture();
+    expect(() => validateFixture(fixture)).not.toThrow();
     (
       fixture.report.qualityGates as unknown as Record<string, boolean>
-    ).currentPublicArtifactBindings = true;
-    const v3GateNames = [
-      ...gateNames.slice(0, 16),
-      "currentPublicArtifactBindings",
-      ...gateNames.slice(16),
-    ];
-    expect(() =>
-      validateReaderSummaryMultiDayQualityReportV2({
-        value: fixture.report,
-        expectedInputsWithoutActualDays: fixture.expectedInputsWithoutActualDays,
-        goldDays: fixture.goldDays,
-        thresholds,
-        generationProfile,
-        targets: fixture.targets,
-        expectedQualityGateNames: v3GateNames,
-        label: "v3 report fixture",
-      }),
-    ).not.toThrow();
-    (
-      fixture.report.qualityGates as unknown as Record<string, boolean>
-    ).currentPublicArtifactBindings = false;
-    expect(() =>
-      validateReaderSummaryMultiDayQualityReportV2({
-        value: fixture.report,
-        expectedInputsWithoutActualDays: fixture.expectedInputsWithoutActualDays,
-        goldDays: fixture.goldDays,
-        thresholds,
-        generationProfile,
-        targets: fixture.targets,
-        expectedQualityGateNames: v3GateNames,
-        label: "v3 report fixture",
-      }),
-    ).toThrow("stale or forged");
+    ).capturedCurrentPublicArtifactBindings = false;
+    expect(() => validateFixture(fixture)).toThrow("stale or forged");
   });
 
   it("reruns card-ranked multi-citation evaluation from exact projections", () => {
@@ -111,13 +91,13 @@ describe("reader summary multi-day artifact-only report", () => {
     const missing = reportFixture();
     delete (missing.report as { metrics?: unknown }).metrics;
     expect(() => validateFixture(missing)).toThrow(
-      "exact v2 report validation",
+      "exact v3 report validation",
     );
 
     const identity = reportFixture();
     identity.report.generatedBy = "forged-command";
     expect(() => validateFixture(identity)).toThrow(
-      "exact v2 report validation",
+      "exact v3 report validation",
     );
   });
 
@@ -133,7 +113,7 @@ describe("reader summary multi-day artifact-only report", () => {
       fixture.report.inputs.goldPath = secretPath;
       fixture.expectedInputsWithoutActualDays.goldPath = secretPath;
       expect(() => validateFixture(fixture)).toThrow(
-        "exact v2 report validation",
+        "exact v3 report validation",
       );
     }
   });
@@ -163,6 +143,76 @@ describe("reader summary multi-day artifact-only report", () => {
     ).topReadEntries = [];
     expect(() => validateFixture(projection)).toThrow(
       "projection hash is stale",
+    );
+  });
+
+  it("rejects a hash-rebound collection projection that omits reviewed input", () => {
+    const fixture = reportFixture();
+    const day = fixture.report.inputs.actualDays[0]!;
+    fixture.report.inputs.actualDays[0] = {
+      ...day,
+      storyClusters: day.storyClusters.map((cluster) =>
+        cluster.representativeFeedItemId === "feed-0-b"
+          ? { ...cluster, representativeFeedItemId: "feed-0-unreviewed" }
+          : cluster,
+      ),
+      topReadEntries: day.topReadEntries.map((entry) => ({
+        ...entry,
+        citationFeedItemIds: entry.citationFeedItemIds.map((feedItemId) =>
+          feedItemId === "feed-0-b" ? "feed-0-unreviewed" : feedItemId,
+        ),
+      })),
+    };
+    rebindProjection(fixture);
+
+    expect(() => validateFixture(fixture)).toThrow(
+      "evaluation evidence is stale or forged",
+    );
+  });
+
+  it("rejects hash-rebound editorial ordering drift", () => {
+    const fixture = reportFixture();
+    const day = fixture.report.inputs.actualDays[0]!;
+    fixture.report.inputs.actualDays[0] = {
+      ...day,
+      topReadEntries: [...day.topReadEntries].reverse(),
+    };
+    rebindProjection(fixture);
+
+    expect(() => validateFixture(fixture)).toThrow(
+      "evaluation evidence is stale or forged",
+    );
+  });
+
+  it("rejects hash-rebound citations to unknown source items", () => {
+    const fixture = reportFixture();
+    const day = fixture.report.inputs.actualDays[0]!;
+    fixture.report.inputs.actualDays[0] = {
+      ...day,
+      topReadEntries: day.topReadEntries.map((entry, index) =>
+        index === 0
+          ? { ...entry, citationFeedItemIds: ["feed-0-unknown"] }
+          : entry,
+      ),
+    };
+    rebindProjection(fixture);
+
+    expect(() => validateFixture(fixture)).toThrow(
+      "references unknown feed item",
+    );
+  });
+
+  it("rejects hash-rebound narrative coverage drift", () => {
+    const fixture = reportFixture();
+    const day = fixture.report.inputs.actualDays[0]!;
+    fixture.report.inputs.actualDays[0] = {
+      ...day,
+      narrativeSections: [],
+    };
+    rebindProjection(fixture);
+
+    expect(() => validateFixture(fixture)).toThrow(
+      "evaluation evidence is stale or forged",
     );
   });
 
@@ -242,14 +292,16 @@ function reportFixture() {
   }));
   const artifactBindings = targets.map((target) => ({ ...target }));
   const expectedInputsWithoutActualDays = {
-    database: "local-postgres",
+    databaseFingerprint: `postgres-sha256:${"a".repeat(64)}`,
+    capturedAt: "2026-07-21T00:10:00.000Z",
+    currentAtCapture: true,
     goldPath: "/private/gold.json",
     goldSha256: "b".repeat(64),
     goldContractVersion: 2,
     goldProvenance: { corpus: { sha256: "c".repeat(64) } },
     targetManifestPath: "/private/target.json",
     targetManifestSha256: "d".repeat(64),
-    evaluatorContractVersion: "reader-summary-multi-day-quality-evaluator-v2",
+    evaluatorContractVersion: "reader-summary-multi-day-quality-evaluator-v4",
     generationProfile,
     collectionDates: dates,
     artifactBindings,
@@ -263,15 +315,16 @@ function reportFixture() {
   const qualityGates = {
     ...evaluation.qualityGates,
     exactReviewedArtifactBindings: true,
+    capturedCurrentPublicArtifactBindings: true,
     currentInputFileHashesBound: true,
     goldContractV2: true,
     noRawSecretFragments: true,
   };
   const report = {
-    schemaVersion: 2,
-    artifactFormat: "reader-summary-multi-day-quality-report-v2",
+    schemaVersion: 3,
+    artifactFormat: "reader-summary-multi-day-quality-report-v3",
     generatedBy: readerSummaryMultiDayQualityReportGeneratedBy,
-    model: readerSummaryMultiDayQualityReportModel,
+    model: readerSummaryMultiDayQualityReportModelV3,
     inputs: { ...expectedInputsWithoutActualDays, actualDays },
     thresholds,
     metrics: structuredClone(evaluation.metrics),
@@ -288,7 +341,7 @@ function reportFixture() {
 }
 
 function validateFixture(fixture: ReturnType<typeof reportFixture>): void {
-  validateReaderSummaryMultiDayQualityReportV2({
+  validateReaderSummaryMultiDayQualityReportV3({
     value: fixture.report,
     expectedInputsWithoutActualDays: fixture.expectedInputsWithoutActualDays,
     goldDays: fixture.goldDays,

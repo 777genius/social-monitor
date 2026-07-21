@@ -10,9 +10,9 @@ import type {
 
 import { actualDayAndProjectionFromRecord } from "./reader-summary-multi-day-actual-day";
 import type {
-  TargetManifestScopeV3,
-  TargetManifestV3,
-  TargetManifestV3Target,
+  TargetManifestScopeV4,
+  TargetManifestV4,
+  TargetManifestV4Target,
 } from "./reader-summary-multi-day-target-manifest";
 import {
   canonicalJson,
@@ -27,6 +27,7 @@ export const currentPublicArtifactBindingsQuery = `
   )
   select
     requested_days.requested_date::text as "collectionDate",
+    transaction_timestamp() as "capturedAt",
     publication.id::text as "publicationId",
     publication.report_sha256::text as "reportSha256",
     publication.proof_sha256::text as "proofSha256",
@@ -99,6 +100,7 @@ export const currentPublicArtifactBindingsQuery = `
 
 type CurrentPublicationRow = PrismaReaderSummaryArtifactRecord & {
   readonly collectionDate: string;
+  readonly capturedAt: Date | string;
   readonly publicationId: string;
   readonly reportSha256: string;
   readonly proofSha256: string;
@@ -110,17 +112,18 @@ type CurrentPublicationRow = PrismaReaderSummaryArtifactRecord & {
 
 export type CurrentPublicArtifactSnapshot = {
   readonly databaseFingerprint: string;
+  readonly capturedAt: string;
   readonly generationProfile: ReaderSummaryMultiDayGenerationProfile;
-  readonly targets: readonly TargetManifestV3Target[];
+  readonly targets: readonly TargetManifestV4Target[];
   readonly actualDays: readonly ReaderSummaryMultiDayActualDay[];
 };
 
 export async function readCurrentPublicArtifactSnapshot(params: {
   readonly pool: Pick<Pool, "connect">;
   readonly databaseUrl: string;
-  readonly scope: TargetManifestScopeV3;
+  readonly scope: TargetManifestScopeV4;
   readonly collectionDates: readonly string[];
-  readonly expectedManifest?: TargetManifestV3;
+  readonly expectedManifest?: TargetManifestV4;
 }): Promise<CurrentPublicArtifactSnapshot> {
   assertSortedDates(params.collectionDates);
   const client = await params.pool.connect();
@@ -158,27 +161,36 @@ export async function readCurrentPublicArtifactSnapshot(params: {
 export function buildCurrentPublicArtifactSnapshot(params: {
   readonly rows: readonly CurrentPublicationRow[];
   readonly databaseUrl: string;
-  readonly scope: TargetManifestScopeV3;
+  readonly scope: TargetManifestScopeV4;
   readonly collectionDates: readonly string[];
-  readonly expectedManifest?: TargetManifestV3;
+  readonly expectedManifest?: TargetManifestV4;
 }): CurrentPublicArtifactSnapshot {
   if (params.rows.length !== params.collectionDates.length) {
     throw new Error(
       "Current public publication bindings do not cover every requested date",
     );
   }
-  const targets: TargetManifestV3Target[] = [];
+  const targets: TargetManifestV4Target[] = [];
   const actualDays: ReaderSummaryMultiDayActualDay[] = [];
+  let capturedAt: string | undefined;
   for (let index = 0; index < params.collectionDates.length; index += 1) {
     const collectionDate = params.collectionDates[index];
     const row = params.rows[index];
     if (collectionDate === undefined || row?.collectionDate !== collectionDate) {
       throw new Error("Current public publication rows are missing or unsorted");
     }
+    const rowCapturedAt = exactTimestamp(
+      row.capturedAt,
+      "Current publication snapshot capturedAt",
+    );
+    if (capturedAt !== undefined && rowCapturedAt !== capturedAt) {
+      throw new Error("Current public publication rows span multiple snapshots");
+    }
+    capturedAt = rowCapturedAt;
     assertRowScope(row, params.scope, collectionDate);
     const projection = actualDayAndProjectionFromRecord(collectionDate, row);
     assertPersistedReportHash(row, collectionDate);
-    const target: TargetManifestV3Target = {
+    const target: TargetManifestV4Target = {
       collectionDate,
       periodKey: dailyPeriodKey(collectionDate),
       publicationId: row.publicationId,
@@ -194,11 +206,21 @@ export function buildCurrentPublicArtifactSnapshot(params: {
     actualDays.push(projection.actualDay);
   }
   const generationProfile = generationProfileFromDays(actualDays);
+  const databaseFingerprint = databaseFingerprintLabel(params.databaseUrl);
   if (params.expectedManifest !== undefined) {
-    assertExpectedManifestBinding(params.expectedManifest, targets, generationProfile);
+    assertExpectedManifestBinding(
+      params.expectedManifest,
+      targets,
+      generationProfile,
+      databaseFingerprint,
+    );
+  }
+  if (capturedAt === undefined) {
+    throw new Error("Current public publication snapshot is empty");
   }
   return {
-    databaseFingerprint: databaseFingerprintLabel(params.databaseUrl),
+    databaseFingerprint,
+    capturedAt,
     generationProfile,
     targets,
     actualDays,
@@ -226,10 +248,14 @@ export function databaseFingerprintLabel(databaseUrl: string): string {
 }
 
 function assertExpectedManifestBinding(
-  manifest: TargetManifestV3,
-  targets: readonly TargetManifestV3Target[],
+  manifest: TargetManifestV4,
+  targets: readonly TargetManifestV4Target[],
   profile: ReaderSummaryMultiDayGenerationProfile,
+  databaseFingerprint: string,
 ): void {
+  if (manifest.databaseFingerprint !== databaseFingerprint) {
+    throw new Error("Quality database differs from target manifest capture");
+  }
   if (canonicalJson(manifest.generationProfile) !== canonicalJson(profile)) {
     throw new Error("Current public generation profile drifted from target manifest");
   }
@@ -264,7 +290,7 @@ function generationProfileFromDays(
 
 function assertRowScope(
   row: CurrentPublicationRow,
-  scope: TargetManifestScopeV3,
+  scope: TargetManifestScopeV4,
   collectionDate: string,
 ): void {
   if (
@@ -283,8 +309,8 @@ function assertRowScope(
 
 function assertExactProofBinding(
   row: CurrentPublicationRow,
-  target: TargetManifestV3Target,
-  scope: TargetManifestScopeV3,
+  target: TargetManifestV4Target,
+  scope: TargetManifestScopeV4,
   collectionDate: string,
 ): void {
   const proof = row.exactProof;
@@ -325,8 +351,16 @@ function assertExactProofBinding(
     proof.period.startedAt !== `${collectionDate}T00:00:00.000Z` ||
     proof.period.endedAt !== nextUtcDate(collectionDate) ||
     proof.requestedUtcDate !== row.publicationRequestedUtcDate ||
-    proof.requestedUtcDate !== exactTimestamp(row.publicationRequestedAt).slice(0, 10) ||
-    proof.requestedAt !== exactTimestamp(row.publicationRequestedAt) ||
+    proof.requestedUtcDate !==
+      exactTimestamp(
+        row.publicationRequestedAt,
+        "Current publication requestedAt",
+      ).slice(0, 10) ||
+    proof.requestedAt !==
+      exactTimestamp(
+        row.publicationRequestedAt,
+        "Current publication requestedAt",
+      ) ||
     proof.readerSummaryJobId !== row.publicationReaderSummaryJobId ||
     proof.readerSummaryArtifactId !== target.artifactId ||
     proof.reportSha256 !== target.reportSha256 ||
@@ -358,10 +392,10 @@ function assertPersistedReportHash(
   }
 }
 
-function exactTimestamp(value: Date | string): string {
+function exactTimestamp(value: Date | string, label: string): string {
   const parsed = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(parsed.getTime())) {
-    throw new Error("Current publication requestedAt is invalid");
+    throw new Error(`${label} is invalid`);
   }
   return parsed.toISOString();
 }

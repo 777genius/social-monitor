@@ -18,12 +18,16 @@ import {
 export const readerSummaryMultiDayQualityReportGeneratedBy =
   "npm run check:reader-summary-multi-day-quality";
 
-export const readerSummaryMultiDayQualityReportModel = {
+export const readerSummaryMultiDayQualityReportModelV3 = {
   liveNetwork: false,
   persistedArtifacts: true,
   mutableLatestArtifacts: false,
   rawPostTextPersistedInReport: false,
   rawProviderPayloadPersistedInReport: false,
+  executionStatus: "manual_evaluation",
+  ciEnforced: false,
+  releaseStatusAsserted: false,
+  artifactOnlyCurrentAtValidationAsserted: false,
 } as const;
 
 export type HashBoundQualityTarget = {
@@ -35,7 +39,7 @@ export type HashBoundQualityTarget = {
 
 export type HashBoundArtifactBinding = HashBoundQualityTarget;
 
-export function validateReaderSummaryMultiDayQualityReportV2(params: {
+export function validateReaderSummaryMultiDayQualityReportV3(params: {
   readonly value: unknown;
   readonly expectedInputsWithoutActualDays: Readonly<Record<string, unknown>>;
   readonly goldDays: readonly ReaderSummaryMultiDayGoldDay[];
@@ -60,11 +64,11 @@ export function validateReaderSummaryMultiDayQualityReportV2(params: {
       "qualityGates",
       "blockingPassed",
     ]) ||
-    value.schemaVersion !== 2 ||
-    value.artifactFormat !== "reader-summary-multi-day-quality-report-v2" ||
+    value.schemaVersion !== 3 ||
+    value.artifactFormat !== "reader-summary-multi-day-quality-report-v3" ||
     value.generatedBy !== readerSummaryMultiDayQualityReportGeneratedBy ||
     canonicalJson(value.model) !==
-      canonicalJson(readerSummaryMultiDayQualityReportModel) ||
+      canonicalJson(readerSummaryMultiDayQualityReportModelV3) ||
     value.blockingPassed !== true ||
     !isRecord(value.inputs) ||
     !Array.isArray(value.inputs.actualDays) ||
@@ -75,7 +79,7 @@ export function validateReaderSummaryMultiDayQualityReportV2(params: {
     ) ||
     !noRawSecretFragments(value)
   ) {
-    throw new Error(`${label} failed exact v2 report validation`);
+    throw new Error(`${label} failed exact v3 report validation`);
   }
 
   const { actualDays: rawActualDays, ...inputsWithoutActualDays } = value.inputs;
@@ -100,8 +104,10 @@ export function validateReaderSummaryMultiDayQualityReportV2(params: {
   const expectedGates = {
     ...evaluation.qualityGates,
     exactReviewedArtifactBindings: true,
-    ...(params.expectedQualityGateNames.includes("currentPublicArtifactBindings")
-      ? { currentPublicArtifactBindings: true }
+    ...(params.expectedQualityGateNames.includes(
+      "capturedCurrentPublicArtifactBindings",
+    )
+      ? { capturedCurrentPublicArtifactBindings: true }
       : {}),
     currentInputFileHashesBound: true,
     goldContractV2: true,

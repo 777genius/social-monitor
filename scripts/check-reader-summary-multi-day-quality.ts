@@ -29,19 +29,22 @@ import {
   readJsonArtifactBinding,
   type JsonArtifactBinding,
 } from "./lib/read-json-artifact-binding";
+import { assertPrivateEvaluationFile } from "./lib/private-evaluation-file";
 import { validateReaderSummaryMultiDayGoldProvenanceFiles } from "./lib/reader-summary-multi-day-quality-provenance";
 import {
   actualDayProjectionSha256,
   readerSummaryMultiDayQualityReportGeneratedBy,
-  readerSummaryMultiDayQualityReportModel,
-  validateReaderSummaryMultiDayQualityReportV2,
+  readerSummaryMultiDayQualityReportModelV3,
+  validateReaderSummaryMultiDayQualityReportV3,
 } from "./lib/reader-summary-multi-day-quality-report";
 import {
   validateTargetManifestV2 as validateTargetManifestV2Contract,
   validateTargetManifestV3 as validateTargetManifestV3Contract,
+  validateTargetManifestV4 as validateTargetManifestV4Contract,
   type TargetManifest,
   type TargetManifestV2,
   type TargetManifestV3,
+  type TargetManifestV4,
 } from "./lib/reader-summary-multi-day-target-manifest";
 import { writePrivateJsonAtomically } from "./lib/private-json-artifact";
 import {
@@ -51,7 +54,7 @@ import {
 } from "./lib/yesterday-social-replay-support";
 
 export { projectReaderSummaryMultiDayTopReadEntries };
-export type { TargetManifestV2, TargetManifestV3 };
+export type { TargetManifestV2, TargetManifestV3, TargetManifestV4 };
 
 export type GoldFileV1 = {
   readonly schemaVersion: 1;
@@ -91,11 +94,20 @@ type BoundActualDays = {
   readonly days: readonly ReaderSummaryMultiDayActualDay[];
   readonly artifactBindings: readonly Record<string, unknown>[];
   readonly databaseFingerprint: string;
-  readonly currentPublicArtifactBindings: boolean;
+  readonly capturedAt: string | null;
+  readonly currentAtCapture: boolean;
+  readonly capturedCurrentPublicArtifactBindings: boolean;
 };
 
 export const evaluatorContractVersion =
-  "reader-summary-multi-day-quality-evaluator-v3" as const;
+  "reader-summary-multi-day-quality-evaluator-v4" as const;
+
+export const legacyTargetManifestV3Diagnostic =
+  "LEGACY/NONBLOCKING: target manifest v3 uses current-at-validation semantics; recapture as target manifest v4";
+export const legacyEvaluatorV3Diagnostic =
+  "LEGACY/NONBLOCKING: evaluator v3 uses current-at-validation semantics; regenerate with evaluator v4";
+export const legacyReportV2Diagnostic =
+  "LEGACY/NONBLOCKING: report v2 predates captured-current artifact-only semantics; regenerate as report v3";
 
 export const expectedQualityGateNames = [
   "minimumRealDayCount",
@@ -114,19 +126,16 @@ export const expectedQualityGateNames = [
   "allDaysMeetCatastrophicQualityFloor",
   "allGoldFeedItemsPresent",
   "exactReviewedArtifactBindings",
-  "currentPublicArtifactBindings",
+  "capturedCurrentPublicArtifactBindings",
   "currentInputFileHashesBound",
   "goldContractV2",
   "noRawSecretFragments",
 ] as const;
-const legacyV2QualityGateNames = expectedQualityGateNames.filter(
-  (name) => name !== "currentPublicArtifactBindings",
-);
 
 const legacyReportPath =
   "ops/evals/reader-summary-multi-day-quality-report.v1.json";
 const defaultOutputPath =
-  "ops/evals/reader-summary-multi-day-quality-report.v2.json";
+  "ops/evals/reader-summary-multi-day-quality-report.v3.json";
 const defaultGoldPath =
   "ops/evals/reader-summary-multi-day-quality-gold.v2.json";
 
@@ -145,7 +154,7 @@ async function main(): Promise<void> {
     return;
   }
   if (options.mode === "artifact_only") {
-    validateExistingV2Report({
+    validateExistingV3Report({
       outputPath: options.outputPath,
       targetManifestPath: options.targetManifestPath,
       goldPath: options.goldPath,
@@ -182,12 +191,14 @@ async function main(): Promise<void> {
     expectedGenerationProfile: targetManifest.generationProfile,
   });
   const reportWithoutSecretGate = {
-    schemaVersion: 2,
-    artifactFormat: "reader-summary-multi-day-quality-report-v2",
+    schemaVersion: 3,
+    artifactFormat: "reader-summary-multi-day-quality-report-v3",
     generatedBy: readerSummaryMultiDayQualityReportGeneratedBy,
-    model: readerSummaryMultiDayQualityReportModel,
+    model: readerSummaryMultiDayQualityReportModelV3,
     inputs: {
-      database: boundActual.databaseFingerprint,
+      databaseFingerprint: boundActual.databaseFingerprint,
+      capturedAt: boundActual.capturedAt,
+      currentAtCapture: boundActual.currentAtCapture,
       goldPath: options.goldPath,
       goldSha256: goldBinding.sha256,
       goldContractVersion: gold.schemaVersion,
@@ -207,8 +218,8 @@ async function main(): Promise<void> {
     qualityGates: {
       ...evaluation.qualityGates,
       exactReviewedArtifactBindings: true,
-      currentPublicArtifactBindings:
-        boundActual.currentPublicArtifactBindings,
+      capturedCurrentPublicArtifactBindings:
+        boundActual.capturedCurrentPublicArtifactBindings,
       currentInputFileHashesBound: true,
       goldContractV2: gold.schemaVersion === 2,
       noRawSecretFragments: true,
@@ -221,7 +232,7 @@ async function main(): Promise<void> {
   };
   if (!sameStringSet(Object.keys(qualityGates), expectedQualityGateNames)) {
     throw new Error(
-      "Evaluator quality gate inventory changed without a v3 contract update",
+      "Evaluator quality gate inventory changed without a v4 contract update",
     );
   }
   const report = {
@@ -258,7 +269,7 @@ async function main(): Promise<void> {
     throw new Error("Reader summary multi-day quality gates failed");
   }
   console.log(
-    `Reader summary multi-day quality OK (${report.metrics.dayCount} exact reviewed artifacts)`,
+    `Manual reader summary multi-day captured-current quality evidence passed (${report.metrics.dayCount} exact reviewed artifacts); CI and release status are not asserted`,
   );
 }
 
@@ -274,7 +285,7 @@ async function readBoundActualDays(
   });
 
   try {
-    if (manifest.schemaVersion === 3) {
+    if (manifest.schemaVersion === 4) {
       const snapshot = await readCurrentPublicArtifactSnapshot({
         pool,
         databaseUrl,
@@ -285,9 +296,15 @@ async function readBoundActualDays(
       return {
         days: snapshot.actualDays,
         artifactBindings: snapshot.targets,
-        databaseFingerprint: snapshot.databaseFingerprint,
-        currentPublicArtifactBindings: true,
+        databaseFingerprint: manifest.databaseFingerprint,
+        capturedAt: manifest.capturedAt,
+        currentAtCapture: manifest.currentAtCapture,
+        capturedCurrentPublicArtifactBindings: true,
       };
+    }
+
+    if (manifest.schemaVersion === 3) {
+      throw new Error(legacyTargetManifestV3Diagnostic);
     }
 
     const days: ReaderSummaryMultiDayActualDay[] = [];
@@ -335,7 +352,9 @@ async function readBoundActualDays(
       days,
       artifactBindings,
       databaseFingerprint: databaseFingerprintLabel(databaseUrl),
-      currentPublicArtifactBindings: false,
+      capturedAt: null,
+      currentAtCapture: false,
+      capturedCurrentPublicArtifactBindings: false,
     };
   } finally {
     await pool.end().catch(() => undefined);
@@ -370,8 +389,10 @@ export function readTargetManifestV2(
   path: string,
   gold: GoldFile,
 ): TargetManifestV2 {
+  const realPath = assertPrivateEvaluationFile(path, path);
   return readJsonArtifactBinding({
-    path,
+    path: realPath,
+    label: path,
     validate: (value, label) => validateTargetManifestV2(value, gold, label),
   }).value;
 }
@@ -381,18 +402,44 @@ function readTargetManifestBinding(
   gold: GoldFile,
   mode: "blocking" | "migration_diagnostic" | "artifact_only",
 ): JsonArtifactBinding<TargetManifest> {
+  const realPath = assertPrivateEvaluationFile(path, path);
   return readJsonArtifactBinding({
-    path,
+    path: realPath,
+    label: path,
     validate: (value, label) => {
-      if (isRecord(value) && value.schemaVersion === 3) {
-        return validateTargetManifestV3(value, gold, label);
+      if (
+        isRecord(value) &&
+        value.schemaVersion === 2 &&
+        value.artifactFormat ===
+          "reader-summary-multi-day-quality-target-manifest-v2"
+      ) {
+        if (mode !== "migration_diagnostic") {
+          throw new Error(
+            `${label} v2 is nonblocking; blocking and artifact-only validation require target manifest v4`,
+          );
+        }
+        return validateTargetManifestV2(value, gold, label);
       }
-      if (mode === "blocking") {
-        throw new Error(
-          `${label} v2 is nonblocking; blocking evaluation requires target manifest v3`,
-        );
+      if (
+        isRecord(value) &&
+        value.schemaVersion === 3 &&
+        value.artifactFormat ===
+          "reader-summary-multi-day-quality-target-manifest-v3"
+      ) {
+        validateTargetManifestV3(value, gold, label);
+        throw new Error(legacyTargetManifestV3Diagnostic);
       }
-      return validateTargetManifestV2(value, gold, label);
+      if (
+        isRecord(value) &&
+        value.schemaVersion === 4 &&
+        value.artifactFormat ===
+          "reader-summary-multi-day-quality-target-manifest-v4"
+      ) {
+        return validateTargetManifestV4(value, gold, label);
+      }
+      throw new Error(
+        `${label} has an unsupported target manifest contract identity; expected target manifest v4`,
+      );
     },
   });
 }
@@ -415,6 +462,18 @@ export function validateTargetManifestV3(
   label = "target manifest",
 ): TargetManifestV3 {
   return validateTargetManifestV3Contract(
+    value,
+    gold.days.map((day) => day.collectionDate),
+    label,
+  );
+}
+
+export function validateTargetManifestV4(
+  value: unknown,
+  gold: GoldFile,
+  label = "target manifest",
+): TargetManifestV4 {
+  return validateTargetManifestV4Contract(
     value,
     gold.days.map((day) => day.collectionDate),
     label,
@@ -716,7 +775,7 @@ function validateGoldProvenanceFiles(gold: GoldFileV2, label: string): void {
   validateReaderSummaryMultiDayGoldProvenanceFiles({ gold, label });
 }
 
-export function validateExistingV2Report(params: {
+export function validateExistingV3Report(params: {
   readonly outputPath: string;
   readonly targetManifestPath: string;
   readonly goldPath?: string;
@@ -725,8 +784,9 @@ export function validateExistingV2Report(params: {
     throw new Error(`${params.outputPath} is missing`);
   }
   const parsed: unknown = JSON.parse(readFileSync(params.outputPath, "utf8"));
-  if (!isRecord(parsed) || !isRecord(parsed.inputs)) {
-    throw new Error(`${params.outputPath} failed v2 artifact validation`);
+  assertArtifactOnlyReportContractIdentity(parsed, params.outputPath);
+  if (!isRecord(parsed.inputs)) {
+    throw new Error(`${params.outputPath} failed v3 artifact validation`);
   }
   const inputs = parsed.inputs;
   const expectedGoldPath = params.goldPath ?? defaultGoldPath;
@@ -747,37 +807,26 @@ export function validateExistingV2Report(params: {
     "artifact_only",
   );
   const manifest = manifestBinding.value;
-  const expectedBindings = manifest.schemaVersion === 3
-    ? manifest.targets
-    : manifest.targets.map((target) => ({
-        collectionDate: target.collectionDate,
-        artifactId: target.artifactId,
-        artifactPayloadSha256: target.artifactPayloadSha256,
-        actualDayProjectionSha256: target.actualDayProjectionSha256,
-      }));
-  const expectedDates = manifest.targets.map((target) => target.collectionDate);
-  if (
-    (manifest.schemaVersion === 3 && !isSafeDatabaseFingerprint(inputs.database)) ||
-    (manifest.schemaVersion === 2 &&
-      inputs.database !== "local-postgres" &&
-      !isSafeDatabaseFingerprint(inputs.database))
-  ) {
-    throw new Error(`${params.outputPath} has an unsafe database identity`);
+  if (manifest.schemaVersion !== 4) {
+    throw new Error(
+      `${params.targetManifestPath} is nonblocking; artifact-only validation requires target manifest v4`,
+    );
   }
-  validateReaderSummaryMultiDayQualityReportV2({
+  const expectedBindings = manifest.targets;
+  const expectedDates = manifest.targets.map((target) => target.collectionDate);
+  validateReaderSummaryMultiDayQualityReportV3({
     value: parsed,
     expectedInputsWithoutActualDays: {
-      database: inputs.database,
+      databaseFingerprint: manifest.databaseFingerprint,
+      capturedAt: manifest.capturedAt,
+      currentAtCapture: manifest.currentAtCapture,
       goldPath: expectedGoldPath,
       goldSha256: goldBinding.sha256,
       goldContractVersion: 2,
       goldProvenance: gold.provenance,
       targetManifestPath: params.targetManifestPath,
       targetManifestSha256: manifestBinding.sha256,
-      evaluatorContractVersion:
-        manifest.schemaVersion === 3
-          ? evaluatorContractVersion
-          : "reader-summary-multi-day-quality-evaluator-v2",
+      evaluatorContractVersion,
       generationProfile: manifest.generationProfile,
       collectionDates: expectedDates,
       artifactBindings: expectedBindings,
@@ -786,17 +835,48 @@ export function validateExistingV2Report(params: {
     thresholds: gold.thresholds,
     generationProfile: manifest.generationProfile,
     targets: manifest.targets,
-    expectedQualityGateNames:
-      manifest.schemaVersion === 3
-        ? expectedQualityGateNames
-        : legacyV2QualityGateNames,
+    expectedQualityGateNames,
     label: params.outputPath,
   });
-  console.log("Reader summary multi-day quality v2 artifact OK");
+  console.log(
+    "Manual reader summary multi-day captured-current artifact validation OK; CI and release status are not asserted",
+  );
 }
 
-function isSafeDatabaseFingerprint(value: unknown): value is string {
-  return typeof value === "string" && /^postgres-sha256:[0-9a-f]{64}$/u.test(value);
+function assertArtifactOnlyReportContractIdentity(
+  value: unknown,
+  label: string,
+): asserts value is Record<string, unknown> {
+  if (
+    isRecord(value) &&
+    value.schemaVersion === 2 &&
+    value.artifactFormat === "reader-summary-multi-day-quality-report-v2"
+  ) {
+    throw new Error(legacyReportV2Diagnostic);
+  }
+  if (
+    !isRecord(value) ||
+    value.schemaVersion !== 3 ||
+    value.artifactFormat !== "reader-summary-multi-day-quality-report-v3"
+  ) {
+    throw new Error(
+      `${label} has an unsupported report contract identity; expected report v3`,
+    );
+  }
+  if (!isRecord(value.inputs)) {
+    return;
+  }
+  if (
+    value.inputs.evaluatorContractVersion ===
+    "reader-summary-multi-day-quality-evaluator-v3"
+  ) {
+    throw new Error(legacyEvaluatorV3Diagnostic);
+  }
+  if (value.inputs.evaluatorContractVersion !== evaluatorContractVersion) {
+    throw new Error(
+      `${label} has an unsupported evaluator contract identity; expected evaluator v4`,
+    );
+  }
 }
 
 function validateLegacyObservationalReport(): void {

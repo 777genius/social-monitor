@@ -1,14 +1,17 @@
 import { parseReaderSummaryMultiDayQualityCli } from "./reader-summary-multi-day-quality-cli";
 
 const defaults = {
-  defaultOutputPath: "ops/evals/report.v2.json",
+  defaultOutputPath: "ops/evals/report.v3.json",
   defaultGoldPath: "ops/evals/gold.v2.json",
 } as const;
 
 describe("reader summary multi-day quality CLI", () => {
-  it("requires an explicit trust-root manifest in artifact-only mode", () => {
+  it("requires an explicit v4 trust-root manifest in every blocking mode", () => {
+    expect(() => parse([])).toThrow(
+      "blocking gate requires a reviewed --target-manifest v4 file",
+    );
     expect(() => parse(["--artifact-only"])).toThrow(
-      "requires an explicit reviewed --target-manifest",
+      "requires an explicit reviewed --target-manifest v4 file",
     );
     expect(
       parse([
@@ -49,7 +52,7 @@ describe("reader summary multi-day quality CLI", () => {
         "--output",
         defaults.defaultOutputPath,
       ]),
-    ).toThrow("cannot write the default v2 report path");
+    ).toThrow("cannot write the default v3 report path");
 
     expect(
       parse([

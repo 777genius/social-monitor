@@ -68,6 +68,10 @@ describe("current public reader-summary bindings", () => {
     expect(currentPublicArtifactBindingsQuery).toContain(
       "artifact.id = publication.reader_summary_artifact_id",
     );
+    expect(currentPublicArtifactBindingsQuery).toContain(
+      'transaction_timestamp() as "capturedAt"',
+    );
+    expect(snapshot.capturedAt).toBe("2026-07-21T00:10:00.000Z");
     expect(snapshot.targets).toHaveLength(5);
     expect(snapshot.targets[0]).toMatchObject({
       publicationId: uuid(10),
@@ -182,8 +186,11 @@ describe("current public reader-summary bindings", () => {
       collectionDates: dates(),
     });
     const expectedManifest = {
-      schemaVersion: 3 as const,
-      artifactFormat: "reader-summary-multi-day-quality-target-manifest-v3" as const,
+      schemaVersion: 4 as const,
+      artifactFormat: "reader-summary-multi-day-quality-target-manifest-v4" as const,
+      databaseFingerprint: captured.databaseFingerprint,
+      capturedAt: captured.capturedAt,
+      currentAtCapture: true as const,
       generationProfile: captured.generationProfile,
       scope: scope(),
       targets: captured.targets.map((target, index) =>
@@ -199,6 +206,72 @@ describe("current public reader-summary bindings", () => {
         expectedManifest,
       }),
     ).toThrow("drifted from target manifest");
+  });
+
+  it("rejects a different database and slots replaced after capture", () => {
+    const rows = fixtureRows();
+    const captured = buildCurrentPublicArtifactSnapshot({
+      rows,
+      databaseUrl: databaseUrl(),
+      scope: scope(),
+      collectionDates: dates(),
+    });
+    const expectedManifest = {
+      schemaVersion: 4 as const,
+      artifactFormat: "reader-summary-multi-day-quality-target-manifest-v4" as const,
+      databaseFingerprint: captured.databaseFingerprint,
+      capturedAt: captured.capturedAt,
+      currentAtCapture: true as const,
+      generationProfile: captured.generationProfile,
+      scope: scope(),
+      targets: captured.targets,
+    };
+
+    expect(() =>
+      buildCurrentPublicArtifactSnapshot({
+        rows,
+        databaseUrl:
+          "postgresql://quality:password@other-db.example.test:25060/social_monitor",
+        scope: scope(),
+        collectionDates: dates(),
+        expectedManifest,
+      }),
+    ).toThrow("database differs from target manifest capture");
+
+    const replacedSlot = cloneRows(rows);
+    replacedSlot[0]!.publicationId = uuid(99);
+    expect(() =>
+      buildCurrentPublicArtifactSnapshot({
+        rows: replacedSlot,
+        databaseUrl: databaseUrl(),
+        scope: scope(),
+        collectionDates: dates(),
+        expectedManifest,
+      }),
+    ).toThrow("artifact bindings drifted from target manifest");
+  });
+
+  it("never upgrades a legacy artifact row without an exact publication proof", () => {
+    const legacyArtifactOnly = cloneRows(fixtureRows());
+    (
+      legacyArtifactOnly[0] as unknown as { exactProof: unknown }
+    ).exactProof = null;
+    legacyArtifactOnly[0]!.proofSha256 = canonicalJsonSha256(null);
+
+    expect(() =>
+      buildCurrentPublicArtifactSnapshot({
+        rows: legacyArtifactOnly,
+        databaseUrl: databaseUrl(),
+        scope: scope(),
+        collectionDates: dates(),
+      }),
+    ).toThrow("exact proof drifted");
+    expect(currentPublicArtifactBindingsQuery).toContain(
+      "publication.publication_kind = 'EXACT'",
+    );
+    expect(currentPublicArtifactBindingsQuery).toContain(
+      "publication.semantic_status = 'COMPLETED'",
+    );
   });
 
   it("emits a credential-free stable database fingerprint", () => {
@@ -268,6 +341,7 @@ function fixtureRows() {
     const now = new Date("2026-07-21T00:10:00.000Z");
     return {
       collectionDate,
+      capturedAt: now,
       publicationId: uuid(index + 10),
       reportSha256,
       proofSha256: canonicalJsonSha256(exactProof),
