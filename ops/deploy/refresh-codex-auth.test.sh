@@ -51,15 +51,20 @@ ACCOUNT_NAME_FILE=$FIXTURE/account-name
 PROBE_WORKSPACE=$FIXTURE/workspace
 CHANGED_MARKER=$FIXTURE/changed
 PROBE_TMP_ROOT=$FIXTURE/tmp
+POOL_POINTER=$FIXTURE/account-pool.json
 BIN=$FIXTURE/bin
 install -d "$AUTH_ROOT/account-a" "$AUTH_ROOT/account-b" "$REGISTRY_ROOT" \
   "$PROBE_WORKSPACE" "$BIN" "$FIXTURE/tmp"
 printf '{"account":"a"}\n' > "$AUTH_ROOT/account-a/auth.json"
 printf '{"account":"b"}\n' > "$AUTH_ROOT/account-b/auth.json"
+printf '{"controllerJobId":"test-controller","registryRootDir":"%s"}\n' \
+  "$REGISTRY_ROOT" > "$POOL_POINTER"
+chmod 0600 "$POOL_POINTER"
 
 cat > "$BIN/subscription-runtime-codex-goal" <<'SH'
 #!/usr/bin/env bash
 [[ $* == *'"liveCheck":false'* ]] || exit 41
+[[ $* == *'"jobId":"test-controller"'* ]] || exit 42
 accounts=${SOCIAL_MONITOR_TEST_ACCOUNTS:-'["account-a","account-b"]'}
 printf '{"ok":true,"hasAvailableAccount":true,"availableDedupedAccountNames":%s}\n' "$accounts"
 SH
@@ -95,6 +100,8 @@ SOCIAL_MONITOR_AUTH_ACCOUNT_NAME_FILE="$ACCOUNT_NAME_FILE" \
 SOCIAL_MONITOR_AUTH_PROBE_WORKSPACE="$PROBE_WORKSPACE" \
 SOCIAL_MONITOR_AUTH_CHANGED_MARKER="$CHANGED_MARKER" \
 SOCIAL_MONITOR_AUTH_PROBE_TMP_ROOT="$PROBE_TMP_ROOT" \
+SOCIAL_MONITOR_AUTH_POOL_POINTER="$POOL_POINTER" \
+SOCIAL_MONITOR_AUTH_POOL_REGISTRY_PREFIX="$FIXTURE/" \
   bash "$ENTRYPOINT"
 }
 
@@ -131,6 +138,28 @@ if SOCIAL_MONITOR_TEST_RESULT=WRONG run_refresh >/dev/null 2>&1; then
 fi
 [[ $(cksum < "$TARGET_DIR/auth.json") == "$old_hash" ]]
 [[ -z $(find "$PROBE_TMP_ROOT" -mindepth 1 -maxdepth 1 -type d -name 'auth-probe.*' -print -quit) ]]
+
+chmod 0666 "$POOL_POINTER"
+if run_refresh >/dev/null 2>&1; then
+  echo 'group-writable account pool pointer was accepted' >&2
+  exit 1
+fi
+chmod 0600 "$POOL_POINTER"
+printf '{"controllerJobId":"test-controller","registryRootDir":"/tmp/escape"}\n' \
+  > "$POOL_POINTER"
+if run_refresh >/dev/null 2>&1; then
+  echo 'out-of-project account pool registry was accepted' >&2
+  exit 1
+fi
+printf '{"controllerJobId":"test-controller","registryRootDir":"%s"}\n' \
+  "$REGISTRY_ROOT/../.." > "$POOL_POINTER"
+if run_refresh >/dev/null 2>&1; then
+  echo 'traversing account pool registry was accepted' >&2
+  exit 1
+fi
+printf '{"controllerJobId":"test-controller","registryRootDir":"%s"}\n' \
+  "$REGISTRY_ROOT" > "$POOL_POINTER"
+chmod 0600 "$POOL_POINTER"
 
 if SOCIAL_MONITOR_TEST_ACCOUNTS='["../escape"]' run_refresh >/dev/null 2>&1; then
   echo 'unsafe broker account path was accepted' >&2

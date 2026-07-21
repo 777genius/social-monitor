@@ -103,7 +103,7 @@ export function parseReaderSummaryMultiDayQualityCli(params: {
     }
     if (targetManifestPath === undefined) {
       throw new Error(
-        "--artifact-only requires an explicit reviewed --target-manifest v2 file",
+        "--artifact-only requires an explicit reviewed --target-manifest v2 or v3 file",
       );
     }
     return {
@@ -116,7 +116,7 @@ export function parseReaderSummaryMultiDayQualityCli(params: {
 
   if (targetManifestPath === undefined) {
     throw new Error(
-      "The blocking gate requires a reviewed --target-manifest v2 file",
+      "The blocking gate requires a reviewed --target-manifest v3 file",
     );
   }
   if (migration) {

@@ -60,6 +60,7 @@
     "capture:summary-feedback-dogfood-samples": "node scripts/run-with-timeout.mjs --timeout-ms 120000 --node-options --max-old-space-size=768 -- ts-node -r tsconfig-paths/register scripts/capture-summary-feedback-dogfood-samples.ts",
     "capture:durable-reader-summary": "node scripts/run-with-timeout.mjs --timeout-ms 6960000 --node-options --max-old-space-size=768 -- ts-node -r tsconfig-paths/register scripts/capture-durable-reader-summary-from-postgres.ts",
     "capture:reader-summary-multi-day-quality-corpus": "node scripts/run-with-timeout.mjs --timeout-ms 120000 --node-options --max-old-space-size=768 -- ts-node -r tsconfig-paths/register scripts/capture-reader-summary-multi-day-quality-corpus.ts",
+    "capture:reader-summary-multi-day-quality-target-manifest": "node scripts/run-with-timeout.mjs --timeout-ms 120000 --node-options --max-old-space-size=768 -- ts-node -r tsconfig-paths/register scripts/capture-reader-summary-multi-day-quality-target-manifest.ts",
     "export:summary-feedback-samples": "node scripts/run-with-timeout.mjs --timeout-ms 120000 --node-options --max-old-space-size=768 -- ts-node -r tsconfig-paths/register scripts/export-summary-feedback-samples.ts",
     "capture:durable-backend-e2e-loop": "node scripts/run-with-timeout.mjs --timeout-ms 900000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/capture-durable-backend-e2e-loop.ts",
     "capture:docker-durable-backend-e2e-loop": "node scripts/capture-docker-durable-backend-e2e-loop.mjs",

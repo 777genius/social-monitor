@@ -56,6 +56,45 @@ const gateNames = [
 ] as const;
 
 describe("reader summary multi-day artifact-only report", () => {
+  it("requires the current-public-artifact gate for v3 reports", () => {
+    const fixture = reportFixture();
+    (
+      fixture.report.qualityGates as unknown as Record<string, boolean>
+    ).currentPublicArtifactBindings = true;
+    const v3GateNames = [
+      ...gateNames.slice(0, 16),
+      "currentPublicArtifactBindings",
+      ...gateNames.slice(16),
+    ];
+    expect(() =>
+      validateReaderSummaryMultiDayQualityReportV2({
+        value: fixture.report,
+        expectedInputsWithoutActualDays: fixture.expectedInputsWithoutActualDays,
+        goldDays: fixture.goldDays,
+        thresholds,
+        generationProfile,
+        targets: fixture.targets,
+        expectedQualityGateNames: v3GateNames,
+        label: "v3 report fixture",
+      }),
+    ).not.toThrow();
+    (
+      fixture.report.qualityGates as unknown as Record<string, boolean>
+    ).currentPublicArtifactBindings = false;
+    expect(() =>
+      validateReaderSummaryMultiDayQualityReportV2({
+        value: fixture.report,
+        expectedInputsWithoutActualDays: fixture.expectedInputsWithoutActualDays,
+        goldDays: fixture.goldDays,
+        thresholds,
+        generationProfile,
+        targets: fixture.targets,
+        expectedQualityGateNames: v3GateNames,
+        label: "v3 report fixture",
+      }),
+    ).toThrow("stale or forged");
+  });
+
   it("reruns card-ranked multi-citation evaluation from exact projections", () => {
     const fixture = reportFixture();
 

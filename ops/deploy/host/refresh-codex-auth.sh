@@ -19,12 +19,13 @@ if [[ ${SOCIAL_MONITOR_AUTH_REFRESH_TEST_MODE:-} == 1 ]]; then
   TARGET_OWNER=$(id -u)
   TARGET_GROUP=$(id -g)
   TARGET_MODE=0400
+  POOL_POINTER=${SOCIAL_MONITOR_AUTH_POOL_POINTER:-}
+  POOL_REGISTRY_PREFIX=${SOCIAL_MONITOR_AUTH_POOL_REGISTRY_PREFIX:-/var/data/social-monitor/worker-jobs/}
 elif ((EUID == 0)); then
   PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
   AUTH_ROOT=/var/data/codex-home/live-codex-auth
   TARGET_DIR=/var/data/social-monitor/auth-current
-  REGISTRY_ROOT=/var/data/social-monitor/worker-jobs/registry
-  CONTROLLER_JOB_ID=social-monitor-project-controller-v1
+  POOL_POINTER=/var/data/social-monitor/control/subscription-account-pool.json
   CURSOR_FILE=/var/data/social-monitor/runtime/auth-account-cursor
   ACCOUNT_NAME_FILE=/var/data/social-monitor/runtime/auth-account-name
   PROBE_WORKSPACE=/var/data/social-monitor/runtime/auth-probe-workspace
@@ -34,15 +35,60 @@ elif ((EUID == 0)); then
   TARGET_OWNER=root
   TARGET_GROUP=1000
   TARGET_MODE=0440
+  POOL_REGISTRY_PREFIX=/var/data/social-monitor/worker-jobs/
   unset SOCIAL_MONITOR_AUTH_REFRESH_TEST_MODE SOCIAL_MONITOR_AUTH_ROOT \
     SOCIAL_MONITOR_AUTH_TARGET_DIR SOCIAL_MONITOR_AUTH_REGISTRY_ROOT \
     SOCIAL_MONITOR_AUTH_CONTROLLER_JOB_ID SOCIAL_MONITOR_AUTH_CURSOR_FILE \
     SOCIAL_MONITOR_AUTH_ACCOUNT_NAME_FILE \
     SOCIAL_MONITOR_AUTH_PROBE_WORKSPACE SOCIAL_MONITOR_AUTH_CHANGED_MARKER \
-    SOCIAL_MONITOR_AUTH_PROBE_TMP_ROOT
+    SOCIAL_MONITOR_AUTH_PROBE_TMP_ROOT SOCIAL_MONITOR_AUTH_POOL_POINTER \
+    SOCIAL_MONITOR_AUTH_POOL_REGISTRY_PREFIX
 else
   echo 'auth-refresh-error: production entrypoint requires root' >&2
   exit 1
+fi
+
+resolve_account_pool_pointer() {
+  [[ -f $POOL_POINTER && ! -L $POOL_POINTER ]] || {
+    echo 'auth-refresh-error: account pool pointer is missing or unsafe' >&2
+    exit 1
+  }
+  local pointer_owner pointer_mode
+  pointer_owner=$(stat -c '%u' "$POOL_POINTER" 2>/dev/null || \
+    stat -f '%u' "$POOL_POINTER")
+  pointer_mode=$(stat -c '%a' "$POOL_POINTER" 2>/dev/null || \
+    stat -f '%Lp' "$POOL_POINTER")
+  if [[ $pointer_owner != "$EUID" || ! $pointer_mode =~ ^[0-7]{3,4}$ ]] \
+    || (( (8#$pointer_mode & 022) != 0 )); then
+    echo 'auth-refresh-error: account pool pointer ownership or mode is unsafe' >&2
+    exit 1
+  fi
+  jq -e --arg registry_prefix "$POOL_REGISTRY_PREFIX" '
+    (keys | sort) == ["controllerJobId", "registryRootDir"]
+    and (.controllerJobId | type == "string" and test("^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$"))
+    and (.registryRootDir | type == "string" and startswith($registry_prefix))
+  ' "$POOL_POINTER" >/dev/null || {
+    echo 'auth-refresh-error: account pool pointer contract is invalid' >&2
+    exit 1
+  }
+  CONTROLLER_JOB_ID=$(jq -r '.controllerJobId' "$POOL_POINTER")
+  REGISTRY_ROOT=$(jq -r '.registryRootDir' "$POOL_POINTER")
+  [[ -d $REGISTRY_ROOT && ! -L $REGISTRY_ROOT ]] || {
+    echo 'auth-refresh-error: account pool registry is missing or unsafe' >&2
+    exit 1
+  }
+  local canonical_registry canonical_prefix
+  canonical_registry=$(cd "$REGISTRY_ROOT" && pwd -P)
+  canonical_prefix=$(cd "$POOL_REGISTRY_PREFIX" && pwd -P)
+  [[ $canonical_registry == "$canonical_prefix/"* ]] || {
+    echo 'auth-refresh-error: account pool registry escapes the project root' >&2
+    exit 1
+  }
+  REGISTRY_ROOT=$canonical_registry
+}
+
+if [[ -n ${POOL_POINTER:-} ]]; then
+  resolve_account_pool_pointer
 fi
 
 install -d -m 0750 -o "$TARGET_DIR_OWNER" -g "$TARGET_GROUP" "$TARGET_DIR"

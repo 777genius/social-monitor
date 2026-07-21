@@ -100,6 +100,9 @@ export function validateReaderSummaryMultiDayQualityReportV2(params: {
   const expectedGates = {
     ...evaluation.qualityGates,
     exactReviewedArtifactBindings: true,
+    ...(params.expectedQualityGateNames.includes("currentPublicArtifactBindings")
+      ? { currentPublicArtifactBindings: true }
+      : {}),
     currentInputFileHashesBound: true,
     goldContractV2: true,
     noRawSecretFragments: true,

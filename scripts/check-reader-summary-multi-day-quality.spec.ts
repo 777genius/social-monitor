@@ -11,7 +11,6 @@ import {
 import {
   assertArtifactPayloadSha256,
   assertActualDayProjectionSha256,
-  evaluatorContractVersion,
   projectReaderSummaryMultiDayTopReadEntries,
   type GoldFile,
   type TargetManifestV2,
@@ -529,7 +528,7 @@ function reportFixture() {
       goldProvenance: gold.schemaVersion === 2 ? gold.provenance : null,
       targetManifestPath: targetPath,
       targetManifestSha256: sha256File(targetPath),
-      evaluatorContractVersion,
+      evaluatorContractVersion: "reader-summary-multi-day-quality-evaluator-v2",
       generationProfile: target.generationProfile,
       collectionDates: target.targets.map((item) => item.collectionDate),
       artifactBindings: target.targets.map((item) => ({

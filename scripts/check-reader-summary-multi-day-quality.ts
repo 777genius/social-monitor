@@ -1,25 +1,28 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 import { Pool } from "pg";
 
-import { readerSummaryArtifactFromPrisma } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-records";
 import {
   evaluateReaderSummaryMultiDayQuality,
-  isReaderFacingQualityTopRead,
   type ReaderSummaryMultiDayActualDay,
   type ReaderSummaryMultiDayGenerationProfile,
   type ReaderSummaryMultiDayGoldDay,
   type ReaderSummaryMultiDayQualityThresholds,
-  type ReaderSummaryMultiDayTopReadEntry,
 } from "@social-monitor/summary/domain";
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
 import {
-  dailyPeriodKey,
-  isLocalDataSourceUnavailable,
   readExactReaderSummaryArtifact,
 } from "./lib/reader-summary-quality-eval-support";
+import {
+  projectReaderSummaryMultiDayTopReadEntries,
+  readerSummaryMultiDayActualDayFromRecord,
+} from "./lib/reader-summary-multi-day-actual-day";
+import {
+  databaseFingerprintLabel,
+  readCurrentPublicArtifactSnapshot,
+} from "./lib/reader-summary-current-publication-bindings";
 import { parseReaderSummaryMultiDayQualityCli } from "./lib/reader-summary-multi-day-quality-cli";
 import { assertReaderSummaryMultiDayGoldStatisticalFloor } from "./lib/reader-summary-multi-day-quality-statistical-floor";
 import {
@@ -34,11 +37,21 @@ import {
   validateReaderSummaryMultiDayQualityReportV2,
 } from "./lib/reader-summary-multi-day-quality-report";
 import {
-  message,
+  validateTargetManifestV2 as validateTargetManifestV2Contract,
+  validateTargetManifestV3 as validateTargetManifestV3Contract,
+  type TargetManifest,
+  type TargetManifestV2,
+  type TargetManifestV3,
+} from "./lib/reader-summary-multi-day-target-manifest";
+import { writePrivateJsonAtomically } from "./lib/private-json-artifact";
+import {
   noRawSecretFragments,
   normalizeLineEndings,
   yesterdaySocialQualityDatabaseUrl,
 } from "./lib/yesterday-social-replay-support";
+
+export { projectReaderSummaryMultiDayTopReadEntries };
+export type { TargetManifestV2, TargetManifestV3 };
 
 export type GoldFileV1 = {
   readonly schemaVersion: 1;
@@ -74,39 +87,15 @@ export type GoldFileV2 = {
 
 export type GoldFile = GoldFileV1 | GoldFileV2;
 
-export type TargetManifestV2 = {
-  readonly schemaVersion: 2;
-  readonly artifactFormat: "reader-summary-multi-day-quality-target-manifest-v2";
-  readonly generationProfile: ReaderSummaryMultiDayGenerationProfile;
-  readonly scope: {
-    readonly tenantId: string;
-    readonly workspaceId: string;
-    readonly scopeType: "workspace";
-    readonly scopeKey: string;
-  };
-  readonly targets: readonly {
-    readonly collectionDate: string;
-    readonly artifactId: string;
-    readonly periodKey: string;
-    readonly artifactPayloadSha256: string;
-    readonly actualDayProjectionSha256: string;
-  }[];
-};
-
-type ArtifactBinding = {
-  readonly collectionDate: string;
-  readonly artifactId: string;
-  readonly artifactPayloadSha256: string;
-  readonly actualDayProjectionSha256: string;
-};
-
 type BoundActualDays = {
   readonly days: readonly ReaderSummaryMultiDayActualDay[];
-  readonly artifactBindings: readonly ArtifactBinding[];
+  readonly artifactBindings: readonly Record<string, unknown>[];
+  readonly databaseFingerprint: string;
+  readonly currentPublicArtifactBindings: boolean;
 };
 
 export const evaluatorContractVersion =
-  "reader-summary-multi-day-quality-evaluator-v2" as const;
+  "reader-summary-multi-day-quality-evaluator-v3" as const;
 
 export const expectedQualityGateNames = [
   "minimumRealDayCount",
@@ -125,10 +114,14 @@ export const expectedQualityGateNames = [
   "allDaysMeetCatastrophicQualityFloor",
   "allGoldFeedItemsPresent",
   "exactReviewedArtifactBindings",
+  "currentPublicArtifactBindings",
   "currentInputFileHashesBound",
   "goldContractV2",
   "noRawSecretFragments",
 ] as const;
+const legacyV2QualityGateNames = expectedQualityGateNames.filter(
+  (name) => name !== "currentPublicArtifactBindings",
+);
 
 const legacyReportPath =
   "ops/evals/reader-summary-multi-day-quality-report.v1.json";
@@ -175,20 +168,13 @@ async function main(): Promise<void> {
       "DEPRECATED/NONBLOCKING: gold v1 is accepted for migration diagnostics but cannot pass the v2 blocking gate; generation profile authority is the target manifest",
     );
   }
-  const targetManifestBinding = readTargetManifestV2Binding(
+  const targetManifestBinding = readTargetManifestBinding(
     options.targetManifestPath,
     gold,
+    options.mode,
   );
   const targetManifest = targetManifestBinding.value;
-  const boundActual = await tryReadActualDays(targetManifest);
-  if (boundActual === undefined) {
-    validateExistingV2Report({
-      outputPath: options.outputPath,
-      targetManifestPath: options.targetManifestPath,
-      goldPath: options.goldPath,
-    });
-    return;
-  }
+  const boundActual = await readBoundActualDays(targetManifest);
   const evaluation = evaluateReaderSummaryMultiDayQuality({
     actualDays: boundActual.days,
     goldDays: gold.days,
@@ -201,7 +187,7 @@ async function main(): Promise<void> {
     generatedBy: readerSummaryMultiDayQualityReportGeneratedBy,
     model: readerSummaryMultiDayQualityReportModel,
     inputs: {
-      database: "local-postgres",
+      database: boundActual.databaseFingerprint,
       goldPath: options.goldPath,
       goldSha256: goldBinding.sha256,
       goldContractVersion: gold.schemaVersion,
@@ -221,6 +207,8 @@ async function main(): Promise<void> {
     qualityGates: {
       ...evaluation.qualityGates,
       exactReviewedArtifactBindings: true,
+      currentPublicArtifactBindings:
+        boundActual.currentPublicArtifactBindings,
       currentInputFileHashesBound: true,
       goldContractV2: gold.schemaVersion === 2,
       noRawSecretFragments: true,
@@ -233,7 +221,7 @@ async function main(): Promise<void> {
   };
   if (!sameStringSet(Object.keys(qualityGates), expectedQualityGateNames)) {
     throw new Error(
-      "Evaluator quality gate inventory changed without a v2 contract update",
+      "Evaluator quality gate inventory changed without a v3 contract update",
     );
   }
   const report = {
@@ -244,8 +232,11 @@ async function main(): Promise<void> {
   const serialized = `${JSON.stringify(report, null, 2)}\n`;
 
   if (options.update) {
-    mkdirSync(dirname(options.outputPath), { recursive: true });
-    writeFileSync(options.outputPath, serialized);
+    writePrivateJsonAtomically({
+      path: options.outputPath,
+      value: report,
+      replace: true,
+    });
     console.log(`Updated ${options.outputPath}`);
   } else if (!existsSync(options.outputPath)) {
     throw new Error(
@@ -271,19 +262,36 @@ async function main(): Promise<void> {
   );
 }
 
-async function tryReadActualDays(
-  manifest: TargetManifestV2,
-): Promise<BoundActualDays | undefined> {
+async function readBoundActualDays(
+  manifest: TargetManifest,
+): Promise<BoundActualDays> {
+  const databaseUrl = yesterdaySocialQualityDatabaseUrl();
   const pool = new Pool({
-    connectionString: yesterdaySocialQualityDatabaseUrl(),
+    connectionString: databaseUrl,
     min: 0,
-    max: 2,
+    max: 1,
     connectionTimeoutMillis: 2_000,
   });
 
   try {
+    if (manifest.schemaVersion === 3) {
+      const snapshot = await readCurrentPublicArtifactSnapshot({
+        pool,
+        databaseUrl,
+        scope: manifest.scope,
+        collectionDates: manifest.targets.map((target) => target.collectionDate),
+        expectedManifest: manifest,
+      });
+      return {
+        days: snapshot.actualDays,
+        artifactBindings: snapshot.targets,
+        databaseFingerprint: snapshot.databaseFingerprint,
+        currentPublicArtifactBindings: true,
+      };
+    }
+
     const days: ReaderSummaryMultiDayActualDay[] = [];
-    const artifactBindings: ArtifactBinding[] = [];
+    const artifactBindings: Record<string, unknown>[] = [];
     for (const target of manifest.targets) {
       const bound = await readExactReaderSummaryArtifact(pool, {
         ...target,
@@ -305,7 +313,7 @@ async function tryReadActualDays(
         expected: target.artifactPayloadSha256,
         actual: bound.artifactPayloadSha256,
       });
-      const actualDay = actualDayFromRecord(
+      const actualDay = readerSummaryMultiDayActualDayFromRecord(
         target.collectionDate,
         bound.record,
       );
@@ -323,13 +331,12 @@ async function tryReadActualDays(
       days.push(actualDay);
     }
 
-    return { days, artifactBindings };
-  } catch (error) {
-    if (!isLocalDataSourceUnavailable(error)) {
-      throw error;
-    }
-    console.warn(`Multi-day quality source unavailable: ${message(error)}`);
-    return undefined;
+    return {
+      days,
+      artifactBindings,
+      databaseFingerprint: databaseFingerprintLabel(databaseUrl),
+      currentPublicArtifactBindings: false,
+    };
   } finally {
     await pool.end().catch(() => undefined);
   }
@@ -359,102 +366,34 @@ export function assertActualDayProjectionSha256(params: {
   }
 }
 
-function actualDayFromRecord(
-  collectionDate: string,
-  record: Parameters<typeof readerSummaryArtifactFromPrisma>[0],
-): ReaderSummaryMultiDayActualDay {
-  const snapshot = readerSummaryArtifactFromPrisma(record).toSnapshot();
-  const citationById = new Map(
-    snapshot.citationMap.map((citation) => [citation.citationId, citation]),
-  );
-  const topReads = snapshot.content?.topReads ?? [];
-  const topReadEntries = projectReaderSummaryMultiDayTopReadEntries({
-    collectionDate,
-    topReads: topReads.map((topRead) => ({
-      citationIds: topRead.citationIds,
-      qualityEligible: isReaderFacingQualityTopRead(topRead),
-    })),
-    citationFeedItemIdByCitationId: new Map(
-      [...citationById].map(([citationId, citation]) => [
-        citationId,
-        citation.feedItemId,
-      ]),
-    ),
-  });
-
-  return {
-    collectionDate,
-    modelVersion: record.modelVersion,
-    promptVersion: record.promptVersion,
-    rankingPolicyVersion: snapshot.lineage.rankingPolicyVersion ?? "unknown",
-    storyClusters: snapshot.storyClusters.map((cluster) => ({
-      id: cluster.id,
-      representativeFeedItemId: cluster.representativeFeedItemId,
-      duplicateFeedItemIds: cluster.duplicateFeedItemIds,
-      providerKeys: cluster.providerKeys,
-    })),
-    topReadEntries,
-    narrativeSections: (snapshot.content?.narrativeSections ?? []).map(
-      (section) => ({
-        kind: section.kind,
-        ...(section.storyClusterId === undefined
-          ? {}
-          : { storyClusterId: section.storyClusterId }),
-        citationFeedItemIds: section.citationIds
-          .map((citationId) => citationById.get(citationId)?.feedItemId)
-          .filter(
-            (feedItemId): feedItemId is string => feedItemId !== undefined,
-          ),
-      }),
-    ),
-  };
-}
-
-export function projectReaderSummaryMultiDayTopReadEntries(params: {
-  readonly collectionDate: string;
-  readonly topReads: readonly {
-    readonly citationIds: readonly string[];
-    readonly qualityEligible: boolean;
-  }[];
-  readonly citationFeedItemIdByCitationId: ReadonlyMap<string, string>;
-}): readonly ReaderSummaryMultiDayTopReadEntry[] {
-  return params.topReads.map((topRead, index) => {
-    const rank = index + 1;
-    if (topRead.citationIds.length === 0) {
-      throw new Error(
-        `Reviewed top-read card ${rank} for ${params.collectionDate} has no citations`,
-      );
-    }
-    const citationFeedItemIds = topRead.citationIds.map((citationId) => {
-      const feedItemId = params.citationFeedItemIdByCitationId.get(citationId);
-      if (feedItemId === undefined) {
-        throw new Error(
-          `Reviewed top-read card ${rank} for ${params.collectionDate} references unresolved citation ${citationId}`,
-        );
-      }
-      return feedItemId;
-    });
-    return {
-      citationFeedItemIds,
-      qualityEligible: topRead.qualityEligible,
-    };
-  });
-}
-
 export function readTargetManifestV2(
   path: string,
   gold: GoldFile,
 ): TargetManifestV2 {
-  return readTargetManifestV2Binding(path, gold).value;
-}
-
-function readTargetManifestV2Binding(
-  path: string,
-  gold: GoldFile,
-): JsonArtifactBinding<TargetManifestV2> {
   return readJsonArtifactBinding({
     path,
     validate: (value, label) => validateTargetManifestV2(value, gold, label),
+  }).value;
+}
+
+function readTargetManifestBinding(
+  path: string,
+  gold: GoldFile,
+  mode: "blocking" | "migration_diagnostic" | "artifact_only",
+): JsonArtifactBinding<TargetManifest> {
+  return readJsonArtifactBinding({
+    path,
+    validate: (value, label) => {
+      if (isRecord(value) && value.schemaVersion === 3) {
+        return validateTargetManifestV3(value, gold, label);
+      }
+      if (mode === "blocking") {
+        throw new Error(
+          `${label} v2 is nonblocking; blocking evaluation requires target manifest v3`,
+        );
+      }
+      return validateTargetManifestV2(value, gold, label);
+    },
   });
 }
 
@@ -463,54 +402,23 @@ export function validateTargetManifestV2(
   gold: GoldFile,
   label = "target manifest",
 ): TargetManifestV2 {
-  if (
-    !isRecord(value) ||
-    value.schemaVersion !== 2 ||
-    value.artifactFormat !==
-      "reader-summary-multi-day-quality-target-manifest-v2" ||
-    !isGenerationProfile(value.generationProfile) ||
-    !isRecord(value.scope) ||
-    value.scope.scopeType !== "workspace" ||
-    !isUuid(value.scope.tenantId) ||
-    !isUuid(value.scope.workspaceId) ||
-    value.scope.scopeKey !== `workspace:${String(value.scope.workspaceId)}` ||
-    !Array.isArray(value.targets)
-  ) {
-    throw new Error(`${label} has an unsupported v2 contract`);
-  }
-  const dates = new Set<string>();
-  const artifactIds = new Set<string>();
-  for (const rawTarget of value.targets) {
-    if (
-      !isRecord(rawTarget) ||
-      !isDate(rawTarget.collectionDate) ||
-      !isUuid(rawTarget.artifactId) ||
-      !isSha256(rawTarget.artifactPayloadSha256) ||
-      !isSha256(rawTarget.actualDayProjectionSha256) ||
-      rawTarget.periodKey !== dailyPeriodKey(rawTarget.collectionDate)
-    ) {
-      throw new Error(`${label} contains an invalid target binding`);
-    }
-    if (dates.has(rawTarget.collectionDate)) {
-      throw new Error(`${label} contains duplicate collection dates`);
-    }
-    if (artifactIds.has(rawTarget.artifactId)) {
-      throw new Error(`${label} contains duplicate artifact ids`);
-    }
-    dates.add(rawTarget.collectionDate);
-    artifactIds.add(rawTarget.artifactId);
-  }
-  const goldDates = gold.days.map((day) => day.collectionDate);
-  if (
-    value.targets.length !== goldDates.length ||
-    goldDates.some((date) => !dates.has(date))
-  ) {
-    throw new Error(
-      `${label} must bind exactly one artifact for every gold day`,
-    );
-  }
+  return validateTargetManifestV2Contract(
+    value,
+    gold.days.map((day) => day.collectionDate),
+    label,
+  );
+}
 
-  return value as unknown as TargetManifestV2;
+export function validateTargetManifestV3(
+  value: unknown,
+  gold: GoldFile,
+  label = "target manifest",
+): TargetManifestV3 {
+  return validateTargetManifestV3Contract(
+    value,
+    gold.days.map((day) => day.collectionDate),
+    label,
+  );
 }
 
 export function readGold(path: string): GoldFile {
@@ -833,29 +741,43 @@ export function validateExistingV2Report(params: {
   if (gold.schemaVersion !== 2) {
     throw new Error(`${params.outputPath} requires a v2 gold contract`);
   }
-  const manifestBinding = readTargetManifestV2Binding(
+  const manifestBinding = readTargetManifestBinding(
     params.targetManifestPath,
     gold,
+    "artifact_only",
   );
   const manifest = manifestBinding.value;
-  const expectedBindings = manifest.targets.map((target) => ({
-    collectionDate: target.collectionDate,
-    artifactId: target.artifactId,
-    artifactPayloadSha256: target.artifactPayloadSha256,
-    actualDayProjectionSha256: target.actualDayProjectionSha256,
-  }));
+  const expectedBindings = manifest.schemaVersion === 3
+    ? manifest.targets
+    : manifest.targets.map((target) => ({
+        collectionDate: target.collectionDate,
+        artifactId: target.artifactId,
+        artifactPayloadSha256: target.artifactPayloadSha256,
+        actualDayProjectionSha256: target.actualDayProjectionSha256,
+      }));
   const expectedDates = manifest.targets.map((target) => target.collectionDate);
+  if (
+    (manifest.schemaVersion === 3 && !isSafeDatabaseFingerprint(inputs.database)) ||
+    (manifest.schemaVersion === 2 &&
+      inputs.database !== "local-postgres" &&
+      !isSafeDatabaseFingerprint(inputs.database))
+  ) {
+    throw new Error(`${params.outputPath} has an unsafe database identity`);
+  }
   validateReaderSummaryMultiDayQualityReportV2({
     value: parsed,
     expectedInputsWithoutActualDays: {
-      database: "local-postgres",
+      database: inputs.database,
       goldPath: expectedGoldPath,
       goldSha256: goldBinding.sha256,
       goldContractVersion: 2,
       goldProvenance: gold.provenance,
       targetManifestPath: params.targetManifestPath,
       targetManifestSha256: manifestBinding.sha256,
-      evaluatorContractVersion,
+      evaluatorContractVersion:
+        manifest.schemaVersion === 3
+          ? evaluatorContractVersion
+          : "reader-summary-multi-day-quality-evaluator-v2",
       generationProfile: manifest.generationProfile,
       collectionDates: expectedDates,
       artifactBindings: expectedBindings,
@@ -864,10 +786,17 @@ export function validateExistingV2Report(params: {
     thresholds: gold.thresholds,
     generationProfile: manifest.generationProfile,
     targets: manifest.targets,
-    expectedQualityGateNames,
+    expectedQualityGateNames:
+      manifest.schemaVersion === 3
+        ? expectedQualityGateNames
+        : legacyV2QualityGateNames,
     label: params.outputPath,
   });
   console.log("Reader summary multi-day quality v2 artifact OK");
+}
+
+function isSafeDatabaseFingerprint(value: unknown): value is string {
+  return typeof value === "string" && /^postgres-sha256:[0-9a-f]{64}$/u.test(value);
 }
 
 function validateLegacyObservationalReport(): void {
@@ -903,15 +832,6 @@ function isDate(value: unknown): value is string {
     return false;
   }
   return new Date(`${value}T00:00:00.000Z`).toISOString().startsWith(value);
-}
-
-function isUuid(value: unknown): value is string {
-  return (
-    typeof value === "string" &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
-      value,
-    )
-  );
 }
 
 function isSha256(value: unknown): value is string {
