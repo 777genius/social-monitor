@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import type { Pool } from "pg";
 
 import type { PrismaReaderSummaryArtifactRecord } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-records";
@@ -17,6 +19,30 @@ import {
 export type ReaderSummaryQualityScope = {
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
+};
+
+export type ReaderSummaryExactArtifactTarget = {
+  readonly artifactId: string;
+  readonly collectionDate: string;
+  readonly tenantId: TenantId;
+  readonly workspaceId: WorkspaceId;
+  readonly scopeType: "workspace";
+  readonly scopeKey: string;
+  readonly periodKey: string;
+  readonly modelVersion: string;
+  readonly promptVersion: string;
+  readonly rankingPolicyVersion: string;
+};
+
+export type ReaderSummaryExactArtifact = {
+  readonly record: PrismaReaderSummaryArtifactRecord;
+  /**
+   * SHA-256 of UTF-8 canonical JSON. Object keys are sorted recursively by
+   * UTF-16 code unit, array order is preserved, and JSON primitives use
+   * JSON.stringify encoding. This avoids depending on PostgreSQL jsonb text
+   * formatting or JavaScript object insertion order.
+   */
+  readonly artifactPayloadSha256: string;
 };
 
 export type ProviderCount = {
@@ -104,6 +130,128 @@ export async function readLatestReaderSummaryArtifact(
   );
 
   return result.rows[0] ?? null;
+}
+
+export async function readExactReaderSummaryArtifact(
+  pool: Pool,
+  target: ReaderSummaryExactArtifactTarget,
+): Promise<ReaderSummaryExactArtifact | null> {
+  const result = await pool.query<PrismaReaderSummaryArtifactRecord>(
+    `
+      select
+        id::text as "id",
+        tenant_id::text as "tenantId",
+        workspace_id::text as "workspaceId",
+        scope_type as "scopeType",
+        scope_key as "scopeKey",
+        interest_id::text as "interestId",
+        cadence as "cadence",
+        period_started_at as "periodStartedAt",
+        period_ended_at as "periodEndedAt",
+        period_timezone as "periodTimezone",
+        period_key as "periodKey",
+        user_id::text as "userId",
+        subscription_id::text as "subscriptionId",
+        status::text as "status",
+        schema_version as "schemaVersion",
+        model_version as "modelVersion",
+        prompt_version as "promptVersion",
+        headline as "headline",
+        summary_text as "summaryText",
+        artifact_payload as "artifactPayload",
+        citations as "citations",
+        quality_signals as "qualitySignals",
+        created_at as "createdAt",
+        updated_at as "updatedAt"
+      from reader_summary_artifacts
+      where id = $1::uuid
+        and tenant_id = $2::uuid
+        and workspace_id = $3::uuid
+        and scope_type = $4
+        and scope_key = $5
+        and cadence = 'daily'
+        and period_key = $6
+        and period_started_at = $7::timestamptz
+        and period_ended_at = $8::timestamptz
+        and period_timezone = 'UTC'
+        and status = 'COMPLETED'
+        and model_version = $9
+        and prompt_version = $10
+        and artifact_payload #>> '{lineage,rankingPolicyVersion}' = $11
+      limit 1
+    `,
+    [
+      target.artifactId,
+      target.tenantId,
+      target.workspaceId,
+      target.scopeType,
+      target.scopeKey,
+      target.periodKey,
+      dayStart(target.collectionDate),
+      dayEnd(target.collectionDate),
+      target.modelVersion,
+      target.promptVersion,
+      target.rankingPolicyVersion,
+    ],
+  );
+  const record = result.rows[0];
+  if (record === undefined) {
+    return null;
+  }
+
+  return {
+    record,
+    artifactPayloadSha256: canonicalJsonSha256(record.artifactPayload),
+  };
+}
+
+export function canonicalJsonSha256(value: unknown): string {
+  return createHash("sha256")
+    .update(canonicalJson(value), "utf8")
+    .digest("hex");
+}
+
+export function canonicalJson(value: unknown): string {
+  const serialized = JSON.stringify(canonicalJsonValue(value));
+  if (serialized === undefined) {
+    throw new Error("Canonical JSON root must be a JSON value");
+  }
+  return serialized;
+}
+
+function canonicalJsonValue(value: unknown): unknown {
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "boolean"
+  ) {
+    return value;
+  }
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) {
+      throw new Error("Canonical JSON numbers must be finite");
+    }
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map(canonicalJsonValue);
+  }
+  if (isPlainRecord(value)) {
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .map((key) => [key, canonicalJsonValue(value[key])]),
+    );
+  }
+  throw new Error("Canonical JSON contains a non-JSON value");
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== "object") {
+    return false;
+  }
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
 }
 
 export function countBy<TValue>(

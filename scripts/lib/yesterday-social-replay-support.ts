@@ -9,6 +9,8 @@ import {
   type WorkspaceId,
 } from "@social-monitor/shared-kernel";
 
+import { findSerializedHighConfidenceSecret } from "./reader-summary-multi-day-corpus-security";
+
 type ScopeRow = {
   readonly tenantId: string;
   readonly workspaceId: string;
@@ -225,8 +227,11 @@ export function fingerprint(value: string): string {
 export function noRawSecretFragments(value: unknown): boolean {
   const serialized = JSON.stringify(value).toLowerCase();
 
-  return forbiddenSerializedFragments.every(
-    (fragment) => !serialized.includes(fragment),
+  return (
+    findSerializedHighConfidenceSecret(value) === undefined &&
+    forbiddenSerializedFragments.every(
+      (fragment) => !serialized.includes(fragment),
+    )
   );
 }
 
