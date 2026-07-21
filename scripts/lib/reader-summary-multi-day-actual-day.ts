@@ -1,8 +1,12 @@
 import { readerSummaryArtifactFromPrisma } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-records";
 import {
+  githubTrendingNarrativeSectionId,
+  isSupplementalTrendEvidence,
   isReaderFacingQualityTopRead,
+  type ReaderSummaryCitation,
   type ReaderSummaryMultiDayActualDay,
   type ReaderSummaryMultiDayTopReadEntry,
+  type ReaderSummaryNarrativeSection,
 } from "@social-monitor/summary/domain";
 
 import { actualDayProjectionSha256 } from "./reader-summary-multi-day-quality-report";
@@ -41,8 +45,15 @@ export function readerSummaryMultiDayActualDayFromRecord(
       providerKeys: cluster.providerKeys,
     })),
     topReadEntries,
-    narrativeSections: (snapshot.content?.narrativeSections ?? []).map(
-      (section) => ({
+    narrativeSections: (snapshot.content?.narrativeSections ?? [])
+      .filter(
+        (section) =>
+          !isCanonicalSupplementalTrendNarrativeSection({
+            section,
+            citationById,
+          }),
+      )
+      .map((section) => ({
         kind: section.kind,
         ...(section.storyClusterId === undefined
           ? {}
@@ -52,9 +63,36 @@ export function readerSummaryMultiDayActualDayFromRecord(
           .filter(
             (feedItemId): feedItemId is string => feedItemId !== undefined,
           ),
-      }),
-    ),
+      })),
   };
+}
+
+export function isCanonicalSupplementalTrendNarrativeSection(params: {
+  readonly section: ReaderSummaryNarrativeSection;
+  readonly citationById: ReadonlyMap<string, ReaderSummaryCitation>;
+}): boolean {
+  if (
+    params.section.id !== githubTrendingNarrativeSectionId ||
+    params.section.kind !== "watch" ||
+    params.section.storyClusterId !== undefined ||
+    params.section.citationIds.length === 0 ||
+    new Set(params.section.citationIds).size !== params.section.citationIds.length
+  ) {
+    return false;
+  }
+  const feedItemIds = new Set<string>();
+  for (const citationId of params.section.citationIds) {
+    const citation = params.citationById.get(citationId);
+    if (
+      citation === undefined ||
+      !isSupplementalTrendEvidence(citation) ||
+      feedItemIds.has(citation.feedItemId)
+    ) {
+      return false;
+    }
+    feedItemIds.add(citation.feedItemId);
+  }
+  return true;
 }
 
 export function actualDayAndProjectionFromRecord(
