@@ -335,6 +335,80 @@ describe("reader summary GitHub projection policy", () => {
     expect(evaluation.audit.status).toBe("verified");
   });
 
+  it("validates the coherent latest snapshot without rejecting stale invalid history", () => {
+    const dayStartedAt = new Date("2026-07-21T00:00:00.000Z");
+    const dayEndedAt = new Date("2026-07-22T00:00:00.000Z");
+    const staleCheckedAt = new Date("2026-07-21T11:20:21.000Z");
+    const latestCheckedAt = new Date("2026-07-22T00:00:35.000Z");
+    const latestObservedAt = new Date("2026-07-22T00:00:35.250Z");
+    const staleInvalidHistory = Array.from({ length: 21 }, (_, index) =>
+      projectionItem(index + 1, {
+        identityPrefix: "stale-owner/stale-repo",
+        idPrefix: "stale-github",
+        publishedAt: staleCheckedAt,
+        checkedAt: staleCheckedAt,
+        observedAt: new Date("2026-07-21T00:00:34.000Z"),
+      }),
+    );
+    const coherentLatest = Array.from({ length: 21 }, (_, index) =>
+      projectionItem(index + 1, {
+        publishedAt: new Date("2026-07-21T23:59:59.999Z"),
+        checkedAt: latestCheckedAt,
+        observedAt: latestObservedAt,
+      }),
+    );
+
+    const evaluation = evaluate(
+      boardArtifact({ dayStartedAt, dayEndedAt }),
+      [...staleInvalidHistory, ...coherentLatest],
+      ["github-binding-a"],
+      latestObservedAt,
+    );
+
+    expect(evaluation.findings).toEqual([]);
+    expect(evaluation.audit).toMatchObject({
+      status: "verified",
+      scannedItemCount: 42,
+      projectionCheckedAt: latestCheckedAt.toISOString(),
+    });
+    expect(evaluation.audit.bindings.map((binding) => binding.rank)).toEqual([
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+    ]);
+    expect(
+      evaluation.audit.bindings.map((binding) => binding.feedItemId),
+    ).toEqual(
+      Array.from({ length: 10 }, (_, index) => `github-feed-${index + 1}`),
+    );
+  });
+
+  it("rejects an incoherent latest snapshot instead of falling back to coherent history", () => {
+    const coherentHistory = Array.from({ length: 21 }, (_, index) =>
+      projectionItem(index + 1),
+    );
+    const incoherentLatest = Array.from({ length: 21 }, (_, index) =>
+      projectionItem(index + 1, {
+        identityPrefix: "latest-owner/latest-repo",
+        idPrefix: "latest-github",
+        checkedAt: new Date("2026-07-10T13:00:00.000Z"),
+        publishedAt: new Date("2026-07-10T13:00:00.000Z"),
+        observedAt: new Date("2026-07-10T12:59:59.999Z"),
+      }),
+    );
+
+    const evaluation = evaluate(boardArtifact(), [
+      ...coherentHistory,
+      ...incoherentLatest,
+    ]);
+
+    expect(evaluation.audit.status).toBe("rejected");
+    expect(evaluation.audit.violationCodes).toEqual(
+      expect.arrayContaining([
+        "github_projection_identity_invalid",
+        "github_projection_stale",
+      ]),
+    );
+  });
+
   it("accepts the real post-midnight batch by its requested publishedAt day", () => {
     const dayStartedAt = new Date("2026-07-16T00:00:00.000Z");
     const dayEndedAt = new Date("2026-07-17T00:00:00.000Z");

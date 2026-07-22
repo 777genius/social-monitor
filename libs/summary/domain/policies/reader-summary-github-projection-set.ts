@@ -229,19 +229,38 @@ export const projectionBinding = (
 });
 
 export const latestProjectionGroupKey = (
-  candidates: readonly ProjectionCandidate[],
+  items: readonly ReaderSummaryGitHubProjectionItem[],
   sourceBindingId: string,
-): string | undefined =>
-  candidates
-    .filter((candidate) => candidate.item.sourceBindingId === sourceBindingId)
-    .sort(
-      (left, right) =>
-        right.item.checkedAt!.getTime() - left.item.checkedAt!.getTime() ||
-        right.item.observedAt.getTime() - left.item.observedAt.getTime() ||
-        right.groupKey.localeCompare(left.groupKey),
-    )[0]?.groupKey;
+): string | undefined => {
+  let latestItem: ReaderSummaryGitHubProjectionItem | undefined;
+  let latestCheckedAt = Number.NEGATIVE_INFINITY;
+  for (const item of items) {
+    const checkedAt = item.checkedAt?.getTime();
+    if (
+      item.sourceBindingId !== sourceBindingId ||
+      checkedAt === undefined ||
+      !Number.isFinite(checkedAt)
+    ) {
+      continue;
+    }
+    if (checkedAt > latestCheckedAt) {
+      latestItem = item;
+      latestCheckedAt = checkedAt;
+    }
+  }
+  return latestItem === undefined ? undefined : projectionGroupKey(latestItem);
+};
 
 export const projectionGroupKey = (
   item: ReaderSummaryGitHubProjectionItem,
 ): string =>
   `${item.sourceBindingId}\u0000${item.checkedAt?.toISOString() ?? "invalid"}`;
+
+export const projectionGroupKeyIfSelectable = (
+  item: ReaderSummaryGitHubProjectionItem,
+): string | undefined => {
+  const checkedAt = item.checkedAt?.getTime();
+  return checkedAt !== undefined && Number.isFinite(checkedAt)
+    ? projectionGroupKey(item)
+    : undefined;
+};

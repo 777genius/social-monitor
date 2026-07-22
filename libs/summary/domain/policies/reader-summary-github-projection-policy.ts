@@ -8,7 +8,6 @@ import {
   nonEmpty,
   normalizeRepositoryFullName,
   readerSummaryHasNoPrimaryGitHubEvidence,
-  readerSummaryHasNoGitHubEvidence,
   readerSummaryRequiresGitHubProjection,
   validEligibleBindingIds,
   type ReaderSummaryGitHubProjectionAudit,
@@ -21,7 +20,7 @@ import {
 import {
   latestProjectionGroupKey,
   projectionBinding,
-  projectionGroupKey,
+  projectionGroupKeyIfSelectable,
   projectionSetFindings,
   resolveSelectedCandidate,
   selectedPostsFollowProjection,
@@ -198,7 +197,20 @@ export const evaluateReaderSummaryGitHubProjection = (params: {
     });
   }
   const eligibleBindingIdSet = new Set(eligibleBindingIds);
+  const canonicalGroupKeyByBindingId = new Map<string, string>();
+  for (const bindingId of eligibleBindingIds) {
+    const canonicalGroupKey = latestProjectionGroupKey(params.items, bindingId);
+    if (canonicalGroupKey === undefined) {
+      findings.push({
+        code: "github_projection_missing",
+        reason: `Eligible GitHub Trending binding "${bindingId}" has no durable projection for the requested UTC day.`,
+      });
+      continue;
+    }
+    canonicalGroupKeyByBindingId.set(bindingId, canonicalGroupKey);
+  }
   const candidates = params.items.flatMap((item) => {
+    const groupKey = projectionGroupKeyIfSelectable(item);
     const repositoryIdentity = canonicalGitHubRepositoryIdentity(
       item.canonicalUrl,
     );
@@ -230,12 +242,21 @@ export const evaluateReaderSummaryGitHubProjection = (params: {
         checkedAt: item.checkedAt!,
         observedAt: item.observedAt,
       });
-    if (!valid) {
-      findings.push({
-        code: "github_projection_identity_invalid",
-        reason:
-          "Durable GitHub projection contains an invalid identity, daily metric, fingerprint, or timestamp.",
-      });
+    if (!valid || groupKey === undefined) {
+      const latestGroupKey = canonicalGroupKeyByBindingId.get(
+        item.sourceBindingId,
+      );
+      if (
+        !eligibleBindingIdSet.has(item.sourceBindingId) ||
+        groupKey === undefined ||
+        groupKey === latestGroupKey
+      ) {
+        findings.push({
+          code: "github_projection_identity_invalid",
+          reason:
+            "Durable GitHub projection contains an invalid identity, daily metric, fingerprint, or timestamp.",
+        });
+      }
       return [];
     }
 
@@ -243,21 +264,15 @@ export const evaluateReaderSummaryGitHubProjection = (params: {
       {
         item,
         repositoryIdentity,
-        groupKey: projectionGroupKey(item),
+        groupKey,
       } satisfies ProjectionCandidate,
     ];
   });
-  const canonicalGroupKeyByBindingId = new Map<string, string>();
   for (const bindingId of eligibleBindingIds) {
-    const canonicalGroupKey = latestProjectionGroupKey(candidates, bindingId);
+    const canonicalGroupKey = canonicalGroupKeyByBindingId.get(bindingId);
     if (canonicalGroupKey === undefined) {
-      findings.push({
-        code: "github_projection_missing",
-        reason: `Eligible GitHub Trending binding "${bindingId}" has no durable projection for the requested UTC day.`,
-      });
       continue;
     }
-    canonicalGroupKeyByBindingId.set(bindingId, canonicalGroupKey);
     findings.push(
       ...projectionSetFindings(
         candidates.filter(
