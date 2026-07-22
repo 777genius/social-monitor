@@ -263,6 +263,7 @@ if git -C "$TRANSITION_REPO" cat-file -e \
 fi
 
 install -d "$TRANSITION_REPO/ops/deploy/production-runtime"
+# shellcheck disable=SC2016 # Dockerfile label must retain literal expansion.
 printf '%s\n' \
   'FROM python:3.13-slim' \
   '' \
