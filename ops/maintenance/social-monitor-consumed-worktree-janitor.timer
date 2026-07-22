@@ -1,0 +1,11 @@
+[Unit]
+Description=Schedule the Social Monitor consumed worker worktree janitor dry-run
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+RandomizedDelaySec=30m
+Unit=social-monitor-consumed-worktree-janitor.service
+
+[Install]
+WantedBy=timers.target
