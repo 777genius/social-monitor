@@ -4,8 +4,9 @@ set -euo pipefail
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 LIBRARY=$SCRIPT_DIR/x-collector-image-deploy-lib.sh
 ENTRYPOINT=$SCRIPT_DIR/social-monitor-production-deploy.sh
-PRODUCTION_DOCKERFILE=$SCRIPT_DIR/production-runtime/x-collector.Dockerfile
 SOURCE_REPOSITORY=$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)
+DOCKERFILE_PATH=ops/deploy/production-runtime/x-collector.Dockerfile
+RELEASE_A_SOURCE_SHA=73b9ce4327bd8db060d7d1905fdc771796d5911c
 FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/x-image-provenance-test.XXXXXX")
 trap 'rm -rf "$FIXTURE"' EXIT
 
@@ -17,10 +18,16 @@ OTHER_IMAGE_ID=sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 FAKE_RUNNING_IMAGE_ID=$CANDIDATE_IMAGE_ID
 BUILT_RELEASE_SHA=
 
-[[ ! -e $PRODUCTION_DOCKERFILE && ! -L $PRODUCTION_DOCKERFILE ]] || {
-  echo 'Release A must not contain the X collector production Dockerfile' >&2
+git -C "$SOURCE_REPOSITORY" cat-file -e \
+  "$RELEASE_A_SOURCE_SHA^{commit}" 2>/dev/null || {
+  echo 'Release A source revision is unavailable' >&2
   exit 1
 }
+if git -C "$SOURCE_REPOSITORY" cat-file -e \
+  "$RELEASE_A_SOURCE_SHA:$DOCKERFILE_PATH" 2>/dev/null; then
+  echo 'Release A contains the X collector production Dockerfile' >&2
+  exit 1
+fi
 
 install -d "$REPO/ops/deploy/production-runtime" "$CONTROL"
 git init -q -b main "$REPO"
@@ -207,7 +214,6 @@ TRANSITION_STATE=$TRANSITION_CONTROL/deploy-state
 TRANSITION_STAGING=$TRANSITION_ROOT/runtime/deploy-staging
 TRANSITION_LOG=$TRANSITION/transactions.log
 OLD_CONTROLLER=$TRANSITION/old-controller.sh
-DOCKERFILE_PATH=ops/deploy/production-runtime/x-collector.Dockerfile
 OLD_SOURCE_SHA=
 
 while IFS= read -r candidate; do
