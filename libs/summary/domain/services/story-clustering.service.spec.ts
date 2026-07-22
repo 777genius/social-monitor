@@ -739,7 +739,7 @@ describe("StoryClusteringService", () => {
           providerKey: "reddit",
           canonicalUrl:
             "https://m.reddit.com/r/programming/comments/abc/openai_codex?utm_source=share",
-          title: "Why openai/codex matters for agents",
+          title: "Why GitHub repository openai/codex matters for agents",
           bodyPreview:
             "Reddit comments compare openai/codex with other repositories.",
           score: 1.6,
