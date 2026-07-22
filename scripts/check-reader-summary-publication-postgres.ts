@@ -1,17 +1,18 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import {
-  cpSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  rmSync,
-} from "node:fs";
-import { spawnSync } from "node:child_process";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
 
 import { Pool, type PoolClient } from "pg";
 
+import {
+  applyOrderedReaderSummaryMigrations,
+  assertReaderSummaryMigrationDatabaseMatchesSchema,
+  createReaderSummaryPublicationMigrationWorkspace,
+  installPublicationAndFollowingMigrations,
+  preparePrePublicationMigrations,
+  readerSummaryMigrationNames,
+  readerSummaryPublicationMigration,
+  removeReaderSummaryPublicationMigrationWorkspace,
+} from "./lib/reader-summary-publication-postgres-migrations";
+import { assertReaderSummaryRecoveryPostgresContract } from "./lib/reader-summary-recovery-postgres-contract";
 import {
   assertLegacyPublicationUpgrade,
   assertLegacyRepositoryVisibility,
@@ -62,11 +63,7 @@ const serverAdmin = new Pool({
   connectionString: serverAdminDatabaseUrl,
   max: 1,
 });
-const migrationWorkspace = mkdtempSync(
-  join(tmpdir(), "reader-summary-publication-migrations-"),
-);
-const publicationMigration =
-  "20260716170000_reader_summary_fail_closed_publication";
+const migrationWorkspace = createReaderSummaryPublicationMigrationWorkspace();
 let ownerRolePreexisting = false;
 let capabilityRolePreexisting = false;
 let schemaOwnerRolePreexisting = false;
@@ -109,12 +106,9 @@ async function main(): Promise<void> {
       targetDatabaseUrl,
     });
 
-    preparePrePublicationMigrations();
+    preparePrePublicationMigrations(migrationWorkspace);
     await grantLegacyMigrationOwnership(adminDatabaseUrl, runtimeRole);
-    applyOrderedMigrations(
-      runtimeDatabaseUrl,
-      join(migrationWorkspace, "schema.prisma"),
-    );
+    applyOrderedReaderSummaryMigrations(runtimeDatabaseUrl, migrationWorkspace);
     await seedLegacyPublicationUpgradeFixtures(runtimeDatabaseUrl);
     await assertLegacyTablesOwnedByRuntime(adminDatabaseUrl, runtimeRole);
     await runReaderSummaryPublicationBootstrapSql(
@@ -139,21 +133,15 @@ async function main(): Promise<void> {
       migrationAdminRole,
       runtimeRole,
     );
-    installPublicationMigration();
-    applyOrderedMigrations(
-      adminDatabaseUrl,
-      join(migrationWorkspace, "schema.prisma"),
-    );
+    installPublicationAndFollowingMigrations(migrationWorkspace);
+    applyOrderedReaderSummaryMigrations(adminDatabaseUrl, migrationWorkspace);
     // Recovery after Prisma committed but before the post hardening phase.
     await runReaderSummaryPublicationBootstrapSql(
       "pre",
       adminDatabaseUrl,
       runtimeRole,
     );
-    applyOrderedMigrations(
-      adminDatabaseUrl,
-      join(migrationWorkspace, "schema.prisma"),
-    );
+    applyOrderedReaderSummaryMigrations(adminDatabaseUrl, migrationWorkspace);
     await runReaderSummaryPublicationBootstrapSql(
       "post",
       adminDatabaseUrl,
@@ -174,7 +162,7 @@ async function main(): Promise<void> {
       adminDatabaseUrl,
       runtimeRole,
     );
-    assertMigrationDatabaseMatchesPrismaSchema(targetDatabaseUrl);
+    assertReaderSummaryMigrationDatabaseMatchesSchema(targetDatabaseUrl);
     const auditorPool = new Pool({ connectionString: targetDatabaseUrl, max: 1 });
     const admin = new Pool({ connectionString: adminDatabaseUrl, max: 2 });
     const runtime = new Pool({ connectionString: runtimeDatabaseUrl, max: 4 });
@@ -193,7 +181,10 @@ async function main(): Promise<void> {
           "race must use two independent PostgreSQL connections",
         );
         await assertOrderedUpgrade(auditor);
-        await assertLegacyPublicationUpgrade(auditor, publicationMigration);
+        await assertLegacyPublicationUpgrade(
+          auditor,
+          readerSummaryPublicationMigration,
+        );
         await assertLegacyRepositoryVisibility(runtimeDatabaseUrl);
         const privilegeFixture = await createRunningFixture(
           first,
@@ -236,6 +227,12 @@ async function main(): Promise<void> {
         await assertOlderStrongModelFailsClosed(first, 4);
         await assertConcurrentSemanticReplay(first, second, 5);
         await assertExactlyOneRaceWinner(first, second, 6);
+        await assertReaderSummaryRecoveryPostgresContract({
+          client: first,
+          createFixture: (status, day, overrides) =>
+            createRunningFixture(first, status, day, overrides),
+          publish: (payload) => publish(first, payload),
+        });
       } finally {
         auditor.release();
         first.release();
@@ -247,7 +244,7 @@ async function main(): Promise<void> {
       await auditorPool.end();
     }
   } finally {
-    rmSync(migrationWorkspace, { recursive: true, force: true });
+    removeReaderSummaryPublicationMigrationWorkspace(migrationWorkspace);
     await dropPublicationFixtureDatabaseAndRoles({
       serverAdmin,
       databaseName,
@@ -268,10 +265,7 @@ async function main(): Promise<void> {
 }
 
 const assertOrderedUpgrade = async (client: PoolClient): Promise<void> => {
-  const expected = readdirSync("prisma/migrations", { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => entry.name)
-    .sort();
+  const expected = readerSummaryMigrationNames();
   const applied = await client.query<{ readonly migration_name: string }>(
     `SELECT migration_name
        FROM "_prisma_migrations"
@@ -285,20 +279,29 @@ const assertOrderedUpgrade = async (client: PoolClient): Promise<void> => {
   );
 
   const objects = await client.query<{
+    readonly finalizer: string | null;
     readonly publications: string | null;
+    readonly recovery_receipts: string | null;
     readonly slots: string | null;
     readonly publisher: string | null;
   }>(
     `SELECT
        to_regclass('reader_summary_publications')::text AS publications,
        to_regclass('reader_summary_publication_slots')::text AS slots,
-       to_regprocedure('publish_reader_summary(jsonb)')::text AS publisher`,
+       to_regclass('reader_summary_recovery_receipts')::text AS recovery_receipts,
+       to_regprocedure('publish_reader_summary(jsonb)')::text AS publisher,
+       to_regprocedure('finalize_reader_summary_recovery(jsonb,jsonb)')::text
+         AS finalizer`,
   );
   assert(
     objects.rows[0]?.publications === "reader_summary_publications" &&
       objects.rows[0]?.slots === "reader_summary_publication_slots" &&
-      objects.rows[0]?.publisher === "publish_reader_summary(jsonb)",
-    "ordered upgrade must install publication ledger, slot, and function",
+      objects.rows[0]?.recovery_receipts ===
+        "reader_summary_recovery_receipts" &&
+      objects.rows[0]?.publisher === "publish_reader_summary(jsonb)" &&
+      objects.rows[0]?.finalizer ===
+        "finalize_reader_summary_recovery(jsonb,jsonb)",
+    "ordered upgrade must install publication and recovery contracts",
   );
 };
 
@@ -794,92 +797,6 @@ const publish = async (
   const outcome = result.rows[0]?.outcome;
   assert(outcome !== undefined, "publication function returned no outcome");
   return outcome;
-};
-
-const preparePrePublicationMigrations = (): void => {
-  cpSync("prisma/schema.prisma", join(migrationWorkspace, "schema.prisma"));
-  const targetMigrations = join(migrationWorkspace, "migrations");
-  mkdirSync(targetMigrations);
-  for (const migration of migrationNames()) {
-    if (migration === publicationMigration) {
-      continue;
-    }
-    cpSync(
-      join("prisma/migrations", migration),
-      join(targetMigrations, migration),
-      { recursive: true },
-    );
-  }
-};
-
-const installPublicationMigration = (): void => {
-  cpSync(
-    join("prisma/migrations", publicationMigration),
-    join(migrationWorkspace, "migrations", publicationMigration),
-    { recursive: true },
-  );
-};
-
-const migrationNames = (): readonly string[] =>
-  readdirSync("prisma/migrations", { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => entry.name)
-    .sort();
-
-const applyOrderedMigrations = (url: string, schemaPath: string): void => {
-  const result = spawnSync(
-    process.platform === "win32" ? "npx.cmd" : "npx",
-    [
-      "prisma",
-      "migrate",
-      "deploy",
-      "--config",
-      "scripts/reader-summary-publication-prisma.config.ts",
-    ],
-    {
-      encoding: "utf8",
-      env: {
-        ...process.env,
-        DATABASE_URL: url,
-        READER_SUMMARY_PUBLICATION_TEST_SCHEMA_PATH: schemaPath,
-        READER_SUMMARY_PUBLICATION_TEST_MIGRATIONS_PATH: join(
-          dirname(schemaPath),
-          "migrations",
-        ),
-      },
-    },
-  );
-  if (result.status !== 0) {
-    process.stderr.write(result.stderr);
-    process.stdout.write(result.stdout);
-    throw new Error("ordered baseline migration upgrade failed");
-  }
-};
-
-const assertMigrationDatabaseMatchesPrismaSchema = (url: string): void => {
-  const result = spawnSync(
-    process.platform === "win32" ? "npx.cmd" : "npx",
-    [
-      "prisma",
-      "migrate",
-      "diff",
-      "--from-config-datasource",
-      "--to-schema",
-      "prisma/schema.prisma",
-      "--exit-code",
-    ],
-    {
-      encoding: "utf8",
-      env: { ...process.env, DATABASE_URL: url },
-    },
-  );
-  if (result.status !== 0) {
-    process.stderr.write(result.stderr);
-    process.stdout.write(result.stdout);
-    throw new Error(
-      "ordered baseline and forward migrations must exactly match the Prisma schema",
-    );
-  }
 };
 
 const postgresBackendPid = async (client: PoolClient): Promise<number> => {
