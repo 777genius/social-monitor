@@ -451,6 +451,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       'scripts/lib/reader-summary-quality-dashboard-published-window.ts',
       'scripts/lib/reader-summary-quality-eval-support.spec.ts',
       'scripts/lib/reader-summary-quality-eval-support.ts',
+      'scripts/lib/reader-summary-recovery-postgres-contract.ts',
       'scripts/lib/yesterday-reader-summary-artifact-quality-store.spec.ts',
       'scripts/lib/yesterday-reader-summary-artifact-quality-store.ts',
       'scripts/lib/yesterday-social-replay-support.ts',
