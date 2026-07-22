@@ -36,7 +36,8 @@ describe("story ranking golden eval", () => {
         sourceItemId: "hn-openai-codex",
         providerKey: "hacker-news",
         canonicalUrl: "https://news.ycombinator.com/item?id=4001",
-        title: "OpenAI codex launch discussion for openai/codex",
+        title:
+          "OpenAI codex launch discussion for GitHub repository openai/codex",
         score: 1.8,
         ...hnMetricFacts(420, 96),
       }),
@@ -55,7 +56,8 @@ describe("story ranking golden eval", () => {
         providerKey: "reddit",
         canonicalUrl:
           "https://www.reddit.com/r/LocalLLaMA/comments/openmontage",
-        title: "Weak Reddit discussion about calesthio/OpenMontage",
+        title:
+          "Weak Reddit discussion about GitHub repository calesthio/OpenMontage",
         score: 0.5,
         ...redditMetricFacts(22, 9),
       }),
@@ -210,7 +212,7 @@ describe("story ranking golden eval", () => {
         providerKey: "reddit",
         canonicalUrl:
           "https://www.reddit.com/r/programming/comments/openai_codex",
-        title: "Reddit debates openai/codex",
+        title: "Reddit debates GitHub repository openai/codex",
         score: 1.7,
         ...redditMetricFacts(510, 88),
       }),
@@ -300,8 +302,10 @@ describe("story ranking golden eval", () => {
         providerKey: "reddit",
         canonicalUrl:
           "https://www.reddit.com/r/LocalLLaMA/comments/small_codex",
-        title: "Small subreddit tests openai/codex on local workflows",
-        bodyPreview: "Low-score but detailed discussion of openai/codex.",
+        title:
+          "Small subreddit tests GitHub repository openai/codex on local workflows",
+        bodyPreview:
+          "Low-score but detailed discussion of the GitHub repository openai/codex.",
         score: 0.95,
         ...redditMetricFacts(38, 31),
       }),

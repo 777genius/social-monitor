@@ -1,5 +1,6 @@
 import type { StoryRankingPolicy } from "../policies/story-ranking-policy";
 import type { SummaryEvidenceItem } from "../value-objects/summary-evidence-item";
+import { isConcreteStoryIdentitySubjectToken } from "./story-identity-token-classification";
 
 export const storyTopicTokens = (
   item: SummaryEvidenceItem,
@@ -19,6 +20,27 @@ export const storyTopicTokens = (
   return uniqueStable([...aliases, ...tokens]).slice(
     0,
     policy.semanticTopicMaxTokens,
+  );
+};
+
+export const storyIdentityTokens = (
+  item: SummaryEvidenceItem,
+  policy: StoryRankingPolicy,
+): readonly string[] => {
+  const text = `${stripTopicSourceEnvelope(item.title)} ${
+    item.bodyPreview ?? ""
+  }`.normalize("NFKC");
+  const aliases = storyIdentityAliasTokens(text);
+  const tokens = text
+    .toLocaleLowerCase("en-US")
+    .replace(/[^\p{Letter}\p{Number}+#.\s-]+/gu, " ")
+    .split(/\s+/u)
+    .map(normalizeStoryIdentityToken)
+    .filter((token): token is string => isDistinctStoryIdentityToken(token));
+
+  return uniqueStable([...aliases, ...tokens]).slice(
+    0,
+    policy.storyIdentityMaxTokens,
   );
 };
 
@@ -73,6 +95,35 @@ export const storyTopicSpecificProductTokens = (
   tokens.filter(
     (token) =>
       specificProductAnchorTokens.has(token) || isModelVersionToken(token),
+  );
+
+export const storyIdentityAnchorTokens = (
+  tokens: readonly string[],
+): readonly string[] =>
+  tokens.filter(
+    (token) =>
+      topicAnchorTokens.has(token) ||
+      storyIdentityAnchorTokenSet.has(token) ||
+      isModelVersionToken(token),
+  );
+
+export const storyIdentitySpecificProductTokens = (
+  tokens: readonly string[],
+): readonly string[] =>
+  tokens.filter(
+    (token) =>
+      specificProductAnchorTokens.has(token) ||
+      storyIdentitySpecificProductTokenSet.has(token) ||
+      isModelVersionToken(token),
+  );
+
+export const storyIdentitySubjectTokens = (
+  tokens: readonly string[],
+): readonly string[] =>
+  tokens.filter(
+    (token) =>
+      storyIdentityAnchorTokens([token]).length === 0 &&
+      isConcreteStoryIdentitySubjectToken(token),
   );
 
 export const storyTopicModelVersionTokens = (
@@ -230,6 +281,18 @@ const topicAliasTokens = (value: string): readonly string[] =>
     ...modelVersionAliasTokens(value),
   ]);
 
+const storyIdentityAliasTokens = (value: string): readonly string[] =>
+  uniqueStable([
+    ...topicAliasTokens(value),
+    ...storyIdentityAliasDefinitions.flatMap(([pattern, token]) =>
+      pattern.test(value) ? [token] : [],
+    ),
+  ]);
+
+const storyIdentityAliasDefinitions = [
+  [/\bkimi(?:\s*[-\u2010-\u2015\u2212]\s*|\s+)k3\b/iu, "kimi-k3"],
+] as const;
+
 const modelVersionAliasTokens = (value: string): readonly string[] =>
   [...value.matchAll(modelVersionPattern)].flatMap((match) => {
     const family = match[1]?.toLocaleLowerCase("en-US");
@@ -248,6 +311,19 @@ const normalizeTopicToken = (value: string): string | undefined => {
     .replace(/^[^a-z0-9+#.]+|[^a-z0-9+#.]+$/giu, "")
     .toLocaleLowerCase("en-US");
 
+  return normalizedTopicToken(token);
+};
+
+const normalizeStoryIdentityToken = (value: string): string | undefined => {
+  const token = value
+    .replace(/^[^\p{Letter}\p{Number}]+/gu, "")
+    .replace(/[^\p{Letter}\p{Number}+#]+$/gu, "")
+    .toLocaleLowerCase("en-US");
+
+  return normalizedTopicToken(token);
+};
+
+const normalizedTopicToken = (token: string): string | undefined => {
   if (token === "twitter" || token === "x.com") {
     return "x-twitter";
   }
@@ -378,6 +454,10 @@ const specificProductAnchorTokens = new Set([
   "session-cache",
 ]);
 
+const storyIdentityAnchorTokenSet = new Set(["kimi-k3"]);
+const storyIdentitySpecificProductTokenSet = new Set(["kimi-k3"]);
+const storyIdentityGenericTopicTokens = new Set(["here", "kimi"]);
+
 const eventAnchorTokens = new Set(["release-event"]);
 
 const isModelVersionToken = (value: string): boolean =>
@@ -388,6 +468,11 @@ const isDistinctTopicToken = (value: string | undefined): value is string =>
   value.length >= 3 &&
   !genericTopicTokens.has(value) &&
   !/^\d+$/u.test(value);
+
+const isDistinctStoryIdentityToken = (
+  value: string | undefined,
+): value is string =>
+  isDistinctTopicToken(value) && !storyIdentityGenericTopicTokens.has(value);
 
 const uniqueStable = (values: readonly string[]): readonly string[] => {
   const seen = new Set<string>();

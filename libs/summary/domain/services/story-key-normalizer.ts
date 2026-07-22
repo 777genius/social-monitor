@@ -53,9 +53,24 @@ const trustedStoryKeyHint = (
 const githubRepositoryStoryKey = (
   item: SummaryEvidenceItem,
   canonicalUrls: readonly string[],
-): string | null =>
-  firstNonNull(canonicalUrls.map(githubRepositoryUrlKey)) ??
-  githubRepositoryTextKey(`${item.title} ${item.bodyPreview ?? ""}`);
+): string | null => {
+  const canonicalKey = singleUnambiguousKey(
+    canonicalUrls.map(githubRepositoryUrlKey),
+  );
+  if (canonicalKey !== null) {
+    return canonicalKey;
+  }
+
+  const fields = [item.title, item.bodyPreview ?? ""];
+  const explicitTextKeys = fields.flatMap(githubRepositoryExplicitTextKeys);
+  if (explicitTextKeys.length > 0) {
+    return singleUnambiguousKey(explicitTextKeys);
+  }
+
+  return singleUnambiguousKey(
+    fields.flatMap(githubRepositoryBareTextKeys),
+  );
+};
 
 const canonicalUrlCandidates = (value: string): readonly string[] =>
   uniqueStable([...safeRedirectDestinationUrls(value), value]);
@@ -137,28 +152,73 @@ const githubRepositoryUrlKey = (value: string): string | null => {
   }
 };
 
-const githubRepositoryTextKey = (value: string): string | null => {
-  const explicitUrlMatch =
-    /github\.com\/([a-z0-9_.-]+)\/([a-z0-9_.-]+?)(?:\.git)?(?=$|[/?#\s).,;:])/iu.exec(
-      value,
-    );
-  const looseSlugMatch =
-    /(?:^|[\s(["'`])([a-z0-9_.-]+)\/([a-z0-9_.-]+)(?=$|[\s).,;:'"`])/iu.exec(
-      value,
-    );
-  const match = explicitUrlMatch ?? looseSlugMatch;
+const githubRepositoryExplicitTextKeys = (value: string): readonly string[] =>
+  uniqueStable(
+    [...value.matchAll(explicitGithubRepositoryUrlPattern)].flatMap((match) => {
+      const key = githubRepositoryMatchKey(match);
+      return key === null ? [] : [key];
+    }),
+  );
 
+const explicitGithubRepositoryUrlPattern =
+  /github\.com\/([a-z0-9_.-]+)\/([a-z0-9_.-]+?)(?:\.git)?(?=$|[/?#\s).,;:])/giu;
+
+const githubRepositoryBareTextKeys = (value: string): readonly string[] =>
+  uniqueStable(
+    [...value.matchAll(bareRepositorySlugPattern)].flatMap((match) => {
+      if (
+        match[1] === undefined ||
+        match[2] === undefined ||
+        match.index === undefined ||
+        !hasExplicitRepositoryContext(value, match.index)
+      ) {
+        return [];
+      }
+      const key = githubRepositoryMatchKey(match);
+      return key === null ? [] : [key];
+    }),
+  );
+
+const bareRepositorySlugPattern =
+  /(?<![a-z0-9_./-])([a-z0-9_.-]+)\/([a-z0-9_.-]+)(?![a-z0-9_./-])/giu;
+
+const repositoryContextBeforePattern =
+  /(?:^|[\s([{"'`])(?:github(?:\s+(?:repos?|repositor(?:y|ies)|project))?|repos?|repositor(?:y|ies))\s*(?:(?:named|called)\s+|[:=-]\s*)?$/iu;
+
+const hasExplicitRepositoryContext = (
+  value: string,
+  matchIndex: number,
+): boolean => {
+  const contextStart = Math.max(0, matchIndex - repositoryContextRadius);
+  const before = value.slice(contextStart, matchIndex);
+
+  return repositoryContextBeforePattern.test(before);
+};
+
+const repositoryContextRadius = 64;
+
+const githubRepositoryMatchKey = (
+  match: RegExpExecArray | RegExpMatchArray | null,
+): string | null => {
+  const repository = normalizedRepositoryTextSlug(match?.[2]);
   if (
     match?.[1] === undefined ||
-    match[2] === undefined ||
-    !isLikelyRepositorySlug(match[1], match[2])
+    repository === undefined ||
+    !isLikelyRepositorySlug(match[1], repository)
   ) {
     return null;
   }
 
-  return `github-repo:${match[1].toLocaleLowerCase("en-US")}/${match[2]
-    .replace(/\.git$/iu, "")
-    .toLocaleLowerCase("en-US")}`;
+  return `github-repo:${match[1].toLocaleLowerCase("en-US")}/${repository.toLocaleLowerCase("en-US")}`;
+};
+
+const normalizedRepositoryTextSlug = (
+  value: string | undefined,
+): string | undefined => {
+  const normalized = value?.replace(/\.git$/iu, "").replace(/\.+$/u, "");
+  return normalized === undefined || normalized.length === 0
+    ? undefined
+    : normalized;
 };
 
 const canonicalUrlStoryKey = (value: string): string | null => {
@@ -259,6 +319,16 @@ const firstNonNull = <TValue>(
   }
 
   return null;
+};
+
+const singleUnambiguousKey = (
+  values: readonly (string | null)[],
+): string | null => {
+  const keys = uniqueStable(
+    values.filter((value): value is string => value !== null),
+  );
+
+  return keys.length === 1 ? keys[0]! : null;
 };
 
 const uniqueStable = (values: readonly string[]): readonly string[] => {

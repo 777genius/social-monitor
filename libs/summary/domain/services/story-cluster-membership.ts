@@ -4,6 +4,9 @@ import { storyKey } from "./story-key-normalizer";
 import {
   sharedStoryTopicTokenCount,
   storyClaimFacetTokens,
+  storyIdentityAnchorTokens,
+  storyIdentitySpecificProductTokens,
+  storyIdentityTokens,
   storyPrimaryClaimFacet,
   storyTopicAnchorTokens,
   storyTopicEventTokens,
@@ -210,15 +213,15 @@ export const isVerifiedStoryRelationGuardEligible = (
     return false;
   }
 
-  const itemTokens = storyTopicTokens(item, policy);
-  const candidateTokens = storyTopicTokens(candidate, policy);
+  const itemTokens = storyIdentityTokens(item, policy);
+  const candidateTokens = storyIdentityTokens(candidate, policy);
   const sharedTopicTokens = sharedStoryTopicTokenCount(
     itemTokens,
     candidateTokens,
   );
   const candidateTokenSet = new Set(candidateTokens);
   const sharedAnchorTokens = new Set(
-    storyTopicAnchorTokens(itemTokens).filter((token) =>
+    storyIdentityAnchorTokens(itemTokens).filter((token) =>
       candidateTokenSet.has(token),
     ),
   );
@@ -233,6 +236,7 @@ export const isVerifiedStoryRelationGuardEligible = (
   const sharedNonAnchorTokenCount = sharedNonAnchorStoryTopicTokenCount(
     itemTokens,
     candidateTokens,
+    storyIdentityAnchorTokens,
   );
   const sharedModelVersionTokenCount = sharedStoryTopicTokenCount(
     storyTopicModelVersionTokens(itemTokens),
@@ -241,8 +245,8 @@ export const isVerifiedStoryRelationGuardEligible = (
   const hasConcreteSubject =
     sharedEntityAnchorTokenCount > 0 ||
     sharedStoryTopicTokenCount(
-      storyTopicSpecificProductTokens(itemTokens),
-      storyTopicSpecificProductTokens(candidateTokens),
+      storyIdentitySpecificProductTokens(itemTokens),
+      storyIdentitySpecificProductTokens(candidateTokens),
     ) > 0 ||
     sharedNonAnchorTokenCount >= MIN_VERIFIED_SHARED_SUBJECT_TOKENS;
   const sharedStoryEventFacet = hasSharedStoryEventFacet(item, candidate);
@@ -273,6 +277,9 @@ const MIN_VERIFIED_SHARED_TOPIC_TOKENS = 3;
 const sharedNonAnchorStoryTopicTokenCount = (
   leftTokens: readonly string[],
   rightTokens: readonly string[],
+  anchorTokens: (
+    tokens: readonly string[],
+  ) => readonly string[] = storyTopicAnchorTokens,
 ): number => {
   const rightTokenSet = new Set(rightTokens);
 
@@ -280,7 +287,7 @@ const sharedNonAnchorStoryTopicTokenCount = (
     leftTokens.filter(
       (token) =>
         rightTokenSet.has(token) &&
-        storyTopicAnchorTokens([token]).length === 0,
+        anchorTokens([token]).length === 0,
     ),
   ).size;
 };

@@ -3,11 +3,12 @@ import type { TopRead, TopReadCandidate } from "../entities/top-read";
 import { STORY_RANKING_POLICY_V1 } from "./story-ranking-policy";
 import {
   sharedStoryTopicTokenCount,
+  storyIdentitySpecificProductTokens,
+  storyIdentitySubjectTokens,
+  storyIdentityTokens,
   storyPrimaryClaimFacet,
   storyTopicEventTokens,
   storyTopicSimilarity,
-  storyTopicSpecificProductTokens,
-  storyTopicTokens,
   type StoryPrimaryClaimFacet,
 } from "../services/story-topic-tokenizer";
 import type { SummaryEvidenceItem } from "../value-objects/summary-evidence-item";
@@ -155,29 +156,9 @@ const hasSelectedRenderedDuplicate = (
 ): boolean =>
   selected.some(
     (item) =>
-      hasDuplicateRenderedReason(item, candidate) ||
+      item.story.storyClusterId === candidate.story.storyClusterId ||
       areEditorialNearDuplicates(item, candidate),
   );
-
-const hasDuplicateRenderedReason = (
-  left: RenderedTopReadCandidate,
-  right: RenderedTopReadCandidate,
-): boolean => {
-  const leftReason = normalizedRenderedReason(left.topRead.reason);
-  const rightReason = normalizedRenderedReason(right.topRead.reason);
-
-  return (
-    leftReason.length >= minimumDuplicateReasonLength &&
-    leftReason === rightReason
-  );
-};
-
-const normalizedRenderedReason = (value: string): string =>
-  value
-    .replace(/https?:\/\/\S+/giu, " ")
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, " ")
-    .trim();
 
 const areEditorialNearDuplicates = (
   left: RenderedTopReadCandidate,
@@ -214,8 +195,20 @@ const areEditorialNearDuplicates = (
     leftProfile.topicTokens,
     rightProfile.topicTokens,
   );
+  const sharedSubjectTokens = sharedStoryTopicTokenCount(
+    leftProfile.subjectTokens,
+    rightProfile.subjectTokens,
+  );
+  const hasStrongSubjectEvidence =
+    sharedSubjectTokens >= minimumSharedEditorialSubjectTokens;
+  const hasStrongEventEvidence =
+    sharedStoryTopicTokenCount(
+      leftProfile.eventTokens,
+      rightProfile.eventTokens,
+    ) > 0 && sharedSubjectTokens >= minimumSharedEditorialEventContextTokens;
 
   return (
+    (hasStrongSubjectEvidence || hasStrongEventEvidence) &&
     sharedTopicTokens >= minimumSharedEditorialTokens &&
     storyTopicSimilarity(leftProfile.topicTokens, rightProfile.topicTokens) >=
       minimumEditorialTopicSimilarity
@@ -225,6 +218,7 @@ const areEditorialNearDuplicates = (
 type EditorialStoryProfile = {
   readonly topicTokens: readonly string[];
   readonly productTokens: readonly string[];
+  readonly subjectTokens: readonly string[];
   readonly eventTokens: readonly string[];
   readonly claimFacets: readonly StoryPrimaryClaimFacet[];
 };
@@ -237,13 +231,16 @@ const editorialStoryProfile = (
   }
   const topicTokens = compactUnique(
     candidate.evidence.flatMap((item) =>
-      storyTopicTokens(item, STORY_RANKING_POLICY_V1),
+      storyIdentityTokens(item, STORY_RANKING_POLICY_V1),
     ),
   );
 
   return {
     topicTokens,
-    productTokens: compactUnique(storyTopicSpecificProductTokens(topicTokens)),
+    productTokens: compactUnique(
+      storyIdentitySpecificProductTokens(topicTokens),
+    ),
+    subjectTokens: compactUnique(storyIdentitySubjectTokens(topicTokens)),
     eventTokens: compactUnique(storyTopicEventTokens(topicTokens)),
     claimFacets: uniqueClaimFacets(candidate.evidence),
   };
@@ -483,8 +480,9 @@ const minimumCuratedSingleSourceSignalScore = 1.65;
 const minimumCuratedReasonLength = 280;
 const maxRenderedSocialProviderCount = 4;
 const minimumSharedEditorialTokens = 3;
+const minimumSharedEditorialSubjectTokens = 3;
+const minimumSharedEditorialEventContextTokens = 2;
 const minimumEditorialTopicSimilarity = 0.25;
-const minimumDuplicateReasonLength = 80;
 const curatedDiscussionProviderKeys = new Set(["reddit", "hacker-news"]);
 
 const normalizeLimit = (value: number): number => {

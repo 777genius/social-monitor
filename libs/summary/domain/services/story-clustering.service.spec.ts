@@ -686,7 +686,8 @@ describe("StoryClusteringService", () => {
           providerKey: "reddit",
           canonicalUrl:
             "https://www.reddit.com/r/programming/comments/1/why_openai_codex_matters",
-          title: "Why openai/codex is suddenly everywhere",
+          title:
+            "Why the GitHub repository openai/codex is suddenly everywhere",
           score: 1.7,
           storyKeyHint: "reddit:discussion-1",
         }),
@@ -919,7 +920,8 @@ describe("StoryClusteringService", () => {
           canonicalUrl:
             "https://www.reddit.com/r/programming/comments/codex/openai_codex_discussion",
           title: "Reddit discusses openai/codex",
-          bodyPreview: "Developers compare openai/codex adoption velocity.",
+          bodyPreview:
+            "Developers compare GitHub repository openai/codex adoption velocity.",
           score: 1.1,
         }),
         evidenceItem({

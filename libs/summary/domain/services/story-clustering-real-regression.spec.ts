@@ -12,6 +12,7 @@ import {
   approvedStoryRelationPairs,
   buildStoryRelationCandidates,
 } from "./story-relation-candidates";
+import { storyKey } from "./story-key-normalizer";
 
 const clock = { now: () => new Date("2026-07-08T00:00:00.000Z") };
 const identity = {
@@ -21,6 +22,92 @@ const identity = {
 };
 
 describe("real reader-summary clustering regressions", () => {
+  it("keeps Android settings and MCP allowlist on/off stories separate", () => {
+    const android = evidence({
+      id: "hn-android-developer-settings",
+      providerKey: "hacker-news",
+      publishedAt: "2026-07-21T10:00:00.000Z",
+      title: "Android developer settings on/off behavior changed",
+      bodyPreview:
+        "Developers compare which device settings remain enabled after reboot.",
+    });
+    const mcp = evidence({
+      id: "reddit-mcp-allowlist",
+      providerKey: "reddit",
+      publishedAt: "2026-07-21T11:00:00.000Z",
+      title: "MCP allowlist on/off controls for local tools",
+      bodyPreview:
+        "Operators discuss explicit server access rules and tool permissions.",
+    });
+    const clusterer = new StoryClusteringService({
+      now: () => new Date("2026-07-22T00:00:00.000Z"),
+    });
+
+    expect(storyKey(android, STORY_RANKING_POLICY_V1)).not.toBe(
+      "github-repo:on/off",
+    );
+    expect(storyKey(mcp, STORY_RANKING_POLICY_V1)).not.toBe(
+      "github-repo:on/off",
+    );
+    expect(
+      clusterer.cluster({ identity, items: [android, mcp], limit: 10 }).clusters,
+    ).toHaveLength(2);
+  });
+
+  it("keeps explicit github.com repository identities unconditional", () => {
+    const explicit = evidence({
+      id: "reddit-explicit-github-url",
+      providerKey: "reddit",
+      publishedAt: "2026-07-21T11:00:00.000Z",
+      title: "A project link worth reviewing",
+      bodyPreview: "The source is https://github.com/on/off.",
+    });
+
+    expect(storyKey(explicit, STORY_RANKING_POLICY_V1)).toBe(
+      "github-repo:on/off",
+    );
+  });
+
+  it("keeps identity-only Kimi normalization out of deterministic auto-merge", () => {
+    const items = [
+      evidence({
+        id: "reddit-kimi-spaced",
+        providerKey: "reddit",
+        publishedAt: "2026-07-21T09:00:00.000Z",
+        title: "Researchers trace Kimi K3 prompt injection exposure",
+        bodyPreview: "The attack bypasses safeguards in one deployment.",
+      }),
+      evidence({
+        id: "hn-kimi-fullwidth",
+        providerKey: "hacker-news",
+        publishedAt: "2026-07-21T09:20:00.000Z",
+        title: "Technical report on Ｋｉｍｉ－Ｋ３ tool-data prompt injection",
+        bodyPreview: "Hosted inference systems expose crafted instructions.",
+      }),
+    ];
+    const clusterer = new StoryClusteringService(clock);
+    const deterministic = clusterer.cluster({ identity, items, limit: 10 });
+
+    expect(
+      isDeterministicCrossProviderStoryMatch(
+        items[0]!,
+        items[1]!,
+        STORY_RANKING_POLICY_V1,
+      ),
+    ).toBe(false);
+    expect(deterministic.clusters).toHaveLength(2);
+    expect(
+      buildStoryRelationCandidates({
+        selection: deterministic,
+        evidence: items,
+      }),
+    ).toEqual([
+      expect.objectContaining({
+        sharedSpecificProductTokens: ["kimi-k3"],
+      }),
+    ]);
+  });
+
   it.each([
     {
       headline:
@@ -99,6 +186,97 @@ describe("real reader-summary clustering regressions", () => {
 
     expect(verified.clusters).toHaveLength(1);
     expect(verified.clusters[0]?.duplicateFeedItemIds).toHaveLength(2);
+  });
+
+  it("shortlists Reddit, HN, and X coverage of one Kimi K3 security story", () => {
+    const items = kimiK3SecurityEvidence();
+    const clusterer = new StoryClusteringService({
+      now: () => new Date("2026-07-22T00:00:00.000Z"),
+    });
+    const deterministic = clusterer.cluster({ identity, items, limit: 10 });
+    const candidates = buildStoryRelationCandidates({
+      selection: deterministic,
+      evidence: items,
+    });
+
+    expect(deterministic.clusters).toHaveLength(3);
+    expect(candidates).toHaveLength(3);
+    expect(candidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sharedSpecificProductTokens: ["kimi-k3"],
+          sharedTopicTokens: expect.arrayContaining([
+            "injection",
+            "kimi-k3",
+            "security",
+          ]),
+        }),
+      ]),
+    );
+
+    const verified = clusterer.cluster({
+      identity,
+      items,
+      limit: 10,
+      verifiedStoryRelationPairs: approvedStoryRelationPairs({
+        candidates,
+        decisions: candidates.map((candidate) => ({
+          leftFeedItemId: candidate.leftFeedItemId,
+          rightFeedItemId: candidate.rightFeedItemId,
+          sameStory: true,
+          confidenceScore: 0.97,
+        })),
+      }),
+    });
+
+    expect(verified.clusters).toHaveLength(1);
+    expect(verified.clusters[0]?.providerKeys).toEqual([
+      "hacker-news",
+      "reddit",
+      "x-twitter",
+    ]);
+    expect(verified.clusters[0]?.duplicateFeedItemIds).toHaveLength(2);
+  });
+
+  it("keeps an unrelated Kimi K3 Android OAuth flaw outside the security story", () => {
+    const security = kimiK3SecurityEvidence()[0]!;
+    const oauth = evidence({
+      id: "hn-kimi-k3-android-oauth",
+      providerKey: "hacker-news",
+      publishedAt: "2026-07-21T12:00:00.000Z",
+      title:
+        "Kimi K3 Android OAuth package fixes callback validation vulnerability",
+      bodyPreview:
+        "A mobile patch rejects malformed redirect URIs during enterprise account sign-in.",
+    });
+    const clusterer = new StoryClusteringService({
+      now: () => new Date("2026-07-22T00:00:00.000Z"),
+    });
+    const deterministic = clusterer.cluster({
+      identity,
+      items: [security, oauth],
+      limit: 10,
+    });
+
+    expect(
+      buildStoryRelationCandidates({
+        selection: deterministic,
+        evidence: [security, oauth],
+      }),
+    ).toEqual([]);
+    expect(
+      clusterer.cluster({
+        identity,
+        items: [security, oauth],
+        limit: 10,
+        verifiedStoryRelationPairs: new Set([
+          verifiedStoryRelationPairKey(
+            security.feedItemId,
+            oauth.feedItemId,
+          ),
+        ]),
+      }).clusters,
+    ).toHaveLength(2);
   });
 
   it("keeps unrelated Jul 13 Claude Code releases in separate stories", () => {
@@ -219,6 +397,36 @@ const jul13ClaudeCodeReleaseEvidence = (): readonly SummaryEvidenceItem[] => [
     title:
       "A Study of Microsoft's Early 2026 Rollout of Claude Code and GitHub Copilot CLI",
     bodyPreview: "",
+  }),
+];
+
+const kimiK3SecurityEvidence = (): readonly SummaryEvidenceItem[] => [
+  evidence({
+    id: "reddit-kimi-k3-security",
+    providerKey: "reddit",
+    publishedAt: "2026-07-21T08:00:00.000Z",
+    title:
+      "Researchers detail unexpected production deployment exposure after independent testing finds Kimi K3 security prompt injection vulnerability",
+    bodyPreview:
+      "The disclosed attack bypasses safeguards and exposes tool data through crafted instructions.",
+  }),
+  evidence({
+    id: "hn-kimi-k3-security",
+    providerKey: "hacker-news",
+    publishedAt: "2026-07-21T08:20:00.000Z",
+    title:
+      "Technical analysis documents remote model behavior across hosted inference systems: Kimi K3 security prompt injection vulnerability",
+    bodyPreview:
+      "The disclosed attack bypasses safeguards and exposes tool data through crafted instructions.",
+  }),
+  evidence({
+    id: "x-kimi-k3-security",
+    providerKey: "x-twitter",
+    publishedAt: "2026-07-21T08:35:00.000Z",
+    title:
+      "X post by @researcher: New reproducible findings from production red-team investigation confirm Kimi K3 security prompt injection vulnerability",
+    bodyPreview:
+      "The disclosed attack bypasses safeguards and exposes tool data through crafted instructions.",
   }),
 ];
 

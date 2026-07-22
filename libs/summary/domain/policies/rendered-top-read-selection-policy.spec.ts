@@ -752,6 +752,85 @@ describe("selectRenderedTopReadCandidates", () => {
         .filter((title) => title.startsWith("Claude")),
     ).toEqual(["Claude limit promotion"]);
   });
+
+  it("renders a verified Kimi K3 relation as one card", () => {
+    const securityEvidence = [
+      evidenceItem(
+        "Researchers detail unexpected production deployment exposure after independent testing finds Kimi K3 security prompt injection vulnerability",
+        "reddit",
+        "The disclosed attack bypasses safeguards and exposes tool data through crafted instructions.",
+      ),
+      evidenceItem(
+        "Technical analysis documents remote behavior across hosted inference systems: Kimi K3 security prompt injection vulnerability",
+        "hacker-news",
+        "The disclosed attack bypasses safeguards and exposes tool data through crafted instructions.",
+      ),
+      evidenceItem(
+        "X post by @researcher: New reproducible findings from production red-team investigation confirm Kimi K3 security prompt injection vulnerability",
+        "x-twitter",
+        "The disclosed attack bypasses safeguards and exposes tool data through crafted instructions.",
+      ),
+    ];
+    const renderedTitles = [
+      "Kimi K3 prompt-injection flaw exposes tool data",
+      "Kimi K3 security analysis confirms prompt-injection flaw",
+      "Researchers reproduce the Kimi K3 prompt-injection flaw",
+    ];
+    const candidates = securityEvidence.map((evidence, index) =>
+      candidate(
+        renderedTitles[index]!,
+        evidence.providerKey,
+        2.7 - index * 0.1,
+        {
+          evidence: [evidence],
+          confidenceLevel: "medium",
+          storyClusterId: "story:verified-kimi-k3-security",
+          reason: `Independent source ${index + 1} explains the disclosed Kimi K3 security finding and its impact on tool-enabled deployments.`,
+        },
+      ),
+    );
+
+    const result = selectRenderedTopReadCandidates({
+      candidates,
+      sourceMix: sourceMix(["reddit", "hacker-news", "x-twitter"]),
+      limit: 8,
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0]?.topRead.title).toBe(renderedTitles[0]);
+  });
+
+  it("keeps unrelated same-product Kimi K3 security stories", () => {
+    const security = evidenceItem(
+      "Researchers confirm Kimi K3 security prompt injection vulnerability",
+      "reddit",
+      "The disclosed attack bypasses safeguards and exposes tool data through crafted instructions.",
+    );
+    const oauth = evidenceItem(
+      "Kimi K3 Android OAuth package fixes callback validation vulnerability",
+      "hacker-news",
+      "A mobile patch rejects malformed redirect URIs during enterprise account sign-in.",
+    );
+    const result = selectRenderedTopReadCandidates({
+      candidates: [
+        candidate(security.title, security.providerKey, 2.7, {
+          evidence: [security],
+          confidenceLevel: "medium",
+        }),
+        candidate(oauth.title, oauth.providerKey, 2.6, {
+          evidence: [oauth],
+          confidenceLevel: "medium",
+        }),
+      ],
+      sourceMix: sourceMix(["reddit", "hacker-news"]),
+      limit: 8,
+    });
+
+    expect(result.map((item) => item.topRead.title)).toEqual([
+      security.title,
+      oauth.title,
+    ]);
+  });
 });
 
 const candidate = (
@@ -765,13 +844,14 @@ const candidate = (
     readonly reason?: string;
     readonly evidence?: readonly SummaryEvidenceItem[];
     readonly editoriallyCurated?: boolean;
+    readonly storyClusterId?: string;
   } = {},
 ): RenderedTopReadCandidate => {
   const reason = overrides.reason ?? `${title} reason`;
 
   return {
     story: {
-      storyClusterId: `story:${title}`,
+      storyClusterId: overrides.storyClusterId ?? `story:${title}`,
       title,
       summary: `${title} summary`,
       interestIds: ["ai-agents"],

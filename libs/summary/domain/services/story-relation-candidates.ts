@@ -17,11 +17,11 @@ import {
 import {
   sharedStoryTopicTokenCount,
   storyClaimFacetTokens,
-  storyTopicAnchorTokens,
+  storyIdentityAnchorTokens,
+  storyIdentitySpecificProductTokens,
+  storyIdentityTokens,
   storyTopicEventTokens,
   storyTopicSimilarity,
-  storyTopicSpecificProductTokens,
-  storyTopicTokens,
 } from "./story-topic-tokenizer";
 
 export type StoryRelationCandidate = {
@@ -158,20 +158,20 @@ const relationCandidate = (params: {
   readonly rightClusterId: string;
   readonly policy: StoryRankingPolicy;
 }): StoryRelationCandidate | undefined => {
-  const leftTokens = storyTopicTokens(params.left, params.policy);
-  const rightTokens = storyTopicTokens(params.right, params.policy);
+  const leftTokens = storyIdentityTokens(params.left, params.policy);
+  const rightTokens = storyIdentityTokens(params.right, params.policy);
   const sharedTopicTokens = sharedTokens(leftTokens, rightTokens);
   const sharedAnchorTokens = sharedTokens(
-    storyTopicAnchorTokens(leftTokens),
-    storyTopicAnchorTokens(rightTokens),
+    storyIdentityAnchorTokens(leftTokens),
+    storyIdentityAnchorTokens(rightTokens),
   );
   const sharedEventTokens = sharedTokens(
     storyTopicEventTokens(leftTokens),
     storyTopicEventTokens(rightTokens),
   );
   const sharedSpecificProductTokens = sharedTokens(
-    storyTopicSpecificProductTokens(leftTokens),
-    storyTopicSpecificProductTokens(rightTokens),
+    storyIdentitySpecificProductTokens(leftTokens),
+    storyIdentitySpecificProductTokens(rightTokens),
   );
   const topicSimilarity = storyTopicSimilarity(leftTokens, rightTokens);
   const sameAuthorSeries = isVerifiedSameAuthorStorySeriesCandidate(

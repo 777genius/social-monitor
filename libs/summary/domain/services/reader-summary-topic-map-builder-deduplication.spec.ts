@@ -55,7 +55,7 @@ const cluster = (
 ): StoryCluster => ({
   id: `story:${id}`,
   storyKey: `story:${id}`,
-  rankingPolicyVersion: "story_ranking_v9",
+  rankingPolicyVersion: "story_ranking_v10",
   representativeFeedItemId: feedItemId,
   duplicateFeedItemIds: [],
   interestIds: ["ai-agents"],

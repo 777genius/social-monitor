@@ -7,11 +7,75 @@ import {
 import { selectReaderSummaryTopicLabel } from "./reader-summary-topic-label-selection";
 import {
   storyClaimFacetTokens,
+  storyIdentityAnchorTokens,
+  storyIdentityTokens,
   storyPrimaryClaimFacet,
+  storyTopicAnchorTokens,
   storyTopicTokens,
 } from "./story-topic-tokenizer";
 
 describe("story topic tokenizer", () => {
+  it("keeps a separate bounded identity window and normalizes edge punctuation", () => {
+    const evidence = evidenceItem(
+      "One two three four five six seven eight nine ten eleven twelve Kimi K3 security flaw.",
+      "Researchers confirm the prompt-injection flaw.",
+    );
+    const semanticTokens = storyTopicTokens(evidence, STORY_RANKING_POLICY_V1);
+    const identityTokens = storyIdentityTokens(
+      evidence,
+      STORY_RANKING_POLICY_V1,
+    );
+
+    expect(semanticTokens).toHaveLength(
+      STORY_RANKING_POLICY_V1.semanticTopicMaxTokens,
+    );
+    expect(identityTokens.length).toBeLessThanOrEqual(
+      STORY_RANKING_POLICY_V1.storyIdentityMaxTokens,
+    );
+    expect(identityTokens).toEqual(
+      expect.arrayContaining(["kimi-k3", "security", "flaw"]),
+    );
+    expect(identityTokens).not.toContain("flaw.");
+  });
+
+  it("keeps v9 semantic tokens unchanged while identity tokens normalize Kimi", () => {
+    const evidence = evidenceItem("Kimi K3 security flaw.", "");
+
+    expect(storyTopicTokens(evidence, STORY_RANKING_POLICY_V1)).toEqual([
+      "kimi",
+      "security",
+      "flaw.",
+    ]);
+    expect(storyIdentityTokens(evidence, STORY_RANKING_POLICY_V1)).toEqual([
+      "kimi-k3",
+      "security",
+      "flaw",
+    ]);
+  });
+
+  it("does not leak NFKC identity aliases into semantic topic tokens", () => {
+    const evidence = evidenceItem("Ｋｉｍｉ－Ｋ３ security flaw.", "");
+    const semanticTokens = storyTopicTokens(evidence, STORY_RANKING_POLICY_V1);
+
+    expect(semanticTokens).not.toContain("kimi-k3");
+    expect(storyIdentityTokens(evidence, STORY_RANKING_POLICY_V1)).toContain(
+      "kimi-k3",
+    );
+  });
+
+  it("keeps Kimi identity anchors out of v9 semantic classification", () => {
+    const evidence = evidenceItem("Kimi-K3 security prompt injection", "");
+    const semanticTokens = storyTopicTokens(evidence, STORY_RANKING_POLICY_V1);
+    const identityTokens = storyIdentityTokens(
+      evidence,
+      STORY_RANKING_POLICY_V1,
+    );
+
+    expect(semanticTokens).toContain("kimi-k3");
+    expect(storyTopicAnchorTokens(semanticTokens)).not.toContain("kimi-k3");
+    expect(storyIdentityAnchorTokens(identityTokens)).toContain("kimi-k3");
+  });
+
   it("extracts a concrete versioned model candidate from opinion headlines", () => {
     const evidence = evidenceItem(
       "X post: I didn't expect this, but Grok 4.5 deserves a serious run",
