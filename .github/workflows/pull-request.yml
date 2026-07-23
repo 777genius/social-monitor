@@ -1,0 +1,214 @@
+name: Pull request checks
+
+on:
+  pull_request:
+  merge_group:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  static_quality:
+    name: Static architecture and quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out the review commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install exact dependencies
+        run: npm ci
+
+      - name: Generate the pinned Prisma client
+        run: npm run prisma:generate
+
+      - name: Verify static quality
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+        run: |
+          set -euo pipefail
+          npx eslint .
+          npx tsc --noEmit
+          npm run check:architecture
+          npm run check:code-quality
+          npm run check:source-line-cap
+          npm run check:persistence-readiness
+          npm run check:observability
+          npm run check:review-ci
+
+  security_contracts:
+    name: Security and public contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out the review commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install exact dependencies
+        run: npm ci
+
+      - name: Generate the pinned Prisma client
+        run: npm run prisma:generate
+
+      - name: Verify security and API boundaries
+        run: |
+          set -euo pipefail
+          npm run check:secrets
+          npm run check:dependencies
+          npm run check:runtime-profile-guards
+          npm run check:auth-boundary
+          npm run check:user-auth-boundary
+          npm run check:read-api-key-scope
+          npm run check:write-api-key-scope
+          npm run check:security-final-sweep
+          npm run check:backend-ops-readiness
+          npm run check:api-health
+          npm run check:openapi
+          npm run check:mobile-client-contract
+          npm run check:flutter-client-contract
+          npm run check:events
+          npm run check:migrations
+          npm run check:tenant-db-guards
+
+  backend_unit:
+    name: Backend build and unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out the review commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install exact dependencies
+        run: npm ci
+
+      - name: Generate the pinned Prisma client
+        run: npm run prisma:generate
+
+      - name: Build backend packages
+        run: npm run build
+
+      - name: Run backend unit tests
+        run: npm test
+
+  backend_e2e:
+    name: Backend end-to-end tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out the review commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install exact dependencies
+        run: npm ci
+
+      - name: Generate the pinned Prisma client
+        run: npm run prisma:generate
+
+      - name: Run backend end-to-end tests
+        run: npm run test:e2e
+
+  postgres_rls:
+    name: PostgreSQL tenant isolation
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:18.4-alpine
+        env:
+          POSTGRES_USER: social_monitor_rls_ci
+          POSTGRES_PASSWORD: social_monitor_local_password
+          POSTGRES_DB: social_monitor_rls_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U social_monitor_rls_ci -d social_monitor_rls_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - name: Check out the review commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install exact dependencies
+        run: npm ci
+
+      - name: Generate the pinned Prisma client
+        run: npm run prisma:generate
+
+      - name: Prove PostgreSQL row-level tenant isolation
+        env:
+          TENANT_RLS_TEST_ADMIN_DATABASE_URL: postgresql://social_monitor_rls_ci:social_monitor_local_password@127.0.0.1:5432/social_monitor_rls_ci
+        run: npm run check:tenant-rls-postgres
+
+  frontend:
+    name: Flutter architecture and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out the review commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          channel: stable
+          flutter-version-file: apps/frontend/.fvmrc
+          cache: false
+          pub-cache: false
+
+      - name: Resolve exact Flutter dependencies
+        working-directory: apps/frontend
+        run: flutter pub get
+
+      - name: Verify frontend architecture and behavior
+        working-directory: apps/frontend
+        run: |
+          set -euo pipefail
+          flutter analyze
+          flutter test app
+          flutter test packages/design_system
+          flutter test features/auth features/feed features/interests \
+            features/settings features/sources features/summaries
+          dart test packages/shared_kernel
+          dart test packages/generated_api
