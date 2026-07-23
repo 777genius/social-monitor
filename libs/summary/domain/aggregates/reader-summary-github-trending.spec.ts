@@ -1,7 +1,7 @@
 import { buildReaderSummary } from "./reader-summary";
 
 describe("reader summary GitHub Trending projection", () => {
-  it("keeps the exact Top 10 in selectedPosts and only breakouts in Watch", () => {
+  it("keeps the exact Top 10 and builds Watch from that same board", () => {
     const ranks = [...Array.from({ length: 10 }, (_, index) => index + 1), 12];
     const readerSummary = buildReaderSummary({
       headline: "GitHub Trending today",
@@ -92,7 +92,12 @@ describe("reader summary GitHub Trending projection", () => {
       expect.objectContaining({
         id: "github-trending",
         kind: "watch",
-        citationIds: ["citation-12"],
+        text: [
+          "- **calesthio/openmontage** (#1): +3,703 stars today.",
+          "- **example/repository-2** (#2): +3,702 stars today.",
+          "- **example/repository-3** (#3): +3,701 stars today.",
+        ].join("\n"),
+        citationIds: ["citation-1", "citation-2", "citation-3"],
       }),
     ]);
     expect(readerSummary.selectedPosts).toHaveLength(10);
@@ -103,9 +108,28 @@ describe("reader summary GitHub Trending projection", () => {
         (_, index) => `example/repository-${index + 2}`,
       ),
     ]);
+    expect(
+      readerSummary.selectedPosts?.map((post) =>
+        Number(
+          post.providerMetrics
+            .find(({ label }) => label === "GitHub Trending today")
+            ?.value.match(/#(\d+)/u)?.[1],
+        ),
+      ),
+    ).toEqual(Array.from({ length: 10 }, (_, index) => index + 1));
+    expect(
+      new Set(
+        readerSummary.selectedPosts?.map((post) => post.canonicalUrl) ?? [],
+      ).size,
+    ).toBe(10);
+    expect(
+      readerSummary.narrativeSections?.flatMap(
+        (section) => section.citationIds,
+      ),
+    ).not.toContain("citation-12");
   });
 
-  it("keeps a removed supplemental Watch section out of the claim board", () => {
+  it("removes authored Watch evidence outside the canonical Top 10", () => {
     const readerSummary = buildReaderSummary({
       headline: "Developers discuss a safer agent runtime",
       executiveSummary:
@@ -218,11 +242,6 @@ describe("reader summary GitHub Trending projection", () => {
       expect.objectContaining({
         id: "lead",
         citationIds: ["citation-primary"],
-      }),
-      expect.objectContaining({
-        id: "github-trending",
-        kind: "watch",
-        citationIds: ["citation-github"],
       }),
     ]);
     expect(readerSummary.claimBoard).toEqual([
