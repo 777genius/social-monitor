@@ -421,6 +421,14 @@ async function main(): Promise<void> {
 }
 
 class FakePrismaMonitoringClient implements PrismaMonitoringClient {
+  $transaction<TValue>(
+    work: Parameters<PrismaMonitoringClient['$transaction']>[0],
+    options: Parameters<PrismaMonitoringClient['$transaction']>[1],
+  ): Promise<TValue> {
+    void options;
+    return work(this) as Promise<TValue>;
+  }
+
   readonly sourceCatalogEntries = new Map<string, PrismaSourceCatalogEntryRecord>();
   private readonly sourceCatalogEntriesById = new Map<string, PrismaSourceCatalogEntryRecord>();
   private readonly interests = new Map<string, PrismaInterestRecord>();

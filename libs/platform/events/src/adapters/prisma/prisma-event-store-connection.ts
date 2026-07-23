@@ -5,15 +5,20 @@ import {
   type PrismaPgRuntimeConnectionLease,
 } from '@social-monitor/platform-persistence';
 import { loadPrismaRuntimeClient } from '@social-monitor/platform-persistence/prisma-runtime-client';
+import type { PrismaCommandOutboxClient } from '@social-monitor/platform-queue/adapters/prisma';
 
 import type { PrismaEventStoreClient } from './prisma-event-store-client';
 
-type PrismaEventStoreRuntimeClient = PrismaEventStoreClient & {
+type PrismaEventStoreRuntimeClient = PrismaEventStoreClient &
+  PrismaCommandOutboxClient & {
   $disconnect(): Promise<void>;
 };
 
-export class PrismaEventStoreConnection implements PrismaEventStoreClient {
-  readonly outboxEvent: PrismaEventStoreClient['outboxEvent'];
+export class PrismaEventStoreConnection
+  implements PrismaEventStoreClient, PrismaCommandOutboxClient
+{
+  readonly outboxEvent: PrismaEventStoreClient['outboxEvent'] &
+    PrismaCommandOutboxClient['outboxEvent'];
   readonly inboxRecord: PrismaEventStoreClient['inboxRecord'];
 
   private readonly runtime: PrismaPgRuntimeConnectionLease<PrismaEventStoreRuntimeClient>;
@@ -40,6 +45,13 @@ export class PrismaEventStoreConnection implements PrismaEventStoreClient {
 
     this.outboxEvent = this.client.outboxEvent;
     this.inboxRecord = this.client.inboxRecord;
+  }
+
+  $transaction<TValue>(
+    work: Parameters<PrismaCommandOutboxClient['$transaction']>[0],
+    options: Parameters<PrismaCommandOutboxClient['$transaction']>[1],
+  ): Promise<TValue> {
+    return this.client.$transaction(work, options) as Promise<TValue>;
   }
 
   close(): Promise<void> {

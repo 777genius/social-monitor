@@ -32,7 +32,8 @@ async function main(): Promise<void> {
   prisma.seedOutbox({
     id: fixedEventId,
     tenantId: tenant,
-    workspaceId: workspace,
+      workspaceId: workspace,
+      messageKind: 'EVENT',
     eventType: 'monitoring.scan.requested',
     schemaVersion: 1,
     payload: { scanJobId: 'scan-job-1' },
@@ -59,7 +60,8 @@ async function main(): Promise<void> {
   prisma.seedOutbox({
     id: failedEventId,
     tenantId: null,
-    workspaceId: null,
+      workspaceId: null,
+      messageKind: 'EVENT',
     eventType: 'summary.ready',
     schemaVersion: 1,
     payload: { summaryId: 'summary-1' },

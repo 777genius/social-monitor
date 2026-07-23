@@ -116,6 +116,11 @@ enum OutboxStatus {
   FAILED
 }
 
+enum OutboxMessageKind {
+  EVENT
+  COMMAND
+}
+
 enum ScanFailureQueueStatus {
   RETRY_ENQUEUED
   DEAD_LETTERED
@@ -1432,17 +1437,24 @@ model OutboxEvent {
   id                       String                    @id @db.Uuid
   tenantId                 String?                   @map("tenant_id") @db.Uuid
   workspaceId              String?                   @map("workspace_id") @db.Uuid
+  messageKind              OutboxMessageKind         @default(EVENT) @map("message_kind")
   eventType                String                    @map("event_type")
   schemaVersion            Int                       @map("schema_version")
   payload                  Json
   status                   OutboxStatus              @default(PENDING)
   correlationId            String                    @map("correlation_id")
   causationId              String?                   @map("causation_id")
+  availableAt              DateTime                  @default(now()) @map("available_at") @db.Timestamptz(6)
+  publishAttempts          Int                       @default(0) @map("publish_attempts")
+  leaseOwner               String?                   @map("lease_owner")
+  leasedUntil              DateTime?                 @map("leased_until") @db.Timestamptz(6)
+  lastError                String?                   @map("last_error")
   createdAt                DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
   publishedAt              DateTime?                 @map("published_at") @db.Timestamptz(6)
   readerSummaryPublication ReaderSummaryPublication?
 
   @@index([tenantId, workspaceId, status, createdAt])
+  @@index([messageKind, status, availableAt, createdAt], map: "outbox_events_dispatch_idx")
   @@map("outbox_events")
 }
 

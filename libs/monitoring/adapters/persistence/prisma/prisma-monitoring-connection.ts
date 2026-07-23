@@ -60,6 +60,18 @@ export class PrismaMonitoringConnection implements PrismaMonitoringClient {
     this.idempotencyKey = this.client.idempotencyKey;
   }
 
+  $transaction<TValue>(
+    work: (
+      transaction: Pick<
+        PrismaMonitoringClient,
+        'scanJob' | 'outboxEvent'
+      >,
+    ) => Promise<TValue>,
+    options: { readonly isolationLevel: 'Serializable' },
+  ): Promise<TValue> {
+    return this.client.$transaction(work, options);
+  }
+
   close(): Promise<void> {
     return this.runtime.close();
   }

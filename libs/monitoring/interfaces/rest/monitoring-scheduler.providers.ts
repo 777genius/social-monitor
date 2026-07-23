@@ -8,6 +8,7 @@ import { ListInterestSourceDailyHistoryUseCase } from '../../features/list-inter
 import { ScheduleDueScansUseCase } from '../../features/schedule-due-scans/schedule-due-scans.use-case';
 import type {
   ScanExecutionAttemptReadPort,
+  ScanDispatchPort,
   ScanJobHistoryReadPort,
   ScanJobRepositoryPort,
   ScanPolicyRepositoryPort,
@@ -20,6 +21,7 @@ import {
   MONITORING_PERSISTENCE_MODE,
   MONITORING_PRISMA_CLIENT,
   MONITORING_SCAN_EXECUTION_ATTEMPT_READ_MODEL,
+  MONITORING_SCAN_DISPATCH,
   MONITORING_SCAN_JOB_REPOSITORY,
   MONITORING_SCAN_POLICY_REPOSITORY,
   MONITORING_SCAN_QUEUE,
@@ -81,6 +83,7 @@ export const monitoringSchedulerProviders: Provider[] = [
       scanJobs: MonitoringScanJobStorePort,
       scanQueue: ScanQueuePort,
       schedulerDecisions: ScanSchedulerDecisionHistoryPort,
+      scanDispatch: ScanDispatchPort,
     ) =>
       new ScheduleDueScansUseCase(
         bindings,
@@ -90,6 +93,7 @@ export const monitoringSchedulerProviders: Provider[] = [
         new CryptoIdGenerator(),
         new SystemClock(),
         schedulerDecisions,
+        scanDispatch,
       ),
     inject: [
       MONITORING_SOURCE_BINDING_REPOSITORY,
@@ -97,6 +101,7 @@ export const monitoringSchedulerProviders: Provider[] = [
       MONITORING_SCAN_JOB_REPOSITORY,
       MONITORING_SCAN_QUEUE,
       MONITORING_SCAN_SCHEDULER_DECISION_HISTORY,
+      MONITORING_SCAN_DISPATCH,
     ],
   },
 ];

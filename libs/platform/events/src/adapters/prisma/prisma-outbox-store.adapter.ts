@@ -20,7 +20,7 @@ export class PrismaOutboxStoreAdapter implements OutboxStorePort {
 
   async pending(limit: number): Promise<readonly OutboxRecord[]> {
     const records = await this.prisma.outboxEvent.findMany({
-      where: { status: 'PENDING' },
+      where: { messageKind: 'EVENT', status: 'PENDING' },
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       take: Math.max(0, limit),
     });

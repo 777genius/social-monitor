@@ -16,6 +16,7 @@ import type {
   OutboxPort,
   ScanJobHistoryReadPort,
   ScanJobRepositoryPort,
+  ScanDispatchPort,
   ScanPolicyRepositoryPort,
   ScanRequestQuotaPort,
   ScanQueuePort,
@@ -47,6 +48,7 @@ export class RequestScanUseCase {
     private readonly scanRequestQuota: ScanRequestQuotaPort,
     private readonly ids: IdGenerator,
     private readonly clock: Clock,
+    private readonly scanDispatch?: ScanDispatchPort,
   ) {}
 
   async execute(command: RequestScanCommand): Promise<Result<RequestScanResult, RequestScanFailure>> {
@@ -276,8 +278,6 @@ export class RequestScanUseCase {
     });
     const snapshot = job.toSnapshot();
 
-    await this.scanJobs.save(job);
-
     const event: ScanRequestedEvent = {
       eventId: eventId(this.ids.generate()),
       eventType: 'monitoring.scan.requested',
@@ -296,12 +296,19 @@ export class RequestScanUseCase {
         providerKey: bindingSnapshot.providerKey,
       },
     };
-    await this.outbox.append(event);
-    await this.scanQueue.enqueue({
-      ...queueCommand,
-    });
     const enqueuedJob = job.markEnqueued({ enqueuedAt: now });
-    await this.scanJobs.save(enqueuedJob);
+    if (this.scanDispatch === undefined) {
+      await this.scanJobs.save(job);
+      await this.outbox.append(event);
+      await this.scanQueue.enqueue(queueCommand);
+      await this.scanJobs.save(enqueuedJob);
+    } else {
+      await this.scanDispatch.storeEnqueuedScan({
+        job: enqueuedJob,
+        command: queueCommand,
+        event,
+      });
+    }
 
     const result = withRequestDecision({
       scanJobId: snapshot.id,

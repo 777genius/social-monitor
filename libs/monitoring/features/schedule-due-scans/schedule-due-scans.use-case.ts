@@ -10,6 +10,7 @@ import {
 import { ScanJob } from '../../domain';
 import type {
   ScanJobRepositoryPort,
+  ScanDispatchPort,
   ScanJobHistoryReadPort,
   ScanPolicyRepositoryPort,
   ScanSchedulerDecisionHistoryPort,
@@ -62,6 +63,7 @@ export class ScheduleDueScansUseCase {
     private readonly ids: IdGenerator,
     private readonly clock: Clock,
     private readonly schedulerDecisions?: ScanSchedulerDecisionHistoryPort,
+    private readonly scanDispatch?: ScanDispatchPort,
   ) {}
 
   async execute(
@@ -284,9 +286,17 @@ export class ScheduleDueScansUseCase {
           idempotencyKey,
           requestedAt: now,
         });
-        await this.scanJobs.save(job);
-        await this.scanQueue.enqueue(queueCommand);
-        await this.scanJobs.save(job.markEnqueued({ enqueuedAt: now }));
+        const enqueuedJob = job.markEnqueued({ enqueuedAt: now });
+        if (this.scanDispatch === undefined) {
+          await this.scanJobs.save(job);
+          await this.scanQueue.enqueue(queueCommand);
+          await this.scanJobs.save(enqueuedJob);
+        } else {
+          await this.scanDispatch.storeEnqueuedScan({
+            job: enqueuedJob,
+            command: queueCommand,
+          });
+        }
         enqueued += 1;
         recordDecision(decisions, recordedDecisions, {
           tenantId: policySnapshot.tenantId,

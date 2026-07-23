@@ -77,7 +77,7 @@ const requireRabbitMqChannel = (
   return channel;
 };
 
-const monitoringScanQueueRabbitMqOptions = (env: NodeJS.ProcessEnv) => ({
+export const monitoringScanQueueRabbitMqOptions = (env: NodeJS.ProcessEnv) => ({
   exchange: envValue(env.RABBITMQ_COMMAND_EXCHANGE, "social-monitor.jobs"),
   routes: {
     "ingestion.scan.execute": {
