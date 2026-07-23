@@ -380,7 +380,7 @@ for (const file of productionTsFiles("libs/**/adapters/**/prisma/**/*.ts")) {
 
   if (
     source.includes("$transaction(") &&
-    !source.includes("isolationLevel: 'Serializable'")
+    !/isolationLevel:\s*['"]Serializable['"]/.test(source)
   ) {
     addViolation(
       file,

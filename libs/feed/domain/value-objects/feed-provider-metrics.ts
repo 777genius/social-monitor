@@ -1,12 +1,13 @@
 import type { JsonObject, JsonValue } from '@social-monitor/shared-kernel';
 import {
-  githubRepositoryProviderSourceKey,
-  githubTrendingPageProviderSourceKey,
   hackerNewsProviderSourceKey,
   redditProviderSourceKey,
   xProviderSourceKey,
-  type GitHubTrendingPageWindow,
 } from './feed-provider-source-keys';
+import {
+  githubRepositoryMetrics,
+  githubTrendingRepositoryMetrics,
+} from "./feed-github-provider-metrics";
 
 export type FeedProviderMetrics =
   | RedditPostMetrics
@@ -270,101 +271,6 @@ const redditCommentMetrics = (
   };
 };
 
-const githubRepositoryMetrics = (
-  metadata: JsonObject | undefined,
-): GitHubRepositoryMetrics | undefined => {
-  if (metadata?.kind !== 'github_repository_trend') {
-    return undefined;
-  }
-
-  const repository = readObject(metadata.repository);
-  const trend = readObject(metadata.trend);
-  const sourceCohort = readObject(metadata.sourceCohort);
-
-  if (repository === undefined || trend === undefined) {
-    return undefined;
-  }
-
-  const primaryWindow = readString(trend.primaryWindow) ?? '48h';
-  const delta = githubTrendDelta(trend, primaryWindow);
-
-  return {
-    kind: 'github_repository',
-    providerKey: 'github-repo-radar',
-    sourceKey: githubRepositoryProviderSourceKey({
-      primaryWindow,
-      query: readString(sourceCohort?.query),
-      languages: readStringArray(sourceCohort?.languages),
-      fallbackLanguage: readString(repository.language),
-      topics: readStringArray(sourceCohort?.topics),
-      fallbackTopics: readStringArray(repository.topics),
-    }),
-    contentType: 'repository',
-    evidenceSource: 'gh_archive_watch_event',
-    evidenceLabel: 'GH Archive WatchEvent - hourly updated',
-    stars: readNonNegativeInteger(trend.totalStars) ?? 0,
-    forks: readNonNegativeInteger(repository.forksCount) ?? 0,
-    checkedAt: readString(trend.checkedAt),
-    source: readString(trend.source),
-    trendingDelta: {
-      window: primaryWindow,
-      value: delta,
-    },
-    trendDeltas: githubTrendDeltas(trend),
-  };
-};
-
-const githubTrendingRepositoryMetrics = (
-  metadata: JsonObject | undefined,
-): GitHubTrendingRepositoryMetrics | undefined => {
-  if (metadata?.kind !== 'github_trending_page_repository') {
-    return undefined;
-  }
-
-  const repository = readObject(metadata.repository);
-  const trending = readObject(metadata.trending);
-
-  if (repository === undefined || trending === undefined) {
-    return undefined;
-  }
-
-  const window = readTrendingPageWindow(trending.window);
-
-  return {
-    kind: 'github_trending_repository',
-    providerKey: 'github-trending-page',
-    sourceKey: githubTrendingPageProviderSourceKey({
-      window,
-      language: readString(repository.language),
-    }),
-    contentType: 'repository',
-    stars: readNonNegativeInteger(repository.totalStars) ?? 0,
-    forks: readNonNegativeInteger(repository.forksCount) ?? 0,
-    rank: readPositiveInteger(trending.rank) ?? 1,
-    starsGained: readNonNegativeInteger(trending.starsGained) ?? 0,
-    window,
-  };
-};
-
-const githubTrendDeltas = (trend: JsonObject): readonly FeedMetricDelta[] =>
-  (
-    [
-      ['24h', 'stars24h'],
-      ['48h', 'stars48h'],
-      ['7d', 'stars7d'],
-      ['30d', 'stars30d'],
-      ['90d', 'stars90d'],
-    ] as const
-  ).map(([window, field]) => ({
-    window,
-    value: readNonNegativeInteger(trend[field]) ?? 0,
-  }));
-
-const readTrendingPageWindow = (
-  value: JsonValue | undefined,
-): GitHubTrendingPageWindow =>
-  value === 'weekly' || value === 'monthly' ? value : 'daily';
-
 const hackerNewsMetrics = (
   metadata: JsonObject | undefined,
 ): HackerNewsStoryMetrics | HackerNewsCommentMetrics | undefined =>
@@ -491,26 +397,6 @@ const xPostMetrics = (
     impressions: impressions ?? 0,
   };
 };
-
-const githubTrendDelta = (trend: JsonObject, primaryWindow: string): number => {
-  const trendField =
-    {
-      '24h': 'stars24h',
-      '48h': 'stars48h',
-      '7d': 'stars7d',
-      '30d': 'stars30d',
-      '90d': 'stars90d',
-    }[primaryWindow] ?? 'stars48h';
-
-  return readNonNegativeInteger(trend[trendField]) ?? 0;
-};
-
-const readStringArray = (value: JsonValue | undefined): readonly string[] =>
-  Array.isArray(value)
-    ? value
-        .map((item) => readString(item))
-        .filter((item): item is string => item !== undefined)
-    : [];
 
 const readObject = (value: JsonValue | undefined): JsonObject | undefined =>
   value !== null && typeof value === 'object' && !Array.isArray(value)
