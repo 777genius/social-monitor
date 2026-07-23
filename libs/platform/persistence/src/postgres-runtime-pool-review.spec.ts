@@ -199,9 +199,27 @@ describe('hostile PostgreSQL pool budget review', () => {
     expect(transitionTest.indexOf('TEST_PHASE=legacy-repair')).toBeLessThan(
       transitionTest.indexOf('TEST_PHASE=bootstrap-commit'),
     );
-    expect(transitionTest.match(/assert_release_a_non_activation/g)).toHaveLength(
-      4,
-    );
+    for (const phase of [
+      'legacy-poison-window',
+      'legacy-repair',
+      'bootstrap-commit',
+    ]) {
+      const phaseMarker = `TEST_PHASE=${phase}`;
+      const phaseStart = transitionTest.indexOf(phaseMarker);
+      const nextPhaseStart = transitionTest.indexOf(
+        '\nTEST_PHASE=',
+        phaseStart + phaseMarker.length,
+      );
+
+      expect(phaseStart).toBeGreaterThanOrEqual(0);
+      expect(nextPhaseStart).toBeGreaterThan(phaseStart);
+      expect(
+        transitionTest.slice(
+          phaseStart + phaseMarker.length,
+          nextPhaseStart,
+        ),
+      ).toMatch(/^assert_release_a_non_activation[ \t]*$/m);
+    }
     expect(workflow).toContain(
       'verify-postgres-pool-release-contract.py ci',
     );
