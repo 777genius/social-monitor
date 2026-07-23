@@ -108,11 +108,35 @@ const expectCanonicalGitHubOnlyNoSignalArticle = async (
   expect(content?.sourceMix).toEqual([]);
   expect(content?.mainTopics).toEqual([]);
   expect(content?.claimBoard).toEqual([]);
-  expect(content?.narrativeSections).toEqual([]);
+  expect(content?.narrativeSections).toEqual([
+    {
+      id: "github-trending",
+      kind: "watch",
+      title: "GitHub Trending",
+      text: [
+        "- **example/repository-1** (#1): +2,001 stars today.",
+        "- **example/repository-2** (#2): +2,002 stars today.",
+        "- **example/repository-3** (#3): +2,003 stars today.",
+      ].join("\n"),
+      citationIds: ["c1", "c2", "c3"],
+    },
+  ]);
   expect(content?.selectedPosts).toHaveLength(10);
   expect(content?.selectedPosts?.map((post) => post.canonicalUrl)).toEqual(
     expectedUrls,
   );
+  expect(
+    content?.selectedPosts?.map((post) =>
+      Number(
+        post.providerMetrics
+          .find(({ label }) => label === "GitHub Trending today")
+          ?.value.match(/#(\d+)/u)?.[1],
+      ),
+    ),
+  ).toEqual(Array.from({ length: 10 }, (_, index) => index + 1));
+  expect(
+    new Set(content?.selectedPosts?.map((post) => post.canonicalUrl)).size,
+  ).toBe(10);
   expect(
     content?.selectedPosts?.every(
       (post) =>

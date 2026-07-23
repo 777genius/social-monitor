@@ -16,6 +16,22 @@ export const minimumGitHubTrendingStarsGained = 1_000;
 export const maxGitHubTrendingHighlights = 3;
 export const maxGitHubTrendingDisplayRepositories = 10;
 
+export type GitHubTrendingWatchEntry = {
+  readonly repositoryIdentity: string;
+  readonly rank: number;
+  readonly starsGained: number;
+};
+
+export const githubTrendingWatchText = (
+  entries: readonly GitHubTrendingWatchEntry[],
+): string =>
+  entries
+    .map(
+      (entry) =>
+        `- **${entry.repositoryIdentity}** (#${entry.rank}): +${entry.starsGained.toLocaleString("en-US")} stars today.`,
+    )
+    .join("\n");
+
 export const withGitHubTrendingNarrativeAppendix = (params: {
   readonly narrativeSections: readonly ReaderSummaryNarrativeSection[];
   readonly appendix: ReaderSummaryNarrativeSection | undefined;
@@ -89,57 +105,19 @@ export const primaryReaderSummaryEvidence = (
 
 export const selectGitHubTrendingHighlights = (
   items: readonly SummaryEvidenceItem[],
-): readonly SummaryEvidenceItem[] => {
-  const candidates = items
-    .map((item) => ({
-      item,
-      repositoryIdentity: normalizedGitHubRepositoryIdentity(
-        item.canonicalUrl,
-      ),
-      rank: githubTrendingRank(item),
-      starsGained: githubTrendingStarsGained(item),
-    }))
+): readonly SummaryEvidenceItem[] =>
+  selectGitHubTrendingDisplayRepositories(items)
     .filter(
-      (
-        candidate,
-      ): candidate is {
-        readonly item: SummaryEvidenceItem;
-        readonly repositoryIdentity: string;
-        readonly rank: number;
-        readonly starsGained: number;
-      } =>
-        isGitHubTrendingEvidence(candidate.item) &&
-        candidate.repositoryIdentity !== undefined &&
-        candidate.rank !== undefined &&
-        candidate.rank > maxGitHubTrendingDisplayRepositories &&
-        candidate.starsGained !== undefined &&
-        candidate.starsGained > minimumGitHubTrendingStarsGained &&
-        candidate.item.contentQuality?.eligibleForSummary !== false,
-    );
-  const strongestByRepository = new Map<
-    string,
-    (typeof candidates)[number]
-  >();
-  for (const candidate of candidates) {
-    const current = strongestByRepository.get(candidate.repositoryIdentity);
-    if (
-      current === undefined ||
-      compareGitHubTrendingHighlightCandidates(candidate, current) < 0
-    ) {
-      strongestByRepository.set(candidate.repositoryIdentity, candidate);
-    }
-  }
-
-  return [...strongestByRepository.values()]
-    .sort(compareGitHubTrendingHighlightCandidates)
-    .slice(0, maxGitHubTrendingHighlights)
-    .map((candidate) => candidate.item);
-};
+      (item) =>
+        (githubTrendingStarsGained(item) ?? 0) >
+        minimumGitHubTrendingStarsGained,
+    )
+    .slice(0, maxGitHubTrendingHighlights);
 
 export const selectGitHubTrendingDisplayRepositories = (
   items: readonly SummaryEvidenceItem[],
 ): readonly SummaryEvidenceItem[] => {
-  const candidates = items
+  const candidates = latestGitHubTrendingSnapshot(items)
     .map((item) => ({ item, rank: githubTrendingRank(item) }))
     .filter(
       (
@@ -195,39 +173,48 @@ export const selectGitHubTrendingDisplayRepositories = (
     .map((candidate) => candidate.item);
 };
 
-const compareGitHubTrendingHighlightCandidates = (
-  left: {
-    readonly item: SummaryEvidenceItem;
-    readonly repositoryIdentity: string;
-    readonly starsGained: number;
-  },
-  right: {
-    readonly item: SummaryEvidenceItem;
-    readonly repositoryIdentity: string;
-    readonly starsGained: number;
-  },
-): number =>
-  right.starsGained - left.starsGained ||
-  right.item.observedAt.getTime() - left.item.observedAt.getTime() ||
-  right.item.score - left.item.score ||
-  left.repositoryIdentity.localeCompare(right.repositoryIdentity) ||
-  left.item.feedItemId.localeCompare(right.item.feedItemId);
-
 export const selectGitHubTrendingSupplementalEvidence = (
   items: readonly SummaryEvidenceItem[],
-): readonly SummaryEvidenceItem[] => {
-  const displayRepositories = selectGitHubTrendingDisplayRepositories(items);
-  const displayIds = new Set(
-    displayRepositories.map((item) => item.feedItemId),
-  );
+): readonly SummaryEvidenceItem[] =>
+  selectGitHubTrendingDisplayRepositories(items);
 
-  return [
-    ...displayRepositories,
-    ...selectGitHubTrendingHighlights(items).filter(
-      (item) => !displayIds.has(item.feedItemId),
-    ),
-  ];
+const latestGitHubTrendingSnapshot = (
+  items: readonly SummaryEvidenceItem[],
+): readonly SummaryEvidenceItem[] => {
+  const snapshotItems = items.filter(isGitHubTrendingEvidence);
+  if (snapshotItems.length === 0) {
+    return items;
+  }
+  const groups = new Map<string, SummaryEvidenceItem[]>();
+  for (const item of snapshotItems) {
+    const key = [
+      item.sourceBindingId,
+      item.publishedAt.toISOString(),
+    ].join("\u0000");
+    const group = groups.get(key) ?? [];
+    group.push(item);
+    groups.set(key, group);
+  }
+  return (
+    [...groups.entries()].sort(([leftKey, left], [rightKey, right]) => {
+      const checkedDelta =
+        latestSnapshotTime(right) - latestSnapshotTime(left);
+      const observedDelta =
+        latestObservedTime(right) - latestObservedTime(left);
+      return (
+        checkedDelta ||
+        observedDelta ||
+        rightKey.localeCompare(leftKey)
+      );
+    })[0]?.[1] ?? []
+  );
 };
+
+const latestSnapshotTime = (items: readonly SummaryEvidenceItem[]): number =>
+  Math.max(...items.map((item) => item.publishedAt.getTime()));
+
+const latestObservedTime = (items: readonly SummaryEvidenceItem[]): number =>
+  Math.max(...items.map((item) => item.observedAt.getTime()));
 
 export const githubTrendingStarsGained = (
   item: Pick<SummaryEvidenceItem, "providerMetricLabels">,
@@ -274,9 +261,16 @@ export const buildGitHubTrendingNarrativeAppendix = (params: {
   const citedHighlights = highlights.flatMap((item) => {
     const citation = citationByFeedItemId.get(item.feedItemId);
     const starsGained = githubTrendingStarsGained(item);
-    return citation === undefined || starsGained === undefined
+    const rank = githubTrendingRank(item);
+    const repositoryIdentity = normalizedGitHubRepositoryIdentity(
+      item.canonicalUrl,
+    );
+    return citation === undefined ||
+      starsGained === undefined ||
+      rank === undefined ||
+      repositoryIdentity === undefined
       ? []
-      : [{ item, citation, starsGained }];
+      : [{ citation, repositoryIdentity, rank, starsGained }];
   });
   if (citedHighlights.length === 0) {
     return undefined;
@@ -286,12 +280,7 @@ export const buildGitHubTrendingNarrativeAppendix = (params: {
     id: githubTrendingNarrativeSectionId,
     kind: "watch",
     title: "GitHub Trending",
-    text: citedHighlights
-      .map(
-        ({ item, starsGained }) =>
-          `- **${compactRepositoryTitle(item.title)}**: +${starsGained.toLocaleString("en-US")} stars today.`,
-      )
-      .join("\n"),
+    text: githubTrendingWatchText(citedHighlights),
     citationIds: citedHighlights.map(({ citation }) => citation.citationId),
   };
 };
@@ -320,14 +309,3 @@ export const buildSupplementalTrendNarrativeAppendix =
   buildGitHubTrendingNarrativeAppendix;
 export const withSupplementalTrendNarrativeAppendix =
   withGitHubTrendingNarrativeAppendix;
-
-const compactRepositoryTitle = (title: string): string => {
-  const normalized = title
-    .replace(/[*_`[\]<>]/gu, "")
-    .replace(/\s+/gu, " ")
-    .trim();
-  const repositoryName = normalized.split(/\s+[—-]\s+/u)[0]?.trim();
-  return (repositoryName ?? normalized)
-    .replace(/\s+is\s+#\d+\s+on\s+GitHub\s+Trending\s*$/iu, "")
-    .slice(0, 120);
-};

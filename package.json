@@ -247,7 +247,7 @@
     "prisma:generate": "prisma generate --schema prisma/schema.prisma",
     "seed": "ts-node -r tsconfig-paths/register prisma/seed.ts",
     "seed:ai-developer-signal-user-sources": "ts-node -r tsconfig-paths/register scripts/seed-ai-developer-signal-user-sources.ts",
-    "test": "node scripts/run-with-timeout.mjs --timeout-ms 600000 --node-options --max-old-space-size=1024 -- jest --config jest.config.ts --runInBand",
+    "test": "node scripts/run-with-timeout.mjs --timeout-ms 600000 --node-options --max-old-space-size=2048 -- jest --config jest.config.ts --runInBand",
     "test:e2e": "node scripts/run-with-timeout.mjs --timeout-ms 480000 --node-options --max-old-space-size=1024 -- jest --config test/jest-e2e.config.ts --runInBand",
     "beta:evidence:plan": "node scripts/external-beta-evidence-runner.mjs --plan",
     "beta:evidence:plan:json": "node scripts/external-beta-evidence-runner.mjs --plan --json",

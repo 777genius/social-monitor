@@ -10,6 +10,7 @@ import {
 import {
   createScanPolicy,
   createSourceBinding,
+  githubTrendingSnapshotBatchObservedAt,
   ScanAttempt,
   SourceItem,
 } from "../../domain";
@@ -19,7 +20,6 @@ import {
   noopSourceItemEnrichment,
   noopSourceEngagementProjection,
   NOOP_SOURCE_CANDIDATE_MEMORY,
-  SourceItemPersistenceContractError,
   type ConversationProjectionPort,
   type FeedProjectionPort,
   type ScanAttemptRepositoryPort,
@@ -27,7 +27,6 @@ import {
   type ScanExecutionReporterPort,
   type ScanFailureQueuePort,
   type ScanLeasePort,
-  type SavedSourceItemRef,
   type SourceFetcherPort,
   type SourceCandidateMemoryPort,
   type SourceItemEnrichmentPort,
@@ -37,6 +36,10 @@ import {
 } from "../../ports";
 import type { ExecuteScanCommand } from "./execute-scan.command";
 import type { ExecuteScanResult } from "./execute-scan.result";
+import {
+  mergeEnrichedSourceCandidates,
+  rehydratePersistedSourceItems,
+} from "./execute-scan-persisted-source-items";
 import {
   failedScanCollectionExecutionMetadata,
   successfulScanCollectionExecutionMetadata,
@@ -190,7 +193,12 @@ export class ExecuteScanUseCase {
             correlationId: command.correlationId,
             items: candidateScreening.itemsToEnrich,
           });
-      const items = enriched.items.map(sanitizeFetchedSourceItem).map((item) =>
+      const fetchedItemsForPersistence = mergeEnrichedSourceCandidates({
+        fetchedItems: sanitizedFetchedItems,
+        itemsRequiringEnrichment: candidateScreening.itemsToEnrich,
+        enrichedItems: enriched.items.map(sanitizeFetchedSourceItem),
+      });
+      const items = fetchedItemsForPersistence.map((item) =>
         SourceItem.ingest({
           id: this.ids.generate(),
           tenantId: command.tenantId,
@@ -224,6 +232,11 @@ export class ExecuteScanUseCase {
         items,
         saveResult.items,
       );
+      const projectionObservedAt =
+        githubTrendingSnapshotBatchObservedAt({
+          providerKey: sourceBinding.providerKey,
+          items: persistedItems.map((item) => item.toSnapshot()),
+        }) ?? ingestedAt;
       const { sourceItemsForFullProjection, engagementSamples } =
         prepareSourceEngagementSamples({
           providerKey: sourceBinding.providerKey,
@@ -238,36 +251,37 @@ export class ExecuteScanUseCase {
           sourceBindingId: sourceBinding.sourceBindingId,
           scanJobId: command.scanJobId,
           providerKey: sourceBinding.providerKey,
-          observedAt: ingestedAt,
+          observedAt: projectionObservedAt,
           samples: engagementSamples,
         });
       const projectionResult = sourceItemsForFullProjection.length === 0
         ? { projected: 0, projectedItems: [] }
         : await this.feedProjection.project({
-        tenantId: command.tenantId,
-        workspaceId: command.workspaceId,
-        interestId: sourceBinding.interestId,
-        sourceBindingId: sourceBinding.sourceBindingId,
-        providerKey: sourceBinding.providerKey,
-        snapshots: {
-          interestQuerySnapshot: {
-            interestId: sourceBinding.interestId,
-            query: command.interestQuerySnapshot ?? command.sourceQuery.query,
-          },
-          sourceBindingSnapshot: {
-            sourceBindingId: sourceBinding.sourceBindingId,
-            providerKey: sourceBinding.providerKey,
-            sourceQuery: {
-              mode: command.sourceQuery.mode,
-              query: command.sourceQuery.query,
-            },
-          },
-          workspaceScopeSnapshot: {
             tenantId: command.tenantId,
             workspaceId: command.workspaceId,
-          },
-        },
-        sourceItems: sourceItemsForFullProjection,
+            interestId: sourceBinding.interestId,
+            sourceBindingId: sourceBinding.sourceBindingId,
+            providerKey: sourceBinding.providerKey,
+            snapshots: {
+              interestQuerySnapshot: {
+                interestId: sourceBinding.interestId,
+                query:
+                  command.interestQuerySnapshot ?? command.sourceQuery.query,
+              },
+              sourceBindingSnapshot: {
+                sourceBindingId: sourceBinding.sourceBindingId,
+                providerKey: sourceBinding.providerKey,
+                sourceQuery: {
+                  mode: command.sourceQuery.mode,
+                  query: command.sourceQuery.query,
+                },
+              },
+              workspaceScopeSnapshot: {
+                tenantId: command.tenantId,
+                workspaceId: command.workspaceId,
+              },
+            },
+            sourceItems: sourceItemsForFullProjection,
           });
       if (sourceItemsForFullProjection.length > 0) {
         await this.conversationProjection.project({
@@ -276,7 +290,7 @@ export class ExecuteScanUseCase {
           interestId: sourceBinding.interestId,
           sourceBindingId: sourceBinding.sourceBindingId,
           providerKey: sourceBinding.providerKey,
-          observedAt: ingestedAt,
+          observedAt: projectionObservedAt,
           conversationUnits: (fetched.conversationUnits ?? []).map(
             sanitizeFetchedConversationUnit,
           ),
@@ -307,7 +321,7 @@ export class ExecuteScanUseCase {
           screening: candidateScreening,
           processedExternalIds: new Set(
             [
-              ...items.map((item) => item.toSnapshot().externalId),
+              ...enriched.items.map((item) => item.externalId),
               ...engagementSamples.map((sample) => sample.externalId),
             ],
           ),
@@ -316,9 +330,12 @@ export class ExecuteScanUseCase {
       if (candidateMemoryWriteWarning !== undefined) {
         scanWarnings.push(candidateMemoryWriteWarning);
       }
-      const skippedDuplicates =
-        saveResult.skippedDuplicates +
-        candidateScreening.suppressedExternalIds.length;
+      const skippedDuplicates = new Set([
+        ...saveResult.items
+          .filter((item) => item.mutationKind === "unchanged")
+          .map((item) => item.externalId),
+        ...candidateScreening.suppressedExternalIds,
+      ]).size;
       attempt = attempt.succeed({
         finishedAt: this.clock.now(),
         fetched: fetched.items.length,
@@ -434,47 +451,4 @@ const createDomainValue = <T>(factory: () => T): Result<T, DomainError> => {
       ),
     );
   }
-};
-
-const rehydratePersistedSourceItems = (
-  items: readonly SourceItem[],
-  refs: readonly SavedSourceItemRef[],
-): readonly SourceItem[] => {
-  if (items.length !== refs.length) {
-    throw new SourceItemPersistenceContractError(
-      `Source item repository returned ${refs.length} saved refs for ${items.length} source items`,
-    );
-  }
-
-  const persistedIdByExternalId = new Map<string, string>();
-  for (const ref of refs) {
-    const existingId = persistedIdByExternalId.get(ref.externalId);
-    if (existingId !== undefined && existingId !== ref.sourceItemId) {
-      throw new SourceItemPersistenceContractError(
-        `Source item repository returned conflicting ids for external item ${ref.externalId}`,
-      );
-    }
-
-    persistedIdByExternalId.set(ref.externalId, ref.sourceItemId);
-  }
-
-  return items.map((item) => {
-    const snapshot = item.toSnapshot();
-    const sourceItemId = persistedIdByExternalId.get(snapshot.externalId);
-
-    if (sourceItemId === undefined) {
-      throw new SourceItemPersistenceContractError(
-        `Source item repository did not return a saved ref for external item ${snapshot.externalId}`,
-      );
-    }
-
-    if (sourceItemId === snapshot.id) {
-      return item;
-    }
-
-    return SourceItem.rehydrate({
-      ...snapshot,
-      id: sourceItemId,
-    });
-  });
 };

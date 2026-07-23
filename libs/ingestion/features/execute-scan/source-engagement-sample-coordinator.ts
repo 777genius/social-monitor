@@ -27,17 +27,7 @@ export const prepareSourceEngagementSamples = (params: {
       classification,
     ]),
   );
-  const sourceItemsForFullProjection = [...persistedByExternalId.values()].filter((item) => {
-    const ref = savedRefByExternalId.get(item.toSnapshot().externalId);
-    const classification = classificationByExternalId.get(
-      item.toSnapshot().externalId,
-    );
-    return (
-      ref?.mutationKind !== "unchanged" ||
-      classification?.kind === "new" ||
-      classification?.kind === "content_changed"
-    );
-  });
+  const sourceItemsForFullProjection = [...persistedByExternalId.values()];
   const fullProjectionExternalIds = new Set(
     sourceItemsForFullProjection.map((item) => item.toSnapshot().externalId),
   );
@@ -52,7 +42,16 @@ export const prepareSourceEngagementSamples = (params: {
       const snapshot = item.toSnapshot();
       const engagement = reliableEngagement(params.providerKey, snapshot.metadata);
       const ref = savedRefByExternalId.get(snapshot.externalId);
-      return engagement === undefined || ref === undefined
+      const classification = classificationByExternalId.get(
+        snapshot.externalId,
+      );
+      const carriesFullCandidateChange =
+        ref?.mutationKind !== "unchanged" ||
+        classification?.kind === "new" ||
+        classification?.kind === "content_changed";
+      return engagement === undefined ||
+        ref === undefined ||
+        !carriesFullCandidateChange
         ? undefined
         : {
             externalId: snapshot.externalId,

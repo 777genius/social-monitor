@@ -15,12 +15,14 @@ describe("source engagement sample coordinator", () => {
         {
           externalId: "x-twitter:1",
           sourceItemId: "source-1",
+          persistedItem: first,
           inserted: true,
           mutationKind: "inserted",
         },
         {
           externalId: "x-twitter:1",
           sourceItemId: "source-1",
+          persistedItem: latest,
           inserted: false,
           mutationKind: "unchanged",
         },
@@ -37,13 +39,15 @@ describe("source engagement sample coordinator", () => {
   });
 
   it("full-projects a reliable new retry even when source persistence is unchanged", () => {
+    const retry = sourceItem("retry");
     const result = prepareSourceEngagementSamples({
       providerKey: "x-twitter",
-      persistedItems: [sourceItem("retry")],
+      persistedItems: [retry],
       savedItems: [
         {
           externalId: "x-twitter:1",
           sourceItemId: "source-1",
+          persistedItem: retry,
           inserted: false,
           mutationKind: "unchanged",
         },

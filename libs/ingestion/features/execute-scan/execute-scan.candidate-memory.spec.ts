@@ -5,7 +5,7 @@ import {
   type IdGenerator,
 } from "@social-monitor/shared-kernel";
 
-import type { ScanAttempt } from "../../domain";
+import type { ScanAttempt, SourceItem } from "../../domain";
 import type {
   AcquireScanLeaseCommand,
   EnrichSourceItemsCommand,
@@ -41,7 +41,7 @@ import type { ExecuteScanCommand } from "./execute-scan.command";
 import { ExecuteScanUseCase } from "./execute-scan.use-case";
 
 describe("ExecuteScanUseCase candidate replay memory", () => {
-  it("suppresses unchanged replay and routes changed metrics away from enrichment", async () => {
+  it("suppresses replay enrichment without suppressing persistence repair", async () => {
     const fixture = candidateMemoryFixture();
 
     const first = await fixture.execute.execute(scanCommand("scan-memory-1"));
@@ -65,7 +65,7 @@ describe("ExecuteScanUseCase candidate replay memory", () => {
       value: expect.objectContaining({
         inserted: 0,
         skippedDuplicates: 1,
-        projected: 0,
+        projected: 1,
         warnings: [],
       }),
     });
@@ -73,14 +73,14 @@ describe("ExecuteScanUseCase candidate replay memory", () => {
       ok: true,
       value: expect.objectContaining({
         inserted: 0,
-        skippedDuplicates: 0,
-        projected: 0,
+        skippedDuplicates: 1,
+        projected: 1,
         warnings: [],
       }),
     });
     expect(fixture.enrichment.itemCounts).toEqual([1]);
-    expect(fixture.sourceItems.itemCounts).toEqual([1]);
-    expect(fixture.projection.itemCounts).toEqual([1]);
+    expect(fixture.sourceItems.itemCounts).toEqual([1, 1, 1]);
+    expect(fixture.projection.itemCounts).toEqual([1, 1, 1]);
     expect(fixture.engagementProjection.sampleCounts).toEqual([1, 0, 1]);
     expect(
       fixture.engagementProjection.commands[2]?.samples[0]?.refreshReadModels,
@@ -233,7 +233,7 @@ class CountingEnrichment implements SourceItemEnrichmentPort {
 
 class CountingSourceItemRepository implements SourceItemRepositoryPort {
   readonly itemCounts: number[] = [];
-  private readonly sourceItemIdByKey = new Map<string, string>();
+  private readonly sourceItemByKey = new Map<string, SourceItem>();
 
   async saveBatch(
     command: SaveSourceItemsCommand,
@@ -244,22 +244,24 @@ class CountingSourceItemRepository implements SourceItemRepositoryPort {
     const items = command.items.map((item) => {
       const snapshot = item.toSnapshot();
       const key = `${command.tenantId}:${command.workspaceId}:${command.providerKey}:${snapshot.externalId}`;
-      const existingId = this.sourceItemIdByKey.get(key);
-      if (existingId !== undefined) {
+      const existing = this.sourceItemByKey.get(key);
+      if (existing !== undefined) {
         skippedDuplicates += 1;
         return {
           externalId: snapshot.externalId,
-          sourceItemId: existingId,
+          sourceItemId: existing.toSnapshot().id,
+          persistedItem: existing,
           inserted: false,
           mutationKind: "unchanged" as const,
         };
       }
 
       inserted += 1;
-      this.sourceItemIdByKey.set(key, snapshot.id);
+      this.sourceItemByKey.set(key, item);
       return {
         externalId: snapshot.externalId,
         sourceItemId: snapshot.id,
+        persistedItem: item,
         inserted: true,
         mutationKind: "inserted" as const,
       };

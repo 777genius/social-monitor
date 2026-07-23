@@ -17,12 +17,16 @@ import type {
   SourceProviderScanResult,
   SourceProviderValidationResult,
   SourceQuery,
-  SourceRuntimeConfig,
 } from "../../../ports";
 import type {
   GitHubTrendingPageClientPort,
   GitHubTrendingPageRepository,
 } from "./github-trending-page-client.port";
+import { canonicalGitHubTrendingRepositories } from "./github-trending-page-canonical-board";
+import {
+  assertGitHubTrendingSnapshotTimeInWindow,
+  githubTrendingDailySnapshotWindow,
+} from "./github-trending-page-snapshot-window";
 
 const capabilityProfile: SourceCapabilityProfile = {
   providerKey: GITHUB_TRENDING_PAGE_PROVIDER_KEY,
@@ -36,7 +40,7 @@ const capabilityProfile: SourceCapabilityProfile = {
     "canonicalUrl",
     "providerMetadata.repository.fullName",
     "providerMetadata.trending.window",
-    "providerMetadata.trending.rank",
+    "providerMetadata.trending.scanJobId",
   ],
   quotaModel: "per_app",
   limitations: [
@@ -89,9 +93,22 @@ export class GitHubTrendingPageSourceProvider implements SourceProviderPort {
     plan: SourceProviderScanPlan,
     context: SourceProviderScanContext,
   ): Promise<SourceProviderScanResult> {
+    const scanJobId = context.scanJobId.trim();
+    if (scanJobId.length === 0) {
+      throw new Error("GitHub Trending scan identity must be non-empty");
+    }
     const config = parseConfig(plan.query, context, plan.maxItems);
-    const checkedAt = this.clock.now();
-    const snapshotAt = targetSnapshotAt(context.config, checkedAt);
+    const fetchStartedAt = this.clock.now();
+    const dailyWindow = githubTrendingDailySnapshotWindow({
+      config: context.config,
+      window: config.window,
+      fetchStartedAt,
+    });
+    assertGitHubTrendingSnapshotTimeInWindow(
+      fetchStartedAt,
+      dailyWindow,
+      "fetchStartedAt",
+    );
     const repositories = (
       await Promise.all(
         config.languages.map((language) =>
@@ -105,17 +122,30 @@ export class GitHubTrendingPageSourceProvider implements SourceProviderPort {
         ),
       )
     ).flat();
-    const validRepositories = dedupeRepositories(
+    const checkedAt = this.clock.now();
+    assertGitHubTrendingSnapshotTimeInWindow(
+      checkedAt,
+      dailyWindow,
+      "checkedAt",
+    );
+    if (checkedAt.getTime() < fetchStartedAt.getTime()) {
+      throw new Error(
+        "GitHub Trending daily checkedAt cannot precede fetchStartedAt",
+      );
+    }
+    const validRepositories = canonicalGitHubTrendingRepositories(
       repositories.filter(isUsableTrendingRepository),
-    ).slice(0, plan.maxItems);
+      plan.maxItems,
+    );
 
     return {
       items: validRepositories.map((repository) =>
         normalizeRepository({
           repository,
           window: config.window,
+          scanJobId,
+          fetchStartedAt,
           checkedAt,
-          snapshotAt,
           source: config.source,
         }),
       ),
@@ -203,11 +233,19 @@ const parseConfig = (
 const normalizeRepository = (params: {
   readonly repository: GitHubTrendingPageRepository;
   readonly window: GitHubTrendingPageWindow;
+  readonly scanJobId: string;
+  readonly fetchStartedAt: Date;
   readonly checkedAt: Date;
-  readonly snapshotAt: Date;
   readonly source: GitHubTrendingPageRepositoryMetadataInput["trending"]["source"];
 }): FetchedSourceItem => {
-  const { repository, window, checkedAt, snapshotAt, source } = params;
+  const {
+    repository,
+    window,
+    scanJobId,
+    fetchStartedAt,
+    checkedAt,
+    source,
+  } = params;
   const metadata = githubTrendingPageRepositoryMetadata({
     repository: {
       fullName: repository.fullName,
@@ -221,6 +259,8 @@ const normalizeRepository = (params: {
       rank: repository.rank,
       starsGained: repository.starsGained,
       window,
+      scanJobId,
+      fetchStartedAt,
       checkedAt,
       source,
     },
@@ -229,44 +269,23 @@ const normalizeRepository = (params: {
     repository.description ?? "No GitHub Trending description available.";
 
   return {
-    externalId: `github-trending-page:${window}:${repository.fullName}:${snapshotAt.toISOString()}`,
+    externalId: `github-trending-page:${window}:${scanJobId}:${repository.fullName}`,
     canonicalUrl: repository.url,
     title: `${repository.fullName} is #${repository.rank} on GitHub Trending`,
     body: `${description}\nGitHub Trending ${window}: #${repository.rank}, +${repository.starsGained} stars. Total stars: ${repository.totalStars}.`,
     authorHandle: repository.fullName.split("/")[0],
-    publishedAt: snapshotAt,
+    publishedAt: checkedAt,
     metadata,
   };
-};
-
-const targetSnapshotAt = (
-  config: SourceRuntimeConfig | undefined,
-  checkedAt: Date,
-): Date => {
-  const rawWindow = config?.targetPublishedWindow;
-  if (
-    rawWindow === null ||
-    typeof rawWindow !== "object" ||
-    Array.isArray(rawWindow)
-  ) {
-    return checkedAt;
-  }
-
-  const endExclusive = (rawWindow as Readonly<Record<string, unknown>>)
-    .endExclusive;
-  if (typeof endExclusive !== "string") {
-    return checkedAt;
-  }
-
-  const end = new Date(endExclusive);
-  return Number.isNaN(end.getTime()) ? checkedAt : new Date(end.getTime() - 1);
 };
 
 const isUsableTrendingRepository = (
   repository: GitHubTrendingPageRepository,
 ): boolean =>
-  repository.fullName.includes("/") &&
+  /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(repository.fullName) &&
   repository.url.startsWith("https://github.com/") &&
+  repository.url.toLocaleLowerCase("en-US") ===
+    `https://github.com/${repository.fullName}`.toLocaleLowerCase("en-US") &&
   Number.isInteger(repository.rank) &&
   repository.rank > 0 &&
   Number.isInteger(repository.totalStars) &&
@@ -275,36 +294,6 @@ const isUsableTrendingRepository = (
   repository.forksCount >= 0 &&
   Number.isInteger(repository.starsGained) &&
   repository.starsGained > 0;
-
-const dedupeRepositories = (
-  repositories: readonly GitHubTrendingPageRepository[],
-): readonly GitHubTrendingPageRepository[] => {
-  const byFullName = new Map<string, GitHubTrendingPageRepository>();
-
-  for (const repository of repositories) {
-    const key = repository.fullName.toLocaleLowerCase("en-US");
-    const existing = byFullName.get(key);
-
-    if (
-      existing === undefined ||
-      repository.starsGained > existing.starsGained ||
-      (repository.starsGained === existing.starsGained &&
-        repository.rank < existing.rank)
-    ) {
-      byFullName.set(key, repository);
-    }
-  }
-
-  return [...byFullName.values()].sort((left, right) => {
-    const starsGainedDiff = right.starsGained - left.starsGained;
-
-    if (starsGainedDiff !== 0) {
-      return starsGainedDiff;
-    }
-
-    return left.rank - right.rank;
-  });
-};
 
 const githubTrendingPageWarnings = (params: {
   readonly fetchedCount: number;
