@@ -32,9 +32,9 @@ const githubTrendingDailyDedupeKey = (
     return undefined;
   }
 
-  const checkedAt = readNestedString(input.providerMetadata, [
+  const scanJobId = readNestedString(input.providerMetadata, [
     "trending",
-    "checkedAt",
+    "scanJobId",
   ]);
   const window = readNestedString(input.providerMetadata, [
     "trending",
@@ -45,7 +45,7 @@ const githubTrendingDailyDedupeKey = (
     "fullName",
   ]);
   if (
-    checkedAt === undefined ||
+    scanJobId === undefined ||
     window === undefined ||
     repository === undefined ||
     input.sourceBindingId === undefined ||
@@ -55,12 +55,7 @@ const githubTrendingDailyDedupeKey = (
     return undefined;
   }
 
-  const timestamp = new Date(checkedAt);
-  if (Number.isNaN(timestamp.getTime())) {
-    return undefined;
-  }
-
-  return `github-trending:${input.sourceBindingId.trim()}:${window}:${timestamp.toISOString().slice(0, 10)}:${repository.toLocaleLowerCase("en-US")}`;
+  return `github-trending:${input.sourceBindingId.trim()}:${window}:${scanJobId}:${repository.toLocaleLowerCase("en-US")}`;
 };
 
 export const normalizeFeedCanonicalUrl = (value: string): string => {
