@@ -13,6 +13,10 @@ import {
   resolveMonitoringScanQueueMode,
 } from '@social-monitor/monitoring/interfaces/rest/monitoring-provider-tokens';
 import { resolveRuntimeProfile } from '@social-monitor/platform-config';
+import {
+  MetricsRuntime,
+  type MetricsRuntimeHealth,
+} from '@social-monitor/platform-metrics';
 import { resolveRelevancePersistenceMode } from '@social-monitor/relevance/interfaces/rest/relevance-provider-tokens';
 import type { Clock } from '@social-monitor/shared-kernel';
 import { resolveSubscriptionsPersistenceMode } from '@social-monitor/subscriptions/interfaces/rest/subscriptions-provider-tokens';
@@ -88,6 +92,7 @@ export type ReadinessResponse = HealthResponse & {
       readonly deliveryWebhook: string;
       readonly deliveryEnabledChannels: string;
     };
+    readonly metrics: MetricsRuntimeHealth;
   };
   readonly capabilities: {
     readonly rest: 'enabled';
@@ -164,6 +169,8 @@ export class ApiGatewayHealthReporter {
     @Inject(API_GATEWAY_DATABASE_READINESS)
     @Optional()
     private readonly databaseReadiness?: ApiGatewayDatabaseReadiness,
+    @Optional()
+    private readonly metricsRuntime?: MetricsRuntime,
   ) {}
 
   health(): HealthResponse {
@@ -214,6 +221,7 @@ export class ApiGatewayHealthReporter {
           deliveryWebhook: resolveDeliveryWebhookProviderMode(this.env),
           deliveryEnabledChannels: resolveDeliveryEnabledChannels(this.env).join(','),
         },
+        metrics: this.requireMetricsHealth(),
       },
       capabilities: {
         rest: 'enabled',
@@ -256,6 +264,11 @@ export class ApiGatewayHealthReporter {
               ? 'A query completed through the bounded shared Prisma pool.'
               : 'Database dependency not required: all API gateway Prisma persistence selectors are disabled; PostgreSQL probe was not executed.',
         },
+        {
+          name: 'metrics_exporter',
+          status: 'ok',
+          detail: this.metricsReadinessDetail(),
+        },
       ],
     };
   }
@@ -279,6 +292,30 @@ export class ApiGatewayHealthReporter {
       );
     }
     return 'skipped';
+  }
+
+  private requireMetricsHealth(): MetricsRuntimeHealth {
+    const health = this.metricsRuntime?.health();
+    if (health === undefined) {
+      throw new Error('API gateway metrics runtime is not configured');
+    }
+    if (health.lifecycle !== 'active') {
+      throw new Error('API gateway metrics runtime is not active');
+    }
+    if (
+      resolveRuntimeProfile(this.env) === 'beta' &&
+      health.mode !== 'otlp'
+    ) {
+      throw new Error('Beta API gateway metrics runtime must use OTLP');
+    }
+    return health;
+  }
+
+  private metricsReadinessDetail(): string {
+    const health = this.requireMetricsHealth();
+    return health.mode === 'otlp'
+      ? `OTLP metrics runtime active; last export state: ${health.exportState}.`
+      : 'Deterministic in-memory metrics runtime active.';
   }
 
   private loopMode(enabled: boolean): 'enabled' | 'disabled' {

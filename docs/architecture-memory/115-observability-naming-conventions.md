@@ -70,7 +70,17 @@ Examples:
 - `app_ai_cost_estimated_usd`;
 - `app_idempotency_replays_total`;
 
+Runtime-enforced rules:
+
+- metric names are lower snake case and no longer than 255 characters;
+- label keys are lower snake case and no longer than 64 characters;
+- credential, authorization, body, email, prompt, raw text, token and URL
+  dimensions are dropped;
+- label values use the bounded safe-label sanitizer;
+- non-finite gauge values and negative/non-finite counter increments are
+  ignored;
+- the metric reader enforces a bounded per-instrument cardinality limit.
+
 ## Best-Fact Choice
 
 Observability must be designed with naming and cardinality rules before scale. Otherwise metrics become expensive, traces become hard to search, and sensitive data leaks through telemetry.
-

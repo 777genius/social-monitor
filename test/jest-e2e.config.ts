@@ -15,6 +15,8 @@ const config: Config = {
     '^@social-monitor/platform-grpc$': '<rootDir>/libs/platform/grpc/src/index.ts',
     '^@social-monitor/platform-logging$': '<rootDir>/libs/platform/logging/src/index.ts',
     '^@social-monitor/platform-metrics$': '<rootDir>/libs/platform/metrics/src/index.ts',
+    '^@social-monitor/platform-metrics/(.*)$':
+      '<rootDir>/libs/platform/metrics/src/$1',
     '^@social-monitor/platform-persistence$': '<rootDir>/libs/platform/persistence/src/index.ts',
     '^@social-monitor/platform-persistence/prisma-runtime-client$':
       '<rootDir>/libs/platform/persistence/src/prisma-runtime-client.ts',

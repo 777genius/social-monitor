@@ -1,4 +1,8 @@
 import type { SourceReadinessFreshnessGuard, SourceReadinessProfile } from '@social-monitor/ingestion/ports';
+import {
+  InMemoryMetricsRecorder,
+  MetricsRuntime,
+} from '@social-monitor/platform-metrics';
 import { FixedClock } from '@social-monitor/shared-kernel';
 
 import {
@@ -7,6 +11,28 @@ import {
 } from './health-reporter';
 
 const databaseReady = { check: jest.fn(async () => 'queried' as const) };
+const metricsReady = new MetricsRuntime({
+  serviceName: 'api-gateway',
+  mode: 'otlp',
+  recorder: new InMemoryMetricsRecorder(),
+  exportHealth: () => ({
+    exportState: 'succeeded',
+    lastExportAt: '2026-01-02T03:04:00.000Z',
+  }),
+  forceFlush: async () => undefined,
+  shutdown: async () => undefined,
+});
+const testMetricsReady = new MetricsRuntime({
+  serviceName: 'api-gateway',
+  mode: 'in-memory',
+  recorder: new InMemoryMetricsRecorder(),
+  exportHealth: () => ({
+    exportState: 'not_applicable',
+    lastExportAt: undefined,
+  }),
+  forceFlush: async () => undefined,
+  shutdown: async () => undefined,
+});
 
 const readinessProfiles: readonly SourceReadinessProfile[] = [
   {
@@ -98,6 +124,8 @@ const betaDurableEnv: NodeJS.ProcessEnv = {
   DELIVERY_ATTEMPT_QUEUE_READER: 'rabbitmq',
   DELIVERY_SUMMARY_READY_EVENT_READER: 'rabbitmq',
   DELIVERY_WEBHOOK_PROVIDER: 'http',
+  OTEL_EXPORTER_OTLP_METRICS_ENDPOINT:
+    'http://otel-collector:4318/v1/metrics',
 };
 
 describe('ApiGatewayHealthReporter', () => {
@@ -108,6 +136,7 @@ describe('ApiGatewayHealthReporter', () => {
       () => 12.7,
       readinessProfiles,
       databaseReady,
+      metricsReady,
     );
 
     expect(reporter.health()).toEqual({
@@ -129,6 +158,7 @@ describe('ApiGatewayHealthReporter', () => {
       () => 3,
       readinessProfiles,
       databaseReady,
+      metricsReady,
     );
 
     await expect(reporter.ready()).resolves.toEqual(
@@ -152,6 +182,13 @@ describe('ApiGatewayHealthReporter', () => {
           providers: {
             deliveryWebhook: 'http',
             deliveryEnabledChannels: 'webhook',
+          },
+          metrics: {
+            serviceName: 'api-gateway',
+            mode: 'otlp',
+            lifecycle: 'active',
+            exportState: 'succeeded',
+            lastExportAt: '2026-01-02T03:04:00.000Z',
           },
         }),
         capabilities: expect.objectContaining({
@@ -177,6 +214,7 @@ describe('ApiGatewayHealthReporter', () => {
       () => 3,
       readinessProfiles,
       createApiGatewayDatabaseReadiness(env, probe),
+      testMetricsReady,
     );
 
     await expect(reporter.ready()).resolves.toMatchObject({
@@ -238,11 +276,26 @@ describe('ApiGatewayHealthReporter', () => {
       () => 3,
       readinessProfiles,
       databaseReady,
+      metricsReady,
     );
 
     await expect(reporter.ready()).resolves.toMatchObject({
       runtime: { providers: { deliveryEnabledChannels: 'webhook' } },
     });
+  });
+
+  it('fails beta readiness when the metrics runtime is not wired', async () => {
+    const reporter = new ApiGatewayHealthReporter(
+      betaDurableEnv,
+      new FixedClock(new Date('2026-01-02T03:04:05.000Z')),
+      () => 3,
+      readinessProfiles,
+      databaseReady,
+    );
+
+    await expect(reporter.ready()).rejects.toThrow(
+      'API gateway metrics runtime is not configured',
+    );
   });
 
   it('rejects beta readiness when durable selectors would fall back to in-memory', async () => {

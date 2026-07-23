@@ -113,6 +113,16 @@ Evidence:
 - `check:observability`, `check:runtime-profile-guards`,
   `check:backend-ops-readiness`.
 
+Implementation evidence:
+
+- OpenTelemetry SDK/OTLP runtime is process-scoped across API, worker, relay,
+  MCP and gRPC composition roots;
+- beta mode rejects in-memory metrics and missing/unsafe OTLP endpoints;
+- Collector `0.157.0` configuration validates with its real binary and exports
+  a Prometheus-compatible surface;
+- focused adapter, lifecycle, API readiness and multi-root composition tests
+  pass.
+
 ### Phase 3 - Tenant RLS
 
 - Generate explicit SQL policies for every table listed by the authoritative

@@ -13,6 +13,7 @@ import { resolvePostgresRuntimePoolConfig } from '@social-monitor/platform-persi
 import {
   CommandOutboxDispatcher,
 } from '@social-monitor/platform-queue';
+import { MetricsRuntimeModule } from '@social-monitor/platform-metrics/nest/metrics-runtime.module';
 import { PrismaCommandOutboxStoreAdapter } from '@social-monitor/platform-queue/adapters/prisma';
 import {
   AmqplibRabbitMqChannel,
@@ -33,7 +34,10 @@ import { OutboxRelayLoop } from './outbox-relay-loop';
 import { ScanCommandRelayLoop } from './scan-command-relay-loop';
 
 @Module({
-  imports: [WorkerRuntimeModule.register({ serviceName: 'event-relay' })],
+  imports: [
+    MetricsRuntimeModule.register({ serviceName: 'event-relay' }),
+    WorkerRuntimeModule.register({ serviceName: 'event-relay' }),
+  ],
   providers: [
     {
       provide: EVENT_RELAY_LOOP_OPTIONS,

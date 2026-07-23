@@ -9,7 +9,11 @@ import {
   FEED_ITEM_READ_REPOSITORY,
   type FeedItemReadRepositoryPort,
 } from "@social-monitor/feed/ports";
-import { InMemoryMetricsRecorder } from "@social-monitor/platform-metrics";
+import {
+  InMemoryMetricsRecorder,
+  type MetricsRecorderPort,
+} from "@social-monitor/platform-metrics";
+import { METRICS_RECORDER } from "@social-monitor/platform-metrics/nest/metrics-runtime.module";
 import { resolvePostgresRuntimePoolConfig } from "@social-monitor/platform-persistence";
 import { InMemoryQueuePublisher } from "@social-monitor/platform-queue/adapters/in-memory";
 import {
@@ -129,6 +133,10 @@ export const summaryRestInfrastructureProviders = [
   InMemorySummaryPolicyRepository,
   InMemoryQueuePublisher,
   {
+    provide: InMemoryMetricsRecorder,
+    useExisting: METRICS_RECORDER,
+  },
+  {
     provide: SUMMARY_RABBITMQ_QUEUE_CHANNEL,
     useFactory: (
       mode: SummaryJobQueueMode,
@@ -144,7 +152,7 @@ export const summaryRestInfrastructureProviders = [
     useFactory: (
       mode: SummaryJobQueueMode,
       publisher: InMemoryQueuePublisher,
-      metrics: InMemoryMetricsRecorder,
+      metrics: MetricsRecorderPort,
       rabbitChannel: RabbitMqQueueChannelPort | null,
       rabbitOptions: RabbitMqQueuePublisherOptions,
     ): SummaryJobQueuePort =>
@@ -161,7 +169,7 @@ export const summaryRestInfrastructureProviders = [
     inject: [
       SUMMARY_JOB_QUEUE_MODE,
       InMemoryQueuePublisher,
-      InMemoryMetricsRecorder,
+      METRICS_RECORDER,
       SUMMARY_RABBITMQ_QUEUE_CHANNEL,
       SUMMARY_RABBITMQ_JOB_QUEUE_OPTIONS,
     ],
@@ -380,7 +388,6 @@ export const summaryRestInfrastructureProviders = [
       new FeedSummaryFreshnessProbe(feedItems, new SystemClock()),
     inject: [FEED_ITEM_READ_REPOSITORY],
   },
-  InMemoryMetricsRecorder,
   RequestCorrelationIdFactory,
   DeterministicSummaryModelAdapter,
   {
@@ -400,7 +407,7 @@ export const summaryRestInfrastructureProviders = [
       deterministicSummaryModel: DeterministicSummaryModelAdapter,
       agentRuntimeSummaryModel: AgentRuntimeSummaryModelAdapter,
       openAiSummaryModel: OpenAiResponsesSummaryModelAdapter,
-      metrics: InMemoryMetricsRecorder,
+      metrics: MetricsRecorderPort,
     ) => {
       const selectedModel =
         mode === "openai-responses"
@@ -416,7 +423,7 @@ export const summaryRestInfrastructureProviders = [
       DeterministicSummaryModelAdapter,
       AgentRuntimeSummaryModelAdapter,
       OpenAiResponsesSummaryModelAdapter,
-      InMemoryMetricsRecorder,
+      METRICS_RECORDER,
     ],
   },
   {

@@ -17,7 +17,7 @@ import type {
   ScanQueuePort,
   ScanRequestQuotaPort,
 } from '../../ports';
-import { RequestScanUseCase } from './request-scan.use-case';
+import { RequestScanUseCase } from '../../features/request-scan/request-scan.use-case';
 
 class SequenceIdGenerator implements IdGenerator {
   private next = 1;

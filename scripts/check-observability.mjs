@@ -1,9 +1,11 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, globSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const root = process.cwd();
 const dashboardsDir = join(root, 'ops/observability/dashboards');
 const alertsDir = join(root, 'ops/observability/alerts');
+const collectorConfigPath = join(root, 'ops/observability/otel-collector.yml');
+const composePath = join(root, 'docker-compose.yml');
 const safeLabelPattern = /^[A-Za-z0-9._:-]+$/;
 const allowedMetrics = new Set([
   'queue_commands_backlog',
@@ -45,6 +47,45 @@ const forbiddenLabelKeys = new Set([
 ]);
 
 const violations = [];
+
+requireFileFragments(collectorConfigPath, [
+  'health_check:',
+  'endpoint: 0.0.0.0:4318',
+  'memory_limiter:',
+  'batch:',
+  'prometheus:',
+  'processors: [memory_limiter, batch]',
+  'exporters: [prometheus]',
+]);
+requireFileFragments(composePath, [
+  'SOCIAL_MONITOR_METRICS_MODE: otlp',
+  'OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: http://otel-collector:4318/v1/metrics',
+  'otel/opentelemetry-collector-contrib:0.157.0@sha256:f2f01157055a9b2aab9df7118e1f1c9abf345e99b23bc7a2bc791db374a7d0f6',
+  './ops/observability/otel-collector.yml:/etc/otelcol-contrib/config.yaml:ro',
+]);
+
+for (const file of [
+  ...globSync('apps/**/*.ts'),
+  ...globSync('libs/**/*.ts'),
+]) {
+  if (
+    file.includes('/platform/metrics/') ||
+    file.endsWith('.spec.ts') ||
+    file.endsWith('.e2e-spec.ts') ||
+    file.endsWith('.test.ts')
+  ) {
+    continue;
+  }
+  const source = readFileSync(file, 'utf8');
+  if (
+    source.includes('InMemoryMetricsRecorder') &&
+    !source.includes('useExisting: METRICS_RECORDER')
+  ) {
+    violations.push(
+      `${file}: production source must inject METRICS_RECORDER instead of InMemoryMetricsRecorder`,
+    );
+  }
+}
 
 const readJsonFiles = (directory) =>
   readdirSync(directory)
@@ -145,4 +186,21 @@ function requireExistingRunbook(file, runbook) {
   if (!path || !existsSync(join(root, path))) {
     violations.push(`${file}: runbook path does not exist "${runbook}"`);
   }
+}
+
+function requireFileFragments(path, fragments) {
+  if (!existsSync(path)) {
+    violations.push(`${relativePath(path)}: required observability file is missing`);
+    return;
+  }
+  const source = readFileSync(path, 'utf8');
+  for (const fragment of fragments) {
+    if (!source.includes(fragment)) {
+      violations.push(`${relativePath(path)}: missing required fragment "${fragment}"`);
+    }
+  }
+}
+
+function relativePath(path) {
+  return path.startsWith(`${root}/`) ? path.slice(root.length + 1) : path;
 }

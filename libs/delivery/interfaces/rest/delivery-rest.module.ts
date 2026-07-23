@@ -1,15 +1,9 @@
 import { Module } from '@nestjs/common';
 import { resolvePostgresRuntimePoolConfig } from '@social-monitor/platform-persistence';
 import { IdentityRestModule } from '@social-monitor/identity/interfaces/rest/identity-rest.module';
-import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
 import { UsageRestModule } from '@social-monitor/usage/interfaces/rest/usage-rest.module';
 
-import { ContractWebhookEventCatalogAdapter } from '../../adapters/events/contract-webhook-event-catalog.adapter';
-import {
-  resolveHttpWebhookDeliveryProviderOptions,
-  type HttpWebhookDeliveryProviderOptions,
-} from '../../adapters/notification/http-webhook-delivery.provider';
 import { InMemoryDeliveryAttemptRepository } from '../../adapters/persistence/in-memory-delivery-attempt.repository';
 import { InMemoryDigestScheduleRepository } from '../../adapters/persistence/in-memory-digest-schedule.repository';
 import { InMemoryDigestRepository } from '../../adapters/persistence/in-memory-digest.repository';
@@ -36,20 +30,15 @@ import { PrismaDigestSourceReader } from '../../adapters/source/prisma/prisma-di
 import { ApplyDeliverySuppressionUseCase } from '../../features/apply-delivery-suppression/apply-delivery-suppression.use-case';
 import { AssembleDigestUseCase } from '../../features/assemble-digest/assemble-digest.use-case';
 import { CreateDigestScheduleUseCase } from '../../features/create-digest-schedule/create-digest-schedule.use-case';
-import { CreateWebhookEndpointUseCase } from '../../features/create-webhook-endpoint/create-webhook-endpoint.use-case';
-import { DisableWebhookEndpointUseCase } from '../../features/disable-webhook-endpoint/disable-webhook-endpoint.use-case';
 import { GetDeliveryAttemptUseCase } from '../../features/get-delivery-attempt/get-delivery-attempt.use-case';
 import { GetDigestUseCase } from '../../features/get-digest/get-digest.use-case';
 import { GetDigestScheduleUseCase } from '../../features/get-digest-schedule/get-digest-schedule.use-case';
 import { GetNotificationPreferenceUseCase } from '../../features/get-notification-preference/get-notification-preference.use-case';
 import { GetWorkspaceSettingsUseCase } from '../../features/get-workspace-settings/get-workspace-settings.use-case';
-import { GetWebhookEndpointUseCase } from '../../features/get-webhook-endpoint/get-webhook-endpoint.use-case';
 import { ListDeliveryAttemptsUseCase } from '../../features/list-delivery-attempts/list-delivery-attempts.use-case';
 import { ListDigestSchedulesUseCase } from '../../features/list-digest-schedules/list-digest-schedules.use-case';
-import { ListWebhookEndpointsUseCase } from '../../features/list-webhook-endpoints/list-webhook-endpoints.use-case';
 import { ListRealtimeEventsUseCase } from '../../features/list-realtime-events/list-realtime-events.use-case';
 import { ProjectSummaryReadyEventUseCase } from '../../features/project-summary-ready-event/project-summary-ready-event.use-case';
-import { QuarantineWebhookEndpointUseCase } from '../../features/quarantine-webhook-endpoint/quarantine-webhook-endpoint.use-case';
 import { QueueDeliveryAttemptUseCase } from '../../features/queue-delivery-attempt/queue-delivery-attempt.use-case';
 import { RecordDeliveryAttemptStateUseCase } from '../../features/record-delivery-attempt-state/record-delivery-attempt-state.use-case';
 import { RecordRealtimeEventUseCase } from '../../features/record-realtime-event/record-realtime-event.use-case';
@@ -57,13 +46,15 @@ import { RetryDeliveryAttemptUseCase } from '../../features/retry-delivery-attem
 import { ScheduleDueDigestsUseCase } from '../../features/schedule-due-digests/schedule-due-digests.use-case';
 import { SendDeliveryAttemptUseCase } from '../../features/send-delivery-attempt/send-delivery-attempt.use-case';
 import { SetNotificationPreferenceUseCase } from '../../features/set-notification-preference/set-notification-preference.use-case';
-import { SignWebhookPayloadUseCase } from '../../features/sign-webhook-payload/sign-webhook-payload.use-case';
 import { UpdateWorkspaceDigestPreferenceUseCase } from '../../features/update-workspace-digest-preference/update-workspace-digest-preference.use-case';
 import { UpdateWorkspaceTelemetryConsentUseCase } from '../../features/update-workspace-telemetry-consent/update-workspace-telemetry-consent.use-case';
-import { VerifyWebhookSignatureUseCase } from '../../features/verify-webhook-signature/verify-webhook-signature.use-case';
 import type { DeliveryChannel } from '../../domain';
 import { DeliveryAttemptsController } from './delivery-attempts.controller';
-import { createDeliveryProviders } from './delivery-provider-factory';
+import {
+  DELIVERY_PROVIDERS,
+  createDeliveryWebhookProviders,
+  deliveryWebhookExports,
+} from './delivery-webhook.providers';
 import { DeliveryReadAuthorizer } from './delivery-read.authorizer';
 import { DigestSchedulesController } from './digest-schedules.controller';
 import {
@@ -83,7 +74,6 @@ import {
   DELIVERY_WEBHOOK_SECRET_VAULT,
   resolveDeliveryEnabledChannels,
   resolveDeliveryPersistenceMode,
-  resolveDeliveryWebhookProviderMode,
   type DeliveryPersistenceMode,
 } from './delivery-provider-tokens';
 import { DigestsController } from './digests.controller';
@@ -103,15 +93,11 @@ import type {
   RealtimeFanoutPort,
   RealtimeEventRepositoryPort,
   WebhookEndpointRepositoryPort,
-  WebhookEventCatalogPort,
   WebhookReplayStorePort,
   WebhookSecretVaultPort,
 } from '../../ports';
 
-export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');
-const DELIVERY_HTTP_WEBHOOK_OPTIONS = Symbol('DELIVERY_HTTP_WEBHOOK_OPTIONS');
-const DELIVERY_WEBHOOK_EVENT_CATALOG = Symbol('DELIVERY_WEBHOOK_EVENT_CATALOG');
-const DELIVERY_WEBHOOK_PROVIDER_MODE = Symbol('DELIVERY_WEBHOOK_PROVIDER_MODE');
+export { DELIVERY_PROVIDERS } from './delivery-webhook.providers';
 
 @Module({
   imports: [IdentityRestModule, UsageRestModule],
@@ -154,53 +140,12 @@ const DELIVERY_WEBHOOK_PROVIDER_MODE = Symbol('DELIVERY_WEBHOOK_PROVIDER_MODE');
     InMemoryWebhookEndpointRepository,
     InMemoryWebhookReplayStore,
     InMemoryWebhookSecretVault,
-    InMemoryMetricsRecorder,
-    {
-      provide: DELIVERY_WEBHOOK_EVENT_CATALOG,
-      useClass: ContractWebhookEventCatalogAdapter,
-    },
-    {
-      provide: DELIVERY_WEBHOOK_PROVIDER_MODE,
-      useFactory: () => resolveDeliveryWebhookProviderMode(process.env),
-    },
-    {
-      provide: DELIVERY_HTTP_WEBHOOK_OPTIONS,
-      useFactory: () => resolveHttpWebhookDeliveryProviderOptions(process.env),
-    },
+    ...createDeliveryWebhookProviders(process.env),
     DeliveryReadAuthorizer,
     RealtimeEventsGateway,
     {
       provide: DELIVERY_REALTIME_FANOUT,
       useExisting: RealtimeEventsGateway,
-    },
-    {
-      provide: DELIVERY_PROVIDERS,
-      useFactory: (
-        enabledChannels: readonly DeliveryChannel[],
-        webhookProviderMode: 'in-memory' | 'http',
-        webhookOptions: HttpWebhookDeliveryProviderOptions,
-        metrics: InMemoryMetricsRecorder,
-        endpoints: WebhookEndpointRepositoryPort,
-        secrets: WebhookSecretVaultPort,
-        eventCatalog: WebhookEventCatalogPort,
-      ) => createDeliveryProviders(
-        enabledChannels,
-        webhookProviderMode,
-        webhookOptions,
-        metrics,
-        endpoints,
-        secrets,
-        eventCatalog,
-      ),
-      inject: [
-        DELIVERY_ENABLED_CHANNELS,
-        DELIVERY_WEBHOOK_PROVIDER_MODE,
-        DELIVERY_HTTP_WEBHOOK_OPTIONS,
-        InMemoryMetricsRecorder,
-        DELIVERY_WEBHOOK_ENDPOINT_REPOSITORY,
-        DELIVERY_WEBHOOK_SECRET_VAULT,
-        DELIVERY_WEBHOOK_EVENT_CATALOG,
-      ],
     },
     {
       provide: DELIVERY_ATTEMPT_REPOSITORY,
@@ -411,61 +356,6 @@ const DELIVERY_WEBHOOK_PROVIDER_MODE = Symbol('DELIVERY_WEBHOOK_PROVIDER_MODE');
       inject: [DELIVERY_NOTIFICATION_PREFERENCE_MANAGER],
     },
     {
-      provide: CreateWebhookEndpointUseCase,
-      useFactory: (
-        endpoints: WebhookEndpointRepositoryPort,
-        secrets: WebhookSecretVaultPort,
-        eventCatalog: WebhookEventCatalogPort,
-      ) => new CreateWebhookEndpointUseCase(
-        endpoints,
-        secrets,
-        new CryptoIdGenerator(),
-        new SystemClock(),
-        eventCatalog,
-      ),
-      inject: [DELIVERY_WEBHOOK_ENDPOINT_REPOSITORY, DELIVERY_WEBHOOK_SECRET_VAULT, DELIVERY_WEBHOOK_EVENT_CATALOG],
-    },
-    {
-      provide: GetWebhookEndpointUseCase,
-      useFactory: (endpoints: WebhookEndpointRepositoryPort) => new GetWebhookEndpointUseCase(endpoints),
-      inject: [DELIVERY_WEBHOOK_ENDPOINT_REPOSITORY],
-    },
-    {
-      provide: ListWebhookEndpointsUseCase,
-      useFactory: (endpoints: WebhookEndpointRepositoryPort) => new ListWebhookEndpointsUseCase(endpoints),
-      inject: [DELIVERY_WEBHOOK_ENDPOINT_REPOSITORY],
-    },
-    {
-      provide: DisableWebhookEndpointUseCase,
-      useFactory: (endpoints: WebhookEndpointRepositoryPort) =>
-        new DisableWebhookEndpointUseCase(endpoints, new SystemClock()),
-      inject: [DELIVERY_WEBHOOK_ENDPOINT_REPOSITORY],
-    },
-    {
-      provide: SignWebhookPayloadUseCase,
-      useFactory: (
-        endpoints: WebhookEndpointRepositoryPort,
-        secrets: WebhookSecretVaultPort,
-        eventCatalog: WebhookEventCatalogPort,
-      ) => new SignWebhookPayloadUseCase(endpoints, secrets, eventCatalog),
-      inject: [DELIVERY_WEBHOOK_ENDPOINT_REPOSITORY, DELIVERY_WEBHOOK_SECRET_VAULT, DELIVERY_WEBHOOK_EVENT_CATALOG],
-    },
-    {
-      provide: QuarantineWebhookEndpointUseCase,
-      useFactory: (endpoints: WebhookEndpointRepositoryPort) =>
-        new QuarantineWebhookEndpointUseCase(endpoints, new SystemClock()),
-      inject: [DELIVERY_WEBHOOK_ENDPOINT_REPOSITORY],
-    },
-    {
-      provide: VerifyWebhookSignatureUseCase,
-      useFactory: (
-        endpoints: WebhookEndpointRepositoryPort,
-        secrets: WebhookSecretVaultPort,
-        replayStore: WebhookReplayStorePort,
-      ) => new VerifyWebhookSignatureUseCase(endpoints, secrets, replayStore, new SystemClock()),
-      inject: [DELIVERY_WEBHOOK_ENDPOINT_REPOSITORY, DELIVERY_WEBHOOK_SECRET_VAULT, DELIVERY_WEBHOOK_REPLAY_STORE],
-    },
-    {
       provide: ApplyDeliverySuppressionUseCase,
       useFactory: (attempts: DeliveryAttemptRepositoryPort) =>
         new ApplyDeliverySuppressionUseCase(attempts, new SystemClock()),
@@ -526,15 +416,11 @@ const DELIVERY_WEBHOOK_PROVIDER_MODE = Symbol('DELIVERY_WEBHOOK_PROVIDER_MODE');
     GetDeliveryAttemptUseCase,
     ListDeliveryAttemptsUseCase,
     GetDigestUseCase,
-    CreateWebhookEndpointUseCase,
     CreateDigestScheduleUseCase,
-    DisableWebhookEndpointUseCase,
-    GetWebhookEndpointUseCase,
     GetDigestScheduleUseCase,
     GetNotificationPreferenceUseCase,
     GetWorkspaceSettingsUseCase,
     ListDigestSchedulesUseCase,
-    ListWebhookEndpointsUseCase,
     InMemoryDeliveryAttemptRepository,
     InMemoryDigestScheduleRepository,
     InMemoryDigestRepository,
@@ -544,10 +430,8 @@ const DELIVERY_WEBHOOK_PROVIDER_MODE = Symbol('DELIVERY_WEBHOOK_PROVIDER_MODE');
     InMemoryWebhookEndpointRepository,
     InMemoryWebhookReplayStore,
     InMemoryWebhookSecretVault,
-    InMemoryMetricsRecorder,
     ListRealtimeEventsUseCase,
     ProjectSummaryReadyEventUseCase,
-    QuarantineWebhookEndpointUseCase,
     QueueDeliveryAttemptUseCase,
     RecordDeliveryAttemptStateUseCase,
     RecordRealtimeEventUseCase,
@@ -555,10 +439,9 @@ const DELIVERY_WEBHOOK_PROVIDER_MODE = Symbol('DELIVERY_WEBHOOK_PROVIDER_MODE');
     ScheduleDueDigestsUseCase,
     SendDeliveryAttemptUseCase,
     SetNotificationPreferenceUseCase,
-    SignWebhookPayloadUseCase,
     UpdateWorkspaceDigestPreferenceUseCase,
     UpdateWorkspaceTelemetryConsentUseCase,
-    VerifyWebhookSignatureUseCase,
+    ...deliveryWebhookExports,
     DELIVERY_ATTEMPT_REPOSITORY,
     DELIVERY_DIGEST_REPOSITORY,
     DELIVERY_DIGEST_SCHEDULE_REPOSITORY,
@@ -570,7 +453,6 @@ const DELIVERY_WEBHOOK_PROVIDER_MODE = Symbol('DELIVERY_WEBHOOK_PROVIDER_MODE');
     DELIVERY_WEBHOOK_REPLAY_STORE,
     DELIVERY_NOTIFICATION_PREFERENCE_MANAGER,
     DELIVERY_NOTIFICATION_PREFERENCE_READER,
-    DELIVERY_PROVIDERS,
   ],
 })
 export class DeliveryRestModule {}

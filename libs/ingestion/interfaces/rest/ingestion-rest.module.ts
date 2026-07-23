@@ -1,7 +1,8 @@
 import { Module } from '@nestjs/common';
 import { resolvePostgresRuntimePoolConfig } from '@social-monitor/platform-persistence';
 import { IdentityRestModule } from '@social-monitor/identity/interfaces/rest/identity-rest.module';
-import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
+import type { MetricsRecorderPort } from '@social-monitor/platform-metrics';
+import { METRICS_RECORDER } from '@social-monitor/platform-metrics/nest/metrics-runtime.module';
 import { SystemClock, CryptoIdGenerator } from '@social-monitor/shared-kernel';
 
 import { PrismaIngestionConnection } from '../../adapters/persistence/prisma/prisma-ingestion-connection';
@@ -64,12 +65,11 @@ import { SourceProfileController } from './source-profile.controller';
           : null,
       inject: [INGESTION_SUPPORT_PERSISTENCE_MODE],
     },
-    InMemoryMetricsRecorder,
     {
       provide: InMemoryScanFailureQueueAdapter,
-      useFactory: (metrics: InMemoryMetricsRecorder) =>
+      useFactory: (metrics: MetricsRecorderPort) =>
         new InMemoryScanFailureQueueAdapter(metrics),
-      inject: [InMemoryMetricsRecorder],
+      inject: [METRICS_RECORDER],
     },
     {
       provide: INGESTION_SCAN_FAILURE_INSPECTION,
@@ -77,7 +77,7 @@ import { SourceProfileController } from './source-profile.controller';
         mode: IngestionSupportPersistenceMode,
         prisma: PrismaIngestionClient | null,
         inMemoryFailures: InMemoryScanFailureQueueAdapter,
-        metrics: InMemoryMetricsRecorder,
+        metrics: MetricsRecorderPort,
       ): ScanFailureInspectionPort =>
         mode === 'prisma'
           ? new PrismaScanFailureQueueAdapter(
@@ -90,7 +90,7 @@ import { SourceProfileController } from './source-profile.controller';
         INGESTION_SUPPORT_PERSISTENCE_MODE,
         INGESTION_SUPPORT_PRISMA_CLIENT,
         InMemoryScanFailureQueueAdapter,
-        InMemoryMetricsRecorder,
+        METRICS_RECORDER,
       ],
     },
     FakeSourceProvider,

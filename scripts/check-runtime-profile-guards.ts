@@ -32,6 +32,7 @@ import {
   resolveMonitoringPersistenceMode,
   resolveMonitoringScanQueueMode,
 } from '../libs/monitoring/interfaces/rest/monitoring-provider-tokens';
+import { resolveMetricsRuntimeConfig } from '../libs/platform/metrics/src/metrics-runtime-config';
 import {
   resolveRelevanceMemoryProjectionMode,
   resolveRelevancePersistenceMode,
@@ -115,6 +116,30 @@ assert(
 assertThrows(
   () => resolveMonitoringPersistenceMode(betaEnv),
   'MONITORING_PERSISTENCE must reject in-memory mode in beta runtime',
+);
+
+assertThrows(
+  () =>
+    resolveMetricsRuntimeConfig(
+      { ...betaEnv, SOCIAL_MONITOR_METRICS_MODE: 'in-memory' },
+      'api-gateway',
+    ),
+  'SOCIAL_MONITOR_METRICS_MODE must reject in-memory mode in beta runtime',
+);
+assertThrows(
+  () => resolveMetricsRuntimeConfig(betaEnv, 'api-gateway'),
+  'beta metrics runtime must require an explicit OTLP endpoint',
+);
+assert(
+  resolveMetricsRuntimeConfig(
+    {
+      ...betaEnv,
+      OTEL_EXPORTER_OTLP_METRICS_ENDPOINT:
+        'http://otel-collector:4318/v1/metrics',
+    },
+    'api-gateway',
+  ).mode === 'otlp',
+  'beta metrics runtime must resolve OTLP mode',
 );
 assert(
   resolveMonitoringPersistenceMode({ ...databaseEnv, MONITORING_PERSISTENCE: 'prisma' }) === 'prisma',

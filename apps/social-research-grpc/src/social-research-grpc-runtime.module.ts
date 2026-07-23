@@ -5,9 +5,9 @@ import { SocialResearchRuntimeModule } from '../../social-research-runtime/src/s
 
 @Module({
   imports: [
-    MetricsRuntimeModule.register({ serviceName: 'social-research-mcp' }),
+    MetricsRuntimeModule.register({ serviceName: 'social-research-grpc' }),
     SocialResearchRuntimeModule,
   ],
   exports: [SocialResearchRuntimeModule],
 })
-export class SocialResearchMcpRuntimeModule {}
+export class SocialResearchGrpcRuntimeModule {}

@@ -4,8 +4,8 @@ import { ServerCredentials } from '@grpc/grpc-js';
 import type { Server } from '@grpc/grpc-js';
 import { SocialResearchToolHandlers } from '@social-monitor/social-research/tools';
 
-import { SocialResearchRuntimeModule } from '../../social-research-runtime/src/social-research-runtime.module';
 import { buildSocialResearchGrpcServer } from './social-research-grpc-server';
+import { SocialResearchGrpcRuntimeModule } from './social-research-grpc-runtime.module';
 import type { SocialResearchGrpcSettings } from './social-research-grpc-settings';
 
 export type SocialResearchGrpcRuntime = {
@@ -19,7 +19,7 @@ export const createSocialResearchGrpcRuntime = async (
   settings: SocialResearchGrpcSettings,
 ): Promise<SocialResearchGrpcRuntime> => {
   const app = await NestFactory.createApplicationContext(
-    SocialResearchRuntimeModule,
+    SocialResearchGrpcRuntimeModule,
     { logger: ['error', 'warn'] },
   );
   let server: Server | undefined;

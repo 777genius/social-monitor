@@ -45,6 +45,10 @@
 - Required durable selectors for the app profile: `MONITORING_PERSISTENCE=prisma`, `FEED_PERSISTENCE=prisma`, `SUMMARY_PERSISTENCE=prisma`, `DELIVERY_PERSISTENCE=prisma`, `IDENTITY_PERSISTENCE=prisma`, `USAGE_PERSISTENCE=prisma`, `MONITORING_SCAN_QUEUE=rabbitmq`, `SUMMARY_JOB_QUEUE_MODE=rabbitmq`, `INGESTION_SCAN_QUEUE_READER=rabbitmq`, `INTELLIGENCE_SUMMARY_QUEUE_READER=rabbitmq`, `DELIVERY_ATTEMPT_QUEUE_READER=rabbitmq`.
 - RabbitMQ task queues must use `RABBITMQ_DEAD_LETTER_EXCHANGE=social-monitor.commands.dlx`, `RABBITMQ_QUEUE_TYPE=quorum` and `RABBITMQ_QUEUE_DELIVERY_LIMIT=20` in beta runtime. If an existing local broker volume already declared classic queues, recreate the test broker volume before validating the app profile.
 - Event relay must run with `EVENT_RELAY_LOOP=enabled`; otherwise durable outbox events can accumulate without fanout to RabbitMQ-backed consumers.
+- Every Node application process uses `SOCIAL_MONITOR_METRICS_MODE=otlp` in
+  beta and sends to
+  `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT=http://otel-collector:4318/v1/metrics`
+  in the local app profile. Collector must start before app processes.
 - Delivery service uses `DELIVERY_ATTEMPT_DISPATCH_TARGET=queue`, `DELIVERY_ATTEMPT_DISPATCH_QUEUE=rabbitmq`, `DELIVERY_ATTEMPT_QUEUE_READER=rabbitmq` and `DELIVERY_WEBHOOK_PROVIDER=http` in app profile. If webhook failures spike, follow Delivery Failure Triage before replaying attempts.
 - Run `npm run check:runtime-compose`, `npm run check:container`, `npm run check:api-health`, `npm run check:event-relay`, `npm run check:cross-process-scheduler`, `npm run check:summary-queue-drain-loop` and `npm run check:delivery-attempt-queue-drain-loop` as targeted confidence checks when runtime wiring changes.
 
@@ -77,6 +81,24 @@ Scan status API responses expose support-safe fields for beta triage:
 - If backlog grows together with provider rate-limit failures, reduce scan frequency or pause affected sources before adding workers.
 - Quorum queues dead-letter messages after the configured delivery limit when a DLX is present. Use RabbitMQ policy for at-least-once dead-lettering in shared/staging brokers before replaying production-like queues.
 - Queue lag depends on broker message timestamps, so in-memory fixture queues do not emit it. If lag is high while backlog is low, inspect worker pauses, long-running handlers and broker redelivery patterns.
+
+## Metrics Exporter Triage
+
+- Check `/ready` and inspect `runtime.metrics.lifecycle` and
+  `runtime.metrics.exportState`; the response never includes exporter
+  credentials or endpoint details.
+- Check Collector health on port `13133`, then verify the
+  Prometheus-compatible metrics endpoint on port `8889`.
+- If export state is `failed`, verify network policy, Collector availability
+  and OTLP/HTTP endpoint configuration before restarting applications.
+- Do not make application readiness depend on the first successful export:
+  a temporary Collector outage must not create a restart loop. Alert on
+  sustained failed export state and Collector health instead.
+- If cardinality or Collector memory pressure grows, identify the metric and
+  bounded label dimension, reduce the configured limit if necessary, and
+  never add tenant IDs, prompts, URLs or payload text as labels.
+- During Collector maintenance, keep application processing active, restore
+  the gateway first, and verify a successful export state after recovery.
 
 ## DLQ Triage
 

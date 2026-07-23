@@ -17,7 +17,11 @@ import { ScheduleDueDigestsCommandHandler } from '@social-monitor/delivery/inter
 import { SendDeliveryAttemptCommandHandler } from '@social-monitor/delivery/interfaces/queue/send-delivery-attempt-command.handler';
 import { DeliveryRestModule } from '@social-monitor/delivery/interfaces/rest/delivery-rest.module';
 import { DELIVERY_ATTEMPT_REPOSITORY } from '@social-monitor/delivery/interfaces/rest/delivery-provider-tokens';
-import { InMemoryMetricsRecorder, type MetricsRecorderPort } from '@social-monitor/platform-metrics';
+import type { MetricsRecorderPort } from '@social-monitor/platform-metrics';
+import {
+  METRICS_RECORDER,
+  MetricsRuntimeModule,
+} from '@social-monitor/platform-metrics/nest/metrics-runtime.module';
 import { WorkerRuntime, WorkerRuntimeModule } from '@social-monitor/platform-worker';
 import { SystemClock } from '@social-monitor/shared-kernel';
 import type {
@@ -78,7 +82,11 @@ type RabbitMqDeliveryAttemptQueueChannelPort =
   RabbitMqQueueChannelPort & RabbitMqDeliveryAttemptQueueReaderChannelPort;
 
 @Module({
-  imports: [WorkerRuntimeModule.register({ serviceName: 'delivery-service' }), DeliveryRestModule],
+  imports: [
+    MetricsRuntimeModule.register({ serviceName: 'delivery-service' }),
+    WorkerRuntimeModule.register({ serviceName: 'delivery-service' }),
+    DeliveryRestModule,
+  ],
   providers: [
     {
       provide: DELIVERY_DIGEST_SCHEDULER_LOOP_OPTIONS,
@@ -152,7 +160,7 @@ type RabbitMqDeliveryAttemptQueueChannelPort =
         InMemoryQueuePublisher,
         DELIVERY_RABBITMQ_ATTEMPT_QUEUE_CHANNEL,
         DELIVERY_RABBITMQ_ATTEMPT_QUEUE_OPTIONS,
-        InMemoryMetricsRecorder,
+        METRICS_RECORDER,
       ],
     },
     {
@@ -214,28 +222,28 @@ type RabbitMqDeliveryAttemptQueueChannelPort =
       provide: ScheduleDueDigestsCommandHandler,
       useFactory: (
         scheduleDueDigests: ScheduleDueDigestsUseCase,
-        metrics: InMemoryMetricsRecorder,
+        metrics: MetricsRecorderPort,
         runtime: WorkerRuntime,
       ) => new ScheduleDueDigestsCommandHandler(scheduleDueDigests, metrics, runtime),
-      inject: [ScheduleDueDigestsUseCase, InMemoryMetricsRecorder, WorkerRuntime],
+      inject: [ScheduleDueDigestsUseCase, METRICS_RECORDER, WorkerRuntime],
     },
     {
       provide: SendDeliveryAttemptCommandHandler,
       useFactory: (
         sendDeliveryAttempt: SendDeliveryAttemptUseCase,
-        metrics: InMemoryMetricsRecorder,
+        metrics: MetricsRecorderPort,
         runtime: WorkerRuntime,
       ) => new SendDeliveryAttemptCommandHandler(sendDeliveryAttempt, metrics, runtime),
-      inject: [SendDeliveryAttemptUseCase, InMemoryMetricsRecorder, WorkerRuntime],
+      inject: [SendDeliveryAttemptUseCase, METRICS_RECORDER, WorkerRuntime],
     },
     {
       provide: ProjectSummaryReadyEventHandler,
       useFactory: (
         projectSummaryReady: ProjectSummaryReadyEventUseCase,
-        metrics: InMemoryMetricsRecorder,
+        metrics: MetricsRecorderPort,
         runtime: WorkerRuntime,
       ) => new ProjectSummaryReadyEventHandler(projectSummaryReady, metrics, runtime),
-      inject: [ProjectSummaryReadyEventUseCase, InMemoryMetricsRecorder, WorkerRuntime],
+      inject: [ProjectSummaryReadyEventUseCase, METRICS_RECORDER, WorkerRuntime],
     },
     {
       provide: DeliveryAttemptDispatchLoop,
@@ -258,13 +266,13 @@ type RabbitMqDeliveryAttemptQueueChannelPort =
         queue: DeliveryAttemptQueueReaderPort,
         handler: SendDeliveryAttemptCommandHandler,
         options: ReturnType<typeof resolveDeliveryAttemptQueueDrainLoopOptions>,
-        metrics: InMemoryMetricsRecorder,
+        metrics: MetricsRecorderPort,
       ) => new DeliveryAttemptQueueDrainLoop(queue, handler, options, metrics, new SystemClock()),
       inject: [
         DELIVERY_ATTEMPT_COMMAND_QUEUE_READER,
         SendDeliveryAttemptCommandHandler,
         DELIVERY_ATTEMPT_QUEUE_DRAIN_LOOP_OPTIONS,
-        InMemoryMetricsRecorder,
+        METRICS_RECORDER,
       ],
     },
     {
@@ -273,13 +281,13 @@ type RabbitMqDeliveryAttemptQueueChannelPort =
         queue: SummaryReadyEventQueueReaderPort,
         handler: ProjectSummaryReadyEventHandler,
         options: ReturnType<typeof resolveDeliverySummaryReadyEventDrainLoopOptions>,
-        metrics: InMemoryMetricsRecorder,
+        metrics: MetricsRecorderPort,
       ) => new SummaryReadyEventDrainLoop(queue, handler, options, metrics, new SystemClock()),
       inject: [
         DELIVERY_SUMMARY_READY_EVENT_QUEUE_READER,
         ProjectSummaryReadyEventHandler,
         DELIVERY_SUMMARY_READY_EVENT_DRAIN_LOOP_OPTIONS,
-        InMemoryMetricsRecorder,
+        METRICS_RECORDER,
       ],
     },
     DigestSchedulerLoop,

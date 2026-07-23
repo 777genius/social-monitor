@@ -33,23 +33,45 @@ export interface MetricsRecorderPort {
   recordGauge(metric: GaugeMetricInput): void;
 }
 
+const metricNamePattern = /^[a-z][a-z0-9_]{0,254}$/;
+const labelKeyPattern = /^[a-z][a-z0-9_]{0,63}$/;
+const forbiddenLabelKeys = new Set([
+  'api_key',
+  'authorization',
+  'body',
+  'email',
+  'prompt',
+  'raw_text',
+  'source_url',
+  'token',
+  'url',
+]);
+
 export class InMemoryMetricsRecorder implements MetricsRecorderPort {
   private readonly counterMetrics: RecordedCounterMetric[] = [];
   private readonly gaugeMetrics: RecordedGaugeMetric[] = [];
 
   incrementCounter(metric: CounterMetricInput): void {
+    requireMetricName(metric.name);
+    if (!isValidCounterValue(metric.value ?? 1)) {
+      return;
+    }
     this.counterMetrics.push({
       name: metric.name,
       value: metric.value ?? 1,
-      labels: normalizeLabels(metric.labels ?? {}),
+      labels: normalizeMetricLabels(metric.labels ?? {}),
     });
   }
 
   recordGauge(metric: GaugeMetricInput): void {
+    requireMetricName(metric.name);
+    if (!Number.isFinite(metric.value)) {
+      return;
+    }
     this.gaugeMetrics.push({
       name: metric.name,
       value: metric.value,
-      labels: normalizeLabels(metric.labels ?? {}),
+      labels: normalizeMetricLabels(metric.labels ?? {}),
     });
   }
 
@@ -66,7 +88,7 @@ export class InMemoryMetricsRecorder implements MetricsRecorderPort {
   }
 
   counterValue(name: string, labels: MetricLabels = {}): number {
-    const normalizedLabels = normalizeLabels(labels);
+    const normalizedLabels = normalizeMetricLabels(labels);
 
     return this.counterMetrics
       .filter(
@@ -89,7 +111,7 @@ export class InMemoryMetricsRecorder implements MetricsRecorderPort {
   }
 
   latestGaugeValue(name: string, labels: MetricLabels = {}): number | undefined {
-    const normalizedLabels = normalizeLabels(labels);
+    const normalizedLabels = normalizeMetricLabels(labels);
     const matching = this.gaugeMetrics.filter(
       (metric) =>
         metric.name === name && labelsEqual(metric.labels, normalizedLabels),
@@ -99,9 +121,12 @@ export class InMemoryMetricsRecorder implements MetricsRecorderPort {
   }
 }
 
-const normalizeLabels = (labels: MetricLabels): Readonly<Record<string, string>> =>
+export const normalizeMetricLabels = (
+  labels: MetricLabels,
+): Readonly<Record<string, string>> =>
   Object.fromEntries(
     Object.entries(labels)
+      .filter(([key]) => isAllowedLabelKey(key))
       .sort(([left], [right]) => left.localeCompare(right))
       .map(([key, value]) => [key, safeLabelValue(formatLabelValue(value))]),
   );
@@ -113,6 +138,21 @@ const formatLabelValue = (value: MetricLabelValue): string | undefined => {
 
   return String(value);
 };
+
+export const requireMetricName = (name: string): string => {
+  if (!metricNamePattern.test(name)) {
+    throw new Error(
+      `Invalid metric name "${name}"; expected lower_snake_case with at most 255 characters`,
+    );
+  }
+  return name;
+};
+
+const isAllowedLabelKey = (key: string): boolean =>
+  labelKeyPattern.test(key) && !forbiddenLabelKeys.has(key);
+
+const isValidCounterValue = (value: number): boolean =>
+  Number.isFinite(value) && value >= 0;
 
 const labelsEqual = (
   left: Readonly<Record<string, string>>,
