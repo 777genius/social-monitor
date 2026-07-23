@@ -215,6 +215,8 @@ acquire_postgres_admission_with_daily_priority() {
 reconcile_current_postgres_pool_bootstrap() {
   local expected_current=$1
   local marker=$STATE/postgres-pool-bootstrap.sha
+  # CONTROL is provided by the production deploy entrypoint that sources this file.
+  # shellcheck disable=SC2153
   local installed=$CONTROL/github-production-deploy.sh
   local current worktree_status
 

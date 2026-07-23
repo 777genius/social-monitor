@@ -249,6 +249,8 @@ run_current_deploy() {
     SOCIAL_MONITOR_DEPLOY_STATE="$STATE"
     GIT_CONFIG_GLOBAL="$FIXTURE/gitconfig"
   )
+  # Positional parameters and log paths expand only in the isolated child shell.
+  # shellcheck disable=SC2016
   /usr/bin/env "${environment[@]}" /usr/bin/bash -c '
     source "$1"
     advance_integration() {
