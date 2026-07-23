@@ -24,8 +24,8 @@ import {
 import { assert } from './reader-summary-rest-smoke-contract';
 
 export const dailyGitHubProjectionFixture = () => {
-  const projectionCheckedAt = new Date('2026-06-23T08:30:00.000Z');
-  const fetchStartedAt = new Date('2026-06-23T08:29:00.000Z');
+  const projectionCheckedAt = new Date('2026-06-24T00:01:00.000Z');
+  const publishedAt = new Date('2026-06-23T23:59:59.999Z');
   const citations = Array.from({ length: 10 }, (_, index) => {
     const rank = index + 1;
     return {
@@ -72,17 +72,13 @@ export const dailyGitHubProjectionFixture = () => {
       feedItemId: citation.feedItemId,
       sourceItemId: citation.sourceItemId,
       sourceBindingId: 'github-trending-binding',
-      providerKey: 'github-trending-page',
-      metadataKind: 'github_trending_page_repository',
-      scanJobId: 'github-trending-binding-scan',
       canonicalUrl: citation.canonicalUrl,
       repositoryFullName: `example/repository-${rank}`,
       rank,
       starsGained: 100 + rank,
       window: 'daily',
-      fetchStartedAt,
       checkedAt: projectionCheckedAt,
-      publishedAt: projectionCheckedAt,
+      publishedAt,
       observedAt: projectionCheckedAt,
       sourceContentHash: 'a'.repeat(64),
       sourceProviderContentHash: 'b'.repeat(64),

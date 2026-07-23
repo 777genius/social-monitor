@@ -12,15 +12,11 @@ type GitHubProjectionRow = {
   readonly feedItemId: string;
   readonly sourceItemId: string;
   readonly sourceBindingId: string;
-  readonly providerKey: string;
-  readonly metadataKind: string | null;
-  readonly scanJobId: string | null;
   readonly canonicalUrl: string;
   readonly repositoryFullName: string | null;
   readonly rank: string | number | null;
   readonly starsGained: string | number | null;
   readonly window: string | null;
-  readonly fetchStartedAt: string | null;
   readonly checkedAt: string | null;
   readonly publishedAt: Date;
   readonly observedAt: Date;
@@ -120,15 +116,11 @@ export class PrismaReaderSummaryGitHubProjectionReader
         fi.id::text as "feedItemId",
         fi.source_item_id::text as "sourceItemId",
         fi.source_binding_id::text as "sourceBindingId",
-        si.provider_key as "providerKey",
-        si.metadata->>'kind' as "metadataKind",
-        si.metadata->'trending'->>'scanJobId' as "scanJobId",
         fi.canonical_url as "canonicalUrl",
         si.metadata->'repository'->>'fullName' as "repositoryFullName",
         si.metadata->'trending'->>'rank' as "rank",
         si.metadata->'trending'->>'starsGained' as "starsGained",
         si.metadata->'trending'->>'window' as "window",
-        si.metadata->'trending'->>'fetchStartedAt' as "fetchStartedAt",
         si.metadata->'trending'->>'checkedAt' as "checkedAt",
         fi.published_at as "publishedAt",
         fi.observed_at as "observedAt",
@@ -157,9 +149,11 @@ export class PrismaReaderSummaryGitHubProjectionReader
         and fi.provider_key = 'github-trending-page'
         and si.provider_key = 'github-trending-page'
         and fi.status = 'VISIBLE'
-        and fi.observed_at >= ${query.dayStartedAt}
+        and fi.published_at >= ${query.dayStartedAt}
+        and fi.published_at < ${query.dayEndedAt}
         and fi.observed_at <= ${query.observedThrough}
-        and si.observed_at >= ${query.dayStartedAt}
+        and si.published_at >= ${query.dayStartedAt}
+        and si.published_at < ${query.dayEndedAt}
         and si.observed_at <= ${query.observedThrough}
         and sb.status = 'ENABLED'
         and sb.deleted_at is null
@@ -174,7 +168,7 @@ export class PrismaReaderSummaryGitHubProjectionReader
             nullif(sb.config->'sourceQuery'->>'query', '')
           )
         ) in ('daily', 'today')
-      order by sb.id asc, fi.observed_at asc, fi.id asc
+      order by sb.id asc, fi.published_at asc, fi.id asc
       limit ${projectionPageSize}
       offset ${offset}
     `;
@@ -187,13 +181,6 @@ const projectionItemFromRow = (
   feedItemId: row.feedItemId,
   sourceItemId: row.sourceItemId,
   sourceBindingId: row.sourceBindingId,
-  providerKey: row.providerKey,
-  ...(nonEmpty(row.metadataKind) === undefined
-    ? {}
-    : { metadataKind: nonEmpty(row.metadataKind) }),
-  ...(nonEmpty(row.scanJobId) === undefined
-    ? {}
-    : { scanJobId: nonEmpty(row.scanJobId) }),
   canonicalUrl: row.canonicalUrl,
   ...(nonEmpty(row.repositoryFullName) === undefined
     ? {}
@@ -207,9 +194,6 @@ const projectionItemFromRow = (
   ...(nonEmpty(row.window) === undefined
     ? {}
     : { window: nonEmpty(row.window) }),
-  ...(validDate(row.fetchStartedAt) === undefined
-    ? {}
-    : { fetchStartedAt: validDate(row.fetchStartedAt) }),
   ...(validDate(row.checkedAt) === undefined
     ? {}
     : { checkedAt: validDate(row.checkedAt) }),
@@ -274,7 +258,5 @@ const validDate = (value: string | null): Date | undefined => {
     return undefined;
   }
   const parsed = new Date(value);
-  return Number.isFinite(parsed.getTime()) && parsed.toISOString() === value
-    ? parsed
-    : undefined;
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
 };

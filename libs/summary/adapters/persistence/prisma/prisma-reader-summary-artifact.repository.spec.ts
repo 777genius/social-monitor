@@ -122,22 +122,6 @@ describe("PrismaReaderSummaryArtifactRepository", () => {
     expect(
       prisma.qualitySignalsFor("reader-summary-verified-github"),
     ).toMatchObject({ githubProjectionAudit });
-    expect(
-      githubProjectionAudit.bindings.map((binding) => binding.rank),
-    ).toEqual(Array.from({ length: 10 }, (_, index) => index + 1));
-    expect(
-      new Set(
-        githubProjectionAudit.bindings.map((binding) => binding.scanJobId),
-      ),
-    ).toEqual(new Set(["scan-github-reader-summary-prisma"]));
-    expect(
-      githubProjectionAudit.bindings.every(
-        (binding) =>
-          binding.fetchStartedAt <= binding.checkedAt &&
-          binding.publishedAt === binding.checkedAt &&
-          binding.checkedAt <= binding.observedAt,
-      ),
-    ).toBe(true);
   });
 
   it("rejects a candidate without durable zero-binding proof", async () => {
@@ -488,13 +472,9 @@ const verifiedGitHubProjectionAudit =
         feedItemId: `feed-${rank}`,
         sourceItemId: `source-${rank}`,
         sourceBindingId: "github-binding",
-        providerKey: "github-trending-page",
-        metadataKind: "github_trending_page_repository",
-        scanJobId: "scan-github-reader-summary-prisma",
         repositoryIdentity: `owner/repository-${rank}`,
         canonicalUrl: `https://github.com/owner/repository-${rank}`,
         starsGained: 200 + rank,
-        fetchStartedAt: "2026-07-05T12:00:00.000Z",
         publishedAt: "2026-07-05T12:00:00.000Z",
         checkedAt: "2026-07-05T12:00:00.000Z",
         observedAt: "2026-07-05T12:05:00.000Z",

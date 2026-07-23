@@ -29,8 +29,6 @@ export type GitHubTrendingPageRepositoryMetadataInput = {
     readonly rank: number;
     readonly starsGained: number;
     readonly window: GitHubTrendingPageWindow;
-    readonly scanJobId: string;
-    readonly fetchStartedAt: Date;
     readonly checkedAt: Date;
     readonly source: 'github_trending_html' | 'fixture_github_trending_html';
   };
@@ -50,8 +48,6 @@ export type GitHubTrendingPageRepositoryMetadata = {
     readonly rank: number;
     readonly starsGained: number;
     readonly window: GitHubTrendingPageWindow;
-    readonly scanJobId: string;
-    readonly fetchStartedAt: string;
     readonly checkedAt: string;
     readonly source: string;
   };
@@ -78,8 +74,6 @@ export const githubTrendingPageRepositoryMetadata = (
       rank: input.trending.rank,
       starsGained: input.trending.starsGained,
       window: input.trending.window,
-      scanJobId: input.trending.scanJobId,
-      fetchStartedAt: input.trending.fetchStartedAt.toISOString(),
       checkedAt: input.trending.checkedAt.toISOString(),
       source: input.trending.source,
     },
@@ -101,27 +95,14 @@ export const parseGitHubTrendingPageRepositoryMetadata = (
 
   const fullName = readString(repository.fullName);
   const url = readString(repository.url);
-  const scanJobId = readString(trending.scanJobId);
-  const fetchStartedAt = readExactIsoDateString(trending.fetchStartedAt);
-  const checkedAt = readExactIsoDateString(trending.checkedAt);
+  const checkedAt = readString(trending.checkedAt);
   const window = readWindow(trending.window);
-  const totalStars = readNonNegativeInteger(repository.totalStars);
-  const forksCount = readNonNegativeInteger(repository.forksCount);
-  const rank = readPositiveInteger(trending.rank);
-  const starsGained = readNonNegativeInteger(trending.starsGained);
 
   if (
     fullName === undefined ||
     url === undefined ||
-    scanJobId === undefined ||
-    fetchStartedAt === undefined ||
     checkedAt === undefined ||
-    window === undefined ||
-    totalStars === undefined ||
-    forksCount === undefined ||
-    rank === undefined ||
-    starsGained === undefined ||
-    new Date(fetchStartedAt).getTime() > new Date(checkedAt).getTime()
+    window === undefined
   ) {
     return null;
   }
@@ -133,194 +114,18 @@ export const parseGitHubTrendingPageRepositoryMetadata = (
       url,
       description: readString(repository.description),
       language: readString(repository.language),
-      totalStars,
-      forksCount,
+      totalStars: readNonNegativeInteger(repository.totalStars),
+      forksCount: readNonNegativeInteger(repository.forksCount),
     },
     trending: {
-      rank,
-      starsGained,
+      rank: readPositiveInteger(trending.rank),
+      starsGained: readNonNegativeInteger(trending.starsGained),
       window,
-      scanJobId,
-      fetchStartedAt,
       checkedAt,
       source: readString(trending.source) ?? 'unknown',
     },
   };
 };
-
-type GitHubSnapshotCandidate = {
-  readonly externalId: string;
-  readonly canonicalUrl: string;
-  readonly publishedAt: Date;
-  readonly ingestedAt: Date;
-  readonly metadata?: JsonObject;
-};
-
-type GitHubSnapshotEnvelope = {
-  readonly scanJobId: string;
-  readonly repositoryIdentity: string;
-  readonly rank: number;
-  readonly fetchStartedAt: string;
-  readonly checkedAt: string;
-  readonly publishedAt: string;
-  readonly observedAt: string;
-};
-
-export const assertGitHubTrendingSnapshotBatchIntegrity = (params: {
-  readonly providerKey: string;
-  readonly items: readonly GitHubSnapshotCandidate[];
-}): void => {
-  const hasGitHubMetadata = params.items.some(
-    (item) =>
-      item.metadata?.kind === GITHUB_TRENDING_PAGE_REPOSITORY_METADATA_KIND,
-  );
-  if (
-    params.providerKey !== GITHUB_TRENDING_PAGE_PROVIDER_KEY &&
-    !hasGitHubMetadata
-  ) {
-    return;
-  }
-  if (params.providerKey !== GITHUB_TRENDING_PAGE_PROVIDER_KEY) {
-    throw new Error(
-      'GitHub Trending snapshot metadata requires the GitHub Trending provider',
-    );
-  }
-  if (params.items.length === 0) {
-    return;
-  }
-  if (params.items.length > 10) {
-    throw new Error(
-      'GitHub Trending snapshot cannot admit repositories beyond the canonical Top 10',
-    );
-  }
-
-  const envelopes = params.items.map(assertGitHubTrendingSnapshotIntegrity);
-  const first = envelopes[0]!;
-  const ranks = envelopes.map((envelope) => envelope.rank);
-  const repositories = envelopes.map(
-    (envelope) => envelope.repositoryIdentity,
-  );
-  if (
-    envelopes.some(
-      (envelope) =>
-        envelope.scanJobId !== first.scanJobId ||
-        envelope.fetchStartedAt !== first.fetchStartedAt ||
-        envelope.checkedAt !== first.checkedAt ||
-        envelope.publishedAt !== first.publishedAt ||
-        envelope.observedAt !== first.observedAt,
-    ) ||
-    ranks.some((rank, index) => rank !== index + 1) ||
-    new Set(ranks).size !== ranks.length ||
-    new Set(repositories).size !== repositories.length
-  ) {
-    throw new Error(
-      'GitHub Trending snapshot batch must preserve one coherent scan identity, timestamp envelope, and ascending unique Top 10 rank order',
-    );
-  }
-};
-
-export const githubTrendingSnapshotBatchObservedAt = (params: {
-  readonly providerKey: string;
-  readonly items: readonly GitHubSnapshotCandidate[];
-}): Date | undefined => {
-  assertGitHubTrendingSnapshotBatchIntegrity(params);
-  if (
-    params.providerKey !== GITHUB_TRENDING_PAGE_PROVIDER_KEY ||
-    params.items.length === 0
-  ) {
-    return undefined;
-  }
-  return new Date(params.items[0]!.ingestedAt);
-};
-
-export const assertGitHubTrendingDurableObservationCoherence = (params: {
-  readonly providerKey: string;
-  readonly incomingObservedAt: Date;
-  readonly persistedObservedAt: Date;
-}): void => {
-  if (
-    params.providerKey === GITHUB_TRENDING_PAGE_PROVIDER_KEY &&
-    params.incomingObservedAt.getTime() !== params.persistedObservedAt.getTime()
-  ) {
-    throw new Error(
-      'GitHub Trending snapshot conflicts with a durable row from a different observation envelope',
-    );
-  }
-};
-
-const assertGitHubTrendingSnapshotIntegrity = (
-  item: GitHubSnapshotCandidate,
-): GitHubSnapshotEnvelope => {
-  const metadata = parseGitHubTrendingPageRepositoryMetadata(item.metadata);
-  if (metadata === null) {
-    throw new Error(
-      'GitHub Trending snapshot requires canonical metadata with valid scan and source timestamps',
-    );
-  }
-  const fetchStartedAt = new Date(metadata.trending.fetchStartedAt);
-  const checkedAt = new Date(metadata.trending.checkedAt);
-  const publishedAt = item.publishedAt;
-  const observedAt = item.ingestedAt;
-  const timestamps = [
-    fetchStartedAt,
-    checkedAt,
-    publishedAt,
-    observedAt,
-  ].map((value) => value.getTime());
-  if (
-    timestamps.some((value) => !Number.isFinite(value)) ||
-    metadata.trending.rank < 1 ||
-    metadata.trending.rank > 10 ||
-    metadata.trending.starsGained <= 0 ||
-    metadata.repository.totalStars <= 0 ||
-    fetchStartedAt.getTime() > checkedAt.getTime() ||
-    publishedAt.getTime() !== checkedAt.getTime() ||
-    observedAt.getTime() < checkedAt.getTime() ||
-    utcDay(fetchStartedAt) !== utcDay(checkedAt) ||
-    utcDay(checkedAt) !== utcDay(publishedAt)
-  ) {
-    throw new Error(
-      'GitHub Trending snapshot fetchStartedAt and checkedAt must belong to one UTC day, publishedAt must equal checkedAt, and observedAt cannot precede them',
-    );
-  }
-  const expectedExternalId = [
-    GITHUB_TRENDING_PAGE_PROVIDER_KEY,
-    metadata.trending.window,
-    metadata.trending.scanJobId,
-    metadata.repository.fullName,
-  ].join(':');
-  const canonicalRepositoryUrl =
-    `https://github.com/${metadata.repository.fullName}`.toLocaleLowerCase(
-      'en-US',
-    );
-  if (
-    !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(
-      metadata.repository.fullName,
-    ) ||
-    item.externalId !== expectedExternalId ||
-    item.canonicalUrl !== metadata.repository.url ||
-    metadata.repository.url.toLocaleLowerCase('en-US') !==
-      canonicalRepositoryUrl
-  ) {
-    throw new Error(
-      'GitHub Trending snapshot source and repository identities must match its immutable scan metadata',
-    );
-  }
-
-  return {
-    scanJobId: metadata.trending.scanJobId,
-    repositoryIdentity: metadata.repository.fullName
-      .trim()
-      .toLocaleLowerCase('en-US'),
-    rank: metadata.trending.rank,
-    fetchStartedAt: metadata.trending.fetchStartedAt,
-    checkedAt: metadata.trending.checkedAt,
-    publishedAt: publishedAt.toISOString(),
-    observedAt: observedAt.toISOString(),
-  };
-};
-
-const utcDay = (value: Date): string => value.toISOString().slice(0, 10);
 
 const readRecord = (
   value: unknown,
@@ -334,28 +139,15 @@ const readString = (value: unknown): string | undefined =>
     ? value.trim()
     : undefined;
 
-const readExactIsoDateString = (value: unknown): string | undefined => {
-  const text = readString(value);
-  if (text === undefined) {
-    return undefined;
-  }
-  const parsed = new Date(text);
-  return Number.isFinite(parsed.getTime()) && parsed.toISOString() === text
-    ? text
-    : undefined;
-};
-
 const readWindow = (value: unknown): GitHubTrendingPageWindow | undefined =>
   githubTrendingPageWindows.includes(value as GitHubTrendingPageWindow)
     ? (value as GitHubTrendingPageWindow)
     : undefined;
 
-const readNonNegativeInteger = (value: unknown): number | undefined =>
+const readNonNegativeInteger = (value: unknown): number =>
   typeof value === 'number' && Number.isInteger(value) && value >= 0
     ? value
-    : undefined;
+    : 0;
 
-const readPositiveInteger = (value: unknown): number | undefined =>
-  typeof value === 'number' && Number.isInteger(value) && value > 0
-    ? value
-    : undefined;
+const readPositiveInteger = (value: unknown): number =>
+  typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : 1;

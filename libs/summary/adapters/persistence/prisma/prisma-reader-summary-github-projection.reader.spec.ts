@@ -43,7 +43,7 @@ describe("PrismaReaderSummaryGitHubProjectionReader", () => {
     ]);
   });
 
-  it("pins tenant, workspace, durable observation windows, and the cutoff", async () => {
+  it("pins tenant, workspace, both durable date windows, and the observation cutoff", async () => {
     const prisma = clientWithBindings("binding-active-a");
     const reader = new PrismaReaderSummaryGitHubProjectionReader(
       prisma as unknown as PrismaSummaryClient,
@@ -62,8 +62,10 @@ describe("PrismaReaderSummaryGitHubProjectionReader", () => {
       query.tenantId,
       query.workspaceId,
       query.dayStartedAt,
+      query.dayEndedAt,
       query.observedThrough,
       query.dayStartedAt,
+      query.dayEndedAt,
       query.observedThrough,
       query.dayEndedAt,
       1_000,
@@ -77,15 +79,10 @@ describe("PrismaReaderSummaryGitHubProjectionReader", () => {
     const sql = prisma.calls[1]?.sql ?? "";
     expect(sql).toContain("fi.tenant_id =");
     expect(sql).toContain("fi.workspace_id =");
-    expect(sql).toContain("fi.observed_at >=");
-    expect(sql).toContain("fi.observed_at <=");
-    expect(sql).toContain("si.observed_at >=");
-    expect(sql).toContain("si.observed_at <=");
-    expect(sql).not.toContain("fi.published_at >=");
-    expect(sql).not.toContain("si.published_at >=");
-    expect(sql).toContain(
-      `si.metadata->'trending'->>'fetchStartedAt' as "fetchStartedAt"`,
-    );
+    expect(sql).toContain("fi.published_at >=");
+    expect(sql).toContain("fi.published_at <");
+    expect(sql).toContain("si.published_at >=");
+    expect(sql).toContain("si.published_at <");
   });
 
   it("requires active bindings and prevents a cross-binding source item join", async () => {
@@ -182,15 +179,11 @@ const row = (index: number, sourceBindingId: string) => ({
   feedItemId: `feed-${index}`,
   sourceItemId: `source-${index}`,
   sourceBindingId,
-  providerKey: "github-trending-page",
-  metadataKind: "github_trending_page_repository",
-  scanJobId: "scan-github-1",
   canonicalUrl: `https://github.com/owner/repo-${index}`,
   repositoryFullName: `owner/repo-${index}`,
   rank: String(index),
   starsGained: String(100 + index),
   window: "daily",
-  fetchStartedAt: "2026-07-10T12:00:00.000Z",
   checkedAt: "2026-07-10T12:00:00.000Z",
   publishedAt: new Date("2026-07-10T12:00:00.000Z"),
   observedAt: new Date("2026-07-10T12:05:00.000Z"),

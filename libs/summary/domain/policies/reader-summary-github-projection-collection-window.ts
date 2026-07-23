@@ -16,34 +16,36 @@ export const githubProjectionTimesAreBounded = (params: {
   readonly dayEndedAt: Date;
   readonly observedThrough: Date;
   readonly publishedAt: Date;
-  readonly fetchStartedAt: Date;
   readonly checkedAt: Date;
   readonly observedAt: Date;
 }): boolean => {
   const dayStartedAt = params.dayStartedAt.getTime();
   const dayEndedAt = params.dayEndedAt.getTime();
   const observedThrough = params.observedThrough.getTime();
-  const fetchStartedAt = params.fetchStartedAt.getTime();
   const publishedAt = params.publishedAt.getTime();
   const checkedAt = params.checkedAt.getTime();
   const observedAt = params.observedAt.getTime();
+  const collectionEndedAt =
+    dayEndedAt + readerSummaryGitHubProjectionCollectionGraceMs;
+
   return (
     [
       dayStartedAt,
       dayEndedAt,
       observedThrough,
       publishedAt,
-      fetchStartedAt,
       checkedAt,
       observedAt,
     ].every(Number.isFinite) &&
-    fetchStartedAt >= dayStartedAt &&
-    fetchStartedAt < dayEndedAt &&
-    checkedAt >= fetchStartedAt &&
-    checkedAt < dayEndedAt &&
-    publishedAt === checkedAt &&
+    publishedAt >= dayStartedAt &&
+    publishedAt < dayEndedAt &&
+    checkedAt >= dayStartedAt &&
+    checkedAt >= publishedAt &&
+    checkedAt <= collectionEndedAt &&
     checkedAt <= observedThrough &&
+    observedAt >= publishedAt &&
     observedAt >= checkedAt &&
+    observedAt <= collectionEndedAt &&
     observedAt <= observedThrough
   );
 };
@@ -63,7 +65,10 @@ export const buildReaderSummaryGitHubProjectionCollectionTelemetry = (params: {
     return undefined;
   }
   const collectionDelayMs = Math.max(0, latestObservedAt - dayEndedAt);
-  if (!Number.isSafeInteger(collectionDelayMs)) {
+  if (
+    !Number.isSafeInteger(collectionDelayMs) ||
+    collectionDelayMs > readerSummaryGitHubProjectionCollectionGraceMs
+  ) {
     return undefined;
   }
 

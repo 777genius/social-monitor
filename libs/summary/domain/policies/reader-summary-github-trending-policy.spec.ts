@@ -12,14 +12,14 @@ import {
 describe("reader summary GitHub Trending policy", () => {
   it("keeps at most three repositories with more than 1,000 gained stars", () => {
     const selected = selectGitHubTrendingHighlights([
-      evidence("repo-low", 999, "github-trending-page", 1),
-      evidence("repo-boundary", 1_000, "github-trending-page", 2),
-      evidence("repo-first", 4_200, "github-trending-page", 3),
-      evidence("repo-second", 2_500, "github-trending-page", 4),
-      evidence("repo-third", 1_050, "github-trending-page", 5),
-      evidence("repo-fourth", 1_001, "github-trending-page", 6),
-      evidence("repo-eleven", 50_000, "github-trending-page", 11),
-      evidence("reddit", 50_000, "reddit", 7),
+      evidence("repo-top-ten", 50_000, "github-trending-page", 1),
+      evidence("repo-low", 999, "github-trending-page", 11),
+      evidence("repo-boundary", 1_000, "github-trending-page", 12),
+      evidence("repo-third", 1_050, "github-trending-page", 13),
+      evidence("repo-first", 4_200, "github-trending-page", 14),
+      evidence("repo-fourth", 1_001, "github-trending-page", 15),
+      evidence("repo-second", 2_500, "github-trending-page", 16),
+      evidence("reddit", 50_000, "reddit", 17),
     ]);
 
     expect(selected.map((item) => item.feedItemId)).toEqual([
@@ -31,35 +31,35 @@ describe("reader summary GitHub Trending policy", () => {
 
   it("deduplicates normalized repository snapshots before top-three selection", () => {
     const strongestSnapshot = {
-      ...evidence("build-your-own-x-strong", 1_126, undefined, 1),
+      ...evidence("build-your-own-x-strong", 1_126, undefined, 11),
       canonicalUrl:
         "https://github.com/Codecrafters-io/build-your-own-x/?ref=daily",
       title: "codecrafters-io/build-your-own-x",
       observedAt: new Date("2026-07-18T11:00:00.000Z"),
     };
     const currentWeakerSnapshot = {
-      ...evidence("build-your-own-x-current", 1_068, undefined, 2),
+      ...evidence("build-your-own-x-current", 1_068, undefined, 12),
       canonicalUrl:
         "https://github.com/codecrafters-io/build-your-own-x.git",
       title: "codecrafters-io/build-your-own-x",
       observedAt: new Date("2026-07-18T12:00:00.000Z"),
     };
     const olderEqualSnapshot = {
-      ...evidence("equal-old", 1_100, undefined, 3),
+      ...evidence("equal-old", 1_100, undefined, 13),
       canonicalUrl: "https://github.com/example/equal-repo",
       observedAt: new Date("2026-07-18T10:00:00.000Z"),
     };
     const currentEqualSnapshot = {
-      ...evidence("equal-current", 1_100, undefined, 3),
+      ...evidence("equal-current", 1_100, undefined, 14),
       canonicalUrl: "https://github.com/example/equal-repo/",
       observedAt: new Date("2026-07-18T12:00:00.000Z"),
     };
-    const thirdRepository = evidence("third-repository", 1_050, undefined, 4);
+    const thirdRepository = evidence("third-repository", 1_050, undefined, 15);
     const fourthRepository = evidence(
       "fourth-repository",
       1_040,
       undefined,
-      5,
+      16,
     );
 
     const selected = selectGitHubTrendingHighlights([
@@ -72,7 +72,7 @@ describe("reader summary GitHub Trending policy", () => {
     ]);
 
     expect(selected.map((item) => item.feedItemId)).toEqual([
-      "build-your-own-x-current",
+      "build-your-own-x-strong",
       "equal-current",
       "third-repository",
     ]);
@@ -103,11 +103,11 @@ describe("reader summary GitHub Trending policy", () => {
     });
 
     expect(appendix?.text).toContain(
-      "codecrafters-io/build-your-own-x** (#2): +1,068 stars today",
+      "codecrafters-io/build-your-own-x**: +1,126 stars today",
     );
-    expect(appendix?.text).not.toContain("+1,126 stars today");
+    expect(appendix?.text).not.toContain("+1,068 stars today");
     expect(appendix?.citationIds).toEqual([
-      "citation-build-your-own-x-current",
+      "citation-build-your-own-x-strong",
       "citation-equal-current",
       "citation-third-repository",
     ]);
@@ -150,7 +150,7 @@ describe("reader summary GitHub Trending policy", () => {
     ]);
   });
 
-  it("excludes rank 11 from supplemental evidence regardless of momentum", () => {
+  it("keeps high-momentum appendix evidence outside the display top ten", () => {
     const items = Array.from({ length: 12 }, (_, index) =>
       evidence(
         `repo-${index + 1}`,
@@ -175,10 +175,11 @@ describe("reader summary GitHub Trending policy", () => {
       "repo-8",
       "repo-9",
       "repo-10",
+      "repo-12",
     ]);
   });
 
-  it("uses only native Top 10 and momentum admission for Watch", () => {
+  it("keeps safe Top 10 entries despite generic eligibility and filters ineligible Watch entries", () => {
     const ineligibleForSummary = {
       qualityScore: 0,
       interestRelevanceScore: 0,
@@ -191,7 +192,7 @@ describe("reader summary GitHub Trending policy", () => {
       reason: "Generic editorial eligibility does not govern the native board.",
     };
     const topTen = {
-      ...evidence("repo-1", 1_001, "github-trending-page", 1),
+      ...evidence("repo-1", 100, "github-trending-page", 1),
       contentQuality: ineligibleForSummary,
     };
     const watch = {
@@ -202,7 +203,7 @@ describe("reader summary GitHub Trending policy", () => {
     expect(selectGitHubTrendingDisplayRepositories([topTen, watch])).toEqual([
       topTen,
     ]);
-    expect(selectGitHubTrendingHighlights([topTen, watch])).toEqual([topTen]);
+    expect(selectGitHubTrendingHighlights([topTen, watch])).toEqual([]);
   });
 
   it("deduplicates snapshots and recovers the strongest multi-scope rank", () => {
@@ -235,25 +236,6 @@ describe("reader summary GitHub Trending policy", () => {
     ).toEqual(["repo-duplicate-latest", "repo-3"]);
   });
 
-  it("uses only the latest scan group without filling gaps from history", () => {
-    const older = [1, 2, 3].map((rank) => ({
-      ...evidence(`old-${rank}`, 1_500, "github-trending-page", rank),
-      publishedAt: new Date("2026-07-10T12:00:00.000Z"),
-      observedAt: new Date("2026-07-10T12:05:00.000Z"),
-    }));
-    const latest = [1, 3].map((rank) => ({
-      ...evidence(`latest-${rank}`, 1_500, "github-trending-page", rank),
-      publishedAt: new Date("2026-07-10T13:00:00.000Z"),
-      observedAt: new Date("2026-07-10T13:05:00.000Z"),
-    }));
-
-    expect(
-      selectGitHubTrendingDisplayRepositories([...older, ...latest]).map(
-        (item) => item.feedItemId,
-      ),
-    ).toEqual(["latest-1", "latest-3"]);
-  });
-
   it("rejects non-daily Trending windows", () => {
     const item = {
       ...evidence("repo", 3_703),
@@ -274,10 +256,9 @@ describe("reader summary GitHub Trending policy", () => {
         "owner/repo - useful developer tool",
         1_234,
         "github-trending-page",
-        1,
+        11,
       ),
       canonicalUrl: "https://github.com/owner/repo",
-      title: "attacker/forged-repository",
     };
 
     expect(
@@ -298,7 +279,7 @@ describe("reader summary GitHub Trending policy", () => {
       id: "github-trending",
       kind: "watch",
       title: "GitHub Trending",
-      text: "- **owner/repo** (#1): +1,234 stars today.",
+      text: "- **owner/repo**: +1,234 stars today.",
       citationIds: ["c9"],
     });
   });

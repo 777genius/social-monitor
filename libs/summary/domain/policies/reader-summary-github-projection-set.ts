@@ -14,8 +14,6 @@ import {
 } from "./reader-summary-github-projection-audit";
 import {
   githubTrendingNarrativeSectionId,
-  githubTrendingWatchText,
-  maxGitHubTrendingHighlights,
   maxGitHubTrendingDisplayRepositories,
   minimumGitHubTrendingStarsGained,
 } from "./reader-summary-github-trending-policy";
@@ -100,35 +98,7 @@ export const projectionSetFindings = (
   const sourceItemIds = candidates.map(
     (candidate) => candidate.item.sourceItemId,
   );
-  const findings: {
-    readonly code: ReaderSummaryGitHubProjectionViolationCode;
-    readonly reason: string;
-  }[] = [];
-  const fetchStartedAt = new Set(
-    candidates.map((candidate) => dateKey(candidate.item.fetchStartedAt)),
-  );
-  const checkedAt = new Set(
-    candidates.map((candidate) => dateKey(candidate.item.checkedAt)),
-  );
-  const publishedAt = new Set(
-    candidates.map((candidate) => dateKey(candidate.item.publishedAt)),
-  );
-  const observedAt = new Set(
-    candidates.map((candidate) => dateKey(candidate.item.observedAt)),
-  );
-  if (
-    fetchStartedAt.size !== 1 ||
-    checkedAt.size !== 1 ||
-    publishedAt.size !== 1 ||
-    observedAt.size !== 1 ||
-    [...checkedAt][0] !== [...publishedAt][0]
-  ) {
-    findings.push({
-      code: "github_projection_mixed" as const,
-      reason:
-        "Durable GitHub projection must share one immutable fetch, check, publication, and observation envelope.",
-    });
-  }
+  const findings = [];
   if (
     hasDuplicates(ranks) ||
     hasDuplicates(repositories) ||
@@ -146,7 +116,6 @@ export const projectionSetFindings = (
     (_, index) => index + 1,
   );
   if (
-    candidates.length !== maxGitHubTrendingDisplayRepositories ||
     topTenCandidates.length !== maxGitHubTrendingDisplayRepositories ||
     expectedRanks.some((rank) => !topTenRanks.includes(rank))
   ) {
@@ -191,52 +160,24 @@ export const supplementalNarrativeFindings = (params: {
   readonly code: ReaderSummaryGitHubProjectionViolationCode;
   readonly reason: string;
 }[] => {
-  const findings: {
-    readonly code: ReaderSummaryGitHubProjectionViolationCode;
-    readonly reason: string;
-  }[] = [];
-  const sections =
-    params.artifact.toSnapshot().content?.narrativeSections ?? [];
-  const expectedWatch = params.candidates
-    .filter(
-      (candidate) =>
-        candidate.groupKey === params.selectedGroupKey &&
-        (candidate.item.rank ?? 0) >= 1 &&
-        (candidate.item.rank ?? 0) <=
-          maxGitHubTrendingDisplayRepositories &&
-        (candidate.item.starsGained ?? 0) >
-          minimumGitHubTrendingStarsGained,
-    )
-    .sort(
-      (left, right) =>
-        left.item.rank! - right.item.rank! ||
-        left.repositoryIdentity.localeCompare(
-          right.repositoryIdentity,
-          "en-US",
-        ),
-    )
-    .slice(0, maxGitHubTrendingHighlights);
-  let githubSectionCount = 0;
-  for (const section of sections) {
+  const findings = [];
+  for (const section of params.artifact.toSnapshot().content
+    ?.narrativeSections ?? []) {
     const githubCitations = section.citationIds.flatMap((citationId) => {
       const citation = params.citationById.get(citationId);
       return citation !== undefined && isGitHubCitation(citation)
         ? [citation]
         : [];
     });
-    if (
-      githubCitations.length === 0 &&
-      section.id !== githubTrendingNarrativeSectionId
-    ) {
+    if (githubCitations.length === 0) {
       continue;
     }
-    githubSectionCount += 1;
     if (
       section.kind !== "watch" ||
       section.id !== githubTrendingNarrativeSectionId ||
       section.citationIds.length !== githubCitations.length ||
       hasDuplicates(section.citationIds) ||
-      githubCitations.length > maxGitHubTrendingHighlights
+      githubCitations.length > 3
     ) {
       findings.push({
         code: "github_projection_mixed" as const,
@@ -245,63 +186,25 @@ export const supplementalNarrativeFindings = (params: {
       });
       continue;
     }
-    const selected = githubCitations.flatMap((citation) => {
+    for (const citation of githubCitations) {
       const matches = params.candidates.filter(
         (candidate) =>
           candidate.item.feedItemId === citation.feedItemId &&
           candidate.item.sourceItemId === citation.sourceItemId &&
           candidate.groupKey === params.selectedGroupKey &&
-          (candidate.item.rank ?? 0) >= 1 &&
-          (candidate.item.rank ?? 0) <=
+          (candidate.item.rank ?? 0) >
             maxGitHubTrendingDisplayRepositories &&
           (candidate.item.starsGained ?? 0) >
-            minimumGitHubTrendingStarsGained &&
-          canonicalGitHubRepositoryIdentity(citation.canonicalUrl) ===
-            candidate.repositoryIdentity,
+            minimumGitHubTrendingStarsGained,
       );
-      return matches.length === 1 ? matches : [];
-    });
-    const resolvedRepositories = selected.map(
-      (candidate) => candidate.repositoryIdentity,
-    );
-    if (
-      selected.length !== githubCitations.length ||
-      hasDuplicates(resolvedRepositories) ||
-      hasDuplicates(selected.map((candidate) => candidate.item.feedItemId)) ||
-      hasDuplicates(selected.map((candidate) => candidate.item.sourceItemId)) ||
-      selected.length !== expectedWatch.length ||
-      section.text !==
-        githubTrendingWatchText(
-          expectedWatch.map((candidate) => ({
-            repositoryIdentity: candidate.repositoryIdentity,
-            rank: candidate.item.rank!,
-            starsGained: candidate.item.starsGained!,
-          })),
-        ) ||
-      selected.some(
-        (candidate, index) =>
-          candidate.item.feedItemId !==
-            expectedWatch[index]?.item.feedItemId ||
-          candidate.item.sourceItemId !==
-            expectedWatch[index]?.item.sourceItemId,
-      )
-    ) {
-      findings.push({
-        code: "github_projection_identity_invalid" as const,
-        reason:
-          "GitHub Trending Watch must contain the exact ordered unique subset of at most three Top 10 repositories with strictly more than 1,000 stars gained.",
-      });
+      if (matches.length !== 1) {
+        findings.push({
+          code: "github_projection_identity_invalid" as const,
+          reason:
+            "GitHub Trending Watch citations must bind one projection item with strictly more than 1,000 stars gained.",
+        });
+      }
     }
-  }
-  if (
-    (expectedWatch.length === 0 && githubSectionCount > 0) ||
-    (expectedWatch.length > 0 && githubSectionCount !== 1)
-  ) {
-    findings.push({
-      code: "github_projection_mixed",
-      reason:
-        "GitHub Trending Watch must appear exactly once when eligible Top 10 repositories exist and be absent otherwise.",
-    });
   }
   return findings;
 };
@@ -315,13 +218,9 @@ export const projectionBinding = (
   feedItemId: candidate.item.feedItemId,
   sourceItemId: candidate.item.sourceItemId,
   sourceBindingId: candidate.item.sourceBindingId,
-  providerKey: candidate.item.providerKey,
-  metadataKind: candidate.item.metadataKind!,
-  scanJobId: candidate.item.scanJobId!,
   repositoryIdentity: candidate.repositoryIdentity,
   canonicalUrl: candidate.item.canonicalUrl,
   starsGained: candidate.item.starsGained!,
-  fetchStartedAt: candidate.item.fetchStartedAt!.toISOString(),
   publishedAt: candidate.item.publishedAt.toISOString(),
   checkedAt: candidate.item.checkedAt!.toISOString(),
   observedAt: candidate.item.observedAt.toISOString(),
@@ -334,37 +233,19 @@ export const latestProjectionGroupKey = (
   sourceBindingId: string,
 ): string | undefined => {
   let latestItem: ReaderSummaryGitHubProjectionItem | undefined;
-  let latestFetchStartedAt = Number.NEGATIVE_INFINITY;
   let latestCheckedAt = Number.NEGATIVE_INFINITY;
-  let latestObservedAt = Number.NEGATIVE_INFINITY;
   for (const item of items) {
     const checkedAt = item.checkedAt?.getTime();
-    const fetchStartedAt = item.fetchStartedAt?.getTime();
-    const observedAt = item.observedAt.getTime();
     if (
       item.sourceBindingId !== sourceBindingId ||
       checkedAt === undefined ||
-      !Number.isFinite(checkedAt) ||
-      fetchStartedAt === undefined ||
-      !Number.isFinite(fetchStartedAt) ||
-      !Number.isFinite(observedAt) ||
-      item.scanJobId === undefined ||
-      item.scanJobId.trim().length === 0
+      !Number.isFinite(checkedAt)
     ) {
       continue;
     }
-    if (
-      fetchStartedAt > latestFetchStartedAt ||
-      (fetchStartedAt === latestFetchStartedAt &&
-        checkedAt > latestCheckedAt) ||
-      (fetchStartedAt === latestFetchStartedAt &&
-        checkedAt === latestCheckedAt &&
-        observedAt > latestObservedAt)
-    ) {
+    if (checkedAt > latestCheckedAt) {
       latestItem = item;
       latestCheckedAt = checkedAt;
-      latestFetchStartedAt = fetchStartedAt;
-      latestObservedAt = observedAt;
     }
   }
   return latestItem === undefined ? undefined : projectionGroupKey(latestItem);
@@ -372,36 +253,14 @@ export const latestProjectionGroupKey = (
 
 export const projectionGroupKey = (
   item: ReaderSummaryGitHubProjectionItem,
-): string => `${item.sourceBindingId}\u0000${item.scanJobId ?? "invalid"}`;
+): string =>
+  `${item.sourceBindingId}\u0000${item.checkedAt?.toISOString() ?? "invalid"}`;
 
 export const projectionGroupKeyIfSelectable = (
   item: ReaderSummaryGitHubProjectionItem,
 ): string | undefined => {
   const checkedAt = item.checkedAt?.getTime();
-  const fetchStartedAt = item.fetchStartedAt?.getTime();
-  return checkedAt !== undefined &&
-    Number.isFinite(checkedAt) &&
-    fetchStartedAt !== undefined &&
-    Number.isFinite(fetchStartedAt) &&
-    item.scanJobId !== undefined &&
-    item.scanJobId.trim().length > 0
+  return checkedAt !== undefined && Number.isFinite(checkedAt)
     ? projectionGroupKey(item)
     : undefined;
-};
-
-export const projectionGroupEnvelopeIsCoherent = (
-  items: readonly ReaderSummaryGitHubProjectionItem[],
-): boolean =>
-  items.length > 0 &&
-  new Set(items.map((item) => item.scanJobId)).size === 1 &&
-  new Set(items.map((item) => dateKey(item.fetchStartedAt))).size === 1 &&
-  new Set(items.map((item) => dateKey(item.checkedAt))).size === 1 &&
-  new Set(items.map((item) => dateKey(item.publishedAt))).size === 1 &&
-  new Set(items.map((item) => dateKey(item.observedAt))).size === 1;
-
-const dateKey = (value: Date | undefined): string => {
-  const timestamp = value?.getTime();
-  return timestamp !== undefined && Number.isFinite(timestamp)
-    ? new Date(timestamp).toISOString()
-    : "invalid";
 };

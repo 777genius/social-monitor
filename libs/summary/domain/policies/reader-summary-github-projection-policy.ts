@@ -1,9 +1,12 @@
 import type { ReaderSummaryArtifact } from "../entities/reader-summary-artifact";
 import {
   buildReaderSummaryGitHubProjectionCollectionTelemetry,
+  canonicalGitHubRepositoryIdentity,
   exactUtcDay,
+  githubProjectionTimesAreBounded,
   isGitHubReaderItem,
   nonEmpty,
+  normalizeRepositoryFullName,
   readerSummaryHasNoPrimaryGitHubEvidence,
   readerSummaryRequiresGitHubProjection,
   validEligibleBindingIds,
@@ -15,18 +18,14 @@ import {
   type ReaderSummaryGitHubProjectionViolationCode,
 } from "./reader-summary-github-projection-audit";
 import {
-  collectCanonicalProjectionCandidates,
-  githubProjectionItemTouchesDay,
-} from "./reader-summary-github-projection-candidates";
-import {
   latestProjectionGroupKey,
   projectionBinding,
-  projectionGroupEnvelopeIsCoherent,
-  projectionGroupKey,
+  projectionGroupKeyIfSelectable,
   projectionSetFindings,
   resolveSelectedCandidate,
   selectedPostsFollowProjection,
   supplementalNarrativeFindings,
+  type ProjectionCandidate,
 } from "./reader-summary-github-projection-set";
 import { maxGitHubTrendingDisplayRepositories } from "./reader-summary-github-trending-policy";
 
@@ -137,7 +136,10 @@ export const evaluateReaderSummaryGitHubProjection = (params: {
     code: ReaderSummaryGitHubProjectionViolationCode;
     reason: string;
   }[] = [];
-  if (!Number.isSafeInteger(params.pageCount) || params.pageCount < 1) {
+  if (
+    !Number.isSafeInteger(params.pageCount) ||
+    params.pageCount < 1
+  ) {
     findings.push({
       code: "github_projection_unavailable",
       reason:
@@ -194,16 +196,10 @@ export const evaluateReaderSummaryGitHubProjection = (params: {
         "More than one eligible active GitHub Trending binding exists; publication requires one unambiguous canonical binding.",
     });
   }
-  const requestedDayItems = params.items.filter((item) =>
-    githubProjectionItemTouchesDay(item, day.startedAt, day.endedAt),
-  );
   const eligibleBindingIdSet = new Set(eligibleBindingIds);
   const canonicalGroupKeyByBindingId = new Map<string, string>();
   for (const bindingId of eligibleBindingIds) {
-    const canonicalGroupKey = latestProjectionGroupKey(
-      requestedDayItems,
-      bindingId,
-    );
+    const canonicalGroupKey = latestProjectionGroupKey(params.items, bindingId);
     if (canonicalGroupKey === undefined) {
       findings.push({
         code: "github_projection_missing",
@@ -213,32 +209,69 @@ export const evaluateReaderSummaryGitHubProjection = (params: {
     }
     canonicalGroupKeyByBindingId.set(bindingId, canonicalGroupKey);
   }
-  const candidateCollection = collectCanonicalProjectionCandidates({
-    items: requestedDayItems,
-    eligibleBindingIds: eligibleBindingIdSet,
-    canonicalGroupKeyByBindingId,
-    dayStartedAt: day.startedAt,
-    dayEndedAt: day.endedAt,
-    observedThrough: params.observedThrough,
+  const candidates = params.items.flatMap((item) => {
+    const groupKey = projectionGroupKeyIfSelectable(item);
+    const repositoryIdentity = canonicalGitHubRepositoryIdentity(
+      item.canonicalUrl,
+    );
+    const metadataIdentity = normalizeRepositoryFullName(
+      item.repositoryFullName,
+    );
+    const checkedAt = item.checkedAt?.getTime();
+    const valid =
+      eligibleBindingIdSet.has(item.sourceBindingId) &&
+      nonEmpty(item.feedItemId) &&
+      nonEmpty(item.sourceItemId) &&
+      nonEmpty(item.sourceBindingId) &&
+      /^[a-f0-9]{64}$/iu.test(item.sourceContentHash) &&
+      /^[a-f0-9]{64}$/iu.test(item.sourceProviderContentHash) &&
+      repositoryIdentity !== undefined &&
+      metadataIdentity === repositoryIdentity &&
+      Number.isInteger(item.rank) &&
+      (item.rank ?? 0) > 0 &&
+      Number.isSafeInteger(item.starsGained) &&
+      (item.starsGained ?? -1) >= 0 &&
+      item.window === "daily" &&
+      checkedAt !== undefined &&
+      Number.isFinite(checkedAt) &&
+      githubProjectionTimesAreBounded({
+        dayStartedAt: day.startedAt,
+        dayEndedAt: day.endedAt,
+        observedThrough: params.observedThrough,
+        publishedAt: item.publishedAt,
+        checkedAt: item.checkedAt!,
+        observedAt: item.observedAt,
+      });
+    if (!valid || groupKey === undefined) {
+      const latestGroupKey = canonicalGroupKeyByBindingId.get(
+        item.sourceBindingId,
+      );
+      if (
+        !eligibleBindingIdSet.has(item.sourceBindingId) ||
+        groupKey === undefined ||
+        groupKey === latestGroupKey
+      ) {
+        findings.push({
+          code: "github_projection_identity_invalid",
+          reason:
+            "Durable GitHub projection contains an invalid identity, daily metric, fingerprint, or timestamp.",
+        });
+      }
+      return [];
+    }
+
+    return [
+      {
+        item,
+        repositoryIdentity,
+        groupKey,
+      } satisfies ProjectionCandidate,
+    ];
   });
-  const candidates = candidateCollection.candidates;
-  findings.push(...candidateCollection.findings);
   for (const bindingId of eligibleBindingIds) {
     const canonicalGroupKey = canonicalGroupKeyByBindingId.get(bindingId);
     if (canonicalGroupKey === undefined) {
       continue;
-    }
-    const canonicalItems = requestedDayItems.filter(
-      (item) =>
-        item.sourceBindingId === bindingId &&
-        projectionGroupKey(item) === canonicalGroupKey,
-    );
-    if (!projectionGroupEnvelopeIsCoherent(canonicalItems)) {
-      findings.push({
-        code: "github_projection_mixed",
-        reason:
-          "Latest durable GitHub projection must preserve one coherent scan identity and source/observation timestamp envelope.",
-      });
     }
     findings.push(
       ...projectionSetFindings(
@@ -252,7 +285,9 @@ export const evaluateReaderSummaryGitHubProjection = (params: {
   const selectedPosts = (snapshot.content?.selectedPosts ?? []).filter(
     isGitHubReaderItem,
   );
-  if (selectedPosts.length !== maxGitHubTrendingDisplayRepositories) {
+  if (
+    selectedPosts.length !== maxGitHubTrendingDisplayRepositories
+  ) {
     findings.push({
       code: "github_projection_missing",
       reason: `selectedPosts must contain exactly ${maxGitHubTrendingDisplayRepositories} GitHub Trending repositories and no supplemental GitHub entries.`,
@@ -269,33 +304,6 @@ export const evaluateReaderSummaryGitHubProjection = (params: {
       code: "github_projection_mixed",
       reason:
         "GitHub Trending evidence is supplemental and cannot support primary headlines, bullets, topics, claims, source mix, or top reads.",
-    });
-  }
-  const selectedReferencesOlderGroup = selectedPosts.some((post) =>
-    post.citationIds.some((citationId) => {
-      const citation = citationById.get(citationId);
-      if (citation === undefined) {
-        return false;
-      }
-      return requestedDayItems.some((item) => {
-        const canonicalGroupKey = canonicalGroupKeyByBindingId.get(
-          item.sourceBindingId,
-        );
-        return (
-          eligibleBindingIdSet.has(item.sourceBindingId) &&
-          item.feedItemId === citation.feedItemId &&
-          item.sourceItemId === citation.sourceItemId &&
-          canonicalGroupKey !== undefined &&
-          projectionGroupKey(item) !== canonicalGroupKey
-        );
-      });
-    }),
-  );
-  if (selectedReferencesOlderGroup) {
-    findings.push({
-      code: "github_projection_stale",
-      reason:
-        "GitHub selectedPosts is bound to an older durable projection snapshot.",
     });
   }
   const selectedCandidates = selectedPosts.flatMap((post, index) => {

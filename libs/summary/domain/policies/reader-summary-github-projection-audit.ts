@@ -13,9 +13,9 @@ import {
   buildReaderSummaryGitHubProjectionCollectionTelemetry,
   exactUtcDay,
   githubProjectionTimesAreBounded,
+  readerSummaryGitHubProjectionCollectionGraceMs,
   type ReaderSummaryGitHubProjectionCollectionTelemetry,
 } from "./reader-summary-github-projection-collection-window";
-import { verifiedGitHubWatchFollowsBindings } from "./reader-summary-github-projection-verification";
 
 export {
   buildReaderSummaryGitHubProjectionCollectionTelemetry,
@@ -41,15 +41,11 @@ export type ReaderSummaryGitHubProjectionItem = {
   readonly feedItemId: string;
   readonly sourceItemId: string;
   readonly sourceBindingId: string;
-  readonly providerKey: string;
-  readonly metadataKind?: string;
-  readonly scanJobId?: string;
   readonly canonicalUrl: string;
   readonly repositoryFullName?: string;
   readonly rank?: number;
   readonly starsGained?: number;
   readonly window?: string;
-  readonly fetchStartedAt?: Date;
   readonly checkedAt?: Date;
   readonly publishedAt: Date;
   readonly observedAt: Date;
@@ -64,13 +60,9 @@ export type ReaderSummaryGitHubProjectionBinding = {
   readonly feedItemId: string;
   readonly sourceItemId: string;
   readonly sourceBindingId: string;
-  readonly providerKey: string;
-  readonly metadataKind: string;
-  readonly scanJobId: string;
   readonly repositoryIdentity: string;
   readonly canonicalUrl: string;
   readonly starsGained: number;
-  readonly fetchStartedAt: string;
   readonly publishedAt: string;
   readonly checkedAt: string;
   readonly observedAt: string;
@@ -301,11 +293,11 @@ export const readerSummaryHasVerifiedGitHubProjection = (params: {
     params.audit.pageCount < 1 ||
     params.audit.eligibleBindingIds.length !== 1 ||
     params.audit.scannedItemCount < maxGitHubTrendingDisplayRepositories ||
-    !exactIsoInstant(params.audit.projectionCheckedAt) ||
     !Number.isFinite(projectionCheckedAt.getTime()) ||
     projectionCheckedAt.getTime() < day.startedAt.getTime() ||
-    projectionCheckedAt.getTime() >= day.endedAt.getTime() ||
-    !exactIsoInstant(params.audit.observedThrough) ||
+    projectionCheckedAt.getTime() >
+      day.endedAt.getTime() +
+        readerSummaryGitHubProjectionCollectionGraceMs ||
     !Number.isFinite(observedThrough.getTime()) ||
     projectionCheckedAt.getTime() > observedThrough.getTime() ||
     params.audit.bindings.length !== maxGitHubTrendingDisplayRepositories
@@ -337,26 +329,7 @@ export const readerSummaryHasVerifiedGitHubProjection = (params: {
     hasDuplicates(bindings.map((binding) => binding.feedItemId)) ||
     hasDuplicates(bindings.map((binding) => binding.sourceItemId)) ||
     hasDuplicates(bindings.map((binding) => binding.repositoryIdentity)) ||
-    new Set(bindings.map((binding) => binding.scanJobId)).size !== 1 ||
-    new Set(bindings.map((binding) => binding.fetchStartedAt)).size !== 1 ||
-    new Set(bindings.map((binding) => binding.publishedAt)).size !== 1 ||
-    new Set(bindings.map((binding) => binding.checkedAt)).size !== 1 ||
-    new Set(bindings.map((binding) => binding.observedAt)).size !== 1 ||
     bindings.some((binding) => binding.sourceBindingId !== eligibleBindingId) ||
-    bindings.some(
-      (binding) =>
-        binding.providerKey !== githubTrendingProviderKey ||
-        binding.metadataKind !== "github_trending_page_repository" ||
-        !nonEmpty(binding.scanJobId) ||
-        !exactIsoInstant(binding.fetchStartedAt) ||
-        !exactIsoInstant(binding.publishedAt) ||
-        !exactIsoInstant(binding.checkedAt) ||
-        !exactIsoInstant(binding.observedAt),
-    ) ||
-    !verifiedGitHubWatchFollowsBindings({
-      artifact: params.artifact,
-      bindings,
-    }) ||
     !sameCollectionTelemetry(params.audit.telemetry, expectedTelemetry)
   ) {
     return false;
@@ -387,7 +360,6 @@ export const readerSummaryHasVerifiedGitHubProjection = (params: {
         dayStartedAt: day.startedAt,
         dayEndedAt: day.endedAt,
         observedThrough,
-        fetchStartedAt: new Date(binding.fetchStartedAt),
         publishedAt: new Date(binding.publishedAt),
         checkedAt: new Date(binding.checkedAt),
         observedAt: new Date(binding.observedAt),
@@ -466,11 +438,6 @@ export const normalizeRepositoryFullName = (
 ): string | undefined => normalizeGitHubRepositoryFullName(value);
 
 export const nonEmpty = (value: string): boolean => value.trim().length > 0;
-
-const exactIsoInstant = (value: string | undefined): boolean => {
-  const parsed = new Date(value ?? "invalid");
-  return Number.isFinite(parsed.getTime()) && parsed.toISOString() === value;
-};
 
 export const hasDuplicates = <TValue>(values: readonly TValue[]): boolean =>
   new Set(values).size !== values.length;

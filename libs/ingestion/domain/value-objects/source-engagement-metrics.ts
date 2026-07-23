@@ -164,7 +164,6 @@ const GITHUB_TRENDING_SHAPE: ProviderMetricShape = {
     metric("providerRank", "rank", "trending", "rank"),
   ],
   volatileContentPaths: [
-    ["trending", "fetchStartedAt"],
     ["trending", "checkedAt"],
     ["trending", "source"],
   ],

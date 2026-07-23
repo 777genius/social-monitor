@@ -224,9 +224,7 @@ const createFixture = (params: {
   const scope = { type: "workspace" as const };
   const noSignal = params.semanticStatus === "NO_SIGNAL";
   const githubProjectionDelayMs = params.githubProjectionDelayMs ?? 0;
-  const githubFetchStartedAt = new Date(period.endedAt.getTime() - 60_000);
-  const githubCheckedAt = new Date(period.endedAt.getTime() - 1);
-  const githubObservedAt = new Date(
+  const githubCollectedAt = new Date(
     period.endedAt.getTime() + githubProjectionDelayMs,
   );
   const githubCitations = Array.from({ length: 10 }, (_, index) => {
@@ -296,7 +294,8 @@ const createFixture = (params: {
     ...(noSignal ? { noSignalReason: "No eligible evidence." } : {}),
   };
   const finalStatus = noSignal ? "no_signal" : "completed";
-  const completedAt = githubObservedAt;
+  const completedAt =
+    githubCollectedAt ?? new Date("2026-07-05T11:00:00.000Z");
   const finalJobSnapshot = {
     id: jobId,
     tenantId: tenant,
@@ -345,51 +344,49 @@ const createFixture = (params: {
       reasons: [],
     },
     githubProjectionAudit: {
-      schemaVersion: "reader_summary.github_projection.v1" as const,
-      status: "verified" as const,
-      requestedUtcDay: "2026-07-05",
-      pageCount: 1,
-      scannedItemCount: 10,
-      eligibleBindingIds: ["github-binding"],
-      observedThrough: githubObservedAt.toISOString(),
-      projectionCheckedAt: githubCheckedAt.toISOString(),
-      telemetry: {
-        github_projection_collection_delay_ms: githubProjectionDelayMs,
-        collectionGraceMs: readerSummaryGitHubProjectionCollectionGraceMs,
-        warningThresholdMs:
-          readerSummaryGitHubProjectionCollectionWarningThresholdMs,
-        qualitySignal:
-          githubProjectionDelayMs >=
-          readerSummaryGitHubProjectionCollectionWarningThresholdMs
-            ? ("github_projection_collection_delay_warning" as const)
-            : ("within_grace" as const),
-      },
-      bindings: githubCitations.map((citation, index) => {
-        const rank = index + 1;
-        return {
-          selectedPostIndex: index,
-          rank,
-          citationId: citation.citationId,
-          feedItemId: citation.feedItemId,
-          sourceItemId: citation.sourceItemId,
-          sourceBindingId: "github-binding",
-          providerKey: "github-trending-page",
-          metadataKind: "github_trending_page_repository",
-          scanJobId: `github-publication-scan-${params.sequence}`,
-          repositoryIdentity: `owner/repository-${rank}`,
-          canonicalUrl: citation.canonicalUrl,
-          starsGained: 200 + rank,
-          fetchStartedAt: githubFetchStartedAt.toISOString(),
-          publishedAt: githubCheckedAt.toISOString(),
-          checkedAt: githubCheckedAt.toISOString(),
-          observedAt: githubObservedAt.toISOString(),
-          sourceContentHash: "a".repeat(64),
-          sourceProviderContentHash: "b".repeat(64),
-        };
-      }),
-      violationCodes: [],
-      reasons: [],
-    },
+            schemaVersion: "reader_summary.github_projection.v1" as const,
+            status: "verified" as const,
+            requestedUtcDay: "2026-07-05",
+            pageCount: 1,
+            scannedItemCount: 10,
+            eligibleBindingIds: ["github-binding"],
+            observedThrough: githubCollectedAt.toISOString(),
+            projectionCheckedAt: githubCollectedAt.toISOString(),
+            telemetry: {
+              github_projection_collection_delay_ms:
+                githubProjectionDelayMs,
+              collectionGraceMs:
+                readerSummaryGitHubProjectionCollectionGraceMs,
+              warningThresholdMs:
+                readerSummaryGitHubProjectionCollectionWarningThresholdMs,
+              qualitySignal:
+                githubProjectionDelayMs >=
+                readerSummaryGitHubProjectionCollectionWarningThresholdMs
+                  ? ("github_projection_collection_delay_warning" as const)
+                  : ("within_grace" as const),
+            },
+            bindings: githubCitations.map((citation, index) => {
+              const rank = index + 1;
+              return {
+                selectedPostIndex: index,
+                rank,
+                citationId: citation.citationId,
+                feedItemId: citation.feedItemId,
+                sourceItemId: citation.sourceItemId,
+                sourceBindingId: "github-binding",
+                repositoryIdentity: `owner/repository-${rank}`,
+                canonicalUrl: citation.canonicalUrl,
+                starsGained: 200 + rank,
+                publishedAt: "2026-07-05T23:59:59.999Z",
+                checkedAt: githubCollectedAt.toISOString(),
+                observedAt: githubCollectedAt.toISOString(),
+                sourceContentHash: "a".repeat(64),
+                sourceProviderContentHash: "b".repeat(64),
+              };
+            }),
+            violationCodes: [],
+            reasons: [],
+          },
     readyEvent,
   } as unknown as ReaderSummaryPublicationCommand;
 
