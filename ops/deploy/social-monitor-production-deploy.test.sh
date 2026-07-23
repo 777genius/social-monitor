@@ -438,8 +438,10 @@ assert_pre_replacement_failure() {
   local output status actual
   : > "$log"
   set +e
+  # A wide inherited limit must not reach the primary multi-service build.
   output=$(
-    ENTRYPOINT="$ENTRYPOINT" FAILURE_STAGE="$stage" FAILURE_LOG="$log" \
+    COMPOSE_PARALLEL_LIMIT=99 ENTRYPOINT="$ENTRYPOINT" \
+    FAILURE_STAGE="$stage" FAILURE_LOG="$log" \
     SOCIAL_MONITOR_DEPLOY_TEST_MODE=1 \
     SOCIAL_MONITOR_DEPLOY_ROOT="$ROOT" \
     SOCIAL_MONITOR_DEPLOY_REPO="$REPO" \
@@ -449,7 +451,7 @@ assert_pre_replacement_failure() {
       bash -c '
         set -euo pipefail
         source "$ENTRYPOINT"
-        backend_services() { printf "%s\n" api; }
+        backend_services() { printf "%s\n" api agent-runtime; }
         marker_value() {
           printf "%s\n" 0123456789abcdef0123456789abcdef01234567
         }
@@ -479,6 +481,8 @@ assert_pre_replacement_failure() {
         }
         fake_compose() {
           if [[ " $* " == *" build "* ]]; then
+            [[ $COMPOSE_PARALLEL_LIMIT == 1 ]]
+            [[ $* == "--profile app --profile daily build api agent-runtime" ]]
             printf "build\n" >> "$FAILURE_LOG"
             [[ $FAILURE_STAGE != build ]]
           else

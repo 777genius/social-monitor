@@ -776,7 +776,9 @@ deploy_backend() (
     [[ $service == daily-runner || $service == x-collector ]] || \
       primary_build+=("$service")
   done
-  ((${#primary_build[@]} == 0)) || "${COMPOSE[@]}" --profile app --profile daily build "${primary_build[@]}"
+  # Compose otherwise exports independent service images concurrently.
+  ((${#primary_build[@]} == 0)) || COMPOSE_PARALLEL_LIMIT=1 \
+    "${COMPOSE[@]}" --profile app --profile daily build "${primary_build[@]}"
   if printf '%s\n' "${services[@]}" | grep -qx x-collector; then
     x_collector_build_candidate "$sha" x_collector_candidate_image_id
   fi
