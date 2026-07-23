@@ -212,6 +212,47 @@ acquire_postgres_admission_with_daily_priority() {
   done
 }
 
+reconcile_current_postgres_pool_bootstrap() {
+  local expected_current=$1
+  local marker=$STATE/postgres-pool-bootstrap.sha
+  local installed=$CONTROL/github-production-deploy.sh
+  local current worktree_status
+
+  current=$(git -C "$REPO" rev-parse HEAD) || \
+    fail 'current integration commit cannot be inventoried'
+  [[ $current == "$expected_current" ]] || \
+    fail 'current integration changed during PostgreSQL bootstrap recovery'
+  validate_main_commit "$current"
+  worktree_status=$(git -C "$REPO" status --porcelain) || \
+    fail 'integration worktree cannot be inventoried for PostgreSQL bootstrap recovery'
+  [[ -z $worktree_status ]] || \
+    fail 'integration worktree is dirty during PostgreSQL bootstrap recovery'
+  current=$(git -C "$REPO" rev-parse HEAD) || \
+    fail 'current integration commit cannot be re-inventoried'
+  [[ $current == "$expected_current" ]] || \
+    fail 'current integration changed during PostgreSQL bootstrap validation'
+
+  postgres_pool_bootstrap_installed "$current" && return 0
+  [[ ! -e $marker && ! -L $marker ]] || \
+    fail 'existing PostgreSQL bootstrap marker is invalid for current integration'
+  [[ -f $installed && ! -L $installed ]] || \
+    fail 'installed deploy entrypoint is unavailable for PostgreSQL bootstrap recovery'
+  cmp -s "$installed" \
+    "$REPO/ops/deploy/social-monitor-production-deploy.sh" || \
+    fail 'installed deploy entrypoint differs from current integration'
+  [[ -f $REPO/ops/deploy/postgres-runtime-deploy-lib.sh && \
+     -f $REPO/ops/deploy/verify-postgres-runtime-topology.py && \
+     -f $REPO/ops/deploy/production-runtime/compose.postgres-runtime.yml ]] || \
+    fail 'current integration is incomplete for PostgreSQL bootstrap recovery'
+
+  commit_postgres_pool_bootstrap "$current" || \
+    fail 'PostgreSQL bootstrap recovery could not commit current integration'
+  [[ $(git -C "$REPO" rev-parse HEAD) == "$current" ]] || \
+    fail 'current integration changed during PostgreSQL bootstrap commit'
+  postgres_pool_bootstrap_installed "$current" || \
+    fail 'PostgreSQL bootstrap recovery did not install current integration'
+}
+
 deploy_frontend() {
   local sha=$1
   local staged=$STAGING/$sha/frontend
@@ -291,6 +332,7 @@ deploy_release() {
   current=$(git -C "$REPO" rev-parse HEAD)
   if [[ $sha != "$current" ]] && \
      git -C "$REPO" merge-base --is-ancestor "$sha" "$current"; then
+    reconcile_current_postgres_pool_bootstrap "$current"
     printf 'already-deployed-or-newer=%s\n' "$current"
     return 0
   fi
