@@ -24,8 +24,6 @@ export const evaluateGitHubProjection = (
 export const githubProjectionInput = (
   overrides: {
     readonly firstCanonicalUrl?: string;
-    readonly scanJobId?: string;
-    readonly fetchStartedAt?: Date;
     readonly checkedAt?: Date;
     readonly publishedAt?: Date;
     readonly observedAt?: Date;
@@ -39,12 +37,6 @@ export const githubProjectionInput = (
       ...(overrides.checkedAt === undefined
         ? {}
         : { checkedAt: overrides.checkedAt }),
-      ...(overrides.scanJobId === undefined
-        ? {}
-        : { scanJobId: overrides.scanJobId }),
-      ...(overrides.fetchStartedAt === undefined
-        ? {}
-        : { fetchStartedAt: overrides.fetchStartedAt }),
       ...(overrides.publishedAt === undefined
         ? {}
         : { publishedAt: overrides.publishedAt }),
@@ -61,11 +53,7 @@ export const githubProjectionItem = (
     readonly idPrefix?: string;
     readonly canonicalUrl?: string;
     readonly sourceBindingId?: string;
-    readonly providerKey?: string;
-    readonly metadataKind?: string;
-    readonly scanJobId?: string;
     readonly starsGained?: number;
-    readonly fetchStartedAt?: Date;
     readonly checkedAt?: Date;
     readonly publishedAt?: Date;
     readonly observedAt?: Date;
@@ -73,25 +61,19 @@ export const githubProjectionItem = (
 ): ReaderSummaryGitHubProjectionItem => {
   const identity = `${overrides.identityPrefix ?? "owner/repo"}-${rank}`;
   const idPrefix = overrides.idPrefix ?? "github";
-  const checkedAt =
-    overrides.checkedAt ?? new Date("2026-07-10T12:00:00.000Z");
   return {
     feedItemId: `${idPrefix}-feed-${rank}`,
     sourceItemId: `${idPrefix}-source-${rank}`,
     sourceBindingId: overrides.sourceBindingId ?? "github-binding-a",
-    providerKey: overrides.providerKey ?? "github-trending-page",
-    metadataKind:
-      overrides.metadataKind ?? "github_trending_page_repository",
-    scanJobId: overrides.scanJobId ?? "scan-github-1",
     canonicalUrl: overrides.canonicalUrl ?? `https://github.com/${identity}`,
     repositoryFullName: identity,
     rank,
     starsGained: overrides.starsGained ?? 100 + rank,
     window: "daily",
-    fetchStartedAt:
-      overrides.fetchStartedAt ?? new Date(checkedAt.getTime() - 60_000),
-    checkedAt,
-    publishedAt: overrides.publishedAt ?? checkedAt,
+    checkedAt:
+      overrides.checkedAt ?? new Date("2026-07-10T12:00:00.000Z"),
+    publishedAt:
+      overrides.publishedAt ?? new Date("2026-07-10T12:00:00.000Z"),
     observedAt:
       overrides.observedAt ?? new Date("2026-07-10T12:05:00.000Z"),
     sourceContentHash: "a".repeat(64),
@@ -135,11 +117,7 @@ export const githubBoardArtifact = (
     readonly firstSelectedPostHasExtraCitation?: boolean;
     readonly includeEditorialSelectedPost?: boolean;
     readonly watchRank?: number;
-    readonly watchRanks?: readonly number[];
     readonly watchStarsGained?: number;
-    readonly watchText?: string;
-    readonly duplicateWatchSection?: boolean;
-    readonly nonGitHubWatchSection?: boolean;
     readonly dayStartedAt?: Date;
     readonly dayEndedAt?: Date;
   } = {},
@@ -171,36 +149,26 @@ export const githubBoardArtifact = (
     field: "canonicalUrl" as const,
     canonicalUrl: "https://example.test/editorial-source",
   };
-  const watchRanks =
-    overrides.watchRanks ??
-    (overrides.watchRank === undefined ? [] : [overrides.watchRank]);
-  const watchCitations = watchRanks.map(
-    (rank) =>
-      githubCitations[rank - 1] ?? {
-        citationId: `github-citation-${rank}`,
-        feedItemId: `github-feed-${rank}`,
-        sourceItemId: `github-source-${rank}`,
-        providerKey: "github-trending-page",
-        field: "canonicalUrl" as const,
-        canonicalUrl: `https://github.com/owner/repo-${rank}`,
-      },
-  );
+  const watchCitation =
+    overrides.watchRank === undefined
+      ? undefined
+      : {
+          citationId: `github-citation-${overrides.watchRank}`,
+          feedItemId: `github-feed-${overrides.watchRank}`,
+          sourceItemId: `github-source-${overrides.watchRank}`,
+          providerKey: "github-trending-page",
+          field: "canonicalUrl" as const,
+          canonicalUrl: `https://github.com/owner/repo-${overrides.watchRank}`,
+        };
   const citations = [
     ...githubCitations,
     editorialCitation,
-    ...watchCitations.filter((citation) => !githubCitations.includes(citation)),
+    ...(watchCitation === undefined ? [] : [watchCitation]),
   ];
   const githubSelectedPosts = githubCitations
     .slice(0, selectedPostCount)
     .map((citation, index) =>
-      githubReaderItem(
-        index + 1,
-        citation.canonicalUrl,
-        citation.citationId,
-        watchRanks.includes(index + 1)
-          ? overrides.watchStarsGained
-          : undefined,
-      ),
+      githubReaderItem(index + 1, citation.canonicalUrl, citation.citationId),
     );
   const selectedPosts = overrides.includeEditorialSelectedPost
     ? [editorialReaderItem(editorialCitation.citationId), ...githubSelectedPosts]
@@ -213,27 +181,6 @@ export const githubBoardArtifact = (
   }
   const editorialTopRead = editorialReaderItem(editorialCitation.citationId);
   const watchStarsGained = overrides.watchStarsGained ?? 1_001;
-  const watchSections =
-    watchCitations.length === 0
-      ? []
-      : [
-          {
-            id: "github-trending",
-            kind: "watch" as const,
-            title: "GitHub Trending",
-            text:
-              overrides.watchText ??
-              watchRanks
-                .map(
-                  (rank) =>
-                    `- **owner/repo-${rank}** (#${rank}): +${watchStarsGained.toLocaleString("en-US")} stars today.`,
-                )
-                .join("\n"),
-            citationIds: watchCitations.map(
-              (citation) => citation.citationId,
-            ),
-          },
-        ];
 
   return ReaderSummaryArtifact.create({
     schemaVersion: "reader_summary.artifact.v1",
@@ -274,24 +221,17 @@ export const githubBoardArtifact = (
           text: "Editorial coverage says teams are expanding their use of GitHub tools.",
           citationIds: [editorialCitation.citationId],
         },
-        ...watchSections,
-        ...(overrides.duplicateWatchSection
-          ? watchSections.map((section) => ({
-              ...section,
-              id: "github-trending-duplicate",
-            }))
-          : []),
-        ...(overrides.nonGitHubWatchSection
-          ? [
+        ...(watchCitation === undefined
+          ? []
+          : [
               {
                 id: "github-trending",
                 kind: "watch" as const,
-                title: "Spoofed GitHub Trending",
-                text: "This section is not bound to the canonical board.",
-                citationIds: [editorialCitation.citationId],
+                title: "GitHub Trending",
+                text: `- **owner/repo-${overrides.watchRank}**: +${watchStarsGained.toLocaleString("en-US")} stars today.`,
+                citationIds: [watchCitation.citationId],
               },
-            ]
-          : []),
+            ]),
       ],
       qualityState: {
         status: "ready",
@@ -358,7 +298,6 @@ export const githubReaderItem = (
   rank: number,
   canonicalUrl: string,
   citationId: string,
-  starsGained = 100 + rank,
 ) => ({
   title: `owner/repo-${rank}`,
   providerKey: "github-trending-page",
@@ -377,7 +316,7 @@ export const githubReaderItem = (
   providerMetrics: [
     {
       label: "GitHub Trending today",
-      value: `#${rank}, +${starsGained} stars today`,
+      value: `#${rank}, +${100 + rank} stars today`,
     },
   ],
   whyImportant: ["The repository has visible daily momentum."],

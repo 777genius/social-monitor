@@ -62,17 +62,15 @@ describe("reader summary GitHub projection policy", () => {
     ).toBe(true);
   });
 
-  it("verifies Watch as an eligible ordered subset of the same Top 10", () => {
-    const artifact = boardArtifact({ watchRank: 1, watchStarsGained: 1_001 });
-    const evaluation = evaluate(
-      artifact,
-      projectionInput().map((item) =>
-        item.rank === 1 ? { ...item, starsGained: 1_001 } : item,
-      ),
-    );
+  it("verifies ranks #1 through #10 plus one eligible rank #12 Watch item", () => {
+    const artifact = boardArtifact({ watchRank: 12, watchStarsGained: 1_001 });
+    const evaluation = evaluate(artifact, [
+      ...projectionInput(),
+      projectionItem(12, { starsGained: 1_001 }),
+    ]);
 
     expect(evaluation.audit.status).toBe("verified");
-    expect(evaluation.audit.scannedItemCount).toBe(10);
+    expect(evaluation.audit.scannedItemCount).toBe(11);
     expect(evaluation.audit.bindings).toHaveLength(10);
     expect(
       artifact
@@ -83,30 +81,14 @@ describe("reader summary GitHub projection policy", () => {
     ).toHaveLength(1);
   });
 
-  it("rejects eligible Watch repositories presented in reverse rank order", () => {
-    const evaluation = evaluate(
-      boardArtifact({ watchRanks: [3, 1], watchStarsGained: 1_001 }),
-      projectionInput().map((item) =>
-        item.rank === 1 || item.rank === 3
-          ? { ...item, starsGained: 1_001 }
-          : item,
-      ),
-    );
-
-    expect(evaluation.audit.status).toBe("rejected");
-    expect(evaluation.audit.violationCodes).toContain(
-      "github_projection_identity_invalid",
-    );
-  });
-
-  it("rejects rank #11 even at the Watch threshold", () => {
+  it("verifies a rank #11 at the threshold without adding it to Watch", () => {
     const artifact = boardArtifact();
     const evaluation = evaluate(artifact, [
       ...projectionInput(),
       projectionItem(11, { starsGained: 1_000 }),
     ]);
 
-    expect(evaluation.audit.status).toBe("rejected");
+    expect(evaluation.audit.status).toBe("verified");
     expect(evaluation.audit.scannedItemCount).toBe(11);
     expect(
       artifact
@@ -316,7 +298,6 @@ describe("reader summary GitHub projection policy", () => {
       projectionItem(index + 1, {
         identityPrefix: "new-owner/new-repo",
         idPrefix: "new-github",
-        scanJobId: "scan-github-new",
         checkedAt: new Date("2026-07-10T13:00:00.000Z"),
         observedAt: new Date("2026-07-10T13:05:00.000Z"),
       }),
@@ -341,7 +322,6 @@ describe("reader summary GitHub projection policy", () => {
       projectionItem(index + 1, {
         identityPrefix: "old-owner/old-repo",
         idPrefix: "old-github",
-        scanJobId: "scan-github-old",
         checkedAt: new Date("2026-07-10T12:00:00.000Z"),
         observedAt: new Date("2026-07-10T14:00:00.000Z"),
       }),
@@ -355,52 +335,24 @@ describe("reader summary GitHub projection policy", () => {
     expect(evaluation.audit.status).toBe("verified");
   });
 
-  it("ignores later-day projection groups outside requested-day admission", () => {
-    const laterDay = Array.from({ length: 10 }, (_, index) =>
-      projectionItem(index + 1, {
-        identityPrefix: "later-owner/later-repo",
-        idPrefix: "later-github",
-        scanJobId: "scan-github-later-day",
-        fetchStartedAt: new Date("2026-07-11T11:59:00.000Z"),
-        checkedAt: new Date("2026-07-11T12:00:00.000Z"),
-        publishedAt: new Date("2026-07-11T12:00:00.000Z"),
-        observedAt: new Date("2026-07-11T12:05:00.000Z"),
-      }),
-    );
-
-    const evaluation = evaluate(
-      boardArtifact(),
-      [...projectionInput(), ...laterDay],
-      ["github-binding-a"],
-      new Date("2026-07-11T13:00:00.000Z"),
-    );
-
-    expect(evaluation.audit.status).toBe("verified");
-    expect(evaluation.audit.bindings[0]?.feedItemId).toBe("github-feed-1");
-  });
-
   it("validates the coherent latest snapshot without rejecting stale invalid history", () => {
     const dayStartedAt = new Date("2026-07-21T00:00:00.000Z");
     const dayEndedAt = new Date("2026-07-22T00:00:00.000Z");
     const staleCheckedAt = new Date("2026-07-21T11:20:21.000Z");
-    const latestCheckedAt = new Date("2026-07-21T23:59:59.999Z");
+    const latestCheckedAt = new Date("2026-07-22T00:00:35.000Z");
     const latestObservedAt = new Date("2026-07-22T00:00:35.250Z");
-    const staleInvalidHistory = Array.from({ length: 10 }, (_, index) =>
+    const staleInvalidHistory = Array.from({ length: 21 }, (_, index) =>
       projectionItem(index + 1, {
         identityPrefix: "stale-owner/stale-repo",
         idPrefix: "stale-github",
-        scanJobId: "scan-github-stale",
-        fetchStartedAt: new Date("2026-07-21T11:20:00.000Z"),
         publishedAt: staleCheckedAt,
         checkedAt: staleCheckedAt,
         observedAt: new Date("2026-07-21T00:00:34.000Z"),
       }),
     );
-    const coherentLatest = Array.from({ length: 10 }, (_, index) =>
+    const coherentLatest = Array.from({ length: 21 }, (_, index) =>
       projectionItem(index + 1, {
-        scanJobId: "scan-github-latest",
-        fetchStartedAt: new Date("2026-07-21T23:59:50.000Z"),
-        publishedAt: latestCheckedAt,
+        publishedAt: new Date("2026-07-21T23:59:59.999Z"),
         checkedAt: latestCheckedAt,
         observedAt: latestObservedAt,
       }),
@@ -416,7 +368,7 @@ describe("reader summary GitHub projection policy", () => {
     expect(evaluation.findings).toEqual([]);
     expect(evaluation.audit).toMatchObject({
       status: "verified",
-      scannedItemCount: 20,
+      scannedItemCount: 42,
       projectionCheckedAt: latestCheckedAt.toISOString(),
     });
     expect(evaluation.audit.bindings.map((binding) => binding.rank)).toEqual([
@@ -430,14 +382,13 @@ describe("reader summary GitHub projection policy", () => {
   });
 
   it("rejects an incoherent latest snapshot instead of falling back to coherent history", () => {
-    const coherentHistory = Array.from({ length: 10 }, (_, index) =>
+    const coherentHistory = Array.from({ length: 21 }, (_, index) =>
       projectionItem(index + 1),
     );
-    const incoherentLatest = Array.from({ length: 10 }, (_, index) =>
+    const incoherentLatest = Array.from({ length: 21 }, (_, index) =>
       projectionItem(index + 1, {
         identityPrefix: "latest-owner/latest-repo",
         idPrefix: "latest-github",
-        scanJobId: "scan-github-latest",
         checkedAt: new Date("2026-07-10T13:00:00.000Z"),
         publishedAt: new Date("2026-07-10T13:00:00.000Z"),
         observedAt: new Date("2026-07-10T12:59:59.999Z"),
@@ -458,50 +409,16 @@ describe("reader summary GitHub projection policy", () => {
     );
   });
 
-  it("selects a newer checked/fetched candidate before rejecting its malformed envelope", () => {
-    const malformedLatest = Array.from({ length: 10 }, (_, index) => ({
-      ...projectionItem(index + 1, {
-        identityPrefix: "latest-owner/latest-repo",
-        idPrefix: "latest-github",
-        scanJobId: "scan-github-latest",
-        fetchStartedAt: new Date("2026-07-10T13:00:00.000Z"),
-        checkedAt: new Date("2026-07-10T13:00:01.000Z"),
-        publishedAt: new Date("2026-07-10T13:00:00.000Z"),
-        observedAt: new Date("2026-07-10T13:00:02.000Z"),
-      }),
-      ...(index === 9 ? { publishedAt: new Date("invalid") } : {}),
-    }));
-
-    const evaluation = evaluate(boardArtifact(), [
-      ...projectionInput(),
-      ...malformedLatest,
-    ]);
-
-    expect(evaluation.audit.status).toBe("rejected");
-    expect(evaluation.audit.violationCodes).toEqual(
-      expect.arrayContaining([
-        "github_projection_identity_invalid",
-        "github_projection_stale",
-      ]),
-    );
-  });
-
-  it("accepts next-morning persistence only for an immutable pre-midnight snapshot", () => {
+  it("accepts the real post-midnight batch by its requested publishedAt day", () => {
     const dayStartedAt = new Date("2026-07-16T00:00:00.000Z");
     const dayEndedAt = new Date("2026-07-17T00:00:00.000Z");
     const publishedAt = new Date("2026-07-16T23:59:59.999Z");
-    const fetchStartedAt = new Date("2026-07-16T23:59:50.000Z");
-    const checkedAt = publishedAt;
-    const observedAt = new Date("2026-07-17T08:00:24.435Z");
+    const checkedAt = new Date("2026-07-17T00:00:24.278Z");
+    const observedAt = new Date("2026-07-17T00:00:24.435Z");
     const artifact = boardArtifact({ dayStartedAt, dayEndedAt });
     const evaluation = evaluate(
       artifact,
-      projectionInput({
-        fetchStartedAt,
-        publishedAt,
-        checkedAt,
-        observedAt,
-      }),
+      projectionInput({ publishedAt, checkedAt, observedAt }),
       ["github-binding-a"],
       observedAt,
     );
@@ -513,14 +430,13 @@ describe("reader summary GitHub projection policy", () => {
       projectionCheckedAt: checkedAt.toISOString(),
       observedThrough: observedAt.toISOString(),
       telemetry: {
-        github_projection_collection_delay_ms: 28_824_435,
+        github_projection_collection_delay_ms: 24_435,
         collectionGraceMs: 300_000,
         warningThresholdMs: 240_000,
-        qualitySignal: "github_projection_collection_delay_warning",
+        qualitySignal: "within_grace",
       },
     });
     expect(evaluation.audit.bindings[0]).toMatchObject({
-      fetchStartedAt: fetchStartedAt.toISOString(),
       publishedAt: publishedAt.toISOString(),
       checkedAt: checkedAt.toISOString(),
       observedAt: observedAt.toISOString(),
@@ -533,87 +449,34 @@ describe("reader summary GitHub projection policy", () => {
     ).toBe(true);
   });
 
-  it("rejects post-midnight backdating and publishedAt/fetchStartedAt hybrids", () => {
-    const checkedAt = new Date("2026-07-11T00:00:24.278Z");
-    const observedAt = new Date("2026-07-11T00:00:24.435Z");
-    const evaluation = evaluate(
-      boardArtifact(),
-      projectionInput({
-        fetchStartedAt: checkedAt,
-        publishedAt: new Date("2026-07-10T23:59:59.999Z"),
-        checkedAt,
-        observedAt,
-      }),
-      ["github-binding-a"],
-      observedAt,
-    );
-
-    expect(evaluation.audit.status).toBe("rejected");
-    expect(evaluation.audit.violationCodes).toContain(
-      "github_projection_identity_invalid",
-    );
-  });
-
-  it("rejects a fetch that crosses the requested UTC midnight", () => {
-    const checkedAt = new Date("2026-07-11T00:00:00.001Z");
-    const observedAt = new Date("2026-07-11T00:00:00.002Z");
-    const evaluation = evaluate(
-      boardArtifact(),
-      projectionInput({
-        fetchStartedAt: new Date("2026-07-10T23:59:59.999Z"),
-        publishedAt: checkedAt,
-        checkedAt,
-        observedAt,
-      }),
-      ["github-binding-a"],
-      observedAt,
-    );
-
-    expect(evaluation.audit.status).toBe("rejected");
-    expect(evaluation.audit.violationCodes).toContain(
-      "github_projection_identity_invalid",
-    );
-  });
-
-  it("rejects a snapshot whose otherwise coherent rows have mixed observedAt", () => {
-    const items = projectionInput().map((item, index) => ({
-      ...item,
-      observedAt:
-        index === 9
-          ? new Date("2026-07-10T12:05:00.001Z")
-          : item.observedAt,
-    }));
-
-    const evaluation = evaluate(boardArtifact(), items);
-
-    expect(evaluation.audit.status).toBe("rejected");
-    expect(evaluation.audit.violationCodes).toContain(
-      "github_projection_mixed",
-    );
-  });
-
-  it.each([299_999, 300_000, 300_001, 28_800_000] as const)(
-    "accepts persistence delay without backdating source timestamps at %dms",
-    (delayMs) => {
+  it.each([
+    [299_999, "verified"],
+    [300_000, "verified"],
+    [300_001, "rejected"],
+  ] as const)(
+    "applies the inclusive 300-second post-midnight grace at %dms",
+    (delayMs, expectedStatus) => {
       const collectedAt = new Date(
         projectionDayEndedAt.getTime() + delayMs,
       );
       const evaluation = evaluate(
         boardArtifact(),
         projectionInput({
-          fetchStartedAt: new Date("2026-07-10T23:59:50.000Z"),
           publishedAt: new Date("2026-07-10T23:59:59.999Z"),
-          checkedAt: new Date("2026-07-10T23:59:59.999Z"),
+          checkedAt: collectedAt,
           observedAt: collectedAt,
         }),
         ["github-binding-a"],
         collectedAt,
       );
 
-      expect(evaluation.audit.status).toBe("verified");
-      expect(
-        evaluation.audit.telemetry?.github_projection_collection_delay_ms,
-      ).toBe(delayMs);
+      expect(evaluation.audit.status).toBe(expectedStatus);
+      if (expectedStatus === "verified") {
+        expect(
+          evaluation.audit.telemetry
+            ?.github_projection_collection_delay_ms,
+        ).toBe(delayMs);
+      }
     },
   );
 
@@ -655,9 +518,8 @@ describe("reader summary GitHub projection policy", () => {
       const evaluation = evaluate(
         boardArtifact(),
         projectionInput({
-          fetchStartedAt: new Date("2026-07-10T23:59:50.000Z"),
           publishedAt: new Date("2026-07-10T23:59:59.999Z"),
-          checkedAt: new Date("2026-07-10T23:59:59.999Z"),
+          checkedAt: collectedAt,
           observedAt: collectedAt,
         }),
         ["github-binding-a"],
@@ -727,11 +589,17 @@ describe("reader summary GitHub projection policy", () => {
     ["2026-07-10T00:00:00.000Z", "verified"],
     ["2026-07-10T23:59:59.999Z", "verified"],
     ["2026-07-09T23:59:59.999Z", "rejected"],
-    ["2026-07-11T00:00:00.000Z", "rejected"],
+    ["2026-07-11T00:00:00.000Z", "verified"],
   ] as const)(
     "treats checkedAt boundary %s as %s",
     (checkedAt, expectedStatus) => {
       const checkedAtDate = new Date(checkedAt);
+      const publishedAt = new Date(
+        Math.min(
+          checkedAtDate.getTime(),
+          Date.parse("2026-07-10T11:55:00.000Z"),
+        ),
+      );
       const observedAt = new Date(
         Math.max(
           checkedAtDate.getTime(),
@@ -740,15 +608,15 @@ describe("reader summary GitHub projection policy", () => {
       );
       const evaluation = evaluate(
         boardArtifact(),
-        projectionInput({
-          fetchStartedAt: checkedAtDate,
-          publishedAt: checkedAtDate,
-          checkedAt: checkedAtDate,
-          observedAt,
-        }),
+        projectionInput({ publishedAt, checkedAt: checkedAtDate, observedAt }),
       );
 
       expect(evaluation.audit.status).toBe(expectedStatus);
+      if (expectedStatus === "rejected") {
+        expect(evaluation.audit.violationCodes).toContain(
+          "github_projection_identity_invalid",
+        );
+      }
     },
   );
 

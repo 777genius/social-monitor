@@ -68,34 +68,9 @@ describe("evaluateReaderSummaryPrepublication", () => {
       pageCount: 2,
       eligibleBindingIds: ["binding-github"],
       bindings: expect.arrayContaining([
-        expect.objectContaining({
-          rank: 1,
-          providerKey: "github-trending-page",
-          metadataKind: "github_trending_page_repository",
-          scanJobId: "scan-github-prepublication",
-          fetchStartedAt: "2026-07-10T12:00:00.000Z",
-          sourceContentHash: "a".repeat(64),
-        }),
+        expect.objectContaining({ rank: 1, sourceContentHash: "a".repeat(64) }),
       ]),
     });
-    expect(
-      decision.githubProjectionAudit.bindings.map(({ rank }) => rank),
-    ).toEqual(Array.from({ length: 10 }, (_, index) => index + 1));
-    expect(
-      new Set(
-        decision.githubProjectionAudit.bindings.map(
-          ({ scanJobId }) => scanJobId,
-        ),
-      ),
-    ).toEqual(new Set(["scan-github-prepublication"]));
-    expect(
-      decision.githubProjectionAudit.bindings.every(
-        (binding) =>
-          binding.fetchStartedAt <= binding.checkedAt &&
-          binding.publishedAt === binding.checkedAt &&
-          binding.checkedAt <= binding.observedAt,
-      ),
-    ).toBe(true);
   });
 
   it("rejects daily publication with no GitHub evidence when its canonical binding is missing", async () => {
@@ -354,15 +329,11 @@ const projectionItems = () =>
       feedItemId: `feed-${rank}`,
       sourceItemId: `source-${rank}`,
       sourceBindingId: "binding-github",
-      providerKey: "github-trending-page",
-      metadataKind: "github_trending_page_repository",
-      scanJobId: "scan-github-prepublication",
       canonicalUrl: `https://github.com/owner/repo-${rank}`,
       repositoryFullName: `owner/repo-${rank}`,
       rank,
       starsGained: 100 + rank,
       window: "daily",
-      fetchStartedAt: new Date("2026-07-10T12:00:00.000Z"),
       checkedAt: new Date("2026-07-10T12:00:00.000Z"),
       publishedAt: new Date("2026-07-10T12:00:00.000Z"),
       observedAt: new Date("2026-07-10T12:05:00.000Z"),

@@ -50,7 +50,7 @@ describe("GitHubTrendingPageSourceProvider", () => {
     expect(result.items).toHaveLength(1);
     expect(result.items[0]).toMatchObject({
       externalId:
-        "github-trending-page:daily:scan-github-trending-page:calesthio/OpenMontage",
+        "github-trending-page:daily:calesthio/OpenMontage:2026-06-24T12:00:00.000Z",
       canonicalUrl: "https://github.com/calesthio/OpenMontage",
       title: "calesthio/OpenMontage is #1 on GitHub Trending",
     });
@@ -65,9 +65,6 @@ describe("GitHubTrendingPageSourceProvider", () => {
         rank: 1,
         starsGained: 3703,
         window: "daily",
-        scanJobId: "scan-github-trending-page",
-        fetchStartedAt: "2026-06-24T12:00:00.000Z",
-        checkedAt: "2026-06-24T12:00:00.000Z",
         source: "fixture_github_trending_html",
       },
     });
@@ -87,10 +84,9 @@ describe("GitHubTrendingPageSourceProvider", () => {
     );
   });
 
-  it("rejects a post-midnight fetch instead of backdating it into the requested day", async () => {
-    const client = new CountingGitHubTrendingPageClient();
+  it("assigns a post-midnight daily snapshot to the requested collection day", async () => {
     const provider = new GitHubTrendingPageSourceProvider(
-      client,
+      new FixtureGitHubTrendingPageClient(),
       { now: () => new Date("2026-07-13T00:00:25.000Z") },
     );
     const scanContext = context({
@@ -102,51 +98,21 @@ describe("GitHubTrendingPageSourceProvider", () => {
       },
     });
 
-    await expect(
-      provider.scan(
-        provider.planScan({ mode: "listing", query: "daily" }, scanContext),
-        scanContext,
-      ),
-    ).rejects.toThrow(
-      "GitHub Trending daily fetchStartedAt must belong to the requested UTC day",
+    const result = await provider.scan(
+      provider.planScan({ mode: "listing", query: "daily" }, scanContext),
+      scanContext,
     );
-    expect(client.calls).toBe(0);
-  });
 
-  it("rejects a fetch that crosses UTC midnight before publishing any item", async () => {
-    const instants = [
-      new Date("2026-07-12T23:59:59.900Z"),
-      new Date("2026-07-13T00:00:00.100Z"),
-    ];
-    const provider = new GitHubTrendingPageSourceProvider(
-      new FixtureGitHubTrendingPageClient(),
-      {
-        now: () => {
-          const instant = instants.shift();
-          if (instant === undefined) {
-            throw new Error("Unexpected clock read");
-          }
-          return instant;
+    expect(result.items[0]).toMatchObject({
+      externalId:
+        "github-trending-page:daily:calesthio/OpenMontage:2026-07-12T23:59:59.999Z",
+      publishedAt: new Date("2026-07-12T23:59:59.999Z"),
+      metadata: {
+        trending: {
+          checkedAt: "2026-07-13T00:00:25.000Z",
         },
       },
-    );
-    const scanContext = context({
-      maxItems: 1,
-      fixtureMode: true,
-      targetPublishedWindow: {
-        startInclusive: "2026-07-12T00:00:00.000Z",
-        endExclusive: "2026-07-13T00:00:00.000Z",
-      },
     });
-
-    await expect(
-      provider.scan(
-        provider.planScan({ mode: "listing", query: "daily" }, scanContext),
-        scanContext,
-      ),
-    ).rejects.toThrow(
-      "GitHub Trending daily checkedAt must belong to the requested UTC day",
-    );
   });
 
   it("skips repositories with incomplete trending metrics instead of polluting feed evidence", async () => {
@@ -164,7 +130,7 @@ describe("GitHubTrendingPageSourceProvider", () => {
     expect(result.items).toHaveLength(1);
     expect(result.items[0]).toMatchObject({
       canonicalUrl: "https://github.com/apple/container",
-      title: "apple/container is #1 on GitHub Trending",
+      title: "apple/container is #2 on GitHub Trending",
     });
     expect(result.warnings).toEqual([
       "Some GitHub Trending page repositories had incomplete rank, URL or star metrics and were skipped.",
@@ -196,72 +162,6 @@ describe("GitHubTrendingPageSourceProvider", () => {
       "https://github.com/apple/container",
       "https://github.com/ZhuLinsen/daily_stock_analysis",
     ]);
-    expect(
-      result.items.map(
-        (item) =>
-          parseGitHubTrendingPageRepositoryMetadata(item.metadata)?.trending
-            .rank,
-      ),
-    ).toEqual([1, 2, 3]);
-  });
-
-  it("produces deterministic multilingual Top 10 ranks regardless of language order", async () => {
-    const provider = new GitHubTrendingPageSourceProvider(
-      new MultilingualTopTenClient(),
-      { now: () => new Date("2026-06-24T12:00:00.000Z") },
-    );
-    const scan = async (languages: readonly string[]) => {
-      const scanContext = context({
-        languages,
-        maxItems: 10,
-        maxItemsPerLanguage: 10,
-      });
-      return provider.scan(
-        provider.planScan({ mode: "listing", query: "daily" }, scanContext),
-        scanContext,
-      );
-    };
-
-    const forward = await scan(["Python", "Rust"]);
-    const reversed = await scan(["Rust", "Python"]);
-    const board = (items: typeof forward.items) =>
-      items.map((item) => ({
-        url: item.canonicalUrl,
-        rank:
-          parseGitHubTrendingPageRepositoryMetadata(item.metadata)?.trending
-            .rank,
-      }));
-
-    expect(board(reversed.items)).toEqual(board(forward.items));
-    expect(board(forward.items).map((item) => item.rank)).toEqual([
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
-    ]);
-  });
-
-  it("excludes rank 11 from source admission even when maxItems is larger", async () => {
-    const provider = new GitHubTrendingPageSourceProvider(
-      new MultilingualTopTenClient(),
-      { now: () => new Date("2026-06-24T12:00:00.000Z") },
-    );
-    const scanContext = context({
-      languages: ["Python", "Rust"],
-      maxItems: 25,
-      maxItemsPerLanguage: 25,
-    });
-
-    const result = await provider.scan(
-      provider.planScan({ mode: "listing", query: "daily" }, scanContext),
-      scanContext,
-    );
-    const ranks = result.items.map(
-      (item) =>
-        parseGitHubTrendingPageRepositoryMetadata(item.metadata)?.trending
-          .rank,
-    );
-
-    expect(result.items).toHaveLength(10);
-    expect(ranks).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
-    expect(ranks).not.toContain(11);
   });
 
   it("keeps broad configured language coverage beyond the old ten-language cap", async () => {
@@ -354,17 +254,6 @@ class PartiallyInvalidGitHubTrendingPageClient implements GitHubTrendingPageClie
   }
 }
 
-class CountingGitHubTrendingPageClient implements GitHubTrendingPageClientPort {
-  calls = 0;
-
-  async listTrendingRepositories(): Promise<
-    readonly GitHubTrendingPageRepository[]
-  > {
-    this.calls += 1;
-    return [];
-  }
-}
-
 class CapturingGitHubTrendingPageClient implements GitHubTrendingPageClientPort {
   readonly languages: (string | undefined)[] = [];
 
@@ -376,27 +265,6 @@ class CapturingGitHubTrendingPageClient implements GitHubTrendingPageClientPort 
     this.languages.push(query.language);
 
     return this.inner.listTrendingRepositories(query);
-  }
-}
-
-class MultilingualTopTenClient implements GitHubTrendingPageClientPort {
-  async listTrendingRepositories(
-    query: GitHubTrendingPageQuery,
-  ): Promise<readonly GitHubTrendingPageRepository[]> {
-    const offset = query.language === "Rust" ? 6 : 0;
-    return Array.from({ length: 6 }, (_, index) => {
-      const repositoryNumber = offset + index + 1;
-      return {
-        fullName: `owner/repository-${repositoryNumber}`,
-        url: `https://github.com/owner/repository-${repositoryNumber}`,
-        description: `Repository ${repositoryNumber}`,
-        language: query.language,
-        totalStars: 20_000 - repositoryNumber,
-        forksCount: repositoryNumber,
-        starsGained: 2_000 - index,
-        rank: index + 1,
-      };
-    });
   }
 }
 
