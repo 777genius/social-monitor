@@ -23,29 +23,27 @@ if (!existsSync(jestPath)) {
   process.exit(1);
 }
 
-for (const specPath of e2eSpecs) {
-  console.log(`Running user auth boundary e2e: ${specPath}`);
-  execFileSync(
-    process.execPath,
-    [
-      'scripts/run-with-timeout.mjs',
-      '--timeout-ms',
-      '150000',
-      '--clean-env',
-      '--node-options',
-      '--max-old-space-size=768',
-      '--',
-      jestPath,
-      '--config',
-      'test/jest-e2e.config.ts',
-      '--runInBand',
-      '--runTestsByPath',
-      specPath,
-    ],
-    {
-      stdio: 'inherit',
-    },
-  );
-}
+console.log(`Running user auth boundary e2e (${e2eSpecs.length} specs)`);
+execFileSync(
+  process.execPath,
+  [
+    'scripts/run-with-timeout.mjs',
+    '--timeout-ms',
+    '600000',
+    '--clean-env',
+    '--node-options',
+    '--max-old-space-size=1536',
+    '--',
+    jestPath,
+    '--config',
+    'test/jest-e2e.config.ts',
+    '--runInBand',
+    '--runTestsByPath',
+    ...e2eSpecs,
+  ],
+  {
+    stdio: 'inherit',
+  },
+);
 
 console.log(`User auth boundary OK (${e2eSpecs.length} e2e specs)`);

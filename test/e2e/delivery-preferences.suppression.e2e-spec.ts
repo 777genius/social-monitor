@@ -7,6 +7,7 @@ import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 describe('Delivery preferences before send (e2e)', () => {
   let app: INestApplication;
@@ -32,8 +33,8 @@ describe('Delivery preferences before send (e2e)', () => {
   });
 
   it('suppresses queued delivery when recipient disables the channel before send', async () => {
-    const tenant = tenantId('tenant-delivery-preference-e2e');
-    const workspace = workspaceId('workspace-delivery-preference-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-delivery-preference-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-delivery-preference-e2e'));
 
     app.get(InMemoryNotificationPreferenceReader).suppressRecipientChannel({
       tenantId: tenant,

@@ -5,8 +5,11 @@ import {
   REQUEST_ID_HEADER,
   buildRequestContext,
 } from '@social-monitor/platform-request-context';
-import { runWithTenantDatabaseAccess } from '@social-monitor/platform-persistence';
-import { requireTenantScope } from '@social-monitor/shared-kernel';
+import {
+  InvalidTenantDatabaseAccessError,
+  runWithTenantDatabaseAccess,
+} from '@social-monitor/platform-persistence';
+import { DomainError, requireTenantScope } from '@social-monitor/shared-kernel';
 import type { NextFunction, Request, Response } from 'express';
 
 @Injectable()
@@ -35,6 +38,17 @@ export class RequestContextMiddleware implements NestMiddleware {
       return;
     }
     const scope = requireTenantScope({ tenantIdHeader, workspaceIdHeader });
-    runWithTenantDatabaseAccess(scope, next);
+    try {
+      runWithTenantDatabaseAccess(scope, next);
+    } catch (error) {
+      if (error instanceof InvalidTenantDatabaseAccessError) {
+        throw new DomainError(
+          'validation.failed',
+          'Tenant and workspace identifiers must be UUIDs',
+          { field: error.field },
+        );
+      }
+      throw error;
+    }
   }
 }

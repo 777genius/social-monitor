@@ -5,6 +5,7 @@ import { ExecuteSummaryJobUseCase } from '@social-monitor/summary/features/execu
 import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 describe('Summary job status timeline (e2e)', () => {
   let app: INestApplication;
@@ -30,8 +31,8 @@ describe('Summary job status timeline (e2e)', () => {
   });
 
   it('returns requested and completed timeline states for a summary job', async () => {
-    const tenant = tenantId('tenant-summary-status-e2e');
-    const workspace = workspaceId('workspace-summary-status-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-summary-status-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-summary-status-e2e'));
     const requested = await request(app.getHttpServer())
       .post('/interests/topic-summary-status-e2e/summary-requests')
       .set('x-tenant-id', tenant)

@@ -6,6 +6,7 @@ import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
 import type { BetaLaunchSupportResponseDto } from '../../libs/launch/interfaces/rest/beta-launch-support.dto';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 type SourceProviderCertificationReport = {
   readonly blockingPassed: boolean;
@@ -123,8 +124,8 @@ describe('Beta launch support API (e2e)', () => {
 });
 
 const scopeHeaders = (): Record<string, string> => ({
-  'x-tenant-id': 'tenant-beta-launch-support-e2e',
-  'x-workspace-id': 'workspace-beta-launch-support-e2e',
+  'x-tenant-id': deterministicTestUuid('tenant-beta-launch-support-e2e'),
+  'x-workspace-id': deterministicTestUuid('workspace-beta-launch-support-e2e'),
 });
 
 const loadSourceProviderCertificationReport = (): SourceProviderCertificationReport => {

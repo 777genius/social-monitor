@@ -4,6 +4,7 @@ import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 describe('Feed tenant scope guard (e2e)', () => {
   let app: INestApplication;
@@ -31,7 +32,7 @@ describe('Feed tenant scope guard (e2e)', () => {
   it('returns controlled tenant.scope_missing problem when tenant header is absent', async () => {
     const response = await request(app.getHttpServer())
       .get('/feed/items')
-      .set('x-workspace-id', workspaceId('workspace-feed-scope-e2e'))
+      .set('x-workspace-id', workspaceId(deterministicTestUuid('workspace-feed-scope-e2e')))
       .expect(400);
 
     expect(response.body).toMatchObject({
@@ -43,7 +44,7 @@ describe('Feed tenant scope guard (e2e)', () => {
   it('returns controlled tenant.scope_missing problem when workspace header is absent', async () => {
     const response = await request(app.getHttpServer())
       .get('/feed/items/feed-item-1')
-      .set('x-tenant-id', tenantId('tenant-feed-scope-e2e'))
+      .set('x-tenant-id', tenantId(deterministicTestUuid('tenant-feed-scope-e2e')))
       .expect(400);
 
     expect(response.body).toMatchObject({

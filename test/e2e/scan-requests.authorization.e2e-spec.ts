@@ -4,6 +4,7 @@ import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 describe('Manual scan request workspace authorization (e2e)', () => {
   let app: INestApplication;
@@ -29,8 +30,8 @@ describe('Manual scan request workspace authorization (e2e)', () => {
   });
 
   it('requires a workspace role with manual scan permission', async () => {
-    const tenant = tenantId('tenant-scan-request-authorization-e2e');
-    const workspace = workspaceId('workspace-scan-request-authorization-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-scan-request-authorization-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-scan-request-authorization-e2e'));
     const bindingId = await createReadyBinding({ app, tenant, workspace });
 
     const missingRole = await request(app.getHttpServer())
@@ -95,8 +96,8 @@ describe('Manual scan request workspace authorization (e2e)', () => {
   });
 
   it('allows viewer role to list scan request history', async () => {
-    const tenant = tenantId('tenant-scan-request-list-authorization-e2e');
-    const workspace = workspaceId('workspace-scan-request-list-authorization-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-scan-request-list-authorization-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-scan-request-list-authorization-e2e'));
     const bindingId = await createReadyBinding({ app, tenant, workspace });
 
     const missingRole = await request(app.getHttpServer())
@@ -126,8 +127,8 @@ describe('Manual scan request workspace authorization (e2e)', () => {
   });
 
   it('allows viewer role to read daily scan history', async () => {
-    const tenant = tenantId('tenant-scan-request-daily-authorization-e2e');
-    const workspace = workspaceId('workspace-scan-request-daily-authorization-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-scan-request-daily-authorization-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-scan-request-daily-authorization-e2e'));
     const bindingId = await createReadyBinding({ app, tenant, workspace });
 
     const missingRole = await request(app.getHttpServer())

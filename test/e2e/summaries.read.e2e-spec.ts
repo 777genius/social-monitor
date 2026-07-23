@@ -5,6 +5,7 @@ import { ExecuteSummaryJobUseCase } from '@social-monitor/summary/features/execu
 import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 describe('Summary read model (e2e)', () => {
   let app: INestApplication;
@@ -30,8 +31,8 @@ describe('Summary read model (e2e)', () => {
   });
 
   it('returns executed summaries through REST detail and list endpoints', async () => {
-    const tenant = tenantId('tenant-summary-read-e2e');
-    const workspace = workspaceId('workspace-summary-read-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-summary-read-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-summary-read-e2e'));
     const interestId = 'topic-summary-read-e2e';
     const requested = await request(app.getHttpServer())
       .post(`/interests/${interestId}/summary-requests`)

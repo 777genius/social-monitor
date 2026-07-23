@@ -6,6 +6,7 @@ import { InMemoryPublicApiAuditLog } from '@social-monitor/usage/adapters/audit/
 import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 describe('API key lifecycle and scopes (e2e)', () => {
   let app: INestApplication;
@@ -31,8 +32,8 @@ describe('API key lifecycle and scopes (e2e)', () => {
   });
 
   it('creates show-once API key secret, enforces scopes and rejects revoked key', async () => {
-    const tenant = tenantId('tenant-api-key-e2e');
-    const workspace = workspaceId('workspace-api-key-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-api-key-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-api-key-e2e'));
     const created = await request(app.getHttpServer())
       .post('/identity/api-keys')
       .set('x-tenant-id', tenant)

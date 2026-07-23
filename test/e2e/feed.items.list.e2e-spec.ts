@@ -6,11 +6,11 @@ import request from 'supertest';
 import { AppModule } from '../../apps/api-gateway/src/app.module';
 import { FeedItem } from '../../libs/feed/domain';
 import { InMemoryFeedItemReadRepository } from '../../libs/feed/adapters/persistence/in-memory-feed-item-read.repository';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 describe('Feed items list (e2e)', () => {
   let app: INestApplication;
   let repository: InMemoryFeedItemReadRepository;
-
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
@@ -58,8 +58,8 @@ describe('Feed items list (e2e)', () => {
     const missingRole = await request(app.getHttpServer())
       .get('/feed/items')
       .query({ limit: 1 })
-      .set('x-tenant-id', 'tenant-feed-e2e')
-      .set('x-workspace-id', 'workspace-feed-e2e')
+      .set('x-tenant-id', deterministicTestUuid('tenant-feed-e2e'))
+      .set('x-workspace-id', deterministicTestUuid('workspace-feed-e2e'))
       .expect(403);
 
     expect(missingRole.body).toMatchObject({
@@ -73,8 +73,8 @@ describe('Feed items list (e2e)', () => {
     const firstPage = await request(app.getHttpServer())
       .get('/feed/items')
       .query({ limit: 1 })
-      .set('x-tenant-id', 'tenant-feed-e2e')
-      .set('x-workspace-id', 'workspace-feed-e2e')
+      .set('x-tenant-id', deterministicTestUuid('tenant-feed-e2e'))
+      .set('x-workspace-id', deterministicTestUuid('workspace-feed-e2e'))
       .set('x-workspace-role', 'viewer')
       .expect(200);
 
@@ -110,8 +110,8 @@ describe('Feed items list (e2e)', () => {
     const secondPage = await request(app.getHttpServer())
       .get('/feed/items')
       .query({ limit: 10, cursor: firstPage.body.nextCursor })
-      .set('x-tenant-id', 'tenant-feed-e2e')
-      .set('x-workspace-id', 'workspace-feed-e2e')
+      .set('x-tenant-id', deterministicTestUuid('tenant-feed-e2e'))
+      .set('x-workspace-id', deterministicTestUuid('workspace-feed-e2e'))
       .set('x-workspace-role', 'viewer')
       .expect(200);
 
@@ -139,8 +139,8 @@ describe('Feed items list (e2e)', () => {
     const search = await request(app.getHttpServer())
       .get('/feed/items')
       .query({ limit: 10, q: 'Title feed-1' })
-      .set('x-tenant-id', 'tenant-feed-e2e')
-      .set('x-workspace-id', 'workspace-feed-e2e')
+      .set('x-tenant-id', deterministicTestUuid('tenant-feed-e2e'))
+      .set('x-workspace-id', deterministicTestUuid('workspace-feed-e2e'))
       .set('x-workspace-role', 'viewer')
       .expect(200);
 
@@ -166,8 +166,8 @@ describe('Feed items list (e2e)', () => {
     const crossTenantSearch = await request(app.getHttpServer())
       .get('/feed/items')
       .query({ limit: 10, q: 'feed-3' })
-      .set('x-tenant-id', 'tenant-feed-e2e')
-      .set('x-workspace-id', 'workspace-feed-e2e')
+      .set('x-tenant-id', deterministicTestUuid('tenant-feed-e2e'))
+      .set('x-workspace-id', deterministicTestUuid('workspace-feed-e2e'))
       .set('x-workspace-role', 'viewer')
       .expect(200);
 
@@ -192,8 +192,8 @@ describe('Feed items list (e2e)', () => {
     const topicFiltered = await request(app.getHttpServer())
       .get('/feed/items')
       .query({ limit: 10, interestId: 'topic-feed-e2e' })
-      .set('x-tenant-id', 'tenant-feed-e2e')
-      .set('x-workspace-id', 'workspace-feed-e2e')
+      .set('x-tenant-id', deterministicTestUuid('tenant-feed-e2e'))
+      .set('x-workspace-id', deterministicTestUuid('workspace-feed-e2e'))
       .set('x-workspace-role', 'viewer')
       .expect(200);
 
@@ -222,8 +222,8 @@ describe('Feed items list (e2e)', () => {
 
     const detail = await request(app.getHttpServer())
       .get('/feed/items/feed-1')
-      .set('x-tenant-id', 'tenant-feed-e2e')
-      .set('x-workspace-id', 'workspace-feed-e2e')
+      .set('x-tenant-id', deterministicTestUuid('tenant-feed-e2e'))
+      .set('x-workspace-id', deterministicTestUuid('workspace-feed-e2e'))
       .set('x-workspace-role', 'viewer')
       .expect(200);
 
@@ -235,8 +235,8 @@ describe('Feed items list (e2e)', () => {
 
     await request(app.getHttpServer())
       .get('/feed/items/feed-3')
-      .set('x-tenant-id', 'tenant-feed-e2e')
-      .set('x-workspace-id', 'workspace-feed-e2e')
+      .set('x-tenant-id', deterministicTestUuid('tenant-feed-e2e'))
+      .set('x-workspace-id', deterministicTestUuid('workspace-feed-e2e'))
       .set('x-workspace-role', 'viewer')
       .expect(404)
       .expect((response) => {
@@ -250,8 +250,8 @@ describe('Feed items list (e2e)', () => {
     await request(app.getHttpServer())
       .get('/feed/items')
       .query({ limit: 0 })
-      .set('x-tenant-id', 'tenant-feed-e2e')
-      .set('x-workspace-id', 'workspace-feed-e2e')
+      .set('x-tenant-id', deterministicTestUuid('tenant-feed-e2e'))
+      .set('x-workspace-id', deterministicTestUuid('workspace-feed-e2e'))
       .set('x-workspace-role', 'viewer')
       .expect(400)
       .expect((response) => {
@@ -292,8 +292,8 @@ describe('Feed items list (e2e)', () => {
     const response = await request(app.getHttpServer())
       .get('/feed/items')
       .query({ limit: 10 })
-      .set('x-tenant-id', 'tenant-feed-dedupe-e2e')
-      .set('x-workspace-id', 'workspace-feed-dedupe-e2e')
+      .set('x-tenant-id', deterministicTestUuid('tenant-feed-dedupe-e2e'))
+      .set('x-workspace-id', deterministicTestUuid('workspace-feed-dedupe-e2e'))
       .set('x-workspace-role', 'viewer')
       .expect(200);
 

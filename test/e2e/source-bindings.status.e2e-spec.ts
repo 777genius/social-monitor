@@ -7,6 +7,7 @@ import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
 import { MonitoringRestModule } from '../../libs/monitoring/interfaces/rest/monitoring-rest.module';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 describe('Source binding status API (e2e)', () => {
   let app: INestApplication;
@@ -36,8 +37,8 @@ describe('Source binding status API (e2e)', () => {
   });
 
   it('pauses manual scan enqueueing, reports paused health, then resumes the binding', async () => {
-    const tenant = tenantId('tenant-source-status-e2e');
-    const workspace = workspaceId('workspace-source-status-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-source-status-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-source-status-e2e'));
 
     const topic = await request(app.getHttpServer())
       .post('/interests')

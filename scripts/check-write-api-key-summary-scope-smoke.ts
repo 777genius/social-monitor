@@ -2,6 +2,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { APP_FILTER } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import { IdentityRestModule } from '@social-monitor/identity/interfaces/rest/identity-rest.module';
+import { MetricsRuntimeModule } from '@social-monitor/platform-metrics/nest/metrics-runtime.module';
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import { SummaryRestModule } from '@social-monitor/summary/interfaces/rest/summary-rest.module';
 import request from 'supertest';
@@ -15,8 +16,18 @@ const assert = (condition: unknown, message: string): void => {
 };
 
 async function main(): Promise<void> {
+  process.env.SUMMARY_MODEL_PROVIDER = 'deterministic';
+  process.env.READER_SUMMARY_MODEL_PROVIDER = 'deterministic';
+  process.env.READER_SUMMARY_TOPIC_LABELER = 'deterministic';
+
   const moduleRef = await Test.createTestingModule({
-    imports: [IdentityRestModule, SummaryRestModule],
+    imports: [
+      MetricsRuntimeModule.register({
+        serviceName: 'write-api-key-summary-scope-smoke',
+      }),
+      IdentityRestModule,
+      SummaryRestModule,
+    ],
     providers: [
       {
         provide: APP_FILTER,

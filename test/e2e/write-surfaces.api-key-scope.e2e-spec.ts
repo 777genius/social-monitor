@@ -7,6 +7,7 @@ import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
 import { MonitoringRestModule } from '../../libs/monitoring/interfaces/rest/monitoring-rest.module';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 describe('Write surfaces API key scope enforcement (e2e)', () => {
   let app: INestApplication;
@@ -36,8 +37,8 @@ describe('Write surfaces API key scope enforcement (e2e)', () => {
   });
 
   it('allows a scoped headless monitoring API key to create topic, bind source and enqueue scan', async () => {
-    const tenant = tenantId('tenant-write-monitoring-api-key-e2e');
-    const workspace = workspaceId('workspace-write-monitoring-api-key-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-write-monitoring-api-key-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-write-monitoring-api-key-e2e'));
     const headers = {
       'x-tenant-id': tenant,
       'x-workspace-id': workspace,
@@ -167,8 +168,8 @@ describe('Write surfaces API key scope enforcement (e2e)', () => {
   });
 
   it('allows a scoped summary API key to manage policy and request summary jobs', async () => {
-    const tenant = tenantId('tenant-write-summary-api-key-e2e');
-    const workspace = workspaceId('workspace-write-summary-api-key-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-write-summary-api-key-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-write-summary-api-key-e2e'));
     const interestId = 'topic-write-summary-api-key-e2e';
     const headers = {
       'x-tenant-id': tenant,

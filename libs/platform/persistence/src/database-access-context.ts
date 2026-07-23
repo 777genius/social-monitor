@@ -13,6 +13,13 @@ export type SystemDatabaseAccess = {
 
 export type DatabaseAccess = TenantDatabaseAccess | SystemDatabaseAccess;
 
+export class InvalidTenantDatabaseAccessError extends Error {
+  constructor(readonly field: 'tenantId' | 'workspaceId') {
+    super(`Database access ${field} must be a UUID`);
+    this.name = 'InvalidTenantDatabaseAccessError';
+  }
+}
+
 const databaseAccessStorage = new AsyncLocalStorage<DatabaseAccess>();
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -75,10 +82,13 @@ function sameAccess(left: DatabaseAccess, right: DatabaseAccess): boolean {
         left.workspaceId === (right as TenantDatabaseAccess).workspaceId;
 }
 
-function validatedUuid(value: string, label: string): string {
+function validatedUuid(
+  value: string,
+  label: InvalidTenantDatabaseAccessError['field'],
+): string {
   const normalized = value.trim().toLowerCase();
   if (!UUID_PATTERN.test(normalized)) {
-    throw new Error(`Database access ${label} must be a UUID`);
+    throw new InvalidTenantDatabaseAccessError(label);
   }
   return normalized;
 }

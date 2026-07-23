@@ -4,6 +4,7 @@ import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 describe('Webhook endpoint workspace authorization (e2e)', () => {
   let app: INestApplication;
@@ -29,8 +30,8 @@ describe('Webhook endpoint workspace authorization (e2e)', () => {
   });
 
   it('requires owner or admin workspace role to create and disable webhook endpoints', async () => {
-    const tenant = tenantId('tenant-webhook-authorization-e2e');
-    const workspace = workspaceId('workspace-webhook-authorization-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-webhook-authorization-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-webhook-authorization-e2e'));
     const webhookBody = {
       url: 'https://example.com/webhooks/authorization',
       eventTypes: ['digest.ready.v1'],

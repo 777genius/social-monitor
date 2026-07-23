@@ -9,6 +9,7 @@ import {
   DELIVERY_NOTIFICATION_PREFERENCE_READER,
 } from '../../libs/delivery/interfaces/rest/delivery-provider-tokens';
 import type { NotificationPreferenceReaderPort } from '../../libs/delivery/ports';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 describe('Notification preferences API (e2e)', () => {
   let app: INestApplication;
@@ -38,8 +39,8 @@ describe('Notification preferences API (e2e)', () => {
   });
 
   it('sets, reads and applies recipient/channel delivery preferences', async () => {
-    const tenant = tenantId('tenant-notification-preference-e2e');
-    const workspace = workspaceId('workspace-notification-preference-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-notification-preference-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-notification-preference-e2e'));
     const headers = {
       'x-tenant-id': tenant,
       'x-workspace-id': workspace,

@@ -8,6 +8,7 @@ import {
   MONITORING_SOURCE_BINDING_REPOSITORY,
 } from '../../libs/monitoring/interfaces/rest/monitoring-provider-tokens';
 import type { SourceBindingRepositoryPort } from '../../libs/monitoring/ports';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 describe('Reader summary topic recommendations decision flow (e2e)', () => {
   let app: INestApplication;
@@ -55,8 +56,8 @@ describe('Reader summary topic recommendations decision flow (e2e)', () => {
   });
 
   it('canonicalizes stale headline labels before applying and reverting source binding queries', async () => {
-    const tenant = tenantId('tenant-topic-rec-decision-e2e');
-    const workspace = workspaceId('workspace-topic-rec-decision-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-topic-rec-decision-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-topic-rec-decision-e2e'));
     const rawTopicLabel =
       'The productivity stack many professionals rely on every';
     const canonicalTopicLabel = 'Productivity stack';

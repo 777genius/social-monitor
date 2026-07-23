@@ -7,6 +7,7 @@ import { ExecuteReaderSummaryJobUseCase } from '@social-monitor/summary/features
 import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 describe('Reader surfaces tenant scope guard (e2e)', () => {
   let app: INestApplication;
@@ -182,7 +183,7 @@ describe('Reader surfaces tenant scope guard (e2e)', () => {
   it('returns controlled tenant scope errors for reader surfaces', async () => {
     await request(app.getHttpServer())
       .get('/reader-summaries')
-      .set('x-workspace-id', workspaceId('workspace-reader-scope-missing-e2e'))
+      .set('x-workspace-id', workspaceId(deterministicTestUuid('workspace-reader-scope-missing-e2e')))
       .expect(400)
       .expect((response) => {
         expect(response.body).toMatchObject({
@@ -193,7 +194,7 @@ describe('Reader surfaces tenant scope guard (e2e)', () => {
 
     await request(app.getHttpServer())
       .get('/reader-summaries/reader-summary-reader-scope-missing')
-      .set('x-tenant-id', tenantId('tenant-reader-scope-missing-e2e'))
+      .set('x-tenant-id', tenantId(deterministicTestUuid('tenant-reader-scope-missing-e2e')))
       .expect(400)
       .expect((response) => {
         expect(response.body).toMatchObject({
@@ -204,7 +205,7 @@ describe('Reader surfaces tenant scope guard (e2e)', () => {
 
     await request(app.getHttpServer())
       .get('/reader-summary-jobs/reader-summary-job-reader-scope-missing/status')
-      .set('x-tenant-id', tenantId('tenant-reader-scope-missing-e2e'))
+      .set('x-tenant-id', tenantId(deterministicTestUuid('tenant-reader-scope-missing-e2e')))
       .expect(400)
       .expect((response) => {
         expect(response.body).toMatchObject({
@@ -215,7 +216,7 @@ describe('Reader surfaces tenant scope guard (e2e)', () => {
 
     await request(app.getHttpServer())
       .get('/relevance/users/reader-scope-missing/feed')
-      .set('x-workspace-id', workspaceId('workspace-reader-scope-missing-e2e'))
+      .set('x-workspace-id', workspaceId(deterministicTestUuid('workspace-reader-scope-missing-e2e')))
       .expect(400)
       .expect((response) => {
         expect(response.body).toMatchObject({
@@ -231,7 +232,7 @@ describe('Reader surfaces tenant scope guard (e2e)', () => {
         windowStartedAt: '2026-06-25T00:00:00.000Z',
         windowEndedAt: '2026-06-26T00:00:00.000Z',
       })
-      .set('x-tenant-id', tenantId('tenant-reader-scope-missing-e2e'))
+      .set('x-tenant-id', tenantId(deterministicTestUuid('tenant-reader-scope-missing-e2e')))
       .expect(400)
       .expect((response) => {
         expect(response.body).toMatchObject({

@@ -1,4 +1,5 @@
 import { currentDatabaseAccess } from '@social-monitor/platform-persistence';
+import type { DomainError } from '@social-monitor/shared-kernel';
 import type { NextFunction, Request, Response } from 'express';
 
 import { RequestContextMiddleware } from './request-context.middleware';
@@ -41,6 +42,22 @@ describe('RequestContextMiddleware', () => {
     );
 
     expect(observed).toBeUndefined();
+  });
+
+  it('rejects a complete non-UUID tenant scope as a validation error', () => {
+    const middleware = new RequestContextMiddleware();
+
+    expect(() => middleware.use(
+      requestWithHeaders({
+        'x-tenant-id': 'not-a-uuid',
+        'x-workspace-id': workspaceId,
+      }),
+      responseStub(),
+      jest.fn() as NextFunction,
+    )).toThrow(expect.objectContaining<Partial<DomainError>>({
+      code: 'validation.failed',
+      message: 'Tenant and workspace identifiers must be UUIDs',
+    }));
   });
 });
 

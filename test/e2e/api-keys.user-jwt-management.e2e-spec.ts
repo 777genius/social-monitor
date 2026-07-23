@@ -13,11 +13,12 @@ import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
 import { createApiGatewayE2eApp } from './support/api-gateway-e2e-app';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 const issuer = 'https://auth.example.test';
 const audience = 'social-monitor-api';
-const tenant = tenantId('tenant-api-key-user-jwt-management-e2e');
-const workspace = workspaceId('workspace-api-key-user-jwt-management-e2e');
+const tenant = tenantId(deterministicTestUuid('tenant-api-key-user-jwt-management-e2e'));
+const workspace = workspaceId(deterministicTestUuid('workspace-api-key-user-jwt-management-e2e'));
 let privateKey: KeyObject;
 
 describe('API key user JWT management boundary (e2e)', () => {

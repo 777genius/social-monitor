@@ -5,6 +5,7 @@ import { InMemoryPublicApiAuditLog } from '@social-monitor/usage/adapters/audit/
 import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 describe('Bind source flow (e2e)', () => {
   let app: INestApplication;
@@ -30,8 +31,8 @@ describe('Bind source flow (e2e)', () => {
   });
 
   it('binds fake source to an existing topic and makes duplicate command idempotent', async () => {
-    const tenant = tenantId('tenant-source-e2e');
-    const workspace = workspaceId('workspace-source-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-source-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-source-e2e'));
     const topic = await request(app.getHttpServer())
       .post('/interests')
       .set('x-tenant-id', tenant)
@@ -146,8 +147,8 @@ describe('Bind source flow (e2e)', () => {
   });
 
   it('filters source binding list and overview by provider and status', async () => {
-    const tenant = tenantId('tenant-source-filter-e2e');
-    const workspace = workspaceId('workspace-source-filter-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-source-filter-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-source-filter-e2e'));
     const topic = await request(app.getHttpServer())
       .post('/interests')
       .set('x-tenant-id', tenant)
@@ -267,8 +268,8 @@ describe('Bind source flow (e2e)', () => {
   });
 
   it('rejects deferred providers before creating bindings', async () => {
-    const tenant = tenantId('tenant-source-deferred-e2e');
-    const workspace = workspaceId('workspace-source-deferred-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-source-deferred-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-source-deferred-e2e'));
     const topic = await request(app.getHttpServer())
       .post('/interests')
       .set('x-tenant-id', tenant)
@@ -316,8 +317,8 @@ describe('Bind source flow (e2e)', () => {
   });
 
   it('binds canonical X/Twitter as a production-safe source and records audit success', async () => {
-    const tenant = tenantId('tenant-source-x-e2e');
-    const workspace = workspaceId('workspace-source-x-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-source-x-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-source-x-e2e'));
     const topic = await request(app.getHttpServer())
       .post('/interests')
       .set('x-tenant-id', tenant)

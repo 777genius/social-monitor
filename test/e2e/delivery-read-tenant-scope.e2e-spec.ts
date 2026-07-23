@@ -4,6 +4,7 @@ import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 describe('Delivery read tenant scope guard (e2e)', () => {
   let app: INestApplication;
@@ -31,7 +32,7 @@ describe('Delivery read tenant scope guard (e2e)', () => {
   it('returns controlled tenant.scope_missing problem for delivery attempt read without tenant', async () => {
     const response = await request(app.getHttpServer())
       .get('/delivery/attempts/attempt-1')
-      .set('x-workspace-id', workspaceId('workspace-delivery-read-scope-e2e'))
+      .set('x-workspace-id', workspaceId(deterministicTestUuid('workspace-delivery-read-scope-e2e')))
       .expect(400);
 
     expect(response.body).toMatchObject({
@@ -43,7 +44,7 @@ describe('Delivery read tenant scope guard (e2e)', () => {
   it('returns controlled tenant.scope_missing problem for digest read without workspace', async () => {
     const response = await request(app.getHttpServer())
       .get('/delivery/digests/digest-1')
-      .set('x-tenant-id', tenantId('tenant-delivery-read-scope-e2e'))
+      .set('x-tenant-id', tenantId(deterministicTestUuid('tenant-delivery-read-scope-e2e')))
       .expect(400);
 
     expect(response.body).toMatchObject({
@@ -56,7 +57,7 @@ describe('Delivery read tenant scope guard (e2e)', () => {
     const response = await request(app.getHttpServer())
       .get('/realtime/events')
       .query({ channel: 'workspace' })
-      .set('x-tenant-id', tenantId('tenant-realtime-read-scope-e2e'))
+      .set('x-tenant-id', tenantId(deterministicTestUuid('tenant-realtime-read-scope-e2e')))
       .expect(400);
 
     expect(response.body).toMatchObject({

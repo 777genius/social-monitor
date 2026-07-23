@@ -5,6 +5,7 @@ import { InMemorySummaryJobRepository } from '@social-monitor/summary/adapters/p
 import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 describe('Summary request quota (e2e)', () => {
   let app: INestApplication;
@@ -42,8 +43,8 @@ describe('Summary request quota (e2e)', () => {
   });
 
   it('rejects a second new summary request before creating another job', async () => {
-    const tenant = tenantId('tenant-summary-quota-e2e');
-    const workspace = workspaceId('workspace-summary-quota-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-summary-quota-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-summary-quota-e2e'));
 
     await request(app.getHttpServer())
       .post('/interests/topic-summary-quota-1/summary-requests')

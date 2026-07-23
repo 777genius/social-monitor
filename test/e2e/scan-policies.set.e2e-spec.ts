@@ -5,6 +5,7 @@ import { InMemoryPublicApiAuditLog } from '@social-monitor/usage/adapters/audit/
 import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 describe('Set scan policy flow (e2e)', () => {
   let app: INestApplication;
@@ -30,8 +31,8 @@ describe('Set scan policy flow (e2e)', () => {
   });
 
   it('sets scan policy for a fake source binding and makes duplicate command idempotent', async () => {
-    const tenant = tenantId('tenant-policy-e2e');
-    const workspace = workspaceId('workspace-policy-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-policy-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-policy-e2e'));
     const topic = await request(app.getHttpServer())
       .post('/interests')
       .set('x-tenant-id', tenant)
@@ -125,8 +126,8 @@ describe('Set scan policy flow (e2e)', () => {
   });
 
   it('rejects scan policy intervals below provider cadence minimum', async () => {
-    const tenant = tenantId('tenant-policy-cadence-e2e');
-    const workspace = workspaceId('workspace-policy-cadence-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-policy-cadence-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-policy-cadence-e2e'));
     const topic = await request(app.getHttpServer())
       .post('/interests')
       .set('x-tenant-id', tenant)

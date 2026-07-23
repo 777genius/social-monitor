@@ -7,6 +7,7 @@ import { ExecuteSummaryJobUseCase } from '@social-monitor/summary/features/execu
 import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 type SubscriptionRequest = {
   readonly userId: string;
@@ -42,8 +43,8 @@ describe('User subscriptions personalized summary flow (e2e)', () => {
   });
 
   it('creates a provider target subscription and applies its summary prompt overlay at execution time', async () => {
-    const tenant = tenantId('tenant-user-subscriptions-e2e');
-    const workspace = workspaceId('workspace-user-subscriptions-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-user-subscriptions-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-user-subscriptions-e2e'));
     const userId = 'user-alice';
 
     const created = await createSubscription(app, tenant, workspace, {
@@ -143,8 +144,8 @@ describe('User subscriptions personalized summary flow (e2e)', () => {
   });
 
   it('normalizes provider targets and reuses the same subscription on duplicate create', async () => {
-    const tenant = tenantId('tenant-user-subscription-duplicate-e2e');
-    const workspace = workspaceId('workspace-user-subscription-duplicate-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-user-subscription-duplicate-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-user-subscription-duplicate-e2e'));
     const userId = 'user-duplicate';
 
     const first = await createSubscription(app, tenant, workspace, {
@@ -204,8 +205,8 @@ describe('User subscriptions personalized summary flow (e2e)', () => {
   });
 
   it('supports provider-specific target kinds beyond reddit', async () => {
-    const tenant = tenantId('tenant-user-subscription-providers-e2e');
-    const workspace = workspaceId('workspace-user-subscription-providers-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-user-subscription-providers-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-user-subscription-providers-e2e'));
     const userId = 'user-provider-matrix';
 
     const github = await createSubscription(app, tenant, workspace, {
@@ -258,8 +259,8 @@ describe('User subscriptions personalized summary flow (e2e)', () => {
   });
 
   it('activates a canonical X source pipeline through the product subscription flow', async () => {
-    const tenant = tenantId('tenant-x-activation-e2e');
-    const workspace = workspaceId('workspace-x-activation-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-x-activation-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-x-activation-e2e'));
     const userId = 'user-x-activation';
 
     const activated = await request(app.getHttpServer())
@@ -385,8 +386,8 @@ describe('User subscriptions personalized summary flow (e2e)', () => {
   });
 
   it('updates subscription summary preference only for the owning user', async () => {
-    const tenant = tenantId('tenant-user-subscription-preference-update-e2e');
-    const workspace = workspaceId('workspace-user-subscription-preference-update-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-user-subscription-preference-update-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-user-subscription-preference-update-e2e'));
     const userId = 'user-owner';
 
     const created = await createSubscription(app, tenant, workspace, {
@@ -471,8 +472,8 @@ describe('User subscriptions personalized summary flow (e2e)', () => {
   });
 
   it('applies topic-level user summary preference when no subscription scope is requested', async () => {
-    const tenant = tenantId('tenant-topic-user-summary-preference-e2e');
-    const workspace = workspaceId('workspace-topic-user-summary-preference-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-topic-user-summary-preference-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-topic-user-summary-preference-e2e'));
     const interestId = 'topic-user-summary-preference-e2e';
     const userId = 'user-topic-overlay';
 
@@ -515,8 +516,8 @@ describe('User subscriptions personalized summary flow (e2e)', () => {
   it('rejects invalid subscription requests before controller logic dereferences the body', async () => {
     await request(app.getHttpServer())
       .post('/user-subscriptions')
-      .set('x-tenant-id', 'tenant-user-subscription-validation-e2e')
-      .set('x-workspace-id', 'workspace-user-subscription-validation-e2e')
+      .set('x-tenant-id', deterministicTestUuid('tenant-user-subscription-validation-e2e'))
+      .set('x-workspace-id', deterministicTestUuid('workspace-user-subscription-validation-e2e'))
       .set('x-workspace-role', 'member')
       .send({
         userId: 'user-validation',
@@ -537,8 +538,8 @@ describe('User subscriptions personalized summary flow (e2e)', () => {
   it('rejects inline credential material in source activation target config without echoing secrets', async () => {
     await request(app.getHttpServer())
       .post('/user-subscriptions/activate-source')
-      .set('x-tenant-id', 'tenant-source-activation-secret-boundary-e2e')
-      .set('x-workspace-id', 'workspace-source-activation-secret-boundary-e2e')
+      .set('x-tenant-id', deterministicTestUuid('tenant-source-activation-secret-boundary-e2e'))
+      .set('x-workspace-id', deterministicTestUuid('workspace-source-activation-secret-boundary-e2e'))
       .set('x-workspace-role', 'member')
       .send({
         userId: 'user-source-activation-secret-boundary',
@@ -567,8 +568,8 @@ describe('User subscriptions personalized summary flow (e2e)', () => {
   it('rejects inline credential material in subscription target config without echoing secrets', async () => {
     await request(app.getHttpServer())
       .post('/user-subscriptions')
-      .set('x-tenant-id', 'tenant-user-subscription-secret-boundary-e2e')
-      .set('x-workspace-id', 'workspace-user-subscription-secret-boundary-e2e')
+      .set('x-tenant-id', deterministicTestUuid('tenant-user-subscription-secret-boundary-e2e'))
+      .set('x-workspace-id', deterministicTestUuid('workspace-user-subscription-secret-boundary-e2e'))
       .set('x-workspace-role', 'member')
       .send({
         userId: 'user-subscription-secret-boundary',
@@ -598,8 +599,8 @@ describe('User subscriptions personalized summary flow (e2e)', () => {
   it('rejects subscription-scoped summary requests without a user id', async () => {
     await request(app.getHttpServer())
       .post('/interests/topic-subscription-scope-validation-e2e/summary-requests')
-      .set('x-tenant-id', 'tenant-summary-subscription-validation-e2e')
-      .set('x-workspace-id', 'workspace-summary-subscription-validation-e2e')
+      .set('x-tenant-id', deterministicTestUuid('tenant-summary-subscription-validation-e2e'))
+      .set('x-workspace-id', deterministicTestUuid('workspace-summary-subscription-validation-e2e'))
       .set('x-workspace-role', 'member')
       .set('x-request-id', 'summary-subscription-validation-request-1')
       .set('idempotency-key', 'summary-subscription-validation-request-1')
@@ -613,8 +614,8 @@ describe('User subscriptions personalized summary flow (e2e)', () => {
   });
 
   it('rejects idempotency-key reuse across different personalized summary scopes', async () => {
-    const tenant = tenantId('tenant-summary-idempotency-scope-e2e');
-    const workspace = workspaceId('workspace-summary-idempotency-scope-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-summary-idempotency-scope-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-summary-idempotency-scope-e2e'));
     const interestId = 'topic-summary-idempotency-scope-e2e';
 
     const first = await request(app.getHttpServer())

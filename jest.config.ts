@@ -5,7 +5,7 @@ const config: Config = {
   rootDir: '.',
   testRegex: '.*\\.spec\\.ts$',
   transform: {
-    '^.+\\.(t|j)s$': ['ts-jest', { tsconfig: 'tsconfig.json' }],
+    '^.+\\.(t|j)s$': ['ts-jest', { tsconfig: 'test/tsconfig.jest.json' }],
   },
   moduleNameMapper: {
     '^@social-monitor/shared-kernel$': '<rootDir>/libs/shared-kernel/src/index.ts',

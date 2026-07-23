@@ -4,6 +4,7 @@ import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 describe('API key workspace authorization (e2e)', () => {
   let app: INestApplication;
@@ -29,8 +30,8 @@ describe('API key workspace authorization (e2e)', () => {
   });
 
   it('requires an admin or owner workspace role for API key management', async () => {
-    const tenant = tenantId('tenant-api-key-authorization-e2e');
-    const workspace = workspaceId('workspace-api-key-authorization-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-api-key-authorization-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-api-key-authorization-e2e'));
 
     const missingRole = await request(app.getHttpServer())
       .post('/identity/api-keys')

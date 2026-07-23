@@ -4,6 +4,7 @@ import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 describe('API key listing (e2e)', () => {
   let app: INestApplication;
@@ -29,8 +30,8 @@ describe('API key listing (e2e)', () => {
   });
 
   it('lists API keys without raw secrets or hashes', async () => {
-    const tenant = tenantId('tenant-api-key-list-e2e');
-    const workspace = workspaceId('workspace-api-key-list-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-api-key-list-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-api-key-list-e2e'));
     const first = await request(app.getHttpServer())
       .post('/identity/api-keys')
       .set('x-tenant-id', tenant)

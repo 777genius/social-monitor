@@ -12,11 +12,12 @@ import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
 import { createApiGatewayE2eApp } from './support/api-gateway-e2e-app';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 const issuer = 'https://auth.example.test';
 const audience = 'social-monitor-api';
-const tenant = tenantId('tenant-user-jwt-auth-boundary-e2e');
-const workspace = workspaceId('workspace-user-jwt-auth-boundary-e2e');
+const tenant = tenantId(deterministicTestUuid('tenant-user-jwt-auth-boundary-e2e'));
+const workspace = workspaceId(deterministicTestUuid('workspace-user-jwt-auth-boundary-e2e'));
 let privateKey: KeyObject;
 
 describe('User JWT auth boundary (e2e)', () => {
@@ -61,12 +62,12 @@ describe('User JWT auth boundary (e2e)', () => {
     const viewerToken = tokenFor({ subject: 'viewer-user', roles: ['viewer'] });
     const otherTenantToken = tokenFor({
       subject: 'other-tenant-user',
-      tenant: tenantId('other-tenant-user-jwt-auth-boundary-e2e'),
+      tenant: tenantId(deterministicTestUuid('other-tenant-user-jwt-auth-boundary-e2e')),
       roles: ['admin'],
     });
     const otherWorkspaceToken = tokenFor({
       subject: 'other-workspace-user',
-      workspace: workspaceId('other-workspace-user-jwt-auth-boundary-e2e'),
+      workspace: workspaceId(deterministicTestUuid('other-workspace-user-jwt-auth-boundary-e2e')),
       roles: ['admin'],
     });
     const expiredToken = tokenFor({

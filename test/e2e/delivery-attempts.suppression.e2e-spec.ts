@@ -6,6 +6,7 @@ import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 describe('Delivery suppression policy (e2e)', () => {
   let app: INestApplication;
@@ -31,8 +32,8 @@ describe('Delivery suppression policy (e2e)', () => {
   });
 
   it('suppresses no-signal delivery and exposes suppression reason', async () => {
-    const tenant = tenantId('tenant-delivery-suppression-e2e');
-    const workspace = workspaceId('workspace-delivery-suppression-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-delivery-suppression-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-delivery-suppression-e2e'));
     const queued = await app.get(QueueDeliveryAttemptUseCase).execute({
       tenantId: tenant,
       workspaceId: workspace,

@@ -13,6 +13,7 @@ import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
 import { createApiGatewayE2eApp } from './support/api-gateway-e2e-app';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 const issuer = 'https://auth.example.test';
 const audience = 'social-monitor-api';
@@ -56,8 +57,8 @@ describe('Scan dead-letter authorization (e2e)', () => {
   });
 
   it('requires owner/admin workspace role for support-safe scan dead-letter inspection', async () => {
-    const tenant = tenantId('tenant-scan-dlq-auth-e2e');
-    const workspace = workspaceId('workspace-scan-dlq-auth-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-scan-dlq-auth-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-scan-dlq-auth-e2e'));
     await app.get(InMemoryScanFailureQueueAdapter).deadLetter({
       tenantId: tenant,
       workspaceId: workspace,

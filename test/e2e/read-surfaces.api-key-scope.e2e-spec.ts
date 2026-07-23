@@ -8,6 +8,7 @@ import { ExecuteSummaryJobUseCase } from '@social-monitor/summary/features/execu
 import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 describe('Read surfaces API key scope enforcement (e2e)', () => {
   let app: INestApplication;
@@ -35,8 +36,8 @@ describe('Read surfaces API key scope enforcement (e2e)', () => {
   });
 
   it('allows scoped API keys to read feed and summary surfaces without workspace role headers', async () => {
-    const tenant = tenantId('tenant-read-api-key-e2e');
-    const workspace = workspaceId('workspace-read-api-key-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-read-api-key-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-read-api-key-e2e'));
     const interestId = 'topic-read-api-key-e2e';
 
     feedItems.upsert(FeedItem.publish({
@@ -75,7 +76,7 @@ describe('Read surfaces API key scope enforcement (e2e)', () => {
     });
     const otherWorkspaceFeedKey = await createApiKey({
       tenant,
-      workspace: workspaceId('workspace-read-api-key-other-e2e'),
+      workspace: workspaceId(deterministicTestUuid('workspace-read-api-key-other-e2e')),
       name: 'Other workspace feed reader key',
       scopes: ['read:feed'],
     });

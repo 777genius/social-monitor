@@ -4,6 +4,7 @@ import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
 import { createApiGatewayE2eApp } from './support/api-gateway-e2e-app';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 describe('API gateway public errors (e2e)', () => {
   let app: INestApplication;
@@ -24,8 +25,8 @@ describe('API gateway public errors (e2e)', () => {
   it('returns redacted problem details for transport validation failures', async () => {
     const response = await request(app.getHttpServer())
       .post('/interests')
-      .set('x-tenant-id', 'tenant-public-error-e2e')
-      .set('x-workspace-id', 'workspace-public-error-e2e')
+      .set('x-tenant-id', deterministicTestUuid('tenant-public-error-e2e'))
+      .set('x-workspace-id', deterministicTestUuid('workspace-public-error-e2e'))
       .set('x-workspace-role', 'admin')
       .set('x-request-id', 'request-public-error-e2e')
       .set('idempotency-key', 'public-error-validation')
