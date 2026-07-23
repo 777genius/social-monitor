@@ -2,14 +2,16 @@ import { Body, Controller, Delete, Get, Headers, Inject, Param, Post, Query } fr
 import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { parsePaginationLimit } from '@social-monitor/platform-request-context';
 import { requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
-import { RecordPublicApiAuditEventUseCase } from '@social-monitor/usage/features/record-public-api-audit-event/record-public-api-audit-event.use-case';
-import type { PublicApiAuditActorType, PublicApiAuditMetadataValue, PublicApiAuditOutcome } from '@social-monitor/usage/ports';
 
 import { CreateApiKeyUseCase } from '../../features/create-api-key/create-api-key.use-case';
 import { ListApiKeysUseCase } from '../../features/list-api-keys/list-api-keys.use-case';
 import { RevokeApiKeyUseCase } from '../../features/revoke-api-key/revoke-api-key.use-case';
 import {
   WORKSPACE_AUTHORIZATION_POLICY,
+  type IdentityPublicApiAuditActorType,
+  type IdentityPublicApiAuditMetadataValue,
+  type IdentityPublicApiAuditOutcome,
+  type PublicApiAuditWriterPort,
   type WorkspaceAction,
   type WorkspaceAuthorizationPolicyPort,
 } from '../../ports';
@@ -25,6 +27,7 @@ import {
   hasBearerAuthorizationHeader,
   type UserRequestAuthorization,
 } from './api-key-request-authorizer';
+import { IDENTITY_PUBLIC_API_AUDIT_WRITER } from './identity-provider-tokens';
 
 @ApiTags('api-keys')
 @Controller('identity/api-keys')
@@ -34,7 +37,8 @@ export class ApiKeysController {
     private readonly listApiKeys: ListApiKeysUseCase,
     private readonly revokeApiKey: RevokeApiKeyUseCase,
     private readonly apiKeyRequestAuthorizer: ApiKeyRequestAuthorizer,
-    private readonly recordPublicApiAuditEvent: RecordPublicApiAuditEventUseCase,
+    @Inject(IDENTITY_PUBLIC_API_AUDIT_WRITER)
+    private readonly publicApiAuditWriter: PublicApiAuditWriterPort,
     @Inject(WORKSPACE_AUTHORIZATION_POLICY)
     private readonly workspaceAuthorization: WorkspaceAuthorizationPolicyPort,
     private readonly workspaceRoleHeaderParser: WorkspaceRoleHeaderParser,
@@ -199,14 +203,16 @@ export class ApiKeysController {
   private async recordApiKeyAuditEvent(params: {
     readonly tenantId: TenantId;
     readonly workspaceId: WorkspaceId;
-    readonly actorType: PublicApiAuditActorType;
+    readonly actorType: IdentityPublicApiAuditActorType;
     readonly actorId: string;
     readonly action: string;
-    readonly outcome: PublicApiAuditOutcome;
+    readonly outcome: IdentityPublicApiAuditOutcome;
     readonly resourceId?: string;
-    readonly metadata?: Readonly<Record<string, PublicApiAuditMetadataValue>>;
+    readonly metadata?: Readonly<
+      Record<string, IdentityPublicApiAuditMetadataValue>
+    >;
   }): Promise<void> {
-    const result = await this.recordPublicApiAuditEvent.execute({
+    const result = await this.publicApiAuditWriter.record({
       tenantId: params.tenantId,
       workspaceId: params.workspaceId,
       actorType: params.actorType,

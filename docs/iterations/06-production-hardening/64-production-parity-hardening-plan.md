@@ -174,6 +174,21 @@ Evidence:
 - `check:architecture`, `check:code-quality`,
   `check:source-line-cap`.
 
+Implementation evidence:
+
+- the Subscription activation feature now depends on its own
+  `InterestSourceProvisionerPort`; Monitoring use cases and cadence policy are
+  isolated in one anti-corruption adapter;
+- Subscription domain and command types own their delivery and summary
+  preference vocabulary instead of importing Summary and Delivery domain
+  types;
+- Identity authorizers and controllers depend on Identity-owned rate-limit and
+  audit ports; concrete Usage workflows are isolated behind adapters;
+- executable architecture rules prevent these direct feature, domain and
+  interface dependencies from returning;
+- TypeScript, 13 focused Jest tests, OpenAPI snapshot and full AppModule reader
+  tenant e2e bootstrap pass.
+
 ### Phase 5 - Maintainability And Review CI
 
 - Split every production file rejected by `check:code-quality` by

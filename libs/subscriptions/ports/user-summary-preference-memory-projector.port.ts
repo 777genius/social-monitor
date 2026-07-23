@@ -1,9 +1,9 @@
 import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 import type {
-  SummaryPolicyFormat,
-  SummaryPolicyLanguage,
-  SummaryPolicyTone,
-} from '@social-monitor/summary/domain';
+  UserSummaryPreferenceFormat,
+  UserSummaryPreferenceLanguage,
+  UserSummaryPreferenceTone,
+} from '../domain';
 
 export type RecordUserSummaryPreferenceMemoryCommand = {
   readonly tenantId: TenantId;
@@ -12,9 +12,9 @@ export type RecordUserSummaryPreferenceMemoryCommand = {
   readonly userId: string;
   readonly subscriptionId?: string | undefined;
   readonly interestId?: string | undefined;
-  readonly language?: SummaryPolicyLanguage | undefined;
-  readonly format?: SummaryPolicyFormat | undefined;
-  readonly tone?: SummaryPolicyTone | undefined;
+  readonly language?: UserSummaryPreferenceLanguage | undefined;
+  readonly format?: UserSummaryPreferenceFormat | undefined;
+  readonly tone?: UserSummaryPreferenceTone | undefined;
   readonly maxKeyPoints?: number | undefined;
   readonly includeRisks?: boolean | undefined;
   readonly includeSourceHighlights?: boolean | undefined;

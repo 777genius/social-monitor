@@ -1,5 +1,5 @@
 import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
-import type { DeliveryChannel } from '@social-monitor/delivery/domain';
+import type { UserSubscriptionDeliveryChannel } from '../value-objects/user-subscription-preference-types';
 
 export type UserSubscriptionScheduleStatus = 'enabled' | 'disabled';
 
@@ -9,7 +9,7 @@ export type UserSubscriptionScheduleProps = {
   readonly workspaceId: WorkspaceId;
   readonly subscriptionId: string;
   readonly recipientKey: string;
-  readonly channel: DeliveryChannel;
+  readonly channel: UserSubscriptionDeliveryChannel;
   readonly intervalSeconds: number;
   readonly includeNoSignal: boolean;
   readonly nextRunAt: Date;
