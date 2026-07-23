@@ -431,6 +431,8 @@ grep -F 'required rollback images could not be pinned before build' \
 # The replacement phase is a durable inner/outer transaction seam. Failures in
 # preflight, backup, build, and migration all reach outer rollback as prepared;
 # no healthy service is stopped or recreated in any of those paths.
+# Scrambled candidates prove canonical one-service Compose build order. The
+# build failure proves later candidates are not attempted.
 assert_pre_replacement_failure() {
   local stage=$1
   local expected=$2
@@ -438,10 +440,8 @@ assert_pre_replacement_failure() {
   local output status actual
   : > "$log"
   set +e
-  # A wide inherited limit must not reach the primary multi-service build.
   output=$(
-    COMPOSE_PARALLEL_LIMIT=99 ENTRYPOINT="$ENTRYPOINT" \
-    FAILURE_STAGE="$stage" FAILURE_LOG="$log" \
+    ENTRYPOINT="$ENTRYPOINT" FAILURE_STAGE="$stage" FAILURE_LOG="$log" \
     SOCIAL_MONITOR_DEPLOY_TEST_MODE=1 \
     SOCIAL_MONITOR_DEPLOY_ROOT="$ROOT" \
     SOCIAL_MONITOR_DEPLOY_REPO="$REPO" \
@@ -451,7 +451,10 @@ assert_pre_replacement_failure() {
       bash -c '
         set -euo pipefail
         source "$ENTRYPOINT"
-        backend_services() { printf "%s\n" api agent-runtime; }
+        backend_services() {
+          printf "%s\n" event-relay api daily-runner migrate delivery-service \
+            intelligence-worker agent-runtime ingestion-worker
+        }
         marker_value() {
           printf "%s\n" 0123456789abcdef0123456789abcdef01234567
         }
@@ -481,10 +484,19 @@ assert_pre_replacement_failure() {
         }
         fake_compose() {
           if [[ " $* " == *" build "* ]]; then
-            [[ $COMPOSE_PARALLEL_LIMIT == 1 ]]
-            [[ $* == "--profile app --profile daily build api agent-runtime" ]]
-            printf "build\n" >> "$FAILURE_LOG"
-            [[ $FAILURE_STAGE != build ]]
+            local built_service=${!#}
+            if [[ $built_service == daily-runner ]]; then
+              [[ $# == 4 && $* == "--profile daily build daily-runner" ]]
+            else
+              [[ $# == 6 ]]
+              [[ $* == \
+                "--profile app --profile daily build $built_service" ]]
+            fi
+            printf "build:%s\n" "$built_service" >> "$FAILURE_LOG"
+            if [[ $FAILURE_STAGE == build && \
+                  $built_service == agent-runtime ]]; then
+              return 79
+            fi
           else
             printf "compose-up\n" >> "$FAILURE_LOG"
             return 90
@@ -525,9 +537,9 @@ assert_pre_replacement_failure preflight \
 assert_pre_replacement_failure backup \
   $'prepare\npreflight\ncompatibility\nbackup\nrollback:prepared'
 assert_pre_replacement_failure build \
-  $'prepare\npreflight\ncompatibility\nbackup\nbuild\nrollback:prepared'
+  $'prepare\npreflight\ncompatibility\nbackup\nbuild:migrate\nbuild:api\nbuild:agent-runtime\nrollback:prepared'
 assert_pre_replacement_failure migration \
-  $'prepare\npreflight\ncompatibility\nbackup\nbuild\nmigration\nrollback:prepared'
+  $'prepare\npreflight\ncompatibility\nbackup\nbuild:migrate\nbuild:api\nbuild:agent-runtime\nbuild:ingestion-worker\nbuild:intelligence-worker\nbuild:delivery-service\nbuild:event-relay\nbuild:daily-runner\nmigration\nrollback:prepared'
 
 # Every failure after the durable replacement transition is aggregated by the
 # outer transaction. Legacy inner rollback calls would add `inner-rollback`
