@@ -59,6 +59,8 @@ const runtimeDatabaseUrl = publicationRuntimeDatabaseUrl(
   runtimeRole,
   runtimePassword,
 );
+const publicationTenantId = "00000000-0000-7000-8000-000000000001";
+const publicationWorkspaceId = "00000000-0000-7000-8000-000000000002";
 const serverAdmin = new Pool({
   connectionString: serverAdminDatabaseUrl,
   max: 1,
@@ -67,6 +69,7 @@ const migrationWorkspace = createReaderSummaryPublicationMigrationWorkspace();
 let ownerRolePreexisting = false;
 let capabilityRolePreexisting = false;
 let schemaOwnerRolePreexisting = false;
+let tenantSystemCapabilityRolePreexisting = false;
 let fixtureDatabaseCreated = false;
 let fixtureMigrationAdminRoleCreated = false;
 let fixtureRuntimeRoleCreated = false;
@@ -80,6 +83,7 @@ async function main(): Promise<void> {
   ownerRolePreexisting = protectedRoles.owner;
   capabilityRolePreexisting = protectedRoles.capability;
   schemaOwnerRolePreexisting = protectedRoles.schemaOwner;
+  tenantSystemCapabilityRolePreexisting = protectedRoles.tenantSystemCapability;
   try {
     await serverAdmin.query(
       `CREATE ROLE ${quotePostgresIdentifier(migrationAdminRole)} LOGIN PASSWORD ${quotePostgresLiteral(migrationAdminPassword)}
@@ -163,7 +167,10 @@ async function main(): Promise<void> {
       runtimeRole,
     );
     assertReaderSummaryMigrationDatabaseMatchesSchema(targetDatabaseUrl);
-    const auditorPool = new Pool({ connectionString: targetDatabaseUrl, max: 1 });
+    const auditorPool = new Pool({
+      connectionString: targetDatabaseUrl,
+      max: 1,
+    });
     const admin = new Pool({ connectionString: adminDatabaseUrl, max: 2 });
     const runtime = new Pool({ connectionString: runtimeDatabaseUrl, max: 4 });
     try {
@@ -172,6 +179,18 @@ async function main(): Promise<void> {
       const first = await runtime.connect();
       const second = await runtime.connect();
       try {
+        await Promise.all([
+          setSessionTenantAccess(
+            first,
+            publicationTenantId,
+            publicationWorkspaceId,
+          ),
+          setSessionTenantAccess(
+            second,
+            publicationTenantId,
+            publicationWorkspaceId,
+          ),
+        ]);
         const [firstPid, secondPid] = await Promise.all([
           postgresBackendPid(first),
           postgresBackendPid(second),
@@ -253,6 +272,7 @@ async function main(): Promise<void> {
       ownerRolePreexisting,
       capabilityRolePreexisting,
       schemaOwnerRolePreexisting,
+      tenantSystemCapabilityRolePreexisting,
       fixtureDatabaseCreated,
       fixtureMigrationAdminRoleCreated,
       fixtureRuntimeRoleCreated,
@@ -562,8 +582,8 @@ const createRunningFixture = async (
     readonly modelVersion?: string;
   } = {},
 ): Promise<Fixture> => {
-  const tenantId = "00000000-0000-7000-8000-000000000001";
-  const workspaceId = "00000000-0000-7000-8000-000000000002";
+  const tenantId = publicationTenantId;
+  const workspaceId = publicationWorkspaceId;
   const jobId = randomUUID();
   const artifactId = randomUUID();
   const eventId = randomUUID();
@@ -883,6 +903,19 @@ const assertRejectsContaining = async (
     return;
   }
   throw new Error(assertionMessage);
+};
+
+const setSessionTenantAccess = async (
+  client: PoolClient,
+  tenant: string,
+  workspace: string,
+): Promise<void> => {
+  await client.query(
+    `SELECT set_config('social_monitor.tenant_id', $1, false),
+            set_config('social_monitor.workspace_id', $2, false),
+            set_config('social_monitor.system_access', 'false', false)`,
+    [tenant, workspace],
+  );
 };
 
 const assertDeepEqual = (

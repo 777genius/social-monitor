@@ -1,7 +1,13 @@
-import { globSync, readFileSync } from 'node:fs';
+import { existsSync, globSync, readFileSync } from 'node:fs';
 
 const contractPath = 'ops/security/tenant-db-guard-contract.json';
 const schemaPath = 'prisma/schema.prisma';
+const publicationBootstrapPath =
+  'ops/deploy/reader-summary-publication-pre-migration.sql';
+const productionRuntimeComposePath =
+  'ops/deploy/production-runtime/compose.postgres-runtime.yml';
+const publicationDeployLibraryPath =
+  'ops/deploy/reader-summary-publication-deploy-lib.sh';
 
 const contract = JSON.parse(readFileSync(contractPath, 'utf8'));
 const schema = readFileSync(schemaPath, 'utf8');
@@ -11,12 +17,12 @@ const migrationSql = globSync('prisma/migrations/*/migration.sql')
   .join('\n');
 const violations = [];
 
-if (contract.schemaVersion !== 1) {
-  violations.push(`${contractPath}: schemaVersion must be 1`);
+if (contract.schemaVersion !== 2) {
+  violations.push(`${contractPath}: schemaVersion must be 2`);
 }
 
-if (contract.posture !== 'pre_rls_tenant_guardrails') {
-  violations.push(`${contractPath}: posture must be pre_rls_tenant_guardrails`);
+if (contract.posture !== 'rls_enforced_tenant_guardrails') {
+  violations.push(`${contractPath}: posture must be rls_enforced_tenant_guardrails`);
 }
 
 if (typeof contract.owner !== 'string' || contract.owner.trim().length === 0) {
@@ -25,11 +31,26 @@ if (typeof contract.owner !== 'string' || contract.owner.trim().length === 0) {
 
 const modelsByTable = parseModels(schema);
 const knownTables = new Set(modelsByTable.keys());
+const tenantRootTables = new Set(contract.tenantRootTables ?? []);
 const tenantOwnedTables = new Set(contract.tenantOwnedTables ?? []);
 const tenantScopedSystemTables = new Map(
   (contract.tenantScopedSystemTables ?? []).map((entry) => [entry.table, entry]),
 );
+const indirectTenantOwnedTables = new Map(
+  (contract.indirectTenantOwnedTables ?? []).map((entry) => [entry.table, entry]),
+);
 const sharedTables = new Map((contract.sharedTables ?? []).map((entry) => [entry.table, entry]));
+
+for (const table of tenantRootTables) {
+  const model = modelsByTable.get(table);
+  if (model === undefined) {
+    violations.push(`${contractPath}: tenantRootTables references unknown table "${table}"`);
+    continue;
+  }
+  if (model.fields.has('tenantId')) {
+    violations.push(`${schemaPath}: tenant root table "${table}" must scope through its id`);
+  }
+}
 
 for (const table of tenantOwnedTables) {
   const model = modelsByTable.get(table);
@@ -68,6 +89,20 @@ for (const [table, entry] of tenantScopedSystemTables) {
   }
 }
 
+for (const [table, entry] of indirectTenantOwnedTables) {
+  if (!knownTables.has(table)) {
+    violations.push(`${contractPath}: indirectTenantOwnedTables references unknown table "${table}"`);
+  }
+  if (!knownTables.has(entry.parentTable)) {
+    violations.push(
+      `${contractPath}: indirect tenant table "${table}" references unknown parent "${entry.parentTable}"`,
+    );
+  }
+  if (typeof entry.reason !== 'string' || entry.reason.trim().length === 0) {
+    violations.push(`${contractPath}: indirect tenant table "${table}" must explain reason`);
+  }
+}
+
 for (const [table, entry] of sharedTables) {
   if (!knownTables.has(table)) {
     violations.push(`${contractPath}: sharedTables references unknown table "${table}"`);
@@ -79,10 +114,21 @@ for (const [table, entry] of sharedTables) {
 }
 
 for (const table of knownTables) {
-  if (!tenantOwnedTables.has(table) && !tenantScopedSystemTables.has(table) && !sharedTables.has(table)) {
+  const classifications = [
+    tenantRootTables.has(table),
+    tenantOwnedTables.has(table),
+    tenantScopedSystemTables.has(table),
+    indirectTenantOwnedTables.has(table),
+    sharedTables.has(table),
+  ].filter(Boolean).length;
+  if (classifications === 0) {
     violations.push(`${contractPath}: mapped Prisma table "${table}" must be classified as tenant-owned, tenant-scoped system or shared`);
+  } else if (classifications > 1) {
+    violations.push(`${contractPath}: mapped Prisma table "${table}" has overlapping classifications`);
   }
 }
+
+assertRlsMigration();
 
 if (violations.length > 0) {
   console.error(violations.join('\n'));
@@ -138,6 +184,115 @@ function assertMigrationColumn(table, column) {
 
   if (!createTable.includes(`"${column}"`)) {
     violations.push(`committed migration history must create "${table}"."${column}"`);
+  }
+}
+
+function assertRlsMigration() {
+  const rlsMigrationPath = contract.rlsMigrationPath;
+  if (
+    typeof rlsMigrationPath !== 'string' ||
+    rlsMigrationPath.trim().length === 0 ||
+    !existsSync(rlsMigrationPath)
+  ) {
+    violations.push(`${contractPath}: rlsMigrationPath must reference a committed migration`);
+    return;
+  }
+  const rlsMigration = readFileSync(rlsMigrationPath, 'utf8');
+  const systemCapabilityRole = contract.systemCapabilityRole;
+  if (
+    typeof systemCapabilityRole !== 'string' ||
+    systemCapabilityRole.trim().length === 0
+  ) {
+    violations.push(`${contractPath}: systemCapabilityRole must be non-empty`);
+  }
+  for (const required of [
+    'ENABLE ROW LEVEL SECURITY',
+    'FORCE ROW LEVEL SECURITY',
+    'CREATE POLICY tenant_isolation',
+    "current_setting('social_monitor.tenant_id', TRUE)",
+    "current_setting('social_monitor.workspace_id', TRUE)",
+    "current_setting('social_monitor.system_access', TRUE)",
+    `pg_has_role(
+        current_user,
+        '${systemCapabilityRole}',`,
+  ]) {
+    if (!rlsMigration.includes(required)) {
+      violations.push(`${rlsMigrationPath}: missing RLS requirement "${required}"`);
+    }
+  }
+  for (const table of [
+    ...tenantRootTables,
+    ...tenantOwnedTables,
+    ...tenantScopedSystemTables.keys(),
+    ...indirectTenantOwnedTables.keys(),
+  ]) {
+    if (
+      !rlsMigration.includes(`'${table}'`) &&
+      !rlsMigration.includes(`"${table}"`)
+    ) {
+      violations.push(`${rlsMigrationPath}: protected table "${table}" is missing`);
+    }
+  }
+  if (rlsMigration.includes("current_setting('application_name'")) {
+    violations.push(`${rlsMigrationPath}: application_name is user-controlled and must not authorize system RLS access`);
+  }
+
+  const publicationBootstrap = readFileSync(publicationBootstrapPath, 'utf8');
+  for (const required of [
+    "social_monitor.bootstrap_system_runtime_role",
+    "CREATE ROLE social_monitor_tenant_system_runtime",
+    "GRANT social_monitor_tenant_system_runtime TO %I",
+  ]) {
+    if (!publicationBootstrap.includes(required)) {
+      violations.push(`${publicationBootstrapPath}: missing system role bootstrap "${required}"`);
+    }
+  }
+
+  const productionRuntimeCompose = readFileSync(
+    productionRuntimeComposePath,
+    'utf8',
+  );
+  const productionRuntimeComposeWithSentinel =
+    `${productionRuntimeCompose}\n  __end__:\n`;
+  for (const service of [
+    'ingestion-worker',
+    'intelligence-worker',
+    'delivery-service',
+    'event-relay',
+    'daily-runner',
+  ]) {
+    const serviceBlock = productionRuntimeComposeWithSentinel.match(
+      new RegExp(
+        `^  ${escapeRegex(service)}:\\n([\\s\\S]*?)(?=^  [a-z_][a-z0-9_-]*:)`,
+        'm',
+      ),
+    )?.[1];
+    if (serviceBlock === undefined || !serviceBlock.includes('SYSTEM_DATABASE_URL')) {
+      violations.push(`${productionRuntimeComposePath}: ${service} must use SYSTEM_DATABASE_URL`);
+    }
+  }
+  const apiBlock = productionRuntimeComposeWithSentinel.match(
+    /^  api:\n([\s\S]*?)(?=^  [a-z_][a-z0-9_-]*:)/m,
+  )?.[1];
+  if (apiBlock?.includes('SYSTEM_DATABASE_URL') === true) {
+    violations.push(`${productionRuntimeComposePath}: API must not use SYSTEM_DATABASE_URL`);
+  }
+
+  const publicationDeployLibrary = readFileSync(
+    publicationDeployLibraryPath,
+    'utf8',
+  );
+  if (
+    !publicationDeployLibrary.includes(
+      'READER_SUMMARY_TENANT_SYSTEM_RUNTIME_ROLE=social_monitor_system_app',
+    ) ||
+    !publicationDeployLibrary.includes(
+      '--set=system_runtime_role="$system_runtime_role"',
+    )
+  ) {
+    violations.push(
+      `${publicationDeployLibraryPath}: production bootstrap must bind the reviewed system runtime role`,
+    );
   }
 }
 

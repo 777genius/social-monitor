@@ -6,6 +6,10 @@
 -- Forward fix: new code can be stopped while pending rows remain durable; do not
 -- drop or rewrite pending rows during rollback.
 
+BEGIN;
+
+SET LOCAL ROLE "social_monitor_public_schema_owner";
+
 CREATE TYPE "OutboxMessageKind" AS ENUM ('EVENT', 'COMMAND');
 
 ALTER TABLE "outbox_events"
@@ -23,3 +27,7 @@ CREATE INDEX "outbox_events_dispatch_idx"
     "available_at",
     "created_at"
   );
+
+RESET ROLE;
+
+COMMIT;

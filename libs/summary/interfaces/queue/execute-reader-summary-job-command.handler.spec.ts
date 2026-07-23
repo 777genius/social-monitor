@@ -1,4 +1,5 @@
 import { InMemoryMetricsRecorder } from "@social-monitor/platform-metrics";
+import { currentDatabaseAccess } from "@social-monitor/platform-persistence";
 import { WorkerRuntime } from "@social-monitor/platform-worker";
 import type { DomainError } from "@social-monitor/shared-kernel";
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
@@ -13,6 +14,7 @@ import {
 
 class FakeExecuteReaderSummaryJobUseCase {
   readonly commands: unknown[] = [];
+  readonly databaseAccesses: unknown[] = [];
 
   constructor(
     private readonly result: ExecuteReaderSummaryJobResult = {
@@ -26,6 +28,7 @@ class FakeExecuteReaderSummaryJobUseCase {
     command: unknown,
   ): ReturnType<ExecuteReaderSummaryJobUseCase["execute"]> {
     this.commands.push(command);
+    this.databaseAccesses.push(currentDatabaseAccess());
 
     return {
       ok: true,
@@ -33,6 +36,9 @@ class FakeExecuteReaderSummaryJobUseCase {
     };
   }
 }
+
+const TEST_TENANT_ID = "00000000-0000-7000-8000-000000000010";
+const TEST_WORKSPACE_ID = "00000000-0000-7000-8000-000000000020";
 
 describe("ExecuteReaderSummaryJobCommandHandler", () => {
   it("parses scoped queue command, runs through worker runtime and records metrics", async () => {
@@ -51,8 +57,8 @@ describe("ExecuteReaderSummaryJobCommandHandler", () => {
       schemaVersion: 1,
       correlationId: "correlation-1",
       payload: {
-        tenantId: "tenant-1",
-        workspaceId: "workspace-1",
+        tenantId: TEST_TENANT_ID,
+        workspaceId: TEST_WORKSPACE_ID,
         readerSummaryJobId: "reader-summary-job-1",
         maxEvidenceItems: 5,
       },
@@ -65,12 +71,20 @@ describe("ExecuteReaderSummaryJobCommandHandler", () => {
     } satisfies ExecuteReaderSummaryJobQueueResult);
     expect(executeReaderSummaryJob.commands).toEqual([
       {
-        tenantId: tenantId("tenant-1"),
-        workspaceId: workspaceId("workspace-1"),
+        tenantId: tenantId(TEST_TENANT_ID),
+        workspaceId: workspaceId(TEST_WORKSPACE_ID),
         readerSummaryJobId: "reader-summary-job-1",
         maxEvidenceItems: 5,
       },
     ]);
+    expect(executeReaderSummaryJob.databaseAccesses).toEqual([
+      {
+        kind: "tenant",
+        tenantId: TEST_TENANT_ID,
+        workspaceId: TEST_WORKSPACE_ID,
+      },
+    ]);
+    expect(currentDatabaseAccess()).toBeUndefined();
     expect(
       metrics.counterValue("summary_jobs_total", {
         job_type: "readerSummary",
@@ -107,8 +121,8 @@ describe("ExecuteReaderSummaryJobCommandHandler", () => {
       schemaVersion: 1,
       correlationId: "correlation-1",
       payload: {
-        tenantId: "tenant-1",
-        workspaceId: "workspace-1",
+        tenantId: TEST_TENANT_ID,
+        workspaceId: TEST_WORKSPACE_ID,
         readerSummaryJobId: "reader-summary-job-1",
       },
     });
@@ -149,8 +163,8 @@ describe("ExecuteReaderSummaryJobCommandHandler", () => {
       schemaVersion: 1,
       correlationId: "correlation-1",
       payload: {
-        tenantId: "tenant-1",
-        workspaceId: "workspace-1",
+        tenantId: TEST_TENANT_ID,
+        workspaceId: TEST_WORKSPACE_ID,
         readerSummaryJobId: "reader-summary-job-1",
       },
     });

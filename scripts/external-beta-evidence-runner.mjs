@@ -1301,7 +1301,7 @@ function tokenEvidenceEnvNames() {
 }
 
 function secretReferenceEnvNames() {
-  return new Set(['DATABASE_URL_SECRET_REF', 'OIDC_CONFIG_SECRET_REF', 'OIDC_TEST_TOKEN_REF', 'RABBITMQ_URL_SECRET_REF']);
+  return new Set(['DATABASE_URL_SECRET_REF', 'OIDC_CONFIG_SECRET_REF', 'OIDC_TEST_TOKEN_REF', 'RABBITMQ_URL_SECRET_REF', 'SYSTEM_DATABASE_URL_SECRET_REF']);
 }
 
 function realEvidenceIdentityEnvNames() {

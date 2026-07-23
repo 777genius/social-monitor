@@ -1,4 +1,7 @@
-import { withPrismaWriteRetry } from '@social-monitor/platform-persistence';
+import {
+  runWithSystemDatabaseAccess,
+  withPrismaWriteRetry,
+} from '@social-monitor/platform-persistence';
 
 import type { RelevanceMemoryProjection } from '../../../domain';
 import type { RelevanceMemoryProjectionRepositoryPort } from '../../../ports';
@@ -51,20 +54,31 @@ export class PrismaRelevanceMemoryProjectionRepository implements RelevanceMemor
   async findDue(
     params: Parameters<RelevanceMemoryProjectionRepositoryPort['findDue']>[0],
   ): Promise<readonly RelevanceMemoryProjection[]> {
-    const records = await this.prisma.relevanceMemoryProjection.findMany({
-      where: {
-        status: { in: ['pending', 'failed'] },
-        nextAttemptAt: { lte: params.now },
-        ...(params.tenantId === undefined ? {} : { tenantId: params.tenantId }),
-        ...(params.workspaceId === undefined ? {} : { workspaceId: params.workspaceId }),
-      },
-      orderBy: [
-        { nextAttemptAt: 'asc' },
-        { createdAt: 'asc' },
-        { id: 'asc' },
-      ],
-      take: Math.max(0, params.limit),
-    });
+    if ((params.tenantId === undefined) !== (params.workspaceId === undefined)) {
+      throw new Error('Relevance projection due scope must include tenant and workspace together');
+    }
+    const findDue = () =>
+      this.prisma.relevanceMemoryProjection.findMany({
+        where: {
+          status: { in: ['pending', 'failed'] },
+          nextAttemptAt: { lte: params.now },
+          ...(params.tenantId === undefined ? {} : { tenantId: params.tenantId }),
+          ...(params.workspaceId === undefined ? {} : { workspaceId: params.workspaceId }),
+        },
+        orderBy: [
+          { nextAttemptAt: 'asc' },
+          { createdAt: 'asc' },
+          { id: 'asc' },
+        ],
+        take: Math.max(0, params.limit),
+      });
+    const records =
+      params.tenantId === undefined
+        ? await runWithSystemDatabaseAccess(
+          'cross-tenant relevance projection scheduler',
+          findDue,
+        )
+        : await findDue();
 
     return records.map(relevanceMemoryProjectionFromPrisma);
   }

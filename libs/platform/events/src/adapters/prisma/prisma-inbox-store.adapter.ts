@@ -1,4 +1,7 @@
-import { withPrismaWriteRetry } from '@social-monitor/platform-persistence';
+import {
+  runWithSystemDatabaseAccess,
+  withPrismaWriteRetry,
+} from '@social-monitor/platform-persistence';
 import type { IdGenerator } from '@social-monitor/shared-kernel';
 
 import type { InboxStorePort } from '../../inbox-deduplicator';
@@ -11,14 +14,18 @@ export class PrismaInboxStoreAdapter implements InboxStorePort {
   ) {}
 
   async hasProcessed(params: { consumerName: string; eventId: string }): Promise<boolean> {
-    const record = await this.prisma.inboxRecord.findUnique({
-      where: {
-        consumerName_eventId: {
-          consumerName: params.consumerName,
-          eventId: params.eventId,
-        },
-      },
-    });
+    const record = await runWithSystemDatabaseAccess(
+      'event inbox deduplication read',
+      () =>
+        this.prisma.inboxRecord.findUnique({
+          where: {
+            consumerName_eventId: {
+              consumerName: params.consumerName,
+              eventId: params.eventId,
+            },
+          },
+        }),
+    );
 
     return record !== null;
   }
@@ -31,15 +38,19 @@ export class PrismaInboxStoreAdapter implements InboxStorePort {
     const id = this.ids.generate();
 
     try {
-      await withPrismaWriteRetry(() => this.prisma.inboxRecord.create({
-        data: {
-          id,
-          consumerName: params.consumerName,
-          eventId: params.eventId,
-          tenantId: null,
-          schemaVersion: params.schemaVersion,
-        },
-      }));
+      await runWithSystemDatabaseAccess(
+        'event inbox deduplication write',
+        () =>
+          withPrismaWriteRetry(() => this.prisma.inboxRecord.create({
+            data: {
+              id,
+              consumerName: params.consumerName,
+              eventId: params.eventId,
+              tenantId: null,
+              schemaVersion: params.schemaVersion,
+            },
+          })),
+      );
     } catch (error) {
       if (isUniqueConstraintError(error)) {
         return;

@@ -76,7 +76,10 @@ const assertPsqlFileInterpolation = (params: {
   ) {
     throw new Error("PostgreSQL 18 psql regression requires a local test URL");
   }
-  const pgpass = [host, port, database, username, password]
+  const dockerDesktop = process.platform !== "linux";
+  const psqlHost = dockerDesktop ? "host.docker.internal" : host;
+  const networkArguments = dockerDesktop ? [] : ["--network=host"];
+  const pgpass = [psqlHost, port, database, username, password]
     .map(pgpassEscape)
     .join(":");
   const script = String.raw`
@@ -128,13 +131,13 @@ result=$(psql -X -A -t --no-password -v ON_ERROR_STOP=1 \
       "--rm",
       "-i",
       "--user=0:0",
-      "--network=host",
+      ...networkArguments,
       postgresClientImage,
       "sh",
       "-c",
       script,
       "_",
-      host,
+      psqlHost,
       port,
       database,
       username,
@@ -143,7 +146,10 @@ result=$(psql -X -A -t --no-password -v ON_ERROR_STOP=1 \
     { encoding: "utf8", input: `${pgpass}\n` },
   );
   if (result.status !== 0) {
-    throw new Error("real psql catalog-variable regression failed");
+    const diagnostic = result.stderr.trim().slice(0, 500);
+    throw new Error(
+      `real psql catalog-variable regression failed${diagnostic ? `: ${diagnostic}` : ""}`,
+    );
   }
 };
 

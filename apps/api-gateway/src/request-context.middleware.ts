@@ -5,6 +5,8 @@ import {
   REQUEST_ID_HEADER,
   buildRequestContext,
 } from '@social-monitor/platform-request-context';
+import { runWithTenantDatabaseAccess } from '@social-monitor/platform-persistence';
+import { requireTenantScope } from '@social-monitor/shared-kernel';
 import type { NextFunction, Request, Response } from 'express';
 
 @Injectable()
@@ -21,6 +23,18 @@ export class RequestContextMiddleware implements NestMiddleware {
     if (context.causationId) {
       response.setHeader(CAUSATION_ID_HEADER, context.causationId);
     }
-    next();
+    const tenantIdHeader = request.header('x-tenant-id');
+    const workspaceIdHeader = request.header('x-workspace-id');
+    if (
+      tenantIdHeader === undefined ||
+      tenantIdHeader.trim().length === 0 ||
+      workspaceIdHeader === undefined ||
+      workspaceIdHeader.trim().length === 0
+    ) {
+      next();
+      return;
+    }
+    const scope = requireTenantScope({ tenantIdHeader, workspaceIdHeader });
+    runWithTenantDatabaseAccess(scope, next);
   }
 }

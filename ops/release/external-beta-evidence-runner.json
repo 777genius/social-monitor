@@ -433,6 +433,7 @@
       "optionalEnv": [
         "OIDC_CONFIG_SECRET_REF",
         "DATABASE_URL_SECRET_REF",
+        "SYSTEM_DATABASE_URL_SECRET_REF",
         "RABBITMQ_URL_SECRET_REF"
       ],
       "outputArtifacts": [

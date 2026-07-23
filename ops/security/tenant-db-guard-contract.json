@@ -1,7 +1,12 @@
 {
-  "schemaVersion": 1,
-  "posture": "pre_rls_tenant_guardrails",
+  "schemaVersion": 2,
+  "posture": "rls_enforced_tenant_guardrails",
   "owner": "security-owner",
+  "systemCapabilityRole": "social_monitor_tenant_system_runtime",
+  "rlsMigrationPath": "prisma/migrations/20260723153000_tenant_row_level_security/migration.sql",
+  "tenantRootTables": [
+    "tenants"
+  ],
   "tenantOwnedTables": [
     "api_keys",
     "conversation_signal_baseline_samples",
@@ -81,6 +86,23 @@
       "reason": "Platform outbox can emit global events, but tenant event dispatch and support triage must remain tenant-queryable."
     }
   ],
+  "indirectTenantOwnedTables": [
+    {
+      "table": "source_credential_secrets",
+      "parentTable": "source_credentials",
+      "reason": "Encrypted source credential material is readable and mutable only through a tenant-scoped source credential reference."
+    },
+    {
+      "table": "webhook_replay_deliveries",
+      "parentTable": "webhook_endpoints",
+      "reason": "Webhook replay nonces inherit tenant scope from their endpoint."
+    },
+    {
+      "table": "webhook_secrets",
+      "parentTable": "webhook_endpoints",
+      "reason": "Encrypted webhook material is readable and mutable only through a tenant-scoped endpoint reference."
+    }
+  ],
   "sharedTables": [
     {
       "table": "capability_profiles",
@@ -93,22 +115,6 @@
     {
       "table": "source_catalog_entries",
       "reason": "Source catalog metadata is shared reference data."
-    },
-    {
-      "table": "source_credential_secrets",
-      "reason": "Encrypted source credential vault is addressed through source credential secret_key_id and never queried directly by tenant workloads."
-    },
-    {
-      "table": "tenants",
-      "reason": "Tenant root table cannot contain tenant_id."
-    },
-    {
-      "table": "webhook_replay_deliveries",
-      "reason": "Replay nonces are scoped through webhook_endpoint_id and short retention."
-    },
-    {
-      "table": "webhook_secrets",
-      "reason": "Encrypted secret vault is addressed only through endpoint-owned secret_key_id; future RLS may add tenant columns if direct querying is introduced."
     }
   ]
 }

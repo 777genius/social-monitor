@@ -7,17 +7,28 @@ SELECT set_config(
   :'runtime_role',
   false
 );
+SELECT set_config(
+  'social_monitor.bootstrap_system_runtime_role',
+  :'system_runtime_role',
+  false
+);
 
 DO $bootstrap$
 DECLARE
   v_runtime_role NAME := current_setting(
     'social_monitor.bootstrap_runtime_role'
   )::NAME;
+  v_system_runtime_role NAME := current_setting(
+    'social_monitor.bootstrap_system_runtime_role'
+  )::NAME;
   v_admin_role RECORD;
   v_role RECORD;
 BEGIN
   IF v_runtime_role::TEXT !~ '^[a-z_][a-z0-9_]{0,62}$' THEN
     RAISE EXCEPTION 'reader summary runtime role name is invalid';
+  END IF;
+  IF v_system_runtime_role::TEXT !~ '^[a-z_][a-z0-9_]{0,62}$' THEN
+    RAISE EXCEPTION 'tenant system runtime role name is invalid';
   END IF;
   IF v_runtime_role IN (
     current_user,
@@ -26,6 +37,15 @@ BEGIN
     'social_monitor_reader_summary_publication_runtime'
   ) THEN
     RAISE EXCEPTION 'reader summary runtime and migration roles must be distinct';
+  END IF;
+  IF v_system_runtime_role IN (
+    current_user,
+    'social_monitor_public_schema_owner',
+    'social_monitor_reader_summary_publication_owner',
+    'social_monitor_reader_summary_publication_runtime',
+    'social_monitor_tenant_system_runtime'
+  ) THEN
+    RAISE EXCEPTION 'tenant system runtime role conflicts with a protected role';
   END IF;
 
   SELECT * INTO v_admin_role FROM pg_roles WHERE rolname = current_user;
@@ -46,6 +66,18 @@ BEGIN
   IF NOT v_role.rolcanlogin OR v_role.rolsuper OR v_role.rolcreatedb OR v_role.rolcreaterole
     OR v_role.rolreplication OR v_role.rolbypassrls THEN
     RAISE EXCEPTION 'reader summary runtime role has unsafe privileges';
+  END IF;
+
+  SELECT * INTO v_role FROM pg_roles
+  WHERE rolname = v_system_runtime_role;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'tenant system runtime role % does not exist',
+      v_system_runtime_role;
+  END IF;
+  IF NOT v_role.rolcanlogin OR v_role.rolsuper OR v_role.rolcreatedb
+    OR v_role.rolcreaterole OR v_role.rolreplication
+    OR v_role.rolbypassrls THEN
+    RAISE EXCEPTION 'tenant system runtime role has unsafe privileges';
   END IF;
 
   IF NOT EXISTS (
@@ -100,6 +132,22 @@ BEGIN
     RAISE EXCEPTION 'reader summary publication runtime role is unsafe';
   END IF;
 
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_roles
+    WHERE rolname = 'social_monitor_tenant_system_runtime'
+  ) THEN
+    EXECUTE 'CREATE ROLE social_monitor_tenant_system_runtime '
+      'NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT '
+      'NOREPLICATION NOBYPASSRLS';
+  END IF;
+  SELECT * INTO v_role FROM pg_roles
+  WHERE rolname = 'social_monitor_tenant_system_runtime';
+  IF v_role.rolcanlogin OR v_role.rolsuper OR v_role.rolcreatedb
+    OR v_role.rolcreaterole OR v_role.rolinherit OR v_role.rolreplication
+    OR v_role.rolbypassrls THEN
+    RAISE EXCEPTION 'tenant system capability role is unsafe';
+  END IF;
+
   EXECUTE format(
     'GRANT USAGE, CREATE ON SCHEMA public TO %I',
     current_user
@@ -146,6 +194,17 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'publication capability can assume publication ownership';
   END IF;
+  IF pg_has_role(
+    'social_monitor_tenant_system_runtime',
+    'social_monitor_public_schema_owner',
+    'MEMBER'
+  ) OR pg_has_role(
+    'social_monitor_tenant_system_runtime',
+    'social_monitor_reader_summary_publication_owner',
+    'MEMBER'
+  ) THEN
+    RAISE EXCEPTION 'tenant system capability can assume protected ownership';
+  END IF;
 
   EXECUTE format(
     'GRANT social_monitor_reader_summary_publication_runtime TO %I '
@@ -162,6 +221,39 @@ BEGIN
       'WITH SET FALSE GRANTED BY CURRENT_USER',
     v_runtime_role
   );
+
+  IF v_system_runtime_role <> v_runtime_role THEN
+    EXECUTE format(
+      'GRANT %I TO %I WITH ADMIN FALSE GRANTED BY CURRENT_USER',
+      v_runtime_role,
+      v_system_runtime_role
+    );
+    EXECUTE format(
+      'GRANT %I TO %I WITH INHERIT TRUE GRANTED BY CURRENT_USER',
+      v_runtime_role,
+      v_system_runtime_role
+    );
+    EXECUTE format(
+      'GRANT %I TO %I WITH SET FALSE GRANTED BY CURRENT_USER',
+      v_runtime_role,
+      v_system_runtime_role
+    );
+  END IF;
+  EXECUTE format(
+    'GRANT social_monitor_tenant_system_runtime TO %I '
+      'WITH ADMIN FALSE GRANTED BY CURRENT_USER',
+    v_system_runtime_role
+  );
+  EXECUTE format(
+    'GRANT social_monitor_tenant_system_runtime TO %I '
+      'WITH INHERIT TRUE GRANTED BY CURRENT_USER',
+    v_system_runtime_role
+  );
+  EXECUTE format(
+    'GRANT social_monitor_tenant_system_runtime TO %I '
+      'WITH SET FALSE GRANTED BY CURRENT_USER',
+    v_system_runtime_role
+  );
   IF EXISTS (
     SELECT 1
     FROM pg_auth_members membership
@@ -172,6 +264,16 @@ BEGIN
       AND member.rolname NOT IN (v_runtime_role, current_user)
   ) THEN
     RAISE EXCEPTION 'publication capability has an unreviewed member';
+  END IF;
+  IF EXISTS (
+    SELECT 1
+    FROM pg_auth_members membership
+    JOIN pg_roles granted ON granted.oid = membership.roleid
+    JOIN pg_roles member ON member.oid = membership.member
+    WHERE granted.rolname = 'social_monitor_tenant_system_runtime'
+      AND member.rolname NOT IN (v_system_runtime_role, current_user)
+  ) THEN
+    RAISE EXCEPTION 'tenant system capability has an unreviewed member';
   END IF;
   IF (
     SELECT count(*) <> 2
@@ -483,9 +585,26 @@ BEGIN
     RAISE EXCEPTION
       'reader summary bootstrap requires the ordered baseline and repairs';
   END IF;
-  IF v_job_owner <> v_migration_owner OR v_job_owner <> v_outbox_owner
-    OR v_job_owner NOT IN (v_runtime_role, v_admin_role) THEN
-    RAISE EXCEPTION 'legacy migration tables have an unexpected owner';
+  IF NOT (
+    (
+      v_job_owner = v_migration_owner
+      AND v_job_owner = v_outbox_owner
+      AND v_job_owner IN (v_runtime_role, v_admin_role)
+    )
+    OR (
+      v_job_owner = 'social_monitor_public_schema_owner'
+      AND v_outbox_owner = 'social_monitor_public_schema_owner'
+      AND v_migration_owner IN (v_runtime_role, v_admin_role)
+    )
+  ) THEN
+    RAISE EXCEPTION
+      'legacy migration tables have an unexpected owner '
+        '(job=%, migrations=%, outbox=%, runtime=%, admin=%)',
+      v_job_owner,
+      v_migration_owner,
+      v_outbox_owner,
+      v_runtime_role,
+      v_admin_role;
   END IF;
   IF v_artifact_owner NOT IN (
     v_job_owner,
@@ -538,11 +657,6 @@ BEGIN
   GRANT SELECT, INSERT, REFERENCES ON TABLE public.outbox_events
     TO social_monitor_reader_summary_publication_owner;
   EXECUTE format(
-    'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE '
-      'public._prisma_migrations TO %I',
-    v_admin_role
-  );
-  EXECUTE format(
     'GRANT REFERENCES ON TABLE public.reader_summary_jobs, '
       'public.outbox_events TO %I',
     v_admin_role
@@ -550,6 +664,27 @@ BEGIN
 
   IF v_switched_role THEN
     EXECUTE 'RESET ROLE';
+    v_switched_role := FALSE;
+  END IF;
+
+  IF v_migration_owner <> v_admin_role THEN
+    IF NOT pg_has_role(v_admin_role, v_migration_owner, 'SET') THEN
+      RAISE EXCEPTION
+        'migration admin lacks SET authority for the migration table owner';
+    END IF;
+    EXECUTE format('SET LOCAL ROLE %I', v_migration_owner);
+    v_switched_role := TRUE;
+  END IF;
+
+  EXECUTE format(
+    'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE '
+      'public._prisma_migrations TO %I',
+    v_admin_role
+  );
+
+  IF v_switched_role THEN
+    EXECUTE 'RESET ROLE';
+    v_switched_role := FALSE;
   END IF;
   IF v_temporary_owner_membership THEN
     EXECUTE format(
@@ -559,6 +694,183 @@ BEGIN
   END IF;
 END
 $ownership_transfer$;
+
+-- Move ordinary application tables away from the LOGIN runtime before RLS is
+-- enabled. The temporary membership is transaction-local from the point of
+-- view of concurrent sessions and is revoked before commit.
+DO $tenant_table_ownership_transfer$
+DECLARE
+  v_admin_role NAME := current_user;
+  v_runtime_role NAME := current_setting(
+    'social_monitor.bootstrap_runtime_role'
+  )::NAME;
+  v_relation RECORD;
+  v_type RECORD;
+  v_switched_to_runtime BOOLEAN := FALSE;
+  v_temporary_owner_membership BOOLEAN := FALSE;
+BEGIN
+  IF NOT pg_has_role(
+    v_admin_role,
+    'social_monitor_public_schema_owner',
+    'SET'
+  ) THEN
+    RAISE EXCEPTION 'migration admin cannot assume public schema ownership';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM pg_class relation
+    JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
+    JOIN pg_roles owner ON owner.oid = relation.relowner
+    WHERE namespace.nspname = 'public'
+      AND relation.relkind IN ('r', 'p')
+      AND relation.relname NOT IN (
+        '_prisma_migrations',
+        'reader_summary_artifacts',
+        'reader_summary_publications',
+        'reader_summary_publication_slots',
+        'reader_summary_recovery_receipts'
+      )
+      AND owner.rolname NOT IN (
+        v_admin_role,
+        v_runtime_role,
+        'social_monitor_public_schema_owner'
+      )
+  ) THEN
+    RAISE EXCEPTION 'ordinary application table has an unexpected owner';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM pg_class relation
+    JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
+    JOIN pg_roles owner ON owner.oid = relation.relowner
+    WHERE namespace.nspname = 'public'
+      AND relation.relkind IN ('r', 'p')
+      AND relation.relname NOT IN (
+        '_prisma_migrations',
+        'reader_summary_artifacts',
+        'reader_summary_publications',
+        'reader_summary_publication_slots',
+        'reader_summary_recovery_receipts'
+      )
+      AND owner.rolname = v_runtime_role
+  ) THEN
+    EXECUTE format(
+      'GRANT social_monitor_public_schema_owner TO %I WITH ADMIN FALSE',
+      v_runtime_role
+    );
+    EXECUTE format(
+      'GRANT social_monitor_public_schema_owner TO %I WITH INHERIT FALSE',
+      v_runtime_role
+    );
+    EXECUTE format(
+      'GRANT social_monitor_public_schema_owner TO %I WITH SET TRUE',
+      v_runtime_role
+    );
+    v_temporary_owner_membership := TRUE;
+  END IF;
+
+  FOR v_relation IN
+    SELECT relation.relname, owner.rolname AS owner_name
+    FROM pg_class relation
+    JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
+    JOIN pg_roles owner ON owner.oid = relation.relowner
+    WHERE namespace.nspname = 'public'
+      AND relation.relkind IN ('r', 'p')
+      AND relation.relname NOT IN (
+        '_prisma_migrations',
+        'reader_summary_artifacts',
+        'reader_summary_publications',
+        'reader_summary_publication_slots',
+        'reader_summary_recovery_receipts'
+      )
+      AND owner.rolname IN (v_admin_role, v_runtime_role)
+    ORDER BY owner.rolname, relation.relname
+  LOOP
+    IF v_relation.owner_name = v_runtime_role
+      AND NOT v_switched_to_runtime THEN
+      EXECUTE format('SET LOCAL ROLE %I', v_runtime_role);
+      v_switched_to_runtime := TRUE;
+    ELSIF v_relation.owner_name = v_admin_role
+      AND v_switched_to_runtime THEN
+      EXECUTE 'RESET ROLE';
+      v_switched_to_runtime := FALSE;
+    END IF;
+    EXECUTE format(
+      'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.%I TO %I',
+      v_relation.relname,
+      v_runtime_role
+    );
+    EXECUTE format(
+      'ALTER TABLE public.%I OWNER TO social_monitor_public_schema_owner',
+      v_relation.relname
+    );
+  END LOOP;
+
+  IF v_switched_to_runtime THEN
+    EXECUTE 'RESET ROLE';
+    v_switched_to_runtime := FALSE;
+  END IF;
+
+  FOR v_type IN
+    SELECT type.typname, owner.rolname AS owner_name
+    FROM pg_type type
+    JOIN pg_namespace namespace ON namespace.oid = type.typnamespace
+    JOIN pg_roles owner ON owner.oid = type.typowner
+    WHERE namespace.nspname = 'public'
+      AND type.typtype = 'e'
+      AND owner.rolname IN (v_admin_role, v_runtime_role)
+    ORDER BY owner.rolname, type.typname
+  LOOP
+    IF v_type.owner_name = v_runtime_role
+      AND NOT v_switched_to_runtime THEN
+      EXECUTE format('SET LOCAL ROLE %I', v_runtime_role);
+      v_switched_to_runtime := TRUE;
+    ELSIF v_type.owner_name = v_admin_role
+      AND v_switched_to_runtime THEN
+      EXECUTE 'RESET ROLE';
+      v_switched_to_runtime := FALSE;
+    END IF;
+    EXECUTE format(
+      'ALTER TYPE public.%I OWNER TO social_monitor_public_schema_owner',
+      v_type.typname
+    );
+  END LOOP;
+
+  IF v_switched_to_runtime THEN
+    EXECUTE 'RESET ROLE';
+  END IF;
+  IF v_temporary_owner_membership THEN
+    EXECUTE format(
+      'REVOKE social_monitor_public_schema_owner FROM %I',
+      v_runtime_role
+    );
+  END IF;
+
+  EXECUTE 'SET LOCAL ROLE social_monitor_public_schema_owner';
+  FOR v_relation IN
+    SELECT relation.relname
+    FROM pg_class relation
+    JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
+    WHERE namespace.nspname = 'public'
+      AND relation.relkind IN ('r', 'p')
+      AND relation.relname <> '_prisma_migrations'
+      AND relation.relowner = (
+        SELECT oid FROM pg_roles
+        WHERE rolname = 'social_monitor_public_schema_owner'
+      )
+    ORDER BY relation.relname
+  LOOP
+    EXECUTE format(
+      'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.%I TO %I',
+      v_relation.relname,
+      v_runtime_role
+    );
+  END LOOP;
+  EXECUTE 'RESET ROLE';
+END
+$tenant_table_ownership_transfer$;
 
 DO $ownership_transfer_audit$
 DECLARE

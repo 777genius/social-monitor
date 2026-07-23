@@ -1,4 +1,7 @@
-import { withPrismaWriteRetry } from '@social-monitor/platform-persistence';
+import {
+  runWithSystemDatabaseAccess,
+  withPrismaWriteRetry,
+} from '@social-monitor/platform-persistence';
 import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 
 import type { ScanPolicy } from '../../../domain';
@@ -39,15 +42,23 @@ export class PrismaScanPolicyRepository implements ScanPolicyRepositoryPort {
     now: Date;
     limit: number;
   }): Promise<readonly ScanPolicy[]> {
-    const records = await this.prisma.scanPolicy.findMany({
-      where: {
-        tenantId: params.tenantId,
-        workspaceId: params.workspaceId,
-        nextRunAt: { lte: params.now },
-      },
-      orderBy: { nextRunAt: 'asc' },
-      take: params.limit,
-    });
+    if ((params.tenantId === undefined) !== (params.workspaceId === undefined)) {
+      throw new Error('Scan policy due scope must include tenant and workspace together');
+    }
+    const findDue = () =>
+      this.prisma.scanPolicy.findMany({
+        where: {
+          tenantId: params.tenantId,
+          workspaceId: params.workspaceId,
+          nextRunAt: { lte: params.now },
+        },
+        orderBy: { nextRunAt: 'asc' },
+        take: params.limit,
+      });
+    const records =
+      params.tenantId === undefined
+        ? await runWithSystemDatabaseAccess('cross-tenant scan policy scheduler', findDue)
+        : await findDue();
 
     return records.map((record) => scanPolicyFromPrisma(record));
   }

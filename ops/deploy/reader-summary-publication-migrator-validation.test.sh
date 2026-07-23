@@ -5,7 +5,8 @@ set -euo pipefail
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 LIBRARY=$SCRIPT_DIR/reader-summary-publication-deploy-lib.sh
 DEPLOY_ENTRYPOINT=$SCRIPT_DIR/social-monitor-production-deploy.sh
-FIXTURE=$(mktemp -d /tmp/publication-migrator-validation.XXXXXX)
+FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/publication-migrator-validation.XXXXXX")
+FIXTURE=$(cd "$FIXTURE" && pwd -P)
 trap 'rm -rf "$FIXTURE"' EXIT
 
 ROOT=$FIXTURE/root

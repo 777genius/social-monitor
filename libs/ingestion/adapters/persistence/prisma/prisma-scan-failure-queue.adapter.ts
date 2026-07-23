@@ -1,5 +1,8 @@
 import type { MetricsRecorderPort } from '@social-monitor/platform-metrics';
-import { withPrismaWriteRetry } from '@social-monitor/platform-persistence';
+import {
+  runWithSystemDatabaseAccess,
+  withPrismaWriteRetry,
+} from '@social-monitor/platform-persistence';
 import { tenantId, workspaceId, type IdGenerator, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
 
 import type {
@@ -50,22 +53,29 @@ export class PrismaScanFailureQueueAdapter implements ScanFailureQueuePort, Scan
       throw new Error('Scan retry drain limit must be a positive integer');
     }
 
-    const records = await this.prisma.scanFailureQueueEntry.findMany({
-      where: {
-        status: 'RETRY_ENQUEUED',
+    const records = await runWithSystemDatabaseAccess(
+      'cross-tenant scan retry queue drain',
+      async () => {
+        const pending = await this.prisma.scanFailureQueueEntry.findMany({
+          where: {
+            status: 'RETRY_ENQUEUED',
+          },
+          orderBy: { createdAt: 'asc' },
+          take: params.limit,
+        });
+        const ids = pending.map((record) => record.id);
+        if (ids.length > 0) {
+          await withPrismaWriteRetry(() =>
+            this.prisma.scanFailureQueueEntry.deleteMany({
+              where: {
+                id: { in: ids },
+              },
+            }),
+          );
+        }
+        return pending;
       },
-      orderBy: { createdAt: 'asc' },
-      take: params.limit,
-    });
-    const ids = records.map((record) => record.id);
-
-    if (ids.length > 0) {
-      await withPrismaWriteRetry(() => this.prisma.scanFailureQueueEntry.deleteMany({
-        where: {
-          id: { in: ids },
-        },
-      }));
-    }
+    );
 
     for (const scope of uniqueScopes(records)) {
       await this.recordBacklogMetric(

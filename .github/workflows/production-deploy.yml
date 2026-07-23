@@ -196,12 +196,15 @@ jobs:
           npm run check:runtime-compose
           npm run check:runtime-profile-guards
           npm run check:migrations
+          npm run check:tenant-db-guards
           npm run check:backup-restore
           npm run prisma:generate
           npm run build
           if [[ $BACKEND_CHANGED == true ]]; then
             npm run check:postgres-runtime-pool-inventory
             npm run check:postgres-runtime-pool-unit
+            TENANT_RLS_TEST_ADMIN_DATABASE_URL=postgresql://social_monitor_pool_ci:social_monitor_local_password@127.0.0.1:5432/social_monitor_pool_ci \
+              npm run check:tenant-rls-postgres
             POSTGRES_POOL_PRISMA_TEST_DATABASE_URL=postgresql://social_monitor_pool_ci:social_monitor_local_password@127.0.0.1:5432/social_monitor_pool_ci \
               npm run check:postgres-runtime-pool-prisma-concurrency
           fi

@@ -122,7 +122,7 @@ function validateClassifications() {
       violations.push(`${matrixPath}: ${envName} must be classified as secret_value`);
     }
   }
-  for (const envName of ['DATABASE_URL_SECRET_REF', 'OIDC_CONFIG_SECRET_REF', 'OIDC_TEST_TOKEN_REF', 'RABBITMQ_URL_SECRET_REF']) {
+  for (const envName of ['DATABASE_URL_SECRET_REF', 'OIDC_CONFIG_SECRET_REF', 'OIDC_TEST_TOKEN_REF', 'RABBITMQ_URL_SECRET_REF', 'SYSTEM_DATABASE_URL_SECRET_REF']) {
     if (classifications.get(envName) !== 'secret_reference') {
       violations.push(`${matrixPath}: ${envName} must be classified as secret_reference`);
     }

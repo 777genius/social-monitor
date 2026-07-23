@@ -1,4 +1,7 @@
-import { withPrismaWriteRetry } from '@social-monitor/platform-persistence';
+import {
+  runWithSystemDatabaseAccess,
+  withPrismaWriteRetry,
+} from '@social-monitor/platform-persistence';
 
 import type {
   CommandOutboxRecord,
@@ -21,9 +24,10 @@ export class PrismaCommandOutboxStoreAdapter
     readonly leaseOwner: string;
     readonly leasedUntil: Date;
   }): Promise<readonly CommandOutboxRecord[]> {
-    return withPrismaWriteRetry(() =>
-      this.prisma.$transaction(
-        async (transaction) => {
+    return runWithSystemDatabaseAccess('command outbox lease claim', () =>
+      withPrismaWriteRetry(() =>
+        this.prisma.$transaction(
+          async (transaction) => {
           const records = await transaction.outboxEvent.findMany({
             where: {
               messageKind: 'COMMAND',
@@ -71,8 +75,9 @@ export class PrismaCommandOutboxStoreAdapter
             command: commandEnvelopeFromPrisma(record),
             publishAttempt: record.publishAttempts + 1,
           }));
-        },
-        { isolationLevel: 'Serializable' },
+          },
+          { isolationLevel: 'Serializable' },
+        ),
       ),
     );
   }
@@ -82,8 +87,9 @@ export class PrismaCommandOutboxStoreAdapter
     readonly leaseOwner: string;
     readonly publishedAt: Date;
   }): Promise<void> {
-    const updated = await withPrismaWriteRetry(() =>
-      this.prisma.outboxEvent.updateMany({
+    const updated = await runWithSystemDatabaseAccess(
+      'command outbox publish acknowledgement',
+      () => withPrismaWriteRetry(() => this.prisma.outboxEvent.updateMany({
         where: {
           id: params.id,
           status: 'PENDING',
@@ -96,7 +102,7 @@ export class PrismaCommandOutboxStoreAdapter
           leasedUntil: null,
           lastError: null,
         },
-      }),
+      })),
     );
     assertSingleLeaseUpdate(updated.count);
   }
@@ -108,8 +114,9 @@ export class PrismaCommandOutboxStoreAdapter
     readonly lastError: string;
     readonly terminal: boolean;
   }): Promise<void> {
-    const updated = await withPrismaWriteRetry(() =>
-      this.prisma.outboxEvent.updateMany({
+    const updated = await runWithSystemDatabaseAccess(
+      'command outbox failure acknowledgement',
+      () => withPrismaWriteRetry(() => this.prisma.outboxEvent.updateMany({
         where: {
           id: params.id,
           status: 'PENDING',
@@ -123,7 +130,7 @@ export class PrismaCommandOutboxStoreAdapter
           leasedUntil: null,
           publishedAt: null,
         },
-      }),
+      })),
     );
     assertSingleLeaseUpdate(updated.count);
   }

@@ -144,6 +144,22 @@ Evidence:
   `check:reader-surface-tenant-isolation`, persistence checks,
   security/dependency gates.
 
+Implementation evidence:
+
+- every protected table in the tenant DB contract has `ENABLE` and `FORCE ROW
+  LEVEL SECURITY` with fail-closed tenant/workspace policies;
+- Prisma operations run with transaction-local tenant context, while explicit
+  worker polling uses a separately provisioned system login plus a NOLOGIN
+  capability unavailable to the API login;
+- an API login cannot obtain system access by spoofing `application_name` or
+  the system GUC;
+- PostgreSQL `18.4` integration gates pass for tenant isolation and for the
+  protected reader-summary upgrade, replay, privilege and concurrency paths;
+- focused TypeScript, ESLint and 23 Jest tests pass, including middleware,
+  transaction scoping, background polling and raw-query cache coverage;
+- tenant DB, migrations, architecture, line-cap, production-secret,
+  external-evidence, reader-surface, persistence and security gates pass.
+
 ### Phase 4 - Dangerous Cross-Context Edges
 
 - Inventory context edges and rank them by cycles, adapter leakage, write

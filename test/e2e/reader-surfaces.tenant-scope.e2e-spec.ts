@@ -34,9 +34,9 @@ describe('Reader surfaces tenant scope guard (e2e)', () => {
   });
 
   it('keeps relevance and reader summary data isolated by tenant and workspace', async () => {
-    const sourceTenant = tenantId('tenant-reader-scope-source-e2e');
-    const otherTenant = tenantId('tenant-reader-scope-other-e2e');
-    const sourceWorkspace = workspaceId('workspace-reader-scope-source-e2e');
+    const sourceTenant = tenantId('10000000-0000-7000-8000-000000000001');
+    const otherTenant = tenantId('10000000-0000-7000-8000-000000000002');
+    const sourceWorkspace = workspaceId('20000000-0000-7000-8000-000000000001');
     const interestId = 'topic-reader-scope-e2e';
     const userId = 'reader-scope-user';
 
