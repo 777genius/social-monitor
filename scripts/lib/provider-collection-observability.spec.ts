@@ -1,5 +1,6 @@
 import {
   configuredProviderCollectionTargetItemCount,
+  durableSnapshotReuseProviderCollectionObservation,
   successfulProviderCollectionObservation,
   unavailableProviderCollectionObservation,
   withProviderCollectionWindowProof,
@@ -126,6 +127,29 @@ describe("provider collection observability", () => {
       met: true,
       targetItemCount: 100,
       evaluatedItemCount: 100,
+    });
+  });
+
+  it("labels durable reuse without claiming a fetch, page, insert, or retry", () => {
+    const observation = durableSnapshotReuseProviderCollectionObservation({
+      itemCount: 10,
+      newestPublishedAt: new Date("2026-07-09T23:59:00.000Z"),
+      targetWindowEndedAt: new Date("2026-07-10T00:00:00.000Z"),
+    });
+
+    expect(observation).toMatchObject({
+      acquisitionMode: "durable_snapshot_reuse",
+      targetItemCount: 10,
+      collectedItemCount: 0,
+      acceptedItemCount: 10,
+      insertedItemCount: 0,
+      pageCount: 0,
+      paginationStopReason: "durable_snapshot_reuse",
+      rateLimitEventCount: 0,
+      freshness: {
+        newestAcceptedPublishedAt: "2026-07-09T23:59:00.000Z",
+        lagToWindowEndSeconds: 60,
+      },
     });
   });
 });

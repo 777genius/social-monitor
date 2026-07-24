@@ -1,4 +1,9 @@
 import type { CleanRealDayCollectionProviderKey } from "./clean-real-day-collection-report";
+import {
+  githubTrendingDurableSnapshotBindingFingerprint,
+  githubTrendingDurableSnapshotProofPassesInvariants,
+  type GitHubTrendingDurableSnapshotProof,
+} from "./github-trending-durable-snapshot-reuse";
 import type { ProviderCollectionObservation } from "./provider-collection-observability";
 
 export const productionCollectionThresholds = {
@@ -11,8 +16,11 @@ export const productionCollectionThresholds = {
 
 type ProviderScanProof = {
   readonly providerKey: CleanRealDayCollectionProviderKey;
+  readonly bindingFingerprint?: string;
   readonly status: "succeeded" | "failed" | "skipped";
+  readonly acquisitionMode?: "live_collection" | "durable_snapshot_reuse";
   readonly observability: ProviderCollectionObservation;
+  readonly durableSnapshotProof?: GitHubTrendingDurableSnapshotProof;
 };
 
 export const recalculateProductionBlockingPolicyGates = (
@@ -49,7 +57,41 @@ export const providerMeetsProductionBlockingPolicy = (
   }
 
   if (scan.providerKey === "github-trending-page") {
+    if (
+      (scan.acquisitionMode ?? observation.acquisitionMode) ===
+      "durable_snapshot_reuse"
+    ) {
+      return (
+        scan.acquisitionMode === "durable_snapshot_reuse" &&
+        scan.bindingFingerprint ===
+          githubTrendingDurableSnapshotBindingFingerprint(
+            scan.durableSnapshotProof?.group.sourceBindingId ?? "",
+          ) &&
+        githubTrendingDurableSnapshotProofPassesInvariants(
+          scan.durableSnapshotProof,
+        ) &&
+        scan.durableSnapshotProof?.group.publishedAt ===
+          observation.freshness.newestAcceptedPublishedAt &&
+        observation.acquisitionMode === "durable_snapshot_reuse" &&
+        observation.targetItemCount ===
+          productionCollectionThresholds.githubTrendingFeedItems &&
+        observation.collectedItemCount === 0 &&
+        observation.acceptedItemCount ===
+          productionCollectionThresholds.githubTrendingFeedItems &&
+        observation.insertedItemCount === 0 &&
+        observation.outsideWindowItemCount === 0 &&
+        observation.paginationDuplicateItemCount === 0 &&
+        observation.storageDuplicateItemCount === 0 &&
+        observation.pageCount === 0 &&
+        observation.paginationStopReason === "durable_snapshot_reuse" &&
+        observation.rateLimitEventCount === 0 &&
+        observation.slo.evaluatedItemCount ===
+          productionCollectionThresholds.githubTrendingFeedItems
+      );
+    }
     return (
+      scan.durableSnapshotProof === undefined &&
+      observation.acquisitionMode !== "durable_snapshot_reuse" &&
       observation.collectedItemCount >=
         productionCollectionThresholds.githubTrendingFeedItems &&
       observation.slo.evaluatedItemCount >=
