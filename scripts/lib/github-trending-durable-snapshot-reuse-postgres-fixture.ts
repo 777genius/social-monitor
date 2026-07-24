@@ -30,6 +30,7 @@ export const withDisposableGitHubTrendingPostgres = async <Result>(
   const targetDatabaseUrl = databaseUrl(serverAdminDatabaseUrl, databaseName);
   const serverAdmin = new Pool({
     connectionString: serverAdminDatabaseUrl,
+    min: 0,
     max: 1,
   });
   let databaseCreated = false;
@@ -38,7 +39,11 @@ export const withDisposableGitHubTrendingPostgres = async <Result>(
       `CREATE DATABASE ${quoteIdentifier(databaseName)}`,
     );
     databaseCreated = true;
-    const fixture = new Pool({ connectionString: targetDatabaseUrl, max: 4 });
+    const fixture = new Pool({
+      connectionString: targetDatabaseUrl,
+      min: 0,
+      max: 2,
+    });
     try {
       await installGitHubTrendingPostgresFixtureSchema(fixture);
       return await run(fixture);
