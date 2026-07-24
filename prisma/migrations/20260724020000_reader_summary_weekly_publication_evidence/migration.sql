@@ -606,10 +606,10 @@ IS DISTINCT FROM 'reader_summary.artifact.v1'
 OR v_artifact."artifact_payload"->>'readerSummaryId' IS DISTINCT FROM v_artifact."id"::TEXT
 OR v_artifact."artifact_payload"->>'tenantId' IS DISTINCT FROM v_job."tenant_id"::TEXT
 OR v_artifact."artifact_payload"->>'workspaceId' IS DISTINCT FROM v_job."workspace_id"::TEXT
-OR v_artifact."artifact_payload"->'scope' IS DISTINCT FROM CASE v_job."scope_type"
+OR v_artifact."artifact_payload"->'scope' IS DISTINCT FROM (CASE v_job."scope_type"
 WHEN 'workspace' THEN jsonb_build_object('type', 'workspace')
 WHEN 'interest' THEN jsonb_build_object(
-'type', 'interest', 'interestId', v_job."interest_id"::TEXT ) ELSE NULL END
+'type', 'interest', 'interestId', v_job."interest_id"::TEXT ) ELSE NULL END)
 OR v_artifact."artifact_payload"->'period' IS DISTINCT FROM jsonb_build_object(
 'cadence', v_job."cadence", 'startedAt', to_char(
 v_job."period_started_at" AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"' ),
@@ -838,7 +838,7 @@ ELSE to_char(v_job."requested_at" AT TIME ZONE 'UTC', 'YYYY-MM-DD') END,
 || CASE WHEN v_job."user_id" IS NULL THEN '{}'::JSONB
 ELSE jsonb_build_object('userId', v_job."user_id") END
 || CASE WHEN v_job."subscription_id" IS NULL THEN '{}'::JSONB
-ELSE jsonb_build_object('subscriptionId', v_job."subscription_id"::TEXT) END ) )
+ELSE jsonb_build_object('subscriptionId', v_job."subscription_id"::TEXT) END )
 ELSE payload->'readyEvent' END;
 v_derived := jsonb_build_object( 'schemaVersion', 'reader_summary.publication.v1',
 'tenantId', v_job."tenant_id"::TEXT, 'workspaceId', v_job."workspace_id"::TEXT,
