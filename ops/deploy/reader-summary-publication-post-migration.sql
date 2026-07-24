@@ -293,13 +293,24 @@ BEGIN
     'public.feed_items',
     'id',
     'UPDATE'
-  ) OR (
-    SELECT count(*) <> 2 OR NOT bool_and(column_name = 'id')
-    FROM information_schema.column_privileges
-    WHERE grantee = 'social_monitor_reader_summary_publication_owner'
-      AND table_schema = 'public'
-      AND table_name IN ('source_items', 'feed_items')
-      AND privilege_type = 'UPDATE'
+  ) OR EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_attribute attribute
+    JOIN pg_catalog.pg_class relation
+      ON relation.oid = attribute.attrelid
+    JOIN pg_catalog.pg_namespace namespace
+      ON namespace.oid = relation.relnamespace
+    WHERE namespace.nspname = 'public'
+      AND relation.relname IN ('source_items', 'feed_items')
+      AND attribute.attnum > 0
+      AND NOT attribute.attisdropped
+      AND attribute.attname <> 'id'
+      AND has_column_privilege(
+        'social_monitor_reader_summary_publication_owner',
+        relation.oid,
+        attribute.attnum,
+        'UPDATE'
+      )
   ) THEN
     RAISE EXCEPTION 'publication evidence row-lock authority is unsafe';
   END IF;
