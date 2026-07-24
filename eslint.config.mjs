@@ -36,7 +36,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['scripts/**/*.mjs'],
+    files: ['scripts/**/*.mjs', 'apps/**/bin/**/*.mjs'],
     languageOptions: {
       globals: {
         AbortController: 'readonly',
