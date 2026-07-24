@@ -212,6 +212,37 @@ acquire_postgres_admission_with_daily_priority() {
   done
 }
 
+reconcile_github_premidnight_capture_runtime_control() {
+  local runtime_control=$1
+  local mutation_scope
+  local source_marker=$REPO/ops/deploy/production-runtime/github-premidnight-capture-v1.activation
+  local current_marker=$POSTGRES_RUNTIME_CURRENT/github-premidnight-capture-v1.activation
+
+  [[ $runtime_control =~ ^(true|false)$ ]] || {
+    fail 'runtime-control deployment classification is invalid'
+    return 1
+  }
+  if ! declare -F postgres_runtime_control_mutation_scope >/dev/null; then
+    if [[ ! -e $source_marker && ! -L $source_marker && \
+          ! -e $current_marker && ! -L $current_marker ]]; then
+      printf '%s\n' "$runtime_control"
+      return
+    fi
+    fail 'PostgreSQL runtime-control mutation classifier is unavailable'
+    return 1
+  fi
+  mutation_scope=$(postgres_runtime_control_mutation_scope) || return
+  case $mutation_scope in
+    capture-only) runtime_control=true ;;
+    base|full) ;;
+    *)
+      fail 'PostgreSQL runtime-control mutation scope is invalid'
+      return 1
+      ;;
+  esac
+  printf '%s\n' "$runtime_control"
+}
+
 reconcile_current_postgres_pool_bootstrap() {
   local expected_current=$1
   local marker=$STATE/postgres-pool-bootstrap.sha
@@ -346,6 +377,9 @@ deploy_release() {
   component_changed control "$sha" "${CONTROL_PATHS[@]}" && control=true
   component_changed control "$sha" "${RUNTIME_CONTROL_PATHS[@]}" && \
     runtime_control=true
+  runtime_control=$(
+    reconcile_github_premidnight_capture_runtime_control "$runtime_control"
+  ) || fail 'GitHub pre-midnight runtime-control reconciliation failed'
   component_changed backend "$sha" \
     ops/deploy/production-runtime/x-collector.Dockerfile && \
     x_image_provenance_release=true
