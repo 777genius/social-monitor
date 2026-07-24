@@ -87,7 +87,6 @@ jobs:
           npm run check:api-health
           npm run check:openapi
           npm run check:mobile-client-contract
-          npm run check:flutter-client-contract
           npm run check:events
           npm run check:migrations
           npm run check:tenant-db-guards
@@ -203,6 +202,9 @@ jobs:
       - name: Resolve exact Flutter dependencies
         working-directory: apps/frontend
         run: flutter pub get
+
+      - name: Verify generated Flutter client contract
+        run: npm run check:flutter-client-contract
 
       - name: Verify frontend architecture and behavior
         working-directory: apps/frontend
