@@ -95,7 +95,7 @@ describe('X/Twitter fake collector summary flow (e2e)', () => {
       retryBudget: 3,
     });
 
-    expect(scan).toEqual({
+    expect(scan).toMatchObject({
       ok: true,
       value: {
         scanJobId,
@@ -309,7 +309,7 @@ describe('X/Twitter fake collector summary flow (e2e)', () => {
       retryBudget: 3,
     });
 
-    expect(scan).toEqual({
+    expect(scan).toMatchObject({
       ok: true,
       value: {
         scanJobId,

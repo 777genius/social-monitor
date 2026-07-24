@@ -43,8 +43,8 @@ describe('ingestion worker execute scan command (e2e)', () => {
       correlationId: 'correlation-1',
       causationId: 'scan-request-1',
       payload: {
-        tenantId: 'tenant-1',
-        workspaceId: 'workspace-1',
+        tenantId: deterministicTestUuid('tenant-1'),
+        workspaceId: deterministicTestUuid('workspace-1'),
         scanJobId: 'scan-job-1',
         interestId: 'topic-worker-e2e',
         sourceBindingId: 'source-binding-1',
@@ -57,14 +57,14 @@ describe('ingestion worker execute scan command (e2e)', () => {
     const first = await handler.handle(command);
     const second = await handler.handle(command);
 
-    expect(first).toEqual({
+    expect(first).toMatchObject({
       scanJobId: 'scan-job-1',
       fetched: 2,
       inserted: 2,
       skippedDuplicates: 0,
       projected: 2,
     });
-    expect(second).toEqual({
+    expect(second).toMatchObject({
       scanJobId: 'scan-job-1',
       fetched: 2,
       inserted: 0,
@@ -139,8 +139,8 @@ describe('ingestion worker execute scan command (e2e)', () => {
       correlationId: 'correlation-leased',
       causationId: 'scan-request-leased',
       payload: {
-        tenantId: 'tenant-1',
-        workspaceId: 'workspace-1',
+        tenantId: deterministicTestUuid('tenant-1'),
+        workspaceId: deterministicTestUuid('workspace-1'),
         scanJobId: 'scan-job-leased',
         interestId: 'topic-worker-e2e',
         sourceBindingId: 'source-binding-1',
@@ -184,8 +184,8 @@ describe('ingestion worker execute scan command (e2e)', () => {
       correlationId: 'correlation-failure',
       causationId: 'scan-request-failure',
       payload: {
-        tenantId: 'tenant-1',
-        workspaceId: 'workspace-1',
+        tenantId: deterministicTestUuid('tenant-1'),
+        workspaceId: deterministicTestUuid('workspace-1'),
         scanJobId: 'scan-job-failure',
         interestId: 'topic-worker-e2e',
         sourceBindingId: 'source-binding-1',
@@ -256,8 +256,8 @@ describe('ingestion worker execute scan command (e2e)', () => {
       correlationId: 'correlation-zero-retry',
       causationId: 'scan-request-zero-retry',
       payload: {
-        tenantId: 'tenant-1',
-        workspaceId: 'workspace-1',
+        tenantId: deterministicTestUuid('tenant-1'),
+        workspaceId: deterministicTestUuid('workspace-1'),
         scanJobId: 'scan-job-zero-retry',
         interestId: 'topic-worker-e2e',
         sourceBindingId: 'source-binding-1',

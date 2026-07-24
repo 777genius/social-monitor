@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { FileBackendCodexWorker } from "@vioxen/subscription-runtime/worker-codex";
+import process from "node:process";
 import { runSubscriptionAgentTaskCli } from "../../../node_modules/@vioxen/subscription-runtime/dist/worker-local/agent-task-runner-cli.js";
 
 const requiredModel = "gpt-5.5";

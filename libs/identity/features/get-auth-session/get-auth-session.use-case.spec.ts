@@ -217,10 +217,16 @@ const createDependencies = (params: {
 
   return {
     userAccessTokenVerifier: {
-      verify: jest.fn(async (_token: string) => principal),
+      verify: jest.fn(async (token: string) => {
+        void token;
+        return principal;
+      }),
     },
     userWorkspaceMembershipVerifier: {
-      verify: jest.fn(async (_params: VerifyUserWorkspaceMembershipParams) => membership),
+      verify: jest.fn(async (params: VerifyUserWorkspaceMembershipParams) => {
+        void params;
+        return membership;
+      }),
     },
   };
 };

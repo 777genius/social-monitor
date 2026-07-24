@@ -272,7 +272,7 @@ function assertRlsMigration() {
     }
   }
   const apiBlock = productionRuntimeComposeWithSentinel.match(
-    /^  api:\n([\s\S]*?)(?=^  [a-z_][a-z0-9_-]*:)/m,
+    /^ {2}api:\n([\s\S]*?)(?=^ {2}[a-z_][a-z0-9_-]*:)/m,
   )?.[1];
   if (apiBlock?.includes('SYSTEM_DATABASE_URL') === true) {
     violations.push(`${productionRuntimeComposePath}: API must not use SYSTEM_DATABASE_URL`);

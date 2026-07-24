@@ -87,13 +87,20 @@
         "test/e2e/feed.tenant-scope.e2e-spec.ts",
         "test/e2e/read-surfaces.api-key-scope.e2e-spec.ts",
         "test/e2e/reader-surfaces.tenant-scope.e2e-spec.ts",
-        "scripts/check-personalized-relevance-engine-smoke.ts"
+        "scripts/check-personalized-relevance-engine-smoke.ts",
+        "libs/social-research/interfaces/rest/social-research.controller.spec.ts"
       ],
       "operations": [
         { "method": "GET", "path": "/feed/items", "action": "feed.read", "apiKeyScope": "read:feed", "roles": ["owner", "admin", "member", "viewer"] },
         { "method": "GET", "path": "/feed/items/{feedItemId}", "action": "feed.read", "apiKeyScope": "read:feed", "roles": ["owner", "admin", "member", "viewer"] },
         { "method": "GET", "path": "/relevance/users/{userId}/digest", "action": "feed.read", "apiKeyScope": "read:feed", "roles": ["owner", "admin", "member", "viewer"] },
-        { "method": "GET", "path": "/relevance/users/{userId}/feed", "action": "feed.read", "apiKeyScope": "read:feed", "roles": ["owner", "admin", "member", "viewer"] }
+        { "method": "GET", "path": "/relevance/users/{userId}/feed", "action": "feed.read", "apiKeyScope": "read:feed", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "POST", "path": "/social-research/explain-plan", "action": "social_research.read", "apiKeyScope": "read:feed", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "POST", "path": "/social-research/rank", "action": "social_research.read", "apiKeyScope": "read:feed", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "POST", "path": "/social-research/search", "action": "social_research.read", "apiKeyScope": "read:feed", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "POST", "path": "/social-research/sources/list", "action": "social_research.read", "apiKeyScope": "read:feed", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "POST", "path": "/social-research/sources/readiness", "action": "social_research.read", "apiKeyScope": "read:feed", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "POST", "path": "/social-research/threads/fetch", "action": "social_research.read", "apiKeyScope": "read:feed", "roles": ["owner", "admin", "member", "viewer"] }
       ]
     },
     {
@@ -109,7 +116,11 @@
         "scripts/check-reader-summary-workflow-smoke.ts"
       ],
       "operations": [
+        { "method": "GET", "path": "/reader-summaries/periods", "action": "reader-summaries.read", "apiKeyScope": "read:summaries", "roles": ["owner", "admin", "member", "viewer"] },
         { "method": "GET", "path": "/reader-summary-jobs/{readerSummaryJobId}/status", "action": "reader_summary_jobs.read", "apiKeyScope": "read:summaries", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "GET", "path": "/reader-summary-jobs/{readerSummaryJobId}/quality-rejection", "action": "reader_summary_rejections.read", "authModes": ["bearer-oidc-jwt", "workspace-role-dev-test"], "roles": ["owner", "admin"] },
+        { "method": "GET", "path": "/reader-summary-topic-recommendations", "action": "reader-summaries.topic-recommendations.read", "apiKeyScope": "read:summaries", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "POST", "path": "/reader-summary-topic-recommendations/{recommendationId}/decision", "action": "reader_summary_topic_recommendations.decide", "apiKeyScope": "write:summaries", "roles": ["owner", "admin"] },
         { "method": "POST", "path": "/reader-summary-requests", "action": "reader_summary_requests.create", "apiKeyScope": "write:summaries", "roles": ["owner", "admin", "member"] },
         { "method": "GET", "path": "/reader-summaries", "action": "reader-summaries.read", "apiKeyScope": "read:summaries", "roles": ["owner", "admin", "member", "viewer"] },
         { "method": "GET", "path": "/reader-summaries/{readerSummaryId}", "action": "reader-summaries.read", "apiKeyScope": "read:summaries", "roles": ["owner", "admin", "member", "viewer"] },
@@ -141,6 +152,8 @@
         { "method": "PUT", "path": "/user-subscriptions/{subscriptionId}/summary-preference", "action": "user_summary_preferences.set", "apiKeyScope": "write:summaries", "roles": ["owner", "admin", "member"] },
         { "method": "PUT", "path": "/relevance/users/{userId}/profile", "action": "user_summary_preferences.set", "apiKeyScope": "write:summaries", "roles": ["owner", "admin", "member"] },
         { "method": "POST", "path": "/relevance/users/{userId}/feedback", "action": "user_summary_preferences.set", "apiKeyScope": "write:summaries", "roles": ["owner", "admin", "member"] },
+        { "method": "POST", "path": "/relevance/users/{userId}/post-ratings", "action": "post_ratings.create", "apiKeyScope": "write:summaries", "roles": ["owner", "admin", "member"] },
+        { "method": "POST", "path": "/relevance/users/{userId}/post-ratings/query", "action": "post_ratings.read", "apiKeyScope": "read:feed", "roles": ["owner", "admin", "member", "viewer"] },
         { "method": "GET", "path": "/summaries/{summaryId}/feedback", "action": "summary_feedback.read", "apiKeyScope": "read:summaries", "roles": ["owner", "admin", "member", "viewer"] },
         { "method": "POST", "path": "/summaries/{summaryId}/feedback", "action": "summary_feedback.create", "apiKeyScope": "write:summaries", "roles": ["owner", "admin", "member", "viewer"] }
       ]

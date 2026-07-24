@@ -2,8 +2,6 @@ import type { JsonObject, TenantId, WorkspaceId } from '@social-monitor/shared-k
 
 import type {
   SummaryEvidenceConversationContext,
-  SummaryEvidenceConversationAncestor,
-  SummaryEvidenceConversationUnit,
   SummarySourceWindow,
 } from '../domain';
 

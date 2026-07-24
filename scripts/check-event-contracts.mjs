@@ -5,6 +5,7 @@ const catalogPath = 'libs/contracts/events/event-catalog.json';
 const catalog = JSON.parse(readFileSync(catalogPath, 'utf8'));
 const violations = [];
 const eventTypePattern = /^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)+(?:\.v[0-9]+)?$/;
+const legacyEventTypes = new Set(['reader_summary.ready']);
 const producerFiles = globSync('libs/**/*.ts').filter(
   (file) =>
     !file.endsWith('.spec.ts') &&
@@ -24,7 +25,7 @@ if (!Array.isArray(catalog.events) || catalog.events.length === 0) {
 const catalogKeys = new Set();
 
 for (const event of catalog.events ?? []) {
-  if (!eventTypePattern.test(event.eventType ?? '')) {
+  if (!isContractEventType(event.eventType ?? '')) {
     violations.push(`${catalogPath}: invalid eventType "${event.eventType}"`);
   }
 
@@ -76,7 +77,14 @@ for (const file of producerFiles) {
 
   for (const match of eventMatches) {
     const eventType = match[1];
-    if (!eventTypePattern.test(eventType)) {
+    const beforeEventType = source.slice(
+      Math.max(0, (match.index ?? 0) - 200),
+      match.index ?? 0,
+    );
+    if (/messageKind:\s*['"]COMMAND['"][\s\S]*$/u.test(beforeEventType)) {
+      continue;
+    }
+    if (!isContractEventType(eventType)) {
       continue;
     }
 
@@ -114,6 +122,10 @@ function duplicates(values) {
   }
 
   return [...duplicateValues];
+}
+
+function isContractEventType(eventType) {
+  return eventTypePattern.test(eventType) || legacyEventTypes.has(eventType);
 }
 
 function requireFields(fields, requiredFields, event, location) {

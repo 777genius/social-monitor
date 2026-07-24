@@ -65,6 +65,56 @@
       "requiredPayloadFields": ["scanJobId", "tenantId", "workspaceId", "sourceBindingId", "scanPolicyId", "providerKey"]
     },
     {
+      "eventType": "monitoring.source-binding.config-expanded",
+      "schemaVersion": 1,
+      "producer": "monitoring",
+      "tenantScoped": true,
+      "requiredEnvelopeFields": ["tenantId", "workspaceId", "correlationId"],
+      "requiredPayloadFields": [
+        "sourceBindingId",
+        "tenantId",
+        "workspaceId",
+        "interestId",
+        "providerKey",
+        "topicLabel",
+        "recommendationId",
+        "changedConfigPaths"
+      ]
+    },
+    {
+      "eventType": "monitoring.source-binding.config-expansion-reverted",
+      "schemaVersion": 1,
+      "producer": "monitoring",
+      "tenantScoped": true,
+      "requiredEnvelopeFields": ["tenantId", "workspaceId", "correlationId"],
+      "requiredPayloadFields": [
+        "sourceBindingId",
+        "tenantId",
+        "workspaceId",
+        "interestId",
+        "providerKey",
+        "topicLabel",
+        "recommendationId",
+        "restoredConfigPaths"
+      ]
+    },
+    {
+      "eventType": "summary.reader-summary-topic-recommendation.decided",
+      "schemaVersion": 1,
+      "producer": "summary",
+      "tenantScoped": true,
+      "requiredEnvelopeFields": ["tenantId", "workspaceId", "correlationId"],
+      "requiredPayloadFields": [
+        "recommendationId",
+        "tenantId",
+        "workspaceId",
+        "topicLabel",
+        "status",
+        "applicationStatus",
+        "reversionStatus"
+      ]
+    },
+    {
       "eventType": "summary.ready",
       "schemaVersion": 1,
       "producer": "summary",

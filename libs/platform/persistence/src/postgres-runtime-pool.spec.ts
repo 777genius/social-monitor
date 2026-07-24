@@ -1,6 +1,7 @@
 import type { PrismaPg } from '@prisma/adapter-pg';
 import { Client, type Pool } from 'pg';
 
+import { runWithTenantDatabaseAccess } from './database-access-context';
 import {
   POSTGRES_RUNTIME_POOL_CONNECTION_TIMEOUT_MS,
   POSTGRES_RUNTIME_POOL_IDLE_TIMEOUT_MS,
@@ -834,6 +835,7 @@ describe('PostgresRuntimePoolRegistry lifecycle and ownership', () => {
   it('rejects root-client operations from an interactive transaction', async () => {
     type TransactionClient = {
       readonly record: { findMany(): Promise<readonly string[]> };
+      readonly $executeRawUnsafe: jest.Mock<Promise<number>>;
     };
     class FakePrismaClient implements PrismaPgRuntimeClient {
       readonly record = {
@@ -841,6 +843,7 @@ describe('PostgresRuntimePoolRegistry lifecycle and ownership', () => {
       };
       readonly transactionClient: TransactionClient = {
         record: { findMany: jest.fn().mockResolvedValue(['transaction']) },
+        $executeRawUnsafe: jest.fn().mockResolvedValue(0),
       };
 
       $disconnect = jest.fn().mockResolvedValue(undefined);
@@ -854,12 +857,19 @@ describe('PostgresRuntimePoolRegistry lifecycle and ownership', () => {
     const lease = await registry.acquire(config, FakePrismaClient);
 
     await expect(
-      lease.client.$transaction(async (transaction) => {
-        await expect(transaction.record.findMany()).resolves.toEqual([
-          'transaction',
-        ]);
-        return lease.client.record.findMany();
-      }),
+      runWithTenantDatabaseAccess(
+        {
+          tenantId: '11111111-1111-4111-8111-111111111111',
+          workspaceId: '22222222-2222-4222-8222-222222222222',
+        },
+        () =>
+          lease.client.$transaction(async (transaction) => {
+            await expect(transaction.record.findMany()).resolves.toEqual([
+              'transaction',
+            ]);
+            return lease.client.record.findMany();
+          }),
+      ),
     ).rejects.toThrow('Root Prisma client cannot be used');
 
     await lease.close();

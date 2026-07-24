@@ -1,4 +1,5 @@
 import { Test } from '@nestjs/testing';
+import { MetricsRuntimeModule } from '@social-monitor/platform-metrics/nest/metrics-runtime.module';
 import request from 'supertest';
 import { sourceReadinessProfiles } from '@social-monitor/ingestion/adapters/source/source-readiness-profiles';
 import { FixedClock } from '@social-monitor/shared-kernel';
@@ -130,6 +131,9 @@ const assertRecord = (value: unknown, label: string): Readonly<Record<string, un
 
 async function main(): Promise<void> {
   const moduleRef = await Test.createTestingModule({
+    imports: [
+      MetricsRuntimeModule.register({ serviceName: 'api-health-smoke' }),
+    ],
     controllers: [HealthController],
     providers: [
       ApiGatewayHealthReporter,

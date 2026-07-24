@@ -54,6 +54,7 @@ const systemRuntimeUrl = publicationRuntimeDatabaseUrl(
 );
 const serverAdmin = new Pool({
   connectionString: serverAdminDatabaseUrl,
+  min: 0,
   max: 1,
 });
 const workspace = createReaderSummaryPublicationMigrationWorkspace();
@@ -158,14 +159,20 @@ async function assertRlsContract(): Promise<void> {
   const system = new Pool({
     connectionString: systemRuntimeUrl,
     application_name: "social-monitor/runtime/ingestion-worker",
+    min: 0,
     max: 1,
   });
   const api = new Pool({
     connectionString: runtimeUrl,
     application_name: "social-monitor/runtime/api-gateway",
+    min: 0,
     max: 1,
   });
-  const auditor = new Pool({ connectionString: targetDatabaseUrl, max: 1 });
+  const auditor = new Pool({
+    connectionString: targetDatabaseUrl,
+    min: 0,
+    max: 1,
+  });
   try {
     const systemClient = await system.connect();
     const apiClient = await api.connect();

@@ -9,6 +9,7 @@ const requiredFragments = [
   'permissions:\n  contents: read',
   'concurrency:',
   'cancel-in-progress: true',
+  'DATABASE_URL: postgresql://social_monitor_ci:',
   'static_quality:',
   'security_contracts:',
   'backend_unit:',

@@ -3,7 +3,8 @@ import { Test } from '@nestjs/testing';
 import { InMemoryFeedItemReadRepository } from '@social-monitor/feed/adapters/persistence/in-memory-feed-item-read.repository';
 import { FeedItem } from '@social-monitor/feed/domain';
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
-import { ExecuteReaderSummaryJobUseCase } from '@social-monitor/summary/features/execute-reader-summary-job/execute-reader-summary-job.use-case';
+import { InMemoryReaderSummaryArtifactRepository } from '@social-monitor/summary/adapters/persistence/in-memory-reader-summary-artifact.repository';
+import { ReaderSummaryArtifact } from '@social-monitor/summary/domain';
 import { ExecuteSummaryJobUseCase } from '@social-monitor/summary/features/execute-summary-job/execute-summary-job.use-case';
 import request from 'supertest';
 
@@ -39,6 +40,7 @@ describe('Read surfaces API key scope enforcement (e2e)', () => {
     const tenant = tenantId(deterministicTestUuid('tenant-read-api-key-e2e'));
     const workspace = workspaceId(deterministicTestUuid('workspace-read-api-key-e2e'));
     const interestId = 'topic-read-api-key-e2e';
+    const readerInterestId = 'topic-read-api-key-no-signal-e2e';
 
     feedItems.upsert(FeedItem.publish({
       id: 'feed-read-api-key-1',
@@ -319,21 +321,88 @@ describe('Read surfaces API key scope enforcement (e2e)', () => {
       .send({
         scope: {
           type: 'interest',
-          interestId,
+          interestId: readerInterestId,
+        },
+        cadence: 'custom',
+        period: {
+          startedAt: '2026-06-05T00:00:00.000Z',
+          endedAt: '2026-06-07T00:00:00.000Z',
+          timezone: 'UTC',
         },
         userId: 'read-api-key-user',
       })
       .expect(201);
-
-    const executedReaderSummary = await app.get(ExecuteReaderSummaryJobUseCase).execute({
+    const readerSummaryId = 'reader-summary-read-api-key-e2e';
+    const readerSummaryArtifact = ReaderSummaryArtifact.create({
+      schemaVersion: 'reader_summary.artifact.v1',
+      readerSummaryId,
       tenantId: tenant,
       workspaceId: workspace,
-      readerSummaryJobId: readerSummaryRequest.body.readerSummaryJobId,
+      scope: { type: 'interest', interestId: readerInterestId },
+      period: {
+        cadence: 'custom',
+        startedAt: new Date('2026-06-05T00:00:00.000Z'),
+        endedAt: new Date('2026-06-07T00:00:00.000Z'),
+        timezone: 'UTC',
+        periodKey: 'custom:2026-06-05T00:00:00.000Z:2026-06-07T00:00:00.000Z:UTC',
+      },
+      sourceWindow: {
+        windowId: 'reader-summary-read-api-key-window',
+        startedAt: new Date('2026-06-05T00:00:00.000Z'),
+        endedAt: new Date('2026-06-07T00:00:00.000Z'),
+        selectedFeedItemIds: [],
+        storyClusterIds: [],
+      },
+      storyClusters: [],
+      contextArtifacts: [],
+      personalization: {
+        memoryGuidanceStatus: 'disabled',
+        memoryGuidanceApplied: false,
+        providerPreferenceCount: 0,
+        keywordPreferenceCount: 0,
+        mutedKeywordCount: 0,
+        blockedProviderCount: 0,
+        signals: [],
+      },
+      headline: 'No reliable reader signal',
+      executiveSummary: 'No eligible evidence items were selected.',
+      topStories: [],
+      interestHighlights: [],
+      repeatedSignals: [],
+      risksAndUnknowns: [],
+      citationMap: [],
+      qualityFlags: ['no_signal'],
+      confidence: {
+        level: 'none',
+        score: 0,
+        rationale: 'No eligible evidence items were selected.',
+      },
+      lineage: {
+        promptVersion: 'reader-summary.prompt.e2e.v1',
+        schemaVersion: 'reader_summary.artifact.v1',
+        modelVersion: 'deterministic-e2e',
+        providerVersion: 'deterministic-local',
+        rulesVersion: 'reader-summary.rules.e2e.v1',
+        evalDatasetVersion: 'reader-summary.eval.e2e.v1',
+      },
+      usage: { inputTokens: 0, outputTokens: 0, estimatedCostUsd: 0 },
+      noSignalReason: 'No eligible evidence items were selected.',
     });
-
-    if (!executedReaderSummary.ok || executedReaderSummary.value.readerSummaryId === undefined) {
-      throw new Error('Expected reader summary execution to produce a reader summary id');
-    }
+    const readerSummaries = app.get(InMemoryReaderSummaryArtifactRepository);
+    await readerSummaries.save(readerSummaryArtifact, {
+      githubProjectionAudit: {
+        schemaVersion: 'reader_summary.github_projection.v1',
+        status: 'not_applicable',
+        requestedUtcDay: readerSummaryArtifact.toSnapshot().period.periodKey,
+        pageCount: 0,
+        scannedItemCount: 0,
+        eligibleBindingIds: [],
+        bindings: [],
+        violationCodes: [],
+        reasons: [],
+      },
+    });
+    readerSummaries.commitPublication(readerSummaryArtifact);
 
     const readerSummaryStatus = await request(app.getHttpServer())
       .get(`/reader-summary-jobs/${readerSummaryRequest.body.readerSummaryJobId}/status`)
@@ -344,13 +413,12 @@ describe('Read surfaces API key scope enforcement (e2e)', () => {
 
     expect(readerSummaryStatus.body).toMatchObject({
       readerSummaryJobId: readerSummaryRequest.body.readerSummaryJobId,
-      readerSummaryId: executedReaderSummary.value.readerSummaryId,
-      status: executedReaderSummary.value.status,
+      status: readerSummaryRequest.body.status,
     });
 
     const readerSummaryList = await request(app.getHttpServer())
       .get('/reader-summaries')
-      .query({ scopeType: 'interest', interestId, limit: 10 })
+      .query({ scopeType: 'interest', interestId: readerInterestId, limit: 10 })
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('Authorization', `Bearer ${summaryKey}`)
@@ -358,23 +426,23 @@ describe('Read surfaces API key scope enforcement (e2e)', () => {
 
     expect(readerSummaryList.body.items).toEqual([
       expect.objectContaining({
-        readerSummaryId: executedReaderSummary.value.readerSummaryId,
+        readerSummaryId,
         scope: {
           type: 'interest',
-          interestId,
+          interestId: readerInterestId,
         },
       }),
     ]);
 
     const readerSummaryDetail = await request(app.getHttpServer())
-      .get(`/reader-summaries/${executedReaderSummary.value.readerSummaryId}`)
+      .get(`/reader-summaries/${readerSummaryId}`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('Authorization', `Bearer ${summaryKey}`)
       .expect(200);
 
     expect(readerSummaryDetail.body).toMatchObject({
-      readerSummaryId: executedReaderSummary.value.readerSummaryId,
+      readerSummaryId,
       readerBrief: {
         sourceMix: expect.any(Array),
         topReads: expect.any(Array),
@@ -432,7 +500,7 @@ describe('Read surfaces API key scope enforcement (e2e)', () => {
       .expect(403);
 
     await request(app.getHttpServer())
-      .get(`/reader-summaries/${executedReaderSummary.value.readerSummaryId}`)
+      .get(`/reader-summaries/${readerSummaryId}`)
       .set('x-tenant-id', tenant)
       .set('x-workspace-id', workspace)
       .set('Authorization', `Bearer ${feedKey}`)

@@ -320,6 +320,7 @@ describe('deployment PostgreSQL budget', () => {
 describe('production PostgreSQL construction and entrypoint inventory', () => {
   const publicationPostgresTestOnlyFiles = new Set([
     'scripts/check-reader-summary-publication-postgres.ts',
+    'scripts/check-tenant-rls-postgres.ts',
     'scripts/reader-summary-publication-postgres-legacy.ts',
     'scripts/reader-summary-publication-postgres-privileges.ts',
     'scripts/reader-summary-publication-postgres-runtime-guard.ts',
@@ -388,6 +389,10 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       'scripts/check-summary-feedback-calibration-report.ts:Pool',
       'scripts/check-summary-memory-product-loop.ts:Pool',
       'scripts/check-summary-topic-recommendation-rest-prisma-live.ts:Pool',
+      'scripts/check-tenant-rls-postgres.ts:Pool',
+      'scripts/check-tenant-rls-postgres.ts:Pool',
+      'scripts/check-tenant-rls-postgres.ts:Pool',
+      'scripts/check-tenant-rls-postgres.ts:Pool',
       'scripts/check-yesterday-reader-summary-artifact-quality.ts:Pool',
       'scripts/check-yesterday-social-collection-quality.ts:Pool',
       'scripts/lib/reader-summary-production-day-scope.ts:Pool',
@@ -442,6 +447,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       'scripts/check-summary-feedback-calibration-report.ts',
       'scripts/check-summary-memory-product-loop.ts',
       'scripts/check-summary-topic-recommendation-rest-prisma-live.ts',
+      'scripts/check-tenant-rls-postgres.ts',
       'scripts/check-yesterday-reader-summary-artifact-quality.ts',
       'scripts/check-yesterday-social-collection-quality.ts',
       'scripts/lib/reader-summary-current-publication-bindings.spec.ts',
@@ -566,6 +572,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
         'scripts/check-reader-summary-publication-postgres.ts',
         [1, 1, 2, 4, 1],
       ],
+      ['scripts/check-tenant-rls-postgres.ts', [1, 1, 1, 1]],
       ['scripts/reader-summary-publication-postgres-legacy.ts', [1]],
       [
         'scripts/reader-summary-publication-postgres-privileges.ts',

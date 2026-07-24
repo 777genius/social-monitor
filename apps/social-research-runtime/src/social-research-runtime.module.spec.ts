@@ -1,5 +1,6 @@
 import { Test } from '@nestjs/testing';
 import { CircuitBreakerSourceFetcherAdapter } from '@social-monitor/ingestion/adapters/source/circuit-breaker-source-fetcher.adapter';
+import { MetricsRuntimeModule } from '@social-monitor/platform-metrics/nest/metrics-runtime.module';
 import { DefaultSocialResearchExecutionPolicy } from '@social-monitor/social-research';
 import {
   PrismaSocialResearchResultCache,
@@ -19,7 +20,12 @@ import {
 describe('SocialResearchRuntimeModule', () => {
   it('builds source-fetcher backed social research handlers once for transports', async () => {
     const moduleRef = await Test.createTestingModule({
-      imports: [SocialResearchRuntimeModule],
+      imports: [
+        MetricsRuntimeModule.register({
+          serviceName: 'social-research-runtime-module-test',
+        }),
+        SocialResearchRuntimeModule,
+      ],
     }).compile();
 
     try {
@@ -61,7 +67,12 @@ describe('SocialResearchRuntimeModule', () => {
 
   it('wires Prisma result cache through the runtime composition root', async () => {
     const moduleRef = await Test.createTestingModule({
-      imports: [SocialResearchRuntimeModule],
+      imports: [
+        MetricsRuntimeModule.register({
+          serviceName: 'social-research-runtime-cache-module-test',
+        }),
+        SocialResearchRuntimeModule,
+      ],
     })
       .overrideProvider(SOCIAL_RESEARCH_RUNTIME_SETTINGS)
       .useValue(prismaCacheSettings())

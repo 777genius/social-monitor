@@ -1,5 +1,5 @@
 import { NestFactory } from '@nestjs/core';
-import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
+import type { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { ExecuteSummaryJobCommandHandler } from '@social-monitor/summary/interfaces/queue/execute-summary-job-command.handler';
 import {
   SUMMARY_JOB_REPOSITORY,

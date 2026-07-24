@@ -1,6 +1,9 @@
 import { type INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
+import {
+  InMemoryMetricsRecorder,
+} from '@social-monitor/platform-metrics';
+import { MetricsRuntimeModule } from '@social-monitor/platform-metrics/nest/metrics-runtime.module';
 import { InMemoryQueuePublisher } from '@social-monitor/platform-queue/adapters/in-memory';
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import { InMemoryPublicApiAuditLog } from '@social-monitor/usage/adapters/audit/in-memory-public-api-audit-log';
@@ -18,7 +21,10 @@ describe('Request scan flow (e2e)', () => {
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
-      imports: [MonitoringRestModule],
+      imports: [
+        MetricsRuntimeModule.register({ serviceName: 'scan-requests-create-e2e' }),
+        MonitoringRestModule,
+      ],
     }).compile();
 
     app = moduleRef.createNestApplication();
