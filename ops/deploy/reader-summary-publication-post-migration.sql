@@ -32,17 +32,55 @@ END
 $revoke_migrator_schema_create$;
 RESET ROLE;
 
+DO $evidence_authority_grants$
+DECLARE
+  v_runtime_role NAME := current_setting(
+    'social_monitor.bootstrap_runtime_role'
+  )::NAME;
+BEGIN
+  EXECUTE format('SET LOCAL ROLE %I', v_runtime_role);
+  REVOKE UPDATE ON TABLE
+    public.source_items,
+    public.feed_items
+  FROM social_monitor_reader_summary_publication_owner;
+  GRANT SELECT ON TABLE
+    public.source_items,
+    public.feed_items,
+    public.scan_jobs,
+    public.github_repository_trend_results,
+    public.source_bindings,
+    public.source_catalog_entries,
+    public.interests
+  TO social_monitor_reader_summary_publication_owner;
+  GRANT UPDATE (id) ON
+    public.source_items,
+    public.feed_items
+  TO social_monitor_reader_summary_publication_owner;
+  EXECUTE 'RESET ROLE';
+END
+$evidence_authority_grants$;
+
 -- Protected object ACLs can only be repaired as their NOLOGIN owner. The
 -- migrator has SET but deliberately does not inherit this role.
 SET ROLE social_monitor_reader_summary_publication_owner;
 REVOKE ALL PRIVILEGES ON TABLE
   public.reader_summary_publications,
   public.reader_summary_publication_slots,
-  public.reader_summary_artifacts
+  public.reader_summary_artifacts,
+  public.reader_summary_weekly_publication_evidence
 FROM :"runtime_role";
 REVOKE ALL PRIVILEGES ON FUNCTION
   public.reader_summary_model_authority_rank(text),
   public.publish_reader_summary(jsonb),
+  public.publish_reader_summary_legacy_v1(jsonb),
+  public.publish_reader_summary_pre_evidence(jsonb),
+  public.reader_summary_weekly_utf16_sort_key(text),
+  public.reader_summary_weekly_utf16_length(text),
+  public.reader_summary_weekly_canonical_number(jsonb),
+  public.reader_summary_weekly_canonical_json_unbounded(jsonb),
+  public.reader_summary_weekly_canonical_json(jsonb),
+  public.record_reader_summary_weekly_publication_evidence(uuid),
+  public.guard_reader_summary_weekly_publication_evidence(),
   public.guard_reader_summary_publication_insert(),
   public.reject_reader_summary_publication_mutation(),
   public.guard_published_reader_summary_artifact_update(),
@@ -55,6 +93,7 @@ DECLARE
   v_runtime_role NAME := current_setting(
     'social_monitor.bootstrap_runtime_role'
   )::NAME;
+  v_constraint_count INTEGER;
   v_owner_count INTEGER;
   v_trigger_count INTEGER;
   v_function RECORD;
@@ -120,11 +159,12 @@ BEGIN
     AND relation.relname IN (
       'reader_summary_artifacts',
       'reader_summary_publications',
-      'reader_summary_publication_slots'
+      'reader_summary_publication_slots',
+      'reader_summary_weekly_publication_evidence'
     )
     AND owner.rolname =
       'social_monitor_reader_summary_publication_owner';
-  IF v_owner_count <> 3 THEN
+  IF v_owner_count <> 4 THEN
     RAISE EXCEPTION 'protected reader summary tables have unsafe owners';
   END IF;
 
@@ -147,6 +187,28 @@ BEGIN
     RAISE EXCEPTION 'reader summary publication functions have unsafe owners';
   END IF;
 
+  SELECT count(*) INTO v_owner_count
+  FROM pg_proc procedure
+  JOIN pg_namespace namespace ON namespace.oid = procedure.pronamespace
+  JOIN pg_roles owner ON owner.oid = procedure.proowner
+  WHERE namespace.nspname = 'public'
+    AND procedure.proname IN (
+      'publish_reader_summary_legacy_v1',
+      'publish_reader_summary_pre_evidence',
+      'reader_summary_weekly_utf16_sort_key',
+      'reader_summary_weekly_utf16_length',
+      'reader_summary_weekly_canonical_number',
+      'reader_summary_weekly_canonical_json_unbounded',
+      'reader_summary_weekly_canonical_json',
+      'record_reader_summary_weekly_publication_evidence',
+      'guard_reader_summary_weekly_publication_evidence'
+    )
+    AND owner.rolname =
+      'social_monitor_reader_summary_publication_owner';
+  IF v_owner_count <> 9 THEN
+    RAISE EXCEPTION 'weekly publication evidence functions have unsafe owners';
+  END IF;
+
   SELECT procedure.prosecdef, procedure.proconfig INTO v_function
   FROM pg_proc procedure
   WHERE procedure.oid = 'public.publish_reader_summary(jsonb)'::REGPROCEDURE;
@@ -165,13 +227,15 @@ BEGIN
     AND relation.relname IN (
       'reader_summary_artifacts',
       'reader_summary_publications',
-      'reader_summary_publication_slots'
+      'reader_summary_publication_slots',
+      'reader_summary_weekly_publication_evidence'
     )
     AND trigger.tgname IN (
       'reader_summary_artifacts_published_immutable',
       'reader_summary_publications_insert_guarded',
       'reader_summary_publications_immutable',
-      'reader_summary_publication_slots_guarded'
+      'reader_summary_publication_slots_guarded',
+      'reader_summary_weekly_publication_evidence_guarded'
     )
     -- ROW | BEFORE | INSERT | UPDATE. Exact equality excludes the DELETE,
     -- TRUNCATE, and INSTEAD OF bits from the artifact guard.
@@ -185,8 +249,59 @@ BEGIN
       )
     )
     AND trigger.tgenabled = 'O';
-  IF v_trigger_count <> 4 THEN
+  IF v_trigger_count <> 5 THEN
     RAISE EXCEPTION 'reader summary publication triggers are not enforced';
+  END IF;
+  SELECT count(*) INTO v_constraint_count
+  FROM pg_constraint constraint_row
+  WHERE constraint_row.conrelid =
+      'public.reader_summary_weekly_publication_evidence'::REGCLASS
+    AND constraint_row.conname =
+      'reader_summary_weekly_publication_evidence_semantics_check'
+    AND constraint_row.contype = 'c'
+    AND constraint_row.convalidated;
+  IF v_constraint_count <> 1 THEN
+    RAISE EXCEPTION 'publication evidence semantics are not enforced';
+  END IF;
+  IF EXISTS (
+    SELECT 1
+    FROM unnest(ARRAY[
+      'source_items', 'feed_items', 'scan_jobs',
+      'github_repository_trend_results', 'source_bindings',
+      'source_catalog_entries', 'interests'
+    ]) AS authority_table(name)
+    WHERE NOT has_table_privilege(
+      'social_monitor_reader_summary_publication_owner',
+      'public.' || authority_table.name,
+      'SELECT'
+    )
+      OR has_table_privilege(
+        'social_monitor_reader_summary_publication_owner',
+        'public.' || authority_table.name,
+        'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+      )
+  ) THEN
+    RAISE EXCEPTION 'publication evidence source authority is unsafe';
+  END IF;
+  IF NOT has_column_privilege(
+    'social_monitor_reader_summary_publication_owner',
+    'public.source_items',
+    'id',
+    'UPDATE'
+  ) OR NOT has_column_privilege(
+    'social_monitor_reader_summary_publication_owner',
+    'public.feed_items',
+    'id',
+    'UPDATE'
+  ) OR (
+    SELECT count(*) <> 2 OR NOT bool_and(column_name = 'id')
+    FROM information_schema.column_privileges
+    WHERE grantee = 'social_monitor_reader_summary_publication_owner'
+      AND table_schema = 'public'
+      AND table_name IN ('source_items', 'feed_items')
+      AND privilege_type = 'UPDATE'
+  ) THEN
+    RAISE EXCEPTION 'publication evidence row-lock authority is unsafe';
   END IF;
 
   IF pg_has_role(
@@ -365,6 +480,18 @@ BEGIN
   END IF;
 
   IF NOT has_table_privilege(
+    v_runtime_role,
+    'public.reader_summary_weekly_publication_evidence',
+    'SELECT'
+  ) OR has_table_privilege(
+    v_runtime_role,
+    'public.reader_summary_weekly_publication_evidence',
+    'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+  ) THEN
+    RAISE EXCEPTION 'runtime publication-evidence privileges are unsafe';
+  END IF;
+
+  IF NOT has_table_privilege(
     v_runtime_role, 'public.reader_summary_artifacts', 'SELECT'
   ) OR NOT has_table_privilege(
     v_runtime_role, 'public.reader_summary_artifacts', 'INSERT'
@@ -430,8 +557,48 @@ BEGIN
     RAISE EXCEPTION 'publication owner base-table grants are incomplete';
   END IF;
 
+  IF NOT has_table_privilege(
+    'social_monitor_reader_summary_publication_owner',
+    'public.source_items',
+    'SELECT'
+  ) OR NOT has_table_privilege(
+    'social_monitor_reader_summary_publication_owner',
+    'public.feed_items',
+    'SELECT'
+  ) OR NOT has_table_privilege(
+    'social_monitor_reader_summary_publication_owner',
+    'public.scan_jobs',
+    'SELECT'
+  ) OR NOT has_table_privilege(
+    'social_monitor_reader_summary_publication_owner',
+    'public.github_repository_trend_results',
+    'SELECT'
+  ) THEN
+    RAISE EXCEPTION 'publication evidence authority grants are incomplete';
+  END IF;
+
   IF NOT has_function_privilege(
     v_runtime_role, 'public.publish_reader_summary(jsonb)', 'EXECUTE'
+  ) OR has_function_privilege(
+    v_runtime_role,
+    'public.publish_reader_summary_legacy_v1(jsonb)',
+    'EXECUTE'
+  ) OR has_function_privilege(
+    v_runtime_role,
+    'public.publish_reader_summary_pre_evidence(jsonb)',
+    'EXECUTE'
+  ) OR has_function_privilege(
+    v_runtime_role,
+    'public.reader_summary_weekly_canonical_json(jsonb)',
+    'EXECUTE'
+  ) OR has_function_privilege(
+    v_runtime_role,
+    'public.record_reader_summary_weekly_publication_evidence(uuid)',
+    'EXECUTE'
+  ) OR has_function_privilege(
+    v_runtime_role,
+    'public.guard_reader_summary_weekly_publication_evidence()',
+    'EXECUTE'
   ) OR has_function_privilege(
     v_runtime_role,
     'public.guard_reader_summary_active_slot_update()',

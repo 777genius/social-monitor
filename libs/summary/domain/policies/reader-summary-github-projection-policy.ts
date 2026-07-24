@@ -5,6 +5,7 @@ import {
   isGitHubReaderItem,
   nonEmpty,
   readerSummaryHasNoPrimaryGitHubEvidence,
+  readerSummaryIsOrdinaryNoSignalWithoutEvidence,
   readerSummaryRequiresGitHubProjection,
   validEligibleBindingIds,
   type ReaderSummaryGitHubProjectionAudit,
@@ -34,6 +35,7 @@ export {
   buildReaderSummaryGitHubProjectionCollectionTelemetry,
   exactUtcDay,
   readerSummaryHasNoPrimaryGitHubEvidence,
+  readerSummaryIsOrdinaryNoSignalWithoutEvidence,
   readerSummaryHasNoGitHubEvidence,
   readerSummaryHasVerifiedGitHubProjection,
   readerSummaryGitHubProjectionCollectionGraceMs,
@@ -105,8 +107,10 @@ export const evaluateReaderSummaryGitHubProjection = (params: {
   readonly observedThrough: Date;
 }): ReaderSummaryGitHubProjectionEvaluation => {
   const snapshot = params.artifact.toSnapshot();
-  const artifactHasGitHubEvidence =
+  const artifactRequiresGitHubBoard =
     readerSummaryRequiresGitHubProjection(params.artifact);
+  const ordinaryNoSignal =
+    readerSummaryIsOrdinaryNoSignalWithoutEvidence(params.artifact);
   const day = exactUtcDay(
     snapshot.period.startedAt,
     snapshot.period.endedAt,
@@ -152,7 +156,7 @@ export const evaluateReaderSummaryGitHubProjection = (params: {
     });
   }
   if (eligibleBindingIds.length === 0) {
-    if (artifactHasGitHubEvidence) {
+    if (artifactRequiresGitHubBoard && !ordinaryNoSignal) {
       findings.push({
         code: "github_projection_missing",
         reason:

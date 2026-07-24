@@ -9,6 +9,10 @@ import {
   buildReaderSummaryPublicationPayload,
   type ReaderSummaryPublicationSqlRow,
 } from "../reader-summary-publication-proof";
+import {
+  buildReaderSummaryPublicationRequestV2,
+  readerSummaryPublicationHasWeeklyDailyEvidence,
+} from "../reader-summary-weekly-publication-evidence";
 import type { PrismaSummaryClient } from "./prisma-summary-client";
 import type { PrismaReaderSummaryClient } from "./prisma-reader-summary-client";
 import { runSerializableReaderSummaryTransaction } from "./prisma-summary-transaction";
@@ -27,8 +31,12 @@ export class PrismaReaderSummaryPublication implements ReaderSummaryPublicationP
   async publish(
     command: ReaderSummaryPublicationCommand,
   ): Promise<ReaderSummaryPublicationOutcome> {
-    const payload = buildReaderSummaryPublicationPayload(command);
-    const serialized = JSON.stringify(payload);
+    const usesDbOwnedWeeklyEvidence =
+      readerSummaryPublicationHasWeeklyDailyEvidence(command);
+    const request = usesDbOwnedWeeklyEvidence
+      ? buildReaderSummaryPublicationRequestV2(command)
+      : buildReaderSummaryPublicationPayload(command);
+    const serialized = JSON.stringify(request);
     const rows = await withPrismaWriteRetry(() =>
       runSerializableReaderSummaryTransaction(this.prisma, async (prisma) => {
         await this.transactionGuard?.(prisma, command);
@@ -43,8 +51,11 @@ export class PrismaReaderSummaryPublication implements ReaderSummaryPublicationP
       throw new Error("PostgreSQL publication returned no exact outcome");
     }
     if (
-      row.report_sha256 !== payload.reportSha256 ||
-      row.proof_sha256 !== payload.proofSha256
+      !/^[0-9a-f]{64}$/u.test(row.report_sha256) ||
+      !/^[0-9a-f]{64}$/u.test(row.proof_sha256) ||
+      (request.schemaVersion === "reader_summary.publication.v1" &&
+        (row.report_sha256 !== request.reportSha256 ||
+          row.proof_sha256 !== request.proofSha256))
     ) {
       throw new Error("PostgreSQL publication returned a mismatched proof");
     }
@@ -57,7 +68,7 @@ export class PrismaReaderSummaryPublication implements ReaderSummaryPublicationP
     }
     if (
       row.outcome !== "stale" &&
-      row.publication_id !== payload.readerSummaryArtifactId
+      row.publication_id !== request.readerSummaryArtifactId
     ) {
       throw new Error("PostgreSQL publication returned a mismatched identity");
     }

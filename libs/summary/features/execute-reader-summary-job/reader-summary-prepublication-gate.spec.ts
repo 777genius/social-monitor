@@ -1,12 +1,19 @@
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
 import type {
-  ReaderSummaryArtifact,
   ReaderSummaryPublicationDecision,
   ReaderSummaryPublicationPolicy,
-  SummaryEvidenceSelection,
 } from "../../domain";
-import { readerSummaryHasVerifiedGitHubProjection } from "../../domain";
+import {
+  buildReaderSummaryPeriod,
+  ReaderSummaryArtifact,
+  readerSummaryHasVerifiedGitHubProjection,
+  type SummaryEvidenceSelection,
+} from "../../domain";
+import {
+  githubBoardArtifact,
+  githubProjectionInput,
+} from "../../domain/policies/reader-summary-github-projection-policy.spec-support";
 import type {
   ReadReaderSummaryGitHubProjectionQuery,
   ReaderSummaryGitHubProjectionReaderPort,
@@ -17,7 +24,7 @@ describe("evaluateReaderSummaryPrepublication", () => {
   it("fails closed before publication when the durable projection is unavailable", async () => {
     const decision = await evaluateReaderSummaryPrepublication({
       artifact: githubArtifact(),
-      evidence: {} as SummaryEvidenceSelection,
+      evidence: evidenceSelection,
       publicationPolicy: publishingPolicy(),
       githubProjectionReader: {
         async read() {
@@ -40,7 +47,7 @@ describe("evaluateReaderSummaryPrepublication", () => {
       async read(query) {
         observedQuery = query;
         return {
-          eligibleBindingIds: ["binding-github"],
+          eligibleBindingIds: ["github-binding-a"],
           items: projectionItems(),
           pageCount: 2,
         };
@@ -49,7 +56,7 @@ describe("evaluateReaderSummaryPrepublication", () => {
 
     const decision = await evaluateReaderSummaryPrepublication({
       artifact: githubArtifact(),
-      evidence: {} as SummaryEvidenceSelection,
+      evidence: evidenceSelection,
       publicationPolicy: publishingPolicy(),
       githubProjectionReader: reader,
       observedThrough,
@@ -66,14 +73,14 @@ describe("evaluateReaderSummaryPrepublication", () => {
     expect(decision.githubProjectionAudit).toMatchObject({
       status: "verified",
       pageCount: 2,
-      eligibleBindingIds: ["binding-github"],
+      eligibleBindingIds: ["github-binding-a"],
       bindings: expect.arrayContaining([
         expect.objectContaining({
           rank: 1,
           providerKey: "github-trending-page",
           metadataKind: "github_trending_page_repository",
-          scanJobId: "scan-github-prepublication",
-          fetchStartedAt: "2026-07-10T12:00:00.000Z",
+          scanJobId: "scan-github-1",
+          fetchStartedAt: "2026-07-10T11:59:00.000Z",
           sourceContentHash: "a".repeat(64),
         }),
       ]),
@@ -87,7 +94,7 @@ describe("evaluateReaderSummaryPrepublication", () => {
           ({ scanJobId }) => scanJobId,
         ),
       ),
-    ).toEqual(new Set(["scan-github-prepublication"]));
+    ).toEqual(new Set(["scan-github-1"]));
     expect(
       decision.githubProjectionAudit.bindings.every(
         (binding) =>
@@ -100,26 +107,11 @@ describe("evaluateReaderSummaryPrepublication", () => {
 
   it("rejects daily publication with no GitHub evidence when its canonical binding is missing", async () => {
     let readCount = 0;
-    const artifact = {
-      toSnapshot: () => ({
-        tenantId: tenant,
-        workspaceId: workspace,
-        scope: { type: "workspace" },
-        period: {
-          cadence: "daily",
-          startedAt: dayStartedAt,
-          endedAt: dayEndedAt,
-          timezone: "UTC",
-          periodKey: "daily:2026-07-10:UTC",
-        },
-        content: { selectedPosts: [], narrativeSections: [] },
-        citationMap: [],
-      }),
-    } as unknown as ReaderSummaryArtifact;
+    const artifact = artifactWithoutGitHubBoard();
 
     const decision = await evaluateReaderSummaryPrepublication({
       artifact,
-      evidence: {} as SummaryEvidenceSelection,
+      evidence: evidenceSelection,
       publicationPolicy: publishingPolicy(),
       githubProjectionReader: {
         async read() {
@@ -142,15 +134,42 @@ describe("evaluateReaderSummaryPrepublication", () => {
     });
   });
 
+  it("publishes a genuine daily NO_SIGNAL as ordinarily not required", async () => {
+    const artifact = ordinaryNoSignalArtifact();
+    const decision = await evaluateReaderSummaryPrepublication({
+      artifact,
+      evidence: evidenceSelection,
+      publicationPolicy: publishingPolicy(),
+      githubProjectionReader: {
+        async read() {
+          return { eligibleBindingIds: [], items: [], pageCount: 1 };
+        },
+      },
+      observedThrough,
+    });
+
+    expect(decision.publicationDecision.status).toBe("published");
+    expect(decision.githubProjectionAudit).toMatchObject({
+      status: "not_required",
+      requestedUtcDay: "2026-07-10",
+      pageCount: 1,
+      scannedItemCount: 0,
+      bindings: [],
+    });
+    expect(decision.githubProjectionAudit).not.toHaveProperty(
+      "historicalOmission",
+    );
+  });
+
   it("rejects zero GitHub artifact evidence when an eligible binding exists", async () => {
     const decision = await evaluateReaderSummaryPrepublication({
       artifact: artifactWithoutGitHubBoard(),
-      evidence: {} as SummaryEvidenceSelection,
+      evidence: evidenceSelection,
       publicationPolicy: publishingPolicy(),
       githubProjectionReader: {
         async read() {
           return {
-            eligibleBindingIds: ["binding-github"],
+            eligibleBindingIds: ["github-binding-a"],
             items: projectionItems(),
             pageCount: 2,
           };
@@ -170,7 +189,7 @@ describe("evaluateReaderSummaryPrepublication", () => {
     const artifact = artifactWithoutGitHubBoard();
     const decision = await evaluateReaderSummaryPrepublication({
       artifact,
-      evidence: {} as SummaryEvidenceSelection,
+      evidence: evidenceSelection,
       publicationPolicy: publishingPolicy(),
       githubProjectionReader: {
         async read() {
@@ -208,12 +227,12 @@ describe("evaluateReaderSummaryPrepublication", () => {
   it("rejects a partial GitHub selectedPosts board before persistence", async () => {
     const decision = await evaluateReaderSummaryPrepublication({
       artifact: githubArtifact(5),
-      evidence: {} as SummaryEvidenceSelection,
+      evidence: evidenceSelection,
       publicationPolicy: publishingPolicy(),
       githubProjectionReader: {
         async read() {
           return {
-            eligibleBindingIds: ["binding-github"],
+            eligibleBindingIds: ["github-binding-a"],
             items: projectionItems(),
             pageCount: 2,
           };
@@ -230,16 +249,22 @@ describe("evaluateReaderSummaryPrepublication", () => {
 
   it("keeps a non-daily non-GitHub summary publishable without querying a daily board", async () => {
     let readCount = 0;
-    const artifact = artifactWithoutGitHubBoard({
+    const period = {
       cadence: "weekly",
       startedAt: new Date("2026-07-06T00:00:00.000Z"),
       endedAt: new Date("2026-07-13T00:00:00.000Z"),
-      periodKey: "weekly:2026-07-06:UTC",
-    });
+      periodKey: buildReaderSummaryPeriod({
+        cadence: "weekly",
+        startedAt: new Date("2026-07-06T00:00:00.000Z"),
+        endedAt: new Date("2026-07-13T00:00:00.000Z"),
+        timezone: "UTC",
+      }).periodKey,
+    } as const;
+    const artifact = artifactWithoutGitHubBoard(period);
 
     const decision = await evaluateReaderSummaryPrepublication({
       artifact,
-      evidence: {} as SummaryEvidenceSelection,
+      evidence: evidenceSelection,
       publicationPolicy: publishingPolicy(),
       githubProjectionReader: {
         async read() {
@@ -272,50 +297,10 @@ const publishingPolicy = (): ReaderSummaryPublicationPolicy =>
         reasons: [],
       };
     },
-  }) as ReaderSummaryPublicationPolicy;
+  });
 
 const githubArtifact = (selectedPostCount = 10): ReaderSummaryArtifact =>
-  ({
-    toSnapshot: () => ({
-      tenantId: tenant,
-      workspaceId: workspace,
-      scope: { type: "workspace" },
-      period: {
-        cadence: "daily",
-        startedAt: dayStartedAt,
-        endedAt: dayEndedAt,
-        timezone: "UTC",
-        periodKey: "daily:2026-07-10:UTC",
-      },
-      content: {
-        selectedPosts: Array.from({ length: selectedPostCount }, (_, index) => {
-          const rank = index + 1;
-          return {
-            providerKey: "github-trending-page",
-            canonicalUrl: `https://github.com/owner/repo-${rank}`,
-            citationIds: [`citation-${rank}`],
-            providerMetrics: [
-              {
-                label: "GitHub Trending today",
-                value: `#${rank}, +${100 + rank} stars today`,
-              },
-            ],
-          };
-        }),
-        narrativeSections: [],
-      },
-      citationMap: Array.from({ length: 10 }, (_, index) => {
-        const rank = index + 1;
-        return {
-          citationId: `citation-${rank}`,
-          feedItemId: `feed-${rank}`,
-          sourceItemId: `source-${rank}`,
-          providerKey: "github-trending-page",
-          canonicalUrl: `https://github.com/owner/repo-${rank}`,
-        };
-      }),
-    }),
-  }) as unknown as ReaderSummaryArtifact;
+  githubBoardArtifact({ selectedPostCount });
 
 const artifactWithoutGitHubBoard = (
   period: {
@@ -327,52 +312,166 @@ const artifactWithoutGitHubBoard = (
     cadence: "daily",
     startedAt: dayStartedAt,
     endedAt: dayEndedAt,
-    periodKey: "daily:2026-07-10:UTC",
+    periodKey: buildReaderSummaryPeriod({
+      cadence: "daily",
+      startedAt: dayStartedAt,
+      endedAt: dayEndedAt,
+      timezone: "UTC",
+    }).periodKey,
   },
 ): ReaderSummaryArtifact =>
-  ({
-    toSnapshot: () => ({
-      tenantId: tenant,
-      workspaceId: workspace,
-      scope: { type: "workspace" },
-      period: {
-        cadence: period.cadence,
-        startedAt: period.startedAt,
-        endedAt: period.endedAt,
-        timezone: "UTC",
-        periodKey: period.periodKey,
-      },
-      content: { selectedPosts: [], narrativeSections: [] },
-      citationMap: [],
-    }),
-  }) as unknown as ReaderSummaryArtifact;
+  completedRssArtifact(period);
 
-const projectionItems = () =>
-  Array.from({ length: 10 }, (_, index) => {
-    const rank = index + 1;
-    return {
-      feedItemId: `feed-${rank}`,
-      sourceItemId: `source-${rank}`,
-      sourceBindingId: "binding-github",
-      providerKey: "github-trending-page",
-      metadataKind: "github_trending_page_repository",
-      scanJobId: "scan-github-prepublication",
-      canonicalUrl: `https://github.com/owner/repo-${rank}`,
-      repositoryFullName: `owner/repo-${rank}`,
-      rank,
-      starsGained: 100 + rank,
-      window: "daily",
-      fetchStartedAt: new Date("2026-07-10T12:00:00.000Z"),
-      checkedAt: new Date("2026-07-10T12:00:00.000Z"),
-      publishedAt: new Date("2026-07-10T12:00:00.000Z"),
-      observedAt: new Date("2026-07-10T12:05:00.000Z"),
-      sourceContentHash: "a".repeat(64),
-      sourceProviderContentHash: "b".repeat(64),
-    };
+const ordinaryNoSignalArtifact = (): ReaderSummaryArtifact =>
+  ReaderSummaryArtifact.create({
+    ...baseArtifactProps("ordinary-no-signal"),
+    headline: "No reliable signal",
+    executiveSummary: "No eligible provider evidence.",
+    topStories: [],
+    citationMap: [],
+    qualityFlags: ["no_signal"],
+    confidence: {
+      level: "none",
+      score: 0,
+      rationale: "No provider evidence passed the quality threshold.",
+    },
+    noSignalReason: "No eligible provider evidence.",
   });
 
-const tenant = tenantId("tenant-prepublication-gate");
-const workspace = workspaceId("workspace-prepublication-gate");
+const projectionItems = () =>
+  githubProjectionInput();
+
+const completedRssArtifact = (
+  periodInput: {
+    readonly cadence: "daily" | "weekly";
+    readonly startedAt: Date;
+    readonly endedAt: Date;
+    readonly periodKey: string;
+  },
+): ReaderSummaryArtifact => {
+  const citation = {
+    citationId: "rss-citation",
+    feedItemId: "rss-feed",
+    sourceItemId: "rss-source",
+    providerKey: "rss",
+    field: "title" as const,
+    canonicalUrl: "https://example.test/rss-story",
+  };
+  return ReaderSummaryArtifact.create({
+    ...baseArtifactProps("completed-rss", periodInput),
+    headline: "An RSS source produced one reliable signal",
+    executiveSummary: "One DB-backed RSS item passed publication quality.",
+    storyClusters: [
+      {
+        id: "rss-cluster",
+        storyKey: "rss-story",
+        representativeFeedItemId: citation.feedItemId,
+        duplicateFeedItemIds: [],
+        interestIds: ["rss-interest"],
+        providerKeys: ["rss"],
+        score: 1,
+        observedAtRange: {
+          startedAt: periodInput.startedAt,
+          endedAt: periodInput.endedAt,
+        },
+        whyImportant: ["The source is DB-backed."],
+      },
+    ],
+    sourceWindow: {
+      windowId: "completed-rss-window",
+      startedAt: periodInput.startedAt,
+      endedAt: periodInput.endedAt,
+      selectedFeedItemIds: [citation.feedItemId],
+      storyClusterIds: ["rss-cluster"],
+    },
+    topStories: [
+      {
+        storyClusterId: "rss-cluster",
+        title: "RSS story",
+        summary: "One durable RSS story.",
+        interestIds: ["rss-interest"],
+        providerKeys: ["rss"],
+        citationIds: [citation.citationId],
+      },
+    ],
+    citationMap: [citation],
+  });
+};
+
+const baseArtifactProps = (
+  suffix: string,
+  periodInput: {
+    readonly cadence: "daily" | "weekly";
+    readonly startedAt: Date;
+    readonly endedAt: Date;
+    readonly periodKey: string;
+  } = {
+    cadence: "daily",
+    startedAt: dayStartedAt,
+    endedAt: dayEndedAt,
+    periodKey: buildReaderSummaryPeriod({
+      cadence: "daily",
+      startedAt: dayStartedAt,
+      endedAt: dayEndedAt,
+      timezone: "UTC",
+    }).periodKey,
+  },
+) => ({
+  schemaVersion: "reader_summary.artifact.v1" as const,
+  readerSummaryId: `reader-summary-${suffix}`,
+  tenantId: tenant,
+  workspaceId: workspace,
+  scope: { type: "workspace" as const },
+  period: { ...periodInput, timezone: "UTC" },
+  generatedAt: new Date("2026-07-10T23:00:00.000Z"),
+  sourceWindow: {
+    windowId: `${suffix}-window`,
+    startedAt: periodInput.startedAt,
+    endedAt: periodInput.endedAt,
+    selectedFeedItemIds: [],
+    storyClusterIds: [],
+  },
+  storyClusters: [],
+  contextArtifacts: [],
+  headline: "Reader summary fixture",
+  executiveSummary: "Reader summary fixture.",
+  topStories: [],
+  interestHighlights: [],
+  repeatedSignals: [],
+  risksAndUnknowns: [],
+  citationMap: [],
+  qualityFlags: [] as const,
+  confidence: {
+    level: "medium" as const,
+    score: 0.8,
+    rationale: "Fixture evidence is coherent.",
+  },
+  lineage: {
+    promptVersion: "reader-summary.prompt.prepublication.v1",
+    schemaVersion: "reader_summary.artifact.v1" as const,
+    modelVersion: "codex:gpt-5.5:xhigh",
+    providerVersion: "fixture",
+    rulesVersion: "reader-summary.rules.v1",
+    evalDatasetVersion: "reader-summary.eval.v1",
+  },
+  usage: { inputTokens: 1, outputTokens: 1, estimatedCostUsd: 0 },
+});
+
+const tenant = tenantId("tenant-github-projection");
+const workspace = workspaceId("workspace-github-projection");
 const dayStartedAt = new Date("2026-07-10T00:00:00.000Z");
 const dayEndedAt = new Date("2026-07-11T00:00:00.000Z");
 const observedThrough = new Date("2026-07-11T01:00:00.000Z");
+
+const evidenceSelection: SummaryEvidenceSelection = {
+  rankingPolicyVersion: "reader-summary.ranking.v1",
+  sourceWindow: {
+    windowId: "prepublication-evidence",
+    startedAt: dayStartedAt,
+    endedAt: dayEndedAt,
+    selectedFeedItemIds: [],
+    storyClusterIds: [],
+  },
+  clusters: [],
+  selectedEvidence: [],
+};

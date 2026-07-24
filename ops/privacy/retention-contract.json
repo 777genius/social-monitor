@@ -337,11 +337,51 @@
       "table": "reader_summary_jobs",
       "dataClass": "operational_summary_state",
       "owner": "summary-owner",
-      "retentionDays": 90,
-      "deleteMode": "hard_delete_after_replay_window",
+      "retentionDays": 365,
+      "deleteMode": "owner_authorized_graph_purge_after_retention",
       "exportable": false,
       "legalHoldAware": true,
-      "purgeTrigger": "reader_summary_job_terminal_and_replay_window_expired"
+      "purgeTrigger": "reader_summary_publication_graph_retention_completed"
+    },
+    {
+      "table": "reader_summary_publications",
+      "dataClass": "immutable_summary_publication_audit",
+      "owner": "summary-owner",
+      "retentionDays": 365,
+      "deleteMode": "owner_authorized_graph_purge_after_retention",
+      "exportable": true,
+      "legalHoldAware": true,
+      "purgeTrigger": "reader_summary_publication_retention_expired_or_workspace_offboarding_completed"
+    },
+    {
+      "table": "reader_summary_publication_slots",
+      "dataClass": "operational_summary_publication_pointer",
+      "owner": "summary-owner",
+      "retentionDays": 365,
+      "deleteMode": "owner_authorized_graph_purge_after_retention",
+      "exportable": false,
+      "legalHoldAware": true,
+      "purgeTrigger": "reader_summary_publication_graph_retention_completed"
+    },
+    {
+      "table": "reader_summary_recovery_receipts",
+      "dataClass": "immutable_summary_recovery_audit",
+      "owner": "summary-owner",
+      "retentionDays": 365,
+      "deleteMode": "owner_authorized_graph_purge_after_retention",
+      "exportable": true,
+      "legalHoldAware": true,
+      "purgeTrigger": "reader_summary_publication_graph_retention_completed"
+    },
+    {
+      "table": "reader_summary_weekly_publication_evidence",
+      "dataClass": "immutable_summary_publication_evidence",
+      "owner": "summary-owner",
+      "retentionDays": 365,
+      "deleteMode": "owner_authorized_graph_purge_after_retention",
+      "exportable": true,
+      "legalHoldAware": true,
+      "purgeTrigger": "reader_summary_publication_graph_retention_completed"
     },
     {
       "table": "reader_summary_policies",

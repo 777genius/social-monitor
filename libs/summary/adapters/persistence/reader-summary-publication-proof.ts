@@ -72,6 +72,11 @@ export const buildReaderSummaryPublicationPayload = (
       "Reader summary publication requires an exact verified GitHub projection audit",
     );
   }
+  assertPublicationEvidenceSemantics({
+    artifact,
+    githubProjectionAudit: command.githubProjectionAudit,
+    semanticStatus,
+  });
 
   const qualitySignals = publicationJsonObject({
     qualityFlags: artifact.qualityFlags,
@@ -266,6 +271,34 @@ const publicationStatus = (
   }
 
   throw new Error("Reader summary publication requires a final semantic job");
+};
+
+const assertPublicationEvidenceSemantics = (params: {
+  readonly artifact: ReturnType<
+    ReaderSummaryPublicationCommand["artifact"]["toSnapshot"]
+  >;
+  readonly githubProjectionAudit:
+    ReaderSummaryPublicationCommand["githubProjectionAudit"];
+  readonly semanticStatus: "COMPLETED" | "NO_SIGNAL";
+}): void => {
+  if (
+    params.semanticStatus === "NO_SIGNAL" &&
+    (params.artifact.citationMap.length !== 0 ||
+      params.githubProjectionAudit.status !== "not_required" ||
+      params.githubProjectionAudit.bindings.length !== 0)
+  ) {
+    throw new Error(
+      "Reader summary NO_SIGNAL publication requires empty citations and zero GitHub repositories",
+    );
+  }
+  if (
+    params.semanticStatus === "COMPLETED" &&
+    params.artifact.citationMap.length === 0
+  ) {
+    throw new Error(
+      "Reader summary COMPLETED publication requires provider evidence",
+    );
+  }
 };
 
 const validDate = (value: Date | undefined, name: string): string => {

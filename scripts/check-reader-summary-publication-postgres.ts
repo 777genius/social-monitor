@@ -1,7 +1,5 @@
-import { createHash, randomBytes, randomUUID } from "node:crypto";
-
+import { randomBytes, randomUUID } from "node:crypto";
 import { Pool, type PoolClient } from "pg";
-
 import {
   applyOrderedReaderSummaryMigrations,
   assertReaderSummaryMigrationDatabaseMatchesSchema,
@@ -13,6 +11,17 @@ import {
   removeReaderSummaryPublicationMigrationWorkspace,
 } from "./lib/reader-summary-publication-postgres-migrations";
 import { assertReaderSummaryRecoveryPostgresContract } from "./lib/reader-summary-recovery-postgres-contract";
+import {
+  assertReaderSummaryWeeklyPublicationEvidencePostgresContract,
+  assertReaderSummaryWeeklyPublicationEvidenceRow,
+  canonicalObject,
+  createReaderSummaryPublicationFixtureAuthority,
+  readerSummaryPublicationDbOwnedRequest,
+  sha256,
+  stableJson,
+  type EvidenceFixtureOverrides,
+  type ReaderSummaryPublicationEvidenceFixture,
+} from "./lib/reader-summary-weekly-publication-evidence-postgres-contract";
 import {
   assertLegacyPublicationUpgrade,
   assertLegacyRepositoryVisibility,
@@ -35,7 +44,6 @@ import {
   runReaderSummaryPublicationBootstrapSql,
 } from "./reader-summary-publication-postgres-privileges";
 import { assertReaderSummaryPublicationRuntimeGuard } from "./reader-summary-publication-postgres-runtime-guard";
-
 const serverAdminDatabaseUrl = requiredEnv(
   "READER_SUMMARY_PUBLICATION_TEST_ADMIN_DATABASE_URL",
 );
@@ -70,7 +78,6 @@ let schemaOwnerRolePreexisting = false;
 let fixtureDatabaseCreated = false;
 let fixtureMigrationAdminRoleCreated = false;
 let fixtureRuntimeRoleCreated = false;
-
 async function main(): Promise<void> {
   assert(
     /^reader_summary_publication_test_[0-9a-f]{20}$/.test(databaseName),
@@ -186,6 +193,14 @@ async function main(): Promise<void> {
           readerSummaryPublicationMigration,
         );
         await assertLegacyRepositoryVisibility(runtimeDatabaseUrl);
+        await assertReaderSummaryWeeklyPublicationEvidencePostgresContract({
+          client: first,
+          createFixture: (status, day, overrides) =>
+            createRunningFixture(first, status, day, overrides),
+          publish: (payload) => publish(first, payload),
+          assertNoPublication: (fixture) =>
+            assertNoPublication(first, fixture),
+        });
         const privilegeFixture = await createRunningFixture(
           first,
           "COMPLETED",
@@ -227,6 +242,7 @@ async function main(): Promise<void> {
         await assertOlderStrongModelFailsClosed(first, 4);
         await assertConcurrentSemanticReplay(first, second, 5);
         await assertExactlyOneRaceWinner(first, second, 6);
+        await assertDbOwnedConcurrency(first, second, 7, 8);
         await assertReaderSummaryRecoveryPostgresContract({
           client: first,
           createFixture: (status, day, overrides) =>
@@ -258,12 +274,10 @@ async function main(): Promise<void> {
       fixtureRuntimeRoleCreated,
     });
   }
-
   console.log(
     "Reader summary PostgreSQL privilege, upgrade, replay, and concurrency gate OK",
   );
 }
-
 const assertOrderedUpgrade = async (client: PoolClient): Promise<void> => {
   const expected = readerSummaryMigrationNames();
   const applied = await client.query<{ readonly migration_name: string }>(
@@ -277,7 +291,6 @@ const assertOrderedUpgrade = async (client: PoolClient): Promise<void> => {
     expected,
     "original baseline and every ordered forward repair must apply",
   );
-
   const objects = await client.query<{
     readonly finalizer: string | null;
     readonly publications: string | null;
@@ -304,7 +317,6 @@ const assertOrderedUpgrade = async (client: PoolClient): Promise<void> => {
     "ordered upgrade must install publication and recovery contracts",
   );
 };
-
 const assertLegacyTablesOwnedByRuntime = async (
   databaseUrl: string,
   applicationRole: string,
@@ -341,7 +353,6 @@ const assertLegacyTablesOwnedByRuntime = async (
     await admin.end();
   }
 };
-
 const assertSemanticReplay = async (
   client: PoolClient,
   status: "COMPLETED" | "NO_SIGNAL",
@@ -352,6 +363,11 @@ const assertSemanticReplay = async (
   const replay = await publish(client, reverseObject(fixture.payload));
   assert(first === "published", `${status} first publication must win`);
   assert(replay === "replayed", `${status} semantic JSON replay must succeed`);
+  await assertReaderSummaryWeeklyPublicationEvidenceRow(
+    client,
+    fixture,
+    status,
+  );
   const conflictingReplay = JSON.parse(
     JSON.stringify(fixture.payload),
   ) as Record<string, unknown>;
@@ -385,7 +401,6 @@ const assertSemanticReplay = async (
     "permission denied",
     `${status} direct active-slot update must be rejected`,
   );
-
   const counts = await client.query<{
     readonly publications: string;
     readonly outbox: string;
@@ -406,7 +421,6 @@ const assertSemanticReplay = async (
     `${status} replay must retain one proof, outbox event, and visible artifact`,
   );
 };
-
 const assertMissingBindingsFailClosed = async (
   client: PoolClient,
   day: number,
@@ -428,7 +442,6 @@ const assertMissingBindingsFailClosed = async (
   }
   await assertNoPublication(client, fixture);
 };
-
 const assertOlderStrongModelFailsClosed = async (
   client: PoolClient,
   day: number,
@@ -447,7 +460,6 @@ const assertOlderStrongModelFailsClosed = async (
     "older generation must fail before stronger model authority can win",
   );
   await assertNoPublication(client, stale);
-
   const newer = await createRunningFixture(client, "COMPLETED", day, {
     modelVersion: "codex:gpt-5.5:xhigh",
     requestedAt: utc(day, 11),
@@ -476,7 +488,6 @@ const assertOlderStrongModelFailsClosed = async (
     "newer publication must atomically replace the slot and supersede immutable history",
   );
 };
-
 const assertExactlyOneRaceWinner = async (
   first: PoolClient,
   second: PoolClient,
@@ -500,7 +511,6 @@ const assertExactlyOneRaceWinner = async (
     ["published", "stale"],
     "real equal-requestedAt race must have exactly one winner",
   );
-
   const evidence = await first.query<{
     readonly current_slots: string;
     readonly publications: string;
@@ -527,7 +537,6 @@ const assertExactlyOneRaceWinner = async (
     "real race must commit one slot, proof, outbox event, and public artifact",
   );
 };
-
 const assertConcurrentSemanticReplay = async (
   first: PoolClient,
   second: PoolClient,
@@ -545,14 +554,67 @@ const assertConcurrentSemanticReplay = async (
   );
   await assertPublishedExactlyOnce(first, fixture, "COMPLETED");
 };
-
-type Fixture = Readonly<{
-  jobId: string;
-  artifactId: string;
-  eventId: string;
-  payload: Readonly<Record<string, unknown>>;
-}>;
-
+const assertDbOwnedConcurrency = async (
+  first: PoolClient,
+  second: PoolClient,
+  replayDay: number,
+  raceDay: number,
+): Promise<void> => {
+  const replay = await createRunningFixture(first, "COMPLETED", replayDay);
+  const replayRequest = readerSummaryPublicationDbOwnedRequest(replay);
+  assertDeepEqual(
+    [...await Promise.all([
+      publish(first, replayRequest),
+      publish(second, replayRequest),
+    ])].sort(),
+    ["published", "replayed"],
+    "concurrent V2 delivery must publish once and replay once",
+  );
+  await assertDbOwnedCardinality(first, replayDay, [replay.jobId]);
+  const requestedAt = utc(raceDay, 10);
+  const left = await createRunningFixture(first, "COMPLETED", raceDay, {
+    requestedAt,
+  });
+  const right = await createRunningFixture(first, "COMPLETED", raceDay, {
+    requestedAt,
+  });
+  assertDeepEqual(
+    [...await Promise.all([
+      publish(first, readerSummaryPublicationDbOwnedRequest(left)),
+      publish(second, readerSummaryPublicationDbOwnedRequest(right)),
+    ])].sort(),
+    ["published", "stale"],
+    "competing V2 slot publications must have exactly one winner",
+  );
+  await assertDbOwnedCardinality(first, raceDay, [left.jobId, right.jobId]);
+};
+const assertDbOwnedCardinality = async (
+  client: PoolClient,
+  day: number,
+  jobIds: readonly string[],
+): Promise<void> => {
+  const result = await client.query<{
+    readonly evidence: string; readonly outbox: string;
+    readonly publications: string; readonly slots: string;
+  }>(
+    `SELECT
+       (SELECT count(*) FROM reader_summary_publication_slots
+         WHERE period_started_at = $1) AS slots,
+       (SELECT count(*) FROM reader_summary_publications
+         WHERE period_started_at = $1) AS publications,
+       (SELECT count(*) FROM reader_summary_weekly_publication_evidence
+         WHERE period_started_at = $1) AS evidence,
+       (SELECT count(*) FROM outbox_events
+         WHERE correlation_id = ANY($2::uuid[])) AS outbox`,
+    [periodStart(day), jobIds],
+  );
+  assertDeepEqual(
+    result.rows[0],
+    { slots: "1", publications: "1", evidence: "1", outbox: "1" },
+    "V2 concurrency must retain one slot, publication, evidence, and outbox event",
+  );
+};
+type Fixture = ReaderSummaryPublicationEvidenceFixture;
 const createRunningFixture = async (
   client: PoolClient,
   status: "COMPLETED" | "NO_SIGNAL",
@@ -560,7 +622,7 @@ const createRunningFixture = async (
   overrides: {
     readonly requestedAt?: string;
     readonly modelVersion?: string;
-  } = {},
+  } & EvidenceFixtureOverrides = {},
 ): Promise<Fixture> => {
   const tenantId = "00000000-0000-7000-8000-000000000001";
   const workspaceId = "00000000-0000-7000-8000-000000000002";
@@ -572,19 +634,33 @@ const createRunningFixture = async (
   const startedAt = periodStart(day);
   const endedAt = periodEnd(day);
   const periodKey = `daily:${startedAt}:${endedAt}:UTC`;
+  const interestId = overrides.publicationInterestId;
+  const scopeType = interestId === undefined ? "workspace" : "interest";
+  const scopeKey = interestId === undefined ? "workspace" : `interest:${interestId}`;
+  if (interestId !== undefined) {
+    await client.query(
+      `INSERT INTO interests (
+         id, tenant_id, workspace_id, name, query, status, created_at, updated_at
+       ) VALUES ($1, $2, $3, $4, 'publication evidence', 'ENABLED', $5, $5)`,
+      [interestId, tenantId, workspaceId, `Publication ${interestId}`, requestedAt],
+    );
+  }
   await client.query(
     `INSERT INTO reader_summary_jobs (
-       id, tenant_id, workspace_id, scope_type, scope_key, cadence,
+       id, tenant_id, workspace_id, scope_type, scope_key, interest_id, cadence,
        period_started_at, period_ended_at, period_timezone, period_key,
        status, idempotency_key, requested_at, started_at, created_at, updated_at
      ) VALUES (
-       $1, $2, $3, 'workspace', 'workspace', 'daily', $4, $5, 'UTC', $6,
-       'RUNNING', $7, $8, $8, $8, $8
+       $1, $2, $3, $4, $5, $6, 'daily', $7, $8, 'UTC', $9,
+       'RUNNING', $10, $11, $11, $11, $11
      )`,
     [
       jobId,
       tenantId,
       workspaceId,
+      scopeType,
+      scopeKey,
+      interestId ?? null,
       startedAt,
       endedAt,
       periodKey,
@@ -592,10 +668,11 @@ const createRunningFixture = async (
       requestedAt,
     ],
   );
-
   const qualityFlags = status === "NO_SIGNAL" ? ["no_signal"] : [];
   const promptVersion = "reader-summary.prompt.pg-gate.v1";
-  const scope = { type: "workspace" } as const;
+  const scope = interestId === undefined
+    ? { type: "workspace" } as const
+    : { type: "interest", interestId } as const;
   const period = {
     cadence: "daily",
     startedAt,
@@ -603,6 +680,25 @@ const createRunningFixture = async (
     timezone: "UTC",
     periodKey,
   } as const;
+  const evidenceAuthority =
+    await createReaderSummaryPublicationFixtureAuthority({
+      client,
+      tenantId,
+      workspaceId,
+      status,
+      startedAt,
+      endedAt,
+      requestedAt,
+      overrides,
+    });
+  const citations = evidenceAuthority.citations;
+  const githubProjectionAudit =
+    evidenceAuthority.githubProjectionAudit;
+  const persistedQualitySignals = {
+    qualityFlags,
+    publicationDecision: { status: "published", qualityPassed: true },
+    githubProjectionAudit,
+  };
   const report = canonicalObject({
     schemaVersion: "reader_summary.publication_report.v1",
     semanticStatus: status,
@@ -622,13 +718,16 @@ const createRunningFixture = async (
       executiveSummary:
         status === "NO_SIGNAL" ? "No eligible evidence." : "Exact report body.",
       lineage: { modelVersion, promptVersion },
-      citationMap: [],
+      citationMap: citations,
       qualityFlags,
+      content: evidenceAuthority.content,
+      ...(status === "NO_SIGNAL"
+        ? { noSignalReason: "No eligible evidence." }
+        : {}),
     },
-    citations: [],
+    citations,
     qualitySignals: {
-      qualityFlags,
-      publicationDecision: { status: "published", qualityPassed: true },
+      ...persistedQualitySignals,
       publicationGeneration: { requestedAt },
     },
   });
@@ -638,7 +737,7 @@ const createRunningFixture = async (
     schemaVersion: "reader_summary.publication_proof.v1",
     tenantId,
     workspaceId,
-    scope: { type: "workspace", key: "workspace" },
+    scope: { type: scopeType, key: scopeKey },
     period: {
       cadence: "daily",
       startedAt,
@@ -659,8 +758,9 @@ const createRunningFixture = async (
     schemaVersion: "reader_summary.publication.v1",
     tenantId,
     workspaceId,
-    scopeType: "workspace",
-    scopeKey: "workspace",
+    scopeType,
+    scopeKey,
+    ...(interestId === undefined ? {} : { interestId }),
     cadence: "daily",
     periodStartedAt: startedAt,
     periodEndedAt: endedAt,
@@ -699,23 +799,25 @@ const createRunningFixture = async (
       },
     },
   });
-
   await client.query(
     `INSERT INTO reader_summary_artifacts (
-       id, tenant_id, workspace_id, scope_type, scope_key, cadence,
+       id, tenant_id, workspace_id, scope_type, scope_key, interest_id, cadence,
        period_started_at, period_ended_at, period_timezone, period_key,
        status, schema_version, model_version, prompt_version, headline,
        summary_text, artifact_payload, citations, quality_signals,
        created_at, updated_at
      ) VALUES (
-       $1, $2, $3, 'workspace', 'workspace', 'daily', $4, $5, 'UTC', $6,
-       'RUNNING', 1, $7, $8, $9, $10, $11::jsonb, $12::jsonb, $13::jsonb,
-       $14, $14
+       $1, $2, $3, $4, $5, $6, 'daily', $7, $8, 'UTC', $9,
+       'RUNNING', 1, $10, $11, $12, $13, $14::jsonb, $15::jsonb, $16::jsonb,
+       $17, $17
      )`,
     [
       artifactId,
       tenantId,
       workspaceId,
+      scopeType,
+      scopeKey,
+      interestId ?? null,
       startedAt,
       endedAt,
       periodKey,
@@ -725,41 +827,51 @@ const createRunningFixture = async (
       report.summaryText,
       JSON.stringify(report.artifactPayload),
       JSON.stringify(report.citations),
-      JSON.stringify(report.qualitySignals),
+      JSON.stringify(persistedQualitySignals),
       requestedAt,
     ],
   );
-
-  return { jobId, artifactId, eventId, payload };
+  return {
+    jobId,
+    artifactId,
+    eventId,
+    payload,
+    ...(evidenceAuthority.githubSourceBindingId === undefined
+      ? {}
+      : {
+          githubSourceBindingId:
+            evidenceAuthority.githubSourceBindingId,
+        }),
+  };
 };
-
 const assertNoPublication = async (
   client: PoolClient,
   fixture: Fixture,
 ): Promise<void> => {
   const rows = await client.query<{
-    readonly publications: string;
-    readonly public_artifacts: string;
-    readonly candidates: string;
+    readonly artifacts: string; readonly evidence: string; readonly jobs: string;
+    readonly outbox: string; readonly publications: string;
   }>(
     `SELECT
        (SELECT count(*) FROM reader_summary_publications
          WHERE reader_summary_job_id = $1
             OR reader_summary_artifact_id = $2) AS publications,
        (SELECT count(*) FROM reader_summary_artifacts
-         WHERE id = $2 AND status IN ('COMPLETED', 'NO_SIGNAL')) AS public_artifacts,
-       (SELECT count(*) FROM reader_summary_artifacts
-         WHERE id = $2 AND status = 'RUNNING') AS candidates`,
+         WHERE id = $2 AND status = 'RUNNING') AS artifacts,
+       (SELECT count(*) FROM reader_summary_jobs
+         WHERE id = $1 AND status = 'RUNNING') AS jobs,
+       (SELECT count(*) FROM reader_summary_weekly_publication_evidence
+         WHERE reader_summary_job_id = $1 OR reader_summary_artifact_id = $2) AS evidence,
+       (SELECT count(*) FROM outbox_events WHERE correlation_id = $1) AS outbox`,
     [fixture.jobId, fixture.artifactId],
   );
   assert(
     rows.rows[0]?.publications === "0" &&
-      rows.rows[0]?.public_artifacts === "0" &&
-      rows.rows[0]?.candidates === "1",
-    "failed-closed attempt became public or lost its hidden candidate state",
+      rows.rows[0]?.artifacts === "1" && rows.rows[0]?.jobs === "1" &&
+      rows.rows[0]?.evidence === "0" && rows.rows[0]?.outbox === "0",
+    "failed-closed attempt wrote publication state or promoted its candidate",
   );
 };
-
 const assertPublishedExactlyOnce = async (
   client: PoolClient,
   fixture: Fixture,
@@ -785,7 +897,6 @@ const assertPublishedExactlyOnce = async (
     `${status} must retain one proof, outbox event, and public artifact`,
   );
 };
-
 const publish = async (
   client: PoolClient,
   payload: Readonly<Record<string, unknown>>,
@@ -798,7 +909,6 @@ const publish = async (
   assert(outcome !== undefined, "publication function returned no outcome");
   return outcome;
 };
-
 const postgresBackendPid = async (client: PoolClient): Promise<number> => {
   const result = await client.query<{ readonly pid: number }>(
     "SELECT pg_backend_pid() AS pid",
@@ -809,42 +919,15 @@ const postgresBackendPid = async (client: PoolClient): Promise<number> => {
   }
   return pid;
 };
-
 const periodStart = (day: number): string => utc(day, 0);
 const periodEnd = (day: number): string => utc(day + 1, 0);
 const utc = (day: number, hour: number): string =>
-  new Date(Date.UTC(2026, 6, day, hour)).toISOString();
+  new Date(Date.UTC(2026, 5, day, hour)).toISOString();
 
 const reverseObject = (
   value: Readonly<Record<string, unknown>>,
 ): Readonly<Record<string, unknown>> =>
   Object.fromEntries(Object.entries(value).reverse());
-
-const canonicalObject = (
-  value: Readonly<Record<string, unknown>>,
-): Readonly<Record<string, unknown>> =>
-  JSON.parse(stableJson(value)) as Readonly<Record<string, unknown>>;
-
-const stableJson = (value: unknown): string =>
-  JSON.stringify(canonicalValue(value));
-
-const canonicalValue = (value: unknown): unknown => {
-  if (Array.isArray(value)) {
-    return value.map(canonicalValue);
-  }
-  if (value !== null && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>)
-        .filter((entry) => entry[1] !== undefined)
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([key, child]) => [key, canonicalValue(child)]),
-    );
-  }
-  return value;
-};
-
-const sha256 = (value: string): string =>
-  createHash("sha256").update(value).digest("hex");
 
 function requiredEnv(name: string): string {
   const value = process.env[name]?.trim();

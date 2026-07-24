@@ -71,6 +71,10 @@ export * from "./value-objects/provider-metric-label";
 export * from "./value-objects/preview-media";
 export * from "./value-objects/reader-summary-provider-identity";
 export * from "./value-objects/reader-summary-period";
+export * from "./value-objects/reader-summary-weekly-canonical-json";
+export * from "./value-objects/reader-summary-weekly-daily-certification";
+export * from "./value-objects/reader-summary-weekly-publication-evidence";
+export * from "./value-objects/reader-summary-weekly-publication-github-evidence";
 export * from "./value-objects/reader-summary-scope";
 export * from "./value-objects/signal-score";
 export type {
