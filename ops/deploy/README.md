@@ -102,6 +102,43 @@ refuses to start until its
 release SHA equals the durable backend marker, which fences a host crash during
 the switch.
 
+## Disabled GitHub pre-midnight capture v1
+
+`production-runtime/github-premidnight-capture-v1.sh` is a separately locked,
+GitHub-only collection launcher. Its versioned timer is fixed at 23:50 UTC with
+one-second accuracy, no random delay, and `Persistent=false`. The exact
+`install-disabled-v1` marker admits installation of the launcher, service, and
+timer but never enables or starts them. Marker activation fails and restores
+the prior capture files if the timer is enabled, either unit is active, an
+installed byte differs from the reviewed immutable release, either unit has an
+unreviewed drop-in, or rollback cannot be completed. Unrelated launchers and
+systemd unit files are byte- and inode-stable during this capture-only
+activation.
+
+The launcher accepts no date or provider input. Inside the exact
+23:45:00..23:59:59 UTC guard it derives that UTC date, acquires its dedicated
+singleton and the shared PostgreSQL admission lock, and runs only
+`scripts/run-reader-summary-clean-real-day-collection.ts` in the existing
+`daily-runner` image with `--providers github-trending-page` and the explicit
+same-day `--date`. AI model selectors are forced to deterministic and the
+OpenAI key is blank for this one-shot container. Both the admission wait and
+collection timeout are recalculated against UTC midnight, with a finalization
+reserve, so this disabled slice cannot overlap or delay the 00:00 production
+day. Success also requires the fresh live-collection proof emitted by the
+collector. A database-connect fallback to an existing evaluation artifact,
+singleton contention, collection failure, output-capture failure, or container
+cleanup failure is non-success. Feed persistence continues through the reviewed
+Prisma projection and its immutable GitHub observation-conflict checks.
+
+Deploy-control and runtime assets still follow the existing bridge discipline.
+Land the controller/library/workflow and dormant assets first, without the
+`github-premidnight-capture-v1.activation` marker. Add that reviewed marker in
+the separate control-only activation release; the already-installed controller
+then versions the complete coherent runtime release while installing only the
+new capture launcher and units. Neither release may enable or start
+`social-monitor-github-premidnight-capture-v1.timer`; enablement is a later,
+explicitly reviewed slice.
+
 ## X collector image provenance rollout
 
 The first revision-labelled production X image is an explicit two-release

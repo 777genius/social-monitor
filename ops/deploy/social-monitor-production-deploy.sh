@@ -95,6 +95,10 @@ CONTROL_PATHS=(
 
 RUNTIME_CONTROL_PATHS=(
   ops/deploy/production-runtime/daily-run.sh
+  ops/deploy/production-runtime/github-premidnight-capture-v1.activation
+  ops/deploy/production-runtime/github-premidnight-capture-v1.sh
+  ops/deploy/production-runtime/social-monitor-github-premidnight-capture-v1.service
+  ops/deploy/production-runtime/social-monitor-github-premidnight-capture-v1.timer
   ops/deploy/production-runtime/social-monitor-daily.service
 )
 

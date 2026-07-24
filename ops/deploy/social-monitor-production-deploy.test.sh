@@ -40,6 +40,8 @@ cp "$SCRIPT_DIR/../../prisma/migrations/20260716170000_reader_summary_fail_close
   "$REPO/prisma/migrations/20260716170000_reader_summary_fail_closed_publication/"
 cp "$SCRIPT_DIR/verify-postgres-runtime-topology.py" "$REPO/ops/deploy/"
 cp -R "$SCRIPT_DIR/production-runtime" "$REPO/ops/deploy/"
+rm -f \
+  "$REPO/ops/deploy/production-runtime/github-premidnight-capture-v1.activation"
 printf 'base\n' > "$REPO/README.md"
 git -C "$REPO" add README.md ops/deploy prisma/migrations
 git -C "$REPO" commit -qm 'test: base'
@@ -782,17 +784,21 @@ grep -Fx 'backend-soak-heartbeat elapsed_seconds=60 remaining_seconds=5' \
   <<< "$heartbeat_output" >/dev/null
 [[ $(grep -c '^backend-soak-heartbeat ' <<< "$heartbeat_output") == 3 ]]
 grep -F 'verify-postgres-runtime-topology.py' "$ENTRYPOINT" >/dev/null
-grep -F 'install -m 0644 "$source/social-monitor-prod.service"' \
+grep -F 'install -m 0644 "$source/$unit" "$staged_release/$unit"' \
   "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" >/dev/null
-grep -F 'install -m 0644 "$source/social-monitor-daily.service"' \
+grep -F 'social-monitor-prod.service' \
+  "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" >/dev/null
+grep -F 'social-monitor-daily.service' \
+  "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" >/dev/null
+grep -F 'social-monitor-github-premidnight-capture-v1.service' \
+  "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" >/dev/null
+grep -F 'social-monitor-github-premidnight-capture-v1.timer' \
   "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" >/dev/null
 grep -F 'DropInPaths' "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" >/dev/null
 grep -F 'postgres-runtime-current/compose.postgres-runtime.yml' \
   "$SCRIPT_DIR/production-runtime/daily-run.sh" >/dev/null
-if find "$SCRIPT_DIR/production-runtime" -name '*.timer' -print -quit | grep -q .; then
-  echo 'PostgreSQL runtime release unexpectedly owns a timer' >&2
-  exit 1
-fi
+grep -F 'social-monitor-github-premidnight-capture-v1.timer' \
+  "$ENTRYPOINT" >/dev/null
 grep -F 'dailyTimerOwner' \
   "$SCRIPT_DIR/postgres-pool-release-contract.json" >/dev/null
 grep -F 'runtime_release != "$backend_release"' \
@@ -815,16 +821,17 @@ bridge_initialization_line=$(grep -nF 'initialize_deploy_control_bridge' \
 grep -F 'advance_integration "$sha"' \
   "$SCRIPT_DIR/deploy-control-lib.sh" >/dev/null
 
-# A bridge-current entrypoint classifies a later daily asset-only release as
-# control-only runtime activation and uses the already-sourced bridge library.
+# A bridge-current entrypoint classifies a later pre-midnight asset-only release
+# as control-only runtime activation and uses the already-sourced bridge library.
 BRIDGE_SHA=$CONTROL_TARGET_SHA
 for component in frontend backend control; do
   printf '%s\n' "$BRIDGE_SHA" > "$STATE/$component.sha"
 done
-printf '# final daily runtime asset\n' >> \
-  "$REPO/ops/deploy/production-runtime/daily-run.sh"
-git -C "$REPO" add ops/deploy/production-runtime/daily-run.sh
-git -C "$REPO" commit -qm 'test: final daily runtime asset'
+printf 'install-disabled-v1\n' > \
+  "$REPO/ops/deploy/production-runtime/github-premidnight-capture-v1.activation"
+git -C "$REPO" add \
+  ops/deploy/production-runtime/github-premidnight-capture-v1.activation
+git -C "$REPO" commit -qm 'test: final pre-midnight runtime asset'
 git -C "$REPO" push -q origin HEAD:main
 RUNTIME_CONTROL_TARGET_SHA=$(git -C "$REPO" rev-parse HEAD)
 git -C "$REPO" checkout -q "$BRIDGE_SHA"
@@ -855,15 +862,15 @@ grep -F "deployed=$RUNTIME_CONTROL_TARGET_SHA" <<< "$activation_output" >/dev/nu
    "$RUNTIME_CONTROL_TARGET_SHA false true" ]]
 [[ $(cat "$STATE/control.sha") == "$RUNTIME_CONTROL_TARGET_SHA" ]]
 
-# The next target is intentionally invalid: it combines another daily runtime
-# asset with a controller-library change. The bridge-current process must fail
-# before any runtime-control snapshot or activation.
+# The next target is intentionally invalid: it combines another pre-midnight
+# runtime asset with a controller-library change. The bridge-current process
+# must fail before any runtime-control snapshot or activation.
 printf '# incompatible controller mutation\n' >> \
   "$REPO/ops/deploy/deploy-control-lib.sh"
-printf '# incompatible daily mutation\n' >> \
-  "$REPO/ops/deploy/production-runtime/daily-run.sh"
+printf '# incompatible pre-midnight mutation\n' >> \
+  "$REPO/ops/deploy/production-runtime/social-monitor-github-premidnight-capture-v1.service"
 git -C "$REPO" add ops/deploy/deploy-control-lib.sh \
-  ops/deploy/production-runtime/daily-run.sh
+  ops/deploy/production-runtime/social-monitor-github-premidnight-capture-v1.service
 git -C "$REPO" commit -qm 'test: reject combined control activation'
 git -C "$REPO" push -q origin HEAD:main
 INCOMPATIBLE_TARGET_SHA=$(git -C "$REPO" rev-parse HEAD)
@@ -927,6 +934,7 @@ fi
 echo 'Production deploy contract tests passed'
 bash "$SCRIPT_DIR/backend-image-rescue-lib.test.sh"
 bash "$SCRIPT_DIR/postgres-runtime-deploy-lib.test.sh"
+bash "$SCRIPT_DIR/github-premidnight-capture-runtime.test.sh"
 bash "$SCRIPT_DIR/verify-postgres-runtime-topology.test.sh"
 bash "$SCRIPT_DIR/reader-summary-publication-migrator-validation.test.sh"
 bash "$SCRIPT_DIR/refresh-codex-auth.test.sh"

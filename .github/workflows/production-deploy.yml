@@ -305,6 +305,13 @@ jobs:
             ops/deploy/reader-summary-publication-bridge-transition.test.sh
             ops/deploy/social-monitor-production-ssh-wrapper.sh
             ops/deploy/production-runtime/daily-run.sh
+            ops/deploy/production-runtime/github-premidnight-capture-v1.sh
+            ops/deploy/github-premidnight-capture-runtime.test.sh
+            ops/deploy/fixtures/github-premidnight-capture-fake-date.sh
+            ops/deploy/fixtures/github-premidnight-capture-fake-docker.sh
+            ops/deploy/fixtures/github-premidnight-capture-fake-flock.sh
+            ops/deploy/fixtures/github-premidnight-capture-fake-systemctl.sh
+            ops/deploy/fixtures/github-premidnight-capture-fake-timeout.sh
             ops/deploy/postgres-pool-bootstrap-transition.test.sh
             ops/deploy/host/refresh-codex-auth.sh
             ops/deploy/refresh-codex-auth.test.sh
@@ -348,6 +355,7 @@ jobs:
             bash ops/deploy/deploy-control-lib.test.sh
             bash ops/deploy/daily-deploy-lock-race.test.sh
             bash ops/deploy/postgres-runtime-deploy-lib.test.sh
+            bash ops/deploy/github-premidnight-capture-runtime.test.sh
           fi
           bash ops/deploy/x-collector-image-deploy-lib.test.sh
           bash ops/deploy/github-production-deploy-client.test.sh
