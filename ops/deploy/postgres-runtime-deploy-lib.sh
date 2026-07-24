@@ -4,6 +4,8 @@
 # fail helper are defined. Keeping the transaction here preserves the root
 # entrypoint's source-line cap without making this file independently runnable.
 
+ROOT=${ROOT:?caller must define ROOT before sourcing postgres-runtime-deploy-lib.sh}
+
 github_premidnight_capture_marker_state() {
   local root=$1
   local marker=$root/github-premidnight-capture-v1.activation

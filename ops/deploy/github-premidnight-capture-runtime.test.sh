@@ -109,7 +109,7 @@ expected_command=(
   --providers github-trending-page
   --date 2026-07-24
 )
-[[ ${#docker_args[@]} == ${#expected_command[@]} ]] || \
+(( ${#docker_args[@]} == ${#expected_command[@]} )) || \
   fail 'daily-runner command argument count drifted'
 for index in "${!expected_command[@]}"; do
   [[ ${docker_args[$index]} == "${expected_command[$index]}" ]] || \
