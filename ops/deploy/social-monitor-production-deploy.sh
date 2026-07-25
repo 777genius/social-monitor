@@ -938,13 +938,11 @@ deploy_release_runtime_transaction() {
 }
 
 sync_control_script() {
-  local source=$REPO/ops/deploy/social-monitor-production-deploy.sh
-  local destination=$CONTROL/github-production-deploy.sh
   local wrapper_source=$REPO/ops/deploy/social-monitor-production-ssh-wrapper.sh
   local wrapper_destination=$CONTROL/github-production-deploy-wrapper.sh
   local auth_refresh_source=$REPO/ops/deploy/host/refresh-codex-auth.sh
   local auth_refresh_destination=$CONTROL/refresh-codex-auth.sh
-  [[ -f $source ]] || return 0
+  [[ -f $REPO/ops/deploy/social-monitor-production-deploy.sh ]] || return 0
   if [[ -f $wrapper_source ]]; then
     install -m 0755 -o root -g root "$wrapper_source" "$wrapper_destination.next"
     mv -f "$wrapper_destination.next" "$wrapper_destination"
@@ -958,6 +956,13 @@ sync_control_script() {
   if x_collector_target_has_tracked_dockerfile "$sha"; then
     sync_x_collector_dockerfile "$sha"
   fi
+  sync_control_entrypoint
+}
+
+sync_control_entrypoint() {
+  local source=$REPO/ops/deploy/social-monitor-production-deploy.sh
+  local destination=$CONTROL/github-production-deploy.sh
+  [[ -f $source ]] || return 0
   install -m 0755 -o root -g root "$source" "$destination.next"
   mv -f "$destination.next" "$destination"
   cmp -s "$source" "$destination" || fail 'installed deploy entrypoint differs from reviewed source'
@@ -965,11 +970,15 @@ sync_control_script() {
 
 commit_postgres_pool_bootstrap() {
   local sha=$1
-  postgres_pool_bootstrap_installed "$sha" && return 0
-  printf '%s\n' "$sha" > "$STATE/postgres-pool-bootstrap.sha.next"
-  mv -f "$STATE/postgres-pool-bootstrap.sha.next" \
-    "$STATE/postgres-pool-bootstrap.sha"
-  postgres_pool_bootstrap_installed "$sha" || \
+  local mode=${2:-normal}
+  local marker=$STATE/postgres-pool-bootstrap.sha
+  local next=$marker.next
+  [[ $mode == normal || $mode == force-advance ]] || fail 'PostgreSQL bootstrap marker advance mode is invalid'
+  if [[ $mode == normal ]] && postgres_pool_bootstrap_installed "$sha"; then return 0; fi
+  [[ ! -e $next && ! -L $next ]] || fail 'PostgreSQL bootstrap marker temporary path is invalid'
+  printf '%s\n' "$sha" > "$next"
+  mv -f "$next" "$marker"
+  [[ -f $marker && ! -L $marker ]] && postgres_pool_bootstrap_installed "$sha" || \
     fail 'PostgreSQL bootstrap marker did not commit the installed entrypoint'
 }
 

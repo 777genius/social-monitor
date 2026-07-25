@@ -237,6 +237,96 @@ git -C "$REPO" add .
 git -C "$REPO" commit -qm 'test: reconciled runtime target'
 target_sha=$(git -C "$REPO" rev-parse HEAD)
 backend_marker_sha=617e284607f3dde74c27164af2b981770b9a62ed
+
+# Entry-point-only reconciliation has a distinct primitive. Its function body
+# cannot acquire the wrapper, auth-refresh, or X-image side effects retained by
+# the ordinary full control sync.
+entrypoint_sync_body=$(sed -n \
+  '/^sync_control_entrypoint() {$/,/^}$/p' \
+  "$SCRIPT_DIR/social-monitor-production-deploy.sh")
+grep -F 'social-monitor-production-deploy.sh' \
+  <<< "$entrypoint_sync_body" >/dev/null
+grep -F 'github-production-deploy.sh' \
+  <<< "$entrypoint_sync_body" >/dev/null
+if grep -E 'wrapper|auth_refresh|x_collector' \
+  <<< "$entrypoint_sync_body" >/dev/null; then
+  echo 'entrypoint-only sync contains a broad control side effect' >&2
+  exit 1
+fi
+grep -F 'sync_control_entrypoint' \
+  <<< "$(sed -n '/^sync_control_script() {$/,/^}$/p' \
+    "$SCRIPT_DIR/social-monitor-production-deploy.sh")" >/dev/null
+
+# Normal callers retain the ancestor-accepting fast path. The explicit
+# force-advance mode is separate, rejects misspellings, and is used by exactly
+# one reconciliation call after marker identity race checks.
+install -m 0755 "$REPO/ops/deploy/social-monitor-production-deploy.sh" \
+  "$CONTROL/github-production-deploy.sh"
+printf '%s\n' "$target_sha" > "$STATE/postgres-pool-bootstrap.sha"
+commit_mode_output=$(
+  COMMIT_FUNCTION="$(sed -n \
+    '/^commit_postgres_pool_bootstrap() {$/,/^}$/p' \
+    "$SCRIPT_DIR/social-monitor-production-deploy.sh")" \
+  TARGET_SHA="$target_sha" \
+  STATE="$STATE" \
+    bash -c '
+      set -euo pipefail
+      eval "$COMMIT_FUNCTION"
+      fail() {
+        printf "test deploy failure: %s\n" "$*" >&2
+        exit 1
+      }
+      postgres_pool_bootstrap_installed() {
+        return 0
+      }
+      marker=$STATE/postgres-pool-bootstrap.sha
+      default_identity=$(stat -c "%d:%i:%s:%y:%z" "$marker")
+      commit_postgres_pool_bootstrap "$TARGET_SHA"
+      [[ $(stat -c "%d:%i:%s:%y:%z" "$marker") == "$default_identity" ]]
+      set +e
+      invalid_output=$(
+        (commit_postgres_pool_bootstrap "$TARGET_SHA" force) 2>&1
+      )
+      invalid_status=$?
+      set -e
+      ((invalid_status != 0))
+      grep -F "marker advance mode is invalid" <<< "$invalid_output" >/dev/null
+      forced_identity=$(stat -c "%d:%i:%s:%y:%z" "$marker")
+      commit_postgres_pool_bootstrap "$TARGET_SHA" force-advance
+      [[ $(<"$marker") == "$TARGET_SHA" ]]
+      [[ $(stat -c "%d:%i:%s:%y:%z" "$marker") != "$forced_identity" ]]
+      committed_identity=$(stat -c "%d:%i:%s:%y:%z" "$marker")
+      ln -s "$marker" "$marker.next"
+      set +e
+      temporary_output=$(
+        (commit_postgres_pool_bootstrap "$TARGET_SHA" force-advance) 2>&1
+      )
+      temporary_status=$?
+      set -e
+      ((temporary_status != 0))
+      grep -F "marker temporary path is invalid" \
+        <<< "$temporary_output" >/dev/null
+      [[ -L $marker.next ]]
+      [[ $(stat -c "%d:%i:%s:%y:%z" "$marker") == "$committed_identity" ]]
+      rm -f "$marker.next"
+      [[ -f $marker && ! -L $marker ]]
+      printf "commit-modes-ok\n"
+    '
+)
+[[ $commit_mode_output == commit-modes-ok ]]
+[[ $(grep -cF 'commit_mode=force-advance' \
+  "$SCRIPT_DIR/deploy-control-lib.sh") == 1 ]]
+force_call_line=$(grep -nF \
+  'commit_postgres_pool_bootstrap "$current" "$commit_mode"' \
+  "$SCRIPT_DIR/deploy-control-lib.sh" | cut -d: -f1)
+pool_race_line=$(grep -nF \
+  'PostgreSQL bootstrap marker changed during control reconciliation' \
+  "$SCRIPT_DIR/deploy-control-lib.sh" | cut -d: -f1)
+control_race_line=$(grep -nF \
+  'control marker changed during PostgreSQL bootstrap reconciliation' \
+  "$SCRIPT_DIR/deploy-control-lib.sh" | cut -d: -f1)
+((pool_race_line < force_call_line && control_race_line < force_call_line))
+
 printf '%s\n' "$target_sha" > "$STATE/frontend.sha"
 printf '%s\n' "$backend_marker_sha" > "$STATE/backend.sha"
 printf '%s\n' "$target_sha" > "$STATE/control.sha"

@@ -248,29 +248,109 @@ run_current_deploy() {
     SOCIAL_MONITOR_DEPLOY_CONTROL="$CONTROL"
     SOCIAL_MONITOR_DEPLOY_STATE="$STATE"
     GIT_CONFIG_GLOBAL="$FIXTURE/gitconfig"
+    RECOVERY_SYNC_MODE="${RECOVERY_SYNC_MODE:-success}"
+    RECOVERY_RACE_SHA="${RECOVERY_RACE_SHA:-$TARGET_SHA}"
   )
   # Positional parameters and log paths expand only in the isolated child shell.
   # shellcheck disable=SC2016
   /usr/bin/env "${environment[@]}" /usr/bin/bash -c '
+    recovery_event_log=$2
     source "$1"
     advance_integration() {
-      printf "integration\n" >> "$2"
+      printf "integration\n" >> "$recovery_event_log"
       return 97
     }
+    sync_control_entrypoint() {
+      printf "entrypoint\n" >> "$recovery_event_log"
+      [[ $RECOVERY_SYNC_MODE != fail ]] || return 97
+      source_path=$SOCIAL_MONITOR_DEPLOY_REPO/ops/deploy/social-monitor-production-deploy.sh
+      destination=$SOCIAL_MONITOR_DEPLOY_CONTROL/github-production-deploy.sh
+      install -m 0755 "$source_path" "$destination.next"
+      mv -f "$destination.next" "$destination"
+      case $RECOVERY_SYNC_MODE in
+        success) ;;
+        dirty)
+          printf "raced\n" > "$SOCIAL_MONITOR_DEPLOY_REPO/recovery-race.untracked"
+          ;;
+        head-race)
+          git -C "$SOCIAL_MONITOR_DEPLOY_REPO" update-ref \
+            refs/heads/main "$RECOVERY_RACE_SHA"
+          ;;
+        marker-race)
+          printf "%s\n" "$RECOVERY_RACE_SHA" \
+            > "$SOCIAL_MONITOR_DEPLOY_STATE/postgres-pool-bootstrap.sha.next"
+          mv -f "$SOCIAL_MONITOR_DEPLOY_STATE/postgres-pool-bootstrap.sha.next" \
+            "$SOCIAL_MONITOR_DEPLOY_STATE/postgres-pool-bootstrap.sha"
+          ;;
+        control-marker-race)
+          printf "%s\n" "$RECOVERY_RACE_SHA" \
+            > "$SOCIAL_MONITOR_DEPLOY_STATE/control.sha.next"
+          mv -f "$SOCIAL_MONITOR_DEPLOY_STATE/control.sha.next" \
+            "$SOCIAL_MONITOR_DEPLOY_STATE/control.sha"
+          ;;
+        installed-race)
+          printf "\n# raced installed control\n" >> "$destination"
+          ;;
+        dormant-asset-race)
+          printf "\n# raced dormant asset\n" >> \
+            "$SOCIAL_MONITOR_DEPLOY_REPO/ops/deploy/postgres-runtime-deploy-lib.sh"
+          ;;
+        *)
+          return 96
+          ;;
+      esac
+    }
     sync_control_script() {
-      printf "control\n" >> "$2"
+      printf "broad-control\n" >> "$recovery_event_log"
       return 97
     }
     deploy_release_runtime_transaction() {
-      printf "backend-or-runtime\n" >> "$2"
+      printf "backend-or-runtime\n" >> "$recovery_event_log"
       return 97
     }
     deploy_frontend() {
-      printf "frontend\n" >> "$2"
+      printf "frontend\n" >> "$recovery_event_log"
       return 97
     }
     deploy_release "$3"
   ' _ "$INSTALLED" "$RECOVERY_ACTIVATION_LOG" "$target"
+}
+
+run_current_control_deploy() {
+  local -a environment=(
+    SOCIAL_MONITOR_DEPLOY_TEST_MODE=1
+    SOCIAL_MONITOR_DEPLOY_ROOT="$ROOT"
+    SOCIAL_MONITOR_DEPLOY_REPO="$REPO"
+    SOCIAL_MONITOR_DEPLOY_CONTROL="$CONTROL"
+    SOCIAL_MONITOR_DEPLOY_STATE="$STATE"
+    GIT_CONFIG_GLOBAL="$FIXTURE/gitconfig"
+  )
+  # The transaction callback records classification without activating the
+  # fixture's dormant runtime assets.
+  # shellcheck disable=SC2016
+  /usr/bin/env "${environment[@]}" /usr/bin/bash -c '
+    normal_event_log=$2
+    normal_target=$3
+    source "$1"
+    advance_integration() {
+      printf "integration\n" >> "$normal_event_log"
+      [[ $(git -C "$SOCIAL_MONITOR_DEPLOY_REPO" rev-parse HEAD) == "$normal_target" ]]
+    }
+    sync_control_script() {
+      printf "control\n" >> "$normal_event_log"
+    }
+    load_target_reader_summary_publication_deploy_library() {
+      printf "load-backend\n" >> "$normal_event_log"
+    }
+    deploy_release_runtime_transaction() {
+      printf "transaction:%s:%s\n" "$2" "$3" >> "$normal_event_log"
+    }
+    deploy_frontend() {
+      printf "frontend\n" >> "$normal_event_log"
+      return 97
+    }
+    deploy_release "$normal_target"
+  ' _ "$INSTALLED" "$NORMAL_CONTROL_LOG" "$CURRENT_SHA"
 }
 
 TEST_PHASE=legacy-plan
@@ -316,10 +396,23 @@ grep -Fx 'postgres_pool_bootstrap=postgres-pool-v1' <<< "$committed_plan" >/dev/
 grep -Fx "postgres_pool_bootstrap_sha=$TARGET_SHA" <<< "$committed_plan" >/dev/null
 
 TEST_PHASE=already-newer-fixture
+# Model the independently advanced historical control marker with a sourceable
+# ancestor entrypoint. The fixture-only comment keeps its bytes distinct from
+# current while preserving the same library-loading boundary.
+cp "$PROJECT_ROOT/ops/deploy/social-monitor-production-deploy.sh" \
+  "$REPO/ops/deploy/"
+printf '\n# fixture historical installed control\n' \
+  >> "$REPO/ops/deploy/social-monitor-production-deploy.sh"
+git -C "$REPO" add ops/deploy/social-monitor-production-deploy.sh
+git -C "$REPO" commit -qm 'test: historical installed control'
+git -C "$REPO" push -q origin main
+HISTORICAL_CONTROL_SHA=$(git -C "$REPO" rev-parse HEAD)
+
 cp "$PROJECT_ROOT/ops/deploy/social-monitor-production-deploy.sh" \
   "$PROJECT_ROOT/ops/deploy/deploy-control-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/postgres-runtime-deploy-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/backend-image-rescue-lib.sh" \
+  "$PROJECT_ROOT/ops/deploy/daily-runner-image-bootstrap-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/x-collector-image-deploy-lib.sh" \
   "$REPO/ops/deploy/"
 git -C "$REPO" add ops/deploy
@@ -327,6 +420,8 @@ git -C "$REPO" commit -qm 'test: current integration Release B'
 git -C "$REPO" push -q origin main
 CURRENT_SHA=$(git -C "$REPO" rev-parse HEAD)
 git -C "$REPO" merge-base --is-ancestor "$TARGET_SHA" "$CURRENT_SHA"
+git -C "$REPO" merge-base --is-ancestor \
+  "$HISTORICAL_CONTROL_SHA" "$CURRENT_SHA"
 cp "$REPO/ops/deploy/social-monitor-production-deploy.sh" "$INSTALLED"
 chmod 0755 "$INSTALLED"
 cp "$INSTALLED" "$FIXTURE/installed-entrypoint-before-recovery"
@@ -374,47 +469,234 @@ grep -Fx "postgres_pool_bootstrap_sha=$CURRENT_SHA" \
   <<< "$recovered_plan" >/dev/null
 [[ ! -e $RECOVERY_ACTIVATION_LOG ]]
 
-# A valid installed ancestor marker is historical evidence. Recovery must not
-# rewrite it merely to make the marker equal the newer integration checkout.
-TEST_PHASE=already-newer-installed-marker
-printf '%s\n' "$TARGET_SHA" > "$STATE/postgres-pool-bootstrap.sha"
-touch -d '2001-01-01 00:00:00 UTC' \
-  "$STATE/postgres-pool-bootstrap.sha"
-cp "$STATE/postgres-pool-bootstrap.sha" "$FIXTURE/installed-marker-before"
-installed_marker_identity=$(
-  stat -c '%d:%i:%s:%Y' "$STATE/postgres-pool-bootstrap.sha"
-)
-installed_output=$(run_current_deploy)
-grep -Fx "already-deployed-or-newer=$CURRENT_SHA" \
-  <<< "$installed_output" >/dev/null
-cmp -s "$FIXTURE/installed-marker-before" \
-  "$STATE/postgres-pool-bootstrap.sha"
-[[ $(stat -c '%d:%i:%s:%Y' "$STATE/postgres-pool-bootstrap.sha") == \
-  "$installed_marker_identity" ]]
-cmp -s "$FIXTURE/installed-entrypoint-before-recovery" "$INSTALLED"
-assert_release_a_non_activation
-[[ ! -e $RECOVERY_ACTIVATION_LOG ]]
+install_historical_control_entrypoint() {
+  rm -f "$INSTALLED"
+  git -C "$REPO" show \
+    "$HISTORICAL_CONTROL_SHA:ops/deploy/social-monitor-production-deploy.sh" \
+    > "$INSTALLED"
+  chmod 0755 "$INSTALLED"
+}
 
-# Existing malformed or non-ancestor markers are never overwritten with B.
-# Both cases fail before the already-deployed success line.
-TEST_PHASE=already-newer-invalid-marker
-printf 'invalid-marker\n' > "$STATE/postgres-pool-bootstrap.sha"
-cp "$STATE/postgres-pool-bootstrap.sha" "$FIXTURE/invalid-marker-before"
-trap - ERR
-set +e
-invalid_marker_output=$(run_current_deploy 2>&1)
-invalid_marker_status=$?
-set -e
-trap 'report_error "$?" "$LINENO" "$BASH_COMMAND"' ERR
-((invalid_marker_status != 0))
-grep -F 'existing PostgreSQL bootstrap marker is invalid' \
-  <<< "$invalid_marker_output" >/dev/null
-if grep -q '^already-deployed-or-newer=' <<< "$invalid_marker_output"; then
-  echo 'invalid bootstrap marker reported already-deployed success' >&2
+assert_current_recovery_fails() {
+  local expected=$1
+  local target=${2:-$TARGET_SHA}
+  local output status
+
+  trap - ERR
+  set +e
+  output=$(run_current_deploy "$target" 2>&1)
+  status=$?
+  set -e
+  trap 'report_error "$?" "$LINENO" "$BASH_COMMAND"' ERR
+  ((status != 0))
+  grep -F "$expected" <<< "$output" >/dev/null
+  if grep -q '^already-deployed-or-newer=' <<< "$output"; then
+    echo 'failed bootstrap reconciliation reported already-deployed success' >&2
+    exit 1
+  fi
+}
+
+assert_recovery_control_only() {
+  if [[ -e $RECOVERY_ACTIVATION_LOG ]] && \
+     grep -Ev '^entrypoint$' "$RECOVERY_ACTIVATION_LOG" >/dev/null; then
+    echo 'bootstrap reconciliation attempted runtime activation' >&2
+    exit 1
+  fi
+  assert_release_a_non_activation
+  [[ ! -e $CONTROL/postgres-runtime-releases/$CURRENT_SHA ]]
+}
+
+prepare_historical_reconciliation() {
+  rm -f "$STATE/postgres-pool-bootstrap.sha" "$STATE/control.sha" \
+    "$RECOVERY_ACTIVATION_LOG"
+  printf '%s\n' "$TARGET_SHA" > "$STATE/postgres-pool-bootstrap.sha"
+  printf '%s\n' "$HISTORICAL_CONTROL_SHA" > "$STATE/control.sha"
+  install_historical_control_entrypoint
+  RECOVERY_SYNC_MODE=success
+  RECOVERY_RACE_SHA=$TARGET_SHA
+}
+
+# The admitted historical state has independently valid ancestor pool and
+# control markers. The installed entrypoint is authenticated against the exact
+# control-marker blob before the reviewed atomic sync advances it to current.
+TEST_PHASE=already-newer-historical-reconciliation
+printf '%s\n' "$TARGET_SHA" > "$STATE/postgres-pool-bootstrap.sha"
+printf '%s\n' "$HISTORICAL_CONTROL_SHA" > "$STATE/control.sha"
+install_historical_control_entrypoint
+cmp -s "$INSTALLED" \
+  <(git -C "$REPO" show \
+    "$HISTORICAL_CONTROL_SHA:ops/deploy/social-monitor-production-deploy.sh")
+cp "$STATE/postgres-pool-bootstrap.sha" "$FIXTURE/historical-marker-before"
+historical_pool_identity=$(stat -c '%d:%i:%f:%s:%y:%z' \
+  "$STATE/postgres-pool-bootstrap.sha")
+historical_control_identity=$(stat -c '%d:%i:%f:%s:%y:%z' \
+  "$STATE/control.sha")
+rm -f "$RECOVERY_ACTIVATION_LOG"
+RECOVERY_SYNC_MODE=success
+historical_output=$(run_current_deploy)
+grep -Fx "already-deployed-or-newer=$CURRENT_SHA" \
+  <<< "$historical_output" >/dev/null
+[[ $(<"$STATE/postgres-pool-bootstrap.sha") == "$CURRENT_SHA" ]]
+[[ $(<"$STATE/control.sha") == "$HISTORICAL_CONTROL_SHA" ]]
+[[ $(stat -c '%d:%i:%f:%s:%y:%z' "$STATE/postgres-pool-bootstrap.sha") != \
+  "$historical_pool_identity" ]]
+[[ $(stat -c '%d:%i:%f:%s:%y:%z' "$STATE/control.sha") == \
+  "$historical_control_identity" ]]
+cmp -s "$INSTALLED" "$REPO/ops/deploy/social-monitor-production-deploy.sh"
+grep -Fx 'entrypoint' "$RECOVERY_ACTIVATION_LOG" >/dev/null
+[[ $(wc -l < "$RECOVERY_ACTIVATION_LOG") == 1 ]]
+assert_recovery_control_only
+
+# Replaying the same historical workflow request takes the normal valid fast
+# path. It neither syncs control again nor activates any release surface.
+TEST_PHASE=already-newer-historical-replay
+cp "$RECOVERY_ACTIVATION_LOG" "$FIXTURE/recovery-events-before-replay"
+replay_output=$(run_current_deploy)
+grep -Fx "already-deployed-or-newer=$CURRENT_SHA" \
+  <<< "$replay_output" >/dev/null
+cmp -s "$FIXTURE/recovery-events-before-replay" "$RECOVERY_ACTIVATION_LOG"
+[[ $(<"$STATE/postgres-pool-bootstrap.sha") == "$CURRENT_SHA" ]]
+assert_recovery_control_only
+
+# The staged state deliberately keeps the historical control marker. Planning
+# current must therefore select the ordinary control deployment even though
+# the independent pool bootstrap is already current.
+TEST_PHASE=already-newer-staged-plan
+staged_plan=$(run_entrypoint "$INSTALLED" plan "$CURRENT_SHA")
+grep -Fx 'control=true' <<< "$staged_plan" >/dev/null
+grep -Fx 'postgres_pool_bootstrap=postgres-pool-v1' \
+  <<< "$staged_plan" >/dev/null
+grep -Fx "postgres_pool_bootstrap_sha=$CURRENT_SHA" \
+  <<< "$staged_plan" >/dev/null
+[[ $(<"$STATE/control.sha") == "$HISTORICAL_CONTROL_SHA" ]]
+
+# The subsequent current request follows the normal control path. Its runtime
+# transaction is replaced by a recorder, proving classification and marker
+# staging without activating backend, runtime, frontend, or daily surfaces.
+TEST_PHASE=already-newer-normal-control-deploy
+NORMAL_CONTROL_LOG=$FIXTURE/normal-control.log
+normal_control_output=$(run_current_control_deploy)
+grep -F "deployed=$CURRENT_SHA" <<< "$normal_control_output" >/dev/null
+grep -F 'backend=true' <<< "$normal_control_output" >/dev/null
+grep -F 'control=true' <<< "$normal_control_output" >/dev/null
+[[ $(sed -n '1p' "$NORMAL_CONTROL_LOG") == integration ]]
+[[ $(sed -n '2p' "$NORMAL_CONTROL_LOG") == load-backend ]]
+[[ $(sed -n '3p' "$NORMAL_CONTROL_LOG") == control ]]
+grep -Ex 'transaction:true:(true|false)' "$NORMAL_CONTROL_LOG" >/dev/null
+[[ $(wc -l < "$NORMAL_CONTROL_LOG") == 4 ]]
+[[ $(<"$STATE/control.sha") == "$CURRENT_SHA" ]]
+[[ $(<"$STATE/postgres-pool-bootstrap.sha") == "$CURRENT_SHA" ]]
+assert_release_a_non_activation
+[[ ! -e $CONTROL/postgres-runtime-releases/$CURRENT_SHA ]]
+
+# Installed bytes that do not match the exact control-marker commit are not
+# provenance for the historical marker and fail before any sync or marker move.
+TEST_PHASE=already-newer-control-marker-mismatch
+printf '%s\n' "$TARGET_SHA" > "$STATE/postgres-pool-bootstrap.sha"
+printf '%s\n' "$HISTORICAL_CONTROL_SHA" > "$STATE/control.sha"
+cp "$REPO/ops/deploy/social-monitor-production-deploy.sh" "$INSTALLED"
+printf '\n# mismatched installed control\n' >> "$INSTALLED"
+chmod 0755 "$INSTALLED"
+if cmp -s "$INSTALLED" \
+  <(git -C "$REPO" show \
+    "$HISTORICAL_CONTROL_SHA:ops/deploy/social-monitor-production-deploy.sh"); then
+  echo 'mismatched installed control fixture unexpectedly matched marker' >&2
   exit 1
 fi
+cp "$STATE/postgres-pool-bootstrap.sha" "$FIXTURE/mismatch-marker-before"
+rm -f "$RECOVERY_ACTIVATION_LOG"
+assert_current_recovery_fails 'installed deploy entrypoint differs from reviewed commit'
+cmp -s "$FIXTURE/mismatch-marker-before" \
+  "$STATE/postgres-pool-bootstrap.sha"
+[[ ! -e $RECOVERY_ACTIVATION_LOG ]]
+
+# Missing and malformed marker identities fail closed without changing the
+# pre-existing pool marker.
+TEST_PHASE=already-newer-missing-control-marker
+install_historical_control_entrypoint
+rm -f "$STATE/control.sha"
+cp "$STATE/postgres-pool-bootstrap.sha" \
+  "$FIXTURE/missing-control-pool-marker-before"
+assert_current_recovery_fails \
+  'control marker is not a regular non-symlink file'
+cmp -s "$FIXTURE/missing-control-pool-marker-before" \
+  "$STATE/postgres-pool-bootstrap.sha"
+
+TEST_PHASE=already-newer-invalid-marker
+printf 'invalid-marker\n' > "$STATE/postgres-pool-bootstrap.sha"
+printf '%s\n' "$HISTORICAL_CONTROL_SHA" > "$STATE/control.sha"
+cp "$STATE/postgres-pool-bootstrap.sha" "$FIXTURE/invalid-marker-before"
+assert_current_recovery_fails 'PostgreSQL bootstrap marker is malformed'
 cmp -s "$FIXTURE/invalid-marker-before" \
   "$STATE/postgres-pool-bootstrap.sha"
+
+TEST_PHASE=already-newer-uppercase-marker
+prepare_historical_reconciliation
+printf '%s\n' "${TARGET_SHA^^}" > "$STATE/postgres-pool-bootstrap.sha"
+cp "$STATE/postgres-pool-bootstrap.sha" "$FIXTURE/uppercase-marker-before"
+assert_current_recovery_fails 'PostgreSQL bootstrap marker is malformed'
+cmp -s "$FIXTURE/uppercase-marker-before" \
+  "$STATE/postgres-pool-bootstrap.sha"
+
+TEST_PHASE=already-newer-malformed-control-marker
+prepare_historical_reconciliation
+printf 'malformed-control\n' > "$STATE/control.sha"
+cp "$STATE/postgres-pool-bootstrap.sha" \
+  "$FIXTURE/malformed-control-pool-before"
+assert_current_recovery_fails 'control marker is malformed'
+cmp -s "$FIXTURE/malformed-control-pool-before" \
+  "$STATE/postgres-pool-bootstrap.sha"
+
+TEST_PHASE=already-newer-unavailable-pool-marker
+prepare_historical_reconciliation
+UNAVAILABLE_SHA=1111111111111111111111111111111111111111
+if git -C "$REPO" cat-file -e "$UNAVAILABLE_SHA^{commit}" 2>/dev/null; then
+  echo 'unavailable marker fixture unexpectedly names a commit' >&2
+  exit 1
+fi
+printf '%s\n' "$UNAVAILABLE_SHA" > "$STATE/postgres-pool-bootstrap.sha"
+assert_current_recovery_fails \
+  'PostgreSQL bootstrap marker commit is unavailable'
+[[ $(<"$STATE/postgres-pool-bootstrap.sha") == "$UNAVAILABLE_SHA" ]]
+
+TEST_PHASE=already-newer-unavailable-control-marker
+prepare_historical_reconciliation
+printf '%s\n' "$UNAVAILABLE_SHA" > "$STATE/control.sha"
+assert_current_recovery_fails 'control marker commit is unavailable'
+[[ $(<"$STATE/postgres-pool-bootstrap.sha") == "$TARGET_SHA" ]]
+
+TEST_PHASE=already-newer-pool-marker-symlink
+prepare_historical_reconciliation
+printf '%s\n' "$TARGET_SHA" > "$FIXTURE/symlink-pool-target"
+rm -f "$STATE/postgres-pool-bootstrap.sha"
+ln -s "$FIXTURE/symlink-pool-target" \
+  "$STATE/postgres-pool-bootstrap.sha"
+assert_current_recovery_fails \
+  'PostgreSQL bootstrap marker is not a regular non-symlink file'
+[[ -L $STATE/postgres-pool-bootstrap.sha ]]
+
+TEST_PHASE=already-newer-control-marker-symlink
+prepare_historical_reconciliation
+printf '%s\n' "$HISTORICAL_CONTROL_SHA" \
+  > "$FIXTURE/symlink-control-target"
+rm -f "$STATE/control.sha"
+ln -s "$FIXTURE/symlink-control-target" "$STATE/control.sha"
+assert_current_recovery_fails \
+  'control marker is not a regular non-symlink file'
+[[ -L $STATE/control.sha ]]
+[[ $(<"$STATE/postgres-pool-bootstrap.sha") == "$TARGET_SHA" ]]
+
+TEST_PHASE=already-newer-installed-entrypoint-symlink
+prepare_historical_reconciliation
+git -C "$REPO" show \
+  "$HISTORICAL_CONTROL_SHA:ops/deploy/social-monitor-production-deploy.sh" \
+  > "$FIXTURE/symlink-installed-target"
+rm -f "$INSTALLED"
+ln -s "$FIXTURE/symlink-installed-target" "$INSTALLED"
+assert_current_recovery_fails \
+  'installed deploy entrypoint is not a regular non-symlink file'
+[[ -L $INSTALLED ]]
+[[ $(<"$STATE/postgres-pool-bootstrap.sha") == "$TARGET_SHA" ]]
 
 git -C "$REPO" checkout -qb divergent-marker "$BASE_SHA"
 printf 'divergent marker\n' > "$REPO/divergent-marker.txt"
@@ -429,26 +711,129 @@ if git -C "$REPO" merge-base --is-ancestor \
 fi
 printf '%s\n' "$DIVERGENT_MARKER_SHA" \
   > "$STATE/postgres-pool-bootstrap.sha"
+printf '%s\n' "$HISTORICAL_CONTROL_SHA" > "$STATE/control.sha"
+install_historical_control_entrypoint
 cp "$STATE/postgres-pool-bootstrap.sha" "$FIXTURE/divergent-marker-before"
 TEST_PHASE=already-newer-non-ancestor-marker
-trap - ERR
-set +e
-non_ancestor_output=$(run_current_deploy 2>&1)
-non_ancestor_status=$?
-set -e
-trap 'report_error "$?" "$LINENO" "$BASH_COMMAND"' ERR
-((non_ancestor_status != 0))
-grep -F 'existing PostgreSQL bootstrap marker is invalid' \
-  <<< "$non_ancestor_output" >/dev/null
-if grep -q '^already-deployed-or-newer=' <<< "$non_ancestor_output"; then
-  echo 'non-ancestor bootstrap marker reported already-deployed success' >&2
-  exit 1
-fi
+assert_current_recovery_fails \
+  'PostgreSQL bootstrap marker commit is not an ancestor'
 cmp -s "$FIXTURE/divergent-marker-before" \
   "$STATE/postgres-pool-bootstrap.sha"
-cmp -s "$FIXTURE/installed-entrypoint-before-recovery" "$INSTALLED"
-assert_release_a_non_activation
+assert_recovery_control_only
+
+TEST_PHASE=already-newer-non-ancestor-control-marker
+prepare_historical_reconciliation
+printf '%s\n' "$DIVERGENT_MARKER_SHA" > "$STATE/control.sha"
+assert_current_recovery_fails \
+  'control marker commit is not an ancestor'
+[[ $(<"$STATE/postgres-pool-bootstrap.sha") == "$TARGET_SHA" ]]
+assert_recovery_control_only
+
+# A clean-status bypass cannot substitute dormant PostgreSQL bytes: every
+# admitted asset is compared with its exact current commit blob before sync.
+TEST_PHASE=already-newer-dormant-asset-divergence
+prepare_historical_reconciliation
+dormant_asset=ops/deploy/postgres-runtime-deploy-lib.sh
+git -C "$REPO" update-index --assume-unchanged "$dormant_asset"
+printf '\n# hidden divergent dormant asset\n' >> "$REPO/$dormant_asset"
+[[ -z $(git -C "$REPO" status --porcelain) ]]
+assert_current_recovery_fails \
+  "current PostgreSQL bootstrap source $dormant_asset differs from reviewed commit"
+[[ $(<"$STATE/postgres-pool-bootstrap.sha") == "$TARGET_SHA" ]]
 [[ ! -e $RECOVERY_ACTIVATION_LOG ]]
+cp "$PROJECT_ROOT/$dormant_asset" "$REPO/$dormant_asset"
+git -C "$REPO" update-index --no-assume-unchanged "$dormant_asset"
+[[ -z $(git -C "$REPO" status --porcelain) ]]
+
+# A sync failure leaves the old marker and installed ancestor bytes intact.
+TEST_PHASE=already-newer-sync-failure
+printf '%s\n' "$TARGET_SHA" > "$STATE/postgres-pool-bootstrap.sha"
+printf '%s\n' "$HISTORICAL_CONTROL_SHA" > "$STATE/control.sha"
+install_historical_control_entrypoint
+cp "$INSTALLED" "$FIXTURE/installed-before-sync-failure"
+cp "$STATE/postgres-pool-bootstrap.sha" "$FIXTURE/marker-before-sync-failure"
+rm -f "$RECOVERY_ACTIVATION_LOG"
+RECOVERY_SYNC_MODE=fail
+assert_current_recovery_fails \
+  'PostgreSQL bootstrap recovery could not sync current control'
+cmp -s "$FIXTURE/installed-before-sync-failure" "$INSTALLED"
+cmp -s "$FIXTURE/marker-before-sync-failure" \
+  "$STATE/postgres-pool-bootstrap.sha"
+assert_recovery_control_only
+
+# Dirty integration, HEAD movement, and atomic marker replacement after sync
+# are all detected before the independent pool marker can commit current.
+TEST_PHASE=already-newer-dirty-race
+RECOVERY_SYNC_MODE=dirty
+install_historical_control_entrypoint
+assert_current_recovery_fails \
+  'integration worktree is dirty during PostgreSQL bootstrap recovery'
+[[ $(<"$STATE/postgres-pool-bootstrap.sha") == "$TARGET_SHA" ]]
+rm -f "$REPO/recovery-race.untracked"
+git -C "$REPO" status --porcelain | grep -q . && {
+  echo 'dirty recovery fixture did not restore a clean integration' >&2
+  exit 1
+}
+
+TEST_PHASE=already-newer-head-race
+RECOVERY_SYNC_MODE=head-race
+install_historical_control_entrypoint
+assert_current_recovery_fails \
+  'current integration changed during PostgreSQL bootstrap recovery'
+[[ $(<"$STATE/postgres-pool-bootstrap.sha") == "$TARGET_SHA" ]]
+git -C "$REPO" update-ref refs/heads/main "$CURRENT_SHA"
+[[ $(git -C "$REPO" rev-parse HEAD) == "$CURRENT_SHA" ]]
+
+TEST_PHASE=already-newer-marker-race
+RECOVERY_SYNC_MODE=marker-race
+RECOVERY_RACE_SHA=$TARGET_SHA
+printf '%s\n' "$TARGET_SHA" > "$STATE/postgres-pool-bootstrap.sha"
+install_historical_control_entrypoint
+marker_identity_before_race=$(stat -c '%d:%i:%f:%s:%y:%z' \
+  "$STATE/postgres-pool-bootstrap.sha")
+assert_current_recovery_fails \
+  'PostgreSQL bootstrap marker changed during control reconciliation'
+[[ $(<"$STATE/postgres-pool-bootstrap.sha") == "$TARGET_SHA" ]]
+[[ $(stat -c '%d:%i:%f:%s:%y:%z' "$STATE/postgres-pool-bootstrap.sha") != \
+  "$marker_identity_before_race" ]]
+assert_recovery_control_only
+
+TEST_PHASE=already-newer-control-marker-race
+RECOVERY_SYNC_MODE=control-marker-race
+RECOVERY_RACE_SHA=$HISTORICAL_CONTROL_SHA
+install_historical_control_entrypoint
+control_identity_before_race=$(stat -c '%d:%i:%f:%s:%y:%z' \
+  "$STATE/control.sha")
+assert_current_recovery_fails \
+  'control marker changed during PostgreSQL bootstrap reconciliation'
+[[ $(<"$STATE/postgres-pool-bootstrap.sha") == "$TARGET_SHA" ]]
+[[ $(<"$STATE/control.sha") == "$HISTORICAL_CONTROL_SHA" ]]
+[[ $(stat -c '%d:%i:%f:%s:%y:%z' "$STATE/control.sha") != \
+  "$control_identity_before_race" ]]
+assert_recovery_control_only
+
+TEST_PHASE=already-newer-installed-entrypoint-race
+RECOVERY_SYNC_MODE=installed-race
+install_historical_control_entrypoint
+assert_current_recovery_fails \
+  'installed deploy entrypoint differs from reviewed commit'
+[[ $(<"$STATE/postgres-pool-bootstrap.sha") == "$TARGET_SHA" ]]
+assert_recovery_control_only
+
+TEST_PHASE=already-newer-dormant-asset-race
+RECOVERY_SYNC_MODE=dormant-asset-race
+install_historical_control_entrypoint
+assert_current_recovery_fails \
+  'integration worktree is dirty during PostgreSQL bootstrap recovery'
+[[ $(<"$STATE/postgres-pool-bootstrap.sha") == "$TARGET_SHA" ]]
+cp "$PROJECT_ROOT/ops/deploy/postgres-runtime-deploy-lib.sh" \
+  "$REPO/ops/deploy/postgres-runtime-deploy-lib.sh"
+[[ -z $(git -C "$REPO" status --porcelain) ]]
+assert_recovery_control_only
+
+RECOVERY_SYNC_MODE=success
+RECOVERY_RACE_SHA=$TARGET_SHA
+rm -f "$RECOVERY_ACTIVATION_LOG"
 
 # Invalid requested commits and unvalidated local descendants cannot use the
 # recovery path to mint a bootstrap marker or report already-deployed success.
@@ -499,6 +884,7 @@ cp "$PROJECT_ROOT/ops/deploy/social-monitor-production-deploy.sh" \
   "$PROJECT_ROOT/ops/deploy/deploy-control-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/postgres-runtime-deploy-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/backend-image-rescue-lib.sh" \
+  "$PROJECT_ROOT/ops/deploy/daily-runner-image-bootstrap-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/x-collector-image-deploy-lib.sh" \
   "$REPO/ops/deploy/"
 git -C "$REPO" add ops/deploy
