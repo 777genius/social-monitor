@@ -285,8 +285,8 @@ const assertDbAuthorityAndJoinGuards = async (params: {
     readonly requested_utc_date: string; readonly summary_text: string }>(
     `SELECT report->>'headline' AS headline,
             report->>'summaryText' AS summary_text,
-            exact_proof->>'requestedUtcDate' AS requested_utc_date,
-            exact_proof->>'requestedAt' AS requested_at,
+            evidence.exact_proof->>'requestedUtcDate' AS requested_utc_date,
+            evidence.exact_proof->>'requestedAt' AS requested_at,
             publication.published_at >= publication.requested_at AS clock_honest
        FROM reader_summary_weekly_publication_evidence evidence
        JOIN reader_summary_publications publication ON publication.id = evidence.publication_id
@@ -503,14 +503,14 @@ const assertReplayHasZeroWrites = async (
                 evidence.xmin::text AS evidence_xmin,
                 slot.xmin::text AS slot_xmin,
                 (SELECT count(*)::text FROM outbox_events
-                  WHERE correlation_id = $1) AS outbox_count
+                  WHERE correlation_id = $1::text) AS outbox_count
            FROM reader_summary_publications publication
            JOIN reader_summary_weekly_publication_evidence evidence
              ON evidence.publication_id = publication.id
            JOIN reader_summary_publication_slots slot
              ON slot.current_publication_id = publication.id
-          WHERE publication.reader_summary_job_id = $1`,
-      [fixture.jobId],
+          WHERE publication.reader_summary_job_id = $2::uuid`,
+      [fixture.jobId, fixture.jobId],
     )
   ).rows[0];
   const before = await state();
@@ -714,7 +714,7 @@ const createVerifiedGitHubAuthority = async (
        status, idempotency_key, requested_at, completed_at, created_at,
        updated_at
      ) VALUES (
-       $1, $2, $3, $4, $5, 'COMPLETED', $6, $7, $8, $7, $8
+       $1, $2, $3, $4, $5, 'SUCCEEDED', $6, $7, $8, $7, $8
      )`,
     [scanJobId, params.tenantId, params.workspaceId, sourceBindingId,
       randomUUID(), `publication-github-scan:${scanJobId}`, fetchStartedAt,

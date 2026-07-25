@@ -256,12 +256,12 @@ const assertRecoveryRollback = async (params: {
   ) => Promise<PublicationFixture>;
 }): Promise<void> => {
   const original = await params.createFixture("COMPLETED", 9, {
-    requestedAt: "2026-07-09T10:00:00.000Z",
+    requestedAt: "2026-06-09T10:00:00.000Z",
   });
   const provenance = recoveryProvenance(original.payload, "rollback");
   await finalize(params.client, original, provenance);
   const conflicting = await params.createFixture("COMPLETED", 9, {
-    requestedAt: "2026-07-09T11:00:00.000Z",
+    requestedAt: "2026-06-09T11:00:00.000Z",
   });
 
   await assertRejectsContaining(

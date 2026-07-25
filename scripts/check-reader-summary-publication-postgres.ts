@@ -1,5 +1,6 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { Pool, type PoolClient } from "pg";
+import { provisionReaderSummaryPublicationFixtureScope, readerSummaryPublicationFixtureScope } from "./lib/reader-summary-publication-postgres-fixture-scope";
 import {
   applyOrderedReaderSummaryMigrations,
   assertReaderSummaryMigrationDatabaseMatchesSchema,
@@ -179,6 +180,7 @@ async function main(): Promise<void> {
       const first = await runtime.connect();
       const second = await runtime.connect();
       try {
+        await provisionReaderSummaryPublicationFixtureScope(auditor);
         const [firstPid, secondPid] = await Promise.all([
           postgresBackendPid(first),
           postgresBackendPid(second),
@@ -243,7 +245,7 @@ async function main(): Promise<void> {
         await assertOlderStrongModelFailsClosed(first, 4);
         await assertConcurrentSemanticReplay(first, second, 5);
         await assertExactlyOneRaceWinner(first, second, 6);
-        await assertDbOwnedConcurrency(first, second, 7, 8);
+        await assertDbOwnedConcurrency(first, second, 10, 11);
         await assertReaderSummaryRecoveryPostgresContract({
           client: first,
           createFixture: (status, day, overrides) =>
@@ -605,7 +607,7 @@ const assertDbOwnedCardinality = async (
        (SELECT count(*) FROM reader_summary_weekly_publication_evidence
          WHERE period_started_at = $1) AS evidence,
        (SELECT count(*) FROM outbox_events
-         WHERE correlation_id = ANY($2::uuid[])) AS outbox`,
+         WHERE correlation_id = ANY($2::text[])) AS outbox`,
     [periodStart(day), jobIds],
   );
   assertDeepEqual(
@@ -624,8 +626,7 @@ const createRunningFixture = async (
     readonly modelVersion?: string;
   } & EvidenceFixtureOverrides = {},
 ): Promise<Fixture> => {
-  const tenantId = "00000000-0000-7000-8000-000000000001";
-  const workspaceId = "00000000-0000-7000-8000-000000000002";
+  const { tenantId, workspaceId } = readerSummaryPublicationFixtureScope;
   const jobId = randomUUID();
   const artifactId = randomUUID();
   const eventId = randomUUID();
@@ -862,8 +863,8 @@ const assertNoPublication = async (
          WHERE id = $1 AND status = 'RUNNING') AS jobs,
        (SELECT count(*) FROM reader_summary_weekly_publication_evidence
          WHERE reader_summary_job_id = $1 OR reader_summary_artifact_id = $2) AS evidence,
-       (SELECT count(*) FROM outbox_events WHERE correlation_id = $1) AS outbox`,
-    [fixture.jobId, fixture.artifactId],
+       (SELECT count(*) FROM outbox_events WHERE correlation_id = $3::text) AS outbox`,
+    [fixture.jobId, fixture.artifactId, fixture.jobId],
   );
   assert(
     rows.rows[0]?.publications === "0" &&
@@ -923,7 +924,6 @@ const periodStart = (day: number): string => utc(day, 0);
 const periodEnd = (day: number): string => utc(day + 1, 0);
 const utc = (day: number, hour: number): string =>
   new Date(Date.UTC(2026, 5, day, hour)).toISOString();
-
 const reverseObject = (
   value: Readonly<Record<string, unknown>>,
 ): Readonly<Record<string, unknown>> =>
