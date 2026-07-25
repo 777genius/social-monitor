@@ -257,10 +257,72 @@ grep -F 'sync_control_entrypoint' \
   <<< "$(sed -n '/^sync_control_script() {$/,/^}$/p' \
     "$SCRIPT_DIR/social-monitor-production-deploy.sh")" >/dev/null
 
+# The recovery dispatcher prefers the entrypoint helper. Its library fallback
+# retains the root-owned 0755 policy, same-directory atomic replacement, and
+# reviewed-byte checks without acquiring broader control-sync side effects.
+fallback_sync_body=$(sed -n \
+  '/^sync_postgres_pool_bootstrap_recovery_control_entrypoint_fallback() {$/,/^}$/p' \
+  "$SCRIPT_DIR/deploy-control-lib.sh")
+grep -F 'install -m 0755 -o root -g root "$source" "$temporary"' \
+  <<< "$fallback_sync_body" >/dev/null
+[[ $(grep -cF '== 0:0:755' <<< "$fallback_sync_body") == 3 ]]
+grep -F '[[ $(stat -c '\''%d'\'' "$temporary") == "$control_device" ]]' \
+  <<< "$fallback_sync_body" >/dev/null
+grep -F 'temporary_digest == "$expected_digest"' \
+  <<< "$fallback_sync_body" >/dev/null
+if grep -E 'wrapper|auth_refresh|x_collector|deploy_(backend|frontend)' \
+  <<< "$fallback_sync_body" >/dev/null; then
+  echo 'bootstrap fallback contains a broad control or runtime side effect' >&2
+  exit 1
+fi
+
+preferred_sync_log=$FIXTURE/preferred-sync.log
+sync_control_entrypoint() {
+  printf 'preferred\n' > "$preferred_sync_log"
+}
+sync_postgres_pool_bootstrap_recovery_control_entrypoint "$target_sha"
+unset -f sync_control_entrypoint
+grep -Fx 'preferred' "$preferred_sync_log" >/dev/null
+
+# Invalid canonical source and destination identities fail before a temporary
+# install can replace the historical entrypoint.
+entrypoint_source=$REPO/ops/deploy/social-monitor-production-deploy.sh
+mv "$entrypoint_source" "$entrypoint_source.valid"
+ln -s "$entrypoint_source.valid" "$entrypoint_source"
+set +e
+invalid_source_error=$(
+  (sync_postgres_pool_bootstrap_recovery_control_entrypoint "$target_sha") 2>&1
+)
+invalid_source_status=$?
+set -e
+((invalid_source_status != 0))
+grep -F 'source is not a regular non-symlink file' \
+  <<< "$invalid_source_error" >/dev/null
+rm -f "$entrypoint_source"
+mv "$entrypoint_source.valid" "$entrypoint_source"
+
 # Normal callers retain the ancestor-accepting fast path. The explicit
 # force-advance mode is separate, rejects misspellings, and is used by exactly
 # one reconciliation call after marker identity race checks.
 install -m 0755 "$REPO/ops/deploy/social-monitor-production-deploy.sh" \
+  "$CONTROL/github-production-deploy.sh"
+mv "$CONTROL/github-production-deploy.sh" \
+  "$CONTROL/github-production-deploy.sh.valid"
+ln -s "$CONTROL/github-production-deploy.sh.valid" \
+  "$CONTROL/github-production-deploy.sh"
+set +e
+invalid_destination_error=$(
+  (sync_postgres_pool_bootstrap_recovery_control_entrypoint "$target_sha") 2>&1
+)
+invalid_destination_status=$?
+set -e
+((invalid_destination_status != 0))
+grep -F 'destination is not a regular non-symlink file' \
+  <<< "$invalid_destination_error" >/dev/null
+[[ ! -e $CONTROL/github-production-deploy.sh.next && \
+   ! -L $CONTROL/github-production-deploy.sh.next ]]
+rm -f "$CONTROL/github-production-deploy.sh"
+mv "$CONTROL/github-production-deploy.sh.valid" \
   "$CONTROL/github-production-deploy.sh"
 printf '%s\n' "$target_sha" > "$STATE/postgres-pool-bootstrap.sha"
 commit_mode_output=$(

@@ -354,6 +354,91 @@ validate_current_postgres_pool_bootstrap_recovery() {
   verify_current_postgres_pool_bootstrap_recovery_sources "$current"
 }
 
+sync_postgres_pool_bootstrap_recovery_control_entrypoint_fallback() {
+  local current=$1
+  local relative_path=ops/deploy/social-monitor-production-deploy.sh
+  local source=$REPO/$relative_path
+  local destination=$CONTROL/github-production-deploy.sh
+  local temporary=$destination.next
+  local control_real source_identity destination_identity
+  local expected_digest temporary_digest installed_digest
+  local control_device destination_device
+
+  [[ -d $CONTROL && ! -L $CONTROL ]] || \
+    fail 'control root is not a regular non-symlink directory'
+  control_real=$(readlink -f "$CONTROL") || \
+    fail 'control root path cannot be resolved'
+  [[ $control_real == "$CONTROL" ]] || \
+    fail 'control root is not the canonical destination'
+  [[ -f $source && ! -L $source ]] || \
+    fail 'current deploy entrypoint source is not a regular non-symlink file'
+  [[ -f $destination && ! -L $destination ]] || \
+    fail 'installed deploy entrypoint destination is not a regular non-symlink file'
+  [[ ! -e $temporary && ! -L $temporary ]] || \
+    fail 'installed deploy entrypoint temporary path is invalid'
+  [[ $(stat -c '%u:%g:%a' "$destination") == 0:0:755 ]] || \
+    fail 'installed deploy entrypoint destination ownership or mode is invalid'
+
+  verify_postgres_pool_bootstrap_recovery_file \
+    "$current" "$relative_path" "$source" \
+    'current PostgreSQL bootstrap deploy entrypoint source'
+  expected_digest=$(
+    deploy_control_git_blob_digest "$current" "$relative_path"
+  ) || fail 'current deploy entrypoint source digest cannot be read'
+  source_identity=$(
+    postgres_pool_bootstrap_recovery_file_identity "$source"
+  ) || fail 'current deploy entrypoint source identity cannot be inventoried'
+  destination_identity=$(
+    postgres_pool_bootstrap_recovery_file_identity "$destination"
+  ) || fail 'installed deploy entrypoint destination identity cannot be inventoried'
+  control_device=$(stat -c '%d' "$CONTROL") || \
+    fail 'control root filesystem cannot be inventoried'
+  destination_device=$(stat -c '%d' "$destination") || \
+    fail 'installed deploy entrypoint filesystem cannot be inventoried'
+  [[ $destination_device == "$control_device" ]] || \
+    fail 'installed deploy entrypoint is not on the control filesystem'
+
+  install -m 0755 -o root -g root "$source" "$temporary" || \
+    fail 'current deploy entrypoint temporary install failed'
+  [[ -f $temporary && ! -L $temporary ]] || \
+    fail 'installed deploy entrypoint temporary file is invalid'
+  [[ $(stat -c '%d' "$temporary") == "$control_device" ]] || \
+    fail 'installed deploy entrypoint temporary file is not on the control filesystem'
+  [[ $(stat -c '%u:%g:%a' "$temporary") == 0:0:755 ]] || \
+    fail 'installed deploy entrypoint temporary ownership or mode is invalid'
+  temporary_digest=$(deploy_control_file_digest "$temporary") || \
+    fail 'installed deploy entrypoint temporary digest cannot be read'
+  [[ $temporary_digest == "$expected_digest" ]] || \
+    fail 'installed deploy entrypoint temporary bytes differ from reviewed source'
+  [[ $(postgres_pool_bootstrap_recovery_file_identity "$source") == \
+     "$source_identity" ]] || \
+    fail 'current deploy entrypoint source changed during fallback sync'
+  [[ $(postgres_pool_bootstrap_recovery_file_identity "$destination") == \
+     "$destination_identity" ]] || \
+    fail 'installed deploy entrypoint destination changed during fallback sync'
+
+  mv -f "$temporary" "$destination" || \
+    fail 'current deploy entrypoint atomic replacement failed'
+  [[ -f $destination && ! -L $destination ]] || \
+    fail 'installed deploy entrypoint is invalid after fallback sync'
+  [[ $(stat -c '%u:%g:%a' "$destination") == 0:0:755 ]] || \
+    fail 'installed deploy entrypoint ownership or mode is invalid after fallback sync'
+  installed_digest=$(deploy_control_file_digest "$destination") || \
+    fail 'installed deploy entrypoint digest cannot be read after fallback sync'
+  [[ $installed_digest == "$expected_digest" ]] || \
+    fail 'installed deploy entrypoint differs from reviewed source after fallback sync'
+}
+
+sync_postgres_pool_bootstrap_recovery_control_entrypoint() {
+  local current=$1
+
+  if declare -F sync_control_entrypoint >/dev/null; then
+    sync_control_entrypoint
+    return
+  fi
+  sync_postgres_pool_bootstrap_recovery_control_entrypoint_fallback "$current"
+}
+
 reconcile_current_postgres_pool_bootstrap() {
   local expected_current=$1
   local marker=$STATE/postgres-pool-bootstrap.sha
@@ -404,7 +489,7 @@ reconcile_current_postgres_pool_bootstrap() {
       postgres_pool_bootstrap_recovery_file_identity "$control_marker"
     ) || fail 'control marker identity cannot be inventoried'
 
-    sync_control_entrypoint || \
+    sync_postgres_pool_bootstrap_recovery_control_entrypoint "$current" || \
       fail 'PostgreSQL bootstrap recovery could not sync current control'
     validate_current_postgres_pool_bootstrap_recovery "$current"
     verify_postgres_pool_bootstrap_recovery_file \

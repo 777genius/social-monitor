@@ -250,56 +250,57 @@ run_current_deploy() {
     GIT_CONFIG_GLOBAL="$FIXTURE/gitconfig"
     RECOVERY_SYNC_MODE="${RECOVERY_SYNC_MODE:-success}"
     RECOVERY_RACE_SHA="${RECOVERY_RACE_SHA:-$TARGET_SHA}"
+    EXPECT_MISSING_SYNC_ENTRYPOINT="${EXPECT_MISSING_SYNC_ENTRYPOINT:-false}"
   )
   # Positional parameters and log paths expand only in the isolated child shell.
   # shellcheck disable=SC2016
   /usr/bin/env "${environment[@]}" /usr/bin/bash -c '
     recovery_event_log=$2
     source "$1"
+    [[ $EXPECT_MISSING_SYNC_ENTRYPOINT != true ]] || ! declare -F sync_control_entrypoint >/dev/null
     advance_integration() {
       printf "integration\n" >> "$recovery_event_log"
       return 97
     }
-    sync_control_entrypoint() {
-      printf "entrypoint\n" >> "$recovery_event_log"
-      [[ $RECOVERY_SYNC_MODE != fail ]] || return 97
-      source_path=$SOCIAL_MONITOR_DEPLOY_REPO/ops/deploy/social-monitor-production-deploy.sh
-      destination=$SOCIAL_MONITOR_DEPLOY_CONTROL/github-production-deploy.sh
-      install -m 0755 "$source_path" "$destination.next"
-      mv -f "$destination.next" "$destination"
-      case $RECOVERY_SYNC_MODE in
-        success) ;;
-        dirty)
-          printf "raced\n" > "$SOCIAL_MONITOR_DEPLOY_REPO/recovery-race.untracked"
-          ;;
-        head-race)
-          git -C "$SOCIAL_MONITOR_DEPLOY_REPO" update-ref \
-            refs/heads/main "$RECOVERY_RACE_SHA"
-          ;;
-        marker-race)
-          printf "%s\n" "$RECOVERY_RACE_SHA" \
-            > "$SOCIAL_MONITOR_DEPLOY_STATE/postgres-pool-bootstrap.sha.next"
-          mv -f "$SOCIAL_MONITOR_DEPLOY_STATE/postgres-pool-bootstrap.sha.next" \
-            "$SOCIAL_MONITOR_DEPLOY_STATE/postgres-pool-bootstrap.sha"
-          ;;
-        control-marker-race)
-          printf "%s\n" "$RECOVERY_RACE_SHA" \
-            > "$SOCIAL_MONITOR_DEPLOY_STATE/control.sha.next"
-          mv -f "$SOCIAL_MONITOR_DEPLOY_STATE/control.sha.next" \
-            "$SOCIAL_MONITOR_DEPLOY_STATE/control.sha"
-          ;;
-        installed-race)
-          printf "\n# raced installed control\n" >> "$destination"
-          ;;
-        dormant-asset-race)
-          printf "\n# raced dormant asset\n" >> \
-            "$SOCIAL_MONITOR_DEPLOY_REPO/ops/deploy/postgres-runtime-deploy-lib.sh"
-          ;;
-        *)
-          return 96
-          ;;
-      esac
-    }
+    if [[ $RECOVERY_SYNC_MODE != success ]]; then
+      sync_control_entrypoint() {
+        printf "entrypoint\n" >> "$recovery_event_log"
+        [[ $RECOVERY_SYNC_MODE != fail ]] || return 97
+        source_path=$SOCIAL_MONITOR_DEPLOY_REPO/ops/deploy/social-monitor-production-deploy.sh
+        destination=$SOCIAL_MONITOR_DEPLOY_CONTROL/github-production-deploy.sh
+        install -m 0755 "$source_path" "$destination.next"
+        mv -f "$destination.next" "$destination"
+        case $RECOVERY_SYNC_MODE in
+          dirty)
+            printf "raced\n" > "$SOCIAL_MONITOR_DEPLOY_REPO/recovery-race.untracked"
+            ;;
+          head-race)
+            git -C "$SOCIAL_MONITOR_DEPLOY_REPO" update-ref \
+              refs/heads/main "$RECOVERY_RACE_SHA"
+            ;;
+          marker-race)
+            printf "%s\n" "$RECOVERY_RACE_SHA" \
+              > "$SOCIAL_MONITOR_DEPLOY_STATE/postgres-pool-bootstrap.sha.next"
+            mv -f "$SOCIAL_MONITOR_DEPLOY_STATE/postgres-pool-bootstrap.sha.next" \
+              "$SOCIAL_MONITOR_DEPLOY_STATE/postgres-pool-bootstrap.sha"
+            ;;
+          control-marker-race)
+            printf "%s\n" "$RECOVERY_RACE_SHA" \
+              > "$SOCIAL_MONITOR_DEPLOY_STATE/control.sha.next"
+            mv -f "$SOCIAL_MONITOR_DEPLOY_STATE/control.sha.next" \
+              "$SOCIAL_MONITOR_DEPLOY_STATE/control.sha"
+            ;;
+          installed-race)
+            printf "\n# raced installed control\n" >> "$destination"
+            ;;
+          dormant-asset-race)
+            printf "\n# raced dormant asset\n" >> \
+              "$SOCIAL_MONITOR_DEPLOY_REPO/ops/deploy/postgres-runtime-deploy-lib.sh"
+            ;;
+          *) return 96 ;;
+        esac
+      }
+    fi
     sync_control_script() {
       printf "broad-control\n" >> "$recovery_event_log"
       return 97
@@ -396,13 +397,29 @@ grep -Fx 'postgres_pool_bootstrap=postgres-pool-v1' <<< "$committed_plan" >/dev/
 grep -Fx "postgres_pool_bootstrap_sha=$TARGET_SHA" <<< "$committed_plan" >/dev/null
 
 TEST_PHASE=already-newer-fixture
-# Model the independently advanced historical control marker with a sourceable
-# ancestor entrypoint. The fixture-only comment keeps its bytes distinct from
-# current while preserving the same library-loading boundary.
+# Model the independently advanced marker with the pre-split inline sync shape.
 cp "$PROJECT_ROOT/ops/deploy/social-monitor-production-deploy.sh" \
   "$REPO/ops/deploy/"
-printf '\n# fixture historical installed control\n' \
-  >> "$REPO/ops/deploy/social-monitor-production-deploy.sh"
+python3 - "$REPO/ops/deploy/social-monitor-production-deploy.sh" <<'PY'
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+source = path.read_text(encoding="utf-8")
+start = source.index("sync_control_entrypoint() {")
+end = source.index("\n}\n\ncommit_postgres_pool_bootstrap() {", start) + 2
+helper = source[start:end]
+body = "\n".join(helper.splitlines()[1:-1]) + "\n"
+if source.count("  sync_control_entrypoint\n") != 1:
+    raise SystemExit("split helper call was not found exactly once")
+source = source.replace("  sync_control_entrypoint\n", body, 1)
+source = source.replace(helper + "\n\n", "", 1)
+path.write_text(source, encoding="utf-8")
+PY
+if grep -q '^sync_control_entrypoint()' "$REPO/ops/deploy/social-monitor-production-deploy.sh"; then
+  echo 'historical control fixture unexpectedly defines the split helper' >&2
+  exit 1
+fi
 git -C "$REPO" add ops/deploy/social-monitor-production-deploy.sh
 git -C "$REPO" commit -qm 'test: historical installed control'
 git -C "$REPO" push -q origin main
@@ -415,6 +432,11 @@ cp "$PROJECT_ROOT/ops/deploy/social-monitor-production-deploy.sh" \
   "$PROJECT_ROOT/ops/deploy/daily-runner-image-bootstrap-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/x-collector-image-deploy-lib.sh" \
   "$REPO/ops/deploy/"
+# Adapt only the committed fallback copy for an unprivileged CI runner.
+sed -i \
+  -e 's/install -m 0755 -o root -g root "$source" "$temporary"/install -m 0755 "$source" "$temporary"/' \
+  -e "s/== 0:0:755/== $(id -u):$(id -g):755/g" \
+  "$REPO/ops/deploy/deploy-control-lib.sh"
 git -C "$REPO" add ops/deploy
 git -C "$REPO" commit -qm 'test: current integration Release B'
 git -C "$REPO" push -q origin main
@@ -531,9 +553,15 @@ historical_pool_identity=$(stat -c '%d:%i:%f:%s:%y:%z' \
   "$STATE/postgres-pool-bootstrap.sha")
 historical_control_identity=$(stat -c '%d:%i:%f:%s:%y:%z' \
   "$STATE/control.sha")
+printf 'unrelated-control-state\n' > "$CONTROL/recovery-unrelated.sentinel"
+cp "$CONTROL/recovery-unrelated.sentinel" "$FIXTURE/recovery-unrelated-before"
+unrelated_control_identity=$(stat -c '%d:%i:%f:%s:%y:%z' \
+  "$CONTROL/recovery-unrelated.sentinel")
 rm -f "$RECOVERY_ACTIVATION_LOG"
 RECOVERY_SYNC_MODE=success
+EXPECT_MISSING_SYNC_ENTRYPOINT=true
 historical_output=$(run_current_deploy)
+EXPECT_MISSING_SYNC_ENTRYPOINT=false
 grep -Fx "already-deployed-or-newer=$CURRENT_SHA" \
   <<< "$historical_output" >/dev/null
 [[ $(<"$STATE/postgres-pool-bootstrap.sha") == "$CURRENT_SHA" ]]
@@ -543,18 +571,26 @@ grep -Fx "already-deployed-or-newer=$CURRENT_SHA" \
 [[ $(stat -c '%d:%i:%f:%s:%y:%z' "$STATE/control.sha") == \
   "$historical_control_identity" ]]
 cmp -s "$INSTALLED" "$REPO/ops/deploy/social-monitor-production-deploy.sh"
-grep -Fx 'entrypoint' "$RECOVERY_ACTIVATION_LOG" >/dev/null
-[[ $(wc -l < "$RECOVERY_ACTIVATION_LOG") == 1 ]]
+[[ $(stat -c '%a' "$INSTALLED") == 755 ]]
+[[ $(stat -c '%u:%g' "$INSTALLED") == "$(id -u):$(id -g)" ]]
+[[ ! -e $INSTALLED.next && ! -L $INSTALLED.next ]]
+cmp -s "$FIXTURE/recovery-unrelated-before" \
+  "$CONTROL/recovery-unrelated.sentinel"
+[[ $(stat -c '%d:%i:%f:%s:%y:%z' \
+  "$CONTROL/recovery-unrelated.sentinel") == "$unrelated_control_identity" ]]
+[[ ! -e $RECOVERY_ACTIVATION_LOG ]]
 assert_recovery_control_only
 
 # Replaying the same historical workflow request takes the normal valid fast
 # path. It neither syncs control again nor activates any release surface.
 TEST_PHASE=already-newer-historical-replay
-cp "$RECOVERY_ACTIVATION_LOG" "$FIXTURE/recovery-events-before-replay"
+[[ ! -e $RECOVERY_ACTIVATION_LOG ]]
+replay_installed_identity=$(stat -c '%d:%i:%f:%s:%y:%z' "$INSTALLED")
 replay_output=$(run_current_deploy)
 grep -Fx "already-deployed-or-newer=$CURRENT_SHA" \
   <<< "$replay_output" >/dev/null
-cmp -s "$FIXTURE/recovery-events-before-replay" "$RECOVERY_ACTIVATION_LOG"
+[[ ! -e $RECOVERY_ACTIVATION_LOG ]]
+[[ $(stat -c '%d:%i:%f:%s:%y:%z' "$INSTALLED") == "$replay_installed_identity" ]]
 [[ $(<"$STATE/postgres-pool-bootstrap.sha") == "$CURRENT_SHA" ]]
 assert_recovery_control_only
 
