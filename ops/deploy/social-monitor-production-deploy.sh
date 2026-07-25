@@ -213,6 +213,18 @@ fi
 source "$REPO/ops/deploy/postgres-runtime-deploy-lib.sh"
 # shellcheck source=ops/deploy/backend-image-rescue-lib.sh
 source "$REPO/ops/deploy/backend-image-rescue-lib.sh"
+daily_runner_bootstrap_library=$REPO/ops/deploy/daily-runner-image-bootstrap-lib.sh
+if [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} == 1 && \
+      ! -f $daily_runner_bootstrap_library ]]; then
+  daily_runner_bootstrap_library=$(
+    cd "$(dirname "${BASH_SOURCE[0]}")" && pwd
+  )/daily-runner-image-bootstrap-lib.sh
+fi
+[[ -f $daily_runner_bootstrap_library && ! -L $daily_runner_bootstrap_library ]] || \
+  fail 'daily-runner image bootstrap library is not a regular file'
+# shellcheck source=ops/deploy/daily-runner-image-bootstrap-lib.sh
+source "$daily_runner_bootstrap_library"
+unset daily_runner_bootstrap_library
 # shellcheck source=ops/deploy/x-collector-image-deploy-lib.sh
 source "$REPO/ops/deploy/x-collector-image-deploy-lib.sh"
 initialize_deploy_control_bridge
@@ -759,6 +771,10 @@ deploy_backend() (
   )
   local previous
   previous=$(backend_image_rescue_state_file "$sha")
+  if printf '%s\n' "${captured_services[@]}" | grep -qx daily-runner; then
+    daily_runner_image_bootstrap_before_rescue "$from" "$sha" || \
+      fail 'missing prior daily-runner image could not be reconstructed'
+  fi
   backend_image_rescue_prepare "$sha" "$previous" "${captured_services[@]}" || \
     fail 'required rollback images could not be pinned before build'
   local needs_migrate=false

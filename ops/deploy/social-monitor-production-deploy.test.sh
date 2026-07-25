@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 ENTRYPOINT=$SCRIPT_DIR/social-monitor-production-deploy.sh
 BACKUP_LIBRARY=$SCRIPT_DIR/postgres-backup-deploy-lib.sh
-FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/social-monitor-deploy-test.XXXXXX")
+FIXTURE=$(mktemp -d "/tmp/social-monitor-deploy-test.XXXXXX")
 trap 'rm -rf "$FIXTURE"' EXIT
 
 REPO=$FIXTURE/repo
@@ -26,6 +26,7 @@ install -d "$REPO/apps/frontend" "$REPO/apps/api-gateway" \
 cp "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/deploy-control-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/backend-image-rescue-lib.sh" "$REPO/ops/deploy/"
+cp "$SCRIPT_DIR/daily-runner-image-bootstrap-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/x-collector-image-deploy-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/reader-summary-publication-deploy-lib.sh" \
   "$SCRIPT_DIR/reader-summary-publication-pre-migration.sql" \
@@ -460,6 +461,7 @@ assert_pre_replacement_failure() {
         marker_value() {
           printf "%s\n" 0123456789abcdef0123456789abcdef01234567
         }
+        daily_runner_image_bootstrap_before_rescue() { :; }
         backend_image_rescue_prepare() {
           printf "prepared\n" > "$(backend_image_rescue_phase_file "$2")"
           printf "prepare\n" >> "$FAILURE_LOG"
@@ -932,9 +934,14 @@ if run_entrypoint upload "$TARGET_SHA" < "$FIXTURE/bad-frontend.tgz" >/dev/null 
 fi
 
 echo 'Production deploy contract tests passed'
+if command -v shellcheck >/dev/null; then
+  shellcheck -x "$SCRIPT_DIR"/daily-runner-image-bootstrap-*.sh
+fi
+bash "$SCRIPT_DIR/daily-runner-image-bootstrap-deploy.test.sh"
+bash "$SCRIPT_DIR/daily-runner-image-bootstrap-lib.test.sh"
 bash "$SCRIPT_DIR/backend-image-rescue-lib.test.sh"
 bash "$SCRIPT_DIR/postgres-runtime-deploy-lib.test.sh"
-bash "$SCRIPT_DIR/github-premidnight-capture-runtime.test.sh"
+TMPDIR=/tmp bash "$SCRIPT_DIR/github-premidnight-capture-runtime.test.sh"
 bash "$SCRIPT_DIR/verify-postgres-runtime-topology.test.sh"
 bash "$SCRIPT_DIR/reader-summary-publication-migrator-validation.test.sh"
 bash "$SCRIPT_DIR/refresh-codex-auth.test.sh"
