@@ -11,7 +11,7 @@ import type { PrismaSummaryClient } from "./prisma-summary-client";
 import type { PrismaSummaryStatus } from "./prisma-summary-records";
 
 describe("PrismaReaderSummaryArtifactRepository", () => {
-  it("rejects daily completed and no-signal candidates without canonical GitHub proof", async () => {
+  it("rejects a daily completed candidate without canonical GitHub proof but stages a genuine no-signal candidate", async () => {
     const prisma = new FakeReaderSummaryPrisma();
     const repository = new PrismaReaderSummaryArtifactRepository(prisma.client);
 
@@ -48,7 +48,7 @@ describe("PrismaReaderSummaryArtifactRepository", () => {
     expect(list.items).toEqual([]);
     expect(periods.items).toEqual([]);
     expect(prisma.statusFor("reader-summary-completed")).toBe("REJECTED");
-    expect(prisma.statusFor("reader-summary-empty")).toBe("REJECTED");
+    expect(prisma.statusFor("reader-summary-empty")).toBe("RUNNING");
     await expect(
       repository.findById({
         tenantId: tenant,
