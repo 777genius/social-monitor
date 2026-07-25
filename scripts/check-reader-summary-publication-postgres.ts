@@ -194,7 +194,8 @@ async function main(): Promise<void> {
         );
         await assertLegacyRepositoryVisibility(runtimeDatabaseUrl);
         await assertReaderSummaryWeeklyPublicationEvidencePostgresContract({
-          client: first,
+          runtimeClient: first,
+          canonicalJsonAuditor: auditor,
           createFixture: (status, day, overrides) =>
             createRunningFixture(first, status, day, overrides),
           publish: (payload) => publish(first, payload),
@@ -236,8 +237,8 @@ async function main(): Promise<void> {
           ],
           proofSha256: String(privilegeFixture.payload.proofSha256),
         });
-        await assertSemanticReplay(first, "COMPLETED", 1);
-        await assertSemanticReplay(first, "NO_SIGNAL", 2);
+        await assertSemanticReplay(first, auditor, "COMPLETED", 1);
+        await assertSemanticReplay(first, auditor, "NO_SIGNAL", 2);
         await assertMissingBindingsFailClosed(first, 3);
         await assertOlderStrongModelFailsClosed(first, 4);
         await assertConcurrentSemanticReplay(first, second, 5);
@@ -354,17 +355,16 @@ const assertLegacyTablesOwnedByRuntime = async (
   }
 };
 const assertSemanticReplay = async (
-  client: PoolClient,
-  status: "COMPLETED" | "NO_SIGNAL",
-  day: number,
+  runtimeClient: PoolClient, canonicalJsonAuditor: PoolClient,
+  status: "COMPLETED" | "NO_SIGNAL", day: number,
 ): Promise<void> => {
-  const fixture = await createRunningFixture(client, status, day);
-  const first = await publish(client, fixture.payload);
-  const replay = await publish(client, reverseObject(fixture.payload));
+  const fixture = await createRunningFixture(runtimeClient, status, day);
+  const first = await publish(runtimeClient, fixture.payload);
+  const replay = await publish(runtimeClient, reverseObject(fixture.payload));
   assert(first === "published", `${status} first publication must win`);
   assert(replay === "replayed", `${status} semantic JSON replay must succeed`);
   await assertReaderSummaryWeeklyPublicationEvidenceRow(
-    client,
+    runtimeClient, canonicalJsonAuditor,
     fixture,
     status,
   );
@@ -376,12 +376,12 @@ const assertSemanticReplay = async (
     eventId: randomUUID(),
   };
   await assertRejects(
-    () => publish(client, conflictingReplay),
+    () => publish(runtimeClient, conflictingReplay),
     `${status} replay with a different outbox event id must conflict`,
   );
   await assertRejectsContaining(
     () =>
-      client.query(
+      runtimeClient.query(
         `INSERT INTO reader_summary_publications
          SELECT * FROM reader_summary_publications
           WHERE reader_summary_job_id = $1`,
@@ -392,7 +392,7 @@ const assertSemanticReplay = async (
   );
   await assertRejectsContaining(
     () =>
-      client.query(
+      runtimeClient.query(
         `UPDATE reader_summary_publication_slots
             SET current_publication_id = current_publication_id
           WHERE current_publication_id = $1`,
@@ -401,7 +401,7 @@ const assertSemanticReplay = async (
     "permission denied",
     `${status} direct active-slot update must be rejected`,
   );
-  const counts = await client.query<{
+  const counts = await runtimeClient.query<{
     readonly publications: string;
     readonly outbox: string;
     readonly visible: string;

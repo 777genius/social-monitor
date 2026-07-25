@@ -96,7 +96,7 @@ export const createReaderSummaryPublicationFixtureAuthority = async (params: {
 };
 export const assertReaderSummaryWeeklyPublicationEvidencePostgresContract =
   async (params: {
-    readonly client: PoolClient;
+    readonly runtimeClient: PoolClient; readonly canonicalJsonAuditor: PoolClient;
     readonly createFixture: (
       status: "COMPLETED" | "NO_SIGNAL",
       day: number,
@@ -109,8 +109,8 @@ export const assertReaderSummaryWeeklyPublicationEvidencePostgresContract =
       fixture: ReaderSummaryPublicationEvidenceFixture,
     ) => Promise<void>;
   }): Promise<void> => {
-    await assertCanonicalJsonParityAndBounds(params.client);
-    await assertCanonicalFunctionsAreHardened(params.client);
+    await assertCanonicalJsonParityAndBounds(params.canonicalJsonAuditor);
+    await assertCanonicalFunctionsAreHardened(params.canonicalJsonAuditor);
     await assertDbAuthorityAndJoinGuards(params);
     const ordinaryNoSignal = await params.createFixture("NO_SIGNAL", 20);
     assert(
@@ -118,7 +118,7 @@ export const assertReaderSummaryWeeklyPublicationEvidencePostgresContract =
       "ordinary NO_SIGNAL evidence must publish",
     );
     await assertReaderSummaryWeeklyPublicationEvidenceRow(
-      params.client,
+      params.runtimeClient, params.canonicalJsonAuditor,
       ordinaryNoSignal,
       "NO_SIGNAL",
       "ordinary_not_required",
@@ -131,7 +131,7 @@ export const assertReaderSummaryWeeklyPublicationEvidencePostgresContract =
       "authorized historical evidence must publish",
     );
     await assertReaderSummaryWeeklyPublicationEvidenceRow(
-      params.client,
+      params.runtimeClient, params.canonicalJsonAuditor,
       historical,
       "COMPLETED",
       "historical_unavailable",
@@ -144,7 +144,7 @@ export const assertReaderSummaryWeeklyPublicationEvidencePostgresContract =
       "verified exact GitHub board must publish",
     );
     await assertReaderSummaryWeeklyPublicationEvidenceRow(
-      params.client,
+      params.runtimeClient, params.canonicalJsonAuditor,
       verified,
       "COMPLETED",
       "verified",
@@ -154,14 +154,14 @@ export const assertReaderSummaryWeeklyPublicationEvidencePostgresContract =
       (await params.publish(verifiedV2)) === "replayed",
       "DB-owned exact evidence must replay",
     );
-    await assertReplayHasZeroWrites(params.client, verified, verifiedV2, params.publish);
+    await assertReplayHasZeroWrites(params.runtimeClient, verified, verifiedV2, params.publish);
     await assertSnapshotSurvivesSourceMutation(
-      params.client,
+      params.runtimeClient,
       verified,
       verifiedV2,
       params.publish,
     );
-    await params.client.query(
+    await params.runtimeClient.query(
       `UPDATE reader_summary_jobs SET status = 'FAILED'
         WHERE id = $1`,
       [verified.jobId],
@@ -175,7 +175,7 @@ export const assertReaderSummaryWeeklyPublicationEvidencePostgresContract =
     });
     assert(wrongState.githubSourceBindingId !== undefined,
       "verified fixture must expose its exact source binding");
-    await params.client.query(
+    await params.runtimeClient.query(
       `UPDATE source_bindings SET status = 'PAUSED'
         WHERE id = $1`,
       [wrongState.githubSourceBindingId],
@@ -226,7 +226,7 @@ export const assertReaderSummaryWeeklyPublicationEvidencePostgresContract =
       27,
       { githubEvidenceMode: "historical_unavailable" },
     );
-    await params.client.query(
+    await params.runtimeClient.query(
       `UPDATE reader_summary_artifacts
           SET quality_signals = jsonb_set(
             quality_signals,
@@ -243,7 +243,7 @@ export const assertReaderSummaryWeeklyPublicationEvidencePostgresContract =
     await params.assertNoPublication(unauthorizedHistorical);
   };
 const assertDbAuthorityAndJoinGuards = async (params: {
-  readonly client: PoolClient;
+  readonly runtimeClient: PoolClient;
   readonly createFixture: (
     status: "COMPLETED" | "NO_SIGNAL",
     day: number,
@@ -257,7 +257,7 @@ const assertDbAuthorityAndJoinGuards = async (params: {
   ) => Promise<void>;
 }): Promise<void> => {
   const authoritative = await params.createFixture("COMPLETED", 30);
-  const storedAuthority = await params.client.query<{ readonly has_publication_generation: boolean }>(
+  const storedAuthority = await params.runtimeClient.query<{ readonly has_publication_generation: boolean }>(
     `UPDATE reader_summary_artifacts
         SET headline = 'Database authoritative title',
             summary_text = 'Database authoritative text',
@@ -272,7 +272,7 @@ const assertDbAuthorityAndJoinGuards = async (params: {
     "real persisted quality signals must not pre-seed publication generation");
   const lateRequestedAt = new Date(Date.parse(
     String(authoritative.payload.periodEndedAt)) + 20 * 60_000).toISOString();
-  await params.client.query(
+  await params.runtimeClient.query(
     `UPDATE reader_summary_jobs SET requested_at = $2, started_at = $2 WHERE id = $1`,
     [authoritative.jobId, lateRequestedAt],
   );
@@ -280,7 +280,7 @@ const assertDbAuthorityAndJoinGuards = async (params: {
     (await params.publish(readerSummaryPublicationDbOwnedRequest(authoritative))) === "published",
     "DB-owned report authority must publish",
   );
-  const report = await params.client.query<{ readonly clock_honest: boolean;
+  const report = await params.runtimeClient.query<{ readonly clock_honest: boolean;
     readonly headline: string; readonly requested_at: string;
     readonly requested_utc_date: string; readonly summary_text: string }>(
     `SELECT report->>'headline' AS headline,
@@ -317,14 +317,14 @@ const assertDbAuthorityAndJoinGuards = async (params: {
   const nestedScope = await params.createFixture("NO_SIGNAL", 37,
     { publicationInterestId: randomUUID() });
   const otherInterestId = randomUUID();
-  await params.client.query(
+  await params.runtimeClient.query(
     `INSERT INTO interests (id, tenant_id, workspace_id, name, query, status, created_at, updated_at)
      SELECT $2, tenant_id, workspace_id, 'Other valid publication interest',
             'nested authority regression', 'ENABLED', requested_at, requested_at
        FROM reader_summary_jobs WHERE id = $1`,
     [nestedScope.jobId, otherInterestId],
   );
-  await params.client.query(
+  await params.runtimeClient.query(
     `UPDATE reader_summary_artifacts SET artifact_payload = jsonb_set(artifact_payload, '{scope}',
        jsonb_build_object('type', 'interest', 'interestId', $2::text)) WHERE id = $1`,
     [nestedScope.artifactId, otherInterestId],
@@ -345,7 +345,7 @@ const assertDbAuthorityAndJoinGuards = async (params: {
   ] as const;
   for (const [index, mutation] of mutations.entries()) {
     const fixture = await params.createFixture("COMPLETED", 38 + index);
-    await params.client.query(mutation, [fixture.artifactId]);
+    await params.runtimeClient.query(mutation, [fixture.artifactId]);
     await assertRejects(
       () => params.publish(readerSummaryPublicationDbOwnedRequest(fixture)),
       "top-level or nested DB-authority mutation must fail closed", index >= 4 ? "reader summary V2 pre-evidence authority is invalid" : undefined,
@@ -363,7 +363,8 @@ const assertDbAuthorityAndJoinGuards = async (params: {
   await params.assertNoPublication(crossInterest);
 };
 export const assertReaderSummaryWeeklyPublicationEvidenceRow = async (
-  client: PoolClient,
+  runtimeClient: PoolClient,
+  canonicalJsonAuditor: PoolClient,
   fixture: ReaderSummaryPublicationEvidenceFixture,
   status: "COMPLETED" | "NO_SIGNAL",
   githubMode: ReaderSummaryPublicationGitHubEvidenceMode =
@@ -371,10 +372,10 @@ export const assertReaderSummaryWeeklyPublicationEvidenceRow = async (
       ? "ordinary_not_required"
       : "historical_unavailable",
 ): Promise<void> => {
-  const result = await client.query<{
+  const result = await runtimeClient.query<{
     readonly artifact_id: string;
     readonly canonical_bytes: Buffer;
-    readonly canonical_matches: boolean;
+    readonly stored_canonical_matches: boolean;
     readonly canonical_record: Readonly<Record<string, unknown>>;
     readonly canonical_sha256: string;
     readonly exact_proof: unknown;
@@ -418,14 +419,10 @@ export const assertReaderSummaryWeeklyPublicationEvidenceRow = async (
             jsonb_array_length(github_evidence->'repositories')
               AS github_repositories,
             canonical_record->'providerCounts' AS provider_counts,
-            canonical_bytes = convert_to(
-              reader_summary_weekly_canonical_json(canonical_record),
-              'UTF8'
-            )
-            AND canonical_sha256 = encode(sha256(canonical_bytes), 'hex')
+            canonical_sha256 = encode(sha256(canonical_bytes), 'hex')
             AND identity =
               'reader_summary.weekly_publication_evidence.v1:' ||
-              canonical_sha256 AS canonical_matches
+              canonical_sha256 AS stored_canonical_matches
        FROM reader_summary_weekly_publication_evidence
       WHERE reader_summary_job_id = $1
         AND reader_summary_artifact_id = $2`,
@@ -448,6 +445,7 @@ export const assertReaderSummaryWeeklyPublicationEvidenceRow = async (
   ];
   const row = result.rows[0];
   assert(row !== undefined, `${status} publication evidence row is missing`);
+  const postgresCanonical = await canonicalJson(canonicalJsonAuditor, row.canonical_record);
   const jsEvidence = deriveReaderSummaryWeeklyPublicationEvidence({
     tenantId: row.tenant_id,
     workspaceId: row.workspace_id,
@@ -472,7 +470,8 @@ export const assertReaderSummaryWeeklyPublicationEvidenceRow = async (
       row.github_mode === githubMode &&
       row.github_count === (githubMode === "verified" ? 10 : 0) &&
       row.github_repositories === (githubMode === "verified" ? 10 : 0) &&
-      row.canonical_matches &&
+      row.stored_canonical_matches &&
+      postgresCanonical === jsEvidence.canonicalJson &&
       row.canonical_sha256 === jsEvidence.sha256 &&
       row.canonical_bytes.compare(Buffer.from(jsEvidence.toBytes())) === 0 &&
       stableJson(row.canonical_record) === jsEvidence.canonicalJson &&
@@ -847,7 +846,7 @@ const createVerifiedGitHubAuthority = async (
   };
 };
 const assertCanonicalJsonParityAndBounds = async (
-  client: PoolClient,
+  canonicalJsonAuditor: PoolClient,
 ): Promise<void> => {
   const parityValues = [
     null, true, "plain", 1e-7, 0.000001, 1e20, 1e21, 1.2345678901234567,
@@ -859,7 +858,7 @@ const assertCanonicalJsonParityAndBounds = async (
   ] as const;
   for (const value of parityValues) {
     const expected = canonicalizeReaderSummaryWeeklyJson(value).json;
-    const actual = await canonicalJson(client, value);
+    const actual = await canonicalJson(canonicalJsonAuditor, value);
     assert(
       actual === expected,
       `PostgreSQL canonical JSON diverged: expected ${expected}, got ${actual}`,
@@ -882,15 +881,15 @@ const assertCanonicalJsonParityAndBounds = async (
       "JavaScript canonical JSON must enforce its published bounds",
     );
     await assertRejects(
-      () => canonicalJson(client, value),
+      () => canonicalJson(canonicalJsonAuditor, value),
       "PostgreSQL canonical JSON must enforce JavaScript-equivalent bounds",
     );
   }
 };
 const assertCanonicalFunctionsAreHardened = async (
-  client: PoolClient,
+  canonicalJsonAuditor: PoolClient,
 ): Promise<void> => {
-  const result = await client.query<{
+  const result = await canonicalJsonAuditor.query<{
     readonly hardened_count: string;
     readonly semantics_constraint_count: string;
   }>(
@@ -928,10 +927,10 @@ const assertCanonicalFunctionsAreHardened = async (
   );
 };
 const canonicalJson = async (
-  client: PoolClient,
+  canonicalJsonAuditor: PoolClient,
   value: unknown,
 ): Promise<string> => {
-  const result = await client.query<{ readonly canonical: string }>(
+  const result = await canonicalJsonAuditor.query<{ readonly canonical: string }>(
     `SELECT reader_summary_weekly_canonical_json($1::jsonb) AS canonical`,
     [JSON.stringify(value)],
   );
