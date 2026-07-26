@@ -6,6 +6,7 @@ import {
 } from "./reader-summary-weekly-canonical-json";
 import {
   readerSummaryWeeklyDailyArtifactSchemaVersion,
+  readerSummaryWeeklyDailyCertificationSchemaVersion,
   readerSummaryWeeklyDailyProofSchemaVersion,
   readerSummaryWeeklyDailyReportSchemaVersion,
   readerSummaryWeeklyRequiredDailyBlockingGateNames,
@@ -24,6 +25,7 @@ import {
   type ReaderSummaryWeeklyGitHubAuditEvidenceInput,
 } from "./reader-summary-weekly-github-audit";
 import {
+  assertReaderSummaryWeeklySealedInputManifest,
   readerSummaryWeeklyInputManifestSchemaVersion,
   sealReaderSummaryWeeklyInputManifest,
   type ReaderSummaryWeeklyInputDayEvidence,
@@ -362,4 +364,132 @@ describe("reader summary weekly input manifest", () => {
       expect(() => sealReaderSummaryWeeklyInputManifest(input)).toThrow();
     }
   });
+
+  it("validates every canonical seal field instead of trusting frozen callers", () => {
+    const manifest = sealReaderSummaryWeeklyInputManifest(manifestEvidence());
+
+    expect(() =>
+      assertReaderSummaryWeeklySealedInputManifest(manifest),
+    ).not.toThrow();
+
+    const forgeries = [
+      { ...manifest, canonicalJson: "{}" },
+      { ...manifest, sha256: sha(9_001) },
+      { ...manifest, identity: `forged:${manifest.sha256}` },
+      { ...manifest, byteLength: manifest.byteLength + 1 },
+      { ...manifest, toBytes: (): Uint8Array => Uint8Array.of(0) },
+    ].map((forgery) => Object.freeze(forgery));
+
+    for (const forgery of forgeries) {
+      expect(() =>
+        assertReaderSummaryWeeklySealedInputManifest(forgery),
+      ).toThrow();
+    }
+  });
+
+  it("rejects canonically resealed malformed dates, mixed scope and duplicates", () => {
+    const manifest = sealReaderSummaryWeeklyInputManifest(manifestEvidence());
+    const malformedDate = forgeCanonicalManifest(manifest, (body) => {
+      body.weekEndedUtcDate = "2026-07-32";
+    });
+    const mixedScope = forgeCanonicalManifest(manifest, (body) => {
+      const certification = certificationAt(body, 1);
+      certification.scope = {
+        type: "interest",
+        interestId: "forged-interest",
+      };
+      resealDailyCertification(certification);
+    });
+    const duplicateAuthority = forgeCanonicalManifest(manifest, (body) => {
+      const first = certificationAt(body, 0);
+      const second = certificationAt(body, 1);
+      second.publicationId = first.publicationId;
+      resealDailyCertification(second);
+    });
+
+    for (const forgery of [
+      malformedDate,
+      mixedScope,
+      duplicateAuthority,
+    ]) {
+      expect(() =>
+        assertReaderSummaryWeeklySealedInputManifest(forgery),
+      ).toThrow();
+    }
+  });
+
+  it("rejects canonically resealed altered certification and GitHub hashes", () => {
+    const manifest = sealReaderSummaryWeeklyInputManifest(manifestEvidence());
+    const certificationHash = forgeCanonicalManifest(manifest, (body) => {
+      certificationAt(body, 2).sha256 = sha(8_001);
+    });
+    const githubHash = forgeCanonicalManifest(manifest, (body) => {
+      githubAuditAt(body, 3).sha256 = sha(8_002);
+    });
+    const brokenBinding = forgeCanonicalManifest(manifest, (body) => {
+      const certification = certificationAt(body, 4);
+      certification.githubAuditSha256 = sha(8_003);
+      resealDailyCertification(certification);
+    });
+
+    for (const forgery of [certificationHash, githubHash, brokenBinding]) {
+      expect(() =>
+        assertReaderSummaryWeeklySealedInputManifest(forgery),
+      ).toThrow();
+    }
+  });
 });
+
+const forgeCanonicalManifest = (
+  manifest: ReturnType<typeof sealReaderSummaryWeeklyInputManifest>,
+  mutateBody: (body: Record<string, unknown>) => void,
+): unknown => {
+  const body = JSON.parse(manifest.canonicalJson) as Record<string, unknown>;
+  mutateBody(body);
+  const canonical = canonicalizeReaderSummaryWeeklyJson(
+    body,
+    "forged canonical manifest",
+  );
+  return Object.freeze({
+    ...body,
+    identity:
+      `${readerSummaryWeeklyInputManifestSchemaVersion}:${canonical.sha256}`,
+    sha256: canonical.sha256,
+    canonicalJson: canonical.json,
+    byteLength: canonical.byteLength,
+    toBytes: (): Uint8Array => canonical.toBytes(),
+  });
+};
+
+const certificationAt = (
+  body: Record<string, unknown>,
+  index: number,
+): Record<string, unknown> => {
+  const days = body.days as Record<string, unknown>[];
+  return days[index]!.dailyCertification as Record<string, unknown>;
+};
+
+const githubAuditAt = (
+  body: Record<string, unknown>,
+  index: number,
+): Record<string, unknown> => {
+  const days = body.days as Record<string, unknown>[];
+  return days[index]!.githubAudit as Record<string, unknown>;
+};
+
+const resealDailyCertification = (
+  certification: Record<string, unknown>,
+): void => {
+  const body = Object.fromEntries(
+    Object.entries(certification).filter(
+      ([key]) => key !== "identity" && key !== "sha256",
+    ),
+  );
+  const canonical = canonicalizeReaderSummaryWeeklyJson(
+    body,
+    "forged daily certification",
+  );
+  certification.sha256 = canonical.sha256;
+  certification.identity =
+    `${readerSummaryWeeklyDailyCertificationSchemaVersion}:${canonical.sha256}`;
+};
