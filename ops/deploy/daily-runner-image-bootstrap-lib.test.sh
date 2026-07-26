@@ -132,7 +132,8 @@ fake_compose() {
 COMPOSE=(fake_compose)
 
 docker() {
-  local source destination image_id revision tag="" label="" context="" argument
+  local source destination image_id revision
+  local tag='' label='' context='' argument=''
   printf 'docker\t%s\n' "$*" >> "$EVENTS"
   case ${1:-}:${2:-} in
     build:*)
@@ -226,7 +227,7 @@ reset_case() {
   git -C "$REPO" reset --hard -q "$TARGET_SHA"
   git -C "$REPO" clean -fdq
   git -C "$REPO" update-ref refs/remotes/origin/main "$TARGET_SHA"
-  reset_runtime
+  reset_runtime "$PREVIOUS_SHA"
   write_reviewed_dockerfile
   : > "$REFS"
   : > "$EVENTS"
@@ -274,10 +275,17 @@ assert_no_temporary_state() {
   fi
 }
 
-assert_event_absent() {
-  local pattern=$1
-  if grep -F "$pattern" "$EVENTS" >/dev/null; then
-    printf 'unexpected event matched %q\n' "$pattern" >&2
+assert_events_exclude() {
+  local unexpected=$1
+  local status=0
+
+  grep -F -- "$unexpected" "$EVENTS" >/dev/null || status=$?
+  if ((status == 0)); then
+    printf 'unexpected event was recorded: %q\n' "$unexpected" >&2
+    exit 1
+  fi
+  if ((status != 1)); then
+    printf 'fixture events could not be inspected for: %q\n' "$unexpected" >&2
     exit 1
   fi
 }
@@ -302,7 +310,7 @@ printf '%s\n' "$TARGET_SHA" > \
   "$(readlink -f "$POSTGRES_RUNTIME_CURRENT")/READY"
 assert_fails_with 'backend marker and PostgreSQL runtime READY do not match' \
   daily_runner_image_bootstrap_before_rescue "$PREVIOUS_SHA" "$TARGET_SHA"
-assert_event_absent $'docker\tbuild'
+assert_events_exclude $'docker\tbuild'
 
 reset_case
 printf 'dirty\n' > "$REPO/untracked"
@@ -358,7 +366,7 @@ partial=$(backend_image_rescue_state_file "$TARGET_SHA").partial
 : > "$partial"
 assert_fails_with 'partial backend rescue state blocks' \
   daily_runner_image_bootstrap_before_rescue "$PREVIOUS_SHA" "$TARGET_SHA"
-assert_event_absent $'docker\tbuild'
+assert_events_exclude $'docker\tbuild'
 
 # The root control Dockerfile is bound to one reviewed byte digest.
 reset_case
@@ -380,15 +388,17 @@ reset_case
 set_ref "$BASE_TAG" "$BASE_ID" "$TARGET_SHA"
 assert_fails_with 'base image identity or revision is unexpected' \
   daily_runner_image_bootstrap_before_rescue "$PREVIOUS_SHA" "$TARGET_SHA"
-assert_event_absent $'docker\tbuild'
+assert_events_exclude $'docker\tbuild'
 
 reset_case
 BASE_CONFIG='["wrong"]|["config"]|"/app"|"node"|null'
 assert_fails_with 'base image config is unexpected' \
   daily_runner_image_bootstrap_before_rescue "$PREVIOUS_SHA" "$TARGET_SHA"
-assert_event_absent $'docker\tbuild'
+assert_events_exclude $'docker\tbuild'
 
 # Archive traversal and symlink entries never reach Docker.
+# Invoked through the daily_runner_bootstrap_create_archive override below.
+# shellcheck disable=SC2317
 create_malicious_archive() {
   local kind=$1
   local archive=$2
@@ -423,7 +433,7 @@ for malicious_kind in path symlink; do
   assert_fails_with 'historical archive contains an unsafe entry' \
     daily_runner_image_bootstrap_before_rescue "$PREVIOUS_SHA" "$TARGET_SHA"
   [[ ! -e $FIXTURE/escape && ! -L $FIXTURE/escape ]]
-  assert_event_absent $'docker\tbuild'
+  assert_events_exclude $'docker\tbuild'
   assert_no_temporary_state
 done
 daily_runner_bootstrap_create_archive() {
@@ -503,8 +513,8 @@ daily_runner_image_bootstrap_before_rescue "$PREVIOUS_SHA" "$TARGET_SHA"
 [[ $(grep -c $'^docker\tbuild' "$EVENTS") == "$build_count" ]]
 [[ $(grep -c $'^docker\timage tag' "$EVENTS") == "$tag_count" ]]
 [[ $(lookup_id "$COMPOSE_TAG") == "$CANDIDATE_ID" ]]
-assert_event_absent 'image prune'
-assert_event_absent 'system prune'
+assert_events_exclude 'image prune'
+assert_events_exclude 'system prune'
 
 flock -u 8
 exec 8>&-

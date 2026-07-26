@@ -282,7 +282,7 @@ daily_runner_image_bootstrap_before_rescue() (
   local target_sha=$2
   local compose_tag state_file partial phase manifest_target
   local dockerfile_digest dockerfile_digest_after base_id base_id_after
-  local workdir="" archive="" context="" temporary_tag="" candidate_id=""
+  local workdir='' archive='' context='' temporary_tag='' candidate_id=''
   local identity config existing_container singleton_fd revision extra
   local compose_created=false completed=false temporary_owned=false
 
@@ -329,10 +329,8 @@ daily_runner_image_bootstrap_before_rescue() (
   [[ -z $existing_container ]] || \
     fail 'active daily-runner container blocks image bootstrap'
 
-  # Invoked through the EXIT trap below.
-  # shellcheck disable=SC2317
   # Invoked by the EXIT/INT/TERM traps installed below.
-  # shellcheck disable=SC2329
+  # shellcheck disable=SC2317,SC2329
   cleanup_daily_runner_bootstrap() {
     local original_status=$?
     local cleanup_status=0
