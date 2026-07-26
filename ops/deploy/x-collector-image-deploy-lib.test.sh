@@ -257,6 +257,7 @@ cp "$TRANSITION_REPO/ops/deploy/social-monitor-production-deploy.sh" \
 
 cp "$ENTRYPOINT" "$TRANSITION_REPO/ops/deploy/"
 cp "$SCRIPT_DIR/deploy-control-lib.sh" \
+  "$SCRIPT_DIR/backend-runtime-health-lib.sh" \
   "$SCRIPT_DIR/daily-runner-image-bootstrap-lib.sh" \
   "$SCRIPT_DIR/x-collector-image-deploy-lib.sh" \
   "$TRANSITION_REPO/ops/deploy/"
