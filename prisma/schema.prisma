@@ -1059,6 +1059,63 @@ model ReaderSummaryRecoveryReceipt {
   @@map("reader_summary_recovery_receipts")
 }
 
+model ReaderSummaryProductionRecoveryLease {
+  id              String                                  @id(map: "reader_summary_production_recovery_leases_pkey") @db.Uuid
+  tenantId        String                                  @map("tenant_id") @db.Uuid
+  workspaceId     String                                  @map("workspace_id") @db.Uuid
+  identity        String                                  @unique(map: "reader_summary_production_recovery_leases_identity_key")
+  state           String
+  canonicalRecord Json                                    @map("canonical_record")
+  canonicalBytes  Bytes                                   @map("canonical_bytes")
+  canonicalSha256 String                                  @map("canonical_sha256") @db.Char(64)
+  issuedAt        DateTime                                @map("issued_at") @db.Timestamptz(6)
+  consumedAt      DateTime?                               @map("consumed_at") @db.Timestamptz(6)
+  days            ReaderSummaryProductionRecoveryDay[]
+  dryRuns         ReaderSummaryProductionRecoveryDryRun[]
+
+  @@unique([id, tenantId, workspaceId], map: "reader_summary_production_recovery_leases_scope_key")
+  @@index([tenantId, workspaceId, issuedAt], map: "reader_summary_production_recovery_leases_scope_idx")
+  @@map("reader_summary_production_recovery_leases")
+}
+
+model ReaderSummaryProductionRecoveryDay {
+  recoveryId            String                               @map("recovery_id") @db.Uuid
+  tenantId              String                               @map("tenant_id") @db.Uuid
+  workspaceId           String                               @map("workspace_id") @db.Uuid
+  requestedUtcDate      DateTime                             @map("requested_utc_date") @db.Date
+  identity              String                               @unique(map: "reader_summary_production_recovery_days_identity_key")
+  providerCounts        Json                                 @map("provider_counts")
+  providerEvidence      Json                                 @map("provider_evidence")
+  providerEvidenceSha256 String                              @map("provider_evidence_sha256") @db.Char(64)
+  githubEvidence        Json                                 @map("github_evidence")
+  canonicalRecord       Json                                 @map("canonical_record")
+  canonicalBytes        Bytes                                @map("canonical_bytes")
+  canonicalSha256       String                               @map("canonical_sha256") @db.Char(64)
+  recordedAt            DateTime                             @map("recorded_at") @db.Timestamptz(6)
+  recovery              ReaderSummaryProductionRecoveryLease @relation(fields: [recoveryId, tenantId, workspaceId], references: [id, tenantId, workspaceId], onDelete: Restrict, onUpdate: Restrict, map: "reader_summary_production_recovery_days_lease_fkey")
+
+  @@id([recoveryId, requestedUtcDate], map: "reader_summary_production_recovery_days_pkey")
+  @@unique([tenantId, workspaceId, requestedUtcDate], map: "reader_summary_production_recovery_days_scope_day_key")
+  @@index([tenantId, workspaceId, requestedUtcDate], map: "reader_summary_production_recovery_days_scope_idx")
+  @@map("reader_summary_production_recovery_days")
+}
+
+model ReaderSummaryProductionRecoveryDryRun {
+  recoveryId       String                               @map("recovery_id") @db.Uuid
+  tenantId         String                               @map("tenant_id") @db.Uuid
+  workspaceId      String                               @map("workspace_id") @db.Uuid
+  ordinal          Int                                  @db.SmallInt
+  canonicalRecord  Json                                 @map("canonical_record")
+  canonicalBytes   Bytes                                @map("canonical_bytes")
+  canonicalSha256  String                               @map("canonical_sha256") @db.Char(64)
+  capturedAt       DateTime                             @map("captured_at") @db.Timestamptz(6)
+  recovery         ReaderSummaryProductionRecoveryLease @relation(fields: [recoveryId, tenantId, workspaceId], references: [id, tenantId, workspaceId], onDelete: Restrict, onUpdate: Restrict, map: "reader_summary_production_recovery_dry_runs_lease_fkey")
+
+  @@id([recoveryId, ordinal], map: "reader_summary_production_recovery_dry_runs_pkey")
+  @@index([tenantId, workspaceId, recoveryId], map: "reader_summary_production_recovery_dry_runs_scope_idx")
+  @@map("reader_summary_production_recovery_dry_runs")
+}
+
 model ReaderSummaryPublicationSlot {
   tenantId             String                    @map("tenant_id") @db.Uuid
   workspaceId          String                    @map("workspace_id") @db.Uuid

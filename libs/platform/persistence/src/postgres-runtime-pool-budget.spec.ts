@@ -1,6 +1,5 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { extname, join, relative } from 'node:path';
-
 import {
   POSTGRES_BACKUP_CONNECTIONS,
   POSTGRES_CAPACITY_VERIFICATION_CONNECTIONS,
@@ -20,7 +19,6 @@ import {
   assertDeploymentPostgresBudget,
   type DeploymentPostgresBudgetConfiguration,
 } from './postgres-runtime-pool-budget';
-
 describe('deployment PostgreSQL budget', () => {
   it('derives effective capacity and meaningful reserve from live PostgreSQL facts', () => {
     const budget = assertDeploymentPostgresBudget(productionBudgetFixture());
@@ -50,7 +48,6 @@ describe('deployment PostgreSQL budget', () => {
         budget.providerHeadroom,
     ).toBe(budget.effectiveProviderCapacity);
   });
-
   it('keeps the real restart incident evidence tied to the executable budget', () => {
     const incident = JSON.parse(
       readSource(
@@ -94,7 +91,6 @@ describe('deployment PostgreSQL budget', () => {
       restartAndProxySoakRequired: true,
     });
   });
-
   it('fails closed when live capacity facts are absent, malformed, or insufficient', () => {
     const fixture = productionBudgetFixture();
     expect(() =>
@@ -277,48 +273,19 @@ describe('deployment PostgreSQL budget', () => {
         auxiliaryConnections,
       })),
     ).toEqual([
-      {
-        processId: 'agent-runtime',
-        lifecycle: 'no-postgres',
-        poolMax: 0,
-        auxiliaryConnections: 0,
-      },
-      {
-        processId: 'x-collector',
-        lifecycle: 'no-postgres',
-        poolMax: 0,
-        auxiliaryConnections: 0,
-      },
-      {
-        processId: 'migrate',
-        lifecycle: 'ephemeral',
-        poolMax: 0,
-        auxiliaryConnections: 1,
-      },
-      {
-        processId: 'daily-runner',
-        lifecycle: 'ephemeral',
-        poolMax: 2,
-        auxiliaryConnections: 1,
-      },
-      {
-        processId: 'social-research-grpc',
-        lifecycle: 'optional',
-        poolMax: 1,
-        auxiliaryConnections: 0,
-      },
-      {
-        processId: 'social-research-mcp',
-        lifecycle: 'optional',
-        poolMax: 1,
-        auxiliaryConnections: 0,
-      },
+      { processId: 'agent-runtime', lifecycle: 'no-postgres', poolMax: 0, auxiliaryConnections: 0 },
+      { processId: 'x-collector', lifecycle: 'no-postgres', poolMax: 0, auxiliaryConnections: 0 },
+      { processId: 'migrate', lifecycle: 'ephemeral', poolMax: 0, auxiliaryConnections: 1 },
+      { processId: 'daily-runner', lifecycle: 'ephemeral', poolMax: 2, auxiliaryConnections: 1 },
+      { processId: 'social-research-grpc', lifecycle: 'optional', poolMax: 1, auxiliaryConnections: 0 },
+      { processId: 'social-research-mcp', lifecycle: 'optional', poolMax: 1, auxiliaryConnections: 0 },
     ]);
   });
 });
 
 describe('production PostgreSQL construction and entrypoint inventory', () => {
   const publicationPostgresTestOnlyFiles = new Set([
+    'scripts/check-reader-summary-production-recovery-postgres.ts',
     'scripts/check-reader-summary-publication-postgres.ts',
     'scripts/check-tenant-rls-postgres.ts',
     'scripts/reader-summary-publication-postgres-legacy.ts',
@@ -361,54 +328,57 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       )
       .sort();
 
-    expect(rawConstructions).toEqual([
-      'libs/platform/persistence/src/postgres-runtime-pool-concurrency.spec.ts:Pool',
-      'libs/platform/persistence/src/postgres-runtime-pool-concurrency.spec.ts:PrismaPg',
-      'libs/platform/persistence/src/postgres-runtime-pool.ts:Pool',
-      'libs/platform/persistence/src/postgres-runtime-pool.ts:PrismaPg',
-      'prisma/seed.ts:Pool',
-      'prisma/seed.ts:PrismaClient',
-      'prisma/seed.ts:PrismaPg',
-      'scripts/backfill-github-trending-feed.ts:Pool',
-      'scripts/capture-durable-backend-e2e-loop.ts:Pool',
-      'scripts/capture-reader-summary-multi-day-quality-corpus.ts:Pool',
-      'scripts/capture-reader-summary-multi-day-quality-target-manifest.ts:Pool',
-      'scripts/check-github-repo-radar-prisma-live-e2e.ts:Pool',
-      'scripts/check-reader-summary-multi-day-quality.ts:Pool',
-      'scripts/check-reader-summary-production-regeneration-smoke.ts:Pool',
-      'scripts/check-reader-summary-publication-postgres.ts:Pool',
-      'scripts/check-reader-summary-publication-postgres.ts:Pool',
-      'scripts/check-reader-summary-publication-postgres.ts:Pool',
-      'scripts/check-reader-summary-publication-postgres.ts:Pool',
-      'scripts/check-reader-summary-publication-postgres.ts:Pool',
-      'scripts/check-reader-summary-quality-dashboard.ts:Pool',
-      'scripts/check-reader-summary-source-quality-trace.ts:Pool',
-      'scripts/check-reader-summary-top-read-ranking.ts:Pool',
-      'scripts/check-reader-summary-topic-map-real-data.ts:Pool',
-      'scripts/check-source-query-planner-real-binding-canary.ts:Pool',
-      'scripts/check-summary-feedback-calibration-report.ts:Pool',
-      'scripts/check-summary-memory-product-loop.ts:Pool',
-      'scripts/check-summary-topic-recommendation-rest-prisma-live.ts:Pool',
-      'scripts/check-tenant-rls-postgres.ts:Pool',
-      'scripts/check-tenant-rls-postgres.ts:Pool',
-      'scripts/check-tenant-rls-postgres.ts:Pool',
-      'scripts/check-tenant-rls-postgres.ts:Pool',
-      'scripts/check-yesterday-reader-summary-artifact-quality.ts:Pool',
-      'scripts/check-yesterday-social-collection-quality.ts:Pool',
-      'scripts/lib/github-trending-durable-snapshot-reuse-postgres-fixture.ts:Pool',
-      'scripts/lib/github-trending-durable-snapshot-reuse-postgres-fixture.ts:Pool',
-      'scripts/lib/reader-summary-production-day-scope.ts:Pool',
-      'scripts/lib/yesterday-social-replay-support.ts:Pool',
-      'scripts/reader-summary-publication-postgres-legacy.ts:Pool',
-      'scripts/reader-summary-publication-postgres-privileges.ts:Pool',
-      'scripts/reader-summary-publication-postgres-privileges.ts:Pool',
-      'scripts/reader-summary-publication-postgres-privileges.ts:Pool',
-      'scripts/reader-summary-publication-postgres-privileges.ts:Pool',
-      'scripts/reader-summary-publication-postgres-privileges.ts:Pool',
-      'scripts/reader-summary-publication-postgres-privileges.ts:Pool',
-      'scripts/reader-summary-publication-postgres-privileges.ts:Pool',
-      'scripts/run-reader-summary-clean-real-day-collection.ts:Pool',
-    ]);
+    expect(rawConstructions).toEqual(expectedSourceList(`
+      libs/platform/persistence/src/postgres-runtime-pool-concurrency.spec.ts:Pool
+      libs/platform/persistence/src/postgres-runtime-pool-concurrency.spec.ts:PrismaPg
+      libs/platform/persistence/src/postgres-runtime-pool.ts:Pool
+      libs/platform/persistence/src/postgres-runtime-pool.ts:PrismaPg
+      prisma/seed.ts:Pool
+      prisma/seed.ts:PrismaClient
+      prisma/seed.ts:PrismaPg
+      scripts/backfill-github-trending-feed.ts:Pool
+      scripts/capture-durable-backend-e2e-loop.ts:Pool
+      scripts/capture-reader-summary-multi-day-quality-corpus.ts:Pool
+      scripts/capture-reader-summary-multi-day-quality-target-manifest.ts:Pool
+      scripts/check-github-repo-radar-prisma-live-e2e.ts:Pool
+      scripts/check-reader-summary-multi-day-quality.ts:Pool
+      scripts/check-reader-summary-production-recovery-postgres.ts:Pool
+      scripts/check-reader-summary-production-recovery-postgres.ts:Pool
+      scripts/check-reader-summary-production-recovery-postgres.ts:Pool
+      scripts/check-reader-summary-production-regeneration-smoke.ts:Pool
+      scripts/check-reader-summary-publication-postgres.ts:Pool
+      scripts/check-reader-summary-publication-postgres.ts:Pool
+      scripts/check-reader-summary-publication-postgres.ts:Pool
+      scripts/check-reader-summary-publication-postgres.ts:Pool
+      scripts/check-reader-summary-publication-postgres.ts:Pool
+      scripts/check-reader-summary-quality-dashboard.ts:Pool
+      scripts/check-reader-summary-source-quality-trace.ts:Pool
+      scripts/check-reader-summary-top-read-ranking.ts:Pool
+      scripts/check-reader-summary-topic-map-real-data.ts:Pool
+      scripts/check-source-query-planner-real-binding-canary.ts:Pool
+      scripts/check-summary-feedback-calibration-report.ts:Pool
+      scripts/check-summary-memory-product-loop.ts:Pool
+      scripts/check-summary-topic-recommendation-rest-prisma-live.ts:Pool
+      scripts/check-tenant-rls-postgres.ts:Pool
+      scripts/check-tenant-rls-postgres.ts:Pool
+      scripts/check-tenant-rls-postgres.ts:Pool
+      scripts/check-tenant-rls-postgres.ts:Pool
+      scripts/check-yesterday-reader-summary-artifact-quality.ts:Pool
+      scripts/check-yesterday-social-collection-quality.ts:Pool
+      scripts/lib/github-trending-durable-snapshot-reuse-postgres-fixture.ts:Pool
+      scripts/lib/github-trending-durable-snapshot-reuse-postgres-fixture.ts:Pool
+      scripts/lib/reader-summary-production-day-scope.ts:Pool
+      scripts/lib/yesterday-social-replay-support.ts:Pool
+      scripts/reader-summary-publication-postgres-legacy.ts:Pool
+      scripts/reader-summary-publication-postgres-privileges.ts:Pool
+      scripts/reader-summary-publication-postgres-privileges.ts:Pool
+      scripts/reader-summary-publication-postgres-privileges.ts:Pool
+      scripts/reader-summary-publication-postgres-privileges.ts:Pool
+      scripts/reader-summary-publication-postgres-privileges.ts:Pool
+      scripts/reader-summary-publication-postgres-privileges.ts:Pool
+      scripts/reader-summary-publication-postgres-privileges.ts:Pool
+      scripts/run-reader-summary-clean-real-day-collection.ts:Pool
+    `));
   });
 
   it('fails on every future raw database-client dependency bypass', () => {
@@ -427,54 +397,55 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       })
       .sort();
 
-    expect(rawDependencyFiles).toEqual([
-      'libs/platform/persistence/src/postgres-runtime-pool-cleanup.ts',
-      'libs/platform/persistence/src/postgres-runtime-pool-concurrency.spec.ts',
-      'libs/platform/persistence/src/postgres-runtime-pool.spec.ts',
-      'libs/platform/persistence/src/postgres-runtime-pool.ts',
-      'prisma/seed.ts',
-      'scripts/backfill-github-trending-feed.ts',
-      'scripts/capture-durable-backend-e2e-loop.ts',
-      'scripts/capture-reader-summary-multi-day-quality-corpus.ts',
-      'scripts/capture-reader-summary-multi-day-quality-target-manifest.ts',
-      'scripts/check-github-repo-radar-prisma-live-e2e.ts',
-      'scripts/check-reader-summary-multi-day-quality.ts',
-      'scripts/check-reader-summary-production-regeneration-smoke.ts',
-      'scripts/check-reader-summary-publication-postgres.ts',
-      'scripts/check-reader-summary-quality-dashboard.ts',
-      'scripts/check-reader-summary-source-quality-trace.ts',
-      'scripts/check-reader-summary-top-read-ranking.ts',
-      'scripts/check-reader-summary-topic-map-real-data.ts',
-      'scripts/check-source-query-planner-real-binding-canary.ts',
-      'scripts/check-summary-feedback-calibration-report.ts',
-      'scripts/check-summary-memory-product-loop.ts',
-      'scripts/check-summary-topic-recommendation-rest-prisma-live.ts',
-      'scripts/check-tenant-rls-postgres.ts',
-      'scripts/check-yesterday-reader-summary-artifact-quality.ts',
-      'scripts/check-yesterday-social-collection-quality.ts',
-      'scripts/lib/github-trending-durable-snapshot-reuse-postgres-fixture.ts',
-      'scripts/lib/github-trending-durable-snapshot-reuse.postgres.spec.ts',
-      'scripts/lib/github-trending-durable-snapshot-reuse.prisma.spec.ts',
-      'scripts/lib/github-trending-durable-snapshot-reuse.ts',
-      'scripts/lib/reader-summary-current-publication-bindings.spec.ts',
-      'scripts/lib/reader-summary-current-publication-bindings.ts',
-      'scripts/lib/reader-summary-production-day-scope.ts',
-      'scripts/lib/reader-summary-publication-postgres-fixture-scope.ts',
-      'scripts/lib/reader-summary-quality-dashboard-published-window.spec.ts',
-      'scripts/lib/reader-summary-quality-dashboard-published-window.ts',
-      'scripts/lib/reader-summary-quality-eval-support.spec.ts',
-      'scripts/lib/reader-summary-quality-eval-support.ts',
-      'scripts/lib/reader-summary-recovery-postgres-contract.ts',
-      'scripts/lib/reader-summary-weekly-publication-evidence-postgres-contract.ts',
-      'scripts/lib/yesterday-reader-summary-artifact-quality-store.spec.ts',
-      'scripts/lib/yesterday-reader-summary-artifact-quality-store.ts',
-      'scripts/lib/yesterday-social-replay-support.ts',
-      'scripts/reader-summary-publication-postgres-legacy.ts',
-      'scripts/reader-summary-publication-postgres-privileges.ts',
-      'scripts/reader-summary-publication-postgres-runtime-guard.ts',
-      'scripts/reader-summary-publication-postgres18-regression.ts',
-      'scripts/run-reader-summary-clean-real-day-collection.ts',
-    ]);
+    expect(rawDependencyFiles).toEqual(expectedSourceList(`
+      libs/platform/persistence/src/postgres-runtime-pool-cleanup.ts
+      libs/platform/persistence/src/postgres-runtime-pool-concurrency.spec.ts
+      libs/platform/persistence/src/postgres-runtime-pool.spec.ts
+      libs/platform/persistence/src/postgres-runtime-pool.ts
+      prisma/seed.ts
+      scripts/backfill-github-trending-feed.ts
+      scripts/capture-durable-backend-e2e-loop.ts
+      scripts/capture-reader-summary-multi-day-quality-corpus.ts
+      scripts/capture-reader-summary-multi-day-quality-target-manifest.ts
+      scripts/check-github-repo-radar-prisma-live-e2e.ts
+      scripts/check-reader-summary-multi-day-quality.ts
+      scripts/check-reader-summary-production-recovery-postgres.ts
+      scripts/check-reader-summary-production-regeneration-smoke.ts
+      scripts/check-reader-summary-publication-postgres.ts
+      scripts/check-reader-summary-quality-dashboard.ts
+      scripts/check-reader-summary-source-quality-trace.ts
+      scripts/check-reader-summary-top-read-ranking.ts
+      scripts/check-reader-summary-topic-map-real-data.ts
+      scripts/check-source-query-planner-real-binding-canary.ts
+      scripts/check-summary-feedback-calibration-report.ts
+      scripts/check-summary-memory-product-loop.ts
+      scripts/check-summary-topic-recommendation-rest-prisma-live.ts
+      scripts/check-tenant-rls-postgres.ts
+      scripts/check-yesterday-reader-summary-artifact-quality.ts
+      scripts/check-yesterday-social-collection-quality.ts
+      scripts/lib/github-trending-durable-snapshot-reuse-postgres-fixture.ts
+      scripts/lib/github-trending-durable-snapshot-reuse.postgres.spec.ts
+      scripts/lib/github-trending-durable-snapshot-reuse.prisma.spec.ts
+      scripts/lib/github-trending-durable-snapshot-reuse.ts
+      scripts/lib/reader-summary-current-publication-bindings.spec.ts
+      scripts/lib/reader-summary-current-publication-bindings.ts
+      scripts/lib/reader-summary-production-day-scope.ts
+      scripts/lib/reader-summary-publication-postgres-fixture-scope.ts
+      scripts/lib/reader-summary-quality-dashboard-published-window.spec.ts
+      scripts/lib/reader-summary-quality-dashboard-published-window.ts
+      scripts/lib/reader-summary-quality-eval-support.spec.ts
+      scripts/lib/reader-summary-quality-eval-support.ts
+      scripts/lib/reader-summary-recovery-postgres-contract.ts
+      scripts/lib/reader-summary-weekly-publication-evidence-postgres-contract.ts
+      scripts/lib/yesterday-reader-summary-artifact-quality-store.spec.ts
+      scripts/lib/yesterday-reader-summary-artifact-quality-store.ts
+      scripts/lib/yesterday-social-replay-support.ts
+      scripts/reader-summary-publication-postgres-legacy.ts
+      scripts/reader-summary-publication-postgres-privileges.ts
+      scripts/reader-summary-publication-postgres-runtime-guard.ts
+      scripts/reader-summary-publication-postgres18-regression.ts
+      scripts/run-reader-summary-clean-real-day-collection.ts
+    `));
     for (const path of rawDependencyFiles) {
       expect(readSource(path)).not.toMatch(
         /(?:require\s*\(\s*['"](?:pg|@prisma\/adapter-pg)['"]\s*\)|import\s*\(\s*['"](?:pg|@prisma\/adapter-pg)['"]\s*\)|import\s+\*\s+as\s+\w+\s+from\s+['"](?:pg|@prisma\/adapter-pg)['"])/,
@@ -576,6 +547,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
 
   it('keeps the PostgreSQL publication harness test-only and explicitly bounded', () => {
     const expectedPoolMaximums = new Map<string, readonly number[]>([
+      ['scripts/check-reader-summary-production-recovery-postgres.ts', [1, 1, 2]],
       [
         'scripts/check-reader-summary-publication-postgres.ts',
         [1, 1, 2, 4, 1],
@@ -910,6 +882,10 @@ function runtimeSourceFiles(directory: string): readonly string[] {
 
 function readSource(path: string): string {
   return readFileSync(join(process.cwd(), path), 'utf8');
+}
+
+function expectedSourceList(value: string): readonly string[] {
+  return value.trim().split(/\s+/u);
 }
 
 function directDatabaseConstructions(

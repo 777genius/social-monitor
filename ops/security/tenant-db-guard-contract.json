@@ -5,9 +5,25 @@
   "systemCapabilityRole": "social_monitor_tenant_system_runtime",
   "rlsMigrationPaths": [
     "prisma/migrations/20260723153000_tenant_row_level_security/migration.sql",
-    "prisma/migrations/20260726120000_tenant_secret_scope_and_weekly_evidence_rls/migration.sql"
+    "prisma/migrations/20260726120000_tenant_secret_scope_and_weekly_evidence_rls/migration.sql",
+    "prisma/migrations/20260726170000_reader_summary_production_recovery_authority/migration.sql"
   ],
   "forwardRlsCoverage": [
+    {
+      "table": "reader_summary_production_recovery_days",
+      "migrationPath": "prisma/migrations/20260726170000_reader_summary_production_recovery_authority/migration.sql",
+      "ownerRole": "social_monitor_reader_summary_publication_owner"
+    },
+    {
+      "table": "reader_summary_production_recovery_dry_runs",
+      "migrationPath": "prisma/migrations/20260726170000_reader_summary_production_recovery_authority/migration.sql",
+      "ownerRole": "social_monitor_reader_summary_publication_owner"
+    },
+    {
+      "table": "reader_summary_production_recovery_leases",
+      "migrationPath": "prisma/migrations/20260726170000_reader_summary_production_recovery_authority/migration.sql",
+      "ownerRole": "social_monitor_reader_summary_publication_owner"
+    },
     {
       "table": "reader_summary_weekly_publication_evidence",
       "migrationPath": "prisma/migrations/20260726120000_tenant_secret_scope_and_weekly_evidence_rls/migration.sql",
@@ -29,6 +45,9 @@
     "reader_summary_artifacts",
     "reader_summary_jobs",
     "reader_summary_policies",
+    "reader_summary_production_recovery_days",
+    "reader_summary_production_recovery_dry_runs",
+    "reader_summary_production_recovery_leases",
     "reader_summary_publications",
     "reader_summary_publication_slots",
     "reader_summary_recovery_receipts",
@@ -116,6 +135,38 @@
     }
   ],
   "tenantScopedAssociations": [
+    {
+      "childTable": "reader_summary_production_recovery_days",
+      "parentTable": "reader_summary_production_recovery_leases",
+      "constraintName": "reader_summary_production_recovery_days_lease_fkey",
+      "childColumns": [
+        "recovery_id",
+        "tenant_id",
+        "workspace_id"
+      ],
+      "parentColumns": [
+        "id",
+        "tenant_id",
+        "workspace_id"
+      ],
+      "reason": "Immutable daily recovery evidence can bind only to a lease with the exact same tenant and workspace authority."
+    },
+    {
+      "childTable": "reader_summary_production_recovery_dry_runs",
+      "parentTable": "reader_summary_production_recovery_leases",
+      "constraintName": "reader_summary_production_recovery_dry_runs_lease_fkey",
+      "childColumns": [
+        "recovery_id",
+        "tenant_id",
+        "workspace_id"
+      ],
+      "parentColumns": [
+        "id",
+        "tenant_id",
+        "workspace_id"
+      ],
+      "reason": "Immutable dry-run snapshots can bind only to a lease with the exact same tenant and workspace authority."
+    },
     {
       "childTable": "webhook_endpoints",
       "parentTable": "webhook_secrets",
