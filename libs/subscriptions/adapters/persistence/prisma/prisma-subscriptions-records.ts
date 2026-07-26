@@ -1,9 +1,10 @@
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import type {
-  SummaryPolicyFormat,
-  SummaryPolicyLanguage,
-  SummaryPolicyTone,
-} from '@social-monitor/summary/domain';
+  UserSubscriptionDeliveryChannel,
+  UserSummaryPreferenceFormat,
+  UserSummaryPreferenceLanguage,
+  UserSummaryPreferenceTone,
+} from '../../../domain';
 
 import {
   SourceTarget,
@@ -192,7 +193,7 @@ const normalizeTargetKind = (value: string): SourceTargetKind => {
   throw new Error(`Unsupported source target kind "${value}"`);
 };
 
-const normalizeLanguage = (value: string | null): SummaryPolicyLanguage | undefined => {
+const normalizeLanguage = (value: string | null): UserSummaryPreferenceLanguage | undefined => {
   if (value === null || value === 'auto' || value === 'en' || value === 'ru') {
     return value ?? undefined;
   }
@@ -200,7 +201,7 @@ const normalizeLanguage = (value: string | null): SummaryPolicyLanguage | undefi
   throw new Error(`Unsupported user summary preference language "${value}"`);
 };
 
-const normalizeFormat = (value: string | null): SummaryPolicyFormat | undefined => {
+const normalizeFormat = (value: string | null): UserSummaryPreferenceFormat | undefined => {
   if (
     value === null ||
     value === 'executive_brief' ||
@@ -213,7 +214,7 @@ const normalizeFormat = (value: string | null): SummaryPolicyFormat | undefined 
   throw new Error(`Unsupported user summary preference format "${value}"`);
 };
 
-const normalizeTone = (value: string | null): SummaryPolicyTone | undefined => {
+const normalizeTone = (value: string | null): UserSummaryPreferenceTone | undefined => {
   if (value === null || value === 'neutral' || value === 'concise' || value === 'analytical') {
     return value ?? undefined;
   }
@@ -221,7 +222,9 @@ const normalizeTone = (value: string | null): SummaryPolicyTone | undefined => {
   throw new Error(`Unsupported user summary preference tone "${value}"`);
 };
 
-const normalizeChannel = (value: string) => {
+const normalizeChannel = (
+  value: string,
+): UserSubscriptionDeliveryChannel => {
   if (value === 'in_app' || value === 'email' || value === 'webhook') {
     return value;
   }

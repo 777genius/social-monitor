@@ -4,6 +4,7 @@ import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 describe('Webhook endpoint tenant scope guard (e2e)', () => {
   let app: INestApplication;
@@ -29,7 +30,7 @@ describe('Webhook endpoint tenant scope guard (e2e)', () => {
   });
 
   it('returns controlled tenant.scope_missing problem when tenant header is absent', async () => {
-    const workspace = workspaceId('workspace-webhook-tenant-scope-e2e');
+    const workspace = workspaceId(deterministicTestUuid('workspace-webhook-tenant-scope-e2e'));
     const response = await request(app.getHttpServer())
       .get('/delivery/webhook-endpoints')
       .set('x-workspace-id', workspace)
@@ -43,7 +44,7 @@ describe('Webhook endpoint tenant scope guard (e2e)', () => {
   });
 
   it('returns controlled tenant.scope_missing problem when workspace header is absent', async () => {
-    const tenant = tenantId('tenant-webhook-tenant-scope-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-webhook-tenant-scope-e2e'));
     const response = await request(app.getHttpServer())
       .get('/delivery/webhook-endpoints')
       .set('x-tenant-id', tenant)

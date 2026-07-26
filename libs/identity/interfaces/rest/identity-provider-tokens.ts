@@ -1,7 +1,11 @@
 import { assertRuntimeProfileAllowsMode } from '@social-monitor/platform-config';
 
 import type { JwksDocument, JwksUserAccessTokenVerifierConfig } from '../../adapters/authorization/jwks-user-access-token.verifier';
-import type { ApiKeyRepositoryPort } from '../../ports';
+import type {
+  ApiKeyRepositoryPort,
+  PublicApiAuditWriterPort,
+  PublicApiRateLimiterPort,
+} from '../../ports';
 
 export type IdentityPersistenceMode = 'in-memory' | 'prisma';
 export type IdentityUserAccessTokenMode = 'disabled' | 'oidc-jwt';
@@ -17,6 +21,10 @@ export const IDENTITY_PERSISTENCE_MODE = Symbol('IDENTITY_PERSISTENCE_MODE');
 export const IDENTITY_PRISMA_CLIENT = Symbol('IDENTITY_PRISMA_CLIENT');
 export const IDENTITY_API_KEY_REPOSITORY = Symbol('IDENTITY_API_KEY_REPOSITORY');
 export const IDENTITY_PUBLIC_API_RATE_LIMIT_PER_MINUTE = Symbol('IDENTITY_PUBLIC_API_RATE_LIMIT_PER_MINUTE');
+export const IDENTITY_PUBLIC_API_RATE_LIMITER =
+  Symbol('IDENTITY_PUBLIC_API_RATE_LIMITER');
+export const IDENTITY_PUBLIC_API_AUDIT_WRITER =
+  Symbol('IDENTITY_PUBLIC_API_AUDIT_WRITER');
 export const IDENTITY_USER_ACCESS_TOKEN_CONFIG = Symbol('IDENTITY_USER_ACCESS_TOKEN_CONFIG');
 
 export type IdentityProviderTokenMap = {
@@ -24,6 +32,8 @@ export type IdentityProviderTokenMap = {
   readonly [IDENTITY_PRISMA_CLIENT]: unknown;
   readonly [IDENTITY_API_KEY_REPOSITORY]: ApiKeyRepositoryPort;
   readonly [IDENTITY_PUBLIC_API_RATE_LIMIT_PER_MINUTE]: number;
+  readonly [IDENTITY_PUBLIC_API_RATE_LIMITER]: PublicApiRateLimiterPort;
+  readonly [IDENTITY_PUBLIC_API_AUDIT_WRITER]: PublicApiAuditWriterPort;
   readonly [IDENTITY_USER_ACCESS_TOKEN_CONFIG]: IdentityUserAccessTokenConfig;
 };
 

@@ -373,12 +373,12 @@ async function main(): Promise<void> {
     deadLetter.failureReason === "provider exhausted retry budget",
     "scan failure queue dead letter reason must round-trip",
   );
-
   const startedAttempt = ScanAttempt.start({
     scanJobId: "00000000-0000-7000-8000-000000000405",
     tenantId: tenant,
     workspaceId: workspace,
     sourceBindingId,
+    attemptNumber: 1,
     startedAt: clock.now(),
   });
   await scanAttempts.save(startedAttempt);
@@ -667,6 +667,7 @@ class FakePrismaIngestionFeedClient
         workspaceId: existing?.workspaceId ?? args.create.workspaceId,
         sourceBindingId:
           existing?.sourceBindingId ?? args.create.sourceBindingId,
+        attemptNumber: args.update.attemptNumber,
         status: args.update.status,
         startedAt: args.update.startedAt,
         finishedAt: args.update.finishedAt ?? null,
@@ -677,7 +678,6 @@ class FakePrismaIngestionFeedClient
         failureReason: args.update.failureReason ?? null,
       };
       this.attempts.set(record.scanJobId, record);
-
       return record;
     },
     findFirst: async (args) =>

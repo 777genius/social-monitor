@@ -17,9 +17,7 @@ import { createDefaultSourceFetcherLaneExecutionCompiler } from '@social-monitor
 import { createSocialResearchGrpcService } from '@social-monitor/social-research/grpc';
 import {
   registerSocialResearchMcpTools,
-  type SocialResearchMcpToolConfig,
   type SocialResearchMcpToolRegistrar,
-  type SocialResearchMcpToolResult,
 } from '@social-monitor/social-research/mcp';
 import { SocialResearchController } from '@social-monitor/social-research/rest';
 import {
@@ -196,14 +194,7 @@ function assertTransportAdaptersCoverToolCatalog(): void {
 
   const registeredMcpToolNames: string[] = [];
   const registrar: SocialResearchMcpToolRegistrar = {
-    registerTool(
-      name: string,
-      _config: SocialResearchMcpToolConfig,
-      _handler: (
-        input: unknown,
-        extra?: unknown,
-      ) => Promise<SocialResearchMcpToolResult>,
-    ): void {
+    registerTool(name: string): void {
       registeredMcpToolNames.push(name);
     },
   };

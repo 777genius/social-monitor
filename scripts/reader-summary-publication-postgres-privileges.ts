@@ -2,12 +2,11 @@ import { readFileSync } from "node:fs";
 
 import { Pool, type PoolClient } from "pg";
 
-import {
-  assertPostgres18CreatorAndPsqlRegression,
-} from "./reader-summary-publication-postgres18-regression";
+import { assertPostgres18CreatorAndPsqlRegression } from "./reader-summary-publication-postgres18-regression";
 
 const protectedOwner = "social_monitor_reader_summary_publication_owner";
 const publicSchemaOwner = "social_monitor_public_schema_owner";
+const tenantSystemCapability = "social_monitor_tenant_system_runtime";
 
 export const publicationProtectedRolePresence = async (
   serverAdmin: Pool,
@@ -15,25 +14,25 @@ export const publicationProtectedRolePresence = async (
   readonly capability: boolean;
   readonly owner: boolean;
   readonly schemaOwner: boolean;
+  readonly tenantSystemCapability: boolean;
 }> => {
   const protectedRoles = await serverAdmin.query<{
     readonly rolname: string;
-  }>(
-    `SELECT rolname FROM pg_roles WHERE rolname = ANY($1::text[])`,
-    [[
+  }>(`SELECT rolname FROM pg_roles WHERE rolname = ANY($1::text[])`, [
+    [
       publicSchemaOwner,
       protectedOwner,
       "social_monitor_reader_summary_publication_runtime",
-    ]],
-  );
+      tenantSystemCapability,
+    ],
+  ]);
   const hasRole = (role: string): boolean =>
     protectedRoles.rows.some((row) => row.rolname === role);
   return {
-    capability: hasRole(
-      "social_monitor_reader_summary_publication_runtime",
-    ),
+    capability: hasRole("social_monitor_reader_summary_publication_runtime"),
     owner: hasRole(protectedOwner),
     schemaOwner: hasRole(publicSchemaOwner),
+    tenantSystemCapability: hasRole(tenantSystemCapability),
   };
 };
 
@@ -44,7 +43,10 @@ export const makePublicationFixtureRuntimeDatabaseOwner = async (params: {
   readonly runtimeRole: string;
   readonly targetDatabaseUrl: string;
 }): Promise<void> => {
-  const admin = new Pool({ connectionString: params.targetDatabaseUrl, max: 1 });
+  const admin = new Pool({
+    connectionString: params.targetDatabaseUrl,
+    max: 1,
+  });
   const rogueRole = `sm_public_schema_rogue_${params.runtimeRole.slice(-20)}`;
   let rogueRoleCreated = false;
   try {
@@ -83,11 +85,13 @@ export const makePublicationFixtureRuntimeDatabaseOwner = async (params: {
     }
   } finally {
     if (rogueRoleCreated) {
-      await admin.query(
-        `REASSIGN OWNED BY ${quoteIdentifier(rogueRole)} TO CURRENT_USER;
+      await admin
+        .query(
+          `REASSIGN OWNED BY ${quoteIdentifier(rogueRole)} TO CURRENT_USER;
          DROP OWNED BY ${quoteIdentifier(rogueRole)};
          DROP ROLE ${quoteIdentifier(rogueRole)}`,
-      ).catch(() => undefined);
+        )
+        .catch(() => undefined);
     }
     await admin.end();
   }
@@ -97,12 +101,15 @@ export const runReaderSummaryPublicationBootstrapSql = async (
   phase: "pre" | "post",
   databaseUrl: string,
   applicationRole: string,
+  systemRuntimeRole: string = applicationRole,
 ): Promise<void> => {
   const path = `ops/deploy/reader-summary-publication-${phase}-migration.sql`;
   const sql = readFileSync(path, "utf8")
     .replace(/^\\set[^\n]*\n/gm, "")
     .replaceAll(":'runtime_role'", quoteLiteral(applicationRole))
-    .replaceAll(':"runtime_role"', quoteIdentifier(applicationRole));
+    .replaceAll(':"runtime_role"', quoteIdentifier(applicationRole))
+    .replaceAll(":'system_runtime_role'", quoteLiteral(systemRuntimeRole))
+    .replaceAll(':"system_runtime_role"', quoteIdentifier(systemRuntimeRole));
   const pool = new Pool({ connectionString: databaseUrl, max: 1 });
   try {
     await pool.query(sql);
@@ -194,14 +201,14 @@ export const createPublicationFixtureRuntimeRole = async (params: {
     }
   } catch (error) {
     if (runtimeCreated) {
-      await serverAdmin.query(
-        `DROP ROLE ${quoteIdentifier(params.runtimeRole)}`,
-      ).catch(() => undefined);
+      await serverAdmin
+        .query(`DROP ROLE ${quoteIdentifier(params.runtimeRole)}`)
+        .catch(() => undefined);
     }
     if (provisionerCreated) {
-      await serverAdmin.query(
-        `DROP ROLE ${quoteIdentifier(provisionerRole)}`,
-      ).catch(() => undefined);
+      await serverAdmin
+        .query(`DROP ROLE ${quoteIdentifier(provisionerRole)}`)
+        .catch(() => undefined);
     }
     throw error;
   } finally {
@@ -406,9 +413,7 @@ export const assertPublicationRoleMemberships = async (
           )}`.localeCompare(
             `${right.granted_role}\0${right.member_role}\0${Number(
               !right.admin_option,
-            )}\0${Number(!right.inherit_option)}\0${Number(
-              !right.set_option,
-            )}`,
+            )}\0${Number(!right.inherit_option)}\0${Number(!right.set_option)}`,
           ),
         ),
       [
@@ -469,9 +474,7 @@ export const assertPublicationRoleMemberships = async (
         )}`.localeCompare(
           `${right.granted_role}\0${right.member_role}\0${Number(
             !right.admin_option,
-          )}\0${Number(!right.inherit_option)}\0${Number(
-            !right.set_option,
-          )}`,
+          )}\0${Number(!right.inherit_option)}\0${Number(!right.set_option)}`,
         ),
       ),
       "publication role memberships must match the exact PostgreSQL 18 boundary",
@@ -600,13 +603,24 @@ export const dropPublicationFixtureDatabaseAndRoles = async (params: {
   readonly ownerRolePreexisting: boolean;
   readonly capabilityRolePreexisting: boolean;
   readonly schemaOwnerRolePreexisting: boolean;
+  readonly tenantSystemCapabilityRolePreexisting: boolean;
   readonly fixtureDatabaseCreated: boolean;
   readonly fixtureMigrationAdminRoleCreated: boolean;
   readonly fixtureRuntimeRoleCreated: boolean;
+  readonly systemRuntimeRole?: string;
+  readonly systemRuntimeRoleCreated?: boolean;
 }): Promise<void> => {
   if (params.fixtureDatabaseCreated) {
     await params.serverAdmin.query(
       `DROP DATABASE ${quoteIdentifier(params.databaseName)} WITH (FORCE)`,
+    );
+  }
+  if (
+    params.systemRuntimeRoleCreated === true &&
+    params.systemRuntimeRole !== undefined
+  ) {
+    await params.serverAdmin.query(
+      `DROP ROLE ${quoteIdentifier(params.systemRuntimeRole)}`,
     );
   }
   if (params.fixtureRuntimeRoleCreated) {
@@ -624,15 +638,18 @@ export const dropPublicationFixtureDatabaseAndRoles = async (params: {
       `DROP ROLE IF EXISTS social_monitor_reader_summary_publication_runtime`,
     );
   }
+  if (!params.tenantSystemCapabilityRolePreexisting) {
+    await params.serverAdmin.query(
+      `DROP ROLE IF EXISTS ${tenantSystemCapability}`,
+    );
+  }
   if (!params.ownerRolePreexisting) {
     await params.serverAdmin.query(
       `DROP ROLE IF EXISTS social_monitor_reader_summary_publication_owner`,
     );
   }
   if (!params.schemaOwnerRolePreexisting) {
-    await params.serverAdmin.query(
-      `DROP ROLE IF EXISTS ${publicSchemaOwner}`,
-    );
+    await params.serverAdmin.query(`DROP ROLE IF EXISTS ${publicSchemaOwner}`);
   }
   if (params.fixtureMigrationAdminRoleCreated) {
     await params.serverAdmin.query(

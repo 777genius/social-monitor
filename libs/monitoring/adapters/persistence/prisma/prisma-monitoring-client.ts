@@ -33,6 +33,15 @@ type PrismaScanSchedulerDecisionWriteData = {
 type PrismaInterestStatus = 'ENABLED' | 'DISABLED' | 'ARCHIVED';
 
 export type PrismaMonitoringClient = {
+  $transaction<TValue>(
+    work: (
+      transaction: Pick<
+        PrismaMonitoringClient,
+        'scanJob' | 'outboxEvent'
+      >,
+    ) => Promise<TValue>,
+    options: { readonly isolationLevel: 'Serializable' },
+  ): Promise<TValue>;
   readonly interest: {
     upsert(args: {
       readonly where: { readonly id: string };
@@ -352,6 +361,7 @@ export type PrismaMonitoringClient = {
         readonly id: string;
         readonly tenantId?: string | null;
         readonly workspaceId?: string | null;
+        readonly messageKind?: 'EVENT' | 'COMMAND';
         readonly eventType: string;
         readonly schemaVersion: number;
         readonly payload: Readonly<Record<string, unknown>>;

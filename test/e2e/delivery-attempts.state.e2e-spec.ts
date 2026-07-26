@@ -6,6 +6,7 @@ import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 describe('Delivery attempt state transitions (e2e)', () => {
   let app: INestApplication;
@@ -31,8 +32,8 @@ describe('Delivery attempt state transitions (e2e)', () => {
   });
 
   it('updates delivery attempt state internally and exposes terminal status through REST', async () => {
-    const tenant = tenantId('tenant-delivery-state-e2e');
-    const workspace = workspaceId('workspace-delivery-state-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-delivery-state-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-delivery-state-e2e'));
     const queued = await app.get(QueueDeliveryAttemptUseCase).execute({
       tenantId: tenant,
       workspaceId: workspace,

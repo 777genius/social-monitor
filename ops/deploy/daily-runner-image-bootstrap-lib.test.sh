@@ -212,12 +212,11 @@ BASE_TAG=$(compose_image_name intelligence-worker)
 COMPOSE_TAG=$(compose_image_name daily-runner)
 
 reset_runtime() {
-  local ready_sha=${1:-$PREVIOUS_SHA}
   local release=$POSTGRES_RUNTIME_RELEASES/release
 
   rm -rf "$release"
   install -d "$release"
-  printf '%s\n' "$ready_sha" > "$release/READY"
+  printf '%s\n' "$PREVIOUS_SHA" > "$release/READY"
   rm -f "$POSTGRES_RUNTIME_CURRENT"
   ln -s "$release" "$POSTGRES_RUNTIME_CURRENT"
   printf '%s\n' "$PREVIOUS_SHA" > "$STATE/backend.sha"
@@ -425,6 +424,8 @@ PY
 
 for malicious_kind in path symlink; do
   reset_case
+  # Called indirectly through the production bootstrap function.
+  # shellcheck disable=SC2329
   daily_runner_bootstrap_create_archive() {
     # shellcheck disable=SC2317
     create_malicious_archive "$malicious_kind" "$2"

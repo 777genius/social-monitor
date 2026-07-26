@@ -3,6 +3,7 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 describe('Create interest flow (e2e)', () => {
   let app: INestApplication;
@@ -30,8 +31,8 @@ describe('Create interest flow (e2e)', () => {
   it('creates an interest through REST and makes duplicate command idempotent', async () => {
     const first = await request(app.getHttpServer())
       .post('/interests')
-      .set('x-tenant-id', 'tenant-e2e')
-      .set('x-workspace-id', 'workspace-e2e')
+      .set('x-tenant-id', deterministicTestUuid('tenant-e2e'))
+      .set('x-workspace-id', deterministicTestUuid('workspace-e2e'))
       .set('x-workspace-role', 'admin')
       .set('x-request-id', 'request-e2e')
       .set('idempotency-key', 'create-interest-e2e')
@@ -48,8 +49,8 @@ describe('Create interest flow (e2e)', () => {
 
     const second = await request(app.getHttpServer())
       .post('/interests')
-      .set('x-tenant-id', 'tenant-e2e')
-      .set('x-workspace-id', 'workspace-e2e')
+      .set('x-tenant-id', deterministicTestUuid('tenant-e2e'))
+      .set('x-workspace-id', deterministicTestUuid('workspace-e2e'))
       .set('x-workspace-role', 'admin')
       .set('x-request-id', 'request-e2e')
       .set('idempotency-key', 'create-interest-e2e')

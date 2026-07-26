@@ -1,23 +1,23 @@
 import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
-import type { DeliveryChannel } from '@social-monitor/delivery/domain';
 import type {
-  SummaryPolicyFormat,
-  SummaryPolicyLanguage,
-  SummaryPolicyTone,
-} from '@social-monitor/summary/domain';
+  UserSubscriptionDeliveryChannel,
+  UserSummaryPreferenceFormat,
+  UserSummaryPreferenceLanguage,
+  UserSummaryPreferenceTone,
+} from '../../domain';
 
 export type CreateUserSubscriptionScheduleCommand = {
   readonly recipientKey: string;
-  readonly channel: DeliveryChannel;
+  readonly channel: UserSubscriptionDeliveryChannel;
   readonly intervalSeconds: number;
   readonly includeNoSignal: boolean;
   readonly nextRunAt?: Date;
 };
 
 export type CreateUserSubscriptionSummaryPreferenceCommand = {
-  readonly language?: SummaryPolicyLanguage;
-  readonly format?: SummaryPolicyFormat;
-  readonly tone?: SummaryPolicyTone;
+  readonly language?: UserSummaryPreferenceLanguage;
+  readonly format?: UserSummaryPreferenceFormat;
+  readonly tone?: UserSummaryPreferenceTone;
   readonly maxKeyPoints?: number;
   readonly includeRisks?: boolean;
   readonly includeSourceHighlights?: boolean;

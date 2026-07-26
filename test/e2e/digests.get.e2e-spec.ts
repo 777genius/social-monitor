@@ -6,6 +6,7 @@ import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 describe('Digest provenance (e2e)', () => {
   let app: INestApplication;
@@ -31,8 +32,8 @@ describe('Digest provenance (e2e)', () => {
   });
 
   it('assembles digest from scoped read models and exposes provenance through REST', async () => {
-    const tenant = tenantId('tenant-digest-e2e');
-    const workspace = workspaceId('workspace-digest-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-digest-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-digest-e2e'));
     const sourceReader = app.get(InMemoryDigestSourceReader);
 
     sourceReader.addSummary({

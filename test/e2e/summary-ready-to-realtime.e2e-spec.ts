@@ -7,6 +7,7 @@ import { ExecuteSummaryJobUseCase } from '@social-monitor/summary/features/execu
 import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 describe('Summary ready realtime fanout (e2e)', () => {
   let app: INestApplication;
@@ -32,8 +33,8 @@ describe('Summary ready realtime fanout (e2e)', () => {
   });
 
   it('projects summary.ready into realtime summary status replay', async () => {
-    const tenant = tenantId('tenant-summary-realtime-e2e');
-    const workspace = workspaceId('workspace-summary-realtime-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-summary-realtime-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-summary-realtime-e2e'));
     const interestId = 'topic-summary-realtime-e2e';
     const requested = await request(app.getHttpServer())
       .post(`/interests/${interestId}/summary-requests`)

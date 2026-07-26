@@ -5,6 +5,43 @@ export const readerSummaryPublicationFixtureScope = {
   workspaceId: "00000000-0000-7000-8000-000000000002",
 } as const;
 
+export const requiredReaderSummaryPublicationAdminDatabaseUrl = (
+  env: NodeJS.ProcessEnv,
+): string => {
+  const value = env.READER_SUMMARY_PUBLICATION_TEST_ADMIN_DATABASE_URL?.trim();
+  if (value === undefined || value.length === 0) {
+    throw new Error(
+      "READER_SUMMARY_PUBLICATION_TEST_ADMIN_DATABASE_URL is required; the PostgreSQL publication gate never skips",
+    );
+  }
+  return value;
+};
+
+export const readerSummaryPublicationBackendPid = async (
+  client: Pick<PoolClient, "query">,
+): Promise<number> => {
+  const result = await client.query<{ readonly pid: number }>(
+    "SELECT pg_backend_pid() AS pid",
+  );
+  const pid = result.rows[0]?.pid;
+  if (pid === undefined) {
+    throw new Error("PostgreSQL connection returned no backend pid");
+  }
+  return pid;
+};
+
+export const setReaderSummaryPublicationSessionScope = async (
+  client: Pick<PoolClient, "query">,
+): Promise<void> => {
+  const { tenantId, workspaceId } = readerSummaryPublicationFixtureScope;
+  await client.query(
+    `SELECT set_config('social_monitor.tenant_id', $1, false),
+            set_config('social_monitor.workspace_id', $2, false),
+            set_config('social_monitor.system_access', 'false', false)`,
+    [tenantId, workspaceId],
+  );
+};
+
 const fixtureTimestamp = "2026-06-01T00:00:00.000Z";
 const tenantName = "Reader summary publication fixture tenant";
 const tenantSlug = "reader-summary-publication-fixture";

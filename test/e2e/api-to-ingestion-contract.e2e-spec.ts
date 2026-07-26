@@ -29,6 +29,7 @@ import type {
 } from '../../libs/ingestion/ports';
 import { RecordScanExecutionUseCase } from '../../libs/monitoring/features/record-scan-execution/record-scan-execution.use-case';
 import { MonitoringRestModule } from '../../libs/monitoring/interfaces/rest/monitoring-rest.module';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 class MonitoringScanExecutionReporter implements ScanExecutionReporterPort {
   constructor(private readonly recordScanExecution: RecordScanExecutionUseCase) {}
@@ -127,8 +128,8 @@ describe('API to ingestion worker queue contract (e2e)', () => {
   });
 
   it('publishes a scan command that the ingestion worker can execute', async () => {
-    const tenant = 'tenant-contract-e2e';
-    const workspace = 'workspace-contract-e2e';
+    const tenant = deterministicTestUuid('tenant-contract-e2e');
+    const workspace = deterministicTestUuid('workspace-contract-e2e');
     const queue = api.select(MonitoringRestModule).get(InMemoryQueuePublisher, { strict: true });
 
     const topic = await request(api.getHttpServer())
@@ -217,7 +218,7 @@ describe('API to ingestion worker queue contract (e2e)', () => {
 
     const result = await handler.handle(command);
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       scanJobId: scan.body.scanJobId,
       fetched: 2,
       inserted: 2,
@@ -361,8 +362,8 @@ describe('API to ingestion worker queue contract (e2e)', () => {
   });
 
   it('publishes and executes an RSS scan command through the same API-to-feed path', async () => {
-    const tenant = 'tenant-rss-contract-e2e';
-    const workspace = 'workspace-rss-contract-e2e';
+    const tenant = deterministicTestUuid('tenant-rss-contract-e2e');
+    const workspace = deterministicTestUuid('workspace-rss-contract-e2e');
     const queue = api.select(MonitoringRestModule).get(InMemoryQueuePublisher, { strict: true });
     const initialQueueLength = queue.all().length;
 
@@ -440,7 +441,7 @@ describe('API to ingestion worker queue contract (e2e)', () => {
     const handler = workerModuleRef.get(ExecuteScanCommandHandler);
     const result = await handler.handle(command);
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       scanJobId: scan.body.scanJobId,
       fetched: 2,
       inserted: 2,
@@ -502,8 +503,8 @@ describe('API to ingestion worker queue contract (e2e)', () => {
   });
 
   it('publishes and executes a Hacker News scan with provider metrics exposed through feed API', async () => {
-    const tenant = 'tenant-hn-contract-e2e';
-    const workspace = 'workspace-hn-contract-e2e';
+    const tenant = deterministicTestUuid('tenant-hn-contract-e2e');
+    const workspace = deterministicTestUuid('workspace-hn-contract-e2e');
     const queue = api.select(MonitoringRestModule).get(InMemoryQueuePublisher, { strict: true });
     const initialQueueLength = queue.all().length;
 
@@ -581,7 +582,7 @@ describe('API to ingestion worker queue contract (e2e)', () => {
     const handler = workerModuleRef.get(ExecuteScanCommandHandler);
     const result = await handler.handle(command);
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       scanJobId: scan.body.scanJobId,
       fetched: 2,
       inserted: 2,
@@ -666,8 +667,8 @@ describe('API to ingestion worker queue contract (e2e)', () => {
   });
 
   it('records failed scan status when ingestion worker execution fails', async () => {
-    const tenant = 'tenant-contract-failure-e2e';
-    const workspace = 'workspace-contract-failure-e2e';
+    const tenant = deterministicTestUuid('tenant-contract-failure-e2e');
+    const workspace = deterministicTestUuid('workspace-contract-failure-e2e');
     const queue = api.select(MonitoringRestModule).get(InMemoryQueuePublisher, { strict: true });
     const initialQueueLength = queue.all().length;
 

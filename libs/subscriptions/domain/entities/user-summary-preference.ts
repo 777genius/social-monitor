@@ -1,14 +1,14 @@
 import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 import type {
-  SummaryPolicyFormat,
-  SummaryPolicyLanguage,
-  SummaryPolicyTone,
-} from '@social-monitor/summary/domain';
+  UserSummaryPreferenceFormat,
+  UserSummaryPreferenceLanguage,
+  UserSummaryPreferenceTone,
+} from '../value-objects/user-subscription-preference-types';
 
 export type UserSummaryPreferenceOverlay = {
-  readonly language?: SummaryPolicyLanguage;
-  readonly format?: SummaryPolicyFormat;
-  readonly tone?: SummaryPolicyTone;
+  readonly language?: UserSummaryPreferenceLanguage;
+  readonly format?: UserSummaryPreferenceFormat;
+  readonly tone?: UserSummaryPreferenceTone;
   readonly maxKeyPoints?: number;
   readonly includeRisks?: boolean;
   readonly includeSourceHighlights?: boolean;
@@ -27,9 +27,9 @@ export type UserSummaryPreferenceProps = UserSummaryPreferenceOverlay & {
   readonly updatedAt: Date;
 };
 
-const supportedLanguages = new Set<SummaryPolicyLanguage>(['auto', 'en', 'ru']);
-const supportedFormats = new Set<SummaryPolicyFormat>(['executive_brief', 'bullet_digest', 'risk_brief']);
-const supportedTones = new Set<SummaryPolicyTone>(['neutral', 'concise', 'analytical']);
+const supportedLanguages = new Set<UserSummaryPreferenceLanguage>(['auto', 'en', 'ru']);
+const supportedFormats = new Set<UserSummaryPreferenceFormat>(['executive_brief', 'bullet_digest', 'risk_brief']);
+const supportedTones = new Set<UserSummaryPreferenceTone>(['neutral', 'concise', 'analytical']);
 const maxCustomInstructionsLength = 1_200;
 
 export class UserSummaryPreference {

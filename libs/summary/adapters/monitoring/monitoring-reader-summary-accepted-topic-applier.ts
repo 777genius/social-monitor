@@ -1,4 +1,4 @@
-import { ApplyAcceptedTopicRecommendationUseCase } from "@social-monitor/monitoring/features/apply-accepted-topic-recommendation/apply-accepted-topic-recommendation.use-case";
+import type { ApplyAcceptedTopicRecommendationUseCase } from "@social-monitor/monitoring/features/apply-accepted-topic-recommendation/apply-accepted-topic-recommendation.use-case";
 
 import type {
   ApplyReaderSummaryAcceptedTopicCommand,

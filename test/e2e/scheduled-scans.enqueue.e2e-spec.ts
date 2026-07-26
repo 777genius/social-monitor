@@ -7,6 +7,7 @@ import request from 'supertest';
 import { AppModule } from '../../apps/api-gateway/src/app.module';
 import { ScheduleDueScansUseCase } from '../../libs/monitoring/features/schedule-due-scans/schedule-due-scans.use-case';
 import { MonitoringRestModule } from '../../libs/monitoring/interfaces/rest/monitoring-rest.module';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 describe('Scheduled scan enqueue flow (e2e)', () => {
   let app: INestApplication;
@@ -36,8 +37,8 @@ describe('Scheduled scan enqueue flow (e2e)', () => {
   });
 
   it('enqueues due scan from configured scan policy', async () => {
-    const tenant = 'tenant-scheduled-e2e';
-    const workspace = 'workspace-scheduled-e2e';
+    const tenant = deterministicTestUuid('tenant-scheduled-e2e');
+    const workspace = deterministicTestUuid('workspace-scheduled-e2e');
 
     const topic = await request(app.getHttpServer())
       .post('/interests')
@@ -137,8 +138,8 @@ describe('Scheduled scan enqueue flow (e2e)', () => {
   });
 
   it('enqueues due X scan from activated product source pipeline', async () => {
-    const tenant = 'tenant-scheduled-x-e2e';
-    const workspace = 'workspace-scheduled-x-e2e';
+    const tenant = deterministicTestUuid('tenant-scheduled-x-e2e');
+    const workspace = deterministicTestUuid('workspace-scheduled-x-e2e');
     const userId = 'user-scheduled-x';
     const initialQueueLength = queue.all().length;
 
@@ -204,8 +205,8 @@ describe('Scheduled scan enqueue flow (e2e)', () => {
   });
 
   it('skips due scheduled scan when manual scan is already active for source binding', async () => {
-    const tenant = 'tenant-scheduled-overlap-e2e';
-    const workspace = 'workspace-scheduled-overlap-e2e';
+    const tenant = deterministicTestUuid('tenant-scheduled-overlap-e2e');
+    const workspace = deterministicTestUuid('workspace-scheduled-overlap-e2e');
     const initialQueueLength = queue.all().length;
 
     const topic = await request(app.getHttpServer())
@@ -283,8 +284,8 @@ describe('Scheduled scan enqueue flow (e2e)', () => {
   });
 
   it('skips due scheduled scan for a paused source binding and advances cadence', async () => {
-    const tenant = 'tenant-scheduled-paused-e2e';
-    const workspace = 'workspace-scheduled-paused-e2e';
+    const tenant = deterministicTestUuid('tenant-scheduled-paused-e2e');
+    const workspace = deterministicTestUuid('workspace-scheduled-paused-e2e');
     const initialQueueLength = queue.all().length;
 
     const topic = await request(app.getHttpServer())

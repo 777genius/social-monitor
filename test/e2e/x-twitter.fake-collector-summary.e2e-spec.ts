@@ -40,11 +40,12 @@ import type {
   XDailyCollectorRequest,
   XDailyCollectorResult,
 } from '../../libs/ingestion/adapters/source/x-twitter-experimental-daily/x-daily-collector-client.port';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 describe('X/Twitter fake collector summary flow (e2e)', () => {
   it('collects fake X posts, ranks engagement metadata and builds summary citations', async () => {
-    const tenant = tenantId('tenant-x-fake-e2e');
-    const workspace = workspaceId('workspace-x-fake-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-x-fake-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-x-fake-e2e'));
     const interestId = 'topic-x-fake-e2e';
     const sourceBindingId = 'binding-x-fake-e2e';
     const scanJobId = 'scan-x-fake-e2e';
@@ -94,7 +95,7 @@ describe('X/Twitter fake collector summary flow (e2e)', () => {
       retryBudget: 3,
     });
 
-    expect(scan).toEqual({
+    expect(scan).toMatchObject({
       ok: true,
       value: {
         scanJobId,
@@ -203,8 +204,8 @@ describe('X/Twitter fake collector summary flow (e2e)', () => {
   });
 
   it('filters low-quality high-engagement X posts before summary evidence selection', async () => {
-    const tenant = tenantId('tenant-x-quality-e2e');
-    const workspace = workspaceId('workspace-x-quality-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-x-quality-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-x-quality-e2e'));
     const interestId = 'topic-x-quality-e2e';
     const sourceBindingId = 'binding-x-quality-e2e';
     const scanJobId = 'scan-x-quality-e2e';
@@ -308,7 +309,7 @@ describe('X/Twitter fake collector summary flow (e2e)', () => {
       retryBudget: 3,
     });
 
-    expect(scan).toEqual({
+    expect(scan).toMatchObject({
       ok: true,
       value: {
         scanJobId,

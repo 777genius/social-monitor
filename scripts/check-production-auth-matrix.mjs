@@ -42,7 +42,16 @@ const requiredNegativeCases = new Set([
 const allowedRoles = new Set(['owner', 'admin', 'member', 'viewer']);
 const allowedAuthModes = new Set(['bearer-oidc-jwt', 'workspace-role-dev-test']);
 const safeMethods = new Set(['GET', 'HEAD', 'OPTIONS']);
-const readOnlyPostOperations = new Set(['POST /interests/{interestId}/coverage-plan']);
+const readOnlyPostOperations = new Set([
+  'POST /interests/{interestId}/coverage-plan',
+  'POST /relevance/users/{userId}/post-ratings/query',
+  'POST /social-research/explain-plan',
+  'POST /social-research/rank',
+  'POST /social-research/search',
+  'POST /social-research/sources/list',
+  'POST /social-research/sources/readiness',
+  'POST /social-research/threads/fetch',
+]);
 const allowedApiKeyScopes = new Set([
   'read:delivery_status',
   'read:feed',

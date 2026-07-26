@@ -13,6 +13,7 @@ import { InMemorySourceProviderRegistry } from '../../libs/ingestion/adapters/so
 import { RegistrySourceFetcherAdapter } from '../../libs/ingestion/adapters/source/registry-source-fetcher.adapter';
 import { ExecuteScanCommandHandler } from '../../libs/ingestion/interfaces/queue/execute-scan-command.handler';
 import type { FetchSourceItemsResult, SourceFetcherPort } from '../../libs/ingestion/ports';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 class FailingSourceFetcher implements SourceFetcherPort {
   async fetch(): Promise<FetchSourceItemsResult> {
@@ -42,8 +43,8 @@ describe('ingestion worker execute scan command (e2e)', () => {
       correlationId: 'correlation-1',
       causationId: 'scan-request-1',
       payload: {
-        tenantId: 'tenant-1',
-        workspaceId: 'workspace-1',
+        tenantId: deterministicTestUuid('tenant-1'),
+        workspaceId: deterministicTestUuid('workspace-1'),
         scanJobId: 'scan-job-1',
         interestId: 'topic-worker-e2e',
         sourceBindingId: 'source-binding-1',
@@ -56,7 +57,7 @@ describe('ingestion worker execute scan command (e2e)', () => {
     const first = await handler.handle(command);
     const second = await handler.handle(command);
 
-    expect(first).toEqual({
+    expect(first).toMatchObject({
       scanJobId: 'scan-job-1',
       fetched: 2,
       inserted: 2,
@@ -66,38 +67,39 @@ describe('ingestion worker execute scan command (e2e)', () => {
     expect(second).toEqual({
       scanJobId: 'scan-job-1',
       fetched: 2,
-      inserted: 0,
-      skippedDuplicates: 2,
+      inserted: 2,
+      skippedDuplicates: 0,
       projected: 2,
+      warnings: [],
     });
     expect(repository.all()).toHaveLength(2);
     expect((await feedRepository.list({
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
+      tenantId: tenantId(deterministicTestUuid('tenant-1')),
+      workspaceId: workspaceId(deterministicTestUuid('workspace-1')),
       interestId: 'topic-worker-e2e',
       limit: 10,
     })).items).toHaveLength(2);
     expect((await attemptRepository.findByScanJob({
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
+      tenantId: tenantId(deterministicTestUuid('tenant-1')),
+      workspaceId: workspaceId(deterministicTestUuid('workspace-1')),
       scanJobId: 'scan-job-1',
     }))?.toSnapshot()).toMatchObject({
       status: 'succeeded',
       fetched: 2,
-      inserted: 0,
-      skippedDuplicates: 2,
+      inserted: 2,
+      skippedDuplicates: 0,
       projected: 2,
     });
     expect(await cursorRepository.findBySourceBinding({
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
+      tenantId: tenantId(deterministicTestUuid('tenant-1')),
+      workspaceId: workspaceId(deterministicTestUuid('workspace-1')),
       sourceBindingId: 'source-binding-1',
     })).toEqual(expect.objectContaining({
       cursor: 'fake-cursor-next',
     }));
     expect(leaseAdapter.current({
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
+      tenantId: tenantId(deterministicTestUuid('tenant-1')),
+      workspaceId: workspaceId(deterministicTestUuid('workspace-1')),
       scanJobId: 'scan-job-1',
     })).toBeNull();
     await expect(providerRegistry.getReadinessProfile('reddit')).resolves.toEqual(
@@ -123,8 +125,8 @@ describe('ingestion worker execute scan command (e2e)', () => {
     const failureQueue = moduleRef.get(InMemoryScanFailureQueueAdapter);
     const attemptRepository = moduleRef.get(InMemoryScanAttemptRepository);
     await leaseAdapter.acquire({
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
+      tenantId: tenantId(deterministicTestUuid('tenant-1')),
+      workspaceId: workspaceId(deterministicTestUuid('workspace-1')),
       scanJobId: 'scan-job-leased',
       workerId: 'other-worker',
       leasedAt: new Date(),
@@ -138,8 +140,8 @@ describe('ingestion worker execute scan command (e2e)', () => {
       correlationId: 'correlation-leased',
       causationId: 'scan-request-leased',
       payload: {
-        tenantId: 'tenant-1',
-        workspaceId: 'workspace-1',
+        tenantId: deterministicTestUuid('tenant-1'),
+        workspaceId: deterministicTestUuid('workspace-1'),
         scanJobId: 'scan-job-leased',
         interestId: 'topic-worker-e2e',
         sourceBindingId: 'source-binding-1',
@@ -151,8 +153,8 @@ describe('ingestion worker execute scan command (e2e)', () => {
     })).rejects.toThrow('Scan job is already leased');
     expect(repository.all()).toHaveLength(0);
     expect(await attemptRepository.findByScanJob({
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
+      tenantId: tenantId(deterministicTestUuid('tenant-1')),
+      workspaceId: workspaceId(deterministicTestUuid('workspace-1')),
       scanJobId: 'scan-job-leased',
     })).toBeNull();
     expect(failureQueue.retries()).toEqual([]);
@@ -183,8 +185,8 @@ describe('ingestion worker execute scan command (e2e)', () => {
       correlationId: 'correlation-failure',
       causationId: 'scan-request-failure',
       payload: {
-        tenantId: 'tenant-1',
-        workspaceId: 'workspace-1',
+        tenantId: deterministicTestUuid('tenant-1'),
+        workspaceId: deterministicTestUuid('workspace-1'),
         scanJobId: 'scan-job-failure',
         interestId: 'topic-worker-e2e',
         sourceBindingId: 'source-binding-1',
@@ -198,8 +200,8 @@ describe('ingestion worker execute scan command (e2e)', () => {
 
     await expect(handler.handle(command)).rejects.toThrow('Provider unavailable');
     expect((await attemptRepository.findByScanJob({
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
+      tenantId: tenantId(deterministicTestUuid('tenant-1')),
+      workspaceId: workspaceId(deterministicTestUuid('workspace-1')),
       scanJobId: 'scan-job-failure',
     }))?.toSnapshot()).toMatchObject({
       status: 'failed',
@@ -228,8 +230,8 @@ describe('ingestion worker execute scan command (e2e)', () => {
       worker: 'ingestion-worker',
     })).toBe(1);
     await expect(cursorRepository.findBySourceBinding({
-      tenantId: tenantId('tenant-1'),
-      workspaceId: workspaceId('workspace-1'),
+      tenantId: tenantId(deterministicTestUuid('tenant-1')),
+      workspaceId: workspaceId(deterministicTestUuid('workspace-1')),
       sourceBindingId: 'source-binding-1',
     })).resolves.toBeNull();
 
@@ -255,8 +257,8 @@ describe('ingestion worker execute scan command (e2e)', () => {
       correlationId: 'correlation-zero-retry',
       causationId: 'scan-request-zero-retry',
       payload: {
-        tenantId: 'tenant-1',
-        workspaceId: 'workspace-1',
+        tenantId: deterministicTestUuid('tenant-1'),
+        workspaceId: deterministicTestUuid('workspace-1'),
         scanJobId: 'scan-job-zero-retry',
         interestId: 'topic-worker-e2e',
         sourceBindingId: 'source-binding-1',

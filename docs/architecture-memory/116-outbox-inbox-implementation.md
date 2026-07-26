@@ -70,6 +70,22 @@ The MVP implementation uses `OutboxDispatcher` against `OutboxStorePort` and `Ev
 
 The executable relay process is `apps/event-relay`. It requires `DATABASE_URL` and `RABBITMQ_URL`, reads from the Prisma outbox, publishes event envelopes to `RABBITMQ_EVENT_EXCHANGE` (default `social-monitor.events`), and can tune `EVENT_RELAY_BATCH_SIZE`, `EVENT_RELAY_INTERVAL_MS` and `EVENT_RELAY_RUN_ON_START`.
 
+The production scan-dispatch path also uses the same durable outbox table with
+`message_kind = COMMAND`. Manual and scheduled scan writers atomically persist:
+
+- the `ENQUEUED` scan job;
+- the `monitoring.scan.requested` event when the manual request produces one;
+- the `ingestion.scan.execute` command intent.
+
+The transaction uses Serializable isolation with P2034/serialization retry and
+does not call RabbitMQ. `ScanCommandRelayLoop` claims due commands with a
+lease owner and lease deadline, increments the attempt counter, publishes to
+the command exchange and then marks the exact owned lease published. Failures
+are redacted, retried with bounded exponential backoff and become terminal
+after the configured attempt budget. Because publication and the final status
+write cannot be one transaction, delivery is at least once; `scanJobId` is the
+stable command id and consumers must remain idempotent.
+
 Later hardening should switch the Prisma query to a leasing query with `FOR UPDATE SKIP LOCKED` or move relay publication to Debezium CDC without changing domain use cases.
 
 Polling relay requirements:

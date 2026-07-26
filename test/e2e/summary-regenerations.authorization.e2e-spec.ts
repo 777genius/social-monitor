@@ -5,6 +5,7 @@ import { tenantId, type TenantId, workspaceId, type WorkspaceId } from '@social-
 import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 describe('Summary regeneration workspace authorization (e2e)', () => {
   let app: INestApplication;
@@ -30,8 +31,8 @@ describe('Summary regeneration workspace authorization (e2e)', () => {
   });
 
   it('requires a workspace role with summary regeneration permission', async () => {
-    const tenant = tenantId('tenant-summary-regeneration-authorization-e2e');
-    const workspace = workspaceId('workspace-summary-regeneration-authorization-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-summary-regeneration-authorization-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-summary-regeneration-authorization-e2e'));
     const summaryId = await createSummaryArtifact({ app, tenant, workspace });
 
     const missingRole = await request(app.getHttpServer())

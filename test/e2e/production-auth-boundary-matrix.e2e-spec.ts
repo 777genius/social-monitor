@@ -14,7 +14,11 @@ import {
   WorkspaceRoleHeaderParser,
 } from '@social-monitor/identity/interfaces/authorization/workspace-role-header.parser';
 import { ApiKeyRequestAuthorizer } from '@social-monitor/identity/interfaces/rest/api-key-request-authorizer';
-import { IDENTITY_PUBLIC_API_RATE_LIMIT_PER_MINUTE } from '@social-monitor/identity/interfaces/rest/identity-provider-tokens';
+import {
+  IDENTITY_PUBLIC_API_AUDIT_WRITER,
+  IDENTITY_PUBLIC_API_RATE_LIMITER,
+  IDENTITY_PUBLIC_API_RATE_LIMIT_PER_MINUTE,
+} from '@social-monitor/identity/interfaces/rest/identity-provider-tokens';
 import {
   USER_ACCESS_TOKEN_VERIFIER,
   USER_WORKSPACE_MEMBERSHIP_VERIFIER,
@@ -22,8 +26,6 @@ import {
   type UserWorkspaceMembership,
 } from '@social-monitor/identity/ports';
 import { VerifyApiKeyUseCase } from '@social-monitor/identity/features/verify-api-key/verify-api-key.use-case';
-import { CheckPublicApiRateLimitUseCase } from '@social-monitor/usage/features/check-public-api-rate-limit/check-public-api-rate-limit.use-case';
-import { RecordPublicApiAuditEventUseCase } from '@social-monitor/usage/features/record-public-api-audit-event/record-public-api-audit-event.use-case';
 import { RequestCorrelationIdFactory } from '@social-monitor/platform-request-context';
 import { ok, SystemClock, tenantId, userId, workspaceId } from '@social-monitor/shared-kernel';
 import { ArchiveInterestUseCase } from '@social-monitor/monitoring/features/archive-interest/archive-interest.use-case';
@@ -35,15 +37,18 @@ import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
 import { createApiGatewayE2eApp } from './support/api-gateway-e2e-app';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 const issuer = 'https://auth.example.test';
 const audience = 'social-monitor-api';
-const tenant = tenantId('tenant-production-auth-matrix-e2e');
-const workspace = workspaceId('workspace-production-auth-matrix-e2e');
+const tenant = tenantId(deterministicTestUuid('tenant-production-auth-matrix-e2e'));
+const workspace = workspaceId(deterministicTestUuid('workspace-production-auth-matrix-e2e'));
 let privateKey: KeyObject;
 let jwks: { readonly keys: readonly JsonWebKey[] };
 
 describe('Production auth boundary matrix (e2e)', () => {
+  jest.setTimeout(30_000);
+
   beforeAll(() => {
     const keyPair = generateKeyPairSync('rsa', { modulusLength: 2048 });
     privateKey = keyPair.privateKey;
@@ -261,10 +266,10 @@ const createHarness = async (params: {
   const membershipVerifier = {
     verify: jest.fn().mockResolvedValue(params.membership),
   };
-  const recordAudit = {
-    execute: jest.fn().mockResolvedValue(ok({
+  const auditWriter = {
+    record: jest.fn().mockResolvedValue(ok({
       auditEventId: 'audit-production-auth-boundary-matrix',
-      recorded: true,
+      occurredAt: '2026-01-01T00:00:00.000Z',
     })),
   };
 
@@ -297,18 +302,19 @@ const createHarness = async (params: {
         },
       },
       {
-        provide: CheckPublicApiRateLimitUseCase,
+        provide: IDENTITY_PUBLIC_API_RATE_LIMITER,
         useValue: {
-          execute: jest.fn().mockResolvedValue(ok({
+          check: jest.fn().mockResolvedValue(ok({
             allowed: true,
+            limit: 60,
             remaining: 59,
-            resetAt: new Date('2026-01-01T00:01:00.000Z'),
+            resetAt: '2026-01-01T00:01:00.000Z',
           })),
         },
       },
       {
-        provide: RecordPublicApiAuditEventUseCase,
-        useValue: recordAudit,
+        provide: IDENTITY_PUBLIC_API_AUDIT_WRITER,
+        useValue: auditWriter,
       },
       {
         provide: USER_ACCESS_TOKEN_VERIFIER,

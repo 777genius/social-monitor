@@ -1,4 +1,5 @@
 import type { MetricsRecorderPort } from "@social-monitor/platform-metrics";
+import { runWithTenantDatabaseAccess } from "@social-monitor/platform-persistence";
 import type { QueueCommandEnvelope } from "@social-monitor/platform-queue";
 import type { WorkerRuntime } from "@social-monitor/platform-worker";
 import {
@@ -47,12 +48,14 @@ export class ExecuteReaderSummaryJobCommandHandler {
       let failureRecorded = false;
 
       try {
-        const result = await this.executeReaderSummaryJob.execute({
-          tenantId: tenantId(payload.tenantId),
-          workspaceId: workspaceId(payload.workspaceId),
-          readerSummaryJobId: payload.readerSummaryJobId,
-          maxEvidenceItems: payload.maxEvidenceItems,
-        });
+        const result = await runWithTenantDatabaseAccess(payload, () =>
+          this.executeReaderSummaryJob.execute({
+            tenantId: tenantId(payload.tenantId),
+            workspaceId: workspaceId(payload.workspaceId),
+            readerSummaryJobId: payload.readerSummaryJobId,
+            maxEvidenceItems: payload.maxEvidenceItems,
+          }),
+        );
 
         if (!result.ok) {
           this.recordMetric("failed");
@@ -97,7 +100,9 @@ export class ExecuteReaderSummaryJobCommandHandler {
       name: "summary_job_failures_total",
       labels: {
         failure_class:
-          error === "quality_rejected" ? "quality_rejected" : classifyFailure(error),
+          error === "quality_rejected"
+            ? "quality_rejected"
+            : classifyFailure(error),
         job_type: "readerSummary",
         worker: "intelligence-worker",
       },
@@ -106,11 +111,7 @@ export class ExecuteReaderSummaryJobCommandHandler {
 }
 
 type ReaderSummaryJobMetricStatus =
-  | "started"
-  | "succeeded"
-  | "failed"
-  | "no_signal"
-  | "quality_rejected";
+  "started" | "succeeded" | "failed" | "no_signal" | "quality_rejected";
 
 const completionMetricStatus = (
   status: ReaderSummaryJobStatus,

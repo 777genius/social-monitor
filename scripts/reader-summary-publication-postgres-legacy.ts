@@ -1,6 +1,9 @@
 import { Pool, type PoolClient } from "pg";
 
-import { defaultPostgresRuntimePoolConfig } from "@social-monitor/platform-persistence";
+import {
+  defaultPostgresRuntimePoolConfig,
+  runWithTenantDatabaseAccess,
+} from "@social-monitor/platform-persistence";
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
 import { PrismaReaderSummaryArtifactRepository } from "../libs/summary/adapters/persistence/prisma/prisma-reader-summary-artifact.repository";
@@ -124,9 +127,18 @@ export const assertLegacyPublicationUpgrade = async (
   assertDeepEqual(
     publications.rows,
     [
-      { reader_summary_artifact_id: selectedIds[0], semantic_status: "NO_SIGNAL" },
-      { reader_summary_artifact_id: selectedIds[1], semantic_status: "COMPLETED" },
-      { reader_summary_artifact_id: selectedIds[2], semantic_status: "COMPLETED" },
+      {
+        reader_summary_artifact_id: selectedIds[0],
+        semantic_status: "NO_SIGNAL",
+      },
+      {
+        reader_summary_artifact_id: selectedIds[1],
+        semantic_status: "COMPLETED",
+      },
+      {
+        reader_summary_artifact_id: selectedIds[2],
+        semantic_status: "COMPLETED",
+      },
     ],
     "legacy selection must prefer newest NO_SIGNAL, then COMPLETED over newer NO_SIGNAL, then descending id",
   );
@@ -188,49 +200,58 @@ export const assertLegacyPublicationUpgrade = async (
 
 export const assertLegacyRepositoryVisibility = async (
   schemaUrl: string,
-): Promise<void> => {
-  const connection = await PrismaSummaryConnection.create(
-    defaultPostgresRuntimePoolConfig(schemaUrl, "admin-tool"),
+): Promise<void> =>
+  runWithTenantDatabaseAccess(
+    {
+      tenantId: historicalTenantId,
+      workspaceId: historicalWorkspaceId,
+    },
+    async () => {
+      const connection = await PrismaSummaryConnection.create(
+        defaultPostgresRuntimePoolConfig(schemaUrl, "admin-tool"),
+      );
+      try {
+        const repository = new PrismaReaderSummaryArtifactRepository(
+          connection,
+        );
+        const scope = {
+          tenantId: tenantId(historicalTenantId),
+          workspaceId: workspaceId(historicalWorkspaceId),
+        };
+        const list = await repository.list({ ...scope, limit: 10 });
+        const listedIds = list.items.map(
+          (artifact) => artifact.toSnapshot().readerSummaryId,
+        );
+        assertDeepEqual(
+          listedIds,
+          [selectedIds[2], selectedIds[1]],
+          "legacy list must return only selected COMPLETED history in newest-period order",
+        );
+        for (const selectedId of selectedIds) {
+          const selected = await repository.findById({
+            ...scope,
+            readerSummaryId: selectedId,
+          });
+          assert(
+            selected?.toSnapshot().readerSummaryId === selectedId,
+            `selected legacy artifact ${selectedId} must remain findable`,
+          );
+        }
+        for (const supersededId of supersededIds) {
+          const superseded = await repository.findById({
+            ...scope,
+            readerSummaryId: supersededId,
+          });
+          assert(
+            superseded === null,
+            `non-selected legacy artifact ${supersededId} must fail closed`,
+          );
+        }
+      } finally {
+        await connection.close();
+      }
+    },
   );
-  try {
-    const repository = new PrismaReaderSummaryArtifactRepository(connection);
-    const scope = {
-      tenantId: tenantId(historicalTenantId),
-      workspaceId: workspaceId(historicalWorkspaceId),
-    };
-    const list = await repository.list({ ...scope, limit: 10 });
-    const listedIds = list.items.map(
-      (artifact) => artifact.toSnapshot().readerSummaryId,
-    );
-    assertDeepEqual(
-      listedIds,
-      [selectedIds[2], selectedIds[1]],
-      "legacy list must return only selected COMPLETED history in newest-period order",
-    );
-    for (const selectedId of selectedIds) {
-      const selected = await repository.findById({
-        ...scope,
-        readerSummaryId: selectedId,
-      });
-      assert(
-        selected?.toSnapshot().readerSummaryId === selectedId,
-        `selected legacy artifact ${selectedId} must remain findable`,
-      );
-    }
-    for (const supersededId of supersededIds) {
-      const superseded = await repository.findById({
-        ...scope,
-        readerSummaryId: supersededId,
-      });
-      assert(
-        superseded === null,
-        `non-selected legacy artifact ${supersededId} must fail closed`,
-      );
-    }
-  } finally {
-    await connection.close();
-  }
-};
 
 const insertHistoricalArtifact = async (
   client: PoolClient,

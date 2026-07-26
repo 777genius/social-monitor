@@ -9,6 +9,7 @@ import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
 import { SummaryRestModule } from '../../libs/summary/interfaces/rest/summary-rest.module';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 describe('Summary job execution flow (e2e)', () => {
   let app: INestApplication;
@@ -34,8 +35,8 @@ describe('Summary job execution flow (e2e)', () => {
   });
 
   it('executes a requested summary job through the model port and persists a no-signal artifact', async () => {
-    const tenant = tenantId('tenant-summary-exec-e2e');
-    const workspace = workspaceId('workspace-summary-exec-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-summary-exec-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-summary-exec-e2e'));
     const requested = await request(app.getHttpServer())
       .post('/interests/topic-summary-exec-e2e/summary-requests')
       .set('x-tenant-id', tenant)

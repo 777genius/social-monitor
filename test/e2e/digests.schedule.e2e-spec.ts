@@ -8,6 +8,7 @@ import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 describe('Scheduled digests (e2e)', () => {
   let app: INestApplication;
@@ -33,8 +34,8 @@ describe('Scheduled digests (e2e)', () => {
   });
 
   it('assembles due digest schedule and exposes generated digest through REST', async () => {
-    const tenant = tenantId('tenant-digest-schedule-e2e');
-    const workspace = workspaceId('workspace-digest-schedule-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-digest-schedule-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-digest-schedule-e2e'));
 
     app.get(InMemoryDigestScheduleRepository).add(DigestSchedule.create({
       id: 'digest-schedule-e2e-1',

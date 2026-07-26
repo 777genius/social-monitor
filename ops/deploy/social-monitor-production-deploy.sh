@@ -32,6 +32,10 @@ else
   exit 1
 fi
 unset DATABASE_URL
+PINNED_OTEL_COLLECTOR_IMAGE=otel/opentelemetry-collector-contrib:0.157.0@sha256:f2f01157055a9b2aab9df7118e1f1c9abf345e99b23bc7a2bc791db374a7d0f6
+OTEL_COLLECTOR_IMAGE=$PINNED_OTEL_COLLECTOR_IMAGE
+OTEL_COLLECTOR_CONFIG_PATH=$REPO/ops/observability/otel-collector.yml
+export OTEL_COLLECTOR_IMAGE OTEL_COLLECTOR_CONFIG_PATH
 POSTGRES_POOL_BOOTSTRAP_VERSION=postgres-pool-v1
 PUBLIC_LINK=$ROOT/runtime/frontend-public-web
 ADMIN_LINK=$ROOT/runtime/frontend-admin-web
@@ -81,6 +85,8 @@ BACKEND_PATHS=(
   apps/social-research-mcp
   scripts
   ops/evals
+  ops/observability
+  ops/deploy/backend-runtime-health-lib.sh
   ops/deploy/reader-summary-publication-deploy-lib.sh
   ops/deploy/reader-summary-publication-pre-migration.sql
   ops/deploy/reader-summary-publication-post-migration.sql
@@ -211,6 +217,8 @@ else
 fi
 # shellcheck source=ops/deploy/postgres-runtime-deploy-lib.sh
 source "$REPO/ops/deploy/postgres-runtime-deploy-lib.sh"
+# shellcheck source=ops/deploy/backend-runtime-health-lib.sh
+source "$REPO/ops/deploy/backend-runtime-health-lib.sh"
 # shellcheck source=ops/deploy/backend-image-rescue-lib.sh
 source "$REPO/ops/deploy/backend-image-rescue-lib.sh"
 daily_runner_bootstrap_library=$REPO/ops/deploy/daily-runner-image-bootstrap-lib.sh
@@ -251,7 +259,7 @@ with open(rendered_path, encoding="utf-8") as handle:
 expected_services = {
     "agent-runtime", "api", "caddy", "daily-runner", "delivery-service",
     "event-relay", "frontend", "ingestion-worker", "intelligence-worker",
-    "migrate", "rabbitmq", "redis", "x-collector",
+    "migrate", "otel-collector", "rabbitmq", "redis", "x-collector",
 }
 services = config.get("services", {})
 if set(services) != expected_services:
@@ -260,6 +268,7 @@ if set(services) != expected_services:
 expected_images = {
     "caddy": "caddy:2.11.4-alpine",
     "frontend": "nginx:1.29-alpine",
+    "otel-collector": "otel/opentelemetry-collector-contrib:0.157.0@sha256:f2f01157055a9b2aab9df7118e1f1c9abf345e99b23bc7a2bc791db374a7d0f6",
     "rabbitmq": "rabbitmq:4.3-management",
     "redis": "redis:8-alpine",
 }
@@ -529,7 +538,7 @@ backend_services() {
   local -a services=()
   local -a common_paths=(Dockerfile .dockerignore docker-compose.yml package.json package-lock.json tsconfig.json tsconfig.build.json prisma.config.ts prisma vendor libs)
   if changed_between "$from" "$to" "${common_paths[@]}"; then
-    services=(migrate api agent-runtime ingestion-worker intelligence-worker delivery-service event-relay daily-runner)
+    services=(migrate otel-collector api agent-runtime ingestion-worker intelligence-worker delivery-service event-relay daily-runner)
   else
     local mapping
     for mapping in \
@@ -556,6 +565,9 @@ backend_services() {
     fi
     if changed_between "$from" "$to" scripts ops/evals test; then
       services+=(daily-runner)
+    fi
+    if changed_between "$from" "$to" ops/observability; then
+      services+=(otel-collector)
     fi
   fi
   if changed_between "$from" "$to" \
@@ -666,34 +678,6 @@ backup_database() (
   printf 'database-backup=%s\n' "$output"
 )
 
-verify_backend() {
-  local service container status oom
-  local -a container_ids
-  curl -fsS --max-time 15 http://127.0.0.1:13000/healthz >/dev/null || return 1
-  curl -fsS --max-time 15 http://127.0.0.1:13000/ready >/dev/null || return 1
-  for service in "$@"; do
-    [[ $service == migrate || $service == daily-runner ]] && continue
-    mapfile -t container_ids < <("${COMPOSE[@]}" --profile app ps -q "$service")
-    ((${#container_ids[@]} == 1)) || return 1
-    for container in "${container_ids[@]}"; do
-      status=$(docker inspect "$container" --format '{{.State.Status}}')
-      oom=$(docker inspect "$container" --format '{{.State.OOMKilled}}')
-      if [[ $status != running || $oom != false ]]; then
-        printf 'deploy-error: %s failed runtime verification\n' "$service" >&2
-        return 1
-      fi
-    done
-  done
-}
-
-verify_backend_with_retry() {
-  for _ in {1..20}; do
-    verify_backend "$@" && return 0
-    sleep 3
-  done
-  return 1
-}
-
 verify_backend_proxy_readiness() {
   local status
   status=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 \
@@ -775,11 +759,19 @@ deploy_backend() (
     daily_runner_image_bootstrap_before_rescue "$from" "$sha" || \
       fail 'missing prior daily-runner image could not be reconstructed'
   fi
+  if printf '%s\n' "${captured_services[@]}" | grep -qx otel-collector; then
+    docker image inspect "$PINNED_OTEL_COLLECTOR_IMAGE" >/dev/null 2>&1 || \
+      timeout 300 docker pull "$PINNED_OTEL_COLLECTOR_IMAGE" >/dev/null || \
+      fail 'pinned collector image could not be pulled'
+    backend_image_rescue_snapshot_otel_config "$from" "$sha" || \
+      fail 'prior collector configuration could not be snapshotted'
+  fi
   backend_image_rescue_prepare "$sha" "$previous" "${captured_services[@]}" || \
     fail 'required rollback images could not be pinned before build'
   local needs_migrate=false
   for service in "${services[@]}"; do
-    [[ $service == x-collector || $service == daily-runner ]] || \
+    [[ $service == x-collector || $service == daily-runner || \
+       $service == otel-collector ]] || \
       needs_migrate=true
   done
   if [[ $needs_migrate == true ]]; then
@@ -926,6 +918,8 @@ deploy_release_runtime_transaction() {
   fi
   rm -rf "$runtime_control_backup"
   if [[ $backend == true ]]; then
+    backend_image_rescue_cleanup_otel_config "$previous_images" || \
+      fail 'release succeeded but collector config snapshot cleanup failed'
     backend_image_rescue_cleanup "$previous_images" || \
       fail 'release succeeded but exact backend rescue-tag cleanup failed'
   fi

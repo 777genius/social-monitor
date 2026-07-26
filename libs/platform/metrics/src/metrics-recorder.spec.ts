@@ -28,7 +28,6 @@ describe('InMemoryMetricsRecorder', () => {
         value: 1,
         labels: {
           command_type: 'ingestion.scan.execute',
-          prompt: 'unknown',
           status: 'enqueued',
         },
       },
@@ -37,7 +36,6 @@ describe('InMemoryMetricsRecorder', () => {
         value: 2,
         labels: {
           command_type: 'ingestion.scan.execute',
-          prompt: 'unknown',
           status: 'enqueued',
         },
       },
@@ -45,7 +43,6 @@ describe('InMemoryMetricsRecorder', () => {
     expect(
       recorder.counterValue('queue_commands_enqueued_total', {
         command_type: 'ingestion.scan.execute',
-        prompt: 'unsafe free form',
         status: 'enqueued',
       }),
     ).toBe(3);
@@ -78,5 +75,24 @@ describe('InMemoryMetricsRecorder', () => {
         queue: 'scan',
       }),
     ).toBe(3);
+  });
+
+  it('rejects invalid names and ignores non-finite or negative measurements', () => {
+    const recorder = new InMemoryMetricsRecorder();
+
+    expect(() =>
+      recorder.incrementCounter({ name: 'Invalid Metric' }),
+    ).toThrow('Invalid metric name');
+    recorder.incrementCounter({
+      name: 'queue_commands_enqueued_total',
+      value: -1,
+    });
+    recorder.recordGauge({
+      name: 'queue_commands_backlog',
+      value: Number.POSITIVE_INFINITY,
+    });
+
+    expect(recorder.counters()).toEqual([]);
+    expect(recorder.gauges()).toEqual([]);
   });
 });

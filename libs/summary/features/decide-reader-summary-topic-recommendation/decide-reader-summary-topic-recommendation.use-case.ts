@@ -281,6 +281,8 @@ export class DecideReaderSummaryTopicRecommendationUseCase {
       ),
       payload: {
         recommendationId: params.recommendationId,
+        tenantId: params.command.tenantId,
+        workspaceId: params.command.workspaceId,
         topicLabel: params.topicLabel,
         status: params.decisionStatus,
         decidedBy: params.command.decidedBy.trim(),

@@ -203,7 +203,12 @@ async function proveWebhookSecretRotationAndRedaction(): Promise<readonly Rotati
   const verifier = new VerifyWebhookSignatureUseCase(endpoints, secrets, new InMemoryWebhookReplayStore(), clock);
   const endpointId = 'webhook-endpoint-secret-rotation-smoke';
 
-  await secrets.put({ secretKeyId: 'whsec_generated_old_key', secret: 'whsec_generated_old_secret' });
+  await secrets.put({
+    tenantId: tenant,
+    workspaceId: workspace,
+    secretKeyId: 'whsec_generated_old_key',
+    secret: 'whsec_generated_old_secret',
+  });
   await endpoints.save(WebhookEndpoint.create({
     id: endpointId,
     tenantId: tenant,
@@ -242,7 +247,12 @@ async function proveWebhookSecretRotationAndRedaction(): Promise<readonly Rotati
   }), 'old webhook verification');
   assert(oldVerified.verified, 'old webhook signature must verify before rotation');
 
-  await secrets.put({ secretKeyId: 'whsec_generated_new_key', secret: 'whsec_generated_new_secret' });
+  await secrets.put({
+    tenantId: tenant,
+    workspaceId: workspace,
+    secretKeyId: 'whsec_generated_new_key',
+    secret: 'whsec_generated_new_secret',
+  });
   await endpoints.save(WebhookEndpoint.rehydrate({
     id: endpointId,
     tenantId: tenant,

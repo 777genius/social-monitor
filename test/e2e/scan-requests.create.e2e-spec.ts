@@ -1,6 +1,9 @@
 import { type INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
+import {
+  InMemoryMetricsRecorder,
+} from '@social-monitor/platform-metrics';
+import { MetricsRuntimeModule } from '@social-monitor/platform-metrics/nest/metrics-runtime.module';
 import { InMemoryQueuePublisher } from '@social-monitor/platform-queue/adapters/in-memory';
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import { InMemoryPublicApiAuditLog } from '@social-monitor/usage/adapters/audit/in-memory-public-api-audit-log';
@@ -8,6 +11,7 @@ import request from 'supertest';
 
 import { RecordScanExecutionUseCase } from '../../libs/monitoring/features/record-scan-execution/record-scan-execution.use-case';
 import { MonitoringRestModule } from '../../libs/monitoring/interfaces/rest/monitoring-rest.module';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 describe('Request scan flow (e2e)', () => {
   let app: INestApplication;
@@ -17,7 +21,10 @@ describe('Request scan flow (e2e)', () => {
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
-      imports: [MonitoringRestModule],
+      imports: [
+        MetricsRuntimeModule.register({ serviceName: 'scan-requests-create-e2e' }),
+        MonitoringRestModule,
+      ],
     }).compile();
 
     app = moduleRef.createNestApplication();
@@ -39,8 +46,8 @@ describe('Request scan flow (e2e)', () => {
   });
 
   it('requests scan after topic, source binding and scan policy setup', async () => {
-    const tenant = tenantId('tenant-scan-e2e');
-    const workspace = workspaceId('workspace-scan-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-scan-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-scan-e2e'));
 
     const topic = await request(app.getHttpServer())
       .post('/interests')
@@ -251,8 +258,8 @@ describe('Request scan flow (e2e)', () => {
   });
 
   it('returns latest fresh successful scan instead of enqueueing duplicate manual work', async () => {
-    const tenant = tenantId('tenant-scan-fresh-e2e');
-    const workspace = workspaceId('workspace-scan-fresh-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-scan-fresh-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-scan-fresh-e2e'));
     const queueBaseline = queue.all().length;
 
     const topic = await request(app.getHttpServer())
@@ -369,8 +376,8 @@ describe('Request scan flow (e2e)', () => {
   });
 
   it('backs off manual scan requests while latest scan is provider rate limited', async () => {
-    const tenant = tenantId('tenant-scan-rate-limit-e2e');
-    const workspace = workspaceId('workspace-scan-rate-limit-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-scan-rate-limit-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-scan-rate-limit-e2e'));
     const queueBaseline = queue.all().length;
 
     const topic = await request(app.getHttpServer())

@@ -38,7 +38,12 @@ async function main(): Promise<void> {
   const http = new FakeWebhookHttpClient({ status: 202, providerMessageId: 'provider-message-http-smoke' });
   const clock = new FixedClock(new Date('2026-06-16T04:20:00.000Z'));
 
-  await secrets.put({ secretKeyId: 'whsec_key_', secret: 'whsec_secret' });
+  await secrets.put({
+    tenantId: tenant,
+    workspaceId: workspace,
+    secretKeyId: 'whsec_key_',
+    secret: 'whsec_secret',
+  });
   await endpoints.save(WebhookEndpoint.create({
     id: endpointId,
     tenantId: tenant,

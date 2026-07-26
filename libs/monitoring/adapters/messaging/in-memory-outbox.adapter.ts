@@ -12,4 +12,23 @@ export class InMemoryOutboxAdapter implements OutboxPort {
   all(): readonly EventEnvelope<Readonly<Record<string, unknown>>>[] {
     return [...this.events];
   }
+
+  appendCheckpoint(eventId: string): number {
+    return this.events.filter((event) => event.eventId === eventId).length;
+  }
+
+  async rollbackAppend(eventId: string, checkpoint: number): Promise<void> {
+    let currentCount = this.appendCheckpoint(eventId);
+
+    for (
+      let index = this.events.length - 1;
+      index >= 0 && currentCount > checkpoint;
+      index -= 1
+    ) {
+      if (this.events[index]?.eventId === eventId) {
+        this.events.splice(index, 1);
+        currentCount -= 1;
+      }
+    }
+  }
 }

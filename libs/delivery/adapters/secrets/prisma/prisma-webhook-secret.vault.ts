@@ -19,9 +19,11 @@ export class PrismaWebhookSecretVault implements WebhookSecretVaultPort {
     }
   }
 
-  async put(params: { readonly secretKeyId: string; readonly secret: string }): Promise<void> {
+  async put(params: Parameters<WebhookSecretVaultPort['put']>[0]): Promise<void> {
     const encrypted = encrypt(params.secret, this.key);
     const data: PrismaWebhookSecretWriteData = {
+      tenantId: params.tenantId,
+      workspaceId: params.workspaceId,
       algorithm: ALGORITHM,
       ciphertext: encrypted.ciphertext,
       iv: encrypted.iv,
@@ -29,7 +31,13 @@ export class PrismaWebhookSecretVault implements WebhookSecretVaultPort {
     };
 
     await withPrismaWriteRetry(() => this.prisma.webhookSecret.upsert({
-      where: { id: params.secretKeyId },
+      where: {
+        id_tenantId_workspaceId: {
+          id: params.secretKeyId,
+          tenantId: params.tenantId,
+          workspaceId: params.workspaceId,
+        },
+      },
       update: data,
       create: {
         id: params.secretKeyId,
@@ -38,9 +46,15 @@ export class PrismaWebhookSecretVault implements WebhookSecretVaultPort {
     }));
   }
 
-  async get(params: { readonly secretKeyId: string }): Promise<string | null> {
+  async get(params: Parameters<WebhookSecretVaultPort['get']>[0]): Promise<string | null> {
     const record = await this.prisma.webhookSecret.findUnique({
-      where: { id: params.secretKeyId },
+      where: {
+        id_tenantId_workspaceId: {
+          id: params.secretKeyId,
+          tenantId: params.tenantId,
+          workspaceId: params.workspaceId,
+        },
+      },
     });
 
     if (record === null) {
@@ -77,7 +91,10 @@ export const resolveWebhookSecretEncryptionKey = (env: NodeJS.ProcessEnv): Buffe
   return key;
 };
 
-const encrypt = (secret: string, key: Buffer): PrismaWebhookSecretWriteData => {
+const encrypt = (
+  secret: string,
+  key: Buffer,
+): Pick<PrismaWebhookSecretWriteData, 'algorithm' | 'ciphertext' | 'iv' | 'authTag'> => {
   const iv = randomBytes(IV_BYTES);
   const cipher = createCipheriv(ALGORITHM, key, iv);
   const ciphertext = Buffer.concat([cipher.update(secret, 'utf8'), cipher.final()]);

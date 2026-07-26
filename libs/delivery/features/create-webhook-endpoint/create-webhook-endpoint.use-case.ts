@@ -51,6 +51,8 @@ export class CreateWebhookEndpointUseCase {
     }
 
     await this.secrets.put({
+      tenantId: command.tenantId,
+      workspaceId: command.workspaceId,
       secretKeyId,
       secret: signingSecret,
     });

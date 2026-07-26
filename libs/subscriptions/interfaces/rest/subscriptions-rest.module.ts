@@ -19,6 +19,7 @@ import { PrismaSourceTargetRepository } from '../../adapters/persistence/prisma/
 import { PrismaUserSubscriptionRepository } from '../../adapters/persistence/prisma/prisma-user-subscription.repository';
 import { PrismaUserSubscriptionScheduleRepository } from '../../adapters/persistence/prisma/prisma-user-subscription-schedule.repository';
 import { PrismaUserSummaryPreferenceRepository } from '../../adapters/persistence/prisma/prisma-user-summary-preference.repository';
+import { MonitoringInterestSourceProvisionerAdapter } from '../../adapters/monitoring/monitoring-interest-source-provisioner.adapter';
 import { StaticSourceTargetCatalogAdapter } from '../../adapters/target-catalog/static-source-target-catalog.adapter';
 import { ActivateInterestSourceUseCase } from '../../features/activate-interest-source/activate-interest-source.use-case';
 import { CreateUserSubscriptionUseCase } from '../../features/create-user-subscription/create-user-subscription.use-case';
@@ -27,6 +28,7 @@ import { ListUserSubscriptionsUseCase } from '../../features/list-user-subscript
 import { UpsertUserSummaryPreferenceUseCase } from '../../features/upsert-user-summary-preference/upsert-user-summary-preference.use-case';
 import {
   NOOP_USER_SUMMARY_PREFERENCE_MEMORY_PROJECTOR,
+  type InterestSourceProvisionerPort,
   type SourceTargetCatalogPort,
   type SourceTargetRepositoryPort,
   type UserSubscriptionRepositoryPort,
@@ -36,6 +38,7 @@ import {
 } from '../../ports';
 import {
   SUBSCRIPTIONS_PERSISTENCE_MODE,
+  SUBSCRIPTIONS_INTEREST_SOURCE_PROVISIONER,
   SUBSCRIPTIONS_PRISMA_CLIENT,
   SUBSCRIPTIONS_SOURCE_TARGET_CATALOG,
   SUBSCRIPTIONS_SOURCE_TARGET_REPOSITORY,
@@ -132,6 +135,24 @@ import { UserSubscriptionsController } from './user-subscriptions.controller';
       useExisting: StaticSourceTargetCatalogAdapter,
     },
     {
+      provide: SUBSCRIPTIONS_INTEREST_SOURCE_PROVISIONER,
+      useFactory: (
+        createInterest: CreateInterestUseCase,
+        bindSource: BindSourceUseCase,
+        setScanPolicy: SetScanPolicyUseCase,
+      ): InterestSourceProvisionerPort =>
+        new MonitoringInterestSourceProvisionerAdapter(
+          createInterest,
+          bindSource,
+          setScanPolicy,
+        ),
+      inject: [
+        CreateInterestUseCase,
+        BindSourceUseCase,
+        SetScanPolicyUseCase,
+      ],
+    },
+    {
       provide: SUBSCRIPTIONS_USER_SUMMARY_PREFERENCE_MEMORY_PROJECTOR,
       useFactory: (mode: UserSummaryPreferenceMemoryProjectorMode): UserSummaryPreferenceMemoryProjectorPort =>
         mode === 'memo-stack'
@@ -169,23 +190,17 @@ import { UserSubscriptionsController } from './user-subscriptions.controller';
       provide: ActivateInterestSourceUseCase,
       useFactory: (
         createUserSubscription: CreateUserSubscriptionUseCase,
-        createInterest: CreateInterestUseCase,
-        bindSource: BindSourceUseCase,
-        setScanPolicy: SetScanPolicyUseCase,
+        interestSources: InterestSourceProvisionerPort,
         catalog: SourceTargetCatalogPort,
       ) =>
         new ActivateInterestSourceUseCase(
           createUserSubscription,
-          createInterest,
-          bindSource,
-          setScanPolicy,
+          interestSources,
           catalog,
         ),
       inject: [
         CreateUserSubscriptionUseCase,
-        CreateInterestUseCase,
-        BindSourceUseCase,
-        SetScanPolicyUseCase,
+        SUBSCRIPTIONS_INTEREST_SOURCE_PROVISIONER,
         SUBSCRIPTIONS_SOURCE_TARGET_CATALOG,
       ],
     },

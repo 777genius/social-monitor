@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2016
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -7,7 +8,7 @@ BACKUP_LIBRARY=$SCRIPT_DIR/postgres-backup-deploy-lib.sh
 FIXTURE=$(mktemp -d "/tmp/social-monitor-deploy-test.XXXXXX")
 trap 'rm -rf "$FIXTURE"' EXIT
 
-REPO=$FIXTURE/repo
+REPO=$(readlink -f -- "$FIXTURE")/repo
 ORIGIN=$FIXTURE/origin.git
 ROOT=$FIXTURE/root
 CONTROL=$ROOT/control
@@ -25,6 +26,7 @@ install -d "$REPO/apps/frontend" "$REPO/apps/api-gateway" \
   "$STATE" "$STAGING"
 cp "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/deploy-control-lib.sh" "$REPO/ops/deploy/"
+cp "$SCRIPT_DIR/backend-runtime-health-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/backend-image-rescue-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/daily-runner-image-bootstrap-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/x-collector-image-deploy-lib.sh" "$REPO/ops/deploy/"
@@ -129,6 +131,31 @@ publication_services=$(
 [[ $publication_services == migrate ]]
 git -C "$REPO" checkout -q main
 
+# Observability-only changes must explicitly recreate the collector because the
+# production Compose activation uses up --no-deps.
+git -C "$REPO" checkout -qb otel-mapping-test
+install -d "$REPO/ops/observability"
+printf 'service: {pipelines: {metrics: {}}}\n' > \
+  "$REPO/ops/observability/otel-collector.yml"
+git -C "$REPO" add ops/observability/otel-collector.yml
+git -C "$REPO" commit -qm 'test: collector config change'
+OTEL_TARGET_SHA=$(git -C "$REPO" rev-parse HEAD)
+otel_services=$(
+  SOCIAL_MONITOR_DEPLOY_TEST_MODE=1 \
+  SOCIAL_MONITOR_DEPLOY_ROOT="$ROOT" \
+  SOCIAL_MONITOR_DEPLOY_REPO="$REPO" \
+  SOCIAL_MONITOR_DEPLOY_CONTROL="$CONTROL" \
+  SOCIAL_MONITOR_DEPLOY_STATE="$STATE" \
+  SOCIAL_MONITOR_DEPLOY_STAGING="$STAGING" \
+  CONTROL_TARGET_SHA="$CONTROL_TARGET_SHA" OTEL_TARGET_SHA="$OTEL_TARGET_SHA" \
+    bash -c '
+      source "$1"
+      backend_services "$CONTROL_TARGET_SHA" "$OTEL_TARGET_SHA"
+    ' _ "$ENTRYPOINT"
+)
+[[ $otel_services == otel-collector ]]
+git -C "$REPO" checkout -q main
+
 grep -F "if printf '%s\\n' \"\${persistent[@]}\" | grep -qx api && ! refresh_frontend_api_proxy; then" \
   "$ENTRYPOINT" >/dev/null
 grep -F "if [[ \$api_rolled_back == true ]]; then" \
@@ -216,9 +243,14 @@ run_backup_fixture() {
     helper_path=$SOCIAL_MONITOR_DEPLOY_REPO/ops/deploy/postgres-backup-deploy-lib.sh
     stat() {
       local last_argument=${!#}
-      if [[ $1 == -c && $2 == "%u %a" && \
-            $last_argument == "$helper_path" ]]; then
-        printf "0 %s\n" "$(command stat -c "%a" "$last_argument")"
+      if [[ $1 == -c && $2 == "%u %a" ]]; then
+        [[ $(readlink -f -- "$last_argument") == \
+          $(readlink -f -- "$helper_path") ]]
+        local mode
+        if ! mode=$(command stat -f "%Lp" "$last_argument" 2>/dev/null); then
+          mode=$(command stat -c "%a" "$last_argument")
+        fi
+        printf "0 %s\n" "$mode"
       else
         command stat "$@"
       fi
@@ -939,6 +971,8 @@ if command -v shellcheck >/dev/null; then
 fi
 bash "$SCRIPT_DIR/daily-runner-image-bootstrap-deploy.test.sh"
 bash "$SCRIPT_DIR/daily-runner-image-bootstrap-lib.test.sh"
+bash "$SCRIPT_DIR/backend-runtime-health-lib.test.sh"
+bash "$SCRIPT_DIR/otel-collector-deploy-lifecycle.test.sh"
 bash "$SCRIPT_DIR/backend-image-rescue-lib.test.sh"
 bash "$SCRIPT_DIR/postgres-runtime-deploy-lib.test.sh"
 TMPDIR=/tmp bash "$SCRIPT_DIR/github-premidnight-capture-runtime.test.sh"

@@ -20,7 +20,7 @@ export class HealthController {
     try {
       return await this.healthReporter.ready();
     } catch {
-      throw new ServiceUnavailableException('Database readiness check failed');
+      throw new ServiceUnavailableException('Dependency readiness check failed');
     }
   }
 }

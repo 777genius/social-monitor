@@ -2,7 +2,10 @@ import { randomUUID } from "node:crypto";
 
 import type { PoolClient } from "pg";
 
-import { defaultPostgresRuntimePoolConfig } from "@social-monitor/platform-persistence";
+import {
+  defaultPostgresRuntimePoolConfig,
+  runWithTenantDatabaseAccess,
+} from "@social-monitor/platform-persistence";
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
 import { PrismaReaderSummaryArtifactRepository } from "../libs/summary/adapters/persistence/prisma/prisma-reader-summary-artifact.repository";
@@ -15,8 +18,7 @@ const tenant = randomUUID();
 const workspace = randomUUID();
 const periodStartedAt = "2026-07-29T00:00:00.000Z";
 const periodEndedAt = "2026-07-30T00:00:00.000Z";
-const periodKey =
-  "daily:2026-07-29T00:00:00.000Z:2026-07-30T00:00:00.000Z:UTC";
+const periodKey = "daily:2026-07-29T00:00:00.000Z:2026-07-30T00:00:00.000Z:UTC";
 const visibleStatuses = ["COMPLETED", "NO_SIGNAL"] as const;
 
 export const assertReaderSummaryPublicationRuntimeGuard = async (params: {
@@ -24,79 +26,86 @@ export const assertReaderSummaryPublicationRuntimeGuard = async (params: {
   readonly runtimeDatabaseUrl: string;
   readonly publishedArtifactId: string;
 }): Promise<void> => {
+  const previousAccess = await readSessionAccess(params.runtime);
   await assertPostgres18Trigger(params.runtime);
   await assertPublishedArtifactRemainsImmutable(
     params.runtime,
     params.publishedArtifactId,
   );
+  await setSessionAccess(params.runtime, {
+    tenantId: tenant,
+    workspaceId: workspace,
+    systemAccess: "false",
+  });
+  try {
+    const directInsertIds: string[] = [];
+    for (const status of visibleStatuses) {
+      const artifactId = randomUUID();
+      directInsertIds.push(artifactId);
+      await assertRejectsContaining(
+        () => insertArtifact(params.runtime, artifactId, status),
+        guardError,
+        `runtime direct ${status} INSERT must fail closed`,
+      );
+    }
 
-  const directInsertIds: string[] = [];
-  for (const status of visibleStatuses) {
-    const artifactId = randomUUID();
-    directInsertIds.push(artifactId);
-    await assertRejectsContaining(
-      () => insertArtifact(params.runtime, artifactId, status),
-      guardError,
-      `runtime direct ${status} INSERT must fail closed`,
-    );
-  }
-
-  const candidateId = randomUUID();
-  await insertArtifact(params.runtime, candidateId, "RUNNING");
-  const candidateUpdate = await params.runtime.query<{
-    readonly headline: string;
-  }>(
-    `UPDATE reader_summary_artifacts
+    const candidateId = randomUUID();
+    await insertArtifact(params.runtime, candidateId, "RUNNING");
+    const candidateUpdate = await params.runtime.query<{
+      readonly headline: string;
+    }>(
+      `UPDATE reader_summary_artifacts
         SET headline = 'Updated hidden rollback candidate',
             updated_at = '2026-07-29T10:01:00.000Z'
       WHERE id = $1
     RETURNING headline`,
-    [candidateId],
-  );
-  assertDeepEqual(
-    candidateUpdate.rows,
-    [{ headline: "Updated hidden rollback candidate" }],
-    "runtime must retain INSERT and UPDATE access to hidden RUNNING candidates",
-  );
+      [candidateId],
+    );
+    assertDeepEqual(
+      candidateUpdate.rows,
+      [{ headline: "Updated hidden rollback candidate" }],
+      "runtime must retain INSERT and UPDATE access to hidden RUNNING candidates",
+    );
 
-  for (const status of visibleStatuses) {
-    await assertRejectsContaining(
-      () =>
-        params.runtime.query(
-          `UPDATE reader_summary_artifacts
+    for (const status of visibleStatuses) {
+      await assertRejectsContaining(
+        () =>
+          params.runtime.query(
+            `UPDATE reader_summary_artifacts
               SET status = $2::"SummaryStatus",
                   updated_at = '2026-07-29T10:02:00.000Z'
             WHERE id = $1`,
-          [candidateId, status],
-        ),
-      guardError,
-      `runtime must not promote an unpublished RUNNING candidate to ${status}`,
-    );
-  }
+            [candidateId, status],
+          ),
+        guardError,
+        `runtime must not promote an unpublished RUNNING candidate to ${status}`,
+      );
+    }
 
-  const rollbackUpsertIds: string[] = [];
-  for (const status of visibleStatuses) {
-    const artifactId = randomUUID();
-    rollbackUpsertIds.push(artifactId);
-    await assertOldRollbackPersistenceRejected(
-      params.runtime,
-      artifactId,
-      status,
-    );
-  }
+    const rollbackUpsertIds: string[] = [];
+    for (const status of visibleStatuses) {
+      const artifactId = randomUUID();
+      rollbackUpsertIds.push(artifactId);
+      await assertOldRollbackPersistenceRejected(
+        params.runtime,
+        artifactId,
+        status,
+      );
+    }
 
-  const guardedIds = [...directInsertIds, candidateId, ...rollbackUpsertIds];
-  await assertSelectorInvisibility(
-    params.runtimeDatabaseUrl,
-    candidateId,
-    guardedIds,
-  );
-  await assertNoPublicationResidue(params.runtime, guardedIds);
+    const guardedIds = [...directInsertIds, candidateId, ...rollbackUpsertIds];
+    await assertSelectorInvisibility(
+      params.runtimeDatabaseUrl,
+      candidateId,
+      guardedIds,
+    );
+    await assertNoPublicationResidue(params.runtime, guardedIds);
+  } finally {
+    await setSessionAccess(params.runtime, previousAccess);
+  }
 };
 
-const assertPostgres18Trigger = async (
-  runtime: PoolClient,
-): Promise<void> => {
+const assertPostgres18Trigger = async (runtime: PoolClient): Promise<void> => {
   const evidence = await runtime.query<{
     readonly server_version_num: string;
     readonly enabled: string;
@@ -222,33 +231,39 @@ const assertSelectorInvisibility = async (
   runtimeDatabaseUrl: string,
   candidateId: string,
   guardedIds: readonly string[],
-): Promise<void> => {
-  const connection = await PrismaSummaryConnection.create(
-    defaultPostgresRuntimePoolConfig(runtimeDatabaseUrl, "admin-tool"),
+): Promise<void> =>
+  runWithTenantDatabaseAccess(
+    { tenantId: tenant, workspaceId: workspace },
+    async () => {
+      const connection = await PrismaSummaryConnection.create(
+        defaultPostgresRuntimePoolConfig(runtimeDatabaseUrl, "admin-tool"),
+      );
+      try {
+        const repository = new PrismaReaderSummaryArtifactRepository(
+          connection,
+        );
+        const scope = {
+          tenantId: tenantId(tenant),
+          workspaceId: workspaceId(workspace),
+        };
+        const found = await repository.findById({
+          ...scope,
+          readerSummaryId: candidateId,
+        });
+        const listed = await repository.list({ ...scope, limit: 20 });
+        const listedIds = listed.items.map(
+          (artifact) => artifact.toSnapshot().readerSummaryId,
+        );
+        assert(found === null, "hidden RUNNING candidate must not be findable");
+        assert(
+          guardedIds.every((artifactId) => !listedIds.includes(artifactId)),
+          "reader summary list selector must hide guarded rollback artifacts",
+        );
+      } finally {
+        await connection.close();
+      }
+    },
   );
-  try {
-    const repository = new PrismaReaderSummaryArtifactRepository(connection);
-    const scope = {
-      tenantId: tenantId(tenant),
-      workspaceId: workspaceId(workspace),
-    };
-    const found = await repository.findById({
-      ...scope,
-      readerSummaryId: candidateId,
-    });
-    const listed = await repository.list({ ...scope, limit: 20 });
-    const listedIds = listed.items.map(
-      (artifact) => artifact.toSnapshot().readerSummaryId,
-    );
-    assert(found === null, "hidden RUNNING candidate must not be findable");
-    assert(
-      guardedIds.every((artifactId) => !listedIds.includes(artifactId)),
-      "reader summary list selector must hide guarded rollback artifacts",
-    );
-  } finally {
-    await connection.close();
-  }
-};
 
 const assertNoPublicationResidue = async (
   runtime: PoolClient,
@@ -329,6 +344,54 @@ const insertArtifact = async (
       periodKey,
       status,
     ],
+  );
+};
+
+type SessionAccess = {
+  readonly tenantId: string;
+  readonly workspaceId: string;
+  readonly systemAccess: string;
+};
+
+const readSessionAccess = async (
+  client: PoolClient,
+): Promise<SessionAccess> => {
+  const result = await client.query<{
+    readonly tenant_id: string;
+    readonly workspace_id: string;
+    readonly system_access: string;
+  }>(
+    `SELECT COALESCE(
+              current_setting('social_monitor.tenant_id', TRUE),
+              ''
+            ) AS tenant_id,
+            COALESCE(
+              current_setting('social_monitor.workspace_id', TRUE),
+              ''
+            ) AS workspace_id,
+            COALESCE(
+              current_setting('social_monitor.system_access', TRUE),
+              ''
+            ) AS system_access`,
+  );
+  const access = result.rows[0];
+  assert(access !== undefined, "runtime session access must be readable");
+  return {
+    tenantId: access.tenant_id,
+    workspaceId: access.workspace_id,
+    systemAccess: access.system_access,
+  };
+};
+
+const setSessionAccess = async (
+  client: PoolClient,
+  access: SessionAccess,
+): Promise<void> => {
+  await client.query(
+    `SELECT set_config('social_monitor.tenant_id', $1, false),
+            set_config('social_monitor.workspace_id', $2, false),
+            set_config('social_monitor.system_access', $3, false)`,
+    [access.tenantId, access.workspaceId, access.systemAccess],
   );
 };
 

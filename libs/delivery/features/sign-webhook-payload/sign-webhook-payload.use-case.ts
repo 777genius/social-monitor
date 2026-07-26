@@ -48,7 +48,11 @@ export class SignWebhookPayloadUseCase {
       }));
     }
 
-    const secret = await this.secrets.get({ secretKeyId: snapshot.secretKeyId });
+    const secret = await this.secrets.get({
+      tenantId: snapshot.tenantId,
+      workspaceId: snapshot.workspaceId,
+      secretKeyId: snapshot.secretKeyId,
+    });
 
     if (secret === null) {
       return err(new DomainError('external.dependency_unavailable', 'Webhook signing secret is unavailable', {

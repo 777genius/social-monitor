@@ -4,6 +4,7 @@ import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 describe('Monitoring tenant scope guard (e2e)', () => {
   let app: INestApplication;
@@ -31,7 +32,7 @@ describe('Monitoring tenant scope guard (e2e)', () => {
   it('returns controlled tenant.scope_missing problem for topic create without tenant', async () => {
     const response = await request(app.getHttpServer())
       .post('/interests')
-      .set('x-workspace-id', workspaceId('workspace-monitoring-scope-e2e'))
+      .set('x-workspace-id', workspaceId(deterministicTestUuid('workspace-monitoring-scope-e2e')))
       .set('idempotency-key', 'monitoring-scope-topic-1')
       .send({
         name: 'Scope Monitoring',
@@ -48,7 +49,7 @@ describe('Monitoring tenant scope guard (e2e)', () => {
   it('returns controlled tenant.scope_missing problem for source binding without workspace', async () => {
     const response = await request(app.getHttpServer())
       .post('/interests/topic-monitoring-scope-e2e/source-bindings')
-      .set('x-tenant-id', tenantId('tenant-monitoring-scope-e2e'))
+      .set('x-tenant-id', tenantId(deterministicTestUuid('tenant-monitoring-scope-e2e')))
       .set('idempotency-key', 'monitoring-scope-binding-1')
       .send({
         providerKey: 'fake-source',
@@ -65,7 +66,7 @@ describe('Monitoring tenant scope guard (e2e)', () => {
   it('returns controlled tenant.scope_missing problem for scan policy without tenant', async () => {
     const response = await request(app.getHttpServer())
       .post('/source-bindings/source-binding-monitoring-scope-e2e/scan-policy')
-      .set('x-workspace-id', workspaceId('workspace-monitoring-scope-e2e'))
+      .set('x-workspace-id', workspaceId(deterministicTestUuid('workspace-monitoring-scope-e2e')))
       .set('idempotency-key', 'monitoring-scope-policy-1')
       .send({
         intervalSeconds: 300,
@@ -83,7 +84,7 @@ describe('Monitoring tenant scope guard (e2e)', () => {
   it('returns controlled tenant.scope_missing problem for scan request without workspace', async () => {
     const response = await request(app.getHttpServer())
       .post('/source-bindings/source-binding-monitoring-scope-e2e/scan-requests')
-      .set('x-tenant-id', tenantId('tenant-monitoring-scope-e2e'))
+      .set('x-tenant-id', tenantId(deterministicTestUuid('tenant-monitoring-scope-e2e')))
       .set('idempotency-key', 'monitoring-scope-scan-1')
       .expect(400);
 
@@ -96,7 +97,7 @@ describe('Monitoring tenant scope guard (e2e)', () => {
   it('returns controlled tenant.scope_missing problem for scan status without workspace', async () => {
     const response = await request(app.getHttpServer())
       .get('/scan-requests/scan-job-monitoring-scope-e2e/status')
-      .set('x-tenant-id', tenantId('tenant-monitoring-scope-e2e'))
+      .set('x-tenant-id', tenantId(deterministicTestUuid('tenant-monitoring-scope-e2e')))
       .expect(400);
 
     expect(response.body).toMatchObject({

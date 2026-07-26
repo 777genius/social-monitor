@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2016
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -19,6 +20,7 @@ install -d "$REPO/ops/deploy" "$CONTROL" "$STATE" "$STAGING"
 cp "$ENTRYPOINT" \
   "$SCRIPT_DIR/deploy-control-lib.sh" \
   "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" \
+  "$SCRIPT_DIR/backend-runtime-health-lib.sh" \
   "$SCRIPT_DIR/backend-image-rescue-lib.sh" \
   "$SCRIPT_DIR/daily-runner-image-bootstrap-lib.sh" \
   "$SCRIPT_DIR/x-collector-image-deploy-lib.sh" \

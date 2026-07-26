@@ -77,6 +77,14 @@ const boundedContexts = new Set([
   'summary',
   'usage',
 ]);
+const businessContextImportPattern =
+  /^@social-monitor\/([^/]+)\/(domain|features|adapters|interfaces)(?:\/|$)/;
+const subscriptionMonitoringAdapter =
+  'libs/subscriptions/adapters/monitoring/monitoring-interest-source-provisioner.adapter.ts';
+const subscriptionCompositionRoot =
+  'libs/subscriptions/interfaces/rest/subscriptions-rest.module.ts';
+const identityCompositionRoot =
+  'libs/identity/interfaces/rest/identity-rest.module.ts';
 
 const platformRootAdapterExportPattern = /(?:^|\/)(?:amqplib|rabbitmq|in-memory|prisma|http|sdk|noop|fake)[a-z0-9-]*(?:adapter|publisher|repository|channel|provider|store|client|connection|adapters)?$/i;
 const platformAdapterShortcutImports = new Map([
@@ -384,6 +392,71 @@ for (const file of globSync('libs/**/features/**/*.ts')) {
   for (const specifier of importsOf(source)) {
     if (forbiddenInFeatures.some((forbidden) => specifier.includes(forbidden))) {
       addViolation(file, `feature imports forbidden dependency "${specifier}"`);
+    }
+  }
+}
+
+for (const file of globSync('libs/subscriptions/domain/**/*.ts').filter(isProductionTsFile)) {
+  const source = readFileSync(file, 'utf8');
+  for (const specifier of importsOf(source)) {
+    const crossContextImport = specifier.match(businessContextImportPattern);
+    if (
+      crossContextImport !== null &&
+      crossContextImport[1] !== 'subscriptions'
+    ) {
+      addViolation(
+        file,
+        `subscription domain must own its language instead of importing "${specifier}"`,
+      );
+    }
+  }
+}
+
+for (const file of globSync('libs/subscriptions/features/**/*.ts').filter(isProductionTsFile)) {
+  const source = readFileSync(file, 'utf8');
+  for (const specifier of importsOf(source)) {
+    const crossContextImport = specifier.match(businessContextImportPattern);
+    if (
+      crossContextImport !== null &&
+      crossContextImport[1] !== 'subscriptions'
+    ) {
+      addViolation(
+        file,
+        `subscription features must use consumer-owned ports instead of private cross-context import "${specifier}"`,
+      );
+    }
+  }
+}
+
+for (const file of globSync('libs/subscriptions/**/*.ts').filter(isProductionTsFile)) {
+  if (
+    file === subscriptionMonitoringAdapter ||
+    file === subscriptionCompositionRoot
+  ) {
+    continue;
+  }
+  const source = readFileSync(file, 'utf8');
+  for (const specifier of importsOf(source)) {
+    if (specifier.startsWith('@social-monitor/monitoring/features/')) {
+      addViolation(
+        file,
+        `monitoring feature integration must stay behind the subscription provisioner adapter: "${specifier}"`,
+      );
+    }
+  }
+}
+
+for (const file of globSync('libs/identity/interfaces/**/*.ts').filter(isProductionTsFile)) {
+  if (file === identityCompositionRoot) {
+    continue;
+  }
+  const source = readFileSync(file, 'utf8');
+  for (const specifier of importsOf(source)) {
+    if (specifier.startsWith('@social-monitor/usage/')) {
+      addViolation(
+        file,
+        `identity interfaces must use identity-owned audit and rate-limit ports instead of "${specifier}"`,
+      );
     }
   }
 }

@@ -1,10 +1,16 @@
-import { withPrismaWriteRetry } from '@social-monitor/platform-persistence';
-import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
+import {
+  runWithSystemDatabaseAccess,
+  withPrismaWriteRetry,
+} from "@social-monitor/platform-persistence";
+import type { TenantId, WorkspaceId } from "@social-monitor/shared-kernel";
 
-import type { SummaryJob } from '../../../domain';
-import type { SummaryJobRepositoryPort } from '../../../ports';
-import type { PrismaSummaryClient } from './prisma-summary-client';
-import { summaryJobFromPrisma, summaryJobStatusToPrisma } from './prisma-summary-records';
+import type { SummaryJob } from "../../../domain";
+import type { SummaryJobRepositoryPort } from "../../../ports";
+import type { PrismaSummaryClient } from "./prisma-summary-client";
+import {
+  summaryJobFromPrisma,
+  summaryJobStatusToPrisma,
+} from "./prisma-summary-records";
 
 export class PrismaSummaryJobRepository implements SummaryJobRepositoryPort {
   constructor(private readonly prisma: PrismaSummaryClient) {}
@@ -13,37 +19,39 @@ export class PrismaSummaryJobRepository implements SummaryJobRepositoryPort {
     const snapshot = job.toSnapshot();
     const status = summaryJobStatusToPrisma(snapshot.status);
 
-    await withPrismaWriteRetry(() => this.prisma.summaryJob.upsert({
-      where: { id: snapshot.id },
-      update: {
-        status,
-        idempotencyKey: snapshot.idempotencyKey,
-        userId: snapshot.userId ?? null,
-        subscriptionId: snapshot.subscriptionId ?? null,
-        requestedAt: snapshot.requestedAt,
-        startedAt: snapshot.startedAt ?? null,
-        completedAt: snapshot.completedAt ?? null,
-        failedAt: snapshot.failedAt ?? null,
-        summaryArtifactId: snapshot.summaryId ?? null,
-        failureReason: snapshot.failureReason ?? null,
-      },
-      create: {
-        id: snapshot.id,
-        tenantId: snapshot.tenantId,
-        workspaceId: snapshot.workspaceId,
-        interestId: snapshot.interestId,
-        userId: snapshot.userId ?? null,
-        subscriptionId: snapshot.subscriptionId ?? null,
-        status,
-        idempotencyKey: snapshot.idempotencyKey,
-        requestedAt: snapshot.requestedAt,
-        startedAt: snapshot.startedAt ?? null,
-        completedAt: snapshot.completedAt ?? null,
-        failedAt: snapshot.failedAt ?? null,
-        summaryArtifactId: snapshot.summaryId ?? null,
-        failureReason: snapshot.failureReason ?? null,
-      },
-    }));
+    await withPrismaWriteRetry(() =>
+      this.prisma.summaryJob.upsert({
+        where: { id: snapshot.id },
+        update: {
+          status,
+          idempotencyKey: snapshot.idempotencyKey,
+          userId: snapshot.userId ?? null,
+          subscriptionId: snapshot.subscriptionId ?? null,
+          requestedAt: snapshot.requestedAt,
+          startedAt: snapshot.startedAt ?? null,
+          completedAt: snapshot.completedAt ?? null,
+          failedAt: snapshot.failedAt ?? null,
+          summaryArtifactId: snapshot.summaryId ?? null,
+          failureReason: snapshot.failureReason ?? null,
+        },
+        create: {
+          id: snapshot.id,
+          tenantId: snapshot.tenantId,
+          workspaceId: snapshot.workspaceId,
+          interestId: snapshot.interestId,
+          userId: snapshot.userId ?? null,
+          subscriptionId: snapshot.subscriptionId ?? null,
+          status,
+          idempotencyKey: snapshot.idempotencyKey,
+          requestedAt: snapshot.requestedAt,
+          startedAt: snapshot.startedAt ?? null,
+          completedAt: snapshot.completedAt ?? null,
+          failedAt: snapshot.failedAt ?? null,
+          summaryArtifactId: snapshot.summaryId ?? null,
+          failureReason: snapshot.failureReason ?? null,
+        },
+      }),
+    );
   }
 
   async findById(params: {
@@ -78,17 +86,39 @@ export class PrismaSummaryJobRepository implements SummaryJobRepositoryPort {
     return record === null ? null : summaryJobFromPrisma(record);
   }
 
-  async findRequested(params: Parameters<SummaryJobRepositoryPort['findRequested']>[0]): Promise<readonly SummaryJob[]> {
-    const records = await this.prisma.summaryJob.findMany({
-      where: {
-        tenantId: params.tenantId,
-        workspaceId: params.workspaceId,
-        status: 'REQUESTED',
-      },
-      orderBy: [{ requestedAt: 'asc' }, { id: 'asc' }],
-      take: params.limit,
-    });
+  async findRequested(
+    params: Parameters<SummaryJobRepositoryPort["findRequested"]>[0],
+  ): Promise<readonly SummaryJob[]> {
+    assertOptionalScopeIsComplete(params);
+    const findRequested = () =>
+      this.prisma.summaryJob.findMany({
+        where: {
+          tenantId: params.tenantId,
+          workspaceId: params.workspaceId,
+          status: "REQUESTED",
+        },
+        orderBy: [{ requestedAt: "asc" }, { id: "asc" }],
+        take: params.limit,
+      });
+    const records =
+      params.tenantId === undefined
+        ? await runWithSystemDatabaseAccess(
+            "cross-tenant summary job polling",
+            findRequested,
+          )
+        : await findRequested();
 
     return records.map((record) => summaryJobFromPrisma(record));
   }
 }
+
+const assertOptionalScopeIsComplete = (scope: {
+  readonly tenantId?: TenantId;
+  readonly workspaceId?: WorkspaceId;
+}): void => {
+  if ((scope.tenantId === undefined) !== (scope.workspaceId === undefined)) {
+    throw new Error(
+      "Summary job polling scope must include tenant and workspace",
+    );
+  }
+};

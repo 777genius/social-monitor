@@ -4,6 +4,7 @@ import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 describe('Digest schedule management (e2e)', () => {
   let app: INestApplication;
@@ -29,8 +30,8 @@ describe('Digest schedule management (e2e)', () => {
   });
 
   it('creates, lists and reads digest schedules through REST with workspace authorization', async () => {
-    const tenant = tenantId('tenant-digest-schedule-management-e2e');
-    const workspace = workspaceId('workspace-digest-schedule-management-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-digest-schedule-management-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-digest-schedule-management-e2e'));
     const createBody = {
       recipientKey: 'user-1',
       channel: 'in_app',

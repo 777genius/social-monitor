@@ -10,13 +10,9 @@ import type {
   SourceQuery,
 } from "../../../ports";
 import { redditCapabilityProfile } from "./reddit-capability-profile";
-import type {
-  RedditClientPort,
-  RedditListingPage,
-  RedditPost,
-  RedditTopTime,
-} from "./reddit-client.port";
+import type { RedditClientPort, RedditListingPage } from "./reddit-client.port";
 import type { RedditRefreshTokenProviderPort } from "./refresh-token-reddit-token-provider";
+import { resolveRedditAccessToken } from "./reddit-access-token";
 import {
   fetchSelectedRedditCandidateComments,
   normalizeRedditPostsWithOptionalComments,
@@ -27,7 +23,6 @@ import {
 import {
   compactUnique,
   filterPostsByAllowedSubreddits,
-  firstNonEmptyString,
   normalizePost,
   parseListingQuery,
   readCommentSort,
@@ -43,8 +38,19 @@ import {
   readTopTime,
   redditWarnings,
   type RedditScanPass,
-  type RedditSourceQueryLaneMetadata,
 } from "./reddit-source-support";
+import {
+  formatScanPassWarning,
+  isInsideTargetPublishedWindow,
+  pageTargetWindowStats,
+  readTargetPublishedWindow,
+  redditRankingQueries,
+  redditScanPassLabel,
+  redditTopTimeForTargetWindow,
+  shouldContinuePastEmptyTargetWindowPage,
+  sourceQueryLaneForPass,
+  sourceQueryLaneForPlan,
+} from "./reddit-source-window-and-lanes";
 import type { RedditTokenProviderPort } from "./reddit-token-provider.port";
 import { readAdaptivePaginationPolicy } from "../adaptive-source-pagination";
 import { readSourceItemRankingPlan } from "../source-item-ranking-config";
@@ -108,7 +114,11 @@ export class RedditSourceProvider implements SourceProviderPort {
     plan: SourceProviderScanPlan,
     context: SourceProviderScanContext,
   ): Promise<SourceProviderScanResult> {
-    const accessToken = await this.resolveAccessToken(context);
+    const accessToken = await resolveRedditAccessToken({
+      context,
+      tokenProvider: this.tokenProvider,
+      refreshTokenProvider: this.refreshTokenProvider,
+    });
     const userAgent = readOptionalString(context.config?.userAgent);
     const minScore = readOptionalNonNegativeInteger(
       context.config?.minScore,
@@ -249,54 +259,6 @@ export class RedditSourceProvider implements SourceProviderPort {
       retryable: true,
       message,
     };
-  }
-
-  private async resolveAccessToken(
-    context: SourceProviderScanContext,
-  ): Promise<string> {
-    const configuredAccessToken = firstNonEmptyString(
-      context.config?.accessToken,
-      context.config?.apiToken,
-      context.config?.bearerToken,
-    );
-
-    if (configuredAccessToken !== undefined) {
-      return configuredAccessToken;
-    }
-
-    const refreshToken = firstNonEmptyString(
-      context.config?.refreshToken,
-      context.config?.redditRefreshToken,
-    );
-    if (refreshToken !== undefined) {
-      if (this.refreshTokenProvider === undefined) {
-        throw new Error(
-          "Reddit refresh-token OAuth provider is not configured",
-        );
-      }
-
-      return this.refreshTokenProvider.getAccessToken({
-        clientId: readRequiredString(
-          firstNonEmptyString(
-            context.config?.clientId,
-            context.config?.redditClientId,
-          ),
-          "clientId",
-        ),
-        clientSecret: firstNonEmptyString(
-          context.config?.clientSecret,
-          context.config?.redditClientSecret,
-        ),
-        refreshToken,
-        userAgent: readOptionalString(context.config?.userAgent),
-      });
-    }
-
-    if (this.tokenProvider === undefined) {
-      throw new Error("Reddit app-only OAuth token provider is not configured");
-    }
-
-    return this.tokenProvider.getAccessToken();
   }
 
   private async scanPasses(params: {
@@ -514,197 +476,3 @@ export class RedditSourceProvider implements SourceProviderPort {
     };
   }
 }
-
-const formatScanPassWarning = (
-  pass: RedditScanPass,
-  error: unknown,
-): string => {
-  const message =
-    error instanceof Error ? error.message : "Unknown Reddit scan pass error";
-
-  return `Reddit scan pass degraded (${redditScanPassLabel(pass)}): ${redactSensitiveText(message)}`;
-};
-
-type TargetPublishedWindow = {
-  readonly startInclusive: Date;
-  readonly endExclusive: Date;
-  readonly observedAt?: Date;
-};
-
-type TargetWindowStats = {
-  readonly newerCount: number;
-  readonly insideCount: number;
-  readonly olderCount: number;
-};
-
-const readTargetPublishedWindow = (
-  config: SourceProviderScanContext["config"],
-): TargetPublishedWindow | undefined => {
-  const raw = config?.targetPublishedWindow;
-  if (raw === undefined || typeof raw !== "object" || raw === null) {
-    return undefined;
-  }
-
-  const record = raw as Record<string, unknown>;
-  const start = dateFromUnknown(record.startInclusive);
-  const end = dateFromUnknown(record.endExclusive);
-  if (start === undefined || end === undefined || start >= end) {
-    return undefined;
-  }
-
-  const observedAt = dateFromUnknown(record.observedAt);
-
-  return {
-    startInclusive: start,
-    endExclusive: end,
-    ...(observedAt === undefined ? {} : { observedAt }),
-  };
-};
-
-const dateFromUnknown = (value: unknown): Date | undefined => {
-  if (typeof value !== "string" || value.trim().length === 0) {
-    return undefined;
-  }
-
-  const date = new Date(value);
-
-  return Number.isNaN(date.getTime()) ? undefined : date;
-};
-
-const redditTopTimeForTargetWindow = (
-  requested: RedditTopTime,
-  targetPublishedWindow: TargetPublishedWindow | undefined,
-): RedditTopTime =>
-  targetPublishedWindow !== undefined &&
-  requested === "day" &&
-  !isOpenTargetPublishedWindow(targetPublishedWindow)
-    ? "week"
-    : requested;
-
-const isOpenTargetPublishedWindow = (
-  targetPublishedWindow: TargetPublishedWindow,
-): boolean =>
-  targetPublishedWindow.observedAt !== undefined &&
-  targetPublishedWindow.observedAt >= targetPublishedWindow.startInclusive &&
-  targetPublishedWindow.observedAt < targetPublishedWindow.endExclusive;
-
-const isInsideTargetPublishedWindow = (
-  item: { readonly publishedAt: Date },
-  targetPublishedWindow: TargetPublishedWindow | undefined,
-): boolean =>
-  targetPublishedWindow === undefined ||
-  (item.publishedAt >= targetPublishedWindow.startInclusive &&
-    item.publishedAt < targetPublishedWindow.endExclusive);
-
-const pageTargetWindowStats = (
-  posts: readonly RedditPost[],
-  targetPublishedWindow: TargetPublishedWindow | undefined,
-): TargetWindowStats => {
-  if (targetPublishedWindow === undefined) {
-    return { newerCount: 0, insideCount: posts.length, olderCount: 0 };
-  }
-
-  return posts.reduce(
-    (stats, post) => {
-      const createdAt =
-        post.createdUtc === undefined
-          ? undefined
-          : new Date(post.createdUtc * 1000);
-      if (createdAt === undefined || Number.isNaN(createdAt.getTime())) {
-        return stats;
-      }
-
-      if (createdAt >= targetPublishedWindow.endExclusive) {
-        return { ...stats, newerCount: stats.newerCount + 1 };
-      }
-
-      if (createdAt < targetPublishedWindow.startInclusive) {
-        return { ...stats, olderCount: stats.olderCount + 1 };
-      }
-
-      return { ...stats, insideCount: stats.insideCount + 1 };
-    },
-    { newerCount: 0, insideCount: 0, olderCount: 0 },
-  );
-};
-
-const shouldContinuePastEmptyTargetWindowPage = (params: {
-  readonly pageNewItemCount: number;
-  readonly pageDuplicateItemCount: number;
-  readonly windowStats: TargetWindowStats;
-}): boolean =>
-  params.windowStats.insideCount === 0 &&
-  params.windowStats.newerCount > 0 &&
-  params.windowStats.olderCount === 0 &&
-  params.pageNewItemCount + params.pageDuplicateItemCount === 0;
-
-const redditScanPassLabel = (pass: RedditScanPass): string =>
-  pass.mode === "listing"
-    ? `${pass.subreddit}:${pass.listing}${pass.listing === "top" ? `:${pass.topTime ?? "day"}` : ""}`
-    : `search:${pass.query}`;
-
-const sourceQueryLaneForPlan = (
-  plan: SourceProviderScanPlan,
-): RedditSourceQueryLaneMetadata => {
-  if (plan.query.mode === "listing") {
-    const listing = parseListingQuery(plan.query.query);
-
-    return {
-      providerKey: "reddit",
-      mode: "listing",
-      query: plan.query.query,
-      maxItems: plan.maxItems,
-      subreddit: listing.subreddit,
-      listing: listing.listing,
-    };
-  }
-
-  return {
-    providerKey: "reddit",
-    mode: "search",
-    query: plan.query.query,
-    maxItems: plan.maxItems,
-  };
-};
-
-const sourceQueryLaneForPass = (
-  pass: RedditScanPass,
-  maxItems: number,
-): RedditSourceQueryLaneMetadata =>
-  pass.mode === "listing"
-    ? {
-        providerKey: "reddit",
-        mode: "listing",
-        query: redditListingPassQuery(pass),
-        maxItems,
-        subreddit: pass.subreddit,
-        listing: pass.listing,
-        ...(pass.topTime === undefined ? {} : { topTime: pass.topTime }),
-      }
-    : {
-        providerKey: "reddit",
-        mode: "search",
-        query: pass.query,
-        maxItems,
-        ...(pass.searchSort === undefined
-          ? {}
-          : { searchSort: pass.searchSort }),
-        ...(pass.searchTime === undefined
-          ? {}
-          : { searchTime: pass.searchTime }),
-      };
-
-const redditListingPassQuery = (
-  pass: Extract<RedditScanPass, { mode: "listing" }>,
-): string => `${pass.subreddit}:${pass.listing}`;
-
-const redditRankingQueries = (
-  plan: SourceProviderScanPlan,
-  passes: readonly RedditScanPass[],
-): readonly string[] =>
-  compactUnique([
-    plan.query.query,
-    ...passes.map((pass) =>
-      pass.mode === "search" ? pass.query : `${pass.subreddit} ${pass.listing}`,
-    ),
-  ]);

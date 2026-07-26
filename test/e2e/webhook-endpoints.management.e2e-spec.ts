@@ -5,6 +5,7 @@ import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 describe('Webhook endpoint management (e2e)', () => {
   let app: INestApplication;
@@ -30,8 +31,8 @@ describe('Webhook endpoint management (e2e)', () => {
   });
 
   it('lists endpoints and soft-disables one without exposing raw secrets', async () => {
-    const tenant = tenantId('tenant-webhook-management-e2e');
-    const workspace = workspaceId('workspace-webhook-management-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-webhook-management-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-webhook-management-e2e'));
     const apiKey = await request(app.getHttpServer())
       .post('/identity/api-keys')
       .set('x-tenant-id', tenant)

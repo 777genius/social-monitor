@@ -1,6 +1,6 @@
 import type { SummaryEvidenceItem, SummaryEvidenceSelection } from '../../domain';
 import type { ReaderSummaryEvidenceSelectorPort } from '../../ports';
-import { ConversationEvidenceContextReader } from './conversation-evidence-context.reader';
+import type { ConversationEvidenceContextReader } from './conversation-evidence-context.reader';
 
 export class ConversationReaderSummaryEvidenceSelector
   implements ReaderSummaryEvidenceSelectorPort

@@ -33,12 +33,8 @@ $revoke_migrator_schema_create$;
 RESET ROLE;
 
 DO $evidence_authority_grants$
-DECLARE
-  v_runtime_role NAME := current_setting(
-    'social_monitor.bootstrap_runtime_role'
-  )::NAME;
 BEGIN
-  EXECUTE format('SET LOCAL ROLE %I', v_runtime_role);
+  SET LOCAL ROLE social_monitor_public_schema_owner;
   REVOKE UPDATE ON TABLE
     public.source_items,
     public.feed_items
@@ -56,7 +52,7 @@ BEGIN
     public.source_items,
     public.feed_items
   TO social_monitor_reader_summary_publication_owner;
-  EXECUTE 'RESET ROLE';
+  RESET ROLE;
 END
 $evidence_authority_grants$;
 
@@ -98,6 +94,7 @@ DECLARE
   v_trigger_count INTEGER;
   v_function RECORD;
   v_role RECORD;
+  v_unsafe_authority TEXT;
 BEGIN
   -- Remove any direct authority retained from an older runtime-owned schema.
   -- The application receives only the audited capability-role grants.
@@ -263,25 +260,42 @@ BEGIN
   IF v_constraint_count <> 1 THEN
     RAISE EXCEPTION 'publication evidence semantics are not enforced';
   END IF;
-  IF EXISTS (
-    SELECT 1
-    FROM unnest(ARRAY[
-      'source_items', 'feed_items', 'scan_jobs',
-      'github_repository_trend_results', 'source_bindings',
-      'source_catalog_entries', 'interests'
-    ]) AS authority_table(name)
-    WHERE NOT has_table_privilege(
-      'social_monitor_reader_summary_publication_owner',
-      'public.' || authority_table.name,
-      'SELECT'
-    )
-      OR has_table_privilege(
+  SELECT string_agg(
+    format(
+      '%s(select=%s,write=%s)',
+      authority_table.name,
+      has_table_privilege(
+        'social_monitor_reader_summary_publication_owner',
+        'public.' || authority_table.name,
+        'SELECT'
+      ),
+      has_table_privilege(
         'social_monitor_reader_summary_publication_owner',
         'public.' || authority_table.name,
         'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
       )
-  ) THEN
-    RAISE EXCEPTION 'publication evidence source authority is unsafe';
+    ),
+    ', ' ORDER BY authority_table.name
+  ) INTO v_unsafe_authority
+  FROM unnest(ARRAY[
+    'source_items', 'feed_items', 'scan_jobs',
+    'github_repository_trend_results', 'source_bindings',
+    'source_catalog_entries', 'interests'
+  ]) AS authority_table(name)
+  WHERE NOT has_table_privilege(
+    'social_monitor_reader_summary_publication_owner',
+    'public.' || authority_table.name,
+    'SELECT'
+  )
+    OR has_table_privilege(
+      'social_monitor_reader_summary_publication_owner',
+      'public.' || authority_table.name,
+      'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+    );
+  IF v_unsafe_authority IS NOT NULL THEN
+    RAISE EXCEPTION
+      'publication evidence source authority is unsafe: %',
+      v_unsafe_authority;
   END IF;
   IF NOT has_column_privilege(
     'social_monitor_reader_summary_publication_owner',

@@ -3,6 +3,7 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 describe('Summary request flow (e2e)', () => {
   let app: INestApplication;
@@ -30,8 +31,8 @@ describe('Summary request flow (e2e)', () => {
   it('creates topic summary request idempotently', async () => {
     const first = await request(app.getHttpServer())
       .post('/interests/topic-summary-e2e/summary-requests')
-      .set('x-tenant-id', 'tenant-summary-e2e')
-      .set('x-workspace-id', 'workspace-summary-e2e')
+      .set('x-tenant-id', deterministicTestUuid('tenant-summary-e2e'))
+      .set('x-workspace-id', deterministicTestUuid('workspace-summary-e2e'))
       .set('x-workspace-role', 'member')
       .set('x-request-id', 'summary-request-1')
       .set('idempotency-key', 'summary-request-1')
@@ -45,8 +46,8 @@ describe('Summary request flow (e2e)', () => {
 
     const second = await request(app.getHttpServer())
       .post('/interests/topic-summary-e2e/summary-requests')
-      .set('x-tenant-id', 'tenant-summary-e2e')
-      .set('x-workspace-id', 'workspace-summary-e2e')
+      .set('x-tenant-id', deterministicTestUuid('tenant-summary-e2e'))
+      .set('x-workspace-id', deterministicTestUuid('workspace-summary-e2e'))
       .set('x-workspace-role', 'member')
       .set('x-request-id', 'summary-request-1')
       .set('idempotency-key', 'summary-request-1')

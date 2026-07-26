@@ -5,6 +5,8 @@ import {
   USER_ACCESS_TOKEN_VERIFIER,
   USER_WORKSPACE_MEMBERSHIP_VERIFIER,
   WORKSPACE_AUTHORIZATION_POLICY,
+  type PublicApiAuditWriterPort,
+  type PublicApiRateLimiterPort,
   type UserAccessTokenPrincipal,
   type UserAccessTokenVerifierPort,
   type UserWorkspaceMembership,
@@ -14,11 +16,13 @@ import {
   type WorkspaceRole,
 } from '@social-monitor/identity/ports';
 import { DomainError, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
-import { CheckPublicApiRateLimitUseCase } from '@social-monitor/usage/features/check-public-api-rate-limit/check-public-api-rate-limit.use-case';
-import { RecordPublicApiAuditEventUseCase } from '@social-monitor/usage/features/record-public-api-audit-event/record-public-api-audit-event.use-case';
 
 import { parseBearerToken } from '../authorization/bearer-authorization';
-import { IDENTITY_PUBLIC_API_RATE_LIMIT_PER_MINUTE } from './identity-provider-tokens';
+import {
+  IDENTITY_PUBLIC_API_AUDIT_WRITER,
+  IDENTITY_PUBLIC_API_RATE_LIMITER,
+  IDENTITY_PUBLIC_API_RATE_LIMIT_PER_MINUTE,
+} from './identity-provider-tokens';
 
 export { hasBearerAuthorizationHeader } from '../authorization/bearer-authorization';
 
@@ -57,10 +61,10 @@ export class ApiKeyRequestAuthorizer {
   constructor(
     @Inject(VerifyApiKeyUseCase)
     private readonly verifyApiKey: VerifyApiKeyUseCase,
-    @Inject(CheckPublicApiRateLimitUseCase)
-    private readonly checkPublicApiRateLimit: CheckPublicApiRateLimitUseCase,
-    @Inject(RecordPublicApiAuditEventUseCase)
-    private readonly recordPublicApiAuditEvent: RecordPublicApiAuditEventUseCase,
+    @Inject(IDENTITY_PUBLIC_API_RATE_LIMITER)
+    private readonly publicApiRateLimiter: PublicApiRateLimiterPort,
+    @Inject(IDENTITY_PUBLIC_API_AUDIT_WRITER)
+    private readonly publicApiAuditWriter: PublicApiAuditWriterPort,
     @Inject(USER_ACCESS_TOKEN_VERIFIER)
     private readonly userAccessTokenVerifier: UserAccessTokenVerifierPort,
     @Inject(USER_WORKSPACE_MEMBERSHIP_VERIFIER)
@@ -107,7 +111,7 @@ export class ApiKeyRequestAuthorizer {
       throw new DomainError('authorization.denied', 'API key tenant or workspace does not match request scope');
     }
 
-    const rateLimit = await this.checkPublicApiRateLimit.execute({
+    const rateLimit = await this.publicApiRateLimiter.check({
       subjectKey: `api-key:${verifiedApiKey.value.apiKey.id}`,
       operation: params.operation,
       limit: this.publicApiRateLimitPerMinute,
@@ -221,7 +225,7 @@ export class ApiKeyRequestAuthorizer {
       throw authorization.error;
     }
 
-    const rateLimit = await this.checkPublicApiRateLimit.execute({
+    const rateLimit = await this.publicApiRateLimiter.check({
       subjectKey: `user:${principal.subject}`,
       operation: params.operation,
       limit: this.publicApiRateLimitPerMinute,
@@ -271,7 +275,7 @@ export class ApiKeyRequestAuthorizer {
     readonly outcome: 'succeeded' | 'denied';
     readonly reasonCode?: string;
   }): Promise<void> {
-    const auditEvent = await this.recordPublicApiAuditEvent.execute({
+    const auditEvent = await this.publicApiAuditWriter.record({
       tenantId: params.tenantId,
       workspaceId: params.workspaceId,
       actorType: 'api_key',
@@ -302,7 +306,7 @@ export class ApiKeyRequestAuthorizer {
     readonly membershipRoles?: readonly WorkspaceRole[];
     readonly membershipSource?: UserWorkspaceMembership['source'] | 'missing' | 'unverified';
   }): Promise<void> {
-    const auditEvent = await this.recordPublicApiAuditEvent.execute({
+    const auditEvent = await this.publicApiAuditWriter.record({
       tenantId: params.tenantId,
       workspaceId: params.workspaceId,
       actorType: 'user',

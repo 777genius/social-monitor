@@ -5,6 +5,7 @@ import {
   realpathSync,
   statSync,
 } from "node:fs";
+import { tmpdir } from "node:os";
 import {
   dirname,
   isAbsolute,
@@ -27,7 +28,7 @@ export function assertPrivateEvaluationFile(
   }
 
   const realPath = realpathSync(absolutePath);
-  if (realPath !== absolutePath) {
+  if (realPath !== canonicalPathAllowingPlatformTempAlias(absolutePath)) {
     throw new Error(`${label} must not use symlinked path components`);
   }
   const stats = statSync(realPath);
@@ -46,6 +47,14 @@ export function assertPrivateEvaluationFile(
   }
 
   return realPath;
+}
+
+function canonicalPathAllowingPlatformTempAlias(path: string): string {
+  const temporaryRoot = resolve(tmpdir());
+  if (!isPathInside(temporaryRoot, path)) {
+    return path;
+  }
+  return resolve(realpathSync(temporaryRoot), relative(temporaryRoot, path));
 }
 
 export function assertPathOutsideGitWorktrees(

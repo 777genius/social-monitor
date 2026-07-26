@@ -1,6 +1,5 @@
 import type {
   SourceProviderScanContext,
-  SourceRuntimeConfig,
 } from "../../../ports";
 import { validateFeedUrl } from "./feed-url-policy";
 import type {

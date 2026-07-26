@@ -6,6 +6,7 @@ import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
 import { MonitoringRestModule } from '../../libs/monitoring/interfaces/rest/monitoring-rest.module';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 describe('Manual scan request quota (e2e)', () => {
   let app: INestApplication;
@@ -43,8 +44,8 @@ describe('Manual scan request quota (e2e)', () => {
   });
 
   it('rejects a second new manual scan before enqueueing more work', async () => {
-    const tenant = tenantId('tenant-scan-quota-e2e');
-    const workspace = workspaceId('workspace-scan-quota-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-scan-quota-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-scan-quota-e2e'));
     const firstBindingId = await createReadyBinding({
       app,
       tenant,

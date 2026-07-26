@@ -1,4 +1,5 @@
 import type { MetricsRecorderPort } from "@social-monitor/platform-metrics";
+import { runWithTenantDatabaseAccess } from "@social-monitor/platform-persistence";
 import type { QueueCommandEnvelope } from "@social-monitor/platform-queue";
 import type { WorkerRuntime } from "@social-monitor/platform-worker";
 import {
@@ -52,23 +53,25 @@ export class ExecuteScanCommandHandler {
       let failureRecorded = false;
 
       try {
-        const result = await this.executeScan.execute({
-          tenantId: tenantId(payload.tenantId),
-          workspaceId: workspaceId(payload.workspaceId),
-          scanJobId: payload.scanJobId,
-          interestId: payload.interestId,
-          sourceBindingId: payload.sourceBindingId,
-          scanPolicyId: payload.scanPolicyId,
-          providerKey: payload.providerKey,
-          sourceQuery: payload.sourceQuery,
-          interestQuerySnapshot: payload.interestQuerySnapshot,
-          correlationId: command.correlationId,
-          causationId: command.causationId ?? command.commandId,
-          attemptNumber: payload.attemptNumber,
-          retryBudget: payload.retryBudget,
-          workerId: payload.workerId,
-          leaseTtlSeconds: payload.leaseTtlSeconds,
-        });
+        const result = await runWithTenantDatabaseAccess(payload, () =>
+          this.executeScan.execute({
+            tenantId: tenantId(payload.tenantId),
+            workspaceId: workspaceId(payload.workspaceId),
+            scanJobId: payload.scanJobId,
+            interestId: payload.interestId,
+            sourceBindingId: payload.sourceBindingId,
+            scanPolicyId: payload.scanPolicyId,
+            providerKey: payload.providerKey,
+            sourceQuery: payload.sourceQuery,
+            interestQuerySnapshot: payload.interestQuerySnapshot,
+            correlationId: command.correlationId,
+            causationId: command.causationId ?? command.commandId,
+            attemptNumber: payload.attemptNumber,
+            retryBudget: payload.retryBudget,
+            workerId: payload.workerId,
+            leaseTtlSeconds: payload.leaseTtlSeconds,
+          }),
+        );
 
         if (!result.ok) {
           this.recordMetric("failed");

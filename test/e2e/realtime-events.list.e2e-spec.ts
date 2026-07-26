@@ -5,6 +5,7 @@ import { RecordRealtimeEventUseCase } from '@social-monitor/delivery/features/re
 import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 describe('Realtime event replay (e2e)', () => {
   let app: INestApplication;
@@ -30,8 +31,8 @@ describe('Realtime event replay (e2e)', () => {
   });
 
   it('replays tenant/workspace realtime events through REST resync endpoint', async () => {
-    const tenant = tenantId('tenant-realtime-e2e');
-    const workspace = workspaceId('workspace-realtime-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-realtime-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-realtime-e2e'));
     const channel = 'interest:topic-realtime-e2e:summary-status';
     await app.get(RecordRealtimeEventUseCase).execute({
       tenantId: tenant,

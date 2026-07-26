@@ -8,7 +8,11 @@ import { ExecuteReaderSummaryJobCommandHandler } from "@social-monitor/summary/i
 import { ExecuteSummaryJobCommandHandler } from "@social-monitor/summary/interfaces/queue/execute-summary-job-command.handler";
 import { SummaryRestModule } from "@social-monitor/summary/interfaces/rest/summary-rest.module";
 import { RelevanceRestModule } from "@social-monitor/relevance/interfaces/rest/relevance-rest.module";
-import { InMemoryMetricsRecorder } from "@social-monitor/platform-metrics";
+import type { MetricsRecorderPort } from "@social-monitor/platform-metrics";
+import {
+  METRICS_RECORDER,
+  MetricsRuntimeModule,
+} from "@social-monitor/platform-metrics/nest/metrics-runtime.module";
 import {
   WorkerRuntime,
   WorkerRuntimeModule,
@@ -61,6 +65,7 @@ const INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_CHANNEL = Symbol(
 
 @Module({
   imports: [
+    MetricsRuntimeModule.register({ serviceName: "intelligence-worker" }),
     WorkerRuntimeModule.register({ serviceName: "intelligence-worker" }),
     SummaryRestModule,
     RelevanceRestModule,
@@ -95,8 +100,8 @@ const INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_CHANNEL = Symbol(
     },
     {
       provide: INTELLIGENCE_WORKER_METRICS_RECORDER,
-      useFactory: (metrics: InMemoryMetricsRecorder) => metrics,
-      inject: [InMemoryMetricsRecorder],
+      useFactory: (metrics: MetricsRecorderPort) => metrics,
+      inject: [METRICS_RECORDER],
     },
     {
       provide: INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_READER_OPTIONS,
@@ -178,7 +183,7 @@ const INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_CHANNEL = Symbol(
       provide: ExecuteSummaryJobCommandHandler,
       useFactory: (
         executeSummaryJob: ExecuteSummaryJobUseCase,
-        metrics: InMemoryMetricsRecorder,
+        metrics: MetricsRecorderPort,
         runtime: WorkerRuntime,
       ) =>
         new ExecuteSummaryJobCommandHandler(
@@ -196,7 +201,7 @@ const INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_CHANNEL = Symbol(
       provide: ExecuteReaderSummaryJobCommandHandler,
       useFactory: (
         executeReaderSummaryJob: ExecuteReaderSummaryJobUseCase,
-        metrics: InMemoryMetricsRecorder,
+        metrics: MetricsRecorderPort,
         runtime: WorkerRuntime,
       ) =>
         new ExecuteReaderSummaryJobCommandHandler(
@@ -223,7 +228,7 @@ const INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_CHANNEL = Symbol(
         options: ReturnType<
           typeof resolveIntelligenceSummaryQueueDrainLoopOptions
         >,
-        metrics: InMemoryMetricsRecorder,
+        metrics: MetricsRecorderPort,
       ) =>
         new SummaryJobQueueDrainLoop(
           queue,
@@ -247,7 +252,7 @@ const INTELLIGENCE_RABBITMQ_SUMMARY_QUEUE_CHANNEL = Symbol(
         options: ReturnType<
           typeof resolveIntelligenceReaderSummaryQueueDrainLoopOptions
         >,
-        metrics: InMemoryMetricsRecorder,
+        metrics: MetricsRecorderPort,
       ) =>
         new ReaderSummaryJobQueueDrainLoop(
           queue,

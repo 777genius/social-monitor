@@ -4,6 +4,7 @@ import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 describe('Interest workspace authorization (e2e)', () => {
   let app: INestApplication;
@@ -29,8 +30,8 @@ describe('Interest workspace authorization (e2e)', () => {
   });
 
   it('requires an owner or admin workspace role to create interests', async () => {
-    const tenant = tenantId('tenant-interest-authorization-e2e');
-    const workspace = workspaceId('workspace-interest-authorization-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-interest-authorization-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-interest-authorization-e2e'));
 
     const missingRole = await request(app.getHttpServer())
       .post('/interests')

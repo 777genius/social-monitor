@@ -2,6 +2,7 @@ import {
   chmodSync,
   mkdirSync,
   mkdtempSync,
+  realpathSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -16,7 +17,7 @@ describe("private evaluation file validation", () => {
     const path = join(root, "manifest.json");
     writeFileSync(path, "{}\n", { mode: 0o600 });
 
-    expect(assertPrivateEvaluationFile(path)).toBe(path);
+    expect(assertPrivateEvaluationFile(path)).toBe(realpathSync(path));
   });
 
   it.each([0o640, 0o604])(

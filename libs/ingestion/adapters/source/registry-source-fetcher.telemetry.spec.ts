@@ -6,7 +6,6 @@ import type {
   SourceCapabilityProfile,
   SourceConfigReaderPort,
   SourceProviderPort,
-  SourceProviderScanContext,
   SourceProviderScanPlan,
   SourceProviderScanResult,
   SourceProviderValidationResult,
@@ -154,10 +153,7 @@ class TelemetryProvider implements SourceProviderPort {
     return { query, maxItems: 2 };
   }
 
-  async scan(
-    _plan: SourceProviderScanPlan,
-    _context: SourceProviderScanContext,
-  ): Promise<SourceProviderScanResult> {
+  async scan(): Promise<SourceProviderScanResult> {
     const call = this.callCount;
     this.callCount += 1;
     if (call === this.failAtCall) {

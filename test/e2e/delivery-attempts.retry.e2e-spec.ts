@@ -9,6 +9,7 @@ import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 describe('Delivery retry orchestration (e2e)', () => {
   let app: INestApplication;
@@ -43,8 +44,8 @@ describe('Delivery retry orchestration (e2e)', () => {
   });
 
   it('retries retryable webhook failure and exposes delivered status', async () => {
-    const tenant = tenantId('tenant-delivery-retry-e2e');
-    const workspace = workspaceId('workspace-delivery-retry-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-delivery-retry-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-delivery-retry-e2e'));
     webhookProvider.enqueueResult({
       accepted: false,
       retryable: true,

@@ -329,8 +329,8 @@ daily_runner_image_bootstrap_before_rescue() (
   [[ -z $existing_container ]] || \
     fail 'active daily-runner container blocks image bootstrap'
 
-  # Invoked through the EXIT trap below.
-  # shellcheck disable=SC2317
+  # Invoked by the EXIT/INT/TERM traps installed below.
+  # shellcheck disable=SC2317,SC2329
   cleanup_daily_runner_bootstrap() {
     local original_status=$?
     local cleanup_status=0

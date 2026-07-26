@@ -4,6 +4,7 @@ import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 describe('Webhook endpoint API key scope enforcement (e2e)', () => {
   let app: INestApplication;
@@ -29,8 +30,8 @@ describe('Webhook endpoint API key scope enforcement (e2e)', () => {
   });
 
   it('requires a matching active API key with write:webhook_endpoints scope', async () => {
-    const tenant = tenantId('tenant-webhook-scope-e2e');
-    const workspace = workspaceId('workspace-webhook-scope-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-webhook-scope-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-webhook-scope-e2e'));
     const webhookBody = {
       url: 'https://example.com/webhooks/scope',
       eventTypes: ['digest.ready.v1'],
@@ -76,7 +77,7 @@ describe('Webhook endpoint API key scope enforcement (e2e)', () => {
     await request(app.getHttpServer())
       .post('/delivery/webhook-endpoints')
       .set('x-tenant-id', tenant)
-      .set('x-workspace-id', workspaceId('different-workspace'))
+      .set('x-workspace-id', workspaceId(deterministicTestUuid('different-workspace')))
       .set('Authorization', `Bearer ${writerKey.body.secret}`)
       .send(webhookBody)
       .expect(403);

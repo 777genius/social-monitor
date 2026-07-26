@@ -7,14 +7,21 @@ import {
   RabbitMqEventPublisher,
   type RabbitMqEventPublisherOptions,
 } from '@social-monitor/platform-events/adapters/rabbitmq';
+import { monitoringScanQueueRabbitMqOptions } from '@social-monitor/monitoring/interfaces/rest/monitoring-scan-queue.providers';
 import { OutboxDispatcher } from '@social-monitor/platform-events';
 import { resolvePostgresRuntimePoolConfig } from '@social-monitor/platform-persistence';
 import {
+  CommandOutboxDispatcher,
+} from '@social-monitor/platform-queue';
+import { MetricsRuntimeModule } from '@social-monitor/platform-metrics/nest/metrics-runtime.module';
+import { PrismaCommandOutboxStoreAdapter } from '@social-monitor/platform-queue/adapters/prisma';
+import {
   AmqplibRabbitMqChannel,
+  RabbitMqQueuePublisher,
   type RabbitMqQueueChannelPort,
 } from '@social-monitor/platform-queue/adapters/rabbitmq';
 import { WorkerRuntimeModule } from '@social-monitor/platform-worker';
-import { SystemClock } from '@social-monitor/shared-kernel';
+import { CryptoIdGenerator, SystemClock } from '@social-monitor/shared-kernel';
 
 import {
   EVENT_RELAY_LOOP_OPTIONS,
@@ -24,9 +31,13 @@ import {
   resolveEventRelayRabbitMqEventOptions,
 } from './event-relay-provider-tokens';
 import { OutboxRelayLoop } from './outbox-relay-loop';
+import { ScanCommandRelayLoop } from './scan-command-relay-loop';
 
 @Module({
-  imports: [WorkerRuntimeModule.register({ serviceName: 'event-relay' })],
+  imports: [
+    MetricsRuntimeModule.register({ serviceName: 'event-relay' }),
+    WorkerRuntimeModule.register({ serviceName: 'event-relay' }),
+  ],
   providers: [
     {
       provide: EVENT_RELAY_LOOP_OPTIONS,
@@ -68,6 +79,36 @@ import { OutboxRelayLoop } from './outbox-relay-loop';
       inject: [PrismaEventStoreConnection],
     },
     {
+      provide: PrismaCommandOutboxStoreAdapter,
+      useFactory: (prisma: PrismaEventStoreConnection) =>
+        new PrismaCommandOutboxStoreAdapter(prisma),
+      inject: [PrismaEventStoreConnection],
+    },
+    {
+      provide: RabbitMqQueuePublisher,
+      useFactory: (channel: RabbitMqQueueChannelPort) =>
+        new RabbitMqQueuePublisher(
+          channel,
+          monitoringScanQueueRabbitMqOptions(process.env),
+          new SystemClock(),
+        ),
+      inject: [AmqplibRabbitMqChannel],
+    },
+    {
+      provide: CommandOutboxDispatcher,
+      useFactory: (
+        outbox: PrismaCommandOutboxStoreAdapter,
+        publisher: RabbitMqQueuePublisher,
+      ) =>
+        new CommandOutboxDispatcher(
+          outbox,
+          publisher,
+          new CryptoIdGenerator(),
+          new SystemClock(),
+        ),
+      inject: [PrismaCommandOutboxStoreAdapter, RabbitMqQueuePublisher],
+    },
+    {
       provide: OutboxDispatcher,
       useFactory: (
         outbox: PrismaOutboxStoreAdapter,
@@ -76,7 +117,8 @@ import { OutboxRelayLoop } from './outbox-relay-loop';
       inject: [PrismaOutboxStoreAdapter, RabbitMqEventPublisher],
     },
     OutboxRelayLoop,
+    ScanCommandRelayLoop,
   ],
-  exports: [OutboxRelayLoop],
+  exports: [OutboxRelayLoop, ScanCommandRelayLoop],
 })
 export class EventRelayModule {}

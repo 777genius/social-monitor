@@ -7,6 +7,7 @@ import { ExecuteSummaryJobUseCase } from '@social-monitor/summary/features/execu
 import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 describe('Summary feedback submission (e2e)', () => {
   let app: INestApplication;
@@ -32,8 +33,8 @@ describe('Summary feedback submission (e2e)', () => {
   });
 
   it('records classified feedback with citation evidence and preserves idempotency', async () => {
-    const tenant = tenantId('tenant-summary-feedback-submit-e2e');
-    const workspace = workspaceId('workspace-summary-feedback-submit-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-summary-feedback-submit-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-summary-feedback-submit-e2e'));
     const { summaryId, interestId, citation } = await createCitedSummary({
       app,
       tenant,

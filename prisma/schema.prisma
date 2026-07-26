@@ -116,6 +116,11 @@ enum OutboxStatus {
   FAILED
 }
 
+enum OutboxMessageKind {
+  EVENT
+  COMMAND
+}
+
 enum ScanFailureQueueStatus {
   RETRY_ENQUEUED
   DEAD_LETTERED
@@ -596,6 +601,7 @@ model ScanAttempt {
   tenantId          String            @map("tenant_id") @db.Uuid
   workspaceId       String            @map("workspace_id") @db.Uuid
   sourceBindingId   String            @map("source_binding_id") @db.Uuid
+  attemptNumber     Int               @default(1) @map("attempt_number")
   status            ScanAttemptStatus @default(RUNNING)
   startedAt         DateTime          @map("started_at") @db.Timestamptz(6)
   finishedAt        DateTime?         @map("finished_at") @db.Timestamptz(6)
@@ -1366,20 +1372,27 @@ model WebhookEndpoint {
   quarantinedAt    DateTime?             @map("quarantined_at") @db.Timestamptz(6)
   quarantineReason String?               @map("quarantine_reason")
   updatedAt        DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
+  secret           WebhookSecret         @relation(fields: [secretKeyId, tenantId, workspaceId], references: [id, tenantId, workspaceId], onDelete: Restrict, onUpdate: Restrict, map: "webhook_endpoints_secret_scope_fkey")
 
   @@index([tenantId, workspaceId, status, createdAt])
+  @@index([secretKeyId, tenantId, workspaceId], map: "webhook_endpoints_secret_scope_idx")
   @@map("webhook_endpoints")
 }
 
 model WebhookSecret {
-  id         String   @id
-  algorithm  String
-  ciphertext String
-  iv         String
-  authTag    String   @map("auth_tag")
-  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id          String            @id
+  tenantId    String            @map("tenant_id") @db.Uuid
+  workspaceId String            @map("workspace_id") @db.Uuid
+  algorithm   String
+  ciphertext  String
+  iv          String
+  authTag     String            @map("auth_tag")
+  createdAt   DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+  endpoints   WebhookEndpoint[]
 
+  @@unique([id, tenantId, workspaceId], map: "webhook_secrets_id_tenant_workspace_key")
+  @@index([tenantId, workspaceId, id], map: "webhook_secrets_tenant_workspace_id_idx")
   @@map("webhook_secrets")
 }
 
@@ -1474,17 +1487,24 @@ model OutboxEvent {
   id                       String                    @id @db.Uuid
   tenantId                 String?                   @map("tenant_id") @db.Uuid
   workspaceId              String?                   @map("workspace_id") @db.Uuid
+  messageKind              OutboxMessageKind         @default(EVENT) @map("message_kind")
   eventType                String                    @map("event_type")
   schemaVersion            Int                       @map("schema_version")
   payload                  Json
   status                   OutboxStatus              @default(PENDING)
   correlationId            String                    @map("correlation_id")
   causationId              String?                   @map("causation_id")
+  availableAt              DateTime                  @default(now()) @map("available_at") @db.Timestamptz(6)
+  publishAttempts          Int                       @default(0) @map("publish_attempts")
+  leaseOwner               String?                   @map("lease_owner")
+  leasedUntil              DateTime?                 @map("leased_until") @db.Timestamptz(6)
+  lastError                String?                   @map("last_error")
   createdAt                DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
   publishedAt              DateTime?                 @map("published_at") @db.Timestamptz(6)
   readerSummaryPublication ReaderSummaryPublication?
 
   @@index([tenantId, workspaceId, status, createdAt])
+  @@index([messageKind, status, availableAt, createdAt], map: "outbox_events_dispatch_idx")
   @@map("outbox_events")
 }
 

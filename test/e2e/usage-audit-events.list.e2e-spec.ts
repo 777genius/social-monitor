@@ -13,6 +13,7 @@ import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
 import { createApiGatewayE2eApp } from './support/api-gateway-e2e-app';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 const issuer = 'https://auth.example.test';
 const audience = 'social-monitor-api';
@@ -58,8 +59,8 @@ describe('Usage audit events API (e2e)', () => {
   });
 
   it('lists scoped audit events with filters, cursor pagination and admin-only access', async () => {
-    const tenant = tenantId('tenant-usage-audit-e2e');
-    const workspace = workspaceId('workspace-usage-audit-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-usage-audit-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-usage-audit-e2e'));
     const headers = {
       'x-tenant-id': tenant,
       'x-workspace-id': workspace,
@@ -95,7 +96,7 @@ describe('Usage audit events API (e2e)', () => {
     await auditLog.append({
       id: 'audit-e2e-other-workspace',
       tenantId: tenant,
-      workspaceId: workspaceId('workspace-usage-audit-other-e2e'),
+      workspaceId: workspaceId(deterministicTestUuid('workspace-usage-audit-other-e2e')),
       actorType: 'api_key',
       actorId: 'api-key-e2e-1',
       action: 'feed.list',

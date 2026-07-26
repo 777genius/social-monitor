@@ -10,12 +10,12 @@ import {
   workspaceId,
   type Result,
 } from '@social-monitor/shared-kernel';
-import type { CheckPublicApiRateLimitUseCase } from '@social-monitor/usage/features/check-public-api-rate-limit/check-public-api-rate-limit.use-case';
-import type { CheckPublicApiRateLimitCommand } from '@social-monitor/usage/features/check-public-api-rate-limit/check-public-api-rate-limit.command';
-import type { RecordPublicApiAuditEventUseCase } from '@social-monitor/usage/features/record-public-api-audit-event/record-public-api-audit-event.use-case';
-import type { RecordPublicApiAuditEventCommand } from '@social-monitor/usage/features/record-public-api-audit-event/record-public-api-audit-event.command';
 
 import type {
+  CheckIdentityPublicApiRateLimitCommand,
+  PublicApiAuditWriterPort,
+  PublicApiRateLimiterPort,
+  RecordIdentityPublicApiAuditCommand,
   UserAccessTokenPrincipal,
   UserAccessTokenVerifierPort,
   UserWorkspaceMembership,
@@ -82,7 +82,7 @@ describe('ApiKeyRequestAuthorizer', () => {
       action: 'interests.create',
       roles: ['admin'],
     });
-    expect(dependencies.checkPublicApiRateLimit.execute).toHaveBeenCalledWith({
+    expect(dependencies.checkPublicApiRateLimit.check).toHaveBeenCalledWith({
       subjectKey: 'user:user-1',
       operation: 'interests.create',
       limit: 60,
@@ -129,7 +129,7 @@ describe('ApiKeyRequestAuthorizer', () => {
     });
 
     expect(dependencies.workspaceAuthorization.authorize).not.toHaveBeenCalled();
-    expect(dependencies.checkPublicApiRateLimit.execute).not.toHaveBeenCalled();
+    expect(dependencies.checkPublicApiRateLimit.check).not.toHaveBeenCalled();
     expect(dependencies.auditEvents.at(-1)).toMatchObject({
       actorType: 'user',
       actorId: 'user-1',
@@ -154,7 +154,7 @@ describe('ApiKeyRequestAuthorizer', () => {
     });
 
     expect(dependencies.workspaceAuthorization.authorize).not.toHaveBeenCalled();
-    expect(dependencies.checkPublicApiRateLimit.execute).not.toHaveBeenCalled();
+    expect(dependencies.checkPublicApiRateLimit.check).not.toHaveBeenCalled();
     expect(dependencies.auditEvents.at(-1)).toMatchObject({
       actorType: 'user',
       actorId: 'user-1',
@@ -198,7 +198,7 @@ describe('ApiKeyRequestAuthorizer', () => {
       action: 'interests.create',
       roles: ['viewer'],
     });
-    expect(dependencies.checkPublicApiRateLimit.execute).not.toHaveBeenCalled();
+    expect(dependencies.checkPublicApiRateLimit.check).not.toHaveBeenCalled();
   });
 
   it('authorizes user-only workspace actions without accepting smk API keys', async () => {
@@ -238,12 +238,12 @@ describe('ApiKeyRequestAuthorizer', () => {
 
 type Dependencies = {
   readonly verifyApiKey: jest.Mocked<Pick<VerifyApiKeyUseCase, 'execute'>>;
-  readonly checkPublicApiRateLimit: jest.Mocked<Pick<CheckPublicApiRateLimitUseCase, 'execute'>>;
-  readonly recordPublicApiAuditEvent: jest.Mocked<Pick<RecordPublicApiAuditEventUseCase, 'execute'>>;
+  readonly checkPublicApiRateLimit: jest.Mocked<PublicApiRateLimiterPort>;
+  readonly recordPublicApiAuditEvent: jest.Mocked<PublicApiAuditWriterPort>;
   readonly userAccessTokenVerifier: jest.Mocked<UserAccessTokenVerifierPort>;
   readonly userWorkspaceMembershipVerifier: jest.Mocked<UserWorkspaceMembershipVerifierPort>;
   readonly workspaceAuthorization: jest.Mocked<WorkspaceAuthorizationPolicyPort>;
-  readonly auditEvents: RecordPublicApiAuditEventCommand[];
+  readonly auditEvents: RecordIdentityPublicApiAuditCommand[];
 };
 
 const createDependencies = (params: {
@@ -267,7 +267,7 @@ const createDependencies = (params: {
         source: 'durable',
       } satisfies UserWorkspaceMembership
     : params.membership;
-  const auditEvents: RecordPublicApiAuditEventCommand[] = [];
+  const auditEvents: RecordIdentityPublicApiAuditCommand[] = [];
 
   return {
     verifyApiKey: {
@@ -288,7 +288,7 @@ const createDependencies = (params: {
       }),
     },
     checkPublicApiRateLimit: {
-      execute: jest.fn(async (command: CheckPublicApiRateLimitCommand) => {
+      check: jest.fn(async (command: CheckIdentityPublicApiRateLimitCommand) => {
         void command;
         return ok({
           allowed: true as const,
@@ -299,7 +299,7 @@ const createDependencies = (params: {
       }),
     },
     recordPublicApiAuditEvent: {
-      execute: jest.fn(async (command: RecordPublicApiAuditEventCommand) => {
+      record: jest.fn(async (command: RecordIdentityPublicApiAuditCommand) => {
         auditEvents.push(command);
         return ok({
           auditEventId: 'audit-event-1',
@@ -334,8 +334,8 @@ const createDependencies = (params: {
 const createAuthorizer = (dependencies: Dependencies): ApiKeyRequestAuthorizer =>
   new ApiKeyRequestAuthorizer(
     dependencies.verifyApiKey as unknown as VerifyApiKeyUseCase,
-    dependencies.checkPublicApiRateLimit as unknown as CheckPublicApiRateLimitUseCase,
-    dependencies.recordPublicApiAuditEvent as unknown as RecordPublicApiAuditEventUseCase,
+    dependencies.checkPublicApiRateLimit,
+    dependencies.recordPublicApiAuditEvent,
     dependencies.userAccessTokenVerifier,
     dependencies.userWorkspaceMembershipVerifier,
     dependencies.workspaceAuthorization,

@@ -2,6 +2,7 @@ import type { Provider } from '@nestjs/common';
 import { assertRuntimeProfileAllowsMode } from '@social-monitor/platform-config';
 
 import type {
+  InterestSourceProvisionerPort,
   SourceTargetCatalogPort,
   SourceTargetRepositoryPort,
   UserSubscriptionRepositoryPort,
@@ -28,6 +29,8 @@ export const SUBSCRIPTIONS_USER_SUMMARY_PREFERENCE_MEMORY_PROJECTOR =
 export const SUBSCRIPTIONS_USER_SUMMARY_PREFERENCE_MEMORY_PROJECTOR_MODE =
   Symbol('SUBSCRIPTIONS_USER_SUMMARY_PREFERENCE_MEMORY_PROJECTOR_MODE');
 export const SUBSCRIPTIONS_SOURCE_TARGET_CATALOG = Symbol('SUBSCRIPTIONS_SOURCE_TARGET_CATALOG');
+export const SUBSCRIPTIONS_INTEREST_SOURCE_PROVISIONER =
+  Symbol('SUBSCRIPTIONS_INTEREST_SOURCE_PROVISIONER');
 
 export type SubscriptionsProviderTokenMap = {
   readonly [SUBSCRIPTIONS_PERSISTENCE_MODE]: SubscriptionsPersistenceMode;
@@ -39,6 +42,7 @@ export type SubscriptionsProviderTokenMap = {
   readonly [SUBSCRIPTIONS_USER_SUMMARY_PREFERENCE_MEMORY_PROJECTOR_MODE]: UserSummaryPreferenceMemoryProjectorMode;
   readonly [SUBSCRIPTIONS_USER_SUMMARY_PREFERENCE_MEMORY_PROJECTOR]: UserSummaryPreferenceMemoryProjectorPort;
   readonly [SUBSCRIPTIONS_SOURCE_TARGET_CATALOG]: SourceTargetCatalogPort;
+  readonly [SUBSCRIPTIONS_INTEREST_SOURCE_PROVISIONER]: InterestSourceProvisionerPort;
 };
 
 export const subscriptionsPersistenceModeProvider: Provider<SubscriptionsPersistenceMode> = {

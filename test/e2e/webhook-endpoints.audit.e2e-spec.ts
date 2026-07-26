@@ -5,6 +5,7 @@ import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 describe('Webhook endpoint public API audit (e2e)', () => {
   let app: INestApplication;
@@ -30,8 +31,8 @@ describe('Webhook endpoint public API audit (e2e)', () => {
   });
 
   it('records safe audit events for webhook endpoint management actions', async () => {
-    const tenant = tenantId('tenant-webhook-audit-e2e');
-    const workspace = workspaceId('workspace-webhook-audit-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-webhook-audit-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-webhook-audit-e2e'));
     const apiKey = await request(app.getHttpServer())
       .post('/identity/api-keys')
       .set('x-tenant-id', tenant)

@@ -1,5 +1,6 @@
 import type { Provider } from "@nestjs/common";
-import { InMemoryMetricsRecorder } from "@social-monitor/platform-metrics";
+import type { MetricsRecorderPort } from "@social-monitor/platform-metrics";
+import { METRICS_RECORDER } from "@social-monitor/platform-metrics/nest/metrics-runtime.module";
 import { type QueuePublisherPort } from "@social-monitor/platform-queue";
 import { InMemoryQueuePublisher } from "@social-monitor/platform-queue/adapters/in-memory";
 import {
@@ -26,7 +27,6 @@ export const monitoringScanQueueProviders = (
   env: NodeJS.ProcessEnv,
 ): Provider[] => [
   InMemoryQueuePublisher,
-  InMemoryMetricsRecorder,
   {
     provide: MONITORING_RABBITMQ_CHANNEL,
     useFactory: (
@@ -61,9 +61,9 @@ export const monitoringScanQueueProviders = (
     provide: MONITORING_SCAN_QUEUE,
     useFactory: (
       publisher: QueuePublisherPort,
-      metrics: InMemoryMetricsRecorder,
+      metrics: MetricsRecorderPort,
     ): ScanQueuePort => new InMemoryScanQueueAdapter(publisher, metrics),
-    inject: [MONITORING_QUEUE_PUBLISHER, InMemoryMetricsRecorder],
+    inject: [MONITORING_QUEUE_PUBLISHER, METRICS_RECORDER],
   },
 ];
 
@@ -77,7 +77,7 @@ const requireRabbitMqChannel = (
   return channel;
 };
 
-const monitoringScanQueueRabbitMqOptions = (env: NodeJS.ProcessEnv) => ({
+export const monitoringScanQueueRabbitMqOptions = (env: NodeJS.ProcessEnv) => ({
   exchange: envValue(env.RABBITMQ_COMMAND_EXCHANGE, "social-monitor.jobs"),
   routes: {
     "ingestion.scan.execute": {

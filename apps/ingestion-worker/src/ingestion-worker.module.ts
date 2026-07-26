@@ -10,7 +10,8 @@ import { RecordScanExecutionUseCase } from "@social-monitor/monitoring/features/
 import { ScheduleDueScansUseCase } from "@social-monitor/monitoring/features/schedule-due-scans/schedule-due-scans.use-case";
 import { ScheduleDueScansCommandHandler } from "@social-monitor/monitoring/interfaces/queue/schedule-due-scans-command.handler";
 import { MonitoringRestModule } from "@social-monitor/monitoring/interfaces/rest/monitoring-rest.module";
-import { InMemoryMetricsRecorder } from "@social-monitor/platform-metrics";
+import { InMemoryMetricsRecorder, type MetricsRecorderPort } from "@social-monitor/platform-metrics";
+import { METRICS_RECORDER, MetricsRuntimeModule } from "@social-monitor/platform-metrics/nest/metrics-runtime.module";
 import { resolvePostgresRuntimePoolConfig } from "@social-monitor/platform-persistence";
 import { InMemoryQueuePublisher } from "@social-monitor/platform-queue/adapters/in-memory";
 import { AmqplibRabbitMqChannel } from "@social-monitor/platform-queue/adapters/rabbitmq";
@@ -105,6 +106,7 @@ const INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL = Symbol(
 
 @Module({
   imports: [
+    MetricsRuntimeModule.register({ serviceName: "ingestion-worker" }),
     WorkerRuntimeModule.register({ serviceName: "ingestion-worker" }),
     MonitoringRestModule,
   ],
@@ -152,12 +154,15 @@ const INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL = Symbol(
     InMemoryScanCursorRepository,
     {
       provide: InMemoryScanFailureQueueAdapter,
-      useFactory: (metrics: InMemoryMetricsRecorder) =>
+      useFactory: (metrics: MetricsRecorderPort) =>
         new InMemoryScanFailureQueueAdapter(metrics),
-      inject: [InMemoryMetricsRecorder],
+      inject: [METRICS_RECORDER],
     },
     InMemoryScanLeaseAdapter,
-    InMemoryMetricsRecorder,
+    {
+      provide: InMemoryMetricsRecorder,
+      useExisting: METRICS_RECORDER,
+    },
     {
       provide: INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL,
       useFactory: (
@@ -379,7 +384,7 @@ const INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL = Symbol(
         mode: IngestionWorkerPersistenceMode,
         prisma: PrismaIngestionWorkerClient | null,
         inMemoryScanFailures: InMemoryScanFailureQueueAdapter,
-        metrics: InMemoryMetricsRecorder,
+        metrics: MetricsRecorderPort,
       ): ScanFailureQueuePort & ScanRetryQueuePort =>
         mode === "prisma"
           ? new PrismaScanFailureQueueAdapter(
@@ -392,7 +397,7 @@ const INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL = Symbol(
         INGESTION_WORKER_PERSISTENCE_MODE,
         INGESTION_WORKER_PRISMA_CLIENT,
         InMemoryScanFailureQueueAdapter,
-        InMemoryMetricsRecorder,
+        METRICS_RECORDER,
       ],
     },
     ...executeScanProviders,
@@ -400,21 +405,21 @@ const INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL = Symbol(
       provide: ScheduleDueScansCommandHandler,
       useFactory: (
         scheduleDueScans: ScheduleDueScansUseCase,
-        metrics: InMemoryMetricsRecorder,
+        metrics: MetricsRecorderPort,
         runtime: WorkerRuntime,
       ) =>
         new ScheduleDueScansCommandHandler(scheduleDueScans, metrics, runtime),
-      inject: [ScheduleDueScansUseCase, InMemoryMetricsRecorder, WorkerRuntime],
+      inject: [ScheduleDueScansUseCase, METRICS_RECORDER, WorkerRuntime],
     },
     ScanSchedulerLoop,
     {
       provide: ExecuteScanCommandHandler,
       useFactory: (
         executeScan: ExecuteScanUseCase,
-        metrics: InMemoryMetricsRecorder,
+        metrics: MetricsRecorderPort,
         runtime: WorkerRuntime,
       ) => new ExecuteScanCommandHandler(executeScan, metrics, runtime),
-      inject: [ExecuteScanUseCase, InMemoryMetricsRecorder, WorkerRuntime],
+      inject: [ExecuteScanUseCase, METRICS_RECORDER, WorkerRuntime],
     },
     {
       provide: ScanQueueDrainLoop,
@@ -423,7 +428,7 @@ const INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL = Symbol(
         handler: ExecuteScanCommandHandler,
         retryQueue: ScanRetryQueuePort,
         options: ReturnType<typeof resolveIngestionScanQueueDrainLoopOptions>,
-        metrics: InMemoryMetricsRecorder,
+        metrics: MetricsRecorderPort,
       ) =>
         new ScanQueueDrainLoop(
           queue,
@@ -438,7 +443,7 @@ const INGESTION_RABBITMQ_SCAN_QUEUE_CHANNEL = Symbol(
         ExecuteScanCommandHandler,
         INGESTION_SCAN_FAILURE_QUEUE,
         INGESTION_SCAN_QUEUE_DRAIN_LOOP_OPTIONS,
-        InMemoryMetricsRecorder,
+        METRICS_RECORDER,
       ],
     },
   ],

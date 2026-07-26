@@ -15,6 +15,7 @@ export class PrismaScanAttemptRepository implements ScanAttemptRepositoryPort {
       where: { scanJobId: snapshot.scanJobId },
       update: {
         status,
+        attemptNumber: snapshot.attemptNumber,
         startedAt: snapshot.startedAt,
         finishedAt: snapshot.finishedAt ?? null,
         fetched: snapshot.fetched,
@@ -28,6 +29,7 @@ export class PrismaScanAttemptRepository implements ScanAttemptRepositoryPort {
         tenantId: snapshot.tenantId,
         workspaceId: snapshot.workspaceId,
         sourceBindingId: snapshot.sourceBindingId,
+        attemptNumber: snapshot.attemptNumber,
         status,
         startedAt: snapshot.startedAt,
         finishedAt: snapshot.finishedAt ?? null,

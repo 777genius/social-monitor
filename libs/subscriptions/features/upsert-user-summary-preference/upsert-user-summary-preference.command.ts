@@ -1,9 +1,9 @@
 import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 import type {
-  SummaryPolicyFormat,
-  SummaryPolicyLanguage,
-  SummaryPolicyTone,
-} from '@social-monitor/summary/domain';
+  UserSummaryPreferenceFormat,
+  UserSummaryPreferenceLanguage,
+  UserSummaryPreferenceTone,
+} from '../../domain';
 
 export type UpsertUserSummaryPreferenceCommand = {
   readonly tenantId: TenantId;
@@ -11,9 +11,9 @@ export type UpsertUserSummaryPreferenceCommand = {
   readonly userId: string;
   readonly subscriptionId?: string;
   readonly interestId?: string;
-  readonly language?: SummaryPolicyLanguage;
-  readonly format?: SummaryPolicyFormat;
-  readonly tone?: SummaryPolicyTone;
+  readonly language?: UserSummaryPreferenceLanguage;
+  readonly format?: UserSummaryPreferenceFormat;
+  readonly tone?: UserSummaryPreferenceTone;
   readonly maxKeyPoints?: number;
   readonly includeRisks?: boolean;
   readonly includeSourceHighlights?: boolean;

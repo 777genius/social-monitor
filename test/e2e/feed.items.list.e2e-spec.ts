@@ -6,11 +6,11 @@ import request from 'supertest';
 import { AppModule } from '../../apps/api-gateway/src/app.module';
 import { FeedItem } from '../../libs/feed/domain';
 import { InMemoryFeedItemReadRepository } from '../../libs/feed/adapters/persistence/in-memory-feed-item-read.repository';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 describe('Feed items list (e2e)', () => {
   let app: INestApplication;
   let repository: InMemoryFeedItemReadRepository;
-
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
@@ -36,30 +36,30 @@ describe('Feed items list (e2e)', () => {
     seedFeedItem({
       id: 'feed-1',
       sourceItemId: 'source-1',
-      tenant: 'tenant-feed-e2e',
-      workspace: 'workspace-feed-e2e',
+      tenant: deterministicTestUuid('tenant-feed-e2e'),
+      workspace: deterministicTestUuid('workspace-feed-e2e'),
       publishedAt: new Date('2026-06-05T10:00:00.000Z'),
     });
     seedFeedItem({
       id: 'feed-2',
       sourceItemId: 'source-2',
-      tenant: 'tenant-feed-e2e',
-      workspace: 'workspace-feed-e2e',
+      tenant: deterministicTestUuid('tenant-feed-e2e'),
+      workspace: deterministicTestUuid('workspace-feed-e2e'),
       publishedAt: new Date('2026-06-05T11:00:00.000Z'),
     });
     seedFeedItem({
       id: 'feed-3',
       sourceItemId: 'source-3',
       tenant: 'other-tenant',
-      workspace: 'workspace-feed-e2e',
+      workspace: deterministicTestUuid('workspace-feed-e2e'),
       publishedAt: new Date('2026-06-05T12:00:00.000Z'),
     });
 
     const missingRole = await request(app.getHttpServer())
       .get('/feed/items')
       .query({ limit: 1 })
-      .set('x-tenant-id', 'tenant-feed-e2e')
-      .set('x-workspace-id', 'workspace-feed-e2e')
+      .set('x-tenant-id', deterministicTestUuid('tenant-feed-e2e'))
+      .set('x-workspace-id', deterministicTestUuid('workspace-feed-e2e'))
       .expect(403);
 
     expect(missingRole.body).toMatchObject({
@@ -73,8 +73,8 @@ describe('Feed items list (e2e)', () => {
     const firstPage = await request(app.getHttpServer())
       .get('/feed/items')
       .query({ limit: 1 })
-      .set('x-tenant-id', 'tenant-feed-e2e')
-      .set('x-workspace-id', 'workspace-feed-e2e')
+      .set('x-tenant-id', deterministicTestUuid('tenant-feed-e2e'))
+      .set('x-workspace-id', deterministicTestUuid('workspace-feed-e2e'))
       .set('x-workspace-role', 'viewer')
       .expect(200);
 
@@ -99,7 +99,7 @@ describe('Feed items list (e2e)', () => {
             contentType: 'item',
             sourceBindingIds: ['binding-feed-e2e'],
             itemCount: 1,
-            latestObservedAt: '2026-06-05T12:00:00.000Z',
+            latestObservedAt: '2026-06-05T11:00:00.000Z',
             latestPublishedAt: '2026-06-05T11:00:00.000Z',
             sampleItemIds: ['feed-2'],
           }),
@@ -110,8 +110,8 @@ describe('Feed items list (e2e)', () => {
     const secondPage = await request(app.getHttpServer())
       .get('/feed/items')
       .query({ limit: 10, cursor: firstPage.body.nextCursor })
-      .set('x-tenant-id', 'tenant-feed-e2e')
-      .set('x-workspace-id', 'workspace-feed-e2e')
+      .set('x-tenant-id', deterministicTestUuid('tenant-feed-e2e'))
+      .set('x-workspace-id', deterministicTestUuid('workspace-feed-e2e'))
       .set('x-workspace-role', 'viewer')
       .expect(200);
 
@@ -139,8 +139,8 @@ describe('Feed items list (e2e)', () => {
     const search = await request(app.getHttpServer())
       .get('/feed/items')
       .query({ limit: 10, q: 'Title feed-1' })
-      .set('x-tenant-id', 'tenant-feed-e2e')
-      .set('x-workspace-id', 'workspace-feed-e2e')
+      .set('x-tenant-id', deterministicTestUuid('tenant-feed-e2e'))
+      .set('x-workspace-id', deterministicTestUuid('workspace-feed-e2e'))
       .set('x-workspace-role', 'viewer')
       .expect(200);
 
@@ -166,8 +166,8 @@ describe('Feed items list (e2e)', () => {
     const crossTenantSearch = await request(app.getHttpServer())
       .get('/feed/items')
       .query({ limit: 10, q: 'feed-3' })
-      .set('x-tenant-id', 'tenant-feed-e2e')
-      .set('x-workspace-id', 'workspace-feed-e2e')
+      .set('x-tenant-id', deterministicTestUuid('tenant-feed-e2e'))
+      .set('x-workspace-id', deterministicTestUuid('workspace-feed-e2e'))
       .set('x-workspace-role', 'viewer')
       .expect(200);
 
@@ -184,16 +184,16 @@ describe('Feed items list (e2e)', () => {
     seedFeedItem({
       id: 'feed-other-topic',
       sourceItemId: 'source-other-topic',
-      tenant: 'tenant-feed-e2e',
-      workspace: 'workspace-feed-e2e',
+      tenant: deterministicTestUuid('tenant-feed-e2e'),
+      workspace: deterministicTestUuid('workspace-feed-e2e'),
       interestId: 'topic-feed-other-e2e',
       publishedAt: new Date('2026-06-05T12:30:00.000Z'),
     });
     const topicFiltered = await request(app.getHttpServer())
       .get('/feed/items')
       .query({ limit: 10, interestId: 'topic-feed-e2e' })
-      .set('x-tenant-id', 'tenant-feed-e2e')
-      .set('x-workspace-id', 'workspace-feed-e2e')
+      .set('x-tenant-id', deterministicTestUuid('tenant-feed-e2e'))
+      .set('x-workspace-id', deterministicTestUuid('workspace-feed-e2e'))
       .set('x-workspace-role', 'viewer')
       .expect(200);
 
@@ -212,7 +212,7 @@ describe('Feed items list (e2e)', () => {
           contentType: 'item',
           sourceBindingIds: ['binding-feed-e2e'],
           itemCount: 2,
-          latestObservedAt: '2026-06-05T12:00:00.000Z',
+          latestObservedAt: '2026-06-05T11:00:00.000Z',
           latestPublishedAt: '2026-06-05T11:00:00.000Z',
           sampleItemIds: ['feed-2', 'feed-1'],
         }),
@@ -222,8 +222,8 @@ describe('Feed items list (e2e)', () => {
 
     const detail = await request(app.getHttpServer())
       .get('/feed/items/feed-1')
-      .set('x-tenant-id', 'tenant-feed-e2e')
-      .set('x-workspace-id', 'workspace-feed-e2e')
+      .set('x-tenant-id', deterministicTestUuid('tenant-feed-e2e'))
+      .set('x-workspace-id', deterministicTestUuid('workspace-feed-e2e'))
       .set('x-workspace-role', 'viewer')
       .expect(200);
 
@@ -235,8 +235,8 @@ describe('Feed items list (e2e)', () => {
 
     await request(app.getHttpServer())
       .get('/feed/items/feed-3')
-      .set('x-tenant-id', 'tenant-feed-e2e')
-      .set('x-workspace-id', 'workspace-feed-e2e')
+      .set('x-tenant-id', deterministicTestUuid('tenant-feed-e2e'))
+      .set('x-workspace-id', deterministicTestUuid('workspace-feed-e2e'))
       .set('x-workspace-role', 'viewer')
       .expect(404)
       .expect((response) => {
@@ -250,8 +250,8 @@ describe('Feed items list (e2e)', () => {
     await request(app.getHttpServer())
       .get('/feed/items')
       .query({ limit: 0 })
-      .set('x-tenant-id', 'tenant-feed-e2e')
-      .set('x-workspace-id', 'workspace-feed-e2e')
+      .set('x-tenant-id', deterministicTestUuid('tenant-feed-e2e'))
+      .set('x-workspace-id', deterministicTestUuid('workspace-feed-e2e'))
       .set('x-workspace-role', 'viewer')
       .expect(400)
       .expect((response) => {
@@ -267,24 +267,24 @@ describe('Feed items list (e2e)', () => {
     seedFeedItem({
       id: 'feed-dedupe-1',
       sourceItemId: 'source-dedupe-1',
-      tenant: 'tenant-feed-dedupe-e2e',
-      workspace: 'workspace-feed-dedupe-e2e',
+      tenant: deterministicTestUuid('tenant-feed-dedupe-e2e'),
+      workspace: deterministicTestUuid('workspace-feed-dedupe-e2e'),
       canonicalUrl: 'https://Example.test/articles/story?utm_source=newsletter&b=2&a=1#comments',
       publishedAt: new Date('2026-06-05T10:00:00.000Z'),
     });
     seedFeedItem({
       id: 'feed-dedupe-2',
       sourceItemId: 'source-dedupe-2',
-      tenant: 'tenant-feed-dedupe-e2e',
-      workspace: 'workspace-feed-dedupe-e2e',
+      tenant: deterministicTestUuid('tenant-feed-dedupe-e2e'),
+      workspace: deterministicTestUuid('workspace-feed-dedupe-e2e'),
       canonicalUrl: 'https://example.test/articles/story?a=1&b=2',
       publishedAt: new Date('2026-06-05T11:00:00.000Z'),
     });
     seedFeedItem({
       id: 'feed-dedupe-other-tenant',
       sourceItemId: 'source-dedupe-other-tenant',
-      tenant: 'tenant-feed-dedupe-other',
-      workspace: 'workspace-feed-dedupe-e2e',
+      tenant: deterministicTestUuid('tenant-feed-dedupe-other'),
+      workspace: deterministicTestUuid('workspace-feed-dedupe-e2e'),
       canonicalUrl: 'https://example.test/articles/story?a=1&b=2',
       publishedAt: new Date('2026-06-05T12:00:00.000Z'),
     });
@@ -292,8 +292,8 @@ describe('Feed items list (e2e)', () => {
     const response = await request(app.getHttpServer())
       .get('/feed/items')
       .query({ limit: 10 })
-      .set('x-tenant-id', 'tenant-feed-dedupe-e2e')
-      .set('x-workspace-id', 'workspace-feed-dedupe-e2e')
+      .set('x-tenant-id', deterministicTestUuid('tenant-feed-dedupe-e2e'))
+      .set('x-workspace-id', deterministicTestUuid('workspace-feed-dedupe-e2e'))
       .set('x-workspace-role', 'viewer')
       .expect(200);
 
@@ -320,10 +320,10 @@ describe('Feed items list (e2e)', () => {
   });
 
   it('returns raw provider metrics and cohort-normalized signal', async () => {
-    const tenant = 'tenant-feed-signal-e2e';
-    const workspace = 'workspace-feed-signal-e2e';
+    const tenant = deterministicTestUuid('tenant-feed-signal-e2e');
+    const workspace = deterministicTestUuid('workspace-feed-signal-e2e');
     const interestId = 'topic-feed-signal-e2e';
-    const publishedAt = new Date(Date.now() - 4 * 60 * 60 * 1000);
+    const publishedAt = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
 
     seedRedditItems({
       tenant,
@@ -462,8 +462,8 @@ describe('Feed items list (e2e)', () => {
   });
 
   it('keeps a niche source cohort when the broad topic baseline is crowded by newer popular sources', async () => {
-    const tenant = 'tenant-feed-crowded-baseline-e2e';
-    const workspace = 'workspace-feed-crowded-baseline-e2e';
+    const tenant = deterministicTestUuid('tenant-feed-crowded-baseline-e2e');
+    const workspace = deterministicTestUuid('workspace-feed-crowded-baseline-e2e');
     const interestId = 'topic-feed-crowded-baseline-e2e';
     const now = Date.now();
 
@@ -551,10 +551,10 @@ describe('Feed items list (e2e)', () => {
   });
 
   it('returns provider-specific raw metrics for GitHub, Hacker News and X posts', async () => {
-    const tenant = 'tenant-feed-provider-metrics-e2e';
-    const workspace = 'workspace-feed-provider-metrics-e2e';
+    const tenant = deterministicTestUuid('tenant-feed-provider-metrics-e2e');
+    const workspace = deterministicTestUuid('workspace-feed-provider-metrics-e2e');
     const interestId = 'topic-feed-provider-metrics-e2e';
-    const publishedAt = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    const publishedAt = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
 
     seedFeedItem({
       id: 'feed-provider-github',
@@ -735,8 +735,8 @@ describe('Feed items list (e2e)', () => {
   });
 
   it('filters GitHub repo radar feed by long trend windows', async () => {
-    const tenant = 'tenant-feed-repo-window-e2e';
-    const workspace = 'workspace-feed-repo-window-e2e';
+    const tenant = deterministicTestUuid('tenant-feed-repo-window-e2e');
+    const workspace = deterministicTestUuid('workspace-feed-repo-window-e2e');
     const interestId = 'topic-feed-repo-window-e2e';
     const publishedAt = new Date(Date.now() - 30 * 60 * 1000);
 
@@ -824,8 +824,8 @@ describe('Feed items list (e2e)', () => {
   });
 
   it('omits normalized signal when a provider has no comparable raw metrics', async () => {
-    const tenant = 'tenant-feed-no-signal-e2e';
-    const workspace = 'workspace-feed-no-signal-e2e';
+    const tenant = deterministicTestUuid('tenant-feed-no-signal-e2e');
+    const workspace = deterministicTestUuid('workspace-feed-no-signal-e2e');
     const interestId = 'topic-feed-no-signal-e2e';
 
     seedFeedItem({
@@ -878,8 +878,8 @@ describe('Feed items list (e2e)', () => {
   });
 
   it('keeps cohorts topic-scoped and lowers confidence when exact baseline is too small', async () => {
-    const tenant = 'tenant-feed-signal-fallback-e2e';
-    const workspace = 'workspace-feed-signal-fallback-e2e';
+    const tenant = deterministicTestUuid('tenant-feed-signal-fallback-e2e');
+    const workspace = deterministicTestUuid('workspace-feed-signal-fallback-e2e');
     const interestId = 'topic-feed-signal-fallback-e2e';
     const otherInterestId = 'topic-feed-signal-fallback-other-e2e';
     const now = Date.now();
@@ -963,7 +963,7 @@ describe('Feed items list (e2e)', () => {
         basis: 'cohort_baseline_v1',
         cohort: {
           sourceKey: 'hn:front_page',
-          baselineWindow: '30d',
+          baselineWindow: '24h',
           sampleSize: 5,
           fallback: 'source',
         },
@@ -1020,7 +1020,7 @@ describe('Feed items list (e2e)', () => {
         bodyPreview: `Body ${params.id}`,
         authorHandle: 'author',
         publishedAt: params.publishedAt,
-        observedAt: params.observedAt ?? new Date('2026-06-05T12:00:00.000Z'),
+        observedAt: params.observedAt ?? params.publishedAt,
         providerMetadata: params.providerMetadata,
       }),
     );

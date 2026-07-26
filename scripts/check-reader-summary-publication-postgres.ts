@@ -1,6 +1,12 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { Pool, type PoolClient } from "pg";
-import { provisionReaderSummaryPublicationFixtureScope, readerSummaryPublicationFixtureScope } from "./lib/reader-summary-publication-postgres-fixture-scope";
+import {
+  provisionReaderSummaryPublicationFixtureScope,
+  readerSummaryPublicationBackendPid,
+  readerSummaryPublicationFixtureScope,
+  requiredReaderSummaryPublicationAdminDatabaseUrl,
+  setReaderSummaryPublicationSessionScope,
+} from "./lib/reader-summary-publication-postgres-fixture-scope";
 import {
   applyOrderedReaderSummaryMigrations,
   assertReaderSummaryMigrationDatabaseMatchesSchema,
@@ -45,8 +51,8 @@ import {
   runReaderSummaryPublicationBootstrapSql,
 } from "./reader-summary-publication-postgres-privileges";
 import { assertReaderSummaryPublicationRuntimeGuard } from "./reader-summary-publication-postgres-runtime-guard";
-const serverAdminDatabaseUrl = requiredEnv(
-  "READER_SUMMARY_PUBLICATION_TEST_ADMIN_DATABASE_URL",
+const serverAdminDatabaseUrl = requiredReaderSummaryPublicationAdminDatabaseUrl(
+  process.env,
 );
 const fixtureSuffix = randomBytes(10).toString("hex");
 const databaseName = `reader_summary_publication_test_${fixtureSuffix}`;
@@ -76,6 +82,7 @@ const migrationWorkspace = createReaderSummaryPublicationMigrationWorkspace();
 let ownerRolePreexisting = false;
 let capabilityRolePreexisting = false;
 let schemaOwnerRolePreexisting = false;
+let tenantSystemCapabilityRolePreexisting = false;
 let fixtureDatabaseCreated = false;
 let fixtureMigrationAdminRoleCreated = false;
 let fixtureRuntimeRoleCreated = false;
@@ -88,6 +95,7 @@ async function main(): Promise<void> {
   ownerRolePreexisting = protectedRoles.owner;
   capabilityRolePreexisting = protectedRoles.capability;
   schemaOwnerRolePreexisting = protectedRoles.schemaOwner;
+  tenantSystemCapabilityRolePreexisting = protectedRoles.tenantSystemCapability;
   try {
     await serverAdmin.query(
       `CREATE ROLE ${quotePostgresIdentifier(migrationAdminRole)} LOGIN PASSWORD ${quotePostgresLiteral(migrationAdminPassword)}
@@ -171,7 +179,10 @@ async function main(): Promise<void> {
       runtimeRole,
     );
     assertReaderSummaryMigrationDatabaseMatchesSchema(targetDatabaseUrl);
-    const auditorPool = new Pool({ connectionString: targetDatabaseUrl, max: 1 });
+    const auditorPool = new Pool({
+      connectionString: targetDatabaseUrl,
+      max: 1,
+    });
     const admin = new Pool({ connectionString: adminDatabaseUrl, max: 2 });
     const runtime = new Pool({ connectionString: runtimeDatabaseUrl, max: 4 });
     try {
@@ -181,9 +192,13 @@ async function main(): Promise<void> {
       const second = await runtime.connect();
       try {
         await provisionReaderSummaryPublicationFixtureScope(auditor);
+        await Promise.all([
+          setReaderSummaryPublicationSessionScope(first),
+          setReaderSummaryPublicationSessionScope(second),
+        ]);
         const [firstPid, secondPid] = await Promise.all([
-          postgresBackendPid(first),
-          postgresBackendPid(second),
+          readerSummaryPublicationBackendPid(first),
+          readerSummaryPublicationBackendPid(second),
         ]);
         assert(
           firstPid !== secondPid,
@@ -272,6 +287,7 @@ async function main(): Promise<void> {
       ownerRolePreexisting,
       capabilityRolePreexisting,
       schemaOwnerRolePreexisting,
+      tenantSystemCapabilityRolePreexisting,
       fixtureDatabaseCreated,
       fixtureMigrationAdminRoleCreated,
       fixtureRuntimeRoleCreated,
@@ -910,16 +926,6 @@ const publish = async (
   assert(outcome !== undefined, "publication function returned no outcome");
   return outcome;
 };
-const postgresBackendPid = async (client: PoolClient): Promise<number> => {
-  const result = await client.query<{ readonly pid: number }>(
-    "SELECT pg_backend_pid() AS pid",
-  );
-  const pid = result.rows[0]?.pid;
-  if (pid === undefined) {
-    throw new Error("PostgreSQL connection returned no backend pid");
-  }
-  return pid;
-};
 const periodStart = (day: number): string => utc(day, 0);
 const periodEnd = (day: number): string => utc(day + 1, 0);
 const utc = (day: number, hour: number): string =>
@@ -928,16 +934,6 @@ const reverseObject = (
   value: Readonly<Record<string, unknown>>,
 ): Readonly<Record<string, unknown>> =>
   Object.fromEntries(Object.entries(value).reverse());
-
-function requiredEnv(name: string): string {
-  const value = process.env[name]?.trim();
-  if (value === undefined || value.length === 0) {
-    throw new Error(
-      `${name} is required; the PostgreSQL publication gate never skips`,
-    );
-  }
-  return value;
-}
 
 const assertRejects = async (
   operation: () => Promise<unknown>,

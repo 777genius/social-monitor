@@ -7,7 +7,6 @@ const betaLaunchSupportSnapshot = {
   publishedAt: '2026-06-16T00:00:00.000Z',
   launchMode: 'api_operator_beta',
   supportedSources: [
-    'github-issues',
     'github-repo-radar',
     'github-trending-page',
     'hacker-news',
@@ -23,7 +22,7 @@ const betaLaunchSupportSnapshot = {
       userImpact:
         'Fake source is available only for deterministic certification and cannot be bound in external beta.',
       supportAction:
-        'Use Hacker News, RSS, GitHub Issues, GitHub Repo Radar, GitHub Trending Page or Reddit for beta source bindings.',
+        'Use Hacker News, RSS, GitHub Repo Radar, GitHub Trending Page or Reddit for beta source bindings.',
       owner: 'source-owner',
       revisitTrigger:
         'Remove the fixture source from user-facing launch support once external beta evidence is attached.',

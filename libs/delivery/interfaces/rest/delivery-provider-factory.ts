@@ -1,4 +1,4 @@
-import type { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
+import type { MetricsRecorderPort } from '@social-monitor/platform-metrics';
 import { SystemClock } from '@social-monitor/shared-kernel';
 
 import { CircuitBreakerDeliveryProvider } from '../../adapters/notification/circuit-breaker-delivery.provider';
@@ -22,7 +22,7 @@ export const createDeliveryProviders = (
   enabledChannels: readonly DeliveryChannel[],
   webhookProviderMode: 'in-memory' | 'http',
   webhookOptions: HttpWebhookDeliveryProviderOptions,
-  metrics: InMemoryMetricsRecorder,
+  metrics: MetricsRecorderPort,
   endpoints: WebhookEndpointRepositoryPort,
   secrets: WebhookSecretVaultPort,
   eventCatalog: WebhookEventCatalogPort,
@@ -51,14 +51,14 @@ export const createDeliveryProviders = (
 
 const createInMemoryDeliveryProvider = (
   channel: DeliveryProviderPort['channel'],
-  metrics: InMemoryMetricsRecorder,
+  metrics: MetricsRecorderPort,
 ): DeliveryProviderPort =>
   wrapDeliveryProvider(new InMemoryDeliveryProvider(channel), metrics);
 
 const createWebhookDeliveryProvider = (
   mode: 'in-memory' | 'http',
   options: HttpWebhookDeliveryProviderOptions,
-  metrics: InMemoryMetricsRecorder,
+  metrics: MetricsRecorderPort,
   endpoints: WebhookEndpointRepositoryPort,
   secrets: WebhookSecretVaultPort,
   eventCatalog: WebhookEventCatalogPort,
@@ -78,7 +78,7 @@ const createWebhookDeliveryProvider = (
 
 const wrapDeliveryProvider = (
   provider: DeliveryProviderPort,
-  metrics: InMemoryMetricsRecorder,
+  metrics: MetricsRecorderPort,
 ): DeliveryProviderPort =>
   new MeteredDeliveryProvider(
     new CircuitBreakerDeliveryProvider(provider, new SystemClock(), {

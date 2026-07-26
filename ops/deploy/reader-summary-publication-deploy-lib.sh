@@ -8,6 +8,7 @@
 
 READER_SUMMARY_PUBLICATION_MIGRATOR_ROLE=social_monitor_publication_migrator
 READER_SUMMARY_PUBLICATION_RUNTIME_ROLE=social_monitor_app
+READER_SUMMARY_TENANT_SYSTEM_RUNTIME_ROLE=social_monitor_system_app
 READER_SUMMARY_PUBLICATION_PROVISIONER_ROLE=doadmin
 READER_SUMMARY_PUBLICATION_DATABASE=social_monitor
 READER_SUMMARY_PUBLICATION_DATABASE_HOST=dbaas-db-8050451-do-user-39622063-0.e.db.ondigitalocean.com
@@ -41,7 +42,7 @@ load_target_postgres_backup_deploy_library() {
     fail 'target PostgreSQL backup deploy library ownership and mode cannot be read'
   read -r owner permissions extra <<< "$metadata"
   [[ -z ${extra:-} && $owner == 0 ]] || \
-    fail 'target PostgreSQL backup deploy library is not root-owned'
+    fail "target PostgreSQL backup deploy library is not root-owned (metadata=$metadata)"
 
   target_entry=$(git -C "$REPO" ls-tree "$target_sha" -- "$relative_path") || \
     fail 'target commit PostgreSQL backup deploy library cannot be inspected'
@@ -362,6 +363,7 @@ reader_summary_publication_run_postgres_client() (
         runtime_role=$7
         query=$8
         provisioner_role=$9
+        system_runtime_role=${10}
         pgpass_file=
         query_file=
         cleanup_postgres_client_files() {
@@ -392,6 +394,7 @@ reader_summary_publication_run_postgres_client() (
             psql -X --no-password -v ON_ERROR_STOP=1 \
               --host="$host" --port="$port" --dbname="$database" \
               --username="$username" --set=runtime_role="$runtime_role" \
+              --set=system_runtime_role="$system_runtime_role" \
               --file=/run/social-monitor-db/publication-migration.sql
             ;;
           catalog)
@@ -422,7 +425,8 @@ reader_summary_publication_run_postgres_client() (
       "$READER_SUMMARY_PUBLICATION_DATABASE" \
       "$READER_SUMMARY_PUBLICATION_MIGRATOR_ROLE" \
       "$application_name" "$operation" "$runtime_role" "$query" \
-      "$READER_SUMMARY_PUBLICATION_PROVISIONER_ROLE"
+      "$READER_SUMMARY_PUBLICATION_PROVISIONER_ROLE" \
+      "$READER_SUMMARY_TENANT_SYSTEM_RUNTIME_ROLE"
 )
 
 reader_summary_publication_admin_catalog_query() {

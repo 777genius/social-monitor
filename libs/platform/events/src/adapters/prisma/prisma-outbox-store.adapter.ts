@@ -1,4 +1,7 @@
-import { withPrismaWriteRetry } from '@social-monitor/platform-persistence';
+import {
+  runWithSystemDatabaseAccess,
+  withPrismaWriteRetry,
+} from '@social-monitor/platform-persistence';
 import {
   causationId,
   correlationId,
@@ -19,11 +22,15 @@ export class PrismaOutboxStoreAdapter implements OutboxStorePort {
   ) {}
 
   async pending(limit: number): Promise<readonly OutboxRecord[]> {
-    const records = await this.prisma.outboxEvent.findMany({
-      where: { status: 'PENDING' },
-      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-      take: Math.max(0, limit),
-    });
+    const records = await runWithSystemDatabaseAccess(
+      'event outbox pending read',
+      () =>
+        this.prisma.outboxEvent.findMany({
+          where: { messageKind: 'EVENT', status: 'PENDING' },
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+          take: Math.max(0, limit),
+        }),
+    );
 
     return records.map((record) => ({
       id: record.id,
@@ -32,23 +39,27 @@ export class PrismaOutboxStoreAdapter implements OutboxStorePort {
   }
 
   async markPublished(id: string): Promise<void> {
-    await withPrismaWriteRetry(() => this.prisma.outboxEvent.update({
-      where: { id },
-      data: {
-        status: 'PUBLISHED',
-        publishedAt: this.clock.now(),
-      },
-    }));
+    await runWithSystemDatabaseAccess('event outbox publish acknowledgement', () =>
+      withPrismaWriteRetry(() => this.prisma.outboxEvent.update({
+        where: { id },
+        data: {
+          status: 'PUBLISHED',
+          publishedAt: this.clock.now(),
+        },
+      })),
+    );
   }
 
   async markFailed(id: string): Promise<void> {
-    await withPrismaWriteRetry(() => this.prisma.outboxEvent.update({
-      where: { id },
-      data: {
-        status: 'FAILED',
-        publishedAt: null,
-      },
-    }));
+    await runWithSystemDatabaseAccess('event outbox failure acknowledgement', () =>
+      withPrismaWriteRetry(() => this.prisma.outboxEvent.update({
+        where: { id },
+        data: {
+          status: 'FAILED',
+          publishedAt: null,
+        },
+      })),
+    );
   }
 }
 

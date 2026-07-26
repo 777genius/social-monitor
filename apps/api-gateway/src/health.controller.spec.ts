@@ -6,7 +6,7 @@ import type {
   ReadinessResponse,
 } from './health-reporter';
 
-describe('HealthController database readiness', () => {
+describe('HealthController dependency readiness', () => {
   it('returns the database-aware readiness response', async () => {
     const response = { status: 'ok' } as ReadinessResponse;
     const reporter = {
@@ -18,7 +18,7 @@ describe('HealthController database readiness', () => {
     );
   });
 
-  it('maps a database probe rejection to a non-secret 503', async () => {
+  it('maps a dependency probe rejection to a non-secret 503', async () => {
     const reporter = {
       ready: jest.fn().mockRejectedValue(new Error('postgresql://secret@host')),
     } as unknown as ApiGatewayHealthReporter;
@@ -28,7 +28,7 @@ describe('HealthController database readiness', () => {
     await expect(request).rejects.toMatchObject({
       response: {
         statusCode: 503,
-        message: 'Database readiness check failed',
+        message: 'Dependency readiness check failed',
       },
     });
     await expect(request).rejects.not.toThrow('postgresql://secret@host');

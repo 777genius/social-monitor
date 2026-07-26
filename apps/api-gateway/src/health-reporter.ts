@@ -1,26 +1,31 @@
-import { Inject, Injectable, Optional } from '@nestjs/common';
+import { Inject, Injectable, Optional } from "@nestjs/common";
 import {
   resolveDeliveryEnabledChannels,
   resolveDeliveryPersistenceMode,
   resolveDeliveryWebhookProviderMode,
-} from '@social-monitor/delivery/interfaces/rest/delivery-provider-tokens';
-import { resolveFeedPersistenceMode } from '@social-monitor/feed/interfaces/rest/feed-provider-tokens';
-import { resolveIdentityPersistenceMode } from '@social-monitor/identity/interfaces/rest/identity-provider-tokens';
-import { resolveIngestionSupportPersistenceMode } from '@social-monitor/ingestion/interfaces/rest/ingestion-provider-tokens';
-import type { SourceReadinessProfile } from '@social-monitor/ingestion/ports';
+} from "@social-monitor/delivery/interfaces/rest/delivery-provider-tokens";
+import { resolveFeedPersistenceMode } from "@social-monitor/feed/interfaces/rest/feed-provider-tokens";
+import { resolveIdentityPersistenceMode } from "@social-monitor/identity/interfaces/rest/identity-provider-tokens";
+import { resolveIngestionSupportPersistenceMode } from "@social-monitor/ingestion/interfaces/rest/ingestion-provider-tokens";
+import type { SourceReadinessProfile } from "@social-monitor/ingestion/ports";
 import {
   resolveMonitoringPersistenceMode,
   resolveMonitoringScanQueueMode,
-} from '@social-monitor/monitoring/interfaces/rest/monitoring-provider-tokens';
-import { resolveRuntimeProfile } from '@social-monitor/platform-config';
-import { resolveRelevancePersistenceMode } from '@social-monitor/relevance/interfaces/rest/relevance-provider-tokens';
-import type { Clock } from '@social-monitor/shared-kernel';
-import { resolveSubscriptionsPersistenceMode } from '@social-monitor/subscriptions/interfaces/rest/subscriptions-provider-tokens';
+} from "@social-monitor/monitoring/interfaces/rest/monitoring-provider-tokens";
+import { resolveRuntimeProfile } from "@social-monitor/platform-config";
+import {
+  MetricsRuntime,
+  type MetricsRuntimeHealth,
+  resolveMetricsRuntimeConfig,
+} from "@social-monitor/platform-metrics";
+import { resolveRelevancePersistenceMode } from "@social-monitor/relevance/interfaces/rest/relevance-provider-tokens";
+import type { Clock } from "@social-monitor/shared-kernel";
+import { resolveSubscriptionsPersistenceMode } from "@social-monitor/subscriptions/interfaces/rest/subscriptions-provider-tokens";
 import {
   resolveSummaryJobQueueMode,
   resolveSummaryPersistenceMode,
-} from '@social-monitor/summary/interfaces/rest/summary-provider-tokens';
-import { resolveUsagePersistenceMode } from '@social-monitor/usage/interfaces/rest/usage-provider-tokens';
+} from "@social-monitor/summary/interfaces/rest/summary-provider-tokens";
+import { resolveUsagePersistenceMode } from "@social-monitor/usage/interfaces/rest/usage-provider-tokens";
 
 import {
   resolveDeliveryAttemptDispatchLoopOptions,
@@ -30,23 +35,23 @@ import {
   resolveDeliveryDigestSchedulerLoopOptions,
   resolveDeliverySummaryReadyEventDrainLoopOptions,
   resolveDeliverySummaryReadyEventReaderMode,
-} from '../../delivery-service/src/delivery-service-provider-tokens';
-import { resolveEventRelayLoopOptions } from '../../event-relay/src/event-relay-provider-tokens';
+} from "../../delivery-service/src/delivery-service-provider-tokens";
+import { resolveEventRelayLoopOptions } from "../../event-relay/src/event-relay-provider-tokens";
 import {
   resolveIngestionScanQueueDrainLoopOptions,
   resolveIngestionScanQueueReaderMode,
   resolveIngestionScanSchedulerLoopOptions,
-} from '../../ingestion-worker/src/ingestion-worker-provider-tokens';
+} from "../../ingestion-worker/src/ingestion-worker-provider-tokens";
 import {
   resolveIntelligenceSummaryJobLoopOptions,
   resolveIntelligenceSummaryQueueDrainLoopOptions,
   resolveIntelligenceSummaryQueueReaderMode,
-} from '../../intelligence-worker/src/intelligence-worker-provider-tokens';
-import { resolveSocialResearchRuntimeSettings } from '../../social-research-runtime/src/social-research-runtime-settings';
+} from "../../intelligence-worker/src/intelligence-worker-provider-tokens";
+import { resolveSocialResearchRuntimeSettings } from "../../social-research-runtime/src/social-research-runtime-settings";
 
 export type HealthResponse = {
-  readonly status: 'ok';
-  readonly service: 'api-gateway';
+  readonly status: "ok";
+  readonly service: "api-gateway";
   readonly checkedAt: string;
   readonly uptimeSeconds: number;
 };
@@ -88,11 +93,12 @@ export type ReadinessResponse = HealthResponse & {
       readonly deliveryWebhook: string;
       readonly deliveryEnabledChannels: string;
     };
+    readonly metrics: MetricsRuntimeHealth;
   };
   readonly capabilities: {
-    readonly rest: 'enabled';
-    readonly websocket: 'enabled';
-    readonly openapi: 'enabled';
+    readonly rest: "enabled";
+    readonly websocket: "enabled";
+    readonly openapi: "enabled";
     readonly workerApps: readonly string[];
     readonly enabledBetaSources: readonly string[];
     readonly fixtureReadySources: readonly string[];
@@ -101,23 +107,25 @@ export type ReadinessResponse = HealthResponse & {
   };
   readonly checks: readonly {
     readonly name: string;
-    readonly status: 'ok';
+    readonly status: "ok";
     readonly detail: string;
   }[];
 };
 
 export type UptimeSecondsReader = () => number;
-export type ApiGatewayDatabaseReadinessResult = 'queried' | 'skipped';
+export type ApiGatewayDatabaseReadinessResult = "queried" | "skipped";
 export type ApiGatewayDatabaseReadiness = {
   check(): Promise<ApiGatewayDatabaseReadinessResult>;
 };
 
-export const API_GATEWAY_HEALTH_ENV = Symbol('API_GATEWAY_HEALTH_ENV');
-export const API_GATEWAY_HEALTH_CLOCK = Symbol('API_GATEWAY_HEALTH_CLOCK');
-export const API_GATEWAY_UPTIME_SECONDS = Symbol('API_GATEWAY_UPTIME_SECONDS');
-export const API_GATEWAY_SOURCE_READINESS_PROFILES = Symbol('API_GATEWAY_SOURCE_READINESS_PROFILES');
+export const API_GATEWAY_HEALTH_ENV = Symbol("API_GATEWAY_HEALTH_ENV");
+export const API_GATEWAY_HEALTH_CLOCK = Symbol("API_GATEWAY_HEALTH_CLOCK");
+export const API_GATEWAY_UPTIME_SECONDS = Symbol("API_GATEWAY_UPTIME_SECONDS");
+export const API_GATEWAY_SOURCE_READINESS_PROFILES = Symbol(
+  "API_GATEWAY_SOURCE_READINESS_PROFILES",
+);
 export const API_GATEWAY_DATABASE_READINESS = Symbol(
-  'API_GATEWAY_DATABASE_READINESS',
+  "API_GATEWAY_DATABASE_READINESS",
 );
 
 export function createApiGatewayDatabaseReadiness(
@@ -127,10 +135,10 @@ export function createApiGatewayDatabaseReadiness(
   return {
     check: async (): Promise<ApiGatewayDatabaseReadinessResult> => {
       if (!apiGatewayUsesPrismaPersistence(env)) {
-        return 'skipped';
+        return "skipped";
       }
       await probe();
-      return 'queried';
+      return "queried";
     },
   };
 }
@@ -147,7 +155,7 @@ function apiGatewayUsesPrismaPersistence(env: NodeJS.ProcessEnv): boolean {
     resolveRelevancePersistenceMode(env),
     resolveSubscriptionsPersistenceMode(env),
     resolveSocialResearchRuntimeSettings(env).resultCache.mode,
-  ].includes('prisma');
+  ].includes("prisma");
 }
 
 @Injectable()
@@ -164,6 +172,8 @@ export class ApiGatewayHealthReporter {
     @Inject(API_GATEWAY_DATABASE_READINESS)
     @Optional()
     private readonly databaseReadiness?: ApiGatewayDatabaseReadiness,
+    @Optional()
+    private readonly metricsRuntime?: MetricsRuntime,
   ) {}
 
   health(): HealthResponse {
@@ -175,7 +185,7 @@ export class ApiGatewayHealthReporter {
     return {
       ...this.ok(),
       runtime: {
-        nodeEnv: this.env.NODE_ENV ?? 'development',
+        nodeEnv: this.env.NODE_ENV ?? "development",
         runtimeProfile: resolveRuntimeProfile(this.env),
         persistence: {
           monitoring: resolveMonitoringPersistenceMode(this.env),
@@ -187,74 +197,108 @@ export class ApiGatewayHealthReporter {
           usage: resolveUsagePersistenceMode(this.env),
         },
         workerLoops: {
-          ingestionScanScheduler: this.loopMode(resolveIngestionScanSchedulerLoopOptions(this.env).enabled),
-          ingestionScanQueueDrain: this.loopMode(resolveIngestionScanQueueDrainLoopOptions(this.env).enabled),
-          intelligenceSummaryJob: this.loopMode(resolveIntelligenceSummaryJobLoopOptions(this.env).enabled),
+          ingestionScanScheduler: this.loopMode(
+            resolveIngestionScanSchedulerLoopOptions(this.env).enabled,
+          ),
+          ingestionScanQueueDrain: this.loopMode(
+            resolveIngestionScanQueueDrainLoopOptions(this.env).enabled,
+          ),
+          intelligenceSummaryJob: this.loopMode(
+            resolveIntelligenceSummaryJobLoopOptions(this.env).enabled,
+          ),
           intelligenceSummaryQueueDrain: this.loopMode(
             resolveIntelligenceSummaryQueueDrainLoopOptions(this.env).enabled,
           ),
-          deliveryDigestScheduler: this.loopMode(resolveDeliveryDigestSchedulerLoopOptions(this.env).enabled),
-          deliveryAttemptDispatch: this.loopMode(resolveDeliveryAttemptDispatchLoopOptions(this.env).enabled),
-          deliveryAttemptQueueDrain: this.loopMode(resolveDeliveryAttemptQueueDrainLoopOptions(this.env).enabled),
+          deliveryDigestScheduler: this.loopMode(
+            resolveDeliveryDigestSchedulerLoopOptions(this.env).enabled,
+          ),
+          deliveryAttemptDispatch: this.loopMode(
+            resolveDeliveryAttemptDispatchLoopOptions(this.env).enabled,
+          ),
+          deliveryAttemptQueueDrain: this.loopMode(
+            resolveDeliveryAttemptQueueDrainLoopOptions(this.env).enabled,
+          ),
           deliverySummaryReadyEventDrain: this.loopMode(
             resolveDeliverySummaryReadyEventDrainLoopOptions(this.env).enabled,
           ),
-          eventRelay: this.loopMode(resolveEventRelayLoopOptions(this.env).enabled),
+          eventRelay: this.loopMode(
+            resolveEventRelayLoopOptions(this.env).enabled,
+          ),
         },
         queues: {
           monitoringScanPublisher: resolveMonitoringScanQueueMode(this.env),
           ingestionScanReader: resolveIngestionScanQueueReaderMode(this.env),
           summaryJobPublisher: resolveSummaryJobQueueMode(this.env),
-          intelligenceSummaryReader: resolveIntelligenceSummaryQueueReaderMode(this.env),
-          deliveryAttemptPublisher: resolveDeliveryAttemptDispatchQueueMode(this.env),
-          deliveryAttemptReader: resolveDeliveryAttemptQueueReaderMode(this.env),
-          deliverySummaryReadyEventReader: resolveDeliverySummaryReadyEventReaderMode(this.env),
+          intelligenceSummaryReader: resolveIntelligenceSummaryQueueReaderMode(
+            this.env,
+          ),
+          deliveryAttemptPublisher: resolveDeliveryAttemptDispatchQueueMode(
+            this.env,
+          ),
+          deliveryAttemptReader: resolveDeliveryAttemptQueueReaderMode(
+            this.env,
+          ),
+          deliverySummaryReadyEventReader:
+            resolveDeliverySummaryReadyEventReaderMode(this.env),
         },
         providers: {
           deliveryWebhook: resolveDeliveryWebhookProviderMode(this.env),
-          deliveryEnabledChannels: resolveDeliveryEnabledChannels(this.env).join(','),
+          deliveryEnabledChannels: resolveDeliveryEnabledChannels(
+            this.env,
+          ).join(","),
         },
+        metrics: this.requireMetricsHealth(),
       },
       capabilities: {
-        rest: 'enabled',
-        websocket: 'enabled',
-        openapi: 'enabled',
-        workerApps: ['ingestion-worker', 'intelligence-worker', 'delivery-service', 'event-relay'],
+        rest: "enabled",
+        websocket: "enabled",
+        openapi: "enabled",
+        workerApps: [
+          "ingestion-worker",
+          "intelligence-worker",
+          "delivery-service",
+          "event-relay",
+        ],
         enabledBetaSources: this.sourceReadinessProfiles
-          .filter((profile) => profile.state === 'enabled_beta')
+          .filter((profile) => profile.state === "enabled_beta")
           .map((profile) => profile.providerKey)
           .sort(),
         fixtureReadySources: this.sourceReadinessProfiles
-          .filter((profile) => profile.runtimeReadiness === 'fixture_ready')
+          .filter((profile) => profile.runtimeReadiness === "fixture_ready")
           .map((profile) => profile.providerKey)
           .sort(),
         liveBetaReadySources: this.sourceReadinessProfiles
-          .filter((profile) => profile.runtimeReadiness === 'live_beta_ready')
+          .filter((profile) => profile.runtimeReadiness === "live_beta_ready")
           .map((profile) => profile.providerKey)
           .sort(),
         deferredSources: this.sourceReadinessProfiles
-          .filter((profile) => profile.state !== 'enabled_beta')
+          .filter((profile) => profile.state !== "enabled_beta")
           .map((profile) => profile.providerKey)
           .sort(),
       },
       checks: [
         {
-          name: 'api_gateway',
-          status: 'ok',
-          detail: 'Nest application initialized.',
+          name: "api_gateway",
+          status: "ok",
+          detail: "Nest application initialized.",
         },
         {
-          name: 'source_capability_profiles',
-          status: 'ok',
-          detail: 'Source readiness profiles loaded.',
+          name: "source_capability_profiles",
+          status: "ok",
+          detail: "Source readiness profiles loaded.",
         },
         {
-          name: 'postgres_runtime_pool',
-          status: 'ok',
+          name: "postgres_runtime_pool",
+          status: "ok",
           detail:
-            databaseReadiness === 'queried'
-              ? 'A query completed through the bounded shared Prisma pool.'
-              : 'Database dependency not required: all API gateway Prisma persistence selectors are disabled; PostgreSQL probe was not executed.',
+            databaseReadiness === "queried"
+              ? "A query completed through the bounded shared Prisma pool."
+              : "Database dependency not required: all API gateway Prisma persistence selectors are disabled; PostgreSQL probe was not executed.",
+        },
+        {
+          name: "metrics_exporter",
+          status: "ok",
+          detail: this.metricsReadinessDetail(),
         },
       ],
     };
@@ -262,8 +306,8 @@ export class ApiGatewayHealthReporter {
 
   private ok(): HealthResponse {
     return {
-      status: 'ok',
-      service: 'api-gateway',
+      status: "ok",
+      service: "api-gateway",
       checkedAt: this.clock.now().toISOString(),
       uptimeSeconds: Math.floor(this.uptimeSeconds()),
     };
@@ -275,13 +319,68 @@ export class ApiGatewayHealthReporter {
     }
     if (apiGatewayUsesPrismaPersistence(this.env)) {
       throw new Error(
-        'API gateway PostgreSQL readiness probe is not configured',
+        "API gateway PostgreSQL readiness probe is not configured",
       );
     }
-    return 'skipped';
+    return "skipped";
   }
 
-  private loopMode(enabled: boolean): 'enabled' | 'disabled' {
-    return enabled ? 'enabled' : 'disabled';
+  private requireMetricsHealth(): MetricsRuntimeHealth {
+    const health = this.metricsRuntime?.health();
+    if (health === undefined) {
+      throw new Error("API gateway metrics runtime is not configured");
+    }
+    if (health.lifecycle !== "active") {
+      throw new Error("API gateway metrics runtime is not active");
+    }
+    if (resolveRuntimeProfile(this.env) === "beta" && health.mode !== "otlp") {
+      throw new Error("Beta API gateway metrics runtime must use OTLP");
+    }
+    if (health.mode === "otlp") {
+      this.requireFreshOtlpExport(health);
+    }
+    return health;
+  }
+
+  private requireFreshOtlpExport(health: MetricsRuntimeHealth): void {
+    const config = resolveMetricsRuntimeConfig(this.env, health.serviceName);
+    const freshnessWindowMillis =
+      config.exportIntervalMillis + config.exportTimeoutMillis;
+    if (health.exportState === "failed") {
+      throw new Error("API gateway OTLP metrics export failed");
+    }
+    if (health.exportState === "pending") {
+      if (this.uptimeSeconds() * 1_000 > freshnessWindowMillis) {
+        throw new Error(
+          "API gateway OTLP metrics export remained pending beyond startup grace",
+        );
+      }
+      return;
+    }
+    if (health.exportState !== "succeeded") {
+      throw new Error("API gateway OTLP metrics export state is invalid");
+    }
+    const lastSuccessfulExportAt = Date.parse(health.lastExportAt ?? "");
+    const now = this.clock.now().getTime();
+    if (
+      !Number.isFinite(lastSuccessfulExportAt) ||
+      lastSuccessfulExportAt > now ||
+      now - lastSuccessfulExportAt > freshnessWindowMillis
+    ) {
+      throw new Error(
+        "API gateway OTLP metrics last successful export is missing or stale",
+      );
+    }
+  }
+
+  private metricsReadinessDetail(): string {
+    const health = this.requireMetricsHealth();
+    return health.mode === "otlp"
+      ? `OTLP metrics runtime active; last successful export: ${health.lastExportAt ?? "pending"}.`
+      : "Deterministic in-memory metrics runtime active.";
+  }
+
+  private loopMode(enabled: boolean): "enabled" | "disabled" {
+    return enabled ? "enabled" : "disabled";
   }
 }

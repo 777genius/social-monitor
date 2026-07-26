@@ -6,6 +6,7 @@ import { FeedItem } from '@social-monitor/feed/domain';
 import { FeedRestModule } from '@social-monitor/feed/interfaces/rest/feed-rest.module';
 import { IdentityRestModule } from '@social-monitor/identity/interfaces/rest/identity-rest.module';
 import { MonitoringRestModule } from '@social-monitor/monitoring/interfaces/rest/monitoring-rest.module';
+import { MetricsRuntimeModule } from '@social-monitor/platform-metrics/nest/metrics-runtime.module';
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import { ExecuteSummaryJobUseCase } from '@social-monitor/summary/features/execute-summary-job/execute-summary-job.use-case';
 import { SummaryRestModule } from '@social-monitor/summary/interfaces/rest/summary-rest.module';
@@ -22,9 +23,18 @@ const assert = (condition: unknown, message: string): void => {
 
 async function main(): Promise<void> {
   process.env.SOURCE_CONFIG_ENCRYPTION_KEY ??= Buffer.alloc(32, 1).toString('base64');
+  process.env.SUMMARY_MODEL_PROVIDER = 'deterministic';
+  process.env.READER_SUMMARY_MODEL_PROVIDER = 'deterministic';
+  process.env.READER_SUMMARY_TOPIC_LABELER = 'deterministic';
 
   const moduleRef = await Test.createTestingModule({
-    imports: [IdentityRestModule, MonitoringRestModule, FeedRestModule, SummaryRestModule],
+    imports: [
+      MetricsRuntimeModule.register({ serviceName: 'read-api-key-scope-smoke' }),
+      IdentityRestModule,
+      MonitoringRestModule,
+      FeedRestModule,
+      SummaryRestModule,
+    ],
     providers: [
       {
         provide: APP_FILTER,

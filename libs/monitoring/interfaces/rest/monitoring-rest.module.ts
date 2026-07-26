@@ -8,7 +8,6 @@ import { UsageRestModule } from "@social-monitor/usage/interfaces/rest/usage-res
 import { InMemoryIdempotencyAdapter } from "../../adapters/idempotency/in-memory-idempotency.adapter";
 import { OAuth2SourceCredentialRefresher } from "../../adapters/credentials/oauth2-source-credential-refresher";
 import { PrismaIdempotencyAdapter } from "../../adapters/idempotency/prisma/prisma-idempotency.adapter";
-import { InMemoryOutboxAdapter } from "../../adapters/messaging/in-memory-outbox.adapter";
 import { InMemoryScanJobRepository } from "../../adapters/persistence/in-memory-scan-job.repository";
 import { InMemoryScanExecutionAttemptReadModel } from "../../adapters/persistence/in-memory-scan-execution-attempt-read-model";
 import { InMemoryScanPolicyRepository } from "../../adapters/persistence/in-memory-scan-policy.repository";
@@ -22,7 +21,6 @@ import { PrismaScanPolicyRepository } from "../../adapters/persistence/prisma/pr
 import { PrismaSourceBindingRepository } from "../../adapters/persistence/prisma/prisma-source-binding.repository";
 import { PrismaSourceCredentialRepository } from "../../adapters/persistence/prisma/prisma-source-credential.repository";
 import { PrismaInterestRepository } from "../../adapters/persistence/prisma/prisma-interest.repository";
-import { PrismaMonitoringOutboxAdapter } from "../../adapters/persistence/prisma/prisma-monitoring-outbox.adapter";
 import { UsageScanRequestQuotaAdapter } from "../../adapters/quota/usage-scan-request-quota.adapter";
 import { InMemorySourceCredentialSecretVault } from "../../adapters/secrets/in-memory-source-credential.vault";
 import {
@@ -64,6 +62,7 @@ import type {
   ScanExecutionAttemptReadPort,
   ScanJobHistoryReadPort,
   ScanJobRepositoryPort,
+  ScanDispatchPort,
   ScanPolicyRepositoryPort,
   ScanSchedulerDecisionHistoryPort,
   ScanQueuePort,
@@ -85,6 +84,7 @@ import {
   MONITORING_PRISMA_CLIENT,
   MONITORING_SCAN_JOB_REPOSITORY,
   MONITORING_SCAN_EXECUTION_ATTEMPT_READ_MODEL,
+  MONITORING_SCAN_DISPATCH,
   MONITORING_SCAN_POLICY_REPOSITORY,
   MONITORING_SCAN_QUEUE,
   MONITORING_SCAN_SCHEDULER_DECISION_HISTORY,
@@ -100,6 +100,7 @@ import {
   resolveManualScanRequestQuotaPerHour,
 } from "./monitoring-provider-tokens";
 import { MonitoringPrismaClientModule } from "./monitoring-prisma-client.module";
+import { monitoringScanDispatchProviders } from "./monitoring-scan-dispatch.providers";
 import {
   parseOptionalPositiveInteger,
   resolveMonitoringCapacityLimits,
@@ -267,19 +268,7 @@ type MonitoringScanJobStorePort = ScanJobRepositoryPort &
       useFactory: (): SourceBindingConfigProtectorPort =>
         AesGcmSourceBindingConfigProtector.fromEnvironment(process.env),
     },
-    {
-      provide: MONITORING_OUTBOX,
-      useFactory: (
-        mode: MonitoringPersistenceMode,
-        prisma: PrismaMonitoringClient | null,
-      ): OutboxPort =>
-        mode === "prisma"
-          ? new PrismaMonitoringOutboxAdapter(
-              requirePrismaMonitoringClient(prisma),
-            )
-          : new InMemoryOutboxAdapter(),
-      inject: [MONITORING_PERSISTENCE_MODE, MONITORING_PRISMA_CLIENT],
-    },
+    ...monitoringScanDispatchProviders,
     {
       provide: MONITORING_IDEMPOTENCY,
       useFactory: (
@@ -580,6 +569,7 @@ type MonitoringScanJobStorePort = ScanJobRepositoryPort &
         outbox: OutboxPort,
         idempotency: IdempotencyPort,
         scanRequestQuota: UsageScanRequestQuotaAdapter,
+        scanDispatch: ScanDispatchPort,
       ) =>
         new RequestScanUseCase(
           bindings,
@@ -591,6 +581,7 @@ type MonitoringScanJobStorePort = ScanJobRepositoryPort &
           scanRequestQuota,
           new CryptoIdGenerator(),
           new SystemClock(),
+          scanDispatch,
         ),
       inject: [
         MONITORING_SOURCE_BINDING_REPOSITORY,
@@ -600,6 +591,7 @@ type MonitoringScanJobStorePort = ScanJobRepositoryPort &
         MONITORING_OUTBOX,
         MONITORING_IDEMPOTENCY,
         UsageScanRequestQuotaAdapter,
+        MONITORING_SCAN_DISPATCH,
       ],
     },
     {

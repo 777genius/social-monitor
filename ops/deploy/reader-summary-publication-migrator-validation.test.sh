@@ -5,7 +5,8 @@ set -euo pipefail
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 LIBRARY=$SCRIPT_DIR/reader-summary-publication-deploy-lib.sh
 DEPLOY_ENTRYPOINT=$SCRIPT_DIR/social-monitor-production-deploy.sh
-FIXTURE=$(mktemp -d /tmp/publication-migrator-validation.XXXXXX)
+FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/publication-migrator-validation.XXXXXX")
+FIXTURE=$(cd "$FIXTURE" && pwd -P)
 trap 'rm -rf "$FIXTURE"' EXIT
 
 ROOT=$FIXTURE/root
@@ -38,6 +39,7 @@ mkdir -p "$ROOT/secrets/db" "$REPO/ops/deploy" "$FAKE_BIN"
 printf '%s\n' 'test-only-ca-certificate' > "$CA_CERTIFICATE"
 cp "$SCRIPT_DIR/deploy-control-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" "$REPO/ops/deploy/"
+cp "$SCRIPT_DIR/backend-runtime-health-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/backend-image-rescue-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/x-collector-image-deploy-lib.sh" "$REPO/ops/deploy/"
 cp "$DEPLOY_ENTRYPOINT" "$REPO/ops/deploy/"

@@ -6,6 +6,7 @@ import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 describe('Delivery provider send (e2e)', () => {
   let app: INestApplication;
@@ -31,8 +32,8 @@ describe('Delivery provider send (e2e)', () => {
   });
 
   it('sends a queued email attempt through the placeholder provider and exposes delivered status', async () => {
-    const tenant = tenantId('tenant-delivery-send-e2e');
-    const workspace = workspaceId('workspace-delivery-send-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-delivery-send-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-delivery-send-e2e'));
     const queued = await app.get(QueueDeliveryAttemptUseCase).execute({
       tenantId: tenant,
       workspaceId: workspace,

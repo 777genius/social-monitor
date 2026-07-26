@@ -1,4 +1,7 @@
-import { withPrismaWriteRetry } from "@social-monitor/platform-persistence";
+import {
+  runWithSystemDatabaseAccess,
+  withPrismaWriteRetry,
+} from "@social-monitor/platform-persistence";
 import type { TenantId, WorkspaceId } from "@social-monitor/shared-kernel";
 
 import type { ReaderSummaryJob } from "../../../domain";
@@ -99,15 +102,24 @@ export class PrismaReaderSummaryJobRepository implements ReaderSummaryJobReposit
   async findRequested(
     params: Parameters<ReaderSummaryJobRepositoryPort["findRequested"]>[0],
   ): Promise<readonly ReaderSummaryJob[]> {
-    const records = await this.prisma.readerSummaryJob.findMany({
-      where: {
-        tenantId: params.tenantId,
-        workspaceId: params.workspaceId,
-        status: "REQUESTED",
-      },
-      orderBy: [{ requestedAt: "asc" }, { id: "asc" }],
-      take: params.limit,
-    });
+    assertOptionalScopeIsComplete(params);
+    const findRequested = () =>
+      this.prisma.readerSummaryJob.findMany({
+        where: {
+          tenantId: params.tenantId,
+          workspaceId: params.workspaceId,
+          status: "REQUESTED",
+        },
+        orderBy: [{ requestedAt: "asc" }, { id: "asc" }],
+        take: params.limit,
+      });
+    const records =
+      params.tenantId === undefined
+        ? await runWithSystemDatabaseAccess(
+            "cross-tenant reader summary job polling",
+            findRequested,
+          )
+        : await findRequested();
 
     return records.map((record) => readerSummaryJobFromPrisma(record));
   }
@@ -158,3 +170,14 @@ export class PrismaReaderSummaryJobRepository implements ReaderSummaryJobReposit
     return this.findById(params);
   }
 }
+
+const assertOptionalScopeIsComplete = (scope: {
+  readonly tenantId?: TenantId;
+  readonly workspaceId?: WorkspaceId;
+}): void => {
+  if ((scope.tenantId === undefined) !== (scope.workspaceId === undefined)) {
+    throw new Error(
+      "Reader summary job polling scope must include tenant and workspace",
+    );
+  }
+};

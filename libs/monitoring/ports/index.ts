@@ -6,6 +6,7 @@ export * from './scan-execution-attempt-read.port';
 export * from './scan-policy-repository.port';
 export * from './scan-scheduler-decision-history.port';
 export * from './scan-request-quota.port';
+export * from './scan-dispatch.port';
 export * from './scan-queue.port';
 export * from './source-binding-repository.port';
 export * from './source-binding-config-protector.port';

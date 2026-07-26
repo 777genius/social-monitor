@@ -4,9 +4,20 @@ import {
 import { feedItemFromPrisma } from "@social-monitor/feed/adapters/persistence/prisma/prisma-feed-records";
 import type {
   PrismaSourceEngagementClient,
-  PrismaSourceEngagementSnapshotRecord,
   PrismaSourceEngagementTransactionClient,
 } from "./prisma-source-engagement-client";
+import {
+  addResults,
+  chunks,
+  daysBefore,
+  deepMergeJson,
+  emptyResult,
+  maxDate,
+  metricColumns,
+  metricsFromSnapshot,
+  normalizeMetricJson,
+  utcDay,
+} from "./prisma-source-engagement-projection-helpers";
 import {
   engagementMetricsHaveRegression,
   engagementObservationBucketStartedAt,
@@ -22,12 +33,11 @@ import type {
   SourceEngagementSample,
 } from "@social-monitor/ingestion/ports";
 import { withPrismaWriteRetry } from "@social-monitor/platform-persistence";
-import type {
-  IdGenerator,
-  JsonObject,
-  JsonValue,
+import {
+  normalizeJsonObject,
+  type IdGenerator,
+  type JsonObject,
 } from "@social-monitor/shared-kernel";
-import { normalizeJsonObject } from "@social-monitor/shared-kernel";
 
 export class PrismaSourceEngagementProjectionAdapter
   implements SourceEngagementProjectionPort
@@ -445,120 +455,3 @@ export class PrismaSourceEngagementProjectionAdapter
     });
   }
 }
-
-const metricKeys = [
-  "score",
-  "comments",
-  "likes",
-  "reposts",
-  "replies",
-  "quotes",
-  "bookmarks",
-  "impressions",
-  "views",
-  "points",
-  "stars",
-  "forks",
-  "starsGained",
-  "providerRank",
-  "upvoteRatioBps",
-] as const satisfies readonly (keyof SourceEngagementMetrics)[];
-
-const metricColumns = (
-  metrics: SourceEngagementMetrics,
-  includeMissing = false,
-): Readonly<Record<string, bigint | number | null>> => {
-  const columns: Record<string, bigint | number | null> = {};
-  for (const key of metricKeys) {
-    const value = metrics[key];
-    if (value === undefined) {
-      if (includeMissing) columns[key] = null;
-      continue;
-    }
-    columns[key] =
-      key === "providerRank" || key === "upvoteRatioBps"
-        ? value
-        : BigInt(value);
-  }
-  return columns;
-};
-
-const metricsFromSnapshot = (
-  snapshot: PrismaSourceEngagementSnapshotRecord | null,
-): SourceEngagementMetrics | null => {
-  if (snapshot === null) {
-    return null;
-  }
-  return Object.fromEntries(
-    metricKeys.flatMap((key) => {
-      const value = snapshot[key];
-      return value === null || value === undefined
-        ? []
-        : [[key, typeof value === "bigint" ? Number(value) : value]];
-    }),
-  ) as SourceEngagementMetrics;
-};
-
-const normalizeMetricJson = (value: unknown): SourceEngagementMetrics | null => {
-  const object = normalizeJsonObject(value);
-  const metrics = Object.fromEntries(
-    metricKeys.flatMap((key) => {
-      const metric = object[key];
-      return typeof metric === "number" && Number.isSafeInteger(metric)
-        ? [[key, metric]]
-        : [];
-    }),
-  ) as SourceEngagementMetrics;
-  return Object.keys(metrics).length === 0 ? null : metrics;
-};
-
-const deepMergeJson = (base: JsonObject, patch: JsonObject): JsonObject => {
-  const merged: Record<string, JsonValue> = { ...base };
-  for (const [key, patchValue] of Object.entries(patch)) {
-    if (patchValue === undefined) {
-      continue;
-    }
-    const baseValue = merged[key];
-    merged[key] =
-      isJsonObject(baseValue) && isJsonObject(patchValue)
-        ? deepMergeJson(baseValue, patchValue)
-        : patchValue;
-  }
-  return merged;
-};
-
-const isJsonObject = (value: unknown): value is JsonObject =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
-const maxDate = (left: Date | null, right: Date): Date =>
-  left !== null && left.getTime() > right.getTime() ? left : right;
-
-const utcDay = (value: Date): Date =>
-  new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
-
-const emptyResult = (): ProjectSourceEngagementResult => ({
-  currentSnapshotsUpdated: 0,
-  observationsAppended: 0,
-  metricChanges: 0,
-  regressionsObserved: 0,
-});
-
-const addResults = (
-  left: ProjectSourceEngagementResult,
-  right: ProjectSourceEngagementResult,
-): ProjectSourceEngagementResult => ({
-  currentSnapshotsUpdated:
-    left.currentSnapshotsUpdated + right.currentSnapshotsUpdated,
-  observationsAppended: left.observationsAppended + right.observationsAppended,
-  metricChanges: left.metricChanges + right.metricChanges,
-  regressionsObserved: left.regressionsObserved + right.regressionsObserved,
-});
-
-const chunks = <T>(items: readonly T[], size: number): readonly (readonly T[])[] =>
-  Array.from(
-    { length: Math.ceil(items.length / size) },
-    (_, index) => items.slice(index * size, (index + 1) * size),
-  );
-
-const daysBefore = (value: Date, days: number): Date =>
-  new Date(value.getTime() - days * 86_400_000);

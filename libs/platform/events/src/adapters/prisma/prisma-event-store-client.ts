@@ -4,6 +4,7 @@ export type PrismaEventOutboxRecord = {
   readonly id: string;
   readonly tenantId: string | null;
   readonly workspaceId: string | null;
+  readonly messageKind: 'EVENT' | 'COMMAND';
   readonly eventType: string;
   readonly schemaVersion: number;
   readonly payload: unknown;
@@ -26,7 +27,10 @@ export type PrismaInboxRecord = {
 export type PrismaEventStoreClient = {
   readonly outboxEvent: {
     findMany(args: {
-      readonly where: { readonly status: 'PENDING' };
+      readonly where: {
+        readonly messageKind: 'EVENT';
+        readonly status: 'PENDING';
+      };
       readonly orderBy: readonly [{ readonly createdAt: 'asc' }, { readonly id: 'asc' }];
       readonly take: number;
     }): Promise<readonly PrismaEventOutboxRecord[]>;

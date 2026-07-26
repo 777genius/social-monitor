@@ -7,6 +7,7 @@ import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import request from 'supertest';
 
 import { AppModule } from '../../apps/api-gateway/src/app.module';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
 
 describe('Webhook endpoint signing (e2e)', () => {
   let app: INestApplication;
@@ -32,8 +33,8 @@ describe('Webhook endpoint signing (e2e)', () => {
   });
 
   it('creates endpoint with show-once secret, hides it on read and signs outbound payload', async () => {
-    const tenant = tenantId('tenant-webhook-e2e');
-    const workspace = workspaceId('workspace-webhook-e2e');
+    const tenant = tenantId(deterministicTestUuid('tenant-webhook-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-webhook-e2e'));
     const apiKey = await request(app.getHttpServer())
       .post('/identity/api-keys')
       .set('x-tenant-id', tenant)

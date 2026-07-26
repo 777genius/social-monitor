@@ -3,6 +3,7 @@ import { APP_FILTER } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import { IdentityRestModule } from '@social-monitor/identity/interfaces/rest/identity-rest.module';
 import { MonitoringRestModule } from '@social-monitor/monitoring/interfaces/rest/monitoring-rest.module';
+import { MetricsRuntimeModule } from '@social-monitor/platform-metrics/nest/metrics-runtime.module';
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import { SubscriptionsRestModule } from '@social-monitor/subscriptions/interfaces/rest/subscriptions-rest.module';
 import { InMemoryPublicApiAuditLog } from '@social-monitor/usage/adapters/audit/in-memory-public-api-audit-log';
@@ -20,7 +21,14 @@ async function main(): Promise<void> {
   process.env.SOURCE_CONFIG_ENCRYPTION_KEY ??= Buffer.alloc(32, 1).toString('base64');
 
   const moduleRef = await Test.createTestingModule({
-    imports: [IdentityRestModule, MonitoringRestModule, SubscriptionsRestModule],
+    imports: [
+      MetricsRuntimeModule.register({
+        serviceName: 'write-api-key-monitoring-scope-smoke',
+      }),
+      IdentityRestModule,
+      MonitoringRestModule,
+      SubscriptionsRestModule,
+    ],
     providers: [
       {
         provide: APP_FILTER,

@@ -1,4 +1,8 @@
-import { withPrismaWriteRetry } from "@social-monitor/platform-persistence";
+import {
+  runWithSystemDatabaseAccess,
+  withPrismaWriteRetry,
+} from "@social-monitor/platform-persistence";
+import type { TenantId, WorkspaceId } from "@social-monitor/shared-kernel";
 
 import {
   readerSummaryScopeKey,
@@ -73,16 +77,36 @@ export class PrismaReaderSummaryPolicyRepository implements ReaderSummaryPolicyR
   async listScheduled(
     query: Parameters<ReaderSummaryPolicyRepositoryPort["listScheduled"]>[0],
   ): Promise<readonly ReaderSummaryPolicy[]> {
-    const records = await this.prisma.readerSummaryPolicy.findMany({
-      where: {
-        tenantId: query.tenantId,
-        workspaceId: query.workspaceId,
-        scheduleEnabled: true,
-      },
-      orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
-      take: query.limit,
-    });
+    assertOptionalScopeIsComplete(query);
+    const listScheduled = () =>
+      this.prisma.readerSummaryPolicy.findMany({
+        where: {
+          tenantId: query.tenantId,
+          workspaceId: query.workspaceId,
+          scheduleEnabled: true,
+        },
+        orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+        take: query.limit,
+      });
+    const records =
+      query.tenantId === undefined
+        ? await runWithSystemDatabaseAccess(
+            "cross-tenant reader summary policy polling",
+            listScheduled,
+          )
+        : await listScheduled();
 
     return records.map(readerSummaryPolicyFromPrisma);
   }
 }
+
+const assertOptionalScopeIsComplete = (scope: {
+  readonly tenantId?: TenantId;
+  readonly workspaceId?: WorkspaceId;
+}): void => {
+  if ((scope.tenantId === undefined) !== (scope.workspaceId === undefined)) {
+    throw new Error(
+      "Reader summary policy scope must include tenant and workspace",
+    );
+  }
+};

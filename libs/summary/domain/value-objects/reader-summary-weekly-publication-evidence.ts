@@ -9,7 +9,6 @@ import {
   exactReaderSummaryWeeklyUtcDay,
   exactReaderSummaryWeeklyUtcTimestamp,
   readerSummaryWeeklyDailyPeriod,
-  readerSummaryWeeklyScopeKey,
   type ReaderSummaryWeeklyDailyPeriod,
   type ReaderSummaryWeeklyManifestScope,
 } from "./reader-summary-weekly-canonical-json";
@@ -369,14 +368,7 @@ export function assertReaderSummaryWeeklyCanonicalPublicationEvidence(
 
 const publicationEvidenceBody = (
   evidence: ReaderSummaryWeeklyCanonicalPublicationEvidence,
-): PublicationEvidenceBody => {
-  const {
-    identity: _identity,
-    sha256: _sha256,
-    canonicalJson: _canonicalJson,
-    byteLength: _byteLength,
-    toBytes: _toBytes,
-    ...body
-  } = evidence;
-  return body;
-};
+): PublicationEvidenceBody =>
+  Object.fromEntries(
+    publicationEvidenceBodyKeys.map((key) => [key, evidence[key]]),
+  ) as unknown as PublicationEvidenceBody;

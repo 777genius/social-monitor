@@ -1,7 +1,27 @@
 {
-  "schemaVersion": 1,
-  "posture": "pre_rls_tenant_guardrails",
+  "schemaVersion": 3,
+  "posture": "rls_enforced_tenant_guardrails",
   "owner": "security-owner",
+  "systemCapabilityRole": "social_monitor_tenant_system_runtime",
+  "rlsMigrationPaths": [
+    "prisma/migrations/20260723153000_tenant_row_level_security/migration.sql",
+    "prisma/migrations/20260726120000_tenant_secret_scope_and_weekly_evidence_rls/migration.sql"
+  ],
+  "forwardRlsCoverage": [
+    {
+      "table": "reader_summary_weekly_publication_evidence",
+      "migrationPath": "prisma/migrations/20260726120000_tenant_secret_scope_and_weekly_evidence_rls/migration.sql",
+      "ownerRole": "social_monitor_reader_summary_publication_owner"
+    },
+    {
+      "table": "webhook_secrets",
+      "migrationPath": "prisma/migrations/20260726120000_tenant_secret_scope_and_weekly_evidence_rls/migration.sql",
+      "ownerRole": "social_monitor_public_schema_owner"
+    }
+  ],
+  "tenantRootTables": [
+    "tenants"
+  ],
   "tenantOwnedTables": [
     "api_keys",
     "conversation_signal_baseline_samples",
@@ -57,6 +77,7 @@
     "user_summary_preferences",
     "users",
     "webhook_endpoints",
+    "webhook_secrets",
     "workspaces"
   ],
   "tenantScopedSystemTables": [
@@ -82,6 +103,36 @@
       "reason": "Platform outbox can emit global events, but tenant event dispatch and support triage must remain tenant-queryable."
     }
   ],
+  "indirectTenantOwnedTables": [
+    {
+      "table": "source_credential_secrets",
+      "parentTable": "source_credentials",
+      "reason": "Encrypted source credential material is readable and mutable only through a tenant-scoped source credential reference."
+    },
+    {
+      "table": "webhook_replay_deliveries",
+      "parentTable": "webhook_endpoints",
+      "reason": "Webhook replay nonces inherit tenant scope from their endpoint."
+    }
+  ],
+  "tenantScopedAssociations": [
+    {
+      "childTable": "webhook_endpoints",
+      "parentTable": "webhook_secrets",
+      "constraintName": "webhook_endpoints_secret_scope_fkey",
+      "childColumns": [
+        "secret_key_id",
+        "tenant_id",
+        "workspace_id"
+      ],
+      "parentColumns": [
+        "id",
+        "tenant_id",
+        "workspace_id"
+      ],
+      "reason": "An endpoint can reference signing material only when both rows have exactly the same tenant and workspace ownership."
+    }
+  ],
   "sharedTables": [
     {
       "table": "capability_profiles",
@@ -94,22 +145,6 @@
     {
       "table": "source_catalog_entries",
       "reason": "Source catalog metadata is shared reference data."
-    },
-    {
-      "table": "source_credential_secrets",
-      "reason": "Encrypted source credential vault is addressed through source credential secret_key_id and never queried directly by tenant workloads."
-    },
-    {
-      "table": "tenants",
-      "reason": "Tenant root table cannot contain tenant_id."
-    },
-    {
-      "table": "webhook_replay_deliveries",
-      "reason": "Replay nonces are scoped through webhook_endpoint_id and short retention."
-    },
-    {
-      "table": "webhook_secrets",
-      "reason": "Encrypted secret vault is addressed only through endpoint-owned secret_key_id; future RLS may add tenant columns if direct querying is introduced."
     }
   ]
 }

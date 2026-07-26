@@ -9,7 +9,8 @@ import {
   FEED_ITEM_READ_REPOSITORY,
   type FeedItemReadRepositoryPort,
 } from "@social-monitor/feed/ports";
-import { InMemoryMetricsRecorder } from "@social-monitor/platform-metrics";
+import type { MetricsRecorderPort } from "@social-monitor/platform-metrics";
+import { METRICS_RECORDER } from "@social-monitor/platform-metrics/nest/metrics-runtime.module";
 import { InMemoryQueuePublisher } from "@social-monitor/platform-queue/adapters/in-memory";
 import {
   RabbitMqQueuePublisher,
@@ -113,16 +114,16 @@ export const summaryReaderSummaryProviders: Provider[] = [
   readerSummaryPublicationProvider,
   {
     provide: StoryRankingMetricsRecorder,
-    useFactory: (metrics: InMemoryMetricsRecorder): StoryRankingMetricsPort =>
+    useFactory: (metrics: MetricsRecorderPort): StoryRankingMetricsPort =>
       new StoryRankingMetricsRecorder(metrics),
-    inject: [InMemoryMetricsRecorder],
+    inject: [METRICS_RECORDER],
   },
   {
     provide: READER_SUMMARY_JOB_QUEUE,
     useFactory: (
       mode: SummaryJobQueueMode,
       publisher: InMemoryQueuePublisher,
-      metrics: InMemoryMetricsRecorder,
+      metrics: MetricsRecorderPort,
       rabbitChannel: RabbitMqQueueChannelPort | null,
       rabbitOptions: RabbitMqQueuePublisherOptions,
     ): ReaderSummaryJobQueuePort =>
@@ -139,7 +140,7 @@ export const summaryReaderSummaryProviders: Provider[] = [
     inject: [
       SUMMARY_JOB_QUEUE_MODE,
       InMemoryQueuePublisher,
-      InMemoryMetricsRecorder,
+      METRICS_RECORDER,
       SUMMARY_RABBITMQ_QUEUE_CHANNEL,
       SUMMARY_RABBITMQ_JOB_QUEUE_OPTIONS,
     ],
@@ -259,7 +260,7 @@ export const summaryReaderSummaryProviders: Provider[] = [
       deterministicReaderSummaryModel: DeterministicReaderSummaryModelAdapter,
       agentRuntimeReaderSummaryModel: AgentRuntimeReaderSummaryModelAdapter,
       openAiReaderSummaryModel: OpenAiResponsesReaderSummaryModelAdapter,
-      metrics: InMemoryMetricsRecorder,
+      metrics: MetricsRecorderPort,
     ) => {
       const selectedModel =
         mode === "openai-responses"
@@ -275,7 +276,7 @@ export const summaryReaderSummaryProviders: Provider[] = [
       DeterministicReaderSummaryModelAdapter,
       AgentRuntimeReaderSummaryModelAdapter,
       OpenAiResponsesReaderSummaryModelAdapter,
-      InMemoryMetricsRecorder,
+      METRICS_RECORDER,
     ],
   },
   {

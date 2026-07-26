@@ -207,6 +207,7 @@ const mergeProviderCollectionHealth = (
       userRatedFeedItemCount: 0,
     };
     const { providerKey: _ignored, ...collectionHealth } = providerHealth;
+    void _ignored;
     byProvider.set(providerKey, { ...current, collectionHealth });
   }
 
