@@ -102,6 +102,7 @@ export type PrismaScanAttemptRecord = {
   readonly tenantId: string;
   readonly workspaceId: string;
   readonly sourceBindingId: string;
+  readonly attemptNumber: number;
   readonly status: PrismaScanAttemptStatus;
   readonly startedAt: Date;
   readonly finishedAt: Date | null;
@@ -237,6 +238,7 @@ export const scanAttemptFromPrisma = (
     tenantId: tenantId(record.tenantId),
     workspaceId: workspaceId(record.workspaceId),
     sourceBindingId: record.sourceBindingId,
+    attemptNumber: record.attemptNumber,
     status: scanAttemptStatusFromPrisma(record.status),
     startedAt: record.startedAt,
     finishedAt: record.finishedAt ?? undefined,

@@ -16,7 +16,6 @@ import type {
   PrismaRealtimeEventWriteData,
   PrismaWebhookEndpointWriteData,
   PrismaWebhookReplayDeliveryWriteData,
-  PrismaWebhookSecretWriteData,
 } from '../libs/delivery/adapters/persistence/prisma/prisma-delivery-client';
 import { PrismaDigestScheduleRepository } from '../libs/delivery/adapters/persistence/prisma/prisma-digest-schedule.repository';
 import { PrismaDigestRepository } from '../libs/delivery/adapters/persistence/prisma/prisma-digest.repository';
@@ -39,7 +38,6 @@ import type {
   PrismaRealtimeEventRecord,
   PrismaWebhookEndpointRecord,
   PrismaWebhookReplayDeliveryRecord,
-  PrismaWebhookSecretRecord,
 } from '../libs/delivery/adapters/persistence/prisma/prisma-delivery-records';
 import { DeliveryAttempt, Digest, DigestSchedule } from '../libs/delivery/domain';
 import { AssembleDigestUseCase } from '../libs/delivery/features/assemble-digest/assemble-digest.use-case';
@@ -59,6 +57,7 @@ import { RecordRealtimeEventUseCase } from '../libs/delivery/features/record-rea
 import { SignWebhookPayloadUseCase } from '../libs/delivery/features/sign-webhook-payload/sign-webhook-payload.use-case';
 import { VerifyWebhookSignatureUseCase } from '../libs/delivery/features/verify-webhook-signature/verify-webhook-signature.use-case';
 import { resolveDeliveryPersistenceMode } from '../libs/delivery/interfaces/rest/delivery-provider-tokens';
+import { createFakePrismaWebhookSecretDelegate } from './lib/fake-prisma-webhook-secret-delegate';
 
 const clock = new FixedClock(new Date('2026-06-07T00:00:10.000Z'));
 const tenant = tenantId('00000000-0000-7000-8000-000000000701');
@@ -495,7 +494,11 @@ async function main(): Promise<void> {
   const webhookEndpointId = createdWebhook.value.endpoint.id;
   const secretKeyId = createdWebhook.value.endpoint.secretKeyId;
   assert(
-    await webhookSecrets.get({ secretKeyId }) === createdWebhook.value.signingSecret,
+    await webhookSecrets.get({
+      tenantId: tenant,
+      workspaceId: workspace,
+      secretKeyId,
+    }) === createdWebhook.value.signingSecret,
     'webhook secret vault must decrypt the persisted signing secret',
   );
 
@@ -681,7 +684,6 @@ class FakePrismaDeliveryClient implements PrismaDeliveryClient {
   private readonly summaryArtifacts = new Map<string, PrismaDigestSourceSummaryRecord>();
   private readonly webhookEndpoints = new Map<string, PrismaWebhookEndpointRecord>();
   private readonly webhookReplayDeliveries = new Map<string, PrismaWebhookReplayDeliveryRecord>();
-  private readonly webhookSecrets = new Map<string, PrismaWebhookSecretRecord>();
 
   seedDigestSourceSummary(record: PrismaDigestSourceSummaryRecord): void {
     this.summaryArtifacts.set(record.id, record);
@@ -816,19 +818,7 @@ class FakePrismaDeliveryClient implements PrismaDeliveryClient {
       [...this.webhookEndpoints.values()].filter((record) => matchesWebhookEndpointWhere(record, args.where)).length,
   };
 
-  readonly webhookSecret: PrismaDeliveryClient['webhookSecret'] = {
-    upsert: async (args) => {
-      const existing = this.webhookSecrets.get(args.where.id);
-      const record: PrismaWebhookSecretRecord = {
-        id: existing?.id ?? args.create.id,
-        ...normalizeWebhookSecretWriteData(args.update),
-      };
-      this.webhookSecrets.set(record.id, record);
-
-      return record;
-    },
-    findUnique: async (args) => this.webhookSecrets.get(args.where.id) ?? null,
-  };
+  readonly webhookSecret = createFakePrismaWebhookSecretDelegate();
 
   readonly webhookReplayDelivery: PrismaDeliveryClient['webhookReplayDelivery'] = {
     findUnique: async (args) =>
@@ -974,15 +964,6 @@ const normalizeWebhookEndpointWriteData = (
   disabledAt: data.disabledAt ?? null,
   quarantinedAt: data.quarantinedAt ?? null,
   quarantineReason: data.quarantineReason ?? null,
-});
-
-const normalizeWebhookSecretWriteData = (
-  data: PrismaWebhookSecretWriteData,
-): Omit<PrismaWebhookSecretRecord, 'id'> => ({
-  algorithm: data.algorithm,
-  ciphertext: data.ciphertext,
-  iv: data.iv,
-  authTag: data.authTag,
 });
 
 const normalizeWebhookReplayDeliveryWriteData = (

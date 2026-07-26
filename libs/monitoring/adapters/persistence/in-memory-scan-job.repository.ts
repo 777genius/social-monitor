@@ -21,6 +21,47 @@ export class InMemoryScanJobRepository implements ScanJobRepositoryPort, ScanJob
     );
   }
 
+  async restoreScanJob(params: {
+    readonly tenantId: TenantId;
+    readonly workspaceId: WorkspaceId;
+    readonly scanJobId: string;
+    readonly previous: ScanJob | null;
+  }): Promise<void> {
+    const idKey = this.idKey(
+      params.tenantId,
+      params.workspaceId,
+      params.scanJobId,
+    );
+    const current = this.jobsById.get(idKey);
+
+    if (current !== undefined) {
+      const snapshot = current.toSnapshot();
+      this.jobsByIdempotencyKey.delete(
+        this.key(
+          snapshot.tenantId,
+          snapshot.workspaceId,
+          snapshot.idempotencyKey,
+        ),
+      );
+    }
+
+    if (params.previous === null) {
+      this.jobsById.delete(idKey);
+      return;
+    }
+
+    const previousSnapshot = params.previous.toSnapshot();
+    this.jobsById.set(idKey, params.previous);
+    this.jobsByIdempotencyKey.set(
+      this.key(
+        previousSnapshot.tenantId,
+        previousSnapshot.workspaceId,
+        previousSnapshot.idempotencyKey,
+      ),
+      params.previous,
+    );
+  }
+
   async findById(params: {
     tenantId: TenantId;
     workspaceId: WorkspaceId;

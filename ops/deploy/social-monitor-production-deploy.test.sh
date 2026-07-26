@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2016
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 ENTRYPOINT=$SCRIPT_DIR/social-monitor-production-deploy.sh
 BACKUP_LIBRARY=$SCRIPT_DIR/postgres-backup-deploy-lib.sh
-FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/social-monitor-deploy-test.XXXXXX")
+FIXTURE=$(mktemp -d "/tmp/social-monitor-deploy-test.XXXXXX")
 trap 'rm -rf "$FIXTURE"' EXIT
 
-REPO=$FIXTURE/repo
+REPO=$(readlink -f -- "$FIXTURE")/repo
 ORIGIN=$FIXTURE/origin.git
 ROOT=$FIXTURE/root
 CONTROL=$ROOT/control
@@ -25,7 +26,9 @@ install -d "$REPO/apps/frontend" "$REPO/apps/api-gateway" \
   "$STATE" "$STAGING"
 cp "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/deploy-control-lib.sh" "$REPO/ops/deploy/"
+cp "$SCRIPT_DIR/backend-runtime-health-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/backend-image-rescue-lib.sh" "$REPO/ops/deploy/"
+cp "$SCRIPT_DIR/daily-runner-image-bootstrap-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/x-collector-image-deploy-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/reader-summary-publication-deploy-lib.sh" \
   "$SCRIPT_DIR/reader-summary-publication-pre-migration.sql" \
@@ -40,6 +43,8 @@ cp "$SCRIPT_DIR/../../prisma/migrations/20260716170000_reader_summary_fail_close
   "$REPO/prisma/migrations/20260716170000_reader_summary_fail_closed_publication/"
 cp "$SCRIPT_DIR/verify-postgres-runtime-topology.py" "$REPO/ops/deploy/"
 cp -R "$SCRIPT_DIR/production-runtime" "$REPO/ops/deploy/"
+rm -f \
+  "$REPO/ops/deploy/production-runtime/github-premidnight-capture-v1.activation"
 printf 'base\n' > "$REPO/README.md"
 git -C "$REPO" add README.md ops/deploy prisma/migrations
 git -C "$REPO" commit -qm 'test: base'
@@ -124,6 +129,31 @@ publication_services=$(
     ' _ "$ENTRYPOINT"
 )
 [[ $publication_services == migrate ]]
+git -C "$REPO" checkout -q main
+
+# Observability-only changes must explicitly recreate the collector because the
+# production Compose activation uses up --no-deps.
+git -C "$REPO" checkout -qb otel-mapping-test
+install -d "$REPO/ops/observability"
+printf 'service: {pipelines: {metrics: {}}}\n' > \
+  "$REPO/ops/observability/otel-collector.yml"
+git -C "$REPO" add ops/observability/otel-collector.yml
+git -C "$REPO" commit -qm 'test: collector config change'
+OTEL_TARGET_SHA=$(git -C "$REPO" rev-parse HEAD)
+otel_services=$(
+  SOCIAL_MONITOR_DEPLOY_TEST_MODE=1 \
+  SOCIAL_MONITOR_DEPLOY_ROOT="$ROOT" \
+  SOCIAL_MONITOR_DEPLOY_REPO="$REPO" \
+  SOCIAL_MONITOR_DEPLOY_CONTROL="$CONTROL" \
+  SOCIAL_MONITOR_DEPLOY_STATE="$STATE" \
+  SOCIAL_MONITOR_DEPLOY_STAGING="$STAGING" \
+  CONTROL_TARGET_SHA="$CONTROL_TARGET_SHA" OTEL_TARGET_SHA="$OTEL_TARGET_SHA" \
+    bash -c '
+      source "$1"
+      backend_services "$CONTROL_TARGET_SHA" "$OTEL_TARGET_SHA"
+    ' _ "$ENTRYPOINT"
+)
+[[ $otel_services == otel-collector ]]
 git -C "$REPO" checkout -q main
 
 grep -F "if printf '%s\\n' \"\${persistent[@]}\" | grep -qx api && ! refresh_frontend_api_proxy; then" \
@@ -213,9 +243,14 @@ run_backup_fixture() {
     helper_path=$SOCIAL_MONITOR_DEPLOY_REPO/ops/deploy/postgres-backup-deploy-lib.sh
     stat() {
       local last_argument=${!#}
-      if [[ $1 == -c && $2 == "%u %a" && \
-            $last_argument == "$helper_path" ]]; then
-        printf "0 %s\n" "$(command stat -c "%a" "$last_argument")"
+      if [[ $1 == -c && $2 == "%u %a" ]]; then
+        [[ $(readlink -f -- "$last_argument") == \
+          $(readlink -f -- "$helper_path") ]]
+        local mode
+        if ! mode=$(command stat -f "%Lp" "$last_argument" 2>/dev/null); then
+          mode=$(command stat -c "%a" "$last_argument")
+        fi
+        printf "0 %s\n" "$mode"
       else
         command stat "$@"
       fi
@@ -431,6 +466,8 @@ grep -F 'required rollback images could not be pinned before build' \
 # The replacement phase is a durable inner/outer transaction seam. Failures in
 # preflight, backup, build, and migration all reach outer rollback as prepared;
 # no healthy service is stopped or recreated in any of those paths.
+# Scrambled candidates prove canonical one-service Compose build order. The
+# build failure proves later candidates are not attempted.
 assert_pre_replacement_failure() {
   local stage=$1
   local expected=$2
@@ -438,10 +475,8 @@ assert_pre_replacement_failure() {
   local output status actual
   : > "$log"
   set +e
-  # A wide inherited limit must not reach the primary multi-service build.
   output=$(
-    COMPOSE_PARALLEL_LIMIT=99 ENTRYPOINT="$ENTRYPOINT" \
-    FAILURE_STAGE="$stage" FAILURE_LOG="$log" \
+    ENTRYPOINT="$ENTRYPOINT" FAILURE_STAGE="$stage" FAILURE_LOG="$log" \
     SOCIAL_MONITOR_DEPLOY_TEST_MODE=1 \
     SOCIAL_MONITOR_DEPLOY_ROOT="$ROOT" \
     SOCIAL_MONITOR_DEPLOY_REPO="$REPO" \
@@ -451,10 +486,14 @@ assert_pre_replacement_failure() {
       bash -c '
         set -euo pipefail
         source "$ENTRYPOINT"
-        backend_services() { printf "%s\n" api agent-runtime; }
+        backend_services() {
+          printf "%s\n" event-relay api daily-runner migrate delivery-service \
+            intelligence-worker agent-runtime ingestion-worker
+        }
         marker_value() {
           printf "%s\n" 0123456789abcdef0123456789abcdef01234567
         }
+        daily_runner_image_bootstrap_before_rescue() { :; }
         backend_image_rescue_prepare() {
           printf "prepared\n" > "$(backend_image_rescue_phase_file "$2")"
           printf "prepare\n" >> "$FAILURE_LOG"
@@ -481,10 +520,19 @@ assert_pre_replacement_failure() {
         }
         fake_compose() {
           if [[ " $* " == *" build "* ]]; then
-            [[ $COMPOSE_PARALLEL_LIMIT == 1 ]]
-            [[ $* == "--profile app --profile daily build api agent-runtime" ]]
-            printf "build\n" >> "$FAILURE_LOG"
-            [[ $FAILURE_STAGE != build ]]
+            local built_service=${!#}
+            if [[ $built_service == daily-runner ]]; then
+              [[ $# == 4 && $* == "--profile daily build daily-runner" ]]
+            else
+              [[ $# == 6 ]]
+              [[ $* == \
+                "--profile app --profile daily build $built_service" ]]
+            fi
+            printf "build:%s\n" "$built_service" >> "$FAILURE_LOG"
+            if [[ $FAILURE_STAGE == build && \
+                  $built_service == agent-runtime ]]; then
+              return 79
+            fi
           else
             printf "compose-up\n" >> "$FAILURE_LOG"
             return 90
@@ -525,9 +573,9 @@ assert_pre_replacement_failure preflight \
 assert_pre_replacement_failure backup \
   $'prepare\npreflight\ncompatibility\nbackup\nrollback:prepared'
 assert_pre_replacement_failure build \
-  $'prepare\npreflight\ncompatibility\nbackup\nbuild\nrollback:prepared'
+  $'prepare\npreflight\ncompatibility\nbackup\nbuild:migrate\nbuild:api\nbuild:agent-runtime\nrollback:prepared'
 assert_pre_replacement_failure migration \
-  $'prepare\npreflight\ncompatibility\nbackup\nbuild\nmigration\nrollback:prepared'
+  $'prepare\npreflight\ncompatibility\nbackup\nbuild:migrate\nbuild:api\nbuild:agent-runtime\nbuild:ingestion-worker\nbuild:intelligence-worker\nbuild:delivery-service\nbuild:event-relay\nbuild:daily-runner\nmigration\nrollback:prepared'
 
 # Every failure after the durable replacement transition is aggregated by the
 # outer transaction. Legacy inner rollback calls would add `inner-rollback`
@@ -770,17 +818,21 @@ grep -Fx 'backend-soak-heartbeat elapsed_seconds=60 remaining_seconds=5' \
   <<< "$heartbeat_output" >/dev/null
 [[ $(grep -c '^backend-soak-heartbeat ' <<< "$heartbeat_output") == 3 ]]
 grep -F 'verify-postgres-runtime-topology.py' "$ENTRYPOINT" >/dev/null
-grep -F 'install -m 0644 "$source/social-monitor-prod.service"' \
+grep -F 'install -m 0644 "$source/$unit" "$staged_release/$unit"' \
   "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" >/dev/null
-grep -F 'install -m 0644 "$source/social-monitor-daily.service"' \
+grep -F 'social-monitor-prod.service' \
+  "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" >/dev/null
+grep -F 'social-monitor-daily.service' \
+  "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" >/dev/null
+grep -F 'social-monitor-github-premidnight-capture-v1.service' \
+  "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" >/dev/null
+grep -F 'social-monitor-github-premidnight-capture-v1.timer' \
   "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" >/dev/null
 grep -F 'DropInPaths' "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" >/dev/null
 grep -F 'postgres-runtime-current/compose.postgres-runtime.yml' \
   "$SCRIPT_DIR/production-runtime/daily-run.sh" >/dev/null
-if find "$SCRIPT_DIR/production-runtime" -name '*.timer' -print -quit | grep -q .; then
-  echo 'PostgreSQL runtime release unexpectedly owns a timer' >&2
-  exit 1
-fi
+grep -F 'social-monitor-github-premidnight-capture-v1.timer' \
+  "$ENTRYPOINT" >/dev/null
 grep -F 'dailyTimerOwner' \
   "$SCRIPT_DIR/postgres-pool-release-contract.json" >/dev/null
 grep -F 'runtime_release != "$backend_release"' \
@@ -803,16 +855,17 @@ bridge_initialization_line=$(grep -nF 'initialize_deploy_control_bridge' \
 grep -F 'advance_integration "$sha"' \
   "$SCRIPT_DIR/deploy-control-lib.sh" >/dev/null
 
-# A bridge-current entrypoint classifies a later daily asset-only release as
-# control-only runtime activation and uses the already-sourced bridge library.
+# A bridge-current entrypoint classifies a later pre-midnight asset-only release
+# as control-only runtime activation and uses the already-sourced bridge library.
 BRIDGE_SHA=$CONTROL_TARGET_SHA
 for component in frontend backend control; do
   printf '%s\n' "$BRIDGE_SHA" > "$STATE/$component.sha"
 done
-printf '# final daily runtime asset\n' >> \
-  "$REPO/ops/deploy/production-runtime/daily-run.sh"
-git -C "$REPO" add ops/deploy/production-runtime/daily-run.sh
-git -C "$REPO" commit -qm 'test: final daily runtime asset'
+printf 'install-disabled-v1\n' > \
+  "$REPO/ops/deploy/production-runtime/github-premidnight-capture-v1.activation"
+git -C "$REPO" add \
+  ops/deploy/production-runtime/github-premidnight-capture-v1.activation
+git -C "$REPO" commit -qm 'test: final pre-midnight runtime asset'
 git -C "$REPO" push -q origin HEAD:main
 RUNTIME_CONTROL_TARGET_SHA=$(git -C "$REPO" rev-parse HEAD)
 git -C "$REPO" checkout -q "$BRIDGE_SHA"
@@ -843,15 +896,15 @@ grep -F "deployed=$RUNTIME_CONTROL_TARGET_SHA" <<< "$activation_output" >/dev/nu
    "$RUNTIME_CONTROL_TARGET_SHA false true" ]]
 [[ $(cat "$STATE/control.sha") == "$RUNTIME_CONTROL_TARGET_SHA" ]]
 
-# The next target is intentionally invalid: it combines another daily runtime
-# asset with a controller-library change. The bridge-current process must fail
-# before any runtime-control snapshot or activation.
+# The next target is intentionally invalid: it combines another pre-midnight
+# runtime asset with a controller-library change. The bridge-current process
+# must fail before any runtime-control snapshot or activation.
 printf '# incompatible controller mutation\n' >> \
   "$REPO/ops/deploy/deploy-control-lib.sh"
-printf '# incompatible daily mutation\n' >> \
-  "$REPO/ops/deploy/production-runtime/daily-run.sh"
+printf '# incompatible pre-midnight mutation\n' >> \
+  "$REPO/ops/deploy/production-runtime/social-monitor-github-premidnight-capture-v1.service"
 git -C "$REPO" add ops/deploy/deploy-control-lib.sh \
-  ops/deploy/production-runtime/daily-run.sh
+  ops/deploy/production-runtime/social-monitor-github-premidnight-capture-v1.service
 git -C "$REPO" commit -qm 'test: reject combined control activation'
 git -C "$REPO" push -q origin HEAD:main
 INCOMPATIBLE_TARGET_SHA=$(git -C "$REPO" rev-parse HEAD)
@@ -913,8 +966,16 @@ if run_entrypoint upload "$TARGET_SHA" < "$FIXTURE/bad-frontend.tgz" >/dev/null 
 fi
 
 echo 'Production deploy contract tests passed'
+if command -v shellcheck >/dev/null; then
+  shellcheck -x "$SCRIPT_DIR"/daily-runner-image-bootstrap-*.sh
+fi
+bash "$SCRIPT_DIR/daily-runner-image-bootstrap-deploy.test.sh"
+bash "$SCRIPT_DIR/daily-runner-image-bootstrap-lib.test.sh"
+bash "$SCRIPT_DIR/backend-runtime-health-lib.test.sh"
+bash "$SCRIPT_DIR/otel-collector-deploy-lifecycle.test.sh"
 bash "$SCRIPT_DIR/backend-image-rescue-lib.test.sh"
 bash "$SCRIPT_DIR/postgres-runtime-deploy-lib.test.sh"
+TMPDIR=/tmp bash "$SCRIPT_DIR/github-premidnight-capture-runtime.test.sh"
 bash "$SCRIPT_DIR/verify-postgres-runtime-topology.test.sh"
 bash "$SCRIPT_DIR/reader-summary-publication-migrator-validation.test.sh"
 bash "$SCRIPT_DIR/refresh-codex-auth.test.sh"

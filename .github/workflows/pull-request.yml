@@ -182,6 +182,27 @@ jobs:
           TENANT_RLS_TEST_ADMIN_DATABASE_URL: postgresql://social_monitor_rls_ci:social_monitor_local_password@127.0.0.1:5432/social_monitor_rls_ci
         run: npm run check:tenant-rls-postgres
 
+  production_runtime:
+    name: Production container and deploy lifecycle
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out the review commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: 22
+
+      - name: Verify production container and deploy lifecycle
+        run: |
+          set -euo pipefail
+          npm run check:container
+          npm run check:runtime-compose
+          npm run check:production-deploy-lifecycle
+
   frontend:
     name: Flutter architecture and tests
     runs-on: ubuntu-latest

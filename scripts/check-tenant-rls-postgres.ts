@@ -201,6 +201,10 @@ type IsolationFixture = {
   readonly workspaceTwo: string;
   readonly globalEventId: string;
   readonly tenantEventId: string;
+  readonly webhookEndpointOne: string;
+  readonly webhookEndpointTwo: string;
+  readonly webhookSecretOne: string;
+  readonly webhookSecretTwo: string;
 };
 
 async function seedIsolationFixture(
@@ -213,6 +217,10 @@ async function seedIsolationFixture(
     workspaceTwo: randomUUID(),
     globalEventId: randomUUID(),
     tenantEventId: randomUUID(),
+    webhookEndpointOne: randomUUID(),
+    webhookEndpointTwo: randomUUID(),
+    webhookSecretOne: `whsec_${randomUUID()}`,
+    webhookSecretTwo: `whsec_${randomUUID()}`,
   };
   await client.query(
     `INSERT INTO tenants (id, slug, name, created_at, updated_at)
@@ -264,6 +272,44 @@ async function seedIsolationFixture(
       fixture.tenantEventId,
     ],
   );
+  await client.query(
+    `INSERT INTO webhook_secrets
+       (id, tenant_id, workspace_id, algorithm, ciphertext, iv, auth_tag,
+        created_at, updated_at)
+     VALUES
+       ($5, $1, $2, 'fixture', 'ciphertext-one', 'iv-one', 'tag-one',
+        now(), now()),
+       ($6, $3, $4, 'fixture', 'ciphertext-two', 'iv-two', 'tag-two',
+        now(), now())`,
+    [
+      fixture.tenantOne,
+      fixture.workspaceOne,
+      fixture.tenantTwo,
+      fixture.workspaceTwo,
+      fixture.webhookSecretOne,
+      fixture.webhookSecretTwo,
+    ],
+  );
+  await client.query(
+    `INSERT INTO webhook_endpoints
+       (id, tenant_id, workspace_id, url, event_types, status, secret_key_id,
+        secret_preview, created_at, updated_at)
+     VALUES
+       ($5, $1, $2, 'https://one.example.test/webhook',
+        ARRAY['digest.ready.v1'], 'ENABLED', $7, 'preview1', now(), now()),
+       ($6, $3, $4, 'https://two.example.test/webhook',
+        ARRAY['digest.ready.v1'], 'ENABLED', $8, 'preview2', now(), now())`,
+    [
+      fixture.tenantOne,
+      fixture.workspaceOne,
+      fixture.tenantTwo,
+      fixture.workspaceTwo,
+      fixture.webhookEndpointOne,
+      fixture.webhookEndpointTwo,
+      fixture.webhookSecretOne,
+      fixture.webhookSecretTwo,
+    ],
+  );
   return fixture;
 }
 
@@ -302,6 +348,71 @@ async function assertTenantIsolation(
       update.rowCount ?? 0,
       0,
       "tenant context must not update another tenant",
+    );
+    assert(
+      await count(
+        client,
+        `SELECT count(*)::integer AS count
+           FROM webhook_secrets WHERE id = $1`,
+        [fixture.webhookSecretOne],
+      ),
+      1,
+      "tenant context must read its own webhook secret",
+    );
+    assert(
+      await count(
+        client,
+        `SELECT count(*)::integer AS count
+           FROM webhook_secrets WHERE id = $1`,
+        [fixture.webhookSecretTwo],
+      ),
+      0,
+      "tenant context must not read another tenant webhook secret",
+    );
+    const secretUpdate = await client.query(
+      `UPDATE webhook_secrets
+          SET ciphertext = ciphertext
+        WHERE id = $1`,
+      [fixture.webhookSecretTwo],
+    );
+    assert(
+      secretUpdate.rowCount ?? 0,
+      0,
+      "tenant context must not update another tenant webhook secret",
+    );
+    const secretDelete = await client.query(
+      "DELETE FROM webhook_secrets WHERE id = $1",
+      [fixture.webhookSecretTwo],
+    );
+    assert(
+      secretDelete.rowCount ?? 0,
+      0,
+      "tenant context must not delete another tenant webhook secret",
+    );
+    await assertRejectsForeignKey(client, () =>
+      client.query(
+        `INSERT INTO webhook_endpoints
+           (id, tenant_id, workspace_id, url, event_types, status,
+            secret_key_id, secret_preview, created_at, updated_at)
+         VALUES
+           (gen_random_uuid(), $1, $2, 'https://spoof.example.test/webhook',
+            ARRAY['digest.ready.v1'], 'ENABLED', $3, 'spoofed1', now(), now())`,
+        [
+          fixture.tenantOne,
+          fixture.workspaceOne,
+          fixture.webhookSecretTwo,
+        ],
+      ),
+      "cross-tenant webhook secret link insert",
+    );
+    await assertRejectsForeignKey(client, () =>
+      client.query(
+        `UPDATE webhook_endpoints
+            SET secret_key_id = $1
+          WHERE id = $2`,
+        [fixture.webhookSecretTwo, fixture.webhookEndpointOne],
+      ),
+      "cross-tenant webhook secret link update",
     );
     await assertRejectsRls(() =>
       client.query(
@@ -474,6 +585,31 @@ async function count(
 ): Promise<number> {
   const result = await client.query<{ readonly count: number }>(query, values);
   return result.rows[0]?.count ?? -1;
+}
+
+async function assertRejectsForeignKey(
+  client: PoolClient,
+  operation: () => Promise<unknown>,
+  label: string,
+): Promise<void> {
+  await client.query("SAVEPOINT tenant_scope_constraint");
+  try {
+    await operation();
+  } catch (error) {
+    await client.query("ROLLBACK TO SAVEPOINT tenant_scope_constraint");
+    await client.query("RELEASE SAVEPOINT tenant_scope_constraint");
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code === "23503"
+    ) {
+      return;
+    }
+    throw error;
+  }
+  await client.query("RELEASE SAVEPOINT tenant_scope_constraint");
+  throw new Error(`${label} must fail with a foreign key violation`);
 }
 
 async function assertRejectsRls(

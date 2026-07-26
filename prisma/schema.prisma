@@ -601,6 +601,7 @@ model ScanAttempt {
   tenantId          String            @map("tenant_id") @db.Uuid
   workspaceId       String            @map("workspace_id") @db.Uuid
   sourceBindingId   String            @map("source_binding_id") @db.Uuid
+  attemptNumber     Int               @default(1) @map("attempt_number")
   status            ScanAttemptStatus @default(RUNNING)
   startedAt         DateTime          @map("started_at") @db.Timestamptz(6)
   finishedAt        DateTime?         @map("finished_at") @db.Timestamptz(6)
@@ -921,6 +922,7 @@ model ReaderSummaryArtifact {
   createdAt       DateTime                      @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime                      @updatedAt @map("updated_at") @db.Timestamptz(6)
   publication     ReaderSummaryPublication?
+  weeklyPublicationEvidence ReaderSummaryWeeklyPublicationEvidence?
   recoveryReceipt ReaderSummaryRecoveryReceipt?
 
   @@index([tenantId, workspaceId, scopeKey, cadence, periodStartedAt], map: "reader_summary_artifacts_period_lookup_idx")
@@ -954,6 +956,7 @@ model ReaderSummaryJob {
   createdAt               DateTime                      @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt               DateTime                      @updatedAt @map("updated_at") @db.Timestamptz(6)
   publication             ReaderSummaryPublication?
+  weeklyPublicationEvidence ReaderSummaryWeeklyPublicationEvidence?
   recoveryReceipt         ReaderSummaryRecoveryReceipt?
 
   @@unique([tenantId, idempotencyKey])
@@ -991,10 +994,49 @@ model ReaderSummaryPublication {
   readerSummaryArtifact   ReaderSummaryArtifact         @relation(fields: [readerSummaryArtifactId], references: [id], onDelete: Restrict, map: "reader_summary_publications_artifact_fkey")
   outboxEvent             OutboxEvent?                  @relation(fields: [outboxEventId], references: [id], onDelete: Restrict, map: "reader_summary_publications_outbox_fkey")
   activeSlot              ReaderSummaryPublicationSlot?
+  weeklyPublicationEvidence ReaderSummaryWeeklyPublicationEvidence?
   recoveryReceipt         ReaderSummaryRecoveryReceipt?
 
   @@index([tenantId, workspaceId, scopeKey, requestedAt], map: "reader_summary_publications_scope_requested_idx")
   @@map("reader_summary_publications")
+}
+
+model ReaderSummaryWeeklyPublicationEvidence {
+  publicationId           String                       @id(map: "reader_summary_weekly_publication_evidence_pkey") @map("publication_id") @db.Uuid
+  tenantId                String                       @map("tenant_id") @db.Uuid
+  workspaceId             String                       @map("workspace_id") @db.Uuid
+  scopeType               String                       @map("scope_type")
+  scopeKey                String                       @map("scope_key")
+  cadence                 String
+  periodStartedAt         DateTime                     @map("period_started_at") @db.Timestamptz(6)
+  periodEndedAt           DateTime                     @map("period_ended_at") @db.Timestamptz(6)
+  periodTimezone          String                       @map("period_timezone")
+  requestedUtcDate        DateTime                     @map("requested_utc_date") @db.Date
+  readerSummaryJobId      String                       @unique(map: "reader_summary_weekly_publication_evidence_job_key") @map("reader_summary_job_id") @db.Uuid
+  readerSummaryArtifactId String                       @unique(map: "reader_summary_weekly_publication_evidence_artifact_key") @map("reader_summary_artifact_id") @db.Uuid
+  reportId                String                       @unique(map: "reader_summary_weekly_publication_evidence_report_key") @map("report_id")
+  proofId                 String                       @unique(map: "reader_summary_weekly_publication_evidence_proof_key") @map("proof_id")
+  semanticStatus          SummaryStatus                @map("semantic_status")
+  report                  Json
+  reportSha256            String                       @map("report_sha256") @db.Char(64)
+  exactProof              Json                         @map("exact_proof")
+  proofSha256             String                       @map("proof_sha256") @db.Char(64)
+  artifactPayloadSha256   String                       @map("artifact_payload_sha256") @db.Char(64)
+  providerEvidence        Json                         @map("provider_evidence")
+  providerEvidenceSha256  String                       @map("provider_evidence_sha256") @db.Char(64)
+  githubEvidence          Json                         @map("github_evidence")
+  canonicalRecord         Json                         @map("canonical_record")
+  canonicalBytes          Bytes                        @map("canonical_bytes")
+  canonicalSha256         String                       @map("canonical_sha256") @db.Char(64)
+  identity                String                       @unique(map: "reader_summary_weekly_publication_evidence_identity_key")
+  recordedAt              DateTime                     @map("recorded_at") @db.Timestamptz(6)
+  publication             ReaderSummaryPublication     @relation(fields: [publicationId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "reader_summary_weekly_publication_evidence_publication_fkey")
+  readerSummaryJob        ReaderSummaryJob             @relation(fields: [readerSummaryJobId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "reader_summary_weekly_publication_evidence_job_fkey")
+  readerSummaryArtifact   ReaderSummaryArtifact        @relation(fields: [readerSummaryArtifactId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "reader_summary_weekly_publication_evidence_artifact_fkey")
+  publicationSlot         ReaderSummaryPublicationSlot @relation(fields: [tenantId, workspaceId, scopeType, scopeKey, cadence, periodStartedAt, periodEndedAt, periodTimezone], references: [tenantId, workspaceId, scopeType, scopeKey, cadence, periodStartedAt, periodEndedAt, periodTimezone], onDelete: Restrict, onUpdate: Restrict, map: "reader_summary_weekly_publication_evidence_slot_fkey")
+
+  @@index([tenantId, workspaceId, requestedUtcDate], map: "reader_summary_weekly_publication_evidence_tenant_day_idx")
+  @@map("reader_summary_weekly_publication_evidence")
 }
 
 model ReaderSummaryRecoveryReceipt {
@@ -1028,6 +1070,7 @@ model ReaderSummaryPublicationSlot {
   periodTimezone       String                    @map("period_timezone")
   currentPublicationId String?                   @unique(map: "reader_summary_publication_slots_current_key") @map("current_publication_id") @db.Uuid
   currentPublication   ReaderSummaryPublication? @relation(fields: [currentPublicationId], references: [id], onDelete: Restrict, map: "reader_summary_publication_slots_current_fkey")
+  weeklyPublicationEvidence ReaderSummaryWeeklyPublicationEvidence[]
   updatedAt            DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@id([tenantId, workspaceId, scopeType, scopeKey, cadence, periodStartedAt, periodEndedAt, periodTimezone], map: "reader_summary_publication_slots_pkey")
@@ -1329,20 +1372,27 @@ model WebhookEndpoint {
   quarantinedAt    DateTime?             @map("quarantined_at") @db.Timestamptz(6)
   quarantineReason String?               @map("quarantine_reason")
   updatedAt        DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
+  secret           WebhookSecret         @relation(fields: [secretKeyId, tenantId, workspaceId], references: [id, tenantId, workspaceId], onDelete: Restrict, onUpdate: Restrict, map: "webhook_endpoints_secret_scope_fkey")
 
   @@index([tenantId, workspaceId, status, createdAt])
+  @@index([secretKeyId, tenantId, workspaceId], map: "webhook_endpoints_secret_scope_idx")
   @@map("webhook_endpoints")
 }
 
 model WebhookSecret {
-  id         String   @id
-  algorithm  String
-  ciphertext String
-  iv         String
-  authTag    String   @map("auth_tag")
-  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id          String            @id
+  tenantId    String            @map("tenant_id") @db.Uuid
+  workspaceId String            @map("workspace_id") @db.Uuid
+  algorithm   String
+  ciphertext  String
+  iv          String
+  authTag     String            @map("auth_tag")
+  createdAt   DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+  endpoints   WebhookEndpoint[]
 
+  @@unique([id, tenantId, workspaceId], map: "webhook_secrets_id_tenant_workspace_key")
+  @@index([tenantId, workspaceId, id], map: "webhook_secrets_tenant_workspace_id_idx")
   @@map("webhook_secrets")
 }
 

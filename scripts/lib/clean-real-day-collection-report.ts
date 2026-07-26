@@ -1,4 +1,5 @@
 import type { ProviderCollectionObservation } from "./provider-collection-observability";
+import type { GitHubTrendingDurableSnapshotProof } from "./github-trending-durable-snapshot-reuse";
 
 export type CleanRealDayCollectionProviderKey =
   "github-trending-page" | "hacker-news" | "reddit" | "rss" | "x-twitter";
@@ -17,7 +18,9 @@ export type CleanRealDayCollectionReport = {
   readonly generatedBy: string;
   readonly model: {
     readonly mode: "targeted_real_binding_collection";
-    readonly liveNetwork: true;
+    readonly liveNetwork: boolean;
+    readonly liveNetworkProviderKeys: readonly CleanRealDayCollectionProviderKey[];
+    readonly durableSnapshotReuseProviderKeys: readonly CleanRealDayCollectionProviderKey[];
     readonly rawProviderPayloadPersistedInReport: false;
     readonly rawPostTextPersistedInReport: false;
     readonly rawProviderConfigPersistedInReport: false;
@@ -47,6 +50,9 @@ export type CleanRealDayCollectionReport = {
   readonly scans: readonly {
     readonly providerKey: CleanRealDayCollectionProviderKey;
     readonly bindingFingerprint: string;
+    readonly acquisitionMode:
+      | "live_collection"
+      | "durable_snapshot_reuse";
     readonly attemptCount: number;
     readonly retryStopReason?: "duplicate_plan";
     readonly status: "succeeded" | "failed" | "skipped";
@@ -56,6 +62,7 @@ export type CleanRealDayCollectionReport = {
     readonly skippedDuplicates: number;
     readonly warningCount: number;
     readonly observability: ProviderCollectionObservation;
+    readonly durableSnapshotProof?: GitHubTrendingDurableSnapshotProof;
     readonly failureFingerprint?: string;
   }[];
   readonly freshWindow: {
@@ -74,4 +81,29 @@ export type CleanRealDayCollectionReport = {
   readonly targetWindow: CleanRealDayCollectionReport["freshWindow"];
   readonly qualityGates: Record<string, boolean>;
   readonly blockingPassed: boolean;
+};
+
+export const cleanRealDayCollectionAcquisitionModel = (
+  scans: readonly Pick<
+    CleanRealDayCollectionReport["scans"][number],
+    "providerKey" | "acquisitionMode"
+  >[],
+): Pick<
+  CleanRealDayCollectionReport["model"],
+  | "liveNetwork"
+  | "liveNetworkProviderKeys"
+  | "durableSnapshotReuseProviderKeys"
+> => {
+  const liveNetworkProviderKeys = scans
+    .filter((scan) => scan.acquisitionMode === "live_collection")
+    .map((scan) => scan.providerKey);
+  const durableSnapshotReuseProviderKeys = scans
+    .filter((scan) => scan.acquisitionMode === "durable_snapshot_reuse")
+    .map((scan) => scan.providerKey);
+
+  return {
+    liveNetwork: liveNetworkProviderKeys.length > 0,
+    liveNetworkProviderKeys,
+    durableSnapshotReuseProviderKeys,
+  };
 };

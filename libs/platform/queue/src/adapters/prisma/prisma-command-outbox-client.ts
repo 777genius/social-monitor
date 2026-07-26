@@ -50,6 +50,19 @@ export type PrismaCommandOutboxTransactionClient = {
       };
     }): Promise<{ readonly count: number }>;
   };
+  readonly scanJob: {
+    updateMany(args: {
+      readonly where: {
+        readonly id: string;
+        readonly status: 'ENQUEUED';
+      };
+      readonly data: {
+        readonly status: 'FAILED';
+        readonly completedAt: Date;
+        readonly failureReason: string;
+      };
+    }): Promise<{ readonly count: number }>;
+  };
 };
 
 export type PrismaCommandOutboxClient = {
@@ -60,4 +73,5 @@ export type PrismaCommandOutboxClient = {
     options: { readonly isolationLevel: 'Serializable' },
   ): Promise<TValue>;
   readonly outboxEvent: PrismaCommandOutboxTransactionClient['outboxEvent'];
+  readonly scanJob: PrismaCommandOutboxTransactionClient['scanJob'];
 };

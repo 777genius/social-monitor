@@ -57,6 +57,24 @@ if (migrateBlock.length === 0) {
   }
 }
 
+const otelCollectorBlock = serviceBlock("otel-collector");
+for (const marker of [
+  "${OTEL_COLLECTOR_IMAGE:-otel/opentelemetry-collector-contrib:0.157.0@sha256:f2f01157055a9b2aab9df7118e1f1c9abf345e99b23bc7a2bc791db374a7d0f6}",
+  "${OTEL_COLLECTOR_CONFIG_PATH:-./ops/observability/otel-collector.yml}:/etc/otelcol-contrib/config.yaml:ro",
+  'expose: ["4318", "8889", "13133"]',
+  'profiles: ["app"]',
+  "restart: unless-stopped",
+]) {
+  if (!otelCollectorBlock.includes(marker)) {
+    violations.push(`otel-collector missing runtime marker "${marker}"`);
+  }
+}
+if (otelCollectorBlock.includes("\n    ports:")) {
+  violations.push(
+    "otel-collector telemetry endpoints must not be published on host ports",
+  );
+}
+
 for (const [service, npmService] of runtimeServices) {
   const block = serviceBlock(service);
 

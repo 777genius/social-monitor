@@ -64,12 +64,13 @@ describe('ingestion worker execute scan command (e2e)', () => {
       skippedDuplicates: 0,
       projected: 2,
     });
-    expect(second).toMatchObject({
+    expect(second).toEqual({
       scanJobId: 'scan-job-1',
       fetched: 2,
-      inserted: 0,
-      skippedDuplicates: 2,
+      inserted: 2,
+      skippedDuplicates: 0,
       projected: 2,
+      warnings: [],
     });
     expect(repository.all()).toHaveLength(2);
     expect((await feedRepository.list({
@@ -85,8 +86,8 @@ describe('ingestion worker execute scan command (e2e)', () => {
     }))?.toSnapshot()).toMatchObject({
       status: 'succeeded',
       fetched: 2,
-      inserted: 0,
-      skippedDuplicates: 2,
+      inserted: 2,
+      skippedDuplicates: 0,
       projected: 2,
     });
     expect(await cursorRepository.findBySourceBinding({

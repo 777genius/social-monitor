@@ -265,7 +265,9 @@ const createFixture = (params: {
       windowId: "publication-test-window",
       startedAt: period.startedAt,
       endedAt: period.endedAt,
-      selectedFeedItemIds: [],
+      selectedFeedItemIds: noSignal
+        ? []
+        : githubCitations.map((citation) => citation.feedItemId),
       storyClusterIds: [],
     },
     storyClusters: [],
@@ -276,8 +278,20 @@ const createFixture = (params: {
     interestHighlights: [],
     repeatedSignals: [],
     risksAndUnknowns: [],
-    citationMap: githubCitations,
-    content: { selectedPosts: githubSelectedPosts },
+    citationMap: noSignal ? [] : githubCitations,
+    content: noSignal
+      ? {
+          qualityState: {
+            status: "no_signal",
+            flags: ["no_signal"],
+            warnings: ["No eligible evidence."],
+            isSingleSource: false,
+          },
+          topReads: [],
+          selectedPosts: [],
+          narrativeSections: [],
+        }
+      : { selectedPosts: githubSelectedPosts },
     qualityFlags: noSignal ? ["no_signal"] : [],
     confidence: {
       level: noSignal ? "none" : "medium",
@@ -344,52 +358,64 @@ const createFixture = (params: {
       },
       reasons: [],
     },
-    githubProjectionAudit: {
-      schemaVersion: "reader_summary.github_projection.v1" as const,
-      status: "verified" as const,
-      requestedUtcDay: "2026-07-05",
-      pageCount: 1,
-      scannedItemCount: 10,
-      eligibleBindingIds: ["github-binding"],
-      observedThrough: githubObservedAt.toISOString(),
-      projectionCheckedAt: githubCheckedAt.toISOString(),
-      telemetry: {
-        github_projection_collection_delay_ms: githubProjectionDelayMs,
-        collectionGraceMs: readerSummaryGitHubProjectionCollectionGraceMs,
-        warningThresholdMs:
-          readerSummaryGitHubProjectionCollectionWarningThresholdMs,
-        qualitySignal:
-          githubProjectionDelayMs >=
-          readerSummaryGitHubProjectionCollectionWarningThresholdMs
-            ? ("github_projection_collection_delay_warning" as const)
-            : ("within_grace" as const),
-      },
-      bindings: githubCitations.map((citation, index) => {
-        const rank = index + 1;
-        return {
-          selectedPostIndex: index,
-          rank,
-          citationId: citation.citationId,
-          feedItemId: citation.feedItemId,
-          sourceItemId: citation.sourceItemId,
-          sourceBindingId: "github-binding",
-          providerKey: "github-trending-page",
-          metadataKind: "github_trending_page_repository",
-          scanJobId: `github-publication-scan-${params.sequence}`,
-          repositoryIdentity: `owner/repository-${rank}`,
-          canonicalUrl: citation.canonicalUrl,
-          starsGained: 200 + rank,
-          fetchStartedAt: githubFetchStartedAt.toISOString(),
-          publishedAt: githubCheckedAt.toISOString(),
-          checkedAt: githubCheckedAt.toISOString(),
-          observedAt: githubObservedAt.toISOString(),
-          sourceContentHash: "a".repeat(64),
-          sourceProviderContentHash: "b".repeat(64),
-        };
-      }),
-      violationCodes: [],
-      reasons: [],
-    },
+    githubProjectionAudit: noSignal
+      ? {
+          schemaVersion: "reader_summary.github_projection.v1" as const,
+          status: "not_required" as const,
+          requestedUtcDay: "2026-07-05",
+          pageCount: 1,
+          scannedItemCount: 0,
+          eligibleBindingIds: [],
+          bindings: [],
+          violationCodes: [],
+          reasons: [],
+        }
+      : {
+          schemaVersion: "reader_summary.github_projection.v1" as const,
+          status: "verified" as const,
+          requestedUtcDay: "2026-07-05",
+          pageCount: 1,
+          scannedItemCount: 10,
+          eligibleBindingIds: ["github-binding"],
+          observedThrough: githubObservedAt.toISOString(),
+          projectionCheckedAt: githubCheckedAt.toISOString(),
+          telemetry: {
+            github_projection_collection_delay_ms: githubProjectionDelayMs,
+            collectionGraceMs: readerSummaryGitHubProjectionCollectionGraceMs,
+            warningThresholdMs:
+              readerSummaryGitHubProjectionCollectionWarningThresholdMs,
+            qualitySignal:
+              githubProjectionDelayMs >=
+              readerSummaryGitHubProjectionCollectionWarningThresholdMs
+                ? ("github_projection_collection_delay_warning" as const)
+                : ("within_grace" as const),
+          },
+          bindings: githubCitations.map((citation, index) => {
+            const rank = index + 1;
+            return {
+              selectedPostIndex: index,
+              rank,
+              citationId: citation.citationId,
+              feedItemId: citation.feedItemId,
+              sourceItemId: citation.sourceItemId,
+              sourceBindingId: "github-binding",
+              providerKey: "github-trending-page",
+              metadataKind: "github_trending_page_repository",
+              scanJobId: `github-publication-scan-${params.sequence}`,
+              repositoryIdentity: `owner/repository-${rank}`,
+              canonicalUrl: citation.canonicalUrl,
+              starsGained: 200 + rank,
+              fetchStartedAt: githubFetchStartedAt.toISOString(),
+              publishedAt: githubCheckedAt.toISOString(),
+              checkedAt: githubCheckedAt.toISOString(),
+              observedAt: githubObservedAt.toISOString(),
+              sourceContentHash: "a".repeat(64),
+              sourceProviderContentHash: "b".repeat(64),
+            };
+          }),
+          violationCodes: [],
+          reasons: [],
+        },
     readyEvent,
   } as unknown as ReaderSummaryPublicationCommand;
 

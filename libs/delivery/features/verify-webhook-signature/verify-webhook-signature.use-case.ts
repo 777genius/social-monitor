@@ -64,7 +64,11 @@ export class VerifyWebhookSignatureUseCase {
       });
     }
 
-    const secret = await this.secrets.get({ secretKeyId: command.keyId });
+    const secret = await this.secrets.get({
+      tenantId: command.tenantId,
+      workspaceId: command.workspaceId,
+      secretKeyId: command.keyId,
+    });
 
     if (secret === null) {
       return ok({

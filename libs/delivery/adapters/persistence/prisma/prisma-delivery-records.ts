@@ -122,6 +122,8 @@ export type PrismaWebhookEndpointRecord = {
 
 export type PrismaWebhookSecretRecord = {
   readonly id: string;
+  readonly tenantId: string;
+  readonly workspaceId: string;
   readonly algorithm: string;
   readonly ciphertext: string;
   readonly iv: string;

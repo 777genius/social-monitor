@@ -390,6 +390,7 @@ export class FakeScanLease implements ScanLeasePort {
   readonly acquired: unknown[] = [];
   readonly released: ScanLease[] = [];
   private alreadyLeased = false;
+  private readonly leases = new Map<string, ScanLease>();
 
   holdNextAcquire(): void {
     this.alreadyLeased = true;
@@ -404,20 +405,48 @@ export class FakeScanLease implements ScanLeasePort {
       return null;
     }
 
-    return {
+    const key = this.key(command);
+    const existing = this.leases.get(key);
+    if (
+      existing !== undefined &&
+      existing.expiresAt.getTime() > command.leasedAt.getTime()
+    ) {
+      return null;
+    }
+
+    const lease = {
       tenantId: command.tenantId,
       workspaceId: command.workspaceId,
       scanJobId: command.scanJobId,
       workerId: command.workerId,
-      fencingToken: `${command.scanJobId}:${command.workerId}:test`,
+      fencingToken: `${command.scanJobId}:${command.workerId}:${command.leasedAt.getTime()}`,
       leasedAt: command.leasedAt,
       expiresAt: new Date(
         command.leasedAt.getTime() + command.ttlSeconds * 1000,
       ),
     };
+    this.leases.set(key, lease);
+
+    return lease;
   }
 
   async release(lease: ScanLease): Promise<void> {
     this.released.push(lease);
+    const key = this.key(lease);
+    if (this.leases.get(key)?.fencingToken === lease.fencingToken) {
+      this.leases.delete(key);
+    }
+  }
+
+  current(
+    params: Pick<ScanLease, "tenantId" | "workspaceId" | "scanJobId">,
+  ): ScanLease | null {
+    return this.leases.get(this.key(params)) ?? null;
+  }
+
+  private key(
+    params: Pick<ScanLease, "tenantId" | "workspaceId" | "scanJobId">,
+  ): string {
+    return `${params.tenantId}:${params.workspaceId}:${params.scanJobId}`;
   }
 }

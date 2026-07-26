@@ -25,7 +25,6 @@ export {
   readerSummaryGitHubProjectionCollectionWarningThresholdMs,
 } from "./reader-summary-github-projection-collection-window";
 export type { ReaderSummaryGitHubProjectionCollectionTelemetry } from "./reader-summary-github-projection-collection-window";
-
 export type ReaderSummaryGitHubProjectionViolationCode =
   | "github_projection_unavailable"
   | "github_projection_day_invalid"
@@ -130,6 +129,20 @@ export const readerSummaryHasNoGitHubEvidence = (
     !(snapshot.content?.selectedPosts ?? []).some(isGitHubReaderItem) &&
     !snapshot.citationMap.some(isGitHubCitation)
   );
+};
+
+export const readerSummaryIsOrdinaryNoSignalWithoutEvidence = (artifact: ReaderSummaryArtifact): boolean => {
+  const snapshot = artifact.toSnapshot(); const content = snapshot.content;
+  const contentHasNoEvidence = content === undefined ||
+    (content.qualityState !== undefined && (content.qualityState.status === "no_signal" ||
+      content.qualityState.flags.includes("no_signal")) && content.topReads.length === 0 &&
+      (content.selectedPosts?.length ?? 0) === 0 && (content.narrativeSections ?? [])
+        .every((section) => section.citationIds.length === 0));
+  return snapshot.period.cadence === "daily" &&
+    (snapshot.qualityFlags ?? []).includes("no_signal") &&
+    nonEmpty(snapshot.noSignalReason ?? "") && snapshot.citationMap.length === 0 &&
+    (snapshot.topStories ?? []).length === 0 && readerSummaryHasNoGitHubEvidence(artifact) &&
+    contentHasNoEvidence;
 };
 
 export const readerSummaryHasNoPrimaryGitHubEvidence = (
@@ -286,7 +299,9 @@ export const readerSummaryHasVerifiedGitHubProjection = (params: {
     }
     return (
       params.audit.pageCount >= 1 &&
-      !readerSummaryRequiresGitHubProjection(params.artifact) &&
+      (readerSummaryIsOrdinaryNoSignalWithoutEvidence(params.artifact) ||
+        (snapshot.period.cadence !== "daily" &&
+          !readerSummaryRequiresGitHubProjection(params.artifact))) &&
       params.audit.eligibleBindingIds.length === 0 &&
       params.audit.scannedItemCount === 0 &&
       params.audit.bindings.length === 0 &&
@@ -403,18 +418,6 @@ export const readerSummaryHasVerifiedGitHubProjection = (params: {
   });
 };
 
-const sameCollectionTelemetry = (
-  actual: ReaderSummaryGitHubProjectionCollectionTelemetry | undefined,
-  expected: ReaderSummaryGitHubProjectionCollectionTelemetry | undefined,
-): boolean =>
-  actual !== undefined &&
-  expected !== undefined &&
-  actual.github_projection_collection_delay_ms ===
-    expected.github_projection_collection_delay_ms &&
-  actual.collectionGraceMs === expected.collectionGraceMs &&
-  actual.warningThresholdMs === expected.warningThresholdMs &&
-  actual.qualitySignal === expected.qualitySignal;
-
 export const isGitHubReaderItem = (
   item: Pick<ReaderSummaryItem, "providerKey">,
 ): boolean =>
@@ -472,9 +475,20 @@ const exactIsoInstant = (value: string | undefined): boolean => {
   return Number.isFinite(parsed.getTime()) && parsed.toISOString() === value;
 };
 
+const sameCollectionTelemetry = (
+  actual: ReaderSummaryGitHubProjectionCollectionTelemetry | undefined,
+  expected: ReaderSummaryGitHubProjectionCollectionTelemetry | undefined,
+): boolean =>
+  actual !== undefined &&
+  expected !== undefined &&
+  actual.github_projection_collection_delay_ms ===
+    expected.github_projection_collection_delay_ms &&
+  actual.collectionGraceMs === expected.collectionGraceMs &&
+  actual.warningThresholdMs === expected.warningThresholdMs &&
+  actual.qualitySignal === expected.qualitySignal;
+
 export const hasDuplicates = <TValue>(values: readonly TValue[]): boolean =>
   new Set(values).size !== values.length;
-
 export const validEligibleBindingIds = (
   bindingIds: readonly string[],
 ): boolean =>

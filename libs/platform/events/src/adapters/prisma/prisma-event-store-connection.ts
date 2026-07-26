@@ -19,6 +19,7 @@ export class PrismaEventStoreConnection
 {
   readonly outboxEvent: PrismaEventStoreClient['outboxEvent'] &
     PrismaCommandOutboxClient['outboxEvent'];
+  readonly scanJob: PrismaCommandOutboxClient['scanJob'];
   readonly inboxRecord: PrismaEventStoreClient['inboxRecord'];
 
   private readonly runtime: PrismaPgRuntimeConnectionLease<PrismaEventStoreRuntimeClient>;
@@ -44,6 +45,7 @@ export class PrismaEventStoreConnection
     this.client = this.runtime.client;
 
     this.outboxEvent = this.client.outboxEvent;
+    this.scanJob = this.client.scanJob;
     this.inboxRecord = this.client.inboxRecord;
   }
 

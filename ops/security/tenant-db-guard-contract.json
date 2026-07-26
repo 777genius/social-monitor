@@ -1,9 +1,24 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "posture": "rls_enforced_tenant_guardrails",
   "owner": "security-owner",
   "systemCapabilityRole": "social_monitor_tenant_system_runtime",
-  "rlsMigrationPath": "prisma/migrations/20260723153000_tenant_row_level_security/migration.sql",
+  "rlsMigrationPaths": [
+    "prisma/migrations/20260723153000_tenant_row_level_security/migration.sql",
+    "prisma/migrations/20260726120000_tenant_secret_scope_and_weekly_evidence_rls/migration.sql"
+  ],
+  "forwardRlsCoverage": [
+    {
+      "table": "reader_summary_weekly_publication_evidence",
+      "migrationPath": "prisma/migrations/20260726120000_tenant_secret_scope_and_weekly_evidence_rls/migration.sql",
+      "ownerRole": "social_monitor_reader_summary_publication_owner"
+    },
+    {
+      "table": "webhook_secrets",
+      "migrationPath": "prisma/migrations/20260726120000_tenant_secret_scope_and_weekly_evidence_rls/migration.sql",
+      "ownerRole": "social_monitor_public_schema_owner"
+    }
+  ],
   "tenantRootTables": [
     "tenants"
   ],
@@ -17,6 +32,7 @@
     "reader_summary_publications",
     "reader_summary_publication_slots",
     "reader_summary_recovery_receipts",
+    "reader_summary_weekly_publication_evidence",
     "reader_summary_topic_recommendation_decisions",
     "cursor_checkpoints",
     "delivery_attempts",
@@ -61,6 +77,7 @@
     "user_summary_preferences",
     "users",
     "webhook_endpoints",
+    "webhook_secrets",
     "workspaces"
   ],
   "tenantScopedSystemTables": [
@@ -96,11 +113,24 @@
       "table": "webhook_replay_deliveries",
       "parentTable": "webhook_endpoints",
       "reason": "Webhook replay nonces inherit tenant scope from their endpoint."
-    },
+    }
+  ],
+  "tenantScopedAssociations": [
     {
-      "table": "webhook_secrets",
-      "parentTable": "webhook_endpoints",
-      "reason": "Encrypted webhook material is readable and mutable only through a tenant-scoped endpoint reference."
+      "childTable": "webhook_endpoints",
+      "parentTable": "webhook_secrets",
+      "constraintName": "webhook_endpoints_secret_scope_fkey",
+      "childColumns": [
+        "secret_key_id",
+        "tenant_id",
+        "workspace_id"
+      ],
+      "parentColumns": [
+        "id",
+        "tenant_id",
+        "workspace_id"
+      ],
+      "reason": "An endpoint can reference signing material only when both rows have exactly the same tenant and workspace ownership."
     }
   ],
   "sharedTables": [

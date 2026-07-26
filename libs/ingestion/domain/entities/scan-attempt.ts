@@ -7,6 +7,7 @@ export type ScanAttemptProps = {
   readonly tenantId: TenantId;
   readonly workspaceId: WorkspaceId;
   readonly sourceBindingId: string;
+  readonly attemptNumber: number;
   readonly status: ScanAttemptStatus;
   readonly startedAt: Date;
   readonly finishedAt?: Date;
@@ -84,6 +85,10 @@ export class ScanAttempt {
 
     if (props.sourceBindingId.trim().length === 0) {
       throw new Error('Source binding id must be non-empty');
+    }
+
+    if (!Number.isInteger(props.attemptNumber) || props.attemptNumber < 1) {
+      throw new Error('Scan attempt number must be a positive integer');
     }
 
     for (const value of [props.fetched, props.inserted, props.skippedDuplicates, props.projected]) {

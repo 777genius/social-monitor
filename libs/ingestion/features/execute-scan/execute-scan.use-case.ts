@@ -44,6 +44,7 @@ import {
   failedScanCollectionExecutionMetadata,
   successfulScanCollectionExecutionMetadata,
 } from "./scan-collection-execution-metadata";
+import { decideScanAttemptExecution } from "./scan-attempt-idempotency";
 import {
   buildScanFailureMetadata,
   formatScanFailureReason,
@@ -134,16 +135,35 @@ export class ExecuteScanUseCase {
       );
     }
 
-    let attempt = ScanAttempt.start({
-      scanJobId: command.scanJobId,
-      tenantId: command.tenantId,
-      workspaceId: command.workspaceId,
-      sourceBindingId: sourceBinding.sourceBindingId,
-      startedAt: this.clock.now(),
-    });
-    await this.scanAttempts.save(attempt);
-
+    let attempt: ScanAttempt | undefined;
     try {
+      const existingAttempt = await this.scanAttempts.findByScanJob({
+        tenantId: command.tenantId,
+        workspaceId: command.workspaceId,
+        scanJobId: command.scanJobId,
+      });
+      const executionDecision = decideScanAttemptExecution({
+        existing: existingAttempt,
+        requestedAttemptNumber: scanPolicy.attemptNumber,
+      });
+      if (executionDecision.kind === "replay") {
+        return ok(executionDecision.result);
+      }
+      if (executionDecision.kind === "reject") {
+        return err(executionDecision.error);
+      }
+
+      const startedAttempt = ScanAttempt.start({
+        scanJobId: command.scanJobId,
+        tenantId: command.tenantId,
+        workspaceId: command.workspaceId,
+        sourceBindingId: sourceBinding.sourceBindingId,
+        attemptNumber: scanPolicy.attemptNumber,
+        startedAt: this.clock.now(),
+      });
+      await this.scanAttempts.save(startedAttempt);
+      attempt = startedAttempt;
+
       const existingCursor = await this.scanCursors.findBySourceBinding({
         tenantId: command.tenantId,
         workspaceId: command.workspaceId,
@@ -380,6 +400,14 @@ export class ExecuteScanUseCase {
           : { telemetry: fetched.telemetry }),
       });
     } catch (error) {
+      if (attempt === undefined) {
+        return err(
+          error instanceof Error
+            ? error
+            : new Error("Unknown scan execution failure"),
+        );
+      }
+
       const safeFailureReason = formatScanFailureReason(error);
       const failureMetadata = buildScanFailureMetadata(error);
       attempt = attempt.fail({

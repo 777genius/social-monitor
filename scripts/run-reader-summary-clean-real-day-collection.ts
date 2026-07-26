@@ -1,47 +1,11 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
-import { ConversationUnitProjectionAdapter } from "@social-monitor/conversation/adapters/ingestion/conversation-unit-projection.adapter";
-import { PrismaConversationUnitRepository } from "@social-monitor/conversation/adapters/persistence/prisma/prisma-conversation-unit.repository";
-import { PrismaFeedProjectionAdapter } from "@social-monitor/feed/adapters/persistence/prisma/prisma-feed-projection.adapter";
-import { PrismaScanAttemptRepository } from "@social-monitor/ingestion/adapters/persistence/prisma/prisma-scan-attempt.repository";
-import { PrismaScanCursorRepository } from "@social-monitor/ingestion/adapters/persistence/prisma/prisma-scan-cursor.repository";
-import { PrismaScanFailureQueueAdapter } from "@social-monitor/ingestion/adapters/persistence/prisma/prisma-scan-failure-queue.adapter";
-import { PrismaScanLeaseAdapter } from "@social-monitor/ingestion/adapters/persistence/prisma/prisma-scan-lease.adapter";
-import { PrismaSourceItemRepository } from "@social-monitor/ingestion/adapters/persistence/prisma/prisma-source-item.repository";
-import { CircuitBreakerSourceFetcherAdapter } from "@social-monitor/ingestion/adapters/source/circuit-breaker-source-fetcher.adapter";
-import { HttpGitHubTrendingPageClient } from "@social-monitor/ingestion/adapters/source/github-trending-page/http-github-trending-page-client";
-import { GitHubTrendingPageSourceProvider } from "@social-monitor/ingestion/adapters/source/github-trending-page/github-trending-page-source.provider";
-import { HttpHackerNewsClient } from "@social-monitor/ingestion/adapters/source/hacker-news/http-hacker-news-client";
-import { HackerNewsSourceProvider } from "@social-monitor/ingestion/adapters/source/hacker-news/hacker-news-source.provider";
-import { HttpRedditClient } from "@social-monitor/ingestion/adapters/source/reddit/http-reddit-client";
-import { RedditAppOnlyTokenProvider } from "@social-monitor/ingestion/adapters/source/reddit/app-only-reddit-token-provider";
-import { RedditRefreshTokenProvider } from "@social-monitor/ingestion/adapters/source/reddit/refresh-token-reddit-token-provider";
-import { RedditSourceProvider } from "@social-monitor/ingestion/adapters/source/reddit/reddit-source.provider";
-import { HttpRssClient } from "@social-monitor/ingestion/adapters/source/rss/http-rss-client";
-import { RssSourceProvider } from "@social-monitor/ingestion/adapters/source/rss/rss-source.provider";
-import { InMemorySourceProviderRegistry } from "@social-monitor/ingestion/adapters/source/in-memory-source-provider.registry";
-import { RegistrySourceFetcherAdapter } from "@social-monitor/ingestion/adapters/source/registry-source-fetcher.adapter";
-import { SocialResearchSourceQueryPlannerAdapter } from "@social-monitor/ingestion/adapters/source/social-research-source-query-planner.adapter";
-import { sourceReadinessProfiles } from "@social-monitor/ingestion/adapters/source/source-readiness-profiles";
-import { GrpcXDailyCollectorClient } from "@social-monitor/ingestion/adapters/source/x-twitter-experimental-daily/grpc-x-daily-collector-client";
-import { XTwitterSourceProvider } from "@social-monitor/ingestion/adapters/source/x-twitter-experimental-daily/x-twitter-experimental-daily-source.provider";
-import { ExecuteScanUseCase } from "@social-monitor/ingestion/features/execute-scan/execute-scan.use-case";
 import type {
-  SourceProviderPort,
   SourceQuery,
   SourceQueryMode,
   SourceRuntimeConfig,
 } from "@social-monitor/ingestion/ports";
-import { SourceFetchError } from "@social-monitor/ingestion/ports";
-import { PrismaScanJobRepository } from "@social-monitor/monitoring/adapters/persistence/prisma/prisma-scan-job.repository";
-import { InMemoryMetricsRecorder } from "@social-monitor/platform-metrics";
-import {
-  CryptoIdGenerator,
-  SystemClock,
-  tenantId,
-  workspaceId,
-} from "@social-monitor/shared-kernel";
 import { Pool } from "pg";
 import { defaultPostgresRuntimePoolConfig } from "@social-monitor/platform-persistence";
 
@@ -62,42 +26,24 @@ import {
 import { loadDotenvIfPresent } from "./lib/env-file";
 import { allQualityGatesPassed } from "./lib/quality-gates";
 import {
+  cleanRealDayCollectionAcquisitionModel,
   defaultCleanRealDayCollectionProviderKeys,
   type CleanRealDayCollectionProviderKey as ProviderKey,
   type CleanRealDayCollectionReport,
 } from "./lib/clean-real-day-collection-report";
-import { CleanRealDaySourceConfigReader } from "./lib/clean-real-day-source-config-reader";
+import {
+  executeCleanRealDayProviderAcquisition,
+  type CleanRealDaySourceBindingTarget as SourceBindingTarget,
+} from "./lib/clean-real-day-provider-acquisition";
 import { requireScanPolicyTargets } from "./lib/clean-real-day-scan-policy-targets";
 import {
-  configuredProviderCollectionTargetItemCount,
-  successfulProviderCollectionObservation,
-  unavailableProviderCollectionObservation,
   withProviderCollectionWindowProof,
 } from "./lib/provider-collection-observability";
-import { runTargetedProviderCollection } from "./lib/targeted-provider-collection";
-import { selectPreferredProviderScanResult } from "./lib/provider-scan-result-selection";
-import {
-  successfulXCollectionRetryPlanKey,
-  shouldStopSuccessfulDuplicateXRetry,
-  xCollectionReadinessRetryPolicy,
-} from "./lib/x-collection-retry-policy";
 import {
   providerMeetsProductionBlockingPolicy,
   recalculateProductionBlockingPolicyGates,
 } from "./lib/production-collection-quality-policy";
-import { ProductionCollectionScanJobReporter } from "./lib/production-collection-scan-job-reporter";
-
-type SourceBindingTarget = {
-  readonly tenantId: string;
-  readonly workspaceId: string;
-  readonly interestId: string;
-  readonly interestQuery: string;
-  readonly sourceBindingId: string;
-  readonly scanPolicyId: string;
-  readonly providerKey: ProviderKey;
-  readonly config: SourceRuntimeConfig;
-  readonly sourceQuery: SourceQuery;
-};
+import { PrismaGitHubTrendingDurableSnapshotReader } from "./lib/github-trending-durable-snapshot-reuse";
 
 type ScanProofRow = {
   readonly providerKey: string;
@@ -110,11 +56,6 @@ type ScanProofRow = {
   readonly distinctSourceQueryLaneCount: string;
   readonly newestItemAt: string | null;
 };
-
-type ProviderScanResult = Omit<
-  CleanRealDayCollectionReport["scans"][number],
-  "attemptCount"
->;
 
 const outputPath = "ops/evals/reader-summary-clean-real-day-collection.v1.json";
 const databaseUrl = yesterdaySocialQualityDatabaseUrl();
@@ -220,7 +161,17 @@ async function tryRunCollection(): Promise<
 
   try {
     const targets = await readTargets(pool);
-    const scanResults = await executeTargetScans(targets, connection);
+    const scanResults = await executeCleanRealDayProviderAcquisition({
+      targets,
+      connection,
+      durableSnapshotReader: new PrismaGitHubTrendingDurableSnapshotReader(
+        pool,
+      ),
+      requestedUtcDay: targetCollectionDate,
+      targetWindowEndedAt: new Date(targetPublishedWindow.endExclusive),
+      runStartedAt: startedAt,
+      waitForXReadiness,
+    });
     const completedAt = new Date();
     const freshWindow = await readFreshWindowProof(pool, {
       startedAt,
@@ -257,223 +208,6 @@ async function tryRunCollection(): Promise<
     await connection.close().catch(() => undefined);
     await pool.end().catch(() => undefined);
   }
-}
-
-async function executeTargetScans(
-  targets: readonly SourceBindingTarget[],
-  connection: PrismaIngestionWorkerConnection,
-): Promise<CleanRealDayCollectionReport["scans"]> {
-  const clock = new SystemClock();
-  const ids = new CryptoIdGenerator();
-  const scanJobReporter = new ProductionCollectionScanJobReporter(
-    new PrismaScanJobRepository(connection),
-    ids,
-    clock,
-  );
-  const executeScan = new ExecuteScanUseCase(
-    new CircuitBreakerSourceFetcherAdapter(
-      new RegistrySourceFetcherAdapter(
-        new InMemorySourceProviderRegistry(
-          buildProviders(clock),
-          sourceReadinessProfiles,
-        ),
-        new CleanRealDaySourceConfigReader(targets),
-        new SocialResearchSourceQueryPlannerAdapter(),
-      ),
-      clock,
-      { failureThreshold: 3, cooldownSeconds: 60 },
-    ),
-    new PrismaSourceItemRepository(connection),
-    new PrismaFeedProjectionAdapter(connection, ids),
-    new PrismaScanAttemptRepository(connection),
-    new PrismaScanCursorRepository(connection, ids),
-    scanJobReporter,
-    new PrismaScanFailureQueueAdapter(
-      connection,
-      new InMemoryMetricsRecorder(),
-      ids,
-    ),
-    new PrismaScanLeaseAdapter(connection, ids),
-    ids,
-    clock,
-    undefined,
-    undefined,
-    new ConversationUnitProjectionAdapter(
-      new PrismaConversationUnitRepository(connection, ids),
-      ids,
-    ),
-  );
-  const outcomes = await runTargetedProviderCollection({
-    targets,
-    retryBudget: 2,
-    collect: (target) =>
-      executeTargetScan(target, executeScan, scanJobReporter),
-    retryDisposition: (result) =>
-      providerMeetsProductionBlockingPolicy(result)
-        ? "none"
-        : result.observability.slo.retryDisposition,
-    selectPreferredResult: selectPreferredProviderScanResult,
-    retryPlanKey: ({ target }) => successfulXCollectionRetryPlanKey(target),
-    stopDuplicatePlanRetry: shouldStopSuccessfulDuplicateXRetry,
-    readinessRetry: xCollectionReadinessRetryPolicy(waitForXReadiness),
-  });
-
-  return outcomes.map((outcome) => ({
-    ...outcome.result,
-    attemptCount: outcome.attempts.length,
-    ...(outcome.retryStopReason === undefined
-      ? {}
-      : { retryStopReason: outcome.retryStopReason }),
-  }));
-}
-
-async function executeTargetScan(
-  target: SourceBindingTarget,
-  executeScan: ExecuteScanUseCase,
-  scanJobReporter: ProductionCollectionScanJobReporter,
-): Promise<ProviderScanResult> {
-  const bindingFingerprint = fingerprint(target.sourceBindingId);
-  const targetWindowEndedAt = new Date(targetPublishedWindow.endExclusive);
-  if (target.providerKey === "x-twitter" && !xCollectorConfigured()) {
-    return {
-      providerKey: target.providerKey,
-      bindingFingerprint,
-      status: "skipped",
-      fetched: 0,
-      inserted: 0,
-      projected: 0,
-      skippedDuplicates: 0,
-      warningCount: 0,
-      observability: unavailableProviderCollectionObservation({
-        targetItemCount: configuredProviderCollectionTargetItemCount(
-          target.config,
-        ),
-        status: "skipped",
-        targetWindowEndedAt,
-      }),
-      failureFingerprint: fingerprint("x_collector_not_configured"),
-    };
-  }
-
-  const targetTenantId = tenantId(target.tenantId);
-  const targetWorkspaceId = workspaceId(target.workspaceId);
-  const scanJobId = scanJobReporter.beginAttempt({
-    tenantId: targetTenantId,
-    workspaceId: targetWorkspaceId,
-    sourceBindingId: target.sourceBindingId,
-    scanPolicyId: target.scanPolicyId,
-  });
-  const result = await executeScan.execute({
-    tenantId: targetTenantId,
-    workspaceId: targetWorkspaceId,
-    scanJobId,
-    interestId: target.interestId,
-    sourceBindingId: target.sourceBindingId,
-    scanPolicyId: target.scanPolicyId,
-    providerKey: target.providerKey,
-    sourceQuery: target.sourceQuery,
-    interestQuerySnapshot: target.interestQuery,
-    correlationId: "reader-summary-clean-real-day-collection",
-    causationId: "manual-clean-real-day-proof",
-    retryBudget: 0,
-    leaseTtlSeconds: 600,
-  });
-
-  if (!result.ok) {
-    const rateLimited =
-      result.error instanceof SourceFetchError &&
-      result.error.kind === "rate_limited";
-    return {
-      providerKey: target.providerKey,
-      bindingFingerprint,
-      status: "failed",
-      fetched: 0,
-      inserted: 0,
-      projected: 0,
-      skippedDuplicates: 0,
-      warningCount: 0,
-      observability: unavailableProviderCollectionObservation({
-        targetItemCount: configuredProviderCollectionTargetItemCount(
-          target.config,
-        ),
-        status: "failed",
-        rateLimited,
-        failureKind:
-          result.error instanceof SourceFetchError
-            ? result.error.kind
-            : "unknown",
-        targetWindowEndedAt,
-      }),
-      failureFingerprint: fingerprint(message(result.error)),
-    };
-  }
-
-  return {
-    providerKey: target.providerKey,
-    bindingFingerprint,
-    status: "succeeded",
-    fetched: result.value.fetched,
-    inserted: result.value.inserted,
-    projected: result.value.projected,
-    skippedDuplicates: result.value.skippedDuplicates,
-    warningCount: result.value.warnings.length,
-    observability: successfulProviderCollectionObservation({
-      telemetry: result.value.telemetry,
-      fetched: result.value.fetched,
-      inserted: result.value.inserted,
-      storageDuplicates: result.value.skippedDuplicates,
-      targetWindowEndedAt,
-    }),
-  };
-}
-
-function buildProviders(clock: SystemClock): readonly SourceProviderPort[] {
-  const redditTokenProvider = RedditAppOnlyTokenProvider.fromEnvironment(
-    process.env,
-  );
-  const providers: SourceProviderPort[] = [
-    new GitHubTrendingPageSourceProvider(
-      new HttpGitHubTrendingPageClient(
-        positiveIntegerEnv(process.env.GITHUB_TRENDING_TIMEOUT_MS, 10_000),
-      ),
-      clock,
-    ),
-    new HackerNewsSourceProvider(
-      new HttpHackerNewsClient(
-        positiveIntegerEnv(process.env.HACKER_NEWS_TIMEOUT_MS, 10_000),
-      ),
-      clock,
-    ),
-    new RedditSourceProvider(
-      new HttpRedditClient(),
-      redditTokenProvider ?? undefined,
-      RedditRefreshTokenProvider.fromEnvironment(process.env),
-    ),
-    new RssSourceProvider(
-      new HttpRssClient(positiveIntegerEnv(process.env.RSS_TIMEOUT_MS, 10_000)),
-    ),
-  ];
-  const xCollectorAddress = process.env.X_COLLECTOR_GRPC_ADDRESS?.trim();
-  if (xCollectorConfigured() && xCollectorAddress !== undefined) {
-    providers.push(
-      new XTwitterSourceProvider(
-        GrpcXDailyCollectorClient.connect({
-          address: xCollectorAddress,
-          clock,
-          options: {
-            timeoutMs: positiveIntegerEnv(
-              process.env.X_COLLECTOR_GRPC_TIMEOUT_MS,
-              60_000,
-            ),
-            serviceToken: optionalEnv(process.env.X_COLLECTOR_SERVICE_TOKEN),
-          },
-        }),
-        clock,
-      ),
-    );
-  }
-
-  return providers;
 }
 
 async function readTargets(
@@ -697,6 +431,9 @@ function buildReport(params: {
 }): CleanRealDayCollectionReport {
   const targetWindowEndedAt = new Date(targetPublishedWindow.endExclusive);
   const finalScanResults = params.scanResults.map((scan) => {
+    if (scan.acquisitionMode === "durable_snapshot_reuse") {
+      return scan;
+    }
     const newestItemAt =
       params.targetWindow.newestItemAtByProvider[scan.providerKey];
 
@@ -791,11 +528,24 @@ function buildReport(params: {
         scan.observability.totalDuplicateItemCount >= 0 &&
         scan.observability.rateLimitEventCount >= 0,
     ),
+    providerAcquisitionModesAreConsistent: finalScanResults.every(
+      (scan) => scan.acquisitionMode === scan.observability.acquisitionMode,
+    ),
     everyRequestedProviderMeetsBlockingCoveragePolicy: finalScanResults.every(
       providerMeetsProductionBlockingPolicy,
     ),
     providerRetriesAreBounded: finalScanResults.every(
       (scan) => scan.attemptCount >= 1 && scan.attemptCount <= 3,
+    ),
+    durableSnapshotReuseIsSingleAttempt: finalScanResults.every(
+      (scan) =>
+        scan.acquisitionMode !== "durable_snapshot_reuse" ||
+        scan.attemptCount === 1,
+    ),
+    durableSnapshotProofMatchesRequestedDay: finalScanResults.every(
+      (scan) =>
+        scan.acquisitionMode !== "durable_snapshot_reuse" ||
+        scan.durableSnapshotProof?.requestedUtcDay === targetCollectionDate,
     ),
     partialProviderCoverageIsExplicit: finalScanResults.every((scan) =>
       ["complete", "partial", "degraded", "unavailable"].includes(
@@ -811,7 +561,7 @@ function buildReport(params: {
     generatedBy: "npm run run:reader-summary-clean-real-day-collection",
     model: {
       mode: "targeted_real_binding_collection",
-      liveNetwork: true,
+      ...cleanRealDayCollectionAcquisitionModel(finalScanResults),
       rawProviderPayloadPersistedInReport: false,
       rawPostTextPersistedInReport: false,
       rawProviderConfigPersistedInReport: false,
@@ -975,15 +725,6 @@ function optionalEnv(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
 
   return trimmed === undefined || trimmed.length === 0 ? undefined : trimmed;
-}
-
-function positiveIntegerEnv(
-  value: string | undefined,
-  fallback: number,
-): number {
-  const parsed = Number(value);
-
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function numberFromPg(value: string): number {

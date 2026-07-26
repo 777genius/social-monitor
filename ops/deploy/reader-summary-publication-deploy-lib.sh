@@ -42,7 +42,7 @@ load_target_postgres_backup_deploy_library() {
     fail 'target PostgreSQL backup deploy library ownership and mode cannot be read'
   read -r owner permissions extra <<< "$metadata"
   [[ -z ${extra:-} && $owner == 0 ]] || \
-    fail 'target PostgreSQL backup deploy library is not root-owned'
+    fail "target PostgreSQL backup deploy library is not root-owned (metadata=$metadata)"
 
   target_entry=$(git -C "$REPO" ls-tree "$target_sha" -- "$relative_path") || \
     fail 'target commit PostgreSQL backup deploy library cannot be inspected'

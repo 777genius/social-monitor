@@ -1,3 +1,7 @@
+import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
+
+import { ReaderSummaryArtifact } from "../entities/reader-summary-artifact";
+import { buildReaderSummaryPeriod } from "../value-objects/reader-summary-period";
 import {
   notApplicableReaderSummaryGitHubProjectionAudit,
   readerSummaryHasVerifiedGitHubProjection,
@@ -218,6 +222,25 @@ describe("reader summary GitHub projection policy", () => {
         audit: evaluation.audit,
       }),
     ).toBe(false);
+  });
+
+  it("marks a genuine daily NO_SIGNAL without provider evidence as ordinarily not required", () => {
+    const noSignal = ordinaryNoSignalArtifact();
+    const evaluation = evaluate(noSignal, [], []);
+
+    expect(evaluation.audit).toMatchObject({
+      status: "not_required",
+      pageCount: 2,
+      scannedItemCount: 0,
+      bindings: [],
+    });
+    expect(evaluation.audit).not.toHaveProperty("historicalOmission");
+    expect(
+      readerSummaryHasVerifiedGitHubProjection({
+        artifact: noSignal,
+        audit: evaluation.audit,
+      }),
+    ).toBe(true);
   });
 
   it("permits not_required for an explicit non-daily one-day scope", () => {
@@ -853,3 +876,53 @@ describe("reader summary GitHub projection policy", () => {
     ).toBe(false);
   });
 });
+
+const ordinaryNoSignalArtifact = (): ReaderSummaryArtifact => {
+  const period = buildReaderSummaryPeriod({
+    cadence: "daily",
+    startedAt: new Date("2026-07-10T00:00:00.000Z"),
+    endedAt: new Date("2026-07-11T00:00:00.000Z"),
+    timezone: "UTC",
+  });
+  return ReaderSummaryArtifact.create({
+    schemaVersion: "reader_summary.artifact.v1",
+    readerSummaryId: "reader-summary-ordinary-no-signal",
+    tenantId: tenantId("tenant-reader-summary-ordinary-no-signal"),
+    workspaceId: workspaceId("workspace-reader-summary-ordinary-no-signal"),
+    scope: { type: "workspace" },
+    period,
+    generatedAt: new Date("2026-07-10T23:00:00.000Z"),
+    sourceWindow: {
+      windowId: "ordinary-no-signal-window",
+      startedAt: period.startedAt,
+      endedAt: period.endedAt,
+      selectedFeedItemIds: [],
+      storyClusterIds: [],
+    },
+    storyClusters: [],
+    contextArtifacts: [],
+    headline: "No reliable signal",
+    executiveSummary: "No eligible provider evidence.",
+    topStories: [],
+    interestHighlights: [],
+    repeatedSignals: [],
+    risksAndUnknowns: [],
+    citationMap: [],
+    qualityFlags: ["no_signal"],
+    confidence: {
+      level: "none",
+      score: 0,
+      rationale: "No provider evidence passed the quality threshold.",
+    },
+    lineage: {
+      promptVersion: "reader-summary.prompt.no-signal.v1",
+      schemaVersion: "reader_summary.artifact.v1",
+      modelVersion: "codex:gpt-5.5:xhigh",
+      providerVersion: "fixture",
+      rulesVersion: "reader-summary.rules.v1",
+      evalDatasetVersion: "reader-summary.eval.v1",
+    },
+    usage: { inputTokens: 0, outputTokens: 0, estimatedCostUsd: 0 },
+    noSignalReason: "No eligible provider evidence.",
+  });
+};

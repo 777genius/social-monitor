@@ -97,6 +97,8 @@ export type PrismaWebhookEndpointWriteData = {
 };
 
 export type PrismaWebhookSecretWriteData = {
+  readonly tenantId: string;
+  readonly workspaceId: string;
   readonly algorithm: string;
   readonly ciphertext: string;
   readonly iv: string;
@@ -271,12 +273,24 @@ export type PrismaDeliveryClient = {
   };
   readonly webhookSecret: {
     upsert(args: {
-      readonly where: { readonly id: string };
+      readonly where: {
+        readonly id_tenantId_workspaceId: {
+          readonly id: string;
+          readonly tenantId: string;
+          readonly workspaceId: string;
+        };
+      };
       readonly update: PrismaWebhookSecretWriteData;
       readonly create: PrismaWebhookSecretWriteData & { readonly id: string };
     }): Promise<PrismaWebhookSecretRecord>;
     findUnique(args: {
-      readonly where: { readonly id: string };
+      readonly where: {
+        readonly id_tenantId_workspaceId: {
+          readonly id: string;
+          readonly tenantId: string;
+          readonly workspaceId: string;
+        };
+      };
     }): Promise<PrismaWebhookSecretRecord | null>;
   };
   readonly webhookReplayDelivery: {

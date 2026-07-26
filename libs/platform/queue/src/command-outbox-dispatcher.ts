@@ -30,7 +30,9 @@ export interface CommandOutboxStorePort {
   markFailed(params: {
     readonly id: string;
     readonly leaseOwner: string;
+    readonly commandType: string;
     readonly availableAt: Date;
+    readonly failedAt: Date;
     readonly lastError: string;
     readonly terminal: boolean;
   }): Promise<void>;
@@ -89,9 +91,11 @@ export class CommandOutboxDispatcher {
         await this.outbox.markFailed({
           id: record.id,
           leaseOwner,
+          commandType: record.command.commandType,
           availableAt: new Date(
             now.getTime() + this.retryDelayMs(record.publishAttempt),
           ),
+          failedAt: this.clock.now(),
           lastError: safeOutboxError(error),
           terminal,
         });

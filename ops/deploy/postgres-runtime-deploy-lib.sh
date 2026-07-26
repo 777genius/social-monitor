@@ -4,11 +4,131 @@
 # fail helper are defined. Keeping the transaction here preserves the root
 # entrypoint's source-line cap without making this file independently runnable.
 
+ROOT=${ROOT:?caller must define ROOT before sourcing postgres-runtime-deploy-lib.sh}
+
+github_premidnight_capture_marker_state() {
+  local root=$1
+  local marker=$root/github-premidnight-capture-v1.activation
+
+  if [[ ! -e $marker && ! -L $marker ]]; then
+    printf 'inactive\n'
+    return
+  fi
+  [[ -f $marker && ! -L $marker ]] || {
+    fail 'GitHub pre-midnight activation marker is not a regular file'
+    return 1
+  }
+  cmp -s "$marker" <(printf 'install-disabled-v1\n') || {
+    fail 'GitHub pre-midnight activation marker is invalid'
+    return 1
+  }
+  printf 'active\n'
+}
+
+postgres_runtime_control_mutation_scope() {
+  local source_state current_state=inactive
+  source_state=$(
+    github_premidnight_capture_marker_state \
+      "$REPO/ops/deploy/production-runtime"
+  ) || return
+  if [[ -e $POSTGRES_RUNTIME_CURRENT || -L $POSTGRES_RUNTIME_CURRENT ]]; then
+    current_state=$(
+      github_premidnight_capture_marker_state "$POSTGRES_RUNTIME_CURRENT"
+    ) || return
+  fi
+  if [[ $source_state == inactive && $current_state == active ]]; then
+    fail 'GitHub pre-midnight activation marker cannot be removed'
+    return 1
+  fi
+  if [[ $source_state == active && $current_state == inactive ]]; then
+    printf 'capture-only\n'
+  elif [[ $source_state == active ]]; then
+    printf 'full\n'
+  else
+    printf 'base\n'
+  fi
+}
+
+postgres_runtime_control_units_for_scope() {
+  case $1 in
+    base)
+      printf '%s\n' social-monitor-daily.service social-monitor-prod.service
+      ;;
+    capture-only)
+      printf '%s\n' \
+        social-monitor-github-premidnight-capture-v1.service \
+        social-monitor-github-premidnight-capture-v1.timer
+      ;;
+    full)
+      printf '%s\n' \
+        social-monitor-github-premidnight-capture-v1.service \
+        social-monitor-github-premidnight-capture-v1.timer \
+        social-monitor-daily.service \
+        social-monitor-prod.service
+      ;;
+    *)
+      fail 'PostgreSQL runtime-control mutation scope is invalid'
+      return 1
+      ;;
+  esac
+}
+
+postgres_runtime_control_launchers_for_scope() {
+  case $1 in
+    base) printf '%s\n' daily-run.sh ;;
+    capture-only) printf '%s\n' github-premidnight-capture-v1.sh ;;
+    full)
+      printf '%s\n' daily-run.sh github-premidnight-capture-v1.sh
+      ;;
+    *)
+      fail 'PostgreSQL runtime-control launcher scope is invalid'
+      return 1
+      ;;
+  esac
+}
+
+require_postgres_runtime_regular_source() {
+  local path=$1
+  local expected_mode=$2
+  [[ -f $path && ! -L $path ]] || {
+    fail "PostgreSQL runtime source is not a regular file: $path"
+    return 1
+  }
+  [[ $(stat -c '%a' "$path") == "$expected_mode" ]] || {
+    fail "PostgreSQL runtime source mode is invalid: $path"
+    return 1
+  }
+}
+
+require_postgres_runtime_regular_release_file() {
+  local path=$1
+  local expected_mode=${2:-}
+  [[ -f $path && ! -L $path ]] || {
+    fail "immutable PostgreSQL runtime release entry is not a regular file: $path"
+    return 1
+  }
+  if [[ -n $expected_mode && $(stat -c '%a' "$path") != "$expected_mode" ]]; then
+    fail "immutable PostgreSQL runtime release mode is invalid: $path"
+    return 1
+  fi
+}
+
+require_postgres_runtime_safe_mutation_target() {
+  local path=$1
+  if [[ -e $path || -L $path ]]; then
+    [[ -f $path && ! -L $path ]] || {
+      fail "PostgreSQL runtime mutation target is not a regular file: $path"
+      return 1
+    }
+  fi
+}
+
 activate_postgres_runtime_control() {
   local sha=$1
   local compatible_backend_sha=${2:-$sha}
+  local activation_status
   activate_postgres_runtime_control_transaction "$sha" "$compatible_backend_sha"
-  local activation_status=$?
+  activation_status=$?
   ((activation_status == 0)) || return "$activation_status"
   if [[ ${COMPOSE[-1]} != "$POSTGRES_RUNTIME_CURRENT/compose.postgres-runtime.yml" ]]; then
     COMPOSE+=(
@@ -24,35 +144,70 @@ rollback_postgres_runtime_control_activation() {
   local previous_target=$4
   local backup=$5
   local unit_directory=$6
-  local unit
-  local -a units=(
-    social-monitor-daily.service
-    social-monitor-prod.service
-  )
+  local launcher rollback_link scope unit
+  local rollback_status=0
+  local -a launchers units
 
-  rm -rf "$staged_release"
-  rm -f "$next_link" "$current_link"
-  if [[ -n $previous_target ]]; then
-    ln -s "$previous_target" "$current_link"
-  fi
+  scope=$(<"$backup/mutation-scope") || rollback_status=1
+  [[ $scope =~ ^(base|capture-only|full)$ ]] || rollback_status=1
+  mapfile -t units < <(postgres_runtime_control_units_for_scope "$scope") || \
+    rollback_status=1
+  mapfile -t launchers < <(
+    postgres_runtime_control_launchers_for_scope "$scope"
+  ) || rollback_status=1
+
+  rm -rf "$staged_release" || rollback_status=1
+  rm -f "$next_link" || rollback_status=1
+  rollback_link=$next_link.rollback
+  rm -f "$rollback_link" || rollback_status=1
   for unit in "${units[@]}"; do
-    if [[ -e $backup/$unit ]]; then
-      cp -a "$backup/$unit" "$unit_directory/$unit.restore"
-      mv -f "$unit_directory/$unit.restore" "$unit_directory/$unit"
+    if [[ -e $backup/$unit || -L $backup/$unit ]]; then
+      cp -a "$backup/$unit" "$unit_directory/$unit.restore" || \
+        rollback_status=1
+      if [[ -e $unit_directory/$unit.restore || \
+            -L $unit_directory/$unit.restore ]]; then
+        mv -f "$unit_directory/$unit.restore" "$unit_directory/$unit" || \
+          rollback_status=1
+      fi
+    elif [[ -f $backup/$unit.absent ]]; then
+      rm -f "$unit_directory/$unit" || rollback_status=1
     else
-      rm -f "$unit_directory/$unit"
+      rollback_status=1
     fi
   done
-  if [[ -f $backup/daily-run.sh ]]; then
-    cp -a "$backup/daily-run.sh" "$CONTROL/daily-run.sh.restore"
-    mv -f "$CONTROL/daily-run.sh.restore" "$CONTROL/daily-run.sh"
-  elif [[ -f $backup/daily-run.sh.absent ]]; then
-    rm -f "$CONTROL/daily-run.sh"
+  for launcher in "${launchers[@]}"; do
+    if [[ -e $backup/$launcher || -L $backup/$launcher ]]; then
+      cp -a "$backup/$launcher" "$CONTROL/$launcher.restore" || \
+        rollback_status=1
+      if [[ -e $CONTROL/$launcher.restore || \
+            -L $CONTROL/$launcher.restore ]]; then
+        mv -f "$CONTROL/$launcher.restore" "$CONTROL/$launcher" || \
+          rollback_status=1
+      fi
+    elif [[ -f $backup/$launcher.absent ]]; then
+      rm -f "$CONTROL/$launcher" || rollback_status=1
+    else
+      rollback_status=1
+    fi
+  done
+  if [[ -n $previous_target ]]; then
+    ln -s "$previous_target" "$rollback_link" || rollback_status=1
+    if [[ -L $rollback_link ]]; then
+      mv -Tf "$rollback_link" "$current_link" || rollback_status=1
+    fi
+  else
+    rm -f "$current_link" || rollback_status=1
   fi
   if ((EUID == 0)) && [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} != 1 ]]; then
-    systemctl daemon-reload || true
+    systemctl daemon-reload || rollback_status=1
   fi
-  rm -rf "$backup"
+  if ((rollback_status == 0)); then
+    rm -rf "$backup" || rollback_status=1
+  else
+    printf 'deploy-error: PostgreSQL runtime-control activation rollback failed; backup retained at %s\n' \
+      "$backup" >&2
+  fi
+  ((rollback_status == 0))
 }
 
 activate_postgres_runtime_control_transaction() (
@@ -66,30 +221,80 @@ activate_postgres_runtime_control_transaction() (
   local backup=$STATE/postgres-runtime-control-backup.$$
   local previous_target
   local cleanup_command
-  local unit
-  local -a units=(
-    social-monitor-daily.service
-    social-monitor-prod.service
-  )
+  local expected_release_entry_count launcher launcher_source_mode
+  local release_entry_markers release_state scope source_state unit
+  local -a launchers release_launchers release_units units
 
   [[ $sha =~ ^[0-9a-f]{40}$ && \
      $compatible_backend_sha =~ ^[0-9a-f]{40}$ ]] || \
     fail 'PostgreSQL runtime control release markers are invalid'
+  source_state=$(github_premidnight_capture_marker_state "$source") || return
+  scope=$(postgres_runtime_control_mutation_scope) || return
+  mapfile -t units < <(postgres_runtime_control_units_for_scope "$scope")
+  mapfile -t launchers < <(
+    postgres_runtime_control_launchers_for_scope "$scope"
+  )
+  if [[ $source_state == active ]]; then
+    mapfile -t release_units < <(
+      postgres_runtime_control_units_for_scope full
+    )
+    mapfile -t release_launchers < <(
+      postgres_runtime_control_launchers_for_scope full
+    )
+  else
+    mapfile -t release_units < <(
+      postgres_runtime_control_units_for_scope base
+    )
+    mapfile -t release_launchers < <(
+      postgres_runtime_control_launchers_for_scope base
+    )
+  fi
+  require_postgres_runtime_regular_source \
+    "$source/compose.postgres-runtime.yml" 644
+  for launcher in "${release_launchers[@]}"; do
+    launcher_source_mode=755
+    [[ $launcher != daily-run.sh ]] || launcher_source_mode=644
+    require_postgres_runtime_regular_source \
+      "$source/$launcher" "$launcher_source_mode"
+  done
+  for unit in "${release_units[@]}"; do
+    require_postgres_runtime_regular_source "$source/$unit" 644
+  done
+  if [[ $source_state == active ]]; then
+    require_postgres_runtime_regular_source \
+      "$source/github-premidnight-capture-v1.activation" 644
+  fi
+  for unit in "${units[@]}"; do
+    require_postgres_runtime_safe_mutation_target "$SYSTEMD_UNIT_DIR/$unit"
+  done
+  for launcher in "${launchers[@]}"; do
+    require_postgres_runtime_safe_mutation_target "$CONTROL/$launcher"
+  done
 
   previous_target=$(readlink "$POSTGRES_RUNTIME_CURRENT" 2>/dev/null || true)
   install -d -m 0700 "$backup"
+  printf '%s\n' "$scope" > "$backup/mutation-scope"
+  if [[ -n $previous_target ]]; then
+    printf '%s\n' "$previous_target" > "$backup/current-target"
+  elif [[ -e $POSTGRES_RUNTIME_CURRENT || -L $POSTGRES_RUNTIME_CURRENT ]]; then
+    fail 'PostgreSQL runtime current path is not a symlink'
+  else
+    : > "$backup/current.absent"
+  fi
   for unit in "${units[@]}"; do
-    if [[ -e $SYSTEMD_UNIT_DIR/$unit ]]; then
+    if [[ -e $SYSTEMD_UNIT_DIR/$unit || -L $SYSTEMD_UNIT_DIR/$unit ]]; then
       cp -a "$SYSTEMD_UNIT_DIR/$unit" "$backup/$unit"
     else
       : > "$backup/$unit.absent"
     fi
   done
-  if [[ -e $CONTROL/daily-run.sh ]]; then
-    cp -a "$CONTROL/daily-run.sh" "$backup/daily-run.sh"
-  else
-    : > "$backup/daily-run.sh.absent"
-  fi
+  for launcher in "${launchers[@]}"; do
+    if [[ -e $CONTROL/$launcher || -L $CONTROL/$launcher ]]; then
+      cp -a "$CONTROL/$launcher" "$backup/$launcher"
+    else
+      : > "$backup/$launcher.absent"
+    fi
+  done
   printf -v cleanup_command \
     'rollback_postgres_runtime_control_activation %q %q %q %q %q %q' \
     "$staged_release" "$next_link" "$POSTGRES_RUNTIME_CURRENT" \
@@ -102,35 +307,85 @@ activate_postgres_runtime_control_transaction() (
   if [[ ! -f $release/SOURCE_SHA || $(cat "$release/SOURCE_SHA") != "$sha" || \
         ! -f $release/READY || \
         $(cat "$release/READY") != "$compatible_backend_sha" ]]; then
-    [[ ! -e $release ]] || fail 'PostgreSQL runtime control release is incomplete'
-    [[ ! -e $staged_release ]] || fail 'PostgreSQL runtime control staging path exists'
+    [[ ! -e $release && ! -L $release ]] || \
+      fail 'PostgreSQL runtime control release is incomplete'
+    [[ ! -e $staged_release && ! -L $staged_release ]] || \
+      fail 'PostgreSQL runtime control staging path exists'
     install -d -m 0755 "$staged_release"
     install -m 0644 "$source/compose.postgres-runtime.yml" \
       "$staged_release/compose.postgres-runtime.yml"
-    install -m 0755 "$source/daily-run.sh" "$staged_release/daily-run.sh"
-    install -m 0644 "$source/social-monitor-daily.service" \
-      "$staged_release/social-monitor-daily.service"
-    install -m 0644 "$source/social-monitor-prod.service" \
-      "$staged_release/social-monitor-prod.service"
+    for launcher in "${release_launchers[@]}"; do
+      install -m 0755 "$source/$launcher" "$staged_release/$launcher"
+    done
+    for unit in "${release_units[@]}"; do
+      install -m 0644 "$source/$unit" "$staged_release/$unit"
+    done
+    if [[ $source_state == active ]]; then
+      install -m 0644 "$source/github-premidnight-capture-v1.activation" \
+        "$staged_release/github-premidnight-capture-v1.activation"
+    fi
     printf '%s\n' "$sha" > "$staged_release/SOURCE_SHA"
     printf '%s\n' "$compatible_backend_sha" > "$staged_release/READY"
     mv "$staged_release" "$release"
+  fi
+  [[ -d $release && ! -L $release ]] || \
+    fail 'PostgreSQL runtime control release is not an immutable directory'
+  release_state=$(github_premidnight_capture_marker_state "$release") || return
+  [[ $release_state == "$source_state" ]] || \
+    fail 'PostgreSQL runtime control release activation state is immutable'
+  expected_release_entry_count=$((
+    ${#release_launchers[@]} + ${#release_units[@]} + 3
+  ))
+  if [[ $source_state == active ]]; then
+    expected_release_entry_count=$((expected_release_entry_count + 1))
+  fi
+  release_entry_markers=$(
+    find "$release" -mindepth 1 -maxdepth 1 -printf x
+  )
+  ((${#release_entry_markers} == expected_release_entry_count)) || \
+    fail 'immutable PostgreSQL runtime release manifest is not exact'
+  require_postgres_runtime_regular_release_file \
+    "$release/compose.postgres-runtime.yml" 644
+  require_postgres_runtime_regular_release_file "$release/SOURCE_SHA"
+  require_postgres_runtime_regular_release_file "$release/READY"
+  cmp -s "$source/compose.postgres-runtime.yml" \
+    "$release/compose.postgres-runtime.yml" || \
+    fail 'immutable PostgreSQL runtime Compose release differs from source'
+  for launcher in "${release_launchers[@]}"; do
+    require_postgres_runtime_regular_release_file \
+      "$release/$launcher" 755
+    cmp -s "$source/$launcher" "$release/$launcher" || \
+      fail "immutable PostgreSQL runtime launcher differs from source: $launcher"
+  done
+  for unit in "${release_units[@]}"; do
+    require_postgres_runtime_regular_release_file "$release/$unit" 644
+    cmp -s "$source/$unit" "$release/$unit" || \
+      fail "immutable PostgreSQL runtime unit differs from source: $unit"
+  done
+  if [[ $source_state == active ]]; then
+    require_postgres_runtime_regular_release_file \
+      "$release/github-premidnight-capture-v1.activation" 644
+    cmp -s "$source/github-premidnight-capture-v1.activation" \
+      "$release/github-premidnight-capture-v1.activation" || \
+      fail 'immutable GitHub pre-midnight activation marker differs from source'
   fi
 
   for unit in "${units[@]}"; do
     install -m 0644 "$release/$unit" "$SYSTEMD_UNIT_DIR/$unit.next"
     mv -f "$SYSTEMD_UNIT_DIR/$unit.next" "$SYSTEMD_UNIT_DIR/$unit"
   done
-  install -m 0755 "$release/daily-run.sh" "$CONTROL/daily-run.sh.next"
-  mv -f "$CONTROL/daily-run.sh.next" "$CONTROL/daily-run.sh"
+  for launcher in "${launchers[@]}"; do
+    install -m 0755 "$release/$launcher" "$CONTROL/$launcher.next"
+    mv -f "$CONTROL/$launcher.next" "$CONTROL/$launcher"
+  done
   ln -s "$release" "$next_link"
   mv -Tf "$next_link" "$POSTGRES_RUNTIME_CURRENT"
   if ((EUID == 0)) && [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} != 1 ]]; then
     systemctl daemon-reload
   fi
   verify_installed_postgres_runtime_control "$sha" "$compatible_backend_sha"
-  trap - EXIT
   rm -rf "$backup"
+  trap - EXIT
 )
 
 verify_installed_postgres_runtime_control() {
@@ -138,11 +393,27 @@ verify_installed_postgres_runtime_control() {
   local compatible_backend_sha=${2:-$sha}
   local source=$REPO/ops/deploy/production-runtime
   local release=$POSTGRES_RUNTIME_RELEASES/$sha
-  local unit
-  local -a units=(
-    social-monitor-daily.service
-    social-monitor-prod.service
-  )
+  local launcher release_state source_state unit
+  local -a launchers units
+
+  source_state=$(github_premidnight_capture_marker_state "$source") || return
+  release_state=$(github_premidnight_capture_marker_state "$release") || return
+  [[ $release_state == "$source_state" ]] || \
+    fail 'installed PostgreSQL runtime activation state differs from the release'
+  if [[ $source_state == active ]]; then
+    mapfile -t units < <(postgres_runtime_control_units_for_scope full)
+    mapfile -t launchers < <(
+      postgres_runtime_control_launchers_for_scope full
+    )
+    cmp -s "$source/github-premidnight-capture-v1.activation" \
+      "$release/github-premidnight-capture-v1.activation" || \
+      fail 'installed GitHub pre-midnight activation marker differs from the release'
+  else
+    mapfile -t units < <(postgres_runtime_control_units_for_scope base)
+    mapfile -t launchers < <(
+      postgres_runtime_control_launchers_for_scope base
+    )
+  fi
 
   [[ $(readlink -f "$POSTGRES_RUNTIME_CURRENT") == "$release" ]] || \
     fail 'PostgreSQL runtime control symlink is not on the release'
@@ -154,10 +425,12 @@ verify_installed_postgres_runtime_control() {
   cmp -s "$source/compose.postgres-runtime.yml" \
     "$POSTGRES_RUNTIME_CURRENT/compose.postgres-runtime.yml" || \
     fail 'installed PostgreSQL Compose overlay differs from the release'
-  cmp -s "$source/daily-run.sh" "$POSTGRES_RUNTIME_CURRENT/daily-run.sh" || \
-    fail 'installed daily runner differs from the release'
-  cmp -s "$POSTGRES_RUNTIME_CURRENT/daily-run.sh" "$CONTROL/daily-run.sh" || \
-    fail 'control-owned daily launcher differs from the PostgreSQL release'
+  for launcher in "${launchers[@]}"; do
+    cmp -s "$source/$launcher" "$release/$launcher" || \
+      fail "versioned launcher differs from the release source: $launcher"
+    cmp -s "$release/$launcher" "$CONTROL/$launcher" || \
+      fail "control-owned launcher differs from the PostgreSQL release: $launcher"
+  done
   for unit in "${units[@]}"; do
     cmp -s "$source/$unit" "$release/$unit" || \
       fail "versioned systemd unit differs from the release source: $unit"
@@ -172,6 +445,17 @@ verify_installed_postgres_runtime_control() {
       [[ -z $(systemctl show --property=DropInPaths --value "$unit") ]] || \
         fail "systemd unit has an unreviewed drop-in: $unit"
     done
+    if [[ $source_state == active ]]; then
+      [[ $(systemctl show --property=UnitFileState --value \
+        social-monitor-github-premidnight-capture-v1.timer) == disabled ]] || \
+        fail 'GitHub pre-midnight timer must remain disabled'
+      [[ $(systemctl show --property=ActiveState --value \
+        social-monitor-github-premidnight-capture-v1.timer) == inactive ]] || \
+        fail 'GitHub pre-midnight timer must remain inactive'
+      [[ $(systemctl show --property=ActiveState --value \
+        social-monitor-github-premidnight-capture-v1.service) == inactive ]] || \
+        fail 'GitHub pre-midnight service must remain inactive'
+    fi
     verify_effective_postgres_daily_topology
   fi
 }
@@ -179,13 +463,16 @@ verify_installed_postgres_runtime_control() {
 snapshot_postgres_runtime_control() {
   local sha=$1
   local backup=$STATE/postgres-runtime-release-rollback-${sha:0:12}.$$
-  local target unit
-  local -a units=(
-    social-monitor-daily.service
-    social-monitor-prod.service
-  )
+  local launcher scope target unit
+  local -a launchers units
 
+  scope=$(postgres_runtime_control_mutation_scope) || return
+  mapfile -t units < <(postgres_runtime_control_units_for_scope "$scope")
+  mapfile -t launchers < <(
+    postgres_runtime_control_launchers_for_scope "$scope"
+  )
   install -d -m 0700 "$backup"
+  printf '%s\n' "$scope" > "$backup/mutation-scope"
   target=$(readlink "$POSTGRES_RUNTIME_CURRENT" 2>/dev/null || true)
   if [[ -n $target ]]; then
     printf '%s\n' "$target" > "$backup/current-target"
@@ -195,43 +482,57 @@ snapshot_postgres_runtime_control() {
     : > "$backup/current.absent"
   fi
   for unit in "${units[@]}"; do
-    if [[ -e $SYSTEMD_UNIT_DIR/$unit ]]; then
+    if [[ -e $SYSTEMD_UNIT_DIR/$unit || -L $SYSTEMD_UNIT_DIR/$unit ]]; then
       cp -a "$SYSTEMD_UNIT_DIR/$unit" "$backup/$unit"
     else
       : > "$backup/$unit.absent"
     fi
   done
-  if [[ -e $CONTROL/daily-run.sh ]]; then
-    cp -a "$CONTROL/daily-run.sh" "$backup/daily-run.sh"
-  else
-    : > "$backup/daily-run.sh.absent"
-  fi
+  for launcher in "${launchers[@]}"; do
+    if [[ -e $CONTROL/$launcher || -L $CONTROL/$launcher ]]; then
+      cp -a "$CONTROL/$launcher" "$backup/$launcher"
+    else
+      : > "$backup/$launcher.absent"
+    fi
+  done
   printf '%s\n' "$backup"
 }
 
 restore_postgres_runtime_control() {
   local backup=$1
   local next_link=$POSTGRES_RUNTIME_CURRENT.rollback.$$
-  local target unit
-  local -a units=(
-    social-monitor-daily.service
-    social-monitor-prod.service
-  )
+  local launcher scope target unit
+  local -a launchers units
 
   [[ -d $backup ]] || return 1
-  rm -f "$next_link"
+  scope=$(<"$backup/mutation-scope") || return 1
+  [[ $scope =~ ^(base|capture-only|full)$ ]] || return 1
+  mapfile -t units < <(
+    postgres_runtime_control_units_for_scope "$scope"
+  ) || return 1
+  mapfile -t launchers < <(
+    postgres_runtime_control_launchers_for_scope "$scope"
+  ) || return 1
   if [[ -f $backup/current-target ]]; then
     target=$(cat "$backup/current-target")
     [[ -n $target ]] || return 1
-    ln -s "$target" "$next_link" || return 1
-    mv -Tf "$next_link" "$POSTGRES_RUNTIME_CURRENT" || return 1
-  elif [[ -f $backup/current.absent ]]; then
-    rm -f "$POSTGRES_RUNTIME_CURRENT" || return 1
-  else
+  elif [[ ! -f $backup/current.absent ]]; then
     return 1
   fi
   for unit in "${units[@]}"; do
-    if [[ -f $backup/$unit ]]; then
+    if [[ ! -e $backup/$unit && ! -L $backup/$unit && \
+          ! -f $backup/$unit.absent ]]; then
+      return 1
+    fi
+  done
+  for launcher in "${launchers[@]}"; do
+    if [[ ! -e $backup/$launcher && ! -L $backup/$launcher && \
+          ! -f $backup/$launcher.absent ]]; then
+      return 1
+    fi
+  done
+  for unit in "${units[@]}"; do
+    if [[ -e $backup/$unit || -L $backup/$unit ]]; then
       cp -a "$backup/$unit" "$SYSTEMD_UNIT_DIR/$unit.restore" || return 1
       mv -f "$SYSTEMD_UNIT_DIR/$unit.restore" "$SYSTEMD_UNIT_DIR/$unit" || return 1
     elif [[ -f $backup/$unit.absent ]]; then
@@ -240,11 +541,22 @@ restore_postgres_runtime_control() {
       return 1
     fi
   done
-  if [[ -f $backup/daily-run.sh ]]; then
-    cp -a "$backup/daily-run.sh" "$CONTROL/daily-run.sh.restore" || return 1
-    mv -f "$CONTROL/daily-run.sh.restore" "$CONTROL/daily-run.sh" || return 1
-  elif [[ -f $backup/daily-run.sh.absent ]]; then
-    rm -f "$CONTROL/daily-run.sh" || return 1
+  for launcher in "${launchers[@]}"; do
+    if [[ -e $backup/$launcher || -L $backup/$launcher ]]; then
+      cp -a "$backup/$launcher" "$CONTROL/$launcher.restore" || return 1
+      mv -f "$CONTROL/$launcher.restore" "$CONTROL/$launcher" || return 1
+    elif [[ -f $backup/$launcher.absent ]]; then
+      rm -f "$CONTROL/$launcher" || return 1
+    else
+      return 1
+    fi
+  done
+  rm -f "$next_link" || return 1
+  if [[ -f $backup/current-target ]]; then
+    ln -s "$target" "$next_link" || return 1
+    mv -Tf "$next_link" "$POSTGRES_RUNTIME_CURRENT" || return 1
+  elif [[ -f $backup/current.absent ]]; then
+    rm -f "$POSTGRES_RUNTIME_CURRENT" || return 1
   else
     return 1
   fi

@@ -5,6 +5,7 @@ import {
   workspaceId,
 } from "@social-monitor/shared-kernel";
 
+import { ScanAttempt } from "../../domain";
 import { ExecuteScanUseCase } from "./execute-scan.use-case";
 import {
   ClassifiedFailingSourceFetcher,
@@ -125,12 +126,165 @@ describe("ExecuteScanUseCase", () => {
         })
       )?.toSnapshot(),
     ).toMatchObject({
+      attemptNumber: 1,
       status: "succeeded",
       fetched: 2,
       inserted: 2,
       skippedDuplicates: 0,
       projected: 2,
     });
+  });
+
+  it("treats duplicate delivery after completion as a no-op", async () => {
+    const fetcher = new FixedSourceFetcher();
+    const repository = new FakeSourceItemRepository();
+    const projection = new FakeFeedProjection();
+    const attempts = new FakeScanAttemptRepository();
+    const reporter = new FakeScanExecutionReporter();
+    const useCase = new ExecuteScanUseCase(
+      fetcher,
+      repository,
+      projection,
+      attempts,
+      new FakeScanCursorRepository(),
+      reporter,
+      new FakeScanFailureQueue(),
+      new FakeScanLease(),
+      new SequenceIdGenerator(),
+      new FixedClock(new Date("2026-06-05T12:00:00.000Z")),
+    );
+    const command = makeExecuteScanCommand();
+
+    const first = await useCase.execute(command);
+    const duplicate = await useCase.execute(command);
+
+    expect(first.ok).toBe(true);
+    expect(duplicate).toEqual(first);
+    expect(fetcher.calls).toHaveLength(1);
+    expect(repository.all()).toHaveLength(2);
+    expect(projection.commands).toHaveLength(1);
+    expect(reporter.succeeded).toHaveLength(1);
+    expect(reporter.failed).toHaveLength(0);
+  });
+
+  it("rejects the failed attempt duplicate but allows the next retry attempt", async () => {
+    const fetcher = new FixedSourceFetcher();
+    const attempts = new FakeScanAttemptRepository();
+    const failures = new FakeScanFailureQueue();
+    const reporter = new FakeScanExecutionReporter();
+    const failedAttempt = ScanAttempt.start({
+      scanJobId: "scan-job-retry",
+      tenantId: tenantId("tenant-1"),
+      workspaceId: workspaceId("workspace-1"),
+      sourceBindingId: "source-binding-1",
+      attemptNumber: 1,
+      startedAt: new Date("2026-06-05T11:55:00.000Z"),
+    }).fail({
+      finishedAt: new Date("2026-06-05T11:56:00.000Z"),
+      failureReason: "Provider unavailable",
+    });
+    await attempts.save(failedAttempt);
+    const useCase = new ExecuteScanUseCase(
+      fetcher,
+      new FakeSourceItemRepository(),
+      new FakeFeedProjection(),
+      attempts,
+      new FakeScanCursorRepository(),
+      reporter,
+      failures,
+      new FakeScanLease(),
+      new SequenceIdGenerator(),
+      new FixedClock(new Date("2026-06-05T12:00:00.000Z")),
+    );
+
+    const duplicate = await useCase.execute(
+      makeExecuteScanCommand({
+        scanJobId: "scan-job-retry",
+        attemptNumber: 1,
+        retryBudget: 3,
+      }),
+    );
+    const retry = await useCase.execute(
+      makeExecuteScanCommand({
+        scanJobId: "scan-job-retry",
+        attemptNumber: 2,
+        retryBudget: 3,
+      }),
+    );
+
+    expect(duplicate.ok).toBe(false);
+    expect(retry.ok).toBe(true);
+    expect(fetcher.calls).toHaveLength(1);
+    expect(reporter.succeeded).toHaveLength(1);
+    expect(reporter.failed).toHaveLength(0);
+    expect(failures.retries).toHaveLength(0);
+    expect(failures.deadLetters).toHaveLength(0);
+    expect(
+      (
+        await attempts.findByScanJob({
+          tenantId: tenantId("tenant-1"),
+          workspaceId: workspaceId("workspace-1"),
+          scanJobId: "scan-job-retry",
+        })
+      )?.toSnapshot(),
+    ).toMatchObject({
+      attemptNumber: 2,
+      status: "succeeded",
+    });
+  });
+
+  it("reclaims a running attempt after its worker lease expires", async () => {
+    const fetcher = new FixedSourceFetcher();
+    const attempts = new FakeScanAttemptRepository();
+    const leases = new FakeScanLease();
+    await attempts.save(
+      ScanAttempt.start({
+        scanJobId: "scan-job-crashed",
+        tenantId: tenantId("tenant-1"),
+        workspaceId: workspaceId("workspace-1"),
+        sourceBindingId: "source-binding-1",
+        attemptNumber: 1,
+        startedAt: new Date("2026-06-05T11:50:00.000Z"),
+      }),
+    );
+    await leases.acquire({
+      tenantId: tenantId("tenant-1"),
+      workspaceId: workspaceId("workspace-1"),
+      scanJobId: "scan-job-crashed",
+      workerId: "crashed-worker",
+      leasedAt: new Date("2026-06-05T11:50:00.000Z"),
+      ttlSeconds: 60,
+    });
+    const useCase = new ExecuteScanUseCase(
+      fetcher,
+      new FakeSourceItemRepository(),
+      new FakeFeedProjection(),
+      attempts,
+      new FakeScanCursorRepository(),
+      new FakeScanExecutionReporter(),
+      new FakeScanFailureQueue(),
+      leases,
+      new SequenceIdGenerator(),
+      new FixedClock(new Date("2026-06-05T12:00:00.000Z")),
+    );
+
+    const result = await useCase.execute(
+      makeExecuteScanCommand({
+        scanJobId: "scan-job-crashed",
+        workerId: "replacement-worker",
+        attemptNumber: 1,
+      }),
+    );
+
+    expect(result.ok).toBe(true);
+    expect(fetcher.calls).toHaveLength(1);
+    expect(
+      leases.current({
+        tenantId: tenantId("tenant-1"),
+        workspaceId: workspaceId("workspace-1"),
+        scanJobId: "scan-job-crashed",
+      }),
+    ).toBeNull();
   });
 
   it("returns redacted source warnings and passes them to the success reporter", async () => {
@@ -260,7 +414,7 @@ describe("ExecuteScanUseCase", () => {
     );
   });
 
-  it("skips duplicate source items on replay", async () => {
+  it("skips duplicate source items on a later scan", async () => {
     const fetcher = new FixedSourceFetcher();
     const repository = new FakeSourceItemRepository();
     const projection = new FakeFeedProjection();
@@ -276,15 +430,15 @@ describe("ExecuteScanUseCase", () => {
       new SequenceIdGenerator(),
       new FixedClock(new Date("2026-06-05T12:00:00.000Z")),
     );
-    const command = makeExecuteScanCommand();
-
-    await useCase.execute(command);
-    const result = await useCase.execute(command);
+    await useCase.execute(makeExecuteScanCommand());
+    const result = await useCase.execute(
+      makeExecuteScanCommand({ scanJobId: "scan-job-2" }),
+    );
 
     expect(result).toEqual({
       ok: true,
       value: {
-        scanJobId: "scan-job-1",
+        scanJobId: "scan-job-2",
         fetched: 2,
         inserted: 0,
         skippedDuplicates: 2,

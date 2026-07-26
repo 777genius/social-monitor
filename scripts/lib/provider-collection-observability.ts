@@ -12,7 +12,12 @@ import {
 export type ProviderCollectionCoverageState =
   "complete" | "partial" | "degraded" | "unavailable";
 
+export type ProviderAcquisitionMode =
+  | "live_collection"
+  | "durable_snapshot_reuse";
+
 export type ProviderCollectionObservation = {
+  readonly acquisitionMode?: ProviderAcquisitionMode;
   readonly targetItemCount: number | null;
   readonly collectedItemCount: number;
   readonly acceptedItemCount: number;
@@ -23,7 +28,10 @@ export type ProviderCollectionObservation = {
   readonly totalDuplicateItemCount: number;
   readonly pageCount: number;
   readonly paginationStopReason:
-    SourcePaginationStopReason | "failed" | "skipped";
+    | SourcePaginationStopReason
+    | "durable_snapshot_reuse"
+    | "failed"
+    | "skipped";
   readonly rateLimitEventCount: number;
   readonly failureKind?: ProviderFailureKind;
   readonly coverageState: ProviderCollectionCoverageState;
@@ -68,6 +76,7 @@ export const successfulProviderCollectionObservation = (params: {
   });
 
   return {
+    acquisitionMode: "live_collection",
     targetItemCount,
     collectedItemCount,
     acceptedItemCount,
@@ -108,6 +117,7 @@ export const successfulProviderCollectionObservation = (params: {
 export const unavailableProviderCollectionObservation = (params: {
   readonly targetItemCount?: number;
   readonly status: "failed" | "skipped";
+  readonly acquisitionMode?: ProviderAcquisitionMode;
   readonly rateLimited?: boolean;
   readonly failureKind?: ProviderFailureKind;
   readonly targetWindowEndedAt: Date;
@@ -128,6 +138,7 @@ export const unavailableProviderCollectionObservation = (params: {
   });
 
   return {
+    acquisitionMode: params.acquisitionMode ?? "live_collection",
     targetItemCount,
     collectedItemCount: 0,
     acceptedItemCount: 0,
@@ -148,6 +159,50 @@ export const unavailableProviderCollectionObservation = (params: {
   };
 };
 
+export const durableSnapshotReuseProviderCollectionObservation = (params: {
+  readonly itemCount: number;
+  readonly newestPublishedAt: Date;
+  readonly targetWindowEndedAt: Date;
+}): ProviderCollectionObservation => {
+  const slo = evaluateProviderCollectionSlo({
+    targetItemCount: params.itemCount,
+    acceptedItemCount: params.itemCount,
+    newestAcceptedPublishedAt: params.newestPublishedAt,
+    targetWindowEndedAt: params.targetWindowEndedAt,
+    maxFreshnessLagSeconds: 21_600,
+    paginationStopReason: "single_page",
+    rateLimitEventCount: 0,
+  });
+
+  return {
+    acquisitionMode: "durable_snapshot_reuse",
+    targetItemCount: params.itemCount,
+    collectedItemCount: 0,
+    acceptedItemCount: params.itemCount,
+    insertedItemCount: 0,
+    outsideWindowItemCount: 0,
+    paginationDuplicateItemCount: 0,
+    storageDuplicateItemCount: 0,
+    totalDuplicateItemCount: 0,
+    pageCount: 0,
+    paginationStopReason: "durable_snapshot_reuse",
+    rateLimitEventCount: 0,
+    coverageState: slo.met ? "complete" : "partial",
+    slo,
+    freshness: {
+      newestAcceptedPublishedAt: params.newestPublishedAt.toISOString(),
+      lagToWindowEndSeconds: Math.max(
+        0,
+        Math.round(
+          (params.targetWindowEndedAt.getTime() -
+            params.newestPublishedAt.getTime()) /
+            1000,
+        ),
+      ),
+    },
+  };
+};
+
 export const withProviderCollectionWindowProof = (params: {
   readonly observation: ProviderCollectionObservation;
   readonly windowItemCount: number;
@@ -162,7 +217,10 @@ export const withProviderCollectionWindowProof = (params: {
       : { newestAcceptedPublishedAt: params.newestPublishedAt }),
     targetWindowEndedAt: params.targetWindowEndedAt,
     maxFreshnessLagSeconds: params.observation.slo.maxFreshnessLagSeconds,
-    paginationStopReason: params.observation.paginationStopReason,
+    paginationStopReason:
+      params.observation.paginationStopReason === "durable_snapshot_reuse"
+        ? "single_page"
+        : params.observation.paginationStopReason,
     rateLimitEventCount: params.observation.rateLimitEventCount,
     ...(params.observation.failureKind === undefined
       ? {}

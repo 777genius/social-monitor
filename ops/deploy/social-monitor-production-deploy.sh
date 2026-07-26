@@ -32,6 +32,10 @@ else
   exit 1
 fi
 unset DATABASE_URL
+PINNED_OTEL_COLLECTOR_IMAGE=otel/opentelemetry-collector-contrib:0.157.0@sha256:f2f01157055a9b2aab9df7118e1f1c9abf345e99b23bc7a2bc791db374a7d0f6
+OTEL_COLLECTOR_IMAGE=$PINNED_OTEL_COLLECTOR_IMAGE
+OTEL_COLLECTOR_CONFIG_PATH=$REPO/ops/observability/otel-collector.yml
+export OTEL_COLLECTOR_IMAGE OTEL_COLLECTOR_CONFIG_PATH
 POSTGRES_POOL_BOOTSTRAP_VERSION=postgres-pool-v1
 PUBLIC_LINK=$ROOT/runtime/frontend-public-web
 ADMIN_LINK=$ROOT/runtime/frontend-admin-web
@@ -81,6 +85,8 @@ BACKEND_PATHS=(
   apps/social-research-mcp
   scripts
   ops/evals
+  ops/observability
+  ops/deploy/backend-runtime-health-lib.sh
   ops/deploy/reader-summary-publication-deploy-lib.sh
   ops/deploy/reader-summary-publication-pre-migration.sql
   ops/deploy/reader-summary-publication-post-migration.sql
@@ -95,6 +101,10 @@ CONTROL_PATHS=(
 
 RUNTIME_CONTROL_PATHS=(
   ops/deploy/production-runtime/daily-run.sh
+  ops/deploy/production-runtime/github-premidnight-capture-v1.activation
+  ops/deploy/production-runtime/github-premidnight-capture-v1.sh
+  ops/deploy/production-runtime/social-monitor-github-premidnight-capture-v1.service
+  ops/deploy/production-runtime/social-monitor-github-premidnight-capture-v1.timer
   ops/deploy/production-runtime/social-monitor-daily.service
 )
 
@@ -207,8 +217,22 @@ else
 fi
 # shellcheck source=ops/deploy/postgres-runtime-deploy-lib.sh
 source "$REPO/ops/deploy/postgres-runtime-deploy-lib.sh"
+# shellcheck source=ops/deploy/backend-runtime-health-lib.sh
+source "$REPO/ops/deploy/backend-runtime-health-lib.sh"
 # shellcheck source=ops/deploy/backend-image-rescue-lib.sh
 source "$REPO/ops/deploy/backend-image-rescue-lib.sh"
+daily_runner_bootstrap_library=$REPO/ops/deploy/daily-runner-image-bootstrap-lib.sh
+if [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} == 1 && \
+      ! -f $daily_runner_bootstrap_library ]]; then
+  daily_runner_bootstrap_library=$(
+    cd "$(dirname "${BASH_SOURCE[0]}")" && pwd
+  )/daily-runner-image-bootstrap-lib.sh
+fi
+[[ -f $daily_runner_bootstrap_library && ! -L $daily_runner_bootstrap_library ]] || \
+  fail 'daily-runner image bootstrap library is not a regular file'
+# shellcheck source=ops/deploy/daily-runner-image-bootstrap-lib.sh
+source "$daily_runner_bootstrap_library"
+unset daily_runner_bootstrap_library
 # shellcheck source=ops/deploy/x-collector-image-deploy-lib.sh
 source "$REPO/ops/deploy/x-collector-image-deploy-lib.sh"
 initialize_deploy_control_bridge
@@ -235,7 +259,7 @@ with open(rendered_path, encoding="utf-8") as handle:
 expected_services = {
     "agent-runtime", "api", "caddy", "daily-runner", "delivery-service",
     "event-relay", "frontend", "ingestion-worker", "intelligence-worker",
-    "migrate", "rabbitmq", "redis", "x-collector",
+    "migrate", "otel-collector", "rabbitmq", "redis", "x-collector",
 }
 services = config.get("services", {})
 if set(services) != expected_services:
@@ -244,6 +268,7 @@ if set(services) != expected_services:
 expected_images = {
     "caddy": "caddy:2.11.4-alpine",
     "frontend": "nginx:1.29-alpine",
+    "otel-collector": "otel/opentelemetry-collector-contrib:0.157.0@sha256:f2f01157055a9b2aab9df7118e1f1c9abf345e99b23bc7a2bc791db374a7d0f6",
     "rabbitmq": "rabbitmq:4.3-management",
     "redis": "redis:8-alpine",
 }
@@ -513,7 +538,7 @@ backend_services() {
   local -a services=()
   local -a common_paths=(Dockerfile .dockerignore docker-compose.yml package.json package-lock.json tsconfig.json tsconfig.build.json prisma.config.ts prisma vendor libs)
   if changed_between "$from" "$to" "${common_paths[@]}"; then
-    services=(migrate api agent-runtime ingestion-worker intelligence-worker delivery-service event-relay daily-runner)
+    services=(migrate otel-collector api agent-runtime ingestion-worker intelligence-worker delivery-service event-relay daily-runner)
   else
     local mapping
     for mapping in \
@@ -540,6 +565,9 @@ backend_services() {
     fi
     if changed_between "$from" "$to" scripts ops/evals test; then
       services+=(daily-runner)
+    fi
+    if changed_between "$from" "$to" ops/observability; then
+      services+=(otel-collector)
     fi
   fi
   if changed_between "$from" "$to" \
@@ -650,34 +678,6 @@ backup_database() (
   printf 'database-backup=%s\n' "$output"
 )
 
-verify_backend() {
-  local service container status oom
-  local -a container_ids
-  curl -fsS --max-time 15 http://127.0.0.1:13000/healthz >/dev/null || return 1
-  curl -fsS --max-time 15 http://127.0.0.1:13000/ready >/dev/null || return 1
-  for service in "$@"; do
-    [[ $service == migrate || $service == daily-runner ]] && continue
-    mapfile -t container_ids < <("${COMPOSE[@]}" --profile app ps -q "$service")
-    ((${#container_ids[@]} == 1)) || return 1
-    for container in "${container_ids[@]}"; do
-      status=$(docker inspect "$container" --format '{{.State.Status}}')
-      oom=$(docker inspect "$container" --format '{{.State.OOMKilled}}')
-      if [[ $status != running || $oom != false ]]; then
-        printf 'deploy-error: %s failed runtime verification\n' "$service" >&2
-        return 1
-      fi
-    done
-  done
-}
-
-verify_backend_with_retry() {
-  for _ in {1..20}; do
-    verify_backend "$@" && return 0
-    sleep 3
-  done
-  return 1
-}
-
 verify_backend_proxy_readiness() {
   local status
   status=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 \
@@ -755,11 +755,23 @@ deploy_backend() (
   )
   local previous
   previous=$(backend_image_rescue_state_file "$sha")
+  if printf '%s\n' "${captured_services[@]}" | grep -qx daily-runner; then
+    daily_runner_image_bootstrap_before_rescue "$from" "$sha" || \
+      fail 'missing prior daily-runner image could not be reconstructed'
+  fi
+  if printf '%s\n' "${captured_services[@]}" | grep -qx otel-collector; then
+    docker image inspect "$PINNED_OTEL_COLLECTOR_IMAGE" >/dev/null 2>&1 || \
+      timeout 300 docker pull "$PINNED_OTEL_COLLECTOR_IMAGE" >/dev/null || \
+      fail 'pinned collector image could not be pulled'
+    backend_image_rescue_snapshot_otel_config "$from" "$sha" || \
+      fail 'prior collector configuration could not be snapshotted'
+  fi
   backend_image_rescue_prepare "$sha" "$previous" "${captured_services[@]}" || \
     fail 'required rollback images could not be pinned before build'
   local needs_migrate=false
   for service in "${services[@]}"; do
-    [[ $service == x-collector || $service == daily-runner ]] || \
+    [[ $service == x-collector || $service == daily-runner || \
+       $service == otel-collector ]] || \
       needs_migrate=true
   done
   if [[ $needs_migrate == true ]]; then
@@ -770,15 +782,16 @@ deploy_backend() (
   verify_migration_compatibility "$from" "$sha"
   backup_database "$sha"
 
-  local -a primary_build=()
+  local -a primary_build_order=(
+    migrate api agent-runtime ingestion-worker intelligence-worker
+    delivery-service event-relay
+  )
   local x_collector_candidate_image_id=
-  for service in "${services[@]}"; do
-    [[ $service == daily-runner || $service == x-collector ]] || \
-      primary_build+=("$service")
+  for service in "${primary_build_order[@]}"; do
+    if printf '%s\n' "${services[@]}" | grep -qx "$service"; then
+      "${COMPOSE[@]}" --profile app --profile daily build "$service"
+    fi
   done
-  # Compose otherwise exports independent service images concurrently.
-  ((${#primary_build[@]} == 0)) || COMPOSE_PARALLEL_LIMIT=1 \
-    "${COMPOSE[@]}" --profile app --profile daily build "${primary_build[@]}"
   if printf '%s\n' "${services[@]}" | grep -qx x-collector; then
     x_collector_build_candidate "$sha" x_collector_candidate_image_id
   fi
@@ -905,6 +918,8 @@ deploy_release_runtime_transaction() {
   fi
   rm -rf "$runtime_control_backup"
   if [[ $backend == true ]]; then
+    backend_image_rescue_cleanup_otel_config "$previous_images" || \
+      fail 'release succeeded but collector config snapshot cleanup failed'
     backend_image_rescue_cleanup "$previous_images" || \
       fail 'release succeeded but exact backend rescue-tag cleanup failed'
   fi
@@ -917,13 +932,11 @@ deploy_release_runtime_transaction() {
 }
 
 sync_control_script() {
-  local source=$REPO/ops/deploy/social-monitor-production-deploy.sh
-  local destination=$CONTROL/github-production-deploy.sh
   local wrapper_source=$REPO/ops/deploy/social-monitor-production-ssh-wrapper.sh
   local wrapper_destination=$CONTROL/github-production-deploy-wrapper.sh
   local auth_refresh_source=$REPO/ops/deploy/host/refresh-codex-auth.sh
   local auth_refresh_destination=$CONTROL/refresh-codex-auth.sh
-  [[ -f $source ]] || return 0
+  [[ -f $REPO/ops/deploy/social-monitor-production-deploy.sh ]] || return 0
   if [[ -f $wrapper_source ]]; then
     install -m 0755 -o root -g root "$wrapper_source" "$wrapper_destination.next"
     mv -f "$wrapper_destination.next" "$wrapper_destination"
@@ -937,6 +950,13 @@ sync_control_script() {
   if x_collector_target_has_tracked_dockerfile "$sha"; then
     sync_x_collector_dockerfile "$sha"
   fi
+  sync_control_entrypoint
+}
+
+sync_control_entrypoint() {
+  local source=$REPO/ops/deploy/social-monitor-production-deploy.sh
+  local destination=$CONTROL/github-production-deploy.sh
+  [[ -f $source ]] || return 0
   install -m 0755 -o root -g root "$source" "$destination.next"
   mv -f "$destination.next" "$destination"
   cmp -s "$source" "$destination" || fail 'installed deploy entrypoint differs from reviewed source'
@@ -944,12 +964,17 @@ sync_control_script() {
 
 commit_postgres_pool_bootstrap() {
   local sha=$1
-  postgres_pool_bootstrap_installed "$sha" && return 0
-  printf '%s\n' "$sha" > "$STATE/postgres-pool-bootstrap.sha.next"
-  mv -f "$STATE/postgres-pool-bootstrap.sha.next" \
-    "$STATE/postgres-pool-bootstrap.sha"
-  postgres_pool_bootstrap_installed "$sha" || \
+  local mode=${2:-normal}
+  local marker=$STATE/postgres-pool-bootstrap.sha
+  local next=$marker.next
+  [[ $mode == normal || $mode == force-advance ]] || fail 'PostgreSQL bootstrap marker advance mode is invalid'
+  if [[ $mode == normal ]] && postgres_pool_bootstrap_installed "$sha"; then return 0; fi
+  [[ ! -e $next && ! -L $next ]] || fail 'PostgreSQL bootstrap marker temporary path is invalid'
+  printf '%s\n' "$sha" > "$next"
+  mv -f "$next" "$marker"
+  if [[ ! -f $marker || -L $marker ]] || ! postgres_pool_bootstrap_installed "$sha"; then
     fail 'PostgreSQL bootstrap marker did not commit the installed entrypoint'
+  fi
 }
 
 [[ ${BASH_SOURCE[0]} == "$0" ]] || return 0

@@ -8,6 +8,16 @@ import {
   buildXCollectorLedgerReport,
 } from "./x-collector-quality-report-support";
 import { finalizeXAccountAttributionWarningOnly } from "./x-account-attribution-warning-policy";
+import {
+  createLedgerTables,
+  epochSeconds,
+  execSql,
+  insertEvent,
+  insertRun,
+  insertUnrelatedHistory,
+  sqliteTestExecFileSync,
+  sqlString,
+} from "./x-collector-quality-report-sqlite-test-support";
 
 jest.mock("node:child_process", () => {
   const actual = jest.requireActual("node:child_process") as Record<
@@ -24,64 +34,18 @@ jest.mock("node:child_process", () => {
 });
 
 describe("x collector quality report support", () => {
+  beforeAll(() => {
+    jest
+      .mocked(execFileSync)
+      .mockImplementation(sqliteTestExecFileSync);
+  });
+
   it("reads the ledger in read-only mode and counts target search windows", () => {
     const directory = mkdtempSync(join(tmpdir(), "x-collector-quality-"));
     const dbPath = join(directory, "scweet_state.db");
 
     try {
-      execSql(
-        dbPath,
-        `
-          create table runs (
-            id integer primary key,
-            run_id text not null,
-            status text not null,
-            started_at real not null,
-            finished_at real,
-            query_hash text not null,
-            tweets_count integer not null,
-            input_json text,
-            stats_json text
-          );
-          create table accounts (
-            id integer primary key,
-            username text not null,
-            status integer not null,
-            available_til real,
-            busy integer not null,
-            daily_requests integer not null,
-            daily_tweets integer not null,
-            last_reset_date text,
-            last_used real,
-            cooldown_reason text
-          );
-          create table account_usage_events (
-            event_id text primary key,
-            event_type text not null,
-            provider text not null,
-            occurred_at text not null,
-            account_id integer,
-            username text,
-            request_id text not null,
-            scan_job_id text not null,
-            source_binding_id text not null,
-            query text not null,
-            pass_label text,
-            product text,
-            estimated_request_cost integer,
-            requests_before integer,
-            requests_after integer,
-            tweets_before integer,
-            tweets_after integer,
-            fetched_count integer,
-            accepted_count integer,
-            returned_count integer,
-            failure_kind text,
-            cooldown_reason text,
-            reset_at text
-          );
-        `,
-      );
+      createLedgerTables({ dbPath, accounts: true, events: true });
       insertRun({
         dbPath,
         id: 1,
@@ -250,22 +214,7 @@ describe("x collector quality report support", () => {
     const dbPath = join(directory, "scweet_state.db");
 
     try {
-      execSql(
-        dbPath,
-        `
-          create table runs (
-            id integer primary key,
-            run_id text not null,
-            status text not null,
-            started_at real not null,
-            finished_at real,
-            query_hash text not null,
-            tweets_count integer not null,
-            input_json text,
-            stats_json text
-          );
-        `,
-      );
+      createLedgerTables({ dbPath });
       insertRun({
         dbPath,
         id: 1,
@@ -318,22 +267,7 @@ describe("x collector quality report support", () => {
     const dbPath = join(directory, "scweet_state.db");
 
     try {
-      execSql(
-        dbPath,
-        `
-          create table runs (
-            id integer primary key,
-            run_id text not null,
-            status text not null,
-            started_at real not null,
-            finished_at real,
-            query_hash text not null,
-            tweets_count integer not null,
-            input_json text,
-            stats_json text
-          );
-        `,
-      );
+      createLedgerTables({ dbPath });
       insertRun({
         dbPath,
         id: 1,
@@ -407,62 +341,16 @@ describe("x collector quality report support", () => {
     const dbPath = join(directory, "scweet_state.db");
 
     try {
-      execSql(
+      createLedgerTables({
         dbPath,
-        `
-          create table runs (
-            id integer primary key,
-            run_id text not null,
-            status text not null,
-            started_at real not null,
-            finished_at real,
-            query_hash text not null,
-            tweets_count integer not null,
-            input_json text,
-            stats_json text
-          );
-          create table accounts (
-            id integer primary key,
-            username text not null,
-            status integer not null,
-            available_til real,
-            busy integer not null,
-            daily_requests integer not null,
-            daily_tweets integer not null,
-            last_reset_date text,
-            last_used real,
-            cooldown_reason text
-          );
-          create table account_usage_events (
-            event_id text primary key,
-            event_type text not null,
-            provider text not null,
-            occurred_at text not null,
-            account_id integer,
-            username text,
-            request_id text not null,
-            scan_job_id text not null,
-            source_binding_id text not null,
-            query text not null,
-            pass_label text,
-            product text,
-            estimated_request_cost integer,
-            daily_requests_limit integer,
-            daily_tweets_limit integer,
-            account_priority integer,
-            requests_before integer,
-            requests_after integer,
-            tweets_before integer,
-            tweets_after integer,
-            fetched_count integer,
-            accepted_count integer,
-            returned_count integer,
-            failure_kind text,
-            cooldown_reason text,
-            reset_at text
-          );
-        `,
-      );
+        accounts: true,
+        events: true,
+        eventOptionalColumns: [
+          "daily_requests_limit",
+          "daily_tweets_limit",
+          "account_priority",
+        ],
+      });
       insertRun({
         dbPath,
         id: 1,
@@ -517,33 +405,12 @@ describe("x collector quality report support", () => {
     const dbPath = join(directory, "scweet_state.db");
 
     try {
-      execSql(
+      createLedgerTables({
         dbPath,
-        `
-          create table runs (
-            id integer primary key, run_id text not null, status text not null,
-            started_at real not null, finished_at real, query_hash text not null,
-            tweets_count integer not null, input_json text, stats_json text
-          );
-          create table accounts (
-            id integer primary key, username text not null, status integer not null,
-            available_til real, busy integer not null, daily_requests integer not null,
-            daily_tweets integer not null, last_reset_date text, last_used real,
-            cooldown_reason text
-          );
-          create table account_usage_events (
-            event_id text primary key, event_type text not null, provider text not null,
-            occurred_at text not null, account_id integer, username text,
-            request_id text not null, scan_job_id text not null,
-            source_binding_id text not null, query text not null, pass_label text,
-            product text, estimated_request_cost integer, requests_before integer,
-            requests_after integer, tweets_before integer, tweets_after integer,
-            fetched_count integer, accepted_count integer, returned_count integer,
-            failure_kind text, cooldown_reason text, reset_at text,
-            attribution_status text
-          );
-        `,
-      );
+        accounts: true,
+        events: true,
+        eventOptionalColumns: ["attribution_status"],
+      });
       insertRun({
         dbPath,
         id: 1,
@@ -643,34 +510,16 @@ describe("x collector quality report support", () => {
     const dbPath = join(directory, "scweet_state.db");
 
     try {
-      execSql(
+      createLedgerTables({
         dbPath,
-        `
-          create table runs (
-            id integer primary key, run_id text not null, status text not null,
-            started_at real not null, finished_at real, query_hash text not null,
-            tweets_count integer not null, input_json text, stats_json text
-          );
-          create table accounts (
-            id integer primary key, username text not null, status integer not null,
-            available_til real, busy integer not null, daily_requests integer not null,
-            daily_tweets integer not null, last_reset_date text, last_used real,
-            cooldown_reason text
-          );
-          create table account_usage_events (
-            event_id text primary key, event_type text not null, provider text not null,
-            occurred_at text not null, pass_observation_id text,
-            observation_relation text, account_id integer, username text,
-            request_id text not null, scan_job_id text not null,
-            source_binding_id text not null, query text not null, pass_label text,
-            product text, estimated_request_cost integer, requests_before integer,
-            requests_after integer, tweets_before integer, tweets_after integer,
-            fetched_count integer, accepted_count integer, returned_count integer,
-            failure_kind text, cooldown_reason text, reset_at text,
-            attribution_status text
-          );
-        `,
-      );
+        accounts: true,
+        events: true,
+        eventOptionalColumns: [
+          "pass_observation_id",
+          "observation_relation",
+          "attribution_status",
+        ],
+      });
       insertRun({
         dbPath,
         id: 1,
@@ -768,100 +617,293 @@ describe("x collector quality report support", () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
-});
 
-function insertRun(params: {
-  readonly dbPath: string;
-  readonly id: number;
-  readonly displayType: "Top" | "Latest";
-  readonly startedAt: string;
-  readonly finishedAt: string | null;
-  readonly tweets: number;
-  readonly since?: string;
-  readonly until?: string;
-  readonly status?: string;
-  readonly statsJson?: string | null;
-}): void {
-  const input = JSON.stringify({
-    since: params.since ?? "2026-07-07_00:00:00_UTC",
-    until: params.until ?? "2026-07-09_23:59:59_UTC",
-    search_query: "openai anthropic claude llm",
-    display_type: params.displayType,
-    min_likes: params.displayType === "Top" ? 50 : 3,
-    min_retweets: params.displayType === "Top" ? 10 : null,
-    min_replies: params.displayType === "Top" ? 5 : null,
+  it("bounds SQLite output despite 12k unrelated runs and events", () => {
+    const directory = mkdtempSync(join(tmpdir(), "x-collector-quality-"));
+    const dbPath = join(directory, "scweet_state.db");
+
+    try {
+      createLedgerTables({ dbPath, accounts: true, events: true });
+      insertRun({
+        dbPath,
+        id: 1,
+        displayType: "Top",
+        startedAt: "2026-07-26T00:10:00.000Z",
+        finishedAt: "2026-07-26T00:11:00.000Z",
+        tweets: 31,
+        since: "2026-07-25",
+        until: "2026-07-26",
+      });
+      insertRun({
+        dbPath,
+        id: 2,
+        displayType: "Latest",
+        startedAt: "2026-07-26T00:12:00.000Z",
+        finishedAt: "2026-07-26T00:13:00.000Z",
+        tweets: 1,
+        since: "2026-07-25",
+        until: "2026-07-26",
+        statsJson: "{malformed",
+      });
+      insertRun({
+        dbPath,
+        id: 3,
+        displayType: "Top",
+        startedAt: "2026-07-26T00:14:00.000Z",
+        finishedAt: "2026-07-26T00:15:00.000Z",
+        tweets: 999,
+        inputJson: "{malformed",
+      });
+      execSql(
+        dbPath,
+        `
+          insert into accounts (
+            id, username, status, available_til, busy, daily_requests,
+            daily_tweets, last_reset_date, last_used, cooldown_reason
+          ) values (
+            1, 'bounded_account', 1, null, 0, 1, 31,
+            '2026-07-26', null, null
+          );
+        `,
+      );
+      insertEvent({
+        dbPath,
+        id: "target-event",
+        type: "pass_succeeded",
+        occurredAt: "2026-07-26T00:10:30.000Z",
+        accountId: 1,
+        fetched: 31,
+        accepted: 31,
+      });
+      insertUnrelatedHistory(dbPath);
+
+      jest.mocked(execFileSync).mockClear();
+      const ledger = buildXCollectorLedgerReport({
+        ledgerPath: dbPath,
+        collectionDate: "2026-07-25",
+      });
+      const accountPool = buildXAccountPoolReport({
+        ledgerPath: dbPath,
+        collectionDate: "2026-07-25",
+        observedAt: new Date("2026-07-26T00:20:00.000Z"),
+      });
+
+      expect(ledger).toMatchObject({
+        available: true,
+        runCount: 2,
+        returnedTweetCount: 32,
+        invalidJsonFieldCount: 1,
+        invalidJsonFields: [
+          {
+            runId: "run-2",
+            field: "stats_json",
+          },
+        ],
+        readError: null,
+      });
+      expect(accountPool).toMatchObject({
+        eventCount: 1,
+        targetRunEventCorrelationStatus: "exact",
+        ambiguousTargetRunEventCount: 0,
+        readError: null,
+      });
+      const readSql = jest
+        .mocked(execFileSync)
+        .mock.calls.map(([, args]) => (Array.isArray(args) ? args[3] : ""))
+        .filter((value): value is string => typeof value === "string");
+      expect(readSql.some((sql) => sql.includes("json_valid(input_json)"))).toBe(
+        true,
+      );
+      expect(
+        readSql.some((sql) => sql.includes("target_correlation_keys")),
+      ).toBe(true);
+      for (const [command, args] of jest.mocked(execFileSync).mock.calls) {
+        expect(command).toBe("sqlite3");
+        expect(Array.isArray(args) ? args.slice(0, 2) : args).toEqual([
+          "-readonly",
+          "-json",
+        ]);
+      }
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
-  const stats =
-    params.statsJson === undefined
-      ? JSON.stringify({ tasks_failed: 0, retries: 0 })
-      : params.statsJson;
 
-  execSql(
-    params.dbPath,
-    `
-      insert into runs (
-        id, run_id, status, started_at, finished_at, query_hash,
-        tweets_count, input_json, stats_json
-      ) values (
-        ${params.id}, 'run-${params.id}', ${sqlString(params.status ?? "completed")},
-        ${epochSeconds(params.startedAt)}, ${
-          params.finishedAt === null ? "null" : epochSeconds(params.finishedAt)
+  it("uses half-open UTC overlap at one millisecond and rejects SQL input", () => {
+    const directory = mkdtempSync(join(tmpdir(), "x-collector-quality-"));
+    const dbPath = join(directory, "scweet_state.db");
+
+    try {
+      createLedgerTables({ dbPath });
+      insertRun({
+        dbPath,
+        id: 1,
+        displayType: "Top",
+        startedAt: "2026-07-26T01:00:00.000Z",
+        finishedAt: "2026-07-26T01:01:00.000Z",
+        tweets: 1,
+        since: "2026-07-25T23:59:59.999Z",
+        until: "2026-07-26T00:00:00.000Z",
+      });
+      insertRun({
+        dbPath,
+        id: 2,
+        displayType: "Latest",
+        startedAt: "2026-07-26T01:02:00.000Z",
+        finishedAt: "2026-07-26T01:03:00.000Z",
+        tweets: 2,
+        since: "2026-07-24T23:59:59.999Z",
+        until: "2026-07-25T00:00:00.001Z",
+      });
+      insertRun({
+        dbPath,
+        id: 3,
+        displayType: "Top",
+        startedAt: "2026-07-26T01:04:00.000Z",
+        finishedAt: "2026-07-26T01:05:00.000Z",
+        tweets: 100,
+        since: "2026-07-26T00:00:00.000Z",
+        until: "2026-07-26T00:00:00.001Z",
+      });
+      insertRun({
+        dbPath,
+        id: 4,
+        displayType: "Top",
+        startedAt: "2026-07-26T01:06:00.000Z",
+        finishedAt: "2026-07-26T01:07:00.000Z",
+        tweets: 100,
+        since: "2026-07-24T23:59:59.999Z",
+        until: "2026-07-25T00:00:00.000Z",
+      });
+
+      const ledger = buildXCollectorLedgerReport({
+        ledgerPath: dbPath,
+        collectionDate: "2026-07-25",
+      });
+      expect(ledger).toMatchObject({
+        runCount: 2,
+        returnedTweetCount: 3,
+        hasTopAndLatest: true,
+      });
+
+      jest.mocked(execFileSync).mockClear();
+      const rejected = buildXCollectorLedgerReport({
+        ledgerPath: dbPath,
+        collectionDate: "2026-07-25' OR 1=1 --",
+      });
+      expect(rejected).toMatchObject({
+        available: true,
+        runCount: 0,
+        returnedTweetCount: 0,
+        readError: null,
+      });
+      const rejectedSql = jest.mocked(execFileSync).mock.calls[0]?.[1]?.[3];
+      expect(rejectedSql).not.toContain("OR 1=1");
+      expect(rejectedSql).toContain("where 0");
+      expect(rejectedSql).toContain(
+        "order by started_at asc, run_id asc",
+      );
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("loads exact correlation keys and inclusive bounded event edges only", () => {
+    const directory = mkdtempSync(join(tmpdir(), "x-collector-quality-"));
+    const dbPath = join(directory, "scweet_state.db");
+    const targetRunId = "target-' OR 1=1 --";
+
+    try {
+      createLedgerTables({
+        dbPath,
+        accounts: true,
+        events: true,
+        eventOptionalColumns: ["collector_run_id"],
+      });
+      insertRun({
+        dbPath,
+        id: 1,
+        runId: targetRunId,
+        displayType: "Top",
+        startedAt: "2026-07-26T00:10:00.500Z",
+        finishedAt: "2026-07-26T00:20:00.500Z",
+        tweets: 1,
+        since: "2026-07-25",
+        until: "2026-07-26",
+      });
+      execSql(
+        dbPath,
+        `
+          insert into accounts (
+            id, username, status, available_til, busy, daily_requests,
+            daily_tweets, last_reset_date, last_used, cooldown_reason
+          ) values (
+            1, 'correlated_account', 1, null, 0, 1, 1,
+            '2026-07-26', null, null
+          );
+          insert into account_usage_events (
+            event_id, event_type, provider, occurred_at, collector_run_id,
+            account_id, username, request_id, scan_job_id, source_binding_id,
+            query, pass_label, product, fetched_count, accepted_count
+          ) values
+            ('exact-anchor', 'pass_started', 'x-twitter',
+             '2026-07-27T00:00:00.000Z', null, null, null,
+             ${sqlString(targetRunId)}, 'target-scan', 'binding-1',
+             'target', 'top_base', 'search', null, null),
+            ('exact-related', 'pass_succeeded', 'x-twitter',
+             '2026-07-27T00:00:01.000Z', null, 1, 'correlated_account',
+             ${sqlString(targetRunId)}, 'target-scan', 'binding-1',
+             'target', 'top_base', 'search', 1, 1),
+            ('edge-start', 'budget_snapshot', 'x-twitter',
+             '2026-07-26T00:05:00.500Z', null, 1, 'correlated_account',
+             'legacy-start', 'legacy-scan', 'binding-1',
+             'legacy', null, null, null, null),
+            ('edge-before', 'budget_snapshot', 'x-twitter',
+             '2026-07-26T00:05:00.499Z', null, 1, 'correlated_account',
+             'legacy-before', 'legacy-scan', 'binding-1',
+             'legacy', null, null, null, null),
+            ('edge-end', 'budget_snapshot', 'x-twitter',
+             '2026-07-26T00:25:00.500Z', null, 1, 'correlated_account',
+             'legacy-end', 'legacy-scan', 'binding-1',
+             'legacy', null, null, null, null),
+            ('edge-after', 'budget_snapshot', 'x-twitter',
+             '2026-07-26T00:25:00.501Z', null, 1, 'correlated_account',
+             'legacy-after', 'legacy-scan', 'binding-1',
+             'legacy', null, null, null, null),
+            ('foreign-explicit', 'pass_succeeded', 'x-twitter',
+             '2026-07-26T00:10:01.000Z', 'foreign-run', 1,
+             'correlated_account', ${sqlString(targetRunId)}, 'target-scan',
+             'binding-1', 'foreign', 'top_base', 'search', 99, 99);
+        `,
+      );
+
+      jest.mocked(execFileSync).mockClear();
+      const accountPool = buildXAccountPoolReport({
+        ledgerPath: dbPath,
+        collectionDate: "2026-07-25",
+        observedAt: new Date("2026-07-27T00:01:00.000Z"),
+      });
+
+      expect(accountPool).toMatchObject({
+        eventCount: 2,
+        targetRunEventCorrelationStatus: "ambiguous",
+        ambiguousTargetRunEventCount: 2,
+        passStartedCount: 1,
+        passSucceededCount: 1,
+        targetWindowAttribution: {
+          acceptedCount: 1,
         },
-        'hash-${params.id}', ${params.tweets},
-        ${sqlString(input)}, ${sqlNullableString(stats)}
+      });
+      const eventSql = jest
+        .mocked(execFileSync)
+        .mock.calls.map(([, args]) => (Array.isArray(args) ? args[3] : ""))
+        .find((sql) => sql?.includes("target_correlation_keys"));
+      expect(eventSql).toContain("target-'' OR 1=1 --");
+      expect(eventSql).toContain(
+        "order by occurred_at asc, event_id asc",
       );
-    `,
-  );
-}
-
-function insertEvent(params: {
-  readonly dbPath: string;
-  readonly id: string;
-  readonly type: string;
-  readonly occurredAt: string;
-  readonly accountId: number | null;
-  readonly username?: string | null;
-  readonly fetched: number | null;
-  readonly accepted: number | null;
-  readonly requestId?: string;
-}): void {
-  execSql(
-    params.dbPath,
-    `
-      insert into account_usage_events (
-        event_id, event_type, provider, occurred_at, account_id, username,
-        request_id, scan_job_id, source_binding_id, query, pass_label, product,
-        estimated_request_cost, requests_before, requests_after, tweets_before,
-        tweets_after, fetched_count, accepted_count, returned_count,
-        failure_kind, cooldown_reason, reset_at
-      ) values (
-        ${sqlString(params.id)}, ${sqlString(params.type)}, 'x-twitter',
-        ${sqlString(params.occurredAt)}, ${params.accountId ?? "null"},
-        ${sqlNullableString(params.username ?? "research_account")},
-        ${sqlString(params.requestId ?? "run-1")}, 'scan-1', 'binding-1',
-        'openai anthropic claude llm', 'top_base', 'search', 6,
-        0, 1, 0, 1, ${params.fetched ?? "null"},
-        ${params.accepted ?? "null"}, null, null, null, null
-      );
-    `,
-  );
-}
-
-function execSql(dbPath: string, sql: string): void {
-  execFileSync("sqlite3", [dbPath, sql], {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
-}
-
-function epochSeconds(value: string): number {
-  return Math.floor(Date.parse(value) / 1000);
-}
-
-function sqlString(value: string): string {
-  return `'${value.replaceAll("'", "''")}'`;
-}
-
-function sqlNullableString(value: string | null): string {
-  return value === null ? "null" : sqlString(value);
-}
+});

@@ -1,0 +1,207 @@
+import type { CleanRealDayCollectionReport } from "./clean-real-day-collection-report";
+import {
+  requestedUtcDayIsClosed,
+  runCleanRealDayProviderAcquisitionPlan,
+  type CleanRealDaySourceBindingTarget,
+} from "./clean-real-day-provider-acquisition";
+import {
+  durableSnapshotReuseProviderCollectionObservation,
+  successfulProviderCollectionObservation,
+  unavailableProviderCollectionObservation,
+} from "./provider-collection-observability";
+
+describe("clean real-day provider acquisition", () => {
+  it("switches GitHub to reuse exactly when the requested UTC day closes", () => {
+    const endedAt = new Date("2026-07-24T00:00:00.000Z");
+
+    expect(
+      requestedUtcDayIsClosed(
+        new Date("2026-07-23T23:59:59.999Z"),
+        endedAt,
+      ),
+    ).toBe(false);
+    expect(requestedUtcDayIsClosed(new Date(endedAt), endedAt)).toBe(true);
+  });
+
+  it("uses one network-free durable read for closed-day GitHub with no retry", async () => {
+    const targets = [target("github-trending-page"), target("hacker-news")];
+    const collectLive = jest.fn(async (item: Target) => liveScan(item, 10));
+    const collectDurableSnapshot = jest.fn(async () => durableScan());
+
+    const scans = await runCleanRealDayProviderAcquisitionPlan({
+      targets,
+      closedRequestedUtcDay: true,
+      collectLive,
+      collectDurableSnapshot,
+      waitForXReadiness: false,
+    });
+
+    expect(collectDurableSnapshot).toHaveBeenCalledTimes(1);
+    expect(collectLive).toHaveBeenCalledTimes(1);
+    expect(collectLive.mock.calls[0]?.[0].providerKey).toBe("hacker-news");
+    expect(scans.find(isGitHubScan)).toMatchObject({
+      acquisitionMode: "durable_snapshot_reuse",
+      attemptCount: 1,
+      fetched: 0,
+      inserted: 0,
+      projected: 0,
+    });
+  });
+
+  it("does not retry an invalid closed-day durable snapshot", async () => {
+    const collectLive = jest.fn(async (item: Target) => liveScan(item, 10));
+    const collectDurableSnapshot = jest.fn(async () => failedDurableScan());
+
+    const scans = await runCleanRealDayProviderAcquisitionPlan({
+      targets: [target("github-trending-page")],
+      closedRequestedUtcDay: true,
+      collectLive,
+      collectDurableSnapshot,
+      waitForXReadiness: false,
+    });
+
+    expect(collectLive).not.toHaveBeenCalled();
+    expect(collectDurableSnapshot).toHaveBeenCalledTimes(1);
+    expect(scans[0]).toMatchObject({
+      status: "failed",
+      acquisitionMode: "durable_snapshot_reuse",
+      attemptCount: 1,
+    });
+  });
+
+  it("keeps current-day GitHub on the explicit live path", async () => {
+    const collectLive = jest.fn(async (item: Target) => liveScan(item, 10));
+    const collectDurableSnapshot = jest.fn(async () => durableScan());
+
+    const scans = await runCleanRealDayProviderAcquisitionPlan({
+      targets: [target("github-trending-page")],
+      closedRequestedUtcDay: false,
+      collectLive,
+      collectDurableSnapshot,
+      waitForXReadiness: false,
+    });
+
+    expect(collectLive).toHaveBeenCalledTimes(1);
+    expect(collectDurableSnapshot).not.toHaveBeenCalled();
+    expect(scans[0]).toMatchObject({
+      acquisitionMode: "live_collection",
+      attemptCount: 1,
+    });
+  });
+
+  it("leaves non-GitHub live retry behavior unchanged", async () => {
+    let attempt = 0;
+    const collectLive = jest.fn(async (item: Target) => {
+      attempt += 1;
+      return liveScan(item, attempt === 3 ? 10 : 1);
+    });
+
+    const scans = await runCleanRealDayProviderAcquisitionPlan({
+      targets: [target("hacker-news")],
+      closedRequestedUtcDay: true,
+      collectLive,
+      collectDurableSnapshot: jest.fn(async () => durableScan()),
+      waitForXReadiness: false,
+    });
+
+    expect(collectLive).toHaveBeenCalledTimes(3);
+    expect(scans[0]).toMatchObject({
+      providerKey: "hacker-news",
+      acquisitionMode: "live_collection",
+      attemptCount: 3,
+    });
+  });
+});
+
+type Target = CleanRealDaySourceBindingTarget;
+type PlannedScan = Omit<
+  CleanRealDayCollectionReport["scans"][number],
+  "attemptCount"
+>;
+
+const isGitHubScan = (
+  scan: CleanRealDayCollectionReport["scans"][number],
+): boolean => scan.providerKey === "github-trending-page";
+
+const target = (
+  providerKey: Target["providerKey"],
+): CleanRealDaySourceBindingTarget => ({
+  tenantId: "tenant-a",
+  workspaceId: "workspace-a",
+  interestId: `interest-${providerKey}`,
+  interestQuery: providerKey,
+  sourceBindingId: `binding-${providerKey}`,
+  scanPolicyId: `policy-${providerKey}`,
+  providerKey,
+  config: { maxItems: 10 },
+  sourceQuery: {
+    mode: providerKey === "github-trending-page" ? "listing" : "search",
+    query: providerKey,
+  },
+});
+
+const liveScan = (target: Target, accepted: number): PlannedScan => ({
+  providerKey: target.providerKey,
+  bindingFingerprint: "binding",
+  acquisitionMode: "live_collection",
+  status: "succeeded",
+  fetched: accepted,
+  inserted: accepted,
+  projected: accepted,
+  skippedDuplicates: 0,
+  warningCount: 0,
+  observability: successfulProviderCollectionObservation({
+    telemetry: {
+      targetItemCount: 10,
+      collectedItemCount: accepted,
+      acceptedItemCount: accepted,
+      outsideWindowItemCount: 0,
+      pageCount: 1,
+      paginationDuplicateItemCount: 0,
+      paginationStopReason: "target_items",
+      rateLimitEventCount: 0,
+      oldestAcceptedPublishedAt: new Date("2026-07-23T23:58:00.000Z"),
+      newestAcceptedPublishedAt: new Date("2026-07-23T23:59:00.000Z"),
+    },
+    fetched: accepted,
+    inserted: accepted,
+    storageDuplicates: 0,
+    targetWindowEndedAt: new Date("2026-07-24T00:00:00.000Z"),
+  }),
+});
+
+const durableScan = (): PlannedScan => ({
+  providerKey: "github-trending-page",
+  bindingFingerprint: "binding",
+  acquisitionMode: "durable_snapshot_reuse",
+  status: "succeeded",
+  fetched: 0,
+  inserted: 0,
+  projected: 0,
+  skippedDuplicates: 0,
+  warningCount: 0,
+  observability: durableSnapshotReuseProviderCollectionObservation({
+    itemCount: 10,
+    newestPublishedAt: new Date("2026-07-23T23:59:00.000Z"),
+    targetWindowEndedAt: new Date("2026-07-24T00:00:00.000Z"),
+  }),
+});
+
+const failedDurableScan = (): PlannedScan => ({
+  providerKey: "github-trending-page",
+  bindingFingerprint: "binding",
+  acquisitionMode: "durable_snapshot_reuse",
+  status: "failed",
+  fetched: 0,
+  inserted: 0,
+  projected: 0,
+  skippedDuplicates: 0,
+  warningCount: 0,
+  observability: unavailableProviderCollectionObservation({
+    targetItemCount: 10,
+    status: "failed",
+    acquisitionMode: "durable_snapshot_reuse",
+    targetWindowEndedAt: new Date("2026-07-24T00:00:00.000Z"),
+  }),
+  failureFingerprint: "failure",
+});

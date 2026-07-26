@@ -255,6 +255,7 @@ export type PrismaIngestionClient = {
       readonly where: { readonly scanJobId: string };
       readonly update: {
         readonly status: "RUNNING" | "SUCCEEDED" | "FAILED";
+        readonly attemptNumber: number;
         readonly startedAt: Date;
         readonly finishedAt?: Date | null;
         readonly fetched: number;
@@ -268,6 +269,7 @@ export type PrismaIngestionClient = {
         readonly tenantId: string;
         readonly workspaceId: string;
         readonly sourceBindingId: string;
+        readonly attemptNumber: number;
         readonly status: "RUNNING" | "SUCCEEDED" | "FAILED";
         readonly startedAt: Date;
         readonly finishedAt?: Date | null;

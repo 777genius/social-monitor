@@ -140,7 +140,9 @@ describe('CommandOutboxDispatcher', () => {
     expect(outbox.failures[0]).toMatchObject({
       id: command.commandId,
       leaseOwner: 'lease-1',
+      commandType: 'ingestion.scan.execute',
       availableAt: new Date('2026-07-23T12:00:02.000Z'),
+      failedAt: now,
       terminal: false,
     });
     expect(outbox.failures[0]?.lastError).not.toContain('secret-token');
@@ -166,5 +168,9 @@ describe('CommandOutboxDispatcher', () => {
       failed: 1,
     });
     expect(outbox.failures[0]?.terminal).toBe(true);
+    expect(outbox.failures[0]).toMatchObject({
+      commandType: 'ingestion.scan.execute',
+      failedAt: now,
+    });
   });
 });

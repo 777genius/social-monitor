@@ -33,7 +33,7 @@ backend_image_rescue_policy() {
   case $1 in
     migrate) printf 'tag-only-migrate\n' ;;
     daily-runner) printf 'tag-only-daily-runner\n' ;;
-    api|agent-runtime|ingestion-worker|intelligence-worker|delivery-service|event-relay|x-collector)
+    api|agent-runtime|ingestion-worker|intelligence-worker|delivery-service|event-relay|otel-collector|x-collector)
       printf 'recreate\n'
       ;;
     *) return 1 ;;
@@ -43,7 +43,44 @@ backend_image_rescue_policy() {
 backend_image_rescue_known_services() {
   printf '%s\n' \
     migrate api agent-runtime ingestion-worker intelligence-worker \
-    delivery-service event-relay daily-runner x-collector
+    delivery-service event-relay daily-runner otel-collector x-collector
+}
+
+backend_image_rescue_otel_config_path() {
+  local sha=$1
+  printf '%s/otel-collector-config-%s.yml\n' "$STATE" "$sha"
+}
+
+backend_image_rescue_snapshot_otel_config() (
+  set -uo pipefail
+  local from=$1
+  local sha=$2
+  local path partial
+  path=$(backend_image_rescue_otel_config_path "$sha")
+  partial=$path.partial
+  rm -f "$partial"
+  if [[ ! $from =~ ^[0-9a-f]{40}$ ]] || \
+     ! git -C "$REPO" cat-file -e \
+       "$from:ops/observability/otel-collector.yml" 2>/dev/null; then
+    rm -f "$path"
+    return 0
+  fi
+  umask 077
+  git -C "$REPO" show \
+    "$from:ops/observability/otel-collector.yml" > "$partial" || return 1
+  [[ -s $partial && ! -L $partial ]] || return 1
+  chmod 0600 "$partial" || return 1
+  mv -f "$partial" "$path"
+)
+
+backend_image_rescue_cleanup_otel_config() {
+  local state_file=$1
+  [[ -e $state_file || -L $state_file ]] || return 0
+  local sha path
+  sha=$(backend_image_rescue_manifest_target "$state_file") || return 1
+  path=$(backend_image_rescue_otel_config_path "$sha")
+  [[ ! -L $path ]] || return 1
+  rm -f "$path" "$path.partial"
 }
 
 backend_image_rescue_image_id() {
@@ -262,6 +299,44 @@ backend_image_rescue_remove_tag() {
   ! backend_image_rescue_image_id "$rescue_tag" >/dev/null
 }
 
+backend_image_rescue_remove_manifest_tag() {
+  local service=$1
+  local expected_image_id=$2
+  local rescue_tag=$3
+  local pin_name pin_record current_rescue_id
+  local pin_id pin_container_name status running restarting pin_image_id
+  local project_label purpose_label extra
+
+  backend_image_rescue_remove_tag "$rescue_tag" && return 0
+  [[ $service == daily-runner ]] || return 1
+
+  current_rescue_id=$(backend_image_rescue_image_id "$rescue_tag") || return 1
+  [[ $expected_image_id =~ ^sha256:[0-9a-f]{64}$ && \
+     $current_rescue_id == "$expected_image_id" ]] || return 1
+
+  pin_name=${PROJECT}-daily-runner-image-pin
+  pin_record=$(docker inspect "$pin_name" --format \
+    '{{.Id}}|{{.Name}}|{{.State.Status}}|{{.State.Running}}|{{.State.Restarting}}|{{.Image}}|{{index .Config.Labels "social-monitor.project"}}|{{index .Config.Labels "social-monitor.purpose"}}' \
+    2>/dev/null) || return 1
+  [[ $pin_record != *$'\n'* ]] || return 1
+  IFS='|' read -r pin_id pin_container_name status running restarting \
+    pin_image_id project_label purpose_label extra <<< "$pin_record"
+  [[ $pin_id =~ ^[0-9a-f]{64}$ && \
+     $pin_container_name == "/$pin_name" && \
+     ($status == created || $status == exited) && \
+     $running == false && $restarting == false && \
+     $pin_image_id == "$expected_image_id" && \
+     $project_label == social-monitor && \
+     $purpose_label == daily-runner-image-retention && \
+     -z $extra ]] || return 1
+
+  docker container rm "$pin_id" >/dev/null || return 1
+  current_rescue_id=$(backend_image_rescue_image_id "$rescue_tag") || return 1
+  [[ $current_rescue_id == "$expected_image_id" ]] || return 1
+  docker image rm "$rescue_tag" >/dev/null || return 1
+  ! backend_image_rescue_image_id "$rescue_tag" >/dev/null
+}
+
 backend_image_rescue_validate_structure() {
   local state_file=$1
   [[ -f $state_file && ! -L $state_file && -s $state_file ]] || return 1
@@ -303,6 +378,7 @@ backend_image_rescue_validate_structure() {
         [[ $rescue_tag == "$expected_tag" ]] || return 1
         if [[ $policy == recreate ]]; then
           [[ $source_kind == running-image || \
+             ( $service == otel-collector && $source_kind == compose-tag ) || \
              $source_kind == container-export-import ]] || return 1
         fi
         seen_services[$service]=1
@@ -345,7 +421,7 @@ backend_image_rescue_write_phase() (
   next=$phase_file.next.$$
   manifest_name=${state_file##*/}
   # Invoked through the EXIT trap below.
-  # shellcheck disable=SC2317
+  # shellcheck disable=SC2317,SC2329
   cleanup_phase_next() {
     rm -f "$next"
   }
@@ -470,7 +546,7 @@ backend_image_rescue_reconstruct_running_container() (
     paused=false
   }
   # Invoked through the EXIT trap below.
-  # shellcheck disable=SC2317
+  # shellcheck disable=SC2317,SC2329
   cleanup_paused_container() {
     unpause_container || true
   }
@@ -572,8 +648,12 @@ backend_image_rescue_pin_service() {
       "$service" "$source_ref_value" "$rescue_tag" \
       source_kind_value image_id_value || return 1
   else
-    [[ $policy != recreate ]] || return 1
-    compose_tag=$(compose_image_name "$service")
+    if [[ $service == otel-collector && $policy == recreate ]]; then
+      compose_tag=${PINNED_OTEL_COLLECTOR_IMAGE:?}
+    else
+      [[ $policy != recreate ]] || return 1
+      compose_tag=$(compose_image_name "$service")
+    fi
     pinned_id=$(backend_image_rescue_image_id "$compose_tag") || return 1
     [[ $pinned_id =~ ^sha256:[0-9a-f]{64}$ ]] || return 1
     docker image tag "$compose_tag" "$rescue_tag" >/dev/null || return 1
@@ -643,7 +723,7 @@ backend_image_rescue_prepare() (
   fi
 
   # Invoked through the EXIT trap below.
-  # shellcheck disable=SC2317
+  # shellcheck disable=SC2317,SC2329
   cleanup_partial_snapshot() {
     local cleanup_service cleanup_tag phase_file
     [[ $snapshot_complete == false ]] || return 0
@@ -693,6 +773,7 @@ backend_image_rescue_restore_tags() {
   backend_image_rescue_validate "$state_file" || return 1
   while IFS=$'\t' read -r record service policy source_kind source_ref image_id rescue_tag extra; do
     [[ $record == image ]] || continue
+    [[ $service != otel-collector ]] || continue
     if ! docker image tag "$rescue_tag" "$(compose_image_name "$service")" >/dev/null; then
       printf 'deploy-error: failed to restore Compose tag for %s from %s\n' \
         "$service" "$rescue_tag" >&2
@@ -713,26 +794,48 @@ rollback_backend_images() {
   local state_file=$1
   [[ -e $state_file || -L $state_file ]] || return 0
   local record service policy source_kind source_ref image_id rescue_tag extra
-  local phase api_rolled_back=false
-  local -a rollback_services=()
+  local phase target_sha api_rolled_back=false otel_image='' otel_config=''
+  local -a rollback_services=() remove_services=()
 
   phase=$(backend_image_rescue_read_phase "$state_file") || return 1
+  target_sha=$(backend_image_rescue_manifest_target "$state_file") || return 1
   [[ $phase != rollback-complete ]] || return 0
   backend_image_rescue_restore_tags "$state_file" || return 1
   if [[ $phase == prepared ]]; then
+    backend_image_rescue_cleanup_otel_config "$state_file" || return 1
     backend_image_rescue_write_phase "$state_file" rollback-complete
     return
   fi
   [[ $phase == replacement-started ]] || return 1
   while IFS=$'\t' read -r record service policy source_kind source_ref image_id rescue_tag extra; do
     [[ $record == image && $policy == recreate ]] || continue
+    if [[ $service == otel-collector && $source_kind == compose-tag ]]; then
+      remove_services+=("$service")
+      continue
+    fi
     rollback_services+=("$service")
     [[ $service == api ]] && api_rolled_back=true
+    if [[ $service == otel-collector ]]; then
+      otel_image=$rescue_tag
+      otel_config=$(backend_image_rescue_otel_config_path \
+        "$target_sha") || return 1
+      [[ -f $otel_config && ! -L $otel_config && -s $otel_config ]] || return 1
+    fi
   done < "$state_file"
+  if ((${#remove_services[@]} > 0)); then
+    "${COMPOSE[@]}" --profile app rm -sf "${remove_services[@]}" || return 1
+  fi
   if ((${#rollback_services[@]} > 0)); then
     stop_and_remove_database_services "${rollback_services[@]}" || return 1
-    "${COMPOSE[@]}" --profile app up -d --no-deps --force-recreate \
-      "${rollback_services[@]}" || return 1
+    if [[ -n $otel_image ]]; then
+      OTEL_COLLECTOR_IMAGE=$otel_image \
+      OTEL_COLLECTOR_CONFIG_PATH=$otel_config \
+        "${COMPOSE[@]}" --profile app up -d --no-deps --force-recreate \
+          "${rollback_services[@]}" || return 1
+    else
+      "${COMPOSE[@]}" --profile app up -d --no-deps --force-recreate \
+        "${rollback_services[@]}" || return 1
+    fi
     verify_backend_with_retry "${rollback_services[@]}" || return 1
     if [[ $api_rolled_back == true ]]; then
       refresh_frontend_api_proxy || return 1
@@ -784,7 +887,8 @@ backend_image_rescue_cleanup() {
   local status=0
   while IFS=$'\t' read -r record service policy source_kind source_ref image_id rescue_tag extra; do
     [[ $record == image ]] || continue
-    backend_image_rescue_remove_tag "$rescue_tag" || status=1
+    backend_image_rescue_remove_manifest_tag \
+      "$service" "$image_id" "$rescue_tag" || status=1
   done < "$state_file"
   if ((status == 0)); then
     phase_file=$(backend_image_rescue_phase_file "$state_file")

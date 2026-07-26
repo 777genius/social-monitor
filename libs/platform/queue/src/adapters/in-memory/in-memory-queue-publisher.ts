@@ -13,6 +13,27 @@ export class InMemoryQueuePublisher implements QueuePublisherPort {
     return [...this.commands];
   }
 
+  commandCheckpoint(commandId: string): number {
+    return this.commands.filter(
+      (command) => command.commandId === commandId,
+    ).length;
+  }
+
+  rollbackToCheckpoint(commandId: string, checkpoint: number): void {
+    let currentCount = this.commandCheckpoint(commandId);
+
+    for (
+      let index = this.commands.length - 1;
+      index >= 0 && currentCount > checkpoint;
+      index -= 1
+    ) {
+      if (this.commands[index]?.commandId === commandId) {
+        this.commands.splice(index, 1);
+        currentCount -= 1;
+      }
+    }
+  }
+
   drain(params: {
     readonly commandType?: string;
     readonly limit: number;

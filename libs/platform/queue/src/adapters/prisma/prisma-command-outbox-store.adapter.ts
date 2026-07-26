@@ -110,29 +110,58 @@ export class PrismaCommandOutboxStoreAdapter
   async markFailed(params: {
     readonly id: string;
     readonly leaseOwner: string;
+    readonly commandType: string;
     readonly availableAt: Date;
+    readonly failedAt: Date;
     readonly lastError: string;
     readonly terminal: boolean;
   }): Promise<void> {
-    const updated = await runWithSystemDatabaseAccess(
+    await runWithSystemDatabaseAccess(
       'command outbox failure acknowledgement',
-      () => withPrismaWriteRetry(() => this.prisma.outboxEvent.updateMany({
-        where: {
-          id: params.id,
-          status: 'PENDING',
-          leaseOwner: params.leaseOwner,
-        },
-        data: {
-          status: params.terminal ? 'FAILED' : 'PENDING',
-          availableAt: params.availableAt,
-          lastError: params.lastError,
-          leaseOwner: null,
-          leasedUntil: null,
-          publishedAt: null,
-        },
-      })),
+      () =>
+        withPrismaWriteRetry(() =>
+          this.prisma.$transaction(
+            async (transaction) => {
+              const updated = await transaction.outboxEvent.updateMany({
+                where: {
+                  id: params.id,
+                  status: 'PENDING',
+                  leaseOwner: params.leaseOwner,
+                },
+                data: {
+                  status: params.terminal ? 'FAILED' : 'PENDING',
+                  availableAt: params.availableAt,
+                  lastError: params.lastError,
+                  leaseOwner: null,
+                  leasedUntil: null,
+                  publishedAt: null,
+                },
+              });
+              assertSingleLeaseUpdate(updated.count);
+
+              if (
+                params.terminal &&
+                params.commandType === 'ingestion.scan.execute'
+              ) {
+                await transaction.scanJob.updateMany({
+                  where: {
+                    id: params.id,
+                    status: 'ENQUEUED',
+                  },
+                  data: {
+                    status: 'FAILED',
+                    completedAt: params.failedAt,
+                    failureReason: terminalScanDispatchFailureReason(
+                      params.lastError,
+                    ),
+                  },
+                });
+              }
+            },
+            { isolationLevel: 'Serializable' },
+          ),
+        ),
     );
-    assertSingleLeaseUpdate(updated.count);
   }
 }
 
@@ -164,3 +193,6 @@ const assertSingleLeaseUpdate = (count: number): void => {
     throw new Error('Command outbox lease ownership was lost');
   }
 };
+
+const terminalScanDispatchFailureReason = (lastError: string): string =>
+  `Scan command publication exhausted retries: ${lastError}`.slice(0, 500);

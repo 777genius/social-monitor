@@ -7,6 +7,11 @@ type QueueBacklogReader = {
   all(): readonly QueueCommandEnvelope<Readonly<Record<string, unknown>>>[];
 };
 
+type QueueBacklogRollback = {
+  commandCheckpoint(commandId: string): number;
+  rollbackToCheckpoint(commandId: string, checkpoint: number): void;
+};
+
 export class InMemoryScanQueueAdapter implements ScanQueuePort {
   private readonly backlogReader: QueueBacklogReader | undefined;
 
@@ -85,6 +90,29 @@ export class InMemoryScanQueueAdapter implements ScanQueuePort {
   all(): readonly QueueCommandEnvelope<Readonly<Record<string, unknown>>>[] {
     return this.backlogReader?.all() ?? [];
   }
+
+  assertDirectDispatchRollbackSupported(): void {
+    if (!isQueueBacklogRollback(this.publisher)) {
+      throw new Error('Scan queue publisher does not support direct dispatch rollback');
+    }
+  }
+
+  enqueueCheckpoint(scanJobId: string): number {
+    this.assertDirectDispatchRollbackSupported();
+    const publisher = this.publisher as QueuePublisherPort & QueueBacklogRollback;
+
+    return publisher.commandCheckpoint(scanJobId);
+  }
+
+  async rollbackEnqueue(
+    scanJobId: string,
+    checkpoint: number,
+  ): Promise<void> {
+    this.assertDirectDispatchRollbackSupported();
+    const publisher = this.publisher as QueuePublisherPort & QueueBacklogRollback;
+    publisher.rollbackToCheckpoint(scanJobId, checkpoint);
+    this.recordBacklog();
+  }
 }
 
 const isQueueBacklogReader = (value: unknown): value is QueueBacklogReader =>
@@ -92,3 +120,15 @@ const isQueueBacklogReader = (value: unknown): value is QueueBacklogReader =>
   value !== null &&
   'all' in value &&
   typeof (value as { readonly all?: unknown }).all === 'function';
+
+const isQueueBacklogRollback = (
+  value: unknown,
+): value is QueueBacklogRollback =>
+  typeof value === 'object' &&
+  value !== null &&
+  'commandCheckpoint' in value &&
+  typeof (value as { readonly commandCheckpoint?: unknown })
+    .commandCheckpoint === 'function' &&
+  'rollbackToCheckpoint' in value &&
+  typeof (value as { readonly rollbackToCheckpoint?: unknown })
+    .rollbackToCheckpoint === 'function';

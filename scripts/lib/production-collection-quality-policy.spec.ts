@@ -1,4 +1,13 @@
-import type { ProviderCollectionObservation } from "./provider-collection-observability";
+import {
+  durableSnapshotReuseProviderCollectionObservation,
+  type ProviderCollectionObservation,
+} from "./provider-collection-observability";
+import {
+  githubTrendingDurableSnapshotBindingFingerprint,
+  InMemoryGitHubTrendingDurableSnapshotReader,
+  reuseGitHubTrendingDurableSnapshot,
+  type GitHubTrendingDurableSnapshotCandidate,
+} from "./github-trending-durable-snapshot-reuse";
 import {
   productionCollectionThresholds,
   providerMeetsProductionBlockingPolicy,
@@ -48,6 +57,53 @@ describe("production collection quality policy", () => {
         }),
       ).toBe(false);
     }
+  });
+
+  it("accepts mixed live and reuse quality only with a certified GitHub proof", async () => {
+    const proof = await certifiedDurableProof();
+    const github = {
+      providerKey: "github-trending-page" as const,
+      bindingFingerprint:
+        githubTrendingDurableSnapshotBindingFingerprint("binding-a"),
+      status: "succeeded" as const,
+      acquisitionMode: "durable_snapshot_reuse" as const,
+      observability: durableSnapshotReuseProviderCollectionObservation({
+        itemCount: 10,
+        newestPublishedAt: new Date("2026-07-23T23:59:00.000Z"),
+        targetWindowEndedAt: new Date("2026-07-24T00:00:00.000Z"),
+      }),
+      durableSnapshotProof: proof,
+    };
+    const hackerNews = {
+      providerKey: "hacker-news" as const,
+      status: "succeeded" as const,
+      observability: observation({
+        target: 100,
+        collected: 71,
+        evaluated: 71,
+        coverageRatio: 0.71,
+        reasons: ["target_shortfall"],
+      }),
+    };
+
+    expect(
+      [github, hackerNews].every(providerMeetsProductionBlockingPolicy),
+    ).toBe(true);
+    expect(
+      providerMeetsProductionBlockingPolicy({
+        ...github,
+        durableSnapshotProof: {
+          ...proof,
+          rows: proof.rows.slice(0, 9),
+        },
+      }),
+    ).toBe(false);
+    expect(
+      providerMeetsProductionBlockingPolicy({
+        ...github,
+        durableSnapshotProof: undefined,
+      }),
+    ).toBe(false);
   });
 
   it("accepts bounded HN and X inventories without treating desired depth as an exact minimum", () => {
@@ -192,3 +248,69 @@ const observation = (params: {
   },
   freshness: {},
 });
+
+const certifiedDurableProof = () =>
+  reuseGitHubTrendingDurableSnapshot({
+    reader: new InMemoryGitHubTrendingDurableSnapshotReader(
+      durableCandidates(),
+    ),
+    tenantId: "tenant-a",
+    workspaceId: "workspace-a",
+    sourceBindingId: "binding-a",
+    requestedUtcDay: "2026-07-23",
+    observedThrough: new Date("2026-07-24T00:05:00.000Z"),
+  });
+
+const durableCandidates = (): GitHubTrendingDurableSnapshotCandidate[] =>
+  Array.from({ length: 10 }, (_, index) => {
+    const rank = index + 1;
+    const repository = `owner/repository-${rank}`;
+    const title = `${repository} is #${rank} on GitHub Trending`;
+    const bodyPreview = `Visible summary for ${repository}.`;
+    return {
+      tenantId: "tenant-a",
+      workspaceId: "workspace-a",
+      sourceTenantId: "tenant-a",
+      sourceWorkspaceId: "workspace-a",
+      feedItemId: `feed-${rank}`,
+      sourceItemId: `source-${rank}`,
+      feedSourceBindingId: "binding-a",
+      sourceSourceBindingId: "binding-a",
+      feedProviderKey: "github-trending-page",
+      sourceProviderKey: "github-trending-page",
+      feedStatus: "VISIBLE",
+      providerItemId: `github-trending-page:daily:scan-valid:${repository}`,
+      canonicalUrl: `https://github.com/${repository}`,
+      metadataKind: "github_trending_page_repository",
+      repositoryFullName: repository,
+      repositoryUrl: `https://github.com/${repository}`,
+      rank,
+      starsGained: 1_001 + rank,
+      totalStars: 10_000 + rank,
+      window: "daily",
+      scanJobId: "scan-valid",
+      feedScanJobId: "scan-valid",
+      fetchStartedAt: "2026-07-23T23:50:00.000Z",
+      feedFetchStartedAt: "2026-07-23T23:50:00.000Z",
+      checkedAt: "2026-07-23T23:59:00.000Z",
+      feedCheckedAt: "2026-07-23T23:59:00.000Z",
+      publishedAt: "2026-07-23T23:59:00.000Z",
+      sourcePublishedAt: "2026-07-23T23:59:00.000Z",
+      feedObservedAt: "2026-07-24T00:00:01.000Z",
+      sourceObservedAt: "2026-07-24T00:00:01.000Z",
+      scanJobStatus: "SUCCEEDED",
+      scanJobTenantId: "tenant-a",
+      scanJobWorkspaceId: "workspace-a",
+      scanJobSourceBindingId: "binding-a",
+      sourceContentHash: "a".repeat(64),
+      sourceProviderContentHash: "b".repeat(64),
+      sourceTitle: title,
+      feedTitle: title,
+      bodyPreview,
+      sourceTitleBytes: Buffer.byteLength(title, "utf8"),
+      feedTitleBytes: Buffer.byteLength(title, "utf8"),
+      bodyPreviewBytes: Buffer.byteLength(bodyPreview, "utf8"),
+      feedSnapshotSourceBindingId: "binding-a",
+      feedSnapshotProviderKey: "github-trending-page",
+    };
+  });

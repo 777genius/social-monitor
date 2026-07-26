@@ -169,14 +169,11 @@ services:
       start_period: 30s
 
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.157.0@sha256:f2f01157055a9b2aab9df7118e1f1c9abf345e99b23bc7a2bc791db374a7d0f6
+    image: ${OTEL_COLLECTOR_IMAGE:-otel/opentelemetry-collector-contrib:0.157.0@sha256:f2f01157055a9b2aab9df7118e1f1c9abf345e99b23bc7a2bc791db374a7d0f6}
     command: ["--config=/etc/otelcol-contrib/config.yaml"]
     volumes:
-      - ./ops/observability/otel-collector.yml:/etc/otelcol-contrib/config.yaml:ro
-    ports:
-      - "${OTEL_HTTP_PORT:-4318}:4318"
-      - "${OTEL_PROMETHEUS_PORT:-8889}:8889"
-      - "${OTEL_HEALTH_PORT:-13133}:13133"
+      - "${OTEL_COLLECTOR_CONFIG_PATH:-./ops/observability/otel-collector.yml}:/etc/otelcol-contrib/config.yaml:ro"
+    expose: ["4318", "8889", "13133"]
     profiles: ["app"]
     restart: unless-stopped
 

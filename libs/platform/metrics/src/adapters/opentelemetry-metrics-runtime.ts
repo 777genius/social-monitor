@@ -3,9 +3,9 @@ import type {
   Gauge,
   Meter,
   MetricAttributes,
-} from '@opentelemetry/api';
-import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
-import { resourceFromAttributes } from '@opentelemetry/resources';
+} from "@opentelemetry/api";
+import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
+import { resourceFromAttributes } from "@opentelemetry/resources";
 import {
   AggregationTemporality,
   AggregationType,
@@ -15,12 +15,12 @@ import {
   type InstrumentType,
   type PushMetricExporter,
   type ResourceMetrics,
-} from '@opentelemetry/sdk-metrics';
+} from "@opentelemetry/sdk-metrics";
 import {
   ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
   ATTR_SERVICE_NAME,
-} from '@opentelemetry/semantic-conventions';
-import type { Clock } from '@social-monitor/shared-kernel';
+} from "@opentelemetry/semantic-conventions";
+import type { Clock } from "@social-monitor/shared-kernel";
 
 import {
   normalizeMetricLabels,
@@ -28,12 +28,9 @@ import {
   type CounterMetricInput,
   type GaugeMetricInput,
   type MetricsRecorderPort,
-} from '../metrics-recorder';
-import {
-  MetricsRuntime,
-  type MetricsExportState,
-} from '../metrics-runtime';
-import type { MetricsRuntimeConfig } from '../metrics-runtime-config';
+} from "../metrics-recorder";
+import { MetricsRuntime, type MetricsExportState } from "../metrics-runtime";
+import type { MetricsRuntimeConfig } from "../metrics-runtime-config";
 
 const successfulExportResultCode = 0;
 
@@ -63,12 +60,12 @@ export const createOpenTelemetryMetricsRuntime = (
     readers: [reader],
   });
   const recorder = new OpenTelemetryMetricsRecorder(
-    provider.getMeter('social-monitor'),
+    provider.getMeter("social-monitor"),
   );
 
   return new MetricsRuntime({
     serviceName: config.serviceName,
-    mode: 'otlp',
+    mode: "otlp",
     recorder,
     exportHealth: () => trackedExporter.health(),
     forceFlush: () =>
@@ -126,7 +123,7 @@ export class OpenTelemetryMetricsRecorder implements MetricsRecorderPort {
 }
 
 class HealthTrackingMetricExporter implements PushMetricExporter {
-  private exportState: MetricsExportState = 'pending';
+  private exportState: MetricsExportState = "pending";
   private lastExportAt: string | undefined;
 
   constructor(
@@ -136,12 +133,14 @@ class HealthTrackingMetricExporter implements PushMetricExporter {
 
   export(
     metrics: ResourceMetrics,
-    resultCallback: Parameters<PushMetricExporter['export']>[1],
+    resultCallback: Parameters<PushMetricExporter["export"]>[1],
   ): void {
     this.delegate.export(metrics, (result) => {
       this.exportState =
-        result.code === successfulExportResultCode ? 'succeeded' : 'failed';
-      this.lastExportAt = this.clock.now().toISOString();
+        result.code === successfulExportResultCode ? "succeeded" : "failed";
+      if (result.code === successfulExportResultCode) {
+        this.lastExportAt = this.clock.now().toISOString();
+      }
       resultCallback(result);
     });
   }
@@ -163,9 +162,7 @@ class HealthTrackingMetricExporter implements PushMetricExporter {
     );
   }
 
-  selectAggregation?(
-    instrumentType: InstrumentType,
-  ): AggregationOption {
+  selectAggregation?(instrumentType: InstrumentType): AggregationOption {
     return (
       this.delegate.selectAggregation?.(instrumentType) ?? {
         type: AggregationType.DEFAULT,
@@ -186,7 +183,7 @@ class HealthTrackingMetricExporter implements PushMetricExporter {
 
 const requireOtlpEndpoint = (config: MetricsRuntimeConfig): string => {
   if (config.otlpMetricsEndpoint === undefined) {
-    throw new Error('OTLP metrics endpoint is required');
+    throw new Error("OTLP metrics endpoint is required");
   }
   return config.otlpMetricsEndpoint;
 };

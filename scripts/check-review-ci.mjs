@@ -1,28 +1,32 @@
 #!/usr/bin/env node
-import { readFileSync } from 'node:fs';
+import { readFileSync } from "node:fs";
 
-const workflowPath = '.github/workflows/pull-request.yml';
-const workflow = readFileSync(workflowPath, 'utf8');
+const workflowPath = ".github/workflows/pull-request.yml";
+const workflow = readFileSync(workflowPath, "utf8");
 const violations = [];
 
 const requiredFragments = [
-  'permissions:\n  contents: read',
-  'concurrency:',
-  'cancel-in-progress: true',
-  'DATABASE_URL: postgresql://social_monitor_ci:',
-  'static_quality:',
-  'security_contracts:',
-  'backend_unit:',
-  'backend_e2e:',
-  'postgres_rls:',
-  'frontend:',
-  'npx eslint .',
-  'npx tsc --noEmit',
-  'npm run check:architecture',
-  'npm run check:user-auth-boundary',
-  'npm run check:tenant-rls-postgres',
-  'npm run test:e2e',
-  'flutter test app',
+  "permissions:\n  contents: read",
+  "concurrency:",
+  "cancel-in-progress: true",
+  "DATABASE_URL: postgresql://social_monitor_ci:",
+  "static_quality:",
+  "security_contracts:",
+  "backend_unit:",
+  "backend_e2e:",
+  "postgres_rls:",
+  "production_runtime:",
+  "frontend:",
+  "npx eslint .",
+  "npx tsc --noEmit",
+  "npm run check:architecture",
+  "npm run check:user-auth-boundary",
+  "npm run check:tenant-rls-postgres",
+  "npm run check:container",
+  "npm run check:runtime-compose",
+  "npm run check:production-deploy-lifecycle",
+  "npm run test:e2e",
+  "flutter test app",
 ];
 
 for (const fragment of requiredFragments) {
@@ -34,17 +38,18 @@ for (const fragment of requiredFragments) {
 }
 
 for (const jobId of [
-  'static_quality',
-  'security_contracts',
-  'backend_unit',
-  'backend_e2e',
-  'postgres_rls',
-  'frontend',
+  "static_quality",
+  "security_contracts",
+  "backend_unit",
+  "backend_e2e",
+  "postgres_rls",
+  "production_runtime",
+  "frontend",
 ]) {
   const job = workflow.match(
     new RegExp(
       `^  ${jobId}:\\n([\\s\\S]*?)(?=^  [a-z][a-z0-9_]*:|(?![\\s\\S]))`,
-      'm',
+      "m",
     ),
   )?.[1];
   if (job === undefined || !/^\s{4}timeout-minutes: \d+$/m.test(job)) {
@@ -69,10 +74,10 @@ if (/^\s+[a-z-]+:\s+write\s*$/m.test(workflow)) {
 }
 
 for (const prohibited of [
-  'check:agent-quality-rules',
-  'agent-runtime',
-  'task-assignment',
-  'terminal-runtime',
+  "check:agent-quality-rules",
+  "agent-runtime",
+  "task-assignment",
+  "terminal-runtime",
 ]) {
   if (workflow.includes(prohibited)) {
     violations.push(
@@ -82,8 +87,8 @@ for (const prohibited of [
 }
 
 if (violations.length > 0) {
-  console.error(violations.join('\n'));
+  console.error(violations.join("\n"));
   process.exit(1);
 }
 
-console.log('Pull request workflow contract OK');
+console.log("Pull request workflow contract OK");

@@ -11,14 +11,16 @@ const publicationDeployLibraryPath =
 
 const contract = JSON.parse(readFileSync(contractPath, 'utf8'));
 const schema = readFileSync(schemaPath, 'utf8');
-const migrationSql = globSync('prisma/migrations/*/migration.sql')
-  .sort()
-  .map((file) => readFileSync(file, 'utf8'))
-  .join('\n');
+const migrationFiles = globSync('prisma/migrations/*/migration.sql').sort();
+const migrations = migrationFiles.map((file) => ({
+  file,
+  sql: readFileSync(file, 'utf8'),
+}));
+const migrationSql = migrations.map((migration) => migration.sql).join('\n');
 const violations = [];
 
-if (contract.schemaVersion !== 2) {
-  violations.push(`${contractPath}: schemaVersion must be 2`);
+if (contract.schemaVersion !== 3) {
+  violations.push(`${contractPath}: schemaVersion must be 3`);
 }
 
 if (contract.posture !== 'rls_enforced_tenant_guardrails') {
@@ -39,6 +41,8 @@ const tenantScopedSystemTables = new Map(
 const indirectTenantOwnedTables = new Map(
   (contract.indirectTenantOwnedTables ?? []).map((entry) => [entry.table, entry]),
 );
+const tenantScopedAssociations = contract.tenantScopedAssociations ?? [];
+const forwardRlsCoverage = contract.forwardRlsCoverage ?? [];
 const sharedTables = new Map((contract.sharedTables ?? []).map((entry) => [entry.table, entry]));
 
 for (const table of tenantRootTables) {
@@ -101,6 +105,14 @@ for (const [table, entry] of indirectTenantOwnedTables) {
   if (typeof entry.reason !== 'string' || entry.reason.trim().length === 0) {
     violations.push(`${contractPath}: indirect tenant table "${table}" must explain reason`);
   }
+}
+
+for (const association of tenantScopedAssociations) {
+  assertTenantScopedAssociation(association);
+}
+
+for (const coverage of forwardRlsCoverage) {
+  assertForwardRlsCoverage(coverage);
 }
 
 for (const [table, entry] of sharedTables) {
@@ -176,28 +188,42 @@ function assertTenantPrefixedConstraint(table, model) {
 }
 
 function assertMigrationColumn(table, column) {
-  const createTable = migrationSql.match(new RegExp(`CREATE TABLE "${escapeRegex(table)}" \\(([\\s\\S]*?)\\n\\);`))?.[1];
+  const createTable = migrationSql.match(
+    new RegExp(`CREATE TABLE "${escapeRegex(table)}" \\(([\\s\\S]*?)\\n\\);`),
+  )?.[1];
   if (createTable === undefined) {
     violations.push(`committed migration history must create table "${table}"`);
     return;
   }
 
-  if (!createTable.includes(`"${column}"`)) {
+  const additiveColumn = migrationSql.match(
+    new RegExp(
+      `ALTER TABLE "${escapeRegex(table)}"[^;]*?`
+      + `ADD COLUMN "${escapeRegex(column)}"[^;]*;`,
+    ),
+  );
+  if (!createTable.includes(`"${column}"`) && additiveColumn === null) {
     violations.push(`committed migration history must create "${table}"."${column}"`);
   }
 }
 
 function assertRlsMigration() {
-  const rlsMigrationPath = contract.rlsMigrationPath;
+  const rlsMigrationPaths = contract.rlsMigrationPaths;
   if (
-    typeof rlsMigrationPath !== 'string' ||
-    rlsMigrationPath.trim().length === 0 ||
-    !existsSync(rlsMigrationPath)
+    !Array.isArray(rlsMigrationPaths) ||
+    rlsMigrationPaths.length === 0 ||
+    rlsMigrationPaths.some(
+      (path) => typeof path !== 'string' || path.trim().length === 0 || !existsSync(path),
+    )
   ) {
-    violations.push(`${contractPath}: rlsMigrationPath must reference a committed migration`);
+    violations.push(`${contractPath}: rlsMigrationPaths must reference committed migrations`);
     return;
   }
-  const rlsMigration = readFileSync(rlsMigrationPath, 'utf8');
+  const rlsMigrations = rlsMigrationPaths.map((path) => ({
+    path,
+    sql: readFileSync(path, 'utf8'),
+  }));
+  const rlsMigration = rlsMigrations.map((migration) => migration.sql).join('\n');
   const systemCapabilityRole = contract.systemCapabilityRole;
   if (
     typeof systemCapabilityRole !== 'string' ||
@@ -217,7 +243,7 @@ function assertRlsMigration() {
         '${systemCapabilityRole}',`,
   ]) {
     if (!rlsMigration.includes(required)) {
-      violations.push(`${rlsMigrationPath}: missing RLS requirement "${required}"`);
+      violations.push(`${contractPath}: RLS migrations are missing requirement "${required}"`);
     }
   }
   for (const table of [
@@ -226,15 +252,35 @@ function assertRlsMigration() {
     ...tenantScopedSystemTables.keys(),
     ...indirectTenantOwnedTables.keys(),
   ]) {
-    if (
-      !rlsMigration.includes(`'${table}'`) &&
-      !rlsMigration.includes(`"${table}"`)
-    ) {
-      violations.push(`${rlsMigrationPath}: protected table "${table}" is missing`);
+    const protection = [...rlsMigrations]
+      .reverse()
+      .find(
+        (migration) =>
+          migration.sql.includes(`'${table}'`) ||
+          migration.sql.includes(`"${table}"`),
+      );
+    if (protection === undefined) {
+      violations.push(`${contractPath}: protected table "${table}" is missing from RLS migrations`);
+      continue;
+    }
+    const creation = migrations.find((migration) =>
+      migration.sql.includes(`CREATE TABLE "${table}"`),
+    );
+    if (creation !== undefined && protection.path < creation.file) {
+      violations.push(
+        `${protection.path}: RLS protection for "${table}" must not precede its creation in ${creation.file}`,
+      );
     }
   }
-  if (rlsMigration.includes("current_setting('application_name'")) {
-    violations.push(`${rlsMigrationPath}: application_name is user-controlled and must not authorize system RLS access`);
+  for (const migration of rlsMigrations) {
+    if (!migration.sql.includes('@social-monitor-forward-migration')) {
+      violations.push(`${migration.path}: RLS migration must be marked as a forward migration`);
+    }
+    if (migration.sql.includes("current_setting('application_name'")) {
+      violations.push(
+        `${migration.path}: application_name is user-controlled and must not authorize system RLS access`,
+      );
+    }
   }
 
   const publicationBootstrap = readFileSync(publicationBootstrapPath, 'utf8');
@@ -292,6 +338,114 @@ function assertRlsMigration() {
   ) {
     violations.push(
       `${publicationDeployLibraryPath}: production bootstrap must bind the reviewed system runtime role`,
+    );
+  }
+}
+
+function assertForwardRlsCoverage(coverage) {
+  for (const field of ['table', 'migrationPath', 'ownerRole']) {
+    if (typeof coverage[field] !== 'string' || coverage[field].trim().length === 0) {
+      violations.push(`${contractPath}: forward RLS coverage must define ${field}`);
+      return;
+    }
+  }
+  if (!knownTables.has(coverage.table)) {
+    violations.push(
+      `${contractPath}: forward RLS coverage references unknown table "${coverage.table}"`,
+    );
+    return;
+  }
+  if (
+    !Array.isArray(contract.rlsMigrationPaths) ||
+    !contract.rlsMigrationPaths.includes(coverage.migrationPath) ||
+    !existsSync(coverage.migrationPath)
+  ) {
+    violations.push(
+      `${contractPath}: forward RLS coverage for "${coverage.table}" `
+      + 'must reference a declared RLS migration',
+    );
+    return;
+  }
+  const sql = readFileSync(coverage.migrationPath, 'utf8').replace(/\n/g, ' ');
+  for (const [label, pattern] of [
+    [
+      'owner role',
+      new RegExp(`SET LOCAL ROLE "${escapeRegex(coverage.ownerRole)}"`),
+    ],
+    [
+      'ENABLE ROW LEVEL SECURITY',
+      new RegExp(
+        `ALTER TABLE "${escapeRegex(coverage.table)}"\\s+ENABLE ROW LEVEL SECURITY`,
+      ),
+    ],
+    [
+      'FORCE ROW LEVEL SECURITY',
+      new RegExp(
+        `ALTER TABLE "${escapeRegex(coverage.table)}"\\s+FORCE ROW LEVEL SECURITY`,
+      ),
+    ],
+    [
+      'tenant_isolation policy',
+      new RegExp(
+        `CREATE POLICY "tenant_isolation"\\s+ON "${escapeRegex(coverage.table)}"`,
+      ),
+    ],
+  ]) {
+    if (!pattern.test(sql)) {
+      violations.push(
+        `${coverage.migrationPath}: "${coverage.table}" is missing explicit ${label}`,
+      );
+    }
+  }
+}
+
+function assertTenantScopedAssociation(association) {
+  for (const field of [
+    'childTable',
+    'parentTable',
+    'constraintName',
+    'reason',
+  ]) {
+    if (typeof association[field] !== 'string' || association[field].trim().length === 0) {
+      violations.push(`${contractPath}: tenant scoped association must define ${field}`);
+      return;
+    }
+  }
+  if (!knownTables.has(association.childTable) || !knownTables.has(association.parentTable)) {
+    violations.push(
+      `${contractPath}: tenant scoped association references unknown tables `
+      + `"${association.childTable}" -> "${association.parentTable}"`,
+    );
+    return;
+  }
+  if (
+    !Array.isArray(association.childColumns) ||
+    !Array.isArray(association.parentColumns) ||
+    association.childColumns.length < 3 ||
+    association.childColumns.length !== association.parentColumns.length
+  ) {
+    violations.push(
+      `${contractPath}: tenant scoped association "${association.constraintName}" `
+      + 'must define matching id, tenant and workspace columns',
+    );
+    return;
+  }
+  const quotedChildColumns = association.childColumns
+    .map((column) => `"${escapeRegex(column)}"`)
+    .join('\\s*,\\s*');
+  const quotedParentColumns = association.parentColumns
+    .map((column) => `"${escapeRegex(column)}"`)
+    .join('\\s*,\\s*');
+  const constraintPattern = new RegExp(
+    `CONSTRAINT "${escapeRegex(association.constraintName)}"\\s+`
+    + `FOREIGN KEY \\(${quotedChildColumns}\\)\\s+`
+    + `REFERENCES "${escapeRegex(association.parentTable)}" `
+    + `\\(${quotedParentColumns}\\)`,
+  );
+  if (!constraintPattern.test(migrationSql.replace(/\n/g, ' '))) {
+    violations.push(
+      `committed migration history must enforce tenant scoped association `
+      + `"${association.constraintName}"`,
     );
   }
 }

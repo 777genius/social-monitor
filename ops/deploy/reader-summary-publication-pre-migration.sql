@@ -729,7 +729,8 @@ BEGIN
         'reader_summary_artifacts',
         'reader_summary_publications',
         'reader_summary_publication_slots',
-        'reader_summary_recovery_receipts'
+        'reader_summary_recovery_receipts',
+        'reader_summary_weekly_publication_evidence'
       )
       AND owner.rolname NOT IN (
         v_admin_role,
@@ -752,7 +753,8 @@ BEGIN
         'reader_summary_artifacts',
         'reader_summary_publications',
         'reader_summary_publication_slots',
-        'reader_summary_recovery_receipts'
+        'reader_summary_recovery_receipts',
+        'reader_summary_weekly_publication_evidence'
       )
       AND owner.rolname = v_runtime_role
   ) THEN
@@ -783,7 +785,8 @@ BEGIN
         'reader_summary_artifacts',
         'reader_summary_publications',
         'reader_summary_publication_slots',
-        'reader_summary_recovery_receipts'
+        'reader_summary_recovery_receipts',
+        'reader_summary_weekly_publication_evidence'
       )
       AND owner.rolname IN (v_admin_role, v_runtime_role)
     ORDER BY owner.rolname, relation.relname
