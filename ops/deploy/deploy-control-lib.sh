@@ -358,6 +358,8 @@ sync_postgres_pool_bootstrap_recovery_control_entrypoint_fallback() {
   local current=$1
   local relative_path=ops/deploy/social-monitor-production-deploy.sh
   local source=$REPO/$relative_path
+  # CONTROL is supplied by the host-owned production deploy entrypoint.
+  # shellcheck disable=SC2153
   local destination=$CONTROL/github-production-deploy.sh
   local temporary=$destination.next
   local control_real source_identity destination_identity

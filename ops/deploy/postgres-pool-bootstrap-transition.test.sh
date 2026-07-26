@@ -432,9 +432,9 @@ cp "$PROJECT_ROOT/ops/deploy/social-monitor-production-deploy.sh" \
   "$PROJECT_ROOT/ops/deploy/daily-runner-image-bootstrap-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/x-collector-image-deploy-lib.sh" \
   "$REPO/ops/deploy/"
-# Adapt only the committed fallback copy for an unprivileged CI runner.
-sed -i \
-  -e 's/install -m 0755 -o root -g root "$source" "$temporary"/install -m 0755 "$source" "$temporary"/' \
+# Adapt only the committed fallback copy; this matches literal reviewed shell.
+# shellcheck disable=SC2016
+sed -i -e 's/install -m 0755 -o root -g root "$source" "$temporary"/install -m 0755 "$source" "$temporary"/' \
   -e "s/== 0:0:755/== $(id -u):$(id -g):755/g" \
   "$REPO/ops/deploy/deploy-control-lib.sh"
 git -C "$REPO" add ops/deploy

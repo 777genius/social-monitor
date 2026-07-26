@@ -263,11 +263,17 @@ grep -F 'sync_control_entrypoint' \
 fallback_sync_body=$(sed -n \
   '/^sync_postgres_pool_bootstrap_recovery_control_entrypoint_fallback() {$/,/^}$/p' \
   "$SCRIPT_DIR/deploy-control-lib.sh")
+# The assertion matches literal shell source; expansion here would weaken it.
+# shellcheck disable=SC2016
 grep -F 'install -m 0755 -o root -g root "$source" "$temporary"' \
   <<< "$fallback_sync_body" >/dev/null
 [[ $(grep -cF '== 0:0:755' <<< "$fallback_sync_body") == 3 ]]
+# The assertion matches literal shell source; expansion here would weaken it.
+# shellcheck disable=SC2016
 grep -F '[[ $(stat -c '\''%d'\'' "$temporary") == "$control_device" ]]' \
   <<< "$fallback_sync_body" >/dev/null
+# The assertion matches literal shell source; expansion here would weaken it.
+# shellcheck disable=SC2016
 grep -F 'temporary_digest == "$expected_digest"' \
   <<< "$fallback_sync_body" >/dev/null
 if grep -E 'wrapper|auth_refresh|x_collector|deploy_(backend|frontend)' \
@@ -378,6 +384,8 @@ commit_mode_output=$(
 [[ $commit_mode_output == commit-modes-ok ]]
 [[ $(grep -cF 'commit_mode=force-advance' \
   "$SCRIPT_DIR/deploy-control-lib.sh") == 1 ]]
+# The assertion matches literal shell source; expansion here would weaken it.
+# shellcheck disable=SC2016
 force_call_line=$(grep -nF \
   'commit_postgres_pool_bootstrap "$current" "$commit_mode"' \
   "$SCRIPT_DIR/deploy-control-lib.sh" | cut -d: -f1)

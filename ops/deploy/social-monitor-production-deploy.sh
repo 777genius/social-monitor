@@ -978,8 +978,9 @@ commit_postgres_pool_bootstrap() {
   [[ ! -e $next && ! -L $next ]] || fail 'PostgreSQL bootstrap marker temporary path is invalid'
   printf '%s\n' "$sha" > "$next"
   mv -f "$next" "$marker"
-  [[ -f $marker && ! -L $marker ]] && postgres_pool_bootstrap_installed "$sha" || \
+  if [[ ! -f $marker || -L $marker ]] || ! postgres_pool_bootstrap_installed "$sha"; then
     fail 'PostgreSQL bootstrap marker did not commit the installed entrypoint'
+  fi
 }
 
 [[ ${BASH_SOURCE[0]} == "$0" ]] || return 0
