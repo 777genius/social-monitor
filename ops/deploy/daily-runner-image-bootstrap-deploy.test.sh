@@ -61,13 +61,13 @@ run_deploy_backend_case() {
     ' 2>&1
 }
 
-source_line=$(grep -nF 'source "$daily_runner_bootstrap_library"' \
+source_line=$(grep -nF "source \"\$daily_runner_bootstrap_library\"" \
   "$ENTRYPOINT" | cut -d: -f1)
 call_line=$(grep -nF \
-  'daily_runner_image_bootstrap_before_rescue "$from" "$sha"' \
+  "daily_runner_image_bootstrap_before_rescue \"\$from\" \"\$sha\"" \
   "$ENTRYPOINT" | cut -d: -f1)
 rescue_line=$(grep -nF \
-  'backend_image_rescue_prepare "$sha" "$previous"' \
+  "backend_image_rescue_prepare \"\$sha\" \"\$previous\"" \
   "$ENTRYPOINT" | cut -d: -f1)
 ((source_line < call_line && call_line < rescue_line))
 

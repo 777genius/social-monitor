@@ -282,7 +282,7 @@ daily_runner_image_bootstrap_before_rescue() (
   local target_sha=$2
   local compose_tag state_file partial phase manifest_target
   local dockerfile_digest dockerfile_digest_after base_id base_id_after
-  local workdir= archive= context= temporary_tag= candidate_id=
+  local workdir='' archive='' context='' temporary_tag='' candidate_id=''
   local identity config existing_container singleton_fd revision extra
   local compose_created=false completed=false temporary_owned=false
 
