@@ -30,6 +30,7 @@ cp "$SCRIPT_DIR/social-monitor-production-deploy.sh" \
   "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" \
   "$SCRIPT_DIR/backend-image-rescue-lib.sh" \
   "$SCRIPT_DIR/x-collector-image-deploy-lib.sh" \
+  "$SCRIPT_DIR/verify-postgres-runtime-topology.py" \
   "$REPO/ops/deploy/"
 cp -a "$SCRIPT_DIR/production-runtime" "$REPO/ops/deploy/"
 
@@ -237,6 +238,288 @@ git -C "$REPO" add .
 git -C "$REPO" commit -qm 'test: reconciled runtime target'
 target_sha=$(git -C "$REPO" rev-parse HEAD)
 backend_marker_sha=617e284607f3dde74c27164af2b981770b9a62ed
+
+# The stale-control exception proves only the unique first-parent commit that
+# introduced the installed blob. A legitimate backend commit before that
+# control-only introduction is the cumulative-delta trap from the incident.
+git -C "$REPO" switch -q -c partial-control-recovery
+durable_backend_sha=$target_sha
+install -d "$REPO/backend" "$REPO/control"
+printf 'legitimate backend gap\n' > "$REPO/backend/gap.txt"
+git -C "$REPO" add backend/gap.txt
+git -C "$REPO" commit -qm 'test: legitimate backend gap'
+printf '\n# unique safe partial control\n' >> \
+  "$REPO/ops/deploy/social-monitor-production-deploy.sh"
+git -C "$REPO" add ops/deploy/social-monitor-production-deploy.sh
+git -C "$REPO" commit -qm 'test: unique safe partial control'
+safe_control_candidate_sha=$(git -C "$REPO" rev-parse HEAD)
+printf 'inherits safe blob\n' > "$REPO/control/inherited.txt"
+git -C "$REPO" add control/inherited.txt
+git -C "$REPO" commit -qm 'test: inherited safe control blob'
+inherited_safe_sha=$(git -C "$REPO" rev-parse HEAD)
+
+printf '\n# ambiguous reusable control\n' >> \
+  "$REPO/ops/deploy/social-monitor-production-deploy.sh"
+git -C "$REPO" add ops/deploy/social-monitor-production-deploy.sh
+git -C "$REPO" commit -qm 'test: first ambiguous control introduction'
+ambiguous_first_sha=$(git -C "$REPO" rev-parse HEAD)
+printf '\n# move away from ambiguous control\n' >> \
+  "$REPO/ops/deploy/social-monitor-production-deploy.sh"
+git -C "$REPO" add ops/deploy/social-monitor-production-deploy.sh
+git -C "$REPO" commit -qm 'test: different control blob'
+git -C "$REPO" show \
+  "$ambiguous_first_sha:ops/deploy/social-monitor-production-deploy.sh" \
+  > "$REPO/ops/deploy/social-monitor-production-deploy.sh"
+git -C "$REPO" add ops/deploy/social-monitor-production-deploy.sh
+git -C "$REPO" commit -qm 'test: second ambiguous control introduction'
+
+printf '\n# backend-bearing control introduction\n' >> \
+  "$REPO/ops/deploy/social-monitor-production-deploy.sh"
+printf 'unsafe backend introduction\n' > "$REPO/backend/candidate.txt"
+git -C "$REPO" add ops/deploy/social-monitor-production-deploy.sh \
+  backend/candidate.txt
+git -C "$REPO" commit -qm 'test: backend-bearing control introduction'
+backend_candidate_sha=$(git -C "$REPO" rev-parse HEAD)
+printf '\n# non-control introduction\n' >> \
+  "$REPO/ops/deploy/social-monitor-production-deploy.sh"
+printf 'outside control\n' > "$REPO/non-control.txt"
+git -C "$REPO" add ops/deploy/social-monitor-production-deploy.sh \
+  non-control.txt
+git -C "$REPO" commit -qm 'test: non-control introduction'
+non_control_candidate_sha=$(git -C "$REPO" rev-parse HEAD)
+
+git -C "$REPO" switch -q -c merge-control-side
+printf '\n# merge-introduced control\n' >> \
+  "$REPO/ops/deploy/social-monitor-production-deploy.sh"
+git -C "$REPO" add ops/deploy/social-monitor-production-deploy.sh
+git -C "$REPO" commit -qm 'test: side control candidate'
+non_first_parent_sha=$(git -C "$REPO" rev-parse HEAD)
+git -C "$REPO" switch -q partial-control-recovery
+printf 'first-parent control\n' > "$REPO/control/mainline.txt"
+git -C "$REPO" add control/mainline.txt
+git -C "$REPO" commit -qm 'test: first-parent control before merge'
+git -C "$REPO" merge -q --no-ff merge-control-side \
+  -m 'test: merge-introduced control candidate'
+merge_candidate_sha=$(git -C "$REPO" rev-parse HEAD)
+printf '\n# exact current canonical control\n' >> \
+  "$REPO/ops/deploy/social-monitor-production-deploy.sh"
+git -C "$REPO" add ops/deploy/social-monitor-production-deploy.sh
+git -C "$REPO" commit -qm 'test: exact current canonical control'
+partial_current_sha=$(git -C "$REPO" rev-parse HEAD)
+
+git -C "$REPO" switch -q -c canonical-race-descendant
+printf 'canonical race descendant\n' > "$REPO/control/canonical-race.txt"
+git -C "$REPO" add control/canonical-race.txt
+git -C "$REPO" commit -qm 'test: canonical race descendant'
+canonical_race_sha=$(git -C "$REPO" rev-parse HEAD)
+git -C "$REPO" switch -q partial-control-recovery
+git -C "$REPO" update-ref refs/remotes/origin/main "$partial_current_sha"
+git -C "$REPO" switch -q -c divergent-control "$durable_backend_sha"
+printf '\n# divergent noncanonical control\n' >> \
+  "$REPO/ops/deploy/social-monitor-production-deploy.sh"
+git -C "$REPO" add ops/deploy/social-monitor-production-deploy.sh
+git -C "$REPO" commit -qm 'test: divergent partial control candidate'
+divergent_control_sha=$(git -C "$REPO" rev-parse HEAD)
+git -C "$REPO" switch -q partial-control-recovery
+
+BACKEND_PATHS=(backend)
+CONTROL_PATHS=(control ops/deploy)
+partial_recovery_events=$FIXTURE/partial-recovery-events
+partial_runtime_sentinel=$CONTROL/partial-runtime.sentinel
+printf 'runtime-must-not-change\n' > "$partial_runtime_sentinel"
+partial_runtime_identity=$(stat -c '%d:%i:%f:%s:%y:%z' \
+  "$partial_runtime_sentinel")
+RECOVERY_STATE_RACE=none
+
+validate_main_commit() {
+  [[ $1 =~ ^[0-9a-f]{40}$ ]] || fail 'commit is malformed'
+  git -C "$REPO" cat-file -e "$1^{commit}" 2>/dev/null || \
+    fail 'commit is unavailable'
+  git -C "$REPO" merge-base --is-ancestor "$1" origin/main || \
+    fail 'commit is not on origin/main'
+}
+
+postgres_pool_bootstrap_installed() {
+  local candidate=$1
+  local marker=$STATE/postgres-pool-bootstrap.sha
+  [[ -s $marker && ! -L $marker ]] || return 1
+  [[ $(<"$marker") == "$candidate" ]] || return 1
+  cmp -s "$CONTROL/github-production-deploy.sh" \
+    "$REPO/ops/deploy/social-monitor-production-deploy.sh"
+}
+
+sync_control_entrypoint() {
+  local source=$REPO/ops/deploy/social-monitor-production-deploy.sh
+  local destination=$CONTROL/github-production-deploy.sh
+  install -m 0755 "$source" "$destination.next"
+  mv -f "$destination.next" "$destination"
+  printf 'entrypoint-sync\n' >> "$partial_recovery_events"
+  case $RECOVERY_STATE_RACE in
+    backend|control)
+      local raced_marker=$STATE/$RECOVERY_STATE_RACE.sha
+      cp "$raced_marker" "$raced_marker.next"
+      mv -f "$raced_marker.next" "$raced_marker"
+      ;;
+    bootstrap)
+      printf '%s\n' "$safe_control_candidate_sha" \
+        > "$STATE/postgres-pool-bootstrap.sha.next"
+      mv -f "$STATE/postgres-pool-bootstrap.sha.next" \
+        "$STATE/postgres-pool-bootstrap.sha"
+      ;;
+    canonical)
+      git -C "$REPO" update-ref \
+        refs/remotes/origin/main "$canonical_race_sha"
+      ;;
+    none) ;;
+    *) fail 'unexpected recovery state race fixture' ;;
+  esac
+}
+
+commit_postgres_pool_bootstrap() {
+  local candidate=$1
+  local mode=${2:-normal}
+  [[ $candidate == "$partial_current_sha" && $mode == force-advance ]] || \
+    fail 'partial recovery did not force-advance the current marker'
+  printf '%s\n' "$candidate" > "$STATE/postgres-pool-bootstrap.sha.next"
+  mv -f "$STATE/postgres-pool-bootstrap.sha.next" \
+    "$STATE/postgres-pool-bootstrap.sha"
+  postgres_pool_bootstrap_installed "$candidate" || \
+    fail 'partial recovery marker did not bind current installed control'
+  printf 'bootstrap-force-advance\n' >> "$partial_recovery_events"
+}
+
+prepare_partial_recovery() {
+  local installed_sha=$1
+  local backend_sha=${2:-$durable_backend_sha}
+  local control_sha=${3:-$durable_backend_sha}
+  rm -f "$STATE/postgres-pool-bootstrap.sha" \
+    "$STATE/postgres-pool-bootstrap.sha.next" "$partial_recovery_events"
+  printf '%s\n' "$backend_sha" > "$STATE/backend.sha"
+  printf '%s\n' "$control_sha" > "$STATE/control.sha"
+  git -C "$REPO" show \
+    "$installed_sha:ops/deploy/social-monitor-production-deploy.sh" \
+    > "$CONTROL/github-production-deploy.sh"
+  chmod 0755 "$CONTROL/github-production-deploy.sh"
+  RECOVERY_STATE_RACE=none
+}
+
+assert_partial_recovery_failure() {
+  local expected=$1
+  local output status
+  set +e
+  output=$(
+    (reconcile_current_postgres_pool_bootstrap "$partial_current_sha") 2>&1
+  )
+  status=$?
+  set -e
+  ((status != 0))
+  grep -F "$expected" <<< "$output" >/dev/null
+  if [[ $RECOVERY_STATE_RACE != bootstrap ]]; then
+    [[ ! -e $STATE/postgres-pool-bootstrap.sha && \
+       ! -L $STATE/postgres-pool-bootstrap.sha ]]
+  fi
+}
+
+# Exact incident: the cumulative backend-marker delta includes a legitimate
+# backend path, while the safe introduction's own delta is entrypoint-only.
+git -C "$REPO" diff --name-only \
+  "$durable_backend_sha" "$safe_control_candidate_sha" -- \
+  | grep -Fx 'backend/gap.txt' >/dev/null
+[[ $(git -C "$REPO" diff --name-only \
+  "$safe_control_candidate_sha^" "$safe_control_candidate_sha" --) == \
+  ops/deploy/social-monitor-production-deploy.sh ]]
+prepare_partial_recovery "$safe_control_candidate_sha"
+backend_identity=$(stat -c '%d:%i:%f:%s:%y:%z' "$STATE/backend.sha")
+control_identity=$(stat -c '%d:%i:%f:%s:%y:%z' "$STATE/control.sha")
+reconcile_current_postgres_pool_bootstrap "$partial_current_sha"
+cmp -s "$CONTROL/github-production-deploy.sh" \
+  "$REPO/ops/deploy/social-monitor-production-deploy.sh"
+[[ $(<"$STATE/postgres-pool-bootstrap.sha") == "$partial_current_sha" ]]
+[[ $(<"$partial_recovery_events") == $'entrypoint-sync\nbootstrap-force-advance' ]]
+[[ $(stat -c '%d:%i:%f:%s:%y:%z' "$STATE/backend.sha") == \
+  "$backend_identity" ]]
+[[ $(stat -c '%d:%i:%f:%s:%y:%z' "$STATE/control.sha") == \
+  "$control_identity" ]]
+[[ $(<"$partial_runtime_sentinel") == runtime-must-not-change ]]
+[[ $(stat -c '%d:%i:%f:%s:%y:%z' "$partial_runtime_sentinel") == \
+  "$partial_runtime_identity" ]]
+
+# Unknown, inherited, ambiguous, unsafe, divergent, merge, and non-first-parent
+# provenance all fail before the current entrypoint can be synced.
+prepare_partial_recovery "$safe_control_candidate_sha"
+printf 'unknown installed bytes\n' > "$CONTROL/github-production-deploy.sh"
+chmod 0755 "$CONTROL/github-production-deploy.sh"
+assert_partial_recovery_failure \
+  'installed deploy entrypoint blob has no introducing commit'
+[[ ! -e $partial_recovery_events ]]
+
+prepare_partial_recovery "$durable_backend_sha"
+assert_partial_recovery_failure \
+  'installed deploy entrypoint blob has no introducing commit'
+
+prepare_partial_recovery "$safe_control_candidate_sha" \
+  "$durable_backend_sha" "$inherited_safe_sha"
+assert_partial_recovery_failure \
+  'installed deploy entrypoint candidate is not after the control marker'
+
+prepare_partial_recovery "$ambiguous_first_sha"
+assert_partial_recovery_failure \
+  'installed deploy entrypoint blob has ambiguous introducing commits'
+
+prepare_partial_recovery "$backend_candidate_sha"
+assert_partial_recovery_failure \
+  'installed deploy entrypoint introduction contains backend-classified paths'
+
+prepare_partial_recovery "$non_control_candidate_sha"
+assert_partial_recovery_failure \
+  'installed deploy entrypoint introduction contains non-control paths'
+
+prepare_partial_recovery "$divergent_control_sha"
+assert_partial_recovery_failure \
+  'installed deploy entrypoint blob has no introducing commit'
+
+prepare_partial_recovery "$merge_candidate_sha"
+assert_partial_recovery_failure \
+  'installed deploy entrypoint introduction commit is a merge'
+
+prepare_partial_recovery "$safe_control_candidate_sha" "$non_first_parent_sha"
+assert_partial_recovery_failure \
+  'backend marker is not on current canonical first-parent ancestry'
+[[ ! -e $partial_recovery_events ]]
+
+# Same-content atomic replacement of any durable marker is an identity race.
+# The current entrypoint may already have been synced, but bootstrap commit and
+# all runtime surfaces remain fenced.
+for race_mode in backend control bootstrap; do
+  prepare_partial_recovery "$safe_control_candidate_sha"
+  RECOVERY_STATE_RACE=$race_mode
+  race_label=$race_mode
+  [[ $race_mode != bootstrap ]] || race_label='PostgreSQL bootstrap'
+  assert_partial_recovery_failure \
+    "$race_label marker changed during partial control reconciliation"
+  [[ $(<"$partial_recovery_events") == entrypoint-sync ]]
+  [[ $(<"$partial_runtime_sentinel") == runtime-must-not-change ]]
+  [[ $(stat -c '%d:%i:%f:%s:%y:%z' "$partial_runtime_sentinel") == \
+    "$partial_runtime_identity" ]]
+done
+
+prepare_partial_recovery "$safe_control_candidate_sha"
+RECOVERY_STATE_RACE=canonical
+assert_partial_recovery_failure \
+  'canonical main changed during partial control reconciliation'
+[[ $(<"$partial_recovery_events") == entrypoint-sync ]]
+git -C "$REPO" update-ref refs/remotes/origin/main "$partial_current_sha"
+
+unset -f validate_main_commit postgres_pool_bootstrap_installed \
+  sync_control_entrypoint commit_postgres_pool_bootstrap
+git -C "$REPO" switch -q main
+git -C "$REPO" update-ref refs/remotes/origin/main "$target_sha"
+BACKEND_PATHS=(backend)
+CONTROL_PATHS=(control)
+rm -f "$STATE/backend.sha" "$STATE/control.sha" \
+  "$STATE/postgres-pool-bootstrap.sha" "$partial_recovery_events"
+install -m 0755 "$REPO/ops/deploy/social-monitor-production-deploy.sh" \
+  "$CONTROL/github-production-deploy.sh"
 
 # Entry-point-only reconciliation has a distinct primitive. Its function body
 # cannot acquire the wrapper, auth-refresh, or X-image side effects retained by

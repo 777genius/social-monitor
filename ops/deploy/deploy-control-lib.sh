@@ -317,6 +317,291 @@ verify_postgres_pool_bootstrap_recovery_file() {
     fail "$label differs from reviewed commit"
 }
 
+postgres_pool_bootstrap_recovery_commit_blob() {
+  local sha=$1
+  local relative_path=$2
+  local label=$3
+  local tree_entry mode type object tree_path
+
+  tree_entry=$(git -C "$REPO" ls-tree "$sha" -- "$relative_path") || \
+    fail "$label cannot be inspected at reviewed commit"
+  read -r mode type object tree_path <<< "$tree_entry"
+  [[ ($mode == 100644 || $mode == 100755) && $type == blob && \
+     $object =~ ^[0-9a-f]+$ && $tree_path == "$relative_path" ]] || \
+    fail "$label is not a regular blob at reviewed commit"
+  printf '%s\n' "$object"
+}
+
+postgres_pool_bootstrap_recovery_tree_blob() {
+  local sha=$1
+  local relative_path=$2
+  local label=$3
+  local tree_entry mode type object tree_path
+
+  tree_entry=$(git -C "$REPO" ls-tree "$sha" -- "$relative_path") || \
+    fail "$label cannot be inspected"
+  [[ -n $tree_entry ]] || return 0
+  read -r mode type object tree_path <<< "$tree_entry"
+  [[ $mode =~ ^[0-9]+$ && $object =~ ^[0-9a-f]+$ && \
+     $tree_path == "$relative_path" ]] || \
+    fail "$label tree entry is malformed"
+  if [[ $type == blob ]]; then
+    printf '%s\n' "$object"
+  fi
+}
+
+postgres_pool_bootstrap_recovery_path_matches_roots() {
+  local path=$1
+  shift
+  local root
+
+  for root in "$@"; do
+    if [[ $path == "$root" || $path == "$root/"* ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+postgres_pool_bootstrap_recovery_canonical_tip() {
+  local canonical_tip
+
+  canonical_tip=$(
+    git -C "$REPO" rev-parse --verify \
+      'refs/remotes/origin/main^{commit}'
+  ) || fail 'canonical main cannot be inventoried'
+  [[ $canonical_tip =~ ^[0-9a-f]{40}$ ]] || \
+    fail 'canonical main identity is malformed'
+  printf '%s\n' "$canonical_tip"
+}
+
+verify_postgres_pool_bootstrap_recovery_canonical_tip() {
+  local expected=$1
+  local actual
+
+  actual=$(postgres_pool_bootstrap_recovery_canonical_tip)
+  [[ $actual == "$expected" ]] || \
+    fail 'canonical main changed during partial control reconciliation'
+}
+
+find_postgres_pool_bootstrap_installed_control_commit() {
+  local backend_sha=$1
+  local current=$2
+  local installed=$3
+  local relative_path=ops/deploy/social-monitor-production-deploy.sh
+  local installed_identity installed_blob first_parent_history
+  local sha candidate_blob parent parent_blob parent_line
+  local reached_backend=false
+  local -a parent_fields candidates=()
+
+  [[ -f $installed && ! -L $installed ]] || \
+    fail 'installed deploy entrypoint is not a regular non-symlink file'
+  installed_identity=$(
+    postgres_pool_bootstrap_recovery_file_identity "$installed"
+  ) || fail 'installed deploy entrypoint identity cannot be inventoried'
+  installed_blob=$(git -C "$REPO" hash-object --no-filters "$installed") || \
+    fail 'installed deploy entrypoint blob identity cannot be computed'
+  [[ $installed_blob =~ ^[0-9a-f]+$ ]] || \
+    fail 'installed deploy entrypoint blob identity is malformed'
+  first_parent_history=$(
+    git -C "$REPO" rev-list --first-parent "$current"
+  ) || fail 'current first-parent ancestry cannot be inventoried'
+  while IFS= read -r sha; do
+    if [[ $sha == "$backend_sha" ]]; then
+      reached_backend=true
+      break
+    fi
+    candidate_blob=$(
+      postgres_pool_bootstrap_recovery_tree_blob \
+        "$sha" "$relative_path" 'canonical deploy entrypoint'
+    )
+    [[ $candidate_blob == "$installed_blob" ]] || continue
+    parent_line=$(git -C "$REPO" rev-list --parents -n 1 "$sha") || \
+      fail 'deploy entrypoint candidate parents cannot be inventoried'
+    read -r -a parent_fields <<< "$parent_line"
+    parent=${parent_fields[1]:-}
+    [[ -n $parent ]] || \
+      fail 'deploy entrypoint candidate has no parent'
+    parent_blob=$(
+      postgres_pool_bootstrap_recovery_tree_blob \
+        "$parent" "$relative_path" 'candidate parent deploy entrypoint'
+    )
+    [[ $parent_blob != "$installed_blob" ]] || continue
+    candidates+=("$sha")
+  done <<< "$first_parent_history"
+  [[ $reached_backend == true ]] || \
+    fail 'backend marker is not on current canonical first-parent ancestry'
+  ((${#candidates[@]} > 0)) || \
+    fail 'installed deploy entrypoint blob has no introducing commit after backend marker'
+  ((${#candidates[@]} == 1)) || \
+    fail 'installed deploy entrypoint blob has ambiguous introducing commits'
+  validate_main_commit "${candidates[0]}"
+  verify_postgres_pool_bootstrap_recovery_file \
+    "${candidates[0]}" "$relative_path" "$installed" \
+    'installed deploy entrypoint'
+  [[ $(postgres_pool_bootstrap_recovery_file_identity "$installed") == \
+     "$installed_identity" ]] || \
+    fail 'installed deploy entrypoint changed during provenance validation'
+  printf '%s\n' "${candidates[0]}"
+}
+
+validate_postgres_pool_bootstrap_control_only_candidate() {
+  local candidate=$1
+  local relative_path=ops/deploy/social-monitor-production-deploy.sh
+  local parent_line changed_paths path
+  local candidate_blob parent_blob
+  local saw_entrypoint=false
+  local -a parent_fields
+
+  parent_line=$(git -C "$REPO" rev-list --parents -n 1 "$candidate") || \
+    fail 'installed deploy entrypoint introduction parents cannot be inspected'
+  read -r -a parent_fields <<< "$parent_line"
+  ((${#parent_fields[@]} == 2)) || \
+    fail 'installed deploy entrypoint introduction commit is a merge'
+  changed_paths=$(
+    git -C "$REPO" diff --name-only --no-renames \
+      "${parent_fields[1]}" "$candidate" --
+  ) || fail 'installed deploy entrypoint introduction delta cannot be inspected'
+  while IFS= read -r path; do
+    [[ -z $path ]] && continue
+    if postgres_pool_bootstrap_recovery_path_matches_roots \
+      "$path" "${BACKEND_PATHS[@]}"; then
+      fail 'installed deploy entrypoint introduction contains backend-classified paths'
+    fi
+    postgres_pool_bootstrap_recovery_path_matches_roots \
+      "$path" "${CONTROL_PATHS[@]}" || \
+      fail 'installed deploy entrypoint introduction contains non-control paths'
+    [[ $path != "$relative_path" ]] || saw_entrypoint=true
+  done <<< "$changed_paths"
+  [[ $saw_entrypoint == true ]] || \
+    fail 'installed deploy entrypoint introduction does not change the deploy entrypoint'
+  candidate_blob=$(
+    postgres_pool_bootstrap_recovery_commit_blob \
+      "$candidate" "$relative_path" 'installed deploy entrypoint introduction'
+  )
+  parent_blob=$(
+    postgres_pool_bootstrap_recovery_tree_blob \
+      "${parent_fields[1]}" "$relative_path" \
+      'introduction parent deploy entrypoint'
+  )
+  [[ $candidate_blob != "$parent_blob" ]] || \
+    fail 'installed deploy entrypoint introduction inherited the same blob'
+}
+
+verify_postgres_pool_bootstrap_recovery_marker_snapshot() {
+  local marker=$1
+  local label=$2
+  local expected_sha=$3
+  local expected_identity=$4
+  local actual_sha actual_identity
+
+  actual_sha=$(read_postgres_pool_bootstrap_recovery_marker "$marker" "$label")
+  actual_identity=$(
+    postgres_pool_bootstrap_recovery_file_identity "$marker"
+  ) || fail "$label marker identity cannot be re-inventoried"
+  [[ $actual_sha == "$expected_sha" && \
+     $actual_identity == "$expected_identity" ]] || \
+    fail "$label marker changed during partial control reconciliation"
+}
+
+verify_postgres_pool_bootstrap_partial_control_state() {
+  local current=$1
+  local canonical_tip=$2
+  local backend_marker_sha=$3
+  local backend_marker_identity=$4
+  local control_marker_sha=$5
+  local control_marker_identity=$6
+  local pool_marker_state=$7
+  local pool_marker_sha=$8
+  local pool_marker_identity=$9
+  local marker=$STATE/postgres-pool-bootstrap.sha
+
+  verify_postgres_pool_bootstrap_recovery_canonical_tip "$canonical_tip"
+  validate_current_postgres_pool_bootstrap_recovery "$current"
+  verify_postgres_pool_bootstrap_recovery_marker_snapshot \
+    "$STATE/backend.sha" 'backend' \
+    "$backend_marker_sha" "$backend_marker_identity"
+  verify_postgres_pool_bootstrap_recovery_marker_snapshot \
+    "$STATE/control.sha" 'control' \
+    "$control_marker_sha" "$control_marker_identity"
+  if [[ $pool_marker_state == present ]]; then
+    verify_postgres_pool_bootstrap_recovery_marker_snapshot \
+      "$marker" 'PostgreSQL bootstrap' \
+      "$pool_marker_sha" "$pool_marker_identity"
+  else
+    [[ ! -e $marker && ! -L $marker ]] || \
+      fail 'PostgreSQL bootstrap marker changed during partial control reconciliation'
+  fi
+}
+
+recover_partial_current_postgres_pool_bootstrap_control() {
+  local current=$1
+  local installed=$2
+  local pool_marker_state=$3
+  local pool_marker_sha=$4
+  local pool_marker_identity=$5
+  local control_marker_sha=$6
+  local control_marker_identity=$7
+  local backend_marker=$STATE/backend.sha
+  local control_marker=$STATE/control.sha
+  local backend_marker_sha backend_marker_identity candidate
+  local candidate_blob control_marker_blob canonical_tip
+
+  backend_marker_sha=$(
+    read_postgres_pool_bootstrap_recovery_marker "$backend_marker" 'backend'
+  )
+  backend_marker_identity=$(
+    postgres_pool_bootstrap_recovery_file_identity "$backend_marker"
+  ) || fail 'backend marker identity cannot be inventoried'
+  validate_postgres_pool_bootstrap_recovery_marker \
+    "$backend_marker_sha" "$current" 'backend'
+  validate_postgres_pool_bootstrap_recovery_marker \
+    "$control_marker_sha" "$current" 'control'
+  canonical_tip=$(postgres_pool_bootstrap_recovery_canonical_tip)
+  candidate=$(
+    find_postgres_pool_bootstrap_installed_control_commit \
+      "$backend_marker_sha" "$current" "$installed"
+  )
+  if [[ $candidate == "$control_marker_sha" ]] || \
+     ! git -C "$REPO" merge-base --is-ancestor \
+       "$control_marker_sha" "$candidate"; then
+    fail 'installed deploy entrypoint candidate is not after the control marker'
+  fi
+  validate_postgres_pool_bootstrap_control_only_candidate "$candidate"
+  candidate_blob=$(
+    postgres_pool_bootstrap_recovery_commit_blob \
+      "$candidate" ops/deploy/social-monitor-production-deploy.sh \
+      'installed deploy entrypoint candidate'
+  )
+  control_marker_blob=$(
+    postgres_pool_bootstrap_recovery_commit_blob \
+      "$control_marker_sha" ops/deploy/social-monitor-production-deploy.sh \
+      'control marker deploy entrypoint'
+  )
+  [[ $candidate_blob != "$control_marker_blob" ]] || \
+    fail 'installed deploy entrypoint candidate does not differ from the control marker'
+
+  verify_postgres_pool_bootstrap_partial_control_state \
+    "$current" "$canonical_tip" \
+    "$backend_marker_sha" "$backend_marker_identity" \
+    "$control_marker_sha" "$control_marker_identity" \
+    "$pool_marker_state" "$pool_marker_sha" "$pool_marker_identity"
+  verify_postgres_pool_bootstrap_recovery_file \
+    "$candidate" ops/deploy/social-monitor-production-deploy.sh "$installed" \
+    'installed deploy entrypoint'
+
+  sync_postgres_pool_bootstrap_recovery_control_entrypoint "$current" || \
+    fail 'PostgreSQL bootstrap recovery could not sync current control'
+  verify_postgres_pool_bootstrap_partial_control_state \
+    "$current" "$canonical_tip" \
+    "$backend_marker_sha" "$backend_marker_identity" \
+    "$control_marker_sha" "$control_marker_identity" \
+    "$pool_marker_state" "$pool_marker_sha" "$pool_marker_identity"
+  verify_postgres_pool_bootstrap_recovery_file \
+    "$current" ops/deploy/social-monitor-production-deploy.sh "$installed" \
+    'installed deploy entrypoint'
+}
+
 verify_current_postgres_pool_bootstrap_recovery_sources() {
   local current=$1
   local relative_path
@@ -453,19 +738,38 @@ reconcile_current_postgres_pool_bootstrap() {
   local pool_marker_identity control_marker_identity
   local revalidated_pool_marker_sha revalidated_control_marker_sha
   local revalidated_pool_marker_identity revalidated_control_marker_identity
+  local control_marker_digest installed_digest
   local commit_mode=normal
+  local force_advance=false
 
   validate_current_postgres_pool_bootstrap_recovery "$current"
   postgres_pool_bootstrap_installed "$current" && return 0
+  [[ -f $installed && ! -L $installed ]] || \
+    fail 'installed deploy entrypoint is not a regular non-symlink file'
 
   if [[ ! -e $marker && ! -L $marker ]]; then
-    verify_postgres_pool_bootstrap_recovery_file \
-      "$current" ops/deploy/social-monitor-production-deploy.sh "$installed" \
-      'installed deploy entrypoint'
-    validate_current_postgres_pool_bootstrap_recovery "$current"
-    verify_postgres_pool_bootstrap_recovery_file \
-      "$current" ops/deploy/social-monitor-production-deploy.sh "$installed" \
-      'installed deploy entrypoint'
+    if cmp -s \
+      "$installed" "$REPO/ops/deploy/social-monitor-production-deploy.sh"; then
+      verify_postgres_pool_bootstrap_recovery_file \
+        "$current" ops/deploy/social-monitor-production-deploy.sh "$installed" \
+        'installed deploy entrypoint'
+      validate_current_postgres_pool_bootstrap_recovery "$current"
+      verify_postgres_pool_bootstrap_recovery_file \
+        "$current" ops/deploy/social-monitor-production-deploy.sh "$installed" \
+        'installed deploy entrypoint'
+    else
+      control_marker_sha=$(
+        read_postgres_pool_bootstrap_recovery_marker \
+          "$control_marker" 'control'
+      )
+      control_marker_identity=$(
+        postgres_pool_bootstrap_recovery_file_identity "$control_marker"
+      ) || fail 'control marker identity cannot be inventoried'
+      recover_partial_current_postgres_pool_bootstrap_control \
+        "$current" "$installed" absent '' '' \
+        "$control_marker_sha" "$control_marker_identity"
+      force_advance=true
+    fi
   else
     pool_marker_sha=$(
       read_postgres_pool_bootstrap_recovery_marker \
@@ -481,45 +785,58 @@ reconcile_current_postgres_pool_bootstrap() {
       "$pool_marker_sha" "$current" 'PostgreSQL bootstrap'
     validate_postgres_pool_bootstrap_recovery_marker \
       "$control_marker_sha" "$current" 'control'
-    verify_postgres_pool_bootstrap_recovery_file \
-      "$control_marker_sha" ops/deploy/social-monitor-production-deploy.sh \
-      "$installed" 'installed deploy entrypoint'
     pool_marker_identity=$(
       postgres_pool_bootstrap_recovery_file_identity "$marker"
     ) || fail 'PostgreSQL bootstrap marker identity cannot be inventoried'
     control_marker_identity=$(
       postgres_pool_bootstrap_recovery_file_identity "$control_marker"
     ) || fail 'control marker identity cannot be inventoried'
-
-    sync_postgres_pool_bootstrap_recovery_control_entrypoint "$current" || \
-      fail 'PostgreSQL bootstrap recovery could not sync current control'
-    validate_current_postgres_pool_bootstrap_recovery "$current"
-    verify_postgres_pool_bootstrap_recovery_file \
-      "$current" ops/deploy/social-monitor-production-deploy.sh "$installed" \
-      'installed deploy entrypoint'
-    revalidated_pool_marker_sha=$(
-      read_postgres_pool_bootstrap_recovery_marker \
-        "$marker" 'PostgreSQL bootstrap'
-    )
-    revalidated_control_marker_sha=$(
-      read_postgres_pool_bootstrap_recovery_marker \
-        "$control_marker" 'control'
-    )
-    revalidated_pool_marker_identity=$(
-      postgres_pool_bootstrap_recovery_file_identity "$marker"
-    ) || fail 'PostgreSQL bootstrap marker identity cannot be re-inventoried'
-    revalidated_control_marker_identity=$(
-      postgres_pool_bootstrap_recovery_file_identity "$control_marker"
-    ) || fail 'control marker identity cannot be re-inventoried'
-    [[ $revalidated_pool_marker_sha == "$pool_marker_sha" && \
-       $revalidated_pool_marker_identity == "$pool_marker_identity" ]] || \
-      fail 'PostgreSQL bootstrap marker changed during control reconciliation'
-    [[ $revalidated_control_marker_sha == "$control_marker_sha" && \
-       $revalidated_control_marker_identity == "$control_marker_identity" ]] || \
-      fail 'control marker changed during PostgreSQL bootstrap reconciliation'
-    commit_mode=force-advance
+    control_marker_digest=$(
+      deploy_control_git_blob_digest \
+        "$control_marker_sha" ops/deploy/social-monitor-production-deploy.sh
+    ) || fail 'control marker deploy entrypoint digest cannot be read'
+    installed_digest=$(deploy_control_file_digest "$installed") || \
+      fail 'installed deploy entrypoint digest cannot be read'
+    if [[ $installed_digest == "$control_marker_digest" ]]; then
+      verify_postgres_pool_bootstrap_recovery_file \
+        "$control_marker_sha" ops/deploy/social-monitor-production-deploy.sh \
+        "$installed" 'installed deploy entrypoint'
+      sync_postgres_pool_bootstrap_recovery_control_entrypoint "$current" || \
+        fail 'PostgreSQL bootstrap recovery could not sync current control'
+      validate_current_postgres_pool_bootstrap_recovery "$current"
+      verify_postgres_pool_bootstrap_recovery_file \
+        "$current" ops/deploy/social-monitor-production-deploy.sh "$installed" \
+        'installed deploy entrypoint'
+      revalidated_pool_marker_sha=$(
+        read_postgres_pool_bootstrap_recovery_marker \
+          "$marker" 'PostgreSQL bootstrap'
+      )
+      revalidated_control_marker_sha=$(
+        read_postgres_pool_bootstrap_recovery_marker \
+          "$control_marker" 'control'
+      )
+      revalidated_pool_marker_identity=$(
+        postgres_pool_bootstrap_recovery_file_identity "$marker"
+      ) || fail 'PostgreSQL bootstrap marker identity cannot be re-inventoried'
+      revalidated_control_marker_identity=$(
+        postgres_pool_bootstrap_recovery_file_identity "$control_marker"
+      ) || fail 'control marker identity cannot be re-inventoried'
+      [[ $revalidated_pool_marker_sha == "$pool_marker_sha" && \
+         $revalidated_pool_marker_identity == "$pool_marker_identity" ]] || \
+        fail 'PostgreSQL bootstrap marker changed during control reconciliation'
+      [[ $revalidated_control_marker_sha == "$control_marker_sha" && \
+         $revalidated_control_marker_identity == "$control_marker_identity" ]] || \
+        fail 'control marker changed during PostgreSQL bootstrap reconciliation'
+    else
+      recover_partial_current_postgres_pool_bootstrap_control \
+        "$current" "$installed" present \
+        "$pool_marker_sha" "$pool_marker_identity" \
+        "$control_marker_sha" "$control_marker_identity"
+    fi
+    force_advance=true
   fi
 
+  [[ $force_advance == false ]] || commit_mode=force-advance
   commit_postgres_pool_bootstrap "$current" "$commit_mode" || \
     fail 'PostgreSQL bootstrap recovery could not commit current integration'
   validate_current_postgres_pool_bootstrap_recovery "$current"
