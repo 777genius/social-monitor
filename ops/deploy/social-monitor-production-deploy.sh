@@ -734,10 +734,10 @@ deploy_backend() (
   trap 'rm -f "$postgres_env"' EXIT
   from=$(marker_value backend)
   mapfile -t services < <(backend_services "$from" "$sha")
-  if ((${#services[@]} == 0)); then
-    return 0
+  ((${#services[@]} > 0)) || return 0
+  if declare -F ensure_system_database_url_deploy_contract >/dev/null && [[ " ${COMPOSE[*]} " == *" $POSTGRES_RUNTIME_CURRENT/compose.postgres-runtime.yml "* ]]; then
+    ensure_system_database_url_deploy_contract
   fi
-
   local -a persistent=()
   local service database_replacement=false
   for service in "${services[@]}"; do

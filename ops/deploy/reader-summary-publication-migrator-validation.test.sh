@@ -514,6 +514,19 @@ grep -Fx 'client:psql:mode=600' "$TRANSPORT_LOG" >/dev/null
 [[ $(grep -cFx 'client:psql:catalog-file:mode=600' "$TRANSPORT_LOG") == 2 ]]
 TEST_COUNT=$((TEST_COUNT + 1))
 
+tenant_system_services=$(
+  awk '/^  [A-Za-z0-9_-]+:$/ {service=$1; sub(/:$/, "", service)}
+       /DATABASE_URL: \${SYSTEM_DATABASE_URL:\?/ {print service}' \
+    "$SCRIPT_DIR/production-runtime/compose.postgres-runtime.yml"
+)
+[[ $tenant_system_services == $'ingestion-worker\nintelligence-worker\ndelivery-service\nevent-relay\ndaily-runner' ]]
+while IFS= read -r tenant_service; do
+  grep -Fx "SYSTEM_DATABASE_URL=$SYSTEM_URL" \
+    "$ROOT/secrets/production.env" >/dev/null
+  : "$tenant_service"
+done <<< "$tenant_system_services"
+TEST_COUNT=$((TEST_COUNT + 1))
+
 prepare_system_contract_case
 write_production_env "DATABASE_URL=$API_URL" "SYSTEM_DATABASE_URL=$API_URL"
 assert_system_contract_failure api-database-url-not-system-fallback
@@ -834,7 +847,9 @@ preflight_line=$(grep -n -F \
   'reader_summary_publication_migrator_preflight ||' \
   "$DEPLOY_ENTRYPOINT" | cut -d: -f1)
 system_contract_line=$(grep -nF 'ensure_system_database_url_deploy_contract' \
-  "$DEPLOY_ENTRYPOINT" | cut -d: -f1)
+  "$DEPLOY_ENTRYPOINT" | head -1 | cut -d: -f1)
+backend_contract_line=$(grep -nF 'ensure_system_database_url_deploy_contract' \
+  "$DEPLOY_ENTRYPOINT" | tail -1 | cut -d: -f1)
 # shellcheck disable=SC2016
 compose_render_line=$(grep -nF 'config --format json > "$rendered"' \
   "$DEPLOY_ENTRYPOINT" | cut -d: -f1)
@@ -847,6 +862,7 @@ build_line=$(grep -n -F \
   "$DEPLOY_ENTRYPOINT" | cut -d: -f1)
 ((preflight_line < backup_line && backup_line < build_line))
 ((system_contract_line < compose_render_line))
+((backend_contract_line < backup_line && backend_contract_line < build_line))
 
 printf 'reader-summary-publication-migrator-validation: ok (%s cases)\n' \
   "$TEST_COUNT"
