@@ -293,6 +293,7 @@ function assertRlsMigration() {
       violations.push(`${publicationBootstrapPath}: missing system role bootstrap "${required}"`);
     }
   }
+  assertPublicationBootstrapProtectsForwardOwnerTables(publicationBootstrap);
 
   const productionRuntimeCompose = readFileSync(
     productionRuntimeComposePath,
@@ -339,6 +340,36 @@ function assertRlsMigration() {
     violations.push(
       `${publicationDeployLibraryPath}: production bootstrap must bind the reviewed system runtime role`,
     );
+  }
+}
+
+function assertPublicationBootstrapProtectsForwardOwnerTables(publicationBootstrap) {
+  const protectedTableLists = [
+    ...publicationBootstrap.matchAll(
+      /relation\.relname NOT IN \(([\s\S]*?)\n      \)/g,
+    ),
+  ].map((match) =>
+    new Set([...match[1].matchAll(/'([^']+)'/g)].map((tableMatch) => tableMatch[1])),
+  );
+  if (protectedTableLists.length < 3) {
+    violations.push(
+      `${publicationBootstrapPath}: ordinary ownership transfer must keep explicit protected-table lists`,
+    );
+    return;
+  }
+  const publicationOwnedForwardTables = forwardRlsCoverage
+    .filter((coverage) => coverage.ownerRole === 'social_monitor_reader_summary_publication_owner')
+    .map((coverage) => coverage.table);
+  for (const table of publicationOwnedForwardTables) {
+    const missingListIndex = protectedTableLists.findIndex(
+      (protectedTables) => !protectedTables.has(table),
+    );
+    if (missingListIndex !== -1) {
+      violations.push(
+        `${publicationBootstrapPath}: publication-owned forward table "${table}" `
+        + `must be excluded from ordinary ownership transfer list ${missingListIndex + 1}`,
+      );
+    }
   }
 }
 

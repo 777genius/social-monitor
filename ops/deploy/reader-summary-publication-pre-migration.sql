@@ -729,6 +729,9 @@ BEGIN
         'reader_summary_artifacts',
         'reader_summary_publications',
         'reader_summary_publication_slots',
+        'reader_summary_production_recovery_days',
+        'reader_summary_production_recovery_dry_runs',
+        'reader_summary_production_recovery_leases',
         'reader_summary_recovery_receipts',
         'reader_summary_weekly_publication_evidence'
       )
@@ -753,6 +756,9 @@ BEGIN
         'reader_summary_artifacts',
         'reader_summary_publications',
         'reader_summary_publication_slots',
+        'reader_summary_production_recovery_days',
+        'reader_summary_production_recovery_dry_runs',
+        'reader_summary_production_recovery_leases',
         'reader_summary_recovery_receipts',
         'reader_summary_weekly_publication_evidence'
       )
@@ -785,6 +791,9 @@ BEGIN
         'reader_summary_artifacts',
         'reader_summary_publications',
         'reader_summary_publication_slots',
+        'reader_summary_production_recovery_days',
+        'reader_summary_production_recovery_dry_runs',
+        'reader_summary_production_recovery_leases',
         'reader_summary_recovery_receipts',
         'reader_summary_weekly_publication_evidence'
       )
@@ -881,6 +890,29 @@ DECLARE
     'social_monitor.bootstrap_runtime_role'
   )::NAME;
 BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM pg_class relation
+    JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
+    JOIN pg_roles owner ON owner.oid = relation.relowner
+    WHERE namespace.nspname = 'public'
+      AND relation.relkind IN ('r', 'p')
+      AND relation.relname IN (
+        'reader_summary_artifacts',
+        'reader_summary_publications',
+        'reader_summary_publication_slots',
+        'reader_summary_production_recovery_days',
+        'reader_summary_production_recovery_dry_runs',
+        'reader_summary_production_recovery_leases',
+        'reader_summary_recovery_receipts',
+        'reader_summary_weekly_publication_evidence'
+      )
+      AND owner.rolname <>
+        'social_monitor_reader_summary_publication_owner'
+  ) THEN
+    RAISE EXCEPTION 'publication-owned table has an unexpected owner';
+  END IF;
+
   IF NOT has_table_privilege(
     'social_monitor_reader_summary_publication_runtime',
     'public.reader_summary_artifacts',
@@ -931,6 +963,18 @@ BEGIN
   ) THEN
     RAISE EXCEPTION
       'pre-migration runtime artifact continuity grants are unsafe';
+  END IF;
+
+  IF pg_has_role(
+    v_runtime_role,
+    'social_monitor_public_schema_owner',
+    'MEMBER'
+  ) OR has_schema_privilege(
+    v_runtime_role,
+    'public',
+    'CREATE'
+  ) THEN
+    RAISE EXCEPTION 'runtime retained temporary public schema ownership';
   END IF;
 
   IF pg_has_role(
