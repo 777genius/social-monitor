@@ -35,6 +35,13 @@ docker() {
   esac
 }
 
+install_failing_verify_backend() {
+  verify_backend() {
+    printf 'attempt\n' >> "$ATTEMPTS_FILE"
+    return 1
+  }
+}
+
 verify_backend otel-collector
 METRICS_STATE=failed
 if verify_backend otel-collector; then
@@ -49,10 +56,7 @@ fi
 
 ATTEMPTS_FILE=$(mktemp /tmp/social-monitor-health-attempts.XXXXXX)
 trap 'rm -f "$ATTEMPTS_FILE"' EXIT
-verify_backend() {
-  printf 'attempt\n' >> "$ATTEMPTS_FILE"
-  return 1
-}
+install_failing_verify_backend
 sleep() { :; }
 
 : > "$ATTEMPTS_FILE"
