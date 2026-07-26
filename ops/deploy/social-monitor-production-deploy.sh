@@ -240,6 +240,7 @@ initialize_deploy_control_bridge
 verify_compose_scope() (
   local rendered=$STATE/rendered-compose.$$.json
   trap 'rm -f "$rendered"' EXIT
+  ensure_system_database_url_deploy_contract
   umask 077
   "${COMPOSE[@]}" --profile app --profile daily config --format json > "$rendered"
   if [[ -f $POSTGRES_RUNTIME_CURRENT/compose.postgres-runtime.yml ]]; then

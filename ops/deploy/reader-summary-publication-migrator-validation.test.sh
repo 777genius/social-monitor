@@ -5,12 +5,13 @@ set -euo pipefail
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 LIBRARY=$SCRIPT_DIR/reader-summary-publication-deploy-lib.sh
 DEPLOY_ENTRYPOINT=$SCRIPT_DIR/social-monitor-production-deploy.sh
-FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/publication-migrator-validation.XXXXXX")
+FIXTURE=$(mktemp -d "/tmp/publication-migrator-validation.XXXXXX")
 FIXTURE=$(cd "$FIXTURE" && pwd -P)
 trap 'rm -rf "$FIXTURE"' EXIT
 
 ROOT=$FIXTURE/root
 REPO=$FIXTURE/repo
+STATE=$ROOT/control/deploy-state
 SECRET=$ROOT/secrets/db/reader-summary-publication-admin-url
 CA_CERTIFICATE=$ROOT/secrets/db/ca-certificate.crt
 EVENT_LOG=$FIXTURE/events.log
@@ -21,12 +22,24 @@ TRANSPORT_QUERY_PATH_LOG=$FIXTURE/transport-query-path.log
 FAKE_BIN=$FIXTURE/bin
 PRIVATE_QUERY_PAYLOAD=private-query-output-must-stay-redacted
 PRIVATE_PASSWORD=redacted-test-password
+API_PASSWORD=api-test-password
+SYSTEM_PASSWORD=system-test-password
 MIGRATOR_ROLE=social_monitor_publication_migrator
+API_ROLE=social_monitor_app
+SYSTEM_ROLE=social_monitor_system_app
 DATABASE_HOST=dbaas-db-8050451-do-user-39622063-0.e.db.ondigitalocean.com
 VALID_URL="postgresql://${MIGRATOR_ROLE}:${PRIVATE_PASSWORD}@${DATABASE_HOST}:25060/social_monitor?connect_timeout=10&sslmode=verify-full&sslrootcert=%2Frun%2Fsocial-monitor-db%2Fca-certificate.crt"
+API_URL="postgresql://${API_ROLE}:${API_PASSWORD}@${DATABASE_HOST}:25060/social_monitor?connect_timeout=10&sslmode=verify-full&sslrootcert=%2Frun%2Fsocial-monitor-db%2Fca-certificate.crt"
+SYSTEM_URL="postgresql://${SYSTEM_ROLE}:${SYSTEM_PASSWORD}@${DATABASE_HOST}:25060/social_monitor?connect_timeout=10&sslmode=verify-full&sslrootcert=%2Frun%2Fsocial-monitor-db%2Fca-certificate.crt"
 VALID_CATALOG="social_monitor|${MIGRATOR_ROLE}|${MIGRATOR_ROLE}|t|t|t|f|f|f|f|180004|t|1|t|f|t|t|0|1|t|t"
+SYSTEM_VALID_CATALOG="social_monitor|${SYSTEM_ROLE}|t|t|f|f|f|f|f|1|f|t|f|1|f|t|f|0|t|180004|t"
+SYSTEM_VALID_AUTH="social_monitor|${SYSTEM_ROLE}|${SYSTEM_ROLE}|t|t"
 CATALOG_RESULT=$VALID_CATALOG
 CATALOG_QUERY_STATUS=0
+SYSTEM_CATALOG_RESULT=$SYSTEM_VALID_CATALOG
+SYSTEM_CATALOG_QUERY_STATUS=0
+SYSTEM_AUTH_RESULT=$SYSTEM_VALID_AUTH
+SYSTEM_AUTH_QUERY_STATUS=0
 AVAILABILITY_STATUS=0
 SECRET_OWNER=root
 SECRET_METADATA_STATUS=0
@@ -35,7 +48,7 @@ CA_METADATA_STATUS=0
 FAIL_PHASE=
 TEST_COUNT=0
 
-mkdir -p "$ROOT/secrets/db" "$REPO/ops/deploy" "$FAKE_BIN"
+mkdir -p "$ROOT/secrets/db" "$REPO/ops/deploy" "$STATE" "$FAKE_BIN"
 printf '%s\n' 'test-only-ca-certificate' > "$CA_CERTIFICATE"
 cp "$SCRIPT_DIR/deploy-control-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" "$REPO/ops/deploy/"
@@ -58,10 +71,12 @@ set -euo pipefail
 mode=$(stat -c '%a' "$PGPASSFILE")
 [[ $mode == 600 ]]
 [[ $* != *postgresql://* && $* != *redacted-test-password* ]]
-if env | grep -F 'redacted-test-password' >/dev/null; then
+[[ $* != *api-test-password* && $* != *system-test-password* ]]
+if env | grep -F 'redacted-test-password' >/dev/null || \
+  env | grep -F 'system-test-password' >/dev/null; then
   exit 91
 fi
-query_file=
+query_file= query_result= client_status=$TRANSPORT_CLIENT_STATUS
 for argument in "$@"; do
   case $argument in
     --command=*) exit 90 ;;
@@ -73,24 +88,40 @@ if [[ -n $query_file ]]; then
   query_mode=$(stat -c '%a' "$query_file")
   [[ $query_mode == 600 ]]
   query_payload=$(< "$query_file")
-  [[ $query_payload == *"WHERE granted_role.rolname = :'runtime_role'"* ]]
-  [[ $query_payload == *'FROM pg_catalog.pg_auth_members AS membership'* ]]
-  [[ $query_payload == *'social_monitor_public_schema_owner'* ]]
-  [[ $query_payload == *'pg_catalog.pg_namespace namespace'* ]]
-  [[ $query_payload == *'public_schema_ownership.boundary_valid'* ]]
-  [[ $query_payload == *'schema_grantee.rolname NOT IN ('* ]]
-  [[ $query_payload == *"'social_monitor_public_schema_owner',"* ]]
-  [[ $query_payload == *"current_user,"* ]]
-  [[ $query_payload == *"'social_monitor_reader_summary_publication_owner'"* ]]
-  [[ " $* " == *' --set=runtime_role=social_monitor_app '* ]]
-  [[ " $* " == *' --set=provisioner_role=doadmin '* ]]
+  if [[ $query_payload == *'system_role.rolname'* ]]; then
+    [[ $query_payload == *"WHERE system_role.rolname = :'system_runtime_role';"* ]]
+    [[ $query_payload == *"NOT pg_catalog.pg_has_role(:'runtime_role'"* ]]
+    [[ $query_payload == *'social_monitor_tenant_system_runtime'* ]]
+    [[ " $* " == *' --username=social_monitor_publication_migrator '* ]]
+    query_result=$SYSTEM_CATALOG_RESULT
+    client_status=$SYSTEM_CATALOG_QUERY_STATUS
+  elif [[ $query_payload == *'current_user, '\''social_monitor_tenant_system_runtime'\'''* ]]; then
+    [[ $query_payload == *'COALESCE(connection.ssl, false)'* ]]
+    [[ " $* " == *' --username=social_monitor_system_app '* ]]
+    query_result=$SYSTEM_AUTH_RESULT
+    client_status=$SYSTEM_AUTH_QUERY_STATUS
+  else
+    [[ $query_payload == *"WHERE granted_role.rolname = :'runtime_role'"* ]]
+    [[ $query_payload == *'FROM pg_catalog.pg_auth_members AS membership'* ]]
+    [[ $query_payload == *'social_monitor_public_schema_owner'* ]]
+    [[ $query_payload == *'pg_catalog.pg_namespace namespace'* ]]
+    [[ $query_payload == *'public_schema_ownership.boundary_valid'* ]]
+    [[ $query_payload == *'schema_grantee.rolname NOT IN ('* ]]
+    [[ $query_payload == *"'social_monitor_public_schema_owner',"* ]]
+    [[ $query_payload == *"current_user,"* ]]
+    [[ $query_payload == *"'social_monitor_reader_summary_publication_owner'"* ]]
+    [[ " $* " == *' --set=runtime_role=social_monitor_app '* ]]
+    [[ " $* " == *' --set=provisioner_role=doadmin '* ]]
+    query_result=${TRANSPORT_QUERY_RESULT:-}
+  fi
+  [[ -z $query_result ]] || printf '%s\n' "$query_result"
   printf '%s\n' "$query_file" > "$TRANSPORT_QUERY_PATH_LOG"
   printf 'client:psql:catalog-file:mode=%s\n' "$query_mode" \
     >> "$TRANSPORT_LOG"
 fi
 printf '%s\n' "$PGPASSFILE" > "$TRANSPORT_PGPASS_PATH_LOG"
 printf 'client:psql:mode=%s\n' "$mode" >> "$TRANSPORT_LOG"
-exit "$TRANSPORT_CLIENT_STATUS"
+exit "$client_status"
 SH
 cat > "$FAKE_BIN/pg_isready" <<'SH'
 #!/usr/bin/env bash
@@ -180,9 +211,11 @@ docker() {
   arguments=${docker_arguments[*]}
   [[ $arguments != *postgresql://* ]] || return 93
   [[ $arguments != *"$PRIVATE_PASSWORD"* ]] || return 94
+  [[ $arguments != *"$SYSTEM_PASSWORD"* ]] || return 94
   [[ $arguments != *reader-summary-publication-admin-url* ]] || return 95
   [[ " $arguments " == *' run --rm -i '* ]] || return 96
-  [[ $stdin_payload == "$TRANSPORT_EXPECTED_PGPASS" ]] || return 97
+  [[ $stdin_payload == "$TRANSPORT_EXPECTED_PGPASS" || \
+    $stdin_payload == "${TRANSPORT_EXPECTED_SYSTEM_PGPASS:-}" ]] || return 97
   if env | grep -F "$TRANSPORT_FORBIDDEN_ENV_VALUE" >/dev/null; then
     return 92
   fi
@@ -201,8 +234,13 @@ docker() {
   : > "$TRANSPORT_PGPASS_PATH_LOG"
   set +e
   printf '%s\n' "$stdin_payload" | \
-    env PATH="$FAKE_BIN:$PATH" \
+      env PATH="$FAKE_BIN:$PATH" \
       TRANSPORT_CLIENT_STATUS="$TRANSPORT_CLIENT_STATUS" \
+      TRANSPORT_QUERY_RESULT="${TRANSPORT_QUERY_RESULT:-}" \
+      SYSTEM_CATALOG_RESULT="$SYSTEM_CATALOG_RESULT" \
+      SYSTEM_CATALOG_QUERY_STATUS="$SYSTEM_CATALOG_QUERY_STATUS" \
+      SYSTEM_AUTH_RESULT="$SYSTEM_AUTH_RESULT" \
+      SYSTEM_AUTH_QUERY_STATUS="$SYSTEM_AUTH_QUERY_STATUS" \
       TRANSPORT_LOG="$TRANSPORT_LOG" \
       TRANSPORT_PGPASS_PATH_LOG="$TRANSPORT_PGPASS_PATH_LOG" \
       TRANSPORT_QUERY_PATH_LOG="$TRANSPORT_QUERY_PATH_LOG" \
@@ -242,8 +280,29 @@ publication_url_with_password() {
     'connect_timeout=10&sslmode=verify-full&sslrootcert=%2Frun%2Fsocial-monitor-db%2Fca-certificate.crt'
 }
 
+runtime_url_for() {
+  local role=$1
+  local password=$2
+  printf 'postgresql://%s:%s@%s:25060/social_monitor?%s\n' \
+    "$role" "$password" "$DATABASE_HOST" \
+    'connect_timeout=10&sslmode=verify-full&sslrootcert=%2Frun%2Fsocial-monitor-db%2Fca-certificate.crt'
+}
+
+write_production_env() {
+  chmod 0600 "$ROOT/secrets/production.env" 2>/dev/null || true
+  printf '%s\n' "$@" > "$ROOT/secrets/production.env"
+  chmod 0600 "$ROOT/secrets/production.env"
+}
+
+write_system_url() {
+  chmod 0600 "$ROOT/secrets/db/system-database-url" 2>/dev/null || true
+  printf '%s\n' "$1" > "$ROOT/secrets/db/system-database-url"
+  chmod 0400 "$ROOT/secrets/db/system-database-url"
+}
+
 reset_case() {
-  rm -f "$SECRET" "$CA_CERTIFICATE"
+  rm -f "$SECRET" "$CA_CERTIFICATE" "$ROOT/secrets/production.env" \
+    "$ROOT/secrets/db/system-database-url"
   : > "$EVENT_LOG"
   : > "$WRITE_LOG"
   : > "$TRANSPORT_LOG"
@@ -251,6 +310,13 @@ reset_case() {
   : > "$TRANSPORT_QUERY_PATH_LOG"
   CATALOG_RESULT=$VALID_CATALOG
   CATALOG_QUERY_STATUS=0
+  SYSTEM_CATALOG_RESULT=$SYSTEM_VALID_CATALOG
+  SYSTEM_CATALOG_QUERY_STATUS=0
+  SYSTEM_AUTH_RESULT=$SYSTEM_VALID_AUTH
+  SYSTEM_AUTH_QUERY_STATUS=0
+  TRANSPORT_CLIENT_STATUS=0
+  TRANSPORT_QUERY_RESULT=
+  TRANSPORT_EXPECTED_SYSTEM_PGPASS=
   AVAILABILITY_STATUS=0
   SECRET_OWNER=root
   SECRET_METADATA_STATUS=0
@@ -320,11 +386,23 @@ catalog_with_field() {
   printf '%s' "${fields[*]}"
 }
 
+system_catalog_with_field() {
+  local index=$1
+  local value=$2
+  local -a fields
+  IFS='|' read -r -a fields <<< "$SYSTEM_VALID_CATALOG"
+  fields[index]=$value
+  local IFS='|'
+  printf '%s' "${fields[*]}"
+}
+
 assert_redacted() {
   local output=$1
   local admin_url=$2
   [[ $output != *"$admin_url"* ]]
   [[ $output != *"$PRIVATE_PASSWORD"* ]]
+  [[ $output != *"$API_PASSWORD"* ]]
+  [[ $output != *"$SYSTEM_PASSWORD"* ]]
   [[ $output != *"$PRIVATE_QUERY_PAYLOAD"* ]]
   [[ $output != *publication_migrator* ]]
 }
@@ -401,6 +479,61 @@ assert_invalid_file() {
   TEST_COUNT=$((TEST_COUNT + 1))
   : "$label"
 }
+
+prepare_system_contract_case() {
+  reset_case
+  write_production_env \
+    "DATABASE_URL=$API_URL" \
+    "SYSTEM_DATABASE_URL_SECRET_REF=$ROOT/secrets/db/system-database-url"
+  write_system_url "$SYSTEM_URL"
+  TRANSPORT_FORBIDDEN_ENV_VALUE=$SYSTEM_PASSWORD
+  TRANSPORT_EXPECTED_PGPASS="${DATABASE_HOST}:25060:social_monitor:${MIGRATOR_ROLE}:${PRIVATE_PASSWORD}"
+  TRANSPORT_EXPECTED_SYSTEM_PGPASS="${DATABASE_HOST}:25060:social_monitor:${SYSTEM_ROLE}:${SYSTEM_PASSWORD}"
+}
+
+assert_system_contract_failure() {
+  local label=$1
+  local output status
+  set +e
+  output=$(ensure_system_database_url_deploy_contract 2>&1)
+  status=$?
+  set -e
+  ((status != 0))
+  assert_redacted "$output" "$VALID_URL"
+  : "$label"
+  TEST_COUNT=$((TEST_COUNT + 1))
+}
+
+prepare_system_contract_case
+system_contract_output=$(ensure_system_database_url_deploy_contract 2>&1)
+[[ -z $system_contract_output ]]
+grep -Fx "SYSTEM_DATABASE_URL=$SYSTEM_URL" \
+  "$ROOT/secrets/production.env" >/dev/null
+[[ $(stat -c '%a' "$ROOT/secrets/production.env") == 600 ]]
+grep -Fx 'client:psql:mode=600' "$TRANSPORT_LOG" >/dev/null
+[[ $(grep -cFx 'client:psql:catalog-file:mode=600' "$TRANSPORT_LOG") == 2 ]]
+TEST_COUNT=$((TEST_COUNT + 1))
+
+prepare_system_contract_case
+write_production_env "DATABASE_URL=$API_URL" "SYSTEM_DATABASE_URL=$API_URL"
+assert_system_contract_failure api-database-url-not-system-fallback
+[[ ! -s $TRANSPORT_LOG ]]
+
+prepare_system_contract_case
+write_system_url "$(runtime_url_for "$API_ROLE" "$SYSTEM_PASSWORD")"
+assert_system_contract_failure wrong-system-login
+[[ ! -s $TRANSPORT_LOG ]]
+
+prepare_system_contract_case
+SYSTEM_AUTH_QUERY_STATUS=28
+assert_system_contract_failure wrong-system-password
+! grep -F 'SYSTEM_DATABASE_URL=' "$ROOT/secrets/production.env" >/dev/null
+grep -F 'docker:status=28:query-removed' "$TRANSPORT_LOG" >/dev/null
+
+prepare_system_contract_case
+SYSTEM_CATALOG_RESULT=$(system_catalog_with_field 18 f)
+assert_system_contract_failure api-has-tenant-system-capability
+! grep -F 'SYSTEM_DATABASE_URL=' "$ROOT/secrets/production.env" >/dev/null
 
 assert_pgpass_transport bootstrap psql
 assert_pgpass_transport catalog psql
@@ -696,6 +829,10 @@ done
 preflight_line=$(grep -n -F \
   'reader_summary_publication_migrator_preflight ||' \
   "$DEPLOY_ENTRYPOINT" | cut -d: -f1)
+system_contract_line=$(grep -nF 'ensure_system_database_url_deploy_contract' \
+  "$DEPLOY_ENTRYPOINT" | cut -d: -f1)
+compose_render_line=$(grep -nF 'config --format json > "$rendered"' \
+  "$DEPLOY_ENTRYPOINT" | cut -d: -f1)
 # shellcheck disable=SC2016
 backup_line=$(grep -n -F 'backup_database "$sha"' \
   "$DEPLOY_ENTRYPOINT" | cut -d: -f1)
@@ -704,6 +841,7 @@ build_line=$(grep -n -F \
   '"${COMPOSE[@]}" --profile app --profile daily build' \
   "$DEPLOY_ENTRYPOINT" | cut -d: -f1)
 ((preflight_line < backup_line && backup_line < build_line))
+((system_contract_line < compose_render_line))
 
 printf 'reader-summary-publication-migrator-validation: ok (%s cases)\n' \
   "$TEST_COUNT"

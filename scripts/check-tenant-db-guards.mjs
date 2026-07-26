@@ -333,13 +333,22 @@ function assertRlsMigration() {
     !publicationDeployLibrary.includes(
       'READER_SUMMARY_TENANT_SYSTEM_RUNTIME_ROLE=social_monitor_system_app',
     ) ||
-    !publicationDeployLibrary.includes(
-      '--set=system_runtime_role="$system_runtime_role"',
-    )
+    !publicationDeployLibrary.includes('--set=system_runtime_role="$system_runtime_role"')
   ) {
     violations.push(
       `${publicationDeployLibraryPath}: production bootstrap must bind the reviewed system runtime role`,
     );
+  }
+  for (const required of [
+    'ensure_system_database_url_deploy_contract',
+    'reader_summary_publication_validate_runtime_database_urls',
+    'validate_reader_summary_system_database_auth',
+    'READER_SUMMARY_PUBLICATION_MIGRATOR_ROLE=$READER_SUMMARY_TENANT_SYSTEM_RUNTIME_ROLE',
+    "'social_monitor_tenant_system_runtime', 'MEMBER'",
+  ]) {
+    if (!publicationDeployLibrary.includes(required)) {
+      violations.push(`${publicationDeployLibraryPath}: missing system deploy contract guard "${required}"`);
+    }
   }
 }
 
