@@ -527,13 +527,17 @@ assert_system_contract_failure wrong-system-login
 prepare_system_contract_case
 SYSTEM_AUTH_QUERY_STATUS=28
 assert_system_contract_failure wrong-system-password
-! grep -F 'SYSTEM_DATABASE_URL=' "$ROOT/secrets/production.env" >/dev/null
+if grep -F 'SYSTEM_DATABASE_URL=' "$ROOT/secrets/production.env" >/dev/null; then
+  exit 1
+fi
 grep -F 'docker:status=28:query-removed' "$TRANSPORT_LOG" >/dev/null
 
 prepare_system_contract_case
 SYSTEM_CATALOG_RESULT=$(system_catalog_with_field 18 f)
 assert_system_contract_failure api-has-tenant-system-capability
-! grep -F 'SYSTEM_DATABASE_URL=' "$ROOT/secrets/production.env" >/dev/null
+if grep -F 'SYSTEM_DATABASE_URL=' "$ROOT/secrets/production.env" >/dev/null; then
+  exit 1
+fi
 
 assert_pgpass_transport bootstrap psql
 assert_pgpass_transport catalog psql
@@ -831,6 +835,7 @@ preflight_line=$(grep -n -F \
   "$DEPLOY_ENTRYPOINT" | cut -d: -f1)
 system_contract_line=$(grep -nF 'ensure_system_database_url_deploy_contract' \
   "$DEPLOY_ENTRYPOINT" | cut -d: -f1)
+# shellcheck disable=SC2016
 compose_render_line=$(grep -nF 'config --format json > "$rendered"' \
   "$DEPLOY_ENTRYPOINT" | cut -d: -f1)
 # shellcheck disable=SC2016
