@@ -460,13 +460,12 @@ find_postgres_pool_bootstrap_installed_control_commit() {
 }
 
 validate_postgres_pool_bootstrap_control_only_candidate() {
-  local candidate=$1
+  local candidate=$1 allow_backend_candidate=${2:-false}
   local relative_path=ops/deploy/social-monitor-production-deploy.sh
   local parent_line changed_paths path
   local candidate_blob parent_blob
   local saw_entrypoint=false
   local -a parent_fields
-
   parent_line=$(git -C "$REPO" rev-list --parents -n 1 "$candidate") || \
     fail 'installed deploy entrypoint introduction parents cannot be inspected'
   read -r -a parent_fields <<< "$parent_line"
@@ -480,7 +479,9 @@ validate_postgres_pool_bootstrap_control_only_candidate() {
     [[ -z $path ]] && continue
     if postgres_pool_bootstrap_recovery_path_matches_roots \
       "$path" "${BACKEND_PATHS[@]}"; then
-      fail 'installed deploy entrypoint introduction contains backend-classified paths'
+      [[ $allow_backend_candidate == true ]] || \
+        fail 'installed deploy entrypoint introduction contains backend-classified paths'
+      continue
     fi
     postgres_pool_bootstrap_recovery_path_matches_roots \
       "$path" "${CONTROL_PATHS[@]}" || \
@@ -501,7 +502,6 @@ validate_postgres_pool_bootstrap_control_only_candidate() {
   [[ $candidate_blob != "$parent_blob" ]] || \
     fail 'installed deploy entrypoint introduction inherited the same blob'
 }
-
 verify_postgres_pool_bootstrap_recovery_marker_snapshot() {
   local marker=$1
   local label=$2
@@ -555,7 +555,7 @@ recover_partial_current_postgres_pool_bootstrap_control() {
   local pool_marker_sha=$4
   local pool_marker_identity=$5
   local control_marker_sha=$6
-  local control_marker_identity=$7
+  local control_marker_identity=$7 allow_backend_candidate=${8:-false}
   local backend_marker=$STATE/backend.sha
   local control_marker=$STATE/control.sha
   local backend_marker_sha backend_marker_identity candidate
@@ -581,7 +581,7 @@ recover_partial_current_postgres_pool_bootstrap_control() {
        "$control_marker_sha" "$candidate"; then
     fail 'installed deploy entrypoint candidate is not after the control marker'
   fi
-  validate_postgres_pool_bootstrap_control_only_candidate "$candidate"
+  validate_postgres_pool_bootstrap_control_only_candidate "$candidate" "$allow_backend_candidate"
   candidate_blob=$(
     postgres_pool_bootstrap_recovery_commit_blob \
       "$candidate" ops/deploy/social-monitor-production-deploy.sh \
@@ -791,7 +791,7 @@ reconcile_current_postgres_pool_bootstrap() {
       ) || fail 'control marker identity cannot be inventoried'
       recover_partial_current_postgres_pool_bootstrap_control \
         "$current" "$installed" absent '' '' \
-        "$control_marker_sha" "$control_marker_identity"
+        "$control_marker_sha" "$control_marker_identity" "${expected_backend:+true}"
       force_advance=true
     fi
   else
@@ -855,7 +855,7 @@ reconcile_current_postgres_pool_bootstrap() {
       recover_partial_current_postgres_pool_bootstrap_control \
         "$current" "$installed" present \
         "$pool_marker_sha" "$pool_marker_identity" \
-        "$control_marker_sha" "$control_marker_identity"
+        "$control_marker_sha" "$control_marker_identity" "${expected_backend:+true}"
     fi
     force_advance=true
   fi

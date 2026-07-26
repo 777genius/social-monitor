@@ -539,9 +539,6 @@ assert_partial_recovery_failure() {
        ! -L $STATE/postgres-pool-bootstrap.sha ]]
   fi
 }
-
-# Exact incident: the cumulative backend-marker delta includes a legitimate
-# backend path, while the safe introduction's own delta is entrypoint-only.
 git -C "$REPO" diff --name-only \
   "$durable_backend_sha" "$safe_control_candidate_sha" -- \
   | grep -Fx 'backend/gap.txt' >/dev/null
@@ -557,6 +554,16 @@ reconcile_completed_backend_image_rescues() {
   printf 'ordinary-runtime-gate\n' > "$target_current_runtime_event"
   return 71
 }
+prepare_partial_recovery "$backend_candidate_sha"
+[[ ! -e $STATE/postgres-pool-bootstrap.sha ]]
+rm -f "$target_current_runtime_event"
+backend_intro_output=$(
+  reconcile_current_postgres_pool_bootstrap "$partial_current_sha" "$durable_backend_sha"
+)
+[[ -z $backend_intro_output && ! -e $target_current_runtime_event ]]
+cmp -s "$CONTROL/github-production-deploy.sh" "$REPO/ops/deploy/social-monitor-production-deploy.sh"
+[[ $(<"$STATE/postgres-pool-bootstrap.sha") == "$partial_current_sha" ]]
+[[ $(<"$partial_recovery_events") == $'entrypoint-sync\nbootstrap-force-advance' ]]
 prepare_partial_recovery "$safe_control_candidate_sha"
 printf '%s\n' "$safe_control_candidate_sha" \
   > "$STATE/postgres-pool-bootstrap.sha"
@@ -568,8 +575,7 @@ interrupted_output=$(deploy_release "$partial_current_sha" 2>&1)
 interrupted_status=$?
 set -e
 ((interrupted_status != 0))
-grep -F 'injected interrupted target-current reconciliation' \
-  <<< "$interrupted_output" >/dev/null
+grep -F 'injected interrupted target-current reconciliation' <<< "$interrupted_output" >/dev/null
 [[ $(<"$STATE/postgres-pool-bootstrap.sha") == "$safe_control_candidate_sha" ]]
 [[ ! -e $target_current_runtime_event ]]
 RECOVERY_COMMIT_INTERRUPTED=false
@@ -586,8 +592,6 @@ cmp -s "$CONTROL/github-production-deploy.sh" \
 [[ $(<"$partial_runtime_sentinel") == runtime-must-not-change ]]
 [[ $(stat -c '%d:%i:%f:%s:%y:%z' "$partial_runtime_sentinel") == \
   "$partial_runtime_identity" ]]
-# A fresh replay does not reuse the repair-only return; it reaches the ordinary
-# rescue/check/runtime path that the fully gated workflow invokes.
 set +e
 replay_output=$(deploy_release "$partial_current_sha" 2>&1)
 replay_status=$?
@@ -596,8 +600,6 @@ set -e
 grep -F 'completed backend image rescue cleanup could not be reconciled' \
   <<< "$replay_output" >/dev/null
 grep -Fx 'ordinary-runtime-gate' "$target_current_runtime_event" >/dev/null
-
-# A valid but forged backend marker is rejected before the same runtime gate.
 prepare_partial_recovery "$safe_control_candidate_sha" "$inherited_safe_sha"
 printf '%s\n' "$safe_control_candidate_sha" \
   > "$STATE/postgres-pool-bootstrap.sha"
@@ -615,8 +617,6 @@ POSTGRES_POOL_ATOMIC_REPAIR_BACKEND_SHA=$original_atomic_backend
 unset -f fetch_main reconcile_completed_backend_image_rescues
 unset RECOVERY_COMMIT_INTERRUPTED
 
-# Unknown, inherited, ambiguous, unsafe, divergent, merge, and non-first-parent
-# provenance all fail before the current entrypoint can be synced.
 prepare_partial_recovery "$safe_control_candidate_sha"
 printf 'unknown installed bytes\n' > "$CONTROL/github-production-deploy.sh"
 chmod 0755 "$CONTROL/github-production-deploy.sh"
