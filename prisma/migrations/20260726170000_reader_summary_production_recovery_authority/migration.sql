@@ -731,7 +731,7 @@ CREATE FUNCTION "read_reader_summary_production_recovery"(
 LANGUAGE SQL
 STABLE
 SET search_path = pg_catalog, public, pg_temp
-RETURN
+AS $$
   SELECT
     target_outcome,
     lease."id",
@@ -775,7 +775,8 @@ RETURN
         AND day."workspace_id" = lease."workspace_id"
     )
   FROM "reader_summary_production_recovery_leases" AS lease
-  WHERE lease."id" = target_recovery_id;
+  WHERE lease."id" = target_recovery_id
+$$;
 
 ALTER TABLE "reader_summary_production_recovery_leases"
   ENABLE ROW LEVEL SECURITY;
