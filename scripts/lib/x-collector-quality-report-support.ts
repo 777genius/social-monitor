@@ -20,6 +20,8 @@ type XRunRow = {
   readonly status?: string;
   readonly started_at?: string | null;
   readonly finished_at?: string | null;
+  readonly started_at_epoch_ms?: number | null;
+  readonly finished_at_epoch_ms?: number | null;
   readonly tweets_count?: number;
   readonly query_hash?: string;
   readonly input_json?: string | null;
@@ -53,9 +55,12 @@ type BuildParams = {
   readonly observedAt?: Date;
 };
 
-export type XCollectorLedgerReport = ReturnType<
-  typeof buildXCollectorLedgerReport
->;
+type SqliteReadError = { readonly ok: false; readonly error: string };
+type SqliteRowsResult<TValue> =
+  | { readonly ok: true; readonly rows: readonly TValue[] }
+  | SqliteReadError;
+
+export type XCollectorLedgerReport = ReturnType<typeof buildXCollectorLedgerReport>;
 export type XAccountPoolReport = ReturnType<typeof buildXAccountPoolReport>;
 
 export function buildXCollectorLedgerReport(params: BuildParams) {
@@ -63,14 +68,12 @@ export function buildXCollectorLedgerReport(params: BuildParams) {
     return emptyXCollectorLedgerReport(false, "ledger_file_missing");
   }
 
-  const rowsResult = readXRunRows(params.ledgerPath);
+  const rowsResult = readXRunRows(params.ledgerPath, params.collectionDate);
   if (!rowsResult.ok) {
     return emptyXCollectorLedgerReport(false, rowsResult.error);
   }
 
-  const rows = rowsResult.rows.filter((row) =>
-    runTargetsCollectionDate(row, params.collectionDate),
-  );
+  const rows = rowsResult.rows;
   const queryHashes = new Set<string>();
   const displayTypeBreakdown = new Map<string, number>();
   const queryFamilyFingerprints = new Set<string>();
@@ -206,12 +209,11 @@ export function buildXAccountPoolReport(params: BuildParams) {
       params.collectionDate,
     );
   }
-  const targetRunsResult = readXRunRows(params.ledgerPath);
-  const targetRuns = targetRunsResult.ok
-    ? targetRunsResult.rows.filter((row) =>
-        runTargetsCollectionDate(row, params.collectionDate),
-      )
-    : [];
+  const targetRunsResult = readXRunRows(
+    params.ledgerPath,
+    params.collectionDate,
+  );
+  const targetRuns = targetRunsResult.ok ? targetRunsResult.rows : [];
   const globalCollectionSucceeded =
     targetRuns.some((row) => row.status === "completed") &&
     targetRuns.some((row) => normalizedTweetCount(row.tweets_count) > 0);
@@ -336,10 +338,7 @@ export function buildXAccountPoolReport(params: BuildParams) {
   } as const;
 }
 
-function emptyXCollectorLedgerReport(
-  available: boolean,
-  readError: string | null,
-) {
+function emptyXCollectorLedgerReport(available: boolean, readError: string | null) {
   return {
     available,
     runCount: 0,
@@ -435,27 +434,57 @@ function emptyXAccountPoolReport(
   } as const;
 }
 
-function readXRunRows(ledgerPath: string):
-  | { readonly ok: true; readonly rows: readonly XRunRow[] }
-  | {
-      readonly ok: false;
-      readonly error: string;
-    } {
+function readXRunRows(
+  ledgerPath: string,
+  collectionDate: string,
+): SqliteRowsResult<XRunRow> {
+  const targetWindow = targetUtcWindow(collectionDate);
+  const overlapPredicate =
+    targetWindow === undefined
+      ? "0"
+      : `
+        case
+          when not json_valid(input_json) then 0
+          when json_type(input_json, '$.since') = 'text'
+            and json_type(input_json, '$.until') = 'text'
+          then
+            julianday(${normalizedJsonTimestamp("$.since")})
+              < julianday(${sqliteString(
+                new Date(targetWindow.endedAt).toISOString(),
+              )})
+            and julianday(${normalizedJsonTimestamp("$.until")})
+              > julianday(${sqliteString(
+                new Date(targetWindow.startedAt).toISOString(),
+              )})
+          else 0
+        end
+      `;
   const sql = `
     select
-      run_id,
+      cast(run_id as text) as run_id,
       status,
       datetime(started_at, 'unixepoch') as started_at,
       datetime(finished_at, 'unixepoch') as finished_at,
+      started_at * 1000 as started_at_epoch_ms,
+      finished_at * 1000 as finished_at_epoch_ms,
       tweets_count,
       query_hash,
       input_json,
       stats_json
     from runs
-    order by started_at asc
+    where ${overlapPredicate}
+    order by started_at asc, run_id asc
   `;
+  const result = readSqliteJson<XRunRow>(ledgerPath, sql);
 
-  return readSqliteJson<XRunRow>(ledgerPath, sql);
+  return result.ok
+    ? {
+        ok: true,
+        rows: result.rows.filter((row) =>
+          runTargetsCollectionDate(row, collectionDate),
+        ),
+      }
+    : result;
 }
 
 function readXAccountUsageEventRows(
@@ -467,10 +496,7 @@ function readXAccountUsageEventRows(
       readonly rows: readonly XAccountUsageEventRow[];
       readonly correlation: XTargetRunEventCorrelation;
     }
-  | {
-      readonly ok: false;
-      readonly error: string;
-    } {
+  | SqliteReadError {
   const runWindows = executionWindows(targetRuns);
   const columns = readSqliteColumnNames(
     params.ledgerPath,
@@ -479,49 +505,54 @@ function readXAccountUsageEventRows(
   if (!columns.ok) {
     return columns;
   }
-  const dailyRequestsLimit = columns.columns.has("daily_requests_limit")
-    ? "daily_requests_limit"
-    : "null as daily_requests_limit";
-  const dailyTweetsLimit = columns.columns.has("daily_tweets_limit")
-    ? "daily_tweets_limit"
-    : "null as daily_tweets_limit";
-  const accountPriority = columns.columns.has("account_priority")
-    ? "account_priority"
-    : "null as account_priority";
-  const attributionStatus = columns.columns.has("attribution_status")
-    ? "attribution_status"
-    : "null as attribution_status";
-  const passObservationId = columns.columns.has("pass_observation_id")
-    ? "pass_observation_id"
-    : "null as pass_observation_id";
-  const observationRelation = columns.columns.has("observation_relation")
-    ? "observation_relation"
-    : "null as observation_relation";
-  const requestId = columns.columns.has("request_id")
-    ? "request_id"
-    : "null as request_id";
-  const scanJobId = columns.columns.has("scan_job_id")
-    ? "scan_job_id"
-    : "null as scan_job_id";
-  const collectorRunId = columns.columns.has("collector_run_id")
-    ? "collector_run_id"
-    : "null as collector_run_id";
+  const selected = (column: string) =>
+    columns.columns.has(column) ? column : `null as ${column}`;
+  const selectedIdentity = (column: string) =>
+    columns.columns.has(column)
+      ? `cast(${column} as text) as ${column}`
+      : `null as ${column}`;
+  const targetRunIds = [
+    ...new Set(
+      targetRuns
+        .map((run) => normalizedIdentity(run.run_id))
+        .filter((value): value is string => value !== undefined),
+    ),
+  ].sort();
+  const targetRunIdRows =
+    targetRunIds.length === 0
+      ? "select null as run_id where 0"
+      : `values ${targetRunIds
+          .map((runId) => `(${sqliteString(runId)})`)
+          .join(", ")}`;
+  const eventScopePredicate =
+    targetRunIds.length === 0
+      ? "0"
+      : buildEventScopePredicate(columns.columns, runWindows);
   const sql = `
+    with
+      target_run_ids(run_id) as (${targetRunIdRows}),
+      target_correlation_keys(request_id, scan_job_id) as (
+        select distinct
+          ${normalizedColumn(columns.columns, "request_id")},
+          ${normalizedColumn(columns.columns, "scan_job_id")}
+        from account_usage_events
+        where ${targetEventAnchorPredicate(columns.columns)}
+      )
     select
       event_id,
       event_type,
       occurred_at,
-      ${passObservationId},
-      ${observationRelation},
-      ${requestId},
-      ${scanJobId},
-      ${collectorRunId},
+      ${selected("pass_observation_id")},
+      ${selected("observation_relation")},
+      ${selectedIdentity("request_id")},
+      ${selectedIdentity("scan_job_id")},
+      ${selectedIdentity("collector_run_id")},
       account_id,
       username,
       estimated_request_cost,
-      ${dailyRequestsLimit},
-      ${dailyTweetsLimit},
-      ${accountPriority},
+      ${selected("daily_requests_limit")},
+      ${selected("daily_tweets_limit")},
+      ${selected("account_priority")},
       requests_before,
       requests_after,
       tweets_before,
@@ -532,8 +563,9 @@ function readXAccountUsageEventRows(
       failure_kind,
       cooldown_reason,
       reset_at,
-      ${attributionStatus}
+      ${selected("attribution_status")}
     from account_usage_events
+    where ${eventScopePredicate}
     order by occurred_at asc, event_id asc
   `;
   const events = readSqliteJson<XAccountUsageEventRow>(params.ledgerPath, sql);
@@ -550,12 +582,7 @@ function readXAccountUsageEventRows(
   return { ok: true, ...correlated };
 }
 
-function readXAccountStateRows(ledgerPath: string):
-  | { readonly ok: true; readonly rows: readonly XAccountStateRow[] }
-  | {
-      readonly ok: false;
-      readonly error: string;
-    } {
+function readXAccountStateRows(ledgerPath: string): SqliteRowsResult<XAccountStateRow> {
   const sql = `
     select
       id,
@@ -586,12 +613,7 @@ function readXAccountStateRows(ledgerPath: string):
 function readSqliteJson<TValue>(
   ledgerPath: string,
   sql: string,
-):
-  | { readonly ok: true; readonly rows: readonly TValue[] }
-  | {
-      readonly ok: false;
-      readonly error: string;
-    } {
+): SqliteRowsResult<TValue> {
   try {
     const output = execFileSync(
       "sqlite3",
@@ -620,10 +642,7 @@ function readSqliteColumnNames(
   tableName: string,
 ):
   | { readonly ok: true; readonly columns: ReadonlySet<string> }
-  | {
-      readonly ok: false;
-      readonly error: string;
-    } {
+  | SqliteReadError {
   const result = readSqliteJson<{ readonly name?: string }>(
     ledgerPath,
     `PRAGMA table_info(${tableName})`,
@@ -647,31 +666,18 @@ function runTargetsCollectionDate(
   collectionDate: string,
 ): boolean {
   const input = parseJson<XRunInput>(row.input_json);
-  if (input === undefined) {
-    return false;
-  }
-
-  return scweetWindowContainsDate(input.since, input.until, collectionDate);
-}
-
-function scweetWindowContainsDate(
-  since: string | undefined,
-  until: string | undefined,
-  collectionDate: string,
-): boolean {
-  const sinceAt = parseScweetTimestamp(since);
-  const untilAt = parseScweetTimestamp(until);
-  const dayStartedAt = Date.parse(`${collectionDate}T00:00:00.000Z`);
+  const targetWindow = targetUtcWindow(collectionDate);
+  const sinceAt = parseScweetTimestamp(input?.since);
+  const untilAt = parseScweetTimestamp(input?.until);
   if (
+    targetWindow === undefined ||
     sinceAt === undefined ||
-    untilAt === undefined ||
-    !Number.isFinite(dayStartedAt)
+    untilAt === undefined
   ) {
     return false;
   }
 
-  const dayEndedAt = dayStartedAt + 24 * 60 * 60 * 1000;
-  return sinceAt < dayEndedAt && untilAt > dayStartedAt;
+  return sinceAt < targetWindow.endedAt && untilAt > targetWindow.startedAt;
 }
 
 function executionWindows(
@@ -679,10 +685,10 @@ function executionWindows(
 ): readonly XRunExecutionWindow[] {
   const marginMs = 5 * 60 * 1000;
   return rows.flatMap((row) => {
-    const times = [
-      parseTimestamp(row.started_at),
-      parseTimestamp(row.finished_at),
-    ].filter((time): time is number => time !== undefined);
+    const times = [row.started_at_epoch_ms, row.finished_at_epoch_ms].filter(
+      (time): time is number =>
+        typeof time === "number" && Number.isFinite(time),
+    );
     if (times.length === 0) {
       return [];
     }
@@ -696,29 +702,120 @@ function executionWindows(
   });
 }
 
-function parseScweetTimestamp(value: string | undefined): number | undefined {
+function buildEventScopePredicate(
+  columns: ReadonlySet<string>,
+  windows: readonly XRunExecutionWindow[],
+): string {
+  const collectorRunId = normalizedColumn(columns, "collector_run_id");
+  const requestId = normalizedColumn(columns, "request_id");
+  const scanJobId = normalizedColumn(columns, "scan_job_id");
+  const insideWindow =
+    windows.length === 0
+      ? "0"
+      : windows
+          .map(
+            (window) => `
+              julianday(occurred_at) between
+                julianday(${sqliteString(new Date(window.startedAt).toISOString())})
+                and julianday(${sqliteString(
+                  new Date(window.finishedAt).toISOString(),
+                )})
+            `,
+          )
+          .join(" or ");
+
+  return `
+    (${collectorRunId} is null
+      or ${collectorRunId} in (select run_id from target_run_ids))
+    and (
+      exists (
+        select 1
+        from target_correlation_keys
+        where target_correlation_keys.request_id = ${requestId}
+          and target_correlation_keys.scan_job_id = ${scanJobId}
+      )
+      or (${insideWindow})
+    )
+  `;
+}
+
+function targetEventAnchorPredicate(columns: ReadonlySet<string>): string {
+  const collectorRunId = normalizedColumn(columns, "collector_run_id");
+  const requestId = normalizedColumn(columns, "request_id");
+  const scanJobId = normalizedColumn(columns, "scan_job_id");
+
+  return `
+    ${requestId} is not null
+    and ${scanJobId} is not null
+    and (
+      ${collectorRunId} in (select run_id from target_run_ids)
+      or (
+        ${collectorRunId} is null
+        and (
+          ${requestId} in (select run_id from target_run_ids)
+          or ${scanJobId} in (select run_id from target_run_ids)
+        )
+      )
+    )
+  `;
+}
+
+function normalizedColumn(columns: ReadonlySet<string>, column: string): string {
+  return columns.has(column)
+    ? `nullif(trim(account_usage_events.${column}), '')`
+    : "null";
+}
+
+function normalizedJsonTimestamp(path: "$.since" | "$.until"): string {
+  return `replace(replace(json_extract(input_json, '${path}'), '_UTC', 'Z'), '_', 'T')`;
+}
+
+function targetUtcWindow(
+  collectionDate: string,
+): { readonly startedAt: number; readonly endedAt: number } | undefined {
+  if (!/^\d{4}-\d{2}-\d{2}$/u.test(collectionDate)) {
+    return undefined;
+  }
+  const startedAt = Date.parse(`${collectionDate}T00:00:00.000Z`);
+  if (
+    !Number.isFinite(startedAt) ||
+    new Date(startedAt).toISOString().slice(0, 10) !== collectionDate
+  ) {
+    return undefined;
+  }
+
+  return {
+    startedAt,
+    endedAt: startedAt + 24 * 60 * 60 * 1000,
+  };
+}
+
+function parseScweetTimestamp(value: unknown): number | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
   const match = value?.match(
-    /^(\d{4}-\d{2}-\d{2})(?:[T_ ](\d{2}:\d{2}:\d{2})(?:\.\d+)?(?:Z|_UTC)?)?$/u,
+    /^(\d{4}-\d{2}-\d{2})(?:[T_ ](\d{2}:\d{2}:\d{2})(\.\d+)?(?:Z|_UTC)?)?$/u,
   );
   if (match === null || match === undefined) {
     return undefined;
   }
 
-  const parsed = Date.parse(`${match[1]}T${match[2] ?? "00:00:00"}Z`);
+  const parsed = Date.parse(
+    `${match[1]}T${match[2] ?? "00:00:00"}${match[3] ?? ""}Z`,
+  );
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-function parseTimestamp(value: string | null | undefined): number | undefined {
-  if (value === null || value === undefined || value.trim().length === 0) {
-    return undefined;
-  }
+function normalizedIdentity(value: string | null | undefined): string | undefined {
+  const normalized = value?.trim();
+  return normalized === undefined || normalized.length === 0
+    ? undefined
+    : normalized;
+}
 
-  const normalized = value.includes("T")
-    ? value
-    : `${value.replace(" ", "T")}Z`;
-  const parsed = Date.parse(normalized);
-
-  return Number.isFinite(parsed) ? parsed : undefined;
+function sqliteString(value: string): string {
+  return `'${value.replaceAll("'", "''")}'`;
 }
 
 function accountBucketKey(
@@ -751,10 +848,7 @@ function eventAccountBucketKey(
   return stateKeyByUsername.get(username);
 }
 
-function countEvents(
-  events: readonly XAccountUsageEventRow[],
-  eventType: string,
-): number {
+function countEvents(events: readonly XAccountUsageEventRow[], eventType: string): number {
   return events.filter((event) => event.event_type === eventType).length;
 }
 
