@@ -138,6 +138,19 @@ fake_compose() {
 }
 COMPOSE=(fake_compose)
 
+assert_compose_sentinel_fails_fast() {
+  local status
+
+  set +e
+  "${COMPOSE[@]}" sentinel-check
+  status=$?
+  set -e
+  ((status == 97)) || fail 'fake Compose sentinel did not fail fast'
+  [[ $(<"$EVENTS") == $'compose\tsentinel-check' ]] || \
+    fail 'fake Compose sentinel did not record the expected event'
+  : > "$EVENTS"
+}
+
 docker() {
   local source destination image_id revision
   local tag='' label='' context='' argument=''
@@ -257,6 +270,7 @@ docker() {
 
 # shellcheck source=ops/deploy/daily-runner-image-bootstrap-lib.sh
 source "$LIBRARY"
+assert_compose_sentinel_fails_fast
 EXPECTED_CONFIG=$DAILY_RUNNER_BOOTSTRAP_IMAGE_CONFIG
 BASE_TAG=$(compose_image_name intelligence-worker)
 COMPOSE_TAG=$(compose_image_name daily-runner)
