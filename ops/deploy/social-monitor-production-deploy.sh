@@ -106,8 +106,8 @@ RUNTIME_CONTROL_PATHS=(
   ops/deploy/production-runtime/social-monitor-github-premidnight-capture-v1.service
   ops/deploy/production-runtime/social-monitor-github-premidnight-capture-v1.timer
   ops/deploy/production-runtime/social-monitor-daily.service
+  ops/deploy/production-runtime/social-monitor-weekly.service ops/deploy/production-runtime/social-monitor-weekly.timer
 )
-
 COMPOSE=(
   docker compose -p "$PROJECT"
   --env-file "$ROOT/secrets/production.env"

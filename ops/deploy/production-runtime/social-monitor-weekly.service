@@ -1,0 +1,14 @@
+[Unit]
+Description=Social Monitor weekly AI reader summary
+After=social-monitor-prod.service network-online.target
+Requires=social-monitor-prod.service
+
+[Service]
+Type=oneshot
+Environment=PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+ExecStart=/bin/bash -lc 'set -euo pipefail; ROOT=/var/data/social-monitor; docker compose -p social-monitor-prod --env-file "$ROOT/secrets/production.env" -f "$ROOT/integration/docker-compose.yml" -f "$ROOT/control/compose.production.yml" -f "$ROOT/control/compose.managed-db.yml" -f "$ROOT/control/postgres-runtime-current/compose.postgres-runtime.yml" --profile daily run --rm --no-deps -e READER_SUMMARY_WEEKLY_PRODUCTION_ARTIFACT_DIR=/var/lib/social-monitor/artifacts/reader-summary-weekly-production daily-runner sh -lc "npm run run:reader-summary-weekly-production"'
+TimeoutStartSec=3600
+Restart=no
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=6

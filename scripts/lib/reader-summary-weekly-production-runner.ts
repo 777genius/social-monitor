@@ -1,0 +1,652 @@
+import { createHash, randomUUID } from "node:crypto";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { basename, join } from "node:path";
+
+import {
+  tenantId,
+  workspaceId,
+} from "@social-monitor/shared-kernel";
+
+import { ReaderSummaryWeeklyArtifact } from "../../libs/summary/domain/entities/reader-summary-weekly-artifact";
+import {
+  canonicalizeReaderSummaryWeeklyJson,
+  readerSummaryWeeklyScopeKey,
+} from "../../libs/summary/domain/value-objects/reader-summary-weekly-canonical-json";
+import { evaluateReaderSummaryWeeklyEditorialQuality } from "../../libs/summary/domain/policies/reader-summary-weekly-editorial-quality-policy";
+import {
+  buildOpenAiReaderSummaryWeeklyInstructions,
+  buildOpenAiReaderSummaryWeeklyPromptPayload,
+  currentReaderSummaryWeeklyPromptRelease,
+} from "../../libs/summary/adapters/model/openai-responses-reader-summary-weekly-prompt";
+import { parseOpenAiReaderSummaryWeeklyResponse } from "../../libs/summary/adapters/model/openai-responses-reader-summary-weekly-response-parser";
+import { buildOpenAiReaderSummaryWeeklyJsonSchema } from "../../libs/summary/adapters/model/openai-responses-reader-summary-weekly-schema";
+import {
+  readerSummaryWeeklyInputManifestSchemaVersion,
+} from "../../libs/summary/domain/value-objects/reader-summary-weekly-input-manifest";
+import {
+  readerSummaryWeeklyModelInputSchemaVersion,
+  type ReaderSummaryWeeklyModelCitationEvidence,
+  type ReaderSummaryWeeklyModelEvidenceInput,
+  type ReaderSummaryWeeklyModelInput,
+  type ReaderSummaryWeeklyModelOutput,
+  type ReaderSummaryWeeklyModelPort,
+  type ReaderSummaryWeeklyModelStoryEvidence,
+  type ReaderSummaryWeeklyModelObservationEvidence,
+} from "../../libs/summary/ports/reader-summary-weekly-model.port";
+import type {
+  AgentRuntimeClientPort,
+  AgentRuntimeProvider,
+  AgentRuntimeTaskCommand,
+} from "../../libs/summary/ports/agent-runtime-client.port";
+import {
+  type ReaderSummaryWeeklyProductionCertification,
+  type ReaderSummaryWeeklyProductionDbState,
+  type ReaderSummaryWeeklyProductionProviderEvidence,
+  type ReaderSummaryWeeklyProductionStatus,
+} from "./reader-summary-weekly-production-postgres-contract";
+
+export type ReaderSummaryWeeklyProductionRunnerResult = Readonly<{
+  status: ReaderSummaryWeeklyProductionStatus;
+  weekStartedOn: string;
+  weekEndedOn: string;
+  artifactPath: string | null;
+  proofPath: string | null;
+  modelCallPerformed: boolean;
+  writePerformed: boolean;
+  replayed: boolean;
+  blockingReasons: readonly string[];
+}>;
+
+export type ReaderSummaryWeeklyProductionRunnerParams = Readonly<{
+  dbState: ReaderSummaryWeeklyProductionDbState;
+  outputDirectory: string;
+  model: ReaderSummaryWeeklyModelPort;
+  replay: boolean;
+  generatedAt: Date;
+  generatedBy?: string;
+}>;
+
+export type ReaderSummaryWeeklyAgentRuntimeModelParams = Readonly<{
+  client: AgentRuntimeClientPort;
+  provider?: AgentRuntimeProvider;
+  model?: string;
+  reasoningEffort?: "xhigh";
+  timeoutMs?: number;
+  maxOutputTokens?: number;
+}>;
+
+type ExistingArtifactState =
+  | Readonly<{ status: "missing" }>
+  | Readonly<{ status: "valid"; artifactPath: string; proofPath: string }>;
+
+type ArtifactEnvelope = Readonly<{
+  schemaVersion: "reader_summary.weekly_production_artifact.v1";
+  generatedBy: string;
+  status: "complete";
+  tenantId: string;
+  workspaceId: string;
+  scope: unknown;
+  weekStartedOn: string;
+  weekEndedOn: string;
+  modelInput: ReaderSummaryWeeklyModelInput;
+  output: ReaderSummaryWeeklyModelOutput;
+  editorialQuality: ReturnType<typeof evaluateReaderSummaryWeeklyEditorialQuality>;
+}>;
+
+type ProofEnvelope = Readonly<{
+  schemaVersion: "reader_summary.weekly_production_proof.v1";
+  generatedBy: string;
+  status: "complete";
+  tenantId: string;
+  workspaceId: string;
+  scopeKey: string;
+  weekStartedOn: string;
+  weekEndedOn: string;
+  certificationCount: 7;
+  dailyCertificationIds: readonly string[];
+  dailyCertificationSha256s: readonly string[];
+  manifestSealId: string;
+  manifestSealSha: string;
+  modelInputSealId: string;
+  modelInputSealSha: string;
+  artifactSha256: string;
+  model: {
+    provider: "agent-runtime";
+    agentProvider: "codex";
+    model: "gpt-5.5";
+    reasoningEffort: "xhigh";
+    runtimeOutput: "text";
+  };
+  zeroProviderCalls: true;
+}>;
+
+const generatedByDefault = "npm run run:reader-summary-weekly-production";
+const maxEvidencePerWeek = 12;
+
+export class AgentRuntimeReaderSummaryWeeklyTextModel
+  implements ReaderSummaryWeeklyModelPort
+{
+  private readonly provider: AgentRuntimeProvider;
+  private readonly model: string;
+  private readonly reasoningEffort: "xhigh";
+  private readonly timeoutMs: number;
+  private readonly maxOutputTokens: number;
+
+  constructor(private readonly params: ReaderSummaryWeeklyAgentRuntimeModelParams) {
+    this.provider = params.provider ?? "codex";
+    this.model = params.model ?? "gpt-5.5";
+    this.reasoningEffort = params.reasoningEffort ?? "xhigh";
+    this.timeoutMs = params.timeoutMs ?? 600_000;
+    this.maxOutputTokens = params.maxOutputTokens ?? 16_000;
+  }
+
+  async generate(
+    input: ReaderSummaryWeeklyModelInput,
+  ): Promise<ReaderSummaryWeeklyModelOutput> {
+    const command = this.command(input);
+    const result = await this.params.client.runTask(command);
+    if (result.status !== "completed") {
+      throw new Error(
+        result.failure?.safeMessage ??
+          "Reader summary weekly agent-runtime task did not complete",
+      );
+    }
+    const outputText =
+      result.outputText ??
+      (result.structuredOutput === undefined
+        ? undefined
+        : JSON.stringify(result.structuredOutput));
+    if (outputText === undefined || outputText.trim().length === 0) {
+      throw new Error("Reader summary weekly agent-runtime returned no text");
+    }
+    if (
+      result.executionAttestation !== undefined &&
+      (result.executionAttestation.provider !== "codex" ||
+        result.executionAttestation.model !== "gpt-5.5" ||
+        result.executionAttestation.reasoningEffort !== "xhigh" ||
+        result.executionAttestation.selectedOutputKind !== "output_text")
+    ) {
+      throw new Error(
+        "Reader summary weekly agent-runtime attestation is not runtime-only text output",
+      );
+    }
+    return parseOpenAiReaderSummaryWeeklyResponse(input, outputText);
+  }
+
+  private command(input: ReaderSummaryWeeklyModelInput): AgentRuntimeTaskCommand {
+    const requestId = [
+      "reader-summary-weekly",
+      input.tenantId,
+      input.workspaceId,
+      input.weekStartedOn,
+      shortHash(input.sealSha),
+    ].join(":");
+    return {
+      requestId,
+      tenantId: tenantId(input.tenantId),
+      workspaceId: workspaceId(input.workspaceId),
+      correlationId: `${requestId}:correlation`,
+      provider: this.provider,
+      purpose: "social_monitor.reader_summary.weekly.generate",
+      systemPrompt: buildOpenAiReaderSummaryWeeklyInstructions(),
+      prompt: buildOpenAiReaderSummaryWeeklyPromptPayload(input),
+      outputSchema: buildOpenAiReaderSummaryWeeklyJsonSchema(input),
+      controls: {
+        interactive: false,
+        outputSchemaName: "reader_summary_weekly_output_v1",
+        schemaVersion: "reader_summary.weekly_model_output.v1",
+        model: this.model,
+        maxOutputTokens: this.maxOutputTokens,
+      },
+      timeoutMs: this.timeoutMs,
+      metadata: {
+        adapter: "agent-runtime-reader-summary-weekly-production",
+        promptVersion: currentReaderSummaryWeeklyPromptRelease.id,
+        reasoningEffort: this.reasoningEffort,
+        runtimeOutput: "text",
+      },
+    };
+  }
+}
+
+export const runReaderSummaryWeeklyProduction = async (
+  params: ReaderSummaryWeeklyProductionRunnerParams,
+): Promise<ReaderSummaryWeeklyProductionRunnerResult> => {
+  const generatedBy = params.generatedBy ?? generatedByDefault;
+  const paths = artifactPaths(params.outputDirectory, params.dbState);
+  if (params.dbState.status !== "complete") {
+    return result(params, params.dbState.status, false, false, false, [
+      ...params.dbState.blockingReasons,
+    ]);
+  }
+
+  const evidence = buildModelInputFromDbState(params.dbState);
+  if (evidence.status === "partial") {
+    return result(params, "partial", false, false, false, evidence.reasons);
+  }
+  const input = evidence.input;
+  const existing = readExistingArtifact(paths, input);
+  if (existing.status === "valid") {
+    return result(params, "complete", false, false, true, []);
+  }
+  if (params.replay) {
+    return result(params, "partial", false, false, true, [
+      "replay requested but weekly artifact/proof is missing",
+    ]);
+  }
+
+  const output = await params.model.generate(input);
+  const artifact = ReaderSummaryWeeklyArtifact.create({ input, output });
+  const snapshot = artifact.toSnapshot();
+  const artifactEnvelope: ArtifactEnvelope = Object.freeze({
+    schemaVersion: "reader_summary.weekly_production_artifact.v1",
+    generatedBy,
+    status: "complete",
+    tenantId: params.dbState.scope.tenantId,
+    workspaceId: params.dbState.scope.workspaceId,
+    scope: cloneScope(params.dbState.scope.scope),
+    weekStartedOn: params.dbState.window.weekStartedOn,
+    weekEndedOn: params.dbState.window.weekEndedOn,
+    modelInput: input,
+    output: snapshot.output,
+    editorialQuality: snapshot.editorialQuality,
+  });
+  const artifactSha256 = canonicalizeReaderSummaryWeeklyJson(
+    artifactEnvelope,
+    "weekly production artifact",
+  ).sha256;
+  const proofEnvelope = proofFor({
+    params,
+    input,
+    artifactSha256,
+    generatedBy,
+  });
+  writeArtifactPair(paths, artifactEnvelope, proofEnvelope, input);
+  return result(params, "complete", true, true, false, []);
+};
+
+export const buildModelInputFromDbState = (
+  dbState: ReaderSummaryWeeklyProductionDbState,
+):
+  | Readonly<{ status: "complete"; input: ReaderSummaryWeeklyModelInput }>
+  | Readonly<{ status: "partial"; reasons: readonly string[] }> => {
+  if (dbState.status !== "complete") {
+    return { status: "partial", reasons: dbState.blockingReasons };
+  }
+  const selected = selectProviderEvidence(dbState.certifications);
+  const selectedDates = new Set(selected.map((item) => item.cert.requestedUtcDate));
+  const selectedProviders = new Set(selected.map((item) => item.evidence.providerKey));
+  if (selectedDates.size < 3 || selectedProviders.size < 2) {
+    return {
+      status: "partial",
+      reasons: [
+        "weekly DB certifications do not contain enough multi-day, multi-provider evidence",
+      ],
+    };
+  }
+
+  const stories = canonicalStories(selected);
+  const observations = canonicalObservations(selected);
+  const citations = canonicalCitations(selected);
+  const days = dbState.certifications.map((cert) => {
+    const githubSha = exactGithubSha(cert);
+    return {
+      date: cert.requestedUtcDate,
+      dailyCertificationId: cert.identity,
+      dailyCertificationSha: cert.canonicalSha256,
+      dailyCertificationStatus: "certified" as const,
+      githubBoardId: `${cert.githubEvidence.schemaVersion as string}:${githubSha}`,
+      githubBoardSha: githubSha,
+      githubBoardStatus: "verified" as const,
+      providerCounts: cert.providerCounts,
+    };
+  });
+  const manifestBody = {
+    schemaVersion: readerSummaryWeeklyInputManifestSchemaVersion,
+    status: "sealed",
+    blockingPassed: true,
+    weekStartedUtcDate: dbState.window.weekStartedOn,
+    weekEndedUtcDate: dbState.window.weekEndedOn,
+    tenantId: dbState.scope.tenantId,
+    workspaceId: dbState.scope.workspaceId,
+    scope: cloneScope(dbState.scope.scope),
+    days: dbState.certifications.map((cert) => ({
+      requestedUtcDate: cert.requestedUtcDate,
+      publicationEvidenceIdentity: cert.identity,
+      publicationEvidenceSha256: cert.canonicalSha256,
+      githubEvidenceSha256: exactGithubSha(cert),
+    })),
+  };
+  const manifestSealSha = canonicalizeReaderSummaryWeeklyJson(
+    manifestBody,
+    "weekly production manifest",
+  ).sha256;
+  const body = {
+    schemaVersion: readerSummaryWeeklyModelInputSchemaVersion,
+    manifestSealId: `${readerSummaryWeeklyInputManifestSchemaVersion}:${manifestSealSha}`,
+    manifestSealSha,
+    tenantId: dbState.scope.tenantId,
+    workspaceId: dbState.scope.workspaceId,
+    scope: cloneScope(dbState.scope.scope),
+    weekStartedOn: dbState.window.weekStartedOn,
+    weekEndedOn: dbState.window.weekEndedOn,
+    days,
+    stories,
+    observations,
+    citations,
+  };
+  const sealSha = canonicalizeReaderSummaryWeeklyJson(
+    body,
+    "weekly production model input",
+  ).sha256;
+  return {
+    status: "complete",
+    input: Object.freeze({
+      ...body,
+      sealId: `${readerSummaryWeeklyModelInputSchemaVersion}:${sealSha}`,
+      sealSha,
+    }),
+  };
+};
+
+const selectProviderEvidence = (
+  certifications: readonly ReaderSummaryWeeklyProductionCertification[],
+): readonly Readonly<{
+  cert: ReaderSummaryWeeklyProductionCertification;
+  evidence: ReaderSummaryWeeklyProductionProviderEvidence;
+}>[] => {
+  const selected: {
+    cert: ReaderSummaryWeeklyProductionCertification;
+    evidence: ReaderSummaryWeeklyProductionProviderEvidence;
+  }[] = [];
+  for (const cert of certifications) {
+    const byProvider = new Map<string, ReaderSummaryWeeklyProductionProviderEvidence>();
+    for (const evidence of cert.providerEvidence) {
+      if (usableEvidence(evidence) && !byProvider.has(evidence.providerKey)) {
+        byProvider.set(evidence.providerKey, evidence);
+      }
+    }
+    for (const provider of [
+      "github-trending-page",
+      "hacker-news",
+      "reddit",
+      "rss",
+      "x-twitter",
+    ]) {
+      const evidence = byProvider.get(provider);
+      if (evidence !== undefined) {
+        selected.push({ cert, evidence });
+      }
+    }
+  }
+  return Object.freeze(selected.slice(0, maxEvidencePerWeek));
+};
+
+const canonicalStories = (
+  selected: readonly Readonly<{
+    evidence: ReaderSummaryWeeklyProductionProviderEvidence;
+  }>[],
+): readonly ReaderSummaryWeeklyModelStoryEvidence[] =>
+  Object.freeze(
+    selected
+      .map((item) =>
+        Object.freeze({
+          storyId: storyId(item.evidence),
+          label: boundedText(item.evidence.title, 180),
+        }),
+      )
+      .sort(by("storyId")),
+  );
+
+const canonicalObservations = (
+  selected: readonly Readonly<{
+    cert: ReaderSummaryWeeklyProductionCertification;
+    evidence: ReaderSummaryWeeklyProductionProviderEvidence;
+  }>[],
+): readonly ReaderSummaryWeeklyModelObservationEvidence[] =>
+  Object.freeze(
+    selected
+      .map((item) =>
+        Object.freeze({
+          observationId: `observation:${item.cert.requestedUtcDate}:${shortHash(
+            item.evidence.citationId,
+          )}`,
+          storyId: storyId(item.evidence),
+          observedOn: item.cert.requestedUtcDate,
+          providerKey: item.evidence.providerKey as never,
+          text: boundedText(
+            `${item.evidence.title}: ${item.evidence.sourceText}`,
+            4_000,
+          ),
+          claimSupport: Object.freeze(["snapshot"] as const),
+          citationIds: Object.freeze([item.evidence.citationId]),
+          dailyCertificationId: item.cert.identity,
+          dailyCertificationSha: item.cert.canonicalSha256,
+          sourceSha256: item.evidence.sourceContentHash,
+        }),
+      )
+      .sort(by("observationId")),
+  );
+
+const canonicalCitations = (
+  selected: readonly Readonly<{
+    cert: ReaderSummaryWeeklyProductionCertification;
+    evidence: ReaderSummaryWeeklyProductionProviderEvidence;
+  }>[],
+): readonly ReaderSummaryWeeklyModelCitationEvidence[] =>
+  Object.freeze(
+    selected
+      .map((item) =>
+        Object.freeze({
+          citationId: item.evidence.citationId,
+          observationId: `observation:${item.cert.requestedUtcDate}:${shortHash(
+            item.evidence.citationId,
+          )}`,
+          storyId: storyId(item.evidence),
+          observedOn: item.cert.requestedUtcDate,
+          providerKey: item.evidence.providerKey as never,
+          title: boundedText(item.evidence.title, 240),
+          canonicalUrl: item.evidence.canonicalUrl,
+          dailyCertificationId: item.cert.identity,
+          dailyCertificationSha: item.cert.canonicalSha256,
+          sourceSha256: item.evidence.sourceContentHash,
+        }),
+      )
+      .sort(by("citationId")),
+  );
+
+const proofFor = (input: {
+  params: ReaderSummaryWeeklyProductionRunnerParams;
+  input: ReaderSummaryWeeklyModelInput;
+  artifactSha256: string;
+  generatedBy: string;
+}): ProofEnvelope => Object.freeze({
+  schemaVersion: "reader_summary.weekly_production_proof.v1",
+  generatedBy: input.generatedBy,
+  status: "complete",
+  tenantId: input.params.dbState.scope.tenantId,
+  workspaceId: input.params.dbState.scope.workspaceId,
+  scopeKey: readerSummaryWeeklyScopeKey(input.params.dbState.scope.scope),
+  weekStartedOn: input.params.dbState.window.weekStartedOn,
+  weekEndedOn: input.params.dbState.window.weekEndedOn,
+  certificationCount: 7,
+  dailyCertificationIds: Object.freeze(
+    input.params.dbState.certifications.map((cert) => cert.identity),
+  ),
+  dailyCertificationSha256s: Object.freeze(
+    input.params.dbState.certifications.map((cert) => cert.canonicalSha256),
+  ),
+  manifestSealId: input.input.manifestSealId,
+  manifestSealSha: input.input.manifestSealSha,
+  modelInputSealId: input.input.sealId,
+  modelInputSealSha: input.input.sealSha,
+  artifactSha256: input.artifactSha256,
+  model: Object.freeze({
+    provider: "agent-runtime",
+    agentProvider: "codex",
+    model: "gpt-5.5",
+    reasoningEffort: "xhigh",
+    runtimeOutput: "text",
+  }),
+  zeroProviderCalls: true,
+});
+
+const readExistingArtifact = (
+  paths: ReturnType<typeof artifactPaths>,
+  input: ReaderSummaryWeeklyModelInput,
+): ExistingArtifactState => {
+  const artifactExists = existsSync(paths.artifactPath);
+  const proofExists = existsSync(paths.proofPath);
+  if (!artifactExists && !proofExists) {
+    return { status: "missing" };
+  }
+  if (!artifactExists || !proofExists) {
+    throw new Error("Reader summary weekly artifact/proof pair is incomplete");
+  }
+  const artifact = JSON.parse(readFileSync(paths.artifactPath, "utf8")) as unknown;
+  const proof = JSON.parse(readFileSync(paths.proofPath, "utf8")) as ProofEnvelope;
+  const artifactSha256 = canonicalizeReaderSummaryWeeklyJson(
+    artifact,
+    "existing weekly production artifact",
+  ).sha256;
+  if (
+    proof.schemaVersion !== "reader_summary.weekly_production_proof.v1" ||
+    proof.status !== "complete" ||
+    proof.modelInputSealSha !== input.sealSha ||
+    proof.modelInputSealId !== input.sealId ||
+    proof.artifactSha256 !== artifactSha256
+  ) {
+    throw new Error("Reader summary weekly artifact/proof does not match DB input");
+  }
+  return {
+    status: "valid",
+    artifactPath: paths.artifactPath,
+    proofPath: paths.proofPath,
+  };
+};
+
+const writeArtifactPair = (
+  paths: ReturnType<typeof artifactPaths>,
+  artifact: ArtifactEnvelope,
+  proof: ProofEnvelope,
+  input: ReaderSummaryWeeklyModelInput,
+): void => {
+  mkdirSync(paths.outputDirectory, { recursive: true });
+  const artifactText = `${JSON.stringify(artifact, null, 2)}\n`;
+  const proofText = `${JSON.stringify(proof, null, 2)}\n`;
+  const artifactTemp = join(
+    paths.outputDirectory,
+    `.${basename(paths.artifactPath)}.${randomUUID()}.tmp`,
+  );
+  const proofTemp = join(
+    paths.outputDirectory,
+    `.${basename(paths.proofPath)}.${randomUUID()}.tmp`,
+  );
+  try {
+    writeFileSync(artifactTemp, artifactText, { flag: "wx", mode: 0o444 });
+    writeFileSync(proofTemp, proofText, { flag: "wx", mode: 0o444 });
+    if (readExistingArtifact(paths, input).status === "valid") {
+      return;
+    }
+    renameSync(proofTemp, paths.proofPath);
+    renameSync(artifactTemp, paths.artifactPath);
+  } finally {
+    rmSync(artifactTemp, { force: true });
+    rmSync(proofTemp, { force: true });
+  }
+};
+
+const artifactPaths = (
+  outputDirectory: string,
+  dbState: ReaderSummaryWeeklyProductionDbState,
+) => {
+  const prefix = `reader-summary-weekly-production.${dbState.window.weekStartedOn}`;
+  return {
+    outputDirectory,
+    artifactPath: join(outputDirectory, `${prefix}.artifact.v1.json`),
+    proofPath: join(outputDirectory, `${prefix}.proof.v1.json`),
+  };
+};
+
+const result = (
+  params: ReaderSummaryWeeklyProductionRunnerParams,
+  status: ReaderSummaryWeeklyProductionStatus,
+  modelCallPerformed: boolean,
+  writePerformed: boolean,
+  replayed: boolean,
+  blockingReasons: readonly string[],
+): ReaderSummaryWeeklyProductionRunnerResult => {
+  const paths = artifactPaths(params.outputDirectory, params.dbState);
+  return Object.freeze({
+    status,
+    weekStartedOn: params.dbState.window.weekStartedOn,
+    weekEndedOn: params.dbState.window.weekEndedOn,
+    artifactPath: status === "complete" ? paths.artifactPath : null,
+    proofPath: status === "complete" ? paths.proofPath : null,
+    modelCallPerformed,
+    writePerformed,
+    replayed,
+    blockingReasons: Object.freeze([...blockingReasons]),
+  });
+};
+
+const usableEvidence = (
+  evidence: ReaderSummaryWeeklyProductionProviderEvidence,
+): boolean => {
+  try {
+    const parsed = new URL(evidence.canonicalUrl);
+    return (
+      parsed.protocol === "https:" &&
+      evidence.title.trim().length > 0 &&
+      evidence.sourceText.trim().length > 0 &&
+      /^[0-9a-f]{64}$/u.test(evidence.sourceContentHash)
+    );
+  } catch {
+    return false;
+  }
+};
+
+const storyId = (
+  evidence: ReaderSummaryWeeklyProductionProviderEvidence,
+): string => `story:${shortHash(`${evidence.providerKey}:${evidence.canonicalUrl}`)}`;
+
+const exactGithubSha = (
+  cert: ReaderSummaryWeeklyProductionCertification,
+): string => {
+  const value = cert.githubEvidence.sha256;
+  if (typeof value !== "string" || !/^[0-9a-f]{64}$/u.test(value)) {
+    throw new Error("Reader summary weekly GitHub evidence hash is invalid");
+  }
+  return value;
+};
+
+const boundedText = (input: string, max: number): string => {
+  const normalized = input.replace(/\s+/gu, " ").trim();
+  if (normalized.length === 0) {
+    throw new Error("Reader summary weekly evidence text is empty");
+  }
+  return normalized.length <= max ? normalized : normalized.slice(0, max).trim();
+};
+
+const shortHash = (value: string): string =>
+  createHash("sha256").update(value).digest("hex").slice(0, 24);
+
+const cloneScope = (
+  scope: ReaderSummaryWeeklyProductionDbState["scope"]["scope"],
+): ReaderSummaryWeeklyProductionDbState["scope"]["scope"] =>
+  scope.type === "workspace"
+    ? Object.freeze({ type: "workspace" as const })
+    : Object.freeze({ type: "interest" as const, interestId: scope.interestId });
+
+const by = <TKey extends string>(key: TKey) =>
+  <TValue extends Readonly<Record<TKey, string>>>(
+    left: TValue,
+    right: TValue,
+  ): number => left[key].localeCompare(right[key]);

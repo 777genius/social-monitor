@@ -52,7 +52,11 @@ postgres_runtime_control_mutation_scope() {
 postgres_runtime_control_units_for_scope() {
   case $1 in
     base)
-      printf '%s\n' social-monitor-daily.service social-monitor-prod.service
+      printf '%s\n' \
+        social-monitor-daily.service \
+        social-monitor-prod.service \
+        social-monitor-weekly.service \
+        social-monitor-weekly.timer
       ;;
     capture-only)
       printf '%s\n' \
@@ -64,7 +68,9 @@ postgres_runtime_control_units_for_scope() {
         social-monitor-github-premidnight-capture-v1.service \
         social-monitor-github-premidnight-capture-v1.timer \
         social-monitor-daily.service \
-        social-monitor-prod.service
+        social-monitor-prod.service \
+        social-monitor-weekly.service \
+        social-monitor-weekly.timer
       ;;
     *)
       fail 'PostgreSQL runtime-control mutation scope is invalid'

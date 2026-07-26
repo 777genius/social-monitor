@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Social Monitor weekly reader summary
+
+[Timer]
+OnCalendar=Mon *-*-* 06:30:00 UTC
+RandomizedDelaySec=900
+Persistent=false
+Unit=social-monitor-weekly.service
+
+[Install]
+WantedBy=timers.target
