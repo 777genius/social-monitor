@@ -411,7 +411,10 @@ control_marker_line=$(grep -nF 'printf '\''%s\n'\'' "$sha" > "$STATE/control.sha
   "$control_library" | cut -d: -f1)
 ((control_sync_line < bootstrap_commit_line))
 ((bootstrap_commit_line < control_marker_line))
-
+target_reconcile_line=$(grep -nF '"$current" "$POSTGRES_POOL_ATOMIC_REPAIR_BACKEND_SHA"' "$control_library" | cut -d: -f1)
+rescue_reconcile_line=$(grep -nF 'reconcile_completed_backend_image_rescues ||' "$control_library" | cut -d: -f1)
+runtime_transaction_line=$(grep -nF 'deploy_release_runtime_transaction "$sha" "$backend" "$runtime_control"' "$control_library" | tail -1 | cut -d: -f1)
+((target_reconcile_line < rescue_reconcile_line && rescue_reconcile_line < runtime_transaction_line))
 grep -F 'deploy_release_runtime_transaction "$sha" "$backend" "$runtime_control"' \
   "$SCRIPT_DIR/deploy-control-lib.sh" >/dev/null
 # A normal replay still enters Compose validation; only the workflow run whose

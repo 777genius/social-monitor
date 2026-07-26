@@ -270,6 +270,14 @@ grep -Fx 'postgres_pool_repair=true' "$GITHUB_OUTPUT" >/dev/null
 assert_call_count 2 "plan $TARGET_SHA"
 assert_call_count 1 "deploy $TARGET_SHA"
 
+# A fresh workflow replay sees the recaptured durable state and performs no
+# repair action; its ordinary deploy remains owned by the gated deploy job.
+: > "$GITHUB_OUTPUT"
+run_client plan_success plan "$TARGET_SHA" >/dev/null
+grep -Fx 'postgres_pool_repair=false' "$GITHUB_OUTPUT" >/dev/null
+assert_call_count 1 "plan $TARGET_SHA"
+assert_call_count 0 "deploy $TARGET_SHA"
+
 : > "$GITHUB_OUTPUT"
 run_client atomic_disconnect plan "$TARGET_SHA" >/dev/null
 grep -Fx "backend_base=$BACKEND_SHA" "$GITHUB_OUTPUT" >/dev/null

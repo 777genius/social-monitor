@@ -51,7 +51,6 @@ load_target_reader_summary_publication_deploy_library() {
     fail 'target publication deploy library differs from reviewed target'
   ! declare -F deploy_reader_summary_publication_migrations >/dev/null || \
     fail 'publication migration entrypoint was loaded before target validation'
-
   # The bridge release deliberately lacks this target-only source file.
   # shellcheck source=/dev/null
   source "$publication_real" || \
@@ -59,14 +58,12 @@ load_target_reader_summary_publication_deploy_library() {
   declare -F deploy_reader_summary_publication_migrations >/dev/null || \
     fail 'target publication deploy library is missing its migration entrypoint'
 }
-
 initialize_deploy_control_bridge() {
   local entrypoint=$REPO/ops/deploy/social-monitor-production-deploy.sh
   local deploy_library=$REPO/ops/deploy/deploy-control-lib.sh
   local postgres_library=$REPO/ops/deploy/postgres-runtime-deploy-lib.sh
   local image_rescue_library=$REPO/ops/deploy/backend-image-rescue-lib.sh
   local x_image_library=$REPO/ops/deploy/x-collector-image-deploy-lib.sh
-
   [[ -f $entrypoint && -f $deploy_library && -f $postgres_library && \
      -f $image_rescue_library && -f $x_image_library ]] || \
     fail 'current integration is missing deploy control bridge sources'
@@ -86,14 +83,12 @@ initialize_deploy_control_bridge() {
     deploy_control_file_digest "$x_image_library"
   )
 }
-
 verify_deploy_control_bridge_compatibility() {
   local entrypoint=$REPO/ops/deploy/social-monitor-production-deploy.sh
   local deploy_library=$REPO/ops/deploy/deploy-control-lib.sh
   local postgres_library=$REPO/ops/deploy/postgres-runtime-deploy-lib.sh
   local image_rescue_library=$REPO/ops/deploy/backend-image-rescue-lib.sh
   local x_image_library=$REPO/ops/deploy/x-collector-image-deploy-lib.sh
-
   [[ -n ${DEPLOY_CONTROL_BRIDGE_ENTRYPOINT_DIGEST:-} && \
      -n ${DEPLOY_CONTROL_BRIDGE_LIBRARY_DIGEST:-} && \
      -n ${DEPLOY_CONTROL_BRIDGE_POSTGRES_LIBRARY_DIGEST:-} && \
@@ -115,7 +110,6 @@ verify_deploy_control_bridge_compatibility() {
        "$DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_DIGEST" ]] || \
     fail 'deploy control changed with runtime assets; deploy the bridge release first'
 }
-
 verify_deploy_control_bridge_target_compatibility() {
   local sha=$1
   local entrypoint_path=ops/deploy/social-monitor-production-deploy.sh
@@ -125,7 +119,6 @@ verify_deploy_control_bridge_target_compatibility() {
   local x_image_library_path=ops/deploy/x-collector-image-deploy-lib.sh
   local entrypoint_digest deploy_library_digest postgres_library_digest
   local image_rescue_library_digest x_image_library_digest
-
   [[ -n ${DEPLOY_CONTROL_BRIDGE_ENTRYPOINT_DIGEST:-} && \
      -n ${DEPLOY_CONTROL_BRIDGE_LIBRARY_DIGEST:-} && \
      -n ${DEPLOY_CONTROL_BRIDGE_POSTGRES_LIBRARY_DIGEST:-} && \
@@ -157,7 +150,6 @@ verify_deploy_control_bridge_target_compatibility() {
        "$DEPLOY_CONTROL_BRIDGE_X_IMAGE_LIBRARY_DIGEST" ]] || \
     fail 'deploy control changed with runtime assets; deploy the bridge release first'
 }
-
 probe_daily_singleton_clear() {
   local singleton_fd
   exec {singleton_fd}>"$DAILY_SINGLETON_LOCK" || \
@@ -169,24 +161,20 @@ probe_daily_singleton_clear() {
   flock -u "$singleton_fd" || fail 'cannot release the daily singleton probe'
   exec {singleton_fd}>&-
 }
-
 # Focused tests override this no-op at the exact probe-release -> admission
 # attempt boundary. Production never supplies an executable hook through the
 # environment.
 postgres_admission_after_singleton_probe() {
   :
 }
-
 acquire_postgres_admission_with_daily_priority() {
   local admission_fd=$1
   local attempt
-
   [[ $POSTGRES_ADMISSION_MAX_ATTEMPTS =~ ^[1-9][0-9]*$ ]] || \
     fail 'PostgreSQL admission attempt bound is invalid'
   [[ $POSTGRES_ADMISSION_RETRY_SLICE_SECONDS =~ \
      ^([0-9]+([.][0-9]+)?|[.][0-9]+)$ ]] || \
     fail 'PostgreSQL admission retry slice is invalid'
-
   for ((attempt = 1; attempt <= POSTGRES_ADMISSION_MAX_ATTEMPTS; attempt += 1)); do
     probe_daily_singleton_clear || \
       fail 'daily run has PostgreSQL admission priority; retry deploy later'
@@ -205,13 +193,11 @@ acquire_postgres_admission_with_daily_priority() {
     sleep "$POSTGRES_ADMISSION_RETRY_SLICE_SECONDS"
   done
 }
-
 reconcile_github_premidnight_capture_runtime_control() {
   local runtime_control=$1
   local mutation_scope
   local source_marker=$REPO/ops/deploy/production-runtime/github-premidnight-capture-v1.activation
   local current_marker=$POSTGRES_RUNTIME_CURRENT/github-premidnight-capture-v1.activation
-
   [[ $runtime_control =~ ^(true|false)$ ]] || {
     fail 'runtime-control deployment classification is invalid'
     return 1
@@ -236,12 +222,10 @@ reconcile_github_premidnight_capture_runtime_control() {
   esac
   printf '%s\n' "$runtime_control"
 }
-
 read_postgres_pool_bootstrap_recovery_marker() {
   local marker=$1
   local label=$2
   local marker_size sha identity_before identity_after
-
   [[ -f $marker && ! -L $marker ]] || \
     fail "$label marker is not a regular non-symlink file"
   identity_before=$(
@@ -745,38 +729,48 @@ sync_postgres_pool_bootstrap_recovery_control_entrypoint_fallback() {
   [[ $installed_digest == "$expected_digest" ]] || \
     fail 'installed deploy entrypoint differs from reviewed source after fallback sync'
 }
-
 sync_postgres_pool_bootstrap_recovery_control_entrypoint() {
   local current=$1
-
   if declare -F sync_control_entrypoint >/dev/null; then
     sync_control_entrypoint
     return
   fi
   sync_postgres_pool_bootstrap_recovery_control_entrypoint_fallback "$current"
 }
-
 reconcile_current_postgres_pool_bootstrap() {
-  local expected_current=$1
-  local marker=$STATE/postgres-pool-bootstrap.sha
+  local expected_current=$1 expected_backend=${2:-}
+  local marker=$STATE/postgres-pool-bootstrap.sha backend_marker=$STATE/backend.sha
   local control_marker=$STATE/control.sha
   # CONTROL is provided by the production deploy entrypoint that sources this file.
   # shellcheck disable=SC2153
   local installed=$CONTROL/github-production-deploy.sh
   local current=$expected_current
-  local pool_marker_sha control_marker_sha
-  local pool_marker_identity control_marker_identity
+  local pool_marker_sha backend_marker_sha control_marker_sha
+  local pool_marker_identity backend_marker_identity control_marker_identity
   local revalidated_pool_marker_sha revalidated_control_marker_sha
   local revalidated_pool_marker_identity revalidated_control_marker_identity
   local control_marker_digest installed_digest
   local commit_mode=normal
   local force_advance=false
-
   validate_current_postgres_pool_bootstrap_recovery "$current"
   postgres_pool_bootstrap_installed "$current" && return 0
   [[ -f $installed && ! -L $installed ]] || \
     fail 'installed deploy entrypoint is not a regular non-symlink file'
-
+  if [[ -n $expected_backend ]]; then
+    backend_marker_sha=$(
+      read_postgres_pool_bootstrap_recovery_marker "$backend_marker" 'backend'
+    )
+    backend_marker_identity=$(
+      postgres_pool_bootstrap_recovery_file_identity "$backend_marker"
+    ) || fail 'backend marker identity cannot be inventoried'
+    validate_postgres_pool_bootstrap_recovery_marker \
+      "$backend_marker_sha" "$current" 'backend'
+    [[ $backend_marker_sha == "$expected_backend" ]] || \
+      fail 'target-current PostgreSQL reconciliation is not at the adoption backend'
+    verify_postgres_pool_bootstrap_recovery_file \
+      "$current" ops/deploy/social-monitor-production-ssh-wrapper.sh \
+      "$CONTROL/github-production-deploy-wrapper.sh" 'installed deploy wrapper'
+  fi
   if [[ ! -e $marker && ! -L $marker ]]; then
     if cmp -s \
       "$installed" "$REPO/ops/deploy/social-monitor-production-deploy.sh"; then
@@ -865,7 +859,11 @@ reconcile_current_postgres_pool_bootstrap() {
     fi
     force_advance=true
   fi
-
+  if [[ -n $expected_backend ]]; then
+    verify_postgres_pool_bootstrap_recovery_marker_snapshot \
+      "$backend_marker" 'backend' \
+      "$backend_marker_sha" "$backend_marker_identity"
+  fi
   [[ $force_advance == false ]] || commit_mode=force-advance
   commit_postgres_pool_bootstrap "$current" "$commit_mode" || \
     fail 'PostgreSQL bootstrap recovery could not commit current integration'
@@ -873,7 +871,6 @@ reconcile_current_postgres_pool_bootstrap() {
   postgres_pool_bootstrap_installed "$current" || \
     fail 'PostgreSQL bootstrap recovery did not install current integration'
 }
-
 deploy_frontend() {
   local sha=$1
   local staged=$STAGING/$sha/frontend
@@ -897,7 +894,6 @@ deploy_frontend() {
       fail 'frontend artifact marker mismatch'
     mv "$staged" "$release"
   fi
-
   switch_link "$PUBLIC_LINK" "$release/public"
   switch_link "$ADMIN_LINK" "$release/admin"
   if ! "${COMPOSE[@]}" --profile app up -d --no-deps \
@@ -907,7 +903,6 @@ deploy_frontend() {
     "${COMPOSE[@]}" --profile app up -d --no-deps --force-recreate frontend
     fail 'frontend recreate failed; previous release restored'
   fi
-
   local public_code admin_code favicon_code release_sha
   for _ in $(seq 1 20); do
     public_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 \
@@ -953,20 +948,25 @@ deploy_release() {
   fetch_main
   validate_main_commit "$sha"
   install -d -m 0755 "$STATE" "$STAGING" "$RELEASES"
+  local current
+  current=$(git -C "$REPO" rev-parse HEAD)
+  if [[ $sha == "$current" ]] && \
+     ! postgres_pool_bootstrap_installed "$current"; then
+    # The client must recapture the ordinary plan; stdout is non-authoritative.
+    reconcile_current_postgres_pool_bootstrap \
+      "$current" "$POSTGRES_POOL_ATOMIC_REPAIR_BACKEND_SHA"
+    return
+  fi
   if declare -F reconcile_completed_backend_image_rescues >/dev/null; then
     reconcile_completed_backend_image_rescues || \
       fail 'completed backend image rescue cleanup could not be reconciled'
   fi
-
-  local current
-  current=$(git -C "$REPO" rev-parse HEAD)
   if [[ $sha != "$current" ]] && \
      git -C "$REPO" merge-base --is-ancestor "$sha" "$current"; then
     reconcile_current_postgres_pool_bootstrap "$current"
     printf 'already-deployed-or-newer=%s\n' "$current"
     return 0
   fi
-
   local frontend=false backend=false control=false runtime_control=false
   local x_image_provenance_release=false
   component_changed frontend "$sha" "${FRONTEND_PATHS[@]}" && frontend=true

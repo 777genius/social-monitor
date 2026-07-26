@@ -26,6 +26,7 @@ CONTROL_PATHS=(control)
 RUNTIME_CONTROL_PATHS=(runtime-control)
 install -d "$REPO/ops/deploy" "$CONTROL" "$STATE" "$SYSTEMD_UNIT_DIR"
 cp "$SCRIPT_DIR/social-monitor-production-deploy.sh" \
+  "$SCRIPT_DIR/social-monitor-production-ssh-wrapper.sh" \
   "$SCRIPT_DIR/deploy-control-lib.sh" \
   "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" \
   "$SCRIPT_DIR/backend-image-rescue-lib.sh" \
@@ -33,7 +34,6 @@ cp "$SCRIPT_DIR/social-monitor-production-deploy.sh" \
   "$SCRIPT_DIR/verify-postgres-runtime-topology.py" \
   "$REPO/ops/deploy/"
 cp -a "$SCRIPT_DIR/production-runtime" "$REPO/ops/deploy/"
-
 fail() {
   printf 'test deploy failure: %s\n' "$*" >&2
   exit 1
@@ -498,6 +498,8 @@ commit_postgres_pool_bootstrap() {
   local mode=${2:-normal}
   [[ $candidate == "$partial_current_sha" && $mode == force-advance ]] || \
     fail 'partial recovery did not force-advance the current marker'
+  [[ ${RECOVERY_COMMIT_INTERRUPTED:-false} == false ]] || \
+    fail 'injected interrupted target-current reconciliation'
   printf '%s\n' "$candidate" > "$STATE/postgres-pool-bootstrap.sha.next"
   mv -f "$STATE/postgres-pool-bootstrap.sha.next" \
     "$STATE/postgres-pool-bootstrap.sha"
@@ -546,14 +548,37 @@ git -C "$REPO" diff --name-only \
 [[ $(git -C "$REPO" diff --name-only \
   "$safe_control_candidate_sha^" "$safe_control_candidate_sha" --) == \
   ops/deploy/social-monitor-production-deploy.sh ]]
+original_atomic_backend=$POSTGRES_POOL_ATOMIC_REPAIR_BACKEND_SHA
+POSTGRES_POOL_ATOMIC_REPAIR_BACKEND_SHA=$durable_backend_sha
+target_current_runtime_event=$FIXTURE/target-current-runtime-event
+install -m 0755 "$REPO/ops/deploy/social-monitor-production-ssh-wrapper.sh" "$CONTROL/github-production-deploy-wrapper.sh"
+fetch_main() { :; }
+reconcile_completed_backend_image_rescues() {
+  printf 'ordinary-runtime-gate\n' > "$target_current_runtime_event"
+  return 71
+}
 prepare_partial_recovery "$safe_control_candidate_sha"
+printf '%s\n' "$safe_control_candidate_sha" \
+  > "$STATE/postgres-pool-bootstrap.sha"
 backend_identity=$(stat -c '%d:%i:%f:%s:%y:%z' "$STATE/backend.sha")
 control_identity=$(stat -c '%d:%i:%f:%s:%y:%z' "$STATE/control.sha")
-reconcile_current_postgres_pool_bootstrap "$partial_current_sha"
+RECOVERY_COMMIT_INTERRUPTED=true
+set +e
+interrupted_output=$(deploy_release "$partial_current_sha" 2>&1)
+interrupted_status=$?
+set -e
+((interrupted_status != 0))
+grep -F 'injected interrupted target-current reconciliation' \
+  <<< "$interrupted_output" >/dev/null
+[[ $(<"$STATE/postgres-pool-bootstrap.sha") == "$safe_control_candidate_sha" ]]
+[[ ! -e $target_current_runtime_event ]]
+RECOVERY_COMMIT_INTERRUPTED=false
+reconcile_output=$(deploy_release "$partial_current_sha")
+[[ -z $reconcile_output && ! -e $target_current_runtime_event ]]
 cmp -s "$CONTROL/github-production-deploy.sh" \
   "$REPO/ops/deploy/social-monitor-production-deploy.sh"
 [[ $(<"$STATE/postgres-pool-bootstrap.sha") == "$partial_current_sha" ]]
-[[ $(<"$partial_recovery_events") == $'entrypoint-sync\nbootstrap-force-advance' ]]
+[[ $(<"$partial_recovery_events") == $'entrypoint-sync\nentrypoint-sync\nbootstrap-force-advance' ]]
 [[ $(stat -c '%d:%i:%f:%s:%y:%z' "$STATE/backend.sha") == \
   "$backend_identity" ]]
 [[ $(stat -c '%d:%i:%f:%s:%y:%z' "$STATE/control.sha") == \
@@ -561,6 +586,34 @@ cmp -s "$CONTROL/github-production-deploy.sh" \
 [[ $(<"$partial_runtime_sentinel") == runtime-must-not-change ]]
 [[ $(stat -c '%d:%i:%f:%s:%y:%z' "$partial_runtime_sentinel") == \
   "$partial_runtime_identity" ]]
+# A fresh replay does not reuse the repair-only return; it reaches the ordinary
+# rescue/check/runtime path that the fully gated workflow invokes.
+set +e
+replay_output=$(deploy_release "$partial_current_sha" 2>&1)
+replay_status=$?
+set -e
+((replay_status != 0))
+grep -F 'completed backend image rescue cleanup could not be reconciled' \
+  <<< "$replay_output" >/dev/null
+grep -Fx 'ordinary-runtime-gate' "$target_current_runtime_event" >/dev/null
+
+# A valid but forged backend marker is rejected before the same runtime gate.
+prepare_partial_recovery "$safe_control_candidate_sha" "$inherited_safe_sha"
+printf '%s\n' "$safe_control_candidate_sha" \
+  > "$STATE/postgres-pool-bootstrap.sha"
+rm -f "$target_current_runtime_event"
+set +e
+forged_output=$(deploy_release "$partial_current_sha" 2>&1)
+forged_status=$?
+set -e
+((forged_status != 0))
+grep -F 'target-current PostgreSQL reconciliation is not at the adoption backend' \
+  <<< "$forged_output" >/dev/null
+[[ $(<"$STATE/postgres-pool-bootstrap.sha") == "$safe_control_candidate_sha" ]]
+[[ ! -e $target_current_runtime_event ]]
+POSTGRES_POOL_ATOMIC_REPAIR_BACKEND_SHA=$original_atomic_backend
+unset -f fetch_main reconcile_completed_backend_image_rescues
+unset RECOVERY_COMMIT_INTERRUPTED
 
 # Unknown, inherited, ambiguous, unsafe, divergent, merge, and non-first-parent
 # provenance all fail before the current entrypoint can be synced.
@@ -812,7 +865,6 @@ service_active_state=$FIXTURE/service-active-state
 printf 'disabled\n' > "$timer_unit_file_state"
 printf 'inactive\n' > "$timer_active_state"
 printf 'inactive\n' > "$service_active_state"
-
 fetch_main() {
   :
 }
@@ -821,13 +873,17 @@ validate_main_commit() {
   [[ $1 == "$target_sha" ]]
   git -C "$REPO" cat-file -e "$1^{commit}"
 }
-
 marker_value() {
   local component=$1
   local marker=$STATE/$component.sha
   [[ -s $marker ]] && tr -d '\n' < "$marker"
 }
-
+postgres_pool_bootstrap_installed() {
+  [[ -s $STATE/postgres-pool-bootstrap.sha && \
+     $(<"$STATE/postgres-pool-bootstrap.sha") == "$1" ]] &&
+    cmp -s "$CONTROL/github-production-deploy.sh" \
+      "$REPO/ops/deploy/social-monitor-production-deploy.sh"
+}
 component_changed() {
   local component=$1
   local target=$2
@@ -842,18 +898,15 @@ component_changed() {
   fi
   return 1
 }
-
 advance_integration() {
   [[ $1 == "$target_sha" ]]
   [[ $(git -C "$REPO" rev-parse HEAD) == "$target_sha" ]]
   printf 'integration\n' >> "$deploy_events"
 }
-
 sync_control_script() {
   [[ $1 == "$target_sha" ]]
   printf 'control\n' >> "$deploy_events"
 }
-
 verify_effective_postgres_daily_topology() {
   :
 }
