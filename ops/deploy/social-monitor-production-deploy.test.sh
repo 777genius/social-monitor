@@ -414,6 +414,17 @@ control_marker_line=$(grep -nF 'printf '\''%s\n'\'' "$sha" > "$STATE/control.sha
 
 grep -F 'deploy_release_runtime_transaction "$sha" "$backend" "$runtime_control"' \
   "$SCRIPT_DIR/deploy-control-lib.sh" >/dev/null
+# A normal replay still enters Compose validation; only the workflow run whose
+# client durably verified a repair may omit the ordinary deploy invocation.
+ORDINARY_RENDER_LOG=$FIXTURE/ordinary-render.log
+ENTRYPOINT=$ENTRYPOINT ORDINARY_RENDER_LOG=$ORDINARY_RENDER_LOG \
+  SOCIAL_MONITOR_DEPLOY_TEST_MODE=1 SOCIAL_MONITOR_DEPLOY_ROOT=$ROOT \
+  SOCIAL_MONITOR_DEPLOY_REPO=$REPO SOCIAL_MONITOR_DEPLOY_CONTROL=$CONTROL \
+  SOCIAL_MONITOR_DEPLOY_STATE=$STATE SOCIAL_MONITOR_DEPLOY_STAGING=$STAGING \
+  bash -c 'source "$ENTRYPOINT"; verify_compose_scope() {
+    printf "compose-rendered\n" > "$ORDINARY_RENDER_LOG";
+  }; deploy_release_runtime_transaction "$1" false false' _ "$TARGET_SHA"
+grep -Fx 'compose-rendered' "$ORDINARY_RENDER_LOG" >/dev/null
 grep -F 'activate_postgres_runtime_control "$sha" "$compatible_backend_sha"' \
   "$ENTRYPOINT" >/dev/null
 grep -F 'snapshot_postgres_runtime_control "$sha"' \

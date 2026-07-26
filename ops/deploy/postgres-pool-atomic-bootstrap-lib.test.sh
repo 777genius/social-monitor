@@ -13,6 +13,7 @@ ROOT=$FIXTURE/root
 CONTROL=$ROOT/control
 STATE=$CONTROL/deploy-state
 RUNTIME=$ROOT/runtime
+RUNTIME_CALL_LOG=$FIXTURE/runtime-calls.log
 DEPLOY_LOCK=$CONTROL/production-deploy.lock
 POSTGRES_ADMISSION_LOCK=$CONTROL/daily-run.lock
 ENTRYPOINT=$CONTROL/github-production-deploy.sh
@@ -30,6 +31,11 @@ mapfile -t REPAIR_PATHS < <(
   bash -c 'source "$1"; postgres_pool_atomic_repair_paths' _ "$LIB"
 )
 [[ ${#REPAIR_PATHS[@]} == 17 ]]
+if grep -E 'SYSTEM_DATABASE_URL|production\.env|docker|systemctl|COMPOSE' \
+  "$LIB" >/dev/null; then
+  echo 'atomic repair library contains a runtime or secret access surface' >&2
+  exit 1
+fi
 
 for relative_path in "${REPAIR_PATHS[@]}"; do
   install -d "$REPO/$(dirname "$relative_path")"
@@ -123,9 +129,18 @@ invoke_bootstrap() (
       "$bootstrap" "$bootstrap_sha"
     : "$target"
   }
+  docker() { printf 'docker:%s\n' "$*" >> "$RUNTIME_CALL_LOG"; return 97; }
+  systemctl() { printf 'systemctl:%s\n' "$*" >> "$RUNTIME_CALL_LOG"; return 98; }
+  application_runtime() {
+    printf 'application:%s\n' "$*" >> "$RUNTIME_CALL_LOG"
+    return 99
+  }
+  COMPOSE=(docker compose)
 
   # shellcheck source=ops/deploy/deploy-control-lib.sh
   source "$CONTROL_LIB"
+  verify_compose_scope() { application_runtime compose; }
+  deploy_release_runtime_transaction() { application_runtime transaction; }
   acquire_postgres_admission_with_daily_priority() {
     flock -n "$1"
   }
@@ -228,11 +243,16 @@ for phase in symlink-reviewed digest-reviewed after-entrypoint after-marker; do
 done
 
 reset_state
+printf 'partial\n' > "$STATE/postgres-pool-bootstrap.sha.next"
+assert_rejected 'partial control or marker file' invoke_bootstrap
+rm -f "$STATE/postgres-pool-bootstrap.sha.next"
+assert_rolled_back
+
+reset_state
 backend_identity=$(stat -c '%d:%i:%f:%s:%y:%z' "$STATE/backend.sha")
 control_identity=$(stat -c '%d:%i:%f:%s:%y:%z' "$STATE/control.sha")
 success_output=$(invoke_bootstrap)
-grep -Fx "postgres-pool-bootstrap=$TARGET_SHA replay=false" \
-  <<< "$success_output" >/dev/null
+[[ -z $success_output ]]
 [[ $(cat "$STATE/postgres-pool-bootstrap.sha") == "$TARGET_SHA" ]]
 [[ $(stat -c '%d:%i:%f:%s:%y:%z' "$STATE/backend.sha") == \
   "$backend_identity" ]]
@@ -248,6 +268,7 @@ cmp -s "$FIXTURE/entrypoint.reviewed" "$ENTRYPOINT"
 cmp -s "$FIXTURE/wrapper.reviewed" "$WRAPPER"
 diff -r "$FIXTURE/runtime.before" "$RUNTIME" >/dev/null
 [[ ! -e $STATE/.postgres-pool-atomic-bootstrap-$TARGET_SHA ]]
+[[ ! -s $RUNTIME_CALL_LOG ]]
 
 entrypoint_identity=$(stat -c '%d:%i:%f:%s:%y:%z' "$ENTRYPOINT")
 wrapper_identity=$(stat -c '%d:%i:%f:%s:%y:%z' "$WRAPPER")

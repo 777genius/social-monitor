@@ -17,6 +17,7 @@ DEFAULT_RECONCILE_INTERVAL_SECONDS=15
 DEFAULT_RECONCILE_WINDOW_SECONDS=$(((DEFAULT_RECONCILE_ATTEMPTS - 1) * DEFAULT_RECONCILE_INTERVAL_SECONDS))
 RECONCILE_ATTEMPTS=${DEPLOY_RECONCILE_ATTEMPTS:-$DEFAULT_RECONCILE_ATTEMPTS}
 RECONCILE_INTERVAL_SECONDS=${DEPLOY_RECONCILE_INTERVAL_SECONDS:-$DEFAULT_RECONCILE_INTERVAL_SECONDS}
+PLAN_POSTGRES_POOL_REPAIR=false
 
 SSH_OPTIONS=(
   -i "$SSH_KEY_PATH"
@@ -149,10 +150,10 @@ parse_plan() {
 }
 
 print_plan() {
-  printf 'frontend=%s\nbackend=%s\nbackend_base=%s\ncontrol=%s\nx_collector=%s\npostgres_pool_bootstrap=%s\npostgres_pool_bootstrap_sha=%s\n' \
+  printf 'frontend=%s\nbackend=%s\nbackend_base=%s\ncontrol=%s\nx_collector=%s\npostgres_pool_bootstrap=%s\npostgres_pool_bootstrap_sha=%s\npostgres_pool_repair=%s\n' \
     "$PLAN_FRONTEND" "$PLAN_BACKEND" "$PLAN_BACKEND_BASE" "$PLAN_CONTROL" \
     "$PLAN_X_COLLECTOR" "$PLAN_POSTGRES_POOL_BOOTSTRAP" \
-    "$PLAN_POSTGRES_POOL_BOOTSTRAP_SHA"
+    "$PLAN_POSTGRES_POOL_BOOTSTRAP_SHA" "$PLAN_POSTGRES_POOL_REPAIR"
 }
 
 capture_plan() {
@@ -178,6 +179,7 @@ write_plan_outputs() {
     printf 'x_collector=%s\n' "$PLAN_X_COLLECTOR"
     printf 'postgres_pool_bootstrap=%s\n' "$PLAN_POSTGRES_POOL_BOOTSTRAP"
     printf 'postgres_pool_bootstrap_sha=%s\n' "$PLAN_POSTGRES_POOL_BOOTSTRAP_SHA"
+    printf 'postgres_pool_repair=%s\n' "$PLAN_POSTGRES_POOL_REPAIR"
   } >> "$output_path"
 }
 
@@ -189,7 +191,9 @@ repair_legacy_postgres_pool_bootstrap() {
   [[ $durable_backend_base == "$POSTGRES_POOL_ADOPTION_BACKEND_SHA" ]] || \
     fail 'missing PostgreSQL bootstrap marker is not at the adoption backend'
   printf 'deploy-client: invoking exact legacy repair through deploy\n' >&2
-  if run_remote deploy "$sha"; then
+  # Remote stdout is intentionally non-authoritative. Only the recaptured
+  # ordinary plan below may attest that control and marker committed together.
+  if run_remote deploy "$sha" >/dev/null; then
     status=0
   else
     status=$?
@@ -213,11 +217,13 @@ repair_legacy_postgres_pool_bootstrap() {
     fail 'durable backend base changed during atomic PostgreSQL bootstrap'
   [[ $PLAN_BACKEND == true ]] || \
     fail 'backend is no longer pending after atomic PostgreSQL bootstrap'
+  PLAN_POSTGRES_POOL_REPAIR=true
 }
 
 read_initial_plan() {
   local sha=$1
   local status
+  PLAN_POSTGRES_POOL_REPAIR=false
   if capture_plan "$sha"; then
     status=0
   else

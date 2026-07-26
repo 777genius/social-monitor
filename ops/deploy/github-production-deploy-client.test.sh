@@ -47,7 +47,7 @@ fake_ssh() {
     plan_success:"plan $TARGET_SHA"|normal_success:"plan $TARGET_SHA")
       print_fake_plan false false false false
       ;;
-    atomic_success:"plan $TARGET_SHA"|atomic_disconnect:"plan $TARGET_SHA"|atomic_wrong_sha:"plan $TARGET_SHA"|atomic_changed_base:"plan $TARGET_SHA"|atomic_not_pending:"plan $TARGET_SHA"|atomic_no_commit:"plan $TARGET_SHA")
+    atomic_success:"plan $TARGET_SHA"|atomic_disconnect:"plan $TARGET_SHA"|atomic_wrong_sha:"plan $TARGET_SHA"|atomic_changed_base:"plan $TARGET_SHA"|atomic_not_pending:"plan $TARGET_SHA"|atomic_no_commit:"plan $TARGET_SHA"|atomic_partial_marker:"plan $TARGET_SHA")
       count=$(grep -cFx "plan $TARGET_SHA" "$FAKE_SSH_LOG")
       if ((count == 1)); then
         print_uninstalled_atomic_plan
@@ -64,6 +64,10 @@ fake_ssh() {
             ;;
           atomic_no_commit)
             print_uninstalled_atomic_plan
+            ;;
+          atomic_partial_marker)
+            printf 'frontend=false\nbackend=true\nbackend_base=%s\ncontrol=true\nx_collector=false\npostgres_pool_bootstrap=postgres-pool-v1\n' \
+              "$BACKEND_SHA"
             ;;
           *)
             print_fake_plan false true true false "$TARGET_SHA" "$BACKEND_SHA"
@@ -92,8 +96,11 @@ fake_ssh() {
     atomic_disconnect:"deploy $TARGET_SHA")
       exit 255
       ;;
-    atomic_wrong_sha:"deploy $TARGET_SHA"|atomic_changed_base:"deploy $TARGET_SHA"|atomic_not_pending:"deploy $TARGET_SHA"|atomic_no_commit:"deploy $TARGET_SHA")
+    atomic_wrong_sha:"deploy $TARGET_SHA"|atomic_changed_base:"deploy $TARGET_SHA"|atomic_not_pending:"deploy $TARGET_SHA"|atomic_partial_marker:"deploy $TARGET_SHA")
       printf 'postgres-pool-bootstrap=%s replay=false\n' "$TARGET_SHA"
+      ;;
+    atomic_no_commit:"deploy $TARGET_SHA")
+      printf 'postgres_pool_repair=true\n'
       ;;
     atomic_action_failure:"plan $TARGET_SHA")
       print_uninstalled_atomic_plan
@@ -159,6 +166,7 @@ fi
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 CLIENT=$SCRIPT_DIR/github-production-deploy-client.sh
+WORKFLOW=$SCRIPT_DIR/../../.github/workflows/production-deploy.yml
 FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/github-production-deploy-client-test.XXXXXX")
 trap 'rm -rf "$FIXTURE"' EXIT
 
@@ -240,13 +248,16 @@ run_client plan_success plan "$TARGET_SHA" >/dev/null
 grep -Fx 'frontend=false' "$GITHUB_OUTPUT" >/dev/null
 grep -Fx "backend_base=$TARGET_SHA" "$GITHUB_OUTPUT" >/dev/null
 grep -Fx 'postgres_pool_bootstrap=postgres-pool-v1' "$GITHUB_OUTPUT" >/dev/null
+grep -Fx 'postgres_pool_repair=false' "$GITHUB_OUTPUT" >/dev/null
 assert_call_count 1 "plan $TARGET_SHA"
+assert_call_count 0 "deploy $TARGET_SHA"
 
 : > "$GITHUB_OUTPUT"
 run_client legacy_plan plan "$TARGET_SHA" >/dev/null
 grep -Fx 'postgres_pool_bootstrap=uninstalled' "$GITHUB_OUTPUT" >/dev/null
 grep -Fx 'postgres_pool_bootstrap_sha=0000000000000000000000000000000000000000' \
   "$GITHUB_OUTPUT" >/dev/null
+grep -Fx 'postgres_pool_repair=false' "$GITHUB_OUTPUT" >/dev/null
 assert_call_count 1 "plan $TARGET_SHA"
 
 : > "$GITHUB_OUTPUT"
@@ -255,6 +266,7 @@ grep -Fx "backend_base=$BACKEND_SHA" "$GITHUB_OUTPUT" >/dev/null
 grep -Fx 'backend=true' "$GITHUB_OUTPUT" >/dev/null
 grep -Fx 'postgres_pool_bootstrap=postgres-pool-v1' "$GITHUB_OUTPUT" >/dev/null
 grep -Fx "postgres_pool_bootstrap_sha=$TARGET_SHA" "$GITHUB_OUTPUT" >/dev/null
+grep -Fx 'postgres_pool_repair=true' "$GITHUB_OUTPUT" >/dev/null
 assert_call_count 2 "plan $TARGET_SHA"
 assert_call_count 1 "deploy $TARGET_SHA"
 
@@ -265,7 +277,8 @@ assert_call_count 2 "plan $TARGET_SHA"
 assert_call_count 1 "deploy $TARGET_SHA"
 
 for scenario in \
-  atomic_wrong_sha atomic_changed_base atomic_not_pending atomic_no_commit; do
+  atomic_wrong_sha atomic_changed_base atomic_not_pending atomic_no_commit \
+  atomic_partial_marker; do
   : > "$GITHUB_OUTPUT"
   assert_fails "$scenario" plan "$TARGET_SHA"
   [[ ! -s $GITHUB_OUTPUT ]]
@@ -355,5 +368,13 @@ if DEPLOY_HOST=bad.-label run_client normal_success deploy "$TARGET_SHA" >/dev/n
   exit 1
 fi
 assert_call_count 0 "deploy $TARGET_SHA"
+
+grep -F 'postgres_pool_repair: ${{ steps.plan.outputs.postgres_pool_repair }}' \
+  "$WORKFLOW" >/dev/null
+[[ $(grep -cF \
+  "if: needs.plan.outputs.postgres_pool_repair != 'true'" "$WORKFLOW") == 1 ]]
+for dependency in plan verify_reader_summary_publication verify_backend build_frontend; do
+  grep -F "      - $dependency" "$WORKFLOW" >/dev/null
+done
 
 echo 'GitHub production deploy client tests passed'

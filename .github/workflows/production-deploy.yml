@@ -56,6 +56,7 @@ jobs:
       frontend: ${{ steps.plan.outputs.frontend }}
       postgres_pool_bootstrap: ${{ steps.plan.outputs.postgres_pool_bootstrap }}
       postgres_pool_bootstrap_sha: ${{ steps.plan.outputs.postgres_pool_bootstrap_sha }}
+      postgres_pool_repair: ${{ steps.plan.outputs.postgres_pool_repair }}
       x_collector: ${{ steps.plan.outputs.x_collector }}
 
     steps:
@@ -534,11 +535,12 @@ jobs:
           "$RUNNER_TEMP/frontend-artifact/social-monitor-frontend-release.tgz"
 
       - name: Deploy changed components
+        if: needs.plan.outputs.postgres_pool_repair != 'true'
         env:
           DEPLOY_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
           DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
-        # Any exact legacy bootstrap repair completed during plan capture.
-        # Runtime activation remains the ordinary, single deploy action.
+        # A durably verified repair makes this run repair-only. On replay the
+        # plan reports repair=false and this ordinary fully-gated deploy runs.
         run: bash ops/deploy/github-production-deploy-client.sh deploy "$GITHUB_SHA"
 
       - name: Remove production SSH material

@@ -310,7 +310,8 @@ postgres_pool_atomic_transaction() (
     fail 'durable control marker changed while committing atomic bootstrap'
   postgres_pool_atomic_capture_ordinary_plan \
     "$sha" postgres-pool-v1 "$sha" true "$adoption_backend"
-  printf 'postgres-pool-bootstrap=%s replay=false\n' "$sha"
+  # The caller must recapture the ordinary plan; stdout is never a repair
+  # attestation and deliberately remains empty on commit.
   committed=true
 )
 

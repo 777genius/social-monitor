@@ -853,8 +853,8 @@ switch_link() {
   mv -Tf "$next" "$link"
 }
 
-# deploy_release is sourced from deploy-control-lib.sh and invokes this
-# transaction callback after the entrypoint has finished loading.
+# Ordinary deploy_release invokes this runtime/Compose transaction only after
+# any repair-only fast path has returned from deploy-control-lib.sh.
 # shellcheck disable=SC2329
 deploy_release_runtime_transaction() {
   local sha=$1
