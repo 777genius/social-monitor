@@ -147,6 +147,34 @@ run_ci --target "$RELEASE_B" --backend-base "$BASE" \
   --backend true --control false --bootstrap postgres-pool-v1 \
   --bootstrap-sha "$RELEASE_A"
 
+# Once the Release A bootstrap is installed, the next backend release must be
+# exactly Release B: no missing adoption, unclassified, backend or control
+# drift can ride along as the durable backend marker advances.
+assert_rejected "unexpected=['ops/deploy/missing-adoption.txt']" \
+  --target "$MISSING_ADOPTION_TARGET" --backend-base "$BASE" \
+  --backend true --control false --bootstrap postgres-pool-v1 \
+  --bootstrap-sha "$RELEASE_A"
+assert_rejected "unexpected=['README.md', 'ops/deploy/bootstrap-repair.txt']" \
+  --target "$UNCLASSIFIED_TARGET" --backend-base "$BASE" \
+  --backend true --control false --bootstrap postgres-pool-v1 \
+  --bootstrap-sha "$RELEASE_A"
+assert_rejected "unexpected=['apps/api-gateway/bootstrap-repair.txt', 'ops/deploy/bootstrap-repair.txt']" \
+  --target "$BACKEND_TARGET" --backend-base "$BASE" \
+  --backend true --control false --bootstrap postgres-pool-v1 \
+  --bootstrap-sha "$RELEASE_A"
+assert_rejected "unexpected=['ops/deploy/divergent-repair.txt']" \
+  --target "$DIVERGENT_TARGET" --backend-base "$BASE" \
+  --backend true --control false --bootstrap postgres-pool-v1 \
+  --bootstrap-sha "$RELEASE_A"
+
+# A copied tree with the right file diff is not a durable adoption marker
+# unless it descends from the pinned adoption base.
+assert_rejected \
+  'PostgreSQL adoption base is not an ancestor of durable backend marker' \
+  --target "$COPIED_CONTROL_TARGET" --backend-base "$COPIED_BACKEND_BASE" \
+  --backend false --control true --bootstrap postgres-pool-v1 \
+  --bootstrap-sha "$RELEASE_A"
+
 # The generic release verifier never waives the two-release contract for a
 # combined legacy repair. The atomic deploy fast path owns that exact case.
 assert_rejected \
