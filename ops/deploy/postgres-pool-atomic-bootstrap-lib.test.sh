@@ -28,6 +28,7 @@ git -C "$REPO" remote add origin "$ORIGIN"
 # Read the production repair manifest in an isolated shell so the loader test
 # can also prove that the target library was not preloaded.
 mapfile -t REPAIR_PATHS < <(
+  # shellcheck disable=SC2016 # $1 expands inside the isolated child shell.
   bash -c 'source "$1"; postgres_pool_atomic_repair_paths' _ "$LIB"
 )
 [[ ${#REPAIR_PATHS[@]} == 17 ]]
@@ -109,9 +110,11 @@ invoke_bootstrap() (
     [[ ${1:-} =~ ^[0-9a-f]{40}$ ]] || fail 'commit is invalid'
   }
   validate_main_commit() {
-    git -C "$REPO" cat-file -e "$1^{commit}" 2>/dev/null || \
+    local sha=$1
+    validate_sha "$sha"
+    git -C "$REPO" cat-file -e "$sha^{commit}" 2>/dev/null || \
       fail 'commit is unavailable'
-    git -C "$REPO" merge-base --is-ancestor "$1" origin/main || \
+    git -C "$REPO" merge-base --is-ancestor "$sha" origin/main || \
       fail 'commit is not on origin/main'
   }
   print_plan() {
@@ -129,8 +132,12 @@ invoke_bootstrap() (
       "$bootstrap" "$bootstrap_sha"
     : "$target"
   }
+  # Runtime canaries are invoked only if sourced deploy code reaches a forbidden path.
+  # shellcheck disable=SC2317
   docker() { printf 'docker:%s\n' "$*" >> "$RUNTIME_CALL_LOG"; return 97; }
+  # shellcheck disable=SC2317
   systemctl() { printf 'systemctl:%s\n' "$*" >> "$RUNTIME_CALL_LOG"; return 98; }
+  # shellcheck disable=SC2317
   application_runtime() {
     printf 'application:%s\n' "$*" >> "$RUNTIME_CALL_LOG"
     return 99
@@ -139,7 +146,10 @@ invoke_bootstrap() (
 
   # shellcheck source=ops/deploy/deploy-control-lib.sh
   source "$CONTROL_LIB"
+  # Sourced deploy-control paths call these overrides if ordinary runtime flow leaks in.
+  # shellcheck disable=SC2317
   verify_compose_scope() { application_runtime compose; }
+  # shellcheck disable=SC2317
   deploy_release_runtime_transaction() { application_runtime transaction; }
   acquire_postgres_admission_with_daily_priority() {
     flock -n "$1"

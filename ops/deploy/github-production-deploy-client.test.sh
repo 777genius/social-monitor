@@ -377,6 +377,7 @@ if DEPLOY_HOST=bad.-label run_client normal_success deploy "$TARGET_SHA" >/dev/n
 fi
 assert_call_count 0 "deploy $TARGET_SHA"
 
+# shellcheck disable=SC2016 # Literal GitHub expression is asserted in workflow text.
 grep -F 'postgres_pool_repair: ${{ steps.plan.outputs.postgres_pool_repair }}' \
   "$WORKFLOW" >/dev/null
 [[ $(grep -cF \

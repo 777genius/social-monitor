@@ -196,6 +196,8 @@ postgres_pool_atomic_transaction() (
   local mutation_started=false
   local committed=false
 
+  # Called by the EXIT trap callback below when the transaction has not committed.
+  # shellcheck disable=SC2317
   rollback_postgres_pool_atomic_transaction() {
     local rollback_status=0
     set +e
@@ -222,6 +224,8 @@ postgres_pool_atomic_transaction() (
     return "$rollback_status"
   }
 
+  # Registered below as the EXIT trap callback; ShellCheck cannot model trap dispatch.
+  # shellcheck disable=SC2317
   finish_postgres_pool_atomic_transaction() {
     local status=$?
     trap - EXIT HUP INT TERM
