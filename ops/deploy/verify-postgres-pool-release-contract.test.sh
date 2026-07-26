@@ -147,31 +147,11 @@ run_ci --target "$RELEASE_B" --backend-base "$BASE" \
   --backend true --control false --bootstrap postgres-pool-v1 \
   --bootstrap-sha "$RELEASE_A"
 
-# A legacy missing marker is repairable only after the full adoption and only
-# through a nonempty target delta in which every path is control-classified.
-run_ci --target "$CONTROL_TARGET" --backend-base "$RELEASE_B" \
-  --backend false --control true --bootstrap uninstalled \
-  --bootstrap-sha "$ZERO_SHA"
+# The generic release verifier never waives the two-release contract for a
+# combined legacy repair. The atomic deploy fast path owns that exact case.
 assert_rejected \
-  'PostgreSQL adoption base is not an ancestor of durable backend marker' \
-  --target "$COPIED_CONTROL_TARGET" --backend-base "$COPIED_BACKEND_BASE" \
-  --backend false --control true --bootstrap uninstalled \
-  --bootstrap-sha "$ZERO_SHA"
-assert_rejected 'durable backend marker does not contain completed adoption' \
-  --target "$MISSING_ADOPTION_TARGET" --backend-base "$RELEASE_A" \
-  --backend false --control true --bootstrap uninstalled \
-  --bootstrap-sha "$ZERO_SHA"
-assert_rejected 'legacy PostgreSQL bootstrap repair contains non-control paths' \
-  --target "$UNCLASSIFIED_TARGET" --backend-base "$RELEASE_B" \
-  --backend false --control true --bootstrap uninstalled \
-  --bootstrap-sha "$ZERO_SHA"
-assert_rejected 'legacy PostgreSQL bootstrap repair contains backend paths' \
-  --target "$BACKEND_TARGET" --backend-base "$RELEASE_B" \
-  --backend false --control true --bootstrap uninstalled \
-  --bootstrap-sha "$ZERO_SHA"
-assert_rejected \
-  'legacy PostgreSQL bootstrap repair durable backend marker is not an ancestor of target' \
-  --target "$DIVERGENT_TARGET" --backend-base "$CONTROL_TARGET" \
+  'uninstalled PostgreSQL bootstrap is allowed only for ordinary Release A' \
+  --target "$CONTROL_TARGET" --backend-base "$RELEASE_B" \
   --backend false --control true --bootstrap uninstalled \
   --bootstrap-sha "$ZERO_SHA"
 assert_rejected 'uninstalled PostgreSQL bootstrap has a nonzero durable release SHA' \
@@ -186,5 +166,78 @@ assert_rejected 'first PostgreSQL adoption release must be control-only' \
   --target "$CONTROL_TARGET" --backend-base "$RELEASE_B" \
   --backend false --control false --bootstrap uninstalled \
   --bootstrap-sha "$ZERO_SHA"
+
+ATOMIC_BASE=$(git -C "$REPO" rev-parse HEAD)
+mapfile -t ATOMIC_PATHS < <(
+  python3 -c 'import json,sys; print(*json.load(open(sys.argv[1]))["atomicRepairPaths"], sep="\n")' \
+    "$SCRIPT_DIR/postgres-pool-release-contract.json"
+)
+[[ ${#ATOMIC_PATHS[@]} == 17 ]]
+
+materialize_atomic_paths() {
+  local limit=$1 path index=0
+  for path in "${ATOMIC_PATHS[@]}"; do
+    ((index += 1))
+    ((index <= limit)) || break
+    install -d "$REPO/$(dirname "$path")"
+    printf 'atomic repair fixture %s\n' "$path" > "$REPO/$path"
+  done
+}
+
+git -C "$REPO" switch -q -c atomic-missing "$ATOMIC_BASE"
+materialize_atomic_paths 16
+git -C "$REPO" add .
+git -C "$REPO" commit -qm 'test: missing atomic path'
+ATOMIC_MISSING=$(git -C "$REPO" rev-parse HEAD)
+git -C "$REPO" switch -q main
+
+materialize_atomic_paths 17
+git -C "$REPO" add .
+git -C "$REPO" commit -qm 'test: exact atomic repair'
+ATOMIC_TARGET=$(git -C "$REPO" rev-parse HEAD)
+printf 'unexpected atomic path\n' > "$REPO/atomic-unexpected.txt"
+git -C "$REPO" add atomic-unexpected.txt
+git -C "$REPO" commit -qm 'test: unexpected atomic path'
+ATOMIC_UNEXPECTED=$(git -C "$REPO" rev-parse HEAD)
+
+# Execute the reviewed verifier from the fixture worktree while inspecting the
+# committed target trees, including their deliberately replaced verifier blob.
+cp "$SCRIPT_DIR/verify-postgres-pool-release-contract.py" "$VERIFIER"
+cp "$SCRIPT_DIR/postgres-pool-release-contract.json" \
+  "$REPO/ops/deploy/postgres-pool-release-contract.json"
+python3 - "$REPO/ops/deploy/postgres-pool-release-contract.json" \
+  "$RELEASE_B" "$ATOMIC_BASE" <<'PY'
+import json
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+contract = json.loads(path.read_text(encoding="utf-8"))
+contract["adoptionBackendCommit"] = sys.argv[2]
+contract["atomicRepairBaseCommit"] = sys.argv[3]
+path.write_text(json.dumps(contract, indent=2) + "\n", encoding="utf-8")
+PY
+
+run_atomic() {
+  python3 "$VERIFIER" atomic-repair "$@"
+}
+
+assert_atomic_rejected() {
+  local expected=$1 output
+  shift
+  if output=$(run_atomic "$@" 2>&1); then
+    printf 'unexpectedly accepted invalid atomic repair: %s\n' "$expected" >&2
+    exit 1
+  fi
+  grep -F "$expected" <<< "$output" >/dev/null
+}
+
+run_atomic --target "$ATOMIC_TARGET" --backend-base "$RELEASE_B"
+assert_atomic_rejected 'durable backend marker is not the exact adoption backend' \
+  --target "$ATOMIC_TARGET" --backend-base "$RELEASE_A"
+assert_atomic_rejected 'missing=' \
+  --target "$ATOMIC_MISSING" --backend-base "$RELEASE_B"
+assert_atomic_rejected 'unexpected=' \
+  --target "$ATOMIC_UNEXPECTED" --backend-base "$RELEASE_B"
 
 echo 'PostgreSQL pool release contract tests passed'

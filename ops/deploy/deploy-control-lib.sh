@@ -1,31 +1,26 @@
 #!/usr/bin/env bash
-
 # Sourced by social-monitor-production-deploy.sh after project paths, lock
 # paths, and fail() are defined. The entrypoint deliberately sources this file
 # before advancing integration so a reviewed bridge release controls the next
 # runtime-control activation.
-
 POSTGRES_ADMISSION_MAX_ATTEMPTS=3601
 POSTGRES_ADMISSION_RETRY_SLICE_SECONDS=1
-
+POSTGRES_POOL_ATOMIC_REPAIR_BACKEND_SHA=987ba101d27f1cc3c1308a841f673dda475db933
 deploy_control_file_digest() {
   local path=$1
   sha256sum "$path" | awk '{print $1}'
 }
-
 deploy_control_git_blob_digest() {
   local sha=$1
   local path=$2
   git -C "$REPO" show "$sha:$path" | sha256sum | awk '{print $1}'
 }
-
 load_target_reader_summary_publication_deploy_library() {
   local sha=$1
   local relative_path=ops/deploy/reader-summary-publication-deploy-lib.sh
   local publication_library=$REPO/$relative_path
   local repository_root publication_real mode reviewed_digest actual_digest
   local target_entry target_mode target_type target_object target_path
-
   repository_root=$(readlink -f "$REPO") || \
     fail 'integration repository path cannot be resolved'
   [[ -f $publication_library && ! -L $publication_library ]] || \
@@ -54,7 +49,6 @@ load_target_reader_summary_publication_deploy_library() {
     fail 'target publication deploy library digest cannot be read'
   [[ $actual_digest == "$reviewed_digest" ]] || \
     fail 'target publication deploy library differs from reviewed target'
-
   ! declare -F deploy_reader_summary_publication_migrations >/dev/null || \
     fail 'publication migration entrypoint was loaded before target validation'
 
@@ -316,13 +310,58 @@ verify_postgres_pool_bootstrap_recovery_file() {
   [[ $actual_digest == "$reviewed_digest" ]] || \
     fail "$label differs from reviewed commit"
 }
-
+verify_postgres_pool_atomic_repair_target() {
+  python3 "$REPO/ops/deploy/verify-postgres-pool-release-contract.py" atomic-repair --target "$1" --backend-base "$2"
+}
+postgres_pool_atomic_legacy_state() {
+  local marker=$STATE/postgres-pool-bootstrap.sha backend_marker=$STATE/backend.sha
+  local backend_sha marker_present=false backend_present=false
+  if [[ -e $marker || -L $marker ]]; then
+    (read_postgres_pool_bootstrap_recovery_marker \
+      "$marker" 'PostgreSQL bootstrap' >/dev/null) || return 2
+    marker_present=true
+  fi
+  if [[ -e $backend_marker || -L $backend_marker ]]; then
+    backend_sha=$(read_postgres_pool_bootstrap_recovery_marker \
+      "$backend_marker" backend) || return 2
+    backend_present=true
+  fi
+  [[ $marker_present == false && $backend_present == true && \
+     $backend_sha == "$POSTGRES_POOL_ATOMIC_REPAIR_BACKEND_SHA" ]]
+}
+deploy_postgres_pool_atomic_control_bootstrap() (
+  set -Eeuo pipefail
+  local sha=$1 relative_path=ops/deploy/postgres-pool-atomic-bootstrap-lib.sh
+  local loader=$STATE/.postgres-pool-atomic-bootstrap-loader-$sha library object backend_sha
+  library=$loader/library.sh
+  backend_sha=$(read_postgres_pool_bootstrap_recovery_marker \
+    "$STATE/backend.sha" backend)
+  verify_postgres_pool_atomic_repair_target "$sha" "$backend_sha" || \
+    fail 'atomic PostgreSQL bootstrap target validation failed'
+  [[ ! -e $loader && ! -L $loader ]] || \
+    fail 'atomic PostgreSQL bootstrap loader staging already exists'
+  install -d -m 0700 "$loader"
+  trap 'status=$?; trap - EXIT; rm -f -- "$library"; rmdir -- "$loader" || status=1; exit "$status"' EXIT
+  object=$(postgres_pool_bootstrap_recovery_commit_blob \
+    "$sha" "$relative_path" 'atomic PostgreSQL bootstrap library')
+  git -C "$REPO" cat-file blob "$object" > "$library" || \
+    fail 'atomic PostgreSQL bootstrap library cannot be staged'
+  chmod 0600 "$library"
+  verify_postgres_pool_bootstrap_recovery_file \
+    "$sha" "$relative_path" "$library" 'atomic PostgreSQL bootstrap library'
+  ! declare -F postgres_pool_atomic_control_bootstrap >/dev/null || \
+    fail 'atomic PostgreSQL bootstrap entrypoint was preloaded'
+  # shellcheck source=ops/deploy/postgres-pool-atomic-bootstrap-lib.sh
+  source "$library" || fail 'atomic PostgreSQL bootstrap library could not be loaded'
+  declare -F postgres_pool_atomic_control_bootstrap >/dev/null || \
+    fail 'atomic PostgreSQL bootstrap library is missing its entrypoint'
+  postgres_pool_atomic_control_bootstrap "$sha"
+)
 postgres_pool_bootstrap_recovery_commit_blob() {
   local sha=$1
   local relative_path=$2
   local label=$3
   local tree_entry mode type object tree_path
-
   tree_entry=$(git -C "$REPO" ls-tree "$sha" -- "$relative_path") || \
     fail "$label cannot be inspected at reviewed commit"
   read -r mode type object tree_path <<< "$tree_entry"
@@ -331,13 +370,11 @@ postgres_pool_bootstrap_recovery_commit_blob() {
     fail "$label is not a regular blob at reviewed commit"
   printf '%s\n' "$object"
 }
-
 postgres_pool_bootstrap_recovery_tree_blob() {
   local sha=$1
   local relative_path=$2
   local label=$3
   local tree_entry mode type object tree_path
-
   tree_entry=$(git -C "$REPO" ls-tree "$sha" -- "$relative_path") || \
     fail "$label cannot be inspected"
   [[ -n $tree_entry ]] || return 0
@@ -349,12 +386,10 @@ postgres_pool_bootstrap_recovery_tree_blob() {
     printf '%s\n' "$object"
   fi
 }
-
 postgres_pool_bootstrap_recovery_path_matches_roots() {
   local path=$1
   shift
   local root
-
   for root in "$@"; do
     if [[ $path == "$root" || $path == "$root/"* ]]; then
       return 0
@@ -362,10 +397,8 @@ postgres_pool_bootstrap_recovery_path_matches_roots() {
   done
   return 1
 }
-
 postgres_pool_bootstrap_recovery_canonical_tip() {
   local canonical_tip
-
   canonical_tip=$(
     git -C "$REPO" rev-parse --verify \
       'refs/remotes/origin/main^{commit}'
@@ -374,16 +407,13 @@ postgres_pool_bootstrap_recovery_canonical_tip() {
     fail 'canonical main identity is malformed'
   printf '%s\n' "$canonical_tip"
 }
-
 verify_postgres_pool_bootstrap_recovery_canonical_tip() {
   local expected=$1
   local actual
-
   actual=$(postgres_pool_bootstrap_recovery_canonical_tip)
   [[ $actual == "$expected" ]] || \
     fail 'canonical main changed during partial control reconciliation'
 }
-
 find_postgres_pool_bootstrap_installed_control_commit() {
   local backend_sha=$1
   local current=$2
@@ -906,7 +936,16 @@ deploy_frontend() {
 }
 
 deploy_release() {
-  local sha=$1
+  local sha=$1 atomic_state
+  if postgres_pool_atomic_legacy_state; then
+    deploy_postgres_pool_atomic_control_bootstrap "$sha" || \
+      fail 'atomic PostgreSQL bootstrap loader failed'
+    return
+  else
+    atomic_state=$?
+    ((atomic_state == 1)) || \
+      fail 'PostgreSQL atomic repair marker state is invalid'
+  fi
   exec 9>"$DEPLOY_LOCK"
   flock -w 3600 9 || fail 'timed out waiting for deployment lock'
   exec 8>"$POSTGRES_ADMISSION_LOCK"

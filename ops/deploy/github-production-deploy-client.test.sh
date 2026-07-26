@@ -33,37 +33,75 @@ fake_ssh() {
     local control=$3
     local collector=$4
     local marker=${5:-$TARGET_SHA}
+    local backend_base=${6:-$TARGET_SHA}
     printf 'frontend=%s\nbackend=%s\nbackend_base=%s\ncontrol=%s\nx_collector=%s\npostgres_pool_bootstrap=postgres-pool-v1\npostgres_pool_bootstrap_sha=%s\n' \
-      "$frontend" "$backend" "$TARGET_SHA" "$control" "$collector" "$marker"
+      "$frontend" "$backend" "$backend_base" "$control" "$collector" "$marker"
+  }
+
+  print_uninstalled_atomic_plan() {
+    printf 'frontend=false\nbackend=true\nbackend_base=%s\ncontrol=true\nx_collector=false\npostgres_pool_bootstrap=uninstalled\npostgres_pool_bootstrap_sha=0000000000000000000000000000000000000000\n' \
+      "$BACKEND_SHA"
   }
 
   case "$FAKE_SSH_SCENARIO:$command" in
-    plan_success:"plan $TARGET_SHA"|normal_success:"plan $TARGET_SHA"|bootstrap_success:"plan $TARGET_SHA"|bootstrap_exit_91:"plan $TARGET_SHA"|bootstrap_disconnect:"plan $TARGET_SHA")
+    plan_success:"plan $TARGET_SHA"|normal_success:"plan $TARGET_SHA")
       print_fake_plan false false false false
+      ;;
+    atomic_success:"plan $TARGET_SHA"|atomic_disconnect:"plan $TARGET_SHA"|atomic_wrong_sha:"plan $TARGET_SHA"|atomic_changed_base:"plan $TARGET_SHA"|atomic_not_pending:"plan $TARGET_SHA"|atomic_no_commit:"plan $TARGET_SHA")
+      count=$(grep -cFx "plan $TARGET_SHA" "$FAKE_SSH_LOG")
+      if ((count == 1)); then
+        print_uninstalled_atomic_plan
+      else
+        case "$FAKE_SSH_SCENARIO" in
+          atomic_wrong_sha)
+            print_fake_plan false true true false "$BACKEND_SHA" "$BACKEND_SHA"
+            ;;
+          atomic_changed_base)
+            print_fake_plan false true true false "$TARGET_SHA" "$TARGET_SHA"
+            ;;
+          atomic_not_pending)
+            print_fake_plan false false true false "$TARGET_SHA" "$BACKEND_SHA"
+            ;;
+          atomic_no_commit)
+            print_uninstalled_atomic_plan
+            ;;
+          *)
+            print_fake_plan false true true false "$TARGET_SHA" "$BACKEND_SHA"
+            ;;
+        esac
+      fi
+      ;;
+    non_adoption_missing:"plan $TARGET_SHA")
+      printf 'frontend=false\nbackend=true\nbackend_base=%s\ncontrol=true\nx_collector=false\npostgres_pool_bootstrap=uninstalled\npostgres_pool_bootstrap_sha=0000000000000000000000000000000000000000\n' \
+        "$TARGET_SHA"
       ;;
     legacy_plan:"plan $TARGET_SHA")
       printf 'frontend=false\nbackend=false\nbackend_base=%s\ncontrol=true\nx_collector=false\n' \
-        "$TARGET_SHA"
-      ;;
-    legacy_backend_plan:"plan $TARGET_SHA")
-      printf 'frontend=false\nbackend=true\nbackend_base=%s\ncontrol=true\nx_collector=false\n' \
         "$TARGET_SHA"
       ;;
     upload_success:"upload $TARGET_SHA")
       IFS= read -r value
       printf '%s\n' "$value" > "$FAKE_UPLOAD_PATH"
       ;;
-    normal_success:"deploy $TARGET_SHA"|bootstrap_success:"deploy $TARGET_SHA")
+    normal_success:"deploy $TARGET_SHA")
       printf 'deployed=%s\n' "$TARGET_SHA"
       ;;
-    bootstrap_exit_91:"deploy $TARGET_SHA")
-      count=$(grep -cFx "deploy $TARGET_SHA" "$FAKE_SSH_LOG")
-      if ((count == 1)); then
-        exit 91
-      fi
-      printf 'deployed=%s\n' "$TARGET_SHA"
+    atomic_success:"deploy $TARGET_SHA")
+      printf 'postgres-pool-bootstrap=%s replay=false\n' "$TARGET_SHA"
       ;;
-    disconnect_eventual:"deploy $TARGET_SHA"|bootstrap_disconnect:"deploy $TARGET_SHA"|pending:"deploy $TARGET_SHA"|partial:"deploy $TARGET_SHA"|invalid_marker:"deploy $TARGET_SHA"|reconcile_plan_non_255:"deploy $TARGET_SHA")
+    atomic_disconnect:"deploy $TARGET_SHA")
+      exit 255
+      ;;
+    atomic_wrong_sha:"deploy $TARGET_SHA"|atomic_changed_base:"deploy $TARGET_SHA"|atomic_not_pending:"deploy $TARGET_SHA"|atomic_no_commit:"deploy $TARGET_SHA")
+      printf 'postgres-pool-bootstrap=%s replay=false\n' "$TARGET_SHA"
+      ;;
+    atomic_action_failure:"plan $TARGET_SHA")
+      print_uninstalled_atomic_plan
+      ;;
+    atomic_action_failure:"deploy $TARGET_SHA")
+      exit 42
+      ;;
+    disconnect_eventual:"deploy $TARGET_SHA"|pending:"deploy $TARGET_SHA"|partial:"deploy $TARGET_SHA"|invalid_marker:"deploy $TARGET_SHA"|reconcile_plan_non_255:"deploy $TARGET_SHA")
       exit 255
       ;;
     malformed:"deploy $TARGET_SHA"|duplicate:"deploy $TARGET_SHA"|missing:"deploy $TARGET_SHA"|final_plan_disconnect:"deploy $TARGET_SHA"|final_plan_pending:"deploy $TARGET_SHA")
@@ -106,9 +144,6 @@ fake_ssh() {
     non_255:"deploy $TARGET_SHA")
       exit 42
       ;;
-    bootstrap_all_fail:"deploy $TARGET_SHA")
-      exit 91
-      ;;
     *)
       printf 'unexpected fake SSH call for %s: %s\n' \
         "$FAKE_SSH_SCENARIO" "$command" >&2
@@ -128,6 +163,7 @@ FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/github-production-deploy-client-test.XXXXXX
 trap 'rm -rf "$FIXTURE"' EXIT
 
 TARGET_SHA=1234567890abcdef1234567890abcdef12345678
+BACKEND_SHA=987ba101d27f1cc3c1308a841f673dda475db933
 FAKE_SSH=$FIXTURE/fake-ssh
 FAKE_SSH_LOG=$FIXTURE/ssh.log
 FAKE_SSH_STATE=$FIXTURE/ssh.state
@@ -139,7 +175,7 @@ DEPLOY_SSH_KNOWN_HOSTS_PATH=$FIXTURE/ssh/pinned-known-hosts
 DEPLOY_HOST=production.example.invalid
 DEPLOY_USER=social-monitor-deploy
 
-export TARGET_SHA FAKE_SSH_LOG FAKE_SSH_STATE FAKE_UPLOAD_PATH
+export TARGET_SHA BACKEND_SHA FAKE_SSH_LOG FAKE_SSH_STATE FAKE_UPLOAD_PATH
 export DEPLOY_SSH_DIRECTORY DEPLOY_SSH_KEY_PATH DEPLOY_SSH_KNOWN_HOSTS_PATH
 export DEPLOY_HOST DEPLOY_USER GITHUB_OUTPUT
 install -m 0700 "$0" "$FAKE_SSH"
@@ -214,92 +250,107 @@ grep -Fx 'postgres_pool_bootstrap_sha=0000000000000000000000000000000000000000' 
 assert_call_count 1 "plan $TARGET_SHA"
 
 : > "$GITHUB_OUTPUT"
-assert_fails legacy_backend_plan plan "$TARGET_SHA"
+run_client atomic_success plan "$TARGET_SHA" >/dev/null
+grep -Fx "backend_base=$BACKEND_SHA" "$GITHUB_OUTPUT" >/dev/null
+grep -Fx 'backend=true' "$GITHUB_OUTPUT" >/dev/null
+grep -Fx 'postgres_pool_bootstrap=postgres-pool-v1' "$GITHUB_OUTPUT" >/dev/null
+grep -Fx "postgres_pool_bootstrap_sha=$TARGET_SHA" "$GITHUB_OUTPUT" >/dev/null
+assert_call_count 2 "plan $TARGET_SHA"
+assert_call_count 1 "deploy $TARGET_SHA"
+
+: > "$GITHUB_OUTPUT"
+run_client atomic_disconnect plan "$TARGET_SHA" >/dev/null
+grep -Fx "backend_base=$BACKEND_SHA" "$GITHUB_OUTPUT" >/dev/null
+assert_call_count 2 "plan $TARGET_SHA"
+assert_call_count 1 "deploy $TARGET_SHA"
+
+for scenario in \
+  atomic_wrong_sha atomic_changed_base atomic_not_pending atomic_no_commit; do
+  : > "$GITHUB_OUTPUT"
+  assert_fails "$scenario" plan "$TARGET_SHA"
+  [[ ! -s $GITHUB_OUTPUT ]]
+  assert_call_count 2 "plan $TARGET_SHA"
+  assert_call_count 1 "deploy $TARGET_SHA"
+done
+
+: > "$GITHUB_OUTPUT"
+assert_fails atomic_action_failure plan "$TARGET_SHA"
 [[ ! -s $GITHUB_OUTPUT ]]
 assert_call_count 1 "plan $TARGET_SHA"
+assert_call_count 1 "deploy $TARGET_SHA"
+
+: > "$GITHUB_OUTPUT"
+assert_fails non_adoption_missing plan "$TARGET_SHA"
+[[ ! -s $GITHUB_OUTPUT ]]
+assert_call_count 1 "plan $TARGET_SHA"
+assert_call_count 0 "deploy $TARGET_SHA"
 
 printf 'immutable-frontend-archive\n' > "$FIXTURE/frontend.tgz"
 run_client upload_success upload "$TARGET_SHA" "$FIXTURE/frontend.tgz" >/dev/null
 grep -Fx 'immutable-frontend-archive' "$FAKE_UPLOAD_PATH" >/dev/null
 assert_call_count 1 "upload $TARGET_SHA"
 
-run_client normal_success deploy "$TARGET_SHA" false postgres-pool-v1 >/dev/null
+run_client normal_success deploy "$TARGET_SHA" >/dev/null
 assert_call_count 1 "deploy $TARGET_SHA"
 assert_call_count 1 "plan $TARGET_SHA"
 
-run_client disconnect_eventual deploy "$TARGET_SHA" false postgres-pool-v1 >/dev/null
+run_client disconnect_eventual deploy "$TARGET_SHA" >/dev/null
 assert_call_count 1 "deploy $TARGET_SHA"
 assert_call_count 2 "plan $TARGET_SHA"
 
-run_client final_plan_disconnect deploy "$TARGET_SHA" false postgres-pool-v1 >/dev/null
+run_client final_plan_disconnect deploy "$TARGET_SHA" >/dev/null
 assert_call_count 1 "deploy $TARGET_SHA"
 assert_call_count 2 "plan $TARGET_SHA"
 
-run_client final_plan_pending deploy "$TARGET_SHA" false postgres-pool-v1 >/dev/null
+run_client final_plan_pending deploy "$TARGET_SHA" >/dev/null
 assert_call_count 1 "deploy $TARGET_SHA"
 assert_call_count 2 "plan $TARGET_SHA"
 
-assert_fails pending deploy "$TARGET_SHA" false postgres-pool-v1
+assert_fails pending deploy "$TARGET_SHA"
 assert_call_count 1 "deploy $TARGET_SHA"
 assert_call_count 3 "plan $TARGET_SHA"
 
-assert_fails partial deploy "$TARGET_SHA" false postgres-pool-v1
+assert_fails partial deploy "$TARGET_SHA"
 assert_call_count 1 "deploy $TARGET_SHA"
 assert_call_count 3 "plan $TARGET_SHA"
 
-assert_fails invalid_marker deploy "$TARGET_SHA" false postgres-pool-v1
+assert_fails invalid_marker deploy "$TARGET_SHA"
 assert_call_count 1 "deploy $TARGET_SHA"
 assert_call_count 1 "plan $TARGET_SHA"
 
-assert_fails malformed deploy "$TARGET_SHA" false postgres-pool-v1
+assert_fails malformed deploy "$TARGET_SHA"
 assert_call_count 1 "deploy $TARGET_SHA"
 assert_call_count 1 "plan $TARGET_SHA"
 
-assert_fails duplicate deploy "$TARGET_SHA" false postgres-pool-v1
+assert_fails duplicate deploy "$TARGET_SHA"
 assert_call_count 1 "deploy $TARGET_SHA"
 assert_call_count 1 "plan $TARGET_SHA"
 
-assert_fails missing deploy "$TARGET_SHA" false postgres-pool-v1
+assert_fails missing deploy "$TARGET_SHA"
 assert_call_count 1 "deploy $TARGET_SHA"
 assert_call_count 1 "plan $TARGET_SHA"
 
-assert_fails reconcile_plan_non_255 deploy "$TARGET_SHA" false postgres-pool-v1
+assert_fails reconcile_plan_non_255 deploy "$TARGET_SHA"
 assert_call_count 1 "deploy $TARGET_SHA"
 assert_call_count 1 "plan $TARGET_SHA"
 
-assert_fails non_255 deploy "$TARGET_SHA" false postgres-pool-v1
+assert_fails non_255 deploy "$TARGET_SHA"
 assert_call_count 1 "deploy $TARGET_SHA"
 assert_call_count 0 "plan $TARGET_SHA"
 
-run_client bootstrap_success deploy "$TARGET_SHA" true uninstalled >/dev/null
-assert_call_count 3 "deploy $TARGET_SHA"
-assert_call_count 1 "plan $TARGET_SHA"
-
-run_client bootstrap_exit_91 deploy "$TARGET_SHA" true uninstalled >/dev/null
-assert_call_count 3 "deploy $TARGET_SHA"
-assert_call_count 1 "plan $TARGET_SHA"
-
-run_client bootstrap_disconnect deploy "$TARGET_SHA" true uninstalled >/dev/null
-assert_call_count 1 "deploy $TARGET_SHA"
-assert_call_count 1 "plan $TARGET_SHA"
-
-assert_fails bootstrap_all_fail deploy "$TARGET_SHA" true uninstalled
-assert_call_count 3 "deploy $TARGET_SHA"
-assert_call_count 0 "plan $TARGET_SHA"
-
-if DEPLOY_HOST=-oProxyCommand=bad run_client normal_success deploy "$TARGET_SHA" false postgres-pool-v1 >/dev/null 2>&1; then
+if DEPLOY_HOST=-oProxyCommand=bad run_client normal_success deploy "$TARGET_SHA" >/dev/null 2>&1; then
   echo 'leading-option host unexpectedly accepted' >&2
   exit 1
 fi
 assert_call_count 0 "deploy $TARGET_SHA"
 
-if DEPLOY_USER='bad user' run_client normal_success deploy "$TARGET_SHA" false postgres-pool-v1 >/dev/null 2>&1; then
+if DEPLOY_USER='bad user' run_client normal_success deploy "$TARGET_SHA" >/dev/null 2>&1; then
   echo 'invalid user unexpectedly accepted' >&2
   exit 1
 fi
 assert_call_count 0 "deploy $TARGET_SHA"
 
-if DEPLOY_HOST=bad.-label run_client normal_success deploy "$TARGET_SHA" false postgres-pool-v1 >/dev/null 2>&1; then
+if DEPLOY_HOST=bad.-label run_client normal_success deploy "$TARGET_SHA" >/dev/null 2>&1; then
   echo 'invalid hostname unexpectedly accepted' >&2
   exit 1
 fi

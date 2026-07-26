@@ -160,6 +160,24 @@ describe('hostile PostgreSQL pool budget review', () => {
       join(process.cwd(), 'ops/deploy/github-production-deploy-client.sh'),
       'utf8',
     );
+    const deployControl = readFileSync(
+      join(process.cwd(), 'ops/deploy/deploy-control-lib.sh'),
+      'utf8',
+    );
+    const atomicBootstrap = readFileSync(
+      join(
+        process.cwd(),
+        'ops/deploy/postgres-pool-atomic-bootstrap-lib.sh',
+      ),
+      'utf8',
+    );
+    const sshWrapper = readFileSync(
+      join(
+        process.cwd(),
+        'ops/deploy/social-monitor-production-ssh-wrapper.sh',
+      ),
+      'utf8',
+    );
     const transitionTest = readFileSync(
       join(
         process.cwd(),
@@ -181,18 +199,27 @@ describe('hostile PostgreSQL pool budget review', () => {
     expect(workflow).toContain(
       'bash ops/deploy/github-production-deploy-client.sh deploy "$GITHUB_SHA"',
     );
-    expect(workflow).toContain(
+    expect(workflow).not.toContain(
       '"$CONTROL_CHANGED" "$POSTGRES_POOL_BOOTSTRAP"',
     );
     expect(deployClient).toMatch(
-      /if \[\[ \$PLAN_BACKEND == true &&[\s\S]*?\$PLAN_POSTGRES_POOL_BOOTSTRAP != "\$POSTGRES_POOL_BOOTSTRAP_VERSION" \]\]; then[\s\S]*?fail /,
+      /repair_legacy_postgres_pool_bootstrap\(\)[\s\S]*?run_remote deploy "\$sha"[\s\S]*?capture_plan "\$sha"[\s\S]*?\$PLAN_POSTGRES_POOL_BOOTSTRAP_SHA == "\$sha"[\s\S]*?\$PLAN_BACKEND_BASE == "\$durable_backend_base"[\s\S]*?\$PLAN_BACKEND == true/,
     );
     expect(deployClient).toMatch(
-      /if \[\[ \$control_changed == true && \$bootstrap == uninstalled \]\]; then\s+for attempt in 1 2 3; do/,
+      /deploy_release\(\) \{[\s\S]*?deploy_once "\$sha"/,
     );
-    expect(deployClient).toMatch(
-      /plan_is_fully_reconciled\(\) \{[\s\S]*?\$PLAN_BACKEND == false[\s\S]*?\$PLAN_CONTROL == false[\s\S]*?\$PLAN_POSTGRES_POOL_BOOTSTRAP == "\$POSTGRES_POOL_BOOTSTRAP_VERSION"[\s\S]*?\$PLAN_POSTGRES_POOL_BOOTSTRAP_SHA != "\$ZERO_SHA"/,
+    expect(deployControl).toMatch(
+      /deploy_release\(\) \{[\s\S]*?postgres_pool_atomic_legacy_state[\s\S]*?deploy_postgres_pool_atomic_control_bootstrap "\$sha"[\s\S]*?return[\s\S]*?exec 9>"\$DEPLOY_LOCK"/,
     );
+    expect(atomicBootstrap).toContain('exec 9>"$DEPLOY_LOCK"');
+    expect(atomicBootstrap).toContain(
+      'verify_postgres_pool_atomic_repair_target "$sha" "$adoption_backend"',
+    );
+    expect(atomicBootstrap).toContain(
+      'PostgreSQL bootstrap marker must be absent for atomic repair',
+    );
+    expect(sshWrapper).toContain('^(plan|upload|deploy)$');
+    expect(sshWrapper).not.toContain('bootstrap-postgres-pool');
     expect(transitionTest.indexOf('TEST_PHASE=legacy-poison-window')).toBeLessThan(
       transitionTest.indexOf('TEST_PHASE=legacy-repair'),
     );

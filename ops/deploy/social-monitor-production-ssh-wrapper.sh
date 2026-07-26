@@ -4,7 +4,9 @@ set -euo pipefail
 PATH=/usr/bin:/bin:/usr/sbin:/sbin
 ENTRYPOINT=/var/data/social-monitor/control/github-production-deploy.sh
 
-read -r action sha extra <<< "${SSH_ORIGINAL_COMMAND:-}"
+original_command=${SSH_ORIGINAL_COMMAND:-}
+[[ $original_command != *$'\n'* && $original_command != *$'\r'* ]] || exit 64
+read -r action sha extra <<< "$original_command"
 
 [[ -z ${extra:-} ]] || exit 64
 [[ ${action:-} =~ ^(plan|upload|deploy)$ ]] || exit 64

@@ -16,6 +16,7 @@ CONTRACT_PATH = ROOT / "ops/deploy/postgres-pool-release-contract.json"
 ZERO_SHA = "0" * 40
 EXPECTED_RELEASE_A_COUNT = 18
 EXPECTED_RELEASE_B_COUNT = 98
+EXPECTED_ATOMIC_REPAIR_COUNT = 17
 # Release A owns the historical EOF normalization; Release B owns the later
 # substantive pool-budget documentation at the same non-runtime path.
 EXPECTED_RELEASE_OVERLAP = (
@@ -67,6 +68,35 @@ def load_contract() -> dict[str, Any]:
         fail(f"cannot read PostgreSQL release contract: {error}")
     if not isinstance(contract, dict) or contract.get("schemaVersion") != 1:
         fail("PostgreSQL release contract schema is invalid")
+    for key in (
+        "adoptionBaseCommit",
+        "adoptionBackendCommit",
+        "atomicRepairBaseCommit",
+    ):
+        value = contract.get(key)
+        if (
+            not isinstance(value, str)
+            or len(value) != 40
+            or any(character not in "0123456789abcdef" for character in value)
+        ):
+            fail(f"PostgreSQL release contract {key} is invalid")
+    if contract.get("atomicRepairPathCount") != EXPECTED_ATOMIC_REPAIR_COUNT:
+        fail(
+            "PostgreSQL atomic repair contract must remain pinned to exactly "
+            f"{EXPECTED_ATOMIC_REPAIR_COUNT} paths"
+        )
+    atomic_paths = contract.get("atomicRepairPaths")
+    if (
+        not isinstance(atomic_paths, list)
+        or not all(isinstance(path, str) for path in atomic_paths)
+        or atomic_paths != sorted(set(atomic_paths))
+        or len(atomic_paths) != EXPECTED_ATOMIC_REPAIR_COUNT
+    ):
+        fail("PostgreSQL atomic repair paths must be the exact sorted admitted set")
+    for path in atomic_paths:
+        candidate = pathlib.PurePosixPath(path)
+        if candidate.is_absolute() or ".." in candidate.parts:
+            fail(f"PostgreSQL atomic repair contains unsafe path: {path}")
     return contract
 
 
@@ -134,6 +164,24 @@ def assert_exact(actual: list[str], expected: list[str], release: str) -> None:
         f"{release} file set violates the executable adoption contract; "
         f"missing={missing}, unexpected={unexpected}"
     )
+
+
+def assert_regular_blobs(target: str, expected: list[str]) -> None:
+    actual: dict[str, tuple[str, str]] = {}
+    for entry in git_lines("ls-tree", target, "--", *expected):
+        try:
+            metadata, path = entry.split("\t", 1)
+            mode, object_type, _object_id = metadata.split()
+        except ValueError:
+            fail("PostgreSQL atomic repair target tree is malformed")
+        if path in actual:
+            fail(f"PostgreSQL atomic repair target repeats path: {path}")
+        actual[path] = (mode, object_type)
+    if sorted(actual) != expected:
+        fail("PostgreSQL atomic repair target is missing an admitted path")
+    for path, (mode, object_type) in actual.items():
+        if mode not in ("100644", "100755") or object_type != "blob":
+            fail(f"PostgreSQL atomic repair target is not a regular blob: {path}")
 
 
 def paths_under_roots(files: list[str], roots: tuple[str, ...]) -> list[str]:
@@ -225,43 +273,11 @@ def verify_ci(arguments: argparse.Namespace, contract: dict[str, Any]) -> None:
             fail("first PostgreSQL adoption release must be control-only")
         if arguments.bootstrap_sha != ZERO_SHA:
             fail("uninstalled PostgreSQL bootstrap has a nonzero durable release SHA")
-        if arguments.backend_base == base:
-            assert_exact(changed_between(base, arguments.target), release_a, "Release A")
-            return
-
-        # A legacy deploy may have durably advanced through both adoption
-        # releases without writing the independent bootstrap marker. Permit
-        # only a control-path repair after proving that its durable backend
-        # marker contains the full A+B adoption and that every path in the
-        # target delta is control-classified.
-        assert_ancestor(
-            arguments.backend_base,
-            arguments.target,
-            "legacy PostgreSQL bootstrap repair durable backend marker "
-            "is not an ancestor of target",
-        )
-        assert_completed_adoption(
-            base,
-            arguments.backend_base,
-            release_a,
-            release_b,
-        )
-        target_delta = changed_between(arguments.backend_base, arguments.target)
-        backend_delta = paths_under_roots(target_delta, BACKEND_PATH_ROOTS)
-        if backend_delta:
+        if arguments.backend_base != base:
             fail(
-                "legacy PostgreSQL bootstrap repair contains backend paths: "
-                f"{backend_delta}"
+                "uninstalled PostgreSQL bootstrap is allowed only for ordinary Release A"
             )
-        control_delta = paths_under_roots(target_delta, CONTROL_PATH_ROOTS)
-        non_control_delta = sorted(set(target_delta) - set(control_delta))
-        if non_control_delta:
-            fail(
-                "legacy PostgreSQL bootstrap repair contains non-control paths: "
-                f"{non_control_delta}"
-            )
-        if not control_delta:
-            fail("legacy PostgreSQL bootstrap repair contains no control paths")
+        assert_exact(changed_between(base, arguments.target), release_a, "Release A")
         return
     if arguments.bootstrap != contract["bootstrapVersion"]:
         fail("PostgreSQL adoption has an unsupported bootstrap state")
@@ -286,6 +302,28 @@ def verify_ci(arguments: argparse.Namespace, contract: dict[str, Any]) -> None:
     assert_completed_adoption(base, arguments.backend_base, release_a, release_b)
 
 
+def verify_atomic_repair(
+    arguments: argparse.Namespace, contract: dict[str, Any]
+) -> None:
+    adoption_backend = str(contract["adoptionBackendCommit"])
+    if arguments.backend_base != adoption_backend:
+        fail("durable backend marker is not the exact adoption backend")
+    target = arguments.target
+    repair_base = str(contract["atomicRepairBaseCommit"])
+    assert_ancestor(
+        repair_base,
+        target,
+        "atomic PostgreSQL bootstrap target does not descend from the repair base",
+    )
+    expected = list(contract["atomicRepairPaths"])
+    assert_exact(
+        changed_between(repair_base, target),
+        expected,
+        "Atomic PostgreSQL repair",
+    )
+    assert_regular_blobs(target, expected)
+
+
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -299,6 +337,9 @@ def parse_arguments() -> argparse.Namespace:
         "--bootstrap", choices=("uninstalled", "postgres-pool-v1"), required=True
     )
     ci.add_argument("--bootstrap-sha", required=True)
+    atomic_repair = subparsers.add_parser("atomic-repair")
+    atomic_repair.add_argument("--target", required=True)
+    atomic_repair.add_argument("--backend-base", required=True)
     return parser.parse_args()
 
 
@@ -307,8 +348,10 @@ def main() -> None:
     contract = load_contract()
     if arguments.command == "workspace":
         verify_workspace(contract)
-    else:
+    elif arguments.command == "ci":
         verify_ci(arguments, contract)
+    else:
+        verify_atomic_repair(arguments, contract)
 
 
 if __name__ == "__main__":

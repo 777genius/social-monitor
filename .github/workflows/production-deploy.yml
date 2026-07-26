@@ -309,9 +309,12 @@ jobs:
             ops/deploy/deploy-control-lib.test.sh
             ops/deploy/github-production-deploy-client.sh
             ops/deploy/github-production-deploy-client.test.sh
+            ops/deploy/postgres-pool-atomic-bootstrap-lib.sh
+            ops/deploy/postgres-pool-atomic-bootstrap-lib.test.sh
             ops/deploy/postgres-runtime-deploy-lib.sh
             ops/deploy/reader-summary-publication-bridge-transition.test.sh
             ops/deploy/social-monitor-production-ssh-wrapper.sh
+            ops/deploy/social-monitor-production-ssh-wrapper.test.sh
             ops/deploy/production-runtime/daily-run.sh
             ops/deploy/production-runtime/github-premidnight-capture-v1.sh
             ops/deploy/github-premidnight-capture-runtime.test.sh
@@ -327,6 +330,7 @@ jobs:
             ops/deploy/prune-pre-autodeploy-backups.test.sh
             ops/deploy/verify-postgres-backup-coverage.sh
             ops/deploy/verify-postgres-backup-coverage.test.sh
+            ops/deploy/verify-postgres-pool-release-contract.test.sh
             ops/deploy/postgres-runtime-deploy-lib.test.sh
             ops/deploy/verify-postgres-runtime-topology.test.sh
           )
@@ -367,6 +371,9 @@ jobs:
           fi
           bash ops/deploy/x-collector-image-deploy-lib.test.sh
           bash ops/deploy/github-production-deploy-client.test.sh
+          bash ops/deploy/postgres-pool-atomic-bootstrap-lib.test.sh
+          bash ops/deploy/social-monitor-production-ssh-wrapper.test.sh
+          bash ops/deploy/verify-postgres-pool-release-contract.test.sh
 
       - name: Verify legacy-main deployment transitions
         if: needs.plan.outputs.backend == 'true' || needs.plan.outputs.control == 'true'
@@ -530,13 +537,9 @@ jobs:
         env:
           DEPLOY_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
           DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
-          CONTROL_CHANGED: ${{ needs.plan.outputs.control }}
-          POSTGRES_POOL_BOOTSTRAP: ${{ needs.plan.outputs.postgres_pool_bootstrap }}
-        # The client owns bounded legacy bootstrap repair and fail-closed
-        # post-deploy reconciliation without repeating an ambiguous SSH call.
-        run: >-
-          bash ops/deploy/github-production-deploy-client.sh deploy "$GITHUB_SHA"
-          "$CONTROL_CHANGED" "$POSTGRES_POOL_BOOTSTRAP"
+        # Any exact legacy bootstrap repair completed during plan capture.
+        # Runtime activation remains the ordinary, single deploy action.
+        run: bash ops/deploy/github-production-deploy-client.sh deploy "$GITHUB_SHA"
 
       - name: Remove production SSH material
         if: always()

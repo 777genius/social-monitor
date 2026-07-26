@@ -431,6 +431,7 @@ git -C "$REPO" diff --name-only "$BASE_SHA" "$STALE_CONTROL_SHA" -- \
 cp "$PROJECT_ROOT/ops/deploy/social-monitor-production-deploy.sh" \
   "$PROJECT_ROOT/ops/deploy/deploy-control-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/postgres-runtime-deploy-lib.sh" \
+  "$PROJECT_ROOT/ops/deploy/backend-runtime-health-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/backend-image-rescue-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/daily-runner-image-bootstrap-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/x-collector-image-deploy-lib.sh" \
@@ -974,25 +975,13 @@ step_end = next(
     len(lines),
 )
 step = lines[step_start:step_end]
-run_indexes = [index for index, line in enumerate(step) if line == "        run: >-"]
-if len(run_indexes) != 1:
-    raise SystemExit("deploy-components step must contain exactly one folded run command")
-
-command_lines = []
-for line in step[run_indexes[0] + 1 :]:
-    if not line.startswith("          "):
-        break
-    stripped = line.strip()
-    if stripped:
-        command_lines.append(stripped)
-command = " ".join(command_lines)
 expected = (
-    'bash ops/deploy/github-production-deploy-client.sh deploy "$GITHUB_SHA" '
-    '"$CONTROL_CHANGED" "$POSTGRES_POOL_BOOTSTRAP"'
+    '        run: bash ops/deploy/github-production-deploy-client.sh '
+    'deploy "$GITHUB_SHA"'
 )
-if command != expected:
-    raise SystemExit(
-        f"deploy-components step does not delegate the exact bootstrap contract: {command!r}"
-    )
+if step.count(expected) != 1:
+    raise SystemExit("deploy-components step must contain one exact ordinary deploy")
+if any("CONTROL_CHANGED" in line or "POSTGRES_POOL_BOOTSTRAP" in line for line in step):
+    raise SystemExit("ordinary deploy must not receive stale bootstrap arguments")
 PY
 echo 'Legacy-main to overlap-safe bootstrap transition tests passed'

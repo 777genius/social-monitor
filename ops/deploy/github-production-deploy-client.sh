@@ -5,6 +5,7 @@ PATH=/usr/local/bin:/usr/bin:/bin
 
 ZERO_SHA=0000000000000000000000000000000000000000
 POSTGRES_POOL_BOOTSTRAP_VERSION=postgres-pool-v1
+POSTGRES_POOL_ADOPTION_BACKEND_SHA=987ba101d27f1cc3c1308a841f673dda475db933
 SSH_DIRECTORY=${DEPLOY_SSH_DIRECTORY:-${HOME:?HOME is required}/.ssh}
 SSH_KEY_PATH=${DEPLOY_SSH_KEY_PATH:-$SSH_DIRECTORY/social-monitor-production}
 SSH_KNOWN_HOSTS_PATH=${DEPLOY_SSH_KNOWN_HOSTS_PATH:-$SSH_DIRECTORY/known_hosts}
@@ -180,6 +181,40 @@ write_plan_outputs() {
   } >> "$output_path"
 }
 
+repair_legacy_postgres_pool_bootstrap() {
+  local sha=$1
+  local durable_backend_base=$PLAN_BACKEND_BASE
+  local status
+
+  [[ $durable_backend_base == "$POSTGRES_POOL_ADOPTION_BACKEND_SHA" ]] || \
+    fail 'missing PostgreSQL bootstrap marker is not at the adoption backend'
+  printf 'deploy-client: invoking exact legacy repair through deploy\n' >&2
+  if run_remote deploy "$sha"; then
+    status=0
+  else
+    status=$?
+  fi
+  if ((status == 255)); then
+    printf 'deploy-client: SSH disconnected during legacy repair; recapturing the ordinary plan\n' >&2
+  elif ((status != 0)); then
+    fail "legacy PostgreSQL bootstrap repair failed with status $status"
+  fi
+
+  if capture_plan "$sha"; then
+    status=0
+  else
+    status=$?
+  fi
+  ((status == 0)) || fail "post-bootstrap plan failed with status $status"
+  [[ $PLAN_POSTGRES_POOL_BOOTSTRAP == "$POSTGRES_POOL_BOOTSTRAP_VERSION" && \
+     $PLAN_POSTGRES_POOL_BOOTSTRAP_SHA == "$sha" ]] || \
+    fail 'post-bootstrap plan is not installed at the target SHA'
+  [[ $PLAN_BACKEND_BASE == "$durable_backend_base" ]] || \
+    fail 'durable backend base changed during atomic PostgreSQL bootstrap'
+  [[ $PLAN_BACKEND == true ]] || \
+    fail 'backend is no longer pending after atomic PostgreSQL bootstrap'
+}
+
 read_initial_plan() {
   local sha=$1
   local status
@@ -189,11 +224,11 @@ read_initial_plan() {
     status=$?
   fi
   ((status == 0)) || fail "plan command failed with status $status"
-  print_plan
   if [[ $PLAN_BACKEND == true && \
         $PLAN_POSTGRES_POOL_BOOTSTRAP != "$POSTGRES_POOL_BOOTSTRAP_VERSION" ]]; then
-    fail 'deploy a control-only PostgreSQL bootstrap commit before a backend release'
+    repair_legacy_postgres_pool_bootstrap "$sha"
   fi
+  print_plan
   write_plan_outputs
 }
 
@@ -251,39 +286,11 @@ deploy_once() {
 
 deploy_release() {
   local sha=$1
-  local control_changed=${2:-}
-  local bootstrap=${3:-}
-  local attempt status successful_call=false
-  [[ $control_changed =~ ^(true|false)$ ]] || fail 'control change flag must be true or false'
-  [[ $bootstrap =~ ^(uninstalled|postgres-pool-v1)$ ]] || fail 'bootstrap status is unsupported'
-  if [[ $control_changed == true && $bootstrap == uninstalled ]]; then
-    for attempt in 1 2 3; do
-      printf 'deploy-client: PostgreSQL bootstrap deploy call %d of 3\n' "$attempt" >&2
-      if run_remote deploy "$sha"; then
-        status=0
-      else
-        status=$?
-      fi
-      if ((status == 0)); then
-        successful_call=true
-      elif ((status == 255)); then
-        printf 'deploy-client: SSH disconnected during bootstrap; no further deploy call will be made\n' >&2
-        reconcile_deploy_plan "$sha"
-        return
-      else
-        printf 'deploy-client: PostgreSQL bootstrap deploy call %d returned status %d; continuing bounded repair\n' \
-          "$attempt" "$status" >&2
-      fi
-    done
-    [[ $successful_call == true ]] || fail 'all PostgreSQL bootstrap deploy calls failed'
-  else
-    deploy_once "$sha" || {
-      status=$?
-      fail "deploy command failed with non-transport status $status"
-    }
-    return
-  fi
-  reconcile_deploy_plan "$sha"
+  local status
+  deploy_once "$sha" || {
+    status=$?
+    fail "deploy command failed with non-transport status $status"
+  }
 }
 
 upload_frontend() {
@@ -319,10 +326,10 @@ case $action in
     upload_frontend "$2" "$3"
     ;;
   deploy)
-    [[ $# == 4 ]] || fail 'deploy requires a target SHA, control flag, and bootstrap status'
+    [[ $# == 2 ]] || fail 'deploy requires a target SHA'
     validate_sha "$2"
     validate_remote_environment
-    deploy_release "$2" "$3" "$4"
+    deploy_release "$2"
     ;;
   *) fail 'allowed commands: configure, cleanup, plan, upload, deploy' ;;
 esac

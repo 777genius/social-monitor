@@ -57,7 +57,7 @@ cannot silently skip an earlier component change.
 ## PostgreSQL pool bootstrap
 
 The first bounded-pool rollout must be two main-branch releases. The exact
-sorted sets are pinned to 17 Release A paths and 98 Release B paths in
+sorted sets are pinned to 18 Release A paths and 98 Release B paths in
 `postgres-pool-release-a.files` and
 `postgres-pool-release-b.files`; `verify-postgres-pool-release-contract.py`
 makes the split executable for the integration broker, the A-only producer
@@ -76,6 +76,23 @@ running container/runtime. The legacy-main transition test byte-compares those
 pre-existing surfaces and their sentinels after every Release A attempt. The
 assets become active only when the exact backend-only Release B path set is
 accepted after the independent bootstrap marker is durable.
+
+One legacy host state after merged PR #67 may have the exact adoption backend
+SHA durable while the independent bootstrap marker is absent and the ordinary
+plan still reports the backend pending. Only that byte-exact marker, an
+ancestor target with the exact 17-path atomic-repair delta, and an absent
+bootstrap marker admit a repair through the existing `deploy` wrapper action.
+The sourced deploy library detects that state before taking normal release
+locks; its atomic transaction owns both locks and revalidates the complete
+state before it stages regular target blobs, verifies modes and digests,
+installs only the deploy entrypoint and restricted three-action wrapper, and
+writes the target-bound bootstrap marker last. Failure restores both installed
+control files and removes all staging and marker changes. It never advances
+integration, `backend.sha`, runtime markers, services, containers, images,
+subscription runtime files, or running processes. The client then recaptures
+the ordinary plan, requires the unchanged adoption backend, target-bound
+bootstrap, and still-pending backend, before the normal single deploy action.
+This narrow repair is not a waiver in the generic two-release verifier.
 
 The second release installs `production-runtime` as a versioned control release
 and atomically switches `postgres-runtime-current`. The deploy command, boot

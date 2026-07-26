@@ -408,23 +408,30 @@ print_plan() {
     "$frontend" "$backend" "$backend_base" "$control" "$x_collector" \
     "$postgres_pool_bootstrap" "$postgres_pool_bootstrap_sha"
 }
-
 postgres_pool_bootstrap_installed() {
-  local target=$1
-  local marker=$STATE/postgres-pool-bootstrap.sha
+  local target=$1 marker=$STATE/postgres-pool-bootstrap.sha
   local installed=$CONTROL/github-production-deploy.sh
-  local marker_sha
-  [[ -s $marker && -f $installed ]] || return 1
+  local wrapper=$CONTROL/github-production-deploy-wrapper.sh
+  local marker_sha relative_path expected
+  [[ -s $marker && ! -L $marker && -f $installed && ! -L $installed ]] || return 1
   marker_sha=$(tr -d '\n' < "$marker")
   [[ $marker_sha =~ ^[0-9a-f]{40}$ ]] || return 1
   git -C "$REPO" cat-file -e "$marker_sha^{commit}" 2>/dev/null || return 1
   git -C "$REPO" merge-base --is-ancestor "$marker_sha" "$target" || return 1
-  cmp -s "$installed" "$REPO/ops/deploy/social-monitor-production-deploy.sh" || return 1
-  [[ -f $REPO/ops/deploy/postgres-runtime-deploy-lib.sh ]] || return 1
-  [[ -f $REPO/ops/deploy/verify-postgres-runtime-topology.py ]] || return 1
-  [[ -f $REPO/ops/deploy/production-runtime/compose.postgres-runtime.yml ]] || return 1
+  expected=$(git -C "$REPO" show "$marker_sha:ops/deploy/social-monitor-production-deploy.sh" | sha256sum | awk '{print $1}') || return 1
+  [[ $(sha256sum "$installed" | awk '{print $1}') == "$expected" ]] || return 1
+  if git -C "$REPO" cat-file -e \
+    "$marker_sha:ops/deploy/postgres-pool-atomic-bootstrap-lib.sh" 2>/dev/null; then
+    [[ -f $wrapper && ! -L $wrapper ]] || return 1
+    expected=$(git -C "$REPO" show "$marker_sha:ops/deploy/social-monitor-production-ssh-wrapper.sh" | sha256sum | awk '{print $1}') || return 1
+    [[ $(sha256sum "$wrapper" | awk '{print $1}') == "$expected" ]] || return 1
+  fi
+  for relative_path in ops/deploy/postgres-runtime-deploy-lib.sh \
+    ops/deploy/verify-postgres-runtime-topology.py \
+    ops/deploy/production-runtime/compose.postgres-runtime.yml; do
+    git -C "$REPO" cat-file -e "$marker_sha:$relative_path" 2>/dev/null || return 1
+  done
 }
-
 validate_frontend_archive() {
   local archive=$1
   local archive_size
@@ -976,9 +983,7 @@ commit_postgres_pool_bootstrap() {
     fail 'PostgreSQL bootstrap marker did not commit the installed entrypoint'
   fi
 }
-
 [[ ${BASH_SOURCE[0]} == "$0" ]] || return 0
-
 read -r action sha extra <<< "${SSH_ORIGINAL_COMMAND:-${*:-}}"
 command_text=${SSH_ORIGINAL_COMMAND:-${*:-}}
 [[ $command_text != *$'\n'* && $command_text != *$'\r'* ]] || fail 'command must be one line'

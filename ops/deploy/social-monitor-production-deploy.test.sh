@@ -13,7 +13,7 @@ ORIGIN=$FIXTURE/origin.git
 ROOT=$FIXTURE/root
 CONTROL=$ROOT/control
 STATE=$CONTROL/deploy-state
-STAGING=$ROOT/runtime/deploy-staging
+STAGING=${SOCIAL_MONITOR_DEPLOY_TEST_STAGING:-$ROOT/runtime/deploy-staging}
 
 git init --bare -q "$ORIGIN"
 git init -q -b main "$REPO"
@@ -39,6 +39,7 @@ cp "$SCRIPT_DIR/verify-postgres-backup-coverage.sh" \
   "$BACKUP_LIBRARY" \
   "$REPO/ops/deploy/"
 cp "$ENTRYPOINT" "$REPO/ops/deploy/"
+cp "$SCRIPT_DIR/social-monitor-production-ssh-wrapper.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/../../prisma/migrations/20260716170000_reader_summary_fail_closed_publication/migration.sql" \
   "$REPO/prisma/migrations/20260716170000_reader_summary_fail_closed_publication/"
 cp "$SCRIPT_DIR/verify-postgres-runtime-topology.py" "$REPO/ops/deploy/"
@@ -61,6 +62,8 @@ for component in frontend backend control; do
   printf '%s\n' "$BASE_SHA" > "$STATE/$component.sha"
 done
 cp "$ENTRYPOINT" "$CONTROL/github-production-deploy.sh"
+cp "$SCRIPT_DIR/social-monitor-production-ssh-wrapper.sh" \
+  "$CONTROL/github-production-deploy-wrapper.sh"
 printf '%s\n' "$BASE_SHA" > "$STATE/postgres-pool-bootstrap.sha"
 
 run_entrypoint() {
