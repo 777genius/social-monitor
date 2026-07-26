@@ -4,7 +4,7 @@
 # the target blob. This is a one-time repair for the exact legacy state left
 # after the PostgreSQL pool adoption and merged PR #67.
 
-POSTGRES_POOL_ADOPTION_BACKEND_SHA=987ba101d27f1cc3c1308a841f673dda475db933
+POSTGRES_POOL_ADOPTION_BACKEND_SHA=4f47fac7faed7dc24110f4a43e88820d776b8a40
 POSTGRES_POOL_ATOMIC_ZERO_SHA=0000000000000000000000000000000000000000
 
 postgres_pool_atomic_repair_paths() {

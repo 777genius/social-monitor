@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "adoptionBaseCommit": "29a247f802ab61d90e31b24bf60436045dbdd9f4",
-  "adoptionBackendCommit": "987ba101d27f1cc3c1308a841f673dda475db933",
+  "adoptionBackendCommit": "4f47fac7faed7dc24110f4a43e88820d776b8a40",
   "bootstrapVersion": "postgres-pool-v1",
   "atomicRepairBaseCommit": "db41e7571b75bcd86a2964460492ff726f3248c6",
   "atomicRepairPathCount": 17,
