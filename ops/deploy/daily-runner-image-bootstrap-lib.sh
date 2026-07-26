@@ -252,6 +252,42 @@ daily_runner_bootstrap_require_admission() {
   fi
 }
 
+daily_runner_bootstrap_assert_no_active_container() {
+  local inventory_format inventory
+  local container_id container_state label_project label_service extra
+  local active_count=0
+
+  [[ $PROJECT =~ ^[a-z0-9][a-z0-9_-]*$ ]] || \
+    fail 'daily-runner bootstrap project label is invalid'
+  inventory_format=$'{{.ID}}\t{{.State}}\t{{.Label "com.docker.compose.project"}}\t{{.Label "com.docker.compose.service"}}'
+  inventory=$(docker container ls --no-trunc \
+    --filter "label=com.docker.compose.project=$PROJECT" \
+    --filter 'label=com.docker.compose.service=daily-runner' \
+    --format "$inventory_format") || \
+    fail 'daily-runner container state cannot be inventoried'
+  [[ $inventory != *$'\r'* ]] || \
+    fail 'daily-runner container inventory is malformed'
+  [[ -n $inventory ]] || return 0
+
+  while IFS=$'\t' read -r \
+    container_id container_state label_project label_service extra; do
+    [[ $container_id =~ ^[0-9a-f]{64}$ && -n $container_state && \
+       -z $extra ]] || fail 'daily-runner container inventory is malformed'
+    [[ $label_project == "$PROJECT" && $label_service == daily-runner ]] || \
+      fail 'daily-runner container inventory label mismatch'
+    case $container_state in
+      running|restarting|paused) ;;
+      *) fail 'daily-runner container state is unexpected' ;;
+    esac
+    ((active_count += 1))
+  done <<< "$inventory"
+
+  ((active_count <= 1)) || \
+    fail 'daily-runner container inventory is ambiguous'
+  ((active_count == 0)) || \
+    fail 'active daily-runner container blocks image bootstrap'
+}
+
 daily_runner_bootstrap_remove_tag() {
   local tag=$1
   local expected_id=${2:-}
@@ -283,7 +319,7 @@ daily_runner_image_bootstrap_before_rescue() (
   local compose_tag state_file partial phase manifest_target
   local dockerfile_digest dockerfile_digest_after base_id base_id_after
   local workdir='' archive='' context='' temporary_tag='' candidate_id=''
-  local identity config existing_container singleton_fd revision extra
+  local identity config singleton_fd revision extra
   local compose_created=false completed=false temporary_owned=false
 
   compose_tag=$(compose_image_name daily-runner)
@@ -323,11 +359,7 @@ daily_runner_image_bootstrap_before_rescue() (
     fail 'daily singleton lock descriptor is unexpected'
   flock -n "$singleton_fd" || \
     fail 'active daily execution blocks daily-runner image bootstrap'
-  existing_container=$(
-    "${COMPOSE[@]}" --profile app --profile daily ps -q daily-runner
-  ) || fail 'daily-runner container state cannot be inventoried'
-  [[ -z $existing_container ]] || \
-    fail 'active daily-runner container blocks image bootstrap'
+  daily_runner_bootstrap_assert_no_active_container
 
   # Invoked by the EXIT/INT/TERM traps installed below.
   # shellcheck disable=SC2317,SC2329

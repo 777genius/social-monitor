@@ -16,16 +16,20 @@ DAILY_SINGLETON_LOCK=$CONTROL/daily-run-singleton.lock
 PROJECT=social-monitor-prod
 TMP_ROOT=$FIXTURE/tmp
 REFS=$FIXTURE/docker-refs.tsv
+CONTAINERS=$FIXTURE/docker-containers.tsv
 EVENTS=$FIXTURE/events.log
 BASE_ID=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 MUTATED_ID=sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 CANDIDATE_ID=sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 EXISTING_ID=sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+CONTAINER_ID_A=1111111111111111111111111111111111111111111111111111111111111111
+CONTAINER_ID_B=2222222222222222222222222222222222222222222222222222222222222222
 
 export SOCIAL_MONITOR_DEPLOY_TEST_MODE=1
 export SOCIAL_MONITOR_DAILY_RUNNER_BOOTSTRAP_TMP_ROOT=$TMP_ROOT
 install -d "$REPO" "$CONTROL" "$STATE" "$POSTGRES_RUNTIME_RELEASES" "$TMP_ROOT"
 : > "$REFS"
+: > "$CONTAINERS"
 : > "$EVENTS"
 
 write_reviewed_dockerfile() {
@@ -107,6 +111,10 @@ remove_ref() {
   mv -f "$next" "$REFS"
 }
 
+add_container() {
+  printf '%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" >> "$CONTAINERS"
+}
+
 backend_image_rescue_image_id() {
   local image_id
   printf 'inspect-id\t%s\n' "$1" >> "$EVENTS"
@@ -126,8 +134,7 @@ backend_image_rescue_image_config() {
 
 fake_compose() {
   printf 'compose\t%s\n' "$*" >> "$EVENTS"
-  [[ $* == '--profile app --profile daily ps -q daily-runner' ]]
-  [[ $ACTIVE_DAILY_CONTAINER == false ]] || printf 'daily-container\n'
+  return 97
 }
 COMPOSE=(fake_compose)
 
@@ -136,6 +143,49 @@ docker() {
   local tag='' label='' context='' argument=''
   printf 'docker\t%s\n' "$*" >> "$EVENTS"
   case ${1:-}:${2:-} in
+    container:ls)
+      local expected_format=$'{{.ID}}\t{{.State}}\t{{.Label "com.docker.compose.project"}}\t{{.Label "com.docker.compose.service"}}'
+      local format='' project_filter='' service_filter='' no_trunc=false
+      shift 2
+      while (($# > 0)); do
+        argument=$1
+        shift
+        case $argument in
+          --no-trunc)
+            no_trunc=true
+            ;;
+          --filter)
+            case ${1:-} in
+              label=com.docker.compose.project=*)
+                project_filter=${1#label=com.docker.compose.project=}
+                ;;
+              label=com.docker.compose.service=*)
+                service_filter=${1#label=com.docker.compose.service=}
+                ;;
+              *) return 91 ;;
+            esac
+            shift
+            ;;
+          --format)
+            format=${1:-}
+            shift
+            ;;
+          *) return 92 ;;
+        esac
+      done
+      [[ $no_trunc == true && $project_filter == "$PROJECT" && \
+         $service_filter == daily-runner && $format == "$expected_format" ]] || \
+        return 93
+      [[ $CONTAINER_LS_STATUS == 0 ]] || return "$CONTAINER_LS_STATUS"
+      if [[ $CONTAINER_FORCE_LABEL_MISMATCH == true ]]; then
+        printf '%s\t%s\t%s\t%s\n' \
+          "$CONTAINER_ID_A" running wrong-project daily-runner
+        return 0
+      fi
+      awk -F '\t' -v project="$project_filter" -v service="$service_filter" \
+        '$3 == project && $4 == service {printf "%s\t%s\t%s\t%s\n", $1, $2, $3, $4}' \
+        "$CONTAINERS"
+      ;;
     build:*)
       shift
       while (($# > 0)); do
@@ -236,12 +286,14 @@ reset_case() {
   BUILT_CONFIG=$EXPECTED_CONFIG
   BUILT_IMAGE_ID=$CANDIDATE_ID
   BUILT_REVISION_OVERRIDE=
+  : > "$CONTAINERS"
+  CONTAINER_LS_STATUS=0
+  CONTAINER_FORCE_LABEL_MISMATCH=false
   BUILD_FAILURE=false
   MUTATE_BASE_ID_AFTER_BUILD=false
   MUTATE_BASE_REVISION_AFTER_BUILD=false
   MUTATE_DOCKERFILE_AFTER_BUILD=false
   SIGNAL_AFTER_INSTALL=false
-  ACTIVE_DAILY_CONTAINER=false
 }
 
 assert_fails_with() {
@@ -357,9 +409,47 @@ flock -u 9
 exec 9>&-
 
 reset_case
-ACTIVE_DAILY_CONTAINER=true
+add_container "$CONTAINER_ID_A" running other-project daily-runner
+add_container "$CONTAINER_ID_B" running "$PROJECT" api
+daily_runner_image_bootstrap_before_rescue "$PREVIOUS_SHA" "$TARGET_SHA"
+[[ $(lookup_id "$COMPOSE_TAG") == "$CANDIDATE_ID" ]]
+assert_events_exclude $'compose\t'
+
+reset_case
+add_container "$CONTAINER_ID_A" running "$PROJECT" daily-runner
 assert_fails_with 'active daily-runner container blocks' \
   daily_runner_image_bootstrap_before_rescue "$PREVIOUS_SHA" "$TARGET_SHA"
+assert_events_exclude $'docker\tbuild'
+assert_events_exclude $'compose\t'
+
+reset_case
+add_container "$CONTAINER_ID_A" running "$PROJECT" daily-runner
+add_container "$CONTAINER_ID_B" running "$PROJECT" daily-runner
+assert_fails_with 'daily-runner container inventory is ambiguous' \
+  daily_runner_image_bootstrap_before_rescue "$PREVIOUS_SHA" "$TARGET_SHA"
+assert_events_exclude $'docker\tbuild'
+assert_events_exclude $'compose\t'
+
+reset_case
+add_container "$CONTAINER_ID_A" exited "$PROJECT" daily-runner
+assert_fails_with 'daily-runner container state is unexpected' \
+  daily_runner_image_bootstrap_before_rescue "$PREVIOUS_SHA" "$TARGET_SHA"
+assert_events_exclude $'docker\tbuild'
+assert_events_exclude $'compose\t'
+
+reset_case
+CONTAINER_FORCE_LABEL_MISMATCH=true
+assert_fails_with 'daily-runner container inventory label mismatch' \
+  daily_runner_image_bootstrap_before_rescue "$PREVIOUS_SHA" "$TARGET_SHA"
+assert_events_exclude $'docker\tbuild'
+assert_events_exclude $'compose\t'
+
+reset_case
+CONTAINER_LS_STATUS=72
+assert_fails_with 'daily-runner container state cannot be inventoried' \
+  daily_runner_image_bootstrap_before_rescue "$PREVIOUS_SHA" "$TARGET_SHA"
+assert_events_exclude $'docker\tbuild'
+assert_events_exclude $'compose\t'
 
 reset_case
 partial=$(backend_image_rescue_state_file "$TARGET_SHA").partial
@@ -513,6 +603,7 @@ daily_runner_image_bootstrap_before_rescue "$PREVIOUS_SHA" "$TARGET_SHA"
 [[ $(grep -c $'^docker\tbuild' "$EVENTS") == "$build_count" ]]
 [[ $(grep -c $'^docker\timage tag' "$EVENTS") == "$tag_count" ]]
 [[ $(lookup_id "$COMPOSE_TAG") == "$CANDIDATE_ID" ]]
+assert_events_exclude $'compose\t'
 assert_events_exclude 'image prune'
 assert_events_exclude 'system prune'
 
