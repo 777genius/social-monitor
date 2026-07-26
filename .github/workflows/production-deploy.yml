@@ -30,6 +30,7 @@ on:
       - docker-compose.yml
       - package.json
       - package-lock.json
+      - pnpm-lock.yaml
       - prisma.config.ts
       - tsconfig.json
       - tsconfig.build.json
