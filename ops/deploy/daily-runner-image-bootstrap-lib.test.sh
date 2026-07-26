@@ -426,6 +426,7 @@ PY
 for malicious_kind in path symlink; do
   reset_case
   daily_runner_bootstrap_create_archive() {
+    # shellcheck disable=SC2317
     create_malicious_archive "$malicious_kind" "$2"
   }
   assert_fails_with 'historical archive contains an unsafe entry' \
