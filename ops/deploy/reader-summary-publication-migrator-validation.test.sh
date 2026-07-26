@@ -22,8 +22,8 @@ TRANSPORT_QUERY_PATH_LOG=$FIXTURE/transport-query-path.log
 FAKE_BIN=$FIXTURE/bin
 PRIVATE_QUERY_PAYLOAD=private-query-output-must-stay-redacted
 PRIVATE_PASSWORD=redacted-test-password
-API_PASSWORD=api-test-password
-SYSTEM_PASSWORD=system-test-password
+API_PASSWORD=API_PASSWORD
+SYSTEM_PASSWORD=SYSTEM_PASSWORD
 MIGRATOR_ROLE=social_monitor_publication_migrator
 API_ROLE=social_monitor_app
 SYSTEM_ROLE=social_monitor_system_app
@@ -71,9 +71,9 @@ set -euo pipefail
 mode=$(stat -c '%a' "$PGPASSFILE")
 [[ $mode == 600 ]]
 [[ $* != *postgresql://* && $* != *redacted-test-password* ]]
-[[ $* != *api-test-password* && $* != *system-test-password* ]]
+[[ $* != *API_PASSWORD* && $* != *SYSTEM_PASSWORD* ]]
 if env | grep -F 'redacted-test-password' >/dev/null || \
-  env | grep -F 'system-test-password' >/dev/null; then
+  env | grep -F 'SYSTEM_PASSWORD' >/dev/null; then
   exit 91
 fi
 query_file= query_result= client_status=$TRANSPORT_CLIENT_STATUS
