@@ -8,8 +8,102 @@ import {
   runReaderSummaryProductionRecovery,
   type ReaderSummaryProductionRecoveryDayExecutor,
 } from "./reader-summary-production-recovery-cli";
+import {
+  discoverReaderSummaryProductionRecoveryScope,
+  resolveReaderSummaryProductionRecoveryScope,
+  type ReaderSummaryProductionRecoveryScope,
+  type ReaderSummaryProductionRecoveryScopeDiscoveryClient,
+} from "../recover-reader-summary-production";
 
 describe("reader summary production recovery CLI wrapper", () => {
+  it("uses explicit tenant and workspace env without discovery", async () => {
+    const explicitScope = scopeFixture("1", "2");
+    const discover = jest.fn(async () => scopeFixture("3", "4"));
+
+    await expect(
+      resolveReaderSummaryProductionRecoveryScope({
+        env: {
+          READER_SUMMARY_PRODUCTION_RECOVERY_TENANT_ID: ` ${explicitScope.tenantId} `,
+          READER_SUMMARY_PRODUCTION_RECOVERY_WORKSPACE_ID:
+            explicitScope.workspaceId,
+        },
+        discover,
+      }),
+    ).resolves.toEqual(explicitScope);
+    expect(discover).not.toHaveBeenCalled();
+  });
+
+  it("discovers scope when either env value is missing", async () => {
+    const discoveredScope = scopeFixture("3", "4");
+    const discover = jest.fn(async () => discoveredScope);
+
+    await expect(
+      resolveReaderSummaryProductionRecoveryScope({
+        env: {
+          READER_SUMMARY_PRODUCTION_RECOVERY_TENANT_ID:
+            scopeFixture("1", "2").tenantId,
+        },
+        discover,
+      }),
+    ).resolves.toEqual(discoveredScope);
+    expect(discover).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails discovery when the immutable counts match multiple scopes", async () => {
+    const { client } = scopeDiscoveryClient([
+      scopeFixture("1", "2"),
+      scopeFixture("3", "4"),
+    ]);
+
+    await expect(
+      discoverReaderSummaryProductionRecoveryScope(client),
+    ).rejects.toThrow("expected exactly one scope, found 2");
+  });
+
+  it("uses read-only immutable count SQL for scope discovery", async () => {
+    const expectedScope = scopeFixture("1", "2");
+    const { client, queryRaw } = scopeDiscoveryClient([expectedScope]);
+
+    await expect(
+      discoverReaderSummaryProductionRecoveryScope(client),
+    ).resolves.toEqual(expectedScope);
+
+    const sql = normalizeSql(sqlFromQueryRaw(queryRaw));
+    expect(sql).toContain('from "feed_items" as feed');
+    expect(sql).toContain('join "source_items" as source');
+    expect(sql).toContain('source."id" = feed."source_item_id"');
+    expect(sql).toContain('source."tenant_id" = feed."tenant_id"');
+    expect(sql).toContain('source."workspace_id" = feed."workspace_id"');
+    expect(sql).toContain(
+      'source."source_binding_id" = feed."source_binding_id"',
+    );
+    expect(sql).toContain('source."provider_key" = feed."provider_key"');
+    expect(sql).toContain('source."canonical_url" = feed."canonical_url"');
+    expect(sql).toContain('join "tenants" as tenant');
+    expect(sql).toContain('tenant."deleted_at" is null');
+    expect(sql).toContain('join "workspaces" as workspace');
+    expect(sql).toContain('workspace."deleted_at" is null');
+    expect(sql).toContain('feed."status" = \'visible\'');
+    expect(sql).toContain(
+      "date '2026-07-23'::timestamp at time zone 'utc'",
+    );
+    expect(sql).toContain(
+      "date '2026-07-25'::timestamp at time zone 'utc'",
+    );
+    expect(sql).toContain('count(*) = count(distinct source."id")');
+    expectProviderCount(sql, "github-trending-page", 0, 1);
+    expectProviderCount(sql, "hacker-news", 100, 2);
+    expectProviderCount(sql, "reddit", 100, 2);
+    expectProviderCount(sql, "rss", 75, 1);
+    expectProviderCount(sql, "x-twitter", 67, 1);
+    expectProviderCount(sql, "github-trending-page", 10, 1);
+    expectProviderCount(sql, "rss", 67, 1);
+    expectProviderCount(sql, "x-twitter", 73, 1);
+    expect(sql).not.toMatch(/\bprepare_reader_summary_production_recovery\b/u);
+    expect(sql).not.toMatch(/\binsert\b|\bupdate\b|\bdelete\b/u);
+    expect(sql).not.toMatch(/\bfor\s+(?:update|share)\b/u);
+  });
+
   it("requires explicit apply before durable authority preparation", async () => {
     const authority = authorityPort("prepared");
     const executeDay = jest.fn();
@@ -80,6 +174,62 @@ function authorityPort(
     prepare: jest.fn(async () => ({ outcome, authority: handle })),
     readVerifiedBinding: jest.fn(() => bindingFixture()),
   };
+}
+
+function scopeFixture(
+  tenantSuffix: string,
+  workspaceSuffix: string,
+): ReaderSummaryProductionRecoveryScope {
+  return {
+    tenantId: `11111111-1111-4111-8111-${tenantSuffix.repeat(12)}`,
+    workspaceId: `22222222-2222-4222-8222-${workspaceSuffix.repeat(12)}`,
+  };
+}
+
+type QueryRawMock = jest.MockedFunction<
+  ReaderSummaryProductionRecoveryScopeDiscoveryClient["$queryRaw"]
+>;
+
+function scopeDiscoveryClient(
+  rows: readonly ReaderSummaryProductionRecoveryScope[],
+): Readonly<{
+  client: ReaderSummaryProductionRecoveryScopeDiscoveryClient;
+  queryRaw: QueryRawMock;
+}> {
+  const queryRaw = jest.fn(
+    async <T = unknown>(
+      _query: TemplateStringsArray,
+      ..._values: readonly unknown[]
+    ): Promise<T> => rows as unknown as T,
+  ) as QueryRawMock;
+  return { client: { $queryRaw: queryRaw }, queryRaw };
+}
+
+function sqlFromQueryRaw(queryRaw: QueryRawMock): string {
+  const call = queryRaw.mock.calls[0];
+  if (call === undefined) {
+    throw new Error("Expected discovery query to run");
+  }
+  const [strings, ...values] = call;
+  return strings.reduce(
+    (sql, chunk, index) =>
+      `${sql}${chunk}${index < values.length ? String(values[index]) : ""}`,
+    "",
+  );
+}
+
+function normalizeSql(sql: string): string {
+  return sql.replace(/\s+/gu, " ").trim().toLowerCase();
+}
+
+function expectProviderCount(
+  sql: string,
+  providerKey: string,
+  count: number,
+  occurrences: number,
+): void {
+  const token = `feed."provider_key" = '${providerKey}' ) = ${count}`;
+  expect(sql.split(token).length - 1).toBe(occurrences);
 }
 
 function bindingFixture(): ReaderSummaryProductionRecoveryAuthorityBinding {
