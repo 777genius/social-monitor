@@ -1,3 +1,20 @@
+import type {
+  FeedItemReadRepositoryPort,
+  FeedSourceContentItem,
+  ListFeedItemsQuery,
+  ListFeedItemsResult,
+} from "@social-monitor/feed/ports";
+import type {
+  PrepareReaderSummaryProductionRecoveryResult,
+  ReaderSummaryGitHubProjectionReaderPort,
+  ReaderSummaryProductionRecoveryAuthorityBinding,
+  ReaderSummaryProductionRecoveryAuthorityHandle,
+  ReaderSummaryProductionRecoveryAuthorityPort,
+  ReadReaderSummaryGitHubProjectionQuery,
+  ReadReaderSummaryGitHubProjectionResult,
+} from "@social-monitor/summary/ports";
+import type { ReaderSummaryGitHubProjectionItem } from "@social-monitor/summary/domain";
+
 export type ReaderSummaryProductionRecoveryScope = Readonly<{
   tenantId: string;
   workspaceId: string;
@@ -15,12 +32,79 @@ type ScopeDiscoveryRow = Readonly<{
   workspaceId: string;
 }>;
 
+type CloseableConnection = Readonly<{
+  close(): Promise<void>;
+}>;
+
 type ScopeEnv = Readonly<Record<string, string | undefined>>;
 
 const tenantScopeEnvName = "READER_SUMMARY_PRODUCTION_RECOVERY_TENANT_ID";
 const workspaceScopeEnvName = "READER_SUMMARY_PRODUCTION_RECOVERY_WORKSPACE_ID";
 const sourceDatabaseEnvName =
   "READER_SUMMARY_PRODUCTION_RECOVERY_SOURCE_DATABASE_URL";
+const millisecondsPerUtcDay = 86_400_000;
+
+type SnapshotFeedItem = NonNullable<
+  Awaited<ReturnType<FeedItemReadRepositoryPort["findById"]>>
+>;
+type FindFeedItemByIdQuery = Parameters<
+  FeedItemReadRepositoryPort["findById"]
+>[0];
+type ReadSourceContentQuery = Parameters<
+  NonNullable<FeedItemReadRepositoryPort["readSourceContent"]>
+>[0];
+
+type SourceSnapshotFeedItemReadRepositoryInput = Readonly<{
+  tenantId: string;
+  workspaceId: string;
+  feedItemsById: ReadonlyMap<string, SnapshotFeedItem>;
+  sourceContentByFeedItemId: ReadonlyMap<string, FeedSourceContentItem>;
+}>;
+
+type GitHubProjectionSnapshot = Readonly<{
+  tenantId: string;
+  workspaceId: string;
+  dayStartedAt: Date;
+  dayEndedAt: Date;
+  result: ReadReaderSummaryGitHubProjectionResult;
+}>;
+
+export type ReaderSummaryProductionRecoverySourceSnapshot = Readonly<{
+  scope: ReaderSummaryProductionRecoveryScope;
+  binding: ReaderSummaryProductionRecoveryAuthorityBinding;
+  authority: ReaderSummaryProductionRecoveryAuthorityPort;
+  feedItems: FeedItemReadRepositoryPort;
+  githubProjectionReader: ReaderSummaryGitHubProjectionReaderPort;
+}>;
+
+export type ReaderSummaryProductionRecoveryPhaseOptions<
+  SourceSummaryConnection extends ReaderSummaryProductionRecoveryScopeDiscoveryClient &
+    CloseableConnection,
+  SourceFeedConnection extends CloseableConnection,
+  ProductionSummaryConnection extends CloseableConnection,
+  Result,
+> = Readonly<{
+  env: ScopeEnv;
+  createSourceSummaryConnection(): Promise<SourceSummaryConnection>;
+  createSourceFeedConnection(): Promise<SourceFeedConnection>;
+  createProductionSummaryConnection(): Promise<ProductionSummaryConnection>;
+  discoverScope(
+    sourceSummaryConnection: SourceSummaryConnection,
+  ): Promise<ReaderSummaryProductionRecoveryScope>;
+  createSourceAuthority(
+    sourceSummaryConnection: SourceSummaryConnection,
+  ): ReaderSummaryProductionRecoveryAuthorityPort;
+  createSourceFeedItems(
+    sourceFeedConnection: SourceFeedConnection,
+  ): FeedItemReadRepositoryPort;
+  createSourceGitHubProjectionReader(
+    sourceSummaryConnection: SourceSummaryConnection,
+  ): ReaderSummaryGitHubProjectionReaderPort;
+  runProduction(params: {
+    readonly sourceSnapshot: ReaderSummaryProductionRecoverySourceSnapshot;
+    readonly productionSummaryConnection: ProductionSummaryConnection;
+  }): Promise<Result>;
+}>;
 
 export const resolveReaderSummaryProductionRecoveryScope = async (params: {
   readonly env: ScopeEnv;
@@ -89,6 +173,65 @@ export const discoverReaderSummaryProductionRecoveryScope = async (
   };
 };
 
+export const runReaderSummaryProductionRecoveryPhases = async <
+  SourceSummaryConnection extends ReaderSummaryProductionRecoveryScopeDiscoveryClient &
+    CloseableConnection,
+  SourceFeedConnection extends CloseableConnection,
+  ProductionSummaryConnection extends CloseableConnection,
+  Result,
+>(
+  options: ReaderSummaryProductionRecoveryPhaseOptions<
+    SourceSummaryConnection,
+    SourceFeedConnection,
+    ProductionSummaryConnection,
+    Result
+  >,
+): Promise<Result> => {
+  const sourceSnapshot =
+    await prepareReaderSummaryProductionRecoverySourceSnapshot(options);
+  const productionSummaryConnection =
+    await options.createProductionSummaryConnection();
+  try {
+    return await options.runProduction({
+      sourceSnapshot,
+      productionSummaryConnection,
+    });
+  } finally {
+    await productionSummaryConnection.close();
+  }
+};
+
+export const createReaderSummaryProductionRecoveryGitHubProjectionSnapshot =
+  async (params: {
+    readonly binding: ReaderSummaryProductionRecoveryAuthorityBinding;
+    readonly sourceReader: ReaderSummaryGitHubProjectionReaderPort;
+  }): Promise<ReaderSummaryGitHubProjectionReaderPort> => {
+    const snapshots: GitHubProjectionSnapshot[] = [];
+    for (const day of params.binding.days) {
+      if (day.githubEvidence.mode !== "verified_existing") {
+        continue;
+      }
+      const query = githubProjectionQueryForRecoveryDay({
+        binding: params.binding,
+        dayStartedAt: new Date(day.period.startedAt),
+        dayEndedAt: new Date(day.period.endedAt),
+        observedThrough: new Date(params.binding.lease.consumedAt),
+      });
+      snapshots.push({
+        tenantId: params.binding.tenantId,
+        workspaceId: params.binding.workspaceId,
+        dayStartedAt: query.dayStartedAt,
+        dayEndedAt: query.dayEndedAt,
+        result: cloneGitHubProjectionResult(
+          await params.sourceReader.read(query),
+        ),
+      });
+    }
+    return new ReaderSummaryProductionRecoveryGitHubProjectionSnapshotReader(
+      snapshots,
+    );
+  };
+
 async function main(): Promise<void> {
   const { loadDotenvIfPresent } = await import("./lib/env-file");
   loadDotenvIfPresent(".env");
@@ -154,31 +297,33 @@ async function main(): Promise<void> {
     sourceDatabaseUrl,
     "admin-tool",
   );
-  const productionSummaryConnection =
-    await PrismaSummaryConnection.create(productionRuntimePoolConfig);
-  let sourceSummaryConnection:
-    | Awaited<ReturnType<typeof PrismaSummaryConnection.create>>
-    | undefined;
 
-  try {
-    const sourceSummary =
-      await PrismaSummaryConnection.create(sourceRuntimePoolConfig);
-    sourceSummaryConnection = sourceSummary;
-    const scope = await resolveReaderSummaryProductionRecoveryScope({
-      env: process.env,
-      discover: () =>
-        runWithSystemDatabaseAccess(
-          "reader summary production recovery scope discovery",
-          () =>
-            discoverReaderSummaryProductionRecoveryScope(
-              sourceSummary,
-            ),
-        ),
-    });
-    const feedConnection = await PrismaFeedConnection.create(
-      sourceRuntimePoolConfig,
-    );
-    try {
+  const result = await runReaderSummaryProductionRecoveryPhases({
+    env: process.env,
+    createSourceSummaryConnection: () =>
+      PrismaSummaryConnection.create(sourceRuntimePoolConfig),
+    createSourceFeedConnection: () =>
+      PrismaFeedConnection.create(sourceRuntimePoolConfig),
+    createProductionSummaryConnection: () =>
+      PrismaSummaryConnection.create(productionRuntimePoolConfig),
+    discoverScope: (sourceSummary) =>
+      runWithSystemDatabaseAccess(
+        "reader summary production recovery scope discovery",
+        () =>
+          discoverReaderSummaryProductionRecoveryScope(
+            sourceSummary,
+          ),
+      ),
+    createSourceAuthority: (sourceSummary) =>
+      new PrismaReaderSummaryProductionRecoveryAuthority(sourceSummary),
+    createSourceFeedItems: (feedConnection) =>
+      new PrismaFeedItemReadRepository(feedConnection),
+    createSourceGitHubProjectionReader: (sourceSummary) =>
+      new PrismaReaderSummaryGitHubProjectionReader(sourceSummary),
+    runProduction: async ({
+      sourceSnapshot,
+      productionSummaryConnection,
+    }) => {
       const agentRuntimeClient = GrpcAgentRuntimeClient.connect({
         address: agentRuntimeAddress,
         clock,
@@ -188,12 +333,10 @@ async function main(): Promise<void> {
           serviceToken: readEnv("AGENT_RUNTIME_SERVICE_TOKEN"),
         },
       });
-      const result = await runWithTenantDatabaseAccess(scope, () =>
+      return runWithTenantDatabaseAccess(sourceSnapshot.scope, () =>
         runReaderSummaryProductionRecovery({
           apply: true,
-          authority: new PrismaReaderSummaryProductionRecoveryAuthority(
-            sourceSummary,
-          ),
+          authority: sourceSnapshot.authority,
           replayGuard: new PrismaReaderSummaryProductionRecoveryReplayGuard(
             productionSummaryConnection,
           ),
@@ -209,42 +352,372 @@ async function main(): Promise<void> {
             finalization: new PrismaReaderSummaryRecoveryFinalization(
               productionSummaryConnection,
             ),
-            feedItems: new PrismaFeedItemReadRepository(feedConnection),
-            githubProjectionReader:
-              new PrismaReaderSummaryGitHubProjectionReader(
-                sourceSummary,
-              ),
+            feedItems: sourceSnapshot.feedItems,
+            githubProjectionReader: sourceSnapshot.githubProjectionReader,
             ids: new CryptoIdGenerator(),
             clock,
           }),
         }),
       );
-      console.log(`outcome=${result.outcome}`);
-      console.log(`recovery=${result.plan.recoveryId}`);
-      for (const day of result.dayResults) {
-        console.log(
-          [
-            `date=${day.requestedUtcDate}`,
-            `outcome=${day.outcome}`,
-            day.readerSummaryJobId === undefined
-              ? undefined
-              : `job=${day.readerSummaryJobId}`,
-            day.readerSummaryId === undefined
-              ? undefined
-              : `artifact=${day.readerSummaryId}`,
-          ]
-            .filter((part): part is string => part !== undefined)
-            .join(" "),
-        );
-      }
-    } finally {
-      await feedConnection.close();
-    }
-  } finally {
-    await sourceSummaryConnection?.close();
-    await productionSummaryConnection.close();
+    },
+  });
+
+  console.log(`outcome=${result.outcome}`);
+  console.log(`recovery=${result.plan.recoveryId}`);
+  for (const day of result.dayResults) {
+    console.log(
+      [
+        `date=${day.requestedUtcDate}`,
+        `outcome=${day.outcome}`,
+        day.readerSummaryJobId === undefined
+          ? undefined
+          : `job=${day.readerSummaryJobId}`,
+        day.readerSummaryId === undefined
+          ? undefined
+          : `artifact=${day.readerSummaryId}`,
+      ]
+        .filter((part): part is string => part !== undefined)
+        .join(" "),
+    );
   }
 }
+
+const prepareReaderSummaryProductionRecoverySourceSnapshot = async <
+  SourceSummaryConnection extends ReaderSummaryProductionRecoveryScopeDiscoveryClient &
+    CloseableConnection,
+  SourceFeedConnection extends CloseableConnection,
+  ProductionSummaryConnection extends CloseableConnection,
+  Result,
+>(
+  options: ReaderSummaryProductionRecoveryPhaseOptions<
+    SourceSummaryConnection,
+    SourceFeedConnection,
+    ProductionSummaryConnection,
+    Result
+  >,
+): Promise<ReaderSummaryProductionRecoverySourceSnapshot> => {
+  const sourceSummaryConnection =
+    await options.createSourceSummaryConnection();
+  let sourceFeedConnection: SourceFeedConnection | undefined;
+  try {
+    const scope = await resolveReaderSummaryProductionRecoveryScope({
+      env: options.env,
+      discover: () => options.discoverScope(sourceSummaryConnection),
+    });
+    const sourceAuthority = options.createSourceAuthority(
+      sourceSummaryConnection,
+    );
+    const prepared = await sourceAuthority.prepare();
+    const binding = sourceAuthority.readVerifiedBinding(prepared.authority);
+    if (prepared.outcome === "replayed") {
+      return sourceSnapshotFromPreparedAuthority({
+        scope,
+        prepared,
+        binding,
+        feedItems: new UnavailableSourceSnapshotFeedItemReadRepository(),
+        githubProjectionReader:
+          new ReaderSummaryProductionRecoveryGitHubProjectionSnapshotReader([]),
+      });
+    }
+    sourceFeedConnection = await options.createSourceFeedConnection();
+    const feedItems = await createSourceSnapshotFeedItems({
+      binding,
+      sourceFeedItems: options.createSourceFeedItems(sourceFeedConnection),
+    });
+    const githubProjectionReader =
+      await createReaderSummaryProductionRecoveryGitHubProjectionSnapshot({
+        binding,
+        sourceReader:
+          options.createSourceGitHubProjectionReader(sourceSummaryConnection),
+      });
+    return sourceSnapshotFromPreparedAuthority({
+      scope,
+      prepared,
+      binding,
+      feedItems,
+      githubProjectionReader,
+    });
+  } finally {
+    await sourceFeedConnection?.close();
+    await sourceSummaryConnection.close();
+  }
+};
+
+const sourceSnapshotFromPreparedAuthority = (params: {
+  readonly scope: ReaderSummaryProductionRecoveryScope;
+  readonly prepared: PrepareReaderSummaryProductionRecoveryResult;
+  readonly binding: ReaderSummaryProductionRecoveryAuthorityBinding;
+  readonly feedItems: FeedItemReadRepositoryPort;
+  readonly githubProjectionReader: ReaderSummaryGitHubProjectionReaderPort;
+}): ReaderSummaryProductionRecoverySourceSnapshot => ({
+  scope: params.scope,
+  binding: params.binding,
+  authority: new ReaderSummaryProductionRecoverySnapshotAuthority(
+    params.prepared.outcome,
+    params.binding,
+  ),
+  feedItems: params.feedItems,
+  githubProjectionReader: params.githubProjectionReader,
+});
+
+const createSourceSnapshotFeedItems = async (params: {
+  readonly binding: ReaderSummaryProductionRecoveryAuthorityBinding;
+  readonly sourceFeedItems: FeedItemReadRepositoryPort;
+}): Promise<FeedItemReadRepositoryPort> => {
+  const feedItemIds = [
+    ...new Set(
+      params.binding.days.flatMap((day) =>
+        Object.values(day.providerEvidence).flatMap((rows) =>
+          rows
+            .filter((row) => row.providerKey !== "github-trending-page")
+            .map((row) => row.feedItemId),
+        ),
+      ),
+    ),
+  ].sort();
+  const sourceContent = await params.sourceFeedItems.readSourceContent?.({
+    tenantId: params.binding.tenantId as ReadSourceContentQuery["tenantId"],
+    workspaceId:
+      params.binding.workspaceId as ReadSourceContentQuery["workspaceId"],
+    feedItemIds,
+  });
+  const sourceContentByFeedItemId = new Map(
+    (sourceContent ?? []).map((item) => [item.feedItemId, item] as const),
+  );
+  const feedItemsById = new Map<string, SnapshotFeedItem>();
+  for (const feedItemId of feedItemIds) {
+    const feedItem = await params.sourceFeedItems.findById({
+      tenantId: params.binding.tenantId as FindFeedItemByIdQuery["tenantId"],
+      workspaceId:
+        params.binding.workspaceId as FindFeedItemByIdQuery["workspaceId"],
+      feedItemId,
+    });
+    if (feedItem === null) {
+      throw new Error(
+        `Reader summary production recovery source snapshot missing feed item ${feedItemId}`,
+      );
+    }
+    feedItemsById.set(feedItemId, feedItem);
+  }
+  return new SourceSnapshotFeedItemReadRepository({
+    tenantId: params.binding.tenantId,
+    workspaceId: params.binding.workspaceId,
+    feedItemsById,
+    sourceContentByFeedItemId,
+  });
+};
+
+class ReaderSummaryProductionRecoverySnapshotAuthority
+  implements ReaderSummaryProductionRecoveryAuthorityPort
+{
+  private readonly handle =
+    {} as ReaderSummaryProductionRecoveryAuthorityHandle;
+
+  constructor(
+    private readonly outcome: PrepareReaderSummaryProductionRecoveryResult["outcome"],
+    private readonly binding: ReaderSummaryProductionRecoveryAuthorityBinding,
+  ) {}
+
+  async prepare(): Promise<PrepareReaderSummaryProductionRecoveryResult> {
+    return { outcome: this.outcome, authority: this.handle };
+  }
+
+  readVerifiedBinding(
+    authority: ReaderSummaryProductionRecoveryAuthorityHandle,
+  ): ReaderSummaryProductionRecoveryAuthorityBinding {
+    if (authority !== this.handle) {
+      throw new Error(
+        "Reader summary production recovery source snapshot authority handle diverged",
+      );
+    }
+    return this.binding;
+  }
+}
+
+class SourceSnapshotFeedItemReadRepository
+  implements FeedItemReadRepositoryPort
+{
+  constructor(private readonly input: SourceSnapshotFeedItemReadRepositoryInput) {}
+
+  async list(_query: ListFeedItemsQuery): Promise<ListFeedItemsResult> {
+    void _query;
+    throw new Error(
+      "Reader summary production recovery source snapshot does not support feed list queries",
+    );
+  }
+
+  async findById(
+    query: FindFeedItemByIdQuery,
+  ): Promise<SnapshotFeedItem | null> {
+    if (
+      query.tenantId !== this.input.tenantId ||
+      query.workspaceId !== this.input.workspaceId
+    ) {
+      return null;
+    }
+    const feedItem = this.input.feedItemsById.get(query.feedItemId);
+    if (feedItem === undefined) {
+      return null;
+    }
+    const observedAt = feedItem.toSnapshot().observedAt;
+    if (
+      query.observedBefore !== undefined &&
+      observedAt.getTime() >= query.observedBefore.getTime()
+    ) {
+      return null;
+    }
+    return feedItem;
+  }
+
+  async readSourceContent(
+    query: ReadSourceContentQuery,
+  ): Promise<readonly FeedSourceContentItem[]> {
+    if (
+      query.tenantId !== this.input.tenantId ||
+      query.workspaceId !== this.input.workspaceId
+    ) {
+      return [];
+    }
+    return query.feedItemIds.flatMap((feedItemId) => {
+      const feedItem = this.input.feedItemsById.get(feedItemId);
+      const sourceContent =
+        this.input.sourceContentByFeedItemId.get(feedItemId);
+      if (feedItem === undefined || sourceContent === undefined) {
+        return [];
+      }
+      const observedAt = feedItem.toSnapshot().observedAt;
+      if (
+        query.observedBefore !== undefined &&
+        observedAt.getTime() >= query.observedBefore.getTime()
+      ) {
+        return [];
+      }
+      return [sourceContent];
+    });
+  }
+}
+
+class UnavailableSourceSnapshotFeedItemReadRepository
+  implements FeedItemReadRepositoryPort
+{
+  async list(_query: ListFeedItemsQuery): Promise<ListFeedItemsResult> {
+    void _query;
+    return { items: [] };
+  }
+
+  async findById(): Promise<null> {
+    return null;
+  }
+}
+
+class ReaderSummaryProductionRecoveryGitHubProjectionSnapshotReader
+  implements ReaderSummaryGitHubProjectionReaderPort
+{
+  private readonly snapshotsByDay = new Map<string, GitHubProjectionSnapshot>();
+
+  constructor(snapshots: readonly GitHubProjectionSnapshot[]) {
+    for (const snapshot of snapshots) {
+      this.snapshotsByDay.set(
+        recoveryUtcDayKey(snapshot.dayStartedAt, snapshot.dayEndedAt),
+        snapshot,
+      );
+    }
+  }
+
+  async read(
+    query: ReadReaderSummaryGitHubProjectionQuery,
+  ): Promise<ReadReaderSummaryGitHubProjectionResult> {
+    const dayKey = recoveryUtcDayKey(query.dayStartedAt, query.dayEndedAt);
+    if (query.observedThrough.getTime() < query.dayEndedAt.getTime()) {
+      throw new Error(
+        "Reader summary production recovery GitHub projection snapshot requires observedThrough at or after UTC day end",
+      );
+    }
+    const snapshot = this.snapshotsByDay.get(dayKey);
+    if (
+      snapshot === undefined ||
+      query.tenantId !== snapshot.tenantId ||
+      query.workspaceId !== snapshot.workspaceId
+    ) {
+      return { eligibleBindingIds: [], items: [], pageCount: 0 };
+    }
+    return cloneGitHubProjectionResult(snapshot.result);
+  }
+}
+
+const githubProjectionQueryForRecoveryDay = (params: {
+  readonly binding: ReaderSummaryProductionRecoveryAuthorityBinding;
+  readonly dayStartedAt: Date;
+  readonly dayEndedAt: Date;
+  readonly observedThrough: Date;
+}): ReadReaderSummaryGitHubProjectionQuery => ({
+  tenantId: params.binding.tenantId as ReadReaderSummaryGitHubProjectionQuery["tenantId"],
+  workspaceId: params.binding.workspaceId as ReadReaderSummaryGitHubProjectionQuery["workspaceId"],
+  dayStartedAt: params.dayStartedAt,
+  dayEndedAt: params.dayEndedAt,
+  observedThrough: params.observedThrough,
+});
+
+const recoveryUtcDayKey = (dayStartedAt: Date, dayEndedAt: Date): string => {
+  if (
+    !Number.isFinite(dayStartedAt.getTime()) ||
+    !Number.isFinite(dayEndedAt.getTime())
+  ) {
+    throw new Error(
+      "Reader summary production recovery GitHub projection snapshot requires finite UTC day bounds",
+    );
+  }
+  const dayKey = dayStartedAt.toISOString().slice(0, 10);
+  const expectedStart = new Date(`${dayKey}T00:00:00.000Z`);
+  const expectedEnd = new Date(
+    expectedStart.getTime() + millisecondsPerUtcDay,
+  );
+  if (
+    dayStartedAt.getTime() !== expectedStart.getTime() ||
+    dayEndedAt.getTime() !== expectedEnd.getTime()
+  ) {
+    throw new Error(
+      "Reader summary production recovery GitHub projection snapshot requires an exact UTC day",
+    );
+  }
+  return dayKey;
+};
+
+const cloneGitHubProjectionResult = (
+  result: ReadReaderSummaryGitHubProjectionResult,
+): ReadReaderSummaryGitHubProjectionResult => ({
+  eligibleBindingIds: [...result.eligibleBindingIds],
+  items: result.items.map(cloneGitHubProjectionItem),
+  pageCount: result.pageCount,
+});
+
+const cloneGitHubProjectionItem = (
+  item: ReaderSummaryGitHubProjectionItem,
+): ReaderSummaryGitHubProjectionItem => ({
+  feedItemId: item.feedItemId,
+  sourceItemId: item.sourceItemId,
+  sourceBindingId: item.sourceBindingId,
+  providerKey: item.providerKey,
+  ...(item.metadataKind === undefined ? {} : { metadataKind: item.metadataKind }),
+  ...(item.scanJobId === undefined ? {} : { scanJobId: item.scanJobId }),
+  canonicalUrl: item.canonicalUrl,
+  ...(item.repositoryFullName === undefined
+    ? {}
+    : { repositoryFullName: item.repositoryFullName }),
+  ...(item.rank === undefined ? {} : { rank: item.rank }),
+  ...(item.starsGained === undefined ? {} : { starsGained: item.starsGained }),
+  ...(item.window === undefined ? {} : { window: item.window }),
+  ...(item.fetchStartedAt === undefined
+    ? {}
+    : { fetchStartedAt: new Date(item.fetchStartedAt) }),
+  ...(item.checkedAt === undefined
+    ? {}
+    : { checkedAt: new Date(item.checkedAt) }),
+  publishedAt: new Date(item.publishedAt),
+  observedAt: new Date(item.observedAt),
+  sourceContentHash: item.sourceContentHash,
+  sourceProviderContentHash: item.sourceProviderContentHash,
+});
 
 function requiredEnv(name: string): string {
   const value = readEnv(name);

@@ -1,7 +1,15 @@
 import type {
+  FeedItemReadRepositoryPort,
+  FeedSourceContentItem,
+} from "@social-monitor/feed/ports";
+import type { ReaderSummaryGitHubProjectionItem } from "@social-monitor/summary/domain";
+import type {
+  ReaderSummaryGitHubProjectionReaderPort,
   ReaderSummaryProductionRecoveryAuthorityBinding,
   ReaderSummaryProductionRecoveryAuthorityHandle,
   ReaderSummaryProductionRecoveryAuthorityPort,
+  ReadReaderSummaryGitHubProjectionQuery,
+  ReadReaderSummaryGitHubProjectionResult,
 } from "@social-monitor/summary/ports";
 
 import {
@@ -14,9 +22,11 @@ import {
   type ReaderSummaryProductionRecoveryReplayGuardClient,
 } from "./reader-summary-production-recovery-replay-guard";
 import {
+  createReaderSummaryProductionRecoveryGitHubProjectionSnapshot,
   discoverReaderSummaryProductionRecoveryScope,
   resolveReaderSummaryProductionRecoverySourceDatabaseUrl,
   resolveReaderSummaryProductionRecoveryScope,
+  runReaderSummaryProductionRecoveryPhases,
   type ReaderSummaryProductionRecoveryScope,
   type ReaderSummaryProductionRecoveryScopeDiscoveryClient,
 } from "../recover-reader-summary-production";
@@ -253,6 +263,121 @@ describe("reader summary production recovery CLI wrapper", () => {
     ]);
   });
 
+  it("closes source snapshot leases before opening the production connection", async () => {
+    const events: string[] = [];
+    const binding = bindingFixture();
+    const sourceSummaryConnection = {
+      $queryRaw: jest.fn(),
+      close: jest.fn(async () => {
+        events.push("source-summary.close");
+      }),
+    };
+    const sourceFeedConnection = {
+      close: jest.fn(async () => {
+        events.push("source-feed.close");
+      }),
+    };
+    const productionSummaryConnection = {
+      close: jest.fn(async () => {
+        events.push("production.close");
+      }),
+    };
+    const result = await runReaderSummaryProductionRecoveryPhases({
+      env: {},
+      createSourceSummaryConnection: async () => {
+        events.push("source-summary.open");
+        return sourceSummaryConnection;
+      },
+      createSourceFeedConnection: async () => {
+        events.push("source-feed.open");
+        return sourceFeedConnection;
+      },
+      createProductionSummaryConnection: async () => {
+        events.push("production.open");
+        return productionSummaryConnection;
+      },
+      discoverScope: async () => {
+        events.push("scope.discover");
+        return {
+          tenantId: binding.tenantId,
+          workspaceId: binding.workspaceId,
+        };
+      },
+      createSourceAuthority: () => authorityPort("prepared", binding),
+      createSourceFeedItems: () => sourceFeedItemsForBinding(binding),
+      createSourceGitHubProjectionReader: () =>
+        githubProjectionReaderForBinding(binding),
+      runProduction: async ({ sourceSnapshot }) => {
+        events.push("production.run");
+        await sourceSnapshot.githubProjectionReader.read(
+          githubProjectionQueryForBinding(
+            binding,
+            new Date("2026-07-26T00:00:00.000Z"),
+          ),
+        );
+        return "ok" as const;
+      },
+    });
+
+    expect(result).toBe("ok");
+    expect(events.indexOf("source-feed.close")).toBeLessThan(
+      events.indexOf("production.open"),
+    );
+    expect(events.indexOf("source-summary.close")).toBeLessThan(
+      events.indexOf("production.open"),
+    );
+    expect(events).toEqual([
+      "source-summary.open",
+      "scope.discover",
+      "source-feed.open",
+      "source-feed.close",
+      "source-summary.close",
+      "production.open",
+      "production.run",
+      "production.close",
+    ]);
+  });
+
+  it("serves Jul24 GitHub projection at consumedAt and later prepublication observedThrough", async () => {
+    const binding = bindingFixture();
+    const sourceReader = githubProjectionReaderForBinding(binding);
+    const snapshot =
+      await createReaderSummaryProductionRecoveryGitHubProjectionSnapshot({
+        binding,
+        sourceReader,
+      });
+
+    const consumedAt = await snapshot.read(
+      githubProjectionQueryForBinding(
+        binding,
+        new Date(binding.lease.consumedAt),
+      ),
+    );
+    const dayEnd = await snapshot.read(
+      githubProjectionQueryForBinding(
+        binding,
+        new Date("2026-07-25T00:00:00.000Z"),
+      ),
+    );
+    const laterPrepublication = await snapshot.read(
+      githubProjectionQueryForBinding(
+        binding,
+        new Date("2026-07-27T12:00:00.000Z"),
+      ),
+    );
+
+    expect(sourceReader.read).toHaveBeenCalledTimes(1);
+    const sourceQuery = sourceReader.read.mock.calls[0]?.[0];
+    expect(sourceQuery?.observedThrough.toISOString()).toBe(
+      binding.lease.consumedAt,
+    );
+    expect(consumedAt.items).toHaveLength(10);
+    expect(dayEnd.items.map((item) => item.feedItemId)).toEqual(
+      consumedAt.items.map((item) => item.feedItemId),
+    );
+    expect(laterPrepublication).toEqual(consumedAt);
+  });
+
   it("checks production receipts with read-only replay SQL", async () => {
     const { client, queryRaw } = replayGuardClient(true);
     const guard = new PrismaReaderSummaryProductionRecoveryReplayGuard(client);
@@ -465,5 +590,142 @@ function day(
             scanJobIds: ["70000000-0000-4000-8000-000000000001"],
           },
     canonicalSha256: "d".repeat(64),
+  };
+}
+
+type FeedItemResult = NonNullable<
+  Awaited<ReturnType<FeedItemReadRepositoryPort["findById"]>>
+>;
+
+function sourceFeedItemsForBinding(
+  binding: ReaderSummaryProductionRecoveryAuthorityBinding,
+): FeedItemReadRepositoryPort {
+  const rowsByFeedItemId = new Map(
+    sourceOnlyEvidenceRows(binding).map((row) => [row.feedItemId, row] as const),
+  );
+  return {
+    list: jest.fn(async () => ({ items: [] })),
+    findById: jest.fn(async ({ feedItemId }) => {
+      const row = rowsByFeedItemId.get(feedItemId);
+      return row === undefined ? null : feedItemForAuthorityRow(binding, row);
+    }),
+    readSourceContent: jest.fn(async ({ feedItemIds }) =>
+      feedItemIds.flatMap((feedItemId): readonly FeedSourceContentItem[] => {
+        const row = rowsByFeedItemId.get(feedItemId);
+        return row === undefined
+          ? []
+          : [
+              {
+                feedItemId,
+                sourceItemId: row.sourceItemId,
+                body: `Source text for ${feedItemId}`,
+              },
+            ];
+      }),
+    ),
+  };
+}
+
+function sourceOnlyEvidenceRows(
+  binding: ReaderSummaryProductionRecoveryAuthorityBinding,
+) {
+  return binding.days.flatMap((recoveryDay) =>
+    Object.values(recoveryDay.providerEvidence).flatMap((rows) =>
+      rows.filter((row) => row.providerKey !== "github-trending-page"),
+    ),
+  );
+}
+
+function feedItemForAuthorityRow(
+  binding: ReaderSummaryProductionRecoveryAuthorityBinding,
+  row: ReturnType<typeof sourceOnlyEvidenceRows>[number],
+): FeedItemResult {
+  return {
+    toSnapshot: () => ({
+      id: row.feedItemId,
+      tenantId: binding.tenantId,
+      workspaceId: binding.workspaceId,
+      interestId: `interest:${row.providerKey}`,
+      sourceItemId: row.sourceItemId,
+      sourceBindingId: row.sourceBindingId,
+      providerKey: row.providerKey,
+      canonicalUrl: row.canonicalUrl,
+      title: `Title for ${row.feedItemId}`,
+      bodyPreview: `Preview for ${row.feedItemId}`,
+      publishedAt: new Date(row.publishedAt),
+      observedAt: new Date(row.observedAt),
+    }),
+  } as FeedItemResult;
+}
+
+function githubProjectionReaderForBinding(
+  binding: ReaderSummaryProductionRecoveryAuthorityBinding,
+): jest.Mocked<ReaderSummaryGitHubProjectionReaderPort> {
+  return {
+    read: jest.fn(async () => githubProjectionResultForBinding(binding)),
+  };
+}
+
+function githubProjectionResultForBinding(
+  binding: ReaderSummaryProductionRecoveryAuthorityBinding,
+): ReadReaderSummaryGitHubProjectionResult {
+  const day = binding.days.find(
+    (candidate) => candidate.requestedUtcDate === "2026-07-24",
+  );
+  if (day === undefined) {
+    throw new Error("Jul24 binding fixture is required");
+  }
+  const items = day.providerEvidence["github-trending-page"].map(
+    (row, index): ReaderSummaryGitHubProjectionItem => {
+      const github = row.github;
+      if (github === undefined) {
+        throw new Error("Jul24 GitHub projection fixture is incomplete");
+      }
+      return {
+        feedItemId: row.feedItemId,
+        sourceItemId: row.sourceItemId,
+        sourceBindingId: row.sourceBindingId,
+        providerKey: "github-trending-page",
+        metadataKind: "github_trending_page_repository",
+        scanJobId: github.scanJobId,
+        canonicalUrl: row.canonicalUrl,
+        repositoryFullName: github.repositoryIdentity,
+        rank: github.rank,
+        starsGained: 100 + index,
+        window: "daily",
+        fetchStartedAt: new Date("2026-07-24T00:00:01.000Z"),
+        checkedAt: new Date(github.checkedAt),
+        publishedAt: new Date(row.publishedAt),
+        observedAt: new Date(row.observedAt),
+        sourceContentHash: row.sourceContentHash,
+        sourceProviderContentHash: row.sourceProviderContentHash ?? "",
+      };
+    },
+  );
+  return {
+    eligibleBindingIds: [
+      ...new Set(items.map((item) => item.sourceBindingId)),
+    ].sort(),
+    items,
+    pageCount: 2,
+  };
+}
+
+function githubProjectionQueryForBinding(
+  binding: ReaderSummaryProductionRecoveryAuthorityBinding,
+  observedThrough: Date,
+): ReadReaderSummaryGitHubProjectionQuery {
+  const day = binding.days.find(
+    (candidate) => candidate.requestedUtcDate === "2026-07-24",
+  );
+  if (day === undefined) {
+    throw new Error("Jul24 binding fixture is required");
+  }
+  return {
+    tenantId: binding.tenantId as ReadReaderSummaryGitHubProjectionQuery["tenantId"],
+    workspaceId: binding.workspaceId as ReadReaderSummaryGitHubProjectionQuery["workspaceId"],
+    dayStartedAt: new Date(day.period.startedAt),
+    dayEndedAt: new Date(day.period.endedAt),
+    observedThrough,
   };
 }
