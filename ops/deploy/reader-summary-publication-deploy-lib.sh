@@ -125,8 +125,18 @@ ensure_system_database_url_deploy_contract() (
   reader_summary_publication_validate_runtime_database_urls \
     "$effective_api_secret" "$system_secret" || \
     fail 'SYSTEM_DATABASE_URL must be a separate social_monitor_system_app PostgreSQL URL with verify-full TLS; do not reuse DATABASE_URL'
-  validate_reader_summary_system_runtime_role "$admin_secret" "$ca_certificate" || \
-    fail 'SYSTEM_DATABASE_URL role validation failed; provision social_monitor_system_app with tenant-system capability before deploy'
+  if ! validate_reader_summary_system_runtime_role "$admin_secret" "$ca_certificate"; then
+    if [[ $system_secret == "$approved_system_secret" ]]; then
+      reader_summary_publication_bootstrap_system_database_url \
+        "$admin_secret" "$ca_certificate" "$approved_system_secret" || \
+        fail 'SYSTEM_DATABASE_URL system role repair failed'
+      validate_reader_summary_system_runtime_role \
+        "$admin_secret" "$ca_certificate" || \
+        fail 'SYSTEM_DATABASE_URL role validation failed after controlled repair'
+    else
+      fail 'SYSTEM_DATABASE_URL role validation failed; provision social_monitor_system_app with tenant-system capability before deploy'
+    fi
+  fi
   validate_reader_summary_system_database_auth "$system_secret" "$ca_certificate" || \
     fail 'SYSTEM_DATABASE_URL authentication failed; verify the social_monitor_system_app secret before deploy'
   if [[ $materialize_system_database_url == true ]]; then

@@ -64,7 +64,10 @@ reader_summary_publication_bootstrap_system_database_url() (
   local admin_secret=$1 ca_certificate=$2 system_secret=$3
   local system_password system_url sql_file temp_secret
 
-  reader_summary_publication_private_file_absent "$system_secret" || return 1
+  if ! reader_summary_publication_private_file_absent "$system_secret"; then
+    reader_summary_publication_private_file_valid "$system_secret" '400|600' || \
+      return 1
+  fi
   system_password=$(openssl rand -base64 48 | tr -d '\n') || return 1
   [[ -n $system_password ]] || return 1
   system_url=$(
@@ -229,32 +232,12 @@ BEGIN
 
   EXECUTE format(
     'GRANT social_monitor_reader_summary_publication_runtime TO %I '
-      'WITH ADMIN FALSE GRANTED BY CURRENT_USER',
-    v_system_runtime_role
-  );
-  EXECUTE format(
-    'GRANT social_monitor_reader_summary_publication_runtime TO %I '
-      'WITH INHERIT TRUE GRANTED BY CURRENT_USER',
-    v_system_runtime_role
-  );
-  EXECUTE format(
-    'GRANT social_monitor_reader_summary_publication_runtime TO %I '
-      'WITH SET FALSE GRANTED BY CURRENT_USER',
+      'WITH ADMIN FALSE, INHERIT TRUE, SET FALSE GRANTED BY CURRENT_USER',
     v_system_runtime_role
   );
   EXECUTE format(
     'GRANT social_monitor_tenant_system_runtime TO %I '
-      'WITH ADMIN FALSE GRANTED BY CURRENT_USER',
-    v_system_runtime_role
-  );
-  EXECUTE format(
-    'GRANT social_monitor_tenant_system_runtime TO %I '
-      'WITH INHERIT TRUE GRANTED BY CURRENT_USER',
-    v_system_runtime_role
-  );
-  EXECUTE format(
-    'GRANT social_monitor_tenant_system_runtime TO %I '
-      'WITH SET FALSE GRANTED BY CURRENT_USER',
+      'WITH ADMIN FALSE, INHERIT TRUE, SET FALSE GRANTED BY CURRENT_USER',
     v_system_runtime_role
   );
 

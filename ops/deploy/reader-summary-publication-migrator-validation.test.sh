@@ -41,6 +41,7 @@ SYSTEM_CATALOG_RESULT=$SYSTEM_VALID_CATALOG
 SYSTEM_CATALOG_QUERY_STATUS=0
 SYSTEM_AUTH_RESULT=$SYSTEM_VALID_AUTH
 SYSTEM_AUTH_QUERY_STATUS=0
+SYSTEM_CATALOG_AFTER_BOOTSTRAP_RESULT=
 AVAILABILITY_STATUS=0
 SECRET_OWNER=root
 SYSTEM_DSN_OWNER=root
@@ -96,6 +97,7 @@ if [[ -n $bootstrap_file ]]; then
   [[ $bootstrap_payload != *'SELECT set_config('* ]]
   [[ $bootstrap_payload != *'social_monitor.bootstrap_system_password'* ]]
   [[ $bootstrap_payload == *'CREATE TEMP TABLE reader_summary_publication_bootstrap_settings'* ]]
+  [[ $bootstrap_payload == *'WITH ADMIN FALSE, INHERIT TRUE, SET FALSE GRANTED BY CURRENT_USER'* ]]
   role_create_offset=$(grep -n "CREATE ROLE social_monitor_tenant_system_runtime" "$bootstrap_file" | cut -d: -f1 | head -n1)
   role_check_offset=$(grep -n "pg_has_role(" "$bootstrap_file" | cut -d: -f1 | head -n1)
   [[ -n $role_create_offset && -n $role_check_offset ]]
@@ -113,7 +115,13 @@ if [[ -n $query_file ]]; then
     [[ $query_payload == *"NOT pg_catalog.pg_has_role(:'runtime_role'"* ]]
     [[ $query_payload == *'social_monitor_tenant_system_runtime'* ]]
     [[ " $* " == *' --username=social_monitor_publication_migrator '* ]]
-    query_result=$SYSTEM_CATALOG_RESULT
+    if [[ -n ${SYSTEM_CATALOG_AFTER_BOOTSTRAP_RESULT:-} ]] && \
+        grep -Fx 'client:psql:bootstrap-file:mode=600' \
+          "$TRANSPORT_LOG" >/dev/null 2>&1; then
+      query_result=$SYSTEM_CATALOG_AFTER_BOOTSTRAP_RESULT
+    else
+      query_result=$SYSTEM_CATALOG_RESULT
+    fi
     client_status=$SYSTEM_CATALOG_QUERY_STATUS
   elif [[ $query_payload == *'current_user, '\''social_monitor_tenant_system_runtime'\'''* ]]; then
     [[ $query_payload == *'COALESCE(connection.ssl, false)'* ]]
@@ -296,6 +304,7 @@ docker() {
   script=${docker_arguments[index + 2]}
   child_arguments=("${docker_arguments[@]:index + 3}")
   : > "$TRANSPORT_PGPASS_PATH_LOG"
+  : > "$TRANSPORT_QUERY_PATH_LOG"
   set +e
   printf '%s\n' "$stdin_payload" | \
       env PATH="$FAKE_BIN:$PATH" \
@@ -305,6 +314,7 @@ docker() {
       SYSTEM_CATALOG_QUERY_STATUS="$SYSTEM_CATALOG_QUERY_STATUS" \
       SYSTEM_AUTH_RESULT="$SYSTEM_AUTH_RESULT" \
       SYSTEM_AUTH_QUERY_STATUS="$SYSTEM_AUTH_QUERY_STATUS" \
+      SYSTEM_CATALOG_AFTER_BOOTSTRAP_RESULT="$SYSTEM_CATALOG_AFTER_BOOTSTRAP_RESULT" \
       TRANSPORT_LOG="$TRANSPORT_LOG" \
       TRANSPORT_PGPASS_PATH_LOG="$TRANSPORT_PGPASS_PATH_LOG" \
       TRANSPORT_QUERY_PATH_LOG="$TRANSPORT_QUERY_PATH_LOG" \
@@ -379,6 +389,7 @@ reset_case() {
   SYSTEM_CATALOG_QUERY_STATUS=0
   SYSTEM_AUTH_RESULT=$SYSTEM_VALID_AUTH
   SYSTEM_AUTH_QUERY_STATUS=0
+  SYSTEM_CATALOG_AFTER_BOOTSTRAP_RESULT=
   TRANSPORT_CLIENT_STATUS=0
   TRANSPORT_QUERY_RESULT=
   TRANSPORT_EXPECTED_SYSTEM_PGPASS=
@@ -594,6 +605,21 @@ grep -F "SYSTEM_DATABASE_URL=postgresql://$SYSTEM_ROLE:" \
   "$ROOT/secrets/production.env" >/dev/null
 [[ $(stat -c '%a' "$ROOT/secrets/db/system-database-url") == 600 ]]
 grep -Fx 'client:psql:mode=600' "$TRANSPORT_LOG" >/dev/null
+grep -Fx 'client:psql:bootstrap-file:mode=600' "$TRANSPORT_LOG" >/dev/null
+TEST_COUNT=$((TEST_COUNT + 1))
+
+reset_case
+write_production_env "DATABASE_URL=$API_URL"
+write_system_url "$SYSTEM_URL"
+TRANSPORT_FORBIDDEN_ENV_VALUE=$SYSTEM_PASSWORD
+TRANSPORT_EXPECTED_PGPASS="${DATABASE_HOST}:25060:social_monitor:${MIGRATOR_ROLE}:${PRIVATE_PASSWORD}"
+TRANSPORT_EXPECTED_SYSTEM_PGPASS_PREFIX="${DATABASE_HOST}:25060:social_monitor:${SYSTEM_ROLE}:"
+SYSTEM_CATALOG_RESULT=$(system_catalog_with_field 16 t)
+SYSTEM_CATALOG_AFTER_BOOTSTRAP_RESULT=$SYSTEM_VALID_CATALOG
+system_contract_output=$(ensure_system_database_url_deploy_contract 2>&1)
+[[ -z $system_contract_output ]]
+grep -F "SYSTEM_DATABASE_URL=postgresql://$SYSTEM_ROLE:" \
+  "$ROOT/secrets/production.env" >/dev/null
 grep -Fx 'client:psql:bootstrap-file:mode=600' "$TRANSPORT_LOG" >/dev/null
 TEST_COUNT=$((TEST_COUNT + 1))
 
