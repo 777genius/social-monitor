@@ -215,6 +215,17 @@ TRANSITION_STAGING=$TRANSITION_ROOT/runtime/deploy-staging
 TRANSITION_LOG=$TRANSITION/transactions.log
 OLD_CONTROLLER=$TRANSITION/old-controller.sh
 OLD_SOURCE_SHA=
+CURRENT_ENTRYPOINT_SOURCE_CLOSURE=(
+  ops/deploy/social-monitor-production-deploy.sh
+  ops/deploy/deploy-control-lib.sh
+  ops/deploy/postgres-runtime-deploy-lib.sh
+  ops/deploy/backend-runtime-health-lib.sh
+  ops/deploy/backend-image-rescue-lib.sh
+  ops/deploy/docker-maintenance-lib.sh
+  ops/deploy/daily-runner-image-bootstrap-lib.sh
+  ops/deploy/x-collector-image-deploy-lib.sh
+  ops/deploy/reader-summary-recovery-maintenance-lib.sh
+)
 
 while IFS= read -r candidate; do
   if ! git -C "$SOURCE_REPOSITORY" cat-file -e \
@@ -255,12 +266,9 @@ OLD_RELEASE_SHA=$(git -C "$TRANSITION_REPO" rev-parse HEAD)
 cp "$TRANSITION_REPO/ops/deploy/social-monitor-production-deploy.sh" \
   "$OLD_CONTROLLER"
 
-cp "$ENTRYPOINT" "$TRANSITION_REPO/ops/deploy/"
-cp "$SCRIPT_DIR/deploy-control-lib.sh" \
-  "$SCRIPT_DIR/backend-runtime-health-lib.sh" \
-  "$SCRIPT_DIR/daily-runner-image-bootstrap-lib.sh" \
-  "$SCRIPT_DIR/x-collector-image-deploy-lib.sh" \
-  "$TRANSITION_REPO/ops/deploy/"
+for path in "${CURRENT_ENTRYPOINT_SOURCE_CLOSURE[@]}"; do
+  cp "$SOURCE_REPOSITORY/$path" "$TRANSITION_REPO/$path"
+done
 git -C "$TRANSITION_REPO" add ops/deploy
 git -C "$TRANSITION_REPO" commit -qm 'test: Release A provenance controller'
 RELEASE_A_SHA=$(git -C "$TRANSITION_REPO" rev-parse HEAD)
@@ -269,6 +277,10 @@ if git -C "$TRANSITION_REPO" cat-file -e \
   echo 'Release A transition fixture contains the Release B Dockerfile' >&2
   exit 1
 fi
+for path in "${CURRENT_ENTRYPOINT_SOURCE_CLOSURE[@]}"; do
+  [[ -f $TRANSITION_REPO/$path && ! -L $TRANSITION_REPO/$path ]]
+  cmp -s "$SOURCE_REPOSITORY/$path" "$TRANSITION_REPO/$path"
+done
 
 install -d "$TRANSITION_REPO/ops/deploy/production-runtime"
 # shellcheck disable=SC2016 # Dockerfile label must retain literal expansion.
@@ -355,6 +367,21 @@ RELEASE_B_SHA="$RELEASE_B_SHA" TRANSITION_LOG="$TRANSITION_LOG" \
 A_CONTROLLER="$TRANSITION_CONTROL/github-production-deploy.sh" \
   bash -c '
     set -euo pipefail
+    required_sources=(
+      ops/deploy/social-monitor-production-deploy.sh
+      ops/deploy/deploy-control-lib.sh
+      ops/deploy/postgres-runtime-deploy-lib.sh
+      ops/deploy/backend-runtime-health-lib.sh
+      ops/deploy/backend-image-rescue-lib.sh
+      ops/deploy/docker-maintenance-lib.sh
+      ops/deploy/daily-runner-image-bootstrap-lib.sh
+      ops/deploy/x-collector-image-deploy-lib.sh
+      ops/deploy/reader-summary-recovery-maintenance-lib.sh
+    )
+    deploy_repo=${SOCIAL_MONITOR_DEPLOY_REPO:?}
+    for path in "${required_sources[@]}"; do
+      [[ -f $deploy_repo/$path && ! -L $deploy_repo/$path ]]
+    done
     source "$A_CONTROLLER"
     reconcile_completed_backend_image_rescues() { :; }
     load_target_reader_summary_publication_deploy_library() { :; }
