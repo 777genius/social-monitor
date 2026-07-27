@@ -206,10 +206,10 @@ BACKUP_MIGRATION_STATE=$FIXTURE/backup-migration-state.txt
 BACKUP_DOCKER_LOG=$FIXTURE/backup-docker.log
 install -d "$ROOT/backups" "$ROOT/secrets/db"
 printf '%s\n' fixture-ca > "$ROOT/secrets/db/ca-certificate.crt"
-BACKUP_ADMIN_SECRET=$ROOT/secrets/db/reader-summary-publication-admin-url BACKUP_DATABASE_HOST=dbaas-db-8050451-do-user-39622063-0.e.db.ondigitalocean.com
+BACKUP_ADMIN_DSN_FILE=$ROOT/secrets/db/reader-summary-publication-admin-url BACKUP_DATABASE_HOST=dbaas-db-8050451-do-user-39622063-0.e.db.ondigitalocean.com
 BACKUP_DSN_QUERY='connect_timeout=10&sslmode=verify-full&sslrootcert=%2Frun%2Fsocial-monitor-db%2Fca-certificate.crt'
-BACKUP_ADMIN_DATABASE_URL="postgresql://social_monitor_publication_migrator:backup@$BACKUP_DATABASE_HOST:25060/social_monitor?$BACKUP_DSN_QUERY"
-BACKUP_API_DATABASE_URL="postgresql://social_monitor_app:runtime@$BACKUP_DATABASE_HOST:25060/social_monitor?$BACKUP_DSN_QUERY"
+BACKUP_ADMIN_DATABASE_URL="postgresql://social_monitor_publication_migrator:password@$BACKUP_DATABASE_HOST:25060/social_monitor?$BACKUP_DSN_QUERY"
+BACKUP_API_DATABASE_URL="postgresql://social_monitor_app:password@$BACKUP_DATABASE_HOST:25060/social_monitor?$BACKUP_DSN_QUERY"
 [[ $BACKUP_ADMIN_DATABASE_URL != "$BACKUP_API_DATABASE_URL" ]]
 cat > "$BACKUP_SCHEMA" <<'TEXT'
 _prisma_migrations
@@ -238,7 +238,7 @@ printf 'reader-summary-publication-migration-state-v1\t0\t0\t0\t0\t0\t0\nexact-h
 
 run_backup_fixture() {
   local dump_mode=$1 backup_timestamp=$2
-  printf '%s\n' "$BACKUP_ADMIN_DATABASE_URL" > "$BACKUP_ADMIN_SECRET"; chmod 0400 "$BACKUP_ADMIN_SECRET"
+  printf '%s\n' "$BACKUP_ADMIN_DATABASE_URL" > "$BACKUP_ADMIN_DSN_FILE"; chmod 0400 "$BACKUP_ADMIN_DSN_FILE"
   # Fixture values expand only inside this isolated child shell.
   # shellcheck disable=SC2016
   BACKUP_DUMP_MODE=$dump_mode BACKUP_SHA=$BASE_SHA \
