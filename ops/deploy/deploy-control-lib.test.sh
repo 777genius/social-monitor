@@ -227,7 +227,11 @@ install -m 0644 "$valid_activation" "$source_activation"
 # target and no component diff. The source is active while the installed legacy
 # runtime has no activation marker, so reconciliation alone must select runtime
 # control without changing the compatible backend release identity.
-for unit in social-monitor-daily.service social-monitor-prod.service; do
+for unit in \
+  social-monitor-daily.service \
+  social-monitor-prod.service \
+  social-monitor-weekly.service \
+  social-monitor-weekly.timer; do
   install -m 0644 "$source_runtime/$unit" "$SYSTEMD_UNIT_DIR/$unit"
 done
 install -m 0755 "$source_runtime/daily-run.sh" "$CONTROL/daily-run.sh"
