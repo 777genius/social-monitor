@@ -217,7 +217,7 @@ BEGIN
     );
   ELSE
     EXECUTE format(
-      'ALTER ROLE %I WITH LOGIN PASSWORD %L',
+      'ALTER ROLE %I WITH LOGIN PASSWORD %L INHERIT',
       v_system_runtime_role,
       v_system_password
     );
