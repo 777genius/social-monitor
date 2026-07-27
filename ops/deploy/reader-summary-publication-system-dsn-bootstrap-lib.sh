@@ -232,13 +232,18 @@ BEGIN
   END IF;
 
   EXECUTE format(
-    'GRANT social_monitor_reader_summary_publication_runtime TO %I '
+    'GRANT %I TO %I '
       'WITH ADMIN FALSE, INHERIT TRUE, SET FALSE GRANTED BY CURRENT_USER',
+    v_runtime_role,
     v_system_runtime_role
   );
   EXECUTE format(
     'GRANT social_monitor_tenant_system_runtime TO %I '
       'WITH ADMIN FALSE, INHERIT TRUE, SET FALSE GRANTED BY CURRENT_USER',
+    v_system_runtime_role
+  );
+  EXECUTE format(
+    'REVOKE social_monitor_reader_summary_publication_runtime FROM %I',
     v_system_runtime_role
   );
 
@@ -251,7 +256,7 @@ BEGIN
       ON member.oid = membership.member
     WHERE member.rolname = v_system_runtime_role
       AND granted.rolname NOT IN (
-        'social_monitor_reader_summary_publication_runtime',
+        v_runtime_role,
         'social_monitor_tenant_system_runtime'
       )
   ) THEN

@@ -99,7 +99,9 @@ if [[ -n $bootstrap_file ]]; then
   [[ $bootstrap_payload == *'\set VERBOSITY terse'* ]]
   [[ $bootstrap_payload == *'\set SHOW_CONTEXT never'* ]]
   [[ $bootstrap_payload == *'CREATE TEMP TABLE reader_summary_publication_bootstrap_settings'* ]]
+  [[ $bootstrap_payload == *'GRANT %I TO %I '* ]]
   [[ $bootstrap_payload == *'WITH ADMIN FALSE, INHERIT TRUE, SET FALSE GRANTED BY CURRENT_USER'* ]]
+  [[ $bootstrap_payload == *'REVOKE social_monitor_reader_summary_publication_runtime FROM %I'* ]]
   [[ $bootstrap_payload == *'ALTER ROLE %I WITH LOGIN PASSWORD %L INHERIT'* ]]
   [[ $bootstrap_payload != *'ALTER ROLE %I WITH LOGIN PASSWORD %L INHERIT NOSUPERUSER'* ]]
   role_create_offset=$(grep -n "CREATE ROLE social_monitor_tenant_system_runtime" "$bootstrap_file" | cut -d: -f1 | head -n1)
@@ -300,6 +302,8 @@ docker() {
     [[ $bootstrap_payload == *'\set VERBOSITY terse'* ]]
     [[ $bootstrap_payload == *'\set SHOW_CONTEXT never'* ]]
     [[ $bootstrap_payload == *'CREATE TEMP TABLE reader_summary_publication_bootstrap_settings'* ]]
+    [[ $bootstrap_payload == *'GRANT %I TO %I '* ]]
+    [[ $bootstrap_payload == *'REVOKE social_monitor_reader_summary_publication_runtime FROM %I'* ]]
     [[ $bootstrap_payload == *'ALTER ROLE %I WITH LOGIN PASSWORD %L INHERIT'* ]]
     [[ $bootstrap_payload != *'ALTER ROLE %I WITH LOGIN PASSWORD %L INHERIT NOSUPERUSER'* ]]
     role_create_offset=$(grep -n "CREATE ROLE social_monitor_tenant_system_runtime" "$mounted_bootstrap_sql" | cut -d: -f1 | head -n1)
