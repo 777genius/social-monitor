@@ -43,9 +43,9 @@ SYSTEM_AUTH_RESULT=$SYSTEM_VALID_AUTH
 SYSTEM_AUTH_QUERY_STATUS=0
 AVAILABILITY_STATUS=0
 SECRET_OWNER=root
-SYSTEM_SECRET_OWNER=root
+SYSTEM_DSN_OWNER=root
 SECRET_METADATA_STATUS=0
-SYSTEM_SECRET_CHOWN_STATUS=0
+SYSTEM_DSN_CHOWN_EXIT=0
 CA_OWNER=root
 CA_METADATA_STATUS=0
 FAIL_PHASE=
@@ -168,9 +168,9 @@ stat() {
 chown() {
   local last_argument=${!#}
   if [[ $last_argument == "$ROOT/secrets/db/system-database-url" ]]; then
-    ((SYSTEM_SECRET_CHOWN_STATUS == 0)) || return "$SYSTEM_SECRET_CHOWN_STATUS"
+    ((SYSTEM_DSN_CHOWN_EXIT == 0)) || return "$SYSTEM_DSN_CHOWN_EXIT"
     printf '%s\n' "$last_argument" >> "$CHOWN_LOG"
-    SYSTEM_SECRET_OWNER=root
+    SYSTEM_DSN_OWNER=root
     return 0
   fi
   command chown "$@"
@@ -197,7 +197,7 @@ reader_summary_publication_admin_secret_metadata() {
   fi
   if [[ $1 == "$ROOT/secrets/db/system-database-url" ]]; then
     ((SECRET_METADATA_STATUS == 0)) || return "$SECRET_METADATA_STATUS"
-    printf '%s|%s\n' "$SYSTEM_SECRET_OWNER" "$mode"
+    printf '%s|%s\n' "$SYSTEM_DSN_OWNER" "$mode"
     return
   fi
   ((CA_METADATA_STATUS == 0)) || return "$CA_METADATA_STATUS"
@@ -339,9 +339,9 @@ reset_case() {
   TRANSPORT_EXPECTED_SYSTEM_PGPASS=
   AVAILABILITY_STATUS=0
   SECRET_OWNER=root
-  SYSTEM_SECRET_OWNER=root
+  SYSTEM_DSN_OWNER=root
   SECRET_METADATA_STATUS=0
-  SYSTEM_SECRET_CHOWN_STATUS=0
+  SYSTEM_DSN_CHOWN_EXIT=0
   CA_OWNER=root
   CA_METADATA_STATUS=0
   FAIL_PHASE=
@@ -569,7 +569,7 @@ reset_case
 write_production_env "DATABASE_URL=$API_URL"
 write_system_url "$SYSTEM_URL"
 chmod 0644 "$ROOT/secrets/db/system-database-url"
-SYSTEM_SECRET_OWNER=deploy-user
+SYSTEM_DSN_OWNER=deploy-user
 TRANSPORT_FORBIDDEN_ENV_VALUE=$SYSTEM_PASSWORD
 TRANSPORT_EXPECTED_PGPASS="${DATABASE_HOST}:25060:social_monitor:${MIGRATOR_ROLE}:${PRIVATE_PASSWORD}"
 TRANSPORT_EXPECTED_SYSTEM_PGPASS="${DATABASE_HOST}:25060:social_monitor:${SYSTEM_ROLE}:${SYSTEM_PASSWORD}"
@@ -584,8 +584,8 @@ reset_case
 write_production_env "DATABASE_URL=$API_URL"
 write_system_url "$SYSTEM_URL"
 chmod 0644 "$ROOT/secrets/db/system-database-url"
-SYSTEM_SECRET_OWNER=deploy-user
-SYSTEM_SECRET_CHOWN_STATUS=43
+SYSTEM_DSN_OWNER=deploy-user
+SYSTEM_DSN_CHOWN_EXIT=43
 assert_system_contract_failure unrepairable-system-secret-owner
 if grep -F 'SYSTEM_DATABASE_URL=' "$ROOT/secrets/production.env" >/dev/null; then
   exit 1
