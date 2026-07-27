@@ -100,6 +100,10 @@ if SSH_ORIGINAL_COMMAND=$'plan '"$TARGET_SHA"$'\ndeploy '"$TARGET_SHA" \
   exit 1
 fi
 
+disk_report=$(run_entrypoint disk-report "$TARGET_SHA")
+grep -Fx 'docker-disk-report-begin' <<< "$disk_report" >/dev/null
+grep -Fx 'docker-disk-report-end' <<< "$disk_report" >/dev/null
+
 printf '{"schemaVersion":1}\n' > "$REPO/ops/recovery/backup-restore-contract.json"
 git -C "$REPO" add ops/recovery/backup-restore-contract.json
 git -C "$REPO" commit -qm 'test: backup contract control change'

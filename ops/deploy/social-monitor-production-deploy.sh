@@ -606,6 +606,33 @@ cleanup_stopped_project_containers() {
   docker rm -f "${container_ids[@]}" >/dev/null
 }
 
+print_docker_disk_report() {
+  printf 'docker-disk-report-begin\n'
+  df -h / /var/lib/docker 2>/dev/null || df -h /
+  if ! command -v docker >/dev/null 2>&1; then
+    printf 'docker=unavailable\n'
+    printf 'docker-disk-report-end\n'
+    return 0
+  fi
+  docker system df || true
+  docker ps -a \
+    --filter "label=com.docker.compose.project=$PROJECT" \
+    --format 'project-container id={{.ID}} service={{.Label "com.docker.compose.service"}} status={{.Status}} name={{.Names}}' || true
+  docker image ls \
+    --format 'image repository={{.Repository}} tag={{.Tag}} id={{.ID}} size={{.Size}}' | \
+    awk '$0 ~ /social-monitor|<none>/ {print}' | head -n 200 || true
+  printf 'docker-disk-report-end\n'
+}
+
+cleanup_project_docker_storage() {
+  print_docker_disk_report
+  cleanup_stopped_project_containers || \
+    fail 'stopped project container cleanup failed'
+  backend_image_rescue_cleanup_abandoned_partials || \
+    fail 'abandoned backend image rescue cleanup failed'
+  print_docker_disk_report
+}
+
 stop_and_remove_database_services() {
   local service
   local -a database_services=() container_ids remaining_container_ids
@@ -1014,5 +1041,7 @@ case ${action:-} in
   plan) print_plan "$sha" ;;
   upload) upload_frontend "$sha" ;;
   deploy) deploy_release "$sha" ;;
-  *) fail 'allowed commands: plan, upload, deploy' ;;
+  disk-report) print_docker_disk_report ;;
+  project-disk-cleanup) cleanup_project_docker_storage ;;
+  *) fail 'allowed commands: plan, upload, deploy, disk-report, project-disk-cleanup' ;;
 esac

@@ -87,6 +87,10 @@ fake_ssh() {
       IFS= read -r value
       printf '%s\n' "$value" > "$FAKE_UPLOAD_PATH"
       ;;
+    maintenance_success:"disk-report $TARGET_SHA")
+      printf 'docker-disk-report-begin\n'
+      printf 'docker-disk-report-end\n'
+      ;;
     normal_success:"deploy $TARGET_SHA")
       printf 'deployed=%s\n' "$TARGET_SHA"
       ;;
@@ -242,6 +246,11 @@ grep -Fx 'fake-private-key' "$DEPLOY_SSH_KEY_PATH" >/dev/null
 grep -Fx 'fake-known-hosts' "$DEPLOY_SSH_KNOWN_HOSTS_PATH" >/dev/null
 bash "$CLIENT" cleanup
 [[ ! -e $DEPLOY_SSH_KEY_PATH && ! -e $DEPLOY_SSH_KNOWN_HOSTS_PATH ]]
+
+run_client maintenance_success maintenance "$TARGET_SHA" disk-report >/dev/null
+assert_call_count 1 "disk-report $TARGET_SHA"
+assert_fails maintenance_success maintenance "$TARGET_SHA" docker-system-prune
+assert_call_count 0 "docker-system-prune $TARGET_SHA"
 
 : > "$GITHUB_OUTPUT"
 run_client plan_success plan "$TARGET_SHA" >/dev/null

@@ -35,6 +35,16 @@ on:
       - tsconfig.json
       - tsconfig.build.json
   workflow_dispatch:
+    inputs:
+      maintenance_action:
+        description: Optional bounded production maintenance action
+        required: false
+        default: none
+        type: choice
+        options:
+          - none
+          - disk-report
+          - project-disk-cleanup
 
 permissions:
   contents: read
@@ -44,7 +54,35 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  production_maintenance:
+    name: Production maintenance
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.maintenance_action != 'none' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+
+    steps:
+      - name: Check out the release commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+
+      - name: Configure restricted production SSH
+        env:
+          DEPLOY_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
+          KNOWN_HOSTS: ${{ secrets.PRODUCTION_SSH_KNOWN_HOSTS }}
+        run: bash ops/deploy/github-production-deploy-client.sh configure
+
+      - name: Run bounded production maintenance
+        env:
+          DEPLOY_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
+          DEPLOY_USER: ${{ vars.PRODUCTION_SSH_USER }}
+        run: bash ops/deploy/github-production-deploy-client.sh maintenance "$GITHUB_SHA" "${{ inputs.maintenance_action }}"
+
+      - name: Remove production SSH material
+        if: always()
+        run: bash ops/deploy/github-production-deploy-client.sh cleanup
+
   plan:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.maintenance_action == 'none' }}
     name: Plan changed production components
     runs-on: ubuntu-latest
     timeout-minutes: 10

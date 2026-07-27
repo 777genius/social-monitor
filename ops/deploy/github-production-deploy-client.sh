@@ -89,6 +89,22 @@ run_remote() {
     -- "$DEPLOY_USER@$DEPLOY_HOST" "$action $sha"
 }
 
+validate_maintenance_action() {
+  case ${1:-} in
+    disk-report|project-disk-cleanup) ;;
+    *) fail 'maintenance action must be disk-report or project-disk-cleanup' ;;
+  esac
+}
+
+run_maintenance() {
+  local sha=$1
+  local maintenance_action=$2
+  validate_sha "$sha"
+  validate_maintenance_action "$maintenance_action"
+  validate_remote_environment
+  run_remote "$maintenance_action" "$sha"
+}
+
 plan_parse_error() {
   printf 'deploy-client-error: invalid deploy plan: %s\n' "$*" >&2
   return 1
@@ -337,5 +353,9 @@ case $action in
     validate_remote_environment
     deploy_release "$2"
     ;;
-  *) fail 'allowed commands: configure, cleanup, plan, upload, deploy' ;;
+  maintenance)
+    [[ $# == 3 ]] || fail 'maintenance requires a target SHA and action'
+    run_maintenance "$2" "$3"
+    ;;
+  *) fail 'allowed commands: configure, cleanup, plan, upload, deploy, maintenance' ;;
 esac
