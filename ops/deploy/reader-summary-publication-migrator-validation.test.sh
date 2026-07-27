@@ -42,6 +42,7 @@ SYSTEM_AUTH_RESULT=$SYSTEM_VALID_AUTH
 SYSTEM_AUTH_QUERY_STATUS=0
 AVAILABILITY_STATUS=0
 SECRET_OWNER=root
+SYSTEM_SECRET_OWNER=root
 SECRET_METADATA_STATUS=0
 CA_OWNER=root
 CA_METADATA_STATUS=0
@@ -179,6 +180,11 @@ reader_summary_publication_admin_secret_metadata() {
   if [[ $1 == "$SECRET" ]]; then
     ((SECRET_METADATA_STATUS == 0)) || return "$SECRET_METADATA_STATUS"
     printf '%s|%s\n' "$SECRET_OWNER" "$mode"
+    return
+  fi
+  if [[ $1 == "$ROOT/secrets/db/system-database-url" ]]; then
+    ((SECRET_METADATA_STATUS == 0)) || return "$SECRET_METADATA_STATUS"
+    printf '%s|%s\n' "$SYSTEM_SECRET_OWNER" "$mode"
     return
   fi
   ((CA_METADATA_STATUS == 0)) || return "$CA_METADATA_STATUS"
@@ -319,6 +325,7 @@ reset_case() {
   TRANSPORT_EXPECTED_SYSTEM_PGPASS=
   AVAILABILITY_STATUS=0
   SECRET_OWNER=root
+  SYSTEM_SECRET_OWNER=root
   SECRET_METADATA_STATUS=0
   CA_OWNER=root
   CA_METADATA_STATUS=0
@@ -517,6 +524,7 @@ TEST_COUNT=$((TEST_COUNT + 1))
 reset_case
 write_production_env "DATABASE_URL=$API_URL"
 write_system_url "$SYSTEM_URL"
+chmod 0644 "$ROOT/secrets/db/system-database-url"
 TRANSPORT_FORBIDDEN_ENV_VALUE=$SYSTEM_PASSWORD
 TRANSPORT_EXPECTED_PGPASS="${DATABASE_HOST}:25060:social_monitor:${MIGRATOR_ROLE}:${PRIVATE_PASSWORD}"
 TRANSPORT_EXPECTED_SYSTEM_PGPASS="${DATABASE_HOST}:25060:social_monitor:${SYSTEM_ROLE}:${SYSTEM_PASSWORD}"
@@ -524,6 +532,7 @@ system_contract_output=$(ensure_system_database_url_deploy_contract 2>&1)
 [[ -z $system_contract_output ]]
 grep -Fx "SYSTEM_DATABASE_URL=$SYSTEM_URL"   "$ROOT/secrets/production.env" >/dev/null
 [[ $(stat -c '%a' "$ROOT/secrets/production.env") == 600 ]]
+[[ $(stat -c '%a' "$ROOT/secrets/db/system-database-url") == 600 ]]
 grep -Fx 'client:psql:mode=600' "$TRANSPORT_LOG" >/dev/null
 [[ $(grep -cFx 'client:psql:catalog-file:mode=600' "$TRANSPORT_LOG") == 2 ]]
 TEST_COUNT=$((TEST_COUNT + 1))
@@ -540,6 +549,16 @@ while IFS= read -r tenant_service; do
   : "$tenant_service"
 done <<< "$tenant_system_services"
 TEST_COUNT=$((TEST_COUNT + 1))
+
+reset_case
+write_production_env "DATABASE_URL=$API_URL"
+write_system_url "$SYSTEM_URL"
+chmod 0644 "$ROOT/secrets/db/system-database-url"
+SYSTEM_SECRET_OWNER=deploy-user
+assert_system_contract_failure unsafe-system-secret-owner
+if grep -F 'SYSTEM_DATABASE_URL=' "$ROOT/secrets/production.env" >/dev/null; then
+  exit 1
+fi
 
 prepare_system_contract_case
 write_production_env "DATABASE_URL=$API_URL" "SYSTEM_DATABASE_URL=$API_URL"

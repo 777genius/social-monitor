@@ -107,7 +107,7 @@ ensure_system_database_url_deploy_contract() (
       system_secret_ref=$approved_system_secret
     fi
     [[ $system_secret_ref == "$approved_system_secret" ]] || fail 'SYSTEM_DATABASE_URL_SECRET_REF must point to the approved root-owned social_monitor_system_app DSN file; deploy will not reuse DATABASE_URL.'
-    reader_summary_publication_private_file_valid "$approved_system_secret" '400|600' || \
+    reader_summary_publication_repair_private_file_mode "$approved_system_secret" '400|600' '600' || \
       fail 'SYSTEM_DATABASE_URL secret file must be root-owned with mode 0400 or 0600'
     system_secret=$approved_system_secret
     materialize_system_database_url=true
@@ -169,6 +169,20 @@ reader_summary_publication_private_file_valid() {
   metadata=$(reader_summary_publication_admin_secret_metadata "$path" 2>/dev/null) || return 1
   IFS='|' read -r owner mode <<< "$metadata"
   [[ $owner == root && "|$allowed_modes|" == *"|$mode|"* ]]
+}
+
+reader_summary_publication_repair_private_file_mode() {
+  local path=$1 allowed_modes=$2 repaired_mode=$3
+  local metadata owner mode
+
+  reader_summary_publication_private_file_valid "$path" "$allowed_modes" && return 0
+  [[ -f $path && ! -L $path && -s $path ]] || return 1
+  metadata=$(reader_summary_publication_admin_secret_metadata "$path" 2>/dev/null) || return 1
+  IFS='|' read -r owner mode <<< "$metadata"
+  [[ $owner == root ]] || return 1
+  [[ $repaired_mode =~ ^[0-7]{3}$ && "|$allowed_modes|" == *"|$repaired_mode|"* ]] || return 1
+  chmod "$repaired_mode" "$path" || return 1
+  reader_summary_publication_private_file_valid "$path" "$allowed_modes"
 }
 
 reader_summary_publication_validate_runtime_database_urls() (
