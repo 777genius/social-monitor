@@ -3,7 +3,6 @@ set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 LIBRARY=$SCRIPT_DIR/x-collector-image-deploy-lib.sh
-ENTRYPOINT=$SCRIPT_DIR/social-monitor-production-deploy.sh
 SOURCE_REPOSITORY=$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)
 DOCKERFILE_PATH=ops/deploy/production-runtime/x-collector.Dockerfile
 RELEASE_A_SOURCE_SHA=73b9ce4327bd8db060d7d1905fdc771796d5911c
