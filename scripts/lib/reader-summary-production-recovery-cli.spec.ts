@@ -11,6 +11,8 @@ import type {
   ReadReaderSummaryGitHubProjectionQuery,
   ReadReaderSummaryGitHubProjectionResult,
 } from "@social-monitor/summary/ports";
+import type { PrismaReaderSummaryClient } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-client";
+import type { PrismaSummaryTransactionOptions } from "@social-monitor/summary/adapters/persistence/prisma/prisma-summary-transaction";
 
 import {
   runReaderSummaryProductionRecovery,
@@ -379,7 +381,7 @@ describe("reader summary production recovery CLI wrapper", () => {
   });
 
   it("checks production receipts with read-only replay SQL", async () => {
-    const { client, queryRaw } = replayGuardClient(true);
+    const { client, queryRaw, transaction } = replayGuardClient(true);
     const guard = new PrismaReaderSummaryProductionRecoveryReplayGuard(client);
 
     await expect(
@@ -389,6 +391,7 @@ describe("reader summary production recovery CLI wrapper", () => {
       }),
     ).resolves.toBe(true);
 
+    expectReplayGuardTransactionOptions(transaction);
     const sql = normalizeSql(sqlFromQueryRaw(queryRaw));
     expect(sql).toContain(
       'from "reader_summary_recovery_receipts" as receipt',
@@ -401,6 +404,20 @@ describe("reader summary production recovery CLI wrapper", () => {
     expect(sql).not.toMatch(/\bfeed_items\b|\bsource_items\b/u);
     expect(sql).not.toMatch(/\binsert\b|\bupdate\b|\bdelete\b/u);
     expect(sql).not.toMatch(/\bfinalize_reader_summary_recovery\b/u);
+  });
+
+  it("returns false when exact production recovery receipts are absent", async () => {
+    const { client, transaction } = replayGuardClient(false);
+    const guard = new PrismaReaderSummaryProductionRecoveryReplayGuard(client);
+
+    await expect(
+      guard.isReplayed({
+        binding: bindingFixture(),
+        requestedUtcDate: "2026-07-24",
+      }),
+    ).resolves.toBe(false);
+
+    expectReplayGuardTransactionOptions(transaction);
   });
 });
 
@@ -428,6 +445,9 @@ function scopeFixture(
 type QueryRawMock = jest.MockedFunction<
   ReaderSummaryProductionRecoveryScopeDiscoveryClient["$queryRaw"]
 >;
+type ReplayGuardTransactionMock = jest.MockedFunction<
+  NonNullable<ReaderSummaryProductionRecoveryReplayGuardClient["$transaction"]>
+>;
 
 function scopeDiscoveryClient(
   rows: readonly ReaderSummaryProductionRecoveryScope[],
@@ -447,6 +467,7 @@ function scopeDiscoveryClient(
 function replayGuardClient(replayed: boolean): Readonly<{
   client: ReaderSummaryProductionRecoveryReplayGuardClient;
   queryRaw: QueryRawMock;
+  transaction: ReplayGuardTransactionMock;
 }> {
   const queryRaw = jest.fn(
     async <T = unknown>(
@@ -454,7 +475,29 @@ function replayGuardClient(replayed: boolean): Readonly<{
       ..._values: readonly unknown[]
     ): Promise<T> => [{ replayed }] as unknown as T,
   ) as QueryRawMock;
-  return { client: { $queryRaw: queryRaw }, queryRaw };
+  const transaction = jest.fn(
+    async <TValue>(
+      operation: (client: PrismaReaderSummaryClient) => Promise<TValue>,
+      _options?: PrismaSummaryTransactionOptions,
+    ): Promise<TValue> =>
+      operation({ $queryRaw: queryRaw } as PrismaReaderSummaryClient),
+  ) as ReplayGuardTransactionMock;
+  return {
+    client: { $queryRaw: queryRaw, $transaction: transaction },
+    queryRaw,
+    transaction,
+  };
+}
+
+function expectReplayGuardTransactionOptions(
+  transaction: ReplayGuardTransactionMock,
+): void {
+  expect(transaction).toHaveBeenCalledTimes(1);
+  expect(transaction.mock.calls[0]?.[1]).toEqual({
+    isolationLevel: "Serializable",
+    maxWait: 30_000,
+    timeout: 300_000,
+  });
 }
 
 function sqlFromQueryRaw(queryRaw: QueryRawMock): string {
