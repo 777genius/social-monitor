@@ -108,7 +108,7 @@ ensure_system_database_url_deploy_contract() (
     fi
     [[ $system_secret_ref == "$approved_system_secret" ]] || fail 'SYSTEM_DATABASE_URL_SECRET_REF must point to the approved root-owned social_monitor_system_app DSN file; deploy will not reuse DATABASE_URL.'
     reader_summary_publication_repair_private_file_mode "$approved_system_secret" '400|600' '600' || \
-      fail 'SYSTEM_DATABASE_URL secret file must be root-owned with mode 0400 or 0600'
+      fail "SYSTEM_DATABASE_URL secret file must be root-owned with mode 0400 or 0600 ($(reader_summary_publication_private_file_state "$approved_system_secret"))"
     system_secret=$approved_system_secret
     materialize_system_database_url=true
   else
@@ -190,6 +190,25 @@ reader_summary_publication_resolve_private_repair_path() {
   resolved=$(readlink -f "$path") || return 1
   [[ -f $resolved && ! -L $resolved && -s $resolved ]] || return 1
   printf '%s\n' "$resolved"
+}
+
+reader_summary_publication_private_file_state() {
+  local path=$1
+  local exists=false symlink=false resolved=false regular=false non_empty=false
+  local owner=unavailable mode=unavailable metadata resolved_path
+
+  [[ -e $path || -L $path ]] && exists=true
+  [[ -L $path ]] && symlink=true
+  if resolved_path=$(readlink -f "$path" 2>/dev/null); then
+    resolved=true
+    [[ -f $resolved_path && ! -L $resolved_path ]] && regular=true
+    [[ -s $resolved_path ]] && non_empty=true
+    if metadata=$(reader_summary_publication_admin_secret_metadata "$resolved_path" 2>/dev/null); then
+      IFS='|' read -r owner mode <<< "$metadata"
+    fi
+  fi
+  printf 'dsn_file_state=exists:%s,symlink:%s,resolved:%s,regular:%s,non_empty:%s,owner:%s,mode:%s' \
+    "$exists" "$symlink" "$resolved" "$regular" "$non_empty" "$owner" "$mode"
 }
 
 reader_summary_publication_validate_runtime_database_urls() (
