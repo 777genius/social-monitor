@@ -56,6 +56,17 @@ export type HealthResponse = {
   readonly uptimeSeconds: number;
 };
 
+type ReadinessCheck = {
+  readonly name: string;
+  readonly status: "ok" | "degraded";
+  readonly detail: string;
+};
+
+type MetricsReadiness = {
+  readonly health: MetricsRuntimeHealth;
+  readonly check: ReadinessCheck;
+};
+
 export type ReadinessResponse = HealthResponse & {
   readonly runtime: {
     readonly nodeEnv: string;
@@ -105,11 +116,7 @@ export type ReadinessResponse = HealthResponse & {
     readonly liveBetaReadySources: readonly string[];
     readonly deferredSources: readonly string[];
   };
-  readonly checks: readonly {
-    readonly name: string;
-    readonly status: "ok";
-    readonly detail: string;
-  }[];
+  readonly checks: readonly ReadinessCheck[];
 };
 
 export type UptimeSecondsReader = () => number;
@@ -182,72 +189,74 @@ export class ApiGatewayHealthReporter {
 
   async ready(): Promise<ReadinessResponse> {
     const databaseReadiness = await this.checkDatabaseReadiness();
+    const runtimeProfile = resolveRuntimeProfile(this.env);
+    const persistence = {
+      monitoring: resolveMonitoringPersistenceMode(this.env),
+      feed: resolveFeedPersistenceMode(this.env),
+      ingestionSupport: resolveIngestionSupportPersistenceMode(this.env),
+      summary: resolveSummaryPersistenceMode(this.env),
+      delivery: resolveDeliveryPersistenceMode(this.env),
+      identity: resolveIdentityPersistenceMode(this.env),
+      usage: resolveUsagePersistenceMode(this.env),
+    };
+    const workerLoops = {
+      ingestionScanScheduler: this.loopMode(
+        resolveIngestionScanSchedulerLoopOptions(this.env).enabled,
+      ),
+      ingestionScanQueueDrain: this.loopMode(
+        resolveIngestionScanQueueDrainLoopOptions(this.env).enabled,
+      ),
+      intelligenceSummaryJob: this.loopMode(
+        resolveIntelligenceSummaryJobLoopOptions(this.env).enabled,
+      ),
+      intelligenceSummaryQueueDrain: this.loopMode(
+        resolveIntelligenceSummaryQueueDrainLoopOptions(this.env).enabled,
+      ),
+      deliveryDigestScheduler: this.loopMode(
+        resolveDeliveryDigestSchedulerLoopOptions(this.env).enabled,
+      ),
+      deliveryAttemptDispatch: this.loopMode(
+        resolveDeliveryAttemptDispatchLoopOptions(this.env).enabled,
+      ),
+      deliveryAttemptQueueDrain: this.loopMode(
+        resolveDeliveryAttemptQueueDrainLoopOptions(this.env).enabled,
+      ),
+      deliverySummaryReadyEventDrain: this.loopMode(
+        resolveDeliverySummaryReadyEventDrainLoopOptions(this.env).enabled,
+      ),
+      eventRelay: this.loopMode(resolveEventRelayLoopOptions(this.env).enabled),
+    };
+    const queues = {
+      monitoringScanPublisher: resolveMonitoringScanQueueMode(this.env),
+      ingestionScanReader: resolveIngestionScanQueueReaderMode(this.env),
+      summaryJobPublisher: resolveSummaryJobQueueMode(this.env),
+      intelligenceSummaryReader: resolveIntelligenceSummaryQueueReaderMode(
+        this.env,
+      ),
+      deliveryAttemptPublisher: resolveDeliveryAttemptDispatchQueueMode(
+        this.env,
+      ),
+      deliveryAttemptReader: resolveDeliveryAttemptQueueReaderMode(this.env),
+      deliverySummaryReadyEventReader:
+        resolveDeliverySummaryReadyEventReaderMode(this.env),
+    };
+    const providers = {
+      deliveryWebhook: resolveDeliveryWebhookProviderMode(this.env),
+      deliveryEnabledChannels: resolveDeliveryEnabledChannels(this.env).join(
+        ",",
+      ),
+    };
+    const metricsReadiness = this.metricsReadiness();
     return {
       ...this.ok(),
       runtime: {
         nodeEnv: this.env.NODE_ENV ?? "development",
-        runtimeProfile: resolveRuntimeProfile(this.env),
-        persistence: {
-          monitoring: resolveMonitoringPersistenceMode(this.env),
-          feed: resolveFeedPersistenceMode(this.env),
-          ingestionSupport: resolveIngestionSupportPersistenceMode(this.env),
-          summary: resolveSummaryPersistenceMode(this.env),
-          delivery: resolveDeliveryPersistenceMode(this.env),
-          identity: resolveIdentityPersistenceMode(this.env),
-          usage: resolveUsagePersistenceMode(this.env),
-        },
-        workerLoops: {
-          ingestionScanScheduler: this.loopMode(
-            resolveIngestionScanSchedulerLoopOptions(this.env).enabled,
-          ),
-          ingestionScanQueueDrain: this.loopMode(
-            resolveIngestionScanQueueDrainLoopOptions(this.env).enabled,
-          ),
-          intelligenceSummaryJob: this.loopMode(
-            resolveIntelligenceSummaryJobLoopOptions(this.env).enabled,
-          ),
-          intelligenceSummaryQueueDrain: this.loopMode(
-            resolveIntelligenceSummaryQueueDrainLoopOptions(this.env).enabled,
-          ),
-          deliveryDigestScheduler: this.loopMode(
-            resolveDeliveryDigestSchedulerLoopOptions(this.env).enabled,
-          ),
-          deliveryAttemptDispatch: this.loopMode(
-            resolveDeliveryAttemptDispatchLoopOptions(this.env).enabled,
-          ),
-          deliveryAttemptQueueDrain: this.loopMode(
-            resolveDeliveryAttemptQueueDrainLoopOptions(this.env).enabled,
-          ),
-          deliverySummaryReadyEventDrain: this.loopMode(
-            resolveDeliverySummaryReadyEventDrainLoopOptions(this.env).enabled,
-          ),
-          eventRelay: this.loopMode(
-            resolveEventRelayLoopOptions(this.env).enabled,
-          ),
-        },
-        queues: {
-          monitoringScanPublisher: resolveMonitoringScanQueueMode(this.env),
-          ingestionScanReader: resolveIngestionScanQueueReaderMode(this.env),
-          summaryJobPublisher: resolveSummaryJobQueueMode(this.env),
-          intelligenceSummaryReader: resolveIntelligenceSummaryQueueReaderMode(
-            this.env,
-          ),
-          deliveryAttemptPublisher: resolveDeliveryAttemptDispatchQueueMode(
-            this.env,
-          ),
-          deliveryAttemptReader: resolveDeliveryAttemptQueueReaderMode(
-            this.env,
-          ),
-          deliverySummaryReadyEventReader:
-            resolveDeliverySummaryReadyEventReaderMode(this.env),
-        },
-        providers: {
-          deliveryWebhook: resolveDeliveryWebhookProviderMode(this.env),
-          deliveryEnabledChannels: resolveDeliveryEnabledChannels(
-            this.env,
-          ).join(","),
-        },
-        metrics: this.requireMetricsHealth(),
+        runtimeProfile,
+        persistence,
+        workerLoops,
+        queues,
+        providers,
+        metrics: metricsReadiness.health,
       },
       capabilities: {
         rest: "enabled",
@@ -295,11 +304,7 @@ export class ApiGatewayHealthReporter {
               ? "A query completed through the bounded shared Prisma pool."
               : "Database dependency not required: all API gateway Prisma persistence selectors are disabled; PostgreSQL probe was not executed.",
         },
-        {
-          name: "metrics_exporter",
-          status: "ok",
-          detail: this.metricsReadinessDetail(),
-        },
+        metricsReadiness.check,
       ],
     };
   }
@@ -336,29 +341,60 @@ export class ApiGatewayHealthReporter {
     if (resolveRuntimeProfile(this.env) === "beta" && health.mode !== "otlp") {
       throw new Error("Beta API gateway metrics runtime must use OTLP");
     }
-    if (health.mode === "otlp") {
-      this.requireFreshOtlpExport(health);
-    }
     return health;
   }
 
-  private requireFreshOtlpExport(health: MetricsRuntimeHealth): void {
+  private metricsReadiness(): MetricsReadiness {
+    const health = this.requireMetricsHealth();
+    return {
+      health,
+      check: {
+        name: "metrics_exporter",
+        ...this.metricsExportCheck(health),
+      },
+    };
+  }
+
+  private metricsExportCheck(
+    health: MetricsRuntimeHealth,
+  ): Pick<ReadinessCheck, "status" | "detail"> {
+    if (health.mode !== "otlp") {
+      return {
+        status: "ok",
+        detail: "Deterministic in-memory metrics runtime active.",
+      };
+    }
+    const degradedDetail = this.degradedOtlpExportDetail(health);
+    if (degradedDetail !== undefined) {
+      return {
+        status: "degraded",
+        detail: degradedDetail,
+      };
+    }
+    return {
+      status: "ok",
+      detail: `OTLP metrics runtime active; last successful export: ${health.lastExportAt}.`,
+    };
+  }
+
+  private degradedOtlpExportDetail(
+    health: MetricsRuntimeHealth,
+  ): string | undefined {
     const config = resolveMetricsRuntimeConfig(this.env, health.serviceName);
     const freshnessWindowMillis =
       config.exportIntervalMillis + config.exportTimeoutMillis;
     if (health.exportState === "failed") {
-      throw new Error("API gateway OTLP metrics export failed");
+      return "OTLP metrics export not_ready: latest export failed; metrics export is non-blocking for API readiness.";
     }
     if (health.exportState === "pending") {
-      if (this.uptimeSeconds() * 1_000 > freshnessWindowMillis) {
-        throw new Error(
-          "API gateway OTLP metrics export remained pending beyond startup grace",
-        );
-      }
-      return;
+      const graceDetail =
+        this.uptimeSeconds() * 1_000 > freshnessWindowMillis
+          ? "beyond startup grace"
+          : "within startup grace";
+      return `OTLP metrics export not_ready: export is pending ${graceDetail}; metrics export is non-blocking for API readiness.`;
     }
     if (health.exportState !== "succeeded") {
-      throw new Error("API gateway OTLP metrics export state is invalid");
+      return `OTLP metrics export not_ready: export state ${health.exportState} is invalid; metrics export is non-blocking for API readiness.`;
     }
     const lastSuccessfulExportAt = Date.parse(health.lastExportAt ?? "");
     const now = this.clock.now().getTime();
@@ -367,17 +403,9 @@ export class ApiGatewayHealthReporter {
       lastSuccessfulExportAt > now ||
       now - lastSuccessfulExportAt > freshnessWindowMillis
     ) {
-      throw new Error(
-        "API gateway OTLP metrics last successful export is missing or stale",
-      );
+      return "OTLP metrics export not_ready: last successful export is missing or stale; metrics export is non-blocking for API readiness.";
     }
-  }
-
-  private metricsReadinessDetail(): string {
-    const health = this.requireMetricsHealth();
-    return health.mode === "otlp"
-      ? `OTLP metrics runtime active; last successful export: ${health.lastExportAt ?? "pending"}.`
-      : "Deterministic in-memory metrics runtime active.";
+    return undefined;
   }
 
   private loopMode(enabled: boolean): "enabled" | "disabled" {
