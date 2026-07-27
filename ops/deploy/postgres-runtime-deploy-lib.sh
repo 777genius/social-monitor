@@ -848,6 +848,47 @@ verify_concurrent_backend_readiness() {
   ((status == 0))
 }
 
+frontend_api_proxy_expected_auth_denial() {
+  local body=$1
+  [[ -n $body ]] || return 1
+  printf '%s' "$body" | python3 -c '
+import json
+import sys
+
+try:
+    payload = json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+
+if not isinstance(payload, dict):
+    sys.exit(1)
+
+expected = (
+    payload.get("status") == 403
+    and payload.get("code") == "authorization.denied"
+    and payload.get("detail") == "Bearer JWT workspace membership is missing"
+)
+sys.exit(0 if expected else 1)
+'
+}
+
+verify_frontend_api_proxy_auth_session() {
+  local body response status suffix
+  response=$(
+    curl -sS --max-time 15 \
+      -H 'Host: social-monitor.app' \
+      -w $'\n%{http_code}' \
+      http://127.0.0.1:13080/auth/session
+  ) || return 1
+  status=${response##*$'\n'}
+  [[ $status =~ ^[0-9]{3}$ ]] || return 1
+  [[ $status =~ ^2[0-9][0-9]$ ]] && return 0
+  [[ $status == 403 ]] || return 1
+  suffix=$'\n'"$status"
+  body=${response%"$suffix"}
+  frontend_api_proxy_expected_auth_denial "$body"
+}
+
 verify_frontend_api_proxy() {
   local frontend_id status oom
   frontend_id=$("${COMPOSE[@]}" --profile app ps -q frontend)
@@ -855,9 +896,7 @@ verify_frontend_api_proxy() {
   status=$(docker inspect "$frontend_id" --format '{{.State.Status}}')
   oom=$(docker inspect "$frontend_id" --format '{{.State.OOMKilled}}')
   [[ $status == running && $oom == false ]] || return 1
-  curl -fsS --max-time 15 \
-    -H 'Host: social-monitor.app' \
-    http://127.0.0.1:13080/auth/session >/dev/null
+  verify_frontend_api_proxy_auth_session
 }
 
 refresh_frontend_api_proxy() {
