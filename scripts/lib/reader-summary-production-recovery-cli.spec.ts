@@ -90,7 +90,10 @@ describe("reader summary production recovery CLI wrapper", () => {
     expect(sql).toContain(
       "date '2026-07-25'::timestamp at time zone 'utc'",
     );
-    expect(sql).toContain('count(*) = count(distinct source."id")');
+    expect(sql).toContain('feed."observed_at" >=');
+    expect(sql).toContain('feed."observed_at" <');
+    expect(sql).toContain('count(*) = count(distinct feed."id")');
+    expect(sql).not.toContain('feed."published_at"');
     expectProviderCount(sql, "github-trending-page", 0, 1);
     expectProviderCount(sql, "hacker-news", 100, 2);
     expectProviderCount(sql, "reddit", 100, 2);

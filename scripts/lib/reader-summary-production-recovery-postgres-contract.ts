@@ -162,8 +162,9 @@ export const seedReaderSummaryProductionRecoveryFixture = async (
       'Recovery fixture ' || item.item_number,
       'Immutable fixture body ' || item.item_number,
       NULL,
-      item.requested_utc_date::timestamp AT TIME ZONE 'UTC' +
-        interval '12 hours' + item.position * interval '1 millisecond',
+      item.requested_utc_date::timestamp AT TIME ZONE 'UTC' -
+        interval '2 days' + interval '18 hours' +
+        item.position * interval '1 millisecond',
       encode(sha256(convert_to('source:' || item.item_number, 'UTF8')), 'hex'),
       CASE
         WHEN item.provider_key = 'github-trending-page'
@@ -231,8 +232,9 @@ export const seedReaderSummaryProductionRecoveryFixture = async (
       'Recovery fixture ' || item.item_number,
       'Immutable fixture body ' || item.item_number,
       NULL,
-      item.requested_utc_date::timestamp AT TIME ZONE 'UTC' +
-        interval '12 hours' + item.position * interval '1 millisecond',
+      item.requested_utc_date::timestamp AT TIME ZONE 'UTC' -
+        interval '2 days' + interval '18 hours' +
+        item.position * interval '1 millisecond',
       item.requested_utc_date::timestamp AT TIME ZONE 'UTC' +
         interval '12 hours' + item.position * interval '1 millisecond',
       NULL,
@@ -329,6 +331,7 @@ export const assertReaderSummaryProductionRecoveryPostgresContract =
   }>): Promise<void> => {
     const before = await boundaryCounts(params.auditor);
     const jul21Before = await jul21Fingerprint(params.auditor);
+    await assertSourceBindingMismatchFailsClosed(params.auditor);
     const [left, right] = await Promise.all([
       prepareWithSerializableRetry(params.first),
       prepareWithSerializableRetry(params.second),
@@ -367,7 +370,7 @@ export const assertReaderSummaryProductionRecoveryPostgresContract =
            WHERE tenant_id = $1
              AND workspace_id = $2
              AND provider_key = 'hacker-news'
-             AND published_at >= '2026-07-24T00:00:00.000Z'
+             AND observed_at >= '2026-07-24T00:00:00.000Z'
            ORDER BY id
            LIMIT 1
         )`,
@@ -415,6 +418,8 @@ const assertPersistedAuthority = async (
     jul24_counts: unknown;
     jul24_github_mode: string;
     jul24_github_count: number;
+    retained_published_at: string;
+    retained_observed_at: string;
   }>(
     `SELECT
        (SELECT count(*) FROM reader_summary_production_recovery_leases) AS lease_count,
@@ -448,6 +453,22 @@ const assertPersistedAuthority = async (
           FROM reader_summary_production_recovery_days
          WHERE requested_utc_date = DATE '2026-07-24')
            AS jul24_github_count,
+       (SELECT entry->>'publishedAt'
+          FROM reader_summary_production_recovery_days day
+          CROSS JOIN LATERAL jsonb_array_elements(
+            day.provider_evidence->'hacker-news'
+          ) evidence(entry)
+         WHERE requested_utc_date = DATE '2026-07-23'
+         ORDER BY entry->>'feedItemId'
+         LIMIT 1) AS retained_published_at,
+       (SELECT entry->>'observedAt'
+          FROM reader_summary_production_recovery_days day
+          CROSS JOIN LATERAL jsonb_array_elements(
+            day.provider_evidence->'hacker-news'
+          ) evidence(entry)
+         WHERE requested_utc_date = DATE '2026-07-23'
+         ORDER BY entry->>'feedItemId'
+         LIMIT 1) AS retained_observed_at,
        evidence.evidence_count::text AS evidence_count,
        (evidence.evidence_count -
          evidence.distinct_feed_count)::text AS duplicate_feed_count,
@@ -482,6 +503,8 @@ const assertPersistedAuthority = async (
       jul23Mode: row.jul23_github_mode,
       jul24Mode: row.jul24_github_mode,
       jul24GitHubCount: row.jul24_github_count,
+      retainedPublishedAt: row.retained_published_at,
+      retainedObservedAt: row.retained_observed_at,
     },
     {
       leaseCount: "1",
@@ -496,6 +519,8 @@ const assertPersistedAuthority = async (
       jul23Mode: "historical_unavailable",
       jul24Mode: "verified_existing",
       jul24GitHubCount: 10,
+      retainedPublishedAt: "2026-07-21T18:00:00.001Z",
+      retainedObservedAt: "2026-07-23T12:00:00.001Z",
     },
     "persisted recovery cardinality and evidence seals must be exact",
   );
@@ -561,6 +586,47 @@ const assertPersistedAuthority = async (
     },
     "runtime must receive only fixed-path prepare and read authority",
   );
+};
+
+const assertSourceBindingMismatchFailsClosed = async (
+  client: RecoveryPostgresClient,
+): Promise<void> => {
+  await client.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
+  try {
+    await client.query(
+      `SELECT
+         set_config('social_monitor.tenant_id', $1, false),
+         set_config('social_monitor.workspace_id', $2, false),
+         set_config('social_monitor.system_access', 'false', false)`,
+      [tenantId, workspaceId],
+    );
+    await client.query(
+      `UPDATE source_items
+          SET source_binding_id =
+            '30000000-0000-4000-8000-000000000003'::uuid
+        WHERE id = (
+          SELECT source_item_id
+            FROM feed_items
+           WHERE tenant_id = $1
+             AND workspace_id = $2
+             AND provider_key = 'hacker-news'
+             AND observed_at >= '2026-07-24T00:00:00.000Z'
+           ORDER BY id
+           LIMIT 1
+        )`,
+      [tenantId, workspaceId],
+    );
+    await assertRejects(
+      () =>
+        client.query(
+          `SELECT recovery_id
+             FROM prepare_reader_summary_production_recovery()`,
+        ),
+      "source/feed source_binding mismatch must fail closed",
+    );
+  } finally {
+    await client.query("ROLLBACK").catch(() => undefined);
+  }
 };
 
 const prepareWithSerializableRetry = async (
