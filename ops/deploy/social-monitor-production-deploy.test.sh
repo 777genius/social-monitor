@@ -208,6 +208,7 @@ printf 'reader-summary-publication-migration-state-v1\t0\t0\t0\t0\t0\t0\nexact-h
 run_backup_fixture() {
   local dump_mode=$1 backup_timestamp=$2 backup_url=$BACKUP_DATABASE_URL
   case $dump_mode in managed-admin) backup_url=$BACKUP_MANAGED_ADMIN_DATABASE_URL;; publication-dsn) backup_url=$BACKUP_PUBLICATION_ADMIN_DATABASE_URL;; app-dsn|managed-db-app-dsn) backup_url=$BACKUP_API_DATABASE_URL;; system-dsn) backup_url=$BACKUP_SYSTEM_DATABASE_URL;; esac
+  rm -f -- "$BACKUP_DSN_PATH" "$BACKUP_PUBLICATION_ADMIN_DSN_FILE"
   printf '%s\n' "$backup_url" > "$BACKUP_DSN_PATH"; chmod 0400 "$BACKUP_DSN_PATH"
   printf '%s\n' "$BACKUP_PUBLICATION_ADMIN_DATABASE_URL" > "$BACKUP_PUBLICATION_ADMIN_DSN_FILE"; chmod 0400 "$BACKUP_PUBLICATION_ADMIN_DSN_FILE"
   printf '%s\n' "$BACKUP_API_DATABASE_URL" > "$ROOT/secrets/db/managed-db-app.url"; printf '%s\n' "$BACKUP_SYSTEM_DATABASE_URL" > "$ROOT/secrets/db/system-database-url"
