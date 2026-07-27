@@ -206,6 +206,11 @@ BACKUP_MIGRATION_STATE=$FIXTURE/backup-migration-state.txt
 BACKUP_DOCKER_LOG=$FIXTURE/backup-docker.log
 install -d "$ROOT/backups" "$ROOT/secrets/db"
 printf '%s\n' fixture-ca > "$ROOT/secrets/db/ca-certificate.crt"
+BACKUP_ADMIN_SECRET=$ROOT/secrets/db/reader-summary-publication-admin-url BACKUP_DATABASE_HOST=dbaas-db-8050451-do-user-39622063-0.e.db.ondigitalocean.com
+BACKUP_DSN_QUERY='connect_timeout=10&sslmode=verify-full&sslrootcert=%2Frun%2Fsocial-monitor-db%2Fca-certificate.crt'
+BACKUP_ADMIN_DATABASE_URL="postgresql://social_monitor_publication_migrator:backup@$BACKUP_DATABASE_HOST:25060/social_monitor?$BACKUP_DSN_QUERY"
+BACKUP_API_DATABASE_URL="postgresql://social_monitor_app:runtime@$BACKUP_DATABASE_HOST:25060/social_monitor?$BACKUP_DSN_QUERY"
+[[ $BACKUP_ADMIN_DATABASE_URL != "$BACKUP_API_DATABASE_URL" ]]
 cat > "$BACKUP_SCHEMA" <<'TEXT'
 _prisma_migrations
 tenants
@@ -232,14 +237,15 @@ printf 'reader-summary-publication-migration-state-v1\t0\t0\t0\t0\t0\t0\nexact-h
   > "$BACKUP_MIGRATION_STATE"
 
 run_backup_fixture() {
-  local dump_mode=$1
-  local backup_timestamp=$2
+  local dump_mode=$1 backup_timestamp=$2
+  printf '%s\n' "$BACKUP_ADMIN_DATABASE_URL" > "$BACKUP_ADMIN_SECRET"; chmod 0400 "$BACKUP_ADMIN_SECRET"
   # Fixture values expand only inside this isolated child shell.
   # shellcheck disable=SC2016
   BACKUP_DUMP_MODE=$dump_mode BACKUP_SHA=$BASE_SHA \
   BACKUP_TIMESTAMP=$backup_timestamp BACKUP_SCHEMA=$BACKUP_SCHEMA \
   BACKUP_LISTING=$BACKUP_LISTING BACKUP_DOCKER_LOG=$BACKUP_DOCKER_LOG \
   BACKUP_MIGRATION_STATE=$BACKUP_MIGRATION_STATE \
+  BACKUP_ADMIN_DATABASE_URL="$BACKUP_ADMIN_DATABASE_URL" BACKUP_API_DATABASE_URL="$BACKUP_API_DATABASE_URL" \
   SOCIAL_MONITOR_DEPLOY_TEST_MODE=1 \
   SOCIAL_MONITOR_DEPLOY_ROOT="$ROOT" \
   SOCIAL_MONITOR_DEPLOY_REPO="$REPO" \
@@ -248,10 +254,12 @@ run_backup_fixture() {
   SOCIAL_MONITOR_DEPLOY_STAGING="$STAGING" \
   ENTRYPOINT=$ENTRYPOINT bash -c '
     source "$ENTRYPOINT"
-    helper_path=$SOCIAL_MONITOR_DEPLOY_REPO/ops/deploy/postgres-backup-deploy-lib.sh
+    helper_path=$SOCIAL_MONITOR_DEPLOY_REPO/ops/deploy/postgres-backup-deploy-lib.sh admin_secret=$SOCIAL_MONITOR_DEPLOY_ROOT/secrets/db/reader-summary-publication-admin-url
     stat() {
       local last_argument=${!#}
-      if [[ $1 == -c && $2 == "%u %a" ]]; then
+      if [[ $1 == -c && $2 == "%U|%a" && $last_argument == "$admin_secret" ]]; then
+        printf "root|400\n"
+      elif [[ $1 == -c && $2 == "%u %a" ]]; then
         [[ $(readlink -f -- "$last_argument") == \
           $(readlink -f -- "$helper_path") ]]
         local mode
@@ -269,36 +277,35 @@ run_backup_fixture() {
     declare -f backup_database | \
       grep -F "create_pre_migration_database_backup \"\$@\"" >/dev/null
     COMPOSE=(fake_compose)
-    fake_compose() {
-      [[ $* == "--profile app ps -q api" ]] || return 90
-      printf "%s\n" fixture-api
-    }
+    fake_compose() { [[ $* == "--profile app ps -q api" ]] && printf "%s\n" fixture-api; }
     date() {
       [[ $* == "-u +%Y%m%dT%H%M%SZ" ]] || return 91
       printf "%s\n" "$BACKUP_TIMESTAMP"
     }
+    assert_backup_admin_env() {
+      [[ -n $1 && -f $1 && ! -L $1 && \
+        $(< "$1") == "DATABASE_URL=$BACKUP_ADMIN_DATABASE_URL" ]]
+    }
+    case $BACKUP_DUMP_MODE in missing-admin-secret) rm -f "$admin_secret";; unsafe-admin-secret) printf "unsafe\n" > "$admin_secret";; esac
     docker() {
-      local argument migration_sql_file=
+      local argument previous= env_file= migration_sql_file=
       printf "%s\n" "$*" >> "$BACKUP_DOCKER_LOG"
       for argument in "$@"; do
-        case $argument in
-          *:/run/social-monitor-db/migration-state.sql:ro)
-            migration_sql_file=${argument%:/run/social-monitor-db/migration-state.sql:ro}
-            ;;
-        esac
+        [[ $previous != --env-file ]] || env_file=$argument
+        [[ $argument != *:/run/social-monitor-db/migration-state.sql:ro ]] || migration_sql_file=${argument%:/run/social-monitor-db/migration-state.sql:ro}
+        previous=$argument
       done
       if [[ $1 == inspect ]]; then
-        printf "%s\n" \
-          "DATABASE_URL=postgresql://fixture@db.invalid/social_monitor"
+        printf "DATABASE_URL=%s\n" "$BACKUP_API_DATABASE_URL"
       elif [[ $* == *"SELECT current_database()"* ]]; then
-        if [[ $BACKUP_DUMP_MODE == wrong-database ]]; then
-          printf "%s\n" postgres
-        else
-          printf "%s\n" social_monitor
-        fi
+        assert_backup_admin_env "$env_file"
+        [[ $BACKUP_DUMP_MODE != wrong-database ]] || { printf "%s\n" postgres; return; }
+        printf "%s\n" social_monitor
       elif [[ $* == *"information_schema.tables"* ]]; then
+        assert_backup_admin_env "$env_file"
         command cat "$BACKUP_SCHEMA"
       elif [[ -n $migration_sql_file ]]; then
+        assert_backup_admin_env "$env_file"
         [[ -f $migration_sql_file && ! -L $migration_sql_file && \
           -s $migration_sql_file ]]
         [[ $(command stat -c "%a" "$migration_sql_file") == 600 ]]
@@ -321,6 +328,7 @@ run_backup_fixture() {
         fi
         command cat "$BACKUP_MIGRATION_STATE"
       elif [[ $* == *"pg_dump --format=custom"* ]]; then
+        assert_backup_admin_env "$env_file"
         [[ $BACKUP_DUMP_MODE != dump-failure ]] || return 72
         [[ $BACKUP_DUMP_MODE != empty ]] && printf "%s\n" fixture-archive
       elif [[ $* == *"pg_restore --file=/dev/null"* ]]; then
@@ -346,14 +354,9 @@ grep -F 'pg_restore --file=/dev/null --no-owner --no-privileges' \
   "$BACKUP_DOCKER_LOG" >/dev/null
 grep -F '20260716170000_reader_summary_fail_closed_publication' \
   "$BACKUP_DOCKER_LOG" >/dev/null
-[[ $(grep -cFx \
-  'migration-state-sql-file:mode=600:variables-via-file' \
-  "$BACKUP_DOCKER_LOG") == 2 ]]
-if grep -F -- '-c "$3"' "$BACKUP_DOCKER_LOG" >/dev/null || \
-  grep -F -- '--command' "$BACKUP_DOCKER_LOG" >/dev/null; then
-  echo 'migration ledger SQL used a psql command argument' >&2
-  exit 1
-fi
+[[ $(grep -cFx 'migration-state-sql-file:mode=600:variables-via-file' "$BACKUP_DOCKER_LOG") == 2 ]]
+! grep -F -- '-c "$3"' "$BACKUP_DOCKER_LOG" >/dev/null
+! grep -F -- '--command' "$BACKUP_DOCKER_LOG" >/dev/null
 mapfile -t migration_snapshot_lines < <(
   grep -nF 'migration-state-sql-file:mode=600:variables-via-file' \
     "$BACKUP_DOCKER_LOG" | cut -d: -f1
@@ -381,13 +384,9 @@ assert_backup_failure_clean() {
   fi
 }
 
-assert_backup_failure_clean corrupt 20260719T120001Z
-assert_backup_failure_clean empty 20260719T120002Z
-assert_backup_failure_clean dump-failure 20260719T120003Z
-assert_backup_failure_clean wrong-database 20260719T120004Z
-assert_backup_failure_clean signal-HUP 20260719T120005Z
-assert_backup_failure_clean signal-INT 20260719T120006Z
-assert_backup_failure_clean signal-TERM 20260719T120007Z
+for failure_case in corrupt:20260719T120001Z empty:20260719T120002Z dump-failure:20260719T120003Z wrong-database:20260719T120004Z signal-HUP:20260719T120005Z signal-INT:20260719T120006Z signal-TERM:20260719T120007Z missing-admin-secret:20260719T120008Z unsafe-admin-secret:20260719T120009Z; do
+  assert_backup_failure_clean "${failure_case%:*}" "${failure_case#*:}"
+done
 grep -F 'ops/deploy/host/refresh-codex-auth.sh' "$ENTRYPOINT" >/dev/null
 # shellcheck disable=SC2016
 grep -F 'install -m 0700 -o root -g root "$auth_refresh_source" "$auth_refresh_destination.next"' \

@@ -14,10 +14,11 @@ create_pre_migration_database_backup() (
   local sha=$1
   local output partial env_file listing schema_tables migration_state
   local post_dump_schema_tables post_dump_migration_state
-  local api_id database_url database_name migration_checksum
+  local admin_secret database_url database_name migration_checksum
   local migration_path=prisma/migrations/$READER_SUMMARY_PUBLICATION_MIGRATION_ID/migration.sql
   local backup_image=postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15
   local -a cleanup_paths=()
+  set +x
 
   [[ $sha =~ ^[0-9a-f]{40}$ ]] || \
     fail 'database backup target SHA is invalid'
@@ -32,6 +33,18 @@ create_pre_migration_database_backup() (
   [[ ! -e $output && ! -L $output && ! -e $partial && ! -L $partial ]] || \
     fail 'database backup output already exists'
   cleanup_paths+=("$partial")
+
+  admin_secret=$ROOT/secrets/db/reader-summary-publication-admin-url
+  declare -F reader_summary_publication_private_file_valid >/dev/null || \
+    fail 'database backup admin DSN validators are unavailable'
+  declare -F reader_summary_publication_validate_admin_url >/dev/null || \
+    fail 'database backup admin DSN validators are unavailable'
+  reader_summary_publication_private_file_valid "$admin_secret" '400' || \
+    fail 'database backup admin DSN secret is unavailable or unsafe'
+  reader_summary_publication_validate_admin_url "$admin_secret" || \
+    fail 'database backup admin DSN secret is unavailable or unsafe'
+  database_url=$(< "$admin_secret") || \
+    fail 'database backup admin DSN secret cannot be read'
 
   umask 077
   trap 'rm -f -- "${cleanup_paths[@]}"' EXIT
@@ -55,15 +68,6 @@ create_pre_migration_database_backup() (
     "$STATE/database-backup.XXXXXX.post-dump.migration-state") || \
     fail 'database backup post-dump migration snapshot cannot be created'
   cleanup_paths+=("$post_dump_migration_state")
-
-  api_id=$("${COMPOSE[@]}" --profile app ps -q api)
-  [[ -n $api_id ]] || \
-    fail 'production API container is unavailable for database discovery'
-  database_url=$(docker inspect "$api_id" \
-    --format '{{range .Config.Env}}{{println .}}{{end}}' | \
-    awk -F= '$1 == "DATABASE_URL" {sub(/^[^=]*=/, ""); print; exit}')
-  [[ -n $database_url ]] || \
-    fail 'production API has no effective database URL'
 
   printf 'DATABASE_URL=%s\n' "$database_url" > "$env_file"
 
