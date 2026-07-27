@@ -36,93 +36,37 @@ export const discoverReaderSummaryProductionRecoveryScope = async (
   client: ReaderSummaryProductionRecoveryScopeDiscoveryClient,
 ): Promise<ReaderSummaryProductionRecoveryScope> => {
   const rows = await client.$queryRaw<readonly ScopeDiscoveryRow[]>`
-    SELECT
-      candidate."tenant_id"::TEXT AS "tenantId",
-      candidate."workspace_id"::TEXT AS "workspaceId"
-    FROM (
-      SELECT feed."tenant_id", feed."workspace_id"
-      FROM "feed_items" AS feed
-      JOIN "source_items" AS source
-        ON source."id" = feed."source_item_id"
-        AND source."tenant_id" = feed."tenant_id"
-        AND source."workspace_id" = feed."workspace_id"
-        AND source."source_binding_id" = feed."source_binding_id"
-        AND source."provider_key" = feed."provider_key"
-        AND source."canonical_url" = feed."canonical_url"
-      JOIN "tenants" AS tenant
-        ON tenant."id" = feed."tenant_id"
-        AND tenant."deleted_at" IS NULL
-      JOIN "workspaces" AS workspace
-        ON workspace."id" = feed."workspace_id"
-        AND workspace."tenant_id" = feed."tenant_id"
-        AND workspace."deleted_at" IS NULL
-      WHERE feed."status" = 'VISIBLE'
-        AND feed."provider_key" = ANY(ARRAY[
-          'github-trending-page',
-          'hacker-news',
-          'reddit',
-          'rss',
-          'x-twitter'
-        ])
-        AND feed."observed_at" >=
-          (DATE '2026-07-23'::TIMESTAMP AT TIME ZONE 'UTC')
-        AND feed."observed_at" <
-          (DATE '2026-07-25'::TIMESTAMP AT TIME ZONE 'UTC')
-      GROUP BY feed."tenant_id", feed."workspace_id"
-      HAVING
-        count(*) = count(DISTINCT feed."id")
-        AND count(*) FILTER (
-          WHERE feed."observed_at" <
-              (DATE '2026-07-24'::TIMESTAMP AT TIME ZONE 'UTC')
-            AND feed."provider_key" = 'github-trending-page'
-        ) = 0
-        AND count(*) FILTER (
-          WHERE feed."observed_at" <
-              (DATE '2026-07-24'::TIMESTAMP AT TIME ZONE 'UTC')
-            AND feed."provider_key" = 'hacker-news'
-        ) = 100
-        AND count(*) FILTER (
-          WHERE feed."observed_at" <
-              (DATE '2026-07-24'::TIMESTAMP AT TIME ZONE 'UTC')
-            AND feed."provider_key" = 'reddit'
-        ) = 100
-        AND count(*) FILTER (
-          WHERE feed."observed_at" <
-              (DATE '2026-07-24'::TIMESTAMP AT TIME ZONE 'UTC')
-            AND feed."provider_key" = 'rss'
-        ) = 75
-        AND count(*) FILTER (
-          WHERE feed."observed_at" <
-              (DATE '2026-07-24'::TIMESTAMP AT TIME ZONE 'UTC')
-            AND feed."provider_key" = 'x-twitter'
-        ) = 67
-        AND count(*) FILTER (
-          WHERE feed."observed_at" >=
-              (DATE '2026-07-24'::TIMESTAMP AT TIME ZONE 'UTC')
-            AND feed."provider_key" = 'github-trending-page'
-        ) = 10
-        AND count(*) FILTER (
-          WHERE feed."observed_at" >=
-              (DATE '2026-07-24'::TIMESTAMP AT TIME ZONE 'UTC')
-            AND feed."provider_key" = 'hacker-news'
-        ) = 100
-        AND count(*) FILTER (
-          WHERE feed."observed_at" >=
-              (DATE '2026-07-24'::TIMESTAMP AT TIME ZONE 'UTC')
-            AND feed."provider_key" = 'reddit'
-        ) = 100
-        AND count(*) FILTER (
-          WHERE feed."observed_at" >=
-              (DATE '2026-07-24'::TIMESTAMP AT TIME ZONE 'UTC')
-            AND feed."provider_key" = 'rss'
-        ) = 67
-        AND count(*) FILTER (
-          WHERE feed."observed_at" >=
-              (DATE '2026-07-24'::TIMESTAMP AT TIME ZONE 'UTC')
-            AND feed."provider_key" = 'x-twitter'
-        ) = 73
-    ) AS candidate
-    ORDER BY candidate."tenant_id", candidate."workspace_id"
+    SELECT DISTINCT
+      feed."tenant_id"::TEXT AS "tenantId",
+      feed."workspace_id"::TEXT AS "workspaceId"
+    FROM "feed_items" AS feed
+    JOIN "source_items" AS source
+      ON source."id" = feed."source_item_id"
+      AND source."tenant_id" = feed."tenant_id"
+      AND source."workspace_id" = feed."workspace_id"
+      AND source."source_binding_id" = feed."source_binding_id"
+      AND source."provider_key" = feed."provider_key"
+      AND source."canonical_url" = feed."canonical_url"
+    JOIN "tenants" AS tenant
+      ON tenant."id" = feed."tenant_id"
+      AND tenant."deleted_at" IS NULL
+    JOIN "workspaces" AS workspace
+      ON workspace."id" = feed."workspace_id"
+      AND workspace."tenant_id" = feed."tenant_id"
+      AND workspace."deleted_at" IS NULL
+    WHERE feed."status" = 'VISIBLE'
+      AND feed."provider_key" = ANY(ARRAY[
+        'github-trending-page',
+        'hacker-news',
+        'reddit',
+        'rss',
+        'x-twitter'
+      ])
+      AND feed."observed_at" >=
+        (DATE '2026-07-23'::TIMESTAMP AT TIME ZONE 'UTC')
+      AND feed."observed_at" <
+        (DATE '2026-07-26'::TIMESTAMP AT TIME ZONE 'UTC')
+    ORDER BY feed."tenant_id", feed."workspace_id"
   `;
   if (rows.length !== 1 || rows[0] === undefined) {
     throw new Error(

@@ -49,7 +49,15 @@ describe("reader summary production recovery CLI wrapper", () => {
     expect(discover).toHaveBeenCalledTimes(1);
   });
 
-  it("fails discovery when the immutable counts match multiple scopes", async () => {
+  it("fails discovery when no active production scope matches", async () => {
+    const { client } = scopeDiscoveryClient([]);
+
+    await expect(
+      discoverReaderSummaryProductionRecoveryScope(client),
+    ).rejects.toThrow("expected exactly one scope, found 0");
+  });
+
+  it("fails discovery when active production rows match multiple scopes", async () => {
     const { client } = scopeDiscoveryClient([
       scopeFixture("1", "2"),
       scopeFixture("3", "4"),
@@ -60,7 +68,7 @@ describe("reader summary production recovery CLI wrapper", () => {
     ).rejects.toThrow("expected exactly one scope, found 2");
   });
 
-  it("uses read-only immutable count SQL for scope discovery", async () => {
+  it("uses read-only production feed/source SQL for scope discovery", async () => {
     const expectedScope = scopeFixture("1", "2");
     const { client, queryRaw } = scopeDiscoveryClient([expectedScope]);
 
@@ -69,6 +77,7 @@ describe("reader summary production recovery CLI wrapper", () => {
     ).resolves.toEqual(expectedScope);
 
     const sql = normalizeSql(sqlFromQueryRaw(queryRaw));
+    expect(sql).toContain("select distinct");
     expect(sql).toContain('from "feed_items" as feed');
     expect(sql).toContain('join "source_items" as source');
     expect(sql).toContain('source."id" = feed."source_item_id"');
@@ -80,28 +89,31 @@ describe("reader summary production recovery CLI wrapper", () => {
     expect(sql).toContain('source."provider_key" = feed."provider_key"');
     expect(sql).toContain('source."canonical_url" = feed."canonical_url"');
     expect(sql).toContain('join "tenants" as tenant');
+    expect(sql).toContain('tenant."id" = feed."tenant_id"');
     expect(sql).toContain('tenant."deleted_at" is null');
     expect(sql).toContain('join "workspaces" as workspace');
+    expect(sql).toContain('workspace."id" = feed."workspace_id"');
+    expect(sql).toContain('workspace."tenant_id" = feed."tenant_id"');
     expect(sql).toContain('workspace."deleted_at" is null');
     expect(sql).toContain('feed."status" = \'visible\'');
+    expect(sql).toContain('feed."provider_key" = any(array[');
+    expect(sql).toContain("'github-trending-page'");
+    expect(sql).toContain("'hacker-news'");
+    expect(sql).toContain("'reddit'");
+    expect(sql).toContain("'rss'");
+    expect(sql).toContain("'x-twitter'");
     expect(sql).toContain(
       "date '2026-07-23'::timestamp at time zone 'utc'",
     );
     expect(sql).toContain(
-      "date '2026-07-25'::timestamp at time zone 'utc'",
+      "date '2026-07-26'::timestamp at time zone 'utc'",
     );
     expect(sql).toContain('feed."observed_at" >=');
     expect(sql).toContain('feed."observed_at" <');
-    expect(sql).toContain('count(*) = count(distinct feed."id")');
     expect(sql).not.toContain('feed."published_at"');
-    expectProviderCount(sql, "github-trending-page", 0, 1);
-    expectProviderCount(sql, "hacker-news", 100, 2);
-    expectProviderCount(sql, "reddit", 100, 2);
-    expectProviderCount(sql, "rss", 75, 1);
-    expectProviderCount(sql, "x-twitter", 67, 1);
-    expectProviderCount(sql, "github-trending-page", 10, 1);
-    expectProviderCount(sql, "rss", 67, 1);
-    expectProviderCount(sql, "x-twitter", 73, 1);
+    expect(sql).not.toContain("having");
+    expect(sql).not.toMatch(/\bcount\s*\(/u);
+    expect(sql).not.toMatch(/=\s*(?:100|75|73|67|10|0)\b/u);
     expect(sql).not.toMatch(/\bprepare_reader_summary_production_recovery\b/u);
     expect(sql).not.toMatch(/\binsert\b|\bupdate\b|\bdelete\b/u);
     expect(sql).not.toMatch(/\bfor\s+(?:update|share)\b/u);
@@ -223,16 +235,6 @@ function sqlFromQueryRaw(queryRaw: QueryRawMock): string {
 
 function normalizeSql(sql: string): string {
   return sql.replace(/\s+/gu, " ").trim().toLowerCase();
-}
-
-function expectProviderCount(
-  sql: string,
-  providerKey: string,
-  count: number,
-  occurrences: number,
-): void {
-  const token = `feed."provider_key" = '${providerKey}' ) = ${count}`;
-  expect(sql.split(token).length - 1).toBe(occurrences);
 }
 
 function bindingFixture(): ReaderSummaryProductionRecoveryAuthorityBinding {
