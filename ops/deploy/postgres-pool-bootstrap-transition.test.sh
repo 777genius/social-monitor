@@ -435,8 +435,10 @@ cp "$PROJECT_ROOT/ops/deploy/social-monitor-production-deploy.sh" \
   "$PROJECT_ROOT/ops/deploy/postgres-runtime-deploy-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/backend-runtime-health-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/backend-image-rescue-lib.sh" \
+  "$PROJECT_ROOT/ops/deploy/docker-maintenance-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/daily-runner-image-bootstrap-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/x-collector-image-deploy-lib.sh" \
+  "$PROJECT_ROOT/ops/deploy/reader-summary-recovery-maintenance-lib.sh" \
   "$REPO/ops/deploy/"
 # Adapt only the committed fallback copy; this matches literal reviewed shell.
 # shellcheck disable=SC2016
@@ -920,9 +922,12 @@ git -C "$REPO" checkout -qb non-ancestor-current "$TARGET_SHA"
 cp "$PROJECT_ROOT/ops/deploy/social-monitor-production-deploy.sh" \
   "$PROJECT_ROOT/ops/deploy/deploy-control-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/postgres-runtime-deploy-lib.sh" \
+  "$PROJECT_ROOT/ops/deploy/backend-runtime-health-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/backend-image-rescue-lib.sh" \
+  "$PROJECT_ROOT/ops/deploy/docker-maintenance-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/daily-runner-image-bootstrap-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/x-collector-image-deploy-lib.sh" \
+  "$PROJECT_ROOT/ops/deploy/reader-summary-recovery-maintenance-lib.sh" \
   "$REPO/ops/deploy/"
 git -C "$REPO" add ops/deploy
 git -C "$REPO" commit -qm 'test: non-ancestor current integration'
