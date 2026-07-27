@@ -136,4 +136,16 @@ for wrapper in "$FIXTURE/current-wrapper.sh" "$FIXTURE/legacy-wrapper.sh"; do
   done
 done
 
+for action in disk-report project-disk-cleanup; do
+  : > "$EVENT_LOG"
+  SSH_ORIGINAL_COMMAND="$action $SHA" EVENT_LOG=$EVENT_LOG \
+    CONTROL_LIB=$CONTROL_LIB EXACT_SHA=$SHA bash "$FIXTURE/current-wrapper.sh"
+  grep -Fx "dispatch:$action:$SHA" "$EVENT_LOG" >/dev/null
+  [[ $(wc -l < "$EVENT_LOG") == 1 ]]
+
+  : > "$EVENT_LOG"
+  assert_rejected "$FIXTURE/legacy-wrapper.sh" "$action $SHA"
+  [[ ! -s $EVENT_LOG ]]
+done
+
 echo 'Production SSH wrapper reachability tests passed'

@@ -9,7 +9,7 @@ original_command=${SSH_ORIGINAL_COMMAND:-}
 read -r action sha extra <<< "$original_command"
 
 [[ -z ${extra:-} ]] || exit 64
-[[ ${action:-} =~ ^(plan|upload|deploy)$ ]] || exit 64
+[[ ${action:-} =~ ^(plan|upload|deploy|disk-report|project-disk-cleanup)$ ]] || exit 64
 [[ ${sha:-} =~ ^[0-9a-f]{40}$ ]] || exit 64
 
 exec sudo -n "$ENTRYPOINT" "$action" "$sha"
