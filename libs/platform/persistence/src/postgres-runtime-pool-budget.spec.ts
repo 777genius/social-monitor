@@ -355,6 +355,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/check-reader-summary-source-quality-trace.ts:Pool
       scripts/check-reader-summary-top-read-ranking.ts:Pool
       scripts/check-reader-summary-topic-map-real-data.ts:Pool
+      scripts/check-reader-summary-weekly-production-postgres.ts:Pool
       scripts/check-source-query-planner-real-binding-canary.ts:Pool
       scripts/check-summary-feedback-calibration-report.ts:Pool
       scripts/check-summary-memory-product-loop.ts:Pool
@@ -378,6 +379,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/reader-summary-publication-postgres-privileges.ts:Pool
       scripts/reader-summary-publication-postgres-privileges.ts:Pool
       scripts/run-reader-summary-clean-real-day-collection.ts:Pool
+      scripts/run-reader-summary-weekly-production.ts:Pool
     `));
   });
 
@@ -416,6 +418,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/check-reader-summary-source-quality-trace.ts
       scripts/check-reader-summary-top-read-ranking.ts
       scripts/check-reader-summary-topic-map-real-data.ts
+      scripts/check-reader-summary-weekly-production-postgres.ts
       scripts/check-source-query-planner-real-binding-canary.ts
       scripts/check-summary-feedback-calibration-report.ts
       scripts/check-summary-memory-product-loop.ts
@@ -445,6 +448,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/reader-summary-publication-postgres-runtime-guard.ts
       scripts/reader-summary-publication-postgres18-regression.ts
       scripts/run-reader-summary-clean-real-day-collection.ts
+      scripts/run-reader-summary-weekly-production.ts
     `));
     for (const path of rawDependencyFiles) {
       expect(readSource(path)).not.toMatch(
