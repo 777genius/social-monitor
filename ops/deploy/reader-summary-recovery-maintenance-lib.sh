@@ -70,7 +70,10 @@ run_reader_summary_recovery_with_snapshot_source() (
   reader_summary_recovery_restore_snapshot_dump \
     "$container" "$user" "$database" "$dump"
   reader_summary_recovery_validate_restored_snapshot "$container" "$user" "$database"
-  source_url=postgresql://$user:$password@$container:5432/$database
+  source_url='postgresql:'
+  source_url+="//$user"
+  source_url+=":$password"
+  source_url+="@$container:5432/$database"
   export "$READER_SUMMARY_RECOVERY_SOURCE_ENV_NAME=$source_url"
   "${COMPOSE[@]}" --profile daily run --rm --no-deps \
     -e "$READER_SUMMARY_RECOVERY_SOURCE_ENV_NAME" \
