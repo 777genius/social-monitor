@@ -132,6 +132,8 @@ output = Path(sys.argv[1])
 password = sys.argv[2]
 literal = "'" + password.replace("'", "''") + "'"
 output.write_text(f"""\\set ON_ERROR_STOP on
+\\set VERBOSITY terse
+\\set SHOW_CONTEXT never
 
 BEGIN;
 
@@ -215,8 +217,7 @@ BEGIN
     );
   ELSE
     EXECUTE format(
-      'ALTER ROLE %I WITH LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB '
-        'NOCREATEROLE INHERIT NOREPLICATION NOBYPASSRLS',
+      'ALTER ROLE %I WITH LOGIN PASSWORD %L',
       v_system_runtime_role,
       v_system_password
     );
