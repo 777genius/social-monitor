@@ -15,6 +15,8 @@ READER_SUMMARY_PUBLICATION_DATABASE_HOST=dbaas-db-8050451-do-user-39622063-0.e.d
 READER_SUMMARY_PUBLICATION_DATABASE_PORT=25060
 READER_SUMMARY_PUBLICATION_VALIDATION_ATTEMPTS=3
 READER_SUMMARY_PUBLICATION_VALIDATION_RETRY_SECONDS=2
+# shellcheck source=ops/deploy/reader-summary-publication-system-dsn-bootstrap-lib.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/reader-summary-publication-system-dsn-bootstrap-lib.sh"
 
 # This file is the authenticated target-publication wrapper loaded by the
 # installed c59 deploy-control bridge. The bridge's local target SHA remains
@@ -107,6 +109,11 @@ ensure_system_database_url_deploy_contract() (
       system_secret_ref=$approved_system_secret
     fi
     [[ $system_secret_ref == "$approved_system_secret" ]] || fail 'SYSTEM_DATABASE_URL_SECRET_REF must point to the approved root-owned social_monitor_system_app DSN file; deploy will not reuse DATABASE_URL.'
+    if reader_summary_publication_private_file_absent "$approved_system_secret"; then
+      reader_summary_publication_bootstrap_system_database_url \
+        "$admin_secret" "$ca_certificate" "$approved_system_secret" || \
+        fail 'SYSTEM_DATABASE_URL system role bootstrap failed'
+    fi
     reader_summary_publication_repair_private_file_mode "$approved_system_secret" '400|600' '600' || \
       fail "SYSTEM_DATABASE_URL secret file must be root-owned with mode 0400 or 0600 ($(reader_summary_publication_private_file_state "$approved_system_secret"))"
     system_secret=$approved_system_secret
@@ -159,56 +166,6 @@ for raw_line in Path(sys.argv[1]).read_text(encoding="utf-8").splitlines():
     values[key] = value
 print("\x1f".join(values.get(name, "") for name in names))
 PY
-}
-
-reader_summary_publication_private_file_valid() {
-  local path=$1 allowed_modes=$2
-  local metadata owner mode
-
-  [[ -f $path && ! -L $path && -s $path ]] || return 1
-  metadata=$(reader_summary_publication_admin_secret_metadata "$path" 2>/dev/null) || return 1
-  IFS='|' read -r owner mode <<< "$metadata"
-  [[ $owner == root && "|$allowed_modes|" == *"|$mode|"* ]]
-}
-
-reader_summary_publication_repair_private_file_mode() {
-  local path=$1 allowed_modes=$2 repaired_mode=$3
-  local repair_path
-
-  reader_summary_publication_private_file_valid "$path" "$allowed_modes" && return 0
-  repair_path=$(reader_summary_publication_resolve_private_repair_path "$path") || return 1
-  [[ $repaired_mode =~ ^[0-7]{3}$ && "|$allowed_modes|" == *"|$repaired_mode|"* ]] || return 1
-  chown root:root "$repair_path" || return 1
-  chmod "$repaired_mode" "$repair_path" || return 1
-  reader_summary_publication_private_file_valid "$repair_path" "$allowed_modes"
-}
-
-reader_summary_publication_resolve_private_repair_path() {
-  local path=$1 resolved
-
-  [[ -e $path || -L $path ]] || return 1
-  resolved=$(readlink -f "$path") || return 1
-  [[ -f $resolved && ! -L $resolved && -s $resolved ]] || return 1
-  printf '%s\n' "$resolved"
-}
-
-reader_summary_publication_private_file_state() {
-  local path=$1
-  local exists=false symlink=false resolved=false regular=false non_empty=false
-  local owner=unavailable mode=unavailable metadata resolved_path
-
-  [[ -e $path || -L $path ]] && exists=true
-  [[ -L $path ]] && symlink=true
-  if resolved_path=$(readlink -f "$path" 2>/dev/null); then
-    resolved=true
-    [[ -f $resolved_path && ! -L $resolved_path ]] && regular=true
-    [[ -s $resolved_path ]] && non_empty=true
-    if metadata=$(reader_summary_publication_admin_secret_metadata "$resolved_path" 2>/dev/null); then
-      IFS='|' read -r owner mode <<< "$metadata"
-    fi
-  fi
-  printf 'dsn_file_state=exists:%s,symlink:%s,resolved:%s,regular:%s,non_empty:%s,owner:%s,mode:%s' \
-    "$exists" "$symlink" "$resolved" "$regular" "$non_empty" "$owner" "$mode"
 }
 
 reader_summary_publication_validate_runtime_database_urls() (

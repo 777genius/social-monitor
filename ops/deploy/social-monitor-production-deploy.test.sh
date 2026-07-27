@@ -31,6 +31,7 @@ cp "$SCRIPT_DIR/backend-image-rescue-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/daily-runner-image-bootstrap-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/x-collector-image-deploy-lib.sh" "$REPO/ops/deploy/"
 cp "$SCRIPT_DIR/reader-summary-publication-deploy-lib.sh" \
+  "$SCRIPT_DIR/reader-summary-publication-system-dsn-bootstrap-lib.sh" \
   "$SCRIPT_DIR/reader-summary-publication-pre-migration.sql" \
   "$SCRIPT_DIR/reader-summary-publication-post-migration.sql" \
   "$REPO/ops/deploy/"

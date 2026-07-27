@@ -68,7 +68,10 @@ PUBLICATION_MISSING_ENTRYPOINT_SHA=$(git -C "$SYNTHESIS_REPO" rev-parse HEAD)
 
 cp "$SCRIPT_DIR/reader-summary-publication-deploy-lib.sh" \
   "$SYNTHESIS_REPO/$PUBLICATION_LIBRARY"
-git -C "$SYNTHESIS_REPO" add "$PUBLICATION_LIBRARY"
+cp "$SCRIPT_DIR/reader-summary-publication-system-dsn-bootstrap-lib.sh" \
+  "$SYNTHESIS_REPO/ops/deploy/reader-summary-publication-system-dsn-bootstrap-lib.sh"
+git -C "$SYNTHESIS_REPO" add "$PUBLICATION_LIBRARY" \
+  ops/deploy/reader-summary-publication-system-dsn-bootstrap-lib.sh
 git -C "$SYNTHESIS_REPO" commit -qm \
   'test: target missing PostgreSQL backup blob'
 BACKUP_MISSING_BLOB_SHA=$(git -C "$SYNTHESIS_REPO" rev-parse HEAD)

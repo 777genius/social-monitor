@@ -169,7 +169,8 @@ stat() {
 chown() {
   local last_argument=${!#}
   local expected_repair_path=${SYSTEM_DSN_REPAIR_PATH:-$ROOT/secrets/db/system-database-url}
-  if [[ $last_argument == "$expected_repair_path" ]]; then
+  if [[ $last_argument == "$expected_repair_path" ||
+        $last_argument == "$ROOT"/secrets/db/system-database-url.*.next ]]; then
     ((SYSTEM_DSN_CHOWN_EXIT == 0)) || return "$SYSTEM_DSN_CHOWN_EXIT"
     printf '%s\n' "$last_argument" >> "$CHOWN_LOG"
     SYSTEM_DSN_OWNER=root
@@ -237,7 +238,9 @@ docker() {
   [[ $arguments != *reader-summary-publication-admin-url* ]] || return 95
   [[ " $arguments " == *' run --rm -i '* ]] || return 96
   [[ $stdin_payload == "$TRANSPORT_EXPECTED_PGPASS" || \
-    $stdin_payload == "${TRANSPORT_EXPECTED_SYSTEM_PGPASS:-}" ]] || return 97
+    $stdin_payload == "${TRANSPORT_EXPECTED_SYSTEM_PGPASS:-}" || \
+    ( -n ${TRANSPORT_EXPECTED_SYSTEM_PGPASS_PREFIX:-} && \
+      $stdin_payload == "$TRANSPORT_EXPECTED_SYSTEM_PGPASS_PREFIX"* ) ]] || return 97
   if env | grep -F "$TRANSPORT_FORBIDDEN_ENV_VALUE" >/dev/null; then
     return 92
   fi
@@ -340,6 +343,7 @@ reset_case() {
   TRANSPORT_CLIENT_STATUS=0
   TRANSPORT_QUERY_RESULT=
   TRANSPORT_EXPECTED_SYSTEM_PGPASS=
+  TRANSPORT_EXPECTED_SYSTEM_PGPASS_PREFIX=
   AVAILABILITY_STATUS=0
   SECRET_OWNER=root
   SYSTEM_DSN_OWNER=root
@@ -538,6 +542,19 @@ grep -Fx "SYSTEM_DATABASE_URL=$SYSTEM_URL" \
 [[ $(stat -c '%a' "$ROOT/secrets/production.env") == 600 ]]
 grep -Fx 'client:psql:mode=600' "$TRANSPORT_LOG" >/dev/null
 [[ $(grep -cFx 'client:psql:catalog-file:mode=600' "$TRANSPORT_LOG") == 2 ]]
+TEST_COUNT=$((TEST_COUNT + 1))
+
+reset_case
+write_production_env "DATABASE_URL=$API_URL"
+TRANSPORT_FORBIDDEN_ENV_VALUE=$SYSTEM_PASSWORD
+TRANSPORT_EXPECTED_PGPASS="${DATABASE_HOST}:25060:social_monitor:${MIGRATOR_ROLE}:${PRIVATE_PASSWORD}"
+TRANSPORT_EXPECTED_SYSTEM_PGPASS_PREFIX="${DATABASE_HOST}:25060:social_monitor:${SYSTEM_ROLE}:"
+system_contract_output=$(ensure_system_database_url_deploy_contract 2>&1)
+[[ -z $system_contract_output ]]
+grep -F "SYSTEM_DATABASE_URL=postgresql://$SYSTEM_ROLE:" \
+  "$ROOT/secrets/production.env" >/dev/null
+[[ $(stat -c '%a' "$ROOT/secrets/db/system-database-url") == 600 ]]
+grep -Fx 'client:psql:mode=600' "$TRANSPORT_LOG" >/dev/null
 TEST_COUNT=$((TEST_COUNT + 1))
 
 reset_case

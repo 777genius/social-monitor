@@ -115,6 +115,7 @@ install -d "$REPO/ops/deploy" "$REPO/apps/api-gateway" "$STATE" \
   "$FIXTURE/bin"
 cp "$FIXTURE/legacy-entrypoint.sh" "$REPO/ops/deploy/social-monitor-production-deploy.sh"
 cp "$PROJECT_ROOT/ops/deploy/reader-summary-publication-deploy-lib.sh" \
+  "$PROJECT_ROOT/ops/deploy/reader-summary-publication-system-dsn-bootstrap-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/reader-summary-publication-pre-migration.sql" \
   "$PROJECT_ROOT/ops/deploy/reader-summary-publication-post-migration.sql" \
   "$REPO/ops/deploy/"
@@ -153,6 +154,7 @@ git -C "$PROJECT_ROOT" show \
   > "$REPO/ops/deploy/social-monitor-production-deploy.sh"
 cp "$PROJECT_ROOT/ops/deploy/postgres-runtime-deploy-lib.sh" "$REPO/ops/deploy/"
 cp "$PROJECT_ROOT/ops/deploy/reader-summary-publication-deploy-lib.sh" \
+  "$PROJECT_ROOT/ops/deploy/reader-summary-publication-system-dsn-bootstrap-lib.sh" \
   "$PROJECT_ROOT/ops/deploy/reader-summary-publication-pre-migration.sql" \
   "$PROJECT_ROOT/ops/deploy/reader-summary-publication-post-migration.sql" \
   "$REPO/ops/deploy/"

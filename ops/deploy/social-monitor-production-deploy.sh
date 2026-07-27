@@ -87,7 +87,7 @@ BACKEND_PATHS=(
   ops/evals
   ops/observability
   ops/deploy/backend-runtime-health-lib.sh
-  ops/deploy/reader-summary-publication-deploy-lib.sh
+  ops/deploy/reader-summary-publication-deploy-lib.sh ops/deploy/reader-summary-publication-system-dsn-bootstrap-lib.sh
   ops/deploy/reader-summary-publication-pre-migration.sql
   ops/deploy/reader-summary-publication-post-migration.sql
   test
@@ -566,7 +566,7 @@ backend_services() {
       services+=(api)
     fi
     if changed_between "$from" "$to" \
-      ops/deploy/reader-summary-publication-deploy-lib.sh \
+      ops/deploy/reader-summary-publication-deploy-lib.sh ops/deploy/reader-summary-publication-system-dsn-bootstrap-lib.sh \
       ops/deploy/reader-summary-publication-pre-migration.sql \
       ops/deploy/reader-summary-publication-post-migration.sql; then
       services+=(migrate)

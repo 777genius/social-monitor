@@ -228,6 +228,7 @@ jobs:
           final_publication_assets=(
             ops/deploy/postgres-backup-deploy-lib.sh
             ops/deploy/reader-summary-publication-deploy-lib.sh
+            ops/deploy/reader-summary-publication-system-dsn-bootstrap-lib.sh
             ops/deploy/reader-summary-publication-migrator-validation.test.sh
             ops/deploy/reader-summary-publication-signal-regression.test.sh
             ops/deploy/fixtures/reader-summary-publication-fake-docker.sh
@@ -341,6 +342,7 @@ jobs:
           final_publication_shell_files=(
             ops/deploy/postgres-backup-deploy-lib.sh
             ops/deploy/reader-summary-publication-deploy-lib.sh
+            ops/deploy/reader-summary-publication-system-dsn-bootstrap-lib.sh
             ops/deploy/reader-summary-publication-migrator-validation.test.sh
             ops/deploy/reader-summary-publication-signal-regression.test.sh
             ops/deploy/fixtures/reader-summary-publication-fake-docker.sh
