@@ -132,7 +132,7 @@ ensure_system_database_url_deploy_contract() (
         fail 'SYSTEM_DATABASE_URL system role repair failed'
       validate_reader_summary_system_runtime_role \
         "$admin_secret" "$ca_certificate" || \
-        fail 'SYSTEM_DATABASE_URL role validation failed after controlled repair'
+        fail "SYSTEM_DATABASE_URL role validation failed after controlled repair ($(reader_summary_publication_system_runtime_role_state "$admin_secret" "$ca_certificate"))"
     else
       fail 'SYSTEM_DATABASE_URL role validation failed; provision social_monitor_system_app with tenant-system capability before deploy'
     fi
@@ -226,6 +226,17 @@ PY
   fi
   mv -f "$next" "$production_env"
 )
+
+reader_summary_publication_system_runtime_role_state() {
+  local secret=$1 ca_certificate=$2 catalog_result
+
+  if catalog_result=$(reader_summary_publication_system_runtime_catalog_query \
+      "$secret" "$ca_certificate" 2>/dev/null) && [[ -n $catalog_result ]]; then
+    printf 'catalog=%s' "$catalog_result"
+  else
+    printf 'catalog=unavailable'
+  fi
+}
 
 validate_reader_summary_system_runtime_role() (
   set +x
