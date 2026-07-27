@@ -132,32 +132,35 @@ output.write_text(f"""\\set ON_ERROR_STOP on
 
 BEGIN;
 
-SELECT set_config(
-  'social_monitor.bootstrap_system_password',
-  {literal},
-  false
-);
-SELECT set_config(
-  'social_monitor.bootstrap_runtime_role',
-  :'runtime_role',
-  false
-);
-SELECT set_config(
-  'social_monitor.bootstrap_system_runtime_role',
-  :'system_runtime_role',
-  false
-);
+CREATE TEMP TABLE reader_summary_publication_bootstrap_settings (
+  setting_name TEXT PRIMARY KEY,
+  setting_value TEXT NOT NULL
+) ON COMMIT DROP;
+
+INSERT INTO reader_summary_publication_bootstrap_settings (
+  setting_name,
+  setting_value
+) VALUES
+  ('system_password', {literal}),
+  ('runtime_role', :'runtime_role'),
+  ('system_runtime_role', :'system_runtime_role');
 
 DO $bootstrap_system_runtime$
 DECLARE
-  v_runtime_role NAME := current_setting(
-    'social_monitor.bootstrap_runtime_role'
+  v_runtime_role NAME := (
+    SELECT setting_value
+    FROM pg_temp.reader_summary_publication_bootstrap_settings
+    WHERE setting_name = 'runtime_role'
   )::NAME;
-  v_system_runtime_role NAME := current_setting(
-    'social_monitor.bootstrap_system_runtime_role'
+  v_system_runtime_role NAME := (
+    SELECT setting_value
+    FROM pg_temp.reader_summary_publication_bootstrap_settings
+    WHERE setting_name = 'system_runtime_role'
   )::NAME;
-  v_system_password TEXT := current_setting(
-    'social_monitor.bootstrap_system_password'
+  v_system_password TEXT := (
+    SELECT setting_value
+    FROM pg_temp.reader_summary_publication_bootstrap_settings
+    WHERE setting_name = 'system_password'
   );
   v_role RECORD;
 BEGIN
@@ -170,14 +173,6 @@ BEGIN
   IF v_runtime_role = v_system_runtime_role THEN
     RAISE EXCEPTION 'runtime and tenant system roles must be distinct';
   END IF;
-  IF pg_has_role(
-    v_runtime_role,
-    'social_monitor_tenant_system_runtime',
-    'MEMBER'
-  ) THEN
-    RAISE EXCEPTION 'reader summary runtime role has tenant system capability';
-  END IF;
-
   PERFORM pg_catalog.set_config('createrole_self_grant', 'set', true);
   IF NOT EXISTS (
     SELECT 1 FROM pg_catalog.pg_roles
@@ -196,6 +191,14 @@ BEGIN
       NOREPLICATION NOBYPASSRLS;
   END IF;
   PERFORM pg_catalog.set_config('createrole_self_grant', '', true);
+
+  IF pg_has_role(
+    v_runtime_role,
+    'social_monitor_tenant_system_runtime',
+    'MEMBER'
+  ) THEN
+    RAISE EXCEPTION 'reader summary runtime role has tenant system capability';
+  END IF;
 
   IF NOT EXISTS (
     SELECT 1 FROM pg_catalog.pg_roles

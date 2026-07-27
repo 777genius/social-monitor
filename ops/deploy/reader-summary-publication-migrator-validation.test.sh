@@ -80,13 +80,29 @@ if env | grep -F 'redacted-test-password' >/dev/null || \
   env | grep -F 'SYSTEM_PASSWORD' >/dev/null; then
   exit 91
 fi
-query_file= query_result= client_status=$TRANSPORT_CLIENT_STATUS
+query_file= bootstrap_file= query_result= client_status=$TRANSPORT_CLIENT_STATUS
 for argument in "$@"; do
   case $argument in
     --command=*) exit 90 ;;
     --file=/tmp/social-monitor-catalog-query.*) query_file=${argument#--file=} ;;
+    --file=*system-database-url-bootstrap.*.sql) bootstrap_file=${argument#--file=} ;;
   esac
 done
+if [[ -n $bootstrap_file ]]; then
+  [[ -f $bootstrap_file && ! -L $bootstrap_file && -s $bootstrap_file ]]
+  bootstrap_mode=$(stat -c '%a' "$bootstrap_file")
+  [[ $bootstrap_mode == 600 ]]
+  bootstrap_payload=$(<"$bootstrap_file")
+  [[ $bootstrap_payload != *'SELECT set_config('* ]]
+  [[ $bootstrap_payload != *'social_monitor.bootstrap_system_password'* ]]
+  [[ $bootstrap_payload == *'CREATE TEMP TABLE reader_summary_publication_bootstrap_settings'* ]]
+  role_create_offset=$(grep -n "CREATE ROLE social_monitor_tenant_system_runtime" "$bootstrap_file" | cut -d: -f1 | head -n1)
+  role_check_offset=$(grep -n "pg_has_role(" "$bootstrap_file" | cut -d: -f1 | head -n1)
+  [[ -n $role_create_offset && -n $role_check_offset ]]
+  ((role_create_offset < role_check_offset))
+  printf 'client:psql:bootstrap-file:mode=%s\n' "$bootstrap_mode" \
+    >> "$TRANSPORT_LOG"
+fi
 if [[ -n $query_file ]]; then
   [[ -f $query_file && ! -L $query_file && -s $query_file ]]
   query_mode=$(stat -c '%a' "$query_file")
@@ -254,6 +270,29 @@ docker() {
     fi
   done
   ((index >= 0)) || return 98
+  mounted_bootstrap_sql=
+  for argument in "${docker_arguments[@]}"; do
+    case $argument in
+      *:/run/social-monitor-db/publication-migration.sql:ro)
+        mounted_bootstrap_sql=${argument%:/run/social-monitor-db/publication-migration.sql:ro}
+        ;;
+    esac
+  done
+  if [[ -n $mounted_bootstrap_sql ]]; then
+    [[ -f $mounted_bootstrap_sql && ! -L $mounted_bootstrap_sql && -s $mounted_bootstrap_sql ]]
+    bootstrap_mode=$(stat -c '%a' "$mounted_bootstrap_sql")
+    [[ $bootstrap_mode == 600 ]]
+    bootstrap_payload=$(<"$mounted_bootstrap_sql")
+    [[ $bootstrap_payload != *'SELECT set_config('* ]]
+    [[ $bootstrap_payload != *'social_monitor.bootstrap_system_password'* ]]
+    [[ $bootstrap_payload == *'CREATE TEMP TABLE reader_summary_publication_bootstrap_settings'* ]]
+    role_create_offset=$(grep -n "CREATE ROLE social_monitor_tenant_system_runtime" "$mounted_bootstrap_sql" | cut -d: -f1 | head -n1)
+    role_check_offset=$(grep -n "pg_has_role(" "$mounted_bootstrap_sql" | cut -d: -f1 | head -n1)
+    [[ -n $role_create_offset && -n $role_check_offset ]]
+    ((role_create_offset < role_check_offset))
+    printf 'client:psql:bootstrap-file:mode=%s\n' "$bootstrap_mode" \
+      >> "$TRANSPORT_LOG"
+  fi
   script=${docker_arguments[index + 2]}
   child_arguments=("${docker_arguments[@]:index + 3}")
   : > "$TRANSPORT_PGPASS_PATH_LOG"
@@ -555,6 +594,7 @@ grep -F "SYSTEM_DATABASE_URL=postgresql://$SYSTEM_ROLE:" \
   "$ROOT/secrets/production.env" >/dev/null
 [[ $(stat -c '%a' "$ROOT/secrets/db/system-database-url") == 600 ]]
 grep -Fx 'client:psql:mode=600' "$TRANSPORT_LOG" >/dev/null
+grep -Fx 'client:psql:bootstrap-file:mode=600' "$TRANSPORT_LOG" >/dev/null
 TEST_COUNT=$((TEST_COUNT + 1))
 
 reset_case
