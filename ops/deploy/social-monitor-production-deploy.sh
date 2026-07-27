@@ -607,8 +607,17 @@ cleanup_stopped_project_containers() {
 }
 
 print_docker_disk_report() {
+  local path
   printf 'docker-disk-report-begin\n'
   df -h / /var/lib/docker 2>/dev/null || df -h /
+  df -ih / /var/lib/docker 2>/dev/null || true
+  if [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} != 1 ]]; then
+    for path in /var /var/data /var/data/social-monitor /var/lib/docker /var/log; do
+      [[ -d $path && ! -L $path ]] || continue
+      printf 'disk-usage-path=%s\n' "$path"
+      timeout 30 du -xhd1 "$path" 2>/dev/null | sort -h | tail -n 40 || true
+    done
+  fi
   if ! command -v docker >/dev/null 2>&1; then
     printf 'docker=unavailable\n'
     printf 'docker-disk-report-end\n'
