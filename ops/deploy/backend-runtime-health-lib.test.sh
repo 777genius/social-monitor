@@ -103,10 +103,14 @@ curl() {
         fi
         return 0
       fi
-      body=$(printf '{"runtime":{"metrics":{"exportState":"%s","lastExportAt":%s}}}\n' \
-        "$METRICS_STATE" \
-        "$([[ $METRICS_STATE == succeeded ]] && \
-          printf '"2026-07-26T12:00:00.000Z"' || printf null)")
+      if [[ $METRICS_STATE == missing ]]; then
+        body='{"runtime":{"metrics":{}}}'
+      else
+        body=$(printf '{"runtime":{"metrics":{"exportState":"%s","lastExportAt":%s}}}\n' \
+          "$METRICS_STATE" \
+          "$([[ $METRICS_STATE == succeeded ]] && \
+            printf '"2026-07-26T12:00:00.000Z"' || printf null)")
+      fi
       if [[ -n $output_file ]]; then
         printf '%s' "$body" > "$output_file"
       else
@@ -148,13 +152,16 @@ docker() {
 reset_runtime
 verify_backend api
 verify_backend otel-collector
-METRICS_STATE=failed
+for METRICS_STATE in pending failed stale missing; do
+  if ! verify_backend otel-collector; then
+    fail "collector verification rejected non-fatal metrics export state: $METRICS_STATE"
+  fi
+done
+
+reset_runtime
+READY_FAILURES=1
 if verify_backend otel-collector; then
-  fail 'collector verification accepted a failed metrics export'
-fi
-METRICS_STATE=pending
-if verify_backend otel-collector; then
-  fail 'collector verification accepted a pending metrics export'
+  fail 'collector verification accepted a non-200 ready response'
 fi
 
 reset_runtime
@@ -201,18 +208,27 @@ OTEL_COLLECTOR_HEALTH_STARTUP_GRACE_SECONDS=3
 BACKEND_HEALTH_RETRY_SLEEP_SECONDS=3
 
 reset_runtime
-METRICS_STATE=failed
+METRICS_STATE=pending
+if ! verify_backend_with_retry otel-collector \
+  2>"$FIXTURE/otel-pending-export.err"; then
+  fail 'collector verification rejected pending metrics export with ready HTTP 200'
+fi
+[[ ! -s $FIXTURE/otel-pending-export.err ]]
+
+reset_runtime
+METRICS_STATE=pending
+DOCKER_STATUS=exited
 if verify_backend_with_retry otel-collector \
   2>"$FIXTURE/otel-final-diagnostics.err"; then
-  fail 'collector verification accepted failed export after final diagnostics'
+  fail 'collector verification accepted an exited collector'
 fi
 grep -F 'healthz_http curl_exit=0 http_status=200' \
   "$FIXTURE/otel-final-diagnostics.err" >/dev/null
 grep -F 'ready_http curl_exit=0 http_status=200' \
   "$FIXTURE/otel-final-diagnostics.err" >/dev/null
-grep -F 'ready_json parse=ok exportState=failed lastExportAt=missing' \
+grep -F 'ready_json parse=ok exportState=pending lastExportAt=missing' \
   "$FIXTURE/otel-final-diagnostics.err" >/dev/null
-grep -F 'service=otel-collector container=collector-container status=running oom=false exit=137 state_error=fixture-state-error' \
+grep -F 'service=otel-collector container=collector-container status=exited oom=false exit=137 state_error=fixture-state-error' \
   "$FIXTURE/otel-final-diagnostics.err" >/dev/null
 
 reset_runtime

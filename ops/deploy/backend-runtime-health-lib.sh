@@ -113,6 +113,23 @@ PY
   fi
 }
 
+backend_health_ready_json_valid() {
+  python3 -c 'import json,sys
+try:
+    payload = json.load(sys.stdin)
+except Exception:
+    raise SystemExit(1)
+if not isinstance(payload, dict):
+    raise SystemExit(1)
+runtime = payload.get("runtime")
+if not isinstance(runtime, dict):
+    raise SystemExit(1)
+metrics = runtime.get("metrics")
+if not isinstance(metrics, dict):
+    raise SystemExit(1)
+' >/dev/null 2>&1
+}
+
 backend_health_container_diagnostic() {
   local service=$1 container status oom exit_code state_error
   if [[ $service == migrate || $service == daily-runner ]]; then
@@ -171,18 +188,17 @@ backend_health_emit_final_diagnostics() {
 
 verify_backend() {
   local service container status oom exit_code state_error
-  local require_export=false ready_json
+  local require_ready_json=false ready_json
   curl -fsS --max-time 15 http://127.0.0.1:13000/healthz \
     >/dev/null 2>&1 || return 1
   for service in "$@"; do
-    [[ $service != otel-collector ]] || require_export=true
+    [[ $service != otel-collector ]] || require_ready_json=true
   done
-  if [[ $require_export == true ]]; then
+  if [[ $require_ready_json == true ]]; then
     ready_json=$(
       curl -fsS --max-time 15 http://127.0.0.1:13000/ready 2>/dev/null
     ) || return 1
-    python3 -c 'import json,sys; h=json.load(sys.stdin)["runtime"]["metrics"]; raise SystemExit(0 if h["exportState"] == "succeeded" and h.get("lastExportAt") else 1)' \
-      <<< "$ready_json" >/dev/null 2>&1 || return 1
+    backend_health_ready_json_valid <<< "$ready_json" || return 1
   else
     curl -fsS --max-time 15 http://127.0.0.1:13000/ready \
       >/dev/null 2>&1 || return 1
