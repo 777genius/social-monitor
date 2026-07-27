@@ -4,17 +4,56 @@
 # defined. Collector replacement must prove a real successful export because
 # application readiness intentionally permits only a short startup grace.
 
+BACKEND_HEALTH_STARTUP_GRACE_SECONDS=${BACKEND_HEALTH_STARTUP_GRACE_SECONDS:-240}
+OTEL_COLLECTOR_HEALTH_STARTUP_GRACE_SECONDS=${OTEL_COLLECTOR_HEALTH_STARTUP_GRACE_SECONDS:-300}
+BACKEND_HEALTH_RETRY_SLEEP_SECONDS=${BACKEND_HEALTH_RETRY_SLEEP_SECONDS:-3}
+
+backend_health_positive_integer() {
+  [[ $1 =~ ^[1-9][0-9]*$ ]]
+}
+
+backend_health_retry_attempts() {
+  local grace_seconds=$1 sleep_seconds=$2
+  backend_health_positive_integer "$grace_seconds" || return 1
+  backend_health_positive_integer "$sleep_seconds" || return 1
+  printf '%d\n' $(((grace_seconds + sleep_seconds - 1) / sleep_seconds + 1))
+}
+
+backend_health_grace_seconds_for_services() {
+  local normal_grace=$BACKEND_HEALTH_STARTUP_GRACE_SECONDS
+  local collector_grace=$OTEL_COLLECTOR_HEALTH_STARTUP_GRACE_SECONDS
+  local grace_seconds=$normal_grace service
+  backend_health_positive_integer "$normal_grace" || return 1
+  backend_health_positive_integer "$collector_grace" || return 1
+  for service in "$@"; do
+    if [[ $service == otel-collector ]]; then
+      if ((collector_grace < normal_grace)); then
+        grace_seconds=$normal_grace
+      else
+        grace_seconds=$collector_grace
+      fi
+    fi
+  done
+  printf '%s\n' "$grace_seconds"
+}
+
 verify_backend() {
-  local service container status oom require_export=false
-  curl -fsS --max-time 15 http://127.0.0.1:13000/healthz >/dev/null || return 1
+  local service container status oom exit_code state_error
+  local require_export=false ready_json
+  curl -fsS --max-time 15 http://127.0.0.1:13000/healthz \
+    >/dev/null 2>&1 || return 1
   for service in "$@"; do
     [[ $service != otel-collector ]] || require_export=true
   done
   if [[ $require_export == true ]]; then
-    curl -fsS --max-time 15 http://127.0.0.1:13000/ready | \
-      python3 -c 'import json,sys; h=json.load(sys.stdin)["runtime"]["metrics"]; raise SystemExit(0 if h["exportState"] == "succeeded" and h.get("lastExportAt") else 1)' || return 1
+    ready_json=$(
+      curl -fsS --max-time 15 http://127.0.0.1:13000/ready 2>/dev/null
+    ) || return 1
+    python3 -c 'import json,sys; h=json.load(sys.stdin)["runtime"]["metrics"]; raise SystemExit(0 if h["exportState"] == "succeeded" and h.get("lastExportAt") else 1)' \
+      <<< "$ready_json" >/dev/null 2>&1 || return 1
   else
-    curl -fsS --max-time 15 http://127.0.0.1:13000/ready >/dev/null || return 1
+    curl -fsS --max-time 15 http://127.0.0.1:13000/ready \
+      >/dev/null 2>&1 || return 1
   fi
   for service in "$@"; do
     [[ $service == migrate || $service == daily-runner ]] && continue
@@ -33,13 +72,24 @@ verify_backend() {
 }
 
 verify_backend_with_retry() {
-  local attempts=20 service attempt
-  for service in "$@"; do
-    [[ $service != otel-collector ]] || attempts=40
-  done
-  for ((attempt = 0; attempt < attempts; attempt++)); do
+  local sleep_seconds=$BACKEND_HEALTH_RETRY_SLEEP_SECONDS
+  local grace_seconds attempts attempt
+  if ! backend_health_positive_integer "$sleep_seconds"; then
+    printf 'deploy-error: backend health retry sleep is invalid\n' >&2
+    return 1
+  fi
+  if ! grace_seconds=$(backend_health_grace_seconds_for_services "$@"); then
+    printf 'deploy-error: backend health startup grace is invalid\n' >&2
+    return 1
+  fi
+  if ! attempts=$(backend_health_retry_attempts "$grace_seconds" "$sleep_seconds"); then
+    printf 'deploy-error: backend health retry attempts are invalid\n' >&2
+    return 1
+  fi
+  for ((attempt = 1; attempt <= attempts; attempt++)); do
     verify_backend "$@" && return 0
-    sleep 3
+    ((attempt == attempts)) && break
+    sleep "$sleep_seconds"
   done
   return 1
 }
