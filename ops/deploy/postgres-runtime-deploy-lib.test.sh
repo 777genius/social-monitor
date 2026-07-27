@@ -74,6 +74,8 @@ capture_units=(
 base_units=(
   social-monitor-daily.service
   social-monitor-prod.service
+  social-monitor-weekly.service
+  social-monitor-weekly.timer
 )
 units=("${capture_units[@]}" "${base_units[@]}")
 for unit in "${base_units[@]}"; do
