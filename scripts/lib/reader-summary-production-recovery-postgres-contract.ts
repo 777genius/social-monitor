@@ -95,9 +95,9 @@ export const seedReaderSummaryProductionRecoveryFixture = async (
       '30000000-0000-4000-8000-000000000001',
       '60000000-0000-4000-8000-000000000001', 'SUCCEEDED',
       'production-recovery-github-2026-07-24', NULL, 0,
-      '2026-07-24T10:00:00.000Z', '2026-07-24T10:00:00.000Z',
-      '2026-07-24T12:00:00.000Z', '2026-07-24T10:00:00.000Z',
-      '2026-07-24T12:00:00.000Z'
+      '2026-07-25T10:00:00.000Z', '2026-07-25T10:00:00.000Z',
+      '2026-07-25T12:00:00.000Z', '2026-07-25T10:00:00.000Z',
+      '2026-07-25T12:00:00.000Z'
     );
     INSERT INTO scan_attempts (
       scan_job_id, tenant_id, workspace_id, source_binding_id, attempt_number,
@@ -106,8 +106,8 @@ export const seedReaderSummaryProductionRecoveryFixture = async (
     ) VALUES (
       '70000000-0000-4000-8000-000000000001', '${tenantId}', '${workspaceId}',
       '30000000-0000-4000-8000-000000000001', 1, 'SUCCEEDED',
-      '2026-07-24T10:00:00.000Z', '2026-07-24T12:00:00.000Z',
-      10, 10, 0, 10, '2026-07-24T12:00:00.000Z'
+      '2026-07-25T10:00:00.000Z', '2026-07-25T12:00:00.000Z',
+      10, 10, 0, 10, '2026-07-25T12:00:00.000Z'
     );
 
     CREATE TEMP TABLE sm_recovery_fixture_items
@@ -172,7 +172,8 @@ export const seedReaderSummaryProductionRecoveryFixture = async (
         ELSE NULL
       END,
       item.requested_utc_date::timestamp AT TIME ZONE 'UTC' +
-        interval '12 hours' + item.position * interval '1 millisecond',
+        interval '1 day' + interval '12 hours' +
+        item.position * interval '1 millisecond',
       NULL,
       NULL,
       NULL,
@@ -189,7 +190,8 @@ export const seedReaderSummaryProductionRecoveryFixture = async (
               'rank', item.position,
               'checkedAt', to_char(
                 item.requested_utc_date::timestamp AT TIME ZONE 'UTC' +
-                  interval '11 hours' + item.position * interval '1 millisecond',
+                  interval '1 day' + interval '11 hours' +
+                  item.position * interval '1 millisecond',
                 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'
               )
             )
@@ -198,7 +200,7 @@ export const seedReaderSummaryProductionRecoveryFixture = async (
       END,
       1,
       item.requested_utc_date::timestamp AT TIME ZONE 'UTC' +
-        interval '12 hours'
+        interval '1 day' + interval '12 hours'
     FROM sm_recovery_fixture_items AS item;
 
     INSERT INTO feed_items (
@@ -236,13 +238,14 @@ export const seedReaderSummaryProductionRecoveryFixture = async (
         interval '2 days' + interval '18 hours' +
         item.position * interval '1 millisecond',
       item.requested_utc_date::timestamp AT TIME ZONE 'UTC' +
-        interval '12 hours' + item.position * interval '1 millisecond',
+        interval '1 day' + interval '12 hours' +
+        item.position * interval '1 millisecond',
       NULL,
       'VISIBLE',
       item.requested_utc_date::timestamp AT TIME ZONE 'UTC' +
-        interval '12 hours',
+        interval '1 day' + interval '12 hours',
       item.requested_utc_date::timestamp AT TIME ZONE 'UTC' +
-        interval '12 hours'
+        interval '1 day' + interval '12 hours'
     FROM sm_recovery_fixture_items AS item;
 
     INSERT INTO github_repository_trend_results (
@@ -266,13 +269,15 @@ export const seedReaderSummaryProductionRecoveryFixture = async (
       'daily',
       item.position,
       item.requested_utc_date::timestamp AT TIME ZONE 'UTC' +
-        interval '11 hours' + item.position * interval '1 millisecond',
+        interval '1 day' + interval '11 hours' +
+        item.position * interval '1 millisecond',
       item.requested_utc_date::timestamp AT TIME ZONE 'UTC' +
-        interval '12 hours' + item.position * interval '1 millisecond',
+        interval '1 day' + interval '12 hours' +
+        item.position * interval '1 millisecond',
       'fixture',
       '{"verifiedExisting":true}'::jsonb,
       item.requested_utc_date::timestamp AT TIME ZONE 'UTC' +
-        interval '12 hours'
+        interval '1 day' + interval '12 hours'
     FROM sm_recovery_fixture_items AS item
     WHERE item.provider_key = 'github-trending-page';
 
@@ -415,9 +420,11 @@ const assertPersistedAuthority = async (
     dry_run_count: string;
     jul23_counts: unknown;
     jul23_github_mode: string;
+    jul23_observed_dates: unknown;
     jul24_counts: unknown;
     jul24_github_mode: string;
     jul24_github_count: number;
+    jul24_observed_dates: unknown;
     retained_published_at: string;
     retained_observed_at: string;
     retained_source_published_at: string;
@@ -447,6 +454,16 @@ const assertPersistedAuthority = async (
          WHERE requested_utc_date = DATE '2026-07-23') AS jul23_counts,
        (SELECT github_evidence->>'mode' FROM reader_summary_production_recovery_days
          WHERE requested_utc_date = DATE '2026-07-23') AS jul23_github_mode,
+       (SELECT jsonb_agg(
+            DISTINCT left(entry->>'observedAt', 10)
+            ORDER BY left(entry->>'observedAt', 10)
+          )
+          FROM reader_summary_production_recovery_days day
+          CROSS JOIN LATERAL jsonb_each(day.provider_evidence) provider
+          CROSS JOIN LATERAL
+            jsonb_array_elements(provider.value) evidence(entry)
+         WHERE requested_utc_date = DATE '2026-07-23')
+           AS jul23_observed_dates,
        (SELECT provider_counts FROM reader_summary_production_recovery_days
          WHERE requested_utc_date = DATE '2026-07-24') AS jul24_counts,
        (SELECT github_evidence->>'mode' FROM reader_summary_production_recovery_days
@@ -455,6 +472,16 @@ const assertPersistedAuthority = async (
           FROM reader_summary_production_recovery_days
          WHERE requested_utc_date = DATE '2026-07-24')
            AS jul24_github_count,
+       (SELECT jsonb_agg(
+            DISTINCT left(entry->>'observedAt', 10)
+            ORDER BY left(entry->>'observedAt', 10)
+          )
+          FROM reader_summary_production_recovery_days day
+          CROSS JOIN LATERAL jsonb_each(day.provider_evidence) provider
+          CROSS JOIN LATERAL
+            jsonb_array_elements(provider.value) evidence(entry)
+         WHERE requested_utc_date = DATE '2026-07-24')
+           AS jul24_observed_dates,
        (SELECT entry->>'publishedAt'
           FROM reader_summary_production_recovery_days day
           CROSS JOIN LATERAL jsonb_array_elements(
@@ -529,8 +556,10 @@ const assertPersistedAuthority = async (
       consumedAfterSnapshots: row.consumed_after_snapshots,
       canonicalEqual: row.canonical_equal,
       jul23Mode: row.jul23_github_mode,
+      jul23ObservedDates: row.jul23_observed_dates,
       jul24Mode: row.jul24_github_mode,
       jul24GitHubCount: row.jul24_github_count,
+      jul24ObservedDates: row.jul24_observed_dates,
       retainedPublishedAt: row.retained_published_at,
       retainedObservedAt: row.retained_observed_at,
       retainedSourcePublishedAt: row.retained_source_published_at,
@@ -547,12 +576,14 @@ const assertPersistedAuthority = async (
       consumedAfterSnapshots: true,
       canonicalEqual: true,
       jul23Mode: "historical_unavailable",
+      jul23ObservedDates: ["2026-07-24"],
       jul24Mode: "verified_existing",
       jul24GitHubCount: 10,
+      jul24ObservedDates: ["2026-07-25"],
       retainedPublishedAt: "2026-07-21T18:00:00.001Z",
-      retainedObservedAt: "2026-07-23T12:00:00.001Z",
+      retainedObservedAt: "2026-07-24T12:00:00.001Z",
       retainedSourcePublishedAt: "2026-07-21T18:00:00.001Z",
-      retainedSourceObservedAt: "2026-07-23T12:00:00.001Z",
+      retainedSourceObservedAt: "2026-07-24T12:00:00.001Z",
     },
     "persisted recovery cardinality and evidence seals must be exact",
   );
