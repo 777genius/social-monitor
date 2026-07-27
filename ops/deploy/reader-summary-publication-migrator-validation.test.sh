@@ -44,6 +44,7 @@ SYSTEM_AUTH_QUERY_STATUS=0
 AVAILABILITY_STATUS=0
 SECRET_OWNER=root
 SYSTEM_DSN_OWNER=root
+SYSTEM_DSN_REPAIR_PATH=
 SECRET_METADATA_STATUS=0
 SYSTEM_DSN_CHOWN_EXIT=0
 CA_OWNER=root
@@ -167,7 +168,8 @@ stat() {
 
 chown() {
   local last_argument=${!#}
-  if [[ $last_argument == "$ROOT/secrets/db/system-database-url" ]]; then
+  local expected_repair_path=${SYSTEM_DSN_REPAIR_PATH:-$ROOT/secrets/db/system-database-url}
+  if [[ $last_argument == "$expected_repair_path" ]]; then
     ((SYSTEM_DSN_CHOWN_EXIT == 0)) || return "$SYSTEM_DSN_CHOWN_EXIT"
     printf '%s\n' "$last_argument" >> "$CHOWN_LOG"
     SYSTEM_DSN_OWNER=root
@@ -195,7 +197,8 @@ reader_summary_publication_admin_secret_metadata() {
     printf '%s|%s\n' "$SECRET_OWNER" "$mode"
     return
   fi
-  if [[ $1 == "$ROOT/secrets/db/system-database-url" ]]; then
+  if [[ $1 == "$ROOT/secrets/db/system-database-url" ||
+        ( -n $SYSTEM_DSN_REPAIR_PATH && $1 == "$SYSTEM_DSN_REPAIR_PATH" ) ]]; then
     ((SECRET_METADATA_STATUS == 0)) || return "$SECRET_METADATA_STATUS"
     printf '%s|%s\n' "$SYSTEM_DSN_OWNER" "$mode"
     return
@@ -340,6 +343,7 @@ reset_case() {
   AVAILABILITY_STATUS=0
   SECRET_OWNER=root
   SYSTEM_DSN_OWNER=root
+  SYSTEM_DSN_REPAIR_PATH=
   SECRET_METADATA_STATUS=0
   SYSTEM_DSN_CHOWN_EXIT=0
   CA_OWNER=root
@@ -578,6 +582,24 @@ system_contract_output=$(ensure_system_database_url_deploy_contract 2>&1)
 grep -Fx "SYSTEM_DATABASE_URL=$SYSTEM_URL" "$ROOT/secrets/production.env" >/dev/null
 grep -Fx "$ROOT/secrets/db/system-database-url" "$CHOWN_LOG" >/dev/null
 [[ $(stat -c '%a' "$ROOT/secrets/db/system-database-url") == 600 ]]
+TEST_COUNT=$((TEST_COUNT + 1))
+
+reset_case
+write_production_env "DATABASE_URL=$API_URL"
+write_system_url "$SYSTEM_URL"
+SYSTEM_DSN_REPAIR_PATH=$ROOT/secrets/db/system-database-url.real
+mv "$ROOT/secrets/db/system-database-url" "$SYSTEM_DSN_REPAIR_PATH"
+ln -s "$SYSTEM_DSN_REPAIR_PATH" "$ROOT/secrets/db/system-database-url"
+chmod 0644 "$SYSTEM_DSN_REPAIR_PATH"
+SYSTEM_DSN_OWNER=deploy-user
+TRANSPORT_FORBIDDEN_ENV_VALUE=$SYSTEM_PASSWORD
+TRANSPORT_EXPECTED_PGPASS="${DATABASE_HOST}:25060:social_monitor:${MIGRATOR_ROLE}:${PRIVATE_PASSWORD}"
+TRANSPORT_EXPECTED_SYSTEM_PGPASS="${DATABASE_HOST}:25060:social_monitor:${SYSTEM_ROLE}:${SYSTEM_PASSWORD}"
+system_contract_output=$(ensure_system_database_url_deploy_contract 2>&1)
+[[ -z $system_contract_output ]]
+grep -Fx "SYSTEM_DATABASE_URL=$SYSTEM_URL" "$ROOT/secrets/production.env" >/dev/null
+grep -Fx "$SYSTEM_DSN_REPAIR_PATH" "$CHOWN_LOG" >/dev/null
+[[ $(stat -c '%a' "$SYSTEM_DSN_REPAIR_PATH") == 600 ]]
 TEST_COUNT=$((TEST_COUNT + 1))
 
 reset_case

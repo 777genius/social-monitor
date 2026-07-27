@@ -173,13 +173,23 @@ reader_summary_publication_private_file_valid() {
 
 reader_summary_publication_repair_private_file_mode() {
   local path=$1 allowed_modes=$2 repaired_mode=$3
+  local repair_path
 
   reader_summary_publication_private_file_valid "$path" "$allowed_modes" && return 0
-  [[ -f $path && ! -L $path && -s $path ]] || return 1
+  repair_path=$(reader_summary_publication_resolve_private_repair_path "$path") || return 1
   [[ $repaired_mode =~ ^[0-7]{3}$ && "|$allowed_modes|" == *"|$repaired_mode|"* ]] || return 1
-  chown root:root "$path" || return 1
-  chmod "$repaired_mode" "$path" || return 1
-  reader_summary_publication_private_file_valid "$path" "$allowed_modes"
+  chown root:root "$repair_path" || return 1
+  chmod "$repaired_mode" "$repair_path" || return 1
+  reader_summary_publication_private_file_valid "$repair_path" "$allowed_modes"
+}
+
+reader_summary_publication_resolve_private_repair_path() {
+  local path=$1 resolved
+
+  [[ -e $path || -L $path ]] || return 1
+  resolved=$(readlink -f "$path") || return 1
+  [[ -f $resolved && ! -L $resolved && -s $resolved ]] || return 1
+  printf '%s\n' "$resolved"
 }
 
 reader_summary_publication_validate_runtime_database_urls() (
