@@ -80,6 +80,10 @@ describe('hostile PostgreSQL pool budget review', () => {
       join(process.cwd(), 'ops/deploy/backend-image-rescue-lib.sh'),
       'utf8',
     );
+    const dockerMaintenanceLibrary = readFileSync(
+      join(process.cwd(), 'ops/deploy/docker-maintenance-lib.sh'),
+      'utf8',
+    );
     const backend = deploy.slice(
       deploy.indexOf('deploy_backend()'),
       deploy.indexOf('switch_link()'),
@@ -91,6 +95,9 @@ describe('hostile PostgreSQL pool budget review', () => {
     const rollbackHelper = rescueLibrary.slice(
       rescueLibrary.indexOf('rollback_backend_and_runtime_control()'),
       rescueLibrary.indexOf('\nbackend_image_rescue_cleanup()'),
+    );
+    const databaseServiceRemovalHelper = dockerMaintenanceLibrary.slice(
+      dockerMaintenanceLibrary.indexOf('stop_and_remove_database_services()'),
     );
     const removal = backend.indexOf(
       'stop_and_remove_database_services "${persistent[@]}"',
@@ -119,21 +126,30 @@ describe('hostile PostgreSQL pool budget review', () => {
     const runtimeControlRestore = rollbackHelper.indexOf(
       'restore_postgres_runtime_control "$runtime_control_backup"',
     );
+    const dockerMaintenanceSource = deploy.indexOf(
+      "source_deploy_library docker-maintenance-lib.sh 'docker maintenance library'",
+    );
 
     expect(deploy).toContain('POSTGRES_ADMISSION_LOCK');
+    expect(dockerMaintenanceSource).toBeGreaterThanOrEqual(0);
+    expect(dockerMaintenanceSource).toBeLessThan(
+      deploy.indexOf('deploy_backend()'),
+    );
     expect(removal).toBeGreaterThanOrEqual(0);
     expect(liveAdmission).toBeGreaterThan(removal);
     expect(envelopeProbe).toBeGreaterThan(liveAdmission);
     expect(replacement).toBeGreaterThan(removal);
     expect(replacement).toBeGreaterThan(envelopeProbe);
-    expect(deploy).toContain('docker rm -f "${container_ids[@]}"');
+    expect(databaseServiceRemovalHelper).toContain(
+      'docker rm -f "${container_ids[@]}" || return 1',
+    );
     expect(backend).toMatch(
       /persistent\+=\([\s\S]*?api ingestion-worker intelligence-worker delivery-service event-relay[\s\S]*?\)/,
     );
-    expect(deploy).toContain(
+    expect(databaseServiceRemovalHelper).toContain(
       'label=com.docker.compose.project=$PROJECT',
     );
-    expect(deploy).toContain(
+    expect(databaseServiceRemovalHelper).toContain(
       'label=com.docker.compose.service=$service',
     );
     expect(rollbackCall).toBeGreaterThanOrEqual(0);
