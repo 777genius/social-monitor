@@ -329,8 +329,12 @@ The preferred backup role is `social_monitor_backup_dumper`: `LOGIN`, not
 fallback and is logged as `emergency-managed-admin-superuser` without printing
 the secret. Deployment validates the secret path, URL pinning, effective
 database, current/session user, live TLS, and dump capability before schema
-snapshots or `pg_dump`; a missing or non-capable backup secret fails before
-image build or migrations.
+snapshots or `pg_dump`; a non-capable or invalid existing backup secret fails
+before image build or migrations. Temporary user-authorized bypass
+`skipped-user-authorized-missing-secret-20260727` applies only when the backup
+secret path is absent, in which case deploy emits
+`database-backup=skipped-user-authorized-missing-secret-20260727 sha=<sha>` and
+continues without reading another backup URL.
 
 The publication migrator remains a separate managed-PostgreSQL login named
 `social_monitor_publication_migrator`. Its connection URL lives only at

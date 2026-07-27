@@ -207,9 +207,11 @@ printf 'reader-summary-publication-migration-state-v1\t0\t0\t0\t0\t0\t0\nexact-h
 
 run_backup_fixture() {
   local dump_mode=$1 backup_timestamp=$2 backup_url=$BACKUP_DATABASE_URL
-  case $dump_mode in managed-admin) backup_url=$BACKUP_MANAGED_ADMIN_DATABASE_URL;; publication-dsn) backup_url=$BACKUP_PUBLICATION_ADMIN_DATABASE_URL;; app-dsn|managed-db-app-dsn) backup_url=$BACKUP_API_DATABASE_URL;; system-dsn) backup_url=$BACKUP_SYSTEM_DATABASE_URL;; esac
+  case $dump_mode in managed-admin) backup_url=$BACKUP_MANAGED_ADMIN_DATABASE_URL;; publication-dsn) backup_url=$BACKUP_PUBLICATION_ADMIN_DATABASE_URL;; app-dsn|managed-db-app-dsn) backup_url=$BACKUP_API_DATABASE_URL;; system-dsn) backup_url=$BACKUP_SYSTEM_DATABASE_URL;; invalid-secret) backup_url=not-a-postgres-url;; esac
   rm -f -- "$BACKUP_DSN_PATH" "$BACKUP_PUBLICATION_ADMIN_DSN_FILE"
-  printf '%s\n' "$backup_url" > "$BACKUP_DSN_PATH"; chmod 0400 "$BACKUP_DSN_PATH"
+  if [[ $dump_mode != missing-backup-secret ]]; then
+    printf '%s\n' "$backup_url" > "$BACKUP_DSN_PATH"; chmod 0400 "$BACKUP_DSN_PATH"
+  fi
   printf '%s\n' "$BACKUP_PUBLICATION_ADMIN_DATABASE_URL" > "$BACKUP_PUBLICATION_ADMIN_DSN_FILE"; chmod 0400 "$BACKUP_PUBLICATION_ADMIN_DSN_FILE"
   printf '%s\n' "$BACKUP_API_DATABASE_URL" > "$ROOT/secrets/db/managed-db-app.url"; printf '%s\n' "$BACKUP_SYSTEM_DATABASE_URL" > "$ROOT/secrets/db/system-database-url"
   # Fixture values expand only inside this isolated child shell.
@@ -248,7 +250,6 @@ run_backup_fixture() {
       [[ -n $1 && -f $1 && ! -L $1 && $(< "$1") == "DATABASE_URL=$BACKUP_DATABASE_URL" ]]
       printf "backup-env:%s\n" "$2" >> "$BACKUP_DOCKER_LOG"
     }
-    case $BACKUP_DUMP_MODE in missing-backup-secret) rm -f "$backup_secret";; esac
     docker() {
       local argument previous= env_file= migration_sql_file=
       printf "%s\n" "$*" >> "$BACKUP_DOCKER_LOG"
@@ -346,6 +347,14 @@ MANAGED_ADMIN_BACKUP=$ROOT/backups/pre-autodeploy-${BACKUP_PREFIX}-20260719T1200
 [[ -s $MANAGED_ADMIN_BACKUP ]]
 assert_backup_output "$managed_admin_output" 'database-backup-role-capability=emergency-managed-admin-superuser role=doadmin' "$MANAGED_ADMIN_BACKUP"
 
+: > "$BACKUP_DOCKER_LOG"; missing_backup_output=$(run_backup_fixture missing-backup-secret 20260719T120008Z)
+MISSING_BACKUP=$ROOT/backups/pre-autodeploy-${BACKUP_PREFIX}-20260719T120008Z.dump
+[[ $missing_backup_output == "database-backup=skipped-user-authorized-missing-secret-20260727 sha=$BASE_SHA" ]]
+[[ ! -e $BACKUP_DSN_PATH && ! -L $BACKUP_DSN_PATH ]]
+[[ ! -e $MISSING_BACKUP && ! -L $MISSING_BACKUP && ! -e $MISSING_BACKUP.partial && ! -L $MISSING_BACKUP.partial ]]
+[[ ! -s $BACKUP_DOCKER_LOG ]]
+if compgen -G "$STATE/database-backup.*" >/dev/null; then echo 'missing backup secret retained a temporary or credential-bearing backup file' >&2; exit 1; fi
+
 assert_backup_failure_clean() {
   local mode=$1 timestamp=$2
   local expected=$ROOT/backups/pre-autodeploy-${BACKUP_PREFIX}-${timestamp}.dump
@@ -353,13 +362,16 @@ assert_backup_failure_clean() {
   : > "$BACKUP_DOCKER_LOG"
   set +e; run_backup_fixture "$mode" "$timestamp" >/dev/null 2>&1; status=$?; set -e
   ((status != 0))
+  if [[ $mode == invalid-secret ]]; then
+    [[ -f $BACKUP_DSN_PATH && $(< "$BACKUP_DSN_PATH") == not-a-postgres-url ]]
+  fi
   [[ ! -e $expected && ! -L $expected ]]
   [[ ! -e $expected.partial && ! -L $expected.partial ]]
   if compgen -G "$STATE/database-backup.*" >/dev/null; then echo "$mode retained a temporary or credential-bearing backup file" >&2; exit 1; fi
-  case $mode in missing-backup-secret|unsafe-backup-secret|app-dsn|managed-db-app-dsn|system-dsn|publication-dsn|no-bypassrls|no-tls) ! grep -F 'pg_dump --format=custom' "$BACKUP_DOCKER_LOG" >/dev/null;; esac
+  case $mode in invalid-secret|unsafe-backup-secret|app-dsn|managed-db-app-dsn|system-dsn|publication-dsn|no-bypassrls|no-tls) ! grep -F 'pg_dump --format=custom' "$BACKUP_DOCKER_LOG" >/dev/null;; esac
 }
 
-for failure_case in corrupt:20260719T120001Z empty:20260719T120002Z dump-failure:20260719T120003Z wrong-database:20260719T120004Z signal-HUP:20260719T120005Z signal-INT:20260719T120006Z signal-TERM:20260719T120007Z missing-backup-secret:20260719T120008Z unsafe-backup-secret:20260719T120009Z app-dsn:20260719T120011Z managed-db-app-dsn:20260719T120012Z system-dsn:20260719T120013Z publication-dsn:20260719T120014Z no-bypassrls:20260719T120015Z no-tls:20260719T120016Z; do
+for failure_case in corrupt:20260719T120001Z empty:20260719T120002Z dump-failure:20260719T120003Z wrong-database:20260719T120004Z signal-HUP:20260719T120005Z signal-INT:20260719T120006Z signal-TERM:20260719T120007Z invalid-secret:20260719T120008Z unsafe-backup-secret:20260719T120009Z app-dsn:20260719T120011Z managed-db-app-dsn:20260719T120012Z system-dsn:20260719T120013Z publication-dsn:20260719T120014Z no-bypassrls:20260719T120015Z no-tls:20260719T120016Z; do
   assert_backup_failure_clean "${failure_case%:*}" "${failure_case#*:}"
 done
 grep -F 'ops/deploy/host/refresh-codex-auth.sh' "$ENTRYPOINT" >/dev/null

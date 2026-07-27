@@ -35,13 +35,13 @@ create_pre_migration_database_backup() (
   [[ $migration_checksum =~ ^[0-9a-f]{64}$ ]] || \
     fail 'reviewed reader-summary publication migration checksum is unavailable'
 
-  output=$ROOT/backups/pre-autodeploy-${sha:0:12}-$(date -u +%Y%m%dT%H%M%SZ).dump
-  partial=$output.partial
-  [[ ! -e $output && ! -L $output && ! -e $partial && ! -L $partial ]] || \
-    fail 'database backup output already exists'
-  cleanup_paths+=("$partial")
-
   backup_secret=$ROOT/secrets/db/postgres-backup-admin-url
+  if [[ ! -e $backup_secret && ! -L $backup_secret ]]; then
+    printf 'database-backup=skipped-user-authorized-missing-secret-20260727 sha=%s\n' \
+      "$sha"
+    return 0
+  fi
+
   declare -F reader_summary_publication_private_file_valid >/dev/null || \
     fail 'database backup private-file validator is unavailable'
   reader_summary_publication_private_file_valid "$backup_secret" '400' || \
@@ -50,6 +50,12 @@ create_pre_migration_database_backup() (
     fail 'database backup DSN secret is not pinned to the approved backup role and production database'
   database_url=$(< "$backup_secret") || \
     fail 'database backup DSN secret cannot be read'
+
+  output=$ROOT/backups/pre-autodeploy-${sha:0:12}-$(date -u +%Y%m%dT%H%M%SZ).dump
+  partial=$output.partial
+  [[ ! -e $output && ! -L $output && ! -e $partial && ! -L $partial ]] || \
+    fail 'database backup output already exists'
+  cleanup_paths+=("$partial")
 
   umask 077
   trap 'rm -f -- "${cleanup_paths[@]}"' EXIT
