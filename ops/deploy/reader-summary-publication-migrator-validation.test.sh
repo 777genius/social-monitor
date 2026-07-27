@@ -19,6 +19,7 @@ WRITE_LOG=$FIXTURE/writes.log
 TRANSPORT_LOG=$FIXTURE/transport.log
 TRANSPORT_PGPASS_PATH_LOG=$FIXTURE/transport-pgpass-path.log
 TRANSPORT_QUERY_PATH_LOG=$FIXTURE/transport-query-path.log
+CHOWN_LOG=$FIXTURE/chown.log
 FAKE_BIN=$FIXTURE/bin
 PRIVATE_QUERY_PAYLOAD=private-query-output-must-stay-redacted
 PRIVATE_PASSWORD=redacted-test-password
@@ -44,6 +45,7 @@ AVAILABILITY_STATUS=0
 SECRET_OWNER=root
 SYSTEM_SECRET_OWNER=root
 SECRET_METADATA_STATUS=0
+SYSTEM_SECRET_CHOWN_STATUS=0
 CA_OWNER=root
 CA_METADATA_STATUS=0
 FAIL_PHASE=
@@ -161,6 +163,17 @@ stat() {
   else
     command stat "$@"
   fi
+}
+
+chown() {
+  local last_argument=${!#}
+  if [[ $last_argument == "$ROOT/secrets/db/system-database-url" ]]; then
+    ((SYSTEM_SECRET_CHOWN_STATUS == 0)) || return "$SYSTEM_SECRET_CHOWN_STATUS"
+    printf '%s\n' "$last_argument" >> "$CHOWN_LOG"
+    SYSTEM_SECRET_OWNER=root
+    return 0
+  fi
+  command chown "$@"
 }
 
 sha=$TARGET_LIBRARY_SHA
@@ -314,6 +327,7 @@ reset_case() {
   : > "$TRANSPORT_LOG"
   : > "$TRANSPORT_PGPASS_PATH_LOG"
   : > "$TRANSPORT_QUERY_PATH_LOG"
+  : > "$CHOWN_LOG"
   CATALOG_RESULT=$VALID_CATALOG
   CATALOG_QUERY_STATUS=0
   SYSTEM_CATALOG_RESULT=$SYSTEM_VALID_CATALOG
@@ -327,6 +341,7 @@ reset_case() {
   SECRET_OWNER=root
   SYSTEM_SECRET_OWNER=root
   SECRET_METADATA_STATUS=0
+  SYSTEM_SECRET_CHOWN_STATUS=0
   CA_OWNER=root
   CA_METADATA_STATUS=0
   FAIL_PHASE=
@@ -555,7 +570,23 @@ write_production_env "DATABASE_URL=$API_URL"
 write_system_url "$SYSTEM_URL"
 chmod 0644 "$ROOT/secrets/db/system-database-url"
 SYSTEM_SECRET_OWNER=deploy-user
-assert_system_contract_failure unsafe-system-secret-owner
+TRANSPORT_FORBIDDEN_ENV_VALUE=$SYSTEM_PASSWORD
+TRANSPORT_EXPECTED_PGPASS="${DATABASE_HOST}:25060:social_monitor:${MIGRATOR_ROLE}:${PRIVATE_PASSWORD}"
+TRANSPORT_EXPECTED_SYSTEM_PGPASS="${DATABASE_HOST}:25060:social_monitor:${SYSTEM_ROLE}:${SYSTEM_PASSWORD}"
+system_contract_output=$(ensure_system_database_url_deploy_contract 2>&1)
+[[ -z $system_contract_output ]]
+grep -Fx "SYSTEM_DATABASE_URL=$SYSTEM_URL" "$ROOT/secrets/production.env" >/dev/null
+grep -Fx "$ROOT/secrets/db/system-database-url" "$CHOWN_LOG" >/dev/null
+[[ $(stat -c '%a' "$ROOT/secrets/db/system-database-url") == 600 ]]
+TEST_COUNT=$((TEST_COUNT + 1))
+
+reset_case
+write_production_env "DATABASE_URL=$API_URL"
+write_system_url "$SYSTEM_URL"
+chmod 0644 "$ROOT/secrets/db/system-database-url"
+SYSTEM_SECRET_OWNER=deploy-user
+SYSTEM_SECRET_CHOWN_STATUS=43
+assert_system_contract_failure unrepairable-system-secret-owner
 if grep -F 'SYSTEM_DATABASE_URL=' "$ROOT/secrets/production.env" >/dev/null; then
   exit 1
 fi

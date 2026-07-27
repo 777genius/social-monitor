@@ -173,14 +173,11 @@ reader_summary_publication_private_file_valid() {
 
 reader_summary_publication_repair_private_file_mode() {
   local path=$1 allowed_modes=$2 repaired_mode=$3
-  local metadata owner mode
 
   reader_summary_publication_private_file_valid "$path" "$allowed_modes" && return 0
   [[ -f $path && ! -L $path && -s $path ]] || return 1
-  metadata=$(reader_summary_publication_admin_secret_metadata "$path" 2>/dev/null) || return 1
-  IFS='|' read -r owner mode <<< "$metadata"
-  [[ $owner == root ]] || return 1
   [[ $repaired_mode =~ ^[0-7]{3}$ && "|$allowed_modes|" == *"|$repaired_mode|"* ]] || return 1
+  chown root:root "$path" || return 1
   chmod "$repaired_mode" "$path" || return 1
   reader_summary_publication_private_file_valid "$path" "$allowed_modes"
 }
