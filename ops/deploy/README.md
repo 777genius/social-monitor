@@ -314,17 +314,34 @@ therefore use an explicit two-release sequence:
 A target that combines a daily runtime asset with a bridge controller or
 PostgreSQL activation-library change is rejected before control activation.
 
-The final backend release also requires a dedicated managed-PostgreSQL login
-named `social_monitor_publication_migrator`. Its connection URL lives only at
+The final backend release requires a separate dump-capable backup secret at
+`/var/data/social-monitor/secrets/db/postgres-backup-admin-url`. The file must
+be root-owned, regular, non-symlinked, non-empty, and mode `0400`. Its URL must
+authenticate directly to the reviewed production cluster
+`dbaas-db-8050451-do-user-39622063-0.e.db.ondigitalocean.com:25060`, database
+`social_monitor`, with `sslmode=verify-full`,
+`sslrootcert=/run/social-monitor-db/ca-certificate.crt`, and a bounded
+`connect_timeout`.
+
+The preferred backup role is `social_monitor_backup_dumper`: `LOGIN`, not
+`CREATEROLE`, not `CREATEDB`, not `REPLICATION`, not superuser, and
+`BYPASSRLS`. A managed-admin superuser URL is accepted only as an emergency
+fallback and is logged as `emergency-managed-admin-superuser` without printing
+the secret. Deployment validates the secret path, URL pinning, effective
+database, current/session user, live TLS, and dump capability before schema
+snapshots or `pg_dump`; a missing or non-capable backup secret fails before
+image build or migrations.
+
+The publication migrator remains a separate managed-PostgreSQL login named
+`social_monitor_publication_migrator`. Its connection URL lives only at
 `secrets/db/reader-summary-publication-admin-url`, owned by root with mode
-`0400`, and is pinned to the reviewed cluster, port, database, CA path and
-`sslmode=verify-full`. The login is `CREATEROLE` but not superuser, database
-creator, replication or bypass-RLS. Its membership in `social_monitor_app`
-must use PostgreSQL 18 options `ADMIN TRUE`, `INHERIT FALSE`, `SET TRUE`.
-Deployment validates that exact identity and live TLS session before creating
-a backup or building an image, then validates it again immediately before the
-first publication SQL transaction. Only transient connection failure is
-retried, three times; identity, URL and privilege mismatches fail immediately.
+`0400`. That role is `CREATEROLE` but not superuser, database creator,
+replication or bypass-RLS, and its membership in `social_monitor_app` must use
+PostgreSQL 18 options `ADMIN TRUE`, `INHERIT FALSE`, `SET TRUE`. It cannot be
+reused for backup after `FORCE ROW LEVEL SECURITY`: tenant tables such as
+`api_keys` require a dump role with `BYPASSRLS` or superuser capability, and
+`pg_dump --role=social_monitor_app`, `--enable-row-security`, table exclusions,
+or partial backup waivers are not acceptable.
 
 The pool release continues to own no timer; exactly one existing reviewed daily
 timer must remain enabled. The daily service timeout is 23,400 seconds with
