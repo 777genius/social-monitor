@@ -428,8 +428,9 @@ validate_reader_summary_publication_migrator() (
   local is_superuser can_create_database can_replicate can_bypass_rls
   local server_version uses_tls membership_count membership_admin
   local membership_inherit membership_set protected_memberships_valid
-  local unexpected_membership_count outgoing_membership_count
-  local protected_creator_membership_valid public_schema_boundary_valid extra
+  local unexpected_membership_count legacy_unexpected_memberships_valid
+  local outgoing_membership_count protected_creator_membership_valid
+  local public_schema_boundary_valid extra
   local query_status availability_status
 
   [[ -f $secret && ! -L $secret && -s $secret ]] || return 64
@@ -468,15 +469,16 @@ validate_reader_summary_publication_migrator() (
   fi
   [[ -n $catalog_result && $catalog_result != *$'\n'* ]] || return 65
   catalog_delimiters=${catalog_result//[!|]/}
-  ((${#catalog_delimiters} == 20)) || return 65
+  ((${#catalog_delimiters} == 21)) || return 65
 
   IFS='|' read -r database_name current_identity session_identity \
     can_login can_create_role inherits_role is_superuser \
     can_create_database can_replicate can_bypass_rls server_version \
     uses_tls membership_count membership_admin membership_inherit \
     membership_set protected_memberships_valid \
-    unexpected_membership_count outgoing_membership_count \
-    protected_creator_membership_valid public_schema_boundary_valid extra \
+    unexpected_membership_count legacy_unexpected_memberships_valid \
+    outgoing_membership_count protected_creator_membership_valid \
+    public_schema_boundary_valid extra \
     <<< "$catalog_result"
 
   [[ -z $extra && \
@@ -493,7 +495,9 @@ validate_reader_summary_publication_migrator() (
   [[ $membership_admin == t ]] || return 65
   [[ $membership_inherit == f && $membership_set == t ]] || return 65
   [[ $protected_memberships_valid == t ]] || return 65
-  [[ $unexpected_membership_count == 0 ]] || return 65
+  [[ $unexpected_membership_count == 0 || \
+    ( $unexpected_membership_count == 3 && \
+      $legacy_unexpected_memberships_valid == t ) ]] || return 65
   [[ $outgoing_membership_count == 1 ]] || return 65
   [[ $protected_creator_membership_valid == t ]] || return 65
   [[ $public_schema_boundary_valid == t ]] || return 65
@@ -723,6 +727,7 @@ SELECT
   COALESCE(membership.set_option, false),
   COALESCE(membership.protected_memberships_valid, false),
   COALESCE(membership.unexpected_membership_count, 0),
+  COALESCE(membership.legacy_unexpected_memberships_valid, false),
   COALESCE(outgoing_memberships.membership_count, 0),
   COALESCE(outgoing_memberships.protected_creator_membership_valid, false),
   COALESCE(public_schema_ownership.boundary_valid, false)
@@ -862,7 +867,49 @@ LEFT JOIN LATERAL (
         'social_monitor_reader_summary_publication_owner',
         'social_monitor_reader_summary_publication_runtime'
       )
-    ) AS unexpected_membership_count
+    ) AS unexpected_membership_count,
+    (
+      COUNT(*) FILTER (
+        WHERE granted_role.rolname NOT IN (
+          :'runtime_role',
+          'social_monitor_public_schema_owner',
+          'social_monitor_reader_summary_publication_owner',
+          'social_monitor_reader_summary_publication_runtime'
+        )
+      ) = 0 OR (
+        COUNT(*) FILTER (
+          WHERE granted_role.rolname NOT IN (
+            :'runtime_role',
+            'social_monitor_public_schema_owner',
+            'social_monitor_reader_summary_publication_owner',
+            'social_monitor_reader_summary_publication_runtime'
+          )
+        ) = 3
+        AND COUNT(*) FILTER (
+          WHERE granted_role.rolname = 'social_monitor_system_app'
+            AND grantor_role.rolname = 'postgres'
+            AND membership.admin_option
+            AND NOT membership.inherit_option
+            AND NOT membership.set_option
+        ) = 1
+        AND COUNT(*) FILTER (
+          WHERE granted_role.rolname =
+              'social_monitor_tenant_system_runtime'
+            AND grantor_role.rolname = 'postgres'
+            AND membership.admin_option
+            AND NOT membership.inherit_option
+            AND NOT membership.set_option
+        ) = 1
+        AND COUNT(*) FILTER (
+          WHERE granted_role.rolname =
+              'social_monitor_tenant_system_runtime'
+            AND grantor_role.rolname = current_user
+            AND NOT membership.admin_option
+            AND NOT membership.inherit_option
+            AND membership.set_option
+        ) = 1
+      )
+    ) AS legacy_unexpected_memberships_valid
     FROM pg_catalog.pg_auth_members AS membership
     JOIN pg_catalog.pg_roles AS granted_role
       ON granted_role.oid = membership.roleid

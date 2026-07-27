@@ -32,7 +32,7 @@ DATABASE_HOST=dbaas-db-8050451-do-user-39622063-0.e.db.ondigitalocean.com
 VALID_URL="postgresql://${MIGRATOR_ROLE}:${PRIVATE_PASSWORD}@${DATABASE_HOST}:25060/social_monitor?connect_timeout=10&sslmode=verify-full&sslrootcert=%2Frun%2Fsocial-monitor-db%2Fca-certificate.crt"
 API_URL="postgresql://${API_ROLE}:${API_PASSWORD}@${DATABASE_HOST}:25060/social_monitor?connect_timeout=10&sslmode=verify-full&sslrootcert=%2Frun%2Fsocial-monitor-db%2Fca-certificate.crt"
 SYSTEM_URL="postgresql://${SYSTEM_ROLE}:${SYSTEM_PASSWORD}@${DATABASE_HOST}:25060/social_monitor?connect_timeout=10&sslmode=verify-full&sslrootcert=%2Frun%2Fsocial-monitor-db%2Fca-certificate.crt"
-VALID_CATALOG="social_monitor|${MIGRATOR_ROLE}|${MIGRATOR_ROLE}|t|t|t|f|f|f|f|180004|t|1|t|f|t|t|0|1|t|t"
+VALID_CATALOG="social_monitor|${MIGRATOR_ROLE}|${MIGRATOR_ROLE}|t|t|t|f|f|f|f|180004|t|1|t|f|t|t|0|t|1|t|t"
 SYSTEM_VALID_CATALOG="social_monitor|${SYSTEM_ROLE}|t|t|f|f|f|f|f|1|f|t|f|1|f|t|f|0|t|180004|t"
 SYSTEM_VALID_AUTH="social_monitor|${SYSTEM_ROLE}|${SYSTEM_ROLE}|t|t"
 CATALOG_RESULT=$VALID_CATALOG
@@ -144,6 +144,12 @@ if [[ -n $query_file ]]; then
     [[ $query_payload == *"'social_monitor_public_schema_owner',"* ]]
     [[ $query_payload == *"current_user,"* ]]
     [[ $query_payload == *"'social_monitor_reader_summary_publication_owner'"* ]]
+    [[ $query_payload == *'legacy_unexpected_memberships_valid'* ]]
+    [[ $query_payload == *"granted_role.rolname = 'social_monitor_system_app'"* ]]
+    [[ $query_payload == *"'social_monitor_tenant_system_runtime'"* ]]
+    [[ $query_payload == *"grantor_role.rolname = 'postgres'"* ]]
+    [[ $query_payload == *'grantor_role.rolname = current_user'* ]]
+    [[ $query_payload != *":'system_runtime_role'"* ]]
     [[ " $* " == *' --set=runtime_role=social_monitor_app '* ]]
     [[ " $* " == *' --set=provisioner_role=doadmin '* ]]
     query_result=${TRANSPORT_QUERY_RESULT:-}
@@ -469,11 +475,15 @@ assert_pgpass_transport() {
 }
 
 catalog_with_field() {
-  local index=$1
-  local value=$2
+  local index value
   local -a fields
   IFS='|' read -r -a fields <<< "$VALID_CATALOG"
-  fields[index]=$value
+  while (($# > 0)); do
+    index=$1
+    value=$2
+    fields[index]=$value
+    shift 2
+  done
   local IFS='|'
   printf '%s' "${fields[*]}"
 }
@@ -534,6 +544,20 @@ assert_invalid_catalog() {
   [[ ! -s $WRITE_LOG ]]
   assert_redacted "$output" "$VALID_URL"
   [[ $output != *"$catalog_result"* ]]
+  TEST_COUNT=$((TEST_COUNT + 1))
+  : "$label"
+}
+
+assert_valid_catalog() {
+  local label=$1
+  local catalog_result=${2:-$VALID_CATALOG}
+  local output
+  reset_case
+  CATALOG_RESULT=$catalog_result
+  output=$(deploy_reader_summary_publication_migrations 2>&1)
+  [[ -z $output ]]
+  [[ $(< "$EVENT_LOG") == $'availability\ncatalog-query\nwrite:pre\nwrite:prisma\nwrite:post' ]]
+  [[ $(< "$WRITE_LOG") == $'psql:pre\nprisma-migrate\npsql:post' ]]
   TEST_COUNT=$((TEST_COUNT + 1))
   : "$label"
 }
@@ -747,12 +771,8 @@ reader_summary_publication_admin_catalog_query() {
   printf '%s\n' "$CATALOG_RESULT"
 }
 
-reset_case
-valid_output=$(deploy_reader_summary_publication_migrations 2>&1)
-[[ -z $valid_output ]]
-[[ $(< "$EVENT_LOG") == $'availability\ncatalog-query\nwrite:pre\nwrite:prisma\nwrite:post' ]]
-[[ $(< "$WRITE_LOG") == $'psql:pre\nprisma-migrate\npsql:post' ]]
-TEST_COUNT=$((TEST_COUNT + 1))
+assert_valid_catalog standard-catalog
+assert_valid_catalog exact-legacy-memberships "$(catalog_with_field 17 3)"
 
 for failed_phase in pre prisma post; do
   reset_case
@@ -886,14 +906,17 @@ assert_invalid_catalog inherited-runtime-role "$(catalog_with_field 14 t)"
 assert_invalid_catalog no-runtime-set-option "$(catalog_with_field 15 f)"
 assert_invalid_catalog unsafe-protected-membership "$(catalog_with_field 16 f)"
 assert_invalid_catalog unexpected-role-membership "$(catalog_with_field 17 1)"
+assert_invalid_catalog arbitrary-extra-role "$(catalog_with_field 17 4)"
+assert_invalid_catalog wrong-legacy-membership-options \
+  "$(catalog_with_field 17 3 18 f)"
 assert_invalid_catalog missing-protected-creator-membership \
-  "$(catalog_with_field 18 0)"
+  "$(catalog_with_field 19 0)"
 assert_invalid_catalog additional-outgoing-member \
-  "$(catalog_with_field 18 2)"
+  "$(catalog_with_field 19 2)"
 assert_invalid_catalog unsafe-protected-creator-membership \
-  "$(catalog_with_field 19 f)"
-assert_invalid_catalog unsafe-public-schema-owner-boundary \
   "$(catalog_with_field 20 f)"
+assert_invalid_catalog unsafe-public-schema-owner-boundary \
+  "$(catalog_with_field 21 f)"
 
 assert_deploy_backend_preflight_order() {
   local mode=$1
@@ -995,10 +1018,13 @@ for catalog_token in \
   'expected_membership_count' \
   'protected_memberships_valid' \
   'unexpected_membership_count' \
+  'legacy_unexpected_memberships_valid' \
   'outgoing_memberships.membership_count' \
   'protected_creator_membership_valid' \
   'public_schema_ownership.boundary_valid' \
   'social_monitor_public_schema_owner' \
+  'social_monitor_system_app' \
+  'social_monitor_tenant_system_runtime' \
   'pg_catalog.pg_namespace namespace' \
   'pg_catalog.aclexplode' \
   'namespace.nspacl' \
@@ -1008,6 +1034,8 @@ for catalog_token in \
   "pg_has_role(" \
   'outgoing_membership.roleid = migrator.oid' \
   "member_role.rolname = :'provisioner_role'" \
+  "grantor_role.rolname = 'postgres'" \
+  'grantor_role.rolname = current_user' \
   'grantor_role.rolsuper' \
   'outgoing_membership.admin_option' \
   'NOT outgoing_membership.inherit_option' \
