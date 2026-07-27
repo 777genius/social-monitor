@@ -45,6 +45,8 @@ on:
           - none
           - disk-report
           - project-disk-cleanup
+          - reader-summary-recover-missing-days
+          - reader-summary-weekly-run
 
 permissions:
   contents: read
@@ -58,7 +60,7 @@ jobs:
     name: Production maintenance
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.maintenance_action != 'none' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 60
     environment: production
 
     steps:

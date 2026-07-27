@@ -136,7 +136,9 @@ for wrapper in "$FIXTURE/current-wrapper.sh" "$FIXTURE/legacy-wrapper.sh"; do
   done
 done
 
-for action in disk-report project-disk-cleanup; do
+for action in \
+  disk-report project-disk-cleanup \
+  reader-summary-recover-missing-days reader-summary-weekly-run; do
   : > "$EVENT_LOG"
   SSH_ORIGINAL_COMMAND="$action $SHA" EVENT_LOG=$EVENT_LOG \
     CONTROL_LIB=$CONTROL_LIB EXACT_SHA=$SHA bash "$FIXTURE/current-wrapper.sh"

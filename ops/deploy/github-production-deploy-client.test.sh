@@ -87,9 +87,8 @@ fake_ssh() {
       IFS= read -r value
       printf '%s\n' "$value" > "$FAKE_UPLOAD_PATH"
       ;;
-    maintenance_success:"disk-report $TARGET_SHA")
-      printf 'docker-disk-report-begin\n'
-      printf 'docker-disk-report-end\n'
+    maintenance_success:"disk-report $TARGET_SHA"|maintenance_success:"project-disk-cleanup $TARGET_SHA"|maintenance_success:"reader-summary-recover-missing-days $TARGET_SHA"|maintenance_success:"reader-summary-weekly-run $TARGET_SHA")
+      printf 'maintenance=%s\n' "${command%% *}"
       ;;
     normal_success:"deploy $TARGET_SHA")
       printf 'deployed=%s\n' "$TARGET_SHA"
@@ -247,8 +246,13 @@ grep -Fx 'fake-known-hosts' "$DEPLOY_SSH_KNOWN_HOSTS_PATH" >/dev/null
 bash "$CLIENT" cleanup
 [[ ! -e $DEPLOY_SSH_KEY_PATH && ! -e $DEPLOY_SSH_KNOWN_HOSTS_PATH ]]
 
-run_client maintenance_success maintenance "$TARGET_SHA" disk-report >/dev/null
-assert_call_count 1 "disk-report $TARGET_SHA"
+for maintenance_action in \
+  disk-report project-disk-cleanup \
+  reader-summary-recover-missing-days reader-summary-weekly-run; do
+  run_client maintenance_success maintenance \
+    "$TARGET_SHA" "$maintenance_action" >/dev/null
+  assert_call_count 1 "$maintenance_action $TARGET_SHA"
+done
 assert_fails maintenance_success maintenance "$TARGET_SHA" docker-system-prune
 assert_call_count 0 "docker-system-prune $TARGET_SHA"
 
@@ -391,6 +395,11 @@ grep -F 'postgres_pool_repair: ${{ steps.plan.outputs.postgres_pool_repair }}' \
   "$WORKFLOW" >/dev/null
 [[ $(grep -cF \
   "if: needs.plan.outputs.postgres_pool_repair != 'true'" "$WORKFLOW") == 1 ]]
+for maintenance_action in \
+  disk-report project-disk-cleanup \
+  reader-summary-recover-missing-days reader-summary-weekly-run; do
+  grep -F "          - $maintenance_action" "$WORKFLOW" >/dev/null
+done
 for dependency in plan verify_reader_summary_publication verify_backend build_frontend; do
   grep -F "      - $dependency" "$WORKFLOW" >/dev/null
 done

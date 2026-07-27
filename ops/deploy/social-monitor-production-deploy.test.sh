@@ -93,6 +93,40 @@ fi
 disk_report=$(run_entrypoint disk-report "$TARGET_SHA")
 grep -Fx 'docker-disk-report-begin' <<< "$disk_report" >/dev/null
 grep -Fx 'docker-disk-report-end' <<< "$disk_report" >/dev/null
+install -d "$CONTROL/postgres-runtime-current"
+printf '%s\n' "$BASE_SHA" > "$CONTROL/postgres-runtime-current/READY"
+READER_SUMMARY_MAINTENANCE_COMPOSE_LOG=$FIXTURE/reader-summary-maintenance-compose.log
+ENTRYPOINT=$ENTRYPOINT \
+READER_SUMMARY_MAINTENANCE_COMPOSE_LOG=$READER_SUMMARY_MAINTENANCE_COMPOSE_LOG \
+  SOCIAL_MONITOR_DEPLOY_TEST_MODE=1 \
+  SOCIAL_MONITOR_DEPLOY_ROOT="$ROOT" \
+  SOCIAL_MONITOR_DEPLOY_REPO="$REPO" \
+  SOCIAL_MONITOR_DEPLOY_CONTROL="$CONTROL" \
+  SOCIAL_MONITOR_DEPLOY_STATE="$STATE" \
+  SOCIAL_MONITOR_DEPLOY_STAGING="$STAGING" \
+    bash -c '
+      source "$ENTRYPOINT"
+      fake_compose() {
+        printf "%s\n" "$*" >> "$READER_SUMMARY_MAINTENANCE_COMPOSE_LOG"
+      }
+      COMPOSE=(fake_compose)
+      run_reader_summary_daily_runner_maintenance \
+        reader-summary-recover-missing-days
+      run_reader_summary_daily_runner_maintenance reader-summary-weekly-run
+    '
+grep -Fx -- '--profile daily run --rm --no-deps daily-runner sh -lc npm run recover:reader-summary-production -- --apply' \
+  "$READER_SUMMARY_MAINTENANCE_COMPOSE_LOG" >/dev/null
+grep -Fx -- '--profile daily run --rm --no-deps -e READER_SUMMARY_WEEKLY_PRODUCTION_ARTIFACT_DIR=/var/lib/social-monitor/artifacts/reader-summary-weekly-production daily-runner sh -lc npm run run:reader-summary-weekly-production' \
+  "$READER_SUMMARY_MAINTENANCE_COMPOSE_LOG" >/dev/null
+[[ $(wc -l < "$READER_SUMMARY_MAINTENANCE_COMPOSE_LOG") == 2 ]]
+grep -F 'exec 9>"$DAILY_SINGLETON_LOCK"' "$ENTRYPOINT" >/dev/null
+grep -F 'exec 8>"$POSTGRES_ADMISSION_LOCK"' "$ENTRYPOINT" >/dev/null
+grep -F 'flock -w "$DAILY_RUNNER_MAINTENANCE_ADMISSION_WAIT_SECONDS" 8' \
+  "$ENTRYPOINT" >/dev/null
+grep -F 'reader-summary-recover-missing-days|reader-summary-weekly-run)' \
+  "$ENTRYPOINT" >/dev/null
+! grep -Eq 'systemctl[[:space:]]+(enable|start|restart)[[:space:]].*reader-summary' \
+  "$ENTRYPOINT"
 printf '{"schemaVersion":1}\n' > "$REPO/ops/recovery/backup-restore-contract.json"
 git -C "$REPO" add ops/recovery/backup-restore-contract.json
 git -C "$REPO" commit -qm 'test: backup contract control change'

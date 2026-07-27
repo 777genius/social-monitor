@@ -45,6 +45,8 @@ DEPLOY_LOCK=$CONTROL/production-deploy.lock
 # can announce priority without deployment holding that singleton while it runs.
 POSTGRES_ADMISSION_LOCK=$CONTROL/daily-run.lock
 DAILY_SINGLETON_LOCK=$CONTROL/daily-run-singleton.lock
+DAILY_RUNNER_MAINTENANCE_ADMISSION_WAIT_SECONDS=7500
+READER_SUMMARY_WEEKLY_PRODUCTION_ARTIFACT_DIR=/var/lib/social-monitor/artifacts/reader-summary-weekly-production
 POSTGRES_RUNTIME_RELEASES=$CONTROL/postgres-runtime-releases
 POSTGRES_RUNTIME_CURRENT=$CONTROL/postgres-runtime-current
 POSTGRES_ROLLOUT_SOAK_SECONDS=300
@@ -642,6 +644,42 @@ cleanup_project_docker_storage() {
   print_docker_disk_report
 }
 
+verify_daily_runner_maintenance_runtime() {
+  local runtime_release backend_release
+  runtime_release=$(cat "$POSTGRES_RUNTIME_CURRENT/READY" 2>/dev/null || true)
+  backend_release=$(cat "$STATE/backend.sha" 2>/dev/null || true)
+  if [[ ! $runtime_release =~ ^[0-9a-f]{40}$ || \
+        $runtime_release != "$backend_release" ]]; then
+    fail 'daily-runner runtime is not committed by the backend release'
+  fi
+}
+
+acquire_daily_runner_maintenance_locks() {
+  exec 9>"$DAILY_SINGLETON_LOCK"
+  flock -n 9 || fail 'reader-summary daily-runner maintenance is already active'
+  exec 8>"$POSTGRES_ADMISSION_LOCK"
+  flock -w "$DAILY_RUNNER_MAINTENANCE_ADMISSION_WAIT_SECONDS" 8 || \
+    fail 'timed out waiting for PostgreSQL admission lock'
+}
+
+run_reader_summary_daily_runner_maintenance() (
+  local maintenance_action=$1
+  acquire_daily_runner_maintenance_locks
+  verify_daily_runner_maintenance_runtime
+  case $maintenance_action in
+    reader-summary-recover-missing-days)
+      "${COMPOSE[@]}" --profile daily run --rm --no-deps \
+        daily-runner sh -lc 'npm run recover:reader-summary-production -- --apply'
+      ;;
+    reader-summary-weekly-run)
+      "${COMPOSE[@]}" --profile daily run --rm --no-deps \
+        -e "READER_SUMMARY_WEEKLY_PRODUCTION_ARTIFACT_DIR=$READER_SUMMARY_WEEKLY_PRODUCTION_ARTIFACT_DIR" \
+        daily-runner sh -lc 'npm run run:reader-summary-weekly-production'
+      ;;
+    *) fail 'unknown reader-summary daily-runner maintenance action' ;;
+  esac
+)
+
 stop_and_remove_database_services() {
   local service
   local -a database_services=() container_ids remaining_container_ids
@@ -1052,5 +1090,8 @@ case ${action:-} in
   deploy) deploy_release "$sha" ;;
   disk-report) print_docker_disk_report ;;
   project-disk-cleanup) cleanup_project_docker_storage ;;
-  *) fail 'allowed commands: plan, upload, deploy, disk-report, project-disk-cleanup' ;;
+  reader-summary-recover-missing-days|reader-summary-weekly-run)
+    run_reader_summary_daily_runner_maintenance "$action"
+    ;;
+  *) fail 'allowed commands: plan, upload, deploy, disk-report, project-disk-cleanup, reader-summary-recover-missing-days, reader-summary-weekly-run' ;;
 esac

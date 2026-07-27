@@ -91,8 +91,8 @@ run_remote() {
 
 validate_maintenance_action() {
   case ${1:-} in
-    disk-report|project-disk-cleanup) ;;
-    *) fail 'maintenance action must be disk-report or project-disk-cleanup' ;;
+    disk-report|project-disk-cleanup|reader-summary-recover-missing-days|reader-summary-weekly-run) ;;
+    *) fail 'maintenance action must be disk-report, project-disk-cleanup, reader-summary-recover-missing-days, or reader-summary-weekly-run' ;;
   esac
 }
 
