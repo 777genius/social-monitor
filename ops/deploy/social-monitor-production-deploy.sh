@@ -590,6 +590,22 @@ compose_image_name() {
   printf '%s-%s:latest\n' "$PROJECT" "$1"
 }
 
+cleanup_stopped_project_containers() {
+  local status
+  local -a container_ids=()
+  for status in created exited dead; do
+    while IFS= read -r container_id; do
+      [[ -n $container_id ]] && container_ids+=("$container_id")
+    done < <(
+      docker ps -aq \
+        --filter "label=com.docker.compose.project=$PROJECT" \
+        --filter "status=$status"
+    )
+  done
+  ((${#container_ids[@]} > 0)) || return 0
+  docker rm -f "${container_ids[@]}" >/dev/null
+}
+
 stop_and_remove_database_services() {
   local service
   local -a database_services=() container_ids remaining_container_ids
@@ -733,6 +749,8 @@ deploy_backend() (
   local postgres_env=$STATE/postgres-admission.$$.env
   trap 'rm -f "$postgres_env"' EXIT
   from=$(marker_value backend)
+  cleanup_stopped_project_containers || \
+    fail 'stopped project container cleanup failed'
   mapfile -t services < <(backend_services "$from" "$sha")
   ((${#services[@]} > 0)) || return 0
   if declare -F ensure_system_database_url_deploy_contract >/dev/null && [[ " ${COMPOSE[*]} " == *" $POSTGRES_RUNTIME_CURRENT/compose.postgres-runtime.yml "* ]]; then
