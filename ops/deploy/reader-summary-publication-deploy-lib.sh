@@ -103,7 +103,9 @@ ensure_system_database_url_deploy_contract() (
   umask 077
   printf '%s\n' "$database_url" > "$effective_api_secret"
   if [[ -z $system_database_url ]]; then
-    [[ -n $system_secret_ref ]] || fail 'SYSTEM_DATABASE_URL is missing; deploy will not reuse DATABASE_URL. Set SYSTEM_DATABASE_URL_SECRET_REF to the approved root-owned social_monitor_system_app DSN file.'
+    if [[ -z $system_secret_ref ]]; then
+      system_secret_ref=$approved_system_secret
+    fi
     [[ $system_secret_ref == "$approved_system_secret" ]] || fail 'SYSTEM_DATABASE_URL_SECRET_REF must point to the approved root-owned social_monitor_system_app DSN file; deploy will not reuse DATABASE_URL.'
     reader_summary_publication_private_file_valid "$approved_system_secret" '400|600' || \
       fail 'SYSTEM_DATABASE_URL secret file must be root-owned with mode 0400 or 0600'

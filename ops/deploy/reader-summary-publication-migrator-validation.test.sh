@@ -514,6 +514,20 @@ grep -Fx 'client:psql:mode=600' "$TRANSPORT_LOG" >/dev/null
 [[ $(grep -cFx 'client:psql:catalog-file:mode=600' "$TRANSPORT_LOG") == 2 ]]
 TEST_COUNT=$((TEST_COUNT + 1))
 
+reset_case
+write_production_env "DATABASE_URL=$API_URL"
+write_system_url "$SYSTEM_URL"
+TRANSPORT_FORBIDDEN_ENV_VALUE=$SYSTEM_PASSWORD
+TRANSPORT_EXPECTED_PGPASS="${DATABASE_HOST}:25060:social_monitor:${MIGRATOR_ROLE}:${PRIVATE_PASSWORD}"
+TRANSPORT_EXPECTED_SYSTEM_PGPASS="${DATABASE_HOST}:25060:social_monitor:${SYSTEM_ROLE}:${SYSTEM_PASSWORD}"
+system_contract_output=$(ensure_system_database_url_deploy_contract 2>&1)
+[[ -z $system_contract_output ]]
+grep -Fx "SYSTEM_DATABASE_URL=$SYSTEM_URL"   "$ROOT/secrets/production.env" >/dev/null
+[[ $(stat -c '%a' "$ROOT/secrets/production.env") == 600 ]]
+grep -Fx 'client:psql:mode=600' "$TRANSPORT_LOG" >/dev/null
+[[ $(grep -cFx 'client:psql:catalog-file:mode=600' "$TRANSPORT_LOG") == 2 ]]
+TEST_COUNT=$((TEST_COUNT + 1))
+
 tenant_system_services=$(
   awk '/^  [A-Za-z0-9_-]+:$/ {service=$1; sub(/:$/, "", service)}
        /DATABASE_URL: \${SYSTEM_DATABASE_URL:\?/ {print service}' \
