@@ -11,7 +11,16 @@ import {
   type ReaderSummaryRecoveryFinalizationSqlRow,
 } from "../reader-summary-recovery-receipt";
 import type { PrismaSummaryClient } from "./prisma-summary-client";
-import { runSerializableReaderSummaryTransaction } from "./prisma-summary-transaction";
+import {
+  runSerializableReaderSummaryTransaction,
+  type PrismaSummaryTransactionOptions,
+} from "./prisma-summary-transaction";
+
+const recoveryFinalizationTransactionOptions: PrismaSummaryTransactionOptions =
+  Object.freeze({
+    maxWait: 30_000,
+    timeout: 300_000,
+  });
 
 export class PrismaReaderSummaryRecoveryFinalization
   implements ReaderSummaryRecoveryFinalizationPort
@@ -31,14 +40,17 @@ export class PrismaReaderSummaryRecoveryFinalization
     const serializedPublication = JSON.stringify(publication);
     const serializedReceipt = JSON.stringify(receipt);
     const rows = await withPrismaWriteRetry(() =>
-      runSerializableReaderSummaryTransaction(this.prisma, (prisma) =>
-        prisma.$queryRaw<readonly ReaderSummaryRecoveryFinalizationSqlRow[]>`
-          SELECT *
-          FROM "finalize_reader_summary_recovery"(
-            ${serializedPublication}::jsonb,
-            ${serializedReceipt}::jsonb
-          )
-        `,
+      runSerializableReaderSummaryTransaction(
+        this.prisma,
+        (prisma) =>
+          prisma.$queryRaw<readonly ReaderSummaryRecoveryFinalizationSqlRow[]>`
+            SELECT *
+            FROM "finalize_reader_summary_recovery"(
+              ${serializedPublication}::jsonb,
+              ${serializedReceipt}::jsonb
+            )
+          `,
+        recoveryFinalizationTransactionOptions,
       ),
     );
     const row = rows[0];

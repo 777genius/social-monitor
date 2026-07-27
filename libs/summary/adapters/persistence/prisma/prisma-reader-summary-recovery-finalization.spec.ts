@@ -20,6 +20,14 @@ import type { ReaderSummaryPublicationPayload } from "../reader-summary-publicat
 import { PrismaReaderSummaryPublication } from "./prisma-reader-summary-publication";
 import { PrismaReaderSummaryRecoveryFinalization } from "./prisma-reader-summary-recovery-finalization";
 import type { PrismaSummaryClient } from "./prisma-summary-client";
+import type { PrismaSummaryTransactionOptions } from "./prisma-summary-transaction";
+
+const expectedRecoveryFinalizationTransactionOptions: PrismaSummaryTransactionOptions =
+  Object.freeze({
+    maxWait: 30_000,
+    timeout: 300_000,
+    isolationLevel: "Serializable",
+  });
 
 describe("PrismaReaderSummaryRecoveryFinalization", () => {
   afterEach(() => {
@@ -34,7 +42,7 @@ describe("PrismaReaderSummaryRecoveryFinalization", () => {
       const queryRaw = jest.fn(async (...args: readonly unknown[]) =>
         sqlOutcome(args, "published"),
       );
-      const transaction = serializableTransaction(queryRaw);
+      const transaction = recoveryFinalizationTransaction(queryRaw);
       const finalization = new PrismaReaderSummaryRecoveryFinalization(
         prismaClient(transaction, queryRaw),
       );
@@ -44,6 +52,9 @@ describe("PrismaReaderSummaryRecoveryFinalization", () => {
       );
 
       expect(transaction).toHaveBeenCalledTimes(1);
+      expect(transaction.mock.calls[0]?.[1]).toEqual(
+        expectedRecoveryFinalizationTransactionOptions,
+      );
       expect(queryRaw).toHaveBeenCalledTimes(1);
       expect(String(queryRaw.mock.calls[0]?.[0])).toContain(
         "finalize_reader_summary_recovery",
@@ -69,7 +80,7 @@ describe("PrismaReaderSummaryRecoveryFinalization", () => {
       return sqlOutcome(args, invocation === 1 ? "published" : "replayed");
     });
     const finalization = new PrismaReaderSummaryRecoveryFinalization(
-      prismaClient(serializableTransaction(queryRaw), queryRaw),
+      prismaClient(recoveryFinalizationTransaction(queryRaw), queryRaw),
     );
 
     await expect(finalization.finalize(fixture.command)).resolves.toBe(
@@ -89,7 +100,7 @@ describe("PrismaReaderSummaryRecoveryFinalization", () => {
       throw new Error("reader summary recovery provenance conflict");
     });
     const finalization = new PrismaReaderSummaryRecoveryFinalization(
-      prismaClient(serializableTransaction(queryRaw), queryRaw),
+      prismaClient(recoveryFinalizationTransaction(queryRaw), queryRaw),
     );
 
     await expect(finalization.finalize(fixture.command)).rejects.toThrow(
@@ -121,9 +132,11 @@ describe("PrismaReaderSummaryRecoveryFinalization", () => {
         operation: (client: {
           readonly $queryRaw: typeof queryRaw;
         }) => Promise<TValue>,
-        options?: { readonly isolationLevel?: "Serializable" },
+        options?: PrismaSummaryTransactionOptions,
       ): Promise<TValue> => {
-        expect(options).toEqual({ isolationLevel: "Serializable" });
+        expect(options).toEqual(
+          expectedRecoveryFinalizationTransactionOptions,
+        );
         const snapshot = JSON.parse(
           JSON.stringify(durableState),
         ) as typeof durableState;
@@ -359,15 +372,26 @@ const sqlOutcome = (
 
 type JestMock = ReturnType<typeof jest.fn>;
 
-const serializableTransaction = (queryRaw: JestMock) =>
+const recoveryFinalizationTransaction = (queryRaw: JestMock) =>
+  serializableTransaction(
+    queryRaw,
+    expectedRecoveryFinalizationTransactionOptions,
+  );
+
+const serializableTransaction = (
+  queryRaw: JestMock,
+  expectedOptions: PrismaSummaryTransactionOptions = {
+    isolationLevel: "Serializable",
+  },
+) =>
   jest.fn(
     async <TValue>(
       operation: (client: {
         readonly $queryRaw: typeof queryRaw;
       }) => Promise<TValue>,
-      options?: { readonly isolationLevel?: "Serializable" },
+      options?: PrismaSummaryTransactionOptions,
     ): Promise<TValue> => {
-      expect(options).toEqual({ isolationLevel: "Serializable" });
+      expect(options).toEqual(expectedOptions);
       return operation({ $queryRaw: queryRaw });
     },
   );
