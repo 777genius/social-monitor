@@ -8,6 +8,14 @@ import {
   productionRecoverySqlRow,
 } from "./prisma-reader-summary-production-recovery-authority.spec-support";
 import type { PrismaSummaryClient } from "./prisma-summary-client";
+import type { PrismaSummaryTransactionOptions } from "./prisma-summary-transaction";
+
+const expectedProductionRecoveryAuthorityTransactionOptions: PrismaSummaryTransactionOptions =
+  Object.freeze({
+    maxWait: 30_000,
+    timeout: 300_000,
+    isolationLevel: "Serializable",
+  });
 
 describe("PrismaReaderSummaryProductionRecoveryAuthority", () => {
   it("loads exact database-derived days only after two equal dry runs", async () => {
@@ -64,7 +72,7 @@ describe("PrismaReaderSummaryProductionRecoveryAuthority", () => {
       'FROM "prepare_reader_summary_production_recovery"()',
     );
     expect(prisma.transactionOptions).toEqual([
-      { isolationLevel: "Serializable" },
+      expectedProductionRecoveryAuthorityTransactionOptions,
     ]);
   });
 
@@ -93,8 +101,8 @@ describe("PrismaReaderSummaryProductionRecoveryAuthority", () => {
     expect(result.outcome).toBe("prepared");
     expect(prisma.calls).toHaveLength(2);
     expect(prisma.transactionOptions).toEqual([
-      { isolationLevel: "Serializable" },
-      { isolationLevel: "Serializable" },
+      expectedProductionRecoveryAuthorityTransactionOptions,
+      expectedProductionRecoveryAuthorityTransactionOptions,
     ]);
   });
 

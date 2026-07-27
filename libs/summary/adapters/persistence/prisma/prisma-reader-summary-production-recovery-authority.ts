@@ -24,7 +24,10 @@ import {
   verifiedProductionRecoveryDays,
   verifiedProductionRecoveryDryRuns,
 } from "./prisma-reader-summary-production-recovery-authority-row";
-import { runSerializableReaderSummaryTransaction } from "./prisma-summary-transaction";
+import {
+  runSerializableReaderSummaryTransaction,
+  type PrismaSummaryTransactionOptions,
+} from "./prisma-summary-transaction";
 
 type RecoveryAuthoritySqlRow = Readonly<{
   outcome: string;
@@ -46,6 +49,11 @@ const constructorToken = Object.freeze({});
 const loadedAuthorities = new WeakSet<object>();
 const authorityBindings =
   new WeakMap<object, ReaderSummaryProductionRecoveryAuthorityBinding>();
+const productionRecoveryAuthorityTransactionOptions: PrismaSummaryTransactionOptions =
+  Object.freeze({
+    maxWait: 30_000,
+    timeout: 300_000,
+  });
 
 class PrismaLoadedReaderSummaryProductionRecoveryAuthority {
   constructor(
@@ -74,24 +82,27 @@ export class PrismaReaderSummaryProductionRecoveryAuthority
 
   async prepare(): Promise<PrepareReaderSummaryProductionRecoveryResult> {
     const rows = await withPrismaWriteRetry(() =>
-      runSerializableReaderSummaryTransaction(this.prisma, (prisma) =>
-        prisma.$queryRaw<readonly RecoveryAuthoritySqlRow[]>`
-          SELECT
-            "outcome",
-            "recovery_id"::text AS "recoveryId",
-            "tenant_id"::text AS "tenantId",
-            "workspace_id"::text AS "workspaceId",
-            "identity",
-            "canonical_record" AS "canonicalRecord",
-            "canonical_bytes" AS "canonicalBytes",
-            "canonical_sha256" AS "canonicalSha256",
-            "lease_state" AS "leaseState",
-            "issued_at" AS "issuedAt",
-            "consumed_at" AS "consumedAt",
-            "dry_runs" AS "dryRuns",
-            "days"
-          FROM "prepare_reader_summary_production_recovery"()
-        `,
+      runSerializableReaderSummaryTransaction(
+        this.prisma,
+        (prisma) =>
+          prisma.$queryRaw<readonly RecoveryAuthoritySqlRow[]>`
+            SELECT
+              "outcome",
+              "recovery_id"::text AS "recoveryId",
+              "tenant_id"::text AS "tenantId",
+              "workspace_id"::text AS "workspaceId",
+              "identity",
+              "canonical_record" AS "canonicalRecord",
+              "canonical_bytes" AS "canonicalBytes",
+              "canonical_sha256" AS "canonicalSha256",
+              "lease_state" AS "leaseState",
+              "issued_at" AS "issuedAt",
+              "consumed_at" AS "consumedAt",
+              "dry_runs" AS "dryRuns",
+              "days"
+            FROM "prepare_reader_summary_production_recovery"()
+          `,
+        productionRecoveryAuthorityTransactionOptions,
       ),
     );
     if (rows.length !== 1 || rows[0] === undefined) {
