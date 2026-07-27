@@ -23,7 +23,10 @@ verify_backend() {
     status=$(docker inspect "$container" --format '{{.State.Status}}')
     oom=$(docker inspect "$container" --format '{{.State.OOMKilled}}')
     if [[ $status != running || $oom != false ]]; then
-      printf 'deploy-error: %s failed runtime verification\n' "$service" >&2
+      exit_code=$(docker inspect "$container" --format '{{.State.ExitCode}}' 2>/dev/null || printf 'unavailable')
+      state_error=$(docker inspect "$container" --format '{{.State.Error}}' 2>/dev/null || printf 'unavailable')
+      printf 'deploy-error: %s failed runtime verification (container=%s status=%s oom=%s exit=%s state_error=%s)\n' \
+        "$service" "$container" "$status" "$oom" "$exit_code" "$state_error" >&2
       return 1
     fi
   done
