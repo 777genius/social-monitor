@@ -66,7 +66,7 @@ export const discoverReaderSummaryProductionRecoveryScope = async (
         (DATE '2026-07-23'::TIMESTAMP AT TIME ZONE 'UTC')
       AND feed."observed_at" <
         (DATE '2026-07-26'::TIMESTAMP AT TIME ZONE 'UTC')
-    ORDER BY feed."tenant_id", feed."workspace_id"
+    ORDER BY "tenantId", "workspaceId"
   `;
   if (rows.length !== 1 || rows[0] === undefined) {
     throw new Error(

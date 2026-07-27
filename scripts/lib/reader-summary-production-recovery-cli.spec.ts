@@ -78,6 +78,8 @@ describe("reader summary production recovery CLI wrapper", () => {
 
     const sql = normalizeSql(sqlFromQueryRaw(queryRaw));
     expect(sql).toContain("select distinct");
+    expect(sql).toContain('feed."tenant_id"::text as "tenantid"');
+    expect(sql).toContain('feed."workspace_id"::text as "workspaceid"');
     expect(sql).toContain('from "feed_items" as feed');
     expect(sql).toContain('join "source_items" as source');
     expect(sql).toContain('source."id" = feed."source_item_id"');
@@ -110,6 +112,8 @@ describe("reader summary production recovery CLI wrapper", () => {
     );
     expect(sql).toContain('feed."observed_at" >=');
     expect(sql).toContain('feed."observed_at" <');
+    expect(sql).toContain('order by "tenantid", "workspaceid"');
+    expect(sql).not.toContain('order by feed."tenant_id", feed."workspace_id"');
     expect(sql).not.toContain('feed."published_at"');
     expect(sql).not.toContain("having");
     expect(sql).not.toMatch(/\bcount\s*\(/u);
