@@ -1,20 +1,17 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2016
 set -euo pipefail
-
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 ENTRYPOINT=$SCRIPT_DIR/social-monitor-production-deploy.sh
 BACKUP_LIBRARY=$SCRIPT_DIR/postgres-backup-deploy-lib.sh
 FIXTURE=$(mktemp -d "/tmp/social-monitor-deploy-test.XXXXXX")
 trap 'rm -rf "$FIXTURE"' EXIT
-
 REPO=$(readlink -f -- "$FIXTURE")/repo
 ORIGIN=$FIXTURE/origin.git
 ROOT=$FIXTURE/root
 CONTROL=$ROOT/control
 STATE=$CONTROL/deploy-state
 STAGING=${SOCIAL_MONITOR_DEPLOY_TEST_STAGING:-$ROOT/runtime/deploy-staging}
-
 git init --bare -q "$ORIGIN"
 git init -q -b main "$REPO"
 git -C "$REPO" config user.name 'Deploy Contract Test'
@@ -52,13 +49,11 @@ git -C "$REPO" add README.md ops/deploy prisma/migrations
 git -C "$REPO" commit -qm 'test: base'
 git -C "$REPO" push -q -u origin main
 BASE_SHA=$(git -C "$REPO" rev-parse HEAD)
-
 printf 'frontend\n' > "$REPO/apps/frontend/change.txt"
 git -C "$REPO" add apps/frontend/change.txt
 git -C "$REPO" commit -qm 'test: frontend change'
 git -C "$REPO" push -q origin main
 TARGET_SHA=$(git -C "$REPO" rev-parse HEAD)
-
 for component in frontend backend control; do
   printf '%s\n' "$BASE_SHA" > "$STATE/$component.sha"
 done
@@ -66,7 +61,6 @@ cp "$ENTRYPOINT" "$CONTROL/github-production-deploy.sh"
 cp "$SCRIPT_DIR/social-monitor-production-ssh-wrapper.sh" \
   "$CONTROL/github-production-deploy-wrapper.sh"
 printf '%s\n' "$BASE_SHA" > "$STATE/postgres-pool-bootstrap.sha"
-
 run_entrypoint() {
   SOCIAL_MONITOR_DEPLOY_TEST_MODE=1 \
   SOCIAL_MONITOR_DEPLOY_ROOT="$ROOT" \
@@ -76,7 +70,6 @@ run_entrypoint() {
   SOCIAL_MONITOR_DEPLOY_STAGING="$STAGING" \
     bash "$ENTRYPOINT" "$@"
 }
-
 plan=$(run_entrypoint plan "$TARGET_SHA")
 grep -Fx 'frontend=true' <<< "$plan" >/dev/null
 grep -Fx 'backend=false' <<< "$plan" >/dev/null
@@ -85,11 +78,9 @@ grep -Fx 'control=false' <<< "$plan" >/dev/null
 grep -Fx 'x_collector=false' <<< "$plan" >/dev/null
 grep -Fx 'postgres_pool_bootstrap=postgres-pool-v1' <<< "$plan" >/dev/null
 grep -Fx "postgres_pool_bootstrap_sha=$BASE_SHA" <<< "$plan" >/dev/null
-
 printf '%s\n' "$TARGET_SHA" > "$STATE/frontend.sha"
 plan=$(run_entrypoint plan "$TARGET_SHA")
 grep -Fx 'frontend=false' <<< "$plan" >/dev/null
-
 if run_entrypoint plan invalid-sha >/dev/null 2>&1; then
   echo 'invalid SHA was accepted' >&2
   exit 1
@@ -99,11 +90,9 @@ if SSH_ORIGINAL_COMMAND=$'plan '"$TARGET_SHA"$'\ndeploy '"$TARGET_SHA" \
   echo 'multiline command was accepted' >&2
   exit 1
 fi
-
 disk_report=$(run_entrypoint disk-report "$TARGET_SHA")
 grep -Fx 'docker-disk-report-begin' <<< "$disk_report" >/dev/null
 grep -Fx 'docker-disk-report-end' <<< "$disk_report" >/dev/null
-
 printf '{"schemaVersion":1}\n' > "$REPO/ops/recovery/backup-restore-contract.json"
 git -C "$REPO" add ops/recovery/backup-restore-contract.json
 git -C "$REPO" commit -qm 'test: backup contract control change'
@@ -113,7 +102,6 @@ plan=$(run_entrypoint plan "$CONTROL_TARGET_SHA")
 grep -Fx 'frontend=false' <<< "$plan" >/dev/null
 grep -Fx 'backend=false' <<< "$plan" >/dev/null
 grep -Fx 'control=true' <<< "$plan" >/dev/null
-
 # Publication privilege contract changes must always select the standalone
 # migrator, even when no application source changed.
 git -C "$REPO" checkout -qb publication-mapping-test
@@ -302,7 +290,13 @@ run_backup_fixture() {
         [[ $BACKUP_DUMP_MODE != wrong-database ]] || { printf "%s\n" postgres; return; }
         printf "%s\n" social_monitor
       elif [[ $* == *"information_schema.tables"* ]]; then
+        return 94
+      elif [[ $* == *"pg_catalog.pg_class"* ]]; then
         assert_backup_admin_env "$env_file"
+        quote=$(printf "\\047")
+        for schema_query_fragment in "pg_catalog.pg_namespace" "c.relkind IN (${quote}r${quote}, ${quote}p${quote})" "c.relpersistence <> ${quote}t${quote}" "n.nspname = ${quote}public${quote}" "COLLATE \"C\""; do
+          [[ $* == *"$schema_query_fragment"* ]]
+        done
         command cat "$BACKUP_SCHEMA"
       elif [[ -n $migration_sql_file ]]; then
         assert_backup_admin_env "$env_file"

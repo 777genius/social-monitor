@@ -131,7 +131,13 @@ capture_pre_migration_schema_tables() {
     -v "$ROOT/secrets/db/ca-certificate.crt:/run/social-monitor-db/ca-certificate.crt:ro" \
     "$backup_image" \
     sh -c 'exec psql "$DATABASE_URL" -X -A -t -v ON_ERROR_STOP=1 -c "$1"' _ \
-    "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' ORDER BY table_name"
+    "SELECT c.relname::text
+FROM pg_catalog.pg_class AS c
+JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace
+WHERE n.nspname = 'public'
+  AND c.relkind IN ('r', 'p')
+  AND c.relpersistence <> 't'
+ORDER BY c.relname::text COLLATE \"C\""
 }
 
 capture_reader_summary_publication_migration_state() (
