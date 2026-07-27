@@ -32,6 +32,11 @@ type ProxyMetadata = {
 const interactiveTransactionContext =
   new AsyncLocalStorage<InteractiveTransactionContext>();
 
+const IMPLICIT_TRANSACTION_OPTIONS = {
+  maxWait: 30_000,
+  timeout: 300_000,
+} as const;
+
 export function guardRootClientDuringInteractiveTransaction<
   TClient extends object,
 >(client: TClient): TClient {
@@ -307,8 +312,12 @@ function invokeRootTransaction(
 ): unknown {
   const transaction = Reflect.get(rootClient, '$transaction', rootClient) as (
     callback: (client: object) => Promise<unknown>,
+    options: typeof IMPLICIT_TRANSACTION_OPTIONS,
   ) => unknown;
-  return Reflect.apply(transaction, rootClient, [operation]);
+  return Reflect.apply(transaction, rootClient, [
+    operation,
+    IMPLICIT_TRANSACTION_OPTIONS,
+  ]);
 }
 
 async function ensureTransactionConfigured(

@@ -7,9 +7,10 @@ import { guardRootClientDuringInteractiveTransaction } from './postgres-runtime-
 const tenantOne = '11111111-1111-4111-8111-111111111111';
 const workspaceOne = '22222222-2222-4222-8222-222222222222';
 const tenantTwo = '33333333-3333-4333-8333-333333333333';
+const implicitTransactionOptions = { maxWait: 30_000, timeout: 300_000 };
 
 describe('PostgreSQL runtime tenant scope', () => {
-  it('sets transaction-local scope before an inferred tenant operation', async () => {
+  it('sets transaction-local scope and timeout options before an inferred tenant operation', async () => {
     const fake = fakePrismaClient();
     const client = guardRootClientDuringInteractiveTransaction(fake.client);
 
@@ -18,7 +19,7 @@ describe('PostgreSQL runtime tenant scope', () => {
     });
 
     expect(fake.calls).toEqual([
-      ['transaction'],
+      ['transaction', implicitTransactionOptions],
       ['set_config', tenantOne, workspaceOne, 'false'],
       ['scanJob.findMany'],
     ]);
@@ -75,7 +76,30 @@ describe('PostgreSQL runtime tenant scope', () => {
     ]);
   });
 
-  it('uses explicit system access for cross-tenant worker operations', async () => {
+  it('preserves explicit interactive transaction caller options unchanged', async () => {
+    const fake = fakePrismaClient();
+    const client = guardRootClientDuringInteractiveTransaction(fake.client);
+    const explicitTransactionOptions = {
+      isolationLevel: 'Serializable',
+      maxWait: 1_234,
+      timeout: 5_678,
+    } as const;
+
+    await client.$transaction(async (transaction) => {
+      await transaction.scanJob.findMany({
+        where: { tenantId: tenantOne, workspaceId: workspaceOne },
+      });
+    }, explicitTransactionOptions);
+
+    expect(fake.calls).toEqual([
+      ['transaction', explicitTransactionOptions],
+      ['set_config', tenantOne, workspaceOne, 'false'],
+      ['scanJob.findMany'],
+    ]);
+    expect(fake.calls[0]?.[1]).toBe(explicitTransactionOptions);
+  });
+
+  it('uses explicit system access and timeout options for cross-tenant worker operations', async () => {
     const fake = fakePrismaClient();
     const client = guardRootClientDuringInteractiveTransaction(fake.client);
 
@@ -84,7 +108,7 @@ describe('PostgreSQL runtime tenant scope', () => {
     );
 
     expect(fake.calls).toEqual([
-      ['transaction'],
+      ['transaction', implicitTransactionOptions],
       ['set_config', '', '', 'true'],
       ['outboxEvent.findMany'],
     ]);
@@ -129,9 +153,16 @@ type FakeTransaction = {
   ): Promise<number>;
 };
 
+type FakeTransactionOptions = {
+  readonly isolationLevel?: string;
+  readonly maxWait?: number;
+  readonly timeout?: number;
+};
+
 type FakeClient = FakeTransaction & {
   $transaction<T>(
     operation: (transaction: FakeTransaction) => Promise<T>,
+    options?: FakeTransactionOptions,
   ): Promise<T>;
 };
 
@@ -164,8 +195,11 @@ function fakePrismaClient(): {
     ...transaction,
     async $transaction<T>(
       operation: (scoped: FakeTransaction) => Promise<T>,
+      options?: FakeTransactionOptions,
     ): Promise<T> {
-      calls.push(['transaction']);
+      calls.push(
+        options === undefined ? ['transaction'] : ['transaction', options],
+      );
       return operation(transaction);
     },
   };
