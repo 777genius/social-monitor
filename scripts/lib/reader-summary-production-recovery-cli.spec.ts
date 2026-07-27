@@ -6,10 +6,16 @@ import type {
 
 import {
   runReaderSummaryProductionRecovery,
+  readerSummaryProductionRecoveryDayIds,
   type ReaderSummaryProductionRecoveryDayExecutor,
 } from "./reader-summary-production-recovery-cli";
 import {
+  PrismaReaderSummaryProductionRecoveryReplayGuard,
+  type ReaderSummaryProductionRecoveryReplayGuardClient,
+} from "./reader-summary-production-recovery-replay-guard";
+import {
   discoverReaderSummaryProductionRecoveryScope,
+  resolveReaderSummaryProductionRecoverySourceDatabaseUrl,
   resolveReaderSummaryProductionRecoveryScope,
   type ReaderSummaryProductionRecoveryScope,
   type ReaderSummaryProductionRecoveryScopeDiscoveryClient,
@@ -47,6 +53,24 @@ describe("reader summary production recovery CLI wrapper", () => {
       }),
     ).resolves.toEqual(discoveredScope);
     expect(discover).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not require a manual source database URL prerequisite", () => {
+    expect(
+      resolveReaderSummaryProductionRecoverySourceDatabaseUrl({
+        env: {},
+        productionDatabaseUrl: "postgresql://production.example/db",
+      }),
+    ).toBe("postgresql://production.example/db");
+    expect(
+      resolveReaderSummaryProductionRecoverySourceDatabaseUrl({
+        env: {
+          READER_SUMMARY_PRODUCTION_RECOVERY_SOURCE_DATABASE_URL:
+            " postgresql://snapshot.example/db ",
+        },
+        productionDatabaseUrl: "postgresql://production.example/db",
+      }),
+    ).toBe("postgresql://snapshot.example/db");
   });
 
   it("fails discovery when no active production scope matches", async () => {
@@ -105,7 +129,7 @@ describe("reader summary production recovery CLI wrapper", () => {
     expect(sql).toContain("'rss'");
     expect(sql).toContain("'x-twitter'");
     expect(sql).toContain(
-      "date '2026-07-23'::timestamp at time zone 'utc'",
+      "date '2026-07-24'::timestamp at time zone 'utc'",
     );
     expect(sql).toContain(
       "date '2026-07-26'::timestamp at time zone 'utc'",
@@ -156,6 +180,51 @@ describe("reader summary production recovery CLI wrapper", () => {
     expect(executeDay).not.toHaveBeenCalled();
   });
 
+  it("skips day execution when current production already has exact recovery receipts", async () => {
+    const binding = bindingFixture();
+    const authority = authorityPort("prepared", binding);
+    const replayGuard = {
+      isReplayed: jest.fn(async () => true),
+    };
+    const executeDay = jest.fn();
+
+    const result = await runReaderSummaryProductionRecovery({
+      apply: true,
+      authority,
+      replayGuard,
+      executeDay,
+    });
+
+    expect(result.dayResults).toEqual([
+      {
+        requestedUtcDate: "2026-07-23",
+        outcome: "replayed",
+        readerSummaryJobId: readerSummaryProductionRecoveryDayIds(
+          binding,
+          "2026-07-23",
+        ).readerSummaryJobId,
+        readerSummaryId: readerSummaryProductionRecoveryDayIds(
+          binding,
+          "2026-07-23",
+        ).readerSummaryId,
+      },
+      {
+        requestedUtcDate: "2026-07-24",
+        outcome: "replayed",
+        readerSummaryJobId: readerSummaryProductionRecoveryDayIds(
+          binding,
+          "2026-07-24",
+        ).readerSummaryJobId,
+        readerSummaryId: readerSummaryProductionRecoveryDayIds(
+          binding,
+          "2026-07-24",
+        ).readerSummaryId,
+      },
+    ]);
+    expect(replayGuard.isReplayed).toHaveBeenCalledTimes(2);
+    expect(executeDay).not.toHaveBeenCalled();
+  });
+
   it("executes each exact recovery date once after a fresh authority prepare", async () => {
     const authority = authorityPort("prepared");
     const executeDay: jest.MockedFunction<ReaderSummaryProductionRecoveryDayExecutor> =
@@ -183,15 +252,41 @@ describe("reader summary production recovery CLI wrapper", () => {
       "artifact-2026-07-24",
     ]);
   });
+
+  it("checks production receipts with read-only replay SQL", async () => {
+    const { client, queryRaw } = replayGuardClient(true);
+    const guard = new PrismaReaderSummaryProductionRecoveryReplayGuard(client);
+
+    await expect(
+      guard.isReplayed({
+        binding: bindingFixture(),
+        requestedUtcDate: "2026-07-24",
+      }),
+    ).resolves.toBe(true);
+
+    const sql = normalizeSql(sqlFromQueryRaw(queryRaw));
+    expect(sql).toContain(
+      'from "reader_summary_recovery_receipts" as receipt',
+    );
+    expect(sql).toContain('join "reader_summary_publications" as publication');
+    expect(sql).toContain('join "reader_summary_artifacts" as artifact');
+    expect(sql).toContain('receipt."recovery_kind" = \'summary_only\'');
+    expect(sql).toContain('receipt."provenance" =');
+    expect(sql).toContain('artifact."status" = \'completed\'');
+    expect(sql).not.toMatch(/\bfeed_items\b|\bsource_items\b/u);
+    expect(sql).not.toMatch(/\binsert\b|\bupdate\b|\bdelete\b/u);
+    expect(sql).not.toMatch(/\bfinalize_reader_summary_recovery\b/u);
+  });
 });
 
 function authorityPort(
   outcome: "prepared" | "replayed",
+  binding: ReaderSummaryProductionRecoveryAuthorityBinding = bindingFixture(),
 ): jest.Mocked<ReaderSummaryProductionRecoveryAuthorityPort> {
   const handle = {} as ReaderSummaryProductionRecoveryAuthorityHandle;
   return {
     prepare: jest.fn(async () => ({ outcome, authority: handle })),
-    readVerifiedBinding: jest.fn(() => bindingFixture()),
+    readVerifiedBinding: jest.fn(() => binding),
   };
 }
 
@@ -220,6 +315,19 @@ function scopeDiscoveryClient(
       _query: TemplateStringsArray,
       ..._values: readonly unknown[]
     ): Promise<T> => rows as unknown as T,
+  ) as QueryRawMock;
+  return { client: { $queryRaw: queryRaw }, queryRaw };
+}
+
+function replayGuardClient(replayed: boolean): Readonly<{
+  client: ReaderSummaryProductionRecoveryReplayGuardClient;
+  queryRaw: QueryRawMock;
+}> {
+  const queryRaw = jest.fn(
+    async <T = unknown>(
+      _query: TemplateStringsArray,
+      ..._values: readonly unknown[]
+    ): Promise<T> => [{ replayed }] as unknown as T,
   ) as QueryRawMock;
   return { client: { $queryRaw: queryRaw }, queryRaw };
 }

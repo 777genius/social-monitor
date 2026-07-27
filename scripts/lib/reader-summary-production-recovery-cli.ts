@@ -61,10 +61,18 @@ export type ReaderSummaryProductionRecoveryDayExecutor = (params: {
   readonly requestedUtcDate: ReaderSummaryProductionRecoveryDate;
 }) => Promise<ReaderSummaryProductionRecoveryDayResult>;
 
+export type ReaderSummaryProductionRecoveryReplayGuard = Readonly<{
+  isReplayed(params: {
+    readonly binding: ReaderSummaryProductionRecoveryAuthorityBinding;
+    readonly requestedUtcDate: ReaderSummaryProductionRecoveryDate;
+  }): Promise<boolean>;
+}>;
+
 export type ReaderSummaryProductionRecoveryRunOptions = Readonly<{
   apply: boolean;
   authority: ReaderSummaryProductionRecoveryAuthorityPort;
   executeDay: ReaderSummaryProductionRecoveryDayExecutor;
+  replayGuard?: ReaderSummaryProductionRecoveryReplayGuard;
 }>;
 
 export const runReaderSummaryProductionRecovery = async (
@@ -89,10 +97,43 @@ export const runReaderSummaryProductionRecovery = async (
   }
   const dayResults: ReaderSummaryProductionRecoveryDayResult[] = [];
   for (const requestedUtcDate of readerSummaryProductionRecoveryDates) {
+    if (
+      (await options.replayGuard?.isReplayed({
+        binding,
+        requestedUtcDate,
+      })) === true
+    ) {
+      const ids = readerSummaryProductionRecoveryDayIds(
+        binding,
+        requestedUtcDate,
+      );
+      dayResults.push({
+        requestedUtcDate,
+        outcome: "replayed",
+        readerSummaryJobId: ids.readerSummaryJobId,
+        readerSummaryId: ids.readerSummaryId,
+      });
+      continue;
+    }
     dayResults.push(await options.executeDay({ binding, requestedUtcDate }));
   }
   return { outcome: "applied", plan, dayResults };
 };
+
+export const readerSummaryProductionRecoveryDayIds = (
+  binding: ReaderSummaryProductionRecoveryAuthorityBinding,
+  requestedUtcDate: ReaderSummaryProductionRecoveryDate,
+): Readonly<{
+  readerSummaryJobId: string;
+  readerSummaryId: string;
+}> => ({
+  readerSummaryJobId: deterministicUuid(
+    `reader-summary-production-recovery-job:${binding.recoveryId}:${requestedUtcDate}`,
+  ),
+  readerSummaryId: deterministicUuid(
+    `reader-summary-production-recovery-artifact:${binding.recoveryId}:${requestedUtcDate}`,
+  ),
+});
 
 export type ProductionRecoveryDayExecutorDependencies = Readonly<{
   model: ReaderSummaryModelPort;
@@ -124,12 +165,12 @@ export const executeProductionRecoveryDay = async (
 ): Promise<ReaderSummaryProductionRecoveryDayResult> => {
   const day = dayAuthority(params.binding, params.requestedUtcDate);
   const period = periodForRecoveryDate(params.requestedUtcDate);
-  const jobId = deterministicUuid(
-    `reader-summary-production-recovery-job:${params.binding.recoveryId}:${params.requestedUtcDate}`,
+  const ids = readerSummaryProductionRecoveryDayIds(
+    params.binding,
+    params.requestedUtcDate,
   );
-  const readerSummaryId = deterministicUuid(
-    `reader-summary-production-recovery-artifact:${params.binding.recoveryId}:${params.requestedUtcDate}`,
-  );
+  const jobId = ids.readerSummaryJobId;
+  const readerSummaryId = ids.readerSummaryId;
   const requestedAt = new Date(`${params.requestedUtcDate}T23:59:59.000Z`);
   const jobs = new InMemoryRecoveryJobRepository([
     ReaderSummaryJob.request({

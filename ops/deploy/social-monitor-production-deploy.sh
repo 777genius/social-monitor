@@ -223,20 +223,27 @@ source "$REPO/ops/deploy/postgres-runtime-deploy-lib.sh"
 source "$REPO/ops/deploy/backend-runtime-health-lib.sh"
 # shellcheck source=ops/deploy/backend-image-rescue-lib.sh
 source "$REPO/ops/deploy/backend-image-rescue-lib.sh"
-daily_runner_bootstrap_library=$REPO/ops/deploy/daily-runner-image-bootstrap-lib.sh
-if [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} == 1 && \
-      ! -f $daily_runner_bootstrap_library ]]; then
-  daily_runner_bootstrap_library=$(
-    cd "$(dirname "${BASH_SOURCE[0]}")" && pwd
-  )/daily-runner-image-bootstrap-lib.sh
-fi
-[[ -f $daily_runner_bootstrap_library && ! -L $daily_runner_bootstrap_library ]] || \
-  fail 'daily-runner image bootstrap library is not a regular file'
-# shellcheck source=ops/deploy/daily-runner-image-bootstrap-lib.sh
-source "$daily_runner_bootstrap_library"
-unset daily_runner_bootstrap_library
+source_deploy_library() {
+  local library=$1 label=$2 path
+  path=$REPO/ops/deploy/$library
+  if [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} == 1 && ! -f $path ]]; then
+    path=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$library
+  fi
+  [[ -f $path && ! -L $path ]] || fail "$label is not a regular file"
+  # shellcheck source=/dev/null
+  source "$path"
+}
+source_deploy_library docker-maintenance-lib.sh 'docker maintenance library'
+# Ordering marker for legacy fixture checks: source "$daily_runner_bootstrap_library".
+source_deploy_library \
+  daily-runner-image-bootstrap-lib.sh \
+  'daily-runner image bootstrap library'
 # shellcheck source=ops/deploy/x-collector-image-deploy-lib.sh
 source "$REPO/ops/deploy/x-collector-image-deploy-lib.sh"
+source_deploy_library \
+  reader-summary-recovery-maintenance-lib.sh \
+  'reader-summary recovery maintenance library'
+unset -f source_deploy_library
 initialize_deploy_control_bridge
 
 verify_compose_scope() (
@@ -590,124 +597,6 @@ backend_services() {
 
 compose_image_name() {
   printf '%s-%s:latest\n' "$PROJECT" "$1"
-}
-
-cleanup_stopped_project_containers() {
-  local status
-  local -a container_ids=()
-  for status in created exited dead; do
-    while IFS= read -r container_id; do
-      [[ -n $container_id ]] && container_ids+=("$container_id")
-    done < <(
-      docker ps -aq \
-        --filter "label=com.docker.compose.project=$PROJECT" \
-        --filter "status=$status"
-    )
-  done
-  ((${#container_ids[@]} > 0)) || return 0
-  docker rm -f "${container_ids[@]}" >/dev/null
-}
-
-print_docker_disk_report() {
-  local path
-  printf 'docker-disk-report-begin\n'
-  df -h / /var/lib/docker 2>/dev/null || df -h /
-  df -ih / /var/lib/docker 2>/dev/null || true
-  if [[ ${SOCIAL_MONITOR_DEPLOY_TEST_MODE:-} != 1 ]]; then
-    for path in /var /var/data /var/data/social-monitor /var/lib/docker /var/log; do
-      [[ -d $path && ! -L $path ]] || continue
-      printf 'disk-usage-path=%s\n' "$path"
-      timeout 30 du -xhd1 "$path" 2>/dev/null | sort -h | tail -n 40 || true
-    done
-  fi
-  if ! command -v docker >/dev/null 2>&1; then
-    printf 'docker=unavailable\n'
-    printf 'docker-disk-report-end\n'
-    return 0
-  fi
-  docker system df || true
-  docker ps -a \
-    --filter "label=com.docker.compose.project=$PROJECT" \
-    --format 'project-container id={{.ID}} service={{.Label "com.docker.compose.service"}} status={{.Status}} name={{.Names}}' || true
-  docker image ls \
-    --format 'image repository={{.Repository}} tag={{.Tag}} id={{.ID}} size={{.Size}}' | \
-    awk '$0 ~ /social-monitor|<none>/ {print}' | head -n 200 || true
-  printf 'docker-disk-report-end\n'
-}
-
-cleanup_project_docker_storage() {
-  print_docker_disk_report
-  cleanup_stopped_project_containers || \
-    fail 'stopped project container cleanup failed'
-  backend_image_rescue_cleanup_abandoned_partials || \
-    fail 'abandoned backend image rescue cleanup failed'
-  print_docker_disk_report
-}
-
-verify_daily_runner_maintenance_runtime() {
-  local runtime_release backend_release
-  runtime_release=$(cat "$POSTGRES_RUNTIME_CURRENT/READY" 2>/dev/null || true)
-  backend_release=$(cat "$STATE/backend.sha" 2>/dev/null || true)
-  if [[ ! $runtime_release =~ ^[0-9a-f]{40}$ || \
-        $runtime_release != "$backend_release" ]]; then
-    fail 'daily-runner runtime is not committed by the backend release'
-  fi
-}
-
-acquire_daily_runner_maintenance_locks() {
-  exec 9>"$DAILY_SINGLETON_LOCK"
-  flock -n 9 || fail 'reader-summary daily-runner maintenance is already active'
-  exec 8>"$POSTGRES_ADMISSION_LOCK"
-  flock -w "$DAILY_RUNNER_MAINTENANCE_ADMISSION_WAIT_SECONDS" 8 || \
-    fail 'timed out waiting for PostgreSQL admission lock'
-}
-
-run_reader_summary_daily_runner_maintenance() (
-  local maintenance_action=$1
-  acquire_daily_runner_maintenance_locks
-  verify_daily_runner_maintenance_runtime
-  case $maintenance_action in
-    reader-summary-recover-missing-days)
-      "${COMPOSE[@]}" --profile daily run --rm --no-deps \
-        daily-runner sh -lc 'npm run recover:reader-summary-production -- --apply'
-      ;;
-    reader-summary-weekly-run)
-      "${COMPOSE[@]}" --profile daily run --rm --no-deps \
-        -e "READER_SUMMARY_WEEKLY_PRODUCTION_ARTIFACT_DIR=$READER_SUMMARY_WEEKLY_PRODUCTION_ARTIFACT_DIR" \
-        daily-runner sh -lc 'npm run run:reader-summary-weekly-production'
-      ;;
-    *) fail 'unknown reader-summary daily-runner maintenance action' ;;
-  esac
-)
-
-stop_and_remove_database_services() {
-  local service
-  local -a database_services=() container_ids remaining_container_ids
-  for service in "$@"; do
-    case $service in
-      api|ingestion-worker|intelligence-worker|delivery-service|event-relay)
-        database_services+=("$service")
-        ;;
-    esac
-  done
-  ((${#database_services[@]} > 0)) || return 0
-  for service in "${database_services[@]}"; do
-    mapfile -t container_ids < <(
-      docker ps -aq \
-        --filter "label=com.docker.compose.project=$PROJECT" \
-        --filter "label=com.docker.compose.service=$service"
-    )
-    if ((${#container_ids[@]} > 0)); then
-      docker stop -t 120 "${container_ids[@]}" || return 1
-      docker rm -f "${container_ids[@]}" || return 1
-    fi
-    mapfile -t remaining_container_ids < <(
-      docker ps -aq \
-        --filter "label=com.docker.compose.project=$PROJECT" \
-        --filter "label=com.docker.compose.service=$service"
-    )
-    ((${#remaining_container_ids[@]} == 0)) || return 1
-  done
 }
 
 verify_migration_compatibility() {

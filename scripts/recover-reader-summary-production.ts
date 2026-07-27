@@ -19,6 +19,8 @@ type ScopeEnv = Readonly<Record<string, string | undefined>>;
 
 const tenantScopeEnvName = "READER_SUMMARY_PRODUCTION_RECOVERY_TENANT_ID";
 const workspaceScopeEnvName = "READER_SUMMARY_PRODUCTION_RECOVERY_WORKSPACE_ID";
+const sourceDatabaseEnvName =
+  "READER_SUMMARY_PRODUCTION_RECOVERY_SOURCE_DATABASE_URL";
 
 export const resolveReaderSummaryProductionRecoveryScope = async (params: {
   readonly env: ScopeEnv;
@@ -31,6 +33,14 @@ export const resolveReaderSummaryProductionRecoveryScope = async (params: {
   }
   return params.discover();
 };
+
+export const resolveReaderSummaryProductionRecoverySourceDatabaseUrl = (
+  params: Readonly<{
+    env: ScopeEnv;
+    productionDatabaseUrl: string;
+  }>,
+): string =>
+  readEnvValue(params.env, sourceDatabaseEnvName) ?? params.productionDatabaseUrl;
 
 export const discoverReaderSummaryProductionRecoveryScope = async (
   client: ReaderSummaryProductionRecoveryScopeDiscoveryClient,
@@ -63,7 +73,7 @@ export const discoverReaderSummaryProductionRecoveryScope = async (
         'x-twitter'
       ])
       AND feed."observed_at" >=
-        (DATE '2026-07-23'::TIMESTAMP AT TIME ZONE 'UTC')
+        (DATE '2026-07-24'::TIMESTAMP AT TIME ZONE 'UTC')
       AND feed."observed_at" <
         (DATE '2026-07-26'::TIMESTAMP AT TIME ZONE 'UTC')
     ORDER BY "tenantId", "workspaceId"
@@ -86,7 +96,12 @@ async function main(): Promise<void> {
   if (!process.argv.slice(2).includes("--apply")) {
     throw new Error("Pass --apply to run Jul23/Jul24 production recovery");
   }
-  const databaseUrl = requiredEnv("DATABASE_URL");
+  const productionDatabaseUrl = requiredEnv("DATABASE_URL");
+  const sourceDatabaseUrl =
+    resolveReaderSummaryProductionRecoverySourceDatabaseUrl({
+      env: process.env,
+      productionDatabaseUrl,
+    });
   const agentRuntimeAddress = requiredEnv("AGENT_RUNTIME_GRPC_ADDRESS");
   const {
     defaultPostgresRuntimePoolConfig,
@@ -127,24 +142,42 @@ async function main(): Promise<void> {
     createProductionRecoveryDayExecutor,
     runReaderSummaryProductionRecovery,
   } = await import("./lib/reader-summary-production-recovery-cli");
+  const {
+    PrismaReaderSummaryProductionRecoveryReplayGuard,
+  } = await import("./lib/reader-summary-production-recovery-replay-guard");
   const clock = new SystemClock();
-  const runtimePoolConfig = defaultPostgresRuntimePoolConfig(
-    databaseUrl,
+  const productionRuntimePoolConfig = defaultPostgresRuntimePoolConfig(
+    productionDatabaseUrl,
     "admin-tool",
   );
-  const summaryConnection =
-    await PrismaSummaryConnection.create(runtimePoolConfig);
+  const sourceRuntimePoolConfig = defaultPostgresRuntimePoolConfig(
+    sourceDatabaseUrl,
+    "admin-tool",
+  );
+  const productionSummaryConnection =
+    await PrismaSummaryConnection.create(productionRuntimePoolConfig);
+  let sourceSummaryConnection:
+    | Awaited<ReturnType<typeof PrismaSummaryConnection.create>>
+    | undefined;
 
   try {
+    const sourceSummary =
+      await PrismaSummaryConnection.create(sourceRuntimePoolConfig);
+    sourceSummaryConnection = sourceSummary;
     const scope = await resolveReaderSummaryProductionRecoveryScope({
       env: process.env,
       discover: () =>
         runWithSystemDatabaseAccess(
           "reader summary production recovery scope discovery",
-          () => discoverReaderSummaryProductionRecoveryScope(summaryConnection),
+          () =>
+            discoverReaderSummaryProductionRecoveryScope(
+              sourceSummary,
+            ),
         ),
     });
-    const feedConnection = await PrismaFeedConnection.create(runtimePoolConfig);
+    const feedConnection = await PrismaFeedConnection.create(
+      sourceRuntimePoolConfig,
+    );
     try {
       const agentRuntimeClient = GrpcAgentRuntimeClient.connect({
         address: agentRuntimeAddress,
@@ -159,7 +192,10 @@ async function main(): Promise<void> {
         runReaderSummaryProductionRecovery({
           apply: true,
           authority: new PrismaReaderSummaryProductionRecoveryAuthority(
-            summaryConnection,
+            sourceSummary,
+          ),
+          replayGuard: new PrismaReaderSummaryProductionRecoveryReplayGuard(
+            productionSummaryConnection,
           ),
           executeDay: createProductionRecoveryDayExecutor({
             model: new AgentRuntimeReaderSummaryModelAdapter({
@@ -171,12 +207,12 @@ async function main(): Promise<void> {
                 READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.summaryModelTimeoutMs,
             }),
             finalization: new PrismaReaderSummaryRecoveryFinalization(
-              summaryConnection,
+              productionSummaryConnection,
             ),
             feedItems: new PrismaFeedItemReadRepository(feedConnection),
             githubProjectionReader:
               new PrismaReaderSummaryGitHubProjectionReader(
-                summaryConnection,
+                sourceSummary,
               ),
             ids: new CryptoIdGenerator(),
             clock,
@@ -205,7 +241,8 @@ async function main(): Promise<void> {
       await feedConnection.close();
     }
   } finally {
-    await summaryConnection.close();
+    await sourceSummaryConnection?.close();
+    await productionSummaryConnection.close();
   }
 }
 
