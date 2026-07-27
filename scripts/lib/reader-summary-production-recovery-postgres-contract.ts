@@ -420,6 +420,8 @@ const assertPersistedAuthority = async (
     jul24_github_count: number;
     retained_published_at: string;
     retained_observed_at: string;
+    retained_source_published_at: string;
+    retained_source_observed_at: string;
   }>(
     `SELECT
        (SELECT count(*) FROM reader_summary_production_recovery_leases) AS lease_count,
@@ -469,6 +471,32 @@ const assertPersistedAuthority = async (
          WHERE requested_utc_date = DATE '2026-07-23'
          ORDER BY entry->>'feedItemId'
          LIMIT 1) AS retained_observed_at,
+       (SELECT to_char(
+            source.published_at AT TIME ZONE 'UTC',
+            'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'
+          )
+          FROM reader_summary_production_recovery_days day
+          CROSS JOIN LATERAL jsonb_array_elements(
+            day.provider_evidence->'hacker-news'
+          ) evidence(entry)
+          JOIN source_items source
+            ON source.id = (entry->>'sourceItemId')::uuid
+         WHERE requested_utc_date = DATE '2026-07-23'
+         ORDER BY entry->>'feedItemId'
+         LIMIT 1) AS retained_source_published_at,
+       (SELECT to_char(
+            source.observed_at AT TIME ZONE 'UTC',
+            'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'
+          )
+          FROM reader_summary_production_recovery_days day
+          CROSS JOIN LATERAL jsonb_array_elements(
+            day.provider_evidence->'hacker-news'
+          ) evidence(entry)
+          JOIN source_items source
+            ON source.id = (entry->>'sourceItemId')::uuid
+         WHERE requested_utc_date = DATE '2026-07-23'
+         ORDER BY entry->>'feedItemId'
+         LIMIT 1) AS retained_source_observed_at,
        evidence.evidence_count::text AS evidence_count,
        (evidence.evidence_count -
          evidence.distinct_feed_count)::text AS duplicate_feed_count,
@@ -505,6 +533,8 @@ const assertPersistedAuthority = async (
       jul24GitHubCount: row.jul24_github_count,
       retainedPublishedAt: row.retained_published_at,
       retainedObservedAt: row.retained_observed_at,
+      retainedSourcePublishedAt: row.retained_source_published_at,
+      retainedSourceObservedAt: row.retained_source_observed_at,
     },
     {
       leaseCount: "1",
@@ -521,6 +551,8 @@ const assertPersistedAuthority = async (
       jul24GitHubCount: 10,
       retainedPublishedAt: "2026-07-21T18:00:00.001Z",
       retainedObservedAt: "2026-07-23T12:00:00.001Z",
+      retainedSourcePublishedAt: "2026-07-21T18:00:00.001Z",
+      retainedSourceObservedAt: "2026-07-23T12:00:00.001Z",
     },
     "persisted recovery cardinality and evidence seals must be exact",
   );

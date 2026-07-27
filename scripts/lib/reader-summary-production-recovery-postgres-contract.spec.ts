@@ -9,10 +9,15 @@ const root = process.cwd();
 const migrationPaths = [
   "prisma/migrations/20260726170000_reader_summary_production_recovery_authority/migration.sql",
   "prisma/migrations/20260726170100_reader_summary_production_recovery_authority_prepare/migration.sql",
+  "prisma/migrations/20260727151000_reader_summary_production_recovery_observed_window/migration.sql",
 ] as const;
 const migration = migrationPaths
   .map((migrationPath) => readFileSync(join(root, migrationPath), "utf8"))
   .join("\n");
+const observedWindowMigration = readFileSync(
+  join(root, migrationPaths[2]),
+  "utf8",
+);
 const schema = readFileSync(join(root, "prisma/schema.prisma"), "utf8");
 const packageJson = readFileSync(join(root, "package.json"), "utf8");
 const tenantGuard = JSON.parse(
@@ -72,6 +77,8 @@ describe("reader summary production recovery PostgreSQL contract", () => {
     expect(queries[0]).toContain("DATE '2026-07-23'");
     expect(queries[0]).toContain("DATE '2026-07-24'");
     expect(queries[0]).toContain("jul21-sentinel");
+    expect(queries[0]).toContain("interval '2 days'");
+    expect(queries[0]).toContain("observed_at");
     expect(queries[0]).toContain(
       "github_repository_trend_results",
     );
@@ -148,18 +155,18 @@ describe("reader summary production recovery PostgreSQL contract", () => {
     );
     expect(
       migration.match(/JOIN "source_bindings" AS binding/gu),
-    ).toHaveLength(2);
+    ).toHaveLength(4);
     expect(
       migration.match(
         /AND binding\."interest_id" = feed\."interest_id"/gu,
       ),
-    ).toHaveLength(2);
+    ).toHaveLength(4);
     expect(
       migration.match(/JOIN "source_catalog_entries" AS catalog/gu),
-    ).toHaveLength(2);
+    ).toHaveLength(4);
     expect(
       migration.match(/AND catalog\."provider_key" = v_provider/gu),
-    ).toHaveLength(1);
+    ).toHaveLength(2);
   });
 
   it("requires two canonical byte-identical snapshots before lease consumption", () => {
@@ -198,6 +205,45 @@ describe("reader summary production recovery PostgreSQL contract", () => {
     );
   });
 
+  it("replaces recovery authority functions with observed-at collection windows", () => {
+    expect(observedWindowMigration).toContain(
+      'CREATE OR REPLACE FUNCTION "derive_reader_summary_production_recovery_day"',
+    );
+    expect(observedWindowMigration).toContain(
+      'CREATE OR REPLACE FUNCTION "prepare_reader_summary_production_recovery"',
+    );
+    expect(
+      observedWindowMigration.match(
+        /feed\."published_at" AT TIME ZONE 'UTC'/gu,
+      ),
+    ).toHaveLength(2);
+    expect(observedWindowMigration).toContain(
+      'AND feed."observed_at" >=\n          (target_date::TIMESTAMP AT TIME ZONE \'UTC\')',
+    );
+    expect(observedWindowMigration).toContain(
+      'AND feed."observed_at" <\n          (v_period_end::TIMESTAMP AT TIME ZONE \'UTC\')',
+    );
+    expect(observedWindowMigration).toContain(
+      'AND feed."observed_at" >=\n        (DATE \'2026-07-23\'::TIMESTAMP AT TIME ZONE \'UTC\')',
+    );
+    expect(observedWindowMigration).toContain(
+      'WHERE feed."observed_at" <\n            (DATE \'2026-07-24\'::TIMESTAMP AT TIME ZONE \'UTC\')',
+    );
+    expect(observedWindowMigration).toContain(
+      'WHERE feed."observed_at" >=\n            (DATE \'2026-07-24\'::TIMESTAMP AT TIME ZONE \'UTC\')',
+    );
+    expect(observedWindowMigration).not.toContain(
+      'AND feed."published_at" >=\n          (target_date::TIMESTAMP AT TIME ZONE \'UTC\')',
+    );
+    expect(observedWindowMigration).not.toContain(
+      'AND feed."published_at" >=\n        (DATE \'2026-07-23\'::TIMESTAMP AT TIME ZONE \'UTC\')',
+    );
+    expect(observedWindowMigration).not.toContain("EXECUTE v_definition");
+    expect(observedWindowMigration).not.toContain(
+      "GRANT EXECUTE ON FUNCTION",
+    );
+  });
+
   it("uses deterministic identity, SERIALIZABLE row locking and fixed paths", () => {
     expect(migration).toContain(
       "'reader_summary.production_recovery.v1:' || v_identity_sha",
@@ -228,7 +274,8 @@ describe("reader summary production recovery PostgreSQL contract", () => {
     );
     expect(migration).not.toMatch(/\bLOCK\s+TABLE\b/iu);
     expect(migration).not.toMatch(/\bLOCK\s+"[^"]+"/iu);
-    const functions = migration.match(/\bCREATE FUNCTION\b/gu) ?? [];
+    const functions =
+      migration.match(/\bCREATE(?: OR REPLACE)? FUNCTION\b/gu) ?? [];
     const fixedPaths =
       migration.match(
         /SET search_path = pg_catalog, public, pg_temp/gu,
