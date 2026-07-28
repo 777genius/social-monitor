@@ -10,6 +10,8 @@ const runtimeExecuteMigrationPath =
   "prisma/migrations/20260728143000_reader_summary_production_recovery_prepare_runtime_execute/migration.sql";
 const scopeAclMigrationPath =
   "prisma/migrations/20260728151000_reader_summary_production_recovery_scope_acl/migration.sql";
+const sourceBindingsAclMigrationPath =
+  "prisma/migrations/20260728162000_reader_summary_production_recovery_source_bindings_acl/migration.sql";
 const migrationPaths = [
   "prisma/migrations/20260726170000_reader_summary_production_recovery_authority/migration.sql",
   "prisma/migrations/20260726170100_reader_summary_production_recovery_authority_prepare/migration.sql",
@@ -19,6 +21,7 @@ const migrationPaths = [
   "prisma/migrations/20260728123000_reader_summary_production_recovery_published_counts_authority/migration.sql",
   runtimeExecuteMigrationPath,
   scopeAclMigrationPath,
+  sourceBindingsAclMigrationPath,
 ] as const;
 const migration = migrationPaths
   .map((migrationPath) => readFileSync(join(root, migrationPath), "utf8"))
@@ -33,6 +36,10 @@ const runtimeExecuteMigration = readFileSync(
 );
 const scopeAclMigration = readFileSync(
   join(root, scopeAclMigrationPath),
+  "utf8",
+);
+const sourceBindingsAclMigration = readFileSync(
+  join(root, sourceBindingsAclMigrationPath),
   "utf8",
 );
 const schema = readFileSync(join(root, "prisma/schema.prisma"), "utf8");
@@ -375,6 +382,37 @@ describe("reader summary production recovery PostgreSQL contract", () => {
       "social_monitor_reader_summary_publication_runtime",
     );
     expect(scopeAclMigration).not.toMatch(
+      /\b(?:CREATE|ALTER|DROP)\s+(?:FUNCTION|TABLE|POLICY)\b/iu,
+    );
+  });
+
+  it("grants only scoped source binding authority to the publication owner", () => {
+    const sourceBindingSelectGrant =
+      "GRANT SELECT(id, tenant_id, workspace_id, interest_id, source_catalog_entry_id, status, deleted_at, config) ON public.source_bindings TO social_monitor_reader_summary_publication_owner;";
+    const sourceBindingRowLockGrant =
+      "GRANT UPDATE(id) ON public.source_bindings TO social_monitor_reader_summary_publication_owner;";
+
+    expect(sourceBindingsAclMigration).toContain(
+      "SET LOCAL ROLE social_monitor_public_schema_owner;",
+    );
+    expect(sourceBindingsAclMigration).toContain(sourceBindingSelectGrant);
+    expect(sourceBindingsAclMigration).toContain(sourceBindingRowLockGrant);
+    expect(
+      sourceBindingsAclMigration.match(/\bGRANT\b[\s\S]*?;/gu),
+    ).toEqual([sourceBindingSelectGrant, sourceBindingRowLockGrant]);
+    expect(sourceBindingsAclMigration).not.toMatch(
+      /\bGRANT\s+SELECT\b(?!\s*\()/iu,
+    );
+    expect(sourceBindingsAclMigration).not.toMatch(
+      /\bGRANT\s+UPDATE\b(?!\s*\()/iu,
+    );
+    expect(sourceBindingsAclMigration).not.toMatch(
+      /\bGRANT\s+(?:INSERT|DELETE|TRUNCATE|REFERENCES|TRIGGER|EXECUTE)\b/iu,
+    );
+    expect(sourceBindingsAclMigration).not.toContain(
+      "social_monitor_reader_summary_publication_runtime",
+    );
+    expect(sourceBindingsAclMigration).not.toMatch(
       /\b(?:CREATE|ALTER|DROP)\s+(?:FUNCTION|TABLE|POLICY)\b/iu,
     );
   });
