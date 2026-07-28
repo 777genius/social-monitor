@@ -32,6 +32,7 @@ import {
 } from "@social-monitor/ingestion/ports";
 import { PrismaScanJobRepository } from "@social-monitor/monitoring/adapters/persistence/prisma/prisma-scan-job.repository";
 import { InMemoryMetricsRecorder } from "@social-monitor/platform-metrics";
+import { runWithTenantDatabaseAccess } from "@social-monitor/platform-persistence";
 import {
   CryptoIdGenerator,
   SystemClock,
@@ -85,6 +86,22 @@ type ProviderScanResult = Omit<
   CleanRealDayCollectionReport["scans"][number],
   "attemptCount"
 >;
+
+type FeedProjectionClient = ConstructorParameters<
+  typeof PrismaFeedProjectionAdapter
+>[0];
+
+type CleanRealDayFeedProjectionConnection = Pick<
+  PrismaIngestionWorkerConnection,
+  "feedItem" | "feedSignalBaselineSample" | "$transaction"
+>;
+
+type TransactionalFeedProjectionClient = FeedProjectionClient & {
+  readonly $transaction: <Result>(
+    operation: (transaction: FeedProjectionClient) => Promise<Result>,
+    options: { readonly isolationLevel: "Serializable" },
+  ) => Promise<Result>;
+};
 
 type AcquisitionPlanParams = {
   readonly targets: readonly CleanRealDaySourceBindingTarget[];
@@ -163,11 +180,13 @@ export const executeCleanRealDayProviderAcquisition = async (params: {
       if (liveRuntime === undefined) {
         throw new Error("Live provider acquisition runtime is unavailable");
       }
-      return executeLiveTargetScan(
-        target,
-        liveRuntime.executeScan,
-        liveRuntime.scanJobReporter,
-        params.targetWindowEndedAt,
+      return runCleanRealDayLiveTargetWithDatabaseAccess(target, () =>
+        executeLiveTargetScan(
+          target,
+          liveRuntime.executeScan,
+          liveRuntime.scanJobReporter,
+          params.targetWindowEndedAt,
+        ),
       );
     },
     collectDurableSnapshot: (target) =>
@@ -274,7 +293,10 @@ const buildLiveRuntime = (params: {
       { failureThreshold: 3, cooldownSeconds: 60 },
     ),
     new PrismaSourceItemRepository(params.connection),
-    new PrismaFeedProjectionAdapter(params.connection, ids),
+    new PrismaFeedProjectionAdapter(
+      cleanRealDayFeedProjectionClient(params.connection),
+      ids,
+    ),
     new PrismaScanAttemptRepository(params.connection),
     new PrismaScanCursorRepository(params.connection, ids),
     scanJobReporter,
@@ -295,6 +317,24 @@ const buildLiveRuntime = (params: {
   );
   return { executeScan, scanJobReporter };
 };
+
+export const runCleanRealDayLiveTargetWithDatabaseAccess = <Result>(
+  target: Pick<CleanRealDaySourceBindingTarget, "tenantId" | "workspaceId">,
+  operation: () => Result,
+): Result => runWithTenantDatabaseAccess(target, operation);
+
+export const cleanRealDayFeedProjectionClient = (
+  connection: CleanRealDayFeedProjectionConnection,
+): TransactionalFeedProjectionClient => ({
+  feedItem: connection.feedItem,
+  feedSignalBaselineSample: connection.feedSignalBaselineSample,
+  $transaction: (operation, options) =>
+    connection.$transaction(operation, {
+      ...options,
+      maxWait: 30_000,
+      timeout: 300_000,
+    }),
+});
 
 const executeLiveTargetScan = async (
   target: CleanRealDaySourceBindingTarget,

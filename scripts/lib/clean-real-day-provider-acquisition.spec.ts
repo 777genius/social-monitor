@@ -1,7 +1,11 @@
+import { currentDatabaseAccess } from "@social-monitor/platform-persistence";
+
 import type { CleanRealDayCollectionReport } from "./clean-real-day-collection-report";
 import {
+  cleanRealDayFeedProjectionClient,
   requestedUtcDayIsClosed,
   runCleanRealDayProviderAcquisitionPlan,
+  runCleanRealDayLiveTargetWithDatabaseAccess,
   type CleanRealDaySourceBindingTarget,
 } from "./clean-real-day-provider-acquisition";
 import {
@@ -109,6 +113,40 @@ describe("clean real-day provider acquisition", () => {
       providerKey: "hacker-news",
       acquisitionMode: "live_collection",
       attemptCount: 3,
+    });
+  });
+
+  it("runs live acquisition inside its DB-derived tenant workspace access", async () => {
+    const scope = {
+      tenantId: "93d91443-5598-4f2e-baa5-a85cbe30b9c4",
+      workspaceId: "2b61fe09-5f67-4e34-874d-7e92210d73aa",
+    };
+    let observedAccess: ReturnType<typeof currentDatabaseAccess>;
+
+    await runCleanRealDayLiveTargetWithDatabaseAccess(scope, async () => {
+      observedAccess = currentDatabaseAccess();
+    });
+
+    expect(observedAccess).toEqual({ kind: "tenant", ...scope });
+    expect(currentDatabaseAccess()).toBeUndefined();
+  });
+
+  it("extends the feed projection transaction budget for 100-item writes", async () => {
+    const transaction = jest.fn().mockResolvedValue("complete");
+    const client = cleanRealDayFeedProjectionClient({
+      feedItem: {} as never,
+      feedSignalBaselineSample: {} as never,
+      $transaction: transaction as never,
+    });
+
+    await client.$transaction(async () => "complete", {
+      isolationLevel: "Serializable",
+    });
+
+    expect(transaction).toHaveBeenCalledWith(expect.any(Function), {
+      isolationLevel: "Serializable",
+      maxWait: 30_000,
+      timeout: 300_000,
     });
   });
 });
