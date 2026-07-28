@@ -98,6 +98,8 @@ type ArtifactEnvelope = Readonly<{
   modelInput: ReaderSummaryWeeklyModelInput;
   output: ReaderSummaryWeeklyModelOutput;
   editorialQuality: ReturnType<typeof evaluateReaderSummaryWeeklyEditorialQuality>;
+  qualityGate: DeterministicWeeklyQualityGate;
+  canary: WeeklyProductionCanary;
 }>;
 
 type ProofEnvelope = Readonly<{
@@ -116,6 +118,8 @@ type ProofEnvelope = Readonly<{
   manifestSealSha: string;
   modelInputSealId: string;
   modelInputSealSha: string;
+  qualityGateSha256: string;
+  canarySha256: string;
   artifactSha256: string;
   model: {
     provider: "agent-runtime";
@@ -127,8 +131,38 @@ type ProofEnvelope = Readonly<{
   zeroProviderCalls: true;
 }>;
 
+type DeterministicWeeklyQualityGate = Readonly<{
+  schemaVersion: "reader_summary.weekly_production_quality_gate.v1";
+  evaluator: "deterministic";
+  decision: "allow";
+  checks: Readonly<{
+    editorialPolicyPassed: true;
+    weeklySynthesisIsCoherent: true;
+    synthesisCitesAtLeastThreeDays: true;
+    synthesisCitesMultipleProviders: true;
+    synthesisDayDominanceIsControlled: true;
+    synthesisProviderDominanceIsControlled: true;
+  }>;
+  metrics: Readonly<{
+    synthesisCitationCount: number;
+    synthesisCitedDayCount: number;
+    synthesisCitedProviderCount: number;
+    dominantSynthesisDayCitationShare: number;
+    dominantSynthesisProviderCitationShare: number;
+  }>;
+}>;
+
+type WeeklyProductionCanary = Readonly<{
+  schemaVersion: "reader_summary.weekly_production_canary.v1";
+  mode: "fail_closed";
+  status: "passed";
+  artifactWriteAuthorized: true;
+  qualityGateSha256: string;
+}>;
+
 const generatedByDefault = "npm run run:reader-summary-weekly-production";
 const maxEvidencePerWeek = 12;
+const maximumDominantCitationShare = 2 / 3;
 
 export class AgentRuntimeReaderSummaryWeeklyTextModel
   implements ReaderSummaryWeeklyModelPort
@@ -245,6 +279,20 @@ export const runReaderSummaryWeeklyProduction = async (
   const output = await params.model.generate(input);
   const artifact = ReaderSummaryWeeklyArtifact.create({ input, output });
   const snapshot = artifact.toSnapshot();
+  const qualityGate = deterministicWeeklyQualityGate(
+    input,
+    snapshot.output,
+    snapshot.editorialQuality,
+  );
+  const qualityGateSha256 = canonicalizeReaderSummaryWeeklyJson(
+    qualityGate,
+    "weekly production quality gate",
+  ).sha256;
+  const canary = weeklyProductionCanary(qualityGateSha256);
+  const canarySha256 = canonicalizeReaderSummaryWeeklyJson(
+    canary,
+    "weekly production canary",
+  ).sha256;
   const artifactEnvelope: ArtifactEnvelope = Object.freeze({
     schemaVersion: "reader_summary.weekly_production_artifact.v1",
     generatedBy,
@@ -257,6 +305,8 @@ export const runReaderSummaryWeeklyProduction = async (
     modelInput: input,
     output: snapshot.output,
     editorialQuality: snapshot.editorialQuality,
+    qualityGate,
+    canary,
   });
   const artifactSha256 = canonicalizeReaderSummaryWeeklyJson(
     artifactEnvelope,
@@ -266,6 +316,8 @@ export const runReaderSummaryWeeklyProduction = async (
     params,
     input,
     artifactSha256,
+    qualityGateSha256,
+    canarySha256,
     generatedBy,
   });
   writeArtifactPair(paths, artifactEnvelope, proofEnvelope, input);
@@ -466,6 +518,8 @@ const proofFor = (input: {
   params: ReaderSummaryWeeklyProductionRunnerParams;
   input: ReaderSummaryWeeklyModelInput;
   artifactSha256: string;
+  qualityGateSha256: string;
+  canarySha256: string;
   generatedBy: string;
 }): ProofEnvelope => Object.freeze({
   schemaVersion: "reader_summary.weekly_production_proof.v1",
@@ -487,6 +541,8 @@ const proofFor = (input: {
   manifestSealSha: input.input.manifestSealSha,
   modelInputSealId: input.input.sealId,
   modelInputSealSha: input.input.sealSha,
+  qualityGateSha256: input.qualityGateSha256,
+  canarySha256: input.canarySha256,
   artifactSha256: input.artifactSha256,
   model: Object.freeze({
     provider: "agent-runtime",
@@ -512,15 +568,32 @@ const readExistingArtifact = (
   }
   const artifact = JSON.parse(readFileSync(paths.artifactPath, "utf8")) as unknown;
   const proof = JSON.parse(readFileSync(paths.proofPath, "utf8")) as ProofEnvelope;
+  const artifactEnvelope = artifact as ArtifactEnvelope;
   const artifactSha256 = canonicalizeReaderSummaryWeeklyJson(
     artifact,
     "existing weekly production artifact",
+  ).sha256;
+  const qualityGateSha256 = canonicalizeReaderSummaryWeeklyJson(
+    artifactEnvelope.qualityGate,
+    "existing weekly production quality gate",
+  ).sha256;
+  const canarySha256 = canonicalizeReaderSummaryWeeklyJson(
+    artifactEnvelope.canary,
+    "existing weekly production canary",
   ).sha256;
   if (
     proof.schemaVersion !== "reader_summary.weekly_production_proof.v1" ||
     proof.status !== "complete" ||
     proof.modelInputSealSha !== input.sealSha ||
     proof.modelInputSealId !== input.sealId ||
+    artifactEnvelope.qualityGate?.evaluator !== "deterministic" ||
+    artifactEnvelope.qualityGate?.decision !== "allow" ||
+    artifactEnvelope.canary?.mode !== "fail_closed" ||
+    artifactEnvelope.canary?.status !== "passed" ||
+    artifactEnvelope.canary?.artifactWriteAuthorized !== true ||
+    artifactEnvelope.canary?.qualityGateSha256 !== qualityGateSha256 ||
+    proof.qualityGateSha256 !== qualityGateSha256 ||
+    proof.canarySha256 !== canarySha256 ||
     proof.artifactSha256 !== artifactSha256
   ) {
     throw new Error("Reader summary weekly artifact/proof does not match DB input");
@@ -612,6 +685,106 @@ const usableEvidence = (
     return false;
   }
 };
+
+const deterministicWeeklyQualityGate = (
+  input: ReaderSummaryWeeklyModelInput,
+  output: ReaderSummaryWeeklyModelOutput,
+  editorialQuality: ReturnType<typeof evaluateReaderSummaryWeeklyEditorialQuality>,
+): DeterministicWeeklyQualityGate => {
+  const citationById = new Map(
+    input.citations.map((citation) => [citation.citationId, citation] as const),
+  );
+  const synthesisCitations = output.synthesisCitationIds.map((citationId) => {
+    const citation = citationById.get(citationId);
+    if (citation === undefined) {
+      throw new Error(
+        "Reader summary weekly production quality canary found an unknown synthesis citation",
+      );
+    }
+    return citation;
+  });
+  const dayCounts = countsBy(
+    synthesisCitations.map((citation) => citation.observedOn),
+  );
+  const providerCounts = countsBy(
+    synthesisCitations.map((citation) => citation.providerKey),
+  );
+  const dominantDayShare = dominantCitationShare(
+    dayCounts,
+    synthesisCitations.length,
+  );
+  const dominantProviderShare = dominantCitationShare(
+    providerCounts,
+    synthesisCitations.length,
+  );
+  const checks = {
+    editorialPolicyPassed:
+      editorialQuality.blockingPassed &&
+      editorialQuality.publicationDecision === "allow",
+    weeklySynthesisIsCoherent:
+      editorialQuality.qualityGates.weeklySynthesisIsCoherent,
+    synthesisCitesAtLeastThreeDays: dayCounts.size >= 3,
+    synthesisCitesMultipleProviders: providerCounts.size >= 2,
+    synthesisDayDominanceIsControlled:
+      dominantDayShare <= maximumDominantCitationShare,
+    synthesisProviderDominanceIsControlled:
+      dominantProviderShare <= maximumDominantCitationShare,
+  };
+  const failedChecks = Object.entries(checks)
+    .filter(([, passed]) => !passed)
+    .map(([name]) => name);
+  if (failedChecks.length > 0) {
+    throw new Error(
+      `Reader summary weekly production quality canary blocked artifact write: ${failedChecks.join(
+        ", ",
+      )}`,
+    );
+  }
+  return Object.freeze({
+    schemaVersion: "reader_summary.weekly_production_quality_gate.v1",
+    evaluator: "deterministic",
+    decision: "allow",
+    checks: Object.freeze({
+      editorialPolicyPassed: true,
+      weeklySynthesisIsCoherent: true,
+      synthesisCitesAtLeastThreeDays: true,
+      synthesisCitesMultipleProviders: true,
+      synthesisDayDominanceIsControlled: true,
+      synthesisProviderDominanceIsControlled: true,
+    }),
+    metrics: Object.freeze({
+      synthesisCitationCount: synthesisCitations.length,
+      synthesisCitedDayCount: dayCounts.size,
+      synthesisCitedProviderCount: providerCounts.size,
+      dominantSynthesisDayCitationShare: dominantDayShare,
+      dominantSynthesisProviderCitationShare: dominantProviderShare,
+    }),
+  });
+};
+
+const weeklyProductionCanary = (
+  qualityGateSha256: string,
+): WeeklyProductionCanary => Object.freeze({
+  schemaVersion: "reader_summary.weekly_production_canary.v1",
+  mode: "fail_closed",
+  status: "passed",
+  artifactWriteAuthorized: true,
+  qualityGateSha256,
+});
+
+const countsBy = (values: readonly string[]): ReadonlyMap<string, number> => {
+  const counts = new Map<string, number>();
+  for (const value of values) {
+    counts.set(value, (counts.get(value) ?? 0) + 1);
+  }
+  return counts;
+};
+
+const dominantCitationShare = (
+  counts: ReadonlyMap<string, number>,
+  total: number,
+): number =>
+  total === 0 ? 1 : Math.max(0, ...counts.values()) / total;
 
 const storyId = (
   evidence: ReaderSummaryWeeklyProductionProviderEvidence,

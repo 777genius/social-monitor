@@ -1,4 +1,9 @@
-import { mkdtempSync, readFileSync, statSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  statSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -56,6 +61,36 @@ describe("reader summary weekly production runner", () => {
     const proof = JSON.parse(readFileSync(result.proofPath!, "utf8"));
     expect(artifact.status).toBe("complete");
     expect(artifact.editorialQuality.blockingPassed).toBe(true);
+    expect(artifact.qualityGate).toEqual({
+      schemaVersion: "reader_summary.weekly_production_quality_gate.v1",
+      evaluator: "deterministic",
+      decision: "allow",
+      checks: {
+        editorialPolicyPassed: true,
+        weeklySynthesisIsCoherent: true,
+        synthesisCitesAtLeastThreeDays: true,
+        synthesisCitesMultipleProviders: true,
+        synthesisDayDominanceIsControlled: true,
+        synthesisProviderDominanceIsControlled: true,
+      },
+      metrics: {
+        synthesisCitationCount: 12,
+        synthesisCitedDayCount: 6,
+        synthesisCitedProviderCount: 2,
+        dominantSynthesisDayCitationShare: 1 / 6,
+        dominantSynthesisProviderCitationShare: 1 / 2,
+      },
+    });
+    expect(artifact.canary).toEqual({
+      schemaVersion: "reader_summary.weekly_production_canary.v1",
+      mode: "fail_closed",
+      status: "passed",
+      artifactWriteAuthorized: true,
+      qualityGateSha256: proof.qualityGateSha256,
+    });
+    expect(proof.canarySha256).toBe(
+      canonicalizeReaderSummaryWeeklyJson(artifact.canary).sha256,
+    );
     expect(proof.certificationCount).toBe(7);
     expect(proof.model).toEqual({
       provider: "agent-runtime",
@@ -127,15 +162,34 @@ describe("reader summary weekly production runner", () => {
   });
 
   it("rejects seven daily summaries stitched into a weekly output", async () => {
+    const outputDirectory = tempDir();
     await expect(
       runReaderSummaryWeeklyProduction({
         dbState: completeDbState(),
-        outputDirectory: tempDir(),
+        outputDirectory,
         model: new FakeWeeklyModel((input) => stitchedDailyOutput(input)),
         replay: false,
         generatedAt: new Date("2026-07-27T06:30:00.000Z"),
       }),
     ).rejects.toThrow(/stitched daily|daily or dated/i);
+    expect(productionArtifactExists(outputDirectory)).toBe(false);
+  });
+
+  it("fails closed when synthesis citations do not span the certified week", async () => {
+    const outputDirectory = tempDir();
+
+    await expect(
+      runReaderSummaryWeeklyProduction({
+        dbState: completeDbState(),
+        outputDirectory,
+        model: new FakeWeeklyModel((input) => narrowSynthesisOutput(input)),
+        replay: false,
+        generatedAt: new Date("2026-07-27T06:30:00.000Z"),
+      }),
+    ).rejects.toThrow(
+      /quality canary blocked artifact write: synthesisCitesAtLeastThreeDays, synthesisDayDominanceIsControlled/i,
+    );
+    expect(productionArtifactExists(outputDirectory)).toBe(false);
   });
 });
 
@@ -311,6 +365,36 @@ function stitchedDailyOutput(
     synthesis:
       "Monday: daily summary evidence starts the week. Tuesday: daily summary evidence continues. Wednesday: daily summary evidence continues. Thursday: daily summary evidence continues. Friday: daily summary evidence continues. Saturday: daily summary evidence continues. Sunday: daily summary evidence closes the week with seven daily summaries stitched together.",
   };
+}
+
+function narrowSynthesisOutput(
+  input: ReaderSummaryWeeklyModelInput,
+): ReaderSummaryWeeklyModelOutput {
+  const output = outputFor(input);
+  const firstDay = input.weekStartedOn;
+  return {
+    ...output,
+    synthesisCitationIds: input.citations
+      .filter((citation) => citation.observedOn === firstDay)
+      .map((citation) => citation.citationId),
+  };
+}
+
+function productionArtifactExists(outputDirectory: string): boolean {
+  return (
+    existsSync(
+      join(
+        outputDirectory,
+        "reader-summary-weekly-production.2026-07-20.artifact.v1.json",
+      ),
+    ) ||
+    existsSync(
+      join(
+        outputDirectory,
+        "reader-summary-weekly-production.2026-07-20.proof.v1.json",
+      ),
+    )
+  );
 }
 
 function tempDir(): string {
