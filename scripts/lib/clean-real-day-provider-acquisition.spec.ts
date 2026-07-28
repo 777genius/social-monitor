@@ -155,35 +155,54 @@ describe("clean real-day provider acquisition", () => {
     expect(currentDatabaseAccess()).toBeUndefined();
   });
 
-  it.each(["no", "multiple"] as const)(
-    "fails closed before acquisition when discovery returns $label scope",
-    async (label) => {
-      const targets =
-        label === "no"
-          ? []
-          : [
-              target("hacker-news"),
-              {
-                ...target("reddit"),
-                workspaceId: "workspace-b",
-              },
-            ];
-      const acquireLive = jest.fn();
+  it("ignores legacy scopes when the deterministic production scope exists", async () => {
+    const productionScope = {
+      tenantId: "00000000-0000-7000-8000-000000006101",
+      workspaceId: "00000000-0000-7000-8000-000000006102",
+    };
+    const productionTargets = [
+      { ...target("reddit"), ...productionScope },
+      { ...target("rss"), ...productionScope },
+    ];
+    const targets = [target("hacker-news"), ...productionTargets];
 
-      await expect(
-        discoverSingleScopeCleanRealDayTargets(async () => targets).then(
-          acquireLive,
-        ),
-      ).rejects.toThrow(
-        `expected exactly one tenant/workspace scope, found ${
-          targets.length === 0 ? 0 : 2
-        }`,
-      );
-      expect(acquireLive).not.toHaveBeenCalled();
-    },
-  );
+    await expect(
+      discoverSingleScopeCleanRealDayTargets(async () => targets),
+    ).resolves.toEqual(productionTargets);
+  });
 
-  it("accepts multiple enabled targets in one tenant workspace scope", async () => {
+  it("fails closed before acquisition when discovery returns no scopes", async () => {
+    const acquireLive = jest.fn();
+
+    await expect(
+      discoverSingleScopeCleanRealDayTargets(async () => []).then(acquireLive),
+    ).rejects.toThrow(
+      "expected exactly one tenant/workspace scope, found 0",
+    );
+    expect(acquireLive).not.toHaveBeenCalled();
+  });
+
+  it("fails closed before acquisition for multiple non-production scopes", async () => {
+    const targets = [
+      target("hacker-news"),
+      {
+        ...target("reddit"),
+        workspaceId: "workspace-b",
+      },
+    ];
+    const acquireLive = jest.fn();
+
+    await expect(
+      discoverSingleScopeCleanRealDayTargets(async () => targets).then(
+        acquireLive,
+      ),
+    ).rejects.toThrow(
+      "expected exactly one tenant/workspace scope, found 2",
+    );
+    expect(acquireLive).not.toHaveBeenCalled();
+  });
+
+  it("preserves targets when discovery returns one scope", async () => {
     const targets = [target("hacker-news"), target("reddit")];
 
     await expect(

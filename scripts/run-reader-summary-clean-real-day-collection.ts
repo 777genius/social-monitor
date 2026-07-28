@@ -78,6 +78,10 @@ type TargetDiscoveryRuntimeClient = TargetDiscoveryClient & {
 };
 
 const outputPath = "ops/evals/reader-summary-clean-real-day-collection.v1.json";
+const readerSummaryProductionScope = {
+  tenantId: "00000000-0000-7000-8000-000000006101",
+  workspaceId: "00000000-0000-7000-8000-000000006102",
+} as const;
 const databaseUrl = yesterdaySocialQualityDatabaseUrl();
 const providerKeys = readProviderKeys();
 const update = process.argv.includes("--update");
@@ -302,13 +306,22 @@ export async function discoverSingleScopeCleanRealDayTargets<
   const scopes = new Set(
     targets.map((target) => `${target.tenantId}\u0000${target.workspaceId}`),
   );
-  if (scopes.size !== 1) {
-    throw new Error(
-      `Clean real-day target discovery expected exactly one tenant/workspace scope, found ${scopes.size}`,
-    );
+  if (scopes.size === 1) {
+    return targets;
   }
 
-  return targets;
+  const productionTargets = targets.filter(
+    (target) =>
+      target.tenantId === readerSummaryProductionScope.tenantId &&
+      target.workspaceId === readerSummaryProductionScope.workspaceId,
+  );
+  if (productionTargets.length > 0) {
+    return productionTargets;
+  }
+
+  throw new Error(
+    `Clean real-day target discovery expected exactly one tenant/workspace scope, found ${scopes.size}`,
+  );
 }
 
 async function readTargets(
