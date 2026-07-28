@@ -161,7 +161,7 @@ describe("OpenAI reader summary weekly response parser", () => {
         diaryInput,
         sevenSectionDiaryOutput(diaryInput),
       ),
-    ).toThrow("seven stitched daily sections");
+    ).toThrow("stitched single-day sections");
   });
 
   it("rejects unsupported evolution, resolution and trend language", () => {
@@ -181,6 +181,18 @@ describe("OpenAI reader summary weekly response parser", () => {
     expect(() =>
       parseOpenAiReaderSummaryWeeklyValue(input, resolution),
     ).toThrow("unsupported resolution");
+  });
+
+  it("rejects a synthesis that leaves cross-day support in other fields", () => {
+    const input = weeklyInput();
+    const output = mutable(weeklyOutput(input));
+    output.synthesisCitationIds = ["citation:01"];
+
+    expect(() =>
+      parseOpenAiReaderSummaryWeeklyValue(input, output),
+    ).toThrow(
+      "Weekly synthesis citations must span at least three certified days",
+    );
   });
 
   it("rejects prompt injection and provider inventory in reader text", () => {

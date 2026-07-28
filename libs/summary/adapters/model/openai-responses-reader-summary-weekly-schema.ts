@@ -43,7 +43,11 @@ export const buildOpenAiReaderSummaryWeeklyJsonSchema = (
       headlineCitationIds: citationIdsSchema(citationIds, 12),
       takeaway: stringSchema(320, 20),
       takeawayCitationIds: citationIdsSchema(citationIds, 12),
-      synthesis: stringSchema(3_200, 80),
+      synthesis: {
+        ...stringSchema(3_200, 80),
+        description:
+          "One cross-day weekly synthesis, never concatenated daily summaries.",
+      },
       synthesisCitationIds: citationIdsSchema(citationIds, 24),
       stories: {
         type: "array",
@@ -55,7 +59,9 @@ export const buildOpenAiReaderSummaryWeeklyJsonSchema = (
       sections: {
         type: "array",
         minItems: 1,
-        maxItems: 16,
+        maxItems: 6,
+        description:
+          "Story-organized weekly sections; daily or dated slots are forbidden.",
         uniqueItems: true,
         items: { $ref: "#/$defs/section" },
       },

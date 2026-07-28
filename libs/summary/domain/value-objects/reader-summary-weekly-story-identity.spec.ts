@@ -87,6 +87,10 @@ describe("reader summary weekly story identity", () => {
       "week:2026-w30",
       "observed-at:2026-07-06",
       "event:2026-07-06",
+      "evidence:citation-17",
+      "observation:source-1",
+      "publication:daily-42",
+      "source-item:provider-99",
       "résumé:release",
     ]) {
       expect(() =>

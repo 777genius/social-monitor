@@ -16,6 +16,7 @@ import {
   type ReaderSummaryWeeklyModelPort,
 } from "../../libs/summary/ports/reader-summary-weekly-model.port";
 import {
+  buildModelInputFromDbState,
   runReaderSummaryWeeklyProduction,
 } from "./reader-summary-weekly-production-runner";
 import {
@@ -187,9 +188,59 @@ describe("reader summary weekly production runner", () => {
         generatedAt: new Date("2026-07-27T06:30:00.000Z"),
       }),
     ).rejects.toThrow(
-      /quality canary blocked artifact write: synthesisCitesAtLeastThreeDays, synthesisDayDominanceIsControlled/i,
+      /Weekly synthesis citations must span at least three certified days.*Weekly synthesis day dominance is unresolved/i,
     );
     expect(productionArtifactExists(outputDirectory)).toBe(false);
+  });
+
+  it("deduplicates one stable story while retaining its cross-day observations", () => {
+    const dbState = completeDbState();
+    const repeatedStoryUrl = "https://example.com/rss/durable-story";
+    const repeatedStoryState = Object.freeze({
+      ...dbState,
+      certifications: Object.freeze(
+        dbState.certifications.map((certification) =>
+          Object.freeze({
+            ...certification,
+            providerEvidence: Object.freeze(
+              certification.providerEvidence.map((evidence) =>
+                evidence.providerKey === "rss"
+                  ? Object.freeze({
+                      ...evidence,
+                      canonicalUrl: repeatedStoryUrl,
+                      title: "One durable story",
+                    })
+                  : evidence,
+              ),
+            ),
+          }),
+        ),
+      ),
+    });
+
+    const built = buildModelInputFromDbState(repeatedStoryState);
+
+    expect(built.status).toBe("complete");
+    if (built.status !== "complete") {
+      throw new Error(built.reasons.join("; "));
+    }
+    const repeatedObservations = built.input.observations.filter(
+      (observation) => observation.providerKey === "rss",
+    );
+    expect(repeatedObservations).toHaveLength(6);
+    expect(
+      new Set(repeatedObservations.map((observation) => observation.storyId))
+        .size,
+    ).toBe(1);
+    expect(
+      new Set(repeatedObservations.map((observation) => observation.observedOn))
+        .size,
+    ).toBe(6);
+    expect(
+      built.input.stories.filter(
+        (story) => story.storyId === repeatedObservations[0]!.storyId,
+      ),
+    ).toHaveLength(1);
   });
 });
 

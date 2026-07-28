@@ -28,6 +28,10 @@ export type ReaderSummaryWeeklyEditorialQualityGates = Readonly<{
   citationsSpanAtLeastThreeDays: boolean;
   providerDominanceIsControlled: boolean;
   dayDominanceIsControlled: boolean;
+  synthesisCitationsSpanMultipleProviders: boolean;
+  synthesisCitationsSpanAtLeastThreeDays: boolean;
+  synthesisProviderDominanceIsControlled: boolean;
+  synthesisDayDominanceIsControlled: boolean;
   weeklySynthesisIsCoherent: boolean;
   readerTextAvoidsProviderInventory: boolean;
   readerTextAvoidsProcessProse: boolean;
@@ -64,9 +68,9 @@ const processProse =
 const promptInjectionProse =
   /\b(?:ignore|disregard|forget|override)\s+(?:(?:all|any|the|these|those|your|previous|prior|above|system|developer)\s+){0,3}(?:instructions?|prompts?|rules?)\b|\b(?:reveal|expose|print|repeat|leak)\s+(?:the\s+)?(?:system|developer|hidden|secret)\s+(?:prompt|instructions?|message|secrets?)\b|\b(?:system|developer|hidden)\s+(?:prompt|instructions?|message)\b/giu;
 const evolutionLanguage =
-  /\b(?:accelerat(?:e|ed|es|ing)|declin(?:e|ed|es|ing)|evolv(?:e|ed|es|ing)|fad(?:e|ed|es|ing)|grew|growing|increas(?:e|ed|es|ing)|momentum|rose|shift(?:ed|ing|s)?|slowed?|surged?|trend(?:ed|ing|s)?|week[- ]over[- ]week)\b/iu;
+  /\b(?:accelerat(?:e|ed|es|ing)|became|by\s+(?:the\s+)?week(?:'s)?\s+end|declin(?:e|ed|es|ing)|evolv(?:e|ed|es|ing)|fad(?:e|ed|es|ing)|followed\s+by|grew|growing|increas(?:e|ed|es|ing)|later|momentum|moved\s+from|rose|shift(?:ed|ing|s)?|slowed?|subsequently|surged?|transition(?:ed|ing|s)?|trend(?:ed|ing|s)?|week[- ]over[- ]week)\b/iu;
 const resolutionLanguage =
-  /\b(?:closed|concluded|fixed|resolved|settled|shipped|solved)\b/iu;
+  /\b(?:closed|completed|concluded|finalized|finished|fixed|generally\s+available|launched|released|resolved|settled|shipped|solved|went\s+live)\b|\b(?:confirmed|established|reached)\s+(?:a|the)\s+(?:definitive|final)\s+(?:outcome|resolution)\b/iu;
 
 export const evaluateReaderSummaryWeeklyEditorialQuality = (
   input: ReaderSummaryWeeklyModelInput,
@@ -97,6 +101,21 @@ export const evaluateReaderSummaryWeeklyEditorialQuality = (
   const providerCounts = countBy(resolvedCitations, (citation) =>
     citation.providerKey,
   );
+  const synthesisCitationIds = distinct(output.synthesisCitationIds);
+  const synthesisCitations = synthesisCitationIds
+    .map((citationId) => citationById.get(citationId))
+    .filter(
+      (citation): citation is ReaderSummaryWeeklyModelCitation =>
+        citation !== undefined,
+    );
+  const synthesisDayCounts = countBy(
+    synthesisCitations,
+    (citation) => citation.observedOn,
+  );
+  const synthesisProviderCounts = countBy(
+    synthesisCitations,
+    (citation) => citation.providerKey,
+  );
   const dominantDayCitationShare = dominantShare(
     dayCounts,
     resolvedCitations.length,
@@ -120,7 +139,7 @@ export const evaluateReaderSummaryWeeklyEditorialQuality = (
     completeReaderText,
     promptInjectionProse,
   );
-  const stitchedDailySectionCount = hasSevenSingleDaySections(
+  const stitchedDailySectionCount = hasConcatenatedSingleDaySections(
     output,
     citationById,
   )
@@ -142,6 +161,14 @@ export const evaluateReaderSummaryWeeklyEditorialQuality = (
     citationsSpanAtLeastThreeDays: dayCounts.size >= 3,
     providerDominanceIsControlled: dominanceIsControlled(providerCounts),
     dayDominanceIsControlled: dominanceIsControlled(dayCounts),
+    synthesisCitationsSpanMultipleProviders:
+      synthesisProviderCounts.size >= 2,
+    synthesisCitationsSpanAtLeastThreeDays: synthesisDayCounts.size >= 3,
+    synthesisProviderDominanceIsControlled: dominanceIsControlled(
+      synthesisProviderCounts,
+    ),
+    synthesisDayDominanceIsControlled:
+      dominanceIsControlled(synthesisDayCounts),
     weeklySynthesisIsCoherent:
       dayHeadingCount === 0 &&
       stitchedDailyCount === 0 &&
@@ -170,6 +197,18 @@ export const evaluateReaderSummaryWeeklyEditorialQuality = (
     ...(qualityGates.dayDominanceIsControlled
       ? []
       : ["Weekly editorial day dominance is unresolved"]),
+    ...(qualityGates.synthesisCitationsSpanMultipleProviders
+      ? []
+      : ["Weekly synthesis citations must span at least two providers"]),
+    ...(qualityGates.synthesisCitationsSpanAtLeastThreeDays
+      ? []
+      : ["Weekly synthesis citations must span at least three certified days"]),
+    ...(qualityGates.synthesisProviderDominanceIsControlled
+      ? []
+      : ["Weekly synthesis provider dominance is unresolved"]),
+    ...(qualityGates.synthesisDayDominanceIsControlled
+      ? []
+      : ["Weekly synthesis day dominance is unresolved"]),
     ...(dayHeadingCount === 0
       ? []
       : ["Weekly editorial output concatenates daily or dated headings"]),
@@ -178,7 +217,7 @@ export const evaluateReaderSummaryWeeklyEditorialQuality = (
       : ["Weekly editorial output reads as stitched daily summaries"]),
     ...(stitchedDailySectionCount === 0
       ? []
-      : ["Weekly editorial output reads as seven stitched daily sections"]),
+      : ["Weekly editorial output reads as stitched single-day sections"]),
     ...(qualityGates.readerTextAvoidsProviderInventory
       ? []
       : ["Weekly editorial output contains a provider inventory"]),
@@ -318,21 +357,22 @@ const supportsClaim = (
     observation.claimSupport.includes(claimType),
   );
 
-const hasSevenSingleDaySections = (
+const hasConcatenatedSingleDaySections = (
   output: ReaderSummaryWeeklyModelOutput,
   citationById: ReadonlyMap<string, ReaderSummaryWeeklyModelCitation>,
 ): boolean => {
-  const singleDayUnits = [...output.stories, ...output.sections]
-    .map((unit) =>
+  const singleDaySections = output.sections
+    .map((section) =>
       distinct(
-        unit.citationIds
+        section.citationIds
           .map((citationId) => citationById.get(citationId)?.observedOn)
           .filter((date): date is string => date !== undefined),
       ),
     )
     .filter((dates) => dates.length === 1);
   return (
-    new Set(singleDayUnits.map((dates) => dates[0])).size === 7
+    singleDaySections.length >= 5 &&
+    new Set(singleDaySections.map((dates) => dates[0])).size >= 5
   );
 };
 

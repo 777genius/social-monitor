@@ -18,6 +18,7 @@ import {
 } from "../value-objects/reader-summary-weekly-story-authority";
 import {
   assertReaderSummaryWeeklyCanonicalStoryIdentity,
+  deriveReaderSummaryWeeklyStoryIdentity,
   readerSummaryWeeklyStoryIdentityBinding,
   type ReaderSummaryWeeklyCanonicalStoryIdentity,
   type ReaderSummaryWeeklyStoryIdentityBinding,
@@ -70,6 +71,19 @@ const selectorKeys = [
   "citationId",
   "sourceItemId",
   "sourceContentHash",
+] as const;
+const canonicalObservationKeys = [
+  "schemaVersion",
+  "uniquenessKey",
+  "story",
+  "authority",
+  "observedUtcDate",
+  "evidence",
+  "identity",
+  "sha256",
+  "canonicalJson",
+  "byteLength",
+  "toBytes",
 ] as const;
 
 export const readerSummaryWeeklyStoryDateKey = (
@@ -158,10 +172,87 @@ export const assertReaderSummaryWeeklyStoryObservationUniqueness = (
     observations,
     "canonical story observations",
   );
+  observations.forEach(assertCanonicalStoryObservation);
   const keys = observations.map((observation) => observation.uniquenessKey);
   if (new Set(keys).size !== keys.length) {
     throw new Error(
       "Reader summary weekly story already has an observation for the requested UTC date",
+    );
+  }
+};
+
+const assertCanonicalStoryObservation = (
+  observation: ReaderSummaryWeeklyCanonicalStoryObservation,
+): void => {
+  assertReaderSummaryWeeklyExactObject(
+    observation,
+    canonicalObservationKeys,
+    "canonical story observation",
+    { allowAuthoritativeHashes: true },
+  );
+  const storyIdentity = deriveReaderSummaryWeeklyStoryIdentity({
+    subjectKey: observation.story.subjectKey,
+    actionKey: observation.story.actionKey,
+    objectKeys: observation.story.objectKeys,
+    qualifierKeys: observation.story.qualifierKeys,
+  });
+  const expectedStory = readerSummaryWeeklyStoryIdentityBinding(storyIdentity);
+  if (
+    canonicalizeReaderSummaryWeeklyJson(observation.story).json !==
+    canonicalizeReaderSummaryWeeklyJson(expectedStory).json
+  ) {
+    throw new Error(
+      "Reader summary weekly story observation has an invalid stable story binding",
+    );
+  }
+  assertReaderSummaryWeeklyStoryAuthorityBinding(observation.authority);
+  const observedUtcDate = exactReaderSummaryWeeklyUtcDay(
+    observation.observedUtcDate,
+  );
+  if (observedUtcDate !== observation.authority.requestedUtcDate) {
+    throw new Error(
+      "Reader summary weekly story observation cannot invent chronology or a cross-day transition",
+    );
+  }
+  const evidence = selectSameDayEvidence(
+    observation.authority,
+    observation.evidence.map((item) => ({
+      providerKey: item.providerKey,
+      citationId: item.citationId,
+      sourceItemId: item.sourceItemId,
+      sourceContentHash: item.sourceContentHash,
+    })),
+  );
+  const body = {
+    schemaVersion: readerSummaryWeeklyStoryObservationSchemaVersion,
+    uniquenessKey: readerSummaryWeeklyStoryDateKey(
+      storyIdentity,
+      observedUtcDate,
+    ),
+    story: expectedStory,
+    authority: observation.authority,
+    observedUtcDate,
+    evidence,
+  };
+  const canonical = canonicalizeReaderSummaryWeeklyJson(
+    body,
+    "story observation",
+  );
+  const bytes = observation.toBytes();
+  if (
+    observation.schemaVersion !==
+      readerSummaryWeeklyStoryObservationSchemaVersion ||
+    observation.uniquenessKey !== body.uniquenessKey ||
+    observation.identity !==
+      `${readerSummaryWeeklyStoryObservationSchemaVersion}:${canonical.sha256}` ||
+    observation.sha256 !== canonical.sha256 ||
+    observation.canonicalJson !== canonical.json ||
+    observation.byteLength !== canonical.byteLength ||
+    !(bytes instanceof Uint8Array) ||
+    Buffer.from(bytes).compare(Buffer.from(canonical.toBytes())) !== 0
+  ) {
+    throw new Error(
+      "Reader summary weekly canonical story observation seal is invalid",
     );
   }
 };

@@ -147,8 +147,53 @@ describe("reader summary weekly editorial quality policy", () => {
     expect(result.qualityGates.weeklySynthesisIsCoherent).toBe(false);
     expect(result.metrics.dayHeadingCount).toBe(0);
     expect(result.issues).toContain(
-      "Weekly editorial output reads as seven stitched daily sections",
+      "Weekly editorial output reads as stitched single-day sections",
     );
+  });
+
+  it("blocks a five-day section diary even when the remaining days are omitted", () => {
+    const input = weeklyInput({
+      providers: [
+        "hacker-news",
+        "reddit",
+        "rss",
+        "x-twitter",
+        "hacker-news",
+        "reddit",
+        "rss",
+      ],
+      dayIndexes: [0, 1, 2, 3, 4, 5, 6],
+      alphaObservationCount: 4,
+    });
+    const output = mutable(sevenSectionDiaryOutput(input));
+    output.sections = output.sections.slice(0, 5);
+
+    const result = evaluateReaderSummaryWeeklyEditorialQuality(input, output);
+
+    expect(result.qualityGates.weeklySynthesisIsCoherent).toBe(false);
+    expect(result.issues).toContain(
+      "Weekly editorial output reads as stitched single-day sections",
+    );
+  });
+
+  it("requires the synthesis itself to be balanced cross-day evidence", () => {
+    const input = weeklyInput();
+    const output = mutable(weeklyOutput(input));
+    output.synthesisCitationIds = ["citation:01"];
+
+    const result = evaluateReaderSummaryWeeklyEditorialQuality(input, output);
+
+    expect(result.qualityGates).toMatchObject({
+      citationsSpanMultipleProviders: true,
+      citationsSpanAtLeastThreeDays: true,
+      providerDominanceIsControlled: true,
+      dayDominanceIsControlled: true,
+      synthesisCitationsSpanMultipleProviders: false,
+      synthesisCitationsSpanAtLeastThreeDays: false,
+      synthesisProviderDominanceIsControlled: false,
+      synthesisDayDominanceIsControlled: false,
+    });
+    expect(result.publicationDecision).toBe("block");
   });
 
   it("blocks unsupported evolution and resolution language", () => {

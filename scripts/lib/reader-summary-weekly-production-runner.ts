@@ -19,7 +19,7 @@ import {
   canonicalizeReaderSummaryWeeklyJson,
   readerSummaryWeeklyScopeKey,
 } from "../../libs/summary/domain/value-objects/reader-summary-weekly-canonical-json";
-import { evaluateReaderSummaryWeeklyEditorialQuality } from "../../libs/summary/domain/policies/reader-summary-weekly-editorial-quality-policy";
+import type { evaluateReaderSummaryWeeklyEditorialQuality } from "../../libs/summary/domain/policies/reader-summary-weekly-editorial-quality-policy";
 import {
   buildOpenAiReaderSummaryWeeklyInstructions,
   buildOpenAiReaderSummaryWeeklyPromptPayload,
@@ -31,14 +31,14 @@ import {
   readerSummaryWeeklyInputManifestSchemaVersion,
 } from "../../libs/summary/domain/value-objects/reader-summary-weekly-input-manifest";
 import {
+  assertReaderSummaryWeeklyModelInput,
   readerSummaryWeeklyModelInputSchemaVersion,
   type ReaderSummaryWeeklyModelCitationEvidence,
-  type ReaderSummaryWeeklyModelEvidenceInput,
   type ReaderSummaryWeeklyModelInput,
+  type ReaderSummaryWeeklyModelObservationEvidence,
   type ReaderSummaryWeeklyModelOutput,
   type ReaderSummaryWeeklyModelPort,
   type ReaderSummaryWeeklyModelStoryEvidence,
-  type ReaderSummaryWeeklyModelObservationEvidence,
 } from "../../libs/summary/ports/reader-summary-weekly-model.port";
 import type {
   AgentRuntimeClientPort,
@@ -398,13 +398,15 @@ export const buildModelInputFromDbState = (
     body,
     "weekly production model input",
   ).sha256;
+  const input = Object.freeze({
+    ...body,
+    sealId: `${readerSummaryWeeklyModelInputSchemaVersion}:${sealSha}`,
+    sealSha,
+  });
+  assertReaderSummaryWeeklyModelInput(input);
   return {
     status: "complete",
-    input: Object.freeze({
-      ...body,
-      sealId: `${readerSummaryWeeklyModelInputSchemaVersion}:${sealSha}`,
-      sealSha,
-    }),
+    input,
   };
 };
 
@@ -445,17 +447,22 @@ const canonicalStories = (
   selected: readonly Readonly<{
     evidence: ReaderSummaryWeeklyProductionProviderEvidence;
   }>[],
-): readonly ReaderSummaryWeeklyModelStoryEvidence[] =>
-  Object.freeze(
-    selected
-      .map((item) =>
+): readonly ReaderSummaryWeeklyModelStoryEvidence[] => {
+  const storyById = new Map<string, ReaderSummaryWeeklyModelStoryEvidence>();
+  for (const item of selected) {
+    const stableStoryId = storyId(item.evidence);
+    if (!storyById.has(stableStoryId)) {
+      storyById.set(
+        stableStoryId,
         Object.freeze({
-          storyId: storyId(item.evidence),
+          storyId: stableStoryId,
           label: boundedText(item.evidence.title, 180),
         }),
-      )
-      .sort(by("storyId")),
-  );
+      );
+    }
+  }
+  return Object.freeze([...storyById.values()].sort(by("storyId")));
+};
 
 const canonicalObservations = (
   selected: readonly Readonly<{
