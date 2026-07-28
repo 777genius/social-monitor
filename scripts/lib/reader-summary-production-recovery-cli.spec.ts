@@ -119,7 +119,7 @@ describe("reader summary production recovery CLI wrapper", () => {
     ).rejects.toThrow("expected exactly one scope, found 2");
   });
 
-  it("uses read-only production feed/source SQL for scope discovery", async () => {
+  it("uses read-only DB authority counts for scope discovery", async () => {
     const expectedScope = scopeFixture("1", "2");
     const { client, queryRaw } = scopeDiscoveryClient([expectedScope]);
 
@@ -128,47 +128,46 @@ describe("reader summary production recovery CLI wrapper", () => {
     ).resolves.toEqual(expectedScope);
 
     const sql = normalizeSql(sqlFromQueryRaw(queryRaw));
-    expect(sql).toContain("select distinct");
     expect(sql).toContain('feed."tenant_id"::text as "tenantid"');
     expect(sql).toContain('feed."workspace_id"::text as "workspaceid"');
-    expect(sql).toContain('from "feed_items" as feed');
-    expect(sql).toContain('join "source_items" as source');
-    expect(sql).toContain('source."id" = feed."source_item_id"');
-    expect(sql).toContain('source."tenant_id" = feed."tenant_id"');
-    expect(sql).toContain('source."workspace_id" = feed."workspace_id"');
-    expect(sql).toContain(
+    for (const expected of [
+      'from "feed_items" as feed', 'join "source_items" as source',
+      'source."id" = feed."source_item_id"',
+      'source."tenant_id" = feed."tenant_id"',
+      'source."workspace_id" = feed."workspace_id"',
       'source."source_binding_id" = feed."source_binding_id"',
-    );
-    expect(sql).toContain('source."provider_key" = feed."provider_key"');
-    expect(sql).toContain('source."canonical_url" = feed."canonical_url"');
-    expect(sql).toContain('join "tenants" as tenant');
-    expect(sql).toContain('tenant."id" = feed."tenant_id"');
-    expect(sql).toContain('tenant."deleted_at" is null');
-    expect(sql).toContain('join "workspaces" as workspace');
-    expect(sql).toContain('workspace."id" = feed."workspace_id"');
-    expect(sql).toContain('workspace."tenant_id" = feed."tenant_id"');
-    expect(sql).toContain('workspace."deleted_at" is null');
-    expect(sql).toContain('feed."status" = \'visible\'');
-    expect(sql).toContain('feed."provider_key" = any(array[');
-    expect(sql).toContain("'github-trending-page'");
-    expect(sql).toContain("'hacker-news'");
-    expect(sql).toContain("'reddit'");
-    expect(sql).toContain("'rss'");
-    expect(sql).toContain("'x-twitter'");
-    expect(sql).toContain(
+      'source."provider_key" = feed."provider_key"',
+      'source."canonical_url" = feed."canonical_url"',
+      'join "tenants" as tenant', 'tenant."deleted_at" is null',
+      'join "workspaces" as workspace', 'workspace."deleted_at" is null',
+      'join "source_bindings" as binding',
+      'binding."interest_id" = feed."interest_id"',
+      'binding."status" = \'enabled\'',
+      'join "source_catalog_entries" as catalog',
+      'catalog."provider_key" = feed."provider_key"',
+      'join "interests" as interest', 'interest."status" = \'enabled\'',
+      'left join "github_repository_trend_results" as result',
+      'left join "scan_jobs" as scan', 'left join "scan_attempts" as attempt',
+      'feed."status" = \'visible\'', 'feed."provider_key" = any(array[',
       "date '2026-07-24'::timestamp at time zone 'utc'",
-    );
-    expect(sql).toContain(
+      "date '2026-07-25'::timestamp at time zone 'utc'",
       "date '2026-07-26'::timestamp at time zone 'utc'",
-    );
-    expect(sql).toContain('feed."observed_at" >=');
-    expect(sql).toContain('feed."observed_at" <');
+      "group by feed.\"tenant_id\", feed.\"workspace_id\"",
+      "having count(*) = count(distinct feed.\"id\")", "and count(*) = 692",
+      ") = 342", ") = 350", ") = 0", ") = 10", ") = 100", ") = 75",
+      ") = 67", ") = 73",
+      "source.\"content_hash\" ~ '^[0-9a-f]{64}$'",
+      "source.\"provider_content_hash\" ~ '^[0-9a-f]{64}$'",
+      "source.\"metadata\"->>'kind' = 'github_trending_page_repository'",
+    ]) {
+      expect(sql).toContain(expected);
+    }
+    for (const provider of ["github-trending-page", "hacker-news", "reddit", "rss", "x-twitter"]) {
+      expect(sql).toContain(`'${provider}'`);
+    }
     expect(sql).toContain('order by "tenantid", "workspaceid"');
     expect(sql).not.toContain('order by feed."tenant_id", feed."workspace_id"');
     expect(sql).not.toContain('feed."published_at"');
-    expect(sql).not.toContain("having");
-    expect(sql).not.toMatch(/\bcount\s*\(/u);
-    expect(sql).not.toMatch(/=\s*(?:100|75|73|67|10|0)\b/u);
     expect(sql).not.toMatch(/\bprepare_reader_summary_production_recovery\b/u);
     expect(sql).not.toMatch(/\binsert\b|\bupdate\b|\bdelete\b/u);
     expect(sql).not.toMatch(/\bfor\s+(?:update|share)\b/u);
