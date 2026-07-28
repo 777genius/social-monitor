@@ -5,6 +5,11 @@
 -- seals before appending a certification.
 BEGIN;
 
+SET LOCAL ROLE "social_monitor_public_schema_owner";
+GRANT USAGE, CREATE ON SCHEMA public
+TO "social_monitor_reader_summary_publication_owner";
+RESET ROLE;
+
 SET LOCAL ROLE "social_monitor_reader_summary_publication_owner";
 
 CREATE FUNCTION "backfill_reader_summary_weekly_daily_certifications"(
@@ -223,4 +228,9 @@ GRANT EXECUTE ON FUNCTION
 TO "social_monitor_reader_summary_publication_runtime";
 
 RESET ROLE;
+SET LOCAL ROLE "social_monitor_public_schema_owner";
+REVOKE CREATE ON SCHEMA public
+FROM "social_monitor_reader_summary_publication_owner";
+RESET ROLE;
+
 COMMIT;

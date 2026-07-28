@@ -337,6 +337,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       prisma/seed.ts:PrismaClient
       prisma/seed.ts:PrismaPg
       scripts/backfill-github-trending-feed.ts:Pool
+      scripts/backfill-reader-summary-weekly-daily-certifications.ts:Pool
       scripts/capture-durable-backend-e2e-loop.ts:Pool
       scripts/capture-reader-summary-multi-day-quality-corpus.ts:Pool
       scripts/capture-reader-summary-multi-day-quality-target-manifest.ts:Pool
@@ -355,6 +356,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/check-reader-summary-source-quality-trace.ts:Pool
       scripts/check-reader-summary-top-read-ranking.ts:Pool
       scripts/check-reader-summary-topic-map-real-data.ts:Pool
+      scripts/check-reader-summary-weekly-daily-certifications-postgres.ts:Pool
       scripts/check-reader-summary-weekly-production-postgres.ts:Pool
       scripts/check-source-query-planner-real-binding-canary.ts:Pool
       scripts/check-summary-feedback-calibration-report.ts:Pool
@@ -406,6 +408,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       libs/platform/persistence/src/postgres-runtime-pool.ts
       prisma/seed.ts
       scripts/backfill-github-trending-feed.ts
+      scripts/backfill-reader-summary-weekly-daily-certifications.ts
       scripts/capture-durable-backend-e2e-loop.ts
       scripts/capture-reader-summary-multi-day-quality-corpus.ts
       scripts/capture-reader-summary-multi-day-quality-target-manifest.ts
@@ -418,6 +421,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/check-reader-summary-source-quality-trace.ts
       scripts/check-reader-summary-top-read-ranking.ts
       scripts/check-reader-summary-topic-map-real-data.ts
+      scripts/check-reader-summary-weekly-daily-certifications-postgres.ts
       scripts/check-reader-summary-weekly-production-postgres.ts
       scripts/check-source-query-planner-real-binding-canary.ts
       scripts/check-summary-feedback-calibration-report.ts
