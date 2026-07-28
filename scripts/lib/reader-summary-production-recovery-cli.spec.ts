@@ -119,7 +119,7 @@ describe("reader summary production recovery CLI wrapper", () => {
     ).rejects.toThrow("expected exactly one scope, found 2");
   });
 
-  it("discovers scope from visible counts without GitHub evidence joins", async () => {
+  it("discovers scope from visible feed counts without source joins", async () => {
     const expectedScope = scopeFixture("1", "2");
     const { client, queryRaw } = scopeDiscoveryClient([expectedScope]);
 
@@ -131,10 +131,7 @@ describe("reader summary production recovery CLI wrapper", () => {
     expect(sql).toContain('feed."tenant_id"::text as "tenantid"');
     expect(sql).toContain('feed."workspace_id"::text as "workspaceid"');
     for (const expected of [
-      'from "feed_items" as feed', 'join "source_items" as source',
-      'source."id" = feed."source_item_id"',
-      'source."tenant_id" = feed."tenant_id"',
-      'source."workspace_id" = feed."workspace_id"',
+      'from "feed_items" as feed',
       'join "tenants" as tenant', 'tenant."deleted_at" is null',
       'join "workspaces" as workspace', 'workspace."deleted_at" is null',
       'feed."status" = \'visible\'', 'feed."provider_key" = any(array[',
@@ -158,14 +155,14 @@ describe("reader summary production recovery CLI wrapper", () => {
       /\bgithub_repository_trend_results\b|\bscan_jobs\b|\bscan_attempts\b/u,
     );
     expect(sql).not.toMatch(
-      /\bsource_bindings\b|\bsource_catalog_entries\b|\binterests\b/u,
+      /\bsource_items\b|\bsource_bindings\b|\bsource_catalog_entries\b|\binterests\b/u,
     );
     expect(sql).not.toMatch(
       /\bcontent_hash\b|\bprovider_content_hash\b|\bmetadata\b/u,
     );
     expect(sql).not.toContain('source."source_binding_id"');
     expect(sql).not.toContain('source."canonical_url"');
-    expect(sql).not.toMatch(/\bprepare_reader_summary_production_recovery\b/u);
+    expect(sql).not.toMatch(/\bprepare_reader_summary_production_recovery\b|\bprepare\b/u);
     expect(sql).not.toMatch(/\binsert\b|\bupdate\b|\bdelete\b/u);
     expect(sql).not.toMatch(/\bfor\s+(?:update|share)\b/u);
   });

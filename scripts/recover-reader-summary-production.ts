@@ -172,10 +172,6 @@ export const discoverReaderSummaryProductionRecoveryScope = async (
       feed."tenant_id"::TEXT AS "tenantId",
       feed."workspace_id"::TEXT AS "workspaceId"
     FROM "feed_items" AS feed
-    JOIN "source_items" AS source
-      ON source."id" = feed."source_item_id"
-      AND source."tenant_id" = feed."tenant_id"
-      AND source."workspace_id" = feed."workspace_id"
     JOIN "tenants" AS tenant
       ON tenant."id" = feed."tenant_id"
       AND tenant."deleted_at" IS NULL
