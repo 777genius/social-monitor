@@ -12,22 +12,30 @@ const scopeAclMigrationPath =
   "prisma/migrations/20260728151000_reader_summary_production_recovery_scope_acl/migration.sql";
 const sourceBindingsAclMigrationPath =
   "prisma/migrations/20260728162000_reader_summary_production_recovery_source_bindings_acl/migration.sql";
+const evidenceAclMigrationPath =
+  "prisma/migrations/20260728170000_reader_summary_production_recovery_evidence_acl/migration.sql";
+const leaseAliasMigrationPath =
+  "prisma/migrations/20260728173000_reader_summary_production_recovery_lease_alias_fix/migration.sql";
+const publishedAuthorityMigrationPath =
+  "prisma/migrations/20260728123000_reader_summary_production_recovery_published_counts_authority/migration.sql";
 const migrationPaths = [
   "prisma/migrations/20260726170000_reader_summary_production_recovery_authority/migration.sql",
   "prisma/migrations/20260726170100_reader_summary_production_recovery_authority_prepare/migration.sql",
   "prisma/migrations/20260727151000_reader_summary_production_recovery_observed_window/migration.sql",
   "prisma/migrations/20260727154500_reader_summary_production_recovery_collection_windows/migration.sql",
   "prisma/migrations/20260728033000_reader_summary_production_recovery_jul23_jul24_authority/migration.sql",
-  "prisma/migrations/20260728123000_reader_summary_production_recovery_published_counts_authority/migration.sql",
+  publishedAuthorityMigrationPath,
   runtimeExecuteMigrationPath,
   scopeAclMigrationPath,
   sourceBindingsAclMigrationPath,
+  evidenceAclMigrationPath,
+  leaseAliasMigrationPath,
 ] as const;
 const migration = migrationPaths
   .map((migrationPath) => readFileSync(join(root, migrationPath), "utf8"))
   .join("\n");
 const publishedAuthorityMigration = readFileSync(
-  join(root, migrationPaths[5]),
+  join(root, publishedAuthorityMigrationPath),
   "utf8",
 );
 const runtimeExecuteMigration = readFileSync(
@@ -40,6 +48,14 @@ const scopeAclMigration = readFileSync(
 );
 const sourceBindingsAclMigration = readFileSync(
   join(root, sourceBindingsAclMigrationPath),
+  "utf8",
+);
+const evidenceAclMigration = readFileSync(
+  join(root, evidenceAclMigrationPath),
+  "utf8",
+);
+const leaseAliasMigration = readFileSync(
+  join(root, leaseAliasMigrationPath),
   "utf8",
 );
 const schema = readFileSync(join(root, "prisma/schema.prisma"), "utf8");
@@ -417,6 +433,142 @@ describe("reader summary production recovery PostgreSQL contract", () => {
     );
   });
 
+  it("grants only the complete production recovery evidence ACL to the publication owner", () => {
+    const feedItemsSelectGrant =
+      "GRANT SELECT(id, tenant_id, workspace_id, interest_id, source_item_id, source_binding_id, provider_key, canonical_url, status, published_at, observed_at) ON public.feed_items TO social_monitor_reader_summary_publication_owner;";
+    const feedItemsRowLockGrant =
+      "GRANT UPDATE(id) ON public.feed_items TO social_monitor_reader_summary_publication_owner;";
+    const sourceItemsSelectGrant =
+      "GRANT SELECT(id, tenant_id, workspace_id, source_binding_id, provider_key, provider_item_id, canonical_url, content_hash, provider_content_hash, observed_at, metadata) ON public.source_items TO social_monitor_reader_summary_publication_owner;";
+    const sourceItemsRowLockGrant =
+      "GRANT UPDATE(id) ON public.source_items TO social_monitor_reader_summary_publication_owner;";
+    const interestsSelectGrant =
+      "GRANT SELECT(id, tenant_id, workspace_id, status, deleted_at) ON public.interests TO social_monitor_reader_summary_publication_owner;";
+    const catalogSelectGrant =
+      "GRANT SELECT(id, provider_key) ON public.source_catalog_entries TO social_monitor_reader_summary_publication_owner;";
+    const githubTrendResultsSelectGrant =
+      "GRANT SELECT(id, tenant_id, workspace_id, source_binding_id, scan_job_id, source_item_id, repository_full_name, repository_url, primary_window, rank, checked_at, observed_at) ON public.github_repository_trend_results TO social_monitor_reader_summary_publication_owner;";
+    const githubTrendResultsRowLockGrant =
+      "GRANT UPDATE(id) ON public.github_repository_trend_results TO social_monitor_reader_summary_publication_owner;";
+    const scanJobsSelectGrant =
+      "GRANT SELECT(id, tenant_id, workspace_id, source_binding_id, status) ON public.scan_jobs TO social_monitor_reader_summary_publication_owner;";
+    const scanJobsRowLockGrant =
+      "GRANT UPDATE(id) ON public.scan_jobs TO social_monitor_reader_summary_publication_owner;";
+    const scanAttemptsSelectGrant =
+      "GRANT SELECT(scan_job_id, tenant_id, workspace_id, source_binding_id, attempt_number, status, finished_at) ON public.scan_attempts TO social_monitor_reader_summary_publication_owner;";
+    const scanAttemptsRowLockGrant =
+      "GRANT UPDATE(scan_job_id) ON public.scan_attempts TO social_monitor_reader_summary_publication_owner;";
+
+    expect(evidenceAclMigration).toContain(
+      "SET LOCAL ROLE social_monitor_public_schema_owner;",
+    );
+    expect(
+      evidenceAclMigration.match(/\bGRANT\b[\s\S]*?;/gu),
+    ).toEqual([
+      feedItemsSelectGrant,
+      feedItemsRowLockGrant,
+      sourceItemsSelectGrant,
+      sourceItemsRowLockGrant,
+      interestsSelectGrant,
+      catalogSelectGrant,
+      githubTrendResultsSelectGrant,
+      githubTrendResultsRowLockGrant,
+      scanJobsSelectGrant,
+      scanJobsRowLockGrant,
+      scanAttemptsSelectGrant,
+      scanAttemptsRowLockGrant,
+    ]);
+    expect(evidenceAclMigration).not.toContain("source_bindings");
+    expect(evidenceAclMigration).not.toMatch(
+      /\bGRANT\s+SELECT\b(?!\s*\()/iu,
+    );
+    expect(evidenceAclMigration).not.toMatch(
+      /\bGRANT\s+UPDATE\b(?!\s*\()/iu,
+    );
+    expect(evidenceAclMigration).not.toMatch(
+      /\bGRANT\s+(?:INSERT|DELETE|TRUNCATE|REFERENCES|TRIGGER|EXECUTE)\b/iu,
+    );
+    expect(evidenceAclMigration).not.toContain(
+      "social_monitor_reader_summary_publication_runtime",
+    );
+    expect(evidenceAclMigration).not.toMatch(
+      /\b(?:CREATE|ALTER|DROP)\s+(?:FUNCTION|TABLE|POLICY)\b/iu,
+    );
+  });
+
+  it("replaces prepare with lease aliases and no semantic drift", () => {
+    const publishedPrepare = prepareFunctionFrom(
+      publishedAuthorityMigration,
+    );
+    const expectedPrepare = publishedPrepare
+      .replace(
+        [
+          '      FROM "reader_summary_production_recovery_leases"',
+          '      WHERE "tenant_id" = v_session_tenant_id',
+          '        AND "workspace_id" = v_session_workspace_id',
+        ].join("\n"),
+        [
+          '      FROM "reader_summary_production_recovery_leases" AS replay_lease',
+          '      WHERE replay_lease."tenant_id" = v_session_tenant_id',
+          '        AND replay_lease."workspace_id" = v_session_workspace_id',
+        ].join("\n"),
+      )
+      .replace(
+        [
+          '  UPDATE "reader_summary_production_recovery_leases"',
+          "  SET",
+          '    "state" = \'CONSUMED\',',
+          '    "consumed_at" = transaction_timestamp()',
+          '  WHERE "id" = v_recovery_id',
+          '    AND "state" = \'ISSUED\'',
+          '    AND "consumed_at" IS NULL;',
+        ].join("\n"),
+        [
+          '  UPDATE "reader_summary_production_recovery_leases" AS lease',
+          "  SET",
+          '    "state" = \'CONSUMED\',',
+          '    "consumed_at" = transaction_timestamp()',
+          '  WHERE lease."id" = v_recovery_id',
+          '    AND lease."state" = \'ISSUED\'',
+          '    AND lease."consumed_at" IS NULL;',
+        ].join("\n"),
+      );
+
+    expect(prepareFunctionFrom(leaseAliasMigration)).toBe(
+      expectedPrepare,
+    );
+    expect(leaseAliasMigration).toContain(
+      'FROM "reader_summary_production_recovery_leases" AS replay_lease',
+    );
+    expect(leaseAliasMigration).toContain(
+      'UPDATE "reader_summary_production_recovery_leases" AS lease',
+    );
+    expect(leaseAliasMigration).not.toMatch(
+      /FROM\s+"reader_summary_production_recovery_leases"\s+WHERE\s+"tenant_id"/u,
+    );
+    expect(leaseAliasMigration).not.toMatch(
+      /UPDATE\s+"reader_summary_production_recovery_leases"\s+SET/u,
+    );
+    expect(leaseAliasMigration).not.toMatch(
+      /WHERE\s+"id"\s*=\s*v_recovery_id/u,
+    );
+    expect(leaseAliasMigration).not.toMatch(
+      /AND\s+"consumed_at"\s+IS\s+NULL/u,
+    );
+    expect(leaseAliasMigration.match(/\bGRANT\b[\s\S]*?;/gu)).toEqual([
+      'GRANT USAGE, CREATE ON SCHEMA public\nTO "social_monitor_reader_summary_publication_owner";',
+    ]);
+    expect(leaseAliasMigration).not.toContain(
+      "social_monitor_reader_summary_publication_runtime",
+    );
+    expect(leaseAliasMigration).not.toMatch(
+      /\b(?:GRANT|REVOKE)\s+EXECUTE\b/iu,
+    );
+    expect(leaseAliasMigration).not.toMatch(
+      /\b(?:EXECUTE\s+v_definition|pg_get_functiondef)\b/iu,
+    );
+  });
+
   it("uses deterministic identity, SERIALIZABLE row locking and fixed paths", () => {
     expect(migration).toContain(
       "'reader_summary.production_recovery.v1:' || v_identity_sha",
@@ -538,4 +690,18 @@ const expectedCountBlock = (
       /'providerKey', '([^']+)', 'count', (\d+)/gu,
     )].map((match) => [match[1]!, Number(match[2])]),
   );
+};
+
+const prepareFunctionFrom = (sql: string): string => {
+  const marker =
+    'CREATE OR REPLACE FUNCTION "prepare_reader_summary_production_recovery"()';
+  const start = sql.indexOf(marker);
+  if (start < 0) {
+    throw new Error("prepare recovery function definition is absent");
+  }
+  const end = sql.indexOf("\n$$;", start);
+  if (end < 0) {
+    throw new Error("prepare recovery function terminator is absent");
+  }
+  return sql.slice(start, end + "\n$$;".length);
 };
