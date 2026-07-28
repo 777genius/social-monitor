@@ -244,12 +244,17 @@ source "$REPO/ops/deploy/x-collector-image-deploy-lib.sh"
 source_deploy_library \
   reader-summary-recovery-maintenance-lib.sh \
   'reader-summary recovery maintenance library'
-unset -f source_deploy_library
+load_reader_summary_publication_deploy_library() {
+  source_deploy_library reader-summary-publication-deploy-lib.sh 'reader-summary publication deploy library'
+}
 initialize_deploy_control_bridge
 
 verify_compose_scope() (
   local rendered=$STATE/rendered-compose.$$.json
   trap 'rm -f "$rendered"' EXIT
+  if ! declare -F ensure_system_database_url_deploy_contract >/dev/null; then
+    load_reader_summary_publication_deploy_library
+  fi
   ensure_system_database_url_deploy_contract
   umask 077
   "${COMPOSE[@]}" --profile app --profile daily config --format json > "$rendered"

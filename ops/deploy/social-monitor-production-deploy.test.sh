@@ -859,9 +859,13 @@ grep -Fx 'Restart=no' \
   "$SCRIPT_DIR/production-runtime/social-monitor-daily.service" >/dev/null
 deploy_library_source_line=$(grep -nF 'source "$REPO/ops/deploy/deploy-control-lib.sh"' \
   "$ENTRYPOINT" | cut -d: -f1)
+publication_library_source_line=$(grep -nF 'source_deploy_library reader-summary-publication-deploy-lib.sh' "$ENTRYPOINT" | cut -d: -f1)
+publication_loader_call_line=$(grep -nF '    load_reader_summary_publication_deploy_library' "$ENTRYPOINT" | cut -d: -f1)
 bridge_initialization_line=$(grep -nF 'initialize_deploy_control_bridge' \
   "$ENTRYPOINT" | tail -1 | cut -d: -f1)
-((deploy_library_source_line < bridge_initialization_line))
+first_contract_call_line=$(grep -nF '  ensure_system_database_url_deploy_contract' "$ENTRYPOINT" | head -1 | cut -d: -f1)
+((deploy_library_source_line < bridge_initialization_line && publication_library_source_line < bridge_initialization_line))
+((publication_loader_call_line < first_contract_call_line))
 grep -F 'advance_integration "$sha"' \
   "$SCRIPT_DIR/deploy-control-lib.sh" >/dev/null
 
