@@ -7,7 +7,16 @@ import type {
   SourceRuntimeConfig,
 } from "@social-monitor/ingestion/ports";
 import { Pool } from "pg";
-import { defaultPostgresRuntimePoolConfig } from "@social-monitor/platform-persistence";
+import {
+  acquirePrismaPgRuntimeConnection,
+  defaultPostgresRuntimePoolConfig,
+  runWithSystemDatabaseAccess,
+  runWithTenantDatabaseAccess,
+  type PostgresRuntimePoolConfig,
+  type PrismaPgRuntimeClientConstructor,
+  type PrismaPgRuntimeConnectionLease,
+} from "@social-monitor/platform-persistence";
+import { loadPrismaRuntimeClient } from "@social-monitor/platform-persistence/prisma-runtime-client";
 
 import { PrismaIngestionWorkerConnection } from "../apps/ingestion-worker/src/adapters/persistence/prisma-ingestion-worker-connection";
 import {
@@ -57,6 +66,17 @@ type ScanProofRow = {
   readonly newestItemAt: string | null;
 };
 
+type TargetDiscoveryClient = {
+  $queryRawUnsafe<T>(
+    query: string,
+    ...values: readonly unknown[]
+  ): Promise<T>;
+};
+
+type TargetDiscoveryRuntimeClient = TargetDiscoveryClient & {
+  $disconnect(): Promise<void>;
+};
+
 const outputPath = "ops/evals/reader-summary-clean-real-day-collection.v1.json";
 const databaseUrl = yesterdaySocialQualityDatabaseUrl();
 const providerKeys = readProviderKeys();
@@ -76,7 +96,9 @@ const targetPublishedWindowConfig = {
   observedAt: new Date().toISOString(),
 };
 
-void main();
+if (require.main === module) {
+  void main();
+}
 
 async function main(): Promise<void> {
   if (recalculateExisting) {
@@ -155,17 +177,29 @@ async function tryRunCollection(): Promise<
     max: 1,
     connectionTimeoutMillis: 2_000,
   });
-  const connection = await PrismaIngestionWorkerConnection.create(
-    defaultPostgresRuntimePoolConfig(databaseUrl, "daily-runner"),
+  const runtimeConfig = defaultPostgresRuntimePoolConfig(
+    databaseUrl,
+    "daily-runner",
   );
+  let targetDiscovery:
+    | PrismaPgRuntimeConnectionLease<TargetDiscoveryRuntimeClient>
+    | undefined;
+  let connection: PrismaIngestionWorkerConnection | undefined;
 
   try {
-    const targets = await readTargets(pool);
+    targetDiscovery = await createTargetDiscoveryConnection(runtimeConfig);
+    connection =
+      await PrismaIngestionWorkerConnection.create(runtimeConfig);
+    const targets = await discoverSingleScopeCleanRealDayTargets(() =>
+      readTargets(targetDiscovery.client),
+    );
+    const targetScope = targets[0]!;
+    const tenantDatabase = createTenantScopedPgQuery(pool, targetScope);
     const scanResults = await executeCleanRealDayProviderAcquisition({
       targets,
       connection,
       durableSnapshotReader: new PrismaGitHubTrendingDurableSnapshotReader(
-        pool,
+        tenantDatabase,
       ),
       requestedUtcDay: targetCollectionDate,
       targetWindowEndedAt: new Date(targetPublishedWindow.endExclusive),
@@ -173,11 +207,11 @@ async function tryRunCollection(): Promise<
       waitForXReadiness,
     });
     const completedAt = new Date();
-    const freshWindow = await readFreshWindowProof(pool, {
+    const freshWindow = await readFreshWindowProof(tenantDatabase, {
       startedAt,
       completedAt,
     });
-    const targetWindow = await readTargetWindowProof(pool);
+    const targetWindow = await readTargetWindowProof(tenantDatabase);
     const reportWithoutSecretGate = buildReport({
       targets,
       scanResults,
@@ -205,15 +239,80 @@ async function tryRunCollection(): Promise<
     );
     return undefined;
   } finally {
-    await connection.close().catch(() => undefined);
+    await connection?.close().catch(() => undefined);
+    await targetDiscovery?.close().catch(() => undefined);
     await pool.end().catch(() => undefined);
   }
 }
 
-async function readTargets(
+function createTargetDiscoveryConnection(
+  config: PostgresRuntimePoolConfig,
+): Promise<PrismaPgRuntimeConnectionLease<TargetDiscoveryRuntimeClient>> {
+  const PrismaClient =
+    loadPrismaRuntimeClient<
+      PrismaPgRuntimeClientConstructor<TargetDiscoveryRuntimeClient>
+    >();
+
+  return acquirePrismaPgRuntimeConnection(config, PrismaClient);
+}
+
+function createTenantScopedPgQuery(
   pool: Pool,
+  scope: Pick<SourceBindingTarget, "tenantId" | "workspaceId">,
+): Pick<Pool, "query"> {
+  const query = async <Row>(
+    text: string,
+    values: readonly unknown[] = [],
+  ): Promise<{ rows: Row[] }> =>
+    runWithTenantDatabaseAccess(scope, async () => {
+      const connection = await pool.connect();
+      try {
+        await connection.query("BEGIN");
+        await connection.query(
+          `SELECT set_config('social_monitor.tenant_id', $1, true),
+                  set_config('social_monitor.workspace_id', $2, true),
+                  set_config('social_monitor.system_access', 'false', true)`,
+          [scope.tenantId, scope.workspaceId],
+        );
+        const result = await connection.query<Row>(text, [...values]);
+        await connection.query("COMMIT");
+        return { rows: result.rows };
+      } catch (error) {
+        await connection.query("ROLLBACK").catch(() => undefined);
+        throw error;
+      } finally {
+        connection.release();
+      }
+    });
+
+  return { query: query as Pool["query"] };
+}
+
+export async function discoverSingleScopeCleanRealDayTargets<
+  Target extends Pick<SourceBindingTarget, "tenantId" | "workspaceId">,
+>(
+  discover: () => Promise<readonly Target[]>,
+): Promise<readonly Target[]> {
+  const targets = await runWithSystemDatabaseAccess(
+    "clean real-day enabled provider target discovery",
+    discover,
+  );
+  const scopes = new Set(
+    targets.map((target) => `${target.tenantId}\u0000${target.workspaceId}`),
+  );
+  if (scopes.size !== 1) {
+    throw new Error(
+      `Clean real-day target discovery expected exactly one tenant/workspace scope, found ${scopes.size}`,
+    );
+  }
+
+  return targets;
+}
+
+async function readTargets(
+  client: TargetDiscoveryClient,
 ): Promise<readonly SourceBindingTarget[]> {
-  const result = await pool.query<{
+  const rows = await client.$queryRawUnsafe<readonly {
     readonly tenantId: string;
     readonly workspaceId: string;
     readonly interestId: string;
@@ -222,7 +321,7 @@ async function readTargets(
     readonly scanPolicyId: string | null;
     readonly providerKey: ProviderKey;
     readonly config: unknown;
-  }>(
+  }[]>(
     `
       select
         sb.tenant_id::text as "tenantId",
@@ -244,10 +343,10 @@ async function readTargets(
         and sce.provider_key = any($1::text[])
       order by sce.provider_key, sb.created_at, sb.id
     `,
-    [providerKeys],
+    [...providerKeys],
   );
 
-  return requireScanPolicyTargets(result.rows).map((row) => {
+  return requireScanPolicyTargets(rows).map((row) => {
     const config = asRecord(row.config) as SourceRuntimeConfig;
     const runtimeConfig = configForTargetPublishedWindow(
       row.providerKey,
@@ -276,13 +375,13 @@ function configForTargetPublishedWindow(
 }
 
 async function readFreshWindowProof(
-  pool: Pool,
+  database: Pick<Pool, "query">,
   params: {
     readonly startedAt: Date;
     readonly completedAt: Date;
   },
 ): Promise<CleanRealDayCollectionReport["freshWindow"]> {
-  return readFeedWindowProof(pool, {
+  return readFeedWindowProof(database, {
     startInclusive: params.startedAt,
     endInclusive: params.completedAt,
     timestampColumn: "observed_at",
@@ -290,9 +389,9 @@ async function readFreshWindowProof(
 }
 
 async function readTargetWindowProof(
-  pool: Pool,
+  database: Pick<Pool, "query">,
 ): Promise<CleanRealDayCollectionReport["freshWindow"]> {
-  return readFeedWindowProof(pool, {
+  return readFeedWindowProof(database, {
     startInclusive: new Date(targetPublishedWindow.startInclusive),
     endExclusive: new Date(targetPublishedWindow.endExclusive),
     timestampColumn: "published_at",
@@ -300,7 +399,7 @@ async function readTargetWindowProof(
 }
 
 async function readFeedWindowProof(
-  pool: Pool,
+  database: Pick<Pool, "query">,
   params: {
     readonly startInclusive: Date;
     readonly endInclusive?: Date;
@@ -314,7 +413,7 @@ async function readFeedWindowProof(
     throw new Error("Feed window proof end is required");
   }
 
-  const result = await pool.query<ScanProofRow>(
+  const result = await database.query<ScanProofRow>(
     `
       select
         fi.provider_key as "providerKey",

@@ -1,4 +1,7 @@
-import { currentDatabaseAccess } from "@social-monitor/platform-persistence";
+import {
+  currentDatabaseAccess,
+  type DatabaseAccess,
+} from "@social-monitor/platform-persistence";
 
 import type { CleanRealDayCollectionReport } from "./clean-real-day-collection-report";
 import {
@@ -13,6 +16,9 @@ import {
   successfulProviderCollectionObservation,
   unavailableProviderCollectionObservation,
 } from "./provider-collection-observability";
+import {
+  discoverSingleScopeCleanRealDayTargets,
+} from "../run-reader-summary-clean-real-day-collection";
 
 describe("clean real-day provider acquisition", () => {
   it("switches GitHub to reuse exactly when the requested UTC day closes", () => {
@@ -129,6 +135,60 @@ describe("clean real-day provider acquisition", () => {
 
     expect(observedAccess).toEqual({ kind: "tenant", ...scope });
     expect(currentDatabaseAccess()).toBeUndefined();
+  });
+
+  it("discovers targets with explicit system database access", async () => {
+    let observedAccess: DatabaseAccess | undefined;
+    const targets = [target("hacker-news")];
+
+    await expect(
+      discoverSingleScopeCleanRealDayTargets(async () => {
+        observedAccess = currentDatabaseAccess();
+        return targets;
+      }),
+    ).resolves.toBe(targets);
+
+    expect(observedAccess).toEqual({
+      kind: "system",
+      reason: "clean real-day enabled provider target discovery",
+    });
+    expect(currentDatabaseAccess()).toBeUndefined();
+  });
+
+  it.each(["no", "multiple"] as const)(
+    "fails closed before acquisition when discovery returns $label scope",
+    async (label) => {
+      const targets =
+        label === "no"
+          ? []
+          : [
+              target("hacker-news"),
+              {
+                ...target("reddit"),
+                workspaceId: "workspace-b",
+              },
+            ];
+      const acquireLive = jest.fn();
+
+      await expect(
+        discoverSingleScopeCleanRealDayTargets(async () => targets).then(
+          acquireLive,
+        ),
+      ).rejects.toThrow(
+        `expected exactly one tenant/workspace scope, found ${
+          targets.length === 0 ? 0 : 2
+        }`,
+      );
+      expect(acquireLive).not.toHaveBeenCalled();
+    },
+  );
+
+  it("accepts multiple enabled targets in one tenant workspace scope", async () => {
+    const targets = [target("hacker-news"), target("reddit")];
+
+    await expect(
+      discoverSingleScopeCleanRealDayTargets(async () => targets),
+    ).resolves.toBe(targets);
   });
 
   it("extends the feed projection transaction budget for 100-item writes", async () => {
