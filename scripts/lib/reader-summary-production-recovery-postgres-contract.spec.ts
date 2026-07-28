@@ -6,6 +6,8 @@ import {
 } from "./reader-summary-production-recovery-postgres-contract";
 
 const root = process.cwd();
+const runtimeExecuteMigrationPath =
+  "prisma/migrations/20260728143000_reader_summary_production_recovery_prepare_runtime_execute/migration.sql";
 const migrationPaths = [
   "prisma/migrations/20260726170000_reader_summary_production_recovery_authority/migration.sql",
   "prisma/migrations/20260726170100_reader_summary_production_recovery_authority_prepare/migration.sql",
@@ -13,12 +15,17 @@ const migrationPaths = [
   "prisma/migrations/20260727154500_reader_summary_production_recovery_collection_windows/migration.sql",
   "prisma/migrations/20260728033000_reader_summary_production_recovery_jul23_jul24_authority/migration.sql",
   "prisma/migrations/20260728123000_reader_summary_production_recovery_published_counts_authority/migration.sql",
+  runtimeExecuteMigrationPath,
 ] as const;
 const migration = migrationPaths
   .map((migrationPath) => readFileSync(join(root, migrationPath), "utf8"))
   .join("\n");
 const publishedAuthorityMigration = readFileSync(
   join(root, migrationPaths[5]),
+  "utf8",
+);
+const runtimeExecuteMigration = readFileSync(
+  join(root, runtimeExecuteMigrationPath),
   "utf8",
 );
 const schema = readFileSync(join(root, "prisma/schema.prisma"), "utf8");
@@ -304,6 +311,28 @@ describe("reader summary production recovery PostgreSQL contract", () => {
     ).toHaveLength(1);
     expect(publishedAuthorityMigration).not.toMatch(
       /GRANT\s+[^;]*\b(?:INSERT|UPDATE|DELETE)\b[^;]*;/iu,
+    );
+  });
+
+  it("forwards only prepare execute authority to the publication runtime", () => {
+    const prepareExecuteGrant =
+      'GRANT EXECUTE ON FUNCTION\n  "prepare_reader_summary_production_recovery"()\nTO "social_monitor_reader_summary_publication_runtime";';
+
+    expect(runtimeExecuteMigration).toContain(prepareExecuteGrant);
+    expect(
+      runtimeExecuteMigration.match(/\bGRANT\b[\s\S]*?;/gu),
+    ).toEqual([prepareExecuteGrant]);
+    expect(runtimeExecuteMigration).not.toMatch(
+      /\b(?:validate_reader_summary_production_recovery|reader_summary_production_recovery_expected_counts|derive_reader_summary_production_recovery_day|reader_summary_production_recovery_evidence_is_valid)\b/u,
+    );
+    expect(runtimeExecuteMigration).not.toMatch(
+      /\bGRANT\s+(?:SELECT|INSERT|UPDATE|DELETE|TRUNCATE|REFERENCES|TRIGGER)\b/iu,
+    );
+    expect(runtimeExecuteMigration).not.toMatch(
+      /\b(?:CREATE|ALTER|DROP)\s+(?:FUNCTION|TABLE|POLICY)\b/iu,
+    );
+    expect(runtimeExecuteMigration).not.toMatch(
+      /\b(?:INSERT INTO|UPDATE|DELETE FROM|TRUNCATE)\b/iu,
     );
   });
 
