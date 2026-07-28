@@ -432,6 +432,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/lib/github-trending-durable-snapshot-reuse.ts
       scripts/lib/reader-summary-current-publication-bindings.spec.ts
       scripts/lib/reader-summary-current-publication-bindings.ts
+      scripts/lib/reader-summary-production-day-scope.spec.ts
       scripts/lib/reader-summary-production-day-scope.ts
       scripts/lib/reader-summary-publication-postgres-fixture-scope.ts
       scripts/lib/reader-summary-quality-dashboard-published-window.spec.ts
