@@ -102,9 +102,9 @@ describe("reader summary production recovery CLI wrapper", () => {
 
   it("fails discovery with bounded sanitized feed-item scope diagnostics", async () => {
     const diagnostics = [
-      { timestamp_column: "observed_at", utc_date: "2026-07-23", provider_key: "hacker-news", normalized_status: "VISIBLE", count: 100 },
-      { timestamp_column: "created_at", utc_date: "2026-07-24", provider_key: "rss", normalized_status: "HIDDEN", count: 3 },
-      { timestamp_column: "published_at", utc_date: "2026-07-24", provider_key: "x-twitter", normalized_status: "VISIBLE", count: 73 },
+      { timestamp_column: "observed_at", tenant_sha256_12: "aaaaaaaaaaaa", workspace_sha256_12: "bbbbbbbbbbbb", utc_date: "2026-07-23", provider_key: "hacker-news", normalized_status: "VISIBLE", count: 100 },
+      { timestamp_column: "created_at", tenant_sha256_12: "cccccccccccc", workspace_sha256_12: "dddddddddddd", utc_date: "2026-07-24", provider_key: "rss", normalized_status: "HIDDEN", count: 3 },
+      { timestamp_column: "published_at", tenant_sha256_12: "eeeeeeeeeeee", workspace_sha256_12: "ffffffffffff", utc_date: "2026-07-24", provider_key: "x-twitter", normalized_status: "VISIBLE", count: 73 },
     ] satisfies readonly ScopeDiagnosticsFixture[];
     const { client, queryRaw } = scopeDiscoveryClient([], diagnostics);
 
@@ -115,20 +115,24 @@ describe("reader summary production recovery CLI wrapper", () => {
     const sql = normalizeSql(sqlFromQueryRaw(queryRaw, 1));
     for (const expected of [
       'from "feed_items" as feed', "'observed_at'::text as \"timestamp_column\"", "'created_at'::text as \"timestamp_column\"", "'published_at'::text as \"timestamp_column\"",
-      'coalesce(upper(feed."status"::text), \'unknown\') as "normalized_status"', 'count(*)::integer as "count"', "date '2026-07-23'::timestamp at time zone 'utc'", "date '2026-07-25'::timestamp at time zone 'utc'", "union all",
+      'left(encode(sha256(convert_to(feed."tenant_id"::text, \'utf8\')), \'hex\'), 12) as "tenant_sha256_12"', 'left(encode(sha256(convert_to(feed."workspace_id"::text, \'utf8\')), \'hex\'), 12) as "workspace_sha256_12"',
+      'coalesce(upper(feed."status"::text), \'unknown\') as "normalized_status"', 'count(*)::integer as "count"', "date '2026-07-23'::timestamp at time zone 'utc'", "date '2026-07-25'::timestamp at time zone 'utc'", "group by 1, 2, 3, 4, 5, 6", 'order by diagnostics."timestamp_column", diagnostics."tenant_sha256_12", diagnostics."workspace_sha256_12", diagnostics."utc_date", diagnostics."provider_key", diagnostics."normalized_status", diagnostics."count"', "union all",
     ]) {
       expect(sql).toContain(expected);
     }
     for (const provider of ["github-trending-page", "hacker-news", "reddit", "rss", "x-twitter"]) {
       expect(sql).toContain(`'${provider}'`);
     }
-    expect(sql).not.toMatch(/\bjoin\b|\binsert\b|\bupdate\b|\bdelete\b|\bfor\s+(?:update|share)\b/u);
-    expect(sql).not.toMatch(/\btenant_id\b|\bworkspace_id\b|\bcanonical_url\b|\btitle\b|\bcontent_hash\b|\bmetadata\b|\bsource_(?:item|binding)_id\b/u);
+    expect(sql).not.toMatch(/\bjoin\b|\binsert\b|\bupdate\b|\bdelete\b|\bmerge\b|\btruncate\b|\bfor\s+(?:update|share|key\s+share|no\s+key\s+update)\b/u);
+    expect(sql).not.toMatch(/\bcanonical_url\b|\burl\b|\btitle\b|\bcontent_hash\b|\bmetadata\b|\bsource_(?:item|binding)_id\b/u);
     expect(message).toContain('{"scope_diagnostics"');
     const json = message.slice(message.indexOf('{"scope_diagnostics"'));
     expect(JSON.parse(json)).toEqual({ scope_diagnostics: diagnostics });
-    expect(json.length).toBeLessThan(500);
-    expect(json).not.toMatch(/\btenant|workspace|url|title|content_hash|metadata|source_(?:item|binding)_id\b/u);
+    expect(json.length).toBeLessThan(900);
+    for (const field of ['"tenant_sha256_12"', '"workspace_sha256_12"']) expect(json).toContain(field);
+    expect(message).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/iu);
+    for (const fullId of Object.values(scopeFixture("9", "8"))) expect(message).not.toContain(fullId);
+    expect(json).not.toMatch(/\bcanonical_url\b|\burl\b|\btitle\b|\bcontent_hash\b|\bmetadata\b|\bsource_(?:item|binding)_id\b/u);
   });
 
   it("discovers scope from visible feed counts without source joins", async () => {
@@ -160,6 +164,7 @@ describe("reader summary production recovery CLI wrapper", () => {
     }
     expect(sql).toContain('order by "tenantid", "workspaceid"');
     expect(sql).not.toContain('order by feed."tenant_id", feed."workspace_id"');
+    expect(sql).not.toContain("sha256");
     expect(sql).not.toMatch(/\bjoin\b/u);
     expect(sql).not.toContain('feed."published_at"');
     const forbiddenScopeTables = /\b(?:tenants|workspaces|source_items|source_bindings|source_catalog_entries|interests|github_[a-z_]+|scan_jobs|scan_attempts)\b/u;
@@ -650,7 +655,7 @@ function scopeFixture(
 
 type QueryRawMock = jest.MockedFunction<ReaderSummaryProductionRecoveryScopeDiscoveryClient["$queryRaw"]>;
 type ReplayGuardTransactionMock = jest.MockedFunction<NonNullable<ReaderSummaryProductionRecoveryReplayGuardClient["$transaction"]>>;
-type ScopeDiagnosticsFixture = Readonly<{ timestamp_column: string; utc_date: string; provider_key: string; normalized_status: string; count: number }>;
+type ScopeDiagnosticsFixture = Readonly<{ timestamp_column: string; tenant_sha256_12: string; workspace_sha256_12: string; utc_date: string; provider_key: string; normalized_status: string; count: number }>;
 
 function scopeDiscoveryClient(
   rows: readonly ReaderSummaryProductionRecoveryScope[],
@@ -666,11 +671,7 @@ function scopeDiscoveryClient(
   return { client: { $queryRaw: queryRaw }, queryRaw };
 }
 
-function replayGuardClient(replayed: boolean): Readonly<{
-  client: ReaderSummaryProductionRecoveryReplayGuardClient;
-  queryRaw: QueryRawMock;
-  transaction: ReplayGuardTransactionMock;
-}> {
+function replayGuardClient(replayed: boolean): Readonly<{ client: ReaderSummaryProductionRecoveryReplayGuardClient; queryRaw: QueryRawMock; transaction: ReplayGuardTransactionMock }> {
   const queryRaw = jest.fn(
     async <T = unknown>(
       _query: TemplateStringsArray,
@@ -684,11 +685,7 @@ function replayGuardClient(replayed: boolean): Readonly<{
     ): Promise<TValue> =>
       operation({ $queryRaw: queryRaw } as PrismaReaderSummaryClient),
   ) as ReplayGuardTransactionMock;
-  return {
-    client: { $queryRaw: queryRaw, $transaction: transaction },
-    queryRaw,
-    transaction,
-  };
+  return { client: { $queryRaw: queryRaw, $transaction: transaction }, queryRaw, transaction };
 }
 
 function expectReplayGuardTransactionOptions(

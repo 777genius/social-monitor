@@ -42,6 +42,8 @@ type ScopeDiscoveryRow = Readonly<{
 
 type ScopeDiagnosticsRow = Readonly<{
   timestamp_column: string;
+  tenant_sha256_12: string;
+  workspace_sha256_12: string;
   utc_date: string;
   provider_key: string;
   normalized_status: string;
@@ -262,6 +264,8 @@ export const discoverReaderSummaryProductionRecoveryScope = async (
       `Reader summary production recovery scope discovery expected exactly one scope, found ${rows.length}; ${JSON.stringify({
         scope_diagnostics: diagnostics.map((row) => ({
           timestamp_column: row.timestamp_column,
+          tenant_sha256_12: row.tenant_sha256_12,
+          workspace_sha256_12: row.workspace_sha256_12,
           utc_date: row.utc_date,
           provider_key: row.provider_key,
           normalized_status: row.normalized_status,
@@ -282,12 +286,16 @@ const readReaderSummaryProductionRecoveryScopeDiagnostics = (
   client.$queryRaw<readonly ScopeDiagnosticsRow[]>`
     SELECT
       diagnostics."timestamp_column",
+      diagnostics."tenant_sha256_12",
+      diagnostics."workspace_sha256_12",
       diagnostics."utc_date",
       diagnostics."provider_key",
       diagnostics."normalized_status",
       diagnostics."count"
     FROM (
       SELECT 'observed_at'::TEXT AS "timestamp_column",
+        left(encode(sha256(convert_to(feed."tenant_id"::TEXT, 'UTF8')), 'hex'), 12) AS "tenant_sha256_12",
+        left(encode(sha256(convert_to(feed."workspace_id"::TEXT, 'UTF8')), 'hex'), 12) AS "workspace_sha256_12",
         (feed."observed_at" AT TIME ZONE 'UTC')::DATE::TEXT AS "utc_date",
         feed."provider_key"::TEXT AS "provider_key",
         COALESCE(upper(feed."status"::TEXT), 'UNKNOWN') AS "normalized_status",
@@ -296,9 +304,11 @@ const readReaderSummaryProductionRecoveryScopeDiagnostics = (
       WHERE feed."observed_at" >= (DATE '2026-07-23'::TIMESTAMP AT TIME ZONE 'UTC')
         AND feed."observed_at" < (DATE '2026-07-25'::TIMESTAMP AT TIME ZONE 'UTC')
         AND feed."provider_key" = ANY(ARRAY['github-trending-page','hacker-news','reddit','rss','x-twitter'])
-      GROUP BY 2, 3, 4
+      GROUP BY 1, 2, 3, 4, 5, 6
       UNION ALL
       SELECT 'created_at'::TEXT AS "timestamp_column",
+        left(encode(sha256(convert_to(feed."tenant_id"::TEXT, 'UTF8')), 'hex'), 12) AS "tenant_sha256_12",
+        left(encode(sha256(convert_to(feed."workspace_id"::TEXT, 'UTF8')), 'hex'), 12) AS "workspace_sha256_12",
         (feed."created_at" AT TIME ZONE 'UTC')::DATE::TEXT AS "utc_date",
         feed."provider_key"::TEXT AS "provider_key",
         COALESCE(upper(feed."status"::TEXT), 'UNKNOWN') AS "normalized_status",
@@ -307,9 +317,11 @@ const readReaderSummaryProductionRecoveryScopeDiagnostics = (
       WHERE feed."created_at" >= (DATE '2026-07-23'::TIMESTAMP AT TIME ZONE 'UTC')
         AND feed."created_at" < (DATE '2026-07-25'::TIMESTAMP AT TIME ZONE 'UTC')
         AND feed."provider_key" = ANY(ARRAY['github-trending-page','hacker-news','reddit','rss','x-twitter'])
-      GROUP BY 2, 3, 4
+      GROUP BY 1, 2, 3, 4, 5, 6
       UNION ALL
       SELECT 'published_at'::TEXT AS "timestamp_column",
+        left(encode(sha256(convert_to(feed."tenant_id"::TEXT, 'UTF8')), 'hex'), 12) AS "tenant_sha256_12",
+        left(encode(sha256(convert_to(feed."workspace_id"::TEXT, 'UTF8')), 'hex'), 12) AS "workspace_sha256_12",
         (feed."published_at" AT TIME ZONE 'UTC')::DATE::TEXT AS "utc_date",
         feed."provider_key"::TEXT AS "provider_key",
         COALESCE(upper(feed."status"::TEXT), 'UNKNOWN') AS "normalized_status",
@@ -318,17 +330,16 @@ const readReaderSummaryProductionRecoveryScopeDiagnostics = (
       WHERE feed."published_at" >= (DATE '2026-07-23'::TIMESTAMP AT TIME ZONE 'UTC')
         AND feed."published_at" < (DATE '2026-07-25'::TIMESTAMP AT TIME ZONE 'UTC')
         AND feed."provider_key" = ANY(ARRAY['github-trending-page','hacker-news','reddit','rss','x-twitter'])
-      GROUP BY 2, 3, 4
+      GROUP BY 1, 2, 3, 4, 5, 6
     ) AS diagnostics
     ORDER BY
-      CASE diagnostics."timestamp_column"
-        WHEN 'observed_at' THEN 1
-        WHEN 'created_at' THEN 2
-        ELSE 3
-      END,
+      diagnostics."timestamp_column",
+      diagnostics."tenant_sha256_12",
+      diagnostics."workspace_sha256_12",
       diagnostics."utc_date",
       diagnostics."provider_key",
-      diagnostics."normalized_status"
+      diagnostics."normalized_status",
+      diagnostics."count"
   `;
 
 export const configureProductionRecoverySession = async (
