@@ -26,6 +26,7 @@ else
     READER_SUMMARY_DAILY_RUN_PAUSE_WORKER \
     READER_SUMMARY_DAILY_RUN_REPORT_DIR \
     READER_SUMMARY_DAILY_RUN_PUBLIC_DIR \
+    READER_SUMMARY_DAILY_RUN_TEST_TODAY \
     READER_SUMMARY_DAILY_RUN_TIMEOUT_MS
 fi
 unset DATABASE_URL
@@ -92,6 +93,56 @@ fi
   timeout_ms=${READER_SUMMARY_DAILY_RUN_TIMEOUT_MS:-12300000}
   report_dir=${READER_SUMMARY_DAILY_RUN_REPORT_DIR:-ops/evals}
   public_dir=${READER_SUMMARY_DAILY_RUN_PUBLIC_DIR:-/var/lib/social-monitor/artifacts/reports}
+  requested_date=${READER_SUMMARY_DAILY_RUN_EXPECTED_DATE:-}
+  if [ -z "$requested_date" ]; then
+    today=${READER_SUMMARY_DAILY_RUN_TEST_TODAY:-$(date -u +%F)}
+    requested_date=$(node -e '\''
+      const { existsSync, readFileSync } = require("node:fs");
+      const [flag, today, latestPath] = process.argv.slice(1);
+      const validDate = (value) =>
+        typeof value === "string" &&
+        /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+        new Date(`${value}T00:00:00.000Z`).toISOString().slice(0, 10) === value;
+      if (!validDate(today)) throw new Error("daily catch-up today is invalid");
+      if (flag === "--today") {
+        process.stdout.write(today);
+        process.exit(0);
+      }
+      const yesterday = new Date(`${today}T00:00:00.000Z`);
+      yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+      const latestEligibleDate = yesterday.toISOString().slice(0, 10);
+      if (!existsSync(latestPath)) {
+        process.stdout.write(latestEligibleDate);
+        process.exit(0);
+      }
+      const latest = JSON.parse(readFileSync(latestPath, "utf8"));
+      if (
+        !validDate(latest.requestedDate) ||
+        latest.blockingPassed !== true
+      ) {
+        throw new Error("latest daily publication cannot anchor catch-up");
+      }
+      if (latest.requestedDate > latestEligibleDate) {
+        throw new Error("latest daily publication is ahead of yesterday");
+      }
+      if (latest.requestedDate === latestEligibleDate) {
+        process.stdout.write("already-published");
+        process.exit(0);
+      }
+      const candidate = new Date(`${latest.requestedDate}T00:00:00.000Z`);
+      candidate.setUTCDate(candidate.getUTCDate() + 1);
+      process.stdout.write(candidate.toISOString().slice(0, 10));
+    '\'' -- '"$DATE_FLAG"' "$today" "$public_dir/latest.v1.json")
+  fi
+  if [ "$requested_date" = already-published ]; then
+    echo "daily production-day is already published through yesterday"
+    exit 0
+  fi
+  case "$requested_date" in
+    ????-??-??) ;;
+    *) echo "daily production-day catch-up date is invalid" >&2; exit 64 ;;
+  esac
+  export READER_SUMMARY_DAILY_RUN_EXPECTED_DATE=$requested_date
 
   if [ -n "${READER_SUMMARY_DAILY_RUN_PAUSE_WORKER:-}" ]; then
     node scripts/run-with-timeout.mjs \
@@ -102,17 +153,11 @@ fi
       --timeout-ms "$timeout_ms" \
       --node-options --max-old-space-size=1024 \
       -- ./node_modules/.bin/ts-node -r tsconfig-paths/register \
-      scripts/run-reader-summary-production-day.ts '"$DATE_FLAG"' --update
+      scripts/run-reader-summary-production-day.ts \
+      --date "$requested_date" --update
   fi
 
-  expected_date=${READER_SUMMARY_DAILY_RUN_EXPECTED_DATE:-}
-  if [ -z "$expected_date" ]; then
-    expected_date=$(node -e '\''
-      const flag = process.argv[1];
-      const offset = flag === "--yesterday" ? 86_400_000 : 0;
-      process.stdout.write(new Date(Date.now() - offset).toISOString().slice(0, 10));
-    '\'' -- '"$DATE_FLAG"')
-  fi
+  expected_date=$requested_date
 
   latest_candidate="$report_dir/reader-summary-production-day-run.v1.json"
   dated_name="reader-summary-production-day-run.$expected_date.v1.json"

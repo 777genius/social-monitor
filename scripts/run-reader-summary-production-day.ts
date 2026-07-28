@@ -53,6 +53,10 @@ import {
 import { loadHistoricalRegeneration } from "./lib/reader-summary-production-day-regeneration";
 import { productionDayQualityDateArgs } from "./lib/reader-summary-production-day-quality-date";
 import { collectionQualityRegenerationFreshnessArgs } from "./lib/yesterday-social-collection-quality-regeneration";
+import {
+  evaluateYesterdaySocialProviderReadiness,
+  type YesterdaySocialCollectionQualityInput,
+} from "./lib/yesterday-social-collection-quality";
 import { readProductionDayScope } from "./lib/reader-summary-production-day-scope";
 import {
   probeProductionRuntimeLiveIdentity,
@@ -200,6 +204,7 @@ async function main(): Promise<void> {
           "--update",
           "--date",
           collectionDate,
+          "--provider-catch-up",
           ...(allowHistorical ? [] : ["--wait-for-x-readiness"]),
         ]);
   steps.push(collectionStep);
@@ -207,7 +212,7 @@ async function main(): Promise<void> {
   mkdirSync(runtimeArtifactDirectory, { recursive: true });
   isolateCaptureArtifacts();
 
-  const collectionQualityStep = runNpm("collection-quality", [
+  let collectionQualityStep = runNpm("collection-quality", [
     "run",
     "check:yesterday-social-collection-quality",
     "--",
@@ -231,16 +236,40 @@ async function main(): Promise<void> {
       : []),
     ...(allowHistorical ? ["--allow-historical"] : []),
   ]);
+  const collectionQualityReport =
+    readJsonIfExists<YesterdaySocialCollectionQualityInput>(
+      "ops/evals/yesterday-social-collection-quality-report.v1.json",
+    );
+  const providerReadiness = evaluateYesterdaySocialProviderReadiness({
+    expectedCollectionDate: collectionDate,
+    report: collectionQualityReport,
+  });
+  const requiredProvidersReady =
+    executionRequest.mode !== "live-production" || providerReadiness.ready;
+  if (
+    executionRequest.mode === "live-production" &&
+    !providerReadiness.ready
+  ) {
+    collectionQualityStep = {
+      ...collectionQualityStep,
+      command: `${collectionQualityStep.command} -- ${providerReadiness.barrierMessage}`,
+      status: "failed",
+      exitCode: 1,
+    };
+  }
   steps.push(collectionQualityStep);
   if (
     !collectionIsReadyForProductionSummary({
       liveCollection: !skipLiveCollection,
       collectionStepStatus: collectionStep.status,
       collectionQualityStepStatus: collectionQualityStep.status,
+      requiredProvidersReady,
     })
   ) {
     const safeMessage =
-      "Production collection quality failed; AI summary was not started";
+      providerReadiness.barrierMessage === null
+        ? "Production collection quality failed; AI summary and publication were not started"
+        : `${providerReadiness.barrierMessage}; AI summary and publication were not started. Retry the same date; completed providers will not be recollected`;
     steps.push(...blockedProductionDaySteps(safeMessage));
     persistProductionDayReport({
       startedAt,

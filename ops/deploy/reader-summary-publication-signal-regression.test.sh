@@ -13,10 +13,9 @@ trap 'rm -rf "$FIXTURE"' EXIT
 EXPECTED_DATE=2026-07-16
 RELEASE_SHA=0123456789abcdef0123456789abcdef01234567
 
-# A date flag begins with "--", so the real Node invocation must terminate
-# option parsing before forwarding it. This recreates the production failure
-# where Node rejected --yesterday after all summary gates had passed.
-grep -F "    '\\'' -- '\"\$DATE_FLAG\"')" "$DAILY_RUN" >/dev/null
+# The production worker receives the pinned catch-up date, rather than
+# recomputing yesterday after a provider-readiness failure crosses midnight.
+grep -F '      --date "$requested_date" --update' "$DAILY_RUN" >/dev/null
 
 wait_for_ready() {
   local ready=$1
@@ -62,11 +61,15 @@ run_daily() {
   local timeout_ms=$2
   local worker_mode=${3:-pause}
   local failpoint=${4:-}
+  local expected_date=${5-$EXPECTED_DATE}
+  local test_today=${6:-}
+  local date_flag=${7:---today}
   SOCIAL_MONITOR_DAILY_RUN_TEST_MODE=1 \
   SOCIAL_MONITOR_DAILY_RUN_TEST_ROOT="$case_dir/root" \
   SOCIAL_MONITOR_DAILY_RUN_TEST_DOCKER="$FAKE_DOCKER" \
   SOCIAL_MONITOR_DAILY_RUN_TEST_FLOCK="$FAKE_FLOCK" \
-  READER_SUMMARY_DAILY_RUN_EXPECTED_DATE=$EXPECTED_DATE \
+  READER_SUMMARY_DAILY_RUN_EXPECTED_DATE=$expected_date \
+  READER_SUMMARY_DAILY_RUN_TEST_TODAY=$test_today \
   READER_SUMMARY_DAILY_RUN_PAUSE_WORKER=$WORKER \
   READER_SUMMARY_DAILY_RUN_REPORT_DIR="$case_dir/reports" \
   READER_SUMMARY_DAILY_RUN_PUBLIC_DIR="$case_dir/public" \
@@ -75,7 +78,7 @@ run_daily() {
   READER_SUMMARY_DAILY_RUN_FAILPOINT_READY_FILE="$case_dir/failpoint-ready" \
   READER_SUMMARY_DAILY_RUN_WORKER_MODE=$worker_mode \
   READER_SUMMARY_DAILY_RUN_TIMEOUT_MS=$timeout_ms \
-    bash "$DAILY_RUN" --today
+    bash "$DAILY_RUN" "$date_flag"
 }
 
 timeout_case=$FIXTURE/timeout
@@ -179,4 +182,28 @@ node "$PROJECT_ROOT/scripts/verify-reader-summary-production-day-publication.mjs
   --frontend-artifact "$success_case/reports/frontend-reader-summary-$EXPECTED_DATE.fixture.v1.json" \
   --proof "$proof" >/dev/null
 
-printf 'Real daily-run timeout, invalid proof, generation/proof/report SIGKILL, and success regression OK\n'
+catchup_case=$FIXTURE/catchup
+prepare_case "$catchup_case"
+printf '%s\n' \
+  '{"requestedDate":"2026-07-15","blockingPassed":true}' \
+  >"$catchup_case/public/latest.v1.json"
+run_daily "$catchup_case" 30000 success '' '' 2026-07-17 --yesterday \
+  >"$catchup_case/run.log" 2>&1
+[[ -s $catchup_case/public/reader-summary-production-day-run.2026-07-16.v1.json ]]
+[[ -s $catchup_case/public/reader-summary-production-day-run.2026-07-16.publication-proof.v1.json ]]
+
+up_to_date_case=$FIXTURE/up-to-date
+prepare_case "$up_to_date_case"
+printf '%s\n' \
+  '{"requestedDate":"2026-07-16","blockingPassed":true}' \
+  >"$up_to_date_case/public/latest.v1.json"
+cp "$up_to_date_case/public/latest.v1.json" \
+  "$up_to_date_case/expected-latest.v1.json"
+run_daily "$up_to_date_case" 30000 success '' '' 2026-07-17 --yesterday \
+  >"$up_to_date_case/run.log" 2>&1
+cmp -s "$up_to_date_case/expected-latest.v1.json" \
+  "$up_to_date_case/public/latest.v1.json"
+[[ ! -e $up_to_date_case/ready ]]
+[[ ! -e $up_to_date_case/reports/reader-summary-production-day-run.v1.json ]]
+
+printf 'Daily catch-up, no-op, timeout, proof validation, publication signals, and success regression OK\n'

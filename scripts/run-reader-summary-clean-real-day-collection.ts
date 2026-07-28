@@ -41,6 +41,10 @@ import {
   type CleanRealDayCollectionReport,
 } from "./lib/clean-real-day-collection-report";
 import {
+  mergeDailyProviderCatchUpEvidence,
+  planDailyProviderCatchUp,
+} from "./lib/reader-summary-daily-provider-catch-up";
+import {
   executeCleanRealDayProviderAcquisition,
   type CleanRealDaySourceBindingTarget as SourceBindingTarget,
 } from "./lib/clean-real-day-provider-acquisition";
@@ -84,14 +88,26 @@ const readerSummaryProductionScope = {
   workspaceId: "00000000-0000-7000-8000-000000006102",
 } as const;
 const databaseUrl = yesterdaySocialQualityDatabaseUrl();
-const providerKeys = readProviderKeys();
 const update = process.argv.includes("--update");
 const artifactOnly = process.argv.includes("--artifact-only");
 const recalculateExisting = process.argv.includes("--recalculate-existing");
 const waitForXReadiness = process.argv.includes("--wait-for-x-readiness");
+const providerCatchUp = process.argv.includes("--provider-catch-up");
 const { collectionDate: targetCollectionDate } = collectionDateOptionOrDefault(
   dateOnly(new Date()),
 );
+const requestedProviderKeys = readProviderKeys();
+if (providerCatchUp && process.argv.includes("--providers")) {
+  throw new Error("--provider-catch-up cannot be combined with --providers");
+}
+const providerCatchUpPlan = planDailyProviderCatchUp({
+  collectionDate: targetCollectionDate,
+  existingReport: providerCatchUp ? readExistingCollectionReport() : null,
+  requiredProviderKeys: providerCatchUp
+    ? defaultCleanRealDayCollectionProviderKeys
+    : requestedProviderKeys,
+});
+const providerKeys = providerCatchUpPlan.providerKeysToCollect;
 const targetPublishedWindow = {
   startInclusive: `${targetCollectionDate}T00:00:00.000Z`,
   endExclusive: nextDate(targetCollectionDate),
@@ -112,6 +128,13 @@ async function main(): Promise<void> {
   }
   if (artifactOnly) {
     validateExistingReport();
+    return;
+  }
+  if (providerKeys.length === 0) {
+    validateExistingReport();
+    console.log(
+      `All required providers are already complete for ${targetCollectionDate}; no collection was started`,
+    );
     return;
   }
 
@@ -219,7 +242,10 @@ async function tryRunCollection(): Promise<
       startedAt,
       completedAt,
     });
-    const targetWindow = await readTargetWindowProof(tenantDatabase);
+    const targetWindow = await readTargetWindowProof(
+      tenantDatabase,
+      providerCatchUpPlan.requiredProviderKeys,
+    );
     const reportWithoutSecretGate = buildReport({
       targets,
       scanResults,
@@ -402,16 +428,19 @@ async function readFreshWindowProof(
     startInclusive: params.startedAt,
     endInclusive: params.completedAt,
     timestampColumn: "observed_at",
+    providerKeys,
   });
 }
 
 async function readTargetWindowProof(
   database: Pick<Pool, "query">,
+  requiredProviderKeys: readonly ProviderKey[],
 ): Promise<CleanRealDayCollectionReport["freshWindow"]> {
   return readFeedWindowProof(database, {
     startInclusive: new Date(targetPublishedWindow.startInclusive),
     endExclusive: new Date(targetPublishedWindow.endExclusive),
     timestampColumn: "published_at",
+    providerKeys: requiredProviderKeys,
   });
 }
 
@@ -422,6 +451,7 @@ async function readFeedWindowProof(
     readonly endInclusive?: Date;
     readonly endExclusive?: Date;
     readonly timestampColumn: "observed_at" | "published_at";
+    readonly providerKeys: readonly ProviderKey[];
   },
 ): Promise<CleanRealDayCollectionReport["freshWindow"]> {
   const endOperator = params.endExclusive === undefined ? "<=" : "<";
@@ -451,7 +481,11 @@ async function readFeedWindowProof(
       group by fi.provider_key
       order by fi.provider_key
     `,
-    [params.startInclusive.toISOString(), end.toISOString(), providerKeys],
+    [
+      params.startInclusive.toISOString(),
+      end.toISOString(),
+      params.providerKeys,
+    ],
   );
   const totals = result.rows.reduce(
     (accumulator, row) => {
@@ -546,7 +580,7 @@ function buildReport(params: {
   readonly targetWindow: CleanRealDayCollectionReport["freshWindow"];
 }): CleanRealDayCollectionReport {
   const targetWindowEndedAt = new Date(targetPublishedWindow.endExclusive);
-  const finalScanResults = params.scanResults.map((scan) => {
+  const collectedScanResults = params.scanResults.map((scan) => {
     if (scan.acquisitionMode === "durable_snapshot_reuse") {
       return scan;
     }
@@ -566,22 +600,42 @@ function buildReport(params: {
       }),
     };
   });
+  const collectedTargets = params.targets.map((target) => {
+    const planner = asRecord(target.config.sourceQueryPlanner);
+
+    return {
+      providerKey: target.providerKey,
+      bindingFingerprint: fingerprint(target.sourceBindingId),
+      interestFingerprint: fingerprint(target.interestId),
+      workspaceFingerprint: fingerprint(target.workspaceId),
+      plannerEnabled: planner.enabled === true,
+      canaryRollout: planner.rollout === "real_binding_canary",
+    };
+  });
+  const mergedEvidence = mergeDailyProviderCatchUpEvidence({
+    plan: providerCatchUpPlan,
+    collectedTargets,
+    collectedScans: collectedScanResults,
+  });
+  const finalScanResults = mergedEvidence.scans;
+  const finalTargets = mergedEvidence.targets;
+  const requiredProviderKeys = providerCatchUpPlan.requiredProviderKeys;
   const succeededProviders = new Set(
     finalScanResults
       .filter((scan) => scan.status === "succeeded")
       .map((scan) => scan.providerKey),
   );
-  const allRequestedProvidersSucceeded = providerKeys.every((providerKey) =>
-    succeededProviders.has(providerKey),
+  const allRequestedProvidersSucceeded = requiredProviderKeys.every(
+    (providerKey) => succeededProviders.has(providerKey),
   );
   const transparentPartialInput =
     explicitGitHubUnavailableIsTransparentPartialDailyInput({
-      requestedProviderKeys: providerKeys,
+      requestedProviderKeys: requiredProviderKeys,
       scans: finalScanResults,
       targetWindowProviderCounts: params.targetWindow.providerCounts,
     });
-  const plannerProviderKeys = params.targets
-    .filter((target) => asRecord(target.config.sourceQueryPlanner).enabled)
+  const plannerProviderKeys = finalTargets
+    .filter((target) => target.plannerEnabled)
     .map((target) => target.providerKey);
   const plannerProviderKeysWithFreshItems = plannerProviderKeys.filter(
     (providerKey) => (params.freshWindow.providerCounts[providerKey] ?? 0) > 0,
@@ -614,12 +668,18 @@ function buildReport(params: {
         ] ?? 0) >= 1,
     );
   const qualityGates = {
-    targetBindingsPresent: params.targets.length === providerKeys.length,
+    targetBindingsPresent:
+      finalTargets.length === requiredProviderKeys.length &&
+      requiredProviderKeys.every(
+        (providerKey) =>
+          finalTargets.filter((target) => target.providerKey === providerKey)
+            .length === 1,
+      ),
     everyRequestedProviderSucceeded:
       allRequestedProvidersSucceeded || transparentPartialInput,
     targetWindowFeedItemsAvailable: params.targetWindow.feedItemCount > 0,
     everyRequestedProviderHasTargetItems:
-      providerKeys.every(
+      requiredProviderKeys.every(
         (providerKey) =>
           (params.targetWindow.providerCounts[providerKey] ?? 0) > 0,
       ) || transparentPartialInput,
@@ -692,7 +752,7 @@ function buildReport(params: {
     },
     inputs: {
       database: "local-postgres",
-      providerKeys,
+      providerKeys: requiredProviderKeys,
       xCollectorConfigured: xCollectorConfigured(),
       targetPublishedWindow,
     },
@@ -701,18 +761,7 @@ function buildReport(params: {
       completedAt: params.completedAt.toISOString(),
       collectionDate: targetCollectionDate,
     },
-    targets: params.targets.map((target) => {
-      const planner = asRecord(target.config.sourceQueryPlanner);
-
-      return {
-        providerKey: target.providerKey,
-        bindingFingerprint: fingerprint(target.sourceBindingId),
-        interestFingerprint: fingerprint(target.interestId),
-        workspaceFingerprint: fingerprint(target.workspaceId),
-        plannerEnabled: planner.enabled === true,
-        canaryRollout: planner.rollout === "real_binding_canary",
-      };
-    }),
+    targets: finalTargets,
     scans: finalScanResults,
     freshWindow: params.freshWindow,
     targetWindow: params.targetWindow,
@@ -783,6 +832,22 @@ function readProviderKeys(): readonly ProviderKey[] {
 
     return provider;
   });
+}
+
+function readExistingCollectionReport(): CleanRealDayCollectionReport | null {
+  if (!existsSync(outputPath)) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(
+      readFileSync(outputPath, "utf8"),
+    ) as CleanRealDayCollectionReport;
+  } catch {
+    throw new Error(
+      `${outputPath} is unreadable; refusing a full provider recollection`,
+    );
+  }
 }
 
 function readOption(name: string): string | undefined {

@@ -15,6 +15,7 @@ describe("production-day collection barrier", () => {
         liveCollection: true,
         collectionStepStatus: "passed",
         collectionQualityStepStatus: "passed",
+        requiredProvidersReady: true,
       }),
     ).toBe(true);
   });
@@ -31,6 +32,7 @@ describe("production-day collection barrier", () => {
           liveCollection: true,
           collectionStepStatus,
           collectionQualityStepStatus,
+          requiredProvidersReady: true,
         }),
       ).toBe(false);
     },
@@ -42,6 +44,7 @@ describe("production-day collection barrier", () => {
         liveCollection: false,
         collectionStepStatus: "skipped",
         collectionQualityStepStatus: "passed",
+        requiredProvidersReady: true,
       }),
     ).toBe(true);
     expect(
@@ -49,6 +52,18 @@ describe("production-day collection barrier", () => {
         liveCollection: false,
         collectionStepStatus: "skipped",
         collectionQualityStepStatus: "failed",
+        requiredProvidersReady: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("blocks AI when a required provider is not ready despite passing commands", () => {
+    expect(
+      collectionIsReadyForProductionSummary({
+        liveCollection: true,
+        collectionStepStatus: "passed",
+        collectionQualityStepStatus: "passed",
+        requiredProvidersReady: false,
       }),
     ).toBe(false);
   });
