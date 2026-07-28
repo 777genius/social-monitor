@@ -219,7 +219,7 @@ describe('hostile PostgreSQL pool budget review', () => {
       '"$CONTROL_CHANGED" "$POSTGRES_POOL_BOOTSTRAP"',
     );
     expect(deployClient).toMatch(
-      /repair_legacy_postgres_pool_bootstrap\(\)[\s\S]*?run_remote deploy "\$sha"[\s\S]*?capture_plan "\$sha"[\s\S]*?\$PLAN_POSTGRES_POOL_BOOTSTRAP_SHA == "\$sha"[\s\S]*?\$PLAN_BACKEND_BASE == "\$durable_backend_base"[\s\S]*?\$PLAN_BACKEND == true/,
+      /repair_missing_postgres_pool_bootstrap\(\)[\s\S]*?run_remote deploy "\$sha"[\s\S]*?capture_plan "\$sha"[\s\S]*?\$PLAN_POSTGRES_POOL_BOOTSTRAP_SHA == "\$sha"[\s\S]*?\$PLAN_BACKEND_BASE == "\$durable_backend_base"[\s\S]*?\$PLAN_BACKEND == true/,
     );
     expect(deployClient).toMatch(
       /deploy_release\(\) \{[\s\S]*?deploy_once "\$sha"/,
