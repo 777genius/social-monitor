@@ -172,14 +172,7 @@ export const discoverReaderSummaryProductionRecoveryScope = async (
       feed."tenant_id"::TEXT AS "tenantId",
       feed."workspace_id"::TEXT AS "workspaceId"
     FROM "feed_items" AS feed
-    JOIN "tenants" AS tenant
-      ON tenant."id" = feed."tenant_id"
-      AND tenant."deleted_at" IS NULL
-    JOIN "workspaces" AS workspace
-      ON workspace."id" = feed."workspace_id"
-      AND workspace."tenant_id" = feed."tenant_id"
-      AND workspace."deleted_at" IS NULL
-    WHERE feed."status" = 'VISIBLE'
+    WHERE upper(feed."status"::TEXT) = 'VISIBLE'
       AND feed."provider_key" = ANY(ARRAY[
         'github-trending-page',
         'hacker-news',
@@ -193,8 +186,7 @@ export const discoverReaderSummaryProductionRecoveryScope = async (
         (DATE '2026-07-25'::TIMESTAMP AT TIME ZONE 'UTC')
     GROUP BY feed."tenant_id", feed."workspace_id"
     HAVING
-      count(*) = count(DISTINCT feed."id")
-      AND count(*) = 692
+      count(*) = 692
       AND count(*) FILTER (
         WHERE feed."observed_at" <
           (DATE '2026-07-24'::TIMESTAMP AT TIME ZONE 'UTC')

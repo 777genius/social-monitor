@@ -132,14 +132,13 @@ describe("reader summary production recovery CLI wrapper", () => {
     expect(sql).toContain('feed."workspace_id"::text as "workspaceid"');
     for (const expected of [
       'from "feed_items" as feed',
-      'join "tenants" as tenant', 'tenant."deleted_at" is null',
-      'join "workspaces" as workspace', 'workspace."deleted_at" is null',
-      'feed."status" = \'visible\'', 'feed."provider_key" = any(array[',
+      'upper(feed."status"::text) = \'visible\'',
+      'feed."provider_key" = any(array[',
       "date '2026-07-23'::timestamp at time zone 'utc'",
       "date '2026-07-24'::timestamp at time zone 'utc'",
       "date '2026-07-25'::timestamp at time zone 'utc'",
       "group by feed.\"tenant_id\", feed.\"workspace_id\"",
-      "having count(*) = count(distinct feed.\"id\")", "and count(*) = 692",
+      "having count(*) = 692",
       ") = 342", ") = 350", ") = 0", ") = 10", ") = 100", ") = 75",
       ") = 67", ") = 73",
     ]) {
@@ -150,12 +149,12 @@ describe("reader summary production recovery CLI wrapper", () => {
     }
     expect(sql).toContain('order by "tenantid", "workspaceid"');
     expect(sql).not.toContain('order by feed."tenant_id", feed."workspace_id"');
+    expect(sql).not.toMatch(/\bjoin\b/u);
     expect(sql).not.toContain('feed."published_at"');
+    const forbiddenScopeTables =
+      /\b(?:tenants|workspaces|source_items|source_bindings|source_catalog_entries|interests|github_[a-z_]+|scan_jobs|scan_attempts)\b/u;
     expect(sql).not.toMatch(
-      /\bgithub_repository_trend_results\b|\bscan_jobs\b|\bscan_attempts\b/u,
-    );
-    expect(sql).not.toMatch(
-      /\bsource_items\b|\bsource_bindings\b|\bsource_catalog_entries\b|\binterests\b/u,
+      forbiddenScopeTables,
     );
     expect(sql).not.toMatch(
       /\bcontent_hash\b|\bprovider_content_hash\b|\bmetadata\b/u,
