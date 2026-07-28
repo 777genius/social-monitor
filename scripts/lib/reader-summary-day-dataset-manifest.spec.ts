@@ -11,9 +11,11 @@ import { join } from "node:path";
 
 import {
   buildReaderSummaryDayDatasetManifest,
+  captureReaderSummaryDayDatasetManifest,
   manifestsMatch,
 } from "./reader-summary-day-dataset-manifest";
 import {
+  DatasetGuardedReaderSummaryEvidenceSelector,
   ReaderSummaryDayDatasetGuard,
   completeDatasetGuardPhases,
   readReaderSummaryDayDatasetManifest,
@@ -34,6 +36,34 @@ describe("reader summary day dataset manifest", () => {
 
     expect(second).toEqual(first);
     expect(manifestsMatch(first, second)).toBe(true);
+    expect(first.policy.timestampPolicy).toBe("published_at");
+  });
+
+  it("binds observed_at into the manifest identity and database window", async () => {
+    const published = manifest();
+    const observed = manifest({ timestampPolicy: "observed_at" });
+    expect(observed.dataset.aggregateSha256).not.toBe(
+      published.dataset.aggregateSha256,
+    );
+    expect(manifestsMatch(published, observed)).toBe(false);
+
+    const query = jest
+      .fn()
+      .mockResolvedValueOnce([
+        row("hacker-news", "observed inside"),
+        row("reddit", "observed inside"),
+      ])
+      .mockResolvedValueOnce([]);
+    const captured = await captureReaderSummaryDayDatasetManifest({
+      client: { $queryRaw: query as never },
+      ...scope,
+      timestampPolicy: "observed_at",
+    });
+    expect(query.mock.calls[0]).toContain("observed_at");
+    expect(captured.dataset.providerCounts).toEqual({
+      "hacker-news": 1,
+      reddit: 1,
+    });
   });
 
   it("changes the aggregate digest when evidence content changes", () => {
@@ -149,6 +179,37 @@ describe("reader summary day dataset manifest", () => {
     ).rejects.toThrow("dataset changed");
   });
 
+  it("rejects a mixed evidence policy before selection", async () => {
+    const delegate = { select: jest.fn() };
+    const selector = new DatasetGuardedReaderSummaryEvidenceSelector(
+      delegate as never,
+      new ReaderSummaryDayDatasetGuard(
+        queryClient(),
+        manifest({ timestampPolicy: "observed_at" }),
+        "f".repeat(64),
+        () => new Date("2026-07-20T00:06:00.000Z"),
+      ),
+    );
+
+    await expect(
+      selector.select({
+        tenantId: scope.tenantId as never,
+        workspaceId: scope.workspaceId as never,
+        scope: { type: "workspace" },
+        period: {
+          cadence: "daily",
+          startedAt: scope.startedAt,
+          endedAt: scope.endedAt,
+          timezone: "UTC",
+          periodKey: "test-period",
+        },
+        maxItems: 10,
+        timestampPolicy: "published_at",
+      }),
+    ).rejects.toThrow("does not match dataset manifest");
+    expect(delegate.select).not.toHaveBeenCalled();
+  });
+
   it("validates manifest hash, scope, date and freshness", () => {
     const directory = mkdtempSync(join(tmpdir(), "summary-manifest-"));
     const path = join(directory, "manifest.json");
@@ -211,10 +272,12 @@ function manifest(
       readonly rowJson: string;
     }[];
     readonly eligibilityRows?: readonly { readonly rowJson: string }[];
+    readonly timestampPolicy?: "published_at" | "observed_at";
   } = {},
 ) {
   return buildReaderSummaryDayDatasetManifest({
     ...scope,
+    timestampPolicy: overrides.timestampPolicy,
     feedRows: overrides.feedRows ?? [row("reddit", "body")],
     eligibilityRows: overrides.eligibilityRows ?? [
       { rowJson: '{"binding":"enabled"}' },

@@ -92,7 +92,6 @@ describe("production-day execution request", () => {
     expect(
       resolveProductionDayExecutionRequest([
         "--regenerate-after-passed-collection",
-        "--allow-historical-github-omission",
         "--reuse-source-report",
         "/tmp/source-report.json",
         "--reuse-source-artifact-sha256",
@@ -120,8 +119,45 @@ describe("production-day execution request", () => {
       collectionQualityReportSha256: "c".repeat(64),
       datasetManifestPath: "/tmp/dataset-manifest.json",
       datasetManifestSha256: "d".repeat(64),
-      allowHistoricalGitHubOmission: true,
+      timestampPolicy: "published_at",
+      allowHistoricalGitHubOmission: false,
     });
+  });
+
+  it("accepts observed_at only inside bounded historical regeneration", () => {
+    const request = resolveProductionDayExecutionRequest([
+      "--regenerate-after-passed-collection",
+      "--recovery-timestamp-policy",
+      "observed_at",
+      "--reuse-source-report",
+      "/tmp/source-report.json",
+      "--reuse-source-artifact-sha256",
+      "a".repeat(64),
+      "--reuse-collection-artifact",
+      "/tmp/collection.json",
+      "--reuse-collection-artifact-sha256",
+      "b".repeat(64),
+      "--reuse-collection-quality-report",
+      "/tmp/collection-quality.json",
+      "--reuse-collection-quality-report-sha256",
+      "c".repeat(64),
+      "--reuse-dataset-manifest",
+      "/tmp/dataset-manifest.json",
+      "--reuse-dataset-manifest-sha256",
+      "d".repeat(64),
+    ]);
+
+    expect(request).toMatchObject({
+      mode: "historical-regeneration",
+      timestampPolicy: "observed_at",
+      allowHistoricalGitHubOmission: false,
+    });
+    expect(() =>
+      resolveProductionDayExecutionRequest([
+        "--recovery-timestamp-policy",
+        "observed_at",
+      ]),
+    ).toThrow("Historical regeneration requires its bounded mode");
   });
 
   it.each([
@@ -146,7 +182,7 @@ describe("production-day execution request", () => {
         "--allow-historical-github-omission",
       ]),
     ).toThrow(
-      "Historical GitHub omission is restricted to historical regeneration",
+      "Historical recovery options are restricted to historical regeneration",
     );
   });
 });

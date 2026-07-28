@@ -2,6 +2,7 @@ import { chmodSync, writeFileSync } from "node:fs";
 
 import { defaultPostgresRuntimePoolConfig } from "@social-monitor/platform-persistence";
 import { PrismaSummaryConnection } from "@social-monitor/summary/adapters/persistence/prisma/prisma-summary-connection";
+import type { ReaderSummaryTimestampPolicy } from "@social-monitor/summary/ports";
 
 import { captureReaderSummaryDayDatasetManifest } from "./lib/reader-summary-day-dataset-manifest";
 import { loadDotenvIfPresent } from "./lib/env-file";
@@ -23,6 +24,7 @@ void main().catch((error) => {
 async function main(): Promise<void> {
   const date = requiredOption("--date");
   const recoveryRoot = requiredOption("--recovery-root");
+  const timestampPolicy = recoveryTimestampPolicy();
   const outputPath = assertRecoveryOutputPath({
     recoveryRoot,
     outputPath: requiredOption("--out"),
@@ -47,6 +49,7 @@ async function main(): Promise<void> {
       startedAt,
       endedAt,
       generatedAt: new Date(),
+      timestampPolicy,
     });
     writeFileSync(outputPath, `${JSON.stringify(manifest, null, 2)}\n`, {
       encoding: "utf8",
@@ -60,6 +63,16 @@ async function main(): Promise<void> {
   } finally {
     await connection.close();
   }
+}
+
+function recoveryTimestampPolicy(): ReaderSummaryTimestampPolicy {
+  const value = readOption("--recovery-timestamp-policy") ?? "published_at";
+  if (value !== "published_at" && value !== "observed_at") {
+    throw new Error(
+      "--recovery-timestamp-policy must be published_at or observed_at",
+    );
+  }
+  return value;
 }
 
 function requiredOption(name: string): string {

@@ -12,7 +12,9 @@ import { join } from "node:path";
 import { buildReaderSummaryDayDatasetManifest } from "./reader-summary-day-dataset-manifest";
 import {
   assertCollectionQualityMatchesRegenerationManifest,
+  collectionQualityCountForTimestampPolicy,
   collectionQualityRegenerationFreshnessArgs,
+  collectionQualityRowsForTimestampPolicy,
   resolveCollectionQualityRegenerationFreshness,
 } from "./yesterday-social-collection-quality-regeneration";
 
@@ -39,6 +41,7 @@ describe("historical regeneration collection-quality freshness", () => {
       generalAllowHistorical: false,
       manifestFileSha256: fixture.sha256,
       manifestGeneratedAt: "2026-07-20T00:05:00.000Z",
+      timestampPolicy: "published_at",
       maxManifestAgeSeconds: 1800,
     });
     expect(freshness?.evidence.scopeSha256).toHaveLength(64);
@@ -74,6 +77,7 @@ describe("historical regeneration collection-quality freshness", () => {
           manifestSha256: fixture.sha256,
           tenantId: "55555555-5555-4555-8555-555555555555",
           workspaceId,
+          timestampPolicy: "published_at",
         }),
       },
     ]) {
@@ -107,6 +111,42 @@ describe("historical regeneration collection-quality freshness", () => {
     ).toThrow("provider counts do not match");
   });
 
+  it("uses observed rows and counts only when the bound manifest says observed_at", () => {
+    const fixture = writeManifest("observed_at");
+    const freshness =
+      resolveCollectionQualityRegenerationFreshness({
+        argv: freshnessArgs(fixture, "observed_at"),
+        collectionDate,
+        now: new Date("2026-07-20T00:10:00.000Z"),
+        update: true,
+        allowHistorical: false,
+      });
+
+    expect(
+      collectionQualityRowsForTimestampPolicy({
+        freshness,
+        publishedRows: ["published"],
+        observedRows: ["observed"],
+      }),
+    ).toEqual(["observed"]);
+    expect(
+      collectionQualityCountForTimestampPolicy({
+        freshness,
+        publishedCount: 2,
+        observedCount: 314,
+      }),
+    ).toBe(314);
+    expect(() =>
+      resolveCollectionQualityRegenerationFreshness({
+        argv: freshnessArgs(fixture, "published_at"),
+        collectionDate,
+        now: new Date("2026-07-20T00:10:00.000Z"),
+        update: true,
+        allowHistorical: false,
+      }),
+    ).toThrow("scope, period or freshness is invalid");
+  });
+
   function resolve(fixture: {
     readonly path: string;
     readonly sha256: string;
@@ -123,16 +163,19 @@ describe("historical regeneration collection-quality freshness", () => {
   function freshnessArgs(fixture: {
     readonly path: string;
     readonly sha256: string;
-  }) {
+  }, timestampPolicy: "published_at" | "observed_at" = "published_at") {
     return collectionQualityRegenerationFreshnessArgs({
       manifestPath: fixture.path,
       manifestSha256: fixture.sha256,
       tenantId,
       workspaceId,
+      timestampPolicy,
     });
   }
 
-  function writeManifest(): { readonly path: string; readonly sha256: string } {
+  function writeManifest(
+    timestampPolicy: "published_at" | "observed_at" = "published_at",
+  ): { readonly path: string; readonly sha256: string } {
     directory = mkdtempSync(join(tmpdir(), "collection-quality-manifest-"));
     const path = join(directory, "manifest.json");
     const manifest = buildReaderSummaryDayDatasetManifest({
@@ -141,6 +184,7 @@ describe("historical regeneration collection-quality freshness", () => {
       startedAt: new Date("2026-07-19T00:00:00.000Z"),
       endedAt: new Date("2026-07-20T00:00:00.000Z"),
       generatedAt: new Date("2026-07-20T00:05:00.000Z"),
+      timestampPolicy,
       feedRows: [
         { providerKey: "reddit", rowJson: "reddit:1" },
         { providerKey: "reddit", rowJson: "reddit:2" },

@@ -42,6 +42,7 @@ import { presentReaderSummaryArtifact } from "@social-monitor/summary/features/s
 import { RequestReaderSummaryUseCase } from "@social-monitor/summary/features/request-reader-summary/request-reader-summary.use-case";
 import type {
   EnqueueReaderSummaryJobCommand,
+  ReaderSummaryTimestampPolicy,
   ReaderSummaryJobQueuePort,
   ReaderSummaryModelPort,
   ReaderSummaryTopicMapPublicationAuditPort,
@@ -93,6 +94,8 @@ const datasetManifestPathEnv = "DURABLE_READER_SUMMARY_DATASET_MANIFEST_PATH";
 const datasetManifestSha256Env =
   "DURABLE_READER_SUMMARY_DATASET_MANIFEST_SHA256";
 const datasetRecoveryRootEnv = "DURABLE_READER_SUMMARY_RECOVERY_ROOT";
+const recoveryTimestampPolicyEnv =
+  "DURABLE_READER_SUMMARY_RECOVERY_TIMESTAMP_POLICY";
 
 loadDotenvIfPresent(".env");
 type DurableReaderSummaryModelMode =
@@ -128,6 +131,15 @@ async function main(): Promise<void> {
     endedAt: periodEndedAt,
     timezone,
   });
+  const recoveryTimestampPolicy = resolveRecoveryTimestampPolicy({
+    argv: process.argv.slice(2),
+    envValue: readEnv(recoveryTimestampPolicyEnv),
+    cadence,
+    timezone,
+    periodStartedAt,
+    periodEndedAt,
+    now,
+  });
   const historicalGitHubOmission = resolveHistoricalGitHubOmission({
     argv: process.argv.slice(2),
     reason: readEnv(historicalGitHubOmissionReasonEnv),
@@ -137,6 +149,14 @@ async function main(): Promise<void> {
     periodEndedAt,
     now,
   });
+  if (
+    historicalGitHubOmission !== undefined &&
+    !recoveryTimestampPolicy.active
+  ) {
+    throw new Error(
+      "Historical GitHub omission requires explicit historical recovery mode",
+    );
+  }
   const maxEvidenceItems = readIntegerEnv(
     "DURABLE_READER_SUMMARY_MAX_EVIDENCE_ITEMS",
     200,
@@ -167,6 +187,18 @@ async function main(): Promise<void> {
     await PrismaSummaryConnection.create(runtimePoolConfig);
 
   try {
+    const datasetGuard = recoveryTimestampPolicy.active
+      ? buildDatasetGuard({
+          client: summaryConnection,
+          clock,
+          tenantId: tenant,
+          workspaceId: workspace,
+          periodStartedAt,
+          periodEndedAt,
+          now,
+          timestampPolicy: recoveryTimestampPolicy.policy,
+        })
+      : null;
     const feedItems = new PrismaFeedItemReadRepository(feedConnection);
     const readerSummaryJobs = new PrismaReaderSummaryJobRepository(
       summaryConnection,
@@ -209,6 +241,7 @@ async function main(): Promise<void> {
       workspaceId: workspace,
       startedAt: periodStartedAt,
       endedAt: periodEndedAt,
+      timestampPolicy: recoveryTimestampPolicy.policy,
     });
 
     const requestReaderSummary = new RequestReaderSummaryUseCase(
@@ -253,18 +286,6 @@ async function main(): Promise<void> {
         : new HistoricalGitHubOmissionEvidenceSelector(
             relevanceEvidenceSelector,
           );
-    const datasetGuard =
-      historicalGitHubOmission === undefined
-        ? null
-        : buildDatasetGuard({
-            client: summaryConnection,
-            clock,
-            tenantId: tenant,
-            workspaceId: workspace,
-            periodStartedAt,
-            periodEndedAt,
-            now,
-          });
     const evidenceSelector =
       datasetGuard === null
         ? omissionAwareEvidenceSelector
@@ -403,6 +424,7 @@ async function main(): Promise<void> {
       },
       period: frontendArtifact.period,
       inputInventory: inventoryBefore,
+      inputInventoryTimestampPolicy: recoveryTimestampPolicy.policy,
       queue: {
         capturedCommandCount: queue.all().length,
       },
@@ -465,6 +487,7 @@ function buildDatasetGuard(params: {
   readonly periodStartedAt: Date;
   readonly periodEndedAt: Date;
   readonly now: Date;
+  readonly timestampPolicy: ReaderSummaryTimestampPolicy;
 }): ReaderSummaryDayDatasetGuard {
   const manifestPath = requiredEnv(datasetManifestPathEnv);
   assertImmutableRecoveryInputs({
@@ -480,6 +503,7 @@ function buildDatasetGuard(params: {
     startedAt: params.periodStartedAt,
     endedAt: params.periodEndedAt,
     now: params.now,
+    expectedTimestampPolicy: params.timestampPolicy,
   });
   return new ReaderSummaryDayDatasetGuard(
     params.client,
@@ -650,6 +674,7 @@ const loadFeedInventory = async (
     readonly workspaceId: string;
     readonly startedAt: Date;
     readonly endedAt: Date;
+    readonly timestampPolicy: ReaderSummaryTimestampPolicy;
   },
 ): Promise<readonly FeedInventoryRow[]> => {
   const rows = await prisma.$queryRaw<
@@ -664,8 +689,16 @@ const loadFeedInventory = async (
     where tenant_id = ${params.tenantId}
       and workspace_id = ${params.workspaceId}
       and status = 'VISIBLE'
-      and published_at >= ${params.startedAt}
-      and published_at < ${params.endedAt}
+      and case ${params.timestampPolicy}
+        when 'published_at' then published_at
+        when 'observed_at' then observed_at
+        else null
+      end >= ${params.startedAt}
+      and case ${params.timestampPolicy}
+        when 'published_at' then published_at
+        when 'observed_at' then observed_at
+        else null
+      end < ${params.endedAt}
     group by provider_key
     order by provider_key asc
   `;
@@ -711,6 +744,51 @@ const readCadence = (): DurableReaderSummaryCadence => {
   }
 
   throw new Error(`${cadenceEnv} must be daily, weekly, monthly or custom`);
+};
+
+const resolveRecoveryTimestampPolicy = (params: {
+  readonly argv: readonly string[];
+  readonly envValue?: string;
+  readonly cadence: DurableReaderSummaryCadence;
+  readonly timezone: string;
+  readonly periodStartedAt: Date;
+  readonly periodEndedAt: Date;
+  readonly now: Date;
+}): {
+  readonly active: boolean;
+  readonly policy: ReaderSummaryTimestampPolicy;
+} => {
+  const explicitlyHistorical = params.argv.includes("--historical-recovery");
+  if (!explicitlyHistorical && params.envValue === undefined) {
+    return { active: false, policy: "published_at" };
+  }
+  if (!explicitlyHistorical || params.envValue === undefined) {
+    throw new Error(
+      `Historical recovery requires both --historical-recovery and ${recoveryTimestampPolicyEnv}`,
+    );
+  }
+  if (
+    params.envValue !== "published_at" &&
+    params.envValue !== "observed_at"
+  ) {
+    throw new Error(
+      `${recoveryTimestampPolicyEnv} must be published_at or observed_at`,
+    );
+  }
+  if (
+    params.cadence !== "daily" ||
+    params.timezone !== "UTC" ||
+    params.periodStartedAt.toISOString() !==
+      `${params.periodStartedAt.toISOString().slice(0, 10)}T00:00:00.000Z` ||
+    params.periodEndedAt.getTime() - params.periodStartedAt.getTime() !==
+      86_400_000 ||
+    params.periodEndedAt.getTime() > params.now.getTime()
+  ) {
+    throw new Error(
+      "Historical recovery timestamp policy is restricted to one completed exact UTC day",
+    );
+  }
+  return { active: true, policy: params.envValue };
 };
 
 const readDateEnv = (name: string): Date | undefined => {

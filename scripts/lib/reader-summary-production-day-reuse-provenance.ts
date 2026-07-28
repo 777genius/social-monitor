@@ -1,5 +1,7 @@
 import { readFileSync } from "node:fs";
 
+import type { ReaderSummaryTimestampPolicy } from "@social-monitor/summary/ports";
+
 import {
   inspectDurableEvidenceArtifact,
   isRecord,
@@ -24,6 +26,7 @@ const reuseCollectionQualityReportSha256Option =
   "--reuse-collection-quality-report-sha256";
 const reuseDatasetManifestOption = "--reuse-dataset-manifest";
 const reuseDatasetManifestSha256Option = "--reuse-dataset-manifest-sha256";
+const recoveryTimestampPolicyOption = "--recovery-timestamp-policy";
 
 export type ProductionDayExecutionRequest =
   | { readonly mode: "live-production" }
@@ -37,7 +40,8 @@ export type ProductionDayExecutionRequest =
       readonly collectionQualityReportSha256: string;
       readonly datasetManifestPath: string;
       readonly datasetManifestSha256: string;
-      readonly allowHistoricalGitHubOmission: true;
+      readonly timestampPolicy: ReaderSummaryTimestampPolicy;
+      readonly allowHistoricalGitHubOmission: boolean;
     }
   | {
       readonly mode: "historical-reuse";
@@ -67,6 +71,7 @@ export function resolveProductionDayExecutionRequest(
     reuseCollectionQualityReportSha256Option,
     reuseDatasetManifestOption,
     reuseDatasetManifestSha256Option,
+    recoveryTimestampPolicyOption,
   ].some((option) => args.includes(option));
   const suppliedReuseOption = [
     reuseSourceReportOption,
@@ -81,7 +86,6 @@ export function resolveProductionDayExecutionRequest(
   if (regenerateAfterPassedCollection || suppliedRegenerationOption) {
     if (
       !regenerateAfterPassedCollection ||
-      !allowHistoricalGitHubOmission ||
       skipLiveCollection ||
       reuseExistingArtifacts ||
       allowHistorical ||
@@ -90,7 +94,7 @@ export function resolveProductionDayExecutionRequest(
       args.includes(reuseEvidenceArtifactSha256Option)
     ) {
       throw new Error(
-        "Historical regeneration requires its bounded mode, GitHub omission authorization and fresh summary capture",
+        "Historical regeneration requires its bounded mode and fresh summary capture",
       );
     }
     return {
@@ -118,14 +122,18 @@ export function resolveProductionDayExecutionRequest(
         args,
         reuseDatasetManifestSha256Option,
       ),
-      allowHistoricalGitHubOmission: true,
+      timestampPolicy: optionalTimestampPolicy(args),
+      allowHistoricalGitHubOmission,
     };
   }
 
   if (!anyHistoricalIntent) {
-    if (allowHistoricalGitHubOmission) {
+    if (
+      allowHistoricalGitHubOmission ||
+      args.includes(recoveryTimestampPolicyOption)
+    ) {
       throw new Error(
-        "Historical GitHub omission is restricted to historical regeneration",
+        "Historical recovery options are restricted to historical regeneration",
       );
     }
     return { mode: "live-production" };
@@ -249,6 +257,21 @@ function requiredSha256(args: readonly string[], name: string): string {
   const value = requiredOption(args, name);
   if (!/^[0-9a-f]{64}$/u.test(value)) {
     throw new Error(`${name} must be a lowercase SHA-256 digest`);
+  }
+  return value;
+}
+
+function optionalTimestampPolicy(
+  args: readonly string[],
+): ReaderSummaryTimestampPolicy {
+  if (!args.includes(recoveryTimestampPolicyOption)) {
+    return "published_at";
+  }
+  const value = requiredOption(args, recoveryTimestampPolicyOption);
+  if (value !== "published_at" && value !== "observed_at") {
+    throw new Error(
+      `${recoveryTimestampPolicyOption} must be published_at or observed_at`,
+    );
   }
   return value;
 }

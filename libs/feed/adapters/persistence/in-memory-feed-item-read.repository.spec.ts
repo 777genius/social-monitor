@@ -235,6 +235,47 @@ describe("InMemoryFeedItemReadRepository", () => {
     ]);
   });
 
+  it("uses an inclusive observed recovery start without publication filtering", async () => {
+    const repository = new InMemoryFeedItemReadRepository();
+    for (const [id, observedAt] of [
+      ["start", "2026-06-23T00:00:00.000Z"],
+      ["inside", "2026-06-23T23:59:59.999Z"],
+      ["end", "2026-06-24T00:00:00.000Z"],
+    ] as const) {
+      repository.upsert(
+        makeItem({
+          id: `feed-${id}`,
+          sourceItemId: `source-${id}`,
+          canonicalUrl: `https://example.test/observed-${id}`,
+          publishedAt: new Date("2026-06-01T00:00:00.000Z"),
+          observedAt: new Date(observedAt),
+        }),
+      );
+    }
+
+    const result = await repository.list({
+      tenantId: tenantId("tenant-1"),
+      workspaceId: workspaceId("workspace-1"),
+      observedAtOrAfter: new Date("2026-06-23T00:00:00.000Z"),
+      observedBefore: new Date("2026-06-24T00:00:00.000Z"),
+      limit: 10,
+    });
+
+    expect(result.items.map((item) => item.toSnapshot().id).sort()).toEqual([
+      "feed-inside",
+      "feed-start",
+    ]);
+    await expect(
+      repository.list({
+        tenantId: tenantId("tenant-1"),
+        workspaceId: workspaceId("workspace-1"),
+        observedAfter: new Date("2026-06-22T23:59:59.999Z"),
+        observedAtOrAfter: new Date("2026-06-23T00:00:00.000Z"),
+        limit: 10,
+      }),
+    ).rejects.toThrow("cannot mix exclusive and inclusive starts");
+  });
+
   it("filters feed items by publication window with an inclusive start and exclusive end", async () => {
     const repository = new InMemoryFeedItemReadRepository();
     repository.upsert(

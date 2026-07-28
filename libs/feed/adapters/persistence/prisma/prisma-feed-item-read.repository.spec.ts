@@ -70,6 +70,32 @@ describe("PrismaFeedItemReadRepository", () => {
     );
   });
 
+  it("pushes the inclusive observed recovery window without publication bounds", async () => {
+    const prisma = new FakePrismaFeedClient([]);
+    const repository = new PrismaFeedItemReadRepository(
+      prisma as unknown as PrismaFeedClient,
+    );
+    const observedAtOrAfter = new Date("2026-07-04T00:00:00.000Z");
+    const observedBefore = new Date("2026-07-05T00:00:00.000Z");
+
+    await repository.list({
+      tenantId: tenantId("00000000-0000-7000-8000-000000000901"),
+      workspaceId: workspaceId("00000000-0000-7000-8000-000000000902"),
+      observedAtOrAfter,
+      observedBefore,
+      limit: 10,
+    });
+
+    expect(prisma.feedItem.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          observedAt: { gte: observedAtOrAfter, lt: observedBefore },
+          publishedAt: undefined,
+        }),
+      }),
+    );
+  });
+
   it("batch-loads original source content without exposing it in feed items", async () => {
     const record = feedRecord({
       id: "00000000-0000-4000-8000-000000000003",

@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 
+import type { ReaderSummaryTimestampPolicy } from "@social-monitor/summary/ports";
+
 import { readReaderSummaryDayDatasetManifest } from "./reader-summary-day-dataset-guard";
 import type { ReaderSummaryDayDatasetManifest } from "./reader-summary-day-dataset-manifest";
 
@@ -8,12 +10,14 @@ const manifestPathOption = "--regeneration-dataset-manifest";
 const manifestShaOption = "--regeneration-dataset-manifest-sha256";
 const tenantOption = "--regeneration-tenant-id";
 const workspaceOption = "--regeneration-workspace-id";
+const timestampPolicyOption = "--regeneration-timestamp-policy";
 const boundedOptions = [
   regenerationFlag,
   manifestPathOption,
   manifestShaOption,
   tenantOption,
   workspaceOption,
+  timestampPolicyOption,
 ] as const;
 
 export type CollectionQualityRegenerationFreshnessEvidence = {
@@ -23,6 +27,7 @@ export type CollectionQualityRegenerationFreshnessEvidence = {
   readonly manifestFileSha256: string;
   readonly manifestGeneratedAt: string;
   readonly datasetSha256: string;
+  readonly timestampPolicy: ReaderSummaryTimestampPolicy;
   readonly scopeSha256: string;
   readonly maxManifestAgeSeconds: 1800;
 };
@@ -37,6 +42,7 @@ export function collectionQualityRegenerationFreshnessArgs(params: {
   readonly manifestSha256: string;
   readonly tenantId: string;
   readonly workspaceId: string;
+  readonly timestampPolicy: ReaderSummaryTimestampPolicy;
 }): readonly string[] {
   return [
     regenerationFlag,
@@ -48,6 +54,8 @@ export function collectionQualityRegenerationFreshnessArgs(params: {
     params.tenantId,
     workspaceOption,
     params.workspaceId,
+    timestampPolicyOption,
+    params.timestampPolicy,
   ];
 }
 
@@ -79,6 +87,9 @@ export function resolveCollectionQualityRegenerationFreshness(params: {
   );
   const tenantId = requiredOption(params.argv, tenantOption);
   const workspaceId = requiredOption(params.argv, workspaceOption);
+  const timestampPolicy = requiredTimestampPolicy(
+    requiredOption(params.argv, timestampPolicyOption),
+  );
   const startedAt = new Date(`${params.collectionDate}T00:00:00.000Z`);
   const endedAt = new Date(startedAt.getTime() + 86_400_000);
   const { manifest, fileSha256 } = readReaderSummaryDayDatasetManifest({
@@ -89,6 +100,7 @@ export function resolveCollectionQualityRegenerationFreshness(params: {
     startedAt,
     endedAt,
     now: params.now,
+    expectedTimestampPolicy: timestampPolicy,
   });
 
   return {
@@ -100,12 +112,22 @@ export function resolveCollectionQualityRegenerationFreshness(params: {
       manifestFileSha256: fileSha256,
       manifestGeneratedAt: manifest.generatedAt,
       datasetSha256: manifest.dataset.aggregateSha256,
+      timestampPolicy,
       scopeSha256: createHash("sha256")
         .update(`${tenantId}\u0000${workspaceId}`, "utf8")
         .digest("hex"),
       maxManifestAgeSeconds: 1800,
     },
   };
+}
+
+function requiredTimestampPolicy(value: string): ReaderSummaryTimestampPolicy {
+  if (value !== "published_at" && value !== "observed_at") {
+    throw new Error(
+      `${timestampPolicyOption} must be published_at or observed_at`,
+    );
+  }
+  return value;
 }
 
 export function assertCollectionQualityMatchesRegenerationManifest(params: {
@@ -122,6 +144,26 @@ export function assertCollectionQualityMatchesRegenerationManifest(params: {
       "Collection quality provider counts do not match regeneration dataset manifest",
     );
   }
+}
+
+export function collectionQualityRowsForTimestampPolicy<T>(params: {
+  readonly publishedRows: readonly T[];
+  readonly observedRows: readonly T[];
+  readonly freshness: CollectionQualityRegenerationFreshness | null;
+}): readonly T[] {
+  return params.freshness?.manifest.policy.timestampPolicy === "observed_at"
+    ? params.observedRows
+    : params.publishedRows;
+}
+
+export function collectionQualityCountForTimestampPolicy(params: {
+  readonly publishedCount: number;
+  readonly observedCount: number;
+  readonly freshness: CollectionQualityRegenerationFreshness | null;
+}): number {
+  return params.freshness?.manifest.policy.timestampPolicy === "observed_at"
+    ? params.observedCount
+    : params.publishedCount;
 }
 
 function requiredOption(argv: readonly string[], name: string): string {

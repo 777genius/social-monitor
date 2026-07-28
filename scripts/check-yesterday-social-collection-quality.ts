@@ -23,9 +23,12 @@ import { finalizeXAccountAttributionWarningOnly } from "./lib/x-account-attribut
 import { productionCollectionThresholds } from "./lib/production-collection-quality-policy";
 import {
   assertCollectionQualityMatchesRegenerationManifest,
+  collectionQualityCountForTimestampPolicy,
+  collectionQualityRowsForTimestampPolicy,
   resolveCollectionQualityRegenerationFreshness,
   type CollectionQualityRegenerationFreshnessEvidence,
 } from "./lib/yesterday-social-collection-quality-regeneration";
+import { queryCollectionQualitySummaryCounts } from "./lib/yesterday-social-collection-quality-summary-counts";
 import { isValidExistingYesterdaySocialCollectionQualityReport } from "./lib/yesterday-social-collection-quality-report-validation";
 import {
   average,
@@ -72,7 +75,6 @@ type FeedRow = {
   readonly status: string;
 };
 type SourceItemCountRow = { readonly providerKey: string; readonly sourceItemCount: string };
-type SummaryCountRow = { readonly status: string | null; readonly count: string };
 type ProviderReport = {
   readonly providerKey: string;
   readonly feedItemCount: number;
@@ -334,9 +336,31 @@ async function tryBuildReport(): Promise<Report | undefined> {
       scope,
     );
     const sourceItemCounts = await querySourceItemCounts(client, scope);
-    const summaryArtifacts = await querySummaryArtifacts(client, scope);
-    const summaryJobs = await querySummaryJobs(client, scope);
-    const summaryWindowRows = visibleRows(publishedWindowFeedRows);
+    const summaryArtifacts = await queryCollectionQualitySummaryCounts(
+      client,
+      scope,
+      {
+        table: "reader_summary_artifacts",
+        startedAt: window.startInclusive,
+        endedAt: window.endExclusive,
+      },
+    );
+    const summaryJobs = await queryCollectionQualitySummaryCounts(
+      client,
+      scope,
+      {
+        table: "reader_summary_jobs",
+        startedAt: window.startInclusive,
+        endedAt: window.endExclusive,
+      },
+    );
+    const summaryWindowRows = visibleRows(
+      collectionQualityRowsForTimestampPolicy({
+        freshness: regenerationFreshness,
+        observedRows: feedRows,
+        publishedRows: publishedWindowFeedRows,
+      }),
+    );
     const providerReports = buildProviderReports(
       summaryWindowRows,
       sourceItemCounts,
@@ -441,8 +465,11 @@ async function tryBuildReport(): Promise<Report | undefined> {
       xAccountPoolTracksPerAccount:
         !xAccountPool.available || xAccountPool.accounts.length > 0,
       dayWindowAuditAvailable:
-        dayWindowAudit.publishedInsideWindowFeedItemCount ===
-        summaryWindowRows.length,
+        collectionQualityCountForTimestampPolicy({
+          freshness: regenerationFreshness,
+          observedCount: dayWindowAudit.observedInsideWindowFeedItemCount,
+          publishedCount: dayWindowAudit.publishedInsideWindowFeedItemCount,
+        }) === summaryWindowRows.length,
       observedWindowFilterIsStrict:
         dayWindowAudit.observedOutsideWindowFeedItemCount === 0,
       duplicateAndLowRelevanceCountsReported:
@@ -790,48 +817,6 @@ async function querySourceItemCounts(
         and workspace_id = $4::uuid
       group by provider_key
       order by provider_key
-    `,
-    [feedWindow().startInclusive, feedWindow().endExclusive, scope.tenantId, scope.workspaceId],
-  );
-
-  return result.rows;
-}
-
-async function querySummaryArtifacts(
-  client: PoolClient,
-  scope: ProductionDayScope,
-): Promise<readonly SummaryCountRow[]> {
-  const result = await client.query<SummaryCountRow>(
-    `
-      select status::text as "status", count(*)::text as "count"
-      from reader_summary_artifacts
-      where period_started_at = $1::timestamptz
-        and period_ended_at = $2::timestamptz
-        and tenant_id = $3::uuid
-        and workspace_id = $4::uuid
-      group by status
-      order by status
-    `,
-    [feedWindow().startInclusive, feedWindow().endExclusive, scope.tenantId, scope.workspaceId],
-  );
-
-  return result.rows;
-}
-
-async function querySummaryJobs(
-  client: PoolClient,
-  scope: ProductionDayScope,
-): Promise<readonly SummaryCountRow[]> {
-  const result = await client.query<SummaryCountRow>(
-    `
-      select status::text as "status", count(*)::text as "count"
-      from reader_summary_jobs
-      where period_started_at = $1::timestamptz
-        and period_ended_at = $2::timestamptz
-        and tenant_id = $3::uuid
-        and workspace_id = $4::uuid
-      group by status
-      order by status
     `,
     [feedWindow().startInclusive, feedWindow().endExclusive, scope.tenantId, scope.workspaceId],
   );

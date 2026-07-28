@@ -44,6 +44,8 @@ export function validHistoricalRegenerationProvenance(params: {
   return (
     params.value.mode === "historical-regeneration" &&
     params.value.nonLive === false &&
+    (params.value.timestampPolicy === "published_at" ||
+      params.value.timestampPolicy === "observed_at") &&
     periodsEqual(params.value.requestedUtcPeriod, params.expectedPeriod) &&
     periodsEqual(params.value.collectionUtcPeriod, params.expectedPeriod) &&
     durableEvidenceBindingEqual(
@@ -64,6 +66,8 @@ export function validHistoricalRegenerationProvenance(params: {
       "yesterday-social-collection-quality-report-v1",
     ) &&
     isRecord(params.value.regenerationInputManifest) &&
+    params.value.regenerationInputManifest.timestampPolicy ===
+      params.value.timestampPolicy &&
     datasetGuardMatchesManifest(
       params.value.datasetGuardEvidence,
       params.value.regenerationInputManifest,
@@ -73,11 +77,10 @@ export function validHistoricalRegenerationProvenance(params: {
       "historical_regeneration_current_snapshot" &&
     params.value.freshnessOverride.generalAllowHistorical === false &&
     params.value.freshnessOverride.maxManifestAgeSeconds === 1800 &&
-    isRecord(params.value.githubOmission) &&
-    params.value.githubOmission.mode ===
-      "github_projection_unavailable_historical" &&
-    typeof params.value.githubOmission.reason === "string" &&
-    params.value.githubOmission.reason.trim().length >= 20
+    validHistoricalGitHubPolicy(
+      params.value.githubPolicy,
+      params.value.regenerationInputManifest,
+    )
   );
 }
 
@@ -117,12 +120,41 @@ function datasetGuardMatchesManifest(
     guard.manifestFileSha256 === manifest.sha256 &&
     guard.manifestGeneratedAt === manifest.generatedAt &&
     guard.datasetSha256 === manifest.datasetSha256 &&
+    guard.timestampPolicy === manifest.timestampPolicy &&
     guard.feedRowCount === manifest.feedRowCount &&
     guard.githubEligibilityRowCount === manifest.githubEligibilityRowCount &&
     JSON.stringify(guard.providerCounts) ===
       JSON.stringify(manifest.providerCounts) &&
     JSON.stringify(guard.completedPhases) ===
       JSON.stringify(completeDatasetGuardPhases)
+  );
+}
+
+function validHistoricalGitHubPolicy(
+  value: unknown,
+  manifest: Record<string, unknown>,
+): boolean {
+  if (
+    !isRecord(value) ||
+    !isRecord(manifest.providerCounts) ||
+    typeof value.collectedRowCount !== "number" ||
+    !Number.isInteger(value.collectedRowCount) ||
+    value.collectedRowCount < 0
+  ) {
+    return false;
+  }
+  const manifestCount = manifest.providerCounts["github-trending-page"] ?? 0;
+  if (value.collectedRowCount !== manifestCount) {
+    return false;
+  }
+  if (value.mode === "verified_collected_rows") {
+    return value.collectedRowCount > 0 && value.reason === undefined;
+  }
+  return (
+    value.mode === "historical_unavailable" &&
+    value.collectedRowCount === 0 &&
+    typeof value.reason === "string" &&
+    value.reason.trim().length >= 20
   );
 }
 

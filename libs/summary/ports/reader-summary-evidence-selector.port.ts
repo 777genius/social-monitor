@@ -16,5 +16,8 @@ export interface ReaderSummaryEvidenceSelectorPort {
     readonly subscriptionId?: string;
     readonly maxItems: number;
     readonly observedThrough?: Date;
+    readonly timestampPolicy?: ReaderSummaryTimestampPolicy;
   }): Promise<SummaryEvidenceSelection>;
 }
+
+export type ReaderSummaryTimestampPolicy = "published_at" | "observed_at";

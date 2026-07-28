@@ -234,6 +234,10 @@ async function main(): Promise<void> {
               : "",
           tenantId: scope.tenantId,
           workspaceId: scope.workspaceId,
+          timestampPolicy:
+            executionRequest.mode === "historical-regeneration"
+              ? executionRequest.timestampPolicy
+              : "published_at",
         })
       : []),
     ...(allowHistorical ? ["--allow-historical"] : []),
@@ -309,7 +313,13 @@ async function main(): Promise<void> {
           "run",
           "capture:durable-reader-summary",
           ...(executionRequest.mode === "historical-regeneration"
-            ? ["--", "--allow-historical-github-omission"]
+            ? [
+                "--",
+                "--historical-recovery",
+                ...(executionRequest.allowHistoricalGitHubOmission
+                  ? ["--allow-historical-github-omission"]
+                  : []),
+              ]
             : []),
         ],
         {
@@ -356,6 +366,8 @@ async function main(): Promise<void> {
                 DURABLE_READER_SUMMARY_RECOVERY_ROOT:
                   process.env.READER_SUMMARY_PRODUCTION_DAY_RECOVERY_DIR ??
                   `/var/lib/social-monitor/artifacts/recovery/${collectionDate}`,
+                DURABLE_READER_SUMMARY_RECOVERY_TIMESTAMP_POLICY:
+                  executionRequest.timestampPolicy,
               }
             : {}),
         },

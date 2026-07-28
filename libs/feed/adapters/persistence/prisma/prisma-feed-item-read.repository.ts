@@ -22,6 +22,7 @@ import {
 const MAX_FILTER_SCAN = 1_000;
 
 type FeedItemObservedAtRange = {
+  readonly gte?: Date;
   readonly gt?: Date;
   readonly lt?: Date;
 };
@@ -161,17 +162,32 @@ export class PrismaFeedItemReadRepository implements FeedItemReadRepositoryPort 
 const buildObservedAtRange = (
   query: ListFeedItemsQuery,
 ): FeedItemObservedAtRange | undefined => {
-  const range: { gt?: Date; lt?: Date } = {};
+  if (
+    query.observedAfter !== undefined &&
+    query.observedAtOrAfter !== undefined
+  ) {
+    throw new Error(
+      "Feed item observation window cannot mix exclusive and inclusive starts",
+    );
+  }
+  const range: { gte?: Date; gt?: Date; lt?: Date } = {};
 
   if (query.observedAfter !== undefined) {
     range.gt = query.observedAfter;
+  }
+  if (query.observedAtOrAfter !== undefined) {
+    range.gte = query.observedAtOrAfter;
   }
 
   if (query.observedBefore !== undefined) {
     range.lt = query.observedBefore;
   }
 
-  return range.gt === undefined && range.lt === undefined ? undefined : range;
+  return range.gte === undefined &&
+    range.gt === undefined &&
+    range.lt === undefined
+    ? undefined
+    : range;
 };
 
 const buildPublishedAtRange = (
