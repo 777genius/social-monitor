@@ -14,6 +14,9 @@ import {
   type ProductionRecoveryScopeRow,
   verifyPersistedProductionRecoveryAuthority,
 } from "./prisma-reader-summary-production-recovery-authority-row";
+import {
+  lockProductionRecoveryRows,
+} from "./prisma-reader-summary-production-recovery-authority-row-locks";
 import type { PrismaSummaryClient } from "./prisma-summary-client";
 import {
   runSerializableReaderSummaryTransaction,
@@ -25,11 +28,9 @@ type PersistedAuthorityRow = Readonly<{
   responsePayload: unknown;
 }>;
 
-type InsertedRow = Readonly<{ inserted: boolean }>;
+type PersistedRow = Readonly<{ persisted: boolean }>;
 type FinalizedRow = Readonly<{ finalizedCount: number }>;
 
-const authorityScope = "reader-summary-production-recovery-authority-v2";
-const authorityKey = "2026-07-24..2026-07-27";
 const constructorToken = Object.freeze({});
 const loadedAuthorities = new WeakSet<object>();
 const authorityBindings =
@@ -81,7 +82,10 @@ export class PrismaReaderSummaryProductionRecoveryAuthority
             SELECT
               current_setting('social_monitor.tenant_id')::TEXT AS "tenantId",
               current_setting('social_monitor.workspace_id')::TEXT AS "workspaceId",
-              transaction_timestamp() AS "issuedAt"
+              date_trunc(
+                'milliseconds',
+                transaction_timestamp()
+              ) AS "issuedAt"
             WHERE current_setting('transaction_isolation') = 'serializable'
               AND current_setting('transaction_read_only') = 'off'
               AND current_setting('social_monitor.system_access') = 'false'
@@ -91,6 +95,7 @@ export class PrismaReaderSummaryProductionRecoveryAuthority
               "Reader summary production recovery requires an exact writable SERIALIZABLE tenant session",
             );
           }
+          await lockProductionRecoveryRows(prisma);
           const firstRows = await readEvidence(prisma);
           const secondRows = await readEvidence(prisma);
           const first = buildProductionRecoveryAuthorityBinding({
@@ -115,48 +120,18 @@ export class PrismaReaderSummaryProductionRecoveryAuthority
               "Reader summary production recovery two-pass plan hashes diverged",
             );
           }
-          const serialized = JSON.stringify(first);
-          const inserted = await prisma.$queryRaw<readonly InsertedRow[]>`
-            INSERT INTO "idempotency_keys" (
-              "id", "tenant_id", "workspace_id", "scope", "key",
-              "request_hash", "response_status", "response_payload",
-              "expires_at", "created_at"
-            ) VALUES (
-              ${first.recoveryId}::uuid,
-              ${first.tenantId}::uuid,
-              ${first.workspaceId}::uuid,
-              ${authorityScope},
-              ${authorityKey},
-              ${first.canonicalSha256},
-              102,
-              ${serialized}::jsonb,
-              NULL,
-              ${new Date(first.lease.issuedAt)}
-            )
-            ON CONFLICT ("tenant_id", "workspace_id", "scope", "key")
-            DO NOTHING
-            RETURNING TRUE AS "inserted"
+          const persisted = await prisma.$queryRaw<readonly PersistedRow[]>`
+            SELECT
+              "persist_reader_summary_production_recovery_v2"(
+                ${JSON.stringify(first)}::jsonb
+              ) AS "persisted"
           `;
-          if (inserted.length === 1) {
-            return { binding: first, outcome: "prepared" as const };
-          }
-          const concurrent = await readPersistedAuthority(prisma);
-          if (concurrent === undefined) {
-            throw serializationConflict(
-              "Reader summary production recovery concurrent authority requires a fresh snapshot",
-            );
-          }
-          if (concurrent.canonicalSha256 !== first.canonicalSha256) {
+          if (persisted.length !== 1 || persisted[0]?.persisted !== true) {
             throw new Error(
-              "Reader summary production recovery concurrent authority diverged",
+              "Reader summary production recovery authority persistence failed",
             );
           }
-          return {
-            binding: concurrent,
-            outcome: (await allDaysFinalized(prisma, concurrent))
-              ? ("replayed" as const)
-              : ("prepared" as const),
-          };
+          return { binding: first, outcome: "prepared" as const };
         },
         transactionOptions,
       ),
@@ -189,17 +164,94 @@ const readPersistedAuthority = async (
   prisma: Pick<PrismaSummaryClient, "$queryRaw">,
 ): Promise<ReaderSummaryProductionRecoveryAuthorityBinding | undefined> => {
   const rows = await prisma.$queryRaw<readonly PersistedAuthorityRow[]>`
+    WITH target AS (
+      SELECT
+        lease."id",
+        lease."tenant_id",
+        lease."workspace_id",
+        lease."identity",
+        lease."state",
+        lease."canonical_record",
+        lease."canonical_sha256",
+        lease."issued_at",
+        lease."consumed_at"
+      FROM "reader_summary_production_recovery_leases" AS lease
+      WHERE lease."tenant_id" =
+          current_setting('social_monitor.tenant_id')::uuid
+        AND lease."workspace_id" =
+          current_setting('social_monitor.workspace_id')::uuid
+        AND lease."canonical_record"->>'schemaVersion' =
+          'reader_summary.production_recovery_authority.v2'
+      ORDER BY lease."id"
+    )
     SELECT
-      "request_hash" AS "requestHash",
-      "response_payload" AS "responsePayload"
-    FROM "idempotency_keys"
-    WHERE "tenant_id" =
-        current_setting('social_monitor.tenant_id')::uuid
-      AND "workspace_id" =
-        current_setting('social_monitor.workspace_id')::uuid
-      AND "scope" = ${authorityScope}
-      AND "key" = ${authorityKey}
-    FOR SHARE
+      btrim(lease."canonical_sha256") AS "requestHash",
+      jsonb_build_object(
+        'schemaVersion',
+          'reader_summary.production_recovery_authority.v2',
+        'recoveryId', lease."id"::TEXT,
+        'identity', lease."identity",
+        'tenantId', lease."tenant_id"::TEXT,
+        'workspaceId', lease."workspace_id"::TEXT,
+        'requestedUtcDates',
+          lease."canonical_record"->'requestedUtcDates',
+        'canonicalSha256', btrim(lease."canonical_sha256"),
+        'dryRunCanonicalSha256s', (
+          SELECT jsonb_agg(
+            btrim(dry."canonical_sha256")
+            ORDER BY dry."ordinal"
+          )
+          FROM "reader_summary_production_recovery_dry_runs" AS dry
+          WHERE dry."recovery_id" = lease."id"
+            AND dry."tenant_id" = lease."tenant_id"
+            AND dry."workspace_id" = lease."workspace_id"
+        ),
+        'lease', jsonb_build_object(
+          'state', lease."state",
+          'issuedAt', to_char(
+            lease."issued_at" AT TIME ZONE 'UTC',
+            'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'
+          ),
+          'consumedAt', to_char(
+            lease."consumed_at" AT TIME ZONE 'UTC',
+            'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'
+          )
+        ),
+        'boundaries', lease."canonical_record"->'boundaries',
+        'days', (
+          SELECT jsonb_agg(
+            jsonb_build_object(
+              'schemaVersion',
+                day."canonical_record"->>'schemaVersion',
+              'identity', day."identity",
+              'requestedUtcDate',
+                to_char(day."requested_utc_date", 'YYYY-MM-DD'),
+              'period', day."canonical_record"->'period',
+              'providerCounts', day."provider_counts",
+              'providerEvidence', day."provider_evidence",
+              'providerEvidenceSha256',
+                btrim(day."provider_evidence_sha256"),
+              'githubEvidence', day."github_evidence",
+              'canonicalSha256', btrim(day."canonical_sha256"),
+              'planSha256s', plan.entry->'planSha256s'
+            )
+            ORDER BY day."requested_utc_date"
+          )
+          FROM "reader_summary_production_recovery_days" AS day
+          JOIN LATERAL (
+            SELECT entry
+            FROM jsonb_array_elements(
+              lease."canonical_record"->'days'
+            ) AS planned(entry)
+            WHERE entry->>'requestedUtcDate' =
+              to_char(day."requested_utc_date", 'YYYY-MM-DD')
+          ) AS plan ON TRUE
+          WHERE day."recovery_id" = lease."id"
+            AND day."tenant_id" = lease."tenant_id"
+            AND day."workspace_id" = lease."workspace_id"
+        )
+      ) AS "responsePayload"
+    FROM target AS lease
   `;
   if (rows.length > 1) {
     throw new Error(
@@ -319,9 +371,9 @@ const readEvidence = (
         'x-twitter'
       ])
       AND feed."published_at" >=
-        (DATE '2026-07-24'::TIMESTAMP AT TIME ZONE 'UTC')
+        (DATE '2026-07-23'::TIMESTAMP AT TIME ZONE 'UTC')
       AND feed."published_at" <
-        (DATE '2026-07-28'::TIMESTAMP AT TIME ZONE 'UTC')
+        (DATE '2026-07-27'::TIMESTAMP AT TIME ZONE 'UTC')
       AND source."content_hash" ~ '^[0-9a-f]{64}$'
       AND (
         source."provider_content_hash" IS NULL
@@ -397,6 +449,3 @@ const untrustedAuthorityError = (): Error =>
   new Error(
     "Reader summary production recovery authority was not loaded by verified Prisma evidence",
   );
-
-const serializationConflict = (message: string): Error =>
-  Object.assign(new Error(message), { code: "40001" });

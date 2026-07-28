@@ -16,6 +16,7 @@ import type {
   ReaderSummaryProductionRecoveryRequestedUtcDate,
 } from "@social-monitor/summary/ports";
 import {
+  readerSummaryProductionRecoveryExpectedProviderCounts,
   readerSummaryProductionRecoveryProviderKeys,
   readerSummaryProductionRecoveryRequestedUtcDates,
 } from "@social-monitor/summary/ports";
@@ -48,7 +49,7 @@ export type ReaderSummaryProductionRecoveryDayPlan = Readonly<{
   totalEvidenceCount: number;
   primaryEvidenceCount: number;
   githubEvidenceCount: number;
-  githubMode: "verified_existing";
+  githubMode: "historical_unavailable" | "verified_existing";
 }>;
 
 export type ProductionRecoveryEvidenceSelectionInput = Readonly<{
@@ -211,7 +212,7 @@ const assertAuthorityBinding = (
     binding.days.length !== 4
   ) {
     throw new Error(
-      "Reader summary production recovery authority is not exact pre-model Jul24-Jul27 scope",
+      "Reader summary production recovery authority is not exact pre-model Jul23-Jul26 scope",
     );
   }
   for (const expectedDate of readerSummaryProductionRecoveryDates) {
@@ -228,11 +229,15 @@ const dayPlan = (
   const allRows = readerSummaryProductionRecoveryProviderKeys.flatMap(
     (providerKey) => day.providerEvidence[providerKey],
   );
+  const expectedCounts =
+    readerSummaryProductionRecoveryExpectedProviderCounts[
+      day.requestedUtcDate
+    ];
   for (const providerKey of readerSummaryProductionRecoveryProviderKeys) {
     if (
       providerCounts[providerKey] !==
         day.providerEvidence[providerKey].length ||
-      providerCounts[providerKey] < 1
+      providerCounts[providerKey] !== expectedCounts[providerKey]
     ) {
       throw new Error(
         `Reader summary production recovery ${day.requestedUtcDate} provider counts are not exact`,
@@ -241,11 +246,13 @@ const dayPlan = (
   }
   const githubRows = day.providerEvidence["github-trending-page"];
   if (
-    day.githubEvidence.mode !== "verified_existing" ||
-      githubRows.length !== day.githubEvidence.evidenceCount ||
-      day.planSha256s[0] !== day.canonicalSha256 ||
-      day.planSha256s[1] !== day.canonicalSha256 ||
-      githubRows.some((row) => row.github === undefined)
+    githubRows.length !== day.githubEvidence.evidenceCount ||
+    day.planSha256s[0] !== day.canonicalSha256 ||
+    day.planSha256s[1] !== day.canonicalSha256 ||
+    githubRows.some((row) => row.github === undefined) ||
+    (day.requestedUtcDate === "2026-07-23"
+      ? day.githubEvidence.mode !== "historical_unavailable"
+      : day.githubEvidence.mode !== "verified_existing")
   ) {
     throw new Error(
       `Reader summary production recovery ${day.requestedUtcDate} requires two identical plan hashes and verified existing GitHub evidence`,
@@ -325,6 +332,9 @@ const verifiedGitHubSupplementalEvidence = async (params: {
   period: ReaderSummaryPeriod;
   githubProjectionReader: ReaderSummaryGitHubProjectionReaderPort;
 }): Promise<readonly SummaryEvidenceItem[]> => {
+  if (params.day.githubEvidence.mode === "historical_unavailable") {
+    return [];
+  }
   const projection = await params.githubProjectionReader.read({
     tenantId: tenantId(params.binding.tenantId),
     workspaceId: workspaceId(params.binding.workspaceId),

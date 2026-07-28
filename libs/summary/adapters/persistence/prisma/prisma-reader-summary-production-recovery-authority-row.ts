@@ -11,6 +11,18 @@ import {
   type ReaderSummaryProductionRecoveryProviderKey,
   type ReaderSummaryProductionRecoveryRequestedUtcDate,
 } from "../../../ports/reader-summary-production-recovery-authority.port";
+import {
+  canonicalProductionRecoveryTimestamp,
+  exactRecoveryIdentity,
+  exactRecoveryPositiveInteger,
+  exactRecoveryRecord,
+  exactRecoverySha256,
+  exactRecoveryText,
+  exactRecoveryUuid,
+  failProductionRecovery,
+  productionRecoveryExpectedCounts,
+  productionRecoveryIdentity,
+} from "./prisma-reader-summary-production-recovery-authority-row-primitives";
 
 export type ProductionRecoveryScopeRow = Readonly<{
   tenantId: string;
@@ -54,20 +66,19 @@ export const buildProductionRecoveryAuthorityBinding = (params: {
   readonly scope: ProductionRecoveryScopeRow;
   readonly rows: readonly ProductionRecoveryEvidenceRow[];
 }): ReaderSummaryProductionRecoveryAuthorityBinding => {
-  const tenantId = exactUuid(params.scope.tenantId, "tenant id");
-  const workspaceId = exactUuid(params.scope.workspaceId, "workspace id");
-  const issuedAt = exactDate(params.scope.issuedAt, "authority timestamp");
-  const identityRecord = {
-    schemaVersion: "reader_summary.production_recovery_identity.v2",
+  const tenantId = exactRecoveryUuid(params.scope.tenantId, "tenant id");
+  const workspaceId = exactRecoveryUuid(
+    params.scope.workspaceId,
+    "workspace id",
+  );
+  const issuedAt = canonicalProductionRecoveryTimestamp(
+    params.scope.issuedAt,
+    "authority timestamp",
+  );
+  const { identity, recoveryId } = productionRecoveryIdentity({
     tenantId,
     workspaceId,
-    requestedUtcDates: readerSummaryProductionRecoveryRequestedUtcDates,
-  };
-  const identitySha256 =
-    canonicalizeReaderSummaryWeeklyJson(identityRecord).sha256;
-  const recoveryId = recoveryUuid(identitySha256);
-  const identity =
-    `reader_summary.production_recovery.v2:${identitySha256}`;
+  });
   const seenFeedIds = new Set<string>();
   const seenSourceIds = new Set<string>();
   const days = readerSummaryProductionRecoveryRequestedUtcDates.map((date) =>
@@ -79,6 +90,7 @@ export const buildProductionRecoveryAuthorityBinding = (params: {
       rows: params.rows.filter((row) => row.requestedUtcDate === date),
       seenFeedIds,
       seenSourceIds,
+      issuedAt: params.scope.issuedAt,
     }),
   ) as unknown as ReaderSummaryProductionRecoveryAuthorityBinding["days"];
   if (
@@ -93,7 +105,9 @@ export const buildProductionRecoveryAuthorityBinding = (params: {
       0,
     )
   ) {
-    fail("contains evidence outside the exact Jul24-Jul27 scope");
+    failProductionRecovery(
+      "contains evidence outside the exact Jul23-Jul26 scope",
+    );
   }
   const canonicalRecord = {
     schemaVersion: "reader_summary.production_recovery_authority.v2",
@@ -136,12 +150,13 @@ export const verifyPersistedProductionRecoveryAuthority = (
   input: unknown,
   expectedSha256: string,
 ): ReaderSummaryProductionRecoveryAuthorityBinding => {
-  const binding = exactRecord(input, "persisted authority") as
+  const binding = exactRecoveryRecord(input, "persisted authority") as
     unknown as ReaderSummaryProductionRecoveryAuthorityBinding;
   if (
     binding.schemaVersion !==
       "reader_summary.production_recovery_authority.v2" ||
-    binding.canonicalSha256 !== exactSha256(expectedSha256, "authority hash") ||
+    binding.canonicalSha256 !==
+      exactRecoverySha256(expectedSha256, "authority hash") ||
     binding.dryRunCanonicalSha256s?.length !== 2 ||
     binding.dryRunCanonicalSha256s[0] !== binding.canonicalSha256 ||
     binding.dryRunCanonicalSha256s[1] !== binding.canonicalSha256 ||
@@ -155,7 +170,7 @@ export const verifyPersistedProductionRecoveryAuthority = (
       JSON.stringify(readerSummaryProductionRecoveryRequestedUtcDates) ||
     binding.days?.length !== 4
   ) {
-    fail("persisted authority diverged");
+    failProductionRecovery("persisted authority diverged");
   }
   const rebuilt = buildProductionRecoveryAuthorityBinding({
     scope: {
@@ -172,7 +187,7 @@ export const verifyPersistedProductionRecoveryAuthority = (
     ),
   });
   if (!persistedAuthoritySealMatches(rebuilt, binding)) {
-    fail("persisted authority seal diverged");
+    failProductionRecovery("persisted authority seal diverged");
   }
   return rebuilt;
 };
@@ -233,6 +248,7 @@ const buildDay = (params: {
   readonly rows: readonly ProductionRecoveryEvidenceRow[];
   readonly seenFeedIds: Set<string>;
   readonly seenSourceIds: Set<string>;
+  readonly issuedAt: Date;
 }): ReaderSummaryProductionRecoveryDayAuthority => {
   const providerEvidence = Object.fromEntries(
     readerSummaryProductionRecoveryProviderKeys.map((providerKey) => [
@@ -251,21 +267,14 @@ const buildDay = (params: {
       count: providerEvidence[providerKey].length,
     }),
   );
+  const expectedCounts = productionRecoveryExpectedCounts[params.date];
   for (const provider of providerCounts) {
-    if (provider.count === 0) {
-      fail(`${params.date} ${provider.providerKey} collection is unavailable`);
+    const expected = expectedCounts[provider.providerKey];
+    if (provider.count !== expected) {
+      failProductionRecovery(
+        `${params.date} ${provider.providerKey} requires ${expected} DB rows (found ${provider.count})`,
+      );
     }
-  }
-  const hackerNewsCount = providerEvidence["hacker-news"].length;
-  const redditCount = providerEvidence.reddit.length;
-  if (hackerNewsCount !== 100 || redditCount !== 100) {
-    const prefix =
-      params.date === "2026-07-27"
-        ? "Jul27 fails closed:"
-        : `${params.date} is incomplete:`;
-    fail(
-      `${prefix} Hacker News and Reddit require 100 items each (found ${hackerNewsCount}/${redditCount})`,
-    );
   }
   const evidenceDigests = readerSummaryProductionRecoveryProviderKeys.map(
     (providerKey) => ({
@@ -279,18 +288,38 @@ const buildDay = (params: {
   const providerEvidenceSha256 =
     canonicalizeReaderSummaryWeeklyJson(evidenceDigests).sha256;
   const githubRows = providerEvidence["github-trending-page"];
-  const githubEvidence = {
-    schemaVersion:
-      "reader_summary.production_recovery_github_evidence.v2" as const,
-    mode: "verified_existing" as const,
-    providerKey: "github-trending-page" as const,
-    requestedUtcDate: params.date,
-    evidenceCount: githubRows.length,
-    evidenceSha256: evidenceDigests[0]!.sha256,
-    scanJobIds: [
-      ...new Set(githubRows.map((row) => row.github!.scanJobId)),
-    ].sort(),
-  };
+  const githubEvidence =
+    params.date === "2026-07-23"
+      ? {
+          schemaVersion:
+            "reader_summary.production_recovery_github_evidence.v2" as const,
+          mode: "historical_unavailable" as const,
+          providerKey: "github-trending-page" as const,
+          requestedUtcDate: "2026-07-23" as const,
+          evidenceCount: 0 as const,
+          authorization: {
+            authorizationId:
+              "reader_summary.production_recovery.github.2026-07-23.v2" as const,
+            authorizedAt: canonicalProductionRecoveryTimestamp(
+              params.issuedAt,
+              "authority timestamp",
+            ),
+            reason:
+              "Historical GitHub trending evidence was not collected for this UTC day; this reviewed recovery records an explicit unavailable marker and uses no substitute data.",
+          },
+        }
+      : {
+          schemaVersion:
+            "reader_summary.production_recovery_github_evidence.v2" as const,
+          mode: "verified_existing" as const,
+          providerKey: "github-trending-page" as const,
+          requestedUtcDate: params.date,
+          evidenceCount: 10 as const,
+          evidenceSha256: evidenceDigests[0]!.sha256,
+          scanJobIds: [
+            ...new Set(githubRows.map((row) => row.github!.scanJobId)),
+          ].sort(),
+        };
   const period = {
     startedAt: `${params.date}T00:00:00.000Z`,
     endedAt: new Date(
@@ -335,13 +364,13 @@ const exactEvidence = (
     "date" | "seenFeedIds" | "seenSourceIds"
   >,
 ): ReaderSummaryProductionRecoveryEvidence => {
-  const feedItemId = exactUuid(row.feedItemId, "feed item id");
-  const sourceItemId = exactUuid(row.sourceItemId, "source item id");
+  const feedItemId = exactRecoveryUuid(row.feedItemId, "feed item id");
+  const sourceItemId = exactRecoveryUuid(row.sourceItemId, "source item id");
   if (
     state.seenFeedIds.has(feedItemId) ||
     state.seenSourceIds.has(sourceItemId)
   ) {
-    fail("evidence is duplicated across recovery dates");
+    failProductionRecovery("evidence is duplicated across recovery dates");
   }
   state.seenFeedIds.add(feedItemId);
   state.seenSourceIds.add(sourceItemId);
@@ -349,23 +378,46 @@ const exactEvidence = (
     providerKey,
     feedItemId,
     sourceItemId,
-    sourceBindingId: exactUuid(row.sourceBindingId, "source binding id"),
-    interestId: exactUuid(row.interestId, "interest id"),
-    providerItemId: exactIdentity(row.providerItemId, "provider item id"),
-    canonicalUrl: exactIdentity(row.canonicalUrl, "canonical URL"),
-    title: exactIdentity(row.title, "title"),
-    bodyPreview: exactText(row.bodyPreview, "body preview"),
-    sourceText: exactText(row.sourceText, "source text"),
+    sourceBindingId: exactRecoveryUuid(
+      row.sourceBindingId,
+      "source binding id",
+    ),
+    interestId: exactRecoveryUuid(row.interestId, "interest id"),
+    providerItemId: exactRecoveryIdentity(
+      row.providerItemId,
+      "provider item id",
+    ),
+    canonicalUrl: exactRecoveryIdentity(row.canonicalUrl, "canonical URL"),
+    title: exactRecoveryIdentity(row.title, "title"),
+    bodyPreview: exactRecoveryText(row.bodyPreview, "body preview"),
+    sourceText: exactRecoveryText(row.sourceText, "source text"),
     ...(row.authorHandle === null
       ? {}
-      : { authorHandle: exactIdentity(row.authorHandle, "author handle") }),
-    sourceContentHash: exactSha256(row.sourceContentHash, "content hash"),
+      : {
+          authorHandle: exactRecoveryIdentity(
+            row.authorHandle,
+            "author handle",
+          ),
+        }),
+    sourceContentHash: exactRecoverySha256(
+      row.sourceContentHash,
+      "content hash",
+    ),
     sourceProviderContentHash:
       row.sourceProviderContentHash === null
         ? null
-        : exactSha256(row.sourceProviderContentHash, "provider content hash"),
-    publishedAt: exactDate(row.publishedAt, "published timestamp"),
-    observedAt: exactDate(row.observedAt, "observed timestamp"),
+        : exactRecoverySha256(
+            row.sourceProviderContentHash,
+            "provider content hash",
+          ),
+    publishedAt: canonicalProductionRecoveryTimestamp(
+      row.publishedAt,
+      "published timestamp",
+    ),
+    observedAt: canonicalProductionRecoveryTimestamp(
+      row.observedAt,
+      "observed timestamp",
+    ),
   };
   if (providerKey !== "github-trending-page") {
     return evidence;
@@ -378,23 +430,28 @@ const exactEvidence = (
     row.githubRank === null ||
     row.githubCheckedAt === null
   ) {
-    fail(`${state.date} GitHub evidence lacks completed collection proof`);
+    failProductionRecovery(
+      `${state.date} GitHub evidence lacks completed collection proof`,
+    );
   }
   return {
     ...evidence,
     github: {
-      resultId: exactUuid(row.githubResultId, "GitHub result id"),
-      scanJobId: exactUuid(row.githubScanJobId, "GitHub scan job id"),
-      scanAttemptNumber: exactPositiveInteger(
+      resultId: exactRecoveryUuid(row.githubResultId, "GitHub result id"),
+      scanJobId: exactRecoveryUuid(row.githubScanJobId, "GitHub scan job id"),
+      scanAttemptNumber: exactRecoveryPositiveInteger(
         row.githubAttemptNumber,
         "GitHub attempt",
       ),
-      repositoryIdentity: exactIdentity(
+      repositoryIdentity: exactRecoveryIdentity(
         row.githubRepositoryIdentity,
         "GitHub repository",
       ),
-      rank: exactPositiveInteger(row.githubRank, "GitHub rank"),
-      checkedAt: exactDate(row.githubCheckedAt, "GitHub checked timestamp"),
+      rank: exactRecoveryPositiveInteger(row.githubRank, "GitHub rank"),
+      checkedAt: canonicalProductionRecoveryTimestamp(
+        row.githubCheckedAt,
+        "GitHub checked timestamp",
+      ),
     },
   };
 };
@@ -427,72 +484,3 @@ const evidenceToRow = (
   githubCheckedAt:
     evidence.github === undefined ? null : new Date(evidence.github.checkedAt),
 });
-
-const exactRecord = (
-  input: unknown,
-  label: string,
-): Readonly<Record<string, unknown>> => {
-  if (typeof input !== "object" || input === null || Array.isArray(input)) {
-    fail(`${label} is invalid`);
-  }
-  return input as Readonly<Record<string, unknown>>;
-};
-
-const exactIdentity = (input: unknown, label: string): string => {
-  if (
-    typeof input !== "string" ||
-    input.length === 0 ||
-    input.length > 4_096 ||
-    input !== input.trim()
-  ) {
-    fail(`${label} is invalid`);
-  }
-  return input as string;
-};
-
-const exactText = (input: unknown, label: string): string => {
-  if (typeof input !== "string" || input.length > 1_000_000) {
-    fail(`${label} is invalid`);
-  }
-  return input as string;
-};
-
-export const exactUuid = (input: unknown, label: string): string => {
-  const value = exactIdentity(input, label);
-  if (
-    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(
-      value,
-    )
-  ) {
-    fail(`${label} is invalid`);
-  }
-  return value;
-};
-
-export const recoveryUuid = (sha256: string): string =>
-  `${sha256.slice(0, 8)}-${sha256.slice(8, 12)}-5${sha256.slice(13, 16)}-8${sha256.slice(17, 20)}-${sha256.slice(20, 32)}`;
-
-const exactSha256 = (input: unknown, label: string): string => {
-  if (typeof input !== "string" || !/^[0-9a-f]{64}$/u.test(input)) {
-    fail(`${label} is invalid`);
-  }
-  return input as string;
-};
-
-const exactPositiveInteger = (input: unknown, label: string): number => {
-  if (!Number.isSafeInteger(input) || Number(input) < 1) {
-    fail(`${label} is invalid`);
-  }
-  return Number(input);
-};
-
-const exactDate = (input: unknown, label: string): string => {
-  if (!(input instanceof Date) || !Number.isFinite(input.getTime())) {
-    fail(`${label} is invalid`);
-  }
-  return (input as Date).toISOString();
-};
-
-const fail = (reason: string): never => {
-  throw new Error(`Reader summary production recovery ${reason}`);
-};

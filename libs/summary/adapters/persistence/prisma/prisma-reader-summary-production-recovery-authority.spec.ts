@@ -15,7 +15,7 @@ import {
 import type { PrismaSummaryClient } from "./prisma-summary-client";
 
 describe("PrismaReaderSummaryProductionRecoveryAuthority", () => {
-  it("persists a DB-derived Jul24-Jul27 authority with two hashes per day", async () => {
+  it("persists a DB-derived Jul23-Jul26 authority with two hashes per day", async () => {
     const prisma = new FakeProductionRecoveryPrisma();
     const adapter = new PrismaReaderSummaryProductionRecoveryAuthority(
       prisma as unknown as PrismaSummaryClient,
@@ -26,10 +26,10 @@ describe("PrismaReaderSummaryProductionRecoveryAuthority", () => {
 
     expect(result.outcome).toBe("prepared");
     expect(binding.requestedUtcDates).toEqual([
+      "2026-07-23",
       "2026-07-24",
       "2026-07-25",
       "2026-07-26",
-      "2026-07-27",
     ]);
     expect(
       binding.days.every(
@@ -40,12 +40,14 @@ describe("PrismaReaderSummaryProductionRecoveryAuthority", () => {
     ).toBe(true);
     expect(
       prisma.calls.filter((call) =>
-        call.sql.includes('FROM "feed_items" AS feed'),
+        call.sql.includes('AS "requestedUtcDate"'),
       ),
     ).toHaveLength(2);
     expect(
       prisma.calls.filter((call) =>
-        call.sql.startsWith('INSERT INTO "idempotency_keys"'),
+        call.sql.includes(
+          '"persist_reader_summary_production_recovery_v2"',
+        ),
       ),
     ).toHaveLength(1);
   });
@@ -65,7 +67,9 @@ describe("PrismaReaderSummaryProductionRecoveryAuthority", () => {
     });
     expect(
       prisma.calls.some((call) =>
-        call.sql.startsWith('INSERT INTO "idempotency_keys"'),
+        call.sql.includes(
+          '"persist_reader_summary_production_recovery_v2"',
+        ),
       ),
     ).toBe(false);
     expect(
@@ -73,13 +77,43 @@ describe("PrismaReaderSummaryProductionRecoveryAuthority", () => {
         call.sql.includes('FROM "feed_items" AS feed'),
       ),
     ).toBe(false);
+    const authorityRead = prisma.calls.find(
+      (call) =>
+        call.sql.includes(
+          'FROM "reader_summary_production_recovery_leases"',
+        ) && call.sql.includes('"responsePayload"'),
+    );
+    expect(authorityRead?.sql).toBeDefined();
+    expect(authorityRead?.sql).not.toContain("FOR SHARE");
   });
 
-  it("fails closed for unauthorized Jul27 HN87/Reddit99 before persisting", async () => {
+  it("uses one millisecond-canonical lease timestamp for issue and consumption", async () => {
+    const prisma = new FakeProductionRecoveryPrisma();
+    const adapter = new PrismaReaderSummaryProductionRecoveryAuthority(
+      prisma as unknown as PrismaSummaryClient,
+    );
+
+    const result = await adapter.prepare();
+    const binding = adapter.readVerifiedBinding(result.authority);
+
+    expect(binding.lease).toEqual({
+      state: "CONSUMED",
+      issuedAt: "2026-07-28T12:00:00.000Z",
+      consumedAt: "2026-07-28T12:00:00.000Z",
+    });
+    expect(
+      prisma.calls.some(
+        (call) =>
+          call.sql.includes("date_trunc( 'milliseconds'") &&
+          call.sql.includes('AS "issuedAt"'),
+      ),
+    ).toBe(true);
+  });
+
+  it("fails closed for the rejected Jul24 RSS68 count before persisting", async () => {
     const prisma = new FakeProductionRecoveryPrisma(
       productionRecoveryEvidenceRows({
-        jul27HackerNewsCount: 87,
-        jul27RedditCount: 99,
+        jul24RssCount: 68,
       }),
     );
     const adapter = new PrismaReaderSummaryProductionRecoveryAuthority(
@@ -87,7 +121,7 @@ describe("PrismaReaderSummaryProductionRecoveryAuthority", () => {
     );
 
     await expect(adapter.prepare()).rejects.toThrow(
-      "Jul27 fails closed: Hacker News and Reddit require 100 items each (found 87/99)",
+      "2026-07-24 rss requires 67 DB rows (found 68)",
     );
     expect(prisma.persisted).toBeUndefined();
   });

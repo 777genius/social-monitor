@@ -7,10 +7,10 @@ export const readerSummaryProductionRecoveryProviderKeys = [
 ] as const;
 
 export const readerSummaryProductionRecoveryRequestedUtcDates = [
+  "2026-07-23",
   "2026-07-24",
   "2026-07-25",
   "2026-07-26",
-  "2026-07-27",
 ] as const;
 
 export type ReaderSummaryProductionRecoveryProviderKey =
@@ -18,6 +18,43 @@ export type ReaderSummaryProductionRecoveryProviderKey =
 
 export type ReaderSummaryProductionRecoveryRequestedUtcDate =
   (typeof readerSummaryProductionRecoveryRequestedUtcDates)[number];
+
+export const readerSummaryProductionRecoveryExpectedProviderCounts =
+  Object.freeze({
+    "2026-07-23": Object.freeze({
+      "github-trending-page": 0,
+      "hacker-news": 100,
+      reddit: 100,
+      rss: 75,
+      "x-twitter": 67,
+    }),
+    "2026-07-24": Object.freeze({
+      "github-trending-page": 10,
+      "hacker-news": 100,
+      reddit: 100,
+      rss: 67,
+      "x-twitter": 73,
+    }),
+    "2026-07-25": Object.freeze({
+      "github-trending-page": 10,
+      "hacker-news": 100,
+      reddit: 100,
+      rss: 62,
+      "x-twitter": 96,
+    }),
+    "2026-07-26": Object.freeze({
+      "github-trending-page": 10,
+      "hacker-news": 78,
+      reddit: 100,
+      rss: 59,
+      "x-twitter": 94,
+    }),
+  }) satisfies Readonly<
+    Record<
+      ReaderSummaryProductionRecoveryRequestedUtcDate,
+      Readonly<Record<ReaderSummaryProductionRecoveryProviderKey, number>>
+    >
+  >;
 
 export type ReaderSummaryProductionRecoveryProviderCount = Readonly<{
   providerKey: ReaderSummaryProductionRecoveryProviderKey;
@@ -50,15 +87,31 @@ export type ReaderSummaryProductionRecoveryEvidence = Readonly<{
   }>;
 }>;
 
-export type ReaderSummaryProductionRecoveryGitHubEvidence = Readonly<{
-  schemaVersion: "reader_summary.production_recovery_github_evidence.v2";
-  mode: "verified_existing";
-  providerKey: "github-trending-page";
-  requestedUtcDate: ReaderSummaryProductionRecoveryRequestedUtcDate;
-  evidenceCount: number;
-  evidenceSha256: string;
-  scanJobIds: readonly string[];
-}>;
+export type ReaderSummaryProductionRecoveryGitHubEvidence =
+  | Readonly<{
+      schemaVersion: "reader_summary.production_recovery_github_evidence.v2";
+      mode: "historical_unavailable";
+      providerKey: "github-trending-page";
+      requestedUtcDate: "2026-07-23";
+      evidenceCount: 0;
+      authorization: Readonly<{
+        authorizationId: "reader_summary.production_recovery.github.2026-07-23.v2";
+        authorizedAt: string;
+        reason: string;
+      }>;
+    }>
+  | Readonly<{
+      schemaVersion: "reader_summary.production_recovery_github_evidence.v2";
+      mode: "verified_existing";
+      providerKey: "github-trending-page";
+      requestedUtcDate: Exclude<
+        ReaderSummaryProductionRecoveryRequestedUtcDate,
+        "2026-07-23"
+      >;
+      evidenceCount: 10;
+      evidenceSha256: string;
+      scanJobIds: readonly string[];
+    }>;
 
 export type ReaderSummaryProductionRecoveryDayAuthority = Readonly<{
   schemaVersion: "reader_summary.production_recovery_day.v2";

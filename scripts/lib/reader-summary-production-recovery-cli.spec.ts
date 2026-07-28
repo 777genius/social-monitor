@@ -82,16 +82,16 @@ describe("reader summary production recovery", () => {
 
     expect(result.outcome).toBe("applied");
     expect(seen).toEqual([
+      "2026-07-23",
       "2026-07-24",
       "2026-07-25",
       "2026-07-26",
-      "2026-07-27",
     ]);
   });
 
   it("does not execute a date with an existing durable claim", async () => {
     const executionGuard = guard((date) =>
-      date === "2026-07-25" ? "replayed" : "execute",
+      date === "2026-07-24" ? "replayed" : "execute",
     );
     const executed: string[] = [];
 
@@ -106,14 +106,14 @@ describe("reader summary production recovery", () => {
     });
 
     expect(executed).toEqual([
-      "2026-07-24",
+      "2026-07-23",
+      "2026-07-25",
       "2026-07-26",
-      "2026-07-27",
     ]);
     expect(result.dayResults[1]?.outcome).toBe("replayed");
   });
 
-  it("discovers only a complete Jul24-Jul27 visible scope", async () => {
+  it("discovers only a complete Jul23-Jul26 visible scope", async () => {
     let sql = "";
     const scope = await discoverReaderSummaryProductionRecoveryScope({
       $queryRaw: async <T>(strings: TemplateStringsArray): Promise<T> => {
@@ -128,9 +128,9 @@ describe("reader summary production recovery", () => {
     });
 
     expect(scope.tenantId).toContain("10000000");
-    expect(sql).toContain("date '2026-07-24'");
-    expect(sql).toContain("date '2026-07-27'");
-    expect(sql).toContain("= 100");
+    expect(sql).toContain("date '2026-07-23'");
+    expect(sql).toContain("date '2026-07-26'");
+    expect(sql).toContain("'hacker-news', 100");
     expect(sql).not.toContain("source_items");
   });
 
@@ -236,7 +236,7 @@ describe("reader summary production recovery", () => {
     await expect(
       executionGuard.claim({
         binding,
-        requestedUtcDate: "2026-07-27",
+        requestedUtcDate: "2026-07-26",
       }),
     ).resolves.toBe("execute");
     expect(calls[2]).toContain('INSERT INTO "idempotency_keys"');

@@ -3,6 +3,9 @@ import {
   type ProductionRecoveryEvidenceRow,
   type ProductionRecoveryScopeRow,
 } from "./prisma-reader-summary-production-recovery-authority-row";
+import {
+  productionRecoveryExpectedCounts,
+} from "./prisma-reader-summary-production-recovery-authority-row-primitives";
 
 export const fixtureScope: ProductionRecoveryScopeRow = {
   tenantId: "10000000-0000-4000-8000-000000000001",
@@ -11,28 +14,45 @@ export const fixtureScope: ProductionRecoveryScopeRow = {
 };
 
 export const productionRecoveryEvidenceRows = (params?: {
-  readonly jul27HackerNewsCount?: number;
-  readonly jul27RedditCount?: number;
+  readonly jul24RssCount?: number;
 }): readonly ProductionRecoveryEvidenceRow[] => {
   let ordinal = 0;
-  return ["2026-07-24", "2026-07-25", "2026-07-26", "2026-07-27"]
+  return ["2026-07-23", "2026-07-24", "2026-07-25", "2026-07-26"]
     .flatMap((date) =>
       [
-        ["github-trending-page", 2],
+        [
+          "github-trending-page",
+          productionRecoveryExpectedCounts[
+            date as keyof typeof productionRecoveryExpectedCounts
+          ]["github-trending-page"],
+        ],
         [
           "hacker-news",
-          date === "2026-07-27"
-            ? (params?.jul27HackerNewsCount ?? 100)
-            : 100,
+          productionRecoveryExpectedCounts[
+            date as keyof typeof productionRecoveryExpectedCounts
+          ]["hacker-news"],
         ],
         [
           "reddit",
-          date === "2026-07-27"
-            ? (params?.jul27RedditCount ?? 100)
-            : 100,
+          productionRecoveryExpectedCounts[
+            date as keyof typeof productionRecoveryExpectedCounts
+          ].reddit,
         ],
-        ["rss", 2],
-        ["x-twitter", 2],
+        [
+          "rss",
+          date === "2026-07-24"
+            ? (params?.jul24RssCount ??
+              productionRecoveryExpectedCounts["2026-07-24"].rss)
+            : productionRecoveryExpectedCounts[
+                date as keyof typeof productionRecoveryExpectedCounts
+              ].rss,
+        ],
+        [
+          "x-twitter",
+          productionRecoveryExpectedCounts[
+            date as keyof typeof productionRecoveryExpectedCounts
+          ]["x-twitter"],
+        ],
       ].flatMap(([providerKey, count]) =>
         Array.from({ length: Number(count) }, (_, index) => {
           ordinal += 1;
@@ -81,26 +101,35 @@ export class FakeProductionRecoveryPrisma {
     const sql = strings.join("?").replace(/\s+/gu, " ").trim();
     this.calls.push({ sql, values });
     if (
-      sql.includes('FROM "idempotency_keys"') &&
-      sql.includes('"response_payload" AS "responsePayload"')
+      sql.includes('FROM "reader_summary_production_recovery_leases"') &&
+      sql.includes('"responsePayload"')
     ) {
       return (this.persisted === undefined ? [] : [this.persisted]) as T;
     }
-    if (sql.includes("transaction_timestamp() AS \"issuedAt\"")) {
+    if (
+      sql.includes("transaction_timestamp()") &&
+      sql.includes('AS "issuedAt"')
+    ) {
       return [fixtureScope] as T;
+    }
+    if (sql.includes('FROM "tenants" AS tenant')) {
+      return [{ id: fixtureScope.tenantId }] as T;
+    }
+    if (sql.endsWith("FOR SHARE")) {
+      return [] as T;
     }
     if (sql.includes('FROM "feed_items" AS feed')) {
       return this.evidenceRows as T;
     }
-    if (sql.startsWith('INSERT INTO "idempotency_keys"')) {
-      const binding = JSON.parse(String(values[6])) as {
+    if (sql.includes('"persist_reader_summary_production_recovery_v2"')) {
+      const binding = JSON.parse(String(values[0])) as {
         readonly canonicalSha256: string;
       };
       this.persisted = {
         requestHash: binding.canonicalSha256,
         responsePayload: binding,
       };
-      return [{ inserted: true }] as T;
+      return [{ persisted: true }] as T;
     }
     if (sql.includes('FROM jsonb_to_recordset')) {
       return [{ finalizedCount: this.finalizedCount }] as T;

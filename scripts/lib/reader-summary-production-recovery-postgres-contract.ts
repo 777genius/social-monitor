@@ -90,8 +90,8 @@ export const seedReaderSummaryProductionRecoveryFixture = async (
       day::DATE AS requested_date,
       row_number() OVER (ORDER BY day)::INTEGER AS day_number
     FROM generate_series(
-      DATE '2026-07-24',
-      DATE '2026-07-27',
+      DATE '2026-07-23',
+      DATE '2026-07-26',
       INTERVAL '1 day'
     ) AS days(day);
 
@@ -114,7 +114,8 @@ export const seedReaderSummaryProductionRecoveryFixture = async (
       requested_date::TIMESTAMP AT TIME ZONE 'UTC' + INTERVAL '12 hours',
       requested_date::TIMESTAMP AT TIME ZONE 'UTC' + INTERVAL '10 hours',
       requested_date::TIMESTAMP AT TIME ZONE 'UTC' + INTERVAL '12 hours'
-    FROM recovery_days;
+    FROM recovery_days
+    WHERE requested_date > DATE '2026-07-23';
 
     INSERT INTO scan_attempts (
       scan_job_id, tenant_id, workspace_id, source_binding_id,
@@ -129,9 +130,10 @@ export const seedReaderSummaryProductionRecoveryFixture = async (
       1, 'SUCCEEDED',
       requested_date::TIMESTAMP AT TIME ZONE 'UTC' + INTERVAL '10 hours',
       requested_date::TIMESTAMP AT TIME ZONE 'UTC' + INTERVAL '12 hours',
-      2, 2, 0, 2,
+      10, 10, 0, 10,
       requested_date::TIMESTAMP AT TIME ZONE 'UTC' + INTERVAL '12 hours'
-    FROM recovery_days;
+    FROM recovery_days
+    WHERE requested_date > DATE '2026-07-23';
 
     CREATE TEMP TABLE recovery_items ON COMMIT DROP AS
     SELECT
@@ -144,12 +146,38 @@ export const seedReaderSummaryProductionRecoveryFixture = async (
       provider.ordinal AS provider_number,
       position
     FROM recovery_days AS day
-    CROSS JOIN (VALUES
-      (1, 'github-trending-page', 2),
-      (2, 'hacker-news', 100),
+    CROSS JOIN LATERAL (VALUES
+      (
+        1,
+        'github-trending-page',
+        CASE WHEN day.requested_date = DATE '2026-07-23' THEN 0 ELSE 10 END
+      ),
+      (
+        2,
+        'hacker-news',
+        CASE WHEN day.requested_date = DATE '2026-07-26' THEN 78 ELSE 100 END
+      ),
       (3, 'reddit', 100),
-      (4, 'rss', 2),
-      (5, 'x-twitter', 2)
+      (
+        4,
+        'rss',
+        CASE day.requested_date
+          WHEN DATE '2026-07-23' THEN 75
+          WHEN DATE '2026-07-24' THEN 67
+          WHEN DATE '2026-07-25' THEN 62
+          ELSE 59
+        END
+      ),
+      (
+        5,
+        'x-twitter',
+        CASE day.requested_date
+          WHEN DATE '2026-07-23' THEN 67
+          WHEN DATE '2026-07-24' THEN 73
+          WHEN DATE '2026-07-25' THEN 96
+          ELSE 94
+        END
+      )
     ) AS provider(ordinal, provider_key, item_count)
     CROSS JOIN LATERAL
       generate_series(1, provider.item_count) AS positions(position);
@@ -278,6 +306,7 @@ export const assertReaderSummaryProductionRecoveryPostgresContract =
     first: RecoveryPostgresClient;
     second: RecoveryPostgresClient;
   }>): Promise<void> => {
+    await assertRecoveryAuthorityRuntimePrivileges(params.first);
     const firstClient = new PgPrismaClient(params.first);
     const secondClient = new PgPrismaClient(params.second);
     const firstAuthority = new PrismaReaderSummaryProductionRecoveryAuthority(
@@ -296,6 +325,31 @@ export const assertReaderSummaryProductionRecoveryPostgresContract =
     assert(
       leftBinding.canonicalSha256 === rightBinding.canonicalSha256,
       "concurrent authority callers diverged",
+    );
+    assert(
+      leftBinding.lease.issuedAt === leftBinding.lease.consumedAt &&
+        leftBinding.lease.issuedAt === rightBinding.lease.issuedAt &&
+        /\.[0-9]{3}Z$/u.test(leftBinding.lease.issuedAt),
+      "production recovery lease timestamp was not canonical and stable",
+    );
+    assert(
+      JSON.stringify(
+        leftBinding.days.map((day) => [
+          day.requestedUtcDate,
+          day.providerCounts.reduce(
+            (total, provider) => total + provider.count,
+            0,
+          ),
+          day.githubEvidence.mode,
+        ]),
+      ) ===
+        JSON.stringify([
+          ["2026-07-23", 342, "historical_unavailable"],
+          ["2026-07-24", 350, "verified_existing"],
+          ["2026-07-25", 368, "verified_existing"],
+          ["2026-07-26", 341, "verified_existing"],
+        ]),
+      "production recovery immutable daily counts diverged",
     );
     assert(
       leftBinding.days.every(
@@ -337,6 +391,64 @@ export const assertReaderSummaryProductionRecoveryPostgresContract =
       "claim replay performed a write",
     );
   };
+
+const assertRecoveryAuthorityRuntimePrivileges = async (
+  client: RecoveryPostgresClient,
+): Promise<void> => {
+  const result = await client.query<{
+    readonly exact_function_execute: boolean;
+    readonly least_privilege_tables: boolean;
+  }>(`
+    SELECT
+      has_function_privilege(
+        current_user,
+        'persist_reader_summary_production_recovery_v2(jsonb)',
+        'EXECUTE'
+      )
+      AND NOT has_function_privilege(
+        current_user,
+        'reader_summary_production_recovery_expected_counts_v2(date)',
+        'EXECUTE'
+      ) AS exact_function_execute,
+      bool_and(
+        has_any_column_privilege(current_user, authority_table, 'SELECT')
+        AND NOT has_table_privilege(
+          current_user,
+          authority_table,
+          'SELECT'
+        )
+        AND NOT has_any_column_privilege(
+          current_user,
+          authority_table,
+          'INSERT'
+        )
+        AND NOT has_any_column_privilege(
+          current_user,
+          authority_table,
+          'UPDATE'
+        )
+        AND NOT has_table_privilege(
+          current_user,
+          authority_table,
+          'DELETE, TRUNCATE, REFERENCES, TRIGGER'
+        )
+      ) AS least_privilege_tables
+    FROM unnest(ARRAY[
+      'reader_summary_production_recovery_leases',
+      'reader_summary_production_recovery_days',
+      'reader_summary_production_recovery_dry_runs'
+    ]) AS authority(authority_table)
+  `);
+  const privileges = result.rows[0];
+  assert(
+    privileges?.exact_function_execute === true,
+    "production recovery runtime function ACL diverged",
+  );
+  assert(
+    privileges.least_privilege_tables === true,
+    "production recovery runtime table ACL diverged",
+  );
+};
 
 class PgPrismaClient {
   constructor(private readonly client: RecoveryPostgresClient) {}
@@ -381,10 +493,14 @@ const recoveryWriteCounts = async (
     jobs: number;
   }>(`
     SELECT
-      count(*) FILTER (
-        WHERE key."scope" =
-          'reader-summary-production-recovery-authority-v2'
-      )::INTEGER AS authorities,
+      (
+        SELECT count(*)::INTEGER
+        FROM reader_summary_production_recovery_leases AS lease
+        WHERE lease.tenant_id = '${tenantId}'
+          AND lease.workspace_id = '${workspaceId}'
+          AND lease.canonical_record->>'schemaVersion' =
+            'reader_summary.production_recovery_authority.v2'
+      ) AS authorities,
       count(*) FILTER (
         WHERE key."scope" =
           'reader-summary-production-recovery-model-v2'

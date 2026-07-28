@@ -178,66 +178,74 @@ export const discoverReaderSummaryProductionRecoveryScope = async (
   client: ReaderSummaryProductionRecoveryScopeDiscoveryClient,
 ): Promise<ReaderSummaryProductionRecoveryScope> => {
   const rows = await client.$queryRaw<readonly ScopeDiscoveryRow[]>`
+    WITH expected("utcDate", "providerKey", "expectedCount") AS (
+      VALUES
+        (DATE '2026-07-23', 'github-trending-page', 0),
+        (DATE '2026-07-23', 'hacker-news', 100),
+        (DATE '2026-07-23', 'reddit', 100),
+        (DATE '2026-07-23', 'rss', 75),
+        (DATE '2026-07-23', 'x-twitter', 67),
+        (DATE '2026-07-24', 'github-trending-page', 10),
+        (DATE '2026-07-24', 'hacker-news', 100),
+        (DATE '2026-07-24', 'reddit', 100),
+        (DATE '2026-07-24', 'rss', 67),
+        (DATE '2026-07-24', 'x-twitter', 73),
+        (DATE '2026-07-25', 'github-trending-page', 10),
+        (DATE '2026-07-25', 'hacker-news', 100),
+        (DATE '2026-07-25', 'reddit', 100),
+        (DATE '2026-07-25', 'rss', 62),
+        (DATE '2026-07-25', 'x-twitter', 96),
+        (DATE '2026-07-26', 'github-trending-page', 10),
+        (DATE '2026-07-26', 'hacker-news', 78),
+        (DATE '2026-07-26', 'reddit', 100),
+        (DATE '2026-07-26', 'rss', 59),
+        (DATE '2026-07-26', 'x-twitter', 94)
+    ),
+    scopes AS (
+      SELECT DISTINCT feed."tenant_id", feed."workspace_id"
+      FROM "feed_items" AS feed
+      WHERE upper(feed."status"::TEXT) = 'VISIBLE'
+        AND feed."published_at" >=
+          (DATE '2026-07-23'::TIMESTAMP AT TIME ZONE 'UTC')
+        AND feed."published_at" <
+          (DATE '2026-07-27'::TIMESTAMP AT TIME ZONE 'UTC')
+        AND feed."provider_key" = ANY(ARRAY[
+          'github-trending-page',
+          'hacker-news',
+          'reddit',
+          'rss',
+          'x-twitter'
+        ])
+    ),
+    exact_counts AS (
+      SELECT
+        scope."tenant_id",
+        scope."workspace_id",
+        expected."utcDate",
+        expected."providerKey"
+      FROM scopes AS scope
+      CROSS JOIN expected
+      LEFT JOIN "feed_items" AS feed
+        ON feed."tenant_id" = scope."tenant_id"
+        AND feed."workspace_id" = scope."workspace_id"
+        AND upper(feed."status"::TEXT) = 'VISIBLE'
+        AND feed."provider_key" = expected."providerKey"
+        AND (feed."published_at" AT TIME ZONE 'UTC')::DATE =
+          expected."utcDate"
+      GROUP BY
+        scope."tenant_id",
+        scope."workspace_id",
+        expected."utcDate",
+        expected."providerKey",
+        expected."expectedCount"
+      HAVING count(feed."id") = expected."expectedCount"
+    )
     SELECT
-      feed."tenant_id"::TEXT AS "tenantId",
-      feed."workspace_id"::TEXT AS "workspaceId"
-    FROM "feed_items" AS feed
-    WHERE upper(feed."status"::TEXT) = 'VISIBLE'
-      AND feed."provider_key" = ANY(ARRAY[
-        'github-trending-page',
-        'hacker-news',
-        'reddit',
-        'rss',
-        'x-twitter'
-      ])
-      AND feed."published_at" >=
-        (DATE '2026-07-24'::TIMESTAMP AT TIME ZONE 'UTC')
-      AND feed."published_at" <
-        (DATE '2026-07-28'::TIMESTAMP AT TIME ZONE 'UTC')
-    GROUP BY feed."tenant_id", feed."workspace_id"
-    HAVING
-      count(*) FILTER (WHERE feed."provider_key" = 'hacker-news') = 400
-      AND count(*) FILTER (WHERE feed."provider_key" = 'reddit') = 400
-      AND count(*) FILTER (
-        WHERE feed."provider_key" = 'hacker-news'
-          AND (feed."published_at" AT TIME ZONE 'UTC')::DATE =
-            DATE '2026-07-24'
-      ) = 100
-      AND count(*) FILTER (
-        WHERE feed."provider_key" = 'reddit'
-          AND (feed."published_at" AT TIME ZONE 'UTC')::DATE =
-            DATE '2026-07-24'
-      ) = 100
-      AND count(*) FILTER (
-        WHERE feed."provider_key" = 'hacker-news'
-          AND (feed."published_at" AT TIME ZONE 'UTC')::DATE =
-            DATE '2026-07-25'
-      ) = 100
-      AND count(*) FILTER (
-        WHERE feed."provider_key" = 'reddit'
-          AND (feed."published_at" AT TIME ZONE 'UTC')::DATE =
-            DATE '2026-07-25'
-      ) = 100
-      AND count(*) FILTER (
-        WHERE feed."provider_key" = 'hacker-news'
-          AND (feed."published_at" AT TIME ZONE 'UTC')::DATE =
-            DATE '2026-07-26'
-      ) = 100
-      AND count(*) FILTER (
-        WHERE feed."provider_key" = 'reddit'
-          AND (feed."published_at" AT TIME ZONE 'UTC')::DATE =
-            DATE '2026-07-26'
-      ) = 100
-      AND count(*) FILTER (
-        WHERE feed."provider_key" = 'hacker-news'
-          AND (feed."published_at" AT TIME ZONE 'UTC')::DATE =
-            DATE '2026-07-27'
-      ) = 100
-      AND count(*) FILTER (
-        WHERE feed."provider_key" = 'reddit'
-          AND (feed."published_at" AT TIME ZONE 'UTC')::DATE =
-            DATE '2026-07-27'
-      ) = 100
+      exact."tenant_id"::TEXT AS "tenantId",
+      exact."workspace_id"::TEXT AS "workspaceId"
+    FROM exact_counts AS exact
+    GROUP BY exact."tenant_id", exact."workspace_id"
+    HAVING count(*) = 20
     ORDER BY "tenantId", "workspaceId"
   `;
   if (rows.length !== 1 || rows[0] === undefined) {
@@ -284,8 +292,8 @@ const readReaderSummaryProductionRecoveryScopeDiagnostics = (
         COALESCE(upper(feed."status"::TEXT), 'UNKNOWN') AS "normalized_status",
         count(*)::INTEGER AS "count"
       FROM "feed_items" AS feed
-      WHERE feed."observed_at" >= (DATE '2026-07-24'::TIMESTAMP AT TIME ZONE 'UTC')
-        AND feed."observed_at" < (DATE '2026-07-28'::TIMESTAMP AT TIME ZONE 'UTC')
+      WHERE feed."observed_at" >= (DATE '2026-07-23'::TIMESTAMP AT TIME ZONE 'UTC')
+        AND feed."observed_at" < (DATE '2026-07-27'::TIMESTAMP AT TIME ZONE 'UTC')
         AND feed."provider_key" = ANY(ARRAY['github-trending-page','hacker-news','reddit','rss','x-twitter'])
       GROUP BY 1, 2, 3, 4, 5, 6
       UNION ALL
@@ -297,8 +305,8 @@ const readReaderSummaryProductionRecoveryScopeDiagnostics = (
         COALESCE(upper(feed."status"::TEXT), 'UNKNOWN') AS "normalized_status",
         count(*)::INTEGER AS "count"
       FROM "feed_items" AS feed
-      WHERE feed."created_at" >= (DATE '2026-07-24'::TIMESTAMP AT TIME ZONE 'UTC')
-        AND feed."created_at" < (DATE '2026-07-28'::TIMESTAMP AT TIME ZONE 'UTC')
+      WHERE feed."created_at" >= (DATE '2026-07-23'::TIMESTAMP AT TIME ZONE 'UTC')
+        AND feed."created_at" < (DATE '2026-07-27'::TIMESTAMP AT TIME ZONE 'UTC')
         AND feed."provider_key" = ANY(ARRAY['github-trending-page','hacker-news','reddit','rss','x-twitter'])
       GROUP BY 1, 2, 3, 4, 5, 6
       UNION ALL
@@ -310,8 +318,8 @@ const readReaderSummaryProductionRecoveryScopeDiagnostics = (
         COALESCE(upper(feed."status"::TEXT), 'UNKNOWN') AS "normalized_status",
         count(*)::INTEGER AS "count"
       FROM "feed_items" AS feed
-      WHERE feed."published_at" >= (DATE '2026-07-24'::TIMESTAMP AT TIME ZONE 'UTC')
-        AND feed."published_at" < (DATE '2026-07-28'::TIMESTAMP AT TIME ZONE 'UTC')
+      WHERE feed."published_at" >= (DATE '2026-07-23'::TIMESTAMP AT TIME ZONE 'UTC')
+        AND feed."published_at" < (DATE '2026-07-27'::TIMESTAMP AT TIME ZONE 'UTC')
         AND feed."provider_key" = ANY(ARRAY['github-trending-page','hacker-news','reddit','rss','x-twitter'])
       GROUP BY 1, 2, 3, 4, 5, 6
     ) AS diagnostics
@@ -431,7 +439,7 @@ async function main(): Promise<void> {
   loadDotenvIfPresent(".env");
 
   if (!process.argv.slice(2).includes("--apply")) {
-    throw new Error("Pass --apply to run Jul24-Jul27 production recovery");
+    throw new Error("Pass --apply to run Jul23-Jul26 production recovery");
   }
   const productionDatabaseUrl = requiredEnv("DATABASE_URL");
   const sourceDatabaseUrl =
