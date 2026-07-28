@@ -13,21 +13,23 @@ import type {
   ReaderSummaryProductionRecoveryDayAuthority,
   ReaderSummaryProductionRecoveryEvidence,
   ReaderSummaryProductionRecoveryProviderKey,
+  ReaderSummaryProductionRecoveryRequestedUtcDate,
 } from "@social-monitor/summary/ports";
-import { readerSummaryProductionRecoveryProviderKeys } from "@social-monitor/summary/ports";
+import {
+  readerSummaryProductionRecoveryProviderKeys,
+  readerSummaryProductionRecoveryRequestedUtcDates,
+} from "@social-monitor/summary/ports";
 import {
   tenantId,
   workspaceId,
   type Clock,
 } from "@social-monitor/shared-kernel";
 
-export const readerSummaryProductionRecoveryDates = [
-  "2026-07-23",
-  "2026-07-24",
-] as const;
+export const readerSummaryProductionRecoveryDates =
+  readerSummaryProductionRecoveryRequestedUtcDates;
 
 export type ReaderSummaryProductionRecoveryDate =
-  (typeof readerSummaryProductionRecoveryDates)[number];
+  ReaderSummaryProductionRecoveryRequestedUtcDate;
 
 export type ReaderSummaryProductionRecoveryPlan = Readonly<{
   recoveryId: string;
@@ -35,10 +37,7 @@ export type ReaderSummaryProductionRecoveryPlan = Readonly<{
   workspaceId: string;
   canonicalSha256: string;
   dryRunCanonicalSha256s: readonly [string, string];
-  days: readonly [
-    ReaderSummaryProductionRecoveryDayPlan,
-    ReaderSummaryProductionRecoveryDayPlan,
-  ];
+  days: readonly ReaderSummaryProductionRecoveryDayPlan[];
 }>;
 
 export type ReaderSummaryProductionRecoveryDayPlan = Readonly<{
@@ -49,7 +48,7 @@ export type ReaderSummaryProductionRecoveryDayPlan = Readonly<{
   totalEvidenceCount: number;
   primaryEvidenceCount: number;
   githubEvidenceCount: number;
-  githubMode: "historical_unavailable" | "verified_existing";
+  githubMode: "verified_existing";
 }>;
 
 export type ProductionRecoveryEvidenceSelectionInput = Readonly<{
@@ -74,10 +73,7 @@ export const buildReaderSummaryProductionRecoveryPlan = (
   binding: ReaderSummaryProductionRecoveryAuthorityBinding,
 ): ReaderSummaryProductionRecoveryPlan => {
   assertAuthorityBinding(binding);
-  const days = binding.days.map(dayPlan) as [
-    ReaderSummaryProductionRecoveryDayPlan,
-    ReaderSummaryProductionRecoveryDayPlan,
-  ];
+  const days = binding.days.map(dayPlan);
   return {
     recoveryId: binding.recoveryId,
     tenantId: binding.tenantId,
@@ -125,12 +121,14 @@ export const buildRecoveryEvidenceSelection = async (
     0,
     input.maxPrimaryEvidenceItems,
   );
-  const primary = await enrichPrimaryEvidence({
-    rows: primaryAuthority,
-    tenantId: input.binding.tenantId,
-    workspaceId: input.binding.workspaceId,
-    feedItems: input.feedItems,
-  });
+  const primary = primaryAuthority.map((authority) => ({
+    authority,
+    title: authority.title,
+    bodyPreview: authority.bodyPreview,
+    sourceText: authority.sourceText,
+    authorHandle: authority.authorHandle,
+    interestId: authority.interestId,
+  }));
   const primaryItems = primary.map((item, index) =>
     toSummaryEvidenceItem(item, index, false),
   );
@@ -143,15 +141,12 @@ export const buildRecoveryEvidenceSelection = async (
     items: primaryItems,
     limit: input.maxPrimaryEvidenceItems,
   });
-  const githubItems =
-    input.requestedUtcDate === "2026-07-24"
-      ? await verifiedGitHubSupplementalEvidence({
-          binding: input.binding,
-          day,
-          period,
-          githubProjectionReader: input.githubProjectionReader,
-        })
-      : [];
+  const githubItems = await verifiedGitHubSupplementalEvidence({
+    binding: input.binding,
+    day,
+    period,
+    githubProjectionReader: input.githubProjectionReader,
+  });
   const selectedEvidence = [...clustered.selectedEvidence, ...githubItems];
 
   return {
@@ -179,20 +174,20 @@ export const recoveryProvenanceForDay = (
     },
     priorCollectionProof: {
       sourceAttempt: {
-        artifactFormat: "reader-summary-production-recovery-authority-v1",
+        artifactFormat: "reader-summary-production-recovery-authority-v2",
         sha256: binding.canonicalSha256,
       },
       collectionArtifact: {
-        artifactFormat: "reader-summary-production-recovery-day-v1",
+        artifactFormat: "reader-summary-production-recovery-day-v2",
         sha256: day.canonicalSha256,
       },
       collectionQualityReport: {
-        artifactFormat: "reader-summary-production-recovery-evidence-v1",
+        artifactFormat: "reader-summary-production-recovery-evidence-v2",
         sha256: day.providerEvidenceSha256,
       },
     },
     regenerationInputManifest: {
-      artifactFormat: "reader-summary-production-recovery-plan-v1",
+      artifactFormat: "reader-summary-production-recovery-plan-v2",
       sha256: day.canonicalSha256,
       datasetSha256: day.providerEvidenceSha256,
     },
@@ -203,9 +198,9 @@ const assertAuthorityBinding = (
   binding: ReaderSummaryProductionRecoveryAuthorityBinding,
 ): void => {
   if (
-    binding.schemaVersion !== "reader_summary.production_recovery_authority.v1" ||
-    binding.requestedUtcDates[0] !== "2026-07-23" ||
-    binding.requestedUtcDates[1] !== "2026-07-24" ||
+    binding.schemaVersion !== "reader_summary.production_recovery_authority.v2" ||
+    JSON.stringify(binding.requestedUtcDates) !==
+      JSON.stringify(readerSummaryProductionRecoveryDates) ||
     binding.boundaries.stage !== "pre_model" ||
     binding.boundaries.modelCallPerformed ||
     binding.boundaries.publicationPerformed ||
@@ -213,10 +208,10 @@ const assertAuthorityBinding = (
     binding.lease.state !== "CONSUMED" ||
     binding.dryRunCanonicalSha256s[0] !== binding.canonicalSha256 ||
     binding.dryRunCanonicalSha256s[1] !== binding.canonicalSha256 ||
-    binding.days.length !== 2
+    binding.days.length !== 4
   ) {
     throw new Error(
-      "Reader summary production recovery authority is not exact pre-model Jul23/Jul24 scope",
+      "Reader summary production recovery authority is not exact pre-model Jul24-Jul27 scope",
     );
   }
   for (const expectedDate of readerSummaryProductionRecoveryDates) {
@@ -230,14 +225,14 @@ const dayPlan = (
   const providerCounts = Object.fromEntries(
     day.providerCounts.map((count) => [count.providerKey, count.count]),
   ) as Record<ReaderSummaryProductionRecoveryProviderKey, number>;
-  const expected = expectedProviderCounts(day.requestedUtcDate);
   const allRows = readerSummaryProductionRecoveryProviderKeys.flatMap(
     (providerKey) => day.providerEvidence[providerKey],
   );
   for (const providerKey of readerSummaryProductionRecoveryProviderKeys) {
     if (
-      providerCounts[providerKey] !== expected[providerKey] ||
-      day.providerEvidence[providerKey].length !== expected[providerKey]
+      providerCounts[providerKey] !==
+        day.providerEvidence[providerKey].length ||
+      providerCounts[providerKey] < 1
     ) {
       throw new Error(
         `Reader summary production recovery ${day.requestedUtcDate} provider counts are not exact`,
@@ -246,22 +241,14 @@ const dayPlan = (
   }
   const githubRows = day.providerEvidence["github-trending-page"];
   if (
-    day.requestedUtcDate === "2026-07-23" &&
-    (day.githubEvidence.mode !== "historical_unavailable" ||
-      githubRows.length !== 0)
+    day.githubEvidence.mode !== "verified_existing" ||
+      githubRows.length !== day.githubEvidence.evidenceCount ||
+      day.planSha256s[0] !== day.canonicalSha256 ||
+      day.planSha256s[1] !== day.canonicalSha256 ||
+      githubRows.some((row) => row.github === undefined)
   ) {
     throw new Error(
-      "Reader summary production recovery Jul23 requires explicit unavailable GitHub evidence",
-    );
-  }
-  if (
-    day.requestedUtcDate === "2026-07-24" &&
-    (day.githubEvidence.mode !== "verified_existing" ||
-      githubRows.length !== 10 ||
-      githubRows.some((row) => row.github === undefined))
-  ) {
-    throw new Error(
-      "Reader summary production recovery Jul24 requires verified existing GitHub10 evidence",
+      `Reader summary production recovery ${day.requestedUtcDate} requires two identical plan hashes and verified existing GitHub evidence`,
     );
   }
   return {
@@ -276,25 +263,6 @@ const dayPlan = (
   };
 };
 
-const expectedProviderCounts = (
-  requestedUtcDate: ReaderSummaryProductionRecoveryDate,
-): Record<ReaderSummaryProductionRecoveryProviderKey, number> =>
-  requestedUtcDate === "2026-07-23"
-    ? {
-        "github-trending-page": 0,
-        "hacker-news": 100,
-        reddit: 100,
-        rss: 78,
-        "x-twitter": 67,
-      }
-    : {
-        "github-trending-page": 10,
-        "hacker-news": 100,
-        reddit: 100,
-        rss: 68,
-        "x-twitter": 73,
-      };
-
 const primaryEvidenceRows = (
   day: ReaderSummaryProductionRecoveryDayAuthority,
 ): readonly ReaderSummaryProductionRecoveryEvidence[] =>
@@ -303,52 +271,6 @@ const primaryEvidenceRows = (
       ? []
       : day.providerEvidence[providerKey],
   );
-
-const enrichPrimaryEvidence = async (params: {
-  rows: readonly ReaderSummaryProductionRecoveryEvidence[];
-  tenantId: string;
-  workspaceId: string;
-  feedItems: FeedItemReadRepositoryPort;
-}): Promise<readonly EnrichedEvidence[]> => {
-  const sourceText = new Map(
-    (await params.feedItems.readSourceContent?.({
-      tenantId: tenantId(params.tenantId),
-      workspaceId: workspaceId(params.workspaceId),
-      feedItemIds: params.rows.map((row) => row.feedItemId),
-    }))?.map((item) => [item.feedItemId, item.body] as const) ?? [],
-  );
-  const enriched: EnrichedEvidence[] = [];
-  for (const row of params.rows) {
-    const feedItem = await params.feedItems.findById({
-      tenantId: tenantId(params.tenantId),
-      workspaceId: workspaceId(params.workspaceId),
-      feedItemId: row.feedItemId,
-    });
-    const snapshot = feedItem?.toSnapshot();
-    if (
-      snapshot === undefined ||
-      snapshot.sourceItemId !== row.sourceItemId ||
-      snapshot.sourceBindingId !== row.sourceBindingId ||
-      snapshot.providerKey !== row.providerKey ||
-      snapshot.canonicalUrl !== row.canonicalUrl ||
-      snapshot.publishedAt.toISOString() !== row.publishedAt ||
-      snapshot.observedAt.toISOString() !== row.observedAt
-    ) {
-      throw new Error(
-        "Reader summary production recovery feed content diverged from authority",
-      );
-    }
-    enriched.push({
-      authority: row,
-      title: snapshot.title,
-      bodyPreview: snapshot.bodyPreview,
-      sourceText: sourceText.get(row.feedItemId),
-      authorHandle: snapshot.authorHandle,
-      interestId: snapshot.interestId,
-    });
-  }
-  return enriched;
-};
 
 const toSummaryEvidenceItem = (
   item: EnrichedEvidence,
@@ -418,16 +340,22 @@ const verifiedGitHubSupplementalEvidence = async (params: {
       JSON.stringify(eligibleBindingIds)
   ) {
     throw new Error(
-      "Reader summary production recovery Jul24 GitHub binding eligibility diverged",
+      `Reader summary production recovery ${params.day.requestedUtcDate} GitHub binding eligibility diverged`,
     );
   }
   return verified.map((item, index) =>
     toSummaryEvidenceItem(
       {
         authority: authorityByFeedItem(params.day).get(item.feedItemId)!,
-        title: item.repositoryFullName ?? item.canonicalUrl,
-        bodyPreview: `GitHub Trending daily rank #${item.rank} for ${item.repositoryFullName ?? item.canonicalUrl}.`,
-        interestId: "reader-summary-production-recovery-github",
+        title: authorityByFeedItem(params.day).get(item.feedItemId)!.title,
+        bodyPreview:
+          authorityByFeedItem(params.day).get(item.feedItemId)!.bodyPreview,
+        sourceText:
+          authorityByFeedItem(params.day).get(item.feedItemId)!.sourceText,
+        authorHandle:
+          authorityByFeedItem(params.day).get(item.feedItemId)!.authorHandle,
+        interestId:
+          authorityByFeedItem(params.day).get(item.feedItemId)!.interestId,
       },
       index,
       true,
@@ -452,9 +380,9 @@ const verifyProjectionAgainstAuthority = (
   const rows = [...projectionItems]
     .filter((item) => authority.has(item.feedItemId))
     .sort((left, right) => (left.rank ?? 0) - (right.rank ?? 0));
-  if (rows.length !== 10) {
+  if (rows.length !== day.githubEvidence.evidenceCount) {
     throw new Error(
-      "Reader summary production recovery Jul24 GitHub projection is incomplete",
+      `Reader summary production recovery ${day.requestedUtcDate} GitHub projection is incomplete`,
     );
   }
   for (const row of rows) {
@@ -481,7 +409,7 @@ const verifyProjectionAgainstAuthority = (
       row.starsGained === undefined
     ) {
       throw new Error(
-        "Reader summary production recovery Jul24 GitHub projection diverged from authority",
+        `Reader summary production recovery ${day.requestedUtcDate} GitHub projection diverged from authority`,
       );
     }
   }

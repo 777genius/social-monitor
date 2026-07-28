@@ -61,18 +61,18 @@ export type ReaderSummaryProductionRecoveryDayExecutor = (params: {
   readonly requestedUtcDate: ReaderSummaryProductionRecoveryDate;
 }) => Promise<ReaderSummaryProductionRecoveryDayResult>;
 
-export type ReaderSummaryProductionRecoveryReplayGuard = Readonly<{
-  isReplayed(params: {
+export type ReaderSummaryProductionRecoveryExecutionGuard = Readonly<{
+  claim(params: {
     readonly binding: ReaderSummaryProductionRecoveryAuthorityBinding;
     readonly requestedUtcDate: ReaderSummaryProductionRecoveryDate;
-  }): Promise<boolean>;
+  }): Promise<"execute" | "replayed">;
 }>;
 
 export type ReaderSummaryProductionRecoveryRunOptions = Readonly<{
   apply: boolean;
   authority: ReaderSummaryProductionRecoveryAuthorityPort;
   executeDay: ReaderSummaryProductionRecoveryDayExecutor;
-  replayGuard?: ReaderSummaryProductionRecoveryReplayGuard;
+  executionGuard: ReaderSummaryProductionRecoveryExecutionGuard;
 }>;
 
 export const runReaderSummaryProductionRecovery = async (
@@ -98,10 +98,10 @@ export const runReaderSummaryProductionRecovery = async (
   const dayResults: ReaderSummaryProductionRecoveryDayResult[] = [];
   for (const requestedUtcDate of readerSummaryProductionRecoveryDates) {
     if (
-      (await options.replayGuard?.isReplayed({
+      (await options.executionGuard.claim({
         binding,
         requestedUtcDate,
-      })) === true
+      })) === "replayed"
     ) {
       const ids = readerSummaryProductionRecoveryDayIds(
         binding,
@@ -171,7 +171,6 @@ export const executeProductionRecoveryDay = async (
   );
   const jobId = ids.readerSummaryJobId;
   const readerSummaryId = ids.readerSummaryId;
-  const requestedAt = new Date(`${params.requestedUtcDate}T23:59:59.000Z`);
   const jobs = new InMemoryRecoveryJobRepository([
     ReaderSummaryJob.request({
       id: jobId,
@@ -180,7 +179,7 @@ export const executeProductionRecoveryDay = async (
       scope: { type: "workspace" },
       period,
       idempotencyKey: `reader-summary-production-recovery:${params.requestedUtcDate}:${day.canonicalSha256}`,
-      requestedAt,
+      requestedAt: params.clock.now(),
     }),
   ]);
   const artifacts = new InMemoryRecoveryArtifactRepository();
@@ -210,18 +209,7 @@ export const executeProductionRecoveryDay = async (
     new BuildReaderSummaryTopicMapUseCase(),
     undefined,
     params.githubProjectionReader,
-    params.requestedUtcDate === "2026-07-23"
-      ? {
-          reason:
-            day.githubEvidence.mode === "historical_unavailable"
-              ? day.githubEvidence.authorization.reason
-              : "",
-          authorizedAt:
-            day.githubEvidence.mode === "historical_unavailable"
-              ? new Date(day.githubEvidence.authorization.authorizedAt)
-              : new Date("invalid"),
-        }
-      : undefined,
+    undefined,
   );
   const result = await execute.execute({
     tenantId: tenantId(params.binding.tenantId),

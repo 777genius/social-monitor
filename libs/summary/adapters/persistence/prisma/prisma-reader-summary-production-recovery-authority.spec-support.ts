@@ -1,38 +1,111 @@
 import {
-  canonicalizeReaderSummaryWeeklyJson,
-} from "../../../domain/value-objects/reader-summary-weekly-canonical-json";
-import {
-  readerSummaryProductionRecoveryProviderKeys,
-  type ReaderSummaryProductionRecoveryProviderKey,
-} from "../../../ports/reader-summary-production-recovery-authority.port";
+  buildProductionRecoveryAuthorityBinding,
+  type ProductionRecoveryEvidenceRow,
+  type ProductionRecoveryScopeRow,
+} from "./prisma-reader-summary-production-recovery-authority-row";
 
-type RawQueryCall = Readonly<{
-  sql: string;
-  values: readonly unknown[];
-}>;
+export const fixtureScope: ProductionRecoveryScopeRow = {
+  tenantId: "10000000-0000-4000-8000-000000000001",
+  workspaceId: "20000000-0000-4000-8000-000000000002",
+  issuedAt: new Date("2026-07-28T12:00:00.000Z"),
+};
+
+export const productionRecoveryEvidenceRows = (params?: {
+  readonly jul27HackerNewsCount?: number;
+  readonly jul27RedditCount?: number;
+}): readonly ProductionRecoveryEvidenceRow[] => {
+  let ordinal = 0;
+  return ["2026-07-24", "2026-07-25", "2026-07-26", "2026-07-27"]
+    .flatMap((date) =>
+      [
+        ["github-trending-page", 2],
+        [
+          "hacker-news",
+          date === "2026-07-27"
+            ? (params?.jul27HackerNewsCount ?? 100)
+            : 100,
+        ],
+        [
+          "reddit",
+          date === "2026-07-27"
+            ? (params?.jul27RedditCount ?? 100)
+            : 100,
+        ],
+        ["rss", 2],
+        ["x-twitter", 2],
+      ].flatMap(([providerKey, count]) =>
+        Array.from({ length: Number(count) }, (_, index) => {
+          ordinal += 1;
+          return evidenceRow({
+            ordinal,
+            date,
+            providerKey: String(providerKey),
+            providerIndex: index,
+          });
+        }),
+      ),
+    );
+};
+
+export const productionRecoveryBinding = () =>
+  buildProductionRecoveryAuthorityBinding({
+    scope: fixtureScope,
+    rows: productionRecoveryEvidenceRows(),
+  });
 
 export class FakeProductionRecoveryPrisma {
-  readonly calls: RawQueryCall[] = [];
+  readonly calls: Array<{ readonly sql: string; readonly values: readonly unknown[] }> = [];
   readonly transactionOptions: unknown[] = [];
-  private queryAttempts = 0;
+  persisted:
+    | { readonly requestHash: string; readonly responsePayload: unknown }
+    | undefined;
 
   constructor(
-    private readonly rows: readonly Record<string, unknown>[],
-    private readonly conflictsBeforeSuccess = 0,
-  ) {}
+    readonly evidenceRows = productionRecoveryEvidenceRows(),
+    readonly finalizedCount = 0,
+    persisted = false,
+  ) {
+    if (persisted) {
+      const binding = productionRecoveryBinding();
+      this.persisted = {
+        requestHash: binding.canonicalSha256,
+        responsePayload: jsonbRoundTrip(binding),
+      };
+    }
+  }
 
   readonly $queryRaw = async <T>(
     strings: TemplateStringsArray,
     ...values: readonly unknown[]
   ): Promise<T> => {
-    this.calls.push({ sql: strings.join("?"), values });
-    this.queryAttempts += 1;
-    if (this.queryAttempts <= this.conflictsBeforeSuccess) {
-      throw Object.assign(new Error("serialization conflict"), {
-        code: "40001",
-      });
+    const sql = strings.join("?").replace(/\s+/gu, " ").trim();
+    this.calls.push({ sql, values });
+    if (
+      sql.includes('FROM "idempotency_keys"') &&
+      sql.includes('"response_payload" AS "responsePayload"')
+    ) {
+      return (this.persisted === undefined ? [] : [this.persisted]) as T;
     }
-    return this.rows as T;
+    if (sql.includes("transaction_timestamp() AS \"issuedAt\"")) {
+      return [fixtureScope] as T;
+    }
+    if (sql.includes('FROM "feed_items" AS feed')) {
+      return this.evidenceRows as T;
+    }
+    if (sql.startsWith('INSERT INTO "idempotency_keys"')) {
+      const binding = JSON.parse(String(values[6])) as {
+        readonly canonicalSha256: string;
+      };
+      this.persisted = {
+        requestHash: binding.canonicalSha256,
+        responsePayload: binding,
+      };
+      return [{ inserted: true }] as T;
+    }
+    if (sql.includes('FROM jsonb_to_recordset')) {
+      return [{ finalizedCount: this.finalizedCount }] as T;
+    }
+    throw new Error(`Unexpected fake recovery SQL: ${sql}`);
   };
 
   readonly $transaction = async <T>(
@@ -44,226 +117,65 @@ export class FakeProductionRecoveryPrisma {
   };
 }
 
-export const productionRecoverySqlRow = (
-  outcome: "prepared" | "replayed" = "prepared",
-): Record<string, unknown> => {
-  const tenantId = fixtureUuid(7_001, "1");
-  const workspaceId = fixtureUuid(7_002, "2");
-  const identityCanonical = canonicalizeReaderSummaryWeeklyJson({
-    schemaVersion: "reader_summary.production_recovery_identity.v1",
-    tenantId,
-    workspaceId,
-    requestedUtcDates: ["2026-07-23", "2026-07-24"],
-  });
-  const recoveryId = recoveryUuid(identityCanonical.sha256);
-  const identity =
-    `reader_summary.production_recovery.v1:${identityCanonical.sha256}`;
-  const day23 = fixtureDay({
-    recoveryId,
-    tenantId,
-    workspaceId,
-    date: "2026-07-23",
-    counts: [0, 100, 100, 78, 67],
-    idOffset: 0,
-  });
-  const day24 = fixtureDay({
-    recoveryId,
-    tenantId,
-    workspaceId,
-    date: "2026-07-24",
-    counts: [10, 100, 100, 68, 73],
-    idOffset: 1_000,
-  });
-  const canonicalRecord = {
-    schemaVersion: "reader_summary.production_recovery_authority.v1",
-    recoveryId,
-    identity,
-    tenantId,
-    workspaceId,
-    requestedUtcDates: ["2026-07-23", "2026-07-24"],
-    boundaries: {
-      stage: "pre_model",
-      modelCallPerformed: false,
-      publicationPerformed: false,
-      recollectionPerformed: false,
-    },
-    days: [planDay(day23), planDay(day24)],
-  };
-  const canonical = canonicalizeReaderSummaryWeeklyJson(canonicalRecord);
+const evidenceRow = (params: {
+  readonly ordinal: number;
+  readonly date: string;
+  readonly providerKey: string;
+  readonly providerIndex: number;
+}): ProductionRecoveryEvidenceRow => {
+  const suffix = params.ordinal.toString().padStart(12, "0");
+  const github = params.providerKey === "github-trending-page";
   return {
-    outcome,
-    recoveryId,
-    tenantId,
-    workspaceId,
-    identity,
-    canonicalRecord,
-    canonicalBytes: canonical.toBytes(),
-    canonicalSha256: canonical.sha256,
-    leaseState: "CONSUMED",
-    issuedAt: new Date("2026-07-26T12:00:00.000Z"),
-    consumedAt: new Date("2026-07-26T12:00:00.001Z"),
-    dryRuns: [
-      { ordinal: 1, canonicalSha256: canonical.sha256 },
-      { ordinal: 2, canonicalSha256: canonical.sha256 },
-    ],
-    days: [day23, day24],
-  };
-};
-
-const fixtureDay = (params: Readonly<{
-  recoveryId: string;
-  tenantId: string;
-  workspaceId: string;
-  date: "2026-07-23" | "2026-07-24";
-  counts: readonly [number, number, number, number, number];
-  idOffset: number;
-}>): Record<string, unknown> => {
-  let itemNumber = params.idOffset;
-  const providerCounts = readerSummaryProductionRecoveryProviderKeys.map(
-    (providerKey, index) => ({
-      providerKey,
-      count: params.counts[index]!,
-    }),
-  );
-  const providerEvidence = Object.fromEntries(
-    providerCounts.map(({ providerKey, count }) => [
-      providerKey,
-      Array.from({ length: count }, (_, index) => {
-        itemNumber += 1;
-        return fixtureEvidence({
-          date: params.date,
-          providerKey,
-          index,
-          itemNumber,
-        });
-      }),
-    ]),
-  ) as Record<ReaderSummaryProductionRecoveryProviderKey, unknown[]>;
-  const providerEvidenceDigests =
-    readerSummaryProductionRecoveryProviderKeys.map((providerKey) => ({
-      providerKey,
-      count: providerEvidence[providerKey].length,
-      sha256: canonicalizeReaderSummaryWeeklyJson(
-        providerEvidence[providerKey],
-      ).sha256,
-    }));
-  const providerEvidenceSha256 = canonicalizeReaderSummaryWeeklyJson(
-    providerEvidenceDigests,
-  ).sha256;
-  const githubEvidence =
-    params.date === "2026-07-23"
-      ? {
-          schemaVersion:
-            "reader_summary.production_recovery_github_evidence.v1",
-          mode: "historical_unavailable",
-          providerKey: "github-trending-page",
-          requestedUtcDate: params.date,
-          evidenceCount: 0,
-          authorization: {
-            authorizationId:
-              "reader_summary.production_recovery.github.2026-07-23.v1",
-            authorizedAt: "2026-07-26T12:00:00.000Z",
-            reason:
-              "Historical GitHub trending evidence was not collected for this UTC day; this one reviewed recovery authorizes an explicit unavailable marker and no substitute data.",
-          },
-        }
-      : {
-          schemaVersion:
-            "reader_summary.production_recovery_github_evidence.v1",
-          mode: "verified_existing",
-          providerKey: "github-trending-page",
-          requestedUtcDate: params.date,
-          evidenceCount: 10,
-          evidenceSha256: providerEvidenceDigests[0]!.sha256,
-          scanJobIds: [fixtureUuid(9_001, "5")],
-        };
-  const period = {
-    startedAt: `${params.date}T00:00:00.000Z`,
-    endedAt:
-      params.date === "2026-07-23"
-        ? "2026-07-24T00:00:00.000Z"
-        : "2026-07-25T00:00:00.000Z",
-    timezone: "UTC",
-  };
-  const canonicalRecord = {
-    schemaVersion: "reader_summary.production_recovery_day.v1",
-    recoveryId: params.recoveryId,
-    tenantId: params.tenantId,
-    workspaceId: params.workspaceId,
     requestedUtcDate: params.date,
-    period,
-    providerCounts,
-    providerEvidenceDigests,
-    providerEvidenceSha256,
-    githubEvidence,
-  };
-  const canonical = canonicalizeReaderSummaryWeeklyJson(canonicalRecord);
-  return {
-    schemaVersion: "reader_summary.production_recovery_day.v1",
-    identity:
-      `reader_summary.production_recovery_day.v1:${canonical.sha256}`,
-    requestedUtcDate: params.date,
-    period,
-    providerCounts,
-    providerEvidence,
-    providerEvidenceSha256,
-    githubEvidence,
-    canonicalSha256: canonical.sha256,
-  };
-};
-
-const fixtureEvidence = (params: Readonly<{
-  date: string;
-  providerKey: ReaderSummaryProductionRecoveryProviderKey;
-  index: number;
-  itemNumber: number;
-}>): Record<string, unknown> => {
-  const evidence: Record<string, unknown> = {
     providerKey: params.providerKey,
-    feedItemId: fixtureUuid(params.itemNumber, "1"),
-    sourceItemId: fixtureUuid(params.itemNumber, "2"),
-    sourceBindingId: fixtureUuid(
-      readerSummaryProductionRecoveryProviderKeys.indexOf(
-        params.providerKey,
-      ) + 1,
-      "3",
-    ),
-    providerItemId: `${params.providerKey}:${params.itemNumber}`,
-    canonicalUrl:
-      `https://evidence.invalid/${params.providerKey}/${params.itemNumber}`,
-    sourceContentHash: `${params.itemNumber}`.padStart(64, "a").slice(-64),
-    sourceProviderContentHash:
-      params.providerKey === "github-trending-page"
-        ? `${params.itemNumber}`.padStart(64, "b").slice(-64)
-        : null,
-    publishedAt: `${params.date}T12:00:00.000Z`,
-    observedAt: `${params.date}T12:01:00.000Z`,
+    feedItemId: `10000000-0000-4000-8000-${suffix}`,
+    sourceItemId: `20000000-0000-4000-8000-${suffix}`,
+    sourceBindingId:
+      `30000000-0000-4000-8000-${(params.providerKey.length + 1)
+        .toString()
+        .padStart(12, "0")}`,
+    interestId: "60000000-0000-4000-8000-000000000001",
+    providerItemId: `${params.providerKey}:${params.ordinal}`,
+    canonicalUrl: `https://evidence.invalid/${params.ordinal}`,
+    title: `Evidence ${params.ordinal}`,
+    bodyPreview: `Preview ${params.ordinal}`,
+    sourceText: `Immutable source text ${params.ordinal}`,
+    authorHandle: null,
+    sourceContentHash: params.ordinal.toString(16).padStart(64, "0"),
+    sourceProviderContentHash: github
+      ? (params.ordinal + 1).toString(16).padStart(64, "0")
+      : null,
+    publishedAt: new Date(`${params.date}T12:00:00.000Z`),
+    observedAt: new Date(`${params.date}T12:01:00.000Z`),
+    githubResultId: github
+      ? `40000000-0000-4000-8000-${suffix}`
+      : null,
+    githubScanJobId: github
+      ? `50000000-0000-4000-8000-${params.date
+          .replaceAll("-", "")
+          .padStart(12, "0")}`
+      : null,
+    githubAttemptNumber: github ? 1 : null,
+    githubRepositoryIdentity: github
+      ? `fixture/repository-${params.providerIndex + 1}`
+      : null,
+    githubRank: github ? params.providerIndex + 1 : null,
+    githubCheckedAt: github
+      ? new Date(`${params.date}T11:59:00.000Z`)
+      : null,
   };
-  if (params.providerKey === "github-trending-page") {
-    evidence.github = {
-      resultId: fixtureUuid(params.itemNumber, "4"),
-      scanJobId: fixtureUuid(9_001, "5"),
-      scanAttemptNumber: 1,
-      repositoryIdentity: `fixture/repository-${params.index + 1}`,
-      rank: params.index + 1,
-      checkedAt: `${params.date}T11:59:00.000Z`,
-    };
-  }
-  return evidence;
 };
 
-const planDay = (day: Record<string, unknown>): Record<string, unknown> => ({
-  identity: day.identity,
-  requestedUtcDate: day.requestedUtcDate,
-  canonicalSha256: day.canonicalSha256,
-  providerEvidenceSha256: day.providerEvidenceSha256,
-});
-
-const fixtureUuid = (value: number, prefix: string): string =>
-  `${prefix}0000000-0000-4000-8000-${String(value).padStart(12, "0")}`;
-
-const recoveryUuid = (sha256: string): string =>
-  `${sha256.slice(0, 8)}-${sha256.slice(8, 12)}-5${sha256.slice(
-    13,
-    16,
-  )}-8${sha256.slice(17, 20)}-${sha256.slice(20, 32)}`;
+const jsonbRoundTrip = (input: unknown): unknown => {
+  if (Array.isArray(input)) {
+    return input.map(jsonbRoundTrip);
+  }
+  if (typeof input !== "object" || input === null) {
+    return input;
+  }
+  return Object.fromEntries(
+    Object.entries(input)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, value]) => [key, jsonbRoundTrip(value)]),
+  );
+};
