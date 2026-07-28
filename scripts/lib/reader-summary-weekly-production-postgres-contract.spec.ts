@@ -67,6 +67,35 @@ describe("reader summary weekly production postgres contract", () => {
     expect(state.status).toBe("unavailable");
     expect(state.certifications).toEqual([]);
   });
+
+  it.each(["1", "2", "3", "4", "5", "6", "7", "8"])(
+    "accepts RFC-compatible UUID version %s scope",
+    async (version) => {
+      const versionedScope = {
+        tenantId: `00000000-0000-${version}000-8000-000000006101`,
+        workspaceId: `00000000-0000-${version}000-8000-000000006102`,
+        scope: { type: "workspace" as const },
+      };
+
+      const state = await loadReaderSummaryWeeklyProductionDbState(
+        fakeClient([]),
+        versionedScope,
+        week,
+      );
+
+      expect(state.scope).toEqual(versionedScope);
+    },
+  );
+
+  it("rejects non-UUID production scope text", async () => {
+    await expect(
+      loadReaderSummaryWeeklyProductionDbState(
+        fakeClient([]),
+        { ...scope, tenantId: "production-tenant" },
+        week,
+      ),
+    ).rejects.toThrow("Reader summary weekly tenant id must be a UUID");
+  });
 });
 
 type FakeRow = ReturnType<typeof rowForDate>;

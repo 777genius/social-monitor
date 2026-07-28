@@ -523,7 +523,7 @@ const exactSha = (value: unknown, label: string): string => {
 
 const exactUuid = (value: string, label: string): string => {
   if (
-    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(
       value,
     )
   ) {

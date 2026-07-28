@@ -15,6 +15,10 @@ package_json=$REPO/package.json
 grep -Fx 'Type=oneshot' "$service" >/dev/null
 grep -Fx 'Restart=no' "$service" >/dev/null
 grep -F 'npm run run:reader-summary-weekly-production' "$service" >/dev/null
+grep -F -- '-e READER_SUMMARY_WEEKLY_PRODUCTION_TENANT_ID=00000000-0000-7000-8000-000000006101' \
+  "$service" >/dev/null
+grep -F -- '-e READER_SUMMARY_WEEKLY_PRODUCTION_WORKSPACE_ID=00000000-0000-7000-8000-000000006102' \
+  "$service" >/dev/null
 grep -F 'READER_SUMMARY_WEEKLY_PRODUCTION_ARTIFACT_DIR=' "$service" >/dev/null
 grep -Fx 'Persistent=false' "$timer" >/dev/null
 grep -Fx 'Unit=social-monitor-weekly.service' "$timer" >/dev/null
