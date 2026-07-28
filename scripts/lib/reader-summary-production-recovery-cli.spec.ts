@@ -13,6 +13,7 @@ import type {
 } from "@social-monitor/summary/ports";
 import type { PrismaReaderSummaryClient } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-client";
 import type { PrismaSummaryTransactionOptions } from "@social-monitor/summary/adapters/persistence/prisma/prisma-summary-transaction";
+import { resolvePostgresRuntimePoolConfig } from "@social-monitor/platform-persistence";
 
 import {
   runReaderSummaryProductionRecovery,
@@ -27,6 +28,7 @@ import {
   configureProductionRecoverySession,
   createReaderSummaryProductionRecoveryGitHubProjectionSnapshot,
   discoverReaderSummaryProductionRecoveryScope,
+  resolveReaderSummaryProductionRecoveryRuntimePoolConfigs,
   resolveReaderSummaryProductionRecoverySourceDatabaseUrl,
   resolveReaderSummaryProductionRecoveryScope,
   runReaderSummaryProductionRecoveryPhases,
@@ -68,22 +70,34 @@ describe("reader summary production recovery CLI wrapper", () => {
     expect(discover).toHaveBeenCalledTimes(1);
   });
 
-  it("does not require a manual source database URL prerequisite", () => {
-    expect(
-      resolveReaderSummaryProductionRecoverySourceDatabaseUrl({
-        env: {},
-        productionDatabaseUrl: "postgresql://production.example/db",
+  it("uses entrypoint runtime pool config and rejects separate source DB", () => {
+    const productionDatabaseUrl = "postgresql://production.example/db";
+    const env = {
+      DATABASE_URL: productionDatabaseUrl,
+      POSTGRES_RUNTIME_PROCESS: "daily-runner",
+      POSTGRES_RUNTIME_POOL_MIN: "0",
+      POSTGRES_RUNTIME_POOL_MAX: "2",
+    };
+    const defaultSource = resolveReaderSummaryProductionRecoverySourceDatabaseUrl({
+      env: {},
+      productionDatabaseUrl,
+    });
+    const configs = resolveReaderSummaryProductionRecoveryRuntimePoolConfigs({
+      env,
+      sourceDatabaseUrl: defaultSource,
+      resolveRuntimePoolConfig: resolvePostgresRuntimePoolConfig,
+    });
+    expect(defaultSource).toBe(productionDatabaseUrl);
+    expect(configs.productionRuntimePoolConfig.processId).toBe("daily-runner");
+    expect(configs.productionRuntimePoolConfig.max).toBe(2);
+    expect(configs.sourceRuntimePoolConfig).toBe(configs.productionRuntimePoolConfig);
+    expect(() =>
+      resolveReaderSummaryProductionRecoveryRuntimePoolConfigs({
+        env,
+        sourceDatabaseUrl: "postgresql://snapshot.example/db",
+        resolveRuntimePoolConfig: resolvePostgresRuntimePoolConfig,
       }),
-    ).toBe("postgresql://production.example/db");
-    expect(
-      resolveReaderSummaryProductionRecoverySourceDatabaseUrl({
-        env: {
-          READER_SUMMARY_PRODUCTION_RECOVERY_SOURCE_DATABASE_URL:
-            " postgresql://snapshot.example/db ",
-        },
-        productionDatabaseUrl: "postgresql://production.example/db",
-      }),
-    ).toBe("postgresql://snapshot.example/db");
+    ).toThrow("must match DATABASE_URL");
   });
 
   it("fails discovery when no active production scope matches", async () => {

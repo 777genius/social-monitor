@@ -14,6 +14,7 @@ import type {
   ReadReaderSummaryGitHubProjectionResult,
 } from "@social-monitor/summary/ports";
 import type { ReaderSummaryGitHubProjectionItem } from "@social-monitor/summary/domain";
+import type { PostgresRuntimePoolConfig } from "@social-monitor/platform-persistence";
 
 export type ReaderSummaryProductionRecoveryScope = Readonly<{
   tenantId: string;
@@ -44,6 +45,9 @@ type CloseableConnection = Readonly<{
 }>;
 
 type ScopeEnv = Readonly<Record<string, string | undefined>>;
+type RuntimePoolConfigResolver = (
+  env: NodeJS.ProcessEnv,
+) => PostgresRuntimePoolConfig;
 
 const tenantScopeEnvName = "READER_SUMMARY_PRODUCTION_RECOVERY_TENANT_ID";
 const workspaceScopeEnvName = "READER_SUMMARY_PRODUCTION_RECOVERY_WORKSPACE_ID";
@@ -82,6 +86,11 @@ export type ReaderSummaryProductionRecoverySourceSnapshot = Readonly<{
   authority: ReaderSummaryProductionRecoveryAuthorityPort;
   feedItems: FeedItemReadRepositoryPort;
   githubProjectionReader: ReaderSummaryGitHubProjectionReaderPort;
+}>;
+
+export type ReaderSummaryProductionRecoveryRuntimePoolConfigs = Readonly<{
+  productionRuntimePoolConfig: PostgresRuntimePoolConfig;
+  sourceRuntimePoolConfig: PostgresRuntimePoolConfig;
 }>;
 
 export type ReaderSummaryProductionRecoveryPhaseOptions<
@@ -133,6 +142,27 @@ export const resolveReaderSummaryProductionRecoverySourceDatabaseUrl = (
   }>,
 ): string =>
   readEnvValue(params.env, sourceDatabaseEnvName) ?? params.productionDatabaseUrl;
+
+export const resolveReaderSummaryProductionRecoveryRuntimePoolConfigs = (
+  params: Readonly<{
+    env: NodeJS.ProcessEnv;
+    sourceDatabaseUrl: string;
+    resolveRuntimePoolConfig: RuntimePoolConfigResolver;
+  }>,
+): ReaderSummaryProductionRecoveryRuntimePoolConfigs => {
+  const productionRuntimePoolConfig = params.resolveRuntimePoolConfig(
+    params.env,
+  );
+  if (params.sourceDatabaseUrl !== productionRuntimePoolConfig.connectionString) {
+    throw new Error(
+      `${sourceDatabaseEnvName} must match DATABASE_URL when reader summary production recovery runs inside the shared PostgreSQL runtime pool process`,
+    );
+  }
+  return {
+    productionRuntimePoolConfig,
+    sourceRuntimePoolConfig: productionRuntimePoolConfig,
+  };
+};
 
 export const discoverReaderSummaryProductionRecoveryScope = async (
   client: ReaderSummaryProductionRecoveryScopeDiscoveryClient,
@@ -297,7 +327,7 @@ async function main(): Promise<void> {
     });
   const agentRuntimeAddress = requiredEnv("AGENT_RUNTIME_GRPC_ADDRESS");
   const {
-    defaultPostgresRuntimePoolConfig,
+    resolvePostgresRuntimePoolConfig,
     runWithSystemDatabaseAccess,
     runWithTenantDatabaseAccess,
   } = await import("@social-monitor/platform-persistence");
@@ -339,14 +369,12 @@ async function main(): Promise<void> {
     PrismaReaderSummaryProductionRecoveryReplayGuard,
   } = await import("./lib/reader-summary-production-recovery-replay-guard");
   const clock = new SystemClock();
-  const productionRuntimePoolConfig = defaultPostgresRuntimePoolConfig(
-    productionDatabaseUrl,
-    "admin-tool",
-  );
-  const sourceRuntimePoolConfig = defaultPostgresRuntimePoolConfig(
-    sourceDatabaseUrl,
-    "admin-tool",
-  );
+  const { productionRuntimePoolConfig, sourceRuntimePoolConfig } =
+    resolveReaderSummaryProductionRecoveryRuntimePoolConfigs({
+      env: process.env,
+      sourceDatabaseUrl,
+      resolveRuntimePoolConfig: resolvePostgresRuntimePoolConfig,
+    });
 
   const result = await runReaderSummaryProductionRecoveryPhases({
     env: process.env,
