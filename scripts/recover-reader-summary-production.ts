@@ -176,9 +176,6 @@ export const discoverReaderSummaryProductionRecoveryScope = async (
       ON source."id" = feed."source_item_id"
       AND source."tenant_id" = feed."tenant_id"
       AND source."workspace_id" = feed."workspace_id"
-      AND source."source_binding_id" = feed."source_binding_id"
-      AND source."provider_key" = feed."provider_key"
-      AND source."canonical_url" = feed."canonical_url"
     JOIN "tenants" AS tenant
       ON tenant."id" = feed."tenant_id"
       AND tenant."deleted_at" IS NULL
@@ -186,64 +183,6 @@ export const discoverReaderSummaryProductionRecoveryScope = async (
       ON workspace."id" = feed."workspace_id"
       AND workspace."tenant_id" = feed."tenant_id"
       AND workspace."deleted_at" IS NULL
-    JOIN "source_bindings" AS binding
-      ON binding."id" = source."source_binding_id"
-      AND binding."tenant_id" = source."tenant_id"
-      AND binding."workspace_id" = source."workspace_id"
-      AND binding."interest_id" = feed."interest_id"
-      AND binding."status" = 'ENABLED'
-      AND binding."deleted_at" IS NULL
-    JOIN "source_catalog_entries" AS catalog
-      ON catalog."id" = binding."source_catalog_entry_id"
-      AND catalog."provider_key" = feed."provider_key"
-    JOIN "interests" AS interest
-      ON interest."id" = binding."interest_id"
-      AND interest."tenant_id" = binding."tenant_id"
-      AND interest."workspace_id" = binding."workspace_id"
-      AND interest."status" = 'ENABLED'
-      AND interest."deleted_at" IS NULL
-    LEFT JOIN "github_repository_trend_results" AS result
-      ON feed."provider_key" = 'github-trending-page'
-      AND result."source_item_id" = source."id"
-      AND result."tenant_id" = source."tenant_id"
-      AND result."workspace_id" = source."workspace_id"
-      AND result."source_binding_id" = source."source_binding_id"
-      AND result."scan_job_id" =
-        CASE
-          WHEN feed."provider_key" = 'github-trending-page'
-            THEN (source."metadata"->'trending'->>'scanJobId')::UUID
-          ELSE NULL::UUID
-        END
-      AND result."repository_full_name" =
-        source."metadata"->'repository'->>'fullName'
-      AND result."repository_url" = source."canonical_url"
-      AND result."rank" =
-        CASE
-          WHEN feed."provider_key" = 'github-trending-page'
-            THEN (source."metadata"->'trending'->>'rank')::INTEGER
-          ELSE NULL::INTEGER
-        END
-      AND result."primary_window" IN ('daily', 'today')
-      AND to_char(
-        result."checked_at" AT TIME ZONE 'UTC',
-        'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'
-      ) = source."metadata"->'trending'->>'checkedAt'
-      AND result."observed_at" = source."observed_at"
-    LEFT JOIN "scan_jobs" AS scan
-      ON feed."provider_key" = 'github-trending-page'
-      AND scan."id" = result."scan_job_id"
-      AND scan."tenant_id" = result."tenant_id"
-      AND scan."workspace_id" = result."workspace_id"
-      AND scan."source_binding_id" = result."source_binding_id"
-      AND scan."status" = 'SUCCEEDED'
-    LEFT JOIN "scan_attempts" AS attempt
-      ON feed."provider_key" = 'github-trending-page'
-      AND attempt."scan_job_id" = scan."id"
-      AND attempt."tenant_id" = scan."tenant_id"
-      AND attempt."workspace_id" = scan."workspace_id"
-      AND attempt."source_binding_id" = scan."source_binding_id"
-      AND attempt."status" = 'SUCCEEDED'
-      AND attempt."finished_at" IS NOT NULL
     WHERE feed."status" = 'VISIBLE'
       AND feed."provider_key" = ANY(ARRAY[
         'github-trending-page',
@@ -256,38 +195,6 @@ export const discoverReaderSummaryProductionRecoveryScope = async (
         (DATE '2026-07-23'::TIMESTAMP AT TIME ZONE 'UTC')
       AND feed."observed_at" <
         (DATE '2026-07-25'::TIMESTAMP AT TIME ZONE 'UTC')
-      AND source."content_hash" ~ '^[0-9a-f]{64}$'
-      AND (
-        (
-          feed."provider_key" = 'github-trending-page'
-          AND source."provider_content_hash" ~ '^[0-9a-f]{64}$'
-        )
-        OR (
-          feed."provider_key" <> 'github-trending-page'
-          AND (
-            source."provider_content_hash" IS NULL
-            OR source."provider_content_hash" ~ '^[0-9a-f]{64}$'
-          )
-        )
-      )
-      AND btrim(source."provider_item_id") <> ''
-      AND btrim(source."canonical_url") <> ''
-      AND (
-        feed."provider_key" <> 'github-trending-page'
-        OR (
-          result."id" IS NOT NULL
-          AND scan."id" IS NOT NULL
-          AND attempt."scan_job_id" IS NOT NULL
-          AND source."metadata"->>'kind' =
-            'github_trending_page_repository'
-          AND lower(COALESCE(
-            NULLIF(binding."config"->>'window', ''),
-            NULLIF(binding."config"->>'since', ''),
-            NULLIF(binding."config"->>'query', ''),
-            NULLIF(binding."config"->'sourceQuery'->>'query', '')
-          )) IN ('daily', 'today')
-        )
-      )
     GROUP BY feed."tenant_id", feed."workspace_id"
     HAVING
       count(*) = count(DISTINCT feed."id")

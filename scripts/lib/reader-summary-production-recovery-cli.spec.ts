@@ -100,7 +100,7 @@ describe("reader summary production recovery CLI wrapper", () => {
     ).toThrow("must match DATABASE_URL");
   });
 
-  it("fails discovery when no active production scope matches", async () => {
+  it("fails discovery when no visible-count scope matches", async () => {
     const { client } = scopeDiscoveryClient([]);
 
     await expect(
@@ -108,7 +108,7 @@ describe("reader summary production recovery CLI wrapper", () => {
     ).rejects.toThrow("expected exactly one scope, found 0");
   });
 
-  it("fails discovery when active production rows match multiple scopes", async () => {
+  it("fails discovery when visible counts match multiple scopes", async () => {
     const { client } = scopeDiscoveryClient([
       scopeFixture("1", "2"),
       scopeFixture("3", "4"),
@@ -119,7 +119,7 @@ describe("reader summary production recovery CLI wrapper", () => {
     ).rejects.toThrow("expected exactly one scope, found 2");
   });
 
-  it("uses read-only DB authority counts for scope discovery", async () => {
+  it("discovers scope from visible counts without GitHub evidence joins", async () => {
     const expectedScope = scopeFixture("1", "2");
     const { client, queryRaw } = scopeDiscoveryClient([expectedScope]);
 
@@ -135,19 +135,8 @@ describe("reader summary production recovery CLI wrapper", () => {
       'source."id" = feed."source_item_id"',
       'source."tenant_id" = feed."tenant_id"',
       'source."workspace_id" = feed."workspace_id"',
-      'source."source_binding_id" = feed."source_binding_id"',
-      'source."provider_key" = feed."provider_key"',
-      'source."canonical_url" = feed."canonical_url"',
       'join "tenants" as tenant', 'tenant."deleted_at" is null',
       'join "workspaces" as workspace', 'workspace."deleted_at" is null',
-      'join "source_bindings" as binding',
-      'binding."interest_id" = feed."interest_id"',
-      'binding."status" = \'enabled\'',
-      'join "source_catalog_entries" as catalog',
-      'catalog."provider_key" = feed."provider_key"',
-      'join "interests" as interest', 'interest."status" = \'enabled\'',
-      'left join "github_repository_trend_results" as result',
-      'left join "scan_jobs" as scan', 'left join "scan_attempts" as attempt',
       'feed."status" = \'visible\'', 'feed."provider_key" = any(array[',
       "date '2026-07-23'::timestamp at time zone 'utc'",
       "date '2026-07-24'::timestamp at time zone 'utc'",
@@ -156,9 +145,6 @@ describe("reader summary production recovery CLI wrapper", () => {
       "having count(*) = count(distinct feed.\"id\")", "and count(*) = 692",
       ") = 342", ") = 350", ") = 0", ") = 10", ") = 100", ") = 75",
       ") = 67", ") = 73",
-      "source.\"content_hash\" ~ '^[0-9a-f]{64}$'",
-      "source.\"provider_content_hash\" ~ '^[0-9a-f]{64}$'",
-      "source.\"metadata\"->>'kind' = 'github_trending_page_repository'",
     ]) {
       expect(sql).toContain(expected);
     }
@@ -168,6 +154,17 @@ describe("reader summary production recovery CLI wrapper", () => {
     expect(sql).toContain('order by "tenantid", "workspaceid"');
     expect(sql).not.toContain('order by feed."tenant_id", feed."workspace_id"');
     expect(sql).not.toContain('feed."published_at"');
+    expect(sql).not.toMatch(
+      /\bgithub_repository_trend_results\b|\bscan_jobs\b|\bscan_attempts\b/u,
+    );
+    expect(sql).not.toMatch(
+      /\bsource_bindings\b|\bsource_catalog_entries\b|\binterests\b/u,
+    );
+    expect(sql).not.toMatch(
+      /\bcontent_hash\b|\bprovider_content_hash\b|\bmetadata\b/u,
+    );
+    expect(sql).not.toContain('source."source_binding_id"');
+    expect(sql).not.toContain('source."canonical_url"');
     expect(sql).not.toMatch(/\bprepare_reader_summary_production_recovery\b/u);
     expect(sql).not.toMatch(/\binsert\b|\bupdate\b|\bdelete\b/u);
     expect(sql).not.toMatch(/\bfor\s+(?:update|share)\b/u);
