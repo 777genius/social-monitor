@@ -4,15 +4,19 @@ import {
   type CleanRealDayCollectionReport,
 } from "./clean-real-day-collection-report";
 import {
+  catchUpCanSpendXReadinessBudget,
   mergeDailyProviderCatchUpEvidence,
   planDailyProviderCatchUp,
 } from "./reader-summary-daily-provider-catch-up";
+
+const evaluatedAt = new Date("2026-07-27T12:00:00.000Z");
 
 describe("daily reader-summary provider catch-up", () => {
   it("collects every provider for a new day", () => {
     expect(
       planDailyProviderCatchUp({
         collectionDate: "2026-07-27",
+        evaluatedAt,
         existingReport: null,
       }).providerKeysToCollect,
     ).toEqual(defaultCleanRealDayCollectionProviderKeys);
@@ -28,6 +32,7 @@ describe("daily reader-summary provider catch-up", () => {
     ]);
     const plan = planDailyProviderCatchUp({
       collectionDate: "2026-07-27",
+      evaluatedAt,
       existingReport,
     });
 
@@ -49,6 +54,7 @@ describe("daily reader-summary provider catch-up", () => {
     expect(
       planDailyProviderCatchUp({
         collectionDate: "2026-07-27",
+        evaluatedAt,
         existingReport,
       }).providerKeysToCollect,
     ).toEqual(defaultCleanRealDayCollectionProviderKeys);
@@ -72,6 +78,7 @@ describe("daily reader-summary provider catch-up", () => {
     expect(() =>
       planDailyProviderCatchUp({
         collectionDate: "2026-07-27",
+        evaluatedAt,
         existingReport,
       }),
     ).toThrow("unsupported format or day window");
@@ -87,6 +94,7 @@ describe("daily reader-summary provider catch-up", () => {
     ]);
     const plan = planDailyProviderCatchUp({
       collectionDate: "2026-07-27",
+      evaluatedAt,
       existingReport: previous,
     });
     const replacement = readyScan("x-twitter");
@@ -111,6 +119,7 @@ describe("daily reader-summary provider catch-up", () => {
     ]);
     const plan = planDailyProviderCatchUp({
       collectionDate: "2026-07-27",
+      evaluatedAt,
       existingReport: previous,
     });
 
@@ -121,6 +130,58 @@ describe("daily reader-summary provider catch-up", () => {
         collectedScans: [readyScan("reddit")],
       }),
     ).toThrow("exactly match planned providers");
+  });
+
+  it("spends the X readiness wait only when X is the sole remaining provider", () => {
+    const xOnly = planDailyProviderCatchUp({
+      collectionDate: "2026-07-27",
+      evaluatedAt,
+      existingReport: report([
+        readyScan("github-trending-page"),
+        readyScan("hacker-news"),
+        readyScan("reddit"),
+        readyScan("rss"),
+        failedScan("x-twitter"),
+      ]),
+    });
+    const blockingProviders = planDailyProviderCatchUp({
+      collectionDate: "2026-07-27",
+      evaluatedAt,
+      existingReport: report([
+        readyScan("github-trending-page"),
+        failedScan("hacker-news"),
+        failedScan("reddit"),
+        readyScan("rss"),
+        failedScan("x-twitter"),
+      ]),
+    });
+
+    expect(catchUpCanSpendXReadinessBudget(xOnly)).toBe(true);
+    expect(catchUpCanSpendXReadinessBudget(blockingProviders)).toBe(false);
+  });
+
+  it("keeps strict explicit GitHub unavailability terminal for a closed day", () => {
+    const existingReport = report([
+      explicitUnavailableGitHubScan(),
+      readyScan("hacker-news"),
+      readyScan("reddit"),
+      readyScan("rss"),
+      readyScan("x-twitter"),
+    ]);
+    existingReport.targetWindow.providerCounts["github-trending-page"] = 0;
+    const plan = planDailyProviderCatchUp({
+      collectionDate: "2026-07-27",
+      evaluatedAt: new Date("2026-07-28T01:00:00.000Z"),
+      existingReport,
+    });
+
+    expect(plan.providerKeysToCollect).toEqual([]);
+    expect(plan.providerStates[0]).toMatchObject({
+      providerKey: "github-trending-page",
+      state: "unavailable",
+      evidence: "explicit_unavailable",
+      policy: "accepted",
+    });
   });
 });
 
@@ -238,6 +299,37 @@ function failedScan(
         reasons: ["provider_unavailable"],
         retryDisposition: "delayed",
       },
+    },
+  };
+}
+
+function explicitUnavailableGitHubScan(): CleanRealDayCollectionReport["scans"][number] {
+  const scan = failedScan("github-trending-page");
+  return {
+    ...scan,
+    acquisitionMode: "durable_snapshot_reuse",
+    failureFingerprint: "github-unavailable",
+    observability: {
+      ...scan.observability,
+      acquisitionMode: "durable_snapshot_reuse",
+      targetItemCount: 10,
+      collectedItemCount: 0,
+      acceptedItemCount: 0,
+      insertedItemCount: 0,
+      totalDuplicateItemCount: 0,
+      pageCount: 0,
+      paginationStopReason: "failed",
+      coverageState: "unavailable",
+      slo: {
+        met: false,
+        targetItemCount: 10,
+        evaluatedItemCount: 0,
+        coverageRatio: 0,
+        maxFreshnessLagSeconds: 21_600,
+        reasons: ["target_shortfall", "provider_unavailable"],
+        retryDisposition: "immediate",
+      },
+      freshness: {},
     },
   };
 }

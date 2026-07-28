@@ -10,6 +10,7 @@ import {
   type GitHubTrendingDurableSnapshotCandidate,
 } from "./github-trending-durable-snapshot-reuse";
 import {
+  evaluateProductionProviderCollectionState,
   productionCollectionThresholds,
   providerMeetsProductionBlockingPolicy,
   recalculateProductionBlockingPolicyGates,
@@ -118,6 +119,50 @@ describe("production collection quality policy", () => {
         durableSnapshotProof: undefined,
       }),
     ).toBe(false);
+  });
+
+  it("requires exact-day durable GitHub evidence after the UTC day closes", async () => {
+    const proof = await certifiedDurableProof();
+    const exact = {
+      providerKey: "github-trending-page" as const,
+      bindingFingerprint:
+        githubTrendingDurableSnapshotBindingFingerprint("binding-a"),
+      status: "succeeded" as const,
+      acquisitionMode: "durable_snapshot_reuse" as const,
+      observability: durableSnapshotReuseProviderCollectionObservation({
+        itemCount: 10,
+        newestPublishedAt: new Date("2026-07-23T23:59:00.000Z"),
+        targetWindowEndedAt: new Date("2026-07-24T00:00:00.000Z"),
+      }),
+      durableSnapshotProof: proof,
+    };
+
+    expect(
+      evaluateProductionProviderCollectionState({
+        collectionDate: "2026-07-23",
+        closedRequestedUtcDay: true,
+        scan: exact,
+        targetWindowItemCount: 10,
+      }),
+    ).toMatchObject({
+      state: "complete",
+      evidence: "exact_day_durable_snapshot",
+      policy: "accepted",
+    });
+    expect(
+      evaluateProductionProviderCollectionState({
+        collectionDate: "2026-07-22",
+        closedRequestedUtcDay: true,
+        scan: exact,
+        targetWindowItemCount: 10,
+      }),
+    ).toMatchObject({
+      evidence: "invalid",
+      policy: "blocking",
+      reasonCodes: expect.arrayContaining([
+        "github_exact_day_durable_evidence_missing",
+      ]),
+    });
   });
 
   it("accepts explicit GitHub unavailability when HN, Reddit, RSS, and X are ready", () => {

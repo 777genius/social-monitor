@@ -13,6 +13,7 @@ import {
   productionDayUtcPeriod,
 } from "./reader-summary-production-day-provenance";
 import { productionExecutionAttestations } from "./reader-summary-production-day-attestation.spec-support";
+import type { YesterdaySocialProviderReadiness } from "./yesterday-social-collection-quality";
 
 const collectionDate = "2026-07-15";
 const readerSummaryId = "11111111-1111-4111-8111-111111111111";
@@ -96,6 +97,36 @@ describe("production-day report", () => {
         expectedDate: collectionDate,
       }),
     ).toEqual([]);
+  });
+
+  it("persists blocked provider policy and retry timing without passing", () => {
+    const providerReadiness = {
+      ...completeProviderReadiness(),
+      ready: false,
+      policy: "blocked" as const,
+      readyProviderKeys: ["rss", "x-twitter"] as const,
+      blockingProviderKeys: ["hacker-news", "reddit"] as const,
+      missingProviderKeys: ["hacker-news", "reddit"] as const,
+      retrySchedule: {
+        disposition: "scheduled" as const,
+        notBefore: "2026-07-15T01:15:00.000Z",
+        providerKeys: ["hacker-news", "reddit"] as const,
+        reason: "blocking_provider_retry" as const,
+      },
+      barrierMessage:
+        "Provider policy blocked 2026-07-15: hacker-news=missing; reddit=missing",
+    };
+    const report = buildReport(
+      passedSteps(),
+      evidenceFixture(),
+      undefined,
+      null,
+      providerReadiness,
+    );
+
+    expect(report.blockingPassed).toBe(false);
+    expect(report.qualityGates.providerReadinessPolicySatisfied).toBe(false);
+    expect(report.providerReadiness).toEqual(providerReadiness);
   });
 
   it.each(requiredProductionDayStepIds)(
@@ -544,6 +575,8 @@ function buildReport(
   historicalRegenerationProvenance: Parameters<
     typeof buildProductionDayReport
   >[0]["historicalRegenerationProvenance"] = null,
+  providerReadiness: YesterdaySocialProviderReadiness =
+    completeProviderReadiness(),
 ) {
   const resolvedCollectionQuality: ProductionDayCollectionQuality =
     collectionQuality ?? {
@@ -580,6 +613,7 @@ function buildReport(
       tenantId: "33333333-3333-4333-8333-333333333333",
       workspaceId: "44444444-4444-4444-8444-444444444444",
     },
+    providerReadiness,
     collectionQuality: resolvedCollectionQuality,
     durableEvidence: artifact.evidence,
     evidenceBinding: artifact.binding,
@@ -588,6 +622,25 @@ function buildReport(
     allowHistorical: false,
     failure: null,
   });
+}
+
+function completeProviderReadiness(): YesterdaySocialProviderReadiness {
+  return {
+    ready: true,
+    policy: "complete",
+    collectionDate,
+    requiredProviderKeys: [],
+    providerStates: [],
+    readyProviderKeys: [],
+    blockingProviderKeys: [],
+    missingProviderKeys: [],
+    duplicateProviderKeys: [],
+    emptyProviderKeys: [],
+    partialProviderKeys: [],
+    unavailableProviderKeys: [],
+    retrySchedule: null,
+    barrierMessage: null,
+  };
 }
 
 function passedSteps(): readonly ProductionDayStepReport[] {

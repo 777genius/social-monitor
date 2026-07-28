@@ -3,7 +3,10 @@ import {
   type CleanRealDayCollectionProviderKey,
   type CleanRealDayCollectionReport,
 } from "./clean-real-day-collection-report";
-import { providerMeetsProductionBlockingPolicy } from "./production-collection-quality-policy";
+import {
+  evaluateProductionProviderCollectionState,
+  type ProductionProviderCollectionState,
+} from "./production-collection-quality-policy";
 
 type ProviderTarget = CleanRealDayCollectionReport["targets"][number];
 type ProviderScan = CleanRealDayCollectionReport["scans"][number];
@@ -11,16 +14,32 @@ type ProviderScan = CleanRealDayCollectionReport["scans"][number];
 export type DailyProviderCatchUpPlan = {
   readonly collectionDate: string;
   readonly requiredProviderKeys: readonly CleanRealDayCollectionProviderKey[];
+  readonly providerStates: readonly DailyProviderCatchUpState[];
   readonly completedProviderKeys: readonly CleanRealDayCollectionProviderKey[];
   readonly providerKeysToCollect: readonly CleanRealDayCollectionProviderKey[];
   readonly previousReport: CleanRealDayCollectionReport | null;
 };
 
+export type DailyProviderCatchUpState = Omit<
+  ProductionProviderCollectionState,
+  "state"
+> & {
+  readonly providerKey: CleanRealDayCollectionProviderKey;
+  readonly state:
+    | ProductionProviderCollectionState["state"]
+    | "missing"
+    | "invalid";
+};
+
 export const planDailyProviderCatchUp = (params: {
   readonly collectionDate: string;
+  readonly evaluatedAt: Date;
   readonly existingReport: CleanRealDayCollectionReport | null;
   readonly requiredProviderKeys?: readonly CleanRealDayCollectionProviderKey[];
 }): DailyProviderCatchUpPlan => {
+  if (!Number.isFinite(params.evaluatedAt.getTime())) {
+    throw new Error("Provider catch-up evaluation time is invalid");
+  }
   const requiredProviderKeys =
     params.requiredProviderKeys ?? defaultCleanRealDayCollectionProviderKeys;
   const previousReport =
@@ -42,29 +61,26 @@ export const planDailyProviderCatchUp = (params: {
     );
   }
 
-  const completedProviderKeys =
-    previousReport === null
-      ? []
-      : requiredProviderKeys.filter((providerKey) => {
-          const scans = previousReport.scans.filter(
-            (scan) => scan.providerKey === providerKey,
-          );
-          return (
-            scans.length === 1 &&
-            (previousReport.targetWindow.providerCounts[providerKey] ?? 0) >
-              0 &&
-            (providerKey !== "github-trending-page" ||
-              scans[0]!.acquisitionMode !== "durable_snapshot_reuse" ||
-              scans[0]!.durableSnapshotProof?.requestedUtcDay ===
-                params.collectionDate) &&
-            providerMeetsProductionBlockingPolicy(scans[0]!)
-          );
-        });
+  const closedRequestedUtcDay =
+    params.evaluatedAt.getTime() >=
+    new Date(nextUtcDate(params.collectionDate)).getTime();
+  const providerStates = requiredProviderKeys.map((providerKey) =>
+    catchUpState({
+      providerKey,
+      collectionDate: params.collectionDate,
+      closedRequestedUtcDay,
+      previousReport,
+    }),
+  );
+  const completedProviderKeys = providerStates
+    .filter((state) => state.policy === "accepted")
+    .map((state) => state.providerKey);
   const completed = new Set(completedProviderKeys);
 
   return {
     collectionDate: params.collectionDate,
     requiredProviderKeys,
+    providerStates,
     completedProviderKeys,
     providerKeysToCollect: requiredProviderKeys.filter(
       (providerKey) => !completed.has(providerKey),
@@ -72,6 +88,12 @@ export const planDailyProviderCatchUp = (params: {
     previousReport,
   };
 };
+
+export const catchUpCanSpendXReadinessBudget = (
+  plan: DailyProviderCatchUpPlan,
+): boolean =>
+  plan.providerKeysToCollect.length === 1 &&
+  plan.providerKeysToCollect[0] === "x-twitter";
 
 export const mergeDailyProviderCatchUpEvidence = (params: {
   readonly plan: DailyProviderCatchUpPlan;
@@ -129,6 +151,57 @@ export const mergeDailyProviderCatchUpEvidence = (params: {
       targets,
     ),
     scans: orderByRequiredProviders(params.plan.requiredProviderKeys, scans),
+  };
+};
+
+const catchUpState = (params: {
+  readonly providerKey: CleanRealDayCollectionProviderKey;
+  readonly collectionDate: string;
+  readonly closedRequestedUtcDay: boolean;
+  readonly previousReport: CleanRealDayCollectionReport | null;
+}): DailyProviderCatchUpState => {
+  const scans =
+    params.previousReport?.scans.filter(
+      (scan) => scan.providerKey === params.providerKey,
+    ) ?? [];
+  const targets =
+    params.previousReport?.targets.filter(
+      (target) => target.providerKey === params.providerKey,
+    ) ?? [];
+  if (scans.length !== 1 || targets.length !== 1) {
+    return {
+      providerKey: params.providerKey,
+      state:
+        scans.length === 0 && targets.length <= 1 ? "missing" : "invalid",
+      evidence: "invalid",
+      policy: "blocking",
+      reasonCodes: [
+        ...(scans.length === 0
+          ? ["scan_evidence_missing"]
+          : scans.length > 1
+            ? ["scan_evidence_invalid"]
+            : []),
+        ...(targets.length === 0
+          ? ["target_evidence_missing"]
+          : targets.length > 1
+            ? ["target_evidence_invalid"]
+            : []),
+      ],
+      retryDisposition: "immediate",
+    };
+  }
+
+  return {
+    providerKey: params.providerKey,
+    ...evaluateProductionProviderCollectionState({
+      collectionDate: params.collectionDate,
+      closedRequestedUtcDay: params.closedRequestedUtcDay,
+      scan: scans[0]!,
+      targetWindowItemCount:
+        params.previousReport?.targetWindow.providerCounts[
+          params.providerKey
+        ] ?? 0,
+    }),
   };
 };
 

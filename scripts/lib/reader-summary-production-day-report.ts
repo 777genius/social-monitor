@@ -24,6 +24,7 @@ import {
   type ProductionDayUtcPeriod,
 } from "./reader-summary-production-day-provenance";
 import type { HistoricalRegenerationSourceProvenance } from "./reader-summary-production-day-regeneration";
+import type { YesterdaySocialProviderReadiness } from "./yesterday-social-collection-quality";
 import {
   buildHistoricalRegenerationProvenance,
   regenerationDatasetGuardMatches,
@@ -150,6 +151,7 @@ export function buildProductionDayReport(params: {
   readonly completedAt: Date;
   readonly steps: readonly ProductionDayStepReport[];
   readonly scope: { readonly tenantId: string; readonly workspaceId: string };
+  readonly providerReadiness?: YesterdaySocialProviderReadiness | null;
   readonly collectionQuality: ProductionDayCollectionQuality | null;
   readonly durableEvidence: ProductionDayDurableEvidence | null;
   readonly evidenceBinding: DurableEvidenceBinding | null;
@@ -246,6 +248,10 @@ export function buildProductionDayReport(params: {
         ?.publishedInsideWindowFeedItemCount !== undefined,
     collectionQualityDateMatchesRequestedDate:
       params.collectionQuality?.collectionDate === params.collectionDate,
+    providerReadinessPolicySatisfied:
+      !liveCollection ||
+      params.providerReadiness === undefined ||
+      params.providerReadiness?.ready === true,
     durableSummaryCaptured:
       params.durableEvidence?.result?.selectedFeedItemCount !== undefined,
     durableSummaryPersistedAndUuidBound: evidenceBound && liveCaptureBound,
@@ -323,6 +329,7 @@ export function buildProductionDayReport(params: {
       frontendArtifactFormat:
         params.evidenceBinding?.captureExecution.frontendArtifactFormat ?? null,
     },
+    providerReadiness: params.providerReadiness ?? null,
     run: {
       startedAt: params.startedAt.toISOString(),
       completedAt: params.completedAt.toISOString(),

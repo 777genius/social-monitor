@@ -17,7 +17,7 @@ export const productionCollectionThresholds = {
   xCollectorUsableRunRatePercent: 80,
 } as const;
 
-type ProviderScanProof = {
+export type ProviderScanProof = {
   readonly providerKey: CleanRealDayCollectionProviderKey;
   readonly bindingFingerprint?: string;
   readonly status: "succeeded" | "failed" | "skipped";
@@ -25,6 +25,82 @@ type ProviderScanProof = {
   readonly observability: ProviderCollectionObservation;
   readonly durableSnapshotProof?: GitHubTrendingDurableSnapshotProof;
   readonly failureFingerprint?: string;
+};
+
+export type ProductionProviderCollectionState = {
+  readonly state: "complete" | "partial" | "unavailable";
+  readonly evidence:
+    | "live_collection"
+    | "exact_day_durable_snapshot"
+    | "explicit_unavailable"
+    | "invalid";
+  readonly policy: "accepted" | "blocking";
+  readonly reasonCodes: readonly string[];
+  readonly retryDisposition: "none" | "immediate" | "deferred";
+};
+
+export const evaluateProductionProviderCollectionState = (params: {
+  readonly collectionDate: string;
+  readonly closedRequestedUtcDay: boolean;
+  readonly scan: ProviderScanProof;
+  readonly targetWindowItemCount: number;
+}): ProductionProviderCollectionState => {
+  const { scan } = params;
+  const explicitUnavailable =
+    scan.status !== "succeeded" &&
+    scan.observability.coverageState === "unavailable" &&
+    scan.observability.slo.reasons.includes("provider_unavailable") &&
+    typeof scan.failureFingerprint === "string" &&
+    scan.failureFingerprint.length > 0;
+  const explicitGitHubUnavailable =
+    params.closedRequestedUtcDay &&
+    params.targetWindowItemCount === 0 &&
+    isExplicitGitHubUnavailable(scan);
+  const exactClosedDayGitHubEvidence =
+    scan.providerKey !== "github-trending-page" ||
+    !params.closedRequestedUtcDay ||
+    (scan.acquisitionMode === "durable_snapshot_reuse" &&
+      scan.durableSnapshotProof?.requestedUtcDay === params.collectionDate);
+  const accepted =
+    explicitGitHubUnavailable ||
+    (params.targetWindowItemCount > 0 &&
+      exactClosedDayGitHubEvidence &&
+      providerMeetsProductionBlockingPolicy(scan));
+  const state =
+    scan.status !== "succeeded" ||
+    scan.observability.coverageState === "unavailable" ||
+    params.targetWindowItemCount <= 0
+      ? "unavailable"
+      : scan.observability.coverageState === "complete"
+        ? "complete"
+        : "partial";
+  const reasonCodes = new Set<string>(scan.observability.slo.reasons);
+  if (params.targetWindowItemCount <= 0) {
+    reasonCodes.add("target_window_empty");
+  }
+  if (!exactClosedDayGitHubEvidence) {
+    reasonCodes.add("github_exact_day_durable_evidence_missing");
+  }
+  if (!accepted && reasonCodes.size === 0) {
+    reasonCodes.add("blocking_policy_not_met");
+  }
+
+  return {
+    state,
+    evidence: explicitUnavailable
+      ? "explicit_unavailable"
+      : scan.acquisitionMode === "durable_snapshot_reuse" &&
+          scan.durableSnapshotProof?.requestedUtcDay === params.collectionDate
+        ? "exact_day_durable_snapshot"
+        : scan.acquisitionMode === "live_collection"
+          ? "live_collection"
+          : "invalid",
+    policy: accepted ? "accepted" : "blocking",
+    reasonCodes: [...reasonCodes],
+    retryDisposition: accepted
+      ? "none"
+      : scan.observability.slo.retryDisposition,
+  };
 };
 
 export const recalculateProductionBlockingPolicyGates = (

@@ -53,9 +53,11 @@ import {
 import { loadHistoricalRegeneration } from "./lib/reader-summary-production-day-regeneration";
 import { productionDayQualityDateArgs } from "./lib/reader-summary-production-day-quality-date";
 import { collectionQualityRegenerationFreshnessArgs } from "./lib/yesterday-social-collection-quality-regeneration";
+import type { CleanRealDayCollectionReport } from "./lib/clean-real-day-collection-report";
 import {
   evaluateYesterdaySocialProviderReadiness,
   type YesterdaySocialCollectionQualityInput,
+  type YesterdaySocialProviderReadiness,
 } from "./lib/yesterday-social-collection-quality";
 import { readProductionDayScope } from "./lib/reader-summary-production-day-scope";
 import {
@@ -240,19 +242,26 @@ async function main(): Promise<void> {
     readJsonIfExists<YesterdaySocialCollectionQualityInput>(
       "ops/evals/yesterday-social-collection-quality-report.v1.json",
     );
-  const providerReadiness = evaluateYesterdaySocialProviderReadiness({
-    expectedCollectionDate: collectionDate,
-    report: collectionQualityReport,
-  });
-  const requiredProvidersReady =
-    executionRequest.mode !== "live-production" || providerReadiness.ready;
+  const providerReadiness =
+    executionRequest.mode === "live-production"
+      ? evaluateYesterdaySocialProviderReadiness({
+          expectedCollectionDate: collectionDate,
+          evaluatedAt: new Date(),
+          report: collectionQualityReport,
+          collectionReport:
+            readJsonIfExists<CleanRealDayCollectionReport>(
+              "ops/evals/reader-summary-clean-real-day-collection.v1.json",
+            ),
+        })
+      : null;
+  const requiredProvidersReady = providerReadiness?.ready ?? true;
   if (
     executionRequest.mode === "live-production" &&
-    !providerReadiness.ready
+    providerReadiness?.ready !== true
   ) {
     collectionQualityStep = {
       ...collectionQualityStep,
-      command: `${collectionQualityStep.command} -- ${providerReadiness.barrierMessage}`,
+      command: `${collectionQualityStep.command} -- ${providerReadiness?.barrierMessage ?? "provider readiness evidence is missing"}`,
       status: "failed",
       exitCode: 1,
     };
@@ -267,15 +276,17 @@ async function main(): Promise<void> {
     })
   ) {
     const safeMessage =
-      providerReadiness.barrierMessage === null
+      providerReadiness?.barrierMessage === null ||
+      providerReadiness === null
         ? "Production collection quality failed; AI summary and publication were not started"
-        : `${providerReadiness.barrierMessage}; AI summary and publication were not started. Retry the same date; completed providers will not be recollected`;
+        : `${providerReadiness.barrierMessage}; AI summary and publication were not started. Retry not before ${providerReadiness.retrySchedule?.notBefore ?? "the next scheduled run"}; completed providers will not be recollected`;
     steps.push(...blockedProductionDaySteps(safeMessage));
     persistProductionDayReport({
       startedAt,
       completedAt: new Date(),
       steps,
       scope,
+      providerReadiness,
       includeSummaryEvidence: false,
       failure: {
         code: "collection_quality_failed",
@@ -450,6 +461,7 @@ async function main(): Promise<void> {
     completedAt: new Date(),
     steps,
     scope,
+    providerReadiness,
     includeSummaryEvidence: true,
     failure: null,
     historicalReuseProvenance: historicalReuse?.provenance ?? null,
@@ -476,6 +488,7 @@ function persistProductionDayReport(params: {
   readonly completedAt: Date;
   readonly steps: readonly StepReport[];
   readonly scope: { readonly tenantId: string; readonly workspaceId: string };
+  readonly providerReadiness: YesterdaySocialProviderReadiness | null;
   readonly includeSummaryEvidence: boolean;
   readonly failure: ProductionDayReport["failure"];
   readonly historicalReuseProvenance: HistoricalReuseProvenance | null;
@@ -665,6 +678,7 @@ function buildReport(params: {
   readonly completedAt: Date;
   readonly steps: readonly StepReport[];
   readonly scope: { readonly tenantId: string; readonly workspaceId: string };
+  readonly providerReadiness: YesterdaySocialProviderReadiness | null;
   readonly includeSummaryEvidence: boolean;
   readonly failure: ProductionDayReport["failure"];
   readonly historicalReuseProvenance: HistoricalReuseProvenance | null;
@@ -690,6 +704,7 @@ function buildReport(params: {
     completedAt: params.completedAt,
     steps: params.steps,
     scope: params.scope,
+    providerReadiness: params.providerReadiness,
     collectionQuality,
     durableEvidence:
       evidenceArtifact.evidence as ProductionDayDurableEvidence | null,

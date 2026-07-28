@@ -41,6 +41,7 @@ import {
   type CleanRealDayCollectionReport,
 } from "./lib/clean-real-day-collection-report";
 import {
+  catchUpCanSpendXReadinessBudget,
   mergeDailyProviderCatchUpEvidence,
   planDailyProviderCatchUp,
 } from "./lib/reader-summary-daily-provider-catch-up";
@@ -102,12 +103,16 @@ if (providerCatchUp && process.argv.includes("--providers")) {
 }
 const providerCatchUpPlan = planDailyProviderCatchUp({
   collectionDate: targetCollectionDate,
+  evaluatedAt: new Date(),
   existingReport: providerCatchUp ? readExistingCollectionReport() : null,
   requiredProviderKeys: providerCatchUp
     ? defaultCleanRealDayCollectionProviderKeys
     : requestedProviderKeys,
 });
 const providerKeys = providerCatchUpPlan.providerKeysToCollect;
+const spendXReadinessBudget =
+  waitForXReadiness &&
+  catchUpCanSpendXReadinessBudget(providerCatchUpPlan);
 const targetPublishedWindow = {
   startInclusive: `${targetCollectionDate}T00:00:00.000Z`,
   endExclusive: nextDate(targetCollectionDate),
@@ -133,7 +138,7 @@ async function main(): Promise<void> {
   if (providerKeys.length === 0) {
     validateExistingReport();
     console.log(
-      `All required providers are already complete for ${targetCollectionDate}; no collection was started`,
+      `All required providers have terminal policy evidence for ${targetCollectionDate}; no collection was started`,
     );
     return;
   }
@@ -158,8 +163,20 @@ async function main(): Promise<void> {
   }
 
   if (!report.blockingPassed) {
-    console.error(serialized);
-    throw new Error("Reader summary clean real-day collection gates failed");
+    const blockingProviders = providerCatchUpPlan.requiredProviderKeys.filter(
+      (providerKey) => {
+        const scan = report.scans.find(
+          (candidate) => candidate.providerKey === providerKey,
+        );
+        return (
+          scan === undefined ||
+          !providerMeetsProductionBlockingPolicy(scan)
+        );
+      },
+    );
+    throw new Error(
+      `Reader summary clean real-day collection gates failed for ${targetCollectionDate}; blocking providers=${blockingProviders.join(",") || "quality-gate"}`,
+    );
   }
 
   if (!update) {
@@ -235,7 +252,7 @@ async function tryRunCollection(): Promise<
       requestedUtcDay: targetCollectionDate,
       targetWindowEndedAt: new Date(targetPublishedWindow.endExclusive),
       runStartedAt: startedAt,
-      waitForXReadiness,
+      waitForXReadiness: spendXReadinessBudget,
     });
     const completedAt = new Date();
     const freshWindow = await readFreshWindowProof(tenantDatabase, {
@@ -886,9 +903,14 @@ function validateExistingReport(): void {
     report.scans.every(
       (scan) =>
         scan.attemptCount >= 1 &&
-        scan.attemptCount <= 3 &&
-        providerMeetsProductionBlockingPolicy(scan),
+        scan.attemptCount <= 3,
     ) &&
+    (report.scans.every(providerMeetsProductionBlockingPolicy) ||
+      explicitGitHubUnavailableIsTransparentPartialDailyInput({
+        requestedProviderKeys: report.inputs.providerKeys,
+        scans: report.scans,
+        targetWindowProviderCounts: report.targetWindow.providerCounts,
+      })) &&
     report.qualityGates.noRawSecretFragments === true &&
     report.blockingPassed === true &&
     noRawSecretFragments(report);
