@@ -1,17 +1,18 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-
-import { Pool } from "pg";
-
+import { Pool, type PoolClient } from "pg";
 import { statsForFeedItemMetadata } from "@social-monitor/summary/adapters/evidence/feed-item-collection-stats";
 import { isDefaultReaderSummaryEvidenceProvider } from "@social-monitor/summary/adapters/evidence/reader-summary-evidence-provider-filter";
-
 import {
   collectionDateOptionOrDefault,
   type CollectionIntegrityStatus,
   readCollectionIntegrityStatus,
   yesterdaySocialQualityDatabaseUrl,
 } from "./lib/yesterday-social-replay-support";
+import {
+  readProductionDayScope,
+  type ProductionDayScope,
+} from "./lib/reader-summary-production-day-scope";
 import {
   buildXAccountPoolReport,
   buildXCollectorLedgerReport,
@@ -70,17 +71,8 @@ type FeedRow = {
   readonly providerMetadata: unknown;
   readonly status: string;
 };
-
-type SourceItemCountRow = {
-  readonly providerKey: string;
-  readonly sourceItemCount: string;
-};
-
-type SummaryCountRow = {
-  readonly status: string | null;
-  readonly count: string;
-};
-
+type SourceItemCountRow = { readonly providerKey: string; readonly sourceItemCount: string };
+type SummaryCountRow = { readonly status: string | null; readonly count: string };
 type ProviderReport = {
   readonly providerKey: string;
   readonly feedItemCount: number;
@@ -100,14 +92,12 @@ type ProviderReport = {
   readonly averageBodyPreviewLength: number;
   readonly rankInputReadinessScore: number;
 };
-
 type InterestCoverage = {
   readonly interestFingerprint: string;
   readonly feedItemCount: number;
   readonly providerCounts: Record<string, number>;
   readonly containsAllPrimarySources: boolean;
 };
-
 type DataIntegrityReport = {
   readonly feedItemCount: number;
   readonly joinedInterestCount: number;
@@ -125,7 +115,6 @@ type DataIntegrityReport = {
   readonly orphanSourceBindingWithSnapshotCount: number;
   readonly orphanSourceBindingFingerprints: readonly string[];
 };
-
 type DayWindowAuditProviderReport = {
   readonly providerKey: string;
   readonly observedInsideWindowFeedItemCount: number;
@@ -137,7 +126,6 @@ type DayWindowAuditProviderReport = {
   readonly mutedFeedItemCount: number;
   readonly userRatedFeedItemCount: number;
 };
-
 type DayWindowAuditReport = {
   readonly observedWindow: {
     readonly startInclusive: string;
@@ -155,17 +143,12 @@ type DayWindowAuditReport = {
   readonly summaryCandidateFeedItemCount: number;
   readonly providerBreakdown: readonly DayWindowAuditProviderReport[];
 };
-
 type Report = {
   readonly schemaVersion: 1;
   readonly artifactFormat: "yesterday-social-collection-quality-report-v1";
   readonly collectionDate: string;
   readonly generatedBy: string;
-  readonly model: {
-    readonly liveNetwork: false;
-    readonly reportBuilder: string;
-    readonly rawPostTextPersistedInReport: false;
-  };
+  readonly model: { readonly liveNetwork: false; readonly reportBuilder: string; readonly rawPostTextPersistedInReport: false };
   readonly inputs: {
     readonly postgresFeedWindow: {
       readonly startInclusive: string;
@@ -181,19 +164,14 @@ type Report = {
   readonly dayWindowAudit: DayWindowAuditReport;
   readonly collectionIntegrity: CollectionIntegrityStatus;
   readonly interestCoverage: readonly InterestCoverage[];
-  readonly summaryReadiness: {
-    readonly primarySourcesCoLocatedInSingleInterest: boolean;
-    readonly workspaceOrMultiInterestSummaryNeededForPrimarySourceMix: boolean;
-  };
+  readonly summaryReadiness: { readonly primarySourcesCoLocatedInSingleInterest: boolean; readonly workspaceOrMultiInterestSummaryNeededForPrimarySourceMix: boolean };
   readonly xCollectorLedger: XCollectorLedgerReport;
   readonly xAccountPool: XAccountPoolReport;
   readonly summaryArtifactCoverage: {
     readonly artifactCount: number;
     readonly jobCount: number;
     readonly statusCounts: Record<string, number>;
-    readonly verificationStatus:
-      | "verified_from_summary_artifacts"
-      | "not_verified_missing_summary_artifact";
+    readonly verificationStatus: "verified_from_summary_artifacts" | "not_verified_missing_summary_artifact";
   };
   readonly operationalWarnings: {
     readonly xCollectorFailedRunCount: number;
@@ -214,28 +192,21 @@ type Report = {
     readonly xAccountAttributionPolicy: "warning_only";
     readonly xAccountAttributionGateReason: string;
     readonly xAccountAttributionWarningCount: number;
-    readonly xAccountAttributionWarnings: readonly {
-      readonly code: string;
-      readonly accountFingerprint: string;
-    }[];
+    readonly xAccountAttributionWarnings: readonly { readonly code: string; readonly accountFingerprint: string }[];
     readonly publishedOutsideWindowFeedItemCount: number;
     readonly lowRelevanceFeedItemCount: number;
   };
   readonly qualityGates: Record<string, boolean>;
   readonly collectionBlockingPassed: boolean;
   readonly summaryQualityVerified: boolean;
-  readonly completionStatus:
-    | "collection_quality_verified_summary_artifact_missing"
-    | "collection_and_summary_quality_verified";
+  readonly completionStatus: "collection_quality_verified_summary_artifact_missing" | "collection_and_summary_quality_verified";
 };
 
-const { collectionDate, wasExplicit: collectionDateWasExplicit } =
-  collectionDateOptionOrDefault("2026-07-03");
+const { collectionDate, wasExplicit: collectionDateWasExplicit } = collectionDateOptionOrDefault("2026-07-03");
 const update = process.argv.includes("--update");
 const allowHistorical = process.argv.includes("--allow-historical");
 const writeFailedReport = process.argv.includes("--write-failed-report");
-const outputPath =
-  "ops/evals/yesterday-social-collection-quality-report.v1.json";
+const outputPath = "ops/evals/yesterday-social-collection-quality-report.v1.json";
 const xCollectorLedgerPath =
   process.env.YESTERDAY_SOCIAL_QUALITY_X_LEDGER_PATH ??
   "apps/x-collector/var/x-collector/scweet_state.db";
@@ -343,14 +314,29 @@ async function tryBuildReport(): Promise<Report | undefined> {
     max: 1,
     connectionTimeoutMillis: 2_000,
   });
+  let client: PoolClient | undefined;
 
   try {
-    const feedRows = await queryFeedRows(pool);
-    const publishedWindowFeedRows = await queryPublishedWindowFeedRows(pool);
+    const window = feedWindow();
+    const scope = await readProductionDayScope({
+      connectionString: localDatabaseUrl,
+      periodStartedAt: window.startInclusive,
+      periodEndedAt: window.endExclusive,
+      collectionDate,
+    });
+    client = await pool.connect();
+    await client.query(
+      "SELECT set_config('social_monitor.system_access', 'true', false)",
+    );
+    const feedRows = await queryFeedRows(client, scope);
+    const publishedWindowFeedRows = await queryPublishedWindowFeedRows(
+      client,
+      scope,
+    );
+    const sourceItemCounts = await querySourceItemCounts(client, scope);
+    const summaryArtifacts = await querySummaryArtifacts(client, scope);
+    const summaryJobs = await querySummaryJobs(client, scope);
     const summaryWindowRows = visibleRows(publishedWindowFeedRows);
-    const sourceItemCounts = await querySourceItemCounts(pool);
-    const summaryArtifacts = await querySummaryArtifacts(pool);
-    const summaryJobs = await querySummaryJobs(pool);
     const providerReports = buildProviderReports(
       summaryWindowRows,
       sourceItemCounts,
@@ -577,25 +563,31 @@ async function tryBuildReport(): Promise<Report | undefined> {
     );
     return undefined;
   } finally {
+    client?.release();
     await pool.end().catch(() => undefined);
   }
 }
 
-async function queryFeedRows(pool: Pool): Promise<readonly FeedRow[]> {
-  return queryFeedRowsByWindow(pool, "observed_at");
+async function queryFeedRows(
+  client: PoolClient,
+  scope: ProductionDayScope,
+): Promise<readonly FeedRow[]> {
+  return queryFeedRowsByWindow(client, scope, "observed_at");
 }
 
 async function queryPublishedWindowFeedRows(
-  pool: Pool,
+  client: PoolClient,
+  scope: ProductionDayScope,
 ): Promise<readonly FeedRow[]> {
-  return queryFeedRowsByWindow(pool, "published_at");
+  return queryFeedRowsByWindow(client, scope, "published_at");
 }
 
 async function queryFeedRowsByWindow(
-  pool: Pool,
+  client: PoolClient,
+  scope: ProductionDayScope,
   windowColumn: "observed_at" | "published_at",
 ): Promise<readonly FeedRow[]> {
-  const result = await pool.query<FeedRow>(
+  const result = await client.query<FeedRow>(
     `
       select
         f.provider_key as "providerKey",
@@ -642,9 +634,11 @@ async function queryFeedRowsByWindow(
       left join source_bindings sb on sb.id = f.source_binding_id
       where f.${windowColumn} >= $1::timestamptz
         and f.${windowColumn} < $2::timestamptz
+        and f.tenant_id = $3::uuid
+        and f.workspace_id = $4::uuid
       order by f.provider_key, f.observed_at, f.id
     `,
-    [feedWindow().startInclusive, feedWindow().endExclusive],
+    [feedWindow().startInclusive, feedWindow().endExclusive, scope.tenantId, scope.workspaceId],
   );
 
   return result.rows;
@@ -781,9 +775,10 @@ function dayWindowCounts(
 }
 
 async function querySourceItemCounts(
-  pool: Pool,
+  client: PoolClient,
+  scope: ProductionDayScope,
 ): Promise<readonly SourceItemCountRow[]> {
-  const result = await pool.query<SourceItemCountRow>(
+  const result = await client.query<SourceItemCountRow>(
     `
       select
         provider_key as "providerKey",
@@ -791,46 +786,54 @@ async function querySourceItemCounts(
       from source_items
       where observed_at >= $1::timestamptz
         and observed_at < $2::timestamptz
+        and tenant_id = $3::uuid
+        and workspace_id = $4::uuid
       group by provider_key
       order by provider_key
     `,
-    [feedWindow().startInclusive, feedWindow().endExclusive],
+    [feedWindow().startInclusive, feedWindow().endExclusive, scope.tenantId, scope.workspaceId],
   );
 
   return result.rows;
 }
 
 async function querySummaryArtifacts(
-  pool: Pool,
+  client: PoolClient,
+  scope: ProductionDayScope,
 ): Promise<readonly SummaryCountRow[]> {
-  const result = await pool.query<SummaryCountRow>(
+  const result = await client.query<SummaryCountRow>(
     `
       select status::text as "status", count(*)::text as "count"
       from reader_summary_artifacts
       where period_started_at = $1::timestamptz
         and period_ended_at = $2::timestamptz
+        and tenant_id = $3::uuid
+        and workspace_id = $4::uuid
       group by status
       order by status
     `,
-    [feedWindow().startInclusive, feedWindow().endExclusive],
+    [feedWindow().startInclusive, feedWindow().endExclusive, scope.tenantId, scope.workspaceId],
   );
 
   return result.rows;
 }
 
 async function querySummaryJobs(
-  pool: Pool,
+  client: PoolClient,
+  scope: ProductionDayScope,
 ): Promise<readonly SummaryCountRow[]> {
-  const result = await pool.query<SummaryCountRow>(
+  const result = await client.query<SummaryCountRow>(
     `
       select status::text as "status", count(*)::text as "count"
       from reader_summary_jobs
       where period_started_at = $1::timestamptz
         and period_ended_at = $2::timestamptz
+        and tenant_id = $3::uuid
+        and workspace_id = $4::uuid
       group by status
       order by status
     `,
-    [feedWindow().startInclusive, feedWindow().endExclusive],
+    [feedWindow().startInclusive, feedWindow().endExclusive, scope.tenantId, scope.workspaceId],
   );
 
   return result.rows;
