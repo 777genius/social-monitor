@@ -253,9 +253,9 @@ export const discoverReaderSummaryProductionRecoveryScope = async (
         'x-twitter'
       ])
       AND feed."observed_at" >=
-        (DATE '2026-07-24'::TIMESTAMP AT TIME ZONE 'UTC')
+        (DATE '2026-07-23'::TIMESTAMP AT TIME ZONE 'UTC')
       AND feed."observed_at" <
-        (DATE '2026-07-26'::TIMESTAMP AT TIME ZONE 'UTC')
+        (DATE '2026-07-25'::TIMESTAMP AT TIME ZONE 'UTC')
       AND source."content_hash" ~ '^[0-9a-f]{64}$'
       AND (
         (
@@ -294,60 +294,60 @@ export const discoverReaderSummaryProductionRecoveryScope = async (
       AND count(*) = 692
       AND count(*) FILTER (
         WHERE feed."observed_at" <
-          (DATE '2026-07-25'::TIMESTAMP AT TIME ZONE 'UTC')
+          (DATE '2026-07-24'::TIMESTAMP AT TIME ZONE 'UTC')
       ) = 342
       AND count(*) FILTER (
         WHERE feed."observed_at" >=
-          (DATE '2026-07-25'::TIMESTAMP AT TIME ZONE 'UTC')
+          (DATE '2026-07-24'::TIMESTAMP AT TIME ZONE 'UTC')
       ) = 350
       AND count(*) FILTER (
         WHERE feed."observed_at" <
-            (DATE '2026-07-25'::TIMESTAMP AT TIME ZONE 'UTC')
+            (DATE '2026-07-24'::TIMESTAMP AT TIME ZONE 'UTC')
           AND feed."provider_key" = 'github-trending-page'
       ) = 0
       AND count(*) FILTER (
         WHERE feed."observed_at" <
-            (DATE '2026-07-25'::TIMESTAMP AT TIME ZONE 'UTC')
+            (DATE '2026-07-24'::TIMESTAMP AT TIME ZONE 'UTC')
           AND feed."provider_key" = 'hacker-news'
       ) = 100
       AND count(*) FILTER (
         WHERE feed."observed_at" <
-            (DATE '2026-07-25'::TIMESTAMP AT TIME ZONE 'UTC')
+            (DATE '2026-07-24'::TIMESTAMP AT TIME ZONE 'UTC')
           AND feed."provider_key" = 'reddit'
       ) = 100
       AND count(*) FILTER (
         WHERE feed."observed_at" <
-            (DATE '2026-07-25'::TIMESTAMP AT TIME ZONE 'UTC')
+            (DATE '2026-07-24'::TIMESTAMP AT TIME ZONE 'UTC')
           AND feed."provider_key" = 'rss'
       ) = 75
       AND count(*) FILTER (
         WHERE feed."observed_at" <
-            (DATE '2026-07-25'::TIMESTAMP AT TIME ZONE 'UTC')
+            (DATE '2026-07-24'::TIMESTAMP AT TIME ZONE 'UTC')
           AND feed."provider_key" = 'x-twitter'
       ) = 67
       AND count(*) FILTER (
         WHERE feed."observed_at" >=
-            (DATE '2026-07-25'::TIMESTAMP AT TIME ZONE 'UTC')
+            (DATE '2026-07-24'::TIMESTAMP AT TIME ZONE 'UTC')
           AND feed."provider_key" = 'github-trending-page'
       ) = 10
       AND count(*) FILTER (
         WHERE feed."observed_at" >=
-            (DATE '2026-07-25'::TIMESTAMP AT TIME ZONE 'UTC')
+            (DATE '2026-07-24'::TIMESTAMP AT TIME ZONE 'UTC')
           AND feed."provider_key" = 'hacker-news'
       ) = 100
       AND count(*) FILTER (
         WHERE feed."observed_at" >=
-            (DATE '2026-07-25'::TIMESTAMP AT TIME ZONE 'UTC')
+            (DATE '2026-07-24'::TIMESTAMP AT TIME ZONE 'UTC')
           AND feed."provider_key" = 'reddit'
       ) = 100
       AND count(*) FILTER (
         WHERE feed."observed_at" >=
-            (DATE '2026-07-25'::TIMESTAMP AT TIME ZONE 'UTC')
+            (DATE '2026-07-24'::TIMESTAMP AT TIME ZONE 'UTC')
           AND feed."provider_key" = 'rss'
       ) = 67
       AND count(*) FILTER (
         WHERE feed."observed_at" >=
-            (DATE '2026-07-25'::TIMESTAMP AT TIME ZONE 'UTC')
+            (DATE '2026-07-24'::TIMESTAMP AT TIME ZONE 'UTC')
           AND feed."provider_key" = 'x-twitter'
       ) = 73
     ORDER BY "tenantId", "workspaceId"
