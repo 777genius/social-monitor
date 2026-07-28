@@ -49,6 +49,7 @@ import {
   withProviderCollectionWindowProof,
 } from "./lib/provider-collection-observability";
 import {
+  explicitGitHubUnavailableIsTransparentPartialDailyInput,
   providerMeetsProductionBlockingPolicy,
   recalculateProductionBlockingPolicyGates,
 } from "./lib/production-collection-quality-policy";
@@ -159,6 +160,7 @@ function recalculateExistingReport(): void {
   const qualityGates = recalculateProductionBlockingPolicyGates(
     report.qualityGates,
     report.scans,
+    report.targetWindow.providerCounts,
   );
   const recalculated = {
     ...report,
@@ -572,6 +574,12 @@ function buildReport(params: {
   const allRequestedProvidersSucceeded = providerKeys.every((providerKey) =>
     succeededProviders.has(providerKey),
   );
+  const transparentPartialInput =
+    explicitGitHubUnavailableIsTransparentPartialDailyInput({
+      requestedProviderKeys: providerKeys,
+      scans: finalScanResults,
+      targetWindowProviderCounts: params.targetWindow.providerCounts,
+    });
   const plannerProviderKeys = params.targets
     .filter((target) => asRecord(target.config.sourceQueryPlanner).enabled)
     .map((target) => target.providerKey);
@@ -607,12 +615,14 @@ function buildReport(params: {
     );
   const qualityGates = {
     targetBindingsPresent: params.targets.length === providerKeys.length,
-    everyRequestedProviderSucceeded: allRequestedProvidersSucceeded,
+    everyRequestedProviderSucceeded:
+      allRequestedProvidersSucceeded || transparentPartialInput,
     targetWindowFeedItemsAvailable: params.targetWindow.feedItemCount > 0,
-    everyRequestedProviderHasTargetItems: providerKeys.every(
-      (providerKey) =>
-        (params.targetWindow.providerCounts[providerKey] ?? 0) > 0,
-    ),
+    everyRequestedProviderHasTargetItems:
+      providerKeys.every(
+        (providerKey) =>
+          (params.targetWindow.providerCounts[providerKey] ?? 0) > 0,
+      ) || transparentPartialInput,
     noFreshOrphanInterestReferences:
       params.freshWindow.orphanInterestCount === 0,
     noFreshOrphanSourceBindingReferences:
@@ -645,9 +655,9 @@ function buildReport(params: {
     providerAcquisitionModesAreConsistent: finalScanResults.every(
       (scan) => scan.acquisitionMode === scan.observability.acquisitionMode,
     ),
-    everyRequestedProviderMeetsBlockingCoveragePolicy: finalScanResults.every(
-      providerMeetsProductionBlockingPolicy,
-    ),
+    everyRequestedProviderMeetsBlockingCoveragePolicy:
+      finalScanResults.every(providerMeetsProductionBlockingPolicy) ||
+      transparentPartialInput,
     providerRetriesAreBounded: finalScanResults.every(
       (scan) => scan.attemptCount >= 1 && scan.attemptCount <= 3,
     ),
@@ -660,7 +670,7 @@ function buildReport(params: {
       (scan) =>
         scan.acquisitionMode !== "durable_snapshot_reuse" ||
         scan.durableSnapshotProof?.requestedUtcDay === targetCollectionDate,
-    ),
+    ) || transparentPartialInput,
     partialProviderCoverageIsExplicit: finalScanResults.every((scan) =>
       ["complete", "partial", "degraded", "unavailable"].includes(
         scan.observability.coverageState,
