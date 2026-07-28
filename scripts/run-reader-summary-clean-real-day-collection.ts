@@ -6,7 +6,7 @@ import type {
   SourceQueryMode,
   SourceRuntimeConfig,
 } from "@social-monitor/ingestion/ports";
-import { Pool } from "pg";
+import { Pool, type QueryResultRow } from "pg";
 import {
   acquirePrismaPgRuntimeConnection,
   defaultPostgresRuntimePoolConfig,
@@ -187,11 +187,13 @@ async function tryRunCollection(): Promise<
   let connection: PrismaIngestionWorkerConnection | undefined;
 
   try {
-    targetDiscovery = await createTargetDiscoveryConnection(runtimeConfig);
+    const targetDiscoveryConnection =
+      await createTargetDiscoveryConnection(runtimeConfig);
+    targetDiscovery = targetDiscoveryConnection;
     connection =
       await PrismaIngestionWorkerConnection.create(runtimeConfig);
     const targets = await discoverSingleScopeCleanRealDayTargets(() =>
-      readTargets(targetDiscovery.client),
+      readTargets(targetDiscoveryConnection.client),
     );
     const targetScope = targets[0]!;
     const tenantDatabase = createTenantScopedPgQuery(pool, targetScope);
@@ -260,7 +262,7 @@ function createTenantScopedPgQuery(
   pool: Pool,
   scope: Pick<SourceBindingTarget, "tenantId" | "workspaceId">,
 ): Pick<Pool, "query"> {
-  const query = async <Row>(
+  const query = async <Row extends QueryResultRow>(
     text: string,
     values: readonly unknown[] = [],
   ): Promise<{ rows: Row[] }> =>
