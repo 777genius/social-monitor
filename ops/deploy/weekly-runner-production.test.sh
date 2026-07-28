@@ -6,6 +6,7 @@ REPO=$(cd "$SCRIPT_DIR/../.." && pwd)
 
 service=$SCRIPT_DIR/production-runtime/social-monitor-weekly.service
 timer=$SCRIPT_DIR/production-runtime/social-monitor-weekly.timer
+maintenance_lib=$SCRIPT_DIR/reader-summary-recovery-maintenance-lib.sh
 deploy_lib=$SCRIPT_DIR/postgres-runtime-deploy-lib.sh
 deploy_entrypoint=$SCRIPT_DIR/social-monitor-production-deploy.sh
 package_json=$REPO/package.json
@@ -13,14 +14,13 @@ package_json=$REPO/package.json
 [[ -f $service ]]
 [[ -f $timer ]]
 grep -Fx 'Type=oneshot' "$service" >/dev/null
-grep -Fx 'Restart=no' "$service" >/dev/null
-grep -F 'npm run run:reader-summary-weekly-production' "$service" >/dev/null
-grep -F -- '-e READER_SUMMARY_WEEKLY_PRODUCTION_TENANT_ID=00000000-0000-7000-8000-000000006101' \
+grep -F 'github-production-deploy.sh" reader-summary-weekly-run "$release"' \
   "$service" >/dev/null
-grep -F -- '-e READER_SUMMARY_WEEKLY_PRODUCTION_WORKSPACE_ID=00000000-0000-7000-8000-000000006102' \
-  "$service" >/dev/null
-grep -F 'READER_SUMMARY_WEEKLY_PRODUCTION_ARTIFACT_DIR=' "$service" >/dev/null
-grep -Fx 'Persistent=false' "$timer" >/dev/null
+grep -Fx 'Restart=on-failure' "$service" >/dev/null
+grep -Fx 'RestartSec=30min' "$service" >/dev/null
+grep -Fx 'StartLimitIntervalSec=3h' "$service" >/dev/null
+grep -Fx 'StartLimitBurst=3' "$service" >/dev/null
+grep -Fx 'Persistent=true' "$timer" >/dev/null
 grep -Fx 'Unit=social-monitor-weekly.service' "$timer" >/dev/null
 grep -F 'OnCalendar=Mon ' "$timer" >/dev/null
 ! grep -Eq '^(OnBootSec|OnActiveSec|OnUnitActiveSec)=' "$timer"
@@ -37,3 +37,19 @@ grep -F 'check:reader-summary-weekly-production-postgres' \
   "$package_json" >/dev/null
 grep -F 'check:reader-summary-weekly-production-runner' "$package_json" \
   >/dev/null
+
+grep -F 'DAILY_SINGLETON_LOCK' "$maintenance_lib" >/dev/null
+grep -F 'POSTGRES_ADMISSION_LOCK' "$maintenance_lib" >/dev/null
+grep -F 'npm run run:reader-summary-weekly-production' \
+  "$maintenance_lib" >/dev/null
+grep -F 'npm run run:reader-summary-weekly-production -- --replay' \
+  "$maintenance_lib" >/dev/null
+grep -F -- '-e READER_SUMMARY_WEEKLY_PRODUCTION_TENANT_ID=00000000-0000-7000-8000-000000006101' \
+  "$maintenance_lib" >/dev/null
+grep -F -- '-e READER_SUMMARY_WEEKLY_PRODUCTION_WORKSPACE_ID=00000000-0000-7000-8000-000000006102' \
+  "$maintenance_lib" >/dev/null
+grep -F 'READER_SUMMARY_WEEKLY_PRODUCTION_ARTIFACT_DIR=' \
+  "$maintenance_lib" >/dev/null
+! grep -Ei 'backup|subscription-runtime' "$maintenance_lib" >/dev/null
+
+bash "$SCRIPT_DIR/reader-summary-recovery-maintenance-lib.test.sh"

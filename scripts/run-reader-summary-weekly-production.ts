@@ -142,8 +142,12 @@ function printResult(
       `week=${result.weekStartedOn}..${result.weekEndedOn}`,
       `artifact=${result.artifactPath ?? "none"}`,
       `proof=${result.proofPath ?? "none"}`,
+      `replay_canary=${result.replayCanaryPath ?? "none"}`,
       `model_call=${result.modelCallPerformed ? "true" : "false"}`,
       `write=${result.writePerformed ? "true" : "false"}`,
+      `replay_canary_write=${
+        result.replayCanaryWritePerformed ? "true" : "false"
+      }`,
       `replay=${result.replayed ? "true" : "false"}`,
     ].join(" "),
   );

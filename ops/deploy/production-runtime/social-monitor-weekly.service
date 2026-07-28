@@ -2,13 +2,15 @@
 Description=Social Monitor weekly AI reader summary
 After=social-monitor-prod.service network-online.target
 Requires=social-monitor-prod.service
+StartLimitIntervalSec=3h
+StartLimitBurst=3
 
 [Service]
 Type=oneshot
-Environment=PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
-ExecStart=/bin/bash -lc 'set -euo pipefail; ROOT=/var/data/social-monitor; docker compose -p social-monitor-prod --env-file "$ROOT/secrets/production.env" -f "$ROOT/integration/docker-compose.yml" -f "$ROOT/control/compose.production.yml" -f "$ROOT/control/compose.managed-db.yml" -f "$ROOT/control/postgres-runtime-current/compose.postgres-runtime.yml" --profile daily run --rm --no-deps -e READER_SUMMARY_WEEKLY_PRODUCTION_TENANT_ID=00000000-0000-7000-8000-000000006101 -e READER_SUMMARY_WEEKLY_PRODUCTION_WORKSPACE_ID=00000000-0000-7000-8000-000000006102 -e READER_SUMMARY_WEEKLY_PRODUCTION_ARTIFACT_DIR=/var/lib/social-monitor/artifacts/reader-summary-weekly-production daily-runner sh -lc "npm run run:reader-summary-weekly-production"'
+ExecStart=/bin/bash -lc 'set -euo pipefail; ROOT=/var/data/social-monitor; release=$(cat "$ROOT/control/deploy-state/backend.sha"); [[ $release =~ ^[0-9a-f]{40}$ ]] || exit 75; exec "$ROOT/control/github-production-deploy.sh" reader-summary-weekly-run "$release"'
 TimeoutStartSec=3600
-Restart=no
+Restart=on-failure
+RestartSec=30min
 Nice=10
 IOSchedulingClass=best-effort
 IOSchedulingPriority=6

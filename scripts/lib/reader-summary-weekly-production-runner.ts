@@ -1,9 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
   existsSync,
+  linkSync,
   mkdirSync,
   readFileSync,
-  renameSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -51,6 +51,7 @@ import {
   type ReaderSummaryWeeklyProductionProviderEvidence,
   type ReaderSummaryWeeklyProductionStatus,
 } from "./reader-summary-weekly-production-postgres-contract";
+import { writeReaderSummaryWeeklyProductionReplayCanary } from "./reader-summary-weekly-production-replay-canary";
 
 export type ReaderSummaryWeeklyProductionRunnerResult = Readonly<{
   status: ReaderSummaryWeeklyProductionStatus;
@@ -58,8 +59,10 @@ export type ReaderSummaryWeeklyProductionRunnerResult = Readonly<{
   weekEndedOn: string;
   artifactPath: string | null;
   proofPath: string | null;
+  replayCanaryPath: string | null;
   modelCallPerformed: boolean;
   writePerformed: boolean;
+  replayCanaryWritePerformed: boolean;
   replayed: boolean;
   blockingReasons: readonly string[];
 }>;
@@ -84,7 +87,13 @@ export type ReaderSummaryWeeklyAgentRuntimeModelParams = Readonly<{
 
 type ExistingArtifactState =
   | Readonly<{ status: "missing" }>
-  | Readonly<{ status: "valid"; artifactPath: string; proofPath: string }>;
+  | Readonly<{
+      status: "valid";
+      artifactPath: string;
+      proofPath: string;
+      artifactSha256: string;
+      proofSha256: string;
+    }>;
 
 type ArtifactEnvelope = Readonly<{
   schemaVersion: "reader_summary.weekly_production_artifact.v1";
@@ -256,24 +265,58 @@ export const runReaderSummaryWeeklyProduction = async (
   const generatedBy = params.generatedBy ?? generatedByDefault;
   const paths = artifactPaths(params.outputDirectory, params.dbState);
   if (params.dbState.status !== "complete") {
-    return result(params, params.dbState.status, false, false, false, [
+    return result(params, params.dbState.status, false, false, false, false, [
       ...params.dbState.blockingReasons,
     ]);
   }
 
   const evidence = buildModelInputFromDbState(params.dbState);
   if (evidence.status === "partial") {
-    return result(params, "partial", false, false, false, evidence.reasons);
+    return result(
+      params,
+      "partial",
+      false,
+      false,
+      false,
+      false,
+      evidence.reasons,
+    );
   }
   const input = evidence.input;
   const existing = readExistingArtifact(paths, input);
   if (existing.status === "valid") {
-    return result(params, "complete", false, false, true, []);
+    const replayCanaryWritePerformed = params.replay
+      ? writeReaderSummaryWeeklyProductionReplayCanary({
+          outputDirectory: paths.outputDirectory,
+          replayCanaryPath: paths.replayCanaryPath,
+          generatedBy,
+          generatedAt: params.generatedAt,
+          dbState: params.dbState,
+          input,
+          artifactSha256: existing.artifactSha256,
+          proofSha256: existing.proofSha256,
+        })
+      : false;
+    return result(
+      params,
+      "complete",
+      false,
+      false,
+      replayCanaryWritePerformed,
+      true,
+      [],
+    );
   }
   if (params.replay) {
-    return result(params, "partial", false, false, true, [
-      "replay requested but weekly artifact/proof is missing",
-    ]);
+    return result(
+      params,
+      "partial",
+      false,
+      false,
+      false,
+      true,
+      ["replay requested but weekly artifact/proof is missing"],
+    );
   }
 
   const output = await params.model.generate(input);
@@ -321,7 +364,7 @@ export const runReaderSummaryWeeklyProduction = async (
     generatedBy,
   });
   writeArtifactPair(paths, artifactEnvelope, proofEnvelope, input);
-  return result(params, "complete", true, true, false, []);
+  return result(params, "complete", true, true, false, false, []);
 };
 
 export const buildModelInputFromDbState = (
@@ -588,9 +631,27 @@ const readExistingArtifact = (
     artifactEnvelope.canary,
     "existing weekly production canary",
   ).sha256;
+  const proofSha256 = canonicalizeReaderSummaryWeeklyJson(
+    proof,
+    "existing weekly production proof",
+  ).sha256;
   if (
+    artifactEnvelope.schemaVersion !==
+      "reader_summary.weekly_production_artifact.v1" ||
+    artifactEnvelope.status !== "complete" ||
+    artifactEnvelope.tenantId !== input.tenantId ||
+    artifactEnvelope.workspaceId !== input.workspaceId ||
+    artifactEnvelope.weekStartedOn !== input.weekStartedOn ||
+    artifactEnvelope.weekEndedOn !== input.weekEndedOn ||
+    artifactEnvelope.modelInput?.sealId !== input.sealId ||
+    artifactEnvelope.modelInput?.sealSha !== input.sealSha ||
     proof.schemaVersion !== "reader_summary.weekly_production_proof.v1" ||
     proof.status !== "complete" ||
+    proof.tenantId !== input.tenantId ||
+    proof.workspaceId !== input.workspaceId ||
+    proof.scopeKey !== readerSummaryWeeklyScopeKey(input.scope) ||
+    proof.weekStartedOn !== input.weekStartedOn ||
+    proof.weekEndedOn !== input.weekEndedOn ||
     proof.modelInputSealSha !== input.sealSha ||
     proof.modelInputSealId !== input.sealId ||
     artifactEnvelope.qualityGate?.evaluator !== "deterministic" ||
@@ -609,6 +670,8 @@ const readExistingArtifact = (
     status: "valid",
     artifactPath: paths.artifactPath,
     proofPath: paths.proofPath,
+    artifactSha256,
+    proofSha256,
   };
 };
 
@@ -635,8 +698,9 @@ const writeArtifactPair = (
     if (readExistingArtifact(paths, input).status === "valid") {
       return;
     }
-    renameSync(proofTemp, paths.proofPath);
-    renameSync(artifactTemp, paths.artifactPath);
+    linkSync(artifactTemp, paths.artifactPath);
+    linkSync(proofTemp, paths.proofPath);
+    readExistingArtifact(paths, input);
   } finally {
     rmSync(artifactTemp, { force: true });
     rmSync(proofTemp, { force: true });
@@ -652,6 +716,10 @@ const artifactPaths = (
     outputDirectory,
     artifactPath: join(outputDirectory, `${prefix}.artifact.v1.json`),
     proofPath: join(outputDirectory, `${prefix}.proof.v1.json`),
+    replayCanaryPath: join(
+      outputDirectory,
+      `${prefix}.replay-canary.v1.json`,
+    ),
   };
 };
 
@@ -660,6 +728,7 @@ const result = (
   status: ReaderSummaryWeeklyProductionStatus,
   modelCallPerformed: boolean,
   writePerformed: boolean,
+  replayCanaryWritePerformed: boolean,
   replayed: boolean,
   blockingReasons: readonly string[],
 ): ReaderSummaryWeeklyProductionRunnerResult => {
@@ -670,8 +739,13 @@ const result = (
     weekEndedOn: params.dbState.window.weekEndedOn,
     artifactPath: status === "complete" ? paths.artifactPath : null,
     proofPath: status === "complete" ? paths.proofPath : null,
+    replayCanaryPath:
+      status === "complete" && existsSync(paths.replayCanaryPath)
+        ? paths.replayCanaryPath
+        : null,
     modelCallPerformed,
     writePerformed,
+    replayCanaryWritePerformed,
     replayed,
     blockingReasons: Object.freeze([...blockingReasons]),
   });

@@ -4,7 +4,7 @@ Description=Run Social Monitor weekly reader summary
 [Timer]
 OnCalendar=Mon *-*-* 06:30:00 UTC
 RandomizedDelaySec=900
-Persistent=false
+Persistent=true
 Unit=social-monitor-weekly.service
 
 [Install]

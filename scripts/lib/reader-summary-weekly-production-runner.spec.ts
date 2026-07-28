@@ -57,6 +57,8 @@ describe("reader summary weekly production runner", () => {
         "reader-summary-weekly-production.2026-07-20.proof.v1.json",
       ),
     );
+    expect(result.replayCanaryPath).toBeNull();
+    expect(result.replayCanaryWritePerformed).toBe(false);
     expect(model.calls).toBe(1);
     const artifact = JSON.parse(readFileSync(result.artifactPath!, "utf8"));
     const proof = JSON.parse(readFileSync(result.proofPath!, "utf8"));
@@ -103,7 +105,7 @@ describe("reader summary weekly production runner", () => {
     expect(proof.zeroProviderCalls).toBe(true);
   });
 
-  it("replays an existing artifact without model calls or writes", async () => {
+  it("replays existing evidence into one immutable canary without model calls", async () => {
     const outputDirectory = tempDir();
     await runReaderSummaryWeeklyProduction({
       dbState: completeDbState(),
@@ -119,6 +121,10 @@ describe("reader summary weekly production runner", () => {
     const proofPath = join(
       outputDirectory,
       "reader-summary-weekly-production.2026-07-20.proof.v1.json",
+    );
+    const replayCanaryPath = join(
+      outputDirectory,
+      "reader-summary-weekly-production.2026-07-20.replay-canary.v1.json",
     );
     const artifactMtime = statSync(artifactPath).mtimeMs;
     const proofMtime = statSync(proofPath).mtimeMs;
@@ -136,9 +142,46 @@ describe("reader summary weekly production runner", () => {
     expect(result.replayed).toBe(true);
     expect(result.modelCallPerformed).toBe(false);
     expect(result.writePerformed).toBe(false);
+    expect(result.replayCanaryWritePerformed).toBe(true);
+    expect(result.replayCanaryPath).toBe(replayCanaryPath);
     expect(replayModel.calls).toBe(0);
     expect(statSync(artifactPath).mtimeMs).toBe(artifactMtime);
     expect(statSync(proofPath).mtimeMs).toBe(proofMtime);
+    expect(statSync(replayCanaryPath).mode & 0o777).toBe(0o444);
+    const replayCanary = JSON.parse(readFileSync(replayCanaryPath, "utf8"));
+    expect(replayCanary).toMatchObject({
+      schemaVersion: "reader_summary.weekly_production_replay_canary.v1",
+      status: "passed",
+      weekStartedOn: "2026-07-20",
+      weekEndedOn: "2026-07-26",
+      zeroModelCalls: true,
+      zeroProviderCalls: true,
+      zeroArtifactWrites: true,
+    });
+    expect(replayCanary.artifactSha256).toBe(
+      canonicalizeReaderSummaryWeeklyJson(
+        JSON.parse(readFileSync(artifactPath, "utf8")),
+      ).sha256,
+    );
+    expect(replayCanary.proofSha256).toBe(
+      canonicalizeReaderSummaryWeeklyJson(
+        JSON.parse(readFileSync(proofPath, "utf8")),
+      ).sha256,
+    );
+    const replayCanaryMtime = statSync(replayCanaryPath).mtimeMs;
+
+    const secondReplay = await runReaderSummaryWeeklyProduction({
+      dbState: completeDbState(),
+      outputDirectory,
+      model: replayModel,
+      replay: true,
+      generatedAt: new Date("2026-07-27T08:00:00.000Z"),
+    });
+
+    expect(secondReplay.status).toBe("complete");
+    expect(secondReplay.replayCanaryWritePerformed).toBe(false);
+    expect(statSync(replayCanaryPath).mtimeMs).toBe(replayCanaryMtime);
+    expect(replayModel.calls).toBe(0);
   });
 
   it("does not call the model or write when replay is missing artifacts", async () => {
@@ -156,6 +199,8 @@ describe("reader summary weekly production runner", () => {
     expect(result.replayed).toBe(true);
     expect(result.modelCallPerformed).toBe(false);
     expect(result.writePerformed).toBe(false);
+    expect(result.replayCanaryWritePerformed).toBe(false);
+    expect(result.replayCanaryPath).toBeNull();
     expect(result.blockingReasons).toEqual([
       "replay requested but weekly artifact/proof is missing",
     ]);
@@ -443,6 +488,12 @@ function productionArtifactExists(outputDirectory: string): boolean {
       join(
         outputDirectory,
         "reader-summary-weekly-production.2026-07-20.proof.v1.json",
+      ),
+    ) ||
+    existsSync(
+      join(
+        outputDirectory,
+        "reader-summary-weekly-production.2026-07-20.replay-canary.v1.json",
       ),
     )
   );
