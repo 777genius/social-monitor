@@ -15,7 +15,7 @@ RELEASE_SHA=0123456789abcdef0123456789abcdef01234567
 
 # The production worker receives the pinned catch-up date, rather than
 # recomputing yesterday after a provider-readiness failure crosses midnight.
-grep -F '      --date "$requested_date" --update' "$DAILY_RUN" >/dev/null
+grep -F "      --date \"\$requested_date\" --update" "$DAILY_RUN" >/dev/null
 
 wait_for_ready() {
   local ready=$1
