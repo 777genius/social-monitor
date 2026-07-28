@@ -91,8 +91,8 @@ export type ReaderSummaryProductionRecoveryPhaseOptions<
   discoverScope(
     sourceSummaryConnection: SourceSummaryConnection,
   ): Promise<ReaderSummaryProductionRecoveryScope>;
-  createSourceAuthority(
-    sourceSummaryConnection: SourceSummaryConnection,
+  createProductionAuthority(
+    productionSummaryConnection: ProductionSummaryConnection,
   ): ReaderSummaryProductionRecoveryAuthorityPort;
   createSourceFeedItems(
     sourceFeedConnection: SourceFeedConnection,
@@ -187,11 +187,21 @@ export const runReaderSummaryProductionRecoveryPhases = async <
     Result
   >,
 ): Promise<Result> => {
-  const sourceSnapshot =
-    await prepareReaderSummaryProductionRecoverySourceSnapshot(options);
   const productionSummaryConnection =
     await options.createProductionSummaryConnection();
   try {
+    const productionAuthority = options.createProductionAuthority(
+      productionSummaryConnection,
+    );
+    const prepared = await productionAuthority.prepare();
+    const binding = productionAuthority.readVerifiedBinding(
+      prepared.authority,
+    );
+    const sourceSnapshot =
+      await prepareReaderSummaryProductionRecoverySourceSnapshot(options, {
+        prepared,
+        binding,
+      });
     return await options.runProduction({
       sourceSnapshot,
       productionSummaryConnection,
@@ -314,8 +324,8 @@ async function main(): Promise<void> {
             sourceSummary,
           ),
       ),
-    createSourceAuthority: (sourceSummary) =>
-      new PrismaReaderSummaryProductionRecoveryAuthority(sourceSummary),
+    createProductionAuthority: (productionSummary) =>
+      new PrismaReaderSummaryProductionRecoveryAuthority(productionSummary),
     createSourceFeedItems: (feedConnection) =>
       new PrismaFeedItemReadRepository(feedConnection),
     createSourceGitHubProjectionReader: (sourceSummary) =>
@@ -395,51 +405,73 @@ const prepareReaderSummaryProductionRecoverySourceSnapshot = async <
     ProductionSummaryConnection,
     Result
   >,
+  authority: Readonly<{
+    prepared: PrepareReaderSummaryProductionRecoveryResult;
+    binding: ReaderSummaryProductionRecoveryAuthorityBinding;
+  }>,
 ): Promise<ReaderSummaryProductionRecoverySourceSnapshot> => {
+  const scope = scopeFromProductionRecoveryBinding(authority.binding);
+  if (authority.prepared.outcome === "replayed") {
+    return sourceSnapshotFromPreparedAuthority({
+      scope,
+      prepared: authority.prepared,
+      binding: authority.binding,
+      feedItems: new UnavailableSourceSnapshotFeedItemReadRepository(),
+      githubProjectionReader:
+        new ReaderSummaryProductionRecoveryGitHubProjectionSnapshotReader([]),
+    });
+  }
   const sourceSummaryConnection =
     await options.createSourceSummaryConnection();
   let sourceFeedConnection: SourceFeedConnection | undefined;
   try {
-    const scope = await resolveReaderSummaryProductionRecoveryScope({
+    const sourceScope = await resolveReaderSummaryProductionRecoveryScope({
       env: options.env,
       discover: () => options.discoverScope(sourceSummaryConnection),
     });
-    const sourceAuthority = options.createSourceAuthority(
-      sourceSummaryConnection,
-    );
-    const prepared = await sourceAuthority.prepare();
-    const binding = sourceAuthority.readVerifiedBinding(prepared.authority);
-    if (prepared.outcome === "replayed") {
-      return sourceSnapshotFromPreparedAuthority({
-        scope,
-        prepared,
-        binding,
-        feedItems: new UnavailableSourceSnapshotFeedItemReadRepository(),
-        githubProjectionReader:
-          new ReaderSummaryProductionRecoveryGitHubProjectionSnapshotReader([]),
-      });
-    }
+    assertSourceScopeMatchesProductionAuthority(sourceScope, authority.binding);
     sourceFeedConnection = await options.createSourceFeedConnection();
     const feedItems = await createSourceSnapshotFeedItems({
-      binding,
+      binding: authority.binding,
       sourceFeedItems: options.createSourceFeedItems(sourceFeedConnection),
     });
     const githubProjectionReader =
       await createReaderSummaryProductionRecoveryGitHubProjectionSnapshot({
-        binding,
+        binding: authority.binding,
         sourceReader:
           options.createSourceGitHubProjectionReader(sourceSummaryConnection),
       });
     return sourceSnapshotFromPreparedAuthority({
       scope,
-      prepared,
-      binding,
+      prepared: authority.prepared,
+      binding: authority.binding,
       feedItems,
       githubProjectionReader,
     });
   } finally {
     await sourceFeedConnection?.close();
     await sourceSummaryConnection.close();
+  }
+};
+
+const scopeFromProductionRecoveryBinding = (
+  binding: ReaderSummaryProductionRecoveryAuthorityBinding,
+): ReaderSummaryProductionRecoveryScope => ({
+  tenantId: binding.tenantId,
+  workspaceId: binding.workspaceId,
+});
+
+const assertSourceScopeMatchesProductionAuthority = (
+  sourceScope: ReaderSummaryProductionRecoveryScope,
+  binding: ReaderSummaryProductionRecoveryAuthorityBinding,
+): void => {
+  if (
+    sourceScope.tenantId !== binding.tenantId ||
+    sourceScope.workspaceId !== binding.workspaceId
+  ) {
+    throw new Error(
+      "Reader summary production recovery source snapshot scope diverged from production authority",
+    );
   }
 };
 

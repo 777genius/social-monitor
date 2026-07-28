@@ -265,9 +265,15 @@ describe("reader summary production recovery CLI wrapper", () => {
     ]);
   });
 
-  it("closes source snapshot leases before opening the production connection", async () => {
+  it("prepares authority on production while source snapshot serves evidence", async () => {
     const events: string[] = [];
     const binding = bindingFixture();
+    const expectedSourceRows = uniqueSourceOnlyEvidenceRows(binding);
+    const expectedFeedIds = expectedSourceRows.map((row) => row.feedItemId);
+    const expectedFeedSourcePairs = expectedSourceRows.map((row) => ({
+      feedItemId: row.feedItemId,
+      sourceItemId: row.sourceItemId,
+    }));
     const sourceSummaryConnection = {
       $queryRaw: jest.fn(),
       close: jest.fn(async () => {
@@ -284,6 +290,16 @@ describe("reader summary production recovery CLI wrapper", () => {
         events.push("production.close");
       }),
     };
+    const productionAuthority = authorityPort("prepared", binding);
+    const sourceFeedItems = sourceFeedItemsForBinding(binding);
+    const sourceFindById =
+      sourceFeedItems.findById as jest.MockedFunction<
+        FeedItemReadRepositoryPort["findById"]
+      >;
+    const sourceReadSourceContent =
+      sourceFeedItems.readSourceContent as jest.MockedFunction<
+        NonNullable<FeedItemReadRepositoryPort["readSourceContent"]>
+      >;
     const result = await runReaderSummaryProductionRecoveryPhases({
       env: {},
       createSourceSummaryConnection: async () => {
@@ -298,6 +314,23 @@ describe("reader summary production recovery CLI wrapper", () => {
         events.push("production.open");
         return productionSummaryConnection;
       },
+      createProductionAuthority: (productionSummary) => {
+        expect(productionSummary).toBe(productionSummaryConnection);
+        expect(productionSummary).not.toBe(sourceSummaryConnection);
+        events.push("production-authority.create");
+        productionAuthority.prepare.mockImplementationOnce(async () => {
+          events.push("production-authority.prepare");
+          return {
+            outcome: "prepared",
+            authority: {} as ReaderSummaryProductionRecoveryAuthorityHandle,
+          };
+        });
+        productionAuthority.readVerifiedBinding.mockImplementationOnce(() => {
+          events.push("production-authority.read-binding");
+          return binding;
+        });
+        return productionAuthority;
+      },
       discoverScope: async () => {
         events.push("scope.discover");
         return {
@@ -305,12 +338,49 @@ describe("reader summary production recovery CLI wrapper", () => {
           workspaceId: binding.workspaceId,
         };
       },
-      createSourceAuthority: () => authorityPort("prepared", binding),
-      createSourceFeedItems: () => sourceFeedItemsForBinding(binding),
-      createSourceGitHubProjectionReader: () =>
-        githubProjectionReaderForBinding(binding),
+      createSourceFeedItems: (feedConnection) => {
+        expect(feedConnection).toBe(sourceFeedConnection);
+        events.push("source-feed-items.create");
+        return sourceFeedItems;
+      },
+      createSourceGitHubProjectionReader: (sourceSummary) => {
+        expect(sourceSummary).toBe(sourceSummaryConnection);
+        events.push("source-github-reader.create");
+        return githubProjectionReaderForBinding(binding);
+      },
       runProduction: async ({ sourceSnapshot }) => {
         events.push("production.run");
+        expect(sourceSnapshot.scope).toEqual({
+          tenantId: binding.tenantId,
+          workspaceId: binding.workspaceId,
+        });
+        if (sourceSnapshot.feedItems.readSourceContent === undefined) {
+          throw new Error("Expected source snapshot content reader");
+        }
+        const sourceContents =
+          await sourceSnapshot.feedItems.readSourceContent({
+            tenantId: binding.tenantId,
+            workspaceId: binding.workspaceId,
+            feedItemIds: expectedFeedIds,
+          });
+        expect(
+          sourceContents.map((item) => ({
+            feedItemId: item.feedItemId,
+            sourceItemId: item.sourceItemId,
+          })),
+        ).toEqual(expectedFeedSourcePairs);
+        const firstExpected = expectedSourceRows[0];
+        if (firstExpected === undefined) {
+          throw new Error("Expected source evidence rows");
+        }
+        const firstFeedItem = await sourceSnapshot.feedItems.findById({
+          tenantId: binding.tenantId,
+          workspaceId: binding.workspaceId,
+          feedItemId: firstExpected.feedItemId,
+        });
+        expect(firstFeedItem?.toSnapshot().sourceItemId).toBe(
+          firstExpected.sourceItemId,
+        );
         await sourceSnapshot.githubProjectionReader.read(
           githubProjectionQueryForBinding(
             binding,
@@ -322,19 +392,33 @@ describe("reader summary production recovery CLI wrapper", () => {
     });
 
     expect(result).toBe("ok");
+    expect(productionAuthority.prepare).toHaveBeenCalledTimes(1);
+    expect(productionAuthority.readVerifiedBinding).toHaveBeenCalledTimes(1);
+    expect(sourceFindById.mock.calls.map((call) => call[0].feedItemId)).toEqual(
+      expectedFeedIds,
+    );
+    expect(sourceReadSourceContent).toHaveBeenCalledTimes(1);
+    expect(sourceReadSourceContent.mock.calls[0]?.[0].feedItemIds).toEqual(
+      expectedFeedIds,
+    );
     expect(events.indexOf("source-feed.close")).toBeLessThan(
-      events.indexOf("production.open"),
+      events.indexOf("production.run"),
     );
     expect(events.indexOf("source-summary.close")).toBeLessThan(
-      events.indexOf("production.open"),
+      events.indexOf("production.run"),
     );
     expect(events).toEqual([
+      "production.open",
+      "production-authority.create",
+      "production-authority.prepare",
+      "production-authority.read-binding",
       "source-summary.open",
       "scope.discover",
       "source-feed.open",
+      "source-feed-items.create",
+      "source-github-reader.create",
       "source-feed.close",
       "source-summary.close",
-      "production.open",
       "production.run",
       "production.close",
     ]);
@@ -644,7 +728,9 @@ function sourceFeedItemsForBinding(
   binding: ReaderSummaryProductionRecoveryAuthorityBinding,
 ): FeedItemReadRepositoryPort {
   const rowsByFeedItemId = new Map(
-    sourceOnlyEvidenceRows(binding).map((row) => [row.feedItemId, row] as const),
+    uniqueSourceOnlyEvidenceRows(binding).map(
+      (row) => [row.feedItemId, row] as const,
+    ),
   );
   return {
     list: jest.fn(async () => ({ items: [] })),
@@ -676,6 +762,21 @@ function sourceOnlyEvidenceRows(
     Object.values(recoveryDay.providerEvidence).flatMap((rows) =>
       rows.filter((row) => row.providerKey !== "github-trending-page"),
     ),
+  );
+}
+
+function uniqueSourceOnlyEvidenceRows(
+  binding: ReaderSummaryProductionRecoveryAuthorityBinding,
+): ReturnType<typeof sourceOnlyEvidenceRows> {
+  const rowsByFeedItemId = new Map<
+    string,
+    ReturnType<typeof sourceOnlyEvidenceRows>[number]
+  >();
+  for (const row of sourceOnlyEvidenceRows(binding)) {
+    rowsByFeedItemId.set(row.feedItemId, row);
+  }
+  return [...rowsByFeedItemId.values()].sort((left, right) =>
+    left.feedItemId.localeCompare(right.feedItemId),
   );
 }
 
