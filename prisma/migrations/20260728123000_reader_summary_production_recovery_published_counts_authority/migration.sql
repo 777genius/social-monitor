@@ -972,6 +972,10 @@ REVOKE ALL PRIVILEGES ON FUNCTION
   "prepare_reader_summary_production_recovery"()
 FROM PUBLIC, "social_monitor_reader_summary_publication_runtime";
 
+GRANT EXECUTE ON FUNCTION
+  "prepare_reader_summary_production_recovery"()
+TO "social_monitor_reader_summary_publication_runtime";
+
 RESET ROLE;
 SET LOCAL ROLE "social_monitor_public_schema_owner";
 REVOKE CREATE ON SCHEMA public

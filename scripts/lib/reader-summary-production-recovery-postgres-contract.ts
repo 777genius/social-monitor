@@ -598,6 +598,9 @@ const assertPersistedAuthority = async (
     "2026-07-24 provider counts must be exact",
   );
   const privileges = await client.query<{
+    can_delete: boolean;
+    can_execute_derive: boolean;
+    can_execute_expected_counts: boolean;
     can_execute: boolean;
     can_insert: boolean;
     can_update: boolean;
@@ -610,16 +613,46 @@ const assertPersistedAuthority = async (
          'prepare_reader_summary_production_recovery()',
          'EXECUTE'
        ) AS can_execute,
-       has_table_privilege(
+       has_function_privilege(
          current_user,
-         'reader_summary_production_recovery_days',
-         'INSERT'
+         'reader_summary_production_recovery_expected_counts(date)',
+         'EXECUTE'
+       ) AS can_execute_expected_counts,
+       has_function_privilege(
+         current_user,
+         'derive_reader_summary_production_recovery_day(uuid,uuid,uuid,date,timestamptz)',
+         'EXECUTE'
+       ) AS can_execute_derive,
+       (
+         SELECT bool_or(
+           has_table_privilege(current_user, table_oid, 'INSERT')
+         )
+         FROM unnest(ARRAY[
+           'reader_summary_production_recovery_leases'::regclass,
+           'reader_summary_production_recovery_days'::regclass,
+           'reader_summary_production_recovery_dry_runs'::regclass
+         ]) recovery_table(table_oid)
        ) AS can_insert,
-       has_table_privilege(
-         current_user,
-         'reader_summary_production_recovery_days',
-         'UPDATE'
+       (
+         SELECT bool_or(
+           has_table_privilege(current_user, table_oid, 'UPDATE')
+         )
+         FROM unnest(ARRAY[
+           'reader_summary_production_recovery_leases'::regclass,
+           'reader_summary_production_recovery_days'::regclass,
+           'reader_summary_production_recovery_dry_runs'::regclass
+         ]) recovery_table(table_oid)
        ) AS can_update,
+       (
+         SELECT bool_or(
+           has_table_privilege(current_user, table_oid, 'DELETE')
+         )
+         FROM unnest(ARRAY[
+           'reader_summary_production_recovery_leases'::regclass,
+           'reader_summary_production_recovery_days'::regclass,
+           'reader_summary_production_recovery_dry_runs'::regclass
+         ]) recovery_table(table_oid)
+       ) AS can_delete,
        (
          SELECT proconfig @> ARRAY[
            'search_path=pg_catalog, public, pg_temp'
@@ -641,7 +674,10 @@ const assertPersistedAuthority = async (
   assertDeepEqual(
     privileges.rows[0],
     {
+      can_delete: false,
       can_execute: true,
+      can_execute_derive: false,
+      can_execute_expected_counts: false,
       can_insert: false,
       can_update: false,
       fixed_path: true,

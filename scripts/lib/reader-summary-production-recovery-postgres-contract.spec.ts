@@ -296,8 +296,14 @@ describe("reader summary production recovery PostgreSQL contract", () => {
       "jsonb_build_object('providerKey', 'rss', 'count', 68)",
     );
     expect(publishedAuthorityMigration).not.toContain("EXECUTE v_definition");
-    expect(publishedAuthorityMigration).not.toContain(
-      "GRANT EXECUTE ON FUNCTION",
+    expect(publishedAuthorityMigration).toContain(
+      'GRANT EXECUTE ON FUNCTION\n  "prepare_reader_summary_production_recovery"()\nTO "social_monitor_reader_summary_publication_runtime"',
+    );
+    expect(
+      publishedAuthorityMigration.match(/GRANT EXECUTE ON FUNCTION/gu),
+    ).toHaveLength(1);
+    expect(publishedAuthorityMigration).not.toMatch(
+      /GRANT\s+[^;]*\b(?:INSERT|UPDATE|DELETE)\b[^;]*;/iu,
     );
   });
 
