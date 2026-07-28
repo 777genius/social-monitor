@@ -40,6 +40,14 @@ type ScopeDiscoveryRow = Readonly<{
   workspaceId: string;
 }>;
 
+type ScopeDiagnosticsRow = Readonly<{
+  timestamp_column: string;
+  utc_date: string;
+  provider_key: string;
+  normalized_status: string;
+  count: number;
+}>;
+
 type CloseableConnection = Readonly<{
   close(): Promise<void>;
 }>;
@@ -248,8 +256,18 @@ export const discoverReaderSummaryProductionRecoveryScope = async (
     ORDER BY "tenantId", "workspaceId"
   `;
   if (rows.length !== 1 || rows[0] === undefined) {
+    const diagnostics =
+      await readReaderSummaryProductionRecoveryScopeDiagnostics(client);
     throw new Error(
-      `Reader summary production recovery scope discovery expected exactly one scope, found ${rows.length}`,
+      `Reader summary production recovery scope discovery expected exactly one scope, found ${rows.length}; ${JSON.stringify({
+        scope_diagnostics: diagnostics.map((row) => ({
+          timestamp_column: row.timestamp_column,
+          utc_date: row.utc_date,
+          provider_key: row.provider_key,
+          normalized_status: row.normalized_status,
+          count: Number(row.count),
+        })),
+      })}`,
     );
   }
   return {
@@ -257,6 +275,61 @@ export const discoverReaderSummaryProductionRecoveryScope = async (
     workspaceId: rows[0].workspaceId,
   };
 };
+
+const readReaderSummaryProductionRecoveryScopeDiagnostics = (
+  client: ReaderSummaryProductionRecoveryScopeDiscoveryClient,
+): Promise<readonly ScopeDiagnosticsRow[]> =>
+  client.$queryRaw<readonly ScopeDiagnosticsRow[]>`
+    SELECT
+      diagnostics."timestamp_column",
+      diagnostics."utc_date",
+      diagnostics."provider_key",
+      diagnostics."normalized_status",
+      diagnostics."count"
+    FROM (
+      SELECT 'observed_at'::TEXT AS "timestamp_column",
+        (feed."observed_at" AT TIME ZONE 'UTC')::DATE::TEXT AS "utc_date",
+        feed."provider_key"::TEXT AS "provider_key",
+        COALESCE(upper(feed."status"::TEXT), 'UNKNOWN') AS "normalized_status",
+        count(*)::INTEGER AS "count"
+      FROM "feed_items" AS feed
+      WHERE feed."observed_at" >= (DATE '2026-07-23'::TIMESTAMP AT TIME ZONE 'UTC')
+        AND feed."observed_at" < (DATE '2026-07-25'::TIMESTAMP AT TIME ZONE 'UTC')
+        AND feed."provider_key" = ANY(ARRAY['github-trending-page','hacker-news','reddit','rss','x-twitter'])
+      GROUP BY 2, 3, 4
+      UNION ALL
+      SELECT 'created_at'::TEXT AS "timestamp_column",
+        (feed."created_at" AT TIME ZONE 'UTC')::DATE::TEXT AS "utc_date",
+        feed."provider_key"::TEXT AS "provider_key",
+        COALESCE(upper(feed."status"::TEXT), 'UNKNOWN') AS "normalized_status",
+        count(*)::INTEGER AS "count"
+      FROM "feed_items" AS feed
+      WHERE feed."created_at" >= (DATE '2026-07-23'::TIMESTAMP AT TIME ZONE 'UTC')
+        AND feed."created_at" < (DATE '2026-07-25'::TIMESTAMP AT TIME ZONE 'UTC')
+        AND feed."provider_key" = ANY(ARRAY['github-trending-page','hacker-news','reddit','rss','x-twitter'])
+      GROUP BY 2, 3, 4
+      UNION ALL
+      SELECT 'published_at'::TEXT AS "timestamp_column",
+        (feed."published_at" AT TIME ZONE 'UTC')::DATE::TEXT AS "utc_date",
+        feed."provider_key"::TEXT AS "provider_key",
+        COALESCE(upper(feed."status"::TEXT), 'UNKNOWN') AS "normalized_status",
+        count(*)::INTEGER AS "count"
+      FROM "feed_items" AS feed
+      WHERE feed."published_at" >= (DATE '2026-07-23'::TIMESTAMP AT TIME ZONE 'UTC')
+        AND feed."published_at" < (DATE '2026-07-25'::TIMESTAMP AT TIME ZONE 'UTC')
+        AND feed."provider_key" = ANY(ARRAY['github-trending-page','hacker-news','reddit','rss','x-twitter'])
+      GROUP BY 2, 3, 4
+    ) AS diagnostics
+    ORDER BY
+      CASE diagnostics."timestamp_column"
+        WHEN 'observed_at' THEN 1
+        WHEN 'created_at' THEN 2
+        ELSE 3
+      END,
+      diagnostics."utc_date",
+      diagnostics."provider_key",
+      diagnostics."normalized_status"
+  `;
 
 export const configureProductionRecoverySession = async (
   client: ReaderSummaryProductionRecoverySessionConfigurationClient,

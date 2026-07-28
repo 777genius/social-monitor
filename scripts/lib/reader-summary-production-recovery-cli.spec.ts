@@ -100,32 +100,43 @@ describe("reader summary production recovery CLI wrapper", () => {
     ).toThrow("must match DATABASE_URL");
   });
 
-  it("fails discovery when no visible-count scope matches", async () => {
-    const { client } = scopeDiscoveryClient([]);
+  it("fails discovery with bounded sanitized feed-item scope diagnostics", async () => {
+    const diagnostics = [
+      { timestamp_column: "observed_at", utc_date: "2026-07-23", provider_key: "hacker-news", normalized_status: "VISIBLE", count: 100 },
+      { timestamp_column: "created_at", utc_date: "2026-07-24", provider_key: "rss", normalized_status: "HIDDEN", count: 3 },
+      { timestamp_column: "published_at", utc_date: "2026-07-24", provider_key: "x-twitter", normalized_status: "VISIBLE", count: 73 },
+    ] satisfies readonly ScopeDiagnosticsFixture[];
+    const { client, queryRaw } = scopeDiscoveryClient([], diagnostics);
 
-    await expect(
-      discoverReaderSummaryProductionRecoveryScope(client),
-    ).rejects.toThrow("expected exactly one scope, found 0");
-  });
+    const message = await rejectedMessage(discoverReaderSummaryProductionRecoveryScope(client));
 
-  it("fails discovery when visible counts match multiple scopes", async () => {
-    const { client } = scopeDiscoveryClient([
-      scopeFixture("1", "2"),
-      scopeFixture("3", "4"),
-    ]);
-
-    await expect(
-      discoverReaderSummaryProductionRecoveryScope(client),
-    ).rejects.toThrow("expected exactly one scope, found 2");
+    expect(message).toContain("expected exactly one scope, found 0");
+    expect(queryRaw).toHaveBeenCalledTimes(2);
+    const sql = normalizeSql(sqlFromQueryRaw(queryRaw, 1));
+    for (const expected of [
+      'from "feed_items" as feed', "'observed_at'::text as \"timestamp_column\"", "'created_at'::text as \"timestamp_column\"", "'published_at'::text as \"timestamp_column\"",
+      'coalesce(upper(feed."status"::text), \'unknown\') as "normalized_status"', 'count(*)::integer as "count"', "date '2026-07-23'::timestamp at time zone 'utc'", "date '2026-07-25'::timestamp at time zone 'utc'", "union all",
+    ]) {
+      expect(sql).toContain(expected);
+    }
+    for (const provider of ["github-trending-page", "hacker-news", "reddit", "rss", "x-twitter"]) {
+      expect(sql).toContain(`'${provider}'`);
+    }
+    expect(sql).not.toMatch(/\bjoin\b|\binsert\b|\bupdate\b|\bdelete\b|\bfor\s+(?:update|share)\b/u);
+    expect(sql).not.toMatch(/\btenant_id\b|\bworkspace_id\b|\bcanonical_url\b|\btitle\b|\bcontent_hash\b|\bmetadata\b|\bsource_(?:item|binding)_id\b/u);
+    expect(message).toContain('{"scope_diagnostics"');
+    const json = message.slice(message.indexOf('{"scope_diagnostics"'));
+    expect(JSON.parse(json)).toEqual({ scope_diagnostics: diagnostics });
+    expect(json.length).toBeLessThan(500);
+    expect(json).not.toMatch(/\btenant|workspace|url|title|content_hash|metadata|source_(?:item|binding)_id\b/u);
   });
 
   it("discovers scope from visible feed counts without source joins", async () => {
     const expectedScope = scopeFixture("1", "2");
     const { client, queryRaw } = scopeDiscoveryClient([expectedScope]);
 
-    await expect(
-      discoverReaderSummaryProductionRecoveryScope(client),
-    ).resolves.toEqual(expectedScope);
+    await expect(discoverReaderSummaryProductionRecoveryScope(client)).resolves.toEqual(expectedScope);
+    expect(queryRaw).toHaveBeenCalledTimes(1);
 
     const sql = normalizeSql(sqlFromQueryRaw(queryRaw));
     expect(sql).toContain('feed."tenant_id"::text as "tenantid"');
@@ -151,14 +162,9 @@ describe("reader summary production recovery CLI wrapper", () => {
     expect(sql).not.toContain('order by feed."tenant_id", feed."workspace_id"');
     expect(sql).not.toMatch(/\bjoin\b/u);
     expect(sql).not.toContain('feed."published_at"');
-    const forbiddenScopeTables =
-      /\b(?:tenants|workspaces|source_items|source_bindings|source_catalog_entries|interests|github_[a-z_]+|scan_jobs|scan_attempts)\b/u;
-    expect(sql).not.toMatch(
-      forbiddenScopeTables,
-    );
-    expect(sql).not.toMatch(
-      /\bcontent_hash\b|\bprovider_content_hash\b|\bmetadata\b/u,
-    );
+    const forbiddenScopeTables = /\b(?:tenants|workspaces|source_items|source_bindings|source_catalog_entries|interests|github_[a-z_]+|scan_jobs|scan_attempts)\b/u;
+    expect(sql).not.toMatch(forbiddenScopeTables);
+    expect(sql).not.toMatch(/\bcontent_hash\b|\bprovider_content_hash\b|\bmetadata\b/u);
     expect(sql).not.toContain('source."source_binding_id"');
     expect(sql).not.toContain('source."canonical_url"');
     expect(sql).not.toMatch(/\bprepare_reader_summary_production_recovery\b|\bprepare\b/u);
@@ -642,24 +648,20 @@ function scopeFixture(
   };
 }
 
-type QueryRawMock = jest.MockedFunction<
-  ReaderSummaryProductionRecoveryScopeDiscoveryClient["$queryRaw"]
->;
-type ReplayGuardTransactionMock = jest.MockedFunction<
-  NonNullable<ReaderSummaryProductionRecoveryReplayGuardClient["$transaction"]>
->;
+type QueryRawMock = jest.MockedFunction<ReaderSummaryProductionRecoveryScopeDiscoveryClient["$queryRaw"]>;
+type ReplayGuardTransactionMock = jest.MockedFunction<NonNullable<ReaderSummaryProductionRecoveryReplayGuardClient["$transaction"]>>;
+type ScopeDiagnosticsFixture = Readonly<{ timestamp_column: string; utc_date: string; provider_key: string; normalized_status: string; count: number }>;
 
 function scopeDiscoveryClient(
   rows: readonly ReaderSummaryProductionRecoveryScope[],
-): Readonly<{
-  client: ReaderSummaryProductionRecoveryScopeDiscoveryClient;
-  queryRaw: QueryRawMock;
-}> {
+  diagnostics: readonly ScopeDiagnosticsFixture[] = [],
+): Readonly<{ client: ReaderSummaryProductionRecoveryScopeDiscoveryClient; queryRaw: QueryRawMock }> {
+  let callIndex = 0;
   const queryRaw = jest.fn(
-    async <T = unknown>(
-      _query: TemplateStringsArray,
-      ..._values: readonly unknown[]
-    ): Promise<T> => rows as unknown as T,
+    async <T = unknown>(): Promise<T> => {
+      const result = callIndex++ === 0 ? rows : diagnostics;
+      return result as unknown as T;
+    },
   ) as QueryRawMock;
   return { client: { $queryRaw: queryRaw }, queryRaw };
 }
@@ -700,10 +702,15 @@ function expectReplayGuardTransactionOptions(
   });
 }
 
-function sqlFromQueryRaw(queryRaw: QueryRawMock): string {
-  const call = queryRaw.mock.calls[0];
+async function rejectedMessage(operation: Promise<unknown>): Promise<string> {
+  try { await operation; } catch (error) { if (error instanceof Error) return error.message; }
+  throw new Error("Expected operation to reject with Error");
+}
+
+function sqlFromQueryRaw(queryRaw: QueryRawMock, callIndex = 0): string {
+  const call = queryRaw.mock.calls[callIndex];
   if (call === undefined) {
-    throw new Error("Expected discovery query to run");
+    throw new Error(`Expected query ${callIndex} to run`);
   }
   const [strings, ...values] = call;
   return strings.reduce(
