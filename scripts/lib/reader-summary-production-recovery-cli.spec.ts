@@ -24,6 +24,7 @@ import {
   type ReaderSummaryProductionRecoveryReplayGuardClient,
 } from "./reader-summary-production-recovery-replay-guard";
 import {
+  configureProductionRecoverySession,
   createReaderSummaryProductionRecoveryGitHubProjectionSnapshot,
   discoverReaderSummaryProductionRecoveryScope,
   resolveReaderSummaryProductionRecoverySourceDatabaseUrl,
@@ -159,6 +160,24 @@ describe("reader summary production recovery CLI wrapper", () => {
     expect(sql).not.toMatch(/\bfor\s+(?:update|share)\b/u);
   });
 
+  it("configures production recovery session with exact non-system scope", async () => {
+    const scope = scopeFixture("1", "2");
+    const { client, queryRaw } = scopeDiscoveryClient([]);
+
+    await configureProductionRecoverySession(client, scope);
+
+    const sql = normalizeSql(sqlFromQueryRaw(queryRaw));
+    expect(sql).toContain("set_config('social_monitor.tenant_id',");
+    expect(sql).toContain("set_config('social_monitor.workspace_id',");
+    expect(sql).toContain(
+      "set_config('social_monitor.system_access', 'false', false)",
+    );
+    expect(queryRaw.mock.calls[0]?.slice(1)).toEqual([
+      scope.tenantId,
+      scope.workspaceId,
+    ]);
+  });
+
   it("requires explicit apply before durable authority preparation", async () => {
     const authority = authorityPort("prepared");
     const executeDay = jest.fn();
@@ -286,6 +305,10 @@ describe("reader summary production recovery CLI wrapper", () => {
       }),
     };
     const productionSummaryConnection = {
+      $queryRaw: jest.fn(async <T = unknown>(): Promise<T> => {
+        events.push("production-session.configure");
+        return [] as unknown as T;
+      }) as QueryRawMock,
       close: jest.fn(async () => {
         events.push("production.close");
       }),
@@ -331,7 +354,8 @@ describe("reader summary production recovery CLI wrapper", () => {
         });
         return productionAuthority;
       },
-      discoverScope: async () => {
+      discoverScope: async (sourceSummary) => {
+        expect(sourceSummary).toBe(sourceSummaryConnection);
         events.push("scope.discover");
         return {
           tenantId: binding.tenantId,
@@ -394,6 +418,10 @@ describe("reader summary production recovery CLI wrapper", () => {
     expect(result).toBe("ok");
     expect(productionAuthority.prepare).toHaveBeenCalledTimes(1);
     expect(productionAuthority.readVerifiedBinding).toHaveBeenCalledTimes(1);
+    expect(productionSummaryConnection.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(
+      productionSummaryConnection.$queryRaw.mock.calls[0]?.slice(1),
+    ).toEqual([binding.tenantId, binding.workspaceId]);
     expect(sourceFindById.mock.calls.map((call) => call[0].feedItemId)).toEqual(
       expectedFeedIds,
     );
@@ -409,17 +437,99 @@ describe("reader summary production recovery CLI wrapper", () => {
     );
     expect(events).toEqual([
       "production.open",
+      "source-summary.open",
+      "scope.discover",
+      "production-session.configure",
       "production-authority.create",
       "production-authority.prepare",
       "production-authority.read-binding",
-      "source-summary.open",
-      "scope.discover",
       "source-feed.open",
       "source-feed-items.create",
       "source-github-reader.create",
       "source-feed.close",
       "source-summary.close",
       "production.run",
+      "production.close",
+    ]);
+  });
+
+  it("fails closed when resolved source/env scope diverges from production binding", async () => {
+    const events: string[] = [];
+    const binding = bindingFixture();
+    const resolvedScope = scopeFixture("9", "8");
+    const sourceSummaryConnection = {
+      $queryRaw: jest.fn(),
+      close: jest.fn(async () => {
+        events.push("source-summary.close");
+      }),
+    };
+    const productionSummaryConnection = {
+      $queryRaw: jest.fn(async <T = unknown>(): Promise<T> => {
+        events.push("production-session.configure");
+        return [] as unknown as T;
+      }) as QueryRawMock,
+      close: jest.fn(async () => {
+        events.push("production.close");
+      }),
+    };
+    const productionAuthority = authorityPort("prepared", binding);
+    productionAuthority.prepare.mockImplementationOnce(async () => {
+      events.push("production-authority.prepare");
+      return {
+        outcome: "prepared",
+        authority: {} as ReaderSummaryProductionRecoveryAuthorityHandle,
+      };
+    });
+    productionAuthority.readVerifiedBinding.mockImplementationOnce(() => {
+      events.push("production-authority.read-binding");
+      return binding;
+    });
+    const runProduction = jest.fn(async () => "unexpected" as const);
+    const createSourceFeedConnection = jest.fn(async () => ({
+      close: jest.fn(),
+    }));
+
+    await expect(
+      runReaderSummaryProductionRecoveryPhases({
+        env: {},
+        createSourceSummaryConnection: async () => {
+          events.push("source-summary.open");
+          return sourceSummaryConnection;
+        },
+        createSourceFeedConnection,
+        createProductionSummaryConnection: async () => {
+          events.push("production.open");
+          return productionSummaryConnection;
+        },
+        createProductionAuthority: () => {
+          events.push("production-authority.create");
+          return productionAuthority;
+        },
+        discoverScope: async () => {
+          events.push("scope.discover");
+          return resolvedScope;
+        },
+        createSourceFeedItems: () => sourceFeedItemsForBinding(binding),
+        createSourceGitHubProjectionReader: () =>
+          githubProjectionReaderForBinding(binding),
+        runProduction,
+      }),
+    ).rejects.toThrow("session scope diverged from production authority");
+
+    expect(
+      productionSummaryConnection.$queryRaw.mock.calls[0]?.slice(1),
+    ).toEqual([resolvedScope.tenantId, resolvedScope.workspaceId]);
+    expect(createSourceFeedConnection).not.toHaveBeenCalled();
+    expect(runProduction).not.toHaveBeenCalled();
+    expect(events).toEqual([
+      "production.open",
+      "source-summary.open",
+      "scope.discover",
+      "production-session.configure",
+      "production-authority.create",
+      "production-authority.prepare",
+      "production-authority.read-binding",
+      "source-summary.close",
       "production.close",
     ]);
   });

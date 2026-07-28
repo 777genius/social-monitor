@@ -27,6 +27,13 @@ export type ReaderSummaryProductionRecoveryScopeDiscoveryClient = Readonly<{
   ) => Promise<T>;
 }>;
 
+export type ReaderSummaryProductionRecoverySessionConfigurationClient = Readonly<{
+  $queryRaw: <T = unknown>(
+    query: TemplateStringsArray,
+    ...values: readonly unknown[]
+  ) => Promise<T>;
+}>;
+
 type ScopeDiscoveryRow = Readonly<{
   tenantId: string;
   workspaceId: string;
@@ -81,7 +88,8 @@ export type ReaderSummaryProductionRecoveryPhaseOptions<
   SourceSummaryConnection extends ReaderSummaryProductionRecoveryScopeDiscoveryClient &
     CloseableConnection,
   SourceFeedConnection extends CloseableConnection,
-  ProductionSummaryConnection extends CloseableConnection,
+  ProductionSummaryConnection extends ReaderSummaryProductionRecoverySessionConfigurationClient &
+    CloseableConnection,
   Result,
 > = Readonly<{
   env: ScopeEnv;
@@ -173,11 +181,24 @@ export const discoverReaderSummaryProductionRecoveryScope = async (
   };
 };
 
+export const configureProductionRecoverySession = async (
+  client: ReaderSummaryProductionRecoverySessionConfigurationClient,
+  scope: ReaderSummaryProductionRecoveryScope,
+): Promise<void> => {
+  await client.$queryRaw<readonly unknown[]>`
+    SELECT
+      set_config('social_monitor.tenant_id', ${scope.tenantId}, false),
+      set_config('social_monitor.workspace_id', ${scope.workspaceId}, false),
+      set_config('social_monitor.system_access', 'false', false)
+  `;
+};
+
 export const runReaderSummaryProductionRecoveryPhases = async <
   SourceSummaryConnection extends ReaderSummaryProductionRecoveryScopeDiscoveryClient &
     CloseableConnection,
   SourceFeedConnection extends CloseableConnection,
-  ProductionSummaryConnection extends CloseableConnection,
+  ProductionSummaryConnection extends ReaderSummaryProductionRecoverySessionConfigurationClient &
+    CloseableConnection,
   Result,
 >(
   options: ReaderSummaryProductionRecoveryPhaseOptions<
@@ -189,7 +210,20 @@ export const runReaderSummaryProductionRecoveryPhases = async <
 ): Promise<Result> => {
   const productionSummaryConnection =
     await options.createProductionSummaryConnection();
+  let sourceSummaryConnection: SourceSummaryConnection | undefined;
   try {
+    const recoveryScope = await resolveReaderSummaryProductionRecoveryScope({
+      env: options.env,
+      discover: async () => {
+        sourceSummaryConnection =
+          await options.createSourceSummaryConnection();
+        return options.discoverScope(sourceSummaryConnection);
+      },
+    });
+    await configureProductionRecoverySession(
+      productionSummaryConnection,
+      recoveryScope,
+    );
     const productionAuthority = options.createProductionAuthority(
       productionSummaryConnection,
     );
@@ -197,16 +231,22 @@ export const runReaderSummaryProductionRecoveryPhases = async <
     const binding = productionAuthority.readVerifiedBinding(
       prepared.authority,
     );
+    assertRecoveryScopeMatchesProductionAuthority(recoveryScope, binding);
+    const sourceSummaryConnectionForSnapshot = sourceSummaryConnection;
+    sourceSummaryConnection = undefined;
     const sourceSnapshot =
       await prepareReaderSummaryProductionRecoverySourceSnapshot(options, {
+        scope: recoveryScope,
         prepared,
         binding,
+        sourceSummaryConnection: sourceSummaryConnectionForSnapshot,
       });
     return await options.runProduction({
       sourceSnapshot,
       productionSummaryConnection,
     });
   } finally {
+    await sourceSummaryConnection?.close();
     await productionSummaryConnection.close();
   }
 };
@@ -396,7 +436,8 @@ const prepareReaderSummaryProductionRecoverySourceSnapshot = async <
   SourceSummaryConnection extends ReaderSummaryProductionRecoveryScopeDiscoveryClient &
     CloseableConnection,
   SourceFeedConnection extends CloseableConnection,
-  ProductionSummaryConnection extends CloseableConnection,
+  ProductionSummaryConnection extends ReaderSummaryProductionRecoverySessionConfigurationClient &
+    CloseableConnection,
   Result,
 >(
   options: ReaderSummaryProductionRecoveryPhaseOptions<
@@ -406,30 +447,32 @@ const prepareReaderSummaryProductionRecoverySourceSnapshot = async <
     Result
   >,
   authority: Readonly<{
+    scope: ReaderSummaryProductionRecoveryScope;
     prepared: PrepareReaderSummaryProductionRecoveryResult;
     binding: ReaderSummaryProductionRecoveryAuthorityBinding;
+    sourceSummaryConnection: SourceSummaryConnection | undefined;
   }>,
 ): Promise<ReaderSummaryProductionRecoverySourceSnapshot> => {
-  const scope = scopeFromProductionRecoveryBinding(authority.binding);
-  if (authority.prepared.outcome === "replayed") {
-    return sourceSnapshotFromPreparedAuthority({
-      scope,
-      prepared: authority.prepared,
-      binding: authority.binding,
-      feedItems: new UnavailableSourceSnapshotFeedItemReadRepository(),
-      githubProjectionReader:
-        new ReaderSummaryProductionRecoveryGitHubProjectionSnapshotReader([]),
-    });
-  }
-  const sourceSummaryConnection =
-    await options.createSourceSummaryConnection();
+  const scope = authority.scope;
+  let sourceSummaryConnection = authority.sourceSummaryConnection;
   let sourceFeedConnection: SourceFeedConnection | undefined;
+  if (authority.prepared.outcome === "replayed") {
+    try {
+      return sourceSnapshotFromPreparedAuthority({
+        scope,
+        prepared: authority.prepared,
+        binding: authority.binding,
+        feedItems: new UnavailableSourceSnapshotFeedItemReadRepository(),
+        githubProjectionReader:
+          new ReaderSummaryProductionRecoveryGitHubProjectionSnapshotReader([]),
+      });
+    } finally {
+      await sourceSummaryConnection?.close();
+    }
+  }
   try {
-    const sourceScope = await resolveReaderSummaryProductionRecoveryScope({
-      env: options.env,
-      discover: () => options.discoverScope(sourceSummaryConnection),
-    });
-    assertSourceScopeMatchesProductionAuthority(sourceScope, authority.binding);
+    sourceSummaryConnection ??=
+      await options.createSourceSummaryConnection();
     sourceFeedConnection = await options.createSourceFeedConnection();
     const feedItems = await createSourceSnapshotFeedItems({
       binding: authority.binding,
@@ -450,27 +493,20 @@ const prepareReaderSummaryProductionRecoverySourceSnapshot = async <
     });
   } finally {
     await sourceFeedConnection?.close();
-    await sourceSummaryConnection.close();
+    await sourceSummaryConnection?.close();
   }
 };
 
-const scopeFromProductionRecoveryBinding = (
-  binding: ReaderSummaryProductionRecoveryAuthorityBinding,
-): ReaderSummaryProductionRecoveryScope => ({
-  tenantId: binding.tenantId,
-  workspaceId: binding.workspaceId,
-});
-
-const assertSourceScopeMatchesProductionAuthority = (
-  sourceScope: ReaderSummaryProductionRecoveryScope,
+const assertRecoveryScopeMatchesProductionAuthority = (
+  recoveryScope: ReaderSummaryProductionRecoveryScope,
   binding: ReaderSummaryProductionRecoveryAuthorityBinding,
 ): void => {
   if (
-    sourceScope.tenantId !== binding.tenantId ||
-    sourceScope.workspaceId !== binding.workspaceId
+    recoveryScope.tenantId !== binding.tenantId ||
+    recoveryScope.workspaceId !== binding.workspaceId
   ) {
     throw new Error(
-      "Reader summary production recovery source snapshot scope diverged from production authority",
+      "Reader summary production recovery session scope diverged from production authority",
     );
   }
 };
