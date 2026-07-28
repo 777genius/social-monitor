@@ -243,25 +243,20 @@ read_postgres_pool_bootstrap_recovery_marker() {
     fail "$label marker changed while being read"
   printf '%s\n' "$sha"
 }
-
 validate_postgres_pool_bootstrap_recovery_marker() {
   local sha=$1
   local current=$2
   local label=$3
-
   git -C "$REPO" cat-file -e "$sha^{commit}" 2>/dev/null || \
     fail "$label marker commit is unavailable"
   git -C "$REPO" merge-base --is-ancestor "$sha" "$current" || \
     fail "$label marker commit is not an ancestor of current integration"
 }
-
 postgres_pool_bootstrap_recovery_file_identity() {
   local marker=$1
-
   [[ -f $marker && ! -L $marker ]] || return 1
   stat -c '%d:%i:%f:%s:%y:%z' "$marker"
 }
-
 verify_postgres_pool_bootstrap_recovery_file() {
   local sha=$1
   local relative_path=$2
@@ -269,7 +264,6 @@ verify_postgres_pool_bootstrap_recovery_file() {
   local label=$4
   local tree_entry mode type object tree_path reviewed_digest actual_digest
   local actual_identity_before actual_identity_after
-
   [[ -f $actual_path && ! -L $actual_path ]] || \
     fail "$label is not a regular non-symlink file"
   actual_identity_before=$(
@@ -407,7 +401,6 @@ find_postgres_pool_bootstrap_installed_control_commit() {
   local sha candidate_blob parent parent_blob parent_line
   local reached_backend=false
   local -a parent_fields candidates=()
-
   [[ -f $installed && ! -L $installed ]] || \
     fail 'installed deploy entrypoint is not a regular non-symlink file'
   installed_identity=$(
@@ -458,7 +451,6 @@ find_postgres_pool_bootstrap_installed_control_commit() {
     fail 'installed deploy entrypoint changed during provenance validation'
   printf '%s\n' "${candidates[0]}"
 }
-
 validate_postgres_pool_bootstrap_control_only_candidate() {
   local candidate=$1 allow_backend_candidate=${2:-false}
   local relative_path=ops/deploy/social-monitor-production-deploy.sh
@@ -508,7 +500,6 @@ verify_postgres_pool_bootstrap_recovery_marker_snapshot() {
   local expected_sha=$3
   local expected_identity=$4
   local actual_sha actual_identity
-
   actual_sha=$(read_postgres_pool_bootstrap_recovery_marker "$marker" "$label")
   actual_identity=$(
     postgres_pool_bootstrap_recovery_file_identity "$marker"
@@ -517,7 +508,6 @@ verify_postgres_pool_bootstrap_recovery_marker_snapshot() {
      $actual_identity == "$expected_identity" ]] || \
     fail "$label marker changed during partial control reconciliation"
 }
-
 verify_postgres_pool_bootstrap_partial_control_state() {
   local current=$1
   local canonical_tip=$2
@@ -745,7 +735,7 @@ reconcile_current_postgres_pool_bootstrap() {
   # shellcheck disable=SC2153
   local installed=$CONTROL/github-production-deploy.sh
   local current=$expected_current
-  local pool_marker_sha backend_marker_sha control_marker_sha
+  local pool_marker_sha backend_marker_sha control_marker_sha runtime_ready_sha
   local pool_marker_identity backend_marker_identity control_marker_identity
   local revalidated_pool_marker_sha revalidated_control_marker_sha
   local revalidated_pool_marker_identity revalidated_control_marker_identity
@@ -765,8 +755,18 @@ reconcile_current_postgres_pool_bootstrap() {
     ) || fail 'backend marker identity cannot be inventoried'
     validate_postgres_pool_bootstrap_recovery_marker \
       "$backend_marker_sha" "$current" 'backend'
-    [[ $backend_marker_sha == "$expected_backend" ]] || \
-      fail 'target-current PostgreSQL reconciliation is not at the adoption backend'
+    if [[ $backend_marker_sha != "$expected_backend" ]]; then
+      [[ -L ${POSTGRES_RUNTIME_CURRENT:?} ]] || \
+        fail 'PostgreSQL runtime current is not a symlink'
+      runtime_ready_sha=$(
+        read_postgres_pool_bootstrap_recovery_marker \
+          "$POSTGRES_RUNTIME_CURRENT/READY" 'PostgreSQL runtime READY'
+      )
+      validate_postgres_pool_bootstrap_recovery_marker \
+        "$runtime_ready_sha" "$current" 'PostgreSQL runtime READY'
+      [[ $runtime_ready_sha == "$backend_marker_sha" ]] || \
+        fail 'target-current PostgreSQL reconciliation is not runtime-bound'
+    fi
     verify_postgres_pool_bootstrap_recovery_file \
       "$current" ops/deploy/social-monitor-production-ssh-wrapper.sh \
       "$CONTROL/github-production-deploy-wrapper.sh" 'installed deploy wrapper'

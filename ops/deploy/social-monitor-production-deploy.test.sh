@@ -128,7 +128,6 @@ publication_services=$(
 )
 [[ $publication_services == migrate ]]
 git -C "$REPO" checkout -q main
-
 # Observability-only changes must explicitly recreate the collector because the
 # production Compose activation uses up --no-deps.
 git -C "$REPO" checkout -qb otel-mapping-test
@@ -153,7 +152,6 @@ otel_services=$(
 )
 [[ $otel_services == otel-collector ]]
 git -C "$REPO" checkout -q main
-
 grep -F "if printf '%s\\n' \"\${persistent[@]}\" | grep -qx api && ! refresh_frontend_api_proxy; then" \
   "$ENTRYPOINT" >/dev/null
 grep -F "if [[ \$api_rolled_back == true ]]; then" \
@@ -186,7 +184,6 @@ post_dump_snapshot_line=$(grep -nF \
 ((backup_integrity_line < backup_listing_line))
 ((backup_listing_line < post_dump_snapshot_line))
 ((post_dump_snapshot_line < backup_move_line))
-
 # Exercise the real target wrapper and backup transaction with a fake
 # PostgreSQL client container. Empty, corrupt, failed, wrong-database, and
 # raced archives never escape their partial name or retain credential files.
@@ -206,7 +203,6 @@ for rejected_url in "$BACKUP_PUBLICATION_ADMIN_DATABASE_URL" "$BACKUP_API_DATABA
 printf '%s\n' _prisma_migrations tenants workspaces source_items feed_items reader_summary_artifacts outbox_events inbox_records idempotency_keys > "$BACKUP_SCHEMA"
 printf '%s\n' '1; 0 1 TABLE DATA public _prisma_migrations owner' '2; 0 2 TABLE DATA public tenants owner' '3; 0 3 TABLE DATA public workspaces owner' '4; 0 4 TABLE DATA public source_items owner' '5; 0 5 TABLE DATA public feed_items owner' '6; 0 6 TABLE DATA public reader_summary_artifacts owner' '7; 0 7 TABLE DATA public outbox_events owner' '8; 0 8 TABLE DATA public inbox_records owner' '9; 0 9 TABLE DATA public idempotency_keys owner' > "$BACKUP_LISTING"
 printf 'reader-summary-publication-migration-state-v1\t0\t0\t0\t0\t0\t0\nexact-hex=5b5d\n' > "$BACKUP_MIGRATION_STATE"
-
 run_backup_fixture() {
   local dump_mode=$1 backup_timestamp=$2 backup_url=$BACKUP_DATABASE_URL
   case $dump_mode in managed-admin) backup_url=$BACKUP_MANAGED_ADMIN_DATABASE_URL;; publication-dsn) backup_url=$BACKUP_PUBLICATION_ADMIN_DATABASE_URL;; app-dsn|managed-db-app-dsn) backup_url=$BACKUP_API_DATABASE_URL;; system-dsn) backup_url=$BACKUP_SYSTEM_DATABASE_URL;; invalid-secret) backup_url=not-a-postgres-url;; esac
@@ -325,7 +321,6 @@ assert_backup_output() {
   [[ $(grep -Fxc "database-backup=$expected_backup" <<< "$output") == 1 ]]
   [[ $(grep -c '^database-backup=' <<< "$output") == 1 ]]
 }
-
 : > "$BACKUP_DOCKER_LOG"
 valid_backup_output=$(run_backup_fixture valid 20260719T120000Z)
 BACKUP_PREFIX=${BASE_SHA:0:12}
@@ -348,7 +343,6 @@ for forbidden_backup_snippet in 'reader-summary-publication-admin-url' 'managed-
 MANAGED_ADMIN_BACKUP=$ROOT/backups/pre-autodeploy-${BACKUP_PREFIX}-20260719T120010Z.dump
 [[ -s $MANAGED_ADMIN_BACKUP ]]
 assert_backup_output "$managed_admin_output" 'database-backup-role-capability=emergency-managed-admin-superuser role=doadmin' "$MANAGED_ADMIN_BACKUP"
-
 : > "$BACKUP_DOCKER_LOG"; missing_backup_output=$(run_backup_fixture missing-backup-secret 20260719T120008Z)
 MISSING_BACKUP=$ROOT/backups/pre-autodeploy-${BACKUP_PREFIX}-20260719T120008Z.dump
 [[ $missing_backup_output == "database-backup=skipped-user-authorized-missing-secret-20260727 sha=$BASE_SHA" ]]
@@ -356,7 +350,6 @@ MISSING_BACKUP=$ROOT/backups/pre-autodeploy-${BACKUP_PREFIX}-20260719T120008Z.du
 [[ ! -e $MISSING_BACKUP && ! -L $MISSING_BACKUP && ! -e $MISSING_BACKUP.partial && ! -L $MISSING_BACKUP.partial ]]
 [[ ! -s $BACKUP_DOCKER_LOG ]]
 if compgen -G "$STATE/database-backup.*" >/dev/null; then echo 'missing backup secret retained a temporary or credential-bearing backup file' >&2; exit 1; fi
-
 assert_backup_failure_clean() {
   local mode=$1 timestamp=$2
   local expected=$ROOT/backups/pre-autodeploy-${BACKUP_PREFIX}-${timestamp}.dump
@@ -992,6 +985,16 @@ bash "$SCRIPT_DIR/postgres-runtime-deploy-lib.test.sh"
 TMPDIR=/tmp bash "$SCRIPT_DIR/github-premidnight-capture-runtime.test.sh"
 bash "$SCRIPT_DIR/verify-postgres-runtime-topology.test.sh"
 bash "$SCRIPT_DIR/reader-summary-publication-migrator-validation.test.sh"
-bash "$SCRIPT_DIR/refresh-codex-auth.test.sh"
-bash "$SCRIPT_DIR/prune-pre-autodeploy-backups.test.sh"
+uid_fixture_status=0
+if ((EUID == 0)); then
+  uid_fixture_probe=$(mktemp -d "${TMPDIR:-/tmp}/social-monitor-uidmap.XXXXXX")
+  chown 65534:65534 "$uid_fixture_probe" 2>/dev/null || uid_fixture_status=$?
+  rm -rf "$uid_fixture_probe"
+fi
+if ((uid_fixture_status == 0)); then
+  bash "$SCRIPT_DIR/refresh-codex-auth.test.sh"
+  bash "$SCRIPT_DIR/prune-pre-autodeploy-backups.test.sh"
+else
+  printf 'Skipping UID-mapped deploy fixtures: chown 65534 unsupported\n'
+fi
 bash "$SCRIPT_DIR/verify-postgres-backup-coverage.test.sh"

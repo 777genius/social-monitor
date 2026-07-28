@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/deploy-control-lib-test.XXXXXX")
 trap 'touch "$FIXTURE/release"; rm -rf "$FIXTURE"' EXIT
-
 REPO=$FIXTURE/repo
 ROOT=$FIXTURE/root
 CONTROL=$FIXTURE/control
@@ -38,13 +36,11 @@ fail() {
   printf 'test deploy failure: %s\n' "$*" >&2
   exit 1
 }
-
 # shellcheck source=ops/deploy/deploy-control-lib.sh
 source "$SCRIPT_DIR/deploy-control-lib.sh"
 # shellcheck source=ops/deploy/postgres-runtime-deploy-lib.sh
 source "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh"
 initialize_deploy_control_bridge
-
 # Successful acquisition retains only PostgreSQL admission. A separate process
 # can still acquire the singleton while this shell owns admission.
 exec 8>"$POSTGRES_ADMISSION_LOCK"
@@ -53,7 +49,6 @@ POSTGRES_ADMISSION_RETRY_SLICE_SECONDS=0.01
 acquire_postgres_admission_with_daily_priority 8
 flock -n "$DAILY_SINGLETON_LOCK" true
 flock -u 8
-
 # The bounded nonblocking loop times out without calling a blocking long-wait
 # flock operation.
 (
@@ -79,7 +74,6 @@ grep -F 'timed out waiting for PostgreSQL admission lock' \
 : > "$FIXTURE/release"
 wait "$holder_pid"
 rm -f "$FIXTURE/release" "$FIXTURE/admission-held"
-
 # Deterministically place a daily singleton holder after the clear probe but
 # before admission acquisition. The post-acquire probe must release admission
 # and fail.
@@ -94,7 +88,6 @@ postgres_admission_after_singleton_probe() {
   ) </dev/null >/dev/null 2>&1 &
   while [[ ! -e $FIXTURE/singleton-held ]]; do sleep 0.01; done
 }
-
 set +e
 gap_error=$(
   (
@@ -111,7 +104,6 @@ flock -n "$POSTGRES_ADMISSION_LOCK" true
 : > "$FIXTURE/release"
 until flock -n "$DAILY_SINGLETON_LOCK" true; do sleep 0.01; done
 rm -f "$FIXTURE/release"
-
 # Runtime assets cannot advance in the same release as the already-sourced
 # bridge controller or PostgreSQL activation library.
 printf '# target mutation\n' >> \
@@ -125,7 +117,6 @@ grep -F 'deploy the bridge release first' <<< "$bridge_error" >/dev/null
 cp "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" \
   "$REPO/ops/deploy/postgres-runtime-deploy-lib.sh"
 verify_deploy_control_bridge_compatibility
-
 # The image-rescue controller is part of the same control-only bridge digest;
 # a publication/runtime target cannot replace it under the running controller.
 printf '# target rescue mutation\n' >> \
@@ -552,6 +543,11 @@ git -C "$REPO" diff --name-only \
 original_atomic_backend=$POSTGRES_POOL_ATOMIC_REPAIR_BACKEND_SHA
 POSTGRES_POOL_ATOMIC_REPAIR_BACKEND_SHA=$durable_backend_sha
 target_current_runtime_event=$FIXTURE/target-current-runtime-event
+runtime_ready_release=$FIXTURE/current-runtime-ready
+install -d "$runtime_ready_release"
+printf '%s\n' "$durable_backend_sha" > "$runtime_ready_release/READY"
+rm -f "$POSTGRES_RUNTIME_CURRENT"
+ln -s "$runtime_ready_release" "$POSTGRES_RUNTIME_CURRENT"
 install -m 0755 "$REPO/ops/deploy/social-monitor-production-ssh-wrapper.sh" "$CONTROL/github-production-deploy-wrapper.sh"
 fetch_main() { :; }
 reconcile_completed_backend_image_rescues() {
@@ -568,6 +564,7 @@ backend_intro_output=$(
 cmp -s "$CONTROL/github-production-deploy.sh" "$REPO/ops/deploy/social-monitor-production-deploy.sh"
 [[ $(<"$STATE/postgres-pool-bootstrap.sha") == "$partial_current_sha" ]]
 [[ $(<"$partial_recovery_events") == $'entrypoint-sync\nbootstrap-force-advance' ]]
+POSTGRES_POOL_ATOMIC_REPAIR_BACKEND_SHA=$original_atomic_backend
 prepare_partial_recovery "$safe_control_candidate_sha"
 printf '%s\n' "$safe_control_candidate_sha" \
   > "$STATE/postgres-pool-bootstrap.sha"
@@ -613,11 +610,10 @@ forged_output=$(deploy_release "$partial_current_sha" 2>&1)
 forged_status=$?
 set -e
 ((forged_status != 0))
-grep -F 'target-current PostgreSQL reconciliation is not at the adoption backend' \
+grep -F 'target-current PostgreSQL reconciliation is not runtime-bound' \
   <<< "$forged_output" >/dev/null
 [[ $(<"$STATE/postgres-pool-bootstrap.sha") == "$safe_control_candidate_sha" ]]
 [[ ! -e $target_current_runtime_event ]]
-POSTGRES_POOL_ATOMIC_REPAIR_BACKEND_SHA=$original_atomic_backend
 unset -f fetch_main reconcile_completed_backend_image_rescues
 unset RECOVERY_COMMIT_INTERRUPTED
 

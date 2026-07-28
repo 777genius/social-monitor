@@ -5,7 +5,6 @@ PATH=/usr/local/bin:/usr/bin:/bin
 
 ZERO_SHA=0000000000000000000000000000000000000000
 POSTGRES_POOL_BOOTSTRAP_VERSION=postgres-pool-v1
-POSTGRES_POOL_ADOPTION_BACKEND_SHA=4f47fac7faed7dc24110f4a43e88820d776b8a40
 SSH_DIRECTORY=${DEPLOY_SSH_DIRECTORY:-${HOME:?HOME is required}/.ssh}
 SSH_KEY_PATH=${DEPLOY_SSH_KEY_PATH:-$SSH_DIRECTORY/social-monitor-production}
 SSH_KNOWN_HOSTS_PATH=${DEPLOY_SSH_KNOWN_HOSTS_PATH:-$SSH_DIRECTORY/known_hosts}
@@ -199,14 +198,14 @@ write_plan_outputs() {
   } >> "$output_path"
 }
 
-repair_legacy_postgres_pool_bootstrap() {
+repair_missing_postgres_pool_bootstrap() {
   local sha=$1
   local durable_backend_base=$PLAN_BACKEND_BASE
   local status
 
-  [[ $durable_backend_base == "$POSTGRES_POOL_ADOPTION_BACKEND_SHA" ]] || \
-    fail 'missing PostgreSQL bootstrap marker is not at the adoption backend'
-  printf 'deploy-client: invoking exact legacy repair through deploy\n' >&2
+  [[ $durable_backend_base != "$ZERO_SHA" ]] || \
+    fail 'missing PostgreSQL bootstrap marker has no valid backend base'
+  printf 'deploy-client: invoking PostgreSQL bootstrap repair through deploy\n' >&2
   # Remote stdout is intentionally non-authoritative. Only the recaptured
   # ordinary plan below may attest that control and marker committed together.
   if run_remote deploy "$sha" >/dev/null; then
@@ -215,7 +214,7 @@ repair_legacy_postgres_pool_bootstrap() {
     status=$?
   fi
   if ((status == 255)); then
-    printf 'deploy-client: SSH disconnected during legacy repair; recapturing the ordinary plan\n' >&2
+    printf 'deploy-client: SSH disconnected during bootstrap repair; recapturing the ordinary plan\n' >&2
   elif ((status != 0)); then
     fail "legacy PostgreSQL bootstrap repair failed with status $status"
   fi
@@ -248,7 +247,7 @@ read_initial_plan() {
   ((status == 0)) || fail "plan command failed with status $status"
   if [[ $PLAN_BACKEND == true && \
         $PLAN_POSTGRES_POOL_BOOTSTRAP != "$POSTGRES_POOL_BOOTSTRAP_VERSION" ]]; then
-    repair_legacy_postgres_pool_bootstrap "$sha"
+    repair_missing_postgres_pool_bootstrap "$sha"
   fi
   print_plan
   write_plan_outputs

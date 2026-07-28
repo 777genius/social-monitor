@@ -75,9 +75,18 @@ fake_ssh() {
         esac
       fi
       ;;
-    non_adoption_missing:"plan $TARGET_SHA")
+    current_backend_missing:"plan $TARGET_SHA")
+      count=$(grep -cFx "plan $TARGET_SHA" "$FAKE_SSH_LOG")
+      if ((count == 1)); then
+        printf 'frontend=false\nbackend=true\nbackend_base=%s\ncontrol=true\nx_collector=false\npostgres_pool_bootstrap=uninstalled\npostgres_pool_bootstrap_sha=0000000000000000000000000000000000000000\n' \
+          "$CURRENT_BACKEND_SHA"
+      else
+        print_fake_plan false true true false "$TARGET_SHA" "$CURRENT_BACKEND_SHA"
+      fi
+      ;;
+    invalid_backend_missing:"plan $TARGET_SHA")
       printf 'frontend=false\nbackend=true\nbackend_base=%s\ncontrol=true\nx_collector=false\npostgres_pool_bootstrap=uninstalled\npostgres_pool_bootstrap_sha=0000000000000000000000000000000000000000\n' \
-        "$TARGET_SHA"
+        "0000000000000000000000000000000000000000"
       ;;
     legacy_plan:"plan $TARGET_SHA")
       printf 'frontend=false\nbackend=false\nbackend_base=%s\ncontrol=true\nx_collector=false\n' \
@@ -94,6 +103,9 @@ fake_ssh() {
       printf 'deployed=%s\n' "$TARGET_SHA"
       ;;
     atomic_success:"deploy $TARGET_SHA")
+      printf 'postgres-pool-bootstrap=%s replay=false\n' "$TARGET_SHA"
+      ;;
+    current_backend_missing:"deploy $TARGET_SHA")
       printf 'postgres-pool-bootstrap=%s replay=false\n' "$TARGET_SHA"
       ;;
     atomic_disconnect:"deploy $TARGET_SHA")
@@ -175,6 +187,7 @@ trap 'rm -rf "$FIXTURE"' EXIT
 
 TARGET_SHA=1234567890abcdef1234567890abcdef12345678
 BACKEND_SHA=4f47fac7faed7dc24110f4a43e88820d776b8a40
+CURRENT_BACKEND_SHA=617e284607f3dde74c27164af2b981770b9a62ed
 FAKE_SSH=$FIXTURE/fake-ssh
 FAKE_SSH_LOG=$FIXTURE/ssh.log
 FAKE_SSH_STATE=$FIXTURE/ssh.state
@@ -186,7 +199,7 @@ DEPLOY_SSH_KNOWN_HOSTS_PATH=$FIXTURE/ssh/pinned-known-hosts
 DEPLOY_HOST=production.example.invalid
 DEPLOY_USER=social-monitor-deploy
 
-export TARGET_SHA BACKEND_SHA FAKE_SSH_LOG FAKE_SSH_STATE FAKE_UPLOAD_PATH
+export TARGET_SHA BACKEND_SHA CURRENT_BACKEND_SHA FAKE_SSH_LOG FAKE_SSH_STATE FAKE_UPLOAD_PATH
 export DEPLOY_SSH_DIRECTORY DEPLOY_SSH_KEY_PATH DEPLOY_SSH_KNOWN_HOSTS_PATH
 export DEPLOY_HOST DEPLOY_USER GITHUB_OUTPUT
 install -m 0700 "$0" "$FAKE_SSH"
@@ -283,6 +296,14 @@ grep -Fx 'postgres_pool_repair=true' "$GITHUB_OUTPUT" >/dev/null
 assert_call_count 2 "plan $TARGET_SHA"
 assert_call_count 1 "deploy $TARGET_SHA"
 
+: > "$GITHUB_OUTPUT"
+run_client current_backend_missing plan "$TARGET_SHA" >/dev/null
+grep -Fx "backend_base=$CURRENT_BACKEND_SHA" "$GITHUB_OUTPUT" >/dev/null
+grep -Fx 'backend=true' "$GITHUB_OUTPUT" >/dev/null
+grep -Fx 'postgres_pool_repair=true' "$GITHUB_OUTPUT" >/dev/null
+assert_call_count 2 "plan $TARGET_SHA"
+assert_call_count 1 "deploy $TARGET_SHA"
+
 # A fresh workflow replay sees the recaptured durable state and performs no
 # repair action; its ordinary deploy remains owned by the gated deploy job.
 : > "$GITHUB_OUTPUT"
@@ -314,7 +335,7 @@ assert_call_count 1 "plan $TARGET_SHA"
 assert_call_count 1 "deploy $TARGET_SHA"
 
 : > "$GITHUB_OUTPUT"
-assert_fails non_adoption_missing plan "$TARGET_SHA"
+assert_fails invalid_backend_missing plan "$TARGET_SHA"
 [[ ! -s $GITHUB_OUTPUT ]]
 assert_call_count 1 "plan $TARGET_SHA"
 assert_call_count 0 "deploy $TARGET_SHA"
