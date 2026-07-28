@@ -447,6 +447,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/lib/reader-summary-weekly-publication-evidence-postgres-contract.ts
       scripts/lib/yesterday-reader-summary-artifact-quality-store.spec.ts
       scripts/lib/yesterday-reader-summary-artifact-quality-store.ts
+      scripts/lib/yesterday-social-collection-quality-summary-counts.ts
       scripts/lib/yesterday-social-replay-support.ts
       scripts/reader-summary-publication-postgres-legacy.ts
       scripts/reader-summary-publication-postgres-privileges.ts
