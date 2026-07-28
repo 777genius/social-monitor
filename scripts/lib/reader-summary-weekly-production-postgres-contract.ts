@@ -116,6 +116,7 @@ type WeeklyEvidenceRow = Readonly<{
 type ContractRow = Readonly<{
   evidence_table: string | null;
   publish_function: string | null;
+  backfill_function: string | null;
   column_count: string;
 }>;
 
@@ -167,6 +168,9 @@ export const assertReaderSummaryWeeklyProductionPostgresContract = async (
           AS evidence_table,
         to_regprocedure('public.publish_reader_summary(jsonb)')::text
           AS publish_function,
+        to_regprocedure(
+          'public.backfill_reader_summary_weekly_daily_certifications(uuid,uuid,text,text,date)'
+        )::text AS backfill_function,
         (
           SELECT count(*)::text
           FROM information_schema.columns
@@ -181,10 +185,12 @@ export const assertReaderSummaryWeeklyProductionPostgresContract = async (
   if (
     row?.evidence_table !== "reader_summary_weekly_publication_evidence" ||
     row.publish_function !== "publish_reader_summary(jsonb)" ||
+    row.backfill_function !==
+      "backfill_reader_summary_weekly_daily_certifications(uuid,uuid,text,text,date)" ||
     row.column_count !== String(weeklyEvidenceColumns.length)
   ) {
     throw new Error(
-      "missing DB weekly capability: public.reader_summary_weekly_publication_evidence or public.publish_reader_summary(jsonb)",
+      "missing DB weekly capability: evidence table, publish function, or daily certification backfill function",
     );
   }
 };

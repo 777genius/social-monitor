@@ -30,6 +30,14 @@ describe("reader summary weekly production postgres contract", () => {
     ).resolves.toBeUndefined();
   });
 
+  it("fails closed when the daily certification backfill capability is absent", async () => {
+    await expect(
+      assertReaderSummaryWeeklyProductionPostgresContract(
+        fakeClient([], { backfillFunction: null }),
+      ),
+    ).rejects.toThrow("missing DB weekly capability");
+  });
+
   it("classifies exact Monday-Sunday 7/7 completed certifications as complete", async () => {
     const state = await loadReaderSummaryWeeklyProductionDbState(
       fakeClient(week.dates.map(rowForDate)),
@@ -102,6 +110,7 @@ type FakeRow = ReturnType<typeof rowForDate>;
 
 const fakeClient = (
   rows: readonly FakeRow[],
+  options: Readonly<{ backfillFunction?: string | null }> = {},
 ): ReaderSummaryWeeklyProductionPostgresClient => ({
   async query(sql) {
     if (sql.includes("to_regclass")) {
@@ -110,6 +119,10 @@ const fakeClient = (
           {
             evidence_table: "reader_summary_weekly_publication_evidence",
             publish_function: "publish_reader_summary(jsonb)",
+            backfill_function:
+              options.backfillFunction === undefined
+                ? "backfill_reader_summary_weekly_daily_certifications(uuid,uuid,text,text,date)"
+                : options.backfillFunction,
             column_count: "28",
           },
         ],
