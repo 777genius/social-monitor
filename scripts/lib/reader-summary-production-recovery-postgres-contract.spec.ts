@@ -8,6 +8,8 @@ import {
 const root = process.cwd();
 const runtimeExecuteMigrationPath =
   "prisma/migrations/20260728143000_reader_summary_production_recovery_prepare_runtime_execute/migration.sql";
+const scopeAclMigrationPath =
+  "prisma/migrations/20260728151000_reader_summary_production_recovery_scope_acl/migration.sql";
 const migrationPaths = [
   "prisma/migrations/20260726170000_reader_summary_production_recovery_authority/migration.sql",
   "prisma/migrations/20260726170100_reader_summary_production_recovery_authority_prepare/migration.sql",
@@ -16,6 +18,7 @@ const migrationPaths = [
   "prisma/migrations/20260728033000_reader_summary_production_recovery_jul23_jul24_authority/migration.sql",
   "prisma/migrations/20260728123000_reader_summary_production_recovery_published_counts_authority/migration.sql",
   runtimeExecuteMigrationPath,
+  scopeAclMigrationPath,
 ] as const;
 const migration = migrationPaths
   .map((migrationPath) => readFileSync(join(root, migrationPath), "utf8"))
@@ -26,6 +29,10 @@ const publishedAuthorityMigration = readFileSync(
 );
 const runtimeExecuteMigration = readFileSync(
   join(root, runtimeExecuteMigrationPath),
+  "utf8",
+);
+const scopeAclMigration = readFileSync(
+  join(root, scopeAclMigrationPath),
   "utf8",
 );
 const schema = readFileSync(join(root, "prisma/schema.prisma"), "utf8");
@@ -333,6 +340,42 @@ describe("reader summary production recovery PostgreSQL contract", () => {
     );
     expect(runtimeExecuteMigration).not.toMatch(
       /\b(?:INSERT INTO|UPDATE|DELETE FROM|TRUNCATE)\b/iu,
+    );
+  });
+
+  it("grants only scoped tenant/workspace lock authority to the publication owner", () => {
+    const tenantSelectGrant =
+      "GRANT SELECT(id, deleted_at) ON public.tenants TO social_monitor_reader_summary_publication_owner;";
+    const workspaceSelectGrant =
+      "GRANT SELECT(id, tenant_id, deleted_at) ON public.workspaces TO social_monitor_reader_summary_publication_owner;";
+    const rowLockGrant =
+      "GRANT UPDATE(id) ON public.tenants, public.workspaces TO social_monitor_reader_summary_publication_owner;";
+
+    expect(scopeAclMigration).toContain(
+      "SET LOCAL ROLE social_monitor_public_schema_owner;",
+    );
+    expect(scopeAclMigration).toContain(tenantSelectGrant);
+    expect(scopeAclMigration).toContain(workspaceSelectGrant);
+    expect(scopeAclMigration).toContain(rowLockGrant);
+    expect(scopeAclMigration.match(/\bGRANT\b[\s\S]*?;/gu)).toEqual([
+      tenantSelectGrant,
+      workspaceSelectGrant,
+      rowLockGrant,
+    ]);
+    expect(scopeAclMigration).not.toMatch(
+      /\bGRANT\s+SELECT\b(?!\s*\()/iu,
+    );
+    expect(scopeAclMigration).not.toMatch(
+      /\bGRANT\s+UPDATE\b(?!\s*\()/iu,
+    );
+    expect(scopeAclMigration).not.toMatch(
+      /\bGRANT\s+(?:INSERT|DELETE|TRUNCATE|REFERENCES|TRIGGER|EXECUTE)\b/iu,
+    );
+    expect(scopeAclMigration).not.toContain(
+      "social_monitor_reader_summary_publication_runtime",
+    );
+    expect(scopeAclMigration).not.toMatch(
+      /\b(?:CREATE|ALTER|DROP)\s+(?:FUNCTION|TABLE|POLICY)\b/iu,
     );
   });
 
