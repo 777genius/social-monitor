@@ -421,7 +421,7 @@ describe("reader summary production recovery CLI wrapper", () => {
         await sourceSnapshot.githubProjectionReader.read(
           githubProjectionQueryForBinding(
             binding,
-            new Date("2026-07-26T00:00:00.000Z"),
+            new Date("2026-07-25T00:00:00.000Z"),
           ),
         );
         return "ok" as const;

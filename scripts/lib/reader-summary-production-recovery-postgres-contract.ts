@@ -172,7 +172,7 @@ export const seedReaderSummaryProductionRecoveryFixture = async (
         ELSE NULL
       END,
       item.requested_utc_date::timestamp AT TIME ZONE 'UTC' +
-        interval '1 day' + interval '12 hours' +
+        interval '12 hours' +
         item.position * interval '1 millisecond',
       NULL,
       NULL,
@@ -190,7 +190,7 @@ export const seedReaderSummaryProductionRecoveryFixture = async (
               'rank', item.position,
               'checkedAt', to_char(
                 item.requested_utc_date::timestamp AT TIME ZONE 'UTC' +
-                  interval '1 day' + interval '11 hours' +
+                  interval '11 hours' +
                   item.position * interval '1 millisecond',
                 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'
               )
@@ -200,7 +200,7 @@ export const seedReaderSummaryProductionRecoveryFixture = async (
       END,
       1,
       item.requested_utc_date::timestamp AT TIME ZONE 'UTC' +
-        interval '1 day' + interval '12 hours'
+        interval '12 hours'
     FROM sm_recovery_fixture_items AS item;
 
     INSERT INTO feed_items (
@@ -238,14 +238,14 @@ export const seedReaderSummaryProductionRecoveryFixture = async (
         interval '2 days' + interval '18 hours' +
         item.position * interval '1 millisecond',
       item.requested_utc_date::timestamp AT TIME ZONE 'UTC' +
-        interval '1 day' + interval '12 hours' +
+        interval '12 hours' +
         item.position * interval '1 millisecond',
       NULL,
       'VISIBLE',
       item.requested_utc_date::timestamp AT TIME ZONE 'UTC' +
-        interval '1 day' + interval '12 hours',
+        interval '12 hours',
       item.requested_utc_date::timestamp AT TIME ZONE 'UTC' +
-        interval '1 day' + interval '12 hours'
+        interval '12 hours'
     FROM sm_recovery_fixture_items AS item;
 
     INSERT INTO github_repository_trend_results (
@@ -269,15 +269,15 @@ export const seedReaderSummaryProductionRecoveryFixture = async (
       'daily',
       item.position,
       item.requested_utc_date::timestamp AT TIME ZONE 'UTC' +
-        interval '1 day' + interval '11 hours' +
+        interval '11 hours' +
         item.position * interval '1 millisecond',
       item.requested_utc_date::timestamp AT TIME ZONE 'UTC' +
-        interval '1 day' + interval '12 hours' +
+        interval '12 hours' +
         item.position * interval '1 millisecond',
       'fixture',
       '{"verifiedExisting":true}'::jsonb,
       item.requested_utc_date::timestamp AT TIME ZONE 'UTC' +
-        interval '1 day' + interval '12 hours'
+        interval '12 hours'
     FROM sm_recovery_fixture_items AS item
     WHERE item.provider_key = 'github-trending-page';
 
@@ -576,14 +576,14 @@ const assertPersistedAuthority = async (
       consumedAfterSnapshots: true,
       canonicalEqual: true,
       jul23Mode: "historical_unavailable",
-      jul23ObservedDates: ["2026-07-24"],
+      jul23ObservedDates: ["2026-07-23"],
       jul24Mode: "verified_existing",
       jul24GitHubCount: 10,
-      jul24ObservedDates: ["2026-07-25"],
+      jul24ObservedDates: ["2026-07-24"],
       retainedPublishedAt: "2026-07-21T18:00:00.001Z",
-      retainedObservedAt: "2026-07-24T12:00:00.001Z",
+      retainedObservedAt: "2026-07-23T12:00:00.001Z",
       retainedSourcePublishedAt: "2026-07-21T18:00:00.001Z",
-      retainedSourceObservedAt: "2026-07-24T12:00:00.001Z",
+      retainedSourceObservedAt: "2026-07-23T12:00:00.001Z",
     },
     "persisted recovery cardinality and evidence seals must be exact",
   );
