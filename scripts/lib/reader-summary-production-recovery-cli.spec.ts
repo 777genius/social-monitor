@@ -153,9 +153,9 @@ describe("reader summary production recovery CLI wrapper", () => {
       "date '2026-07-24'::timestamp at time zone 'utc'",
       "date '2026-07-25'::timestamp at time zone 'utc'",
       "group by feed.\"tenant_id\", feed.\"workspace_id\"",
-      "having count(*) = 692",
-      ") = 342", ") = 350", ") = 0", ") = 10", ") = 100", ") = 75",
-      ") = 67", ") = 73",
+      "having count(*) = 696",
+      ") = 345", ") = 351", ") = 0", ") = 10", ") = 100", ") = 78",
+      ") = 67", ") = 68", ") = 73",
     ]) {
       expect(sql).toContain(expected);
     }
@@ -166,7 +166,7 @@ describe("reader summary production recovery CLI wrapper", () => {
     expect(sql).not.toContain('order by feed."tenant_id", feed."workspace_id"');
     expect(sql).not.toContain("sha256");
     expect(sql).not.toMatch(/\bjoin\b/u);
-    expect(sql).not.toContain('feed."published_at"');
+    expect(sql).not.toContain('feed."observed_at"');
     const forbiddenScopeTables = /\b(?:tenants|workspaces|source_items|source_bindings|source_catalog_entries|interests|github_[a-z_]+|scan_jobs|scan_attempts)\b/u;
     expect(sql).not.toMatch(forbiddenScopeTables);
     expect(sql).not.toMatch(/\bcontent_hash\b|\bprovider_content_hash\b|\bmetadata\b/u);
@@ -743,8 +743,8 @@ function bindingFixture(): ReaderSummaryProductionRecoveryAuthorityBinding {
       recollectionPerformed: false,
     },
     days: [
-      day("2026-07-23", [0, 100, 100, 75, 67], "historical_unavailable"),
-      day("2026-07-24", [10, 100, 100, 67, 73], "verified_existing"),
+      day("2026-07-23", [0, 100, 100, 78, 67], "historical_unavailable"),
+      day("2026-07-24", [10, 100, 100, 68, 73], "verified_existing"),
     ],
   };
 }

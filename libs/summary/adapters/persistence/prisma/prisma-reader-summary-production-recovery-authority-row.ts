@@ -172,7 +172,7 @@ const verifiedDay = (params: { input: unknown; planDay: unknown; recoveryId: str
 
 const exactProviderCounts = (input: unknown, date: RecoveryDate): readonly ProviderCount[] => {
   const expected =
-    date === "2026-07-23" ? [0, 100, 100, 75, 67] : [10, 100, 100, 67, 73];
+    date === "2026-07-23" ? [0, 100, 100, 78, 67] : [10, 100, 100, 68, 73];
   const rows = exactArray(input, "provider counts");
   if (rows.length !== readerSummaryProductionRecoveryProviderKeys.length) {
     fail("provider counts diverged");

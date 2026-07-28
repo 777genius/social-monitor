@@ -123,12 +123,12 @@ export const seedReaderSummaryProductionRecoveryFixture = async (
       VALUES
         (DATE '2026-07-23', 'hacker-news', 100),
         (DATE '2026-07-23', 'reddit', 100),
-        (DATE '2026-07-23', 'rss', 75),
+        (DATE '2026-07-23', 'rss', 78),
         (DATE '2026-07-23', 'x-twitter', 67),
         (DATE '2026-07-24', 'github-trending-page', 10),
         (DATE '2026-07-24', 'hacker-news', 100),
         (DATE '2026-07-24', 'reddit', 100),
-        (DATE '2026-07-24', 'rss', 67),
+        (DATE '2026-07-24', 'rss', 68),
         (DATE '2026-07-24', 'x-twitter', 73)
     ) AS requested(requested_utc_date, provider_key, item_count)
     CROSS JOIN LATERAL generate_series(1, item_count) AS positions(position);
@@ -162,8 +162,8 @@ export const seedReaderSummaryProductionRecoveryFixture = async (
       'Recovery fixture ' || item.item_number,
       'Immutable fixture body ' || item.item_number,
       NULL,
-      item.requested_utc_date::timestamp AT TIME ZONE 'UTC' -
-        interval '2 days' + interval '18 hours' +
+      item.requested_utc_date::timestamp AT TIME ZONE 'UTC' +
+        interval '8 hours' +
         item.position * interval '1 millisecond',
       encode(sha256(convert_to('source:' || item.item_number, 'UTF8')), 'hex'),
       CASE
@@ -234,8 +234,8 @@ export const seedReaderSummaryProductionRecoveryFixture = async (
       'Recovery fixture ' || item.item_number,
       'Immutable fixture body ' || item.item_number,
       NULL,
-      item.requested_utc_date::timestamp AT TIME ZONE 'UTC' -
-        interval '2 days' + interval '18 hours' +
+      item.requested_utc_date::timestamp AT TIME ZONE 'UTC' +
+        interval '8 hours' +
         item.position * interval '1 millisecond',
       item.requested_utc_date::timestamp AT TIME ZONE 'UTC' +
         interval '12 hours' +
@@ -375,7 +375,7 @@ export const assertReaderSummaryProductionRecoveryPostgresContract =
            WHERE tenant_id = $1
              AND workspace_id = $2
              AND provider_key = 'hacker-news'
-             AND observed_at >= '2026-07-24T00:00:00.000Z'
+             AND published_at >= '2026-07-24T00:00:00.000Z'
            ORDER BY id
            LIMIT 1
         )`,
@@ -569,7 +569,7 @@ const assertPersistedAuthority = async (
       leaseCount: "1",
       dayCount: "2",
       dryRunCount: "2",
-      evidenceCount: "692",
+      evidenceCount: "696",
       duplicateFeedCount: "0",
       duplicateSourceCount: "0",
       snapshotsEqual: true,
@@ -580,21 +580,21 @@ const assertPersistedAuthority = async (
       jul24Mode: "verified_existing",
       jul24GitHubCount: 10,
       jul24ObservedDates: ["2026-07-24"],
-      retainedPublishedAt: "2026-07-21T18:00:00.001Z",
+      retainedPublishedAt: "2026-07-23T08:00:00.001Z",
       retainedObservedAt: "2026-07-23T12:00:00.001Z",
-      retainedSourcePublishedAt: "2026-07-21T18:00:00.001Z",
+      retainedSourcePublishedAt: "2026-07-23T08:00:00.001Z",
       retainedSourceObservedAt: "2026-07-23T12:00:00.001Z",
     },
     "persisted recovery cardinality and evidence seals must be exact",
   );
   assertDeepEqual(
     row.jul23_counts,
-    expectedCounts([0, 100, 100, 75, 67]),
+    expectedCounts([0, 100, 100, 78, 67]),
     "2026-07-23 provider counts must be exact",
   );
   assertDeepEqual(
     row.jul24_counts,
-    expectedCounts([10, 100, 100, 67, 73]),
+    expectedCounts([10, 100, 100, 68, 73]),
     "2026-07-24 provider counts must be exact",
   );
   const privileges = await client.query<{
@@ -673,7 +673,7 @@ const assertSourceBindingMismatchFailsClosed = async (
            WHERE tenant_id = $1
              AND workspace_id = $2
              AND provider_key = 'hacker-news'
-             AND observed_at >= '2026-07-24T00:00:00.000Z'
+             AND published_at >= '2026-07-24T00:00:00.000Z'
            ORDER BY id
            LIMIT 1
         )`,

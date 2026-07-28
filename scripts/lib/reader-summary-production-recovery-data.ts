@@ -284,14 +284,14 @@ const expectedProviderCounts = (
         "github-trending-page": 0,
         "hacker-news": 100,
         reddit: 100,
-        rss: 75,
+        rss: 78,
         "x-twitter": 67,
       }
     : {
         "github-trending-page": 10,
         "hacker-news": 100,
         reddit: 100,
-        rss: 67,
+        rss: 68,
         "x-twitter": 73,
       };
 

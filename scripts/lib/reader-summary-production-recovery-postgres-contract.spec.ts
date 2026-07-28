@@ -12,12 +12,13 @@ const migrationPaths = [
   "prisma/migrations/20260727151000_reader_summary_production_recovery_observed_window/migration.sql",
   "prisma/migrations/20260727154500_reader_summary_production_recovery_collection_windows/migration.sql",
   "prisma/migrations/20260728033000_reader_summary_production_recovery_jul23_jul24_authority/migration.sql",
+  "prisma/migrations/20260728123000_reader_summary_production_recovery_published_counts_authority/migration.sql",
 ] as const;
 const migration = migrationPaths
   .map((migrationPath) => readFileSync(join(root, migrationPath), "utf8"))
   .join("\n");
-const observedWindowMigration = readFileSync(
-  join(root, migrationPaths[4]),
+const publishedAuthorityMigration = readFileSync(
+  join(root, migrationPaths[5]),
   "utf8",
 );
 const schema = readFileSync(join(root, "prisma/schema.prisma"), "utf8");
@@ -79,9 +80,10 @@ describe("reader summary production recovery PostgreSQL contract", () => {
     expect(queries[0]).toContain("DATE '2026-07-23'");
     expect(queries[0]).toContain("DATE '2026-07-24'");
     expect(queries[0]).toContain("jul21-sentinel");
-    expect(queries[0]).toContain("interval '2 days'");
+    expect(queries[0]).toContain("interval '8 hours'");
     expect(queries[0]).toContain("interval '12 hours'");
     expect(queries[0]).toContain("interval '11 hours'");
+    expect(queries[0]).not.toContain("interval '2 days'");
     expect(queries[0]).not.toContain("interval '1 day' + interval '12 hours'");
     expect(queries[0]).not.toContain("interval '1 day' + interval '11 hours'");
     expect(queries[0]).toContain("observed_at");
@@ -129,14 +131,14 @@ describe("reader summary production recovery PostgreSQL contract", () => {
       "github-trending-page": 0,
       "hacker-news": 100,
       reddit: 100,
-      rss: 75,
+      rss: 78,
       "x-twitter": 67,
     });
     expect(expectedCountBlock("2026-07-24")).toEqual({
       "github-trending-page": 10,
       "hacker-news": 100,
       reddit: 100,
-      rss: 67,
+      rss: 68,
       "x-twitter": 73,
     });
     expect(migration).toContain("'historical_unavailable'");
@@ -161,18 +163,18 @@ describe("reader summary production recovery PostgreSQL contract", () => {
     );
     expect(
       migration.match(/JOIN "source_bindings" AS binding/gu),
-    ).toHaveLength(8);
+    ).toHaveLength(10);
     expect(
       migration.match(
         /AND binding\."interest_id" = feed\."interest_id"/gu,
       ),
-    ).toHaveLength(8);
+    ).toHaveLength(10);
     expect(
       migration.match(/JOIN "source_catalog_entries" AS catalog/gu),
-    ).toHaveLength(8);
+    ).toHaveLength(10);
     expect(
       migration.match(/AND catalog\."provider_key" = v_provider/gu),
-    ).toHaveLength(4);
+    ).toHaveLength(5);
   });
 
   it("requires two canonical byte-identical snapshots before lease consumption", () => {
@@ -211,87 +213,90 @@ describe("reader summary production recovery PostgreSQL contract", () => {
     );
   });
 
-  it("replaces recovery authority functions with exact Jul23/Jul24 observed-at collection windows", () => {
-    expect(observedWindowMigration).toContain(
+  it("replaces recovery authority functions with exact Jul23/Jul24 published-at authority counts", () => {
+    expect(publishedAuthorityMigration).toContain(
+      'CREATE OR REPLACE FUNCTION "reader_summary_production_recovery_expected_counts"',
+    );
+    expect(publishedAuthorityMigration).toContain(
       'CREATE OR REPLACE FUNCTION "derive_reader_summary_production_recovery_day"',
     );
-    expect(observedWindowMigration).toContain(
+    expect(publishedAuthorityMigration).toContain(
       'CREATE OR REPLACE FUNCTION "prepare_reader_summary_production_recovery"',
     );
     expect(
-      observedWindowMigration.match(
+      publishedAuthorityMigration.match(
         /feed\."published_at" AT TIME ZONE 'UTC'/gu,
       ),
     ).toHaveLength(2);
-    expect(observedWindowMigration).toContain(
+    expect(publishedAuthorityMigration).toContain(
       "v_collection_start := target_date;",
     );
-    expect(observedWindowMigration).toContain(
+    expect(publishedAuthorityMigration).toContain(
       "v_collection_end := target_date + 1;",
     );
-    expect(observedWindowMigration).not.toContain(
+    expect(publishedAuthorityMigration).not.toContain(
       "v_collection_start := target_date + 1;",
     );
-    expect(observedWindowMigration).not.toContain(
+    expect(publishedAuthorityMigration).not.toContain(
       "v_collection_end := target_date + 2;",
     );
-    expect(observedWindowMigration).toContain(
-      'AND feed."observed_at" >=\n          (v_collection_start::TIMESTAMP AT TIME ZONE \'UTC\')',
+    expect(publishedAuthorityMigration).toContain(
+      'AND feed."published_at" >=\n          (v_collection_start::TIMESTAMP AT TIME ZONE \'UTC\')',
     );
-    expect(observedWindowMigration).toContain(
-      'AND feed."observed_at" <\n          (v_collection_end::TIMESTAMP AT TIME ZONE \'UTC\')',
+    expect(publishedAuthorityMigration).toContain(
+      'AND feed."published_at" <\n          (v_collection_end::TIMESTAMP AT TIME ZONE \'UTC\')',
     );
-    expect(observedWindowMigration).toContain(
-      'AND feed."observed_at" >=\n        (DATE \'2026-07-23\'::TIMESTAMP AT TIME ZONE \'UTC\')',
-    );
-    expect(observedWindowMigration).toContain(
-      'AND feed."observed_at" <\n        (DATE \'2026-07-25\'::TIMESTAMP AT TIME ZONE \'UTC\')',
-    );
-    expect(observedWindowMigration).toContain(
-      'WHERE feed."observed_at" <\n            (DATE \'2026-07-24\'::TIMESTAMP AT TIME ZONE \'UTC\')',
-    );
-    expect(observedWindowMigration).toContain(
-      'WHERE feed."observed_at" >=\n            (DATE \'2026-07-24\'::TIMESTAMP AT TIME ZONE \'UTC\')',
-    );
-    expect(observedWindowMigration).toContain(
-      'AND count(*) FILTER (\n        WHERE feed."observed_at" <\n            (DATE \'2026-07-24\'::TIMESTAMP AT TIME ZONE \'UTC\')\n          AND feed."provider_key" = \'rss\'\n      ) = 75',
-    );
-    expect(observedWindowMigration).not.toMatch(
-      /FILTER \(\s*WHERE\s+WHERE\s+feed\."observed_at"/u,
-    );
-    expect(observedWindowMigration).toContain(
-      'AND result."observed_at" >=\n      (DATE \'2026-07-24\'::TIMESTAMP AT TIME ZONE \'UTC\')',
-    );
-    expect(observedWindowMigration).toContain(
-      'AND result."observed_at" <\n      (DATE \'2026-07-25\'::TIMESTAMP AT TIME ZONE \'UTC\')',
-    );
-    expect(observedWindowMigration).not.toContain(
-      'AND feed."observed_at" <\n        (DATE \'2026-07-26\'::TIMESTAMP AT TIME ZONE \'UTC\')',
-    );
-    expect(observedWindowMigration).not.toContain("DATE '2026-07-26'");
-    expect(observedWindowMigration).not.toContain(
-      'WHERE feed."observed_at" <\n            (DATE \'2026-07-25\'::TIMESTAMP AT TIME ZONE \'UTC\')',
-    );
-    expect(observedWindowMigration).not.toContain(
-      'WHERE feed."observed_at" >=\n            (DATE \'2026-07-25\'::TIMESTAMP AT TIME ZONE \'UTC\')',
-    );
-    expect(observedWindowMigration).not.toContain(
-      'AND result."observed_at" >=\n      (DATE \'2026-07-25\'::TIMESTAMP AT TIME ZONE \'UTC\')',
-    );
-    expect(observedWindowMigration).not.toContain(
-      'AND result."checked_at" >=\n      (DATE \'2026-07-24\'::TIMESTAMP AT TIME ZONE \'UTC\')',
-    );
-    expect(observedWindowMigration).not.toContain(
-      '(target_date::TIMESTAMP AT TIME ZONE \'UTC\')',
-    );
-    expect(observedWindowMigration).not.toContain(
-      'AND feed."published_at" >=\n          (target_date::TIMESTAMP AT TIME ZONE \'UTC\')',
-    );
-    expect(observedWindowMigration).not.toContain(
+    expect(publishedAuthorityMigration).toContain(
       'AND feed."published_at" >=\n        (DATE \'2026-07-23\'::TIMESTAMP AT TIME ZONE \'UTC\')',
     );
-    expect(observedWindowMigration).not.toContain("EXECUTE v_definition");
-    expect(observedWindowMigration).not.toContain(
+    expect(publishedAuthorityMigration).toContain(
+      'AND feed."published_at" <\n        (DATE \'2026-07-25\'::TIMESTAMP AT TIME ZONE \'UTC\')',
+    );
+    expect(publishedAuthorityMigration).toContain(
+      'WHERE feed."published_at" <\n            (DATE \'2026-07-24\'::TIMESTAMP AT TIME ZONE \'UTC\')',
+    );
+    expect(publishedAuthorityMigration).toContain(
+      'WHERE feed."published_at" >=\n            (DATE \'2026-07-24\'::TIMESTAMP AT TIME ZONE \'UTC\')',
+    );
+    expect(publishedAuthorityMigration).toContain(
+      'AND count(*) FILTER (\n        WHERE feed."published_at" <\n            (DATE \'2026-07-24\'::TIMESTAMP AT TIME ZONE \'UTC\')\n          AND feed."provider_key" = \'rss\'\n      ) = 78',
+    );
+    expect(publishedAuthorityMigration).not.toMatch(
+      /FILTER \(\s*WHERE\s+WHERE\s+feed\."published_at"/u,
+    );
+    expect(publishedAuthorityMigration).toContain(
+      'AND result."checked_at" >=\n      (DATE \'2026-07-24\'::TIMESTAMP AT TIME ZONE \'UTC\')',
+    );
+    expect(publishedAuthorityMigration).toContain(
+      'AND result."checked_at" <\n      (DATE \'2026-07-25\'::TIMESTAMP AT TIME ZONE \'UTC\')',
+    );
+    expect(publishedAuthorityMigration).not.toContain(
+      'AND feed."published_at" <\n        (DATE \'2026-07-26\'::TIMESTAMP AT TIME ZONE \'UTC\')',
+    );
+    expect(publishedAuthorityMigration).not.toContain("DATE '2026-07-26'");
+    expect(publishedAuthorityMigration).not.toContain(
+      'WHERE feed."published_at" <\n            (DATE \'2026-07-25\'::TIMESTAMP AT TIME ZONE \'UTC\')',
+    );
+    expect(publishedAuthorityMigration).not.toContain(
+      'WHERE feed."published_at" >=\n            (DATE \'2026-07-25\'::TIMESTAMP AT TIME ZONE \'UTC\')',
+    );
+    expect(publishedAuthorityMigration).not.toContain(
+      'AND result."checked_at" >=\n      (DATE \'2026-07-25\'::TIMESTAMP AT TIME ZONE \'UTC\')',
+    );
+    expect(publishedAuthorityMigration).not.toContain(
+      'AND feed."observed_at" >=\n          (v_collection_start::TIMESTAMP AT TIME ZONE \'UTC\')',
+    );
+    expect(publishedAuthorityMigration).not.toContain(
+      '(target_date::TIMESTAMP AT TIME ZONE \'UTC\')',
+    );
+    expect(publishedAuthorityMigration).not.toContain(
+      'AND feed."observed_at" >=\n        (DATE \'2026-07-23\'::TIMESTAMP AT TIME ZONE \'UTC\')',
+    );
+    expect(publishedAuthorityMigration).toContain(
+      "jsonb_build_object('providerKey', 'rss', 'count', 68)",
+    );
+    expect(publishedAuthorityMigration).not.toContain("EXECUTE v_definition");
+    expect(publishedAuthorityMigration).not.toContain(
       "GRANT EXECUTE ON FUNCTION",
     );
   });
@@ -409,9 +414,9 @@ const expectedCountBlock = (
   date: "2026-07-23" | "2026-07-24",
 ): Record<string, number> => {
   const nextDate = date === "2026-07-23" ? "2026-07-24" : "ELSE NULL";
-  const start = migration.indexOf(`WHEN DATE '${date}'`);
-  const end = migration.indexOf(nextDate, start + 1);
-  const block = migration.slice(start, end);
+  const start = publishedAuthorityMigration.indexOf(`WHEN DATE '${date}'`);
+  const end = publishedAuthorityMigration.indexOf(nextDate, start + 1);
+  const block = publishedAuthorityMigration.slice(start, end);
   return Object.fromEntries(
     [...block.matchAll(
       /'providerKey', '([^']+)', 'count', (\d+)/gu,

@@ -63,7 +63,7 @@ export const productionRecoverySqlRow = (
     tenantId,
     workspaceId,
     date: "2026-07-23",
-    counts: [0, 100, 100, 75, 67],
+    counts: [0, 100, 100, 78, 67],
     idOffset: 0,
   });
   const day24 = fixtureDay({
@@ -71,7 +71,7 @@ export const productionRecoverySqlRow = (
     tenantId,
     workspaceId,
     date: "2026-07-24",
-    counts: [10, 100, 100, 67, 73],
+    counts: [10, 100, 100, 68, 73],
     idOffset: 1_000,
   });
   const canonicalRecord = {

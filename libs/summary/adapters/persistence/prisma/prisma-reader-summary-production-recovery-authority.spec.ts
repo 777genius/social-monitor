@@ -48,14 +48,14 @@ describe("PrismaReaderSummaryProductionRecoveryAuthority", () => {
         { providerKey: "github-trending-page", count: 0 },
         { providerKey: "hacker-news", count: 100 },
         { providerKey: "reddit", count: 100 },
-        { providerKey: "rss", count: 75 },
+        { providerKey: "rss", count: 78 },
         { providerKey: "x-twitter", count: 67 },
       ],
       [
         { providerKey: "github-trending-page", count: 10 },
         { providerKey: "hacker-news", count: 100 },
         { providerKey: "reddit", count: 100 },
-        { providerKey: "rss", count: 67 },
+        { providerKey: "rss", count: 68 },
         { providerKey: "x-twitter", count: 73 },
       ],
     ]);

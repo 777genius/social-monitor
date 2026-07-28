@@ -23,15 +23,15 @@ describe("reader summary production recovery data", () => {
     expect(plan.days).toMatchObject([
       {
         requestedUtcDate: "2026-07-23",
-        totalEvidenceCount: 342,
-        primaryEvidenceCount: 342,
+        totalEvidenceCount: 345,
+        primaryEvidenceCount: 345,
         githubEvidenceCount: 0,
         githubMode: "historical_unavailable",
       },
       {
         requestedUtcDate: "2026-07-24",
-        totalEvidenceCount: 350,
-        primaryEvidenceCount: 340,
+        totalEvidenceCount: 351,
+        primaryEvidenceCount: 341,
         githubEvidenceCount: 10,
         githubMode: "verified_existing",
       },
@@ -96,14 +96,14 @@ function bindingFixture(): ReaderSummaryProductionRecoveryAuthorityBinding {
     "github-trending-page": 0,
     "hacker-news": 100,
     reddit: 100,
-    rss: 75,
+    rss: 78,
     "x-twitter": 67,
   });
   const jul24 = dayFixture("2026-07-24", {
     "github-trending-page": 10,
     "hacker-news": 100,
     reddit: 100,
-    rss: 67,
+    rss: 68,
     "x-twitter": 73,
   });
   return {
