@@ -156,11 +156,10 @@ describe("OpenAI reader summary weekly response parser", () => {
       dayIndexes: [0, 1, 2, 3, 4, 5, 6],
       alphaObservationCount: 4,
     });
+    const partialDiary = mutable(sevenSectionDiaryOutput(diaryInput));
+    partialDiary.sections = partialDiary.sections.slice(0, 3);
     expect(() =>
-      parseOpenAiReaderSummaryWeeklyValue(
-        diaryInput,
-        sevenSectionDiaryOutput(diaryInput),
-      ),
+      parseOpenAiReaderSummaryWeeklyValue(diaryInput, partialDiary),
     ).toThrow("stitched single-day sections");
   });
 
@@ -193,6 +192,41 @@ describe("OpenAI reader summary weekly response parser", () => {
     ).toThrow(
       "Weekly synthesis citations must span at least three certified days",
     );
+  });
+
+  it("rejects balanced weekly citations without one synthesized cross-day story", () => {
+    const input = weeklyInput();
+    const output = mutable(weeklyOutput(input));
+    output.stories[0] = {
+      ...output.stories[0]!,
+      summary:
+        "The cited safeguard report describes current controls without claiming a later change.",
+      status: "watch",
+      observedThrough: input.citations[0]!.observedOn,
+      citationIds: ["citation:01"],
+    };
+    output.sections[0] = {
+      ...output.sections[0]!,
+      claimType: "snapshot",
+      text:
+        "The cited safeguard report describes current controls and their limits.",
+      observedThrough: input.citations[0]!.observedOn,
+      citationIds: ["citation:01"],
+    };
+    output.stories[1] = {
+      ...output.stories[1]!,
+      observedThrough: input.citations[2]!.observedOn,
+      citationIds: ["citation:03"],
+    };
+    output.sections[1] = {
+      ...output.sections[1]!,
+      observedThrough: input.citations[2]!.observedOn,
+      citationIds: ["citation:03"],
+    };
+
+    expect(() =>
+      parseOpenAiReaderSummaryWeeklyValue(input, output),
+    ).toThrow("must carry one stable story across multiple days");
   });
 
   it("rejects prompt injection and provider inventory in reader text", () => {

@@ -53,6 +53,8 @@ export const buildOpenAiReaderSummaryWeeklyJsonSchema = (
         type: "array",
         minItems: 1,
         maxItems: Math.min(12, storyIds.length),
+        description:
+          "Stable input story identities; at least the lead story must cite multiple certified days.",
         uniqueItems: true,
         items: { $ref: "#/$defs/story" },
       },
@@ -110,6 +112,7 @@ export const buildOpenAiReaderSummaryWeeklyJsonSchema = (
           observedThrough: certifiedDateSchema(certifiedDates),
           citationIds: citationIdsSchema(citationIds, 24),
         },
+        "A story-organized section. The lead must carry its stable story across multiple certified days.",
       ),
     },
   };
@@ -127,11 +130,13 @@ export const buildOpenAiReaderSummaryWeeklyResponseFormat = (
 const objectSchema = (
   required: readonly string[],
   properties: Readonly<Record<string, unknown>>,
+  description?: string,
 ) => ({
   type: "object",
   additionalProperties: false,
   required,
   properties,
+  ...(description === undefined ? {} : { description }),
 });
 
 const stringSchema = (maxLength: number, minLength: number) => ({

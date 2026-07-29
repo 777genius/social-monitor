@@ -194,10 +194,16 @@ describe("GenerateReaderSummaryWeeklyArtifactUseCase", () => {
     expect(providerModel.calls).toHaveLength(1);
 
     const dayDominatedEvidence = weeklyEvidence({
-      dayIndexes: [0, 0, 0, 6],
+      dayIndexes: [0, 6, 0, 0],
+      storyIds: [
+        "story:alpha",
+        "story:alpha",
+        "story:beta",
+        "story:gamma",
+      ],
     });
     const dayModel = new FakeWeeklyModel((input) =>
-      weeklyOutput(input, { alphaEvolves: false }),
+      weeklyOutput(input),
     );
 
     await expect(
@@ -210,6 +216,17 @@ describe("GenerateReaderSummaryWeeklyArtifactUseCase", () => {
       },
     });
     expect(dayModel.calls).toHaveLength(1);
+  });
+
+  it("rejects duplicate same-story same-day observations before model work", async () => {
+    const model = new FakeWeeklyModel((input) => weeklyOutput(input));
+
+    await expect(
+      new GenerateReaderSummaryWeeklyArtifactUseCase(model).execute(
+        weeklyEvidence({ dayIndexes: [0, 0, 4, 6] }),
+      ),
+    ).rejects.toThrow("duplicate same-story same-day observations");
+    expect(model.calls).toHaveLength(0);
   });
 
   it("rejects a stitched-daily narrative", async () => {
@@ -290,6 +307,7 @@ class FakeWeeklyModel implements ReaderSummaryWeeklyModelPort {
 type WeeklyEvidenceOptions = Readonly<{
   providers?: readonly GenericProvider[];
   dayIndexes?: readonly number[];
+  storyIds?: readonly string[];
 }>;
 
 const weeklyEvidence = (
@@ -298,11 +316,17 @@ const weeklyEvidence = (
   const manifest = sealReaderSummaryWeeklyInputManifest(manifestEvidence());
   const providers = options.providers ?? genericProviders;
   const dayIndexes = options.dayIndexes ?? [0, 2, 4, 6];
+  const storyIds = options.storyIds ?? [
+    "story:alpha",
+    "story:alpha",
+    "story:beta",
+    "story:beta",
+  ];
   const observations = providers.map((providerKey, index) => {
     const day = manifest.days[dayIndexes[index]!]!;
     return {
       observationId: `observation:0${index + 1}`,
-      storyId: index < 2 ? "story:alpha" : "story:beta",
+      storyId: storyIds[index]!,
       observedOn: day.requestedUtcDate,
       providerKey,
       text: `Database-derived observation ${index + 1} supplies weekly context.`,
@@ -319,10 +343,13 @@ const weeklyEvidence = (
 
   return {
     manifest,
-    stories: [
-      { storyId: "story:alpha", label: "Agent safety controls" },
-      { storyId: "story:beta", label: "Release questions" },
-    ],
+    stories: [...new Set(storyIds)].map((storyId) => ({
+      storyId,
+      label:
+        storyId === "story:alpha"
+          ? "Agent safety controls"
+          : "Release questions",
+    })),
     observations,
     citations: observations.map((observation, index) => ({
       citationId: observation.citationIds[0]!,
@@ -344,9 +371,6 @@ const weeklyOutput = (
   options: Readonly<{ alphaEvolves?: boolean }> = {},
 ): ReaderSummaryWeeklyModelOutput => {
   const alphaCitationIds = citationIdsFor(input, "story:alpha");
-  const betaCitationIds = citationIdsFor(input, "story:beta");
-  const alphaRange = citedRange(input, alphaCitationIds);
-  const betaRange = citedRange(input, betaCitationIds);
   const alphaEvolves = options.alphaEvolves ?? true;
   const allCitationIds = input.citations.map((citation) => citation.citationId);
 
@@ -365,50 +389,56 @@ const weeklyOutput = (
     synthesis:
       "Across the week, teams put agent safety controls into practice while separate release questions remained open. The combined record shows concrete adoption without turning incomplete discussion into a claimed outcome.",
     synthesisCitationIds: [...allCitationIds],
-    stories: [
-      {
-        storyId: "story:alpha",
-        headline: "Agent safety controls entered practical use",
-        summary:
-          "Early safeguards were followed by concrete use in team workflows, with limits still clearly stated.",
-        status: alphaEvolves ? "developing" : "watch",
-        ...alphaRange,
-        citationIds: [...alphaCitationIds],
-      },
-      {
-        storyId: "story:beta",
-        headline: "Release questions remained open",
-        summary:
-          "Separate reports kept attention on release details without establishing a final outcome.",
-        status: "watch",
-        ...betaRange,
-        citationIds: [...betaCitationIds],
-      },
-    ],
-    sections: [
-      {
-        sectionId: "section:alpha-lead",
-        storyId: "story:alpha",
-        kind: "lead",
-        claimType: alphaEvolves ? "evolution" : "snapshot",
-        heading: "Safety controls entered practice",
-        text:
-          "The week connected safeguards to concrete use in team workflows.",
-        ...alphaRange,
-        citationIds: [...alphaCitationIds],
-      },
-      {
-        sectionId: "section:beta-watch",
-        storyId: "story:beta",
-        kind: "watch",
-        claimType: "snapshot",
-        heading: "Release details stayed open",
-        text:
-          "The cited reports raised useful questions but did not establish an outcome.",
-        ...betaRange,
-        citationIds: [...betaCitationIds],
-      },
-    ],
+    stories: input.stories.map((story) => {
+      const citationIds = citationIdsFor(input, story.storyId);
+      const range = citedRange(input, citationIds);
+      return story.storyId === "story:alpha"
+        ? {
+            storyId: "story:alpha",
+            headline: "Agent safety controls entered practical use",
+            summary:
+              "Early safeguards were followed by concrete use in team workflows, with limits still clearly stated.",
+            status: alphaEvolves ? "developing" : "watch",
+            ...range,
+            citationIds: [...alphaCitationIds],
+          }
+        : {
+            storyId: story.storyId,
+            headline: "Release questions remained open",
+            summary:
+              "Separate reports kept attention on release details without establishing a final outcome.",
+            status: "watch",
+            ...range,
+            citationIds: [...citationIds],
+          };
+    }),
+    sections: input.stories.map((story) => {
+      const citationIds = citationIdsFor(input, story.storyId);
+      const range = citedRange(input, citationIds);
+      return story.storyId === "story:alpha"
+        ? {
+            sectionId: "section:alpha-lead",
+            storyId: "story:alpha",
+            kind: "lead",
+            claimType: alphaEvolves ? "evolution" : "snapshot",
+            heading: "Safety controls entered practice",
+            text:
+              "The week connected safeguards to concrete use in team workflows.",
+            ...range,
+            citationIds: [...alphaCitationIds],
+          }
+        : {
+            sectionId: `section:${story.storyId.slice("story:".length)}-watch`,
+            storyId: story.storyId,
+            kind: "watch",
+            claimType: "snapshot",
+            heading: "Release details stayed open",
+            text:
+              "The cited reports raised useful questions but did not establish an outcome.",
+            ...range,
+            citationIds: [...citationIds],
+          };
+    }),
   };
 };
 

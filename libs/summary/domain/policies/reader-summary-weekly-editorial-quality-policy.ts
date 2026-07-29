@@ -6,23 +6,32 @@ import {
   type ReaderSummaryWeeklyModelObservation,
   type ReaderSummaryWeeklyModelOutput,
 } from "../../ports/reader-summary-weekly-model.port";
+import { assessReaderSummaryWeeklyStorySynthesis } from "./reader-summary-story-identity-policy";
 
 export const readerSummaryWeeklyEditorialQualityPolicyVersion =
-  "reader_summary.weekly_editorial_quality.v1" as const;
+  "reader_summary.weekly_editorial_quality.v2" as const;
 
 export type ReaderSummaryWeeklyEditorialQualityMetrics = Readonly<{
   leadSectionCount: number;
+  crossDayStoryCount: number;
+  synthesizedCrossDayStoryCount: number;
+  duplicateSameDayStoryObservationCount: number;
   citedDayCount: number;
   citedProviderCount: number;
   dominantDayCitationShare: number;
   dominantProviderCitationShare: number;
   dayHeadingCount: number;
+  dailyChronologyMarkerCount: number;
+  singleDaySectionCount: number;
   unsupportedClaimCount: number;
   prohibitedEditorialPatternCount: number;
 }>;
 
 export type ReaderSummaryWeeklyEditorialQualityGates = Readonly<{
   exactlyOneLeadSection: boolean;
+  stableStoryIdentityIsUsed: boolean;
+  sameDayStoryObservationsAreUnique: boolean;
+  crossDayStoryIsSynthesized: boolean;
   factualContentIsCited: boolean;
   citationsSpanMultipleProviders: boolean;
   citationsSpanAtLeastThreeDays: boolean;
@@ -58,7 +67,9 @@ const maximumDominantCitationNumerator = 2;
 const maximumDominantCitationDenominator = 3;
 
 const weekdayHeading =
-  /(?:^|\n)\s*(?:#{1,6}\s*)?(?:mon(?:day)?|tue(?:sday)?|wed(?:nesday)?|thu(?:rsday)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?|day\s*[1-7]|\d{4}-\d{2}-\d{2}|(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2}(?:st|nd|rd|th)?)(?:\s*(?:[:\-–—]|\n|$))/gimu;
+  /(?:^|\n)\s*(?:(?:#{1,6}|[-*+])\s*)?(?:mon(?:day)?|tue(?:sday)?|wed(?:nesday)?|thu(?:rsday)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?|day\s*[1-7]|\d{4}-\d{2}-\d{2}|(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2}(?:st|nd|rd|th)?)(?:\s*(?:[:\-–—]|\n|$))/gimu;
+const dailyChronologyMarker =
+  /\b(?:on\s+)?(?:mon(?:day)?|tue(?:sday)?|wed(?:nesday)?|thu(?:rsday)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?|day\s*[1-7]|\d{4}-\d{2}-\d{2})\b/giu;
 const stitchedDailyNarrative =
   /\b(?:day\s*[1-7]|daily\s+(?:digest|summary|roundup)|seven\s+daily\s+(?:digests|summaries)|day[- ]by[- ]day|each\s+day(?:'s)?\s+(?:digest|summary))\b/giu;
 const providerInventory =
@@ -85,6 +96,10 @@ export const evaluateReaderSummaryWeeklyEditorialQuality = (
       (observation) => [observation.observationId, observation] as const,
     ),
   );
+  const storySynthesis = assessReaderSummaryWeeklyStorySynthesis({
+    input,
+    output,
+  });
   const textUnits = citedTextUnits(output);
   const citedIds = distinct(
     textUnits.flatMap((unit) => [...unit.citationIds]),
@@ -126,6 +141,10 @@ export const evaluateReaderSummaryWeeklyEditorialQuality = (
   );
   const completeReaderText = textUnits.map((unit) => unit.text).join("\n");
   const dayHeadingCount = matchCount(completeReaderText, weekdayHeading);
+  const dailyChronologyMarkerCount = matchCount(
+    completeReaderText,
+    dailyChronologyMarker,
+  );
   const stitchedDailyCount = matchCount(
     completeReaderText,
     stitchedDailyNarrative,
@@ -139,12 +158,15 @@ export const evaluateReaderSummaryWeeklyEditorialQuality = (
     completeReaderText,
     promptInjectionProse,
   );
-  const stitchedDailySectionCount = hasConcatenatedSingleDaySections(
+  const singleDaySectionDates = citedSingleDaySectionDates(
     output,
     citationById,
-  )
-    ? 1
-    : 0;
+  );
+  const stitchedDailySectionCount =
+    singleDaySectionDates.length >= 3 &&
+    new Set(singleDaySectionDates).size >= 3
+      ? 1
+      : 0;
   const claimIssues = unsupportedClaimIssues(
     textUnits,
     citationById,
@@ -156,6 +178,11 @@ export const evaluateReaderSummaryWeeklyEditorialQuality = (
   const qualityGates = {
     exactlyOneLeadSection:
       output.sections.filter((section) => section.kind === "lead").length === 1,
+    stableStoryIdentityIsUsed: storySynthesis.stableStoryIdentityIsUsed,
+    sameDayStoryObservationsAreUnique:
+      storySynthesis.sameDayStoryObservationsAreUnique,
+    crossDayStoryIsSynthesized:
+      storySynthesis.synthesizedCrossDayStoryCount > 0,
     factualContentIsCited,
     citationsSpanMultipleProviders: providerCounts.size >= 2,
     citationsSpanAtLeastThreeDays: dayCounts.size >= 3,
@@ -171,6 +198,7 @@ export const evaluateReaderSummaryWeeklyEditorialQuality = (
       dominanceIsControlled(synthesisDayCounts),
     weeklySynthesisIsCoherent:
       dayHeadingCount === 0 &&
+      dailyChronologyMarkerCount < 3 &&
       stitchedDailyCount === 0 &&
       stitchedDailySectionCount === 0,
     readerTextAvoidsProviderInventory: providerInventoryCount === 0,
@@ -182,6 +210,17 @@ export const evaluateReaderSummaryWeeklyEditorialQuality = (
     ...(qualityGates.exactlyOneLeadSection
       ? []
       : ["Weekly editorial output must contain exactly one lead section"]),
+    ...(qualityGates.stableStoryIdentityIsUsed
+      ? []
+      : ["Weekly editorial output must preserve stable story identity"]),
+    ...(qualityGates.sameDayStoryObservationsAreUnique
+      ? []
+      : ["Weekly evidence contains duplicate same-story same-day observations"]),
+    ...(qualityGates.crossDayStoryIsSynthesized
+      ? []
+      : [
+          "Weekly lead and synthesis must carry one stable story across multiple days",
+        ]),
     ...(qualityGates.factualContentIsCited
       ? []
       : ["Every factual weekly field must cite known sealed evidence"]),
@@ -212,6 +251,9 @@ export const evaluateReaderSummaryWeeklyEditorialQuality = (
     ...(dayHeadingCount === 0
       ? []
       : ["Weekly editorial output concatenates daily or dated headings"]),
+    ...(dailyChronologyMarkerCount < 3
+      ? []
+      : ["Weekly editorial output enumerates a daily chronology"]),
     ...(stitchedDailyCount === 0
       ? []
       : ["Weekly editorial output reads as stitched daily summaries"]),
@@ -235,15 +277,23 @@ export const evaluateReaderSummaryWeeklyEditorialQuality = (
       leadSectionCount: output.sections.filter(
         (section) => section.kind === "lead",
       ).length,
+      crossDayStoryCount: storySynthesis.crossDayStoryCount,
+      synthesizedCrossDayStoryCount:
+        storySynthesis.synthesizedCrossDayStoryCount,
+      duplicateSameDayStoryObservationCount:
+        storySynthesis.duplicateSameDayStoryObservationCount,
       citedDayCount: dayCounts.size,
       citedProviderCount: providerCounts.size,
       dominantDayCitationShare,
       dominantProviderCitationShare,
       dayHeadingCount,
+      dailyChronologyMarkerCount,
+      singleDaySectionCount: singleDaySectionDates.length,
       unsupportedClaimCount: claimIssues.length,
       prohibitedEditorialPatternCount:
         stitchedDailyCount +
         stitchedDailySectionCount +
+        (dailyChronologyMarkerCount >= 3 ? 1 : 0) +
         providerInventoryCount +
         processProseCount +
         promptInjectionCount,
@@ -357,11 +407,11 @@ const supportsClaim = (
     observation.claimSupport.includes(claimType),
   );
 
-const hasConcatenatedSingleDaySections = (
+const citedSingleDaySectionDates = (
   output: ReaderSummaryWeeklyModelOutput,
   citationById: ReadonlyMap<string, ReaderSummaryWeeklyModelCitation>,
-): boolean => {
-  const singleDaySections = output.sections
+): readonly string[] =>
+  output.sections
     .map((section) =>
       distinct(
         section.citationIds
@@ -369,12 +419,8 @@ const hasConcatenatedSingleDaySections = (
           .filter((date): date is string => date !== undefined),
       ),
     )
-    .filter((dates) => dates.length === 1);
-  return (
-    singleDaySections.length >= 5 &&
-    new Set(singleDaySections.map((dates) => dates[0])).size >= 5
-  );
-};
+    .filter((dates) => dates.length === 1)
+    .map((dates) => dates[0]!);
 
 const countBy = <T>(
   values: readonly T[],
