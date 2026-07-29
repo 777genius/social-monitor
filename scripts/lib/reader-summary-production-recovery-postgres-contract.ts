@@ -421,6 +421,7 @@ export const assertReaderSummaryProductionRecoveryPostgresContract =
     first: RecoveryPostgresClient;
     second: RecoveryPostgresClient;
   }>): Promise<void> => {
+    await assertRecoveryDaysDateConstraintDefinition(params.auditor);
     await assertRecoveryExpectedCountsFunctionDefinition(params.auditor);
     await assertRecoveryPersistenceFunctionDefinition(params.first);
     await assertRecoveryAuthorityRuntimePrivileges(params.first);
@@ -548,6 +549,39 @@ export const assertReaderSummaryProductionRecoveryPostgresContract =
       "claim replay performed a write",
     );
   };
+
+const assertRecoveryDaysDateConstraintDefinition = async (
+  client: RecoveryPostgresClient,
+): Promise<void> => {
+  const result = await client.query<{
+    readonly definition: string;
+    readonly is_check: boolean;
+    readonly is_validated: boolean;
+  }>(`
+    SELECT
+      pg_get_constraintdef(authority.oid) AS definition,
+      authority.contype = 'c' AS is_check,
+      authority.convalidated AS is_validated
+    FROM pg_constraint AS authority
+    WHERE authority.conrelid =
+        'reader_summary_production_recovery_days'::regclass
+      AND authority.conname =
+        'reader_summary_production_recovery_days_date_check'
+  `);
+  const authority = result.rows[0];
+  const normalizedDefinition = authority?.definition.replace(/\s+/gu, " ");
+  const expectedDates = readerSummaryProductionRecoveryRequestedUtcDates
+    .map((date) => `'${date}'::date`)
+    .join(", ");
+  assert(
+    result.rows.length === 1 &&
+      authority?.is_check === true &&
+      authority.is_validated === true &&
+      normalizedDefinition ===
+        `CHECK ((requested_utc_date = ANY (ARRAY[${expectedDates}])))`,
+    "production recovery days date constraint is not the exact six-day definition",
+  );
+};
 
 const assertRecoveryExpectedCountsFunctionDefinition = async (
   client: RecoveryPostgresClient,
