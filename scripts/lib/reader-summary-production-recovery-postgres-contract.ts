@@ -89,7 +89,7 @@ const expectedRecoveryProviderCounts = [
   ["2026-07-28", "hacker-news", 0, "historical_unavailable"],
   ["2026-07-28", "reddit", 0, "historical_unavailable"],
   ["2026-07-28", "rss", 31, "partial_existing"],
-  ["2026-07-28", "x-twitter", 27, "partial_existing"],
+  ["2026-07-28", "x-twitter", 107, "partial_existing"],
 ] as const;
 
 export const seedReaderSummaryProductionRecoveryFixture = async (
@@ -278,7 +278,7 @@ export const seedReaderSummaryProductionRecoveryFixture = async (
           WHEN DATE '2026-07-25' THEN 96
           WHEN DATE '2026-07-26' THEN 94
           WHEN DATE '2026-07-27' THEN 58
-          ELSE 27
+          ELSE 107
         END
       )
     ) AS provider(ordinal, provider_key, item_count)
@@ -492,7 +492,7 @@ export const assertReaderSummaryProductionRecoveryPostgresContract =
           ["2026-07-25", 369, "verified_existing"],
           ["2026-07-26", 344, "verified_existing"],
           ["2026-07-27", 301, "verified_existing"],
-          ["2026-07-28", 58, "historical_unavailable"],
+          ["2026-07-28", 138, "historical_unavailable"],
         ]),
       "production recovery immutable daily counts diverged",
     );
