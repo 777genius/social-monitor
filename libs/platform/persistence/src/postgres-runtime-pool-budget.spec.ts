@@ -343,9 +343,6 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/capture-reader-summary-multi-day-quality-target-manifest.ts:Pool
       scripts/check-github-repo-radar-prisma-live-e2e.ts:Pool
       scripts/check-reader-summary-multi-day-quality.ts:Pool
-      scripts/check-reader-summary-production-recovery-postgres.ts:Pool
-      scripts/check-reader-summary-production-recovery-postgres.ts:Pool
-      scripts/check-reader-summary-production-recovery-postgres.ts:Pool
       scripts/check-reader-summary-production-regeneration-smoke.ts:Pool
       scripts/check-reader-summary-publication-postgres.ts:Pool
       scripts/check-reader-summary-publication-postgres.ts:Pool
@@ -414,7 +411,6 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/capture-reader-summary-multi-day-quality-target-manifest.ts
       scripts/check-github-repo-radar-prisma-live-e2e.ts
       scripts/check-reader-summary-multi-day-quality.ts
-      scripts/check-reader-summary-production-recovery-postgres.ts
       scripts/check-reader-summary-production-regeneration-smoke.ts
       scripts/check-reader-summary-publication-postgres.ts
       scripts/check-reader-summary-quality-dashboard.ts
@@ -438,7 +434,6 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/lib/reader-summary-current-publication-bindings.ts
       scripts/lib/reader-summary-production-day-scope.spec.ts
       scripts/lib/reader-summary-production-day-scope.ts
-      scripts/lib/reader-summary-publication-postgres-fixture-scope.ts
       scripts/lib/reader-summary-quality-dashboard-published-window.spec.ts
       scripts/lib/reader-summary-quality-dashboard-published-window.ts
       scripts/lib/reader-summary-quality-eval-support.spec.ts
@@ -557,7 +552,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
 
   it('keeps the PostgreSQL publication harness test-only and explicitly bounded', () => {
     const expectedPoolMaximums = new Map<string, readonly number[]>([
-      ['scripts/check-reader-summary-production-recovery-postgres.ts', [1, 1, 2]],
+      ['scripts/check-reader-summary-production-recovery-postgres.ts', []],
       [
         'scripts/check-reader-summary-publication-postgres.ts',
         [1, 1, 2, 4, 1],
