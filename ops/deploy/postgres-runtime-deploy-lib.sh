@@ -572,6 +572,50 @@ restore_postgres_runtime_control() {
   rm -rf "$backup"
 }
 
+reconcile_effective_postgres_daily_timer() {
+  local timer=$1 active_state next_trigger
+
+  if ! active_state=$(
+    systemctl show --property=ActiveState --value "$timer"
+  ); then
+    fail "systemd daily timer active state is unavailable: $timer"
+    return 1
+  fi
+  case $active_state in
+    active) ;;
+    inactive)
+      if ! systemctl start "$timer"; then
+        fail "systemd daily timer could not be started: $timer"
+        return 1
+      fi
+      ;;
+    *)
+      fail "systemd daily timer active state is not reconcilable: $timer ($active_state)"
+      return 1
+      ;;
+  esac
+  if ! active_state=$(
+    systemctl show --property=ActiveState --value "$timer"
+  ); then
+    fail "systemd daily timer active state is unavailable after reconciliation: $timer"
+    return 1
+  fi
+  [[ $active_state == active ]] || {
+    fail "systemd daily timer is not active after reconciliation: $timer"
+    return 1
+  }
+  if ! next_trigger=$(
+    systemctl show --property=NextElapseUSecRealtime --value "$timer"
+  ); then
+    fail "systemd daily timer next trigger is unavailable: $timer"
+    return 1
+  fi
+  [[ -n $next_trigger ]] || {
+    fail "systemd daily timer has no next trigger: $timer"
+    return 1
+  }
+}
+
 verify_effective_postgres_daily_topology() (
   set -euo pipefail
   local legacy_timer=social-monitor-daily.timer
@@ -587,6 +631,7 @@ verify_effective_postgres_daily_topology() (
   systemctl is-enabled --quiet "$v6_timer" && v6_enabled=true
   if [[ $legacy_enabled == "$v6_enabled" ]]; then
     fail 'exactly one reviewed production daily timer must be enabled'
+    return 1
   fi
   if [[ $v6_enabled == true ]]; then
     timer=$v6_timer
@@ -597,15 +642,25 @@ verify_effective_postgres_daily_topology() (
     service=$legacy_service
     runner=$CONTROL/daily-run.sh
   fi
-  [[ -f $runner ]] || fail 'effective production daily runner is unavailable'
-  [[ -z $(systemctl show --property=DropInPaths --value "$timer") ]] || \
+  [[ -f $runner ]] || {
+    fail 'effective production daily runner is unavailable'
+    return 1
+  }
+  [[ -z $(systemctl show --property=DropInPaths --value "$timer") ]] || {
     fail "systemd daily timer has an unreviewed drop-in: $timer"
-  [[ -z $(systemctl show --property=DropInPaths --value "$service") ]] || \
+    return 1
+  }
+  [[ -z $(systemctl show --property=DropInPaths --value "$service") ]] || {
     fail "systemd daily service has an unreviewed drop-in: $service"
-  systemctl cat "$service" > "$effective_service" || \
+    return 1
+  }
+  systemctl cat "$service" > "$effective_service" || {
     fail 'effective production daily service is unavailable'
+    return 1
+  }
   python3 "$REPO/ops/deploy/verify-postgres-runtime-topology.py" \
-    daily "$effective_service" "$runner"
+    daily "$effective_service" "$runner" || return
+  reconcile_effective_postgres_daily_timer "$timer"
 )
 
 capture_effective_postgres_environment() {

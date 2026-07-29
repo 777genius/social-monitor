@@ -53,6 +53,12 @@ TIMER_UNIT_FILE_STATE=disabled
 TIMER_ACTIVE_STATE=inactive
 SERVICE_ACTIVE_STATE=inactive
 DAEMON_RELOAD_STATUS=0
+LEGACY_DAILY_TIMER_ENABLED=true
+V6_DAILY_TIMER_ENABLED=false
+DAILY_TIMER_ACTIVE_STATE=active
+DAILY_TIMER_ACTIVE_STATE_AFTER_START=active
+DAILY_TIMER_NEXT_TRIGGER='Thu 2026-07-30 00:00:00 UTC'
+DAILY_TIMER_START_STATUS=0
 SYSTEMCTL_EVENTS=$FIXTURE/systemctl-events
 FAKE_SYSTEMCTL=$SCRIPT_DIR/fixtures/github-premidnight-capture-fake-systemctl.sh
 install -d "$STATE" "$SYSTEMD_UNIT_DIR" "$CONTROL/old-runtime" \
@@ -65,6 +71,9 @@ printf 'old\n' > "$CONTROL/old-runtime/marker"
 install -m 0755 \
   "$REPO/ops/deploy/production-runtime/daily-run.sh" \
   "$CONTROL/daily-run.sh"
+install -m 0755 \
+  "$REPO/ops/deploy/production-runtime/daily-run.sh" \
+  "$CONTROL/run-reader-summary-production-day.sh"
 ln -s "$CONTROL/old-runtime" "$POSTGRES_RUNTIME_CURRENT"
 
 capture_units=(
@@ -93,6 +102,43 @@ fail() {
 }
 
 systemctl() {
+  case "$*" in
+    'is-enabled --quiet social-monitor-daily.timer')
+      printf '%s\n' "$*" >> "$SYSTEMCTL_EVENTS"
+      [[ $LEGACY_DAILY_TIMER_ENABLED == true ]]
+      return
+      ;;
+    'is-enabled --quiet social-monitor-reader-summary-production-day.timer')
+      printf '%s\n' "$*" >> "$SYSTEMCTL_EVENTS"
+      [[ $V6_DAILY_TIMER_ENABLED == true ]]
+      return
+      ;;
+    'show --property=ActiveState --value social-monitor-daily.timer'|\
+    'show --property=ActiveState --value social-monitor-reader-summary-production-day.timer')
+      printf '%s\n' "$*" >> "$SYSTEMCTL_EVENTS"
+      printf '%s\n' "$DAILY_TIMER_ACTIVE_STATE"
+      return
+      ;;
+    'show --property=NextElapseUSecRealtime --value social-monitor-daily.timer'|\
+    'show --property=NextElapseUSecRealtime --value social-monitor-reader-summary-production-day.timer')
+      printf '%s\n' "$*" >> "$SYSTEMCTL_EVENTS"
+      printf '%s\n' "$DAILY_TIMER_NEXT_TRIGGER"
+      return
+      ;;
+    'start social-monitor-daily.timer'|\
+    'start social-monitor-reader-summary-production-day.timer')
+      printf '%s\n' "$*" >> "$SYSTEMCTL_EVENTS"
+      ((DAILY_TIMER_START_STATUS == 0)) || return "$DAILY_TIMER_START_STATUS"
+      DAILY_TIMER_ACTIVE_STATE=$DAILY_TIMER_ACTIVE_STATE_AFTER_START
+      return
+      ;;
+    'cat social-monitor-reader-summary-production-day.service')
+      printf '%s\n' "$*" >> "$SYSTEMCTL_EVENTS"
+      printf '[Service]\nExecStart=%s/run-reader-summary-production-day.sh --yesterday\nTimeoutStartSec=23400\nRestart=no\n' \
+        "$CONTROL"
+      return
+      ;;
+  esac
   GITHUB_PREMIDNIGHT_FAKE_SYSTEMD_UNIT_DIR=$SYSTEMD_UNIT_DIR \
   GITHUB_PREMIDNIGHT_FAKE_SYSTEMCTL_CONTROL=$CONTROL \
   GITHUB_PREMIDNIGHT_FAKE_SYSTEMCTL_EVENTS=$SYSTEMCTL_EVENTS \
@@ -347,6 +393,112 @@ if grep -Eq '(^| )(enable|disable|start|stop|restart)( |$)' \
 fi
 [[ $(<"$SYSTEMD_UNIT_DIR/unrelated.service") == unrelated-service ]]
 [[ $(<"$SYSTEMD_UNIT_DIR/unrelated.timer") == unrelated-timer ]]
+
+daily_reconciliation_inode_snapshot=$(
+  stat -c '%n:%i' \
+    "$SYSTEMD_UNIT_DIR/social-monitor-daily.service" \
+    "$SYSTEMD_UNIT_DIR/social-monitor-weekly.service" \
+    "$SYSTEMD_UNIT_DIR/social-monitor-weekly.timer" \
+    "$SYSTEMD_UNIT_DIR/social-monitor-github-premidnight-capture-v1.service" \
+    "$SYSTEMD_UNIT_DIR/social-monitor-github-premidnight-capture-v1.timer" \
+    "$SYSTEMD_UNIT_DIR/unrelated.service" \
+    "$SYSTEMD_UNIT_DIR/unrelated.timer"
+)
+reset_daily_reconciliation_fixture() {
+  LEGACY_DAILY_TIMER_ENABLED=true
+  V6_DAILY_TIMER_ENABLED=false
+  DAILY_TIMER_ACTIVE_STATE=active
+  DAILY_TIMER_ACTIVE_STATE_AFTER_START=active
+  DAILY_TIMER_NEXT_TRIGGER='Thu 2026-07-30 00:00:00 UTC'
+  DAILY_TIMER_START_STATUS=0
+  : > "$SYSTEMCTL_EVENTS"
+}
+assert_daily_reconciliation_mutations() {
+  local expected=$1 actual
+  actual=$(grep -E '(^| )(enable|disable|start|stop|restart)( |$)' \
+    "$SYSTEMCTL_EVENTS" || true)
+  [[ $actual == "$expected" ]]
+}
+
+reset_daily_reconciliation_fixture
+verify_effective_postgres_daily_topology
+assert_daily_reconciliation_mutations ''
+[[ $(grep -Fxc \
+  'show --property=ActiveState --value social-monitor-daily.timer' \
+  "$SYSTEMCTL_EVENTS") == 2 ]]
+
+reset_daily_reconciliation_fixture
+DAILY_TIMER_ACTIVE_STATE=inactive
+verify_effective_postgres_daily_topology
+[[ $(grep -Fxc 'start social-monitor-daily.timer' "$SYSTEMCTL_EVENTS") == 1 ]]
+assert_daily_reconciliation_mutations 'start social-monitor-daily.timer'
+
+reset_daily_reconciliation_fixture
+LEGACY_DAILY_TIMER_ENABLED=false
+V6_DAILY_TIMER_ENABLED=true
+DAILY_TIMER_ACTIVE_STATE=inactive
+verify_effective_postgres_daily_topology
+[[ $(grep -Fxc \
+  'start social-monitor-reader-summary-production-day.timer' \
+  "$SYSTEMCTL_EVENTS") == 1 ]]
+assert_daily_reconciliation_mutations \
+  'start social-monitor-reader-summary-production-day.timer'
+
+reset_daily_reconciliation_fixture
+DAILY_TIMER_ACTIVE_STATE=inactive
+DAILY_TIMER_START_STATUS=1
+if verify_effective_postgres_daily_topology >/dev/null 2>&1; then
+  echo 'daily timer start failure was accepted' >&2
+  exit 1
+fi
+[[ $(grep -Fxc 'start social-monitor-daily.timer' "$SYSTEMCTL_EVENTS") == 1 ]]
+assert_daily_reconciliation_mutations 'start social-monitor-daily.timer'
+
+reset_daily_reconciliation_fixture
+DAILY_TIMER_ACTIVE_STATE=inactive
+DAILY_TIMER_ACTIVE_STATE_AFTER_START=failed
+if verify_effective_postgres_daily_topology >/dev/null 2>&1; then
+  echo 'daily timer failed post-start state was accepted' >&2
+  exit 1
+fi
+assert_daily_reconciliation_mutations 'start social-monitor-daily.timer'
+
+reset_daily_reconciliation_fixture
+DAILY_TIMER_ACTIVE_STATE=activating
+if verify_effective_postgres_daily_topology >/dev/null 2>&1; then
+  echo 'ambiguous daily timer active state was accepted' >&2
+  exit 1
+fi
+assert_daily_reconciliation_mutations ''
+
+reset_daily_reconciliation_fixture
+DAILY_TIMER_NEXT_TRIGGER=
+if verify_effective_postgres_daily_topology >/dev/null 2>&1; then
+  echo 'active daily timer without a next trigger was accepted' >&2
+  exit 1
+fi
+
+for enabled_pair in 'true true' 'false false'; do
+  reset_daily_reconciliation_fixture
+  read -r LEGACY_DAILY_TIMER_ENABLED V6_DAILY_TIMER_ENABLED <<< "$enabled_pair"
+  if verify_effective_postgres_daily_topology >/dev/null 2>&1; then
+    echo "ambiguous daily timer enablement was accepted: $enabled_pair" >&2
+    exit 1
+  fi
+  assert_daily_reconciliation_mutations ''
+done
+
+[[ $daily_reconciliation_inode_snapshot == "$(
+  stat -c '%n:%i' \
+    "$SYSTEMD_UNIT_DIR/social-monitor-daily.service" \
+    "$SYSTEMD_UNIT_DIR/social-monitor-weekly.service" \
+    "$SYSTEMD_UNIT_DIR/social-monitor-weekly.timer" \
+    "$SYSTEMD_UNIT_DIR/social-monitor-github-premidnight-capture-v1.service" \
+    "$SYSTEMD_UNIT_DIR/social-monitor-github-premidnight-capture-v1.timer" \
+    "$SYSTEMD_UNIT_DIR/unrelated.service" \
+    "$SYSTEMD_UNIT_DIR/unrelated.timer"
+)" ]]
+reset_daily_reconciliation_fixture
 
 SOAK_CONTAINER=stable-ingestion-container
 SOAK_RESTARTS=7
