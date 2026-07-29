@@ -265,9 +265,17 @@ export const seedReaderSummaryProductionRecoveryFixture = async (
       ('30000000-0000-4000-8000-' ||
         lpad(provider_number::TEXT, 12, '0'))::UUID,
       provider_key,
-      'recovery:' || requested_date || ':' || provider_key || ':' || position,
-      'https://fixture.invalid/' || requested_date || '/' ||
-        provider_key || '/' || position,
+      CASE WHEN provider_key = 'github-trending-page'
+        THEN 'github-trending-page:daily:' ||
+          ('70000000-0000-4000-8000-' ||
+            lpad(day_number::TEXT, 12, '0')) || ':' ||
+          'fixture/repository-' || position
+        ELSE 'recovery:' || requested_date || ':' ||
+          provider_key || ':' || position END,
+      CASE WHEN provider_key = 'github-trending-page'
+        THEN 'https://github.com/fixture/repository-' || position
+        ELSE 'https://fixture.invalid/' || requested_date || '/' ||
+          provider_key || '/' || position END,
       'Recovery fixture ' || item_number,
       'Immutable body ' || item_number,
       NULL,
@@ -287,7 +295,8 @@ export const seedReaderSummaryProductionRecoveryFixture = async (
         THEN jsonb_build_object(
           'kind', 'github_trending_page_repository',
           'repository', jsonb_build_object(
-            'fullName', 'fixture/repository-' || position
+            'fullName', 'fixture/repository-' || position,
+            'url', 'https://github.com/fixture/repository-' || position
           ),
           'trending', jsonb_build_object(
             'scanJobId',
@@ -298,7 +307,8 @@ export const seedReaderSummaryProductionRecoveryFixture = async (
               requested_date::TIMESTAMP AT TIME ZONE 'UTC' +
                 INTERVAL '11 hours' + position * INTERVAL '1 millisecond',
               'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'
-            )
+            ),
+            'window', 'daily'
           )
         )
         ELSE '{}'::JSONB END,
@@ -323,8 +333,10 @@ export const seedReaderSummaryProductionRecoveryFixture = async (
         lpad(provider_number::TEXT, 12, '0'))::UUID,
       provider_key,
       'recovery:' || requested_date || ':' || provider_key || ':' || position,
-      'https://fixture.invalid/' || requested_date || '/' ||
-        provider_key || '/' || position,
+      CASE WHEN provider_key = 'github-trending-page'
+        THEN 'https://github.com/fixture/repository-' || position
+        ELSE 'https://fixture.invalid/' || requested_date || '/' ||
+          provider_key || '/' || position END,
       'Recovery fixture ' || item_number,
       'Immutable body ' || item_number,
       NULL,
@@ -354,8 +366,7 @@ export const seedReaderSummaryProductionRecoveryFixture = async (
       ('10000000-0000-4000-8000-' ||
         lpad(item_number::TEXT, 12, '0'))::UUID,
       'fixture/repository-' || position,
-      'https://fixture.invalid/' || requested_date || '/' ||
-        provider_key || '/' || position,
+      'https://github.com/fixture/repository-' || position,
       'daily', position,
       requested_date::TIMESTAMP AT TIME ZONE 'UTC' +
         INTERVAL '11 hours' + position * INTERVAL '1 millisecond',
@@ -364,7 +375,8 @@ export const seedReaderSummaryProductionRecoveryFixture = async (
       'fixture', '{"verifiedExisting":true}'::JSONB,
       requested_date::TIMESTAMP AT TIME ZONE 'UTC' + INTERVAL '12 hours'
     FROM recovery_items
-    WHERE provider_key = 'github-trending-page';
+    WHERE provider_key = 'github-trending-page'
+      AND requested_date <> DATE '2026-07-24';
     COMMIT;
   `);
 };
@@ -421,6 +433,19 @@ export const assertReaderSummaryProductionRecoveryPostgresContract =
           ["2026-07-28", 56, "historical_unavailable"],
         ]),
       "production recovery immutable daily counts diverged",
+    );
+    const metadataFallbackDay = leftBinding.days.find(
+      (day) => day.requestedUtcDate === "2026-07-24",
+    );
+    assert(
+      metadataFallbackDay?.providerEvidence[
+        "github-trending-page"
+      ].every(
+        (evidence) =>
+          evidence.github?.resultId === evidence.sourceItemId &&
+          evidence.github.scanAttemptNumber === 1,
+      ) === true,
+      "production recovery GitHub metadata fallback was not DB-derived",
     );
     assert(
       leftBinding.days.every(

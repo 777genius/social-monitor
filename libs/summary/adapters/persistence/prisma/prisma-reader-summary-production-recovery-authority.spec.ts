@@ -78,6 +78,114 @@ describe("PrismaReaderSummaryProductionRecoveryAuthority", () => {
     );
   });
 
+  it("accepts tightly validated DB metadata when legacy GitHub proof is absent", async () => {
+    const prisma = new FakeProductionRecoveryPrisma(
+      metadataFallbackEvidenceRows(),
+    );
+    const adapter = new PrismaReaderSummaryProductionRecoveryAuthority(
+      prisma as unknown as PrismaSummaryClient,
+    );
+
+    const result = await adapter.prepare();
+    const binding = adapter.readVerifiedBinding(result.authority);
+
+    expect(
+      binding.days
+        .filter(
+          (day) => day.githubEvidence.mode === "verified_existing",
+        )
+        .every((day) =>
+          day.providerEvidence["github-trending-page"].every(
+            (row) =>
+              row.github?.resultId === row.sourceItemId &&
+              row.github.scanAttemptNumber === 1,
+          ),
+        ),
+    ).toBe(true);
+    const evidenceRead = prisma.calls.find(
+      (call) =>
+        call.sql.includes('FROM "feed_items" AS feed') &&
+        call.sql.includes('AS "sourceText"'),
+    );
+    expect(evidenceRead?.sql).toContain(
+      'source."metadata"->\'trending\'->>\'scanJobId\'',
+    );
+    expect(evidenceRead?.sql).not.toContain('feed."provider_metadata"');
+    expect(evidenceRead?.sql).toContain(
+      'source."provider_item_id" = \'github-trending-page:\'',
+    );
+    expect(evidenceRead?.sql).toContain(
+      'source."metadata"->>\'kind\' = \'github_trending_page_repository\'',
+    );
+    expect(evidenceRead?.sql).toContain(
+      'proof."window" IN (\'daily\', \'today\')',
+    );
+    expect(evidenceRead?.sql).toContain(
+      'proof."repository_url" = source."canonical_url"',
+    );
+    expect(evidenceRead?.sql).toContain(
+      'proof."rank" IS NOT NULL',
+    );
+    expect(evidenceRead?.sql).toContain(
+      'proof."checked_at" IS NOT NULL',
+    );
+  });
+
+  it.each(["missing", "invalid"] as const)(
+    "fails closed when GitHub fallback metadata is %s",
+    async (metadataState) => {
+      const prisma = new FakeProductionRecoveryPrisma(
+        metadataFallbackEvidenceRows(metadataState),
+      );
+      const adapter = new PrismaReaderSummaryProductionRecoveryAuthority(
+        prisma as unknown as PrismaSummaryClient,
+      );
+
+      await expect(adapter.prepare()).rejects.toThrow(
+        "2026-07-24 GitHub evidence lacks completed collection proof",
+      );
+      expect(prisma.persisted).toBeUndefined();
+    },
+  );
+
+  it("keeps complete legacy GitHub proof authoritative", async () => {
+    const rows = productionRecoveryEvidenceRows().map((row) => ({
+      ...row,
+      sourceMetadata: { kind: "invalid" },
+    }));
+    const prisma = new FakeProductionRecoveryPrisma(rows);
+    const adapter = new PrismaReaderSummaryProductionRecoveryAuthority(
+      prisma as unknown as PrismaSummaryClient,
+    );
+
+    await expect(adapter.prepare()).resolves.toMatchObject({
+      outcome: "prepared",
+    });
+  });
+
+  it("keeps GitHub-zero recovery days historical_unavailable", async () => {
+    const prisma = new FakeProductionRecoveryPrisma(
+      metadataFallbackEvidenceRows(),
+    );
+    const adapter = new PrismaReaderSummaryProductionRecoveryAuthority(
+      prisma as unknown as PrismaSummaryClient,
+    );
+
+    const result = await adapter.prepare();
+    const binding = adapter.readVerifiedBinding(result.authority);
+
+    expect(
+      binding.days
+        .filter((day) =>
+          ["2026-07-23", "2026-07-28"].includes(day.requestedUtcDate),
+        )
+        .map((day) => [day.requestedUtcDate, day.githubEvidence.mode]),
+    ).toEqual([
+      ["2026-07-23", "historical_unavailable"],
+      ["2026-07-28", "historical_unavailable"],
+    ]);
+  });
+
   it("replays with reads only after all six final receipts exist", async () => {
     const prisma = new FakeProductionRecoveryPrisma(
       productionRecoveryEvidenceRows(),
@@ -195,3 +303,60 @@ describe("PrismaReaderSummaryProductionRecoveryAuthority", () => {
     ).toThrow("was not loaded by verified Prisma evidence");
   });
 });
+
+const metadataFallbackEvidenceRows = (
+  metadataState: "valid" | "missing" | "invalid" = "valid",
+) => {
+  let changedTarget = false;
+  return productionRecoveryEvidenceRows().map((row) => {
+    if (row.providerKey !== "github-trending-page") {
+      return row;
+    }
+    const repositoryIdentity = row.githubRepositoryIdentity!;
+    const scanJobId = row.githubScanJobId!;
+    const window = "daily";
+    const canonicalUrl = `https://github.com/${repositoryIdentity}`;
+    const metadata = {
+      kind: "github_trending_page_repository",
+      repository: {
+        fullName: repositoryIdentity,
+        url: canonicalUrl,
+      },
+      trending: {
+        scanJobId,
+        rank: row.githubRank,
+        checkedAt: row.githubCheckedAt!.toISOString(),
+        window,
+      },
+    };
+    const target =
+      !changedTarget && row.requestedUtcDate === "2026-07-24";
+    changedTarget ||= target;
+    const selectedMetadata =
+      !target || metadataState === "valid"
+        ? metadata
+        : metadataState === "missing"
+          ? undefined
+          : {
+              ...metadata,
+              trending: { ...metadata.trending, rank: 0 },
+            };
+    const hasFallbackProof =
+      !target || metadataState === "valid";
+    return {
+      ...row,
+      canonicalUrl,
+      providerItemId:
+        `github-trending-page:${window}:${scanJobId}:${repositoryIdentity}`,
+      sourceMetadata: selectedMetadata,
+      githubResultId: hasFallbackProof ? row.sourceItemId : null,
+      githubScanJobId: hasFallbackProof ? scanJobId : null,
+      githubAttemptNumber: hasFallbackProof ? 1 : null,
+      githubRepositoryIdentity: hasFallbackProof
+        ? repositoryIdentity
+        : null,
+      githubRank: hasFallbackProof ? row.githubRank : null,
+      githubCheckedAt: hasFallbackProof ? row.githubCheckedAt : null,
+    };
+  });
+};

@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-
 import { withPrismaWriteRetry } from "../../../../platform/persistence/src/write-retry";
 
 import {
@@ -303,12 +302,12 @@ const readEvidence = (
       source."provider_content_hash" AS "sourceProviderContentHash",
       feed."published_at" AS "publishedAt",
       feed."observed_at" AS "observedAt",
-      github."result_id"::TEXT AS "githubResultId",
-      github."scan_job_id"::TEXT AS "githubScanJobId",
-      github."attempt_number" AS "githubAttemptNumber",
-      github."repository_identity" AS "githubRepositoryIdentity",
-      github."rank" AS "githubRank",
-      github."checked_at" AS "githubCheckedAt"
+      COALESCE(github."result_id"::TEXT, metadata_github."proof_id"::TEXT) AS "githubResultId",
+      COALESCE(github."scan_job_id"::TEXT, metadata_github."scan_job_id") AS "githubScanJobId",
+      COALESCE(github."attempt_number", metadata_github."proof_version") AS "githubAttemptNumber",
+      COALESCE(github."repository_identity", metadata_github."repository_identity") AS "githubRepositoryIdentity",
+      COALESCE(github."rank", metadata_github."rank") AS "githubRank",
+      COALESCE(github."checked_at", metadata_github."checked_at") AS "githubCheckedAt"
     FROM "feed_items" AS feed
     JOIN "source_items" AS source
       ON source."id" = feed."source_item_id"
@@ -370,6 +369,43 @@ const readEvidence = (
       ORDER BY result."checked_at" DESC, result."id"
       LIMIT 1
     ) AS github ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT
+        source."id" AS "proof_id", proof."scan_job_id", 1 AS "proof_version",
+        proof."repository_identity", proof."rank", proof."checked_at"
+      FROM (
+        SELECT
+          source."metadata"->'trending'->>'scanJobId' AS "scan_job_id",
+          source."metadata"->'repository'->>'fullName' AS "repository_identity",
+          source."metadata"->'repository'->>'url' AS "repository_url",
+          source."metadata"->'trending'->>'window' AS "window",
+          CASE WHEN source."metadata"->'trending'->>'rank' ~ '^[1-9][0-9]{0,8}$'
+            THEN (source."metadata"->'trending'->>'rank')::INTEGER
+            ELSE NULL END AS "rank",
+          CASE
+            WHEN source."metadata"->'trending'->>'checkedAt' ~
+                '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?Z$'
+              THEN (source."metadata"->'trending'->>'checkedAt')::TIMESTAMPTZ
+            ELSE NULL END AS "checked_at"
+      ) AS proof
+      WHERE github."result_id" IS NULL
+        AND feed."provider_key" = 'github-trending-page'
+        AND source."metadata"->>'kind' = 'github_trending_page_repository'
+        AND proof."scan_job_id" ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+        AND proof."repository_identity" ~ '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'
+        AND proof."repository_url" = source."canonical_url"
+        AND lower(proof."repository_url") = lower(
+          'https://github.com/' || proof."repository_identity")
+        AND proof."window" IN ('daily', 'today')
+        AND source."provider_item_id" = 'github-trending-page:' ||
+          proof."window" || ':' || proof."scan_job_id" || ':' ||
+          proof."repository_identity"
+        AND proof."rank" IS NOT NULL
+        AND proof."checked_at" IS NOT NULL
+        AND to_char(proof."checked_at" AT TIME ZONE 'UTC',
+          'YYYY-MM-DD') = to_char(feed."published_at" AT TIME ZONE 'UTC',
+          'YYYY-MM-DD')
+    ) AS metadata_github ON TRUE
     WHERE feed."tenant_id" =
         current_setting('social_monitor.tenant_id')::uuid
       AND feed."workspace_id" =
