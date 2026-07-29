@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 
 import type {
   ReaderSummaryProductionRecoveryAuthorityBinding,
@@ -29,11 +30,45 @@ export type ReaderSummaryProductionRecoveryExecutionGuardClient =
 
 type ExistingClaimRow = Readonly<{
   requestHash: string;
+  responseStatus: number | null;
   responsePayload: unknown;
   jobId: string | null;
+  jobScopeType: string | null;
+  jobScopeKey: string | null;
+  jobInterestId: string | null;
+  jobCadence: string | null;
+  jobPeriodStartedAt: Date | null;
+  jobPeriodEndedAt: Date | null;
+  jobPeriodTimezone: string | null;
+  jobPeriodKey: string | null;
+  jobUserId: string | null;
+  jobSubscriptionId: string | null;
+  jobStatus: string | null;
+  jobIdempotencyKey: string | null;
+  jobStartedAt: Date | null;
+  jobCompletedAt: Date | null;
+  jobFailedAt: Date | null;
+  jobReaderSummaryArtifactId: string | null;
+  jobFailureReason: string | null;
 }>;
 type ReceiptRow = Readonly<{ replayed: boolean }>;
 type ClaimRow = Readonly<{ claimed: boolean }>;
+type RecoveryModelClaimPayload = Readonly<{
+  schemaVersion: "reader_summary.production_recovery_model_claim.v1";
+  recoveryId: string;
+  tenantId: string;
+  workspaceId: string;
+  requestedUtcDate: ReaderSummaryProductionRecoveryDate;
+  readerSummaryJobId: string;
+  readerSummaryArtifactId: string;
+  planSha256s: readonly [string, string];
+  providerEvidenceSha256: string;
+  boundaries: Readonly<{
+    stage: "pre_model";
+    modelCallPerformed: false;
+    recollectionPerformed: false;
+  }>;
+}>;
 
 const claimScope = "reader-summary-production-recovery-model-v2";
 const transactionOptions: PrismaSummaryTransactionOptions = Object.freeze({
@@ -63,33 +98,28 @@ export class PrismaReaderSummaryProductionRecoveryExecutionGuard
           if (await hasFinalReceipt(prisma, params)) {
             return "replayed";
           }
-          const existing = await readClaim(prisma, params);
-          if (existing !== undefined) {
-            assertExactClaim(existing, params.binding, day.canonicalSha256);
-            return "replayed";
-          }
           const ids = readerSummaryProductionRecoveryDayIds(
             params.binding,
             params.requestedUtcDate,
           );
+          const exactClaim = recoveryModelClaimPayload(
+            params,
+            ids,
+            day.planSha256s,
+            day.providerEvidenceSha256,
+          );
+          const existing = await readClaim(prisma, params);
+          if (existing !== undefined) {
+            assertExactClaim(
+              existing,
+              exactClaim,
+              day.canonicalSha256,
+            );
+            assertResumableJob(existing, params, day.canonicalSha256);
+            return "execute";
+          }
           const period = periodForRecoveryDate(params.requestedUtcDate);
-          const exactClaim = JSON.stringify({
-            schemaVersion:
-              "reader_summary.production_recovery_model_claim.v1",
-            recoveryId: params.binding.recoveryId,
-            tenantId: params.binding.tenantId,
-            workspaceId: params.binding.workspaceId,
-            requestedUtcDate: params.requestedUtcDate,
-            readerSummaryJobId: ids.readerSummaryJobId,
-            readerSummaryArtifactId: ids.readerSummaryId,
-            planSha256s: day.planSha256s,
-            providerEvidenceSha256: day.providerEvidenceSha256,
-            boundaries: {
-              stage: "pre_model",
-              modelCallPerformed: false,
-              recollectionPerformed: false,
-            },
-          });
+          const serializedClaim = JSON.stringify(exactClaim);
           const claimId = deterministicClaimUuid(
             params.binding.recoveryId,
             params.requestedUtcDate,
@@ -108,7 +138,7 @@ export class PrismaReaderSummaryProductionRecoveryExecutionGuard
                 ${params.requestedUtcDate},
                 ${day.canonicalSha256},
                 102,
-                ${exactClaim}::jsonb,
+                ${serializedClaim}::jsonb,
                 NULL,
                 transaction_timestamp()
               )
@@ -227,8 +257,27 @@ const readClaim = async (
   const rows = await prisma.$queryRaw<readonly ExistingClaimRow[]>`
     SELECT
       claim."request_hash" AS "requestHash",
+      claim."response_status" AS "responseStatus",
       claim."response_payload" AS "responsePayload",
-      job."id"::TEXT AS "jobId"
+      job."id"::TEXT AS "jobId",
+      job."scope_type" AS "jobScopeType",
+      job."scope_key" AS "jobScopeKey",
+      job."interest_id"::TEXT AS "jobInterestId",
+      job."cadence" AS "jobCadence",
+      job."period_started_at" AS "jobPeriodStartedAt",
+      job."period_ended_at" AS "jobPeriodEndedAt",
+      job."period_timezone" AS "jobPeriodTimezone",
+      job."period_key" AS "jobPeriodKey",
+      job."user_id" AS "jobUserId",
+      job."subscription_id"::TEXT AS "jobSubscriptionId",
+      job."status"::TEXT AS "jobStatus",
+      job."idempotency_key" AS "jobIdempotencyKey",
+      job."started_at" AS "jobStartedAt",
+      job."completed_at" AS "jobCompletedAt",
+      job."failed_at" AS "jobFailedAt",
+      job."reader_summary_artifact_id"::TEXT AS
+        "jobReaderSummaryArtifactId",
+      job."failure_reason" AS "jobFailureReason"
     FROM "idempotency_keys" AS claim
     LEFT JOIN "reader_summary_jobs" AS job
       ON job."id" = ${ids.readerSummaryJobId}::uuid
@@ -250,26 +299,85 @@ const readClaim = async (
 
 const assertExactClaim = (
   row: ExistingClaimRow,
-  binding: ReaderSummaryProductionRecoveryAuthorityBinding,
+  exactClaim: RecoveryModelClaimPayload,
   planSha256: string,
 ): void => {
-  const payload = row.responsePayload as {
-    readonly recoveryId?: unknown;
-    readonly planSha256s?: readonly unknown[];
-  };
   if (
     row.requestHash !== planSha256 ||
+    row.responseStatus !== 102 ||
     row.jobId === null ||
-    payload?.recoveryId !== binding.recoveryId ||
-    payload?.planSha256s?.length !== 2 ||
-    payload.planSha256s[0] !== planSha256 ||
-    payload.planSha256s[1] !== planSha256
+    !isDeepStrictEqual(row.responsePayload, exactClaim)
   ) {
     throw new Error(
       "Reader summary production recovery existing model claim diverged",
     );
   }
 };
+
+const assertResumableJob = (
+  row: ExistingClaimRow,
+  params: {
+    readonly binding: ReaderSummaryProductionRecoveryAuthorityBinding;
+    readonly requestedUtcDate: ReaderSummaryProductionRecoveryDate;
+  },
+  planSha256: string,
+): void => {
+  const ids = readerSummaryProductionRecoveryDayIds(
+    params.binding,
+    params.requestedUtcDate,
+  );
+  const period = periodForRecoveryDate(params.requestedUtcDate);
+  if (
+    row.jobId !== ids.readerSummaryJobId ||
+    row.jobScopeType !== "workspace" ||
+    row.jobScopeKey !== "workspace" ||
+    row.jobInterestId !== null ||
+    row.jobCadence !== "daily" ||
+    row.jobPeriodStartedAt?.getTime() !== period.startedAt.getTime() ||
+    row.jobPeriodEndedAt?.getTime() !== period.endedAt.getTime() ||
+    row.jobPeriodTimezone !== "UTC" ||
+    row.jobPeriodKey !== period.periodKey ||
+    row.jobUserId !== null ||
+    row.jobSubscriptionId !== null ||
+    row.jobStatus !== "RUNNING" ||
+    row.jobIdempotencyKey !==
+      `reader-summary-production-recovery:${params.requestedUtcDate}:${planSha256}` ||
+    row.jobStartedAt === null ||
+    row.jobCompletedAt !== null ||
+    row.jobFailedAt !== null ||
+    row.jobReaderSummaryArtifactId !== null ||
+    row.jobFailureReason !== null
+  ) {
+    throw new Error(
+      "Reader summary production recovery existing model claim cannot be safely resumed",
+    );
+  }
+};
+
+const recoveryModelClaimPayload = (
+  params: {
+    readonly binding: ReaderSummaryProductionRecoveryAuthorityBinding;
+    readonly requestedUtcDate: ReaderSummaryProductionRecoveryDate;
+  },
+  ids: ReturnType<typeof readerSummaryProductionRecoveryDayIds>,
+  planSha256s: readonly [string, string],
+  providerEvidenceSha256: string,
+): RecoveryModelClaimPayload => ({
+  schemaVersion: "reader_summary.production_recovery_model_claim.v1",
+  recoveryId: params.binding.recoveryId,
+  tenantId: params.binding.tenantId,
+  workspaceId: params.binding.workspaceId,
+  requestedUtcDate: params.requestedUtcDate,
+  readerSummaryJobId: ids.readerSummaryJobId,
+  readerSummaryArtifactId: ids.readerSummaryId,
+  planSha256s,
+  providerEvidenceSha256,
+  boundaries: {
+    stage: "pre_model",
+    modelCallPerformed: false,
+    recollectionPerformed: false,
+  },
+});
 
 const deterministicClaimUuid = (
   recoveryId: string,

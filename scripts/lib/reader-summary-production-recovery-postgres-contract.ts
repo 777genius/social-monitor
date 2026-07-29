@@ -539,13 +539,16 @@ export const assertReaderSummaryProductionRecoveryPostgresContract =
       requestedUtcDate: "2026-07-24",
     });
     const afterClaim = await recoveryWriteCounts(params.auditor);
-    const replay = await secondGuard.claim({
+    const resumedClaim = await secondGuard.claim({
       binding: rightBinding,
       requestedUtcDate: "2026-07-24",
     });
-    const afterReplay = await recoveryWriteCounts(params.auditor);
+    const afterResume = await recoveryWriteCounts(params.auditor);
     assert(firstClaim === "execute", "first model claim did not win");
-    assert(replay === "replayed", "second model claim was not replayed");
+    assert(
+      resumedClaim === "execute",
+      "exact unfinished model claim was not resumable",
+    );
     assert(
       afterClaim.authorities === beforeClaim.authorities &&
         afterClaim.claims === beforeClaim.claims + 1 &&
@@ -556,8 +559,8 @@ export const assertReaderSummaryProductionRecoveryPostgresContract =
       "pre-model authority/claim/job writes were not exact",
     );
     assert(
-      JSON.stringify(afterReplay) === JSON.stringify(afterClaim),
-      "claim replay performed a write",
+      JSON.stringify(afterResume) === JSON.stringify(afterClaim),
+      "claim resume performed a write",
     );
   };
 
