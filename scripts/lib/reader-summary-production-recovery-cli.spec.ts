@@ -26,6 +26,8 @@ import {
   readerSummaryProductionRecoveryJobIdempotencyKey,
   readerSummaryProductionRecoveryQualityRemediationDayIds,
   readerSummaryProductionRecoveryQualityRemediationJobIdempotencyKey,
+  readerSummaryProductionRecoveryQualityRemediationResumeDayIds,
+  readerSummaryProductionRecoveryQualityRemediationResumeJobIdempotencyKey,
   readerSummaryProductionRecoveryResumeDayIds,
   readerSummaryProductionRecoveryResumeJobIdempotencyKey,
   runReaderSummaryProductionRecovery,
@@ -153,6 +155,8 @@ describe("reader summary production recovery", () => {
           ? "remediate-quality"
           : date === "2026-07-24"
             ? "resume"
+            : date === "2026-07-25"
+              ? "resume-quality"
             : "replayed",
       ),
       executeDay: async ({ requestedUtcDate, executionIdentity }) => {
@@ -164,6 +168,7 @@ describe("reader summary production recovery", () => {
     expect(identities).toEqual([
       "quality-remediation-v1",
       "resume-v1",
+      "quality-remediation-resume-v1",
     ]);
     expect(result.dayResults[0]?.outcome).toBe("published");
   });
@@ -632,6 +637,57 @@ describe("reader summary production recovery", () => {
       readerSummaryId: remediationIds.readerSummaryId,
     });
   });
+
+  it("uses fresh quality remediation resume IDs and idempotency", async () => {
+    const binding = productionRecoveryBinding();
+    const requestedUtcDate = "2026-07-23";
+    const ids = readerSummaryProductionRecoveryQualityRemediationResumeDayIds(
+      binding,
+      requestedUtcDate,
+    );
+    const day = dayAuthority(binding, requestedUtcDate);
+    jest
+      .spyOn(ExecuteReaderSummaryJobUseCase.prototype, "execute")
+      .mockImplementation(async function (
+        this: ExecuteReaderSummaryJobUseCase,
+      ) {
+        const jobs = this as unknown as {
+          readonly readerSummaryJobs: ReaderSummaryJobRepositoryPort;
+        };
+        const staged = await jobs.readerSummaryJobs.findById({
+          tenantId: tenantId(binding.tenantId),
+          workspaceId: workspaceId(binding.workspaceId),
+          readerSummaryJobId: ids.readerSummaryJobId,
+        });
+        expect(staged?.toSnapshot().idempotencyKey).toBe(
+          readerSummaryProductionRecoveryQualityRemediationResumeJobIdempotencyKey(
+            requestedUtcDate,
+            day.canonicalSha256,
+          ),
+        );
+        return {
+          ok: true,
+          value: {
+            readerSummaryJobId: ids.readerSummaryJobId,
+            readerSummaryId: ids.readerSummaryId,
+            status: "completed",
+          },
+        };
+      });
+    await executeProductionRecoveryDay({
+      binding,
+      requestedUtcDate,
+      executionIdentity: "quality-remediation-resume-v1",
+      model: {} as never,
+      finalization: {} as never,
+      durableJobs: {} as never,
+      durableArtifacts: {} as never,
+      feedItems: {} as never,
+      githubProjectionReader: {} as never,
+      ids: { generate: () => "unused-id" },
+      clock: { now: () => new Date(binding.lease.consumedAt) },
+    });
+  });
 });
 
 const fakeAuthority = (
@@ -661,6 +717,8 @@ const guard = (
   outcome:
     | "execute"
     | "resume"
+    | "remediate-quality"
+    | "resume-quality"
     | "replayed"
     | ReaderSummaryProductionRecoverySkipEvidence
     | ((
@@ -668,6 +726,8 @@ const guard = (
       ) =>
         | "execute"
         | "resume"
+        | "remediate-quality"
+        | "resume-quality"
         | "replayed"
         | ReaderSummaryProductionRecoverySkipEvidence),
 ): ReaderSummaryProductionRecoveryExecutionGuard & { calls(): number } => {

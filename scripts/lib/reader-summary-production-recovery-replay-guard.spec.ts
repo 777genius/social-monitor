@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { productionRecoveryBinding } from "../../libs/summary/adapters/persistence/prisma/prisma-reader-summary-production-recovery-authority.spec-support";
 
 import {
@@ -6,6 +8,8 @@ import {
   readerSummaryProductionRecoveryLegacyDayIds,
   readerSummaryProductionRecoveryQualityRemediationDayIds,
   readerSummaryProductionRecoveryQualityRemediationJobIdempotencyKey,
+  readerSummaryProductionRecoveryQualityRemediationResumeDayIds,
+  readerSummaryProductionRecoveryQualityRemediationResumeJobIdempotencyKey,
   readerSummaryProductionRecoveryResumeDayIds,
 } from "./reader-summary-production-recovery-cli";
 import {
@@ -155,6 +159,72 @@ describe("PrismaReaderSummaryProductionRecoveryExecutionGuard", () => {
     );
   });
 
+  it.each([
+    "weekly canonical JSON exceeds structural bounds",
+    "weekly canonical JSON exceeds byte bounds",
+  ])("resumes only quality remediation that failed with %s", async (failureReason) => {
+    const requestedUtcDate = "2026-07-23";
+    const fixture = guardFixture([
+      [{ replayed: false }],
+      [retryClaimRow(requestedUtcDate, "REJECTED")],
+      [qualityRemediationClaimRow(requestedUtcDate, "FAILED", failureReason)],
+      [],
+      [claimOutcome()],
+    ]);
+
+    await expect(claim(fixture.guard, requestedUtcDate)).resolves.toBe(
+      "resume-quality",
+    );
+    const persisted = fixture.queries.at(-1)!;
+    expect(persisted).toContain('INSERT INTO "idempotency_keys"');
+    expect(persisted).toContain('INSERT INTO "reader_summary_jobs"');
+    expect(persisted).not.toContain("reader_summary_artifacts");
+    expect(persisted).not.toContain("source_items");
+    expect(JSON.stringify(fixture.values.at(-1))).toContain(
+      "rejectionEvidenceSha256",
+    );
+    expect(JSON.stringify(fixture.values.at(-1))).not.toContain(
+      failureReason,
+    );
+    const binding = productionRecoveryBinding();
+    expect(
+      readerSummaryProductionRecoveryQualityRemediationResumeDayIds(
+        binding,
+        requestedUtcDate,
+      ),
+    ).not.toEqual(
+      readerSummaryProductionRecoveryQualityRemediationDayIds(
+        binding,
+        requestedUtcDate,
+      ),
+    );
+  });
+
+  it("does not resume noncanonical or rejected quality remediation", async () => {
+    const requestedUtcDate = "2026-07-23";
+    for (const quality of [
+      qualityRemediationClaimRow(
+        requestedUtcDate,
+        "FAILED",
+        "provider response was unavailable",
+      ),
+      qualityRemediationClaimRow(requestedUtcDate, "REJECTED"),
+    ]) {
+      const fixture = guardFixture([
+        [{ replayed: false }],
+        [retryClaimRow(requestedUtcDate, "REJECTED")],
+        [quality],
+      ]);
+      await expect(claim(fixture.guard, requestedUtcDate)).rejects.toThrow(
+        "quality-remediation-v1 lease was already consumed without final receipt",
+      );
+      expect(fixture.queries).toHaveLength(3);
+      expect(fixture.queries.every((sql) => !sql.includes("INSERT"))).toBe(
+        true,
+      );
+    }
+  });
+
   it("does not re-consume an existing running retry lease without a receipt", async () => {
     const requestedUtcDate = "2026-07-26";
     const fixture = guardFixture([
@@ -245,6 +315,14 @@ describe("PrismaReaderSummaryProductionRecoveryExecutionGuard", () => {
       ),
     ).toContain(
       "reader-summary-production-recovery-quality-remediation-v1:",
+    );
+    expect(
+      readerSummaryProductionRecoveryQualityRemediationResumeJobIdempotencyKey(
+        requestedUtcDate,
+        dayAuthority(binding, requestedUtcDate).canonicalSha256,
+      ),
+    ).toContain(
+      "reader-summary-production-recovery-quality-remediation-resume-v1:",
     );
   });
 
@@ -400,6 +478,68 @@ const retryClaimRow = (
     },
   });
 };
+
+const qualityRemediationClaimRow = (
+  requestedUtcDate: ReaderSummaryProductionRecoveryDate,
+  jobStatus: "RUNNING" | "REJECTED" | "FAILED",
+  failureReason?: string,
+) => {
+  const binding = productionRecoveryBinding();
+  const day = dayAuthority(binding, requestedUtcDate);
+  const rejected = retryClaimRow(requestedUtcDate, "REJECTED");
+  const ids = readerSummaryProductionRecoveryQualityRemediationDayIds(
+    binding,
+    requestedUtcDate,
+  );
+  const rejectionEvidenceSha256 = sha256(JSON.stringify({
+    claimScope: "reader-summary-production-recovery-model-retry-v1",
+    readerSummaryJobId: rejected.jobId,
+    readerSummaryArtifactId: rejected.jobReaderSummaryArtifactId,
+    terminalStatus: "REJECTED",
+    failureReasonSha256: sha256(rejected.jobFailureReason),
+    planSha256: day.canonicalSha256,
+  }));
+  return claimRow({
+    requestedUtcDate,
+    ids,
+    jobStatus,
+    jobIdempotencyKey:
+      readerSummaryProductionRecoveryQualityRemediationJobIdempotencyKey(
+        requestedUtcDate,
+        day.canonicalSha256,
+      ),
+    failureReason,
+    responsePayload: {
+      schemaVersion:
+        "reader_summary.production_recovery_model_quality_remediation_claim.v1",
+      recoveryId: binding.recoveryId,
+      tenantId: binding.tenantId,
+      workspaceId: binding.workspaceId,
+      requestedUtcDate,
+      readerSummaryJobId: ids.readerSummaryJobId,
+      readerSummaryArtifactId: ids.readerSummaryId,
+      planSha256s: day.planSha256s,
+      providerEvidenceSha256: day.providerEvidenceSha256,
+      supersedes: {
+        claimScope: "reader-summary-production-recovery-model-retry-v1",
+        readerSummaryJobId: rejected.jobId,
+        readerSummaryArtifactId: rejected.jobReaderSummaryArtifactId,
+        terminalStatus: "REJECTED",
+        rejectionEvidenceSha256,
+      },
+      boundaries: {
+        stage: "pre_model",
+        leaseConsumed: true,
+        modelCallPerformed: false,
+        recollectionPerformed: false,
+        providerWritePerformed: false,
+      },
+    },
+  });
+};
+
+const sha256 = (value: string | null): string =>
+  createHash("sha256").update(value ?? "").digest("hex");
 
 const claimRow = (params: {
   requestedUtcDate: ReaderSummaryProductionRecoveryDate;

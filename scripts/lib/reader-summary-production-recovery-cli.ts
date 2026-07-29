@@ -54,7 +54,8 @@ export type ReaderSummaryProductionRecoveryDayResult = Readonly<{
 export type ReaderSummaryProductionRecoveryExecutionIdentity =
   | "retry-v1"
   | "resume-v1"
-  | "quality-remediation-v1";
+  | "quality-remediation-v1"
+  | "quality-remediation-resume-v1";
 
 export type ReaderSummaryProductionRecoverySkipEvidence = Readonly<{
   reason: "existing_quality_rejection";
@@ -78,6 +79,7 @@ export type ReaderSummaryProductionRecoveryExecutionGuard = Readonly<{
     | "execute"
     | "resume"
     | "remediate-quality"
+    | "resume-quality"
     | "replayed"
     | ReaderSummaryProductionRecoverySkipEvidence
   >;
@@ -139,6 +141,8 @@ export const runReaderSummaryProductionRecovery = async (
       executionIdentity:
         claim === "resume"
           ? "resume-v1"
+          : claim === "resume-quality"
+            ? "quality-remediation-resume-v1"
           : claim === "remediate-quality"
             ? "quality-remediation-v1"
             : "retry-v1",
@@ -222,6 +226,24 @@ export const readerSummaryProductionRecoveryQualityRemediationJobIdempotencyKey 
 ): string =>
   `reader-summary-production-recovery-quality-remediation-v1:${requestedUtcDate}:${planSha256}`;
 
+export const readerSummaryProductionRecoveryQualityRemediationResumeDayIds = (
+  binding: ReaderSummaryProductionRecoveryAuthorityBinding,
+  requestedUtcDate: ReaderSummaryProductionRecoveryDate,
+): Readonly<{ readerSummaryJobId: string; readerSummaryId: string }> => ({
+  readerSummaryJobId: deterministicUuid(
+    `reader-summary-production-recovery-quality-remediation-resume-v1-job:${binding.recoveryId}:${requestedUtcDate}`,
+  ),
+  readerSummaryId: deterministicUuid(
+    `reader-summary-production-recovery-quality-remediation-resume-v1-artifact:${binding.recoveryId}:${requestedUtcDate}`,
+  ),
+});
+
+export const readerSummaryProductionRecoveryQualityRemediationResumeJobIdempotencyKey = (
+  requestedUtcDate: ReaderSummaryProductionRecoveryDate,
+  planSha256: string,
+): string =>
+  `reader-summary-production-recovery-quality-remediation-resume-v1:${requestedUtcDate}:${planSha256}`;
+
 export type ProductionRecoveryDayExecutorDependencies = Readonly<{
   model: ReaderSummaryModelPort;
   finalization: ReaderSummaryRecoveryFinalizationPort;
@@ -271,6 +293,11 @@ export const executeProductionRecoveryDay = async (
           params.binding,
           params.requestedUtcDate,
         )
+      : identity === "quality-remediation-resume-v1"
+        ? readerSummaryProductionRecoveryQualityRemediationResumeDayIds(
+            params.binding,
+            params.requestedUtcDate,
+          )
       : identity === "quality-remediation-v1"
         ? readerSummaryProductionRecoveryQualityRemediationDayIds(
             params.binding,
@@ -293,6 +320,11 @@ export const executeProductionRecoveryDay = async (
           params.requestedUtcDate,
           day.canonicalSha256,
         )
+      : identity === "quality-remediation-resume-v1"
+        ? readerSummaryProductionRecoveryQualityRemediationResumeJobIdempotencyKey(
+            params.requestedUtcDate,
+            day.canonicalSha256,
+          )
       : identity === "quality-remediation-v1"
         ? readerSummaryProductionRecoveryQualityRemediationJobIdempotencyKey(
             params.requestedUtcDate,

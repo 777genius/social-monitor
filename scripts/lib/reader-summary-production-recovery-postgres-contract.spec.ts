@@ -31,6 +31,11 @@ describe("reader summary production recovery PostgreSQL contract", () => {
     ),
     "utf8",
   );
+  const postgresContract = readFileSync(
+    join(process.cwd(),
+      "scripts/lib/reader-summary-production-recovery-postgres-contract.ts"),
+    "utf8",
+  );
 
   it("exports the real DB fixture and concurrency contract", () => {
     expect(seedReaderSummaryProductionRecoveryFixture).toBeInstanceOf(
@@ -38,6 +43,18 @@ describe("reader summary production recovery PostgreSQL contract", () => {
     );
     expect(assertReaderSummaryProductionRecoveryPostgresContract)
       .toBeInstanceOf(Function);
+  });
+
+  it("contracts a fresh quality remediation canonical-bounds resume", () => {
+    expect(postgresContract).toContain(
+      "reader-summary-production-recovery-model-quality-remediation-resume-v1",
+    );
+    expect(postgresContract).toContain(
+      'resumedClaim === "resume-quality"',
+    );
+    expect(postgresContract).toContain(
+      "quality-remediation-resume-v1 lease was already consumed",
+    );
   });
 
   it("replaces only validation with the exact six-day v2 authority", () => {
