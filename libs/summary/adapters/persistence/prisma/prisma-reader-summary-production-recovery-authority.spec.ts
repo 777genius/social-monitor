@@ -57,6 +57,27 @@ describe("PrismaReaderSummaryProductionRecoveryAuthority", () => {
     ).toBe(false);
   });
 
+  it("bounds recovery source context from DB preview/body fallback", async () => {
+    const prisma = new FakeProductionRecoveryPrisma();
+    const adapter = new PrismaReaderSummaryProductionRecoveryAuthority(
+      prisma as unknown as PrismaSummaryClient,
+    );
+
+    await adapter.prepare();
+
+    const evidenceRead = prisma.calls.find(
+      (call) =>
+        call.sql.includes('FROM "feed_items" AS feed') &&
+        call.sql.includes('AS "sourceText"'),
+    );
+    expect(evidenceRead?.sql).toContain(
+      'LEFT( COALESCE(NULLIF(feed."body_preview", \'\'), source."body"), 4096 ) AS "sourceText"',
+    );
+    expect(evidenceRead?.sql).not.toContain(
+      'source."body" AS "sourceText"',
+    );
+  });
+
   it("replays with reads only after all six final receipts exist", async () => {
     const prisma = new FakeProductionRecoveryPrisma(
       productionRecoveryEvidenceRows(),

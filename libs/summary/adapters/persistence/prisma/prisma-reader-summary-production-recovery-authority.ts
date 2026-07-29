@@ -294,7 +294,10 @@ const readEvidence = (
       source."canonical_url" AS "canonicalUrl",
       feed."title" AS "title",
       feed."body_preview" AS "bodyPreview",
-      source."body" AS "sourceText",
+      LEFT(
+        COALESCE(NULLIF(feed."body_preview", ''), source."body"),
+        4096
+      ) AS "sourceText",
       feed."author_handle" AS "authorHandle",
       source."content_hash" AS "sourceContentHash",
       source."provider_content_hash" AS "sourceProviderContentHash",
