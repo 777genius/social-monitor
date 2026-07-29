@@ -91,7 +91,7 @@ export const seedReaderSummaryProductionRecoveryFixture = async (
       row_number() OVER (ORDER BY day)::INTEGER AS day_number
     FROM generate_series(
       DATE '2026-07-23',
-      DATE '2026-07-26',
+      DATE '2026-07-27',
       INTERVAL '1 day'
     ) AS days(day);
 
@@ -115,7 +115,8 @@ export const seedReaderSummaryProductionRecoveryFixture = async (
       requested_date::TIMESTAMP AT TIME ZONE 'UTC' + INTERVAL '10 hours',
       requested_date::TIMESTAMP AT TIME ZONE 'UTC' + INTERVAL '12 hours'
     FROM recovery_days
-    WHERE requested_date > DATE '2026-07-23';
+    WHERE requested_date > DATE '2026-07-23'
+      AND requested_date < DATE '2026-07-27';
 
     INSERT INTO scan_attempts (
       scan_job_id, tenant_id, workspace_id, source_binding_id,
@@ -133,7 +134,8 @@ export const seedReaderSummaryProductionRecoveryFixture = async (
       10, 10, 0, 10,
       requested_date::TIMESTAMP AT TIME ZONE 'UTC' + INTERVAL '12 hours'
     FROM recovery_days
-    WHERE requested_date > DATE '2026-07-23';
+    WHERE requested_date > DATE '2026-07-23'
+      AND requested_date < DATE '2026-07-27';
 
     CREATE TEMP TABLE recovery_items ON COMMIT DROP AS
     SELECT
@@ -150,14 +152,28 @@ export const seedReaderSummaryProductionRecoveryFixture = async (
       (
         1,
         'github-trending-page',
-        CASE WHEN day.requested_date = DATE '2026-07-23' THEN 0 ELSE 10 END
+        CASE
+          WHEN day.requested_date IN (
+            DATE '2026-07-23',
+            DATE '2026-07-27'
+          ) THEN 0
+          ELSE 10
+        END
       ),
       (
         2,
         'hacker-news',
-        CASE WHEN day.requested_date = DATE '2026-07-26' THEN 78 ELSE 100 END
+        CASE day.requested_date
+          WHEN DATE '2026-07-26' THEN 78
+          WHEN DATE '2026-07-27' THEN 91
+          ELSE 100
+        END
       ),
-      (3, 'reddit', 100),
+      (
+        3,
+        'reddit',
+        CASE WHEN day.requested_date = DATE '2026-07-27' THEN 125 ELSE 100 END
+      ),
       (
         4,
         'rss',
@@ -165,7 +181,8 @@ export const seedReaderSummaryProductionRecoveryFixture = async (
           WHEN DATE '2026-07-23' THEN 75
           WHEN DATE '2026-07-24' THEN 67
           WHEN DATE '2026-07-25' THEN 62
-          ELSE 59
+          WHEN DATE '2026-07-26' THEN 59
+          ELSE 38
         END
       ),
       (
@@ -175,7 +192,8 @@ export const seedReaderSummaryProductionRecoveryFixture = async (
           WHEN DATE '2026-07-23' THEN 67
           WHEN DATE '2026-07-24' THEN 73
           WHEN DATE '2026-07-25' THEN 96
-          ELSE 94
+          WHEN DATE '2026-07-26' THEN 94
+          ELSE 89
         END
       )
     ) AS provider(ordinal, provider_key, item_count)
@@ -348,6 +366,7 @@ export const assertReaderSummaryProductionRecoveryPostgresContract =
           ["2026-07-24", 350, "verified_existing"],
           ["2026-07-25", 368, "verified_existing"],
           ["2026-07-26", 341, "verified_existing"],
+          ["2026-07-27", 343, "historical_unavailable"],
         ]),
       "production recovery immutable daily counts diverged",
     );

@@ -373,7 +373,7 @@ const readEvidence = (
       AND feed."published_at" >=
         (DATE '2026-07-23'::TIMESTAMP AT TIME ZONE 'UTC')
       AND feed."published_at" <
-        (DATE '2026-07-27'::TIMESTAMP AT TIME ZONE 'UTC')
+        (DATE '2026-07-28'::TIMESTAMP AT TIME ZONE 'UTC')
       AND source."content_hash" ~ '^[0-9a-f]{64}$'
       AND (
         source."provider_content_hash" IS NULL

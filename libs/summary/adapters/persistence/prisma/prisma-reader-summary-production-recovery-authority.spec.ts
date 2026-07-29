@@ -15,7 +15,7 @@ import {
 import type { PrismaSummaryClient } from "./prisma-summary-client";
 
 describe("PrismaReaderSummaryProductionRecoveryAuthority", () => {
-  it("persists a DB-derived Jul23-Jul26 authority with two hashes per day", async () => {
+  it("persists a DB-derived Jul23-Jul27 authority with two hashes per day", async () => {
     const prisma = new FakeProductionRecoveryPrisma();
     const adapter = new PrismaReaderSummaryProductionRecoveryAuthority(
       prisma as unknown as PrismaSummaryClient,
@@ -30,6 +30,7 @@ describe("PrismaReaderSummaryProductionRecoveryAuthority", () => {
       "2026-07-24",
       "2026-07-25",
       "2026-07-26",
+      "2026-07-27",
     ]);
     expect(
       binding.days.every(
@@ -52,10 +53,10 @@ describe("PrismaReaderSummaryProductionRecoveryAuthority", () => {
     ).toHaveLength(1);
   });
 
-  it("replays with reads only after all four final receipts exist", async () => {
+  it("replays with reads only after all five final receipts exist", async () => {
     const prisma = new FakeProductionRecoveryPrisma(
       productionRecoveryEvidenceRows(),
-      4,
+      5,
       true,
     );
     const adapter = new PrismaReaderSummaryProductionRecoveryAuthority(

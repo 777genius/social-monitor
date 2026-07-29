@@ -11,6 +11,7 @@ export const readerSummaryProductionRecoveryRequestedUtcDates = [
   "2026-07-24",
   "2026-07-25",
   "2026-07-26",
+  "2026-07-27",
 ] as const;
 
 export type ReaderSummaryProductionRecoveryProviderKey =
@@ -48,6 +49,13 @@ export const readerSummaryProductionRecoveryExpectedProviderCounts =
       reddit: 100,
       rss: 59,
       "x-twitter": 94,
+    }),
+    "2026-07-27": Object.freeze({
+      "github-trending-page": 0,
+      "hacker-news": 91,
+      reddit: 125,
+      rss: 38,
+      "x-twitter": 89,
     }),
   }) satisfies Readonly<
     Record<
@@ -92,10 +100,12 @@ export type ReaderSummaryProductionRecoveryGitHubEvidence =
       schemaVersion: "reader_summary.production_recovery_github_evidence.v2";
       mode: "historical_unavailable";
       providerKey: "github-trending-page";
-      requestedUtcDate: "2026-07-23";
+      requestedUtcDate: "2026-07-23" | "2026-07-27";
       evidenceCount: 0;
       authorization: Readonly<{
-        authorizationId: "reader_summary.production_recovery.github.2026-07-23.v2";
+        authorizationId:
+          | "reader_summary.production_recovery.github.2026-07-23.v2"
+          | "reader_summary.production_recovery.github.2026-07-27.v2";
         authorizedAt: string;
         reason: string;
       }>;
@@ -106,7 +116,7 @@ export type ReaderSummaryProductionRecoveryGitHubEvidence =
       providerKey: "github-trending-page";
       requestedUtcDate: Exclude<
         ReaderSummaryProductionRecoveryRequestedUtcDate,
-        "2026-07-23"
+        "2026-07-23" | "2026-07-27"
       >;
       evidenceCount: 10;
       evidenceSha256: string;
@@ -156,6 +166,7 @@ export type ReaderSummaryProductionRecoveryAuthorityBinding = Readonly<{
     recollectionPerformed: false;
   }>;
   days: readonly [
+    ReaderSummaryProductionRecoveryDayAuthority,
     ReaderSummaryProductionRecoveryDayAuthority,
     ReaderSummaryProductionRecoveryDayAuthority,
     ReaderSummaryProductionRecoveryDayAuthority,

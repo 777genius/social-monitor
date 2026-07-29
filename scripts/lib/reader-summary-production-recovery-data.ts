@@ -209,10 +209,10 @@ const assertAuthorityBinding = (
     binding.lease.state !== "CONSUMED" ||
     binding.dryRunCanonicalSha256s[0] !== binding.canonicalSha256 ||
     binding.dryRunCanonicalSha256s[1] !== binding.canonicalSha256 ||
-    binding.days.length !== 4
+    binding.days.length !== 5
   ) {
     throw new Error(
-      "Reader summary production recovery authority is not exact pre-model Jul23-Jul26 scope",
+      "Reader summary production recovery authority is not exact pre-model Jul23-Jul27 scope",
     );
   }
   for (const expectedDate of readerSummaryProductionRecoveryDates) {
@@ -250,7 +250,8 @@ const dayPlan = (
     day.planSha256s[0] !== day.canonicalSha256 ||
     day.planSha256s[1] !== day.canonicalSha256 ||
     githubRows.some((row) => row.github === undefined) ||
-    (day.requestedUtcDate === "2026-07-23"
+    (day.requestedUtcDate === "2026-07-23" ||
+    day.requestedUtcDate === "2026-07-27"
       ? day.githubEvidence.mode !== "historical_unavailable"
       : day.githubEvidence.mode !== "verified_existing")
   ) {

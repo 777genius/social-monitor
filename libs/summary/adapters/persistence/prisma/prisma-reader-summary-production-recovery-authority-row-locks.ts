@@ -50,7 +50,7 @@ export const lockProductionRecoveryRows = async (
           AND feed."published_at" >=
             (DATE '2026-07-23'::TIMESTAMP AT TIME ZONE 'UTC')
           AND feed."published_at" <
-            (DATE '2026-07-27'::TIMESTAMP AT TIME ZONE 'UTC')
+            (DATE '2026-07-28'::TIMESTAMP AT TIME ZONE 'UTC')
       )
     ORDER BY binding."id"
     FOR SHARE
@@ -79,7 +79,7 @@ export const lockProductionRecoveryRows = async (
           AND feed."published_at" >=
             (DATE '2026-07-23'::TIMESTAMP AT TIME ZONE 'UTC')
           AND feed."published_at" <
-            (DATE '2026-07-27'::TIMESTAMP AT TIME ZONE 'UTC')
+            (DATE '2026-07-28'::TIMESTAMP AT TIME ZONE 'UTC')
       )
     ORDER BY source."id"
     FOR SHARE
@@ -102,7 +102,7 @@ export const lockProductionRecoveryRows = async (
       AND feed."published_at" >=
         (DATE '2026-07-23'::TIMESTAMP AT TIME ZONE 'UTC')
       AND feed."published_at" <
-        (DATE '2026-07-27'::TIMESTAMP AT TIME ZONE 'UTC')
+        (DATE '2026-07-28'::TIMESTAMP AT TIME ZONE 'UTC')
     ORDER BY feed."id"
     FOR SHARE
   `;

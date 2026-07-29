@@ -54,6 +54,7 @@ describe("reader summary production recovery", () => {
       "skipped",
       "skipped",
       "skipped",
+      "skipped",
     ]);
     expect(executionGuard.calls()).toBe(0);
     expect(modelCalls).toBe(0);
@@ -86,6 +87,7 @@ describe("reader summary production recovery", () => {
       "2026-07-24",
       "2026-07-25",
       "2026-07-26",
+      "2026-07-27",
     ]);
   });
 
@@ -109,11 +111,12 @@ describe("reader summary production recovery", () => {
       "2026-07-23",
       "2026-07-25",
       "2026-07-26",
+      "2026-07-27",
     ]);
     expect(result.dayResults[1]?.outcome).toBe("replayed");
   });
 
-  it("discovers only a complete Jul23-Jul26 visible scope", async () => {
+  it("discovers only a complete Jul23-Jul27 visible scope", async () => {
     let sql = "";
     const scope = await discoverReaderSummaryProductionRecoveryScope({
       $queryRaw: async <T>(strings: TemplateStringsArray): Promise<T> => {
@@ -130,7 +133,9 @@ describe("reader summary production recovery", () => {
     expect(scope.tenantId).toContain("10000000");
     expect(sql).toContain("date '2026-07-23'");
     expect(sql).toContain("date '2026-07-26'");
+    expect(sql).toContain("date '2026-07-27'");
     expect(sql).toContain("'hacker-news', 100");
+    expect(sql).toContain("'hacker-news', 91");
     expect(sql).not.toContain("source_items");
   });
 

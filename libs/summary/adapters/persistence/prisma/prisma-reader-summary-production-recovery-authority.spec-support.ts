@@ -17,7 +17,13 @@ export const productionRecoveryEvidenceRows = (params?: {
   readonly jul24RssCount?: number;
 }): readonly ProductionRecoveryEvidenceRow[] => {
   let ordinal = 0;
-  return ["2026-07-23", "2026-07-24", "2026-07-25", "2026-07-26"]
+  return [
+    "2026-07-23",
+    "2026-07-24",
+    "2026-07-25",
+    "2026-07-26",
+    "2026-07-27",
+  ]
     .flatMap((date) =>
       [
         [

@@ -199,7 +199,12 @@ export const discoverReaderSummaryProductionRecoveryScope = async (
         (DATE '2026-07-26', 'hacker-news', 78),
         (DATE '2026-07-26', 'reddit', 100),
         (DATE '2026-07-26', 'rss', 59),
-        (DATE '2026-07-26', 'x-twitter', 94)
+        (DATE '2026-07-26', 'x-twitter', 94),
+        (DATE '2026-07-27', 'github-trending-page', 0),
+        (DATE '2026-07-27', 'hacker-news', 91),
+        (DATE '2026-07-27', 'reddit', 125),
+        (DATE '2026-07-27', 'rss', 38),
+        (DATE '2026-07-27', 'x-twitter', 89)
     ),
     scopes AS (
       SELECT DISTINCT feed."tenant_id", feed."workspace_id"
@@ -208,7 +213,7 @@ export const discoverReaderSummaryProductionRecoveryScope = async (
         AND feed."published_at" >=
           (DATE '2026-07-23'::TIMESTAMP AT TIME ZONE 'UTC')
         AND feed."published_at" <
-          (DATE '2026-07-27'::TIMESTAMP AT TIME ZONE 'UTC')
+          (DATE '2026-07-28'::TIMESTAMP AT TIME ZONE 'UTC')
         AND feed."provider_key" = ANY(ARRAY[
           'github-trending-page',
           'hacker-news',
@@ -245,7 +250,7 @@ export const discoverReaderSummaryProductionRecoveryScope = async (
       exact."workspace_id"::TEXT AS "workspaceId"
     FROM exact_counts AS exact
     GROUP BY exact."tenant_id", exact."workspace_id"
-    HAVING count(*) = 20
+    HAVING count(*) = 25
     ORDER BY "tenantId", "workspaceId"
   `;
   if (rows.length !== 1 || rows[0] === undefined) {
@@ -293,7 +298,7 @@ const readReaderSummaryProductionRecoveryScopeDiagnostics = (
         count(*)::INTEGER AS "count"
       FROM "feed_items" AS feed
       WHERE feed."observed_at" >= (DATE '2026-07-23'::TIMESTAMP AT TIME ZONE 'UTC')
-        AND feed."observed_at" < (DATE '2026-07-27'::TIMESTAMP AT TIME ZONE 'UTC')
+        AND feed."observed_at" < (DATE '2026-07-28'::TIMESTAMP AT TIME ZONE 'UTC')
         AND feed."provider_key" = ANY(ARRAY['github-trending-page','hacker-news','reddit','rss','x-twitter'])
       GROUP BY 1, 2, 3, 4, 5, 6
       UNION ALL
@@ -306,7 +311,7 @@ const readReaderSummaryProductionRecoveryScopeDiagnostics = (
         count(*)::INTEGER AS "count"
       FROM "feed_items" AS feed
       WHERE feed."created_at" >= (DATE '2026-07-23'::TIMESTAMP AT TIME ZONE 'UTC')
-        AND feed."created_at" < (DATE '2026-07-27'::TIMESTAMP AT TIME ZONE 'UTC')
+        AND feed."created_at" < (DATE '2026-07-28'::TIMESTAMP AT TIME ZONE 'UTC')
         AND feed."provider_key" = ANY(ARRAY['github-trending-page','hacker-news','reddit','rss','x-twitter'])
       GROUP BY 1, 2, 3, 4, 5, 6
       UNION ALL
@@ -319,7 +324,7 @@ const readReaderSummaryProductionRecoveryScopeDiagnostics = (
         count(*)::INTEGER AS "count"
       FROM "feed_items" AS feed
       WHERE feed."published_at" >= (DATE '2026-07-23'::TIMESTAMP AT TIME ZONE 'UTC')
-        AND feed."published_at" < (DATE '2026-07-27'::TIMESTAMP AT TIME ZONE 'UTC')
+        AND feed."published_at" < (DATE '2026-07-28'::TIMESTAMP AT TIME ZONE 'UTC')
         AND feed."provider_key" = ANY(ARRAY['github-trending-page','hacker-news','reddit','rss','x-twitter'])
       GROUP BY 1, 2, 3, 4, 5, 6
     ) AS diagnostics
@@ -439,7 +444,7 @@ async function main(): Promise<void> {
   loadDotenvIfPresent(".env");
 
   if (!process.argv.slice(2).includes("--apply")) {
-    throw new Error("Pass --apply to run Jul23-Jul26 production recovery");
+    throw new Error("Pass --apply to run Jul23-Jul27 production recovery");
   }
   const productionDatabaseUrl = requiredEnv("DATABASE_URL");
   const sourceDatabaseUrl =
